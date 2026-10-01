@@ -285,6 +285,29 @@ for sym in ti_GvmCanonicalSubset_Chain_GvmCanonicalSubset_Row_String \
 done
 echo "gvm dispatcher over a canonical group: shape present, all cases declared: OK"
 
+for inst in Int32 Shade; do
+    body=$(awk -v inst="$inst" '
+        $0 ~ "^(inline )?int32_t Program_Convert_Tis" inst "_m[0-9]+\\(.*\\)$" { capture = 1 }
+        capture { print }
+        capture && /^}/ { exit }
+    ' "$out/generated.h" "$out"/generated*.cpp)
+    [ -n "$body" ] \
+        || { echo "FAIL: constrained IConvertible<$inst> body missing" >&2; exit 1; }
+    boxes=$(grep -oF 'dn2cpp_box(' <<< "$body" | wc -l | tr -d ' ' || true)
+    [ "$boxes" -eq 1 ] && grep -Eq '^[[:space:]]+[A-Za-z_][A-Za-z0-9_]* = dn2cpp_box\(' <<< "$body" \
+        && grep -Fq 'dn2cpp_resolve_interface' <<< "$body" \
+        || { echo "FAIL: constrained IConvertible<$inst> must dispatch through one stored box" >&2; exit 1; }
+done
+
+for method in GetHashCode ToString Equals; do
+    grep -qE "BareNames_ConstrainedObjectInterfaceSubset_IObjectNames_${method}_m[0-9]+" "$out/generated.h" \
+        || { echo "FAIL: explicit IObjectNames.$method body not reached" >&2; exit 1; }
+done
+if grep -qE 'BareNames_.*__(vteq|vthash)' "$out/generated.h"; then
+    echo "FAIL: interface-only BareNames call reached Object equality synthesis" >&2
+    exit 1
+fi
+
 for inst in String Object; do
     grep -q "^// GenericStaticsSubset.SynchronizedOwner_${inst}::StaticProbe$" "$out"/generated*.cpp \
         || { echo "FAIL: static synchronized body lost its real type: $inst" >&2; exit 1; }
@@ -408,5 +431,16 @@ for line in 'width join array=1,2/Red,Green,7' 'width join uint=3,4000000000/On,
     'reference concat views=string/object' 'reference append views=[string]/[object]'; do
     grep -Fxq "$line" <<< "$native" \
         || { echo "FAIL: width-placeholder join witness missing: $line" >&2; exit 1; }
+done
+# Constrained interface owners preserve the earlier shared-generic output.
+before_default_comparison=$(dotnet "$app" before-default-comparison)
+before_default_comparison=$(strip_cr_win "$before_default_comparison")
+prefix=$(awk '/^== default comparison validation ==$/ { exit } { print }' <<< "$native")
+assert_output "$prefix" "$before_default_comparison"
+for line in '== default comparison validation ==' 'constrained interface=23/interface/True' \
+    'constrained bare=31/bare interface/True/1' 'constrained object=11/object/False' \
+    'constrained boxed primitive=42' 'constrained boxed enum=7' 'default comparison validation end'; do
+    grep -Fxq "$line" <<< "$native" \
+        || { echo "FAIL: constrained interface coverage missing: $line" >&2; exit 1; }
 done
 gate_cache_commit

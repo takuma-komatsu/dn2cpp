@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 
 namespace Dn2Cpp.Runtime
 {
@@ -30,6 +32,17 @@ namespace HotPathNoAllocVirtBad
         public override int Sides() => 4;
     }
 
+    internal sealed class Key : IEquatable<Key>
+    {
+        internal static object? Retained;
+
+        public bool Equals(Key? other)
+        {
+            Retained = new object();
+            return other is not null;
+        }
+    }
+
     /// <summary>A [HotPath(NoAlloc = true)] method that dispatches dynamically:
     /// <c>s.Sides()</c> is a virtual (here abstract) call resolved through the
     /// receiver's vtable, whose target is not statically provable. Transpiling
@@ -44,10 +57,22 @@ namespace HotPathNoAllocVirtBad
             return s.Sides();
         }
 
+        [HotPath(NoAlloc = true)]
+        private static bool EqualTyped(Key left, Key right) =>
+            EqualityComparer<Key>.Default.Equals(left, right);
+
+        [HotPath(NoAlloc = true)]
+        private static bool EqualErased(Key left, Key right) =>
+            ((System.Collections.IEqualityComparer)EqualityComparer<Key>.Default).Equals(left, right);
+
         private static void Main(string[] args)
         {
+            CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+            CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
             Shape s = args.Length > 100 ? new Square() : new Triangle();
             Console.WriteLine(CountSides(s));
+            Console.WriteLine(EqualTyped(new Key(), new Key()));
+            Console.WriteLine(EqualErased(new Key(), new Key()));
         }
     }
 }

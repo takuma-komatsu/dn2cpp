@@ -108,14 +108,17 @@ internal sealed partial class MethodCompiler
         // Math.ThrowMinMaxException<T>(min, max) — the [DoesNotReturn] throw helper
         // behind every Clamp overload's min > max validation. The intrinsic-mapped
         // Math/MathF overloads never reach it (dn2cpp_math_clamp validates inline),
-        // but transpiled BCL bodies do (Half.Clamp/ClampNative). Same lowering as
-        // the ThrowHelper closures: drop the bounds, raise the catchable
-        // ArgumentException, keep the message-formatting IL out of the tree.
+        // but transpiled BCL bodies do. Preserve each bound's ToString and the
+        // CoreLib resource sentence without reaching the formatting IL.
         if (declType == "System.Math" && name == "ThrowMinMaxException")
         {
-            Pop(); // max
-            Pop(); // min
-            Emit("dn2cpp_throw_argument();");
+            string max = BoxCompositeFormatArg(methodArgs[0]);
+            string min = BoxCompositeFormatArg(methodArgs[0]);
+            string minText = NewTemp("Dn2CppString*");
+            string maxText = NewTemp("Dn2CppString*");
+            Emit($"{minText} = dn2cpp_object_tostring({min});");
+            Emit($"{maxText} = dn2cpp_object_tostring({max});");
+            Emit($"dn2cpp_throw_sr2(&dn2cpp_argument_exception_type, DN2CPP_SR_MIN_MAX_VALUE, {minText}, {maxText});");
             return;
         }
 
@@ -1234,12 +1237,12 @@ internal sealed partial class MethodCompiler
                     {
                         Emit($"if ({kvCmpT} == nullptr) dn2cpp_throw_argument_null_param(\"comparison\");");
                         Emit(sameLength);
-                        Emit($"{kvCall}, (void*){kvCmpT}, {ComparerThunk(t, kvCls, byAddr: true)});");
+                        EmitSortCall($"{kvCall}, (void*){kvCmpT}, {ComparerThunk(t, kvCls, byAddr: true)});", (kvCmpT, "nullptr"));
                         return;
                     }
                     Emit(sameLength);
                     Emit($"if ({kvCmpT} != nullptr) {{");
-                    Emit($"    {kvCall}, (void*){kvCmpT}, {ComparerThunk(t, kvCls, byAddr: true)});");
+                    EmitSortCall($"{kvCall}, (void*){kvCmpT}, {ComparerThunk(t, kvCls, byAddr: true)});", (kvCmpT, "nullptr"));
                     Emit("} else {");
                     EmitDefaultSortPair(t, kvCall);
                     Emit("}");
@@ -1281,11 +1284,11 @@ internal sealed partial class MethodCompiler
             {
                 // A Comparison<T> has no default order to fall back on.
                 Emit($"if ({sCmpT} == nullptr) dn2cpp_throw_argument_null_param(\"comparison\");");
-                Emit($"{rep.Fn}({cmpArgs}, (void*){sCmpT}, {ComparerThunk(t, sCls)});");
+                EmitSortCall($"{rep.Fn}({cmpArgs}, (void*){sCmpT}, {ComparerThunk(t, sCls)});", (sCmpT, "nullptr"));
                 return;
             }
             Emit($"if ({sCmpT} != nullptr) {{");
-            Emit($"    {rep.Fn}({cmpArgs}, (void*){sCmpT}, {ComparerThunk(t, sCls)});");
+            EmitSortCall($"{rep.Fn}({cmpArgs}, (void*){sCmpT}, {ComparerThunk(t, sCls)});", (sCmpT, "nullptr"));
             Emit("} else {");
             EmitDefaultSpanSort(t, pT, nT, rep.Fn, cmpArgs);
             Emit("}");

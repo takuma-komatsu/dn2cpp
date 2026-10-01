@@ -1980,7 +1980,8 @@ internal sealed partial class Compilation
     {
         EnsureCompleted(cls);
         if (callee.DeclaringClass is { IsInterface: true } itf
-            && itf.Context.TypeArgs.Length == 1
+            && itf.Context.TypeArgs is [{ Kind: TypeKind.Class, Class: { } selfArg }]
+            && selfArg == cls
             && callee.Signature.ParameterTypes.Length == 1)
         {
             switch (GenericDefFullName(itf))
@@ -2007,6 +2008,9 @@ internal sealed partial class Compilation
         {
             if (DeclaredImplOf(cls, slot) is not { } impl || ReferenceEquals(impl, found))
                 continue;
+            if (found is not null
+                && (ContainsCanonPlaceholder(callee.DeclaringClass) || ContainsCanonPlaceholder(cls)))
+                return null;
             if (found is not null)
                 throw new NotSupportedException(
                     $"constrained callvirt: {cls.FullName} implements several instantiations of "

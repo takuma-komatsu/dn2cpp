@@ -58,6 +58,12 @@ namespace ArrayCore
             if (args.Length > 0 && args[0] == "before-validation-fields")
                 return;
             ArrayRangeFaultSubset.Program.RunValidationFields();
+            if (args.Length > 0 && args[0] == "before-default-comparison")
+                return;
+            Console.WriteLine("== default comparison validation ==");
+            ArrayDefaultOrderSubset.Program.Run();
+            NonGenericArrayNullEqualitySubset.Program.Run();
+            Console.WriteLine("default comparison validation end");
         }
     }
 }

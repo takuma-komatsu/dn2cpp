@@ -113,10 +113,12 @@ internal sealed partial class MethodCompiler
         // CancellationToken wraps its opaque identity in a one-field value struct.
         if (IsCancellationTokenValue(t))
             return TryEqualityEqualsLValue(t, x, y);
-        // A System.Enum-typed field holds a BOXED reference (CppTypes.Of -> Dn2CppObject*),
-        // not a value-struct layout, so it must NOT take this arm's `&field` value-type call.
-        // Modeled as a reference type, it fails the IsValueType test and falls through to
-        // TryEqualityEqualsLValue, which routes it to dn2cpp_object_equals.
+        // A reference field runs its Object override even for itself or a null argument.
+        if (IsReferenceKeyType(t))
+        {
+            string xo = Cast(x, "Dn2CppObject*"), yo = Cast(y, "Dn2CppObject*");
+            return $"(({xo}) == nullptr ? (({yo}) == nullptr ? 1 : 0) : dn2cpp_object_equals_virtual({xo}, {yo}))";
+        }
         if (t is { Kind: TypeKind.Class, Class: { IsValueType: true, IsEnum: false } fc }
             && IntrinsicValueTypeFn(t) is null)
         {

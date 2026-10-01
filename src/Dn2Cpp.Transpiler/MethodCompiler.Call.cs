@@ -382,6 +382,7 @@ internal sealed partial class MethodCompiler
                     HandleKind.MethodDefinition => _reader.GetString(_reader.GetMethodDefinition((MethodDefinitionHandle)handle).Name),
                     _ => "",
                 }) == "ToString"
+            && IsObjectShapedConstrained(handle, "ToString")
             && ConstrainedCalleeSig(handle).ParameterTypes.Length == 0)
         {
             var receiver = Pop();
@@ -392,6 +393,24 @@ internal sealed partial class MethodCompiler
                 $"((void)({receiver.Expr}), dn2cpp_type_tostring({ti}))");
             _constrained = null;
             return;
+        }
+        // constrained. callvirt on an enum or primitive value whose member no arm
+        // above lowers — an IConvertible member, an enum's
+        // IFormattable.ToString(string, IFormatProvider): box the value in place and
+        // dispatch on the box, which the boxed-enum and boxed built-in interface rows
+        // answer. An enum's ClassInfo is not IsValueType, so the reference arm below
+        // would otherwise read its value as an object pointer, as EmitConstrainedCall
+        // would a primitive's.
+        if (isCallvirt && _constrained is { } bc
+            && (bc is { Kind: TypeKind.Class, Class.IsEnum: true }
+                || bc is { Kind: TypeKind.Primitive, IsObject: false, IsString: false }))
+        {
+            int boxIdx = _stack.Count - 1 - ConstrainedReceiverArgCount(handle);
+            string boxed = NewTemp("Dn2CppObject*");
+            Emit($"{boxed} = {BoxedConstrainedReceiver(bc, _stack[boxIdx])};");
+            _stack[boxIdx] = new StackEntry(boxed, StackKind.Ref, "Dn2CppObject*",
+                StaticType: bc, NonNull: true);
+            _constrained = null;
         }
         // constrained. callvirt on a *reference* class/interface — a generic
         // parameter (e.g. ConcurrentDictionary<TKey,…>'s TKey) instantiated as a
@@ -820,24 +839,25 @@ internal sealed partial class MethodCompiler
                     // the type-specialized op; a real user comparer (e.g. a
                     // case-insensitive or by-length one) is dispatched through the
                     // object at runtime.
-                    if (parent is { Kind: TypeKind.Class, Class: { } ic }
+                    if (_constrained is null
+                        && parent is { Kind: TypeKind.Class, Class: { } ic }
                         && _c.GenericDefFullName(ic) == "System.Collections.Generic.IEqualityComparer"
                         && TryEmitComparerDispatch(
                             _c.ResolveMemberRefMethod(_module, (MemberReferenceHandle)handle, _method.Context),
                             ic.Context.TypeArgs[0]))
                         return;
-                    // A callvirt through IComparable<T>.CompareTo on a boxed primitive/
-                    // enum/string — the unconstrained `(IComparable<T>)box.CompareTo`
-                    // cast form. The boxed
-                    // value's intrinsic type-info has no IComparable<T> interface map, so
-                    // real dispatch can't resolve it; devirtualize to the same typed
-                    // three-way compare, unboxing the receiver.
-                    if (parent is { Kind: TypeKind.Class, Class: { } cc }
+                    // A callvirt through IComparable<T>.CompareTo with T a primitive or
+                    // string — the unconstrained `(IComparable<T>)box.CompareTo` form. A
+                    // box of T orders inline; any other receiver implements the interface
+                    // itself and is dispatched.
+                    if (_constrained is null
+                        && parent is { Kind: TypeKind.Class, Class: { } cc }
                         && _c.GenericDefFullName(cc) == "System.IComparable"
                         && mrName == "CompareTo"
                         && ComparablePrimitiveArg(parent) is { } cmpT)
                     {
-                        EmitBoxedComparableCompareTo(cmpT);
+                        EmitBoxedComparableCompareTo(
+                            _c.ResolveMemberRefMethod(_module, (MemberReferenceHandle)handle, _method.Context), cmpT);
                         return;
                     }
                     // Span<T>/ReadOnlySpan<T> instance bulk methods (Clear/Fill/CopyTo/
@@ -1503,19 +1523,19 @@ internal sealed partial class MethodCompiler
             return;
         }
 
-        // Comparer<T>.Default -> a freshly allocated GenericComparer<T>. The
-        // real getter reflects (CreateInstanceForAnotherGenericParameter); emit the
-        // concrete comparer instead so it can be stored and dispatched virtually
-        // (SortedDictionary's key comparer). Its Compare uses x.CompareTo(y).
+        // Comparer<T>.Default -> a freshly allocated instance of the comparer class the
+        // real getter would create (Compilation.DefaultComparerClassFor). The real getter
+        // reflects (CreateInstanceForAnotherGenericParameter); emit the concrete comparer
+        // instead so it can be stored and dispatched virtually (SortedDictionary's key
+        // comparer).
         if (_c.IsComparerGetDefault(callee)
-            && _c.GenericComparerFor(callee.DeclaringClass.Context.TypeArgs[0]) is { } gc
+            && _c.DefaultComparerClassFor(callee.DeclaringClass.Context.TypeArgs[0]) is { } gc
             && Compilation.ParameterlessCtor(gc) is { } gctor)
         {
-            // The synthesized comparer is stamped with the closed element's
-            // GenericComparer type-info — for a placeholder element the shared
-            // body reads the real instantiation's comparer type-info out of an
-            // rgctx slot keyed on the get_Default call token (the layout and
-            // ctor are group-shared; only the identity stamp varies).
+            // The comparer is stamped with the closed element's comparer type-info — for a
+            // placeholder element the shared body reads the real instantiation's out of an
+            // rgctx slot keyed on the get_Default call token. The layout and ctor are
+            // group-shared, and serve every comparer class the slot can name.
             string gcTi = "&" + gc.CppTypeInfoName;
             if (SharedTrial && Compilation.ContainsCanonPlaceholder(callee.DeclaringClass.Context.TypeArgs[0]))
             {
@@ -2183,7 +2203,8 @@ internal sealed partial class MethodCompiler
             {
                 string dflt = callee.Name == "GetHashCode"
                     ? $"dn2cpp_object_gethashcode((Dn2CppObject*)({args[1]}))"
-                    : $"dn2cpp_object_equals((Dn2CppObject*)({args[1]}), (Dn2CppObject*)({args[2]}))";
+                    : $"dn2cpp_default_equality_comparer_equals_nongeneric((Dn2CppObject*)({receiver}), "
+                      + $"(Dn2CppObject*)({args[1]}), (Dn2CppObject*)({args[2]}))";
                 call = $"(dn2cpp_is_default_equality_comparer((Dn2CppObject*)({receiver})) ? {dflt} : {call})";
             }
         }
@@ -3140,6 +3161,9 @@ internal sealed partial class MethodCompiler
             var impl = _c.ConstrainedImplOf(c.Class, callee);
             if (impl is null)
             {
+                // An erased interface argument can name several concrete slots.
+                // Retry per instantiation when the shared trial cannot bind one.
+                TaintIfCanonical(callee.DeclaringClass, "constrained");
                 // `constrained.<T> callvirt IDisposable::Dispose` with no resolvable
                 // impl is the foreach/using disposal of a value-type enumerator that has
                 // no (or only an empty) Dispose — e.g. SRM's struct
@@ -3165,11 +3189,9 @@ internal sealed partial class MethodCompiler
                         $"{callee.DeclaringClass.FullName} but no body resolved for " +
                         $"{callee.Name} (transpiler bug — the call must bind)");
                 // A value type with no direct impl of the constrained virtual. This is
-                // reachable-but-dead in practice — e.g. GenericComparer<T>.Compare's
-                // `x.CompareTo(y)` instantiated for a non-IComparable T (KeyValuePair)
-                // via SortedSet's `comparer ?? Comparer<T>.Default` fallback that is
-                // never taken (a real comparer is always supplied). Emit a runtime
-                // throw rather than a transpile error: loud if ever executed.
+                // reachable-but-dead in practice: a generic body whose own checks never
+                // let such a T reach the call. Emit a runtime throw rather than a
+                // transpile error: loud if ever executed.
                 Emit($"dn2cpp_fail(\"InvalidOperationException ({c.Class.FullName} has no {callee.Name})\");");
                 if (!callee.Signature.ReturnType.IsVoid)
                 {
@@ -3571,10 +3593,19 @@ internal sealed partial class MethodCompiler
         }
         if (IsCancellationTokenValue(keyType))
             return $"((({Cast(a, "Dn2CppCancelToken")}).source == ({Cast(b, "Dn2CppCancelToken")}).source) ? 1 : 0)";
-        // A reference-type key dispatches its Equals(object) override via the
-        // type-info slot, else reference equality.
+        // The closed element type decides whether GenericEqualityComparer<T> calls
+        // IEquatable<T>.Equals. A shared body reads that type from its call-site
+        // context; the receiver's runtime type may implement other instantiations.
         if (IsReferenceKeyType(keyType))
-            return $"dn2cpp_object_equals({Cast(a, "Dn2CppObject*")}, {Cast(b, "Dn2CppObject*")})";
+        {
+            if (keyType.Kind is TypeKind.SZArray or TypeKind.MDArray or TypeKind.External)
+                return $"dn2cpp_object_equals_default({Cast(a, "Dn2CppObject*")}, {Cast(b, "Dn2CppObject*")})";
+            string ti = SharedTrial && Compilation.ContainsCanonPlaceholder(keyType)
+                ? "(const Dn2CppTypeInfo*)" + RgctxSlotAccess(
+                    RgctxSlotKind.EqualityElementType, _callSiteToken, "equality element", keyType)
+                : TypeInfoExpr(keyType) ?? "&dn2cpp_object_type";
+            return $"dn2cpp_object_equals_default_t({Cast(a, "Dn2CppObject*")}, {Cast(b, "Dn2CppObject*")}, {ti})";
+        }
         // An intrinsic value-type key (Decimal/TimeSpan/DateTime) compares by its
         // runtime three-way compare — no emitted Equals.
         if (IntrinsicValueTypeFn(keyType) is { } ie)
@@ -3639,9 +3670,9 @@ internal sealed partial class MethodCompiler
 
     /// <summary>The devirtualized Comparer&lt;T&gt;.Default.Compare /
     /// IComparable&lt;T&gt;.CompareTo for a closed key type — ordinal string
-    /// compare, numeric three-way, or enum-as-int. The intrinsic primitive/string
-    /// types have no generated interface map, so real dispatch can't resolve a
-    /// comparer; this is the type-specialized op the JIT would devirtualize to.
+    /// compare, the numeric CompareTo, or the enum's underlying CompareTo. The intrinsic
+    /// primitive/string types have no generated interface map, so real dispatch can't
+    /// resolve a comparer; this is the type-specialized op the JIT would devirtualize to.
     /// Throws for unsupported key types — loud, never silent.</summary>
     private string CompareExpr(TypeDesc keyType, StackEntry a, StackEntry b) =>
         TryCompareLValue(keyType, a, b)
@@ -3677,31 +3708,61 @@ internal sealed partial class MethodCompiler
             return keyType.IsCanonPlaceholder
                 ? null
                 : $"dn2cpp_object_compare({Cast(a, "Dn2CppObject*")}, {Cast(b, "Dn2CppObject*")}, &{NonGenericIComparableTiName()})";
-        // A primitive scalar orders by </> (Object was handled just above, so the
-        // scalar branch never silently pointer-compares a reference).
+        // A primitive scalar answers its own CompareTo, which is also what the direct
+        // call lowers to (Object was handled just above, so the scalar branch never
+        // silently pointer-compares a reference).
         if (keyType.Kind == TypeKind.Primitive && !keyType.IsObject)
         {
             string ct = CppTypes.Of(keyType);
             string x = Cast(a, ct), y = Cast(b, ct);
-            // Float ordering is a TOTAL order, not the raw three-way: a NaN sorts
-            // below every number (including -inf) and compares 0 to itself, so
-            // `<`/`>` alone — both false for a NaN — would call it equal to
-            // everything and leave a sort's result dependent on the visit order.
-            // The same expression Double/Single.CompareTo emits (the direct-call
-            // intrinsic), so a value ordered here and one ordered through a
-            // CompareTo call agree, and the ordering agrees with the equality that
-            // already says NaN == NaN (TryEqualityEqualsLValue).
-            if (keyType.Primitive is PrimitiveTypeCode.Double or PrimitiveTypeCode.Single)
-                return $"(({x}) < ({y}) ? -1 : (({x}) > ({y}) ? 1 : (({x}) == ({y}) ? 0 "
-                     + $": (({x}) != ({x}) ? (({y}) != ({y}) ? 0 : -1) : 1))))";
+            switch (keyType.Primitive)
+            {
+                // Float ordering is a TOTAL order, not the raw three-way: a NaN sorts
+                // below every number (including -inf) and compares 0 to itself, so
+                // `<`/`>` alone — both false for a NaN — would call it equal to
+                // everything and leave a sort's result dependent on the visit order.
+                // It agrees with the equality that already says NaN == NaN
+                // (TryEqualityEqualsLValue).
+                case PrimitiveTypeCode.Double or PrimitiveTypeCode.Single:
+                    return $"(({x}) < ({y}) ? -1 : (({x}) > ({y}) ? 1 : (({x}) == ({y}) ? 0 "
+                         + $": (({x}) != ({x}) ? (({y}) != ({y}) ? 0 : -1) : 1))))";
+                case PrimitiveTypeCode.SByte or PrimitiveTypeCode.Byte or PrimitiveTypeCode.Int16
+                    or PrimitiveTypeCode.UInt16 or PrimitiveTypeCode.Char:
+                    return SubWordDifference(CppTypes.StorageOf(keyType), x, y);
+                case PrimitiveTypeCode.Boolean:
+                    (x, y) = ($"(({x}) != 0)", $"(({y}) != 0)");
+                    break;
+                // UIntPtr rides the signed pointer-sized model but orders unsigned.
+                case PrimitiveTypeCode.UIntPtr:
+                    (x, y) = ($"((uintptr_t)({x}))", $"((uintptr_t)({y}))");
+                    break;
+            }
             return $"(({x}) < ({y}) ? -1 : (({x}) > ({y}) ? 1 : 0))";
         }
-        if (keyType is { Kind: TypeKind.Class, Class.IsEnum: true })
+        if (keyType is { Kind: TypeKind.Class, Class: { IsEnum: true } ec })
         {
-            // Same width rule as the equality arm: a 64-bit-backed enum orders on
-            // all 64 bits, not on a truncated low half.
+            // Enum.CompareTo is its underlying type's CompareTo. A 64-bit-backed enum
+            // orders on all 64 bits, not on a truncated low half, and an unsigned one
+            // orders unsigned although it rides the signed int32/int64 model.
             string ect = CppTypes.Of(keyType);
             string x = Cast(a, ect), y = Cast(b, ect);
+            switch (ec.EnumUnderlying)
+            {
+                case PrimitiveTypeCode.SByte:
+                    return SubWordDifference("int8_t", x, y);
+                case PrimitiveTypeCode.Byte or PrimitiveTypeCode.Boolean:
+                    return SubWordDifference("uint8_t", x, y);
+                case PrimitiveTypeCode.Int16:
+                    return SubWordDifference("int16_t", x, y);
+                case PrimitiveTypeCode.UInt16 or PrimitiveTypeCode.Char:
+                    return SubWordDifference("uint16_t", x, y);
+                case PrimitiveTypeCode.UInt32:
+                    (x, y) = ($"((uint32_t)({x}))", $"((uint32_t)({y}))");
+                    break;
+                case PrimitiveTypeCode.UInt64:
+                    (x, y) = ($"((uint64_t)({x}))", $"((uint64_t)({y}))");
+                    break;
+            }
             return $"(({x}) < ({y}) ? -1 : (({x}) > ({y}) ? 1 : 0))";
         }
         // An intrinsic value type (Decimal/TimeSpan/DateTime/…) orders by the same
@@ -3715,41 +3776,55 @@ internal sealed partial class MethodCompiler
         return null;
     }
 
+    /// <summary>The CompareTo of a sub-word integer or Char: the raw difference, not its
+    /// sign. Both operands are narrowed to <paramref name="storage"/> first, so the
+    /// difference of two in-range values cannot overflow Int32.</summary>
+    private static string SubWordDifference(string storage, string x, string y) =>
+        $"((int32_t)({storage})({x}) - (int32_t)({storage})({y}))";
+
     /// <summary>If <paramref name="t"/> is a closed <c>System.IComparable&lt;T&gt;</c>
-    /// whose argument is a primitive, string or enum (a key type CompareExpr can
-    /// devirtualize), returns that argument; otherwise null. Used to recognise the
-    /// boxed <c>(IComparable&lt;T&gt)box.CompareTo</c> cast form — a
-    /// reference-type T has a real interface map and takes the normal path.</summary>
+    /// whose argument is a primitive or string (a key type CompareExpr can
+    /// devirtualize), returns that argument; otherwise null. An enum is excluded because
+    /// a boxed enum never implements IComparable&lt;TEnum&gt;, and so is the enum
+    /// placeholder of a shared body; Object and the reference placeholder have no typed
+    /// compare.</summary>
     private TypeDesc? ComparablePrimitiveArg(TypeDesc t)
     {
         if (t is { Kind: TypeKind.Class, Class: { } cls }
             && _c.GenericDefFullName(cls) == "System.IComparable"
-            && cls.Context.TypeArgs.Length == 1)
-        {
-            var arg = cls.Context.TypeArgs[0];
-            // Object (and the reference placeholder it models) is not a
-            // devirtualizable compare — CompareExpr rejects it.
-            if ((arg.Kind == TypeKind.Primitive && !arg.IsObject)
-                || arg is { Kind: TypeKind.Class, Class.IsEnum: true })
-                return arg;
-        }
+            && cls.Context.TypeArgs.Length == 1
+            && cls.Context.TypeArgs[0] is { Kind: TypeKind.Primitive, IsObject: false, IsCanonPlaceholder: false } arg)
+            return arg;
         return null;
     }
 
-    /// <summary><c>IComparable&lt;T&gt;.CompareTo(T)</c> on a boxed primitive/enum/
-    /// string receiver — the unconstrained cast form. Pops the argument (an unboxed
-    /// T) and the boxed receiver, then emits the same typed three-way compare the
-    /// constrained path uses, unboxing the receiver from the box header.
-    /// A string box is identity, so its receiver is the reference itself.</summary>
-    private void EmitBoxedComparableCompareTo(TypeDesc t)
+    /// <summary><c>IComparable&lt;T&gt;.CompareTo(T)</c> called through the interface for a
+    /// primitive or string T. A receiver that is a box of T (a string is its own box)
+    /// orders inline by the typed compare; any other receiver is a type implementing
+    /// IComparable&lt;T&gt; and dispatches through its interface table. Both arms read the
+    /// receiver and the argument, so each is evaluated once into a temp.</summary>
+    private void EmitBoxedComparableCompareTo(MethodInfo compareTo, TypeDesc t)
     {
+        string ct = CppTypes.Of(t);
         var arg = Pop();      // the other value (y), an unboxed T
-        var receiver = Pop(); // the boxed receiver (x)
-        StackEntry x = t is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.String }
-            ? new StackEntry(Cast(receiver, "Dn2CppString*"), StackKind.Ref, "Dn2CppString*")
-            : new StackEntry($"(*({CppTypes.Of(t)}*)((Dn2CppObject*)({receiver.Expr}) + 1))",
-                CppTypes.KindOf(t), CppTypes.Of(t));
-        Push(StackKind.I4, "int32_t", CompareExpr(t, x, arg));
+        var receiver = Pop(); // the receiver (x)
+        string recv = NewTemp("Dn2CppObject*");
+        Emit($"{recv} = dn2cpp_null_check({Cast(receiver, "Dn2CppObject*")});");
+        var y = new StackEntry(NewTemp(ct), CppTypes.KindOf(t), ct);
+        Emit($"{y.Expr} = {Cast(arg, ct)};");
+        StackEntry x = t.IsString
+            ? new StackEntry($"((Dn2CppString*){recv})", StackKind.Ref, "Dn2CppString*")
+            : new StackEntry($"(*({ct}*)({recv} + 1))", CppTypes.KindOf(t), ct);
+        string ti = TypeInfoExpr(t)
+            ?? throw new InvalidOperationException($"IComparable<{t}>: a primitive key has no runtime type-info");
+        var itf = compareTo.DeclaringClass;
+        if (itf.IntrinsicCppName is null)
+            NoteReferencedType(itf);
+        NoteCanonicalItfDispatch(itf);
+        NoteDispatchSignatureTypes(compareTo);
+        string dispatch = $"(({FnPtrType(compareTo)})(dn2cpp_resolve_interface({recv}->type, "
+            + $"&{ItfDispatchTi(itf).CppTypeInfoName})[{compareTo.VtableSlot}]))(({itf.CppStructName}*){recv}, {y.Expr})";
+        Push(StackKind.I4, "int32_t", $"({recv}->type == {ti} ? {CompareExpr(t, x, y)} : {dispatch})");
     }
 
     /// <summary>An <c>IEqualityComparer&lt;T&gt;</c> interface call (GetHashCode/Equals)
@@ -3876,6 +3951,7 @@ internal sealed partial class MethodCompiler
             _ => "",
         };
         if (IsDefaultNameExternalIntrinsic(c) && name == "ToString"
+            && IsObjectShapedConstrained(handle, name)
             && ConstrainedCalleeSig(handle).ParameterTypes.Length == 0)
         {
             var receiver = Pop();
@@ -3896,12 +3972,21 @@ internal sealed partial class MethodCompiler
             var csig = handle.Kind == HandleKind.MemberReference
                 ? _reader.GetMemberReference((MemberReferenceHandle)handle).DecodeMethodSignature(_c.SigProvider, _method.Context)
                 : _reader.GetMethodDefinition((MethodDefinitionHandle)handle).DecodeSignature(_c.SigProvider, _method.Context);
+            // The typed IComparable<T>.CompareTo(!0) / IEquatable<T>.Equals(!0) name their
+            // argument by the interface's own parameter, which the caller's context leaves
+            // unbound; the intrinsic table matches on the closed argument type.
+            if (csig.ParameterTypes is [{ Kind: TypeKind.GenericVar }]
+                && (TypedItfConstrainedArg(handle, "System.IComparable")
+                    ?? TypedItfConstrainedArg(handle, "System.IEquatable")) is { } selfArg)
+                csig = new MethodSignature<TypeDesc>(csig.Header, csig.ReturnType, csig.RequiredParameterCount,
+                    csig.GenericParameterCount, System.Collections.Immutable.ImmutableArray.Create(selfArg));
             // ValueType.ToString on an intrinsic with no override is still observable:
             // it returns the exact CLR type name. These values may be ref structs or
             // pointer-represented handles, so boxing is neither legal nor necessary.
             // Keep types with a real override on the intrinsic table: an unclassified
             // formatter must fail loudly instead of silently degrading to a type name.
-            if (name == "ToString" && csig.ParameterTypes.Length == 0)
+            if (name == "ToString" && csig.ParameterTypes.Length == 0
+                && IsObjectShapedConstrained(handle, name))
             {
                 string intrinsicKey = _c.AdoptedAsyncKey(ivc) ?? _c.GenericDefFullName(ivc);
                 if (intrinsicKey == "System.Threading.Tasks.ValueTask"
@@ -4055,9 +4140,10 @@ internal sealed partial class MethodCompiler
         }
         switch (name)
         {
-            case "GetHashCode" when c.Kind == TypeKind.Primitive
-                || c is { Kind: TypeKind.Class, Class.IsEnum: true }
-                || IsCancellationTokenValue(c):
+            case "GetHashCode" when IsObjectShapedConstrained(handle, name)
+                && (c.Kind == TypeKind.Primitive
+                    || c is { Kind: TypeKind.Class, Class.IsEnum: true }
+                    || IsCancellationTokenValue(c)):
             {
                 var receiver = Pop(); // managed pointer to the constrained primitive
                 string ct = CppTypes.Of(c);
@@ -4074,7 +4160,8 @@ internal sealed partial class MethodCompiler
             // pulls the impl into the tree).
             case "GetHashCode" when c is { Kind: TypeKind.Class, Class: { IsValueType: true } ghs }
                 && !IsCancellationTokenValue(c)
-                && Compilation.EffectiveGetHashCode(ghs) is { } ghImpl:
+                && Compilation.EffectiveGetHashCode(ghs) is { } ghImpl
+                && IsObjectShapedConstrained(handle, name):
             {
                 var receiver = Pop();
                 Push(StackKind.I4, "int32_t", $"{DirectCallSym(ghImpl)}({ArgsWithRgctx(Cast(receiver, ghs.CppStructName + "*"), ghImpl)})");
@@ -4090,8 +4177,7 @@ internal sealed partial class MethodCompiler
             case "Equals" when c is { Kind: TypeKind.Class, Class: { IsValueType: true } eqs }
                 && !IsCancellationTokenValue(c)
                 && Compilation.EffectiveEquals(eqs) is { } eqImpl
-                && !(IsTypedItfConstrained(handle, "System.IEquatable")
-                     && Compilation.EffectiveTypedEquals(eqs) is not null):
+                && IsObjectShapedConstrained(handle, name):
             {
                 var other = Pop();
                 var receiver = Pop();
@@ -4125,7 +4211,7 @@ internal sealed partial class MethodCompiler
             case "Equals" when ((c.Kind == TypeKind.Primitive && !c.IsObject && !c.IsString)
                                 || c is { Kind: TypeKind.Class, Class.IsEnum: true }
                                 || IsCancellationTokenValue(c))
-                && ConstrainedCalleeSig(handle).ParameterTypes is [{ IsObject: true }]:
+                && IsObjectShapedConstrained(handle, name):
             {
                 var other = Pop();
                 var receiver = Pop(); // managed pointer to the constrained value
@@ -4133,12 +4219,26 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.I4, "int32_t", $"dn2cpp_object_equals({boxed}, {Cast(other, "Dn2CppObject*")})");
                 return true;
             }
-            // IComparable<T>.CompareTo(T) on a primitive or string key (the LINQ
-            // OrderBy / generic sort path). Devirtualize to a typed three-way
-            // compare — string uses ordinal (the project's string-ordering model);
-            // numeric uses </> (NaN sorts as 0, consistent with the primitive
-            // Equals model). The unconstrained (IComparable<T>)box.CompareTo cast
-            // form is still unsupported — callers should constrain TKey.
+            // CompareTo(object) on a primitive, string or enum receiver: Enum.CompareTo
+            // (what `e.CompareTo(x)` compiles to) or IComparable.CompareTo under a generic.
+            // The IL boxes only the argument. The typed-interface test runs first because
+            // the typed CompareTo(!0)'s signature must not be decoded against the caller's
+            // generic context.
+            case "CompareTo" when ((c.Kind == TypeKind.Primitive && !c.IsObject)
+                                   || c is { Kind: TypeKind.Class, Class.IsEnum: true })
+                && TypedItfConstrainedArg(handle, "System.IComparable") is null
+                && ConstrainedCalleeSig(handle).ParameterTypes is [{ IsObject: true }]:
+            {
+                var other = Pop();
+                var receiver = Pop(); // managed pointer to the constrained value
+                Push(StackKind.I4, "int32_t", c.Kind == TypeKind.Primitive
+                    ? EmitPrimitiveCompareToObject(c, ConstrainedReceiverValue(c, receiver.Expr), other)
+                    : $"dn2cpp_enum_compareto({BoxedConstrainedReceiver(c, receiver)}, {Cast(other, "Dn2CppObject*")})");
+                return true;
+            }
+            // IComparable<T>.CompareTo(T) on a primitive, string or enum key (the LINQ
+            // OrderBy / generic sort path): the typed three-way compare of
+            // TryCompareLValue, whose string order is ordinal.
             case "CompareTo" when c.Kind == TypeKind.Primitive || c is { Kind: TypeKind.Class, Class.IsEnum: true }:
             {
                 var arg = Pop();      // the other value (y)
@@ -4181,7 +4281,8 @@ internal sealed partial class MethodCompiler
             // pops the same pointer and passes it unboxed ( native build: this aborted
             // native dn2cpp mid-transpile — TypeDesc.ToString does `Primitive.ToString`
             // on a byte-underlying external enum field).
-            case "ToString" when c is { Kind: TypeKind.Class, Class.IsEnum: true }:
+            case "ToString" when c is { Kind: TypeKind.Class, Class.IsEnum: true }
+                && IsObjectShapedConstrained(handle, name):
             {
                 // Only the parameterless `object::ToString` is the box-and-format
                 // shape (one receiver on the stack). A `ToString(format)` /
@@ -4226,7 +4327,8 @@ internal sealed partial class MethodCompiler
             // pulled the impl into the tree). A struct with no override falls
             // through (rare; its default name-formatting is not modelled).
             case "ToString" when c is { Kind: TypeKind.Class, Class: { IsValueType: true } vc }
-                && Compilation.EffectiveToString(vc) is { } tsImpl:
+                && Compilation.EffectiveToString(vc) is { } tsImpl
+                && IsObjectShapedConstrained(handle, name):
             {
                 var receiver = Pop(); // managed pointer to the constrained struct
                 EmitCallResult(tsImpl, $"{DirectCallSym(tsImpl)}({ArgsWithRgctx(Cast(receiver, vc.CppStructName + "*"), tsImpl)})");
@@ -4254,7 +4356,8 @@ internal sealed partial class MethodCompiler
             // there is nothing to dispatch (ReachAllocatedType skips it for the same
             // reason). The ones that matter — Span<T> and friends — override all three
             // themselves, so the arms above claim them before these.
-            case "GetHashCode" when c is { Kind: TypeKind.Class, Class: { IsValueType: true, IsByRefLike: false } }:
+            case "GetHashCode" when c is { Kind: TypeKind.Class, Class: { IsValueType: true, IsByRefLike: false } }
+                && IsObjectShapedConstrained(handle, name):
             {
                 var receiver = Pop(); // managed pointer to the constrained struct
                 Push(StackKind.I4, "int32_t", $"dn2cpp_object_gethashcode({BoxedConstrainedReceiver(c, receiver)})");
@@ -4264,7 +4367,7 @@ internal sealed partial class MethodCompiler
             // which devirtualizes it to the struct's Equals(T) — only the Object-rooted
             // Equals(object) boxes (its argument is already an object on the IL stack).
             case "Equals" when c is { Kind: TypeKind.Class, Class: { IsValueType: true, IsByRefLike: false } }
-                && !IsTypedItfConstrained(handle, "System.IEquatable"):
+                && IsObjectShapedConstrained(handle, name):
             {
                 var other = Pop();
                 var receiver = Pop(); // managed pointer to the constrained struct
@@ -4277,7 +4380,7 @@ internal sealed partial class MethodCompiler
             // popping just the receiver would corrupt the stack (same guard as the enum
             // arm).
             case "ToString" when c is { Kind: TypeKind.Class, Class: { IsValueType: true, IsByRefLike: false } }
-                && ConstrainedCalleeSig(handle).ParameterTypes.Length == 0:
+                && IsObjectShapedConstrained(handle, name):
             {
                 var receiver = Pop(); // managed pointer to the constrained struct
                 Push(StackKind.Ref, "Dn2CppString*", $"dn2cpp_object_tostring_virtual({BoxedConstrainedReceiver(c, receiver)})");
@@ -4408,13 +4511,24 @@ internal sealed partial class MethodCompiler
         _ => $"dn2cpp_int_to_string((int32_t)({v}))",
     };
 
-    /// <summary>Whether a constrained-callvirt <paramref name="handle"/> names a member
-    /// of an instantiated 1-arg generic interface whose GenericDefFullName is
-    /// <paramref name="itfName"/> (<c>System.IEquatable</c> / <c>System.IComparable</c>) —
-    /// i.e. the typed <c>Equals(!0)</c>/<c>CompareTo(!0)</c> whose IL argument is the
-    /// unboxed T. The non-generic <c>System.IComparable</c> resolves through a TypeRef
-    /// (no TypeSpec) and never matches.</summary>
-    private bool IsTypedItfConstrained(EntityHandle handle, string itfName)
+    private TypeDesc? TypedItfConstrainedArg(EntityHandle handle, string itfName)
+    {
+        if (handle.Kind != HandleKind.MemberReference)
+            return null;
+        var mr = _reader.GetMemberReference((MemberReferenceHandle)handle);
+        if (mr.Parent.Kind != HandleKind.TypeSpecification)
+            return null;
+        var parent = _reader.GetTypeSpecification((TypeSpecificationHandle)mr.Parent)
+            .DecodeSignature(_c.SigProvider, _method.Context);
+        return parent is { Kind: TypeKind.Class, Class: { IsInterface: true } pi }
+            && pi.Context.TypeArgs.Length == 1
+            && _c.GenericDefFullName(pi) == itfName
+            ? pi.Context.TypeArgs[0]
+            : null;
+    }
+
+
+    private bool IsTypedEquatableConstrained(EntityHandle handle)
     {
         if (handle.Kind != HandleKind.MemberReference)
             return false;
@@ -4425,7 +4539,43 @@ internal sealed partial class MethodCompiler
             .DecodeSignature(_c.SigProvider, _method.Context);
         return parent is { Kind: TypeKind.Class, Class: { IsInterface: true } pi }
             && pi.Context.TypeArgs.Length == 1
-            && _c.GenericDefFullName(pi) == itfName;
+            && _c.GenericDefFullName(pi) == "System.IEquatable";
+    }
+
+    /// <summary>Object and ValueType members alone use the name-keyed value-type
+    /// lowerings; an interface can declare the same signature with a different body.</summary>
+    private bool IsObjectShapedConstrained(EntityHandle handle, string name)
+    {
+        string? declaringType = handle.Kind switch
+        {
+            HandleKind.MemberReference => ConstrainedMemberRefDeclaringType((MemberReferenceHandle)handle),
+            HandleKind.MethodDefinition => _c.MethodDefParentTypeName(_module, (MethodDefinitionHandle)handle),
+            _ => null,
+        };
+        if (declaringType is not ("System.Object" or "System.ValueType"))
+            return false;
+        return name == "Equals"
+            ? ConstrainedCalleeSig(handle).ParameterTypes is [{ IsObject: true }]
+            : ConstrainedCalleeSig(handle).ParameterTypes.Length == 0;
+    }
+
+    private string? ConstrainedMemberRefDeclaringType(MemberReferenceHandle handle)
+    {
+        if (_c.MemberRefParentTypeName(_module, handle) is { } typeName)
+            return typeName;
+        var parent = _reader.GetMemberReference(handle).Parent;
+        if (parent.Kind == HandleKind.TypeSpecification)
+        {
+            var type = _reader.GetTypeSpecification((TypeSpecificationHandle)parent)
+                .DecodeSignature(_c.SigProvider, _method.Context);
+            return type.IsObject ? "System.Object" : type.Class?.FullName;
+        }
+        if (parent.Kind != HandleKind.TypeDefinition)
+            return null;
+        var definition = _reader.GetTypeDefinition((TypeDefinitionHandle)parent);
+        string ns = _reader.GetString(definition.Namespace);
+        string name = _reader.GetString(definition.Name);
+        return string.IsNullOrEmpty(ns) ? name : ns + "." + name;
     }
 
     /// <summary>Constant-folds a direct call whose callee body is exactly

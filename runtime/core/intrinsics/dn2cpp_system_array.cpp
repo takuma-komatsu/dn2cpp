@@ -219,7 +219,15 @@ void dn2cpp_array_sort_object(Dn2CppObject* arr, int32_t index, int32_t length,
     for (int32_t i = 0; i < length; i++)
         dn2cpp_gc_store_ref(&buf->data[i], dn2cpp_array_get_value(arr, static_cast<int64_t>(index + i)));
     Dn2CppBoxedOrderCtx ctx{ icomparable_ti, comparer, icomparer_ti, comparer_slot };
-    dn2cpp_array_sort_cmp_ref(buf, 0, length, &ctx, &dn2cpp_boxed_order);
+    try
+    {
+        dn2cpp_array_sort_cmp_ref(buf, 0, length, &ctx, &dn2cpp_boxed_order);
+    }
+    catch (Dn2CppException& e)
+    {
+        // A null comparer is Comparer.Default, which the message names.
+        dn2cpp_throw_sort_failed(e.obj, comparer, "System.Collections.Comparer");
+    }
     for (int32_t i = 0; i < length; i++)
         dn2cpp_array_set_value(arr, buf->data[i], static_cast<int64_t>(index + i));
 }

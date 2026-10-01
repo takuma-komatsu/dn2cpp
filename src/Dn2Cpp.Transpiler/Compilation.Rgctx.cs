@@ -640,6 +640,8 @@ internal sealed partial class Compilation
         "dginvoke_",                    // delegate Invoke trampoline
         "dn2cpp_gvm_",                  // generic-virtual-method dispatcher (GvmDispatchName)
         "dn2cpp_object_tostring",       // runtime-internal tostring-slot dispatch (interpolation, Append(object), x.ToString())
+        "dn2cpp_object_equals_",        // runtime equality-slot / typed IEquatable dispatch
+        "dn2cpp_default_equality_comparer_equals_nongeneric",
     };
 
     /// <summary>Record what an emitted body allocates or dispatches, for the NoAlloc BFS.
@@ -1654,8 +1656,8 @@ internal sealed partial class Compilation
             {
                 var getter = ResolveMethodHandle(module, handle, ctx, scope)
                     ?? throw new NotSupportedException("rgctx: unresolved Comparer.Default token");
-                var gc = GenericComparerFor(getter.DeclaringClass.Context.TypeArgs[0])
-                    ?? throw new NotSupportedException("rgctx: no GenericComparer for element");
+                var gc = DefaultComparerClassFor(getter.DeclaringClass.Context.TypeArgs[0])
+                    ?? throw new NotSupportedException("rgctx: no default comparer for element");
                 NoteForceEmit(gc);
                 ReachAllocatedType(gc);
                 return "&" + gc.CppTypeInfoName;
@@ -1673,6 +1675,30 @@ internal sealed partial class Compilation
                 var itf = IEqualityComparerInterfaceFor(ec.Context.TypeArgs[0])
                     ?? throw new NotSupportedException("rgctx: no IEqualityComparer<T> for element");
                 return RgctxTypeInfoEntry(TypeDesc.MakeClass(itf));
+            }
+            case RgctxSlotKind.EqualityElementType:
+            {
+                TypeDesc element;
+                if (handle.Kind == HandleKind.MethodSpecification)
+                {
+                    var spec = module.Reader.GetMethodSpecification((MethodSpecificationHandle)handle);
+                    var args = spec.DecodeSignature(SigProvider, ctx);
+                    if (args.Length == 0)
+                        throw new NotSupportedException("rgctx: equality scan has no element type");
+                    element = args[0];
+                }
+                else
+                {
+                    var parent = RgctxResolveMemberParentType(module, handle, ctx);
+                    if (parent is not { Kind: TypeKind.Class, Class: { } pc }
+                        || pc.Context.TypeArgs.Length != 1)
+                        throw new NotSupportedException("rgctx: equality comparer has no element type");
+                    element = pc.Context.TypeArgs[0];
+                }
+                if (element.Kind is TypeKind.SZArray or TypeKind.MDArray or TypeKind.External)
+                    return "&dn2cpp_object_type";
+                ReachValueKeyEquality(element, includeHash: false);
+                return RgctxTypeInfoEntry(element);
             }
             case RgctxSlotKind.RgctxTable:
             {

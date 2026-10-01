@@ -413,25 +413,15 @@ static Dn2CppString* dn2cpp_bbi_format(Dn2CppObject* box, Dn2CppString* fmt,
 }
 
 // IComparable.CompareTo(object) — the shape every built-in's real body has: null sorts
-// last, a foreign runtime type is an ArgumentException, and the same type orders
-// through the ONE ladder. That ladder is asked with a null IComparable ti, so its own
-// interface probe is skipped and it cannot re-enter this thunk.
+// first, a foreign runtime type is the ArgumentException naming the receiver's type, and
+// the same type orders through the ONE ladder. That ladder is asked with a null
+// IComparable ti, so its own interface probe is skipped and it cannot re-enter this thunk.
 static int32_t dn2cpp_bbi_compareto(Dn2CppObject* box, Dn2CppObject* other)
 {
     if (other == nullptr)
         return 1;
     if (other->type != box->type)
-        dn2cpp_throw_argument_msg("Object must be of the same type as the value being compared.");
-    // Sub-word integer and Char CompareTo preserve the widened value difference rather
-    // than clamping it to -1/0/1. The payload is four-byte stack form, so this one read
-    // serves their signed and unsigned storage widths after the exact type check above.
-    if (box->type == &dn2cpp_byte_type || box->type == &dn2cpp_sbyte_type
-        || box->type == &dn2cpp_int16_type || box->type == &dn2cpp_uint16_type)
-        return *reinterpret_cast<const int32_t*>(box + 1)
-             - *reinterpret_cast<const int32_t*>(other + 1);
-    if (box->type == &dn2cpp_char_type)
-        return static_cast<int32_t>(*reinterpret_cast<const uint16_t*>(box + 1))
-             - static_cast<int32_t>(*reinterpret_cast<const uint16_t*>(other + 1));
+        dn2cpp_throw_compareto_type_mismatch(box->type);
     return dn2cpp_object_compare(box, other, nullptr);
 }
 

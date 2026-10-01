@@ -153,7 +153,7 @@
 # Array copy, clear, resize and slices preserve fault fields and validation precedence.
 source "$(dirname "$0")/_common.sh"
 
-gate_extra_asserts() {
+comparison_prior_extra_asserts() {
     local out="$1" native before prefix line
     native=$(run_bounded "./$out/ArrayCore")
     native=$(strip_cr_win "$native")
@@ -183,6 +183,29 @@ gate_extra_asserts() {
         'Array validation fields end'; do
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: ArrayCore validation witness missing: $line" >&2; exit 1; }
+    done
+}
+
+# Default order and equality preserve the earlier bucket and run the appended cases.
+gate_extra_asserts() {
+    local out="$1" native before prefix line
+    comparison_prior_extra_asserts "$out"
+    native=$(run_bounded "./$out/ArrayCore")
+    native=$(strip_cr_win "$native")
+    before=$(dotnet "$_CG_APP" before-default-comparison)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== default comparison validation ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== default comparison validation ==' \
+        '== default order without IComparable<T> ==' \
+        '== comparer message UTF-16 ==' \
+        'throwing name calls=1' \
+        '== non-generic null search equality ==' \
+        'value-forward=1:12' \
+        'generic-value-forward=0:1' \
+        'default comparison validation end'; do
+        grep -Fxq "$line" <<< "$native" \
+            || { echo "FAIL: ArrayCore comparison coverage missing: $line" >&2; exit 1; }
     done
 }
 

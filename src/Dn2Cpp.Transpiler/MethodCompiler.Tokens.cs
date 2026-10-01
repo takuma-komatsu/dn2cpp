@@ -290,9 +290,9 @@ internal sealed partial class MethodCompiler
 
     /// <summary>Like <see cref="TypeInfoExpr(TypeDesc,int)"/> for sites whose
     /// emitted identity is the token type's FIRST type argument rather than the
-    /// token type itself — Nullable&lt;T&gt; boxing (the box carries T) and the
-    /// IComparable&lt;T&gt; boxed-primitive cast. <paramref name="arg0"/> is the
-    /// already-projected argument; the slot re-projects per instantiation.</summary>
+    /// token type itself — Nullable&lt;T&gt; boxing (the box carries T).
+    /// <paramref name="arg0"/> is the already-projected argument; the slot re-projects
+    /// per instantiation.</summary>
     internal string? TypeArg0TypeInfoExpr(TypeDesc arg0, int token)
     {
         if (SharedTrial && Compilation.ContainsCanonPlaceholder(arg0))

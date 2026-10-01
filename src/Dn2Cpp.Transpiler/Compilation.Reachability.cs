@@ -72,6 +72,18 @@ internal sealed partial class Compilation
             }
             return; // no _toScan.Enqueue -> the replaced IL is never scanned
         }
+        // A comparer Compare with no order to run: the emit replaces its body with the
+        // ArgumentException (IsUnorderableComparerCompareBody), which names only runtime
+        // helpers, so the real IL's box and the Comparer.Default cctor behind it stay out.
+        if (IsUnorderableComparerCompareBody(m))
+        {
+            if (Reachable.Add(m))
+            {
+                _predTrace.TryAdd(m, _currentScan);
+                m.EnsureSignature();
+            }
+            return;
+        }
         if (m.Rva == 0)
             return;
         // Methods of an intrinsic-mapped type are emitted inline, never
@@ -660,25 +672,52 @@ internal sealed partial class Compilation
             m => m.Name == (read ? "Read" : "Write") && !m.IsStatic && m.IsVirtual
                 && m.Signature.ParameterTypes.Length == 3);
 
-    /// <summary>The typed <c>Equals(T)</c> override of a value type — the
-    /// <c>IEquatable&lt;T&gt;.Equals</c> a struct key's <c>EqualityComparer&lt;T&gt;.
-    /// Default</c> dispatches (a 1-arg method taking the struct's own type and
-    /// returning bool, with a body). Null when the struct has no such method (then
-    /// the Object-virtual <see cref="EffectiveEquals"/> applies).</summary>
+    /// <summary>The typed <c>Equals(T)</c> of a value type — the
+    /// <c>IEquatable&lt;T&gt;.Equals</c> at T = the type itself that a struct key's
+    /// <c>EqualityComparer&lt;T&gt;.Default</c> dispatches: the explicit implementation
+    /// when the type has one, else its 1-arg method taking itself and returning bool.
+    /// Null when the type does not implement that instantiation, whatever typed overload
+    /// it declares: the default comparer then calls the Object-virtual
+    /// <see cref="EffectiveEquals"/>.</summary>
     internal static MethodInfo? EffectiveTypedEquals(ClassInfo c) =>
-        c.EnsureMembers().Methods.FirstOrDefault(m => !m.IsStatic && m.Name == "Equals" && m.Rva != 0
-            && m.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
-            && m.Signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { } pc }] && pc == c);
+        TypedSelfImpl(c, "System.IEquatable", "Equals", PrimitiveTypeCode.Boolean);
 
-    /// <summary>The typed <c>CompareTo(T)</c> overload of a value type — the
-    /// <c>IComparable&lt;T&gt;.CompareTo</c> a constrained callvirt on a struct
-    /// devirtualizes to (a 1-arg method taking the struct's own type and returning
-    /// int, with a body). Null when the struct only has the non-generic
-    /// object-taking <c>CompareTo</c> (or none).</summary>
+    /// <summary>The typed <c>CompareTo(T)</c> of a value type — the
+    /// <c>IComparable&lt;T&gt;.CompareTo</c> at T = the type itself that a constrained
+    /// callvirt on a struct devirtualizes to and its default comparer calls: the explicit
+    /// implementation when the type has one, else its 1-arg method taking itself and
+    /// returning int. Null when the type does not implement that instantiation, whatever
+    /// typed overload it declares: its default comparer is then an
+    /// <c>ObjectComparer&lt;T&gt;</c> (<see cref="DefaultComparerClassFor"/>).</summary>
     internal static MethodInfo? EffectiveTypedCompareTo(ClassInfo c) =>
-        c.EnsureMembers().Methods.FirstOrDefault(m => !m.IsStatic && m.Name == "CompareTo" && m.Rva != 0
-            && m.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }
+        TypedSelfImpl(c, "System.IComparable", "CompareTo", PrimitiveTypeCode.Int32);
+
+    /// <summary>The body <paramref name="c"/> runs for the <paramref name="name"/> slot
+    /// of its own <paramref name="itfDef"/>&lt;c&gt; instantiation, or null where
+    /// <paramref name="c"/> does not implement that instantiation; see
+    /// <see cref="EffectiveTypedEquals"/>.</summary>
+    private static MethodInfo? TypedSelfImpl(ClassInfo c, string itfDef, string name,
+        PrimitiveTypeCode returns)
+    {
+        var owner = c.EnsureMembers().Module.Owner;
+        ClassInfo? self = null;
+        foreach (var itf in c.Interfaces)
+            if (itf.Context.TypeArgs is [{ Kind: TypeKind.Class, Class: { } arg }] && arg == c
+                && owner.GenericDefFullName(itf) == itfDef)
+            {
+                self = itf;
+                break;
+            }
+        if (self?.EnsureMembers().MethodsNamed(name) is { } slots)
+            foreach (var slot in slots)
+                if (c.ExplicitInterfaceImpls.TryGetValue(slot, out var explicitImpl))
+                    return explicitImpl;
+        if (self is null)
+            return null;
+        return c.Methods.FirstOrDefault(m => !m.IsStatic && m.Name == name && m.Rva != 0
+            && m.Signature.ReturnType is { Kind: TypeKind.Primitive } rt && rt.Primitive == returns
             && m.Signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { } pc }] && pc == c);
+    }
 
     /// <summary>Reaches a type's static constructor. A reference assembly's
     /// .cctor is not a root (only the app module's are), so allocation, static-field
@@ -845,12 +884,24 @@ internal sealed partial class Compilation
     /// program never calls.</summary>
     private void ReachValueKeyEquality(TypeDesc keyType, bool includeHash = true)
     {
-        // An object/reference/array key compares through dn2cpp_object_equals (the emit's
-        // IsReferenceKeyType arm) — a Dictionary<object,V>, a List<object>.Contains. That is
-        // an object-equality dispatch, and a boxed struct can be the very thing flowing into
-        // it, so the boxed structural wiring is due.
+        // Reference equality may enter Object.Equals or the exact
+        // IEquatable<T> slot selected by EqualityComparer<T>.Default.
         if (MethodCompiler.IsReferenceKeyType(keyType))
+        {
             NoteObjectEqualityDispatch();
+            if (keyType is { Kind: TypeKind.Class, Class: { IsValueType: false } rc })
+                foreach (var itf in GetInterfaceClosure(rc).Ordered)
+                    if (GenericDefFullName(itf) == "System.IEquatable"
+                        && itf.Context.TypeArgs is [{ Kind: TypeKind.Class, Class: { } arg }]
+                        && arg == rc)
+                    {
+                        itf.EnsureMembers();
+                        foreach (var slot in itf.Methods)
+                            if (!slot.IsStatic)
+                                ReachUsedVirtual(slot);
+                        break;
+                    }
+        }
         if (keyType is not { Kind: TypeKind.Class, Class: { IsValueType: true, IsEnum: false } sc })
             return;
         // An intrinsic value type has no transpilable body to reach: the emit side
@@ -887,6 +938,18 @@ internal sealed partial class Compilation
     /// one virtual whose declaring type is intrinsic and therefore has no slot to mark.
     /// </summary>
     private bool _objectEqualityDispatched;
+    private bool _nonGenericArrayEqualityDispatched;
+    private readonly Dictionary<ClassInfo, TypeDesc> _allocatedArrayValueElements = new();
+    private readonly HashSet<ClassInfo> _explicitlyBoxedArrayValues = new();
+
+    private void NoteArrayValueElement(TypeDesc? element)
+    {
+        // The IL newarr operand is the immediate element. A jagged array's
+        // element is a reference array, so its underlying struct is not boxed.
+        if (element is { Kind: TypeKind.Class } && !ContainsCanonPlaceholder(element)
+            && !ContainsGenericVar(element))
+            _allocatedArrayValueElements.TryAdd(element.Class!, element);
+    }
 
     /// <summary>Records an emit site that will lower to <c>dn2cpp_object_equals</c> /
     /// <c>dn2cpp_object_gethashcode</c>. Called from the reachability scan (never from
@@ -1170,8 +1233,75 @@ internal sealed partial class Compilation
             return false;
         int before = Reachable.Count;
         foreach (var c in _allocatedRefTypes.Where(c => c.IsValueType).ToList())
+        {
+            if (!CoreIntrinsics.IsIntrinsicType(c.FullName) && c.IntrinsicCppName is null
+                && !CoreIntrinsics.RuntimeOwnsTypeInfo(c)
+                && (IsUserModule(c.Module) || !HoldsUncomparableIntrinsic(c)))
+            {
+                if (EffectiveEquals(c) is { } eq)
+                    Reach(eq);
+                if (EffectiveGetHashCode(c) is { } gh)
+                    Reach(gh);
+            }
             ReachSynthesizedValueEquality(c, includeHash: true);
+        }
         return Reachable.Count != before;
+    }
+
+    /// <summary>A non-generic Array search boxes value elements through GetValue and
+    /// invokes their Object-virtual Equals, including when the sought value is null.
+    /// These boxes have no IL box opcode to mark their implementations reachable.</summary>
+    internal bool ReachNonGenericArrayElementEquality()
+    {
+        if (!_nonGenericArrayEqualityDispatched)
+            return false;
+        int before = Reachable.Count;
+        // The runtime Array operand can select any value array allocated by a
+        // reachable newarr, or any boxed value stored in an object[] array.
+        var candidates = new HashSet<ClassInfo>(_explicitlyBoxedArrayValues);
+        foreach (var element in _allocatedArrayValueElements.Values.ToList())
+        {
+            var boxedElement = NullableUnderlying(element) ?? element;
+            if (boxedElement is { Kind: TypeKind.Class, Class: { } c }
+                && c.EnsureMembers().IsValueType && !c.IsByRefLike)
+                candidates.Add(c);
+        }
+        foreach (var c in candidates.ToList())
+        {
+            if (ContainsCanonPlaceholder(c) || ContainsGenericVar(c)
+                || CoreIntrinsics.IsIntrinsicType(c.FullName) || c.IntrinsicCppName is not null
+                || CoreIntrinsics.RuntimeOwnsTypeInfo(c)
+                || (!IsUserModule(c.Module) && HoldsUncomparableIntrinsic(c)))
+                continue;
+            if (EffectiveEquals(c) is { } eq)
+                Reach(eq);
+            else
+                ReachSynthesizedValueEquality(c, includeHash: false);
+        }
+        return Reachable.Count != before;
+    }
+
+    /// <summary>Whether a type argument of <paramref name="c"/>, or of a value-type argument
+    /// at any depth, is an intrinsic value type the default equality and hash cannot be
+    /// built over (the SIMD vectors): not an <see cref="MethodCompiler.IntrinsicValueTypeFn"/>
+    /// type, CancellationToken or a pointer-modeled handle. A reference-type argument
+    /// compares by its own Equals whatever its type arguments are, so the walk stops there.
+    /// </summary>
+    private static bool HoldsUncomparableIntrinsic(ClassInfo c)
+    {
+        foreach (var t in c.Context.TypeArgs)
+        {
+            if (t is not { Kind: TypeKind.Class, Class: { IsValueType: true } arg })
+                continue;
+            if ((CoreIntrinsics.IsIntrinsicType(arg.FullName) || arg.IntrinsicCppName is not null)
+                && MethodCompiler.IntrinsicValueTypeFn(t) is null
+                && !MethodCompiler.IsCancellationTokenValue(t)
+                && MethodCompiler.IntrinsicPointerValueType(t) is null)
+                return true;
+            if (HoldsUncomparableIntrinsic(arg))
+                return true;
+        }
+        return false;
     }
 
     /// <summary>The bare method name a constrained callee token names — for the cheap
@@ -1229,27 +1359,26 @@ internal sealed partial class Compilation
                 // (a NotSupportedException subclass) escaping.
                 try { resolvedCallee = ResolveMemberRefMethod(module, (MemberReferenceHandle)calleeHandle, ctx); }
                 catch (NotSupportedException e) when (!IsMustEscape(e)) { }
-                // The typed IEquatable<T>::Equals(!0) / IComparable<T>::CompareTo(!0)
-                // devirtualizes to the struct's typed overload; under an erased caller
-                // context the SigKey walk below would decode !0 to object and reach the
-                // Equals(object) override instead, so reach the typed body explicitly. Kept
-                // here rather than deferred to ConstrainedImplOf: that asks the RESOLVED
-                // callee, and this token may not resolve to one.
+                // Typed interface slots bind by their closed instantiation, not by
+                // whichever self-typed overload the struct also implements.
                 if (mr.Parent.Kind == HandleKind.TypeSpecification
                     && ResolveTypeTokenForScan(module, mr.Parent, ctx) is
                         { Kind: TypeKind.Class, Class: { IsInterface: true } pi }
-                    && pi.Context.TypeArgs.Length == 1)
+                    && pi.Context.TypeArgs.Length == 1
+                    && (GenericDefFullName(pi), name) is ("System.IEquatable", "Equals")
+                        or ("System.IComparable", "CompareTo"))
                 {
-                    switch (GenericDefFullName(pi))
+                    if (resolvedCallee is not null)
                     {
-                        case "System.IEquatable" when name == "Equals"
-                            && EffectiveTypedEquals(c) is { } teq:
-                            Reach(teq);
-                            return;
-                        case "System.IComparable" when name == "CompareTo"
-                            && EffectiveTypedCompareTo(c) is { } tct:
-                            Reach(tct);
-                            return;
+                        if (ConstrainedImplOf(c, resolvedCallee) is { } typedBound)
+                            Reach(typedBound);
+                        return;
+                    }
+                    if (pi.Context.TypeArgs[0] is { Kind: TypeKind.Class, Class: { } selfArg } && selfArg == c
+                        && (name == "Equals" ? EffectiveTypedEquals(c) : EffectiveTypedCompareTo(c)) is { } typedSelf)
+                    {
+                        Reach(typedSelf);
+                        return;
                     }
                 }
                 break;
@@ -1257,6 +1386,7 @@ internal sealed partial class Compilation
                 var md = module.Reader.GetMethodDefinition((MethodDefinitionHandle)calleeHandle);
                 name = module.Reader.GetString(md.Name);
                 sig = md.DecodeSignature(SigProvider, ctx);
+                resolvedCallee = ResolveMethodHandle(module, calleeHandle, ctx);
                 break;
             default:
                 return;
@@ -1298,11 +1428,24 @@ internal sealed partial class Compilation
         // on this path, so nothing else marks the type boxed; wire it here.
         // (ToString needs nothing: an unwired tostring slot IS ValueType.ToString().)
         if (name is "Equals" or "GetHashCode" && !c.IsByRefLike
+            && sig.ParameterTypes.Length == (name == "Equals" ? 1 : 0)
+            && (name != "Equals" || sig.ParameterTypes[0].IsObject)
             && (name == "GetHashCode" ? EffectiveGetHashCode(c) : EffectiveEquals(c)) is null)
         {
-            NoteObjectEqualityDispatch();
-            ReachSynthesizedValueEquality(c,
-                includeHash: name == "GetHashCode", includeEquals: name == "Equals");
+            string? declaringType = resolvedCallee?.DeclaringClass.FullName
+                ?? CallTargetTypeName(module, calleeHandle);
+            if (declaringType is null && calleeHandle.Kind == HandleKind.MemberReference)
+            {
+                var parent = module.Reader.GetMemberReference((MemberReferenceHandle)calleeHandle).Parent;
+                var type = ResolveTypeTokenForScan(module, parent, ctx);
+                declaringType = type?.IsObject == true ? "System.Object" : type?.Class?.FullName;
+            }
+            if (declaringType is "System.Object" or "System.ValueType")
+            {
+                NoteObjectEqualityDispatch();
+                ReachSynthesizedValueEquality(c,
+                    includeHash: name == "GetHashCode", includeEquals: name == "Equals");
+            }
         }
         // Past the cuts, the emitted call is a direct call to the body ConstrainedImplOf
         // picks (MethodCompiler.EmitConstrainedCall asks the same function), so reach that
@@ -2061,13 +2204,12 @@ internal sealed partial class Compilation
         }
     }
 
-    /// <summary>Reaches an element type's <c>Comparer&lt;T&gt;.Default</c> — the order a
+    /// <summary>Reaches the comparer object behind an element type's
+    /// <c>Comparer&lt;T&gt;.Default</c> (<see cref="DefaultComparerFor"/>) — the order a
     /// comparerless (or null-comparer) sort/search runs on. A no-op for a T that orders
-    /// inline (primitive/string/enum/intrinsic value type): the emit devirtualizes it to an
-    /// expression, so pulling GenericComparer&lt;T&gt; in behind a program that merely sorts
-    /// ints would be pure footprint. A no-op too for a T with no order at all — real .NET's
-    /// comparer throws for it, so the emit does, and instantiating a comparer around a
-    /// CompareTo that does not exist would only fail to transpile.</summary>
+    /// inline (primitive/string/enum/intrinsic value type, System.Object): the emit
+    /// devirtualizes it to an expression, so pulling a comparer in behind a program that
+    /// merely sorts ints would be pure footprint.</summary>
     private void ReachDefaultOrder(TypeDesc elem)
     {
         if (DefaultComparerFor(elem) is not { } gc)
@@ -2121,8 +2263,8 @@ internal sealed partial class Compilation
 
     /// <summary>True if the call target is <c>Comparer&lt;T&gt;.get_Default</c>. Its real
     /// getter routes through reflection (CreateInstanceForAnotherGenericParameter); we
-    /// intercept it and synthesize a <c>GenericComparer&lt;T&gt;</c> instance instead so
-    /// the comparer can be stored and dispatched virtually (e.g. by SortedDictionary's
+    /// intercept it and allocate the <see cref="DefaultComparerClassFor"/> instance instead
+    /// so the comparer can be stored and dispatched virtually (e.g. by SortedDictionary's
     /// tree), not only devirtualized at a direct call site.</summary>
     internal bool IsComparerGetDefault(MethodInfo m) =>
         m.Name == "get_Default"
@@ -2156,26 +2298,22 @@ internal sealed partial class Compilation
     /// <c>Comparer&lt;T&gt;.Default</c> for a comparable element type — instantiated and
     /// completed so its ctor/Compare are available — or null if GenericComparer`1 is not
     /// loaded (no CoreLib).</summary>
-    internal ClassInfo? GenericComparerFor(TypeDesc elem)
-    {
-        if (!TypeIndex().TryGetValue(("System.Collections.Generic", "GenericComparer`1"), out var cands))
-            return null;
-        var (mod, tdh) = cands[0];
-        var cls = Instantiate(mod, tdh, new[] { elem });
-        EnsureCompleted(cls);
-        return cls;
-    }
+    internal ClassInfo? GenericComparerFor(TypeDesc elem) => CoreLibGenericFor("GenericComparer`1", elem);
 
     /// <summary>The closed <c>IComparer&lt;T&gt;</c> interface for an element type — what
     /// every comparer a sort/search dispatches (a user's, or a synthesized
     /// <c>Comparer&lt;T&gt;.Default</c>) is reached through. Null if IComparer`1 is not
     /// loaded (no CoreLib).</summary>
-    internal ClassInfo? ComparerInterfaceFor(TypeDesc elem)
+    internal ClassInfo? ComparerInterfaceFor(TypeDesc elem) => CoreLibGenericFor("IComparer`1", elem);
+
+    /// <summary>A System.Collections.Generic definition of arity one closed over
+    /// <paramref name="arg"/> and completed, or null if it is not loaded (no CoreLib).</summary>
+    private ClassInfo? CoreLibGenericFor(string name, TypeDesc arg)
     {
-        if (!TypeIndex().TryGetValue(("System.Collections.Generic", "IComparer`1"), out var cands))
+        if (!TypeIndex().TryGetValue(("System.Collections.Generic", name), out var cands))
             return null;
         var (mod, tdh) = cands[0];
-        var cls = Instantiate(mod, tdh, new[] { elem });
+        var cls = Instantiate(mod, tdh, new[] { arg });
         EnsureCompleted(cls);
         return cls;
     }
@@ -2269,52 +2407,89 @@ internal sealed partial class Compilation
         || t is { Kind: TypeKind.Class, Class.IsEnum: true }
         || MethodCompiler.IntrinsicValueTypeFn(t) is not null;
 
-    /// <summary>The <c>GenericComparer&lt;T&gt;</c> that backs <c>Comparer&lt;T&gt;.Default</c>
-    /// for an element whose natural order is a real <c>CompareTo</c> — a struct with a typed
-    /// <c>IComparable&lt;T&gt;.CompareTo(T)</c>, or a reference type implementing
-    /// <c>IComparable&lt;T&gt;</c>. Null both when T orders inline (see
-    /// <see cref="HasInlineOrder"/> — no object needed) and when T has no order at all: real
-    /// .NET's default comparer throws when it is asked to compare such a T, and instantiating
-    /// GenericComparer&lt;T&gt; for it would only fail to transpile its <c>x.CompareTo(y)</c>.
-    /// </summary>
-    internal ClassInfo? DefaultComparerFor(TypeDesc elem)
+    /// <summary>The comparer object a sort/search site dispatches for an element's DEFAULT
+    /// order: the <see cref="DefaultComparerClassFor"/> class. Null when T orders inline (see
+    /// <see cref="HasInlineOrder"/> — no object needed), for System.Object, whose order
+    /// MethodCompiler.TryCompareLValue emits inline too, and without CoreLib.</summary>
+    internal ClassInfo? DefaultComparerFor(TypeDesc elem) =>
+        HasInlineOrder(elem) || elem.IsObject || ComparerInterfaceFor(elem) is null
+            ? null
+            : DefaultComparerClassFor(elem);
+
+    /// <summary>The CoreLib class behind <c>Comparer&lt;T&gt;.Default</c>, picked as
+    /// <c>ComparerHelpers.CreateDefaultComparer</c> picks it: <c>GenericComparer&lt;T&gt;</c>
+    /// when T is assignable to <c>IComparable&lt;T&gt;</c> (<see cref="IsComparableOfSelf"/>),
+    /// <c>NullableComparer&lt;U&gt;</c> for <c>Nullable&lt;U&gt;</c>, else
+    /// <c>ObjectComparer&lt;T&gt;</c>, whose Compare is the boxed non-generic
+    /// <c>IComparable</c> order and throws <c>ArgumentException</c> for a T that has none. A
+    /// primitive, an enum, an inline-ordered intrinsic value type and System.Object keep
+    /// <c>GenericComparer&lt;T&gt;</c>: the emit devirtualizes its <c>x.CompareTo(y)</c> to
+    /// the order CoreLib's own comparer for T computes (MethodCompiler.TryCompareLValue).
+    /// Every one of these classes is field-less and its constructor only chains to
+    /// <c>Comparer&lt;T&gt;</c>'s, so a shared body's layout serves whichever one an
+    /// instantiation's rgctx slot names. Null without CoreLib.</summary>
+    internal ClassInfo? DefaultComparerClassFor(TypeDesc elem)
     {
-        if (HasInlineOrder(elem))
-            return null;
-        bool comparable = elem switch
-        {
-            { Kind: TypeKind.Class, Class: { IsValueType: true, IsEnum: false } sc } =>
-                TranspiledTypedCompareTo(sc) is not null,
-            { Kind: TypeKind.Class, Class: { IsValueType: false, IsInterface: false } rc } =>
-                ImplementsGenericComparable(rc),
-            _ => false,
-        };
-        return comparable && ComparerInterfaceFor(elem) is not null ? GenericComparerFor(elem) : null;
+        if (elem is { Kind: TypeKind.Class, Class: { IsValueType: true, IsEnum: false } nc }
+            && nc.Context.TypeArgs is [var underlying] && GenericDefFullName(nc) == "System.Nullable")
+            return CoreLibGenericFor("NullableComparer`1", underlying);
+        return HasInlineOrder(elem) || elem.IsObject || IsComparableOfSelf(elem)
+            ? GenericComparerFor(elem)
+            : CoreLibGenericFor("ObjectComparer`1", elem);
     }
 
-    /// <summary>A synthesized <c>GenericComparer&lt;T&gt;.Compare</c> body dn2cpp cannot
-    /// transpile because <c>T</c> is a <b>value type real .NET's default comparer cannot
-    /// order</b> — not inline-ordered and with no typed <c>CompareTo</c> (Vector128&lt;byte&gt;
-    /// and the SIMD family, or a plain non-<c>IComparable</c> struct). dn2cpp synthesizes a
-    /// <c>GenericComparer&lt;T&gt;</c> for <em>every</em> <c>Comparer&lt;T&gt;.Default</c>
-    /// (<see cref="GenericComparerFor"/> at the get_Default intercept), so a
-    /// <c>ValueTuple&lt;Vector128&lt;byte&gt;,_&gt;.CompareTo</c> reaches this one; its real IL
-    /// boxes the value type for the <c>x != null</c> / <c>y != null</c> checks (an intrinsic
-    /// value type has no emitted <c>ti_</c> to box through) and then dispatches a
-    /// <c>CompareTo</c> that does not exist. Real .NET's <c>Comparer&lt;T&gt;.Default</c> for
-    /// such a T is an <c>ObjectComparer&lt;T&gt;</c> whose <c>Compare</c> boxes and dispatches
-    /// non-generic <c>System.IComparable</c> — which the box does not implement, so it throws
-    /// <c>ArgumentException</c>. So <see cref="CppEmitter"/> body-replaces this method with a
-    /// catchable throw (the comparer object stays real; only its <c>Compare</c> faults, exactly
-    /// where real .NET's does). Reference-type <c>T</c> (object, a non-comparable class) is NOT
-    /// matched: its null-check boxes are identity no-ops and its <c>CompareTo</c> devirtualizes
-    /// to <c>dn2cpp_object_compare</c> (MethodCompiler.TryCompareLValue's Object arm).</summary>
-    internal bool IsUnorderableComparerCompareBody(MethodInfo m) =>
-        m is { IsStatic: false, Name: "Compare" }
-        && GenericDefFullName(m.DeclaringClass) == "System.Collections.Generic.GenericComparer"
-        && m.DeclaringClass.Context.TypeArgs is [{ Kind: TypeKind.Class, Class: { IsValueType: true } tc } t]
-        && !HasInlineOrder(t)
-        && TranspiledTypedCompareTo(tc) is null;
+    /// <summary>Whether <paramref name="t"/> is assignable to <c>IComparable&lt;T&gt;</c> —
+    /// the test that makes CoreLib order T by its typed <c>CompareTo</c>
+    /// (<c>GenericComparer&lt;T&gt;</c>, <c>GenericArraySortHelper&lt;T&gt;</c>). A value type
+    /// must implement that instantiation itself; a class or interface may implement
+    /// <c>IComparable&lt;U&gt;</c> for any U it is reference-assignable to, through the
+    /// interface's contravariant parameter.</summary>
+    internal bool IsComparableOfSelf(TypeDesc t)
+    {
+        if (t is not { Kind: TypeKind.Class, Class: { } c })
+            return false;
+        for (var b = c; b is not null; b = b.BaseClass)
+            EnsureCompleted(b);
+        foreach (var itf in GetInterfaceClosure(c).Ordered)
+            if (itf.Context.TypeArgs is [var u] && GenericDefFullName(itf) == "System.IComparable"
+                && (c.IsValueType
+                    ? u is { Kind: TypeKind.Class, Class: { } uc } && uc == c
+                    : RefAssignable(t, u)))
+                return true;
+        return false;
+    }
+
+    /// <summary>A comparer <c>Compare</c> body <see cref="CppEmitter"/> replaces with the
+    /// <c>ArgumentException</c> ("At least one object must implement IComparable.") real
+    /// .NET raises there: <c>ObjectComparer&lt;T&gt;.Compare</c> for a value type T that does
+    /// not implement non-generic <c>System.IComparable</c> — Comparer.Default then compares
+    /// two distinct non-null boxes, neither of them IComparable, so every call throws, and
+    /// the replacement boxes nothing (an intrinsic value type such as Vector128&lt;T&gt; has no
+    /// <c>ti_</c> to box through) — and a <c>GenericComparer&lt;T&gt;</c> instantiated over a
+    /// value type with no typed <c>CompareTo</c>, whose real <c>x.CompareTo(y)</c> binds
+    /// nothing. A reference-type T keeps the real body: its boxes are the references
+    /// themselves, and Comparer.Default's reference-equality and null arms answer before it
+    /// throws.</summary>
+    internal bool IsUnorderableComparerCompareBody(MethodInfo m)
+    {
+        if (m is not { IsStatic: false, Name: "Compare" }
+            || m.DeclaringClass.Context.TypeArgs is not [{ Kind: TypeKind.Class, Class: { IsValueType: true } tc } t])
+            return false;
+        return GenericDefFullName(m.DeclaringClass) switch
+        {
+            "System.Collections.Generic.ObjectComparer" => !ImplementsNonGenericComparable(tc),
+            "System.Collections.Generic.GenericComparer" => !HasInlineOrder(t) && TranspiledTypedCompareTo(tc) is null,
+            _ => false,
+        };
+    }
+
+    /// <summary>Whether a value type implements non-generic <c>System.IComparable</c>, which
+    /// is all a boxed value needs for Comparer.Default to order it.</summary>
+    private bool ImplementsNonGenericComparable(ClassInfo c)
+    {
+        EnsureCompleted(c);
+        return GetInterfaceClosure(c).Ordered.Any(i => i.Context.TypeArgs.Length == 0 && i.FullName == "System.IComparable");
+    }
 
     /// <summary>The typed <c>CompareTo(T)</c> a value type's DEFAULT order calls — its own,
     /// and only when it is a body dn2cpp actually transpiles. An intrinsic-mapped struct
@@ -2322,8 +2497,7 @@ internal sealed partial class Compilation
     /// (Vector128&lt;T&gt; and the SIMD family: their bodies are emitted inline, never
     /// transpiled), so ordering a T by it would reach a method that is never emitted — a gap
     /// from inside a synthesized GenericComparer&lt;T&gt;, and from the inline BinarySearch
-    /// compare a direct call to a symbol nothing ever defines. Such a T has no order the emit
-    /// can build, and the sort/search faults the way real .NET's comparer would.
+    /// compare a direct call to a symbol nothing ever defines.
     ///
     /// The <see cref="NonIntrinsic"/> rule for the ordering half — spelled against BOTH tests
     /// Reach's cut uses, not just the name table (a closed generic intrinsic is caught only by
@@ -2334,24 +2508,6 @@ internal sealed partial class Compilation
         && m.DeclaringClass.IntrinsicCppName is null
             ? m
             : null;
-
-    /// <summary>Whether a class implements <c>IComparable&lt;T&gt;</c> anywhere in its base
-    /// chain — the target <c>GenericComparer&lt;T&gt;.Compare</c>'s <c>x.CompareTo(y)</c>
-    /// resolves to.</summary>
-    private bool ImplementsGenericComparable(ClassInfo c)
-    {
-        for (var b = c; b is not null; b = b.BaseClass)
-        {
-            EnsureCompleted(b);
-            if (b.Interfaces.Any(Comparable))
-                return true;
-        }
-        return false;
-
-        bool Comparable(ClassInfo i) =>
-            (GenericDefFullName(i) == "System.IComparable" && i.Context.TypeArgs.Length == 1)
-            || i.Interfaces.Any(Comparable);
-    }
 
     /// <summary>Resolves the interface methods needed to enumerate an
     /// arbitrary <c>IEnumerable&lt;T&gt;</c> for <c>string.Join</c>/<c>Concat</c>:
@@ -5086,6 +5242,9 @@ internal sealed partial class Compilation
                     case ILOpCode.Castclass:
                     case ILOpCode.Isinst:
                     case ILOpCode.Newarr:
+                        if (insn.OpCode == ILOpCode.Newarr
+                            && ResolveTypeTokenForScan(module, handle, m.Context) is { } arrayElement)
+                            NoteArrayValueElement(arrayElement);
                         // --trim-godot-classes release trigger: `(T)GetNode(...)`,
                         // `x is T` / `x as T`, and `new T[n]` all name T — for a cast
                         // that naming is precisely what makes the ancestor-wrapper
@@ -5309,12 +5468,12 @@ internal sealed partial class Compilation
                         // Godot.Collections.Array<Sprite2D>) name engine wrappers.
                         if (trimUserSite)
                             TrimNoteCallSite(module, handle, m.Context);
-                        // Comparer<T>.Default -> synthesized GenericComparer<T>:
-                        // don't transpile the reflection-based real getter; reach the
-                        // comparer's ctor and allocate it so its Compare vtable slot is
-                        // emitted (its Compare uses x.CompareTo(y), devirtualized).
+                        // Comparer<T>.Default -> the CoreLib comparer the reflection-based
+                        // real getter would create (DefaultComparerClassFor): don't transpile
+                        // the getter; reach the comparer's ctor and allocate it so its
+                        // Compare vtable slot is emitted.
                         if (t is not null && IsComparerGetDefault(t)
-                            && GenericComparerFor(t.DeclaringClass.Context.TypeArgs[0]) is { } gc)
+                            && DefaultComparerClassFor(t.DeclaringClass.Context.TypeArgs[0]) is { } gc)
                         {
                             if (ParameterlessCtor(gc) is { } gctor)
                                 Reach(gctor);
@@ -5463,6 +5622,14 @@ internal sealed partial class Compilation
                         // are MethodSpecs of an intrinsic type). Reach T's equality.
                         if (handle.Kind == HandleKind.MethodSpecification)
                             ReachElementScanEquality(module, (MethodSpecificationHandle)handle, m.Context);
+                        if (insn.OpCode is ILOpCode.Call or ILOpCode.Callvirt or ILOpCode.Ldftn or ILOpCode.Ldvirtftn
+                            && handle.Kind is HandleKind.MemberReference or HandleKind.MethodDefinition
+                            && (handle.Kind == HandleKind.MemberReference
+                                ? module.Reader.GetString(module.Reader.GetMemberReference((MemberReferenceHandle)handle).Name)
+                                : module.Reader.GetString(module.Reader.GetMethodDefinition((MethodDefinitionHandle)handle).Name))
+                                is "IndexOf" or "LastIndexOf"
+                            && CallTargetTypeName(module, handle) == "System.Array")
+                            _nonGenericArrayEqualityDispatched = true;
                         // A custom (non-Task) awaiter that genuinely suspends —
                         // AwaitOnCompleted/AwaitUnsafeOnCompleted resolves only to
                         // MoveNext above; also reach the awaiter's OnCompleted and the
@@ -5518,6 +5685,12 @@ internal sealed partial class Compilation
                                 && MethodSpecMethodName(module, fms) is "AppendFormatted" or "AppendFormattedWithTempSpace"
                                 && FindClassByFullName("System.ISpanFormattable") is { } spanFormattable)
                                 NoteTypeIdentityClosure(new TypeDesc { Kind = TypeKind.Class, Class = spanFormattable });
+                            if (MethodSpecParentTypeName(module, fms) == "System.Math"
+                                && MethodSpecMethodName(module, fms) == "ThrowMinMaxException"
+                                && fms.DecodeSignature(SigProvider, m.Context).ToArray() is
+                                    [{ Kind: TypeKind.Class, Class: { IsValueType: true } bound }]
+                                && EffectiveToString(bound) is { } boundToString)
+                                Reach(boundToString);
                             // Both interpolated-string handlers — the top-level
                             // DefaultInterpolatedStringHandler and the StringBuilder nested
                             // AppendInterpolatedStringHandler (bare name) —
@@ -5715,7 +5888,12 @@ internal sealed partial class Compilation
                         if (ResolveTypeTokenForScan(module, handle, m.Context)
                             is { Kind: TypeKind.Class, Class: { IsValueType: true } bc })
                         {
-                            ReachAllocatedType(bc);
+                            var held = NullableUnderlying(new TypeDesc { Kind = TypeKind.Class, Class = bc }) is
+                                { Kind: TypeKind.Class, Class: { } underlying } && underlying.EnsureMembers().IsValueType
+                                    ? underlying : bc;
+                            ReachAllocatedType(held);
+                            if (IsUserModule(module))
+                                _explicitlyBoxedArrayValues.Add(held);
                             // A boxed struct formatted as a unit (Console.WriteLine /
                             // "s" + tuple) dispatches its ToString through
                             // dn2cpp_object_tostring's tostring slot — but boxing

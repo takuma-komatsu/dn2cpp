@@ -8,7 +8,7 @@ namespace DictCollections
     // and other namespace-sensitive output stay identical to the originals.
     internal static class Program
     {
-        private static void Main()
+        private static void Main(string[] args)
         {
             // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
@@ -33,6 +33,11 @@ namespace DictCollections
             ValueTupleKeyDictSubset.Program.__GateEntry();
             EqualityComparerDefaultSubset.Program.__GateEntry();
             RuntimeTypeHandleKeySubset.Program.__GateEntry();
+            if (args.Length > 0 && args[0] == "before-default-comparison")
+                return;
+            Console.WriteLine("== default comparison validation ==");
+            DefaultEqualityMouthsSubset.Program.__GateEntry();
+            Console.WriteLine("default comparison validation end");
         }
     }
 }

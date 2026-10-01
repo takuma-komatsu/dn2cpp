@@ -839,7 +839,7 @@ static int32_t dn2cpp_decimal_box_hash(Dn2CppObject* o)
 { return dn2cpp_decimal_hash(*dn2cpp_boxed<Dn2CppDecimal>(o)); }
 static int32_t dn2cpp_decimal_box_equals(Dn2CppObject* a, Dn2CppObject* b)
 {
-    return (b->type == &dn2cpp_decimal_type
+    return (b != nullptr && b->type == &dn2cpp_decimal_type
             && dn2cpp_decimal_cmp(*dn2cpp_boxed<Dn2CppDecimal>(a),
                                   *dn2cpp_boxed<Dn2CppDecimal>(b)) == 0) ? 1 : 0;
 }
