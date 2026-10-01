@@ -359,5 +359,154 @@ namespace ArrayRangeFaultSubset
                 Console.WriteLine("typed catch: fell through to Exception");
             }
         }
+
+        private static void ValidationFault(string label, Exception ex)
+        {
+            Console.WriteLine(label + " type=" + ex.GetType().Name);
+            Console.WriteLine(label + " param=" + (ex is ArgumentException arg ? arg.ParamName : null));
+            Console.WriteLine(label + " message=" + ex.Message.Replace("\r", "").Replace("\n", "|"));
+            object actual = ex is ArgumentOutOfRangeException range ? range.ActualValue : null;
+            Console.WriteLine(label + " actual=" + (actual is null ? "null" : actual.GetType().Name + ":" + actual));
+        }
+
+        private static void ValidationObserve(string label, Action action)
+        {
+            try { action(); Console.WriteLine(label + " success"); }
+            catch (Exception ex) { ValidationFault(label, ex); }
+        }
+
+        private static void ValidationCopy(Array source, int start, Array destination, int offset, int count, bool constrained)
+        {
+            if (constrained)
+                Array.ConstrainedCopy(source, start, destination, offset, count);
+            else
+                Array.Copy(source, start, destination, offset, count);
+        }
+
+        private static void ValidationClear(Array value, int start, int count) => Array.Clear(value, start, count);
+
+        private static void ValidationSlice<T>(T[] values, Range range)
+        {
+            T[] result = System.Runtime.CompilerServices.RuntimeHelpers.GetSubArray(values, range);
+            Console.WriteLine("slice length=" + result.Length);
+        }
+
+        private static void ValidationTypedCopy<T>(T[] source, int start, T[] destination, int offset, int count, bool constrained)
+        {
+            if (constrained)
+                Array.ConstrainedCopy(source, start, destination, offset, count);
+            else
+                Array.Copy(source, start, destination, offset, count);
+        }
+
+        private static void ValidationResize<T>(T[] values, int size)
+        {
+            Array.Resize(ref values, size);
+            Console.WriteLine("resize length=" + values.Length);
+        }
+
+        private static void ValidationSliceIdentity<T>(string label, T[] values, Range range)
+        {
+            T[] first = System.Runtime.CompilerServices.RuntimeHelpers.GetSubArray(values, range);
+            T[] second = System.Runtime.CompilerServices.RuntimeHelpers.GetSubArray(values, range);
+            Console.WriteLine(label + " type=" + first.GetType().Name + " length=" + first.Length);
+            Console.WriteLine(label + " canonical=" + ReferenceEquals(first, Array.Empty<T>()));
+            Console.WriteLine(label + " same source=" + ReferenceEquals(first, values));
+            Console.WriteLine(label + " fresh=" + !ReferenceEquals(first, second));
+        }
+
+        private static string ValidationBytes(byte[] values)
+        {
+            string result = "";
+            foreach (byte value in values)
+            {
+                if (result.Length != 0)
+                    result += ",";
+                result += (int)value;
+            }
+            return result;
+        }
+
+        internal static void RunValidationFields()
+        {
+            Console.WriteLine("== Array validation fields ==");
+            Array[] arrays = { null, Array.Empty<int>(), new int[4], new long[4], new string[4], new object[4] };
+            int[] bounds = { int.MinValue, -1, 0, 1, 4, int.MaxValue };
+            for (int s = 0; s < arrays.Length; s++)
+                for (int d = 0; d < arrays.Length; d++)
+                    foreach (int start in bounds)
+                        foreach (int offset in bounds)
+                            foreach (int count in bounds)
+                            {
+                                string label = "copy:" + s + ":" + d + ":" + start + ":" + offset + ":" + count;
+                                ValidationObserve(label, () => ValidationCopy(arrays[s], start, arrays[d], offset, count, false));
+                                ValidationObserve("constrained " + label, () => ValidationCopy(arrays[s], start, arrays[d], offset, count, true));
+                            }
+            for (int a = 0; a < arrays.Length; a++)
+                foreach (int start in bounds)
+                    foreach (int count in bounds)
+                        ValidationObserve("clear:" + a + ":" + start + ":" + count, () => ValidationClear(arrays[a], start, count));
+            Index[] indexes = { new Index(0), new Index(1), new Index(4), new Index(5), new Index(int.MaxValue), new Index(0, true), new Index(1, true), new Index(4, true), new Index(5, true), new Index(int.MaxValue, true) };
+            int[][] ints = { null, Array.Empty<int>(), new[] { 1, 2, 3, 4 } };
+            byte[][] bytes = { null, Array.Empty<byte>(), new byte[] { 1, 2, 3, 4 } };
+            string[][] strings = { null, Array.Empty<string>(), new[] { null, "a", "", "b" } };
+            for (int a = 0; a < ints.Length; a++)
+                for (int s = 0; s < indexes.Length; s++)
+                    for (int e = 0; e < indexes.Length; e++)
+                    {
+                        Range range = new Range(indexes[s], indexes[e]);
+                        string label = "slice:" + a + ":" + s + ":" + e;
+                        ValidationObserve(label + ":int", () => ValidationSlice(ints[a], range));
+                        ValidationObserve(label + ":byte", () => ValidationSlice(bytes[a], range));
+                        ValidationObserve(label + ":string", () => ValidationSlice(strings[a], range));
+                    }
+            foreach (int start in bounds)
+                foreach (int offset in bounds)
+                    foreach (int count in bounds)
+                    {
+                        string label = "typed:" + start + ":" + offset + ":" + count;
+                        int[] si = { 1, 2, 3, 4 }, di = { 9, 9, 9, 9 };
+                        byte[] sb = { 1, 2, 3, 4 }, db = { 9, 9, 9, 9 };
+                        string[] sr = { "a", "b", "c", "d" }, dr = { "x", "x", "x", "x" };
+                        ValidationObserve(label + ":int", () => ValidationTypedCopy(si, start, di, offset, count, false));
+                        ValidationObserve(label + ":byte", () => ValidationTypedCopy(sb, start, db, offset, count, false));
+                        ValidationObserve(label + ":string", () => ValidationTypedCopy(sr, start, dr, offset, count, false));
+                        Console.WriteLine(label + " copy payload=" + string.Join(",", di) + ":" + ValidationBytes(db) + ":" + string.Join(",", dr));
+                        ValidationObserve(label + ":int constrained", () => ValidationTypedCopy(si, start, di, offset, count, true));
+                        ValidationObserve(label + ":byte constrained", () => ValidationTypedCopy(sb, start, db, offset, count, true));
+                        ValidationObserve(label + ":string constrained", () => ValidationTypedCopy(sr, start, dr, offset, count, true));
+                        Console.WriteLine(label + " constrained payload=" + string.Join(",", di) + ":" + ValidationBytes(db) + ":" + string.Join(",", dr));
+                    }
+            Array[] copyToArrays = { null, new int[4], new int[2, 2] };
+            for (int s = 0; s < copyToArrays.Length; s++)
+                for (int d = 0; d < copyToArrays.Length; d++)
+                    foreach (int index in bounds)
+                        ValidationObserve("copyto:" + s + ":" + d + ":" + index, () => copyToArrays[s].CopyTo(copyToArrays[d], index));
+            foreach (int size in new[] { int.MinValue, -1, 0, 1, 4 })
+            {
+                ValidationObserve("resize int null:" + size, () => ValidationResize<int>(null, size));
+                ValidationObserve("resize int:" + size, () => ValidationResize(new[] { 1, 2, 3, 4 }, size));
+                ValidationObserve("resize byte:" + size, () => ValidationResize(new byte[] { 1, 2, 3, 4 }, size));
+                ValidationObserve("resize string:" + size, () => ValidationResize(new[] { "a", "b", "c", "d" }, size));
+            }
+            ArgumentException[] saved = new ArgumentException[4];
+            try { ValidationCopy(null, -1, null, -1, -1, false); } catch (ArgumentException ex) { saved[0] = ex; }
+            try { ValidationCopy(new int[4], -1, null, -1, -1, true); } catch (ArgumentException ex) { saved[1] = ex; }
+            try { ValidationClear(null, -1, -1); } catch (ArgumentException ex) { saved[2] = ex; }
+            try { ValidationSlice(new[] { 1 }, new Range(0, 2)); } catch (ArgumentException ex) { saved[3] = ex; }
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            for (int i = 0; i < saved.Length; i++)
+                ValidationFault("after GC:" + i, saved[i]);
+            ValidationSliceIdentity("empty int", Array.Empty<int>(), 0..0);
+            ValidationSliceIdentity("new empty int", new int[0], 0..0);
+            ValidationSliceIdentity("int zero slice", new[] { 1, 2 }, 1..1);
+            ValidationSliceIdentity("byte zero slice", new byte[] { 1, 2 }, 1..1);
+            ValidationSliceIdentity("string zero slice", new[] { "a", "b" }, 1..1);
+            ValidationSliceIdentity<object>("covariant empty", Array.Empty<string>(), 0..0);
+            ValidationSliceIdentity<object>("covariant zero slice", new[] { "a", "b" }, 1..1);
+            ValidationSliceIdentity("int full slice", new[] { 1, 2 }, 0..2);
+            Console.WriteLine("Array validation fields end");
+        }
     }
 }

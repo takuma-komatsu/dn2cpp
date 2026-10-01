@@ -1465,6 +1465,7 @@ inline constexpr const char* DN2CPP_SR_PATH_TOO_LONG_PATH = "IO_PathTooLong_Path
 inline constexpr const char* DN2CPP_SR_ADDING_DUPLICATE_WITH_KEY = "Argument_AddingDuplicateWithKey";
 inline constexpr const char* DN2CPP_SR_KEY_NOT_FOUND_WITH_KEY = "Arg_KeyNotFoundWithKey";
 inline constexpr const char* DN2CPP_SR_MUST_BE_NON_NEGATIVE = "ArgumentOutOfRange_Generic_MustBeNonNegative";
+inline constexpr const char* DN2CPP_SR_MUST_BE_GREATER_OR_EQUAL = "ArgumentOutOfRange_Generic_MustBeGreaterOrEqual";
 inline constexpr const char* DN2CPP_SR_MUST_BE_LESS_OR_EQUAL = "ArgumentOutOfRange_Generic_MustBeLessOrEqual";
 inline constexpr const char* DN2CPP_SR_NEED_NON_NEG_NUM = "ArgumentOutOfRange_NeedNonNegNum";
 inline constexpr const char* DN2CPP_SR_START_INDEX = "ArgumentOutOfRange_StartIndex";
@@ -1473,6 +1474,8 @@ inline constexpr const char* DN2CPP_SR_INDEX_LENGTH = "ArgumentOutOfRange_IndexL
 inline constexpr const char* DN2CPP_SR_INVALID_OFF_LEN = "Argument_InvalidOffLen";
 inline constexpr const char* DN2CPP_SR_OFFSET_OUT = "ArgumentOutOfRange_OffsetOut";
 inline constexpr const char* DN2CPP_SR_LONGER_THAN_SRC_STRING = "Arg_LongerThanSrcString";
+inline constexpr const char* DN2CPP_SR_LONGER_THAN_SRC_ARRAY = "Arg_LongerThanSrcArray";
+inline constexpr const char* DN2CPP_SR_LONGER_THAN_DEST_ARRAY = "Arg_LongerThanDestArray";
 inline constexpr const char* DN2CPP_SR_EMPTY_STRING = "Argument_EmptyString";
 inline constexpr const char* DN2CPP_SR_INVALID_NORMALIZATION_FORM = "Argument_InvalidNormalizationForm";
 inline constexpr const char* DN2CPP_SR_FORMAT_INDEX_OUT_OF_RANGE = "Format_IndexOutOfRange";
@@ -1488,6 +1491,7 @@ inline constexpr const char* DN2CPP_SR_COMPARE_OPTION_ORDINAL = "Argument_Compar
 inline constexpr const char* DN2CPP_SR_INVALID_FLAG = "Argument_InvalidFlag";
 inline constexpr const char* DN2CPP_SR_STRING_COMPARISON = "NotSupported_StringComparison";
 inline constexpr const char* DN2CPP_SR_RANK_SINGLE_DIM_ONLY = "Rank_MultiDimNotSupported";
+inline constexpr const char* DN2CPP_SR_RANK_MULTI_DIM_NOT_SUPPORTED = "Arg_RankMultiDimNotSupported";
 inline constexpr const char* DN2CPP_SR_RANK_MUST_MATCH = "Rank_MustMatch";
 // The text for a key, or null when this program carries none (no corelib, a corelib with
 // no embedded resources, or a key outside Dn2Cpp.BclMessages).
@@ -5595,10 +5599,10 @@ inline int32_t dn2cpp_array_length(Dn2CppArray* arr)
 // on its result, which forming the address off an unchecked pointer would not be.
 // One predictable compare in front of an O(n) block move.
 template <typename TArray>
-inline TArray* dn2cpp_array_require_arg(TArray* arr)
+inline TArray* dn2cpp_array_require_arg(TArray* arr, const char* paramName)
 {
     if (arr == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param(paramName);
     return arr;
 }
 
@@ -5621,11 +5625,19 @@ inline TArray* dn2cpp_array_require_receiver(TArray* arr)
 inline void dn2cpp_array_copy_range(int32_t srcLen, int32_t srcIdx,
                                     int32_t dstLen, int32_t dstIdx, int32_t len)
 {
-    if ((srcIdx | dstIdx | len) < 0)
-        dn2cpp_throw_argument_out_of_range();
-    if (static_cast<int64_t>(srcIdx) + len > srcLen
-        || static_cast<int64_t>(dstIdx) + len > dstLen)
-        dn2cpp_throw_argument();
+    // Source-window overruns precede a negative destination index.
+    if (len < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "length", len);
+    if (srcIdx < 0)
+        dn2cpp_throw_argument_out_of_range_bound(DN2CPP_SR_MUST_BE_GREATER_OR_EQUAL, "sourceIndex", srcIdx, 0);
+    if (static_cast<int64_t>(srcIdx) + len > srcLen)
+        dn2cpp_throw_argument_text(&dn2cpp_argument_exception_type,
+            dn2cpp_sr_text(DN2CPP_SR_LONGER_THAN_SRC_ARRAY), "sourceArray");
+    if (dstIdx < 0)
+        dn2cpp_throw_argument_out_of_range_bound(DN2CPP_SR_MUST_BE_GREATER_OR_EQUAL, "destinationIndex", dstIdx, 0);
+    if (static_cast<int64_t>(dstIdx) + len > dstLen)
+        dn2cpp_throw_argument_text(&dn2cpp_argument_exception_type,
+            dn2cpp_sr_text(DN2CPP_SR_LONGER_THAN_DEST_ARRAY), "destinationArray");
 }
 
 inline void dn2cpp_array_clear_range(int32_t arrLen, int32_t idx, int32_t len)
@@ -5958,7 +5970,7 @@ template <typename TArray>
 inline TArray* dn2cpp_array_require_copy_dest(TArray* arr)
 {
     if (arr == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("destinationArray");
     if (dn2cpp_array_rank_of(reinterpret_cast<Dn2CppObject*>(arr)) > 1)
         dn2cpp_throw_sr0(&dn2cpp_rank_exception_type, DN2CPP_SR_RANK_MUST_MATCH);
     return arr;
@@ -5978,9 +5990,9 @@ template <typename TArray>
 inline TArray* dn2cpp_array_require_copyto_dest(TArray* arr)
 {
     if (arr == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("destinationArray");
     if (dn2cpp_array_rank_of(reinterpret_cast<Dn2CppObject*>(arr)) > 1)
-        dn2cpp_throw_argument();
+        dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_RANK_MULTI_DIM_NOT_SUPPORTED);
     return arr;
 }
 
@@ -5991,7 +6003,7 @@ inline TArray* dn2cpp_array_require_copyto_dest(TArray* arr)
 inline int32_t dn2cpp_array_resize_size(int32_t newSize)
 {
     if (newSize < 0)
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_NEED_NON_NEG_NUM, "newSize");
     return newSize;
 }
 

@@ -507,6 +507,8 @@ int32_t dn2cpp_convert_obj_to_bool(Dn2CppObject* v)
 
 int32_t dn2cpp_convert_obj_to_char(Dn2CppObject* v)
 {
+    if (v != nullptr && v->type == &dn2cpp_string_type)
+        return dn2cpp_convert_str_to_char(reinterpret_cast<Dn2CppString*>(v));
     // Char rides the I4 stack slot; the boxed source's low 16 bits are the code unit
     // (matches Convert.ChangeType(.., typeof(char)) for a boxed char/integer source).
     return v != nullptr ? static_cast<int32_t>(static_cast<uint16_t>(dn2cpp_box_read_i64(v))) : 0;

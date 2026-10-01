@@ -8,7 +8,7 @@ namespace ConvertParse
     // and other namespace-sensitive output stay identical to the originals.
     internal static class Program
     {
-        private static void Main()
+        private static void Main(string[] args)
         {
             // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
@@ -43,6 +43,9 @@ namespace ConvertParse
             TryFormatSubset.Program.__GateEntry();
             // Appended so the consolidated gate's prior output remains a prefix.
             FloatParseFormatInfoSubset.Program.__GateEntry();
+            if (args.Length > 0 && args[0] == "before-char-faults")
+                return;
+            ConvertSubset.Program.RunCharFaults();
         }
     }
 }

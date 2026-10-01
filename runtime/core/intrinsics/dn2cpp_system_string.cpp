@@ -2120,8 +2120,10 @@ static int dn2cpp_array_rep_dyn(Dn2CppObject* o, const char* who)
 static void dn2cpp_array_copy_dyn_impl(Dn2CppObject* src, int32_t srcIdx,
                                        Dn2CppObject* dst, int32_t dstIdx, int32_t len, bool reliable)
 {
-    if (src == nullptr || dst == nullptr)
-        dn2cpp_throw_argument_null();
+    if (src == nullptr)
+        dn2cpp_throw_argument_null_param("sourceArray");
+    if (dst == nullptr)
+        dn2cpp_throw_argument_null_param("destinationArray");
     // .NET's own order: the two nulls, the rank match, the range, then the type
     // verdict — which is why the checked delegation sits last.
     int32_t rank = dn2cpp_array_rank_of(src);
@@ -2189,7 +2191,7 @@ void dn2cpp_array_constrained_copy_dyn(Dn2CppObject* src, int32_t srcIdx,
 void dn2cpp_array_clear_dyn(Dn2CppObject* arr, int32_t idx, int32_t len)
 {
     if (arr == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("array");
     dn2cpp_array_clear_range(dn2cpp_array_total_length(arr), idx, len);
     // The MD layout first, for the same header-vs-length reason as the clone
     // above: elements are flat in the separate data block, so a (flat idx, len)
@@ -2236,7 +2238,7 @@ int32_t dn2cpp_range_offset_length(int32_t startVal, int32_t endVal, int32_t src
     int32_t end   = endVal   < 0 ? srcLen + endVal   + 1 : endVal;
     if (static_cast<uint32_t>(end) > static_cast<uint32_t>(srcLen)
         || static_cast<uint32_t>(start) > static_cast<uint32_t>(end))
-        dn2cpp_throw_argument_out_of_range(); // catchable, matching Range.GetOffsetAndLength
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_ARGUMENT_OUT_OF_RANGE, "length");
     *outOffset = start;
     return end - start;
 }
@@ -2252,7 +2254,7 @@ int32_t dn2cpp_range_offset_length(int32_t startVal, int32_t endVal, int32_t src
 Dn2CppArrayI4* dn2cpp_array_subarray_i4(Dn2CppArrayI4* src, int32_t offset, int32_t length)
 {
     if (src == nullptr)
-        dn2cpp_throw_argument_null(); // catchable, matching ThrowHelper.ThrowArgumentNullException
+        dn2cpp_throw_argument_null_param("array");
     Dn2CppArrayI4* dst = dn2cpp_newarr_i4_t(length, src->type);
     if (length > 0)
         std::memcpy(dst->data, src->data + offset, static_cast<size_t>(length) * sizeof(int32_t));
@@ -2262,7 +2264,7 @@ Dn2CppArrayI4* dn2cpp_array_subarray_i4(Dn2CppArrayI4* src, int32_t offset, int3
 Dn2CppArrayRef* dn2cpp_array_subarray_ref(Dn2CppArrayRef* src, int32_t offset, int32_t length)
 {
     if (src == nullptr)
-        dn2cpp_throw_argument_null(); // catchable, matching ThrowHelper.ThrowArgumentNullException
+        dn2cpp_throw_argument_null_param("array");
     Dn2CppArrayRef* dst = dn2cpp_newarr_ref_t(length, src->type);
     if (length > 0)
         dn2cpp_gc_memmove_refs(dst->data, src->data + offset,
@@ -2273,7 +2275,7 @@ Dn2CppArrayRef* dn2cpp_array_subarray_ref(Dn2CppArrayRef* src, int32_t offset, i
 Dn2CppArrayN* dn2cpp_array_subarray_n(Dn2CppArrayN* src, int32_t offset, int32_t length)
 {
     if (src == nullptr)
-        dn2cpp_throw_argument_null(); // catchable, matching ThrowHelper.ThrowArgumentNullException
+        dn2cpp_throw_argument_null_param("array");
     Dn2CppArrayN* dst = dn2cpp_newarr_n_t(length, src->elemSize, src->type);
     if (length > 0)
         dn2cpp_gc_memmove_refs(dst->data,
@@ -2387,7 +2389,7 @@ Dn2CppMDArray* dn2cpp_newmdarr(const Dn2CppTypeInfo* ti, int32_t rank, const int
 char16_t dn2cpp_convert_str_to_char(Dn2CppString* s)
 {
     if (s == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("value");
     if (s->length != 1)
         dn2cpp_throw_sr1(&dn2cpp_format_exception_type, DN2CPP_SR_NEED_SINGLE_CHAR, nullptr);
     return s->chars[0];
