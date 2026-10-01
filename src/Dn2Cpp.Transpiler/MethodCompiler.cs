@@ -954,33 +954,22 @@ internal sealed partial class MethodCompiler : IEvalStack
         // allocation or stack scan the body can trigger.
         if (_method.IsUnmanagedCallersOnly)
             sb.AppendLine("    dn2cpp_native_callback_prologue();");
-        // Opt-in shadow stack (--shadow-stack): an RAII frame guard first among the
-        // guards, so it is constructed before the monitor guard and destroyed after
-        // it — the frame brackets the whole body on every return path and on unwind.
+        // The shadow frame brackets the body and its synchronized exit.
         // The name is a raw C string literal, NOT a LiteralPool str_N entry: the pool
         // is numbered during the planning pass, and pooling the name would perturb
         // that numbering.
         if (_c.ShadowStackEnabled)
             sb.AppendLine($"    Dn2CppShadowFrame __shadowFrame(\"{ShadowFrameName()}\");");
-        // [MethodImpl(MethodImplOptions.Synchronized)]: the whole body runs under
-        // the identity-keyed monitor — lock(this) for an instance method, lock on
-        // the declaring type's interned Type object for a static one (the same
-        // object typeof(X) yields, so user lock(typeof(X)) sites mutually exclude
-        // with the method, as in .NET). The RAII guard is the first local, so it
-        // releases after every return path and on exceptional unwind. A value-type
-        // instance method is skipped (the CLR locks a throwaway per-call box
-        // there — no mutual exclusion to preserve).
-        if (_method.IsSynchronized && !(_method.DeclaringClass.IsValueType && !_method.IsStatic))
+        // Static synchronized methods own the same monitor as lock(typeof(X)).
+        // A value-type instance has only a throwaway per-call box.
+        bool synchronized = _method.IsSynchronized && !(_method.DeclaringClass.IsValueType && !_method.IsStatic);
+        if (synchronized)
         {
-            if (_method.IsStatic)
-            {
-                sb.AppendLine("    Dn2CppMonitorGuard __syncGuard((Dn2CppObject*)"
-                    + $"dn2cpp_get_type_from_handle(&{synchronizedTypeInfo}));");
-            }
-            else
-            {
-                sb.AppendLine("    Dn2CppMonitorGuard __syncGuard((Dn2CppObject*)a0);");
-            }
+            string syncObject = _method.IsStatic
+                ? $"dn2cpp_get_type_from_handle(&{synchronizedTypeInfo})"
+                : "a0";
+            string returnType = _method.Signature.ReturnType.IsVoid ? "void" : CppTypes.Of(_method.Signature.ReturnType);
+            sb.AppendLine($"    return dn2cpp_synchronized((Dn2CppObject*){syncObject}, [&]() -> {returnType} {{");
         }
         // Shared canonical body that read the runtime generic context without
         // taking the hidden parameter: derive it from the receiver's dynamic
@@ -1008,6 +997,8 @@ internal sealed partial class MethodCompiler : IEvalStack
         foreach (var d in _decls)
             sb.AppendLine($"    [[maybe_unused]] {d.Type} {d.Name};");
         sb.Append(_body);
+        if (synchronized)
+            sb.AppendLine("    });");
         sb.AppendLine("}");
         return sb.ToString();
     }

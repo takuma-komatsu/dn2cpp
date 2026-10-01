@@ -543,6 +543,8 @@ static Dn2CppString* dn2cpp_argument_tail(const char* key, Dn2CppString* value)
 
 static Dn2CppString* dn2cpp_param_name_string(const char* paramName)
 {
+    if (paramName == nullptr)
+        return nullptr;
     return dn2cpp_string_from_utf8(paramName, static_cast<int32_t>(std::strlen(paramName)));
 }
 
@@ -569,7 +571,7 @@ static Dn2CppString* dn2cpp_param_name_string(const char* paramName)
     const char* paramName, Dn2CppString* valueText, Dn2CppString* boundText,
     Dn2CppObject* actual)
 {
-    std::string args[3] = { std::string(paramName),
+    std::string args[3] = { paramName != nullptr ? std::string(paramName) : std::string(),
         dn2cpp_sr_arg(valueText), dn2cpp_sr_arg(boundText) };
     dn2cpp_raise_argument(&dn2cpp_argument_out_of_range_exception_type,
         dn2cpp_sr_format(key, args, 3), dn2cpp_param_name_string(paramName),
@@ -593,6 +595,17 @@ static Dn2CppString* dn2cpp_param_name_string(const char* paramName)
         dn2cpp_throw_invalid_operation();
     dn2cpp_raise_out_of_range_bound(key, paramName, dn2cpp_format_int(value, 8, nullptr),
         dn2cpp_format_int(bound, 8, nullptr), dn2cpp_box(&dn2cpp_int64_type, &value, sizeof(value)));
+}
+
+[[noreturn]] void dn2cpp_throw_argument_out_of_range_actual(const char* sentence,
+    const char* paramName, Dn2CppObject* actual, Dn2CppString* actualText)
+{
+    std::string text = dn2cpp_sr_arg(actualText);
+    Dn2CppString* message = sentence != nullptr
+        ? dn2cpp_string_from_utf8(sentence, static_cast<int32_t>(std::strlen(sentence)))
+        : nullptr;
+    dn2cpp_raise_argument(&dn2cpp_argument_out_of_range_exception_type, message,
+        dn2cpp_param_name_string(paramName), actual, &text);
 }
 
 [[noreturn]] void dn2cpp_throw_argument_out_of_range_bound_u32(const char* key,

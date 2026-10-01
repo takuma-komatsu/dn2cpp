@@ -22,6 +22,7 @@
 # its wasm twin also proves both PAL symbols link. Do not prune it by reading the
 # gate's name.
 # Named argument faults, boxed bounds, validation order and GC-retained fields.
+# Monitor and Lock have independent ownership, checked exits and synchronized epilogues.
 source "$(dirname "$0")/_common.sh"
 gate_extra_asserts() {
     local out="$1" native before prefix line
@@ -40,6 +41,22 @@ gate_extra_asserts() {
         'WaitHandle array fields end'; do
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: ThreadingPrimitives validation witness missing: $line" >&2; exit 1; }
+    done
+    before=$(dotnet "$_CG_APP" before-ownership)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== monitor ownership ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== monitor ownership ==' \
+        'monitor ownership end' \
+        'lock ownership end' \
+        'independent lock after monitor=False' \
+        'independent monitor after lock=False' \
+        'owner held=True/True' \
+        'independent ownership end' \
+        'synchronized released=False' \
+        'ownership fields end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: ThreadingPrimitives ownership witness missing: $line" >&2; exit 1; }
     done
 }
 

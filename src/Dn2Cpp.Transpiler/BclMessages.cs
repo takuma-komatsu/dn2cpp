@@ -50,6 +50,11 @@ internal static class BclMessages
         "RFLCT_Targ_StatMethReqTarg",
         "Arg_ParmCnt",
         "Arg_UnboundGenParam",
+        "Argument_MustBeFalse",
+        "Lock_Exit_SynchronizationLockException",
+        "SemaphoreSlim_Wait_TimeoutWrong",
+        "SemaphoreSlim_Wait_TimeSpanTimeoutWrong",
+        "ArgumentOutOfRange_NeedNonNegOrNegative1",
         // Composite formats a runtime throw site fills from what it already holds.
         "RFLCT_Targ_ITargMismatch_WithType",
         "Arg_ObjObjEx",

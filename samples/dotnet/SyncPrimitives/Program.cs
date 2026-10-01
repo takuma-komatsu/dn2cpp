@@ -66,7 +66,7 @@ static class Program
         return stolen;
     }
 
-    static void Main()
+    static void Main(string[] args)
     {
         // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
@@ -416,5 +416,8 @@ static class Program
         Console.WriteLine(waitSetProbes);          // 8 (every probe joined)
         Console.WriteLine(pulseStolen);            // 0
         Console.WriteLine(pulseAllStolen);         // 0
+        if (args.Length != 0 && args[0] == "before-timeout-fields")
+            return;
+        WaitTimeouts.WaitTimeoutValidationSubset.__GateEntry();
     }
 }

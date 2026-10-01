@@ -27,6 +27,9 @@ namespace ThreadingPrimitives
             if (args.Length != 0 && args[0] == "before-argument-fields")
                 return;
             WaitHandleValidationSubset.__GateEntry();
+            if (args.Length != 0 && args[0] == "before-ownership")
+                return;
+            MonitorLockValidationSubset.__GateEntry();
         }
     }
 }
