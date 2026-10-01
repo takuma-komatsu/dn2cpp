@@ -3047,6 +3047,7 @@ internal sealed partial class Compilation
         MappedFileDispose,
         MappedViewDispose,
         NoopDispose,
+        BlockingCollectionDispose,
         TimerChange,
         TimerDisposeAsync,
         CtsDispose,
@@ -3096,7 +3097,7 @@ internal sealed partial class Compilation
             "System", "IDisposable", "Dispose", 0, IntrinsicInterfaceThunkKind.NoopDispose),
         new("System.Collections.Concurrent.BlockingCollection`1", "dn2cpp_blockingcollection_type",
             "itfthunk_blockingcoll_dispose", "System", "IDisposable", "Dispose", 0,
-            IntrinsicInterfaceThunkKind.NoopDispose),
+            IntrinsicInterfaceThunkKind.BlockingCollectionDispose),
         new("System.Threading.CancellationTokenSource", "dn2cpp_cancel_source_type", "itfthunk_cts_dispose",
             "System", "IDisposable", "Dispose", 0, IntrinsicInterfaceThunkKind.CtsDispose),
         new("System.Threading.SemaphoreSlim", "dn2cpp_semaphore_type", "itfthunk_semaphore_dispose",
@@ -3181,6 +3182,7 @@ internal sealed partial class Compilation
                 IntrinsicInterfaceThunkKind.TimerDispose or IntrinsicInterfaceThunkKind.MappedFileDispose
                     or IntrinsicInterfaceThunkKind.MappedViewDispose
                     or IntrinsicInterfaceThunkKind.NoopDispose or IntrinsicInterfaceThunkKind.CtsDispose
+                    or IntrinsicInterfaceThunkKind.BlockingCollectionDispose
                     or IntrinsicInterfaceThunkKind.WaitHandleDispose => decl.Signature.ReturnType.IsVoid
                     && decl.Signature.ParameterTypes.Length == 0,
                 IntrinsicInterfaceThunkKind.TimerChange =>

@@ -29,6 +29,7 @@ struct Dn2CppBlockingControl
     int32_t boundedCapacity;          // 0 => unbounded
     int32_t count;                    // current element count
     bool addingCompleted;             // CompleteAdding() has been called
+    bool disposed;                    // Dispose is idempotent; later operations fail
 };
 
 // One queued element. GC-allocated and scanned, so `value` (a boxed value-type
@@ -47,6 +48,7 @@ struct Dn2CppBlockingCollection : Dn2CppObject
     Dn2CppBlockingControl* ctl;  // non-GC control block (sync + counters)
     Dn2CppBlockingNode* head;    // dequeue end (oldest); nullptr when empty
     Dn2CppBlockingNode* tail;    // enqueue end (newest); nullptr when empty
+    Dn2CppString* objectName;     // closed generic name for disposed diagnostics
 };
 
 // Each static type-info bakes its interned Type companion in (lock-free typeof/GetType).
@@ -115,7 +117,13 @@ static void dn2cpp_blockingcoll_require_timeout(int32_t timeoutMs)
             dn2cpp_format_int(timeoutMs, 4, nullptr));
 }
 
-Dn2CppObject* dn2cpp_blockingcoll_new(int32_t boundedCapacity)
+static void dn2cpp_blockingcoll_require_live(Dn2CppBlockingCollection* c)
+{
+    if (c->ctl->disposed)
+        dn2cpp_throw_object_disposed_named(c->objectName);
+}
+
+Dn2CppObject* dn2cpp_blockingcoll_new(int32_t boundedCapacity, Dn2CppString* objectName)
 {
     auto* c = static_cast<Dn2CppBlockingCollection*>(dn2cpp_alloc(sizeof(Dn2CppBlockingCollection)));
     c->type = &dn2cpp_blockingcollection_type;
@@ -123,8 +131,10 @@ Dn2CppObject* dn2cpp_blockingcoll_new(int32_t boundedCapacity)
     c->ctl->boundedCapacity = boundedCapacity;
     c->ctl->count = 0;
     c->ctl->addingCompleted = false;
+    c->ctl->disposed = false;
     c->head = nullptr;
     c->tail = nullptr;
+    dn2cpp_gc_store_ref(&c->objectName, objectName);
     return c;
 }
 
@@ -136,6 +146,7 @@ void dn2cpp_blockingcoll_add(Dn2CppObject* coll, Dn2CppObject* boxedOrRef)
     auto* c = static_cast<Dn2CppBlockingCollection*>(coll);
     auto* ctl = c->ctl;
     std::unique_lock<std::mutex> lk(ctl->mtx);
+    dn2cpp_blockingcoll_require_live(c);
     if (ctl->addingCompleted)
         dn2cpp_throw_invalid_operation_msg(kBlockingCompleted);
     if (ctl->boundedCapacity > 0)
@@ -156,6 +167,7 @@ int32_t dn2cpp_blockingcoll_tryadd(Dn2CppObject* coll, Dn2CppObject* boxedOrRef,
     auto* c = static_cast<Dn2CppBlockingCollection*>(coll);
     auto* ctl = c->ctl;
     std::unique_lock<std::mutex> lk(ctl->mtx);
+    dn2cpp_blockingcoll_require_live(c);
     if (ctl->addingCompleted)
         dn2cpp_throw_invalid_operation_msg(kBlockingCompleted);
     if (ctl->boundedCapacity > 0 && ctl->count >= ctl->boundedCapacity)
@@ -184,6 +196,7 @@ Dn2CppObject* dn2cpp_blockingcoll_take(Dn2CppObject* coll)
     auto* c = static_cast<Dn2CppBlockingCollection*>(coll);
     auto* ctl = c->ctl;
     std::unique_lock<std::mutex> lk(ctl->mtx);
+    dn2cpp_blockingcoll_require_live(c);
     ctl->notEmpty.wait(lk, [&] { return ctl->count > 0 || ctl->addingCompleted; });
     if (ctl->count == 0)
         dn2cpp_throw_invalid_operation_msg(kBlockingCantTakeWhenDone);
@@ -200,6 +213,7 @@ int32_t dn2cpp_blockingcoll_trytake(Dn2CppObject* coll, int32_t timeoutMs, Dn2Cp
     auto* c = static_cast<Dn2CppBlockingCollection*>(coll);
     auto* ctl = c->ctl;
     std::unique_lock<std::mutex> lk(ctl->mtx);
+    dn2cpp_blockingcoll_require_live(c);
     if (ctl->count == 0)
     {
         if (ctl->addingCompleted || timeoutMs == 0)
@@ -231,6 +245,7 @@ void dn2cpp_blockingcoll_complete_adding(Dn2CppObject* coll)
     auto* ctl = c->ctl;
     {
         std::lock_guard<std::mutex> lk(ctl->mtx);
+        dn2cpp_blockingcoll_require_live(c);
         ctl->addingCompleted = true;
     }
     ctl->notEmpty.notify_all();
@@ -241,6 +256,7 @@ int32_t dn2cpp_blockingcoll_count(Dn2CppObject* coll)
 {
     auto* c = static_cast<Dn2CppBlockingCollection*>(coll);
     std::lock_guard<std::mutex> lk(c->ctl->mtx);
+    dn2cpp_blockingcoll_require_live(c);
     return c->ctl->count;
 }
 
@@ -248,6 +264,7 @@ int32_t dn2cpp_blockingcoll_is_adding_completed(Dn2CppObject* coll)
 {
     auto* c = static_cast<Dn2CppBlockingCollection*>(coll);
     std::lock_guard<std::mutex> lk(c->ctl->mtx);
+    dn2cpp_blockingcoll_require_live(c);
     return c->ctl->addingCompleted ? 1 : 0;
 }
 
@@ -255,6 +272,7 @@ int32_t dn2cpp_blockingcoll_is_completed(Dn2CppObject* coll)
 {
     auto* c = static_cast<Dn2CppBlockingCollection*>(coll);
     std::lock_guard<std::mutex> lk(c->ctl->mtx);
+    dn2cpp_blockingcoll_require_live(c);
     return (c->ctl->addingCompleted && c->ctl->count == 0) ? 1 : 0;
 }
 
@@ -262,6 +280,15 @@ int32_t dn2cpp_blockingcoll_is_completed(Dn2CppObject* coll)
 int32_t dn2cpp_blockingcoll_bounded_capacity(Dn2CppObject* coll)
 {
     auto* c = static_cast<Dn2CppBlockingCollection*>(coll);
+    std::lock_guard<std::mutex> lk(c->ctl->mtx);
+    dn2cpp_blockingcoll_require_live(c);
     int32_t cap = c->ctl->boundedCapacity;
     return cap > 0 ? cap : -1;
+}
+
+void dn2cpp_blockingcoll_dispose(Dn2CppObject* coll)
+{
+    auto* c = static_cast<Dn2CppBlockingCollection*>(coll);
+    std::lock_guard<std::mutex> lk(c->ctl->mtx);
+    c->ctl->disposed = true;
 }

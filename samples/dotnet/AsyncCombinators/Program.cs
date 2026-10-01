@@ -35,6 +35,13 @@ namespace AsyncCombinators
                 return;
             TaskDurationValidationSubset.Program.__GateEntry();
             TaskReceiverValidationSubset.Program.__GateEntry();
+            if (args.Length == 1 && args[0] == "before-task-lifecycle")
+                return;
+            BlockingWaitArgsSubset.Program.RunSequences();
+            BlockingWaitArgsSubset.Program.RunArrayMessages();
+            BlockingWaitArgsSubset.Program.RunSequenceNulls();
+            ColdTaskScheduleSubset.Program.__GateEntry();
+            TaskOriginSubset.Program.__GateEntry();
         }
     }
 }

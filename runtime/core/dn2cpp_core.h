@@ -1412,6 +1412,7 @@ extern const int32_t dn2cpp_exception_get_message_slot;
 // layout and nothing was stored.
 bool dn2cpp_argument_exception_store(Dn2CppObject* e, Dn2CppString* paramName,
     Dn2CppObject* actualValue);
+bool dn2cpp_object_disposed_exception_store(Dn2CppObject* e, Dn2CppString* objectName);
 // The BCL exception messages this runtime raises, folded in at transpile time from the
 // CoreLib's own Strings.resources, or for an "Assembly:Key" entry from that library's.
 // A runtime resource read is not an option: --no-manifest-resources may have emptied
@@ -1435,6 +1436,7 @@ inline constexpr const char* DN2CPP_SR_ARGUMENT_NULL_ARRAY_ELEMENT = "ArgumentNu
 inline constexpr const char* DN2CPP_SR_ARGUMENT_NULL = "ArgumentNull_Generic";
 inline constexpr const char* DN2CPP_SR_INVALID_OPERATION = "Arg_InvalidOperationException";
 inline constexpr const char* DN2CPP_SR_OBJECT_DISPOSED = "ObjectDisposed_Generic";
+inline constexpr const char* DN2CPP_SR_OBJECT_DISPOSED_NAME = "ObjectDisposed_ObjectName_Name";
 inline constexpr const char* DN2CPP_SR_ARITHMETIC = "Arg_ArithmeticException";
 inline constexpr const char* DN2CPP_SR_OUT_OF_MEMORY = "Arg_OutOfMemoryException";
 inline constexpr const char* DN2CPP_SR_INVALID_CAST = "Arg_InvalidCastException";
@@ -1499,6 +1501,17 @@ inline constexpr const char* DN2CPP_SR_SEMAPHORE_TIMESPAN_TIMEOUT = "SemaphoreSl
 inline constexpr const char* DN2CPP_SR_TASK_DELAY_MS = "Task_Delay_InvalidMillisecondsDelay";
 inline constexpr const char* DN2CPP_SR_TASK_DELAY_SPAN = "Task_InvalidTimerTimeSpan";
 inline constexpr const char* DN2CPP_SR_NEED_NON_NEG_OR_NEGATIVE1 = "ArgumentOutOfRange_NeedNonNegOrNegative1";
+inline constexpr const char* DN2CPP_SR_TASK_START_COMPLETED = "Task_Start_TaskCompleted";
+inline constexpr const char* DN2CPP_SR_TASK_START_PROMISE = "Task_Start_Promise";
+inline constexpr const char* DN2CPP_SR_TASK_START_CONTINUATION = "Task_Start_ContinuationTask";
+inline constexpr const char* DN2CPP_SR_TASK_START_ALREADY = "Task_Start_AlreadyStarted";
+inline constexpr const char* DN2CPP_SR_TASK_SYNC_CONTINUATION = "Task_RunSynchronously_Continuation";
+inline constexpr const char* DN2CPP_SR_TASK_SYNC_PROMISE = "Task_RunSynchronously_Promise";
+inline constexpr const char* DN2CPP_SR_TASK_SYNC_COMPLETED = "Task_RunSynchronously_TaskCompleted";
+inline constexpr const char* DN2CPP_SR_TASK_SYNC_ALREADY = "Task_RunSynchronously_AlreadyStarted";
+inline constexpr const char* DN2CPP_SR_THREAD_NOT_STARTED = "ThreadState_NotStarted";
+inline constexpr const char* DN2CPP_SR_THREAD_ALREADY_STARTED = "ThreadState_AlreadyStarted";
+inline constexpr const char* DN2CPP_SR_THREAD_WRONG_THREAD_START = "InvalidOperation_ThreadWrongThreadStart";
 inline constexpr const char* DN2CPP_SR_START_INDEX_LARGER_THAN_LENGTH = "ArgumentOutOfRange_StartIndexLargerThanLength";
 inline constexpr const char* DN2CPP_SR_INDEX_LENGTH = "ArgumentOutOfRange_IndexLength";
 inline constexpr const char* DN2CPP_SR_INVALID_OFF_LEN = "Argument_InvalidOffLen";
@@ -1578,6 +1591,9 @@ inline constexpr const char* DN2CPP_SR_MMF_NAMED_MAPS = "System.IO.MemoryMappedF
 inline constexpr const char* DN2CPP_SR_BUFFER_TOO_SMALL = "Arg_BufferTooSmall";
 inline constexpr const char* DN2CPP_SR_PATH_EMPTY = "Arg_PathEmpty";
 inline constexpr const char* DN2CPP_SR_POSITION_LESS_THAN_CAPACITY_REQUIRED = "ArgumentOutOfRange_PositionLessThanCapacityRequired";
+inline constexpr const char* DN2CPP_SR_NULL_TASK = "Task_MultiTaskContinuation_NullTask";
+inline constexpr const char* DN2CPP_SR_EMPTY_TASK_LIST = "Task_MultiTaskContinuation_EmptyTaskList";
+inline constexpr const char* DN2CPP_SR_WAIT_NULL_TASK = "Task_WaitMulti_NullTask";
 const char* dn2cpp_sr_text(const char* key);
 // The key's text with `{0}`..`{argc-1}` replaced by `args` (argc at most 2), or null
 // when the text is absent.
@@ -2407,6 +2423,9 @@ extern Dn2CppTypeInfo dn2cpp_lock_recursion_exception_type;
 // System.Threading.SynchronizationLockException: raised by ReaderWriterLockSlim's
 // Exit* paths when the calling thread does not hold the lock it is releasing.
 extern Dn2CppTypeInfo dn2cpp_synchronization_lock_exception_type;
+// System.Threading.ThreadStateException: raised by Thread.Start on a thread already
+// started and by Thread.Join on one never started.
+extern Dn2CppTypeInfo dn2cpp_thread_state_exception_type;
 // System.AggregateException (System.Exception-derived). Built — not runtime-trapped —
 // by the Parallel exception-aggregation path; the handle is also the one a managed
 // `new AggregateException` stamps (see CoreIntrinsics.RuntimeExceptionTypeInfo).
@@ -2723,6 +2742,7 @@ void dn2cpp_cctor_run_startup(void (*ensure)(), const char* type);
 // ThrowHelper.ThrowObjectDisposedException_StreamClosed, ...) — a use-after-Dispose
 // on a stream, a file handle or a CancellationTokenSource.
 [[noreturn]] void dn2cpp_throw_object_disposed();
+[[noreturn]] void dn2cpp_throw_object_disposed_named(Dn2CppString* objectName);
 // Math.Sign on a NaN input — .NET raises ArithmeticException (NaN has no sign).
 [[noreturn]] void dn2cpp_throw_arithmetic();
 // A size computation that cannot be satisfied because the RESULT does not fit,
@@ -4768,7 +4788,9 @@ void dn2cpp_volatile_write_r8(double* p, double v);
 // handle) lives in dn2cpp_tasks.cpp. Each spawned thread registers with the GC and
 // gets a fresh per-thread cooperative scheduler.
 struct Dn2CppThread;
-Dn2CppThread* dn2cpp_thread_new(Dn2CppObject* start);              // new Thread(ThreadStart/ParameterizedThreadStart)
+// new Thread(ThreadStart|ParameterizedThreadStart [, maxStackSize]): `parameterized` names
+// the delegate kind, and maxStackSize is range-checked, otherwise ignored.
+Dn2CppThread* dn2cpp_thread_new(Dn2CppObject* start, int32_t parameterized, int32_t maxStackSize);
 void dn2cpp_thread_start(Dn2CppThread* t);                         // Thread.Start()
 void dn2cpp_thread_start_param(Dn2CppThread* t, Dn2CppObject* arg);// Thread.Start(object)
 void dn2cpp_thread_join(Dn2CppThread* t);                          // Thread.Join()
@@ -4841,11 +4863,11 @@ Dn2CppTask* dn2cpp_task_cold_void_state(Dn2CppObject* del, Dn2CppObject* state);
 // Task.Start(): claim the cold work exactly once and submit it to the worker pool.
 // A second Start, or Start on a task that was never cold (an async-method task,
 // Task.Run, a settled task), throws InvalidOperationException like real .NET.
-void dn2cpp_task_start(Dn2CppTask* t);
+void dn2cpp_task_start(Dn2CppTask* t, Dn2CppObject* scheduler);
 // Task.RunSynchronously(): claim the cold work and run it inline on the calling
 // thread. A fault settles the task FAULTED (observed at Wait/Result/await), it is
 // not re-thrown here — matching real .NET. Same InvalidOperationException rules.
-void dn2cpp_task_run_synchronously(Dn2CppTask* t);
+void dn2cpp_task_run_synchronously(Dn2CppTask* t, Dn2CppObject* scheduler);
 
 // ---- Task.ContinueWith --------------------------------------------------------
 // Register a continuation on `t` and return the continuation task: once `t`
@@ -5176,7 +5198,7 @@ int32_t dn2cpp_threadlocal_is_created(Dn2CppObject* h);     // 1 if this thread 
 // GC-allocated collection, so they stay reachable while a consumer is blocked.
 // boundedCapacity 0 => unbounded. Add/Take throw a catchable InvalidOperationException
 // when adding is completed (Add after CompleteAdding; Take on a completed-empty queue).
-Dn2CppObject* dn2cpp_blockingcoll_new(int32_t boundedCapacity);
+Dn2CppObject* dn2cpp_blockingcoll_new(int32_t boundedCapacity, Dn2CppString* objectName);
 void dn2cpp_blockingcoll_add(Dn2CppObject* coll, Dn2CppObject* boxedOrRef);
 int32_t dn2cpp_blockingcoll_tryadd(Dn2CppObject* coll, Dn2CppObject* boxedOrRef, int32_t timeoutMs);
 Dn2CppObject* dn2cpp_blockingcoll_take(Dn2CppObject* coll);
@@ -5186,6 +5208,7 @@ int32_t dn2cpp_blockingcoll_count(Dn2CppObject* coll);
 int32_t dn2cpp_blockingcoll_is_adding_completed(Dn2CppObject* coll);
 int32_t dn2cpp_blockingcoll_is_completed(Dn2CppObject* coll);
 int32_t dn2cpp_blockingcoll_bounded_capacity(Dn2CppObject* coll);
+void dn2cpp_blockingcoll_dispose(Dn2CppObject* coll);
 
 // ---- Array.Sort / Array.Reverse (in place) ----
 int32_t dn2cpp_str_compare_ordinal(Dn2CppString* a, Dn2CppString* b);
@@ -6490,6 +6513,15 @@ struct Dn2CppTaskCold
     uint64_t (*invoke2)(Dn2CppObject*, Dn2CppObject*);
 };
 
+enum
+{
+    DN2CPP_TASK_ORIGIN_PROMISE = 0,
+    DN2CPP_TASK_ORIGIN_COLD = 1,
+    DN2CPP_TASK_ORIGIN_CONTINUATION = 2,
+    DN2CPP_TASK_ORIGIN_STARTED = 3,
+    DN2CPP_TASK_ORIGIN_ASYNC_UNEXPOSED = 4,
+};
+
 struct Dn2CppTask : Dn2CppObject
 {
     // The publication point: a settle stores it last with release, so every read —
@@ -6518,6 +6550,9 @@ struct Dn2CppTask : Dn2CppObject
     // CLR distinguishes and dn2cpp otherwise could not. Appended last — generated code
     // reads the fields above by offset.
     Dn2CppObject* vtsBridge;
+    // Distinguishes cold tasks from promise and continuation tasks after their
+    // delegate has been claimed. Start and RunSynchronously use different errors.
+    std::atomic<int32_t> startKind; // DN2CPP_TASK_ORIGIN_*
 };
 
 struct Dn2CppTaskCompletionSource : Dn2CppObject
@@ -6546,6 +6581,10 @@ struct Dn2CppAsyncBuilder
     Dn2CppTask* task;
     void* boxed;
 };
+
+Dn2CppTask* dn2cpp_async_task_alloc();
+Dn2CppTask* dn2cpp_asyncbuilder_task(Dn2CppAsyncBuilder* builder);
+void dn2cpp_async_task_suspend(Dn2CppTask* task);
 
 // TaskAwaiter / TaskAwaiter<T> — value type.
 struct Dn2CppTaskAwaiter
@@ -6587,6 +6626,8 @@ void dn2cpp_lock_scope_dispose(Dn2CppLockScope* scope);
 struct Dn2CppSbChunkEnum { Dn2CppString* snapshot; int32_t state; };
 
 extern const Dn2CppTypeInfo dn2cpp_task_type;
+extern const Dn2CppTypeInfo dn2cpp_taskscheduler_type;
+Dn2CppObject* dn2cpp_taskscheduler_default();
 
 // A fresh pending task (status PENDING). The builder completes it via SetResult/
 // SetException once MoveNext finishes.
@@ -6674,7 +6715,7 @@ Dn2CppTask* dn2cpp_task_when_all_struct(Dn2CppArrayRef* tasks, int32_t elemSize,
 // Task.WhenAny(Task[]) / WhenAny<T>(Task<T>[]): a Task<Task>/Task<Task<T>> whose
 // result is the first input task to complete (always succeeds — the winner's own
 // fault surfaces through its result, not WhenAny's). Empty list faults.
-Dn2CppTask* dn2cpp_task_when_any(Dn2CppArrayRef* tasks);
+Dn2CppTask* dn2cpp_task_when_any(Dn2CppArrayRef* tasks, bool pairSource = true);
 // A growable Dn2CppObject* buffer that materializes an IEnumerable<Task<T>> (a
 // non-array source: List<Task>, a LINQ result, …) into a Dn2CppArrayRef* for the
 // WhenAll/WhenAny combinators. The emitted interface-enumeration loop appends each

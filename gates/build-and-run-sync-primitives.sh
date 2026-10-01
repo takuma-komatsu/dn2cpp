@@ -18,6 +18,7 @@
 # per-thread Is*LockHeld queries, RecursionPolicy, and the
 # SynchronizationLockException release-without-hold checks.
 # Blocking timeout validation, receiver order, signal preservation and boxed fields.
+# Thread construction, start and join state.
 source "$(dirname "$0")/_common.sh"
 call_app="gates/fixtures/blocking-timeout-call/bin/$CONFIG/$TFM/BlockingTimeoutCall.dll"
 build_gate_proj gates/fixtures/blocking-timeout-call/BlockingTimeoutCall.csproj
@@ -27,6 +28,15 @@ gate_extra_asserts() {
     local out="$1" native before prefix line
     native=$(run_bounded "./$out/SyncPrimitives")
     native=$(strip_cr_win "$native")
+    before=$(run_bounded dotnet "$_CG_APP" before-thread-lifecycle)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== thread states ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== thread states ==' \
+        'thread states end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: SyncPrimitives lifecycle witness missing: $line" >&2; exit 1; }
+    done
     before=$(dotnet "$_CG_APP" before-timeout-fields)
     before=$(strip_cr_win "$before")
     prefix=$(awk '/^== wait timeouts ==$/ { exit } { print }' <<< "$native")

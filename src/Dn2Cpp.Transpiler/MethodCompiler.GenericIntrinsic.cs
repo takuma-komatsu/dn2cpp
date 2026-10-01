@@ -1795,7 +1795,7 @@ internal sealed partial class MethodCompiler
             // PopTaskArrayOperand normalizes both to a Dn2CppArrayRef*. Decode
             // the closed signature so it can tell the array shape from the enumerable.
             var asig = DecodeGenericCallSignature(msh, methodArgs);
-            string operand = PopTaskArrayOperand(asig.ParameterTypes);
+            string operand = PopTaskArrayOperand(asig.ParameterTypes, TaskSequenceNulls.AtFirst);
             // The TResult[] handle rides on the join state: the array is built inside
             // the completion callback, so there is no call site left to retag.
             // PreciseArrayTypeInfoExpr taints a canonical trial, which is right — a
@@ -1826,15 +1826,15 @@ internal sealed partial class MethodCompiler
 
         // Task.WhenAny<TResult>(...) -> Task<Task<TResult>> completing with the first
         // input task to finish. Unlike WhenAll there is no result element kind (the
-        // result is always a Task reference). Two overload shapes reach here: the
-        // params/array form `Task<TResult>[]` (one SZArray operand), and the.NET 9+
-        // fixed `Task<TResult>, Task<TResult>` form (N separate Task operands, which
-        // we gather into a temp ref array). The IEnumerable<Task<TResult>> overload
-        // (a single non-array collection operand) is not handled yet.
+        // result is always a Task reference). PopTaskArrayOperand gathers every
+        // overload's inputs into one ref array: a Task<TResult>[], the two-task form, the
+        // params ReadOnlySpan<Task<TResult>>, and an IEnumerable<Task<TResult>>.
         if (declType == "System.Threading.Tasks.Task" && name == "WhenAny")
         {
             var wsig = DecodeGenericCallSignature(msh, methodArgs);
-            PushStampedTask($"dn2cpp_task_when_any({PopTaskArrayOperand(wsig.ParameterTypes)})", wsig.ReturnType);
+            string tasks = PopTaskArrayOperand(wsig.ParameterTypes,
+                TaskSequenceNulls.AtFirstUnlessWhenAnyPair, out string pairSource);
+            PushStampedTask($"dn2cpp_task_when_any({tasks}, {pairSource})", wsig.ReturnType);
             return;
         }
 
@@ -1918,7 +1918,7 @@ internal sealed partial class MethodCompiler
             // The antecedent's callvirt check precedes the continuation's.
             if (CallIsVirtual)
                 NullCheckReceiverUnder(cwsig.ParameterTypes.Length);
-            string cwOpts = PopContinuationHints(cwsig.ParameterTypes, 1);
+            string cwOpts = PopContinuationHints(cwsig.ParameterTypes, 1, out var cwScheduler);
             // A value-type continuation result rides the boxing trampoline (the ContinueWith
             // mirror of Task.Run<TStruct>); the delegate takes the settled antecedent.
             if (CppTypes.KindOf(tnew) == StackKind.Struct)
@@ -1926,6 +1926,8 @@ internal sealed partial class MethodCompiler
                 var cwds = Pop(); // Func<Task(<T>), TNewResult>
                 var cwts = Pop(); // the antecedent task receiver
                 EmitArgumentRequired(cwds, "continuationFunction");
+                if (cwScheduler is { } cs)
+                    EmitArgumentRequired(cs, "scheduler");
                 PushStampedTask(
                     $"dn2cpp_task_continue_with_struct((Dn2CppTask*)({cwts.Expr}), " +
                     $"(Dn2CppObject*)({cwds.Expr}), {TaskStructContWithThunk(CppTypes.Of(tnew))}, {cwOpts})",
@@ -1946,6 +1948,8 @@ internal sealed partial class MethodCompiler
             var cwd = Pop(); // Func<Task(<T>), TNewResult>
             var cwt = Pop(); // the antecedent task receiver
             EmitArgumentRequired(cwd, "continuationFunction");
+            if (cwScheduler is { } cs2)
+                EmitArgumentRequired(cs2, "scheduler");
             PushStampedTask(
                 $"dn2cpp_task_continue_with((Dn2CppTask*)({cwt.Expr}), (Dn2CppObject*)({cwd.Expr}), "
                 + $"nullptr, {cwKind}, {cwOpts})", cwsig.ReturnType);
@@ -1955,7 +1959,7 @@ internal sealed partial class MethodCompiler
         // TaskFactory.StartNew<TResult>(Func<TResult> [, CancellationToken]
         // [, TaskCreationOptions] [, TaskScheduler]) -> Task<TResult>, dispatched to
         // the same worker pool as Task.Run<TResult> (the token/options/scheduler
-        // arguments are scheduling hints only — popped and ignored). Unlike Task.Run,
+        // arguments are scheduling hints (the scheduler is checked for null). Unlike Task.Run,
         // StartNew never unwraps an async delegate: real .NET returns Task<Task<T>>.
         // A Task-returning delegate takes the dedicated dn2cpp_task_run_nested path —
         // the worker settles the outer task with the inner task pointer as soon as
@@ -1977,13 +1981,21 @@ internal sealed partial class MethodCompiler
                     $"delegate {fsig.ParameterTypes[0]} is not Func<TResult> or Func<object?, TResult>");
             bool hasState = dcl.Context.TypeArgs.Length == 2;
             int kept = hasState ? 2 : 1; // delegate [+ state]
+            StackEntry? schedulerHint = null;
             for (int i = fsig.ParameterTypes.Length - 1; i >= kept; i--)
-                Pop(); // CancellationToken / TaskCreationOptions / TaskScheduler hints
+            {
+                var hint = Pop();
+                if (fsig.ParameterTypes[i] is { Kind: TypeKind.Class, Class.FullName: "System.Threading.Tasks.TaskScheduler" })
+                    schedulerHint = hint;
+            }
             StackEntry? state = null;
             if (hasState)
                 state = Pop();
             var fdel = Pop(); // Func<TResult> or Func<object?, TResult>
             Pop();            // receiver — the Task.Factory nullptr sentinel
+            EmitArgumentRequired(fdel, "function");
+            if (schedulerHint is { } sh)
+                EmitArgumentRequired(sh, "scheduler");
             if (DelegateReturnsTask(fsig.ParameterTypes[0]))
             {
                 if (hasState)

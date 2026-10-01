@@ -44,6 +44,7 @@
 # Task duration, receiver, continuation and exception-argument validation.
 # Former gates: whenall, whenany, when-enumerable, configure-await, delay-order,
 # cancellation, custom-awaitable, multi-awaiter.
+# Task sequences and cold scheduling.
 source "$(dirname "$0")/_common.sh"
 call_app="gates/fixtures/task-call-validation/bin/$CONFIG/$TFM/TaskCallValidation.dll"
 build_gate_proj gates/fixtures/task-call-validation/TaskCallValidation.csproj
@@ -54,6 +55,22 @@ gate_extra_asserts() {
     local out="$1" native before prefix line
     native=$(run_bounded "./$out/AsyncCombinators")
     native=$(strip_cr_win "$native")
+    before=$(run_bounded dotnet "$_CG_APP" before-task-lifecycle)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^whenall-null-seq:/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== sequence nulls ==' \
+        'sequence nulls end' \
+        '== cold task scheduler ==' \
+        'scheduler: True,True,True' \
+        'cold task scheduler end' \
+        '== task origin ==' \
+        'singleton identity/type: True,True' \
+        'singleton cold body: 1' \
+        'task origin end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: AsyncCombinators lifecycle witness missing: $line" >&2; exit 1; }
+    done
     before=$(dotnet "$_CG_APP" before-task-validation)
     before=$(strip_cr_win "$before")
     prefix=$(awk '/^== delay arguments ==$/ { exit } { print }' <<< "$native")
@@ -79,7 +96,9 @@ gate_extra_asserts() {
     assert_output "$actual" "$(strip_cr_win "$expected")"
     for line in 'direct-get-awaiter-null|ok:constructed' \
         'direct-configure-null|ok:constructed' \
-        'task direct-call validation end'; do
+        'task direct-call validation end' \
+        '== task direct scheduling ==' \
+        'task direct scheduling end'; do
         grep -Fxq -- "$line" <<< "$actual" \
             || { echo "FAIL: Task direct-call witness missing: $line" >&2; exit 1; }
     done

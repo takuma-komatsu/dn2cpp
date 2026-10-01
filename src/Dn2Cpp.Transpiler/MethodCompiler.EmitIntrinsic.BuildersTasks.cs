@@ -843,12 +843,12 @@ internal sealed partial class MethodCompiler
             case ("System.Runtime.CompilerServices.AsyncTaskMethodBuilder", "Create"):
                 // static: a fresh builder owning a pending task.
                 Push(StackKind.Struct, "Dn2CppAsyncBuilder",
-                    "Dn2CppAsyncBuilder{ dn2cpp_task_alloc() }");
+                    "Dn2CppAsyncBuilder{ dn2cpp_async_task_alloc() }");
                 return true;
             case ("System.Runtime.CompilerServices.AsyncTaskMethodBuilder", "get_Task"):
             {
                 var b = Pop(); // ref builder
-                PushStampedTask($"((Dn2CppAsyncBuilder*)({b.Expr}))->task", sig.ReturnType);
+                PushStampedTask($"dn2cpp_asyncbuilder_task((Dn2CppAsyncBuilder*)({b.Expr}))", sig.ReturnType);
                 return true;
             }
             case ("System.Runtime.CompilerServices.AsyncTaskMethodBuilder", "SetResult"):
@@ -904,18 +904,20 @@ internal sealed partial class MethodCompiler
             // completing with the first input task to finish (the generic Task<T>
             // overloads bind in TranslateGenericIntrinsic). Same runtime helper.
             case ("System.Threading.Tasks.Task", "WhenAny"):
-                PushStampedTask($"dn2cpp_task_when_any({PopTaskArrayOperand(sig.ParameterTypes)})", sig.ReturnType);
+            {
+                string tasks = PopTaskArrayOperand(sig.ParameterTypes,
+                    TaskSequenceNulls.AtFirstUnlessWhenAnyPair, out string pairSource);
+                PushStampedTask($"dn2cpp_task_when_any({tasks}, {pairSource})", sig.ReturnType);
                 return true;
+            }
             // Non-generic Task.WhenAll(Task[] / IEnumerable<Task>) -> a plain Task
             // (no result array) that completes once every input completes, or faults
             // with the first input fault. The generic WhenAll<T> (result array) binds
             // in TranslateGenericIntrinsic; this is the void-result join.
             case ("System.Threading.Tasks.Task", "WhenAll"):
-                PushStampedTask(
-                    // Non-generic WhenAll completes with no result array at all
-                    // (DN2CPP_WHENALL_VOID), so there is no element handle to carry.
-                    $"dn2cpp_task_when_all({PopTaskArrayOperand(sig.ParameterTypes)}, DN2CPP_WHENALL_VOID, nullptr)",
-                    sig.ReturnType);
+                // A singleton may already carry a closed Task<T> identity.
+                Push(StackKind.Ref, "Dn2CppTask*",
+                    $"dn2cpp_task_when_all({PopTaskArrayOperand(sig.ParameterTypes)}, DN2CPP_WHENALL_VOID, nullptr)");
                 return true;
             // Task.WaitAll(Task[] / ReadOnlySpan<Task> / IEnumerable<Task>) — the BLOCKING
             // join: drain until every input settles, then raise one AggregateException over
@@ -995,16 +997,17 @@ internal sealed partial class MethodCompiler
                 PushStampedTask($"dn2cpp_task_run_void((Dn2CppObject*)({del.Expr}))", sig.ReturnType);
                 return true;
             }
-            // Task.Factory / TaskScheduler.Default / TaskScheduler.Current — opaque
-            // nullptr sentinels. The factory sentinel is only ever the receiver of
+            // Task.Factory is an opaque nullptr sentinel, only ever the receiver of
             // the StartNew intercept below (never dereferenced); the scheduler
-            // sentinel is only ever an ignored StartNew/ContinueWith hint argument.
+            // singleton is a real non-null reference, even when used as a hint.
             // Intercepting get_Default here keeps the whole TaskScheduler..cctor /
             // ThreadPoolTaskScheduler / Debugger / DependentHandle subtree unreached.
             case ("System.Threading.Tasks.Task", "get_Factory"):
+                Push(StackKind.Ref, "Dn2CppObject*", "nullptr");
+                return true;
             case ("System.Threading.Tasks.TaskScheduler", "get_Default"):
             case ("System.Threading.Tasks.TaskScheduler", "get_Current"):
-                Push(StackKind.Ref, "Dn2CppObject*", "nullptr");
+                Push(StackKind.Ref, "Dn2CppObject*", "dn2cpp_taskscheduler_default()");
                 return true;
             // TaskScheduler.FromCurrentSynchronizationContext — always throws: .NET's
             // own InvalidOperationException with no installed context, NotSupported
@@ -1014,8 +1017,8 @@ internal sealed partial class MethodCompiler
                 return true;
             // TaskFactory.StartNew(Action[, ...]) / StartNew(Action<object?>, object?
             // state[, ...]) -> Task on the same worker pool as Task.Run. The trailing
-            // CancellationToken / TaskCreationOptions / TaskScheduler arguments are
-            // scheduling hints only — popped and ignored; the delegate always runs on
+            // CancellationToken / TaskCreationOptions affect scheduling only; a
+            // TaskScheduler is validated, then the delegate runs on
             // the real pool. The 5-arg state form is what the base Stream.FlushAsync
             // compiles (`Task.Factory.StartNew(static s => ..., this, ct,
             // DenyChildAttach, TaskScheduler.Default)`). The generic StartNew<TResult>
@@ -1029,8 +1032,15 @@ internal sealed partial class MethodCompiler
                 bool hasState = sig.ParameterTypes[0] is { Kind: TypeKind.Class, Class: { } dcl }
                     && dcl.Context.TypeArgs.Length == 1;
                 int kept = hasState ? 2 : 1; // delegate [+ state]
+                StackEntry? schedulerHint = null;
                 for (int i = sig.ParameterTypes.Length - 1; i >= kept; i--)
-                    Pop(); // CancellationToken / TaskCreationOptions / TaskScheduler hints
+                {
+                    var hint = Pop();
+                    if (sig.ParameterTypes[i] is { Kind: TypeKind.Class, Class.FullName: "System.Threading.Tasks.TaskScheduler" })
+                        schedulerHint = hint;
+                }
+                if (schedulerHint is { } sh)
+                    EmitArgumentRequired(sh, "scheduler");
                 if (hasState)
                 {
                     var state = Pop(); // object? state (passed to the delegate)
@@ -1109,34 +1119,39 @@ internal sealed partial class MethodCompiler
             // Task.Start([TaskScheduler]) — submit a cold task's (`new Task(...)`)
             // work to the worker pool. A second Start, or Start on a task that was
             // never cold (async-method / Task.Run / settled), throws a catchable
-            // InvalidOperationException at runtime, like real .NET. The TaskScheduler
-            // argument is a scheduling hint only — popped and ignored.
+            // InvalidOperationException at runtime, like real .NET. A supplied null
+            // scheduler is rejected before claiming the task; non-null scheduling
+            // still uses the fixed worker pool.
             case ("System.Threading.Tasks.Task", "Start"):
             {
-                if (sig.ParameterTypes.Length == 1)
-                    Pop(); // TaskScheduler hint (ignored)
+                string scheduler = sig.ParameterTypes.Length == 1
+                    ? Cast(Pop(), "Dn2CppObject*")
+                    : "dn2cpp_taskscheduler_default()";
                 var t = Pop();
-                Emit($"dn2cpp_task_start((Dn2CppTask*)({t.Expr}));");
+                Emit($"dn2cpp_task_start((Dn2CppTask*)({t.Expr}), {scheduler});");
                 return true;
             }
             // Task.RunSynchronously([TaskScheduler]) — claim a cold task's work and
             // run it inline on the calling thread. A fault settles the task FAULTED
             // (observed at Wait/Result/await), it is not re-thrown here — matching
-            // real .NET. Same InvalidOperationException rules as Start.
+            // real .NET. State-specific InvalidOperationException messages and
+            // validation order are handled by the runtime claim.
             case ("System.Threading.Tasks.Task", "RunSynchronously"):
             {
-                if (sig.ParameterTypes.Length == 1)
-                    Pop(); // TaskScheduler hint (ignored)
+                string scheduler = sig.ParameterTypes.Length == 1
+                    ? Cast(Pop(), "Dn2CppObject*")
+                    : "dn2cpp_taskscheduler_default()";
                 var t = Pop();
-                Emit($"dn2cpp_task_run_synchronously((Dn2CppTask*)({t.Expr}));");
+                Emit($"dn2cpp_task_run_synchronously((Dn2CppTask*)({t.Expr}), {scheduler});");
                 return true;
             }
             // Task.ContinueWith(Action<Task[<T>]>[, object? state][, hints...]) — the
             // non-generic-method overloads (the Func<Task, TNewResult> forms are
             // MethodSpecs, bound in TranslateGenericIntrinsic). The continuation task
             // is returned; the delegate runs with the settled antecedent (+ state) on
-            // the registering thread's scheduler. Trailing CancellationToken /
-            // TaskScheduler arguments are scheduling hints — popped and ignored.
+            // the registering thread's scheduler. A supplied null TaskScheduler is
+            // rejected; non-null schedulers and CancellationToken are scheduling
+            // hints that the fixed worker pool does not model.
             // TaskContinuationOptions is NOT a hint and is not dropped: its NotOn* trio
             // decides whether the delegate runs at all, so the value travels to the
             // runtime node (PopContinuationHints), which skips a filtered-out
@@ -1173,11 +1188,13 @@ internal sealed partial class MethodCompiler
                         "is not supported (expected a leading Action delegate)");
                 bool cwHasState = cwDel.Context.TypeArgs.Length == 2;
                 int cwKept = cwHasState ? 2 : 1; // delegate [+ state]
-                string cwOpts = PopContinuationHints(sig.ParameterTypes, cwKept);
+                string cwOpts = PopContinuationHints(sig.ParameterTypes, cwKept, out var cwScheduler);
                 var cwState = cwHasState ? Pop() : null;
                 var cwD = Pop();
                 var cwT = Pop();
                 EmitArgumentRequired(cwD, "continuationAction");
+                if (cwScheduler is { } cs)
+                    EmitArgumentRequired(cs, "scheduler");
                 string stateExpr = cwState is null ? "nullptr" : Cast(cwState, "Dn2CppObject*");
                 string kind = cwHasState ? "DN2CPP_CONTWITH_VOID_STATE" : "DN2CPP_CONTWITH_VOID";
                 PushStampedTask(
@@ -1455,26 +1472,31 @@ internal sealed partial class MethodCompiler
     /// overload carries none.
     ///
     /// <para><b>The distinction this method exists to keep is between a HINT and a
-    /// FILTER.</b> A trailing CancellationToken or TaskScheduler is a scheduling hint
+    /// FILTER.</b> A trailing CancellationToken is a scheduling hint
     /// dn2cpp's cooperative scheduler does not honour, so dropping it changes nothing an
     /// awaiting program can observe. <c>TaskContinuationOptions</c> is not that: its
     /// NotOnRanToCompletion / NotOnFaulted / NotOnCanceled bits — which the OnlyOn* names
     /// are pairs of — decide whether the delegate RUNS, and dropping them would run an
     /// OnlyOnFaulted continuation after a successful antecedent. So the value is carried
     /// to the runtime node, and as a RUN-TIME operand rather than folded, because the IL
-    /// is free to compute it.</para>
+    /// is free to compute it. A TaskScheduler hint is validated for null after the
+    /// delegate, then its scheduling choice is ignored.</para>
     ///
     /// <para>Shared by the non-generic <c>ContinueWith</c> arm and the generic
     /// <c>ContinueWith&lt;TNewResult&gt;</c> one in MethodCompiler.GenericIntrinsic.cs —
     /// one popper, so the two cannot disagree about which trailing argument is which.</para></summary>
-    private string PopContinuationHints(System.Collections.Immutable.ImmutableArray<TypeDesc> pts, int kept)
+    private string PopContinuationHints(System.Collections.Immutable.ImmutableArray<TypeDesc> pts, int kept,
+                                        out StackEntry? scheduler)
     {
         string options = "0";
+        scheduler = null;
         for (int i = pts.Length - 1; i >= kept; i--)
         {
             var popped = Pop();
             if (pts[i] is { Kind: TypeKind.Class, Class.FullName: "System.Threading.Tasks.TaskContinuationOptions" })
                 options = $"(int32_t)({popped.Expr})";
+            if (pts[i] is { Kind: TypeKind.Class, Class.FullName: "System.Threading.Tasks.TaskScheduler" })
+                scheduler = popped;
         }
         return options;
     }

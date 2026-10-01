@@ -419,5 +419,8 @@ static class Program
         if (args.Length != 0 && args[0] == "before-timeout-fields")
             return;
         WaitTimeouts.WaitTimeoutValidationSubset.__GateEntry();
+        if (args.Length == 1 && args[0] == "before-thread-lifecycle")
+            return;
+        ThreadStates.Program.__GateEntry();
     }
 }

@@ -197,9 +197,7 @@ static class Program
     // callvirt IDisposable::Dispose), an interface-typed local and isinst/castclass all
     // depend on the init prologue installing an interface-dispatch map onto its runtime
     // type-info, while the DIRECT Dispose() call is routed at the intrinsic call site and
-    // works regardless. Every value is read BEFORE the dispose: real .NET's Dispose tears
-    // the collection down and dn2cpp's is a no-op, so a post-dispose read would diverge
-    // for unrelated reasons.
+    // works regardless. The later disposal section checks operations after either route.
     static void DisposeMouths()
     {
         using (var q = new BlockingCollection<int>())
@@ -266,5 +264,8 @@ static class Program
         if (args.Length == 1 && args[0] == "before-collection-validation")
             return;
         BlockingCollectionValidationSubset.RunChecks();
+        if (args.Length == 1 && args[0] == "before-collection-disposal")
+            return;
+        BlockingCollectionDisposalSubset.RunChecks();
     }
 }

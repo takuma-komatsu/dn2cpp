@@ -22,12 +22,12 @@ if not positions:
     if not proof_path.exists():
         raise ValueError("No unpatched wrappers and no previous patch proof")
     proof = json.loads(proof_path.read_text())
-    if proof["afterSha256"] != current_sha or proof["matchedWrappers"] != 7:
+    if proof["afterSha256"] != current_sha or proof["matchedWrappers"] != 9:
         raise ValueError("The existing assembly does not match its patch proof")
     print("Task direct wrappers already patched: " + current_sha)
     sys.exit(0)
-if len(positions) != 7:
-    raise ValueError("Expected seven optimized direct wrappers, got " + str(len(positions)))
+if len(positions) != 9:
+    raise ValueError("Expected nine optimized direct wrappers, got " + str(len(positions)))
 patched = bytearray(data)
 for position in positions:
     if patched[position] != 0x6f:
@@ -35,9 +35,9 @@ for position in positions:
     patched[position] = 0x28
 path.write_bytes(patched)
 proof_path.write_text(json.dumps({
-    "matchedWrappers": 7,
+    "matchedWrappers": 9,
     "positions": positions,
     "beforeSha256": current_sha,
     "afterSha256": hashlib.sha256(patched).hexdigest(),
 }, indent=2) + "\n")
-print("Patched seven Task direct wrappers")
+print("Patched nine Task direct wrappers")

@@ -618,7 +618,8 @@ internal sealed partial class MethodCompiler
                         $"{name} overload has no intrinsic mapping (only the public instance form is modeled)");
                 var smRef = Pop();      // ref TStateMachine (the state machine being suspended)
                 var awaiterRef = Pop(); // ref TAwaiter (saved in the SM's <>u__N field)
-                Pop();                  // builder receiver — the SM's own builder field is authoritative
+                var builder = Pop();    // builder receiver
+                Emit($"dn2cpp_async_task_suspend(((Dn2CppAsyncBuilder*)({builder.Expr}))->task);");
                 var smArg = methodArgs[^1];
                 if (smArg is not { Kind: TypeKind.Class, Class: { } sm })
                     throw new NotSupportedException(

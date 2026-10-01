@@ -40,9 +40,10 @@ internal static class AbiContract
     /// to the Dn2CppExceptionObject prefix; 3 = a trace slot added to that prefix;
     /// 4 = reference-type instance fields and all static fields narrowed to real
     /// storage width; 5 = <c>System.DateTime</c> repacked from 16 bytes to .NET's 8;
-    /// 6 = WaitHandle gained its hidden SafeWaitHandle prefix slot.
+    /// 6 = WaitHandle gained its hidden SafeWaitHandle prefix slot;
+    /// 7 = Task, Thread and BlockingCollection gained hidden runtime slots.
     /// Bump on any future layout-mapping change.</summary>
-    public const int LayoutPolicyVersion = 6;
+    public const int LayoutPolicyVersion = 7;
 
     /// <summary>Serializes canonical contract v1 over the emitted classes. The
     /// serialization is symbolic — type names and base chains, layout

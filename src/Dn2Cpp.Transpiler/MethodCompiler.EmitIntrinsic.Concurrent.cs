@@ -152,11 +152,10 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.I4, "int32_t", $"dn2cpp_blockingcoll_bounded_capacity((Dn2CppObject*)({coll.Expr}))");
                 return true;
             }
-            // Dispose is a no-op: the queue lives for the program (like the other threading
-            // primitives' Dispose); there is no per-instance teardown.
             case ("System.Collections.Concurrent.BlockingCollection", "Dispose"):
             {
-                Pop(); // this
+                var coll = Pop();
+                Emit($"dn2cpp_blockingcoll_dispose((Dn2CppObject*)({coll.Expr}));");
                 return true;
             }
             // ---- System.Threading.Tasks.Parallel (data-parallel loops) ----

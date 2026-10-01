@@ -240,14 +240,14 @@ internal sealed partial class MethodCompiler
             case ("System.Runtime.CompilerServices.AsyncValueTaskMethodBuilder", "Create"):
             case ("System.Runtime.CompilerServices.PoolingAsyncValueTaskMethodBuilder", "Create"):
                 Push(StackKind.Struct, "Dn2CppAsyncBuilder",
-                    "Dn2CppAsyncBuilder{ dn2cpp_task_alloc() }");
+                    "Dn2CppAsyncBuilder{ dn2cpp_async_task_alloc() }");
                 return true;
             case ("System.Runtime.CompilerServices.AsyncValueTaskMethodBuilder", "get_Task"):
             case ("System.Runtime.CompilerServices.PoolingAsyncValueTaskMethodBuilder", "get_Task"):
             {
                 // get_Task returns a ValueTask<T> — the {task} struct over the builder's task.
                 var b = Pop();
-                string task = $"((Dn2CppAsyncBuilder*)({b.Expr}))->task";
+                string task = $"dn2cpp_asyncbuilder_task((Dn2CppAsyncBuilder*)({b.Expr}))";
                 if (TaskBackingType(sig.ReturnType) is { } taskType)
                     task = StampTask(task, taskType);
                 Push(StackKind.Struct, "Dn2CppTaskAwaiter", $"Dn2CppTaskAwaiter{{ {task} }}");

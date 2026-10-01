@@ -52,6 +52,16 @@ extern const Dn2CppType dn2cpp_task_type_obj;
 const Dn2CppTypeInfo dn2cpp_task_type =
     dn2cpp_ti_with_typeobject({ "System.Threading.Tasks.Task", &dn2cpp_object_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppTask), 0, 0, 0, 0, 0, nullptr }, &dn2cpp_task_type_obj);
 const Dn2CppType dn2cpp_task_type_obj = { { &dn2cpp_type_type }, &dn2cpp_task_type };
+extern const Dn2CppType dn2cpp_taskscheduler_type_obj;
+const Dn2CppTypeInfo dn2cpp_taskscheduler_type =
+    dn2cpp_ti_with_typeobject({ "System.Threading.Tasks.TaskScheduler", &dn2cpp_object_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppObject), 0, 0, 0, 0, 0, nullptr }, &dn2cpp_taskscheduler_type_obj);
+const Dn2CppType dn2cpp_taskscheduler_type_obj = { { &dn2cpp_type_type }, &dn2cpp_taskscheduler_type };
+
+Dn2CppObject* dn2cpp_taskscheduler_default()
+{
+    static Dn2CppObject scheduler{&dn2cpp_taskscheduler_type};
+    return &scheduler;
+}
 
 // Task.Id numbering: positive, monotonic, minted once per task at alloc time.
 // (Real .NET's Ids are also positive and unique; the numbering itself differs.)
@@ -78,12 +88,42 @@ Dn2CppTask* dn2cpp_task_alloc()
     t->workerKeepAlive = nullptr;
     t->cold.store(nullptr, std::memory_order_relaxed);
     t->vtsBridge = nullptr;
+    t->startKind = DN2CPP_TASK_ORIGIN_PROMISE;
     return t;
+}
+
+Dn2CppTask* dn2cpp_async_task_alloc()
+{
+    auto* task = dn2cpp_task_alloc();
+    task->startKind = DN2CPP_TASK_ORIGIN_ASYNC_UNEXPOSED;
+    return task;
+}
+
+Dn2CppTask* dn2cpp_asyncbuilder_task(Dn2CppAsyncBuilder* builder)
+{
+    if (builder->task == nullptr)
+        dn2cpp_gc_store_ref(&builder->task, dn2cpp_async_task_alloc());
+    Dn2CppTask* task = builder->task;
+    int32_t origin = DN2CPP_TASK_ORIGIN_ASYNC_UNEXPOSED;
+    int32_t exposedOrigin = task->status.load(std::memory_order_acquire) == DN2CPP_TASK_SUCCEEDED
+        ? DN2CPP_TASK_ORIGIN_STARTED : DN2CPP_TASK_ORIGIN_PROMISE;
+    task->startKind.compare_exchange_strong(origin, exposedOrigin, std::memory_order_relaxed);
+    return task;
+}
+
+void dn2cpp_async_task_suspend(Dn2CppTask* task)
+{
+    if (task == nullptr)
+        return;
+    int32_t origin = DN2CPP_TASK_ORIGIN_ASYNC_UNEXPOSED;
+    task->startKind.compare_exchange_strong(origin, DN2CPP_TASK_ORIGIN_PROMISE,
+        std::memory_order_relaxed);
 }
 
 Dn2CppTask* dn2cpp_task_completed()
 {
     auto* t = dn2cpp_task_alloc();
+    t->startKind = DN2CPP_TASK_ORIGIN_STARTED;
     t->status.store(DN2CPP_TASK_SUCCEEDED, std::memory_order_relaxed);
     return t;
 }
@@ -96,11 +136,13 @@ Dn2CppTask* dn2cpp_task_completed()
 // Aggregate-initialized: an atomic member makes Dn2CppTask non-copyable.
 Dn2CppTask dn2cpp_task_default_completed{
     { &dn2cpp_task_type }, DN2CPP_TASK_SUCCEEDED,
-    dn2cpp_task_next_id() }; // keep the "Id > 0" invariant for the sentinel too
+    dn2cpp_task_next_id(), nullptr, nullptr, 0, nullptr, nullptr, nullptr, nullptr,
+    DN2CPP_TASK_ORIGIN_STARTED };
 
 Dn2CppTask* dn2cpp_task_from_result(uint64_t result)
 {
     auto* t = dn2cpp_task_alloc();
+    t->startKind = DN2CPP_TASK_ORIGIN_STARTED;
     t->status.store(DN2CPP_TASK_SUCCEEDED, std::memory_order_relaxed);
     t->result = result;
     dn2cpp_gc_write_barrier(&t->result);
@@ -970,17 +1012,22 @@ static Dn2CppTask* dn2cpp_task_when_all_impl(Dn2CppArrayRef* tasks, int32_t kind
 {
     // Validate before allocating the state, as dn2cpp_task_when_any does: without this
     // a null array and a null element are raw dereferences (a crash where real .NET
-    // answers with a catchable throw). The pair is INVERTED from WhenAny's — .NET gives
-    // ArgumentNullException for the array but ArgumentException for an element here.
+    // answers with a catchable throw). .NET gives ArgumentNullException for the array
+    // and ArgumentException for an element, both naming `tasks`.
     if (tasks == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("tasks");
     for (int32_t i = 0; i < tasks->length; i++)
     {
         if (tasks->data[i] == nullptr)
-            dn2cpp_throw_argument();
+            dn2cpp_throw_argument_param(DN2CPP_SR_NULL_TASK, "tasks");
     }
+    // A singleton non-generic join preserves the input task's identity and origin.
+    if (kind == DN2CPP_WHENALL_VOID && tasks->length == 1)
+        return reinterpret_cast<Dn2CppTask*>(tasks->data[0]);
     auto* s = static_cast<Dn2CppWhenAllState*>(dn2cpp_alloc(sizeof(Dn2CppWhenAllState)));
     dn2cpp_gc_store_ref(&s->result, dn2cpp_task_alloc());
+    if (tasks->length == 0)
+        s->result->startKind = DN2CPP_TASK_ORIGIN_STARTED;
     dn2cpp_gc_store_ref(&s->tasks, tasks);
     s->remaining = tasks->length;
     s->kind = kind;
@@ -1044,24 +1091,40 @@ static void dn2cpp_when_any_one(void* p)
 // The argument validation runs BEFORE the state allocation: dn2cpp_task_alloc would
 // mint a Task nothing will ever settle, and since the rejection is a catchable throw
 // the program keeps running with exactly the shape a later deadlock verdict has to
-// reason about. The answers are real .NET's: an empty array is ArgumentException
-// (ParamName "tasks"), a null array or a null element is ArgumentNullException.
-Dn2CppTask* dn2cpp_task_when_any(Dn2CppArrayRef* tasks)
+// reason about. The answers are real .NET's: a null array is ArgumentNullException,
+// an empty array or a null element ArgumentException, all naming `tasks` — except
+// that .NET forwards exactly two tasks from an array, a span, loose arguments or an
+// exact List<TTask> to WhenAny(task1, task2), whose null argument is an
+// ArgumentNullException naming `task1` or `task2`. No other sequence reaches here
+// holding a null: the emitted enumeration loop rejects it at the first null, as .NET's
+// general path does.
+Dn2CppTask* dn2cpp_task_when_any(Dn2CppArrayRef* tasks, bool pairSource)
 {
     if (tasks == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("tasks");
     if (tasks->length == 0)
-        dn2cpp_throw_argument();
-    // A null element is ArgumentNullException in real .NET, and it is checked in
-    // its own pass ahead of the registration loop: half-registering the
-    // continuations and then throwing would leave the surviving entries pointing
-    // at a shared state whose result task nothing returns, i.e. a completion
-    // callback that fires into an abandoned join. dn2cpp_task_wait_any rejects
-    // the same element before it builds anything, for the same reason.
+        dn2cpp_throw_argument_param(DN2CPP_SR_EMPTY_TASK_LIST, "tasks");
+    // A null element is checked in its own pass ahead of the registration loop:
+    // half-registering the continuations and then throwing would leave the surviving
+    // entries pointing at a shared state whose result task nothing returns, i.e. a
+    // completion callback that fires into an abandoned join. dn2cpp_task_wait_any
+    // rejects the same element before it builds anything, for the same reason.
     for (int32_t i = 0; i < tasks->length; i++)
     {
-        if (tasks->data[i] == nullptr)
-            dn2cpp_throw_argument_null();
+        if (tasks->data[i] != nullptr)
+            continue;
+        if (tasks->length == 2)
+            dn2cpp_throw_argument_null_param(i == 0 ? "task1" : "task2");
+        dn2cpp_throw_argument_param(DN2CPP_SR_NULL_TASK, "tasks");
+    }
+    if (pairSource && tasks->length == 2)
+    {
+        for (int32_t i = 0; i < 2; i++)
+        {
+            auto* task = reinterpret_cast<Dn2CppTask*>(tasks->data[i]);
+            if (task->status.load(std::memory_order_acquire) != DN2CPP_TASK_PENDING)
+                return dn2cpp_task_from_result(static_cast<uint64_t>(reinterpret_cast<uintptr_t>(task)));
+        }
     }
     auto* s = static_cast<Dn2CppWhenAnyState*>(dn2cpp_alloc(sizeof(Dn2CppWhenAnyState)));
     dn2cpp_gc_store_ref(&s->result, dn2cpp_task_alloc());
@@ -1245,6 +1308,7 @@ void dn2cpp_task_set_exception_or_canceled(Dn2CppTask* t, Dn2CppObject* exceptio
 Dn2CppTask* dn2cpp_task_from_canceled()
 {
     auto* t = dn2cpp_task_alloc();
+    t->startKind = DN2CPP_TASK_ORIGIN_STARTED;
     dn2cpp_gc_store_ref(&t->exception, dn2cpp_make_task_canceled_exception());
     t->status.store(DN2CPP_TASK_CANCELED, std::memory_order_relaxed);
     return t;
@@ -1880,6 +1944,7 @@ Dn2CppTask* dn2cpp_task_delay_ct(int64_t ms, Dn2CppCancelSource* src)
     if (src != nullptr && dn2cpp_cts_is_cancelled(src))
     {
         Dn2CppTask* t = dn2cpp_task_alloc();
+        t->startKind = DN2CPP_TASK_ORIGIN_STARTED;
         dn2cpp_task_set_canceled(t);
         return t;
     }
@@ -2086,14 +2151,14 @@ Dn2CppTask* dn2cpp_task_block_wait(Dn2CppTask* t)
 void dn2cpp_task_wait_all(Dn2CppArrayRef* tasks)
 {
     if (tasks == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("tasks");
     // The null-element scan runs AHEAD of the drain: .NET validates the whole array
     // before it waits on anything, so WaitAll([pending, null]) is ArgumentException
     // rather than a block on the pending input that never sees the null.
     for (int32_t i = 0; i < tasks->length; i++)
     {
         if (tasks->data[i] == nullptr)
-            dn2cpp_throw_argument();
+            dn2cpp_throw_argument_param(DN2CPP_SR_WAIT_NULL_TASK, "tasks");
     }
     for (int32_t i = 0; i < tasks->length; i++)
     {
@@ -2127,13 +2192,14 @@ void dn2cpp_task_wait_all(Dn2CppArrayRef* tasks)
 // built, matching .NET's "returns immediately" contract and keeping a settled batch
 // from touching the scheduler at all.
 //
-// Its argument contract differs from WhenAny's on both counts, so do not copy one onto
-// the other: an EMPTY array answers -1 here (WhenAny rejects it), and a null element is
-// ArgumentException (WhenAny gives ArgumentNullException). Measured against net10.0.
+// Its argument contract differs from WhenAny's, so do not copy one onto the other: an
+// EMPTY array answers -1 here (WhenAny rejects it), and a null element is always
+// ArgumentException with WaitAny's own message (a two-task WhenAny gives
+// ArgumentNullException).
 int32_t dn2cpp_task_wait_any(Dn2CppArrayRef* tasks)
 {
     if (tasks == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("tasks");
     // The null scan covers the WHOLE array before an index may be returned: .NET
     // rejects WaitAny([completed, null]) rather than answering 0.
     int32_t settled = -1;
@@ -2141,7 +2207,7 @@ int32_t dn2cpp_task_wait_any(Dn2CppArrayRef* tasks)
     {
         auto* t = reinterpret_cast<Dn2CppTask*>(tasks->data[i]);
         if (t == nullptr)
-            dn2cpp_throw_argument();
+            dn2cpp_throw_argument_param(DN2CPP_SR_WAIT_NULL_TASK, "tasks");
         if (settled < 0 && t->status != DN2CPP_TASK_PENDING)
             settled = i;
     }
@@ -2281,11 +2347,12 @@ struct Dn2CppThread : Dn2CppObject
     Dn2CppObject* start;   // ThreadStart (no-arg) / ParameterizedThreadStart (object) delegate
     Dn2CppObject* arg;     // Start(object) payload — held here so the GC keeps it alive
     void* handle;          // std::thread* (native heap; not a GC pointer)
-    void* sync;            // Dn2CppThreadSync* (native heap; signaled when the body exits)
+    void* sync;            // Dn2CppThreadSync*: null until Start; a materialized thread's never signals
     Dn2CppString* name;
     int32_t managedId;
     int32_t isBackground;
     int32_t alive;         // advisory (IsAlive); set 1 in the trampoline, 0 on exit
+    int32_t parameterized; // built over a ParameterizedThreadStart
 };
 
 // Mark the thread complete and wake any timed Join waiting on it.
@@ -2316,7 +2383,7 @@ void dn2cpp_paramthread_invoke(Dn2CppObject* del, Dn2CppObject* arg)
     reinterpret_cast<void (*)(Dn2CppObject*, Dn2CppObject*)>(dg->method)(dg->target, arg);
 }
 
-static void dn2cpp_thread_trampoline(Dn2CppThread* t, bool param)
+static void dn2cpp_thread_trampoline(Dn2CppThread* t)
 {
     Dn2CppGCThread guard;        // register this thread with the GC for its lifetime
     g_current_thread = t;        // Thread.CurrentThread inside the body
@@ -2324,7 +2391,7 @@ static void dn2cpp_thread_trampoline(Dn2CppThread* t, bool param)
     t->alive = 1;
     try
     {
-        if (param)
+        if (t->parameterized)
             dn2cpp_paramthread_invoke(t->start, t->arg);
         else
             dn2cpp_action_invoke(t->start);
@@ -2350,8 +2417,12 @@ static void dn2cpp_thread_trampoline(Dn2CppThread* t, bool param)
     dn2cpp_principal_left(g_live_user_threads);
 }
 
-Dn2CppThread* dn2cpp_thread_new(Dn2CppObject* start)
+Dn2CppThread* dn2cpp_thread_new(Dn2CppObject* start, int32_t parameterized, int32_t maxStackSize)
 {
+    if (start == nullptr)
+        dn2cpp_throw_argument_null_param("start");
+    if (maxStackSize < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "maxStackSize", maxStackSize);
     auto* t = static_cast<Dn2CppThread*>(dn2cpp_alloc(sizeof(Dn2CppThread)));
     t->type = &dn2cpp_thread_type;
     dn2cpp_gc_store_ref(&t->start, start);
@@ -2362,6 +2433,7 @@ Dn2CppThread* dn2cpp_thread_new(Dn2CppObject* start)
     t->managedId = g_next_thread_id.fetch_add(1, std::memory_order_relaxed);
     t->isBackground = 0;
     t->alive = 0;
+    t->parameterized = parameterized;
     return t;
 }
 
@@ -2380,57 +2452,119 @@ Dn2CppThread* dn2cpp_thread_new(Dn2CppObject* start)
 // (the template is single-threaded, which is what makes Thread throw there), and a leaked
 // +1 would disarm the defeated-wait report for the rest of the process — silently turning
 // wasm's reporting behavior into hanging, which is exactly what must not change.
-static void dn2cpp_thread_spawn(Dn2CppThread* t, bool param)
+//
+// The handle is published under s->m, held from before the thread exists: the body's done
+// signal takes the same lock, so a joiner that saw done also sees the handle to reap.
+static void dn2cpp_thread_spawn(Dn2CppThread* t)
 {
     g_live_user_threads.fetch_add(1, std::memory_order_acq_rel);
+    auto* s = static_cast<Dn2CppThreadSync*>(t->sync);
     try
     {
-        t->handle = new std::thread([t, param] { dn2cpp_thread_trampoline(t, param); });
+        std::lock_guard<std::mutex> lk(s->m);
+        t->handle = new std::thread([t] { dn2cpp_thread_trampoline(t); });
     }
     catch (...)
     {
         dn2cpp_principal_left(g_live_user_threads);
+        dn2cpp_thread_signal_done(t); // no body will run: release a Join instead of stranding it
         throw;
     }
 }
 
+// A thread starts once. The claim is atomic, so neither a second Start nor two racing
+// ones run the body again over the same object, and a refused Start(object) leaves the
+// thread unstarted. As in .NET, the already-started refusal precedes the delegate-kind one.
+static std::mutex& g_thread_start_mtx = dn2cpp_never_destroyed<std::mutex>();
+
+static void dn2cpp_thread_claim_start(Dn2CppThread* t, bool withArg, Dn2CppObject* arg)
+{
+    const Dn2CppTypeInfo* refusedAs = nullptr;
+    const char* refusal = nullptr;
+    {
+        std::lock_guard<std::mutex> lk(g_thread_start_mtx);
+        if (t->sync != nullptr)
+        {
+            refusedAs = &dn2cpp_thread_state_exception_type;
+            refusal = DN2CPP_SR_THREAD_ALREADY_STARTED;
+        }
+        else if (withArg && !t->parameterized)
+        {
+            refusedAs = &dn2cpp_invalid_operation_exception_type;
+            refusal = DN2CPP_SR_THREAD_WRONG_THREAD_START;
+        }
+        else
+        {
+            dn2cpp_gc_store_ref(&t->arg, arg);
+            t->sync = new Dn2CppThreadSync(); // before the thread, so the trampoline sees it
+        }
+    }
+    if (refusedAs != nullptr)
+        dn2cpp_throw_sr0(refusedAs, refusal);
+}
+
 void dn2cpp_thread_start(Dn2CppThread* t)
 {
-    t->sync = new Dn2CppThreadSync(); // create before the thread so the trampoline sees it
-    dn2cpp_thread_spawn(t, false);
+    dn2cpp_thread_claim_start(t, false, nullptr);
+    dn2cpp_thread_spawn(t);
 }
 
 void dn2cpp_thread_start_param(Dn2CppThread* t, Dn2CppObject* arg)
 {
-    dn2cpp_gc_store_ref(&t->arg, arg);
-    t->sync = new Dn2CppThreadSync();
-    dn2cpp_thread_spawn(t, true);
+    dn2cpp_thread_claim_start(t, true, arg);
+    dn2cpp_thread_spawn(t);
+}
+
+static Dn2CppThreadSync* dn2cpp_thread_started_sync(Dn2CppThread* t)
+{
+    Dn2CppThreadSync* s;
+    {
+        std::lock_guard<std::mutex> lk(g_thread_start_mtx);
+        s = static_cast<Dn2CppThreadSync*>(t->sync);
+    }
+    if (s == nullptr)
+        dn2cpp_throw_sr0(&dn2cpp_thread_state_exception_type, DN2CPP_SR_THREAD_NOT_STARTED);
+    return s;
+}
+
+// Joiners wait on the done signal, and the first one to see it takes the OS handle, so
+// concurrent Joins never join one std::thread twice.
+static void dn2cpp_thread_reap(Dn2CppThread* t, Dn2CppThreadSync* s)
+{
+    std::thread* th;
+    {
+        std::lock_guard<std::mutex> lk(s->m);
+        th = static_cast<std::thread*>(t->handle);
+        t->handle = nullptr;
+    }
+    if (th == nullptr)
+        return;
+    if (th->joinable())
+        th->join();
+    delete th;
 }
 
 void dn2cpp_thread_join(Dn2CppThread* t)
 {
-    auto* th = static_cast<std::thread*>(t->handle);
-    if (th != nullptr && th->joinable())
-        th->join();
+    auto* s = dn2cpp_thread_started_sync(t);
+    {
+        std::unique_lock<std::mutex> lk(s->m);
+        s->cv.wait(lk, [s] { return s->done; });
+    }
+    dn2cpp_thread_reap(t, s);
 }
 
 // Thread.Join(int)/Join(TimeSpan): wait up to ms for the body to finish. Returns 1 if it
 // terminated (and joins the underlying std::thread), 0 on timeout (the thread is still
 // running — a later Join() reaps it). -1 means an infinite wait; less is refused with
-// Join's own message.
+// Join's own message before the thread's state is.
 int32_t dn2cpp_thread_join_timeout(Dn2CppThread* t, int32_t ms)
 {
     if (ms < -1)
         dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_NEED_NON_NEG_OR_NEGATIVE1, "millisecondsTimeout");
+    auto* s = dn2cpp_thread_started_sync(t);
     if (ms < 0)
     {
-        dn2cpp_thread_join(t);
-        return 1;
-    }
-    auto* s = static_cast<Dn2CppThreadSync*>(t->sync);
-    if (s == nullptr)
-    {
-        // Never started (or the lazily-materialized main-thread object): nothing to wait on.
         dn2cpp_thread_join(t);
         return 1;
     }
@@ -2441,7 +2575,7 @@ int32_t dn2cpp_thread_join_timeout(Dn2CppThread* t, int32_t ms)
     }
     if (!done)
         return 0; // timeout — leave the thread running, do not join
-    dn2cpp_thread_join(t);
+    dn2cpp_thread_reap(t, s);
     return 1;
 }
 
@@ -2490,6 +2624,8 @@ static void dn2cpp_thread_materialize_current(int32_t managedId)
     t->type = &dn2cpp_thread_type;
     t->managedId = managedId;
     t->alive = 1;
+    // Started and never finishing: Start refuses it, and a Join on it times out.
+    t->sync = new Dn2CppThreadSync();
     auto* node = static_cast<Dn2CppMaterializedThread*>(dn2cpp_alloc(sizeof(Dn2CppMaterializedThread)));
     node->t = t;
     {
@@ -2987,6 +3123,7 @@ static void dn2cpp_pool_enqueue(Dn2CppTask* t, Dn2CppObject* del, Dn2CppObject* 
 Dn2CppTask* dn2cpp_pool_submit(Dn2CppObject* del, uint64_t (*invoke)(Dn2CppObject*))
 {
     Dn2CppTask* t = dn2cpp_task_alloc();
+    t->startKind = DN2CPP_TASK_ORIGIN_STARTED;
     dn2cpp_pool_enqueue(t, del, nullptr, invoke, nullptr);
     return t;
 }
@@ -2998,6 +3135,7 @@ static Dn2CppTask* dn2cpp_pool_submit_state(Dn2CppObject* del, Dn2CppObject* sta
                                             uint64_t (*invoke2)(Dn2CppObject*, Dn2CppObject*))
 {
     Dn2CppTask* t = dn2cpp_task_alloc();
+    t->startKind = DN2CPP_TASK_ORIGIN_STARTED;
     dn2cpp_pool_enqueue(t, del, state, nullptr, invoke2);
     return t;
 }
@@ -3035,6 +3173,7 @@ static Dn2CppTask* dn2cpp_pool_submit_unwrap(Dn2CppObject* del)
 static Dn2CppTask* dn2cpp_pool_submit_nested(Dn2CppObject* del)
 {
     Dn2CppTask* t = dn2cpp_task_alloc();
+    t->startKind = DN2CPP_TASK_ORIGIN_STARTED;
     // A caller holding the task also keeps its worker delegate reachable.
     dn2cpp_gc_store_ref(&t->workerKeepAlive, del);
     Dn2CppPoolNode* node = dn2cpp_pool_node_new(t, del, nullptr);
@@ -3249,6 +3388,7 @@ static Dn2CppTask* dn2cpp_task_cold(Dn2CppObject* del, Dn2CppObject* state,
     c->invoke = invoke;
     c->invoke2 = invoke2;
     dn2cpp_gc_store_ref(&t->cold, c);
+    t->startKind = DN2CPP_TASK_ORIGIN_COLD;
     return t;
 }
 
@@ -3269,10 +3409,27 @@ Dn2CppTask* dn2cpp_task_cold_void_state(Dn2CppObject* del, Dn2CppObject* state)
 
 // Claim a cold task's unstarted work exactly once, under g_task_mtx (the same
 // lock that serializes completion/await-registration, so two racing Starts see
-// one winner). A task that was never cold (an async-method or Task.Run task) or
-// was already claimed throws InvalidOperationException, matching real .NET.
-static Dn2CppTaskCold* dn2cpp_task_claim_cold(Dn2CppTask* t, const char* verb)
+// one winner). The origin distinguishes promise, continuation and started tasks.
+static Dn2CppTaskCold* dn2cpp_task_claim_cold(Dn2CppTask* t, bool synchronous,
+                                               Dn2CppObject* scheduler)
 {
+    if (synchronous && scheduler == nullptr)
+        dn2cpp_throw_argument_null_param("scheduler");
+    dn2cpp_null_check(t);
+    int32_t status = t->status.load(std::memory_order_acquire);
+    if (!synchronous && status != DN2CPP_TASK_PENDING)
+        dn2cpp_throw_sr0(&dn2cpp_invalid_operation_exception_type, DN2CPP_SR_TASK_START_COMPLETED);
+    if (!synchronous && scheduler == nullptr)
+        dn2cpp_throw_argument_null_param("scheduler");
+    if (t->startKind == DN2CPP_TASK_ORIGIN_CONTINUATION)
+        dn2cpp_throw_sr0(&dn2cpp_invalid_operation_exception_type,
+            synchronous ? DN2CPP_SR_TASK_SYNC_CONTINUATION : DN2CPP_SR_TASK_START_CONTINUATION);
+    if (t->startKind == DN2CPP_TASK_ORIGIN_PROMISE
+        || t->startKind == DN2CPP_TASK_ORIGIN_ASYNC_UNEXPOSED)
+        dn2cpp_throw_sr0(&dn2cpp_invalid_operation_exception_type,
+            synchronous ? DN2CPP_SR_TASK_SYNC_PROMISE : DN2CPP_SR_TASK_START_PROMISE);
+    if (synchronous && status != DN2CPP_TASK_PENDING)
+        dn2cpp_throw_sr0(&dn2cpp_invalid_operation_exception_type, DN2CPP_SR_TASK_SYNC_COMPLETED);
     Dn2CppTaskCold* c;
     {
         std::lock_guard<std::mutex> lk(g_task_mtx);
@@ -3280,24 +3437,20 @@ static Dn2CppTaskCold* dn2cpp_task_claim_cold(Dn2CppTask* t, const char* verb)
         dn2cpp_gc_store_ref(&t->cold, static_cast<Dn2CppTaskCold*>(nullptr));
     }
     if (c == nullptr)
-    {
-        std::string msg = std::string(verb)
-            + " may not be called on a task that has completed, has been started, or is a promise-style task.";
-        dn2cpp_throw(dn2cpp_exception_new(&dn2cpp_invalid_operation_exception_type,
-            dn2cpp_string_from_utf8(msg.c_str(), static_cast<int32_t>(msg.size())), nullptr));
-    }
+        dn2cpp_throw_sr0(&dn2cpp_invalid_operation_exception_type,
+            synchronous ? DN2CPP_SR_TASK_SYNC_ALREADY : DN2CPP_SR_TASK_START_ALREADY);
     return c;
 }
 
-void dn2cpp_task_start(Dn2CppTask* t)
+void dn2cpp_task_start(Dn2CppTask* t, Dn2CppObject* scheduler)
 {
-    Dn2CppTaskCold* c = dn2cpp_task_claim_cold(t, "Start");
+    Dn2CppTaskCold* c = dn2cpp_task_claim_cold(t, false, scheduler);
     dn2cpp_pool_enqueue(t, c->del, c->state, c->invoke, c->invoke2);
 }
 
-void dn2cpp_task_run_synchronously(Dn2CppTask* t)
+void dn2cpp_task_run_synchronously(Dn2CppTask* t, Dn2CppObject* scheduler)
 {
-    Dn2CppTaskCold* c = dn2cpp_task_claim_cold(t, "RunSynchronously");
+    Dn2CppTaskCold* c = dn2cpp_task_claim_cold(t, true, scheduler);
     // Run inline on the calling thread. A fault settles the task FAULTED — it
     // surfaces at Wait/Result/await, not here — matching real .NET.
     try
@@ -3469,6 +3622,7 @@ Dn2CppTask* dn2cpp_task_continue_with(Dn2CppTask* t, Dn2CppObject* del, Dn2CppOb
 {
     dn2cpp_null_check(t);
     Dn2CppTask* ct = dn2cpp_task_alloc();
+    ct->startKind = DN2CPP_TASK_ORIGIN_CONTINUATION;
     // A caller holding the continuation task also keeps its delegate reachable.
     dn2cpp_gc_store_ref(&ct->workerKeepAlive, del);
     auto* c = static_cast<Dn2CppContWith*>(dn2cpp_alloc(sizeof(Dn2CppContWith)));
@@ -3582,6 +3736,7 @@ Dn2CppTask* dn2cpp_task_continue_with_struct(Dn2CppTask* t, Dn2CppObject* del,
 {
     dn2cpp_null_check(t);
     Dn2CppTask* ct = dn2cpp_task_alloc();
+    ct->startKind = DN2CPP_TASK_ORIGIN_CONTINUATION;
     // A caller holding the continuation task also keeps its delegate reachable.
     dn2cpp_gc_store_ref(&ct->workerKeepAlive, del);
     auto* c = static_cast<Dn2CppContWith*>(dn2cpp_alloc(sizeof(Dn2CppContWith)));

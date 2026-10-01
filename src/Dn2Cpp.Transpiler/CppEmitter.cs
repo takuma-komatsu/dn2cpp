@@ -3283,6 +3283,8 @@ internal sealed partial class CppEmitter
                         $"static void {row.ThunkSym}(Dn2CppObject* o) {{ dn2cpp_mmap_view_object_dispose((Dn2CppMappedViewObject*)o); }}",
                     Compilation.IntrinsicInterfaceThunkKind.NoopDispose =>
                         $"static void {row.ThunkSym}(Dn2CppObject* o) {{ (void)o; }}",
+                    Compilation.IntrinsicInterfaceThunkKind.BlockingCollectionDispose =>
+                        $"static void {row.ThunkSym}(Dn2CppObject* o) {{ dn2cpp_blockingcoll_dispose(o); }}",
                     // The direct Dispose lowerings of the same types, so the two mouths
                     // cannot disagree.
                     Compilation.IntrinsicInterfaceThunkKind.CtsDispose =>
@@ -4835,6 +4837,7 @@ internal sealed partial class CppEmitter
         // like dn2cpp_type_binds above — every consumer of the runtime links generated code.
         sb.AppendLine($"const int32_t dn2cpp_exception_get_message_slot = {_c.ExceptionGetMessageSlot()};");
         EmitArgumentExceptionStore(sb);
+        EmitObjectDisposedExceptionStore(sb);
         sb.AppendLine();
         EmitBclMessages(sb);
     }
@@ -4866,6 +4869,26 @@ internal sealed partial class CppEmitter
         else
         {
             sb.AppendLine("    (void)e; (void)paramName; (void)actualValue;");
+            sb.AppendLine("    return false;");
+        }
+        sb.AppendLine("}");
+    }
+
+    private void EmitObjectDisposedExceptionStore(StringBuilder sb)
+    {
+        var name = BoundInstanceField("System.ObjectDisposedException", "_objectName");
+        sb.AppendLine("bool dn2cpp_object_disposed_exception_store(Dn2CppObject* e, Dn2CppString* objectName)");
+        sb.AppendLine("{");
+        if (name is var (cls, field))
+        {
+            sb.AppendLine($"    if (e->type->instanceSize < (int32_t)sizeof({cls.CppStructName}))");
+            sb.AppendLine("        return false;");
+            sb.AppendLine($"    dn2cpp_gc_store_ref(&(({cls.CppStructName}*)e)->{field.CppName}, objectName);");
+            sb.AppendLine("    return true;");
+        }
+        else
+        {
+            sb.AppendLine("    (void)e; (void)objectName;");
             sb.AppendLine("    return false;");
         }
         sb.AppendLine("}");
