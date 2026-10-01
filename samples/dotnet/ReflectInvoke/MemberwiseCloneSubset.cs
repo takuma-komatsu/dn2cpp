@@ -17,6 +17,25 @@ namespace MemberwiseCloneSubset;
 
 static class Program
 {
+    internal static void RunEmptyStrings()
+    {
+        Console.WriteLine("== empty string clone identity ==");
+        MethodInfo clone = typeof(object).GetMethod(
+            "MemberwiseClone", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        string[] sources = { string.Empty, new string('x', 0),
+            new string(ReadOnlySpan<char>.Empty), (string)clone.Invoke(string.Empty, null)! };
+        for (int i = 0; i < sources.Length; i++)
+        {
+            string source = sources[i];
+            string first = (string)clone.Invoke(source, null)!;
+            string second = (string)clone.Invoke(source, null)!;
+            Console.WriteLine("empty clone " + i + "=" + first.Length + ":" + first.GetType().FullName
+                + ":" + ReferenceEquals(first, source) + ":" + ReferenceEquals(first, string.Empty)
+                + ":" + ReferenceEquals(first, second));
+        }
+        Console.WriteLine("empty string clone identity end");
+    }
+
     class Base
     {
         public int Id;

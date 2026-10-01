@@ -3659,11 +3659,11 @@ char16_t dn2cpp_convert_str_to_char(Dn2CppString* s);
 // Convert.ToChar(integer) — OverflowException outside the code-unit range.
 char16_t dn2cpp_convert_i32_to_char(int32_t v);
 
-// Builds an independent (copied) string from `length` UTF-16 code units —
-// `new string(ReadOnlySpan<char>/char[])` / span<char>.ToString() (the source may
-// alias or be mutated later, so unlike _literal these copy). _repeat_char fills the
-// `new string(char, count)` form.
+// Char copies are independent even for empty sources, as MemberwiseClone needs.
+// Span/array constructors share String.Empty for an empty source; nonempty
+// sources are copied. _repeat_char fills the (char, count) constructor form.
 Dn2CppString* dn2cpp_string_from_chars(const char16_t* chars, int32_t length);
+Dn2CppString* dn2cpp_string_from_charspan(const char16_t* chars, int32_t length);
 Dn2CppString* dn2cpp_string_from_chararray(Dn2CppArrayN* value);
 Dn2CppString* dn2cpp_string_from_chararray_slice(Dn2CppArrayN* value, int32_t start, int32_t length);
 // ISpanFormattable write of a formatted string into a char span (the .NET TryFormat

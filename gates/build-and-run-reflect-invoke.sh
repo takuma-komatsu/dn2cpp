@@ -124,10 +124,30 @@
 # instance method: a null receiver faults when bound, before invocation.
 # Former gates: reflect-invoke, reflect-dispatch, reflect-field-value,
 # reflect-serializer, activator-subset, event-subset.
+# Empty string MemberwiseClone retains a distinct reference.
 source "$(dirname "$0")/_common.sh"
 
 py="$(resolve_python)"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/check-reflection-layout.py gates/measure-reflection-metadata.py gates/expected/reflection-allocations.csv"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|empty-string-clone-prefix:${DN2CPP_BEFORE_EMPTY_STRING_CLONE:-}"
+gate_empty_string_clone_asserts() {
+    local out="$1" native line
+    native=$(strip_cr_win_file "$out/metadata-layout.stdout")
+    DN2CPP_BEFORE_EMPTY_STRING_CLONE=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-empty-string-clone.stdout"
+    sed '/^== empty string clone identity ==/,$d' "$out/metadata-layout.stdout" > "$out/empty-string-clone-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-empty-string-clone.stdout") \
+        <(strip_cr_win_file "$out/empty-string-clone-prefix.stdout")
+    for line in '== empty string clone identity ==' \
+        'empty clone 0=0:System.String:False:False:False' \
+        'empty clone 1=0:System.String:False:False:False' \
+        'empty clone 2=0:System.String:False:False:False' \
+        'empty clone 3=0:System.String:False:False:False' \
+        'empty string clone identity end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: empty string clone witness missing: $line" >&2; return 1; }
+    done
+}
+
 gate_extra_asserts() {
     local out="$1"
     "$py" gates/fixtures/check-reflection-layout.py "$out" "$reflection_layout_axis"
@@ -289,6 +309,7 @@ gate_extra_asserts() {
     sed '/^== runtime handle relations ==/,$d' "$out/metadata-layout.stdout" > "$out/runtime-handle-relations-prefix.stdout"
     diff -u <(strip_cr_win_file "$out/before-runtime-handle-relations.stdout") \
         <(strip_cr_win_file "$out/runtime-handle-relations-prefix.stdout")
+    gate_empty_string_clone_asserts "$out"
 
     # Enforce each operation's first and repeated allocation budget independently.
     # The capture reports time too, but timing is not a pass/fail threshold.

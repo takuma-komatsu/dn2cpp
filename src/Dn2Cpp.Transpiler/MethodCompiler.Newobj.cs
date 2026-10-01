@@ -1748,7 +1748,7 @@ internal sealed partial class MethodCompiler
             {
                 string sv = SpanValue(Pop(), CppTypes.Of(sps[0]));
                 Push(StackKind.Ref, "Dn2CppString*",
-                    $"dn2cpp_string_from_chars((char16_t*){sv}.f__reference, {sv}.f__length)");
+                    $"dn2cpp_string_from_charspan((char16_t*){sv}.f__reference, {sv}.f__length)");
                 return;
             }
             // new string(char[]) / new string(char[], int start, int length)
