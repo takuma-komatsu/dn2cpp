@@ -8,8 +8,11 @@ namespace CancellationRegister
     // printed, so the program is fully deterministic and diffed exact vs real .NET.
     internal static class Program
     {
-        private static void Main()
+        private static void Main(string[] args)
         {
+            System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+            System.Globalization.CultureInfo.CurrentUICulture = System.Globalization.CultureInfo.InvariantCulture;
+
             CrossThreadCancel.Program.__GateEntry();
             LifoOrder.Program.__GateEntry();
             AlreadyCanceled.Program.__GateEntry();
@@ -23,6 +26,9 @@ namespace CancellationRegister
             CancellationIntrinsicToString.Program.__GateEntry();
             // APPENDED LAST (the prove-it-ran prefix rule, AGENTS.md).
             CancellationTokenHash.Program.__GateEntry();
+            if (args.Length != 0 && args[0] == "before-argument-fields")
+                return;
+            CancellationDelayValidationSubset.__GateEntry();
         }
     }
 }

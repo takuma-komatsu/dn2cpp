@@ -287,15 +287,29 @@ internal sealed partial class MethodCompiler
             case ("System.Threading.Tasks.ParallelOptions", "get_MaxDegreeOfParallelism"):
             {
                 var recv = Pop(); // this
-                Push(StackKind.I4, "int32_t", $"(((Dn2CppParallelOptions*)({recv.Expr}))->maxDop)");
+                string options = NewTemp("Dn2CppObject*");
+                Emit($"{options} = {Cast(recv, "Dn2CppObject*")};");
+                Emit($"if ({options} == nullptr) dn2cpp_throw_null_reference();");
+                Push(StackKind.I4, "int32_t", $"(((Dn2CppParallelOptions*){options})->maxDop)");
                 return true;
             }
             case ("System.Threading.Tasks.ParallelOptions", "set_MaxDegreeOfParallelism"):
             {
                 var val = Pop();
                 var recv = Pop(); // this
-                Emit($"if (({val.Expr}) == 0 || ({val.Expr}) < -1) dn2cpp_throw_argument_out_of_range();");
-                Emit($"((Dn2CppParallelOptions*)({recv.Expr}))->maxDop = ({val.Expr});");
+                string dop = NewTemp("int32_t");
+                Emit($"{dop} = {val.Expr};");
+                string options = NewTemp("Dn2CppObject*");
+                Emit($"{options} = {Cast(recv, "Dn2CppObject*")};");
+                if (CallIsVirtual)
+                    Emit($"if ({options} == nullptr) dn2cpp_throw_null_reference();");
+                Emit($"if ({dop} == 0) dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_ZERO, "
+                    + $"\"MaxDegreeOfParallelism\", {dop});");
+                Emit($"if ({dop} < -1) dn2cpp_throw_argument_out_of_range_bound(DN2CPP_SR_MUST_BE_GREATER_OR_EQUAL, "
+                    + $"\"MaxDegreeOfParallelism\", {dop}, -1, 4);");
+                if (!CallIsVirtual)
+                    Emit($"if ({options} == nullptr) dn2cpp_throw_null_reference();");
+                Emit($"((Dn2CppParallelOptions*){options})->maxDop = {dop};");
                 return true;
             }
             case ("System.Threading.Tasks.ParallelOptions",

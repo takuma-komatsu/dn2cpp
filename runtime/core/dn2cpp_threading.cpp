@@ -1255,12 +1255,18 @@ static int32_t dn2cpp_event_try_wait(Dn2CppObject* o)
 int32_t dn2cpp_event_wait_any(Dn2CppArrayRef* handles)
 {
     if (handles == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("waitHandles");
     if (handles->length == 0)
-        dn2cpp_throw_argument();
+        dn2cpp_throw_argument_message(
+            dn2cpp_sr_message(DN2CPP_SR_EMPTY_WAITHANDLE_ARRAY, nullptr, 0), "waitHandles");
     for (int32_t i = 0; i < handles->length; i++)
         if (handles->data[i] == nullptr)
-            dn2cpp_throw_argument_null();
+        {
+            char name[32];
+            std::snprintf(name, sizeof(name), "waitHandles[%d]", static_cast<int>(i));
+            dn2cpp_throw_argument_text(&dn2cpp_argument_null_exception_type,
+                dn2cpp_sr_text(DN2CPP_SR_ARGUMENT_NULL_ARRAY_ELEMENT), name);
+        }
     for (;;)
     {
         for (int32_t i = 0; i < handles->length; i++)
@@ -2153,12 +2159,16 @@ static Dn2CppObject* dn2cpp_timer_new_with_type(Dn2CppTypeInfo* type,
 Dn2CppObject* dn2cpp_timer_new(Dn2CppObject* callback, Dn2CppObject* state,
                                int64_t dueMs, int64_t periodMs)
 {
+    if (callback == nullptr)
+        dn2cpp_throw_argument_null_param("callback");
     return dn2cpp_timer_new_with_type(&dn2cpp_timer_type, callback, state, dueMs, periodMs);
 }
 
 Dn2CppObject* dn2cpp_timeprovider_timer_new(Dn2CppObject* callback, Dn2CppObject* state,
                                             int64_t dueMs, int64_t periodMs)
 {
+    if (callback == nullptr)
+        dn2cpp_throw_argument_null_param("callback");
     return dn2cpp_timer_new_with_type(&dn2cpp_timeprovider_timer_type,
                                       callback, state, dueMs, periodMs);
 }
@@ -2172,8 +2182,48 @@ Dn2CppObject* dn2cpp_timeprovider_timer_new(Dn2CppObject* callback, Dn2CppObject
 // set before this returns — the caller may block on the callback's settle next — and a
 // Change to Timeout.Infinite retires the pending fire, so the principal leaves HERE,
 // not at Dispose (a callback in flight keeps its count until it returns).
+// ThrowIfLessThan(value, -1), the ActualValue boxed at the overload's `byteWidth`.
+static void dn2cpp_timer_require_not_below(int64_t ms, int32_t byteWidth, const char* paramName)
+{
+    if (ms < -1)
+        dn2cpp_throw_argument_out_of_range_bound(DN2CPP_SR_MUST_BE_GREATER_OR_EQUAL, paramName,
+            ms, -1, byteWidth);
+}
+
+// ThrowIfGreaterThan(value, Timer.MaxSupportedTimeout) over a long.
+static void dn2cpp_timer_require_not_above(int64_t ms, const char* paramName)
+{
+    if (ms > INT64_C(0xFFFFFFFE))
+        dn2cpp_throw_argument_out_of_range_bound(DN2CPP_SR_MUST_BE_LESS_OR_EQUAL, paramName,
+            ms, INT64_C(0xFFFFFFFE), 8);
+}
+
+void dn2cpp_timer_require_int(int64_t dueMs, int64_t periodMs)
+{
+    dn2cpp_timer_require_not_below(dueMs, 4, "dueTime");
+    dn2cpp_timer_require_not_below(periodMs, 4, "period");
+}
+
+void dn2cpp_timer_require_long(int64_t dueMs, int64_t periodMs)
+{
+    dn2cpp_timer_require_not_below(dueMs, 8, "dueTime");
+    dn2cpp_timer_require_not_below(periodMs, 8, "period");
+    dn2cpp_timer_require_not_above(dueMs, "dueTime");
+    dn2cpp_timer_require_not_above(periodMs, "period");
+}
+
+void dn2cpp_timer_require_span(int64_t dueMs, int64_t periodMs)
+{
+    dn2cpp_timer_require_not_below(dueMs, 8, "dueTime");
+    dn2cpp_timer_require_not_above(dueMs, "dueTime");
+    dn2cpp_timer_require_not_below(periodMs, 8, "period");
+    dn2cpp_timer_require_not_above(periodMs, "period");
+}
+
 int32_t dn2cpp_timer_change(Dn2CppObject* o, int64_t dueMs, int64_t periodMs)
 {
+    if (o == nullptr)
+        dn2cpp_throw_null_reference();
     auto* t = static_cast<Dn2CppManagedTimer*>(o);
     {
         std::lock_guard<std::mutex> lk(t->m);
@@ -2209,18 +2259,21 @@ int32_t dn2cpp_timer_dispose(Dn2CppObject* o)
         t->disposed = true;
         dn2cpp_timer_sync_principal(t);
         // Read under t->m: this is the only edge ordering the ctor's publish of
-        // handle/threadId before these reads.
+        // handle/threadId before these reads. Claimed there too, so of two racing
+        // Disposes only one joins the thread.
         th = static_cast<std::thread*>(t->handle);
+        t->handle = nullptr;
         tid = t->threadId;
     }
     t->cv.notify_one();
     // The join stays OUTSIDE t->m — the timer thread holds it around every wait.
-    if (th != nullptr && th->joinable())
+    if (th != nullptr)
     {
         if (std::this_thread::get_id() == tid)
             th->detach(); // Dispose() called from the callback — cannot join self
         else
             th->join();
+        delete th;
     }
     return 1;
 }

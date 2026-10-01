@@ -805,7 +805,8 @@ internal sealed partial class MethodCompiler
             }
             // ---- System.Threading.Timer (per-timer OS thread) ----
             // Change(dueTime, period): reschedule (int/long/uint/TimeSpan overloads, converted
-            // to int64 ms). Returns false after Dispose, true otherwise — matching .NET.
+            // to int64 ms and range-checked as the overload checks them). Returns false after
+            // Dispose, true otherwise — matching .NET.
             case ("System.Threading.Timer", "Change"):
             case ("System.TimeProvider+SystemTimeProviderTimer", "Change"):
             {
@@ -820,8 +821,15 @@ internal sealed partial class MethodCompiler
                 var period = Pop();
                 var dueTime = Pop();
                 var o = Pop();
+                string timer = NewTemp("Dn2CppObject*");
+                Emit($"{timer} = {Cast(o, "Dn2CppObject*")};");
+                // The TimeSpan body dereferences its timer before validating the delays.
+                if (CallIsVirtual || IsTimeSpan(ps[0]))
+                    Emit($"if ({timer} == nullptr) dn2cpp_throw_null_reference();");
+                // The range checks precede the disposed test, as in .NET.
+                var (dueMs, periodMs) = CheckedTimerMs(dueTime, period, ps[0], ps[1]);
                 Push(StackKind.I4, "int32_t",
-                    $"dn2cpp_timer_change((Dn2CppObject*)({o.Expr}), {TimerMs(dueTime, ps[0])}, {TimerMs(period, ps[1])})");
+                    $"dn2cpp_timer_change({timer}, {dueMs}, {periodMs})");
                 return true;
             }
             // Dispose(): stop the timer and join its thread. Timer.Dispose() returns void, so

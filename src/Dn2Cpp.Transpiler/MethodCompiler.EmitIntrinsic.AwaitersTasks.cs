@@ -504,10 +504,16 @@ internal sealed partial class MethodCompiler
             {
                 var arg = Pop();  // TimeSpan delay or int millisecondsDelay
                 var s = Pop();    // this
-                string ms = sig.ParameterTypes is [{ } p] && IsTimeSpan(p)
+                bool span = sig.ParameterTypes is [{ } p] && IsTimeSpan(p);
+                string ms = span
                     ? $"(int64_t)dn2cpp_timespan_total({TSVal(arg)}, 10000LL)" // TimeSpan -> total ms
                     : $"(int64_t)({arg.Expr})";                                // millisecondsDelay
-                Emit($"dn2cpp_cts_cancel_after((Dn2CppCancelSource*)({s.Expr}), {ms});");
+                string source = NewTemp("Dn2CppObject*");
+                Emit($"{source} = {Cast(s, "Dn2CppObject*")};");
+                if (CallIsVirtual)
+                    Emit($"if ({source} == nullptr) dn2cpp_throw_null_reference();");
+                Emit($"dn2cpp_cts_cancel_after((Dn2CppCancelSource*){source}, {ms}, "
+                    + $"\"{(span ? "delay" : "millisecondsDelay")}\");");
                 return true;
             }
             // Dispose(): the source is GC-managed, so nothing is released — except the

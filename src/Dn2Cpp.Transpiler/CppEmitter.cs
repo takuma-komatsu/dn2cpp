@@ -3295,7 +3295,9 @@ internal sealed partial class CppEmitter
                         $"static void {row.ThunkSym}(Dn2CppObject* o) {{ dn2cpp_waithandle_close(o); }}",
                     Compilation.IntrinsicInterfaceThunkKind.TimerChange =>
                         $"static int32_t {row.ThunkSym}(Dn2CppObject* o, Dn2CppTimeSpan due, Dn2CppTimeSpan period) " +
-                        "{ return dn2cpp_timer_change(o, due.ticks / 10000LL, period.ticks / 10000LL); }",
+                        "{ int64_t d = (int64_t)dn2cpp_timespan_total(due, 10000LL); " +
+                        "int64_t p = (int64_t)dn2cpp_timespan_total(period, 10000LL); " +
+                        "dn2cpp_timer_require_span(d, p); return dn2cpp_timer_change(o, d, p); }",
                     Compilation.IntrinsicInterfaceThunkKind.TimerDisposeAsync =>
                         $"static Dn2CppTaskAwaiter {row.ThunkSym}(Dn2CppObject* o) " +
                         "{ dn2cpp_timer_dispose(o); return Dn2CppTaskAwaiter{ nullptr }; }",

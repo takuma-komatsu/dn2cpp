@@ -555,24 +555,43 @@ internal sealed partial class MethodCompiler
                     $"{Method.DeclaringClass.FullName}.{Method.Name}: unsupported timeout " +
                     $"parameter type '{paramType}'");
 
-    /// <summary>The C++ int64 millisecond expression for a Timer dueTime/period argument:
-    /// an <c>int</c>/<c>long</c> passes through (widened); a <c>TimeSpan</c> converts via
-    /// its tick count (TicksPerMillisecond = 10000), matching
-    /// <c>(long)TimeSpan.TotalMilliseconds</c> — so Timeout.InfiniteTimeSpan (-1 ms) maps
-    /// to -1 (idle). A <c>uint</c> widens unsigned, mapping the unsigned-infinity sentinel
-    /// 0xFFFFFFFF to -1 (idle), matching the real uint Timer overloads. Throws for any
-    /// other parameter shape.</summary>
+    /// <summary>Preserves Timer's TotalMilliseconds rounding and unsigned infinity.</summary>
     private string TimerMs(StackEntry arg, TypeDesc paramType) => paramType switch
     {
         { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 } => $"(int64_t)({arg.Expr})",
         { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int64 } => arg.Expr,
         { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.UInt32 } =>
             $"((uint32_t)({arg.Expr}) == 0xFFFFFFFFu ? (int64_t)-1 : (int64_t)(uint32_t)({arg.Expr}))",
-        _ when IsTimeSpan(paramType) => $"(int64_t)(({TSVal(arg)}).ticks / 10000)",
+        _ when IsTimeSpan(paramType) => $"(int64_t)dn2cpp_timespan_total({TSVal(arg)}, 10000LL)",
         _ => throw new NotSupportedException(
             $"{Method.DeclaringClass.FullName}.{Method.Name}: unsupported Timer " +
             $"dueTime/period parameter type '{paramType}'"),
     };
+
+    /// <summary>A Timer overload's (dueTime, period) as int64 millisecond temps, checked as
+    /// that overload family checks them (<c>dn2cpp_timer_require_*</c>). A <c>uint</c> pair
+    /// is unchecked.</summary>
+    private (string Due, string Period) CheckedTimerMs(StackEntry dueTime, StackEntry period,
+        TypeDesc dueType, TypeDesc periodType)
+    {
+        string due = TimerMs(dueTime, dueType);
+        string per = TimerMs(period, periodType);
+        string? family = dueType switch
+        {
+            { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 } => "int",
+            { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int64 } => "long",
+            _ when IsTimeSpan(dueType) => "span",
+            _ => null,
+        };
+        if (family is null)
+            return (due, per);
+        string d = NewTemp("int64_t");
+        string p = NewTemp("int64_t");
+        Emit($"{d} = {due};");
+        Emit($"{p} = {per};");
+        Emit($"dn2cpp_timer_require_{family}({d}, {p});");
+        return (d, p);
+    }
     private static bool IsDateTime(TypeDesc t) =>
         t is { Kind: TypeKind.Class, Class.FullName: "System.DateTime" };
     private static bool IsDateTimeOffset(TypeDesc t) =>

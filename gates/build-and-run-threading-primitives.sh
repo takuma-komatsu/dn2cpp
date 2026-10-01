@@ -21,6 +21,27 @@
 # bodies. This is the native axis's only diff of that contract against real .NET;
 # its wasm twin also proves both PAL symbols link. Do not prune it by reading the
 # gate's name.
+# Named argument faults, boxed bounds, validation order and GC-retained fields.
 source "$(dirname "$0")/_common.sh"
+gate_extra_asserts() {
+    local out="$1" native before prefix line
+    [[ "$_CG_APP" == */ThreadingPrimitives.dll ]] || return 0
+    native=$(run_bounded "./$out/ThreadingPrimitives")
+    native=$(strip_cr_win "$native")
+    before=$(dotnet "$_CG_APP" before-argument-fields)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== WaitHandle array fields ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== WaitHandle array fields ==' \
+        'wait null param=waitHandles' \
+        'wait empty param=waitHandles' \
+        'wait element param=waitHandles[1]' \
+        'wait fields GC type=ArgumentException' \
+        'WaitHandle array fields end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: ThreadingPrimitives validation witness missing: $line" >&2; exit 1; }
+    done
+}
+
 corelib_diff_gate ThreadingPrimitives
 corelib_diff_gate MonotonicClock

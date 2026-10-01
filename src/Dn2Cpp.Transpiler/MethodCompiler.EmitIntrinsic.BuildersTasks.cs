@@ -120,6 +120,7 @@ internal sealed partial class MethodCompiler
                 Comp.NoteReferencedType(wiItf);
                 string tmp = NewTemp("Dn2CppObject*");
                 Emit($"{tmp} = {Cast(wi, "Dn2CppObject*")};");
+                Emit($"if ({tmp} == nullptr) dn2cpp_throw_argument_null_param(\"callBack\");");
                 Push(StackKind.I4, "int32_t",
                     $"dn2cpp_threadpool_queue_workitem({tmp}, " +
                     $"dn2cpp_resolve_interface({tmp}->type, &{wiItf.CppTypeInfoName})[{wiExec.VtableSlot}])");

@@ -1724,24 +1724,31 @@ static void dn2cpp_cts_timer_thread(Dn2CppCancelSource** cell)
 // and distinct from the scheduler's virtual clock (which a synchronous program never
 // pumps). On Emscripten there is no thread to spawn: the arm below records the deadline
 // and dn2cpp_cts_is_cancelled fires it lazily at the poll (reasoning at that arm).
-// Rescheduling and rooting are described above. A null source
-// (CancellationToken.None never times out) is a no-op, and so is a source already canceled
-// or disposed. HttpClient.Timeout's default 100 s reaches here through
-// PrepareCancellationTokenSource.
+// Rescheduling and rooting are described above. Callvirt checks a null source before
+// the delay; call validates the delay first. Valid delays on a disposed source throw,
+// while an already canceled source is a no-op. HttpClient.Timeout reaches this helper
+// through PrepareCancellationTokenSource.
 //
 // Delay contract, measured against real .NET: ms == -1 is Timeout.Infinite and disarms
 // without ever cancelling; anything outside [-1, Timer.MaxSupportedTimeout] is
-// ArgumentOutOfRangeException — only the TimeSpan overload can exceed the ceiling, and
+// ArgumentOutOfRangeException naming `paramName`, the overload's parameter
+// ("millisecondsDelay" or "delay") — only the TimeSpan overload can exceed the ceiling, and
 // checking it is also what keeps the deadline arithmetic below inside int64. ms == 0
 // cancels here, synchronously, where real .NET posts to its timer queue and cancels a
 // moment later — a declared divergence, because the only observable difference is whether
 // the very next statement sees IsCancellationRequested, which is a race on real .NET too.
-void dn2cpp_cts_cancel_after(Dn2CppCancelSource* src, int64_t ms)
+void dn2cpp_cts_cancel_after(Dn2CppCancelSource* src, int64_t ms, const char* paramName)
 {
     if (ms < -1 || ms > 4294967294LL) // Timer.MaxSupportedTimeout
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_ARGUMENT_OUT_OF_RANGE, paramName);
     if (src == nullptr)
-        return;
+        dn2cpp_throw_null_reference();
+    {
+        std::lock_guard<std::mutex> lk(g_cts_mtx);
+        if (src->disposed)
+            dn2cpp_throw(dn2cpp_exception_new(&dn2cpp_object_disposed_exception_type,
+                dn2cpp_sr_message(DN2CPP_SR_CANCELLATION_SOURCE_DISPOSED, nullptr, 0), nullptr));
+    }
     if (ms == 0)
     {
         dn2cpp_cts_cancel(src);
@@ -1845,10 +1852,10 @@ void dn2cpp_cts_dispose(Dn2CppCancelSource* src)
     g_cts_timer_cv.notify_all();
 }
 
-Dn2CppCancelSource* dn2cpp_cts_new_after(int64_t ms)
+Dn2CppCancelSource* dn2cpp_cts_new_after(int64_t ms, const char* paramName)
 {
     Dn2CppCancelSource* s = dn2cpp_cts_new();
-    dn2cpp_cts_cancel_after(s, ms);
+    dn2cpp_cts_cancel_after(s, ms, paramName);
     return s;
 }
 
@@ -3577,6 +3584,8 @@ Dn2CppTask* dn2cpp_task_continue_with_struct(Dn2CppTask* t, Dn2CppObject* del,
 // never-returning user thread does.
 int32_t dn2cpp_threadpool_queue(Dn2CppObject* callback, Dn2CppObject* state)
 {
+    if (callback == nullptr)
+        dn2cpp_throw_argument_null_param("callBack");
     Dn2CppPoolNode* node = dn2cpp_pool_node_new(nullptr, callback, state);
     dn2cpp_pool_ensure_started();
     {

@@ -14,8 +14,11 @@ static class Program
     const int N = 1000;
     static string Generic<T>(T value) => value!.ToString()!;
 
-    static void Main()
+    static void Main(string[] args)
     {
+        System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+        System.Globalization.CultureInfo.CurrentUICulture = System.Globalization.CultureInfo.InvariantCulture;
+
         // 1) Parallel.For(int, int, Action<int>).
         long[] sq = new long[N];
         ParallelLoopResult r1 = Parallel.For(0, N, i => sq[i] = (long)i * i);
@@ -277,5 +280,8 @@ static class Program
         Console.WriteLine(feListHitCount);                                             // 3
 
         Console.WriteLine($"parallel result tostring={r1.ToString()}|{(object)r1}|{r1}|{Generic(r1)}");
+        if (args.Length != 0 && args[0] == "before-argument-fields")
+            return;
+        ParallelOptionsValidationSubset.__GateEntry();
     }
 }

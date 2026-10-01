@@ -68,6 +68,27 @@
 # ahead of a sentinel Task.Run: draining any one loop to emptiness starves the global
 # queue forever, while a fair worker pump reaches the sentinel and lets every loop exit.
 # Keep the final run under a short watchdog so that starvation is a named gate failure.
+# Named argument faults, boxed bounds, validation order and GC-retained fields.
 source "$(dirname "$0")/_common.sh"
 export DN2CPP_RUN_WATCHDOG_SECS=60
+gate_extra_asserts() {
+    local out="$1" native before prefix line
+    native=$(run_bounded "./$out/ThreadPoolQueue")
+    native=$(strip_cr_win "$native")
+    before=$(dotnet "$_CG_APP" before-argument-fields)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== ThreadPool callback fields ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== ThreadPool callback fields ==' \
+        'pool plain param=callBack' \
+        'pool generic param=callBack' \
+        'pool unsafe generic param=callBack' \
+        'pool item param=callBack' \
+        'pool fields GC type=ArgumentNullException' \
+        'ThreadPool callback fields end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: ThreadPoolQueue validation witness missing: $line" >&2; exit 1; }
+    done
+}
+
 corelib_diff_gate ThreadPoolQueue System.Threading
