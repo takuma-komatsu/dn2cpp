@@ -42,6 +42,7 @@
 # Empty repeat/span string constructors and char-span ToString share String.Empty.
 # StringComparison faults preserve named messages and each overload's null precedence.
 # Equals guards callvirt receivers while a direct IL call enters the real method.
+# Search windows preserve named faults, empty-source precedence and unchecked counts.
 source "$(dirname "$0")/_common.sh"
 
 call_app="gates/fixtures/string-comparison-call/bin/$CONFIG/$TFM/StringComparisonCall.dll"
@@ -200,6 +201,29 @@ gate_extra_asserts() {
         'string comparison faults end'; do
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: string comparison fault witness missing: $line" >&2; exit 1; }
+    done
+    before=$(dotnet "$_CG_APP" before-search-range-faults)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== string search range faults ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== string search range faults ==' \
+        'index char start 0:-2147483648 param=startIndex' \
+        'last char start 0:2147483647 param=startIndex' \
+        'index char range 0:0:-1 param=count' \
+        'index char range 0:0:-1 actual=null' \
+        'last string range 0:4:-1 param=count' \
+        'last string range 0:5:0 param=startIndex' \
+        'last empty range 1:0:-2147483648 result=0' \
+        'last char start 1:2147483647 result=-1' \
+        'index null set param=anyOf' 'index null set range param=anyOf' \
+        'last null set param=anyOf' 'last null set range param=anyOf' \
+        'empty last null set param=anyOf' 'empty last set result=-1' \
+        'empty index bad start param=startIndex' \
+        'index null value param=value' 'last null value param=value' \
+        'range utf16=2:1' 'range null evaluation=SAIC' \
+        'range throwing count evaluation=SAIC' 'string search range faults end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: string search range fault witness missing: $line" >&2; exit 1; }
     done
     oracle="$out/direct-call-oracle"
     fixture="$out/direct-call"

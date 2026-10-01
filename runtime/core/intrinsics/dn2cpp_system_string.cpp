@@ -383,7 +383,7 @@ int32_t dn2cpp_str_indexof_str_cmp(Dn2CppString* s, Dn2CppString* sub, int32_t s
         dn2cpp_throw_argument_null_param("value");
     comparison = dn2cpp_str_comparison_fold(comparison);
     if (startIndex < 0 || startIndex > s->length)
-        dn2cpp_throw_argument_out_of_range(); // catchable, like .NET's range check
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_INDEX_MUST_BE_LESS_OR_EQUAL, "startIndex");
     // .NET: an empty search string is found at the (clamped) start index.
     if (sub->length == 0)
         return startIndex;
@@ -423,7 +423,7 @@ int32_t dn2cpp_str_lastindexof_str_range(Dn2CppString* s, Dn2CppString* sub, int
     if (s->length == 0 && (startIndex == -1 || startIndex == 0))
         return sub->length == 0 ? 0 : -1;
     if (startIndex < 0 || startIndex > s->length)
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_INDEX_MUST_BE_LESS, "startIndex");
     if (startIndex == s->length)
     {
         startIndex--;
@@ -431,7 +431,7 @@ int32_t dn2cpp_str_lastindexof_str_range(Dn2CppString* s, Dn2CppString* sub, int
             count--;
     }
     if (count < 0 || startIndex - count + 1 < 0)
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_COUNT, "count");
     int32_t offset = startIndex - count + 1;
     // An empty pattern is "found" at the end of the searched range.
     if (sub->length == 0)
@@ -452,7 +452,8 @@ int32_t dn2cpp_str_lastindexof_str_cmp(Dn2CppString* s, Dn2CppString* sub, int32
     // The (value, startIndex) shape searches the startIndex + 1 positions
     // ending at startIndex, exactly .NET's LastIndexOf(value, startIndex,
     // startIndex + 1, comparison) delegation.
-    return dn2cpp_str_lastindexof_str_range(s, sub, startIndex, startIndex + 1, comparison);
+    return dn2cpp_str_lastindexof_str_range(s, sub, startIndex,
+        static_cast<int32_t>(static_cast<uint32_t>(startIndex) + 1u), comparison);
 }
 
 // Whole-string LastIndexOf(string[, comparison]) — an empty needle is found at
@@ -495,9 +496,9 @@ int32_t dn2cpp_str_lastindexof_char_range(Dn2CppString* s, char16_t c, int32_t s
     if (s->length == 0)
         return -1;
     if (start < 0 || start >= s->length)
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_INDEX_MUST_BE_LESS, "startIndex");
     if (count < 0 || count > start + 1)
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_COUNT, "count");
     for (int32_t i = start; i > start - count; i--)
         if (s->chars[i] == c)
             return i;
@@ -512,9 +513,9 @@ int32_t dn2cpp_str_indexof_char_range(Dn2CppString* s, char16_t c, int32_t start
     if (s == nullptr)
         dn2cpp_throw_null_reference();
     if (start < 0 || start > s->length)
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_INDEX_MUST_BE_LESS_OR_EQUAL, "startIndex");
     if (count < 0 || count > s->length - start)
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_COUNT, "count");
     for (int32_t i = start; i < start + count; i++)
         if (s->chars[i] == c)
             return i;
@@ -527,7 +528,8 @@ int32_t dn2cpp_str_indexof_char_to_end(Dn2CppString* s, char16_t c, int32_t star
 {
     if (s == nullptr)
         dn2cpp_throw_null_reference();
-    return dn2cpp_str_indexof_char_range(s, c, start, s->length - start);
+    return dn2cpp_str_indexof_char_range(s, c, start,
+        static_cast<int32_t>(static_cast<uint32_t>(s->length) - static_cast<uint32_t>(start)));
 }
 
 // IndexOf(char, StringComparison): Ordinal (4) / OrdinalIgnoreCase (5, exact
@@ -553,11 +555,11 @@ int32_t dn2cpp_str_indexofany(Dn2CppString* s, const char16_t* set, int32_t setL
     if (s == nullptr)
         dn2cpp_throw_null_reference();
     if (set == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("anyOf");
     if (start < 0 || start > s->length)
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_INDEX_MUST_BE_LESS_OR_EQUAL, "startIndex");
     if (count < 0 || count > s->length - start)
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_COUNT, "count");
     for (int32_t i = start; i < start + count; i++)
         for (int32_t k = 0; k < setLen; k++)
             if (s->chars[i] == set[k])
@@ -571,13 +573,13 @@ int32_t dn2cpp_str_lastindexofany(Dn2CppString* s, const char16_t* set, int32_t 
     if (s == nullptr)
         dn2cpp_throw_null_reference();
     if (set == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("anyOf");
     if (s->length == 0)
         return -1;
     if (start < 0 || start >= s->length)
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_INDEX_MUST_BE_LESS, "startIndex");
     if (count < 0 || count > start + 1)
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_COUNT, "count");
     for (int32_t i = start; i > start - count; i--)
         for (int32_t k = 0; k < setLen; k++)
             if (s->chars[i] == set[k])
@@ -596,7 +598,8 @@ int32_t dn2cpp_str_indexofany_to_end(Dn2CppString* s, const char16_t* set, int32
 {
     if (s == nullptr)
         dn2cpp_throw_null_reference();
-    return dn2cpp_str_indexofany(s, set, setLen, start, s->length - start);
+    return dn2cpp_str_indexofany(s, set, setLen, start,
+        static_cast<int32_t>(static_cast<uint32_t>(s->length) - static_cast<uint32_t>(start)));
 }
 
 int32_t dn2cpp_str_lastindexofany_all(Dn2CppString* s, const char16_t* set, int32_t setLen)
@@ -857,9 +860,9 @@ int32_t dn2cpp_str_indexof_str_range(Dn2CppString* s, Dn2CppString* sub, int32_t
         dn2cpp_throw_argument_null_param("value");
     comparison = dn2cpp_str_comparison_fold(comparison);
     if (startIndex < 0 || startIndex > s->length)
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_INDEX_MUST_BE_LESS_OR_EQUAL, "startIndex");
     if (count < 0 || startIndex > s->length - count)
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_COUNT, "count");
     if (sub->length == 0)
         return startIndex;
     for (int32_t i = startIndex; i + sub->length <= startIndex + count; i++)

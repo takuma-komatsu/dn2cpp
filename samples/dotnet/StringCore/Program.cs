@@ -63,6 +63,9 @@ namespace StringCore
             if (args.Length > 0 && args[0] == "before-comparison-faults")
                 return;
             StringComparisonFoldSubset.Program.RunFaults();
+            if (args.Length > 0 && args[0] == "before-search-range-faults")
+                return;
+            StringTrimIndexSubset.Program.RunFaults();
         }
     }
 }

@@ -885,7 +885,7 @@ internal sealed partial class MethodCompiler
                 string st = NewTemp("int32_t");
                 Emit($"{st} = {Cast(start, "int32_t")};");
                 Push(StackKind.I4, "int32_t",
-                    $"dn2cpp_str_lastindexof_char_range({Cast(s, "Dn2CppString*")}, (char16_t)({ch.Expr}), {st}, {st} + 1)");
+                    $"dn2cpp_str_lastindexof_char_range({Cast(s, "Dn2CppString*")}, (char16_t)({ch.Expr}), {st}, (int32_t)((uint32_t){st} + 1u))");
                 return true;
             }
             // LastIndexOf(char, int startIndex, int count).
@@ -1014,7 +1014,7 @@ internal sealed partial class MethodCompiler
                 // the base helper.
                 Push(StackKind.I4, "int32_t", name == "IndexOfAny"
                     ? $"dn2cpp_str_indexofany_to_end({sc}, {set}, {setLen}, {st})"
-                    : $"dn2cpp_str_lastindexofany({sc}, {set}, {setLen}, {st}, {st} + 1)");
+                    : $"dn2cpp_str_lastindexofany({sc}, {set}, {setLen}, {st}, (int32_t)((uint32_t){st} + 1u))");
                 return true;
             }
             // (char[], int startIndex, int count).
