@@ -33,6 +33,9 @@ namespace StringBuild
             if (args.Length > 0 && args[0] == "before-builder-copy-faults")
                 return;
             StringBuilderCopyToSubset.Program.RunFaults();
+            if (args.Length > 0 && args[0] == "before-builder-edit-faults")
+                return;
+            StringBuilderEditSubset.Program.RunFaults();
         }
     }
 }

@@ -8,6 +8,7 @@
 # receiver fault precedence, repeat and string-window validation, null object
 # insertion, and argument evaluation for calls and interpolation.
 # CopyTo preserves destination-first fault fields and unchecked room arithmetic.
+# StringBuilder.Remove and Replace preserve named faults and validation order.
 # Former gates: string-format, stringbuilder, stringbuilder-edit.
 source "$(dirname "$0")/_common.sh"
 
@@ -103,6 +104,28 @@ gate_extra_asserts() {
         'copy fault after GC actual=Int32:-7' 'StringBuilder copy faults end'; do
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: builder CopyTo fault witness missing: $line" >&2; exit 1; }
+    done
+    before=$(dotnet "$_CG_APP" before-builder-edit-faults)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== StringBuilder edit faults ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== StringBuilder edit faults ==' \
+        'remove:0:-1:-1 param=length' 'remove:0:-1:-1 actual=Int32:-1' \
+        'remove:0:-1:0 param=startIndex' 'remove:0:-1:0 actual=Int32:-1' \
+        'remove:0:2147483647:0 param=length' 'remove:0:2147483647:0 actual=null' \
+        'remove:0:2147483647:0 content=0061 0062 0061 0063 0061 0000 D800 ' \
+        'replace string:0:0:0:-1:-1 param=oldValue' \
+        'replace string:0:1:0:-1:-1 param=oldValue' \
+        'replace string:0:1:0:-1:-1 message=The value cannot be an empty string. (Parameter '\''oldValue'\'')' \
+        'replace char:0:8:-1 param=startIndex' 'replace char:0:0:-1 param=count' \
+        'replace char:0:7:0 success' \
+        'replace string:0:2:2:0:7 content=0058 0059 0062 0058 0059 0063 0058 0059 0000 D800 ' \
+        'replace null evaluation type=NullReferenceException' 'replace null evaluation=RONSC' \
+        'remove throwing evaluation type=InvalidOperationException' 'remove throwing evaluation=RSL' \
+        'edit fault after GC param=length' 'edit fault after GC actual=Int32:-7' \
+        'StringBuilder edit faults end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: builder edit fault witness missing: $line" >&2; exit 1; }
     done
 
 }
