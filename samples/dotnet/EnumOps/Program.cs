@@ -31,6 +31,11 @@ namespace EnumOps
             if (args.Length > 0 && args[0] == "before-enum-join")
                 return;
             EnumJoinSubset.Program.__GateEntry();
+            if (args.Length > 0 && args[0] == "before-default-comparison")
+                return;
+            Console.WriteLine("== default comparison validation ==");
+            EnumCompareToSubset.Program.__GateEntry();
+            Console.WriteLine("default comparison validation end");
         }
     }
 }

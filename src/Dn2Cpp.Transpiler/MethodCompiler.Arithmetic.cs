@@ -748,9 +748,9 @@ internal sealed partial class MethodCompiler
     /// (array, value [, startIndex [, count]]) over any element type: the element
     /// equality is the devirtualized EqualityComparer&lt;T&gt;.Default.Equals every
     /// other key site uses (see TryEqualityEqualsLValue), so a struct element compares
-    /// by its IEquatable&lt;T&gt;.Equals and a reference element by its Equals(object)
-    /// override. Pushes the matching index, or -1. Avoids the real body's
-    /// EqualityComparer&lt;T&gt;.Default / vectorized SpanHelpers.
+    /// by its IEquatable&lt;T&gt;.Equals and a reference element by its own typed
+    /// IEquatable&lt;T&gt; slot or Equals(object). Pushes the matching index, or -1.
+    /// Avoids the real body's EqualityComparer&lt;T&gt;.Default / vectorized SpanHelpers.
     ///
     /// Every operand is spilled first, in IL push order: they are arbitrary
     /// expressions (an <c>xs.ToArray()</c> receiver, a <c>Next()</c> search value),
@@ -981,8 +981,8 @@ internal sealed partial class MethodCompiler
     }
 
     /// <summary>A freshly allocated <c>Comparer&lt;T&gt;.Default</c> — the concrete
-    /// <c>GenericComparer&lt;T&gt;</c> object the real (reflection-based) getter would
-    /// hand back. Same shape as the <c>Comparer&lt;T&gt;.get_Default</c> intrinsic, minus
+    /// <see cref="Compilation.DefaultComparerClassFor"/> object the real (reflection-based)
+    /// getter would hand back. Same shape as the <c>Comparer&lt;T&gt;.get_Default</c> intrinsic, minus
     /// its rgctx slot: there is no get_Default call token at a sort site to key one on,
     /// so a placeholder-bearing element drops the body to per-instantiation instead —
     /// where T is real and its type-info can be named.</summary>
@@ -1000,24 +1000,26 @@ internal sealed partial class MethodCompiler
     }
 
     /// <summary>The DEFAULT (<c>Comparer&lt;T&gt;.Default</c>) order of an element type as
-    /// a sort callback: the thunk plus the ctx it dispatches on. Two forms —
+    /// a sort callback: the thunk, the ctx it dispatches on, and what the sort's guard names
+    /// (<see cref="DefaultSortNamed"/>). Two forms —
     ///
     /// <list type="bullet">
     /// <item>a devirtualized compare for a type that orders inline (primitive, string,
-    /// enum, intrinsic value type): the expression the JIT would inline, ctx unused, no
-    /// allocation;</item>
-    /// <item>for every other T, the <c>GenericComparer&lt;T&gt;</c> object dispatched
-    /// exactly like a user comparer. The struct's own <c>CompareTo</c> is deliberately
-    /// NOT inlined into the thunk: a captureless lambda cannot read <c>__rgctx</c>, so a
-    /// direct call to a shared callee from inside one would lose its hidden argument. The
-    /// comparer object carries the dispatch instead, and its Compare — a real transpiled
-    /// body — devirtualizes <c>x.CompareTo(y)</c> there, with the rgctx it is entitled to.
-    /// </item>
+    /// enum, intrinsic value type, System.Object): the expression the JIT would inline, ctx
+    /// unused, no allocation;</item>
+    /// <item>for every other T, the <see cref="Compilation.DefaultComparerClassFor"/> object
+    /// dispatched exactly like a user comparer. The struct's own <c>CompareTo</c> is
+    /// deliberately NOT inlined into the thunk: a captureless lambda cannot read
+    /// <c>__rgctx</c>, so a direct call to a shared callee from inside one would lose its
+    /// hidden argument. The comparer object carries the dispatch instead, and its Compare —
+    /// a real transpiled body — devirtualizes <c>x.CompareTo(y)</c> there, with the rgctx it
+    /// is entitled to.</item>
     /// </list>
     ///
-    /// Null when T has no order at all; the caller emits what real .NET does then (the
-    /// comparer throws). Emits (the allocation), so call it at the emit position.</summary>
-    private (string Thunk, string Ctx)? DefaultOrderCallback(TypeDesc elem, bool byAddr = false)
+    /// Null only without CoreLib's comparers. Emits (the allocation), so call it at the emit
+    /// position.</summary>
+    private (string Thunk, string Ctx, (string Obj, string Text)? Named)? DefaultOrderCallback(
+        TypeDesc elem, bool byAddr = false, bool pair = false)
     {
         RequireRealElement(elem);
         string p = SortCbParam(elem, byAddr), load = SortCbLoad(elem, byAddr), ct = CppTypes.Of(elem);
@@ -1025,11 +1027,44 @@ internal sealed partial class MethodCompiler
         var b = new StackEntry("_b", CppTypes.KindOf(elem), ct);
         if (TryCompareLValue(elem, a, b) is { } inline)
             return ($"[](void* _ctx, {p} _x, {p} _y) -> int32_t {{ (void)_ctx; {load} return {inline}; }}",
-                    "nullptr");
+                    "nullptr", DefaultSortNamed(elem, null, pair));
         if (_c.DefaultComparerFor(elem) is not { } gc)
             return null;
         string o = DefaultComparerObject(elem, gc);
-        return (ComparerThunk(elem, _c.ComparerInterfaceFor(elem)!, byAddr), $"(void*){o}");
+        return (ComparerThunk(elem, _c.ComparerInterfaceFor(elem)!, byAddr), $"(void*){o}",
+                DefaultSortNamed(elem, o, pair));
+    }
+
+    /// <summary>What the guard of a default-order sort names when a comparison throws an
+    /// IndexOutOfRangeException, as <c>dn2cpp_throw_sort_failed</c>'s (comparer, text) pair,
+    /// or null for an order that cannot throw (a primitive, string, enum or intrinsic value
+    /// type). .NET's single sort names <c>Comparer&lt;T&gt;.Default</c> unless T is
+    /// <c>IComparable&lt;T&gt;</c>, whose GenericArraySortHelper keeps the null comparer it
+    /// was handed; its key+value sort always names that null. System.Object orders inline,
+    /// with no comparer object to name, so its text is spelled out.</summary>
+    private (string Obj, string Text)? DefaultSortNamed(TypeDesc elem, string? comparerObj, bool pair)
+    {
+        if (Compilation.HasInlineOrder(elem))
+            return null;
+        if (pair || _c.IsComparableOfSelf(elem))
+            return ("nullptr", "nullptr");
+        return comparerObj is not null
+            ? ($"(Dn2CppObject*){comparerObj}", "nullptr")
+            : ("nullptr", "\"System.Collections.Generic.ObjectComparer`1[System.Object]\"");
+    }
+
+    /// <summary>A sort helper call inside ArraySortHelper's guard: what a comparison throws
+    /// leaves the sort as <c>dn2cpp_throw_sort_failed</c> rewrites it, naming
+    /// <paramref name="named"/>. Unguarded when <paramref name="named"/> is null.</summary>
+    private void EmitSortCall(string call, (string Obj, string Text)? named)
+    {
+        if (named is not { } n)
+        {
+            Emit(call);
+            return;
+        }
+        Emit($"try {{ {call} }}");
+        Emit($"catch (Dn2CppException& __sortex) {{ dn2cpp_throw_sort_failed(__sortex.obj, {n.Obj}, {n.Text}); }}");
     }
 
     /// <summary>A canonical body cannot answer WHAT the default order of its element is —
@@ -1176,7 +1211,7 @@ internal sealed partial class MethodCompiler
                     ?? throw new NotSupportedException(
                         $"{_method.DeclaringClass.FullName}.{_method.Name}: Array.Sort comparer parameter is not a class type");
                 Emit($"if ({pcmpT} != nullptr) {{");
-                Emit($"    {call}, (void*){pcmpT}, {ComparerThunk(t, pccls, byAddr: true)});");
+                EmitSortCall($"{call}, (void*){pcmpT}, {ComparerThunk(t, pccls, byAddr: true)});", (pcmpT, "nullptr"));
                 Emit("} else {");
                 EmitDefaultSortPair(t, call);
                 Emit("}");
@@ -1210,11 +1245,11 @@ internal sealed partial class MethodCompiler
             // A Comparison<T> has no default order to fall back on: null is .NET's
             // ArgumentNullException.
             Emit($"if ({cmpT} == nullptr) dn2cpp_throw_argument_null_param(\"comparison\");");
-            Emit($"{cmpFn}({arrT}, {startT}, {countT}, (void*){cmpT}, {ComparerThunk(t, ccls)});");
+            EmitSortCall($"{cmpFn}({arrT}, {startT}, {countT}, (void*){cmpT}, {ComparerThunk(t, ccls)});", (cmpT, "nullptr"));
             return;
         }
         Emit($"if ({cmpT} != nullptr) {{");
-        Emit($"    {cmpFn}({arrT}, {startT}, {countT}, (void*){cmpT}, {ComparerThunk(t, ccls)});");
+        EmitSortCall($"{cmpFn}({arrT}, {startT}, {countT}, (void*){cmpT}, {ComparerThunk(t, ccls)});", (cmpT, "nullptr"));
         Emit("} else {");
         // A null comparer means Comparer<T>.Default — the arm List<T>.Sort() lands on.
         EmitDefaultSort(t, arrT, startT, countT, cmpFn);
@@ -1225,10 +1260,8 @@ internal sealed partial class MethodCompiler
     /// element whose order is a machine compare (int/long/double/string — no callback, no
     /// allocation), else the rep's callback helper driven by
     /// <see cref="DefaultOrderCallback"/>. An element with no order at all faults the way
-    /// real .NET's comparer does — <c>Array.Sort</c> on a T that implements no
-    /// IComparable throws, it does not sort by something else (the old code fell back to
-    /// the ORDINAL STRING compare for every reference element, which read a non-string
-    /// object's bytes as a string).</summary>
+    /// real .NET's does: its ObjectComparer throws at the first comparison, and the guard
+    /// reports that as .NET's sort does, so a range of fewer than two elements sorts.</summary>
     private void EmitDefaultSort(TypeDesc t, string arrT, string startT, string countT, string cmpFn)
     {
         string? natural = t switch
@@ -1249,7 +1282,7 @@ internal sealed partial class MethodCompiler
             Emit("    dn2cpp_throw_invalid_operation();");
             return;
         }
-        Emit($"    {cmpFn}({arrT}, {startT}, {countT}, {cb.Ctx}, {cb.Thunk});");
+        EmitSortCall($"{cmpFn}({arrT}, {startT}, {countT}, {cb.Ctx}, {cb.Thunk});", cb.Named);
     }
 
     /// <summary>The natural-order sort of a whole span — the span twin of
@@ -1282,19 +1315,19 @@ internal sealed partial class MethodCompiler
             Emit("    dn2cpp_throw_invalid_operation();");
             return;
         }
-        Emit($"    {cmpFn}({cmpArgs}, {cb.Ctx}, {cb.Thunk});");
+        EmitSortCall($"{cmpFn}({cmpArgs}, {cb.Ctx}, {cb.Thunk});", cb.Named);
     }
 
     /// <summary>The key+value sort under the key's DEFAULT order — the comparerless
     /// overload, and the arm a null comparer falls into.</summary>
     private void EmitDefaultSortPair(TypeDesc key, string call)
     {
-        if (DefaultOrderCallback(key, byAddr: true) is not { } cb)
+        if (DefaultOrderCallback(key, byAddr: true, pair: true) is not { } cb)
         {
             Emit("    dn2cpp_throw_invalid_operation();");
             return;
         }
-        Emit($"    {call}, {cb.Ctx}, {cb.Thunk});");
+        EmitSortCall($"{call}, {cb.Ctx}, {cb.Thunk});", cb.Named);
     }
 
     /// <summary>Array.BinarySearch&lt;T&gt;(array, [index, length,] value [, comparer]) as
@@ -1379,6 +1412,8 @@ internal sealed partial class MethodCompiler
         // lvalues. Three sources, in the order Comparer<T>.Default resolves them.
         var e = new StackEntry(NewTemp(elemCt), CppTypes.KindOf(t), elemCt);
         string? inlineCmp = TryDefaultCompareLValue(t, e, valT);
+        if (inlineCmp is null)
+            RequireRealElement(t);
         string? cmpExpr = inlineCmp;
         if (cmpT is not null)
         {
@@ -1410,8 +1445,7 @@ internal sealed partial class MethodCompiler
         {
             if (_c.DefaultComparerFor(t) is not { } dgc)
             {
-                // No order at all — the real Comparer<T>.Default throws when it is asked to
-                // compare, and so does this.
+                // Without CoreLib's comparers nothing can order T.
                 Emit("dn2cpp_throw_invalid_operation();");
                 Push(StackKind.I4, "int32_t", "-1");
                 return;
@@ -1422,6 +1456,11 @@ internal sealed partial class MethodCompiler
         }
 
         string mid = NewTemp("int32_t"), ord = NewTemp("int32_t"), found = NewTemp("int32_t");
+        // A comparison that can throw — a comparer's, a CompareTo's, the boxed order —
+        // runs inside BinarySearch's guard.
+        bool guarded = cmpT is not null || !Compilation.HasInlineOrder(t);
+        if (guarded)
+            Emit("try {");
         Emit($"{found} = -1;");
         Emit($"while ({lo} <= {hi}) {{");
         Emit($"    {mid} = {lo} + (({hi} - {lo}) >> 1);");
@@ -1430,6 +1469,8 @@ internal sealed partial class MethodCompiler
         Emit($"    if ({ord} == 0) {{ {found} = {mid}; break; }}");
         Emit($"    if ({ord} < 0) {lo} = {mid} + 1; else {hi} = {mid} - 1;");
         Emit("}");
+        if (guarded)
+            Emit("} catch (Dn2CppException& __searchex) { dn2cpp_throw_search_failed(__searchex.obj); }");
         // Not found: the complement of the insertion point, the way .NET reports it.
         Push(StackKind.I4, "int32_t", $"({found} >= 0 ? {found} : ~{lo})");
     }

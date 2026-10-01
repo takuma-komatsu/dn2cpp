@@ -1698,7 +1698,7 @@ static int32_t dn2cpp_timespan_box_hash(Dn2CppObject* o)
 { return dn2cpp_timespan_hash(*dn2cpp_boxed<Dn2CppTimeSpan>(o)); }
 static int32_t dn2cpp_timespan_box_equals(Dn2CppObject* a, Dn2CppObject* b)
 {
-    return (b->type == &dn2cpp_timespan_type
+    return (b != nullptr && b->type == &dn2cpp_timespan_type
             && dn2cpp_boxed<Dn2CppTimeSpan>(a)->ticks == dn2cpp_boxed<Dn2CppTimeSpan>(b)->ticks) ? 1 : 0;
 }
 // $"{ts:c}" / string.Format("{0:g}", ts). The date formatters are culture-invariant,
@@ -1715,7 +1715,7 @@ static int32_t dn2cpp_datetime_box_hash(Dn2CppObject* o)
 { return dn2cpp_datetime_hash(*dn2cpp_boxed<Dn2CppDateTime>(o)); }
 static int32_t dn2cpp_datetime_box_equals(Dn2CppObject* a, Dn2CppObject* b)
 {
-    return (b->type == &dn2cpp_datetime_type
+    return (b != nullptr && b->type == &dn2cpp_datetime_type
             && dn2cpp_boxed<Dn2CppDateTime>(a)->ticks() == dn2cpp_boxed<Dn2CppDateTime>(b)->ticks()) ? 1 : 0;
 }
 // $"{dt:HH:mm}" / string.Format("{0:yyyy-MM-dd}", dt).
@@ -1731,7 +1731,7 @@ static int32_t dn2cpp_datetimeoffset_box_hash(Dn2CppObject* o)
 { return dn2cpp_datetimeoffset_hash(*dn2cpp_boxed<Dn2CppDateTimeOffset>(o)); }
 static int32_t dn2cpp_datetimeoffset_box_equals(Dn2CppObject* a, Dn2CppObject* b)
 {
-    return (b->type == &dn2cpp_datetimeoffset_type
+    return (b != nullptr && b->type == &dn2cpp_datetimeoffset_type
             && dn2cpp_datetimeoffset_equals(*dn2cpp_boxed<Dn2CppDateTimeOffset>(a),
                                             *dn2cpp_boxed<Dn2CppDateTimeOffset>(b))) ? 1 : 0;
 }
@@ -1746,7 +1746,7 @@ static int32_t dn2cpp_dateonly_box_hash(Dn2CppObject* o)
 { return dn2cpp_dateonly_hash(*dn2cpp_boxed<Dn2CppDateOnly>(o)); }
 static int32_t dn2cpp_dateonly_box_equals(Dn2CppObject* a, Dn2CppObject* b)
 {
-    return (b->type == &dn2cpp_dateonly_type
+    return (b != nullptr && b->type == &dn2cpp_dateonly_type
             && dn2cpp_boxed<Dn2CppDateOnly>(a)->dayNumber
                    == dn2cpp_boxed<Dn2CppDateOnly>(b)->dayNumber) ? 1 : 0;
 }
@@ -1760,7 +1760,7 @@ static int32_t dn2cpp_timeonly_box_hash(Dn2CppObject* o)
 { return dn2cpp_timeonly_hash(*dn2cpp_boxed<Dn2CppTimeOnly>(o)); }
 static int32_t dn2cpp_timeonly_box_equals(Dn2CppObject* a, Dn2CppObject* b)
 {
-    return (b->type == &dn2cpp_timeonly_type
+    return (b != nullptr && b->type == &dn2cpp_timeonly_type
             && dn2cpp_boxed<Dn2CppTimeOnly>(a)->ticks == dn2cpp_boxed<Dn2CppTimeOnly>(b)->ticks) ? 1 : 0;
 }
 static Dn2CppString* dn2cpp_timeonly_box_formatspec(Dn2CppObject* o, Dn2CppString* spec,

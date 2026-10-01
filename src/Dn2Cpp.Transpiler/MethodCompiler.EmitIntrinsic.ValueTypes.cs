@@ -525,16 +525,6 @@ internal sealed partial class MethodCompiler
     private static bool IsTimeSpan(TypeDesc t) =>
         t is { Kind: TypeKind.Class, Class.FullName: "System.TimeSpan" };
 
-    // A constrained IComparable<TimeSpan>/IEquatable<TimeSpan> callvirt reaches
-    // TryEmitTimeSpanIntrinsic with the interface's OWN generic parameter (!0) as the argument
-    // type: the callee signature is decoded under the caller's GenericContext, which binds the
-    // method's !!T but not IComparable<T>'s !0, so it stays a GenericVar. Dispatch is already
-    // keyed to declType "System.TimeSpan", and TimeSpan's only single-generic-arg interface
-    // methods are CompareTo/Equals over TimeSpan itself, so a GenericVar argument here IS
-    // TimeSpan.
-    private static bool IsTimeSpanOrConstrainedSelf(TypeDesc t) =>
-        IsTimeSpan(t) || t.Kind == TypeKind.GenericVar;
-
     /// <summary>True for a blocking-call timeout parameter — an <c>int</c> milliseconds
     /// count or a <c>TimeSpan</c> (the two shapes accepted by Wait/WaitOne/TryEnter/Join
     /// timeout overloads).</summary>
@@ -899,9 +889,9 @@ internal sealed partial class MethodCompiler
             { var a = Pop(); Push(StackKind.Struct, "Dn2CppTimeSpan", $"dn2cpp_timespan_neg({TSVal(a)})"); return true; }
             case "Duration" when ps.Length == 0:
             { var a = Pop(); Push(StackKind.Struct, "Dn2CppTimeSpan", $"dn2cpp_timespan_duration({TSVal(a)})"); return true; }
-            case "CompareTo" when ps.Length == 1 && IsTimeSpanOrConstrainedSelf(ps[0]):
+            case "CompareTo" when ps.Length == 1 && IsTimeSpan(ps[0]):
             { var b = Pop(); var a = Pop(); Push(StackKind.I4, "int32_t", $"dn2cpp_timespan_cmp({TSVal(a)}, {TSVal(b)})"); return true; }
-            case "Equals" when ps.Length == 1 && IsTimeSpanOrConstrainedSelf(ps[0]):
+            case "Equals" when ps.Length == 1 && IsTimeSpan(ps[0]):
             { var b = Pop(); var a = Pop(); Push(StackKind.I4, "int32_t", $"(dn2cpp_timespan_cmp({TSVal(a)}, {TSVal(b)}) == 0 ? 1 : 0)"); return true; }
             case "GetHashCode" when ps.Length == 0:
             { var a = Pop(); Push(StackKind.I4, "int32_t", $"dn2cpp_timespan_hash({TSVal(a)})"); return true; }
@@ -1928,17 +1918,34 @@ internal sealed partial class MethodCompiler
     /// <see cref="ThrowHelperResources"/> reads off the metadata. A sink that passes only the
     /// argument (<c>ThrowArgumentNullException(ExceptionArgument.array)</c>) raises the
     /// type's default message with the paramName appended. Otherwise an unrecovered resource
-    /// keeps the bare trap, whose message is the exception type's real .NET default.</summary>
+    /// keeps the bare trap, whose message is the exception type's real .NET default. An
+    /// Exception operand is the inner exception the sink's constructor receives.</summary>
     private void EmitThrowHelperSink(string name, MethodSignature<TypeDesc> sig)
     {
         int n = sig.ParameterTypes.Length;
         var popped = new StackEntry[n];
         for (int i = n - 1; i >= 0; i--)
             popped[i] = Pop();
+        // Its sentence formats the comparer, which only the run time holds.
+        if (name == "ThrowArgumentException_BadComparer" && n == 1)
+        {
+            Emit($"dn2cpp_throw_bad_comparer({Cast(popped[0], "Dn2CppObject*")});");
+            return;
+        }
+        string? inner = null;
+        for (int i = 0; i < n && inner is null; i++)
+            if (IsExceptionType(sig.ParameterTypes[i]))
+                inner = Cast(popped[i], "Dn2CppObject*");
         var (resSrc, argSrc, argumentOnly) = ThrowHelperResources.Sources(Module, name, n);
         string? key = ValueOf(resSrc, popped) is { } rv
             ? ThrowHelperResources.ResourceKey(Module, rv) : null;
         string? text = key is null ? null : Comp.SrResourceText(Module, key);
+        if (inner is not null)
+        {
+            string msg = text is null ? "nullptr" : $"\"{CppLiteralBody(text)}\"";
+            Emit($"dn2cpp_throw_of_msg_inner(&{ThrowHelperTypeInfo(name)}, {msg}, {inner});");
+            return;
+        }
         // An exception built from the paramName alone carries its type's default message,
         // which CoreLib's constructor supplies whichever assembly's ThrowHelper raised it.
         string? defaultKey = (argumentOnly, ThrowHelperTypeInfo(name)) switch
@@ -1971,6 +1978,16 @@ internal sealed partial class MethodCompiler
                 text += " " + tail.Replace("{0}", paramName);
         }
         Emit($"dn2cpp_throw_of_msg(&{ti}, \"{CppLiteralBody(text)}\");");
+    }
+
+    /// <summary>Whether a sink parameter is an exception, which its sink wraps as the
+    /// inner exception.</summary>
+    private static bool IsExceptionType(TypeDesc t)
+    {
+        for (var c = t.Kind == TypeKind.Class ? t.Class : null; c is not null; c = c.BaseClass)
+            if (c.FullName == "System.Exception")
+                return true;
+        return false;
     }
 
     /// <summary>The int a source names: its own constant, or the constant the call site

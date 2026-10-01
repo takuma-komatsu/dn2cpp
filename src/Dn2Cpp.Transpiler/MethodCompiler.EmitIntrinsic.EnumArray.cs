@@ -769,8 +769,10 @@ internal sealed partial class MethodCompiler
             // object[] scanned as System.Array). The sibling of the generic
             // Array.IndexOf<T> intrinsic, and the only one whose element type is
             // unknown until run time: box each element through the same accessor
-            // Array.GetValue uses and compare with Object.Equals(object) — which is
-            // what the real body's ObjectEqualityComparer does. The operands are
+            // Array.GetValue uses and compare as the real body does. A reference
+            // array's null search uses its object[] fast path, while a value array
+            // calls each boxed element's Equals(object), even for a null search.
+            // The operands are
             // spilled in IL push order before .NET's checks run in its order: IndexOf
             // tests the rank before the range, LastIndexOf answers an empty array
             // before testing anything and the rank after the range.
@@ -830,7 +832,10 @@ internal sealed partial class MethodCompiler
                 Emit(last
                     ? $"for ({ix} = {first}; {ix} > {end}; {ix}--) {{"
                     : $"for ({ix} = {first}; {ix} < {end}; {ix}++) {{");
-                Emit($"    if (dn2cpp_object_equals(dn2cpp_array_get_value({arr}, (int64_t){ix}), {val})) {{ {res} = {ix}; break; }}");
+                string element = NewTemp("Dn2CppObject*");
+                Emit($"    {element} = dn2cpp_array_get_value({arr}, (int64_t){ix});");
+                Emit($"    if (dn2cpp_is_ref_array({arr}->type) ? dn2cpp_object_equals_default({element}, {val})");
+                Emit($"        : ({element} == nullptr ? {val} == nullptr : dn2cpp_object_equals_virtual({element}, {val}))) {{ {res} = {ix}; break; }}");
                 Emit("}");
                 if (last)
                     Emit("}");
@@ -1230,6 +1235,8 @@ internal sealed partial class MethodCompiler
         string icName = NonGenericIComparableTiName();
         string e = NewTemp("Dn2CppObject*");
         string mid = NewTemp("int32_t"), ord = NewTemp("int32_t"), found = NewTemp("int32_t");
+        // Every comparison runs inside BinarySearch's guard.
+        Emit("try {");
         Emit($"{found} = -1;");
         Emit($"while ({lo} <= {hi}) {{");
         Emit($"    {mid} = {lo} + (({hi} - {lo}) >> 1);");
@@ -1243,6 +1250,7 @@ internal sealed partial class MethodCompiler
         Emit($"    if ({ord} == 0) {{ {found} = {mid}; break; }}");
         Emit($"    if ({ord} < 0) {lo} = {mid} + 1; else {hi} = {mid} - 1;");
         Emit("}");
+        Emit("} catch (Dn2CppException& __searchex) { dn2cpp_throw_search_failed(__searchex.obj); }");
         Push(StackKind.I4, "int32_t", $"({found} >= 0 ? {found} : ~{lo})");
         return true;
     }

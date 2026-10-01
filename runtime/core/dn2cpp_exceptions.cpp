@@ -484,6 +484,98 @@ void dn2cpp_overflow()
         msg != nullptr ? msg : dn2cpp_default_message(ti), nullptr));
 }
 
+[[noreturn]] void dn2cpp_throw_sr2(const Dn2CppTypeInfo* ti, const char* key, Dn2CppString* a0,
+    Dn2CppString* a1)
+{
+    Dn2CppString* args[] = { a0, a1 };
+    Dn2CppString* msg = dn2cpp_sr_message(key, args, 2);
+    dn2cpp_throw(dn2cpp_exception_new(ti,
+        msg != nullptr ? msg : dn2cpp_default_message(ti), nullptr));
+}
+
+// The message of ThrowHelper.ThrowArgumentException_BadComparer: the comparer's ToString,
+// or `text` for a null one (null reads as "").
+static Dn2CppObject* dn2cpp_bad_comparer_new(Dn2CppObject* comparer, const char* text)
+{
+    if (text == nullptr)
+        text = "";
+    Dn2CppString* name = comparer != nullptr
+        ? dn2cpp_object_tostring(comparer)
+        : dn2cpp_string_from_utf8(text, static_cast<int32_t>(std::strlen(text)));
+    Dn2CppString* args[] = { name };
+    Dn2CppString* msg = dn2cpp_sr_message(DN2CPP_SR_BOGUS_ICOMPARER, args, 1);
+    return dn2cpp_exception_new(&dn2cpp_argument_exception_type,
+        msg != nullptr ? msg : dn2cpp_default_message(&dn2cpp_argument_exception_type), nullptr);
+}
+
+[[noreturn]] void dn2cpp_throw_bad_comparer(Dn2CppObject* comparer)
+{
+    dn2cpp_throw(dn2cpp_bad_comparer_new(comparer, nullptr));
+}
+
+// `inner` stays in the in-flight list until the replacement holds it or is built, so a
+// collection the comparer's ToString triggers cannot reclaim it.
+[[noreturn]] void dn2cpp_throw_sort_failed(Dn2CppObject* inner, Dn2CppObject* comparer,
+    const char* comparerText)
+{
+    if (inner == nullptr || inner->type != &dn2cpp_index_out_of_range_exception_type)
+        dn2cpp_throw_search_failed(inner);
+    Dn2CppObject* e = dn2cpp_bad_comparer_new(comparer, comparerText);
+    dn2cpp_exc_inflight_pop(inner);
+    dn2cpp_throw(e);
+}
+
+[[noreturn]] void dn2cpp_throw_of_msg_inner(const Dn2CppTypeInfo* ti, const char* message,
+    Dn2CppObject* inner)
+{
+    dn2cpp_throw(dn2cpp_exception_new(ti, message != nullptr
+        ? dn2cpp_string_from_utf8(message, static_cast<int32_t>(std::strlen(message)))
+        : dn2cpp_default_message(ti), inner));
+}
+
+[[noreturn]] void dn2cpp_throw_search_failed(Dn2CppObject* inner)
+{
+    Dn2CppString* msg = dn2cpp_sr_format(DN2CPP_SR_ICOMPARER_FAILED, nullptr, 0);
+    Dn2CppObject* e = dn2cpp_exception_new(&dn2cpp_invalid_operation_exception_type,
+        msg != nullptr ? msg : dn2cpp_default_message(&dn2cpp_invalid_operation_exception_type), inner);
+    dn2cpp_exc_inflight_pop(inner);
+    dn2cpp_throw(e);
+}
+
+// Keyed by the handle a box carries, which is the one handle each of these types has.
+[[noreturn]] void dn2cpp_throw_compareto_type_mismatch(const Dn2CppTypeInfo* self)
+{
+    struct Row { const Dn2CppTypeInfo* ti; const char* key; };
+    static const Row rows[] = {
+        { &dn2cpp_bool_type, DN2CPP_SR_MUST_BE_BOOLEAN },
+        { &dn2cpp_char_type, DN2CPP_SR_MUST_BE_CHAR },
+        { &dn2cpp_sbyte_type, DN2CPP_SR_MUST_BE_SBYTE },
+        { &dn2cpp_byte_type, DN2CPP_SR_MUST_BE_BYTE },
+        { &dn2cpp_int16_type, DN2CPP_SR_MUST_BE_INT16 },
+        { &dn2cpp_uint16_type, DN2CPP_SR_MUST_BE_UINT16 },
+        { &dn2cpp_int32_type, DN2CPP_SR_MUST_BE_INT32 },
+        { &dn2cpp_uint32_type, DN2CPP_SR_MUST_BE_UINT32 },
+        { &dn2cpp_int64_type, DN2CPP_SR_MUST_BE_INT64 },
+        { &dn2cpp_uint64_type, DN2CPP_SR_MUST_BE_UINT64 },
+        { &dn2cpp_single_type, DN2CPP_SR_MUST_BE_SINGLE },
+        { &dn2cpp_double_type, DN2CPP_SR_MUST_BE_DOUBLE },
+        { &dn2cpp_intptr_type, DN2CPP_SR_MUST_BE_INTPTR },
+        { &dn2cpp_uintptr_type, DN2CPP_SR_MUST_BE_UINTPTR },
+        { &dn2cpp_decimal_type, DN2CPP_SR_MUST_BE_DECIMAL },
+        { &dn2cpp_datetime_type, DN2CPP_SR_MUST_BE_DATETIME },
+        { &dn2cpp_timespan_type, DN2CPP_SR_MUST_BE_TIMESPAN },
+        { &dn2cpp_datetimeoffset_type, DN2CPP_SR_MUST_BE_DATETIMEOFFSET },
+        { &dn2cpp_dateonly_type, DN2CPP_SR_MUST_BE_DATEONLY },
+        { &dn2cpp_timeonly_type, DN2CPP_SR_MUST_BE_TIMEONLY },
+        { &dn2cpp_string_type, DN2CPP_SR_MUST_BE_STRING },
+    };
+    for (const Row& r : rows)
+        if (r.ti == self)
+            if (const char* text = dn2cpp_sr_text(r.key))
+                dn2cpp_throw_argument_msg(text);
+    dn2cpp_throw_argument();
+}
+
 // Whether `ti`'s get_Message slot holds a real override, which dn2cpp_exception_message
 // calls in place of reading the stored message.
 static bool dn2cpp_exception_overrides_message(const Dn2CppTypeInfo* ti)

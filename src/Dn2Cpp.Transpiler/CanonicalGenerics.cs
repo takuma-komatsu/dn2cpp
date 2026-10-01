@@ -34,8 +34,7 @@ internal enum RgctxSlotKind
     /// Task.</summary>
     TaskTypeInfo,
     /// <summary>The type-info of the resolved closed generic's first type
-    /// argument — Nullable&lt;T&gt; boxing (the box carries T's identity) and the
-    /// IComparable&lt;T&gt; boxed-primitive cast.</summary>
+    /// argument — Nullable&lt;T&gt; boxing (the box carries T's identity).</summary>
     TypeArg0TypeInfo,
     /// <summary>The precise per-element array type-info (<c>ti_arr_*</c>) for a
     /// newarr (element token) or typeof(T[]) (SZArray token) site.</summary>
@@ -50,8 +49,9 @@ internal enum RgctxSlotKind
     /// <summary>The resolved static field's declaring class's idempotent
     /// <c>__ensure</c> cctor wrapper, as a <c>void(*)()</c>.</summary>
     CctorEnsureFn,
-    /// <summary>The type-info of the GenericComparer&lt;T&gt; the intercepted
-    /// Comparer&lt;T&gt;.Default synthesizes (the token is the get_Default call).</summary>
+    /// <summary>The type-info of the comparer the intercepted Comparer&lt;T&gt;.Default
+    /// allocates (Compilation.DefaultComparerClassFor; the token is the get_Default
+    /// call).</summary>
     ComparerDefault,
     /// <summary>The <c>EqualityComparer&lt;T&gt;</c> type-info the intercepted
     /// <c>EqualityComparer&lt;T&gt;.Default</c> stamps as its singleton's base, and
@@ -60,6 +60,9 @@ internal enum RgctxSlotKind
     /// kinds because one slot carries one identity and the site needs both.</summary>
     EqualityComparerDefault,
     EqualityComparerInterface,
+    /// <summary>The element type used by a default equality call or generic scan.
+    /// The call token resolves a comparer parent or a scan MethodSpec.</summary>
+    EqualityElementType,
     /// <summary>Another grouped class's rgctx table — passed as the hidden
     /// parameter when a shared body direct-calls a context-needing shared body
     /// of a different canonical class (the token is the call/newobj method

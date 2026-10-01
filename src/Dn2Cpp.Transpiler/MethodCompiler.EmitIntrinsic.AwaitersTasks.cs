@@ -764,10 +764,13 @@ internal sealed partial class MethodCompiler
                     "System.Threading.CancellationTokenRegistration")
                     ?? throw new InvalidOperationException(
                         "System.Threading.CancellationTokenRegistration is not loaded");
+                string typeInfo = TypeInfoExpr(TypeDesc.MakeClass(registration))
+                    ?? throw new InvalidOperationException(
+                        "CancellationTokenRegistration has no type-info expression");
                 string boxed = NewTemp("Dn2CppObject*");
                 Emit($"{boxed} = {Cast(other, "Dn2CppObject*")};");
                 Push(StackKind.I4, "int32_t",
-                    $"(({boxed}) != nullptr && ({boxed})->type == &{registration.CppTypeInfoName} " +
+                    $"(({boxed}) != nullptr && ({boxed})->type == {typeInfo} " +
                     $"&& (*((Dn2CppCancelReg**)(({boxed}) + 1))) == " +
                     $"(*((Dn2CppCancelReg**)({self.Expr}))) ? 1 : 0)");
                 return true;

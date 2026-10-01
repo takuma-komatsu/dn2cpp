@@ -33,7 +33,7 @@
 # external-enum.
 source "$(dirname "$0")/_common.sh"
 
-gate_extra_asserts() {
+comparison_prior_extra_asserts() {
     local out="$1" native before prefix line
     native=$(run_bounded "./$out/EnumOps")
     native=$(strip_cr_win "$native")
@@ -59,6 +59,28 @@ gate_extra_asserts() {
         'null enum receiver: NullReferenceException'; do
         grep -Fxq "$line" <<< "$native" \
             || { echo "FAIL: sequence witness missing: $line" >&2; exit 1; }
+    done
+}
+
+# Default order and equality preserve the earlier bucket and run the appended cases.
+gate_extra_asserts() {
+    local out="$1" native before prefix line
+    comparison_prior_extra_asserts "$out"
+    native=$(run_bounded "./$out/EnumOps")
+    native=$(strip_cr_win "$native")
+    before=$(dotnet "$_CG_APP" before-default-comparison)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== default comparison validation ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== default comparison validation ==' \
+        '== enum CompareTo ==' \
+        'byte: 247 -247' \
+        'sbyte: 200 -200' \
+        'short: 60000 -60000' \
+        'ushort: 64999 -64999' \
+        'default comparison validation end'; do
+        grep -Fxq "$line" <<< "$native" \
+            || { echo "FAIL: EnumOps comparison coverage missing: $line" >&2; exit 1; }
     done
 }
 

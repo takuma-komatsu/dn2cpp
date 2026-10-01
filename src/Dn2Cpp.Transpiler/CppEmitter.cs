@@ -2123,6 +2123,8 @@ internal sealed partial class CppEmitter
             _c.ExpandArrayEnumerableMaps();
             // Array.Initialize can invoke a constructor reached only through its row.
             _c.ReachRuntimeArrayInitializeCtors();
+            if (_c.ReachNonGenericArrayElementEquality())
+                _c.DrainReachability();
             // Shared-generics planning: instantiations discovered by the bodies
             // just compiled are linked to canonical owners and their grouped
             // methods' owner counterparts reached, so the next batch trial-
@@ -2421,23 +2423,17 @@ internal sealed partial class CppEmitter
                             compiledMethods.Add(m);
                             continue;
                         }
-                        // A synthesized GenericComparer<T>.Compare over a VALUE TYPE real .NET's
-                        // default comparer cannot order (see
-                        // Compilation.IsUnorderableComparerCompareBody): its real IL boxes the value
-                        // type for the null checks (an intrinsic value type has no ti_ to box
-                        // through) and dispatches a CompareTo that does not exist. Real .NET throws
-                        // ArgumentException here; body-replace with a catchable
-                        // PlatformNotSupportedException so the comparer object stays real and only
-                        // its Compare faults. The trailing `return 0;` is unreachable (the throw is
-                        // [[noreturn]]) and only keeps the int32 return type-checking.
+                        // A comparer Compare over a VALUE TYPE with no order at all (see
+                        // Compilation.IsUnorderableComparerCompareBody): body-replace with the
+                        // ArgumentException real .NET's Comparer.Default raises for it, so the
+                        // comparer object stays real and only its Compare faults. The trailing
+                        // `return 0;` is unreachable (the throw is [[noreturn]]) and only keeps
+                        // the int32 return type-checking.
                         if (_c.IsUnorderableComparerCompareBody(m))
                         {
-                            string elem = _c.GenericDefFullName(m.DeclaringClass.Context.TypeArgs[0].Class!);
                             string body = $"// {m.DeclaringClass.FullName}::{m.Name} (element not orderable — throws on call)\n"
                                 + $"{MethodCompiler.Signature(m)}\n{{\n"
-                                + $"    dn2cpp_throw_platform_not_supported(\"Comparer<{elem}>.Default.Compare: "
-                                + $"{elem} does not implement IComparable and is not orderable "
-                                + "(real .NET throws ArgumentException here)\");\n"
+                                + "    dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_IMPLEMENT_ICOMPARABLE);\n"
                                 + "    return 0;\n}\n";
                             emitBody?.Invoke(m, body);
                             compiledMethods.Add(m);

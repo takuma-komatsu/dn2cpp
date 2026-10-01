@@ -38,4 +38,24 @@ source "$(dirname "$0")/_common.sh"
 # the generic collections come from System.Collections; System.Collections.Immutable
 # carries FrozenDictionary/FrozenHashTable (FrozenDictSubset — exercises HashHelpers.Primes),
 # whose ToFrozenDictionary build path reaches System.Linq.Enumerable.
+# Default order and equality preserve the earlier bucket and run the appended cases.
+gate_extra_asserts() {
+    local out="$1" native before prefix line
+    native=$(run_bounded "./$out/DictCollections")
+    native=$(strip_cr_win "$native")
+    before=$(dotnet "$_CG_APP" before-default-comparison)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== default comparison validation ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== default comparison validation ==' \
+        '== default equality mouths ==' \
+        'default equality mouths end' \
+        'reference IEquatable nongeneric message: Type of argument is not compatible with the generic comparer.' \
+        'reference IEquatable nongeneric param: null' \
+        'default comparison validation end'; do
+        grep -Fxq "$line" <<< "$native" \
+            || { echo "FAIL: DictCollections comparison coverage missing: $line" >&2; exit 1; }
+    done
+}
+
 corelib_diff_gate DictCollections System.Collections System.Collections.NonGeneric System.Collections.Immutable System.Linq

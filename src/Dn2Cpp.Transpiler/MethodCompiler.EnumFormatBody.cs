@@ -79,8 +79,8 @@ internal sealed partial class MethodCompiler
                 Emit($"return ({CppTypes.Of(rt)})dn2cpp_object_equals({recv}, (Dn2CppObject*)a1);");
                 break;
             case ("CompareTo", 1):
-                // CompareTo(object) — order by the underlying value (signed or unsigned per the
-                // underlying type), the -1/0/1 sign Enum.CompareTo returns. dn2cpp_enum_compareto
+                // CompareTo(object) — the underlying type's CompareTo (signed or unsigned per the
+                // underlying type, the raw difference for a sub-word one). dn2cpp_enum_compareto
                 // reads both payloads at the underlying's width and throws ArgumentException on an
                 // enum-type mismatch, matching .NET.
                 Emit($"return ({CppTypes.Of(rt)})dn2cpp_enum_compareto({recv}, (Dn2CppObject*)a1);");

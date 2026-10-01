@@ -53,4 +53,22 @@
 # .NET (the program is deterministic, so `dotnet $app` is its own oracle).
 source "$(dirname "$0")/_common.sh"
 
+# Default order and equality preserve the earlier bucket and run the appended cases.
+gate_extra_asserts() {
+    local out="$1" native before prefix line
+    native=$(run_bounded "./$out/MathSubset")
+    native=$(strip_cr_win "$native")
+    before=$(dotnet "$_CG_APP" before-default-comparison)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== default comparison validation ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== default comparison validation ==' \
+        '== generic clamp bounds ==' \
+        'Int128='"'"'5'"'"' cannot be greater than 2.' \
+        'default comparison validation end'; do
+        grep -Fxq "$line" <<< "$native" \
+            || { echo "FAIL: MathSubset comparison coverage missing: $line" >&2; exit 1; }
+    done
+}
+
 corelib_diff_gate MathSubset

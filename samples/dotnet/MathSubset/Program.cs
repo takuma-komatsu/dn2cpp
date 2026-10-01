@@ -9,7 +9,7 @@ namespace MathSubset
     // sample.
     internal static class Program
     {
-        private static void Main()
+        private static void Main(string[] args)
         {
             // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
@@ -32,6 +32,11 @@ namespace MathSubset
             DoubleSinglePiTrig.Program.__GateEntry();
             HalfBasics.Program.__GateEntry();
             HalfStatics.Program.__GateEntry();
+            if (args.Length > 0 && args[0] == "before-default-comparison")
+                return;
+            Console.WriteLine("== default comparison validation ==");
+            MathGenericClampBounds.Program.Run();
+            Console.WriteLine("default comparison validation end");
         }
     }
 }

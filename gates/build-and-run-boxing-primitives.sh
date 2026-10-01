@@ -67,7 +67,7 @@
 # csproj's own PropertyGroup, where the absence would otherwise read as an oversight).
 source "$(dirname "$0")/_common.sh"
 
-gate_extra_asserts() {
+comparison_prior_extra_asserts() {
     local out="$1" managed
     for managed in Byte SByte Int16 UInt16 IntPtr UIntPtr; do
         if awk -v managed="$managed" '
@@ -107,6 +107,27 @@ gate_extra_asserts() {
         return 1
     fi
     echo "boxed CLR relations answered from the relation rows: OK"
+}
+
+# Default order and equality preserve the earlier bucket and run the appended cases.
+gate_extra_asserts() {
+    local out="$1" native before prefix line
+    comparison_prior_extra_asserts "$out"
+    native=$(run_bounded "./$out/BoxingPrimitives")
+    native=$(strip_cr_win "$native")
+    before=$(dotnet "$_CG_APP" before-default-comparison)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== default comparison validation ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== default comparison validation ==' \
+        '== constrained CompareTo(object) ==' \
+        'interface: 42 43 42 43 True False' \
+        'constrained cross slots=23463/23452/456/-777/True/True/False' \
+        'constrained struct comparer=True/False/2' \
+        'default comparison validation end'; do
+        grep -Fxq "$line" <<< "$native" \
+            || { echo "FAIL: BoxingPrimitives comparison coverage missing: $line" >&2; exit 1; }
+    done
 }
 
 corelib_diff_gate BoxingPrimitives

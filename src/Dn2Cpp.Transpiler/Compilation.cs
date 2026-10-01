@@ -4417,7 +4417,7 @@ internal sealed partial class Compilation
         // walk it starts can produce more of both (a field's Equals override is a body, and
         // a body can box). Alternate with the drain to a fixpoint, exactly as the
         // used×allocated cross product it stands in for does.
-        while (ReachBoxedValueEquality())
+        while (ReachBoxedValueEquality() || ReachNonGenericArrayElementEquality())
             DrainReachability();
 
         // --trim-godot-classes: the allowlist may only grow while reachability can

@@ -1512,6 +1512,28 @@ inline constexpr const char* DN2CPP_SR_FORMAT_INDEX_OUT_OF_RANGE = "Format_Index
 inline constexpr const char* DN2CPP_SR_SPANS_MUST_HAVE_SAME_LENGTH = "Argument_SpansMustHaveSameLength";
 inline constexpr const char* DN2CPP_SR_PARAM_NAME = "Arg_ParamName_Name";
 inline constexpr const char* DN2CPP_SR_ACTUAL_VALUE = "ArgumentOutOfRange_ActualValue";
+inline constexpr const char* DN2CPP_SR_MUST_BE_BOOLEAN = "Arg_MustBeBoolean";
+inline constexpr const char* DN2CPP_SR_MUST_BE_CHAR = "Arg_MustBeChar";
+inline constexpr const char* DN2CPP_SR_MUST_BE_SBYTE = "Arg_MustBeSByte";
+inline constexpr const char* DN2CPP_SR_MUST_BE_BYTE = "Arg_MustBeByte";
+inline constexpr const char* DN2CPP_SR_MUST_BE_INT16 = "Arg_MustBeInt16";
+inline constexpr const char* DN2CPP_SR_MUST_BE_UINT16 = "Arg_MustBeUInt16";
+inline constexpr const char* DN2CPP_SR_MUST_BE_INT32 = "Arg_MustBeInt32";
+inline constexpr const char* DN2CPP_SR_MUST_BE_UINT32 = "Arg_MustBeUInt32";
+inline constexpr const char* DN2CPP_SR_MUST_BE_INT64 = "Arg_MustBeInt64";
+inline constexpr const char* DN2CPP_SR_MUST_BE_UINT64 = "Arg_MustBeUInt64";
+inline constexpr const char* DN2CPP_SR_MUST_BE_SINGLE = "Arg_MustBeSingle";
+inline constexpr const char* DN2CPP_SR_MUST_BE_DOUBLE = "Arg_MustBeDouble";
+inline constexpr const char* DN2CPP_SR_MUST_BE_INTPTR = "Arg_MustBeIntPtr";
+inline constexpr const char* DN2CPP_SR_MUST_BE_UINTPTR = "Arg_MustBeUIntPtr";
+inline constexpr const char* DN2CPP_SR_MUST_BE_DECIMAL = "Arg_MustBeDecimal";
+inline constexpr const char* DN2CPP_SR_MUST_BE_DATETIME = "Arg_MustBeDateTime";
+inline constexpr const char* DN2CPP_SR_MUST_BE_TIMESPAN = "Arg_MustBeTimeSpan";
+inline constexpr const char* DN2CPP_SR_MUST_BE_DATETIMEOFFSET = "Arg_MustBeDateTimeOffset";
+inline constexpr const char* DN2CPP_SR_MUST_BE_DATEONLY = "Arg_MustBeDateOnly";
+inline constexpr const char* DN2CPP_SR_MUST_BE_TIMEONLY = "Arg_MustBeTimeOnly";
+inline constexpr const char* DN2CPP_SR_MUST_BE_STRING = "Arg_MustBeString";
+inline constexpr const char* DN2CPP_SR_ENUM_AND_OBJECT_MUST_BE_SAME_TYPE = "Arg_EnumAndObjectMustBeSameType";
 inline constexpr const char* DN2CPP_SR_COUNT = "ArgumentOutOfRange_Count";
 inline constexpr const char* DN2CPP_SR_END_INDEX_START_INDEX = "ArgumentOutOfRange_EndIndexStartIndex";
 inline constexpr const char* DN2CPP_SR_INDEX_MUST_BE_LESS = "ArgumentOutOfRange_IndexMustBeLess";
@@ -1519,6 +1541,11 @@ inline constexpr const char* DN2CPP_SR_INDEX_MUST_BE_LESS_OR_EQUAL = "ArgumentOu
 inline constexpr const char* DN2CPP_SR_OFFSET_LENGTH = "ArgumentOutOfRange_OffsetLength";
 inline constexpr const char* DN2CPP_SR_COMPARE_OPTION_ORDINAL = "Argument_CompareOptionOrdinal";
 inline constexpr const char* DN2CPP_SR_INVALID_FLAG = "Argument_InvalidFlag";
+inline constexpr const char* DN2CPP_SR_IMPLEMENT_ICOMPARABLE = "Argument_ImplementIComparable";
+inline constexpr const char* DN2CPP_SR_INVALID_ARGUMENT_FOR_COMPARISON = "Argument_InvalidArgumentForComparison";
+inline constexpr const char* DN2CPP_SR_MIN_MAX_VALUE = "Argument_MinMaxValue";
+inline constexpr const char* DN2CPP_SR_ICOMPARER_FAILED = "InvalidOperation_IComparerFailed";
+inline constexpr const char* DN2CPP_SR_BOGUS_ICOMPARER = "Arg_BogusIComparer";
 inline constexpr const char* DN2CPP_SR_STRING_COMPARISON = "NotSupported_StringComparison";
 inline constexpr const char* DN2CPP_SR_RANK_SINGLE_DIM_ONLY = "Rank_MultiDimNotSupported";
 inline constexpr const char* DN2CPP_SR_RANK_MULTI_DIM_NOT_SUPPORTED = "Arg_RankMultiDimNotSupported";
@@ -2762,10 +2789,23 @@ Dn2CppString* dn2cpp_default_message(const Dn2CppTypeInfo* ti);
 // The same trap with the message the EMITTER already resolved (a ThrowHelper sink whose
 // call site named its ExceptionResource).
 [[noreturn]] void dn2cpp_throw_of_msg(const Dn2CppTypeInfo* ti, const char* message);
+// The same around `inner`, held by the caller in scanned memory (a ThrowHelper sink's
+// exception operand); a null `message` keeps `ti`'s default text.
+[[noreturn]] void dn2cpp_throw_of_msg_inner(const Dn2CppTypeInfo* ti, const char* message,
+    Dn2CppObject* inner);
+// ThrowHelper.ThrowArgumentException_BadComparer: the ArgumentException naming the
+// comparer's ToString ("" for null).
+[[noreturn]] void dn2cpp_throw_bad_comparer(Dn2CppObject* comparer);
 // The same trap with a one-argument SR composite format as its message — for the sites
 // holding the operand .NET's own sentence names (the string that failed to parse, the
 // duplicate dictionary key). Falls back to `ti`'s default text if the key is absent.
 [[noreturn]] void dn2cpp_throw_sr1(const Dn2CppTypeInfo* ti, const char* key, Dn2CppString* a0);
+// The same over a two-argument format.
+[[noreturn]] void dn2cpp_throw_sr2(const Dn2CppTypeInfo* ti, const char* key, Dn2CppString* a0,
+    Dn2CppString* a1);
+// The ArgumentException a built-in's CompareTo(object) raises for a box of another type.
+// .NET's message names the RECEIVER's type `self`; a type without one keeps the default.
+[[noreturn]] void dn2cpp_throw_compareto_type_mismatch(const Dn2CppTypeInfo* self);
 [[noreturn]] void dn2cpp_throw_sr0(const Dn2CppTypeInfo* ti, const char* key);
 // ArgumentOutOfRangeException naming `paramName` with `value` as its ActualValue, the
 // " (Parameter 'x')" and "Actual value was v." tails real .NET's Message overrides
@@ -5169,6 +5209,15 @@ void dn2cpp_span_sort_cmp_r8(double* p, int32_t n, void* ctx, int32_t (*cmp)(voi
 void dn2cpp_span_sort_cmp_ref(Dn2CppObject** p, int32_t n, void* ctx, int32_t (*cmp)(void*, Dn2CppObject*, Dn2CppObject*));
 void dn2cpp_span_sort_cmp_n(void* p, int32_t n, int32_t elemSize, void* ctx,
                             int32_t (*cmp)(void*, const void*, const void*));
+// ArraySortHelper's guard around a sort's comparisons, raised from the catch that holds
+// `inner`, the exception a comparison threw: an IndexOutOfRangeException becomes the
+// ArgumentException naming the comparer .NET's message names — `comparer`'s ToString, else
+// `comparerText` (null reads as "") — and anything else the InvalidOperationException
+// "Failed to compare two elements in the array." around it.
+[[noreturn]] void dn2cpp_throw_sort_failed(Dn2CppObject* inner, Dn2CppObject* comparer,
+                                           const char* comparerText);
+// BinarySearch's guard: whatever a comparison threw becomes that InvalidOperationException.
+[[noreturn]] void dn2cpp_throw_search_failed(Dn2CppObject* inner);
 // Parallel key+value sort — Array.Sort<TKey,TValue>(keys, items[, cmp]) and
 // MemoryExtensions.Sort<TKey,TValue>(Span keys, Span items[, cmp]) alike. `keys`/`items`
 // are the two element buffers (an array's data, a span's f__reference) at the strides their
@@ -5232,27 +5281,45 @@ int32_t dn2cpp_object_gethashcode(Dn2CppObject* obj);
 // Clone paths never call it.
 Dn2CppObject* dn2cpp_object_memberwise_clone(Dn2CppObject* obj);
 int32_t dn2cpp_object_equals(Dn2CppObject* a, Dn2CppObject* b);
-// Three-way ordering (-1/0/+1) of two boxed values by runtime type — the object-element
-// counterpart of dn2cpp_object_equals, for the non-generic Array.Sort/BinarySearch(Array, …)
-// lowerings whose element type is unknown until run time (MethodCompiler.EmitIntrinsic.EnumArray).
-// .NET Comparer.Default null order: null sorts first. Boxed primitive/enum/string compare INLINE
-// because the inline arms are tried FIRST (not for want of a map) — each integer at its own width
-// AND signedness, since ordering cannot lump widths the way equality does, and float/double on the
-// NaN-aware TOTAL order the sole static comparison window (MethodCompiler.TryCompareLValue) emits,
-// so a value ordered here and one ordered inline agree. Decimal and the date/time value types are
-// inline too, through that same window's intrinsic three-ways — this is the ladder the
-// boxed-built-in IComparable thunk delegates to, and it may not refuse a type whose type test
-// claims IComparable. A user reference type dispatches the non-generic
-// System.IComparable.CompareTo(object) through the closed type-info the caller supplies
-// (icomparable_ti — nullptr if the transpiler could not resolve System.IComparable). A value that is
-// neither is refused with a catchable PlatformNotSupportedException naming the type, never a silent 0.
+// Object.Equals(object) as a callvirt runs it: NullReferenceException for a null
+// receiver, and a wired override answers every argument, the receiver itself and
+// null included, where dn2cpp_object_equals (static Object.Equals) answers those
+// first. So every `equals` slot accepts a null argument.
+int32_t dn2cpp_object_equals_virtual(Dn2CppObject* self, Dn2CppObject* other);
+// EqualityComparer<T>.Default.Equals for a reference T: null equals only null, and two
+// non-null operands run the first one's Equals(object), an identical pair included.
+int32_t dn2cpp_object_equals_default(Dn2CppObject* a, Dn2CppObject* b);
+// The closed T selects IEquatable<T>; a receiver's other IEquatable interfaces
+// must not change EqualityComparer<T>.Default semantics.
+int32_t dn2cpp_object_equals_default_t(Dn2CppObject* a, Dn2CppObject* b,
+                                       const Dn2CppTypeInfo* elementType);
+int32_t dn2cpp_default_equality_comparer_equals_nongeneric(Dn2CppObject* comparer,
+                                                             Dn2CppObject* a, Dn2CppObject* b);
+// Three-way ordering of two boxed values by runtime type, whose sign is the order — the
+// object-element counterpart of dn2cpp_object_equals, for Comparer.Default and the non-generic
+// Array.Sort/BinarySearch(Array, …) lowerings whose element type is unknown until run time
+// (MethodCompiler.EmitIntrinsic.EnumArray). The value is the one .NET's Comparer.Default returns:
+// a sub-word integer, Char or sub-word enum answers the raw difference its CompareTo returns.
+// Null sorts first. Boxed primitive/enum/string compare INLINE because the inline arms are tried
+// FIRST (not for want of a map) — each integer at its own width AND signedness, since ordering
+// cannot lump widths the way equality does, and float/double on the NaN-aware TOTAL order the
+// sole static comparison window (MethodCompiler.TryCompareLValue) emits, so a value ordered here
+// and one ordered inline agree. Decimal and the date/time value types are inline too, through
+// that same window's intrinsic three-ways — this is the ladder the boxed-built-in IComparable
+// thunk delegates to, and it may not refuse a type whose type test claims IComparable. A user
+// reference type dispatches the non-generic System.IComparable.CompareTo(object) through the
+// closed type-info the caller supplies (icomparable_ti — nullptr if the transpiler could not
+// resolve System.IComparable). A value that is neither raises the ArgumentException .NET's
+// Comparer.Default raises, never a silent 0.
+// A user IComparable's result passes through unclamped, as Comparer.Default returns it.
 // String order is ORDINAL (dn2cpp_str_compare(…,4)) — the same deliberate divergence from
 // culture-sensitive Comparer<string>.Default the generic sort/search path already makes.
 int32_t dn2cpp_object_compare(Dn2CppObject* a, Dn2CppObject* b, const Dn2CppTypeInfo* icomparable_ti);
 
-// System.Enum::CompareTo(object): the synthesized enum value body (BrEnumInstanceFormat) calls
-// this. Null target sorts first (this > null -> 1), a cross-enum-type target is an
-// ArgumentException, and same type delegates to dn2cpp_object_compare's boxed-enum width ladder.
+// System.Enum::CompareTo(object) for the synthesized enum value body (BrEnumInstanceFormat) and a
+// constrained call on an enum value. Null target sorts first (this > null -> 1), a target of any
+// other type is .NET's ArgumentException naming both types, and same type delegates to
+// dn2cpp_object_compare's boxed-enum width ladder.
 int32_t dn2cpp_enum_compareto(Dn2CppObject* a, Dn2CppObject* b);
 
 // Double/Single value semantics, shared by the two callers that must agree: the
