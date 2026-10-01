@@ -57,6 +57,9 @@ namespace StringCore
             if (args.Length > 0 && args[0] == "before-remove-padding")
                 return;
             StringPadSubset.Program.RunFaults();
+            if (args.Length > 0 && args[0] == "before-empty-char-sources")
+                return;
+            StringFromCharsSubset.Program.RunEmptySources();
         }
     }
 }

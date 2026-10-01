@@ -101,9 +101,7 @@ Dn2CppString* dn2cpp_string_create_buffer(int32_t length, char16_t** outBuf)
     return s;
 }
 
-// Copy `length` UTF-16 code units into a fresh, independent string. Backs
-// `new string(ReadOnlySpan<char>/char[])` and span<char>.ToString(); the source
-// may alias another string's buffer or a mutable array, so it must be copied.
+// Always copy, including empty sources: MemberwiseClone needs a distinct string.
 Dn2CppString* dn2cpp_string_from_chars(const char16_t* chars, int32_t length)
 {
     if (length < 0)
@@ -113,6 +111,13 @@ Dn2CppString* dn2cpp_string_from_chars(const char16_t* chars, int32_t length)
     for (int32_t i = 0; i < length; i++)
         buf[i] = chars[i];
     return s;
+}
+
+Dn2CppString* dn2cpp_string_from_charspan(const char16_t* chars, int32_t length)
+{
+    if (length == 0)
+        return dn2cpp_string_literal(u"", 0);
+    return dn2cpp_string_from_chars(chars, length);
 }
 
 Dn2CppString* dn2cpp_string_from_chararray(Dn2CppArrayN* value)
@@ -167,6 +172,8 @@ Dn2CppString* dn2cpp_string_repeat_char(char16_t c, int32_t count)
 {
     if (count < 0)
         dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "count", count);
+    if (count == 0)
+        return dn2cpp_string_literal(u"", 0);
     char16_t* buf;
     Dn2CppString* s = dn2cpp_string_alloc(&buf, count);
     for (int32_t i = 0; i < count; i++)

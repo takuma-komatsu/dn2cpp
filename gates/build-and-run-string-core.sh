@@ -39,6 +39,7 @@
 # Insert and ToCharArray preserve unsigned start faults and signed window precedence.
 # Array string constructors copy UTF-16, validate windows and share String.Empty.
 # Remove overloads preserve distinct fault fields and padding rejects named widths.
+# Empty repeat/span string constructors and char-span ToString share String.Empty.
 source "$(dirname "$0")/_common.sh"
 
 gate_extra_asserts() {
@@ -148,6 +149,26 @@ gate_extra_asserts() {
         'string remove and padding faults end'; do
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: string remove/padding witness missing: $line" >&2; exit 1; }
+    done
+    before=$(dotnet "$_CG_APP" before-empty-char-sources)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== empty string char sources ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== empty string char sources ==' \
+        'repeat empties=True:True:True:True' \
+        'span ctor empties=True:True:True:True:True:True:True' \
+        'span tostring empties=True:True:True:True' \
+        'repeat units=D800 D800 D800 ' 'span units=0000 D800 DC00 ' \
+        'char source fresh=False:False:False' 'span string fresh=False' \
+        'span independent=0000 D800 DC00 :0000 D800 DC00 ' \
+        'char source empty after GC=True:True:True' \
+        'repeat negative param=count' 'repeat negative actual=Int32:-1' \
+        'repeat minimum actual=Int32:-2147483648' \
+        'repeat empty evaluation=CN' 'repeat negative evaluation=CN' \
+        'repeat throwing count evaluation=CN' 'repeat throwing char evaluation=C' \
+        'span empty evaluation=S' 'empty string char sources end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: empty char source witness missing: $line" >&2; exit 1; }
     done
 }
 

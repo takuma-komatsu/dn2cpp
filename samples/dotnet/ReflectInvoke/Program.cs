@@ -63,6 +63,9 @@ namespace ReflectInvoke
                 return;
             RuntimeHandleRelationSubset.Program.Run();
             NullDelegateTargetSubset.Program.Run();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_EMPTY_STRING_CLONE") == "1")
+                return;
+            MemberwiseCloneSubset.Program.RunEmptyStrings();
         }
     }
 }
