@@ -26,10 +26,21 @@ internal static class Program
             catch (Exception e)
             {
                 Console.WriteLine(label + ": " + e.GetType().Name + " | "
-                    + e.Message.Replace(root, "<scratch>"));
+                    + e.Message.Replace(root, "<scratch>").Replace("\0", "<nul>"));
             }
         }
 
+        Console.WriteLine("normalize missing leaf=" + Path.GetFullPath(missingLeaf).Replace(root, "<scratch>"));
+        Console.WriteLine("normalize missing parent=" + Path.GetFullPath(missingParent).Replace(root, "<scratch>"));
+        Console.WriteLine("normalize unicode missing="
+            + Path.GetFullPath(Path.Combine(unicodeParent, "absent.txt")).Replace(root, "<scratch>"));
+        if (OperatingSystem.IsWindows())
+        {
+            string extended = @"\\?\C:\MISSING~1\..\child";
+            string ntExtended = @"\??\C:\MISSING~1\..\child";
+            Console.WriteLine("extended path unchanged=" + (Path.GetFullPath(extended) == extended));
+            Console.WriteLine("nt extended path unchanged=" + (Path.GetFullPath(ntExtended) == ntExtended));
+        }
         Probe("read leaf", () => File.ReadAllText(missingLeaf));
         Probe("read unicode leaf", () => File.ReadAllText(Path.Combine(unicodeParent, "absent.txt")));
         Probe("read parent", () => File.ReadAllText(missingParent));
@@ -44,6 +55,21 @@ internal static class Program
         Probe("write directory", () => File.WriteAllText(dir, "x"));
         Probe("cwd missing", () => Directory.SetCurrentDirectory(Path.Combine(dir, "missing")));
         Probe("cwd file", () => Directory.SetCurrentDirectory(file));
+        if (OperatingSystem.IsWindows())
+        {
+            string previous = Environment.CurrentDirectory;
+            try
+            {
+                Environment.CurrentDirectory = root;
+                Probe("env cwd relative file", () => Environment.CurrentDirectory = "present.txt");
+                Probe("directory cwd relative file", () => Directory.SetCurrentDirectory("present.txt"));
+                Probe("env cwd nul missing", () => Environment.CurrentDirectory = Path.Combine(root, "missing") + "\0tail");
+            }
+            finally
+            {
+                Environment.CurrentDirectory = previous;
+            }
+        }
         Console.WriteLine("io missing paths complete");
     }
 }

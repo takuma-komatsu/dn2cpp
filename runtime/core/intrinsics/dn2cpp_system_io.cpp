@@ -271,11 +271,15 @@ void dn2cpp_path_check_resolvable(Dn2CppString* p)
 // FullName (the real BCL path, which expands via GetLongPathNameW) yields the
 // long form — so a bare GetFullPathNameW would mismatch FullName. Mirror the
 // BCL: if the normalized path contains '~', expand it with GetLongPathNameW,
-// falling back to the lexical form when expansion fails (a non-existent path
-// cannot be expanded — GetLongPathNameW needs the components on disk).
+// expanding the existing prefix when the final components do not exist.
 Dn2CppString* dn2cpp_path_get_full_path(Dn2CppString* p)
 {
     dn2cpp_path_check_resolvable(p);
+    // Canonical extended paths already name the object and retain their code units.
+    if (p->length >= 4 && p->chars[0] == u'\\'
+        && (p->chars[1] == u'\\' || p->chars[1] == u'?')
+        && p->chars[2] == u'?' && p->chars[3] == u'\\')
+        return p;
     std::vector<wchar_t> in(static_cast<size_t>(p->length) + 1);
     for (int32_t i = 0; i < p->length; i++)
         in[static_cast<size_t>(i)] = static_cast<wchar_t>(p->chars[i]);
@@ -302,20 +306,79 @@ Dn2CppString* dn2cpp_path_get_full_path(Dn2CppString* p)
         }
         if (std::find(out.begin(), out.begin() + got, L'~') != out.begin() + got)
         {
-            // Sized and filled with the same convention, so racy the same way and
-            // retried the same way — but here exhaustion falls back to the lexical
-            // form: having no long name is a legitimate answer, not a failure.
-            DWORD longNeed = GetLongPathNameW(out.data(), nullptr, 0);
-            for (int longAttempt = 0; longNeed != 0 && longAttempt < 4; longAttempt++)
+            std::wstring input(out.data(), got);
+            bool device = input.size() >= 4 && input[0] == L'\\' && input[1] == L'\\'
+                && (input[2] == L'?' || input[2] == L'.') && input[3] == L'\\';
+            bool dotDevice = device && input[2] == L'.';
+            size_t prefixLength = 0;
+            bool unc = !device && input.size() >= 2 && input[0] == L'\\' && input[1] == L'\\';
+            if (dotDevice)
+                input[2] = L'?';
+            else if (unc)
             {
-                std::vector<wchar_t> lng(longNeed);
-                DWORD longGot = GetLongPathNameW(out.data(), lng.data(), longNeed);
-                if (longGot == 0)
-                    break;
-                if (longGot < longNeed)
+                input = L"\\\\?\\UNC\\" + input.substr(2);
+                prefixLength = 6;
+            }
+            else if (!device)
+            {
+                input = L"\\\\?\\" + input;
+                prefixLength = 4;
+            }
+            bool deviceUnc = input.size() >= 8
+                && (input[4] == L'U' || input[4] == L'u')
+                && (input[5] == L'N' || input[5] == L'n')
+                && (input[6] == L'C' || input[6] == L'c') && input[7] == L'\\';
+            size_t rootLength = 4;
+            if (deviceUnc)
+            {
+                rootLength = 8;
+                for (int component = 0; component < 2 && rootLength < input.size(); component++)
+                {
+                    while (rootLength < input.size() && input[rootLength] != L'\\')
+                        rootLength++;
+                    if (rootLength < input.size())
+                        rootLength++;
+                }
+            }
+            else if (input.size() >= 7 && input[5] == L':' && input[6] == L'\\')
+                rootLength = 7;
+            size_t prefixEnd = input.size();
+            while (prefixEnd > rootLength)
+            {
+                std::wstring existing(input, 0, prefixEnd);
+                DWORD longNeed = GetLongPathNameW(existing.c_str(), nullptr, 0);
+                DWORD error = longNeed == 0 ? GetLastError() : ERROR_SUCCESS;
+                for (int attempt = 0; longNeed != 0 && attempt < 4; attempt++)
+                {
+                    std::vector<wchar_t> expanded(longNeed);
+                    DWORD length = GetLongPathNameW(existing.c_str(), expanded.data(), longNeed);
+                    if (length == 0)
+                    {
+                        error = GetLastError();
+                        break;
+                    }
+                    if (length >= longNeed)
+                    {
+                        longNeed = length;
+                        continue;
+                    }
+                    std::wstring result(expanded.data(), length);
+                    result.append(input, prefixEnd, input.size() - prefixEnd);
+                    if (dotDevice)
+                        result[2] = L'.';
+                    if (unc)
+                        result[6] = L'\\';
                     return dn2cpp_string_from_chars(
-                        reinterpret_cast<const char16_t*>(lng.data()), static_cast<int32_t>(longGot));
-                longNeed = longGot; // grew between the calls; retry at the size it asked for
+                        reinterpret_cast<const char16_t*>(result.data() + prefixLength),
+                        static_cast<int32_t>(result.size() - prefixLength));
+                }
+                if (error != ERROR_FILE_NOT_FOUND && error != ERROR_PATH_NOT_FOUND)
+                    break;
+                // A missing suffix must not prevent an existing short parent from expanding.
+                size_t separator = input.rfind(L'\\', prefixEnd - 1);
+                if (separator == std::wstring::npos || separator <= rootLength)
+                    break;
+                prefixEnd = separator;
             }
         }
         return dn2cpp_string_from_chars(
@@ -592,10 +655,78 @@ Dn2CppString* dn2cpp_env_get_current_directory()
     return dn2cpp_string_from_utf8(cwd.data(), static_cast<int32_t>(std::strlen(cwd.data())));
 }
 
+#if defined(_WIN32)
+[[noreturn]] static void dn2cpp_throw_current_directory_failure(DWORD error, Dn2CppString* path)
+{
+    const Dn2CppTypeInfo* type = &dn2cpp_io_exception_type;
+    const char* key = nullptr;
+    if (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND)
+    {
+        type = &dn2cpp_directory_not_found_exception_type;
+        key = DN2CPP_SR_DIRECTORY_NOT_FOUND_PATH;
+        error = ERROR_PATH_NOT_FOUND;
+    }
+    else if (error == ERROR_ACCESS_DENIED)
+    {
+        type = &dn2cpp_unauthorized_access_exception_type;
+        key = DN2CPP_SR_UNAUTHORIZED_ACCESS_PATH;
+    }
+    else if (error == ERROR_FILENAME_EXCED_RANGE)
+    {
+        type = &dn2cpp_path_too_long_exception_type;
+        key = DN2CPP_SR_PATH_TOO_LONG_PATH;
+    }
+    Dn2CppString* message;
+    if (key != nullptr)
+        message = dn2cpp_sr_message(key, &path, 1);
+    else
+    {
+        wchar_t* buffer = nullptr;
+        DWORD length = FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM
+            | FORMAT_MESSAGE_IGNORE_INSERTS | FORMAT_MESSAGE_ARGUMENT_ARRAY, nullptr, error, 0,
+            reinterpret_cast<wchar_t*>(&buffer), 0, nullptr);
+        if (length != 0)
+        {
+            while (length > 0 && buffer[length - 1] <= 32)
+                length--;
+            message = dn2cpp_string_from_chars(reinterpret_cast<const char16_t*>(buffer), length);
+            LocalFree(buffer);
+        }
+        else
+        {
+            char unknown[40];
+            int length = std::snprintf(unknown, sizeof(unknown), "Unknown error (0x%lx)",
+                static_cast<unsigned long>(error));
+            message = dn2cpp_string_from_utf8(unknown, length);
+        }
+        if (path->length != 0)
+        {
+            message = dn2cpp_string_concat3(message, dn2cpp_string_from_utf8(" : '", 4), path);
+            message = dn2cpp_string_concat2(message, dn2cpp_string_from_utf8("'.", 2));
+        }
+    }
+    auto* exception = reinterpret_cast<Dn2CppExceptionObject*>(dn2cpp_exception_new(type, message, nullptr));
+    exception->hresult = (error & 0xffff0000u) != 0 ? static_cast<int32_t>(error)
+        : static_cast<int32_t>(0x80070000u | (error & 0xffffu));
+    dn2cpp_throw(exception);
+}
+#endif
+
 void dn2cpp_env_set_current_directory(Dn2CppString* value)
 {
     if (value != nullptr && value->length == 0)
         dn2cpp_throw_argument_param(DN2CPP_SR_EMPTY_STRING, "value");
+    if (value == nullptr)
+        dn2cpp_throw_argument_null_param("value");
+#if defined(_WIN32)
+    // Win32 supplies the error and consumes UTF-16; the exception retains the input.
+    std::vector<wchar_t> path(static_cast<size_t>(value->length) + 1);
+    for (int32_t i = 0; i < value->length; i++)
+        path[i] = static_cast<wchar_t>(value->chars[i]);
+    path[value->length] = L'\0';
+    if (!SetCurrentDirectoryW(path.data()))
+        dn2cpp_throw_current_directory_failure(GetLastError(), value);
+#else
     // The name ends at an embedded NUL, as the string .NET marshals to chdir does.
     std::string p = dn2cpp_path_to_utf8(value, "value");
     if (dn2cpp_pal_chdir(p.c_str()) != 0)
@@ -609,6 +740,7 @@ void dn2cpp_env_set_current_directory(Dn2CppString* value)
                 DN2CPP_SR_UNAUTHORIZED_ACCESS_PATH, value);
         dn2cpp_throw_of(&dn2cpp_io_exception_type);
     }
+#endif
 }
 
 // Directory.SetCurrentDirectory refuses "" through its own ThrowIfNullOrEmpty, so on
