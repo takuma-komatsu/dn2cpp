@@ -7,6 +7,7 @@
 # (Append/AppendFormat/Insert/Remove/Replace and edit operations), including null
 # receiver fault precedence, repeat and string-window validation, null object
 # insertion, and argument evaluation for calls and interpolation.
+# CopyTo preserves destination-first fault fields and unchecked room arithmetic.
 # Former gates: string-format, stringbuilder, stringbuilder-edit.
 source "$(dirname "$0")/_common.sh"
 
@@ -78,6 +79,32 @@ gate_extra_asserts() {
         grep -Fxq "$line" <<< "$native" \
             || { echo "FAIL: builder range witness missing: $line" >&2; exit 1; }
     done
+    before=$(dotnet "$_CG_APP" before-builder-copy-faults)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== StringBuilder copy faults ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== StringBuilder copy faults ==' \
+        '0:-1:-1:-1:-1 param=destination' \
+        '2:-1:-1:-1:-1 type=NullReferenceException' \
+        '0:4:-1:-1:-1 param=destinationIndex' \
+        '0:4:-1:-1:-1 actual=Int32:-1' \
+        '0:4:-1:0:-1 param=count' '0:4:-1:0:-1 actual=Int32:-1' \
+        '0:4:0:5:-1 type=ArgumentOutOfRangeException' '0:4:0:5:-1 param=' \
+        '0:4:0:0:-2147483648 type=ArgumentException' \
+        '0:4:2147483647:0:0 param=sourceIndex' \
+        '0:4:2147483647:0:0 actual=null' \
+        '0:4:3:0:4 message=Source string was not long enough. Check sourceIndex and count.' \
+        '0:4:3:0:4 destination=002E 002E 002E 002E ' \
+        '0:4:4:4:0 copied' '1:0:0:0:0 copied' \
+        '0:4:0:0:4 destination=0061 0062 0063 0061 ' \
+        'copy utf16=0041 0000 D800 005A ' \
+        'copy null evaluation=RSADC' 'copy throwing count evaluation=RSADC' \
+        'copy fault after GC param=destinationIndex' \
+        'copy fault after GC actual=Int32:-7' 'StringBuilder copy faults end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: builder CopyTo fault witness missing: $line" >&2; exit 1; }
+    done
+
 }
 
 corelib_diff_gate StringBuild

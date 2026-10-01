@@ -415,7 +415,7 @@ internal sealed partial class MethodCompiler
             // CopyTo(int sourceIndex, char[] destination, int destinationIndex, int count)
             // — bounds-checked copy of `count` code units into the caller's char[]. The
             // runtime helper raises the BCL's ArgumentOutOfRange/ArgumentException on a bad
-            // range. (StringBuilder has no other CopyTo overload.)
+            // range.
             case ("System.Text.StringBuilder", "CopyTo")
                 when sig.ParameterTypes is [{ Primitive: PrimitiveTypeCode.Int32 },
                     { Kind: TypeKind.SZArray, Element.Primitive: PrimitiveTypeCode.Char },
