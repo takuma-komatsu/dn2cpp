@@ -18,6 +18,14 @@ internal interface IEmitBackend
     /// <summary>Optional per-call intrinsic translator, or null for none.</summary>
     ICallIntrinsics? CallIntrinsics { get; }
 
+    /// <summary>Contain faults from unmanaged callback bodies at the native boundary.
+    /// The host receives the ABI's failure result and the registered boundary sink reports
+    /// the failure, including callbacks reached through function pointers.</summary>
+    bool CatchUnmanagedCallbackExceptions => false;
+
+    /// <summary>Native failure expression for a non-void callback; null uses value initialization.</summary>
+    string? UnmanagedCallbackFailureValue(MethodInfo method) => null;
+
     /// <summary>True to skip emitting a method body — e.g. an engine shim method
     /// whose calls are replaced inline by <see cref="CallIntrinsics"/>. Such
     /// placeholders are never referenced as real functions, so only members that
@@ -103,6 +111,12 @@ internal interface IEmitBackend
     /// the type: another assembly may define the same fully-qualified name. Default:
     /// the declaration is the ABI.</summary>
     string? CalliAbiType(MethodInfo enclosing, TypeDesc declared) => null;
+
+    /// <summary>Overrides a native function-pointer argument's ABI type and marshalling expression.</summary>
+    (string Type, string Expression)? MarshalCalliArgument(MethodInfo enclosing, TypeDesc declared, string expression) => null;
+
+    /// <summary>Native code consumes delegate arguments only until this call returns.</summary>
+    bool ScopedCalliDelegateCallbacks(MethodInfo enclosing) => false;
 
     /// <summary>Engine-wrapper allowlist trim (<c>--trim-godot-classes</c>): a backend
     /// whose engine layer registers one "native class name → allocate managed wrapper"

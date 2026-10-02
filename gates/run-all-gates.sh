@@ -370,6 +370,10 @@ ok "Gate cache inputs: runtime-tree=$DN2CPP_RUNTIME_HASH dotnet-runtimes=$DN2CPP
 # also builds its reference, so two processes could otherwise write the same
 # shared project's obj/bin at once. Order matters — libraries before dependents.
 ORDERED_PROJECTS=(
+    "samples/unrealsharp/CoreFixture/CoreFixture.csproj"
+    "samples/unrealsharp/BootstrapFixture/BootstrapFixture.csproj"
+    "samples/unrealsharp/RegistrationFixture/RegistrationFixture.csproj"
+    "samples/unrealsharp/CalliOracle/CalliOracle.csproj"
     "src/Dn2Cpp.Runtime/Dn2Cpp.Runtime.csproj"
     "src/Dn2Cpp.Cli.Console/Dn2Cpp.Cli.Console.csproj"
     "samples/dotnet/ReflectInvoke/ReflectInvoke.csproj"
