@@ -779,12 +779,35 @@ doc_vendored=$(awk '/^## /{s = ($0 == "## License")} s' README.md \
 set_eq "README.md's vendored license list vs third_party/" \
        "licensed by README.md" "$doc_vendored" "present under third_party/" "$tree_vendored"
 
-echo "== 12/14 BPI policy version and dangling path references in every doc =="
+echo "== 12/14 BPI versions, opcode count and dangling path references in every doc =="
 bpi_layout_doc=$(sed -n 's/.*LayoutPolicyVersion` (currently \([0-9][0-9]*\)).*/\1/p' \
     docs/BPI-FORMAT.md)
 bpi_layout_tree=$(sed -n 's/^[[:space:]]*public const int LayoutPolicyVersion = \([0-9][0-9]*\);/\1/p' \
     src/Dn2Cpp.Transpiler/HotUpdate/AbiContract.cs)
 eq "docs/BPI-FORMAT.md current layout-policy version" "$bpi_layout_doc" "$bpi_layout_tree"
+bpi_format_runtime=$(sed -n 's/^#define DN2CPP_BPI_VERSION \([0-9][0-9]*\)u/\1/p' \
+    runtime/core/dn2cpp_interp.h)
+bpi_format_writer=$(sed -n 's/.*head.U32(\([0-9][0-9]*\));.*formatVersion.*/\1/p' \
+    src/Dn2Cpp.Transpiler/HotUpdate/BpiWriter.cs)
+eq "BPI writer and runtime format version" "$bpi_format_writer" "$bpi_format_runtime"
+bpi_canon_doc=$(sed -n 's/.*CanonPolicyVersion` (currently \([0-9][0-9]*\)).*/\1/p' \
+    docs/BPI-FORMAT.md)
+bpi_canon_tree=$(sed -n 's/^[[:space:]]*public const int CanonPolicyVersion = \([0-9][0-9]*\);/\1/p' \
+    src/Dn2Cpp.Transpiler/HotUpdate/AbiContract.cs)
+eq "docs/BPI-FORMAT.md current canon-policy version" "$bpi_canon_doc" "$bpi_canon_tree"
+bpi_contract_doc=$(sed -n 's/^{ "contractVersion": \([0-9][0-9]*\),.*/\1/p' docs/BPI-FORMAT.md)
+bpi_contract_tree=$(sed -n 's/.*\\"contractVersion\\": \([0-9][0-9]*\),.*/\1/p' \
+    src/Dn2Cpp.Transpiler/HotUpdate/AbiContract.cs)
+eq "docs/BPI-FORMAT.md base-abi.json contractVersion" "$bpi_contract_doc" "$bpi_contract_tree"
+# The register opcode table states its size and last value; the X-macro list is
+# the runtime's copy of that table.
+bpi_ops_tree=$(grep -c '^[[:space:]]*X(R_' runtime/core/dn2cpp_interp_regops.h || true)
+bpi_ops_doc=$(sed -n 's/^\([0-9][0-9]*\) opcodes, values 0–\([0-9][0-9]*\)\..*/\1 \2/p' \
+    docs/BPI-FORMAT.md)
+eq "docs/BPI-FORMAT.md register opcode count and last value" \
+   "$bpi_ops_doc" "$bpi_ops_tree $((bpi_ops_tree - 1))"
+eq "docs/BPI-FORMAT.md register opcode table rows" \
+   "$(grep -c '^| [0-9][0-9]* | `R_' docs/BPI-FORMAT.md)" "$bpi_ops_tree"
 
 for f in docs/*.md README.md CLAUDE.md AGENTS.md CONTRIBUTING.md; do
     check_paths "$f"

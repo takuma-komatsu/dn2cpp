@@ -237,5 +237,5 @@ internal static class RegOpFold
 internal static class RegFormat
 {
     public const int SlotLimit = 64; // argCount + localCount
-    public const int TempLimit = 64; // maxStack = the simulated maximum eval depth
+    public const int TempLimit = 64; // maxStack = the maximum temporary extent, including call bases
 }

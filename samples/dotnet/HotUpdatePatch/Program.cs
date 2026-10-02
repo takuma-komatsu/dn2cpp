@@ -626,10 +626,22 @@ internal static class Program
         DelegateNullFaults();
 
         Counter.ConcatProbe = InterpretedConcatSubset.Run;
+        Counter.GenericIntImportProbe = GenericIntName;
+        Counter.GenericStringImportProbe = GenericStringName;
 
         // An exception no patch handler consumes escapes the interpreter into
         // the base program's own try/catch (see HotUpdateBase.Program.Main).
         throw new InvalidOperationException("escaped to base");
+    }
+
+    private static string GenericIntName()
+    {
+        return Counter.TypeName<int>();
+    }
+
+    private static string GenericStringName()
+    {
+        return Counter.TypeName<string>();
     }
 
     // The interpreter's own null checks, each caught where it is raised.
@@ -641,7 +653,7 @@ internal static class Program
     // NullReferenceException and keeps running, so a runtime that ends the
     // process at one of them cannot print the rest of this transcript at all.
     // The probes are reached from Main, so the gate's stack-format replay
-    // drives every one of them through the v1 dispatch loop as well.
+    // drives every one of them through the stack dispatch loop as well.
     //
     // Two sibling guards are deliberately absent, because C# cannot reach
     // them: a `.ctor` import is only ever called on a receiver newobj has

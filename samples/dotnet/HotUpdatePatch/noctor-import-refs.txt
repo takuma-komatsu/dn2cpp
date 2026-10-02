@@ -1,0 +1,6 @@
+HotUpdateNoCtor.GenericImportSurface::TypeName[System.Int32]
+HotUpdateNoCtor.GenericImportSurface::TypeName[System.String]
+HotUpdateNoCtor.GenericImportSurface::Echo[System.Int32]
+HotUpdateNoCtor.GenericImportSurface::Echo[System.String]
+HotUpdateNoCtor.LegacyImportSurface::Pair[System.Int32]
+HotUpdateNoCtor.LegacyImportSurface::Pair[System.String]

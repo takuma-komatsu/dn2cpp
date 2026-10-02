@@ -267,7 +267,7 @@ culture_build() {
         my $status = system @ARGV;
         die "cannot start builder: $!\n" if $status == -1;
         exit(($status & 127) ? 128 + ($status & 127) : $status >> 8);
-    ' "$WORK/_build.lock" dotnet build "$@"
+    ' "$WORK/_build.lock" dotnet build -m:1 /nodeReuse:false -p:BuildInParallel=false "$@"
 }
 
 check_subject() {

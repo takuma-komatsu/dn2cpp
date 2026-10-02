@@ -2,7 +2,7 @@
 // minimal IL interpreter. The spec lives in docs/BPI-FORMAT.md — the format,
 // the interpreter/converter surface (§"Conversion surface", the patch fence),
 // §"Load & bind" (imports, static storage, patch-type construction and
-// layout), §"N2M trampolines", §"Delegate thunks", the EH model, and the v1
+// layout), §"N2M trampolines", §"Delegate thunks", the EH model, and the
 // carve-outs. This file implements that spec; only implementation-local
 // invariants are stated here, at their sites.
 //
@@ -10,7 +10,7 @@
 // from the blob in place. The blob must therefore be GC-visible memory
 // (dn2cpp_alloc), and every loaded image is kept on an append-only static
 // list — a data-segment GC root — so blobs live for the process lifetime
-// (v1: no unloading).
+// (no unloading; see §"Carve-outs").
 //
 // Operand kinds are converter-decided hints baked into each instruction, so
 // execution never infers types.
@@ -1025,9 +1025,10 @@ enum OverloadStatus { kOverloadNone, kOverloadFound, kOverloadAmbiguous };
 // constructors —, `paramCount`, `wantStatic`). A --hotupdate-base build stamps a
 // `sigShape` on every row, so the import's `shape` string picks the exact
 // overload — chiefly one instantiation out of the several a generic method emits
-// under one name. Falls back to a lone unshaped candidate (a legacy row with no
-// sigShape — never produced by a --hotupdate-base build, so defensive only) and
-// reports ambiguity only among unshaped candidates. Returns kOverloadNone when
+// under one name, whose shapes its type arguments lead. Falls back to a lone
+// unshaped candidate (a legacy row with no sigShape — never produced by a
+// --hotupdate-base build, so defensive only) and reports ambiguity when two rows
+// carry the import's shape or among unshaped candidates. Returns kOverloadNone when
 // the table holds no matching overload (the caller then walks the base chain or
 // fails as unresolved); a shaped-but-no-match table reads as None too, so a
 // requested instantiation the base never emitted is a clean unresolved failure
@@ -1041,7 +1042,7 @@ OverloadStatus resolve_overload(
 {
     Dn2CppMetadataHandle<Dn2CppMethodInfo> exact = nullptr;
     Dn2CppMetadataHandle<Dn2CppMethodInfo> unshaped = nullptr;
-    int cand = 0, unshapedCount = 0;
+    int cand = 0, unshapedCount = 0, exactCount = 0;
     for (int32_t i = 0; i < count; i++)
     {
         auto mi = methods[i];
@@ -1060,8 +1061,11 @@ OverloadStatus resolve_overload(
         else if (name_equals(shape, shapeLen, mi->sigShape))
         {
             exact = mi;
+            exactCount++;
         }
     }
+    if (exactCount > 1)
+        return kOverloadAmbiguous;
     if (exact != nullptr)
     {
         *out = exact;

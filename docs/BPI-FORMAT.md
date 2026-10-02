@@ -1,4 +1,4 @@
-# BPI-FORMAT — Baked Patch Image binary specification (v1)
+# BPI-FORMAT — Baked Patch Image binary specification
 
 The distributable format for dn2cpp hot update.
 
@@ -45,8 +45,8 @@ invariants:
 | off | size | field | description |
 |-----|------|-------|-------------|
 | 0  | 8 | `magic` | `"DN2BPI\0\0"` |
-| 8  | 4 | `formatVersion` | +1 on layout-incompatible change. The loader rejects an unknown major |
-| 12 | 4 | `flags` | bit0 selects the register code format (§Register code format — the converter's default; 0 = the v1 stack encoding, forced by `--patch-stackcode`). Loaders reject unknown bits |
+| 8  | 4 | `formatVersion` | `DN2CPP_BPI_VERSION` (`runtime/core/dn2cpp_interp.h`): +1 on any change a BPI of another version would misread: a record layout or an import identity (`sigShape`). The loader accepts only its own version |
+| 12 | 4 | `flags` | bit0 selects the register code format (§Register code format — the converter's default; 0 = the stack encoding, forced by `--patch-stackcode`). Loaders reject unknown bits |
 | 16 | 8 | `baseImageAbiHash` | hash of the base-image ABI contract (below). The loader checks it against the running base |
 | 24 | 4 | `sectionCount` | |
 | 28 | 4 | `sectionTableOff` | blob-relative |
@@ -124,9 +124,13 @@ and otherwise constructs an array type-info from the resolved element **after
 patch-type construction** (§Load step 5b), so patch-class elements resolve too.
 Only single-dimension zero-based arrays over the fenced element kinds exist.
 
-The v1 `sigShape` string (both here and in MethodTable) is the transpiler's
+The `sigShape` string (both here and in MethodTable) is the transpiler's
 `SigKey` with the leading name removed: `(<paramTypes, comma-joined>):<ret>`
-in `TypeDesc` rendering — e.g. `WriteLine(string)` is `(String):Void`.
+in `TypeDesc` rendering — e.g. `WriteLine(string)` is `(String):Void`. A
+method import of a closed generic-method instantiation, and the base method row
+it binds, lead that with the method's type arguments (`AbiContract.ImportShape`):
+`TypeName<int>()` is `<Int32>():String`, so instantiations whose signatures
+never name a type argument stay distinct.
 
 **Nested base-image types are outside the type-import boundary.** The registry
 keys a nested type by its CLR reflection name (`Ns.Outer+Inner`), but the
@@ -294,7 +298,7 @@ Int64/Double/references) and rounds the final size up to 8.
   loader-constructed patch type-info. Both feed the shared base-chain walk; a
   failed `castclass` raises the catchable `InvalidCastException` with the .NET
   message. `box`/`unbox.any`/`ldtoken`: `a` = type `EntityRef`; conversion-time
-  rejections in v1.
+  rejections.
 - `newarr`: `a` = the SZArray type `EntityRef` (the resolved array type-info
   stamps the allocation header), `b` = the **element storage kind** (below),
   which selects the array representation (the same three layouts the AOT lane
@@ -347,9 +351,9 @@ layout, everything else the packed element-sized layout):
 > The opcode enum is the **raw ECMA-335 opcode value** (u16; two-byte opcodes
 > encode as `0xFExx`), so there is no separate enum to keep in sync with the
 > converter. The converter normalizes short forms to their canonical long
-> form (`ldc.i4.3` → `ldc.i4 a=3`, `br.s` → `br`, `ldarg.0` → `ldarg a=0`, …)
-> so the interpreter switch handles only the long forms. This applies to the
-> v1 stack encoding; `Header.flags` bit0 selects the register code format,
+> form (`ldc.i4.3` → `ldc.i4 a=3`, `br.s` → `br`, `ldarg.0` → `ldarg a=0`,
+> …) so the interpreter switch handles only the long forms. This applies to
+> the stack encoding; `Header.flags` bit0 selects the register code format,
 > which carries its own dense opcode enum (§Register code format).
 
 ### EHTable (7) — `EHRecord` (28 bytes)
@@ -363,7 +367,7 @@ scan relies on. `catchTypeRef` is an Import-tagged type `EntityRef` for catch
 clauses (matched at run time by a base-chain walk of the thrown object's
 type-info; `System.Exception`/`System.Object` are catch-all, the same
 root-type rule as the AOT catch dispatch) and `0xFFFFFFFF` otherwise.
-kind 1 (filter) is defined but outside the v1 converter fence.
+kind 1 (filter) is defined but outside the converter fence.
 
 Propagation is unified with AOT code: a managed throw rides the runtime's own
 C++ exception (`dn2cpp_throw` / `Dn2CppException`) through interpreted and AOT
@@ -457,7 +461,7 @@ so an unknown bit is never silently run through the wrong dispatch loop.
 > X-macro opcode list (`runtime/core/dn2cpp_interp_regops.h`) and its C# mirror
 > (`src/Dn2Cpp.Transpiler/HotUpdate/RegOps.cs`) must match the opcode table
 > below, value for value. Converter emission of the format is the default
-> (`--emit-patch` bakes register code; `--patch-stackcode` forces the v1 stack
+> (`--emit-patch` bakes register code; `--patch-stackcode` forces the stack
 > encoding).
 
 ### Instruction record (12 bytes, fixed)
@@ -469,9 +473,9 @@ so an unknown bit is never silently run through the wrong dispatch loop.
 | 4 | 4 | `a` | payload, or a third register `r2` in its low byte (class C3) |
 | 8 | 4 | `b` | payload |
 
-The v1 `pfx` field **does not exist** in this format — v1 wrote it as 0 and
-never read it; any prefix semantics that ever matter become distinct opcodes
-(`tail.` remains unsupported).
+The stack encoding's `pfx` field **does not exist** in this format — the stack
+encoding writes it as 0 and never reads it; any prefix semantics that ever
+matter become distinct opcodes (`tail.` remains unsupported).
 
 ### Register model
 
@@ -484,19 +488,20 @@ regs[slotCount + d]            the eval temp at abstract stack depth d
 ```
 
 with `tempBase = slotCount = argCount + localCount`. The converter's abstract
-eval-stack simulation (the same one that decides v1's operand-kind hints)
-makes the depth **statically known at every instruction** and enforces
-identical stack shapes at merge points, so `reg = tempBase + depth` is a pure
-function of the program point: **no phi nodes, ever**. Registerization is a
-renaming, not an optimization problem.
+eval-stack simulation (the same one that decides the stack encoding's
+operand-kind hints) makes the depth **statically known at every instruction**
+and enforces identical stack shapes at merge points, so
+`reg = tempBase + depth` is a pure function of the program point: **no phi
+nodes, ever**. Registerization is a renaming, not an optimization problem.
 
 - **Limits**: `argCount + localCount` ≤ 64 and the eval-temp region ≤ 64, so a
   frame never exceeds **128 registers** and register operands are u8
   (`0xFF` = unused). Both limits are converter-enforced (a method over either
   is a conversion-time rejection).
 - **Method-record fields keep their meaning**; under the register format
-  `maxStack` records the **simulated maximum eval depth** — the register
-  verifier bounds temp operands against it.
+  `maxStack` records the **eval-temp extent**, including simulated depth and
+  call-window bases even for a void zero-argument call. The register verifier
+  bounds temp operands against it.
 - **Call windows**: an operation consuming *n* values at depth *d* consumes
   regs `[tempBase+d-n, tempBase+d)` — always contiguous, so a call passes
   `&regs[windowBase]` **zero-copy** and the return value lands in
@@ -522,9 +527,9 @@ load-time verifier:
 ### Opcode table (normative)
 
 Values are assigned **sequentially in table order starting at 0** —
-160 opcodes, values 0–159. The set covers exactly the v1 interpreted surface:
-IL the converter fences (`box`/`unbox.any`, `switch`, …) has no register
-opcode, the same way it has no stack-interpreter arm.
+160 opcodes, values 0–159. The set covers exactly the stack interpreter's
+surface: IL the converter fences (`box`/`unbox.any`, `switch`, …) has no
+register opcode, the same way it has no stack-interpreter arm.
 
 **R_INVALID and data movement (0–1).** `R_MOV` is the one data-movement op:
 `ldarg`/`ldloc`/`starg`/`stloc`/`dup` all become register copies (or nothing
@@ -535,8 +540,9 @@ at all when the simulation folds them away); `nop` and `pop` emit no record.
 | 0 | `R_INVALID` | C0 | traps if executed (never emitted) |
 | 1 | `R_MOV` | C2 | `r0` = dst, `r1` = src: `r0 ← r1` (whole 8-byte slot) |
 
-**Constants (2–7).** `r0` = dst throughout. Slot invariants are v1's: i32
-values sign-extended in the 64-bit slot, f32 values widened to double.
+**Constants (2–7).** `r0` = dst throughout. Slot invariants are the stack
+interpreter's: i32 values sign-extended in the 64-bit slot, f32 values widened
+to double.
 
 | value | name | class | operands / semantics |
 |-------|------|-------|----------------------|
@@ -548,10 +554,10 @@ values sign-extended in the 64-bit slot, f32 values widened to double.
 | 7 | `R_LDSTR` | C1 | `a` = UserStringPool offset |
 
 **Binary arithmetic (8–43).** All C3: `r0` = dst, `r1` = src1, `r2` = src2.
-Div/rem semantics are identical to v1 (`DivideByZeroException` on a zero
-divisor; signed `INT_MIN / -1` behavior; float rem = `fmod`). The `_F32` forms
-compute in float precision and store widened. Shift amounts mask to the
-operand width.
+Div/rem semantics are identical to the stack interpreter's
+(`DivideByZeroException` on a zero divisor; signed `INT_MIN / -1` behavior;
+float rem = `fmod`). The `_F32` forms compute in float precision and store
+widened. Shift amounts mask to the operand width.
 
 | value | name | class | operands / semantics |
 |-------|------|-------|----------------------|
@@ -604,10 +610,11 @@ operand width.
 | 49 | `R_NOT_I64` | C2 | `r0 ← ~r1` (i64) |
 
 **Conversions (50–67).** All C2: `r0` = dst, `r1` = src. Semantics are
-identical to v1's `conv.*` arms; the target width and signedness ride in the
-opcode, the source kind is baked in at conversion time (the v1 hint, promoted
-to the opcode). `_FROM_F` covers **both** float widths — the slot holds a
-widened double either way — which is why the group is 6×3, not 6×4.
+identical to the stack interpreter's `conv.*` arms; the target width and
+signedness ride in the opcode, the source kind is baked in at conversion time
+(the stack encoding's hint, promoted to the opcode). `_FROM_F` covers **both**
+float widths — the slot holds a widened double either way — which is why the
+group is 6×3, not 6×4.
 
 | value | name | class | operands / semantics |
 |-------|------|-------|----------------------|
@@ -631,7 +638,8 @@ widened double either way — which is why the group is 6×3, not 6×4.
 | 67 | `R_CONV_R8_FROM_F` | C2 | `conv.r8`, float source |
 
 **Comparisons (68–89).** All C3: `r0` = dst, `r1`/`r2` = operands; the result
-is an i32 0/1. Float `_UN` forms carry v1's unordered semantics.
+is an i32 0/1. Float `_UN` forms carry the stack interpreter's unordered
+semantics.
 `R_CGT_UN_REF` is the canonical non-null idiom (`cgt.un` on references).
 
 | value | name | class | operands / semantics |
@@ -662,8 +670,9 @@ is an i32 0/1. Float `_UN` forms carry v1's unordered semantics.
 **Branches (90–138).** The target is `a` = the **absolute instruction index in
 the register stream**. `R_BRTRUE_*`/`R_BRFALSE_*` are C1 (`r0` = the tested
 operand); compare-branches are C2 (`r0`, `r1` = operands). Float
-compare-branches keep v1's unordered-comparison semantics (the `_UN` forms
-take the branch on an unordered pair; the ordered forms fall through).
+compare-branches keep the stack interpreter's unordered-comparison semantics
+(the `_UN` forms take the branch on an unordered pair; the ordered forms fall
+through).
 
 | value | name | class | operands / semantics |
 |-------|------|-------|----------------------|
@@ -718,22 +727,22 @@ take the branch on an unordered pair; the ordered forms fall through).
 | 138 | `R_BNE_UN_REF` | C2 | branch if `r0 != r1` (reference identity) |
 
 **Object / call (139–152).** Field, cast, and array payloads (`a`/`b`) mean
-exactly what they mean in v1; the element-storage-kind payload sub-dispatch is
-retained.
+exactly what they mean in the stack encoding; the element-storage-kind payload
+sub-dispatch is retained.
 
 | value | name | class | operands / semantics |
 |-------|------|-------|----------------------|
-| 139 | `R_CALL` | C1 | `r0` = window base; `a` = method `EntityRef`; `b` bit0 = hasResult (the result lands in `regs[r0]`), bit1 = instance-null-check — exactly v1's meanings. The consumed count comes from the callee's method record / import binding, as in v1 |
-| 140 | `R_CALLVIRT` | C1 | as `R_CALL`, with v1's virtual/slot re-resolution semantics. A delegate-`Invoke` window is `[dg, args...]` |
+| 139 | `R_CALL` | C1 | `r0` = window base; `a` = method `EntityRef`; `b` bit0 = hasResult (the result lands in `regs[r0]`), bit1 = instance-null-check — exactly the stack encoding's meanings. The consumed count comes from the callee's method record / import binding, as in the stack encoding |
+| 140 | `R_CALLVIRT` | C1 | as `R_CALL`, with the stack interpreter's virtual/slot re-resolution semantics. A delegate-`Invoke` window is `[dg, args...]` |
 | 141 | `R_NEWOBJ` | C1 | as `R_CALL`; the constructed reference lands in `regs[r0]`. A delegate-construction window is `[target, ftn]` |
-| 142 | `R_LDFTN` | C1 | `r0` = dst; `a` = method `EntityRef` (pushes the delegate-method closure, as v1) |
-| 143 | `R_LDFLD` | C2 | `r0` = dst, `r1` = obj; `a`/`b` = v1's field operands |
-| 144 | `R_STFLD` | C2 | `r0` = obj, `r1` = value; `a`/`b` = v1's field operands |
-| 145 | `R_LDSFLD` | C1 | `r0` = dst; `a`/`b` = v1's static-field operands |
-| 146 | `R_STSFLD` | C1 | `r0` = value; `a`/`b` = v1's static-field operands |
-| 147 | `R_CASTCLASS` | C2 | `r0` = dst, `r1` = src; `a` = type `EntityRef` (v1 semantics, incl. the catchable `InvalidCastException`) |
+| 142 | `R_LDFTN` | C1 | `r0` = dst; `a` = method `EntityRef` (pushes the delegate-method closure, as in the stack encoding) |
+| 143 | `R_LDFLD` | C2 | `r0` = dst, `r1` = obj; `a`/`b` = the stack encoding's field operands |
+| 144 | `R_STFLD` | C2 | `r0` = obj, `r1` = value; `a`/`b` = the stack encoding's field operands |
+| 145 | `R_LDSFLD` | C1 | `r0` = dst; `a`/`b` = the stack encoding's static-field operands |
+| 146 | `R_STSFLD` | C1 | `r0` = value; `a`/`b` = the stack encoding's static-field operands |
+| 147 | `R_CASTCLASS` | C2 | `r0` = dst, `r1` = src; `a` = type `EntityRef` (the stack interpreter's semantics, incl. the catchable `InvalidCastException`) |
 | 148 | `R_ISINST` | C2 | `r0` = dst, `r1` = src; `a` = type `EntityRef` |
-| 149 | `R_NEWARR` | C2 | `r0` = dst, `r1` = length; `a` = SZArray type `EntityRef`, `b` = element storage kind — as v1 (incl. the negative-length `OverflowException`) |
+| 149 | `R_NEWARR` | C2 | `r0` = dst, `r1` = length; `a` = SZArray type `EntityRef`, `b` = element storage kind — as in the stack encoding (incl. the negative-length `OverflowException`) |
 | 150 | `R_LDLEN` | C2 | `r0` = dst, `r1` = array (length as i32) |
 | 151 | `R_LDELEM` | C3 | `r0` = dst, `r1` = array, `r2` = index; `b` = element storage kind |
 | 152 | `R_STELEM` | C3 | `r0` = array, `r1` = index, `r2` = value; `b` = element storage kind |
@@ -744,10 +753,10 @@ retained.
 |-------|------|-------|----------------------|
 | 153 | `R_RET_VOID` | C0 | return, no value |
 | 154 | `R_RET` | C1 | return `r0` |
-| 155 | `R_LEAVE` | C0 | `a` = target; v1's leave machinery (§Exception handling below) |
-| 156 | `R_ENDFINALLY` | C0 | end finally/fault, as v1 |
+| 155 | `R_LEAVE` | C0 | `a` = target; the stack interpreter's leave machinery (§Exception handling below) |
+| 156 | `R_ENDFINALLY` | C0 | end finally/fault, as in the stack interpreter |
 | 157 | `R_THROW` | C1 | throw `r0` |
-| 158 | `R_RETHROW` | C0 | `a` = the enclosing catch's method-relative EHTable index, as v1 |
+| 158 | `R_RETHROW` | C0 | `a` = the enclosing catch's method-relative EHTable index, as in the stack encoding |
 
 **Reserved (159).**
 
@@ -763,18 +772,18 @@ retained.
 - **Catch handler entry**: the exception object is written to `regs[tempBase]`
   — a catch's entry depth is 1, so the handler body reads it as the depth-0
   temp. **Finally/fault entry writes no register** (entry depth 0).
-- The `R_LEAVE`/`R_ENDFINALLY` machinery behaves as v1 (every finally between
-  the leave and its target runs, innermost-first); v1's "the eval stack
-  empties" is vacuous here — temps above the target's depth are dead by
-  construction. Filter clauses remain unsupported.
+- The `R_LEAVE`/`R_ENDFINALLY` machinery behaves as in the stack interpreter
+  (every finally between the leave and its target runs, innermost-first); its
+  "the eval stack empties" is vacuous here — temps above the target's depth
+  are dead by construction. Filter clauses remain unsupported.
 
 ### Load-time verification
 
 A register-format image gets **one linear verification scan per method**,
 after import binding:
 
-- every register operand `< slotCount + maxStack` (`maxStack` = the simulated
-  maximum eval depth, §Register model);
+- every register operand `< slotCount + maxStack` (`maxStack` = the eval-temp
+  extent, §Register model);
 - every branch/leave target `< codeInsnCount`;
 - every `R_RETHROW` EH index `< ehCount`;
 - every `R_CALL`/`R_CALLVIRT`/`R_NEWOBJ` window:
@@ -794,7 +803,7 @@ A 64-bit FNV-1a hash (offset basis `0xcbf29ce484222325`, prime
 contract** (below). The contract covers every type the base image emits under
 `--hotupdate-base`.
 
-**Canonical serialization v1 is symbolic, not numeric.** The emitter never
+**The canonical serialization is symbolic, not numeric.** The emitter never
 computes numeric layout in C# (`instanceSize` is emitted as a C++ `sizeof`
 expression; the C++ compiler owns layout), so the contract hashes the layout
 *inputs* instead: any base change that can move a real offset/size/slot
@@ -956,9 +965,10 @@ build — the loader is its only reader), and the converter bakes the import's
 `sigShape` from the **substituted** signature (decoding the
 `MethodSpecification`'s type arguments and resolving the closed method under a
 method-arg generic context, so `Echo<int>`'s `!!0`→`Int32` gives
-`(Int32):Int32`). One shared routine renders both strings, so they agree
-byte-for-byte and the loader binds each import to its exact instantiation
-(§Load step 3).
+`<Int32>(Int32):Int32`). The type arguments lead the shape, so `TypeName<int>()`
+and `TypeName<string>()`, whose signatures are both `():String`, stay apart. One
+shared routine renders both strings, so they agree byte-for-byte and the loader
+binds each import to its exact instantiation (§Load step 3).
 
 **Missing-AOT-instantiation boundary (methods).** Unlike a generic type, the
 converter cannot see the base's emitted method table, so it does not reject a
@@ -1033,10 +1043,12 @@ stamps the manifest hash into each BPI. The loader checks
 ## Delegate thunks (interpreted delegate targets)
 
 A delegate is the uniform runtime object `Dn2CppDelegate { target, method,
-prev, identity }` (`prev` = the multicast chain, always null on the patch
-surface — single-target only; `identity` = the emitter's static method
-identity, which an interpreter-built delegate leaves null from the zeroing
-allocation, so its `Delegate.Method` is null). An `Invoke` calls
+prev, identity, entry, invocationCache }`. `prev` is the multicast chain;
+`entry` retains a copied list node's original delegate, and `invocationCache`
+is an atomic reference to the invocation-list cache. An interpreter-built
+delegate is single-target and initializes these fields to zero. `identity`
+is the emitter's static method identity, also left null by the interpreter,
+so its `Delegate.Method` is null. An `Invoke` calls
 `method(target, args…)` with the delegate's Invoke C++ ABI (the target is
 always the first argument; an instance method's real address takes it as
 `this`, a static one goes through an adapter that drops it). A patch method
@@ -1155,7 +1167,8 @@ i.e. `+=`/`-=`) is a conversion-time rejection.
      by name + parameter count + staticness, then disambiguated by full
      `sigShape` (§Generic methods). A same-`(name, arity, staticness)` set with
      no `sigShape` match is unresolved, never a silent bind onto a sibling;
-     genuine ambiguity survives only among legacy unshaped rows. The `aux1`
+     two rows carrying the import's `sigShape`, or several legacy unshaped
+     rows, are ambiguous. The `aux1`
      signature run is decoded into per-value marshal descriptors (scalars
      box/unbox across the invoker-thunk boundary; references pass through).
 
@@ -1331,8 +1344,10 @@ ordinary §Load step-3 path. Fences on that surface:
 
 ## Versioning and compatibility
 
-- `formatVersion`: +1 on layout-incompatible change; the loader rejects a
-  major mismatch.
+- `formatVersion`: +1 on any change a BPI of another version would misread —
+  a record layout or an import identity; the loader rejects any other
+  version, so a base image loads only BPIs baked by a converter of its own
+  format.
 - `flags`: loaders enforce a supported-flags mask and reject an unknown bit.
 - `baseImageAbiHash`: independently of format compatibility, guarantees
   **base-binary compatibility** — a base rebuild that changes layouts/slots
@@ -1401,7 +1416,7 @@ multi-dimensional arrays, filter clauses (`catch ... when`), and generic
 members beyond the closed base-image instantiations of §Generics on the patch
 surface — see also the carve-out list below.
 
-## v1 carve-outs (known boundaries)
+## Carve-outs (known boundaries)
 
 - **No unloading** (append-only loading; avoids stale patch-type instances).
   Same-name re-loads follow §Load step 6: the newest registration wins in name
@@ -1417,11 +1432,13 @@ surface — see also the carve-out list below.
   type tests), `ldtoken`/`typeof` (patch code reaches a `Type` via `GetType()`
   or `Type.GetType(string)` instead), new virtual slots (newslot) and
   ToString/GetHashCode/Equals/Finalize overrides (dedicated type-info entries,
-  not vtable slots), exception-derived patch bases — and with them patch types
-  in `catch` clauses (C# only catches Exception-derived types) — and filter
-  clauses. Closed generic base-image **types** on the patch surface are
-  supported (§Generics on the patch surface); generic **methods** on generic
-  types, generic patch types, and nested/value-type generic arguments are not.
+  not vtable slots), generic virtual methods (a generic method definition has
+  no patch body, so its receivers would run the base image's),
+  exception-derived patch bases — and with them patch types in `catch` clauses
+  (C# only catches Exception-derived types) — and filter clauses. Closed
+  generic base-image **types** on the patch surface are supported (§Generics
+  on the patch surface); generic **methods** on generic types, generic patch
+  types, and nested/value-type generic arguments are not.
   Patch types are also not enumerated by `Assembly.GetTypes` (registration is
   name-lookup-only).
 - **SZArray carve-outs**: jagged (`T[][]`) and multi-dimensional (`T[,]`)
