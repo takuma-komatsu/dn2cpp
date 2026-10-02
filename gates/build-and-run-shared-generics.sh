@@ -471,4 +471,19 @@ for line in 'self nesting instance=Nester`1<String> Nester`1<Nester`1>' \
     grep -Fxq "$line" <<<"$native" \
         || { echo "FAIL: self nesting witness missing: $line" >&2; exit 1; }
 done
+before_boolean=$(dotnet "$app" before-boolean-receivers) || exit $?
+before_boolean=$(strip_cr_win "$before_boolean")
+prefix=$(awk '/^== constrained Boolean conversion ==$/ { exit } { print }' <<< "$native")
+assert_output "$prefix" "$before_boolean"
+for line in '== constrained Boolean conversion ==' \
+    'constrained boolean=False/True' \
+    'constrained boolean siblings=False/True/False/True' \
+    'constrained boolean reference=False/True/False/True' \
+    'constrained boolean scalar-context=Int32/False/Int32/True/Shade/False/Shade/True' \
+    'constrained boolean reference-context=String/False/String/True/Object/False/Object/True' \
+    'constrained Boolean conversion end'; do
+    grep -Fxq -- "$line" <<< "$native" \
+        || { echo "FAIL: constrained Boolean witness missing: $line" >&2; exit 1; }
+done
+
 gate_cache_commit

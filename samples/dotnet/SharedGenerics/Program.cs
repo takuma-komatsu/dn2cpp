@@ -75,6 +75,9 @@ namespace SharedGenerics
             if (args.Length > 0 && args[0] == "before-null-stack-joins")
                 return;
             KnownNullJoinSubset.Program.Run();
+            if (args.Length > 0 && args[0] == "before-boolean-receivers")
+                return;
+            ConstrainedObjectInterfaceSubset.Program.RunBooleanReceivers();
         }
     }
 }
