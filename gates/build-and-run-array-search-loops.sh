@@ -22,10 +22,10 @@ for line in '== array search loop provenance ==' \
         || { echo "FAIL: array loop witness missing: $line" >&2; exit 1; }
 done
 for name in LoopFirstMatch LoopSecondMatch LoopTypeMatch; do
-    rg -q "^int32_t ${name}_Equals_m[0-9]+\\(" "$loop_root/gen"/generated*.cpp \
+    grep -Eq "^int32_t ${name}_Equals_m[0-9]+\\(" "$loop_root/gen"/generated*.cpp \
         || { echo "FAIL: loop-selected equality was not emitted: $name" >&2; exit 1; }
 done
-if rg -q '^int32_t .*LoopUnsearchedMatch.*_Equals_m[0-9]+\(' \
+if grep -Eq '^int32_t .*LoopUnsearchedMatch.*_Equals_m[0-9]+\(' \
         "$loop_root/gen"/generated*.cpp; then
     echo 'FAIL: array wrappers rooted their unsearched value leaf' >&2
     exit 1
