@@ -130,7 +130,7 @@
 # Delegate list removal, original-entry identity, real-body enumeration and GC cache.
 source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_ordinary-reflection.sh samples/dotnet/ReflectInvoke/OrdinaryAmbiguousMatchSubset.cs samples/dotnet/ReflectInvoke/OrdinaryReflectionLeaves.csproj samples/dotnet/ReflectInvoke/OrdinaryReflectionLeavesProgram.cs samples/dotnet/ReflectInvoke/OrdinaryWideLookupSubset.cs samples/dotnet/ReflectInvoke/ReflectFieldValidationSubset.cs samples/dotnet/ReflectInvoke/ReflectInvoke.csproj samples/dotnet/ReflectInvoke/ReflectMetadataMeasureSubset.cs samples/dotnet/ReflectInvoke/ReflectionMethodGroupsOnly.csproj samples/dotnet/ReflectInvoke/ReflectionMethodGroupsOnlyProgram.cs"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-reflection-leaves-v1|runtime-member-attributes-prefix:${DN2CPP_BEFORE_RUNTIME_MEMBER_ATTRIBUTES:-}"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-reflection-leaves-v1|runtime-member-attributes-prefix:${DN2CPP_BEFORE_RUNTIME_MEMBER_ATTRIBUTES:-}|runtime-return-modifiers-prefix:${DN2CPP_BEFORE_RUNTIME_RETURN_MODIFIERS:-}"
 
 py="$(resolve_python)"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/check-reflection-layout.py gates/measure-reflection-metadata.py gates/expected/reflection-allocations.csv gates/fixtures/delegate-invocation-cache/DelegateInvocationCache.csproj gates/fixtures/delegate-invocation-cache/Program.cs"
