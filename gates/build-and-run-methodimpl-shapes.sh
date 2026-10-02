@@ -24,6 +24,8 @@ gate_extra_asserts() {
         'methodimpl-single-default=default-X/single-object' \
         'methodimpl-single-string=default-X/single-object' \
         'methodimpl-derived-default=derived-X/derived-object' \
+        'methodimpl-projected-object=projected-default-A/projected-B' \
+        'methodimpl-projected-string=projected-default-A/projected-B' \
         'methodimpl-static-object=static-X/static-object/static-X' \
         'methodimpl-static-string=static-X/static-object' \
         'ordinary MethodImpl definition shapes end'; do

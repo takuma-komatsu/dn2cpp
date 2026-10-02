@@ -36,6 +36,18 @@ internal sealed class DerivedPair<X> : IDerivedPair<X>
 {
 }
 
+internal interface IProjectedPair<A, B>
+{
+    string Pick<U>(A value) => "projected-default-A";
+    string Pick<U>(B value) => "projected-default-B";
+}
+
+internal sealed class ProjectedSingle<A, B> : IProjectedPair<B, A>
+{
+    // The body's !0 is the declaration's !1 after projecting the owner arguments.
+    string IProjectedPair<B, A>.Pick<U>(A value) => "projected-B";
+}
+
 internal interface IStaticPair<TSelf, X> where TSelf : IStaticPair<TSelf, X>
 {
     static abstract string Pick<U>(X value);
@@ -56,6 +68,8 @@ internal static class Program
     private static string DefaultObject<X, U>(IDefaultPair<X> receiver) => receiver.Pick<U>((object)null);
     private static string StaticX<T, X, U>() where T : IStaticPair<T, X> => T.Pick<U>(default(X));
     private static string StaticObject<T, X, U>() where T : IStaticPair<T, X> => T.Pick<U>((object)null);
+    private static string ProjectedA<A, B>(IProjectedPair<A, B> receiver) => receiver.Pick<int>(default(A));
+    private static string ProjectedB<A, B>(IProjectedPair<A, B> receiver) => receiver.Pick<int>(default(B));
 
     internal static void Run()
     {
@@ -71,6 +85,10 @@ internal static class Program
         Console.WriteLine("methodimpl-single-string=" + DefaultX<string, int>(singleDifferent) + "/" + DefaultObject<string, int>(singleDifferent));
         var derived = new DerivedPair<object>();
         Console.WriteLine("methodimpl-derived-default=" + DefaultX<object, int>(derived) + "/" + DefaultObject<object, int>(derived));
+        var projected = new ProjectedSingle<object, object>();
+        Console.WriteLine("methodimpl-projected-object=" + ProjectedA<object, object>(projected) + "/" + ProjectedB<object, object>(projected));
+        var projectedDifferent = new ProjectedSingle<string, object>();
+        Console.WriteLine("methodimpl-projected-string=" + ProjectedA<object, string>(projectedDifferent) + "/" + ProjectedB<object, string>(projectedDifferent));
         Console.WriteLine("methodimpl-static-object=" + StaticX<StaticPair<object>, object, int>() + "/"
             + StaticObject<StaticPair<object>, object, int>() + "/" + StaticX<StaticPair<object>, object, string>());
         Console.WriteLine("methodimpl-static-string=" + StaticX<StaticPair<string>, string, int>() + "/"

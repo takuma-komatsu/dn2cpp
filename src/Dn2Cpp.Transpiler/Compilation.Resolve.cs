@@ -865,6 +865,13 @@ internal sealed partial class Compilation
         var idx = TypeDefMethodNames(mod, classDef);
         MethodDefinitionHandle? firstDotted = null;
         MethodDefinitionHandle? firstPlain = null;
+        bool HasMethodImplBody(MethodDefinitionHandle body)
+        {
+            foreach (var row in reader.GetTypeDefinition(classDef).GetMethodImplementations())
+                if (reader.GetMethodImplementation(row).MethodBody == body)
+                    return true;
+            return false;
+        }
         int Match(MethodDefinitionHandle mh)
         {
             var md = reader.GetMethodDefinition(mh);
@@ -884,6 +891,9 @@ internal sealed partial class Compilation
             {
                 if (mname == name || !mname.EndsWith("." + name, StringComparison.Ordinal)
                     || !QualifierNamesInterface(mname.AsSpan(0, mname.Length - name.Length - 1), itfName, itfArity))
+                    continue;
+                // A mapped body belongs only to the declaration its row selects.
+                if (HasMethodImplBody(mh))
                     continue;
                 int match = Match(mh);
                 if (match == 2)
