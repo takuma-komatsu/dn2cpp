@@ -96,7 +96,9 @@
 # before overwriting its local, store ldvirtftn, instance and int64-converted
 # pointers, leave an unresolvable ldftn in code that never runs, and call a
 # stored raw pointer through calli. The delegate address and method identity
-# follow the selected pointer; calli keeps the raw address. Only those bodies
+# follow the selected pointer; calli keeps the raw address. Its Object MethodImpl
+# section checks differently named slot bodies, inherited overrides and newslot
+# hiders through delegates and callvirt. Only the stored-pointer bodies
 # carry delegate tags. A local whose address is taken keeps no delegate identity,
 # because a byref write would leave it stale: a delegate built from it is refused
 # when transpiled, from a native-int or int64 local alike, and one built from a
@@ -130,7 +132,7 @@ source "$(dirname "$0")/_common.sh"
 
 py="$(resolve_python)"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/check-reflection-layout.py gates/measure-reflection-metadata.py gates/expected/reflection-allocations.csv gates/fixtures/delegate-invocation-cache/DelegateInvocationCache.csproj gates/fixtures/delegate-invocation-cache/Program.cs"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|empty-string-clone-prefix:${DN2CPP_BEFORE_EMPTY_STRING_CLONE:-}|delegate-list-prefix:${DN2CPP_BEFORE_DELEGATE_LISTS:-}|recursive-delegate-prefix:${DN2CPP_BEFORE_RECURSIVE_DELEGATE:-}|ordinary-interface-prefix:${DN2CPP_BEFORE_ORDINARY_IL_INTERFACE:-}"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|empty-string-clone-prefix:${DN2CPP_BEFORE_EMPTY_STRING_CLONE:-}|delegate-list-prefix:${DN2CPP_BEFORE_DELEGATE_LISTS:-}|recursive-delegate-prefix:${DN2CPP_BEFORE_RECURSIVE_DELEGATE:-}|ordinary-interface-prefix:${DN2CPP_BEFORE_ORDINARY_IL_INTERFACE:-}|object-methodimpl-prefix:${DN2CPP_BEFORE_OBJECT_METHODIMPL:-}"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/recursive-delegate/RecursiveDelegate.csproj gates/fixtures/recursive-delegate/Program.cs"
 gate_empty_string_clone_asserts() {
     local out="$1" native line
@@ -307,6 +309,32 @@ gate_extra_asserts() {
         'ordinary interface and ValueType IL end'; do
         grep -Fxq "$line" <<< "$native" \
             || { echo "FAIL: ordinary interface IL witness missing: $line" >&2; exit 1; }
+    done
+    DN2CPP_BEFORE_OBJECT_METHODIMPL=1 run_bounded dotnet "$_CG_APP" \
+        > "$out/before-object-methodimpl.stdout"
+    sed '/^== Object slots with MethodImpl bodies ==/,$d' "$out/metadata-layout.stdout" \
+        > "$out/object-methodimpl-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-object-methodimpl.stdout") \
+        <(strip_cr_win_file "$out/object-methodimpl-prefix.stdout")
+    for line in '== Object slots with MethodImpl bodies ==' \
+        'object-methodimpl-body-base=alias/True/False/701' \
+        'object-methodimpl-base=alias/alias/True/True/False/701' \
+        'object-methodimpl-call-base=alias/True/True/False/701' \
+        'object-methodimpl-body-derived=derived/True/False/907' \
+        'object-methodimpl-derived=derived/derived/True/True/False/907' \
+        'object-methodimpl-call-derived=derived/True/True/False/907' \
+        'object-methodimpl-body-hider=alias/True/False/701' \
+        'object-methodimpl-hider=alias/alias/True/True/False/701' \
+        'object-methodimpl-call-hider=alias/True/True/False/701' \
+        'object-methodimpl-body-generic-string=generic/True/False/1103' \
+        'object-methodimpl-generic-string=generic/generic/True/True/False/1103' \
+        'object-methodimpl-call-generic-string=generic/True/True/False/1103' \
+        'object-methodimpl-body-generic-object=generic/True/False/1103' \
+        'object-methodimpl-generic-object=generic/generic/True/True/False/1103' \
+        'object-methodimpl-call-generic-object=generic/True/True/False/1103' \
+        'Object slots with MethodImpl bodies end'; do
+        grep -Fxq "$line" <<< "$native" \
+            || { echo "FAIL: Object MethodImpl witness missing: $line" >&2; exit 1; }
     done
     # Every emitted body follows its `// Type::Method` line, CRLF-terminated on a
     # Windows host. Delegate tags belong to the rewritten bodies alone, since C#

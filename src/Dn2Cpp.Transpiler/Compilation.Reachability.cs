@@ -625,25 +625,38 @@ internal sealed partial class Compilation
             static m => m.Signature.ParameterTypes.Length == 0 && m.Signature.ReturnType.IsString));
 
     /// <summary>The override of a System.Object virtual that a call through Object runs on
-    /// an instance of <paramref name="c"/>: walking up to (not into) Object, the most
-    /// derived instance virtual with a body, the name and the signature
-    /// <paramref name="shape"/> accepts, unless a new slot above it redeclares the member —
-    /// the rows below a new slot override that slot, not Object's member. A non-virtual
-    /// method of the name hides nothing such a call dispatches.</summary>
+    /// an instance of <paramref name="c"/>. The Object declaration identifies the slot;
+    /// the vtable chooses its body, including differently named MethodImpl overrides
+    /// and excluding same-name newslot hiders.</summary>
     private static MethodInfo? ObjectVirtualOverride(ClassInfo c, string name, Func<MethodInfo, bool> shape)
     {
-        MethodInfo? found = null;
-        for (var b = c; b is not null && b.FullName != "System.Object"; b = b.BaseClass)
+        c.EnsureMembers();
+        var root = c;
+        while (root.BaseClass is { } parent)
+            root = parent;
+        if (root.FullName != "System.Object")
         {
-            b.EnsureMembers();
-            if (b.Methods.FirstOrDefault(m => !m.IsStatic && m.IsVirtual && m.Name == name && shape(m)) is not { } m)
-                continue;
-            if ((m.Attributes & MethodAttributes.NewSlot) != 0)
-                found = null;
-            else if (found is null && m.Rva != 0)
-                found = m;
+            // External value-type bases and corelib-less roots have no modeled Object slot.
+            MethodInfo? found = null;
+            for (var b = c; b is not null; b = b.BaseClass)
+            {
+                b.EnsureMembers();
+                if (b.Methods.FirstOrDefault(m => !m.IsStatic && m.IsVirtual && m.Name == name && shape(m)) is not { } m)
+                    continue;
+                if ((m.Attributes & MethodAttributes.NewSlot) != 0)
+                    found = null;
+                else if (found is null && m.Rva != 0)
+                    found = m;
+            }
+            return found;
         }
-        return found;
+        root.EnsureMembers();
+        var declaration = root.MethodsNamed(name)?.FirstOrDefault(m => !m.IsStatic && m.IsVirtual && shape(m));
+        if (declaration is null || declaration.VtableSlot < 0 || declaration.VtableSlot >= c.Vtable.Count)
+            return null;
+        var implementation = c.Vtable[declaration.VtableSlot];
+        return implementation is { Rva: not 0 } && implementation.DeclaringClass != root
+            ? implementation : null;
     }
 
     /// <summary>The GetHashCode() override (a 0-arg, int-returning instance method

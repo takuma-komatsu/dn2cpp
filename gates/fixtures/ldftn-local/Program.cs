@@ -48,6 +48,21 @@ var sealedScale = FindOn("ISealedScale", "Scale");
 var sealedShift = new GenericInstanceMethod(FindOn("ISealedScale", "Shift"));
 sealedShift.GenericArguments.Add(module.TypeSystem.Int32);
 
+foreach (var (bodyName, slotName, returnType, takesOther) in new[]
+    {
+        ("Render", "ToString", module.TypeSystem.String, false),
+        ("Same", "Equals", module.TypeSystem.Boolean, true),
+        ("Hash", "GetHashCode", module.TypeSystem.Int32, false),
+    })
+{
+    var body = FindOn("ObjectMethodImpl", bodyName);
+    var slot = new MethodReference(slotName, returnType, module.TypeSystem.Object) { HasThis = true };
+    if (takesOther)
+        slot.Parameters.Add(new ParameterDefinition(module.TypeSystem.Object));
+    body.Overrides.Clear();
+    body.Overrides.Add(slot);
+}
+
 MethodReference DelegateCtor(MethodDefinition method)
 {
     var ctor = new MethodReference(".ctor", module.TypeSystem.Void, method.ReturnType)

@@ -84,6 +84,9 @@ namespace ReflectInvoke
             LdftnLocalSubset.Program.RunValueTypeReceivers();
             TypePredicateFoldSubset.Program.RunValueTypeFolds();
             Console.WriteLine("ordinary interface and ValueType IL end");
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_OBJECT_METHODIMPL") == "1")
+                return;
+            LdftnLocalSubset.Program.RunObjectMethodImpl();
         }
     }
 }
