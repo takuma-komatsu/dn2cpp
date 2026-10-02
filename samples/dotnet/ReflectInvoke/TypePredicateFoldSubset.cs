@@ -10,6 +10,7 @@
 // CORINFO_TYPE_VOID as primitive) while every reflection read of the same
 // RuntimeType is FALSE. dn2cpp answers FALSE on both arms, so no live diff can
 // assert the cell; the divergence is frozen in ReflectTypes/TypeCategorySubset.
+// RunValueTypeFolds pins that an enum is a value type through both arms.
 using System;
 using System.Reflection;
 
@@ -75,5 +76,24 @@ static class Program
                                    typeof(IntPtr), typeof(UIntPtr) })
             agree &= t.IsPrimitive;
         Console.WriteLine($"folded == unfoldable for all 20: {agree}");
+    }
+
+    private enum Shade { Light, Dark }
+
+    private static string FoldedInGeneric<T>() => $"{typeof(T).IsValueType}/{typeof(T).IsClass}";
+
+    // An enum is a value type through both arms: the folded IsValueType and IsClass of a
+    // framework and an application enum answer as the unfoldable arm does, in a generic
+    // body too, while System.Enum itself is a class.
+    internal static void RunValueTypeFolds()
+    {
+        Console.WriteLine("== value-type predicates folded for an enum ==");
+        Show("Shade", typeof(Shade));
+        Console.WriteLine($"folded: DayOfWeek={typeof(DayOfWeek).IsValueType}/{typeof(DayOfWeek).IsClass} "
+            + $"Shade={typeof(Shade).IsValueType}/{typeof(Shade).IsClass} "
+            + $"Enum={typeof(Enum).IsValueType}/{typeof(Enum).IsClass}");
+        Console.WriteLine($"folded in a generic body: Shade={FoldedInGeneric<Shade>()} "
+            + $"DayOfWeek={FoldedInGeneric<DayOfWeek>()} int={FoldedInGeneric<int>()} string={FoldedInGeneric<string>()}");
+        Console.WriteLine("value-type predicates folded for an enum end");
     }
 }

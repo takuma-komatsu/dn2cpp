@@ -77,6 +77,20 @@ namespace BoxingPrimitives
             Console.WriteLine("== default comparison validation ==");
             ConstrainedObjectCompareSubset.Program.Run();
             Console.WriteLine("default comparison validation end");
+            if (args.Length > 0 && args[0] == "before-ordinary-object-leaves")
+                return;
+            Console.WriteLine("== ordinary Object and value-type dispatch ==");
+            ObjectVirtualDispatchSubset.Program.Run();
+            ConstrainedClassContextSubset.Program.Run();
+            NullReceiverVirtualSubset.Program.Run();
+            NullableBoxDispatchSubset.Program.Run();
+            NullReceiverVirtualSubset.Program.RunGetType();
+            ObjectVirtualDispatchSubset.Program.RunEqualsOverrideArguments();
+            ConstrainedClassContextSubset.Program.RunTypedSlots();
+            ObjectVirtualDispatchSubset.Program.RunFrameworkBoxEquality();
+            ConstrainedClassContextSubset.Program.RunInterfaceShapes();
+            OrdinaryTypeCastSubset.Program.Run();
+            Console.WriteLine("ordinary Object and value-type dispatch end");
         }
     }
 }

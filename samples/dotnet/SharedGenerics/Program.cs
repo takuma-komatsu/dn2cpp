@@ -56,6 +56,16 @@ namespace SharedGenerics
             Console.WriteLine("== default comparison validation ==");
             ConstrainedObjectInterfaceSubset.Program.Run();
             Console.WriteLine("default comparison validation end");
+            if (args.Length > 0 && args[0] == "before-ordinary-interface-leaves")
+                return;
+            Console.WriteLine("== ordinary interface and virtual definitions ==");
+            VirtualHiderSubset.Program.Run();
+            VirtualHiderSubset.Program.RunSubstitutionCollisions();
+            VirtualHiderSubset.Program.RunInterfaceCollisions();
+            VirtualHiderSubset.Program.RunCrossLevelCollisions();
+            VirtualHiderSubset.Program.RunDefinitionMirrors();
+            SharedForEachSubset.Program.Run();
+            Console.WriteLine("ordinary interface and virtual definitions end");
         }
     }
 }

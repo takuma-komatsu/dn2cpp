@@ -443,4 +443,20 @@ for line in '== default comparison validation ==' 'constrained interface=23/inte
     grep -Fxq "$line" <<< "$native" \
         || { echo "FAIL: constrained interface coverage missing: $line" >&2; exit 1; }
 done
+before_ordinary_interface=$(dotnet "$app" before-ordinary-interface-leaves)
+before_ordinary_interface=$(strip_cr_win "$before_ordinary_interface")
+prefix=$(awk '/^== ordinary interface and virtual definitions ==$/ { exit } { print }' <<< "$native")
+assert_output "$prefix" "$before_ordinary_interface"
+for line in '== ordinary interface and virtual definitions ==' \
+    'ordinary interface and virtual definitions end'; do
+    grep -Fxq "$line" <<< "$native" \
+        || { echo "FAIL: ordinary interface section witness missing: $line" >&2; exit 1; }
+done
+for label in 'virtual hider base=' 'virtual collision base=' \
+    'virtual collision interface=' 'virtual cross level class=' \
+    'virtual cross level mirrored=' 'virtual constrained equals=' \
+    'shared foreach any=' 'shared foreach all=' 'shared foreach views='; do
+    grep -Fq "$label" <<< "$native" \
+        || { echo "FAIL: ordinary definition dispatch witness missing: $label" >&2; exit 1; }
+done
 gate_cache_commit

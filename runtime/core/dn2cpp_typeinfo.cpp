@@ -1259,7 +1259,8 @@ int32_t dn2cpp_type_is_assignable_from(Dn2CppType* a, Dn2CppType* b)
     // collection interfaces with element covariance, array-to-array covariance).
     // A private walk here answered arrays with False while the cast succeeded,
     // which mis-classified string[] members in Newtonsoft's contract resolver.
-    return dn2cpp_typeinfo_assignable(b->typeInfo, a->typeInfo);
+    return dn2cpp_typeinfo_assignable(b->typeInfo, a->typeInfo) != 0
+        || dn2cpp_is_nullable_of(a->typeInfo, b->typeInfo) ? 1 : 0;
 }
 
 // Type.IsAssignableTo(other): the argument-swapped IsAssignableFrom, and it

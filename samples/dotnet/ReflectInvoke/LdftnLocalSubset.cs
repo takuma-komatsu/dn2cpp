@@ -20,6 +20,48 @@ sealed class InstanceHolder
     public int Offset(int value) => value + Delta;
 }
 
+interface ISealedScale
+{
+    sealed int Scale(int value) => value + 100;
+    sealed int Shift<T>(int value) => value + 200;
+}
+
+// Virtuals of the sealed members' signatures, which a call through the interface never runs.
+class SealedScaleHolder : ISealedScale
+{
+    public virtual int Scale(int value) => value * 3;
+    public virtual int Shift<T>(int value) => value * 4;
+}
+
+// The fixture binds these differently named bodies to Object's virtual slots.
+class ObjectMethodImpl
+{
+    public virtual string Render() => "alias";
+    public virtual bool Same(object other) => other is ObjectMethodImpl;
+    public virtual int Hash() => 701;
+}
+
+class ObjectMethodImplDerived : ObjectMethodImpl
+{
+    public override string Render() => "derived";
+    public override bool Same(object other) => other is ObjectMethodImplDerived;
+    public override int Hash() => 907;
+}
+
+class ObjectMethodImplHider : ObjectMethodImpl
+{
+    public new virtual string Render() => "hidden";
+    public new virtual bool Same(object other) => false;
+    public new virtual int Hash() => 999;
+}
+
+class ObjectMethodImplGeneric<T> : ObjectMethodImpl
+{
+    public override string Render() => "generic";
+    public override bool Same(object other) => other is ObjectMethodImpl;
+    public override int Hash() => 1103;
+}
+
 // After Build, gates/fixtures/ldftn-local/Program.cs replaces each throwing stub's
 // body with IL that C# cannot express.
 static class Program
@@ -64,6 +106,23 @@ static class Program
     [MethodImpl(MethodImplOptions.NoInlining)]
     static Func<int, int> Int64Stored() => throw new InvalidOperationException();
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static Func<int, int> SealedInterface(ISealedScale receiver) => throw new InvalidOperationException();
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static Func<int, int> SealedGenericInterface(ISealedScale receiver) => throw new InvalidOperationException();
+
+    // callvirt System.ValueType::Equals/GetHashCode/ToString on the receiver: C# names
+    // Object's declaration instead.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static bool ValueTypeEquals(ValueType receiver, object other) => throw new InvalidOperationException();
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static int ValueTypeHash(ValueType receiver) => throw new InvalidOperationException();
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static string ValueTypeText(ValueType receiver) => throw new InvalidOperationException();
+
     // Roslyn takes these locals' addresses in a body that also creates a delegate.
     [MethodImpl(MethodImplOptions.NoInlining)]
     static string AddressTakenBesideDelegate()
@@ -107,5 +166,63 @@ static class Program
         Console.WriteLine("ldftn-local-int64=" + wide(5) + "/" + wide.Method.Name);
         Console.WriteLine("ldftn-local-address-taken=" + AddressTakenBesideDelegate());
         Console.WriteLine("ldftn-local-end");
+    }
+
+    public static void RunSealedInterface()
+    {
+        var sealedHolder = new SealedScaleHolder();
+        var sealedPlain = SealedInterface(sealedHolder);
+        var sealedGeneric = SealedGenericInterface(sealedHolder);
+        Console.WriteLine("ldftn-local-sealed-interface=" + sealedPlain(5) + "/"
+            + sealedPlain.Method.DeclaringType.Name + "." + sealedPlain.Method.Name + "/" + sealedGeneric(5) + "/"
+            + sealedGeneric.Method.DeclaringType.Name + "." + sealedGeneric.Method.Name);
+    }
+
+    static string NullFault(Func<object> call)
+    {
+        try
+        {
+            return call().ToString();
+        }
+        catch (NullReferenceException)
+        {
+            return "NRE";
+        }
+    }
+
+    // A callvirt of System.ValueType's overrides checks its receiver like any callvirt.
+    public static void RunValueTypeReceivers()
+    {
+        Console.WriteLine("ldftn-local-valuetype-null=" + NullFault(() => ValueTypeEquals(null, 1)) + "/"
+            + NullFault(() => ValueTypeEquals(null, null)) + "/" + NullFault(() => ValueTypeHash(null)) + "/"
+            + NullFault(() => ValueTypeText(null)));
+        Console.WriteLine("ldftn-local-valuetype-boxed=" + ValueTypeEquals(5, 5) + "/" + ValueTypeEquals(5, 6) + "/"
+            + ValueTypeHash(5) + "/" + ValueTypeText(5));
+    }
+
+    static void ObjectMethodImplCase(string label, ObjectMethodImpl receiver)
+    {
+        Console.WriteLine("object-methodimpl-body-" + label + "=" + receiver.Render()
+            + "/" + receiver.Same(receiver) + "/" + receiver.Same(null) + "/" + receiver.Hash());
+        object boxed = receiver;
+        Func<string> text = boxed.ToString;
+        Func<object, bool> same = boxed.Equals;
+        Func<int> hash = boxed.GetHashCode;
+        Console.WriteLine("object-methodimpl-" + label + "=" + receiver.Render() + "/" + text()
+            + "/" + same(receiver) + "/" + same(new ObjectMethodImplDerived()) + "/" + same(null) + "/" + hash());
+        Console.WriteLine("object-methodimpl-call-" + label + "=" + boxed.ToString()
+            + "/" + boxed.Equals(receiver) + "/" + boxed.Equals(new ObjectMethodImplDerived())
+            + "/" + boxed.Equals(null) + "/" + boxed.GetHashCode());
+    }
+
+    public static void RunObjectMethodImpl()
+    {
+        Console.WriteLine("== Object slots with MethodImpl bodies ==");
+        ObjectMethodImplCase("base", new ObjectMethodImpl());
+        ObjectMethodImplCase("derived", new ObjectMethodImplDerived());
+        ObjectMethodImplCase("hider", new ObjectMethodImplHider());
+        ObjectMethodImplCase("generic-string", new ObjectMethodImplGeneric<string>());
+        ObjectMethodImplCase("generic-object", new ObjectMethodImplGeneric<object>());
+        Console.WriteLine("Object slots with MethodImpl bodies end");
     }
 }

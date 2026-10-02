@@ -71,6 +71,7 @@ never as a reference back to a row.
 | 122 | runtime | **Nullable array `FullName` uses the internal mangled type name.** `typeof(int?[]).FullName` reports `System.Nullable_Int32[]` instead of the CLR generic identity. Preserve assembly-qualified generic argument names when formatting nullable array types, and diff Int32 and Char nullable arrays in ArrayCore. |
 | 123 | transpiler | **A value boxed by `RuntimeHelpers.Box` can lose its `ToString()` override.** A struct whose override returns its payload prints its type name instead after runtime-handle boxing. Root the selected value type's virtual override before emission, and diff ordinary and nullable boxed payload formatting in ArrayCore. |
 | 124 | runtime | **Excess-rank array refusal loses the attempted type identity in `TypeLoadException.Message`.** `Array.CreateInstance` with Int32, Object or Char and excessive dimensions reports a generic loading failure instead of .NET's type and assembly details. Construct the attempted array identity for the diagnostic and diff lengths and lower-bound overloads in ArrayCore. |
+| 125 | transpiler | **A monomorphic constrained Object.ToString on a null String returns null.** The String fast path omits the receiver check, where .NET throws NullReferenceException. Check the dereferenced receiver before the fast path and diff the null String case in BoxingPrimitives. |
 
 ## Regression gate
 

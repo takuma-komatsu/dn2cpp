@@ -987,8 +987,9 @@ internal sealed partial class MethodCompiler
         var compare = itf.Methods.FirstOrDefault(m => m.Name == "Compare")
             ?? throw new NotSupportedException(
                 $"{_method.DeclaringClass.FullName}.{_method.Name}: {itf.FullName} has no Compare method");
+        NoteCanonicalItfDispatch(itf);
         return $"[](void* _ctx, {p} _x, {p} _y) -> int32_t {{ {load} Dn2CppObject* _o = (Dn2CppObject*)_ctx; "
-             + $"return (({FnPtrType(compare)})dn2cpp_resolve_interface(_o->type, &{itf.CppTypeInfoName})"
+             + $"return (({FnPtrType(compare)})dn2cpp_resolve_interface(_o->type, &{ItfDispatchTi(itf).CppTypeInfoName})"
              + $"[{compare.VtableSlot}])(({itf.CppStructName}*)_o, _a, _b); }}";
     }
 
@@ -1504,7 +1505,8 @@ internal sealed partial class MethodCompiler
             ?? throw new NotSupportedException(
                 $"{_method.DeclaringClass.FullName}.{_method.Name}: {itf.FullName} has no Compare method");
         string ct = CppTypes.Of(elem);
-        return $"(({FnPtrType(compare)})dn2cpp_resolve_interface({cmpT}->type, &{itf.CppTypeInfoName})"
+        NoteCanonicalItfDispatch(itf);
+        return $"(({FnPtrType(compare)})dn2cpp_resolve_interface({cmpT}->type, &{ItfDispatchTi(itf).CppTypeInfoName})"
              + $"[{compare.VtableSlot}])(({itf.CppStructName}*){cmpT}, {Cast(a, ct)}, {Cast(b, ct)})";
     }
 
@@ -2125,6 +2127,22 @@ internal sealed partial class MethodCompiler
         }
         else if (CoreIntrinsics.TryFindCutRow(target, out _))
             _c.NoteInterceptFtnTarget(target);
+    }
+
+    /// <summary>The runtime helper a call of System.Object's ToString(), Equals(object) or
+    /// GetHashCode() lowers to, whose signature is the method's with the receiver first;
+    /// null for any other method.</summary>
+    private static string? ObjectDispatchHelper(MethodInfo m)
+    {
+        if (m.IsStatic || m.DeclaringClass.FullName != "System.Object")
+            return null;
+        return (m.Name, m.Signature.ParameterTypes) switch
+        {
+            ("ToString", []) => "dn2cpp_object_tostring_virtual",
+            ("GetHashCode", []) => "dn2cpp_object_gethashcode",
+            ("Equals", [{ IsObject: true }]) => "dn2cpp_object_equals_virtual",
+            _ => null,
+        };
     }
 
     /// <summary>A boxed primitive's Object.Equals slot must bind to the primitive

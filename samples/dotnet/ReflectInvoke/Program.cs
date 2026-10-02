@@ -77,6 +77,16 @@ namespace ReflectInvoke
             if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_RECURSIVE_DELEGATE") == "1")
                 return;
             DelegateInvokerDeclarationSubset.Program.RunRecursive();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_ORDINARY_IL_INTERFACE") == "1")
+                return;
+            Console.WriteLine("== ordinary interface and ValueType IL ==");
+            LdftnLocalSubset.Program.RunSealedInterface();
+            LdftnLocalSubset.Program.RunValueTypeReceivers();
+            TypePredicateFoldSubset.Program.RunValueTypeFolds();
+            Console.WriteLine("ordinary interface and ValueType IL end");
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_OBJECT_METHODIMPL") == "1")
+                return;
+            LdftnLocalSubset.Program.RunObjectMethodImpl();
         }
     }
 }

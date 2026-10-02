@@ -17,6 +17,11 @@ namespace AmbiguousDefault
     {
     }
 
+    // A constrained call on a value type runs a default body on its box.
+    public struct BothValue : ILeft, IRight
+    {
+    }
+
     internal static class Program
     {
         private static void Main()
@@ -100,7 +105,25 @@ namespace AmbiguousDefault
                 Report("made pick-generic<int>", e);
             }
             Console.WriteLine("made after: " + madeValue.Plain());
+
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_ORDINARY_CONSTRAINED_DEFAULT") == "1")
+                return;
+            Console.WriteLine("== a constrained call on a struct ==");
+            Console.WriteLine("constrained plain: " + PlainOf(new BothValue()));
+            try
+            {
+                Console.WriteLine("constrained pick: " + PickOf(new BothValue()));
+            }
+            catch (AmbiguousImplementationException e)
+            {
+                Report("constrained pick", e);
+            }
+            Console.WriteLine("constrained after: " + PlainOf(new BothValue()));
         }
+
+        private static string PlainOf<T>(T value) where T : IBase => value.Plain();
+
+        private static string PickOf<T>(T value) where T : IBase => value.Pick(4, "four");
 
         private static void Report(string label, AmbiguousImplementationException e)
         {

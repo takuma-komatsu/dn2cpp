@@ -1887,6 +1887,12 @@ internal sealed partial class MethodCompiler
             // the Parse/TryParse family — resolve against the struct.
             if (_constrained is { Kind: TypeKind.Primitive } && TryEmitGenericMathIntrinsic(callee))
                 return;
+            // A placeholder interface the concrete TSelf does not implement as
+            // spelled stands for the instantiation it does implement; only that
+            // real instantiation resolves the member.
+            if (SharedTrial && Compilation.ContainsCanonPlaceholder(callee.DeclaringClass)
+                && !_c.ImplementsInterface(scc, callee.DeclaringClass))
+                ThrowSharedTaint("static-virtual", callee.DeclaringClass.FullName);
             if (_c.ResolveStaticVirtualImpl(scc, callee) is { } simpl)
             {
                 // The resolved impl may live on an intrinsic-mapped type — e.g. TSelf =
@@ -2109,7 +2115,7 @@ internal sealed partial class MethodCompiler
         // A direct call to a body-less method (InternalCall/extern/abstract that
         // wasn't intrinsic-mapped) would link against a missing symbol; surface
         // it as a precise, actionable error instead.
-        if (callee.Rva == 0 && !(isCallvirt && (callee.IsVirtual || callee.DeclaringClass.IsInterface)))
+        if (callee.Rva == 0 && !(isCallvirt && callee.IsVirtual))
             throw new NotSupportedException(
                 $"{_method.DeclaringClass.FullName}.{_method.Name}: {callee.DeclaringClass.FullName}::{callee.Name} " +
                 $"is an InternalCall/extern method with no IL body and no intrinsic mapping [chain: {_c.ReachChain(_method)}]");
@@ -2181,8 +2187,12 @@ internal sealed partial class MethodCompiler
                 NoteReferencedType(callee.DeclaringClass);
             call = $"{Compilation.GvmDispatchName(callee)}({string.Join(", ", args)})";
         }
-        else if (isCallvirt && callee.DeclaringClass.IsInterface)
+        else if (isCallvirt && callee.DeclaringClass.IsInterface && callee.IsVirtual)
         {
+            // A sealed or private interface member is not virtual: .NET runs its own
+            // body, never a class method of the same signature, so it takes the
+            // direct call below.
+            //
             // The call names the interface's ti_ (for dn2cpp_resolve_interface) and casts
             // the receiver to its struct pointer in FnPtrType. An interface specialization
             // reached only through this site — e.g. IEquatable<Byte> from a generic
@@ -3132,8 +3142,9 @@ internal sealed partial class MethodCompiler
     };
 
     /// <summary>constrained.&lt;C&gt; callvirt: the receiver is a managed pointer.
-    /// For a value type with a direct implementation, call it on the pointer;
-    /// for a reference type, dereference and dispatch virtually.</summary>
+    /// For a value type, call its own implementation on the pointer, or an
+    /// interface body on its box; for a reference type, dereference and dispatch
+    /// virtually, or call a non-virtual callee directly.</summary>
     private void EmitConstrainedCall(MethodInfo callee, TypeDesc c)
     {
         var ps = callee.Signature.ParameterTypes;
@@ -3160,12 +3171,17 @@ internal sealed partial class MethodCompiler
             _c.EnsureCompleted(c.Class);
             // ONE resolution, shared with the reachability cut (ReachConstrainedImpl):
             // a private copy here would call a body nothing transpiled.
-            var impl = _c.ConstrainedImplOf(c.Class, callee);
+            var impl = _c.ConstrainedImplOf(c.Class, callee, out bool ambiguous);
             if (impl is null)
             {
                 // An erased interface argument can name several concrete slots.
                 // Retry per instantiation when the shared trial cannot bind one.
                 TaintIfCanonical(callee.DeclaringClass, "constrained");
+                if (SharedTrial
+                    && (Compilation.ContainsCanonPlaceholder(c.Class)
+                        || Compilation.ContainsCanonPlaceholder(callee.DeclaringClass))
+                    && _c.ImplementsInterfaceDefinition(c.Class, callee.DeclaringClass))
+                    ThrowSharedTaint("constrained", callee.DeclaringClass.FullName);
                 // `constrained.<T> callvirt IDisposable::Dispose` with no resolvable
                 // impl is the foreach/using disposal of a value-type enumerator that has
                 // no (or only an empty) Dispose — e.g. SRM's struct
@@ -3180,6 +3196,18 @@ internal sealed partial class MethodCompiler
                     && ps.Length == 0
                     && callee.DeclaringClass.FullName == "System.IDisposable")
                     return;
+                // Sibling interface overrides with no most specific one: .NET
+                // throws where the call runs, as the interface slot does.
+                if (ambiguous)
+                {
+                    Emit(CppEmitter.ConstrainedAmbiguousImplementationThrow(c.Class, callee));
+                    if (!callee.Signature.ReturnType.IsVoid)
+                    {
+                        string at = CppTypes.Of(callee.Signature.ReturnType);
+                        Push(CppTypes.KindOf(callee.Signature.ReturnType), at, CppTypes.ZeroInitExpr(at));
+                    }
+                    return;
+                }
                 // The struct DECLARES the interface this call constrains to, so the
                 // dispatch must bind — a null impl here is a transpiler resolution
                 // bug (a shell that slipped past EnsureCompleted, an unmatched
@@ -3212,7 +3240,14 @@ internal sealed partial class MethodCompiler
                 return;
             }
             var implPs = impl.Signature.ParameterTypes;
-            var all = new List<string> { Cast(receiver, c.Class.CppStructName + "*") };
+            // An interface body takes an object receiver: .NET boxes the value for
+            // it, so the body's own interface calls dispatch on the box.
+            var all = new List<string>
+            {
+                impl.DeclaringClass.IsInterface
+                    ? $"(({impl.DeclaringClass.CppStructName}*){BoxedConstrainedReceiver(c, receiver)})"
+                    : Cast(receiver, c.Class.CppStructName + "*"),
+            };
             for (int i = 0; i < rawArgs.Length; i++)
                 all.Add(Cast(rawArgs[i], CppTypes.Of(implPs[i])));
             EmitCallResult(impl, DirectCall(impl, all));
@@ -3240,6 +3275,12 @@ internal sealed partial class MethodCompiler
         var args2 = new List<string> { typedObj };
         for (int i = 0; i < rawArgs.Length; i++)
             args2.Add(Cast(rawArgs[i], CppTypes.Of(ps[i])));
+        // A non-virtual callee has no slot: the object runs its own body.
+        if (!callee.IsVirtual)
+        {
+            EmitCallResult(callee, DirectCall(callee, args2));
+            return;
+        }
         NoteDispatchSignatureTypes(callee);
         string fnPtrType = FnPtrType(callee);
         if (callee.DeclaringClass.IsInterface)
@@ -3263,11 +3304,12 @@ internal sealed partial class MethodCompiler
 
     /// <summary>Whether a statically known type is a value type (used to
     /// constant-fold <c>typeof(T).IsValueType</c>). Strings and Object are the
-    /// reference-type primitives; arrays/pointers/byrefs are reference.</summary>
+    /// reference-type primitives; arrays/pointers/byrefs are reference. An enum is a
+    /// value type, which the model flags apart from IsValueType.</summary>
     private static bool IsValueTypeStatic(TypeDesc t) => t.Kind switch
     {
         TypeKind.Primitive => t.Primitive is not (PrimitiveTypeCode.String or PrimitiveTypeCode.Object),
-        TypeKind.Class => t.Class!.IsValueType,
+        TypeKind.Class => t.Class!.IsValueType || t.Class.IsEnum,
         _ => false,
     };
 
@@ -3938,6 +3980,14 @@ internal sealed partial class MethodCompiler
             : $"(({ct})(*({st}*)({ptrExpr})))";
     }
 
+    /// <summary><see cref="ConstrainedReceiverValue"/> as the callee reads it: a
+    /// reference receiver (String, Object) is dereferenced and called as by callvirt,
+    /// so a null one raises NullReferenceException at the call.</summary>
+    private static string ConstrainedReceiverRead(TypeDesc c, string ptrExpr) =>
+        CppTypes.KindOf(c) == StackKind.Ref
+            ? $"dn2cpp_null_check({ConstrainedReceiverValue(c, ptrExpr)})"
+            : ConstrainedReceiverValue(c, ptrExpr);
+
     /// <summary>A <c>constrained.</c> callvirt on a primitive, string or enum to an
     /// Object/IEquatable/IComparable-rooted virtual. The JIT devirtualizes these;
     /// emit the type-specialized op instead of boxing (the intrinsic primitive/
@@ -3952,6 +4002,29 @@ internal sealed partial class MethodCompiler
             HandleKind.MethodDefinition => _reader.GetString(_reader.GetMethodDefinition((MethodDefinitionHandle)handle).Name),
             _ => "",
         };
+        // Object.GetType is not virtual, so no value type implements it: the call boxes
+        // the receiver and reads the box's type, which is c itself — or, for a
+        // Nullable<T>, T when it has a value and a null box that faults when it has none.
+        if (name == "GetType" && CppTypes.KindOf(c) != StackKind.Ref
+            && IsObjectShapedConstrained(handle, name)
+            && ConstrainedCalleeSig(handle).ParameterTypes.Length == 0)
+        {
+            var receiver = Pop();
+            var boxed = NullableLayout(c) is (var underlying, _, _) ? underlying : c;
+            string ti = TypeInfoExpr(boxed)
+                ?? throw new NotSupportedException(
+                    $"{_method.DeclaringClass.FullName}.{_method.Name}: constrained GetType on {c} has no emitted type-info");
+            if (NullableLayout(c) is (_, var hasValue, _))
+            {
+                string nullable = NewTemp(CppTypes.Of(c));
+                Emit($"{nullable} = {ConstrainedReceiverValue(c, receiver.Expr)};");
+                Emit($"if (!{nullable}.{hasValue}) dn2cpp_throw_null_reference();");
+            }
+            Push(StackKind.Ref, "Dn2CppType*", $"((void)({receiver.Expr}), dn2cpp_get_type_from_handle({ti}))");
+            _stack[^1] = _stack[^1] with { ArraySearchOrigin =
+                _c.SeedArraySearchOrigin(ArraySearchValueKind.RuntimeType, boxed) };
+            return true;
+        }
         if (IsDefaultNameExternalIntrinsic(c) && name == "ToString"
             && IsObjectShapedConstrained(handle, name)
             && ConstrainedCalleeSig(handle).ParameterTypes.Length == 0)
@@ -3971,17 +4044,7 @@ internal sealed partial class MethodCompiler
         // m_ symbol. Route the call to the intrinsic table instead.
         if (c is { Kind: TypeKind.Class, Class: { IntrinsicCppName: not null, IsValueType: true } ivc })
         {
-            var csig = handle.Kind == HandleKind.MemberReference
-                ? _reader.GetMemberReference((MemberReferenceHandle)handle).DecodeMethodSignature(_c.SigProvider, _method.Context)
-                : _reader.GetMethodDefinition((MethodDefinitionHandle)handle).DecodeSignature(_c.SigProvider, _method.Context);
-            // The typed IComparable<T>.CompareTo(!0) / IEquatable<T>.Equals(!0) name their
-            // argument by the interface's own parameter, which the caller's context leaves
-            // unbound; the intrinsic table matches on the closed argument type.
-            if (csig.ParameterTypes is [{ Kind: TypeKind.GenericVar }]
-                && (TypedItfConstrainedArg(handle, "System.IComparable")
-                    ?? TypedItfConstrainedArg(handle, "System.IEquatable")) is { } selfArg)
-                csig = new MethodSignature<TypeDesc>(csig.Header, csig.ReturnType, csig.RequiredParameterCount,
-                    csig.GenericParameterCount, System.Collections.Immutable.ImmutableArray.Create(selfArg));
+            var csig = ConstrainedCalleeSig(handle);
             // ValueType.ToString on an intrinsic with no override is still observable:
             // it returns the exact CLR type name. These values may be ref structs or
             // pointer-represented handles, so boxing is neither legal nor necessary.
@@ -4149,7 +4212,7 @@ internal sealed partial class MethodCompiler
             {
                 var receiver = Pop(); // managed pointer to the constrained primitive
                 string ct = CppTypes.Of(c);
-                var val = new StackEntry(ConstrainedReceiverValue(c, receiver.Expr), CppTypes.KindOf(c), ct);
+                var val = new StackEntry(ConstrainedReceiverRead(c, receiver.Expr), CppTypes.KindOf(c), ct);
                 Push(StackKind.I4, "int32_t", EqualityHashExpr(c, val));
                 return true;
             }
@@ -4234,7 +4297,7 @@ internal sealed partial class MethodCompiler
                 var other = Pop();
                 var receiver = Pop(); // managed pointer to the constrained value
                 Push(StackKind.I4, "int32_t", c.Kind == TypeKind.Primitive
-                    ? EmitPrimitiveCompareToObject(c, ConstrainedReceiverValue(c, receiver.Expr), other)
+                    ? EmitPrimitiveCompareToObject(c, ConstrainedReceiverRead(c, receiver.Expr), other)
                     : $"dn2cpp_enum_compareto({BoxedConstrainedReceiver(c, receiver)}, {Cast(other, "Dn2CppObject*")})");
                 return true;
             }
@@ -4246,7 +4309,9 @@ internal sealed partial class MethodCompiler
                 var arg = Pop();      // the other value (y)
                 var receiver = Pop(); // managed pointer to the constrained value (x)
                 string ct = CppTypes.Of(c);
-                var x = new StackEntry(ConstrainedReceiverValue(c, receiver.Expr), CppTypes.KindOf(c), ct);
+                string self = NewTemp(ct);
+                Emit($"{self} = {ConstrainedReceiverRead(c, receiver.Expr)};");
+                var x = new StackEntry(self, CppTypes.KindOf(c), ct);
                 Push(StackKind.I4, "int32_t", CompareExpr(c, x, arg));
                 return true;
             }
@@ -4256,7 +4321,7 @@ internal sealed partial class MethodCompiler
             // formatter; emit the same expression the System.Int32::ToString
             // intrinsic does, instead of reaching dn2cpp_object_tostring with the
             // raw managed pointer (which read garbage as an object → crash).
-            case "ToString" when IsToStringablePrimitive(c):
+            case "ToString" when IsToStringablePrimitive(c) && IsObjectShapedConstrained(handle, name):
             {
                 // A placeholder receiver stands for an enum, whose ToString is
                 // the member NAME — the underlying primitive's numeric
@@ -4266,6 +4331,16 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.Ref, "Dn2CppString*", PrimitiveToStringExpr(c, ConstrainedReceiverValue(c, receiver.Expr)));
                 return true;
             }
+            // Formatting interfaces bind the primitive overload's declared signature.
+            case "ToString" when IsToStringablePrimitive(c):
+                TaintIfCanonical(c, "enum-tostring");
+                return TryEmitIntrinsic(CoreIntrinsics.PrimitiveIntegerFullName(c.Primitive) ?? c.Primitive switch
+                {
+                    PrimitiveTypeCode.Double => "System.Double",
+                    PrimitiveTypeCode.Single => "System.Single",
+                    PrimitiveTypeCode.Boolean => "System.Boolean",
+                    _ => "System.Char",
+                }, "ToString", ConstrainedCalleeSig(handle));
             // object::ToString on an enum value — `enumField.ToString` /
             // `enumLocal.ToString` lowers to `ldflda/ldloca; constrained. <enum>;
             // callvirt object::ToString`. Unlike a primitive, an enum formats by its
@@ -4316,7 +4391,8 @@ internal sealed partial class MethodCompiler
             // object::ToString on a string key — String.ToString returns the
             // instance itself. The receiver is a managed pointer to the field/local
             // holding the Dn2CppString*; dereference it (no formatting).
-            case "ToString" when c is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.String }:
+            case "ToString" when c is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.String }
+                && IsObjectShapedConstrained(handle, name):
             {
                 var receiver = Pop(); // managed pointer to the constrained string
                 Push(StackKind.Ref, "Dn2CppString*", $"(*(Dn2CppString**)({receiver.Expr}))");
@@ -4398,12 +4474,21 @@ internal sealed partial class MethodCompiler
             ExternalName: "System.Threading.Tasks.ParallelLoopResult" };
 
     /// <summary>The decoded signature of a <c>constrained.</c> callvirt's callee, from
-    /// either token shape — used to tell the parameterless <c>object::ToString()</c> apart
-    /// from the <c>ToString(format[, provider])</c> overloads that lower the same way.</summary>
-    private MethodSignature<TypeDesc> ConstrainedCalleeSig(EntityHandle handle) =>
-        handle.Kind == HandleKind.MemberReference
-            ? _reader.GetMemberReference((MemberReferenceHandle)handle).DecodeMethodSignature(_c.SigProvider, _method.Context)
-            : _reader.GetMethodDefinition((MethodDefinitionHandle)handle).DecodeSignature(_c.SigProvider, _method.Context);
+    /// either token shape. A member of an instantiated type (<c>IComparable&lt;T&gt;
+    /// .CompareTo(!0)</c>) decodes against that instantiation: its <c>!0</c> is the
+    /// interface's parameter, which the caller's own class arguments must not bind.</summary>
+    private MethodSignature<TypeDesc> ConstrainedCalleeSig(EntityHandle handle)
+    {
+        if (handle.Kind != HandleKind.MemberReference)
+            return _reader.GetMethodDefinition((MethodDefinitionHandle)handle).DecodeSignature(_c.SigProvider, _method.Context);
+        var mr = _reader.GetMemberReference((MemberReferenceHandle)handle);
+        var ctx = mr.Parent.Kind == HandleKind.TypeSpecification
+            && _reader.GetTypeSpecification((TypeSpecificationHandle)mr.Parent)
+                .DecodeSignature(_c.SigProvider, _method.Context) is { Kind: TypeKind.Class, Class: { } parent }
+            ? parent.Context
+            : _method.Context;
+        return mr.DecodeMethodSignature(_c.SigProvider, ctx);
+    }
 
     /// <summary>Boxes a <c>constrained.</c> value-type receiver — a managed pointer to the
     /// raw struct — into the real object header the <c>dn2cpp_object_*</c> helpers expect.

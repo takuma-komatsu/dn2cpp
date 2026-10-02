@@ -620,35 +620,53 @@ internal sealed partial class Compilation
     /// with a body) that an instance of <paramref name="c"/> dispatches — its own
     /// or the nearest base's — or null when none overrides Object.ToString (or the
     /// nearest override is an intrinsic type's, see <see cref="NonIntrinsic"/>).</summary>
-    internal static MethodInfo? EffectiveToString(ClassInfo c)
+    internal static MethodInfo? EffectiveToString(ClassInfo c) =>
+        NonIntrinsic(ObjectVirtualOverride(c, "ToString",
+            static m => m.Signature.ParameterTypes.Length == 0 && m.Signature.ReturnType.IsString));
+
+    /// <summary>The override of a System.Object virtual that a call through Object runs on
+    /// an instance of <paramref name="c"/>. The Object declaration identifies the slot;
+    /// the vtable chooses its body, including differently named MethodImpl overrides
+    /// and excluding same-name newslot hiders.</summary>
+    private static MethodInfo? ObjectVirtualOverride(ClassInfo c, string name, Func<MethodInfo, bool> shape)
     {
-        for (var b = c; b is not null; b = b.BaseClass)
+        c.EnsureMembers();
+        var root = c;
+        while (root.BaseClass is { } parent)
+            root = parent;
+        if (root.FullName != "System.Object")
         {
-            b.EnsureMembers();
-            if (b.Methods.FirstOrDefault(m => !m.IsStatic && m.Name == "ToString"
-                    && m.Rva != 0 && m.Signature.ParameterTypes.Length == 0
-                    && m.Signature.ReturnType.IsString) is { } ts)
-                return NonIntrinsic(ts);
+            // External value-type bases and corelib-less roots have no modeled Object slot.
+            MethodInfo? found = null;
+            for (var b = c; b is not null; b = b.BaseClass)
+            {
+                b.EnsureMembers();
+                if (b.Methods.FirstOrDefault(m => !m.IsStatic && m.IsVirtual && m.Name == name && shape(m)) is not { } m)
+                    continue;
+                if ((m.Attributes & MethodAttributes.NewSlot) != 0)
+                    found = null;
+                else if (found is null && m.Rva != 0)
+                    found = m;
+            }
+            return found;
         }
-        return null;
+        root.EnsureMembers();
+        var declaration = root.MethodsNamed(name)?.FirstOrDefault(m => !m.IsStatic && m.IsVirtual && shape(m));
+        if (declaration is null || declaration.VtableSlot < 0 || declaration.VtableSlot >= c.Vtable.Count)
+            return null;
+        var implementation = c.Vtable[declaration.VtableSlot];
+        return implementation is { Rva: not 0 } && implementation.DeclaringClass != root
+            ? implementation : null;
     }
 
     /// <summary>The GetHashCode() override (a 0-arg, int-returning instance method
     /// with a body) an instance of <paramref name="c"/> dispatches — its own or the
     /// nearest base's — or null when none overrides Object.GetHashCode (or the
     /// nearest override is an intrinsic type's, see <see cref="NonIntrinsic"/>).</summary>
-    internal static MethodInfo? EffectiveGetHashCode(ClassInfo c)
-    {
-        for (var b = c; b is not null; b = b.BaseClass)
-        {
-            b.EnsureMembers();
-            if (b.Methods.FirstOrDefault(m => !m.IsStatic && m.Name == "GetHashCode"
-                    && m.Rva != 0 && m.Signature.ParameterTypes.Length == 0
-                    && m.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }) is { } gh)
-                return NonIntrinsic(gh);
-        }
-        return null;
-    }
+    internal static MethodInfo? EffectiveGetHashCode(ClassInfo c) =>
+        NonIntrinsic(ObjectVirtualOverride(c, "GetHashCode",
+            static m => m.Signature.ParameterTypes.Length == 0
+                && m.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }));
 
     /// <summary>The Equals(object) override (a 1-arg method taking System.Object and
     /// returning bool, with a body) an instance of <paramref name="c"/> dispatches —
@@ -666,44 +684,23 @@ internal sealed partial class Compilation
     /// body, the cut says "nothing overrides it". Callers want the cut answer — an
     /// uncallable body is not an override you can dispatch — which is why this is the
     /// private half and EffectiveEquals the public one.</summary>
-    internal static MethodInfo? DeclaredEquals(ClassInfo c)
-    {
-        for (var b = c; b is not null; b = b.BaseClass)
-        {
-            b.EnsureMembers();
-            if (b.Methods.FirstOrDefault(m => !m.IsStatic && m.Name == "Equals"
-                    && m.Rva != 0 && m.Signature.ParameterTypes is [{ IsObject: true }]
-                    && m.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }) is { } eq)
-                return eq;
-        }
-        return null;
-    }
+    internal static MethodInfo? DeclaredEquals(ClassInfo c) =>
+        ObjectVirtualOverride(c, "Equals",
+            static m => m.Signature.ParameterTypes is [{ IsObject: true }]
+                && m.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean });
 
     /// <summary>The Finalize() override (a 0-arg, void-returning instance method
     /// with a body — what a C# <c>~T()</c> destructor compiles down to) that an
     /// instance of <paramref name="c"/> dispatches — its own or the nearest
-    /// base's — or null when none overrides Object.Finalize. Same shape as
-    /// <see cref="EffectiveToString"/>, with one difference: the walk stops
-    /// before reaching System.Object itself. Unlike ToString/GetHashCode/Equals
-    /// (whose Object-level bodies are meaningful defaults worth dispatching to),
-    /// real CoreLib's <c>Object</c> declares its own empty <c>~Object() {}</c>
-    /// (Rva != 0, just an empty body) — walking into it would make EVERY
-    /// reference type register a finalizer that does nothing, defeating the
-    /// whole point of gating dn2cpp_register_finalizer on "has one". Used to
-    /// wire Dn2CppTypeInfo.finalize and to decide whether newobj must call
-    /// dn2cpp_register_finalizer.</summary>
-    internal static MethodInfo? EffectiveFinalize(ClassInfo c)
-    {
-        for (var b = c; b is not null && b.FullName != "System.Object"; b = b.BaseClass)
-        {
-            b.EnsureMembers();
-            if (b.Methods.FirstOrDefault(m => !m.IsStatic && m.Name == "Finalize"
-                    && m.Rva != 0 && m.Signature.ParameterTypes.Length == 0
-                    && m.Signature.ReturnType.IsVoid) is { } fin)
-                return fin;
-        }
-        return null;
-    }
+    /// base's — or null when none overrides Object.Finalize. The walk never enters
+    /// System.Object, whose real CoreLib declaration is an empty <c>~Object() {}</c>
+    /// (Rva != 0): answering it would make EVERY reference type register a finalizer
+    /// that does nothing, defeating the whole point of gating
+    /// dn2cpp_register_finalizer on "has one". Used to wire Dn2CppTypeInfo.finalize and
+    /// to decide whether newobj must call dn2cpp_register_finalizer.</summary>
+    internal static MethodInfo? EffectiveFinalize(ClassInfo c) =>
+        ObjectVirtualOverride(c, "Finalize",
+            static m => m.Signature.ParameterTypes.Length == 0 && m.Signature.ReturnType.IsVoid);
 
     /// <summary>The <c>ToString(string format)</c> overload of a value type (a
     /// 1-arg instance method taking string, returning string, with a body). The
@@ -1016,6 +1013,33 @@ internal sealed partial class Compilation
     /// emission — the wiring it drives is decided before a single body compiles).</summary>
     private void NoteObjectEqualityDispatch() => _objectEqualityDispatched = true;
 
+    /// <summary>Whether an <c>ldvirtftn</c> token names an Object-rooted Equals or
+    /// GetHashCode (<see cref="CoreIntrinsics.ScObjectEqualityDispatch"/>), from raw
+    /// metadata names alone; the name is tested before the parent is composed.</summary>
+    private bool IsObjectEqualityFtn(Module module, EntityHandle handle)
+    {
+        var reader = module.Reader;
+        switch (handle.Kind)
+        {
+            case HandleKind.MemberReference:
+            {
+                var mrh = (MemberReferenceHandle)handle;
+                string name = reader.GetString(reader.GetMemberReference(mrh).Name);
+                return CoreIntrinsics.IsObjectEqualityMemberName(name)
+                    && CoreIntrinsics.ScObjectEqualityDispatch.Matches(MemberRefParentTypeName(module, mrh), name);
+            }
+            case HandleKind.MethodDefinition:
+            {
+                var mdh = (MethodDefinitionHandle)handle;
+                string name = reader.GetString(reader.GetMethodDefinition(mdh).Name);
+                return CoreIntrinsics.IsObjectEqualityMemberName(name)
+                    && CoreIntrinsics.ScObjectEqualityDispatch.Matches(MethodDefParentTypeName(module, mdh), name);
+            }
+            default:
+                return false;
+        }
+    }
+
     /// <summary>Minted structural bodies in mint order — the emitter's synthesis round
     /// reads this (a synthetic is not in its class's <c>Methods</c>, so the body walk
     /// cannot see it). Mint order is reach order, which is deterministic; the emitter
@@ -1205,6 +1229,59 @@ internal sealed partial class Compilation
     /// <see cref="ReachedSynthesizedValueEquals"/>.</summary>
     internal MethodInfo? ReachedSynthesizedValueHash(ClassInfo c) =>
         _synthValueHash.TryGetValue(c, out var m) && m is not null && Reachable.Contains(m) ? m : null;
+
+    private readonly Dictionary<ClassInfo, MethodInfo?> _baseValueEquals = new();
+    private readonly Dictionary<ClassInfo, MethodInfo?> _baseValueHash = new();
+
+    /// <summary>The field walk a non-virtual <c>ValueType::Equals(object)</c> or
+    /// <c>GetHashCode()</c> call in one of <paramref name="c"/>'s own methods runs — the
+    /// <c>base.Equals(o)</c> of an override, which must not dispatch back into it. The
+    /// same walk <see cref="SynthesizedValueEquals"/> / <see cref="SynthesizedValueHash"/>
+    /// mint for a struct that does not override the member; one that does gets its own
+    /// body under a distinct suffix, kept out of the type-info slots and the key paths the
+    /// override owns. Null when a field carves the walk out. Reach-phase only, like the
+    /// mint it may run.</summary>
+    private MethodInfo? BaseValueBody(ClassInfo c, bool hash)
+    {
+        var cache = hash ? _baseValueHash : _baseValueEquals;
+        if (cache.TryGetValue(c, out var cached))
+            return cached;
+        MethodInfo? m;
+        if ((hash ? EffectiveGetHashCode(c) : EffectiveEquals(c)) is null)
+            m = hash ? SynthesizedValueHash(c) : SynthesizedValueEquals(c);
+        else if (!CanSynthesizeValueEquality(c, hash, new HashSet<ClassInfo>()))
+            m = null;
+        else if (hash)
+            m = MintValueBody(c, "GetHashCode", "__vtbasehash",
+                TypeDesc.MakePrimitive(PrimitiveTypeCode.Int32), ImmutableArray<TypeDesc>.Empty);
+        else
+            m = MintValueBody(c, "Equals", "__vtbaseeq",
+                TypeDesc.MakePrimitive(PrimitiveTypeCode.Boolean), ImmutableArray.Create(TypeDesc.MakeClass(c)));
+        cache[c] = m;
+        return m;
+    }
+
+    /// <summary>The reached body of <see cref="BaseValueBody"/>, as a pure lookup — what
+    /// the emit of the non-virtual call asks.</summary>
+    internal MethodInfo? ReachedBaseValueBody(ClassInfo c, bool hash) =>
+        (hash ? _baseValueHash : _baseValueEquals).TryGetValue(c, out var m)
+            && m is not null && Reachable.Contains(m) ? m : null;
+
+    /// <summary>Reaches <see cref="BaseValueBody"/> and what its field walk calls, for a
+    /// non-virtual <c>ValueType::<paramref name="name"/></c> call in a body of
+    /// <paramref name="c"/>. A value type's own method is the only place C# emits one: its
+    /// base call boxes <c>this</c>.</summary>
+    private void ReachBaseValueCall(ClassInfo c, string name)
+    {
+        if (name is not ("Equals" or "GetHashCode")
+            || c is not { IsValueType: true, IsEnum: false }
+            || CoreIntrinsics.IsIntrinsicType(c.FullName) || c.IntrinsicCppName is not null)
+            return;
+        bool hash = name == "GetHashCode";
+        if (BaseValueBody(c, hash) is { } b && Reachable.Add(b))
+            foreach (var f in StructuralFields(c))
+                ReachStructuralField(f.Type, hash);
+    }
 
     private MethodInfo MintValueBody(ClassInfo c, string name, string suffix,
         TypeDesc returnType, ImmutableArray<TypeDesc> parameterTypes)
@@ -1403,6 +1480,14 @@ internal sealed partial class Compilation
     /// untranspiled.</para></summary>
     private void ReachConstrainedImpl(Module module, EntityHandle calleeHandle, TypeDesc constrained, GenericContext ctx)
     {
+        // A string receiver dispatches an interface member through String's runtime map,
+        // which a shared body reaches through the map's canonical alias row, so wire it.
+        if (constrained.IsString && calleeHandle.Kind == HandleKind.MemberReference
+            && ResolveTypeTokenForScan(module,
+                    module.Reader.GetMemberReference((MemberReferenceHandle)calleeHandle).Parent, ctx)
+                is { Kind: TypeKind.Class, Class: { IsInterface: true } stringItf }
+            && IsStringDispatchInterface(stringItf))
+            NoteStringInterfaces();
         // A `constrained. System.Object callvirt IComparable<object>::CompareTo` — the
         // reference-type default order inside GenericComparer<object>.Compare — is
         // emitted as dn2cpp_object_compare through the non-generic System.IComparable
@@ -1444,7 +1529,7 @@ internal sealed partial class Compilation
                     if (resolvedCallee is not null)
                     {
                         if (ConstrainedImplOf(c, resolvedCallee) is { } typedBound)
-                            Reach(typedBound);
+                            ReachConstrainedBody(c, typedBound);
                         return;
                     }
                     if (pi.Context.TypeArgs[0] is { Kind: TypeKind.Class, Class: { } selfArg } && selfArg == c
@@ -1461,6 +1546,13 @@ internal sealed partial class Compilation
                 sig = md.DecodeSignature(SigProvider, ctx);
                 resolvedCallee = ResolveMethodHandle(module, calleeHandle, ctx);
                 break;
+            case HandleKind.MethodSpecification:
+                // The name/shape walk cannot resolve a method instantiation.
+                try { resolvedCallee = ResolveMethodSpec(module, (MethodSpecificationHandle)calleeHandle, ctx); }
+                catch (NotSupportedException e) when (!IsMustEscape(e)) { }
+                if (resolvedCallee is not null && ConstrainedImplOf(c, resolvedCallee) is { } specBound)
+                    ReachConstrainedBody(c, specBound);
+                return;
             default:
                 return;
         }
@@ -1527,7 +1619,7 @@ internal sealed partial class Compilation
         // emits a direct call that only this edge reaches.
         if (resolvedCallee is not null && ConstrainedImplOf(c, resolvedCallee) is { } bound)
         {
-            Reach(bound);
+            ReachConstrainedBody(c, bound);
             return;
         }
         // No resolved callee (or none bound): fall back to the name+shape walk, which can
@@ -1562,6 +1654,16 @@ internal sealed partial class Compilation
                 return;
             }
         }
+    }
+
+    /// <summary>Reaches the body a constrained call on value type <paramref name="c"/>
+    /// binds. An interface body runs on the box, which must carry a real interface
+    /// table: the body's own interface calls dispatch through it.</summary>
+    private void ReachConstrainedBody(ClassInfo c, MethodInfo body)
+    {
+        if (body.DeclaringClass.IsInterface)
+            ReachAllocatedType(c);
+        Reach(body);
     }
 
     /// <summary>Reaches the constrained type's <b>static</b> implementation of the
@@ -3319,6 +3421,16 @@ internal sealed partial class Compilation
     internal bool ImplementsInterface(ClassInfo c, ClassInfo itf) =>
         GetInterfaceClosure(c).Members.Contains(itf);
 
+    /// <summary>Whether <paramref name="c"/> implements an instantiation of the
+    /// definition of interface <paramref name="itf"/>.</summary>
+    internal bool ImplementsInterfaceDefinition(ClassInfo c, ClassInfo itf)
+    {
+        foreach (var i in GetInterfaceClosure(c).Ordered)
+            if (i.Module == itf.Module && i.Handle == itf.Handle)
+                return true;
+        return false;
+    }
+
     // Comparer interfaces can be added after shape completion. A compilation-wide
     // version also invalidates closures that read the changed type as an ancestor.
     private int _interfaceClosureVersion;
@@ -3369,7 +3481,8 @@ internal sealed partial class Compilation
     /// a level's MethodImpl wins, then a public virtual name-and-signature match
     /// on a level that lists the interface; a level that does not list it
     /// contributes only by overriding the class slot the selected body occupies.
-    /// With no class body, the most specific interface override applies.</summary>
+    /// With no class body, the most specific interface override applies. A
+    /// non-virtual member is never overridden: its slot holds its own body.</summary>
     internal MethodInfo? ResolveItfImplOrNull(ClassInfo c, MethodInfo itfMethod) =>
         ResolveItfImplOrNull(c, itfMethod, out _);
 
@@ -3381,6 +3494,8 @@ internal sealed partial class Compilation
     internal MethodInfo? ResolveItfImplOrNull(ClassInfo c, MethodInfo itfMethod, out bool ambiguous)
     {
         ambiguous = false;
+        if (!itfMethod.IsVirtual)
+            return itfMethod.IsStatic || itfMethod.Rva == 0 ? null : itfMethod;
         var declaring = itfMethod.DeclaringClass;
         List<ClassInfo>? listing = null;
         MethodInfo? hit = null;
@@ -3391,7 +3506,7 @@ internal sealed partial class Compilation
             if (hit is null && LevelListsInterface(b, declaring))
             {
                 (listing ??= new List<ClassInfo>()).Add(b);
-                hit = PublicVirtualImplOrNull(b, itfMethod);
+                hit = PublicVirtualImplOrNull(b, b, itfMethod);
             }
         }
         // A listing level with an empty inherited slot fills it from the
@@ -3401,7 +3516,7 @@ internal sealed partial class Compilation
             {
                 var stop = i + 1 < listing.Count ? listing[i + 1] : null;
                 for (var b = listing[i].BaseClass; b is not null && b != stop && hit is null; b = b.BaseClass)
-                    hit = PublicVirtualImplOrNull(b, itfMethod);
+                    hit = PublicVirtualImplOrNull(b, listing[i], itfMethod);
             }
         // A type that does not implement the interface has no listing level;
         // any same-signature body answers.
@@ -3510,15 +3625,30 @@ internal sealed partial class Compilation
     }
 
     // Only a public virtual can implement an interface method by name. An
-    // abstract one still names the class slot a subclass fills.
-    private static MethodInfo? PublicVirtualImplOrNull(ClassInfo level, MethodInfo itfMethod)
+    // abstract one still names the class slot a subclass fills. Substitution can
+    // make methods alike (F(object) beside F(T) at T = object), so the definitions
+    // decide wherever both spell, the interface method through the interface list
+    // of level: a closed-equal method of another definition implements nothing, and
+    // the caller's walk goes on to a base. Without class type arguments on level the
+    // closed signatures already compare the definitions.
+    private MethodInfo? PublicVirtualImplOrNull(ClassInfo owner, ClassInfo level, MethodInfo itfMethod)
     {
-        if (level.MethodsNamed(itfMethod.Name) is { } named)
+        MethodInfo? undecided = null;
+        string? shape = null;
+        if (owner.MethodsNamed(itfMethod.Name) is { } named)
             foreach (var m in named)
-                if (!m.IsStatic && m.IsVirtual && m.IsPublic && (m.Rva != 0 || m.IsAbstract)
-                    && m.SigKey == itfMethod.SigKey)
+            {
+                if (m.IsStatic || !m.IsVirtual || !m.IsPublic || (m.Rva == 0 && !m.IsAbstract)
+                    || m.SigKey != itfMethod.SigKey)
+                    continue;
+                bool? same = level.Context.TypeArgs.Length == 0 ? null
+                    : SameDefinitionShape(shape ??= InterfaceMethodShape(level, itfMethod), DefinitionShape(level, m));
+                if (same == true)
                     return m;
-        return null;
+                if (same is null)
+                    undecided ??= m;
+            }
+        return undecided;
     }
 
     /// <summary>The body <paramref name="c"/>'s vtable holds in the class slot
@@ -5154,6 +5284,7 @@ internal sealed partial class Compilation
             impls.AddRange(spec.BaseClass.Vtable);
         }
 
+        int inherited = owners.Count;
         var classOverrides = ClassOverrideDecls(spec);
         foreach (var m in spec.Methods)
         {
@@ -5161,16 +5292,7 @@ internal sealed partial class Compilation
                 continue;
             int slot = ExplicitBaseSlot(spec, m, classOverrides, owners.Count);
             if (slot < 0 && !m.IsNewSlot)
-            {
-                for (int i = 0; i < owners.Count; i++)
-                {
-                    if (owners[i].Name == m.Name && owners[i].SigKey == m.SigKey)
-                    {
-                        slot = i;
-                        break;
-                    }
-                }
-            }
+                slot = ImplicitBaseSlot(spec, m, owners, inherited);
             if (slot < 0)
             {
                 slot = owners.Count;
@@ -5225,6 +5347,224 @@ internal sealed partial class Compilation
         return decl.VtableSlot >= 0 && decl.VtableSlot < slotCount ? decl.VtableSlot : -1;
     }
 
+    /// <summary>The inherited slot a non-newslot virtual <paramref name="m"/> of
+    /// <paramref name="cls"/> overrides implicitly, or -1 when it opens a slot of its own.
+    ///
+    /// <para>The CLR binds an implicit override to the most derived PARENT slot of the
+    /// same name and signature, compared on the generic definitions. Only the first
+    /// <paramref name="inherited"/> slots are candidates: substitution can give one of the
+    /// class's own new slots the override's signature (<c>virtual M(T)</c> beside
+    /// <c>override M(object)</c> at <c>T = object</c>). When substitution makes several
+    /// inherited slots match, the definitions decide, so <c>override M(T)</c> keeps
+    /// binding a base's <c>M(T)</c> beside its <c>M(object)</c>; a <c>new virtual</c>
+    /// hider matches on the definitions too and stays the most derived match.</para></summary>
+    private static int ImplicitBaseSlot(ClassInfo cls, MethodInfo m, List<MethodInfo> owners, int inherited)
+    {
+        int slot = -1;
+        bool several = false;
+        for (int i = inherited - 1; i >= 0; i--)
+        {
+            if (owners[i].Name != m.Name || owners[i].SigKey != m.SigKey)
+                continue;
+            if (slot >= 0)
+            {
+                several = true;
+                break;
+            }
+            slot = i;
+        }
+        if (!several || DefinitionShape(cls, m) is not { } shape)
+            return slot;
+        for (int i = slot; i >= 0; i--)
+        {
+            if (owners[i].Name == m.Name && owners[i].SigKey == m.SigKey
+                && DefinitionShape(cls, owners[i]) == shape)
+            {
+                return i;
+            }
+        }
+        return slot;
+    }
+
+    /// <summary>The parameter and return types of <paramref name="m"/> as the definition
+    /// of <paramref name="cls"/> names them: a type parameter of <paramref name="cls"/>
+    /// spells <c>!n</c>, and an ancestor's spells the argument the extends chain of
+    /// <paramref name="cls"/> passes it, so two methods substitution merely made alike
+    /// differ. Null when a link of the chain has no metadata row. Reads metadata only,
+    /// so it creates no class.</summary>
+    private static string? DefinitionShape(ClassInfo cls, MethodInfo m) =>
+        m.Handle.IsNil ? null : DefinitionShape(cls, m.DeclaringClass, m.Handle);
+
+    /// <summary>Whether two <see cref="DefinitionShape(ClassInfo, MethodInfo)"/> spellings
+    /// name one definition signature; null when either is missing, where only the closed
+    /// signatures can decide.</summary>
+    private static bool? SameDefinitionShape(string? a, string? b) =>
+        a is null || b is null ? null : a == b;
+
+    /// <summary><see cref="DefinitionShape(ClassInfo, MethodInfo)"/> of template
+    /// <paramref name="template"/> declared on <paramref name="owner"/>, which is
+    /// <paramref name="cls"/> or one of its base types.</summary>
+    private static string? DefinitionShape(ClassInfo cls, ClassInfo owner, MethodDefinitionHandle template)
+    {
+        string[] args = [];
+        for (ClassInfo? c = cls; !ReferenceEquals(c, owner); c = c.BaseClass)
+        {
+            if (c is null || c.Handle.IsNil || BaseTypeArguments(c, args) is not { } baseArgs)
+                return null;
+            args = baseArgs;
+        }
+        return ShapeOf(owner.Module.Reader.GetMethodDefinition(template)
+            .DecodeSignature(DefinitionShapeProvider.Instance, args));
+    }
+
+    /// <summary>The parameter and return types of interface method
+    /// <paramref name="itfMethod"/> in the spelling <see cref="DefinitionShape(ClassInfo, MethodInfo)"/>
+    /// gives the members of <paramref name="level"/>: the interface's type parameters
+    /// spell the arguments the InterfaceImpl rows of <paramref name="level"/> pass them,
+    /// directly or through an interface inheriting the declaring one. Null when no row
+    /// leads there.</summary>
+    private string? InterfaceMethodShape(ClassInfo level, MethodInfo itfMethod) =>
+        itfMethod.Handle.IsNil || ListedInterfaceArguments(level, [], itfMethod.DeclaringClass) is not { } args
+            ? null
+            : ShapeOf(itfMethod.Module.Reader.GetMethodDefinition(itfMethod.Handle)
+                .DecodeSignature(DefinitionShapeProvider.Instance, args));
+
+    /// <summary>The type arguments the InterfaceImpl rows of <paramref name="type"/> pass
+    /// <paramref name="itf"/>, directly or through an interface inheriting it, spelled with
+    /// <paramref name="args"/> for the type parameters of <paramref name="type"/>.</summary>
+    private string[]? ListedInterfaceArguments(ClassInfo type, string[] args, ClassInfo itf)
+    {
+        if (type.Handle.IsNil)
+            return null;
+        var reader = type.Module.Reader;
+        foreach (var iih in reader.GetTypeDefinition(type.Handle).GetInterfaceImplementations())
+        {
+            var row = reader.GetInterfaceImplementation(iih).Interface;
+            if (ListedInterface(type, row) is not { } listed
+                || (listed != itf && !ImplementsInterface(listed, itf))
+                || InstantiationArguments(reader, row, args) is not { } rowArgs)
+                continue;
+            if (listed == itf)
+                return rowArgs;
+            if (ListedInterfaceArguments(listed, rowArgs, itf) is { } inherited)
+                return inherited;
+        }
+        return null;
+    }
+
+    /// <summary>The closed interface an InterfaceImpl row of <paramref name="type"/> names,
+    /// as the shape completion of <paramref name="type"/> decoded it.</summary>
+    private ClassInfo? ListedInterface(ClassInfo type, EntityHandle row) => row.Kind switch
+    {
+        HandleKind.TypeDefinition => GetClass(type.Module, (TypeDefinitionHandle)row),
+        HandleKind.TypeReference => ResolveTypeRef(type.Module, (TypeReferenceHandle)row)?.Class,
+        HandleKind.TypeSpecification => type.Module.Reader.GetTypeSpecification((TypeSpecificationHandle)row)
+            .DecodeSignature(SigProvider, type.Context).Class,
+        _ => null,
+    };
+
+
+    /// <summary>A method reference's parameter and return types in the spelling of
+    /// <see cref="DefinitionShape"/>: the reference names the definition's signature, so
+    /// its parent's type parameters spell <c>!n</c>.</summary>
+    private static string MemberRefShape(MemberReference mr) =>
+        ShapeOf(mr.DecodeMethodSignature(DefinitionShapeProvider.Instance, Array.Empty<string>()));
+
+    private static string ShapeOf(MethodSignature<string> sig)
+    {
+        var parts = new string[sig.ParameterTypes.Length];
+        for (int i = 0; i < parts.Length; i++)
+            parts[i] = sig.ParameterTypes[i];
+        return "(" + string.Join(",", parts) + "):" + sig.ReturnType;
+    }
+
+    /// <summary>The type arguments the definition of <paramref name="cls"/> passes its
+    /// base, spelled with <paramref name="args"/> for its own type parameters: empty for
+    /// a non-generic base, null for a base blob that is no generic instantiation.</summary>
+    private static string[]? BaseTypeArguments(ClassInfo cls, string[] args)
+    {
+        var reader = cls.Module.Reader;
+        return InstantiationArguments(reader, reader.GetTypeDefinition(cls.Handle).BaseType, args);
+    }
+
+    /// <summary>The type arguments of <paramref name="type"/>, spelled with
+    /// <paramref name="args"/> for the type parameters in scope: empty for a type
+    /// definition or reference, null for a specification that is no generic
+    /// instantiation.</summary>
+    private static string[]? InstantiationArguments(MetadataReader reader, EntityHandle type, string[] args)
+    {
+        if (type.Kind != HandleKind.TypeSpecification)
+            return [];
+        var blob = reader.GetBlobReader(reader.GetTypeSpecification((TypeSpecificationHandle)type).Signature);
+        if (blob.ReadSignatureTypeCode() != SignatureTypeCode.GenericTypeInstance
+            || blob.ReadSignatureTypeCode() != SignatureTypeCode.TypeHandle)
+        {
+            return null;
+        }
+        blob.ReadTypeHandle();
+        var decoder = new System.Reflection.Metadata.Ecma335.SignatureDecoder<string, string[]>(
+            DefinitionShapeProvider.Instance, reader, args);
+        var result = new string[blob.ReadCompressedInteger()];
+        for (int i = 0; i < result.Length; i++)
+            result[i] = decoder.DecodeType(ref blob);
+        return result;
+    }
+
+    /// <summary>Spells a signature against the generic definitions: a primitive by its
+    /// type code, any other type by its full metadata name with <c>/</c> between nesting
+    /// levels, and a class type parameter as its context argument, or <c>!n</c> past the
+    /// context. Custom modifiers drop, as they do from <see cref="MethodInfo.SigKey"/>.</summary>
+    private sealed class DefinitionShapeProvider : ISignatureTypeProvider<string, string[]>
+    {
+        internal static readonly DefinitionShapeProvider Instance = new();
+
+        public string GetPrimitiveType(PrimitiveTypeCode typeCode) => "#" + (int)typeCode;
+
+        public string GetTypeFromDefinition(MetadataReader reader, TypeDefinitionHandle handle, byte rawTypeKind)
+        {
+            var td = reader.GetTypeDefinition(handle);
+            string name = reader.GetString(td.Name);
+            var outer = td.GetDeclaringType();
+            if (!outer.IsNil)
+                return GetTypeFromDefinition(reader, outer, rawTypeKind) + "/" + name;
+            string ns = reader.GetString(td.Namespace);
+            return ns.Length == 0 ? name : ns + "." + name;
+        }
+
+        public string GetTypeFromReference(MetadataReader reader, TypeReferenceHandle handle, byte rawTypeKind)
+        {
+            var tr = reader.GetTypeReference(handle);
+            string name = reader.GetString(tr.Name);
+            if (tr.ResolutionScope.Kind == HandleKind.TypeReference)
+                return GetTypeFromReference(reader, (TypeReferenceHandle)tr.ResolutionScope, rawTypeKind) + "/" + name;
+            string ns = reader.GetString(tr.Namespace);
+            return ns.Length == 0 ? name : ns + "." + name;
+        }
+
+        public string GetTypeFromSpecification(MetadataReader reader, string[] genericContext,
+            TypeSpecificationHandle handle, byte rawTypeKind) =>
+            reader.GetTypeSpecification(handle).DecodeSignature(this, genericContext);
+
+        public string GetGenericInstantiation(string genericType, ImmutableArray<string> typeArguments)
+        {
+            var parts = new string[typeArguments.Length];
+            for (int i = 0; i < parts.Length; i++)
+                parts[i] = typeArguments[i];
+            return genericType + "<" + string.Join(",", parts) + ">";
+        }
+
+        public string GetSZArrayType(string elementType) => elementType + "[]";
+        public string GetArrayType(string elementType, ArrayShape shape) => elementType + "[" + shape.Rank + "]";
+        public string GetByReferenceType(string elementType) => elementType + "&";
+        public string GetPointerType(string elementType) => elementType + "*";
+        public string GetFunctionPointerType(MethodSignature<string> signature) => "fnptr";
+        public string GetGenericTypeParameter(string[] genericContext, int index) =>
+            index < genericContext.Length ? genericContext[index] : "!" + index;
+        public string GetGenericMethodParameter(string[] genericContext, int index) => "!!" + index;
+        public string GetModifiedType(string modifier, string unmodifiedType, bool isRequired) => unmodifiedType;
+        public string GetPinnedType(string elementType) => elementType;
+    }
+
     /// <summary>Decodes the tokens of a reachable method body: materializes
     /// generic instantiations referenced only in IL and follows call/newobj/
     /// ldftn edges so the reachable set grows transitively.</summary>
@@ -5243,8 +5583,8 @@ internal sealed partial class Compilation
         // chain so a failure deep in the BCL points back at the app call site.
         // The pending `constrained.` prefix type for the next callvirt.
         TypeDesc? constrained = null;
-        // The struct boxed by the immediately-preceding instruction, pending a
-        // formatting call that would dispatch its ToString.
+        // The struct boxed by the immediately-preceding instruction whose ToString the
+        // box did not reach, pending a formatting call that would dispatch it.
         ClassInfo? boxedForFormat = null;
         // The most recent `ldtoken <type>` operand, pending a
         // RuntimeHelpers.RunClassConstructor call (the typeof(T).TypeHandle chain
@@ -5387,7 +5727,11 @@ internal sealed partial class Compilation
                             // the parent are already read.) MarkThenResolve: the token goes
                             // on to ResolveCallTarget below exactly as it would have.
                             if (CoreIntrinsics.ScObjectEqualityDispatch.Matches(mrParent, mrName))
+                            {
                                 NoteObjectEqualityDispatch();
+                                if (insn.OpCode == ILOpCode.Call && mrParent == "System.ValueType")
+                                    ReachBaseValueCall(m.DeclaringClass, mrName!);
+                            }
                             if (mrName == "Invoke" && mrParent is "System.Reflection.MethodBase" or "System.Reflection.MethodInfo")
                                 _reflectionInvokeUsed = true;
                             // PropertyInfo.GetValue/SetValue invoke the accessor methods,
@@ -5453,12 +5797,18 @@ internal sealed partial class Compilation
                                 continue;
                             }
                         }
+                        // A delegate over Object::Equals/GetHashCode uses the call's helper.
+                        else if (!_objectEqualityDispatched && insn.OpCode == ILOpCode.Ldvirtftn
+                            && IsObjectEqualityFtn(module, handle))
+                            NoteObjectEqualityDispatch();
                         // The same mark, for the shape the block above cannot see: a body of
                         // the loaded CoreLib calling Object::Equals/GetHashCode names them
                         // with a MethodDef token (same module), not a MemberRef. Read behind
                         // the flag, so this costs one type-name read per call site only until
-                        // the first such site — and nothing at all after it.
-                        else if (!_objectEqualityDispatched
+                        // the first such site — and after it only at a value type's `call`,
+                        // which may be the base call whose field walk must be reached.
+                        else if ((!_objectEqualityDispatched
+                                || insn.OpCode == ILOpCode.Call && m.DeclaringClass.IsValueType)
                             && insn.OpCode is ILOpCode.Call or ILOpCode.Callvirt
                             && handle.Kind == HandleKind.MethodDefinition)
                         {
@@ -5468,10 +5818,16 @@ internal sealed partial class Compilation
                             // shared predicate is why this is the same member set as the
                             // row's, not a copy of it.
                             string oname = module.Reader.GetString(omd.Name);
-                            if (CoreIntrinsics.IsObjectEqualityMemberName(oname)
-                                && CoreIntrinsics.ScObjectEqualityDispatch.Matches(
-                                    MethodDefParentTypeName(module, (MethodDefinitionHandle)handle), oname))
-                                NoteObjectEqualityDispatch();
+                            if (CoreIntrinsics.IsObjectEqualityMemberName(oname))
+                            {
+                                string? oparent = MethodDefParentTypeName(module, (MethodDefinitionHandle)handle);
+                                if (CoreIntrinsics.ScObjectEqualityDispatch.Matches(oparent, oname))
+                                {
+                                    NoteObjectEqualityDispatch();
+                                    if (insn.OpCode == ILOpCode.Call && oparent == "System.ValueType")
+                                        ReachBaseValueCall(m.DeclaringClass, oname);
+                                }
+                            }
                         }
                         // CultureInfo.CompareInfo -> a synthesized zero-initialized
                         // CompareInfo (see the MethodCompiler intrinsic in
@@ -5678,7 +6034,7 @@ internal sealed partial class Compilation
                             // reference canon placeholder) keep the cross-product:
                             // those deref to a real dispatch.
                             if ((insn.OpCode == ILOpCode.Callvirt || insn.OpCode == ILOpCode.Ldvirtftn)
-                                && (t.IsVirtual || t.DeclaringClass.IsInterface)
+                                && t.IsVirtual
                                 && !(insn.OpCode == ILOpCode.Callvirt
                                      && constrained is { Kind: TypeKind.Primitive, Primitive: not (PrimitiveTypeCode.Object or PrimitiveTypeCode.String) }))
                                 ReachUsedVirtual(t);
@@ -5753,12 +6109,13 @@ internal sealed partial class Compilation
                                 && cmpCls.Context.TypeArgs.Length >= 1)
                                 ReachValueKeyEquality(cmpCls.Context.TypeArgs[0]);
                         }
-                        // A struct boxed by the immediately-preceding instruction and
-                        // passed straight to a formatting call (Console.Write/WriteLine,
-                        // String.Concat/Format) is formatted via Object.ToString —
-                        // reach its override so dn2cpp_object_tostring's tostring slot
-                        // is wired. Gated on the formatting call (not the box) so a
-                        // struct boxed for other reasons doesn't drag its ToString in.
+                        // A framework struct boxed by the immediately-preceding
+                        // instruction and passed straight to a formatting call
+                        // (Console.Write/WriteLine, String.Concat/Format) is formatted via
+                        // Object.ToString — reach its override so dn2cpp_object_tostring's
+                        // tostring slot is wired. Gated on the formatting call (not the
+                        // box) so a framework struct boxed for other reasons doesn't drag
+                        // its ToString in; a non-framework struct's was reached at the box.
                         if (prevBoxed is { } pb
                             && insn.OpCode is ILOpCode.Call or ILOpCode.Callvirt
                             && IsObjectFormattingCall(module, handle)
@@ -5984,24 +6341,31 @@ internal sealed partial class Compilation
                         // used interface/virtual slots are reached and its interface
                         // dispatch table is emitted — a value type is otherwise
                         // dispatched only via direct constrained calls.
-                        if (ResolveTypeTokenForScan(module, handle, m.Context)
-                            is { Kind: TypeKind.Class, Class: { IsValueType: true } bc })
+                        // A specialization learns it is a value type with its shape,
+                        // which a box may be the first to ask for. The box of a
+                        // Nullable<T> is a boxed T (or null), so T is what is allocated
+                        // and what the box's slots dispatch on.
+                        if (ResolveTypeTokenForScan(module, handle, m.Context) is { Kind: TypeKind.Class } boxedType
+                            && EnsureShape(boxedType.Class!) is { IsValueType: true } bc)
                         {
-                            var held = NullableUnderlying(new TypeDesc { Kind = TypeKind.Class, Class = bc }) is
-                                { Kind: TypeKind.Class, Class: { } underlying } && underlying.EnsureMembers().IsValueType
-                                    ? underlying : bc;
+                            var held = NullableUnderlying(boxedType) is { Kind: TypeKind.Class } nt
+                                && EnsureShape(nt.Class!) is { IsValueType: true } nu ? nu : bc;
                             ReachAllocatedType(held);
-                            // A boxed struct formatted as a unit (Console.WriteLine /
-                            // "s" + tuple) dispatches its ToString through
-                            // dn2cpp_object_tostring's tostring slot — but boxing
-                            // alone doesn't mean formatting (a struct is also boxed for
-                            // Equals/interface dispatch/storage). Remember it; the
-                            // ToString is reached only if the *next* instruction is a
-                            // formatting call (below). Primitives are excluded — the
-                            // runtime formats boxed primitives directly, and their real
-                            // ToString pulls culture/Calli.
-                            if (!IsRuntimeFormattedPrimitive(bc))
-                                boxedForFormat = bc;
+                            // A boxed struct dispatches its ToString through the
+                            // type-info's tostring slot wherever the box is formatted: a
+                            // callvirt, a method group, string.Join or a formatting call.
+                            // A non-framework struct's override is reached at the box. A
+                            // framework struct's is reached only when a formatting call
+                            // directly follows the box (below): framework structs are
+                            // boxed for equality, interface dispatch and storage far more
+                            // often than formatted, and their overrides drag the BCL
+                            // formatting code in. Primitives are excluded — the runtime
+                            // formats boxed primitives directly, and their real ToString
+                            // pulls culture/Calli.
+                            if (IsUserModule(held.Module) && EffectiveToString(held) is { } heldToString)
+                                Reach(heldToString);
+                            else if (!IsRuntimeFormattedPrimitive(held))
+                                boxedForFormat = held;
                         }
                         continue;
                     }

@@ -188,6 +188,15 @@ internal sealed partial class MethodCompiler
         && Comp.GenericDefFullName(c) == "System.Collections.Generic.IEnumerable"
         && c.Context.TypeArgs is [{ IsString: true }];
 
+    /// <summary>The object header of the receiver <paramref name="o"/>, null-checked unless
+    /// the operand is statically non-null: a member that reads the header faults on a null
+    /// receiver.</summary>
+    private string ReceiverHeader(StackEntry o)
+    {
+        string obj = $"((Dn2CppObject*)({Cast(o, "Dn2CppObject*")}))";
+        return o.NonNull ? obj : $"dn2cpp_null_check({obj})";
+    }
+
     /// <summary>Pops a reference array operand into a temp and returns it, throwing
     /// ArgumentNullException for <paramref name="param"/> when it is null.</summary>
     private string PopNonNullRefArray(string param)

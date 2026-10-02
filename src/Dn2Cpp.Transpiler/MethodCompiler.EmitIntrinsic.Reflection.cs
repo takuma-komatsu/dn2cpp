@@ -194,7 +194,9 @@ internal sealed partial class MethodCompiler
                 return true;
             }
             // obj.GetType: the runtime Type from the object header. A boxed value
-            // carries its primitive type in the same header.
+            // carries its primitive type in the same header. The header read faults on
+            // a null receiver whether the call is virtual or not: `call` reaches here
+            // with the box of an empty Nullable<T>.
             case ("System.Object", "GetType") when sig.ParameterTypes.Length == 0:
             {
                 var o = Pop();
@@ -206,8 +208,7 @@ internal sealed partial class MethodCompiler
                 // GetType is declared on System.Object — so the receiver takes
                 // the same interned wrapper every other escape does, and the
                 // handle it carries is the one typeof(CultureInfo) names.
-                Push(StackKind.Ref, "Dn2CppType*",
-                    $"dn2cpp_get_type_from_handle(((Dn2CppObject*)({Cast(o, "Dn2CppObject*")}))->type)");
+                Push(StackKind.Ref, "Dn2CppType*", $"dn2cpp_get_type_from_handle({ReceiverHeader(o)}->type)");
                 _stack[^1] = _stack[^1] with { ArraySearchOrigin =
                     _c.TransformArraySearchOrigin(o.ArraySearchOrigin,
                         ArraySearchFlowKind.ObjectTypeToRuntimeType) };

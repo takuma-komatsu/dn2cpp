@@ -3555,8 +3555,8 @@ internal sealed partial class MethodCompiler : IEvalStack
                     break;
                 }
                 // Nullable<T>: the inverse of the special box above — a null reference
-                // unboxes to default(Nullable<T>) (HasValue=false), a boxed T to a
-                // Nullable<T> carrying it (HasValue=true).
+                // unboxes to default(Nullable<T>) (HasValue=false), a box of exactly T
+                // to a Nullable<T> carrying it (HasValue=true).
                 if (NullableLayout(target) is (var uT2, var hvF2, var valF2))
                 {
                     string uti2 = TypeArg0TypeInfoExpr(uT2, insn.Token)
@@ -3567,7 +3567,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                     Emit($"{otmp} = (Dn2CppObject*){obj.Expr};");
                     string ntmp2 = NewTemp(nct2);
                     Emit($"{ntmp2} = {{}};");
-                    Emit($"if ({otmp}) {{ {ntmp2}.{hvF2} = 1; {ntmp2}.{valF2} = *(({uct2}*)dn2cpp_unbox({otmp}, {uti2})); }}");
+                    Emit($"if ({otmp}) {{ {ntmp2}.{hvF2} = 1; {ntmp2}.{valF2} = *(({uct2}*)dn2cpp_unbox_nullable({otmp}, {uti2})); }}");
                     Push(CppTypes.KindOf(target), nct2, ntmp2);
                     break;
                 }
@@ -3691,7 +3691,8 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // emitted, so note it, and register the canonical dispatch. This is the
                 // interface twin of the vtable lookup below — reachability already treats
                 // ldvirtftn like callvirt (ReachUsedVirtual covers both), so every
-                // implementation the delegate can bind to is in the tree.
+                // implementation the delegate can bind to is in the tree. A non-virtual
+                // interface member names its own body, like any non-virtual target.
                 // Checked after the GVM case: an interface-declared generic virtual has no
                 // interface-table slot either (its VtableSlot is unassigned), and its
                 // dispatcher is the right target.
@@ -3739,7 +3740,15 @@ internal sealed partial class MethodCompiler : IEvalStack
                         + $"(void*)+[](Dn2CppObject* receiver, Dn2CppObject* other) -> int32_t "
                         + $"{{ return {impl.CppName}(({virtualTarget.DeclaringClass.CppStructName}*)(receiver + 1), other); }})";
                 }
-                else if (m.DeclaringClass.IsInterface)
+                else if (ObjectDispatchHelper(m) is { } helper)
+                {
+                    // An Object virtual binds the helper a callvirt of it runs, which
+                    // dispatches through the receiver's type-info hooks: a boxed value or a
+                    // runtime-owned object has no vtable, and the slot of a class that does
+                    // not override the member holds a trap.
+                    expr = $"((void)dn2cpp_null_check({obj.Expr}), (void*)&{helper})";
+                }
+                else if (m.DeclaringClass.IsInterface && m.IsVirtual)
                 {
                     if (m.DeclaringClass.IntrinsicCppName is null)
                         NoteReferencedType(m.DeclaringClass);

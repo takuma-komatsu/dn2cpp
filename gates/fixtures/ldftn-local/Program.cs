@@ -37,8 +37,31 @@ var deadOrigins = Find("DeadOrigins");
 var virtualStored = Find("VirtualStored");
 var instanceStored = Find("InstanceStored");
 var int64Stored = Find("Int64Stored");
+var sealedInterface = Find("SealedInterface");
+var sealedGenericInterface = Find("SealedGenericInterface");
+var valueTypeEquals = Find("ValueTypeEquals");
+var valueTypeHash = Find("ValueTypeHash");
+var valueTypeText = Find("ValueTypeText");
 var scale = FindOn("VirtualBase", "Scale");
 var offset = FindOn("InstanceHolder", "Offset");
+var sealedScale = FindOn("ISealedScale", "Scale");
+var sealedShift = new GenericInstanceMethod(FindOn("ISealedScale", "Shift"));
+sealedShift.GenericArguments.Add(module.TypeSystem.Int32);
+
+foreach (var (bodyName, slotName, returnType, takesOther) in new[]
+    {
+        ("Render", "ToString", module.TypeSystem.String, false),
+        ("Same", "Equals", module.TypeSystem.Boolean, true),
+        ("Hash", "GetHashCode", module.TypeSystem.Int32, false),
+    })
+{
+    var body = FindOn("ObjectMethodImpl", bodyName);
+    var slot = new MethodReference(slotName, returnType, module.TypeSystem.Object) { HasThis = true };
+    if (takesOther)
+        slot.Parameters.Add(new ParameterDefinition(module.TypeSystem.Object));
+    body.Overrides.Clear();
+    body.Overrides.Add(slot);
+}
 
 MethodReference DelegateCtor(MethodDefinition method)
 {
@@ -227,6 +250,40 @@ MethodBody Body(MethodDefinition method, bool pointerLocal)
     il.Emit(OpCodes.Ldloc_0);
     il.Emit(OpCodes.Conv_U);
     il.Emit(OpCodes.Newobj, DelegateCtor(int64Stored));
+    il.Emit(OpCodes.Ret);
+}
+
+// C# loads a sealed interface member with ldftn; ldvirtftn of one binds its own
+// body as well, whatever virtual of its signature the receiver's class declares.
+foreach (var (stub, target) in new[] { (sealedInterface, (MethodReference)sealedScale),
+    (sealedGenericInterface, sealedShift) })
+{
+    var il = Body(stub, pointerLocal: false).GetILProcessor();
+    il.Emit(OpCodes.Ldarg_0);
+    il.Emit(OpCodes.Dup);
+    il.Emit(OpCodes.Ldvirtftn, target);
+    il.Emit(OpCodes.Newobj, DelegateCtor(stub));
+    il.Emit(OpCodes.Ret);
+}
+
+// Each ValueType stub callvirts System.ValueType's own override on its receiver.
+var valueType = new TypeReference("System", "ValueType", module, module.TypeSystem.CoreLibrary);
+var valueTypeOverrides = new (MethodDefinition Stub, string Name, TypeReference Return, bool TakesOther)[]
+{
+    (valueTypeEquals, "Equals", module.TypeSystem.Boolean, true),
+    (valueTypeHash, "GetHashCode", module.TypeSystem.Int32, false),
+    (valueTypeText, "ToString", module.TypeSystem.String, false),
+};
+foreach (var (stub, name, returnType, takesOther) in valueTypeOverrides)
+{
+    var target = new MethodReference(name, returnType, valueType) { HasThis = true };
+    if (takesOther)
+        target.Parameters.Add(new ParameterDefinition(module.TypeSystem.Object));
+    var il = Body(stub, pointerLocal: false).GetILProcessor();
+    il.Emit(OpCodes.Ldarg_0);
+    if (takesOther)
+        il.Emit(OpCodes.Ldarg_1);
+    il.Emit(OpCodes.Callvirt, target);
     il.Emit(OpCodes.Ret);
 }
 

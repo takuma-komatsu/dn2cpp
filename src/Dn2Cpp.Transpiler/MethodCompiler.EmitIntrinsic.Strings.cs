@@ -410,7 +410,7 @@ internal sealed partial class MethodCompiler
                 var arg = Pop();
                 var self = Pop();
                 Push(StackKind.I4, "int32_t",
-                    $"dn2cpp_str_compare({Cast(self, "Dn2CppString*")}, {Cast(arg, "Dn2CppString*")}, 4)");
+                    $"dn2cpp_str_compare({VirtualReceiver(self)}, {Cast(arg, "Dn2CppString*")}, 4)");
                 return true;
             }
             // string.CompareTo(object) — delegate to the real transpiled body (its
@@ -425,7 +425,7 @@ internal sealed partial class MethodCompiler
                 var self = Pop();
                 Comp.NoteNamedBodySymbol(Method, ct.Emittable);
                 Push(StackKind.I4, "int32_t",
-                    $"{ct.Emittable.CppName}({Cast(self, "Dn2CppString*")}, {Cast(arg, "Dn2CppObject*")})");
+                    $"{ct.Emittable.CppName}({VirtualReceiver(self)}, {Cast(arg, "Dn2CppObject*")})");
                 return true;
             }
             // string.Intern / IsInterned — the runtime intern pool (all ldstr
@@ -600,7 +600,7 @@ internal sealed partial class MethodCompiler
             case ("System.String", "GetHashCode") when sig.ParameterTypes.Length == 0:
             {
                 var s = Pop();
-                Push(StackKind.I4, "int32_t", $"dn2cpp_string_hashcode({Cast(s, "Dn2CppString*")})");
+                Push(StackKind.I4, "int32_t", $"dn2cpp_string_hashcode({VirtualReceiver(s)})");
                 return true;
             }
             // Static string.GetHashCode(ReadOnlySpan<char>): the ordinal span hash
@@ -1695,14 +1695,16 @@ internal sealed partial class MethodCompiler
                     + $"({ign.Expr}) != 0 ? 5 : 4)");
                 return true;
             }
-            // Equals — ordinal forms: instance Equals(value) and static Equals(a, b).
+            // Equals — ordinal forms: instance Equals(value) and static Equals(a, b). The
+            // helpers accept null for the static shape; an instance receiver is checked.
             case ("System.String", "Equals") when sig.ParameterTypes is [{ IsString: true }]:
             case ("System.String", "Equals") when sig.ParameterTypes is [{ IsString: true }, { IsString: true }]:
             {
                 var b = Pop();
                 var a = Pop();
+                string sa = sig.Header.IsInstance ? VirtualReceiver(a) : Cast(a, "Dn2CppString*");
                 Push(StackKind.I4, "int32_t",
-                    $"dn2cpp_string_equals({Cast(a, "Dn2CppString*")}, {Cast(b, "Dn2CppString*")})");
+                    $"dn2cpp_string_equals({sa}, {Cast(b, "Dn2CppString*")})");
                 return true;
             }
             // Equals with StringComparison — instance Equals(value, cmp) and static
@@ -1919,4 +1921,11 @@ internal sealed partial class MethodCompiler
     /// signature decoding, its enum-ness intact).</summary>
     private static bool IsNumberStyles(TypeDesc t) =>
         t is { Kind: TypeKind.Class, Class: { IsEnum: true, FullName: "System.Globalization.NumberStyles" } };
+
+    /// <summary>A String instance receiver as a callvirt passes it: null-checked, since
+    /// the runtime helpers it feeds also serve the null-tolerant static overloads.</summary>
+    private string VirtualReceiver(StackEntry receiver) =>
+        CallIsVirtual
+            ? $"dn2cpp_null_check({Cast(receiver, "Dn2CppString*")})"
+            : Cast(receiver, "Dn2CppString*");
 }

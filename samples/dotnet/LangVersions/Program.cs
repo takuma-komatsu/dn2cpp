@@ -38,3 +38,8 @@ NullableValueSubset.Program.__GateEntry();          // C# 2 — Nullable<T> valu
 TupleSubset.Program.__GateEntry();                  // C# 7 — value tuples
 DefaultInterfaceMethodSubset.Program.__GateEntry(); // C# 8 — default interface methods
 RecordSubset.Program.__GateEntry();                 // C# 9 — positional records
+
+// The old output is an unchanged prefix of this ordinary interface section.
+if (System.Environment.GetEnvironmentVariable("DN2CPP_BEFORE_ORDINARY_SEALED_INTERFACE") == "1")
+    return;
+InterfaceSealedMemberSubset.Program.__GateEntry();

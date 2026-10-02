@@ -3879,7 +3879,8 @@ Dn2CppObject* dn2cpp_isinst(Dn2CppObject* obj, const Dn2CppTypeInfo* ti);
 // arms (array-to-array element covariance, System.Array, the non-generic and
 // generic array collection interfaces). This is THE assignability rule —
 // Type.IsAssignableFrom delegates here (dn2cpp_type_is_assignable_from), so a
-// reflection answer and an isinst can never disagree about the same pair.
+// reflection answer and an isinst can never disagree about the same pair; both add
+// only the Nullable rule (dn2cpp_is_nullable_of).
 int32_t dn2cpp_typeinfo_assignable(const Dn2CppTypeInfo* st, const Dn2CppTypeInfo* ti);
 Dn2CppObject* dn2cpp_castclass(Dn2CppObject* obj, const Dn2CppTypeInfo* ti);
 Dn2CppObject* dn2cpp_box(const Dn2CppTypeInfo* ti, const void* value, size_t size);
@@ -3887,6 +3888,20 @@ Dn2CppObject* dn2cpp_box(const Dn2CppTypeInfo* ti, const void* value, size_t siz
 // i.e. a run-time value (RuntimeHelpers.Box). Takes the payload width off the handle.
 Dn2CppObject* dn2cpp_box_by_handle(const Dn2CppTypeInfo* ti, const void* value);
 void* dn2cpp_unbox(Dn2CppObject* obj, const Dn2CppTypeInfo* ti);
+// unbox.any Nullable<U> of a non-null box: its U payload, which the box must hold
+// exactly, else InvalidCastException naming Nullable<U>.
+void* dn2cpp_unbox_nullable(Dn2CppObject* obj, const Dn2CppTypeInfo* u);
+// The U of a closed Nullable<U> type-info, else null.
+const Dn2CppTypeInfo* dn2cpp_nullable_underlying_ti(const Dn2CppTypeInfo* ti);
+// Whether `ti` is Nullable<u>. No box of a Nullable exists, so a boxed U passes a
+// Nullable<U> type test and Type.IsAssignableFrom(Nullable<U>, U) holds. The rule
+// stays out of dn2cpp_typeinfo_assignable, whose callers also read an answer as
+// the same representation.
+static inline bool dn2cpp_is_nullable_of(const Dn2CppTypeInfo* ti, const Dn2CppTypeInfo* u)
+{
+    return ti != nullptr && ti->genericArgCount == 1 && ti->genericArgs != nullptr
+        && ti->genericArgs[0] == u && dn2cpp_nullable_underlying_ti(ti) != nullptr;
+}
 
 // Builds a string from a static UTF-16 buffer (literals point at .rodata).
 Dn2CppString* dn2cpp_string_literal(const char16_t* chars, int32_t length);
@@ -5439,6 +5454,13 @@ int32_t dn2cpp_search_values_index_of_any_str(const char16_t* span, int32_t n, c
 // two-caller invariant is written out at the definition.
 Dn2CppString* dn2cpp_object_tostring(Dn2CppObject* obj);
 Dn2CppString* dn2cpp_object_tostring_virtual(Dn2CppObject* obj);
+// Object.ToString's own body for a non-virtual call (a base.ToString() inside an
+// override): the type name, never the type's tostring slot. Null throws.
+Dn2CppString* dn2cpp_object_tostring_nonvirtual(Dn2CppObject* obj);
+// The identity hash behind RuntimeHelpers.GetHashCode, a non-virtual
+// Object.GetHashCode and dn2cpp_object_gethashcode's default: non-negative, 0 for
+// null.
+int32_t dn2cpp_object_hashcode(Dn2CppObject* obj);
 // Object.GetHashCode / Object.Equals(object) virtual dispatch. If the
 // runtime type wires a `gethashcode`/`equals` override, call it; otherwise fall
 // back to .NET's defaults — an identity hash derived from the object pointer, and
@@ -5541,7 +5563,6 @@ Dn2CppString* dn2cpp_string_join_ref_range(Dn2CppString* sep, Dn2CppArrayRef* a,
 Dn2CppString* dn2cpp_string_join_objs(Dn2CppString* sep, Dn2CppObject* const* d, int32_t n);
 Dn2CppString* dn2cpp_string_concat_objs(Dn2CppObject* const* d, int32_t n);
 Dn2CppString* dn2cpp_string_join_ch_n(Dn2CppString* sep, Dn2CppArrayN* a, int32_t n);
-int32_t dn2cpp_object_hashcode(Dn2CppObject* obj);
 
 Dn2CppArrayI4* dn2cpp_newarr_i4(int32_t length);
 Dn2CppArrayRef* dn2cpp_newarr_ref(int32_t length);
