@@ -134,7 +134,7 @@ gate_extra_asserts() {
             done
         elif [ "$name" = GeneralArgumentFallback ]; then
             local binds
-            binds=$(rg '^const Dn2CppTypeBind dn2cpp_type_binds' "$fixture/generated.cpp")
+            binds=$(grep '^const Dn2CppTypeBind dn2cpp_type_binds' "$fixture/generated.cpp")
             if [[ "$binds" == *'&dn2cpp_argument_exception_type'* ||
                 "$binds" == *'&dn2cpp_argument_null_exception_type'* ||
                 "$binds" == *'&dn2cpp_argument_out_of_range_exception_type'* ]]; then
