@@ -486,4 +486,16 @@ for line in '== constrained Boolean conversion ==' \
         || { echo "FAIL: constrained Boolean witness missing: $line" >&2; exit 1; }
 done
 
+before_width_typed=$(dotnet "$app" before-width-typed-slots) || exit $?
+before_width_typed=$(strip_cr_win "$before_width_typed")
+prefix=$(awk '/^== same-width constrained interface slots ==$/ { exit } { print }' <<< "$native")
+assert_output "$prefix" "$before_width_typed"
+for line in '== same-width constrained interface slots ==' \
+    'width typed slots=True,True,False/1,-1' \
+    'width typed comparer=True:3/True:40' \
+    'same-width constrained interface slots end'; do
+    grep -Fxq -- "$line" <<< "$native" \
+        || { echo "FAIL: same-width interface witness missing: $line" >&2; exit 1; }
+done
+
 gate_cache_commit

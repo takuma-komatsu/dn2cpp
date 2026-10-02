@@ -78,6 +78,9 @@ namespace SharedGenerics
             if (args.Length > 0 && args[0] == "before-boolean-receivers")
                 return;
             ConstrainedObjectInterfaceSubset.Program.RunBooleanReceivers();
+            if (args.Length > 0 && args[0] == "before-width-typed-slots")
+                return;
+            WidthJoinSubset.Program.RunTypedSlots();
         }
     }
 }
