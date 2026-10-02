@@ -46,6 +46,7 @@
 # cancellation, custom-awaitable, multi-awaiter.
 # Task sequences and cold scheduling.
 source "$(dirname "$0")/_common.sh"
+task_python=$(resolve_python) || gate_skip "no working Python 3 interpreter for task call fixtures"
 call_app="gates/fixtures/task-call-validation/bin/$CONFIG/$TFM/TaskCallValidation.dll"
 build_gate_proj gates/fixtures/task-call-validation/TaskCallValidation.csproj
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $call_app ${call_app%.dll}.runtimeconfig.json ${call_app%.dll}.deps.json gates/fixtures/task-call-validation/patch-call.py"
@@ -55,6 +56,20 @@ gate_extra_asserts() {
     local out="$1" native before prefix line
     native=$(run_bounded "./$out/AsyncCombinators")
     native=$(strip_cr_win "$native")
+    before=$(run_bounded dotnet "$_CG_APP" before-cancellation-receivers)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== cancellation source receivers ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== cancellation source receivers ==' \
+        'Token=NullReferenceException' 'IsCancellationRequested=NullReferenceException' \
+        'Cancel=NullReferenceException' 'Cancel(false)=NullReferenceException' \
+        'Cancel(true)=NullReferenceException' 'Dispose=NullReferenceException' \
+        'live before=False/False' 'live after=True/True' \
+        'live Cancel(false)=True/True' 'live Cancel(true)=True/True' \
+        'cancellation source receivers end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: cancellation receiver witness missing: $line" >&2; exit 1; }
+    done
     before=$(run_bounded dotnet "$_CG_APP" before-task-lifecycle)
     before=$(strip_cr_win "$before")
     prefix=$(awk '/^whenall-null-seq:/ { exit } { print }' <<< "$native")
@@ -87,7 +102,7 @@ gate_extra_asserts() {
     mkdir -p "$oracle"
     cp "$call_app" "$oracle/TaskCallValidation.dll"
     cp "${call_app%.dll}.runtimeconfig.json" "${call_app%.dll}.deps.json" "$oracle/"
-    python3 gates/fixtures/task-call-validation/patch-call.py "$oracle/TaskCallValidation.dll"
+    $task_python gates/fixtures/task-call-validation/patch-call.py "$oracle/TaskCallValidation.dll"
     invoke_cli "$oracle/TaskCallValidation.dll" -r "$_CG_CORELIB" --auto-ref -o "$fixture"
     compile_console "$fixture" TaskCallValidation
     expected=$(run_bounded dotnet "$oracle/TaskCallValidation.dll")

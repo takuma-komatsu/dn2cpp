@@ -281,6 +281,17 @@ int main()
         "token display reconstructs exact UTF-16 including surrogate pairs");
     require(plain_bytes == packed_bytes, "token display only allocates the final managed string");
     std::puts("metadata codec boundaries OK");
+    bool invoker_rejected = false;
+    try { dn2cpp_throw_invoker_missing("missing metadata invoker"); }
+    catch (Dn2CppInvokerMissing& ex)
+    {
+        invoker_rejected = ex.obj != nullptr
+            && ex.obj->type == &dn2cpp_not_supported_exception_type
+            && dn2cpp_exception_hresult(ex.obj) == static_cast<int32_t>(0x80131515u);
+        dn2cpp_exc_inflight_pop(ex.obj);
+    }
+    require(invoker_rejected, "missing invoker carries the NotSupportedException HResult");
+    std::puts("metadata invoker refusal fields OK");
     std::fflush(stdout);
     dn2cpp_main_exit(0);
     return 0;

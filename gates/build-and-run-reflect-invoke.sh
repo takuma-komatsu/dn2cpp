@@ -513,7 +513,8 @@ mkdir -p "$codec_out"
 cp gates/fixtures/reflection-metadata-codec.cpp "$codec_out/generated.cpp"
 printf '#pragma once\n' > "$codec_out/generated.h"
 compile_console "$codec_out" MetadataCodec
-assert_output "$("$codec_out/MetadataCodec$EXE_EXT")" "metadata codec boundaries OK"
+assert_output "$(strip_cr_win "$(run_bounded "$codec_out/MetadataCodec$EXE_EXT")")" \
+    "$(printf '%s\n' 'metadata codec boundaries OK' 'metadata invoker refusal fields OK')"
 
 # The full bucket reflects MemberwiseClone over strings; GC probes need a process
 # that has not performed that unsupported CoreLib operation.

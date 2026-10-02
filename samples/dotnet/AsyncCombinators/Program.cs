@@ -42,6 +42,9 @@ namespace AsyncCombinators
             BlockingWaitArgsSubset.Program.RunSequenceNulls();
             ColdTaskScheduleSubset.Program.__GateEntry();
             TaskOriginSubset.Program.__GateEntry();
+            if (args.Length == 1 && args[0] == "before-cancellation-receivers")
+                return;
+            CancellationReceiverSubset.Program.Run();
         }
     }
 }

@@ -115,6 +115,18 @@
 # (the cache slug is derived from OUT, so sharing one would overwrite the key
 # file every run).
 source "$(dirname "$0")/_common.sh"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|resource-receivers-prefix:${DN2CPP_BEFORE_RM_RECEIVERS:-}"
+
+gate_extra_asserts() {
+    local out="$1" before prefix
+    grep -Fxq 'resource manager receivers end' <<< "$(strip_cr_win "$native")" \
+        || { echo 'FAIL: resource manager receiver block did not run' >&2; exit 1; }
+    before=$(export DN2CPP_BEFORE_RM_RECEIVERS=1
+        strip_cr_win "$(run_bounded "$out/ManifestResources$EXE_EXT")")
+    prefix=$(awk '/^== resource manager receivers ==$/ { exit } { print }' \
+        <<< "$(strip_cr_win "$native")")
+    assert_output "$prefix" "$before"
+}
 
 PROJECT=ManifestResources
 EXPDIR="$(dirname "$0")/expected"
