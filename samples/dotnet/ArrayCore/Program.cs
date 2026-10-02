@@ -79,6 +79,9 @@ namespace ArrayCore
                 return;
             DynamicArrayNullEqualitySubset.Program.RunArraySearchAdditions();
             ArrayRuntimeBoxSubset.Program.RunReviewRegressions();
+            if (args.Length != 0 && args[0] == "before-array-search-loops")
+                return;
+            ArraySearchLoopSubset.Program.Run();
 #endif
         }
     }

@@ -17,6 +17,7 @@
     <Compile Remove="ArrayReflectedVoidBoxProgram.cs" />
     <Compile Remove="ArrayFutureStoreProgram.cs" />
     <Compile Remove="ArrayObjectFutureStoreProgram.cs" />
+    <Compile Remove="ArraySearchLoopProgram.cs" />
   </ItemGroup>
 
 </Project>

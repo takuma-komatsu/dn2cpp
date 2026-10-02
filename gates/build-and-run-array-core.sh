@@ -239,6 +239,17 @@ previous=$(run_bounded dotnet "$_CG_APP" before-array-search-provenance-addition
 previous=$(strip_cr_win "$previous")
 prefix=$(awk '/^== array search reference and type provenance ==$/ { exit } { print }' <<< "$native")
 assert_output "$prefix" "$previous"
+previous=$(run_bounded dotnet "$_CG_APP" before-array-search-loops)
+previous=$(strip_cr_win "$previous")
+prefix=$(awk '/^== array search loop provenance ==$/ { exit } { print }' <<< "$native")
+assert_output "$prefix" "$previous"
+for line in '== array search loop provenance ==' \
+        'loop-local=0:1:1' 'loop-argument=0:1:1' 'loop-type=0' \
+        'loop-type-unwrapped=0:1' 'loop-unsearched-leaf=0' \
+        'array search loop provenance end'; do
+    grep -Fxq -- "$line" <<< "$native" \
+        || { echo "FAIL: array loop witness missing: $line" >&2; exit 1; }
+done
 for line in \
     'direct=0:1' \
     'conditional-first=0:1:0' \

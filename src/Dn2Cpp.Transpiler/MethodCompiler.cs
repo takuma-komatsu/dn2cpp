@@ -146,6 +146,20 @@ internal sealed partial class MethodCompiler : IEvalStack
             _c.LinkArraySearchOrigin(targetOrigin, source);
         }
     }
+
+    private void PrepareArraySearchLoopEntry(int target)
+    {
+        if (!_arraySearchEntryLocals.TryGetValue(target, out var locals))
+            _arraySearchEntryLocals.Add(target, locals = new());
+        for (int index = 0; index < _locals.Count; index++)
+            if (!locals.ContainsKey(index))
+                locals.Add(index, NewArraySearchOrigin());
+        if (!_arraySearchEntryArgs.TryGetValue(target, out var arguments))
+            _arraySearchEntryArgs.Add(target, arguments = new());
+        for (int index = 0; index < _args.Count; index++)
+            if (!arguments.ContainsKey(index))
+                arguments.Add(index, NewArraySearchOrigin());
+    }
     // [HotPath(NoAlias)] span parameters whose element pointer is hoisted into a
     // __restrict prologue local, in parameter order (the order the prologue
     // declares them). Populated by SetupNoAliasSpanLocals; a name enters
@@ -928,6 +942,9 @@ internal sealed partial class MethodCompiler : IEvalStack
 
             if (_labels.Contains(insn.Offset))
             {
+                // A later backedge must update the origins the loop body already read.
+                if (_backwardBranchTargets.Contains(insn.Offset))
+                    PrepareArraySearchLoopEntry(insn.Offset);
                 if (!_unreachable)
                     BranchTo(insn.Offset, emitGoto: false);
                 bool hasEntry = _entryStacks.TryGetValue(insn.Offset, out var entry);
@@ -1835,6 +1852,8 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// record/verify the entry stack of the given target block.</summary>
     private void BranchTo(int targetOffset, bool emitGoto, string? condition = null)
     {
+        for (int index = 0; index < _args.Count; index++)
+            ArraySearchArg(index);
         MergeArraySearchSlots(targetOffset, _arraySearchLocals, _arraySearchEntryLocals);
         MergeArraySearchSlots(targetOffset, _arraySearchArgs, _arraySearchEntryArgs);
         _entryStacks.TryGetValue(targetOffset, out var recorded);

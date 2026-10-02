@@ -151,6 +151,9 @@ internal sealed partial class Compilation
     private readonly Dictionary<MethodInfo, bool> _arraySearchForwardOnlyMethods = new();
     private readonly Dictionary<(MethodInfo Owner, int Offset, MethodInfo Target), int> _arraySearchProvenByRefCalls = new();
     private readonly Dictionary<(string Element, int Rank), TypeDesc> _arraySearchConstructedArrayTypes = new();
+    private readonly HashSet<string> _arraySearchUnboundedArrayTypes = new(StringComparer.Ordinal);
+    private int _arraySearchArrayGrowthEdges;
+    private int _arraySearchArrayDepthLimit;
     private HashSet<MethodInfo>? _arraySearchExpandedCallOwners;
     private Dictionary<MethodInfo, List<ArraySearchFrame>>? _arraySearchPureFrames;
     private Dictionary<MethodInfo, bool>? _arraySearchPureReturnCache;
@@ -993,13 +996,50 @@ internal sealed partial class Compilation
 
     private TypeDesc ArraySearchConstructedArrayType(TypeDesc element, int rank)
     {
+        // A repeated construction edge adds reference wrappers above this finite prefix.
+        if (ArraySearchArrayDepth(element) >= _arraySearchArrayDepthLimit)
+        {
+            _arraySearchUnboundedArrayTypes.Add(IdentityMangle(element));
+            return element;
+        }
         var key = (IdentityMangle(element), rank);
         if (!_arraySearchConstructedArrayTypes.TryGetValue(key, out var arrayType))
         {
             arrayType = rank == 1 ? TypeDesc.MakeSZArray(element) : TypeDesc.MakeMDArray(element, rank);
             _arraySearchConstructedArrayTypes.Add(key, arrayType);
         }
+        if (_arraySearchUnboundedArrayTypes.Contains(key.Item1))
+            _arraySearchUnboundedArrayTypes.Add(IdentityMangle(arrayType));
         return arrayType;
+    }
+
+    private static int ArraySearchArrayDepth(TypeDesc type)
+    {
+        int depth = 0;
+        while (type is { Kind: TypeKind.SZArray or TypeKind.MDArray, Element: { } element })
+        {
+            depth++;
+            type = element;
+        }
+        return depth;
+    }
+
+    private static int ArraySearchKnownArrayDepth(TypeDesc type)
+    {
+        int depth = ArraySearchArrayDepth(type);
+        while (type is { Kind: TypeKind.SZArray or TypeKind.MDArray, Element: { } element })
+            type = element;
+        if (type is { Kind: TypeKind.Class, Class: { } cls })
+            foreach (var argument in cls.Context.TypeArgs)
+                depth = Math.Max(depth, ArraySearchKnownArrayDepth(argument));
+        return depth;
+    }
+
+    private TypeDesc NoteArraySearchDeclaredArrayDepth(TypeDesc type)
+    {
+        _arraySearchArrayDepthLimit = Math.Max(_arraySearchArrayDepthLimit,
+            ArraySearchKnownArrayDepth(type) + _arraySearchArrayGrowthEdges);
+        return type;
     }
 
     internal ArraySearchOrigin ArraySearchReturn(MethodInfo method)
@@ -1103,7 +1143,7 @@ internal sealed partial class Compilation
                     if (ArraySearchMemberMatches(field.Name, name, flags,
                         field.IsPublic, field.IsStatic, field.IsPrivate, !ReferenceEquals(current, cls))
                         && selectedRows.Add(field.Name))
-                        yield return field.Type;
+                        yield return NoteArraySearchDeclaredArrayDepth(field.Type);
                 continue;
             }
             if (kind == ArraySearchFlowKind.PropertyType)
@@ -1143,7 +1183,7 @@ internal sealed partial class Compilation
                                 .SequenceEqual(parameterTypes, StringComparer.Ordinal))
                         && selectedRows.Add(reader.GetString(property.Name) + "\0" + string.Join('\0',
                             propertySignature.ParameterTypes.Select(IdentityMangle))))
-                        yield return propertySignature.ReturnType;
+                        yield return NoteArraySearchDeclaredArrayDepth(propertySignature.ReturnType);
                 }
                 continue;
             }
@@ -1168,7 +1208,7 @@ internal sealed partial class Compilation
                         + method.Signature.GenericParameterCount.ToString(
                             System.Globalization.CultureInfo.InvariantCulture) + "\0" + string.Join('\0',
                         method.Signature.ParameterTypes.Select(IdentityMangle))))
-                    yield return method.Signature.ReturnType;
+                    yield return NoteArraySearchDeclaredArrayDepth(method.Signature.ReturnType);
         }
     }
 
@@ -1342,7 +1382,12 @@ internal sealed partial class Compilation
             case ArraySearchFlowKind.ElementType when kind == ArraySearchValueKind.RuntimeType:
             case ArraySearchFlowKind.ArrayTypeElement when kind == ArraySearchValueKind.RuntimeType:
                 if (type is { Kind: TypeKind.SZArray or TypeKind.MDArray, Element: { } element })
+                {
+                    // An unbounded prefix can still have wrappers after an element read.
+                    if (_arraySearchUnboundedArrayTypes.Contains(IdentityMangle(type)))
+                        yield return (ArraySearchValueKind.RuntimeType, type);
                     yield return (ArraySearchValueKind.RuntimeType, element);
+                }
                 break;
             case ArraySearchFlowKind.GenericArguments when kind == ArraySearchValueKind.RuntimeType:
                 yield return (ArraySearchValueKind.GenericOwner, type);
@@ -1373,6 +1418,8 @@ internal sealed partial class Compilation
             case ArraySearchFlowKind.ArrayTypeToArrayElement when kind == ArraySearchValueKind.RuntimeType:
                 if (type is { Kind: TypeKind.SZArray or TypeKind.MDArray, Element: { } arrayElement })
                 {
+                    if (_arraySearchUnboundedArrayTypes.Contains(IdentityMangle(type)))
+                        yield return (ArraySearchValueKind.ArrayElement, type);
                     yield return (ArraySearchValueKind.ArrayElement, arrayElement);
                     yield return (ArraySearchValueKind.ArrayRuntimeType, type);
                 }
@@ -1486,6 +1533,21 @@ internal sealed partial class Compilation
         }
         foreach (var root in roots)
             Visit(root);
+        _arraySearchUnboundedArrayTypes.Clear();
+        _arraySearchArrayGrowthEdges = 0;
+        int knownArrayDepth = 0;
+        foreach (var origin in active)
+        {
+            foreach (var input in origin.Inputs)
+                if (input.Kind is ArraySearchFlowKind.ArrayTypeFromElement
+                    or ArraySearchFlowKind.RuntimeTypeToArrayElement)
+                    _arraySearchArrayGrowthEdges++;
+            foreach (var seeds in origin.Seeds.Values)
+                foreach (var type in seeds.Values)
+                    knownArrayDepth = Math.Max(knownArrayDepth, ArraySearchKnownArrayDepth(type));
+        }
+        // A path without a repeated construction edge cannot exceed this extent.
+        _arraySearchArrayDepthLimit = knownArrayDepth + Math.Max(1, _arraySearchArrayGrowthEdges);
         var resolvedElementReads = new HashSet<ArraySearchOrigin>();
         var resolvedReferenceElementReads = new HashSet<ArraySearchOrigin>();
         foreach (var origin in active)
@@ -1537,6 +1599,8 @@ internal sealed partial class Compilation
             do
             {
                 changed = false;
+                int depthLimitBefore = _arraySearchArrayDepthLimit;
+                int unboundedTypesBefore = _arraySearchUnboundedArrayTypes.Count;
             foreach (var origin in active)
             {
                 foreach (var input in origin.Inputs)
@@ -1614,6 +1678,8 @@ internal sealed partial class Compilation
                         }
                 }
             }
+                changed |= depthLimitBefore != _arraySearchArrayDepthLimit
+                    || unboundedTypesBefore != _arraySearchUnboundedArrayTypes.Count;
             } while (changed);
         }
     }
