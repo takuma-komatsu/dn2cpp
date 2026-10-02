@@ -191,5 +191,45 @@ namespace ArrayArgumentCheckSubset
             Console.WriteLine("untouched by the rejected searches: " + string.Join(",", a)
                 + " " + string.Join(",", sorted));
         }
+
+        // The System.Array rejections whose sentence names the shape: a rank the form does
+        // not take, a lengths, bounds or indices array of the wrong length, and a nonzero
+        // lower bound for an SZ array type.
+        internal static void RunShape()
+        {
+            Console.WriteLine("-- array shape argument checks --");
+            Array grid = new int[2, 2];
+            Array line = new int[3];
+            Check("getvalue on a grid", () => grid.GetValue(0));
+            Check("getvalue long on a grid", () => grid.GetValue(0L));
+            Check("setvalue on a grid", () => grid.SetValue(1, 0));
+            Check("setvalue long on a grid", () => grid.SetValue(1, 0L));
+            Check("ilist read on a grid", () => { _ = ((System.Collections.IList)grid)[0]; });
+            Check("ilist store on a grid", () => ((System.Collections.IList)grid)[0] = 1);
+            Check("getvalue two indices on a line", () => line.GetValue(0, 0));
+            Check("getvalue three indices on a line", () => line.GetValue(0, 0, 0));
+            Check("getvalue three indices on a grid", () => grid.GetValue(0, 0, 0));
+            Check("getvalue two long indices on a line", () => line.GetValue(0L, 0L));
+            Check("setvalue two indices on a line", () => line.SetValue(1, 0, 0));
+            Check("setvalue three indices on a line", () => line.SetValue(1, 0, 0, 0));
+            Check("getvalue indices rank", () => line.GetValue(new[] { 0, 0 }));
+            Check("getvalue long indices rank", () => line.GetValue(new long[] { 0, 0 }));
+            Check("setvalue indices rank", () => line.SetValue(1, new[] { 0, 0 }));
+            Check("getvalue 33 indices", () => line.GetValue(new int[33]));
+            Check("getvalue 33 long indices", () => line.GetValue(new long[33]));
+            Check("getvalue huge index of the wrong rank", () => line.GetValue(new[] { 5000000000L, 0 }));
+            Check("createinstance no lengths", () => Array.CreateInstance(typeof(int), new int[0]));
+            Check("createinstance no long lengths", () => Array.CreateInstance(typeof(int), new long[0]));
+            Check("createinstance bounds count", () => Array.CreateInstance(typeof(int), new[] { 1 }, new[] { 0, 0 }));
+            Check("createinstance no lengths or bounds", () => Array.CreateInstance(typeof(int), new int[0], new int[0]));
+            Check("fromarraytype lengths rank", () => Array.CreateInstanceFromArrayType(typeof(int[]), new[] { 1, 2 }));
+            Check("fromarraytype grid one length", () => Array.CreateInstanceFromArrayType(typeof(int[,]), new[] { 1 }));
+            Check("fromarraytype no lengths", () => Array.CreateInstanceFromArrayType(typeof(int[]), new int[0]));
+            Check("fromarraytype bounds count",
+                () => Array.CreateInstanceFromArrayType(typeof(int[]), new[] { 1 }, new[] { 0, 0 }));
+            Check("fromarraytype nonzero bound",
+                () => Array.CreateInstanceFromArrayType(typeof(int[]), new[] { 1 }, new[] { 1 }));
+            Console.WriteLine("array shape argument checks end");
+        }
     }
 }

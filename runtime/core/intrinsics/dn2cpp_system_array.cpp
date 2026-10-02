@@ -7,6 +7,7 @@
 #include "dn2cpp_core.h"
 
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <algorithm>
 #include <mutex> // fabricated array type-info interning (Array.CreateInstance)
@@ -445,32 +446,34 @@ static void dn2cpp_array_view_rt(Dn2CppObject* a, Dn2CppArrayViewRT* v)
 }
 
 // The flattened element slot for the (object, int/long index) forms. Real .NET:
-// a multi-dimensional receiver throws ArgumentException ("Array was not a
-// one-dimensional array"), an index beyond the 2 GB model ArgumentOutOfRange,
-// an out-of-bounds index IndexOutOfRangeException (all probed).
+// an index beyond the 2 GB model is ArgumentOutOfRange naming `index` (checked
+// before the rank), a multi-dimensional receiver ArgumentException ("Array was
+// not a one-dimensional array."), an out-of-bounds index IndexOutOfRangeException.
 static void* dn2cpp_array_slot_linear(const Dn2CppArrayViewRT* v, int64_t index)
 {
-    if (v->rank != 1)
-        dn2cpp_throw_argument();
     if (index > INT32_MAX || index < INT32_MIN)
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_HUGE_ARRAY_NOT_SUPPORTED, "index");
+    if (v->rank != 1)
+        dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_NEED_1D_ARRAY);
     if (index < 0 || index >= v->length)
         dn2cpp_throw_index_out_of_range();
     return v->data + static_cast<size_t>(index) * static_cast<size_t>(v->elemSize);
 }
 
 // The element slot for the indices-array forms. Real .NET: null indices throw
-// ArgumentNullException, a rank mismatch ArgumentException, out-of-bounds
-// IndexOutOfRangeException (all probed).
+// ArgumentNullException, a rank mismatch ArgumentException, any index beyond the
+// 2 GB model ArgumentOutOfRange naming `index` before any bounds check, and an
+// out-of-bounds index IndexOutOfRangeException.
 static void* dn2cpp_array_slot_indices(const Dn2CppArrayViewRT* v, const int64_t* idx, int32_t n)
 {
     if (n != v->rank)
-        dn2cpp_throw_argument();
+        dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_RANK_INDICES);
+    for (int32_t d = 0; d < n; d++)
+        if (idx[d] > INT32_MAX || idx[d] < INT32_MIN)
+            dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_HUGE_ARRAY_NOT_SUPPORTED, "index");
     int64_t flat = 0;
     for (int32_t d = 0; d < n; d++)
     {
-        if (idx[d] > INT32_MAX || idx[d] < INT32_MIN)
-            dn2cpp_throw_argument_out_of_range();
         int64_t len = v->md != nullptr ? v->md->lengths[d] : v->length;
         int64_t lo = v->md != nullptr ? v->md->lowerBounds[d] : 0;
         int64_t i = idx[d] - lo;
@@ -497,18 +500,19 @@ void dn2cpp_array_set_value(Dn2CppObject* a, Dn2CppObject* value, int64_t index)
 }
 
 // The indices copied out of the managed int[]/long[] argument (null ->
-// ArgumentNullException; arity capped at the MD model's practical bound).
+// ArgumentNullException). No array has more than 32 dimensions, so a longer
+// indices array is the rank mismatch .NET reports.
 static int32_t dn2cpp_array_copy_indices(Dn2CppObject* indices, int32_t isLong, int64_t* out)
 {
     if (indices == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("indices");
     int32_t n;
     if (isLong != 0)
     {
         auto* arr = reinterpret_cast<Dn2CppArrayN*>(indices);
         n = arr->length;
         if (n > 32)
-            dn2cpp_throw_argument();
+            dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_RANK_INDICES);
         for (int32_t i = 0; i < n; i++)
             std::memcpy(&out[i], arr->data + static_cast<size_t>(i) * 8, 8);
     }
@@ -517,7 +521,7 @@ static int32_t dn2cpp_array_copy_indices(Dn2CppObject* indices, int32_t isLong, 
         auto* arr = reinterpret_cast<Dn2CppArrayI4*>(indices);
         n = arr->length;
         if (n > 32)
-            dn2cpp_throw_argument();
+            dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_RANK_INDICES);
         for (int32_t i = 0; i < n; i++)
             out[i] = arr->data[i];
     }
@@ -544,11 +548,20 @@ void dn2cpp_array_set_value_indices(Dn2CppObject* a, Dn2CppObject* value, Dn2Cpp
 }
 
 // The fixed-arity GetValue(int, int[, int]) / SetValue(object, int, int[, int])
-// forms, lowered with an inline index pack.
+// forms, lowered with an inline index pack. Each form takes one rank, which .NET
+// checks first and names in its sentence.
+static void dn2cpp_array_require_fixed_rank(const Dn2CppArrayViewRT* v, int32_t n)
+{
+    if (v->rank != n)
+        dn2cpp_throw_sr0(&dn2cpp_argument_exception_type,
+            n == 2 ? DN2CPP_SR_NEED_2D_ARRAY : DN2CPP_SR_NEED_3D_ARRAY);
+}
+
 Dn2CppObject* dn2cpp_array_get_value_fixed(Dn2CppObject* a, const int32_t* idx, int32_t n)
 {
     Dn2CppArrayViewRT v;
     dn2cpp_array_view_rt(a, &v);
+    dn2cpp_array_require_fixed_rank(&v, n);
     int64_t idx64[3];
     for (int32_t i = 0; i < n; i++)
         idx64[i] = idx[i];
@@ -559,6 +572,7 @@ void dn2cpp_array_set_value_fixed(Dn2CppObject* a, Dn2CppObject* value, const in
 {
     Dn2CppArrayViewRT v;
     dn2cpp_array_view_rt(a, &v);
+    dn2cpp_array_require_fixed_rank(&v, n);
     int64_t idx64[3];
     for (int32_t i = 0; i < n; i++)
         idx64[i] = idx[i];
@@ -723,26 +737,39 @@ const Dn2CppTypeInfo* dn2cpp_mdarr_ti(const Dn2CppTypeInfo* elem, int32_t rank)
     return dn2cpp_array_ti(elem, rank);
 }
 
+static const Dn2CppTypeInfo* dn2cpp_array_require_element_type(Dn2CppType* type)
+{
+    const Dn2CppTypeInfo* element = type->typeInfo;
+    if (element == &dn2cpp_void_type)
+        dn2cpp_throw_not_supported_msg("Arrays of System.Void are not supported.");
+    if ((element->flags & DN2CPP_TF_BYREFLIKE) != 0)
+        dn2cpp_throw_not_supported_msg("Cannot create arrays of ByRef-like values.");
+    return element;
+}
+
 // Array.CreateInstance(Type, lengths...): allocate under the element's storage
 // rep (packed int32 / element-sized / reference), tagged with the (possibly
-// fabricated) precise array identity. Matches real .NET's exceptions: null
-// element type ArgumentNullException, void NotSupportedException, a negative
-// length ArgumentOutOfRangeException. rank > 1 allocates the MD layout.
+// fabricated) precise array identity. Matches real .NET's exceptions, in its
+// order: null element type ArgumentNullException, a negative length
+// ArgumentOutOfRangeException, a void or by-ref-like element
+// NotSupportedException. rank > 1 allocates the MD layout.
 Dn2CppObject* dn2cpp_array_create_instance(Dn2CppType* t, const int32_t* lengths, int32_t rank)
 {
     if (t == nullptr)
-        dn2cpp_throw_argument_null();
-    const Dn2CppTypeInfo* el = t->typeInfo;
-    if (el == &dn2cpp_void_type)
-        dn2cpp_throw_not_supported();
+        dn2cpp_throw_argument_null_param("elementType");
     // An EMPTY lengths array is ArgumentException in real .NET. Without this the
     // rank-1 arm below reads lengths[0] out of bounds — on a caller-supplied array,
     // whose length arrives from a deserializer or a reflective call site.
     if (rank <= 0)
-        dn2cpp_throw_argument();
+        dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_NEED_AT_LEAST_1_RANK);
+    // Only the fixed-arity forms reach a negative length here (every lengths-array
+    // form screens its elements first): `length`, or `length1`..`length3`.
     for (int32_t i = 0; i < rank; i++)
         if (lengths[i] < 0)
-            dn2cpp_throw_argument_out_of_range();
+            dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE,
+                rank == 1 ? "length" : i == 0 ? "length1" : i == 1 ? "length2" : "length3",
+                lengths[i]);
+    const Dn2CppTypeInfo* el = dn2cpp_array_require_element_type(t);
     bool isRef = (el->flags & DN2CPP_TF_VALUETYPE) == 0;
     bool isEnum = (el->flags & DN2CPP_TF_ENUM) != 0;
     const Dn2CppTypeInfo* eff = isEnum
@@ -782,20 +809,42 @@ Dn2CppObject* dn2cpp_array_create_instance(Dn2CppType* t, const int32_t* lengths
     return reinterpret_cast<Dn2CppObject*>(dn2cpp_newarr_n_atomic_t(len, elemSize, arrTi));
 }
 
-// The (Type, int[] lengths[, int[] lowerBounds]) forms. Non-zero lower bounds
-// are not modeled (real .NET itself only supports them on Windows-style
-// non-SZ arrays); all-zero bounds route to the plain form.
-Dn2CppObject* dn2cpp_array_create_instance_lengths(Dn2CppType* t, Dn2CppArrayI4* lengths,
-                                                   Dn2CppArrayI4* lowerBounds)
+// A negative element of a lengths array: .NET names the element, "lengths[i]".
+static void dn2cpp_array_check_length_elements(const Dn2CppArrayI4* lengths)
 {
+    for (int32_t i = 0; i < lengths->length; i++)
+        if (lengths->data[i] < 0)
+        {
+            char name[24];
+            std::snprintf(name, sizeof(name), "lengths[%d]", static_cast<int>(i));
+            dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_NEED_NON_NEG_NUM, name);
+        }
+}
+
+// The (Type, int[] lengths[, int[] lowerBounds]) forms, in .NET's check order;
+// hasBounds tells the second form's null lowerBounds from the first form's
+// absent one. More than 32 dimensions is the TypeLoadException the array type
+// raises after element-type validation. Non-zero lower bounds are not modeled;
+// all-zero bounds route to the plain form.
+Dn2CppObject* dn2cpp_array_create_instance_lengths(Dn2CppType* t, Dn2CppArrayI4* lengths,
+                                                   Dn2CppArrayI4* lowerBounds, int32_t hasBounds)
+{
+    if (t == nullptr)
+        dn2cpp_throw_argument_null_param("elementType");
     if (lengths == nullptr)
-        dn2cpp_throw_argument_null();
-    if (lengths->length < 1 || lengths->length > 32)
-        dn2cpp_throw_argument();
+        dn2cpp_throw_argument_null_param("lengths");
+    if (hasBounds != 0 && lowerBounds == nullptr)
+        dn2cpp_throw_argument_null_param("lowerBounds");
+    if (lowerBounds != nullptr && lowerBounds->length != lengths->length)
+        dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_RANKS_AND_BOUNDS);
+    if (lengths->length < 1)
+        dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_NEED_AT_LEAST_1_RANK);
+    dn2cpp_array_check_length_elements(lengths);
+    dn2cpp_array_require_element_type(t);
+    if (lengths->length > 32)
+        dn2cpp_throw_type_load();
     if (lowerBounds != nullptr)
     {
-        if (lowerBounds->length != lengths->length)
-            dn2cpp_throw_argument();
         for (int32_t i = 0; i < lowerBounds->length; i++)
             if (lowerBounds->data[i] != 0)
                 dn2cpp_throw_platform_not_supported(
@@ -805,14 +854,22 @@ Dn2CppObject* dn2cpp_array_create_instance_lengths(Dn2CppType* t, Dn2CppArrayI4*
 }
 
 // The element type of array type `arrayType` when it has `rank` dimensions, else
-// ArgumentException (a non-array type, or a rank the lengths do not state). An SZ
-// identity reports arrayRank 1, or 0 for the shared reference-element identity.
-static Dn2CppType* dn2cpp_array_type_element_of_rank(Dn2CppType* arrayType, int32_t rank)
+// ArgumentException: a non-array type names `arrayType`, as does a multi-dimensional
+// type given one length (`singleLength`); a rank a lengths array does not state is
+// the indices-length mismatch, naming nothing. An SZ identity reports arrayRank 1,
+// or 0 for the shared reference-element identity.
+static Dn2CppType* dn2cpp_array_type_element_of_rank(Dn2CppType* arrayType, int32_t rank,
+                                                     bool singleLength)
 {
     const Dn2CppTypeInfo* ti = arrayType->typeInfo;
-    if ((ti->flags & DN2CPP_TF_ARRAY) == 0 || ti->elementType == nullptr
-        || (ti->arrayRank > 1 ? ti->arrayRank : 1) != rank)
-        dn2cpp_throw_argument();
+    if ((ti->flags & DN2CPP_TF_ARRAY) == 0 || ti->elementType == nullptr)
+        dn2cpp_throw_argument_param(DN2CPP_SR_HAS_TO_BE_ARRAY_CLASS, "arrayType");
+    if ((ti->arrayRank > 1 ? ti->arrayRank : 1) != rank)
+    {
+        if (singleLength)
+            dn2cpp_throw_argument_param(DN2CPP_SR_RANK_MULTI_DIM_NOT_SUPPORTED, "arrayType");
+        dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_RANK_INDICES);
+    }
     return dn2cpp_get_type_from_handle(ti->elementType);
 }
 
@@ -823,11 +880,13 @@ Dn2CppObject* dn2cpp_array_create_instance_from_arraytype(Dn2CppType* arrayType,
                                                           const int32_t* lengths, int32_t rank)
 {
     if (arrayType == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("arrayType");
     for (int32_t i = 0; i < rank; i++)
         if (lengths[i] < 0)
-            dn2cpp_throw_argument_out_of_range();
-    return dn2cpp_array_create_instance(dn2cpp_array_type_element_of_rank(arrayType, rank), lengths, rank);
+            dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "length",
+                lengths[i]);
+    return dn2cpp_array_create_instance(dn2cpp_array_type_element_of_rank(arrayType, rank, true),
+                                        lengths, rank);
 }
 
 // The (Type, int[] lengths[, int[] lowerBounds]) forms, in .NET's check order: the
@@ -838,17 +897,19 @@ Dn2CppObject* dn2cpp_array_create_instance_from_arraytype_lengths(Dn2CppType* ar
                                                                   Dn2CppArrayI4* lowerBounds,
                                                                   int32_t hasBounds)
 {
-    if (arrayType == nullptr || lengths == nullptr || (hasBounds != 0 && lowerBounds == nullptr))
-        dn2cpp_throw_argument_null();
+    if (arrayType == nullptr)
+        dn2cpp_throw_argument_null_param("arrayType");
+    if (lengths == nullptr)
+        dn2cpp_throw_argument_null_param("lengths");
+    if (hasBounds != 0 && lowerBounds == nullptr)
+        dn2cpp_throw_argument_null_param("lowerBounds");
     if (lowerBounds != nullptr && lowerBounds->length != lengths->length)
-        dn2cpp_throw_argument();
-    Dn2CppType* elem = dn2cpp_array_type_element_of_rank(arrayType, lengths->length);
+        dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_RANKS_AND_BOUNDS);
+    Dn2CppType* elem = dn2cpp_array_type_element_of_rank(arrayType, lengths->length, false);
     bool sz = arrayType->typeInfo->arrayRank <= 1;
     if (sz && lowerBounds != nullptr && lowerBounds->data[0] != 0)
-        dn2cpp_throw_argument();
-    for (int32_t i = 0; i < lengths->length; i++)
-        if (lengths->data[i] < 0)
-            dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_NON_ZERO_LOWER_BOUND);
+    dn2cpp_array_check_length_elements(lengths);
     if (lowerBounds != nullptr)
         for (int32_t i = 0; i < lowerBounds->length; i++)
             if (lowerBounds->data[i] != 0)

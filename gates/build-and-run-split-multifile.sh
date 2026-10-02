@@ -65,7 +65,7 @@ gate_extra_asserts() {
     touch "$sweep/generated_1.cpp"
     ( export DN2CPP_SPLIT_BYTES=0
       invoke_cli "samples/dotnet/ArrayCore/bin/$CONFIG/$TFM/ArrayCore.dll" \
-          -r "$(locate_corelib)" -o "$sweep" > /dev/null )
+          -r "$(locate_corelib)" -r "$(dirname "$(locate_corelib)")/System.Collections.dll" -o "$sweep" > /dev/null )
     # Only the numeric body/metadata namespaces and the legacy numeric namespace
     # are chunks. Fixed optional TUs also begin with generated_ and may correctly
     # be recreated by the unsplit run.
@@ -88,4 +88,4 @@ gate_extra_asserts() {
 # extra — it only reads OUT, which the surface term already is.
 export DN2CPP_GATE_EXTRA_CONTEXT="stale-chunk-sweep|cli:$(_gate_cli_hash)"
 
-corelib_diff_gate ArrayCore
+corelib_diff_gate ArrayCore System.Collections

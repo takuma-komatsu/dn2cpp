@@ -31,9 +31,8 @@ namespace Dn2Cpp;
 /// materializes one for every push, so the ORIGIN of a value is not recoverable
 /// from its text and any consumer that needs the origin must carry it here.
 /// <c>ArgSlot</c> is that for <c>ldarga</c>: the IL argument number whose address
-/// this entry holds (null for every other entry, including a <c>ldloca</c> one,
-/// which sets <c>SlotAddr</c> alone).</summary>
-internal sealed record StackEntry(string Expr, StackKind Kind, string CppType, TypeDesc? TypeToken = null, TypeDesc? StaticType = null, int? BlobLen = null, string? StrLiteral = null, bool NonNull = false, bool SlotAddr = false, bool KnownNull = false, int? ArgSlot = null, MethodInfo? DelegateMethod = null, bool DelegateVirtual = false, string? DelegateTag = null, bool DelegateAddressReady = false);
+/// this entry holds. A <c>ldloca</c> entry sets <c>LocalSlot</c> instead.</summary>
+internal sealed record StackEntry(string Expr, StackKind Kind, string CppType, TypeDesc? TypeToken = null, TypeDesc? StaticType = null, int? BlobLen = null, string? StrLiteral = null, bool NonNull = false, bool SlotAddr = false, bool KnownNull = false, int? ArgSlot = null, MethodInfo? DelegateMethod = null, bool DelegateVirtual = false, string? DelegateTag = null, bool DelegateAddressReady = false, ArraySearchOrigin? ArraySearchOrigin = null, bool KnownEmptyTypeArray = false, int? LocalSlot = null);
 
 /// <summary>
 /// Translates one IL method body into a C++ function. The evaluation stack is
@@ -97,6 +96,70 @@ internal sealed partial class MethodCompiler : IEvalStack
     private List<StackEntry> _stack = new();
     private List<(string Name, string CppType, StackKind Kind, TypeDesc? Type)> _args = new();
     private List<(string Name, string CppType, StackKind Kind, TypeDesc? Type)> _locals = new();
+    private readonly Dictionary<int, ArraySearchOrigin> _arraySearchLocals = new();
+    private readonly Dictionary<int, ArraySearchOrigin> _arraySearchArgs = new();
+    private readonly Dictionary<(int Target, int Depth), ArraySearchOrigin> _arraySearchBlockSlots = new();
+    private readonly Dictionary<int, Dictionary<int, ArraySearchOrigin>> _arraySearchEntryLocals = new();
+    private readonly Dictionary<int, Dictionary<int, ArraySearchOrigin>> _arraySearchEntryArgs = new();
+    // Scalar worker bodies cannot produce tracked reference or array values.
+    internal bool RecordArraySearchOrigins { get; set; } = true;
+
+    private ArraySearchOrigin NewArraySearchOrigin() => RecordArraySearchOrigins
+        ? _c.NewArraySearchOrigin() : _c.InactiveArraySearchOrigin;
+
+    private bool _arraySearchStraightLine;
+    private int _arraySearchInstructionOffset;
+
+    private ArraySearchOrigin ArraySearchLocal(int index)
+    {
+        if (!_arraySearchLocals.TryGetValue(index, out var origin))
+            _arraySearchLocals.Add(index, origin = NewArraySearchOrigin());
+        return origin;
+    }
+
+    private ArraySearchOrigin ArraySearchBlockSlot(int target, int depth)
+    {
+        if (!_arraySearchBlockSlots.TryGetValue((target, depth), out var origin))
+            _arraySearchBlockSlots.Add((target, depth), origin = NewArraySearchOrigin());
+        return origin;
+    }
+
+    private ArraySearchOrigin ArraySearchArg(int index)
+    {
+        if (!RecordArraySearchOrigins)
+            return _c.InactiveArraySearchOrigin;
+        if (!_arraySearchArgs.TryGetValue(index, out var origin))
+            _arraySearchArgs.Add(index, origin = _c.ArraySearchParameter(_method, index));
+        return origin;
+    }
+
+    private void MergeArraySearchSlots(int target,
+        Dictionary<int, ArraySearchOrigin> current,
+        Dictionary<int, Dictionary<int, ArraySearchOrigin>> entries)
+    {
+        if (!entries.TryGetValue(target, out var merged))
+            entries.Add(target, merged = new Dictionary<int, ArraySearchOrigin>());
+        foreach (var (index, source) in current)
+        {
+            if (!merged.TryGetValue(index, out var targetOrigin))
+                merged.Add(index, targetOrigin = NewArraySearchOrigin());
+            _c.LinkArraySearchOrigin(targetOrigin, source);
+        }
+    }
+
+    private void PrepareArraySearchLoopEntry(int target)
+    {
+        if (!_arraySearchEntryLocals.TryGetValue(target, out var locals))
+            _arraySearchEntryLocals.Add(target, locals = new());
+        for (int index = 0; index < _locals.Count; index++)
+            if (!locals.ContainsKey(index))
+                locals.Add(index, NewArraySearchOrigin());
+        if (!_arraySearchEntryArgs.TryGetValue(target, out var arguments))
+            _arraySearchEntryArgs.Add(target, arguments = new());
+        for (int index = 0; index < _args.Count; index++)
+            if (!arguments.ContainsKey(index))
+                arguments.Add(index, NewArraySearchOrigin());
+    }
     // [HotPath(NoAlias)] span parameters whose element pointer is hoisted into a
     // __restrict prologue local, in parameter order (the order the prologue
     // declares them). Populated by SetupNoAliasSpanLocals; a name enters
@@ -187,6 +250,8 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// non-virtual `base.Message` inside such an override (which must read the stored
     /// message directly — dn2cpp_exception_message_stored — or it recurses forever).</summary>
     private bool _callIsVirtual;
+    private ArraySearchOrigin?[]? _arraySearchCallArguments;
+    private readonly List<(int Local, int Parameter)> _arraySearchByRefLocalSlots = new();
 
     public bool CallIsVirtual => _callIsVirtual;
 
@@ -690,6 +755,9 @@ internal sealed partial class MethodCompiler : IEvalStack
             throw new NotSupportedException($"{_method.DeclaringClass.FullName}.{_method.Name}: {ex.Message}");
         }
 
+        _arraySearchStraightLine = bodyBlock.ExceptionRegions.Length == 0
+            && !insns.Any(insn => ILDecoder.IsBranch(insn.OpCode) || insn.SwitchTargets is not null);
+
         BuildExceptionRegions(bodyBlock);
         BuildArgsAndLocals(bodyBlock);
         SetupNoAliasSpanLocals(insns);
@@ -874,12 +942,27 @@ internal sealed partial class MethodCompiler : IEvalStack
 
             if (_labels.Contains(insn.Offset))
             {
+                // A later backedge must update the origins the loop body already read.
+                if (_backwardBranchTargets.Contains(insn.Offset))
+                    PrepareArraySearchLoopEntry(insn.Offset);
                 if (!_unreachable)
                     BranchTo(insn.Offset, emitGoto: false);
                 bool hasEntry = _entryStacks.TryGetValue(insn.Offset, out var entry);
                 bool laterEdgeMayArrive = !hasEntry && _backwardBranchTargets.Contains(insn.Offset);
                 _body.AppendLine($"IL_{insn.Offset:X4}:;");
                 _stack = hasEntry ? new List<StackEntry>(entry!) : new List<StackEntry>();
+                if (_arraySearchEntryLocals.TryGetValue(insn.Offset, out var localOrigins))
+                {
+                    _arraySearchLocals.Clear();
+                    foreach (var (index, origin) in localOrigins)
+                        _arraySearchLocals.Add(index, origin);
+                }
+                if (_arraySearchEntryArgs.TryGetValue(insn.Offset, out var argOrigins))
+                {
+                    _arraySearchArgs.Clear();
+                    foreach (var (index, origin) in argOrigins)
+                        _arraySearchArgs.Add(index, origin);
+                }
                 _unreachable = !hasEntry && !laterEdgeMayArrive;
             }
 
@@ -898,6 +981,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             // exactly the stack the branch continues with.
             if (_liveness?.ElidedAt(insn.Offset) == true)
                 continue;
+            _arraySearchInstructionOffset = insn.Offset;
             TranslateWithPendingReferenceBarriers(insn);
         }
 
@@ -1622,6 +1706,7 @@ internal sealed partial class MethodCompiler : IEvalStack
     {
         var local = _locals[index];
         PushVar(local);
+        _stack[^1] = _stack[^1] with { ArraySearchOrigin = ArraySearchLocal(index) };
         if (_ftnOrigins.Count > 0 && CanHoldMethodAddress(local.Kind))
         {
             string tag = UntrackedDelegateTag;
@@ -1638,6 +1723,9 @@ internal sealed partial class MethodCompiler : IEvalStack
     {
         var local = _locals[index];
         var value = Pop();
+        var nextOrigin = NewArraySearchOrigin();
+        _c.LinkArraySearchOrigin(nextOrigin, value.ArraySearchOrigin);
+        _arraySearchLocals[index] = nextOrigin;
         Emit($"{local.Name} = {CoerceTo(value, local.Type, local.CppType)};");
         if (_ftnOrigins.Count > 0 && CanHoldMethodAddress(local.Kind) && !_addressTakenLocals.Contains(index))
             Emit($"{local.Name}_delegate_tag = {value.DelegateTag ?? "0"};");
@@ -1764,6 +1852,10 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// record/verify the entry stack of the given target block.</summary>
     private void BranchTo(int targetOffset, bool emitGoto, string? condition = null)
     {
+        for (int index = 0; index < _args.Count; index++)
+            ArraySearchArg(index);
+        MergeArraySearchSlots(targetOffset, _arraySearchLocals, _arraySearchEntryLocals);
+        MergeArraySearchSlots(targetOffset, _arraySearchArgs, _arraySearchEntryArgs);
         _entryStacks.TryGetValue(targetOffset, out var recorded);
         var canonical = new List<StackEntry>();
         for (int i = 0; i < _stack.Count; i++)
@@ -1796,8 +1888,10 @@ internal sealed partial class MethodCompiler : IEvalStack
             // spills the array first) can still recognise it as `T[]`. The
             // canonical slot's C++ type may be widened, but StaticType still describes
             // the value.
+            var arraySearchOrigin = ArraySearchBlockSlot(targetOffset, i);
+            _c.LinkArraySearchOrigin(arraySearchOrigin, e.ArraySearchOrigin);
             canonical.Add(new StackEntry(name, e.Kind, type, StaticType: e.StaticType,
-                DelegateTag: delegateTag));
+                DelegateTag: delegateTag, ArraySearchOrigin: arraySearchOrigin));
         }
 
         if (recorded is { } existing)
@@ -2171,15 +2265,28 @@ internal sealed partial class MethodCompiler : IEvalStack
             }
 
             case ILOpCode.Ldarg_0: case ILOpCode.Ldarg_1: case ILOpCode.Ldarg_2: case ILOpCode.Ldarg_3:
-                PushVar(_args[(int)op - (int)ILOpCode.Ldarg_0]);
+            {
+                int index = (int)op - (int)ILOpCode.Ldarg_0;
+                PushVar(_args[index]);
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin = ArraySearchArg(index) };
                 break;
+            }
             case ILOpCode.Ldarg_s: case ILOpCode.Ldarg:
-                PushVar(_args[(int)insn.Operand]);
+            {
+                int index = (int)insn.Operand;
+                PushVar(_args[index]);
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin = ArraySearchArg(index) };
                 break;
+            }
             case ILOpCode.Starg_s: case ILOpCode.Starg:
             {
-                var dst = _args[(int)insn.Operand];
-                Emit($"{dst.Name} = {CoerceTo(Pop(), dst.Type, dst.CppType)};");
+                int index = (int)insn.Operand;
+                var dst = _args[index];
+                var value = Pop();
+                var nextOrigin = NewArraySearchOrigin();
+                _c.LinkArraySearchOrigin(nextOrigin, value.ArraySearchOrigin);
+                _arraySearchArgs[index] = nextOrigin;
+                Emit($"{dst.Name} = {CoerceTo(value, dst.Type, dst.CppType)};");
                 break;
             }
             case ILOpCode.Ldloc_0: case ILOpCode.Ldloc_1: case ILOpCode.Ldloc_2: case ILOpCode.Ldloc_3:
@@ -2196,7 +2303,9 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // sub-word out-arg fixup (NoteByRefSlotFixup) must only rewrite a
                 // full-width promoted slot, never a reinterpreted buffer pointer
                 // that happens to carry the same C++ pointer type.
-                _stack[^1] = _stack[^1] with { SlotAddr = true };
+                _stack[^1] = _stack[^1] with { SlotAddr = true,
+                    ArraySearchOrigin = ArraySearchLocal((int)insn.Operand),
+                    LocalSlot = (int)insn.Operand };
                 break;
             }
             case ILOpCode.Ldarga_s: case ILOpCode.Ldarga:
@@ -2209,7 +2318,8 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // NoAliasSpanBase). The address of a parameter slot is constant
                 // for the whole body, so the mark stays true wherever the entry
                 // is later restored from a recorded branch-entry stack.
-                _stack[^1] = _stack[^1] with { SlotAddr = true, ArgSlot = (int)insn.Operand };
+                _stack[^1] = _stack[^1] with { SlotAddr = true, ArgSlot = (int)insn.Operand,
+                    ArraySearchOrigin = ArraySearchArg((int)insn.Operand) };
                 break;
             }
             case ILOpCode.Stloc_0: case ILOpCode.Stloc_1: case ILOpCode.Stloc_2: case ILOpCode.Stloc_3:
@@ -2402,7 +2512,10 @@ internal sealed partial class MethodCompiler : IEvalStack
                     var rt = _method.Signature.ReturnType;
                     // CoerceTo notes a raw T[] returned as a collection interface so the
                     // array's own SZArray map serves the caller's dispatch.
-                    Emit($"return {CoerceTo(Pop(), rt, CppTypes.Of(rt))};");
+                    var value = Pop();
+                    if (RecordArraySearchOrigins)
+                        _c.LinkArraySearchOrigin(_c.ArraySearchReturn(_method), value.ArraySearchOrigin);
+                    Emit($"return {CoerceTo(value, rt, CppTypes.Of(rt))};");
                 }
                 _unreachable = true;
                 break;
@@ -2540,7 +2653,14 @@ internal sealed partial class MethodCompiler : IEvalStack
             {
                 var newarrElem = ResolveTypeToken(insn.Token);
                 var newarrLen = Pop();
+                int? typeArrayLength = ConstIntOf(newarrLen);
                 EmitNewarr(newarrElem, newarrLen.Expr, insn.Token);
+                _stack[^1].ArraySearchOrigin!.ArrayAllocationOffset = insn.Offset;
+                _stack[^1].ArraySearchOrigin!.ArrayAllocationMethod = _method;
+                if (IsSystemTypeParam(newarrElem)
+                    || newarrElem is { Kind: TypeKind.Primitive,
+                        Primitive: PrimitiveTypeCode.Int32 })
+                    _stack[^1].ArraySearchOrigin!.TypeArrayLength = typeArrayLength;
                 break;
             }
             case ILOpCode.Ldelem:
@@ -2557,7 +2677,21 @@ internal sealed partial class MethodCompiler : IEvalStack
             {
                 var idx = Pop();
                 var arr = Pop();
+                int? arraySearchIndex = ConstIntOf(idx);
                 Push(StackKind.Ref, "Dn2CppObject*", LdelemRef(arr, idx));
+                if (arr.ArraySearchOrigin is not null)
+                {
+                    var storedElement = _c.ArraySearchStoredElement(_method, arr.ArraySearchOrigin,
+                        arraySearchIndex, insn.Offset, _arraySearchStraightLine);
+                    _stack[^1] = _stack[^1] with { ArraySearchOrigin = storedElement is not null
+                        ? storedElement
+                        : _c.ArraySearchElementOrigin(_method, arr.ArraySearchOrigin,
+                            arraySearchIndex, insn.Offset, _arraySearchStraightLine,
+                            arr.StaticType is { Kind: TypeKind.SZArray, Element: { } typeArrayElement }
+                                && IsSystemTypeParam(typeArrayElement)
+                                ? ArraySearchFlowKind.GenericArgumentAt
+                                : ArraySearchFlowKind.BoxedArrayElement) };
+                }
                 // Keep the element's STATIC type on the loaded entry: a jagged
                 // array's element (float[][] -> float[]) flowing straight into a
                 // collection-interface parameter (data[0].Select(...)) is noted at
@@ -2574,6 +2708,14 @@ internal sealed partial class MethodCompiler : IEvalStack
                 var val = Pop();
                 var idx = Pop();
                 var arr = Pop();
+                _c.NoteArraySearchTypeArrayStore(_method, arr.ArraySearchOrigin, ConstIntOf(idx),
+                    val.TypeToken, insn.Offset, _arraySearchStraightLine);
+                _c.NoteArraySearchStore(_method, arr.ArraySearchOrigin, val.ArraySearchOrigin,
+                    arr.StaticType is { Kind: TypeKind.SZArray, Element: { } typeArrayElement }
+                        && IsSystemTypeParam(typeArrayElement),
+                    ConstIntOf(idx), insn.Offset, _arraySearchStraightLine,
+                    val.StaticType is { Kind: TypeKind.SZArray or TypeKind.MDArray }
+                        || val.ArraySearchOrigin is { ArrayAllocation: true });
                 Emit(StelemRef(arr, idx, Cast(val, "Dn2CppObject*")));
                 break;
             }
@@ -2664,6 +2806,17 @@ internal sealed partial class MethodCompiler : IEvalStack
                 //. Locals/args already thread it (PushVar).
                 if (fld.Type is { Kind: TypeKind.Class or TypeKind.SZArray })
                     _stack[^1] = _stack[^1] with { StaticType = fld.Type };
+                var fieldOrigin = _c.ArraySearchFieldReadOrigin(fld, obj.ArraySearchOrigin,
+                    _method, insn.Offset, _arraySearchStraightLine);
+                if (fld.Type is { Kind: TypeKind.Class, Class: { IsSealed: true } fieldClass })
+                    _c.AddArraySearchSeed(fieldOrigin, ArraySearchValueKind.ObjectType,
+                        TypeDesc.MakeClass(fieldClass));
+                else if (fld.Type is { Kind: TypeKind.SZArray or TypeKind.MDArray, Element: { } fieldElement })
+                {
+                    _c.AddArraySearchSeed(fieldOrigin, ArraySearchValueKind.ArrayElement, fieldElement);
+                    _c.AddArraySearchSeed(fieldOrigin, ArraySearchValueKind.ArrayRuntimeType, fld.Type);
+                }
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin = fieldOrigin };
                 break;
             }
             case ILOpCode.Stfld:
@@ -2681,6 +2834,8 @@ internal sealed partial class MethodCompiler : IEvalStack
                 var val = Pop();
                 TaintPoisonedTypeEscape(val);
                 var obj = Pop();
+                _c.NoteArraySearchFieldStore(_method, fld, obj.ArraySearchOrigin,
+                    val.ArraySearchOrigin, insn.Offset, _arraySearchStraightLine);
                 // Store with the member's declared spelling — the owner's erased
                 // type when the declaring class shares its struct layout.
                 string storeType = LayoutFieldType(cls, fld);
@@ -2735,10 +2890,18 @@ internal sealed partial class MethodCompiler : IEvalStack
                     // stays consistent with the existing managed-pointer path below.
                     string saddr = $"&(({StructLValue(obj)}).{fld.CppName}{elemDecay})";
                     Push(StackKind.Ptr, wantPtr, erasedMember ? $"(({wantPtr}){saddr})" : saddr);
+                    _stack[^1] = _stack[^1] with { ArraySearchOrigin =
+                        _c.ArraySearchFieldReadOrigin(fld, obj.ArraySearchOrigin,
+                            _method, insn.Offset, _arraySearchStraightLine) };
+                    _stack[^1].ArraySearchOrigin!.FieldAddress = true;
                     break;
                 }
                 string addr = $"&({FieldAccess(cls, fld, obj)}{elemDecay})";
                 Push(StackKind.Ptr, wantPtr, erasedMember ? $"(({wantPtr}){addr})" : addr);
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin =
+                    _c.ArraySearchFieldReadOrigin(fld, obj.ArraySearchOrigin,
+                        _method, insn.Offset, _arraySearchStraightLine) };
+                _stack[^1].ArraySearchOrigin!.FieldAddress = true;
                 break;
             }
             case ILOpCode.Ldsflda:
@@ -2779,11 +2942,19 @@ internal sealed partial class MethodCompiler : IEvalStack
                 if (SharedTrial && Compilation.ContainsCanonPlaceholder(fld.DeclaringClass))
                 {
                     Push(StackKind.Ptr, CppTypes.FieldOf(fld) + "*", RgctxStaticAddr(fld, insn.Token));
+                    _stack[^1] = _stack[^1] with { ArraySearchOrigin =
+                        _c.ArraySearchStaticFieldReadOrigin(fld, _method, insn.Offset,
+                            _arraySearchStraightLine) };
+                    _stack[^1].ArraySearchOrigin!.FieldAddress = true;
                     break;
                 }
                 EnsureCctorBefore(fld.DeclaringClass);
                 _c.NoteForceEmit(fld.DeclaringClass);
                 Push(StackKind.Ptr, CppTypes.FieldOf(fld) + "*", $"&{fld.CppStaticAccess}");
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin =
+                    _c.ArraySearchStaticFieldReadOrigin(fld, _method, insn.Offset,
+                        _arraySearchStraightLine) };
+                _stack[^1].ArraySearchOrigin!.FieldAddress = true;
                 break;
             }
             case ILOpCode.Ldsfld:
@@ -2807,6 +2978,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                     if (fld.Type is { Kind: TypeKind.SZArray, Element: { } tyElem })
                     {
                         EmitEmptyArray(tyElem);
+                        _stack[^1] = _stack[^1] with { KnownEmptyTypeArray = true };
                         break;
                     }
                     Push(StackKind.Ref, "Dn2CppArrayRef*", "dn2cpp_newarr_ref(0)");
@@ -2856,6 +3028,14 @@ internal sealed partial class MethodCompiler : IEvalStack
                 Push(CppTypes.KindOf(fld.Type), CppTypes.Of(fld.Type), fld.CppStaticAccess);
                 if (fld.Type is { Kind: TypeKind.Class or TypeKind.SZArray })
                     _stack[^1] = _stack[^1] with { StaticType = fld.Type };
+                var staticOrigin = _c.ArraySearchStaticFieldReadOrigin(fld,
+                    _method, insn.Offset, _arraySearchStraightLine);
+                if (fld.Type is { Kind: TypeKind.SZArray or TypeKind.MDArray, Element: { } staticElement })
+                {
+                    _c.AddArraySearchSeed(staticOrigin, ArraySearchValueKind.ArrayElement, staticElement);
+                    _c.AddArraySearchSeed(staticOrigin, ArraySearchValueKind.ArrayRuntimeType, fld.Type);
+                }
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin = staticOrigin };
                 break;
             }
             case ILOpCode.Stsfld:
@@ -2876,7 +3056,10 @@ internal sealed partial class MethodCompiler : IEvalStack
                 }
                 EnsureCctorBefore(fld.DeclaringClass);
                 _c.NoteForceEmit(fld.DeclaringClass);
-                Emit($"{fld.CppStaticAccess} = {Cast(Pop(), CppTypes.FieldOf(fld))};");
+                var staticValue = Pop();
+                _c.NoteArraySearchStaticFieldStore(_method, fld, staticValue.ArraySearchOrigin,
+                    insn.Offset, _arraySearchStraightLine);
+                Emit($"{fld.CppStaticAccess} = {Cast(staticValue, CppTypes.FieldOf(fld))};");
                 if (fld.IsGcRootedThreadStatic)
                     Emit($"dn2cpp_gc_write_barrier((void*)&({fld.CppStaticAccess}));");
                 break;
@@ -2909,6 +3092,8 @@ internal sealed partial class MethodCompiler : IEvalStack
                 var p = Pop();
                 Push(CppTypes.KindOf(t), ct,
                     mt == ct ? $"*(({ct}*)({p.Expr}))" : $"({ct})(*(({mt}*)({p.Expr})))");
+                if (CppTypes.KindOf(t) == StackKind.Ref)
+                    _stack[^1] = _stack[^1] with { ArraySearchOrigin = p.ArraySearchOrigin };
                 break;
             }
             case ILOpCode.Stobj:
@@ -2924,6 +3109,10 @@ internal sealed partial class MethodCompiler : IEvalStack
                     : $"*(({mt}*)({p.Expr})) = ({mt})({Cast(val, ct)});");
                 if (t.ContainsGcReferences())
                     Emit($"dn2cpp_gc_write_barrier_if_heap((void*)({p.Expr}));");
+                if (CppTypes.KindOf(t) == StackKind.Ref)
+                    _c.NoteArraySearchWriteEffect(_method, p.ArraySearchOrigin,
+                        val.ArraySearchOrigin, ArraySearchFlowKind.Identity,
+                        insn.Offset, _arraySearchStraightLine);
                 break;
             }
 
@@ -3213,6 +3402,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 Push(StackKind.Ref, cppType, ti is null
                     ? Cast(obj, cppType) // System.Object etc.: statically safe
                     : $"({cppType})dn2cpp_castclass({Cast(obj, "Dn2CppObject*")}, {ti})");
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin = obj.ArraySearchOrigin };
                 break;
             }
             case ILOpCode.Isinst:
@@ -3262,6 +3452,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 if (CastTargetTypeInfoExpr(target, insn.Token) is not { } ti)
                 {
                     Push(StackKind.Ref, "Dn2CppObject*", Cast(obj, "Dn2CppObject*"));
+                    _stack[^1] = _stack[^1] with { ArraySearchOrigin = obj.ArraySearchOrigin };
                     break;
                 }
                 // isinst always yields a managed reference — the object cast to the
@@ -3273,6 +3464,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 string cppType = target.Kind != TypeKind.External && CppTypes.KindOf(target) == StackKind.Ref
                     ? CppTypes.Of(target) : "Dn2CppObject*";
                 Push(StackKind.Ref, cppType, $"({cppType})dn2cpp_isinst({Cast(obj, "Dn2CppObject*")}, {ti})");
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin = obj.ArraySearchOrigin };
                 break;
             }
             case ILOpCode.Box:
@@ -3305,6 +3497,9 @@ internal sealed partial class MethodCompiler : IEvalStack
                     Emit($"{vtmp} = ({uct})({ntmp}.{valF});");
                     Push(StackKind.Ref, "Dn2CppObject*",
                         $"({ntmp}.{hvF} ? dn2cpp_box({uti}, &{vtmp}, sizeof({uct})) : (Dn2CppObject*)nullptr)");
+                    _stack[^1] = _stack[^1] with { ArraySearchOrigin =
+                        _c.SeedArraySearchOrigin(ArraySearchValueKind.BoxedValue, uT) };
+                    _c.AddArraySearchSeed(_stack[^1].ArraySearchOrigin!, ArraySearchValueKind.ObjectType, uT);
                     break;
                 }
                 string ti = TypeInfoExpr(target, insn.Token)
@@ -3320,7 +3515,9 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // following brtrue/brfalse fold the constant branch — the JIT does the
                 // same — which drops the dead reference-type comparand path the C#
                 // compiler emits for generic `default(T) == null ? … : x.CompareTo(y)`.
-                _stack[^1] = _stack[^1] with { StaticType = target, NonNull = true };
+                _stack[^1] = _stack[^1] with { StaticType = target, NonNull = true,
+                    ArraySearchOrigin = _c.SeedArraySearchOrigin(ArraySearchValueKind.BoxedValue, target) };
+                _c.AddArraySearchSeed(_stack[^1].ArraySearchOrigin!, ArraySearchValueKind.ObjectType, target);
                 break;
             }
             case ILOpCode.Unbox:

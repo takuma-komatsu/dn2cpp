@@ -61,7 +61,7 @@ SAMPLES=(
     "SharedGenerics|System.Collections"
     "ReflectTypes|System.Linq.Expressions System.Linq System.Collections System.Reflection.Emit System.Reflection.Emit.Lightweight System.Reflection.Emit.ILGeneration System.ComponentModel.Primitives"
     "StringCore|System.Linq"
-    "ArrayCore|"
+    "ArrayCore|System.Collections"
     "ArrayDispatch|System.Linq"
 )
 

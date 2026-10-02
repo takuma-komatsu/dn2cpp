@@ -1442,6 +1442,18 @@ extern const int32_t dn2cpp_bcl_message_count;
 // drift against the transpiler's list can only lose a message, never answer with the
 // wrong one, and gates/build-and-run-doc-claims.sh diffs the two lists.
 inline constexpr const char* DN2CPP_SR_ALIGNMENT_MUST_BE_POW2 = "Argument_AlignmentMustBePow2";
+inline constexpr const char* DN2CPP_SR_MUST_BE_PRIM_ARRAY = "Arg_MustBePrimArray";
+inline constexpr const char* DN2CPP_SR_PRIM_WIDEN = "Arg_PrimWiden";
+inline constexpr const char* DN2CPP_SR_HUGE_ARRAY_NOT_SUPPORTED = "ArgumentOutOfRange_HugeArrayNotSupported";
+inline constexpr const char* DN2CPP_SR_HAS_TO_BE_ARRAY_CLASS = "Argument_HasToBeArrayClass";
+inline constexpr const char* DN2CPP_SR_NEED_1D_ARRAY = "Arg_Need1DArray";
+inline constexpr const char* DN2CPP_SR_NEED_2D_ARRAY = "Arg_Need2DArray";
+inline constexpr const char* DN2CPP_SR_NEED_3D_ARRAY = "Arg_Need3DArray";
+inline constexpr const char* DN2CPP_SR_NEED_AT_LEAST_1_RANK = "Arg_NeedAtLeast1Rank";
+inline constexpr const char* DN2CPP_SR_NON_ZERO_LOWER_BOUND = "Arg_NonZeroLowerBound";
+inline constexpr const char* DN2CPP_SR_RANK_INDICES = "Arg_RankIndices";
+inline constexpr const char* DN2CPP_SR_RANKS_AND_BOUNDS = "Arg_RanksAndBounds";
+inline constexpr const char* DN2CPP_SR_TYPE_NOT_SUPPORTED = "Arg_TypeNotSupported";
 inline constexpr const char* DN2CPP_SR_ARGUMENT_NULL_ARRAY = "ArgumentNull_Array";
 inline constexpr const char* DN2CPP_SR_ARGUMENT_NULL_STRING = "ArgumentNull_String";
 inline constexpr const char* DN2CPP_SR_BLOCKING_ADD_CONCURRENT_COMPLETE = "System.Collections.Concurrent:BlockingCollection_Add_ConcurrentCompleteAdd";
@@ -1881,8 +1893,10 @@ void dn2cpp_array_set_value_indices(Dn2CppObject* a, Dn2CppObject* value, Dn2Cpp
 Dn2CppObject* dn2cpp_array_get_value_fixed(Dn2CppObject* a, const int32_t* idx, int32_t n);
 void dn2cpp_array_set_value_fixed(Dn2CppObject* a, Dn2CppObject* value, const int32_t* idx, int32_t n);
 Dn2CppObject* dn2cpp_array_create_instance(Dn2CppType* t, const int32_t* lengths, int32_t rank);
+// hasBounds tells the (Type, int[], int[]) form's null lowerBounds (ArgumentNullException)
+// from the (Type, int[]) form's absent one.
 Dn2CppObject* dn2cpp_array_create_instance_lengths(Dn2CppType* t, Dn2CppArrayI4* lengths,
-                                                   Dn2CppArrayI4* lowerBounds);
+                                                   Dn2CppArrayI4* lowerBounds, int32_t hasBounds);
 Dn2CppObject* dn2cpp_array_create_instance_from_arraytype(Dn2CppType* arrayType,
                                                           const int32_t* lengths, int32_t rank);
 // The (Type, int[] lengths[, int[] lowerBounds]) forms; hasBounds tells the second
@@ -5440,6 +5454,10 @@ int32_t dn2cpp_object_equals(Dn2CppObject* a, Dn2CppObject* b);
 // null included, where dn2cpp_object_equals (static Object.Equals) answers those
 // first. So every `equals` slot accepts a null argument.
 int32_t dn2cpp_object_equals_virtual(Dn2CppObject* self, Dn2CppObject* other);
+// Non-generic Array search has a null fast path only for reference arrays.
+// A boxed value with no emitted Equals slot must fail explicitly rather than
+// silently take Object's reference-equality fallback.
+int32_t dn2cpp_array_search_equals(Dn2CppObject* element, Dn2CppObject* value, int32_t refArray);
 // EqualityComparer<T>.Default.Equals for a reference T: null equals only null, and two
 // non-null operands run the first one's Equals(object), an identical pair included.
 int32_t dn2cpp_object_equals_default(Dn2CppObject* a, Dn2CppObject* b);
@@ -6441,18 +6459,26 @@ inline void dn2cpp_buffer_blockcopy(Dn2CppObject* src, int32_t srcRep, int32_t s
                                     Dn2CppObject* dst, int32_t dstRep, int32_t dstOffset,
                                     int32_t count)
 {
-    if (src == nullptr || dst == nullptr)
-        dn2cpp_throw_argument_null();
+    if (src == nullptr)
+        dn2cpp_throw_argument_null_param("src");
+    if (dst == nullptr)
+        dn2cpp_throw_argument_null_param("dst");
     srcRep = dn2cpp_blockcopy_rep(src, srcRep);
     dstRep = dn2cpp_blockcopy_rep(dst, dstRep);
-    if (srcRep == DN2CPP_BCREP_NONPRIM || dstRep == DN2CPP_BCREP_NONPRIM)
-        dn2cpp_throw_argument();
-    if ((srcOffset | dstOffset | count) < 0)
-        dn2cpp_throw_argument_out_of_range();
+    if (srcRep == DN2CPP_BCREP_NONPRIM)
+        dn2cpp_throw_argument_param(DN2CPP_SR_MUST_BE_PRIM_ARRAY, "src");
+    if (dstRep == DN2CPP_BCREP_NONPRIM)
+        dn2cpp_throw_argument_param(DN2CPP_SR_MUST_BE_PRIM_ARRAY, "dst");
+    if (srcOffset < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "srcOffset", srcOffset);
+    if (dstOffset < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "dstOffset", dstOffset);
+    if (count < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "count", count);
     // 64-bit, because `offset + count` in int32 wraps back under the extent.
     if (static_cast<int64_t>(srcOffset) + count > dn2cpp_blockcopy_byte_length(src, srcRep)
         || static_cast<int64_t>(dstOffset) + count > dn2cpp_blockcopy_byte_length(dst, dstRep))
-        dn2cpp_throw_argument();
+        dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_INVALID_OFF_LEN);
     std::memmove(dn2cpp_blockcopy_base(dst, dstRep) + dstOffset,
                  dn2cpp_blockcopy_base(src, srcRep) + srcOffset,
                  static_cast<size_t>(count));
@@ -6464,10 +6490,10 @@ inline void dn2cpp_buffer_blockcopy(Dn2CppObject* src, int32_t srcRep, int32_t s
 inline int32_t dn2cpp_buffer_bytelength(Dn2CppObject* o, int32_t rep)
 {
     if (o == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("array");
     rep = dn2cpp_blockcopy_rep(o, rep);
     if (rep == DN2CPP_BCREP_NONPRIM)
-        dn2cpp_throw_argument();
+        dn2cpp_throw_argument_param(DN2CPP_SR_MUST_BE_PRIM_ARRAY, "array");
     int64_t n = dn2cpp_blockcopy_byte_length(o, rep);
     if (n > static_cast<int64_t>(0x7fffffff))
         dn2cpp_throw_of(&dn2cpp_overflow_exception_type);
@@ -6482,7 +6508,7 @@ inline int32_t dn2cpp_buffer_bytelength(Dn2CppObject* o, int32_t rep)
 inline char* dn2cpp_buffer_byte_addr(Dn2CppObject* o, int32_t rep, int32_t index)
 {
     if (static_cast<uint32_t>(index) >= static_cast<uint32_t>(dn2cpp_buffer_bytelength(o, rep)))
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_ARGUMENT_OUT_OF_RANGE, "index");
     return dn2cpp_blockcopy_base(o, dn2cpp_blockcopy_rep(o, rep)) + index;
 }
 

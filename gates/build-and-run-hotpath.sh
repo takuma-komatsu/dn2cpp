@@ -41,6 +41,9 @@
 #     arrays), and its span parameters are hoisted into __restrict prologue
 #     locals — except the one the body reseats, which opts out while keeping the
 #     raw indexer.
+#   - a NoAlloc Type-metadata reader retains its rank and assignability helpers
+#     inside the marked body and passes verification. This check applies to
+#     these two metadata reads; invocation remains a rejection case.
 source "$(dirname "$0")/_common.sh"
 
 # Every block under an emitter-stamped `// Namespace.Class::Name` header — a
@@ -85,10 +88,27 @@ done
 # via hot_bodies on the full emitter-stamped symbol, not a bare substring:
 # `grep -q SumSpan` would be satisfied by HotPathBoundsSubset's SumSpanUnchecked
 # in the same TU.
-for sym in SumOfSquares SumSpan; do
+for sym in SumOfSquares SumSpan InspectTypes; do
     [ -n "$(hot_bodies "HotPathNoAllocSubset.Program::$sym")" ] \
         || { echo "FAIL: NoAlloc kernel $sym not defined in generated_hot.cpp" >&2; exit 1; }
 done
+
+metadata_body="$(hot_bodies "HotPathNoAllocSubset.Program::InspectTypes")"
+for helper in 'dn2cpp_type_is_assignable_from(' 'dn2cpp_type_get_array_rank('; do
+    grep -Fq "$helper" <<<"$metadata_body" \
+        || { echo "FAIL: NoAlloc metadata reader lost $helper" >&2; exit 1; }
+done
+
+local before prefix native_text
+native_text="$(strip_cr_win "$native")"
+grep -Fxq '== NoAlloc reflection reads ==' <<<"$native_text" \
+    || { echo "FAIL: NoAlloc metadata section did not run" >&2; exit 1; }
+grep -Fxq 'NoAlloc reflection reads end' <<<"$native_text" \
+    || { echo "FAIL: NoAlloc metadata section did not finish" >&2; exit 1; }
+before=$(export DN2CPP_BEFORE_REFLECTION_NOALLOC=1
+    run_bounded "./$hp_out/HotPath$EXE_EXT")
+prefix=$(awk '$0 == "== NoAlloc reflection reads ==" { exit } { print }' <<<"$native_text")
+assert_output "$(strip_cr_win "$before")" "$prefix"
 
 if grep -q "rgctx" "$hot"; then
     echo "FAIL: rgctx machinery in generated_hot.cpp — a marked generic body was shared instead of monomorphized" >&2
@@ -262,6 +282,7 @@ fi
 echo "OK: __restrict on the qualifying parameters only, and the span hoist with its reseat opt-out"
 }
 
+unset DN2CPP_BEFORE_REFLECTION_NOALLOC
 corelib_diff_gate HotPath
 
 # ── [HotPath(NoAlloc)] verifier: the negative side ────────────────────────────
@@ -340,7 +361,8 @@ assert_noalloc_reject "$deep_app" "a depth-2 allocation via a helper" \
 assert_noalloc_reject "$virt_app" "a dynamic dispatch" \
     "HotPath(NoAlloc)" "CountSides" "dispatches dynamically" \
     "EqualTyped" "dn2cpp_object_equals_" \
-    "EqualErased" "dn2cpp_resolve_interface("
+    "EqualErased" "dn2cpp_resolve_interface(" \
+    "SearchFirst" "SearchLast" "dn2cpp_array_search_equals("
 # Directly-emitted allocation helpers, one marked method per token family —
 # ToString on object, string concat, Substring, multi-dimensional array. None
 # lowers to dn2cpp_alloc/dn2cpp_newarr_, so each line is a positive control for

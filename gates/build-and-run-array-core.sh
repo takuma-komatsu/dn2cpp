@@ -209,4 +209,526 @@ gate_extra_asserts() {
     done
 }
 
-corelib_diff_gate ArrayCore
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|array-box-shared-generics|before-array-provenance"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/ArrayCore/BoxProvenanceOnly.csproj samples/dotnet/ArrayCore/BoxProvenanceProgram.cs samples/dotnet/ArrayCore/ReflectionReturnBoxOnly.csproj samples/dotnet/ArrayCore/ReflectionReturnBoxProgram.cs samples/dotnet/ArrayCore/DiamondProvenanceOnly.csproj samples/dotnet/ArrayCore/DiamondProvenanceProgram.cs samples/dotnet/ArrayCore/FieldAliasProvenanceOnly.csproj samples/dotnet/ArrayCore/FieldAliasProvenanceProgram.cs samples/dotnet/ArrayCore/FieldAliasProvenanceSubset.cs samples/dotnet/ArrayCore/ArrayElementAliasProgram.cs samples/dotnet/ArrayCore/ArrayElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayObjectElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayUnknownElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayErasedElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayReferenceSlotAliasOnly.csproj samples/dotnet/ArrayCore/ArrayReflectedVoidBoxOnly.csproj samples/dotnet/ArrayCore/ArrayReflectedVoidBoxProgram.cs samples/dotnet/ArrayCore/ArrayFutureStoreOnly.csproj samples/dotnet/ArrayCore/ArrayFutureStoreProgram.cs samples/dotnet/ArrayCore/ArrayFutureNullStoreOnly.csproj samples/dotnet/ArrayCore/ArrayObjectFutureStoreOnly.csproj samples/dotnet/ArrayCore/ArrayObjectFutureStoreProgram.cs"
+corelib_diff_gate ArrayCore System.Collections
+
+native=$(run_bounded "./$_CG_OUT/ArrayCore$EXE_EXT")
+native=$(strip_cr_win "$native")
+previous=$(run_bounded "./$_CG_OUT/ArrayCore$EXE_EXT" before-array-provenance)
+prefix=$(awk '/^-- array shape argument checks --$/ { exit } { print }' <<< "$native")
+assert_output "$prefix" "$(strip_cr_win "$previous")"
+grep -Fq 'dn2cpp_array_search_equals(' "$_CG_OUT"/generated*.cpp \
+    || { echo 'FAIL: non-generic Array search lacks its missing-slot guard' >&2; exit 1; }
+for line in '-- array shape argument checks --' 'array shape argument checks end' \
+        'initialize-dyn-boxed-equality: True/True' \
+        'initialize-bound-boxed-equality: True/True' 'Array Initialize discovery end' \
+        '== runtime type-handle boxes and array refusals ==' \
+        'int=System.Int32:7:equal=True/True' 'short=System.Int16:-3:equal=True/True' \
+        'nullable empty=null' 'reference identity=True' \
+        'runtime type-handle boxes and array refusals end'; do
+    grep -Fxq -- "$line" <<< "$native" \
+        || { echo "FAIL: Array guard witness missing: $line" >&2; exit 1; }
+done
+
+previous=$(run_bounded dotnet "$_CG_APP" before-dynamic-array-null-equality)
+previous=$(strip_cr_win "$previous")
+prefix=$(awk '/^== dynamic array null equality ==$/ { exit } { print }' <<< "$native")
+assert_output "$prefix" "$previous"
+previous=$(run_bounded dotnet "$_CG_APP" before-array-search-provenance-additions)
+previous=$(strip_cr_win "$previous")
+prefix=$(awk '/^== array search reference and type provenance ==$/ { exit } { print }' <<< "$native")
+assert_output "$prefix" "$previous"
+previous=$(run_bounded dotnet "$_CG_APP" before-array-search-loops)
+previous=$(strip_cr_win "$previous")
+prefix=$(awk '/^== array search loop provenance ==$/ { exit } { print }' <<< "$native")
+assert_output "$prefix" "$previous"
+for line in '== array search loop provenance ==' \
+        'loop-local=0:1:1' 'loop-argument=0:1:1' 'loop-type=0' \
+        'loop-type-unwrapped=0:1' 'loop-unsearched-leaf=0' \
+        'array search loop provenance end'; do
+    grep -Fxq -- "$line" <<< "$native" \
+        || { echo "FAIL: array loop witness missing: $line" >&2; exit 1; }
+done
+for line in \
+    'direct=0:1' \
+    'conditional-first=0:1:0' \
+    'conditional-second=0:0:1' \
+    'indexed-selected=0:1' \
+    'type-overwrite=0:1:TypeOverwrittenDeadMatch' \
+    'field-forward=0:1' \
+    'field-backward=1:1' \
+    'hidden-field=0:1' \
+    'field-stored=0:1:1' \
+    'ref-field-write=0:1' \
+    'ref-static-write=0:1' \
+    'array-get-type=0:1' \
+    'make-array-type=0:1:True' \
+    'object-get-type=0:Object' \
+    'nested-array-get-type=0:1' \
+    'ranked-array-type=0:1' \
+    'helper-ranked-array-type=0:1' \
+    'repeated-ranked-array-type=0:1' \
+    'ref-stobj=0:1' \
+    'ref-ldobj=0:1' \
+    'copied-object-get-type=0:Object' \
+    'md-get-type=0:1:2' \
+    'type-handle=0:1' \
+    'empty-type-signature=0:1' \
+    'field-alias=0:1' \
+    'field-overwrite=0:1:1' \
+    'field-virtual=0:1' \
+    'static-erased=0:1' \
+    'static-declared=0:1' \
+    'static-overwrite=0:1:1' \
+    'generic-static=0:1,0:1' \
+    'struct-field=0:1' \
+    'box-overwrite=0:1:True' \
+    'cctor-static=0:1' \
+    'constructor-field=0:1' \
+    'constructor-overwrite=0:1:1' \
+    'cctor-overwrite=0:1:1' \
+    'property=1:1' \
+    'setter-only=0:1' \
+    'mixed-visibility=0:1' \
+    'method=0:1' \
+    'generic-argument=1:1' \
+    'generic-selected=0:1' \
+    'interface-provider=0:1' \
+    'overload=0:1' \
+    'nonzero-overload=0:1' \
+    'local-after-create=0:1:UnselectedLocalMatch' \
+    'helper-other-call=0:1:2' \
+    'helper-sink=0:1' \
+    'field-helper=0:1' \
+    'deep-helper=0:1' \
+    'shared-generic=0:1,0:1' \
+    'unallocated-provider=UnallocatedArrayTypeProvider' \
+    'unused-reflected=UnusedReflectedMatch[]' \
+    'framework-box-forward=0:1:False' \
+    'framework-box-backward=0:1' \
+    'framework-box-null=-1:0' \
+    'list-box-forward=0:1:False' \
+    'list-box-backward=0:1' \
+    'copy-box-forward=0:1:False' \
+    'copy-box-backward=0:1' \
+    'copy-box-other=-1:1' \
+    'plain-forward=0' \
+    'plain-backward=0' \
+    'runtime-owned=1' \
+    'runtime-no-slot=-1' \
+    'dynamic array null equality end' \
+    '== array search reference and type provenance ==' \
+    'array search reference and type provenance end'; do
+    grep -Fxq "$line" <<< "$native" \
+        || { echo "FAIL: dynamic Array equality witness missing: $line" >&2; exit 1; }
+done
+for name in DirectDynamicMatch ConditionalFirstMatch ConditionalSecondMatch IndexedSelectedMatch \
+        TypeOverwriteSelectedMatch \
+        FieldMatch HiddenMatch FieldStoredMatch FieldAliasMatch OverwriteSelectedMatch \
+        RefFieldWriteMatch RefStaticWriteMatch ArrayGetTypeMatch MakeArrayTypeMatch MdGetTypeMatch \
+        NestedArrayRuntimeMatch RankedTypeArrayMatch HelperRankedTypeArrayMatch \
+        RepeatedRankedTypeArrayMatch \
+        RefStobjMatch RefLdobjMatch \
+        TypeHandleMatch EmptySignatureSelectedMatch \
+        FieldVirtualMatch StructFieldMatch BoxOverwriteSelectedMatch \
+        StaticErasedMatch StaticDeclaredMatch StaticOverwriteSelectedMatch \
+        GenericStaticFirstMatch GenericStaticSecondMatch CctorStaticMatch ConstructorMatch \
+        ConstructorOverwriteSelectedMatch CctorOverwriteSelectedMatch \
+        PropertyMatch SetterOnlyMatch \
+        MixedVisibilityMatch \
+        MethodMatch GenericArgumentMatch \
+        GenericSelectedMatch \
+        InterfaceMatch OverloadSelectedMatch NonzeroOverloadMatch LocalSelectedMatch \
+        HelperSelectedMatch FrameworkBoxMatch \
+        SinkHelperMatch CrossHelperMatch DeepHelperMatch SharedGenericFirstMatch SharedGenericSecondMatch \
+        FrameworkListBoxMatch FrameworkCopyBoxMatch; do
+    if ! grep -Eq "^int32_t ${name}_Equals_m[0-9]+\\(" "$_CG_OUT"/generated*.cpp; then
+        echo "FAIL: selected value type equality body was not emitted: $name" >&2
+        exit 1
+    fi
+done
+for name in UnusedReflectedMatch GenericUnselectedMatch IndexedUnselectedMatch \
+        OverloadUnselectedMatch EmptySignatureUnselectedMatch \
+        ZeroOverloadUnselectedMatch \
+        UnselectedLocalMatch UnselectedHelperMatch \
+        UnallocatedProviderMatch; do
+    if grep -Eq "^(inline |static )?int32_t ${name}_Equals_m[0-9]+\\(" \
+            "$_CG_OUT"/generated*.h "$_CG_OUT"/generated*.cpp; then
+        echo "FAIL: unsearched value type equality body was emitted: $name" >&2
+        exit 1
+    fi
+done
+if grep -Eq '^int32_t (ObjectGetTypeBoxMatch|CopyShapeBoxMatch)_Equals_m[0-9]+\(' \
+        "$_CG_OUT"/generated*.cpp; then
+    echo 'FAIL: a boxed object[] element changed its array GetType provenance' >&2
+    exit 1
+fi
+
+echo '== isolated framework and reflection boxes =='
+box_root=artifacts/arraycore-box-provenance
+dotnet build samples/dotnet/ArrayCore/BoxProvenanceOnly.csproj -c "$CONFIG" \
+    --nologo -v q -o "$box_root/app"
+box_app="$box_root/app/BoxProvenanceOnly.dll"
+corelib=$(locate_corelib)
+bcl=$(dirname "$corelib")
+invoke_cli "$box_app" -r "$corelib" -r "$bcl/System.Collections.dll" \
+    --shared-generics -o "$box_root/gen"
+compile_console "$box_root/gen" BoxProvenanceOnly
+box_native=$(run_bounded "./$box_root/gen/BoxProvenanceOnly$EXE_EXT")
+box_native=$(strip_cr_win "$box_native")
+box_oracle=$(run_bounded dotnet "$box_app")
+assert_output "$(strip_cr_win "$box_native")" "$(strip_cr_win "$box_oracle")"
+box_previous=$(run_bounded dotnet "$box_app" before-array-search-provenance-additions)
+box_previous=$(strip_cr_win "$box_previous")
+box_prefix=$(awk '/^== array search copy and type provenance ==$/ { exit } { print }' <<< "$box_native")
+box_prefix=$(strip_cr_win "$box_prefix")
+assert_output "$box_prefix" "$box_previous"
+box_lines=$(strip_cr_win "$box_native")
+for line in \
+    '== framework box provenance ==' \
+    '== array search copy and type provenance ==' \
+    'framework-box-forward=0:1:False' \
+    'framework-box-backward=0:1' \
+    'framework-box-null=-1:0' \
+    'list-box-forward=0:1:False' \
+    'list-box-backward=0:1' \
+    'copy-box-forward=0:1:False' \
+    'copy-box-backward=0:1' \
+    'copy-box-other=-1:1' \
+    'reflected-box-forward=0:1:False' \
+    'reflected-box-backward=0:1' \
+    'object-field-box=0:1' \
+    'reflected-set-box=0:1' \
+    'object-field-overwrite=0:1:True' \
+    'reflected-set-overwrite=0:1:True' \
+    'unused-box=True' \
+    'unused-newarr=1' \
+    'unused-user-box=UnusedUserBoxMatch' \
+    'field-stored=0:1:1' \
+    'instance-snapshot=0:1:1' \
+    'static-snapshot=0:1:1' \
+    'helper-snapshot=0:1:1' \
+    'reflected-snapshot=0:1:True' \
+    'array-get-holder-alias=0:1:1:True' \
+    'shared-donor=0:1,0:1' \
+    'array-set-box=-1:1' \
+    'array-clone=0:1' \
+    'byref-array=0:1' \
+    'array-copy-box=-1:1' \
+    'array-copyto-box=-1:1' \
+    'constrained-copy-rejected=ArrayTypeMismatchException:-1:True' \
+    'array-copy-rejected=ArrayTypeMismatchException:0:True' \
+    'array-copyto-rejected=ArrayTypeMismatchException:0:True' \
+    'constrained-copy-box=0:1' \
+    'array-copy-zero=-1:True' \
+    'array-copy-rank=RankException:-1:True' \
+    'array-copy-value-rejected=ArrayTypeMismatchException:-1:0' \
+    'array-copy-created-rejected=ArrayTypeMismatchException:0:True' \
+    'constrained-copy-byref-source=-1:1' \
+    'byref-before-write=0:1' \
+    'byref-nonvoid-write=7:0' \
+    'byref-nonvoid-return=0:1' \
+    'generic-ref-before=0:1' \
+    'generic-ref-after=0:1' \
+    'empty-type-signature=0:1' \
+    'signature-pair-forward=0:1' \
+    'signature-pair-reverse=0:1' \
+    'hidden-method=0:1' \
+    'indexed-property=0:1' \
+    'generic-arity=0:1' \
+    'hidden-reflected-field=-1:1:HiddenReflectedFieldDerived' \
+    'helper-copy-box=-1:1' \
+    'helper-copyto-box=-1:1' \
+    'ref-write=0:1' \
+    'ref-field-write=0:1' \
+    'ref-static-write=0:1' \
+    'array-get-type=0:1' \
+    'make-array-type=0:1:True' \
+    'object-get-type=0:Object' \
+    'nested-array-get-type=0:1' \
+    'ranked-array-type=0:1' \
+    'helper-ranked-array-type=0:1' \
+    'repeated-ranked-array-type=0:1' \
+    'ref-stobj=0:1' \
+    'ref-ldobj=0:1' \
+    'copied-object-get-type=0:Object' \
+    'md-get-type=0:1:2' \
+    'type-handle=0:1' \
+    'field-alias=0:1' \
+    'field-overwrite=0:1:1' \
+    'field-virtual=0:1' \
+    'type-overwrite=0:1:TypeOverwrittenDeadMatch' \
+    'type-snapshot=0:1:TypeSnapshotUnselectedMatch' \
+    'signature-overwrite=0:1' \
+    'signature-runtime-overwrite=0:1' \
+    'static-erased=0:1' \
+    'static-declared=0:1' \
+    'static-overwrite=0:1:1' \
+    'generic-static=0:1,0:1' \
+    'struct-field=0:1' \
+    'box-overwrite=0:1:True' \
+    'cctor-static=0:1' \
+    'constructor-field=0:1' \
+    'constructor-overwrite=0:1:1' \
+    'cctor-overwrite=0:1:1' \
+    'framework box provenance end' \
+    'array search copy and type provenance end'; do
+    grep -Fxq "$line" <<< "$box_lines" \
+        || { echo "FAIL: isolated boxed equality witness missing: $line" >&2; exit 1; }
+done
+for name in FrameworkBoxMatch FrameworkListBoxMatch FrameworkCopyBoxMatch ReflectedFieldBoxMatch \
+        ObjectFieldBoxMatch ReflectedSetBoxMatch ReflectedOverwriteSelectedMatch \
+        ReflectedSetOverwriteSelectedMatch \
+        FieldStoredMatch InstanceSnapshotLiveMatch StaticSnapshotLiveMatch \
+        HelperSnapshotLiveMatch ReflectedSnapshotLiveMatch ArrayGetHolderSelectedMatch \
+        SharedGenericFirstMatch SharedGenericSecondMatch ArraySetValueBoxMatch \
+        ArrayCloneMatch ByRefArrayMatch ArrayCopyBoxMatch ArrayCopyToBoxMatch \
+        ConstrainedCopyBoxMatch ByRefReplacedConstrainedMatch BeforeByRefWriteMatch \
+        AfterNonVoidByRefWriteMatch ByRefReturnMatch \
+        GenericRefBeforeSelectedMatch GenericRefAfterSelectedMatch \
+        SignaturePairSelectedMatch HiddenMethodLiveMatch IndexerSelectedMatch AritySelectedMatch \
+        HiddenReflectedFieldLiveMatch \
+        HelperArrayCopyMatch HelperArrayCopyToMatch RefWriteMatch \
+        RefFieldWriteMatch RefStaticWriteMatch ArrayGetTypeMatch MakeArrayTypeMatch MdGetTypeMatch \
+        NestedArrayRuntimeMatch RankedTypeArrayMatch HelperRankedTypeArrayMatch \
+        RepeatedRankedTypeArrayMatch \
+        RefStobjMatch RefLdobjMatch \
+        TypeHandleMatch EmptySignatureSelectedMatch \
+        FieldAliasMatch OverwriteSelectedMatch FieldVirtualMatch \
+        TypeOverwriteSelectedMatch TypeSnapshotSelectedMatch SignatureSelectedMatch \
+        RuntimeSignatureSelectedMatch \
+        StructFieldMatch BoxOverwriteSelectedMatch \
+        StaticErasedMatch StaticDeclaredMatch StaticOverwriteSelectedMatch \
+        GenericStaticFirstMatch GenericStaticSecondMatch \
+        CctorStaticMatch ConstructorMatch ConstructorOverwriteSelectedMatch \
+        CctorOverwriteSelectedMatch; do
+    if ! awk -v name="$name" '
+        FNR == 1 { signature = 0 }
+        { sub(/\r$/, "") }
+        signature && /^\{/ { found = 1; exit }
+        { signature = ($0 ~ "^(inline |static )?int32_t " name "_Equals_m[0-9]+\\([^;]*\\)$") }
+        END { exit !found }
+    ' "$box_root/gen/generated.h" "$box_root/gen"/generated*.cpp; then
+        echo "FAIL: searched boxed value equality body was not emitted: $name" >&2
+        exit 1
+    fi
+done
+for name in UnusedFrameworkBoxMatch UnusedNewarrMatch UnusedUserBoxMatch \
+        InstanceSnapshotDeadMatch StaticSnapshotDeadMatch HelperSnapshotDeadMatch \
+        ReflectedSnapshotDeadMatch ArrayGetHolderUnsearchedMatch \
+        RejectedConstrainedCopyMatch AfterByRefWriteMatch BeforeNonVoidByRefWriteMatch \
+        ByRefReturnBeforeMatch ByRefReturnWrittenMatch RefStobjBeforeMatch \
+        GenericRefBeforeUnsearchedMatch GenericRefAfterUnsearchedMatch \
+        EmptySignatureUnselectedMatch \
+        RejectedArrayCopyMatch RejectedArrayCopyToMatch \
+        ZeroLengthArrayCopyMatch RankRejectedArrayCopyMatch \
+        RejectedValueArrayCopyMatch \
+        RejectedCreatedArrayCopyMatch \
+        SignaturePairUnselectedMatch HiddenMethodDeadMatch IndexerUnselectedMatch \
+        ArityUnselectedMatch HiddenReflectedFieldDeadMatch \
+        UnselectedFieldStoredMatch OverwrittenDeadMatch \
+        StaticOverwrittenDeadMatch BoxOverwrittenDeadMatch TypeOverwrittenDeadMatch \
+        TypeSnapshotUnselectedMatch SignatureUnselectedMatch \
+        RuntimeSignatureUnselectedMatch ReflectedOverwrittenDeadMatch \
+        ReflectedSetOverwrittenDeadMatch \
+        ConstructorOverwrittenDeadMatch CctorOverwrittenDeadMatch ObjectGetTypeBoxMatch \
+        CopyShapeBoxMatch; do
+    if grep -Eq "^(inline |static )?int32_t ${name}_Equals_m[0-9]+\\(" \
+            "$box_root/gen"/generated*.h "$box_root/gen"/generated*.cpp; then
+        echo "FAIL: an unsearched value rooted its equality body: $name" >&2
+        exit 1
+    fi
+done
+
+grep -Fxq '// DynamicArrayNullEqualitySubset.SharedArraySearcher_$CnInt32::Search' \
+    "$box_root/gen/generated.h" "$box_root/gen"/generated*.cpp \
+    || { echo 'FAIL: the array search donor lost its canonical body' >&2; exit 1; }
+shared_calls=$(grep -Eo 'SharedArraySearcher_1_Search_m[0-9]+\(' \
+    "$box_root/gen"/generated_b*.cpp | sed 's/.*://')
+[ "$(wc -l <<< "$shared_calls" | tr -d ' ')" -eq 2 ] \
+    && [ "$(sort -u <<< "$shared_calls" | wc -l | tr -d ' ')" -eq 1 ] \
+    || { echo 'FAIL: both array searches must call one shared body' >&2; exit 1; }
+
+echo '== isolated reflection and array return boxes =='
+return_box_root=artifacts/arraycore-return-box-provenance
+dotnet build samples/dotnet/ArrayCore/ReflectionReturnBoxOnly.csproj -c "$CONFIG" \
+    --nologo -v q -o "$return_box_root/app"
+return_box_app="$return_box_root/app/ReflectionReturnBoxOnly.dll"
+invoke_cli "$return_box_app" -r "$corelib" -r "$bcl/System.Collections.dll" \
+    -o "$return_box_root/gen"
+compile_console "$return_box_root/gen" ReflectionReturnBoxOnly
+return_box_native=$(run_bounded "./$return_box_root/gen/ReflectionReturnBoxOnly$EXE_EXT")
+return_box_oracle=$(run_bounded dotnet "$return_box_app")
+assert_output "$(strip_cr_win "$return_box_native")" "$(strip_cr_win "$return_box_oracle")"
+return_box_lines=$(strip_cr_win "$return_box_native")
+for line in \
+    '== reflection and array return boxes ==' \
+    'method-box=0:1:False' \
+    'property-box=0:1:False' \
+    'array-get-box=0:1:False' \
+    'reflection and array return boxes end'; do
+    grep -Fxq "$line" <<< "$return_box_lines" \
+        || { echo "FAIL: reflected return equality witness missing: $line" >&2; exit 1; }
+done
+for name in ReflectedMethodBoxMatch ReflectedPropertyBoxMatch ArrayGetValueBoxMatch; do
+    if ! grep -Eq "^int32_t ${name}_Equals_m[0-9]+\\(" "$return_box_root/gen"/generated*.cpp; then
+        echo "FAIL: reflected return value equality body was not emitted: $name" >&2
+        exit 1
+    fi
+done
+
+echo '== bounded Type-provider call graph =='
+diamond_root=artifacts/arraycore-diamond-provenance
+dotnet build samples/dotnet/ArrayCore/DiamondProvenanceOnly.csproj -c "$CONFIG" \
+    --nologo -v q -o "$diamond_root/app"
+diamond_app="$diamond_root/app/DiamondProvenanceOnly.dll"
+invoke_cli "$diamond_app" -r "$corelib" -o "$diamond_root/gen"
+compile_console "$diamond_root/gen" DiamondProvenanceOnly
+diamond_native=$(run_bounded "./$diamond_root/gen/DiamondProvenanceOnly$EXE_EXT")
+diamond_oracle=$(run_bounded dotnet "$diamond_app")
+assert_output "$(strip_cr_win "$diamond_native")" "$(strip_cr_win "$diamond_oracle")"
+diamond_lines=$(strip_cr_win "$diamond_native")
+for line in \
+    '== array search provenance diamond ==' \
+    'diamond=0:1' \
+    'array search provenance diamond end'; do
+    grep -Fxq "$line" <<< "$diamond_lines" \
+        || { echo "FAIL: Type-provider call graph witness missing: $line" >&2; exit 1; }
+done
+grep -Eq '^int32_t DiamondMatch_Equals_m[0-9]+\(' "$diamond_root/gen"/generated*.cpp \
+    || { echo 'FAIL: diamond-selected value equality body was not emitted' >&2; exit 1; }
+
+echo '== array search field aliases =='
+field_alias_root=artifacts/arraycore-field-alias-provenance
+dotnet build samples/dotnet/ArrayCore/FieldAliasProvenanceOnly.csproj -c "$CONFIG" \
+    --nologo -v q -o "$field_alias_root/app"
+field_alias_app="$field_alias_root/app/FieldAliasProvenanceOnly.dll"
+invoke_cli "$field_alias_app" -r "$corelib" -o "$field_alias_root/gen"
+compile_console "$field_alias_root/gen" FieldAliasProvenanceOnly
+field_alias_native=$(run_bounded "./$field_alias_root/gen/FieldAliasProvenanceOnly$EXE_EXT")
+field_alias_oracle=$(run_bounded dotnet "$field_alias_app")
+assert_output "$(strip_cr_win "$field_alias_native")" "$(strip_cr_win "$field_alias_oracle")"
+field_alias_lines=$(strip_cr_win "$field_alias_native")
+for line in \
+    '== array search field aliases ==' \
+    'opaque-holder=0:1' \
+    'array-get-holder=0:1' \
+    'static-holder-overwrite=0:1' \
+    'array search field aliases end'; do
+    grep -Fxq "$line" <<< "$field_alias_lines" \
+        || { echo "FAIL: field alias equality witness missing: $line" >&2; exit 1; }
+done
+for name in OpaqueHolderMatch ArrayGetHolderMatch StaticHolderSelectedMatch; do
+    grep -Eq "^int32_t ${name}_Equals_m[0-9]+\\(" "$field_alias_root/gen"/generated*.cpp \
+        || { echo "FAIL: field alias equality body was not emitted: $name" >&2; exit 1; }
+done
+if grep -Eq '^(inline |static )?int32_t StaticHolderOverwrittenMatch_Equals_m[0-9]+\(' \
+        "$field_alias_root/gen"/generated*.h "$field_alias_root/gen"/generated*.cpp; then
+    echo 'FAIL: overwritten static-holder value rooted its equality body' >&2
+    exit 1
+fi
+
+echo '== unsupported selected value equality =='
+unsupported_root=artifacts/arraycore-unsupported-equality
+dotnet build samples/dotnet/ArrayCore/ArrayCore.csproj -c "$CONFIG" \
+    --nologo -v q -p:DefineConstants=ARRAY_UNSUPPORTED_EQUALITY_ONLY \
+    -o "$unsupported_root/app"
+set +e
+invoke_cli "$unsupported_root/app/ArrayCore.dll" -r "$corelib" \
+    -o "$unsupported_root/gen" > "$unsupported_root/refused.log" 2>&1
+unsupported_status=$?
+set -e
+if [ "$unsupported_status" -ne 2 ] \
+        || ! grep -Fq 'UnsupportedStructuralMatch' "$unsupported_root/refused.log" \
+        || ! grep -Fq 'ByValArray' "$unsupported_root/refused.log" \
+        || ! grep -iq 'equal' "$unsupported_root/refused.log"; then
+    echo 'FAIL: selected unsupported value equality was not explicitly refused' >&2
+    cat "$unsupported_root/refused.log" >&2
+    exit 1
+fi
+
+# Reference elements retain the stored array identity across a helper update.
+for alias_subject in ArrayElementAliasOnly ArrayObjectElementAliasOnly ArrayUnknownElementAliasOnly ArrayErasedElementAliasOnly ArrayReferenceSlotAliasOnly; do
+    alias_root="artifacts/arraycore-$alias_subject"
+    dotnet build "samples/dotnet/ArrayCore/$alias_subject.csproj" -c "$CONFIG" \
+        --nologo -v q -o "$alias_root/app"
+    alias_app="$alias_root/app/$alias_subject.dll"
+    invoke_cli "$alias_app" -r "$corelib" --shared-generics -o "$alias_root/gen"
+    compile_console "$alias_root/gen" "$alias_subject"
+    alias_native=$(run_bounded "./$alias_root/gen/$alias_subject$EXE_EXT")
+    alias_oracle=$(run_bounded dotnet "$alias_app")
+    assert_output "$(strip_cr_win "$alias_native")" "$(strip_cr_win "$alias_oracle")"
+    alias_lines=$(strip_cr_win "$alias_native")
+    for line in 'array element alias=0:1' 'array element alias end'; do
+        if ! grep -Fxq -- "$line" <<< "$alias_lines"; then
+            echo "FAIL: array element alias witness missing: $alias_subject / $line" >&2
+            exit 1
+        fi
+    done
+    if [ "$alias_subject" = ArrayReferenceSlotAliasOnly ] \
+            && ! grep -Fxq -- 'array reference-slot identity=True' <<< "$alias_lines"; then
+        echo 'FAIL: reference-slot boxing lost the array identity' >&2
+        exit 1
+    fi
+done
+
+# Reflected Void stays a runtime Box argument fault when its result feeds a search.
+void_box_root="artifacts/arraycore-reflected-void-box"
+dotnet build samples/dotnet/ArrayCore/ArrayReflectedVoidBoxOnly.csproj -c "$CONFIG" \
+    --nologo -v q -o "$void_box_root/app"
+void_box_app="$void_box_root/app/ArrayReflectedVoidBoxOnly.dll"
+invoke_cli "$void_box_app" -r "$corelib" --shared-generics -o "$void_box_root/gen"
+compile_console "$void_box_root/gen" ArrayReflectedVoidBoxOnly
+void_box_native=$(run_bounded "./$void_box_root/gen/ArrayReflectedVoidBoxOnly$EXE_EXT")
+void_box_oracle=$(run_bounded dotnet "$void_box_app")
+assert_output "$(strip_cr_win "$void_box_native")" "$(strip_cr_win "$void_box_oracle")"
+void_box_lines=$(strip_cr_win "$void_box_native")
+for line in 'reflected void box=ArgumentException' 'reflected void box end'; do
+    if ! grep -Fxq -- "$line" <<< "$void_box_lines"; then
+        echo "FAIL: reflected void box witness missing: $line" >&2
+        exit 1
+    fi
+done
+
+# A reference-array read retains its prior slot value after escape and later stores.
+for prior_store_subject in ArrayFutureStoreOnly ArrayFutureNullStoreOnly ArrayObjectFutureStoreOnly; do
+    prior_store_root="artifacts/arraycore-$prior_store_subject"
+    dotnet build "samples/dotnet/ArrayCore/$prior_store_subject.csproj" -c "$CONFIG" \
+        --nologo -v q -o "$prior_store_root/app"
+    prior_store_app="$prior_store_root/app/$prior_store_subject.dll"
+    invoke_cli "$prior_store_app" -r "$corelib" --shared-generics -o "$prior_store_root/gen"
+    compile_console "$prior_store_root/gen" "$prior_store_subject"
+    prior_store_native=$(run_bounded "./$prior_store_root/gen/$prior_store_subject$EXE_EXT")
+    prior_store_oracle=$(run_bounded dotnet "$prior_store_app")
+    assert_output "$(strip_cr_win "$prior_store_native")" "$(strip_cr_win "$prior_store_oracle")"
+    prior_store_lines=$(strip_cr_win "$prior_store_native")
+    if [ "$prior_store_subject" = ArrayObjectFutureStoreOnly ]; then
+        prior_store_witnesses=('UniqueModulo[]:0:1' 'ArrayObjectFutureUnsupportedOnly end')
+    elif [ "$prior_store_subject" = ArrayFutureNullStoreOnly ]; then
+        prior_store_witnesses=('array prior null=ArgumentNullException:elementType' 'array prior null end')
+    else
+        prior_store_witnesses=('array prior store=0:1' 'array prior store end')
+    fi
+    for line in "${prior_store_witnesses[@]}"; do
+        if ! grep -Fxq -- "$line" <<< "$prior_store_lines"; then
+            echo "FAIL: prior array store witness missing: $line" >&2
+            exit 1
+        fi
+    done
+    if grep -Eq '^int32_t .*FutureUnsupported.*_Equals_m[0-9]+\(' "$prior_store_root"/gen/generated*.cpp; then
+        echo 'FAIL: a later reference-array store rooted its unused equality body' >&2
+        exit 1
+    fi
+done
+
+for line in '== array producer and validation order ==' \
+        'runtime box search=0:0' 'nullable runtime box search=0:0' \
+        'uninitialized runtime box search=0:0' 'reference-slot runtime box search=0:0' \
+        'reference-slot runtime box identity=True' 'reference-slot runtime box type=0:1' \
+        'array producer and validation order end'; do
+    if ! grep -Fxq -- "$line" <<< "$native"; then
+        echo "FAIL: runtime producer witness missing: $line" >&2
+        exit 1
+    fi
+done

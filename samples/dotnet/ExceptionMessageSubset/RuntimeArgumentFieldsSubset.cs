@@ -86,4 +86,15 @@ internal static class RuntimeArgumentFieldsSubset
         Probe("polyfill blank surrogate message", () => ThrowHelper.IfNullOrWhitespace(" ", "a\ud800b"));
         Console.WriteLine("polyfill IfNullOrWhitespace value: " + ThrowHelper.IfNullOrWhitespace("x", "p"));
     }
+    internal static void RunArrayShapes()
+    {
+        Console.WriteLine("-- runtime Array argument fields --");
+        Probe("array-createinstance-length2", () => Array.CreateInstance(typeof(int), 1, -1));
+        Probe("array-createinstance-lengths-element", () => Array.CreateInstance(typeof(int), new int[] { 1, -1 }));
+        Probe("array-fromarraytype-not-array", () => Array.CreateInstanceFromArrayType(typeof(int), 1));
+        Probe("array-getvalue-huge-index", () => ((Array)new int[2, 2]).GetValue(5000000000L));
+        Probe("array-getvalue-null-indices", () => ((Array)new int[3]).GetValue((int[])null));
+        Console.WriteLine("runtime Array argument fields end");
+    }
+
 }

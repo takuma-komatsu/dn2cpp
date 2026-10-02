@@ -123,6 +123,10 @@ internal sealed partial class MethodCompiler
             {
                 var arg = Pop();
                 Push(StackKind.Ref, "Dn2CppType*", $"dn2cpp_get_type_from_handle({arg.Expr})", arg.TypeToken);
+                var origin = _c.TransformArraySearchOrigin(arg.ArraySearchOrigin,
+                    ArraySearchFlowKind.Identity);
+                _c.AddArraySearchSeed(origin, ArraySearchValueKind.RuntimeType, arg.TypeToken);
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin = origin };
                 return true;
             }
             // Type.TypeHandle: the inverse of GetTypeFromHandle — a RuntimeTypeHandle
@@ -135,6 +139,7 @@ internal sealed partial class MethodCompiler
                 var a = Pop();
                 Push(StackKind.Ptr, "const Dn2CppTypeInfo*",
                     $"dn2cpp_type_require({Cast(a, "Dn2CppType*")})", a.TypeToken);
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin = a.ArraySearchOrigin };
                 return true;
             }
             // RuntimeTypeHandle is the type-info pointer itself; its CoreLib struct
@@ -203,6 +208,9 @@ internal sealed partial class MethodCompiler
                 // handle it carries is the one typeof(CultureInfo) names.
                 Push(StackKind.Ref, "Dn2CppType*",
                     $"dn2cpp_get_type_from_handle(((Dn2CppObject*)({Cast(o, "Dn2CppObject*")}))->type)");
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin =
+                    _c.TransformArraySearchOrigin(o.ArraySearchOrigin,
+                        ArraySearchFlowKind.ObjectTypeToRuntimeType) };
                 return true;
             }
             // typeof(T).IsValueType: when T is statically known (the type token
@@ -371,8 +379,7 @@ internal sealed partial class MethodCompiler
                 Pop();
                 Push(StackKind.I4, "int32_t", "0");
                 return true;
-            // RuntimeHelpers.Box(ref byte, RuntimeTypeHandle): only
-            // Enum.InternalBoxEnum reaches this (the Enum.ToObject family). The handle
+            // RuntimeHelpers.Box(ref byte, RuntimeTypeHandle): the handle
             // value is the type-info pointer (see the RuntimeTypeHandle mapping in
             // CppTypes) and it is a RUN-TIME value, so the payload width must be read
             // off it in the runtime — a fixed sizeof(int32_t) here would truncate a
@@ -383,6 +390,8 @@ internal sealed partial class MethodCompiler
                 var r = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*",
                     $"dn2cpp_box_by_handle({h.Expr}, (const void*)({r.Expr}))");
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin =
+                    _c.ArraySearchRuntimeBoxOrigin(h.ArraySearchOrigin, r.ArraySearchOrigin) };
                 return true;
             }
             // RuntimeHelpers.GetUninitializedObject(Type): allocate without running
@@ -398,6 +407,9 @@ internal sealed partial class MethodCompiler
                 _c.NoteIntrinsicInterfaces("System.IO.MemoryMappedFiles.MemoryMappedViewAccessor");
                 Push(StackKind.Ref, "Dn2CppObject*",
                     $"dn2cpp_get_uninitialized_object({Cast(t, "Dn2CppType*")})");
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin =
+                    _c.TransformArraySearchOrigin(t.ArraySearchOrigin,
+                        ArraySearchFlowKind.RuntimeTypeToBoxedValue) };
                 return true;
             }
             // Assembly.GetTypes(): the type-registry entries the assembly defines
@@ -788,6 +800,9 @@ internal sealed partial class MethodCompiler
                 var n = Pop();
                 var t = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*", $"((Dn2CppObject*)dn2cpp_type_get_field({Cast(t, "Dn2CppType*")}, {Cast(n, "Dn2CppString*")}, 28))");
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin =
+                    _c.TransformArraySearchOrigin(t.ArraySearchOrigin, ArraySearchFlowKind.FieldType,
+                        Compilation.ArraySearchSelector(n.StrLiteral, 28)) };
                 return true;
             }
             case ("System.Type", "GetField") when sig.ParameterTypes.Length == 2:
@@ -796,12 +811,16 @@ internal sealed partial class MethodCompiler
                 var n = Pop();
                 var t = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*", $"((Dn2CppObject*)dn2cpp_type_get_field({Cast(t, "Dn2CppType*")}, {Cast(n, "Dn2CppString*")}, {Cast(flags, "int32_t")}))");
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin =
+                    _c.TransformArraySearchOrigin(t.ArraySearchOrigin, ArraySearchFlowKind.FieldType,
+                        Compilation.ArraySearchSelector(n.StrLiteral, ConstIntOf(flags))) };
                 return true;
             }
             case ("System.Reflection.FieldInfo", "get_FieldType"):
             {
                 var f = Pop();
                 Push(StackKind.Ref, "Dn2CppType*", $"dn2cpp_fieldref_field_type((Dn2CppFieldRef*)({f.Expr}))");
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin = f.ArraySearchOrigin };
                 return true;
             }
             case ("System.Reflection.FieldInfo", "get_IsStatic"):
@@ -835,6 +854,9 @@ internal sealed partial class MethodCompiler
                 var obj = Pop();
                 var f = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_fieldref_get_value((Dn2CppFieldRef*)({f.Expr}), {Cast(obj, "Dn2CppObject*")})");
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin =
+                    _c.ArraySearchReflectedFieldValue(f.ArraySearchOrigin, obj.ArraySearchOrigin,
+                        _method, _arraySearchInstructionOffset, _arraySearchStraightLine) };
                 return true;
             }
             case ("System.Reflection.FieldInfo", "SetValue") when sig.ParameterTypes.Length == 2:
@@ -842,6 +864,9 @@ internal sealed partial class MethodCompiler
                 var value = Pop();
                 var obj = Pop();
                 var f = Pop();
+                _c.NoteArraySearchReflectedFieldStore(_method, f.ArraySearchOrigin,
+                    obj.ArraySearchOrigin, value.ArraySearchOrigin,
+                    _arraySearchInstructionOffset, _arraySearchStraightLine);
                 Emit($"dn2cpp_fieldref_set_value((Dn2CppFieldRef*)({f.Expr}), {Cast(obj, "Dn2CppObject*")}, {Cast(value, "Dn2CppObject*")});");
                 return true;
             }
@@ -857,6 +882,9 @@ internal sealed partial class MethodCompiler
                 var value = Pop();
                 var obj = Pop();
                 var f = Pop();
+                _c.NoteArraySearchReflectedFieldStore(_method, f.ArraySearchOrigin,
+                    obj.ArraySearchOrigin, value.ArraySearchOrigin,
+                    _arraySearchInstructionOffset, _arraySearchStraightLine);
                 Emit($"dn2cpp_fieldref_set_value((Dn2CppFieldRef*)({f.Expr}), {Cast(obj, "Dn2CppObject*")}, {Cast(value, "Dn2CppObject*")});");
                 return true;
             }
@@ -896,12 +924,23 @@ internal sealed partial class MethodCompiler
                 var t = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*",
                     $"((Dn2CppObject*)dn2cpp_type_get_method_full({Cast(t, "Dn2CppType*")}, {ma.Name}, {ma.GenericCount ?? "-1"}, {ma.Types ?? "nullptr"}, {ma.Flags ?? "28"}, {ma.CallConv ?? "0"}, {ma.Binder ?? "nullptr"}))");
+                var methodOrigin = _c.TransformArraySearchOrigin(t.ArraySearchOrigin,
+                    ArraySearchFlowKind.MethodReturnType,
+                    Compilation.ArraySearchSelector(ma.NameLiteral, ma.Flags is null ? 28 : ma.FlagsValue,
+                        ma.ZeroParameters, ma.ParameterTypes, ma.GenericCountValue));
+                if (ma.Types is not null && ma.ParameterTypes is null)
+                {
+                    methodOrigin.LookupParameterTypes = ma.TypesOrigin;
+                    methodOrigin.LookupOffset = _arraySearchInstructionOffset;
+                }
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin = methodOrigin };
                 return true;
             }
             case ("System.Reflection.MethodInfo", "get_ReturnType"):
             {
                 var m = Pop();
                 Push(StackKind.Ref, "Dn2CppType*", $"dn2cpp_methodref_return_type((Dn2CppMethodRef*)({m.Expr}))");
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin = m.ArraySearchOrigin };
                 return true;
             }
             // MethodBase.ContainsGenericParameters: the reflection surface only
@@ -1015,6 +1054,9 @@ internal sealed partial class MethodCompiler
                 var obj = Pop();
                 var m = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_methodref_invoke((Dn2CppMethodRef*)({m.Expr}), {Cast(obj, "Dn2CppObject*")}, {Cast(args, "Dn2CppArrayRef*")})");
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin =
+                    _c.TransformArraySearchOrigin(m.ArraySearchOrigin,
+                        ArraySearchFlowKind.FieldTypeToBoxedValue) };
                 return true;
             }
             case ("System.Reflection.MethodBase", "Invoke") when sig.ParameterTypes.Length == 5
@@ -1027,6 +1069,9 @@ internal sealed partial class MethodCompiler
                 var obj = Pop();
                 var m = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_methodref_invoke((Dn2CppMethodRef*)({m.Expr}), {Cast(obj, "Dn2CppObject*")}, {Cast(args, "Dn2CppArrayRef*")}, {WrapsInvokeExceptions(flags)})");
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin =
+                    _c.TransformArraySearchOrigin(m.ArraySearchOrigin,
+                        ArraySearchFlowKind.FieldTypeToBoxedValue) };
                 return true;
             }
             // MethodInfo.CreateDelegate(Type[, object target]): bind the methtab row
@@ -1202,6 +1247,11 @@ internal sealed partial class MethodCompiler
                 var t = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*",
                     $"((Dn2CppObject*)dn2cpp_type_get_property_full({Cast(t, "Dn2CppType*")}, {pa.Name}, {pa.Flags ?? "28"}, {pa.ReturnType ?? "nullptr"}, {pa.Types ?? "nullptr"}, {pa.Binder ?? "nullptr"}))");
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin =
+                    _c.TransformArraySearchOrigin(t.ArraySearchOrigin,
+                        ArraySearchFlowKind.PropertyType,
+                        Compilation.ArraySearchSelector(pa.NameLiteral, pa.Flags is null ? 28 : pa.FlagsValue,
+                            pa.ZeroParameters, pa.ParameterTypes)) };
                 return true;
             }
             // Type.GetMember(name[, MemberTypes][, BindingFlags]) — MemberInfo[]
@@ -1262,6 +1312,7 @@ internal sealed partial class MethodCompiler
             {
                 var p = Pop();
                 Push(StackKind.Ref, "Dn2CppType*", $"dn2cpp_propref_property_type((Dn2CppPropRef*)({p.Expr}))");
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin = p.ArraySearchOrigin };
                 return true;
             }
             case ("System.Reflection.PropertyInfo", "get_CanRead"):
@@ -1305,6 +1356,9 @@ internal sealed partial class MethodCompiler
                 var obj = Pop();
                 var p = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_propref_get_value((Dn2CppPropRef*)({p.Expr}), {Cast(obj, "Dn2CppObject*")})");
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin =
+                    _c.TransformArraySearchOrigin(p.ArraySearchOrigin,
+                        ArraySearchFlowKind.FieldTypeToBoxedValue) };
                 return true;
             }
             case ("System.Reflection.PropertyInfo", "SetValue") when sig.ParameterTypes.Length == 2:
@@ -1336,6 +1390,9 @@ internal sealed partial class MethodCompiler
                 var p = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*",
                     $"dn2cpp_propref_get_value_indexed((Dn2CppPropRef*)({p.Expr}), {Cast(obj, "Dn2CppObject*")}, {Cast(index, "Dn2CppArrayRef*")}, nullptr)");
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin =
+                    _c.TransformArraySearchOrigin(p.ArraySearchOrigin,
+                        ArraySearchFlowKind.FieldTypeToBoxedValue) };
                 return true;
             }
             case ("System.Reflection.PropertyInfo", "SetValue") when sig.ParameterTypes.Length == 3
@@ -1361,6 +1418,9 @@ internal sealed partial class MethodCompiler
                 var p = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*",
                     $"dn2cpp_propref_get_value_indexed((Dn2CppPropRef*)({p.Expr}), {Cast(obj, "Dn2CppObject*")}, {Cast(index, "Dn2CppArrayRef*")}, {Cast(binder, "Dn2CppObject*")}, {WrapsInvokeExceptions(flags)})");
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin =
+                    _c.TransformArraySearchOrigin(p.ArraySearchOrigin,
+                        ArraySearchFlowKind.FieldTypeToBoxedValue) };
                 return true;
             }
             // SetValue(obj, value, BindingFlags, Binder, object[] index, CultureInfo).
@@ -1491,7 +1551,12 @@ internal sealed partial class MethodCompiler
             case ("System.Type", "GetElementType") when sig.ParameterTypes.Length == 0:
             {
                 var a = Pop();
-                Push(StackKind.Ref, "Dn2CppType*", $"dn2cpp_type_get_element_type({Cast(a, "Dn2CppType*")})");
+                Push(StackKind.Ref, "Dn2CppType*", $"dn2cpp_type_get_element_type({Cast(a, "Dn2CppType*")})",
+                    a.TypeToken is { Kind: TypeKind.SZArray or TypeKind.MDArray } arrayType
+                        ? arrayType.Element : null);
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin =
+                    _c.TransformArraySearchOrigin(a.ArraySearchOrigin,
+                        ArraySearchFlowKind.ElementType) };
                 return true;
             }
             case ("System.Type", "GetArrayRank") when sig.ParameterTypes.Length == 0:
@@ -1579,6 +1644,9 @@ internal sealed partial class MethodCompiler
                 // precise Type[] type-info — BCL callers foreach it as
                 // IEnumerable<Type>.
                 PushReflectionMemberArray($"dn2cpp_type_get_generic_arguments({Cast(a, "Dn2CppType*")})", sig.ReturnType);
+                _stack[^1] = _stack[^1] with { StaticType = sig.ReturnType, ArraySearchOrigin =
+                    _c.TransformArraySearchOrigin(a.ArraySearchOrigin,
+                        ArraySearchFlowKind.GenericArguments) };
                 return true;
             }
             case ("System.Type", "MakeGenericType") when sig.ParameterTypes.Length == 1:
@@ -1732,6 +1800,9 @@ internal sealed partial class MethodCompiler
             {
                 var a = Pop();
                 Push(StackKind.Ref, "Dn2CppType*", $"dn2cpp_type_make_array_type({Cast(a, "Dn2CppType*")})");
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin =
+                    _c.TransformArraySearchOrigin(a.ArraySearchOrigin,
+                        ArraySearchFlowKind.ArrayTypeFromElement) };
                 return true;
             }
             case ("System.Type", "MakeArrayType") when sig.ParameterTypes.Length == 1:
@@ -2259,8 +2330,14 @@ internal sealed partial class MethodCompiler
     private sealed class LookupArgs
     {
         public string Name = "nullptr";
+        public string? NameLiteral;
+        public bool ZeroParameters;
+        public IReadOnlyList<string>? ParameterTypes;
+        public ArraySearchOrigin? TypesOrigin;
         public string? GenericCount;
+        public int? GenericCountValue;
         public string? Flags;
+        public int? FlagsValue;
         public string? Binder;
         public string? CallConv;
         public string? ReturnType;
@@ -2340,13 +2417,28 @@ internal sealed partial class MethodCompiler
             var e = Pop();
             switch (slots[i])
             {
-                case LookupSlot.Name: a.Name = Cast(e, "Dn2CppString*"); break;
-                case LookupSlot.GenericCount: a.GenericCount = Cast(e, "int32_t"); break;
-                case LookupSlot.Flags: a.Flags = Cast(e, "int32_t"); break;
+                case LookupSlot.Name:
+                    a.Name = Cast(e, "Dn2CppString*");
+                    a.NameLiteral = e.StrLiteral;
+                    break;
+                case LookupSlot.GenericCount:
+                    a.GenericCount = Cast(e, "int32_t");
+                    a.GenericCountValue = ConstIntOf(e);
+                    break;
+                case LookupSlot.Flags:
+                    a.Flags = Cast(e, "int32_t");
+                    a.FlagsValue = ConstIntOf(e);
+                    break;
                 case LookupSlot.Binder: a.Binder = Cast(e, "Dn2CppObject*"); break;
                 case LookupSlot.CallConv: a.CallConv = Cast(e, "int32_t"); break;
                 case LookupSlot.ReturnType: a.ReturnType = Cast(e, "Dn2CppType*"); break;
-                case LookupSlot.Types: a.Types = Cast(e, "Dn2CppArrayRef*"); break;
+                case LookupSlot.Types:
+                    a.Types = Cast(e, "Dn2CppArrayRef*");
+                    a.TypesOrigin = e.ArraySearchOrigin;
+                    a.ZeroParameters = e.KnownEmptyTypeArray;
+                    a.ParameterTypes = e.KnownEmptyTypeArray
+                        ? Array.Empty<string>() : _c.KnownArraySearchTypeArray(e.ArraySearchOrigin);
+                    break;
                 case LookupSlot.Modifiers: break; // ignored (CoreCLR ignores it outside COM)
             }
         }

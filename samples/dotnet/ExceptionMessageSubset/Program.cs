@@ -286,6 +286,9 @@ namespace ExceptionMessageSubset
             if (args.Length > 0 && args[0] == "before-runtime-exception-chains")
                 return;
             RuntimeExceptionChainSubset.Run();
+            if (args.Length > 0 && args[0] == "before-array-shape-fields")
+                return;
+            RuntimeArgumentFieldsSubset.RunArrayShapes();
         }
     }
 }

@@ -997,20 +997,20 @@ internal sealed partial class Compilation
     /// grows by zero bytes. The used-slot model of <see cref="_usedVirtualDecls"/>, for the
     /// one virtual whose declaring type is intrinsic and therefore has no slot to mark.
     /// </summary>
-    private bool _objectEqualityDispatched;
-    private bool _nonGenericArrayEqualityDispatched;
-    private readonly Dictionary<ClassInfo, TypeDesc> _allocatedArrayValueElements = new();
-    private readonly HashSet<ClassInfo> _explicitlyBoxedArrayValues = new();
-
-    private void NoteArrayValueElement(TypeDesc? element)
+    // Array.Initialize runs constructors that its call signature cannot name.
+    private static bool IsArrayInitializeRef(Module module, MemberReferenceHandle handle)
     {
-        // The IL newarr operand is the immediate element. A jagged array's
-        // element is a reference array, so its underlying struct is not boxed.
-        if (element is { Kind: TypeKind.Class } && !ContainsCanonPlaceholder(element)
-            && !ContainsGenericVar(element))
-            _allocatedArrayValueElements.TryAdd(element.Class!, element);
+        var reader = module.Reader;
+        var parent = reader.GetMemberReference(handle).Parent;
+        if (parent.Kind != HandleKind.TypeReference)
+            return false;
+        var tr = reader.GetTypeReference((TypeReferenceHandle)parent);
+        return reader.StringComparer.Equals(tr.Name, "Array")
+            && reader.StringComparer.Equals(tr.Namespace, "System");
     }
 
+    private bool _objectEqualityDispatched;
+    private bool _nonGenericArrayEqualityDispatched;
     /// <summary>Records an emit site that will lower to <c>dn2cpp_object_equals</c> /
     /// <c>dn2cpp_object_gethashcode</c>. Called from the reachability scan (never from
     /// emission — the wiring it drives is decided before a single body compiles).</summary>
@@ -1283,8 +1283,8 @@ internal sealed partial class Compilation
     /// hash.</para>
     ///
     /// <para>Both halves of the gate are load-bearing: boxed, so the helpers can reach it
-    /// at all (<see cref="IsAllocated"/> of a value type IS "was boxed" — only the
-    /// <c>box</c> opcode puts one in the set); and object-equality dispatched, so a program
+    /// at all (<see cref="IsAllocated"/> of a value type records a box from IL or
+    /// reflection); and object-equality dispatched, so a program
     /// that never compares two objects pays nothing. Returns whether anything new was
     /// reached — a fresh box can appear in the drain it triggers.</para></summary>
     private bool ReachBoxedValueEquality()
@@ -1316,10 +1316,10 @@ internal sealed partial class Compilation
         if (!_nonGenericArrayEqualityDispatched)
             return false;
         int before = Reachable.Count;
-        // The runtime Array operand can select any value array allocated by a
-        // reachable newarr, or any boxed value stored in an object[] array.
-        var candidates = new HashSet<ClassInfo>(_explicitlyBoxedArrayValues);
-        foreach (var element in _allocatedArrayValueElements.Values.ToList())
+        // The runtime Array operand can select a value array from newarr or a
+        // runtime Type factory, or a boxed value stored in an object[] array.
+        var candidates = new HashSet<ClassInfo>();
+        foreach (var element in SelectedArraySearchElements().ToList())
         {
             var boxedElement = NullableUnderlying(element) ?? element;
             if (boxedElement is { Kind: TypeKind.Class, Class: { } c }
@@ -1328,15 +1328,28 @@ internal sealed partial class Compilation
         }
         foreach (var c in candidates.ToList())
         {
-            if (ContainsCanonPlaceholder(c) || ContainsGenericVar(c)
-                || CoreIntrinsics.IsIntrinsicType(c.FullName) || c.IntrinsicCppName is not null
-                || CoreIntrinsics.RuntimeOwnsTypeInfo(c)
-                || (!IsUserModule(c.Module) && HoldsUncomparableIntrinsic(c)))
+            if (CoreIntrinsics.IsIntrinsicType(c.FullName) || c.IntrinsicCppName is not null
+                || CoreIntrinsics.RuntimeOwnsTypeInfo(c))
                 continue;
-            if (EffectiveEquals(c) is { } eq)
+            if (ContainsCanonPlaceholder(c) || ContainsGenericVar(c)
+                || (!IsUserModule(c.Module) && HoldsUncomparableIntrinsic(c)))
+                throw new NotSupportedException($"{c.FullName}: selected array search equality cannot be emitted");
+            MethodInfo? eq = EffectiveEquals(c);
+            if (eq is not null)
                 Reach(eq);
             else
+            {
                 ReachSynthesizedValueEquality(c, includeHash: false);
+                eq = ReachedSynthesizedValueEquals(c);
+            }
+            if (eq is null || !Reachable.Contains(eq)
+                || _backend?.ShouldSkipMethodBody(eq.DeclaringClass, eq) == true)
+            {
+                bool byValArray = StructuralFields(c).Any(f => f.ByValArraySize >= 0);
+                throw new NotSupportedException($"{c.FullName}: selected array search equality "
+                    + (byValArray ? "cannot be emitted for a ByValArray field"
+                        : "cannot be emitted"));
+            }
         }
         return Reachable.Count != before;
     }
@@ -5072,6 +5085,7 @@ internal sealed partial class Compilation
         if (spec.MembersCompleted)
             return;
         spec.MembersCompleted = true;
+        _membersCompletedOrder.Add(spec);
         var module = spec.Module;
         var reader = module.Reader;
         var td = reader.GetTypeDefinition(spec.Handle);
@@ -5316,9 +5330,6 @@ internal sealed partial class Compilation
                     case ILOpCode.Castclass:
                     case ILOpCode.Isinst:
                     case ILOpCode.Newarr:
-                        if (insn.OpCode == ILOpCode.Newarr
-                            && ResolveTypeTokenForScan(module, handle, m.Context) is { } arrayElement)
-                            NoteArrayValueElement(arrayElement);
                         // --trim-godot-classes release trigger: `(T)GetNode(...)`,
                         // `x is T` / `x as T`, and `new T[n]` all name T — for a cast
                         // that naming is precisely what makes the ancestor-wrapper
@@ -5355,6 +5366,12 @@ internal sealed partial class Compilation
                         // nor decodes anything, so what gets decoded (and in what
                         // order) is unchanged. Hoisted to this scope so the
                         // get_CompareInfo site below reuses them instead of recomputing.
+                        if (!_runtimeArrayInitialize && handle.Kind == HandleKind.MemberReference
+                            && insn.OpCode is ILOpCode.Call or ILOpCode.Callvirt or ILOpCode.Ldftn or ILOpCode.Ldvirtftn
+                            && module.Reader.StringComparer.Equals(
+                                module.Reader.GetMemberReference((MemberReferenceHandle)handle).Name, "Initialize")
+                            && IsArrayInitializeRef(module, (MemberReferenceHandle)handle))
+                            _runtimeArrayInitialize = true;
                         string? mrName = null, mrParent = null;
                         if (insn.OpCode is ILOpCode.Call or ILOpCode.Callvirt
                             && handle.Kind == HandleKind.MemberReference)
@@ -5974,8 +5991,6 @@ internal sealed partial class Compilation
                                 { Kind: TypeKind.Class, Class: { } underlying } && underlying.EnsureMembers().IsValueType
                                     ? underlying : bc;
                             ReachAllocatedType(held);
-                            if (IsUserModule(module))
-                                _explicitlyBoxedArrayValues.Add(held);
                             // A boxed struct formatted as a unit (Console.WriteLine /
                             // "s" + tuple) dispatches its ToString through
                             // dn2cpp_object_tostring's tostring slot — but boxing

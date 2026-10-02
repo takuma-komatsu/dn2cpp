@@ -17,6 +17,9 @@ namespace HotPath
             HotPathNoAllocSubset.Program.__GateEntry();
             HotPathFastMathSubset.Program.__GateEntry();
             HotPathNoAliasSubset.Program.__GateEntry();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_REFLECTION_NOALLOC") == "1")
+                return;
+            HotPathNoAllocSubset.Program.__GateReflectionEntry();
         }
     }
 }

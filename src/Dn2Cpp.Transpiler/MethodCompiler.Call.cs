@@ -331,6 +331,8 @@ internal sealed partial class MethodCompiler
         // The raw call token, for rgctx slot keying (verified before use).
         _callSiteToken = insn.Token;
         _callIsVirtual = isCallvirt;
+        _arraySearchCallArguments = null;
+        _arraySearchByRefLocalSlots.Clear();
         var handle = SRME.EntityHandle(insn.Token);
         EnsureStaticCallCctorBefore(handle);
         // Enum.HasFlag(flag): both the receiver and the flag arrive as boxed Enum
@@ -4736,6 +4738,12 @@ internal sealed partial class MethodCompiler
         if (callee.Signature.ReturnType.IsVoid)
         {
             Emit(call + ";");
+            var callOrigin = _c.ArraySearchCallOrigin(_method, callee,
+                _arraySearchCallArguments ?? Array.Empty<ArraySearchOrigin?>(),
+                _callIsVirtual && callee.IsVirtual, _arraySearchInstructionOffset,
+                _arraySearchStraightLine);
+            NoteArraySearchByRefCallWrite(callee, callOrigin);
+            _arraySearchCallArguments = null;
             return;
         }
         string retC = CppTypes.Of(callee.Signature.ReturnType);
@@ -4766,6 +4774,20 @@ internal sealed partial class MethodCompiler
                 call = $"(({retC})({call}))";
         }
         Push(CppTypes.KindOf(callee.Signature.ReturnType), retC, call);
+        var returnOrigin = _c.ArraySearchCallOrigin(_method, callee,
+            _arraySearchCallArguments ?? Array.Empty<ArraySearchOrigin?>(),
+            _callIsVirtual && callee.IsVirtual, _arraySearchInstructionOffset,
+            _arraySearchStraightLine);
+        NoteArraySearchByRefCallWrite(callee, null);
+        if (callee.Signature.ReturnType is { Kind: TypeKind.SZArray or TypeKind.MDArray,
+                Element: { } returnedElement })
+        {
+            _c.AddArraySearchSeed(returnOrigin, ArraySearchValueKind.ArrayElement, returnedElement);
+            _c.AddArraySearchSeed(returnOrigin, ArraySearchValueKind.ArrayRuntimeType,
+                callee.Signature.ReturnType);
+        }
+        _stack[^1] = _stack[^1] with { ArraySearchOrigin = returnOrigin };
+        _arraySearchCallArguments = null;
         // Thread the declared return type as the result's StaticType so a List<T>
         // arriving directly from a call (e.g. seq.ToList) is recognised by
         // TryListBacking — lifting the call-result boundary for
@@ -4780,5 +4802,19 @@ internal sealed partial class MethodCompiler
         // static-type broadening; locals/args thread it via PushVar).
         if (callee.Signature.ReturnType is { Kind: TypeKind.Class or TypeKind.SZArray })
             _stack[^1] = _stack[^1] with { StaticType = callee.Signature.ReturnType };
+    }
+
+    private void NoteArraySearchByRefCallWrite(MethodInfo callee, ArraySearchOrigin? callOrigin)
+    {
+        if (!_arraySearchStraightLine || _callIsVirtual || _arraySearchCallArguments is null
+            || _arraySearchByRefLocalSlots.Count != 1)
+            return;
+        var (local, parameter) = _arraySearchByRefLocalSlots[0];
+        var previous = ArraySearchLocal(local);
+        _arraySearchLocals[local] = callOrigin is { } existing
+            ? _c.ArraySearchByRefCallOrigin(existing, _method, callee,
+                previous, local, parameter, _arraySearchInstructionOffset)
+            : _c.ArraySearchByRefCallOrigin(_method, callee, _arraySearchCallArguments,
+                previous, local, parameter, _arraySearchInstructionOffset);
     }
 }

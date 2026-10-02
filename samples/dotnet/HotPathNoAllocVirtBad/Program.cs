@@ -65,6 +65,12 @@ namespace HotPathNoAllocVirtBad
         private static bool EqualErased(Key left, Key right) =>
             ((System.Collections.IEqualityComparer)EqualityComparer<Key>.Default).Equals(left, right);
 
+        [HotPath(NoAlloc = true)]
+        private static int SearchFirst(Array values, object value) => Array.IndexOf(values, value);
+
+        [HotPath(NoAlloc = true)]
+        private static int SearchLast(Array values, object value) => Array.LastIndexOf(values, value);
+
         private static void Main(string[] args)
         {
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
@@ -73,6 +79,8 @@ namespace HotPathNoAllocVirtBad
             Console.WriteLine(CountSides(s));
             Console.WriteLine(EqualTyped(new Key(), new Key()));
             Console.WriteLine(EqualErased(new Key(), new Key()));
+            Console.WriteLine(SearchFirst(new object[] { new Key() }, new Key()));
+            Console.WriteLine(SearchLast(new object[] { new Key() }, new Key()));
         }
     }
 }

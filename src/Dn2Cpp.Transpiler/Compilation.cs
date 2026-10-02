@@ -410,6 +410,10 @@ internal sealed partial class Compilation
     private readonly List<MethodInfo> _methodInstanceOrder = new();
     private int _methodInstanceLinkCursor;
 
+    /// <summary>The specializations whose members <see cref="CompleteMembers"/> decoded,
+    /// in that order.</summary>
+    private readonly List<ClassInfo> _membersCompletedOrder = new();
+
     /// <summary>Specializations awaiting completion. Drained FIFO — or, with
     /// <c>DN2CPP_SPEC_DRAIN=lifo</c>, LIFO.
     /// <para>That knob is an <b>order probe</b>, and it is sound because both the
@@ -598,7 +602,7 @@ internal sealed partial class Compilation
                 throw new NotSupportedException(
                     $"--cut {type}::{method}: no loaded assembly declares type {type} "
                     + $"(loaded: {string.Join(", ", Modules.Select(m => m.AssemblyName))})");
-            if (!cls.Methods.Any(m => m.Name == method))
+            if (!cls.EnsureMembers().Methods.Any(m => m.Name == method))
                 throw new NotSupportedException(
                     $"--cut {type}::{method}: type {type} has no method named {method}");
         }
@@ -2575,6 +2579,10 @@ internal sealed partial class Compilation
     /// — shared by the collection set and the emitter so they agree.</summary>
     internal static string ArrayElemMangle(TypeDesc element) => MangleArg(element);
 
+    /// <summary>A type's instantiation-cache mangle: one spelling per type the model
+    /// distinguishes, each generic parameter by position.</summary>
+    internal static string IdentityMangle(TypeDesc t) => MangleArg(t);
+
     /// <summary>SZArray element types reached via <c>newarr T</c> / <c>typeof(T[])</c>,
     /// keyed by <see cref="ArrayElemMangle"/> so value-equal TypeDescs dedupe
     /// (TypeDesc has reference identity). CppEmitter emits one per-element
@@ -3571,9 +3579,8 @@ internal sealed partial class Compilation
         return added;
     }
 
-    /// <summary>Set once a compiled body lowers Array.Initialize to
-    /// <c>dn2cpp_array_initialize</c>, which runs the element's parameterless constructor
-    /// through the element type's constructor row.</summary>
+    /// <summary>Array.Initialize is scanned before freezing constructor reachability
+    /// and can also be discovered when a body is lowered.</summary>
     private bool _runtimeArrayInitialize;
 
     /// <summary>How much of <see cref="Classes"/>, which only grows,
@@ -4434,8 +4441,15 @@ internal sealed partial class Compilation
         // walk it starts can produce more of both (a field's Equals override is a body, and
         // a body can box). Alternate with the drain to a fixpoint, exactly as the
         // used×allocated cross product it stands in for does.
-        while (ReachBoxedValueEquality() || ReachNonGenericArrayElementEquality())
-            DrainReachability();
+        int admitted;
+        do
+        {
+            admitted = Reachable.Order.Count;
+            ReachRuntimeArrayInitializeCtors();
+            if (ReachBoxedValueEquality() || ReachNonGenericArrayElementEquality())
+                DrainReachability();
+        }
+        while (Reachable.Order.Count != admitted);
 
         // --trim-godot-classes: the allowlist may only grow while reachability can
         // still deliver the released lambdas' subtrees — freeze it here, after the

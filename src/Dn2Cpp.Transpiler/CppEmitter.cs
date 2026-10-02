@@ -1990,7 +1990,10 @@ internal sealed partial class CppEmitter
         var result = new ParallelBodyResult();
         try
         {
-            var mc = new MethodCompiler(_c, m, literals, _backend);
+            var mc = new MethodCompiler(_c, m, literals, _backend)
+            {
+                RecordArraySearchOrigins = false,
+            };
             if (_c.SharedGenericsEnabled && Compilation.IsCanonicalMethod(m))
             {
                 mc.SharedTrial = true;

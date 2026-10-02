@@ -64,6 +64,24 @@ namespace ArraySurfaceSubset
             public int X = 4;
         }
 
+        // Only Comparing's constructor boxes one, and it overrides neither Equals nor
+        // GetHashCode, so a box compares by its fields.
+        private struct ComparedBox
+        {
+            public int X;
+            public string S;
+        }
+
+        private struct Comparing
+        {
+            public string Same;
+            public Comparing()
+            {
+                object first = new ComparedBox { X = 3, S = "c" }, second = new ComparedBox { X = 3, S = "c" };
+                Same = first.Equals(second) + "/" + object.Equals(first, second);
+            }
+        }
+
         private static Array Init(Array a)
         {
             a.Initialize();
@@ -300,6 +318,18 @@ namespace ArraySurfaceSubset
             Init(dynNest);
             Console.WriteLine("initialize-dyn-nest: " + dynNest[1].K + " "
                 + new Nest<string>(new Nest<Nest<string>>()).K);
+        }
+        internal static void RunInitializeDiscovery()
+        {
+            Console.WriteLine("== Array Initialize discovery ==");
+            var values = new Comparing[1];
+            Init(values);
+            Console.WriteLine("initialize-dyn-boxed-equality: " + values[0].Same);
+            Array bound = new Comparing[1];
+            Action initialize = bound.Initialize;
+            initialize();
+            Console.WriteLine("initialize-bound-boxed-equality: " + ((Comparing[])bound)[0].Same);
+            Console.WriteLine("Array Initialize discovery end");
         }
     }
 }
