@@ -218,7 +218,7 @@ native=$(strip_cr_win "$native")
 previous=$(run_bounded "./$_CG_OUT/ArrayCore$EXE_EXT" before-array-provenance)
 prefix=$(awk '/^-- array shape argument checks --$/ { exit } { print }' <<< "$native")
 assert_output "$prefix" "$(strip_cr_win "$previous")"
-rg -q 'dn2cpp_array_search_equals\(' "$_CG_OUT"/generated*.cpp \
+grep -Fq 'dn2cpp_array_search_equals(' "$_CG_OUT"/generated*.cpp \
     || { echo 'FAIL: non-generic Array search lacks its missing-slot guard' >&2; exit 1; }
 for line in '-- array shape argument checks --' 'array shape argument checks end' \
         'initialize-dyn-boxed-equality: True/True' \
@@ -332,7 +332,7 @@ for name in DirectDynamicMatch ConditionalFirstMatch ConditionalSecondMatch Inde
         HelperSelectedMatch FrameworkBoxMatch \
         SinkHelperMatch CrossHelperMatch DeepHelperMatch SharedGenericFirstMatch SharedGenericSecondMatch \
         FrameworkListBoxMatch FrameworkCopyBoxMatch; do
-    if ! rg -q "^int32_t ${name}_Equals_m[0-9]+\\(" "$_CG_OUT"/generated*.cpp; then
+    if ! grep -Eq "^int32_t ${name}_Equals_m[0-9]+\\(" "$_CG_OUT"/generated*.cpp; then
         echo "FAIL: selected value type equality body was not emitted: $name" >&2
         exit 1
     fi
@@ -342,13 +342,13 @@ for name in UnusedReflectedMatch GenericUnselectedMatch IndexedUnselectedMatch \
         ZeroOverloadUnselectedMatch \
         UnselectedLocalMatch UnselectedHelperMatch \
         UnallocatedProviderMatch; do
-    if rg -q "^(inline |static )?int32_t ${name}_Equals_m[0-9]+\\(" \
+    if grep -Eq "^(inline |static )?int32_t ${name}_Equals_m[0-9]+\\(" \
             "$_CG_OUT"/generated*.h "$_CG_OUT"/generated*.cpp; then
         echo "FAIL: unsearched value type equality body was emitted: $name" >&2
         exit 1
     fi
 done
-if rg -q '^int32_t (ObjectGetTypeBoxMatch|CopyShapeBoxMatch)_Equals_m[0-9]+\(' \
+if grep -Eq '^int32_t (ObjectGetTypeBoxMatch|CopyShapeBoxMatch)_Equals_m[0-9]+\(' \
         "$_CG_OUT"/generated*.cpp; then
     echo 'FAIL: a boxed object[] element changed its array GetType provenance' >&2
     exit 1
@@ -492,8 +492,13 @@ for name in FrameworkBoxMatch FrameworkListBoxMatch FrameworkCopyBoxMatch Reflec
         GenericStaticFirstMatch GenericStaticSecondMatch \
         CctorStaticMatch ConstructorMatch ConstructorOverwriteSelectedMatch \
         CctorOverwriteSelectedMatch; do
-    if ! rg -Uq "^(inline |static )?int32_t ${name}_Equals_m[0-9]+\\([^;]*\\)\\n\\{" \
-            "$box_root/gen/generated.h" "$box_root/gen"/generated*.cpp; then
+    if ! awk -v name="$name" '
+        FNR == 1 { signature = 0 }
+        { sub(/\r$/, "") }
+        signature && /^\{/ { found = 1; exit }
+        { signature = ($0 ~ "^(inline |static )?int32_t " name "_Equals_m[0-9]+\\([^;]*\\)$") }
+        END { exit !found }
+    ' "$box_root/gen/generated.h" "$box_root/gen"/generated*.cpp; then
         echo "FAIL: searched boxed value equality body was not emitted: $name" >&2
         exit 1
     fi
@@ -518,17 +523,17 @@ for name in UnusedFrameworkBoxMatch UnusedNewarrMatch UnusedUserBoxMatch \
         ReflectedSetOverwrittenDeadMatch \
         ConstructorOverwrittenDeadMatch CctorOverwrittenDeadMatch ObjectGetTypeBoxMatch \
         CopyShapeBoxMatch; do
-    if rg -q "^(inline |static )?int32_t ${name}_Equals_m[0-9]+\\(" \
+    if grep -Eq "^(inline |static )?int32_t ${name}_Equals_m[0-9]+\\(" \
             "$box_root/gen"/generated*.h "$box_root/gen"/generated*.cpp; then
         echo "FAIL: an unsearched value rooted its equality body: $name" >&2
         exit 1
     fi
 done
 
-rg -q '^// DynamicArrayNullEqualitySubset\.SharedArraySearcher_\$CnInt32::Search$' \
+grep -Fxq '// DynamicArrayNullEqualitySubset.SharedArraySearcher_$CnInt32::Search' \
     "$box_root/gen/generated.h" "$box_root/gen"/generated*.cpp \
     || { echo 'FAIL: the array search donor lost its canonical body' >&2; exit 1; }
-shared_calls=$(rg -o 'SharedArraySearcher_1_Search_m[0-9]+\(' \
+shared_calls=$(grep -Eo 'SharedArraySearcher_1_Search_m[0-9]+\(' \
     "$box_root/gen"/generated_b*.cpp | sed 's/.*://')
 [ "$(wc -l <<< "$shared_calls" | tr -d ' ')" -eq 2 ] \
     && [ "$(sort -u <<< "$shared_calls" | wc -l | tr -d ' ')" -eq 1 ] \
@@ -556,7 +561,7 @@ for line in \
         || { echo "FAIL: reflected return equality witness missing: $line" >&2; exit 1; }
 done
 for name in ReflectedMethodBoxMatch ReflectedPropertyBoxMatch ArrayGetValueBoxMatch; do
-    if ! rg -q "^int32_t ${name}_Equals_m[0-9]+\\(" "$return_box_root/gen"/generated*.cpp; then
+    if ! grep -Eq "^int32_t ${name}_Equals_m[0-9]+\\(" "$return_box_root/gen"/generated*.cpp; then
         echo "FAIL: reflected return value equality body was not emitted: $name" >&2
         exit 1
     fi
@@ -580,7 +585,7 @@ for line in \
     grep -Fxq "$line" <<< "$diamond_lines" \
         || { echo "FAIL: Type-provider call graph witness missing: $line" >&2; exit 1; }
 done
-rg -q '^int32_t DiamondMatch_Equals_m[0-9]+\(' "$diamond_root/gen"/generated*.cpp \
+grep -Eq '^int32_t DiamondMatch_Equals_m[0-9]+\(' "$diamond_root/gen"/generated*.cpp \
     || { echo 'FAIL: diamond-selected value equality body was not emitted' >&2; exit 1; }
 
 echo '== array search field aliases =='
@@ -604,10 +609,10 @@ for line in \
         || { echo "FAIL: field alias equality witness missing: $line" >&2; exit 1; }
 done
 for name in OpaqueHolderMatch ArrayGetHolderMatch StaticHolderSelectedMatch; do
-    rg -q "^int32_t ${name}_Equals_m[0-9]+\\(" "$field_alias_root/gen"/generated*.cpp \
+    grep -Eq "^int32_t ${name}_Equals_m[0-9]+\\(" "$field_alias_root/gen"/generated*.cpp \
         || { echo "FAIL: field alias equality body was not emitted: $name" >&2; exit 1; }
 done
-if rg -q '^(inline |static )?int32_t StaticHolderOverwrittenMatch_Equals_m[0-9]+\(' \
+if grep -Eq '^(inline |static )?int32_t StaticHolderOverwrittenMatch_Equals_m[0-9]+\(' \
         "$field_alias_root/gen"/generated*.h "$field_alias_root/gen"/generated*.cpp; then
     echo 'FAIL: overwritten static-holder value rooted its equality body' >&2
     exit 1
@@ -700,7 +705,7 @@ for prior_store_subject in ArrayFutureStoreOnly ArrayFutureNullStoreOnly ArrayOb
             exit 1
         fi
     done
-    if rg -q '^int32_t .*FutureUnsupported.*_Equals_m[0-9]+\(' "$prior_store_root"/gen/generated*.cpp; then
+    if grep -Eq '^int32_t .*FutureUnsupported.*_Equals_m[0-9]+\(' "$prior_store_root"/gen/generated*.cpp; then
         echo 'FAIL: a later reference-array store rooted its unused equality body' >&2
         exit 1
     fi
