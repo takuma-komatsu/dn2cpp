@@ -69,6 +69,9 @@ namespace SharedGenerics
             if (args.Length > 0 && args[0] == "before-self-nesting")
                 return;
             RgctxSubset.Program.RunSelfNesting();
+            if (args.Length > 0 && args[0] == "before-methodimpl-shapes")
+                return;
+            MethodImplShapeSubset.Program.Run();
         }
     }
 }

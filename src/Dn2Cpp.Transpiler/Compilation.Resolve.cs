@@ -901,8 +901,9 @@ internal sealed partial class Compilation
                 if (match == 1)
                     firstPlain ??= mh;
             }
-        // A signature representation difference may prevent every exact key.
-        return firstDotted ?? firstPlain;
+        // A MethodImpl rejected for this slot cannot re-enter by dotted-name arity.
+        // Plain bodies retain the fallback for signature representation differences.
+        return wantKey is null ? firstDotted ?? firstPlain : firstPlain;
     }
 
     /// <summary>A type definition's simple metadata name without its arity suffix,
@@ -1022,6 +1023,11 @@ internal sealed partial class Compilation
                 for (int i = 0; i < sig.ParameterTypes.Length; i++)
                     if (!SameTypeArg(sig.ParameterTypes[i], target.ParameterTypes[i]))
                         return false;
+                // Substitution can make different definition slots alike. A sole
+                // explicit body must not replace a sibling slot's default either.
+                if (DefinitionShape(slot.DeclaringClass, slot) is { } shape
+                    && MemberRefShape(mr) != shape)
+                    return false;
             }
             else
             {
