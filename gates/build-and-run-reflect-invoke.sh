@@ -560,13 +560,17 @@ done
 unset -f gate_extra_asserts
 source gates/_ordinary-reflection.sh
 gate_extra_asserts() {
-    local out="$1" native line before prefix
+    local out="$1" native line before prefix modifiers_before modifiers_prefix
     native=$(run_bounded "$out/OrdinaryReflectionLeaves$EXE_EXT") || return $?
     native=$(strip_cr_win "$native")
     before=$(DN2CPP_BEFORE_RUNTIME_MEMBER_ATTRIBUTES=1 run_bounded dotnet "$_CG_APP") || return $?
     before=$(strip_cr_win "$before")
     prefix=$(awk '/^== runtime member attributes ==$/ { exit } { print }' <<< "$native")
     assert_output "$prefix" "$before"
+    modifiers_before=$(DN2CPP_BEFORE_RUNTIME_RETURN_MODIFIERS=1 run_bounded dotnet "$_CG_APP") || return $?
+    modifiers_before=$(strip_cr_win "$modifiers_before")
+    modifiers_prefix=$(awk '/^== runtime return modifiers ==$/ { exit } { print }' <<< "$native")
+    assert_output "$modifiers_prefix" "$modifiers_before"
     for line in '== field validation ==' 'field validation end' \
         '== ordinary ambiguous messages ==' 'ordinary ambiguous messages end' \
         'sealed direct=CUSTOM-HELLO' 'sealed bound=CUSTOM-HELLO/IGreeting.Shout' \
@@ -582,7 +586,13 @@ gate_extra_asserts() {
         '== constructor binder faults ==' 'constructor matched=17' \
         'constructor wrong count inner=<null>' 'constructor binder faults end' \
         'ordinary reflection leaves end' '== runtime member attributes ==' \
-        'memberwise clone attributes=0085/False/True' 'runtime member attributes end'; do
+        'memberwise clone attributes=0085/False/True' 'runtime member attributes end' \
+        '== runtime return modifiers ==' 'return modifiers MemberwiseClone=0/-1:0/0' \
+        'return modifiers SizeOf definition=0/-1:0/0' 'return modifiers SizeOf Int32=0/-1:0/0' \
+        'return modifiers SizeOf String=0/-1:0/0' \
+        'runtime clone method display=System.Object MemberwiseClone()' \
+        'runtime clone return display=System.Object' 'runtime SizeOf return display=Int32' \
+        'runtime return modifiers end'; do
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: ordinary reflection witness missing: $line" >&2; return 1; }
     done

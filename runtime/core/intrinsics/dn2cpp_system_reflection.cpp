@@ -1993,6 +1993,8 @@ struct Dn2CppMetaMember
     int32_t ilAttrs; // the MethodAttributes word MethodBase.Attributes reads
     Dn2CppObject* (*answer)(const Dn2CppTypeInfo* const* args, Dn2CppObject* receiver);
     int32_t ilImplAttrs;
+    const char* display;
+    const char* returnDisplay;
 };
 
 // The CLR FIELD-LAYOUT size of a type — what `sizeof(T)` is in IL and what
@@ -2063,9 +2065,11 @@ static Dn2CppObject* dn2cpp_meta_object_memberwise_clone(const Dn2CppTypeInfo* c
 // Non-public lookup flags do not replace the CLR member access mask.
 static const Dn2CppMetaMember g_meta_members[] = {
     { "System.Runtime.CompilerServices.Unsafe", "SizeOf", 1, &dn2cpp_int32_type,
-      DN2CPP_MTHA_STATIC | DN2CPP_MTHA_PUBLIC, 0x0096, dn2cpp_meta_unsafe_sizeof, 0x0100 },
+      DN2CPP_MTHA_STATIC | DN2CPP_MTHA_PUBLIC, 0x0096, dn2cpp_meta_unsafe_sizeof, 0x0100,
+      nullptr, "Int32" },
     { "System.Object", "MemberwiseClone", 0, &dn2cpp_object_type,
-      0 /* instance, non-public */, 0x0085, dn2cpp_meta_object_memberwise_clone },
+      0 /* instance, non-public */, 0x0085, dn2cpp_meta_object_memberwise_clone, 0,
+      "System.Object MemberwiseClone()", "System.Object" },
 };
 
 // A synthesized row plus the descriptor it answers from. Rows are interned per
@@ -2133,6 +2137,9 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_meta_row(const Dn2CppMetaMe
     r->row.name = d->methodName;
     r->row.declaringType = declaring;
     r->row.returnType = d->retType;
+    r->row.returnCustomModifiersKnown = 1;
+    r->row.display = d->display;
+    r->row.returnDisplay = d->returnDisplay;
     r->row.attrs = d->attrs | DN2CPP_MTHA_METAANSWER
         | (d->genericArity > 0 ? DN2CPP_MTHA_GENERIC : 0);
     r->row.vtableSlot = -1;

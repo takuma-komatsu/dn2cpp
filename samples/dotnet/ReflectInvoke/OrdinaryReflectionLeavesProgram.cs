@@ -129,6 +129,18 @@ static class Program
         + (field.IsFamilyAndAssembly ? "n" : "") + (field.IsNotSerialized ? "s" : "")
         + (field.IsPinvokeImpl ? "i" : "");
 #pragma warning restore SYSLIB0050
+    private static string ReturnModifierCount(ParameterInfo parameter, bool required)
+    {
+        try
+        {
+            Type[] modifiers = required ? parameter.GetRequiredCustomModifiers() : parameter.GetOptionalCustomModifiers();
+            return modifiers.Length.ToString();
+        }
+        catch (PlatformNotSupportedException)
+        {
+            return nameof(PlatformNotSupportedException);
+        }
+    }
     private static void Main()
     {
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
@@ -217,5 +229,21 @@ static class Program
         Console.WriteLine("memberwise clone attributes=" + ((int)clone.Attributes).ToString("X4")
             + "/" + clone.IsFamily + "/" + clone.IsFamilyOrAssembly);
         Console.WriteLine("runtime member attributes end");
+        if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_RUNTIME_RETURN_MODIFIERS") == "1")
+            return;
+        Console.WriteLine("== runtime return modifiers ==");
+        MethodInfo[] rows = { clone, size, size.MakeGenericMethod(typeof(int)), size.MakeGenericMethod(typeof(string)) };
+        string[] names = { "MemberwiseClone", "SizeOf definition", "SizeOf Int32", "SizeOf String" };
+        for (int i = 0; i < rows.Length; i++)
+        {
+            MethodInfo row = rows[i];
+            ParameterInfo result = row.ReturnParameter;
+            Console.WriteLine("return modifiers " + names[i] + "=" + row.GetParameters().Length + "/" + result.Position
+                + ":" + ReturnModifierCount(result, true) + "/" + ReturnModifierCount(result, false));
+        }
+        Console.WriteLine("runtime clone method display=" + clone.ToString());
+        Console.WriteLine("runtime clone return display=" + clone.ReturnParameter.ToString());
+        Console.WriteLine("runtime SizeOf return display=" + size.ReturnParameter.ToString());
+        Console.WriteLine("runtime return modifiers end");
     }
 }
