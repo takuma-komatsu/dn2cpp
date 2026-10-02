@@ -126,6 +126,7 @@
 # references) is strictly narrower than the invoker ABI; if that surface ever
 # widens the call lands on the invmiss_ stub and raises the same exception.
 source "$(dirname "$0")/_common.sh"
+hotupdate_python=$(resolve_python) || gate_skip "no working Python 3 interpreter for import fixtures"
 
 OUT=artifacts/hotupdate-subset
 field_packed='HotUpdateBase.Counter=packed'
@@ -1285,7 +1286,7 @@ for noctor_axis in duplicate missing legacy-single legacy-ambiguous; do
         --no-metadata-compression \
         --hotupdate-refs samples/dotnet/HotUpdatePatch/noctor-import-refs.txt -o "$noctor_out/$noctor_axis"
     cmp "$noctor_out/normal/base-abi.json" "$noctor_out/$noctor_axis/base-abi.json"
-    python3 gates/fixtures/hotupdate-import-identity/mutate-native-rows.py \
+    $hotupdate_python gates/fixtures/hotupdate-import-identity/mutate-native-rows.py \
         "$noctor_out/$noctor_axis" "$noctor_axis"
     compile_console "$noctor_out/$noctor_axis" NoCtorImportBase
     noctor_result=$("./$noctor_out/$noctor_axis/NoCtorImportBase$EXE_EXT" "$noctor_bpi")
@@ -1303,7 +1304,7 @@ echo "-- BPI format rejection at hard-load and directory-header mouths --"
 mkdir -p "$noctor_out/wrong-formats"
 for wrong_format in 1 2147483647; do
     wrong_bpi="$noctor_out/wrong-formats/format-$wrong_format.bpi"
-    python3 gates/fixtures/hotupdate-import-identity/set-bpi-version.py \
+    $hotupdate_python gates/fixtures/hotupdate-import-identity/set-bpi-version.py \
         "$noctor_bpi" "$wrong_bpi" "$wrong_format"
     noctor_result=$("./$noctor_out/normal/NoCtorImportBase$EXE_EXT" "$wrong_bpi")
     assert_output "$(strip_cr_win "$noctor_result")" "noctor: start
