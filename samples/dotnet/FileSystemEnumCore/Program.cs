@@ -26,6 +26,8 @@ namespace FileSystemEnumCore
             DirectoryDeleteSubset.Program.__GateEntry(root);
             DirectoryCreateSubset.Program.__GateEntry(root);   // was directory-subset
             FileIoSubset.Program.__GateEntry(root);            // was file-subset
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_IO_VALIDATION") == "1") return;
+            FileIoPathValidationSubset.Program.Run(root);
         }
 
         // Known tree the enumeration sections walk:

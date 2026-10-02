@@ -126,8 +126,8 @@ internal sealed partial class MethodCompiler
         // UnmanagedMemoryAccessor base): Read<T>(pos, out T) / Write<T>(pos, ref T) (a
         // single value, memcpy) and ReadArray<T>/WriteArray<T>(pos, T[], offset, count)
         // (a bulk run). The real bodies route through SafeBuffer pointer ops; lower them
-        // over the view's base pointer (T is blittable — T : struct). The receiver (the
-        // accessor) is below the args on the IL stack.
+        // over the view's base pointer behind .NET's argument checks (T is blittable —
+        // T : struct). The receiver (the accessor) is below the args on the IL stack.
         if (declType == "System.IO.UnmanagedMemoryAccessor")
         {
             var t = methodArgs[0];
@@ -138,16 +138,20 @@ internal sealed partial class MethodCompiler
                 {
                     var outRef = Pop(); // out T -> a managed pointer to the destination
                     var pos = Pop();
-                    var view = Pop();
-                    Emit($"std::memcpy((void*)({outRef.Expr}), (const void*)(({MmvVal(view)}).addr + ({pos.Expr})), sizeof({st}));");
+                    var (vt, pt) = MmvSpill(Pop(), pos);
+                    string dst = NewTemp("void*");
+                    Emit($"{dst} = (void*)({outRef.Expr});");
+                    Emit($"std::memcpy({dst}, (const void*)dn2cpp_mmap_view_at({vt}, {pt}, (int32_t)sizeof({st}), false, true), sizeof({st}));");
                     return;
                 }
                 case "Write": // Write<T>(long position, ref T structure) -> void
                 {
                     var val = Pop(); // ref T -> a managed pointer to the value
                     var pos = Pop();
-                    var view = Pop();
-                    Emit($"std::memcpy((void*)(({MmvVal(view)}).addr + ({pos.Expr})), (const void*)({val.Expr}), sizeof({st}));");
+                    var (vt, pt) = MmvSpill(Pop(), pos);
+                    string from = NewTemp("const void*");
+                    Emit($"{from} = (const void*)({val.Expr});");
+                    Emit($"std::memcpy((void*)dn2cpp_mmap_view_at({vt}, {pt}, (int32_t)sizeof({st}), true, true), {from}, sizeof({st}));");
                     return;
                 }
                 case "ReadArray": // ReadArray<T>(long position, T[] array, int offset, int count) -> int
@@ -157,20 +161,34 @@ internal sealed partial class MethodCompiler
                     var offset = Pop();
                     var arr = Pop();
                     var pos = Pop();
-                    var view = Pop();
+                    var (checkedView, pt) = MmvSpill(Pop(), pos);
+                    string at = NewTemp(arr.CppType);
+                    Emit($"{at} = {arr.Expr};");
+                    string ot = NewTemp("int32_t");
+                    Emit($"{ot} = {offset.Expr};");
+                    string ct = NewTemp("int32_t");
+                    Emit($"{ct} = {count.Expr};");
+                    // The receiver's null check precedes the checks of the array run.
+                    string vt = NewTemp("Dn2CppMappedViewObject*");
+                    Emit($"{vt} = {checkedView};");
+                    Emit($"dn2cpp_mmap_check_array_run((Dn2CppArray*)({at}), {ot}, {ct});");
+                    arr = arr with { Expr = at };
                     string elemBase = RepOf(t) switch
                     {
-                        ArrRep.I4 => $"(void*)&(({Cast(arr, "Dn2CppArrayI4*")})->data[{offset.Expr}])",
-                        ArrRep.N => $"(void*)((({Cast(arr, "Dn2CppArrayN*")})->data) + (size_t)({offset.Expr}) * sizeof({st}))",
+                        ArrRep.I4 => $"(void*)&(({Cast(arr, "Dn2CppArrayI4*")})->data[{ot}])",
+                        ArrRep.N => $"(void*)((({Cast(arr, "Dn2CppArrayN*")})->data) + (size_t)({ot}) * sizeof({st}))",
                         _ => throw new NotSupportedException(
                             $"{Method.DeclaringClass.FullName}.{Method.Name}: MemoryMappedViewAccessor.{name}<{t}> "
                             + "supports blittable element types only (reference-typed arrays are a carve-out)"),
                     };
                     if (name == "ReadArray")
-                        Push(StackKind.I4, "int32_t",
-                            $"dn2cpp_mmap_read_into({MmvVal(view)}, {pos.Expr}, {elemBase}, {count.Expr}, (int32_t)sizeof({st}))");
+                    {
+                        string read = NewTemp("int32_t");
+                        Emit($"{read} = dn2cpp_mmap_read_array({vt}, {pt}, {elemBase}, {ct}, (int32_t)sizeof({st}));");
+                        Push(StackKind.I4, "int32_t", read);
+                    }
                     else
-                        Emit($"dn2cpp_mmap_write_from({MmvVal(view)}, {pos.Expr}, {elemBase}, {count.Expr}, (int32_t)sizeof({st}));");
+                        Emit($"dn2cpp_mmap_write_array({vt}, {pt}, {elemBase}, {ct}, (int32_t)sizeof({st}));");
                     return;
                 }
             }

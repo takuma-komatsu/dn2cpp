@@ -10,14 +10,8 @@
 # return, which NRE'd only at runtime), and Directory.Delete (recursive walk +
 # SystemNative_RmDir) — transpiled once against the tree-shaken real CoreLib
 # and diffed exactly against real .NET.
-# Former gates: directory-subset (Directory.CreateDirectory lowered to the
-# dn2cpp_directory_create helper — recursive, idempotent, trailing separator,
-# not-a-file) and file-subset (File.Exists/Delete/ReadAllText/WriteAllText/
-# ReadAllBytes/WriteAllBytes lowered to the dn2cpp_file_* libc helpers: UTF-8
-# with no BOM, BOM-stripping reads, catchable error paths). Both were already
-# `@SCRATCH@` gates over a scratch root, which is why they land here; both are
-# appended at the tail of the driver, after the enumeration sections have walked
-# the fixture, and each touches only names of its own.
+# File, Path, Directory and Environment path arguments cover empty/NUL names,
+# exception parameters, bytes-before-path order and current-directory truncation.
 #
 # The sample takes a scratch directory as args[0] and builds a known tree in
 # it. The native build and real .NET get SEPARATE fresh mktemp directories and
@@ -26,8 +20,28 @@
 # order is filesystem-dependent, so every listing is ordinal-sorted before
 # printing). CoreLib only: the whole enumeration stack lives there.
 source "$(dirname "$0")/_common.sh"
+unset DN2CPP_BEFORE_IO_VALIDATION
 
 # The sample takes a scratch directory as args[0]; @SCRATCH@ hands each side
 # its own fresh mktemp dir (see the wrapper feature block in _common.sh).
 export DN2CPP_GATE_RUN_ARGS='@SCRATCH@'
+gate_extra_asserts() {
+    local output before_scratch before prefix
+    output=$(strip_cr_win "$native")
+    grep -qxF -- '-- System.IO path arguments --' <<< "$output" || { echo "FAIL: IO validation witness missing" >&2; return 1; }
+    grep -qxF 'nullBytesCreated=False' <<< "$output" || { echo "FAIL: IO validation witness missing" >&2; return 1; }
+    grep -qxF 'nulTarget=3' <<< "$output" || { echo "FAIL: IO validation witness missing" >&2; return 1; }
+    grep -qxF 'cwdMoved=False' <<< "$output" || { echo "FAIL: IO validation witness missing" >&2; return 1; }
+    grep -qxF 'cwdNulTruncated=True' <<< "$output" || { echo "FAIL: IO validation witness missing" >&2; return 1; }
+    grep -qxF 'cwdRestored=True' <<< "$output" || { echo "FAIL: IO validation witness missing" >&2; return 1; }
+    grep -qxF -- '-- System.IO path arguments end --' <<< "$output" || { echo "FAIL: IO validation witness missing" >&2; return 1; }
+    grep -qxF 'cwd failure relative=DirectoryNotFoundException original=True' <<< "$output" || return 1
+    grep -qxF 'cwd failure nul=DirectoryNotFoundException original=True' <<< "$output" || return 1
+    before_scratch=$(mktemp -d artifacts/io-before.XXXXXX)
+    before=$(DN2CPP_BEFORE_IO_VALIDATION=1 run_bounded dotnet "samples/dotnet/FileSystemEnumCore/bin/$CONFIG/$TFM/FileSystemEnumCore.dll" "$before_scratch") || return $?
+    rm -rf "$before_scratch"
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '$0 == "-- System.IO path arguments --" { exit } { print }' <<< "$output")
+    assert_output "$prefix" "$before"
+}
 corelib_diff_gate FileSystemEnumCore

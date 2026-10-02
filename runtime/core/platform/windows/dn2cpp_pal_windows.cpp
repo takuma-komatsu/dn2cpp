@@ -4,7 +4,7 @@
 // Mirrors platform/posix/dn2cpp_pal_posix.cpp's contract exactly (see
 // dn2cpp_pal.h) using native Win32 + Microsoft CRT calls: no libc `unistd.h`
 // surface exists on this target. Where the CRT already offers a POSIX-shaped
-// wrapper (`_getcwd`, `_unlink`, `_mkdir`, `_chdir`, `getenv`) this file uses
+// wrapper (`_getcwd`, `_unlink`, `_chdir`, `getenv`) this file uses
 // it directly — same contract, different name — and only reaches for raw
 // Win32 (`GetFileAttributesA`, `GetModuleFileNameA`) where no CRT equivalent
 // exists or the CRT one is not precise enough. Two contract-shape gotchas
@@ -30,7 +30,7 @@
 #include <cstdlib>  // getenv
 #include <cstring>  // strlen / memcpy
 #include <ctime>    // localtime_s / mktime / std::tm / std::time_t
-#include <direct.h> // _getcwd / _mkdir / _chdir
+#include <direct.h> // _getcwd / _chdir
 #include <io.h>     // _unlink
 #include <malloc.h> // _msize
 
@@ -42,11 +42,6 @@ char* dn2cpp_pal_getcwd(char* buf, size_t size)
 int dn2cpp_pal_unlink(const char* path)
 {
     return ::_unlink(path);
-}
-
-int dn2cpp_pal_mkdir(const char* path)
-{
-    return ::_mkdir(path);
 }
 
 int dn2cpp_pal_chdir(const char* path)

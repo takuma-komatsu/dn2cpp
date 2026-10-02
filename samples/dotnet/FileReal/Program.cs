@@ -37,6 +37,8 @@ namespace FileReal
             // section that provokes a throw, so anything it destabilises shows up as a
             // truncation rather than as a shifted diff.
             BoundedImportSubset.Program.__GateEntry();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_IO_VALIDATION") == "1") return 0;
+            IoErrorSubset.Program.Run(dir);
             return 0;
         }
     }

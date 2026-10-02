@@ -688,6 +688,10 @@ extern const Dn2CppType dn2cpp_file_not_found_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_file_not_found_exception_type =
     dn2cpp_ti_with_typeobject({ "System.IO.FileNotFoundException", &dn2cpp_io_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_file_not_found_exception_type_obj);
 const Dn2CppType dn2cpp_file_not_found_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_file_not_found_exception_type };
+extern const Dn2CppType dn2cpp_directory_not_found_exception_type_obj;
+Dn2CppTypeInfo dn2cpp_directory_not_found_exception_type =
+    dn2cpp_ti_with_typeobject({ "System.IO.DirectoryNotFoundException", &dn2cpp_io_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_directory_not_found_exception_type_obj);
+const Dn2CppType dn2cpp_directory_not_found_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_directory_not_found_exception_type };
 extern const Dn2CppType dn2cpp_path_too_long_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_path_too_long_exception_type =
     dn2cpp_ti_with_typeobject({ "System.IO.PathTooLongException", &dn2cpp_io_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_path_too_long_exception_type_obj);

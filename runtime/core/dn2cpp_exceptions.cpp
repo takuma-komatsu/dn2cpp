@@ -417,6 +417,7 @@ static const char* dn2cpp_default_message_key(const Dn2CppTypeInfo* ti)
     if (ti == &dn2cpp_format_exception_type) return DN2CPP_SR_FORMAT;
     if (ti == &dn2cpp_io_exception_type) return DN2CPP_SR_IO;
     if (ti == &dn2cpp_file_not_found_exception_type) return DN2CPP_SR_FILE_NOT_FOUND;
+    if (ti == &dn2cpp_directory_not_found_exception_type) return DN2CPP_SR_DIRECTORY_NOT_FOUND;
     if (ti == &dn2cpp_unauthorized_access_exception_type) return DN2CPP_SR_UNAUTHORIZED_ACCESS;
     if (ti == &dn2cpp_key_not_found_exception_type) return DN2CPP_SR_KEY_NOT_FOUND;
     if (ti == &dn2cpp_ambiguous_match_exception_type) return DN2CPP_SR_AMBIGUOUS_MATCH;
@@ -650,6 +651,12 @@ static Dn2CppString* dn2cpp_param_name_string(const char* paramName)
         sentence,
         dn2cpp_param_name_string(paramName),
         dn2cpp_box(&dn2cpp_int32_type, &value, sizeof(value)), &args[1]);
+}
+
+[[noreturn]] void dn2cpp_throw_argument_param(const char* key, const char* paramName)
+{
+    dn2cpp_raise_argument(&dn2cpp_argument_exception_type, dn2cpp_sr_format(key, nullptr, 0),
+        dn2cpp_param_name_string(paramName), nullptr, nullptr);
 }
 
 [[noreturn]] void dn2cpp_throw_argument_out_of_range_param(const char* key,

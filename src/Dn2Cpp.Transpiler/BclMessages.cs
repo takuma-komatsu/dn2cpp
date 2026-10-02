@@ -5,8 +5,9 @@ namespace Dn2Cpp;
 /// .NET raises rather than <c>Exception.Message</c>'s type-name fallback.
 ///
 /// <para>The text is resolved at transpile time out of the CoreLib the program was built
-/// against (<see cref="Compilation.CoreLibSrText"/>) precisely so nothing looks a resource
-/// up at run time: a runtime lookup would go through the table
+/// against, or for an "Assembly:Key" entry out of that library
+/// (<see cref="Compilation.BclMessageText"/>), precisely so nothing looks a resource up at
+/// run time: a runtime lookup would go through the table
 /// <c>--no-manifest-resources System.Private.CoreLib</c> empties, so the first BCL fault of
 /// such a build would die building its own diagnostic.</para>
 ///
@@ -133,6 +134,10 @@ internal static class BclMessages
         "Argument_InvalidNormalizationForm",
         "Format_IndexOutOfRange",
         "Argument_SpansMustHaveSameLength",
+        "Argument_NotEnoughBytesToRead",
+        "Argument_NotEnoughBytesToWrite",
+        "NotSupported_Reading",
+        "NotSupported_Writing",
         // The two suffixes ArgumentException.Message / ArgumentOutOfRangeException.Message
         // append, which the runtime bakes into a raised exception's stored text when its
         // handle dispatches neither override.
@@ -152,5 +157,27 @@ internal static class BclMessages
         "NotSupported_StringComparison",
         "Rank_MultiDimNotSupported",
         "Rank_MustMatch",
+        "ArgumentOutOfRange_Enum",
+        "Argument_NullCharInPath",
+        "System.IO.MemoryMappedFiles:Argument_MapNameEmptyString",
+        "System.IO.MemoryMappedFiles:ArgumentOutOfRange_PositiveOrDefaultCapacityRequired",
+        "System.IO.MemoryMappedFiles:Argument_NewMMFAppendModeNotAllowed",
+        "System.IO.MemoryMappedFiles:Argument_NewMMFTruncateModeNotAllowed",
+        "System.IO.MemoryMappedFiles:Argument_NewMMFWriteAccessNotAllowed",
+        "System.IO.MemoryMappedFiles:Argument_EmptyFile",
+        "System.IO.MemoryMappedFiles:Argument_ReadAccessWithLargeCapacity",
+        "System.IO.MemoryMappedFiles:ArgumentOutOfRange_CapacityGEFileSizeRequired",
+        "System.IO.MemoryMappedFiles:ArgumentOutOfRange_PositiveOrDefaultSizeRequired",
+        "System.IO.MemoryMappedFiles:ArgumentOutOfRange_CapacityLargerThanLogicalAddressSpaceNotAllowed",
+        "System.IO.MemoryMappedFiles:IO_NotEnoughMemory",
+        "System.IO.MemoryMappedFiles:UnauthorizedAccess_IODenied_NoPathName",
+        "IO_FileNotFound_FileName",
+        "IO_PathNotFound_NoPathName",
+        "IO_PathNotFound_Path",
+        "UnauthorizedAccess_IODenied_Path",
+        "System.IO.MemoryMappedFiles:PlatformNotSupported_NamedMaps",
+        "Arg_BufferTooSmall",
+        "Arg_PathEmpty",
+        "ArgumentOutOfRange_PositionLessThanCapacityRequired",
     ];
 }

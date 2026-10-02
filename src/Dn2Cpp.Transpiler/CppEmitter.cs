@@ -4893,7 +4893,7 @@ internal sealed partial class CppEmitter
         var rows = new List<string>();
         foreach (string key in BclMessages.Keys)
         {
-            string? text = _c.CoreLibSrText(key);
+            string? text = _c.BclMessageText(key);
             rows.Add($"{{ \"{key}\", {(text is null ? "nullptr" : "\"" + CLiteral(text) + "\"")} }}");
         }
         sb.AppendLine($"const Dn2CppBclMessage dn2cpp_bcl_messages[] = {{ {string.Join(", ", rows)} }};");

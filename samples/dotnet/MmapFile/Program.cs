@@ -29,6 +29,40 @@ internal static class Program
         public double Val;
         public long Extra;
     } // 24 bytes (Id, pad, Val, Extra) — word-or-larger fields, so C++/.NET layouts agree
+
+    private sealed class RefusingFlushStream : FileStream
+    {
+        internal RefusingFlushStream(string path) : base(path, FileMode.Open, FileAccess.ReadWrite) { }
+        public override void Flush() => throw new IOException("flush marker");
+    }
+
+    private sealed class GrowingFlushStream : FileStream
+    {
+        internal GrowingFlushStream(string path) : base(path, FileMode.Open, FileAccess.ReadWrite) { }
+        public override void Flush()
+        {
+            base.SetLength(64);
+            base.Flush();
+        }
+    }
+
+    private sealed class LongerLengthStream : FileStream
+    {
+        internal LongerLengthStream(string path) : base(path, FileMode.Open, FileAccess.Read) { }
+        public override long Length => base.Length + 1;
+    }
+
+    private sealed class NegativeLengthStream : FileStream
+    {
+        internal NegativeLengthStream(string path) : base(path, FileMode.Open, FileAccess.ReadWrite) { }
+        public override long Length => -1;
+    }
+
+    private sealed class InvalidHandleStream : FileStream
+    {
+        internal InvalidHandleStream(string path) : base(path, FileMode.Open, FileAccess.Read) { }
+        public override SafeFileHandle SafeFileHandle => new SafeFileHandle(new IntPtr(-1), false);
+    }
 #endif
 
     private static unsafe void Main(string[] args)
@@ -147,10 +181,322 @@ internal static class Program
 #if !MMAP_UNINITIALIZED_ONLY
         if (args.Length > 1 && args[1] == "legacy") return;
         TestStreamMaps(dir);
+        if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_IO_VALIDATION") == "1") return;
+        Console.WriteLine("== mmap validation ==");
+        TestArgumentNames(dir);
+        TestArgumentMessages(dir);
+        TestViewRanges(dir);
+        TestMissingPathAndNamedMap(dir);
+        TestOffsetAndWriteMessages(dir);
+        Console.WriteLine("mmap validation complete");
 #endif
     }
 
 #if !MMAP_UNINITIALIZED_ONLY
+    private static void TestMissingPathAndNamedMap(string dir)
+    {
+        Console.WriteLine("== mmap missing paths ==");
+        string root = Path.GetFullPath(dir);
+        string leaf = Path.Combine(dir, "absent.bin");
+        string parent = Path.Combine(dir, "missing", "..", "missing", "child.bin");
+        string existing = Path.Combine(dir, "named.bin");
+        File.WriteAllBytes(existing, new byte[64]);
+        void Probe(string label, Action action, bool message = true)
+        {
+            try
+            {
+                action();
+                Console.WriteLine(label + ": no exception");
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(label + ": " + e.GetType().Name
+                    + (message ? " | " + e.Message.Replace(root, "<scratch>") : ""));
+            }
+        }
+        Probe("leaf", () => MemoryMappedFile.CreateFromFile(leaf, FileMode.Open).Dispose());
+        Probe("parent", () => MemoryMappedFile.CreateFromFile(parent, FileMode.Open).Dispose());
+        Probe("create parent", () => MemoryMappedFile.CreateFromFile(parent, FileMode.OpenOrCreate).Dispose());
+        if (!OperatingSystem.IsWindows())
+        {
+            Probe("named", () => MemoryMappedFile.CreateFromFile(existing, FileMode.Open,
+                "named-map", 0, MemoryMappedFileAccess.ReadWrite).Dispose());
+            Probe("named missing", () => MemoryMappedFile.CreateFromFile(leaf, FileMode.Open,
+                "named-map", 0, MemoryMappedFileAccess.ReadWrite).Dispose());
+            Probe("named device", () => MemoryMappedFile.CreateFromFile("/dev/null", FileMode.Open,
+                "named-map", 16, MemoryMappedFileAccess.Read).Dispose());
+            using FileStream stream = File.OpenRead(existing);
+            Probe("stream named", () => MemoryMappedFile.CreateFromFile(stream, "named-map", 0,
+                MemoryMappedFileAccess.Read, HandleInheritability.None, true).Dispose());
+            string empty = Path.Combine(dir, "named-empty.bin");
+            File.WriteAllBytes(empty, Array.Empty<byte>());
+            using FileStream emptyStream = File.OpenRead(empty);
+            Probe("stream named empty", () => MemoryMappedFile.CreateFromFile(emptyStream, "named-map", 0,
+                MemoryMappedFileAccess.Read, HandleInheritability.None, true).Dispose());
+            FileStream closed = File.OpenRead(existing);
+            closed.Dispose();
+            Probe("stream named closed", () => MemoryMappedFile.CreateFromFile(closed, "named-map", 0,
+                MemoryMappedFileAccess.Read, HandleInheritability.None, true).Dispose(), false);
+            Probe("stream named inheritability", () => MemoryMappedFile.CreateFromFile(stream,
+                "named-map", 0, MemoryMappedFileAccess.Read, (HandleInheritability)99, true).Dispose());
+            using RefusingFlushStream refusing = new RefusingFlushStream(existing);
+            Probe("stream flush before capacity", () => MemoryMappedFile.CreateFromFile(refusing,
+                "named-map", 32, MemoryMappedFileAccess.ReadWrite, HandleInheritability.None, true).Dispose());
+            string growingPath = Path.Combine(dir, "named-growing.bin");
+            File.WriteAllBytes(growingPath, new byte[16]);
+            using GrowingFlushStream growing = new GrowingFlushStream(growingPath);
+            Probe("stream captured length", () => MemoryMappedFile.CreateFromFile(growing,
+                "named-map", 32, MemoryMappedFileAccess.ReadWrite, HandleInheritability.None, true).Dispose());
+            Console.WriteLine("stream grew=" + growing.Length);
+            using LongerLengthStream longer = new LongerLengthStream(existing);
+            Probe("stream overridden length", () => MemoryMappedFile.CreateFromFile(longer,
+                "named-map", 64, MemoryMappedFileAccess.Read, HandleInheritability.None, true).Dispose());
+            using NegativeLengthStream negative = new NegativeLengthStream(existing);
+            Probe("stream negative length", () => MemoryMappedFile.CreateFromFile(negative,
+                "named-map", 32, MemoryMappedFileAccess.ReadWrite, HandleInheritability.None, true).Dispose());
+            using InvalidHandleStream invalidHandle = new InvalidHandleStream(existing);
+            Probe("stream named invalid handle", () => MemoryMappedFile.CreateFromFile(invalidHandle,
+                "named-map", 64, MemoryMappedFileAccess.Read, HandleInheritability.None, true).Dispose());
+            string shorterPath = Path.Combine(dir, "unnamed-shorter.bin");
+            File.WriteAllBytes(shorterPath, new byte[64]);
+            using LongerLengthStream longerUnnamed = new LongerLengthStream(shorterPath);
+            using (MemoryMappedFile unnamed = MemoryMappedFile.CreateFromFile(longerUnnamed,
+                null, 0, MemoryMappedFileAccess.Read, HandleInheritability.None, true))
+                Console.WriteLine("stream unnamed created=" + (unnamed is not null)
+                    + ":" + new FileInfo(shorterPath).Length);
+            string growUnnamedPath = Path.Combine(dir, "unnamed-growing.bin");
+            File.WriteAllBytes(growUnnamedPath, new byte[16]);
+            using GrowingFlushStream growingUnnamed = new GrowingFlushStream(growUnnamedPath);
+            using (MemoryMappedFile unnamed = MemoryMappedFile.CreateFromFile(growingUnnamed,
+                null, 32, MemoryMappedFileAccess.ReadWrite, HandleInheritability.None, true))
+                Console.WriteLine("stream unnamed grew=" + new FileInfo(growUnnamedPath).Length);
+            using SafeFileHandle emptyHandle = File.OpenHandle(empty, FileMode.Open, FileAccess.Read);
+            Probe("handle named empty", () => MemoryMappedFile.CreateFromFile(emptyHandle,
+                "named-map", 0, MemoryMappedFileAccess.Read, HandleInheritability.None, true).Dispose());
+        }
+        Console.WriteLine("mmap missing paths complete");
+    }
+
+    // `message` prints the text too, for the accessor checks whose sentences CoreLib owns.
+    private static void ProbeArgument(string label, Action action, bool message = false)
+    {
+        try
+        {
+            action();
+            Console.WriteLine($"mmap args {label}: no exception");
+        }
+        catch (ArgumentException ex)
+        {
+            Console.WriteLine($"mmap args {label}: {ex.GetType().Name} param={ex.ParamName ?? "<null>"}");
+            if (message) Console.WriteLine($"  message={ex.Message.Replace(Environment.NewLine, "|")}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"mmap args {label}: {ex.GetType().Name}");
+        }
+    }
+
+    // The rejections of the map factory, views and accessors: .NET's exception type and
+    // the parameter it names, checked in .NET's order.
+    private static void TestArgumentNames(string dir)
+    {
+        string path = Path.Combine(dir, "args.bin");
+        File.WriteAllBytes(path, new byte[64]);
+        ProbeArgument("from file null path", () => MemoryMappedFile.CreateFromFile((string)null, FileMode.Open));
+        ProbeArgument("from file negative capacity",
+            () => MemoryMappedFile.CreateFromFile(path, FileMode.Open, null, -1, MemoryMappedFileAccess.ReadWrite));
+        using MemoryMappedFile map = MemoryMappedFile.CreateFromFile(path, FileMode.Open, null, 64,
+            MemoryMappedFileAccess.ReadWrite);
+        ProbeArgument("view negative offset", () => map.CreateViewAccessor(-1, 8).Dispose());
+        ProbeArgument("view negative size", () => map.CreateViewAccessor(0, -1).Dispose());
+        ProbeArgument("view past end", () => map.CreateViewAccessor(60, 8).Dispose());
+        using MemoryMappedViewAccessor view = map.CreateViewAccessor(0, 64);
+        int[] data = { 1, 2, 3, 4 };
+        ProbeArgument("write array negative position", () => view.WriteArray(-1, data, 0, 4));
+        ProbeArgument("write array past end", () => view.WriteArray(56, data, 0, 4));
+        ProbeArgument("write array at capacity", () => view.WriteArray(64, data, 0, 4));
+        ProbeArgument("read negative position", () => view.ReadInt32(-1), true);
+        ProbeArgument("read straddling end", () => view.ReadInt32(62), true);
+        ProbeArgument("read at capacity", () => view.ReadInt64(64), true);
+        ProbeArgument("write straddling end", () => view.Write(61, 7), true);
+        ProbeArgument("write negative position", () => view.Write(-1, (byte)7), true);
+        ProbeArgument("read struct straddling end", () => view.Read(60, out long _), true);
+        ProbeArgument("write struct negative position", () =>
+        {
+            long value = 1;
+            view.Write(-1, ref value);
+        }, true);
+        ProbeArgument("read array null", () => view.ReadArray(0, (int[])null, 0, 1), true);
+        ProbeArgument("read array negative offset", () => view.ReadArray(0, data, -1, 1), true);
+        ProbeArgument("read array negative count", () => view.ReadArray(0, data, 0, -1), true);
+        ProbeArgument("read array short", () => view.ReadArray(0, data, 2, 4), true);
+        ProbeArgument("read array at capacity", () => view.ReadArray(64, data, 0, 1), true);
+        ProbeArgument("write array null", () => view.WriteArray(0, (int[])null, 0, 1), true);
+        using (MemoryMappedViewAccessor readOnly = map.CreateViewAccessor(0, 8, MemoryMappedFileAccess.Read))
+            ProbeArgument("write read-only view", () => readOnly.Write(0, 1), true);
+        MemoryMappedViewAccessor closed = map.CreateViewAccessor(0, 8);
+        closed.Dispose();
+        ProbeArgument("read closed view", () => closed.ReadInt32(0), true);
+        ProbeArgument("read closed view negative position", () => closed.ReadInt32(-1), true);
+        ProbeArgument("read struct closed view negative position", () => closed.Read(-1, out int _), true);
+        ProbeArgument("write array closed view at capacity", () => closed.WriteArray(8, data, 0, 1), true);
+        Console.WriteLine($"mmap args untouched: {view.ReadInt32(0)} {view.ReadInt32(56)} {view.ReadInt32(60)}"
+            + $" {string.Join(",", data)}");
+        Console.WriteLine("mmap args complete");
+    }
+
+    // The sentence of each factory, view and accessor rejection, and the checks the path
+    // factory runs against the size of the file it opens; a file the refused call created
+    // is gone again. A directory's refusal names the path, so only its type prints.
+    private static void TestArgumentMessages(string dir)
+    {
+        string path = Path.Combine(dir, "messages.bin");
+        File.WriteAllBytes(path, new byte[64]);
+        string emptyPath = Path.Combine(dir, "messages-empty.bin");
+        File.WriteAllBytes(emptyPath, new byte[0]);
+        const MemoryMappedFileAccess rw = MemoryMappedFileAccess.ReadWrite;
+        const MemoryMappedFileAccess read = MemoryMappedFileAccess.Read;
+        const MemoryMappedFileAccess write = MemoryMappedFileAccess.Write;
+        const MemoryMappedFileAccess badAccess = (MemoryMappedFileAccess)99;
+        const HandleInheritability none = HandleInheritability.None;
+        const HandleInheritability badInheritability = (HandleInheritability)99;
+        void FromPath(string label, string file, FileMode mode, string mapName, long capacity,
+            MemoryMappedFileAccess access)
+            => ProbeArgument("message from file " + label,
+                () => MemoryMappedFile.CreateFromFile(file, mode, mapName, capacity, access).Dispose(), true);
+        FromPath("map name", path, FileMode.Open, "", 0, rw);
+        FromPath("negative capacity", path, FileMode.Open, null, -1, rw);
+        FromPath("access", path, FileMode.Open, null, 0, badAccess);
+        FromPath("write access", path, FileMode.Open, null, 0, write);
+        FromPath("append", path, FileMode.Append, null, 0, rw);
+        FromPath("truncate", path, FileMode.Truncate, null, 0, rw);
+        FromPath("write access before mode", path, FileMode.Truncate, null, 0, write);
+        FromPath("empty path", "", FileMode.Open, null, 0, rw);
+        FromPath("append before empty path", "", FileMode.Append, null, 0, rw);
+        FromPath("mode", path, (FileMode)99, null, 0, rw);
+        FromPath("empty path before mode", "", (FileMode)99, null, 0, rw);
+        FromPath("nul path", path + "\0x", FileMode.Open, null, 0, rw);
+        FromPath("mode before nul path", path + "\0x", (FileMode)99, null, 0, rw);
+        FromPath("read grows", path, FileMode.Open, null, 65, read);
+        FromPath("smaller", path, FileMode.Open, null, 1, rw);
+        FromPath("empty file", emptyPath, FileMode.Open, null, 0, rw);
+        string created = Path.Combine(dir, "messages-created.bin");
+        FromPath("created empty", created, FileMode.OpenOrCreate, null, 0, rw);
+        Console.WriteLine($"mmap message created file kept={File.Exists(created)}");
+        FromPath("directory", dir, FileMode.Open, null, 0, rw);
+        FromPath("directory read", dir, FileMode.Open, null, 0, read);
+        Console.WriteLine($"mmap message file untouched={new FileInfo(path).Length}");
+
+        using (FileStream input = File.OpenRead(path))
+        using (FileStream empty = File.OpenRead(emptyPath))
+        {
+            void FromStream(string label, FileStream stream, string mapName, long capacity,
+                MemoryMappedFileAccess access, HandleInheritability inheritability)
+                => ProbeArgument("message from stream " + label,
+                    () => MemoryMappedFile.CreateFromFile(stream, mapName, capacity, access, inheritability, true).Dispose(),
+                    true);
+            FromStream("map name", input, "", 0, read, none);
+            FromStream("negative capacity", input, null, -1, read, none);
+            FromStream("access", input, null, 0, badAccess, none);
+            FromStream("write access", input, null, 0, write, none);
+            FromStream("empty", empty, null, 0, read, none);
+            FromStream("empty before inheritability", empty, null, 0, read, badInheritability);
+            FromStream("inheritability before read grows", input, null, 65, read, badInheritability);
+            FromStream("read grows", input, null, 65, read, none);
+            FromStream("smaller", input, null, 1, read, none);
+        }
+        using (SafeFileHandle handle =
+            File.OpenHandle(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+        using (SafeFileHandle emptyHandle =
+            File.OpenHandle(emptyPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+        {
+            void FromHandle(string label, SafeFileHandle source, long capacity,
+                HandleInheritability inheritability)
+                => ProbeArgument("message from handle " + label,
+                    () => MemoryMappedFile.CreateFromFile(source, null, capacity, read, inheritability, true).Dispose(),
+                    true);
+            FromHandle("empty before inheritability", emptyHandle, 0, badInheritability);
+            FromHandle("inheritability", handle, 0, badInheritability);
+            FromHandle("read grows", handle, 65, none);
+            FromHandle("smaller", handle, 1, none);
+        }
+
+        using MemoryMappedFile map = MemoryMappedFile.CreateFromFile(path, FileMode.Open, null, 64, rw);
+        ProbeArgument("message view negative size", () => map.CreateViewAccessor(0, -1).Dispose(), true);
+        ProbeArgument("message view negative size before access",
+            () => map.CreateViewAccessor(0, -1, badAccess).Dispose(), true);
+        ProbeArgument("message view access", () => map.CreateViewAccessor(0, 8, badAccess).Dispose(), true);
+        ProbeArgument("message view access before offset", () => map.CreateViewAccessor(100, 8, badAccess).Dispose(), true);
+        ProbeArgument("message view offset past end", () => map.CreateViewAccessor(100, 8).Dispose(), true);
+        ProbeArgument("message view past end", () => map.CreateViewAccessor(60, 8).Dispose(), true);
+        using MemoryMappedViewAccessor view = map.CreateViewAccessor(0, 64);
+        int[] data = { 1, 2, 3, 4 };
+        ProbeArgument("message write array negative position", () => view.WriteArray(-1, data, 0, 4), true);
+        ProbeArgument("message write array past end", () => view.WriteArray(56, data, 0, 4), true);
+        ProbeArgument("message write array at capacity", () => view.WriteArray(64, data, 0, 4), true);
+        ProbeArgument("message read array negative position", () => view.ReadArray(-1, data, 0, 4), true);
+        Console.WriteLine("mmap argument messages complete");
+    }
+
+    private static void TestOffsetAndWriteMessages(string dir)
+    {
+        Console.WriteLine("== mmap position messages ==");
+        string path = Path.Combine(dir, "positions.bin");
+        File.WriteAllBytes(path, new byte[64]);
+        using MemoryMappedFile map = MemoryMappedFile.CreateFromFile(path, FileMode.Open);
+        ProbeArgument("position view negative offset", () => map.CreateViewAccessor(-1, 8).Dispose(), true);
+        using MemoryMappedViewAccessor view = map.CreateViewAccessor(0, 64);
+        ProbeArgument("position write at end byte", () => view.Write(64, (byte)7), true);
+        Console.WriteLine("mmap position messages end");
+    }
+
+    // A view past the map: Unix .NET refuses the range against the map's capacity, which
+    // outlives Dispose, before the closed handle; Windows .NET widens the view down to the
+    // allocation granularity and lets MapViewOfFile refuse it, so a view of the rest past
+    // the end maps the file's zero-filled last page. The path factory's all-space name
+    // passes its empty check and only Windows's Path.GetFullPath refuses it.
+    private static void TestViewRanges(string dir)
+    {
+        string path = Path.Combine(dir, "ranges.bin");
+        File.WriteAllBytes(path, new byte[64]);
+        const MemoryMappedFileAccess rw = MemoryMappedFileAccess.ReadWrite;
+        using (MemoryMappedFile map = MemoryMappedFile.CreateFromFile(path, FileMode.Open, null, 64, rw))
+        {
+            void View(string label, long offset, long size)
+                => ProbeArgument("view range " + label, () =>
+                {
+                    using MemoryMappedViewAccessor view = map.CreateViewAccessor(offset, size);
+                    Console.WriteLine($"mmap view range {label} capacity={view.Capacity}");
+                }, true);
+            View("rest at end", 64, 0);
+            View("rest past end", 100, 0);
+            View("rest past page", 8192, 0);
+            View("rest past granularity", 70000, 0);
+            View("past granularity", 70000, 8);
+            View("size past address space", 0, 8192000000001);
+            View("size past virtual memory", 0, 1L << 62);
+        }
+        // Windows .NET leaves the view of the rest past the page mapped when its accessor
+        // refuses the negative capacity, and that view holds the file open until it is
+        // finalized, so the later maps open a fresh file.
+        path = Path.Combine(dir, "ranges-reopened.bin");
+        File.WriteAllBytes(path, new byte[64]);
+        MemoryMappedFile disposed = MemoryMappedFile.CreateFromFile(path, FileMode.Open, null, 64, rw);
+        disposed.Dispose();
+        ProbeArgument("view range disposed offset past end", () => disposed.CreateViewAccessor(100, 8).Dispose(), true);
+        ProbeArgument("view range disposed", () => disposed.CreateViewAccessor(0, 8).Dispose(), true);
+        using (MemoryMappedFile read = MemoryMappedFile.CreateFromFile(path, FileMode.Open, null, 0,
+            MemoryMappedFileAccess.Read))
+        {
+            ProbeArgument("view range write view of read map", () => read.CreateViewAccessor(0, 8).Dispose(), true);
+        }
+        ProbeArgument("view range blank path",
+            () => MemoryMappedFile.CreateFromFile("   ", FileMode.Open, null, 0, rw).Dispose(), true);
+        ProbeArgument("view range mode before blank path",
+            () => MemoryMappedFile.CreateFromFile("   ", (FileMode)99, null, 0, rw).Dispose(), true);
+        Console.WriteLine("mmap view ranges complete");
+    }
+
     private sealed class ObservedStream : FileStream
     {
         public bool LengthRead;

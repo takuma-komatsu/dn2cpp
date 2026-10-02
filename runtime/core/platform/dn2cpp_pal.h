@@ -53,11 +53,6 @@ char* dn2cpp_pal_getcwd(char* buf, size_t size);
 // PAL-CONTRACT: MUST
 int dn2cpp_pal_unlink(const char* path);
 
-// Create one directory component (mode 0777 on POSIX); 0 on success, -1 on
-// failure with errno set (EEXIST preserved so the caller can test idempotency).
-// PAL-CONTRACT: MUST
-int dn2cpp_pal_mkdir(const char* path);
-
 // Change the process working directory; 0 on success, -1 on failure.
 // PAL-CONTRACT: MUST
 int dn2cpp_pal_chdir(const char* path);
