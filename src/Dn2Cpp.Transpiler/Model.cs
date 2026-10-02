@@ -833,11 +833,11 @@ internal sealed class MethodInfo
     private string? _sigKey;
     public string SigKey => _sigKey ??= Name + SigShape;
 
-    /// <summary>The method's v1 sigShape (<c>(paramTypes):retType</c>) — SigKey
-    /// without the leading name. The base emitter bakes it into each reflected
-    /// method row of a <c>--hotupdate-base</c> build so the hot-update loader can
-    /// tell same-<c>(name, arity, static)</c> overloads (and a generic method's
-    /// several instantiations, all emitted under one name) apart.
+    /// <summary>The method's sigShape (<c>(paramTypes):retType</c>) — SigKey
+    /// without the leading name (<see cref="AbiContract.SigShape"/>). A
+    /// <c>--hotupdate-base</c> build bakes each reflected method row's
+    /// <see cref="AbiContract.ImportShape"/>, this shape led by a generic method's
+    /// type arguments, which the hot-update loader matches imports by.
     /// Cached — and reading it is what decodes <see cref="Signature"/>, which is the
     /// whole reason the comparisons above guard on the name first.</summary>
     private string? _sigShape;

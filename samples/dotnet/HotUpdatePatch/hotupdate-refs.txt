@@ -6,3 +6,5 @@
 HotUpdateBase.Holder[System.String]
 HotUpdateBase.Counter::Echo[System.Int32]
 HotUpdateBase.Counter::Echo[System.String]
+HotUpdateBase.Counter::TypeName[System.Int32]
+HotUpdateBase.Counter::TypeName[System.String]

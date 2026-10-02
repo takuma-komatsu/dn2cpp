@@ -193,7 +193,7 @@ for (int i = 0; i < args.Length; i++)
     }
     else if (args[i] == "--patch-stackcode")
     {
-        // Bake the BPI in the v1 stack-machine code format (Header.flags
+        // Bake the BPI in the stack-machine code format (Header.flags
         // bit0 clear) instead of the default register encoding.
         patchRegCode = false;
     }

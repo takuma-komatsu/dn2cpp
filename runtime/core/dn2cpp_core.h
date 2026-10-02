@@ -895,10 +895,11 @@ struct Dn2CppMethodInfo
     // Custom attributes applied to this method/constructor; 0-fill trailing.
     Dn2CppMetadataTable<Dn2CppAttrInfo> customAttrs;
     int32_t customAttrCount;
-    // The method's v1 sigShape ("(paramTypes):retType" in TypeDesc rendering) —
-    // the overload discriminator the hot-update loader matches an import against
-    // by string equality when a type carries several same-(name, arity, static)
-    // methods (chiefly the instantiations a generic method emits under one name).
+    // The method's sigShape ("(paramTypes):retType" in TypeDesc rendering, led by
+    // "<typeArgs>" on a generic method's instantiation) — the overload
+    // discriminator the hot-update loader matches an import against by string
+    // equality when a type carries several same-(name, arity, static) methods
+    // (chiefly the instantiations a generic method emits under one name).
     // Non-null only in a --hotupdate-base build; null otherwise (normal builds
     // never read it). Hand-written method rows that omit it (and the trailing
     // members below) value-initialize the rest to 0.

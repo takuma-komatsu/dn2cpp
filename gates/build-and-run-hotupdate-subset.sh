@@ -25,7 +25,8 @@
 #   - patch-deriving-patch types, SZArrays over eight element kinds (incl.
 #     catchable bounds/size faults and array covariance), interfaces, delegates,
 #     base-image generics (type, delegate and method instantiations bound by
-#     sigShape), String.Concat lowering, and exception handling
+#     sigShape, which a method's type arguments lead), String.Concat lowering,
+#     and exception handling
 #   - an external-base exception whose base is the never-loaded External BCL
 #     System.SystemException, driven from AOT and from a patch whose interpreted
 #     `base(message, quota)` runs the real emitted ctor body
@@ -73,7 +74,7 @@
 #
 # The default bake is the register code format (Header.flags bit0); a
 # stack-format section re-bakes the same patch with --patch-stackcode and
-# replays the identical transcript through the v1 stack dispatch loop, which is
+# replays the identical transcript through the stack dispatch loop, which is
 # the end-to-end equivalence proof for the two formats and also runs every null
 # probe through both loops. Counter's imported fields use packed metadata here
 # and native metadata in the conditional-default-reference base; both replay the
@@ -133,8 +134,12 @@ field_native='HotUpdateBase.Counter=native'
 echo "== 1/5 Building base + patch C# assemblies =="
 build_proj samples/dotnet/HotUpdateBase/HotUpdateBase.csproj
 build_proj samples/dotnet/HotUpdatePatch/HotUpdatePatch.csproj
+build_proj samples/dotnet/HotUpdateBase/NoCtorImportBase.csproj
+build_proj samples/dotnet/HotUpdatePatch/NoCtorImportPatch.csproj
+build_proj samples/dotnet/HotUpdatePatch/NoCtorImportOracle.csproj
 build_gate_proj gates/fixtures/interpreted-concat-oracle/InterpretedConcatOracle.csproj
 build_proj samples/dotnet/HotUpdateBadPatch/HotUpdateBadPatch.csproj
+build_proj samples/dotnet/HotUpdateBadPatch/GenericVirtualBad.csproj
 build_proj samples/dotnet/HotUpdateBadPatchItf/HotUpdateBadPatchItf.csproj
 build_proj samples/dotnet/HotUpdateBadPatchDelegate/HotUpdateBadPatchDelegate.csproj
 build_proj samples/dotnet/HotUpdateBadPatchMulticast/HotUpdateBadPatchMulticast.csproj
@@ -156,8 +161,12 @@ build_proj samples/dotnet/HotUpdateCoreLibBadPatch/HotUpdateCoreLibBadPatch.cspr
 build_proj samples/dotnet/InterpBench/InterpBench.csproj
 base_app="samples/dotnet/HotUpdateBase/bin/$CONFIG/$TFM/HotUpdateBase.dll"
 patch_app="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/HotUpdatePatch.dll"
+noctor_base_app="samples/dotnet/HotUpdateBase/bin/$CONFIG/$TFM/NoCtorImportBase.dll"
+noctor_patch_app="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/NoCtorImportPatch.dll"
+noctor_oracle_app="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/NoCtorImportOracle.dll"
 concat_oracle_app="gates/fixtures/interpreted-concat-oracle/bin/$CONFIG/$TFM/InterpretedConcatOracle.dll"
 bad_app="samples/dotnet/HotUpdateBadPatch/bin/$CONFIG/$TFM/HotUpdateBadPatch.dll"
+badgvm_app="samples/dotnet/HotUpdateBadPatch/bin/$CONFIG/$TFM/GenericVirtualBad.dll"
 baditf_app="samples/dotnet/HotUpdateBadPatchItf/bin/$CONFIG/$TFM/HotUpdateBadPatchItf.dll"
 baddg_app="samples/dotnet/HotUpdateBadPatchDelegate/bin/$CONFIG/$TFM/HotUpdateBadPatchDelegate.dll"
 badmc_app="samples/dotnet/HotUpdateBadPatchMulticast/bin/$CONFIG/$TFM/HotUpdateBadPatchMulticast.dll"
@@ -195,14 +204,18 @@ tenv="tenv:${DN2CPP_MAX_GENERIC_DEPTH:-}/${DN2CPP_MAX_INSTANTIATIONS:-}/${DN2CPP
 # of this gate the same way it is of net10_bcl_diff_gate — a runtime bump must
 # not be served a green recorded against the previous one.
 if gate_cache_check "$OUT" "hotupdate-subset|cli:$(_gate_cli_hash)|$tenv|field-metadata:$field_packed/$field_native|corelib:$(resolve_net10_corelib)" \
-        "$base_app" "$patch_app" "$bad_app" "$baditf_app" "$baddg_app" \
+        "$base_app" "$patch_app" "$bad_app" "$badgvm_app" "$baditf_app" "$baddg_app" \
         "$concat_oracle_app" \
         "$badmc_app" "$dir1_app" "$dir2_app" "$dgrecv_app" "$dgsig_app" \
         samples/dotnet/HotUpdateCoreLibBase/bin/$CONFIG/$TFM/HotUpdateCoreLibBase.dll \
         samples/dotnet/HotUpdateCoreLibPatch/bin/$CONFIG/$TFM/HotUpdateCoreLibPatch.dll \
         samples/dotnet/HotUpdateCoreLibBadPatch/bin/$CONFIG/$TFM/HotUpdateCoreLibBadPatch.dll \
         samples/dotnet/InterpBench/bin/$CONFIG/$TFM/InterpBench.dll \
-        samples/dotnet/HotUpdatePatch/hotupdate-refs.txt; then
+        samples/dotnet/HotUpdatePatch/hotupdate-refs.txt \
+        "$noctor_base_app" "$noctor_patch_app" "$noctor_oracle_app" \
+        samples/dotnet/HotUpdatePatch/noctor-import-refs.txt \
+        gates/fixtures/hotupdate-import-identity/mutate-native-rows.py \
+        gates/fixtures/hotupdate-import-identity/set-bpi-version.py; then
     gate_cache_hit_msg
     exit 0
 fi
@@ -481,8 +494,14 @@ concat_oracle=$(dotnet "$concat_oracle_app")
 concat_oracle=$(strip_cr_win "$concat_oracle")
 grep -Fxq 'null: ArgumentNullException' <<< "$concat_oracle" \
     || { echo "FAIL: managed null Concat witness missing" >&2; exit 1; }
-expected="$expected
+expected_before_generic="$expected
 $concat_oracle"
+generic_expected="== ordinary generic import identity ==
+System.Int32
+System.String
+== ordinary generic import identity end =="
+expected="$expected_before_generic
+$generic_expected"
 # Exit status captured explicitly (`$(...)` inline would swallow it): a base
 # that aborts in teardown AFTER printing the full transcript must not pass.
 set +e
@@ -493,9 +512,13 @@ assert_exit_code "$hu_rc" 0
 normalized=$(strip_cr_win "$hu_out")
 prefix=${normalized%%$'\n== interpreted Concat arrays =='*}
 assert_output "$prefix" "$expected_prefix"
+generic_prefix=${normalized%%$'\n== ordinary generic import identity =='*}
+assert_output "$generic_prefix" "$expected_before_generic"
+grep -Fxq '== ordinary generic import identity end ==' <<< "$normalized" \
+    || { echo "FAIL: ordinary generic import identity block did not complete" >&2; exit 1; }
 
 echo "-- stack format: --patch-stackcode bake replays the identical transcript --"
-# The same patch baked in the v1 stack code format (Header.flags bit0 clear):
+# The same patch baked in the stack code format (Header.flags bit0 clear):
 # the unchanged base binary selects the dispatch loop per image, so the full
 # transcript above re-running identically is the end-to-end equivalence proof
 # for the two encodings.
@@ -669,6 +692,19 @@ if ! grep -q "must not declare new virtual slots yet" <<<"$bad_err"; then
     exit 1
 fi
 echo "OK (new virtual slot rejected)"
+
+echo "-- negative: an uncalled generic virtual definition must be rejected --"
+run_bounded dotnet "$badgvm_app"
+badgvm_rc=0
+badgvm_err=$(invoke_cli --emit-patch "$badgvm_app" --base-abi "$OUT/base-abi.json" \
+    -o "$OUT/generic-virtual-refused" 2>&1 >/dev/null) || badgvm_rc=$?
+if [ "$badgvm_rc" -ne 2 ] \
+    || ! grep -Fq 'must not declare generic virtual methods yet (Echo' <<< "$badgvm_err"; then
+    echo "FAIL: the uncalled generic virtual definition was not refused: $badgvm_rc" >&2
+    printf '%s\n' "$badgvm_err" >&2
+    exit 1
+fi
+echo "OK (uncalled generic virtual definition rejected)"
 
 echo "-- negative: a patch declaring an interface must be rejected --"
 baditf_rc=0
@@ -1217,4 +1253,67 @@ assert_output "$(strip_cr_win "$ie_out")" "checksum:noop:0"
 assert_output "$(strip_cr_win "$(cat "$OUT/interp/native.err")")" "impl:Kernel"
 assert_exit_code "$ie_rc" 0
 echo "OK (CoreLib-less Console.Error reaches stderr and only stderr)"
+echo "-- constructor-free ordinary generic import identity --"
+noctor_out="$OUT/noctor"
+DN2CPP_STRICT_COMPLETION=1 invoke_cli "$noctor_base_app" --hotupdate-base \
+    --no-metadata-compression \
+    --hotupdate-refs samples/dotnet/HotUpdatePatch/noctor-import-refs.txt -o "$noctor_out/normal"
+invoke_cli --emit-patch "$noctor_patch_app" --base-abi "$noctor_out/normal/base-abi.json" -o "$noctor_out"
+noctor_bpi="$noctor_out/NoCtorImportPatch.bpi"
+[ "$(od -An -tx1 -j8 -N4 "$noctor_bpi" | tr -d ' ')" = "02000000" ] \
+    || { echo "FAIL: ordinary import BPI header does not name the current format" >&2; exit 1; }
+noctor_oracle=$(dotnet "$noctor_oracle_app")
+noctor_oracle=$(strip_cr_win "$noctor_oracle")
+assert_output "$noctor_oracle" "== noctor generic import identity ==
+System.Int32
+System.String
+7
+echo
+73
+91
+== noctor generic import identity end =="
+noctor_expected="noctor: start
+$noctor_oracle
+noctor: done"
+compile_console "$noctor_out/normal" NoCtorImportBase
+noctor_result=$("./$noctor_out/normal/NoCtorImportBase$EXE_EXT" "$noctor_bpi")
+assert_output "$(strip_cr_win "$noctor_result")" "$noctor_expected"
+# Native row mutation exercises the real resolver without changing its code or
+# relying on the malformed image's method-table order.
+for noctor_axis in duplicate missing legacy-single legacy-ambiguous; do
+    DN2CPP_STRICT_COMPLETION=1 invoke_cli "$noctor_base_app" --hotupdate-base \
+        --no-metadata-compression \
+        --hotupdate-refs samples/dotnet/HotUpdatePatch/noctor-import-refs.txt -o "$noctor_out/$noctor_axis"
+    cmp "$noctor_out/normal/base-abi.json" "$noctor_out/$noctor_axis/base-abi.json"
+    python3 gates/fixtures/hotupdate-import-identity/mutate-native-rows.py \
+        "$noctor_out/$noctor_axis" "$noctor_axis"
+    compile_console "$noctor_out/$noctor_axis" NoCtorImportBase
+    noctor_result=$("./$noctor_out/$noctor_axis/NoCtorImportBase$EXE_EXT" "$noctor_bpi")
+    noctor_result=$(strip_cr_win "$noctor_result")
+    case "$noctor_axis" in
+        legacy-single) assert_output "$noctor_result" "$noctor_expected" ;;
+        missing) assert_output "$noctor_result" "noctor: start
+noctor rejected:BPI bind: unresolved method import" ;;
+        duplicate|legacy-ambiguous) assert_output "$noctor_result" "noctor: start
+noctor rejected:BPI bind: ambiguous method import (same-arity overloads share a sigShape)" ;;
+    esac
+done
+
+echo "-- BPI format rejection at hard-load and directory-header mouths --"
+mkdir -p "$noctor_out/wrong-formats"
+for wrong_format in 1 2147483647; do
+    wrong_bpi="$noctor_out/wrong-formats/format-$wrong_format.bpi"
+    python3 gates/fixtures/hotupdate-import-identity/set-bpi-version.py \
+        "$noctor_bpi" "$wrong_bpi" "$wrong_format"
+    noctor_result=$("./$noctor_out/normal/NoCtorImportBase$EXE_EXT" "$wrong_bpi")
+    assert_output "$(strip_cr_win "$noctor_result")" "noctor: start
+noctor rejected:BPI: unsupported format version"
+done
+noctor_result=$("./$noctor_out/normal/NoCtorImportBase$EXE_EXT" --load-dir \
+    "$noctor_out/wrong-formats" 2> "$noctor_out/wrong-formats.err")
+assert_output "$(strip_cr_win "$noctor_result")" 'noctor directory:0'
+[ "$(grep -c 'unsupported BPI format version' "$noctor_out/wrong-formats.err")" = 2 ] \
+    || { echo "FAIL: directory header prevalidation did not reject both wrong formats" >&2; exit 1; }
+echo "OK (ordinary generic import identity, ambiguity and format fences)"
+
 gate_cache_commit

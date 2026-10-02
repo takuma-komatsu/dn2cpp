@@ -17,4 +17,10 @@
     <ProjectReference Include="../HotUpdateBase/HotUpdateBase.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Remove="NoCtorImportProgram.cs" />
+    <Compile Remove="NoCtorImportProbe.cs" />
+    <Compile Remove="NoCtorImportOracleProgram.cs" />
+  </ItemGroup>
+
 </Project>

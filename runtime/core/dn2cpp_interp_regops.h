@@ -38,7 +38,7 @@ enum Dn2CppRegOpClass : uint8_t
 enum : uint32_t
 {
     kRegSlotLimit = 64, // argCount + localCount
-    kRegTempLimit = 64, // maxStack = the simulated maximum eval depth
+    kRegTempLimit = 64, // maxStack = the maximum temporary extent, including call bases
 };
 
 #define DN2CPP_REGOPS(X) \

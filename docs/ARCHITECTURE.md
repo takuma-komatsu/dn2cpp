@@ -495,6 +495,9 @@ section belongs in a `corelib_diff_gate` (`samples/dotnet/ReflectInvoke`).
 
 #### Reflection metadata representation
 
+The next dispatch and discovery changes are proposed in
+[REFLECTION-DISPATCH-DESIGN.md](REFLECTION-DISPATCH-DESIGN.md).
+
 `Dn2CppTypeInfo` keeps type identity, layout, inheritance, dispatch, generic
 arguments and array classification directly addressable. Reflection-only fields
 are read through `reflection()`. Member handles and tables use the common

@@ -1,7 +1,7 @@
 // dn2cpp_interp.h — hot-update runtime surface: the Baked Patch Image (BPI)
 // on-disk format plus the loader / interpreter entry points.
 //
-// Binary layout per docs/BPI-FORMAT.md (v1). All multi-byte integers are
+// Binary layout per docs/BPI-FORMAT.md. All multi-byte integers are
 // little-endian; sections start on 16-byte boundaries; every cross-reference
 // inside the blob is a table index or a blob-relative byte offset — never an
 // absolute pointer — so a whole-read/mmap'd blob executes in place with no
@@ -19,7 +19,9 @@
 
 // Header magic: "DN2BPI\0\0" (8 bytes including the two NULs).
 #define DN2CPP_BPI_MAGIC "DN2BPI\0"
-#define DN2CPP_BPI_VERSION 1u
+// The only format version the loader accepts: +1 on any change a BPI of another
+// version would misread, a record layout or an import identity (sigShape).
+#define DN2CPP_BPI_VERSION 2u
 
 // Header.flags bits (offset 12). bit0 = register-based bytecode.
 #define DN2CPP_BPI_FLAG_REGCODE 0x1u
@@ -58,13 +60,13 @@ enum Dn2CppBpiSectionKind : uint32_t
                                        //       { u32 slot; u32 patchMethodIdx }[implCount] }[itfCount] }
 };
 
-// ---- on-disk records (fixed layouts, v1) ----
+// ---- on-disk records (fixed layouts) ----
 
 // Header (64 bytes, fixed).
 struct Dn2CppBpiHeader
 {
     char magic[8];             // "DN2BPI\0\0"
-    uint32_t formatVersion;    // +1 on layout-incompatible change
+    uint32_t formatVersion;    // DN2CPP_BPI_VERSION
     uint32_t flags;            // bit0 = register-based bytecode (the register
                                // interpretation of the CodeSection records);
                                // loaders enforce DN2CPP_BPI_FLAGS_SUPPORTED
