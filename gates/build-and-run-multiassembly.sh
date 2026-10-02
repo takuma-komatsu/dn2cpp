@@ -60,7 +60,8 @@ grep -Fxq metadata-policy-assembly-begin <<<"$expected_policy"
 grep -Fxq metadata-policy-assembly-end <<<"$expected_policy"
 metadata_section_parity() {
     local out="$1" actual
-    run_bounded "$out/MultiAssembly$EXE_EXT" > "$out/metadata-assembly.stdout"
+    run_bounded "$out/MultiAssembly$EXE_EXT" > "$out/metadata-assembly.raw.stdout"
+    strip_cr_win_file "$out/metadata-assembly.raw.stdout" > "$out/metadata-assembly.stdout"
     actual=$(sed -n '/^metadata-assembly-begin$/,/^metadata-assembly-end$/p' "$out/metadata-assembly.stdout")
     assert_output "$actual" "$expected_metadata"
     actual=$(sed -n '/^metadata-policy-assembly-begin$/,/^metadata-policy-assembly-end$/p' "$out/metadata-assembly.stdout")
