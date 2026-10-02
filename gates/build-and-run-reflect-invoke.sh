@@ -130,7 +130,7 @@
 # Delegate list removal, original-entry identity, real-body enumeration and GC cache.
 source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_ordinary-reflection.sh samples/dotnet/ReflectInvoke/OrdinaryAmbiguousMatchSubset.cs samples/dotnet/ReflectInvoke/OrdinaryReflectionLeaves.csproj samples/dotnet/ReflectInvoke/OrdinaryReflectionLeavesProgram.cs samples/dotnet/ReflectInvoke/OrdinaryWideLookupSubset.cs samples/dotnet/ReflectInvoke/ReflectFieldValidationSubset.cs samples/dotnet/ReflectInvoke/ReflectInvoke.csproj samples/dotnet/ReflectInvoke/ReflectMetadataMeasureSubset.cs samples/dotnet/ReflectInvoke/ReflectionMethodGroupsOnly.csproj samples/dotnet/ReflectInvoke/ReflectionMethodGroupsOnlyProgram.cs"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-reflection-leaves-v1"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-reflection-leaves-v1|runtime-member-attributes-prefix:${DN2CPP_BEFORE_RUNTIME_MEMBER_ATTRIBUTES:-}"
 
 py="$(resolve_python)"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/check-reflection-layout.py gates/measure-reflection-metadata.py gates/expected/reflection-allocations.csv gates/fixtures/delegate-invocation-cache/DelegateInvocationCache.csproj gates/fixtures/delegate-invocation-cache/Program.cs"
@@ -560,9 +560,13 @@ done
 unset -f gate_extra_asserts
 source gates/_ordinary-reflection.sh
 gate_extra_asserts() {
-    local out="$1" native line
+    local out="$1" native line before prefix
     native=$(run_bounded "$out/OrdinaryReflectionLeaves$EXE_EXT") || return $?
     native=$(strip_cr_win "$native")
+    before=$(DN2CPP_BEFORE_RUNTIME_MEMBER_ATTRIBUTES=1 run_bounded dotnet "$_CG_APP") || return $?
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== runtime member attributes ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
     for line in '== field validation ==' 'field validation end' \
         '== ordinary ambiguous messages ==' 'ordinary ambiguous messages end' \
         'sealed direct=CUSTOM-HELLO' 'sealed bound=CUSTOM-HELLO/IGreeting.Shout' \
@@ -577,7 +581,8 @@ gate_extra_asserts() {
         'wide properties=270/0' 'wide constructor=A39' \
         '== constructor binder faults ==' 'constructor matched=17' \
         'constructor wrong count inner=<null>' 'constructor binder faults end' \
-        'ordinary reflection leaves end'; do
+        'ordinary reflection leaves end' '== runtime member attributes ==' \
+        'memberwise clone attributes=0085/False/True' 'runtime member attributes end'; do
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: ordinary reflection witness missing: $line" >&2; return 1; }
     done

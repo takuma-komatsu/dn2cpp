@@ -210,5 +210,12 @@ static class Program
         ConstructorFault("constructor matched", new object[] { 17 });
         Console.WriteLine("constructor binder faults end");
         Console.WriteLine("ordinary reflection leaves end");
+        if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_RUNTIME_MEMBER_ATTRIBUTES") == "1")
+            return;
+        Console.WriteLine("== runtime member attributes ==");
+        MethodInfo clone = typeof(object).GetMethod("MemberwiseClone", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        Console.WriteLine("memberwise clone attributes=" + ((int)clone.Attributes).ToString("X4")
+            + "/" + clone.IsFamily + "/" + clone.IsFamilyOrAssembly);
+        Console.WriteLine("runtime member attributes end");
     }
 }
