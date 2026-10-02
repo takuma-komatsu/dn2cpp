@@ -35,7 +35,7 @@ gate_extra_asserts() {
     if [ "$boolean_sharing" = --shared-generics ]; then
         for canonical in CnInt32 CnRef; do
             body=$(awk -v owner="// ConstrainedObjectInterfaceSubset.BooleanReceiverContext_\$$canonical::Convert" \
-                'index($0, owner) == 1 { copy = 1; next } copy { print; if ($0 == "}") exit }' \
+                '{ sub(/\r$/, "") } index($0, owner) == 1 { copy = 1; next } copy { print; if ($0 == "}") exit }' \
                 "$out"/generated*.cpp)
             grep -Fq 'dn2cpp_box(&dn2cpp_bool_type' <<< "$body" \
                 && grep -Fq 'dn2cpp_resolve_interface' <<< "$body" \
