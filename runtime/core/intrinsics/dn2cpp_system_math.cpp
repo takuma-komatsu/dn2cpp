@@ -131,7 +131,7 @@ double dn2cpp_math_round_digits(double value, int32_t digits, int32_t mode)
         1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15,
     };
     if (static_cast<uint32_t>(digits) > 15u)
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_ROUNDING_DIGITS, "digits");
     if (std::fabs(value) < 1e16)
     {
         double power10 = k_pow10[digits];
@@ -147,7 +147,7 @@ float dn2cpp_math_round_digits_f(float value, int32_t digits, int32_t mode)
 {
     static const float k_pow10f[7] = { 1e0f, 1e1f, 1e2f, 1e3f, 1e4f, 1e5f, 1e6f };
     if (static_cast<uint32_t>(digits) > 6u)
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_ROUNDING_DIGITS_MATH_F, "digits");
     if (std::fabs(value) < 1e8f)
     {
         float power10 = k_pow10f[digits];
@@ -160,7 +160,7 @@ float dn2cpp_math_round_digits_f(float value, int32_t digits, int32_t mode)
             case 2: rounded = std::trunc(scaled); break;     // ToZero
             case 3: rounded = std::floor(scaled); break;     // ToNegativeInfinity
             case 4: rounded = std::ceil(scaled); break;      // ToPositiveInfinity
-            default: dn2cpp_throw_argument();                // catchable, like the BCL
+            default: dn2cpp_throw_invalid_enum_value(mode, "MidpointRounding", "mode");
         }
         value = rounded / power10;
     }

@@ -1425,9 +1425,48 @@ extern const int32_t dn2cpp_bcl_message_count;
 // The keys the runtime asks for. Spelled once, here, because the lookup is by NAME:
 // drift against the transpiler's list can only lose a message, never answer with the
 // wrong one, and gates/build-and-run-doc-claims.sh diffs the two lists.
+inline constexpr const char* DN2CPP_SR_ALIGNMENT_MUST_BE_POW2 = "Argument_AlignmentMustBePow2";
+inline constexpr const char* DN2CPP_SR_ARGUMENT_NULL_ARRAY = "ArgumentNull_Array";
+inline constexpr const char* DN2CPP_SR_ARGUMENT_NULL_STRING = "ArgumentNull_String";
+inline constexpr const char* DN2CPP_SR_BLOCKING_ADD_CONCURRENT_COMPLETE = "System.Collections.Concurrent:BlockingCollection_Add_ConcurrentCompleteAdd";
+inline constexpr const char* DN2CPP_SR_BLOCKING_CANT_TAKE_WHEN_DONE = "System.Collections.Concurrent:BlockingCollection_CantTakeWhenDone";
+inline constexpr const char* DN2CPP_SR_BLOCKING_COMPLETED = "System.Collections.Concurrent:BlockingCollection_Completed";
+inline constexpr const char* DN2CPP_SR_BLOCKING_TIMEOUT_INVALID = "System.Collections.Concurrent:BlockingCollection_TimeoutInvalid";
+inline constexpr const char* DN2CPP_SR_OVERFLOW_DECIMAL = "Overflow_Decimal";
+inline constexpr const char* DN2CPP_SR_DECIMAL_ROUND = "ArgumentOutOfRange_DecimalRound";
+inline constexpr const char* DN2CPP_SR_DESTINATION_TOO_SHORT = "Argument_DestinationTooShort";
+inline constexpr const char* DN2CPP_SR_HEX_BINARY_STYLES_NOT_SUPPORTED = "Arg_HexBinaryStylesNotSupported";
+inline constexpr const char* DN2CPP_SR_INDEX_COUNT_BUFFER = "ArgumentOutOfRange_IndexCountBuffer";
+inline constexpr const char* DN2CPP_SR_INVALID_ENUM_VALUE = "Argument_InvalidEnumValue";
+inline constexpr const char* DN2CPP_SR_INVALID_HEX_BINARY_STYLE = "Arg_InvalidHexBinaryStyle";
+inline constexpr const char* DN2CPP_SR_INVALID_NUMBER_STYLES = "Argument_InvalidNumberStyles";
+inline constexpr const char* DN2CPP_SR_PARALLEL_INVOKE_ACTION_NULL = "System.Threading.Tasks.Parallel:Parallel_Invoke_ActionNull";
+inline constexpr const char* DN2CPP_SR_ROUNDING_DIGITS = "ArgumentOutOfRange_RoundingDigits";
+inline constexpr const char* DN2CPP_SR_ROUNDING_DIGITS_MATH_F = "ArgumentOutOfRange_RoundingDigits_MathF";
+inline constexpr const char* DN2CPP_SR_STRING_ZERO_LENGTH = "Format_StringZeroLength";
+inline constexpr const char* DN2CPP_SR_WRONG_SIZE_ARRAY_IN_NATIVE_STRUCT = "Argument_WrongSizeArrayInNativeStruct";
 inline constexpr const char* DN2CPP_SR_OVERFLOW = "Arg_OverflowException";
 inline constexpr const char* DN2CPP_SR_INDEX_OUT_OF_RANGE = "Arg_IndexOutOfRangeException";
 inline constexpr const char* DN2CPP_SR_ARGUMENT = "Arg_ArgumentException";
+inline constexpr const char* DN2CPP_SR_ADD_VALUE = "ArgumentOutOfRange_AddValue";
+inline constexpr const char* DN2CPP_SR_BAD_HOUR_MINUTE_SECOND = "ArgumentOutOfRange_BadHourMinuteSecond";
+inline constexpr const char* DN2CPP_SR_BAD_YEAR_MONTH_DAY = "ArgumentOutOfRange_BadYearMonthDay";
+inline constexpr const char* DN2CPP_SR_DATE_ARITHMETIC = "ArgumentOutOfRange_DateArithmetic";
+inline constexpr const char* DN2CPP_SR_DATE_TIME_BAD_MONTHS = "ArgumentOutOfRange_DateTimeBadMonths";
+inline constexpr const char* DN2CPP_SR_DATE_TIME_BAD_TICKS = "ArgumentOutOfRange_DateTimeBadTicks";
+inline constexpr const char* DN2CPP_SR_DATE_TIME_BAD_YEARS = "ArgumentOutOfRange_DateTimeBadYears";
+inline constexpr const char* DN2CPP_SR_FILE_TIME_INVALID = "ArgumentOutOfRange_FileTimeInvalid";
+inline constexpr const char* DN2CPP_SR_FORMAT_OFFSET_OUT_OF_RANGE = "Format_OffsetOutOfRange";
+inline constexpr const char* DN2CPP_SR_FORMAT_UTC_OUT_OF_RANGE = "Format_UTCOutOfRange";
+inline constexpr const char* DN2CPP_SR_INVALID_DATE_TIME_KIND = "Argument_InvalidDateTimeKind";
+inline constexpr const char* DN2CPP_SR_MONTH = "ArgumentOutOfRange_Month";
+inline constexpr const char* DN2CPP_SR_OFFSET_LOCAL_MISMATCH = "Argument_OffsetLocalMismatch";
+inline constexpr const char* DN2CPP_SR_OFFSET_OUT_OF_RANGE = "Argument_OffsetOutOfRange";
+inline constexpr const char* DN2CPP_SR_OFFSET_PRECISION = "Argument_OffsetPrecision";
+inline constexpr const char* DN2CPP_SR_OFFSET_UTC_MISMATCH = "Argument_OffsetUtcMismatch";
+inline constexpr const char* DN2CPP_SR_RANGE = "ArgumentOutOfRange_Range";
+inline constexpr const char* DN2CPP_SR_UTC_OUT_OF_RANGE = "Argument_UTCOutOfRange";
+inline constexpr const char* DN2CPP_SR_YEAR = "ArgumentOutOfRange_Year";
 inline constexpr const char* DN2CPP_SR_ARGUMENT_OUT_OF_RANGE = "Arg_ArgumentOutOfRangeException";
 inline constexpr const char* DN2CPP_SR_CANCELLATION_SOURCE_DISPOSED = "CancellationTokenSource_Disposed";
 inline constexpr const char* DN2CPP_SR_MUST_BE_NON_ZERO = "ArgumentOutOfRange_Generic_MustBeNonZero";
@@ -1462,6 +1501,7 @@ inline constexpr const char* DN2CPP_SR_UNBOUND_GENERIC = "Arg_UnboundGenParam";
 inline constexpr const char* DN2CPP_SR_OBJECT_CONVERSION = "Arg_ObjObjEx";
 inline constexpr const char* DN2CPP_SR_FORMAT_INVALID_STRING_WITH_VALUE = "Format_InvalidStringWithValue";
 inline constexpr const char* DN2CPP_SR_BAD_DATETIME = "Format_BadDateTime";
+inline constexpr const char* DN2CPP_SR_BAD_FORMAT_SPECIFIER = "Format_BadFormatSpecifier";
 inline constexpr const char* DN2CPP_SR_BAD_BOOLEAN = "Format_BadBoolean";
 inline constexpr const char* DN2CPP_SR_ENUM_ILLEGAL_VALUE = "Arg_EnumIllegalVal";
 inline constexpr const char* DN2CPP_SR_BAD_BASE64_CHAR = "Format_BadBase64Char";
@@ -1972,12 +2012,12 @@ Dn2CppArrayRef* dn2cpp_assembly_get_manifest_resource_names(const char* name);
 // caller wraps in a MemoryStream, or null when there is no such resource (real .NET's
 // answer too) — unless the assembly is resourcesDropped, in which case a miss throws
 // instead of answering the null that would mean "missing" (a --manifest-resource-root
-// kept resource still hits and answers). `scope` is the optional Type of the
-// (Type, string) overload, whose namespace prefixes the name; null for the plain
-// (string) overload. A null resource
-// name throws ArgumentNullException, an empty one ArgumentException — both as .NET.
+// kept resource still hits and answers). `scoped` marks the (Type, string) overload,
+// whose optional Type `scope` prefixes the name with its namespace; `scope` is null
+// for the plain (string) overload. A null or empty name is rejected as .NET rejects it
+// for that overload.
 Dn2CppArrayN* dn2cpp_assembly_get_manifest_resource_bytes(const char* name, Dn2CppType* scope,
-    Dn2CppString* resourceName, const Dn2CppTypeInfo* byteArrayType);
+    bool scoped, Dn2CppString* resourceName, const Dn2CppTypeInfo* byteArrayType);
 // Assembly.GetManifestResourceInfo(name): whether the assembly carries the named
 // embedded resource — the emit arm turns 1 into a ManifestResourceInfo(assembly=null,
 // fileName=null, Embedded|ContainedInManifestFile) and 0 into null, as .NET does.
@@ -2027,9 +2067,11 @@ Dn2CppArrayRef* dn2cpp_assembly_get_modules(const char* name);
 // registry name ASCII case-insensitively; a display name's Version/Culture/
 // PublicKeyToken are ignored (see the implementation note). A miss follows real
 // .NET: dn2cpp_assembly_load throws FileNotFoundException, the obsolete
-// _load_partial returns null. A null name throws ArgumentNullException, an
-// empty/blank one ArgumentException (both measured against real .NET).
-const char* dn2cpp_assembly_load(Dn2CppString* name);
+// _load_partial returns null. A null name throws ArgumentNullException and an
+// empty one ArgumentException, naming `paramName` ("assemblyName" for
+// Load(String), "assemblyRef" for Load(AssemblyName)) or "partialName"; a blank
+// one throws ArgumentException.
+const char* dn2cpp_assembly_load(Dn2CppString* name, const char* paramName);
 const char* dn2cpp_assembly_load_partial(Dn2CppString* name);
 // Module.Name / ToString — "<AssemblyName>.dll", the manifest module's file name
 // (matching real .NET; Module.FullyQualifiedName also maps here — INTENTIONAL
@@ -2686,6 +2728,7 @@ void dn2cpp_register_vcall_traps(const void* const* fns, int32_t count);
 
 // Throws a managed OverflowException (catchable), unlike dn2cpp_fail.
 [[noreturn]] void dn2cpp_overflow();
+[[noreturn]] void dn2cpp_integer_overflow(int32_t bits, int32_t isSigned);
 
 // ThrowHelper trap intrinsics. The BCL's System.ThrowHelper dead-throw closures
 // (Span<T> bounds checks, Slice argument checks, …) are intrinsic-mapped to
@@ -2731,6 +2774,37 @@ void dn2cpp_cctor_run_startup(void (*ensure)(), const char* type);
 // `new ArgumentException(message, paramName)` over a message only known at run time; a
 // null message keeps the type's default text.
 [[noreturn]] void dn2cpp_throw_argument_message(Dn2CppString* message, const char* paramName);
+// An argument exception of type `ti` whose sentence is the SR composite format `key`
+// over `args` (argc at most 3), naming `paramName` as above; a null paramName names
+// nothing and adds no tail. An absent template keeps the type's default text.
+[[noreturn]] void dn2cpp_throw_argument_sr(const Dn2CppTypeInfo* ti, const char* key,
+    const char* paramName, Dn2CppString* const* args, int32_t argc);
+// ArgumentException(SR.Format(SR.Argument_InvalidEnumValue, value, enumName), paramName):
+// an undefined value of an enum the callee switches over.
+[[noreturn]] void dn2cpp_throw_invalid_enum_value(int32_t value, const char* enumName,
+    const char* paramName);
+// Math.ThrowMinMaxException: ArgumentException(SR.Format(SR.Argument_MinMaxValue, min,
+// max)), each bound spelled as its type's ToString() spells it. The typed forms format
+// the bound themselves: an integer at its width, signed or not, and a float or a double.
+[[noreturn]] void dn2cpp_throw_min_max(Dn2CppString* min, Dn2CppString* max);
+[[noreturn]] void dn2cpp_throw_min_max_int(int64_t min, int64_t max, int32_t byteWidth);
+[[noreturn]] void dn2cpp_throw_min_max_uint(uint64_t min, uint64_t max, int32_t byteWidth);
+[[noreturn]] void dn2cpp_throw_min_max_r8(double min, double max);
+[[noreturn]] void dn2cpp_throw_min_max_r4(float min, float max);
+template <typename T>
+[[noreturn]] inline void dn2cpp_throw_min_max_of(T min, T max)
+{
+    if constexpr (std::is_same_v<T, double>)
+        dn2cpp_throw_min_max_r8(min, max);
+    else if constexpr (std::is_same_v<T, float>)
+        dn2cpp_throw_min_max_r4(min, max);
+    else if constexpr (std::is_signed_v<T>)
+        dn2cpp_throw_min_max_int(static_cast<int64_t>(min), static_cast<int64_t>(max),
+            static_cast<int32_t>(sizeof(T)));
+    else
+        dn2cpp_throw_min_max_uint(static_cast<uint64_t>(min), static_cast<uint64_t>(max),
+            static_cast<int32_t>(sizeof(T)));
+}
 [[noreturn]] void dn2cpp_throw_argument_msg(const char* message);
 [[noreturn]] void dn2cpp_throw_invalid_operation();
 // The same catchable InvalidOperationException, carrying a diagnosable reason.
@@ -2877,6 +2951,9 @@ Dn2CppString* dn2cpp_default_message(const Dn2CppTypeInfo* ti);
 // Uses the supplied box and text for a timeout rejected as a TimeSpan.
 [[noreturn]] void dn2cpp_throw_argument_out_of_range_actual(const char* sentence,
     const char* paramName, Dn2CppObject* actual, Dn2CppString* actualText);
+[[noreturn]] void dn2cpp_throw_argument_out_of_range_actual_sr1(const char* key,
+    Dn2CppString* arg, const char* paramName, Dn2CppObject* actual, Dn2CppString* actualText);
+
 
 // Checked range conversion: trap unless the value fits the target range.
 template <typename TTo, typename TFrom>
@@ -3189,7 +3266,7 @@ template <typename T>
 inline T dn2cpp_math_clamp(T v, T lo, T hi)
 {
     if (hi < lo)
-        dn2cpp_throw_argument();
+        dn2cpp_throw_min_max_of(lo, hi);
     return v < lo ? lo : (v > hi ? hi : v);
 }
 
@@ -3200,7 +3277,7 @@ template <typename T>
 inline T dn2cpp_math_clampnative(T v, T lo, T hi)
 {
     if (lo > hi)
-        dn2cpp_throw_argument();
+        dn2cpp_throw_min_max_of(lo, hi);
     return dn2cpp_math_minnative(dn2cpp_math_maxnative(v, lo), hi);
 }
 
@@ -3945,6 +4022,12 @@ Dn2CppString* dn2cpp_encoding_decode_range(Dn2CppArrayN* bytes, int32_t index,
 // .NET. The byte* is the raw buffer (no array header).
 Dn2CppString* dn2cpp_encoding_get_string_ptr(Dn2CppObject* encoding, const char* bytes,
                                              int32_t count);
+Dn2CppString* dn2cpp_encoding_decode_ptr(const char* bytes, int32_t count,
+    Dn2CppString* (*decode)(const char*, int32_t));
+Dn2CppString* dn2cpp_encoding_decode_span(const char* bytes, int32_t count,
+    Dn2CppString* (*decode)(const char*, int32_t));
+Dn2CppString* dn2cpp_encoding_get_string_span(Dn2CppObject* encoding, const char* bytes,
+    int32_t count);
 
 // P/Invoke string marshalling. The default/Ansi CharSet marshals
 // strings as NUL-terminated UTF-8 on Unix.
@@ -4554,6 +4637,9 @@ Dn2CppString* dn2cpp_convert_obj_to_string(Dn2CppObject* v);
 // as unsigned and reinterpret to the signed width; base 10 parses signed. Other
 // bases / out-of-range input trap like the BCL.
 Dn2CppString* dn2cpp_convert_to_string_base_i32(int32_t value, int32_t toBase);
+// Convert.ToString(short, toBase): base 10 spells the signed value, the other bases
+// its 16-bit two's complement. The byte form is the i32 one over the zero-extended byte.
+Dn2CppString* dn2cpp_convert_to_string_base_i16(int32_t value, int32_t toBase);
 Dn2CppString* dn2cpp_convert_to_string_base_i64(int64_t value, int32_t toBase);
 int32_t dn2cpp_convert_from_base_i32(Dn2CppString* s, int32_t fromBase);
 int64_t dn2cpp_convert_from_base_i64(Dn2CppString* s, int32_t fromBase);
@@ -7454,8 +7540,9 @@ Dn2CppTimeSpan dn2cpp_timespan_parse(Dn2CppString* s);
 Dn2CppTimeSpan dn2cpp_timespan_parse_exact(Dn2CppString* s, Dn2CppString* fmt);
 
 // DateTime ctors. The ymd* forms compute ticks from the proleptic Gregorian
-// calendar; `kind` is the DateTimeKind int. Range validation is loose
-// (no throw on an out-of-range field — a carve-out).
+// calendar; `kind` is the DateTimeKind int. Each raises .NET's exception for the
+// argument .NET refuses first: the ticks, then the kind; or the kind, the date, the
+// clock, then the millisecond.
 Dn2CppDateTime dn2cpp_datetime_from_ticks(int64_t ticks, int32_t kind);
 // Windows FILETIME (100ns since 1601-01-01 UTC) <-> DateTime.ticks. FromFileTimeUtc validates
 // fileTime's range (throws ArgumentOutOfRangeException like the real BCL); ToFileTimeUtc
@@ -7467,6 +7554,8 @@ int64_t dn2cpp_datetime_to_file_time_utc(Dn2CppDateTime a);
 Dn2CppDateTime dn2cpp_datetime_ymd(int32_t y, int32_t mo, int32_t d, int32_t kind);
 Dn2CppDateTime dn2cpp_datetime_ymdhms(int32_t y, int32_t mo, int32_t d, int32_t h, int32_t mi, int32_t s, int32_t kind);
 Dn2CppDateTime dn2cpp_datetime_ymdhmsms(int32_t y, int32_t mo, int32_t d, int32_t h, int32_t mi, int32_t s, int32_t ms, int32_t kind);
+Dn2CppDateTime dn2cpp_datetime_ymdhmsmsus(int32_t y, int32_t mo, int32_t d, int32_t h,
+    int32_t mi, int32_t s, int32_t ms, int32_t us, int32_t kind);
 int32_t dn2cpp_datetime_year(Dn2CppDateTime a);
 int32_t dn2cpp_datetime_month(Dn2CppDateTime a);
 int32_t dn2cpp_datetime_day(Dn2CppDateTime a);
@@ -7482,7 +7571,8 @@ void dn2cpp_datetime_get_time_ms(Dn2CppDateTime a, int32_t* hour, int32_t* minut
 void dn2cpp_datetime_get_time_precise(Dn2CppDateTime a, int32_t* hour, int32_t* minute, int32_t* second, int32_t* tick);
 // AddTicks is exact; Add*(double) truncates value*ticksPerUnit toward zero (no
 // millisecond rounding); AddMonths/AddYears clamp the day to the target month.
-Dn2CppDateTime dn2cpp_datetime_add_ticks(Dn2CppDateTime a, int64_t ticks);
+Dn2CppDateTime dn2cpp_datetime_add_ticks(Dn2CppDateTime a, int64_t ticks, const char* paramName);
+Dn2CppDateTime dn2cpp_datetime_subtract_ticks(Dn2CppDateTime a, int64_t ticks, const char* paramName);
 Dn2CppDateTime dn2cpp_datetime_add_unit(Dn2CppDateTime a, double value, int64_t ticksPerUnit);
 Dn2CppDateTime dn2cpp_datetime_add_months(Dn2CppDateTime a, int32_t months);
 Dn2CppDateTime dn2cpp_datetime_add_years(Dn2CppDateTime a, int32_t years);
@@ -7536,6 +7626,9 @@ int32_t dn2cpp_local_offset_minutes(Dn2CppDateTime localClock);
 // ordering/equality/Unix time read the UTC instant. InvariantCulture only; named /
 // historical time zones stay a carve-out (host local zone only).
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_make(int64_t clockTicks, int32_t offsetMinutes);
+Dn2CppDateTimeOffset dn2cpp_datetimeoffset_from_ticks(int64_t clockTicks, Dn2CppTimeSpan offset);
+Dn2CppDateTimeOffset dn2cpp_datetimeoffset_from_parts(int32_t y, int32_t mo, int32_t d,
+    int32_t h, int32_t mi, int32_t s, int32_t ms, int32_t hasMs, Dn2CppTimeSpan offset);
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_from_datetime(Dn2CppDateTime dt);
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_from_dt_offset(Dn2CppDateTime dt, Dn2CppTimeSpan offset);
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_to_offset(Dn2CppDateTimeOffset d, Dn2CppTimeSpan offset);
@@ -7571,7 +7664,8 @@ Dn2CppArrayRef* dn2cpp_dtfi_invariant_abbrev_month_names(const Dn2CppTypeInfo* a
 Dn2CppArrayRef* dn2cpp_dtfi_invariant_abbrev_day_names(const Dn2CppTypeInfo* arrType);
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_parse(Dn2CppString* s);
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_parse_exact(Dn2CppString* s, Dn2CppString* fmt);
-Dn2CppDateTimeOffset dn2cpp_datetimeoffset_add_ticks(Dn2CppDateTimeOffset d, int64_t ticks);
+Dn2CppDateTimeOffset dn2cpp_datetimeoffset_add_ticks(Dn2CppDateTimeOffset d, int64_t ticks, const char* paramName);
+Dn2CppDateTimeOffset dn2cpp_datetimeoffset_subtract_ticks(Dn2CppDateTimeOffset d, int64_t ticks, const char* paramName);
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_add_unit(Dn2CppDateTimeOffset d, double value, int64_t ticksPerUnit);
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_add_months(Dn2CppDateTimeOffset d, int32_t months);
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_add_years(Dn2CppDateTimeOffset d, int32_t years);

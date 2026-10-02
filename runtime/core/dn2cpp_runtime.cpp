@@ -85,7 +85,7 @@ double dn2cpp_math_round_mode(double value, int32_t mode)
         case 2: return std::trunc(value);     // ToZero
         case 3: return std::floor(value);     // ToNegativeInfinity
         case 4: return std::ceil(value);      // ToPositiveInfinity
-        default: dn2cpp_throw_argument();     // catchable, like the BCL's InvalidEnumValue
+        default: dn2cpp_throw_invalid_enum_value(mode, "MidpointRounding", "mode");
     }
 }
 

@@ -383,6 +383,14 @@ internal sealed partial class MethodCompiler
                     when !sig.Header.IsInstance && TryMathIntrinsic(declType, name, sig):
                 return true;
 
+            // An integer primitive's static Clamp is Math.Clamp over the same type.
+            case ("System.SByte" or "System.Byte" or "System.Int16" or "System.UInt16"
+                    or "System.Int32" or "System.UInt32" or "System.Int64" or "System.UInt64"
+                    or "System.IntPtr" or "System.UIntPtr", "Clamp")
+                    when !sig.Header.IsInstance && sig.ParameterTypes.Length == 3
+                        && TryMathIntrinsic(declType, name, sig):
+                return true;
+
             // Primitive ToString: the receiver is a managed pointer (ldloca)
             // or the value itself.
             case ("System.Int32", "ToString") when sig.ParameterTypes.Length == 0:
@@ -778,20 +786,23 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.Ref, "const Dn2CppNumberFormatInfo*", $"dn2cpp_culture_by_name({nm})");
                 return true;
             }
-            // CultureInfo.GetCultureInfo(int lcid) — the reverse lookup over the same
+            // CultureInfo.GetCultureInfo(int culture) — the reverse lookup over the same
             // culture table the name overload uses: 127 is the invariant culture, a
             // modeled culture's real LCID is its own, and anything else is rejected.
+            // A non-positive LCID raises the ArgumentOutOfRangeException .NET does.
             // .NET's CultureNotFoundException IS an ArgumentException and is not
-            // separately modeled — dn2cpp_throw_argument carries the family, as it does
-            // for the ArgumentOutOfRangeException .NET raises for a non-positive LCID, so
-            // one helper serves both and a `catch (ArgumentException)` behaves alike.
+            // separately modeled — an ArgumentException naming `culture` carries the
+            // family, so a `catch (ArgumentException)` and ParamName behave alike.
             case ("System.Globalization.CultureInfo", "GetCultureInfo")
                     when sig.ParameterTypes is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }]:
             {
                 var lcid = Pop();
+                string lc = NewTemp("int32_t");
                 string r = NewTemp("const Dn2CppNumberFormatInfo*");
-                Emit($"{r} = dn2cpp_culture_by_lcid({lcid.Expr});");
-                Emit($"if ({r} == nullptr) dn2cpp_throw_argument();");
+                Emit($"{lc} = {lcid.Expr};");
+                Emit($"if ({lc} <= 0) dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE_NON_ZERO, \"culture\", {lc});");
+                Emit($"{r} = dn2cpp_culture_by_lcid({lc});");
+                Emit($"if ({r} == nullptr) dn2cpp_throw_argument_param(DN2CPP_SR_ARGUMENT, \"culture\");");
                 Push(StackKind.Ref, "const Dn2CppNumberFormatInfo*", r);
                 return true;
             }

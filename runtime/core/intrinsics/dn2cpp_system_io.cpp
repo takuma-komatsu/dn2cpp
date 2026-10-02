@@ -184,7 +184,8 @@ Dn2CppString* dn2cpp_path_get_filename_without_extension(Dn2CppString* p)
 
 Dn2CppString* dn2cpp_path_combine2(Dn2CppString* a, Dn2CppString* b)
 {
-    if (a == nullptr || b == nullptr) dn2cpp_throw_argument_null();
+    if (a == nullptr) dn2cpp_throw_argument_null_param("path1");
+    if (b == nullptr) dn2cpp_throw_argument_null_param("path2");
     if (dn2cpp_path_is_rooted(b)) return b; // b rooted -> b wins
     if (a->length == 0) return b;
     if (b->length == 0) return a;
@@ -197,13 +198,21 @@ Dn2CppString* dn2cpp_path_combine2(Dn2CppString* a, Dn2CppString* b)
     return dn2cpp_string_from_chars(buf.data(), static_cast<int32_t>(buf.size()));
 }
 
+// Every operand is checked, under its own name, before any is combined.
 Dn2CppString* dn2cpp_path_combine3(Dn2CppString* a, Dn2CppString* b, Dn2CppString* c)
 {
+    if (a == nullptr) dn2cpp_throw_argument_null_param("path1");
+    if (b == nullptr) dn2cpp_throw_argument_null_param("path2");
+    if (c == nullptr) dn2cpp_throw_argument_null_param("path3");
     return dn2cpp_path_combine2(dn2cpp_path_combine2(a, b), c);
 }
 
 Dn2CppString* dn2cpp_path_combine4(Dn2CppString* a, Dn2CppString* b, Dn2CppString* c, Dn2CppString* d)
 {
+    if (a == nullptr) dn2cpp_throw_argument_null_param("path1");
+    if (b == nullptr) dn2cpp_throw_argument_null_param("path2");
+    if (c == nullptr) dn2cpp_throw_argument_null_param("path3");
+    if (d == nullptr) dn2cpp_throw_argument_null_param("path4");
     return dn2cpp_path_combine2(dn2cpp_path_combine2(dn2cpp_path_combine2(a, b), c), d);
 }
 
@@ -637,7 +646,7 @@ void dn2cpp_file_write_all_bytes(Dn2CppString* path, Dn2CppArrayN* bytes)
 
 Dn2CppString* dn2cpp_env_get_variable(Dn2CppString* name)
 {
-    std::string n = dn2cpp_path_to_utf8(name);
+    std::string n = dn2cpp_path_to_utf8(name, "variable");
     const char* v = dn2cpp_pal_getenv(n.c_str());
     if (v == nullptr) return nullptr; // .NET: null when the variable is unset
     return dn2cpp_string_from_utf8(v, static_cast<int32_t>(std::strlen(v)));
@@ -904,13 +913,15 @@ Dn2CppString* dn2cpp_app_base_directory()
 
 int32_t dn2cpp_tool_process_run(Dn2CppString* executable, Dn2CppArrayRef* arguments)
 {
-    if (executable == nullptr || arguments == nullptr) dn2cpp_throw_argument_null();
+    if (executable == nullptr) dn2cpp_throw_argument_null_param("executable");
+    if (arguments == nullptr) dn2cpp_throw_argument_null_param("arguments");
     std::vector<std::string> values;
     values.reserve(static_cast<size_t>(arguments->length) + 1);
-    values.push_back(dn2cpp_path_to_utf8(executable));
+    values.push_back(dn2cpp_path_to_utf8(executable, "executable"));
     if (values[0].empty()) dn2cpp_throw_argument_msg("Executable must be a nonempty path.");
     for (int32_t i = 0; i < arguments->length; i++)
-        values.push_back(dn2cpp_path_to_utf8(static_cast<Dn2CppString*>(arguments->data[i])));
+        values.push_back(dn2cpp_path_to_utf8(
+            static_cast<Dn2CppString*>(arguments->data[i]), "argument"));
     std::vector<const char*> argv;
     argv.reserve(values.size() + 1);
     for (const auto& value : values)

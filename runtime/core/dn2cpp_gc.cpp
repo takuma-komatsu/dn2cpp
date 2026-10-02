@@ -1158,7 +1158,7 @@ static size_t dn2cpp_align_up(size_t byteCount, size_t alignment)
 void* dn2cpp_native_aligned_alloc(size_t byteCount, size_t alignment)
 {
     if (alignment == 0 || (alignment & (alignment - 1)) != 0)
-        dn2cpp_throw_argument();
+        dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_ALIGNMENT_MUST_BE_POW2);
     // Every POSIX aligned allocator refuses an alignment below sizeof(void*) —
     // posix_memalign says so in its contract (EINVAL), and std::aligned_alloc
     // inherits it in practice on both the macOS and the glibc implementations,
@@ -1212,7 +1212,7 @@ void* dn2cpp_native_aligned_realloc(void* ptr, size_t byteCount, size_t alignmen
     // delegating to dn2cpp_native_aligned_alloc below, so the two arms agree on
     // a bad alignment without this line having a POSIX twin to drift from.
     if (alignment == 0 || (alignment & (alignment - 1)) != 0)
-        dn2cpp_throw_argument();
+        dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_ALIGNMENT_MUST_BE_POW2);
     // The same sizeof(void*) clamp dn2cpp_native_aligned_alloc applies, and here
     // it is a correctness requirement rather than a portability one: MSVC's
     // _aligned_realloc must be handed the alignment the block was originally
@@ -2060,7 +2060,7 @@ void dn2cpp_register_finalizer(Dn2CppObject* obj)
 void dn2cpp_gc_suppress_finalize(Dn2CppObject* obj)
 {
     if (obj == nullptr)
-        dn2cpp_throw_argument_null(); // real .NET: ArgumentNullException, catchable
+        dn2cpp_throw_argument_null_param("obj");
 #ifdef DN2CPP_USE_BOEHM_GC
     if (obj->type->finalize == nullptr)
         return; // no Finalize override -> nothing was ever registered
@@ -2101,7 +2101,7 @@ void dn2cpp_gc_suppress_finalize(Dn2CppObject* obj)
 void dn2cpp_gc_reregister_for_finalize(Dn2CppObject* obj)
 {
     if (obj == nullptr)
-        dn2cpp_throw_argument_null(); // real .NET: ArgumentNullException, catchable
+        dn2cpp_throw_argument_null_param("obj");
 #ifdef DN2CPP_USE_BOEHM_GC
     if (obj->type->finalize == nullptr)
         return; // matches real GC.ReRegisterForFinalize: legal, but a no-op

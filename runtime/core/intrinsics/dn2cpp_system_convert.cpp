@@ -570,8 +570,17 @@ Dn2CppString* dn2cpp_convert_to_string_base_i32(int32_t value, int32_t toBase)
     if (toBase == 10)
         return dn2cpp_int_to_string(value);
     if (toBase != 2 && toBase != 8 && toBase != 16)
-        dn2cpp_throw_argument();
+        dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_INVALID_BASE);
     return dn2cpp_format_unsigned_base<uint32_t>(static_cast<uint32_t>(value), toBase);
+}
+
+Dn2CppString* dn2cpp_convert_to_string_base_i16(int32_t value, int32_t toBase)
+{
+    if (toBase == 10)
+        return dn2cpp_int_to_string(value);
+    if (toBase != 2 && toBase != 8 && toBase != 16)
+        dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_INVALID_BASE);
+    return dn2cpp_format_unsigned_base<uint32_t>(static_cast<uint16_t>(value), toBase);
 }
 
 Dn2CppString* dn2cpp_convert_to_string_base_i64(int64_t value, int32_t toBase)
@@ -579,7 +588,7 @@ Dn2CppString* dn2cpp_convert_to_string_base_i64(int64_t value, int32_t toBase)
     if (toBase == 10)
         return dn2cpp_long_to_string(value);
     if (toBase != 2 && toBase != 8 && toBase != 16)
-        dn2cpp_throw_argument();
+        dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_INVALID_BASE);
     return dn2cpp_format_unsigned_base<uint64_t>(static_cast<uint64_t>(value), toBase);
 }
 

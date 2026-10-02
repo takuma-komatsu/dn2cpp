@@ -247,9 +247,24 @@ internal sealed partial class MethodCompiler
             or [_, { IsString: true }, { IsObject: true }, { IsObject: true }, { IsObject: true }]
         && IsFormatProvider(sig.ParameterTypes[0]);
 
+    /// <summary>Console.Write/WriteLine's composed string: string.Format's, except that
+    /// a null object[] formats as two null arguments where string.Format throws.</summary>
+    private string BuildConsoleFormatExpr(MethodSignature<TypeDesc> sig)
+    {
+        if (sig.ParameterTypes is not [_, { Kind: TypeKind.SZArray }])
+            return BuildStringFormatExpr(sig);
+        var args = Pop();
+        var fmt = Pop();
+        string f = NewTemp("Dn2CppString*"), a = NewTemp("Dn2CppArrayRef*");
+        Emit($"{f} = {Cast(fmt, "Dn2CppString*")};");
+        Emit($"{a} = {Cast(args, "Dn2CppArrayRef*")};");
+        return $"({a} == nullptr ? dn2cpp_string_format2({f}, nullptr, nullptr) : dn2cpp_string_format_arr({f}, {a}))";
+    }
+
     /// <summary>Pops a (format, object...) or (format, object[]) argument list and
     /// returns the runtime string.Format call producing the composed string.
-    /// Shared by string.Format and Console.Write/WriteLine.</summary>
+    /// Shared by string.Format, StringBuilder.AppendFormat and, through
+    /// <see cref="BuildConsoleFormatExpr"/>, Console.Write/WriteLine.</summary>
     private string BuildStringFormatExpr(MethodSignature<TypeDesc> sig)
     {
         if (sig.ParameterTypes is [_, { Kind: TypeKind.SZArray }])

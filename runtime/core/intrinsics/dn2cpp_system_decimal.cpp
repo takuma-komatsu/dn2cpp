@@ -278,7 +278,7 @@ Dn2CppArrayI4* dn2cpp_decimal_get_bits(Dn2CppDecimal a, const Dn2CppTypeInfo* ti
 int32_t dn2cpp_decimal_get_bits_span(Dn2CppDecimal a, int32_t* dst, int32_t destLen)
 {
     if (destLen < 4)
-        dn2cpp_throw_argument(); // .NET raises ArgumentException("destination too small")
+        dn2cpp_throw_argument_param(DN2CPP_SR_DESTINATION_TOO_SHORT, "destination");
     int32_t bits[4];
     dn2cpp_decimal_bits(a, bits);
     dst[0] = bits[0]; dst[1] = bits[1]; dst[2] = bits[2]; dst[3] = bits[3];
@@ -549,7 +549,7 @@ static Dn2CppDecimal dec_drop_places(Dn2CppDecimal a, int drop, int mode)
         case 2: roundUp = false; break;                  // ToZero: truncate
         case 3: roundUp = a.sign() && anyDropped; break;   // ToNegativeInfinity
         case 4: roundUp = !a.sign() && anyDropped; break;  // ToPositiveInfinity
-        default: dn2cpp_throw_argument();                // catchable, like the BCL
+        default: dn2cpp_throw_invalid_enum_value(mode, "MidpointRounding", "mode");
     }
     if (roundUp) m += 1;
     return dec_pack(m, a.sign(), a.scale() - drop);
@@ -557,10 +557,12 @@ static Dn2CppDecimal dec_drop_places(Dn2CppDecimal a, int drop, int mode)
 
 Dn2CppDecimal dn2cpp_decimal_round(Dn2CppDecimal a, int32_t digits, int32_t mode)
 {
-    // .NET's decimal.Round validates the mode before looking at the scale, so
-    // an invalid mode throws even when no digit would be dropped.
+    // .NET's decimal.Round validates the digits, then the mode, before looking at
+    // the scale, so an invalid argument throws even when no digit would be dropped.
+    if ((uint32_t)digits > 28u)
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_DECIMAL_ROUND, "decimals");
     if ((uint32_t)mode > 4u)
-        dn2cpp_throw_argument();
+        dn2cpp_throw_invalid_enum_value(mode, "MidpointRounding", "mode");
     if (a.scale() <= digits) return a;
     return dec_drop_places(a, a.scale() - digits, mode);
 }
@@ -807,7 +809,7 @@ Dn2CppDecimal dn2cpp_decimal_parse_styles_chars(const char16_t* p, int32_t n, in
     switch (dec_styles_core(p, n, styles, nfi, &r))
     {
         case 1: dn2cpp_throw_format();
-        case 2: dn2cpp_overflow();
+        case 2: dn2cpp_throw_sr0(&dn2cpp_overflow_exception_type, DN2CPP_SR_OVERFLOW_DECIMAL);
         default: break;
     }
     return r;
@@ -816,11 +818,9 @@ Dn2CppDecimal dn2cpp_decimal_parse_styles_chars(const char16_t* p, int32_t n, in
 Dn2CppDecimal dn2cpp_decimal_parse_styles_str(Dn2CppString* s, int32_t styles,
                                               const Dn2CppNumberFormatInfo* nfi)
 {
+    // .NET rejects a null string before it validates the style.
     if (s == nullptr)
-    {
-        dn2cpp_parse_validate_fp_styles(styles);
-        dn2cpp_throw_argument_null();
-    }
+        dn2cpp_throw_argument_null_param("s");
     return dn2cpp_decimal_parse_styles_chars(s->chars, s->length, styles, nfi);
 }
 

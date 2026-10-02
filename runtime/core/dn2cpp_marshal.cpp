@@ -146,7 +146,7 @@ static int32_t marshal_known_size(const char* name)
 static int32_t marshal_require_size_impl(const Dn2CppTypeInfo* ti, bool allowModelled)
 {
     if (ti == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("t");
     int32_t known = marshal_known_size(ti->name);
     if (known >= 0)
         return known;
@@ -204,7 +204,7 @@ static int32_t dn2cpp_marshal_require_copyable(const Dn2CppTypeInfo* ti)
 int32_t dn2cpp_marshal_sizeof(const Dn2CppType* t)
 {
     if (t == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("t");
     // The argument-null test comes first, as in .NET — a null Type handle has no layout
     // to ask about. Everything else is the shared verdict above, dn2cpp_require_layout
     // included.
@@ -214,7 +214,7 @@ int32_t dn2cpp_marshal_sizeof(const Dn2CppType* t)
 Dn2CppObject* dn2cpp_marshal_ptr_to_structure(const void* ptr, const Dn2CppType* t)
 {
     if (t == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("structureType");
     if (ptr == nullptr)
         return nullptr; // Marshal.PtrToStructure(IntPtr.Zero, …) returns null
     // The COPY verdict, then the REPRESENTATION size for the copy: past that verdict the
@@ -226,8 +226,10 @@ Dn2CppObject* dn2cpp_marshal_ptr_to_structure(const void* ptr, const Dn2CppType*
 
 void dn2cpp_marshal_structure_to_ptr(Dn2CppObject* structure, void* ptr)
 {
-    if (structure == nullptr || ptr == nullptr)
-        dn2cpp_throw_argument_null();
+    if (ptr == nullptr)
+        dn2cpp_throw_argument_null_param("ptr");
+    if (structure == nullptr)
+        dn2cpp_throw_argument_null_param("structure");
     dn2cpp_marshal_require_copyable(structure->type); // as in dn2cpp_marshal_ptr_to_structure
     std::memcpy(ptr, structure + 1, static_cast<size_t>(structure->type->instanceSize));
 }
@@ -603,10 +605,31 @@ Dn2CppString* dn2cpp_encoding_decode_range(Dn2CppArrayN* bytes, int32_t index,
                                           int32_t count,
                                           Dn2CppString* (*decode)(const char*, int32_t))
 {
+    // Each decoder validates as its encoding's GetString(byte[], int, int) does:
+    // UTF8Encoding and ASCIIEncoding (whose range is byteIndex/byteCount) say "Array
+    // cannot be null." and "Non-negative number required."; UnicodeEncoding and
+    // UTF32Encoding use ThrowIfNull and ThrowIfNegative.
+    const bool ascii = decode == dn2cpp_string_decode_ascii;
+    const bool throwIf = !ascii && decode != dn2cpp_string_decode_utf8;
     if (bytes == nullptr)
-        dn2cpp_throw_argument_null();
-    if (index < 0 || count < 0 || index > bytes->length || count > bytes->length - index)
-        dn2cpp_throw_argument_out_of_range();
+    {
+        if (throwIf)
+            dn2cpp_throw_argument_null_param("bytes");
+        dn2cpp_throw_argument_text(&dn2cpp_argument_null_exception_type,
+            dn2cpp_sr_text(DN2CPP_SR_ARGUMENT_NULL_ARRAY), "bytes");
+    }
+    if (index < 0 || count < 0)
+    {
+        const bool badIndex = index < 0;
+        const char* name = badIndex ? (ascii ? "byteIndex" : "index")
+                                    : (ascii ? "byteCount" : "count");
+        if (throwIf)
+            dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, name,
+                badIndex ? index : count);
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_NEED_NON_NEG_NUM, name);
+    }
+    if (count > bytes->length - index)
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_INDEX_COUNT_BUFFER, "bytes");
     // byte[] is a packed Dn2CppArrayN with elemSize 1; data is the raw bytes.
     return decode(bytes->data + index, count);
 }
@@ -619,8 +642,9 @@ Dn2CppString* dn2cpp_encoding_get_string(Dn2CppObject* encoding, Dn2CppArrayN* b
     // The Encoding properties return internal sealed subclasses, so match the
     // supported public encoding type anywhere in the base chain.
     // Anything else is unsupported (no silent carve-out).
-    for (const Dn2CppTypeInfo* t = (encoding != nullptr) ? encoding->type : nullptr;
-         t != nullptr; t = t->base)
+    if (encoding == nullptr)
+        dn2cpp_throw_null_reference();
+    for (const Dn2CppTypeInfo* t = encoding->type; t != nullptr; t = t->base)
     {
         if (t->name == nullptr)
             continue;
@@ -643,11 +667,13 @@ Dn2CppString* dn2cpp_encoding_get_string_ptr(Dn2CppObject* encoding, const char*
     // ArgumentNullException (even with count 0), a negative count is
     // ArgumentOutOfRangeException.
     if (bytes == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("bytes");
     if (count < 0)
-        dn2cpp_throw_argument_out_of_range();
-    for (const Dn2CppTypeInfo* t = (encoding != nullptr) ? encoding->type : nullptr;
-         t != nullptr; t = t->base)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "byteCount",
+            count);
+    if (encoding == nullptr)
+        dn2cpp_throw_null_reference();
+    for (const Dn2CppTypeInfo* t = encoding->type; t != nullptr; t = t->base)
     {
         if (t->name == nullptr)
             continue;
@@ -661,6 +687,34 @@ Dn2CppString* dn2cpp_encoding_get_string_ptr(Dn2CppObject* encoding, const char*
             return dn2cpp_string_decode_utf32le(bytes, count);
     }
     dn2cpp_throw_not_supported();
+}
+
+Dn2CppString* dn2cpp_encoding_decode_ptr(const char* bytes, int32_t count,
+    Dn2CppString* (*decode)(const char*, int32_t))
+{
+    if (bytes == nullptr)
+        dn2cpp_throw_argument_null_param("bytes");
+    if (count < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "byteCount",
+            count);
+    return decode(bytes, count);
+}
+
+Dn2CppString* dn2cpp_encoding_decode_span(const char* bytes, int32_t count,
+    Dn2CppString* (*decode)(const char*, int32_t))
+{
+    // Only an empty span can decode a null data pointer without a buffer fault.
+    if (bytes == nullptr && count != 0)
+        return dn2cpp_encoding_decode_range(nullptr, 0, count, decode);
+    return decode(bytes, count);
+}
+
+Dn2CppString* dn2cpp_encoding_get_string_span(Dn2CppObject* encoding, const char* bytes,
+    int32_t count)
+{
+    if (bytes == nullptr && count != 0)
+        return dn2cpp_encoding_get_string(encoding, nullptr, 0, count);
+    return dn2cpp_encoding_get_string_ptr(encoding, bytes == nullptr ? "" : bytes, count);
 }
 
 // P/Invoke string marshalling.
@@ -892,7 +946,8 @@ void dn2cpp_pinvoke_byvalarr_in(void* dst, int32_t n, int32_t elemSize, const vo
         return;
     }
     if (alen < n)
-        dn2cpp_throw_argument();
+        dn2cpp_throw_sr0(&dn2cpp_argument_exception_type,
+            DN2CPP_SR_WRONG_SIZE_ARRAY_IN_NATIVE_STRUCT);
     std::memcpy(dst, asrc, total);
 }
 
@@ -1142,8 +1197,10 @@ int32_t dn2cpp_marshal_get_last_error(void) { return g_dn2cpp_last_pinvoke_error
 // managed (UTF-16) symbolName round-trips exactly.
 void* dn2cpp_native_library_get_symbol(void* handle, Dn2CppString* symbolName)
 {
-    if (handle == nullptr || symbolName == nullptr)
-        dn2cpp_throw_argument_null();
+    if (handle == nullptr)
+        dn2cpp_throw_argument_null_param("handle");
+    if (symbolName == nullptr)
+        dn2cpp_throw_argument_null_param("name");
     int32_t n = dn2cpp_string_to_utf8(symbolName, nullptr, 0);
     std::string narrow(static_cast<size_t>(n), '\0');
     dn2cpp_string_to_utf8(symbolName, narrow.data(), n);
@@ -1321,7 +1378,7 @@ static void* dn2cpp_native_load_candidates(const std::string& name,
 [[noreturn]] void dn2cpp_throw_entry_point_not_found(Dn2CppString* entryPoint)
 {
     if (entryPoint == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("name");
     std::string narrow = dn2cpp_native_utf8(entryPoint);
     dn2cpp_throw_entry_point_not_found(narrow.c_str());
 }
@@ -1329,8 +1386,10 @@ static void* dn2cpp_native_load_candidates(const std::string& name,
 void dn2cpp_pinvoke_set_resolver(const char* assemblyName, Dn2CppObject* resolver,
     Dn2CppPInvokeResolverInvoke invoke)
 {
-    if (assemblyName == nullptr || resolver == nullptr || invoke == nullptr)
-        dn2cpp_throw_argument_null();
+    if (assemblyName == nullptr)
+        dn2cpp_throw_argument_null_param("assembly");
+    if (resolver == nullptr || invoke == nullptr)
+        dn2cpp_throw_argument_null_param("resolver");
     std::lock_guard<std::mutex> lock(g_pinvoke_resolver_mutex);
     for (Dn2CppPInvokeResolverEntry* p = g_pinvoke_resolvers; p != nullptr; p = p->next)
         if (std::strcmp(p->assemblyName, assemblyName) == 0)
@@ -1358,7 +1417,7 @@ void* dn2cpp_native_library_load_name(const char* name, int32_t throwOnError,
 void* dn2cpp_native_library_load(Dn2CppString* path, int32_t throwOnError)
 {
     if (path == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("libraryPath");
     std::string name = dn2cpp_native_utf8(path);
     void* handle = dn2cpp_native_load_exact(name);
     if (handle == nullptr && throwOnError != 0)
@@ -1370,7 +1429,7 @@ void* dn2cpp_native_library_load_by_name(Dn2CppString* name, int32_t throwOnErro
     int32_t searchPathHasValue, int32_t searchPathValue)
 {
     if (name == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("libraryName");
     std::string narrow = dn2cpp_native_utf8(name);
     return dn2cpp_native_library_load_name(narrow.c_str(), throwOnError,
         searchPathHasValue, searchPathValue);

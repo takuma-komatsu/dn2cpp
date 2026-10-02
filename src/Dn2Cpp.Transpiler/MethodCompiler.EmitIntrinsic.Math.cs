@@ -98,7 +98,7 @@ internal sealed partial class MethodCompiler
         {
             string sct = width switch { 8 => "int8_t", 16 => "int16_t", 64 => "int64_t", _ => "int32_t" };
             string snarrow = width switch { 8 => "(uint8_t)", 16 => "(uint16_t)", _ => "" };
-            Emit($"if (({sct}){snarrow}{t} < 0) dn2cpp_throw_argument_out_of_range();");
+            Emit($"if (({sct}){snarrow}{t} < 0) dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_NEED_NON_NEG_NUM, \"value\");");
         }
         string expr = name switch
         {
@@ -119,7 +119,8 @@ internal sealed partial class MethodCompiler
 
     private bool TryMathIntrinsic(string declType, string name, MethodSignature<TypeDesc> sig)
     {
-        bool isFloat = declType is "System.MathF" or "System.Single";
+        bool isFloat = declType is "System.MathF" or "System.Single"
+            || sig.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Single };
         string fkind = isFloat ? "float" : "double";
         var ret = sig.ReturnType;
 
@@ -340,8 +341,11 @@ internal sealed partial class MethodCompiler
                     // like .NET, and evaluates each operand once. The explicit casts
                     // deduce T as the overload's parameter type.
                     var hi = Pop(); var lo = Pop(); var v = Pop();
+                    string clampType = sig.ParameterTypes[0] is
+                        { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.UIntPtr }
+                        ? "uintptr_t" : CppTypes.StorageOf(sig.ParameterTypes[0]);
                     Push(CppTypes.KindOf(sig.ParameterTypes[0]), mct,
-                        $"dn2cpp_math_clamp(({mct})({v.Expr}), ({mct})({lo.Expr}), ({mct})({hi.Expr}))");
+                        $"dn2cpp_math_clamp(({clampType})({v.Expr}), ({clampType})({lo.Expr}), ({clampType})({hi.Expr}))");
                     return true;
                 }
                 case ("Abs", 1):

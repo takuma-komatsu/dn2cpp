@@ -50,17 +50,50 @@
 # UInt32 and Int32 bound messages retain their suffixes after a collection.
 source "$(dirname "$0")/_common.sh"
 
+ancestry_app="gates/fixtures/runtime-exception-ancestry/bin/$CONFIG/$TFM/RuntimeExceptionAncestry.dll"
+build_gate_proj gates/fixtures/runtime-exception-ancestry/RuntimeExceptionAncestry.csproj
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $ancestry_app ${ancestry_app%.dll}.runtimeconfig.json ${ancestry_app%.dll}.deps.json"
 fields_app="gates/fixtures/runtime-argument-fields/bin/$CONFIG/$TFM/RuntimeArgumentFields.dll"
 fallback_app="gates/fixtures/runtime-argument-fallback/bin/$CONFIG/$TFM/RuntimeArgumentFallback.dll"
+fallback_bcl="$(dirname "$(resolve_net10_corelib)")/System.Collections.Concurrent.dll"
+general_app="gates/fixtures/general-argument-fallback/bin/$CONFIG/$TFM/GeneralArgumentFallback.dll"
 build_gate_proj gates/fixtures/runtime-argument-fields/RuntimeArgumentFields.csproj
 build_gate_proj gates/fixtures/runtime-argument-fallback/RuntimeArgumentFallback.csproj
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $fields_app ${fields_app%.dll}.runtimeconfig.json ${fields_app%.dll}.deps.json $fallback_app ${fallback_app%.dll}.runtimeconfig.json ${fallback_app%.dll}.deps.json"
+build_gate_proj gates/fixtures/general-argument-fallback/GeneralArgumentFallback.csproj
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $fields_app ${fields_app%.dll}.runtimeconfig.json ${fields_app%.dll}.deps.json $fallback_app ${fallback_app%.dll}.runtimeconfig.json ${fallback_app%.dll}.deps.json $fallback_bcl $general_app ${general_app%.dll}.runtimeconfig.json ${general_app%.dll}.deps.json"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|runtime-argument-fixtures|cli:$(_gate_cli_hash)"
 
 gate_extra_asserts() {
     local out="$1" native before prefix line app name fixture expected actual
     native=$(run_bounded "./$out/ExceptionMessageSubset")
     native=$(strip_cr_win "$native")
+    before=$(run_bounded "./$out/ExceptionMessageSubset" before-runtime-exception-chains)
+    prefix=$(awk '/^== runtime exception ancestry ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    grep -Fxq 'runtime exception ancestry end' <<< "$native" \
+        || { echo 'FAIL: runtime exception ancestry section did not run' >&2; exit 1; }
+    fixture="$out/RuntimeExceptionAncestry"
+    DN2CPP_STRICT_COMPLETION=1 invoke_cli "$ancestry_app" -r "$_CG_CORELIB" -o "$fixture"
+    compile_console "$fixture" RuntimeExceptionAncestry
+    expected=$(run_bounded dotnet "$ancestry_app")
+    actual=$(run_bounded "./$fixture/RuntimeExceptionAncestry")
+    actual=$(strip_cr_win "$actual")
+    assert_output "$actual" "$(strip_cr_win "$expected")"
+    for line in 'array index: IndexOutOfRangeException > SystemException > Exception > Object' \
+        'no parameterless ctor: MissingMethodException > MissingMemberException > MemberAccessException > SystemException > Exception > Object' \
+        'HRESULT E_FAIL: COMException > ExternalException > SystemException > Exception > Object'; do
+        grep -Fxq -- "$line" <<< "$actual" \
+            || { echo "FAIL: runtime exception chain missing: $line" >&2; exit 1; }
+    done
+    before=$(run_bounded dotnet "$_CG_APP" before-general-argument-fields)
+    prefix=$(awk '/^-- general BCL argument fields --$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    for line in '-- general BCL argument fields --' \
+        'console null array pair=[<><>]' \
+        'general BCL argument fields end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: general BCL argument witness missing: $line" >&2; exit 1; }
+    done
     before=$(dotnet "$_CG_APP" before-runtime-fields)
     before=$(strip_cr_win "$before")
     prefix=$(awk '/^-- runtime-raised argument fields --$/ { exit } { print }' <<< "$native")
@@ -75,10 +108,14 @@ gate_extra_asserts() {
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: runtime argument witness missing: $line" >&2; exit 1; }
     done
-    for app in "$fields_app" "$fallback_app"; do
+    for app in "$fields_app" "$fallback_app" "$general_app"; do
         name=$(basename "${app%.dll}")
         fixture="$out/$name"
-        invoke_cli "$app" -r "$_CG_CORELIB" -o "$fixture"
+        if [ "$name" = GeneralArgumentFallback ]; then
+            invoke_cli "$app" -r "$_CG_CORELIB" -r "$fallback_bcl" -o "$fixture"
+        else
+            invoke_cli "$app" -r "$_CG_CORELIB" -o "$fixture"
+        fi
         compile_console "$fixture" "$name"
         expected=$(run_bounded dotnet "$app")
         actual=$(run_bounded "./$fixture/$name")
@@ -95,6 +132,17 @@ gate_extra_asserts() {
                 grep -Fxq -- "$line" <<< "$actual" \
                     || { echo "FAIL: constructor-free argument witness missing: $line" >&2; exit 1; }
             done
+        elif [ "$name" = GeneralArgumentFallback ]; then
+            local binds
+            binds=$(grep '^const Dn2CppTypeBind dn2cpp_type_binds' "$fixture/generated.cpp")
+            if [[ "$binds" == *'&dn2cpp_argument_exception_type'* ||
+                "$binds" == *'&dn2cpp_argument_null_exception_type'* ||
+                "$binds" == *'&dn2cpp_argument_out_of_range_exception_type'* ]]; then
+                echo 'FAIL: general Message-only fixture bound an argument exception layout' >&2
+                exit 1
+            fi
+            grep -Fxq 'general BCL Message fallback end' <<< "$actual" \
+                || { echo 'FAIL: general Message-only fixture did not run' >&2; exit 1; }
         else
             grep -Fxq 'const int32_t dn2cpp_type_bind_count = 0;' "$fixture/generated.cpp" \
                 || { echo 'FAIL: fallback fixture reached a managed exception layout' >&2; exit 1; }

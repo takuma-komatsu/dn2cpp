@@ -97,22 +97,12 @@ static Dn2CppObject* dn2cpp_blockingcoll_dequeue_locked(Dn2CppBlockingCollection
     return v;
 }
 
-// Real .NET's texts, from System.Collections.Concurrent's resources rather than the
-// CoreLib message table the emitter folds in.
-static const char* const kBlockingTimeout =
-    "The specified timeout must represent a value between -1 and 2147483647, inclusive.";
-static const char* const kBlockingCompleted =
-    "The collection has been marked as complete with regards to additions.";
-static const char* const kBlockingCompletedWhileAdding =
-    "CompleteAdding may not be used concurrently with additions to the collection.";
-static const char* const kBlockingCantTakeWhenDone =
-    "The collection argument is empty and has been marked as complete with regards to additions.";
-
 // The timeout check precedes every state check, the completed one included.
 static void dn2cpp_blockingcoll_require_timeout(int32_t timeoutMs)
 {
     if (timeoutMs < -1)
-        dn2cpp_throw_argument_out_of_range_actual(kBlockingTimeout, "millisecondsTimeout",
+        dn2cpp_throw_argument_out_of_range_actual_sr1(DN2CPP_SR_BLOCKING_TIMEOUT_INVALID,
+            dn2cpp_format_int(INT32_MAX, 4, nullptr), "millisecondsTimeout",
             dn2cpp_box(&dn2cpp_int32_type, &timeoutMs, sizeof(timeoutMs)),
             dn2cpp_format_int(timeoutMs, 4, nullptr));
 }
@@ -148,12 +138,12 @@ void dn2cpp_blockingcoll_add(Dn2CppObject* coll, Dn2CppObject* boxedOrRef)
     std::unique_lock<std::mutex> lk(ctl->mtx);
     dn2cpp_blockingcoll_require_live(c);
     if (ctl->addingCompleted)
-        dn2cpp_throw_invalid_operation_msg(kBlockingCompleted);
+        dn2cpp_throw_sr0(&dn2cpp_invalid_operation_exception_type, DN2CPP_SR_BLOCKING_COMPLETED);
     if (ctl->boundedCapacity > 0)
         ctl->notFull.wait(lk, [&] { return ctl->count < ctl->boundedCapacity || ctl->addingCompleted; });
     // The lock was released only inside the wait, so a completion seen now came during it.
     if (ctl->addingCompleted)
-        dn2cpp_throw_invalid_operation_msg(kBlockingCompletedWhileAdding);
+        dn2cpp_throw_sr0(&dn2cpp_invalid_operation_exception_type, DN2CPP_SR_BLOCKING_ADD_CONCURRENT_COMPLETE);
     dn2cpp_blockingcoll_enqueue_locked(c, boxedOrRef);
     ctl->notEmpty.notify_one();
 }
@@ -169,7 +159,7 @@ int32_t dn2cpp_blockingcoll_tryadd(Dn2CppObject* coll, Dn2CppObject* boxedOrRef,
     std::unique_lock<std::mutex> lk(ctl->mtx);
     dn2cpp_blockingcoll_require_live(c);
     if (ctl->addingCompleted)
-        dn2cpp_throw_invalid_operation_msg(kBlockingCompleted);
+        dn2cpp_throw_sr0(&dn2cpp_invalid_operation_exception_type, DN2CPP_SR_BLOCKING_COMPLETED);
     if (ctl->boundedCapacity > 0 && ctl->count >= ctl->boundedCapacity)
     {
         if (timeoutMs == 0)
@@ -180,7 +170,8 @@ int32_t dn2cpp_blockingcoll_tryadd(Dn2CppObject* coll, Dn2CppObject* boxedOrRef,
             ctl->notFull.wait_for(lk, std::chrono::milliseconds(timeoutMs),
                 [&] { return ctl->count < ctl->boundedCapacity || ctl->addingCompleted; });
         if (ctl->addingCompleted)
-            dn2cpp_throw_invalid_operation_msg(kBlockingCompletedWhileAdding);
+            dn2cpp_throw_sr0(&dn2cpp_invalid_operation_exception_type,
+                DN2CPP_SR_BLOCKING_ADD_CONCURRENT_COMPLETE);
         if (ctl->count >= ctl->boundedCapacity)
             return 0; // timed out, still full
     }
@@ -199,7 +190,7 @@ Dn2CppObject* dn2cpp_blockingcoll_take(Dn2CppObject* coll)
     dn2cpp_blockingcoll_require_live(c);
     ctl->notEmpty.wait(lk, [&] { return ctl->count > 0 || ctl->addingCompleted; });
     if (ctl->count == 0)
-        dn2cpp_throw_invalid_operation_msg(kBlockingCantTakeWhenDone);
+        dn2cpp_throw_sr0(&dn2cpp_invalid_operation_exception_type, DN2CPP_SR_BLOCKING_CANT_TAKE_WHEN_DONE);
     Dn2CppObject* v = dn2cpp_blockingcoll_dequeue_locked(c);
     ctl->notFull.notify_one();
     return v;

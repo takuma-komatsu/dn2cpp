@@ -698,6 +698,7 @@ internal sealed partial class CppEmitter
         AssertNoAllocClosures(compiledMethods);
         Timing.Mark("compile-bodies");
 
+        NoteRuntimeExceptionAncestors();
         _emit = ComputeEmitted();
         _emittedCache = null;
         // A delegate invoker names its Invoke signature types by value or pointer; ensure
@@ -3439,9 +3440,10 @@ internal sealed partial class CppEmitter
     /// <summary>Records the base of each unbound reference-type runtime handle whose
     /// hand-written chain skips a CLR ancestor this image materializes: the nearest one
     /// before the next ancestor that has a runtime handle. The hand-written base names that
-    /// next ancestor, so the spliced one keeps the chain; a handle whose skipped ancestors
-    /// the image never defines keeps its chain, and nothing can test against an undefined
-    /// type-info.</summary>
+    /// next ancestor, so the spliced one keeps the chain. An exception handle's skipped
+    /// ancestors are all defined (<see cref="NoteRuntimeExceptionAncestors"/>), so its chain
+    /// is .NET's; any other handle whose skipped ancestors the image never defines keeps
+    /// its chain.</summary>
     private void NoteRuntimeHandleBases()
     {
         foreach (var (handle, cls) in UnboundRuntimeHandles())
@@ -3458,6 +3460,26 @@ internal sealed partial class CppEmitter
                     break;
                 }
             }
+        }
+    }
+
+    /// <summary>References, for their type-info alone, every CLR ancestor a runtime-held
+    /// exception handle's hand-written chain skips (SystemException, MemberAccessException,
+    /// MissingMemberException, ExternalException). An instance the runtime raises carries
+    /// the handle whatever the program names, and <c>GetType().BaseType</c> walks its chain,
+    /// so the ancestors <see cref="NoteRuntimeHandleBases"/> splices back must exist even
+    /// where nothing else names them. Runs before the opaque pass that emits
+    /// them.</summary>
+    private void NoteRuntimeExceptionAncestors()
+    {
+        foreach (var (name, _) in CoreIntrinsics.RuntimeTypeInfoRows())
+        {
+            if (CoreIntrinsics.RuntimeExceptionTypeInfo(name) is null
+                || _c.FindClassByFullName(name) is not { } cls)
+                continue;
+            for (var a = cls.BaseClass; a is not null && CoreIntrinsics.RuntimeTypeInfoSymbol(a) is null;
+                 a = a.BaseClass)
+                _c.NoteTypeIdentityClosure(TypeDesc.MakeClass(a), keepSeed: false);
         }
     }
 
@@ -5750,7 +5772,7 @@ internal sealed partial class CppEmitter
             sb.AppendLine($"void* dn2cpp_fnptr_for_delegate_{cls.CppName}(Dn2CppObject* dg)");
             sb.AppendLine("{");
             sb.AppendLine("    if (dg == nullptr)");
-            sb.AppendLine("        dn2cpp_throw_argument_null();");
+            sb.AppendLine("        dn2cpp_throw_argument_null_param(\"d\");");
             sb.AppendLine("    // A callback can arrive on a native executor thread as soon as the pointer");
             sb.AppendLine("    // is published. Enable its collector-registration prologue before publishing.");
             sb.AppendLine("    dn2cpp_enable_native_delegate_callback_gc_registration();");
@@ -5802,7 +5824,7 @@ internal sealed partial class CppEmitter
             sb.AppendLine($"Dn2CppObject* dn2cpp_delegate_for_fnptr_{cls.CppName}(void* p)");
             sb.AppendLine("{");
             sb.AppendLine("    if (p == nullptr)");
-            sb.AppendLine("        dn2cpp_throw_argument_null();");
+            sb.AppendLine("        dn2cpp_throw_argument_null_param(\"ptr\");");
             sb.AppendLine("    // A pointer minted by GetFunctionPointerForDelegate round-trips to the");
             sb.AppendLine("    // ORIGINAL parked delegate (the .NET managed round-trip identity).");
             sb.AppendLine($"    for (int32_t i = 0; i < {poolSize}; i++)");

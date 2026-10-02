@@ -23,4 +23,20 @@
 # datetime-tz, datetimeoffset.
 source "$(dirname "$0")/_common.sh"
 
+# Constructors, arithmetic, offset parsing and microseconds preserve fault fields.
+gate_extra_asserts() {
+    local out="$1" native before prefix line
+    native=$(run_bounded "./$out/DateTimeOps$EXE_EXT")
+    native=$(strip_cr_win "$native")
+    before=$(run_bounded "./$out/DateTimeOps$EXE_EXT" before-date-validation)
+    prefix=$(awk '/^== datetime argument fields ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    for line in '== datetime argument fields ==' 'datetime constructor order end' \
+        'datetime argument fields end' '== datetime offset boundaries ==' \
+        'datetime offset boundaries end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: date validation witness missing: $line" >&2; exit 1; }
+    done
+}
+
 corelib_diff_gate DateTimeOps

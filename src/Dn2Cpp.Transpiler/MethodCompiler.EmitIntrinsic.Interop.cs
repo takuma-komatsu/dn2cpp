@@ -515,6 +515,7 @@ internal sealed partial class MethodCompiler
             if (NullableLayout(search) is not (_, { } hasValueField, { } valueField))
                 throw new NotSupportedException(
                     "DllImportResolver.Invoke search path is not a Nullable<T>");
+            _c.NoteForceEmit(resolverClass);
             _c.DelegateInvokerUses.Add(resolverClass);
             string searchType = CppTypes.Of(search);
             string callback = "+[](Dn2CppObject* __resolver, Dn2CppString* __name, "
@@ -540,9 +541,14 @@ internal sealed partial class MethodCompiler
                 throw new NotSupportedException($"NativeLibrary.{callee.Name} has an unsupported signature");
             string searchPathHasValue = "0";
             string searchPathValue = "0";
+            string libraryName = Cast(values[0], "Dn2CppString*");
             if (byName)
             {
-                Emit($"if ({Cast(values[1], "const char*")} == nullptr) dn2cpp_throw_argument_null();");
+                // .NET rejects a null libraryName before a null assembly.
+                libraryName = NewTemp("Dn2CppString*");
+                Emit($"{libraryName} = {Cast(values[0], "Dn2CppString*")};");
+                Emit($"if ({libraryName} == nullptr) dn2cpp_throw_argument_null_param(\"libraryName\");");
+                Emit($"if ({Cast(values[1], "const char*")} == nullptr) dn2cpp_throw_argument_null_param(\"assembly\");");
                 if (NullableLayout(ps[2]) is not (_, { } hasValueField, { } valueField))
                     throw new NotSupportedException(
                         $"NativeLibrary.{callee.Name} search path is not a Nullable<T>");
@@ -555,7 +561,7 @@ internal sealed partial class MethodCompiler
                 ? "dn2cpp_native_library_load_by_name"
                 : "dn2cpp_native_library_load";
             Emit($"{handle} = {load}("
-                + $"{Cast(values[0], "Dn2CppString*")}, {(trying ? 0 : 1)}"
+                + $"{libraryName}, {(trying ? 0 : 1)}"
                 + (byName ? $", {searchPathHasValue}, {searchPathValue}" : "") + ");");
             if (trying)
             {
@@ -1141,10 +1147,8 @@ internal sealed partial class MethodCompiler
             {
                 string dec = name == "PtrToStringAnsi"
                     ? "dn2cpp_string_from_ansi" : "dn2cpp_string_from_utf8";
-                var len = Pop();
-                var ptr = Pop();
-                Push(StackKind.Ref, "Dn2CppString*",
-                    $"{dec}((const char*)({ptr.Expr}), (int32_t)({len.Expr}))");
+                var (p, n) = PtrToStringLengthOperands(name == "PtrToStringAnsi" ? "len" : "byteLen");
+                Push(StackKind.Ref, "Dn2CppString*", $"{dec}((const char*)({p}), {n})");
                 return true;
             }
             // PtrToStringUni(IntPtr [, int len]) -> a managed string copied from a
@@ -1160,10 +1164,8 @@ internal sealed partial class MethodCompiler
             }
             case "PtrToStringUni" when sig.ParameterTypes.Length == 2:
             {
-                var len = Pop();
-                var ptr = Pop();
-                Push(StackKind.Ref, "Dn2CppString*",
-                    $"dn2cpp_string_from_chars((const char16_t*)({ptr.Expr}), (int32_t)({len.Expr}))");
+                var (p, n) = PtrToStringLengthOperands("len");
+                Push(StackKind.Ref, "Dn2CppString*", $"dn2cpp_string_from_chars((const char16_t*)({p}), {n})");
                 return true;
             }
             // StringTo{HGlobal,CoTaskMem}{Ansi,Uni} / StringToCoTaskMemUTF8 (string) ->
@@ -1948,4 +1950,19 @@ internal sealed partial class MethodCompiler
             ArrRep.I4 => $"(void*)({Cast(arr, "Dn2CppArrayI4*")}->data)",
             _ => $"(void*)({Cast(arr, "Dn2CppArrayN*")}->data)",
         };
+
+    /// <summary>Pops the (IntPtr ptr, int length) operands of a length-taking
+    /// Marshal.PtrToString* into temps, checked as .NET checks them: a null pointer names
+    /// "ptr" before a negative length names <paramref name="lengthName"/>.</summary>
+    private (string Ptr, string Length) PtrToStringLengthOperands(string lengthName)
+    {
+        var len = Pop();
+        var ptr = Pop();
+        string p = NewTemp("intptr_t"), n = NewTemp("int32_t");
+        Emit($"{p} = (intptr_t)({ptr.Expr});");
+        Emit($"{n} = (int32_t)({len.Expr});");
+        Emit($"if ({p} == 0) dn2cpp_throw_argument_null_param(\"ptr\");");
+        Emit($"if ({n} < 0) dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, \"{lengthName}\", {n});");
+        return (p, n);
+    }
 }

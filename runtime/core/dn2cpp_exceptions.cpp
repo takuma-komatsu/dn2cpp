@@ -447,6 +447,16 @@ void dn2cpp_overflow()
         dn2cpp_default_message(&dn2cpp_overflow_exception_type), nullptr));
 }
 
+void dn2cpp_integer_overflow(int32_t bits, int32_t isSigned)
+{
+    const char* key = isSigned
+        ? (bits == 8 ? DN2CPP_SR_OVERFLOW_I8 : bits == 16 ? DN2CPP_SR_OVERFLOW_I16
+            : bits == 32 ? DN2CPP_SR_OVERFLOW_I32 : DN2CPP_SR_OVERFLOW_I64)
+        : (bits == 8 ? DN2CPP_SR_OVERFLOW_U8 : bits == 16 ? DN2CPP_SR_OVERFLOW_U16
+            : bits == 32 ? DN2CPP_SR_OVERFLOW_U32 : DN2CPP_SR_OVERFLOW_U64);
+    dn2cpp_throw_sr0(&dn2cpp_overflow_exception_type, key);
+}
+
 // ThrowHelper trap intrinsics: allocate a managed exception of the matching type and
 // throw it (catchable). The BCL's exception-construction IL stays out of the program;
 // its message does not — the type's real .NET default text is folded in at transpile
@@ -1872,4 +1882,59 @@ Dn2CppArrayRef* dn2cpp_aggregate_inner_exceptions(Dn2CppObject* ex, const Dn2Cpp
     if (arrTi != nullptr)
         a->type = arrTi;
     return a;
+}
+
+[[noreturn]] void dn2cpp_throw_argument_sr(const Dn2CppTypeInfo* ti, const char* key,
+    const char* paramName, Dn2CppString* const* args, int32_t argc)
+{
+    Dn2CppString* message = dn2cpp_sr_message(key, args, argc);
+    dn2cpp_raise_argument(ti, message,
+        paramName != nullptr ? dn2cpp_param_name_string(paramName) : nullptr, nullptr, nullptr);
+}
+
+[[noreturn]] void dn2cpp_throw_invalid_enum_value(int32_t value, const char* enumName,
+    const char* paramName)
+{
+    Dn2CppString* args[2] = { dn2cpp_format_int(value, 4, nullptr),
+        dn2cpp_string_from_utf8(enumName, static_cast<int32_t>(std::strlen(enumName))) };
+    dn2cpp_throw_argument_sr(&dn2cpp_argument_exception_type, DN2CPP_SR_INVALID_ENUM_VALUE,
+        paramName, args, 2);
+}
+
+[[noreturn]] void dn2cpp_throw_min_max(Dn2CppString* min, Dn2CppString* max)
+{
+    dn2cpp_throw_sr2(&dn2cpp_argument_exception_type, DN2CPP_SR_MIN_MAX_VALUE, min, max);
+}
+
+[[noreturn]] void dn2cpp_throw_min_max_int(int64_t min, int64_t max, int32_t byteWidth)
+{
+    dn2cpp_throw_min_max(dn2cpp_format_int(min, byteWidth, nullptr),
+        dn2cpp_format_int(max, byteWidth, nullptr));
+}
+
+[[noreturn]] void dn2cpp_throw_min_max_uint(uint64_t min, uint64_t max, int32_t byteWidth)
+{
+    dn2cpp_throw_min_max(dn2cpp_format_uint(min, byteWidth, nullptr),
+        dn2cpp_format_uint(max, byteWidth, nullptr));
+}
+
+[[noreturn]] void dn2cpp_throw_min_max_r8(double min, double max)
+{
+    dn2cpp_throw_min_max(dn2cpp_double_to_string(min), dn2cpp_double_to_string(max));
+}
+
+[[noreturn]] void dn2cpp_throw_min_max_r4(float min, float max)
+{
+    dn2cpp_throw_min_max(dn2cpp_float_to_string(min), dn2cpp_float_to_string(max));
+}
+
+
+[[noreturn]] void dn2cpp_throw_argument_out_of_range_actual_sr1(const char* key,
+    Dn2CppString* arg, const char* paramName, Dn2CppObject* actual, Dn2CppString* actualText)
+{
+    Dn2CppString* args[] = { arg };
+    Dn2CppString* sentence = dn2cpp_sr_message(key, args, 1);
+    std::string text = dn2cpp_sr_arg(actualText);
+    dn2cpp_raise_argument(&dn2cpp_argument_out_of_range_exception_type, sentence,
+        dn2cpp_param_name_string(paramName), actual, &text);
 }

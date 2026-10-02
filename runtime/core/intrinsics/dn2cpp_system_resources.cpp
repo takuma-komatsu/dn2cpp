@@ -441,21 +441,20 @@ const Dn2CppType dn2cpp_resourcemanager_type_obj = { { &dn2cpp_type_type },
 Dn2CppResourceManager* dn2cpp_resourcemanager_new(Dn2CppString* baseName, const char* assembly)
 {
     if (baseName == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("baseName");
+    if (assembly == nullptr)
+        dn2cpp_throw_argument_null_param("assembly");
     auto* rm = static_cast<Dn2CppResourceManager*>(dn2cpp_alloc(sizeof(Dn2CppResourceManager)));
     rm->type = &dn2cpp_resourcemanager_type;
     dn2cpp_gc_store_ref(&rm->baseName, baseName);
-    // A null assembly handle would mean "no registry row", which every lookup below
-    // would then report as a missing SET — true, but naming no assembly. The empty
-    // name is what dn2cpp_assembly_reg_find already treats as unknown, and it prints.
-    rm->assemblyName = (assembly != nullptr) ? assembly : "";
+    rm->assemblyName = assembly;
     return rm;
 }
 
 Dn2CppResourceManager* dn2cpp_resourcemanager_new_for_type(Dn2CppType* resourceSource)
 {
     if (resourceSource == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("resourceSource");
     return dn2cpp_resourcemanager_new(dn2cpp_type_fullname(dn2cpp_type_require(resourceSource)),
                                       dn2cpp_type_assembly_name(resourceSource));
 }
@@ -463,7 +462,7 @@ Dn2CppResourceManager* dn2cpp_resourcemanager_new_for_type(Dn2CppType* resourceS
 Dn2CppString* dn2cpp_resourcemanager_base_name(Dn2CppResourceManager* rm)
 {
     if (rm == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_null_reference();
     return rm->baseName;
 }
 
@@ -478,8 +477,10 @@ static bool LocateEntry(Dn2CppResourceManager* rm, Dn2CppString* name,
     const Dn2CppNumberFormatInfo* culture, const char* api,
     BlobCursor& c, int32_t& typeCodeOut)
 {
-    if (rm == nullptr || name == nullptr)
-        dn2cpp_throw_argument_null();
+    if (rm == nullptr)
+        dn2cpp_throw_null_reference();
+    if (name == nullptr)
+        dn2cpp_throw_argument_null_param("name");
     RequireServableCulture(rm, culture, api);
     const Dn2CppManifestResource* set = RequireSet(rm, api);
 
@@ -655,12 +656,13 @@ static Dn2CppObject* ReadBoxedPayload(BlobCursor& c, int32_t code,
             // ResourceWriter stores DateTime.ToBinary(): top two bits the Kind, the rest
             // ticks. ToBinary serializes a LOCAL value as UTC, so reconstructing one is a
             // timezone conversion, not a relabel (DateTime.FromBinary's own asymmetry).
+            // FromBinary tests only the Local bit, so the ambiguous-DST pair is Local too.
             int64_t raw = c.I64();
             if (c.bad)
                 return nullptr;
             int64_t ticks = raw & 0x3FFFFFFFFFFFFFFFLL;
             int32_t kind = static_cast<int32_t>((static_cast<uint64_t>(raw) >> 62) & 3u);
-            Dn2CppDateTime v = (kind == 2)
+            Dn2CppDateTime v = (kind & 2) != 0
                 ? dn2cpp_datetime_to_local(dn2cpp_datetime_from_ticks(ticks, 1))
                 : dn2cpp_datetime_from_ticks(ticks, kind);
             return dn2cpp_box(&dn2cpp_datetime_type, &v, sizeof(v));

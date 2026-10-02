@@ -29,13 +29,13 @@ internal sealed partial class MethodCompiler
             // loose args, net10) formats over the span's data pointer + length.
             case ("System.Console", "WriteLine") when IsConsoleFormatOverload(sig):
             {
-                string fmt = BuildStringFormatExpr(sig);
+                string fmt = BuildConsoleFormatExpr(sig);
                 Emit($"dn2cpp_console_writeline_str({fmt});");
                 return true;
             }
             case ("System.Console", "Write") when IsConsoleFormatOverload(sig):
             {
-                string fmt = BuildStringFormatExpr(sig);
+                string fmt = BuildConsoleFormatExpr(sig);
                 Emit($"dn2cpp_console_write_str({fmt});");
                 return true;
             }

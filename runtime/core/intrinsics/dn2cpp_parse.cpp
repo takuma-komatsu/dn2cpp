@@ -56,12 +56,12 @@ static bool ns_is_digit(char16_t c) { return c >= u'0' && c <= u'9'; }
 static void ns_validate_integer(int32_t styles)
 {
     if ((styles & ~0x7FF) != 0)
-        dn2cpp_throw_argument();
+        dn2cpp_throw_argument_param(DN2CPP_SR_INVALID_NUMBER_STYLES, "style");
     if ((styles & (NS_HEX | NS_BINARY)) != 0)
     {
         if ((styles & ~(NS_LEADWHITE | NS_TRAILWHITE | NS_HEX | NS_BINARY)) != 0
             || (styles & (NS_HEX | NS_BINARY)) == (NS_HEX | NS_BINARY))
-            dn2cpp_throw_argument();
+            dn2cpp_throw_argument_param(DN2CPP_SR_INVALID_HEX_BINARY_STYLE, "style");
     }
 }
 
@@ -70,8 +70,10 @@ static void ns_validate_integer(int32_t styles)
 // AllowCurrencySymbol is a valid style here too (handled at parse time).
 void dn2cpp_parse_validate_fp_styles(int32_t styles)
 {
-    if ((styles & ~0x7FF) != 0 || (styles & (NS_HEX | NS_BINARY)) != 0)
-        dn2cpp_throw_argument();
+    if ((styles & ~0x7FF) != 0)
+        dn2cpp_throw_argument_param(DN2CPP_SR_INVALID_NUMBER_STYLES, "style");
+    if ((styles & (NS_HEX | NS_BINARY)) != 0)
+        dn2cpp_throw_argument_param(DN2CPP_SR_HEX_BINARY_STYLES_NOT_SUPPORTED, "style");
 }
 
 // MatchChars: the separator/sign string `t` (non-empty) matched at p[i..],
@@ -473,7 +475,7 @@ int64_t dn2cpp_integer_parse_chars(const char16_t* p, int32_t n, int32_t styles,
     switch (ns_integer_core(p, n, styles, nfi, bitWidth, isSigned, &v))
     {
         case 1: ns_throw_format_value(p, n);
-        case 2: dn2cpp_overflow();
+        case 2: dn2cpp_integer_overflow(bitWidth, isSigned);
         default: break;
     }
     return v;
@@ -483,11 +485,9 @@ int64_t dn2cpp_integer_parse_str(Dn2CppString* s, int32_t styles,
                                  const Dn2CppNumberFormatInfo* nfi, int32_t bitWidth,
                                  int32_t isSigned)
 {
+    // Unlike TryParse, Parse rejects a null string before validating the styles.
     if (s == nullptr)
-    {
-        ns_validate_integer(styles);
-        dn2cpp_throw_argument_null();
-    }
+        dn2cpp_throw_argument_null_param("s");
     return dn2cpp_integer_parse_chars(s->chars, s->length, styles, nfi, bitWidth, isSigned);
 }
 
@@ -604,11 +604,9 @@ double dn2cpp_fp_parse_chars(const char16_t* p, int32_t n, int32_t styles,
 double dn2cpp_fp_parse_str(Dn2CppString* s, int32_t styles,
                            const Dn2CppNumberFormatInfo* nfi, int32_t isSingle)
 {
+    // Unlike TryParse, Parse rejects a null string before validating the styles.
     if (s == nullptr)
-    {
-        dn2cpp_parse_validate_fp_styles(styles);
-        dn2cpp_throw_argument_null();
-    }
+        dn2cpp_throw_argument_null_param("s");
     return dn2cpp_fp_parse_chars(s->chars, s->length, styles, nfi, isSingle);
 }
 
