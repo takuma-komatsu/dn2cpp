@@ -130,6 +130,7 @@ internal static class BclMessages
         "Format_InvalidStringWithValue",
         "Format_BadDateTime",
         "Format_BadFormatSpecifier",
+        "Arg_DlgtTypeMis",
         "Format_BadBoolean",
         "Arg_EnumIllegalVal",
         "Format_BadBase64Char",

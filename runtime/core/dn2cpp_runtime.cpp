@@ -351,7 +351,25 @@ Dn2CppObject* dn2cpp_object_memberwise_clone(Dn2CppObject* obj)
             bytes = floor;
     }
     auto* clone = static_cast<Dn2CppObject*>(dn2cpp_alloc(bytes));
-    dn2cpp_gc_memmove_refs(clone, obj, bytes);
+    if ((t->flags & DN2CPP_TF_DELEGATE) != 0)
+    {
+        auto* source = reinterpret_cast<Dn2CppDelegate*>(obj);
+        auto* target = reinterpret_cast<Dn2CppDelegate*>(clone);
+        // Enumeration publishes this cache atomically; a clone cannot read it by memmove.
+        size_t cacheOffset = reinterpret_cast<const char*>(&source->invocationCache)
+            - reinterpret_cast<const char*>(source);
+        size_t cacheEnd = cacheOffset + sizeof(source->invocationCache);
+        dn2cpp_gc_memmove_refs(clone, obj, cacheOffset);
+        if (bytes > cacheEnd)
+            dn2cpp_gc_memmove_refs(reinterpret_cast<char*>(clone) + cacheEnd,
+                reinterpret_cast<const char*>(obj) + cacheEnd, bytes - cacheEnd);
+        dn2cpp_gc_store_ref(&target->invocationCache,
+            source->invocationCache.load(std::memory_order_acquire));
+    }
+    else
+    {
+        dn2cpp_gc_memmove_refs(clone, obj, bytes);
+    }
     // .NET finalizes the CLONE as well as the original — measured on CoreCLR 10.0.9, a
     // clone of a finalizable class runs its finalizer, so a program that clones N
     // objects sees N+1 finalizations. dn2cpp registers at newobj and at the reflective

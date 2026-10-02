@@ -969,7 +969,7 @@ internal sealed partial class MethodCompiler
         {
             // A null-only call still spells the delegate receiver type and invoker.
             _c.NoteForceEmit(ccls);
-            _c.DelegateInvokerUses.Add(ccls);
+            _c.NoteDelegateInvokerUse(ccls);
             return $"[](void* _ctx, {p} _x, {p} _y) -> int32_t {{ {load} "
                  + $"return dginvoke_{ccls.CppName}(({ccls.CppStructName}*)_ctx, _a, _b); }}";
         }
@@ -2109,9 +2109,9 @@ internal sealed partial class MethodCompiler
         {
             // The real-body members' canonical counterpart is never reached (see the
             // matching guard in TranslateGenericIntrinsic).
-            if (CoreIntrinsics.IsArrayRealBodyGeneric(target.DeclaringClass.FullName, target.Name))
+            if (CoreIntrinsics.IsRealBodyGeneric(target.DeclaringClass.FullName, target.Name))
                 foreach (var arg in target.Context.MethodArgs)
-                    TaintIfCanonical(arg, "array-real-body");
+                    TaintIfCanonical(arg, "real-body");
             _c.NoteIntrinsicFtnTarget(target);
         }
         else if (CoreIntrinsics.TryFindCutRow(target, out _))

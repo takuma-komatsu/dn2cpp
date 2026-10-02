@@ -174,6 +174,13 @@ internal sealed partial class MethodCompiler
         && Comp.GenericDefFullName(c) == "System.ReadOnlySpan"
         && c.Context.TypeArgs is [{ IsString: true }];
 
+    /// <summary>ReadOnlySpan&lt;Delegate&gt; — the params-span argument of
+    /// Delegate.Combine.</summary>
+    private bool IsDelegateSpan(TypeDesc t) =>
+        t is { Kind: TypeKind.Class, Class: { } c }
+        && Comp.GenericDefFullName(c) == "System.ReadOnlySpan"
+        && c.Context.TypeArgs is [{ Kind: TypeKind.Class, Class.FullName: "System.Delegate" }];
+
     /// <summary>IEnumerable&lt;string&gt; — the sequence parameter of the non-generic
     /// string.Join/Concat overloads.</summary>
     private bool IsStringEnumerable(TypeDesc t) =>

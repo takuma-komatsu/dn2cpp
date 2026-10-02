@@ -557,6 +557,7 @@ internal sealed partial class Compilation
         "dn2cpp_array_subarray_",   // array segment materialization (i4/ref/n)
         "dn2cpp_array_create_instance", // Array.CreateInstance (+ _from_arraytype/_lengths)
         "dn2cpp_box(",              // boxing
+        "dn2cpp_object_memberwise_clone(", // MemberwiseClone, Delegate.Clone
         // String constructors and producers.
         "dn2cpp_string_from",       // every string-from-* constructor (chars/wcs/mbs/utf8/…)
         "dn2cpp_string_repeat_char",
@@ -624,8 +625,9 @@ internal sealed partial class Compilation
         "dn2cpp_isb_",              // interpolated-string handler: new/append*/to_string all allocate or grow
         // Delegates.
         "dn2cpp_delegate_create(",
-        "dn2cpp_delegate_combine(",
-        "dn2cpp_delegate_remove(",  // may allocate the shortened multicast copy
+        "dn2cpp_delegate_combine",  // + _n/_array: the params overloads
+        "dn2cpp_delegate_remove",   // + _all; may allocate the shortened multicast copy
+        "dn2cpp_delegate_invocation_list(", "dn2cpp_delegate_try_get_at(",
         "dn2cpp_delegate_for_fnptr_",
     };
 

@@ -66,6 +66,17 @@ namespace ReflectInvoke
             if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_EMPTY_STRING_CLONE") == "1")
                 return;
             MemberwiseCloneSubset.Program.RunEmptyStrings();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_DELEGATE_LISTS") == "1")
+                return;
+            DelegateInvocationListSubset.Program.RunRemoveRuns();
+            DelegateInvocationListSubset.Program.Run();
+            DelegateInvocationListSubset.Program.RunEntryIdentity();
+            DelegateInvocationListSubset.Program.RunEnumeration();
+            DelegateInvocationListSubset.Program.RunEnumerationScale();
+            DelegateInvokerDeclarationSubset.Program.Run();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_RECURSIVE_DELEGATE") == "1")
+                return;
+            DelegateInvokerDeclarationSubset.Program.RunRecursive();
         }
     }
 }

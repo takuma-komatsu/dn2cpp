@@ -196,6 +196,7 @@ internal sealed partial class CppEmitter
     /// module and the transitive closure they depend on) are materialized. Set
     /// in <see cref="Emit"/> once the reachable set is known.</summary>
     private HashSet<ClassInfo> _emit = new();
+    private List<ClassInfo> _delegateInvokerClasses = new();
     // Reference-only types emitted as opaque empty layouts (see Emit).
     private HashSet<ClassInfo> _opaque = new();
 
@@ -798,8 +799,19 @@ internal sealed partial class CppEmitter
                     }
             _c.CompletePendingSpecializations();
         }
-        if (ClassInfo.ShareStructLayout)
-            CloseTopoOnlyLayouts();
+        // Signature-only delegates need declarations, without recursively rooting invokers.
+        var shippedInvokerClasses = _c.ShippedDelegateInvokerUses.ToList();
+        shippedInvokerClasses.Sort(ClassInfo.CompareByOrder);
+        var invokerNames = new HashSet<string>(StringComparer.Ordinal);
+        _delegateInvokerClasses = EmittedClasses.Where(c => c.IsDelegate)
+            .Concat(shippedInvokerClasses)
+            .Where(c => invokerNames.Add(c.CppName)).ToList();
+        do
+        {
+            if (ClassInfo.ShareStructLayout)
+                CloseTopoOnlyLayouts();
+        }
+        while (DeclareDelegateInvokerTypes());
 
         // A `static Main(string[] args)` entry point's epilogue builds the args
         // array tagged with the precise ti_arr_string handle. That per-element array
@@ -902,7 +914,7 @@ internal sealed partial class CppEmitter
                 && !IsCanonicalWorld(c) && !IsRuntimeTemplateLevel(c)).ToList();
             var itfClasses = EmittedClasses.Where(c => c.IsInterface && !IsOpaque(c)
                 && !IsCanonicalWorld(c)).ToList();
-            var delegateClasses = EmittedClasses.Where(c => c.IsDelegate && !IsOpaque(c)
+            var delegateClasses = _delegateInvokerClasses.Where(c => !IsOpaque(c)
                 && !IsCanonicalWorld(c)).ToList();
             // Struct names actually declared in this image: a slot signature can
             // reference a class tree-shaking dropped (e.g. a skipped-body engine
@@ -5447,7 +5459,7 @@ internal sealed partial class CppEmitter
         // renderings itself, so a record whose spellings are undeclared can have NO emitted
         // caller — it is planning-pass residue, and emitting it would introduce exactly the
         // undeclared-identifier failure this pass exists to remove.
-        var delegates = EmittedClasses.Where(c => c.IsDelegate).ToList();
+        var delegates = _delegateInvokerClasses.ToList();
         var declaredStructs = EmittedClasses.Select(c => c.CppStructName)
             .ToHashSet(StringComparer.Ordinal);
         bool ExtraSpellable(ClassInfo c)
@@ -5552,7 +5564,7 @@ internal sealed partial class CppEmitter
         {
             sb.AppendLine("// ---- reflection delegate-bind trampolines + registry (CreateDelegate) ----");
             var seen = new HashSet<string>(System.StringComparer.Ordinal);
-            foreach (var cls in EmittedClasses)
+            foreach (var cls in _delegateInvokerClasses)
             {
                 if (!cls.IsDelegate || IsCanonicalWorld(cls) || IsOpaque(cls))
                     continue;
@@ -6677,6 +6689,8 @@ internal sealed partial class CppEmitter
                 sb.AppendLine("    void* f_method;");
                 sb.AppendLine("    Dn2CppObject* f_prev;");
                 sb.AppendLine("    const Dn2CppDelegateMethodIdentity* f_identity;");
+                sb.AppendLine("    Dn2CppObject* f_entry;");
+                sb.AppendLine("    std::atomic<Dn2CppDelegateInvocationCache*> f_invocationCache;");
                 sb.AppendLine("};");
                 continue;
             }
@@ -7731,6 +7745,53 @@ internal sealed partial class CppEmitter
             sb.AppendLine($"    str_{i} = dn2cpp_string_literal(str_data_{i}, {_literals.Literals[i].Length});");
         sb.AppendLine("}");
         sb.AppendLine();
+    }
+
+    /// <summary>Close every invoker parameter and return declaration, including delegates
+    /// referenced only by type identity or a shipped variance-view invocation.</summary>
+    private bool DeclareDelegateInvokerTypes()
+    {
+        var emitted = EmittedClasses.ToList();
+        var declared = emitted.Select(c => c.CppStructName).ToHashSet(StringComparer.Ordinal);
+        bool grew = false;
+        void Declare(ClassInfo c, bool opaque)
+        {
+            if (!EmitAdd(c))
+                return;
+            if (opaque)
+                _opaque.Add(c);
+            declared.Add(c.CppStructName);
+            grew = true;
+        }
+        // The referenced-type pass's shape: a delegate stays non-opaque for its Invoke row,
+        // a struct name may redirect to a canonical owner, and the bases back isinst.
+        void DeclareStruct(ClassInfo c)
+        {
+            _c.EnsureCompleted(c);
+            Declare(c, opaque: !c.IsDelegate);
+            if (ClassInfo.ShareStructLayout && c.SharedOwner is { } owner)
+                Declare(owner, opaque: true);
+            for (var bc = c.BaseClass; bc is { IntrinsicCppName: null, IsEnum: false }; bc = bc.BaseClass)
+                Declare(bc, opaque: true);
+        }
+        foreach (var d in _delegateInvokerClasses)
+        {
+            _c.EnsureCompleted(d);
+            if (!StructDeclared(d.CppStructName, declared))
+                DeclareStruct(d);
+            if (d.Methods.FirstOrDefault(m => m.Name == "Invoke") is not { } inv)
+                continue;
+            foreach (var t0 in inv.Signature.ParameterTypes.Append(inv.Signature.ReturnType))
+            {
+                // A `ref T` renders as T's own struct pointer.
+                var t = t0;
+                while (t is { Kind: TypeKind.ByRef, Element: { } el })
+                    t = el;
+                if (t is { Kind: TypeKind.Class, Class: { } tc } && !StructDeclared(CppTypes.Of(t), declared))
+                    DeclareStruct(tc);
+            }
+        }
+        return grew;
     }
 
 

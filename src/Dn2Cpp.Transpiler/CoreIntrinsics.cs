@@ -65,7 +65,7 @@ internal static partial class CoreIntrinsics
         // static helpers (Copy/Empty/Clear) reach MethodTable/covariance internals we do
         // not model, so they lower to runtime intrinsics. Members whose real bodies are
         // plain managed code are still intercepted, and the interception calls that body
-        // (IsArrayRealBodyGeneric).
+        // (IsRealBodyGeneric).
         "System.Array",
         // Dictionary<K,V>'s prime-bucket sizing. Its real Primes table is a
         // ReadOnlySpan over RVA blob data (RuntimeHelpers.CreateSpan, a ref-struct
@@ -817,19 +817,18 @@ internal static partial class CoreIntrinsics
 
     public static bool IsIntrinsicType(string fullTypeName) => s_intrinsicTypes.Contains(fullTypeName);
 
-    /// <summary>System.Array's generic members whose real CoreLib bodies are plain managed
-    /// code: ThrowHelper argument checks, element reads, a delegate invoke, a List&lt;T&gt; or
-    /// ReadOnlyCollection&lt;T&gt;, and calls to each other. Their call sites stay intercepted
-    /// with the rest of the intrinsic type, but the lowering and an address-taken use both
-    /// name the real transpiled body, so .NET's argument order and messages hold by
-    /// construction.</summary>
-    public static bool IsArrayRealBodyGeneric(string declType, string name) =>
-        declType == "System.Array"
-        && name is "Find" or "FindLast" or "FindAll" or "FindIndex" or "FindLastIndex"
-            or "Exists" or "TrueForAll" or "ConvertAll" or "ForEach" or "AsReadOnly";
+    /// <summary>Managed generic bodies preserve their CoreLib validation and iteration.
+    /// Delegate enumeration reaches the lowered MulticastDelegate.TryGetAt primitive.</summary>
+    public static bool IsRealBodyGeneric(string declType, string name) => declType switch
+    {
+        "System.Array" => name is "Find" or "FindLast" or "FindAll" or "FindIndex" or "FindLastIndex"
+            or "Exists" or "TrueForAll" or "ConvertAll" or "ForEach" or "AsReadOnly",
+        "System.Delegate" => name == "EnumerateInvocationList",
+        _ => false,
+    };
 
     /// <summary>System.Array's non-generic members routed like
-    /// <see cref="IsArrayRealBodyGeneric"/>: the 64-bit index and length overloads, whose
+    /// <see cref="IsRealBodyGeneric"/>: the 64-bit index and length overloads, whose
     /// bodies range-check and call the Int32 overload, GetLongLength, and the constant
     /// ICollection/IList properties.</summary>
     public static bool IsArrayRealBodyMember(string declType, string name, MethodSignature<TypeDesc> sig)
@@ -1191,6 +1190,11 @@ internal static partial class CoreIntrinsics
             or "System.Text.RegularExpressions.RegexLWCGCompiler"
             or "System.Text.RegularExpressions.CompiledRegexRunner"
             or "System.Text.RegularExpressions.CompiledRegexRunnerFactory" => true,
+        // MulticastDelegate.TryGetAt -> dn2cpp_delegate_try_get_at. Its real body reads
+        // _invocationList and _invocationCount, which the uniform delegate layout replaces
+        // with the chain the helper walks; Delegate.InvocationListEnumerator's MoveNext
+        // calls it.
+        "System.MulticastDelegate" => name == "TryGetAt",
         _ => false,
     };
 

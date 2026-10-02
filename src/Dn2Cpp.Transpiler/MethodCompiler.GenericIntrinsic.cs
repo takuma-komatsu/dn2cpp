@@ -1466,15 +1466,16 @@ internal sealed partial class MethodCompiler
             return;
         }
 
-        // Find/FindAll/FindIndex/Exists/ConvertAll/ForEach/AsReadOnly and kin: call the
-        // real transpiled body. Their nested calls to each other land back here.
-        if (CoreIntrinsics.IsArrayRealBodyGeneric(declType, name))
+        // Array's Find/FindAll/FindIndex/Exists/ConvertAll/ForEach/AsReadOnly and kin, and
+        // Delegate.EnumerateInvocationList: call the real transpiled body. The Array
+        // members' nested calls to each other land back here.
+        if (CoreIntrinsics.IsRealBodyGeneric(declType, name))
         {
             // Only a closed instantiation is reached as a real body: Reach cuts the
             // canonical counterpart of an intrinsic type's member, so a shared caller
             // has no body to call and each instantiation compiles its own.
             foreach (var arg in methodArgs)
-                TaintIfCanonical(arg, "array-real-body");
+                TaintIfCanonical(arg, "real-body");
             EmitManagedCall(Comp.ReachIntrinsicTypeMethodSpec(_module, msh, Method.Context), isCallvirt: false);
             return;
         }
