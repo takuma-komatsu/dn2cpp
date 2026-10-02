@@ -319,6 +319,7 @@ internal sealed partial class MethodCompiler
         or "System.Threading.EventWaitHandle"
         or "Microsoft.Win32.SafeHandles.SafeWaitHandle"
         or "System.Threading.Timer"
+        or "System.Threading.CancellationTokenSource"
         or "System.TimeProvider"
         or "System.TimeProvider+SystemTimeProviderTimer"
         or "System.Threading.ThreadLocal"

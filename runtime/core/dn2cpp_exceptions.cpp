@@ -819,6 +819,7 @@ void dn2cpp_throw_invoker_missing(const char* message)
 {
     Dn2CppObject* obj = dn2cpp_exception_new(&dn2cpp_not_supported_exception_type,
         dn2cpp_string_from_utf8(message, static_cast<int32_t>(std::strlen(message))), nullptr);
+    reinterpret_cast<Dn2CppExceptionObject*>(obj)->hresult = static_cast<int32_t>(0x80131515u);
     dn2cpp_exc_stamp_trace(obj);
     dn2cpp_exc_inflight_push(obj);
     throw Dn2CppInvokerMissing{ { obj } };

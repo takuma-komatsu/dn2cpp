@@ -100,3 +100,14 @@ fault guid-parse System.FormatException msg[Unrecognized Guid format.]
 fault checked-overflow System.OverflowException msg[Arithmetic operation resulted in an overflow.]
 fault default-ctor-message System.InvalidOperationException msg[Operation is not valid due to the current state of the object.]
 fault encoding-932 System.NotSupportedException msg[No data is available for encoding 932. For information on defining a custom encoding, see the documentation for the Encoding.RegisterProvider method.]
+== resource manager receivers ==
+GetString(name) -> NullReferenceException
+GetString(null) -> NullReferenceException
+GetString(name, culture) -> NullReferenceException
+GetObject(name) -> NullReferenceException
+GetObject(null, culture) -> NullReferenceException
+BaseName -> NullReferenceException
+ReleaseAllResources() -> NullReferenceException
+GetStream(name) -> NullReferenceException
+GetStream(null, culture) -> NullReferenceException
+resource manager receivers end

@@ -865,6 +865,13 @@ internal sealed partial class Compilation
         var idx = TypeDefMethodNames(mod, classDef);
         MethodDefinitionHandle? firstDotted = null;
         MethodDefinitionHandle? firstPlain = null;
+        bool HasMethodImplBody(MethodDefinitionHandle body)
+        {
+            foreach (var row in reader.GetTypeDefinition(classDef).GetMethodImplementations())
+                if (reader.GetMethodImplementation(row).MethodBody == body)
+                    return true;
+            return false;
+        }
         int Match(MethodDefinitionHandle mh)
         {
             var md = reader.GetMethodDefinition(mh);
@@ -885,6 +892,9 @@ internal sealed partial class Compilation
                 if (mname == name || !mname.EndsWith("." + name, StringComparison.Ordinal)
                     || !QualifierNamesInterface(mname.AsSpan(0, mname.Length - name.Length - 1), itfName, itfArity))
                     continue;
+                // A mapped body belongs only to the declaration its row selects.
+                if (HasMethodImplBody(mh))
+                    continue;
                 int match = Match(mh);
                 if (match == 2)
                     return mh;
@@ -901,8 +911,9 @@ internal sealed partial class Compilation
                 if (match == 1)
                     firstPlain ??= mh;
             }
-        // A signature representation difference may prevent every exact key.
-        return firstDotted ?? firstPlain;
+        // A MethodImpl rejected for this slot cannot re-enter by dotted-name arity.
+        // Plain bodies retain the fallback for signature representation differences.
+        return wantKey is null ? firstDotted ?? firstPlain : firstPlain;
     }
 
     /// <summary>A type definition's simple metadata name without its arity suffix,
@@ -1022,6 +1033,11 @@ internal sealed partial class Compilation
                 for (int i = 0; i < sig.ParameterTypes.Length; i++)
                     if (!SameTypeArg(sig.ParameterTypes[i], target.ParameterTypes[i]))
                         return false;
+                // Substitution can make different definition slots alike. A sole
+                // explicit body must not replace a sibling slot's default either.
+                if (DefinitionShape(slot.DeclaringClass, slot) is { } shape
+                    && MemberRefShape(mr) != shape)
+                    return false;
             }
             else
             {

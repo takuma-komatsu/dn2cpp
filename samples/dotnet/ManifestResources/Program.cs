@@ -51,6 +51,9 @@ namespace ManifestResources
             ResourceCatalogSubset.Program.__GateEntry();
             ResourceManagerSubset.Program.__GateEntry();
             BclFaultMessageSubset.Program.__GateEntry();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_RM_RECEIVERS") == "1")
+                return;
+            ResourceReceiverSubset.Program.Run();
         }
     }
 }

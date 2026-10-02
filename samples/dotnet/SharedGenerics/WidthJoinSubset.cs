@@ -14,6 +14,30 @@ namespace WidthJoinSubset
 
     internal enum Mode : uint { Off, On = 4000000000 }
 
+    internal struct Gauge : IEquatable<int>, IEquatable<Color>, IComparable<int>, IComparable<Color>
+    {
+        public int Value;
+
+        public bool Equals(int other) => Value == other;
+
+        public bool Equals(Color other) => Value == (int)other + 100;
+
+        public int CompareTo(int other) => Value.CompareTo(other);
+
+        public int CompareTo(Color other) => -Value.CompareTo((int)other);
+    }
+
+    internal struct GaugeComparer : IEqualityComparer<int>, IEqualityComparer<Color>
+    {
+        public bool Equals(int x, int y) => x % 10 == y % 10;
+
+        public int GetHashCode(int obj) => obj % 10;
+
+        public bool Equals(Color x, Color y) => x != y;
+
+        public int GetHashCode(Color obj) => 40 + (int)obj;
+    }
+
     internal sealed class Tag<T>
     {
         public override string ToString() => "tag";
@@ -66,6 +90,25 @@ namespace WidthJoinSubset
             Console.WriteLine("reference join views=" + JoinSequence<string>(dual) + "/" + JoinSequence<object>(dual));
             Console.WriteLine("reference concat views=" + ConcatSequence<string>(dual) + "/" + ConcatSequence<object>(dual));
             Console.WriteLine("reference append views=" + Append<string>(dual) + "/" + Append<object>(dual));
+        }
+
+        private static bool Same<T, U>(T value, U other) where T : IEquatable<U> => value.Equals(other);
+
+        private static int Order<T, U>(T value, U other) where T : IComparable<U> => value.CompareTo(other);
+
+        private static string Match<TComparer, U>(TComparer comparer, U x, U y) where TComparer : IEqualityComparer<U> =>
+            comparer.Equals(x, y) + ":" + comparer.GetHashCode(x);
+
+        internal static void RunTypedSlots()
+        {
+            Console.WriteLine("== same-width constrained interface slots ==");
+            var gauge = new Gauge { Value = 101 };
+            Console.WriteLine("width typed slots=" + Same(gauge, 101) + "," + Same(gauge, Color.Green) + ","
+                + Same(gauge, 1) + "/" + Order(gauge, 5) + "," + Order(gauge, Color.Blue));
+            var comparer = new GaugeComparer();
+            Console.WriteLine("width typed comparer=" + Match(comparer, 13, 23) + "/"
+                + Match(comparer, Color.Red, Color.Blue));
+            Console.WriteLine("same-width constrained interface slots end");
         }
     }
 }

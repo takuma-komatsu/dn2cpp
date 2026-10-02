@@ -2060,13 +2060,12 @@ static Dn2CppObject* dn2cpp_meta_object_memberwise_clone(const Dn2CppTypeInfo* c
     return dn2cpp_object_memberwise_clone(receiver);
 }
 
-// MethodAttributes: Public | Static | HideBySig (0x0016) and Family | HideBySig
-// (0x0084) — the words MethodBase.Attributes and IsVirtual/IsAbstract/IsFinal read.
+// Non-public lookup flags do not replace the CLR member access mask.
 static const Dn2CppMetaMember g_meta_members[] = {
     { "System.Runtime.CompilerServices.Unsafe", "SizeOf", 1, &dn2cpp_int32_type,
       DN2CPP_MTHA_STATIC | DN2CPP_MTHA_PUBLIC, 0x0096, dn2cpp_meta_unsafe_sizeof, 0x0100 },
     { "System.Object", "MemberwiseClone", 0, &dn2cpp_object_type,
-      0 /* instance, non-public */, 0x0084, dn2cpp_meta_object_memberwise_clone },
+      0 /* instance, non-public */, 0x0085, dn2cpp_meta_object_memberwise_clone },
 };
 
 // A synthesized row plus the descriptor it answers from. Rows are interned per
