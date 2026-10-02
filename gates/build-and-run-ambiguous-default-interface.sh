@@ -10,28 +10,37 @@
 # the next: a version-skewed reference set.
 source "$(dirname "$0")/_common.sh"
 
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-constrained-prefix:${DN2CPP_BEFORE_ORDINARY_CONSTRAINED_DEFAULT:-}"
+
 APP_DIR="samples/dotnet/AmbiguousDefault/bin/$CONFIG/$TFM"
 
 # A skew that did not take leaves both sides calling the first version's
 # bodies, and that output diffs green. The generated C++ must also carry the
 # unused ambiguous slot, so conversion completed with the slot modelled.
 gate_extra_asserts() {
-    local out="$1" output label thrown find_stub
+    local out="$1" output label thrown find_stub before prefix
     output="$(strip_cr_win "$native")"
     grep -Fxq 'plain: left' <<<"$output" \
         || { echo "FAIL: the unambiguous default body did not run" >&2; exit 1; }
     grep -Fxq 'made plain: left' <<<"$output" \
         || { echo "FAIL: the MakeGenericType receiver's unambiguous default body did not run" >&2; exit 1; }
     for label in 'pick' 'pick-generic<int>' 'pick-generic<string>' 'take<string>' \
-        'find(First.Key)' 'find(Second.Key)' 'made pick' 'made pick-generic<int>'; do
+        'find(First.Key)' 'find(Second.Key)' 'made pick' 'made pick-generic<int>' 'constrained pick'; do
         thrown="$label: System.Runtime.AmbiguousImplementationException: Could not call method "
         grep -Fq -- "$thrown" <<<"$output" \
             || { echo "FAIL: $label did not throw AmbiguousImplementationException" >&2; exit 1; }
         grep -Fxq -- "$label hresult: 0x8013106A" <<<"$output" \
             || { echo "FAIL: $label lost the AmbiguousImplementationException HResult" >&2; exit 1; }
     done
-    grep -Fxq 'after: left' <<<"$output" && [ "$(tail -n 1 <<<"$output")" = 'made after: left' ] \
+    grep -Fxq 'after: left' <<<"$output" && grep -Fxq 'made after: left' <<<"$output" \
+        && [ "$(tail -n 1 <<<"$output")" = 'constrained after: left' ] \
         || { echo "FAIL: the program did not continue after the caught exceptions" >&2; exit 1; }
+    before=$(DN2CPP_BEFORE_ORDINARY_CONSTRAINED_DEFAULT=1 dotnet "$_CG_APP")
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== a constrained call on a struct ==$/ { exit } { print }' <<< "$output")
+    assert_output "$prefix" "$before"
+    grep -Fxq 'constrained plain: left' <<< "$output" \
+        || { echo "FAIL: the constrained unambiguous default body did not run" >&2; exit 1; }
     grep -Fq "'AmbiguousDefaultLib.IBase.Unused()' on interface 'AmbiguousDefaultLib.IBase' with type 'AmbiguousDefault.Both'" \
         "$out"/generated*.cpp \
         || { echo "FAIL: the unused ambiguous slot was not modelled" >&2; exit 1; }

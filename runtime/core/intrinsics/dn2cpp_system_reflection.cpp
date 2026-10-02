@@ -2277,7 +2277,6 @@ void dn2cpp_throw_target_invocation(Dn2CppObject* inner)
 }
 
 static bool dn2cpp_prim_widens(int32_t src, int32_t dst);
-static const Dn2CppTypeInfo* dn2cpp_nullable_underlying_ti(const Dn2CppTypeInfo* ti);
 static Dn2CppObject* dn2cpp_binder_adapt_arg(Dn2CppObject* a, const Dn2CppTypeInfo* p);
 
 static const Dn2CppTypeInfo* dn2cpp_enum_underlying_or_self(const Dn2CppTypeInfo* ti)
@@ -5532,9 +5531,8 @@ static void dn2cpp_write_prim(void* dst, int32_t dstCode, int32_t srcCode, int64
     }
 }
 
-// The Nullable<U> underlying type-info of `ti`, or null when ti is not a
-// closed Nullable instantiation (same detection as Nullable.GetUnderlyingType).
-static const Dn2CppTypeInfo* dn2cpp_nullable_underlying_ti(const Dn2CppTypeInfo* ti)
+// The same detection as Nullable.GetUnderlyingType.
+const Dn2CppTypeInfo* dn2cpp_nullable_underlying_ti(const Dn2CppTypeInfo* ti)
 {
     if (ti != nullptr && ti->genericArgCount == 1 && ti->genericDef != nullptr
         && ti->genericArgs != nullptr && ti->genericDef->name != nullptr

@@ -648,8 +648,9 @@ internal static class PatchConverter
         string? baseName = AotAncestorName(c);
         if (baseName is null || !baseVtables.TryGetValue(baseName, out var slots))
             throw new NotSupportedException($"emit-patch: {c.FullName}.{m.Name} overrides a virtual method, but base type {baseName ?? "System.Object"} has no vtable in the base-image ABI manifest (is the base built with --hotupdate-base?)");
+        // The most derived match, as the base image's vtable builder binds it.
         int slot = -1;
-        for (int i = 0; i < slots.Count; i++)
+        for (int i = slots.Count - 1; i >= 0; i--)
         {
             if (slots[i] == m.SigKey)
             {

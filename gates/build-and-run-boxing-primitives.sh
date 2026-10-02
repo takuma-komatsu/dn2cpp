@@ -128,6 +128,22 @@ gate_extra_asserts() {
         grep -Fxq "$line" <<< "$native" \
             || { echo "FAIL: BoxingPrimitives comparison coverage missing: $line" >&2; exit 1; }
     done
+    before=$(dotnet "$_CG_APP" before-ordinary-object-leaves)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== ordinary Object and value-type dispatch ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== ordinary Object and value-type dispatch ==' \
+        '== constrained typed calls in a generic class ==' \
+        '== null receivers of Object and IComparable members ==' \
+        '== boxed Nullable<T> dispatch ==' '== null receivers of GetType ==' \
+        'Equals override arguments end' 'constrained typed slots end' \
+        'framework box equality end' 'constrained interface shapes end' \
+        'GetType owner: System.String' 'GetType Array element: True/True' \
+        'enum value-type fold: True' 'ordinary closed casts and owner checks end' \
+        'ordinary Object and value-type dispatch end'; do
+        grep -Fxq "$line" <<< "$native" \
+            || { echo "FAIL: ordinary Object dispatch witness missing: $line" >&2; exit 1; }
+    done
 }
 
 corelib_diff_gate BoxingPrimitives

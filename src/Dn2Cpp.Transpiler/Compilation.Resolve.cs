@@ -1219,10 +1219,21 @@ internal sealed partial class Compilation
             // parameter types AND the return type; fall back to params-only, then the
             // first candidate (cross-module return-type representational differences).
             string wantRet = sig.ReturnType.ToString();
-            resolved = candidates.FirstOrDefault(x => Key(x.Signature.ParameterTypes) == want
-                                                      && x.Signature.ReturnType.ToString() == wantRet)
-                ?? candidates.FirstOrDefault(x => Key(x.Signature.ParameterTypes) == want)
-                ?? candidates[0];
+            var exact = candidates.Where(x => Key(x.Signature.ParameterTypes) == want
+                                              && x.Signature.ReturnType.ToString() == wantRet).ToList();
+            if (exact.Count > 1)
+            {
+                // Substitution can make overloads alike that their definitions tell apart
+                // (Visit(T) beside Visit(object) at T = object); the reference names the
+                // definition's signature.
+                string shape = MemberRefShape(mr);
+                resolved = exact.FirstOrDefault(x => DefinitionShape(cls, x) == shape) ?? exact[0];
+            }
+            else
+            {
+                resolved = exact.Count == 1 ? exact[0]
+                    : candidates.FirstOrDefault(x => Key(x.Signature.ParameterTypes) == want) ?? candidates[0];
+            }
         }
         if (typeRefParent)
             _memberRefMethodsByTypeRef[(module.Index, SRME.GetToken(handle))] = resolved;
@@ -1976,9 +1987,18 @@ internal sealed partial class Compilation
     /// instead of the typed overload the interface dispatch must reach (SRM's
     /// Symbolic.BitVector has both). The non-generic <c>System.IComparable</c> (no type
     /// args, boxed argument) keeps the signature path.</para></summary>
-    internal MethodInfo? ConstrainedImplOf(ClassInfo cls, MethodInfo callee)
+    internal MethodInfo? ConstrainedImplOf(ClassInfo cls, MethodInfo callee) =>
+        ConstrainedImplOf(cls, callee, out _);
+
+    /// <summary><see cref="ConstrainedImplOf(ClassInfo, MethodInfo)"/>, also reporting
+    /// through <paramref name="ambiguous"/> that a null answer comes from sibling
+    /// interface overrides with no most specific one.</summary>
+    internal MethodInfo? ConstrainedImplOf(ClassInfo cls, MethodInfo callee, out bool ambiguous)
     {
+        ambiguous = false;
         EnsureCompleted(cls);
+        if (callee.DeclaringClass.IsInterface && !callee.IsVirtual)
+            return callee.IsStatic || callee.Rva == 0 ? null : callee;
         if (callee.DeclaringClass is { IsInterface: true } itf
             && itf.Context.TypeArgs is [{ Kind: TypeKind.Class, Class: { } selfArg }]
             && selfArg == cls
@@ -2000,14 +2020,18 @@ internal sealed partial class Compilation
             return null;
         // The callee names a DIFFERENT instantiation of an interface the type implements —
         // legal through variance (`struct S : I<object>` invoked as `I<string>::M` for a
-        // contravariant `I<in T>`), and the exact-signature probe above cannot see it. Re-ask
-        // against the slot the type really declares. Matching name + parameter COUNT instead
-        // would pick whichever same-named overload metadata happened to order first.
+        // contravariant `I<in T>`), or the one a placeholder receiver stands for (`S<CnRef>`
+        // for `S<object> : I<object>`), and the exact-slot probe above maps no name for it.
+        // Re-ask against the slot the type really declares. Matching name + parameter COUNT
+        // instead would pick whichever same-named overload metadata happened to order first.
         MethodInfo? found = null;
         foreach (var slot in VariantInterfaceSlots(cls, callee))
         {
             if (DeclaredImplOf(cls, slot) is not { } impl || ReferenceEquals(impl, found))
                 continue;
+            // A placeholder stands for several instantiations (int and an int-backed enum
+            // share one width), so only a real instantiation can pick among their bodies;
+            // the shared trial taints on the null.
             if (found is not null
                 && (ContainsCanonPlaceholder(callee.DeclaringClass) || ContainsCanonPlaceholder(cls)))
                 return null;
@@ -2018,7 +2042,11 @@ internal sealed partial class Compilation
                     + "bodies — the variance-compatible one cannot be told apart here");
             found = impl;
         }
-        return found;
+        if (found is not null || !ImplementsInterface(cls, callee.DeclaringClass))
+            return found;
+        return ResolveItfImplOrNull(cls, callee, out ambiguous) is { DeclaringClass.IsInterface: true } body
+            ? body
+            : null;
     }
 
     /// <summary>The implementation <paramref name="cls"/> or one of its bases declares for
@@ -2026,17 +2054,50 @@ internal sealed partial class Compilation
     /// implementation's dotted metadata name is invisible to the signature scan), then a
     /// full name+signature match — <see cref="MethodInfo.SigKey"/> covers the parameter
     /// types and the return type, and one MethodDef row is one generic arity. Per level, so
-    /// a derived level's match outranks a base's.</summary>
+    /// a derived level's match outranks a base's. A virtual class slot holds its own method
+    /// or an override, never a non-virtual or new-slot method of the same signature.
+    ///
+    /// <para>An interface slot maps by name only a public virtual method (ECMA-335
+    /// II.12.2), and only for an interface <paramref name="cls"/> implements: another
+    /// instantiation (variance, or an interface a placeholder receiver relates to none)
+    /// binds through <see cref="VariantInterfaceSlots"/>. Substitution can make methods
+    /// alike (F(object) beside F(X) at X = object), so where <paramref name="cls"/> has
+    /// type arguments the definitions decide, the interface method spelled through the
+    /// interface list of <paramref name="cls"/>.</para></summary>
     private MethodInfo? DeclaredImplOf(ClassInfo cls, MethodInfo target)
     {
+        bool interfaceSlot = target.DeclaringClass.IsInterface;
+        bool mapsByName = !interfaceSlot || ImplementsInterface(cls, target.DeclaringClass);
+        string? shape = null;
         for (var c = cls; c is not null; c = c.BaseClass)
         {
             EnsureCompleted(c);
             if (c.ExplicitInterfaceImpls.TryGetValue(target, out var em))
                 return em;
-            if (c.Methods.FirstOrDefault(x => !x.IsStatic && x.Rva != 0
-                    && x.Name == target.Name && x.SigKey == target.SigKey) is { } m)
-                return m;
+            if (!mapsByName || c.MethodsNamed(target.Name) is not { } named)
+                continue;
+            MethodInfo? undecided = null;
+            foreach (var x in named)
+            {
+                if (x.IsStatic || x.Rva == 0 || x.SigKey != target.SigKey)
+                    continue;
+                if (!interfaceSlot)
+                {
+                    if (!target.IsVirtual || ReferenceEquals(x, target) || (x.IsVirtual && !x.IsNewSlot))
+                        return x;
+                    continue;
+                }
+                if (!x.IsVirtual || !x.IsPublic)
+                    continue;
+                bool? same = cls.Context.TypeArgs.Length == 0 ? null
+                    : SameDefinitionShape(shape ??= InterfaceMethodShape(cls, target), DefinitionShape(cls, x));
+                if (same == true)
+                    return x;
+                if (same is null)
+                    undecided ??= x;
+            }
+            if (undecided is not null)
+                return undecided;
         }
         return null;
     }

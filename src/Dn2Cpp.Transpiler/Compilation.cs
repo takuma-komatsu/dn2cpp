@@ -892,6 +892,15 @@ internal sealed partial class Compilation
             CompleteMembers(cls);
     }
 
+    /// <summary><paramref name="cls"/> with its shape tier final: a specialization
+    /// learns its base, and so whether it is a value type, only with its shape.</summary>
+    private ClassInfo EnsureShape(ClassInfo cls)
+    {
+        if (!cls.ShapeReady)
+            CompleteShape(cls);
+        return cls;
+    }
+
     public TypeDesc GetTypeDescForDefinition(Module m, TypeDefinitionHandle handle)
     {
         if (m.ClassMap.TryGetValue(handle, out var cls))
@@ -6453,6 +6462,7 @@ internal sealed partial class Compilation
                 impls.AddRange(cls.BaseClass.Vtable);
             }
 
+            int inherited = owners.Count;
             var classOverrides = ClassOverrideDecls(cls);
             foreach (var m in cls.Methods)
             {
@@ -6460,16 +6470,7 @@ internal sealed partial class Compilation
                     continue;
                 int slot = ExplicitBaseSlot(cls, m, classOverrides, owners.Count);
                 if (slot < 0 && !m.IsNewSlot)
-                {
-                    for (int i = 0; i < owners.Count; i++)
-                    {
-                        if (owners[i].Name == m.Name && owners[i].SigKey == m.SigKey)
-                        {
-                            slot = i;
-                            break;
-                        }
-                    }
-                }
+                    slot = ImplicitBaseSlot(cls, m, owners, inherited);
                 if (slot < 0)
                 {
                     slot = owners.Count;

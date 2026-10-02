@@ -2362,7 +2362,8 @@ internal sealed partial class MethodCompiler
         Emit($"{vts} = {Cast(src, "Dn2CppObject*")};");
         Emit($"if ({vts} == nullptr) dn2cpp_throw_argument_null_param(\"source\");");
         string slots = NewTemp("const void**");
-        Emit($"{slots} = dn2cpp_resolve_interface({vts}->type, &{itf.CppTypeInfoName});");
+        NoteCanonicalItfDispatch(itf);
+        Emit($"{slots} = dn2cpp_resolve_interface({vts}->type, &{ItfDispatchTi(itf).CppTypeInfoName});");
         TypeDesc taskType = rt.IsVoid
             ? Comp.FindClassByFullName("System.Threading.Tasks.Task") is { } task
                 ? TypeDesc.MakeClass(task)

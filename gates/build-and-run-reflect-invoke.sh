@@ -130,7 +130,7 @@ source "$(dirname "$0")/_common.sh"
 
 py="$(resolve_python)"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/check-reflection-layout.py gates/measure-reflection-metadata.py gates/expected/reflection-allocations.csv gates/fixtures/delegate-invocation-cache/DelegateInvocationCache.csproj gates/fixtures/delegate-invocation-cache/Program.cs"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|empty-string-clone-prefix:${DN2CPP_BEFORE_EMPTY_STRING_CLONE:-}|delegate-list-prefix:${DN2CPP_BEFORE_DELEGATE_LISTS:-}|recursive-delegate-prefix:${DN2CPP_BEFORE_RECURSIVE_DELEGATE:-}"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|empty-string-clone-prefix:${DN2CPP_BEFORE_EMPTY_STRING_CLONE:-}|delegate-list-prefix:${DN2CPP_BEFORE_DELEGATE_LISTS:-}|recursive-delegate-prefix:${DN2CPP_BEFORE_RECURSIVE_DELEGATE:-}|ordinary-interface-prefix:${DN2CPP_BEFORE_ORDINARY_IL_INTERFACE:-}"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/recursive-delegate/RecursiveDelegate.csproj gates/fixtures/recursive-delegate/Program.cs"
 gate_empty_string_clone_asserts() {
     local out="$1" native line
@@ -290,6 +290,24 @@ gate_extra_asserts() {
     grep -Fxq 'ldftn-local-int64=12/Add' "$out/metadata-layout.stdout"
     grep -Fxq 'ldftn-local-address-taken=42/9/12/Add' "$out/metadata-layout.stdout"
     grep -Fxq 'ldftn-local-end' "$out/metadata-layout.stdout"
+    DN2CPP_BEFORE_ORDINARY_IL_INTERFACE=1 run_bounded dotnet "$_CG_APP" \
+        > "$out/before-ordinary-interface-il.stdout"
+    sed '/^== ordinary interface and ValueType IL ==/,$d' "$out/metadata-layout.stdout" \
+        > "$out/ordinary-interface-il-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-ordinary-interface-il.stdout") \
+        <(strip_cr_win_file "$out/ordinary-interface-il-prefix.stdout")
+    for line in '== ordinary interface and ValueType IL ==' \
+        'ldftn-local-sealed-interface=105/ISealedScale.Scale/205/ISealedScale.Shift' \
+        'ldftn-local-valuetype-null=NRE/NRE/NRE/NRE' \
+        'ldftn-local-valuetype-boxed=True/False/5/5' \
+        '== value-type predicates folded for an enum ==' \
+        'folded: DayOfWeek=True/False Shade=True/False Enum=False/True' \
+        'folded in a generic body: Shade=True/False DayOfWeek=True/False int=True/False string=False/True' \
+        'value-type predicates folded for an enum end' \
+        'ordinary interface and ValueType IL end'; do
+        grep -Fxq "$line" <<< "$native" \
+            || { echo "FAIL: ordinary interface IL witness missing: $line" >&2; exit 1; }
+    done
     # Every emitted body follows its `// Type::Method` line, CRLF-terminated on a
     # Windows host. Delegate tags belong to the rewritten bodies alone, since C#
     # never builds a delegate from a stored or joined address.
@@ -297,7 +315,7 @@ gate_extra_asserts() {
     tag_owners=$(LC_ALL=C awk '{ sub(/\r$/, "") } /^\/\/ .*::/ { owner = substr($0, 4) }
         /int32_t [A-Za-z0-9_]+_delegate_tag/ { print owner }' "$out"/generated*.cpp | LC_ALL=C sort -u)
     grep -Fxq 'LdftnLocalSubset.Program::Selected' <<<"$tag_owners"
-    stray_owners=$(grep -Ev '^LdftnLocalSubset\.Program::(Stored|NopSeparated|NativeConvert|SnapshotBeforeOverwrite|Selected|StackJoin|ClosedStored|RawCalli|DeadOrigins|VirtualStored|InstanceStored|Int64Stored)$' <<<"$tag_owners" || true)
+    stray_owners=$(grep -Ev '^LdftnLocalSubset\.Program::(Stored|NopSeparated|NativeConvert|SnapshotBeforeOverwrite|Selected|StackJoin|ClosedStored|RawCalli|DeadOrigins|VirtualStored|InstanceStored|Int64Stored|SealedInterface|SealedGenericInterface)$' <<<"$tag_owners" || true)
     if [ -n "$stray_owners" ]; then
         printf 'error: delegate tags outside the rewritten bodies:\n%s\n' "$stray_owners" >&2
         return 1

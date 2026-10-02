@@ -1352,21 +1352,40 @@ Dn2CppObject* dn2cpp_isinst(Dn2CppObject* obj, const Dn2CppTypeInfo* ti)
     // — the dominant isinst shape, one compare, cheaper than a cache probe.
     if (obj->type == ti)
         return obj;
-    return dn2cpp_typeinfo_assignable(obj->type, ti) != 0 ? obj : nullptr;
+    return dn2cpp_typeinfo_assignable(obj->type, ti) != 0 || dn2cpp_is_nullable_of(ti, obj->type)
+        ? obj : nullptr;
 }
 
 // A failed castclass/unbox raises the real .NET exception — catchable, with the
 // .NET message shape — so `catch (InvalidCastException)` and e.Message match
 // real .NET (the shared runtime handle keeps a typed catch and a runtime-raised
 // object on one type-info, like the other trap exceptions above).
+// The types spell as Type.ToString does: a closed generic's own name is mangled.
+static Dn2CppString* dn2cpp_cast_type_name(const Dn2CppTypeInfo* ti)
+{
+    const bool closedGeneric = ti != nullptr && ti->genericArgCount > 0 && ti->genericDef != nullptr
+        && ti->genericDef->name != nullptr;
+    if (ti == nullptr || (ti->name == nullptr && !closedGeneric))
+        return dn2cpp_string_from_utf8("?", 1);
+    return dn2cpp_type_tostring(ti);
+}
+
+[[noreturn]] static void dn2cpp_throw_invalid_cast_to(const Dn2CppTypeInfo* from, Dn2CppString* to)
+{
+    Dn2CppString* parts[] = {
+        dn2cpp_string_from_utf8("Unable to cast object of type '", 31),
+        dn2cpp_cast_type_name(from),
+        dn2cpp_string_from_utf8("' to type '", 11),
+        to,
+        dn2cpp_string_from_utf8("'.", 2),
+    };
+    dn2cpp_throw(dn2cpp_exception_new(&dn2cpp_invalid_cast_exception_type,
+        dn2cpp_string_concat_n(parts, 5), nullptr));
+}
+
 [[noreturn]] static void dn2cpp_throw_invalid_cast(const Dn2CppTypeInfo* from, const Dn2CppTypeInfo* to)
 {
-    char buf[512];
-    std::snprintf(buf, sizeof buf, "Unable to cast object of type '%s' to type '%s'.",
-        from != nullptr && from->name != nullptr ? from->name : "?",
-        to != nullptr && to->name != nullptr ? to->name : "?");
-    dn2cpp_throw(dn2cpp_exception_new(&dn2cpp_invalid_cast_exception_type,
-        dn2cpp_string_from_utf8(buf, static_cast<int32_t>(std::strlen(buf))), nullptr));
+    dn2cpp_throw_invalid_cast_to(from, dn2cpp_cast_type_name(to));
 }
 
 Dn2CppObject* dn2cpp_castclass(Dn2CppObject* obj, const Dn2CppTypeInfo* ti)
@@ -1494,6 +1513,16 @@ void* dn2cpp_unbox(Dn2CppObject* obj, const Dn2CppTypeInfo* ti)
         dn2cpp_throw_null_reference();
     if (obj->type != ti && !dn2cpp_unbox_compatible(obj->type, ti))
         dn2cpp_throw_invalid_cast(obj->type, ti);
+    return obj + 1;
+}
+
+// The enum widening is plain unbox's alone: a Nullable<U> takes a box of exactly U.
+void* dn2cpp_unbox_nullable(Dn2CppObject* obj, const Dn2CppTypeInfo* u)
+{
+    if (obj->type != u)
+        dn2cpp_throw_invalid_cast_to(obj->type, dn2cpp_string_concat3(
+            dn2cpp_string_from_utf8("System.Nullable`1[", 18), dn2cpp_cast_type_name(u),
+            dn2cpp_string_from_utf8("]", 1)));
     return obj + 1;
 }
 

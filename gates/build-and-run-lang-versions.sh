@@ -5,17 +5,18 @@
 # CoreLib and diffed byte-for-byte — stdout and exit status — against real .NET.
 #
 # The driver (samples/dotnet/LangVersions/Program.cs) is written as C# 9 top-level
-# Five feature sections folded in from their own gates are driven from the
-# TAIL of that driver rather than from inside the Cs0N section they belong to:
-# IteratorSubset (C# 2), NullableValueSubset (C# 2), TupleSubset (C# 7),
-# DefaultInterfaceMethodSubset (C# 8), RecordSubset (C# 9). Appending is what keeps
-# the output-order change at the end of the diff; the version each covers is named
-# beside its call.
-#
 # statements on purpose: a compilation may hold at most one such file and it
 # becomes the entry point, so the driver is the only place in the bucket where the
 # feature can be exercised, and it doubles as the assertion that the transpiler
 # finds the synthesized `<Program>$::<Main>$`.
+#
+# Feature sections are driven from the TAIL of that driver rather than from inside
+# the Cs0N section they belong to: IteratorSubset (C# 2), NullableValueSubset
+# (C# 2), TupleSubset (C# 7), DefaultInterfaceMethodSubset (C# 8), RecordSubset
+# (C# 9), and InterfaceSealedMemberSubset (C# 8), whose sealed and private
+# interface members run their own bodies through an interface, a delegate and a
+# constrained call on a class or struct. Appending is what keeps the output-order
+# change at the end of the diff; the version each covers is named beside its call.
 #
 # A project has ONE LangVersion, so every section is compiled by the C# 14
 # compiler. What this asserts is that the FEATURE's IL shape transpiles — not that
@@ -31,6 +32,24 @@
 # samples/dotnet/ReflectTypes/DynamicCodegenSubset.cs. Cs03 covers expression-tree
 # *building*, which does transpile; Cs04 covers the rest of C# 4.
 source "$(dirname "$0")/_common.sh"
+
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-sealed-prefix:${DN2CPP_BEFORE_ORDINARY_SEALED_INTERFACE:-}"
+
+gate_extra_asserts() {
+    local out="$1" output before prefix label
+    output=$(strip_cr_win "$native")
+    before=$(DN2CPP_BEFORE_ORDINARY_SEALED_INTERFACE=1 dotnet "$_CG_APP")
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== sealed interface members ==$/ { exit } { print }' <<< "$output")
+    assert_output "$prefix" "$before"
+    for label in '== sealed interface members ==' 'class: shout:' 'generic: twice:' \
+        'boxed struct: shout:' 'null: NullReferenceException / NullReferenceException' \
+        'delegate: shout:' 'constrained class: shout:' 'constrained struct: shout:' \
+        'constrained default: shout:' 'generic interface: show:' 'sealed interface members end'; do
+        grep -Fq "$label" <<< "$output" \
+            || { echo "FAIL: sealed interface own-body witness missing: $label" >&2; exit 1; }
+    done
+}
 
 corelib_diff_gate LangVersions System.Linq System.Linq.Expressions \
     System.Collections System.Runtime System.Threading

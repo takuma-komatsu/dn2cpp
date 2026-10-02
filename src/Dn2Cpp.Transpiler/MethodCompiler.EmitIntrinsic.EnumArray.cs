@@ -1065,8 +1065,7 @@ internal sealed partial class MethodCompiler
             case ("System.Attribute", "get_TypeId") when sig.ParameterTypes.Length == 0:
             {
                 var o = Pop();
-                Push(StackKind.Ref, "Dn2CppType*",
-                    $"dn2cpp_get_type_from_handle(((Dn2CppObject*)({o.Expr}))->type)");
+                Push(StackKind.Ref, "Dn2CppType*", $"dn2cpp_get_type_from_handle({ReceiverHeader(o)}->type)");
                 return true;
             }
             // Match(object): the base implementation is `return Equals(obj)`, so mirror
@@ -1081,7 +1080,7 @@ internal sealed partial class MethodCompiler
                 var obj = Pop();
                 var self = Pop();
                 Push(StackKind.I4, "int32_t",
-                    $"dn2cpp_object_equals({Cast(self, "Dn2CppObject*")}, {Cast(obj, "Dn2CppObject*")})");
+                    $"dn2cpp_object_equals_virtual({Cast(self, "Dn2CppObject*")}, {Cast(obj, "Dn2CppObject*")})");
                 return true;
             }
 
