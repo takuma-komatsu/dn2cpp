@@ -74,6 +74,9 @@ namespace ReflectInvoke
             DelegateInvocationListSubset.Program.RunEnumeration();
             DelegateInvocationListSubset.Program.RunEnumerationScale();
             DelegateInvokerDeclarationSubset.Program.Run();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_RECURSIVE_DELEGATE") == "1")
+                return;
+            DelegateInvokerDeclarationSubset.Program.RunRecursive();
         }
     }
 }

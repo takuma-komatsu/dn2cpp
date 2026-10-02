@@ -196,6 +196,7 @@ internal sealed partial class CppEmitter
     /// module and the transitive closure they depend on) are materialized. Set
     /// in <see cref="Emit"/> once the reachable set is known.</summary>
     private HashSet<ClassInfo> _emit = new();
+    private List<ClassInfo> _delegateInvokerClasses = new();
     // Reference-only types emitted as opaque empty layouts (see Emit).
     private HashSet<ClassInfo> _opaque = new();
 
@@ -798,8 +799,13 @@ internal sealed partial class CppEmitter
                     }
             _c.CompletePendingSpecializations();
         }
-        // A topo-only stub can be a delegate, and a delegate invoker's declarations can
-        // float a SharedOwner into the struct order, so the two close together.
+        // Signature-only delegates need declarations, without recursively rooting invokers.
+        var shippedInvokerClasses = _c.ShippedDelegateInvokerUses.ToList();
+        shippedInvokerClasses.Sort(ClassInfo.CompareByOrder);
+        var invokerNames = new HashSet<string>(StringComparer.Ordinal);
+        _delegateInvokerClasses = EmittedClasses.Where(c => c.IsDelegate)
+            .Concat(shippedInvokerClasses)
+            .Where(c => invokerNames.Add(c.CppName)).ToList();
         do
         {
             if (ClassInfo.ShareStructLayout)
@@ -908,7 +914,7 @@ internal sealed partial class CppEmitter
                 && !IsCanonicalWorld(c) && !IsRuntimeTemplateLevel(c)).ToList();
             var itfClasses = EmittedClasses.Where(c => c.IsInterface && !IsOpaque(c)
                 && !IsCanonicalWorld(c)).ToList();
-            var delegateClasses = EmittedClasses.Where(c => c.IsDelegate && !IsOpaque(c)
+            var delegateClasses = _delegateInvokerClasses.Where(c => !IsOpaque(c)
                 && !IsCanonicalWorld(c)).ToList();
             // Struct names actually declared in this image: a slot signature can
             // reference a class tree-shaking dropped (e.g. a skipped-body engine
@@ -5453,7 +5459,7 @@ internal sealed partial class CppEmitter
         // renderings itself, so a record whose spellings are undeclared can have NO emitted
         // caller — it is planning-pass residue, and emitting it would introduce exactly the
         // undeclared-identifier failure this pass exists to remove.
-        var delegates = EmittedClasses.Where(c => c.IsDelegate).ToList();
+        var delegates = _delegateInvokerClasses.ToList();
         var declaredStructs = EmittedClasses.Select(c => c.CppStructName)
             .ToHashSet(StringComparer.Ordinal);
         bool ExtraSpellable(ClassInfo c)
@@ -5558,7 +5564,7 @@ internal sealed partial class CppEmitter
         {
             sb.AppendLine("// ---- reflection delegate-bind trampolines + registry (CreateDelegate) ----");
             var seen = new HashSet<string>(System.StringComparer.Ordinal);
-            foreach (var cls in EmittedClasses)
+            foreach (var cls in _delegateInvokerClasses)
             {
                 if (!cls.IsDelegate || IsCanonicalWorld(cls) || IsOpaque(cls))
                     continue;
@@ -7747,10 +7753,6 @@ internal sealed partial class CppEmitter
     {
         var emitted = EmittedClasses.ToList();
         var declared = emitted.Select(c => c.CppStructName).ToHashSet(StringComparer.Ordinal);
-        // Recording order is compile order, which is not a property of the input.
-        var pending = new Queue<ClassInfo>(emitted.Where(c => c.IsDelegate)
-            .Concat(_c.ShippedDelegateInvokerUses.Where(c => !_emit.Contains(c))
-                .OrderBy(c => c.CppName, StringComparer.Ordinal)));
         bool grew = false;
         void Declare(ClassInfo c, bool opaque)
         {
@@ -7759,8 +7761,6 @@ internal sealed partial class CppEmitter
             if (opaque)
                 _opaque.Add(c);
             declared.Add(c.CppStructName);
-            if (c.IsDelegate)
-                pending.Enqueue(c);
             grew = true;
         }
         // The referenced-type pass's shape: a delegate stays non-opaque for its Invoke row,
@@ -7774,9 +7774,8 @@ internal sealed partial class CppEmitter
             for (var bc = c.BaseClass; bc is { IntrinsicCppName: null, IsEnum: false }; bc = bc.BaseClass)
                 Declare(bc, opaque: true);
         }
-        while (pending.Count > 0)
+        foreach (var d in _delegateInvokerClasses)
         {
-            var d = pending.Dequeue();
             _c.EnsureCompleted(d);
             if (!StructDeclared(d.CppStructName, declared))
                 DeclareStruct(d);

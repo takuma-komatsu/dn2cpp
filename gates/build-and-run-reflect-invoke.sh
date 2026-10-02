@@ -130,7 +130,8 @@ source "$(dirname "$0")/_common.sh"
 
 py="$(resolve_python)"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/check-reflection-layout.py gates/measure-reflection-metadata.py gates/expected/reflection-allocations.csv gates/fixtures/delegate-invocation-cache/DelegateInvocationCache.csproj gates/fixtures/delegate-invocation-cache/Program.cs"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|empty-string-clone-prefix:${DN2CPP_BEFORE_EMPTY_STRING_CLONE:-}|delegate-list-prefix:${DN2CPP_BEFORE_DELEGATE_LISTS:-}"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|empty-string-clone-prefix:${DN2CPP_BEFORE_EMPTY_STRING_CLONE:-}|delegate-list-prefix:${DN2CPP_BEFORE_DELEGATE_LISTS:-}|recursive-delegate-prefix:${DN2CPP_BEFORE_RECURSIVE_DELEGATE:-}"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/recursive-delegate/RecursiveDelegate.csproj gates/fixtures/recursive-delegate/Program.cs"
 gate_empty_string_clone_asserts() {
     local out="$1" native line
     native=$(strip_cr_win_file "$out/metadata-layout.stdout")
@@ -167,10 +168,16 @@ gate_extra_asserts() {
         '== delegate invoker declarations ==' 'cold invoker=ColdInvoker' \
         'cold ref invoker=ColdRefInvoker' 'cold shared distinct=True' \
         'unconstructed variance view=null' \
-        'delegate invoker declarations end'; do
+        'delegate invoker declarations end' \
+        '== recursive delegate declarations ==' 'recursive delegate identities=True/True' \
+        'recursive delegate declarations end'; do
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: delegate invocation list witness missing: $line" >&2; return 1; }
     done
+    DN2CPP_BEFORE_RECURSIVE_DELEGATE=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-recursive-delegate.stdout"
+    sed '/^== recursive delegate declarations ==/,$d' "$out/metadata-layout.stdout" > "$out/recursive-delegate-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-recursive-delegate.stdout") \
+        <(strip_cr_win_file "$out/recursive-delegate-prefix.stdout")
     grep -Fxq 'metadata-layout-begin' "$out/metadata-layout.stdout"
     grep -Fxq 'metadata-layout-cache-capacity=72/1296' "$out/metadata-layout.stdout"
     grep -Fxq 'metadata-layout-cache-threads=1296/1296' "$out/metadata-layout.stdout"
@@ -483,4 +490,19 @@ for cache_line in '== invocation list cache GC ==' 'cache survives GC=True' \
         'delegate cache fixture end'; do
     grep -Fxq -- "$cache_line" <<< "$cache_actual" \
         || { echo "FAIL: delegate cache witness missing: $cache_line" >&2; exit 1; }
+done
+
+recursive_project=gates/fixtures/recursive-delegate/RecursiveDelegate.csproj
+run_bounded dotnet build "$recursive_project" -c "$CONFIG" --nologo -v:q
+recursive_app=gates/fixtures/recursive-delegate/bin/$CONFIG/net10.0/RecursiveDelegate.dll
+recursive_expected=$(run_bounded dotnet "$recursive_app")
+for recursive_mode in shared-generics no-shared-generics; do
+    recursive_out="artifacts/reflectinvoke-recursive-$recursive_mode"
+    DN2CPP_STRICT_COMPLETION=1 invoke_cli "$recursive_app" -r "$_CG_CORELIB" \
+        "--$recursive_mode" -o "$recursive_out"
+    compile_console "$recursive_out" RecursiveDelegate
+    recursive_actual=$(run_bounded "$recursive_out/RecursiveDelegate$EXE_EXT")
+    assert_output "$(strip_cr_win "$recursive_actual")" "$(strip_cr_win "$recursive_expected")"
+    grep -Fxq 'recursive delegate identities=True/True' <<< "$(strip_cr_win "$recursive_actual")" \
+        || { echo 'FAIL: recursive delegate declaration witness missing' >&2; exit 1; }
 done

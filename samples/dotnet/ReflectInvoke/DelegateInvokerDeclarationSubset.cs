@@ -26,6 +26,7 @@ internal static class Program
     }
 
     private delegate Cell<T> ColdSharedInvoker<T>(ref Cell<T> value);
+    private delegate void ColdRecursive<T>(ColdRecursive<ColdRecursive<T>> next);
 
     internal static void Run()
     {
@@ -38,5 +39,14 @@ internal static class Program
         Func<OperatingSystem, string> view = original;
         Console.WriteLine("unconstructed variance view=" + view(null));
         Console.WriteLine("delegate invoker declarations end");
+    }
+
+    internal static void RunRecursive()
+    {
+        Console.WriteLine("== recursive delegate declarations ==");
+        Console.WriteLine("recursive delegate identities="
+            + (typeof(ColdRecursive<int>) != typeof(ColdRecursive<long>)) + "/"
+            + (typeof(ColdRecursive<int>) == typeof(ColdRecursive<int>)));
+        Console.WriteLine("recursive delegate declarations end");
     }
 }
