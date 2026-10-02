@@ -72,6 +72,9 @@ namespace SharedGenerics
             if (args.Length > 0 && args[0] == "before-methodimpl-shapes")
                 return;
             MethodImplShapeSubset.Program.Run();
+            if (args.Length > 0 && args[0] == "before-null-stack-joins")
+                return;
+            KnownNullJoinSubset.Program.Run();
         }
     }
 }

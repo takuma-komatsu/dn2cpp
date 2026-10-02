@@ -1888,9 +1888,12 @@ internal sealed partial class MethodCompiler : IEvalStack
             // spills the array first) can still recognise it as `T[]`. The
             // canonical slot's C++ type may be widened, but StaticType still describes
             // the value.
+            // A backedge can supply a non-null value after the target was rendered.
+            // Only forward joins may use the null fact to remove a lowering.
             var arraySearchOrigin = ArraySearchBlockSlot(targetOffset, i);
             _c.LinkArraySearchOrigin(arraySearchOrigin, e.ArraySearchOrigin);
             canonical.Add(new StackEntry(name, e.Kind, type, StaticType: e.StaticType,
+                KnownNull: e.KnownNull && !_backwardBranchTargets.Contains(targetOffset),
                 DelegateTag: delegateTag, ArraySearchOrigin: arraySearchOrigin));
         }
 
@@ -1936,6 +1939,9 @@ internal sealed partial class MethodCompiler : IEvalStack
             for (int i = 0; i < existing.Count; i++)
                 if (!Equals(existing[i].StaticType, canonical[i].StaticType))
                     existing[i] = existing[i] with { StaticType = null };
+            for (int i = 0; i < existing.Count; i++)
+                if (!canonical[i].KnownNull)
+                    existing[i] = existing[i] with { KnownNull = false };
             // Continue below with the recorded entry stack (existing wins), so the
             // fallthrough path stays consistent with what the target block reads.
             canonical = existing;
