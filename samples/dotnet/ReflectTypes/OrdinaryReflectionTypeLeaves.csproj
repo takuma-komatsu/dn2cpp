@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <Optimize>true</Optimize>
+    <DebugType>none</DebugType>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="AttributeTypePropertySubset.cs" />
+    <Compile Include="ReflectAttrBoxedSubset.cs" />
+    <Compile Include="ReflectRuntimeTypeParitySubset.cs" />
+    <Compile Include="ReflectAssemblyErrorSubset.cs" />
+    <Compile Include="OrdinaryReflectionTypeLeavesProgram.cs" />
+  </ItemGroup>
+</Project>

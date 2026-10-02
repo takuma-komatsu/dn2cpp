@@ -1569,6 +1569,215 @@ internal sealed partial class Compilation
         _ => (null, default),
     };
 
+    /// <summary>The type a custom-attribute blob names by its serialized name (ECMA-335
+    /// II.23.3): <c>Ns.Outer+Inner`1[[Arg, Asm],[Arg, Asm]][]</c>, optionally followed by
+    /// <c>, Assembly, Version=…</c>. A CoreLib primitive, at any depth, is the primitive a
+    /// signature decodes, so a closed generic keys the same instantiation a body names.
+    /// An open generic definition, and anything unresolved, answers the External type-name
+    /// prefix: for the definition that is the backtick name its open-definition handle is
+    /// keyed on, otherwise a type no attribute can render. Only Discovery mints a closed
+    /// generic; a later decode finds the instantiations that exist.</summary>
+    internal TypeDesc ResolveSerializedTypeName(string name)
+    {
+        try
+        {
+            int pos = 0;
+            if (ParseSerializedType(name, ref pos) is { } type && (pos == name.Length || name[pos] == ','))
+                return type;
+        }
+        catch (Exception e) when (!IsMustEscape(e))
+        {
+            // An undecodable name falls back like an unresolved one.
+        }
+        return TypeDesc.MakeExternal(SerializedTypeNamePrefix(name));
+    }
+
+    /// <summary>A serialized type name without its assembly part: everything before the
+    /// first comma outside brackets.</summary>
+    private static string SerializedTypeNamePrefix(string name)
+    {
+        int depth = 0;
+        for (int i = 0; i < name.Length; i++)
+        {
+            if (name[i] == '[')
+                depth++;
+            else if (name[i] == ']')
+                depth--;
+            else if (name[i] == ',' && depth == 0)
+                return name[..i].Trim();
+        }
+        return name.Trim();
+    }
+
+    /// <summary>The '+' chain, generic arguments and array suffixes at
+    /// <paramref name="pos"/>. Qualified arguments and the outer type resolve in
+    /// their named assembly; bare arguments leave the separating comma untouched.
+    /// Leaves <paramref name="pos"/> after the name; null when unresolved.</summary>
+    private TypeDesc? ParseSerializedType(string s, ref int pos, bool allowAssembly = true)
+    {
+        while (pos < s.Length && s[pos] == ' ')
+            pos++;
+        int start = pos;
+        while (pos < s.Length && s[pos] is not ('[' or ']' or ','))
+        {
+            // Escaped names, pointers and byrefs are not attribute-value shapes.
+            if (s[pos] is '\\' or '*' or '&')
+                return null;
+            pos++;
+        }
+        string chain = s[start..pos].TrimEnd();
+        TypeDesc[]? args = null;
+        if (pos + 1 < s.Length && s[pos] == '[' && s[pos + 1] is not (']' or ',' or '*'))
+        {
+            var list = new List<TypeDesc>();
+            do
+            {
+                pos++;
+                while (pos < s.Length && s[pos] == ' ')
+                    pos++;
+                bool qualified = pos < s.Length && s[pos] == '[';
+                if (qualified)
+                    pos++;
+                if (ParseSerializedType(s, ref pos, qualified) is not { } arg)
+                    return null;
+                if (qualified)
+                {
+                    // An assembly name carries no brackets.
+                    while (pos < s.Length && s[pos] != ']')
+                        pos++;
+                    if (pos == s.Length)
+                        return null;
+                    pos++;
+                }
+                list.Add(arg);
+                while (pos < s.Length && s[pos] == ' ')
+                    pos++;
+            }
+            while (pos < s.Length && s[pos] == ',');
+            if (pos == s.Length || s[pos] != ']')
+                return null;
+            pos++;
+            args = list.ToArray();
+        }
+        var ranks = new List<int>();
+        while (pos < s.Length && s[pos] == '[')
+        {
+            int rank = 1;
+            pos++;
+            while (pos < s.Length && s[pos] == ',')
+            {
+                rank++;
+                pos++;
+            }
+            // "[*]" and bounded shapes are not attribute-value shapes.
+            if (pos == s.Length || s[pos] != ']')
+                return null;
+            pos++;
+            ranks.Add(rank);
+        }
+        string? assembly = null;
+        if (allowAssembly && pos < s.Length && s[pos] == ',')
+        {
+            int assemblyStart = ++pos;
+            while (pos < s.Length && s[pos] is not (',' or ']'))
+                pos++;
+            assembly = s[assemblyStart..pos].Trim();
+            if (assembly.Length == 0)
+                return null;
+            while (pos < s.Length && s[pos] != ']')
+                pos++;
+        }
+        if (ResolveSerializedChain(chain, args, assembly) is not { } type)
+            return null;
+        foreach (int rank in ranks)
+            type = rank == 1 ? TypeDesc.MakeSZArray(type) : TypeDesc.MakeMDArray(type, rank);
+        return type;
+    }
+
+    /// <summary>The type a '+'-separated chain names, closed over <paramref name="args"/>
+    /// when it is generic; null for an open definition and for anything unresolved. Each
+    /// nested link is looked up among its declaring type's nested types, since the type
+    /// index keys every nested type under an empty namespace.</summary>
+    private TypeDesc? ResolveSerializedChain(string chain, TypeDesc[]? args, string? assembly)
+    {
+        if (args is null && (assembly is null || SerializedCoreLibAssembly(assembly))
+            && WellKnownPrimitive(chain) is { } primitive)
+            return primitive;
+        int plus = chain.IndexOf('+');
+        string head = plus < 0 ? chain : chain[..plus];
+        int dot = head.LastIndexOf('.');
+        var key = dot < 0 ? ("", head) : (head[..dot], head[(dot + 1)..]);
+        if (!TypeIndex().TryGetValue(key, out var candidates))
+            return null;
+        foreach (var (module, top) in candidates)
+        {
+            if (assembly is not null
+                && !module.AssemblyName.Equals(assembly, StringComparison.OrdinalIgnoreCase)
+                && !(module.AssemblyName == "System.Private.CoreLib" && SerializedCoreLibAssembly(assembly)))
+                continue;
+            var reader = module.Reader;
+            if (!reader.GetTypeDefinition(top).GetDeclaringType().IsNil)
+                continue;
+            TypeDefinitionHandle? handle = top;
+            for (int link = plus; link >= 0 && handle is { } declaring;)
+            {
+                int next = chain.IndexOf('+', link + 1);
+                string name = next < 0 ? chain[(link + 1)..] : chain[(link + 1)..next];
+                handle = null;
+                foreach (var nested in reader.GetTypeDefinition(declaring).GetNestedTypes())
+                    if (reader.StringComparer.Equals(reader.GetTypeDefinition(nested).Name, name))
+                    {
+                        handle = nested;
+                        break;
+                    }
+                link = next;
+            }
+            if (handle is { } resolved)
+                return SerializedTypeDesc(module, resolved, args);
+        }
+        return null;
+    }
+
+    // Standard CoreLib facades serialize their forwarded types under the facade name.
+    private static bool SerializedCoreLibAssembly(string assembly) =>
+        assembly.Equals("System.Private.CoreLib", StringComparison.OrdinalIgnoreCase)
+        || assembly.Equals("mscorlib", StringComparison.OrdinalIgnoreCase)
+        || assembly.Equals("System.Runtime", StringComparison.OrdinalIgnoreCase)
+        || assembly.Equals("netstandard", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The TypeDesc of a resolved serialized TypeDef: the class itself, or its
+    /// instantiation over <paramref name="args"/>. Only Discovery instantiates, since the
+    /// emit set closes after it; a later phase answers only an instantiation that
+    /// exists.</summary>
+    private TypeDesc? SerializedTypeDesc(Module module, TypeDefinitionHandle handle, TypeDesc[]? args)
+    {
+        if (module.ClassMap.TryGetValue(handle, out var cls))
+            return args is null ? TypeDesc.MakeClass(cls) : null;
+        if (args is null || !module.GenericTemplates.Contains(handle)
+            || module.Reader.GetTypeDefinition(handle).GetGenericParameters().Count != args.Length)
+            return null;
+        if (Phase == EmitPhase.Discovery)
+            return TypeDesc.MakeClass(Instantiate(module, handle, args));
+        return _instances.TryGetValue((module.Index, SRME.GetToken(handle)), out var byArgs)
+            && byArgs.TryGetValue(args, out var existing)
+                ? TypeDesc.MakeClass(existing)
+                : null;
+    }
+
+    /// <summary>The width a custom-attribute blob encodes a value of enum type
+    /// <paramref name="type"/> at; Int32 for a type that is not a resolved enum. A closed
+    /// generic learns it is an enum with its shape, which Discovery completes here so the
+    /// reach-time decode reads the width the emit-time decode reads.</summary>
+    internal PrimitiveTypeCode SerializedEnumUnderlying(TypeDesc type)
+    {
+        if (type.Kind != TypeKind.Class)
+            return PrimitiveTypeCode.Int32;
+        var cls = type.Class!;
+        if (cls.GenericArity > 0 && Phase == EmitPhase.Discovery)
+            CompleteShape(cls);
+        return cls.IsEnum ? cls.EnumUnderlying : PrimitiveTypeCode.Int32;
+    }
+
     /// <summary>The CLR qualified name (<c>Ns.Outer+Mid+Leaf</c>) of a TypeDef whose
     /// outermost declaring type lives under <c>System.Runtime.Intrinsics.</c>; null for
     /// every other type, so the ISA table is consulted only for that namespace. A
@@ -4021,9 +4230,10 @@ internal sealed partial class Compilation
     private readonly HashSet<ClassInfo> _userReflConstructed = new();
     private readonly HashSet<ClassInfo> _userReflSurface = new();
 
-    // Set when a reached body calls GetCustomAttributes/IsDefined. Triggers the
-    // reflection-attribute route: reach each app-module attribute's ctor + named-property
-    // setters and allocate the attribute types so their instances can be materialized.
+    // Set when a reached body calls GetCustomAttributes/IsDefined or reads a
+    // CustomAttributeData view. Triggers the reflection-attribute route: reach each
+    // app-module attribute's ctor + named-property setters and allocate the attribute
+    // types so their instances can be materialized.
     private bool _reflectionAttrUsed;
 
     // The full names of FRAMEWORK-module classes a reachable USER-module body names
@@ -4364,11 +4574,12 @@ internal sealed partial class Compilation
             }
         }
 
-        // Reflection-attribute reachability route: if the program calls
-        // GetCustomAttributes/IsDefined, reach every reflectable attribute's ctor + named
-        // property setters and allocate the attribute types so GetCustomAttributes can
-        // materialize fresh instances. Elements scanned are user-module (app + referenced
-        // libraries), so an attribute on a library-declared class is reachable too;
+        // Reflection-attribute reachability route: if the program reads attributes
+        // (GetCustomAttributes/IsDefined/CustomAttributeData), reach every reflectable
+        // attribute's ctor + named property setters and allocate the attribute types so
+        // GetCustomAttributes can materialize fresh instances. Elements scanned are
+        // user-module (app + referenced libraries), so an attribute on a library-declared
+        // class is reachable too;
         // attribute types are bounded to non-framework modules plus the user-typeof-named
         // framework attributes (per DecodeCustomAttributes) so a real CoreLib pulled in
         // with -r is not force-reached. Framework modules are skipped rather than merely
@@ -4388,59 +4599,29 @@ internal sealed partial class Compilation
             if (TypeIndex().TryGetValue(("System", "Attribute"), out var attrCands)
                 && attrCands[0].Item1.ClassMap.TryGetValue(attrCands[0].Item2, out var attrBase))
                 NoteArrayElementType(TypeDesc.MakeClass(attrBase));
-            // Alternate the walk with the drain to a fixpoint on the typeof-named
-            // framework-type set: reaching an attribute ctor/setter queues bodies, the
+            // Attribute arguments can materialize closed types with further rows.
+            // Alternate snapshots and the drain until both the class set and the
+            // typeof-named framework-type set stabilize: an attribute ctor queues bodies, the
             // drain scans them, and a scanned USER body can typeof-name a framework
             // attribute type (_userTypeofNamedFrameworkTypes) that widens what
             // DecodeCustomAttributes keeps — so the walk must run again to pick up the
             // rows the earlier round dropped. The walk itself is idempotent (Reach and
             // the note sites dedupe), so a repeat round costs blob re-decodes only.
             int seenTypeofNamed = -1;
-            while (seenTypeofNamed != _userTypeofNamedFrameworkTypes.Count)
+            int seenAttributeClasses = -1;
+            while (seenTypeofNamed != _userTypeofNamedFrameworkTypes.Count
+                || seenAttributeClasses != Classes.Count)
             {
                 seenTypeofNamed = _userTypeofNamedFrameworkTypes.Count;
+                seenAttributeClasses = Classes.Count;
                 foreach (var cls in Classes.ToList())
                 {
                     if (!IsUserModule(cls.Module))
                         continue;
-                    try
-                    {
-                        var reader = cls.Module.Reader;
-                        var td = reader.GetTypeDefinition(cls.Handle);
-                        ReachAttributesOf(cls.Module, td.GetCustomAttributes());
-                        foreach (var fh in td.GetFields())
-                            ReachAttributesOf(cls.Module, reader.GetFieldDefinition(fh).GetCustomAttributes());
-                        foreach (var mh in td.GetMethods())
-                        {
-                            var md = reader.GetMethodDefinition(mh);
-                            ReachAttributesOf(cls.Module, md.GetCustomAttributes());
-                            foreach (var pph in md.GetParameters())
-                                ReachAttributesOf(cls.Module, reader.GetParameter(pph).GetCustomAttributes());
-                        }
-                        foreach (var ph in td.GetProperties())
-                            ReachAttributesOf(cls.Module, reader.GetPropertyDefinition(ph).GetCustomAttributes());
-                    }
-                    catch (Exception e) when (!IsMustEscape(e))
-                    {
-                        // A class without decodable metadata (e.g. a generic instance) just
-                        // contributes no reflected attributes.
-                    }
+                    _attributeWalked.Add(cls);
+                    ReachClassAttributes(cls, reach: true);
                 }
-                // Assembly-level custom attributes: every loaded module's assembly
-                // attributes participate in the same keep-alive rules (attribute ctor +
-                // named setters + typeof-arg types), so Assembly.GetCustomAttributes can
-                // materialize them. DecodeCustomAttributes bounds this to attribute types
-                // defined in non-framework modules (plus the user-typeof-named framework
-                // ones), so a real CoreLib pulled in with -r contributes almost nothing.
-                foreach (var module in Modules)
-                    try
-                    {
-                        ReachAttributesOf(module, module.Reader.GetAssemblyDefinition().GetCustomAttributes());
-                    }
-                    catch (Exception e) when (!IsMustEscape(e))
-                    {
-                        // A module without an assembly definition contributes no attributes.
-                    }
+                ReachAssemblyAttributes(reach: true);
                 DrainReachability();
             }
         }
@@ -4459,6 +4640,15 @@ internal sealed partial class Compilation
                 DrainReachability();
         }
         while (Reachable.Order.Count != admitted);
+
+        int attributeClassCount;
+        do
+        {
+            attributeClassCount = Classes.Count;
+            NoteUnwalkedAttributeRows();
+            DrainReachability();
+        }
+        while (attributeClassCount != Classes.Count);
 
         // --trim-godot-classes: the allowlist may only grow while reachability can
         // still deliver the released lambdas' subtrees — freeze it here, after the
@@ -5277,76 +5467,152 @@ internal sealed partial class Compilation
     /// unemitted) — accepted, as no real user assembly claims a BCL name.</summary>
     internal bool IsUserModule(Module m) => !IsFrameworkAssemblyName(m.AssemblyName);
 
-    /// <summary>Reaches an attribute's ctor, named-property setters, and allocated type
-    /// for every reflectable custom attribute in the collection, and notes every
-    /// typeof()-valued argument's class (single or array element) as a referenced type so
-    /// its type-info is emitted and the argument stays renderable.</summary>
-    private void ReachAttributesOf(Module module, CustomAttributeHandleCollection handles)
+    /// <summary>The user-module classes the reflection-attribute walk visited;
+    /// <see cref="NoteUnwalkedAttributeRows"/> covers every other one.</summary>
+    private readonly HashSet<ClassInfo> _attributeWalked = new();
+
+    /// <summary>Notes what the attribute rows of every user-module class the walk did not
+    /// visit name — all of them when nothing reads attributes, else the classes minted after
+    /// it — and of every assembly, for the attributes whose ctor is reached: those rows
+    /// render, and each handle a row names must be declared.</summary>
+    private void NoteUnwalkedAttributeRows()
     {
-        foreach (var da in DecodeCustomAttributes(module, handles))
+        foreach (var cls in Classes.ToList())
+            if (IsUserModule(cls.Module) && _attributeWalked.Add(cls))
+                ReachClassAttributes(cls, reach: false);
+        ReachAssemblyAttributes(reach: false);
+    }
+
+    /// <summary><see cref="ReachAttributesOf"/> over a class's own attributes and those of
+    /// its fields, methods, parameters and properties.</summary>
+    private void ReachClassAttributes(ClassInfo cls, bool reach)
+    {
+        try
         {
-            Reach(da.Ctor);
-            // GetCustomAttributes(attrType[, bool]) returns an array whose RUNTIME type
-            // is attrType[] in .NET; the runtime helper stamps that identity via
-            // dn2cpp_find_array_ti, which only answers for elements the image emitted a
-            // ti_arr_ handle for. The filter is a runtime Type value, so no call site can
-            // note it — note every reflectable attribute type here instead (the bounded
-            // set a filter can usefully name). The ti alone suffices: the stamped array's
-            // interface DISPATCH rides the shared reference-element fallback.
-            NoteArrayElementType(TypeDesc.MakeClass(da.AttrClass));
-            if (!da.AttrClass.IsValueType && !da.AttrClass.IsAbstract)
-                ReachAllocatedType(da.AttrClass);
-            foreach (var fa in da.Fixed)
+            var reader = cls.Module.Reader;
+            var td = reader.GetTypeDefinition(cls.Handle);
+            ReachAttributesOf(cls.Module, td.GetCustomAttributes(), reach);
+            foreach (var fh in td.GetFields())
+                ReachAttributesOf(cls.Module, reader.GetFieldDefinition(fh).GetCustomAttributes(), reach);
+            foreach (var mh in td.GetMethods())
             {
-                NoteAttrArgTypes(fa.Value);
-                NoteAttrArgArrayType(fa.Type);
+                var md = reader.GetMethodDefinition(mh);
+                ReachAttributesOf(cls.Module, md.GetCustomAttributes(), reach);
+                foreach (var pph in md.GetParameters())
+                    ReachAttributesOf(cls.Module, reader.GetParameter(pph).GetCustomAttributes(), reach);
             }
+            foreach (var ph in td.GetProperties())
+                ReachAttributesOf(cls.Module, reader.GetPropertyDefinition(ph).GetCustomAttributes(), reach);
+        }
+        catch (Exception e) when (!IsMustEscape(e))
+        {
+            // A class without decodable metadata (e.g. a generic instance) just
+            // contributes no reflected attributes.
+        }
+    }
+
+    /// <summary><see cref="ReachAttributesOf"/> over every loaded module's assembly-level
+    /// attributes, which follow the element rules so Assembly.GetCustomAttributes can
+    /// materialize them. DecodeCustomAttributes bounds this to attribute types defined in
+    /// non-framework modules (plus the user-typeof-named framework ones), so a real CoreLib
+    /// pulled in with -r contributes almost nothing.</summary>
+    private void ReachAssemblyAttributes(bool reach)
+    {
+        foreach (var module in Modules)
+            try
+            {
+                ReachAttributesOf(module, module.Reader.GetAssemblyDefinition().GetCustomAttributes(), reach);
+            }
+            catch (Exception e) when (!IsMustEscape(e))
+            {
+                // A module without an assembly definition contributes no attributes.
+            }
+    }
+
+    /// <summary>Notes what each argument's factory names (<see cref="NoteAttrArg"/>) for
+    /// every reflectable custom attribute in the collection, so the argument stays
+    /// renderable. With <paramref name="reach"/> it also reaches the attribute's ctor,
+    /// named-property setters and allocated type; without, it notes only the attributes
+    /// whose ctor something else reached, which are the rows the emit side renders.</summary>
+    private void ReachAttributesOf(Module module, CustomAttributeHandleCollection handles, bool reach)
+    {
+        // A row only another route rendered is read by nothing unless attributes are read.
+        bool keep = reach || _reflectionAttrUsed;
+        foreach (var da in DecodeCustomAttributes(module, handles, reachedCtorsOnly: !reach))
+        {
+            if (reach)
+            {
+                Reach(da.Ctor);
+                // GetCustomAttributes(attrType[, bool]) returns an array whose RUNTIME type
+                // is attrType[] in .NET; the runtime helper stamps that identity via
+                // dn2cpp_find_array_ti, which only answers for elements the image emitted a
+                // ti_arr_ handle for. The filter is a runtime Type value, so no call site can
+                // note it — note every reflectable attribute type here instead (the bounded
+                // set a filter can usefully name). The ti alone suffices: the stamped array's
+                // interface DISPATCH rides the shared reference-element fallback.
+                NoteArrayElementType(TypeDesc.MakeClass(da.AttrClass));
+                if (!da.AttrClass.IsValueType && !da.AttrClass.IsAbstract)
+                    ReachAllocatedType(da.AttrClass);
+            }
+            var ps = da.Ctor.Signature.ParameterTypes;
+            for (int i = 0; i < da.Fixed.Length; i++)
+                NoteAttrArg(da.Fixed[i].Type, da.Fixed[i].Value, i < ps.Length && ps[i].IsObject, keep);
             foreach (var na in da.Named)
             {
-                NoteAttrArgTypes(na.Value);
-                NoteAttrArgArrayType(na.Type);
-                // The setter may be declared on an attribute BASE class — walk the
-                // chain, paired with the emit-side
-                // lookup in CppEmitter.RenderNamedArg: a setter emit finds but
-                // reach never reached fails its Reachable test and silently drops the
-                // whole attribute row. Field-kind named args need no reach pairing —
-                // their storage rides the struct layout.
+                // The member may be declared on an attribute BASE class — walk the
+                // chain, paired with the emit-side lookup in CppEmitter.RenderNamedArg: a
+                // setter emit finds but reach never reached fails its Reachable test and
+                // silently drops the whole attribute row, and an object-typed member boxes
+                // its value there.
+                bool boxed = false;
                 if (na.Kind == CustomAttributeNamedArgumentKind.Property && na.Name is { } pn
                     && da.AttrClass.InstanceMethodOnBaseChain("set_" + pn) is { } sm)
-                    Reach(sm);
+                {
+                    if (reach)
+                        Reach(sm);
+                    boxed = sm.Signature.ParameterTypes.Length > 0 && sm.Signature.ParameterTypes[0].IsObject;
+                }
+                else if (na.Kind == CustomAttributeNamedArgumentKind.Field && na.Name is { } fn
+                    && da.AttrClass.InstanceFieldOnBaseChain(fn) is { } f)
+                    boxed = f.Type.IsObject;
+                NoteAttrArg(na.Type, na.Value, boxed, keep);
             }
         }
     }
 
-    /// <summary>Notes the element type of an SZArray-typed attribute ARGUMENT so its
-    /// precise <c>ti_arr_&lt;elem&gt;</c> handle is emitted (and header-declared — the
-    /// declaration loop CppEmitter.ArrayTypeInfoDeclared answers from runs before any
-    /// attribute table renders).
-    /// The emit-side pairing is CppEmitter.RenderAttrArray, whose typed allocation
-    /// names that handle: an attribute-built array left on the shared object[] handle
-    /// has no interface-dispatch map, so the first LINQ over it inside the attribute
-    /// ctor (e.g. <c>inputNames.Count(...)</c>) aborts loudly.
-    /// An enum element also needs its own referenced ti_, exactly as
-    /// TypeMetadataEmitter.NoteReflectedArrayType notes for member types.</summary>
-    private void NoteAttrArgArrayType(TypeDesc t)
+    /// <summary>Notes what the factory of one attribute value names, from its
+    /// <paramref name="encoded"/> type; <paramref name="boxed"/> when it fills an
+    /// object-typed slot or object[] element, which boxes it at that type. The emit-side
+    /// pairing is CppEmitter.RenderAttrValue, and every note is emitted and
+    /// header-declared before any attribute table renders:
+    /// <list type="bullet">
+    /// <item>an SZArray's element, at every nesting level, so the array allocates with its
+    /// precise <c>ti_arr_&lt;elem&gt;</c> handle — one left on the shared object[] handle
+    /// has no interface-dispatch map, so the first LINQ over it inside the attribute ctor
+    /// (e.g. <c>inputNames.Count(...)</c>) aborts loudly — plus an enum element's own ti_,
+    /// exactly as TypeMetadataEmitter.NoteReflectedType notes for member types;</item>
+    /// <item>a boxed enum's ti_, which the box carries;</item>
+    /// <item>a Type value's identity closure, so its handle survives tree-shaking.</item>
+    /// </list>
+    /// Without <paramref name="keep"/> the classes are referenced for their type-info
+    /// alone: a row the program cannot read is no sign it reflects over them.</summary>
+    private void NoteAttrArg(TypeDesc encoded, object? value, bool boxed, bool keep)
     {
-        if (t is not { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Primitive or TypeKind.Class or TypeKind.External or TypeKind.SZArray } el })
+        if (encoded.Kind == TypeKind.SZArray)
+        {
+            var el = encoded.Element!;
+            NoteArrayElementType(el);
+            if (el is { Kind: TypeKind.Class, Class: { IsEnum: true } })
+                NoteTypeIdentityClosure(el, keep);
+            if (value is ImmutableArray<CustomAttributeTypedArgument<TypeDesc>> items)
+                foreach (var item in items)
+                    NoteAttrArg(item.Type, item.Value, el.IsObject, keep);
             return;
-        NoteArrayElementType(el);
-        if (el is { Kind: TypeKind.Class, Class: { IsEnum: true } ec })
-            NoteReferencedType(ec);
-    }
-
-    /// <summary>Notes the class behind a typeof()-valued attribute argument (a decoded
-    /// <see cref="TypeDesc"/>, or an array of typed arguments carrying them) so the
-    /// type-info survives tree-shaking for the attribute factory to reference.</summary>
-    private void NoteAttrArgTypes(object? value)
-    {
-        if (value is TypeDesc { Kind: TypeKind.Class, Class: { } cls })
-            NoteReferencedType(cls);
-        else if (value is ImmutableArray<CustomAttributeTypedArgument<TypeDesc>> items)
-            foreach (var item in items)
-                NoteAttrArgTypes(item.Value);
+        }
+        if (value is TypeDesc type)
+            NoteTypeIdentityClosure(type, keep);
+        else if (boxed && value is not null && encoded is { Kind: TypeKind.Class, Class: { IsEnum: true } })
+            NoteTypeIdentityClosure(encoded, keep);
     }
 
     /// <summary>Drives the reachability/discovery fixpoint to quiescence: complete

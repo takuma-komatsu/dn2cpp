@@ -17,7 +17,7 @@ internal sealed partial class MethodCompiler
             case ("System.Enum", "GetUnderlyingType") when sig.ParameterTypes.Length == 1:
             {
                 var t = Pop();
-                Push(StackKind.Ref, "Dn2CppType*", $"dn2cpp_type_get_enum_underlying({Cast(t, "Dn2CppType*")})");
+                Push(StackKind.Ref, "Dn2CppType*", $"dn2cpp_enum_get_underlying_type({Cast(t, "Dn2CppType*")})");
                 return true;
             }
             // Nullable.GetUnderlyingType(Type): U for a closed Nullable<U>, else null.

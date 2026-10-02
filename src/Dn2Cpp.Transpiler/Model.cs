@@ -1140,8 +1140,8 @@ internal sealed class ClassInfo
     /// or up its base chain (most-derived first), or null. The named-attribute-argument
     /// field counterpart of <see cref="InstanceMethodOnBaseChain"/>: the emitted C++
     /// struct chains through its base, so <c>o-&gt;f_…</c> reaches an inherited field
-    /// directly and no reach-side pairing is needed (field storage rides the struct
-    /// layout).</summary>
+    /// directly. Both sides of the attribute pipeline use it too, since an object-typed
+    /// field boxes its value.</summary>
     public FieldInfo? InstanceFieldOnBaseChain(string name)
     {
         for (var c = this; c is not null; c = c.BaseClass)

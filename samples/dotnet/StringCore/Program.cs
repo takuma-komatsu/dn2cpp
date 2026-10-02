@@ -69,6 +69,9 @@ namespace StringCore
             if (args.Length > 0 && args[0] == "before-argument-fields")
                 return;
             StringValidationThrowSubset.Program.RunArgumentFields();
+            if (args.Length > 0 && args[0] == "before-span-flag-faults")
+                return;
+            StringValidationThrowSubset.Program.RunSpanAndFlagFaults();
         }
     }
 }

@@ -289,6 +289,9 @@ namespace ExceptionMessageSubset
             if (args.Length > 0 && args[0] == "before-array-shape-fields")
                 return;
             RuntimeArgumentFieldsSubset.RunArrayShapes();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_ORDINARY_REFLECTION_ARGUMENTS") == "1")
+                return;
+            OrdinaryReflectionArgumentSubset.Run();
         }
     }
 }

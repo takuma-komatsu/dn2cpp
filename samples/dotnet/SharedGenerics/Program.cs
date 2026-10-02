@@ -66,6 +66,9 @@ namespace SharedGenerics
             VirtualHiderSubset.Program.RunDefinitionMirrors();
             SharedForEachSubset.Program.Run();
             Console.WriteLine("ordinary interface and virtual definitions end");
+            if (args.Length > 0 && args[0] == "before-self-nesting")
+                return;
+            RgctxSubset.Program.RunSelfNesting();
         }
     }
 }

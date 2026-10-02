@@ -292,14 +292,14 @@ invoke_cli() {
 # two gates rebuilding one shared ProjectReference concurrently.
 build_proj() {
     [ -n "${DN2CPP_SKIP_BUILD:-}" ] && return 0
-    dotnet build "$1" -c "$CONFIG" --nologo -v q
+    dotnet build "$1" -c "$CONFIG" --nologo -v q -p:BuildInParallel=false
 }
 
 # build_gate_proj CSPROJ — build a project whose restore/build is part of the
 # gate's subject. The suite excludes these projects from its prebuild, so this
 # deliberately ignores DN2CPP_SKIP_BUILD.
 build_gate_proj() {
-    dotnet build "$1" -c "$CONFIG" --nologo -v q
+    dotnet build "$1" -c "$CONFIG" --nologo -v q -p:BuildInParallel=false
 }
 
 # nuget_global_packages_root — the effective NuGet global package cache. Asking

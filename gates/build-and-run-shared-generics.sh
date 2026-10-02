@@ -53,6 +53,9 @@
 # Reference-element joins use fully canonical interfaces and keep distinct
 # IEnumerable<string> and IEnumerable<object> views of one receiver.
 #
+# A shared body constructing a deeper instantiation of its own class runs only
+# the levels reached by the program; planning cannot grow its contexts forever.
+#
 # The last section (GenericMethodSubset, folded from the retired
 # build-and-run-generic-method-subset.sh) is NOT about sharing: it is the
 # generic-method *pipeline* — Container<T>.Map<U> (a MethodSpec over a MemberRef
@@ -458,5 +461,14 @@ for label in 'virtual hider base=' 'virtual collision base=' \
     'shared foreach any=' 'shared foreach all=' 'shared foreach views='; do
     grep -Fq "$label" <<< "$native" \
         || { echo "FAIL: ordinary definition dispatch witness missing: $label" >&2; exit 1; }
+done
+before_self_nesting=$(dotnet "$app" before-self-nesting) || exit $?
+before_self_nesting=$(strip_cr_win "$before_self_nesting")
+prefix=$(awk '/^self nesting instance=/ { exit } { print }' <<< "$native")
+assert_output "$prefix" "$before_self_nesting"
+for line in 'self nesting instance=Nester`1<String> Nester`1<Nester`1>' \
+    'self nesting static=Nester`1<String>'; do
+    grep -Fxq "$line" <<<"$native" \
+        || { echo "FAIL: self nesting witness missing: $line" >&2; exit 1; }
 done
 gate_cache_commit

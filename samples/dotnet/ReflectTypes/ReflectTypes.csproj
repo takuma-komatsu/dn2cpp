@@ -9,4 +9,20 @@
     <DebugType>none</DebugType>
   </PropertyGroup>
 
+  <ItemGroup>
+    <Compile Remove="AttributeTypePropertySubset.cs" />
+    <Compile Remove="ReflectAttrBoxedSubset.cs" />
+    <Compile Remove="ReflectRuntimeTypeParitySubset.cs" />
+    <Compile Remove="ReflectAssemblyErrorSubset.cs" />
+    <Compile Remove="OrdinaryReflectionTypeLeavesProgram.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="UnreadAttributeRowsOnlyProgram.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="DataOnlyAttributeRowsOnlyProgram.cs" />
+  </ItemGroup>
+
 </Project>

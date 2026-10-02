@@ -338,7 +338,7 @@ internal sealed partial class MethodCompiler
                 }
                 var ty = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*",
-                    $"dn2cpp_delegate_create({Cast(ty, "Dn2CppType*")}, {target}, (Dn2CppMethodRef*)({m.Expr}), {(hasFirstArg ? 1 : 0)}, {throwExpr})");
+                    $"dn2cpp_delegate_create({Cast(ty, "Dn2CppType*")}, {target}, (Dn2CppMethodRef*)({m.Expr}), {(hasFirstArg ? 1 : 0)}, {throwExpr}, true)");
                 return true;
             }
             // Delegate value equality/hash: the BCL bodies walk MulticastDelegate's
@@ -544,7 +544,8 @@ internal sealed partial class MethodCompiler
                 string sp = SpanPtr(Pop(), spanCt);
                 string st = NewTemp("Dn2CppString*");
                 Emit($"{st} = {Cast(Pop(), "Dn2CppString*")};");
-                Emit($"if ({st}->length > {sp}->f__length) dn2cpp_throw_argument();");
+                Emit($"if ({st}->length > {sp}->f__length) "
+                    + "dn2cpp_throw_argument_param(DN2CPP_SR_DESTINATION_TOO_SHORT, \"destination\");");
                 Emit($"if ({st}->length > 0) std::memcpy({sp}->f__reference, "
                     + $"{st}->chars, (size_t)({st}->length) * sizeof(char16_t));");
                 return true;
@@ -1399,7 +1400,8 @@ internal sealed partial class MethodCompiler
             case ("System.String", "CheckStringSplitOptions") when sig.ParameterTypes.Length == 1:
             {
                 var opt = Pop();
-                Emit($"if (((uint32_t)({opt.Expr}) & ~3u) != 0) dn2cpp_throw_argument();");
+                Emit($"if (((uint32_t)({opt.Expr}) & ~3u) != 0) "
+                    + "dn2cpp_throw_argument_param(DN2CPP_SR_INVALID_FLAG, \"options\");");
                 return true;
             }
             // String.MakeSeparatorList / MakeSeparatorListAny (internal statics): the

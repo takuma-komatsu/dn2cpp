@@ -30,3 +30,5 @@ attribute-data-packed,40,40000
 create-attributes-packed,40,40000
 attribute-value-packed,0,0
 invoke-packed,12,12000
+property-set,0,0
+property-get,12,12000

@@ -17,6 +17,8 @@
 # Attribute storage policies resolve external ancestry and assembly scopes without
 # adding retention roots, including when ILDiet removes unreachable code.
 source "$(dirname "$0")/_common.sh"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} "
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|library-enum-prefix:${DN2CPP_BEFORE_LIBRARY_ENUM_ATTRIBUTE:-}"
 
 descriptor=samples/dotnet/MultiAssembly/link.xml
 app="samples/dotnet/MultiAssembly/bin/$CONFIG/$TFM/MultiAssembly.dll"
@@ -42,11 +44,17 @@ shared_definition_layout() {
 }
 
 metadata_section='metadata-assembly-begin'
-expected_output=$(run_bounded dotnet "$app")
+expected_output=$(run_bounded dotnet "$app") || exit $?
+expected_output=$(strip_cr_win "$expected_output")
 assert_output "$(sed '/^metadata-policy-assembly-begin$/,$d' <<<"$expected_output")" \
     "$(cat gates/expected/multiassembly-prefix.txt)"
 expected_metadata=$(sed -n '/^metadata-assembly-begin$/,/^metadata-assembly-end$/p' <<<"$expected_output")
 grep -Fxq "$metadata_section" <<<"$expected_metadata"
+for qualified_line in 'qualified attribute assembly: True' \
+    'qualified attribute argument: True' 'qualified attribute end'; do
+    grep -Fxq "$qualified_line" <<< "$expected_output" \
+        || { echo "FAIL: qualified attribute witness missing: $qualified_line" >&2; exit 1; }
+done
 expected_policy=$(sed -n '/^metadata-policy-assembly-begin$/,/^metadata-policy-assembly-end$/p' <<<"$expected_output")
 grep -Fxq metadata-policy-assembly-begin <<<"$expected_policy"
 grep -Fxq metadata-policy-assembly-end <<<"$expected_policy"
@@ -178,3 +186,15 @@ if ! grep -q "^dn2cpp: 4 assemblies," <<<"$dedupe_out"; then
     echo "CLI-sibling shim by file name (expected '4 assemblies' in the line above)" >&2
     exit 1
 fi
+
+for enum_out in artifacts/multiasm artifacts/multiasm-inference; do
+    enum_all=$(run_bounded "$enum_out/MultiAssembly$EXE_EXT") || exit $?
+    enum_all=$(strip_cr_win "$enum_all")
+    enum_before=$(DN2CPP_BEFORE_LIBRARY_ENUM_ATTRIBUTE=1 run_bounded "$enum_out/MultiAssembly$EXE_EXT") || exit $?
+    enum_prefix=$(awk '/^lib enum attribute:/ { exit } { print }' <<< "$enum_all")
+    assert_output "$enum_prefix" "$(strip_cr_win "$enum_before")"
+    grep -Fxq 'lib enum attribute: 1 MiniBcl.TagShade enum=True underlying=Byte' <<< "$enum_all" \
+        || { echo 'FAIL: library-only enum attribute identity was not emitted' >&2; exit 1; }
+    grep -Fxq 'library enum attribute end' <<< "$enum_all" \
+        || { echo 'FAIL: library enum attribute section did not run' >&2; exit 1; }
+done

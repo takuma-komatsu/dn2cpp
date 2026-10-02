@@ -257,6 +257,27 @@ namespace StringValidationThrowSubset
                 ArgumentDump(value);
         }
 
+        internal static void RunSpanAndFlagFaults()
+        {
+            Console.WriteLine("== String span and flag faults ==");
+            foreach (int length in new[] { 0, 2, 3, 5 })
+                ArgumentObserve("span copy:" + length, () =>
+                {
+                    char[] destination = new char[length];
+                    "abc".CopyTo(destination.AsSpan());
+                    ArgumentDump(new string(destination));
+                });
+            ArgumentObserve("empty span copy", () => string.Empty.CopyTo(Span<char>.Empty));
+            foreach (int options in new[] { -1, 4, int.MinValue, int.MaxValue })
+            {
+                ArgumentObserve("split char flag:" + options,
+                    () => ArgumentDump("a,b".Split(',', (StringSplitOptions)options)));
+                ArgumentObserve("split string flag:" + options,
+                    () => ArgumentDump("a,b".Split(",", 0, (StringSplitOptions)options)));
+            }
+            Console.WriteLine("String span and flag faults end");
+        }
+
         internal static void RunArgumentFields()
         {
             Console.WriteLine("== String argument fields ==");

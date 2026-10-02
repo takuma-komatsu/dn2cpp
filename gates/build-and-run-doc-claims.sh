@@ -258,6 +258,33 @@ porting_wasm=$(w2n "$(sed -nE '1s/.*wasm defines ([a-z0-9]+).*/\1/p' \
     <<<"$(grep -oE '\*\*wasm defines [a-z0-9]+\.\*\*' docs/PORTING.md)")")
 eq "docs/PORTING.md §2.2 'wasm defines N SystemNative_*'" "$porting_wasm" "$wasm_defs"
 
+# The platform-specific mmap functions form one declared seam with two OS
+# implementations. The header also declares shared mmap helpers, so subtract
+# their definitions before comparing the complete platform declaration set.
+# Compare names, not just counts: an equal-sized drift could otherwise pass.
+mmap_posix=$(grep -oE '^[A-Za-z_].*dn2cpp_mmap_[a-z_]+\(' \
+    runtime/core/platform/posix/dn2cpp_mmap_posix.cpp \
+    | grep -v '^static ' | grep -oE 'dn2cpp_mmap_[a-z_]+' | sort -u)
+mmap_windows=$(grep -oE '^[A-Za-z_].*dn2cpp_mmap_[a-z_]+\(' \
+    runtime/core/platform/windows/dn2cpp_mmap_windows.cpp \
+    | grep -v '^static ' | grep -oE 'dn2cpp_mmap_[a-z_]+' | sort -u)
+mmap_header=$(grep -oE '^[A-Za-z_].*dn2cpp_mmap_[a-z_]+\(' runtime/core/dn2cpp_core.h \
+    | grep -oE 'dn2cpp_mmap_[a-z_]+' | sort -u)
+mmap_shared=$(grep -oE '^[A-Za-z_].*dn2cpp_mmap_[a-z_]+\(' \
+    runtime/core/intrinsics/dn2cpp_system_io_mmap.cpp \
+    | grep -v '^static ' | grep -oE 'dn2cpp_mmap_[a-z_]+' | sort -u)
+mmap_platform_decls=$(comm -23 <(printf '%s\n' "$mmap_header") \
+    <(printf '%s\n' "$mmap_shared"))
+mmap_platform_union=$(printf '%s\n%s\n' "$mmap_posix" "$mmap_windows" | sort -u)
+set_eq "docs/PORTING.md §2.3 POSIX vs Windows mmap entry points" \
+       "POSIX" "$mmap_posix" "Windows" "$mmap_windows"
+set_eq "docs/PORTING.md §2.3 mmap implementations vs declarations" \
+       "platform" "$mmap_platform_union" "header" "$mmap_platform_decls"
+porting_mmap=$(w2n "$(sed -nE 's/^([A-Za-z]+) entry points, declared in `runtime\/core\/dn2cpp_core\.h`.*/\1/p' \
+    docs/PORTING.md)")
+eq "docs/PORTING.md §2.3 mmap entry-point count" \
+   "$porting_mmap" "$(printf '%s\n' "$mmap_platform_union" | grep -c .)"
+
 # The editor guide tells a player what Stopwatch.Frequency reads on the Web, and that
 # number is a value contract, not prose: the MonotonicClock section asserts the same
 # constant in its non-Windows arm. Bind the two, so the guide cannot drift from
@@ -313,8 +340,8 @@ echo "== 5/14 the BCL exception-message key set, written twice =="
 # them by name (the DN2CPP_SR_* constants). The lookup is by key, so drift can
 # only LOSE a message — the runtime asks for a key nothing emitted, reads null,
 # and quietly falls back to "Exception of type 'X' was thrown."
-sr_emitted=$(sed -n 's/^ *"\([A-Za-z0-9_]*\)",$/\1/p' src/Dn2Cpp.Transpiler/BclMessages.cs | sort)
-sr_asked=$(sed -n 's/^inline constexpr const char\* DN2CPP_SR_[A-Z0-9_]* = "\([A-Za-z0-9_]*\)";$/\1/p' \
+sr_emitted=$(sed -n 's/^ *"\([A-Za-z0-9_.:]*\)",$/\1/p' src/Dn2Cpp.Transpiler/BclMessages.cs | sort)
+sr_asked=$(sed -n 's/^inline constexpr const char\* DN2CPP_SR_[A-Z0-9_]* = "\([A-Za-z0-9_.:]*\)";$/\1/p' \
     runtime/core/dn2cpp_core.h | sort)
 set_eq "the BCL message key set" \
     "src/Dn2Cpp.Transpiler/BclMessages.cs" "$sr_emitted" \

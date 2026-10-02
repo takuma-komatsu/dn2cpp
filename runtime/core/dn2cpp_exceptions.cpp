@@ -335,7 +335,7 @@ const char* dn2cpp_sr_text(const char* key)
 }
 
 // The composite-format substitution SR.Format performs, over a template this runtime
-// already holds: `{0}`/`{1}` only, no alignment or format specifier, because these are
+// already holds: `{0}` to `{2}` only, no alignment or format specifier, because these are
 // exception-message resources and nothing else may reach it. An unresolved template
 // (null) yields null, which every caller reads as "no message".
 static Dn2CppString* dn2cpp_sr_format(const char* key, const std::string* args, int32_t argc)
@@ -370,7 +370,7 @@ static std::string dn2cpp_sr_arg(Dn2CppString* s)
 
 Dn2CppString* dn2cpp_sr_message(const char* key, Dn2CppString* const* args, int32_t argc)
 {
-    if (argc < 0 || argc > 2)
+    if (argc < 0 || argc > 3)
         dn2cpp_throw_invalid_operation();
     const char* text = dn2cpp_sr_text(key);
     if (text == nullptr)
@@ -427,6 +427,7 @@ static const char* dn2cpp_default_message_key(const Dn2CppTypeInfo* ti)
     if (ti == &dn2cpp_synchronization_lock_exception_type) return DN2CPP_SR_SYNCHRONIZATION_LOCK;
     if (ti == &dn2cpp_target_invocation_exception_type) return DN2CPP_SR_TARGET_INVOCATION;
     if (ti == &dn2cpp_target_parameter_count_exception_type) return DN2CPP_SR_TARGET_PARAMETER_COUNT;
+    if (ti == &dn2cpp_entry_point_not_found_exception_type) return DN2CPP_SR_ENTRY_POINT_NOT_FOUND;
     return nullptr;
 }
 
@@ -612,9 +613,12 @@ static Dn2CppString* dn2cpp_argument_tail(const char* key, Dn2CppString* value)
 // Managed overrides append the parameter/value tails from the stored fields. Without
 // that layout and dispatch, bake the same tails into the stored UTF-16 message once.
 [[noreturn]] static void dn2cpp_raise_argument(const Dn2CppTypeInfo* ti, Dn2CppString* sentence,
-    Dn2CppString* paramName, Dn2CppObject* actualValue, const std::string* actualText)
+    Dn2CppString* paramName, Dn2CppObject* actualValue, const std::string* actualText,
+    uint32_t hresult = 0)
 {
     Dn2CppObject* e = dn2cpp_exception_new(ti, nullptr, nullptr);
+    if (hresult != 0)
+        reinterpret_cast<Dn2CppExceptionObject*>(e)->hresult = static_cast<int32_t>(hresult);
     bool stored = dn2cpp_argument_exception_store(e, paramName, actualValue);
     Dn2CppString* message = sentence != nullptr ? sentence : dn2cpp_default_message(ti);
     if (message != nullptr && (!stored || !dn2cpp_exception_overrides_message(ti)))
@@ -786,7 +790,6 @@ void dn2cpp_throw_out_of_memory() { dn2cpp_throw_of(&dn2cpp_out_of_memory_except
 void dn2cpp_throw_type_load() { dn2cpp_throw_of(&dn2cpp_type_load_exception_type); }
 void dn2cpp_throw_not_supported() { dn2cpp_throw_of(&dn2cpp_not_supported_exception_type); }
 void dn2cpp_throw_key_not_found() { dn2cpp_throw_of(&dn2cpp_key_not_found_exception_type); }
-void dn2cpp_throw_ambiguous_match() { dn2cpp_throw_of(&dn2cpp_ambiguous_match_exception_type); }
 void dn2cpp_throw_null_reference() { dn2cpp_throw_of(&dn2cpp_null_reference_exception_type); }
 void dn2cpp_throw_delegate_null_this()
 {
@@ -1885,11 +1888,11 @@ Dn2CppArrayRef* dn2cpp_aggregate_inner_exceptions(Dn2CppObject* ex, const Dn2Cpp
 }
 
 [[noreturn]] void dn2cpp_throw_argument_sr(const Dn2CppTypeInfo* ti, const char* key,
-    const char* paramName, Dn2CppString* const* args, int32_t argc)
+    const char* paramName, Dn2CppString* const* args, int32_t argc, uint32_t hresult)
 {
     Dn2CppString* message = dn2cpp_sr_message(key, args, argc);
     dn2cpp_raise_argument(ti, message,
-        paramName != nullptr ? dn2cpp_param_name_string(paramName) : nullptr, nullptr, nullptr);
+        paramName != nullptr ? dn2cpp_param_name_string(paramName) : nullptr, nullptr, nullptr, hresult);
 }
 
 [[noreturn]] void dn2cpp_throw_invalid_enum_value(int32_t value, const char* enumName,

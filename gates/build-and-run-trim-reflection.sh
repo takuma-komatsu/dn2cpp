@@ -59,6 +59,8 @@
 # Keep original member metadata while comparing the C++ reflection policies.
 # ILDiet with --trim-reflection is covered by build-and-run-preserve-control.sh.
 source "$(dirname "$0")/_common.sh"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} "
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|member-enum-prefix:${DN2CPP_BEFORE_MEMBER_ENUM:-}"
 
 PROJECT=TrimReflect
 LIBNAME=TrimReflectLib
@@ -83,6 +85,12 @@ assert_delegate_method_lines() {
     shift
     grep -Fxq '== Delegate.Method over stripped receivers ==' <<<"$(strip_cr_win "$out")" \
         || { echo "FAIL: the Delegate.Method section did not run" >&2; exit 1; }
+    local enum_before enum_prefix
+    enum_before=$(DN2CPP_BEFORE_MEMBER_ENUM=1 run_bounded "$OUT/$PROJECT$EXE_EXT")
+    enum_prefix=$(awk '/^== enum named by a reflected field ==$/ { exit } { print }' <<< "$(strip_cr_win "$out")")
+    assert_output "$enum_prefix" "$(strip_cr_win "$enum_before")"
+    grep -Fxq '  GetFields -> LibShade fields=3' <<< "$(strip_cr_win "$out")" \
+        || { echo 'FAIL: member-only enum section did not run' >&2; exit 1; }
     for line in "$@"; do
         grep -Fq -- "$line" <<<"$(strip_cr_win "$out")" \
             || { echo "FAIL: Delegate.Method witness missing: $line" >&2; exit 1; }

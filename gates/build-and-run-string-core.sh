@@ -248,6 +248,18 @@ gate_extra_asserts() {
     done
     native=$(run_bounded "./$out/StringCore")
     native=$(strip_cr_win "$native")
+    before=$(dotnet "$_CG_APP" before-span-flag-faults) || return $?
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== String span and flag faults ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== String span and flag faults ==' \
+        'span copy:0 param=destination' 'span copy:2 param=destination' \
+        'empty span copy success' 'split char flag:4 param=options' \
+        'split string flag:4 param=options' 'String span and flag faults end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: span and flag fault witness missing: $line" >&2; exit 1; }
+    done
+
     before=$(dotnet "$_CG_APP" before-argument-fields)
     before=$(strip_cr_win "$before")
     prefix=$(awk '/^== String argument fields ==$/ { exit } { print }' <<< "$native")

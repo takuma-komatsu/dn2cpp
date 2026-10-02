@@ -637,7 +637,11 @@ internal sealed partial class AssemblyDiet : IDisposable
     private void MarkArgument(CustomAttributeArgument argument)
     {
         MarkType(argument.Type);
-        if (argument.Value is TypeReference type) MarkType(type);
+        if (argument.Value is TypeReference type)
+        {
+            MarkType(type);
+            NoteTypeToken(type);
+        }
         else if (argument.Value is CustomAttributeArgument nested) MarkArgument(nested);
         else if (argument.Value is CustomAttributeArgument[] values)
             foreach (var value in values) MarkArgument(value);
@@ -670,12 +674,13 @@ internal sealed partial class AssemblyDiet : IDisposable
             {
                 case MethodReference target:
                     if (!_registryFactories.ContainsKey(instruction)) MarkMethod(target);
-                    if (instruction.OpCode.Code is Code.Call or Code.Callvirt
-                        && target.MetadataToken.TokenType == TokenType.MemberRef
+                    // A method group runs its target through the delegate, so it arms
+                    // whatever a call to the target arms.
+                    bool runs = instruction.OpCode.Code is Code.Call or Code.Callvirt or Code.Ldftn or Code.Ldvirtftn;
+                    if (runs && target.MetadataToken.TokenType == TokenType.MemberRef
                         && PreservationReader.ConstructsFromRuntimeType(target.DeclaringType.FullName, target.Name))
                         ArmRuntimeTypeConstruction();
-                    if (instruction.OpCode.Code is Code.Call or Code.Callvirt or Code.Ldftn or Code.Ldvirtftn
-                        && target.Name == "Initialize" && target.Parameters.Count == 0
+                    if (runs && target.Name == "Initialize" && target.Parameters.Count == 0
                         && target.DeclaringType.FullName == "System.Array")
                         ArmArrayInitialize();
                     break;

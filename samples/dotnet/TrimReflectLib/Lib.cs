@@ -66,6 +66,14 @@ namespace TrimReflectLib
         Green = 2,
     }
 
+    // Named by no type token: a kept app type's reflected field names it first, after
+    // the keep set is final.
+    public enum LibShade
+    {
+        Dark = 1,
+        Light = 2,
+    }
+
     // The base of an APP class (TrimReflect.DerivedWidget), kept by the keep-set's
     // base-chain closure rather than by anything naming it: the runtime collectors walk
     // `for (ti = type; ti; ti = ti->base)` and test the stripped bit at every level.

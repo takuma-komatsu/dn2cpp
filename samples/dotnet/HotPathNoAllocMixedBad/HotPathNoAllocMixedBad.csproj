@@ -9,4 +9,8 @@
     <DebugType>none</DebugType>
   </PropertyGroup>
 
+  <ItemGroup>
+    <Compile Remove="ReflectionNoAllocHelpersOnlyProgram.cs" />
+  </ItemGroup>
+
 </Project>

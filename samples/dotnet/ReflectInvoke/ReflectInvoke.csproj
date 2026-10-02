@@ -28,4 +28,15 @@
     <Exec Command="dotnet exec &quot;$(LdftnLocalFixturePath)&quot; &quot;$(TargetPath)&quot;" />
   </Target>
 
+  <ItemGroup>
+    <Compile Remove="OrdinaryReflectionLeavesProgram.cs" />
+    <Compile Remove="ReflectFieldValidationSubset.cs" />
+    <Compile Remove="OrdinaryAmbiguousMatchSubset.cs" />
+    <Compile Remove="OrdinaryWideLookupSubset.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="ReflectionMethodGroupsOnlyProgram.cs" />
+  </ItemGroup>
+
 </Project>

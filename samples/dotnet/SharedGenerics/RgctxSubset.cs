@@ -3,9 +3,12 @@
 // INSIDE a shared body — TypeInfo (boxing T), ArrayTypeInfo (new T[]), ClassAlloc
 // (satellite allocation inside Dictionary's shared getters), StaticFieldAddr +
 // CctorEnsureFn (a generic static counter through hidden-parameter forwarders),
-// and a struct receiver dispatched both directly and through an interface. Every
-// shape runs over two same-width enums so the bodies genuinely share. Real
-// System.Private.CoreLib (-r), diffed against .NET.
+// and a struct receiver dispatched both directly and through an interface. Each
+// of these shapes runs over two same-width enums so the bodies genuinely share. A
+// shared body constructing a deeper instantiation of its own class (the instance
+// Nester<Nester<T>> Wrap() over string and object, the static Make() over string)
+// transpiles and runs at the levels the program calls. Real System.Private.CoreLib
+// (-r), diffed against .NET.
 using System;
 using System.Collections.Generic;
 namespace RgctxSubset;
@@ -72,6 +75,18 @@ class DictUser<T> where T : struct
     }
 }
 
+// Each real instantiation's context names the next deeper one; .NET makes a level
+// only when a body using it runs.
+class Nester<T>
+{
+    public Nester<Nester<T>> Wrap() => new Nester<Nester<T>>();
+
+    public static Nester<Nester<T>> Make() => new Nester<Nester<T>>();
+
+    public string Arg() =>
+        typeof(T).Name + (typeof(T).IsGenericType ? "<" + typeof(T).GetGenericArguments()[0].Name + ">" : "");
+}
+
 class Program
 {
     internal static void __GateEntry()
@@ -120,5 +135,13 @@ class Program
             Console.WriteLine("drain " + s);
         foreach (var s in ug.Drain(dg))
             Console.WriteLine("drain " + s);
+    }
+
+    internal static void RunSelfNesting()
+    {
+        var byString = new Nester<string>().Wrap();
+        var byObject = new Nester<object>().Wrap().Wrap();
+        Console.WriteLine("self nesting instance=" + byString.Arg() + " " + byObject.Arg());
+        Console.WriteLine("self nesting static=" + Nester<string>.Make().Arg());
     }
 }
