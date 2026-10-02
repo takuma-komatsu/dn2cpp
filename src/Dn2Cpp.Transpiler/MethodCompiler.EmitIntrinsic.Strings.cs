@@ -6,6 +6,12 @@ namespace Dn2Cpp;
 
 internal sealed partial class MethodCompiler
 {
+    /// <summary>Instance delegate helpers preserve the callvirt null check.</summary>
+    private string DelegateReceiver(StackEntry receiver) =>
+        CallIsVirtual
+            ? $"dn2cpp_null_check({Cast(receiver, "Dn2CppObject*")})"
+            : Cast(receiver, "Dn2CppObject*");
+
     private bool TryEmitStringsIntrinsic(string declType, string name, MethodSignature<TypeDesc> sig)
     {
         // Numeric Parse/TryParse (all integer widths + Double/Single, every
@@ -240,12 +246,42 @@ internal sealed partial class MethodCompiler
                     $"dn2cpp_delegate_combine({Cast(a, "Dn2CppObject*")}, {Cast(b, "Dn2CppObject*")})");
                 return true;
             }
+            // The params overloads combine the list left to right; an empty or null list
+            // combines to null.
+            case ("System.Delegate", "Combine") when sig.ParameterTypes is [{ Kind: TypeKind.SZArray }]:
+            {
+                var a = Pop();
+                Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_delegate_combine_array({Cast(a, "Dn2CppArrayRef*")})");
+                return true;
+            }
+            case ("System.Delegate", "Combine") when sig.ParameterTypes is [var dsp] && IsDelegateSpan(dsp):
+            {
+                string sp = PopSpanTemp(dsp);
+                Push(StackKind.Ref, "Dn2CppObject*",
+                    $"dn2cpp_delegate_combine_n((Dn2CppObject* const*){sp}.f__reference, {sp}.f__length)");
+                return true;
+            }
             case ("System.Delegate", "Remove") when sig.ParameterTypes.Length == 2:
             {
                 var b = Pop();
                 var a = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*",
                     $"dn2cpp_delegate_remove({Cast(a, "Dn2CppObject*")}, {Cast(b, "Dn2CppObject*")})");
+                return true;
+            }
+            case ("System.Delegate", "RemoveAll") when sig.ParameterTypes.Length == 2:
+            {
+                var b = Pop();
+                var a = Pop();
+                Push(StackKind.Ref, "Dn2CppObject*",
+                    $"dn2cpp_delegate_remove_all({Cast(a, "Dn2CppObject*")}, {Cast(b, "Dn2CppObject*")})");
+                return true;
+            }
+            // Delegate.Clone is MemberwiseClone, so a multicast clone keeps its entries.
+            case ("System.Delegate", "Clone") when sig.ParameterTypes.Length == 0:
+            {
+                var d = Pop();
+                Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_object_memberwise_clone({DelegateReceiver(d)})");
                 return true;
             }
             // Delegate.Target: the bound receiver out of the uniform delegate
@@ -255,7 +291,18 @@ internal sealed partial class MethodCompiler
             case ("System.Delegate", "get_Target"):
             {
                 var d = Pop();
-                Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_delegate_get_target({Cast(d, "Dn2CppObject*")})");
+                Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_delegate_get_target({DelegateReceiver(d)})");
+                return true;
+            }
+            // The BCL bodies read MulticastDelegate's _invocationList, which the uniform
+            // layout replaces with the chain the runtime helper walks.
+            case ("System.Delegate" or "System.MulticastDelegate", "GetInvocationList")
+                when sig.ParameterTypes.Length == 0 && sig.ReturnType is { Kind: TypeKind.SZArray } listType:
+            {
+                var d = Pop();
+                Comp.NoteArrayElementType(listType.Element!);
+                Push(StackKind.Ref, "Dn2CppArrayRef*",
+                    $"dn2cpp_delegate_invocation_list({DelegateReceiver(d)}, {PreciseArrayTypeInfoExpr(listType.Element!)})");
                 return true;
             }
             // Delegate.CreateDelegate — the MethodInfo-taking static forms:
@@ -313,13 +360,13 @@ internal sealed partial class MethodCompiler
                 var b = Pop();
                 var a = Pop();
                 Push(StackKind.I4, "int32_t",
-                    $"dn2cpp_delegate_equal({Cast(a, "Dn2CppObject*")}, {Cast(b, "Dn2CppObject*")})");
+                    $"dn2cpp_delegate_equal({DelegateReceiver(a)}, {Cast(b, "Dn2CppObject*")})");
                 return true;
             }
             case ("System.Delegate", "GetHashCode") when sig.ParameterTypes.Length == 0:
             {
                 var d = Pop();
-                Push(StackKind.I4, "int32_t", $"dn2cpp_delegate_hash({Cast(d, "Dn2CppObject*")})");
+                Push(StackKind.I4, "int32_t", $"dn2cpp_delegate_hash({DelegateReceiver(d)})");
                 return true;
             }
             // Delegate.HasSingleTarget: a single-entry invocation chain (the
@@ -328,7 +375,7 @@ internal sealed partial class MethodCompiler
             {
                 var d = Pop();
                 Push(StackKind.I4, "int32_t",
-                    $"((((Dn2CppDelegate*){Cast(d, "Dn2CppObject*")})->prev == nullptr) ? 1 : 0)");
+                    $"((((Dn2CppDelegate*){DelegateReceiver(d)})->prev == nullptr) ? 1 : 0)");
                 return true;
             }
             // The logical method identity survives static adapters and shared bodies.
@@ -336,7 +383,7 @@ internal sealed partial class MethodCompiler
             {
                 Comp.NoteDelegateMethodRead();
                 var d = Pop();
-                Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_delegate_get_method({Cast(d, "Dn2CppObject*")})");
+                Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_delegate_get_method({DelegateReceiver(d)})");
                 return true;
             }
 

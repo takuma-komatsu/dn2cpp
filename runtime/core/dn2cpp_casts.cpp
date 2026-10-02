@@ -1513,41 +1513,130 @@ static bool dn2cpp_delegate_identity_equal(const Dn2CppDelegate* a, const Dn2Cpp
         || (x->declaringType == y->declaringType && x->metadataToken == y->metadataToken);
 }
 
+// Delegate.Combine and Delegate.Remove take two delegates of one exact type.
+static void dn2cpp_delegate_require_same_type(const Dn2CppObject* a, const Dn2CppObject* b)
+{
+    if (a->type == b->type)
+        return;
+    Dn2CppString* message = dn2cpp_sr_message(DN2CPP_SR_DELEGATE_TYPE, nullptr, 0);
+    dn2cpp_throw(dn2cpp_exception_new(&dn2cpp_argument_exception_type,
+        message != nullptr ? message : dn2cpp_default_message(&dn2cpp_argument_exception_type), nullptr));
+}
+
+// The delegate an invocation-list node stands for (Dn2CppDelegate::entry).
+static Dn2CppObject* dn2cpp_delegate_entry(Dn2CppDelegate* n)
+{
+    return n->entry != nullptr ? n->entry : n;
+}
+
+// Copies of the entries from `tail` back to, but excluding, `stop`, chained in
+// their order onto `onto`: the new tail, or `onto` when no entry is copied. With
+// nothing to chain onto, the earliest entry is linked itself rather than a copy,
+// so a single remaining entry is that delegate, as .NET answers it. The first copy
+// stays on the stack and links every later one, so each allocation sees all of
+// them.
+static Dn2CppObject* dn2cpp_delegate_relink(Dn2CppDelegate* tail, const Dn2CppDelegate* stop,
+    Dn2CppObject* onto)
+{
+    Dn2CppDelegate* head = nullptr;
+    Dn2CppDelegate* last = nullptr;
+    for (Dn2CppDelegate* n = tail; n != stop; n = reinterpret_cast<Dn2CppDelegate*>(n->prev))
+    {
+        Dn2CppObject* entry = dn2cpp_delegate_entry(n);
+        if (onto == nullptr && n->prev == stop)
+        {
+            onto = entry;
+            break;
+        }
+        auto* copy = static_cast<Dn2CppDelegate*>(dn2cpp_alloc(sizeof(Dn2CppDelegate)));
+        copy->type = n->type;
+        dn2cpp_gc_store_ref(&copy->target, n->target);
+        copy->method = n->method;
+        copy->identity = n->identity;
+        dn2cpp_gc_store_ref(&copy->entry, entry);
+        if (last == nullptr)
+            head = copy;
+        else
+            dn2cpp_gc_store_ref(&last->prev, static_cast<Dn2CppObject*>(copy));
+        last = copy;
+    }
+    if (last == nullptr)
+        return onto;
+    dn2cpp_gc_store_ref(&last->prev, onto);
+    return head;
+}
+
 Dn2CppObject* dn2cpp_delegate_combine(Dn2CppObject* a, Dn2CppObject* b)
 {
     if (a == nullptr)
         return b;
     if (b == nullptr)
         return a;
-    auto* bd = reinterpret_cast<Dn2CppDelegate*>(b);
-    auto* copy = static_cast<Dn2CppDelegate*>(dn2cpp_alloc(sizeof(Dn2CppDelegate)));
-    copy->type = bd->type;
-    copy->target = bd->target;
-    copy->method = bd->method;
-    copy->identity = bd->identity;
-    dn2cpp_gc_store_ref(&copy->prev, dn2cpp_delegate_combine(a, bd->prev));
-    return copy;
+    dn2cpp_delegate_require_same_type(a, b);
+    return dn2cpp_delegate_relink(reinterpret_cast<Dn2CppDelegate*>(b), nullptr, a);
 }
 
-Dn2CppObject* dn2cpp_delegate_remove(Dn2CppObject* source, Dn2CppObject* value)
+// Delegate.Combine's params overloads: null for no delegates, else each combined
+// onto the ones before it, as .NET's loop does.
+Dn2CppObject* dn2cpp_delegate_combine_n(Dn2CppObject* const* items, int32_t count)
 {
-    if (source == nullptr || value == nullptr)
-        return source;
-    auto* v = reinterpret_cast<Dn2CppDelegate*>(value);
-    auto* s = reinterpret_cast<Dn2CppDelegate*>(source);
-    // Remove the most recent matching entry (.NET removes the last occurrence).
-    if (s->target == v->target && s->method == v->method && dn2cpp_delegate_identity_equal(s, v))
-        return s->prev;
-    Dn2CppObject* rest = dn2cpp_delegate_remove(s->prev, value);
-    if (rest == s->prev)
-        return source; // no match further down
-    auto* copy = static_cast<Dn2CppDelegate*>(dn2cpp_alloc(sizeof(Dn2CppDelegate)));
-    copy->type = s->type;
-    dn2cpp_gc_store_ref(&copy->target, s->target);
-    copy->method = s->method;
-    copy->identity = s->identity;
-    dn2cpp_gc_store_ref(&copy->prev, rest);
-    return copy;
+    if (count > 0 && items == nullptr)
+        dn2cpp_throw_null_reference();
+    Dn2CppObject* d = count > 0 ? items[0] : nullptr;
+    for (int32_t i = 1; i < count; i++)
+        d = dn2cpp_delegate_combine(d, items[i]);
+    return d;
+}
+
+Dn2CppObject* dn2cpp_delegate_combine_array(Dn2CppArrayRef* items)
+{
+    return items != nullptr ? dn2cpp_delegate_combine_n(items->data, items->length) : nullptr;
+}
+
+// Each node names its entry, so the list holds the delegates Combine took, as
+// .NET's does.
+Dn2CppArrayRef* dn2cpp_delegate_invocation_list(Dn2CppObject* d, const Dn2CppTypeInfo* arrayType)
+{
+    if (d == nullptr)
+        dn2cpp_throw_null_reference();
+    int32_t count = 0;
+    for (auto* n = reinterpret_cast<Dn2CppDelegate*>(d); n != nullptr;
+         n = reinterpret_cast<Dn2CppDelegate*>(n->prev))
+        count++;
+    Dn2CppArrayRef* list = dn2cpp_newarr_ref_t(count, arrayType);
+    int32_t index = count;
+    for (auto* n = reinterpret_cast<Dn2CppDelegate*>(d); n != nullptr;
+         n = reinterpret_cast<Dn2CppDelegate*>(n->prev))
+        dn2cpp_gc_store_ref(&list->data[--index], dn2cpp_delegate_entry(n));
+    return list;
+}
+
+// A delegate's immutable chain runs backward. Publish its forward-order entries only
+// after the array is complete, so independent enumerators can index the same snapshot.
+Dn2CppObject* dn2cpp_delegate_try_get_at(Dn2CppObject* d, int32_t index)
+{
+    if (d == nullptr)
+        dn2cpp_throw_null_reference();
+    if (index < 0)
+        return nullptr;
+    auto* tail = reinterpret_cast<Dn2CppDelegate*>(d);
+    if (tail->prev == nullptr)
+        return index == 0 ? dn2cpp_delegate_entry(tail) : nullptr;
+    auto* cache = tail->invocationCache.load(std::memory_order_acquire);
+    if (cache == nullptr)
+    {
+        size_t count = 0;
+        for (auto* n = tail; n != nullptr; n = reinterpret_cast<Dn2CppDelegate*>(n->prev))
+            count++;
+        cache = static_cast<Dn2CppDelegateInvocationCache*>(
+            dn2cpp_alloc(sizeof(Dn2CppDelegateInvocationCache) + (count - 1) * sizeof(Dn2CppObject*)));
+        cache->count = count;
+        size_t slot = count;
+        for (auto* n = tail; n != nullptr; n = reinterpret_cast<Dn2CppDelegate*>(n->prev))
+            dn2cpp_gc_store_ref(&cache->entries[--slot], dn2cpp_delegate_entry(n));
+        dn2cpp_gc_store_ref(&tail->invocationCache, cache);
+    }
+    return static_cast<size_t>(index) < cache->count ? cache->entries[index] : nullptr;
 }
 
 // Target-slot identity, with reflection-bind nodes (CreateDelegate) compared by
@@ -1563,6 +1652,55 @@ static bool dn2cpp_delegate_target_equal(Dn2CppObject* a, Dn2CppObject* b)
     auto* ra = reinterpret_cast<Dn2CppReflBind*>(a);
     auto* rb = reinterpret_cast<Dn2CppReflBind*>(b);
     return ra->method == rb->method && ra->target == rb->target && ra->mode == rb->mode;
+}
+
+// One invocation-list entry against another, as Delegate.Equals compares them.
+static bool dn2cpp_delegate_entry_equal(const Dn2CppDelegate* a, const Dn2CppDelegate* b)
+{
+    return dn2cpp_delegate_target_equal(a->target, b->target) && a->method == b->method
+        && dn2cpp_delegate_identity_equal(a, b);
+}
+
+// Delegate.Remove: .NET removes the last run of source's entries that equals
+// value's invocation list, and leaves source when none does. Candidate runs are
+// matched in place from the tail, so the first match is the last run. The
+// entries before it keep their chain; the ones after it are relinked onto it.
+Dn2CppObject* dn2cpp_delegate_remove(Dn2CppObject* source, Dn2CppObject* value)
+{
+    if (source == nullptr || value == nullptr)
+        return source;
+    dn2cpp_delegate_require_same_type(source, value);
+    const auto* run = reinterpret_cast<const Dn2CppDelegate*>(value);
+    for (auto* end = reinterpret_cast<Dn2CppDelegate*>(source); end != nullptr;
+         end = reinterpret_cast<Dn2CppDelegate*>(end->prev))
+    {
+        Dn2CppDelegate* before = end;
+        const Dn2CppDelegate* v = run;
+        while (v != nullptr && before != nullptr && dn2cpp_delegate_entry_equal(before, v))
+        {
+            before = reinterpret_cast<Dn2CppDelegate*>(before->prev);
+            v = reinterpret_cast<const Dn2CppDelegate*>(v->prev);
+        }
+        if (v == nullptr)
+            return dn2cpp_delegate_relink(reinterpret_cast<Dn2CppDelegate*>(source), end, before);
+        // The source ran out first; an earlier end leaves fewer entries still.
+        if (before == nullptr)
+            break;
+    }
+    return source;
+}
+
+// Delegate.RemoveAll: Remove until it answers the delegate it was given, which it
+// does once no run matches.
+Dn2CppObject* dn2cpp_delegate_remove_all(Dn2CppObject* source, Dn2CppObject* value)
+{
+    for (;;)
+    {
+        Dn2CppObject* next = dn2cpp_delegate_remove(source, value);
+        if (next == source)
+            return source;
+        source = next;
+    }
 }
 
 int32_t dn2cpp_delegate_equal(Dn2CppObject* a, Dn2CppObject* b)

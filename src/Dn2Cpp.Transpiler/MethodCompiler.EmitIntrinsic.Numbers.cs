@@ -1615,14 +1615,20 @@ internal sealed partial class MethodCompiler
             case ("System.Object", "GetHashCode") when sig.ParameterTypes.Length == 0:
             {
                 var o = Pop();
-                Push(StackKind.I4, "int32_t", $"dn2cpp_object_gethashcode({Cast(o, "Dn2CppObject*")})");
+                string receiver = Cast(o, "Dn2CppObject*");
+                if (CallIsVirtual)
+                    receiver = $"dn2cpp_null_check({receiver})";
+                Push(StackKind.I4, "int32_t", $"dn2cpp_object_gethashcode({receiver})");
                 return true;
             }
             case ("System.Object", "Equals") when sig.ParameterTypes is [{ IsObject: true }]:
             {
                 var other = Pop();
                 var o = Pop();
-                Push(StackKind.I4, "int32_t", $"dn2cpp_object_equals({Cast(o, "Dn2CppObject*")}, {Cast(other, "Dn2CppObject*")})");
+                string receiver = Cast(o, "Dn2CppObject*");
+                if (CallIsVirtual)
+                    receiver = $"dn2cpp_null_check({receiver})";
+                Push(StackKind.I4, "int32_t", $"dn2cpp_object_equals({receiver}, {Cast(other, "Dn2CppObject*")})");
                 return true;
             }
             // Static Object.Equals(objA, objB): no receiver, two boxed args. The

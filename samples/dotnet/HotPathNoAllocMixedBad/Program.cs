@@ -52,12 +52,25 @@ namespace HotPathNoAllocMixedBad
             return grid[0, 0] + grid[n - 1, n - 1];
         }
 
+        // MoveNext may allocate the multicast chain's forward-order cache.
+        [HotPath(NoAlloc = true)]
+        private static bool AdvanceInvocation(Action supplied)
+        {
+            var entries = Delegate.EnumerateInvocationList(supplied);
+            return entries.MoveNext();
+        }
+
+        private static void Empty() { }
+
         private static void Main()
         {
             Console.WriteLine(StringifyBox(42));
             Console.WriteLine(JoinPair("a", "b"));
             Console.WriteLine(ChopFirst("abc"));
             Console.WriteLine(CornerSum(3));
+            Action supplied = Empty;
+            supplied += Empty;
+            Console.WriteLine(AdvanceInvocation(supplied));
         }
     }
 }

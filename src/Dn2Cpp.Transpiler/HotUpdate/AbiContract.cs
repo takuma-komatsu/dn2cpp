@@ -42,8 +42,9 @@ internal static class AbiContract
     /// storage width; 5 = <c>System.DateTime</c> repacked from 16 bytes to .NET's 8;
     /// 6 = WaitHandle gained its hidden SafeWaitHandle prefix slot;
     /// 7 = Task, Thread and BlockingCollection gained hidden runtime slots.
+    /// 8 = delegates gained entry identity and an invocation-list cache.
     /// Bump on any future layout-mapping change.</summary>
-    public const int LayoutPolicyVersion = 7;
+    public const int LayoutPolicyVersion = 8;
 
     /// <summary>Serializes canonical contract v1 over the emitted classes. The
     /// serialization is symbolic — type names and base chains, layout

@@ -823,12 +823,14 @@ D <SigKey>
   are enabled (the default), `0` for a `--no-shared-generics` build. Sharing
   changes which concrete function a bound symbol resolves to without moving any
   symbolic line. `layout=` is the field-layout policy —
-  `AbiContract.LayoutPolicyVersion` (currently 7) — bumped by any change that
+  `AbiContract.LayoutPolicyVersion` (currently 8) — bumped by any change that
   moves real field offsets/sizes while changing no symbolic `F`/`L`/`V` line
   (field-width narrowing, growth of the runtime `Dn2CppExceptionObject` prefix,
   a repack of a runtime-owned struct). It applies to both sharing modes, so
   bumping `canon=` alone cannot carry it (a non-shared base stamps `canon=0`
-  regardless of version).
+  regardless of version). Delegate list nodes include an original-entry
+  reference and an atomic invocation cache after the method identity.
+  Single-target interpreter delegates initialize both hidden fields to zero.
 - `F` lines: instance and static fields in declaration order; `<type>` is the
   transpiler's `TypeDesc` rendering (`Int32`, `System.String`, `T[]`, …).
 - `V` lines: every vtable slot, with the slot owner's `SigKey`

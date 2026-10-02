@@ -1081,14 +1081,22 @@ struct Dn2CppDelegateMethodIdentity
     const Dn2CppDelegateMethodTarget* targets;
 };
 
+struct Dn2CppDelegateInvocationCache
+{
+    size_t count;
+    Dn2CppObject* entries[1];
+};
+
 // Uniform layout of all generated delegate types; the identity is static metadata.
-// `prev` chains earlier entries of the invocation list (null = single).
+// A copied list node keeps the original entry; single-target delegates name themselves.
 struct Dn2CppDelegate : Dn2CppObject
 {
     Dn2CppObject* target;
     void* method;
     Dn2CppObject* prev;
     const Dn2CppDelegateMethodIdentity* identity;
+    Dn2CppObject* entry;
+    std::atomic<Dn2CppDelegateInvocationCache*> invocationCache;
 };
 
 // A reflection-bound delegate's context node (MethodInfo.CreateDelegate /
@@ -1141,7 +1149,15 @@ Dn2CppObject* dn2cpp_reflbind_invoke(Dn2CppReflBind* ctx, Dn2CppObject* self, Dn
 Dn2CppObject* dn2cpp_delegate_get_target(Dn2CppObject* d);
 Dn2CppObject* dn2cpp_delegate_get_method(Dn2CppObject* d);
 Dn2CppObject* dn2cpp_delegate_combine(Dn2CppObject* a, Dn2CppObject* b);
+Dn2CppObject* dn2cpp_delegate_combine_n(Dn2CppObject* const* items, int32_t count);
+Dn2CppObject* dn2cpp_delegate_combine_array(Dn2CppArrayRef* items);
 Dn2CppObject* dn2cpp_delegate_remove(Dn2CppObject* source, Dn2CppObject* value);
+Dn2CppObject* dn2cpp_delegate_remove_all(Dn2CppObject* source, Dn2CppObject* value);
+// Delegate.GetInvocationList: the entries in invocation order as an `arrayType`
+// (System.Delegate[]) array, each the delegate Combine took.
+Dn2CppArrayRef* dn2cpp_delegate_invocation_list(Dn2CppObject* d, const Dn2CppTypeInfo* arrayType);
+// The invocation entry at index, or null when an enumerator passes either end.
+Dn2CppObject* dn2cpp_delegate_try_get_at(Dn2CppObject* d, int32_t index);
 // Delegate value equality/hash: two delegates are equal iff they are the same
 // delegate type and their invocation chains match pairwise on target, code
 // address and method identity (matching .NET Delegate/MulticastDelegate
@@ -1502,6 +1518,7 @@ inline constexpr const char* DN2CPP_SR_OBJECT_CONVERSION = "Arg_ObjObjEx";
 inline constexpr const char* DN2CPP_SR_FORMAT_INVALID_STRING_WITH_VALUE = "Format_InvalidStringWithValue";
 inline constexpr const char* DN2CPP_SR_BAD_DATETIME = "Format_BadDateTime";
 inline constexpr const char* DN2CPP_SR_BAD_FORMAT_SPECIFIER = "Format_BadFormatSpecifier";
+inline constexpr const char* DN2CPP_SR_DELEGATE_TYPE = "Arg_DlgtTypeMis";
 inline constexpr const char* DN2CPP_SR_BAD_BOOLEAN = "Format_BadBoolean";
 inline constexpr const char* DN2CPP_SR_ENUM_ILLEGAL_VALUE = "Arg_EnumIllegalVal";
 inline constexpr const char* DN2CPP_SR_BAD_BASE64_CHAR = "Format_BadBase64Char";

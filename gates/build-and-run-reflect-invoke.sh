@@ -125,11 +125,12 @@
 # Former gates: reflect-invoke, reflect-dispatch, reflect-field-value,
 # reflect-serializer, activator-subset, event-subset.
 # Empty string MemberwiseClone retains a distinct reference.
+# Delegate list removal, original-entry identity, real-body enumeration and GC cache.
 source "$(dirname "$0")/_common.sh"
 
 py="$(resolve_python)"
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/check-reflection-layout.py gates/measure-reflection-metadata.py gates/expected/reflection-allocations.csv"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|empty-string-clone-prefix:${DN2CPP_BEFORE_EMPTY_STRING_CLONE:-}"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/check-reflection-layout.py gates/measure-reflection-metadata.py gates/expected/reflection-allocations.csv gates/fixtures/delegate-invocation-cache/DelegateInvocationCache.csproj gates/fixtures/delegate-invocation-cache/Program.cs"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|empty-string-clone-prefix:${DN2CPP_BEFORE_EMPTY_STRING_CLONE:-}|delegate-list-prefix:${DN2CPP_BEFORE_DELEGATE_LISTS:-}"
 gate_empty_string_clone_asserts() {
     local out="$1" native line
     native=$(strip_cr_win_file "$out/metadata-layout.stdout")
@@ -149,9 +150,27 @@ gate_empty_string_clone_asserts() {
 }
 
 gate_extra_asserts() {
-    local out="$1"
+    local out="$1" native line
     "$py" gates/fixtures/check-reflection-layout.py "$out" "$reflection_layout_axis"
     run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/metadata-layout.stdout"
+    native=$(strip_cr_win_file "$out/metadata-layout.stdout")
+    DN2CPP_BEFORE_DELEGATE_LISTS=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-delegate-lists.stdout"
+    sed '/^== remove runs ==/,$d' "$out/metadata-layout.stdout" > "$out/delegate-lists-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-delegate-lists.stdout") \
+        <(strip_cr_win_file "$out/delegate-lists-prefix.stdout")
+    for line in '== remove runs ==' 'remove runs end' \
+        '== invocation lists ==' 'invocation lists end' \
+        '== invocation list entries ==' 'invocation list entries end' \
+        '== invocation list enumeration ==' 'invocation list enumeration end' \
+        '== invocation list enumeration scale ==' 'long chain: 512/512 entries True' \
+        'invocation list enumeration scale end' \
+        '== delegate invoker declarations ==' 'cold invoker=ColdInvoker' \
+        'cold ref invoker=ColdRefInvoker' 'cold shared distinct=True' \
+        'unconstructed variance view=null' \
+        'delegate invoker declarations end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: delegate invocation list witness missing: $line" >&2; return 1; }
+    done
     grep -Fxq 'metadata-layout-begin' "$out/metadata-layout.stdout"
     grep -Fxq 'metadata-layout-cache-capacity=72/1296' "$out/metadata-layout.stdout"
     grep -Fxq 'metadata-layout-cache-threads=1296/1296' "$out/metadata-layout.stdout"
@@ -440,3 +459,28 @@ cp gates/fixtures/reflection-metadata-codec.cpp "$codec_out/generated.cpp"
 printf '#pragma once\n' > "$codec_out/generated.h"
 compile_console "$codec_out" MetadataCodec
 assert_output "$("$codec_out/MetadataCodec$EXE_EXT")" "metadata codec boundaries OK"
+
+# The full bucket reflects MemberwiseClone over strings; GC probes need a process
+# that has not performed that unsupported CoreLib operation.
+cache_project=gates/fixtures/delegate-invocation-cache/DelegateInvocationCache.csproj
+run_bounded dotnet build "$cache_project" -c "$CONFIG" --nologo -v:q
+cache_app=gates/fixtures/delegate-invocation-cache/bin/$CONFIG/net10.0/DelegateInvocationCache.dll
+cache_out=artifacts/reflectinvoke-delegate-cache
+DN2CPP_STRICT_COMPLETION=1 invoke_cli "$cache_app" -r "$_CG_CORELIB" -o "$cache_out"
+compile_console "$cache_out" DelegateInvocationCache
+cache_expected=$(run_bounded dotnet "$cache_app")
+cache_actual=$(run_bounded "$cache_out/DelegateInvocationCache$EXE_EXT")
+cache_actual=$(strip_cr_win "$cache_actual")
+assert_output "$cache_actual" "$(strip_cr_win "$cache_expected")"
+for cache_line in '== invocation list cache GC ==' 'cache survives GC=True' \
+        'span combine=3 True True True' 'empty span null=True' \
+        'parallel clone cache=True' 'null span 0=True' \
+        'null span 1=NullReferenceException:Object reference not set to an instance of an object.' \
+        'null span 2=NullReferenceException:Object reference not set to an instance of an object.' \
+        'equals argument evaluated' 'static equals=False/True' \
+        'null hash=NullReferenceException:Object reference not set to an instance of an object.' \
+        'null equals=NullReferenceException:Object reference not set to an instance of an object.' \
+        'delegate cache fixture end'; do
+    grep -Fxq -- "$cache_line" <<< "$cache_actual" \
+        || { echo "FAIL: delegate cache witness missing: $cache_line" >&2; exit 1; }
+done

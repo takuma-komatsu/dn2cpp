@@ -229,6 +229,19 @@ internal sealed partial class Compilation
     /// unused invoker — bloat, never a link error.</summary>
     public HashSet<ClassInfo> DelegateInvokerUses { get; } = new();
 
+    /// <summary>The <see cref="DelegateInvokerUses"/> the shipped pass records. A shipped
+    /// body calls each one's invoker, so every struct that invoker's prototype spells has to
+    /// be declared even for a delegate type nothing constructs.</summary>
+    public HashSet<ClassInfo> ShippedDelegateInvokerUses { get; } = new();
+
+    /// <summary>Records a mouth that spells <c>dginvoke_&lt;CppName&gt;</c>.</summary>
+    internal void NoteDelegateInvokerUse(ClassInfo cls)
+    {
+        DelegateInvokerUses.Add(cls);
+        if (Phase == EmitPhase.Emission)
+            ShippedDelegateInvokerUses.Add(cls);
+    }
+
     /// <summary>Canonical shared generics (opt-in via <c>--shared-generics</c>):
     /// group generic instantiations whose C++ layout coincides under a canonical
     /// owner instantiation (see <see cref="CanonicalGenerics"/>). In this stage
@@ -3249,7 +3262,7 @@ internal sealed partial class Compilation
 
     /// <summary>The generic counterpart of <see cref="ReachStringStaticMethod"/>: resolves
     /// the closed instantiation a MethodSpec names on an intrinsic-mapped type
-    /// (<see cref="CoreIntrinsics.IsArrayRealBodyGeneric"/>) and reaches its real body for
+    /// (<see cref="CoreIntrinsics.IsRealBodyGeneric"/>) and reaches its real body for
     /// the intercepted call site to call.</summary>
     internal MethodInfo ReachIntrinsicTypeMethodSpec(Module module, MethodSpecificationHandle msh, GenericContext ctx)
     {
@@ -3385,7 +3398,7 @@ internal sealed partial class Compilation
         if (_intrinsicTypeTranspiled.Contains(m))
             return; // real body transpiled — the symbol already exists
         // Its calls already delegate to the real body, which serves the address too.
-        if (CoreIntrinsics.IsArrayRealBodyGeneric(m.DeclaringClass.FullName, m.Name)
+        if (CoreIntrinsics.IsRealBodyGeneric(m.DeclaringClass.FullName, m.Name)
             || CoreIntrinsics.IsArrayRealBodyMember(m.DeclaringClass.FullName, m.Name, m.Signature))
         {
             ReachIntrinsicTypeMethod(m);

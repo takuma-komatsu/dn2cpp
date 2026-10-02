@@ -798,8 +798,14 @@ internal sealed partial class CppEmitter
                     }
             _c.CompletePendingSpecializations();
         }
-        if (ClassInfo.ShareStructLayout)
-            CloseTopoOnlyLayouts();
+        // A topo-only stub can be a delegate, and a delegate invoker's declarations can
+        // float a SharedOwner into the struct order, so the two close together.
+        do
+        {
+            if (ClassInfo.ShareStructLayout)
+                CloseTopoOnlyLayouts();
+        }
+        while (DeclareDelegateInvokerTypes());
 
         // A `static Main(string[] args)` entry point's epilogue builds the args
         // array tagged with the precise ti_arr_string handle. That per-element array
@@ -6677,6 +6683,8 @@ internal sealed partial class CppEmitter
                 sb.AppendLine("    void* f_method;");
                 sb.AppendLine("    Dn2CppObject* f_prev;");
                 sb.AppendLine("    const Dn2CppDelegateMethodIdentity* f_identity;");
+                sb.AppendLine("    Dn2CppObject* f_entry;");
+                sb.AppendLine("    std::atomic<Dn2CppDelegateInvocationCache*> f_invocationCache;");
                 sb.AppendLine("};");
                 continue;
             }
@@ -7731,6 +7739,60 @@ internal sealed partial class CppEmitter
             sb.AppendLine($"    str_{i} = dn2cpp_string_literal(str_data_{i}, {_literals.Literals[i].Length});");
         sb.AppendLine("}");
         sb.AppendLine();
+    }
+
+    /// <summary>Close every invoker parameter and return declaration, including delegates
+    /// referenced only by type identity or a shipped variance-view invocation.</summary>
+    private bool DeclareDelegateInvokerTypes()
+    {
+        var emitted = EmittedClasses.ToList();
+        var declared = emitted.Select(c => c.CppStructName).ToHashSet(StringComparer.Ordinal);
+        // Recording order is compile order, which is not a property of the input.
+        var pending = new Queue<ClassInfo>(emitted.Where(c => c.IsDelegate)
+            .Concat(_c.ShippedDelegateInvokerUses.Where(c => !_emit.Contains(c))
+                .OrderBy(c => c.CppName, StringComparer.Ordinal)));
+        bool grew = false;
+        void Declare(ClassInfo c, bool opaque)
+        {
+            if (!EmitAdd(c))
+                return;
+            if (opaque)
+                _opaque.Add(c);
+            declared.Add(c.CppStructName);
+            if (c.IsDelegate)
+                pending.Enqueue(c);
+            grew = true;
+        }
+        // The referenced-type pass's shape: a delegate stays non-opaque for its Invoke row,
+        // a struct name may redirect to a canonical owner, and the bases back isinst.
+        void DeclareStruct(ClassInfo c)
+        {
+            _c.EnsureCompleted(c);
+            Declare(c, opaque: !c.IsDelegate);
+            if (ClassInfo.ShareStructLayout && c.SharedOwner is { } owner)
+                Declare(owner, opaque: true);
+            for (var bc = c.BaseClass; bc is { IntrinsicCppName: null, IsEnum: false }; bc = bc.BaseClass)
+                Declare(bc, opaque: true);
+        }
+        while (pending.Count > 0)
+        {
+            var d = pending.Dequeue();
+            _c.EnsureCompleted(d);
+            if (!StructDeclared(d.CppStructName, declared))
+                DeclareStruct(d);
+            if (d.Methods.FirstOrDefault(m => m.Name == "Invoke") is not { } inv)
+                continue;
+            foreach (var t0 in inv.Signature.ParameterTypes.Append(inv.Signature.ReturnType))
+            {
+                // A `ref T` renders as T's own struct pointer.
+                var t = t0;
+                while (t is { Kind: TypeKind.ByRef, Element: { } el })
+                    t = el;
+                if (t is { Kind: TypeKind.Class, Class: { } tc } && !StructDeclared(CppTypes.Of(t), declared))
+                    DeclareStruct(tc);
+            }
+        }
+        return grew;
     }
 
 

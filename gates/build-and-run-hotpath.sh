@@ -353,7 +353,8 @@ assert_noalloc_reject "$mixed_app" "directly-emitted allocation helpers" \
     "StringifyBox" "dn2cpp_object_tostring" \
     "JoinPair" "dn2cpp_string_concat" \
     "ChopFirst" "dn2cpp_str_substring" \
-    "CornerSum" "dn2cpp_newmdarr"
+    "CornerSum" "dn2cpp_newmdarr" \
+    "AdvanceInvocation" "dn2cpp_delegate_try_get_at("
 
 gate_cache_commit
 echo "OK: NoAlloc verifier rejects direct/deep allocation, dynamic dispatch, and the intrinsic allocation-helper families"

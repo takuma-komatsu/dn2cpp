@@ -410,6 +410,8 @@ internal sealed partial class MethodCompiler
             return;
         if (TryEmitAppContextBaseDirectory(callee))
             return;
+        if (TryEmitDelegateTryGetAt(callee))
+            return;
         if (TryEmitAsciiTranscode(callee))
             return;
         if (TryEmitUtf8Transcode(callee))
@@ -465,6 +467,21 @@ internal sealed partial class MethodCompiler
         return true;
     }
 
+    /// <summary><c>MulticastDelegate.TryGetAt(int)</c> → dn2cpp_delegate_try_get_at: the
+    /// invocation-list entry at an index, null past either end, read off the chain the
+    /// uniform delegate layout keeps in place of <c>_invocationList</c>.</summary>
+    private bool TryEmitDelegateTryGetAt(MethodInfo callee)
+    {
+        if (callee.DeclaringClass.FullName != "System.MulticastDelegate" || callee.Name != "TryGetAt"
+            || callee.IsStatic || callee.Signature.ParameterTypes is not [{ Primitive: PrimitiveTypeCode.Int32 }])
+            return false;
+        var index = Pop();
+        var self = Pop();
+        Push(StackKind.Ref, "Dn2CppObject*",
+            $"dn2cpp_delegate_try_get_at({Cast(self, "Dn2CppObject*")}, {Cast(index, "int32_t")})");
+        return true;
+    }
+
     /// <summary><c>NativeLibrary.GetSymbol(IntPtr handle, string symbolName, bool
     /// throwOnError)</c> → dn2cpp_native_library_get_symbol. Its real body is a QCall into the
     /// CLR's own native runtime, which does not exist here — but for a plain handle (no COM,
@@ -516,7 +533,7 @@ internal sealed partial class MethodCompiler
                 throw new NotSupportedException(
                     "DllImportResolver.Invoke search path is not a Nullable<T>");
             _c.NoteForceEmit(resolverClass);
-            _c.DelegateInvokerUses.Add(resolverClass);
+            _c.NoteDelegateInvokerUse(resolverClass);
             string searchType = CppTypes.Of(search);
             string callback = "+[](Dn2CppObject* __resolver, Dn2CppString* __name, "
                 + "const char* __assembly, int32_t __has_search_path, "
