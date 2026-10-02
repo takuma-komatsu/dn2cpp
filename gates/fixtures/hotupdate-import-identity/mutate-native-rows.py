@@ -6,7 +6,7 @@ import sys
 root = pathlib.Path(sys.argv[1])
 axis = sys.argv[2]
 files = list(root.glob("generated*.cpp")) + list(root.glob("generated*.h"))
-texts = {path: path.read_text() for path in files}
+texts = {path: path.read_text(encoding="utf-8") for path in files}
 pool_matches = []
 for path, text in texts.items():
     pool_matches.extend(re.finditer(r"extern const char md_name_pool\[\] =\s*(.*?)\n;", text, re.S))
@@ -41,7 +41,8 @@ def fields_of(row):
 changed = 0
 expected = 2 if axis == "legacy-ambiguous" else 1
 for path in root.glob("generated*.cpp"):
-    text = path.read_text()
+    original = texts[path]
+    text = original
     def table(match):
         global changed
         def row(match_row):
@@ -69,8 +70,8 @@ for path in root.glob("generated*.cpp"):
         body = re.sub(r"^    \{ (.*?) \},$", row, match.group(2), flags=re.M)
         return match.group(1) + body + match.group(3)
     text = re.sub(r"((?:static|extern) const Dn2CppMethodInfo \w+\[\] = \{\n)(.*?)(^\};)", table, text, flags=re.M | re.S)
-    if text != path.read_text():
-        path.write_text(text)
+    if text != original:
+        path.write_text(text, encoding="utf-8", newline="\n")
 if changed != expected:
     raise SystemExit("native row mutation count mismatch: " + str(changed) + " vs " + str(expected))
 print("native sigShape mutation:" + axis + ":" + str(changed))
