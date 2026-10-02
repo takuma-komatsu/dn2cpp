@@ -101,25 +101,33 @@ internal sealed partial class MethodCompiler : IEvalStack
     private readonly Dictionary<(int Target, int Depth), ArraySearchOrigin> _arraySearchBlockSlots = new();
     private readonly Dictionary<int, Dictionary<int, ArraySearchOrigin>> _arraySearchEntryLocals = new();
     private readonly Dictionary<int, Dictionary<int, ArraySearchOrigin>> _arraySearchEntryArgs = new();
+    // Scalar worker bodies cannot produce tracked reference or array values.
+    internal bool RecordArraySearchOrigins { get; set; } = true;
+
+    private ArraySearchOrigin NewArraySearchOrigin() => RecordArraySearchOrigins
+        ? _c.NewArraySearchOrigin() : _c.InactiveArraySearchOrigin;
+
     private bool _arraySearchStraightLine;
     private int _arraySearchInstructionOffset;
 
     private ArraySearchOrigin ArraySearchLocal(int index)
     {
         if (!_arraySearchLocals.TryGetValue(index, out var origin))
-            _arraySearchLocals.Add(index, origin = _c.NewArraySearchOrigin());
+            _arraySearchLocals.Add(index, origin = NewArraySearchOrigin());
         return origin;
     }
 
     private ArraySearchOrigin ArraySearchBlockSlot(int target, int depth)
     {
         if (!_arraySearchBlockSlots.TryGetValue((target, depth), out var origin))
-            _arraySearchBlockSlots.Add((target, depth), origin = _c.NewArraySearchOrigin());
+            _arraySearchBlockSlots.Add((target, depth), origin = NewArraySearchOrigin());
         return origin;
     }
 
     private ArraySearchOrigin ArraySearchArg(int index)
     {
+        if (!RecordArraySearchOrigins)
+            return _c.InactiveArraySearchOrigin;
         if (!_arraySearchArgs.TryGetValue(index, out var origin))
             _arraySearchArgs.Add(index, origin = _c.ArraySearchParameter(_method, index));
         return origin;
@@ -134,7 +142,7 @@ internal sealed partial class MethodCompiler : IEvalStack
         foreach (var (index, source) in current)
         {
             if (!merged.TryGetValue(index, out var targetOrigin))
-                merged.Add(index, targetOrigin = _c.NewArraySearchOrigin());
+                merged.Add(index, targetOrigin = NewArraySearchOrigin());
             _c.LinkArraySearchOrigin(targetOrigin, source);
         }
     }
@@ -1698,7 +1706,7 @@ internal sealed partial class MethodCompiler : IEvalStack
     {
         var local = _locals[index];
         var value = Pop();
-        var nextOrigin = _c.NewArraySearchOrigin();
+        var nextOrigin = NewArraySearchOrigin();
         _c.LinkArraySearchOrigin(nextOrigin, value.ArraySearchOrigin);
         _arraySearchLocals[index] = nextOrigin;
         Emit($"{local.Name} = {CoerceTo(value, local.Type, local.CppType)};");
@@ -2256,7 +2264,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 int index = (int)insn.Operand;
                 var dst = _args[index];
                 var value = Pop();
-                var nextOrigin = _c.NewArraySearchOrigin();
+                var nextOrigin = NewArraySearchOrigin();
                 _c.LinkArraySearchOrigin(nextOrigin, value.ArraySearchOrigin);
                 _arraySearchArgs[index] = nextOrigin;
                 Emit($"{dst.Name} = {CoerceTo(value, dst.Type, dst.CppType)};");
@@ -2486,7 +2494,8 @@ internal sealed partial class MethodCompiler : IEvalStack
                     // CoerceTo notes a raw T[] returned as a collection interface so the
                     // array's own SZArray map serves the caller's dispatch.
                     var value = Pop();
-                    _c.LinkArraySearchOrigin(_c.ArraySearchReturn(_method), value.ArraySearchOrigin);
+                    if (RecordArraySearchOrigins)
+                        _c.LinkArraySearchOrigin(_c.ArraySearchReturn(_method), value.ArraySearchOrigin);
                     Emit($"return {CoerceTo(value, rt, CppTypes.Of(rt))};");
                 }
                 _unreachable = true;

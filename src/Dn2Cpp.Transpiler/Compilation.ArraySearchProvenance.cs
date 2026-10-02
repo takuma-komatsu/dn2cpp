@@ -130,6 +130,7 @@ internal sealed record ArraySearchFieldValueCandidate(ArraySearchOrigin Value,
 internal sealed partial class Compilation
 {
     private readonly ArraySearchOrigin _inactiveArraySearchOrigin = new();
+    internal ArraySearchOrigin InactiveArraySearchOrigin => _inactiveArraySearchOrigin;
     private readonly List<(MethodInfo Owner, ArraySearchOrigin Origin)> _arraySearchOperands = new();
     private readonly Dictionary<MethodInfo, List<ArraySearchOrigin>> _arraySearchCalls = new();
     private readonly Dictionary<MethodInfo, List<ArraySearchStore>> _arraySearchStores = new();
@@ -802,7 +803,8 @@ internal sealed partial class Compilation
     internal void LinkArraySearchOrigin(ArraySearchOrigin target, ArraySearchOrigin? source,
         ArraySearchFlowKind kind = ArraySearchFlowKind.Identity, string? name = null)
     {
-        if (!TrackArraySearchOrigins)
+        if (!TrackArraySearchOrigins || ReferenceEquals(target, _inactiveArraySearchOrigin)
+            || ReferenceEquals(source, _inactiveArraySearchOrigin))
             return;
         if (source is null)
         {

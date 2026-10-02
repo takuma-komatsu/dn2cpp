@@ -602,7 +602,7 @@ internal sealed partial class Compilation
                 throw new NotSupportedException(
                     $"--cut {type}::{method}: no loaded assembly declares type {type} "
                     + $"(loaded: {string.Join(", ", Modules.Select(m => m.AssemblyName))})");
-            if (!cls.Methods.Any(m => m.Name == method))
+            if (!cls.EnsureMembers().Methods.Any(m => m.Name == method))
                 throw new NotSupportedException(
                     $"--cut {type}::{method}: type {type} has no method named {method}");
         }

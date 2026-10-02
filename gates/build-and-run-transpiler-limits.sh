@@ -541,7 +541,7 @@ echo "== 5/8 A member nobody asks about must not be decoded =="
 # at all, because such a walk changes no output: every other gate would stay green while the
 # saving quietly went away.
 # The census prints to stderr, once per phase; take the last report (@emit — the whole run).
-census=$(export DN2CPP_MODEL_CENSUS=1; invoke_cli "$arr_app" -r "$corelib" -o "$out" 2>&1 >/dev/null)
+census=$(export DN2CPP_MODEL_CENSUS=1; invoke_cli "$arr_app" -r "$corelib" -r "$(dirname "$corelib")/System.Collections.dll" -o "$out" 2>&1 >/dev/null)
 check_decode_rate() { # <label> <census-line-pattern> <ceiling> <what-is-read>
     local line pct
     line=$(grep "$2" <<<"$census" | tail -1)

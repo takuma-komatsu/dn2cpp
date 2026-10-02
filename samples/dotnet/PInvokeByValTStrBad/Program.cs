@@ -37,7 +37,13 @@ public static class Program
         return result;
     }
 
-    private static int Double(int value) => value * 2;
+    private static int Double(int value)
+    {
+        value *= 2;
+        if (value < 0)
+            return -value;
+        return value;
+    }
 
     public static void Main()
     {
