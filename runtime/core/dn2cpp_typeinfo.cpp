@@ -130,11 +130,71 @@ DN2CPP_NATIVE_FIELDS(dn2cpp_ownflds_string,
     { "Empty", &dn2cpp_string_type, &dn2cpp_string_type, DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_INITONLY,
       dn2cpp_ownfld_string_Empty, nullptr, nullptr, 0, 0x36, 0 },
 );
+static int32_t dn2cpp_ownmeth_string_get_length(Dn2CppString* self)
+{
+    return self->length;
+}
+
+static int32_t dn2cpp_ownmeth_string_get_chars(Dn2CppString* self, int32_t index)
+{
+    if (index < 0 || index >= self->length)
+        dn2cpp_throw_index_out_of_range();
+    return self->chars[index];
+}
+
+static Dn2CppObject* dn2cpp_ownmeth_string_length_invoker(void* fn, Dn2CppObject* self,
+    Dn2CppObject**, const Dn2CppTypeInfo*)
+{
+    int32_t result = reinterpret_cast<int32_t (*)(Dn2CppString*)>(fn)(
+        reinterpret_cast<Dn2CppString*>(self));
+    return dn2cpp_box(&dn2cpp_int32_type, &result, sizeof(result));
+}
+
+static Dn2CppObject* dn2cpp_ownmeth_string_chars_invoker(void* fn, Dn2CppObject* self,
+    Dn2CppObject** args, const Dn2CppTypeInfo*)
+{
+    int32_t index = args[0] == nullptr ? 0
+        : *static_cast<int32_t*>(dn2cpp_unbox(args[0], &dn2cpp_int32_type));
+    int32_t result = reinterpret_cast<int32_t (*)(Dn2CppString*, int32_t)>(fn)(
+        reinterpret_cast<Dn2CppString*>(self), index);
+    return dn2cpp_box(&dn2cpp_char_type, &result, sizeof(result));
+}
+
+static const Dn2CppParamInfo dn2cpp_ownparams_string_chars[] = {
+    { &dn2cpp_int32_type, "index", {}, 0, 0, nullptr, 0, nullptr, 0, 1, "Int32 index" },
+};
+static const Dn2CppMethodInfo dn2cpp_ownmethods_string_rows[] = {
+    { "get_Length", &dn2cpp_string_type, &dn2cpp_int32_type, {}, 0,
+      DN2CPP_MTHA_PUBLIC | DN2CPP_MTHA_SPECIALNAME, -1,
+      reinterpret_cast<void*>(&dn2cpp_ownmeth_string_get_length),
+      reinterpret_cast<void*>(&dn2cpp_ownmeth_string_length_invoker), {}, 0,
+      nullptr, 0x0886, 0, 0, 0, nullptr, nullptr, 0, nullptr, 0, 1,
+      "Int32 get_Length()", nullptr, "Int32" },
+    { "get_Chars", &dn2cpp_string_type, &dn2cpp_char_type,
+      Dn2CppMetadataTable<Dn2CppParamInfo>{dn2cpp_ownparams_string_chars}, 1,
+      DN2CPP_MTHA_PUBLIC | DN2CPP_MTHA_SPECIALNAME, -1,
+      reinterpret_cast<void*>(&dn2cpp_ownmeth_string_get_chars),
+      reinterpret_cast<void*>(&dn2cpp_ownmeth_string_chars_invoker), {}, 0,
+      nullptr, 0x0886, 0, 0, 0, nullptr, nullptr, 0, nullptr, 0, 1,
+      "Char get_Chars(Int32)", nullptr, "Char" },
+};
+static constexpr Dn2CppMetadataTable<Dn2CppMethodInfo> dn2cpp_ownmethods_string{
+    dn2cpp_ownmethods_string_rows };
+static const Dn2CppPropInfo dn2cpp_ownprops_string_rows[] = {
+    { "Length", &dn2cpp_string_type, &dn2cpp_int32_type,
+      &dn2cpp_ownmethods_string_rows[0], {}, DN2CPP_MTHA_PUBLIC, {}, 0, 0, "Int32 Length" },
+    { "Chars", &dn2cpp_string_type, &dn2cpp_char_type,
+      &dn2cpp_ownmethods_string_rows[1], {}, DN2CPP_MTHA_PUBLIC, {}, 0, 0, "Char Chars [Int32]" },
+};
+static constexpr Dn2CppMetadataTable<Dn2CppPropInfo> dn2cpp_ownprops_string{
+    dn2cpp_ownprops_string_rows };
 // String is a sealed reference type — carries SEALED (not VALUETYPE). Non-const
 // (alone among the built-ins): its interface rows point at program-specific
 // transpiled CoreLib IL, so the generated init prologue wires them in at startup.
 extern const Dn2CppType dn2cpp_string_type_obj;
-DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_string_type_reflection, dn2cpp_ownflds_string, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_string_type_reflection,
+    dn2cpp_ownflds_string, 1, dn2cpp_ownmethods_string, 2, 0, 0,
+    dn2cpp_ownprops_string, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, "Chars", 0, 0, 0, 0);
 Dn2CppTypeInfo dn2cpp_string_type =
     dn2cpp_ti_with_typeobject({ "System.String", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, DN2CPP_TF_SEALED, 0, 0, 0, dn2cpp_string_type_reflection }, &dn2cpp_string_type_obj);
 const Dn2CppType dn2cpp_string_type_obj = { { &dn2cpp_type_type }, &dn2cpp_string_type };
@@ -689,6 +749,10 @@ extern const Dn2CppType dn2cpp_file_not_found_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_file_not_found_exception_type =
     dn2cpp_ti_with_typeobject({ "System.IO.FileNotFoundException", &dn2cpp_io_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_file_not_found_exception_type_obj);
 const Dn2CppType dn2cpp_file_not_found_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_file_not_found_exception_type };
+extern const Dn2CppType dn2cpp_file_load_exception_type_obj;
+Dn2CppTypeInfo dn2cpp_file_load_exception_type =
+    dn2cpp_ti_with_typeobject({ "System.IO.FileLoadException", &dn2cpp_io_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_file_load_exception_type_obj);
+const Dn2CppType dn2cpp_file_load_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_file_load_exception_type };
 extern const Dn2CppType dn2cpp_directory_not_found_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_directory_not_found_exception_type =
     dn2cpp_ti_with_typeobject({ "System.IO.DirectoryNotFoundException", &dn2cpp_io_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_directory_not_found_exception_type_obj);
@@ -753,6 +817,18 @@ extern const Dn2CppType dn2cpp_missing_method_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_missing_method_exception_type =
     dn2cpp_ti_with_typeobject({ "System.MissingMethodException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_missing_method_exception_type_obj);
 const Dn2CppType dn2cpp_missing_method_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_missing_method_exception_type };
+// FieldInfo.SetValue on a constant or a static read-only field, matching .NET's
+// FieldAccessException.
+extern const Dn2CppType dn2cpp_field_access_exception_type_obj;
+Dn2CppTypeInfo dn2cpp_field_access_exception_type =
+    dn2cpp_ti_with_typeobject({ "System.FieldAccessException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_field_access_exception_type_obj);
+const Dn2CppType dn2cpp_field_access_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_field_access_exception_type };
+// MethodBase.Invoke on a static abstract interface member, matching .NET's
+// BadImageFormatException.
+extern const Dn2CppType dn2cpp_bad_image_format_exception_type_obj;
+Dn2CppTypeInfo dn2cpp_bad_image_format_exception_type =
+    dn2cpp_ti_with_typeobject({ "System.BadImageFormatException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_bad_image_format_exception_type_obj);
+const Dn2CppType dn2cpp_bad_image_format_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_bad_image_format_exception_type };
 extern const Dn2CppType dn2cpp_missing_manifest_resource_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_missing_manifest_resource_exception_type =
     dn2cpp_ti_with_typeobject({ "System.Resources.MissingManifestResourceException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_missing_manifest_resource_exception_type_obj);
@@ -1241,7 +1317,7 @@ int32_t dn2cpp_type_get_array_rank(Dn2CppType* a)
     // "Must be an array type." for typeof(int) and for typeof(string) alike) —
     // catchable: a reflection walk asks this about types it does not control.
     if ((dn2cpp_type_require(a)->flags & DN2CPP_TF_ARRAY) == 0)
-        dn2cpp_throw_argument();
+        dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_HAS_TO_BE_ARRAY_CLASS);
     int32_t r = a->typeInfo->arrayRank;
     return r != 0 ? r : 1;
 }
@@ -1294,7 +1370,7 @@ int32_t dn2cpp_type_is_subclass_of(Dn2CppType* a, Dn2CppType* c)
     // Unlike the assignability pair, .NET's IsSubclassOf REJECTS a null argument
     // (ArgumentNullException) rather than answering false.
     if (c == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("type");
     const Dn2CppTypeInfo* ta = a->typeInfo;
     const Dn2CppTypeInfo* tc = c->typeInfo;
     // An array's real .NET base chain is System.Array -> System.Object, but array

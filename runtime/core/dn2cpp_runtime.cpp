@@ -878,11 +878,16 @@ int32_t dn2cpp_object_compare(Dn2CppObject* a, Dn2CppObject* b, const Dn2CppType
 // CompareTo (the raw difference for a sub-word underlying type): a null target sorts first
 // (this > null -> 1), a box of any other type is the ArgumentException .NET raises naming both
 // types, and same type delegates to dn2cpp_object_compare's boxed-enum arm so the width+signedness
-// ladder lives in exactly one place. The receiver `a` is `this`, never null for an instance call.
+// ladder lives in exactly one place. The receiver `a` is `this`, which a delegate closed over null
+// leaves null; .NET compares it with the target by reference before dereferencing it.
 int32_t dn2cpp_enum_compareto(Dn2CppObject* a, Dn2CppObject* b)
 {
+    if (a == b)
+        return 0;
     if (b == nullptr)
         return 1;
+    if (a == nullptr)
+        dn2cpp_throw_null_reference();
     if (a->type != b->type)
         dn2cpp_throw_sr2(&dn2cpp_argument_exception_type, DN2CPP_SR_ENUM_AND_OBJECT_MUST_BE_SAME_TYPE,
             dn2cpp_type_tostring(b->type), dn2cpp_type_tostring(a->type));

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <Optimize>true</Optimize>
+    <DebugType>none</DebugType>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="OrdinaryReflectionLeavesProgram.cs" />
+    <Compile Include="ReflectFieldValidationSubset.cs" />
+    <Compile Include="OrdinaryAmbiguousMatchSubset.cs" />
+    <Compile Include="OrdinaryWideLookupSubset.cs" />
+  </ItemGroup>
+</Project>

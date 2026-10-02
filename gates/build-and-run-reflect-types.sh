@@ -305,6 +305,8 @@
 # Every other line matches real .NET (verified against `dotnet run` at capture
 # time).
 source "$(dirname "$0")/_common.sh"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_ordinary-reflection.sh samples/dotnet/ReflectTypes/AttributeTypePropertySubset.cs samples/dotnet/ReflectTypes/DataOnlyAttributeRowsOnly.csproj samples/dotnet/ReflectTypes/DataOnlyAttributeRowsOnlyProgram.cs samples/dotnet/ReflectTypes/OrdinaryReflectionTypeLeaves.csproj samples/dotnet/ReflectTypes/OrdinaryReflectionTypeLeavesProgram.cs samples/dotnet/ReflectTypes/ReflectAssemblyErrorSubset.cs samples/dotnet/ReflectTypes/ReflectAttrBoxedSubset.cs samples/dotnet/ReflectTypes/ReflectRuntimeTypeParitySubset.cs samples/dotnet/ReflectTypes/ReflectTypes.csproj samples/dotnet/ReflectTypes/UnreadAttributeRowsOnly.csproj samples/dotnet/ReflectTypes/UnreadAttributeRowsOnlyProgram.cs"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-type-leaves-v1"
 
 EXPFILE="$(dirname "$0")/expected/reflect-types.txt"
 BCL=(System.Linq.Expressions System.Linq System.Collections \
@@ -569,3 +571,35 @@ grep -q "EventListenerProbe.ProbeListener..ctor <- EventListenerProbe.Program.Ma
 ! compgen -G "$ES_OUT/generated*" >/dev/null \
     || { echo "FAIL: the refused transpile still emitted C++: $(ls -1 "$ES_OUT" | tr '\n' ' ')" >&2; exit 1; }
 echo "refusal OK: exit $es_code, named the observation side + EventListener + a remedy + the caller, emitted nothing"
+
+# Native String rows, Type construction faults and encoded attribute identity.
+unset -f gate_extra_asserts
+source gates/_ordinary-reflection.sh
+gate_extra_asserts() {
+    local out="$1" native line before prefix
+    native=$(run_bounded "$out/OrdinaryReflectionTypeLeaves$EXE_EXT") || return $?
+    native=$(strip_cr_win "$native")
+    before=$(run_bounded "$out/OrdinaryReflectionTypeLeaves$EXE_EXT" before-attribute-chain) || return $?
+    prefix=$(awk '/^== chained attribute Type roots ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    for line in '== ordinary reflection type leaves ==' \
+        'attribute Type property: LinkTarget' 'attribute construction: constructed from attribute' \
+        '== boxed attribute arguments ==' \
+        'Type identity: 10 of 10' 'Foreign enum names: 3 of 3' \
+        'string props=2:True:True' 'runtime type reflection end' \
+        'assembly load invalid name complete' 'ordinary reflection type leaves end' \
+        '== chained attribute Type roots ==' 'chain holder=1' 'chain first=1' \
+        'chain second=1' 'chain third=1' 'chain last=ChainFourth`1' \
+        'chained attribute Type roots end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: ordinary type witness missing: $line" >&2; return 1; }
+    done
+}
+DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectTypes OrdinaryReflectionTypeLeaves \
+    System.Collections System.ComponentModel.Primitives --no-ildiet
+DN2CPP_OUT_SUFFIX=-diet DN2CPP_STRICT_COMPLETION=1 \
+    ordinary_fixture_diff_gate ReflectTypes OrdinaryReflectionTypeLeaves \
+    System.Collections System.ComponentModel.Primitives
+unset -f gate_extra_asserts
+DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectTypes UnreadAttributeRowsOnly --no-ildiet
+DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectTypes DataOnlyAttributeRowsOnly --no-ildiet

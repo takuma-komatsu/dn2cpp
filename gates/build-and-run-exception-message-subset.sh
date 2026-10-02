@@ -49,6 +49,8 @@
 # and Message-only fallback, including NUL and unpaired UTF-16 surrogates.
 # UInt32 and Int32 bound messages retain their suffixes after a collection.
 source "$(dirname "$0")/_common.sh"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/ExceptionMessageSubset/OrdinaryReflectionArgumentSubset.cs"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-reflection-arguments:${DN2CPP_BEFORE_ORDINARY_REFLECTION_ARGUMENTS:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|before-array-shape-fields"
 
 ancestry_app="gates/fixtures/runtime-exception-ancestry/bin/$CONFIG/$TFM/RuntimeExceptionAncestry.dll"
@@ -68,6 +70,17 @@ gate_extra_asserts() {
     local out="$1" native before prefix line app name fixture expected actual
     native=$(run_bounded "./$out/ExceptionMessageSubset")
     native=$(strip_cr_win "$native")
+    before=$(DN2CPP_BEFORE_ORDINARY_REFLECTION_ARGUMENTS=1 run_bounded "./$out/ExceptionMessageSubset$EXE_EXT")
+    prefix=$(awk '/^-- ordinary reflection argument fields --$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    for line in '-- ordinary reflection argument fields --' \
+        'Type.GetEnumUnderlyingType null receiver: NullReferenceException' \
+        'Type.GetEnumNames null receiver: NullReferenceException' \
+        'Type.GetEnumValuesAsUnderlyingType null receiver: NullReferenceException' \
+        'ordinary reflection argument fields end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: ordinary reflection argument witness missing: $line" >&2; return 1; }
+    done
     before=$(run_bounded "./$out/ExceptionMessageSubset" before-runtime-exception-chains)
     prefix=$(awk '/^== runtime exception ancestry ==$/ { exit } { print }' <<< "$native")
     assert_output "$prefix" "$(strip_cr_win "$before")"

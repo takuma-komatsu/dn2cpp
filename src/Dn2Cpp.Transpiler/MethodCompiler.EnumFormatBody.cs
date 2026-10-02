@@ -39,6 +39,13 @@ internal sealed partial class MethodCompiler
         const string recv = "((Dn2CppObject*)a0)";
         var ps = _method.Signature.ParameterTypes;
         var rt = _method.Signature.ReturnType;
+        // A delegate closed over null runs these bodies with a null `this`, which .NET's
+        // bodies dereference, except that Equals first answers a null argument and
+        // CompareTo (dn2cpp_enum_compareto) an identical one.
+        if (_method.Name == "Equals")
+            Emit("if (a1 == nullptr) return false;");
+        if (_method.Name != "CompareTo")
+            Emit($"dn2cpp_null_check({recv});");
         switch (_method.Name, ps.Length)
         {
             case ("ToString", 0):

@@ -168,6 +168,8 @@ internal sealed partial class Compilation
             throw new InvalidOperationException(
                 $"emit protocol: illegal phase transition {Phase} -> {next}");
         Phase = next;
+        if (next == EmitPhase.Planning)
+            _planningFillDepth = MaxGenericArgDepth;
     }
 
     /// <summary>Drives the canonical-linkage / reachability fixpoint: link any
@@ -550,6 +552,7 @@ internal sealed partial class Compilation
     {
         // Objects, arrays, boxes.
         "dn2cpp_alloc(",            // objects, delegates, boxed state machines
+        "dn2cpp_alloc_atomic(",     // pointer-free buffers (a span's transcoded bytes)
         "dn2cpp_alloc_type_associated(", // RuntimeHelpers.AllocateTypeAssociatedMemory
         "dn2cpp_newarr_",           // every array-allocation variant (i4/ref/n, _t, _atomic_t)
         "dn2cpp_newmdarr(",         // multi-dimensional array newobj
@@ -600,7 +603,7 @@ internal sealed partial class Compilation
         "dn2cpp_dateonly_to_string(",
         "dn2cpp_timeonly_to_string(",
         "dn2cpp_timespan_to_string(",
-        "dn2cpp_enum_flags_to_string(",
+        "dn2cpp_enum_flags_to_string", // + 64
         "dn2cpp_format_enum(",
         "dn2cpp_format_int",        // + _c
         "dn2cpp_format_uint",       // + _c
@@ -629,6 +632,62 @@ internal sealed partial class Compilation
         "dn2cpp_delegate_remove",   // + _all; may allocate the shortened multicast copy
         "dn2cpp_delegate_invocation_list(", "dn2cpp_delegate_try_get_at(",
         "dn2cpp_delegate_for_fnptr_",
+        "dn2cpp_box_by_handle(",    // RuntimeHelpers.Box (the Enum.ToObject family)
+        "dn2cpp_get_uninitialized_object(", // RuntimeHelpers.GetUninitializedObject
+        "dn2cpp_enum_get_name(",
+        "dn2cpp_enum_get_names(",
+        "dn2cpp_enum_get_value(",   // Enum.GetValue re-boxes the payload
+        "dn2cpp_enum_get_values_",  // boxed/underlying arrays
+        "dn2cpp_enum_to_object",    // + _boxed
+        "dn2cpp_enum_parse_type",   // Enum.Parse(Type, ...) boxes its result
+        "dn2cpp_enum_format(",
+        "dn2cpp_type_get_fields(",
+        "dn2cpp_type_get_properties(",
+        "dn2cpp_type_get_methods(",
+        "dn2cpp_type_get_constructors(",
+        "dn2cpp_type_get_members(",
+        "dn2cpp_type_get_member(",  // GetMember answers an array
+        "dn2cpp_type_get_interfaces(",
+        "dn2cpp_type_find_interfaces(",
+        "dn2cpp_type_get_nested_types(",
+        "dn2cpp_type_get_generic_arguments(",
+        "dn2cpp_type_get_default_members(",
+        "dn2cpp_type_get_enum_names(",
+        "dn2cpp_type_get_enum_values_as_underlying(",
+        "dn2cpp_methodref_get_parameter", // GetParameters (+ the types-only form)
+        "dn2cpp_methodref_get_generic_arguments(",
+        "dn2cpp_methodref_return_parameter(",
+        "dn2cpp_propref_get_index_parameters(",
+        "dn2cpp_paramref_custom_modifiers(",
+        "dn2cpp_member_custom_attributes_data(",
+        "dn2cpp_assembly_custom_attributes_data(",
+        "dn2cpp_assembly_get_types(",
+        "dn2cpp_assembly_get_modules(",
+        "dn2cpp_assembly_get_manifest_resource_", // names/bytes
+        "dn2cpp_fieldref_get_value(",
+        "dn2cpp_fieldref_set_value(",
+        "dn2cpp_fieldref_get_raw_constant_value(",
+        "dn2cpp_memberinfo_name(",
+        "dn2cpp_type_name(",
+        "dn2cpp_type_namespace(",
+        "dn2cpp_type_fullname(",
+        "dn2cpp_type_tostring(",
+        "dn2cpp_type_assembly_qualified_name(",
+        "dn2cpp_type_format_type_name(",
+        "dn2cpp_assembly_full_name(",
+        "dn2cpp_module_name(",
+        "dn2cpp_paramref_name(",
+        "dn2cpp_reflection_handle_tostring(",
+        "dn2cpp_stacktrace_tostring(",
+        "dn2cpp_stackframe_tostring(",
+        "dn2cpp_ctorref_invoke(",
+        "dn2cpp_activator_create_instance", // + _args/_nonpublic
+        "dn2cpp_propref_get_value", // + _indexed
+        "dn2cpp_propref_set_value", // + _indexed
+        "dn2cpp_get_custom_attribute", // GetCustomAttribute(s) (+ _typed)
+        "dn2cpp_assembly_get_custom_attribute", // the assembly's, likewise
+        "dn2cpp_methodref_invoke(",
+        "dn2cpp_delegate_dynamic_invoke(",
     };
 
     // The tokens an emitted body text spells for a dynamic dispatch. Body text only — the
@@ -645,6 +704,14 @@ internal sealed partial class Compilation
         "dn2cpp_object_equals_",        // runtime equality-slot / typed IEquatable dispatch
         "dn2cpp_array_search_equals(",  // runtime array-element equality-slot dispatch
         "dn2cpp_default_equality_comparer_equals_nongeneric",
+        "dn2cpp_ctorref_invoke(",       // ConstructorInfo.Invoke: the row's constructor
+        "dn2cpp_activator_create_instance", // Activator.CreateInstance: a constructor chosen at run time
+        "dn2cpp_propref_get_value",     // PropertyInfo.GetValue: the getter's body or override
+        "dn2cpp_propref_set_value",     // PropertyInfo.SetValue: the setter's body or override
+        "dn2cpp_get_custom_attribute",  // attribute reads: the attribute constructors and setters
+        "dn2cpp_assembly_get_custom_attribute",
+        "dn2cpp_methodref_invoke(",
+        "dn2cpp_delegate_dynamic_invoke(",
     };
 
     /// <summary>Record what an emitted body allocates or dispatches, for the NoAlloc BFS.
@@ -1255,11 +1322,7 @@ internal sealed partial class Compilation
             ClassInfo.CompareByOrder,
             ContainsCanonPlaceholder,
             RgctxUserLive,
-            (owner, user, slot) => ResolveRgctxSlot(
-                owner.Module,
-                new GenericContext(user.Context.TypeArgs, Array.Empty<TypeDesc>()),
-                user,
-                slot)),
+            ResolveClassRgctxSlot),
         new RgctxDimension<MethodInfo>(
             static owner => owner.SharedUsers,
             MethodInfo.CompareByOrder,
@@ -1270,6 +1333,29 @@ internal sealed partial class Compilation
     private RgctxSystem? _rgctx;
 
     private readonly Dictionary<ClassInfo, string?> _rgctxAnchorSyms = new();
+
+    /// <summary>The deepest type-argument nesting when planning began; see
+    /// <see cref="ResolveClassRgctxSlot"/>.</summary>
+    private int _planningFillDepth = int.MaxValue;
+
+    /// <summary>One class-registry slot's entry for <paramref name="user"/>. A table fills
+    /// every slot of its owner, whichever of the user's methods run, and an entry naming a
+    /// deeper instantiation of a self-nesting generic (<c>Nest&lt;Nest&lt;T&gt;&gt;
+    /// Wrap()</c>) makes that instantiation, whose own table makes the next. A user nested
+    /// deeper than every instantiation that existed when planning began was made by
+    /// planning itself, so its planning fill fails: the bodies reading the slot compile
+    /// per instantiation, and those reach only what the program calls.</summary>
+    private string ResolveClassRgctxSlot(ClassInfo owner, ClassInfo user, RgctxSlot slot)
+    {
+        if (Phase == EmitPhase.Planning && user.GenericDepth > _planningFillDepth)
+            throw new NotSupportedException(
+                $"rgctx: {user.Name} is nested deeper than any instantiation discovery made");
+        return ResolveRgctxSlot(
+            owner.Module,
+            new GenericContext(user.Context.TypeArgs, Array.Empty<TypeDesc>()),
+            user,
+            slot);
+    }
 
     /// <summary>Whether a grouped real instantiation can observe a runtime
     /// generic context at all — some method of its own is reachable (shared

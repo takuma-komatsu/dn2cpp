@@ -53,6 +53,22 @@ internal sealed partial class MethodCompiler
         Push(StackKind.Ref, "Dn2CppArrayRef*", expr);
     }
 
+    private static string AttributesTest(string word, string name)
+    {
+        var (mask, value) = name switch
+        {
+            "get_IsPrivate" => (0x7, 0x1),
+            "get_IsFamilyAndAssembly" => (0x7, 0x2),
+            "get_IsAssembly" => (0x7, 0x3),
+            "get_IsFamily" => (0x7, 0x4),
+            "get_IsFamilyOrAssembly" => (0x7, 0x5),
+            "get_IsHideBySig" or "get_IsNotSerialized" => (0x80, 0x80),
+            "get_IsPinvokeImpl" => (0x2000, 0x2000),
+            _ => throw new InvalidOperationException($"{name} is not an attributes-word predicate"),
+        };
+        return $"(int32_t)(({word} & 0x{mask:X}) == 0x{value:X})";
+    }
+
     private bool TryEmitReflectionIntrinsic(string declType, string name, MethodSignature<TypeDesc> sig)
     {
         // Shared-body candidate: a typeof over a placeholder-bearing type rides the
@@ -842,6 +858,12 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.I4, "int32_t", $"dn2cpp_fieldref_is_literal((Dn2CppFieldRef*)({f.Expr}))");
                 return true;
             }
+            case ("System.Reflection.FieldInfo", "GetRawConstantValue") when sig.ParameterTypes.Length == 0:
+            {
+                var f = Pop();
+                Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_fieldref_get_raw_constant_value((Dn2CppFieldRef*)({f.Expr}))");
+                return true;
+            }
             case ("System.Reflection.FieldInfo", "get_IsPublic"):
             {
                 var f = Pop();
@@ -924,7 +946,7 @@ internal sealed partial class MethodCompiler
                     return false;
                 var t = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*",
-                    $"((Dn2CppObject*)dn2cpp_type_get_method_full({Cast(t, "Dn2CppType*")}, {ma.Name}, {ma.GenericCount ?? "-1"}, {ma.Types ?? "nullptr"}, {ma.Flags ?? "28"}, {ma.CallConv ?? "0"}, {ma.Binder ?? "nullptr"}))");
+                    $"((Dn2CppObject*)dn2cpp_type_get_method_full({Cast(t, "Dn2CppType*")}, {ma.Name}, {ma.GenericCount ?? "-1"}, {ma.Types ?? "nullptr"}, {ma.Flags ?? "28"}, {ma.CallConv ?? "0"}, {ma.Binder ?? "nullptr"}, {ma.Declared}))");
                 var methodOrigin = _c.TransformArraySearchOrigin(t.ArraySearchOrigin,
                     ArraySearchFlowKind.MethodReturnType,
                     Compilation.ArraySearchSelector(ma.NameLiteral, ma.Flags is null ? 28 : ma.FlagsValue,
@@ -1020,19 +1042,22 @@ internal sealed partial class MethodCompiler
                     $"(dn2cpp_methodref_is_static((Dn2CppMethodRef*)({m.Expr})) != 0 ? 0x1 : 0x21)");
                 return true;
             }
-            case ("System.Reflection.MethodBase", "get_IsStatic"):
+            case ("System.Reflection.MethodBase" or "System.Reflection.MethodInfo"
+                    or "System.Reflection.ConstructorInfo", "get_IsStatic"):
             {
                 var m = Pop();
                 Push(StackKind.I4, "int32_t", $"dn2cpp_methodref_is_static((Dn2CppMethodRef*)({m.Expr}))");
                 return true;
             }
-            case ("System.Reflection.MethodBase", "get_IsSpecialName"):
+            case ("System.Reflection.MethodBase" or "System.Reflection.MethodInfo"
+                    or "System.Reflection.ConstructorInfo", "get_IsSpecialName"):
             {
                 var m = Pop();
                 Push(StackKind.I4, "int32_t", $"dn2cpp_methodref_is_specialname((Dn2CppMethodRef*)({m.Expr}))");
                 return true;
             }
-            case ("System.Reflection.MethodBase", "get_IsPublic"):
+            case ("System.Reflection.MethodBase" or "System.Reflection.MethodInfo"
+                    or "System.Reflection.ConstructorInfo", "get_IsPublic"):
             {
                 var m = Pop();
                 Push(StackKind.I4, "int32_t", $"dn2cpp_methodref_is_public((Dn2CppMethodRef*)({m.Expr}))");
@@ -1247,7 +1272,7 @@ internal sealed partial class MethodCompiler
                     return false;
                 var t = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*",
-                    $"((Dn2CppObject*)dn2cpp_type_get_property_full({Cast(t, "Dn2CppType*")}, {pa.Name}, {pa.Flags ?? "28"}, {pa.ReturnType ?? "nullptr"}, {pa.Types ?? "nullptr"}, {pa.Binder ?? "nullptr"}))");
+                    $"((Dn2CppObject*)dn2cpp_type_get_property_full({Cast(t, "Dn2CppType*")}, {pa.Name}, {pa.Flags ?? "28"}, {pa.ReturnType ?? "nullptr"}, {pa.Types ?? "nullptr"}, {pa.Binder ?? "nullptr"}, {pa.Declared}))");
                 _stack[^1] = _stack[^1] with { ArraySearchOrigin =
                     _c.TransformArraySearchOrigin(t.ArraySearchOrigin,
                         ArraySearchFlowKind.PropertyType,
@@ -1719,7 +1744,7 @@ internal sealed partial class MethodCompiler
             {
                 var a = Pop();
                 PushReflectionMemberArray(
-                    $"dn2cpp_enum_get_names({Cast(a, "Dn2CppType*")})", sig.ReturnType);
+                    $"dn2cpp_type_get_enum_names({Cast(a, "Dn2CppType*")})", sig.ReturnType);
                 return true;
             }
             // Nested types. The BindingFlags overloads route to the same runtime
@@ -1793,10 +1818,9 @@ internal sealed partial class MethodCompiler
             }
             // Type.MakeArrayType(): resolve the SZ-array Type against the AOT image;
             // an array type never statically instantiated throws NotSupportedException
-            // (the same AOT boundary as MakeGenericType). The rank overload throws
-            // the catchable NotSupportedException unconditionally: it denotes a
-            // MULTIDIMENSIONAL array type even for rank 1 (T[*], not T[]), and MD
-            // arrays have no reflected registry identity in the image.
+            // (the same AOT boundary as MakeGenericType). The rank overload checks
+            // invalid ranks and ByRef-like elements before the AOT boundary; even
+            // rank 1 denotes T[*], not T[], and MD arrays have no reflected identity.
             case ("System.Type", "MakeArrayType") when sig.ParameterTypes.Length == 0:
             {
                 var a = Pop();
@@ -1808,10 +1832,10 @@ internal sealed partial class MethodCompiler
             }
             case ("System.Type", "MakeArrayType") when sig.ParameterTypes.Length == 1:
             {
-                Pop(); // rank
-                Pop(); // the type receiver
-                Emit("dn2cpp_throw_not_supported();"); // MD array types are not modeled
-                Push(StackKind.Ref, "Dn2CppType*", "nullptr"); // unreachable; stack typing only
+                var rank = Pop();
+                var a = Pop();
+                Push(StackKind.Ref, "Dn2CppType*",
+                    $"dn2cpp_type_make_array_type_rank({Cast(a, "Dn2CppType*")}, {Cast(rank, "int32_t")})");
                 return true;
             }
             case ("System.Type", "GetEnumValuesAsUnderlyingType") when sig.ParameterTypes.Length == 0:
@@ -2069,6 +2093,16 @@ internal sealed partial class MethodCompiler
                 return true;
             }
             case ("System.Reflection.MethodBase" or "System.Reflection.MethodInfo"
+                    or "System.Reflection.ConstructorInfo",
+                "get_IsPrivate" or "get_IsFamily" or "get_IsAssembly" or "get_IsFamilyOrAssembly"
+                    or "get_IsFamilyAndAssembly" or "get_IsHideBySig"):
+            {
+                var m = Pop();
+                Push(StackKind.I4, "int32_t",
+                    AttributesTest($"dn2cpp_methodref_attributes((Dn2CppMethodRef*)({m.Expr}))", name));
+                return true;
+            }
+            case ("System.Reflection.MethodBase" or "System.Reflection.MethodInfo"
                     or "System.Reflection.ConstructorInfo", "get_IsConstructor"):
             {
                 var m = Pop();
@@ -2136,6 +2170,14 @@ internal sealed partial class MethodCompiler
             {
                 var f = Pop();
                 Push(StackKind.I4, "int32_t", $"dn2cpp_fieldref_is_private((Dn2CppFieldRef*)({f.Expr}))");
+                return true;
+            }
+            case ("System.Reflection.FieldInfo", "get_IsFamily" or "get_IsAssembly" or "get_IsFamilyOrAssembly"
+                or "get_IsFamilyAndAssembly" or "get_IsNotSerialized" or "get_IsPinvokeImpl"):
+            {
+                var f = Pop();
+                Push(StackKind.I4, "int32_t",
+                    AttributesTest($"dn2cpp_fieldref_attributes((Dn2CppFieldRef*)({f.Expr}))", name));
                 return true;
             }
             case ("System.Reflection.FieldInfo", "get_IsSpecialName"):
@@ -2343,6 +2385,16 @@ internal sealed partial class MethodCompiler
         public string? CallConv;
         public string? ReturnType;
         public string? Types;
+
+        /// <summary>The DN2CPP_LOOKUP_* mask of the optional parameters the overload
+        /// has, which the runtime validates before the lookup.</summary>
+        public string Declared => (GenericCount, Types) switch
+        {
+            (null, null) => "0",
+            (not null, null) => "DN2CPP_LOOKUP_ARITY",
+            (null, not null) => "DN2CPP_LOOKUP_TYPES",
+            _ => "DN2CPP_LOOKUP_ARITY | DN2CPP_LOOKUP_TYPES",
+        };
     }
 
     private enum LookupSlot { Name, GenericCount, Flags, Binder, CallConv, ReturnType, Types, Modifiers }

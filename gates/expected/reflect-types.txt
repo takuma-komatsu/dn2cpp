@@ -1358,8 +1358,8 @@ r-member string.Empty via GetMember = 1
 r-bindflags TimeSpan public|static = 25 instance = 0
 == bound handle residue: the declined tables, stated ==
 r-DIVERGES Type.GetFields = 0 Module.GetFields = 0
-r-DIVERGES methods int=0 decimal=0 string=0 StringBuilder=0
-r-DIVERGES props string=0 decimal=0 TimeSpan=0 DateTime=0
+r-DIVERGES methods int=0 decimal=0 string=2 StringBuilder=0
+r-DIVERGES props string=2 decimal=0 TimeSpan=0 DateTime=0
 r-ok itfs int:IConvertible=True decimal:IComparable=True DateTime:IFormattable=True StringBuilder:ISerializable=True
 r-ok assignable IConvertible<-int = True IComparable<-decimal = True IFormattable<-DateTime = True
 r-ok GetInterface IConvertible on int = IConvertible

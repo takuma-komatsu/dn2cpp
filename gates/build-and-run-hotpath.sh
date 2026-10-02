@@ -45,6 +45,8 @@
 #     inside the marked body and passes verification. This check applies to
 #     these two metadata reads; invocation remains a rejection case.
 source "$(dirname "$0")/_common.sh"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/HotPathNoAllocMixedBad/ReflectionNoAllocHelpersOnly.csproj samples/dotnet/HotPathNoAllocMixedBad/ReflectionNoAllocHelpersOnlyProgram.cs"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|reflection-noalloc-helpers-v1"
 
 # Every block under an emitter-stamped `// Namespace.Class::Name` header — a
 # generic method's instantiations share the header, so all are collected.
@@ -316,10 +318,14 @@ arr_app="samples/dotnet/HotPathNoAllocArrayBad/bin/$CONFIG/$TFM/HotPathNoAllocAr
 deep_app="samples/dotnet/HotPathNoAllocDeepBad/bin/$CONFIG/$TFM/HotPathNoAllocDeepBad.dll"
 virt_app="samples/dotnet/HotPathNoAllocVirtBad/bin/$CONFIG/$TFM/HotPathNoAllocVirtBad.dll"
 mixed_app="samples/dotnet/HotPathNoAllocMixedBad/bin/$CONFIG/$TFM/HotPathNoAllocMixedBad.dll"
+build_proj samples/dotnet/HotPathNoAllocMixedBad/ReflectionNoAllocHelpersOnly.csproj
+reflection_noalloc_app="samples/dotnet/HotPathNoAllocMixedBad/bin/$CONFIG/$TFM/ReflectionNoAllocHelpersOnly.dll"
 nb_out="artifacts/hotpath-noalloc-bad"
 rm -rf "$nb_out"; mkdir -p "$nb_out"
-if gate_cache_check "$nb_out" "hotpath-noalloc-bad|cli:$(_gate_cli_hash)|$nb_corelib" \
-        "$arr_app" "$deep_app" "$virt_app" "$mixed_app"; then
+if gate_cache_check "$nb_out" "hotpath-noalloc-bad|cli:$(_gate_cli_hash)|$nb_corelib$(_gate_ctx_extras)" \
+        "$arr_app" "$deep_app" "$virt_app" "$mixed_app" "$reflection_noalloc_app" \
+        samples/dotnet/HotPathNoAllocMixedBad/ReflectionNoAllocHelpersOnly.csproj \
+        samples/dotnet/HotPathNoAllocMixedBad/ReflectionNoAllocHelpersOnlyProgram.cs; then
     gate_cache_hit_msg
     exit 0
 fi
@@ -377,6 +383,15 @@ assert_noalloc_reject "$mixed_app" "directly-emitted allocation helpers" \
     "ChopFirst" "dn2cpp_str_substring" \
     "CornerSum" "dn2cpp_newmdarr" \
     "AdvanceInvocation" "dn2cpp_delegate_try_get_at("
+
+assert_noalloc_reject "$reflection_noalloc_app" "ordinary reflection allocation and dispatch helpers" \
+    "HotPath(NoAlloc)" \
+    "Make" "dn2cpp_activator_create_instance" \
+    "Construct" "dn2cpp_ctorref_invoke(" \
+    "ReadField" "dn2cpp_fieldref_get_value(" \
+    "WriteField" "dn2cpp_fieldref_set_value(" \
+    "WriteProperty" "dn2cpp_propref_set_value" \
+    "InvokeMethod" "dn2cpp_methodref_invoke("
 
 gate_cache_commit
 echo "OK: NoAlloc verifier rejects direct/deep allocation, dynamic dispatch, and the intrinsic allocation-helper families"

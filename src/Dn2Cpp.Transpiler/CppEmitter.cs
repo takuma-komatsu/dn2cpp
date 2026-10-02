@@ -1435,7 +1435,7 @@ internal sealed partial class CppEmitter
     /// <para>Zero holds because for both mouths the declared set is filled by a PAIRING that
     /// mirrors the mouth: <c>TypeMetadataEmitter.NoteReflectedMemberArrayElements</c>
     /// pre-notes exactly the member types the reflection tables go on to render, and
-    /// <c>Compilation.NoteAttrArgArrayType</c> notes an attribute argument's element in the
+    /// <c>Compilation.NoteAttrArg</c> notes an attribute argument's element in the
     /// same loop that reaches the attribute's ctor. A "no" means a pairing has come
     /// apart.</para>
     ///
@@ -1473,8 +1473,8 @@ internal sealed partial class CppEmitter
             return;
         }
         sb.AppendLine("Note the element where the mouth's pairing does: a reflected member type "
-                      + "through TypeMetadataEmitter.NoteReflectedMemberArrayElements, an attribute "
-                      + "argument through Compilation.NoteAttrArgArrayType. Both run before the "
+                      + "through TypeMetadataEmitter.NoteReflectedMemberTypes, an attribute "
+                      + "argument through Compilation.NoteAttrArg. Both run before the "
                       + "declaration loops, which is what makes the handle exist.");
         sb.Append($"Raise {EnvKnobs.MaxArrayTypeInfoDegrades}=<n> to accept them (cap is {cap}) — the "
                   + "degrade is then reported instead of thrown.");
@@ -2168,9 +2168,10 @@ internal sealed partial class CppEmitter
                 // whose members were never decoded cannot own a reachable method (reaching
                 // one means having resolved it, and resolving it is what decodes them), and
                 // a bodyless method has nothing to compile — except an address-taken
-                // P/Invoke, whose forwarder body is synthesized below, and whose noting
-                // ldftn may not have run yet.
-                if (!cls.MembersReady || (m.Rva == 0 && !_c.PInvokeFtnTargets.Contains(m)))
+                // P/Invoke or abstract intrinsic-type member, whose body is synthesized
+                // below, and whose noting ldftn/ldvirtftn may not have run yet.
+                if (!cls.MembersReady || (m.Rva == 0 && !_c.PInvokeFtnTargets.Contains(m)
+                        && !_c.IntrinsicFtnTargets.Contains(m)))
                 {
                     pending[keep++] = m;
                     continue;
@@ -4320,61 +4321,152 @@ internal sealed partial class CppEmitter
         var args = new List<string>();
         for (int i = 0; i < da.Fixed.Length; i++)
             args.Add(RenderAttrDisplayValue(da.Fixed[i].Type, da.Fixed[i].Value, true));
-        foreach (var named in da.Named)
-            args.Add((named.Name ?? "") + " = "
-                + RenderAttrDisplayValue(named.Type, named.Value, false));
+        // CustomAttributeData lists named arguments in the order its type enumerates
+        // members, not in blob order; the blob position only breaks a tie.
+        var named = new List<(long Order, int Position, string Text)>();
+        for (int i = 0; i < da.Named.Length; i++)
+        {
+            var na = da.Named[i];
+            bool cast = NamedArgDeclaredType(da.AttrClass, na) is { IsObject: true };
+            named.Add((NamedArgOrder(da.AttrClass, na), i,
+                (na.Name ?? "") + " = " + RenderAttrDisplayValue(na.Type, na.Value, cast)));
+        }
+        named.Sort((a, b) => a.Order != b.Order ? a.Order.CompareTo(b.Order) : a.Position.CompareTo(b.Position));
+        foreach (var n in named)
+            args.Add(n.Text);
         string type = ReflectionSignatureType(TypeDesc.MakeClass(da.AttrClass), true);
         return "[" + type + "(" + string.Join(", ", args) + ")]";
     }
 
-    private string RenderAttrDisplayValue(TypeDesc type, object? value, bool typed)
+    /// <summary>One argument as CustomAttributeTypedArgument.ToString spells it.
+    /// <paramref name="type"/> is the encoded type; <paramref name="cast"/> prefixes it
+    /// where the context does not already name it: a positional argument, an
+    /// object-typed named member, an object[] element. A char, a non-null string, a
+    /// Type and an array never take the prefix; an enum takes its FullName.</summary>
+    private string RenderAttrDisplayValue(TypeDesc type, object? value, bool cast)
     {
+        if (type.Kind == TypeKind.Class && type.Class!.IsEnum)
+        {
+            // The raw underlying value: a ulong enum's may exceed long.MaxValue.
+            string raw = System.Convert.ToString(value, AttrCI) ?? "";
+            return cast ? "(" + AttrTypeFullName(type) + ")" + raw : raw;
+        }
+        if (value is null)
+            return cast ? "(" + AttrTypeName(type) + ")null" : "null";
         if (type.Kind == TypeKind.SZArray)
         {
-            if (value is null)
-                return typed ? "(" + ReflectionAttributeType(type) + ")null" : "null";
             if (value is not System.Collections.Immutable.ImmutableArray<CustomAttributeTypedArgument<TypeDesc>> items)
                 return "null";
-            string elem = ReflectionAttributeType(type.Element!);
+            var element = type.Element!;
+            string elem = element.Kind == TypeKind.Class && element.Class!.IsEnum
+                ? AttrTypeFullName(element)
+                : AttrTypeName(element);
             string values = string.Join(", ", items.Select(
-                x => RenderAttrDisplayValue(type.Element!, x.Value, false)));
+                x => RenderAttrDisplayValue(x.Type, x.Value, element.IsObject)));
             return "new " + elem + "[" + items.Length + "] { " + values + " }";
         }
         if (IsTypeTarget(type))
-        {
-            if (value is null)
-                return typed ? "(Type)null" : "null";
             return value is TypeDesc td
-                ? "typeof(" + ReflectionSignatureType(td, true) + ")"
+                ? "typeof(" + AttrTypeFullName(td) + ")"
                 : "null";
-        }
-        string rendered;
-        if (value is null)
-            rendered = "null";
-        else if (type.IsString)
-            rendered = "\"" + value + "\"";
-        else if (type.Kind == TypeKind.Class && type.Class!.IsEnum)
-            rendered = System.Convert.ToInt64(value, AttrCI).ToString(AttrCI);
-        else if (type.Kind == TypeKind.Primitive && type.Primitive == PrimitiveTypeCode.Boolean)
-            rendered = System.Convert.ToBoolean(value, AttrCI) ? "True" : "False";
-        else if (type.Kind == TypeKind.Primitive && type.Primitive == PrimitiveTypeCode.Char)
-            rendered = "'" + value.ToString()!.Replace("'", "\\'") + "'";
-        else
-            rendered = System.Convert.ToString(value, AttrCI) ?? "null";
-        // CustomAttributeData keeps the explicit type cast for scalar numeric/
-        // enum arguments, but a non-null string is already self-describing.
-        // A null string does keep its cast to disambiguate the blob type.
-        if (!typed || (type.IsString && value is not null))
-            return rendered;
-        return "(" + ReflectionAttributeType(type) + ")" + rendered;
+        if (type.IsString)
+            return "\"" + value + "\"";
+        if (type.Kind == TypeKind.Primitive && type.Primitive == PrimitiveTypeCode.Char)
+            return "'" + value + "'";
+        string rendered = type.Kind == TypeKind.Primitive && type.Primitive == PrimitiveTypeCode.Boolean
+            ? (System.Convert.ToBoolean(value, AttrCI) ? "True" : "False")
+            : System.Convert.ToString(value, AttrCI) ?? "null";
+        return cast ? "(" + AttrTypeName(type) + ")" + rendered : rendered;
     }
 
-    private string ReflectionAttributeType(TypeDesc type) => type.Kind switch
+    /// <summary>Type.FullName, which CustomAttributeData spells for a Type value inside
+    /// typeof(…) and for an enum's type: a closed generic lists each argument with its
+    /// assembly's display name.</summary>
+    private string AttrTypeFullName(TypeDesc t)
+    {
+        if (t.Kind == TypeKind.SZArray)
+            return AttrTypeFullName(t.Element!) + "[]";
+        if (t.Kind == TypeKind.MDArray)
+            return AttrTypeFullName(t.Element!) + "[" + new string(',', t.Rank - 1) + "]";
+        if (t is not { Kind: TypeKind.Class, Class: { Context.TypeArgs.Length: > 0 } cls })
+            return ReflectionSignatureType(t, true);
+        var args = cls.Context.TypeArgs.Select(
+            a => "[" + AttrTypeFullName(a) + ", " + AttrTypeAssembly(a) + "]");
+        return RawSignatureProvider.TypeDefinitionName(cls.Module.Reader, cls.Handle)
+            + "[" + string.Join(",", args) + "]";
+    }
+
+    /// <summary>The display name of the assembly defining a generic argument; a
+    /// primitive's is CoreLib's.</summary>
+    private string AttrTypeAssembly(TypeDesc t) => t.Kind switch
+    {
+        TypeKind.SZArray or TypeKind.MDArray => AttrTypeAssembly(t.Element!),
+        TypeKind.Class => AssemblyDisplayName(t.Class!.Module),
+        _ => _c.FindClassByFullName(ReflectionSignatureType(t, true)) is { } c
+            ? AssemblyDisplayName(c.Module)
+            : "System.Private.CoreLib",
+    };
+
+    /// <summary>Type.Name of an attribute argument's encoded type, which
+    /// CustomAttributeData casts every non-enum value by.</summary>
+    private static string AttrTypeName(TypeDesc type) => type.Kind switch
     {
         TypeKind.Primitive => type.Primitive.ToString(),
-        TypeKind.SZArray => ReflectionAttributeType(type.Element!) + "[]",
-        _ => ReflectionSignatureType(type),
+        TypeKind.SZArray => AttrTypeName(type.Element!) + "[]",
+        TypeKind.Class => type.Class!.Name,
+        TypeKind.External => type.ExternalName![(type.ExternalName!.LastIndexOf('.') + 1)..],
+        _ => type.ToString(),
     };
+
+    /// <summary>The declared type of the member a named argument sets, found most-derived
+    /// first as <see cref="RenderNamedArg"/> finds it: the field's type, or the setter's
+    /// parameter type.</summary>
+    private static TypeDesc? NamedArgDeclaredType(ClassInfo cls, CustomAttributeNamedArgument<TypeDesc> na)
+    {
+        if (na.Name is not { } name)
+            return null;
+        if (na.Kind == CustomAttributeNamedArgumentKind.Field)
+            return cls.InstanceFieldOnBaseChain(name)?.Type;
+        return cls.InstanceMethodOnBaseChain("set_" + name) is { } setter && setter.Signature.ParameterTypes.Length > 0
+            ? setter.Signature.ParameterTypes[0]
+            : null;
+    }
+
+    /// <summary>Where CustomAttributeData lists a named argument: the order GetFields and
+    /// then GetProperties enumerate the attribute type in — fields before properties,
+    /// each most-derived class first, then metadata order.</summary>
+    private static long NamedArgOrder(ClassInfo cls, CustomAttributeNamedArgument<TypeDesc> na)
+    {
+        bool field = na.Kind == CustomAttributeNamedArgumentKind.Field;
+        int depth = 0;
+        for (var c = cls; c is not null; c = c.BaseClass, depth++)
+        {
+            int index = -1;
+            if (field)
+            {
+                for (int i = 0; i < c.Fields.Count && index < 0; i++)
+                    if (!c.Fields[i].IsStatic && c.Fields[i].Name == na.Name)
+                        index = i;
+            }
+            else if (!c.Handle.IsNil && na.Name is { } name)
+            {
+                var reader = c.Module.Reader;
+                int i = 0;
+                foreach (var ph in reader.GetTypeDefinition(c.Handle).GetProperties())
+                {
+                    if (reader.StringComparer.Equals(reader.GetPropertyDefinition(ph).Name, name))
+                    {
+                        index = i;
+                        break;
+                    }
+                    i++;
+                }
+            }
+            if (index >= 0)
+                return ((field ? 0L : 1L) << 48) | ((long)depth << 24) | (uint)index;
+        }
+        return long.MaxValue;
+    }
 
     /// <summary>Emits a create-function definition (into <paramref name="sb"/>, right
     /// before the attribute table that names it — the same TU, so the file-local
@@ -4401,7 +4493,7 @@ internal sealed partial class CppEmitter
         var argExprs = new List<string>();
         for (int i = 0; i < ps.Length; i++)
         {
-            if (RenderAttrValue(ps[i], da.Fixed[i].Value, pre, ref arrSeq) is not { } e)
+            if (RenderAttrValue(ps[i], da.Fixed[i].Type, da.Fixed[i].Value, pre, ref arrSeq) is not { } e)
                 return null;
             // A pointer-typed parameter (Type/string/array) gets an explicit cast to
             // the ctor's exact C++ parameter type (e.g. Dn2CppType* -> t_System_Type*
@@ -4440,25 +4532,24 @@ internal sealed partial class CppEmitter
     }
 
     /// <summary>A named attribute argument as a C++ statement: a direct field assignment
-    /// (kind Field) or a setter call (kind Property, whose accessor must be emitted). Null
-    /// when the member or its value shape is unsupported.</summary>
+    /// (kind Field) or a setter call (kind Property, whose accessor must be emitted). The
+    /// value renders at the member's declared type. Null when the member or its value
+    /// shape is unsupported.</summary>
     private string? RenderNamedArg(ClassInfo cls, CustomAttributeNamedArgument<TypeDesc> na,
         List<string> pre, ref int arrSeq)
     {
         if (na.Name is not { } name)
             return null;
-        if (RenderAttrValue(na.Type, na.Value, pre, ref arrSeq) is not { } val)
-            return null;
         // The named member may be declared on an attribute BASE class — walk the chain,
-        // most-derived first. The setter half is paired with the reach-side walk in
+        // most-derived first. The walk is paired with the reach-side one in
         // Compilation.ReachAttributesOf: both sides must agree, or the Reachable test below
-        // drops the whole attribute row.
+        // drops the whole attribute row, or a boxed enum names a type-info reach never noted.
         if (na.Kind == CustomAttributeNamedArgumentKind.Field)
         {
             // The C++ struct chains through its base, so o-> reaches an inherited
-            // field directly; no reach pairing exists (or is needed) for fields.
+            // field directly.
             var f = cls.InstanceFieldOnBaseChain(name);
-            if (f is null)
+            if (f is null || RenderNamedArgValue(f.Type, na, pre, ref arrSeq) is not { } val)
                 return null;
             string cppT = CppTypes.Of(f.Type);
             string store = cppT.EndsWith("*")
@@ -4472,9 +4563,14 @@ internal sealed partial class CppEmitter
         if (setter is null || !_c.Reachable.Contains(setter)
             || _backend.ShouldSkipMethodBody(setter.DeclaringClass, setter))
             return null;
-        string setterType = CppTypes.Of(setter.Signature.ParameterTypes[0]);
-        string setterValue = setterType.EndsWith("*") ? $"({setterType})({val})" : val;
-        return $"{setter.Emittable.CppName}(o, {setterValue});";
+        var paramType = setter.Signature.ParameterTypes[0];
+        if (RenderNamedArgValue(paramType, na, pre, ref arrSeq) is not { } pval)
+            return null;
+        // A pointer-typed value takes the same cast as a positional argument.
+        string paramT = CppTypes.Of(paramType);
+        return paramT.EndsWith("*")
+            ? $"{setter.Emittable.CppName}(o, ({paramT})({pval}));"
+            : $"{setter.Emittable.CppName}(o, {pval});";
     }
 
     /// <summary>An attribute argument value (positional or named) as an unboxed C++
@@ -4485,66 +4581,152 @@ internal sealed partial class CppEmitter
     /// pre-statements appended to <paramref name="pre"/>). Returns null for an
     /// unsupported shape (object-typed args, an unemitted Type) so the attribute is
     /// dropped.</summary>
-    private string? RenderAttrValue(TypeDesc target, object? value, List<string> pre, ref int arrSeq)
+    private string? RenderNamedArgValue(TypeDesc declared, CustomAttributeNamedArgument<TypeDesc> na,
+        List<string> pre, ref int arrSeq) =>
+        AttrEncodingMatches(declared, na.Type)
+            ? RenderAttrValue(declared, na.Type, na.Value, pre, ref arrSeq)
+            : null;
+
+    private static bool AttrEncodingMatches(TypeDesc declared, TypeDesc encoded)
     {
+        if (declared.IsObject)
+            return true;
+        if (IsTypeTarget(declared))
+            return IsTypeTarget(encoded);
+        if (declared.IsString)
+            return encoded.IsString;
+        return declared.Kind switch
+        {
+            TypeKind.SZArray => encoded.Kind == TypeKind.SZArray
+                && AttrEncodingMatches(declared.Element!, encoded.Element!),
+            TypeKind.Class => encoded.Kind == TypeKind.Class && encoded.Class == declared.Class,
+            TypeKind.Primitive => encoded.Kind == TypeKind.Primitive && encoded.Primitive == declared.Primitive,
+            _ => false,
+        };
+    }
+
+    private string? RenderAttrValue(TypeDesc target, TypeDesc encoded, object? value, List<string> pre, ref int arrSeq)
+    {
+        if (target.IsObject)
+            return RenderBoxedAttrValue(encoded, value, pre, ref arrSeq);
         if (target.Kind == TypeKind.SZArray)
             return RenderAttrArray(target.Element!, value, pre, ref arrSeq);
         if (IsTypeTarget(target))
         {
             if (value is null)
                 return "(Dn2CppType*)nullptr";
-            if (value is TypeDesc td)
-            {
-                // A closed, emitted type: its own reflectable ti_ handle.
-                if (td.Kind == TypeKind.Class && _emit.Contains(td.Class!))
-                    return $"dn2cpp_get_type_from_handle({TypeInfoRef(td.Class!, "custom-attribute Type argument")})";
-                // An OPEN generic definition — typeof(Foo<>) — decodes to an External
-                // TypeDesc carrying the CLR backtick name (no ClassInfo is minted for an
-                // open definition, so GetTypeFromSerializedName falls back to MakeExternal).
-                // It is never emitted as a bare ti_, so the _emit test above cannot see it
-                // and the whole attribute would drop (the array build short-circuits on the
-                // first null element) — which is how Godot's [AssemblyHasScripts] over
-                // abstract generic Node bases reached zero registered scripts. Route it to
-                // the shared open-definition handle (DN2CPP_TF_GENERICDEF), emitted by
-                // EmitTypeInfos for every definition with at least one emitted close;
-                // EmitTypeInfos precedes both attribute passes, so _genericDefSyms is
-                // complete here.
-                if (td.Kind == TypeKind.External
-                    && _genericDefSyms.TryGetValue(td.ExternalName!, out var defSym))
-                    return $"dn2cpp_get_type_from_handle(&{defSym})";
-                // An open definition with no emitted instantiation has no handle, so it
-                // stays unrenderable — and dropping it drops the WHOLE attribute. Keep
-                // that all-or-nothing contract (packing a shorter Type[] would silently
-                // change what a consumer like LookupScriptsInAssembly iterates), but make
-                // the drop visible rather than repeat the original silent failure. Scoped
-                // to backtick (generic) names so an ordinary tree-shaken typeof stays the
-                // quiet IL2CPP-strip it has always been.
-                if (td.Kind == TypeKind.External && td.ExternalName!.Contains('`'))
-                    Console.Error.WriteLine(
-                        $"warning: dropping a custom attribute whose typeof({td.ExternalName}) argument " +
-                        "names an open generic definition with no emitted instantiation (no reflectable type handle)");
-            }
+            if (value is not TypeDesc td)
+                return null;
+            if (AttrTypeHandle(td) is { } handle)
+                return $"dn2cpp_get_type_from_handle({handle})";
+            // An open definition with no emitted instantiation has no handle, so it
+            // stays unrenderable — and dropping it drops the WHOLE attribute. Keep
+            // that all-or-nothing contract (packing a shorter Type[] would silently
+            // change what a consumer like LookupScriptsInAssembly iterates), but make
+            // the drop visible. Scoped to open definition names (a backtick, no
+            // argument list) so an ordinary tree-shaken typeof stays a quiet
+            // IL2CPP-style strip.
+            if (td.Kind == TypeKind.External && td.ExternalName!.Contains('`')
+                && !td.ExternalName.Contains('['))
+                Console.Error.WriteLine(
+                    $"warning: dropping a custom attribute whose typeof({td.ExternalName}) argument " +
+                    "names an open generic definition with no emitted instantiation (no reflectable type handle)");
             return null;
         }
         if (target.IsString)
             return value is null ? "(Dn2CppString*)nullptr" : value is string s ? _literals.GetOrAdd(s) : null;
         if (target.Kind == TypeKind.Class && target.Class!.IsEnum)
-            return value is null ? null : $"(int32_t)({System.Convert.ToInt64(value, AttrCI)})";
+            return RenderPrimitiveAttrLiteral(target.Class!.EnumUnderlying, value) is { } literal
+                ? $"({CppTypes.Of(target)})({literal})"
+                : null;
         if (target.Kind == TypeKind.Primitive)
             return RenderPrimitiveAttrLiteral(target.Primitive, value);
         return null;
     }
 
+    /// <summary>The type-info handle a Type-valued attribute argument names, or null when
+    /// this emission declares none, which drops the attribute. Compilation.NoteAttrArg
+    /// notes the identity closure of every rendered row's arguments, which is what
+    /// declares an array's precise handle and keeps a class's own.</summary>
+    private string? AttrTypeHandle(TypeDesc td)
+    {
+        switch (td.Kind)
+        {
+            case TypeKind.Primitive:
+                return MethodCompiler.TypeInfoExprOf(td);
+            case TypeKind.Class:
+                // An emitted type: its own reflectable ti_ handle. A closed generic's is
+                // defined only where its instantiation's type-info is emitted. An enum's
+                // comes from the referenced types alone, whether or not the enum is in the
+                // emit set, so only the symbol answers for it.
+                var cls = td.Class!;
+                bool handled = cls.IsEnum
+                    ? TypeInfoSymbolDefined(cls.CppTypeInfoName)
+                    : _emit.Contains(cls)
+                        && (cls.Context.TypeArgs.Length == 0 || TypeInfoSymbolDefined(cls.CppTypeInfoName));
+                return handled ? TypeInfoRef(cls, "custom-attribute Type argument") : null;
+            case TypeKind.SZArray:
+                string sz = "ti_arr_" + Compilation.ArrayElemMangle(td.Element!);
+                return TypeInfoSymbolDefined(sz) ? "&" + sz : null;
+            case TypeKind.MDArray:
+                string md = "ti_md_" + Compilation.ArrayElemMangle(td);
+                return TypeInfoSymbolDefined(md) ? "&" + md : null;
+            case TypeKind.External:
+                // An OPEN generic definition — typeof(Foo<>) — decodes to an External
+                // TypeDesc carrying the CLR backtick name (no ClassInfo is minted for an
+                // open definition, so Compilation.ResolveSerializedTypeName answers
+                // External). It is never emitted as a bare ti_, and dropping it drops the
+                // whole attribute (the array build short-circuits on the first null
+                // element): Godot's [AssemblyHasScripts] over abstract generic Node bases
+                // would register no scripts. Route it to the shared open-definition handle
+                // (DN2CPP_TF_GENERICDEF), emitted by EmitTypeInfos for every definition
+                // with at least one emitted close; EmitTypeInfos precedes both attribute
+                // passes, so _genericDefSyms is complete here.
+                return _genericDefSyms.TryGetValue(td.ExternalName!, out var defSym) ? "&" + defSym : null;
+        }
+        return null;
+    }
+
+    /// <summary>An object-typed argument or object[] element: the value boxed at the type
+    /// the blob encoded for it, through a pre-statement local of the box payload's model
+    /// width (<see cref="CppTypes.Of"/>, as the IL box path stores it). A null of any
+    /// encoded type is a null reference. Null for an encoded type the image cannot box,
+    /// so the attribute is dropped.</summary>
+    private string? RenderBoxedAttrValue(TypeDesc encoded, object? value, List<string> pre, ref int arrSeq)
+    {
+        if (value is null)
+            return "(Dn2CppObject*)nullptr";
+        if (encoded.Kind == TypeKind.SZArray || IsTypeTarget(encoded) || encoded.IsString)
+            return RenderAttrValue(encoded, encoded, value, pre, ref arrSeq) is { } reference
+                ? $"(Dn2CppObject*)({reference})"
+                : null;
+        string? ti = null;
+        if (encoded.Kind == TypeKind.Class && encoded.Class!.IsEnum)
+            // Noted by Compilation.ReachAttributesOf for every boxed enum argument.
+            ti = TypeInfoRef(encoded.Class!, "custom-attribute boxed enum argument");
+        else if (encoded.Kind == TypeKind.Primitive && !encoded.IsObject)
+            ti = MethodCompiler.TypeInfoExprOf(encoded);
+        if (ti is null || RenderAttrValue(encoded, encoded, value, pre, ref arrSeq) is not { } literal)
+            return null;
+        string ct = CppTypes.Of(encoded);
+        int n = arrSeq++;
+        pre.Add($"{ct} attrboxv{n} = ({ct})({literal});");
+        pre.Add($"Dn2CppObject* attrbox{n} = dn2cpp_box({ti}, &attrboxv{n}, sizeof({ct}));");
+        return $"attrbox{n}";
+    }
+
     /// <summary>An array-valued attribute argument (e.g. <c>new[] { typeof(A), ... }</c>)
     /// as a fresh array local built by pre-statements. Element kinds mirror the scalar
-    /// support of <see cref="RenderAttrValue"/>: Type / string (a Dn2CppArrayRef), and
-    /// the primitives / enums (the i4 or packed element-width rep, matching what every
-    /// ldelem/stelem in user code addresses via CppTypes.ArrayCppType). A
-    /// null array renders as a typed null. Returns the local's name, or null when the
-    /// element shape (or any element) is unsupported so the attribute is dropped.</summary>
+    /// support of <see cref="RenderAttrValue"/>: Type / string / object (a Dn2CppArrayRef,
+    /// an object element boxed at its own encoded type), and the primitives / enums (the
+    /// i4 or packed element-width rep, matching what every ldelem/stelem in user code
+    /// addresses via CppTypes.ArrayCppType). A null array renders as a typed null. Nested
+    /// arrays and boxes are built before the array that holds them. Returns the local's
+    /// name, or null when the element shape (or any element) is unsupported so the
+    /// attribute is dropped.</summary>
     private string? RenderAttrArray(TypeDesc element, object? value, List<string> pre, ref int arrSeq)
     {
-        bool refElem = IsTypeTarget(element) || element.IsString;
+        bool refElem = IsTypeTarget(element) || element.IsString || element.IsObject;
         if (!refElem && element.Kind != TypeKind.Primitive
             && !(element.Kind == TypeKind.Class && element.Class!.IsEnum))
             return null;
@@ -4558,14 +4740,15 @@ internal sealed partial class CppEmitter
         var elemExprs = new List<string>();
         foreach (var item in items)
         {
-            if (RenderAttrValue(element, item.Value, pre, ref arrSeq) is not { } e)
+            if (RenderAttrValue(element, item.Type, item.Value, pre, ref arrSeq) is not { } e)
                 return null;
             elemExprs.Add(e);
         }
         string name = $"attrarr{arrSeq++}";
         // Allocate with the precise per-element handle whenever it is header-declared (the
-        // reach-side pairing, Compilation.NoteAttrArgArrayType, notes every SZArray-typed
-        // attribute argument's element, so for a reached row it always is). An untagged
+        // reach-side pairing, Compilation.NoteAttrArg, notes the element of every
+        // SZArray-typed attribute value at every nesting level, so for a reached row it
+        // always is). An untagged
         // allocation carries a shared imprecise handle with no interface-dispatch map, so
         // the first IEnumerable<T> dispatch over the array inside the attribute ctor aborts
         // loudly. The gate is ArrayTypeInfoDeclared — the same one FieldTypeInfoExpr's

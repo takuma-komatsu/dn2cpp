@@ -9,6 +9,8 @@ namespace MultiAssembly
     {
         private static int Main()
         {
+            System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+            System.Globalization.CultureInfo.CurrentUICulture = System.Globalization.CultureInfo.InvariantCulture;
             // The REFERENCED library's [ModuleInitializer] (MiniBcl.Boot.Init) must already
             // have run: nothing calls it, so it runs only if the library's `<Module>` .cctor
             // is rooted across the -r boundary. A reference assembly's .cctor is otherwise
@@ -242,6 +244,22 @@ namespace MultiAssembly
                 + " constructed=" + firstAssembly.GetType().IsGenericType);
             Console.WriteLine("metadata-assembly-end");
             MetadataCompression.Run();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_LIBRARY_ENUM_ATTRIBUTE") == "1")
+                return 0;
+            object[] shades = typeof(ShadeTagged).GetCustomAttributes(typeof(NamesTypeAttribute), false);
+            Type shade = shades.Length == 1 ? ((NamesTypeAttribute)shades[0]).Type : null;
+            Console.WriteLine("lib enum attribute: " + shades.Length + " "
+                + (shade is null ? "null" : shade.FullName + " enum=" + shade.IsEnum
+                    + " underlying=" + Enum.GetUnderlyingType(shade).Name));
+            Console.WriteLine("library enum attribute end");
+            object[] qualified = typeof(QualifiedTagged).GetCustomAttributes(typeof(NamesTypeAttribute), false);
+            Type qualifiedType = qualified.Length == 1 ? ((NamesTypeAttribute)qualified[0]).Type : null;
+            Console.WriteLine("qualified attribute assembly: "
+                + (qualifiedType is null ? "null" : qualifiedType.GetElementType().Assembly.FullName.StartsWith("MultiAssemblyAlias,")));
+            Console.WriteLine("qualified attribute argument: "
+                + (qualifiedType is null ? "null" : qualifiedType.GetElementType().GetGenericArguments()[0].Assembly.FullName.StartsWith("MultiAssemblyAlias,")));
+            Console.WriteLine("qualified attribute end");
+
             return 0;
         }
 
@@ -266,4 +284,17 @@ namespace MultiAssembly
             return typeof(T).GetConstructors();
         }
     }
+    [AttributeUsage(AttributeTargets.Class)]
+    internal sealed class NamesTypeAttribute : Attribute
+    {
+        public NamesTypeAttribute(Type type) { Type = type; }
+
+        public Type Type { get; }
+    }
+
+    [NamesType(typeof(metadataAlias::MetadataAssemblyCollision.Subject<metadataAlias::MetadataAssemblyCollision.Subject<string>>[]))]
+    internal sealed class QualifiedTagged { }
+
+    [NamesType(typeof(MiniBcl.TagShade))]
+    internal sealed class ShadeTagged { }
 }

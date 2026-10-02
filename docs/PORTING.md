@@ -58,7 +58,7 @@ portable C++17 that names no operating system, and that compiles, links and runs
 Copy the directory, add the CMake arm (§3.3), and replace bodies one at a time. The
 `PAL_REFERENCE=1` axis of `gates/build-and-run-pal-reference.sh` keeps it working.
 
-The seam declares **eighteen** functions and two enums. Re-derive the function count:
+The seam declares **eighteen** functions, plus enums. Re-derive the function count:
 
 ```bash
 grep -cE '^[A-Za-z_].*\bdn2cpp_pal_[a-z_0-9]+\(' runtime/core/platform/dn2cpp_pal.h
@@ -87,9 +87,9 @@ documented "unavailable" answer that their callers handle:
 | `dn2cpp_pal_backtrace` | returns `0` | `runtime/core/dn2cpp_exceptions.cpp` stamps no trace and `Exception.StackTrace` stays null. The wasm arm returns `0` because `-fwasm-exceptions` exposes no unwinder and a release build carries no name section. |
 | `dn2cpp_pal_default_locale_name` | returns `0` | The caller reads it as the invariant culture. The wasm and reference arms return `0` unconditionally — neither has a user to ask. dn2cpp models no ICU, so an invariant default is correct behaviour, merely not localised. |
 
-Everything else — the four file-system calls, `getenv`, the three ANSI transforms,
-the process-wide barrier, the two time conversions, the usable-size query, and the
-two console entries — is a **correctness** obligation. Three are easy to implement
+Everything else — the file-system calls, `getenv`, the ANSI transforms,
+the process-wide barrier, the time conversions, the usable-size query, and the
+console entries — is a **correctness** obligation. Some are easy to implement
 wrongly in a way that compiles:
 
 - **`dn2cpp_pal_unlink` must preserve `errno`.** `ENOENT` is how "delete a
@@ -100,7 +100,7 @@ wrongly in a way that compiles:
   mprotect-IPI bounce to a plain seq_cst fence; wasm is a plain fence), but the
   caller in `runtime/core/intrinsics/dn2cpp_system_threading.cpp` has no arm for
   "this did nothing". A no-op implementation is a silent memory-model bug.
-- **The three ANSI functions are a per-OS transform, not a formality.** POSIX and
+- **The ANSI functions are a per-OS transform, not a formality.** POSIX and
   wasm delegate to the runtime's UTF-8 codec cores; Windows goes through
   `WideCharToMultiByte`/`MultiByteToWideChar` at `CP_ACP`. Getting this wrong does
   not crash — it silently changes what a P/Invoke marshals (H5).
@@ -113,7 +113,7 @@ parity contract, and the next caller will not check which targets were exempt.
 
 `runtime/core/platform/posix/dn2cpp_system_native.cpp` reimplements the part of
 dotnet/runtime's `libSystem.Native` that the real CoreLib's Unix flavour
-P/Invokes, plus the two Darwin bridges `dn2cpp_setattrlist` /
+P/Invokes, plus the Darwin bridges `dn2cpp_setattrlist` /
 `dn2cpp_fsetattrlist`. Count the entry points:
 
 ```bash
@@ -137,10 +137,10 @@ user identity, and the low-level monitor.
   modules are admitted to `Compilation.IsRuntimeProvidedPInvokeModule`. The port
   is a line in the transpiler and a `target_link_libraries` row.
 - **wasm defines 29.** They live in
-  `runtime/core/platform/wasm/dn2cpp_system_native_wasm.cpp`, in three groups.
+  `runtime/core/platform/wasm/dn2cpp_system_native_wasm.cpp`, in groups.
   The **non-file** entries are there each for their own reason:
   `SystemNative_GetCryptographicallySecureRandomBytes`, whose caller is not a
-  P/Invoke at all; `SystemNative_SysLog` and `SystemNative_Write`, the two sinks
+  P/Invoke at all; `SystemNative_SysLog` and `SystemNative_Write`, the sinks
   of `DebugProvider.WriteCore`, hence reached by any game that logs;
   `SystemNative_Malloc` and `SystemNative_Free`, which the intercepted
   `Marshal`/`NativeMemory` surface never reaches but the BSTR allocators and the
@@ -153,7 +153,7 @@ user identity, and the low-level monitor.
   `dn2cpp_tickcount64` intrinsic. The timestamp-resolution entry has no
   counterpart here because `Stopwatch.Frequency` is a constant on this CoreLib.
 
-  The **error** entries — the `errno` accessors and the two PAL/platform code
+  The **error** entries — the `errno` accessors and the PAL/platform code
   converters — ride in behind any of the others and behind every PAL failure the
   BCL turns into an exception, with `SystemNative_StrErrorR` formatting it.
 
@@ -162,7 +162,7 @@ user identity, and the low-level monitor.
   — they live in the page's memory and are gone when it unloads. It is not
   optional coverage, because a game does not opt into it: `Trace` with a
   `DefaultTraceListener` log file goes `File.AppendAllText` → `SafeFileHandle` →
-  the whole closure. Two entries degrade rather than fail, both where .NET treats
+  the whole closure. Some entries degrade rather than fail where .NET treats
   the call as a hint: `SystemNative_PosixFAdvise` is advisory, and
   `SystemNative_FAllocate` does nothing and reports success because MEMFS has no
   size-preserving preallocation primitive — and a preallocation that changed the
@@ -184,17 +184,17 @@ POSIX PAL, admitting import libraries, or a third thing.
 
 ### 2.3 The memory-mapped-file seam
 
-Seven entry points, declared in `runtime/core/dn2cpp_core.h`, implemented twice:
+Eight entry points, declared in `runtime/core/dn2cpp_core.h`, implemented twice:
 
 ```bash
 for f in posix/dn2cpp_mmap_posix windows/dn2cpp_mmap_windows; do
     echo "-- $f"
     grep -oE '^[A-Za-z_].*\bdn2cpp_mmap_[a-z_]+\(' runtime/core/platform/$f.cpp \
-      | grep -oE 'dn2cpp_mmap_[a-z_]+' | sort -u
+      | grep -v '^static ' | grep -oE 'dn2cpp_mmap_[a-z_]+' | sort -u
 done
 ```
 
-The entry-point sets are identical; the Windows file carries one extra *file-local*
+The entry-point sets are identical; the Windows file carries a *file-local*
 helper (`dn2cpp_mmap_allocation_granularity`) because `MapViewOfFile` demands 64
 KiB allocation-granularity alignment where POSIX `mmap` wants only page alignment —
 a real difference in the offset arithmetic a porter has to reproduce.
@@ -439,7 +439,7 @@ implies it.
 - **`Encoding.Default` reports UTF-8 on every OS and that is not what marshalling
   does**: default Ansi P/Invoke marshalling is the host's narrow encoding — `CP_ACP`
   with best-fit substitution on Windows, UTF-8 on POSIX — so a UTF-8 reading of
-  `new string(sbyte*)` corrupts non-ASCII text with no diagnostic. Hence three ANSI
+  `new string(sbyte*)` corrupts non-ASCII text with no diagnostic. Hence the ANSI
   seam functions, and the Windows arm's save/restore of `GetLastError()` around
   `MultiByteToWideChar`.
 - **The oracle has a host too.** An ANSI code page comes from a process image's
@@ -660,7 +660,7 @@ changes. Four in-repo things make that possible:
 |---|---|---|
 | the **stub** | `runtime/core/platform/reference/` — a complete implementation of the seam in portable C++17 that names no operating system. Copy the directory; do not start from §2.1 and an empty file. | `gates/build-and-run-pal-reference.sh` §3–4: the whole runtime builds with the host PAL swapped out, and a transpiled program runs on it and matches real .NET |
 | the **calloc GC path** | `-DDN2CPP_USE_GC=OFF` | `gates/build-and-run-pal-reference.sh` §6, the suite's only build of that configuration |
-| the **stdout hook** | `dn2cpp_pal_console_write` / `dn2cpp_pal_console_flush` in the seam. Every console byte the runtime emits leaves through them, so a target with no stdout implements two functions and touches no core file. | `gates/build-and-run-pal-reference.sh` §5, which installs a sink through the reference target's hook and diffs the captured bytes against the exact text the console family emits |
+| the **stdout hook** | `dn2cpp_pal_console_write` / `dn2cpp_pal_console_flush` in the seam. Every console byte the runtime emits leaves through them, so a target with no stdout implements these functions and touches no core file. | `gates/build-and-run-pal-reference.sh` §5, which installs a sink through the reference target's hook and diffs the captured bytes against the exact text the console family emits |
 | **stack→heap for large buffers** | `DN2CPP_MAX_STACK_FRAME` (default 4096) arms `-Werror=frame-larger-than` on the runtime's own targets; the functions that exceeded it are on the heap | the flag is a build error, and §3 of the same gate asserts the flag actually reached the compile line |
 
 Three rules that fell out of building it:

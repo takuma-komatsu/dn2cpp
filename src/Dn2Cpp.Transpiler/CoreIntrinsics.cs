@@ -1240,6 +1240,7 @@ internal static partial class CoreIntrinsics
         ["System.FormatException"] = "&dn2cpp_format_exception_type",
         ["System.IO.IOException"] = "&dn2cpp_io_exception_type",
         ["System.IO.FileNotFoundException"] = "&dn2cpp_file_not_found_exception_type",
+        ["System.IO.FileLoadException"] = "&dn2cpp_file_load_exception_type",
         ["System.IO.DirectoryNotFoundException"] = "&dn2cpp_directory_not_found_exception_type",
         // Raised by the Windows Path.GetFullPath arm. Without this row a
         // `catch (PathTooLongException)` binds an emitted type-info the runtime
@@ -1263,6 +1264,10 @@ internal static partial class CoreIntrinsics
         // same check the RankException row above covers.
         ["System.ArrayTypeMismatchException"] = "&dn2cpp_array_type_mismatch_exception_type",
         ["System.MissingMethodException"] = "&dn2cpp_missing_method_exception_type",
+        // FieldInfo.SetValue's refusal of a constant or a static read-only field.
+        ["System.FieldAccessException"] = "&dn2cpp_field_access_exception_type",
+        // MethodBase.Invoke's fault on a static abstract interface member.
+        ["System.BadImageFormatException"] = "&dn2cpp_bad_image_format_exception_type",
         // ResourceManager's missing-set diagnosis. The .NET documentation tells a caller to
         // write `catch (MissingManifestResourceException)`, and a clause bound to an emitted
         // ti_System_Resources_MissingManifestResourceException would compile, link, and not

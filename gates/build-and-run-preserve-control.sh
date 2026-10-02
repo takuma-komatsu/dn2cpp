@@ -3,6 +3,8 @@
 # while PreserveAttribute and merged Unity-format link.xml keep selected bodies.
 # ILDietControl also checks Array.Initialize constructors reached through method groups.
 source "$(dirname "$0")/_common.sh"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} "
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|attribute-object-prefix:${DN2CPP_BEFORE_ATTRIBUTE_OBJECT:-}"
 PYTHON=$(resolve_python) || gate_skip "no working Python 3 interpreter for ILDiet validation"
 
 PROJECT=PreserveControl
@@ -208,7 +210,20 @@ fi
 
 echo "== IL dispatch, initialization, layout and type-token reflection construction retain .NET behavior after stripping =="
 DIET_LIB="samples/dotnet/ILDietControlLib/bin/$CONFIG/$TFM/ILDietControlLib.dll"
+gate_extra_asserts() {
+    local out="$1" native before prefix
+    native=$(run_bounded "$out/ILDietControl$EXE_EXT") || return $?
+    native=$(strip_cr_win "$native")
+    before=$(DN2CPP_BEFORE_ATTRIBUTE_OBJECT=1 run_bounded "$out/ILDietControl$EXE_EXT") || return $?
+    prefix=$(awk '/^== attribute construction roots ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    grep -Fxq 'attribute-object=by-object' <<< "$native" \
+        || { echo 'FAIL: boxed Type attribute constructor did not run' >&2; return 1; }
+    grep -Fxq 'attribute construction roots end' <<< "$native" \
+        || { echo 'FAIL: Type attribute construction section did not run' >&2; return 1; }
+}
 corelib_diff_gate ILDietControl -r "$DIET_LIB"
+unset -f gate_extra_asserts
 DIET_OUT="$_CG_OUT"
 DIET_APP="$_CG_APP"
 original_diet_app=$(dotnet exec "$PROBE" "$DIET_APP")

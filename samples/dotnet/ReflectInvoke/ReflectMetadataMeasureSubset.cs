@@ -26,6 +26,11 @@ sealed class Packed
     public int Read(int value) => value + Value;
 }
 
+sealed class Wide
+{
+    public int Value { get; set; }
+}
+
 abstract class DispatchBase
 {
     public abstract int Read(int value);
@@ -49,6 +54,8 @@ static class Program
     static int Number;
     static MethodInfo Method;
     static ValueAttribute Attribute;
+    static readonly Wide WideInstance = new Wide();
+    static readonly object Seven = 7;
 
     static void Measure(string operation, Action action)
     {
@@ -112,6 +119,10 @@ static class Program
         Measure("attribute-value-packed", () => Number = Attribute.Value);
         Measure("invoke-packed", () => Sink = Method.Invoke(PackedInstance, Arguments));
         Console.WriteLine("reflection-measure-packed-observed," + Predicate + "," + Number + "," + Sink);
+        PropertyInfo value = typeof(Wide).GetProperty("Value");
+        Measure("property-set", () => value.SetValue(WideInstance, Seven));
+        Measure("property-get", () => Sink = value.GetValue(WideInstance));
+        Console.WriteLine("reflection-measure-property-observed," + Sink);
         Console.WriteLine("reflection-measure-managed-held-after," + GC.GetTotalMemory(true));
     }
 }

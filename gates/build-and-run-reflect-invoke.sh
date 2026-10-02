@@ -129,6 +129,8 @@
 # Empty string MemberwiseClone retains a distinct reference.
 # Delegate list removal, original-entry identity, real-body enumeration and GC cache.
 source "$(dirname "$0")/_common.sh"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_ordinary-reflection.sh samples/dotnet/ReflectInvoke/OrdinaryAmbiguousMatchSubset.cs samples/dotnet/ReflectInvoke/OrdinaryReflectionLeaves.csproj samples/dotnet/ReflectInvoke/OrdinaryReflectionLeavesProgram.cs samples/dotnet/ReflectInvoke/OrdinaryWideLookupSubset.cs samples/dotnet/ReflectInvoke/ReflectFieldValidationSubset.cs samples/dotnet/ReflectInvoke/ReflectInvoke.csproj samples/dotnet/ReflectInvoke/ReflectMetadataMeasureSubset.cs samples/dotnet/ReflectInvoke/ReflectionMethodGroupsOnly.csproj samples/dotnet/ReflectInvoke/ReflectionMethodGroupsOnlyProgram.cs"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-reflection-leaves-v1"
 
 py="$(resolve_python)"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/check-reflection-layout.py gates/measure-reflection-metadata.py gates/expected/reflection-allocations.csv gates/fixtures/delegate-invocation-cache/DelegateInvocationCache.csproj gates/fixtures/delegate-invocation-cache/Program.cs"
@@ -552,3 +554,49 @@ for recursive_mode in shared-generics no-shared-generics; do
     grep -Fxq 'recursive delegate identities=True/True' <<< "$(strip_cr_win "$recursive_actual")" \
         || { echo 'FAIL: recursive delegate declaration witness missing' >&2; exit 1; }
 done
+# FieldInfo validation, ordinary visibility/binding guards, sealed interface own
+# bodies, ByRefLike refusal and uncapped member lookups use an isolated driver.
+unset -f gate_extra_asserts
+source gates/_ordinary-reflection.sh
+gate_extra_asserts() {
+    local out="$1" native line
+    native=$(run_bounded "$out/OrdinaryReflectionLeaves$EXE_EXT") || return $?
+    native=$(strip_cr_win "$native")
+    for line in '== field validation ==' 'field validation end' \
+        '== ordinary ambiguous messages ==' 'ordinary ambiguous messages end' \
+        'sealed direct=CUSTOM-HELLO' 'sealed bound=CUSTOM-HELLO/IGreeting.Shout' \
+        'bind ordinary=42' 'bind generic=12' 'bind boxed=7' \
+        'bind first object=7' 'bind first interface=7' \
+        'SizeOf attributes=0096:True:0100' \
+        'static abstract invoke: TargetInvocationException/BadImageFormatException' \
+        'static abstract unwrapped: BadImageFormatException/<null>' \
+        'static interface bound Abs: EntryPointNotFoundException/<null>' \
+        'static interface bound Virt: EntryPointNotFoundException/<null>' \
+        'wide slots=1/0' 'wide get member=1' 'wide get method=SlotWide' \
+        'wide properties=270/0' 'wide constructor=A39' \
+        '== constructor binder faults ==' 'constructor matched=17' \
+        'constructor wrong count inner=<null>' 'constructor binder faults end' \
+        'ordinary reflection leaves end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: ordinary reflection witness missing: $line" >&2; return 1; }
+    done
+}
+DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectInvoke OrdinaryReflectionLeaves --no-ildiet
+DN2CPP_OUT_SUFFIX=-native DN2CPP_STRICT_COMPLETION=1 \
+    ordinary_fixture_diff_gate ReflectInvoke OrdinaryReflectionLeaves --no-ildiet --no-metadata-compression
+unset -f gate_extra_asserts
+gate_extra_asserts() {
+    local out="$1" native line
+    native=$(run_bounded "$out/ReflectionMethodGroupsOnly$EXE_EXT") || return $?
+    native=$(strip_cr_win "$native")
+    for line in 'activator: made' 'constructor: built' 'method: hello group' \
+        'property get: label' 'property set: glad' 'static create delegate: hello static' \
+        'create delegate: hello bind' 'make generic: box:String' 'attributes: TagAttribute'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: method-group reflection witness missing: $line" >&2; return 1; }
+    done
+}
+DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectInvoke ReflectionMethodGroupsOnly --no-ildiet
+unset -f gate_extra_asserts
+DN2CPP_OUT_SUFFIX=-ildiet DN2CPP_STRICT_COMPLETION=1 \
+    ordinary_fixture_diff_gate ReflectInvoke ReflectionMethodGroupsOnly

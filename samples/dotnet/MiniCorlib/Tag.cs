@@ -27,4 +27,8 @@ namespace MiniBcl
         [Tag("lib-method", Level = 4)]
         public void Method() { }
     }
+    // The app names this only in an attribute's Type argument: no reached member
+    // declares or spells it, so it stays outside the emit set, and only the argument
+    // emits its type-info.
+    public enum TagShade : byte { Pale = 1, Deep = 9 }
 }

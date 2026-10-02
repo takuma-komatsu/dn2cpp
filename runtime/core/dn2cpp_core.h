@@ -1029,6 +1029,10 @@ struct Dn2CppPropRef : Dn2CppObject
     // MemberInfo.ReflectedType; see the Dn2CppFieldRef note for the model and
     // the mint-time normalization (never null on a minted handle).
     const Dn2CppTypeInfo* reflectedType;
+    // The accessor rows, read once at the mint so GetValue and SetValue decode no
+    // property row.
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> getter;
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> setter;
 };
 
 struct Dn2CppArray : Dn2CppObject
@@ -1141,7 +1145,7 @@ extern const int32_t dn2cpp_delegate_refl_registry_count;
 // receiver) throw a catchable PlatformNotSupportedException instead.
 Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
                                      Dn2CppMethodRef* m, int32_t closedForm,
-                                     int32_t throwOnFailure);
+                                     int32_t throwOnFailure, bool fromDelegate = false);
 // The boxed-invoker dispatch behind a dgrefl_* trampoline.
 Dn2CppObject* dn2cpp_reflbind_invoke(Dn2CppReflBind* ctx, Dn2CppObject* self, Dn2CppObject** argv);
 // Delegate.Target / Delegate.Method: the bound receiver / reflected MethodInfo,
@@ -1313,8 +1317,13 @@ Dn2CppArrayRef* dn2cpp_type_get_interfaces(Dn2CppType* t);
 // against real .NET. Two matches throw AmbiguousMatchException, a null name
 // ArgumentNullException.
 Dn2CppType* dn2cpp_type_get_interface(Dn2CppType* t, Dn2CppString* name, int32_t ignoreCase);
-Dn2CppType* dn2cpp_type_get_enum_underlying(Dn2CppType* t);
+// Enum.GetUnderlyingType(Type) / Enum.GetNames(Type): a null enumType is
+// ArgumentNullException. Type.GetEnumUnderlyingType() / GetEnumNames() answer the same
+// over a callvirt receiver, so a null receiver is NullReferenceException.
+Dn2CppType* dn2cpp_enum_get_underlying_type(Dn2CppType* t);
 Dn2CppArrayRef* dn2cpp_enum_get_names(Dn2CppType* t);
+Dn2CppType* dn2cpp_type_get_enum_underlying(Dn2CppType* t);
+Dn2CppArrayRef* dn2cpp_type_get_enum_names(Dn2CppType* t);
 // Enum.GetValues(Type) (non-generic): the declared values as object[] of boxed enums, so a
 // foreach over the returned System.Array yields boxed `object` elements.
 Dn2CppArrayRef* dn2cpp_enum_get_values_boxed(Dn2CppType* t);
@@ -1502,6 +1511,13 @@ inline constexpr const char* DN2CPP_SR_EMPTY_WAITHANDLE_ARRAY = "Argument_EmptyW
 inline constexpr const char* DN2CPP_SR_ARGUMENT_NULL_ARRAY_ELEMENT = "ArgumentNull_ArrayElement";
 inline constexpr const char* DN2CPP_SR_ARGUMENT_NULL = "ArgumentNull_Generic";
 inline constexpr const char* DN2CPP_SR_INVALID_OPERATION = "Arg_InvalidOperationException";
+inline constexpr const char* DN2CPP_SR_MUST_BE_DELEGATE = "Arg_MustBeDelegate";
+inline constexpr const char* DN2CPP_SR_MUST_BE_ENUM = "Arg_MustBeEnum";
+inline constexpr const char* DN2CPP_SR_MUST_BE_ENUM_BASE_TYPE_OR_ENUM = "Arg_MustBeEnumBaseTypeOrEnum";
+inline constexpr const char* DN2CPP_SR_MUST_BE_TYPE = "Arg_MustBeType";
+inline constexpr const char* DN2CPP_SR_NOT_ENOUGH_GEN_ARGUMENTS = "Argument_NotEnoughGenArguments";
+inline constexpr const char* DN2CPP_SR_MEMBER_INFO_NOT_FOUND = "Arg_MemberInfoNotFound";
+inline constexpr const char* DN2CPP_SR_NOT_GENERIC_TYPE_DEFINITION = "Arg_NotGenericTypeDefinition";
 inline constexpr const char* DN2CPP_SR_OBJECT_DISPOSED = "ObjectDisposed_Generic";
 inline constexpr const char* DN2CPP_SR_OBJECT_DISPOSED_NAME = "ObjectDisposed_ObjectName_Name";
 inline constexpr const char* DN2CPP_SR_ARITHMETIC = "Arg_ArithmeticException";
@@ -1522,10 +1538,19 @@ inline constexpr const char* DN2CPP_SR_DIVIDE_BY_ZERO = "Arg_DivideByZero";
 inline constexpr const char* DN2CPP_SR_SYNCHRONIZATION_LOCK = "Arg_SynchronizationLockException";
 inline constexpr const char* DN2CPP_SR_TARGET_INVOCATION = "Arg_TargetInvocationException";
 inline constexpr const char* DN2CPP_SR_TARGET_PARAMETER_COUNT = "Arg_TargetParameterCountException";
+inline constexpr const char* DN2CPP_SR_ENTRY_POINT_NOT_FOUND = "Arg_EntryPointNotFoundException";
 inline constexpr const char* DN2CPP_SR_TARGET_REQUIRED = "RFLCT_Targ_StatMethReqTarg";
 inline constexpr const char* DN2CPP_SR_TARGET_MISMATCH = "RFLCT_Targ_ITargMismatch_WithType";
+inline constexpr const char* DN2CPP_SR_AMBIGUOUS_MATCH_MEMBER = "Arg_AmbiguousMatchException_MemberInfo";
+inline constexpr const char* DN2CPP_SR_AMBIGUOUS_MATCH_ATTRIBUTE = "Arg_AmbiguousMatchException_Attribute";
+inline constexpr const char* DN2CPP_SR_FIELD_TARGET_REQUIRED = "RFLCT_Targ_StatFldReqTarg";
+inline constexpr const char* DN2CPP_SR_FIELD_TARGET_MISMATCH = "Arg_FieldDeclTarget";
+inline constexpr const char* DN2CPP_SR_FIELD_CONSTANT = "Acc_ReadOnly";
+inline constexpr const char* DN2CPP_SR_FIELD_INITONLY_STATIC = "RFLCT_CannotSetInitonlyStaticField";
 inline constexpr const char* DN2CPP_SR_PARAMETER_COUNT = "Arg_ParmCnt";
 inline constexpr const char* DN2CPP_SR_UNBOUND_GENERIC = "Arg_UnboundGenParam";
+inline constexpr const char* DN2CPP_SR_DELEGATE_BIND = "Arg_DlgtTargMeth";
+inline constexpr const char* DN2CPP_SR_BAD_IL_FORMAT = "BadImageFormat_BadILFormat";
 inline constexpr const char* DN2CPP_SR_OBJECT_CONVERSION = "Arg_ObjObjEx";
 inline constexpr const char* DN2CPP_SR_FORMAT_INVALID_STRING_WITH_VALUE = "Format_InvalidStringWithValue";
 inline constexpr const char* DN2CPP_SR_BAD_DATETIME = "Format_BadDateTime";
@@ -1664,7 +1689,7 @@ inline constexpr const char* DN2CPP_SR_NULL_TASK = "Task_MultiTaskContinuation_N
 inline constexpr const char* DN2CPP_SR_EMPTY_TASK_LIST = "Task_MultiTaskContinuation_EmptyTaskList";
 inline constexpr const char* DN2CPP_SR_WAIT_NULL_TASK = "Task_WaitMulti_NullTask";
 const char* dn2cpp_sr_text(const char* key);
-// The key's text with `{0}`..`{argc-1}` replaced by `args` (argc at most 2), or null
+// The key's text with `{0}`..`{argc-1}` replaced by `args` (argc at most 3), or null
 // when the text is absent.
 Dn2CppString* dn2cpp_sr_message(const char* key, Dn2CppString* const* args, int32_t argc);
 // Dynamic side-chain of the type-name registry: type-infos constructed at run
@@ -1702,6 +1727,9 @@ int32_t dn2cpp_methodref_is_specialname(Dn2CppMethodRef* m);
 // emitter-generated thunks; reference fields pass the object reference through.
 Dn2CppObject* dn2cpp_fieldref_get_value(Dn2CppFieldRef* f, Dn2CppObject* obj);
 void dn2cpp_fieldref_set_value(Dn2CppFieldRef* f, Dn2CppObject* obj, Dn2CppObject* value);
+// FieldInfo.GetRawConstantValue: a constant at its encoded type (an enum's
+// underlying primitive); any other field throws InvalidOperationException.
+Dn2CppObject* dn2cpp_fieldref_get_raw_constant_value(Dn2CppFieldRef* f);
 // MemberInfo.Name / DeclaringType — shared by FieldInfo, MethodInfo and Type;
 // dispatch on the managed object header (a FieldRef carries dn2cpp_fieldinfo_type,
 // a MethodRef dn2cpp_methodinfo_type).
@@ -1735,6 +1763,12 @@ extern const Dn2CppTypeInfo dn2cpp_parameterinfo_type;
 extern const Dn2CppTypeInfo dn2cpp_void_type;
 Dn2CppArrayRef* dn2cpp_type_get_methods(Dn2CppType* t, int32_t bindingFlags);
 Dn2CppMethodRef* dn2cpp_type_get_method(Dn2CppType* t, Dn2CppString* name, int32_t bindingFlags);
+// The optional member-lookup parameters an overload declares, as the `declared` mask of
+// the lookup workers: a declared genericParameterCount rejects a negative count
+// (ArgumentOutOfRangeException) and a declared Type[] types a null array
+// (ArgumentNullException), after the name check and before any lookup.
+inline constexpr int32_t DN2CPP_LOOKUP_ARITY = 1;
+inline constexpr int32_t DN2CPP_LOOKUP_TYPES = 2;
 // The unified worker behind EVERY Type.GetMethod overload. genericParamCount:
 // the requested generic arity (-1 = no arity filter; 0 = non-generic only).
 // paramTypes: exact parameter-type match (null = match by name only). callConv:
@@ -1742,14 +1776,15 @@ Dn2CppMethodRef* dn2cpp_type_get_method(Dn2CppType* t, Dn2CppString* name, int32
 // observably a no-op against Standard methods, which every transpiled method
 // is. binder: a non-null (custom) Binder throws a catchable
 // PlatformNotSupportedException — Type.DefaultBinder is modeled as null, so
-// the BCL's null/DefaultBinder calls stay supported.
+// the BCL's null/DefaultBinder calls stay supported. declared: the
+// DN2CPP_LOOKUP_* parameters the overload has.
 // Several undecidable matches throw AmbiguousMatchException like real .NET
 // (sig-equal matches resolve to the most derived one; a generic method's
 // instantiation rows collapse onto their shared definition token first).
 Dn2CppMethodRef* dn2cpp_type_get_method_full(Dn2CppType* t, Dn2CppString* name,
                                              int32_t genericParamCount, Dn2CppArrayRef* paramTypes,
                                              int32_t bindingFlags, int32_t callConv,
-                                             Dn2CppObject* binder);
+                                             Dn2CppObject* binder, int32_t declared);
 Dn2CppType* dn2cpp_methodref_return_type(Dn2CppMethodRef* m);
 int32_t dn2cpp_methodref_is_static(Dn2CppMethodRef* m);
 int32_t dn2cpp_methodref_is_public(Dn2CppMethodRef* m);
@@ -1785,7 +1820,8 @@ Dn2CppObject* dn2cpp_methodref_invoke(Dn2CppMethodRef* m, Dn2CppObject* obj, Dn2
 Dn2CppArrayRef* dn2cpp_type_get_constructors(Dn2CppType* t, int32_t bindingFlags);
 Dn2CppMethodRef* dn2cpp_type_get_constructor(Dn2CppType* t, Dn2CppArrayRef* paramTypes, int32_t bindingFlags);
 // The unified worker behind EVERY Type.GetConstructor overload — callConv and
-// binder carry the same semantics as dn2cpp_type_get_method_full.
+// binder carry the same semantics as dn2cpp_type_get_method_full. Every overload
+// declares Type[] types, so a null paramTypes is ArgumentNullException.
 Dn2CppMethodRef* dn2cpp_type_get_constructor_full(Dn2CppType* t, Dn2CppArrayRef* paramTypes,
                                                   int32_t bindingFlags, int32_t callConv,
                                                   Dn2CppObject* binder);
@@ -1821,12 +1857,13 @@ Dn2CppPropRef* dn2cpp_type_get_property(Dn2CppType* t, Dn2CppString* name, int32
 // The unified worker behind EVERY Type.GetProperty overload. returnType (null =
 // any) filters on the property type; indexTypes (null = any; empty = non-indexed
 // only) filters on the indexer parameter types read off the accessor rows;
-// binder carries the same semantics as dn2cpp_type_get_method_full. Several
-// undecidable matches (same-name properties that differ in type or index
-// signature after the filters) throw AmbiguousMatchException like real .NET.
+// binder and declared (DN2CPP_LOOKUP_TYPES only) carry the same semantics as
+// dn2cpp_type_get_method_full. Several undecidable matches (same-name properties that
+// differ in type or index signature after the filters) throw AmbiguousMatchException
+// like real .NET.
 Dn2CppPropRef* dn2cpp_type_get_property_full(Dn2CppType* t, Dn2CppString* name, int32_t bindingFlags,
                                              Dn2CppType* returnType, Dn2CppArrayRef* indexTypes,
-                                             Dn2CppObject* binder);
+                                             Dn2CppObject* binder, int32_t declared);
 // Type.GetMember(name[, MemberTypes][, BindingFlags]) / GetMembers([flags]) /
 // GetDefaultMembers() -> MemberInfo[] mixing method/ctor/property/field/nested-
 // type handles. `name` supports the documented trailing-'*' prefix wildcard
@@ -2155,6 +2192,7 @@ Dn2CppString* dn2cpp_type_format_type_name(Dn2CppType* t);
 // contains it (registry scan); an array type never statically instantiated
 // throws NotSupportedException — the same AOT boundary as MakeGenericType.
 Dn2CppType* dn2cpp_type_make_array_type(Dn2CppType* t);
+Dn2CppType* dn2cpp_type_make_array_type_rank(Dn2CppType* t, int32_t rank);
 // Type.GetEnumValuesAsUnderlyingType(): the declared constants as an array of
 // the enum's underlying primitive (byte[]/short[]/int[]/long[]/... by width).
 Dn2CppObject* dn2cpp_type_get_enum_values_as_underlying(Dn2CppType* t);
@@ -2443,6 +2481,7 @@ extern Dn2CppTypeInfo dn2cpp_platform_not_supported_exception_type;
 extern Dn2CppTypeInfo dn2cpp_format_exception_type;
 extern Dn2CppTypeInfo dn2cpp_io_exception_type;
 extern Dn2CppTypeInfo dn2cpp_file_not_found_exception_type;
+extern Dn2CppTypeInfo dn2cpp_file_load_exception_type;
 extern Dn2CppTypeInfo dn2cpp_directory_not_found_exception_type;
 // System.IO.PathTooLongException. The Windows Path.GetFullPath arm raises it for
 // the one Win32 error .NET's Win32Marshal maps to it; it derives from IOException
@@ -2458,9 +2497,9 @@ extern Dn2CppTypeInfo dn2cpp_rank_exception_type;
 // the two operands' element types satisfy no arm of the CLR's Array.Copy
 // compatibility verdict (which lives at dn2cpp_array_copy_checked).
 extern Dn2CppTypeInfo dn2cpp_array_type_mismatch_exception_type;
-// System.Reflection.AmbiguousMatchException: raised by the member-lookup
-// helpers (GetMethod/GetProperty with several undecidable matches), matching
-// real .NET's reflection contract.
+// System.Reflection.AmbiguousMatchException: raised by the reflection lookups
+// with several undecidable matches (members, interfaces, constructor binding,
+// single-attribute getters), with real .NET's message and HResult.
 extern Dn2CppTypeInfo dn2cpp_ambiguous_match_exception_type;
 // System.Runtime.AmbiguousImplementationException: raised by an invoked
 // interface slot whose derived interfaces give it no most specific body.
@@ -2472,6 +2511,12 @@ extern Dn2CppTypeInfo dn2cpp_application_exception_type;
 // System.MissingMethodException: raised by the Activator/ConstructorInfo
 // helpers when constructor resolution finds no invokable match.
 extern Dn2CppTypeInfo dn2cpp_missing_method_exception_type;
+// System.FieldAccessException: raised by FieldInfo.SetValue on a constant or a
+// static read-only field.
+extern Dn2CppTypeInfo dn2cpp_field_access_exception_type;
+// System.BadImageFormatException: raised by MethodBase.Invoke on a static abstract
+// interface member.
+extern Dn2CppTypeInfo dn2cpp_bad_image_format_exception_type;
 extern Dn2CppTypeInfo dn2cpp_dll_not_found_exception_type;
 extern Dn2CppTypeInfo dn2cpp_entry_point_not_found_exception_type;
 // System.Resources.MissingManifestResourceException: raised by ResourceManager when
@@ -2808,8 +2853,9 @@ void dn2cpp_cctor_run_startup(void (*ensure)(), const char* type);
 // An argument exception of type `ti` whose sentence is the SR composite format `key`
 // over `args` (argc at most 3), naming `paramName` as above; a null paramName names
 // nothing and adds no tail. An absent template keeps the type's default text.
+// A nonzero hresult supplies an API-specific fault code.
 [[noreturn]] void dn2cpp_throw_argument_sr(const Dn2CppTypeInfo* ti, const char* key,
-    const char* paramName, Dn2CppString* const* args, int32_t argc);
+    const char* paramName, Dn2CppString* const* args, int32_t argc, uint32_t hresult = 0);
 // ArgumentException(SR.Format(SR.Argument_InvalidEnumValue, value, enumName), paramName):
 // an undefined value of an enum the callee switches over.
 [[noreturn]] void dn2cpp_throw_invalid_enum_value(int32_t value, const char* enumName,
@@ -2884,9 +2930,6 @@ void dn2cpp_require_layout(const Dn2CppTypeInfo* ti);
 // A typed `catch (KeyNotFoundException)` needs the matching type, so it has its
 // own handle + trap (rather than falling through to the InvalidOperation trap).
 [[noreturn]] void dn2cpp_throw_key_not_found();
-// Reflection member lookup with several undecidable matches (Type.GetMethod /
-// GetProperty), matching .NET's AmbiguousMatchException.
-[[noreturn]] void dn2cpp_throw_ambiguous_match();
 // Constructor resolution with no invokable match (Activator.CreateInstance and
 // friends), matching .NET's MissingMethodException; the message carries the
 // diagnosable reason (like the dynamic-codegen PNSE trap).
