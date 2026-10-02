@@ -2590,8 +2590,8 @@ internal sealed partial class Compilation
         NoteReferencedType(ed.MoveNext.DeclaringClass);
     }
 
-    /// <summary><see cref="ReachEnumeration"/> for a lowered Join/Concat/AppendJoin
-    /// loop, which also disposes its enumerator.</summary>
+    /// <summary><see cref="ReachEnumeration"/> for a lowered foreach (the Join/Concat/
+    /// AppendJoin and task-combinator loops), which also disposes its enumerator.</summary>
     private void ReachForEach(EnumerationMethods ed)
     {
         ReachEnumeration(ed);
@@ -2769,9 +2769,9 @@ internal sealed partial class Compilation
     /// call whose single parameter is an <c>IEnumerable&lt;Task&lt;T&gt;&gt;</c> (the
     /// non-array combinator overload — the emit lowers it to an inline interface-
     /// enumeration loop), returns the closed element task type whose enumeration must
-    /// be reached; null otherwise. Handles both the generic (MethodSpec) and
-    /// non-generic (MemberRef) forms.</summary>
-    private TypeDesc? TaskCombinatorEnumerableElement(Module module, EntityHandle handle, GenericContext ctx)
+    /// be reached, and whether the call is <c>WhenAny</c>; null otherwise. Handles both
+    /// the generic (MethodSpec) and non-generic (MemberRef) forms.</summary>
+    private (TypeDesc Elem, bool WhenAny)? TaskCombinatorEnumerableElement(Module module, EntityHandle handle, GenericContext ctx)
     {
         // The name gates are pure metadata-string reads (MethodSpec/MemberRef parent
         // and method name); they must be checked BEFORE the signature decode below,
@@ -2821,8 +2821,19 @@ internal sealed partial class Compilation
         if (sig.ParameterTypes is [{ Kind: TypeKind.Class, Class: { } col }]
             && GenericDefFullName(col) == "System.Collections.Generic.IEnumerable"
             && col.Context.TypeArgs.Length == 1)
-            return col.Context.TypeArgs[0];
+            return (col.Context.TypeArgs[0], methodName == "WhenAny");
         return null;
+    }
+
+    /// <summary>The closed <c>List&lt;T&gt;</c> for an element type, or null if List`1 is
+    /// not loaded (no CoreLib). Only instantiated, never completed: callers want its
+    /// type-info identity.</summary>
+    internal ClassInfo? ListOf(TypeDesc elem)
+    {
+        if (!TypeIndex().TryGetValue(("System.Collections.Generic", "List`1"), out var cands))
+            return null;
+        var (mod, tdh) = cands[0];
+        return Instantiate(mod, tdh, new[] { elem });
     }
 
     /// <summary>The C++ type-info symbol of System.OperationCanceledException once
@@ -5769,9 +5780,17 @@ internal sealed partial class Compilation
                         // so each allocated source collection's enumerator impl is
                         // emitted (gated on the combinator call's IEnumerable operand).
                         if (insn.OpCode == ILOpCode.Call
-                            && TaskCombinatorEnumerableElement(module, handle, m.Context) is { } telem
-                            && EnumerationDispatch(telem) is { } ted)
-                            ReachEnumeration(ted);
+                            && TaskCombinatorEnumerableElement(module, handle, m.Context) is { } tc
+                            && EnumerationDispatch(tc.Elem) is { } ted)
+                        {
+                            ReachForEach(ted);
+                            // WhenAny's loop compares the source's type-info with the
+                            // exact List<TTask> one, whose two-task rule .NET keeps. An
+                            // open or canonical element never reaches an emitted test.
+                            if (tc.WhenAny && !ContainsGenericVar(tc.Elem) && !ContainsCanonPlaceholder(tc.Elem)
+                                && ListOf(tc.Elem) is { } taskList)
+                                NoteTypeIdentityClosure(TypeDesc.MakeClass(taskList), keepSeed: false);
+                        }
                         // A program touching CancellationTokenSource / CancellationToken
                         // can produce a CANCELED task / ThrowIfCancellationRequested,
                         // which throws an OperationCanceledException built in the runtime

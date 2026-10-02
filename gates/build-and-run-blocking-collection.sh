@@ -9,11 +9,25 @@
 # BlockingCollection<T> lives in System.Collections.Concurrent (not CoreLib), so that
 # assembly is referenced alongside CoreLib.
 # Receiver, capacity, timeout and completed-state argument validation.
+# Disposal through direct and IDisposable routes.
 source "$(dirname "$0")/_common.sh"
+message_app="gates/fixtures/blocking-disposal-message/bin/$CONFIG/$TFM/BlockingDisposalMessage.dll"
+build_gate_proj gates/fixtures/blocking-disposal-message/BlockingDisposalMessage.csproj
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $message_app ${message_app%.dll}.runtimeconfig.json ${message_app%.dll}.deps.json"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|blocking-disposal-message|cli:$(_gate_cli_hash)"
 gate_extra_asserts() {
     local out="$1" native before prefix line
     native=$(run_bounded "./$out/BlockingCollectionSubset")
     native=$(strip_cr_win "$native")
+    before=$(run_bounded dotnet "$_CG_APP" before-collection-disposal)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== dispose checks ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== dispose checks ==' \
+        'dispose checks end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: BlockingCollectionSubset lifecycle witness missing: $line" >&2; exit 1; }
+    done
     before=$(dotnet "$_CG_APP" before-collection-validation)
     before=$(strip_cr_win "$before")
     prefix=$(awk '/^== argument checks ==$/ { exit } { print }' <<< "$native")
@@ -23,6 +37,19 @@ gate_extra_asserts() {
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: BlockingCollectionSubset validation witness missing: $line" >&2; exit 1; }
     done
+    local fixture="$out/message-only" expected actual
+    invoke_cli "$message_app" -r "$_CG_CORELIB" -r "$(dirname "$_CG_CORELIB")/System.Collections.Concurrent.dll" -o "$fixture"
+    compile_console "$fixture" BlockingDisposalMessage
+    expected=$(run_bounded dotnet "$message_app")
+    actual=$(run_bounded "./$fixture/BlockingDisposalMessage")
+    actual=$(strip_cr_win "$actual")
+    assert_output "$actual" "$(strip_cr_win "$expected")"
+    if rg -q -w 'tibind_System_ObjectDisposedException' "$fixture" --glob '*.cpp'; then
+        echo "FAIL: message-only fixture bound ObjectDisposedException fields" >&2
+        exit 1
+    fi
+    grep -Fxq -- 'blocking disposal message end' <<< "$actual" \
+        || { echo "FAIL: blocking disposal message witness missing" >&2; exit 1; }
 }
 
 corelib_diff_gate BlockingCollectionSubset System.Collections.Concurrent

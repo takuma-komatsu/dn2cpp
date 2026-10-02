@@ -271,10 +271,11 @@ internal static partial class CoreIntrinsics
         // transpiling AwaitUnsafeOnCompleted finds no Dn2CppAsyncBuilder field in the state
         // machine and gaps.
         "System.Runtime.CompilerServices.AsyncVoidMethodBuilder",
-        // Task.get_Factory and TaskScheduler.Default/Current are opaque nullptr sentinels;
+        // Task.get_Factory is an opaque nullptr sentinel; TaskScheduler.Default/Current
+        // share a runtime singleton so explicit null schedulers remain distinguishable.
         // factory.StartNew dispatches to the same worker pool as Task.Run (the
-        // TaskCreationOptions/TaskScheduler arguments are scheduling hints dn2cpp's fixed
-        // pool does not model). Keeps the real TPL scheduler machinery out of the tree —
+        // TaskCreationOptions/scheduler selection are hints dn2cpp's fixed pool does not
+        // model). Keeps the real TPL scheduler machinery out of the tree —
         // TaskScheduler..ctor alone drags in ThreadPoolTaskScheduler plus the
         // Debugger/ConditionalWeakTable/DependentHandle debug bookkeeping.
         "System.Threading.Tasks.TaskFactory",
@@ -459,9 +460,9 @@ internal static partial class CoreIntrinsics
         // machine identically; only its ends differ (no observable Task; SetException
         // re-raises off the synchronous stack). See s_intrinsicTypes.
         ["System.Runtime.CompilerServices.AsyncVoidMethodBuilder"] = "Dn2CppAsyncBuilder",
-        // TaskFactory / TaskScheduler — opaque nullptr sentinels (Task.Factory /
-        // TaskScheduler.Default are never dereferenced; StartNew is intercepted at
-        // the call site), so a Dn2CppObject* handle suffices.
+        // Task.Factory is an opaque nullptr sentinel; TaskScheduler.Default/Current
+        // share a runtime object. StartNew is intercepted at the call site, so a
+        // Dn2CppObject* handle suffices for both types.
         ["System.Threading.Tasks.TaskFactory"] = "Dn2CppObject*",
         ["System.Threading.Tasks.TaskScheduler"] = "Dn2CppObject*",
         // Cancellation: the source is a runtime reference object, the token a value
@@ -1277,6 +1278,8 @@ internal static partial class CoreIntrinsics
         ["System.Threading.LockRecursionException"] = "&dn2cpp_lock_recursion_exception_type",
         ["System.Threading.SynchronizationLockException"] =
             "&dn2cpp_synchronization_lock_exception_type",
+        // Thread.Start and Thread.Join raise it for a thread in the wrong state.
+        ["System.Threading.ThreadStateException"] = "&dn2cpp_thread_state_exception_type",
     };
 
     /// <summary>The shared runtime <c>Dn2CppTypeInfo*</c> expression for an exception
@@ -1326,6 +1329,7 @@ internal static partial class CoreIntrinsics
         ["System.Object"] = "&dn2cpp_object_type",
         ["System.String"] = "&dn2cpp_string_type",
         ["System.Threading.Tasks.Task"] = "&dn2cpp_task_type",
+        ["System.Threading.Tasks.TaskScheduler"] = "&dn2cpp_taskscheduler_type",
         ["System.Void"] = "&dn2cpp_void_type",
         // The primitives. The runtime handle carries DN2CPP_TF_PRIMITIVE, which the class
         // emitter does not model — so here the runtime really does know more, and binding

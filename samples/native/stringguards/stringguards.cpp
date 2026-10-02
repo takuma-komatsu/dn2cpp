@@ -26,6 +26,7 @@ const Dn2CppBclMessage dn2cpp_bcl_messages[] = { {} };
 const int32_t dn2cpp_bcl_message_count = 0;
 const int32_t dn2cpp_exception_get_message_slot = 0;
 bool dn2cpp_argument_exception_store(Dn2CppObject*, Dn2CppString*, Dn2CppObject*) { return false; }
+bool dn2cpp_object_disposed_exception_store(Dn2CppObject*, Dn2CppString*) { return false; }
 const Dn2CppRuntimeTemplate* const dn2cpp_runtime_templates = nullptr;
 const int32_t dn2cpp_runtime_template_count = 0;
 

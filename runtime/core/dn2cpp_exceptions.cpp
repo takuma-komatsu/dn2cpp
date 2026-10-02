@@ -747,6 +747,30 @@ void dn2cpp_throw_argument_null() { dn2cpp_throw_of(&dn2cpp_argument_null_except
 void dn2cpp_throw_argument() { dn2cpp_throw_of(&dn2cpp_argument_exception_type); }
 void dn2cpp_throw_invalid_operation() { dn2cpp_throw_of(&dn2cpp_invalid_operation_exception_type); }
 void dn2cpp_throw_object_disposed() { dn2cpp_throw_of(&dn2cpp_object_disposed_exception_type); }
+
+[[noreturn]] void dn2cpp_throw_object_disposed_named(Dn2CppString* objectName)
+{
+    const Dn2CppTypeInfo* ti = &dn2cpp_object_disposed_exception_type;
+    Dn2CppObject* e = dn2cpp_exception_new(ti, dn2cpp_default_message(ti), nullptr);
+    bool stored = dn2cpp_object_disposed_exception_store(e, objectName);
+    if ((!stored || !dn2cpp_exception_overrides_message(ti))
+        && objectName != nullptr && objectName->length != 0)
+    {
+        Dn2CppString* tail = dn2cpp_sr_message(DN2CPP_SR_OBJECT_DISPOSED_NAME, &objectName, 1);
+        if (tail != nullptr)
+        {
+#ifdef _WIN32
+            Dn2CppString* newline = dn2cpp_string_literal(u"\r\n", 2);
+#else
+            Dn2CppString* newline = dn2cpp_string_literal(u"\n", 1);
+#endif
+            auto* exception = static_cast<Dn2CppExceptionObject*>(e);
+            dn2cpp_gc_store_ref(&exception->message,
+                dn2cpp_string_concat3(exception->message, newline, tail));
+        }
+    }
+    dn2cpp_throw(e);
+}
 void dn2cpp_throw_arithmetic() { dn2cpp_throw_of(&dn2cpp_arithmetic_exception_type); }
 void dn2cpp_throw_out_of_memory() { dn2cpp_throw_of(&dn2cpp_out_of_memory_exception_type); }
 void dn2cpp_throw_type_load() { dn2cpp_throw_of(&dn2cpp_type_load_exception_type); }

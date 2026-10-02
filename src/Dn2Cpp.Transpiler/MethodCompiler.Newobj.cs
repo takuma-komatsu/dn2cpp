@@ -1058,17 +1058,21 @@ internal sealed partial class MethodCompiler
             return;
         }
         // new Thread(ThreadStart|ParameterizedThreadStart [, int maxStackSize]) — the
-        // delegate is the first arg; any maxStackSize is ignored. The ThreadStart vs
-        // ParameterizedThreadStart distinction is resolved at Start() vs Start(object).
+        // delegate is the first arg, and its kind rides along: Start(object) refuses a
+        // ThreadStart body and Start() hands a ParameterizedThreadStart body null. The
+        // runtime range-checks maxStackSize and otherwise ignores it.
         // Both ctor token forms are accepted, for the reason at the ManualResetEvent arm.
         if (NewobjTypeName(handle) == "System.Threading.Thread"
             && handle.Kind is HandleKind.MemberReference or HandleKind.MethodDefinition)
         {
             var thSig = DecodeCtorSignature(handle);
-            for (int i = 0; i < thSig.ParameterTypes.Length - 1; i++)
-                Pop(); // maxStackSize (ignored)
+            string maxStackSize = thSig.ParameterTypes.Length == 2 ? Pop().Expr : "0";
             var start = Pop(); // the delegate
-            Push(StackKind.Ref, "Dn2CppThread*", $"dn2cpp_thread_new((Dn2CppObject*)({start.Expr}))");
+            int parameterized = thSig.ParameterTypes[0]
+                is { Kind: TypeKind.Class, Class.FullName: "System.Threading.ParameterizedThreadStart" }
+                ? 1 : 0;
+            Push(StackKind.Ref, "Dn2CppThread*",
+                $"dn2cpp_thread_new((Dn2CppObject*)({start.Expr}), {parameterized}, {maxStackSize})");
             return;
         }
         // new SemaphoreSlim(initialCount [, maxCount]) — a real counting semaphore.
@@ -1319,7 +1323,8 @@ internal sealed partial class MethodCompiler
         // ctor would not resolve to a transpilable method; intercept newobj and allocate the
         // runtime object. Elements are stored boxed in a uniform slot (one shape for int/long/
         // float/double/reference T), boxed/unboxed by T's kind at each Add/Take call site, so
-        // the element type is not needed here — only the bound. boundedCapacity 0 => unbounded.
+        // the element type is used only for ObjectDisposedException.ObjectName.
+        // boundedCapacity 0 => unbounded.
         // The IProducerConsumerCollection<T>-backed ctors are a carve-out.
         if (handle.Kind == HandleKind.MemberReference
             && _reader.GetMemberReference((MemberReferenceHandle)handle) is var bcMr
@@ -1349,8 +1354,14 @@ internal sealed partial class MethodCompiler
                     $"{_method.DeclaringClass.FullName}.{_method.Name}: only new BlockingCollection<T>() " +
                     "and new BlockingCollection<T>(int boundedCapacity) are supported (the " +
                     "IProducerConsumerCollection<T> ctors are a carve-out)");
+            string elemInfo = CastTargetTypeInfoExpr(bcCls.Context.TypeArgs[0]) ?? "nullptr";
+            string prefix = _literals.GetOrAdd("System.Collections.Concurrent.BlockingCollection`1[[");
+            string suffix = _literals.GetOrAdd("]]");
+            string objectName = elemInfo == "nullptr" ? "nullptr" :
+                $"dn2cpp_string_concat3({prefix}, " +
+                $"dn2cpp_type_assembly_qualified_name(dn2cpp_get_type_from_handle({elemInfo})), {suffix})";
             Push(StackKind.Ref, "Dn2CppBlockingCollection*",
-                $"(Dn2CppBlockingCollection*)dn2cpp_blockingcoll_new({capacity})");
+                $"(Dn2CppBlockingCollection*)dn2cpp_blockingcoll_new({capacity}, {objectName})");
             return;
         }
 

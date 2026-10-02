@@ -26,6 +26,12 @@ internal static class Program
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static ConfiguredTaskAwaitable DirectConfigure(Task task, bool capture) => task.ConfigureAwait(capture);
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void DirectStart(Task task, TaskScheduler scheduler) => task.Start(scheduler);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void DirectRunSynchronously(Task task, TaskScheduler scheduler) => task.RunSynchronously(scheduler);
+
     private static string Field(string? text)
     {
         if (text is null)
@@ -94,5 +100,13 @@ internal static class Program
         Observe("direct-tcs-try-null-present", () => DirectTryException(source!, exception));
         Observe("virtual-tcs-try-null-present", () => source!.TrySetException(exception));
         Console.WriteLine("task direct-call validation end");
+        Console.WriteLine("== task direct scheduling ==");
+        Observe("direct-start-null-null", () => { DirectStart(task!, null!); return "returned"; });
+        Observe("direct-start-null-default", () => { DirectStart(task!, TaskScheduler.Default); return "returned"; });
+        Observe("direct-sync-null-null", () => { DirectRunSynchronously(task!, null!); return "returned"; });
+        Observe("direct-sync-null-default", () => { DirectRunSynchronously(task!, TaskScheduler.Default); return "returned"; });
+        Observe("virtual-start-null-null", () => { task!.Start(null!); return "returned"; });
+        Observe("virtual-sync-null-null", () => { task!.RunSynchronously(null!); return "returned"; });
+        Console.WriteLine("task direct scheduling end");
     }
 }

@@ -593,20 +593,41 @@ internal sealed partial class MethodCompiler
             Emit($"dn2cpp_set_task_canceled_exception_type(&{tn});");
     }
 
+    /// <summary>When a <see cref="PopTaskArrayOperand"/> sequence source rejects a null
+    /// element, as the .NET combinator reading it does.</summary>
+    private enum TaskSequenceNulls
+    {
+        /// <summary>After the whole sequence is read (the non-generic WhenAll).</summary>
+        AfterRead,
+        /// <summary>At the first null, reading no further (WhenAll&lt;TResult&gt;).</summary>
+        AtFirst,
+        /// <summary>At the first null, except in an array or an exact List&lt;TTask&gt;:
+        /// WhenAny forwards two of those to WhenAny(task1, task2), so they are read whole
+        /// for the runtime's two-task rule.</summary>
+        AtFirstUnlessWhenAnyPair,
+    }
+
     /// <summary>Pops the input-task operand(s) of a <c>Task.WhenAll</c>/<c>WhenAny</c>
     /// call and yields a <c>Dn2CppArrayRef*</c> of them, covering all source shapes: a
     /// single <c>Task[]</c>/<c>Task&lt;T&gt;[]</c> operand passes straight through; loose
     /// <c>Task</c> operands are gathered into a fresh ref array; and a single
     /// <c>IEnumerable&lt;Task&lt;T&gt;&gt;</c> is materialized by an inline
-    /// interface-enumeration loop into a growable <c>Dn2CppRefList</c> → ref array.</summary>
-    private string PopTaskArrayOperand(System.Collections.Immutable.ImmutableArray<TypeDesc> paramTypes)
+    /// interface-enumeration loop into a growable <c>Dn2CppRefList</c> → ref array,
+    /// rejecting a null element as <paramref name="nulls"/> says.</summary>
+    private string PopTaskArrayOperand(System.Collections.Immutable.ImmutableArray<TypeDesc> paramTypes,
+        TaskSequenceNulls nulls = TaskSequenceNulls.AfterRead) =>
+        PopTaskArrayOperand(paramTypes, nulls, out _);
+
+    private string PopTaskArrayOperand(System.Collections.Immutable.ImmutableArray<TypeDesc> paramTypes,
+        TaskSequenceNulls nulls, out string whenAnyPairSource)
     {
+        whenAnyPairSource = "true";
         if (paramTypes is [{ Kind: TypeKind.SZArray }])
             return $"(Dn2CppArrayRef*)({Pop().Expr})";
-        // The.NET 9+ `params ReadOnlySpan<Task<T>>` overload (3+ loose tasks): Roslyn
-        // lowers the loose args through an [InlineArray] of N tasks and a span over it
-        // (already transpiled by the time we consume it). Copy the span's contiguous
-        // {reference,length} into a ref array.
+        // The .NET 9+ `params ReadOnlySpan<Task<T>>` overload (loose tasks no fixed-arity
+        // overload takes): Roslyn lowers the loose args through an [InlineArray] of N
+        // tasks and a span over it (already transpiled by the time we consume it). Copy
+        // the span's contiguous {reference,length} into a ref array.
         if (paramTypes is [{ Kind: TypeKind.Class, Class: { IsValueType: true } sp }]
             && _c.GenericDefFullName(sp) is "System.ReadOnlySpan" or "System.Span"
             && sp.Context.TypeArgs.Length == 1)
@@ -617,7 +638,8 @@ internal sealed partial class MethodCompiler
             return $"dn2cpp_refspan_to_array((Dn2CppObject**){s}.f__reference, {s}.f__length)";
         }
         // A single IEnumerable<Task<T>> operand: enumerate it into a ref array. The
-        // element type (Task / Task<T>) is the IEnumerable's closed type argument.
+        // element type (Task / Task<T>) is the IEnumerable's closed type argument. A
+        // null sequence throws ArgumentNullException naming .NET's parameter.
         if (paramTypes is [{ Kind: TypeKind.Class, Class: { } col }]
             && _c.GenericDefFullName(col) == "System.Collections.Generic.IEnumerable"
             && col.Context.TypeArgs.Length == 1)
@@ -628,13 +650,21 @@ internal sealed partial class MethodCompiler
                     $"{_method.DeclaringClass.FullName}.{_method.Name}: Task.WhenAll/WhenAny over " +
                     $"IEnumerable<{elem}> could not resolve the enumeration interfaces");
             var src = Pop();
-            string e = NewTemp(CppTypes.Of(ed.GetEnumerator.Signature.ReturnType)); // IEnumerator<T>*
-            Emit($"{e} = {EmitIfaceDispatch(ed.GetEnumerator, src.Expr)};");
+            string seq = NewTemp(src.CppType);
+            Emit($"{seq} = {src.Expr};");
+            Emit($"if ({seq} == nullptr) dn2cpp_throw_argument_null_param(\"tasks\");");
+            string? pairSource = nulls == TaskSequenceNulls.AtFirstUnlessWhenAnyPair
+                ? WhenAnyPairSourceTest(seq, elem) : null;
+            whenAnyPairSource = pairSource is null ? "false" : $"({pairSource})";
             string list = NewTemp("Dn2CppRefList*");
             Emit($"{list} = dn2cpp_reflist_new();");
-            Emit($"while ({EmitIfaceDispatch(ed.MoveNext, e)}) {{");
-            Emit($"    dn2cpp_reflist_add({list}, (Dn2CppObject*)({EmitIfaceDispatch(ed.GetCurrent, e)}));");
-            Emit("}");
+            EmitForEach(src with { Expr = seq }, ed, elem, cur =>
+            {
+                if (nulls != TaskSequenceNulls.AfterRead)
+                    Emit($"    if ({cur} == nullptr{(pairSource is null ? "" : $" && !({pairSource})")}) "
+                        + "dn2cpp_throw_argument_param(DN2CPP_SR_NULL_TASK, \"tasks\");");
+                Emit($"    dn2cpp_reflist_add({list}, (Dn2CppObject*)({cur}));");
+            });
             string arr = NewTemp("Dn2CppArrayRef*");
             Emit($"{arr} = dn2cpp_reflist_to_array({list});");
             return arr;
@@ -656,5 +686,22 @@ internal sealed partial class MethodCompiler
             $"{_method.DeclaringClass.FullName}.{_method.Name}: Task.WhenAll/WhenAny over " +
             "this operand shape is not supported (expected an array, a params " +
             "ReadOnlySpan<Task>, 2+ loose tasks, or an IEnumerable<Task>)");
+    }
+
+    /// <summary>The C++ test for a WhenAny sequence source that .NET reads as a span: an
+    /// array (every array reaching an IEnumerable&lt;TTask&gt; holds TTask elements) or an
+    /// exact List&lt;TTask&gt; — a subclass or another closed List takes the general
+    /// path. The List type-info is the one the WhenAny reach site notes.</summary>
+    private string WhenAnyPairSourceTest(string seq, TypeDesc elem)
+    {
+        string type = $"((Dn2CppObject*)({seq}))->type";
+        string test = $"({type}->flags & DN2CPP_TF_ARRAY) != 0";
+        // Before ListOf: a placeholder element must not mint a List over it.
+        TaintIfCanonical(elem, "whenany-list");
+        if (_c.ListOf(elem) is not { } list)
+            return test;
+        var listType = TypeDesc.MakeClass(list);
+        _c.NoteTypeIdentityClosure(listType, keepSeed: false);
+        return TypeInfoExpr(listType) is { } listTi ? $"{test} || {type} == {listTi}" : test;
     }
 }

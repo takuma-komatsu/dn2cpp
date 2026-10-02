@@ -787,6 +787,12 @@ extern const Dn2CppType dn2cpp_synchronization_lock_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_synchronization_lock_exception_type =
     dn2cpp_ti_with_typeobject({ "System.Threading.SynchronizationLockException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_synchronization_lock_exception_type_obj);
 const Dn2CppType dn2cpp_synchronization_lock_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_synchronization_lock_exception_type };
+// System.Threading.ThreadStateException — raised by Thread.Start on a thread already
+// started and by Thread.Join on one never started, as in .NET.
+extern const Dn2CppType dn2cpp_thread_state_exception_type_obj;
+Dn2CppTypeInfo dn2cpp_thread_state_exception_type =
+    dn2cpp_ti_with_typeobject({ "System.Threading.ThreadStateException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_thread_state_exception_type_obj);
+const Dn2CppType dn2cpp_thread_state_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_thread_state_exception_type };
 
 // Mutex-interned fallback behind the lock-free typeObject fast path (inline in
 // dn2cpp.h): one Dn2CppType per type-info handle, so typeof(X)/GetType() stay
