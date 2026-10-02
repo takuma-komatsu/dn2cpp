@@ -101,8 +101,12 @@ internal sealed partial class MethodCompiler
                     throw new NotSupportedException(
                         $"{Method.DeclaringClass.FullName}.{Method.Name}: System.Array.GetEnumerator needs the non-generic IEnumerable");
                 string fnPtr = $"{retCpp} (*)({itf.CppStructName}*)";
+                // The receiver is read twice (its header, then the call), and a null one is
+                // the callvirt's NullReferenceException.
+                string recv = NewTemp("Dn2CppObject*");
+                Emit($"{recv} = dn2cpp_null_check({Cast(arr, "Dn2CppObject*")});");
                 Push(StackKind.Ref, retCpp,
-                    $"(({fnPtr})(dn2cpp_resolve_interface(((Dn2CppObject*){arr.Expr})->type, &{itf.CppTypeInfoName})[{ge.VtableSlot}]))(({itf.CppStructName}*){arr.Expr})");
+                    $"(({fnPtr})(dn2cpp_resolve_interface({recv}->type, &{itf.CppTypeInfoName})[{ge.VtableSlot}]))(({itf.CppStructName}*){recv})");
                 return true;
             }
             case ("System.Enum", "GetName") when sig.ParameterTypes.Length == 2:
@@ -287,6 +291,10 @@ internal sealed partial class MethodCompiler
                 var dst = Pop();
                 var srcIdx = Pop();
                 var src = Pop();
+                Comp.NoteArraySearchCopiedElements(Method, src.ArraySearchOrigin, dst.ArraySearchOrigin,
+                    src.StaticType, dst.StaticType, reliable: true,
+                    zeroElements: ConstIntOf(len) == 0,
+                    offset: _arraySearchInstructionOffset, straightLine: _arraySearchStraightLine);
                 EmitArrayCopy(src, srcIdx.Expr, dst, dstIdx.Expr, len.Expr, reliable: true);
                 return true;
             }
@@ -299,6 +307,9 @@ internal sealed partial class MethodCompiler
                 var len = Pop();
                 var dst = Pop();
                 var src = Pop();
+                Comp.NoteArraySearchCopiedElements(Method, src.ArraySearchOrigin, dst.ArraySearchOrigin,
+                    src.StaticType, dst.StaticType, zeroElements: ConstIntOf(len) == 0,
+                    offset: _arraySearchInstructionOffset, straightLine: _arraySearchStraightLine);
                 EmitArrayCopy(src, "0", dst, "0", len.Expr);
                 return true;
             }
@@ -309,6 +320,9 @@ internal sealed partial class MethodCompiler
                 var dst = Pop();
                 var srcIdx = Pop();
                 var src = Pop();
+                Comp.NoteArraySearchCopiedElements(Method, src.ArraySearchOrigin, dst.ArraySearchOrigin,
+                    src.StaticType, dst.StaticType, zeroElements: ConstIntOf(len) == 0,
+                    offset: _arraySearchInstructionOffset, straightLine: _arraySearchStraightLine);
                 EmitArrayCopy(src, srcIdx.Expr, dst, dstIdx.Expr, len.Expr);
                 return true;
             }
@@ -621,6 +635,12 @@ internal sealed partial class MethodCompiler
                 var arr = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*",
                     $"dn2cpp_array_get_value({Cast(arr, "Dn2CppObject*")}, (int64_t)({idx.Expr}))");
+                var storedElement = Comp.ArraySearchStoredElement(Method, arr.ArraySearchOrigin,
+                    ConstIntOf(idx), _arraySearchInstructionOffset, _arraySearchStraightLine);
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin =
+                    storedElement ?? _c.ArraySearchElementOrigin(Method, arr.ArraySearchOrigin,
+                        ConstIntOf(idx), _arraySearchInstructionOffset, _arraySearchStraightLine,
+                        ArraySearchFlowKind.BoxedArrayElement) };
                 return true;
             }
             case ("System.Array", "GetValue") when sig.ParameterTypes.Length == 1
@@ -631,6 +651,9 @@ internal sealed partial class MethodCompiler
                 string isLong = gvEl.Primitive == PrimitiveTypeCode.Int64 ? "1" : "0";
                 Push(StackKind.Ref, "Dn2CppObject*",
                     $"dn2cpp_array_get_value_indices({Cast(arr, "Dn2CppObject*")}, {Cast(indices, "Dn2CppObject*")}, {isLong})");
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin =
+                    _c.TransformArraySearchOrigin(arr.ArraySearchOrigin,
+                        ArraySearchFlowKind.BoxedArrayElement) };
                 return true;
             }
             case ("System.Array", "GetValue") when sig.ParameterTypes.Length is 2 or 3
@@ -643,6 +666,9 @@ internal sealed partial class MethodCompiler
                 var arr = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*",
                     $"dn2cpp_array_get_value_fixed({Cast(arr, "Dn2CppObject*")}, dn2cpp_i32s({string.Join(", ", idx)}).v, {rank})");
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin =
+                    _c.TransformArraySearchOrigin(arr.ArraySearchOrigin,
+                        ArraySearchFlowKind.BoxedArrayElement) };
                 return true;
             }
             case ("System.Array", "SetValue") when sig.ParameterTypes.Length == 2
@@ -651,6 +677,9 @@ internal sealed partial class MethodCompiler
                 var idx = Pop();
                 var value = Pop();
                 var arr = Pop();
+                Comp.NoteArraySearchStore(Method, arr.ArraySearchOrigin, value.ArraySearchOrigin,
+                    false, ConstIntOf(idx), _arraySearchInstructionOffset,
+                    _arraySearchStraightLine);
                 Emit($"dn2cpp_array_set_value({Cast(arr, "Dn2CppObject*")}, {Cast(value, "Dn2CppObject*")}, (int64_t)({idx.Expr}));");
                 return true;
             }
@@ -660,6 +689,9 @@ internal sealed partial class MethodCompiler
                 var indices = Pop();
                 var value = Pop();
                 var arr = Pop();
+                Comp.NoteArraySearchStore(Method, arr.ArraySearchOrigin, value.ArraySearchOrigin,
+                    false, null, _arraySearchInstructionOffset,
+                    _arraySearchStraightLine);
                 string isLong = svEl.Primitive == PrimitiveTypeCode.Int64 ? "1" : "0";
                 Emit($"dn2cpp_array_set_value_indices({Cast(arr, "Dn2CppObject*")}, {Cast(value, "Dn2CppObject*")}, {Cast(indices, "Dn2CppObject*")}, {isLong});");
                 return true;
@@ -673,6 +705,9 @@ internal sealed partial class MethodCompiler
                     idx[i] = Cast(Pop(), "int32_t");
                 var value = Pop();
                 var arr = Pop();
+                Comp.NoteArraySearchStore(Method, arr.ArraySearchOrigin, value.ArraySearchOrigin,
+                    false, null, _arraySearchInstructionOffset,
+                    _arraySearchStraightLine);
                 Emit($"dn2cpp_array_set_value_fixed({Cast(arr, "Dn2CppObject*")}, {Cast(value, "Dn2CppObject*")}, dn2cpp_i32s({string.Join(", ", idx)}).v, {rank});");
                 return true;
             }
@@ -699,6 +734,15 @@ internal sealed partial class MethodCompiler
                 var t = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*",
                     $"dn2cpp_array_create_instance({Cast(t, "Dn2CppType*")}, dn2cpp_i32s({string.Join(", ", lens)}).v, {rank})");
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin =
+                    _c.TransformArraySearchOrigin(t.ArraySearchOrigin,
+                        ArraySearchFlowKind.RuntimeTypeToArrayElement,
+                        rank.ToString(System.Globalization.CultureInfo.InvariantCulture)) };
+                _c.AddArraySearchSeed(_stack[^1].ArraySearchOrigin!,
+                    ArraySearchValueKind.ArrayElement, t.TypeToken);
+                _stack[^1].ArraySearchOrigin!.ArrayAllocation = true;
+                _stack[^1].ArraySearchOrigin!.ArrayAllocationOffset = _arraySearchInstructionOffset;
+                _stack[^1].ArraySearchOrigin!.ArrayAllocationMethod = _method;
                 return true;
             }
             // Array.CreateInstanceFromArrayType(Type arrayType, length(s)): the
@@ -710,6 +754,10 @@ internal sealed partial class MethodCompiler
                 var t = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*",
                     $"dn2cpp_array_create_instance_from_arraytype({Cast(t, "Dn2CppType*")}, dn2cpp_i32s({Cast(len, "int32_t")}).v, 1)");
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin =
+                    _c.TransformArraySearchOrigin(t.ArraySearchOrigin,
+                        ArraySearchFlowKind.ArrayTypeToArrayElement) };
+                _stack[^1].ArraySearchOrigin!.ArrayAllocation = true;
                 return true;
             }
             case ("System.Array", "CreateInstanceFromArrayType") when sig.ParameterTypes.Length is 2 or 3
@@ -720,6 +768,10 @@ internal sealed partial class MethodCompiler
                 var t = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*",
                     $"dn2cpp_array_create_instance_from_arraytype_lengths({Cast(t, "Dn2CppType*")}, {Cast(lengths, "Dn2CppArrayI4*")}, {bounds}, {(sig.ParameterTypes.Length == 3 ? 1 : 0)})");
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin =
+                    _c.TransformArraySearchOrigin(t.ArraySearchOrigin,
+                        ArraySearchFlowKind.ArrayTypeToArrayElement) };
+                _stack[^1].ArraySearchOrigin!.ArrayAllocation = true;
                 return true;
             }
             case ("System.Array", "CreateInstance") when sig.ParameterTypes.Length == 2
@@ -728,7 +780,18 @@ internal sealed partial class MethodCompiler
                 var lengths = Pop();
                 var t = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*",
-                    $"dn2cpp_array_create_instance_lengths({Cast(t, "Dn2CppType*")}, {Cast(lengths, "Dn2CppArrayI4*")}, nullptr)");
+                    $"dn2cpp_array_create_instance_lengths({Cast(t, "Dn2CppType*")}, {Cast(lengths, "Dn2CppArrayI4*")}, nullptr, 0)");
+                int? rank = Comp.ArraySearchStableFreshLength(lengths.ArraySearchOrigin,
+                    Method, _arraySearchInstructionOffset, _arraySearchStraightLine);
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin =
+                    _c.TransformArraySearchOrigin(t.ArraySearchOrigin,
+                        ArraySearchFlowKind.RuntimeTypeToArrayElement,
+                        rank?.ToString(System.Globalization.CultureInfo.InvariantCulture)) };
+                _c.AddArraySearchSeed(_stack[^1].ArraySearchOrigin!,
+                    ArraySearchValueKind.ArrayElement, t.TypeToken);
+                _stack[^1].ArraySearchOrigin!.ArrayAllocation = true;
+                _stack[^1].ArraySearchOrigin!.ArrayAllocationOffset = _arraySearchInstructionOffset;
+                _stack[^1].ArraySearchOrigin!.ArrayAllocationMethod = _method;
                 return true;
             }
             case ("System.Array", "CreateInstance") when sig.ParameterTypes.Length == 3
@@ -739,7 +802,18 @@ internal sealed partial class MethodCompiler
                 var lengths = Pop();
                 var t = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*",
-                    $"dn2cpp_array_create_instance_lengths({Cast(t, "Dn2CppType*")}, {Cast(lengths, "Dn2CppArrayI4*")}, {Cast(bounds, "Dn2CppArrayI4*")})");
+                    $"dn2cpp_array_create_instance_lengths({Cast(t, "Dn2CppType*")}, {Cast(lengths, "Dn2CppArrayI4*")}, {Cast(bounds, "Dn2CppArrayI4*")}, 1)");
+                int? rank = Comp.ArraySearchStableFreshLength(lengths.ArraySearchOrigin,
+                    Method, _arraySearchInstructionOffset, _arraySearchStraightLine);
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin =
+                    _c.TransformArraySearchOrigin(t.ArraySearchOrigin,
+                        ArraySearchFlowKind.RuntimeTypeToArrayElement,
+                        rank?.ToString(System.Globalization.CultureInfo.InvariantCulture)) };
+                _c.AddArraySearchSeed(_stack[^1].ArraySearchOrigin!,
+                    ArraySearchValueKind.ArrayElement, t.TypeToken);
+                _stack[^1].ArraySearchOrigin!.ArrayAllocation = true;
+                _stack[^1].ArraySearchOrigin!.ArrayAllocationOffset = _arraySearchInstructionOffset;
+                _stack[^1].ArraySearchOrigin!.ArrayAllocationMethod = _method;
                 return true;
             }
             // Non-generic Array.Reverse(Array[, index, length]): byte-wise
@@ -786,6 +860,7 @@ internal sealed partial class MethodCompiler
                 var start = sig.ParameterTypes.Length >= 3 ? Pop() : null;
                 var value = Pop();
                 var array = Pop();
+                _c.NoteArraySearchOperand(_method, array.ArraySearchOrigin);
                 string arr = NewTemp("Dn2CppObject*");
                 Emit($"{arr} = {Cast(array, "Dn2CppObject*")};");
                 string val = NewTemp("Dn2CppObject*");
@@ -834,8 +909,7 @@ internal sealed partial class MethodCompiler
                     : $"for ({ix} = {first}; {ix} < {end}; {ix}++) {{");
                 string element = NewTemp("Dn2CppObject*");
                 Emit($"    {element} = dn2cpp_array_get_value({arr}, (int64_t){ix});");
-                Emit($"    if (dn2cpp_is_ref_array({arr}->type) ? dn2cpp_object_equals_default({element}, {val})");
-                Emit($"        : ({element} == nullptr ? {val} == nullptr : dn2cpp_object_equals_virtual({element}, {val}))) {{ {res} = {ix}; break; }}");
+                Emit($"    if (dn2cpp_array_search_equals({element}, {val}, dn2cpp_is_ref_array({arr}->type))) {{ {res} = {ix}; break; }}");
                 Emit("}");
                 if (last)
                     Emit("}");
@@ -898,6 +972,9 @@ internal sealed partial class MethodCompiler
                     _ => $"dn2cpp_array_clone_dyn({Cast(arr, "Dn2CppObject*")})",
                 };
                 Push(StackKind.Ref, "Dn2CppObject*", $"(Dn2CppObject*)({clone})");
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin =
+                    Comp.TransformArraySearchOrigin(arr.ArraySearchOrigin,
+                        ArraySearchFlowKind.ArrayCloneElements) };
                 return true;
             }
             // Array.CopyTo(Array dest, int index) — copy this array's
@@ -911,6 +988,9 @@ internal sealed partial class MethodCompiler
                 var idx = Pop();   // destination start index
                 var dst = Pop();   // destination Array
                 var src = Pop();   // this array (the source)
+                Comp.NoteArraySearchCopiedElements(Method, src.ArraySearchOrigin, dst.ArraySearchOrigin,
+                    src.StaticType, dst.StaticType,
+                    offset: _arraySearchInstructionOffset, straightLine: _arraySearchStraightLine);
                 // The Array.Clear(array) shape with the operands' exception types
                 // swapped round: the length comes off the RECEIVER, so a null one is
                 // a NullReferenceException (checked once into a temp, as there too),

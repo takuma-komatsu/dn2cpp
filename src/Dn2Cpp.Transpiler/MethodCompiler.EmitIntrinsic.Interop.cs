@@ -87,6 +87,7 @@ internal sealed partial class MethodCompiler
                 var src = Pop();
                 string to = CppTypes.Of(ga[1]);
                 Push(StackKind.Ptr, to + "*", $"({to}*)({src.Expr})");
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin = src.ArraySearchOrigin };
                 return true;
             }
             case "As" when ga.Length == 1: // As<T>(object) -> T (reference reinterpret)
@@ -94,6 +95,7 @@ internal sealed partial class MethodCompiler
                 var src = Pop();
                 string to = CppTypes.Of(ga[0]);
                 Push(StackKind.Ref, to, $"({to})({src.Expr})");
+                _stack[^1] = _stack[^1] with { ArraySearchOrigin = src.ArraySearchOrigin };
                 return true;
             }
             case "Unbox": // Unbox<T>(object box) -> ref T (a ref into the box's payload)

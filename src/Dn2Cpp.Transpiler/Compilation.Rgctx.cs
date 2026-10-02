@@ -643,6 +643,7 @@ internal sealed partial class Compilation
         "dn2cpp_gvm_",                  // generic-virtual-method dispatcher (GvmDispatchName)
         "dn2cpp_object_tostring",       // runtime-internal tostring-slot dispatch (interpolation, Append(object), x.ToString())
         "dn2cpp_object_equals_",        // runtime equality-slot / typed IEquatable dispatch
+        "dn2cpp_array_search_equals(",  // runtime array-element equality-slot dispatch
         "dn2cpp_default_equality_comparer_equals_nongeneric",
     };
 

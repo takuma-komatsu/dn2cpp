@@ -49,6 +49,7 @@
 # and Message-only fallback, including NUL and unpaired UTF-16 surrogates.
 # UInt32 and Int32 bound messages retain their suffixes after a collection.
 source "$(dirname "$0")/_common.sh"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|before-array-shape-fields"
 
 ancestry_app="gates/fixtures/runtime-exception-ancestry/bin/$CONFIG/$TFM/RuntimeExceptionAncestry.dll"
 build_gate_proj gates/fixtures/runtime-exception-ancestry/RuntimeExceptionAncestry.csproj
@@ -107,6 +108,17 @@ gate_extra_asserts() {
         'polyfill blank surrogate message: ArgumentException param=Argument is whitespace'; do
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: runtime argument witness missing: $line" >&2; exit 1; }
+    done
+    local array_before array_prefix
+    array_before=$(run_bounded "$out/ExceptionMessageSubset$EXE_EXT" before-array-shape-fields)
+    array_prefix=$(awk '/^-- runtime Array argument fields --$/ { exit } { print }' <<< "$native")
+    assert_output "$array_prefix" "$(strip_cr_win "$array_before")"
+    for line in '-- runtime Array argument fields --' \
+            'array-createinstance-length2: ArgumentOutOfRangeException param=length2 actual=-1 actual-type=Int32' \
+            'array-getvalue-null-indices: ArgumentNullException param=indices' \
+            'runtime Array argument fields end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: runtime Array fields witness missing: $line" >&2; exit 1; }
     done
     for app in "$fields_app" "$fallback_app" "$general_app"; do
         name=$(basename "${app%.dll}")

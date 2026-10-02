@@ -630,20 +630,30 @@ internal sealed partial class MethodCompiler
     private List<string> PopArgs(MethodInfo callee, bool hasThis)
     {
         _byRefSlotFixups.Clear();
+        _arraySearchByRefLocalSlots.Clear();
         var ps = callee.Signature.ParameterTypes;
         var args = new string[ps.Length + (hasThis ? 1 : 0)];
+        var arraySearchArgs = new ArraySearchOrigin?[args.Length];
         for (int i = ps.Length - 1; i >= 0; i--)
         {
             var entry = Pop();
+            arraySearchArgs[i + (hasThis ? 1 : 0)] = entry.ArraySearchOrigin;
+            if (ps[i].Kind == TypeKind.ByRef && entry.LocalSlot is { } local)
+                _arraySearchByRefLocalSlots.Add((local, i + (hasThis ? 1 : 0)));
             args[i + (hasThis ? 1 : 0)] = CoerceTo(entry, ps[i], CppTypes.Of(ps[i]));
             NoteByRefSlotFixup(entry, ps[i]);
         }
         if (hasThis)
+        {
             // A bare `foreach ((IEnumerable<T>)arr)` calls IEnumerable<T>.GetEnumerator
             // with the array itself as the receiver (Roslyn elides the interface-typed
             // local), so the `this` slot is also an array->IEnumerable<T> coercion.
-            args[0] = CoerceTo(Pop(), TypeDesc.MakeClass(callee.DeclaringClass),
+            var receiver = Pop();
+            arraySearchArgs[0] = receiver.ArraySearchOrigin;
+            args[0] = CoerceTo(receiver, TypeDesc.MakeClass(callee.DeclaringClass),
                 callee.DeclaringClass.CppStructName + "*");
+        }
+        _arraySearchCallArguments = arraySearchArgs;
         return args.ToList();
     }
 
@@ -2182,8 +2192,13 @@ internal sealed partial class MethodCompiler
 
         var ps = ctor.Signature.ParameterTypes;
         var ctorArgs = new string[ps.Length];
+        var ctorOrigins = new ArraySearchOrigin?[ps.Length + 1];
         for (int i = ps.Length - 1; i >= 0; i--)
-            ctorArgs[i] = Cast(Pop(), CppTypes.Of(ps[i]));
+        {
+            var argument = Pop();
+            ctorOrigins[i + 1] = argument.ArraySearchOrigin;
+            ctorArgs[i] = Cast(argument, CppTypes.Of(ps[i]));
+        }
 
         if (cls.IsValueType)
         {
@@ -2233,7 +2248,13 @@ internal sealed partial class MethodCompiler
         // Thread the constructed type as StaticType so a `new List<T>{...}` passed
         // straight into string.Join/Concat (no local binding) is recognised by
         // TryListBacking — the same lift as for call results / fields.
-        _stack.Add(new StackEntry(obj, StackKind.Ref, cls.CppStructName + "*", StaticType: TypeDesc.MakeClass(cls)));
+        var allocationOrigin = _c.SeedArraySearchOrigin(ArraySearchValueKind.ObjectType, TypeDesc.MakeClass(cls));
+        allocationOrigin.ObjectAllocation = true;
+        ctorOrigins[0] = allocationOrigin;
+        _c.ArraySearchCallOrigin(_method, ctor, ctorOrigins, virtualCall: false,
+            _arraySearchInstructionOffset, _arraySearchStraightLine);
+        _stack.Add(new StackEntry(obj, StackKind.Ref, cls.CppStructName + "*", StaticType: TypeDesc.MakeClass(cls),
+            ArraySearchOrigin: allocationOrigin));
     }
 
     /// <summary>The cold-task <c>new Task(...)</c> / <c>new Task&lt;TResult&gt;(...)</c>

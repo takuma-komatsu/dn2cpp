@@ -49,6 +49,14 @@ namespace HotPathNoAllocSubset
             return sum;
         }
 
+        // Type identity and array rank are metadata reads. Keep the Type
+        // arguments outside this body so its emitted calls remain observable.
+        [HotPath(NoAlloc = true)]
+        private static int InspectTypes(Type candidate, Type target, Type arrayType)
+        {
+            return (target.IsAssignableFrom(candidate) ? 10 : 0) + arrayType.GetArrayRank();
+        }
+
         internal static void __GateEntry()
         {
             var ints = new int[64];
@@ -56,6 +64,14 @@ namespace HotPathNoAllocSubset
                 ints[i] = i - 20;
             Console.WriteLine(SumOfSquares(ints));
             Console.WriteLine(SumSpan(new ReadOnlySpan<int>(ints, 4, 50)));
+        }
+
+        internal static void __GateReflectionEntry()
+        {
+            Console.WriteLine("== NoAlloc reflection reads ==");
+            Console.WriteLine(InspectTypes(typeof(string), typeof(object), typeof(int[])));
+            Console.WriteLine(InspectTypes(typeof(int), typeof(string), typeof(int[,])));
+            Console.WriteLine("NoAlloc reflection reads end");
         }
     }
 }

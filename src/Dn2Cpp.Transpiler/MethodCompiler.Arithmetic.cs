@@ -396,7 +396,11 @@ internal sealed partial class MethodCompiler
         // Thread the array's static type so a freshly-allocated array flowing straight
         // into an IEnumerable<T> position (a single-use array local Roslyn elides, so
         // there is no ldloc to set it) is still recognised as T[] and wrapped.
-        _stack[^1] = _stack[^1] with { StaticType = TypeDesc.MakeSZArray(element) };
+        _stack[^1] = _stack[^1] with { StaticType = TypeDesc.MakeSZArray(element),
+            ArraySearchOrigin = _c.SeedArraySearchOrigin(ArraySearchValueKind.ArrayElement, element) };
+        _c.AddArraySearchSeed(_stack[^1].ArraySearchOrigin!, ArraySearchValueKind.ArrayRuntimeType,
+            TypeDesc.MakeSZArray(element));
+        _stack[^1].ArraySearchOrigin!.ArrayAllocation = true;
     }
 
     /// <summary><c>Array.Empty&lt;T&gt;</c> -&gt; the per-element-type cached length-0
@@ -2012,6 +2016,7 @@ internal sealed partial class MethodCompiler
         Push(StackKind.Ref, slot, $"({slot})(*(({slot}*)({p.Expr})))");
         if (p.StaticType is { Kind: TypeKind.ByRef, Element: { } el })
             _stack[^1] = _stack[^1] with { StaticType = el };
+        _stack[^1] = _stack[^1] with { ArraySearchOrigin = p.ArraySearchOrigin };
     }
 
     /// <summary>stind.ref, the store half of <see cref="LoadIndirectRef"/>: route the
@@ -2025,6 +2030,10 @@ internal sealed partial class MethodCompiler
         string slot = RefSlotCppType(p);
         Emit($"*(({slot}*)({p.Expr})) = {Cast(val, slot)};");
         Emit($"dn2cpp_gc_write_barrier_if_heap((void*)({p.Expr}));");
+        if (p.ArraySearchOrigin is { } origin)
+            _c.NoteArraySearchWriteEffect(_method, origin, val.ArraySearchOrigin,
+                ArraySearchFlowKind.Identity, _arraySearchInstructionOffset,
+                _arraySearchStraightLine);
     }
 
     /// <summary>The canonical <c>f_method</c> spelling of one delegate position: a

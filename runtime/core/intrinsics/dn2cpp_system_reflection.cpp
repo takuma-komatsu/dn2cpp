@@ -553,20 +553,30 @@ Dn2CppArrayRef* dn2cpp_assembly_get_types(const char* asmName)
     return arr;
 }
 
-// RuntimeHelpers.Box(ref byte, RuntimeTypeHandle): box the payload at `value` under the
-// handle's own type, at THAT type's payload width. The width must be read here because
-// the handle is a run-time value — a fixed sizeof(int32_t) at the call site truncates a
-// long/ulong-underlying enum.
+// RuntimeHelpers.Box(ref byte, RuntimeTypeHandle): box the value at `value` under the
+// handle's own type. The width must be read here because the handle is a run-time
+// value — a fixed sizeof(int32_t) at the call site truncates a long/ulong-underlying
+// enum. The value sits at its type's own width, as an array element does, so it boxes
+// as Array.GetValue boxes one: a small primitive or enum widened to the box payload, a
+// Nullable<T> as null or its T. A reference type's `ref byte` is the reference slot,
+// which .NET returns unboxed. A by-ref-like type and void are refused before the
+// reference is read.
 Dn2CppObject* dn2cpp_box_by_handle(const Dn2CppTypeInfo* ti, const void* value)
 {
     if (ti == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("type");
+    if ((ti->flags & DN2CPP_TF_GENERICDEF) != 0)
+        dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_TYPE_NOT_SUPPORTED);
+    if ((ti->flags & DN2CPP_TF_BYREFLIKE) != 0)
+        dn2cpp_throw_not_supported_msg("Cannot create boxed ByRef-like values.");
+    if (ti == &dn2cpp_void_type)
+        dn2cpp_throw_argument_msg("Type is not supported.");
     if (value == nullptr)
         dn2cpp_throw_null_reference();  // a null `ref byte` — .NET faults, it does not box
     if ((ti->flags & DN2CPP_TF_VALUETYPE) == 0)
-        dn2cpp_throw_argument();
+        return *static_cast<Dn2CppObject* const*>(value);
     dn2cpp_require_layout(ti);
-    return dn2cpp_box(ti, value, static_cast<size_t>(ti->instanceSize > 0 ? ti->instanceSize : 0));
+    return dn2cpp_array_box_element(ti, value, ti->instanceSize > 0 ? ti->instanceSize : 0, false);
 }
 
 // RuntimeHelpers.GetUninitializedObject(Type): a zeroed instance with the type
@@ -576,8 +586,10 @@ Dn2CppObject* dn2cpp_box_by_handle(const Dn2CppTypeInfo* ti, const void* value)
 Dn2CppObject* dn2cpp_get_uninitialized_object(Dn2CppType* t)
 {
     if (t == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("type");
     const Dn2CppTypeInfo* ti = t->typeInfo;
+    if ((ti->flags & DN2CPP_TF_BYREFLIKE) != 0)
+        dn2cpp_throw_not_supported_msg("Cannot create boxed ByRef-like values.");
     // An exception type floors at the exception prefix, not the bare header: an
     // opaque one (System.Exception itself) reports no instanceSize, yet throwing
     // the instance stamps the trace slot and a catch reads the prefix fields.
@@ -4818,6 +4830,10 @@ Dn2CppString* dn2cpp_type_format_type_name(Dn2CppType* t)
 Dn2CppType* dn2cpp_type_make_array_type(Dn2CppType* t)
 {
     dn2cpp_type_require(t);
+    if ((t->typeInfo->flags & DN2CPP_TF_BYREFLIKE) != 0)
+        dn2cpp_throw_type_load();
+    if ((t->typeInfo->flags & DN2CPP_TF_ARRAY) != 0)
+        return dn2cpp_get_type_from_handle(dn2cpp_array_ti(t->typeInfo, 1));
     for (int32_t k = 0; k < dn2cpp_type_registry_count; k++)
     {
         const Dn2CppTypeInfo* cand = dn2cpp_type_registry[k].type;
@@ -5644,7 +5660,7 @@ void dn2cpp_array_store_boxed(Dn2CppObject* v, const Dn2CppTypeInfo* elem,
         {
             // Both sides primitive, no widening: ArgumentException ("Cannot
             // widen from source type to target type…"), matching real .NET.
-            dn2cpp_throw_argument();
+            dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_PRIM_WIDEN);
         }
         dn2cpp_write_prim(dst, dc, sc, i, r);
         dn2cpp_gc_write_barrier_if_heap(dst);

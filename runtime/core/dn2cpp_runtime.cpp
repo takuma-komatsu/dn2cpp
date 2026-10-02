@@ -646,6 +646,28 @@ int32_t dn2cpp_object_equals_virtual(Dn2CppObject* self, Dn2CppObject* other)
     return dn2cpp_object_equals(self, other);
 }
 
+int32_t dn2cpp_array_search_equals(Dn2CppObject* element, Dn2CppObject* value, int32_t refArray)
+{
+    if (element == nullptr || (refArray != 0 && value == nullptr))
+        return element == value ? 1 : 0;
+    const Dn2CppTypeInfo* t = element->type;
+    // These runtime-owned structs use the existing ValueType fallback without
+    // an emitted Equals body.
+    if (t != nullptr && (t->flags & DN2CPP_TF_VALUETYPE) != 0
+        && (t->flags & (DN2CPP_TF_ENUM | DN2CPP_TF_PRIMITIVE)) == 0
+        && t->equals == nullptr
+        && t != &dn2cpp_parallel_loop_result_type
+        && t != &dn2cpp_yield_awaiter_type)
+    {
+        std::string reason = "Non-generic Array search requires an Equals(object) body for value type ";
+        reason += t->name != nullptr ? t->name : "<unknown>";
+        reason += ".";
+        dn2cpp_throw_not_supported_msg(reason.c_str());
+    }
+    return refArray != 0 ? dn2cpp_object_equals_default(element, value)
+                         : dn2cpp_object_equals_virtual(element, value);
+}
+
 int32_t dn2cpp_object_equals_default(Dn2CppObject* a, Dn2CppObject* b)
 {
     if (a == nullptr || b == nullptr)

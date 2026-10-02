@@ -14,6 +14,9 @@ namespace ArrayCore
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
             CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
 
+#if ARRAY_UNSUPPORTED_EQUALITY_ONLY
+            DynamicArrayNullEqualitySubset.Program.RunUnsupportedEquality();
+#else
             // FIRST on purpose: the only section that asserts a fact about process-wide
             // state (ArrayPool<T>.Shared's thread-local bucket), so it sees a pristine pool.
             ArrayPoolSubset.Program.Run();
@@ -64,6 +67,19 @@ namespace ArrayCore
             ArrayDefaultOrderSubset.Program.Run();
             NonGenericArrayNullEqualitySubset.Program.Run();
             Console.WriteLine("default comparison validation end");
+            if (args.Length != 0 && args[0] == "before-array-provenance")
+                return;
+            ArrayArgumentCheckSubset.Program.RunShape();
+            ArraySurfaceSubset.Program.RunInitializeDiscovery();
+            ArrayRuntimeBoxSubset.Program.Run();
+            if (args.Length != 0 && args[0] == "before-dynamic-array-null-equality")
+                return;
+            DynamicArrayNullEqualitySubset.Program.Run();
+            if (args.Length != 0 && args[0] == "before-array-search-provenance-additions")
+                return;
+            DynamicArrayNullEqualitySubset.Program.RunArraySearchAdditions();
+            ArrayRuntimeBoxSubset.Program.RunReviewRegressions();
+#endif
         }
     }
 }

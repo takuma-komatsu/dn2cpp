@@ -9,4 +9,14 @@
     <DebugType>none</DebugType>
   </PropertyGroup>
 
+  <ItemGroup>
+    <Compile Remove="ReflectionReturnBoxProgram.cs" />
+    <Compile Remove="DiamondProvenanceProgram.cs" />
+    <Compile Remove="FieldAliasProvenanceProgram.cs" />
+    <Compile Remove="ArrayElementAliasProgram.cs" />
+    <Compile Remove="ArrayReflectedVoidBoxProgram.cs" />
+    <Compile Remove="ArrayFutureStoreProgram.cs" />
+    <Compile Remove="ArrayObjectFutureStoreProgram.cs" />
+  </ItemGroup>
+
 </Project>
