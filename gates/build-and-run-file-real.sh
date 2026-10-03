@@ -151,10 +151,6 @@ invoke_cli "$app" -r "$corelib" \
 #     `--keep-symbols` applies verbatim: a term that changes only what happens
 #     AFTER the transpile must be in the CONTEXT, or a green recorded without it
 #     gets replayed for a run with it.
-#   - the ambient GC env that reaches run 1 (run 2 forces its own). Neither
-#     DN2CPP_GC_INCREMENTAL nor DN2CPP_GC_STATS is in gate_cache_check's shared
-#     env line — the first would make run 1 a second incremental run, the second
-#     adds startup/exit lines to stdout that the .NET oracle does not print.
 #   - the symbol-set assert, named so the CONTEXT reads as the whole covered
 #     region rather than as the diff alone.
 #   - step 6's bounded-import report, which is BOTH an assert and a
@@ -172,7 +168,6 @@ cache_ctx="$cache_ctx|refs:System.Diagnostics.Process+System.ComponentModel.Prim
 cache_ctx="$cache_ctx|runs:default+DN2CPP_GC_INCREMENTAL=1+measure-verbose"
 cache_ctx="$cache_ctx|cut:BoundedImportSubset.CutNative::Probe+CutVirtual::Answer+ICutItf::Answer"
 cache_ctx="$cache_ctx|asserts:diff+exitcode+pal-syms+libproc-syms+bounded-imports+verdicts+ldftn-mouth+ldvirtftn-mouth"
-cache_ctx="$cache_ctx|gcenv:${DN2CPP_GC_INCREMENTAL:-}:${DN2CPP_GC_STATS:-}"
 if gate_cache_check "$out" "$cache_ctx" \
         "$app" "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json"; then
     gate_cache_hit_msg

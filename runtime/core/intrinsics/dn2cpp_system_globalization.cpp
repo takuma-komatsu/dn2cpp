@@ -240,7 +240,10 @@ static const Dn2CppNumberFormatInfo* dn2cpp_culture_intern(const Dn2CppCultureRo
 
 const Dn2CppNumberFormatInfo* dn2cpp_culture_by_name(Dn2CppString* name)
 {
-    if (name == nullptr || name->length == 0)
+    // Real .NET's CultureData maps the one-letter name "C", in either case, to
+    // the invariant culture, and so does a host default of LANG=c.
+    if (name == nullptr || name->length == 0
+        || (name->length == 1 && (name->chars[0] == u'C' || name->chars[0] == u'c')))
         return dn2cpp_nfi_invariant();
     return dn2cpp_culture_intern(dn2cpp_culture_find_row(name), name);
 }

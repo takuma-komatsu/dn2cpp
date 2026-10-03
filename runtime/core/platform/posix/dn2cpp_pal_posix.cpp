@@ -15,6 +15,7 @@
 #include <cstdio>     // snprintf (default-locale name assembly); fwrite/fflush (console sink)
 #include <cstdlib>    // getenv / realpath
 #include <cstring>    // strlen / memcpy / strcmp / strncmp
+#include <strings.h>  // strncasecmp (en_US_POSIX test of the default-locale id)
 #include <ctime>      // localtime_r / mktime / std::tm / std::time_t
 #include <mutex>      // std::mutex (membarrier fallback serialization)
 #include <vector>     // PATH_MAX scratch off the stack (dn2cpp_pal_executable_path)
@@ -81,22 +82,14 @@ const char* dn2cpp_pal_getenv(const char* name)
 // uppercased trailing subtag ("de_AT.UTF-8@euro" -> "de-AT-EURO"). Returns 0 for
 // an id that names no locale.
 //
-// The four shapes above plus the C/POSIX rejection are read off real .NET's own
+// The four shapes above plus the no-locale set are read off real .NET's own
 // behaviour. dn2cpp does not resolve the name any further — an id the culture
 // table does not carry keeps its name over invariant symbols, the same answer
 // `new CultureInfo(thatName)` already gives.
 static int32_t dn2cpp_pal_locale_from_posix_id(const char* id, char* buf, size_t size)
 {
-    if (id == nullptr || id[0] == '\0')
+    if (id == nullptr)
         return 0;
-    // "C" / "POSIX" / "C.UTF-8" name the absence of a locale. Real .NET rejects
-    // them rather than honouring them, and — measured — does NOT then fall
-    // through to the next variable in the list: an LC_ALL of "C" makes a LANG of
-    // "fr_FR.UTF-8" invisible. So the caller stops at the first variable that is
-    // SET, and this function decides only whether that one names a locale.
-    if (std::strcmp(id, "C") == 0 || std::strcmp(id, "POSIX") == 0 || std::strncmp(id, "C.", 2) == 0)
-        return 0;
-
     size_t n = 0;
     size_t i = 0;
     for (; id[i] != '\0' && id[i] != '.' && id[i] != '@'; i++)
@@ -108,7 +101,14 @@ static int32_t dn2cpp_pal_locale_from_posix_id(const char* id, char* buf, size_t
     // Skip the codeset, keep the modifier.
     while (id[i] != '\0' && id[i] != '@')
         i++;
-    if (id[i] == '@' && id[i + 1] != '\0')
+    bool modifier = id[i] == '@' && id[i + 1] != '\0';
+    // ICU turns a C or POSIX base into en_US_POSIX, and real .NET reads
+    // en_US_POSIX, like an empty base, as no locale at all.
+    if (!modifier
+        && ((n == 1 && buf[0] == 'C') || (n == 5 && std::memcmp(buf, "POSIX", 5) == 0)
+            || (n == 11 && ::strncasecmp(buf, "en-US-POSIX", 11) == 0)))
+        return 0;
+    if (modifier)
     {
         if (n + 1 >= size)
             return 0;
@@ -180,24 +180,27 @@ int32_t dn2cpp_pal_default_locale_name(char* buf, size_t size)
     if (buf == nullptr || size == 0)
         return 0;
     buf[0] = '\0';
-    // ICU's uprv_getPOSIXIDForCategory order, which is what real .NET ends up
-    // resolving through on POSIX: the FIRST of these that is set decides, set to
-    // "C" included.
+    // ICU's uprv_getPOSIXIDForCategory scan, which real .NET resolves its
+    // default through on POSIX: the FIRST of these that is set decides, an
+    // empty or "C" value included, so a later variable is never consulted
+    // behind it.
     static const char* const kVars[] = { "LC_ALL", "LC_MESSAGES", "LANG" };
+    const char* id = nullptr;
     for (const char* v : kVars)
     {
-        const char* id = ::getenv(v);
-        if (id == nullptr || id[0] == '\0')
-            continue;
-        return dn2cpp_pal_locale_from_posix_id(id, buf, size);
+        id = ::getenv(v);
+        if (id != nullptr)
+            break;
     }
+    int32_t n = dn2cpp_pal_locale_from_posix_id(id, buf, size);
+    if (n > 0)
+        return n;
+    buf[0] = '\0';
 #if defined(__APPLE__)
+    // Real .NET asks NSLocale whenever ICU's default names no locale.
     return dn2cpp_pal_locale_from_cf(buf, size);
 #else
-    // No CFLocale equivalent to ask. Real .NET reaches ICU's "en_US_POSIX"
-    // default here, a locale whose formatting IS the invariant one; answering 0
-    // (invariant, empty name) differs from it only in the NAME, and only on a
-    // host that has declined to state a locale in the first place.
+    // Real .NET maps that default to the invariant culture.
     return 0;
 #endif
 }

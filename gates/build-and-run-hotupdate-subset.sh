@@ -220,17 +220,17 @@ grep -q dn2cpp_base_image_abi_hash "$OUT/generated.cpp" \
     || { echo "FAIL: dn2cpp_base_image_abi_hash constant missing from generated.cpp" >&2; exit 1; }
 
 # Beyond the base's transpile surface, everything below is a function of the
-# patch assemblies (baked by --emit-patch, whose rejections are transpiler
-# BEHAVIOR — hence the _gate_cli_hash term standing in for the transpiler; see
-# that helper's doc) and the refs list. The transpiler-behavior env axis rides
-# in the context too: the bakes' outputs (.bpi) are not in the key's surface,
-# so an ambient cap/assert/drain knob changing them must move the context.
-tenv="tenv:${DN2CPP_MAX_GENERIC_DEPTH:-}/${DN2CPP_MAX_INSTANTIATIONS:-}/${DN2CPP_MAX_HEAP_MB:-}/${DN2CPP_SHARED_ASSERT:-}/${DN2CPP_STRICT_COMPLETION:-}/${DN2CPP_SPEC_DRAIN:-}"
+# inputs keyed below (every assembly built above, both refs lists and the
+# fixture scripts) and of transpiler BEHAVIOR: the bakes, their rejections and
+# the later base transpiles. None of those outputs is in the key's surface, so
+# _gate_cli_hash stands in for the transpiler and _gate_transpiler_env_term for
+# its environment (see those helpers' docs).
+#
 # The conditional-default-reference section transpiles the same base
 # against the REAL net10.0 CoreLib, so which CoreLib that resolves to is an input
 # of this gate the same way it is of net10_bcl_diff_gate — a runtime bump must
 # not be served a green recorded against the previous one.
-if gate_cache_check "$OUT" "hotupdate-subset|cli:$(_gate_cli_hash)|$tenv|field-metadata:$field_packed/$field_native|corelib:$(resolve_net10_corelib)" \
+if gate_cache_check "$OUT" "hotupdate-subset|cli:$(_gate_cli_hash)|$(_gate_transpiler_env_term)|field-metadata:$field_packed/$field_native|corelib:$(resolve_net10_corelib)" \
         "$base_app" "$patch_app" "$bad_app" "$badgvm_app" "$baditf_app" "$baddg_app" \
         "$concat_oracle_app" \
         "$badmc_app" "$dir1_app" "$dir2_app" "$dgrecv_app" "$dgsig_app" \

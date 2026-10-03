@@ -42,6 +42,13 @@
 # proof. A known P/Invoke gap also runs through measure with both worker counts; its
 # report and summary keep the same order. The dedicated parallel-bodies gate proves
 # actual worker overlap on a host with at least two logical processors.
+#
+# The output directory is not an input either, although ILDiet writes the stripped
+# load set under -o and every module is loaded from there. One more jobs=1/FIFO corner
+# writes through an absolute -o, one level deeper, under a longer name, so a leaked
+# name and a leaked length (a pooled string's offsets) both show. It is compared first:
+# every corner above writes to a differently named directory, so a leak would otherwise
+# be blamed on the worker count.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # shellcheck source=gates/_common.sh
@@ -75,12 +82,12 @@ build_proj samples/dotnet/PInvokeByValTStrBad/PInvokeByValTStrBad.csproj
 # strict-completion cleanliness; its dozen-plus transpiles ARE the work and much
 # of it (a clean strict run) leaves nothing to key on — so the cache key stands
 # in for the transpiler itself via _gate_cli_hash (see that helper's doc). OUT
-# was just cleared, so the key's surface term is empty and stable. The
-# transpiler-behavior env axis rides in the context for the same reason: an
-# ambient DN2CPP_SPEC_DRAIN/STRICT_COMPLETION (this gate's own levers!) or a
-# cap/assert knob changes what the runs below do, with no surface to catch it.
-tenv="tenv:${DN2CPP_MAX_GENERIC_DEPTH:-}/${DN2CPP_MAX_INSTANTIATIONS:-}/${DN2CPP_MAX_HEAP_MB:-}/${DN2CPP_SHARED_ASSERT:-}/${DN2CPP_STRICT_COMPLETION:-}/${DN2CPP_SPEC_DRAIN:-}"
-if gate_cache_check "$OUT" "emit-order-stability|jobs:1,2|measure-jobs:1,2|cli:$(_gate_cli_hash)|$corelib|$tenv" \
+# was just cleared, so the key's surface term is empty and stable.
+# _gate_transpiler_env_term keys the transpiler's environment for the same
+# reason: an ambient DN2CPP_SPEC_DRAIN/STRICT_COMPLETION (this gate's own
+# levers!) or a cap/assert knob changes what the runs below do, with no surface
+# to catch it.
+if gate_cache_check "$OUT" "emit-order-stability|jobs:1,2|measure-jobs:1,2|cli:$(_gate_cli_hash)|$corelib|$(_gate_transpiler_env_term)" \
         "samples/dotnet/ReflectTypes/bin/$CONFIG/$TFM/ReflectTypes.dll" \
         "samples/dotnet/StringCore/bin/$CONFIG/$TFM/StringCore.dll" \
         "samples/dotnet/ArrayCore/bin/$CONFIG/$TFM/ArrayCore.dll" \
@@ -91,7 +98,7 @@ if gate_cache_check "$OUT" "emit-order-stability|jobs:1,2|measure-jobs:1,2|cli:$
     exit 0
 fi
 
-echo "== 3/5 Isolating worker-count and drain-order byte stability =="
+echo "== 3/5 Isolating output-directory, worker-count and drain-order byte stability =="
 for entry in "${SAMPLES[@]}"; do
     proj=${entry%%|*}
     extras=${entry#*|}
@@ -115,10 +122,14 @@ for entry in "${SAMPLES[@]}"; do
         fifo="$OUT/$proj-$sharing-fifo"
         parallel_fifo="$OUT/$proj-$sharing-jobs2-fifo"
         lifo="$OUT/$proj-$sharing-lifo"
-        rm -rf "$fifo" "$parallel_fifo" "$lifo"
+        relocated="$OUT/relocated/$proj-$sharing-relocated-output-directory"
+        rm -rf "$fifo" "$parallel_fifo" "$lifo" "$relocated"
 
         # shellcheck disable=SC2086  # $share_flag is one flag or empty, deliberately
         invoke_cli "$app" "${refs[@]}" $share_flag --jobs 1 -o "$fifo" >/dev/null
+        # shellcheck disable=SC2086
+        invoke_cli "$app" "${refs[@]}" $share_flag --jobs 1 \
+            -o "$(native_path "$PWD/$relocated")" >/dev/null
         # shellcheck disable=SC2086
         invoke_cli "$app" "${refs[@]}" $share_flag --jobs 2 -o "$parallel_fifo" >/dev/null
 
@@ -126,6 +137,12 @@ for entry in "${SAMPLES[@]}"; do
         DN2CPP_SPEC_DRAIN=lifo \
             invoke_cli "$app" "${refs[@]}" $share_flag --jobs 2 -o "$lifo" >/dev/null
 
+        if ! diff -r "$fifo" "$relocated" >/dev/null 2>&1; then
+            echo "FAIL: $proj (shared generics $sharing) — the emitted C++ depends on"
+            echo "      the -o directory's name or spelling. The diff says where:"
+            head -20 <<<"$(diff -r "$fifo" "$relocated")"
+            exit 1
+        fi
         if ! diff -r "$fifo" "$parallel_fifo" >/dev/null 2>&1; then
             echo "FAIL: $proj (shared generics $sharing) — the emitted C++ depends on"
             echo "      the body worker count. The diff says where:"
@@ -139,7 +156,7 @@ for entry in "${SAMPLES[@]}"; do
             head -20 <<<"$(diff -r "$parallel_fifo" "$lifo")"
             exit 1
         fi
-        echo "OK: $proj (shared generics $sharing) — each isolated axis is byte-identical"
+        echo "OK: $proj (shared generics $sharing) — output directory, worker count and drain order are each byte-identical"
     done
 done
 
@@ -253,6 +270,6 @@ cmp -s "$OUT/measure-jobs1.stderr.normalized" "$OUT/measure-jobs2.stderr.normali
 echo "OK: --measure exit, sidecars, summary and diagnostics are identical for jobs=1 and jobs=2"
 
 gate_cache_commit
-echo "OK: emitted C++ is a function of the input, not of discovery order — and every"
-echo "    specialization whose members were decoded is one something asked for; body"
-echo "    scheduling also preserves emit and measure output"
+echo "OK: emitted C++ is a function of the input, not of discovery order or of the"
+echo "    output directory — and every specialization whose members were decoded is"
+echo "    one something asked for; body scheduling also preserves emit and measure output"
