@@ -9,7 +9,6 @@ namespace MultiAssembly;
 sealed class MetadataExternalPolicy
 {
     public int Reachable() => 17;
-    public int MustRemainUnreachable() => 92;
 }
 
 sealed class MetadataDerived : MetadataMiddle { }

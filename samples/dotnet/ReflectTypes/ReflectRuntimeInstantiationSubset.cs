@@ -1,5 +1,6 @@
 #nullable disable
 using System;
+using System.Reflection;
 
 // The runtime-instantiation template route
 // (Compilation.BuildRuntimeInstantiationTemplates / JudgeRuntimeTemplates on the
@@ -25,7 +26,9 @@ using System;
 // missing instantiation — the frozen snapshot asserts that message. So does a
 // definition whose generic virtual override instantiates a generic method over
 // the definition's own type parameter: a clone would need that instantiation
-// minted per type argument.
+// minted per type argument. A clone owns its field and property rows: they
+// report it as DeclaringType, read and write through it, and a property's
+// accessor is the clone's method row, the handle GetMethod returns.
 
 namespace ReflectRuntimeInstantiationSubset
 {
@@ -241,8 +244,175 @@ namespace ReflectRuntimeInstantiationSubset
         }
     }
 
+    static class MemberSink
+    {
+        public static string Last = "";
+    }
+
+    // Only reflection names these members, so each is reached through a clone's
+    // own field and property rows, and each accessor is one of its method rows.
+    class Membered<T>
+    {
+        public string label = "members";
+        public int count;
+        public const int Answer = 42;
+        public string Name => label + ":" + typeof(T).Name;
+        public string Label { get => label; set => label = value + "/" + typeof(T).Name; }
+        public int Count { get => count; set => count = value; }
+        public static string Shared => "static:" + typeof(T).Name;
+        public static string Sink { get => MemberSink.Last; set => MemberSink.Last = value + ":" + typeof(T).Name; }
+    }
+
+    class SubMembered<T> : Membered<T>
+    {
+        public string extra = "extra";
+        public string Extra => extra + ":" + typeof(T).Name;
+    }
+
     class Program
     {
+        internal static void RunTemplateMembers()
+        {
+            Console.WriteLine("== template members ==");
+            Type[] closes = new Type[2];
+            object[] insts = new object[2];
+            int at = 0;
+            foreach (Type arg in new[] { typeof(int), typeof(string) })
+            {
+                Type closed = typeof(Membered<>).MakeGenericType(arg);
+                object inst = Activator.CreateInstance(closed);
+                closes[at] = closed;
+                insts[at++] = inst;
+                string p = "members " + arg.Name + " ";
+                PropertyInfo name = closed.GetProperty("Name");
+                PropertyInfo label = closed.GetProperty("Label");
+                PropertyInfo count = closed.GetProperty("Count");
+                PropertyInfo shared = closed.GetProperty("Shared");
+                PropertyInfo sink = closed.GetProperty("Sink");
+                FieldInfo labelField = closed.GetField("label");
+                FieldInfo countField = closed.GetField("count");
+                FieldInfo answer = closed.GetField("Answer");
+                Console.WriteLine(p + "found: " + (name != null) + (label != null) + (count != null)
+                    + (shared != null) + (sink != null) + (labelField != null) + (countField != null) + (answer != null));
+                Console.WriteLine(p + "properties: " + Names(closed.GetProperties()));
+                Console.WriteLine(p + "instance properties: " + Names(closed.GetProperties(BindingFlags.Public | BindingFlags.Instance)));
+                Console.WriteLine(p + "static properties: " + Names(closed.GetProperties(BindingFlags.Public | BindingFlags.Static)));
+                Console.WriteLine(p + "fields: " + Names(closed.GetFields()));
+                Console.WriteLine(p + "nonpublic fields: " + Names(closed.GetFields(BindingFlags.NonPublic | BindingFlags.Instance)));
+                Console.WriteLine(p + "types: " + name.PropertyType.Name + "/" + count.PropertyType.Name + "/"
+                    + labelField.FieldType.Name + "/" + countField.FieldType.Name + "/" + answer.FieldType.Name);
+                Console.WriteLine(p + "flags: " + name.CanRead + name.CanWrite + label.CanWrite + shared.GetGetMethod().IsStatic
+                    + " literal=" + answer.IsLiteral + " static=" + answer.IsStatic + " public=" + labelField.IsPublic);
+                Console.WriteLine(p + "get identity: " + (closed.GetMethod("get_Name") == name.GetGetMethod())
+                    + "/" + (closed.GetMethod("get_Label") == label.GetGetMethod())
+                    + "/" + (closed.GetMethod("get_Shared") == shared.GetGetMethod())
+                    + "/" + (closed.GetMethod("get_Sink") == sink.GetGetMethod())
+                    + "/" + (name.GetMethod == closed.GetMethod("get_Name"))
+                    + "/" + closed.GetMethod("get_Name").Equals(name.GetGetMethod()));
+                Console.WriteLine(p + "set identity: " + (closed.GetMethod("set_Label") == label.GetSetMethod())
+                    + "/" + (closed.GetMethod("set_Count") == count.GetSetMethod())
+                    + "/" + (closed.GetMethod("set_Sink") == sink.GetSetMethod())
+                    + "/" + (label.SetMethod == closed.GetMethod("set_Label"))
+                    + "/" + (name.GetSetMethod() == null));
+                Console.WriteLine(p + "declaring: " + (name.DeclaringType == closed) + "/" + (shared.DeclaringType == closed)
+                    + "/" + (labelField.DeclaringType == closed) + "/" + (answer.DeclaringType == closed)
+                    + "/" + (name.GetGetMethod().DeclaringType == closed) + "/" + (sink.GetSetMethod().DeclaringType == closed));
+                Console.WriteLine(p + "reflected: " + (name.ReflectedType == closed) + "/" + (shared.ReflectedType == closed)
+                    + "/" + (labelField.ReflectedType == closed) + "/" + (answer.ReflectedType == closed)
+                    + "/" + (name.GetGetMethod().ReflectedType == closed));
+                Console.WriteLine(p + "same member: " + (closed.GetProperty("Name") == name) + "/" + closed.GetProperty("Name").Equals(name)
+                    + "/" + (closed.GetProperty("Name").GetHashCode() == name.GetHashCode())
+                    + "/" + (closed.GetField("label") == labelField) + "/" + closed.GetField("label").Equals(labelField)
+                    + "/" + (closed.GetField("label").GetHashCode() == labelField.GetHashCode())
+                    + " listed=" + IndexIn(closed.GetProperties(), name) + "/" + IndexIn(closed.GetFields(), labelField));
+                Console.WriteLine(p + "get: " + Attempt(() => name.GetValue(inst)) + " " + Attempt(() => label.GetValue(inst))
+                    + " " + Attempt(() => count.GetValue(inst)) + " " + Attempt(() => labelField.GetValue(inst))
+                    + " " + Attempt(() => answer.GetValue(null)) + " " + Attempt(() => answer.GetRawConstantValue()));
+                label.SetValue(inst, "set");
+                count.SetValue(inst, 5);
+                Console.WriteLine(p + "set property: " + Attempt(() => name.GetValue(inst)) + " " + Attempt(() => countField.GetValue(inst)));
+                labelField.SetValue(inst, "field");
+                countField.SetValue(inst, 6);
+                Console.WriteLine(p + "set field: " + Attempt(() => name.GetValue(inst)) + " " + Attempt(() => count.GetValue(inst)));
+                Console.WriteLine(p + "static: " + Attempt(() => shared.GetValue(null)) + " " + Attempt(() =>
+                {
+                    sink.SetValue(null, "sunk");
+                    return sink.GetValue(null);
+                }));
+                Console.WriteLine(p + "accessor invoke: " + Attempt(() => name.GetGetMethod().Invoke(inst, null))
+                    + " " + Attempt(() => shared.GetGetMethod().Invoke(null, null)));
+                Console.WriteLine(p + "wrong receiver: " + Attempt(() => name.GetValue(new object()))
+                    + " " + Attempt(() => labelField.GetValue(new object())) + " " + Attempt(() => name.GetValue(null)));
+                Console.WriteLine(p + "constant set: " + Attempt(() =>
+                {
+                    answer.SetValue(null, 1);
+                    return "set";
+                }));
+            }
+            Console.WriteLine("members across: " + (closes[0].GetProperty("Name") == closes[1].GetProperty("Name"))
+                + "/" + (closes[0].GetField("label") == closes[1].GetField("label"))
+                + "/" + (closes[0].GetMethod("get_Name") == closes[1].GetMethod("get_Name")));
+            Console.WriteLine("members cross receiver: " + Attempt(() => closes[0].GetProperty("Name").GetValue(insts[1]))
+                + " " + Attempt(() => closes[0].GetField("label").GetValue(insts[1])));
+            Type sub = typeof(SubMembered<>).MakeGenericType(typeof(int));
+            object subInst = Activator.CreateInstance(sub);
+            PropertyInfo inherited = sub.GetProperty("Name");
+            PropertyInfo extra = sub.GetProperty("Extra");
+            FieldInfo inheritedField = sub.GetField("label");
+            Console.WriteLine("sub-members base: " + (sub.BaseType == closes[0]));
+            Console.WriteLine("sub-members properties: " + Names(sub.GetProperties()));
+            Console.WriteLine("sub-members fields: " + Names(sub.GetFields()));
+            Console.WriteLine("sub-members flattened statics: "
+                + Names(sub.GetProperties(BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy)));
+            Console.WriteLine("sub-members declaring: " + (inherited.DeclaringType == closes[0]) + "/" + (extra.DeclaringType == sub)
+                + "/" + (inheritedField.DeclaringType == closes[0]) + "/" + (inherited.GetGetMethod().DeclaringType == closes[0]));
+            Console.WriteLine("sub-members reflected: " + (inherited.ReflectedType == sub) + "/" + (extra.ReflectedType == sub)
+                + "/" + (inheritedField.ReflectedType == sub) + "/" + (inherited.GetGetMethod().ReflectedType == sub));
+            Console.WriteLine("sub-members identity: " + (sub.GetMethod("get_Name") == inherited.GetGetMethod())
+                + "/" + (sub.GetMethod("get_Extra") == extra.GetGetMethod())
+                + "/" + (inherited == closes[0].GetProperty("Name"))
+                + "/" + (inheritedField == closes[0].GetField("label"))
+                + "/" + (sub.GetProperty("Name") == inherited));
+            Console.WriteLine("sub-members values: " + Attempt(() => inherited.GetValue(subInst)) + " " + Attempt(() => extra.GetValue(subInst))
+                + " " + Attempt(() => inheritedField.GetValue(subInst)) + " " + Attempt(() => closes[0].GetProperty("Name").GetValue(subInst))
+                + " " + Attempt(() => extra.GetValue(insts[0])));
+            Console.WriteLine("template members end");
+        }
+
+        // The result, the inner exception of an invocation, or the exception and its message.
+        private static string Attempt(Func<object> call)
+        {
+            try
+            {
+                object r = call();
+                return r == null ? "null" : r.ToString();
+            }
+            catch (TargetInvocationException ex)
+            {
+                return "TIE/" + ex.InnerException.GetType().Name;
+            }
+            catch (Exception ex)
+            {
+                return ex.GetType().Name + "(" + ex.Message + ")";
+            }
+        }
+
+        private static string Names(MemberInfo[] members)
+        {
+            string s = members.Length + ":";
+            for (int i = 0; i < members.Length; i++)
+                s += (i > 0 ? "," : "") + members[i].Name;
+            return s;
+        }
+
+        private static int IndexIn(MemberInfo[] members, MemberInfo m)
+        {
+            for (int i = 0; i < members.Length; i++)
+                if (members[i] == m)
+                    return i;
+            return -1;
+        }
+
         internal static void RunTemplateValues()
         {
             Console.WriteLine("== template values ==");

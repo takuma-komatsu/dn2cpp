@@ -17,6 +17,16 @@
 // once T closes and takes the slot of the base template its definition repeats,
 // and a listing level's own alike method leaves the interface method to the base
 // body whose definition implements it.
+//
+// RunVariantInterfaces: an interface generic virtual called through an instantiation
+// the receiver implements only through variance (IVariantIn<string> served by
+// IVariantIn<object>, IVariantOut<object> by IVariantOut<string>) runs the body the
+// implemented instantiation binds, or that instantiation's default body, whether the
+// call is constrained on a struct or a class, goes through a box or a bound delegate.
+// An exact instantiation outranks a variant one; among several variant ones the first
+// in the receiver's interface list wins, most derived level first. A non-generic slot
+// a constrained call reaches binds the same way, default body included, past an
+// instantiation variance cannot convert (IVariantPlainIn<int> for IVariantPlainIn<string>).
 using System;
 
 namespace GvmHiderSubset
@@ -231,6 +241,123 @@ namespace GvmHiderSubset
         public virtual string Convert<U>(object value) => "own object";
     }
 
+    internal interface IVariantIn<in X>
+    {
+        string M<T>(X x);
+    }
+
+    internal interface IVariantOut<out X>
+    {
+        X Get<T>();
+    }
+
+    internal interface IVariantDefault<in X>
+    {
+        string D<T>(X x) => "default:" + typeof(X).Name + ":" + typeof(T).Name + ":" + x;
+    }
+
+    internal struct VariantInStruct : IVariantIn<object>
+    {
+        public int K;
+        public string M<T>(object o) => "struct" + K + ":" + typeof(T).Name + ":" + o;
+    }
+
+    internal sealed class VariantInClass : IVariantIn<object>
+    {
+        public string M<T>(object o) => "class:" + typeof(T).Name + ":" + o;
+    }
+
+    internal sealed class VariantInExplicit : IVariantIn<object>
+    {
+        string IVariantIn<object>.M<T>(object o) => "explicit:" + typeof(T).Name + ":" + o;
+    }
+
+    internal class VariantInBase : IVariantIn<object>
+    {
+        public virtual string M<T>(object o) => "base:" + typeof(T).Name + ":" + o;
+    }
+
+    internal sealed class VariantInDerived : VariantInBase
+    {
+        public override string M<T>(object o) => "derived:" + typeof(T).Name + ":" + o;
+    }
+
+    internal sealed class VariantInInherited : VariantInBase
+    {
+    }
+
+    internal sealed class VariantInExact : IVariantIn<object>, IVariantIn<string>
+    {
+        string IVariantIn<object>.M<T>(object o) => "exact object:" + typeof(T).Name + ":" + o;
+        string IVariantIn<string>.M<T>(string s) => "exact string:" + typeof(T).Name + ":" + s;
+    }
+
+    internal struct VariantOutStruct : IVariantOut<string>
+    {
+        public int K;
+        public string Get<T>() => "struct" + K + ":" + typeof(T).Name;
+    }
+
+    internal sealed class VariantOutClass : IVariantOut<string>
+    {
+        public string Get<T>() => "class:" + typeof(T).Name;
+    }
+
+    internal sealed class VariantOutPair : IVariantOut<string>, IVariantOut<Version>
+    {
+        string IVariantOut<string>.Get<T>() => "pair string:" + typeof(T).Name;
+        Version IVariantOut<Version>.Get<T>() => new Version(1, 2);
+    }
+
+    internal class VariantOutBase : IVariantOut<string>
+    {
+        string IVariantOut<string>.Get<T>() => "base string:" + typeof(T).Name;
+    }
+
+    internal sealed class VariantOutDerived : VariantOutBase, IVariantOut<Version>
+    {
+        Version IVariantOut<Version>.Get<T>() => new Version(3, 4);
+    }
+
+    internal sealed class VariantDefaultClass : IVariantDefault<object>
+    {
+    }
+
+    internal struct VariantDefaultStruct : IVariantDefault<object>
+    {
+    }
+
+    internal interface IVariantPlainIn<in X>
+    {
+        string M(X x);
+    }
+
+    internal interface IVariantPlainOut<out X>
+    {
+        X Get();
+    }
+
+    internal struct VariantPlainMixed : IVariantPlainIn<object>, IVariantPlainIn<int>
+    {
+        public string M(object o) => "object:" + o;
+        public string M(int i) => "int:" + i;
+    }
+
+    internal struct VariantPlainPair : IVariantPlainOut<string>, IVariantPlainOut<Version>
+    {
+        string IVariantPlainOut<string>.Get() => "pair string";
+        Version IVariantPlainOut<Version>.Get() => new Version(5, 6);
+    }
+
+    internal interface IVariantPlainDefault<in X>
+    {
+        string D(X x) => "plain default:" + typeof(X).Name + ":" + x;
+    }
+
+    internal struct VariantPlainDefaultStruct : IVariantPlainDefault<object>
+    {
+    }
+
     internal static class Program
     {
         private static string ViaBase<T>(PickBase<T> target, T value) => target.Pick<int>(value, 1);
@@ -298,6 +425,52 @@ namespace GvmHiderSubset
             Console.WriteLine("gvm hider overload object=" + overloaded.Tag<int>((object)1));
             GvmCovariantBase covariant = new GvmCovariantLeaf();
             Console.WriteLine("gvm hider covariant=" + (covariant.Tag<int>() is GvmCovariantLeaf));
+        }
+
+        private static string ConstrainedIn<TS>(TS s) where TS : IVariantIn<string> => s.M<int>("x");
+
+        private static string ConstrainedInAt<TS, U>(TS s) where TS : IVariantIn<string> => s.M<U>("g");
+
+        private static object ConstrainedOut<TS>(TS s) where TS : IVariantOut<object> => s.Get<int>();
+
+        private static string ConstrainedDefault<TS>(TS s) where TS : IVariantDefault<string> => s.D<int>("z");
+
+        private static string ConstrainedPlainIn<TS>(TS s) where TS : IVariantPlainIn<string> => s.M("p");
+
+        private static object ConstrainedPlainOut<TS>(TS s) where TS : IVariantPlainOut<object> => s.Get();
+
+        private static string ConstrainedPlainDefault<TS>(TS s) where TS : IVariantPlainDefault<string> => s.D("d");
+
+        internal static void RunVariantInterfaces()
+        {
+            Console.WriteLine("gvm variant constrained struct in=" + ConstrainedIn(new VariantInStruct { K = 4 }));
+            Console.WriteLine("gvm variant constrained class in=" + ConstrainedIn(new VariantInClass()));
+            Console.WriteLine("gvm variant constrained explicit in=" + ConstrainedIn(new VariantInExplicit()));
+            Console.WriteLine("gvm variant constrained derived in=" + ConstrainedIn(new VariantInDerived()));
+            Console.WriteLine("gvm variant constrained inherited in=" + ConstrainedIn(new VariantInInherited()));
+            Console.WriteLine("gvm variant constrained method arg in="
+                + ConstrainedInAt<VariantInStruct, string>(new VariantInStruct { K = 7 }));
+            IVariantIn<string> boxed = new VariantInStruct { K = 5 };
+            Console.WriteLine("gvm variant boxed struct in=" + boxed.M<long>("y"));
+            IVariantIn<string> instance = new VariantInClass();
+            Console.WriteLine("gvm variant class in=" + instance.M<long>("y"));
+            Func<string, string> bound = boxed.M<int>;
+            Console.WriteLine("gvm variant delegate in=" + bound("q"));
+            Console.WriteLine("gvm variant constrained struct out=" + ConstrainedOut(new VariantOutStruct { K = 6 }));
+            Console.WriteLine("gvm variant constrained class out=" + ConstrainedOut(new VariantOutClass()));
+            IVariantOut<object> boxedOut = new VariantOutStruct { K = 8 };
+            Console.WriteLine("gvm variant boxed struct out=" + boxedOut.Get<byte>());
+            Console.WriteLine("gvm variant constrained class default=" + ConstrainedDefault(new VariantDefaultClass()));
+            Console.WriteLine("gvm variant constrained struct default=" + ConstrainedDefault(new VariantDefaultStruct()));
+            IVariantDefault<string> withDefault = new VariantDefaultClass();
+            Console.WriteLine("gvm variant class default=" + withDefault.D<short>("w"));
+            Console.WriteLine("gvm variant constrained exact=" + ConstrainedIn(new VariantInExact()));
+            Console.WriteLine("gvm variant class exact=" + ((IVariantIn<string>)new VariantInExact()).M<int>("x"));
+            Console.WriteLine("gvm variant first of two=" + ((IVariantOut<object>)new VariantOutPair()).Get<int>());
+            Console.WriteLine("gvm variant derived level first=" + ((IVariantOut<object>)new VariantOutDerived()).Get<int>());
+            Console.WriteLine("plain variant constrained mixed in=" + ConstrainedPlainIn(new VariantPlainMixed()));
+            Console.WriteLine("plain variant constrained first of two=" + ConstrainedPlainOut(new VariantPlainPair()));
+            Console.WriteLine("plain variant constrained struct default=" + ConstrainedPlainDefault(new VariantPlainDefaultStruct()));
         }
     }
 }

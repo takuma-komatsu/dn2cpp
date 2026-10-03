@@ -2019,11 +2019,18 @@ internal sealed partial class Compilation
         // for the type does.
         if (callee.DeclaringClass.IsInterface && IsGvmCall(callee))
         {
+            // Through variance the slot is the implemented instantiation's, its default
+            // body included.
+            var slot = NewGvmDispatch(callee, callSite: false);
             if (!ImplementsInterface(cls, callee.DeclaringClass))
-                return null;
-            if (InterfaceGvmCaseOrNull(NewGvmDispatch(callee, callSite: false), cls, out ambiguous) is { } gvmImpl)
+            {
+                if (VariantInterfaceGvmOrNull(slot, cls) is not { } variant)
+                    return null;
+                slot = variant;
+            }
+            if (InterfaceGvmCaseOrNull(slot, cls, out ambiguous) is { } gvmImpl)
                 return gvmImpl;
-            return ambiguous || callee.IsAbstract || callee.Rva == 0 ? null : callee;
+            return ambiguous || slot.Gvm.IsAbstract || slot.Gvm.Rva == 0 ? null : slot.Gvm;
         }
         if (callee.DeclaringClass is { IsInterface: true } itf
             && itf.Context.TypeArgs is [{ Kind: TypeKind.Class, Class: { } selfArg }]
@@ -2044,6 +2051,15 @@ internal sealed partial class Compilation
             return direct;
         if (!callee.DeclaringClass.IsInterface)
             return null;
+        // Variance converts some instantiations and not others (IIn<object>, never IIn<int>,
+        // serves IIn<string>); the slot is the one dispatch through a box binds.
+        if (!ImplementsInterface(cls, callee.DeclaringClass)
+            && FirstVariantInterfaceOrNull(cls, callee.DeclaringClass) is { } variantItf
+            && CorrespondingSlotOrNull(variantItf, callee) is { } variantSlot)
+            return DeclaredImplOf(cls, variantSlot)
+                ?? (ResolveItfImplOrNull(cls, variantSlot, out ambiguous) is { DeclaringClass.IsInterface: true } variantBody
+                    ? variantBody
+                    : null);
         // The callee names a DIFFERENT instantiation of an interface the type implements —
         // legal through variance (`struct S : I<object>` invoked as `I<string>::M` for a
         // contravariant `I<in T>`), or the one a placeholder receiver stands for (`S<CnRef>`
@@ -2153,13 +2169,21 @@ internal sealed partial class Compilation
                 pending.Push(up);
             if (ReferenceEquals(i, def) || i.Handle != def.Handle || i.Module != def.Module)
                 continue;
-            EnsureCompleted(i);
-            if (i.MethodByTemplate.TryGetValue(callee.Handle, out var slot))
+            if (CorrespondingSlotOrNull(i, callee) is { } slot)
                 slots.Add(slot);
-            else if (i.Methods.FirstOrDefault(m => m.Handle == callee.Handle) is { } scan)
-                slots.Add(scan);
         }
         return slots;
+    }
+
+    /// <summary>The slot of interface instantiation <paramref name="i"/> that shares
+    /// <paramref name="callee"/>'s MethodDef row, the exact correspondence between two
+    /// instantiations of one definition.</summary>
+    private MethodInfo? CorrespondingSlotOrNull(ClassInfo i, MethodInfo callee)
+    {
+        EnsureCompleted(i);
+        if (i.MethodByTemplate.TryGetValue(callee.Handle, out var slot))
+            return slot;
+        return i.Methods.FirstOrDefault(m => m.Handle == callee.Handle);
     }
 
     /// <summary>Full name of the type owning the (generic) method a MethodSpec

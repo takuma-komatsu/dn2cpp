@@ -150,6 +150,11 @@
 # reflect-serializer, activator-subset, event-subset.
 # Empty string MemberwiseClone retains a distinct reference.
 # Delegate list removal, original-entry identity, real-body enumeration and GC cache.
+# DelegateInvokeTargetSubset asserts that a delegate bound to another delegate's
+# Invoke (a delegate-type conversion, an Invoke method group, or an ldvirtftn of
+# Invoke) runs the source's invocation list: generic, multicast, by-ref,
+# struct-returning, variant and headerless signatures, with .NET's Target, Method,
+# DynamicInvoke and null-source answers.
 # Null-bound delegates over a long chain or a dense cycle of receiver-forwarding
 # non-virtual calls run every body .NET's do and fault where .NET's do.
 # ReflectDelegateIdentitySubset's settled Object virtual section binds ToString,
@@ -175,7 +180,7 @@
 source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_ordinary-reflection.sh samples/dotnet/ReflectInvoke/OrdinaryAmbiguousMatchSubset.cs samples/dotnet/ReflectInvoke/OrdinaryReflectionLeaves.csproj samples/dotnet/ReflectInvoke/OrdinaryReflectionLeavesProgram.cs samples/dotnet/ReflectInvoke/OrdinaryWideLookupSubset.cs samples/dotnet/ReflectInvoke/ReflectBindOnly.csproj samples/dotnet/ReflectInvoke/ReflectBindOnlyProgram.cs samples/dotnet/ReflectInvoke/ReflectFieldValidationSubset.cs samples/dotnet/ReflectInvoke/ReflectInvoke.csproj samples/dotnet/ReflectInvoke/ReflectMetadataMeasureSubset.cs samples/dotnet/ReflectInvoke/ReflectionMethodGroupsOnly.csproj samples/dotnet/ReflectInvoke/ReflectionMethodGroupsOnlyProgram.cs samples/dotnet/ReflectInvoke/StrippedOverrideRefusals.csproj samples/dotnet/ReflectInvoke/StrippedOverrideRefusalsProgram.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-reflection-leaves-v1|runtime-member-attributes-prefix:${DN2CPP_BEFORE_RUNTIME_MEMBER_ATTRIBUTES:-}|runtime-return-modifiers-prefix:${DN2CPP_BEFORE_RUNTIME_RETURN_MODIFIERS:-}"
-DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|reflection-dispatch-v1|dispatch-prefix:${DN2CPP_BEFORE_REFLECTION_DISPATCH:-}|attribute-minted-prefix:${DN2CPP_BEFORE_ATTRIBUTE_MINTED:-}|template-accessors-prefix:${DN2CPP_BEFORE_TEMPLATE_ACCESSORS:-}|pointer-returns-prefix:${DN2CPP_BEFORE_POINTER_RETURNS:-}|null-bound-chains-prefix:${DN2CPP_BEFORE_NULL_BOUND_CHAINS:-}|renamed-slot-bindings-prefix:${DN2CPP_BEFORE_RENAMED_SLOT_BINDINGS:-}|settled-object-virtual-prefix:${DN2CPP_BEFORE_SETTLED_OBJECT_VIRTUAL:-}|renamed-slot-fillers-prefix:${DN2CPP_BEFORE_RENAMED_SLOT_FILLERS:-}"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|reflection-dispatch-v1|dispatch-prefix:${DN2CPP_BEFORE_REFLECTION_DISPATCH:-}|attribute-minted-prefix:${DN2CPP_BEFORE_ATTRIBUTE_MINTED:-}|template-accessors-prefix:${DN2CPP_BEFORE_TEMPLATE_ACCESSORS:-}|pointer-returns-prefix:${DN2CPP_BEFORE_POINTER_RETURNS:-}|delegate-invoke-targets-prefix:${DN2CPP_BEFORE_DELEGATE_INVOKE_TARGETS:-}|null-bound-chains-prefix:${DN2CPP_BEFORE_NULL_BOUND_CHAINS:-}|renamed-slot-bindings-prefix:${DN2CPP_BEFORE_RENAMED_SLOT_BINDINGS:-}|settled-object-virtual-prefix:${DN2CPP_BEFORE_SETTLED_OBJECT_VIRTUAL:-}|renamed-slot-fillers-prefix:${DN2CPP_BEFORE_RENAMED_SLOT_FILLERS:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|stripped-overrides:${DN2CPP_STRIPPED_OVERRIDES:-}|library-struct-prefix:${DN2CPP_BEFORE_LIBRARY_STRUCT_RETURN:-}|function-pointer-identity-prefix:${DN2CPP_BEFORE_FUNCTION_POINTER_IDENTITY:-}"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectFrameworkBind/keep-library-override.xml"
 
@@ -276,6 +281,20 @@ gate_extra_asserts() {
     line=$(awk '/dn2cpp_set_pointer_box_type\(/ { getline; print; exit }' "$out"/generated*.cpp)
     grep -Fq 'dn2cpp_gc_store_ref(&o->' <<< "$line" \
         || { echo "FAIL: the pointer box stores its type without the write barrier: $line" >&2; return 1; }
+    DN2CPP_BEFORE_DELEGATE_INVOKE_TARGETS=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-delegate-invoke-targets.stdout"
+    sed '/^== delegate invoke targets ==/,$d' "$out/metadata-layout.stdout" > "$out/delegate-invoke-targets-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-delegate-invoke-targets.stdout") \
+        <(strip_cr_win_file "$out/delegate-invoke-targets-prefix.stdout")
+    for line in '== delegate invoke targets ==' \
+        'converter=n3,n1,n2 target=True method=Invoke/Func`2 entries=1 dynamic=n9' \
+        'same type=11 equal=True target=True self=False' 'generic=a!/b!/42/c?/42/L7' \
+        'multicast=12121 entries=1/2 last=2' 'by-ref=22/u22' 'struct=w:12/(5, p)' \
+        'variance=covariant/sink:x' 'headerless=./,' 'null source=ArgumentException' \
+        'virtual load=201 target=True method=Invoke entries=1' 'virtual load null=ArgumentException' \
+        'delegate invoke targets end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: delegate invoke target witness missing: $line" >&2; return 1; }
+    done
     DN2CPP_BEFORE_NULL_BOUND_CHAINS=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-null-bound-chains.stdout"
     sed '/^== null-bound call chains ==/,$d' "$out/metadata-layout.stdout" > "$out/null-bound-chains-prefix.stdout"
     diff -u <(strip_cr_win_file "$out/before-null-bound-chains.stdout") \

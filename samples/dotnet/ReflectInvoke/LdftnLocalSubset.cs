@@ -188,6 +188,10 @@ static class Program
     [MethodImpl(MethodImplOptions.NoInlining)]
     static Func<int, int> SealedGenericInterface(ISealedScale receiver) => throw new InvalidOperationException();
 
+    // ldvirtftn of the source delegate's own Invoke, which C# emits as ldftn.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal static Func<int, int> InvokeVirtualLoad(Func<int, int> source) => throw new InvalidOperationException();
+
     // callvirt System.ValueType::Equals/GetHashCode/ToString on the receiver: C# names
     // Object's declaration instead.
     [MethodImpl(MethodImplOptions.NoInlining)]

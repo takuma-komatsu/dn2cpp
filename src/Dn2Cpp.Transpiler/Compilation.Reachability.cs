@@ -1943,9 +1943,21 @@ internal sealed partial class Compilation
             // Interface GVM: the cases are the allocated types implementing the
             // closed interface, each dispatching to the class body the interface
             // map selects, instantiated at the dispatcher's method args.
-            if (c.IsInterface || !ImplementsInterface(c, disp.Decl))
+            if (c.IsInterface)
                 return;
-            if (InterfaceGvmCaseOrNull(disp, c, out bool ambiguous) is { } impl)
+            var slot = disp;
+            if (!ImplementsInterface(c, disp.Decl))
+            {
+                if (VariantInterfaceGvmOrNull(disp, c) is not { } variant)
+                    return;
+                slot = variant;
+            }
+            var impl = InterfaceGvmCaseOrNull(slot, c, out bool ambiguous);
+            // A receiver served by variance runs the default body of the instantiation
+            // it implements; the dispatcher's fallback is the requested one's.
+            if (impl is null && !ambiguous && slot != disp && !slot.Gvm.IsAbstract && slot.Gvm.Rva != 0)
+                impl = slot.Gvm;
+            if (impl is not null)
             {
                 if (disp.Strips && StripsGvmBody(impl.DeclaringClass, impl.Handle))
                 {
@@ -2006,6 +2018,38 @@ internal sealed partial class Compilation
         return FindDerivedInterfaceGenericMethodTemplate(c, disp.Gvm, out ambiguous) is { } selected
             ? InstantiateMethodOnClass(selected.Interface, selected.Interface.Module, selected.Body, disp.MethodArgs)
             : null;
+    }
+
+    /// <summary>Interface GVM <paramref name="disp"/> moved onto the instantiation of its
+    /// interface that <paramref name="c"/> implements and that serves <c>disp.Decl</c>
+    /// through generic variance (<c>IVar&lt;object&gt;</c> for a call through the
+    /// contravariant <c>IVar&lt;string&gt;</c>), at the same method args; null when none
+    /// does (<see cref="FirstVariantInterfaceOrNull"/>).</summary>
+    private GvmDispatch? VariantInterfaceGvmOrNull(GvmDispatch disp, ClassInfo c) =>
+        FirstVariantInterfaceOrNull(c, disp.Decl) is { } have
+            ? new GvmDispatch
+            {
+                Gvm = InstantiateMethodOnClass(have.EnsureMembers(), disp.Gvm.Module, disp.Gvm.Handle, disp.MethodArgs),
+                Decl = have,
+                MethodArgs = disp.MethodArgs,
+            }
+            : null;
+
+    /// <summary>The other instantiation of <paramref name="want"/>'s definition that
+    /// <paramref name="c"/> implements and generic variance converts to
+    /// <paramref name="want"/>: the first in the receiver's interface rows, most derived
+    /// level first, as the runtime's variant interface walk and the CLR both choose. Null
+    /// when <paramref name="want"/> declares no variance or nothing converts.</summary>
+    private ClassInfo? FirstVariantInterfaceOrNull(ClassInfo c, ClassInfo want)
+    {
+        int mask = GenericVarianceMask(want);
+        if (mask == 0)
+            return null;
+        for (var b = c; b is not null; b = b.BaseClass)
+            foreach (var have in b.Interfaces)
+                if (have != want && VariantMatches(have, want, mask))
+                    return have;
+        return null;
     }
 
     /// <summary>The case of runtime template <paramref name="c"/> in a class GVM
@@ -2711,22 +2755,21 @@ internal sealed partial class Compilation
     /// would, so a call and a method group over the member mark alike.</summary>
     private void NoteReflectionUsage(Module module, string? parent, string name)
     {
-        // A reflected Object or ValueType row answers Equals and GetHashCode through the
-        // same helpers, so the invoke and CreateDelegate marks are object-equality
-        // dispatches too.
-        if (name == "Invoke" && parent is "System.Reflection.MethodBase" or "System.Reflection.MethodInfo")
+        // MethodBase.Invoke and PropertyInfo.GetValue/SetValue run app-module methods;
+        // ILDiet keeps them on the same predicate. A reflected Object or ValueType row
+        // answers Equals and GetHashCode through the same helpers, so the invoke and
+        // CreateDelegate marks are object-equality dispatches too.
+        if (PreservationReader.RunsReflectedMethod(parent, name))
         {
             _reflectionInvokeUsed = true;
-            NoteObjectEqualityDispatch();
+            if (name == "Invoke")
+                NoteObjectEqualityDispatch();
         }
-        // PropertyInfo.GetValue/SetValue run the accessors, which are app-module methods.
-        else if (name is "GetValue" or "SetValue" && parent == "System.Reflection.PropertyInfo")
-            _reflectionInvokeUsed = true;
         // FieldInfo.GetValue boxes a value-type field's value in the runtime.
         else if (name == "GetValue" && parent == "System.Reflection.FieldInfo")
             _reflectionFieldReadUsed = true;
         // CreateDelegate binds a reflected method, whose body runs the same way.
-        else if (name == "CreateDelegate" && parent is "System.Delegate" or "System.Reflection.MethodInfo")
+        else if (PreservationReader.BindsReflectedMethod(parent, name))
             NoteReflectionDelegateBind(module);
         // DynamicInvoke runs the delegate type's Invoke row, whose invoker boxes.
         else if (name == "DynamicInvoke" && parent == "System.Delegate")

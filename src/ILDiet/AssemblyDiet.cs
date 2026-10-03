@@ -41,6 +41,8 @@ internal sealed partial class AssemblyDiet : IDisposable
     private readonly List<TypeDefinition> _typeTokenTypes = new();
     private readonly HashSet<TypeDefinition> _typeTokenSeen = new();
     private bool _constructsFromRuntimeType;
+    private bool _runsReflectedMethods;
+    private readonly List<TypeDefinition> _typeTokenLibraryTypes = new();
     private bool _initializesArrays;
     private readonly Dictionary<ModuleDefinition, DietAssembly> _byModule = new();
     private bool _cutsValidated = true;
@@ -228,6 +230,10 @@ internal sealed partial class AssemblyDiet : IDisposable
         foreach (var assembly in _assemblies)
             if (assembly.Copy && ReferencesRuntimeTypeConstruction(assembly.PE.GetMetadataReader()))
                 ArmRuntimeTypeConstruction();
+        foreach (var assembly in _assemblies)
+            if (assembly.Copy && ReferencesReflectedMethodRun(assembly.PE.GetMetadataReader(),
+                    !PreservationReader.IsFrameworkAssemblyName(assembly.Assembly.Name.Name)))
+                ArmReflectedMethodRuns();
         // A copied assembly can still have static references into a stripped library.
         var stripped = _assemblies.Where(a => !a.Copy).Select(a => a.Assembly.Name.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var assembly in _assemblies.Where(a => a.Copy))
@@ -380,6 +386,7 @@ internal sealed partial class AssemblyDiet : IDisposable
         if (type.HasInterfaces) KeepInterfaceHierarchy(type);
         if (_policyTypes.TryGetValue(type, out var policy) && _conditional.Add(type)) ApplyPolicy(type, policy, true);
         if (_conditionalOwnMembers.Contains(type)) KeepOwnMembers(type);
+        if (_runsReflectedMethods && type.Module == _assemblies[0].Assembly.MainModule) KeepReflectedMethods(type);
     }
 
     private static bool IsDelegate(TypeDefinition type) => type.BaseType?.FullName is "System.Delegate" or "System.MulticastDelegate";
@@ -453,6 +460,68 @@ internal sealed partial class AssemblyDiet : IDisposable
         if (_constructsFromRuntimeType) return;
         _constructsFromRuntimeType = true;
         foreach (var type in _typeTokenTypes) KeepInstanceConstructors(type);
+    }
+
+    private static bool ReferencesReflectedMethodRun(MetadataReader reader, bool userAssembly)
+    {
+        foreach (var handle in reader.MemberReferences)
+        {
+            var member = reader.GetMemberReference(handle);
+            if (member.Parent.Kind != HandleKind.TypeReference) continue;
+            var parent = reader.GetTypeReference((TypeReferenceHandle)member.Parent);
+            string ns = reader.GetString(parent.Namespace), name = reader.GetString(parent.Name);
+            string type = ns.Length == 0 ? name : ns + "." + name, method = reader.GetString(member.Name);
+            if (PreservationReader.RunsReflectedMethod(type, method)
+                || userAssembly && PreservationReader.BindsReflectedMethod(type, method)) return true;
+        }
+        return false;
+    }
+
+    // The transpiler's reflection-invoke route reaches every non-constructor body of
+    // every application type once a body runs or binds a reflected method, and an
+    // application type's metadata lists every declared member. Removing one here would
+    // make a by-name lookup answer null where the unstripped program finds the member.
+    private void ArmReflectedMethodRuns()
+    {
+        if (_runsReflectedMethods) return;
+        _runsReflectedMethods = true;
+        // Marking grows _types; types it adds keep their methods through MarkType.
+        foreach (var type in AllTypes(_assemblies[0].Assembly.MainModule.Types).Where(_types.Contains).ToList())
+            KeepReflectedMethods(type);
+        foreach (var type in _typeTokenLibraryTypes.ToList()) KeepTypeTokenLibrarySurface(type);
+    }
+
+    private void KeepReflectedMethods(TypeDefinition type)
+    {
+        foreach (var method in type.Methods)
+            if (!method.IsConstructor) MarkMethod(method);
+    }
+
+    // The transpiler's reflection-invoke route reaches the same surface of a library type
+    // a type token names: what a reflection helper can invoke without arguments. A
+    // protected assembly a backend rewrites is its engine binding, which generated
+    // trampolines invoke, never reflection; the backend opts it out of that surface.
+    private void NoteTypeTokenLibraryType(TypeReference reference)
+    {
+        var element = reference.GetElementType();
+        if (element is FunctionPointerType || Resolve(element) is not { } type
+            || type.Module == _assemblies[0].Assembly.MainModule || !IsStripped(type)
+            || IsProtected(type.Module.Assembly.Name.Name) || !_typeTokenSeen.Add(type)) return;
+        _typeTokenLibraryTypes.Add(type);
+        if (_runsReflectedMethods) KeepTypeTokenLibrarySurface(type);
+    }
+
+    private void KeepTypeTokenLibrarySurface(TypeDefinition type)
+    {
+        if (type.IsInterface || type.IsEnum) return;
+        foreach (var method in type.Methods)
+        {
+            if (!method.HasBody || method.IsStatic || method.IsConstructor) continue;
+            if (method.IsSpecialName && (method.Name.StartsWith("get_", StringComparison.Ordinal)
+                    || method.Name.StartsWith("set_", StringComparison.Ordinal))
+                || method.IsPublic && !method.HasGenericParameters && method.Parameters.Count == 0)
+                MarkMethod(method);
+        }
     }
 
     // Array.Initialize runs a value-type element's parameterless constructor, which no
@@ -683,11 +752,20 @@ internal sealed partial class AssemblyDiet : IDisposable
                     if (runs && target.Name == "Initialize" && target.Parameters.Count == 0
                         && target.DeclaringType.FullName == "System.Array")
                         ArmArrayInitialize();
+                    // Every scanned body is user code, whose binding runs the method too.
+                    if (runs && !_runsReflectedMethods
+                        && (PreservationReader.RunsReflectedMethod(target.DeclaringType.FullName, target.Name)
+                            || PreservationReader.BindsReflectedMethod(target.DeclaringType.FullName, target.Name)))
+                        ArmReflectedMethodRuns();
                     break;
                 case FieldReference field: MarkField(field); break;
                 case TypeReference type:
                     MarkType(type);
-                    if (instruction.OpCode.Code == Code.Ldtoken) NoteTypeToken(type);
+                    if (instruction.OpCode.Code == Code.Ldtoken)
+                    {
+                        NoteTypeToken(type);
+                        NoteTypeTokenLibraryType(type);
+                    }
                     break;
                 case CallSite signature:
                     MarkType(signature.ReturnType);

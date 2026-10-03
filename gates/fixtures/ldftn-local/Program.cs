@@ -39,6 +39,7 @@ var instanceStored = Find("InstanceStored");
 var int64Stored = Find("Int64Stored");
 var sealedInterface = Find("SealedInterface");
 var sealedGenericInterface = Find("SealedGenericInterface");
+var invokeVirtualLoad = Find("InvokeVirtualLoad");
 var valueTypeEquals = Find("ValueTypeEquals");
 var valueTypeHash = Find("ValueTypeHash");
 var valueTypeText = Find("ValueTypeText");
@@ -263,6 +264,20 @@ foreach (var (stub, target) in new[] { (sealedInterface, (MethodReference)sealed
     il.Emit(OpCodes.Dup);
     il.Emit(OpCodes.Ldvirtftn, target);
     il.Emit(OpCodes.Newobj, DelegateCtor(stub));
+    il.Emit(OpCodes.Ret);
+}
+
+// A delegate type is sealed, so ldvirtftn of its Invoke binds what ldftn binds.
+{
+    var func = (GenericInstanceType)invokeVirtualLoad.ReturnType;
+    var definition = func.Resolve();
+    var invoke = new MethodReference("Invoke", definition.GenericParameters[1], func) { HasThis = true };
+    invoke.Parameters.Add(new ParameterDefinition(definition.GenericParameters[0]));
+    var il = Body(invokeVirtualLoad, pointerLocal: false).GetILProcessor();
+    il.Emit(OpCodes.Ldarg_0);
+    il.Emit(OpCodes.Dup);
+    il.Emit(OpCodes.Ldvirtftn, module.ImportReference(invoke));
+    il.Emit(OpCodes.Newobj, DelegateCtor(invokeVirtualLoad));
     il.Emit(OpCodes.Ret);
 }
 
