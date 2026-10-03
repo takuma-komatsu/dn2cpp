@@ -32,6 +32,9 @@ internal static class ReflectionTemplateDispatchProgram
         ReflectRuntimeInstantiationSubset.Program.RunTemplateValues();
         ReflectRuntimeInstantiationSubset.Program.RunTemplateCopies();
         Console.WriteLine("reflection template dispatch end");
+        if (args.Length > 0 && args[0] == "before-template-members")
+            return;
+        ReflectRuntimeInstantiationSubset.Program.RunTemplateMembers();
         if (args.Length > 0 && args[0] == "before-template-function-pointers")
             return;
         RunTemplateFunctionPointers(outcomes: false);

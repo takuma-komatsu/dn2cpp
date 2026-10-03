@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runtime generic template invocation, hidden contexts and boxed-value copies.
+# Runtime generic template invocation, member rows, hidden contexts and boxed-value copies.
 # A template body that calls through a function pointer over its type parameter never
 # returns a wrong result: its .NET-diffed lines print alike for a refusal and a correct
 # result, and its native-only outcome run pins that the clone refuses every such call
@@ -618,13 +618,20 @@ DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectTypes UnreadAttribu
 unset -f gate_extra_asserts
 DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectTypes DataOnlyAttributeRowsOnly --no-ildiet
 gate_extra_asserts() {
-    local out="$1" native line
+    local out="$1" native line before prefix
     native=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT") || return $?
     native=$(strip_cr_win "$native")
+    before=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-template-members) || return $?
+    prefix=$(awk '/^== template members ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
     before=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-template-function-pointers) || return $?
     prefix=$(awk '/^== template function pointers ==$/ { exit } { print }' <<< "$native")
     assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
     for line in '== reflection template dispatch ==' 'reflection template dispatch end' \
+        '== template members ==' \
+        'members Int32 get identity: True/True/True/True/True/True' \
+        'members String set identity: True/True/True/True/True' \
+        'sub-members identity: True/True/False/False/True' 'template members end' \
         '== template function pointers ==' 'fnptr Int32: row=True mismatched=False' \
         'fnptr Int64: row=True mismatched=False' 'fnptr String: row=True mismatched=False' \
         'template function pointers end'; do

@@ -3663,6 +3663,10 @@ internal sealed partial class MethodCompiler : IEvalStack
                     // stub, throwing the same sentence the call site does.
                     expr = AbsentNetworkPalFtnStub(m, insn.Offset, receiverSlot: false);
                 }
+                else if (IsDelegateInvoke(m))
+                {
+                    expr = DelegateInvokeAddress(m);
+                }
                 else if (m.IsStatic && _ftnDelegateUse.TryGetValue(insn.Offset, out var dgClass))
                 {
                     // Delegates invoke with a target slot; static targets get an
@@ -3764,6 +3768,15 @@ internal sealed partial class MethodCompiler : IEvalStack
                 else if (_c.IsAbsentNetworkPalMember(m.DeclaringClass, m.Name))
                 {
                     expr = AbsentNetworkPalFtnStub(m, insn.Offset, receiverSlot: true);
+                }
+                else if (IsDelegateInvoke(m))
+                {
+                    // A delegate type is sealed and has no vtable, so the load binds
+                    // what ldftn binds, under ldftn's shared-body rule. .NET does not
+                    // fault a null receiver here; the delegate constructor refuses it.
+                    NoteFtnTarget(m, virtFtn: false);
+                    bindsLowering = true;
+                    expr = DelegateInvokeAddress(m);
                 }
                 else if (Compilation.IsGvmCall(m))
                 {

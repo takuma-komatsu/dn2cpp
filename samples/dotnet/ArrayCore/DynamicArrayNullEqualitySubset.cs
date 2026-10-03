@@ -1664,11 +1664,15 @@ internal static class Program
         Console.WriteLine("array search provenance diamond end");
     }
 
+#if ARRAY_UNSUPPORTED_EQUALITY_ONLY
+    // Only the refusal build carries this body: a program that runs reflected
+    // methods compiles every non-constructor method of its application types.
     internal static void RunUnsupportedEquality()
     {
         Array values = new UnsupportedStructuralMatch[1];
         Console.WriteLine(Array.IndexOf(values, null));
     }
+#endif
 
     private static Type FieldArrayType(object owner) =>
         owner.GetType().GetField(nameof(ArrayHolder.FieldValues))!.FieldType;

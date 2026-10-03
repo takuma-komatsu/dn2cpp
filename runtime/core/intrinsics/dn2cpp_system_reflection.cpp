@@ -95,10 +95,10 @@ const Dn2CppTypeInfo* dn2cpp_runtime_template_of(const Dn2CppTypeInfo* clone)
 }
 
 // The type a member row belongs to: the one it runs on and DeclaringType reports.
-// A MakeGenericType clone's method and constructor rows name the clone, but its
-// fields and property accessors are its template's rows, and no clone's base chain
-// reaches a template: such a row belongs to the level of the reflected type that
-// instantiates the template's definition.
+// A MakeGenericType clone's own member rows name the clone, but a row read off a
+// template level names the template, and no clone's base chain reaches a template:
+// such a row belongs to the level of the reflected type that instantiates the
+// template's definition.
 static const Dn2CppTypeInfo* dn2cpp_invoke_declaring(const Dn2CppTypeInfo* declaring,
     const Dn2CppTypeInfo* reflected)
 {
@@ -232,15 +232,48 @@ static const Dn2CppTypeInfo* dn2cpp_synthesize_instantiation(
     }
     // Method rows name the clone as their declaring type, so every binding
     // resolved against the clone's rows reports the clone, as .NET does.
+    Dn2CppMethodDelta* methods = nullptr;
     if (ti->reflection().methodCount > 0)
     {
-        auto* methods = new Dn2CppMethodDelta[ti->reflection().methodCount];
+        methods = new Dn2CppMethodDelta[ti->reflection().methodCount];
         for (int32_t i = 0; i < ti->reflection().methodCount; i++)
         {
             methods[i].original = row->templateTi->reflection().methods[i];
             methods[i].declaringType = ti;
         }
         synthesized->reflection.methods = Dn2CppMetadataTable<Dn2CppMethodInfo>::from_raw(methods);
+    }
+    // Field and property rows name the clone too, copied as native rows. A
+    // property's accessors are the clone's method rows, so GetGetMethod() and
+    // GetMethod("get_P") are one handle.
+    const Dn2CppTypeReflection tmpl = row->templateTi->reflection();
+    if (tmpl.fieldCount > 0)
+    {
+        auto* fields = new Dn2CppFieldInfo[tmpl.fieldCount];
+        for (int32_t i = 0; i < tmpl.fieldCount; i++)
+        {
+            fields[i] = *tmpl.fields[i];
+            fields[i].declaringType = ti;
+        }
+        synthesized->reflection.fields = Dn2CppMetadataTable<Dn2CppFieldInfo>::from_raw(fields);
+    }
+    if (tmpl.propCount > 0)
+    {
+        auto clone_accessor = [&](Dn2CppMetadataHandle<Dn2CppMethodInfo> accessor) {
+            for (int32_t j = 0; accessor && j < tmpl.methodCount; j++)
+                if (methods[j].original == accessor)
+                    return Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw(&methods[j]);
+            return accessor;
+        };
+        auto* props = new Dn2CppPropInfo[tmpl.propCount];
+        for (int32_t i = 0; i < tmpl.propCount; i++)
+        {
+            props[i] = *tmpl.props[i];
+            props[i].declaringType = ti;
+            props[i].getter = clone_accessor(props[i].getter);
+            props[i].setter = clone_accessor(props[i].setter);
+        }
+        synthesized->reflection.props = Dn2CppMetadataTable<Dn2CppPropInfo>::from_raw(props);
     }
     if (ti->base != nullptr && (ti->base->flags & DN2CPP_TF_RUNTIME_TEMPLATE) != 0)
     {
@@ -4235,8 +4268,8 @@ Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
             return fail();
     }
 
-    // A clone's property accessors are its template's rows; the shape binds and the
-    // call runs on the clone level the MethodInfo was obtained through, as Invoke's do.
+    // A template level's row binds and runs on the clone level the MethodInfo was
+    // obtained through, as Invoke's do.
     const Dn2CppTypeInfo* declTi = dn2cpp_invoke_declaring(row.declaringType, m->reflectedType);
     if (mode == DN2CPP_DGBIND_CLOSED_INSTANCE && target != nullptr
         && !dn2cpp_dgbind_instance_of(target, declTi))

@@ -41,6 +41,11 @@ calls have separate capabilities with explicit support boundaries.
   supported queries. A decoded temporary view cannot become a persistent handle.
 - A stripped type or member must reach the existing metadata refusal path.
   A missing invoker cannot masquerade as an empty member set or a successful call.
+- ILDiet arms on the predicates the reflection-invoke route arms on and retains
+  the bodies that route reaches in the retained types, so stripping the managed
+  input keeps every member of a retained type that a reflective invoke can
+  select by name. A type that no retained body names is removed whether or not
+  either arms (`src/ILDiet/README.md`).
 - Signature decoding and type materialization may grow the model. Discovery
   must close those dependencies before emission freezes them; emission streams
   completed translation units and never retains the complete generated program.
@@ -159,7 +164,7 @@ Debug is required for signature contexts, shared generics and emission changes.
 |---------|-------------------------------|
 | Metadata and invocation | `build-and-run-reflect-invoke.sh`, `build-and-run-reflect-types.sh`; native/packed/explicit-format controls, codec boundaries, full exception fields and strict completion |
 | Boxed and interface owners | `build-and-run-boxing-primitives.sh`, `build-and-run-shared-generics.sh`, `build-and-run-ambiguous-default-interface.sh`; isolated producer-only programs and closed value/reference contexts |
-| Preservation and trimming | `build-and-run-preserve-control.sh`, `build-and-run-trim-reflection.sh`, `build-and-run-multiassembly.sh`; direct calls, method groups, attribute Type roots and stripped refusal paths |
+| Preservation and trimming | `build-and-run-preserve-control.sh`, `build-and-run-trim-reflection.sh`, `build-and-run-multiassembly.sh`; direct calls, method groups, attribute Type roots, constant-name lookups after ILDiet and stripped refusal paths |
 | Hot update | `build-and-run-hotupdate-subset.sh`; import-shape and payload-version negatives, declaration fences and supported receiver/context controls |
 | Allocation and self-hosting | `build-and-run-hotpath.sh`, `selfhost-emit-console.sh`; allocation refusal siblings, deterministic emitted output and console self-host emission |
 | Host determinism | `verify-culture-invariance.sh`; pin both cultures and preserve complete build diagnostics |

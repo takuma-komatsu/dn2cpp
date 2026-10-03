@@ -31,8 +31,24 @@ Executable assemblies retain their entry point and application static
 initializers. Non-framework module initializers, native exports, managed native
 implementation adapters, and explicit preservation are roots. A library without
 an entry point retains its public application surface. Public methods of an
-executable are otherwise eligible for removal. Reflection selected only through
-runtime strings requires a descriptor or `PreserveAttribute`.
+executable are otherwise eligible for removal.
+
+Once a retained body calls or binds `MethodBase.Invoke`, `PropertyInfo.GetValue`,
+`PropertyInfo.SetValue` or `CreateDelegate`, directly or through a method group,
+or a copied assembly references one of them (a framework assembly's
+`CreateDelegate` excepted), every retained application type retains all of its
+non-constructor methods. ILDiet does not decide which copied bodies run, so a
+copied assembly arms this whether or not the program reaches its reference.
+Every library type a retained body names with `typeof` then retains its
+instance property accessors and its public parameterless non-generic instance
+methods, except in an engine binding that a backend rewrites, which generated
+trampolines invoke instead. These cover the bodies dn2cpp's reflection-invoke
+route reaches, decided by the same predicates, so `typeof(T).GetMethod("Name")`
+finds what the unstripped program finds. Without such a call, a method that no
+retained body calls is removed and a lookup by its name answers null. A type
+that no retained body names is removed either way. Reflection selected only
+through runtime strings, or a member looked up without a reflective call,
+requires a descriptor or `PreserveAttribute`.
 
 The graph preserves live field layouts, virtual and interface implementations,
 generic signatures and constraints, attributes, delegates, and referenced IL
