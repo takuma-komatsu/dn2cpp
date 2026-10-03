@@ -142,15 +142,13 @@ numerics_dll="$(dirname "$corelib")/System.Runtime.Numerics.dll"
 # stable `no-generated` marker; on a miss the sections below rewrite them. The
 # keyed dir has to EXIST: an absent one is unreadable rather than empty, and
 # gate_cache_check answers that with a warning and no key, which would
-# leave this gate uncacheable since it clears the dirs on every run. The
-# transpiler-behavior env axis rides in
-# the context for the same reason: this gate asserts the very knobs an ambient
-# export would move (an ambient DN2CPP_MAX_INSTANTIATIONS or MAX_HEAP_MB fails
-# transpiles this gate expects to complete), and there is no surface in the key
-# to catch that.
-tenv="tenv:${DN2CPP_MAX_GENERIC_DEPTH:-}/${DN2CPP_MAX_INSTANTIATIONS:-}/${DN2CPP_MAX_HEAP_MB:-}/${DN2CPP_SHARED_ASSERT:-}/${DN2CPP_STRICT_COMPLETION:-}/${DN2CPP_SPEC_DRAIN:-}"
+# leave this gate uncacheable since it clears the dirs on every run.
+# _gate_transpiler_env_term keys the transpiler's environment for the same
+# reason: this gate asserts the very knobs an ambient export would move (an
+# ambient DN2CPP_MAX_INSTANTIATIONS or MAX_HEAP_MB fails transpiles this gate
+# expects to complete), and there is no surface in the key to catch that.
 rm -rf "$out" "$sig_out" "$sig_diet_out" "$cut_out" "$mint_out"; mkdir -p "$out"
-if gate_cache_check "$out" "transpiler-limits|canonical-cap:1,2|canonical-refs:none|wrapper-exceptions|sig:no-ildiet+ildiet|cli:$(_gate_cli_hash)|$corelib|$tenv" \
+if gate_cache_check "$out" "transpiler-limits|canonical-cap:1,2|canonical-refs:none|wrapper-exceptions|sig:no-ildiet+ildiet|cli:$(_gate_cli_hash)|$corelib|$(_gate_transpiler_env_term)" \
         "$rec_app" "$sig_app" "$fld_app" "$afld_app" "$big_app" "$arr_app" "$mint_app" "$tma_app" \
         gates/fixtures/transpiler-limits/CanonicalLink/Program.cs \
         gates/fixtures/transpiler-limits/CanonicalLink/CanonicalLinkBound.csproj \

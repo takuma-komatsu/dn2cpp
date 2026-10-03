@@ -2350,6 +2350,67 @@ _gate_cli_hash() {
     fi
 }
 
+# Every variable src/Dn2Cpp.Transpiler/EnvKnobs.cs names, which is every one the
+# transpiler reads; build-and-run-doc-claims.sh holds the two sets equal.
+_GATE_TRANSPILER_KNOBS="DN2CPP_SHARED_ASSERT DN2CPP_INTERCEPT_SELFCHECK
+    DN2CPP_SHARED_DUMP DN2CPP_DEBUG_TRACE DN2CPP_TIME DN2CPP_TIME_LIVE
+    DN2CPP_MODEL_CENSUS DN2CPP_EMIT_CENSUS DN2CPP_STRICT_COMPLETION
+    DN2CPP_MAX_GENERIC_DEPTH DN2CPP_MAX_INSTANTIATIONS DN2CPP_MAX_HEAP_MB
+    DN2CPP_MAX_ARRAY_TI_DEGRADES DN2CPP_SPEC_DRAIN DN2CPP_SPLIT_BYTES
+    DN2CPP_GODOT_API"
+
+# _gate_transpiler_env_term — the `tenv:` CONTEXT term of a gate that transpiles
+# past its check, where the key's surface sees nothing, so each knob must move the
+# context itself. A cap or assert turns a run into an abort, the drain knob
+# reorders the work, and a report knob writes to the streams these gates read.
+# Every EnvKnobs parser reads an empty value as unset, so `:-` loses nothing.
+_gate_transpiler_env_term() {
+    local name term="tenv:"
+    for name in $_GATE_TRANSPILER_KNOBS; do
+        term="$term$name=${!name:-}/"
+    done
+    printf '%s\n' "$term"
+}
+
+# Every DN2CPP_* variable the native runtime reads; build-and-run-doc-claims.sh
+# holds this list equal to the names runtime/ spells. Each changes what a
+# program does (CPU-feature mask and the AVX10.2 opt-in, collector mode, pause
+# budget and root set, HTTP queue bounds and trust anchors) or what it prints
+# (the collector, CPU-feature, manifest, dotnetmodule and HTTP reports).
+_GATE_RUNTIME_KNOBS="DN2CPP_CPU_FEATURES DN2CPP_ENABLE_AVX10V2
+    DN2CPP_CPU_FEATURES_DIAG DN2CPP_GC_INCREMENTAL DN2CPP_GC_TIME_LIMIT_MS
+    DN2CPP_GC_SELF_ROOTS DN2CPP_GC_STATS DN2CPP_GC_SUPPRESS_STATS
+    DN2CPP_MANIFEST_TRACE DN2CPP_DM_TRACE DN2CPP_HTTP_SEND_HIGH_WATER
+    DN2CPP_HTTP_RECV_HIGH_WATER DN2CPP_HTTP_SEND_STATS DN2CPP_HTTP_CAINFO"
+
+# _gate_runtime_env_term — gate_cache_check's `rtenv:` line. A knob keys as
+# unset, NAME= or NAME=value: the runtime tests some of them for presence
+# alone, so an empty value is not the default.
+_gate_runtime_env_term() {
+    local name term="rtenv:"
+    for name in $_GATE_RUNTIME_KNOBS; do
+        term="$term$name${!name+=${!name}}/"
+    done
+    printf '%s\n' "$term"
+}
+
+# _gate_dotnet_env_term — gate_cache_check's `dotnetenv:` line: every exported
+# DOTNET_* and COMPlus_* variable with its value, in name order. The .NET host
+# and runtime take their knobs from them (the runtime under either prefix) in
+# the oracle and the transpiler, and the BCL takes its switches from DOTNET_*
+# (DOTNET_SYSTEM_GLOBALIZATION_INVARIANT) in the transpiled program as well.
+# Prefixes match case-blind because Windows reads names that way.
+# DOTNET_CLI_TELEMETRY_* stays out: the dotnet CLI hands each child a fresh
+# session id, and only telemetry reads it.
+_gate_dotnet_env_term() {
+    local name term="dotnetenv:"
+    for name in $(compgen -e | LC_ALL=C awk '{ n = toupper($0) }
+            n ~ /^(DOTNET|COMPLUS)_/ && n !~ /^DOTNET_CLI_TELEMETRY_/' | LC_ALL=C sort); do
+        term="$term$name=${!name}/"
+    done
+    printf '%s\n' "$term"
+}
+
 # _gate_surface_lines OUT — the TRANSPILE-SURFACE term of the key: one
 # `shasum -a 256` line per generated* TU/header and per sidecar CMake consumes,
 # named relative to OUT, on stdout. The term the cache rests on — lose it and two
@@ -2451,12 +2512,12 @@ $simulator_sdk"
             printf 'context:%s\n' "$context"
             # Every env var that selects a build axis MUST appear here: add an
             # axis (ensure_cmake_runtime, _cmake_app_builddir) ⇒ add it here.
-            # So must every RUN-TIME knob the runtime reads that changes a
-            # program's output when a gate inherits it (DN2CPP_CPU_FEATURES
-            # narrows every IsSupported answer, and the AVX10.2 opt-in permits
-            # that policy-disabled family): a green recorded under an inherited
-            # knob would replay for the default run.
-            printf 'env:%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' \
+            # LC_ALL, LC_MESSAGES and LANG pick CurrentCulture's default and TZ
+            # the local zone, and these four key presence as well as value:
+            # .NET stops at the first locale variable present even when it is
+            # empty, and an empty TZ is UTC where an unset one is the system
+            # zone.
+            printf 'env:%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' \
                 "${CONFIG:-}" "${TFM:-}" "${SCALAR:-}" "${HIGHWAY:-}" "${WASM:-}" "${DN2CPP_WASM_SIMD:-}" \
                 "${IOS_SIM:-}" "${IOS_DEV:-}" "${ANDROID:-}" "${DN2CPP_NO_GC:-}" \
                 "${DN2CPP_GC_BACKEND:-}" \
@@ -2465,8 +2526,13 @@ $simulator_sdk"
                 "${CMAKE_CXX_COMPILER:-}" "${DN2CPP_EXTRA_CMAKE_ARGS:-}" \
                 "${DN2CPP_EXTRA_LINK_FLAGS:-}" "${DN2CPP_EXTRA_LINK_LIBS:-}" \
                 "${DN2CPP_HIGHWAY_ARCH:-}" \
-                "${IOS_DEPLOYMENT_TARGET:-}" "${LANG:-}" "${LC_ALL:-}" "${TZ:-}" \
-                "${DN2CPP_CPU_FEATURES:-}" "${DN2CPP_ENABLE_AVX10V2:-}"
+                "${IOS_DEPLOYMENT_TARGET:-}" \
+                "${LANG+=$LANG}" "${LC_ALL+=$LC_ALL}" "${LC_MESSAGES+=$LC_MESSAGES}" "${TZ+=$TZ}"
+            # Every RUN-TIME knob the native runtime or .NET reads must appear
+            # too: a green recorded under an inherited knob would replay for the
+            # default run.
+            _gate_runtime_env_term
+            _gate_dotnet_env_term
             printf 'os:%s\n' "$(uname -sm)"
             printf 'cc:%s\n' "$(first_line "$(cc --version 2>/dev/null)")"
             if [ -n "${WASM:-}" ]; then

@@ -119,11 +119,11 @@ char16_t dn2cpp_pal_ansi_decode_char(uint8_t b);
 //
 // Each implementation reproduces the rule real .NET resolves the same question
 // by, because the gate suite diffs the two:
-//   POSIX  — ICU's uprv_getPOSIXIDForCategory order: LC_ALL, then LC_MESSAGES,
-//            then LANG; "C"/"POSIX" is rejected rather than honoured. Apple
-//            hosts fall back to CFLocale (the user's system preference) when
-//            none of the three names a locale, matching what real .NET is
-//            measured to do there.
+//   POSIX  — ICU's uprv_getPOSIXIDForCategory scan: the first of LC_ALL,
+//            LC_MESSAGES and LANG that is set decides, even when empty. When
+//            none is set, or the deciding value names no locale (empty, C,
+//            POSIX, C.UTF-8, en_US_POSIX), Apple hosts answer CFLocale (the
+//            user's system preference) and other hosts 0, as real .NET does.
 //   Windows— GetUserDefaultLocaleName, which is already a BCP-47 name.
 //   WASM   — none (a browser/node module has no locale block); returns 0, so a
 //            wasm program keeps the invariant default it has always had.

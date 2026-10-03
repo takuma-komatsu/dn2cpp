@@ -584,7 +584,7 @@ internal sealed partial class CppEmitter
         // property of the method, not of the text (MethodCompiler.EmitsInline reads the
         // input assembly's IL length), so nothing has to be seen twice — and the whole
         // program's body text never sits on the heap between the two.
-        ValidateObfuscationTargets();
+        ValidateObfuscationTargets(requireTarget: false);
         var o = new CppOutput(splitBytes, writeChunk);
         // The per-signature dispatch-trap thunks are defined inline in the header
         // (SlotTrapThunk), minted lazily wherever a table needs one.
@@ -694,6 +694,11 @@ internal sealed partial class CppEmitter
         // output.
         foreach (var m in _c.Reachable)
             _ = m.IsHotPath;
+        // The real pass streams the first translation unit, so a refusal here spares the
+        // emission. An empty target set is final here only after a planning pass, whose
+        // rounds grew reachability to its fixpoint; without one the real pass's rounds can
+        // still reach the only target, and BuildObfuscationTargets refuses an empty set.
+        ValidateObfuscationTargets(requireTarget: _c.SharedGenericsEnabled);
         // The real pass, and only it, fills the emitter's literal pool and the output —
         // and so it is the only one whose named symbols the linker will ever be handed,
         // which is why the audit is armed here and nowhere else.

@@ -38,18 +38,28 @@ internal sealed partial class CppEmitter
         return false;
     }
 
-    private void ValidateObfuscationTargets()
+    // Refusing before the first streamed translation unit spares the whole emission; the
+    // driver sweeps whatever a later refusal streamed. A non-canonical method never leaves
+    // Reachable, so a target counted here still has a row in BuildObfuscationTargets.
+    private void ValidateObfuscationTargets(bool requireTarget)
     {
         if (!_c.ObfuscationEnabled)
             return;
+        bool anyTarget = false;
         foreach (var method in _c.ObfuscationMethods.Union(_c.Reachable).ToArray())
-            if (method.HasObfuscateAttribute)
-                ValidateObfuscationTarget(method);
+        {
+            if (!method.HasObfuscateAttribute)
+                continue;
+            ValidateObfuscationTarget(method);
+            anyTarget |= !Compilation.IsCanonicalMethod(method);
+        }
+        if (requireTarget && !anyTarget)
+            throw new NotSupportedException("--obfuscate requires at least one reachable [Dn2Cpp.Runtime.Obfuscate] implementation.");
     }
 
     private string BuildObfuscationTargets()
     {
-        ValidateObfuscationTargets();
+        ValidateObfuscationTargets(requireTarget: true);
         var rows = new List<(string Managed, string Symbol, string File)>();
         foreach (var method in _c.ObfuscationMethods.Union(_c.Reachable).ToArray())
         {
@@ -68,8 +78,6 @@ internal sealed partial class CppEmitter
                 + method.Name + genericArguments + method.SigShape,
                 implementation.CppName, file));
         }
-        if (rows.Count == 0)
-            throw new NotSupportedException("--obfuscate requires at least one reachable [Dn2Cpp.Runtime.Obfuscate] implementation.");
         rows.Sort((a, b) =>
         {
             int order = string.CompareOrdinal(a.Symbol, b.Symbol);

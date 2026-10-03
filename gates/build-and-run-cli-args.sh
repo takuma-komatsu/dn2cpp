@@ -58,12 +58,12 @@ echo "corelib: $CORELIB"
 # make this gate permanently uncacheable since it clears OUT on every run.
 OUT=artifacts/cli-args-baseline
 rm -rf "$OUT"; mkdir -p "$OUT"
-# Transpiler-behavior env axis: with no output surface in the key, an ambient
-# knob that changes what the transpiler DOES (a cap turning the baseline
-# transpile into an abort, strict/assert modes, drain order) must move the
-# context explicitly, or a warm hit would replay a green a live run cannot give.
-tenv="tenv:${DN2CPP_MAX_GENERIC_DEPTH:-}/${DN2CPP_MAX_INSTANTIATIONS:-}/${DN2CPP_MAX_HEAP_MB:-}/${DN2CPP_SHARED_ASSERT:-}/${DN2CPP_STRICT_COMPLETION:-}/${DN2CPP_SPEC_DRAIN:-}"
-if gate_cache_check "$OUT" "cli-args|cli:$(_gate_cli_hash)|$CORELIB|$tenv" \
+# The transpiler's environment (_gate_transpiler_env_term): with no output
+# surface in the key, an ambient knob that changes what the transpiler DOES (a
+# cap turning the baseline transpile into an abort, strict/assert modes, drain
+# order) must move the context explicitly, or a warm hit would replay a green a
+# live run cannot give.
+if gate_cache_check "$OUT" "cli-args|cli:$(_gate_cli_hash)|$CORELIB|$(_gate_transpiler_env_term)" \
         "$APP" "$CONSOLE_CLI"; then
     gate_cache_hit_msg
     exit 0
