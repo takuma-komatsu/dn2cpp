@@ -5,7 +5,8 @@ using System.Globalization;
 // whose constructor another route reached, here a direct construction. Each row
 // names the type-info of its Type and array arguments, so the transpile declares
 // them all: arrays of a type nothing else names, single-dimensional, jagged and
-// multi-dimensional, and an enum array argument.
+// multi-dimensional, and an enum array argument. A Type argument mints the class
+// it names, whose own rows render in turn, down a chain nothing else names.
 namespace ReflectAttrUnread
 {
     [AttributeUsage(AttributeTargets.All, AllowMultiple = true)]
@@ -23,6 +24,14 @@ namespace ReflectAttrUnread
     [Tag(typeof(Lonely[]))] [Tag(typeof(Lonely[][]))] [Tag(typeof(Lonely[,]))] [Tag(new[] { Shade.Lit })]
     public sealed class Holder { }
 
+    // Each level is named only by the attribute row of the level before it.
+    [Tag(typeof(ChainSecond<int>))] public class ChainFirst<T> { }
+    [Tag(typeof(ChainLast<int>[]))] public class ChainSecond<T> { }
+    public class ChainLast<T> { }
+
+    [Tag(typeof(ChainFirst<int>))]
+    public sealed class ChainHolder { }
+
     internal static class Program
     {
         private static void Main()
@@ -32,6 +41,7 @@ namespace ReflectAttrUnread
             var tag = new TagAttribute(5);
             Console.WriteLine("constructed: " + tag.Value);
             Console.WriteLine("holder: " + new Holder().GetType().Name);
+            Console.WriteLine("chain holder: " + new ChainHolder().GetType().Name);
         }
     }
 }

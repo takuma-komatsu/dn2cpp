@@ -180,6 +180,12 @@ after the preset arguments, so an explicit trim flag there still enables that
 trim when its preset setting is off. Direct CLI defaults are unchanged:
 reflection and Godot-class trimming are opt-in, and shared generics are on.
 
+Once a program invokes reflected methods (`MethodInfo.Invoke`,
+`PropertyInfo.GetValue`/`SetValue` or `CreateDelegate`), ILDiet keeps every
+non-constructor method of each application type it retains, the bodies C++
+emission reaches for reflection, so a constant-name lookup such as
+`typeof(T).GetMethod("Name")` finds the method. Without such a call, ILDiet
+removes a method that no code calls, and a lookup by its name answers null.
 Code used only through dynamic reflection needs an explicit preservation rule.
 The same Unity-compatible rules apply to ILDiet and C++ emission. Apply
 `[Dn2Cpp.Scripting.Preserve]` to an assembly, type, constructor, method,
@@ -670,6 +676,8 @@ site rather than hiding it.
   `volatile`/`MemoryBarrier` → fences.
 - **Reflection at Unity-IL2CPP parity** — the member-metadata APIs,
   `MethodInfo.Invoke`, `FieldInfo`/`PropertyInfo` get/set,
+  virtual and generic virtual receiver dispatch, by-reference copy-back,
+  `Delegate.DynamicInvoke`,
   `GetCustomAttributes`, `Type.GetType(string)`,
   `Activator.CreateInstance`, `MakeGenericType` over AOT-instantiated
   types (plus the typeof-only runtime-instantiation templates — see the

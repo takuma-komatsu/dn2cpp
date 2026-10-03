@@ -39,6 +39,7 @@ var instanceStored = Find("InstanceStored");
 var int64Stored = Find("Int64Stored");
 var sealedInterface = Find("SealedInterface");
 var sealedGenericInterface = Find("SealedGenericInterface");
+var invokeVirtualLoad = Find("InvokeVirtualLoad");
 var valueTypeEquals = Find("ValueTypeEquals");
 var valueTypeHash = Find("ValueTypeHash");
 var valueTypeText = Find("ValueTypeText");
@@ -266,6 +267,20 @@ foreach (var (stub, target) in new[] { (sealedInterface, (MethodReference)sealed
     il.Emit(OpCodes.Ret);
 }
 
+// A delegate type is sealed, so ldvirtftn of its Invoke binds what ldftn binds.
+{
+    var func = (GenericInstanceType)invokeVirtualLoad.ReturnType;
+    var definition = func.Resolve();
+    var invoke = new MethodReference("Invoke", definition.GenericParameters[1], func) { HasThis = true };
+    invoke.Parameters.Add(new ParameterDefinition(definition.GenericParameters[0]));
+    var il = Body(invokeVirtualLoad, pointerLocal: false).GetILProcessor();
+    il.Emit(OpCodes.Ldarg_0);
+    il.Emit(OpCodes.Dup);
+    il.Emit(OpCodes.Ldvirtftn, module.ImportReference(invoke));
+    il.Emit(OpCodes.Newobj, DelegateCtor(invokeVirtualLoad));
+    il.Emit(OpCodes.Ret);
+}
+
 // Each ValueType stub callvirts System.ValueType's own override on its receiver.
 var valueType = new TypeReference("System", "ValueType", module, module.TypeSystem.CoreLibrary);
 var valueTypeOverrides = new (MethodDefinition Stub, string Name, TypeReference Return, bool TakesOther)[]
@@ -285,6 +300,47 @@ foreach (var (stub, name, returnType, takesOther) in valueTypeOverrides)
         il.Emit(OpCodes.Ldarg_1);
     il.Emit(OpCodes.Callvirt, target);
     il.Emit(OpCodes.Ret);
+}
+
+// A MethodImpl binds the renamed override to the slot its C# name overrode; a
+// second pass over the rewritten image finds it renamed.
+{
+    var renamed = (module.GetType("LdftnLocalSubset.RenamedSlotOverride")
+            ?? throw new InvalidOperationException("missing IL fixture type RenamedSlotOverride"))
+        .Methods.Single(m => m.Name is "Scale" or "Rescale");
+    renamed.Name = "Rescale";
+    renamed.Overrides.Clear();
+    renamed.Overrides.Add(FindOn("RenamedSlotBase", "Scale"));
+}
+
+// A MethodImpl moves each interface slot from its explicit stub to the named body
+// and binds the renamed override Show to Object.ToString; a second pass finds all
+// of them moved.
+foreach (var (type, stubName, bodyName) in new[]
+    {
+        ("RenamedFillerImpl", "LdftnLocalSubset.IRenamedFiller.Measure", "Weigh"),
+        ("RenamedFillerBox`1", "LdftnLocalSubset.IRenamedFiller.Measure", "Weigh"),
+        ("RenamedSource", "LdftnLocalSubset.IRenamedSource<System.String>.Take", "Fetch"),
+    })
+{
+    var body = FindOn(type, bodyName);
+    var stub = FindOn(type, stubName);
+    if (stub.Overrides.Count != 0)
+    {
+        body.Overrides.Add(stub.Overrides[0]);
+        stub.Overrides.Clear();
+    }
+}
+{
+    var show = (module.GetType("LdftnLocalSubset.RenamedObjectReuse")
+            ?? throw new InvalidOperationException("missing IL fixture type RenamedObjectReuse"))
+        .Methods.Single(m => m.Name is "ToString" or "Show");
+    show.Name = "Show";
+    show.Overrides.Clear();
+    show.Overrides.Add(new MethodReference("ToString", module.TypeSystem.String, module.TypeSystem.Object)
+    {
+        HasThis = true,
+    });
 }
 
 string temporary = path + ".ldftn-local.tmp";

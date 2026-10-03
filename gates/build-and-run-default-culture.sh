@@ -58,7 +58,47 @@ _corelib_gate_core "$PROJECT" "$out"
 # developer's machine can actually be in.
 LOCALES="${DN2CPP_CULTURE_LOCALES:-en_US.UTF-8 de_DE.UTF-8 fr_FR.UTF-8 ja_JP.UTF-8 en_GB.UTF-8 pt_BR.UTF-8 sv_SE.UTF-8 hi_IN.UTF-8}"
 
-if _corelib_gate_check "$out" "default_culture|$PROJECT|$LOCALES|$_CG_CORELIB"; then
+# WHICH VARIABLE DECIDES. Real .NET takes the first of LC_ALL, LC_MESSAGES and
+# LANG that is SET, an empty one included; a value that names no locale (empty,
+# C, POSIX, C.UTF-8, en_US_POSIX) leaves the default to the platform: the user's
+# system preference on Apple, the invariant culture elsewhere. A lowercase c is
+# a culture name, and .NET maps it to the invariant culture. Each row below
+# unsets all three and sets only the listed ones. A and B are table locales
+# other than the platform's own answer, so a row resolved through the wrong
+# variable prints a different culture on every host. That answer is a host
+# setting no variable carries, so it is cache context.
+run_locale_env() {
+    local assigns=()
+    read -r -a assigns <<< "$1"
+    shift
+    run_bounded env -u LC_ALL -u LC_MESSAGES -u LANG ${assigns[@]+"${assigns[@]}"} "$@"
+}
+platform_default="$(run_locale_env "" dotnet "$_CG_APP")"
+platform_default="${platform_default%%$'\n'*}"
+decoys=()
+for L in de_DE fr_FR sv_SE; do
+    [ "$platform_default" = "Name=${L/_/-}" ] || decoys+=("$L.UTF-8")
+done
+A="${decoys[0]}" B="${decoys[1]}"
+ENV_VARIANTS=(
+    ""
+    "LANG=$A"
+    "LANG="
+    "LANG=C"
+    "LANG=c"
+    "LANG=en_US_POSIX"
+    "LC_MESSAGES=$B LANG=$A"
+    "LC_MESSAGES= LANG=$A"
+    "LC_MESSAGES=C LANG=$A"
+    "LC_ALL=$B LC_MESSAGES=$A LANG=$A"
+    "LC_ALL= LANG=$A"
+    "LC_ALL=C LANG=$A"
+    "LC_ALL=POSIX LANG=$A"
+    "LC_ALL=C.UTF-8 LANG=$A"
+    "LC_ALL=POSIX.UTF-8 LANG=$A"
+)
+
+if _corelib_gate_check "$out" "default_culture|$PROJECT|$LOCALES|$platform_default|$_CG_CORELIB"; then
     gate_cache_hit_msg
     exit 0
 fi
@@ -82,5 +122,16 @@ for L in $LOCALES; do
     assert_output "$native" "$oracle"
     printf '%s\n' "$native" | LC_ALL=C sed 's/^/   /'
 done
+
+ran=0
+for V in "${ENV_VARIANTS[@]}"; do
+    echo "-- env: ${V:-none of LC_ALL LC_MESSAGES LANG}"
+    native="$(run_locale_env "$V" "./$out/$PROJECT")"
+    oracle="$(run_locale_env "$V" dotnet "$_CG_APP")"
+    assert_output "$native" "$oracle"
+    ran=$((ran + 1))
+done
+platform_default="${platform_default#Name=}"
+echo "env variants: $ran of ${#ENV_VARIANTS[@]} match real .NET (platform default: ${platform_default:-invariant})"
 
 gate_cache_commit

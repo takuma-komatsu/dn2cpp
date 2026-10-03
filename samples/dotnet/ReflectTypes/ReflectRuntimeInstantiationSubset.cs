@@ -1,5 +1,6 @@
 #nullable disable
 using System;
+using System.Reflection;
 
 // The runtime-instantiation template route
 // (Compilation.BuildRuntimeInstantiationTemplates / JudgeRuntimeTemplates on the
@@ -25,7 +26,9 @@ using System;
 // missing instantiation — the frozen snapshot asserts that message. So does a
 // definition whose generic virtual override instantiates a generic method over
 // the definition's own type parameter: a clone would need that instantiation
-// minted per type argument.
+// minted per type argument. A clone owns its field and property rows: they
+// report it as DeclaringType, read and write through it, and a property's
+// accessor is the clone's method row, the handle GetMethod returns.
 
 namespace ReflectRuntimeInstantiationSubset
 {
@@ -101,8 +104,481 @@ namespace ReflectRuntimeInstantiationSubset
         public override string Who() => "holder:" + value + ":" + typeof(T).Name;
     }
 
+    // typeof-only apart from MakeList, which nothing invokes: the other methods run
+    // only through Invoke on a clone.
+    class Reflected<T>
+    {
+        private readonly string label = "reflected";
+        public override string ToString() => label + ":" + typeof(T).Name;
+        public string Named() => label + "/" + typeof(T).Name;
+        public int Constant() => 7;
+        public virtual string Described() => "described:" + typeof(T).Name;
+        public object MakeList() => new System.Collections.Generic.List<T>();
+    }
+
+    // Only reflection names these methods. Their bodies name T through typeof, a
+    // type test, or a call of another such method, static ones included; MakeList
+    // names List<T>, which no clone can mint.
+    class Called<T>
+    {
+        private readonly string label = "called";
+        public int Constant() => 7;
+        public string Kind() => typeof(T).Name;
+        public string Twice() => Kind() + "+" + Kind();
+        public string Labeled() => label + ":" + Kind();
+        public bool Is(object o) => o is T;
+        public string ViaStatic() => Describe();
+        public static string Describe() => "static:" + typeof(T).Name;
+        public static int StaticConstant() => 9;
+        public object MakeList() => new System.Collections.Generic.List<T>();
+    }
+
+    // Only reflection names Show and StaticShow; they reach the base levels'
+    // static methods through the table their level forwards.
+    class StaticRoot<T>
+    {
+        protected static string Name() => typeof(T).Name;
+    }
+
+    class StaticMid<T> : StaticRoot<T>
+    {
+        protected static string MidName() => "mid:" + Name();
+    }
+
+    class StaticLeaf<T> : StaticMid<T>
+    {
+        public string Show() => Name() + "|" + MidName();
+        public static string StaticShow() => MidName();
+    }
+
+    interface IVisit
+    {
+        string Visit<U>();
+    }
+
+    // Visit is final: a binding through the clone's row runs it directly, one
+    // through IVisit takes the case the dispatcher records for the template.
+    class Visiting<T> : IVisit
+    {
+        public string Visit<U>() => typeof(T).Name + "/" + typeof(U).Name;
+    }
+
+    // Only reflection names these methods. C# compiles each cast to T to unbox.any.
+    class Casting<T>
+    {
+        public string Cast(object o)
+        {
+            try
+            {
+                _ = (T)o;
+                return "ok";
+            }
+            catch (InvalidCastException)
+            {
+                return "InvalidCastException";
+            }
+            catch (NullReferenceException)
+            {
+                return "NullReferenceException";
+            }
+        }
+
+        public object Boxed(object o) => (T)o;
+        public bool IsT(object o) => o is T t;
+
+        public object Kept(object o)
+        {
+            object kept = "none";
+            if (o is T t)
+                kept = t;
+            return kept;
+        }
+    }
+
+    class RefCasting<T> where T : class
+    {
+        public object As(object o) => o as T;
+        public bool AsNull(object o) => (o as T) == null;
+    }
+
+    interface IBump
+    {
+        void Bump();
+    }
+
+    struct Counter : IBump
+    {
+        public int N;
+        public string Label;
+
+        public void Bump() => N++;
+        public override string ToString() => Label + N;
+    }
+
+    // Only reflection names these methods. Each reads a T out of its argument, then
+    // changes the argument's box and returns the T it read.
+    class Snapshot<T>
+    {
+        public object Bumped(object o)
+        {
+            T c = (T)o;
+            ((IBump)o).Bump();
+            return c;
+        }
+
+        public object Matched(object o)
+        {
+            if (o is T t)
+            {
+                ((IBump)o).Bump();
+                return t;
+            }
+            return "none";
+        }
+
+        public object Written(object o)
+        {
+            T c = (T)o;
+            typeof(Counter).GetField("N").SetValue(o, 9);
+            return c;
+        }
+    }
+
+    static class MemberSink
+    {
+        public static string Last = "";
+    }
+
+    // Only reflection names these members, so each is reached through a clone's
+    // own field and property rows, and each accessor is one of its method rows.
+    class Membered<T>
+    {
+        public string label = "members";
+        public int count;
+        public const int Answer = 42;
+        public string Name => label + ":" + typeof(T).Name;
+        public string Label { get => label; set => label = value + "/" + typeof(T).Name; }
+        public int Count { get => count; set => count = value; }
+        public static string Shared => "static:" + typeof(T).Name;
+        public static string Sink { get => MemberSink.Last; set => MemberSink.Last = value + ":" + typeof(T).Name; }
+    }
+
+    class SubMembered<T> : Membered<T>
+    {
+        public string extra = "extra";
+        public string Extra => extra + ":" + typeof(T).Name;
+    }
+
     class Program
     {
+        internal static void RunTemplateMembers()
+        {
+            Console.WriteLine("== template members ==");
+            Type[] closes = new Type[2];
+            object[] insts = new object[2];
+            int at = 0;
+            foreach (Type arg in new[] { typeof(int), typeof(string) })
+            {
+                Type closed = typeof(Membered<>).MakeGenericType(arg);
+                object inst = Activator.CreateInstance(closed);
+                closes[at] = closed;
+                insts[at++] = inst;
+                string p = "members " + arg.Name + " ";
+                PropertyInfo name = closed.GetProperty("Name");
+                PropertyInfo label = closed.GetProperty("Label");
+                PropertyInfo count = closed.GetProperty("Count");
+                PropertyInfo shared = closed.GetProperty("Shared");
+                PropertyInfo sink = closed.GetProperty("Sink");
+                FieldInfo labelField = closed.GetField("label");
+                FieldInfo countField = closed.GetField("count");
+                FieldInfo answer = closed.GetField("Answer");
+                Console.WriteLine(p + "found: " + (name != null) + (label != null) + (count != null)
+                    + (shared != null) + (sink != null) + (labelField != null) + (countField != null) + (answer != null));
+                Console.WriteLine(p + "properties: " + Names(closed.GetProperties()));
+                Console.WriteLine(p + "instance properties: " + Names(closed.GetProperties(BindingFlags.Public | BindingFlags.Instance)));
+                Console.WriteLine(p + "static properties: " + Names(closed.GetProperties(BindingFlags.Public | BindingFlags.Static)));
+                Console.WriteLine(p + "fields: " + Names(closed.GetFields()));
+                Console.WriteLine(p + "nonpublic fields: " + Names(closed.GetFields(BindingFlags.NonPublic | BindingFlags.Instance)));
+                Console.WriteLine(p + "types: " + name.PropertyType.Name + "/" + count.PropertyType.Name + "/"
+                    + labelField.FieldType.Name + "/" + countField.FieldType.Name + "/" + answer.FieldType.Name);
+                Console.WriteLine(p + "flags: " + name.CanRead + name.CanWrite + label.CanWrite + shared.GetGetMethod().IsStatic
+                    + " literal=" + answer.IsLiteral + " static=" + answer.IsStatic + " public=" + labelField.IsPublic);
+                Console.WriteLine(p + "get identity: " + (closed.GetMethod("get_Name") == name.GetGetMethod())
+                    + "/" + (closed.GetMethod("get_Label") == label.GetGetMethod())
+                    + "/" + (closed.GetMethod("get_Shared") == shared.GetGetMethod())
+                    + "/" + (closed.GetMethod("get_Sink") == sink.GetGetMethod())
+                    + "/" + (name.GetMethod == closed.GetMethod("get_Name"))
+                    + "/" + closed.GetMethod("get_Name").Equals(name.GetGetMethod()));
+                Console.WriteLine(p + "set identity: " + (closed.GetMethod("set_Label") == label.GetSetMethod())
+                    + "/" + (closed.GetMethod("set_Count") == count.GetSetMethod())
+                    + "/" + (closed.GetMethod("set_Sink") == sink.GetSetMethod())
+                    + "/" + (label.SetMethod == closed.GetMethod("set_Label"))
+                    + "/" + (name.GetSetMethod() == null));
+                Console.WriteLine(p + "declaring: " + (name.DeclaringType == closed) + "/" + (shared.DeclaringType == closed)
+                    + "/" + (labelField.DeclaringType == closed) + "/" + (answer.DeclaringType == closed)
+                    + "/" + (name.GetGetMethod().DeclaringType == closed) + "/" + (sink.GetSetMethod().DeclaringType == closed));
+                Console.WriteLine(p + "reflected: " + (name.ReflectedType == closed) + "/" + (shared.ReflectedType == closed)
+                    + "/" + (labelField.ReflectedType == closed) + "/" + (answer.ReflectedType == closed)
+                    + "/" + (name.GetGetMethod().ReflectedType == closed));
+                Console.WriteLine(p + "same member: " + (closed.GetProperty("Name") == name) + "/" + closed.GetProperty("Name").Equals(name)
+                    + "/" + (closed.GetProperty("Name").GetHashCode() == name.GetHashCode())
+                    + "/" + (closed.GetField("label") == labelField) + "/" + closed.GetField("label").Equals(labelField)
+                    + "/" + (closed.GetField("label").GetHashCode() == labelField.GetHashCode())
+                    + " listed=" + IndexIn(closed.GetProperties(), name) + "/" + IndexIn(closed.GetFields(), labelField));
+                Console.WriteLine(p + "get: " + Attempt(() => name.GetValue(inst)) + " " + Attempt(() => label.GetValue(inst))
+                    + " " + Attempt(() => count.GetValue(inst)) + " " + Attempt(() => labelField.GetValue(inst))
+                    + " " + Attempt(() => answer.GetValue(null)) + " " + Attempt(() => answer.GetRawConstantValue()));
+                label.SetValue(inst, "set");
+                count.SetValue(inst, 5);
+                Console.WriteLine(p + "set property: " + Attempt(() => name.GetValue(inst)) + " " + Attempt(() => countField.GetValue(inst)));
+                labelField.SetValue(inst, "field");
+                countField.SetValue(inst, 6);
+                Console.WriteLine(p + "set field: " + Attempt(() => name.GetValue(inst)) + " " + Attempt(() => count.GetValue(inst)));
+                Console.WriteLine(p + "static: " + Attempt(() => shared.GetValue(null)) + " " + Attempt(() =>
+                {
+                    sink.SetValue(null, "sunk");
+                    return sink.GetValue(null);
+                }));
+                Console.WriteLine(p + "accessor invoke: " + Attempt(() => name.GetGetMethod().Invoke(inst, null))
+                    + " " + Attempt(() => shared.GetGetMethod().Invoke(null, null)));
+                Console.WriteLine(p + "wrong receiver: " + Attempt(() => name.GetValue(new object()))
+                    + " " + Attempt(() => labelField.GetValue(new object())) + " " + Attempt(() => name.GetValue(null)));
+                Console.WriteLine(p + "constant set: " + Attempt(() =>
+                {
+                    answer.SetValue(null, 1);
+                    return "set";
+                }));
+            }
+            Console.WriteLine("members across: " + (closes[0].GetProperty("Name") == closes[1].GetProperty("Name"))
+                + "/" + (closes[0].GetField("label") == closes[1].GetField("label"))
+                + "/" + (closes[0].GetMethod("get_Name") == closes[1].GetMethod("get_Name")));
+            Console.WriteLine("members cross receiver: " + Attempt(() => closes[0].GetProperty("Name").GetValue(insts[1]))
+                + " " + Attempt(() => closes[0].GetField("label").GetValue(insts[1])));
+            Type sub = typeof(SubMembered<>).MakeGenericType(typeof(int));
+            object subInst = Activator.CreateInstance(sub);
+            PropertyInfo inherited = sub.GetProperty("Name");
+            PropertyInfo extra = sub.GetProperty("Extra");
+            FieldInfo inheritedField = sub.GetField("label");
+            Console.WriteLine("sub-members base: " + (sub.BaseType == closes[0]));
+            Console.WriteLine("sub-members properties: " + Names(sub.GetProperties()));
+            Console.WriteLine("sub-members fields: " + Names(sub.GetFields()));
+            Console.WriteLine("sub-members flattened statics: "
+                + Names(sub.GetProperties(BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy)));
+            Console.WriteLine("sub-members declaring: " + (inherited.DeclaringType == closes[0]) + "/" + (extra.DeclaringType == sub)
+                + "/" + (inheritedField.DeclaringType == closes[0]) + "/" + (inherited.GetGetMethod().DeclaringType == closes[0]));
+            Console.WriteLine("sub-members reflected: " + (inherited.ReflectedType == sub) + "/" + (extra.ReflectedType == sub)
+                + "/" + (inheritedField.ReflectedType == sub) + "/" + (inherited.GetGetMethod().ReflectedType == sub));
+            Console.WriteLine("sub-members identity: " + (sub.GetMethod("get_Name") == inherited.GetGetMethod())
+                + "/" + (sub.GetMethod("get_Extra") == extra.GetGetMethod())
+                + "/" + (inherited == closes[0].GetProperty("Name"))
+                + "/" + (inheritedField == closes[0].GetField("label"))
+                + "/" + (sub.GetProperty("Name") == inherited));
+            Console.WriteLine("sub-members values: " + Attempt(() => inherited.GetValue(subInst)) + " " + Attempt(() => extra.GetValue(subInst))
+                + " " + Attempt(() => inheritedField.GetValue(subInst)) + " " + Attempt(() => closes[0].GetProperty("Name").GetValue(subInst))
+                + " " + Attempt(() => extra.GetValue(insts[0])));
+            Console.WriteLine("template members end");
+        }
+
+        // The result, the inner exception of an invocation, or the exception and its message.
+        private static string Attempt(Func<object> call)
+        {
+            try
+            {
+                object r = call();
+                return r == null ? "null" : r.ToString();
+            }
+            catch (TargetInvocationException ex)
+            {
+                return "TIE/" + ex.InnerException.GetType().Name;
+            }
+            catch (Exception ex)
+            {
+                return ex.GetType().Name + "(" + ex.Message + ")";
+            }
+        }
+
+        private static string Names(MemberInfo[] members)
+        {
+            string s = members.Length + ":";
+            for (int i = 0; i < members.Length; i++)
+                s += (i > 0 ? "," : "") + members[i].Name;
+            return s;
+        }
+
+        private static int IndexIn(MemberInfo[] members, MemberInfo m)
+        {
+            for (int i = 0; i < members.Length; i++)
+                if (members[i] == m)
+                    return i;
+            return -1;
+        }
+
+        internal static void RunTemplateValues()
+        {
+            Console.WriteLine("== template values ==");
+            foreach (Type arg in new[] { typeof(bool), typeof(string) })
+            {
+                Type closed = typeof(StaticLeaf<>).MakeGenericType(arg);
+                object inst = Activator.CreateInstance(closed);
+                Console.WriteLine("static-leaf " + arg.Name + ": show=" + closed.GetMethod("Show").Invoke(inst, null)
+                    + " staticShow=" + closed.GetMethod("StaticShow").Invoke(null, null)
+                    + " null-bound show=" + NullBound(() =>
+                        ((Func<string>)Delegate.CreateDelegate(typeof(Func<string>), null, closed.GetMethod("Show")))()));
+            }
+            IVisit visited = new Visiting<long>();
+            Console.WriteLine("visit aot: " + visited.Visit<int>());
+            foreach (Type arg in new[] { typeof(bool), typeof(string) })
+            {
+                Type closed = typeof(Visiting<>).MakeGenericType(arg);
+                object inst = Activator.CreateInstance(closed);
+                var viaItf = (Func<string>)Delegate.CreateDelegate(typeof(Func<string>), inst,
+                    typeof(IVisit).GetMethod("Visit").MakeGenericMethod(typeof(int)));
+                var viaRow = (Func<string>)Delegate.CreateDelegate(typeof(Func<string>), inst,
+                    closed.GetMethod("Visit").MakeGenericMethod(typeof(int)));
+                Console.WriteLine("visit " + arg.Name + ": " + viaItf() + " " + viaRow()
+                    + " equal=" + viaItf.Equals(viaRow) + "/" + viaRow.Equals(viaItf)
+                    + " sameHash=" + (viaItf.GetHashCode() == viaRow.GetHashCode()));
+            }
+            Console.WriteLine("closed casts: " + CastMessage(() => (int?)(object)"s")
+                + " | " + CastMessage(() => (int?)(object)DayOfWeek.Friday)
+                + " | " + CastMessage(() => (DayOfWeek?)(object)5)
+                + " | " + CastMessage(() => (System.Collections.Generic.List<int>)(object)"s"));
+            Console.WriteLine("nullable tests: " + IsOf<int?>(5) + " " + IsOf<int?>(DayOfWeek.Friday) + " " + IsOf<int?>(null)
+                + " as=" + AsNullableInt(5) + "/" + AsNullableInt(DayOfWeek.Friday).HasValue
+                + " assignable=" + typeof(int?).IsAssignableFrom(typeof(int)) + "/" + typeof(int).IsAssignableFrom(typeof(int?))
+                + " instance=" + typeof(int?).IsInstanceOfType(5));
+            foreach (Type arg in new[] { typeof(int), typeof(string), typeof(int?), typeof(DayOfWeek), typeof(Pair) })
+            {
+                Type closed = typeof(Casting<>).MakeGenericType(arg);
+                object inst = Activator.CreateInstance(closed);
+                foreach (object o in new object[] { 5, "s", null, DayOfWeek.Friday, new Pair() })
+                    Console.WriteLine("casting " + arg.Name + " " + (o ?? "null")
+                        + ": cast=" + closed.GetMethod("Cast").Invoke(inst, new[] { o })
+                        + " boxed=" + Described(() => closed.GetMethod("Boxed").Invoke(inst, new[] { o }), o)
+                        + " is=" + closed.GetMethod("IsT").Invoke(inst, new[] { o })
+                        + " kept=" + Described(() => closed.GetMethod("Kept").Invoke(inst, new[] { o }), o));
+                Console.WriteLine("casting " + arg.Name + " null-bound cast: " + NullBound(() =>
+                    ((Func<object, string>)Delegate.CreateDelegate(typeof(Func<object, string>), null,
+                        closed.GetMethod("Cast")))("s")));
+            }
+            foreach (Type arg in new[] { typeof(string), typeof(object) })
+            {
+                Type closed = typeof(RefCasting<>).MakeGenericType(arg);
+                object inst = Activator.CreateInstance(closed);
+                foreach (object o in new object[] { 5, "s", null })
+                    Console.WriteLine("ref-casting " + arg.Name + " " + (o ?? "null")
+                        + ": as=" + Described(() => closed.GetMethod("As").Invoke(inst, new[] { o }), o)
+                        + " asNull=" + closed.GetMethod("AsNull").Invoke(inst, new[] { o }));
+            }
+            Console.WriteLine("template values end");
+        }
+
+        private static bool IsOf<T>(object o) => o is T;
+
+        private static int? AsNullableInt(object o) => o as int?;
+
+        private static string CastMessage(Func<object> call)
+        {
+            try
+            {
+                return "value " + call();
+            }
+            catch (InvalidCastException ex)
+            {
+                return ex.Message;
+            }
+        }
+
+        // The result, its type and whether it is the argument itself, or what the
+        // method threw.
+        private static string Described(Func<object> call, object arg)
+        {
+            try
+            {
+                object r = call();
+                return r == null ? "null" : r + ":" + r.GetType().Name + ":" + ReferenceEquals(r, arg);
+            }
+            catch (System.Reflection.TargetInvocationException ex)
+            {
+                return ex.InnerException.GetType().Name + "(" + ex.InnerException.Message + ")";
+            }
+        }
+
+        internal static void RunTemplateCopies()
+        {
+            Console.WriteLine("== template copies ==");
+            foreach (Type arg in new[] { typeof(Counter), typeof(Counter?), typeof(IBump), typeof(object) })
+            {
+                Type closed = typeof(Snapshot<>).MakeGenericType(arg);
+                object inst = Activator.CreateInstance(closed);
+                foreach (string method in new[] { "Bumped", "Matched", "Written" })
+                {
+                    object box = new Counter { Label = "n" };
+                    object r = closed.GetMethod(method).Invoke(inst, new[] { box });
+                    Console.WriteLine("snapshot " + arg.Name + " " + method + ": result=" + r
+                        + " source=" + box + " same=" + ReferenceEquals(r, box));
+                }
+            }
+            Console.WriteLine("template copies end");
+        }
+
+        internal static void RunTemplateCalls()
+        {
+            Console.WriteLine("== template calls ==");
+            foreach (Type arg in new[]
+                { typeof(bool), typeof(Pair), typeof(string), typeof(System.Collections.Generic.KeyValuePair<string, int>) })
+            {
+                Type closed = typeof(Called<>).MakeGenericType(arg);
+                object inst = Activator.CreateInstance(closed);
+                string name = "called " + arg.Name;
+                Console.WriteLine(name + ": twice=" + closed.GetMethod("Twice").Invoke(inst, null)
+                    + " labeled=" + closed.GetMethod("Labeled").Invoke(inst, null)
+                    + " is=" + closed.GetMethod("Is").Invoke(inst, new object[] { "x" })
+                    + " viaStatic=" + closed.GetMethod("ViaStatic").Invoke(inst, null)
+                    + " describe=" + closed.GetMethod("Describe").Invoke(null, null)
+                    + " staticConstant=" + closed.GetMethod("StaticConstant").Invoke(null, null)
+                    + " makeList=" + (closed.GetMethod("MakeList") != null));
+                Console.WriteLine(name + " static delegate: "
+                    + ((Func<string>)Delegate.CreateDelegate(typeof(Func<string>), closed.GetMethod("Describe")))());
+                foreach (string method in new[] { "Kind", "Twice", "Labeled", "ViaStatic" })
+                    Console.WriteLine(name + " null-bound " + method + ": " + NullBound(() =>
+                        ((Func<string>)Delegate.CreateDelegate(typeof(Func<string>), null, closed.GetMethod(method)))()));
+                Console.WriteLine(name + " null-bound Constant: " + NullBound(() =>
+                    ((Func<int>)Delegate.CreateDelegate(typeof(Func<int>), null, closed.GetMethod("Constant")))()));
+                Console.WriteLine(name + " null-bound Is: " + NullBound(() =>
+                    ((Func<object, bool>)Delegate.CreateDelegate(typeof(Func<object, bool>), null, closed.GetMethod("Is")))("x")));
+            }
+            Console.WriteLine("template calls end");
+        }
+
+        private static string NullBound(Func<object> call)
+        {
+            try
+            {
+                return call().ToString();
+            }
+            catch (Exception ex)
+            {
+                return ex.GetType().Name;
+            }
+        }
+
+        internal static void RunReflectedBodies()
+        {
+            Console.WriteLine("== reflected template bodies ==");
+            foreach (Type arg in new[] { typeof(bool), typeof(Hue), typeof(string) })
+            {
+                Type closed = typeof(Reflected<>).MakeGenericType(arg);
+                object inst = Activator.CreateInstance(closed);
+                Console.WriteLine("reflected " + arg.Name + ": " + inst
+                    + " named=" + closed.GetMethod("Named").Invoke(inst, null)
+                    + " constant=" + closed.GetMethod("Constant").Invoke(inst, null)
+                    + " described=" + closed.GetMethod("Described").Invoke(inst, null)
+                    + " makeList=" + (closed.GetMethod("MakeList") != null));
+            }
+            Console.WriteLine("reflected template bodies end");
+        }
+
         internal static void Run()
         {
             foreach (Type arg in new[]

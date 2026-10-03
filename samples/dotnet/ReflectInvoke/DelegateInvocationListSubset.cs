@@ -326,4 +326,124 @@ static class Program
         Console.WriteLine("empty span null=" + (Delegate.Combine(ReadOnlySpan<Delegate>.Empty) is null));
         Console.WriteLine("invocation list cache GC end");
     }
+    interface IShape
+    {
+        string Show();
+    }
+
+    struct Dot : IShape
+    {
+        public int X;
+
+        public Dot(int x) => X = x;
+
+        public string Show() => "dot" + X;
+    }
+
+    struct Named
+    {
+        public int Id;
+        public string Name;
+    }
+
+    delegate void Step(ref int value);
+
+    delegate int Split(int seed, out string text);
+
+    delegate void MakeDot(out Dot dot);
+
+    // Each call's result, or the exception's type and message and its inner one's.
+    static string Outcome(Func<object> call)
+    {
+        try
+        {
+            return "returned " + (call() ?? "null");
+        }
+        catch (Exception e)
+        {
+            string inner = e.InnerException is { } x ? " inner " + x.GetType().Name + ": " + x.Message : "";
+            return e.GetType().Name + ": " + e.Message + inner;
+        }
+    }
+
+    static object InvokeShared<T>(Func<T> f) => f.DynamicInvoke();
+
+    static Func<T> MakeShared<T>(T value) => () => value;
+
+    // Delegate.DynamicInvoke runs the delegate through its type's Invoke as
+    // MethodInfo.Invoke runs a method: every entry, returning the last result; the
+    // argument count and each argument checked and converted (null for a value type is
+    // its default, a primitive widens); a ref or out argument written back into the
+    // array; an entry's exception wrapped in TargetInvocationException after the
+    // entries before it ran; a null delegate's NullReferenceException. A boxed struct
+    // result dispatches through its interface map and compares by value, and a method
+    // group over DynamicInvoke and MethodInfo.Invoke of the Invoke row itself run alike.
+    internal static void RunDynamicInvoke()
+    {
+        Console.WriteLine("== dynamic invoke ==");
+        Func<int, int, int> add = (x, y) => x + y;
+        Console.WriteLine("func: " + add.DynamicInvoke(2, 3));
+        Delegate asBase = add;
+        Console.WriteLine("through Delegate: " + asBase.DynamicInvoke(4, 5));
+        Action a = A, b = B, c = C;
+        Action abc = a + b + c;
+        log = "";
+        Console.WriteLine("multicast action: " + (abc.DynamicInvoke() is null) + " " + log);
+        log = "";
+        Console.WriteLine("null argument array: " + (abc.DynamicInvoke(null) is null) + " " + log);
+        Console.WriteLine("empty argument array: " + (a.DynamicInvoke(new object[0]) is null));
+        Func<int> f = () => 1;
+        f += () => 2;
+        Console.WriteLine("multicast result: " + f.DynamicInvoke());
+        Console.WriteLine("too few: " + Outcome(() => add.DynamicInvoke(1)));
+        Console.WriteLine("null argument array, two parameters: " + Outcome(() => add.DynamicInvoke(null)));
+        Console.WriteLine("too many: " + Outcome(() => a.DynamicInvoke(1)));
+        Console.WriteLine("wrong type: " + Outcome(() => add.DynamicInvoke("x", 1)));
+        Console.WriteLine("null for a value type: " + add.DynamicInvoke(null, 7));
+        Console.WriteLine("widening: " + add.DynamicInvoke((short)1, (byte)2));
+        Action thrower = () => throw new InvalidOperationException("boom");
+        Console.WriteLine("wrapped: " + Outcome(() => thrower.DynamicInvoke()));
+        log = "";
+        Console.WriteLine("wrapped multicast: " + Outcome(() => (a + thrower + b).DynamicInvoke()) + " ran " + log);
+        Step step = (ref int v) => v += 10;
+        step += (ref int v) => v *= 2;
+        object[] refArgs = { 1 };
+        step.DynamicInvoke(refArgs);
+        Console.WriteLine("ref written back: " + refArgs[0]);
+        Split split = (int seed, out string text) =>
+        {
+            text = "t" + seed;
+            return seed + 1;
+        };
+        object[] outArgs = { 4, null };
+        Console.WriteLine("out written back: " + split.DynamicInvoke(outArgs) + " " + outArgs[1]);
+        var counter = new Counter();
+        Action bump = counter.Bump;
+        bump.DynamicInvoke();
+        Action bound = (Action)Delegate.CreateDelegate(typeof(Action), counter, typeof(Counter).GetMethod("Bump"));
+        Console.WriteLine("instance and reflection-bound targets: " + (bound.DynamicInvoke() is null) + " " + counter.Count);
+        Action none = null;
+        Console.WriteLine("null delegate: " + Outcome(() => none.DynamicInvoke()));
+        Func<string, string> upper = s => s.ToUpperInvariant();
+        Func<long> wide = () => 1L << 40;
+        Console.WriteLine("reference and value results: " + upper.DynamicInvoke("abc") + " " + wide.DynamicInvoke()
+            + " " + wide.DynamicInvoke().GetType().Name);
+        Func<Dot> makeDot = () => new Dot(3);
+        object dot = makeDot.DynamicInvoke();
+        Func<Named> makeNamed = () => new Named { Id = 1, Name = "n" };
+        Console.WriteLine("struct results: " + ((IShape)dot).Show() + " equal=" + dot.Equals(makeDot.DynamicInvoke())
+            + "/" + makeNamed.DynamicInvoke().Equals(makeNamed.DynamicInvoke()));
+        MakeDot makeOut = (out Dot d) => d = new Dot(9);
+        object[] dotArgs = { null };
+        makeOut.DynamicInvoke(dotArgs);
+        Console.WriteLine("struct written back: " + ((IShape)dotArgs[0]).Show());
+        Console.WriteLine("shared bodies: " + InvokeShared(MakeShared("s")) + " " + InvokeShared(MakeShared<object>("o"))
+            + " " + InvokeShared(MakeShared(4)));
+        Func<object[], object> group = add.DynamicInvoke;
+        Console.WriteLine("method group: " + group(new object[] { 1, 1 }));
+        MethodInfo invoke = typeof(Func<int, int, int>).GetMethod("Invoke");
+        Console.WriteLine("Invoke row: " + invoke.Invoke(add, new object[] { 6, 7 }) + " "
+            + Outcome(() => invoke.Invoke(add, new object[] { 6 })));
+        Console.WriteLine("dynamic invoke end");
+    }
 }

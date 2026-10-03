@@ -45,6 +45,7 @@
 # Search windows preserve named faults, empty-source precedence and unchecked counts.
 # String argument validation preserves named faults, values and validation order.
 source "$(dirname "$0")/_common.sh"
+string_python=$(resolve_python) || gate_skip "no working Python 3 interpreter for string call fixtures"
 
 call_app="gates/fixtures/string-comparison-call/bin/$CONFIG/$TFM/StringComparisonCall.dll"
 build_gate_proj gates/fixtures/string-comparison-call/StringComparisonCall.csproj
@@ -231,7 +232,7 @@ gate_extra_asserts() {
     mkdir -p "$oracle"
     cp "$call_app" "$oracle/StringComparisonCall.dll"
     cp "${call_app%.dll}.runtimeconfig.json" "${call_app%.dll}.deps.json" "$oracle/"
-    python3 gates/fixtures/string-comparison-call/patch-call.py "$oracle/StringComparisonCall.dll"
+    $string_python gates/fixtures/string-comparison-call/patch-call.py "$oracle/StringComparisonCall.dll"
     invoke_cli "$oracle/StringComparisonCall.dll" -r "$_CG_CORELIB" -o "$fixture"
     compile_console "$fixture" StringComparisonCall
     expected=$(run_bounded dotnet "$oracle/StringComparisonCall.dll")

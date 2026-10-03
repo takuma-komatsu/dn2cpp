@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Virtual and generic virtual reflection dispatch, by-reference copy-back,
+# null-bound delegates, DynamicInvoke and catchable stripped-body refusals, which a
+# nested reflective call raises to the outer call as a fault of its target.
 # Consolidated reflection-invocation gate. Merges the former reflect dynamic-use
 # subset gates into one multi-section program, transpiled once against the
 # tree-shaken real CoreLib and diffed exactly against real .NET. Covers:
@@ -104,6 +107,9 @@
 # when transpiled, from a native-int or int64 local alike, and one built from a
 # copy of it throws NotSupportedException when constructed. Address-taken locals
 # beside a delegate in plain C# still transpile.
+# LdftnLocalSubset's renamed-override section binds a class slot and the
+# differently named MethodImpl body filling it through reflection: one delegate,
+# with one hash code, alone and in a chain.
 # ReflectToStringSubset asserts MethodInfo/ConstructorInfo/FieldInfo/PropertyInfo/
 # ParameterInfo and CustomAttributeData signature display through typed, base, and
 # object dispatch, including byref, indexer, generic-method, and attribute arguments.
@@ -120,17 +126,63 @@
 # Mixed native/packed metadata preserves inherited members, closed generics,
 # parameter identity, and interface receiver dispatch across cache eviction.
 # Disabling compression forces native metadata even for explicit packed selectors.
+# The emitted metadata block registry carries a packed block's constructor table
+# extent, and an uncompressed image registers none.
 # NoCompressMetadata and derived attributes select native owner/member metadata
 # through class inheritance without changing containing types or interface users.
 # NullDelegateTargetSubset checks delegate construction over a nonvirtual
 # instance method: a null receiver faults when bound, before invocation.
+# ReflectRouteClassSubset's attribute-minted section reads the attribute rows of a
+# chain of closed generics that only the row before each one names: every level
+# keeps its row, however deep the chain.
+# ReflectBoundDelegateSubset's template accessor section binds the property
+# accessors of MakeGenericType instantiations minted at run time, which are their
+# template's rows: static ones open and over their first argument, instance ones
+# over a receiver and over null, through every CreateDelegate overload and
+# DynamicInvoke, with Delegate.Method, DeclaringType and equality per instantiation.
+# ReflectInvokeValidationSubset's pointer return section boxes the unmanaged
+# pointer results of Invoke and DynamicInvoke, by-ref ones included, as
+# System.Reflection.Pointer and function pointers as IntPtr, and passes such a
+# box to a pointer parameter only under .NET's pointer type rules: a pointer
+# type counts every level, a function pointer type is its signature and calling
+# convention, and a refused argument names the parameter type as .NET formats it.
 # Former gates: reflect-invoke, reflect-dispatch, reflect-field-value,
 # reflect-serializer, activator-subset, event-subset.
 # Empty string MemberwiseClone retains a distinct reference.
 # Delegate list removal, original-entry identity, real-body enumeration and GC cache.
+# DelegateInvokeTargetSubset asserts that a delegate bound to another delegate's
+# Invoke (a delegate-type conversion, an Invoke method group, or an ldvirtftn of
+# Invoke) runs the source's invocation list: generic, multicast, by-ref,
+# struct-returning, variant and headerless signatures, with .NET's Target, Method,
+# DynamicInvoke and null-source answers.
+# Null-bound delegates over a long chain or a dense cycle of receiver-forwarding
+# non-virtual calls run every body .NET's do and fault where .NET's do.
+# ReflectDelegateIdentitySubset's settled Object virtual section binds ToString,
+# GetHashCode and Equals of an exception subclass that overrides them and of one
+# that inherits those overrides: Delegate.Method names the override and its
+# GetBaseDefinition Object's method, though the exception levels above carry no
+# Object-member rows. A string, a boxed Int32 and an exception that overrides
+# nothing inherit the member through such a level and may answer null.
+# LdftnLocalSubset's renamed slot filler section binds interface and Object slots
+# whose filler is a differently named MethodImpl body, an override of one or a
+# newslot hider's inherited one: a delegate through the slot equals and hashes
+# like one through the body, and Delegate.Method names the body, for
+# reflection-bound and ldvirtftn delegates alike, on MakeGenericType
+# instantiations and through a variant instantiation of the slot's interface.
+# StrippedOverrideRefusals runs the stripped-body refusals in an image of their
+# own, so no other section can compile the CoreLib overrides they need stripped.
+# ReflectBindOnly makes CreateDelegate its program's only reflection call: the
+# binding alone reaches each bound body and the types its delegate type names.
+# ReflectFrameworkBind's last section passes Pointer boxes between methods of the
+# application and ReflectReturnLib whose function pointer types name each one's
+# same-named types: a box over one assembly's type is refused for a parameter over
+# the other's with .NET's ArgumentException.
 source "$(dirname "$0")/_common.sh"
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_ordinary-reflection.sh samples/dotnet/ReflectInvoke/OrdinaryAmbiguousMatchSubset.cs samples/dotnet/ReflectInvoke/OrdinaryReflectionLeaves.csproj samples/dotnet/ReflectInvoke/OrdinaryReflectionLeavesProgram.cs samples/dotnet/ReflectInvoke/OrdinaryWideLookupSubset.cs samples/dotnet/ReflectInvoke/ReflectFieldValidationSubset.cs samples/dotnet/ReflectInvoke/ReflectInvoke.csproj samples/dotnet/ReflectInvoke/ReflectMetadataMeasureSubset.cs samples/dotnet/ReflectInvoke/ReflectionMethodGroupsOnly.csproj samples/dotnet/ReflectInvoke/ReflectionMethodGroupsOnlyProgram.cs"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_ordinary-reflection.sh samples/dotnet/ReflectInvoke/OrdinaryAmbiguousMatchSubset.cs samples/dotnet/ReflectInvoke/OrdinaryReflectionLeaves.csproj samples/dotnet/ReflectInvoke/OrdinaryReflectionLeavesProgram.cs samples/dotnet/ReflectInvoke/OrdinaryWideLookupSubset.cs samples/dotnet/ReflectInvoke/ReflectBindOnly.csproj samples/dotnet/ReflectInvoke/ReflectBindOnlyProgram.cs samples/dotnet/ReflectInvoke/ReflectFieldValidationSubset.cs samples/dotnet/ReflectInvoke/ReflectInvoke.csproj samples/dotnet/ReflectInvoke/ReflectMetadataMeasureSubset.cs samples/dotnet/ReflectInvoke/ReflectionMethodGroupsOnly.csproj samples/dotnet/ReflectInvoke/ReflectionMethodGroupsOnlyProgram.cs samples/dotnet/ReflectInvoke/StrippedOverrideRefusals.csproj samples/dotnet/ReflectInvoke/StrippedOverrideRefusalsProgram.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-reflection-leaves-v1|runtime-member-attributes-prefix:${DN2CPP_BEFORE_RUNTIME_MEMBER_ATTRIBUTES:-}|runtime-return-modifiers-prefix:${DN2CPP_BEFORE_RUNTIME_RETURN_MODIFIERS:-}"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|reflection-dispatch-v1|dispatch-prefix:${DN2CPP_BEFORE_REFLECTION_DISPATCH:-}|attribute-minted-prefix:${DN2CPP_BEFORE_ATTRIBUTE_MINTED:-}|template-accessors-prefix:${DN2CPP_BEFORE_TEMPLATE_ACCESSORS:-}|pointer-returns-prefix:${DN2CPP_BEFORE_POINTER_RETURNS:-}|delegate-invoke-targets-prefix:${DN2CPP_BEFORE_DELEGATE_INVOKE_TARGETS:-}|null-bound-chains-prefix:${DN2CPP_BEFORE_NULL_BOUND_CHAINS:-}|renamed-slot-bindings-prefix:${DN2CPP_BEFORE_RENAMED_SLOT_BINDINGS:-}|settled-object-virtual-prefix:${DN2CPP_BEFORE_SETTLED_OBJECT_VIRTUAL:-}|renamed-slot-fillers-prefix:${DN2CPP_BEFORE_RENAMED_SLOT_FILLERS:-}"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|stripped-overrides:${DN2CPP_STRIPPED_OVERRIDES:-}|library-struct-prefix:${DN2CPP_BEFORE_LIBRARY_STRUCT_RETURN:-}|function-pointer-identity-prefix:${DN2CPP_BEFORE_FUNCTION_POINTER_IDENTITY:-}"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectFrameworkBind/keep-library-override.xml"
 
 py="$(resolve_python)"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/check-reflection-layout.py gates/measure-reflection-metadata.py gates/expected/reflection-allocations.csv gates/fixtures/delegate-invocation-cache/DelegateInvocationCache.csproj gates/fixtures/delegate-invocation-cache/Program.cs"
@@ -155,10 +207,155 @@ gate_empty_string_clone_asserts() {
 }
 
 gate_extra_asserts() {
-    local out="$1" native line
+    local out="$1" native line registry
     "$py" gates/fixtures/check-reflection-layout.py "$out" "$reflection_layout_axis"
+    # The runtime publishes a constructor's invoke plan only for a record inside a
+    # registered extent, so a packed constructor table must appear in the registry.
+    registry=$(awk '/^const Dn2CppMetadataBlock dn2cpp_metadata_blocks\[\] = \{$/ { p = 1; next }
+        p && /^\};$/ { exit } p' "$out"/generated*.cpp)
+    case "$reflection_layout_axis" in
+        default)
+            grep -Ewq 'md_record_ctortab_ReflectMetadataLayoutSubset_PackedDerived, [1-9][0-9]* \}' <<< "$registry" \
+                || { echo 'FAIL: packed PackedDerived registers no constructor table extent' >&2; return 1; } ;;
+        uncompressed)
+            { grep -Fxq '    { md_ptr_0, nullptr, nullptr, 0, nullptr, 0 },' <<< "$registry" \
+                && ! grep -Fq 'md_record_ctortab_' <<< "$registry"; } \
+                || { echo 'FAIL: uncompressed metadata registers a constructor table extent' >&2; return 1; } ;;
+    esac
     run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/metadata-layout.stdout"
     native=$(strip_cr_win_file "$out/metadata-layout.stdout")
+    DN2CPP_BEFORE_REFLECTION_DISPATCH=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-reflection-dispatch.stdout"
+    sed '/^== reflection dispatch extensions ==/,$d' "$out/metadata-layout.stdout" > "$out/reflection-dispatch-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-reflection-dispatch.stdout") \
+        <(strip_cr_win_file "$out/reflection-dispatch-prefix.stdout")
+    for line in '== reflection dispatch extensions ==' '== dynamic invoke ==' \
+        'dynamic invoke end' 'reflection dispatch extensions end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: reflection dispatch witness missing: $line" >&2; return 1; }
+    done
+    DN2CPP_BEFORE_ATTRIBUTE_MINTED=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-attribute-minted.stdout"
+    sed '/^== reflection route attribute-minted classes ==/,$d' "$out/metadata-layout.stdout" > "$out/attribute-minted-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-attribute-minted.stdout") \
+        <(strip_cr_win_file "$out/attribute-minted-prefix.stdout")
+    for line in '== reflection route attribute-minted classes ==' \
+        'AttrLevel9`1 rows=1 next=AttrRoot' 'reflection route attribute-minted classes end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: attribute-minted witness missing: $line" >&2; return 1; }
+    done
+    DN2CPP_BEFORE_TEMPLATE_ACCESSORS=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-template-accessors.stdout"
+    sed '/^== template accessor bindings ==/,$d' "$out/metadata-layout.stdout" > "$out/template-accessors-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-template-accessors.stdout") \
+        <(strip_cr_win_file "$out/template-accessors-prefix.stdout")
+    for line in '== template accessor bindings ==' 'template Int32, static: static:Int32' \
+        'template String, setter over its argument: closed:String' \
+        'template Int32, closed: minted:Int32' 'template Int32, null-bound context: Int32' \
+        'template String, null-bound context: NullReferenceException' \
+        'template String, method: get_Shared/True/True/True' \
+        'template Int32, null-bound method: NullReferenceException' \
+        'template across instantiations: False/False static:Int32 static:String' \
+        'template accessor bindings end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: template accessor witness missing: $line" >&2; return 1; }
+    done
+    DN2CPP_BEFORE_POINTER_RETURNS=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-pointer-returns.stdout"
+    sed '/^== pointer returns ==/,$d' "$out/metadata-layout.stdout" > "$out/pointer-returns-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-pointer-returns.stdout") \
+        <(strip_cr_win_file "$out/pointer-returns-prefix.stdout")
+    for line in '== pointer returns ==' \
+        'pointer: Pointer:System.Reflection.Pointer:0x1230' \
+        'pointer to pointer: Pointer:System.Reflection.Pointer:0x80' \
+        'function pointer: IntPtr:256' 'ref pointer: Pointer:System.Reflection.Pointer:0x200' \
+        'dynamic invoke: Pointer:System.Reflection.Pointer:0x1230' \
+        'int*, int* box: Int64:4656' 'uint*, int* box: Int64:4656' 'void*, int** box: Int64:128' \
+        "long**, int** box: ArgumentException: Object of type 'System.Reflection.Pointer' cannot be converted to type 'System.Int64**'." \
+        'five levels: Pointer:System.Reflection.Pointer:0x50' 'int*****, ref int***** box: Int64:88' \
+        "int*****, int****** box: ArgumentException: Object of type 'System.Reflection.Pointer' cannot be converted to type 'System.Int32*****'." \
+        "delegate*<long>*, delegate*<int>* box: ArgumentException: Object of type 'System.Reflection.Pointer' cannot be converted to type 'System.Int64()*'." \
+        "delegate*<int>, string: ArgumentException: Object of type 'System.String' cannot be converted to type 'System.Int32()'." \
+        'pointer returns end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: pointer return witness missing: $line" >&2; return 1; }
+    done
+    # A fresh object's managed-reference stores take the write barrier too
+    # (runtime/core/dn2cpp_core.h), so the pointer box stores its type through it.
+    line=$(awk '/dn2cpp_set_pointer_box_type\(/ { getline; print; exit }' "$out"/generated*.cpp)
+    grep -Fq 'dn2cpp_gc_store_ref(&o->' <<< "$line" \
+        || { echo "FAIL: the pointer box stores its type without the write barrier: $line" >&2; return 1; }
+    DN2CPP_BEFORE_DELEGATE_INVOKE_TARGETS=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-delegate-invoke-targets.stdout"
+    sed '/^== delegate invoke targets ==/,$d' "$out/metadata-layout.stdout" > "$out/delegate-invoke-targets-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-delegate-invoke-targets.stdout") \
+        <(strip_cr_win_file "$out/delegate-invoke-targets-prefix.stdout")
+    for line in '== delegate invoke targets ==' \
+        'converter=n3,n1,n2 target=True method=Invoke/Func`2 entries=1 dynamic=n9' \
+        'same type=11 equal=True target=True self=False' 'generic=a!/b!/42/c?/42/L7' \
+        'multicast=12121 entries=1/2 last=2' 'by-ref=22/u22' 'struct=w:12/(5, p)' \
+        'variance=covariant/sink:x' 'headerless=./,' 'null source=ArgumentException' \
+        'virtual load=201 target=True method=Invoke entries=1' 'virtual load null=ArgumentException' \
+        'delegate invoke targets end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: delegate invoke target witness missing: $line" >&2; return 1; }
+    done
+    DN2CPP_BEFORE_NULL_BOUND_CHAINS=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-null-bound-chains.stdout"
+    sed '/^== null-bound call chains ==/,$d' "$out/metadata-layout.stdout" > "$out/null-bound-chains-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-null-bound-chains.stdout") \
+        <(strip_cr_win_file "$out/null-bound-chains-prefix.stdout")
+    for line in '== null-bound call chains ==' 'null-bound long chain: 42' \
+        'null-bound long chain, field: NullReferenceException' 'open null long chain: 42' \
+        'null-bound struct long chain: 7' 'null-bound dense cycle: 16384' \
+        'template Int32 long chain, null-bound context: Int32' \
+        'template Int32 long chain, null-bound tested: null Int32' \
+        'template String long chain, null-bound context: NullReferenceException' \
+        'template String long chain, null-bound tested: NullReferenceException' \
+        'null-bound call chains end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: null-bound chain witness missing: $line" >&2; return 1; }
+    done
+    DN2CPP_BEFORE_RENAMED_SLOT_BINDINGS=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-renamed-slot-bindings.stdout"
+    sed '/^== reflection-bound delegates over a renamed override ==/,$d' "$out/metadata-layout.stdout" \
+        > "$out/renamed-slot-bindings-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-renamed-slot-bindings.stdout") \
+        <(strip_cr_win_file "$out/renamed-slot-bindings-prefix.stdout")
+    for line in '== reflection-bound delegates over a renamed override ==' \
+        'renamed-slot-calls=3/3/3/4' 'renamed-slot-identity=True/True/True/False/Rescale/Rescale' \
+        'renamed-slot-dedup=1/True/True' 'renamed-slot-chain=True/True' \
+        'reflection-bound delegates over a renamed override end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: renamed slot binding witness missing: $line" >&2; return 1; }
+    done
+    DN2CPP_BEFORE_SETTLED_OBJECT_VIRTUAL=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-settled-object-virtual.stdout"
+    sed '/^== settled Object virtual answers ==/,$d' "$out/metadata-layout.stdout" > "$out/settled-object-virtual-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-settled-object-virtual.stdout") \
+        <(strip_cr_win_file "$out/settled-object-virtual-prefix.stdout")
+    for line in '== settled Object virtual answers ==' \
+        'settled-object-virtual-own=OverridingException.ToString>Object.ToString|OverridingException.GetHashCode>Object.GetHashCode|OverridingException.Equals>Object.Equals|overriding/23/True/False' \
+        'settled-object-virtual-inherited=OverridingException.ToString>Object.ToString|OverridingException.GetHashCode>Object.GetHashCode|OverridingException.Equals>Object.Equals|overriding/23/True/False' \
+        'settled-object-virtual-reflected=Object.ToString|Object.GetHashCode|Object.Equals/Object.ToString|Object.GetHashCode|Object.Equals' \
+        'settled-object-virtual-unsettled=True/True/True/True/True/text/5/True/True' \
+        'settled Object virtual answers end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: settled Object virtual witness missing: $line" >&2; return 1; }
+    done
+    DN2CPP_BEFORE_RENAMED_SLOT_FILLERS=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-renamed-slot-fillers.stdout"
+    sed '/^== renamed slot fillers ==/,$d' "$out/metadata-layout.stdout" > "$out/renamed-slot-fillers-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-renamed-slot-fillers.stdout") \
+        <(strip_cr_win_file "$out/renamed-slot-fillers-prefix.stdout")
+    for line in '== renamed slot fillers ==' \
+        'renamed-filler-calls=42/43/reuse/RenamedFillerDerived.Weigh' \
+        'renamed-filler-interface=True/True/True/1/42/42/RenamedFillerImpl.Weigh/RenamedFillerImpl.Weigh' \
+        'renamed-filler-interface-inherited=True/True/True/1/43/43/RenamedFillerDerived.Weigh/RenamedFillerDerived.Weigh' \
+        'renamed-filler-object-derived=True/True/True/1/derived/derived/ObjectMethodImplDerived.Render/ObjectMethodImplDerived.Render|True/True/True/1/907/907/ObjectMethodImplDerived.Hash/ObjectMethodImplDerived.Hash' \
+        'renamed-filler-object-hider=True/True/True/1/alias/alias/ObjectMethodImpl.Render/ObjectMethodImpl.Render|True/True/True/1/701/701/ObjectMethodImpl.Hash/ObjectMethodImpl.Hash' \
+        'renamed-filler-object-load-generic=ObjectMethodImplGeneric`1.Render/ObjectMethodImplGeneric`1.Hash/generic/1103' \
+        'renamed-filler-reuse=True/True/True/1/reuse/reuse/RenamedObjectReuse.Show/RenamedObjectReuse.Show' \
+        'renamed-filler-minted=True/True/True/1/44/44/RenamedFillerBox`1.Weigh/RenamedFillerBox`1.Weigh|True/True/True/1/42/42/RenamedFillerImpl.Weigh/RenamedFillerImpl.Weigh|True/True/True/1/45/45/RenamedFillerOverrideBox`1.Weigh/RenamedFillerOverrideBox`1.Weigh' \
+        'renamed-filler-minted-object=True/True/True/1/box/box/ObjectMethodImplBox`1.Render/ObjectMethodImplBox`1.Render|True/True/True/1/1201/1201/ObjectMethodImplBox`1.Hash/ObjectMethodImplBox`1.Hash|True/True/True/1/alias/alias/ObjectMethodImpl.Render/ObjectMethodImpl.Render' \
+        'renamed-filler-minted-load=ObjectMethodImplBox`1.Render/ObjectMethodImpl.Render/RenamedFillerBox`1.Weigh/RenamedFillerImpl.Weigh' \
+        'renamed-filler-variant=True/True/True/1/source/source/RenamedSource.Fetch/RenamedSource.Fetch|True/True/True/1/source/source/RenamedSource.Fetch/RenamedSource.Fetch' \
+        'renamed-filler-variant-load=source/RenamedSource.Fetch' \
+        'renamed slot fillers end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: renamed slot filler witness missing: $line" >&2; return 1; }
+    done
     DN2CPP_BEFORE_DELEGATE_LISTS=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-delegate-lists.stdout"
     sed '/^== remove runs ==/,$d' "$out/metadata-layout.stdout" > "$out/delegate-lists-prefix.stdout"
     diff -u <(strip_cr_win_file "$out/before-delegate-lists.stdout") \
@@ -401,11 +598,12 @@ gate_extra_asserts() {
 # Managed preservation is covered by build-and-run-preserve-control.sh.
 reflection_layout_axis=default
 DN2CPP_STRICT_COMPLETION=1 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|strict-completion" \
-    corelib_diff_gate ReflectInvoke --no-ildiet
+    corelib_diff_gate ReflectInvoke --no-ildiet System.ComponentModel.TypeConverter
+typeconverter="$(dirname "$_CG_CORELIB")/System.ComponentModel.TypeConverter.dll"
 
 reflection_layout_axis=overrides
 DN2CPP_OUT_SUFFIX="${DN2CPP_OUT_SUFFIX:-}-metadata-overrides" \
-    corelib_diff_gate ReflectInvoke --no-ildiet \
+    corelib_diff_gate ReflectInvoke --no-ildiet System.ComponentModel.TypeConverter \
         --reflection-metadata 'ReflectInvoke::ReflectMetadataLayoutSubset.NativeBase=packed' \
         --reflection-metadata 'ReflectMetadataLayoutSubset.PackedBase=native' \
         --reflection-metadata 'ReflectMetadataLayoutSubset.Generic`1[System.String]=packed' \
@@ -417,14 +615,14 @@ DN2CPP_OUT_SUFFIX="${DN2CPP_OUT_SUFFIX:-}-metadata-overrides" \
 
 reflection_layout_axis=uncompressed
 DN2CPP_OUT_SUFFIX="${DN2CPP_OUT_SUFFIX:-}-metadata-uncompressed" \
-    corelib_diff_gate ReflectInvoke --no-ildiet --no-metadata-compression \
+    corelib_diff_gate ReflectInvoke --no-ildiet --no-metadata-compression System.ComponentModel.TypeConverter \
         --reflection-metadata 'ReflectMetadataLayoutSubset.NativeBase=packed' \
         --reflection-metadata 'ReflectMetadataCompressionSubset.Direct=packed' \
         --reflection-metadata 'System.String=packed'
 
 # A global opt-out dominates packed selectors in either argument order.
 uncompressed_reverse=artifacts/reflection-metadata-uncompressed-reverse
-run_bounded invoke_cli "$_CG_APP" -r "$_CG_CORELIB" --no-ildiet \
+run_bounded invoke_cli "$_CG_APP" -r "$_CG_CORELIB" -r "$typeconverter" --no-ildiet \
     --reflection-metadata 'ReflectMetadataLayoutSubset.NativeBase=packed' \
     --reflection-metadata 'ReflectMetadataCompressionSubset.Direct=packed' \
     --reflection-metadata 'System.String=packed' --no-metadata-compression \
@@ -436,7 +634,7 @@ mkdir -p "$invalid_out"
 expect_policy_rejection() {
     local name="$1" diagnostic="$2" status=0
     shift 2
-    run_bounded invoke_cli "$_CG_APP" -r "$_CG_CORELIB" --no-ildiet \
+    run_bounded invoke_cli "$_CG_APP" -r "$_CG_CORELIB" -r "$typeconverter" --no-ildiet \
         -o "$invalid_out/$name" "$@" > "$invalid_out/$name.log" 2>&1 || status=$?
     if [ "$status" -ne 2 ] || ! grep -Fq -- "$diagnostic" "$invalid_out/$name.log"; then
         cat "$invalid_out/$name.log" >&2
@@ -473,7 +671,7 @@ for byref_mode in overwrite overwrite-int64 copy; do
     diff -u <(strip_cr_win_file "$invalid_out/byref-prefix.stdout") \
         <(strip_cr_win_file "$byref_dir/dotnet-prefix.stdout")
     byref_status=0
-    run_bounded invoke_cli "$byref_app" -r "$_CG_CORELIB" --no-ildiet \
+    run_bounded invoke_cli "$byref_app" -r "$_CG_CORELIB" -r "$typeconverter" --no-ildiet \
         -o "$byref_dir/out" > "$byref_dir/transpile.log" 2>&1 || byref_status=$?
     if [ "$byref_mode" = copy ]; then
         if [ "$byref_status" -ne 0 ]; then
@@ -616,3 +814,108 @@ DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectInvoke ReflectionMe
 unset -f gate_extra_asserts
 DN2CPP_OUT_SUFFIX=-ildiet DN2CPP_STRICT_COMPLETION=1 \
     ordinary_fixture_diff_gate ReflectInvoke ReflectionMethodGroupsOnly
+
+# Delegate binding as a program's only reflection call needs an isolated driver.
+gate_extra_asserts() {
+    local out="$1" native line
+    native=$(run_bounded "$out/ReflectBindOnly$EXE_EXT") || return $?
+    native=$(strip_cr_win "$native")
+    for line in 'static: 42' 'generic: 12' 'instance: hello bind' 'override: circle' \
+        'interface static: unit' 'bind-only end' 'contravariant: null' 'type return: Circle' \
+        'variance view: null' 'signature types end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: bind-only witness missing: $line" >&2; return 1; }
+    done
+}
+ordinary_fixture_diff_gate ReflectInvoke ReflectBindOnly --no-ildiet
+unset -f gate_extra_asserts
+
+# The refusals need their CoreLib overrides stripped, so they run in an image
+# that holds nothing else, over packed and native metadata.
+gate_extra_asserts() {
+    local out="$1" line
+    local refusal="the receiver's body was stripped from this image; preserve it with a link.xml descriptor to reach it through reflection"
+    DN2CPP_STRIPPED_OVERRIDES=1 run_bounded "$out/StrippedOverrideRefusals$EXE_EXT" > "$out/stripped-overrides.stdout"
+    for line in \
+        "stripped struct-returning slot: NotSupportedException 0x80131515 System.Globalization.GregorianCalendar.AddYears: $refusal" \
+        "stripped slot: NotSupportedException 0x80131515 System.Globalization.GregorianCalendar.GetDayOfMonth: $refusal" \
+        "stripped interface struct-returning slot: NotSupportedException 0x80131515 System.DBNull.ToDateTime: $refusal" \
+        "stripped interface slot: NotSupportedException 0x80131515 System.DBNull.ToInt32: $refusal" \
+        "stripped slot, delegate: NotSupportedException 0x80131515 System.Globalization.GregorianCalendar.GetDayOfMonth: $refusal" \
+        'stripped end' \
+        "stripped slot, nested invoke: TargetInvocationException 0x80131604 inner NotSupportedException 0x80131515 System.Globalization.GregorianCalendar.GetDayOfMonth: $refusal" \
+        "stripped slot, nested invoke unwrapped: NotSupportedException 0x80131515 System.Globalization.GregorianCalendar.GetDayOfMonth: $refusal" \
+        "stripped slot, nested object virtual: TargetInvocationException 0x80131604 inner NotSupportedException 0x80131515 System.Globalization.GregorianCalendar.GetDayOfMonth: $refusal" \
+        "stripped slot, nested constructor: TargetInvocationException 0x80131604 inner NotSupportedException 0x80131515 System.Globalization.GregorianCalendar.GetDayOfMonth: $refusal" \
+        'stripped nested end'; do
+        grep -Fxq -- "$line" "$out/stripped-overrides.stdout" \
+            || { echo "FAIL: stripped dispatch witness missing: $line" >&2; return 1; }
+    done
+}
+DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectInvoke StrippedOverrideRefusals --no-ildiet
+DN2CPP_OUT_SUFFIX=-native DN2CPP_STRICT_COMPLETION=1 \
+    ordinary_fixture_diff_gate ReflectInvoke StrippedOverrideRefusals --no-ildiet --no-metadata-compression
+unset -f gate_extra_asserts
+
+gate_extra_asserts() {
+    local out="$1" native
+    run_bounded "$out/ReflectFrameworkBind$EXE_EXT" > "$out/library-struct-return.stdout"
+    grep -Fxq '== direct library struct return ==' "$out/library-struct-return.stdout"
+    grep -Fxq 'direct library struct return end' "$out/library-struct-return.stdout"
+    DN2CPP_BEFORE_LIBRARY_STRUCT_RETURN=1 run_bounded "$out/ReflectFrameworkBind$EXE_EXT" \
+        > "$out/before-library-struct-return.stdout"
+    sed '/^== direct library struct return ==/,$d' "$out/library-struct-return.stdout" \
+        > "$out/library-struct-return-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/library-struct-return-prefix.stdout") \
+        <(strip_cr_win_file "$out/before-library-struct-return.stdout")
+    local refused="ArgumentException 0x80070057 Object of type 'System.Reflection.Pointer' cannot be converted to type" line identity
+    identity=$(strip_cr_win_file "$out/library-struct-return.stdout")
+    for line in '== function pointer identity ==' 'local leaf cell, local sink: 16' 'peer leaf cell, peer sink: 272' \
+        "local leaf cell, peer sink: $refused 'FunctionPointerTwin.Leaf()*'." \
+        "peer leaf cell, local sink: $refused 'FunctionPointerTwin.Leaf()*'." \
+        "local node cell, peer sink: $refused 'FunctionPointerTwin.Node()*'." \
+        "local list cell, peer sink: $refused 'System.Collections.Generic.List\`1[FunctionPointerTwin.Node]()*'." \
+        "local nested cell, peer sink: $refused 'System.Void(FunctionPointerTwin.Leaf())*'." \
+        'function pointer identity end'; do
+        grep -Fxq -- "$line" <<< "$identity" \
+            || { echo "FAIL: function pointer identity witness missing: $line" >&2; return 1; }
+    done
+    DN2CPP_BEFORE_FUNCTION_POINTER_IDENTITY=1 run_bounded "$out/ReflectFrameworkBind$EXE_EXT" \
+        > "$out/before-function-pointer-identity.stdout"
+    sed '/^== function pointer identity ==/,$d' "$out/library-struct-return.stdout" \
+        > "$out/function-pointer-identity-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/function-pointer-identity-prefix.stdout") \
+        <(strip_cr_win_file "$out/before-function-pointer-identity.stdout")
+    # The reached sibling pins the symbol spelling the absence check below relies on.
+    if ! grep -hEq 'LibraryResult_Label_m[0-9]+\(' "$out"/generated*.cpp "$out/generated.h"; then
+        echo 'FAIL: reached library result body missing' >&2
+        return 1
+    fi
+    if grep -hEq '(DeadResult|UnusedResult)_Label_m[0-9]+\(' "$out"/generated*.cpp "$out/generated.h"; then
+        echo 'FAIL: unrelated library result body was reached' >&2
+        return 1
+    fi
+    DN2CPP_STRIPPED_OVERRIDES=1 run_bounded "$out/ReflectFrameworkBind$EXE_EXT" > "$out/stripped-overrides.stdout"
+    native=$(strip_cr_win_file "$out/stripped-overrides.stdout")
+    grep -Fxq "framework generic virtual row, library override: NotSupportedException 0x80131515 ReflectFrameworkBindLib.LibraryProvider.RegisterType: the receiver's body was stripped from this image; preserve it with a link.xml descriptor to reach it through reflection" <<< "$native"
+    grep -Fxq 'framework bind end' <<< "$native"
+    grep -Fxq "framework generic virtual row, library receiver allocated late: NotSupportedException 0x80131515 ReflectFrameworkBindLib.LateProvider.RegisterType: the receiver's body was stripped from this image; preserve it with a link.xml descriptor to reach it through reflection" <<< "$native"
+}
+corelib_diff_gate ReflectFrameworkBind --no-ildiet System.ComponentModel.TypeConverter \
+    -r "samples/dotnet/ReflectFrameworkBind/bin/$CONFIG/$TFM/System.ReflectFrameworkBind.dll" \
+    -r "samples/dotnet/ReflectFrameworkBind/bin/$CONFIG/$TFM/ReflectReturnLib.dll"
+
+gate_extra_asserts() {
+    local out="$1"
+    DN2CPP_STRIPPED_OVERRIDES=1 run_bounded "$out/ReflectFrameworkBind$EXE_EXT" > "$out/kept-overrides.stdout"
+    DN2CPP_STRIPPED_OVERRIDES=1 run_bounded dotnet "$_CG_APP" > "$out/kept-overrides.dotnet.stdout"
+    grep -Fxq 'framework generic virtual row, library override: library:Tagged' "$out/kept-overrides.dotnet.stdout"
+    grep -Fxq 'framework generic virtual row, library receiver allocated late: late:Tagged' "$out/kept-overrides.dotnet.stdout"
+    diff -u <(strip_cr_win_file "$out/kept-overrides.dotnet.stdout") \
+        <(strip_cr_win_file "$out/kept-overrides.stdout")
+}
+DN2CPP_OUT_SUFFIX=-kept-override corelib_diff_gate ReflectFrameworkBind --no-ildiet System.ComponentModel.TypeConverter \
+    -r "samples/dotnet/ReflectFrameworkBind/bin/$CONFIG/$TFM/System.ReflectFrameworkBind.dll" \
+    -r "samples/dotnet/ReflectFrameworkBind/bin/$CONFIG/$TFM/ReflectReturnLib.dll" \
+    --link-xml samples/dotnet/ReflectFrameworkBind/keep-library-override.xml
+unset -f gate_extra_asserts

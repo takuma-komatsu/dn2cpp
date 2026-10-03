@@ -23,10 +23,9 @@ rm -rf "$OUT"
 mkdir -p "$OUT"
 
 # This gate measures transpiler behavior directly, so the CLI hash stands in for
-# the implementation. The generic/heap/assert knobs can change whether the body
-# fixpoint reaches the scheduler and therefore belong to the cache context.
-tenv="tenv:${DN2CPP_MAX_GENERIC_DEPTH:-}/${DN2CPP_MAX_INSTANTIATIONS:-}/${DN2CPP_MAX_HEAP_MB:-}/${DN2CPP_SHARED_ASSERT:-}/${DN2CPP_STRICT_COMPLETION:-}/${DN2CPP_SPEC_DRAIN:-}"
-if gate_cache_check "$OUT" "parallel-bodies|jobs:2|sharing:off|cli:$(_gate_cli_hash)|$corelib|$tenv" \
+# the implementation and _gate_transpiler_env_term for its environment: a cap or
+# assert knob can change whether the body fixpoint reaches the scheduler.
+if gate_cache_check "$OUT" "parallel-bodies|jobs:2|sharing:off|cli:$(_gate_cli_hash)|$corelib|$(_gate_transpiler_env_term)" \
         "$app"; then
     gate_cache_hit_msg
     exit 0

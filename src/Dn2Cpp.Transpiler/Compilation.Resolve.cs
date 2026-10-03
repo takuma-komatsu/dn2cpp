@@ -2015,6 +2015,23 @@ internal sealed partial class Compilation
         EnsureCompleted(cls);
         if (callee.DeclaringClass.IsInterface && !callee.IsVirtual)
             return callee.IsStatic || callee.Rva == 0 ? null : callee;
+        // A generic virtual method binds per instantiation, as its dispatcher's case
+        // for the type does.
+        if (callee.DeclaringClass.IsInterface && IsGvmCall(callee))
+        {
+            // Through variance the slot is the implemented instantiation's, its default
+            // body included.
+            var slot = NewGvmDispatch(callee, callSite: false);
+            if (!ImplementsInterface(cls, callee.DeclaringClass))
+            {
+                if (VariantInterfaceGvmOrNull(slot, cls) is not { } variant)
+                    return null;
+                slot = variant;
+            }
+            if (InterfaceGvmCaseOrNull(slot, cls, out ambiguous) is { } gvmImpl)
+                return gvmImpl;
+            return ambiguous || slot.Gvm.IsAbstract || slot.Gvm.Rva == 0 ? null : slot.Gvm;
+        }
         if (callee.DeclaringClass is { IsInterface: true } itf
             && itf.Context.TypeArgs is [{ Kind: TypeKind.Class, Class: { } selfArg }]
             && selfArg == cls
@@ -2034,6 +2051,15 @@ internal sealed partial class Compilation
             return direct;
         if (!callee.DeclaringClass.IsInterface)
             return null;
+        // Variance converts some instantiations and not others (IIn<object>, never IIn<int>,
+        // serves IIn<string>); the slot is the one dispatch through a box binds.
+        if (!ImplementsInterface(cls, callee.DeclaringClass)
+            && FirstVariantInterfaceOrNull(cls, callee.DeclaringClass) is { } variantItf
+            && CorrespondingSlotOrNull(variantItf, callee) is { } variantSlot)
+            return DeclaredImplOf(cls, variantSlot)
+                ?? (ResolveItfImplOrNull(cls, variantSlot, out ambiguous) is { DeclaringClass.IsInterface: true } variantBody
+                    ? variantBody
+                    : null);
         // The callee names a DIFFERENT instantiation of an interface the type implements —
         // legal through variance (`struct S : I<object>` invoked as `I<string>::M` for a
         // contravariant `I<in T>`), or the one a placeholder receiver stands for (`S<CnRef>`
@@ -2143,13 +2169,21 @@ internal sealed partial class Compilation
                 pending.Push(up);
             if (ReferenceEquals(i, def) || i.Handle != def.Handle || i.Module != def.Module)
                 continue;
-            EnsureCompleted(i);
-            if (i.MethodByTemplate.TryGetValue(callee.Handle, out var slot))
+            if (CorrespondingSlotOrNull(i, callee) is { } slot)
                 slots.Add(slot);
-            else if (i.Methods.FirstOrDefault(m => m.Handle == callee.Handle) is { } scan)
-                slots.Add(scan);
         }
         return slots;
+    }
+
+    /// <summary>The slot of interface instantiation <paramref name="i"/> that shares
+    /// <paramref name="callee"/>'s MethodDef row, the exact correspondence between two
+    /// instantiations of one definition.</summary>
+    private MethodInfo? CorrespondingSlotOrNull(ClassInfo i, MethodInfo callee)
+    {
+        EnsureCompleted(i);
+        if (i.MethodByTemplate.TryGetValue(callee.Handle, out var slot))
+            return slot;
+        return i.Methods.FirstOrDefault(m => m.Handle == callee.Handle);
     }
 
     /// <summary>Full name of the type owning the (generic) method a MethodSpec
@@ -2175,6 +2209,52 @@ internal sealed partial class Compilation
                 return ResolveMethodSpec(module, (MethodSpecificationHandle)handle, ctx);
             case HandleKind.MemberReference:
                 return ResolveMemberRefMethod(module, (MemberReferenceHandle)handle, ctx);
+            default:
+                return null;
+        }
+    }
+
+    /// <summary>The loaded definition declaring the method a call-family token names,
+    /// read off the token's metadata alone: nothing is instantiated or decoded. Null
+    /// when the declaring type is neither a loaded definition nor an instantiation of
+    /// one (an array accessor, an unloaded reference).</summary>
+    internal (Module Module, TypeDefinitionHandle Handle)? DeclaringDefinitionOf(Module module, EntityHandle method)
+    {
+        var reader = module.Reader;
+        switch (method.Kind)
+        {
+            case HandleKind.MethodDefinition:
+                return (module, reader.GetMethodDefinition((MethodDefinitionHandle)method).GetDeclaringType());
+            case HandleKind.MethodSpecification:
+                var generic = reader.GetMethodSpecification((MethodSpecificationHandle)method).Method;
+                return DeclaringDefinitionOf(module, generic);
+            case HandleKind.MemberReference:
+                var parent = reader.GetMemberReference((MemberReferenceHandle)method).Parent;
+                return parent.Kind == HandleKind.MethodDefinition
+                    ? DeclaringDefinitionOf(module, parent)
+                    : TypeDefinitionOf(module, parent);
+            default:
+                return null;
+        }
+    }
+
+    private (Module Module, TypeDefinitionHandle Handle)? TypeDefinitionOf(Module module, EntityHandle type)
+    {
+        switch (type.Kind)
+        {
+            case HandleKind.TypeDefinition:
+                return (module, (TypeDefinitionHandle)type);
+            case HandleKind.TypeReference:
+                return TemplateOrClassDef(ResolveTypeRef(module, (TypeReferenceHandle)type)) is ({ } m, var h)
+                    ? (m, h)
+                    : null;
+            case HandleKind.TypeSpecification:
+                var blob = module.Reader.GetBlobReader(
+                    module.Reader.GetTypeSpecification((TypeSpecificationHandle)type).Signature);
+                if (blob.ReadSignatureTypeCode() != SignatureTypeCode.GenericTypeInstance)
+                    return null;
+                blob.ReadSignatureTypeCode();
+                return TypeDefinitionOf(module, blob.ReadTypeHandle());
             default:
                 return null;
         }

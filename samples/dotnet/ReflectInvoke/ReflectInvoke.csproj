@@ -39,4 +39,12 @@
     <Compile Remove="ReflectionMethodGroupsOnlyProgram.cs" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Remove="ReflectBindOnlyProgram.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="StrippedOverrideRefusalsProgram.cs" />
+  </ItemGroup>
+
 </Project>

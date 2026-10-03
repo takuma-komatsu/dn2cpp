@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
+# Preserved reflection-created boxes retain interface dispatch after write-back.
 # Managed DLL stripping and explicit preservation: unreachable metadata is removed,
 # while PreserveAttribute and merged Unity-format link.xml keep selected bodies.
-# ILDietControl also checks Array.Initialize constructors reached through method groups.
+# ILDietControl also checks Array.Initialize constructors reached through method groups
+# and application members that a reflective invoke selects only by a constant name.
 source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} "
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|attribute-object-prefix:${DN2CPP_BEFORE_ATTRIBUTE_OBJECT:-}"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|attribute-object-prefix:${DN2CPP_BEFORE_ATTRIBUTE_OBJECT:-}|named-reflection-prefix:${DN2CPP_BEFORE_NAMED_REFLECTION:-}"
 PYTHON=$(resolve_python) || gate_skip "no working Python 3 interpreter for ILDiet validation"
 
 PROJECT=PreserveControl
@@ -197,7 +199,7 @@ invoke_cli "$APP" -r "$LIBDLL" -r "$ASSEMBLYDLL" --auto-ref --project-root "$ROO
 grep -Fq "_DroppedMethod_" "$WHOLE"/generated* \
     || { echo "FAIL: childless assembly descriptor did not preserve all methods" >&2; exit 1; }
 
-if gate_cache_check "$OUT" "preserve-control|ildiet|com|trim-reflection|cut=PreserveControlLib.UnusedType::UnusedMethod" \
+if gate_cache_check "$OUT" "preserve-control|ildiet|com|trim-reflection|cut=PreserveControlLib.UnusedType::UnusedMethod|preserved-box-prefix:${DN2CPP_BEFORE_PRESERVED_BOXES:-}" \
         "$APP" "$LIBDLL" "$ASSEMBLYDLL" "$ROOT/link.xml" "$ROOT/Nested/link.xml" \
         gates/expected/preserve-control.txt; then
     gate_cache_hit_msg
@@ -205,6 +207,9 @@ else
     compile_console "$OUT" "$PROJECT"
     native=$("./$OUT/$PROJECT")
     assert_output "$(strip_cr_win "$native")" "$(cat gates/expected/preserve-control.txt)"
+    before=$(DN2CPP_BEFORE_PRESERVED_BOXES=1 run_bounded "./$OUT/$PROJECT")
+    prefix=$(awk '/^== preserved reflection boxes ==$/ { exit } { print }' <<< "$native")
+    assert_output "$(strip_cr_win "$prefix")" "$(strip_cr_win "$before")"
     gate_cache_commit
 fi
 
@@ -221,6 +226,13 @@ gate_extra_asserts() {
         || { echo 'FAIL: boxed Type attribute constructor did not run' >&2; return 1; }
     grep -Fxq 'attribute construction roots end' <<< "$native" \
         || { echo 'FAIL: Type attribute construction section did not run' >&2; return 1; }
+    before=$(DN2CPP_BEFORE_NAMED_REFLECTION=1 run_bounded "$out/ILDietControl$EXE_EXT") || return $?
+    prefix=$(awk '/^== constant-name reflection ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    grep -Fxq 'method-static=42' <<< "$native" \
+        || { echo 'FAIL: a method selected only by its constant name did not run' >&2; return 1; }
+    grep -Fxq 'constant-name reflection end' <<< "$native" \
+        || { echo 'FAIL: constant-name reflection section did not run' >&2; return 1; }
 }
 corelib_diff_gate ILDietControl -r "$DIET_LIB"
 unset -f gate_extra_asserts
@@ -233,6 +245,11 @@ for row in 'method ILDietControl.Loose::.ctor' 'method ILDietControl.Box`1::.cto
     kept=$(grep -Fxc "$row" <<<"$stripped_diet_app" || true)
     [ "$kept" -gt 0 ] && [ "$kept" = "$(grep -Fxc "$row" <<<"$original_diet_app")" ] \
         || { echo "FAIL: ILDiet removed a type-token-selected constructor: $row" >&2; exit 1; }
+done
+for row in 'method ILDietControl.Named::Twice' 'method ILDietControl.Named::Describe' \
+        'method ILDietControl.Named::get_Label' 'method ILDietControl.Named::set_Label'; do
+    grep -Fxq "$row" <<<"$stripped_diet_app" \
+        || { echo "FAIL: ILDiet removed a member a reflective invoke can select: $row" >&2; exit 1; }
 done
 grep -Fxq 'method ILDietControl.CalledOnly::.ctor' <<<"$original_diet_app" \
     || { echo "FAIL: original fixture is missing CalledOnly's constructor" >&2; exit 1; }

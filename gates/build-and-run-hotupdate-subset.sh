@@ -1,4 +1,24 @@
 #!/usr/bin/env bash
+# Closed AOT generic virtual imports dispatch class and interface receivers,
+# including patch receivers below an AOT override. A delegate over such a
+# receiver, bound through the declaring row or by ldvirtftn, reports that
+# override as Delegate.Method and equals a binding of the override.
+# A delegate over a patch receiver bound to an Object virtual, by reflection or,
+# in the real-CoreLib base, by ldvirtftn, reports its nearest AOT ancestor's
+# override or Object's row, the row a by-name lookup on the patch type finds;
+# the intrinsic-BCL base covers the receiver below an AOT override.
+# Class generic virtual rows no AOT class callvirt names, one with a reached body
+# and one abstract, both called by the base only through interfaces, bind to the
+# dispatcher a --hotupdate-base build registers for them; an instantiation the
+# base never reached refuses the whole image.
+# A patch whose IL is rewritten after build (callvirt -> call) matches .NET
+# running the same assembly in both code formats: a non-virtual call of an
+# interface or class import runs the named row's own body, a default interface
+# body included, for generic virtual and plain rows alike, while a callvirt of
+# the same import dispatches. A call of an abstract interface or generic virtual
+# row raises BadImageFormatException: each such call starts its method, so the
+# interpreter, which raises it as the call executes, and .NET, which raises it
+# as the JIT compiles the method, both raise it before any effect.
 # Hot update (BPI interpretation): the base program is AOT-transpiled with
 # --hotupdate-base (ABI-contract hash constant + base-abi.json sidecar), the
 # patch assembly is baked into a Baked Patch Image by --emit-patch, and the
@@ -138,6 +158,9 @@ build_proj samples/dotnet/HotUpdatePatch/HotUpdatePatch.csproj
 build_proj samples/dotnet/HotUpdateBase/NoCtorImportBase.csproj
 build_proj samples/dotnet/HotUpdatePatch/NoCtorImportPatch.csproj
 build_proj samples/dotnet/HotUpdatePatch/NoCtorImportOracle.csproj
+build_proj samples/dotnet/HotUpdatePatch/GvmRowHitPatch.csproj
+build_proj samples/dotnet/HotUpdatePatch/GvmRowMissPatch.csproj
+build_proj samples/dotnet/HotUpdatePatch/GvmCallPatch.csproj
 build_gate_proj gates/fixtures/interpreted-concat-oracle/InterpretedConcatOracle.csproj
 build_proj samples/dotnet/HotUpdateBadPatch/HotUpdateBadPatch.csproj
 build_proj samples/dotnet/HotUpdateBadPatch/GenericVirtualBad.csproj
@@ -165,6 +188,9 @@ patch_app="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/HotUpdatePatch.dll"
 noctor_base_app="samples/dotnet/HotUpdateBase/bin/$CONFIG/$TFM/NoCtorImportBase.dll"
 noctor_patch_app="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/NoCtorImportPatch.dll"
 noctor_oracle_app="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/NoCtorImportOracle.dll"
+gvmhit_app="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/GvmRowHitPatch.dll"
+gvmmiss_app="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/GvmRowMissPatch.dll"
+gvmcall_app="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/GvmCallPatch.dll"
 concat_oracle_app="gates/fixtures/interpreted-concat-oracle/bin/$CONFIG/$TFM/InterpretedConcatOracle.dll"
 bad_app="samples/dotnet/HotUpdateBadPatch/bin/$CONFIG/$TFM/HotUpdateBadPatch.dll"
 badgvm_app="samples/dotnet/HotUpdateBadPatch/bin/$CONFIG/$TFM/GenericVirtualBad.dll"
@@ -194,26 +220,28 @@ grep -q dn2cpp_base_image_abi_hash "$OUT/generated.cpp" \
     || { echo "FAIL: dn2cpp_base_image_abi_hash constant missing from generated.cpp" >&2; exit 1; }
 
 # Beyond the base's transpile surface, everything below is a function of the
-# patch assemblies (baked by --emit-patch, whose rejections are transpiler
-# BEHAVIOR — hence the _gate_cli_hash term standing in for the transpiler; see
-# that helper's doc) and the refs list. The transpiler-behavior env axis rides
-# in the context too: the bakes' outputs (.bpi) are not in the key's surface,
-# so an ambient cap/assert/drain knob changing them must move the context.
-tenv="tenv:${DN2CPP_MAX_GENERIC_DEPTH:-}/${DN2CPP_MAX_INSTANTIATIONS:-}/${DN2CPP_MAX_HEAP_MB:-}/${DN2CPP_SHARED_ASSERT:-}/${DN2CPP_STRICT_COMPLETION:-}/${DN2CPP_SPEC_DRAIN:-}"
+# inputs keyed below (every assembly built above, both refs lists and the
+# fixture scripts) and of transpiler BEHAVIOR: the bakes, their rejections and
+# the later base transpiles. None of those outputs is in the key's surface, so
+# _gate_cli_hash stands in for the transpiler and _gate_transpiler_env_term for
+# its environment (see those helpers' docs).
+#
 # The conditional-default-reference section transpiles the same base
 # against the REAL net10.0 CoreLib, so which CoreLib that resolves to is an input
 # of this gate the same way it is of net10_bcl_diff_gate — a runtime bump must
 # not be served a green recorded against the previous one.
-if gate_cache_check "$OUT" "hotupdate-subset|cli:$(_gate_cli_hash)|$tenv|field-metadata:$field_packed/$field_native|corelib:$(resolve_net10_corelib)" \
+if gate_cache_check "$OUT" "hotupdate-subset|cli:$(_gate_cli_hash)|$(_gate_transpiler_env_term)|field-metadata:$field_packed/$field_native|corelib:$(resolve_net10_corelib)" \
         "$base_app" "$patch_app" "$bad_app" "$badgvm_app" "$baditf_app" "$baddg_app" \
         "$concat_oracle_app" \
         "$badmc_app" "$dir1_app" "$dir2_app" "$dgrecv_app" "$dgsig_app" \
+        "$recv_app" "$arg_app" "$inv_app" "$ftn_app" \
         samples/dotnet/HotUpdateCoreLibBase/bin/$CONFIG/$TFM/HotUpdateCoreLibBase.dll \
         samples/dotnet/HotUpdateCoreLibPatch/bin/$CONFIG/$TFM/HotUpdateCoreLibPatch.dll \
         samples/dotnet/HotUpdateCoreLibBadPatch/bin/$CONFIG/$TFM/HotUpdateCoreLibBadPatch.dll \
         samples/dotnet/InterpBench/bin/$CONFIG/$TFM/InterpBench.dll \
         samples/dotnet/HotUpdatePatch/hotupdate-refs.txt \
         "$noctor_base_app" "$noctor_patch_app" "$noctor_oracle_app" \
+        "$gvmhit_app" "$gvmmiss_app" "$gvmcall_app" \
         samples/dotnet/HotUpdatePatch/noctor-import-refs.txt \
         gates/fixtures/hotupdate-import-identity/mutate-native-rows.py \
         gates/fixtures/hotupdate-import-identity/set-bpi-version.py; then
@@ -503,6 +531,37 @@ System.String
 == ordinary generic import identity end =="
 expected="$expected_before_generic
 $generic_expected"
+expected_before_virtual="$expected"
+expected="$expected_before_virtual
+== generic virtual import dispatch ==
+glass:3
+shelf:5
+glass Int32
+glass String
+glass:6
+sorted:4
+== generic virtual import dispatch end =="
+expected_before_rows="$expected"
+expected="$expected_before_rows
+== generic virtual import rows ==
+crate:2
+steel:3
+ink:4
+== generic virtual import rows end =="
+expected_before_patch_reflection="$expected"
+expected="$expected_before_patch_reflection
+== generic virtual reflection over a patch receiver ==
+GlassShelf.Label[Int32] glass:7
+GlassShelf.Label[Int32] glass:8
+True True True
+GlassShelf.Label[Int32] glass:9
+== generic virtual reflection over a patch receiver end =="
+expected_before_object_virtuals="$expected"
+expected="$expected_before_object_virtuals
+== object virtuals over a patch receiver ==
+HotUpdateBase.Plaque.ToString plaque
+HotUpdateBase.Plaque.ToString
+== object virtuals over a patch receiver end =="
 # Exit status captured explicitly (`$(...)` inline would swallow it): a base
 # that aborts in teardown AFTER printing the full transcript must not pass.
 set +e
@@ -515,6 +574,20 @@ prefix=${normalized%%$'\n== interpreted Concat arrays =='*}
 assert_output "$prefix" "$expected_prefix"
 generic_prefix=${normalized%%$'\n== ordinary generic import identity =='*}
 assert_output "$generic_prefix" "$expected_before_generic"
+virtual_prefix=${normalized%%$'\n== generic virtual import dispatch =='*}
+assert_output "$virtual_prefix" "$expected_before_virtual"
+rows_prefix=${normalized%%$'\n== generic virtual import rows =='*}
+assert_output "$rows_prefix" "$expected_before_rows"
+grep -Fxq '== generic virtual import rows end ==' <<< "$normalized" \
+    || { echo "FAIL: generic virtual import rows block did not complete" >&2; exit 1; }
+patch_reflection_prefix=${normalized%%$'\n== generic virtual reflection over a patch receiver =='*}
+assert_output "$patch_reflection_prefix" "$expected_before_patch_reflection"
+grep -Fxq '== generic virtual reflection over a patch receiver end ==' <<< "$normalized" \
+    || { echo "FAIL: generic virtual reflection over a patch receiver did not complete" >&2; exit 1; }
+object_virtuals_prefix=${normalized%%$'\n== object virtuals over a patch receiver =='*}
+assert_output "$object_virtuals_prefix" "$expected_before_object_virtuals"
+grep -Fxq '== object virtuals over a patch receiver end ==' <<< "$normalized" \
+    || { echo "FAIL: object virtuals over a patch receiver did not complete" >&2; exit 1; }
 grep -Fxq '== ordinary generic import identity end ==' <<< "$normalized" \
     || { echo "FAIL: ordinary generic import identity block did not complete" >&2; exit 1; }
 
@@ -706,6 +779,28 @@ if [ "$badgvm_rc" -ne 2 ] \
     exit 1
 fi
 echo "OK (uncalled generic virtual definition rejected)"
+
+echo "-- a generic virtual instantiation the base never reached refuses the load --"
+# Twin patches from one source: the hit twin binds Crate.Tag<int>, which the
+# base reaches; the miss twin binds Crate.Tag<long>, which it never reaches, so
+# no row carries that sigShape. The hit twin is the positive control: Load runs
+# its entry through the bound import, and its RowProbe then resolves by name.
+invoke_cli --emit-patch "$gvmhit_app" --base-abi "$OUT/base-abi.json" -o "$OUT/gvm-row"
+invoke_cli --emit-patch "$gvmmiss_app" --base-abi "$OUT/base-abi.json" -o "$OUT/gvm-row"
+set +e
+gvmrow_out=$("./$OUT/HotUpdateBase" --load-refused "$OUT/gvm-row/GvmRowHitPatch.bpi"); gvmrow_rc=$?
+set -e
+assert_output "$(strip_cr_win "$gvmrow_out")" "crate:5
+loaded
+published"
+assert_exit_code "$gvmrow_rc" 0
+set +e
+gvmrow_out=$("./$OUT/HotUpdateBase" --load-refused "$OUT/gvm-row/GvmRowMissPatch.bpi"); gvmrow_rc=$?
+set -e
+assert_output "$(strip_cr_win "$gvmrow_out")" "refused:BPI bind: unresolved method import
+published nothing"
+assert_exit_code "$gvmrow_rc" 0
+echo "OK (unreached generic virtual instantiation refused, nothing published)"
 
 echo "-- negative: a patch declaring an interface must be rejected --"
 baditf_rc=0
@@ -1197,11 +1292,26 @@ False
 3
 patch: done
 base: done"
+cl_expected_before_object_virtuals="$cl_expected"
+cl_expected="$cl_expected_before_object_virtuals
+== object virtuals over a patch receiver ==
+HotUpdateCoreLibBase.Plaque.ToString plaque
+HotUpdateCoreLibBase.Plaque.ToString plaque
+HotUpdateCoreLibBase.Plaque.ToString
+System.Object.ToString HotUpdateCoreLibPatch.FrostSlate
+System.Object.ToString HotUpdateCoreLibPatch.FrostSlate
+System.Object.ToString
+== object virtuals over a patch receiver end =="
 set +e
 cl_out=$("./$OUT/corelib/HotUpdateCoreLibBase" "$OUT/corelib/HotUpdateCoreLibPatch.bpi"); cl_rc=$?
 set -e
 assert_output "$(strip_cr_win "$cl_out")" "$cl_expected"
 assert_exit_code "$cl_rc" 0
+cl_normalized=$(strip_cr_win "$cl_out")
+assert_output "${cl_normalized%%$'\n== object virtuals over a patch receiver =='*}" \
+    "$cl_expected_before_object_virtuals"
+grep -Fxq '== object virtuals over a patch receiver end ==' <<< "$cl_normalized" \
+    || { echo "FAIL: object virtuals over CoreLib-base patch receivers did not complete" >&2; exit 1; }
 
 # Invoking the trapped row: HotUpdateCoreLibBadPatch callvirts get_Entry. The
 # refusal is LOUD and CATCHABLE — the loader's one-shot bind pass rejects the
@@ -1316,5 +1426,28 @@ assert_output "$(strip_cr_win "$noctor_result")" 'noctor directory:0'
 [ "$(grep -c 'unsupported BPI format version' "$noctor_out/wrong-formats.err")" = 2 ] \
     || { echo "FAIL: directory header prevalidation did not reject both wrong formats" >&2; exit 1; }
 echo "OK (ordinary generic import identity, ambiguity and format fences)"
+
+echo "-- non-virtual calls of virtual imports match .NET on the same rewritten IL --"
+# GvmCallPatch's NonVirtual bodies call through `call` (gates/fixtures/
+# hotupdate-nonvirtual-call rewrites them after build), so the managed run of
+# that assembly is the oracle. Only the rewrite makes .NET raise bad IL.
+# The patch's own CultureInfo imports do not bind, so globalization pins the oracle.
+gvmcall_oracle=$(DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 dotnet "$gvmcall_app")
+gvmcall_oracle=$(strip_cr_win "$gvmcall_oracle")
+grep -Fxq 'describe: System.BadImageFormatException' <<< "$gvmcall_oracle" \
+    || { echo "FAIL: GvmCallPatch was not rewritten to non-virtual calls" >&2; exit 1; }
+grep -Fxq '== non-virtual calls of virtual imports end ==' <<< "$gvmcall_oracle" \
+    || { echo "FAIL: the managed non-virtual call oracle did not complete" >&2; exit 1; }
+invoke_cli --emit-patch "$gvmcall_app" --base-abi "$OUT/base-abi.json" -o "$OUT/gvm-call"
+invoke_cli --emit-patch "$gvmcall_app" --base-abi "$OUT/base-abi.json" --patch-stackcode \
+    -o "$OUT/gvm-call/stack"
+for gvmcall_bpi in "$OUT/gvm-call/GvmCallPatch.bpi" "$OUT/gvm-call/stack/GvmCallPatch.bpi"; do
+    set +e
+    gvmcall_out=$("./$OUT/HotUpdateBase" --run "$gvmcall_bpi"); gvmcall_rc=$?
+    set -e
+    assert_output "$(strip_cr_win "$gvmcall_out")" "$gvmcall_oracle"
+    assert_exit_code "$gvmcall_rc" 0
+done
+echo "OK (non-virtual calls of virtual imports, register and stack formats)"
 
 gate_cache_commit

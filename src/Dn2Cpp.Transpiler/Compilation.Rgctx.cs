@@ -560,6 +560,9 @@ internal sealed partial class Compilation
         "dn2cpp_array_subarray_",   // array segment materialization (i4/ref/n)
         "dn2cpp_array_create_instance", // Array.CreateInstance (+ _from_arraytype/_lengths)
         "dn2cpp_box(",              // boxing
+        "dn2cpp_box_by_handle(",    // RuntimeHelpers.Box (the Enum.ToObject family)
+        "dn2cpp_get_uninitialized_object(", // RuntimeHelpers.GetUninitializedObject
+        "dn2cpp_template_",         // a template's kept-boxed unbox.any and box copy a value
         "dn2cpp_object_memberwise_clone(", // MemberwiseClone, Delegate.Clone
         // String constructors and producers.
         "dn2cpp_string_from",       // every string-from-* constructor (chars/wcs/mbs/utf8/…)
@@ -632,8 +635,7 @@ internal sealed partial class Compilation
         "dn2cpp_delegate_remove",   // + _all; may allocate the shortened multicast copy
         "dn2cpp_delegate_invocation_list(", "dn2cpp_delegate_try_get_at(",
         "dn2cpp_delegate_for_fnptr_",
-        "dn2cpp_box_by_handle(",    // RuntimeHelpers.Box (the Enum.ToObject family)
-        "dn2cpp_get_uninitialized_object(", // RuntimeHelpers.GetUninitializedObject
+        // System.Enum's metadata: fresh names, arrays and boxes.
         "dn2cpp_enum_get_name(",
         "dn2cpp_enum_get_names(",
         "dn2cpp_enum_get_value(",   // Enum.GetValue re-boxes the payload
@@ -641,6 +643,10 @@ internal sealed partial class Compilation
         "dn2cpp_enum_to_object",    // + _boxed
         "dn2cpp_enum_parse_type",   // Enum.Parse(Type, ...) boxes its result
         "dn2cpp_enum_format(",
+        // Reflection: member and attribute arrays, a fresh ParameterInfo, boxed field
+        // values and names built per call. The member lookups (GetMethod, GetField,
+        // GetProperty, MakeGenericType) intern their handles, so they allocate only the
+        // first time a member is asked for and are absent.
         "dn2cpp_type_get_fields(",
         "dn2cpp_type_get_properties(",
         "dn2cpp_type_get_methods(",
@@ -680,14 +686,17 @@ internal sealed partial class Compilation
         "dn2cpp_reflection_handle_tostring(",
         "dn2cpp_stacktrace_tostring(",
         "dn2cpp_stackframe_tostring(",
+        // Reflection invocation and construction run a member reflection selects at run
+        // time and box its result and each by-ref write-back; attribute reads run the
+        // attribute constructors. In both tables.
+        "dn2cpp_methodref_invoke(",
+        "dn2cpp_delegate_dynamic_invoke(",
         "dn2cpp_ctorref_invoke(",
         "dn2cpp_activator_create_instance", // + _args/_nonpublic
         "dn2cpp_propref_get_value", // + _indexed
         "dn2cpp_propref_set_value", // + _indexed
         "dn2cpp_get_custom_attribute", // GetCustomAttribute(s) (+ _typed)
         "dn2cpp_assembly_get_custom_attribute", // the assembly's, likewise
-        "dn2cpp_methodref_invoke(",
-        "dn2cpp_delegate_dynamic_invoke(",
     };
 
     // The tokens an emitted body text spells for a dynamic dispatch. Body text only — the
@@ -704,14 +713,14 @@ internal sealed partial class Compilation
         "dn2cpp_object_equals_",        // runtime equality-slot / typed IEquatable dispatch
         "dn2cpp_array_search_equals(",  // runtime array-element equality-slot dispatch
         "dn2cpp_default_equality_comparer_equals_nongeneric",
+        "dn2cpp_methodref_invoke(",     // MethodInfo.Invoke: the row's body or the receiver's override
+        "dn2cpp_delegate_dynamic_invoke(", // Delegate.DynamicInvoke: every entry of the chain
         "dn2cpp_ctorref_invoke(",       // ConstructorInfo.Invoke: the row's constructor
         "dn2cpp_activator_create_instance", // Activator.CreateInstance: a constructor chosen at run time
         "dn2cpp_propref_get_value",     // PropertyInfo.GetValue: the getter's body or override
         "dn2cpp_propref_set_value",     // PropertyInfo.SetValue: the setter's body or override
         "dn2cpp_get_custom_attribute",  // attribute reads: the attribute constructors and setters
         "dn2cpp_assembly_get_custom_attribute",
-        "dn2cpp_methodref_invoke(",
-        "dn2cpp_delegate_dynamic_invoke(",
     };
 
     /// <summary>Record what an emitted body allocates or dispatches, for the NoAlloc BFS.
@@ -1168,10 +1177,11 @@ internal sealed partial class Compilation
 
     /// <summary>The emitted rgctx slot descriptor of a template chain level:
     /// entry i is the type-argument index whose type-info the runtime fill
-    /// stamps into slot i. The verdict already established every slot is a
-    /// bare-type-argument TypeInfo read off the PLANNING registry; the emission
-    /// registry holds the retained subset, so a violation here is a transpiler
-    /// bug and crashes raw.</summary>
+    /// stamps into slot i, or <c>~d</c> for a forwarded class table: the clone's
+    /// table of the placeholder level d base steps down. The verdict already
+    /// established every slot is one of the two off the PLANNING registry; the
+    /// emission registry holds the retained subset, so a violation here is a
+    /// transpiler bug and crashes raw.</summary>
     internal int[] RuntimeTemplateSlotDescriptor(ClassInfo level)
     {
         var slots = Rgctx.Classes.SlotsOf(level);
@@ -1181,6 +1191,11 @@ internal sealed partial class Compilation
         for (int i = 0; i < slots.Count; i++)
         {
             var slot = slots[i];
+            if (ForwardedTemplateLevelDepth(level, slot) is var depth and >= 0)
+            {
+                desc[i] = ~depth;
+                continue;
+            }
             if (slot.Kind != RgctxSlotKind.TypeInfo)
                 throw new InvalidOperationException(
                     $"runtime template {level.FullName}: emission slot {i} is {slot.Kind}, "
@@ -1199,17 +1214,21 @@ internal sealed partial class Compilation
     /// <summary>Judges each rooted template (see
     /// <see cref="BuildRuntimeInstantiationTemplates"/>) against what a runtime
     /// clone can actually run: every reachable method of every placeholder-bearing
-    /// chain level must be an instance body that trial-compiled shareable — a
-    /// generic-method instantiation only over closed method arguments (see
+    /// chain level must be an instance body, or a static one only reflection
+    /// reaches, that trial-compiled shareable — a generic-method instantiation
+    /// only over closed method arguments (see
     /// <see cref="IsTemplateLevelMethodInstance"/>), which is how a generic
     /// virtual override on a level serves every clone from one dispatcher case —
     /// and every rgctx slot its level accumulated must be a TypeInfo read whose
     /// token re-resolves (under the template's own context) to a bare per-index
-    /// placeholder — the one entry a MakeGenericType fill can synthesize from its
-    /// argument array. Anything else fails the WHOLE template: its bodies stay
-    /// undonated and are dropped like any other canonical world's, and the
-    /// runtime diagnostic keeps naming the missing instantiation. Returns the
-    /// eligible templates' bodies as retention seeds.</summary>
+    /// placeholder, or a forwarded class table of a placeholder level (see
+    /// <see cref="ForwardedTemplateLevelDepth"/>) — the entries a MakeGenericType
+    /// fill can synthesize from its argument array and the clone's level tables.
+    /// A body only reflection reaches that does not share leaves its row without a
+    /// body; any other violation fails the WHOLE template: its bodies stay
+    /// undonated and are dropped like any other canonical world's, and the runtime
+    /// diagnostic keeps naming the missing instantiation. Returns the eligible
+    /// templates' bodies as retention seeds.</summary>
     private List<MethodInfo> JudgeRuntimeTemplates(Func<ClassInfo, MethodInfo, bool> backendSkips)
     {
         var seeds = new List<MethodInfo>();
@@ -1237,9 +1256,17 @@ internal sealed partial class Compilation
                     if (m.Rva == 0 || m.Name == ".cctor" || !Reachable.Contains(m)
                         || backendSkips(lv, m))
                         continue;
-                    if (m.IsStatic || (m.NameSuffix != "" && !IsTemplateLevelMethodInstance(m))
+                    // A static body takes its context from whoever enters it: its row,
+                    // which passes the clone's (DN2CPP_MTHA_CONTEXTARG), or a reflected
+                    // body of its own or a derived level, which calls it directly with its
+                    // own or a forwarded table. Only a reflected one qualifies.
+                    bool reflected = _reflectedTemplateBodies.Contains(m);
+                    if ((m.IsStatic && !reflected) || (m.NameSuffix != "" && !IsTemplateLevelMethodInstance(m))
                         || !SharedTrialCompiled.Contains(m) || SharedTaint.ContainsKey(m))
                     {
+                        // A body only reflection reached leaves its row without one.
+                        if (reflected)
+                            continue;
                         ok = false;
                         break;
                     }
@@ -1261,6 +1288,8 @@ internal sealed partial class Compilation
                 if (Rgctx.Classes.SlotsOf(lv) is { } slots)
                     foreach (var slot in slots)
                     {
+                        if (ForwardedTemplateLevelDepth(lv, slot) >= 0)
+                            continue;
                         if (slot.Kind != RgctxSlotKind.TypeInfo)
                         {
                             ok = false;
@@ -1410,6 +1439,27 @@ internal sealed partial class Compilation
     private readonly HashSet<ClassInfo> _runtimeTemplateRoots = new();
     private readonly HashSet<ClassInfo> _runtimeTemplateLevels = new();
 
+    // Level bodies only the reflection-invoke route reaches (see
+    // ReachReflectedTemplateBodies); any other reach of one removes it, making it
+    // a body the template needs.
+    private readonly HashSet<MethodInfo> _reflectedTemplateBodies = new();
+    private bool _reachingReflectedTemplateBody;
+    // Every body _reflectedTemplateBodies ever held, so its compilation keeps one
+    // representation of type-parameter values across passes (see
+    // KeepsTemplateValuesBoxed).
+    private readonly HashSet<MethodInfo> _boxedValueTemplateBodies = new();
+
+    /// <summary>Whether <paramref name="m"/>'s shared body keeps a value of a bare
+    /// type parameter in its boxed form: <c>unbox.any</c> checks the operand
+    /// against the clone's argument; it and <c>box</c> yield a reference as it is
+    /// and copy a value type's payload into a fresh box; and a local holds the
+    /// reference. A cast to T, <c>as T</c> and <c>is T t</c> so run as .NET's do,
+    /// and only the body holds the box a value lives in. Only a template
+    /// level body the reflection route reached first keeps them boxed; any other
+    /// body giving T a value position, and any site needing the value itself (its
+    /// address, a constrained call), still taints.</summary>
+    internal bool KeepsTemplateValuesBoxed(MethodInfo m) => _boxedValueTemplateBodies.Contains(m);
+
     /// <summary>Builds the runtime-instantiation TEMPLATES: for each open generic
     /// definition the program both typeofs (<c>ldtoken D&lt;&gt;</c>) and could hand
     /// to <c>Type.MakeGenericType</c>, instantiate the definition over the
@@ -1467,13 +1517,180 @@ internal sealed partial class Compilation
             // dispatch into is trial-compiled; instance ctors are what the
             // reflection-ctor path (Activator over the synthesized Type) invokes.
             ReachAllocatedType(tmpl);
+            var ctors = new List<MethodInfo>();
             foreach (var m in tmpl.Methods)
                 if (m.Name == ".ctor" && !m.IsStatic && m.Rva != 0)
+                {
                     Reach(m);
+                    ctors.Add(m);
+                }
+            foreach (var m in ctors)
+                NoteReflectionInvokeBoxes(m);
+            if (_reflectionInvokeUsed)
+                ReachReflectedTemplateBodies(tmpl);
         }
     }
 
-    /// <summary>The v1 shape bound for a runtime-instantiation template: a
+    /// <summary>What the reflection-invoke route reaches on a closed application class,
+    /// reached on a template's application placeholder levels so a clone's row can be
+    /// invoked: each method nothing else reaches whose body a clone could run (see
+    /// <see cref="IsReflectedTemplateBody"/>). Such a body registers no context slot a
+    /// clone cannot fill, the direct calls it makes keep their callees reflected
+    /// (<see cref="ReachCallFromReflectedTemplateBody"/>), and
+    /// <see cref="JudgeRuntimeTemplates"/> drops one that does not share rather than
+    /// failing the template, so which definitions qualify stays what the program's other
+    /// reaches decide.</summary>
+    private void ReachReflectedTemplateBodies(ClassInfo tmpl)
+    {
+        for (ClassInfo? lv = tmpl; lv is not null && ContainsCanonPlaceholder(lv); lv = lv.BaseClass)
+        {
+            // The route walks the application module only (WalkReflectionRouteClass).
+            if (lv.Module != AppModule)
+                continue;
+            foreach (var m in lv.Methods.ToList())
+            {
+                if (Reachable.Contains(m) || !IsReflectedTemplateBody(m, new HashSet<MethodInfo>()))
+                    continue;
+                _reflectedTemplateBodies.Add(m);
+                _boxedValueTemplateBodies.Add(m);
+                _reachingReflectedTemplateBody = true;
+                try
+                {
+                    Reach(m);
+                }
+                finally
+                {
+                    _reachingReflectedTemplateBody = false;
+                }
+                NoteReflectionInvokeBoxes(m);
+            }
+        }
+    }
+
+    /// <summary>Reaches the target of a direct call a scanned body makes. A reflected
+    /// template body's call of a template-level method nothing else reached yet leaves
+    /// the callee reflected too: <see cref="IsReflectedTemplateBody"/> vetted it with its
+    /// caller, and the caller's row runs only with it.</summary>
+    private void ReachCallFromReflectedTemplateBody(MethodInfo caller, MethodInfo callee)
+    {
+        bool reflected = _reflectedTemplateBodies.Count > 0 && _reflectedTemplateBodies.Contains(caller)
+            && _runtimeTemplateLevels.Contains(callee.DeclaringClass);
+        if (reflected && !Reachable.Contains(callee))
+        {
+            _reflectedTemplateBodies.Add(callee);
+            _boxedValueTemplateBodies.Add(callee);
+        }
+        _reachingReflectedTemplateBody = reflected;
+        try
+        {
+            Reach(callee);
+        }
+        finally
+        {
+            _reachingReflectedTemplateBody = false;
+        }
+    }
+
+    // Whether a clone can run m's body, which only reflection reaches: a non-generic
+    // method of a placeholder level with IL, naming the type parameters only bare as
+    // typeof, type-test, cast, unbox.any or box operands (see KeepsTemplateValuesBoxed),
+    // through instance field accesses, or through direct calls of non-virtual methods of
+    // its own level or a base level that are reached already or qualify themselves, and
+    // none in its signature. Every context slot such a body registers is a bare type
+    // argument or the class table of a base level whose static method it calls.
+    private bool IsReflectedTemplateBody(MethodInfo m, HashSet<MethodInfo> visiting)
+    {
+        var lv = m.DeclaringClass;
+        if (m.Rva == 0 || m.Name is ".ctor" or ".cctor" || m.NameSuffix != ""
+            || _backend?.ShouldSkipMethodBody(lv, m) == true)
+            return false;
+        var reader = m.Module.Reader;
+        if (reader.GetMethodDefinition(m.Handle).GetGenericParameters().Count > 0)
+            return false;
+        try
+        {
+            if (ContainsCanonAny(m.Signature.ReturnType) || m.Signature.ParameterTypes.Any(ContainsCanonAny))
+                return false;
+        }
+        catch (Exception e) when (!IsMustEscape(e))
+        {
+            return false;
+        }
+        if (!visiting.Add(m))
+            return true;
+        foreach (var insn in ILDecoder.Decode(m.Module.PE.GetMethodBody(m.Rva).GetILBytes()!.ToImmutableArrayCompat()))
+        {
+            // A calli's stand-alone signature can name a type parameter ClassTypeParameters
+            // does not read, and a clone would call it with the placeholder's ABI.
+            if (insn.OpCode == ILOpCode.Calli)
+                return false;
+            // An instance field is placeholder-free (RuntimeTemplateShapeEligible).
+            if (insn.Token == 0 || insn.OpCode is ILOpCode.Ldstr or ILOpCode.Ldfld or ILOpCode.Stfld or ILOpCode.Ldflda)
+                continue;
+            var token = SRME.EntityHandle(insn.Token);
+            if (ClassTypeParameters.Of(reader, token) == 0)
+                continue;
+            if (insn.OpCode is ILOpCode.Ldtoken or ILOpCode.Isinst or ILOpCode.Castclass
+                    or ILOpCode.Unbox_any or ILOpCode.Box
+                && ClassTypeParameters.IsBare(reader, token))
+                continue;
+            if (insn.OpCode == ILOpCode.Call && TemplateLevelCalleeOrNull(m, token) is { } callee
+                && (Reachable.Contains(callee) || IsReflectedTemplateBody(callee, visiting)))
+                continue;
+            return false;
+        }
+        return true;
+    }
+
+    // The non-virtual method of m's level or a base placeholder level a call token names.
+    private MethodInfo? TemplateLevelCalleeOrNull(MethodInfo m, EntityHandle token)
+    {
+        MethodInfo? callee;
+        try
+        {
+            callee = ResolveMethodHandle(m.Module, token, m.Context, m.DeclaringClass);
+        }
+        catch (Exception e) when (!IsMustEscape(e))
+        {
+            return null;
+        }
+        if (callee is null || callee.IsVirtual || !_runtimeTemplateLevels.Contains(callee.DeclaringClass))
+            return null;
+        for (var c = m.DeclaringClass; c is not null; c = c.BaseClass)
+            if (c == callee.DeclaringClass)
+                return callee;
+        return null;
+    }
+
+    /// <summary>The number of base steps from template level <paramref name="level"/>
+    /// down to the placeholder level whose class table <paramref name="slot"/>
+    /// forwards: the context a body of <paramref name="level"/> hands a static method
+    /// of that level it calls (<see cref="TemplateLevelCalleeOrNull"/>). -1 for any
+    /// other slot.</summary>
+    private int ForwardedTemplateLevelDepth(ClassInfo level, RgctxSlot slot)
+    {
+        if (slot.Kind != RgctxSlotKind.RgctxTable)
+            return -1;
+        MethodInfo? callee;
+        try
+        {
+            callee = ResolveMethodHandle(level.Module, SRME.EntityHandle(slot.Token),
+                new GenericContext(level.Context.TypeArgs, Array.Empty<TypeDesc>()), level);
+        }
+        catch (Exception e) when (!IsMustEscape(e))
+        {
+            return -1;
+        }
+        if (callee is null || callee.NameSuffix != "")
+            return -1;
+        int depth = 0;
+        for (ClassInfo? c = level; c is not null && ContainsCanonPlaceholder(c); c = c.BaseClass, depth++)
+            if (ReferenceEquals(c, callee.DeclaringClass))
+                return depth;
+        return -1;
+    }
+
+    /// <summary>The shape bound for a runtime-instantiation template: a
     /// concrete top-level reference definition whose placeholder-bearing chain
     /// levels carry no per-instantiation storage (no statics, no cctor), no
     /// field or directly-implemented interface naming a type parameter, and an

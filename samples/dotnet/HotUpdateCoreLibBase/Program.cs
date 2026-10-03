@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Reflection;
 using Dn2Cpp.Runtime;
 
 namespace HotUpdateCoreLibBase;
@@ -68,8 +69,59 @@ public static class Registry
     }
 }
 
+// The ToString override a patch receiver below it inherits.
+public class Plaque
+{
+    public override string ToString()
+    {
+        return "plaque";
+    }
+}
+
+// A base no AOT level of which overrides ToString.
+public class Slate
+{
+}
+
+// The patch hands its receivers here; Main binds Object virtuals over them.
+public static class PatchReceivers
+{
+    public static Plaque? BelowOverride;
+    public static Slate? BelowObject;
+
+    public static void Hold(Plaque belowOverride, Slate belowObject)
+    {
+        BelowOverride = belowOverride;
+        BelowObject = belowObject;
+    }
+}
+
 internal static class Program
 {
+    private static string Named(MethodInfo? method)
+    {
+        return method is null ? "null" : method.DeclaringType + "." + method.Name;
+    }
+
+    // A patch type runs its nearest AOT ancestor's Object virtuals, so a delegate
+    // over a patch receiver bound to one, by ldvirtftn or by reflection, reports
+    // that ancestor's override or Object's row, the row a by-name lookup on the
+    // patch type finds.
+    private static void PatchReceiverObjectVirtuals(object belowOverride, object belowObject)
+    {
+        Console.WriteLine("== object virtuals over a patch receiver ==");
+        MethodInfo toString = typeof(object).GetMethod("ToString")!;
+        foreach (object receiver in new[] { belowOverride, belowObject })
+        {
+            Func<string> viaGroup = receiver.ToString;
+            var viaRow = (Func<string>)Delegate.CreateDelegate(typeof(Func<string>), receiver, toString);
+            Console.WriteLine(Named(viaGroup.Method) + " " + viaGroup());
+            Console.WriteLine(Named(viaRow.Method) + " " + viaRow());
+            Console.WriteLine(Named(receiver.GetType().GetMethod("ToString")));
+        }
+        Console.WriteLine("== object virtuals over a patch receiver end ==");
+    }
+
     private static void Main(string[] args)
     {
         Console.WriteLine("base: start");
@@ -93,6 +145,11 @@ internal static class Program
         {
             Console.WriteLine(cur.Key + "=" + cur.Value);
         }
+        // The bases of the patch receivers, their ctors, the override and the
+        // patch's Hold import emitted. Silent.
+        object plaque = new Plaque();
+        if (plaque.ToString() != "plaque")
+            PatchReceivers.Hold(new Plaque(), new Slate());
         // The catch is the negative arm's assert: a patch whose import set
         // names a type this image cannot express (HotUpdateCoreLibBadPatch's
         // get_Entry callvirt) is refused by the loader with a catchable
@@ -106,5 +163,7 @@ internal static class Program
             Console.WriteLine("base caught: " + e.Message);
         }
         Console.WriteLine("base: done");
+        if (PatchReceivers.BelowOverride is not null && PatchReceivers.BelowObject is not null)
+            PatchReceiverObjectVirtuals(PatchReceivers.BelowOverride, PatchReceivers.BelowObject);
     }
 }

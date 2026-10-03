@@ -227,13 +227,17 @@ Int64/Double/references) and rounds the final size up to 8.
   is the patched vtable copy, so it lands on the N2M trampoline and the
   interpreted override. `call` and a non-virtual `callvirt` invoke the bound
   pointer directly, so `base.Method()` from an override body lands on the base
-  implementation, and a `.ctor` Import reached by `call` is an inheriting patch
-  ctor's base-ctor chain (a chain to `System.Object::.ctor()` folds to `pop` at
-  bake time). A `callvirt` on a *non-virtual* patch method canonicalizes to
-  `call`; on a *virtual* patch method it stays `callvirt`, and the interpreter
-  re-resolves the frozen slot against the receiver's live patch type (the
-  VtableDesc chain walk, §VtableDescTable), so a patch-derived receiver lands
-  on its own re-override.
+  implementation and a `call` of an interface method runs its default body.
+  A `call` of an abstract interface or generic virtual row raises
+  `BadImageFormatException` when the call executes (§Carve-outs), and an import
+  of a non-generic abstract class row is refused when the image binds, as an
+  *unresolved method import*. A `.ctor` Import reached by `call` is an
+  inheriting patch ctor's base-ctor chain (a chain to `System.Object::.ctor()`
+  folds to `pop` at bake time). A `callvirt` on a *non-virtual* patch method
+  canonicalizes to `call`; on a *virtual* patch method it stays `callvirt`, and
+  the interpreter re-resolves the frozen slot against the receiver's live patch
+  type (the VtableDesc chain walk, §VtableDescTable), so a patch-derived
+  receiver lands on its own re-override.
 - `ldftn`: `a` = the method `EntityRef` a following delegate `newobj` binds — a
   PatchEntity MethodTable index or an Import naming a base-image **instance**
   method (a static one needs an adapter the interpreter has none of, so it is
@@ -970,6 +974,38 @@ and `TypeName<string>()`, whose signatures are both `():String`, stay apart. One
 shared routine renders both strings, so they agree byte-for-byte and the loader
 binds each import to its exact instantiation (§Load step 3).
 
+A closed base-image generic virtual import is an ordinary method import; the BPI
+carries nothing more for it. Such a row has no vtable slot, so the bind pass
+(§Load step 3) also takes the call-site dispatcher that the base image's
+`dn2cpp_gvm_row_dispatch` table holds for the row's declaring type, definition
+token and type arguments, unless the row's own body is every receiver's (a final
+method, or one on a sealed class). A `--hotupdate-base` build registers that
+dispatcher for each such row the base reaches, however it reaches it (an AOT
+`callvirt`, a case of an interface dispatcher, `base.M<T>()`, `ldftn`, a
+generic-method root in `hotupdate-refs.txt`), and for each abstract or interface
+instantiation it makes. The instantiations it passes over are none of the rows
+the tables carry: a row is a closed instantiation on a class with a type-info,
+never one over a canonical placeholder or a generic parameter; a shared body
+never calls a generic virtual method, so a call site names only exact
+instantiations; no backend skips a generic virtual body
+(`IEmitBackend.ShouldSkipMethodBody`); and the image emits every class a row's
+signature names, so a dispatcher no call site names still compiles. Every
+dispatched row of a `--hotupdate-base` image therefore has a non-stripping
+dispatcher. A `callvirt` of the import enters the
+dispatcher whether a class or an interface declares the method, and a `call`
+runs the row's own body, an interface's default one included.
+A patch receiver below an AOT override runs its nearest AOT
+ancestor's case, and a delegate over it that binds the row, by reflection or
+`ldvirtftn`, reports that case as `Delegate.Method` and compares equal to a
+binding of it. An instantiation the base never reaches has no bindable row, so
+its import fails the bind as an *unresolved method import* (the boundary below),
+and the failed load publishes nothing. The loader refuses an import a `callvirt`
+names when its row's dispatcher is missing or stripping, with *no call-site
+dispatcher*, rather than run the row's own body for every receiver; a `call`
+enters no dispatcher. No patch reaches that refusal, which guards the invariant
+above. Patch-declared generic virtual methods are a conversion-time rejection
+(§Carve-outs).
+
 **Missing-AOT-instantiation boundary (methods).** Unlike a generic type, the
 converter cannot see the base's emitted method table, so it does not reject a
 missing method instantiation at bake time; instead the loader's method-import
@@ -1432,7 +1468,7 @@ surface — see also the carve-out list below.
   type tests), `ldtoken`/`typeof` (patch code reaches a `Type` via `GetType()`
   or `Type.GetType(string)` instead), new virtual slots (newslot) and
   ToString/GetHashCode/Equals/Finalize overrides (dedicated type-info entries,
-  not vtable slots), generic virtual methods (a generic method definition has
+  not vtable slots), patch-declared generic virtual methods (a generic method definition has
   no patch body, so its receivers would run the base image's),
   exception-derived patch bases — and with them patch types in `catch` clauses
   (C# only catches Exception-derived types) — and filter clauses. Closed
@@ -1440,7 +1476,19 @@ surface — see also the carve-out list below.
   on the patch surface); generic **methods** on generic types, generic patch
   types, and nested/value-type generic arguments are not.
   Patch types are also not enumerated by `Assembly.GetTypes` (registration is
-  name-lookup-only).
+  name-lookup-only). A patch type carries no member rows of its own, so member
+  reflection answers as if it declared no members: `GetMethods`, `GetFields`,
+  `GetProperties` and the by-name lookups see only what its AOT ancestors
+  declare (nothing under `DeclaredOnly`), `GetMethod` of a method the patch
+  overrides returns the AOT row, and a delegate over a patch receiver bound to
+  a plain virtual method, an Object virtual included, reports as
+  `Delegate.Method` the nearest AOT ancestor's override, or the bound method
+  itself, never the patch override.
+- **Bad-IL timing**: .NET raises `BadImageFormatException` for a `call` of an
+  abstract method when the JIT compiles the calling method, before that method
+  runs. The interpreter raises it when the call executes, so the calling
+  method's effects before the call happen, and a call on a path not taken
+  raises nothing.
 - **SZArray carve-outs**: jagged (`T[][]`) and multi-dimensional (`T[,]`)
   arrays, `ldelema` (element address-taking), and value-type elements outside
   the six fenced scalars are conversion-time rejections. A reference-element

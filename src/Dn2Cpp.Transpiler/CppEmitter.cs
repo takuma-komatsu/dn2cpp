@@ -260,6 +260,18 @@ internal sealed partial class CppEmitter
     /// type-info render order (TopoOrder), so the table is deterministic.</summary>
     private readonly List<ClassInfo> _typeBinds = new();
 
+    /// <summary>The class vtable slot implementing each slot of a kept interface of a
+    /// receiver whose member rows are stripped, collected in type-info render order and
+    /// emitted as <c>dn2cpp_itf_impl_slots</c>; -1 where no class slot implements it, and
+    /// no row where none does.</summary>
+    internal readonly List<(ClassInfo Class, ClassInfo Itf, int[] Slots)> _itfImplSlotRows = new();
+
+    /// <summary>The slot fillers whose names do not name the member they fill, collected
+    /// in type-info render order and emitted as <c>dn2cpp_renamed_slot_bodies</c>: the
+    /// type, the interface (null for an Object virtual), the slot key the runtime
+    /// matches and the filler.</summary>
+    internal readonly List<(ClassInfo Class, ClassInfo? Itf, int Key, MethodInfo Filler)> _renamedSlotRows = new();
+
     /// <summary>Every <c>ti_&lt;T&gt;</c> / <c>ti_arr_&lt;T&gt;</c> type-info symbol this
     /// emission DEFINES — populated as each is forward-declared / emitted (the class,
     /// enum, array and referenced-intrinsic type-info loops). The defined half of
@@ -470,8 +482,10 @@ internal sealed partial class CppEmitter
             }
         }
 
+        // An open shell (an unsubstituted generic parameter in its arguments) is never a
+        // real instantiation: nothing runs as it, and its layout names no type.
         foreach (var c in _c.Classes)
-            if (c.Module == _c.AppModule)
+            if (c.Module == _c.AppModule && !Compilation.ContainsGenericVar(c))
                 Add(c);
         foreach (var m in _c.Reachable)
         {
@@ -570,7 +584,7 @@ internal sealed partial class CppEmitter
         // property of the method, not of the text (MethodCompiler.EmitsInline reads the
         // input assembly's IL length), so nothing has to be seen twice — and the whole
         // program's body text never sits on the heap between the two.
-        ValidateObfuscationTargets();
+        ValidateObfuscationTargets(requireTarget: false);
         var o = new CppOutput(splitBytes, writeChunk);
         // The per-signature dispatch-trap thunks are defined inline in the header
         // (SlotTrapThunk), minted lazily wherever a table needs one.
@@ -680,6 +694,11 @@ internal sealed partial class CppEmitter
         // output.
         foreach (var m in _c.Reachable)
             _ = m.IsHotPath;
+        // The real pass streams the first translation unit, so a refusal here spares the
+        // emission. An empty target set is final here only after a planning pass, whose
+        // rounds grew reachability to its fixpoint; without one the real pass's rounds can
+        // still reach the only target, and BuildObfuscationTargets refuses an empty set.
+        ValidateObfuscationTargets(requireTarget: _c.SharedGenericsEnabled);
         // The real pass, and only it, fills the emitter's literal pool and the output —
         // and so it is the only one whose named symbols the linker will ever be handed,
         // which is why the audit is armed here and nowhere else.
@@ -1433,7 +1452,7 @@ internal sealed partial class CppEmitter
     /// see — the emission is well-formed either way, and what is lost is a fact about a type.
     ///
     /// <para>Zero holds because for both mouths the declared set is filled by a PAIRING that
-    /// mirrors the mouth: <c>TypeMetadataEmitter.NoteReflectedMemberArrayElements</c>
+    /// mirrors the mouth: <c>TypeMetadataEmitter.NoteReflectedMemberTypes</c>
     /// pre-notes exactly the member types the reflection tables go on to render, and
     /// <c>Compilation.NoteAttrArg</c> notes an attribute argument's element in the
     /// same loop that reaches the attribute's ctor. A "no" means a pairing has come
@@ -1974,15 +1993,21 @@ internal sealed partial class CppEmitter
             || m.Rva == 0 || m.IsSynthetic || m.SharedImpl is not null
             || !m.IsStatic || !m.SignatureReady
             || m.IsSynchronized || m.IsUnmanagedCallersOnly || m.IsHotPath
-            || CoreIntrinsics.BrHttpShim.Matches(cls.FullName, m.Name)
-            || CoreIntrinsics.BrEnumInstanceFormat.Matches(cls.FullName, m.Name)
-            || _c.PInvokeFtnTargets.Contains(m) || _c.IntrinsicFtnTargets.Contains(m)
-            || _c.InterceptFtnTargets.Contains(m) || CoreIntrinsics.MdComparerCompare.Matches(m)
-            || _c.IsUnorderableComparerCompareBody(m)
-            || CoreIntrinsics.IsIntrinsicType(cls.FullName))
+            || HasReplacedBody(cls, m))
             return false;
         return HasParallelPureShape(m);
     }
+
+    /// <summary>Whether the body compile loop emits a body other than m's own IL: the
+    /// replacing mouths it tries before the plain IL compile.</summary>
+    private bool HasReplacedBody(ClassInfo cls, MethodInfo m) =>
+        m.Rva == 0 || m.IsSynthetic
+        || CoreIntrinsics.BrHttpShim.Matches(cls.FullName, m.Name)
+        || CoreIntrinsics.BrEnumInstanceFormat.Matches(cls.FullName, m.Name)
+        || _c.PInvokeFtnTargets.Contains(m) || _c.IntrinsicFtnTargets.Contains(m)
+        || _c.InterceptFtnTargets.Contains(m) || CoreIntrinsics.MdComparerCompare.Matches(m)
+        || _c.IsUnorderableComparerCompareBody(m)
+        || CoreIntrinsics.IsIntrinsicType(cls.FullName);
 
     private ParallelBodyResult CompileParallelBody(
         MethodInfo m, LiteralPool literals, bool planning)
@@ -2137,7 +2162,19 @@ internal sealed partial class CppEmitter
             // reaching the wrapper support so the next batch compiles it. Runs each round
             // because the noted-array / cast-target sets keep growing as bodies compile.
             _c.ExpandArrayEnumerableMaps();
-            // Array.Initialize can invoke a constructor reached only through its row.
+            // Reflection can invoke the bodies of an application class the bodies just
+            // compiled minted.
+            _c.ReachReflectionClassRoutes();
+            // A generic virtual override's row needs the row of the method that
+            // introduces its chain; the reflected rows below include those.
+            _c.InstantiateGvmChainRoots();
+            // Reflection's virtual rows dispatch through the receiver's slot; reach what
+            // those slots hold for the rows the bodies just compiled made invocable.
+            _c.ReachReflectedVirtualSlots();
+            // A hot-update patch can callvirt the generic virtual rows those bodies reached.
+            _c.ReachPatchCallableGvms();
+            // Array.Initialize's run-time lowering names each element constructor through
+            // its row; reach the ones the classes just minted declare.
             _c.ReachRuntimeArrayInitializeCtors();
             if (_c.ReachNonGenericArrayElementEquality())
                 _c.DrainReachability();
@@ -2836,6 +2873,21 @@ internal sealed partial class CppEmitter
         // Type.GetInterfaces() on an array type.
         if (_arrayNongenericItfRows is { } anr)
             sb.AppendLine($"    dn2cpp_array_set_nongeneric_interfaces({anr.Sym}, {anr.Count});");
+        // The class Invoke boxes an unmanaged pointer result as, before any managed
+        // code can invoke a method returning one.
+        if (_c.PointerBoxClass is { } box && _emit.Contains(box)
+            && box.Fields.FirstOrDefault(f => !f.IsStatic && f.Name == "_ptr") is { } value
+            && box.Fields.FirstOrDefault(f => !f.IsStatic && f.Name == "_ptrType") is { } pointerType)
+        {
+            string s = box.CppStructName;
+            sb.AppendLine($"    dn2cpp_set_pointer_box_type(&{box.CppTypeInfoName},");
+            sb.AppendLine($"        [](void* value, Dn2CppType* type) -> Dn2CppObject* {{ auto* o = ({s}*)dn2cpp_alloc(sizeof({s})); "
+                + $"((Dn2CppObject*)o)->type = &{box.CppTypeInfoName}; o->{value.CppName} = value; "
+                + $"dn2cpp_gc_store_ref(&o->{pointerType.CppName}, (decltype(o->{pointerType.CppName}))type); "
+                + "return (Dn2CppObject*)o; },");
+            sb.AppendLine($"        [](Dn2CppObject* o, Dn2CppType** type) -> void* {{ *type = (Dn2CppType*)(({s}*)o)->{pointerType.CppName}; "
+                + $"return (({s}*)o)->{value.CppName}; }});");
+        }
         sb.AppendLine("    dn2cpp_init_strings();");
         // Route the eager startup pass through the same idempotent wrappers the use-site
         // guards call, so a cctor already run on first use is not run a second time here.
@@ -4117,12 +4169,14 @@ internal sealed partial class CppEmitter
     /// an object-degraded array member deserializes as an untyped JArray and the setter
     /// thunk's blind cast stores it — silent corruption). Gated on
     /// <see cref="ArrayTypeInfoDeclared"/> so only a forward-declared handle is ever named;
-    /// <c>TypeMetadataEmitter.NoteReflectedMemberArrayElements</c> is what puts reflected
+    /// <c>TypeMetadataEmitter.NoteReflectedMemberTypes</c> is what puts reflected
     /// member elements in that set — a mirror of this emitter's own filters, so a "no" here
     /// means the mirror came apart, which is why it is counted and fails the transpile
     /// (<see cref="AssertArrayTypeInfoDegradesWithinCap"/>) rather than degrading in
     /// silence. An MDArray type whose identity closure was noted names the same static
-    /// <c>ti_md_</c> handle the runtime interner registers for that element/rank shape.</summary>
+    /// <c>ti_md_</c> handle the runtime interner registers for that element/rank shape.
+    /// An enum names its own ti_, which the same pre-note emits for every enum a member
+    /// row or a closed generic-argument vector names.</summary>
     private string FieldTypeInfoExpr(TypeDesc t, HashSet<ClassInfo> emittedEnums)
     {
         if (t is { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Primitive or TypeKind.Class or TypeKind.External or TypeKind.SZArray or TypeKind.MDArray } el }
@@ -4162,6 +4216,140 @@ internal sealed partial class CppEmitter
     /// System.Void handle so a void method's ReturnType.Name reports "Void".</summary>
     private string MemberTypeInfoExpr(TypeDesc t, HashSet<ClassInfo> emittedEnums) =>
         t.IsVoid ? "&dn2cpp_void_type" : FieldTypeInfoExpr(t, emittedEnums);
+
+    /// <summary>How Invoke passes an argument of type <paramref name="t"/>, or reads a
+    /// return of it, that the invoker thunk cannot take as a box: the
+    /// <c>DN2CPP_PASS_*</c> bits of <c>Dn2CppParamInfo::passKind</c> and the type they
+    /// name. The thunk takes a by-ref or pointer argument as the raw pointer and returns
+    /// a by-ref result raw, so the runtime copies a referent in and out of a cell by its
+    /// type-info: a value type whose type-info the image emits, or a reference type the
+    /// thunk passes with its header. Any other referent is marked unsupported, which
+    /// Invoke refuses rather than guessing a layout. An unmanaged pointer names its
+    /// innermost pointee and counts its further levels, and past the levels a return
+    /// row counts it names a <see cref="PointeeStandIn"/> for the further ones, so a
+    /// return and a parameter of one pointer type name one pointee. A function pointer
+    /// names its own type, <paramref name="functionPointer"/> as the row's metadata
+    /// signature spells it, or System.Void when that signature is not decodable.</summary>
+    private (int Kind, string Type) ReflectionPass(TypeDesc t, HashSet<ClassInfo> emittedEnums,
+        (string Key, string Name)? functionPointer = null)
+    {
+        int kind = 0;
+        if (t.Kind == TypeKind.ByRef)
+        {
+            kind = PassByRef;
+            t = t.Element!;
+        }
+        if (t.Kind == TypeKind.Pointer)
+        {
+            string functionPointerType = functionPointer is { } f ? PointeeStandIn(f.Key, f.Name) : "&dn2cpp_void_type";
+            if (t.IsFunctionPointer)
+                return (kind | PassPointer | PassFunctionPointer, functionPointerType);
+            int levels = 0;
+            var pointee = t.Element!;
+            while (pointee.Kind == TypeKind.Pointer && !pointee.IsFunctionPointer)
+            {
+                levels++;
+                pointee = pointee.Element!;
+            }
+            string type = pointee.IsFunctionPointer ? functionPointerType : MemberTypeInfoExpr(pointee, emittedEnums);
+            if (levels > ReturnPointerDepthMask)
+            {
+                string further = new('*', levels - ReturnPointerDepthMask);
+                string name = pointee.IsFunctionPointer ? functionPointer?.Name ?? "System.Void"
+                    : pointee.IsVoid ? "System.Void" : ReflectionSignatureType(pointee, qualifyPrimitive: true);
+                type = PointeeStandIn(type + further, name + further);
+                levels = ReturnPointerDepthMask;
+            }
+            return (kind | PassPointer | (levels << PassPointerDepthShift), type);
+        }
+        if (t is { Kind: TypeKind.Class, Class.IsByRefLike: true })
+            return (kind | PassByRefLike, FieldTypeInfoExpr(t, emittedEnums));
+        if (kind == 0)
+            return (0, "nullptr");
+        string referent = FieldTypeInfoExpr(t, emittedEnums);
+        bool? valueType = t.Kind switch
+        {
+            TypeKind.Primitive => !t.IsString && !t.IsObject && !t.IsVoid,
+            TypeKind.Class => t.Class!.IsValueType || t.Class.IsEnum,
+            TypeKind.SZArray or TypeKind.MDArray => false,
+            _ => null,
+        };
+        string cpp;
+        try
+        {
+            cpp = CppTypes.Of(t);
+        }
+        catch (NotSupportedException e) when (!Compilation.IsMustEscape(e))
+        {
+            return (PassByRef | PassUnsupported, referent);
+        }
+        bool pointerShaped = cpp.EndsWith("*", StringComparison.Ordinal);
+        bool copyable = valueType switch
+        {
+            true => !pointerShaped && referent != "&dn2cpp_object_type",
+            false => pointerShaped && !MethodCompiler.IsNfiCppType(cpp) && !MethodCompiler.IsAsmCppType(cpp),
+            null => false,
+        };
+        return (copyable ? PassByRef : PassByRef | PassUnsupported, referent);
+    }
+
+    // Dn2CppParamInfo::passKind bits (DN2CPP_PASS_*).
+    private const int PassByRef = 0x1;
+    private const int PassPointer = 0x2;
+    private const int PassFunctionPointer = 0x4;
+    private const int PassByRefLike = 0x8;
+    private const int PassUnsupported = 0x10;
+    private const int PassPointerDepthShift = 8;
+    // DN2CPP_MTHA_RETURN_*.
+    private const int ReturnByRefRow = 0x400;
+    private const int ReturnByRefLikeRow = 0x800;
+    private const int ReturnUnboxableRow = 0x1000;
+    private const int ReturnPointerRow = 0x8000;
+    private const int ReturnPointerDepthShift = 3;
+    private const int ReturnPointerDepthMask = 0x3;
+    // DN2CPP_MTHA_CONTEXTARG.
+    private const int ContextArgRow = 0x2000;
+
+    /// <summary>The <c>DN2CPP_MTHA_RETURN_*</c> bits and <c>returnPassType</c> of a row
+    /// returning <paramref name="t"/>, from <see cref="ReflectionPass"/>, whose pointer
+    /// levels fit the depth bits.</summary>
+    private (int Attrs, string Referent) ReflectionReturnPass(TypeDesc t, HashSet<ClassInfo> emittedEnums,
+        (string Key, string Name)? functionPointer = null)
+    {
+        var (kind, type) = ReflectionPass(t, emittedEnums, functionPointer);
+        if ((kind & PassByRefLike) != 0)
+            return (ReturnByRefLikeRow, "nullptr");
+        if ((kind & PassPointer) != 0)
+        {
+            int byRef = (kind & PassByRef) != 0 ? ReturnByRefRow : 0;
+            if ((kind & PassFunctionPointer) != 0)
+                return (ReturnPointerRow | byRef, "nullptr");
+            int levels = (kind >> PassPointerDepthShift) & 0xFF;
+            return (ReturnPointerRow | byRef | (levels << ReturnPointerDepthShift), type);
+        }
+        if ((kind & PassUnsupported) != 0)
+            return (ReturnUnboxableRow, "nullptr");
+        return kind != 0 ? (ReturnByRefRow, type) : (0, "nullptr");
+    }
+
+    private readonly Dictionary<string, string> _pointeeStandIns = new(StringComparer.Ordinal);
+
+    /// <summary>The type-info a pointer row names as its pointee where the image has
+    /// none: a function pointer type, or a pointer's levels past those a return row's
+    /// depth bits count. One per <paramref name="key"/> across the image, so equal
+    /// pointer types share the identity a Pointer box's argument check compares;
+    /// <paramref name="name"/> is the type as .NET formats it.</summary>
+    private string PointeeStandIn(string key, string name)
+    {
+        if (!_pointeeStandIns.TryGetValue(key, out var symbol))
+        {
+            symbol = "dn2cpp_pointee_" + _pointeeStandIns.Count;
+            _pointeeStandIns[key] = symbol;
+            _metadataHeader.AppendLine(
+                $"inline constexpr Dn2CppTypeInfo {symbol} = dn2cpp_pointee_type_info(\"{CLiteral(name)}\");");
+        }
+        return "&" + symbol;
+    }
 
     // Runtime reflection handles intentionally retain only compact type-info
     // pointers. Render the signature spelling here, while byref and generic
@@ -4239,8 +4427,10 @@ internal sealed partial class CppEmitter
         return ret + " " + name + "(" + ps + ")";
     }
 
-    private (string Method, string Return, string[] Parameters)?
-        ReflectionGenericMethodDefinitionDisplays(MethodInfo m,
+    // The display of a generic method's definition, and the definition key of each
+    // signature type (DefinitionTypeKey).
+    private (string Method, string Return, string[] Parameters, string? ReturnKey, string?[] ParameterKeys)?
+        ReflectionGenericMethodDefinition(MethodInfo m,
             IReadOnlyList<string?> parameterNames)
     {
         if (m.Context.MethodArgs.Length == 0 || m.Handle.IsNil)
@@ -4263,21 +4453,30 @@ internal sealed partial class CppEmitter
                     ? ReflectionSignatureType(p.Element!, false, names) + " ByRef"
                     : ReflectionSignatureType(p, false, names)));
             string[] parameters = new string[open.ParameterTypes.Length];
+            string?[] parameterKeys = new string?[open.ParameterTypes.Length];
             for (int i = 0; i < parameters.Length; i++)
             {
                 parameters[i] = ReflectionSignatureType(
                     open.ParameterTypes[i], false, names);
                 if (parameterNames[i] is { Length: > 0 } parameterName)
                     parameters[i] += " " + parameterName;
+                parameterKeys[i] = DefinitionTypeKey(open.ParameterTypes[i]);
             }
             return (ret + " " + m.Name + "[" + string.Join(",", names) + "](" + ps + ")",
-                ret, parameters);
+                ret, parameters, DefinitionTypeKey(open.ReturnType), parameterKeys);
         }
         catch (Exception e) when (!Compilation.IsMustEscape(e))
         {
             return null;
         }
     }
+
+    // A signature type as a generic method's definition spells it, when that names a
+    // method type parameter: the identity mangle, each one by position, which the
+    // runtime compares definitions by. Null otherwise, where the closed row's
+    // type-info is the definition's type.
+    private static string? DefinitionTypeKey(TypeDesc t) =>
+        Compilation.ContainsGenericVar(t) ? Compilation.IdentityMangle(t) : null;
 
     private string ReflectionPropertyDisplay(string name, TypeDesc type,
         IReadOnlyList<TypeDesc> indexParameters)
@@ -4878,12 +5077,16 @@ internal sealed partial class CppEmitter
     /// CreateDelegate trampoline and the interpreter box their typed values exactly.
     /// A value-type receiver's payload
     /// adjustment is done by the runtime dispatcher, so the receiver is a plain
-    /// pointer here. ref/out/pointer params are treated as pointers — invoking such a
-    /// method via reflection is out of scope (the thunk still links). Callers gate on
+    /// pointer here. A static body taking the generic context
+    /// (<paramref name="contextArg"/>) gets it as its last argument, passed in
+    /// <c>self</c>. A by-ref or pointer argument is the raw pointer in args and a
+    /// by-ref result is returned as the raw reference: Invoke builds and dereferences
+    /// them from the row's pass kinds (<see cref="ReflectionPass"/>), while the
+    /// CreateDelegate trampoline passes its own raw pointers through. Callers gate on
     /// <see cref="InvokerThunkBlocker"/> first: a signature naming a by-value struct
     /// the emit set never declared must get a trapping stub instead
     /// (TypeMetadataEmitter.InvokerMissStub), never this thunk.</summary>
-    private string EmitInvokerThunk(StringBuilder sb, MethodInfo m, HashSet<string> seen)
+    private string EmitInvokerThunk(StringBuilder sb, MethodInfo m, HashSet<string> seen, bool contextArg = false)
     {
         var ps = m.Signature.ParameterTypes;
         bool instance = !m.IsStatic;
@@ -4896,7 +5099,7 @@ internal sealed partial class CppEmitter
         }
 
         // Build the shape key + the C++ pieces.
-        var key = new StringBuilder(instance ? "i" : "s");
+        var key = new StringBuilder(instance ? "i" : contextArg ? "c" : "s");
         var sigParams = new List<string>();   // function-pointer parameter types
         var callArgs = new List<string>();    // argument expressions
         if (instance)
@@ -4943,6 +5146,13 @@ internal sealed partial class CppEmitter
                 sigParams.Add(cpp);
                 callArgs.Add($"(args[{i}] == nullptr ? {cpp}{{}} : *({cpp}*)((char*)args[{i}] + sizeof(Dn2CppObject)))");
             }
+        }
+        // A static body taking the generic context gets it last, from `self`
+        // (DN2CPP_MTHA_CONTEXTARG).
+        if (contextArg)
+        {
+            sigParams.Add("const void* const*");
+            callArgs.Add("(const void* const*)self");
         }
         // Return shape.
         string retSig, retToken;
@@ -5058,6 +5268,8 @@ internal sealed partial class CppEmitter
         sb.AppendLine($"const int32_t dn2cpp_exception_get_message_slot = {_c.ExceptionGetMessageSlot()};");
         EmitArgumentExceptionStore(sb);
         EmitObjectDisposedExceptionStore(sb);
+        EmitItfImplSlots(sb);
+        EmitRenamedSlotBodies(sb);
         sb.AppendLine();
         EmitBclMessages(sb);
     }
@@ -5112,6 +5324,64 @@ internal sealed partial class CppEmitter
             sb.AppendLine("    return false;");
         }
         sb.AppendLine("}");
+    }
+
+    /// <summary>Emits <c>dn2cpp_itf_impl_slots</c>: when the image binds delegates through
+    /// reflection and <c>--trim-reflection</c> is on, the class slots of Object's virtual
+    /// members once, then one row per recorded interface of a stripped receiver
+    /// (<see cref="_itfImplSlotRows"/>), identical slot arrays shared, and always the
+    /// symbols, so the runtime links.</summary>
+    private void EmitItfImplSlots(StringBuilder sb)
+    {
+        var rows = new List<string>();
+        var pooled = new Dictionary<string, string>(StringComparer.Ordinal);
+        string Pool(int[] slots)
+        {
+            string init = string.Join(", ", slots);
+            if (!pooled.TryGetValue(init, out var sym))
+            {
+                sym = $"itfimpl_{pooled.Count}";
+                pooled[init] = sym;
+                sb.AppendLine($"static const int32_t {sym}[] = {{ {init} }};");
+            }
+            return sym;
+        }
+        if (_c.NeedsReflectionDelegateBind && _c.TrimsReflection && _c.ObjectVirtualSlots() is { } objectSlots)
+            rows.Add($"{{ nullptr, &dn2cpp_object_type, {Pool(objectSlots)}, {objectSlots.Length} }}");
+        foreach (var (cls, itf, slots) in _itfImplSlotRows)
+            rows.Add($"{{ {TypeInfoRef(cls, "interface implementation slots")}, "
+                + $"{TypeInfoRef(itf, "interface implementation slots")}, {Pool(slots)}, {slots.Length} }}");
+        sb.AppendLine(rows.Count == 0
+            ? "const Dn2CppItfImplSlots dn2cpp_itf_impl_slots[] = { { nullptr, nullptr, nullptr, 0 } };"
+            : $"const Dn2CppItfImplSlots dn2cpp_itf_impl_slots[] = {{ {string.Join(", ", rows)} }};");
+        sb.AppendLine($"const int32_t dn2cpp_itf_impl_slot_count = {rows.Count};");
+    }
+
+    /// <summary>Emits <c>dn2cpp_renamed_slot_bodies</c> from <see cref="_renamedSlotRows"/>:
+    /// one row per filler whose type-infos this emission defines, and always the symbols,
+    /// so the runtime links.</summary>
+    private void EmitRenamedSlotBodies(StringBuilder sb)
+    {
+        var rows = new List<string>();
+        foreach (var (cls, itf, key, filler) in _renamedSlotRows)
+        {
+            if (!TypeInfoSymbolDefined(cls.CppTypeInfoName)
+                || (itf is not null && !TypeInfoSymbolDefined(itf.CppTypeInfoName))
+                || !TypeInfoSymbolDefined(filler.DeclaringClass.CppTypeInfoName))
+                continue;
+            int classSlot = filler.VtableSlot >= 0 && filler.VtableSlot < cls.Vtable.Count
+                && cls.Vtable[filler.VtableSlot] == filler
+                ? filler.VtableSlot
+                : -1;
+            string owner = itf is null ? "&dn2cpp_object_type" : TypeInfoRef(itf, "renamed slot owner");
+            rows.Add($"{{ {TypeInfoRef(cls, "renamed slot receiver")}, {owner}, {key}, "
+                + $"{TypeInfoRef(filler.DeclaringClass, "renamed slot body")}, "
+                + $"{System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(filler.Handle)}, {classSlot} }}");
+        }
+        sb.AppendLine(rows.Count == 0
+            ? "const Dn2CppRenamedSlotBody dn2cpp_renamed_slot_bodies[] = { { nullptr, nullptr, 0, nullptr, 0, -1 } };"
+            : $"const Dn2CppRenamedSlotBody dn2cpp_renamed_slot_bodies[] = {{ {string.Join(", ", rows)} }};");
+        sb.AppendLine($"const int32_t dn2cpp_renamed_slot_body_count = {rows.Count};");
     }
 
     /// <summary>The instance field <paramref name="field"/> of the runtime-raised type
@@ -5615,7 +5885,9 @@ internal sealed partial class CppEmitter
         var rt = m.Signature.ReturnType;
         string realRet = rt.IsVoid ? "void" : CppTypes.Of(rt);
         string ret = rt.IsVoid ? "void" : MethodCompiler.NfiErasedAbi(realRet);
-        string call = $"{m.CppName}({string.Join(", ", callArgs)})";
+        // A delegate's Invoke has no body of its own; its calls lower to the invoker.
+        string callee = MethodCompiler.IsDelegateInvoke(m) ? $"dginvoke_{m.DeclaringClass.CppName}" : m.CppName;
+        string call = $"{callee}({string.Join(", ", callArgs)})";
         if (!rt.IsVoid && MethodCompiler.IsHeaderlessWrapCpp(realRet))
             call = MethodCompiler.HeaderlessWrapExpr(call, realRet, rt);
         string head = $"{ret} {adapter.CppName}({string.Join(", ", sigParams)})";
@@ -5752,7 +6024,8 @@ internal sealed partial class CppEmitter
             var seen = new HashSet<string>(System.StringComparer.Ordinal);
             foreach (var cls in _delegateInvokerClasses)
             {
-                if (!cls.IsDelegate || IsCanonicalWorld(cls) || IsOpaque(cls))
+                // Shipped signature-only invokers have declarations without a type-info.
+                if (!cls.IsDelegate || !_emit.Contains(cls) || IsCanonicalWorld(cls) || IsOpaque(cls))
                     continue;
                 var invoke = cls.Methods.FirstOrDefault(m => m.Name == "Invoke");
                 if (invoke is null)
@@ -5786,7 +6059,7 @@ internal sealed partial class CppEmitter
     /// as <see cref="EmitInvokerThunk"/>: reference-typed parameters/returns
     /// collapse to a uniform pointer, value types keep their exact C++ type. The
     /// per-argument box reads the bound method row's parameter type-info at run
-    /// time (<c>ctx->method->parameters[k]</c>), so one shape serves every
+    /// time (<c>ctx->parameters[k]</c>), so one shape serves every
     /// delegate class and binding mode sharing it.</summary>
     private string EmitDelegateReflTramp(StringBuilder sb, MethodInfo invoke, HashSet<string> seen)
     {
@@ -5834,7 +6107,7 @@ internal sealed partial class CppEmitter
         sb.AppendLine($"static {retSig} {name}({string.Join(", ", sigParams)})");
         sb.AppendLine("{");
         sb.AppendLine("    auto* ctx = reinterpret_cast<Dn2CppReflBind*>(ctx0);");
-        sb.AppendLine("    [[maybe_unused]] auto mp = ctx->method->parameters;");
+        sb.AppendLine("    [[maybe_unused]] auto mp = ctx->parameters;");
         sb.AppendLine($"    Dn2CppObject* argv[{System.Math.Max(ps.Length + 1, 1)}];");
         sb.AppendLine("    int32_t k = 0;");
         sb.AppendLine("    Dn2CppObject* self = ctx->target;");
@@ -6071,7 +6344,7 @@ internal sealed partial class CppEmitter
     /// at run time is a real member, and a real member that can exist is allocated.</summary>
     private void EmitGvmDispatchers(CppOutput o)
     {
-        var dispatchers = _c.UsedGvms.ToList();
+        var dispatchers = _c.UsedGvms.Where(EmitsGvmDispatcher).ToList();
         if (dispatchers.Count == 0)
             return;
         o.Header.AppendLine("// ---- generic virtual method dispatchers ----");
@@ -6079,8 +6352,11 @@ internal sealed partial class CppEmitter
         foreach (var disp in dispatchers)
         {
             var gvm = disp.Gvm;
-            string ret = gvm.Signature.ReturnType.IsVoid ? "void" : CppTypes.Of(gvm.Signature.ReturnType);
             string name = Compilation.GvmDispatchName(gvm);
+            // Only a row enters a stripping dispatcher; with no row emitted, nothing does.
+            if (disp.Strips && !_reflectedGvmDispatchers.Contains(name))
+                continue;
+            string ret = gvm.Signature.ReturnType.IsVoid ? "void" : CppTypes.Of(gvm.Signature.ReturnType);
             var decl = new List<string> { $"{disp.Decl.CppStructName}* a0" };
             for (int k = 0; k < gvm.Signature.ParameterTypes.Length; k++)
                 decl.Add($"{CppTypes.Of(gvm.Signature.ParameterTypes[k])} a{k + 1}");
@@ -6097,9 +6373,14 @@ internal sealed partial class CppEmitter
             // the mirror case dereferences. Decide on the TypeDesc KIND, never on the
             // rendered `*`: a class-typed value is a C++ pointer too but is NOT a managed
             // by-ref, and must keep the plain cast.
+            // A value type's body takes the payload after the box's header, as its
+            // unboxing thunk passes it; an interface default body takes the box.
             string ForwardCall(MethodInfo target)
             {
-                var ca = new List<string> { $"({target.DeclaringClass.CppStructName}*)a0" };
+                string self = target.DeclaringClass.IsValueType
+                    ? $"({target.DeclaringClass.CppStructName}*)((Dn2CppObject*)a0 + 1)"
+                    : $"({target.DeclaringClass.CppStructName}*)a0";
+                var ca = new List<string> { self };
                 for (int k = 0; k < target.Signature.ParameterTypes.Length; k++)
                 {
                     var tp = target.Signature.ParameterTypes[k];
@@ -6122,6 +6403,11 @@ internal sealed partial class CppEmitter
             o.Data.AppendLine(sig);
             o.Data.AppendLine("{");
             o.Data.AppendLine("    const Dn2CppTypeInfo* __t = ((Dn2CppObject*)a0)->type;");
+            // A hot-update patch type overrides no generic virtual method, so it takes
+            // its nearest AOT ancestor's case; dn2cpp_recorded_receiver steps alike for
+            // Delegate.Method and delegate equality.
+            if (_hotUpdateBase)
+                o.Data.AppendLine("    while ((__t->flags & DN2CPP_TF_PATCH) != 0) __t = __t->base;");
             // The dispatcher's identity and reach chain — the half of a TypeInfoRef diagnosis
             // the case type cannot carry. A thunk, built once per dispatcher and evaluated
             // only if a case ever names an undefined handle.
@@ -6163,6 +6449,16 @@ internal sealed partial class CppEmitter
                 string thrown = AmbiguousImplementationThrow(type, disp.Decl, gvm, template ? "a0" : null);
                 branches.Add($"    if (__t == {TypeInfoRef(type, "generic-virtual dispatcher ambiguous case", caseDetail)}) {thrown}");
             }
+            // A receiver whose override the image stripped reports it to the reflective
+            // call that entered through the row, as a trapped slot does.
+            foreach (var type in disp.Stripped.OrderBy(t => t.CppName, StringComparer.Ordinal))
+            {
+                if (SkipsCanonicalMetadata(type))
+                    continue;
+                templateCase |= IsRuntimeTemplateLevel(type);
+                branches.Add($"    if (__t == {TypeInfoRef(type, "generic-virtual dispatcher stripped case", caseDetail)}) "
+                    + $"{{ dn2cpp_reflective_slot_check((const void*)&{name}, ((Dn2CppObject*)a0)->type); __builtin_trap(); }}");
+            }
             // A runtime-synthesized clone takes its template level's case. The
             // verdict keeps that case independent of the clone's arguments.
             if (templateCase)
@@ -6176,6 +6472,10 @@ internal sealed partial class CppEmitter
                 o.Data.AppendLine($"    {Stmt(gvm)}");
             else
             {
+                // Entered through its row, a receiver without a case is a body the
+                // image stripped, which reflection reports as catchable.
+                if (_reflectedGvmDispatchers.Contains(name))
+                    o.Data.AppendLine($"    dn2cpp_reflective_slot_check((const void*)&{name}, ((Dn2CppObject*)a0)->type);");
                 o.Data.AppendLine("    __builtin_trap();");
                 if (ret != "void")
                     // A by-value struct return cannot take a C-style cast from 0
@@ -6191,6 +6491,36 @@ internal sealed partial class CppEmitter
         }
         o.Header.AppendLine();
         o.Data.AppendLine();
+    }
+
+    /// <summary>The dispatchers the reflection row table names, which a row's invoker
+    /// enters. Filled by the type metadata, which is emitted first.</summary>
+    private readonly HashSet<string> _reflectedGvmDispatchers = new(StringComparer.Ordinal);
+
+    /// <summary>Whether <see cref="EmitGvmDispatchers"/> emits the dispatcher. A call
+    /// site names it; a dispatcher no call site names, which reflection or a hot-update
+    /// import enters, must compile over its row's signature, which a reached row's body
+    /// already names and a bodiless row's may not.</summary>
+    internal bool EmitsGvmDispatcher(Compilation.GvmDispatch disp)
+    {
+        if (disp.CallSite || _c.Reachable.Contains(disp.Gvm))
+            return true;
+        var sig = disp.Gvm.Signature;
+        try
+        {
+            if (!StructDeclared(disp.Decl.CppStructName, DeclaredStructNames)
+                || !sig.ReturnType.IsVoid && !StructDeclared(CppTypes.Of(sig.ReturnType), DeclaredStructNames))
+                return false;
+            foreach (var p in sig.ParameterTypes)
+                if (!StructDeclared(CppTypes.Of(p), DeclaredStructNames))
+                    return false;
+            return true;
+        }
+        // InstantiationBoundException IS a NotSupportedException.
+        catch (NotSupportedException e) when (!Compilation.IsMustEscape(e))
+        {
+            return false;
+        }
     }
 
     /// <summary>The C++ return types that are handed back in registers, so the emitted
@@ -6306,7 +6636,9 @@ internal sealed partial class CppEmitter
     /// <paramref name="decl"/> declares — <c>itftrap_*</c> for an interface slot,
     /// <c>vtrap_*</c> for a vtable slot — or null when the shape cannot be rendered
     /// (see <see cref="SlotTrapShape"/>). The thunk body never returns: the reporter
-    /// aborts, so a non-void return type needs no value.</summary>
+    /// aborts or throws, so a non-void return type needs no value. Each thunk passes
+    /// its own address, which tells a slot reflection entered directly apart from one
+    /// compiled code reached.</summary>
     internal string? SlotTrapThunk(MethodInfo decl, bool vcall)
     {
         if (SlotTrapShape(decl) is not { } shape)
@@ -6318,7 +6650,7 @@ internal sealed partial class CppEmitter
             ps.AddRange(shape.ParamTypes.Skip(1));
             string body = vcall
                 ? $"dn2cpp_vcall_unimplemented_at((Dn2CppObject*)self, (const void*)&{name});"
-                : "dn2cpp_itf_slot_missing(self);";
+                : $"dn2cpp_itf_slot_missing_at(self, (const void*)&{name});";
             _trapThunkHeader!.AppendLine($"inline {shape.Ret} {name}({string.Join(", ", ps)}) {{ {body} }}");
             if (vcall)
                 _vcallTrapThunks.Add(name);
@@ -6330,11 +6662,12 @@ internal sealed partial class CppEmitter
     /// for an unreached dispatch slot: <paramref name="reporter"/> (a <c>*_named</c>
     /// runtime abort) with <paramref name="desc"/> baked in. Carries the slot's exact
     /// C++ signature when it renders — the wasm type-immediate rule above — and
-    /// degrades to the historical <c>void()</c> form when it cannot.</summary>
+    /// degrades to the historical <c>void()</c> form when it cannot. The stub passes
+    /// its own address, as <see cref="SlotTrapThunk"/>'s thunks do.</summary>
     internal string NamedSlotMissStubDef(string name, string reporter, string desc, MethodInfo decl)
     {
         string lit = desc.Replace("\\", "\\\\").Replace("\"", "\\\"");
-        return SlotStubDef(name, $"{reporter}(\"{lit}\");", decl);
+        return SlotStubDef(name, $"{reporter}(\"{lit}\", (const void*)&{name});", decl);
     }
 
     /// <summary>The statement raising .NET's AmbiguousImplementationException

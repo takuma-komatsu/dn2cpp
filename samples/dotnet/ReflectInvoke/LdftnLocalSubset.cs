@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 
 namespace LdftnLocalSubset;
@@ -62,6 +64,80 @@ class ObjectMethodImplGeneric<T> : ObjectMethodImpl
     public override int Hash() => 1103;
 }
 
+class RenamedSlotBase
+{
+    public virtual int Scale(int value) => value + 1;
+    public virtual int Shift(int value) => value + 3;
+}
+
+// The fixture renames this override to Rescale and binds it to RenamedSlotBase.Scale's
+// slot with a MethodImpl, as VB's Implements and raw IL may.
+class RenamedSlotOverride : RenamedSlotBase
+{
+    public override int Scale(int value) => value + 2;
+}
+
+interface IRenamedFiller
+{
+    int Measure();
+}
+
+// The fixture moves the interface slot from the explicit stub to Weigh with a
+// MethodImpl, as VB's Implements may.
+class RenamedFillerImpl : IRenamedFiller
+{
+    public virtual int Weigh() => 42;
+    int IRenamedFiller.Measure() => -1;
+}
+
+class RenamedFillerDerived : RenamedFillerImpl
+{
+    public override int Weigh() => 43;
+}
+
+// The fixture renames this override to Show and binds it to Object.ToString's slot.
+class RenamedObjectReuse
+{
+    public override string ToString() => "reuse";
+}
+
+// Only typeof names these definitions, so MakeGenericType mints each instantiation
+// from a runtime template. The fixture moves RenamedFillerBox's interface slot from
+// the explicit stub to Weigh.
+class RenamedFillerBox<T> : IRenamedFiller
+{
+    public virtual int Weigh() => 44;
+    int IRenamedFiller.Measure() => -1;
+}
+
+class RenamedFillerInheritBox<T> : RenamedFillerImpl { }
+
+class RenamedFillerOverrideBox<T> : RenamedFillerImpl
+{
+    public override int Weigh() => 45;
+}
+
+class ObjectMethodImplBox<T> : ObjectMethodImpl
+{
+    public override string Render() => "box";
+    public override int Hash() => 1201;
+}
+
+class ObjectMethodImplPlainBox<T> : ObjectMethodImpl { }
+
+interface IRenamedSource<out T>
+{
+    T Take();
+}
+
+// The fixture moves the IRenamedSource<string> slot from the explicit stub to Fetch,
+// which a binding through the variant IRenamedSource<object> reaches.
+class RenamedSource : IRenamedSource<string>
+{
+    public virtual string Fetch() => "source";
+    string IRenamedSource<string>.Take() => "stub";
+}
+
 // After Build, gates/fixtures/ldftn-local/Program.cs replaces each throwing stub's
 // body with IL that C# cannot express.
 static class Program
@@ -111,6 +187,10 @@ static class Program
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     static Func<int, int> SealedGenericInterface(ISealedScale receiver) => throw new InvalidOperationException();
+
+    // ldvirtftn of the source delegate's own Invoke, which C# emits as ldftn.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal static Func<int, int> InvokeVirtualLoad(Func<int, int> source) => throw new InvalidOperationException();
 
     // callvirt System.ValueType::Equals/GetHashCode/ToString on the receiver: C# names
     // Object's declaration instead.
@@ -224,5 +304,130 @@ static class Program
         ObjectMethodImplCase("generic-string", new ObjectMethodImplGeneric<string>());
         ObjectMethodImplCase("generic-object", new ObjectMethodImplGeneric<object>());
         Console.WriteLine("Object slots with MethodImpl bodies end");
+    }
+
+    // A binding through a slot and one through the renamed body filling it are one
+    // delegate, so they hash alike and deduplicate.
+    public static void RunRenamedSlotBindings()
+    {
+        Console.WriteLine("== reflection-bound delegates over a renamed override ==");
+        RenamedSlotBase receiver = new RenamedSlotOverride();
+        var slot = (Func<int, int>)Delegate.CreateDelegate(typeof(Func<int, int>), receiver,
+            typeof(RenamedSlotBase).GetMethod("Scale"));
+        var body = (Func<int, int>)Delegate.CreateDelegate(typeof(Func<int, int>), receiver,
+            typeof(RenamedSlotOverride).GetMethod("Rescale"));
+        var other = (Func<int, int>)Delegate.CreateDelegate(typeof(Func<int, int>), receiver,
+            typeof(RenamedSlotBase).GetMethod("Shift"));
+        var set = new HashSet<Func<int, int>> { slot, body };
+        var map = new Dictionary<Delegate, string> { [slot] = "slot" };
+        Console.WriteLine("renamed-slot-calls=" + receiver.Scale(1) + "/" + slot(1) + "/" + body(1) + "/" + other(1));
+        Console.WriteLine("renamed-slot-identity=" + slot.Equals(body) + "/" + body.Equals(slot) + "/"
+            + (slot.GetHashCode() == body.GetHashCode()) + "/" + slot.Equals(other) + "/" + slot.Method.Name + "/"
+            + body.Method.Name);
+        Console.WriteLine("renamed-slot-dedup=" + set.Count + "/" + set.Contains(body) + "/" + map.ContainsKey(body));
+        var chainSlot = (Func<int, int>)Delegate.Combine(slot, other);
+        var chainBody = (Func<int, int>)Delegate.Combine(body, other);
+        Console.WriteLine("renamed-slot-chain=" + chainSlot.Equals(chainBody) + "/"
+            + (chainSlot.GetHashCode() == chainBody.GetHashCode()));
+        Console.WriteLine("reflection-bound delegates over a renamed override end");
+    }
+
+    static string Name(MethodInfo method) => method.DeclaringType.Name + "." + method.Name;
+
+    static string TextFiller(object receiver, MethodInfo slot, MethodInfo body)
+    {
+        var viaSlot = (Func<string>)Delegate.CreateDelegate(typeof(Func<string>), receiver, slot);
+        var viaBody = (Func<string>)Delegate.CreateDelegate(typeof(Func<string>), receiver, body);
+        var set = new HashSet<Delegate> { viaSlot, viaBody };
+        return viaSlot.Equals(viaBody) + "/" + viaBody.Equals(viaSlot) + "/"
+            + (viaSlot.GetHashCode() == viaBody.GetHashCode()) + "/" + set.Count + "/" + viaSlot() + "/" + viaBody()
+            + "/" + Name(viaSlot.Method) + "/" + Name(viaBody.Method);
+    }
+
+    static string NumberFiller(object receiver, MethodInfo slot, MethodInfo body)
+    {
+        var viaSlot = (Func<int>)Delegate.CreateDelegate(typeof(Func<int>), receiver, slot);
+        var viaBody = (Func<int>)Delegate.CreateDelegate(typeof(Func<int>), receiver, body);
+        var set = new HashSet<Delegate> { viaSlot, viaBody };
+        return viaSlot.Equals(viaBody) + "/" + viaBody.Equals(viaSlot) + "/"
+            + (viaSlot.GetHashCode() == viaBody.GetHashCode()) + "/" + set.Count + "/" + viaSlot() + "/" + viaBody()
+            + "/" + Name(viaSlot.Method) + "/" + Name(viaBody.Method);
+    }
+
+    // A slot whose filler is a differently named MethodImpl body, or an override of
+    // one, binds that body: a delegate through the slot and one through the body are
+    // one delegate, and Delegate.Method names the body, as does a delegate over an
+    // Object virtual loaded with ldvirtftn. That holds on a MakeGenericType
+    // instantiation and through a variant instantiation of the slot's interface.
+    public static void RunRenamedSlotFillers()
+    {
+        Console.WriteLine("== renamed slot fillers ==");
+        IRenamedFiller filled = new RenamedFillerImpl();
+        IRenamedFiller inherited = new RenamedFillerDerived();
+        Func<int> measured = inherited.Measure;
+        Console.WriteLine("renamed-filler-calls=" + filled.Measure() + "/" + inherited.Measure() + "/"
+            + new RenamedObjectReuse() + "/" + Name(measured.Method));
+        var measure = typeof(IRenamedFiller).GetMethod("Measure");
+        var weigh = typeof(RenamedFillerImpl).GetMethod("Weigh");
+        Console.WriteLine("renamed-filler-interface=" + NumberFiller(new RenamedFillerImpl(), measure, weigh));
+        Console.WriteLine("renamed-filler-interface-inherited=" + NumberFiller(new RenamedFillerDerived(), measure, weigh));
+        Console.WriteLine("renamed-filler-interface-override=" + NumberFiller(new RenamedFillerDerived(), measure,
+            typeof(RenamedFillerDerived).GetMethod("Weigh")));
+        var toString = typeof(object).GetMethod("ToString");
+        var hash = typeof(object).GetMethod("GetHashCode");
+        var render = typeof(ObjectMethodImpl).GetMethod("Render");
+        var hashBody = typeof(ObjectMethodImpl).GetMethod("Hash");
+        foreach (var (label, receiver) in new (string, ObjectMethodImpl)[]
+            {
+                ("base", new ObjectMethodImpl()), ("derived", new ObjectMethodImplDerived()),
+                ("hider", new ObjectMethodImplHider()), ("generic", new ObjectMethodImplGeneric<string>()),
+            })
+        {
+            Console.WriteLine("renamed-filler-object-" + label + "=" + TextFiller(receiver, toString, render) + "|"
+                + NumberFiller(receiver, hash, hashBody));
+            object boxed = receiver;
+            Func<string> text = boxed.ToString;
+            Func<int> code = boxed.GetHashCode;
+            Console.WriteLine("renamed-filler-object-load-" + label + "=" + Name(text.Method) + "/" + Name(code.Method)
+                + "/" + text() + "/" + code());
+        }
+        Console.WriteLine("renamed-filler-reuse=" + TextFiller(new RenamedObjectReuse(), toString,
+            typeof(RenamedObjectReuse).GetMethod("Show")));
+        object box = Mint(typeof(RenamedFillerBox<>));
+        object inheritBox = Mint(typeof(RenamedFillerInheritBox<>));
+        object overrideBox = Mint(typeof(RenamedFillerOverrideBox<>));
+        Console.WriteLine("renamed-filler-minted=" + NumberFiller(box, measure, box.GetType().GetMethod("Weigh")) + "|"
+            + NumberFiller(inheritBox, measure, weigh) + "|" + NumberFiller(overrideBox, measure, weigh));
+        object objectBox = Mint(typeof(ObjectMethodImplBox<>));
+        object plainBox = Mint(typeof(ObjectMethodImplPlainBox<>));
+        Console.WriteLine("renamed-filler-minted-object=" + TextFiller(objectBox, toString, render) + "|"
+            + NumberFiller(objectBox, hash, hashBody) + "|" + TextFiller(plainBox, toString, render));
+        Func<string> boxText = objectBox.ToString;
+        Func<string> plainText = plainBox.ToString;
+        Func<int> boxMeasure = ((IRenamedFiller)box).Measure;
+        Func<int> inheritMeasure = ((IRenamedFiller)inheritBox).Measure;
+        Console.WriteLine("renamed-filler-minted-load=" + Name(boxText.Method) + "/" + Name(plainText.Method) + "/"
+            + Name(boxMeasure.Method) + "/" + Name(inheritMeasure.Method));
+        var take = typeof(IRenamedSource<object>).GetMethod("Take");
+        var exactTake = typeof(IRenamedSource<string>).GetMethod("Take");
+        var fetch = typeof(RenamedSource).GetMethod("Fetch");
+        Console.WriteLine("renamed-filler-variant=" + SourceFiller(new RenamedSource(), take, fetch) + "|"
+            + SourceFiller(new RenamedSource(), take, exactTake));
+        IRenamedSource<object> source = new RenamedSource();
+        Func<object> taken = source.Take;
+        Console.WriteLine("renamed-filler-variant-load=" + taken() + "/" + Name(taken.Method));
+        Console.WriteLine("renamed slot fillers end");
+    }
+
+    static object Mint(Type definition) => Activator.CreateInstance(definition.MakeGenericType(typeof(string)));
+
+    static string SourceFiller(object receiver, MethodInfo slot, MethodInfo body)
+    {
+        var viaSlot = (Func<object>)Delegate.CreateDelegate(typeof(Func<object>), receiver, slot);
+        var viaBody = (Func<object>)Delegate.CreateDelegate(typeof(Func<object>), receiver, body);
+        var set = new HashSet<Delegate> { viaSlot, viaBody };
+        return viaSlot.Equals(viaBody) + "/" + viaBody.Equals(viaSlot) + "/"
+            + (viaSlot.GetHashCode() == viaBody.GetHashCode()) + "/" + set.Count + "/" + viaSlot() + "/" + viaBody()
+            + "/" + Name(viaSlot.Method) + "/" + Name(viaBody.Method);
     }
 }

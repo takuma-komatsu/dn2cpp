@@ -81,6 +81,18 @@ namespace SharedGenerics
             if (args.Length > 0 && args[0] == "before-width-typed-slots")
                 return;
             WidthJoinSubset.Program.RunTypedSlots();
+
+            if (args.Length > 0 && args[0] == "before-substitution-collisions")
+                return;
+            Console.WriteLine("== generic virtual substitution collisions ==");
+            GvmHiderSubset.Program.RunSubstitutionCollisions();
+            GvmHiderSubset.Program.RunCrossLevelCollisions();
+            Console.WriteLine("generic virtual substitution collisions end");
+            if (args.Length > 0 && args[0] == "before-variant-dispatch")
+                return;
+            Console.WriteLine("== variant interface dispatch ==");
+            GvmHiderSubset.Program.RunVariantInterfaces();
+            Console.WriteLine("variant interface dispatch end");
         }
     }
 }

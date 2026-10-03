@@ -50,11 +50,70 @@ internal static class Program
         Console.WriteLine("attribute-object="
             + Construct((Type)typeof(Holder).GetCustomAttribute<BoxedAttribute>()!.Value));
         Console.WriteLine("attribute construction roots end");
+        if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_NAMED_REFLECTION") == "1")
+            return;
+        // No IL calls these members: only their constant names select them.
+        Console.WriteLine("== constant-name reflection ==");
+        Report("method-found", () => typeof(Named).GetMethod("Twice") is not null);
+        Report("method-static", () => typeof(Named).GetMethod("Twice")!.Invoke(null, new object[] { 21 }));
+        var named = new Named();
+        Report("method-instance",
+            () => typeof(Named).GetMethod("Describe")!.Invoke(named, new object[] { "describe" }));
+        Report("property-set", () =>
+        {
+            typeof(Named).GetProperty("Label")!.SetValue(named, "moved");
+            return "done";
+        });
+        Report("property-get", () => typeof(Named).GetProperty("Label")!.GetValue(named));
+        Report("field-get", () => typeof(Named).GetField("Count")!.GetValue(named));
+        Report("constructor", () => ((Shape)typeof(NamedBuilt).GetConstructor(new[] { typeof(string) })!
+            .Invoke(new object[] { "made" })).Who());
+        Console.WriteLine("constant-name reflection end");
     }
 
     private static int RunStatic<T>(int value) where T : IStatic<T> => T.Evaluate(value);
 
     private static string Construct(Type type) => ((Shape)Activator.CreateInstance(type)!).Who();
+
+    private static void Report(string label, Func<object?> read)
+    {
+        string text;
+        try
+        {
+            text = read()?.ToString() ?? "null";
+        }
+        catch (Exception e)
+        {
+            text = e.GetType().Name;
+        }
+        Console.WriteLine(label + "=" + text);
+    }
+}
+
+internal sealed class Named
+{
+    private string _label = "start";
+
+    public int Count = 2;
+
+    public static int Twice(int value) => value * 2;
+
+    public string Describe(string prefix) => prefix + ":" + _label;
+
+    public string Label
+    {
+        get => _label;
+        set => _label = value;
+    }
+}
+
+internal sealed class NamedBuilt : Shape
+{
+    private readonly string _text;
+
+    public NamedBuilt(string text) => _text = text;
+
+    public override string Who() => "named-built:" + _text;
 }
 
 public static class UnusedAppType

@@ -283,6 +283,12 @@ internal sealed partial class MethodCompiler : IEvalStack
             ThrowSharedTaint("canonany-value", site);
     }
 
+    /// <summary>Whether a value of <paramref name="t"/> stays in its boxed form here:
+    /// a bare any-placeholder in a body that keeps template values boxed
+    /// (<see cref="Compilation.KeepsTemplateValuesBoxed"/>).</summary>
+    private bool BoxedTemplateValue(TypeDesc t) =>
+        SharedTrial && t.CanonAnyIndex >= 0 && _c.KeepsTemplateValuesBoxed(_method);
+
     // ---- runtime generic context (rgctx) in shared bodies ----
 
     /// <summary>Allocates (or reuses) an rgctx slot for the compiled canonical
@@ -1059,11 +1065,15 @@ internal sealed partial class MethodCompiler : IEvalStack
         // taking the hidden parameter: derive it from the receiver's dynamic
         // type at this class's declaring level. Emitted only when a slot was
         // actually used (the lazy prologue), and only in the emission pass
-        // (planning text is discarded, and its flags are not final yet).
+        // (planning text is discarded, and its flags are not final yet). Only a
+        // null-bound reflection delegate enters the body without a receiver, so
+        // only an image that can bind one tests for it.
         if (rgctxAnchor is not null)
         {
-            sb.AppendLine("    const void* const* __rgctx = "
-                + $"dn2cpp_rgctx(((const Dn2CppObject*)a0)->type, &{rgctxAnchor});");
+            string receiverContext = $"dn2cpp_rgctx(((const Dn2CppObject*)a0)->type, &{rgctxAnchor})";
+            sb.AppendLine("    const void* const* __rgctx = " + (_c.NullReceiverRgctx
+                ? $"a0 != nullptr ? {receiverContext} : dn2cpp_null_receiver_rgctx(&{rgctxAnchor});"
+                : receiverContext + ";"));
         }
         // [HotPath(NoAlias)] span parameters: the element pointer hoisted once,
         // qualified. Only the entries an indexer route actually addressed are
@@ -1552,8 +1562,10 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // ComputeEmitted.Add (IntrinsicCppName) and enums emit separately.
                 NoteLocalValueLayout(types[li]);
                 // A local of (or containing) the any-placeholder would reserve
-                // storage whose width depends on the real argument.
-                TaintIfCanonAnyValue(types[li], "local");
+                // storage whose width depends on the real argument, unless the local
+                // holds the boxed form.
+                if (!BoxedTemplateValue(types[li]))
+                    TaintIfCanonAnyValue(types[li], "local");
                 _locals.Add(($"loc{li}", CppTypes.Of(types[li]), CppTypes.KindOf(types[li]), types[li]));
             }
         }
@@ -2304,6 +2316,9 @@ internal sealed partial class MethodCompiler : IEvalStack
             case ILOpCode.Ldloca_s: case ILOpCode.Ldloca:
             {
                 var v = _locals[(int)insn.Operand];
+                // A boxed-form local has no payload to point into.
+                if (v.Type is { } lt)
+                    TaintIfCanonAnyValue(lt, "local address");
                 Push(StackKind.Ptr, v.CppType + "*", $"&{v.Name}");
                 // Mark the entry as a direct local/arg slot address: the byref
                 // sub-word out-arg fixup (NoteByRefSlotFixup) must only rewrite a
@@ -3476,6 +3491,18 @@ internal sealed partial class MethodCompiler : IEvalStack
             case ILOpCode.Box:
             {
                 var target = ResolveTypeToken(insn.Token);
+                if (BoxedTemplateValue(target))
+                {
+                    var bv = Pop();
+                    string bti = TypeInfoExpr(target, insn.Token)
+                        ?? throw new InvalidOperationException($"box of {target} has no type-info");
+                    Push(StackKind.Ref, "Dn2CppObject*",
+                        $"dn2cpp_template_box({Cast(bv, "Dn2CppObject*")}, {bti})");
+                    _stack[^1] = _stack[^1] with { ArraySearchOrigin =
+                        _c.SeedArraySearchOrigin(ArraySearchValueKind.BoxedValue, target) };
+                    _c.AddArraySearchSeed(_stack[^1].ArraySearchOrigin!, ArraySearchValueKind.ObjectType, target);
+                    break;
+                }
                 TaintIfCanonAnyValue(target, "box");
                 if (CppTypes.KindOf(target) == StackKind.Ref)
                     break; // boxing a reference type is a no-op
@@ -3548,6 +3575,15 @@ internal sealed partial class MethodCompiler : IEvalStack
             case ILOpCode.Unbox_any:
             {
                 var target = ResolveTypeToken(insn.Token);
+                if (BoxedTemplateValue(target))
+                {
+                    var uv = Pop();
+                    string uti = TypeInfoExpr(target, insn.Token)
+                        ?? throw new InvalidOperationException($"unbox.any of {target} has no type-info");
+                    Push(StackKind.Ref, "Dn2CppObject*",
+                        $"dn2cpp_template_unbox_any({Cast(uv, "Dn2CppObject*")}, {uti})");
+                    break;
+                }
                 TaintIfCanonAnyValue(target, "unbox.any");
                 var obj = Pop();
                 if (CppTypes.KindOf(target) == StackKind.Ref)
@@ -3626,6 +3662,10 @@ internal sealed partial class MethodCompiler : IEvalStack
                     // The absent socket / name-resolution PAL: the same shape-preserving
                     // stub, throwing the same sentence the call site does.
                     expr = AbsentNetworkPalFtnStub(m, insn.Offset, receiverSlot: false);
+                }
+                else if (IsDelegateInvoke(m))
+                {
+                    expr = DelegateInvokeAddress(m);
                 }
                 else if (m.IsStatic && _ftnDelegateUse.TryGetValue(insn.Offset, out var dgClass))
                 {
@@ -3728,6 +3768,15 @@ internal sealed partial class MethodCompiler : IEvalStack
                 else if (_c.IsAbsentNetworkPalMember(m.DeclaringClass, m.Name))
                 {
                     expr = AbsentNetworkPalFtnStub(m, insn.Offset, receiverSlot: true);
+                }
+                else if (IsDelegateInvoke(m))
+                {
+                    // A delegate type is sealed and has no vtable, so the load binds
+                    // what ldftn binds, under ldftn's shared-body rule. .NET does not
+                    // fault a null receiver here; the delegate constructor refuses it.
+                    NoteFtnTarget(m, virtFtn: false);
+                    bindsLowering = true;
+                    expr = DelegateInvokeAddress(m);
                 }
                 else if (Compilation.IsGvmCall(m))
                 {
