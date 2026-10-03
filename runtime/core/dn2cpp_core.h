@@ -5405,12 +5405,13 @@ inline int32_t dn2cpp_threadpool_queue_value(Dn2CppObject* callback, T state)
 // Execute() on the same pool; `executeFn` is the Execute implementation the call
 // site resolved through the receiver's interface table (void (*)(receiver)).
 int32_t dn2cpp_threadpool_queue_workitem(Dn2CppObject* wi, const void* executeFn);
-// `new ValueTask(<T>)(IValueTaskSource(<T>) source, short token)` — bridge the
-// source onto a pending task completed via the source's OnCompleted/GetResult.
-// GetStatus remains the authority while the bridge is pending; after GetResult
-// settles it, the saved task state avoids querying a token the source may have
-// recycled. All three implementations are resolved through the source's interface
-// table. `actionTi` is the Action<object> type-info stamped on the runtime-built
+// `new ValueTask(<T>)(IValueTaskSource(<T>) source, short token)` — front the
+// source with a pending task. Nothing is registered here: the source answers status
+// and synchronous reads directly until the first await suspension, continuation,
+// blocking wait or AsTask arms the bridge, which then reads a completed source once or
+// registers OnCompleted; after that only the task is consulted, since the source may
+// have recycled the token. All three implementations are resolved through the source's
+// interface table. `actionTi` is the Action<object> type-info stamped on the runtime-built
 // continuation delegate; `resultKind` packs GetResult's return into the task's
 // result slot (0=void 1=int32 2=int64 3=reference 4=struct). A struct's ABI is
 // known only at the call site, so `getStructResult` invokes the typed method and
@@ -7009,8 +7010,9 @@ struct Dn2CppTask : Dn2CppObject
     // The IValueTaskSource bridge this task fronts, or null for every other task.
     // Written once before the task is published and never cleared: it is what lets a
     // synchronous read tell a source-backed ValueTask from a Task-backed one, which the
-    // CLR distinguishes and dn2cpp otherwise could not. Appended last — generated code
-    // reads the fields above by offset.
+    // CLR distinguishes and dn2cpp otherwise could not, and what arms the bridge when a
+    // continuation or wait first needs the task. Appended last — generated code reads
+    // the fields above by offset.
     Dn2CppObject* vtsBridge;
     // Distinguishes cold tasks from promise and continuation tasks after their
     // delegate has been claimed. Start and RunSynchronously use different errors.
@@ -7139,6 +7141,12 @@ void dn2cpp_task_set_exception_or_canceled(Dn2CppTask* t, Dn2CppObject* exceptio
 // Register a resumption to run when `t` completes (the suspension path). If `t`
 // is already complete the resumption is posted immediately.
 void dn2cpp_task_on_completed(Dn2CppTask* t, void (*fn)(void*), void* state);
+// A BCL builder's suspension: dn2cpp_task_on_completed, except that a throw from the
+// registration goes to dn2cpp_async_await_rejected, which re-raises it through
+// Task.ThrowAsync instead of into the suspended method. An explicit awaiter.OnCompleted
+// call keeps the synchronous throw.
+void dn2cpp_async_await_on_completed(Dn2CppTask* t, void (*fn)(void*), void* state);
+void dn2cpp_async_await_rejected(Dn2CppObject* exc);
 // Invoke a no-arg System.Action delegate (and its multicast chain) generically, via
 // the uniform delegate layout.
 void dn2cpp_action_invoke(Dn2CppObject* action);
@@ -7240,12 +7248,12 @@ void dn2cpp_sched_pump();
 // otherwise leave the defeat with no trace at all.
 Dn2CppTask* dn2cpp_task_block(Dn2CppTask* t);
 // The ValueTask sync-read funnel. Blocking is right for a Task- or builder-backed
-// ValueTask, which is all dn2cpp_task_block sees; a still-pending SOURCE-backed one is
-// not a task at all to the CLR, which reads the source's GetResult on the spot and lets
-// it refuse. So route that case there instead of sleeping until somebody settles it —
-// the exception is then the source's own, which is the only way its text can match.
+// ValueTask, which is all dn2cpp_task_block sees; an unarmed SOURCE-backed one is not a
+// task at all to the CLR, which reads the source's GetResult on the spot and lets a
+// pending source refuse — the exception is then the source's own, which is the only way
+// its text can match. An armed bridge's continuation owns GetResult, so this waits.
 Dn2CppTask* dn2cpp_vts_block(Dn2CppTask* t);
-// Pending source-backed ValueTask status reads use GetStatus(token). Settled
+// Unarmed source-backed ValueTask status reads use GetStatus(token). Armed or settled
 // bridges and Task-/builder-backed values use task state; default(ValueTask) succeeds.
 int32_t dn2cpp_vtask_status(Dn2CppTask* t);
 // The BLOCKING-WAIT flavor of the same drain: Task.Wait()/Wait(timeout)/

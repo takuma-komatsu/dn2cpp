@@ -834,11 +834,11 @@ internal sealed partial class MethodCompiler
         // IValueTaskSource-backed form (RandomAccess' ThreadPoolValueTaskSource
         // read/write scheduler constructs it). The dn2cpp ValueTask is always a
         // {task} struct, so bridge the source onto a real pending task:
-        // dn2cpp_vts_task registers a runtime continuation through the source's
-        // OnCompleted (both interface impls dispatched via the slots resolved at
-        // this site) that completes the task with GetResult's value or its thrown
-        // fault. Matched before the 1-arg forms below; the reach twin is
-        // Compilation.ReachValueTaskSourceBridge.
+        // dn2cpp_vts_task keeps the slots resolved at this site, and the runtime reads
+        // the source directly until an await, wait or AsTask needs the task, then
+        // registers a continuation through OnCompleted that completes it with
+        // GetResult's value or its thrown fault. Matched before the 1-arg forms
+        // below; the reach twin is Compilation.ReachValueTaskSourceBridge.
         if (handle.Kind == HandleKind.MemberReference
             && _reader.GetMemberReference((MemberReferenceHandle)handle) is var bvmr
             && bvmr.Parent.Kind == HandleKind.TypeSpecification
@@ -2323,9 +2323,9 @@ internal sealed partial class MethodCompiler
     /// token)</c> lowering: pop (source, token), resolve the closed interface's
     /// GetStatus/GetResult/OnCompleted implementations through the source's interface table,
     /// and push a {task} struct over the pending task dn2cpp_vts_task returns
-    /// (completed by a runtime continuation registered via OnCompleted; the
-    /// result kind tells the runtime how to read GetResult's return into the
-    /// task's 8-byte result slot). Reach twin:
+    /// (settled by a direct read or by the continuation the runtime registers via
+    /// OnCompleted once the task is needed; the result kind tells the runtime how to
+    /// read GetResult's return into the task's 8-byte result slot). Reach twin:
     /// <c>Compilation.ReachValueTaskSourceBridge</c>.</summary>
     private void EmitValueTaskSourceCtor(ClassInfo itf) =>
         Push(StackKind.Struct, "Dn2CppTaskAwaiter", ValueTaskSourceAwaiter(itf));
