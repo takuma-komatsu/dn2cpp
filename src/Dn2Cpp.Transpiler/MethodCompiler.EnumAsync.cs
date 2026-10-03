@@ -642,10 +642,16 @@ internal sealed partial class MethodCompiler
                 // one through CustomAwaiterResume, which notes it itself — so this
                 // suspension needs MoveNext's body no less than a direct call would.
                 _c.NoteNamedBodySymbol(_method, mn.Emittable);
+                // A BCL builder catches what the registration throws and re-raises it through
+                // Task.ThrowAsync, so the suspended method's own handlers never see it. An
+                // adopted builder keeps its library's contract, which lets the throw reach
+                // MoveNext.
+                bool reraise = _c.AdoptedAsyncKey(builderField.Type.Class!) is null;
                 string resume = methodArgs[0].Class?.IntrinsicCppName switch
                 {
                     "Dn2CppTaskAwaiter" =>
-                        $"dn2cpp_task_on_completed(((Dn2CppTaskAwaiter*)({awaiterRef.Expr}))->task, " +
+                        (reraise ? "dn2cpp_async_await_on_completed" : "dn2cpp_task_on_completed") +
+                        $"(((Dn2CppTaskAwaiter*)({awaiterRef.Expr}))->task, " +
                         $"(void (*)(void*))&{mn.Emittable.CppName}, __sm);",
                     "Dn2CppYieldAwaiter" =>
                         $"dn2cpp_sched_post((void (*)(void*))&{mn.Emittable.CppName}, __sm);",
@@ -656,7 +662,7 @@ internal sealed partial class MethodCompiler
                     // continuation when it completes. A *synchronous* user awaitable
                     // (IsCompleted always true) never reaches this branch.
                     _ => CustomAwaiterResume(methodArgs[0], awaiterRef, mn,
-                             preferUnsafe: name == "AwaitUnsafeOnCompleted"),
+                             preferUnsafe: name == "AwaitUnsafeOnCompleted", reraise),
                 };
                 string smCpp = sm.CppStructName;
                 // Box the SM to the heap the first time it suspends (boxed doubles
@@ -701,8 +707,11 @@ internal sealed partial class MethodCompiler
     /// re-entering MoveNext. When the awaiter exposes no OnCompleted(Action), trap at
     /// runtime with a clear message (an awaiter that suspends must implement
     /// INotifyCompletion). Reachability of the call edge + the Action delegate type is
-    /// in <c>Compilation.ReachCustomAwaiterContinuation</c>.</summary>
-    private string CustomAwaiterResume(TypeDesc awaiterType, StackEntry awaiterRef, MethodInfo moveNext, bool preferUnsafe)
+    /// in <c>Compilation.ReachCustomAwaiterContinuation</c>. With <paramref name="reraise"/>
+    /// a throw from the registration goes to <c>dn2cpp_async_await_rejected</c>, as a BCL
+    /// builder's does.</summary>
+    private string CustomAwaiterResume(TypeDesc awaiterType, StackEntry awaiterRef, MethodInfo moveNext,
+        bool preferUnsafe, bool reraise)
     {
         if (_c.CustomAwaiterOnCompleted(awaiterType, preferUnsafe) is not { } onCompleted
             || onCompleted.Signature.ParameterTypes is not [{ Kind: TypeKind.Class, Class: { IsDelegate: true } action } actionParam]
@@ -730,20 +739,26 @@ internal sealed partial class MethodCompiler
         {
             var itf = onCompleted.DeclaringClass;
             _c.NoteReferencedType(itf);
-            return build
+            return GuardRegistration(build
                  + $"Dn2CppObject* __aw = *(Dn2CppObject**)({awaiterRef.Expr}); "
                  + $"const void** __awslots = dn2cpp_resolve_interface(__aw->type, &{itf.CppTypeInfoName}); "
                  + $"(({FnPtrType(onCompleted)})(__awslots[{onCompleted.VtableSlot}]))"
-                 + $"(({itf.CppStructName}*)__aw, ({CppTypes.Of(actionParam)})__act);";
+                 + $"(({itf.CppStructName}*)__aw, ({CppTypes.Of(actionParam)})__act);", reraise);
         }
         // ref TAwaiter is a pointer to the awaiter; a struct awaiter is its `this`
         // directly, a reference-type awaiter needs the stored reference dereferenced.
         string recv = awaiterCls.IsValueType
             ? $"({awaiterCls.CppStructName}*)({awaiterRef.Expr})"
             : $"*({awaiterCls.CppStructName}**)({awaiterRef.Expr})";
-        return build
-             + $"{DirectCallSym(onCompleted)}({ArgsWithRgctx($"{recv}, ({CppTypes.Of(actionParam)})__act", onCompleted)});";
+        return GuardRegistration(build
+             + $"{DirectCallSym(onCompleted)}({ArgsWithRgctx($"{recv}, ({CppTypes.Of(actionParam)})__act", onCompleted)});",
+            reraise);
     }
+
+    private static string GuardRegistration(string registration, bool reraise) =>
+        reraise
+            ? $"try {{ {registration} }} catch (Dn2CppException& __awex) {{ dn2cpp_async_await_rejected(__awex.obj); }}"
+            : registration;
 
     /// <summary>The raw uint64 result slot expression for a Task&lt;T&gt; result
     /// value (int/long/float/double/reference results; floats are bit-cast into

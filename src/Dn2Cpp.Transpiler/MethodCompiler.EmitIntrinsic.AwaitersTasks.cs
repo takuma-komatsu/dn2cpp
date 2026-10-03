@@ -63,9 +63,9 @@ internal sealed partial class MethodCompiler
     /// <c>async ValueTask&lt;T&gt;</c> method that suspends silently returns default(T).
     /// <c>dn2cpp_vts_block</c> returns immediately on a completed task, so the
     /// await-resume path is unchanged. It blocks for a builder- or Task-backed ValueTask,
-    /// as the CLR does, and for a still-pending <c>IValueTaskSource</c>-backed one reads
-    /// the source's own GetResult instead — the read the CLR refuses, refused by the
-    /// source itself so the exception is the one real .NET raises.</para>
+    /// as the CLR does, and for an <c>IValueTaskSource</c>-backed one with no registered
+    /// continuation reads the source's own GetResult instead — a pending source refuses
+    /// it itself, so the exception is the one real .NET raises.</para>
     ///
     /// <para><c>taskExpr</c> is re-evaluated per statement rather than spilled to a temp:
     /// it is a pure read off an already-spilled stack temp, and minting a temp here would

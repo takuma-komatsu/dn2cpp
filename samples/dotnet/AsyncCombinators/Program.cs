@@ -45,6 +45,19 @@ namespace AsyncCombinators
             if (args.Length == 1 && args[0] == "before-cancellation-receivers")
                 return;
             CancellationReceiverSubset.Program.Run();
+            if (args.Length == 1 && args[0] == "before-value-task-source-handoff")
+                return;
+            ValueTaskSourceHandoffSubset.Program.__GateEntry();
+            if (args.Length == 1 && args[0] == "before-value-task-source-rejection")
+                return;
+            ValueTaskSourceHandoffSubset.Program.RunRejectedRegistration();
+            if (args.Length == 1 && args[0] == "before-registration-rejection")
+                return;
+            RegistrationRejectionSubset.Program.__GateEntry();
+            // Ends the process: a builder suspension's rejected registration is re-raised
+            // as an unhandled ThreadPool exception.
+            if (args.Length == 2 && args[0] == "suspension-rejection")
+                RegistrationRejectionSubset.Program.Suspend(args[1]);
         }
     }
 }

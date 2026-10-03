@@ -42,6 +42,20 @@
 # stops the chain and faults the outer, one handler may return a task settled only by a
 # later handler without deadlocking, and a null task unwraps into a cancellation.
 # Task duration, receiver, continuation and exception-argument validation.
+# ValueTaskSourceHandoffSubset.cs asserts the IValueTaskSource consumption protocol over
+# a pooled source whose producer reads its continuation slot only after reporting
+# completion: an await that finds the operation complete reads it once and registers
+# nothing, a suspending await registers once and is read once by its continuation, and
+# AsTask over a completed operation reads it synchronously. A continuation the source
+# stored before rejecting its registration reads the source once more, as .NET's
+# orphaned AsTask continuation does, but settles nothing and ends no registration, so
+# the task a later read produced keeps its result and the next registration's waiter
+# keeps its settler.
+# RegistrationRejectionSubset.cs asserts a continuation registration that throws: an
+# explicit awaiter.OnCompleted or AsTask throws to its caller, while at a BCL builder's
+# await suspension the throw is re-raised as an unhandled ThreadPool exception, so the
+# suspended method's own catch never runs and the process aborts as real .NET's does.
+# Each suspension mode ends its own run, after the whole default output.
 # Former gates: whenall, whenany, when-enumerable, configure-await, delay-order,
 # cancellation, custom-awaitable, multi-awaiter.
 # Task sequences and cold scheduling.
@@ -56,6 +70,84 @@ gate_extra_asserts() {
     local out="$1" native before prefix line
     native=$(run_bounded "./$out/AsyncCombinators")
     native=$(strip_cr_win "$native")
+    before=$(run_bounded dotnet "$_CG_APP" before-value-task-source-handoff)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== value task source handoff ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== value task source handoff ==' \
+        'op1 reported=True value=41' \
+        'op2 producer=released joined=True value=42' \
+        'op3 waited=registered value=43' \
+        'op4 published=True completed=True value=44' \
+        'counts: getresult=4 refused=0 registered=1 invoked=1 version=4' \
+        'value task source handoff end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: ValueTask source handoff witness missing: $line" >&2; exit 1; }
+    done
+    before=$(run_bounded dotnet "$_CG_APP" before-value-task-source-rejection)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== value task source rejected registration ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== value task source rejected registration ==' \
+        'op5 orphan=InvalidOperationException:stale token' \
+        'op6 armed=True continuation=returned joined=True value=46' \
+        'op7 status=RanToCompletion result=ok:47' \
+        'op8 completed=InvalidOperationException:stale token' \
+        'rejection counts: getresult=4 refused=0 registered=4 version=4' \
+        'value task source rejected registration end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: ValueTask rejected registration witness missing: $line" >&2; exit 1; }
+    done
+    before=$(run_bounded dotnet "$_CG_APP" before-registration-rejection)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== continuation registration rejection ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== continuation registration rejection ==' \
+        'OnCompleted InvalidOperationException:source rejected the continuation' \
+        'UnsafeOnCompleted InvalidOperationException:source rejected the continuation' \
+        'configured OnCompleted InvalidOperationException:source rejected the continuation' \
+        'non-generic OnCompleted InvalidOperationException:source rejected the continuation' \
+        'AsTask InvalidOperationException:source rejected the continuation' \
+        'registrations=5' \
+        'continuation registration rejection end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: registration rejection witness missing: $line" >&2; exit 1; }
+    done
+    local mode child child_code dotnet_child dotnet_code
+    for mode in value-task-source:'source OnCompleted #6' \
+        custom-awaiter:'awaiter UnsafeOnCompleted' async-void:'source OnCompleted #6'; do
+        set +e
+        child=$(run_bounded "./$out/AsyncCombinators" suspension-rejection "${mode%%:*}" \
+            2>"$out/suspension.err"); child_code=$?
+        dotnet_child=$(run_bounded dotnet "$_CG_APP" suspension-rejection "${mode%%:*}" \
+            2>"$out/suspension-oracle.err"); dotnet_code=$?
+        set -e
+        child=$(strip_cr_win "$child")
+        dotnet_child=$(strip_cr_win "$dotnet_child")
+        prefix=$(awk -v h="== builder suspension rejection: ${mode%%:*} ==" \
+            '$0 == h { exit } { print }' <<< "$child")
+        # The whole default run, then the mode's header and its one registration: the
+        # suspended method neither caught the throw nor completed.
+        if [ "$child" != "$dotnet_child" ] || [ "$prefix" != "$native" ] \
+                || [ "$(tail -n 2 <<< "$child")" != "== builder suspension rejection: ${mode%%:*} ==
+${mode#*:}" ]; then
+            echo "FAIL: suspension rejection (${mode%%:*}) output differs from real .NET" >&2
+            gate_run_diag "native ${mode%%:*}" "$child_code" "$(tail -n 4 <<< "$child")" "$out/suspension.err"
+            gate_run_diag "dotnet ${mode%%:*}" "$dotnet_code" "$(tail -n 4 <<< "$dotnet_child")" "$out/suspension-oracle.err"
+            exit 1
+        fi
+        case "$dotnet_code" in
+            0|1) echo "FAIL: real .NET exited $dotnet_code after a rejected suspension; it must abort" >&2
+                exit 1 ;;
+        esac
+        assert_exit_code "$child_code" "$dotnet_code"
+        grep -Fq 'Unhandled exception. System.InvalidOperationException: ' "$out/suspension-oracle.err" \
+            || { echo "FAIL: real .NET did not report the rejected suspension as unhandled" >&2; exit 1; }
+        grep -Fq 'dn2cpp fatal: threadpool: unhandled managed exception' "$out/suspension.err" \
+            || { echo "FAIL: the rejected suspension (${mode%%:*}) did not end as an unhandled ThreadPool exception" >&2
+                cat "$out/suspension.err" >&2; exit 1; }
+        echo "OK suspension rejection ${mode%%:*}: aborted with $child_code after '${mode#*:}'"
+    done
     before=$(run_bounded dotnet "$_CG_APP" before-cancellation-receivers)
     before=$(strip_cr_win "$before")
     prefix=$(awk '/^== cancellation source receivers ==$/ { exit } { print }' <<< "$native")
