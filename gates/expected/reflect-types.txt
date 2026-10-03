@@ -673,7 +673,7 @@ gm-gen1-flags => Pick/2p decl=Derived static=False
 gm-gen1-binder => Pick/2p decl=Derived static=False
 gm-gen1-cc => Pick/2p decl=Derived static=False
 gm-gen2-miss => null
-gm-gen1-closed => Echo/1p decl=Derived static=False
+gm-gen1-closed => null
 gm-null-name => argnull
 gc-empty => .ctor/0p decl=Base static=False
 gc-types => .ctor/2p decl=Base static=False

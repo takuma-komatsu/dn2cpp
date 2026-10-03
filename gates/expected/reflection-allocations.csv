@@ -6,7 +6,7 @@ direct-call,0,0
 virtual-call,0,0
 find-field,24,0
 find-method,32,0
-find-intrinsic-method,256,0
+find-intrinsic-method,280,0
 type-name,98,98000
 member-name,34,34000
 signature,60,60000
@@ -30,5 +30,6 @@ attribute-data-packed,40,40000
 create-attributes-packed,40,40000
 attribute-value-packed,0,0
 invoke-packed,12,12000
+invoke-wide,12,12000
 property-set,0,0
 property-get,12,12000

@@ -491,6 +491,10 @@ internal sealed partial class Compilation
     /// either way.</summary>
     private readonly bool _hotUpdatePosture;
 
+    /// <summary>A <c>--hotupdate-base</c> build, whose generic virtual rows a patch can
+    /// call virtually (<see cref="ReachPatchCallableGvms"/>).</summary>
+    private readonly bool _hotUpdateBase;
+
     /// <summary>The single construction path: every option is set on the record
     /// before the instance exists, so nothing can observe a half-configured
     /// Compilation — the "must be set before Build()" ordering in the constructor
@@ -512,6 +516,7 @@ internal sealed partial class Compilation
         // typeof-equality branch folds, and a hot-update world must not prune (see the field).
         // A --hotupdate-base build IS a hot-update world, hence the OR.
         _hotUpdatePosture = options.HotUpdatePosture || options.HotupdateBase;
+        _hotUpdateBase = options.HotupdateBase;
         _noAdoptAsync = options.NoAdoptAsync ?? Array.Empty<string>();
         _cliCutMethods = (options.CutMethods ?? Array.Empty<string>()).Select(ParseCutSpec).ToHashSet();
         _trimReflection = options.TrimReflection;
@@ -1026,10 +1031,13 @@ internal sealed partial class Compilation
             _delegateMethodRead = true;
     }
 
+    /// <summary>Whether a shipped body reads <c>Delegate.Method</c>.</summary>
+    internal bool ReadsDelegateMethod => _delegateMethodRead;
+
     /// <summary>Whether <paramref name="m"/>'s method row must survive the unreached-row
     /// trim: <c>Delegate.Method</c> answers a delegate's declaration from it even when
     /// every receiver overrides the body.</summary>
-    internal bool KeepsDelegateTargetRow(MethodInfo m) =>
+    private bool KeepsDelegateTargetRow(MethodInfo m) =>
         _delegateMethodRead && _delegateIdentityTargets.Contains(m.CppName);
 
     /// <summary>The recorded identities in symbol order; no body may name one
@@ -1108,6 +1116,10 @@ internal sealed partial class Compilation
     /// throws (see <c>DN2CPP_TF_METADATA_STRIPPED</c>) rather than answering empty.</summary>
     public bool KeepsReflectionMetadata(ClassInfo cls) =>
         _reflectionKeep is null || _reflectionKeep.Contains(cls);
+
+    /// <summary>Whether <c>--trim-reflection</c> strips the member metadata of the classes
+    /// <see cref="KeepsReflectionMetadata"/> does not keep.</summary>
+    public bool TrimsReflection => _trimReflection;
 
     /// <summary>Materializes the reflection keep-set. Called by the emitter immediately
     /// before <c>EmitTypeInfos</c>, and it must not run earlier: <c>ComputeEmitted</c>'s
@@ -1434,8 +1446,38 @@ internal sealed partial class Compilation
     /// <c>dgrefl_*</c> trampoline per distinct delegate-Invoke ABI shape and the
     /// {delegate type-info → trampoline} registry the runtime binder scans
     /// (<see cref="CppEmitter.EmitDelegateReflBinds"/>). The registry symbols
-    /// themselves emit unconditionally (a null row) so the runtime always links.</summary>
-    public bool NeedsReflectionDelegateBind { get; set; }
+    /// themselves emit unconditionally (a null row) so the runtime always links.
+    /// Under shared generics the planning pass lowers every reachable body before any
+    /// body renders, and the rendered rgctx prologues depend on this flag
+    /// (<see cref="NullReceiverRgctx"/>), so a first binding lowered by the emission pass
+    /// is a broken invariant.</summary>
+    public bool NeedsReflectionDelegateBind
+    {
+        get => _needsReflectionDelegateBind;
+        set
+        {
+            if (value && !NullReceiverRgctx && SharedGenericsEnabled && Phase == EmitPhase.Emission)
+                throw new InvalidOperationException(
+                    "emit protocol: a CreateDelegate binding was first lowered by the emission pass, "
+                    + "after the shared bodies' rgctx prologues were rendered");
+            _needsReflectionDelegateBind = value;
+        }
+    }
+
+    private bool _needsReflectionDelegateBind;
+
+    /// <summary>Whether a shared instance body's rgctx prologue accepts a null receiver
+    /// and then reads the generic context a null-bound CreateDelegate binding supplies
+    /// (<c>dn2cpp_null_receiver_rgctx</c>). Only such a binding enters a shared instance
+    /// body without a receiver: one this image lowers, or one a hot-update patch makes
+    /// through this base image's runtime. Every other image keeps the plain prologue.</summary>
+    internal bool NullReceiverRgctx => _needsReflectionDelegateBind || _hotUpdateBase;
+
+    /// <summary>Whether a Delegate.DynamicInvoke was lowered. It binds each emitted
+    /// delegate type's Invoke row to the type's multicast invoker, as MethodInfo.Invoke use
+    /// (<see cref="ReflectionInvokeUsed"/>) does, since .NET's DynamicInvoke calls the
+    /// delegate through that row.</summary>
+    public bool NeedsDelegateInvokeRows { get; set; }
 
     /// <summary>Non-blittable but marshalable value structs (string/bool/blittable/
     /// nested-blittable fields) passed to a P/Invoke by value or by ref. Each needs a
@@ -2589,7 +2631,14 @@ internal sealed partial class Compilation
             if (cls.Module.Reader.GetString(md.Name) != methodName
                 || md.GetGenericParameters().Count != methodArgs.Length)
                 continue;
-            Reach(InstantiateMethodOnClass(cls, cls.Module, mh, methodArgs));
+            var inst = InstantiateMethodOnClass(cls, cls.Module, mh, methodArgs);
+            Reach(inst);
+            // A patch callvirt of a generic virtual instantiation enters the
+            // dispatcher an AOT callvirt would, so the root registers it with the
+            // allocated types' overrides. A final method's or a sealed class's
+            // body is every receiver's.
+            if (IsGvmCall(inst) && !cls.IsSealed && (inst.Attributes & MethodAttributes.Final) == 0)
+                ReachUsedGvm(inst, callSite: false);
             any = true;
         }
         if (!any)
@@ -3030,7 +3079,7 @@ internal sealed partial class Compilation
     /// <summary>Plants those rows on every noted element whose array still has no dispatch
     /// map, once the noted set is final. The eager loop above runs at NOTING time and so
     /// cannot see an element first noted AFTER the emit fixpoint — the reflection tables'
-    /// member-type pre-note (<c>TypeMetadataEmitter.NoteReflectedMemberArrayElements</c>) is
+    /// member-type pre-note (<c>TypeMetadataEmitter.NoteReflectedMemberTypes</c>) is
     /// exactly that, and its arrays enumerated six interfaces where .NET reports eleven.
     /// This sweep is the confirmation point, so the answer stops depending on WHEN
     /// an element was noted; a dispatch map cannot be wired here (its thunks need bodies the
@@ -3797,16 +3846,401 @@ internal sealed partial class Compilation
         return added;
     }
 
-    /// <summary>Array.Initialize is scanned before freezing constructor reachability
-    /// and can also be discovered when a body is lowered.</summary>
+    /// <summary>MethodBase.Invoke, PropertyInfo.GetValue/SetValue and a CreateDelegate
+    /// binding run a class virtual row, or an interface row with a default body,
+    /// through the receiver's slot, as a callvirt would (dn2cpp_invoke_row), so each
+    /// such invocable row is a used slot with no call site. Reachability must be at
+    /// least as generous as that dispatch, or the receiver's slot holds a trap. A
+    /// class row is invocable once reached, or when abstract (its thunk is
+    /// signature-only), and runs only on receivers derived from its class, so a used
+    /// declaration of the slot on that class or a base already covers it. A user
+    /// module's rows are all marked. Marking a framework row reaches every allocated
+    /// framework override of its slot, which need not transpile, so a framework row is
+    /// marked only when a user body names its member on a type token
+    /// (<see cref="_typeofNamedMembers"/>), which bounds that to one member's
+    /// overrides; any other framework row's receiver may hold a trap, which the runtime
+    /// reports as the stripped body it is. A closed generic virtual row has no slot and
+    /// gets its dispatcher (<see cref="ReachReflectedGvm"/>) by the same rule, except that
+    /// a framework row no type token names gets a stripping one, which reaches only
+    /// application bodies and those a preservation rule keeps, and reports any other as
+    /// the stripped body it is; without a dispatcher a row runs its own body. Each row
+    /// the route finds invocable also notes the values Invoke boxes for it with no box
+    /// site (<see cref="NoteReflectedRowBoxes"/>). A row's verdict changes only when its
+    /// class's members are decoded, it is instantiated, it is reached, or its member is
+    /// named, so each of those logs is visited once. Driven by discovery's last fixpoint
+    /// and again each round, as the flags and the logs grow while bodies compile.</summary>
+    public void ReachReflectedVirtualSlots()
+    {
+        if (!_reflectionInvokeUsed && !_reflectionDelegateBindScanned && !NeedsReflectionDelegateBind)
+            return;
+        while (MarkLoggedReflectedRows())
+            DrainReachability();
+    }
+
+    /// <summary>How far <see cref="MarkLoggedReflectedRows"/> has visited
+    /// <see cref="Classes"/>, <see cref="_membersCompletedOrder"/>,
+    /// <see cref="_typeofNamedMembers"/>, <see cref="_methodInstanceOrder"/> and
+    /// <see cref="ReachableSet.Order"/>.</summary>
+    private int _reflectedClassCursor, _reflectedCompletedCursor, _reflectedNamedCursor,
+        _reflectedInstanceCursor, _reflectedReachCursor;
+
+    /// <summary>The rows, by class and method name, that a type token names a member of
+    /// (<see cref="_typeofNamedMembers"/>).</summary>
+    private readonly HashSet<(ClassInfo, string)> _reflectedNamedRows = new();
+
+    /// <summary>Marks the rows the logs gained since the last visit, until marking grows
+    /// none of them; returns whether any row was marked.</summary>
+    private bool MarkLoggedReflectedRows()
+    {
+        bool marked = false;
+        while (_reflectedClassCursor < Classes.Count
+               || _reflectedCompletedCursor < _membersCompletedOrder.Count
+               || _reflectedNamedCursor < _typeofNamedMembers.Count
+               || _reflectedInstanceCursor < _methodInstanceOrder.Count
+               || _reflectedReachCursor < Reachable.Order.Count)
+        {
+            // A specialization's members arrive when CompleteMembers decodes them; every
+            // other class has its members from the start.
+            while (_reflectedClassCursor < Classes.Count)
+            {
+                var cls = Classes[_reflectedClassCursor++];
+                if (cls.GenericArity == 0)
+                    marked |= MarkReflectedRows(cls);
+            }
+            while (_reflectedCompletedCursor < _membersCompletedOrder.Count)
+                marked |= MarkReflectedRows(_membersCompletedOrder[_reflectedCompletedCursor++]);
+            // Type.GetMethod searches the base classes too; an interface only itself.
+            while (_reflectedNamedCursor < _typeofNamedMembers.Count)
+            {
+                var (named, member) = _typeofNamedMembers[_reflectedNamedCursor++];
+                for (var cls = named; cls is not null && CarriesReflectedSlots(cls);
+                     cls = cls.IsInterface ? null : cls.BaseClass)
+                {
+                    if (!DeclaresMemberNamed(cls, member))
+                        continue;
+                    EnsureCompleted(cls);
+                    marked |= MarkNamedSlots(cls, member);
+                    marked |= MarkNamedSlots(cls, "get_" + member);
+                    marked |= MarkNamedSlots(cls, "set_" + member);
+                }
+            }
+            while (_reflectedInstanceCursor < _methodInstanceOrder.Count)
+                marked |= MarkReflectedRow(_methodInstanceOrder[_reflectedInstanceCursor++]);
+            var order = Reachable.Order;
+            while (_reflectedReachCursor < order.Count)
+                marked |= MarkReflectedRow(order[_reflectedReachCursor++]);
+        }
+        return marked;
+    }
+
+    private bool MarkReflectedRows(ClassInfo cls)
+    {
+        if (!IsUserModule(cls.Module) || !CarriesReflectedSlots(cls))
+            return false;
+        bool marked = false;
+        var methods = cls.Methods;
+        for (int i = 0; i < methods.Count; i++)
+            marked |= MarkReflectedRow(methods[i]);
+        return marked;
+    }
+
+    /// <summary>Marks <paramref name="m"/> when reflection can enter it through a slot or a
+    /// generic virtual dispatcher: every row of a user module, and a named row of any. An
+    /// unnamed framework generic virtual row gets a stripping dispatcher.</summary>
+    private bool MarkReflectedRow(MethodInfo m)
+    {
+        if (m.IsStatic || !m.IsVirtual)
+            return false;
+        var cls = m.DeclaringClass;
+        if (!CarriesReflectedSlots(cls) || ContainsGenericVar(cls))
+            return false;
+        bool named = _reflectedNamedRows.Contains((cls, m.Name));
+        if (IsGvmCall(m))
+            return ReachReflectedGvm(cls, m, strips: !named && !IsUserModule(cls.Module));
+        return (named || IsUserModule(cls.Module)) && MarkReflectedSlot(m, named);
+    }
+
+    /// <summary>Registers the dispatcher a closed generic virtual row runs through: the
+    /// row has no slot, so reflection calls the dispatcher a callvirt of the same
+    /// instantiation would. A row on a sealed class or a final row runs its own body,
+    /// and a row a call already dispatches has its dispatcher. The dispatcher falls
+    /// back to the row's own body, so an application row's body is reached; a
+    /// library row with an unreached body has no invoker to enter it.
+    /// <paramref name="strips"/> registers a stripping dispatcher
+    /// (<see cref="GvmDispatch.Strips"/>), whose bodies outside the application need
+    /// not transpile unless a preservation rule keeps them. The row's boxes are noted
+    /// whether or not it gets a dispatcher here.</summary>
+    private bool ReachReflectedGvm(ClassInfo cls, MethodInfo m, bool strips)
+    {
+        if (ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls)
+            || _backend?.ShouldSkipMethodBody(cls, m) == true)
+            return false;
+        foreach (var arg in m.Context.MethodArgs)
+            if (ContainsCanonPlaceholder(arg) || ContainsGenericVar(arg))
+                return false;
+        bool noted = NoteReflectedRowBoxes(m);
+        if (cls.IsSealed || (m.Attributes & MethodAttributes.Final) != 0
+            || _usedGvms.TryGetValue(m.CppName, out var known) && (strips || !known.Strips))
+            return noted;
+        if (m.Rva != 0 && !Reachable.Contains(m))
+        {
+            if (cls.Module != AppModule)
+                return noted;
+            Reach(m);
+        }
+        ReachUsedGvm(m, callSite: false, strips);
+        return true;
+    }
+
+    /// <summary>How much of <see cref="_methodInstanceOrder"/> and
+    /// <see cref="ReachableSet.Order"/> <see cref="ReachPatchCallableGvms"/> has
+    /// visited.</summary>
+    private int _patchGvmInstanceCursor, _patchGvmReachCursor;
+
+    /// <summary>A <c>--hotupdate-base</c> build: a patch <c>callvirt</c> can name any closed
+    /// generic virtual row the loader binds, a reached body or a bodiless declaration,
+    /// whether or not an AOT call site names it. <see cref="MarkPatchCallableGvm"/> gives
+    /// each row it accepts the non-stripping dispatcher an AOT <c>callvirt</c> registers,
+    /// so the import runs the receiver's override. The loader refuses an import whose row
+    /// needs a dispatcher and has none. Driven with the other routes each round.</summary>
+    public void ReachPatchCallableGvms()
+    {
+        if (!_hotUpdateBase)
+            return;
+        while (MarkPatchCallableGvms())
+            DrainReachability();
+    }
+
+    /// <summary>Registers the dispatchers of the rows the logs gained since the last
+    /// visit; returns whether any was registered.</summary>
+    private bool MarkPatchCallableGvms()
+    {
+        bool marked = false;
+        while (_patchGvmInstanceCursor < _methodInstanceOrder.Count
+               || _patchGvmReachCursor < Reachable.Order.Count)
+        {
+            // A bodiless row is never reached; a row with a body binds once it is.
+            while (_patchGvmInstanceCursor < _methodInstanceOrder.Count)
+            {
+                var m = _methodInstanceOrder[_patchGvmInstanceCursor++];
+                if (m.Rva == 0)
+                    marked |= MarkPatchCallableGvm(m);
+            }
+            var order = Reachable.Order;
+            while (_patchGvmReachCursor < order.Count)
+                marked |= MarkPatchCallableGvm(order[_patchGvmReachCursor++]);
+        }
+        return marked;
+    }
+
+    /// <summary>Registers <paramref name="m"/>'s dispatcher unless its own body is every
+    /// receiver's (a final row, or one on a sealed class), a non-stripping one exists, its
+    /// instantiation holds a canonical placeholder or a generic parameter, or the backend
+    /// skips its body.</summary>
+    private bool MarkPatchCallableGvm(MethodInfo m)
+    {
+        var cls = m.DeclaringClass;
+        if (!IsGvmCall(m) || cls.IsSealed || (m.Attributes & MethodAttributes.Final) != 0
+            || ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls)
+            || _backend?.ShouldSkipMethodBody(cls, m) == true
+            || _usedGvms.TryGetValue(m.CppName, out var known) && !known.Strips)
+            return false;
+        foreach (var arg in m.Context.MethodArgs)
+            if (ContainsCanonPlaceholder(arg) || ContainsGenericVar(arg))
+                return false;
+        ReachUsedGvm(m, callSite: false);
+        return true;
+    }
+
+    /// <summary>How much of <see cref="_methodInstanceOrder"/>
+    /// <see cref="InstantiateGvmChainRoots"/> has visited.</summary>
+    private int _gvmChainRootCursor;
+
+    /// <summary>Each instantiation <see cref="InstantiateGvmChainRoots"/> made of a method
+    /// that introduces a class generic virtual override chain, with the overrides it
+    /// roots.</summary>
+    private readonly Dictionary<MethodInfo, List<MethodInfo>> _gvmChainRoots = new();
+
+    /// <summary>The root <see cref="InstantiateGvmChainRoots"/> made for each override it
+    /// visited.</summary>
+    private readonly Dictionary<MethodInfo, MethodInfo> _gvmChainRootOf = new();
+
+    /// <summary>The instantiation of the new slot that introduces class generic virtual
+    /// override <paramref name="m"/>'s chain, which its row names, or null.</summary>
+    internal MethodInfo? GvmChainRootOf(MethodInfo m) =>
+        _gvmChainRootOf.TryGetValue(m, out var root) ? root : null;
+
+    /// <summary>A closed class generic virtual row has no slot, so an override's row names
+    /// the method that introduces its chain (<see cref="GvmChainRootOf"/>): hiding ends,
+    /// and GetBaseDefinition answers, at that method's row. Instantiates that method at
+    /// each override's type arguments, so its row exists wherever the override's does.
+    /// Driven by discovery's last fixpoint and again each round: bodies keep minting
+    /// instantiations.</summary>
+    public void InstantiateGvmChainRoots()
+    {
+        while (_gvmChainRootCursor < _methodInstanceOrder.Count)
+        {
+            var m = _methodInstanceOrder[_gvmChainRootCursor++];
+            if (GvmChainRootOrNull(m) is not { } root)
+                continue;
+            if (!_gvmChainRoots.TryGetValue(root, out var overrides))
+                _gvmChainRoots.Add(root, overrides = new List<MethodInfo>());
+            overrides.Add(m);
+            _gvmChainRootOf[m] = root;
+        }
+    }
+
+    /// <summary>The instantiation at <paramref name="m"/>'s type arguments of the new slot
+    /// that introduces <paramref name="m"/>'s override chain, when <paramref name="m"/>
+    /// overrides a class generic virtual method; otherwise null. Each override in the
+    /// chain takes the most derived base template of its name, generic arity and
+    /// definition signature, spelled through its own extends chain.</summary>
+    private MethodInfo? GvmChainRootOrNull(MethodInfo m)
+    {
+        var cls = m.DeclaringClass;
+        var args = m.Context.MethodArgs;
+        if (!IsGvmCall(m) || m.Handle.IsNil || (m.Attributes & MethodAttributes.NewSlot) != 0
+            || cls.IsInterface || ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls))
+            return null;
+        foreach (var arg in args)
+            if (ContainsCanonPlaceholder(arg) || ContainsGenericVar(arg))
+                return null;
+        try
+        {
+            var signature = GvmDefinitionSignature(m);
+            var owner = cls;
+            var overrider = m.Handle;
+            for (var b = cls.BaseClass; b is not null; b = b.BaseClass)
+            {
+                var level = b;
+                var (from, own) = (owner, overrider);
+                if (b.Handle.IsNil
+                    || FindGvmClassTemplate(b, m.Name, args.Length, signature, matchReturn: true, slotOf: null,
+                            t => SameGvmDefinition(from, own, level, t))
+                        is not { } template)
+                    continue;
+                if ((b.Module.Reader.GetMethodDefinition(template).Attributes & MethodAttributes.NewSlot) != 0)
+                    return InstantiateMethodOnClass(b, b.Module, template, args);
+                (owner, overrider) = (b, template);
+            }
+        }
+        // A signature no row can spell has no chain to complete.
+        catch (NotSupportedException e) when (!IsMustEscape(e))
+        {
+        }
+        return null;
+    }
+
+    /// <summary>Whether <paramref name="m"/>'s row must survive the unreached-row trim:
+    /// <c>Delegate.Method</c> answers from it (<see cref="KeepsDelegateTargetRow"/>), or it
+    /// introduces the chain of an override whose row the image keeps.</summary>
+    internal bool KeepsUnreachedRow(MethodInfo m)
+    {
+        if (KeepsDelegateTargetRow(m))
+            return true;
+        if (!_gvmChainRoots.TryGetValue(m, out var overrides))
+            return false;
+        foreach (var o in overrides)
+            if (o.DeclaringClass.Module == AppModule || o.Rva == 0 || Reachable.Contains(o)
+                || KeepsDelegateTargetRow(o))
+                return true;
+        return false;
+    }
+
+    // A value type's row is sealed; an intrinsic type carries no rows.
+    private static bool CarriesReflectedSlots(ClassInfo cls) =>
+        !cls.IsValueType && !cls.IsDelegate && cls.IntrinsicCppName is null
+        && !CoreIntrinsics.IsIntrinsicType(cls.FullName);
+
+    /// <summary>Records the named rows and marks the ones that exist; one instantiated or
+    /// reached later is marked from its log.</summary>
+    private bool MarkNamedSlots(ClassInfo cls, string name)
+    {
+        bool marked = false;
+        if (_reflectedNamedRows.Add((cls, name)) && cls.MethodsNamed(name) is { } methods)
+            for (int i = 0; i < methods.Count; i++)
+                marked |= MarkReflectedRow(methods[i]);
+        return marked;
+    }
+
+    /// <summary>Marks the slot of a row reflection can enter when no used declaration
+    /// covers it yet, and notes the row's boxes either way. A library's default body has
+    /// a row only once reached. A bodiless interface row is marked only when a type
+    /// token names it: marking every one would reach each implementer's whole interface
+    /// surface.</summary>
+    private bool MarkReflectedSlot(MethodInfo m, bool named)
+    {
+        if (m.IsStatic || !m.IsVirtual || m.VtableSlot < 0)
+            return false;
+        var cls = m.DeclaringClass;
+        if (cls.IsInterface
+            ? (m.Rva == 0 ? !named : cls.Module != AppModule && !Reachable.Contains(m))
+            : !m.IsAbstract && !Reachable.Contains(m))
+            return false;
+        bool noted = NoteReflectedRowBoxes(m);
+        if (_usedVirtualDecls.Contains(m) || !cls.IsInterface && ClassSlotUsedAtOrAbove(m))
+            return noted;
+        ReachUsedVirtual(m);
+        return true;
+    }
+
+    /// <summary>The rows <see cref="NoteReflectedRowBoxes"/> has noted.</summary>
+    private readonly HashSet<MethodInfo> _reflectedBoxRows = new();
+
+    /// <summary>Notes, once per row, the values invoking <paramref name="m"/> through
+    /// reflection boxes (<see cref="NoteReflectionInvokeBoxes"/>). Whichever body the
+    /// receiver's slot or the dispatcher runs, it returns and writes back the row's
+    /// value types, so the row's signature covers every override and implementation.
+    /// Returns whether a value type was newly allocated.</summary>
+    private bool NoteReflectedRowBoxes(MethodInfo m)
+    {
+        if (!_reflectedBoxRows.Add(m))
+            return false;
+        int allocated = _allocatedRefTypes.Count;
+        try
+        {
+            NoteReflectionInvokeBoxes(m);
+        }
+        // A row whose signature does not decode is not reflectively invokable either.
+        catch (NotSupportedException e) when (!IsMustEscape(e))
+        {
+        }
+        return _allocatedRefTypes.Count != allocated;
+    }
+
+    /// <summary>Whether the definition of <paramref name="cls"/> declares a method named
+    /// <paramref name="member"/> or an accessor of such a property. Read off the raw
+    /// metadata, so a class named with an unrelated string is never completed.</summary>
+    private static bool DeclaresMemberNamed(ClassInfo cls, string member)
+    {
+        if (cls.Handle.IsNil)
+            return false;
+        var reader = cls.Module.Reader;
+        string getter = "get_" + member, setter = "set_" + member;
+        foreach (var handle in reader.GetTypeDefinition(cls.Handle).GetMethods())
+        {
+            var name = reader.GetMethodDefinition(handle).Name;
+            if (reader.StringComparer.Equals(name, member) || reader.StringComparer.Equals(name, getter)
+                || reader.StringComparer.Equals(name, setter))
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>Set once a scanned body calls or binds Array.Initialize() through a member
+    /// reference, or a compiled body lowers it to <c>dn2cpp_array_initialize</c>, which
+    /// runs the element's parameterless constructor through the element type's constructor
+    /// row. The scan cannot see the receiver's element type, so it arms on every such
+    /// site.</summary>
     private bool _runtimeArrayInitialize;
 
     /// <summary>How much of <see cref="Classes"/>, which only grows,
     /// <see cref="ReachRuntimeArrayInitializeCtors"/> has visited.</summary>
     private int _runtimeArrayInitializeCursor;
 
-    /// <summary>Arms <see cref="ReachRuntimeArrayInitializeCtors"/>: an Array.Initialize
-    /// receiver that states no element type can hold any value type at run time.</summary>
+    /// <summary>Arms <see cref="ReachRuntimeArrayInitializeCtors"/> from the lowering: an
+    /// Array.Initialize receiver that states no element type can hold any value type at run
+    /// time, in a body whose call the scan did not arm on.</summary>
     internal void NoteRuntimeArrayInitialize()
     {
         if (_runtimeArrayInitialize)
@@ -3815,9 +4249,12 @@ internal sealed partial class Compilation
         ReachRuntimeArrayInitializeCtors();
     }
 
-    /// <summary>Reach user value-type constructors invoked by dynamic
-    /// Array.Initialize. Walk <see cref="Classes"/> by index because compiling
-    /// a constructor can add specializations.</summary>
+    /// <summary>Once <see cref="NoteRuntimeArrayInitialize"/> armed it, reaches the
+    /// parameterless constructor of every user-module value type that declares one, so the
+    /// constructor row <c>dn2cpp_array_initialize</c> invokes carries a body. No framework
+    /// value type a program can name declares one. Driven by discovery's last fixpoint and
+    /// again each round, like <see cref="ReachReflectedVirtualSlots"/>: a compiled body can
+    /// mint a closed generic value type.</summary>
     public void ReachRuntimeArrayInitializeCtors()
     {
         if (!_runtimeArrayInitialize)
@@ -3833,7 +4270,8 @@ internal sealed partial class Compilation
             if (!cls.ShapeReady)
                 throw new InvalidOperationException($"{cls.FullName} is in Classes but was never queued for its shape");
             _runtimeArrayInitializeCursor++;
-            if (!cls.IsValueType || cls.IsEnum || cls.IntrinsicCppName is not null || !IsUserModule(cls.Module))
+            if (!cls.IsValueType || cls.IsEnum || cls.IntrinsicCppName is not null || !IsUserModule(cls.Module)
+                || ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls))
                 continue;
             var ctor = ParameterlessCtorHandle(cls);
             if (ctor.IsNil)
@@ -3874,6 +4312,56 @@ internal sealed partial class Compilation
                 return handle;
         }
         return default;
+    }
+
+    /// <summary>The members user bodies name on a type token: <c>typeof(T)</c> followed
+    /// at once by a string literal, as <c>GetMethod("Name")</c>,
+    /// <c>GetProperty("Name")</c> or a helper taking both spell it. In first-named order
+    /// (list + set: the consumer's reach order is emit-relevant). Recorded
+    /// unconditionally, like <see cref="_typeofNamedLibraryClasses"/>, so the set does not
+    /// depend on which body the invoke flags were set in.</summary>
+    private readonly List<(ClassInfo Class, string Member)> _typeofNamedMembers = new();
+    private readonly HashSet<(ClassInfo, string)> _typeofNamedMembersSeen = new();
+
+    private void NoteTypeofNamedMembers(MethodInfo method, List<Instruction> instructions,
+        BranchLiveness? liveness)
+    {
+        for (int i = 0; i < instructions.Count; i++)
+        {
+            var token = instructions[i];
+            if (token.OpCode != ILOpCode.Ldtoken || liveness is not null && !liveness.LiveAt(token.Offset))
+                continue;
+            int call = NextNonNop(instructions, i + 1);
+            int literal = call < 0 ? -1 : NextNonNop(instructions, call + 1);
+            if (literal < 0 || instructions[call].OpCode != ILOpCode.Call
+                || instructions[literal].OpCode != ILOpCode.Ldstr
+                || ClassifyTypeIdentityCall(method.Module, instructions[call].Token) != TypeIdentityCall.GetTypeFromHandle)
+                continue;
+            var handle = SRME.EntityHandle(token.Token);
+            if (handle.Kind is not (HandleKind.TypeDefinition or HandleKind.TypeReference or HandleKind.TypeSpecification)
+                || ResolveTypeTokenForScan(method.Module, handle, method.Context) is not { Kind: TypeKind.Class, Class: { } cls } type
+                || ContainsGenericVar(type) || ContainsCanonPlaceholder(type))
+                continue;
+            string member = method.Module.Reader.GetUserString(SRME.UserStringHandle(instructions[literal].Token & 0xFFFFFF));
+            if (_typeofNamedMembersSeen.Add((cls, member)))
+                _typeofNamedMembers.Add((cls, member));
+        }
+    }
+
+    private static int NextNonNop(List<Instruction> instructions, int start)
+    {
+        while (start < instructions.Count && instructions[start].OpCode == ILOpCode.Nop)
+            start++;
+        return start < instructions.Count ? start : -1;
+    }
+
+    private bool ClassSlotUsedAtOrAbove(MethodInfo m)
+    {
+        int slot = m.VtableSlot;
+        for (var b = m.DeclaringClass; b is not null && slot < b.SlotOwners.Count; b = b.BaseClass)
+            if (_usedVirtualDecls.Contains(b.SlotOwners[slot]))
+                return true;
+        return false;
     }
 
     /// <summary>Wires the <c>object</c>-element SZArray map once any REFERENCE-element
@@ -4179,13 +4667,34 @@ internal sealed partial class Compilation
 
     private readonly HashSet<MethodInfo> _scanned = new();
 
-    // Set when a reached body calls MethodInfo/MethodBase.Invoke. Triggers the
-    // reflection-invoke reachability route after the initial discovery drain.
+    // Set when a reached body calls or binds MethodInfo/MethodBase.Invoke or
+    // PropertyInfo.GetValue/SetValue, or a user body calls or binds CreateDelegate. Arms
+    // the invoke half of the reflection-invoke route, ReachTypeofNamedLibrarySurface,
+    // ReachReflectedTemplateBodies, ReachReflectedVirtualSlots, ReachDelegateInvokeBoxes,
+    // the array maps' rows ExpandArrayEnumerableMaps reaches, the rows of
+    // EmitGvmRowDispatch, and the binding of each delegate type's Invoke row to the
+    // type's multicast invoker.
     private bool _reflectionInvokeUsed;
+    internal bool ReflectionInvokeUsed => _reflectionInvokeUsed;
 
-    // Set when a reached body calls ConstructorInfo.Invoke or the non-generic
-    // Activator.CreateInstance(Type). Triggers the reflection-ctor route.
+    // Set when any reached body, a framework one included, calls or binds CreateDelegate.
+    // Arms ReachReflectedVirtualSlots during discovery, before the lowering sets
+    // NeedsReflectionDelegateBind.
+    private bool _reflectionDelegateBindScanned;
+
+    // Set when a reached body calls or binds FieldInfo.GetValue. Arms the field half of
+    // the reflection-invoke route.
+    private bool _reflectionFieldReadUsed;
+
+    // Set when a reached body calls or binds ConstructorInfo.Invoke or the non-generic
+    // Activator.CreateInstance(Type). Arms the ctor half of the reflection-invoke route
+    // and its surface beyond the application module.
     private bool _reflectionCtorUsed;
+
+    // Set when a reached body calls or binds Delegate.DynamicInvoke, which runs a
+    // delegate type's Invoke row as MethodInfo.Invoke does. It or `_reflectionInvokeUsed`
+    // arms ReachDelegateInvokeBoxes.
+    private bool _delegateDynamicInvokeUsed;
 
     // One arm of the runtime-instantiation trigger: a reached body calls
     // Type.MakeGenericType through the MemberRef mouth (a user-module call
@@ -4435,12 +4944,119 @@ internal sealed partial class Compilation
                 SeedGenericRoot(root);
 
         DrainReachability();
-        // Reflection-invoke reachability route: if the program calls
-        // MethodInfo.Invoke, make every app-module (non-ctor) method body invokable by
-        // reaching it — its invoker thunk + arg/return box/unbox then emit. Bounded to
-        // the app module so a real CoreLib pulled in with -r is not force-reached (which
-        // would drag untranspilable BCL bodies into the tree). A reflection-only method
-        // of a non-app type stays stripped (IL2CPP-with-managed-stripping semantics).
+        // The reflection routes and the routes that reach bodies no call site names feed
+        // one another: a body any of them reaches can arm a route or widen what one walks.
+        // Alternate them to a fixpoint, so what each reaches is walked, wired, noted and
+        // released like any other body before the notes and the freeze below. Boxed
+        // equality goes last: it reads two facts the others are still producing, which
+        // structs got boxed and whether anything compares two objects, and the walk it
+        // starts can produce more of both (a field's Equals override is a body, and a body
+        // can box), exactly as the used×allocated cross product it stands in for does.
+        int admitted, namedOwners, allocatedOwners;
+        do
+        {
+            admitted = Reachable.Order.Count;
+            namedOwners = _typeofNamedLibraryClasses.Count;
+            allocatedOwners = _invokeRouteAllocatedOwners.Count;
+            ReachReflectionClassRoutes();
+            ReachReflectionAttributeRoute();
+            InstantiateGvmChainRoots();
+            ReachReflectedVirtualSlots();
+            ReachPatchCallableGvms();
+            ReachRuntimeArrayInitializeCtors();
+            if (ReachBoxedValueEquality())
+                DrainReachability();
+            if (ReachNonGenericArrayElementEquality())
+                DrainReachability();
+        }
+        while (Reachable.Order.Count != admitted
+               || _typeofNamedLibraryClasses.Count != namedOwners
+               || _invokeRouteAllocatedOwners.Count != allocatedOwners);
+
+        // The emit side renders an attribute row whatever reached its ctor, and routes other
+        // than the walk above reach ctors (the reflection-ctor route reaches every app-module
+        // one). Note what the rows the walk did not visit name, once ctor reachability has
+        // settled.
+        NoteUnwalkedAttributeRows();
+
+        // --trim-godot-classes: the allowlist may only grow while reachability can
+        // still deliver the released lambdas' subtrees — freeze it here, after the
+        // last drain and before ANY emission (including the emitter's planning
+        // pass), and compute the ldftn redirect table (cut ⟹ route, sealed).
+        TrimFreeze();
+    }
+
+    /// <summary>How far each half of the reflection-invoke route has walked
+    /// <see cref="Classes"/>, the type-argument nesting past which it walks one
+    /// instantiation per generic definition and how many classes existed when it first
+    /// walked (both set then), and the inputs of the ctor surface walk when it last
+    /// ran.</summary>
+    private int _invokeRouteCursor, _ctorRouteCursor, _fieldReadRouteCursor;
+    private int _invokeRouteDepth = -1, _invokeRouteFirstClasses;
+    private int _ctorSurfaceSpecArgsSeen = -1, _ctorSurfaceOpenedSeen = -1;
+
+    /// <summary>The generic definitions that have spent their one walk past the
+    /// reflection-invoke route's other bounds, how many instantiations minted after its
+    /// first walk it has walked within <see cref="_invokeRouteDepth"/> per definition, and
+    /// the classes either bound admitted.</summary>
+    private readonly HashSet<(int Module, int Token)> _routeWalkedDefinitions = new();
+    private readonly Dictionary<(int Module, int Token), int> _routeMintedWalks = new();
+    private readonly HashSet<ClassInfo> _routeDeepWalked = new();
+
+    /// <summary>How many instantiations of one generic definition minted after the
+    /// reflection-invoke route first walked it walks within <see cref="_invokeRouteDepth"/>
+    /// before the one-per-definition bound applies to them too.</summary>
+    private const int RouteMintedWalksPerDefinition = 32;
+
+    /// <summary>The reflection routes that reach whole classes, and the value types a
+    /// delegate type's Invoke row boxes. Driven by discovery's fixpoint and again each
+    /// compile round: a compiled body can mint an application class or allocate a
+    /// delegate, and a body a round reaches can typeof-name a library one.</summary>
+    internal void ReachReflectionClassRoutes()
+    {
+        ReachReflectionInvokeRoute();
+        ReachTypeofNamedLibrarySurface();
+        ReachDelegateInvokeBoxes();
+    }
+
+    /// <summary>The allocated delegate classes, in allocation order, and how many of them
+    /// <see cref="ReachDelegateInvokeBoxes"/> has walked.</summary>
+    private readonly List<ClassInfo> _allocatedDelegates = new();
+    private int _delegateInvokeBoxCursor;
+
+    /// <summary>Delegate.DynamicInvoke and MethodInfo.Invoke over a delegate type's Invoke
+    /// row box, with no box site, the result and each by-ref argument written back
+    /// (<see cref="NoteReflectionInvokeBoxes"/>). Notes them for each allocated delegate
+    /// class once either is in use.</summary>
+    private void ReachDelegateInvokeBoxes()
+    {
+        if (!_delegateDynamicInvokeUsed && !_reflectionInvokeUsed)
+            return;
+        int count = _allocatedDelegates.Count;
+        if (_delegateInvokeBoxCursor == count)
+            return;
+        for (int i = _delegateInvokeBoxCursor; i < count; i++)
+            if (_allocatedDelegates[i].EnsureMembers().Methods.FirstOrDefault(m => m.Name == "Invoke") is { } invoke)
+                NoteReflectionInvokeBoxes(invoke);
+        _delegateInvokeBoxCursor = count;
+        DrainReachability();
+    }
+
+    private void ReachReflectionInvokeRoute()
+    {
+        // Reflection-invoke reachability route, in three halves over the app-module
+        // classes. The invoke half (MethodInfo/MethodBase.Invoke,
+        // PropertyInfo.GetValue/SetValue, a user body's CreateDelegate) reaches every
+        // non-ctor method body, so its invoker thunk and argument/return boxing emit.
+        // The ctor half (ConstructorInfo.Invoke, Activator.CreateInstance(Type)) reaches
+        // every ctor and allocates each non-abstract class, a value type's box included.
+        // The runtime boxes, with no box site, a value the invoke half returns (a by-ref
+        // return dereferenced), a by-ref argument either half writes back, and a field
+        // the field half (FieldInfo.GetValue) reads, so the route allocates each such
+        // value type declared outside the framework (NoteReflectionBoxed). Bounded to the
+        // app module so a real CoreLib pulled in with -r is not force-reached (which would
+        // drag untranspilable BCL bodies into the tree). A reflection-only method of a
+        // non-app type stays stripped (IL2CPP-with-managed-stripping semantics).
         //
         // A library-DECLARED type is opened by the surface walk below instead, and only
         // when the user code's declared surface NAMES it (a generic-method type argument,
@@ -4450,64 +5066,319 @@ internal sealed partial class Compilation
         // for classes nothing constructs, which drags untranspilable BCL subtrees (a JSON
         // DataSet converter reaching System.Data → XmlSerializer) into the transpile for
         // code no program input can ever select.
-        if (_reflectionInvokeUsed || _reflectionCtorUsed)
+        //
+        // Each half walks every app-module class from the first time its flag is seen
+        // set, alternating with the drain until no class is left. Within the deepest
+        // nesting that existed when the route first walked, it walks every class that
+        // existed then and up to RouteMintedWalksPerDefinition of each generic
+        // definition's closed generics that the bodies it reaches mint since; past that
+        // count or that nesting it walks one more instantiation per generic definition
+        // (RouteWalksDepth): the route reaches whole classes, so a generic that
+        // instantiates itself ever deeper (`Node<Node<T>> Wrap()`) would otherwise
+        // expand to the monomorphization bound. A generic method definition is skipped:
+        // only its instantiations run, and the invoke half notes the boxes of each
+        // reached one (NoteReflectionRouteInstanceBoxes).
+        while (WalkReflectionRouteClasses() || NoteReflectionRouteInstanceBoxes()
+               || ReachReflectedCtorSurface())
         {
-            foreach (var cls in Classes.ToList())
-            {
-                if (cls.Module != AppModule || cls.IsInterface)
-                    continue;
-                // Unlike the seeding loops above, this one runs after the discovery drain:
-                // reflection genuinely can invoke a closed generic's methods, so ask for
-                // the members here (EnsureMembers).
-                foreach (var m in cls.EnsureMembers().Methods)
-                {
-                    if (m.Rva == 0 || m.Name == ".cctor")
-                        continue;
-                    // A body the backend replaces wholesale (e.g. the source-generated
-                    // GodotPlugins.Game.Main bootstrap the .NET-module backend emits in
-                    // C++) is never emitted, so it cannot be reflection-invoked either —
-                    // force-reaching it would only drag its dead callees into the tree.
-                    if (_backend?.ShouldSkipMethodBody(cls, m) == true)
-                        continue;
-                    bool isCtor = m.Name == ".ctor";
-                    // Reach non-ctor method bodies for MethodInfo.Invoke; reach ctor
-                    // bodies (and allocate the type so its vtable/type-info emit) for
-                    // ConstructorInfo.Invoke / Activator.CreateInstance(Type).
-                    if (isCtor ? _reflectionCtorUsed : _reflectionInvokeUsed)
-                        Reach(m);
-                }
-                if (_reflectionCtorUsed && !cls.IsValueType && !cls.IsAbstract)
-                    ReachAllocatedType(cls);
-            }
-            // The app module is not the whole ctor surface a late-bound
-            // Type.GetConstructor can name: a JSON deserializer constructs the
-            // closed BCL generic a user field/property is DECLARED at
-            // (Dictionary<string, AppType>), which lives in the framework module —
-            // one a user body passes as a generic-method type argument
-            // (serializer.Deserialize<Dictionary<string, AppType>>(reader)) — or a
-            // type DECLARED in a referenced user library (Thrive's GameWiki).
-            // Alternate with the drain to a fixpoint: the drain scans the
-            // bodies the force-reach loop above just queued, and a scan can
-            // record new user MethodSpec type args — and an opened library
-            // target's member types widen the surface for the next round.
-            if (_reflectionCtorUsed)
-            {
-                int seenSpecArgs = -1, seenOpened = -1;
-                while (seenSpecArgs != _appMethodSpecTypeArgs.Count
-                    || seenOpened != _userReflSurface.Count + _userReflConstructed.Count
-                        + _typeofNamedLibraryClasses.Count)
-                {
-                    seenSpecArgs = _appMethodSpecTypeArgs.Count;
-                    seenOpened = _userReflSurface.Count + _userReflConstructed.Count
-                        + _typeofNamedLibraryClasses.Count;
-                    ReachUserSurfaceNamedSpecializationCtors();
-                    DrainReachability();
-                }
-            }
-            else
-                DrainReachability();
         }
+    }
 
+    /// <summary>How much of <see cref="ReachableSet.Order"/>
+    /// <see cref="NoteReflectionRouteInstanceBoxes"/> has visited.</summary>
+    private int _invokeRouteReachCursor;
+    private int _invokeRouteNamedCursor;
+    private int _invokeRouteAllocatedCursor;
+    private readonly List<ClassInfo> _invokeRouteAllocatedOwners = new();
+    private readonly HashSet<ClassInfo> _invokeRouteCandidateOwners = new();
+    private readonly Dictionary<ClassInfo, List<MethodInfo>> _invokeRoutePendingLibraryRows = new();
+
+    /// <summary>Notes boxes for reached generic app methods and directly reached
+    /// user-library methods on a typeof-named or allocated owner. The class walk
+    /// does not cover either row, but a runtime-named MethodInfo can invoke them.
+    /// Notes, then drains; returns whether allocation or reachability grew.</summary>
+    private bool NoteReflectionRouteInstanceBoxes()
+    {
+        if (!_reflectionInvokeUsed)
+            return false;
+        int allocated = _allocatedRefTypes.Count;
+        int reached = Reachable.Order.Count;
+        while (_invokeRouteNamedCursor < _typeofNamedLibraryClasses.Count)
+        {
+            var named = _typeofNamedLibraryClasses[_invokeRouteNamedCursor++];
+            for (var cls = named; cls is not null; cls = cls.BaseClass)
+                if (_invokeRouteCandidateOwners.Add(cls)
+                    && _invokeRoutePendingLibraryRows.TryGetValue(cls, out var pending))
+                {
+                    foreach (var m in pending)
+                        NoteReflectedRowBoxes(m);
+                    _invokeRoutePendingLibraryRows.Remove(cls);
+                }
+        }
+        while (_invokeRouteAllocatedCursor < _invokeRouteAllocatedOwners.Count)
+        {
+            var allocatedOwner = _invokeRouteAllocatedOwners[_invokeRouteAllocatedCursor++];
+            for (var cls = allocatedOwner; cls is not null; cls = cls.BaseClass)
+                if (_invokeRouteCandidateOwners.Add(cls)
+                    && _invokeRoutePendingLibraryRows.TryGetValue(cls, out var pending))
+                {
+                    foreach (var m in pending)
+                        NoteReflectedRowBoxes(m);
+                    _invokeRoutePendingLibraryRows.Remove(cls);
+                }
+        }
+        var order = Reachable.Order;
+        while (_invokeRouteReachCursor < order.Count)
+        {
+            var m = order[_invokeRouteReachCursor++];
+            if (m.Context.MethodArgs.Length > 0 && m.DeclaringClass.Module == AppModule)
+                NoteReflectionInvokeBoxes(m);
+            else if (m.DeclaringClass.Module != AppModule
+                     && m.Name is not ".ctor" and not ".cctor"
+                     && IsUserModule(m.DeclaringClass.Module))
+            {
+                var owner = m.DeclaringClass;
+                if (_invokeRouteCandidateOwners.Contains(owner))
+                    NoteReflectedRowBoxes(m);
+                else
+                {
+                    if (!_invokeRoutePendingLibraryRows.TryGetValue(owner, out var pending))
+                        _invokeRoutePendingLibraryRows.Add(owner, pending = new());
+                    pending.Add(m);
+                }
+            }
+        }
+        if (_allocatedRefTypes.Count == allocated && Reachable.Order.Count == reached)
+            return false;
+        DrainReachability();
+        return true;
+    }
+
+    /// <summary>Walks, then drains, the classes each armed half of the reflection-invoke
+    /// route has not walked; returns whether there were any.</summary>
+    private bool WalkReflectionRouteClasses()
+    {
+        int count = Classes.Count;
+        int invokeFrom = _reflectionInvokeUsed ? _invokeRouteCursor : count;
+        int ctorFrom = _reflectionCtorUsed ? _ctorRouteCursor : count;
+        int fieldFrom = _reflectionFieldReadUsed ? _fieldReadRouteCursor : count;
+        int from = Math.Min(invokeFrom, Math.Min(ctorFrom, fieldFrom));
+        if (from == count)
+            return false;
+        if (_invokeRouteDepth < 0)
+        {
+            _invokeRouteDepth = MaxGenericArgDepth;
+            _invokeRouteFirstClasses = count;
+        }
+        for (int i = from; i < count; i++)
+            WalkReflectionRouteClass(Classes[i], invoke: i >= invokeFrom, ctor: i >= ctorFrom,
+                fields: i >= fieldFrom, minted: i >= _invokeRouteFirstClasses);
+        if (invokeFrom < count)
+            _invokeRouteCursor = count;
+        if (ctorFrom < count)
+            _ctorRouteCursor = count;
+        if (fieldFrom < count)
+            _fieldReadRouteCursor = count;
+        DrainReachability();
+        return true;
+    }
+
+    /// <summary>What reflection can reach on one class of the reflection-invoke route:
+    /// <paramref name="invoke"/> its non-ctor bodies, <paramref name="ctor"/> its ctors
+    /// and its allocation, <paramref name="fields"/> the boxes its fields' values
+    /// become. <paramref name="minted"/>: the class did not exist when the route first
+    /// walked.</summary>
+    private void WalkReflectionRouteClass(ClassInfo cls, bool invoke, bool ctor, bool fields, bool minted)
+    {
+        if (cls.Module != AppModule || ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls)
+            || !RouteWalksDepth(cls, minted))
+            return;
+        // Unlike the seeding loops, this one runs after the discovery drain: reflection
+        // genuinely can invoke a closed generic's methods, so ask for the members here
+        // (EnsureMembers).
+        List<MethodInfo>? invoked = null;
+        List<TypeDesc>? boxed = null;
+        foreach (var m in cls.EnsureMembers().Methods)
+        {
+            if (m.Rva == 0 || m.Name == ".cctor")
+                continue;
+            // A generic method definition runs only as an instantiation a call site
+            // names; decoding its own signature would mint open shells.
+            if (m.Context.MethodArgs.Length == 0
+                && m.Module.Reader.GetMethodDefinition(m.Handle).GetGenericParameters().Count > 0)
+                continue;
+            // An interface's virtual body runs through the receiver's slot, which
+            // ReachReflectedVirtualSlots fills; its static and non-virtual bodies
+            // run as themselves.
+            if (cls.IsInterface && m.IsVirtual && !m.IsStatic)
+                continue;
+            // A body the backend replaces wholesale (e.g. the source-generated
+            // GodotPlugins.Game.Main bootstrap the .NET-module backend emits in
+            // C++) is never emitted, so it cannot be reflection-invoked either —
+            // force-reaching it would only drag its dead callees into the tree.
+            if (_backend?.ShouldSkipMethodBody(cls, m) == true)
+                continue;
+            // Reach non-ctor method bodies for MethodInfo.Invoke, whose invoker thunk
+            // boxes the returned value; reach ctor bodies for ConstructorInfo.Invoke /
+            // Activator.CreateInstance(Type). Both box each by-ref argument they write
+            // back.
+            if (m.Name == ".ctor" ? !ctor : !invoke)
+                continue;
+            Reach(m);
+            (invoked ??= new()).Add(m);
+        }
+        // A constructed instance is allocated, a value type's box included, so its
+        // vtable, interface map and type-info emit.
+        if (ctor && !cls.IsAbstract)
+            ReachAllocatedType(cls);
+        // FieldInfo.GetValue boxes a value-type field's value.
+        if (fields)
+            foreach (var f in cls.Fields)
+                if (!f.IsLiteral)
+                    (boxed ??= new()).Add(f.Type);
+        if (invoked is not null)
+            foreach (var m in invoked)
+                NoteReflectionInvokeBoxes(m);
+        if (boxed is not null)
+            foreach (var t in boxed)
+                NoteReflectionBoxed(t);
+    }
+
+    /// <summary>Whether the reflection-invoke route walks <paramref name="cls"/> at its
+    /// nesting. Within <see cref="_invokeRouteDepth"/> it walks every class that existed
+    /// when it first walked, and up to <see cref="RouteMintedWalksPerDefinition"/>
+    /// instantiations of each generic definition minted since
+    /// (<paramref name="minted"/>). It walks any other class only while its definition
+    /// has not spent its one further walk, so each definition adds a bounded number of
+    /// walked classes however deeply its methods nest it, and the walk ends short of the
+    /// instantiation bound. A walk under the per-definition count leaves that further
+    /// walk to a deeper class. The bound diverges from .NET, which instantiates on
+    /// demand: the route reaches no body of an instantiation it does not walk, whether
+    /// nested deeper or closed differently at the same depth, so Invoke of a method no
+    /// call site reached there throws InvalidOperationException.</summary>
+    private bool RouteWalksDepth(ClassInfo cls, bool minted)
+    {
+        if (_routeDeepWalked.Contains(cls))
+            return true;
+        if (cls.GenericDepth <= _invokeRouteDepth)
+        {
+            if (!minted)
+                return true;
+            var definition = (cls.Module.Index, SRME.GetToken(cls.Handle));
+            _routeMintedWalks.TryGetValue(definition, out int walks);
+            if (walks < RouteMintedWalksPerDefinition)
+            {
+                _routeMintedWalks[definition] = walks + 1;
+                _routeDeepWalked.Add(cls);
+                return true;
+            }
+        }
+        if (!_routeWalkedDefinitions.Add((cls.Module.Index, SRME.GetToken(cls.Handle))))
+            return false;
+        _routeDeepWalked.Add(cls);
+        return true;
+    }
+
+    /// <summary>Marks allocated the value type of a value the runtime boxes for
+    /// reflection — a returned value, a by-ref argument written back or a field's —
+    /// with no box site to do it, so the box can dispatch through the type's interface
+    /// map and slots. A by-ref type boxes as its referent, a Nullable&lt;T&gt; as a T.
+    /// Bounded to value types declared outside the framework, as a framework struct's
+    /// overrides need not transpile.</summary>
+    private void NoteReflectionBoxed(TypeDesc t)
+    {
+        if (t.Kind == TypeKind.ByRef)
+            t = t.Element!;
+        if ((NullableUnderlying(t) ?? t) is { Kind: TypeKind.Class, Class: { } c })
+            NoteReflectionBoxed(c);
+    }
+
+    /// <summary><see cref="NoteReflectionBoxed(TypeDesc)"/> for each value invoking
+    /// <paramref name="m"/> through reflection boxes: its return value and each by-ref
+    /// argument it writes back.</summary>
+    private void NoteReflectionInvokeBoxes(MethodInfo m)
+    {
+        var sig = m.Signature;
+        NoteReflectionBoxed(sig.ReturnType);
+        foreach (var p in sig.ParameterTypes)
+            if (p.Kind == TypeKind.ByRef)
+                NoteReflectionBoxed(p);
+        var ret = sig.ReturnType.Kind == TypeKind.ByRef ? sig.ReturnType.Element! : sig.ReturnType;
+        if (ret is { Kind: TypeKind.Pointer, IsFunctionPointer: false })
+            ReachPointerBox();
+    }
+
+    /// <summary>The System.Reflection.Pointer class Invoke boxes an unmanaged pointer
+    /// result as, once a reflectively invoked method returns one; the runtime
+    /// allocates it with no IL allocation site. Null otherwise, and in a load set
+    /// without the class, where Invoke refuses such a result.</summary>
+    internal ClassInfo? PointerBoxClass { get; private set; }
+
+    private void ReachPointerBox()
+    {
+        if (PointerBoxClass is not null
+            || !TypeIndex().TryGetValue(("System.Reflection", "Pointer"), out var cands))
+            return;
+        var (mod, tdh) = cands[0];
+        if (!mod.ClassMap.TryGetValue(tdh, out var cls))
+            return;
+        NoteReferencedType(cls);
+        ReachAllocatedType(cls);
+        PointerBoxClass = cls;
+    }
+
+    /// <summary><see cref="NoteReflectionBoxed(TypeDesc)"/> for a value type reflection
+    /// constructs: Activator.CreateInstance boxes one whether or not it declares a
+    /// constructor. A box always carries its exact type, never a shared-generic
+    /// placeholder or an open shell, and never a by-ref-like type, which reflection
+    /// refuses to box: a constructor's Invoke throws TargetException, every other route
+    /// NotSupportedException.</summary>
+    private void NoteReflectionBoxed(ClassInfo c)
+    {
+        if (IsUserModule(c.Module) && !ContainsCanonPlaceholder(c) && !ContainsGenericVar(c)
+            && EnsureShape(c) is { IsValueType: true, IsByRefLike: false })
+        {
+            ReachAllocatedType(c);
+            // The reflection box has the same ToString slot as an IL box.
+            if (EffectiveToString(c) is { } toString)
+                Reach(toString);
+        }
+    }
+
+    /// <summary>The reflection-ctor route's surface beyond the application module: walks,
+    /// then drains, the types the user code's declared surface names, when that surface
+    /// has grown since the last walk; returns whether it walked.</summary>
+    private bool ReachReflectedCtorSurface()
+    {
+        // The app module is not the whole ctor surface a late-bound
+        // Type.GetConstructor can name: a JSON deserializer constructs the
+        // closed BCL generic a user field/property is DECLARED at
+        // (Dictionary<string, AppType>), which lives in the framework module —
+        // one a user body passes as a generic-method type argument
+        // (serializer.Deserialize<Dictionary<string, AppType>>(reader)) — or a
+        // type DECLARED in a referenced user library (Thrive's GameWiki).
+        // Alternate with the drain to a fixpoint: the drain scans the
+        // bodies the force-reach loop above just queued, and a scan can
+        // record new user MethodSpec type args — and an opened library
+        // target's member types widen the surface for the next round.
+        if (!_reflectionCtorUsed)
+            return false;
+        int opened = _userReflSurface.Count + _userReflConstructed.Count + _typeofNamedLibraryClasses.Count;
+        if (_ctorSurfaceSpecArgsSeen == _appMethodSpecTypeArgs.Count && _ctorSurfaceOpenedSeen == opened)
+            return false;
+        _ctorSurfaceSpecArgsSeen = _appMethodSpecTypeArgs.Count;
+        _ctorSurfaceOpenedSeen = opened;
+        ReachUserSurfaceNamedSpecializationCtors();
+        DrainReachability();
+        return true;
+    }
+
+    /// <summary>How much of <see cref="_typeofNamedLibraryClasses"/> the library extension of
+    /// the reflection-invoke route has walked.</summary>
+    private int _typeofNamedLibraryCursor;
+
+    private void ReachTypeofNamedLibrarySurface()
+    {
         // Reflection-invoke route, LIBRARY extension: a user-library class a
         // reachable body typeof-names is a reflection target the app-module loop
         // cannot see (Google.Protobuf hands typeof(Value) to GeneratedClrTypeInfo,
@@ -4524,56 +5395,72 @@ internal sealed partial class Compilation
         // libraries). The residue stays loud: GetMethod over a parameterized
         // library method answers null and the caller's own diagnostic names it.
         // Alternate with the drain: a newly reached body can typeof-name more.
-        if (_reflectionInvokeUsed)
+        if (!_reflectionInvokeUsed)
+            return;
+        while (_typeofNamedLibraryCursor < _typeofNamedLibraryClasses.Count)
         {
-            int doneNamed = 0;
-            while (doneNamed < _typeofNamedLibraryClasses.Count)
+            int end = _typeofNamedLibraryClasses.Count;
+            for (int i = _typeofNamedLibraryCursor; i < end; i++)
             {
-                int end = _typeofNamedLibraryClasses.Count;
-                for (int i = doneNamed; i < end; i++)
+                var cls = _typeofNamedLibraryClasses[i];
+                if (cls.IsInterface || cls.IsEnum
+                    || cls.IntrinsicCppName is not null
+                    || CoreIntrinsics.IsIntrinsicType(cls.FullName)
+                    || ContainsCanonPlaceholder(cls)
+                    || _backend?.WantsTypeofReflectionSurface(cls) == false)
+                    continue;
+                List<MethodInfo>? invoked = null;
+                foreach (var m in cls.EnsureMembers().Methods)
                 {
-                    var cls = _typeofNamedLibraryClasses[i];
-                    if (cls.IsInterface || cls.IsEnum
-                        || cls.IntrinsicCppName is not null
-                        || CoreIntrinsics.IsIntrinsicType(cls.FullName)
-                        || ContainsCanonPlaceholder(cls)
-                        || _backend?.WantsTypeofReflectionSurface(cls) == false)
+                    if (m.Rva == 0 || m.IsStatic || m.Name is ".ctor" or ".cctor"
+                        || _backend?.ShouldSkipMethodBody(cls, m) == true)
                         continue;
-                    foreach (var m in cls.EnsureMembers().Methods)
+                    if ((m.Attributes & MethodAttributes.SpecialName) != 0
+                        && (m.Name.StartsWith("get_", StringComparison.Ordinal)
+                            || m.Name.StartsWith("set_", StringComparison.Ordinal)))
                     {
-                        if (m.Rva == 0 || m.IsStatic || m.Name is ".ctor" or ".cctor"
-                            || _backend?.ShouldSkipMethodBody(cls, m) == true)
-                            continue;
-                        if ((m.Attributes & MethodAttributes.SpecialName) != 0
-                            && (m.Name.StartsWith("get_", StringComparison.Ordinal)
-                                || m.Name.StartsWith("set_", StringComparison.Ordinal)))
+                        Reach(m);
+                        (invoked ??= new()).Add(m);
+                        continue;
+                    }
+                    if ((m.Attributes & MethodAttributes.MemberAccessMask)
+                        != MethodAttributes.Public)
+                        continue;
+                    try
+                    {
+                        if (m.Signature.GenericParameterCount == 0
+                            && m.Signature.ParameterTypes.Length == 0)
                         {
                             Reach(m);
-                            continue;
-                        }
-                        if ((m.Attributes & MethodAttributes.MemberAccessMask)
-                            != MethodAttributes.Public)
-                            continue;
-                        try
-                        {
-                            if (m.Signature.GenericParameterCount == 0
-                                && m.Signature.ParameterTypes.Length == 0)
-                                Reach(m);
-                        }
-                        catch (Exception e) when (!IsMustEscape(e))
-                        {
-                            // A method whose signature does not decode is not
-                            // reflectively invokable either.
+                            (invoked ??= new()).Add(m);
                         }
                     }
-                    if (!cls.IsAbstract)
-                        ReachUserInterfaceImpls(cls);
+                    catch (Exception e) when (!IsMustEscape(e))
+                    {
+                        // A method whose signature does not decode is not
+                        // reflectively invokable either.
+                    }
                 }
-                doneNamed = end;
-                DrainReachability();
+                // After the walk: allocating a box can instantiate methods on the types
+                // it walks.
+                if (invoked is not null)
+                    foreach (var m in invoked)
+                        NoteReflectionInvokeBoxes(m);
+                if (!cls.IsAbstract)
+                    ReachUserInterfaceImpls(cls);
             }
+            _typeofNamedLibraryCursor = end;
+            DrainReachability();
         }
+    }
 
+    /// <summary>How many user-typeof-named framework types the reflection-attribute route
+    /// last walked every class for, and how much of <see cref="Classes"/> it has
+    /// walked.</summary>
+    private int _attributeRouteTypeofSeen = -1, _attributeRouteCursor;
+
+    private void ReachReflectionAttributeRoute()
+    {
         // Reflection-attribute reachability route: if the program reads attributes
         // (GetCustomAttributes/IsDefined/CustomAttributeData), reach every reflectable
         // attribute's ctor + named property setters and allocate the attribute types so
@@ -4590,71 +5477,46 @@ internal sealed partial class Compilation
         // ctor was not reached, so an un-walked framework element's row degrades rather
         // than naming an unemitted symbol) — and scanning them would pay blob-decode +
         // MethodMap lookups on every reached CoreLib class for a handful of rows.
-        if (_reflectionAttrUsed)
+        if (!_reflectionAttrUsed)
+            return;
+        // The base filters a runtime GetCustomAttributes(Type) commonly names beside
+        // a concrete attribute type: give System.Attribute (and object, noted by the
+        // attr-array retag sites anyway) a ti_arr_ handle so the runtime's precise
+        // attrType[] stamp (dn2cpp_find_array_ti) can answer for them too.
+        if (_attributeRouteTypeofSeen < 0
+            && TypeIndex().TryGetValue(("System", "Attribute"), out var attrCands)
+            && attrCands[0].Item1.ClassMap.TryGetValue(attrCands[0].Item2, out var attrBase))
+            NoteArrayElementType(TypeDesc.MakeClass(attrBase));
+        // Alternate the walk with the drain to a fixpoint on the typeof-named
+        // framework-type set and on Classes. Reaching an attribute ctor/setter queues
+        // bodies, the drain scans them, and a scanned USER body can typeof-name a framework
+        // attribute type (_userTypeofNamedFrameworkTypes) that widens what
+        // DecodeCustomAttributes keeps — so the walk must run again to pick up the
+        // rows the earlier round dropped. The walk itself is idempotent (Reach and
+        // the note sites dedupe), so a repeat round costs blob re-decodes only. A
+        // row's Type argument mints the class it names, and walking that class may
+        // reach nothing that would make discovery call this route again, so rounds
+        // continue until no class was minted since the last one.
+        do
         {
-            // The base filters a runtime GetCustomAttributes(Type) commonly names beside
-            // a concrete attribute type: give System.Attribute (and object, noted by the
-            // attr-array retag sites anyway) a ti_arr_ handle so the runtime's precise
-            // attrType[] stamp (dn2cpp_find_array_ti) can answer for them too.
-            if (TypeIndex().TryGetValue(("System", "Attribute"), out var attrCands)
-                && attrCands[0].Item1.ClassMap.TryGetValue(attrCands[0].Item2, out var attrBase))
-                NoteArrayElementType(TypeDesc.MakeClass(attrBase));
-            // Attribute arguments can materialize closed types with further rows.
-            // Alternate snapshots and the drain until both the class set and the
-            // typeof-named framework-type set stabilize: an attribute ctor queues bodies, the
-            // drain scans them, and a scanned USER body can typeof-name a framework
-            // attribute type (_userTypeofNamedFrameworkTypes) that widens what
-            // DecodeCustomAttributes keeps — so the walk must run again to pick up the
-            // rows the earlier round dropped. The walk itself is idempotent (Reach and
-            // the note sites dedupe), so a repeat round costs blob re-decodes only.
-            int seenTypeofNamed = -1;
-            int seenAttributeClasses = -1;
-            while (seenTypeofNamed != _userTypeofNamedFrameworkTypes.Count
-                || seenAttributeClasses != Classes.Count)
+            bool rewalk = _attributeRouteTypeofSeen != _userTypeofNamedFrameworkTypes.Count;
+            _attributeRouteTypeofSeen = _userTypeofNamedFrameworkTypes.Count;
+            int count = Classes.Count;
+            for (int i = rewalk ? 0 : _attributeRouteCursor; i < count; i++)
             {
-                seenTypeofNamed = _userTypeofNamedFrameworkTypes.Count;
-                seenAttributeClasses = Classes.Count;
-                foreach (var cls in Classes.ToList())
-                {
-                    if (!IsUserModule(cls.Module))
-                        continue;
-                    _attributeWalked.Add(cls);
-                    ReachClassAttributes(cls, reach: true);
-                }
-                ReachAssemblyAttributes(reach: true);
-                DrainReachability();
+                var cls = Classes[i];
+                if (!IsUserModule(cls.Module))
+                    continue;
+                _attributeWalked.Add(cls);
+                ReachClassAttributes(cls, reach: true);
             }
-        }
-
-        // Last, because it reads two facts the phases above are still producing — which
-        // structs got boxed, and whether anything compares two objects — and because the
-        // walk it starts can produce more of both (a field's Equals override is a body, and
-        // a body can box). Alternate with the drain to a fixpoint, exactly as the
-        // used×allocated cross product it stands in for does.
-        int admitted;
-        do
-        {
-            admitted = Reachable.Order.Count;
-            ReachRuntimeArrayInitializeCtors();
-            if (ReachBoxedValueEquality() || ReachNonGenericArrayElementEquality())
-                DrainReachability();
-        }
-        while (Reachable.Order.Count != admitted);
-
-        int attributeClassCount;
-        do
-        {
-            attributeClassCount = Classes.Count;
-            NoteUnwalkedAttributeRows();
+            _attributeRouteCursor = count;
+            if (rewalk)
+                ReachAssemblyAttributes(reach: true);
             DrainReachability();
         }
-        while (attributeClassCount != Classes.Count);
-
-        // --trim-godot-classes: the allowlist may only grow while reachability can
-        // still deliver the released lambdas' subtrees — freeze it here, after the
-        // last drain and before ANY emission (including the emitter's planning
-        // pass), and compute the ldftn redirect table (cut ⟹ route, sealed).
-        TrimFreeze();
+        while (_attributeRouteTypeofSeen != _userTypeofNamedFrameworkTypes.Count
+               || _attributeRouteCursor != Classes.Count);
     }
 
     /// <summary>Reflection-ctor route, extension beyond the app-module loop: open a
@@ -4769,9 +5631,11 @@ internal sealed partial class Compilation
     /// contract is what lets the helper synthesize the arguments a bare parameterized
     /// method denies it. Framework interfaces stay out for the reason the typeof-named
     /// loop's niladic bound exists — IEnumerable/IComparable impls over every opened
-    /// class would force-reach subtrees nothing invokes.</summary>
+    /// class would force-reach subtrees nothing invokes. The values invoking an impl
+    /// boxes are noted as the other routes note them (NoteReflectionInvokeBoxes).</summary>
     private void ReachUserInterfaceImpls(ClassInfo cls)
     {
+        List<MethodInfo>? invoked = null;
         for (var c = cls; c is not null; c = c.BaseClass)
             foreach (var itf in c.Interfaces)
             {
@@ -4784,7 +5648,10 @@ internal sealed partial class Compilation
                         if (im.Signature.GenericParameterCount == 0
                             && ResolveItfImplOrNull(cls, im) is { Rva: not 0 } impl
                             && _backend?.ShouldSkipMethodBody(impl.DeclaringClass, impl) != true)
+                        {
                             Reach(impl);
+                            (invoked ??= new()).Add(impl);
+                        }
                     }
                     catch (Exception e) when (!IsMustEscape(e))
                     {
@@ -4792,6 +5659,10 @@ internal sealed partial class Compilation
                     }
                 }
             }
+        // After the walk: allocating a box can instantiate methods on the types it walks.
+        if (invoked is not null)
+            foreach (var impl in invoked)
+                NoteReflectionInvokeBoxes(impl);
     }
 
     // A reflection-constructed instance is also a lifecycle-dispatch target: a
@@ -5076,14 +5947,18 @@ internal sealed partial class Compilation
         foreach (var cls in userTargets)
         {
             _userReflConstructed.Add(cls);
+            List<MethodInfo>? invoked = null;
             if (!cls.IsAbstract)
             {
                 foreach (var m in cls.EnsureMembers().Methods)
                     if (m.Name == ".ctor" && !m.IsStatic && m.Rva != 0
                         && _backend?.ShouldSkipMethodBody(cls, m) is not true)
+                    {
                         Reach(m);
-                if (!cls.IsValueType)
-                    ReachAllocatedType(cls);
+                        (invoked ??= new()).Add(m);
+                    }
+                // A constructed instance is allocated, a value type's box included.
+                ReachAllocatedType(cls);
                 // The reflection helper that constructed the instance dispatches its
                 // user-interface surface next (a DI container's GetInterfaces →
                 // GetMethod → Invoke injection pass), so those impls are part of the
@@ -5102,8 +5977,14 @@ internal sealed partial class Compilation
                         && (m.Name.StartsWith("get_", StringComparison.Ordinal)
                             || m.Name.StartsWith("set_", StringComparison.Ordinal))
                         && _backend?.ShouldSkipMethodBody(b, m) is not true)
+                    {
                         Reach(m);
+                        (invoked ??= new()).Add(m);
+                    }
             }
+            if (invoked is not null)
+                foreach (var m in invoked)
+                    NoteReflectionInvokeBoxes(m);
         }
 
         // Canonical-wrapper seeds. An abstract collection interface on the surface
@@ -5387,7 +6268,7 @@ internal sealed partial class Compilation
     ///
     /// <para>This arm is the necessary pair of the precise reflected array member
     /// types (<c>CppEmitter.FieldTypeInfoExpr</c>'s SZArray arm +
-    /// <c>TypeMetadataEmitter.NoteReflectedMemberArrayElements</c>): a precise
+    /// <c>TypeMetadataEmitter.NoteReflectedMemberTypes</c>): a precise
     /// <c>T[]</c> member type is what routes the contract resolver onto the ARRAY
     /// contract — and therefore onto this temporary — where the old
     /// <c>System.Object</c> degrade fell into the untyped/Linq contract and never
@@ -5471,16 +6352,30 @@ internal sealed partial class Compilation
     /// <see cref="NoteUnwalkedAttributeRows"/> covers every other one.</summary>
     private readonly HashSet<ClassInfo> _attributeWalked = new();
 
+    /// <summary>How far <see cref="NoteUnwalkedAttributeRows"/> has visited
+    /// <see cref="Classes"/>.</summary>
+    private int _unwalkedAttributeCursor;
+
     /// <summary>Notes what the attribute rows of every user-module class the walk did not
     /// visit name — all of them when nothing reads attributes, else the classes minted after
     /// it — and of every assembly, for the attributes whose ctor is reached: those rows
-    /// render, and each handle a row names must be declared.</summary>
+    /// render, and each handle a row names must be declared. A noted Type argument mints
+    /// the class it names, and the drain completes its shape, so the notes alternate with
+    /// the drain until no class is minted; each class is visited once.</summary>
     private void NoteUnwalkedAttributeRows()
     {
-        foreach (var cls in Classes.ToList())
-            if (IsUserModule(cls.Module) && _attributeWalked.Add(cls))
-                ReachClassAttributes(cls, reach: false);
         ReachAssemblyAttributes(reach: false);
+        do
+        {
+            for (; _unwalkedAttributeCursor < Classes.Count; _unwalkedAttributeCursor++)
+            {
+                var cls = Classes[_unwalkedAttributeCursor];
+                if (IsUserModule(cls.Module) && _attributeWalked.Add(cls))
+                    ReachClassAttributes(cls, reach: false);
+            }
+            DrainReachability();
+        }
+        while (_unwalkedAttributeCursor != Classes.Count);
     }
 
     /// <summary><see cref="ReachAttributesOf"/> over a class's own attributes and those of

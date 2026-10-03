@@ -19,8 +19,12 @@ struct Dn2CppMetadataBlock
 {
     const void* pointers;
     const char* const* displayTokens;
+    // The block's emitted method and constructor tables: the packed records
+    // known to live as long as the image.
     const uint8_t* methodRecords = nullptr;
     std::size_t methodRecordsSize = 0;
+    const uint8_t* ctorRecords = nullptr;
+    std::size_t ctorRecordsSize = 0;
 };
 extern const Dn2CppMetadataBlock dn2cpp_metadata_blocks[];
 extern const std::size_t dn2cpp_metadata_block_count;
@@ -43,7 +47,8 @@ DN2CPP_METADATA_KIND(Dn2CppEnumMember, EnumMember);
 #undef DN2CPP_METADATA_KIND
 
 // Static records are even-aligned; the stored pointer is one byte past their
-// start. Native rows and dynamic constructor deltas keep untagged real addresses.
+// start. Native rows and dynamic method and constructor deltas keep untagged real
+// addresses.
 // Records carry ULEB block id, padded byte length and presence bits, followed by
 // schema-ordered ULEBs: signed values use zigzag, pointers use one-based pool ids.
 // Block id UINT64_MAX inserts a backward offset before the presence mask, naming

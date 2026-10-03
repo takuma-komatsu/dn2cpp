@@ -499,6 +499,16 @@ constexpr Dn2CppTypeInfo dn2cpp_ti_with_formatspec(
 // the non-generic comparer dispatch asks "is this the default comparer?" once per
 // element; nothing but that mint stamps it.
 #define DN2CPP_TF_DEFAULT_EQ_COMPARER 0x4000000
+// A type-info the hot-update loader built for a patch type. A patch type overrides
+// no generic virtual method, so a generic virtual dispatcher, which selects on
+// exact AOT type-infos, runs such a receiver as its nearest AOT ancestor.
+#define DN2CPP_TF_PATCH 0x8000000
+// Every method this level declares under the name of a gated System.Object member
+// (the gated rows of g_meta_members in dn2cpp_system_reflection.cpp, whose names
+// CoreIntrinsics.IsObjectMemberRowName lists) has a method row, so an Object or
+// ValueType row reached through this level is never one an unseen override
+// replaces. Runtime-owned, stripped and patch levels never carry it.
+#define DN2CPP_TF_OBJECT_MEMBER_ROWS 0x10000000
 
 // The clone-owned rgctx anchor lookup behind DN2CPP_TF_RUNTIME_SYNTH
 // (dn2cpp_system_reflection.cpp); falls back to the base-chain walk for levels
@@ -525,6 +535,10 @@ static inline const void* const* dn2cpp_rgctx(const Dn2CppTypeInfo* t, const Dn2
             return t->rgctx;
     return nullptr;
 }
+
+// Consume the declaring type a null-bound reflection delegate supplied for its
+// first shared-body rgctx prologue. A missing or unmatched context faults.
+const void* const* dn2cpp_null_receiver_rgctx(const Dn2CppTypeInfo* genericDef);
 
 // Every managed object starts with a type pointer (dispatch goes
 // header -> type -> vtable; no C++ virtual functions in managed layouts).
@@ -867,15 +881,54 @@ struct Dn2CppParamInfo
     const char* display;
     // Open generic-method definition display over the same closed AOT row.
     const char* genericDefinitionDisplay;
+    // The parameter type as a generic method's definition spells it, when that names
+    // a method type parameter: an injective key naming each one by position, so two
+    // definitions' types are equal exactly when their keys are. Null when it names
+    // none, where paramType is the definition's type.
+    const char* genericDefinitionKey;
+    // How Invoke passes an argument the invoker thunk cannot take as a box of
+    // paramType (DN2CPP_PASS_* bits), and the type they name: a by-ref parameter's
+    // referent, a pointer's pointee, a function pointer's own type, or the
+    // by-ref-like type. Zero otherwise.
+    int32_t passKind;
+    const Dn2CppTypeInfo* passType;
 };
+
+// Dn2CppParamInfo::passKind bits. The invoker thunk takes a by-ref or pointer
+// argument as the raw pointer in its argument list and returns a by-ref result as
+// the raw reference, so Invoke builds the one and dereferences the other.
+#define DN2CPP_PASS_BYREF       0x1
+#define DN2CPP_PASS_POINTER     0x2
+#define DN2CPP_PASS_FNPTR       0x4
+#define DN2CPP_PASS_BYREFLIKE   0x8
+// A by-ref referent Invoke cannot copy: a value type without a type-info in the
+// image, or a headerless handle.
+#define DN2CPP_PASS_UNSUPPORTED 0x10
+// An unmanaged pointer's levels past the first (int** carries 1), in the byte at
+// this shift; passType then names the innermost pointee, System.Void for void*.
+// Levels past those a return row's depth bits count join a stand-in pointee, as
+// they do on a return row, so both name one pointer type alike.
+#define DN2CPP_PASS_POINTER_DEPTH_SHIFT 8
+
+// A pointee type-info the image emits by name alone, where it has no type-info of
+// its own: a function pointer type, spelled as .NET formats it, or a pointer's
+// levels past those a return row's depth bits count. The emitter interns one per
+// type, so a pointer to it has one identity.
+constexpr Dn2CppTypeInfo dn2cpp_pointee_type_info(const char* name)
+{
+    Dn2CppTypeInfo ti{};
+    ti.name = name;
+    ti.flags = DN2CPP_TF_SEALED;
+    return ti;
+}
 
 // Reflection method metadata. One entry per declared method in a type's
 // Dn2CppTypeInfo::methods table. attrs uses the same STATIC/PUBLIC/PRIVATE bit
 // layout as Dn2CppFieldInfo (DN2CPP_MTHA_* alias DN2CPP_FLDA_*). vtableSlot is the
 // method's virtual slot (>= 0) or -1 for non-virtual, used by GetMethods to collapse
 // an override onto its base virtual (a `new`/overload keeps both). fnPtr is the
-// emitted method's function pointer (for Invoke), or null when the method body
-// was not reached/emitted.
+// emitted method's function pointer (for Invoke), on a delegate's Invoke row the
+// type's multicast invoker, or null when the method body was not reached/emitted.
 struct Dn2CppMethodInfo
 {
     const char* name;
@@ -887,8 +940,11 @@ struct Dn2CppMethodInfo
     int32_t vtableSlot;                  // virtual slot, or -1
     void* fnPtr;
     // Signature-deduplicated invoker thunk: unboxes/casts the boxed args,
-    // calls fnPtr with the right C++ signature, and boxes the result. null when the
-    // method body was not reached/emitted (Invoke then throws). Shape:
+    // calls fnPtr with the right C++ signature, and boxes the result, except that a
+    // by-ref or pointer argument arrives raw and a by-ref result returns raw
+    // (DN2CPP_PASS_*), and a DN2CPP_MTHA_CONTEXTARG row's context arrives in `self`.
+    // null when the method body was not reached/emitted (Invoke then throws), except
+    // on a bodiless virtual row: Invoke hands its thunk the receiver's slot. Shape:
     //   Dn2CppObject* (*)(void* fn, Dn2CppObject* self, Dn2CppObject** args,
     //                     const Dn2CppTypeInfo* retType)
     void* invoker;
@@ -934,6 +990,17 @@ struct Dn2CppMethodInfo
     // ParameterInfo.ToString display for the synthesized ReturnParameter.
     const char* returnDisplay;
     const char* genericDefinitionReturnDisplay;
+    // The return type's Dn2CppParamInfo::genericDefinitionKey.
+    const char* genericDefinitionReturnKey;
+    // A closed class generic virtual override's slot, which closed signatures cannot
+    // tell apart (M<U>(T) beside M<U>(object) at T = object): the new-slot definition
+    // that introduces its override chain, as the base steps from declaringType to the
+    // type declaring it and its metadata token. Zero on a new slot, whose slot is its
+    // own, and on every other row.
+    int32_t gvmRootDepth;
+    int32_t gvmRootToken;
+    // The referent of a by-ref return (DN2CPP_MTHA_RETURN_BYREF), else null.
+    const Dn2CppTypeInfo* returnPassType;
 };
 
 // A synthesized constructor differs only in its allocation's declaring type.
@@ -963,6 +1030,53 @@ static_assert(sizeof(Dn2CppMethodDelta) == 3 * sizeof(void*));
 // dn2cpp_invoke_mi must test this bit BEFORE reading them. Never emitted; see
 // "metadata-answerable members" in dn2cpp_system_reflection.cpp.
 #define DN2CPP_MTHA_METAANSWER  0x80
+// An instance row whose own body runs under a null receiver as .NET's does: a
+// value type's loads its receiver only to pass it on to such bodies, and a
+// reference type's dereferences it only through accesses that fault on null. A
+// CreateDelegate binding called with a null receiver (closed over null, or open
+// over a non-virtual row) enters only a NULLSAFE, NULLCONTEXT or NULLCTX_NULL
+// row; otherwise it faults with NullReferenceException first.
+#define DN2CPP_MTHA_NULLSAFE    0x100
+// An instance row whose shared body reads nothing off its receiver but the generic
+// context, which .NET's code for the instantiation does not look up, and passes
+// the receiver on only to such bodies: a null receiver runs it on a stand-in
+// carrying only the declaring type.
+#define DN2CPP_MTHA_NULLCONTEXT 0x200
+// A shared body that both tests its null receiver and needs its generic context:
+// its receiver stays null and its rgctx prologue uses the binding's declaring type.
+#define DN2CPP_MTHA_NULLCTX_NULL 0x4000
+// A return the invoker thunk cannot box, which Invoke reads itself: a by-ref
+// result it dereferences as returnPassType; a by-ref-like one it refuses as .NET
+// does; a referent it cannot copy it refuses as this image's limit. A pointer
+// result, read through a by-ref one when both bits are set, it boxes as .NET does:
+// an unmanaged pointer as a System.Reflection.Pointer of the pointee
+// returnPassType at the levels the depth bits count past the first (a stand-in,
+// dn2cpp_pointee_type_info, for the levels past those), and a function pointer,
+// whose returnPassType is null, as an IntPtr.
+#define DN2CPP_MTHA_RETURN_BYREF     0x400
+#define DN2CPP_MTHA_RETURN_BYREFLIKE 0x800
+#define DN2CPP_MTHA_RETURN_UNBOXABLE 0x1000
+#define DN2CPP_MTHA_RETURN_POINTER   0x8000
+#define DN2CPP_MTHA_RETURN_POINTER_DEPTH_SHIFT 3
+#define DN2CPP_MTHA_RETURN_POINTER_DEPTH_MASK  0x3
+// A runtime template level's static row whose body takes the generic context as its
+// trailing parameter. Its invoker passes the context in `self`, which the caller
+// fills from the clone the row is read through.
+#define DN2CPP_MTHA_CONTEXTARG       0x2000
+// A runtime template level's null-runnable row: a byte each naming the
+// class type parameters (bit n for parameter n, the top bit for every later one)
+// for which .NET's code looks its generic dictionary up through the receiver when
+// the clone's argument is a reference type (REF) or a value type holding one
+// (VALUE). A clone whose argument hits its mask faults a null receiver instead.
+#define DN2CPP_MTHA_NULLLOOKUP_REF_SHIFT   16
+#define DN2CPP_MTHA_NULLLOOKUP_VALUE_SHIFT 24
+
+// ECMA-335 MethodAttributes bits of Dn2CppMethodInfo::ilAttrs the runtime reads
+// (II.23.1.10).
+#define DN2CPP_MA_FINAL    0x20
+#define DN2CPP_MA_VIRTUAL  0x40
+#define DN2CPP_MA_NEWSLOT  0x100
+#define DN2CPP_MA_ABSTRACT 0x400
 
 // A reflected method handle wrapping a Dn2CppMethodInfo* entry; backs
 // System.Reflection.MethodInfo (header type dn2cpp_methodinfo_type).
@@ -1086,6 +1200,30 @@ struct Dn2CppDelegateMethodIdentity
     const Dn2CppDelegateMethodTarget* targets;
 };
 
+// A generic virtual method row has no slot: a reflective call and the BPI import
+// bind (gvm_row_dispatcher) enter it through the dispatcher a callvirt of the same
+// instantiation calls, whose C++ signature is the row's. Sorted by metadata token;
+// the identity carries the targets the dispatcher selects. Rows are emitted for an
+// image that invokes or binds delegates through reflection or is a --hotupdate-base
+// image; a single null row when there are none, so the symbols link. A stripping
+// dispatcher runs no override the image stripped and reports it to a reflective
+// call; the BPI bind refuses it.
+struct Dn2CppGvmRowDispatch
+{
+    Dn2CppDelegateMethodIdentity identity;
+    void* dispatcher;
+    bool strips;
+};
+extern const Dn2CppGvmRowDispatch dn2cpp_gvm_row_dispatch[];
+extern const int32_t dn2cpp_gvm_row_dispatch_count;
+// Whether a callvirt of the row selects the receiver's override through a
+// dispatcher: false when the row's own body is every receiver's, a static,
+// non-virtual or final row or one on a sealed class.
+bool dn2cpp_gvm_row_dispatched(const Dn2CppMethodInfo& row);
+// That dispatcher's entry, or null when the row is not dispatched or no
+// dispatcher serves it.
+const Dn2CppGvmRowDispatch* dn2cpp_gvm_row_dispatch_of(const Dn2CppMethodInfo& row);
+
 struct Dn2CppDelegateInvocationCache
 {
     size_t count;
@@ -1114,12 +1252,54 @@ struct Dn2CppDelegate : Dn2CppObject
 #define DN2CPP_DGBIND_CLOSED_INSTANCE 1
 #define DN2CPP_DGBIND_OPEN_INSTANCE   2
 #define DN2CPP_DGBIND_CLOSED_STATIC   3
+// What a call through a binding faults with before the row runs: nothing, a null
+// receiver's NullReferenceException or bad IL, or every call's missing entry point.
+// NULL_CONTEXT runs on a stand-in carrying `declaring`; NULL_CTX_NULL keeps
+// the receiver null and supplies only its rgctx from `declaring`.
+#define DN2CPP_DGBIND_FAULT_NONE           0
+#define DN2CPP_DGBIND_FAULT_NULL_RECEIVER  1
+#define DN2CPP_DGBIND_FAULT_NULL_BODILESS  2
+#define DN2CPP_DGBIND_FAULT_STATIC_VIRTUAL 3
+#define DN2CPP_DGBIND_FAULT_NULL_CONTEXT   4
+#define DN2CPP_DGBIND_FAULT_NULL_CTX_NULL  5
+// The table Dn2CppReflBind::slot indexes.
+#define DN2CPP_DGBIND_SLOT_CLASS     0
+#define DN2CPP_DGBIND_SLOT_INTERFACE 1
+#define DN2CPP_DGBIND_SLOT_OBJECT    2
+// Every binding allocates a node, so its trailing fields are narrow: the node is
+// five pointers and eight bytes.
 struct Dn2CppReflBind : Dn2CppObject
 {
     Dn2CppMetadataHandle<Dn2CppMethodInfo> method;
     Dn2CppObject* target;
-    int32_t mode;
+    // The row's parameters, read at the bind, so a call decodes no method row.
+    Dn2CppMetadataTable<Dn2CppParamInfo> parameters;
+    // The type the row runs on: its declaring type, except that a runtime template's
+    // row runs on the clone level its MethodInfo's reflected type instantiates. The
+    // clone supplies the generic context, and bindings of one template row through
+    // two clones bind two methods.
+    const Dn2CppTypeInfo* declaring;
+    // A closed binding of a virtual row over a receiver: the slot the row names on
+    // it, which is one method family, so two bindings naming one slot bind one
+    // method. `slotKind` names the table: a class vtable slot; an interface slot of
+    // the interface whose row of the receiver serves the row's interface
+    // (dn2cpp_dispatch_interface_of over `target`'s type and `declaring`, which the
+    // binding never changes); or, for the System.Object or System.ValueType row of a
+    // virtual member, the members Dn2CppItfImplSlots lists. `slot` is -1 when the row
+    // names none (a generic virtual row, whose dispatcher's cases name its body, or a
+    // class row over a receiver without a vtable). Identity decodes rows only to
+    // compare bindings whose slots neither share a table nor map to class slots of
+    // the receiver (Dn2CppItfImplSlots).
+    int32_t slot;
+    uint8_t mode;
+    // Whether the row is virtual, the only case in which a binding through another
+    // row binds the same method.
+    uint8_t virtualRow;
+    // The call's DN2CPP_DGBIND_FAULT_*, decided at the bind.
+    uint8_t fault;
+    uint8_t slotKind;
 };
+static_assert(sizeof(Dn2CppReflBind) == 5 * sizeof(void*) + 8);
 // The node's header type-info (identity tag only; never a managed Type).
 extern const Dn2CppTypeInfo dn2cpp_reflbind_type;
 
@@ -1144,11 +1324,54 @@ extern const int32_t dn2cpp_delegate_refl_registry_count;
 // (the throwOnBindFailure: false forms). The AOT boundaries (delegate type not
 // in the registry, method body not compiled, open-instance value-type
 // receiver) throw a catchable PlatformNotSupportedException instead.
+// `fromDelegate` marks the Delegate.CreateDelegate overloads, whose argument
+// errors name `type` and `method`; the MethodInfo.CreateDelegate forms name
+// `delegateType`.
 Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
                                      Dn2CppMethodRef* m, int32_t closedForm,
                                      int32_t throwOnFailure, bool fromDelegate = false);
 // The boxed-invoker dispatch behind a dgrefl_* trampoline.
 Dn2CppObject* dn2cpp_reflbind_invoke(Dn2CppReflBind* ctx, Dn2CppObject* self, Dn2CppObject** argv);
+// Whether two closed-instance bindings of different rows over one receiver bind
+// one method, the answer delegate equality gives for them.
+bool dn2cpp_reflbind_same_method(const Dn2CppReflBind* a, const Dn2CppReflBind* b);
+// The class vtable slot implementing each slot of interface `itf` on `type`, -1 where
+// none does. Emitted for the receivers --trim-reflection strips of their member rows
+// when the image binds delegates through reflection, so identity can relate a binding
+// through an interface slot to one through a class slot without those rows. A boxed
+// value has no vtable, but its type's slots number its methods all the same. Only a
+// kept interface has rows to bind, and a row mapping no slot is left out. The row
+// whose `type` is null and whose `itf` is System.Object gives the class slots of
+// Object's virtual ToString, Equals, GetHashCode and Finalize, in that order, which
+// every type shares.
+struct Dn2CppItfImplSlots
+{
+    const Dn2CppTypeInfo* type;
+    const Dn2CppTypeInfo* itf;
+    const int32_t* slots;
+    int32_t count;
+};
+extern const Dn2CppItfImplSlots dn2cpp_itf_impl_slots[];
+extern const int32_t dn2cpp_itf_impl_slot_count;
+// The method filling a slot of `slotOwner` on instances of `type` under a name that
+// does not name the slot's member: a MethodImpl body (VB's Implements, raw IL) or an
+// override of one. Name matching cannot find it, so Delegate.Method and delegate
+// identity read it here. `slotOwner` is an interface, whose member `slotKey` is the
+// method token, or System.Object, whose `slotKey` indexes ToString, Equals,
+// GetHashCode and Finalize. `classSlot` is the filler's own class vtable slot, -1
+// when it has none. Emitted when the image binds delegates through reflection or
+// reads Delegate.Method; a single null row when there are none, so the symbols link.
+struct Dn2CppRenamedSlotBody
+{
+    const Dn2CppTypeInfo* type;
+    const Dn2CppTypeInfo* slotOwner;
+    int32_t slotKey;
+    const Dn2CppTypeInfo* declaringType;
+    int32_t metadataToken;
+    int32_t classSlot;
+};
+extern const Dn2CppRenamedSlotBody dn2cpp_renamed_slot_bodies[];
+extern const int32_t dn2cpp_renamed_slot_body_count;
 // Delegate.Target / Delegate.Method: the bound receiver / reflected MethodInfo,
 // unwrapping a reflection-bind node or resolving an IL delegate's metadata identity.
 Dn2CppObject* dn2cpp_delegate_get_target(Dn2CppObject* d);
@@ -1163,6 +1386,11 @@ Dn2CppObject* dn2cpp_delegate_remove_all(Dn2CppObject* source, Dn2CppObject* val
 Dn2CppArrayRef* dn2cpp_delegate_invocation_list(Dn2CppObject* d, const Dn2CppTypeInfo* arrayType);
 // The invocation entry at index, or null when an enumerator passes either end.
 Dn2CppObject* dn2cpp_delegate_try_get_at(Dn2CppObject* d, int32_t index);
+// Delegate.DynamicInvoke: MethodInfo.Invoke over the delegate type's Invoke row, as
+// .NET's DynamicInvokeImpl runs it, so the arguments are checked and converted as
+// Invoke checks them, by-ref arguments are written back, the last entry's result is
+// returned and whatever an entry throws arrives in a TargetInvocationException.
+Dn2CppObject* dn2cpp_delegate_dynamic_invoke(Dn2CppObject* d, Dn2CppArrayRef* args);
 // Delegate value equality/hash: two delegates are equal iff they are the same
 // delegate type and their invocation chains match pairwise on target, code
 // address and method identity (matching .NET Delegate/MulticastDelegate
@@ -1394,15 +1622,16 @@ Dn2CppType* dn2cpp_type_get_by_name(Dn2CppString* name, int32_t throwOnError);
 // the clone copies `templateTi`, stamps genericDef/genericArgs/name, clears the
 // two template bits, gives its method and constructor rows itself as declaring
 // type, synthesizes its base the same way when the template's base is itself a
-// row (looked up by templateTi), and fills a fresh rgctx table with
-// rgctx[i] = args[rgctxDesc[i]]'s type-info. Synthesized instantiations intern
-// on (def, args) — same arguments, same pointer — and register their closed
-// name on the registry's dynamic side-chain.
+// row (looked up by templateTi), and fills a fresh rgctx table per level with
+// rgctx[i] = args[rgctxDesc[i]]'s type-info, or for a negative entry ~d the
+// clone's table of the level d base steps down (a static callee's context).
+// Synthesized instantiations intern on (def, args) — same arguments, same
+// pointer — and register their closed name on the registry's dynamic side-chain.
 struct Dn2CppRuntimeTemplate
 {
     const Dn2CppTypeInfo* def;        // the open-definition handle (gendef_*)
     const Dn2CppTypeInfo* templateTi; // the level's emitted template type-info
-    const int32_t* rgctxDesc;         // slot i -> type-argument index
+    const int32_t* rgctxDesc;         // slot i -> type-argument index, or ~level steps
     int32_t rgctxDescCount;
     int32_t argCount;
 };
@@ -1806,6 +2035,13 @@ Dn2CppString* dn2cpp_paramref_name(Dn2CppParamRef* p);
 // TargetParameterCountException, and an argument .NET would not convert
 // ArgumentException.
 Dn2CppObject* dn2cpp_methodref_invoke(Dn2CppMethodRef* m, Dn2CppObject* obj, Dn2CppArrayRef* args, bool wrapExceptions = true);
+// Installs the emitted System.Reflection.Pointer class before any managed code
+// runs: `make` boxes a pointer with its pointer type, `read` answers a box's
+// pointer and stores its pointer type. An image whose reflected methods return
+// no unmanaged pointer installs none, and Invoke then refuses such a result.
+void dn2cpp_set_pointer_box_type(const Dn2CppTypeInfo* ti,
+    Dn2CppObject* (*make)(void* value, Dn2CppType* type),
+    void* (*read)(Dn2CppObject* box, Dn2CppType** type));
 // Raises TargetInvocationException around `inner`, an in-flight exception a
 // reflective call's target threw; inner leaves the in-flight list.
 [[noreturn]] void dn2cpp_throw_target_invocation(Dn2CppObject* inner);
@@ -2786,9 +3022,13 @@ int64_t dn2cpp_gc_total_allocated_bytes();
 //
 // _named answers the first: for a struct-returning virtual the emitter bakes the
 // (class, method) descriptor into a per-slot stub, so the abort names the slot without
-// reading `self`. The receiver-scanning form stays the default, being more precise.
+// reading `self`; `slotFn` is the stub's own address. The receiver-scanning form stays
+// the default, being more precise.
+//
+// Every trap first asks dn2cpp_reflective_slot_check with the function it was entered
+// through, so a slot reflection enters directly reports its stripped body instead.
 [[noreturn]] void dn2cpp_vcall_unimplemented(Dn2CppObject* self);
-[[noreturn]] void dn2cpp_vcall_unimplemented_named(const char* slotDesc);
+[[noreturn]] void dn2cpp_vcall_unimplemented_named(const char* slotDesc, const void* slotFn);
 // The receiver-scanning form entered through a per-signature trap thunk. The emitter
 // gives each trapped slot a thunk carrying the slot's exact C++ signature — a wasm
 // call_indirect checks the callee's type immediate, so the shared symbol above dies
@@ -2802,6 +3042,14 @@ int64_t dn2cpp_gc_total_allocated_bytes();
 // prologue. For the callers that must recognise a trapped slot WITHOUT calling it
 // (dn2cpp_exception_message's override probe); one image, one registration.
 void dn2cpp_register_vcall_traps(const void* const* fns, int32_t count);
+// A dispatch trap entered as `slotFn` throws the catchable NotSupportedException
+// MethodBase.Invoke and a CreateDelegate binding raise for a receiver whose body the
+// image stripped, when `slotFn` is the slot the innermost such reflective call is
+// entering (dn2cpp_invoke_row). A generic virtual dispatcher runs bodies that may
+// re-enter it, so it also passes its receiver's type, which must be that call's.
+// Returns otherwise: a trap reached from compiled code is a reachability defect and
+// still aborts.
+void dn2cpp_reflective_slot_check(const void* slotFn, const Dn2CppTypeInfo* receiver = nullptr);
 
 // Throws a managed OverflowException (catchable), unlike dn2cpp_fail.
 [[noreturn]] void dn2cpp_overflow();
@@ -2906,8 +3154,9 @@ template <typename T>
 // The same catchable NotSupportedException, carrying a diagnosable reason —
 // for AOT-boundary misses (MakeGenericType) where the bare throw names nothing.
 [[noreturn]] void dn2cpp_throw_not_supported_msg(const char* message);
-// The same exception, thrown as Dn2CppInvokerMissing by an invmiss_ stub.
-[[noreturn]] void dn2cpp_throw_invoker_missing(const char* message);
+// The same exception, thrown as Dn2CppInvokerMissing by an invmiss_ stub, which
+// passes its own address as `call`.
+[[noreturn]] void dn2cpp_throw_invoker_missing(const char* message, const void* call);
 // The dynamic-code-generation surface trap (Reflection.Emit, DLR CallSite,
 // Expression.Compile): catchable, message names the cut member.
 [[noreturn]] void dn2cpp_throw_platform_not_supported(const char* message);
@@ -3398,8 +3647,13 @@ struct Dn2CppException
 
 // A member-table row with no materialized invoker raises its NotSupportedException
 // as this subtype, so reflection invoke can tell the image's refusal from a fault
-// of the target and leave it unwrapped.
-struct Dn2CppInvokerMissing : Dn2CppException {};
+// of the target and leave it unwrapped. `call` names the refused reflective call:
+// the invoker stub that raised it, or the slot scope a trap matched. Every other
+// reflective call it unwinds through reports it as a fault of that call's target.
+struct Dn2CppInvokerMissing : Dn2CppException
+{
+    const void* call;
+};
 
 // In-flight exception rooting: between the throw and the handler that consumes
 // it, the managed exception object may exist ONLY in the __cxa exception buffer
@@ -3905,18 +4159,24 @@ void dn2cpp_marshal_zero_free_utf16(void* p);
 const void** dn2cpp_resolve_interface(const Dn2CppTypeInfo* t, const Dn2CppTypeInfo* itf);
 // Non-failing variant: nullptr when `t` does not implement `itf`.
 const void** dn2cpp_try_resolve_interface(const Dn2CppTypeInfo* t, const Dn2CppTypeInfo* itf);
+// The interface whose row of `t`'s chain serves a dispatch through `itf`: `itf` for an
+// exact row, the implemented instantiation for a variant one, and `itf` when no row
+// of the chain serves it.
+const Dn2CppTypeInfo* dn2cpp_dispatch_interface_of(const Dn2CppTypeInfo* t, const Dn2CppTypeInfo* itf);
 // The traps an interface / vtable slot with no implementing body is filled with (see the
 // definitions). A call through 0x0 would say nothing. dn2cpp_itf_slot_missing reads the
 // receiver out of argument 0 and names its type — the emitter enters it through a
 // per-signature thunk carrying the slot's exact C++ signature (a wasm call_indirect
 // checks the callee's type immediate, and with the signature exact `self` really is the
-// receiver at the C++ level). For an indirect struct return the emitter prefers a tiny
-// per-slot stub that calls _named with the (class, interface, method) descriptor baked
-// in — exact even on a metadata-stripped image. _anon is kept for the rare slot the
-// emitter has neither a signature nor a descriptor for.
+// receiver at the C++ level), which passes its own address to _at. For an indirect
+// struct return the emitter prefers a tiny per-slot stub that calls _named with the
+// (class, interface, method) descriptor and its own address baked in — exact even on
+// a metadata-stripped image. _anon is kept for the rare slot the emitter has neither a
+// signature nor a descriptor for. Each asks dn2cpp_reflective_slot_check first.
 [[noreturn]] void dn2cpp_itf_slot_missing(void* self);
+[[noreturn]] void dn2cpp_itf_slot_missing_at(void* self, const void* slotFn);
 [[noreturn]] void dn2cpp_itf_slot_missing_anon();
-[[noreturn]] void dn2cpp_itf_slot_missing_named(const char* slotDesc);
+[[noreturn]] void dn2cpp_itf_slot_missing_named(const char* slotDesc, const void* slotFn);
 Dn2CppObject* dn2cpp_isinst(Dn2CppObject* obj, const Dn2CppTypeInfo* ti);
 // The pure (source type-info, target type-info) decision behind dn2cpp_isinst,
 // cached per pair: base chain + interface rows, generic variance, and the array
@@ -3935,6 +4195,14 @@ void* dn2cpp_unbox(Dn2CppObject* obj, const Dn2CppTypeInfo* ti);
 // unbox.any Nullable<U> of a non-null box: its U payload, which the box must hold
 // exactly, else InvalidCastException naming Nullable<U>.
 void* dn2cpp_unbox_nullable(Dn2CppObject* obj, const Dn2CppTypeInfo* u);
+// unbox.any and box of a runtime template's type parameter in a body that keeps its
+// values boxed (Compilation.KeepsTemplateValuesBoxed): such a value is null, a
+// reference, or a box of the clone's argument (of U for a Nullable<U>) that only the
+// body holds. Both yield a reference as it is and copy a value type's payload into a
+// fresh box of that type, as .NET copies the value, so a change to the operand's box
+// never reaches the result; unbox.any first checks the operand as .NET does.
+Dn2CppObject* dn2cpp_template_unbox_any(Dn2CppObject* obj, const Dn2CppTypeInfo* ti);
+Dn2CppObject* dn2cpp_template_box(Dn2CppObject* obj, const Dn2CppTypeInfo* ti);
 // The U of a closed Nullable<U> type-info, else null.
 const Dn2CppTypeInfo* dn2cpp_nullable_underlying_ti(const Dn2CppTypeInfo* ti);
 // Whether `ti` is Nullable<u>. No box of a Nullable exists, so a boxed U passes a

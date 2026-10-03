@@ -54,6 +54,7 @@ internal sealed partial class Compilation
             NoteForceEmit(cls);
             _explicitReflectionKeep.Add(cls);
             TrimNoteNamedClass(cls);
+            NoteReflectionBoxed(cls);
         }
         if ((kind & PreserveKind.Fields) != 0)
             foreach (var field in cls.Fields) PreserveField(field);
@@ -62,8 +63,10 @@ internal sealed partial class Compilation
                 if (policy.Fields.Contains(field.Handle)
                     || conditional && policy.ConditionalFields.Contains(field.Handle)) PreserveField(field);
         bool ctorPreserved = false;
-        foreach (var method in cls.Methods)
+        // By index: preserving a method can instantiate methods on cls.
+        for (int i = 0; i < cls.Methods.Count; i++)
         {
+            var method = cls.Methods[i];
             bool keep = delegateAll || (kind & PreserveKind.Methods) != 0
                 || policy.Methods.Contains(method.Handle)
                 || conditional && policy.ConditionalMethods.Contains(method.Handle)
@@ -165,35 +168,43 @@ internal sealed partial class Compilation
                 if (cls.ShapeReady) ApplyPreservationAfterShape(cls);
                 activated = true;
             }
+        if (activated)
+            ReachPreservedStrippedGvmCases();
         return activated;
     }
 
     private void ApplyPreservationToInstantiatedMethod(MethodInfo method)
     {
-        if (!_preservationSeedingActive
-            || !_preservePolicies.TryGetValue((method.DeclaringClass.Module.Index,
-                method.DeclaringClass.Handle), out var policy))
+        if (!_preservationSeedingActive || !PreservesMethod(method.DeclaringClass, method.Handle))
             return;
-        bool conditional = _activatedConditionalPolicies.Contains(method.DeclaringClass);
+        PreserveMethod(method);
+        // Same allocation rule as ApplyPreservation: a preserved instance
+        // ctor of a concrete reference instantiation is a late-bound
+        // construction site.
+        var cls = method.DeclaringClass;
+        if (method.Name == ".ctor" && !method.IsStatic && method.Rva != 0
+            && !cls.IsValueType && !cls.IsAbstract && !cls.IsInterface && !cls.IsDelegate)
+            ReachAllocatedType(cls);
+    }
+
+    /// <summary>Whether a descriptor or <c>PreserveAttribute</c> rule keeps method
+    /// definition <paramref name="handle"/> on <paramref name="cls"/> or on each of its
+    /// instantiations.</summary>
+    private bool PreservesMethod(ClassInfo cls, MethodDefinitionHandle handle)
+    {
+        if (!_preservePolicies.TryGetValue((cls.Module.Index, cls.Handle), out var policy))
+            return false;
+        bool conditional = _activatedConditionalPolicies.Contains(cls);
         PreserveKind kind = policy.Kind | (conditional ? policy.ConditionalKind : PreserveKind.None);
-        if ((kind & PreserveKind.Methods) != 0 || policy.Methods.Contains(method.Handle)
-            || conditional && policy.ConditionalMethods.Contains(method.Handle))
-        {
-            PreserveMethod(method);
-            // Same allocation rule as ApplyPreservation: a preserved instance
-            // ctor of a concrete reference instantiation is a late-bound
-            // construction site.
-            var cls = method.DeclaringClass;
-            if (method.Name == ".ctor" && !method.IsStatic && method.Rva != 0
-                && !cls.IsValueType && !cls.IsAbstract && !cls.IsInterface && !cls.IsDelegate)
-                ReachAllocatedType(cls);
-        }
+        return (kind & PreserveKind.Methods) != 0 || policy.Methods.Contains(handle)
+            || conditional && policy.ConditionalMethods.Contains(handle);
     }
 
     private void PreserveField(FieldInfo field)
     {
         NoteForceEmit(field.DeclaringClass);
         NotePreservedType(field.Type);
+        NoteReflectionBoxed(field.Type);
         ReachCctor(field.DeclaringClass);
     }
 
@@ -204,6 +215,7 @@ internal sealed partial class Compilation
         NotePreservedType(sig.ReturnType);
         foreach (var type in sig.ParameterTypes) NotePreservedType(type);
         Reach(method);
+        NoteReflectionInvokeBoxes(method);
     }
 
     private void NotePreservedType(TypeDesc type)

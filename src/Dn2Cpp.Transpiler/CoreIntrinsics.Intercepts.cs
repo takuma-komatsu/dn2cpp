@@ -1525,12 +1525,17 @@ internal static partial class CoreIntrinsics
     /// marks (<c>Compilation.NoteReflectionUsage</c>, asked for a method group over the
     /// member exactly as for a call) — Invoke, GetValue, SetValue, CreateDelegate,
     /// CreateInstance, GetCustomAttributes, GetCustomAttribute, IsDefined,
-    /// GetCustomAttributesData, get_CustomAttributes, MakeGenericType. Those set
-    /// <c>_reflectionInvokeUsed</c> / <c>_reflectionCtorUsed</c> /
-    /// <c>_reflectionAttrUsed</c> / <c>_makeGenericTypeUsed</c>, which are not intercepts
-    /// at all — they do not cut an edge or route a call, they OPEN a reachability route
-    /// (reach every app-module method body / ctor / attribute ctor so a reflected member
-    /// is invokable). No descriptor row will ever carry them.</para>
+    /// GetCustomAttributesData, get_CustomAttributes, MakeGenericType, DynamicInvoke. The
+    /// flags those set are not intercepts at all — they do not cut an edge or route a
+    /// call, they OPEN a reachability route: <c>_reflectionInvokeUsed</c> reaches every
+    /// app-module method body, <c>_reflectionCtorUsed</c> every app-module ctor,
+    /// <c>_reflectionFieldReadUsed</c> the value types app-module fields hold,
+    /// <c>_reflectionAttrUsed</c> every reflectable attribute ctor,
+    /// <c>_reflectionDelegateBindScanned</c> arms only the reflected-slot route
+    /// (<c>ReachReflectedVirtualSlots</c>), <c>_makeGenericTypeUsed</c> only the
+    /// runtime-instantiation template pass and <c>_delegateDynamicInvokeUsed</c> only the
+    /// boxes a delegate's Invoke row makes (<c>ReachDelegateInvokeBoxes</c>). No
+    /// descriptor row will ever carry them.</para>
     /// <para>(c) RunClassConstructor — the MemberRef mouth of the RuntimeHelpers.
     /// RunClassConstructor reach effect (reach the ldtoken'd type's cctor body so the
     /// __ensure wrapper the emit intrinsic lowers the call to is not a nullptr no-op).
@@ -1551,7 +1556,7 @@ internal static partial class CoreIntrinsics
         or "Invoke" or "GetValue" or "SetValue" or "CreateDelegate" or "CreateInstance"
         or "GetCustomAttributes" or "GetCustomAttribute" or "IsDefined"
         or "GetCustomAttributesData" or "get_CustomAttributes"
-        or "MakeGenericType"
+        or "MakeGenericType" or "DynamicInvoke"
         // (c) the MemberRef mouth of the RunClassConstructor reach effect.
         or "RunClassConstructor";
 
