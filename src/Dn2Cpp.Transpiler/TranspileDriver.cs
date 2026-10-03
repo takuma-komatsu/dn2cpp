@@ -158,6 +158,10 @@ public static class TranspileDriver
             options = options with { TrimReflection = false };
         }
 
+        // Set once this run starts replacing the output's generated sources: a refusal
+        // before then leaves the directory untouched, and one after leaves it none, never
+        // a partial set.
+        bool replacingSources = false;
         try
         {
             // The app assembly is module 0; reference assemblies follow.
@@ -284,26 +288,10 @@ public static class TranspileDriver
             // is sealed — so the output directory must exist before Emit, and stale chunks
             // from a previous, larger run must be swept BEFORE the new ones land: the
             // build's `generated*.cpp` glob would otherwise pick a leftover up and fail to
-            // link on duplicate definitions, and sweeping afterwards cannot help a run that
-            // threw halfway. The legacy `generated_N.cpp` family is swept too, so a
-            // directory written by an older dn2cpp cannot poison this build.
-            RemoveStaleChunks(outDir, "generated_b", ".cpp");
-            RemoveStaleChunks(outDir, "generated_m", ".cpp");
-            RemoveStaleChunks(outDir, "generated_", ".cpp");
-            // Optional generated TUs have fixed names, so they are swept rewrite-or-
-            // remove style like the sidecars below: deleted up front and recreated
-            // during emission only when this run marks their feature.
-            foreach (string hotTu in new[]
-                { "generated_hot.cpp", "generated_hot_fast.cpp", "generated_platform_isa.cpp" })
-            {
-                string hotTuPath = Path.Combine(outDir, hotTu);
-                if (File.Exists(hotTuPath))
-                    File.Delete(hotTuPath);
-            }
-
-            string obfuscationPath = Path.Combine(outDir, "obfuscation-targets.json");
-            if (File.Exists(obfuscationPath))
-                File.Delete(obfuscationPath);
+            // link on duplicate definitions, and a run that crashes halfway never reaches a
+            // later sweep.
+            replacingSources = true;
+            RemoveGeneratedSources(outDir);
 
             var sources = new CppEmitter(compilation, backend, options.HotupdateBase).Emit(
                 (fileName, text) => File.WriteAllText(Path.Combine(outDir, fileName), text),
@@ -405,6 +393,11 @@ public static class TranspileDriver
             if (EnvKnobs.BoolIsOne(EnvKnobs.DebugTrace))
                 Console.Error.WriteLine(ex);
             Console.Error.WriteLine($"error: {ex.Message}");
+            // A refusal names input to change, so whatever emission streamed before it can
+            // only stand in the next build's way. A broken invariant throws past this catch
+            // and keeps its partial output for the bug report.
+            if (replacingSources)
+                RemoveGeneratedSources(outDir);
             return 2;
         }
     }
@@ -502,6 +495,29 @@ public static class TranspileDriver
             return;
         foreach (var b in imports)
             Console.WriteLine($"    {b.Module}!{b.EntryPoint}  ({b.Method})  [{VerdictWord(b)}]");
+    }
+
+    /// <summary>Deletes every generated source this driver writes into
+    /// <paramref name="outDir"/>, plus the obfuscation map that names them. The legacy
+    /// <c>generated_N.cpp</c> family goes too, so a directory written by an older dn2cpp
+    /// cannot poison a build. Fixed-name TUs are recreated only when a run marks their
+    /// feature, and generated.h and generated.cpp only after emission, so a crashed run's
+    /// chunks never compile against an earlier run's header.</summary>
+    private static void RemoveGeneratedSources(string outDir)
+    {
+        RemoveStaleChunks(outDir, "generated_b", ".cpp");
+        RemoveStaleChunks(outDir, "generated_m", ".cpp");
+        RemoveStaleChunks(outDir, "generated_", ".cpp");
+        foreach (string fixedName in new[]
+            {
+                "generated_hot.cpp", "generated_hot_fast.cpp", "generated_platform_isa.cpp",
+                "generated.h", "generated.cpp", "obfuscation-targets.json",
+            })
+        {
+            string path = Path.Combine(outDir, fixedName);
+            if (File.Exists(path))
+                File.Delete(path);
+        }
     }
 
     /// <summary>Deletes <c>{prefix}1{suffix}</c>, <c>{prefix}2{suffix}</c>, … until the

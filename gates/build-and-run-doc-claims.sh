@@ -123,7 +123,7 @@ check_paths() {
     ok "$f: all $n cited repo paths exist"
 }
 
-echo "== 1/14 docs/PINVOKE-MARSHALLING.md — rows against the PInvokeNative bucket =="
+echo "== 1/15 docs/PINVOKE-MARSHALLING.md — rows against the PInvokeNative bucket =="
 PM=docs/PINVOKE-MARSHALLING.md
 BUCKET=samples/dotnet/PInvokeNative
 
@@ -150,7 +150,7 @@ pool_tree=$(sed -n 's/^[[:space:]]*const int poolSize = \([0-9][0-9]*\);/\1/p' \
     src/Dn2Cpp.Transpiler/CppEmitter.cs)
 eq "delegate thunk-pool distinct-instance capacity" "$pool_doc" "$pool_tree"
 
-echo "== 2/14 AGENTS.md — the default-reference wiring =="
+echo "== 2/15 AGENTS.md — the default-reference wiring =="
 # The conditional default references. This is the one claim in AGENTS.md that
 # says out loud that nothing checks it — "Nothing references these assemblies at
 # build time, so nothing fails when a wiring is dropped", and of the destinations
@@ -203,7 +203,7 @@ for f in $(printf '%s' "$flat" | grep -oE '`dist/[a-z-]*smoke-test\.sh`' | tr -d
     fi
 done
 
-echo "== 3/14 docs/PORTING.md — the PAL seam's declared contract =="
+echo "== 3/15 docs/PORTING.md — the PAL seam's declared contract =="
 # The seam is a contract between this repository and somebody porting to a target
 # it has never seen. The SOURCE of the classification is the `// PAL-CONTRACT:`
 # marker on each declaration in the header, not the table in the doc, so this
@@ -316,7 +316,7 @@ for impl in runtime/core/platform/*/dn2cpp_pal_*.cpp; do
     set_eq "$impl vs the seam" "seam" "$pal_required" "impl" "$have"
 done
 
-echo "== 4/14 the generated culture table's own header =="
+echo "== 4/15 the generated culture table's own header =="
 # It states a row count and a provenance, and it is a "do not edit by hand" file —
 # which is why the count is worth checking: a hand-added row leaves the header
 # describing a table that no longer exists. The candidate list is the generator's
@@ -335,7 +335,7 @@ ct_cands=$(grep -cE '^[^#[:space:]]' "$CT_CAND" || true)
 eq "$CT_CAND names one candidate per emitted row" "$ct_cands" "$ct_rows" \
    "a candidate the generator REFUSES is legitimately absent from the table — it prints the reason; otherwise regenerate"
 
-echo "== 5/14 the BCL exception-message key set, written twice =="
+echo "== 5/15 the BCL exception-message key set, written twice =="
 # The transpiler emits the texts (Dn2Cpp.BclMessages) and the runtime asks for
 # them by name (the DN2CPP_SR_* constants). The lookup is by key, so drift can
 # only LOSE a message — the runtime asks for a key nothing emitted, reads null,
@@ -347,7 +347,7 @@ set_eq "the BCL message key set" \
     "src/Dn2Cpp.Transpiler/BclMessages.cs" "$sr_emitted" \
     "runtime/core/dn2cpp_core.h DN2CPP_SR_*" "$sr_asked"
 
-echo "== 6/14 the platform ISA family set, written twice =="
+echo "== 6/15 the platform ISA family set, written twice =="
 # The generator writes one token per family into both the transpiler's table
 # (the getter the emitted code tests) and the runtime's header (the macro that
 # defines it). Drift can only lose a getter: a token the table emits and the
@@ -391,7 +391,7 @@ else
     bad "$isa_csv references feature bits $cpu_header does not define: [$csv_undefined]"
 fi
 
-echo "== 7/14 the banned pipeline shape — an early-exiting consumer =="
+echo "== 7/15 the banned pipeline shape — an early-exiting consumer =="
 # gates/_common.sh's `set -o pipefail` note claims the tree builds no pipeline
 # into a consumer that can quit before its producer is done. It is the one claim
 # here whose subject is a shape rather than a number, and it has two failure modes
@@ -429,7 +429,7 @@ eq "gates/_common.sh 'none of which builds a pipeline at all' — pipelines into
    "0" "$n_badpipe" \
    "each is: ${badpipe:-none}. Rewrite as \`grep -q P <<<\"\$(X)\"\`, \`grep -q P FILE\`, \`head -N <<<\"\$(X)\"\`, \`\${x%%\$'\''\\n'\''*}\` or \`first_line \"\$(X)\"\`; see the note beside \`set -o pipefail\` in gates/_common.sh"
 
-echo "== 8/14 docs/EDITOR-EXPORT-DESIGN.md — release assets, bundle layout, ABI no-touch list =="
+echo "== 8/15 docs/EDITOR-EXPORT-DESIGN.md — release assets, bundle layout, ABI no-touch list =="
 # A release asset is exactly a dist/ script that writes the `<lane>.metadata`
 # dist/release-github.sh consumes; §11's table is the hand-written copy of that
 # set. Both directions matter: a lane packaged and undocumented leaves a release
@@ -489,7 +489,7 @@ repinned_sim_provenance="engine=new-tree base=new-pin scons=$old_sim_stamp"
     && ok "the pre-engine-provenance iOS simulator stamp misses after a re-pin" \
     || bad "the pre-engine-provenance iOS simulator stamp still licenses a cache hit"
 
-echo "== 9/14 dist/release-notes-template.md — bound by its renderer =="
+echo "== 9/15 dist/release-notes-template.md — bound by its renderer =="
 # The template is rendered on a packaging host at release time, and that is the
 # only machine its two failure modes reach: an @@KEY@@ nothing binds dies mid-cut,
 # and a comment that is not a lane marker publishes verbatim onto the release
@@ -640,7 +640,7 @@ if [ -n "${guide_files// }" ]; then
        "standing text belongs in the guide and per-release text in the notes; a section in both gets corrected in one"
 fi
 
-echo "== 10/14 the pinned toolchains a bundle ships, and their keep lists =="
+echo "== 10/15 the pinned toolchains a bundle ships, and their keep lists =="
 # Everything here holds for BOTH pins — the Emscripten SDK and the cmake+ninja
 # pair — because both are the same thing: an upstream archive per host, unpacked,
 # trimmed to a keep list, staged into the bundle.
@@ -763,7 +763,7 @@ for TRIM in "$EMSDK_TRIM" "$BUILDTOOLS_TRIM"; do
        "a kept directory keeps its whole subtree, so naming something inside one narrows nothing"
 done
 
-echo "== 11/14 README.md — the vendored set against third_party/ =="
+echo "== 11/15 README.md — the vendored set against third_party/ =="
 # README's License section is the only inventory of what this repository vendors
 # and under what terms, so a tree added without a row ships with its license
 # unstated — and one whose row outlived it credits a license nothing carries.
@@ -779,7 +779,7 @@ doc_vendored=$(awk '/^## /{s = ($0 == "## License")} s' README.md \
 set_eq "README.md's vendored license list vs third_party/" \
        "licensed by README.md" "$doc_vendored" "present under third_party/" "$tree_vendored"
 
-echo "== 12/14 BPI versions, opcode count and dangling path references in every doc =="
+echo "== 12/15 BPI versions, opcode count and dangling path references in every doc =="
 bpi_layout_doc=$(sed -n 's/.*LayoutPolicyVersion` (currently \([0-9][0-9]*\)).*/\1/p' \
     docs/BPI-FORMAT.md)
 bpi_layout_tree=$(sed -n 's/^[[:space:]]*public const int LayoutPolicyVersion = \([0-9][0-9]*\);/\1/p' \
@@ -813,7 +813,7 @@ for f in docs/*.md README.md CLAUDE.md AGENTS.md CONTRIBUTING.md; do
     check_paths "$f"
 done
 
-echo "== 13/14 the GDExtension library name, written in five places =="
+echo "== 13/15 the GDExtension library name, written in five places =="
 # One fixed name is spelled by the CMake pin that produces the library, by the
 # [libraries] of every shipped .gdextension, and by README. A .gdextension that
 # drifts is a dlopen failure in the engine naming no cause, and README is what a
@@ -846,7 +846,7 @@ else
     done
 fi
 
-echo "== 14/14 the exec bit on every script a doc tells you to run =="
+echo "== 14/15 the exec bit on every script a doc tells you to run =="
 # AGENTS.md and README spell `./gates/<name>.sh`; a script committed 100644
 # answers that with permission denied, and no suite notices — the runner invokes
 # a gate as `bash "$script"`, and a measure script has no suite at all. The
@@ -867,6 +867,24 @@ nonexec=$(git ls-files -s '*.sh' | awk '$1 != "100755" && $4 !~ /^gates\/_/ { pr
 eq "runnable scripts committed without their exec bit" \
    "0" "$(grep -c . <<<"$nonexec" || true)" \
    "each is: $(tr '\n' ' ' <<<"$nonexec"); fix with \`git update-index --chmod=+x <path>\`"
+
+echo "== 15/15 the environment knob sets gate_cache_check keys, written twice =="
+# A knob the code reads and gates/_common.sh does not list replays a green for
+# a run that inherited it; a listed name nothing reads is a stale copy. The
+# transpiler's set is EnvKnobs only if nothing in src/ reads around it.
+around=$(grep -rlE --include='*.cs' '^[^/]*Environment\.GetEnvironmentVariable\(' src \
+    | grep -vx 'src/Dn2Cpp.Transpiler/EnvKnobs.cs' | sort || true)
+eq "transpiler sources reading the environment around EnvKnobs" "none" "${around:-none}" \
+   "name the variable in src/Dn2Cpp.Transpiler/EnvKnobs.cs and read it through its parsers"
+set_eq "EnvKnobs against _GATE_TRANSPILER_KNOBS" \
+    "src/Dn2Cpp.Transpiler/EnvKnobs.cs" \
+    "$(grep -oE '"DN2CPP_[A-Z0-9_]+"' src/Dn2Cpp.Transpiler/EnvKnobs.cs | tr -d '"' | sort -u)" \
+    "gates/_common.sh" "$(printf '%s\n' $_GATE_TRANSPILER_KNOBS | sort -u)"
+set_eq "the runtime's DN2CPP_* names against _GATE_RUNTIME_KNOBS" \
+    "runtime/" \
+    "$(grep -rhoE --include='*.h' --include='*.hpp' --include='*.c' --include='*.cpp' \
+        --include='*.inc' --include='*.mm' '"DN2CPP_[A-Z0-9_]+"' runtime | tr -d '"' | sort -u)" \
+    "gates/_common.sh" "$(printf '%s\n' $_GATE_RUNTIME_KNOBS | sort -u)"
 
 echo
 if [ "$FAILS" -ne 0 ]; then

@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Cysharp.Threading.Tasks;
 
@@ -46,8 +47,12 @@ namespace UniTaskCoreSubset
             var arr = await UniTask.WhenAll(new[] { Slot(10), Slot(20) });
             Console.WriteLine("[whenall arr] " + arr[0] + "," + arr[1]);
 
+            // Both bumps resume concurrently on the thread pool; a plain `+=` can
+            // lose one of the updates.
             int side = 0;
-            await UniTask.WhenAll(Bump(() => side += 5), Bump(() => side += 7));
+            await UniTask.WhenAll(
+                Bump(() => Interlocked.Add(ref side, 5)),
+                Bump(() => Interlocked.Add(ref side, 7)));
             Console.WriteLine("[whenall void] side=" + side);
 
             try

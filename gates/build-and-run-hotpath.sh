@@ -288,26 +288,27 @@ unset DN2CPP_BEFORE_REFLECTION_NOALLOC
 corelib_diff_gate HotPath
 
 # ── [HotPath(NoAlloc)] verifier: the negative side ────────────────────────────
-# The positive kernels above proved a clean closure transpiles; these four
+# The positive kernels above proved a clean closure transpiles; these
 # mini-projects prove a dirty one is REJECTED — loudly (error:/exit 2), naming
 # the method, the offending construct, and (for the depth-2 case) the
 # intermediate helper in the call chain. They are transpile-only (never built to
-# native), so this is the only section that exercises the failure path.
+# native), so this is the only section that exercises the failure path. The
+# verifier runs only after the body pass has streamed its chunks, so each
+# refusal must also prove it swept them: the out dir holds no generated sources.
 #
 # Cached like transpiler-limits' bad-project section: the asserts key on the CLI
 # (via _gate_cli_hash) and the resolved CoreLib, so a warm rerun with an
-# unchanged transpiler skips the four CoreLib transpiles (seconds each). The
-# out dir is EMPTIED — cleared and recreated — before the check, so the key's
-# surface term is the stable `no-generated` marker; a failing transpile still
-# streams partial junk there, which is why the key never keys on it. It has to
-# exist: an absent dir is unreadable rather than empty, and gate_cache_check
-# answers that with a warning and no key, leaving this section
-# permanently uncached since it clears the dir on every run.
+# unchanged transpiler skips the CoreLib transpiles (seconds each). The out dir
+# is EMPTIED — cleared and recreated — before the check, so the key's surface
+# term is the stable `no-generated` marker. It has to exist: an absent dir is
+# unreadable rather than empty, and gate_cache_check answers that with a warning
+# and no key, leaving this section permanently uncached since it clears the dir
+# on every run.
 #
-# The four build_proj calls stay OUTSIDE this region, and that is not an oversight:
+# The build_proj calls stay OUTSIDE this region, and that is not an oversight:
 # they produce the very dlls the check hashes as key inputs, so they have to run
 # before it — the same order _corelib_gate_core uses for its own app build. What a
-# warm hit skips is the four real-CoreLib transpiles, which is the cost that matters.
+# warm hit skips is the real-CoreLib transpiles, which is the cost that matters.
 echo "== [HotPath(NoAlloc)] negative asserts =="
 build_proj samples/dotnet/HotPathNoAllocArrayBad/HotPathNoAllocArrayBad.csproj
 build_proj samples/dotnet/HotPathNoAllocDeepBad/HotPathNoAllocDeepBad.csproj
@@ -332,10 +333,12 @@ fi
 
 # assert_noalloc_reject APP DESC PATTERN... — transpiling APP must exit 2, print
 # an `error:` line, and its diagnostic must contain every PATTERN (fixed strings).
+# A one-byte split budget makes every body after the first seal a chunk to disk
+# before the verifier runs; the refusal must still leave no generated sources.
 assert_noalloc_reject() {
     local app="$1" desc="$2"; shift 2
     local rc=0 err pat
-    err=$(invoke_cli "$app" -r "$nb_corelib" -o "$nb_out" 2>&1 >/dev/null) || rc=$?
+    err=$(DN2CPP_SPLIT_BYTES=1 invoke_cli "$app" -r "$nb_corelib" -o "$nb_out" 2>&1 >/dev/null) || rc=$?
     if [ "$rc" -ne 2 ]; then
         echo "FAIL: transpiling $desc exited $rc (expected 2)" >&2
         echo "$err" >&2
@@ -353,6 +356,10 @@ assert_noalloc_reject() {
             exit 1
         fi
     done
+    if compgen -G "$nb_out/generated*" >/dev/null; then
+        echo "FAIL: refused $desc left C++: $(ls -1 "$nb_out" | tr '\n' ' ')" >&2
+        exit 1
+    fi
     echo "OK ($desc rejected: $*)"
 }
 
@@ -370,9 +377,10 @@ assert_noalloc_reject "$virt_app" "a dynamic dispatch" \
     "EqualErased" "dn2cpp_resolve_interface(" \
     "SearchFirst" "SearchLast" "dn2cpp_array_search_equals("
 # Directly-emitted allocation helpers, one marked method per token family —
-# ToString on object, string concat, Substring, multi-dimensional array. None
-# lowers to dn2cpp_alloc/dn2cpp_newarr_, so each line is a positive control for
-# its own token; the verifier reports all four in one deterministic message.
+# ToString on object, string concat, Substring, multi-dimensional array,
+# invocation-list enumeration. None lowers to dn2cpp_alloc/dn2cpp_newarr_, so
+# each line is a positive control for its own token; the verifier reports them
+# all in one deterministic message.
 # The diagnostic prints the matched table TOKEN (a family prefix, e.g.
 # dn2cpp_string_concat for the concat2 the body spells), so that is what is
 # asserted.
@@ -395,3 +403,4 @@ assert_noalloc_reject "$reflection_noalloc_app" "ordinary reflection allocation 
 
 gate_cache_commit
 echo "OK: NoAlloc verifier rejects direct/deep allocation, dynamic dispatch, and the intrinsic allocation-helper families"
+echo "OK: every NoAlloc refusal left no generated sources after streaming body chunks"
