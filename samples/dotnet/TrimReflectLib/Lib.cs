@@ -135,6 +135,34 @@ namespace TrimReflectLib
 
     public class LibChosenDefault : IChosenDefaultKind { }
 
+    // Object virtuals bound through receivers met only as `object`. LibLabel overrides
+    // ToString and GetHashCode, LibPlainLabel inherits both, and LibBare overrides
+    // neither. All three can strip.
+    public class LibLabel
+    {
+        public override string ToString() => "label";
+        public override int GetHashCode() => 7;
+    }
+
+    public class LibPlainLabel : LibLabel { }
+
+    public class LibBare { }
+
+    // Receivers without a recorded Delegate.Method case: a MakeGenericType
+    // instantiation of LibGenericKind<T>, and LibGvmPlain, which inherits the generic
+    // virtual body its base declares. Both can strip.
+    public interface ILibKind
+    {
+        string Kind();
+    }
+
+    public class LibGenericKind<T> : ILibKind
+    {
+        public string Kind() => "generic-kind";
+    }
+
+    public class LibGvmPlain : LibGvmShape { }
+
     public static class Factory
     {
         // Each returns `object`, never the concrete type: the app's IL must not name what
@@ -159,5 +187,9 @@ namespace TrimReflectLib
         public static LibGvmShape MakeGenericShape() => new LibGvmLeaf();
         public static IDefaultKind MakeUnusedDefault() => new LibUnusedDefault();
         public static IDefaultKind MakeChosenDefault() => new LibChosenDefault();
+        public static object MakeLabel() => new LibLabel();
+        public static object MakePlainLabel() => new LibPlainLabel();
+        public static object MakeBare() => new LibBare();
+        public static LibGvmShape MakePlainGenericShape() => new LibGvmPlain();
     }
 }

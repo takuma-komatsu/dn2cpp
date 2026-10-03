@@ -710,5 +710,79 @@ namespace ReflectDelegateIdentitySubset
                 + "|" + name.Method.Name);
             Console.WriteLine("runtime-level-gvm-end");
         }
+
+        // An Object virtual's method group reports the method its receiver runs.
+        public static void RunObjectVirtual()
+        {
+            Probe receiver = new Derived();
+            IProbe boxed = new StructProbe();
+            Func<string> objectText = receiver.ToString;
+            Func<string> structText = boxed.ToString;
+            Func<int> structHash = boxed.GetHashCode;
+            Console.WriteLine("delegate-method-object-virtual=" + objectText.Method.DeclaringType.Name + "." + objectText.Method.Name
+                + "/" + structText.Method.DeclaringType.Name + "/" + structHash.Method.DeclaringType.Name
+                + "/" + structText() + "/" + (structHash() == boxed.GetHashCode()));
+        }
+
+        // The exception levels above these overrides carry no Object-member rows.
+        class OverridingException : Exception
+        {
+            public override string ToString() => "overriding";
+            public override int GetHashCode() => 23;
+            public override bool Equals(object other) => ReferenceEquals(this, other);
+        }
+
+        class InheritingException : OverridingException { }
+
+        class PlainException : Exception { }
+
+        static string Describe(MethodInfo method) =>
+            method is null ? "null" : method.DeclaringType.Name + "." + method.Name;
+
+        static string Rooted(MethodInfo method) =>
+            Describe(method) + ">" + (method is null ? "null" : Describe(method.GetBaseDefinition()));
+
+        static string ObjectVirtuals(Exception receiver)
+        {
+            Func<string> text = receiver.ToString;
+            Func<int> hash = receiver.GetHashCode;
+            Func<object, bool> equals = receiver.Equals;
+            return Rooted(text.Method) + "|" + Rooted(hash.Method) + "|" + Rooted(equals.Method)
+                + "|" + text() + "/" + hash() + "/" + equals(receiver) + "/" + equals(null);
+        }
+
+        static string ReflectedRoots(Type type) =>
+            Describe(type.GetMethod("ToString", Type.EmptyTypes).GetBaseDefinition())
+            + "|" + Describe(type.GetMethod("GetHashCode", Type.EmptyTypes).GetBaseDefinition())
+            + "|" + Describe(type.GetMethod("Equals", new[] { typeof(object) }).GetBaseDefinition());
+
+        // A binding that inherits the member through a level without Object-member rows
+        // may answer null, never another method.
+        static bool NullOr(Delegate binding, Type declaring) =>
+            binding.Method is null || binding.Method.DeclaringType == declaring;
+
+        // Delegate.Method of an Object virtual whose override sits below exception
+        // levels without Object-member rows, and GetBaseDefinition of the answer.
+        public static void RunSettledObjectVirtual()
+        {
+            Console.WriteLine("== settled Object virtual answers ==");
+            Console.WriteLine("settled-object-virtual-own=" + ObjectVirtuals(new OverridingException()));
+            Console.WriteLine("settled-object-virtual-inherited=" + ObjectVirtuals(new InheritingException()));
+            Console.WriteLine("settled-object-virtual-reflected=" + ReflectedRoots(typeof(OverridingException))
+                + "/" + ReflectedRoots(typeof(InheritingException)));
+            string text = "text";
+            object number = 5;
+            Exception plain = new PlainException();
+            Func<string> stringText = text.ToString;
+            Func<string> numberText = number.ToString;
+            Func<int> numberHash = number.GetHashCode;
+            Func<string> plainText = plain.ToString;
+            Func<int> plainHash = plain.GetHashCode;
+            Console.WriteLine("settled-object-virtual-unsettled=" + NullOr(stringText, typeof(string))
+                + "/" + NullOr(numberText, typeof(int)) + "/" + NullOr(numberHash, typeof(int))
+                + "/" + NullOr(plainText, typeof(Exception)) + "/" + NullOr(plainHash, typeof(object))
+                + "/" + stringText() + "/" + numberText() + "/" + (numberHash() == 5) + "/" + (plainHash() == plain.GetHashCode()));
+            Console.WriteLine("settled Object virtual answers end");
+        }
     }
 }

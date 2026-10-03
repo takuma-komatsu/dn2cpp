@@ -670,6 +670,8 @@ site rather than hiding it.
   `volatile`/`MemoryBarrier` → fences.
 - **Reflection at Unity-IL2CPP parity** — the member-metadata APIs,
   `MethodInfo.Invoke`, `FieldInfo`/`PropertyInfo` get/set,
+  virtual and generic virtual receiver dispatch, by-reference copy-back,
+  `Delegate.DynamicInvoke`,
   `GetCustomAttributes`, `Type.GetType(string)`,
   `Activator.CreateInstance`, `MakeGenericType` over AOT-instantiated
   types (plus the typeof-only runtime-instantiation templates — see the

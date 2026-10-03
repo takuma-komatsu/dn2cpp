@@ -14,7 +14,8 @@ namespace HotUpdateCoreLibPatch;
 // must load and run; its sibling HotUpdateCoreLibBadPatch is the one that names
 // the trapped row. `dotnet HotUpdateCoreLibPatch.dll` — after the base's own
 // Main has run, i.e. with alpha/beta present — is the oracle for the
-// interpreted lines.
+// interpreted lines. It also hands the base two patch receivers, over which the
+// base binds Object virtuals as method groups after the run.
 internal static class Program
 {
     private static void Main()
@@ -31,6 +32,15 @@ internal static class Program
             seen = seen + 1;
         }
         Console.WriteLine(seen);
+        PatchReceivers.Hold(new FrostPlaque(), new FrostSlate());
         Console.WriteLine("patch: done");
     }
+}
+
+internal sealed class FrostPlaque : Plaque
+{
+}
+
+internal sealed class FrostSlate : Slate
+{
 }

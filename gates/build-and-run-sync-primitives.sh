@@ -20,6 +20,7 @@
 # Blocking timeout validation, receiver order, signal preservation and boxed fields.
 # Thread construction, start and join state.
 source "$(dirname "$0")/_common.sh"
+sync_python=$(resolve_python) || gate_skip "no working Python 3 interpreter for blocking call fixtures"
 call_app="gates/fixtures/blocking-timeout-call/bin/$CONFIG/$TFM/BlockingTimeoutCall.dll"
 build_gate_proj gates/fixtures/blocking-timeout-call/BlockingTimeoutCall.csproj
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $call_app ${call_app%.dll}.runtimeconfig.json ${call_app%.dll}.deps.json gates/fixtures/blocking-timeout-call/patch-call.py"
@@ -58,7 +59,7 @@ gate_extra_asserts() {
     mkdir -p "$oracle"
     cp "$call_app" "$oracle/BlockingTimeoutCall.dll"
     cp "${call_app%.dll}.runtimeconfig.json" "${call_app%.dll}.deps.json" "$oracle/"
-    python3 gates/fixtures/blocking-timeout-call/patch-call.py "$oracle/BlockingTimeoutCall.dll"
+    $sync_python gates/fixtures/blocking-timeout-call/patch-call.py "$oracle/BlockingTimeoutCall.dll"
     invoke_cli "$oracle/BlockingTimeoutCall.dll" -r "$_CG_CORELIB" --auto-ref -o "$fixture"
     compile_console "$fixture" BlockingTimeoutCall
     expected=$(run_bounded dotnet "$oracle/BlockingTimeoutCall.dll")

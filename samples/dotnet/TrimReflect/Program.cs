@@ -66,6 +66,15 @@ namespace TrimReflect
             if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_MEMBER_ENUM") == "1")
                 return;
             MemberNamedEnum();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_OBJECT_VIRTUAL") == "1")
+                return;
+            ObjectVirtualMethod();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_UNRECORDED_RECEIVER") == "1")
+                return;
+            UnrecordedReceiverMethod();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_REFLECTED_UNRECORDED_RECEIVER") == "1")
+                return;
+            ReflectedUnrecordedReceiverMethod();
         }
 
         // Consumes side values so the transpiler cannot fold reaching calls away.
@@ -248,6 +257,62 @@ namespace TrimReflect
             Console.WriteLine("== enum named by a reflected field ==");
             Type shade = new Palette().GetType().GetField("Shade").FieldType;
             Probe("GetFields", () => shade.Name + " fields=" + shade.GetFields().Length);
+        }
+
+        // 8. Delegate.Method of an Object virtual bound through a receiver met only as
+        //    `object`. A stripped level the answer needs throws PNSE naming that level; a
+        //    stripped level whose dispatch field equals its base's inherits the body and
+        //    is passed.
+        private static void ObjectVirtualMethod()
+        {
+            Console.WriteLine("== Delegate.Method of Object virtuals over stripped receivers ==");
+            object label = Factory.MakeLabel();
+            object plain = Factory.MakePlainLabel();
+            object bare = Factory.MakeBare();
+            Func<string> labelText = label.ToString;
+            Func<string> plainText = plain.ToString;
+            Func<string> bareText = bare.ToString;
+            Func<int> labelHash = label.GetHashCode;
+            var reflected = (Func<string>)Delegate.CreateDelegate(typeof(Func<string>), plain,
+                typeof(object).GetMethod("ToString", Type.EmptyTypes));
+            Probe("object overriding level", () => Describe(labelText.Method) + "/" + labelText());
+            Probe("object inherited override", () => Describe(plainText.Method) + "/" + plainText());
+            Probe("object inherited body", () => Describe(bareText.Method) + "/" + bareText());
+            Probe("object hash override", () => Describe(labelHash.Method) + "/" + labelHash());
+            Probe("object reflected binding", () => Describe(reflected.Method) + "/" + reflected());
+        }
+
+        private static string Describe(MethodInfo m) =>
+            m is null ? "null" : m.DeclaringType.Name + "." + m.Name;
+
+        // 9. Delegate.Method over receivers without a recorded case, resolved by walking
+        //    their class levels: a MakeGenericType instantiation under an interface binding,
+        //    whose level strips with its template though typeof names the definition, and a
+        //    library subclass inheriting a generic virtual body. A stripped level throws PNSE
+        //    naming it.
+        private static void UnrecordedReceiverMethod()
+        {
+            Console.WriteLine("== Delegate.Method over receivers without a recorded case ==");
+            var made = (ILibKind)Activator.CreateInstance(typeof(LibGenericKind<>).MakeGenericType(typeof(Widget)));
+            Func<string> madeKind = made.Kind;
+            Func<string> inherited = Factory.MakePlainGenericShape().Kind<int>;
+            Probe("instantiation interface binding", () => madeKind.Method.DeclaringType.Name + "/" + madeKind());
+            Probe("unrecorded generic virtual", () => inherited.Method.DeclaringType.Name + "/" + inherited());
+        }
+
+        // 10. A reflection-bound generic virtual over a library subclass that inherits the
+        //     row's body. Its dispatcher records no case for the subclass, which runs the
+        //     row's own body, so Delegate.Method names the row in every arm.
+        private static void ReflectedUnrecordedReceiverMethod()
+        {
+            Console.WriteLine("== reflection-bound Delegate.Method over a receiver without a recorded case ==");
+            MethodInfo kind = typeof(LibGvmShape).GetMethod("Kind").MakeGenericMethod(typeof(int));
+            Probe("reflected unrecorded generic virtual", () =>
+            {
+                var bound = (Func<string>)Delegate.CreateDelegate(typeof(Func<string>),
+                    Factory.MakePlainGenericShape(), kind);
+                return bound.Method.DeclaringType.Name + "/" + bound();
+            });
         }
 
         // Prints what a member-metadata read answers, or the exception it throws. The full

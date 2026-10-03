@@ -101,8 +101,314 @@ namespace ReflectRuntimeInstantiationSubset
         public override string Who() => "holder:" + value + ":" + typeof(T).Name;
     }
 
+    // typeof-only apart from MakeList, which nothing invokes: the other methods run
+    // only through Invoke on a clone.
+    class Reflected<T>
+    {
+        private readonly string label = "reflected";
+        public override string ToString() => label + ":" + typeof(T).Name;
+        public string Named() => label + "/" + typeof(T).Name;
+        public int Constant() => 7;
+        public virtual string Described() => "described:" + typeof(T).Name;
+        public object MakeList() => new System.Collections.Generic.List<T>();
+    }
+
+    // Only reflection names these methods. Their bodies name T through typeof, a
+    // type test, or a call of another such method, static ones included; MakeList
+    // names List<T>, which no clone can mint.
+    class Called<T>
+    {
+        private readonly string label = "called";
+        public int Constant() => 7;
+        public string Kind() => typeof(T).Name;
+        public string Twice() => Kind() + "+" + Kind();
+        public string Labeled() => label + ":" + Kind();
+        public bool Is(object o) => o is T;
+        public string ViaStatic() => Describe();
+        public static string Describe() => "static:" + typeof(T).Name;
+        public static int StaticConstant() => 9;
+        public object MakeList() => new System.Collections.Generic.List<T>();
+    }
+
+    // Only reflection names Show and StaticShow; they reach the base levels'
+    // static methods through the table their level forwards.
+    class StaticRoot<T>
+    {
+        protected static string Name() => typeof(T).Name;
+    }
+
+    class StaticMid<T> : StaticRoot<T>
+    {
+        protected static string MidName() => "mid:" + Name();
+    }
+
+    class StaticLeaf<T> : StaticMid<T>
+    {
+        public string Show() => Name() + "|" + MidName();
+        public static string StaticShow() => MidName();
+    }
+
+    interface IVisit
+    {
+        string Visit<U>();
+    }
+
+    // Visit is final: a binding through the clone's row runs it directly, one
+    // through IVisit takes the case the dispatcher records for the template.
+    class Visiting<T> : IVisit
+    {
+        public string Visit<U>() => typeof(T).Name + "/" + typeof(U).Name;
+    }
+
+    // Only reflection names these methods. C# compiles each cast to T to unbox.any.
+    class Casting<T>
+    {
+        public string Cast(object o)
+        {
+            try
+            {
+                _ = (T)o;
+                return "ok";
+            }
+            catch (InvalidCastException)
+            {
+                return "InvalidCastException";
+            }
+            catch (NullReferenceException)
+            {
+                return "NullReferenceException";
+            }
+        }
+
+        public object Boxed(object o) => (T)o;
+        public bool IsT(object o) => o is T t;
+
+        public object Kept(object o)
+        {
+            object kept = "none";
+            if (o is T t)
+                kept = t;
+            return kept;
+        }
+    }
+
+    class RefCasting<T> where T : class
+    {
+        public object As(object o) => o as T;
+        public bool AsNull(object o) => (o as T) == null;
+    }
+
+    interface IBump
+    {
+        void Bump();
+    }
+
+    struct Counter : IBump
+    {
+        public int N;
+        public string Label;
+
+        public void Bump() => N++;
+        public override string ToString() => Label + N;
+    }
+
+    // Only reflection names these methods. Each reads a T out of its argument, then
+    // changes the argument's box and returns the T it read.
+    class Snapshot<T>
+    {
+        public object Bumped(object o)
+        {
+            T c = (T)o;
+            ((IBump)o).Bump();
+            return c;
+        }
+
+        public object Matched(object o)
+        {
+            if (o is T t)
+            {
+                ((IBump)o).Bump();
+                return t;
+            }
+            return "none";
+        }
+
+        public object Written(object o)
+        {
+            T c = (T)o;
+            typeof(Counter).GetField("N").SetValue(o, 9);
+            return c;
+        }
+    }
+
     class Program
     {
+        internal static void RunTemplateValues()
+        {
+            Console.WriteLine("== template values ==");
+            foreach (Type arg in new[] { typeof(bool), typeof(string) })
+            {
+                Type closed = typeof(StaticLeaf<>).MakeGenericType(arg);
+                object inst = Activator.CreateInstance(closed);
+                Console.WriteLine("static-leaf " + arg.Name + ": show=" + closed.GetMethod("Show").Invoke(inst, null)
+                    + " staticShow=" + closed.GetMethod("StaticShow").Invoke(null, null)
+                    + " null-bound show=" + NullBound(() =>
+                        ((Func<string>)Delegate.CreateDelegate(typeof(Func<string>), null, closed.GetMethod("Show")))()));
+            }
+            IVisit visited = new Visiting<long>();
+            Console.WriteLine("visit aot: " + visited.Visit<int>());
+            foreach (Type arg in new[] { typeof(bool), typeof(string) })
+            {
+                Type closed = typeof(Visiting<>).MakeGenericType(arg);
+                object inst = Activator.CreateInstance(closed);
+                var viaItf = (Func<string>)Delegate.CreateDelegate(typeof(Func<string>), inst,
+                    typeof(IVisit).GetMethod("Visit").MakeGenericMethod(typeof(int)));
+                var viaRow = (Func<string>)Delegate.CreateDelegate(typeof(Func<string>), inst,
+                    closed.GetMethod("Visit").MakeGenericMethod(typeof(int)));
+                Console.WriteLine("visit " + arg.Name + ": " + viaItf() + " " + viaRow()
+                    + " equal=" + viaItf.Equals(viaRow) + "/" + viaRow.Equals(viaItf)
+                    + " sameHash=" + (viaItf.GetHashCode() == viaRow.GetHashCode()));
+            }
+            Console.WriteLine("closed casts: " + CastMessage(() => (int?)(object)"s")
+                + " | " + CastMessage(() => (int?)(object)DayOfWeek.Friday)
+                + " | " + CastMessage(() => (DayOfWeek?)(object)5)
+                + " | " + CastMessage(() => (System.Collections.Generic.List<int>)(object)"s"));
+            Console.WriteLine("nullable tests: " + IsOf<int?>(5) + " " + IsOf<int?>(DayOfWeek.Friday) + " " + IsOf<int?>(null)
+                + " as=" + AsNullableInt(5) + "/" + AsNullableInt(DayOfWeek.Friday).HasValue
+                + " assignable=" + typeof(int?).IsAssignableFrom(typeof(int)) + "/" + typeof(int).IsAssignableFrom(typeof(int?))
+                + " instance=" + typeof(int?).IsInstanceOfType(5));
+            foreach (Type arg in new[] { typeof(int), typeof(string), typeof(int?), typeof(DayOfWeek), typeof(Pair) })
+            {
+                Type closed = typeof(Casting<>).MakeGenericType(arg);
+                object inst = Activator.CreateInstance(closed);
+                foreach (object o in new object[] { 5, "s", null, DayOfWeek.Friday, new Pair() })
+                    Console.WriteLine("casting " + arg.Name + " " + (o ?? "null")
+                        + ": cast=" + closed.GetMethod("Cast").Invoke(inst, new[] { o })
+                        + " boxed=" + Described(() => closed.GetMethod("Boxed").Invoke(inst, new[] { o }), o)
+                        + " is=" + closed.GetMethod("IsT").Invoke(inst, new[] { o })
+                        + " kept=" + Described(() => closed.GetMethod("Kept").Invoke(inst, new[] { o }), o));
+                Console.WriteLine("casting " + arg.Name + " null-bound cast: " + NullBound(() =>
+                    ((Func<object, string>)Delegate.CreateDelegate(typeof(Func<object, string>), null,
+                        closed.GetMethod("Cast")))("s")));
+            }
+            foreach (Type arg in new[] { typeof(string), typeof(object) })
+            {
+                Type closed = typeof(RefCasting<>).MakeGenericType(arg);
+                object inst = Activator.CreateInstance(closed);
+                foreach (object o in new object[] { 5, "s", null })
+                    Console.WriteLine("ref-casting " + arg.Name + " " + (o ?? "null")
+                        + ": as=" + Described(() => closed.GetMethod("As").Invoke(inst, new[] { o }), o)
+                        + " asNull=" + closed.GetMethod("AsNull").Invoke(inst, new[] { o }));
+            }
+            Console.WriteLine("template values end");
+        }
+
+        private static bool IsOf<T>(object o) => o is T;
+
+        private static int? AsNullableInt(object o) => o as int?;
+
+        private static string CastMessage(Func<object> call)
+        {
+            try
+            {
+                return "value " + call();
+            }
+            catch (InvalidCastException ex)
+            {
+                return ex.Message;
+            }
+        }
+
+        // The result, its type and whether it is the argument itself, or what the
+        // method threw.
+        private static string Described(Func<object> call, object arg)
+        {
+            try
+            {
+                object r = call();
+                return r == null ? "null" : r + ":" + r.GetType().Name + ":" + ReferenceEquals(r, arg);
+            }
+            catch (System.Reflection.TargetInvocationException ex)
+            {
+                return ex.InnerException.GetType().Name + "(" + ex.InnerException.Message + ")";
+            }
+        }
+
+        internal static void RunTemplateCopies()
+        {
+            Console.WriteLine("== template copies ==");
+            foreach (Type arg in new[] { typeof(Counter), typeof(Counter?), typeof(IBump), typeof(object) })
+            {
+                Type closed = typeof(Snapshot<>).MakeGenericType(arg);
+                object inst = Activator.CreateInstance(closed);
+                foreach (string method in new[] { "Bumped", "Matched", "Written" })
+                {
+                    object box = new Counter { Label = "n" };
+                    object r = closed.GetMethod(method).Invoke(inst, new[] { box });
+                    Console.WriteLine("snapshot " + arg.Name + " " + method + ": result=" + r
+                        + " source=" + box + " same=" + ReferenceEquals(r, box));
+                }
+            }
+            Console.WriteLine("template copies end");
+        }
+
+        internal static void RunTemplateCalls()
+        {
+            Console.WriteLine("== template calls ==");
+            foreach (Type arg in new[]
+                { typeof(bool), typeof(Pair), typeof(string), typeof(System.Collections.Generic.KeyValuePair<string, int>) })
+            {
+                Type closed = typeof(Called<>).MakeGenericType(arg);
+                object inst = Activator.CreateInstance(closed);
+                string name = "called " + arg.Name;
+                Console.WriteLine(name + ": twice=" + closed.GetMethod("Twice").Invoke(inst, null)
+                    + " labeled=" + closed.GetMethod("Labeled").Invoke(inst, null)
+                    + " is=" + closed.GetMethod("Is").Invoke(inst, new object[] { "x" })
+                    + " viaStatic=" + closed.GetMethod("ViaStatic").Invoke(inst, null)
+                    + " describe=" + closed.GetMethod("Describe").Invoke(null, null)
+                    + " staticConstant=" + closed.GetMethod("StaticConstant").Invoke(null, null)
+                    + " makeList=" + (closed.GetMethod("MakeList") != null));
+                Console.WriteLine(name + " static delegate: "
+                    + ((Func<string>)Delegate.CreateDelegate(typeof(Func<string>), closed.GetMethod("Describe")))());
+                foreach (string method in new[] { "Kind", "Twice", "Labeled", "ViaStatic" })
+                    Console.WriteLine(name + " null-bound " + method + ": " + NullBound(() =>
+                        ((Func<string>)Delegate.CreateDelegate(typeof(Func<string>), null, closed.GetMethod(method)))()));
+                Console.WriteLine(name + " null-bound Constant: " + NullBound(() =>
+                    ((Func<int>)Delegate.CreateDelegate(typeof(Func<int>), null, closed.GetMethod("Constant")))()));
+                Console.WriteLine(name + " null-bound Is: " + NullBound(() =>
+                    ((Func<object, bool>)Delegate.CreateDelegate(typeof(Func<object, bool>), null, closed.GetMethod("Is")))("x")));
+            }
+            Console.WriteLine("template calls end");
+        }
+
+        private static string NullBound(Func<object> call)
+        {
+            try
+            {
+                return call().ToString();
+            }
+            catch (Exception ex)
+            {
+                return ex.GetType().Name;
+            }
+        }
+
+        internal static void RunReflectedBodies()
+        {
+            Console.WriteLine("== reflected template bodies ==");
+            foreach (Type arg in new[] { typeof(bool), typeof(Hue), typeof(string) })
+            {
+                Type closed = typeof(Reflected<>).MakeGenericType(arg);
+                object inst = Activator.CreateInstance(closed);
+                Console.WriteLine("reflected " + arg.Name + ": " + inst
+                    + " named=" + closed.GetMethod("Named").Invoke(inst, null)
+                    + " constant=" + closed.GetMethod("Constant").Invoke(inst, null)
+                    + " described=" + closed.GetMethod("Described").Invoke(inst, null)
+                    + " makeList=" + (closed.GetMethod("MakeList") != null));
+            }
+            Console.WriteLine("reflected template bodies end");
+        }
+
         internal static void Run()
         {
             foreach (Type arg in new[]

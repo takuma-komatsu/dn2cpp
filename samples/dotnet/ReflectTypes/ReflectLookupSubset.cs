@@ -88,8 +88,8 @@ namespace ReflectLookupSubset
 
             // Keep the generic methods, indexers and nested type reachable.
             // Echo<int> is instantiated EXPLICITLY (plain Echo(1) binds to the
-            // non-generic overload) so the gm-gen1-closed divergence case below
-            // exercises a closed generic row that really exists in the image.
+            // non-generic overload) so the gm-gen1-closed case below has a closed
+            // generic row in the image to reject.
             var inst = new Derived();
             _ = inst.Echo(1); _ = inst.Echo<int>(2); _ = inst.Echo("x"); _ = inst.Pick<double>("p", 1);
             _ = inst[3]; _ = inst["k"]; _ = inst.TouchHidden(); _ = Base.Stat(1.5);
@@ -114,10 +114,10 @@ namespace ReflectLookupSubset
             Try("gm-gen1-binder", () => M(d.GetMethod("Pick", 1, PI, null, new[] { typeof(string), typeof(int) }, null)));
             Try("gm-gen1-cc", () => M(d.GetMethod("Pick", 1, PI, null, CallingConventions.Standard, new[] { typeof(string), typeof(int) }, null)));
             Try("gm-gen2-miss", () => M(d.GetMethod("Pick", 2, new[] { typeof(string), typeof(int) })));
-            // INTENTIONAL DIVERGENCE: real .NET matches genericParameterCount
-            // lookups against the OPEN definition's parameter types (Echo<T>'s T
-            // never equals typeof(int) -> null); the AOT model carries closed
-            // instantiation rows, so the Echo<int> row matches and is returned.
+            // A genericParameterCount lookup matches the definition's parameter
+            // types, as on .NET: Echo<T>'s parameter is its type parameter, which
+            // no closed type equals, so even the closed Echo<int> row misses and
+            // the lookup returns null.
             Try("gm-gen1-closed", () => M(d.GetMethod("Echo", 1, new[] { typeof(int) })));
             Try("gm-null-name", () => M(d.GetMethod(null!)));
 

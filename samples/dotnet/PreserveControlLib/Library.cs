@@ -179,6 +179,67 @@ public sealed class LateInitService : LateInitBase
     protected override string OnInit() => "service";
 }
 
+public interface IPreservedShow
+{
+    string Show();
+}
+
+// Structs only reflection boxes: nothing boxes them statically, so each box comes
+// from a preserved member's return or field value, or from Activator.
+public struct PreservedPoint : IPreservedShow
+{
+    public int V;
+
+    public string Show() => "point:" + V;
+}
+
+[Dn2Cpp.Scripting.Preserve]
+public struct PreservedMade : IPreservedShow
+{
+    public int V;
+
+    public string Show() => "made:" + V;
+}
+
+public sealed class PreservedBoxes
+{
+    [Dn2Cpp.Scripting.Preserve]
+    private static PreservedPoint Field = new PreservedPoint { V = 5 };
+
+    [Dn2Cpp.Scripting.Preserve]
+    private static PreservedPoint Point => new PreservedPoint { V = 6 };
+
+    [Dn2Cpp.Scripting.Preserve]
+    private static PreservedPoint Make() => new PreservedPoint { V = 7 };
+}
+
+// Structs a preserved method writes back through an out argument or returns by
+// reference: nothing boxes these statically either.
+public struct PreservedFilled : IPreservedShow
+{
+    public int V;
+
+    public string Show() => "filled:" + V;
+}
+
+public struct PreservedLent : IPreservedShow
+{
+    public int V;
+
+    public string Show() => "lent:" + V;
+}
+
+public sealed class PreservedWrites
+{
+    private static readonly PreservedLent[] Lent = { new PreservedLent { V = 9 } };
+
+    [Dn2Cpp.Scripting.Preserve]
+    private static void Fill(out PreservedFilled filled) => filled = new PreservedFilled { V = 8 };
+
+    [Dn2Cpp.Scripting.Preserve]
+    private static ref PreservedLent Lend() => ref Lent[0];
+}
+
 public sealed class UnusedType
 {
     public static void UnusedMethod() => Console.WriteLine("unused-type");

@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# Runtime generic template invocation, hidden contexts and boxed-value copies.
+# A template body that calls through a function pointer over its type parameter never
+# returns a wrong result: its .NET-diffed lines print alike for a refusal and a correct
+# result, and its native-only outcome run pins that the clone refuses every such call
+# with InvalidOperationException where .NET runs it.
 # Consolidated reflection-introspection gate. Merges the former per-feature
 # reflect-* subset gates (one tiny sample each) into a single multi-section
 # program, transpiled once against the tree-shaken real CoreLib. Each section
@@ -104,11 +109,9 @@
 # Type.GetGenericParameterConstraints throws it where real .NET throws
 # InvalidOperationException (no generic-parameter Type materializes), the
 # dynamic-codegen section's Compile()/DynamicMethod throw where the JIT-backed
-# runtime succeeds, GetMethod(name, genericParameterCount, types) matches
-# the image's CLOSED generic rows (real .NET matches the open definition's
-# parameter types, so gm-gen1-closed returns null there), and the assembly
-# section's loud cut throws the catchable PlatformNotSupportedException where
-# real .NET probes the loader (Assembly.LoadFile -> FileNotFoundException).
+# runtime succeeds, and the assembly section's loud cut throws the catchable
+# PlatformNotSupportedException where real .NET probes the loader
+# (Assembly.LoadFile -> FileNotFoundException).
 # GetManifestResourceStream is no longer among them — it answers for real over
 # carried blobs, and build-and-run-manifest-resources.sh diffs that
 # surface against real .NET.
@@ -307,6 +310,7 @@
 source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_ordinary-reflection.sh samples/dotnet/ReflectTypes/AttributeTypePropertySubset.cs samples/dotnet/ReflectTypes/DataOnlyAttributeRowsOnly.csproj samples/dotnet/ReflectTypes/DataOnlyAttributeRowsOnlyProgram.cs samples/dotnet/ReflectTypes/OrdinaryReflectionTypeLeaves.csproj samples/dotnet/ReflectTypes/OrdinaryReflectionTypeLeavesProgram.cs samples/dotnet/ReflectTypes/ReflectAssemblyErrorSubset.cs samples/dotnet/ReflectTypes/ReflectAttrBoxedSubset.cs samples/dotnet/ReflectTypes/ReflectRuntimeTypeParitySubset.cs samples/dotnet/ReflectTypes/ReflectTypes.csproj samples/dotnet/ReflectTypes/UnreadAttributeRowsOnly.csproj samples/dotnet/ReflectTypes/UnreadAttributeRowsOnlyProgram.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-type-leaves-v1"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/ReflectionTemplateDispatch.csproj samples/dotnet/ReflectTypes/ReflectionTemplateDispatchProgram.cs samples/dotnet/ReflectTypes/ReflectRuntimeInstantiationSubset.cs"
 
 EXPFILE="$(dirname "$0")/expected/reflect-types.txt"
 BCL=(System.Linq.Expressions System.Linq System.Collections \
@@ -394,7 +398,7 @@ echo "OK — both mouths of CppEmitter.ArrayTypeInfoDeclared answered, none degr
 # The r-late line above is the behavioural half and covers ONE element. This is the
 # corpus-wide half, and it is the one that can see the class of bug: the rows used to
 # be planted at NOTING time, so an element first noted after the emit fixpoint — which
-# is where TypeMetadataEmitter.NoteReflectedMemberArrayElements notes every array a
+# is where TypeMetadataEmitter.NoteReflectedMemberTypes notes every array a
 # reflection table types a member with — got none, and its GetInterfaces() answered six
 # where .NET says eleven while the type TEST already answered eleven by
 # DN2CPP_TF_ARRAY_GEN_ITF. Nothing about that is loud: the transpile is green, the C++
@@ -600,6 +604,43 @@ DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectTypes OrdinaryRefle
 DN2CPP_OUT_SUFFIX=-diet DN2CPP_STRICT_COMPLETION=1 \
     ordinary_fixture_diff_gate ReflectTypes OrdinaryReflectionTypeLeaves \
     System.Collections System.ComponentModel.Primitives
-unset -f gate_extra_asserts
+# With no attribute read, only the unwalked-row notes reach a chain level a row's
+# Type argument mints, so the deepest level's row must still render.
+gate_extra_asserts() {
+    local out="$1" native
+    grep -qw 'attrtab_ReflectAttrUnread_ChainSecond_Int32' "$out"/generated*.cpp "$out/generated.h" \
+        || { echo "FAIL: attribute chain's deepest row did not render" >&2; return 1; }
+    native=$(run_bounded "$out/UnreadAttributeRowsOnly$EXE_EXT") || return $?
+    grep -Fxq 'chain holder: ChainHolder' <<< "$(strip_cr_win "$native")" \
+        || { echo "FAIL: attribute chain block did not run" >&2; return 1; }
+}
 DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectTypes UnreadAttributeRowsOnly --no-ildiet
+unset -f gate_extra_asserts
 DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectTypes DataOnlyAttributeRowsOnly --no-ildiet
+gate_extra_asserts() {
+    local out="$1" native line
+    native=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT") || return $?
+    native=$(strip_cr_win "$native")
+    before=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-template-function-pointers) || return $?
+    prefix=$(awk '/^== template function pointers ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    for line in '== reflection template dispatch ==' 'reflection template dispatch end' \
+        '== template function pointers ==' 'fnptr Int32: row=True mismatched=False' \
+        'fnptr Int64: row=True mismatched=False' 'fnptr String: row=True mismatched=False' \
+        'template function pointers end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: template dispatch witness missing: $line" >&2; return 1; }
+    done
+    # No clone shares a body that calls through a function pointer over its type
+    # parameter. Exact, so a call that runs or refuses differently shows.
+    native=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" template-function-pointer-outcomes) || return $?
+    assert_output "$(strip_cr_win "$native")" "$(printf '%s\n' '== template function pointers ==' \
+        'fnptr Int32 outcome: refused InvalidOperationException' \
+        'fnptr Int64 outcome: refused InvalidOperationException' \
+        'fnptr String outcome: refused InvalidOperationException' \
+        'template function pointers end')"
+}
+DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectTypes ReflectionTemplateDispatch --no-ildiet
+DN2CPP_OUT_SUFFIX=-native DN2CPP_STRICT_COMPLETION=1 \
+    ordinary_fixture_diff_gate ReflectTypes ReflectionTemplateDispatch --no-ildiet --no-metadata-compression
+unset -f gate_extra_asserts

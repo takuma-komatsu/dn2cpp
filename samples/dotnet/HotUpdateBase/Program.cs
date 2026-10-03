@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.Reflection;
 using Dn2Cpp.Runtime;
 
 namespace HotUpdateBase;
@@ -37,6 +38,8 @@ public delegate string Annotator(int n);
 // Tuner's Invoke takes a float, so a bound method taking a STRING is called with
 // the pointer register never set. QuotaEx.Rate/Warn are its pair (see there).
 public delegate string Tuner(float f);
+// The shape of Shelf.Label<int>, which Main binds over a patch receiver.
+public delegate string Labeler(int item);
 
 // An AOT type implementing the interface, so an interface-typed call from patch
 // code onto a base-image instance dispatches through the ordinary AOT interface
@@ -85,6 +88,12 @@ public class Counter
     public static Describer? ConcatProbe;
     public static Describer? GenericIntImportProbe;
     public static Describer? GenericStringImportProbe;
+    public static Describer? GenericVirtualProbe;
+    public static Describer? GenericVirtualRowProbe;
+    // A patch-constructed receiver below GlassShelf, which Main reflects over.
+    public static Shelf? PatchShelf;
+    // A patch-constructed receiver below Plaque, which Main reflects over.
+    public static Plaque? PatchPlaque;
 
     // Hands a QuotaEx to the HotUpdateInvokerPatch / HotUpdateFtnPatch fixtures
     // through a well-known static on a DIFFERENT type: those patches must leave
@@ -421,6 +430,129 @@ public static class Faults
 // exception unwinds interpreted frames and this AOT frame on one machine —
 // while anything else (e.g. the loader's stale-BPI NotSupportedException)
 // still escapes and aborts.
+public class Shelf
+{
+    public virtual string Label<T>(T item)
+    {
+        return "shelf:" + item;
+    }
+
+    public virtual string Kind<T>()
+    {
+        return "shelf kind";
+    }
+}
+
+public class GlassShelf : Shelf
+{
+    public override string Label<T>(T item)
+    {
+        return "glass:" + item;
+    }
+
+    public override string Kind<T>()
+    {
+        return "glass " + typeof(T).Name;
+    }
+}
+
+// The ToString override a patch receiver below it inherits.
+public class Plaque
+{
+    public override string ToString()
+    {
+        return "plaque";
+    }
+}
+
+public interface ISorter
+{
+    string Sort<T>(T item);
+}
+
+public sealed class Sorter : ISorter
+{
+    public string Sort<T>(T item)
+    {
+        return "sorted:" + item;
+    }
+}
+
+public interface ITagger
+{
+    string Tag<T>(T item);
+}
+
+// The base calls Tag only through ITagger, so no AOT class callvirt names
+// Crate.Tag<int>.
+public class Crate : ITagger
+{
+    public virtual string Tag<T>(T item)
+    {
+        return "crate:" + item;
+    }
+}
+
+public class SteelCrate : Crate
+{
+    public override string Tag<T>(T item)
+    {
+        return "steel:" + item;
+    }
+}
+
+public interface IMarker
+{
+    string Mark<T>(T item);
+}
+
+// The base calls Mark only through IMarker, so no AOT class callvirt names
+// the abstract Stamp.Mark<int>.
+public abstract class Stamp : IMarker
+{
+    public abstract string Mark<T>(T item);
+}
+
+public class InkStamp : Stamp
+{
+    public override string Mark<T>(T item)
+    {
+        return "ink:" + item;
+    }
+}
+
+// Default interface bodies, generic virtual and plain: Bin keeps both and
+// GlassBin replaces both. The base calls them only through IBin.
+public interface IBin
+{
+    string Hold<T>(T item)
+    {
+        return "bin:" + item;
+    }
+
+    string Name()
+    {
+        return "bin";
+    }
+}
+
+public class Bin : IBin
+{
+}
+
+public class GlassBin : IBin
+{
+    public string Hold<T>(T item)
+    {
+        return "glass bin:" + item;
+    }
+
+    public string Name()
+    {
+        return "glass bin";
+    }
+}
+
 internal static class Program
 {
     private static void Main(string[] args)
@@ -452,6 +584,27 @@ internal static class Program
         {
             HotUpdate.Load(args[1]);
             Console.WriteLine(Type.GetType("HotDirPatch.Probe") != null ? "registered" : "missing");
+            return;
+        }
+        // A refused load publishes none of the image's types.
+        if (args.Length == 2 && args[0] == "--load-refused")
+        {
+            try
+            {
+                HotUpdate.Load(args[1]);
+                Console.WriteLine("loaded");
+            }
+            catch (NotSupportedException e)
+            {
+                Console.WriteLine("refused:" + e.Message);
+            }
+            Console.WriteLine(Type.GetType("HotGvmRow.RowProbe") is not null ? "published" : "published nothing");
+            return;
+        }
+        // A patch whose entry prints its whole transcript.
+        if (args.Length == 2 && args[0] == "--run")
+        {
+            HotUpdate.Run(args[1]);
             return;
         }
         // Interpreted frames join the shadow stack: set the probe request, load
@@ -544,6 +697,28 @@ internal static class Program
         Counter.SeedQuota = new QuotaEx("seed", 1);
         // The delegate fixtures' surface, emitted after the seed it reads. Silent.
         Counter.EmitDelegateFixtureSurface();
+        // The generic virtual receivers the patch constructs, allocated here so
+        // each override is a case of its instantiation's dispatcher. Silent.
+        Shelf plainShelf = new Shelf();
+        Shelf glassShelf = new GlassShelf();
+        ISorter sorter = new Sorter();
+        if (plainShelf == glassShelf || sorter is null)
+            Console.WriteLine("unreachable");
+        // The base of a patch receiver, its ctor and override emitted. Silent.
+        object plaque = new Plaque();
+        if (plaque.ToString() != "plaque")
+            Console.WriteLine("unreachable");
+        // Receivers the base dispatches only through interfaces. Silent.
+        ITagger crate = new Crate();
+        ITagger steel = new SteelCrate();
+        IMarker stamp = new InkStamp();
+        if (crate.Tag<int>(0) == steel.Tag<int>(0) || stamp.Mark<int>(0) is null)
+            Console.WriteLine("unreachable");
+        IBin bin = new Bin();
+        IBin glassBin = new GlassBin();
+        if (bin.Hold<int>(0) == glassBin.Hold<int>(0) || bin.Name() == glassBin.Name())
+            Console.WriteLine("unreachable");
+
         try
         {
             HotUpdate.Run(args[0]);
@@ -566,6 +741,65 @@ internal static class Program
             Console.WriteLine(Counter.GenericStringImportProbe());
             Console.WriteLine("== ordinary generic import identity end ==");
         }
+        if (Counter.GenericVirtualProbe is not null)
+        {
+            Console.WriteLine("== generic virtual import dispatch ==");
+            Console.WriteLine(Counter.GenericVirtualProbe());
+            Console.WriteLine("== generic virtual import dispatch end ==");
+        }
+        if (Counter.GenericVirtualRowProbe is not null)
+        {
+            Console.WriteLine("== generic virtual import rows ==");
+            Console.WriteLine(Counter.GenericVirtualRowProbe());
+            Console.WriteLine("== generic virtual import rows end ==");
+        }
+        if (Counter.PatchShelf is not null)
+            PatchReceiverReflection(Counter.PatchShelf);
+        if (Counter.PatchPlaque is not null)
+            PatchReceiverObjectVirtuals(Counter.PatchPlaque);
+    }
+
+    private static string Describe(MethodInfo method)
+    {
+        return method.DeclaringType!.Name + "." + method.Name + "[" + method.GetGenericArguments()[0].Name + "]";
+    }
+
+    // A patch receiver runs its nearest AOT ancestor's generic virtual override,
+    // so a delegate over it reports that override and equals a binding of it.
+    private static void PatchReceiverReflection(Shelf frost)
+    {
+        Console.WriteLine("== generic virtual reflection over a patch receiver ==");
+        MethodInfo row = typeof(Shelf).GetMethod("Label")!.MakeGenericMethod(typeof(int));
+        MethodInfo over = typeof(GlassShelf).GetMethod("Label")!.MakeGenericMethod(typeof(int));
+        var viaRow = (Labeler)Delegate.CreateDelegate(typeof(Labeler), frost, row);
+        var viaOverride = (Labeler)Delegate.CreateDelegate(typeof(Labeler), frost, over);
+        Console.WriteLine(Describe(viaRow.Method) + " " + viaRow(7));
+        Console.WriteLine(Describe(viaOverride.Method) + " " + viaOverride(8));
+        Console.WriteLine(viaRow.Equals(viaOverride) + " " + viaOverride.Equals(viaRow)
+            + " " + (viaRow.GetHashCode() == viaOverride.GetHashCode()));
+        Labeler bound = frost.Label<int>;
+        Console.WriteLine(Describe(bound.Method) + " " + bound(9));
+        Console.WriteLine("== generic virtual reflection over a patch receiver end ==");
+    }
+
+    private static string Named(MethodInfo? method)
+    {
+        return method is null ? "null" : method.DeclaringType + "." + method.Name;
+    }
+
+    // A patch type runs its nearest AOT ancestor's Object virtuals, so a delegate
+    // over a patch receiver bound to one by reflection reports that ancestor's
+    // override, the row a by-name lookup on the patch type finds.
+    // HotUpdateCoreLibBase also binds method groups, which a base without a
+    // CoreLib cannot transpile over an Object virtual.
+    private static void PatchReceiverObjectVirtuals(object plaque)
+    {
+        Console.WriteLine("== object virtuals over a patch receiver ==");
+        MethodInfo toString = typeof(object).GetMethod("ToString")!;
+        var viaRow = (Describer)Delegate.CreateDelegate(typeof(Describer), plaque, toString);
+        Console.WriteLine(Named(viaRow.Method) + " " + viaRow());
+        Console.WriteLine(Named(plaque.GetType().GetMethod("ToString")));
+        Console.WriteLine("== object virtuals over a patch receiver end ==");
     }
 
     // The AOT half of the interleave chain, kept out of Main so the trace
