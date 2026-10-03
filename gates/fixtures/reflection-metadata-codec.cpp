@@ -79,6 +79,8 @@ constexpr char unicode[] = "共有接尾辞_Ω_𐐀";
 const void* const pointers[] = { &original_type, empty, unicode };
 const char* const display_tokens[] = { "共有", "接尾辞", "_Ω_𐐀" };
 const Record image_method = record(0, 0, {});
+const Record image_ctor = record(0, 0, {});
+const Record overrun_ctor = record(1, 0, {});
 
 Dn2CppObject* identity_getter(Dn2CppObject* object) { return object; }
 
@@ -94,7 +96,9 @@ constexpr auto packed_local_type = Dn2CppMetadataHandle<Dn2CppTypeReflection>::f
 }
 
 const Dn2CppMetadataBlock dn2cpp_metadata_blocks[129] = {
-    { pointers, display_tokens, image_method.bytes.data(), image_method.length }
+    { pointers, display_tokens, image_method.bytes.data(), image_method.length,
+        image_ctor.bytes.data(), image_ctor.length },
+    { pointers, nullptr, nullptr, 0, overrun_ctor.bytes.data(), overrun_ctor.length - 2 }
 };
 const std::size_t dn2cpp_metadata_block_count = 129;
 // This native probe supplies the empty generated-image tables required by the runtime.
@@ -106,6 +110,12 @@ const Dn2CppAssemblyRegEntry dn2cpp_assembly_registry[] = { {} };
 const int32_t dn2cpp_assembly_registry_count = 0;
 const Dn2CppDelegateReflEntry dn2cpp_delegate_refl_registry[] = { {} };
 const int32_t dn2cpp_delegate_refl_registry_count = 0;
+const Dn2CppGvmRowDispatch dn2cpp_gvm_row_dispatch[] = { {} };
+const int32_t dn2cpp_gvm_row_dispatch_count = 0;
+const Dn2CppItfImplSlots dn2cpp_itf_impl_slots[] = { {} };
+const int32_t dn2cpp_itf_impl_slot_count = 0;
+const Dn2CppRenamedSlotBody dn2cpp_renamed_slot_bodies[] = { {} };
+const int32_t dn2cpp_renamed_slot_body_count = 0;
 const Dn2CppBclMessage dn2cpp_bcl_messages[] = { { nullptr, nullptr } };
 const int32_t dn2cpp_bcl_message_count = 0;
 const int32_t dn2cpp_exception_get_message_slot = -1;
@@ -154,6 +164,17 @@ int main()
         && parameter.customModifiersKnown == 1, "known empty modifiers");
     require(Dn2CppMetadataHandle<Dn2CppParamInfo>::from_static(unknown.bytes.data())->customModifiersKnown == 0,
         "unknown modifiers remain distinct from empty");
+    auto pass_record = record(0, (1ULL << 12) | (1ULL << 13) | (1ULL << 14),
+        { 3, DN2CPP_PASS_BYREF * 2, 1 });
+    auto pass = *Dn2CppMetadataHandle<Dn2CppParamInfo>::from_static(pass_record.bytes.data());
+    require(pass.genericDefinitionKey == unicode && pass.passKind == DN2CPP_PASS_BYREF
+        && pass.passType == &original_type, "parameter invocation descriptors preserve their identity");
+    auto dispatch_record = record(0, (1ULL << 26) | (1ULL << 27) | (1ULL << 28) | (1ULL << 29),
+        { 3, 4, 0x06000001 * 2, 1 });
+    auto dispatch = *Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_static(dispatch_record.bytes.data());
+    require(dispatch.genericDefinitionReturnKey == unicode && dispatch.gvmRootDepth == 2
+        && dispatch.gvmRootToken == 0x06000001 && dispatch.returnPassType == &original_type,
+        "method invocation descriptors preserve generic roots and return types");
     auto named = record(0, 1, { 3 });
     require(Dn2CppMetadataHandle<Dn2CppEnumMember>::from_static(named.bytes.data())->name == unicode,
         "Unicode names remain exact pooled bytes");
@@ -243,6 +264,12 @@ int main()
         && !dn2cpp_metadata_is_image_method(packed_local_fields[0].identity())
         && !dn2cpp_metadata_is_image_method(nullptr),
         "stack records, deltas, local blocks, native rows and null cannot enter the invocation cache");
+    require(dn2cpp_metadata_is_image_method(
+            Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_static(image_ctor.bytes.data()).identity()),
+        "registered image constructor records may enter the invocation cache");
+    require(!dn2cpp_metadata_is_image_method(
+            Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_static(overrun_ctor.bytes.data()).identity()),
+        "a record overrunning its registered extent cannot enter the invocation cache");
     require(local_type.native() == local_type_rows && local_fields[0].native() == local_fields_rows,
         "runtime-owned metadata macros retain native rows");
     auto builtin = *packed_local_type;
@@ -282,10 +309,10 @@ int main()
     require(plain_bytes == packed_bytes, "token display only allocates the final managed string");
     std::puts("metadata codec boundaries OK");
     bool invoker_rejected = false;
-    try { dn2cpp_throw_invoker_missing("missing metadata invoker"); }
+    try { dn2cpp_throw_invoker_missing("missing metadata invoker", &invoker_rejected); }
     catch (Dn2CppInvokerMissing& ex)
     {
-        invoker_rejected = ex.obj != nullptr
+        invoker_rejected = ex.obj != nullptr && ex.call == &invoker_rejected
             && ex.obj->type == &dn2cpp_not_supported_exception_type
             && dn2cpp_exception_hresult(ex.obj) == static_cast<int32_t>(0x80131515u);
         dn2cpp_exc_inflight_pop(ex.obj);

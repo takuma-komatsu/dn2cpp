@@ -305,6 +305,18 @@ internal sealed partial class MethodCompiler
                     $"dn2cpp_delegate_invocation_list({DelegateReceiver(d)}, {PreciseArrayTypeInfoExpr(listType.Element!)})");
                 return true;
             }
+            // .NET's DynamicInvoke runs the delegate type's Invoke through MethodInfo.Invoke,
+            // so the runtime helper invokes that row, which the emitter binds to the
+            // multicast invoker (NeedsDelegateInvokeRows).
+            case ("System.Delegate", "DynamicInvoke") when sig.ParameterTypes is [{ Kind: TypeKind.SZArray }]:
+            {
+                var args = Pop();
+                var d = Pop();
+                Comp.NeedsDelegateInvokeRows = true;
+                Push(StackKind.Ref, "Dn2CppObject*",
+                    $"dn2cpp_delegate_dynamic_invoke({DelegateReceiver(d)}, {Cast(args, "Dn2CppArrayRef*")})");
+                return true;
+            }
             // Delegate.CreateDelegate — the MethodInfo-taking static forms:
             // (Type, MethodInfo[, bool throwOnBindFailure]) and (Type, object firstArgument,
             // MethodInfo[, bool]). They route to the same runtime binder as
@@ -337,6 +349,7 @@ internal sealed partial class MethodCompiler
                     target = Cast(fa, "Dn2CppObject*");
                 }
                 var ty = Pop();
+                NoteValueTypeRows();
                 Push(StackKind.Ref, "Dn2CppObject*",
                     $"dn2cpp_delegate_create({Cast(ty, "Dn2CppType*")}, {target}, (Dn2CppMethodRef*)({m.Expr}), {(hasFirstArg ? 1 : 0)}, {throwExpr}, true)");
                 return true;
@@ -382,6 +395,7 @@ internal sealed partial class MethodCompiler
             case ("System.Delegate", "get_Method"):
             {
                 Comp.NoteDelegateMethodRead();
+                NoteValueTypeRows();
                 var d = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_delegate_get_method({DelegateReceiver(d)})");
                 return true;

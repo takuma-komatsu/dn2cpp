@@ -85,7 +85,9 @@
 
 [[noreturn]] void dn2cpp_vcall_unimplemented(Dn2CppObject* self)
 {
-    dn2cpp_vcall_report(self, reinterpret_cast<const void*>(&dn2cpp_vcall_unimplemented));
+    const void* trap = reinterpret_cast<const void*>(&dn2cpp_vcall_unimplemented);
+    dn2cpp_reflective_slot_check(trap);
+    dn2cpp_vcall_report(self, trap);
 }
 
 // Entered through a per-signature trap thunk (declaration comment in dn2cpp.h): the
@@ -93,6 +95,7 @@
 // holding it — the same-signature subset, usually one.
 [[noreturn]] void dn2cpp_vcall_unimplemented_at(Dn2CppObject* self, const void* slotFn)
 {
+    dn2cpp_reflective_slot_check(slotFn);
     dn2cpp_vcall_report(self, slotFn);
 }
 
@@ -815,14 +818,14 @@ void dn2cpp_throw_not_supported_msg(const char* message)
         dn2cpp_string_from_utf8(message, static_cast<int32_t>(std::strlen(message))), nullptr));
 }
 
-void dn2cpp_throw_invoker_missing(const char* message)
+void dn2cpp_throw_invoker_missing(const char* message, const void* call)
 {
     Dn2CppObject* obj = dn2cpp_exception_new(&dn2cpp_not_supported_exception_type,
         dn2cpp_string_from_utf8(message, static_cast<int32_t>(std::strlen(message))), nullptr);
     reinterpret_cast<Dn2CppExceptionObject*>(obj)->hresult = static_cast<int32_t>(0x80131515u);
     dn2cpp_exc_stamp_trace(obj);
     dn2cpp_exc_inflight_push(obj);
-    throw Dn2CppInvokerMissing{ { obj } };
+    throw Dn2CppInvokerMissing{ { obj }, call };
 }
 
 // Diagnosable ArgumentException — the same catchable type as the bare

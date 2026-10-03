@@ -28,6 +28,8 @@ sealed class Packed
 
 sealed class Wide
 {
+    public int Sum(int a, int b, int c, int d, int e, int f, int g, int h) => a + b + c + d + e + f + g + h;
+
     public int Value { get; set; }
 }
 
@@ -55,6 +57,7 @@ static class Program
     static MethodInfo Method;
     static ValueAttribute Attribute;
     static readonly Wide WideInstance = new Wide();
+    static readonly object[] WideArguments = new object[] { 1, 2, 3, 4, 5, 6, 7, 8 };
     static readonly object Seven = 7;
 
     static void Measure(string operation, Action action)
@@ -119,7 +122,9 @@ static class Program
         Measure("attribute-value-packed", () => Number = Attribute.Value);
         Measure("invoke-packed", () => Sink = Method.Invoke(PackedInstance, Arguments));
         Console.WriteLine("reflection-measure-packed-observed," + Predicate + "," + Number + "," + Sink);
+        MethodInfo sum = typeof(Wide).GetMethod("Sum");
         PropertyInfo value = typeof(Wide).GetProperty("Value");
+        Measure("invoke-wide", () => Sink = sum.Invoke(WideInstance, WideArguments));
         Measure("property-set", () => value.SetValue(WideInstance, Seven));
         Measure("property-get", () => Sink = value.GetValue(WideInstance));
         Console.WriteLine("reflection-measure-property-observed," + Sink);

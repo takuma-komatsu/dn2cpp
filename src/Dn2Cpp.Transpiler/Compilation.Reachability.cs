@@ -14,6 +14,8 @@ internal sealed partial class Compilation
 
     private void Reach(MethodInfo m)
     {
+        if (_reflectedTemplateBodies.Count > 0 && !_reachingReflectedTemplateBody)
+            _reflectedTemplateBodies.Remove(m);
         NoteObfuscationMethod(m);
         // A minted body (a value type's structural equality/hash) has no IL: scanning it
         // would ask the PE for a MethodBody at a row that does not exist. Its call edges
@@ -235,6 +237,10 @@ internal sealed partial class Compilation
             return;
         if (!_allocatedRefTypes.Add(c))
             return;
+        if (c.Module != AppModule && IsUserModule(c.Module))
+            _invokeRouteAllocatedOwners.Add(c);
+        if (c.IsDelegate)
+            _allocatedDelegates.Add(c);
         foreach (var decl in _usedVirtualDecls)
             ReachVirtualImpl(c, decl);
         // A newly-allocated type also contributes its override to every already-used
@@ -466,6 +472,31 @@ internal sealed partial class Compilation
         }
         _exceptionGetMessageSlot = slot;
         return slot;
+    }
+
+    /// <summary>The class slots of System.Object's virtual ToString, Equals, GetHashCode
+    /// and Finalize, in that order, which every vtable shares; -1 for a member the build
+    /// lacks, and null when it lacks them all.</summary>
+    internal int[]? ObjectVirtualSlots()
+    {
+        if (FindClassByFullName("System.Object") is not { } obj)
+            return null;
+        EnsureCompleted(obj);
+        string[] names = { "ToString", "Equals", "GetHashCode", "Finalize" };
+        var slots = new int[names.Length];
+        bool any = false;
+        for (int i = 0; i < names.Length; i++)
+        {
+            slots[i] = -1;
+            foreach (var m in obj.Methods)
+                if (m.IsVirtual && m.Name == names[i])
+                {
+                    slots[i] = m.VtableSlot;
+                    any |= m.VtableSlot >= 0;
+                    break;
+                }
+        }
+        return any ? slots : null;
     }
 
     /// <summary>Per-module cache of the embedded <c>.resources</c> string table (null once
@@ -994,18 +1025,6 @@ internal sealed partial class Compilation
     /// grows by zero bytes. The used-slot model of <see cref="_usedVirtualDecls"/>, for the
     /// one virtual whose declaring type is intrinsic and therefore has no slot to mark.
     /// </summary>
-    // Array.Initialize runs constructors that its call signature cannot name.
-    private static bool IsArrayInitializeRef(Module module, MemberReferenceHandle handle)
-    {
-        var reader = module.Reader;
-        var parent = reader.GetMemberReference(handle).Parent;
-        if (parent.Kind != HandleKind.TypeReference)
-            return false;
-        var tr = reader.GetTypeReference((TypeReferenceHandle)parent);
-        return reader.StringComparer.Equals(tr.Name, "Array")
-            && reader.StringComparer.Equals(tr.Namespace, "System");
-    }
-
     private bool _objectEqualityDispatched;
     private bool _nonGenericArrayEqualityDispatched;
     /// <summary>Records an emit site that will lower to <c>dn2cpp_object_equals</c> /
@@ -1818,13 +1837,22 @@ internal sealed partial class Compilation
         public required MethodInfo Gvm;          // the base instantiation (declaring type's default impl)
         public required ClassInfo Decl;          // closed declaring type the callvirt is statically typed to
         public required TypeDesc[] MethodArgs;   // the method's type arguments (closed)
-        public required string WantKey;          // open parameter signature, for override template matching
-        public int ParamCount;
+        public MethodSignature<TypeDesc>? DefinitionSignature; // Gvm's, for override and implementation matching
+        // A callvirt or ldvirtftn names the instantiation; otherwise only reflection
+        // enters the dispatcher, through the row's invoker.
+        public bool CallSite;
         // concrete allocated type -> its override impl (or Gvm itself for the base default).
         public readonly Dictionary<ClassInfo, MethodInfo> Cases = new();
         // Interface GVM receivers whose derived-interface overrides have no most
         // specific body; they must not fall back to the base default.
         public readonly HashSet<ClassInfo> Ambiguous = new();
+        // A framework row only reflection enters, which no type token names: the
+        // dispatcher reaches application bodies and those a preservation rule keeps
+        // only, and a receiver whose override or implementation another assembly
+        // declares without such a rule is Stripped, which reports the body the image
+        // stripped instead of running the base default.
+        public bool Strips;
+        public readonly HashSet<ClassInfo> Stripped = new();
     }
 
     private readonly Dictionary<string, GvmDispatch> _usedGvms = new();
@@ -1849,32 +1877,66 @@ internal sealed partial class Compilation
     internal static string GvmDispatchName(MethodInfo gvm) => "dn2cpp_gvm_" + gvm.CppName;
 
     /// <summary>Registers a used GVM instantiation and reaches each allocated type's
-    /// override at its method args (mirrors <see cref="ReachUsedVirtual"/>).</summary>
-    private void ReachUsedGvm(MethodInfo gvm)
+    /// override at its method args (mirrors <see cref="ReachUsedVirtual"/>).
+    /// <paramref name="callSite"/> is false for a row no call site names, which
+    /// reflection or a hot-update patch enters (<see cref="MarkPatchCallableGvm"/>), and
+    /// <paramref name="strips"/> registers a stripping dispatcher
+    /// (<see cref="GvmDispatch.Strips"/>). A registration that does not strip reaches
+    /// the overrides a stripping one left out.</summary>
+    private void ReachUsedGvm(MethodInfo gvm, bool callSite = true, bool strips = false)
     {
-        if (_usedGvms.ContainsKey(gvm.CppName))
-            return;
-        var openParams = gvm.Module.Reader.GetMethodDefinition(gvm.Handle)
-            .DecodeSignature(SigProvider, GenericContext.Empty).ParameterTypes;
-        var disp = new GvmDispatch
+        if (_usedGvms.TryGetValue(gvm.CppName, out var known))
         {
-            Gvm = gvm,
-            Decl = gvm.DeclaringClass,
-            MethodArgs = gvm.Context.MethodArgs,
-            WantKey = string.Join(",", openParams.Select(p => p.ToString())),
-            ParamCount = gvm.Signature.ParameterTypes.Length,
-        };
+            known.CallSite |= callSite;
+            if (known.Strips && !strips)
+            {
+                known.Strips = false;
+                ReachStrippedGvmCases(known);
+            }
+            return;
+        }
+        var disp = NewGvmDispatch(gvm, callSite);
+        disp.Strips = strips;
         _usedGvms.Add(gvm.CppName, disp);
         foreach (var c in _allocatedRefTypes.ToList())
             ReachGvmImpl(disp, c);
     }
+
+    /// <summary>Decides again each receiver <paramref name="disp"/> stripped: a case is
+    /// otherwise decided once, when the dispatcher or the receiver arrives.</summary>
+    private void ReachStrippedGvmCases(GvmDispatch disp)
+    {
+        var stripped = disp.Stripped.OrderBy(c => c.CppName, StringComparer.Ordinal).ToList();
+        disp.Stripped.Clear();
+        foreach (var c in stripped)
+            ReachGvmImpl(disp, c);
+    }
+
+    /// <summary>Decides again the stripped receivers of every stripping dispatcher once a
+    /// conditional preservation rule activates, since the rule can keep a body a case
+    /// left out (<see cref="StripsGvmBody"/>).</summary>
+    private void ReachPreservedStrippedGvmCases()
+    {
+        var stripping = _usedGvms.Values.Where(d => d.Strips && d.Stripped.Count > 0)
+            .OrderBy(d => d.Gvm.CppName, StringComparer.Ordinal).ToList();
+        foreach (var disp in stripping)
+            ReachStrippedGvmCases(disp);
+    }
+
+    private static GvmDispatch NewGvmDispatch(MethodInfo gvm, bool callSite) => new()
+    {
+        Gvm = gvm,
+        Decl = gvm.DeclaringClass,
+        MethodArgs = gvm.Context.MethodArgs,
+        CallSite = callSite,
+    };
 
     /// <summary>Reaches concrete type <paramref name="c"/>'s override of GVM
     /// <paramref name="disp"/> at the dispatcher's method args, recording the case.
     /// Routes to the base default when <paramref name="c"/> declares no override.</summary>
     private void ReachGvmImpl(GvmDispatch disp, ClassInfo c)
     {
-        if (disp.Cases.ContainsKey(c) || disp.Ambiguous.Contains(c))
+        if (disp.Cases.ContainsKey(c) || disp.Ambiguous.Contains(c) || disp.Stripped.Contains(c))
             return;
         if (disp.Decl.IsInterface)
         {
@@ -1883,17 +1945,13 @@ internal sealed partial class Compilation
             // map selects, instantiated at the dispatcher's method args.
             if (c.IsInterface || !ImplementsInterface(c, disp.Decl))
                 return;
-            if (InterfaceGvmClassImplOrNull(disp, c) is { } classImpl)
+            if (InterfaceGvmCaseOrNull(disp, c, out bool ambiguous) is { } impl)
             {
-                Reach(classImpl);
-                disp.Cases[c] = classImpl;
-                return;
-            }
-            var derived = FindDerivedInterfaceGenericMethodTemplate(c, disp.Gvm, out bool ambiguous);
-            if (derived is { } selected)
-            {
-                var impl = InstantiateMethodOnClass(selected.Interface, selected.Interface.Module,
-                    selected.Body, disp.MethodArgs);
+                if (disp.Strips && StripsGvmBody(impl.DeclaringClass, impl.Handle))
+                {
+                    disp.Stripped.Add(c);
+                    return;
+                }
                 Reach(impl);
                 disp.Cases[c] = impl;
                 return;
@@ -1914,13 +1972,40 @@ internal sealed partial class Compilation
             ReachTemplateLevelGvmImpl(disp, c);
             return;
         }
-        if (ClassGvmOverrideOrNull(disp, c) is { } over)
+        if (ClassGvmOverrideTemplate(disp, c, out var level) is { } tmpl)
         {
+            if (disp.Strips && StripsGvmBody(level, tmpl))
+            {
+                disp.Stripped.Add(c);
+                return;
+            }
+            var over = InstantiateMethodOnClass(level, level.Module, tmpl, disp.MethodArgs);
             Reach(over);
             disp.Cases[c] = over;
             return;
         }
         disp.Cases[c] = disp.Gvm;
+    }
+
+    /// <summary>Whether a stripping dispatcher leaves out the body that method definition
+    /// <paramref name="handle"/> of <paramref name="level"/> declares: one outside the
+    /// application that no preservation rule keeps.</summary>
+    private bool StripsGvmBody(ClassInfo level, MethodDefinitionHandle handle) =>
+        level.Module != AppModule && !PreservesMethod(level, handle);
+
+    /// <summary>The body interface GVM <paramref name="disp"/> binds for
+    /// <paramref name="c"/> ahead of the declaration's own default: the class body,
+    /// else the most specific derived interface override, instantiated at the
+    /// dispatcher's method args. Null with <paramref name="ambiguous"/> set when
+    /// sibling overrides leave no most specific one.</summary>
+    private MethodInfo? InterfaceGvmCaseOrNull(GvmDispatch disp, ClassInfo c, out bool ambiguous)
+    {
+        ambiguous = false;
+        if (InterfaceGvmClassImplOrNull(disp, c) is { } classImpl)
+            return classImpl;
+        return FindDerivedInterfaceGenericMethodTemplate(c, disp.Gvm, out ambiguous) is { } selected
+            ? InstantiateMethodOnClass(selected.Interface, selected.Interface.Module, selected.Body, disp.MethodArgs)
+            : null;
     }
 
     /// <summary>The case of runtime template <paramref name="c"/> in a class GVM
@@ -1942,11 +2027,15 @@ internal sealed partial class Compilation
                 Gvm = InstantiateMethodOnClass(lv, disp.Gvm.Module, disp.Gvm.Handle, disp.MethodArgs),
                 Decl = lv,
                 MethodArgs = disp.MethodArgs,
-                WantKey = disp.WantKey,
-                ParamCount = disp.ParamCount,
             };
-            if (ClassGvmOverrideOrNull(slot, c) is { } over)
+            if (ClassGvmOverrideTemplate(slot, c, out var level) is { } tmpl)
             {
+                if (disp.Strips && StripsGvmBody(level, tmpl))
+                {
+                    disp.Stripped.Add(c);
+                    return;
+                }
+                var over = InstantiateMethodOnClass(level, level.Module, tmpl, disp.MethodArgs);
                 Reach(over);
                 disp.Cases[c] = over;
             }
@@ -1961,17 +2050,28 @@ internal sealed partial class Compilation
     /// slot. A `new virtual` hider opens a fresh slot, but a descendant's
     /// MethodImpl can explicitly bind the original slot even across that hider.
     /// A non-virtual `new` never takes the slot.</summary>
-    private MethodInfo? ClassGvmOverrideOrNull(GvmDispatch disp, ClassInfo c)
+    private MethodInfo? ClassGvmOverrideOrNull(GvmDispatch disp, ClassInfo c) =>
+        ClassGvmOverrideTemplate(disp, c, out var level) is { } tmpl
+            ? InstantiateMethodOnClass(level, level.Module, tmpl, disp.MethodArgs)
+            : null;
+
+    /// <summary>The definition of <see cref="ClassGvmOverrideOrNull"/>'s override and the
+    /// <paramref name="level"/> that declares it, instantiating nothing.</summary>
+    private MethodDefinitionHandle? ClassGvmOverrideTemplate(GvmDispatch disp, ClassInfo c, out ClassInfo level)
     {
         for (var b = c; b is not null; b = b.BaseClass)
         {
             if (b.Handle == disp.Decl.Handle && b.Module == disp.Decl.Module)
                 break;
             var tmpl = FindGvmClassTemplate(disp, b, disp.Gvm.Name,
-                disp.Gvm.Signature, false, true);
+                GvmDefinitionSignature(disp), false, true);
             if (tmpl is not null)
-                return InstantiateMethodOnClass(b, b.Module, tmpl.Value, disp.MethodArgs);
+            {
+                level = b;
+                return tmpl;
+            }
         }
+        level = c;
         return null;
     }
 
@@ -1991,7 +2091,7 @@ internal sealed partial class Compilation
             if (tmpl is null && LevelListsInterface(b, disp.Decl))
             {
                 (listing ??= new List<ClassInfo>()).Add(b);
-                tmpl = VirtualGvmTemplateOrNull(disp, b, disp.Decl);
+                tmpl = VirtualGvmTemplateOrNull(disp, b, b, disp.Decl);
             }
             level = b;
         }
@@ -2001,7 +2101,7 @@ internal sealed partial class Compilation
                 var stop = i + 1 < listing.Count ? listing[i + 1] : null;
                 for (var b = listing[i].BaseClass; b is not null && b != stop && tmpl is null; b = b.BaseClass)
                 {
-                    tmpl = VirtualGvmTemplateOrNull(disp, b, null);
+                    tmpl = VirtualGvmTemplateOrNull(disp, b, listing[i], null);
                     level = b;
                 }
             }
@@ -2015,30 +2115,67 @@ internal sealed partial class Compilation
             Gvm = impl,
             Decl = level,
             MethodArgs = disp.MethodArgs,
-            WantKey = disp.WantKey,
-            ParamCount = disp.ParamCount,
         };
         return ClassGvmOverrideOrNull(classSlot, c) ?? impl;
     }
 
-    /// <summary>A virtual template on <paramref name="owner"/> for interface GVM
-    /// <paramref name="disp"/>: an explicit body naming <paramref name="explicitItf"/>,
-    /// or a public plain-name match.</summary>
+    /// <summary>A virtual template on <paramref name="owner"/> that implements interface
+    /// GVM <paramref name="disp"/> by name for listing level <paramref name="level"/>,
+    /// <paramref name="owner"/> or a type deriving from it: an explicit body naming
+    /// <paramref name="explicitItf"/>, else a public plain-name match.
+    ///
+    /// <para>Definition signatures compare with class type parameters closed:
+    /// <c>IConvert&lt;X&gt;.Convert&lt;T&gt;(X)</c> is <c>Convert&lt;T&gt;(int)</c> on a class
+    /// implementing <c>IConvert&lt;int&gt;</c>, beside its own <c>Convert&lt;T&gt;(T)</c>. Closing
+    /// can make templates alike (<c>Conv&lt;U&gt;(object)</c> beside <c>Conv&lt;U&gt;(X)</c> at
+    /// <c>X = object</c>), so the definitions decide wherever both spell, the interface
+    /// method through the interface list of <paramref name="level"/>: a closed-equal
+    /// template of another definition implements nothing, and the caller's walk goes on
+    /// to a base. A template of another signature is another overload, never a
+    /// fallback.</para></summary>
     private MethodDefinitionHandle? VirtualGvmTemplateOrNull(
-        GvmDispatch disp, ClassInfo owner, ClassInfo? explicitItf)
+        GvmDispatch disp, ClassInfo owner, ClassInfo level, ClassInfo? explicitItf)
     {
-        if (FindGenericMethodTemplate(owner.Module, owner.Handle, disp.Gvm.Name,
-                disp.MethodArgs.Length, disp.ParamCount, disp.WantKey, explicitItf, isStatic: false)
-            is not { } tmpl)
-            return null;
         var reader = owner.Module.Reader;
-        var md = reader.GetMethodDefinition(tmpl);
-        if ((md.Attributes & MethodAttributes.Virtual) == 0)
+        var idx = TypeDefMethodNames(owner.Module, owner.Handle);
+        string name = disp.Gvm.Name;
+        bool Implements(MethodDefinitionHandle mh, bool plain)
+        {
+            var md = reader.GetMethodDefinition(mh);
+            return (md.Attributes & MethodAttributes.Virtual) != 0
+                && (md.Attributes & MethodAttributes.Static) == 0
+                && (!plain || (md.Attributes & MethodAttributes.MemberAccessMask) == MethodAttributes.Public)
+                && md.GetGenericParameters().Count == disp.MethodArgs.Length
+                && SameParameterTypes(GvmDefinitionSignature(owner, mh), GvmDefinitionSignature(disp));
+        }
+        if (explicitItf is not null)
+        {
+            var (itfName, itfArity) = TypeDefSimpleName(explicitItf);
+            string dottedName = "." + name;
+            foreach (var (mname, mh) in idx.Dotted)
+                if (mname.EndsWith(dottedName, StringComparison.Ordinal)
+                    && QualifierNamesInterface(mname.AsSpan(0, mname.Length - name.Length - 1), itfName, itfArity)
+                    // A mapped body belongs only to the declaration its MethodImpl selects.
+                    && !AnyMethodImpl(owner, row => row.MethodBody == mh)
+                    && Implements(mh, plain: false))
+                    return mh;
+        }
+        if (!idx.ByName.TryGetValue(name, out var named))
             return null;
-        bool plain = reader.StringComparer.Equals(md.Name, disp.Gvm.Name);
-        return !plain || (md.Attributes & MethodAttributes.MemberAccessMask) == MethodAttributes.Public
-            ? tmpl
-            : null;
+        MethodDefinitionHandle? undecided = null;
+        string? shape = null;
+        foreach (var mh in named)
+        {
+            if (!Implements(mh, plain: true))
+                continue;
+            bool? same = level.Context.TypeArgs.Length == 0 ? null
+                : SameDefinitionShape(shape ??= InterfaceMethodShape(level, disp.Gvm), DefinitionShape(level, owner, mh));
+            if (same == true)
+                return mh;
+            if (same is null)
+                undecided ??= mh;
+        }
+        return undecided;
     }
 
     private (ClassInfo Interface, MethodDefinitionHandle Body)?
@@ -2115,10 +2252,14 @@ internal sealed partial class Compilation
                     }
                 if (declClass is not null)
                 {
-                    var ctx = new GenericContext(owner.Context.TypeArgs, disp.MethodArgs);
+                    // The reference spells the class type parameters of its parent,
+                    // which the matched base closes.
+                    var ctx = new GenericContext(declClass.Context.TypeArgs, Array.Empty<TypeDesc>());
                     var sig = mr.DecodeMethodSignature(SigProvider, ctx);
+                    var parent = declClass;
                     declTemplate = FindGvmClassTemplate(disp, declClass,
-                        reader.GetString(mr.Name), sig, true, false);
+                        reader.GetString(mr.Name), sig, true, false,
+                        t => DefinitionShape(parent, parent, t) == MemberRefShape(mr));
                 }
             }
             return declClass is not null && declTemplate is { } target
@@ -2126,39 +2267,79 @@ internal sealed partial class Compilation
         });
     }
 
-    // Match the closed parameter types before asking which virtual slot a row uses.
-    // A same-name overload with the same arity and parameter count can override a
-    // different slot; the generic-template lookup's fallback must not select it.
     private MethodDefinitionHandle? FindGvmClassTemplate(
         GvmDispatch disp, ClassInfo owner, string name,
-        MethodSignature<TypeDesc> expected, bool matchReturn, bool requireSlot)
+        MethodSignature<TypeDesc> expected, bool matchReturn, bool requireSlot,
+        Func<MethodDefinitionHandle, bool?>? sameDefinition = null) =>
+        FindGvmClassTemplate(owner, name, disp.MethodArgs.Length, expected, matchReturn,
+            requireSlot ? disp : null, sameDefinition);
+
+    /// <summary>A generic method's signature as its definition on <paramref name="owner"/>
+    /// spells it: class type parameters at the owner's arguments, method type parameters
+    /// by position. An override takes the slot whose definition signature it repeats;
+    /// closed signatures cannot tell <c>M&lt;T&gt;(T)</c> from <c>M&lt;T&gt;(int)</c> at
+    /// <c>int</c>.</summary>
+    private MethodSignature<TypeDesc> GvmDefinitionSignature(ClassInfo owner, MethodDefinitionHandle template) =>
+        owner.Module.Reader.GetMethodDefinition(template).DecodeSignature(SigProvider,
+            new GenericContext(owner.Context.TypeArgs, Array.Empty<TypeDesc>()));
+
+    private MethodSignature<TypeDesc> GvmDefinitionSignature(MethodInfo m) =>
+        m.Module.Reader.GetMethodDefinition(m.Handle).DecodeSignature(SigProvider,
+            new GenericContext(m.DeclaringClass.Context.TypeArgs, Array.Empty<TypeDesc>()));
+
+    private MethodSignature<TypeDesc> GvmDefinitionSignature(GvmDispatch disp) =>
+        disp.DefinitionSignature ??= GvmDefinitionSignature(disp.Gvm);
+
+    // Match definition signatures before asking which virtual slot a row uses. A
+    // same-name overload with the same arity and parameter count can override a
+    // different slot; the generic-template lookup's fallback must not select it.
+    // Closing class type parameters can make templates alike (M<U>(T, U) beside
+    // M<U>(object, U) at T = object), so where sameDefinition can compare the
+    // definitions it decides: a closed-equal template of another definition is
+    // another slot, and the caller's walk goes on to the next level. A closed match
+    // stands only where sameDefinition answers null.
+    private MethodDefinitionHandle? FindGvmClassTemplate(
+        ClassInfo owner, string name, int arity,
+        MethodSignature<TypeDesc> expected, bool matchReturn, GvmDispatch? slotOf,
+        Func<MethodDefinitionHandle, bool?>? sameDefinition = null)
     {
         var reader = owner.Module.Reader;
         if (!TypeDefMethodNames(owner.Module, owner.Handle).ByName.TryGetValue(name, out var candidates))
             return null;
-        var ctx = new GenericContext(owner.Context.TypeArgs, disp.MethodArgs);
+        MethodDefinitionHandle? undecided = null;
         foreach (var candidate in candidates)
         {
             var md = reader.GetMethodDefinition(candidate);
             if ((md.Attributes & MethodAttributes.Virtual) == 0
-                || md.GetGenericParameters().Count != disp.MethodArgs.Length)
+                || md.GetGenericParameters().Count != arity)
                 continue;
-            var sig = md.DecodeSignature(SigProvider, ctx);
-            if (sig.ParameterTypes.Length != expected.ParameterTypes.Length
-                || (matchReturn && !SameTypeArg(sig.ReturnType, expected.ReturnType)))
+            var sig = GvmDefinitionSignature(owner, candidate);
+            if ((matchReturn && !SameTypeArg(sig.ReturnType, expected.ReturnType))
+                || !SameParameterTypes(sig, expected)
+                || (slotOf is not null && !GvmTemplateUsesSlot(slotOf, owner, candidate)))
                 continue;
-            bool sameParams = true;
-            for (int i = 0; i < sig.ParameterTypes.Length; i++)
-                if (!SameTypeArg(sig.ParameterTypes[i], expected.ParameterTypes[i]))
-                {
-                    sameParams = false;
+            if (sameDefinition is null)
+                return candidate;
+            switch (sameDefinition(candidate))
+            {
+                case true:
+                    return candidate;
+                case null:
+                    undecided ??= candidate;
                     break;
-                }
-            if (!sameParams || (requireSlot && !GvmTemplateUsesSlot(disp, owner, candidate)))
-                continue;
-            return candidate;
+            }
         }
-        return null;
+        return undecided;
+    }
+
+    private static bool SameParameterTypes(MethodSignature<TypeDesc> a, MethodSignature<TypeDesc> b)
+    {
+        if (a.ParameterTypes.Length != b.ParameterTypes.Length)
+            return false;
+        for (int i = 0; i < a.ParameterTypes.Length; i++)
+            if (!SameTypeArg(a.ParameterTypes[i], b.ParameterTypes[i]))
+                return false;
+        return true;
     }
 
     private bool GvmTemplateUsesSlot(
@@ -2175,18 +2356,31 @@ internal sealed partial class Compilation
             return true;
         if ((attrs & MethodAttributes.NewSlot) != 0)
             return false;
-        var signature = owner.Module.Reader.GetMethodDefinition(template)
-            .DecodeSignature(SigProvider, new GenericContext(owner.Context.TypeArgs, disp.MethodArgs));
+        // The CLR binds an implicit override to the most derived parent template of
+        // its name and definition signature, spelled through the extends chain.
+        var signature = GvmDefinitionSignature(owner, template);
         for (var b = owner.BaseClass; b is not null && DerivesFromOrIs(b, disp.Decl); b = b.BaseClass)
         {
-            var baseTemplate = FindGvmClassTemplate(disp, b, disp.Gvm.Name,
-                signature, true, false);
+            var level = b;
+            var baseTemplate = FindGvmClassTemplate(disp, b, disp.Gvm.Name, signature, true, false,
+                t => SameGvmDefinition(owner, template, level, t));
             if (baseTemplate is null)
                 continue;
             return GvmTemplateUsesSlot(disp, b, baseTemplate.Value);
         }
         return false;
     }
+
+    /// <summary>Whether template <paramref name="candidate"/> of <paramref name="level"/>,
+    /// <paramref name="owner"/> or one of its base types, has the definition signature
+    /// <paramref name="template"/> of <paramref name="owner"/> has, both spelled through
+    /// the extends chain of <paramref name="owner"/>. Null when a spelling is missing or
+    /// <paramref name="owner"/> has no class type arguments, whose closed signatures
+    /// already compare the definitions.</summary>
+    private static bool? SameGvmDefinition(ClassInfo owner, MethodDefinitionHandle template,
+        ClassInfo level, MethodDefinitionHandle candidate) =>
+        owner.Context.TypeArgs.Length == 0 ? null
+            : SameDefinitionShape(DefinitionShape(owner, owner, template), DefinitionShape(owner, level, candidate));
 
     /// <summary>If <paramref name="msh"/> is one of the element-scanning generic
     /// intrinsics — <c>Array.{IndexOf,LastIndexOf}&lt;T&gt;</c>, or a
@@ -2489,6 +2683,28 @@ internal sealed partial class Compilation
             && MethodSpecParentTypeName(module, ms) == "System.Reflection.MethodInfo";
     }
 
+    /// <summary>Whether a MethodDefinition is Delegate's or MethodInfo's CreateDelegate. The
+    /// name is compared in place, so the parent is read only for that name.</summary>
+    private bool IsCreateDelegateDef(Module module, MethodDefinitionHandle handle)
+    {
+        var reader = module.Reader;
+        return reader.StringComparer.Equals(reader.GetMethodDefinition(handle).Name, "CreateDelegate")
+            && MethodDefParentTypeName(module, handle) is "System.Delegate" or "System.Reflection.MethodInfo";
+    }
+
+    /// <summary>Whether a MemberReference's parent is System.Array, whose only Initialize
+    /// is the parameterless one. The parent is compared in place.</summary>
+    private static bool IsArrayInitializeRef(Module module, MemberReferenceHandle handle)
+    {
+        var reader = module.Reader;
+        var parent = reader.GetMemberReference(handle).Parent;
+        if (parent.Kind != HandleKind.TypeReference)
+            return false;
+        var tr = reader.GetTypeReference((TypeReferenceHandle)parent);
+        return reader.StringComparer.Equals(tr.Name, "Array")
+            && reader.StringComparer.Equals(tr.Namespace, "System");
+    }
+
     /// <summary>The reflection-usage marks a MemberReference token names (clause (b) of
     /// <see cref="CoreIntrinsics.ScanNeedsParentTypeName"/>). Each opens a reachability route
     /// instead of cutting an edge, and a delegate bound to the trigger runs it as a call
@@ -2506,15 +2722,15 @@ internal sealed partial class Compilation
         // PropertyInfo.GetValue/SetValue run the accessors, which are app-module methods.
         else if (name is "GetValue" or "SetValue" && parent == "System.Reflection.PropertyInfo")
             _reflectionInvokeUsed = true;
-        // CreateDelegate in a user body binds a reflected method, whose body runs the same
-        // way. Bounded to user bodies: a framework library binding its own members must
-        // not reach every app body.
-        else if (name == "CreateDelegate" && IsUserModule(module)
-            && parent is "System.Delegate" or "System.Reflection.MethodInfo")
-        {
-            _reflectionInvokeUsed = true;
-            NoteObjectEqualityDispatch();
-        }
+        // FieldInfo.GetValue boxes a value-type field's value in the runtime.
+        else if (name == "GetValue" && parent == "System.Reflection.FieldInfo")
+            _reflectionFieldReadUsed = true;
+        // CreateDelegate binds a reflected method, whose body runs the same way.
+        else if (name == "CreateDelegate" && parent is "System.Delegate" or "System.Reflection.MethodInfo")
+            NoteReflectionDelegateBind(module);
+        // DynamicInvoke runs the delegate type's Invoke row, whose invoker boxes.
+        else if (name == "DynamicInvoke" && parent == "System.Delegate")
+            _delegateDynamicInvokeUsed = true;
         // ConstructorInfo.Invoke / non-generic Activator.CreateInstance(Type) construct a
         // runtime-chosen type; ILDiet keeps typeof-named ctors on the same predicate.
         else if (PreservationReader.ConstructsFromRuntimeType(parent, name))
@@ -2535,6 +2751,18 @@ internal sealed partial class Compilation
                 or "System.Reflection.FieldInfo" or "System.Reflection.PropertyInfo"
                 or "System.Reflection.Assembly")
             _reflectionAttrUsed = true;
+    }
+
+    /// <summary>The CreateDelegate mark. Any binding runs its row through the receiver's
+    /// slot, so every one arms <see cref="ReachReflectedVirtualSlots"/>, as its lowering
+    /// does once the body compiles. Only a user body's reaches every app body: a
+    /// framework library binding its own members must not.</summary>
+    private void NoteReflectionDelegateBind(Module module)
+    {
+        _reflectionDelegateBindScanned = true;
+        NoteObjectEqualityDispatch();
+        if (IsUserModule(module))
+            _reflectionInvokeUsed = true;
     }
 
     /// <summary>The closed <c>GenericComparer&lt;T&gt;</c> backing
@@ -5680,6 +5908,8 @@ internal sealed partial class Compilation
                 tok => ClassifyTypeIdentityCall(module, tok),
                 (tokA, tokB) => TypeEqualityVerdict(module, tokA, tokB, m.Context));
             NoteStaticTypeofMetadata(m, insns, body, liveness);
+            if (IsUserModule(module))
+                NoteTypeofNamedMembers(m, insns, liveness);
             foreach (var insn in insns)
             {
                 if (liveness is not null && !liveness.LiveAt(insn.Offset))
@@ -5847,13 +6077,14 @@ internal sealed partial class Compilation
                                 continue;
                             }
                         }
-                        else if (handle.Kind == HandleKind.MethodSpecification && IsUserModule(module)
+                        // The same CreateDelegate mark, generic mouth: MethodInfo.CreateDelegate<T>
+                        // is a MethodSpec over an intrinsic parent, which resolves to no target.
+                        // A method group over it marks like a call, as NoteReflectionUsage does.
+                        else if (handle.Kind == HandleKind.MethodSpecification
                             && IsCreateDelegateSpec(module, (MethodSpecificationHandle)handle))
-                        {
-                            _reflectionInvokeUsed = true;
-                            NoteObjectEqualityDispatch();
-                        }
-                        // A delegate over Object::Equals/GetHashCode uses the call's helper.
+                            NoteReflectionDelegateBind(module);
+                        // A delegate over Object::Equals/GetHashCode binds the helper a call
+                        // lowers to (MethodCompiler's ldvirtftn arm): the same dispatch.
                         else if (!_objectEqualityDispatched && insn.OpCode == ILOpCode.Ldvirtftn
                             && IsObjectEqualityFtn(module, handle))
                             NoteObjectEqualityDispatch();
@@ -5885,6 +6116,14 @@ internal sealed partial class Compilation
                                 }
                             }
                         }
+                        // The same CreateDelegate mark, in-CoreLib mouth: the loaded CoreLib names
+                        // Delegate's and MethodInfo's members with a MethodDef token. A framework
+                        // body sets only the scan flag, so read until that one is set, and by
+                        // name in place before the parent.
+                        if (!_reflectionDelegateBindScanned
+                            && handle.Kind == HandleKind.MethodDefinition
+                            && IsCreateDelegateDef(module, (MethodDefinitionHandle)handle))
+                            NoteReflectionDelegateBind(module);
                         // CultureInfo.CompareInfo -> a synthesized zero-initialized
                         // CompareInfo (see the MethodCompiler intrinsic in
                         // EmitIntrinsic.Numbers): mark the transpiled CompareInfo
@@ -6069,7 +6308,10 @@ internal sealed partial class Compilation
                         }
                         if (t is not null)
                         {
-                            Reach(t);
+                            if (insn.OpCode == ILOpCode.Call)
+                                ReachCallFromReflectedTemplateBody(m, t);
+                            else
+                                Reach(t);
                             // A virtual/interface dispatch reaches the actual
                             // override in each allocated reference type, not the
                             // whole dispatchable surface. A callvirt constrained to

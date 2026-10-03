@@ -2015,6 +2015,16 @@ internal sealed partial class Compilation
         EnsureCompleted(cls);
         if (callee.DeclaringClass.IsInterface && !callee.IsVirtual)
             return callee.IsStatic || callee.Rva == 0 ? null : callee;
+        // A generic virtual method binds per instantiation, as its dispatcher's case
+        // for the type does.
+        if (callee.DeclaringClass.IsInterface && IsGvmCall(callee))
+        {
+            if (!ImplementsInterface(cls, callee.DeclaringClass))
+                return null;
+            if (InterfaceGvmCaseOrNull(NewGvmDispatch(callee, callSite: false), cls, out ambiguous) is { } gvmImpl)
+                return gvmImpl;
+            return ambiguous || callee.IsAbstract || callee.Rva == 0 ? null : callee;
+        }
         if (callee.DeclaringClass is { IsInterface: true } itf
             && itf.Context.TypeArgs is [{ Kind: TypeKind.Class, Class: { } selfArg }]
             && selfArg == cls
@@ -2175,6 +2185,52 @@ internal sealed partial class Compilation
                 return ResolveMethodSpec(module, (MethodSpecificationHandle)handle, ctx);
             case HandleKind.MemberReference:
                 return ResolveMemberRefMethod(module, (MemberReferenceHandle)handle, ctx);
+            default:
+                return null;
+        }
+    }
+
+    /// <summary>The loaded definition declaring the method a call-family token names,
+    /// read off the token's metadata alone: nothing is instantiated or decoded. Null
+    /// when the declaring type is neither a loaded definition nor an instantiation of
+    /// one (an array accessor, an unloaded reference).</summary>
+    internal (Module Module, TypeDefinitionHandle Handle)? DeclaringDefinitionOf(Module module, EntityHandle method)
+    {
+        var reader = module.Reader;
+        switch (method.Kind)
+        {
+            case HandleKind.MethodDefinition:
+                return (module, reader.GetMethodDefinition((MethodDefinitionHandle)method).GetDeclaringType());
+            case HandleKind.MethodSpecification:
+                var generic = reader.GetMethodSpecification((MethodSpecificationHandle)method).Method;
+                return DeclaringDefinitionOf(module, generic);
+            case HandleKind.MemberReference:
+                var parent = reader.GetMemberReference((MemberReferenceHandle)method).Parent;
+                return parent.Kind == HandleKind.MethodDefinition
+                    ? DeclaringDefinitionOf(module, parent)
+                    : TypeDefinitionOf(module, parent);
+            default:
+                return null;
+        }
+    }
+
+    private (Module Module, TypeDefinitionHandle Handle)? TypeDefinitionOf(Module module, EntityHandle type)
+    {
+        switch (type.Kind)
+        {
+            case HandleKind.TypeDefinition:
+                return (module, (TypeDefinitionHandle)type);
+            case HandleKind.TypeReference:
+                return TemplateOrClassDef(ResolveTypeRef(module, (TypeReferenceHandle)type)) is ({ } m, var h)
+                    ? (m, h)
+                    : null;
+            case HandleKind.TypeSpecification:
+                var blob = module.Reader.GetBlobReader(
+                    module.Reader.GetTypeSpecification((TypeSpecificationHandle)type).Signature);
+                if (blob.ReadSignatureTypeCode() != SignatureTypeCode.GenericTypeInstance)
+                    return null;
+                blob.ReadSignatureTypeCode();
+                return TypeDefinitionOf(module, blob.ReadTypeHandle());
             default:
                 return null;
         }

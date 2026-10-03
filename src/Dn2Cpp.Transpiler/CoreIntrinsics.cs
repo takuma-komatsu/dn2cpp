@@ -817,8 +817,22 @@ internal static partial class CoreIntrinsics
 
     public static bool IsIntrinsicType(string fullTypeName) => s_intrinsicTypes.Contains(fullTypeName);
 
-    /// <summary>Managed generic bodies preserve their CoreLib validation and iteration.
-    /// Delegate enumeration reaches the lowered MulticastDelegate.TryGetAt primitive.</summary>
+    /// <summary>The names of the System.Object members whose rows the runtime answers a
+    /// named lookup with and lets derived types inherit only through a level declaring a
+    /// row for each method of such a name (the gated rows of <c>g_meta_members</c> in
+    /// dn2cpp_system_reflection.cpp; keep the two in step).</summary>
+    public static bool IsObjectMemberRowName(string name) =>
+        name is "ToString" or "Equals" or "GetHashCode" or "GetType" or "Finalize" or "ReferenceEquals";
+
+    /// <summary>The generic members of intrinsic-mapped types whose real CoreLib bodies are
+    /// plain managed code. System.Array's: ThrowHelper argument checks, element reads, a
+    /// delegate invoke, a List&lt;T&gt; or ReadOnlyCollection&lt;T&gt;, and calls to each
+    /// other. System.Delegate's EnumerateInvocationList: the InvocationListEnumerator
+    /// construction, whose MoveNext reaches the chain through
+    /// <c>MulticastDelegate.TryGetAt</c> (<see cref="LoweredRuntimePrimitive"/>). Their call
+    /// sites stay intercepted with the rest of the intrinsic type, but the lowering and an
+    /// address-taken use both name the real transpiled body, so .NET's argument order and
+    /// messages hold by construction.</summary>
     public static bool IsRealBodyGeneric(string declType, string name) => declType switch
     {
         "System.Array" => name is "Find" or "FindLast" or "FindAll" or "FindIndex" or "FindLastIndex"

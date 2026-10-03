@@ -69,6 +69,10 @@ constexpr Field Dn2CppMethodInfo_fields[] = {
     { offsetof(Dn2CppMethodInfo, genericDefinitionDisplay), Encoding::Pointer },
     { offsetof(Dn2CppMethodInfo, returnDisplay), Encoding::Pointer },
     { offsetof(Dn2CppMethodInfo, genericDefinitionReturnDisplay), Encoding::Pointer },
+    { offsetof(Dn2CppMethodInfo, genericDefinitionReturnKey), Encoding::Pointer },
+    { offsetof(Dn2CppMethodInfo, gvmRootDepth), Encoding::Signed32 },
+    { offsetof(Dn2CppMethodInfo, gvmRootToken), Encoding::Signed32 },
+    { offsetof(Dn2CppMethodInfo, returnPassType), Encoding::Pointer },
 };
 constexpr Field Dn2CppParamInfo_fields[] = {
     { offsetof(Dn2CppParamInfo, paramType), Encoding::Pointer },
@@ -83,6 +87,9 @@ constexpr Field Dn2CppParamInfo_fields[] = {
     { offsetof(Dn2CppParamInfo, customModifiersKnown), Encoding::Signed32 },
     { offsetof(Dn2CppParamInfo, display), Encoding::Pointer },
     { offsetof(Dn2CppParamInfo, genericDefinitionDisplay), Encoding::Pointer },
+    { offsetof(Dn2CppParamInfo, genericDefinitionKey), Encoding::Pointer },
+    { offsetof(Dn2CppParamInfo, passKind), Encoding::Signed32 },
+    { offsetof(Dn2CppParamInfo, passType), Encoding::Pointer },
 };
 constexpr Field Dn2CppPropInfo_fields[] = {
     { offsetof(Dn2CppPropInfo, name), Encoding::Pointer },
@@ -191,6 +198,23 @@ const void* dn2cpp_metadata_at(const void* table, Dn2CppMetadataKind kind,
     return metadata_add(record, 1);
 }
 
+namespace {
+// Whether the record at `record`, whose block id ends at `cursor`, lies whole
+// inside the `size` bytes at `records`.
+bool record_within(const uint8_t* record, const uint8_t* cursor,
+    const uint8_t* records, std::size_t size)
+{
+    uintptr_t offset = reinterpret_cast<uintptr_t>(record)
+        - reinterpret_cast<uintptr_t>(records);
+    if (records == nullptr || offset >= size
+        || static_cast<uint64_t>(cursor - record) >= size - offset)
+        return false;
+    uint64_t length = read_unsigned(cursor, metadata_add(records, size));
+    return length >= static_cast<uint64_t>(cursor - record)
+        && (length & 1) == 0 && length <= size - offset;
+}
+}
+
 bool dn2cpp_metadata_is_image_method(const void* handle)
 {
     if ((reinterpret_cast<uintptr_t>(handle) & 1) == 0)
@@ -201,15 +225,8 @@ bool dn2cpp_metadata_is_image_method(const void* handle)
     if (block >= dn2cpp_metadata_block_count)
         return false;
     const auto& image = dn2cpp_metadata_blocks[block];
-    uintptr_t offset = reinterpret_cast<uintptr_t>(record)
-        - reinterpret_cast<uintptr_t>(image.methodRecords);
-    if (image.methodRecords == nullptr || offset >= image.methodRecordsSize
-        || static_cast<uint64_t>(cursor - record) >= image.methodRecordsSize - offset)
-        return false;
-    uint64_t length = read_unsigned(cursor,
-        metadata_add(image.methodRecords, image.methodRecordsSize));
-    return length >= static_cast<uint64_t>(cursor - record)
-        && (length & 1) == 0 && length <= image.methodRecordsSize - offset;
+    return record_within(record, cursor, image.methodRecords, image.methodRecordsSize)
+        || record_within(record, cursor, image.ctorRecords, image.ctorRecordsSize);
 }
 
 void dn2cpp_metadata_decode(void* destination, Dn2CppMetadataKind kind, const void* handle)

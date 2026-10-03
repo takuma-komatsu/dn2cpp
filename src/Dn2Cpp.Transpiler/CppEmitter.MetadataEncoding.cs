@@ -77,6 +77,7 @@ internal sealed partial class CppEmitter
     private int _metadataBlockCount;
     private bool _metadataNativeRows;
     private readonly List<(string Symbol, int Size)> _metadataMethodRanges = new();
+    private readonly List<(string Symbol, int Size)> _metadataCtorRanges = new();
     private readonly Dictionary<string, string[]> _metadataRecordAddresses = new(System.StringComparer.Ordinal);
 
     private MetadataBlock NewMetadataBlock()
@@ -85,6 +86,7 @@ internal sealed partial class CppEmitter
             throw new InvalidOperationException("Metadata pointer blocks must precede the display dictionary.");
         var block = new MetadataBlock(_metadataBlockCount++);
         _metadataMethodRanges.Add(("nullptr", 0));
+        _metadataCtorRanges.Add(("nullptr", 0));
         return block;
     }
 
@@ -128,11 +130,15 @@ internal sealed partial class CppEmitter
         _ = RootMetadataBlock;
         FinishMetadataStrings(sb);
         EmitMetadataPointers(sb, RootMetadataBlock);
+        foreach (var ctors in _metadataCtorRanges)
+            if (ctors.Size != 0)
+                sb.AppendLine($"extern const uint8_t {ctors.Symbol}[{ctors.Size}];");
         sb.AppendLine("const Dn2CppMetadataBlock dn2cpp_metadata_blocks[] = {");
         for (int i = 0; i < _metadataBlockCount; i++)
             sb.AppendLine(i == _metadataDisplayBlock
                 ? "    { nullptr, md_display_tokens, nullptr, 0 },"
-                : $"    {{ md_ptr_{i}, nullptr, {_metadataMethodRanges[i].Symbol}, {_metadataMethodRanges[i].Size} }},");
+                : $"    {{ md_ptr_{i}, nullptr, {_metadataMethodRanges[i].Symbol}, {_metadataMethodRanges[i].Size}, "
+                    + $"{_metadataCtorRanges[i].Symbol}, {_metadataCtorRanges[i].Size} }},");
         sb.AppendLine("};");
         sb.AppendLine($"const std::size_t dn2cpp_metadata_block_count = {_metadataBlockCount};");
     }
@@ -241,16 +247,25 @@ internal sealed partial class CppEmitter
             ValidateMetadataRow(rowType, row, block, bytes, start);
         }
         _metadataRecordAddresses[symbol] = addresses;
-        if (rowType == "Dn2CppMethodInfo" && symbol.StartsWith("methtab_", System.StringComparison.Ordinal))
+        // A registered extent proves its records live as long as the image; the
+        // runtime publishes invoke plans only for records inside one.
+        var ranges = rowType != "Dn2CppMethodInfo" ? null
+            : symbol.StartsWith("methtab_", System.StringComparison.Ordinal) ? _metadataMethodRanges
+            : symbol.StartsWith("ctortab_", System.StringComparison.Ordinal) ? _metadataCtorRanges
+            : null;
+        if (ranges is not null)
         {
-            if (_metadataMethodRanges[block.Id].Size != 0)
-                throw new InvalidOperationException("A metadata block owns one method table.");
-            _metadataMethodRanges[block.Id] = (recordSymbol, bytes.Count);
-            external = true;
+            if (ranges[block.Id].Size != 0)
+                throw new InvalidOperationException("A metadata block owns one method table and one constructor table.");
+            ranges[block.Id] = (recordSymbol, bytes.Count);
         }
+        // Only the registry names constructor records from another unit and it
+        // declares them itself, which keeps them out of the shared header.
+        if (ranges == _metadataMethodRanges)
+            external = true;
         if (external)
             _metadataHeader.AppendLine($"extern const uint8_t {recordSymbol}[{bytes.Count}];");
-        sb.Append($"alignas(2) {(external ? "extern" : "static")} const uint8_t {recordSymbol}[] = {{ ");
+        sb.Append($"alignas(2) {(external || ranges is not null ? "extern" : "static")} const uint8_t {recordSymbol}[] = {{ ");
         for (int i = 0; i < bytes.Count; i++)
         {
             if (i != 0) sb.Append(", ");
