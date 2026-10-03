@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <Compile Remove="DataOnlyAttributeRowsOnlyProgram.cs" />
+    <Compile Remove="ReflectionTemplateDispatchProgram.cs" />
   </ItemGroup>
 
 </Project>

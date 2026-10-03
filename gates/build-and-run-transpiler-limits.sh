@@ -80,6 +80,13 @@
 #      diffed" count must be nonzero, because a silently skipped sweep and a clean
 #      corpus would otherwise print the same zero.
 #
+#   6. The reflection-invoke route walks whole classes, and a walked class's bodies
+#      mint the instantiations they name. A definition whose methods each name a
+#      deeper instantiation of itself would grow a whole walk exponentially in the
+#      program's nesting depth. The route walks a bounded number of each definition's
+#      minted instantiations, so the transpile completes and the definition's
+#      instantiations grow linearly in that bound instead.
+#
 # A sibling measurement aid, gates/measure-transpile-mem.sh, reports peak RSS and
 # the per-phase heap curve. This gate asserts; that one measures.
 # Canonical linking and synthesized-wrapper lowering must preserve fatal bounds
@@ -92,7 +99,7 @@ sig_diet_out="artifacts/transpiler-limits-sig-ildiet"
 cut_out="artifacts/transpiler-limits-cut"
 mint_out="artifacts/transpiler-limits-mint"
 
-echo "== 1/8 Locating the real CoreLib, building the sample assemblies =="
+echo "== 1/9 Locating the real CoreLib, building the sample assemblies =="
 corelib=$(locate_corelib)
 echo "corelib: $corelib"
 build_proj samples/dotnet/GenericRecursionBad/GenericRecursionBad.csproj
@@ -106,6 +113,7 @@ build_proj samples/dotnet/TypeofMissingAsmBad/TypeofMissingAsmBad.csproj
 # These compiler probes live outside the suite's samples-only prebuild.
 build_gate_proj gates/fixtures/transpiler-limits/CanonicalLink/CanonicalLinkBound.csproj
 build_gate_proj gates/fixtures/transpiler-limits/WrapperExceptions/WrapperExceptions.csproj
+build_gate_proj gates/fixtures/transpiler-limits/ReflectionRouteNesting/ReflectionRouteNesting.csproj
 rec_app="samples/dotnet/GenericRecursionBad/bin/$CONFIG/$TFM/GenericRecursionBad.dll"
 sig_app="samples/dotnet/GenericSignatureRecursionBad/bin/$CONFIG/$TFM/GenericSignatureRecursionBad.dll"
 fld_app="samples/dotnet/GenericFieldRecursionBad/bin/$CONFIG/$TFM/GenericFieldRecursionBad.dll"
@@ -116,6 +124,7 @@ mint_app="samples/dotnet/SharedTrialMint/bin/$CONFIG/$TFM/SharedTrialMint.dll"
 tma_app="samples/dotnet/TypeofMissingAsmBad/bin/$CONFIG/$TFM/TypeofMissingAsmBad.dll"
 link_app="gates/fixtures/transpiler-limits/CanonicalLink/bin/$CONFIG/$TFM/CanonicalLinkBound.dll"
 wrapper_app="gates/fixtures/transpiler-limits/WrapperExceptions/bin/$CONFIG/$TFM/WrapperExceptions.dll"
+nest_app="gates/fixtures/transpiler-limits/ReflectionRouteNesting/bin/$CONFIG/$TFM/ReflectionRouteNesting.dll"
 # The assembly section 8 withholds and then supplies. It sits beside the CoreLib in
 # the shared framework; a requested reference that is absent is a hard failure, not
 # a quietly dropped one — withholding it is the whole point of the section,
@@ -147,9 +156,12 @@ if gate_cache_check "$out" "transpiler-limits|canonical-cap:1,2|canonical-refs:n
         gates/fixtures/transpiler-limits/CanonicalLink/CanonicalLinkBound.csproj \
         gates/fixtures/transpiler-limits/WrapperExceptions/Program.cs \
         gates/fixtures/transpiler-limits/WrapperExceptions/WrapperExceptions.csproj \
-        "$link_app" "$wrapper_app" \
+        gates/fixtures/transpiler-limits/ReflectionRouteNesting/Program.cs \
+        gates/fixtures/transpiler-limits/ReflectionRouteNesting/ReflectionRouteNesting.csproj \
+        "$link_app" "$wrapper_app" "$nest_app" \
         "${link_app%.dll}.runtimeconfig.json" "${link_app%.dll}.deps.json" \
         "${wrapper_app%.dll}.runtimeconfig.json" "${wrapper_app%.dll}.deps.json" \
+        "${nest_app%.dll}.runtimeconfig.json" "${nest_app%.dll}.deps.json" \
         "${sig_app%.dll}.runtimeconfig.json" "${sig_app%.dll}.deps.json"; then
     gate_cache_hit_msg
     exit 0
@@ -162,7 +174,7 @@ fi
 # reads as absent. It is not a big-output hazard: measured here at 3,083 bytes, well
 # under the pipe buffer, because the race is against grep's EXIT and not against the
 # buffer filling. A here-string is fully materialized before grep starts.
-echo "== 2/8 A self-deepening generic must hit the monomorphization bound =="
+echo "== 2/9 A self-deepening generic must hit the monomorphization bound =="
 rec_rc=0
 rec_err=$(invoke_cli "$rec_app" -r "$corelib" -o "$out" 2>&1 >/dev/null) || rec_rc=$?
 if [ "$rec_rc" -ne 2 ]; then
@@ -192,7 +204,7 @@ if [ "$deep_rc" -ne 2 ] || ! grep -q "nested 41 deep" <<<"$deep_err"; then
 fi
 echo "OK (rejected at the bound, names its lever, and the lever moves it)"
 
-echo "== 3/8 A self-deepening METHOD signature must simply not recurse =="
+echo "== 3/9 A self-deepening METHOD signature must simply not recurse =="
 # Original metadata keeps the unused method visible to the lazy decoder.
 # This is the self-referential-signature runaway's shape —
 # GDTask<T>.SuppressCancellationThrow() ->
@@ -260,7 +272,7 @@ assert_output "$diet_native" "$sig_expected"
 assert_exit_code "$diet_native_rc" "$sig_expected_rc"
 echo "OK (ILDiet removed the unused signature before model construction; native output matches .NET)"
 
-echo "== 3b/8 A self-deepening FIELD must still hit the bound, and name the member =="
+echo "== 3b/9 A self-deepening FIELD must still hit the bound, and name the member =="
 # A field is not a method — not because of any eager decode: its type is on demand
 # too, and what differs is the DEMAND. A method's signature is read because something CALLED the
 # method, so the self-deepening METHOD shape above simply stops. A field's type is read because something needs
@@ -306,7 +318,7 @@ for mode in "" "--measure"; do
     echo "OK ($label: rejected at the bound, named its lever and the driving field signature)"
 done
 
-echo "== 3c/8 A self-deepening FIELD via an ARRAY wrapper must hit the bound too =="
+echo "== 3c/9 A self-deepening FIELD via an ARRAY wrapper must hit the bound too =="
 # The array-deepening twin of 3b, and the regression proof for the wrappers-count-a-depth-level
 # rule. A TypeArgDepth that
 # treats an array/byref/pointer wrapper as transparent — Box<int>, Box<int[]>, Box<int[][]> all
@@ -343,7 +355,7 @@ for mode in "" "--measure"; do
     echo "OK ($label: array-deepening field rejected at the DEPTH bound, not the count cap)"
 done
 
-echo "== 3d/8 The bound must ESCAPE the emit side's swallowing arms =="
+echo "== 3d/9 The bound must ESCAPE the emit side's swallowing arms =="
 # Sections 2-3c trip the bound in the MODEL, where nothing catches anything. This one
 # trips it inside CppEmitter, where several arms deliberately swallow a
 # NotSupportedException and degrade — and InstantiationBoundException IS a
@@ -452,7 +464,7 @@ assert_output "$mint_native" "$mint_expected"
 assert_exit_code "$mint_native_rc" "$mint_expected_rc"
 echo "OK (and the shared body's array-to-collection boundary runs — output matches real .NET)"
 
-echo "== 3e/8 Canonical linking must preserve the instantiation bound =="
+echo "== 3e/9 Canonical linking must preserve the instantiation bound =="
 # No BCL reference: the only instantiations are Id<string> and its canonical
 # Id<CnRef>. The second mint occurs inside canonical linking's fallback arm.
 for mode in "" "--measure"; do
@@ -488,7 +500,7 @@ for mode in "" "--measure"; do
     echo "OK ($label: canonical-link bound escaped; raising it permits canonical sharing)"
 done
 
-echo "== 3f/8 Wrapper lowering must distinguish unsupported shapes from fatal bounds =="
+echo "== 3f/9 Wrapper lowering must distinguish unsupported shapes from fatal bounds =="
 wrapper_transpiler="$(dirname "${DN2CPP_CLI_DLL:-src/Dn2Cpp.Cli/bin/$CONFIG/$TFM/dn2cpp.dll}")/Dn2Cpp.Transpiler.dll"
 wrapper_rc=0
 wrapper_result=$(dotnet "$wrapper_app" "$wrapper_transpiler") || wrapper_rc=$?
@@ -498,7 +510,7 @@ wrapper StrictCompletionException: OK'
 assert_exit_code "$wrapper_rc" 0
 echo "OK (ordinary wrapper failure falls back; fatal exceptions escape unchanged)"
 
-echo "== 4/8 The heap ceiling fires — in emit AND in --measure =="
+echo "== 4/9 The heap ceiling fires — in emit AND in --measure =="
 # A program big enough that the model alone passes a small budget: the real
 # CoreLib's reachable closure. 16 MB is far below anything a real transpile needs,
 # so the guard is guaranteed to trip well before the run would have finished.
@@ -525,7 +537,7 @@ invoke_cli "$big_app" -r "$corelib" --auto-ref -o "$out" > /dev/null
 [ -f "$out/generated.cpp" ] || { echo "FAIL: the unguarded transpile produced no output" >&2; exit 1; }
 echo "OK (no budget by default)"
 
-echo "== 5/8 A member nobody asks about must not be decoded =="
+echo "== 5/9 A member nobody asks about must not be decoded =="
 # The aggregate form of 1b, on both tiers. This program reaches a few hundred methods and holds
 # tens of thousands of MethodInfos and thousands of FieldInfos — one per member row of every
 # loaded assembly — and decoding either a signature or a field type is the expensive half, as
@@ -561,7 +573,7 @@ check_decode_rate() { # <label> <census-line-pattern> <ceiling> <what-is-read>
 check_decode_rate "method signatures" "signatures DECODED"  40 "signatures"
 check_decode_rate "field types"       "field types DECODED" 25 "field types"
 
-echo "== 6/8 --cut: a named method's subtree falls out; call sites yield the default =="
+echo "== 6/9 --cut: a named method's subtree falls out; call sites yield the default =="
 # The generic carve-out lever (the TaskTracker-shaped cut, without baking library names
 # into dn2cpp — same semantics as the backend bounded sets, per run). The step-3 program
 # transpiles again with Tracker.Tracked cut: its body AND the Helper subtree only it
@@ -629,7 +641,7 @@ for bad in "GenericSignatureRecursionBad.Tracker::Nope" "No.Such.Type::Tracked" 
 done
 echo "OK (--cut: subtree gone, default at the call site, bogus specs loud)"
 
-echo "== 7/8 --measure runs the dangling-symbol sweep; a clean corpus has zero rows =="
+echo "== 7/9 --measure runs the dangling-symbol sweep; a clean corpus has zero rows =="
 # The widest sweep of the cut => route invariant: --measure diffs every
 # body-named method symbol against the compiled bodies UNION the dropped (gap-row)
 # bodies, and a survivor becomes a `dangling` gap row — the class of defect that is
@@ -665,7 +677,7 @@ if grep -q "^dangling" "$out/s0-gaps.tsv"; then
     exit 1
 fi
 echo "OK ($sweep)"
-echo "== 8/8 A typeof naming an unloaded assembly's type must REFUSE, not fold to null =="
+echo "== 8/9 A typeof naming an unloaded assembly's type must REFUSE, not fold to null =="
 # `typeof(System.Numerics.Complex)` with System.Runtime.Numerics absent fails OPEN
 # without this: the TypeRef degrades to an External, TypeInfoExprOf has no arm for
 # it, and the ldtoken folds to a literal `nullptr`. Nothing downstream could
@@ -702,5 +714,27 @@ invoke_cli "$tma_app" -r "$corelib" -r "$numerics_dll" -o "$out" >/dev/null
 grep -q "ti_System_Numerics_Complex" "$out"/generated*.cpp "$out"/generated.h \
     || { echo "FAIL: with the reference supplied, typeof(Complex) named no type-info" >&2; exit 1; }
 echo "OK (refused without the reference naming both, transpiled with it)"
+
+echo "== 9/9 The reflection-invoke route walks a bounded number of a self-nesting definition's instantiations =="
+# Nest<T>'s methods each name a deeper Nest, and a deep framework instantiation sets the
+# nesting the route walks within, so a whole walk would mint Nest instantiations
+# exponentially in that depth. The ceiling admits the per-definition bound's walks with
+# room to spare and stays a small fraction of a whole walk's count.
+nest_rc=0
+nest_err=$(invoke_cli "$nest_app" -r "$corelib" -o "$out" 2>&1 >/dev/null) || nest_rc=$?
+if [ "$nest_rc" -ne 0 ]; then
+    echo "FAIL: the self-nesting reflection-route transpile exited $nest_rc" >&2
+    echo "$nest_err" >&2
+    exit 1
+fi
+# The invoked row's body is the walk's own witness: without it the count proves nothing.
+grep -qx '// ReflectionRouteNesting.Nest_Int32::Name' "$out"/generated*.cpp \
+    || { echo "FAIL: the reflection route did not reach Nest<int>.Name" >&2; exit 1; }
+nest_count=$(cat "$out"/generated*.cpp | grep -o -E 'ti_ReflectionRouteNesting_Nest_[A-Za-z0-9_]+ = ' | sort -u | wc -l | tr -d ' ')
+if [ "$nest_count" -gt 2000 ]; then
+    echo "FAIL: the reflection route emitted $nest_count Nest instantiations (ceiling 2000)" >&2
+    exit 1
+fi
+echo "OK ($nest_count Nest instantiations, Nest<int>.Name reached)"
 
 gate_cache_commit

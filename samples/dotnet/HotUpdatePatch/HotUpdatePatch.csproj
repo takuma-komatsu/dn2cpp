@@ -21,6 +21,8 @@
     <Compile Remove="NoCtorImportProgram.cs" />
     <Compile Remove="NoCtorImportProbe.cs" />
     <Compile Remove="NoCtorImportOracleProgram.cs" />
+    <Compile Remove="GvmRowProbe.cs" />
+    <Compile Remove="GvmCallProbe.cs" />
   </ItemGroup>
 
 </Project>

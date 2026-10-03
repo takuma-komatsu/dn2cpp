@@ -55,12 +55,23 @@
 # declaration's default answers beside a stripped derived interface that
 # overrides nothing, while a derived interface's selected override throws the
 # PNSE naming that stripped interface. Arm 1 answers as .NET and keeps its
-# pre-section output unchanged when skipped.
+# pre-section output unchanged when skipped. The Object-virtual section binds Object's
+# ToString and GetHashCode through library receivers met only as `object`: under the
+# flag a stripped level whose override the answer needs throws the PNSE naming it, and
+# a stripped receiver whose dispatch field proves it inherits Object's body answers
+# Object's method. The unrecorded-receiver section binds receivers without a recorded
+# case, whose class levels are walked: a MakeGenericType instantiation under an
+# interface binding, whose level strips with its template though typeof names the
+# definition, and a library subclass that inherits a generic virtual body. Under the
+# flag each throws the PNSE naming its stripped level. The reflection-bound section,
+# the program's last, binds that generic virtual through reflection over the same
+# subclass: its dispatcher records no case for it, so it runs the row's own body and
+# every arm names the row.
 # Keep original member metadata while comparing the C++ reflection policies.
 # ILDiet with --trim-reflection is covered by build-and-run-preserve-control.sh.
 source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} "
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|member-enum-prefix:${DN2CPP_BEFORE_MEMBER_ENUM:-}"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|member-enum-prefix:${DN2CPP_BEFORE_MEMBER_ENUM:-}|object-virtual-prefix:${DN2CPP_BEFORE_OBJECT_VIRTUAL:-}|unrecorded-receiver-prefix:${DN2CPP_BEFORE_UNRECORDED_RECEIVER:-}|reflected-unrecorded-receiver-prefix:${DN2CPP_BEFORE_REFLECTED_UNRECORDED_RECEIVER:-}"
 
 PROJECT=TrimReflect
 LIBNAME=TrimReflectLib
@@ -97,6 +108,54 @@ assert_delegate_method_lines() {
     done
 }
 
+# The Object-virtual Delegate.Method witnesses. The output before the section's
+# header must equal a run that stops before it.
+assert_object_virtual_lines() {
+    local out="$1" line before prefix
+    shift
+    out=$(strip_cr_win "$out")
+    grep -Fxq '== Delegate.Method of Object virtuals over stripped receivers ==' <<<"$out" \
+        || { echo "FAIL: the Object-virtual Delegate.Method section did not run" >&2; exit 1; }
+    before=$(strip_cr_win "$(DN2CPP_BEFORE_OBJECT_VIRTUAL=1 run_bounded "$OUT/$PROJECT$EXE_EXT")")
+    prefix=$(awk '/^== Delegate.Method of Object virtuals over stripped receivers ==$/ { exit } { print }' <<<"$out")
+    assert_output "$prefix" "$before"
+    for line in "$@"; do
+        grep -Fq -- "$line" <<<"$out" \
+            || { echo "FAIL: Object-virtual Delegate.Method witness missing: $line" >&2; exit 1; }
+    done
+}
+
+# The reflection-bound section is the program's last: the output before its header
+# must equal a run that stops before it, and every arm names the row.
+assert_reflected_unrecorded_lines() {
+    local out before prefix
+    out=$(strip_cr_win "$1")
+    grep -Fxq '== reflection-bound Delegate.Method over a receiver without a recorded case ==' <<<"$out" \
+        || { echo "FAIL: the reflection-bound unrecorded-receiver section did not run" >&2; exit 1; }
+    before=$(strip_cr_win "$(DN2CPP_BEFORE_REFLECTED_UNRECORDED_RECEIVER=1 run_bounded "$OUT/$PROJECT$EXE_EXT")")
+    prefix=$(awk '/^== reflection-bound Delegate.Method over a receiver without a recorded case ==$/ { exit } { print }' <<<"$out")
+    assert_output "$prefix" "$before"
+    grep -Fxq '  reflected unrecorded generic virtual -> LibGvmShape/gvm-base' <<<"$out" \
+        || { echo "FAIL: reflection-bound unrecorded-receiver witness missing" >&2; exit 1; }
+}
+
+# The witnesses for receivers without a recorded case. The output before its header
+# must equal a run that stops before it.
+assert_unrecorded_receiver_lines() {
+    local out="$1" line before prefix
+    shift
+    out=$(strip_cr_win "$out")
+    grep -Fxq '== Delegate.Method over receivers without a recorded case ==' <<<"$out" \
+        || { echo "FAIL: the unrecorded-receiver Delegate.Method section did not run" >&2; exit 1; }
+    before=$(strip_cr_win "$(DN2CPP_BEFORE_UNRECORDED_RECEIVER=1 run_bounded "$OUT/$PROJECT$EXE_EXT")")
+    prefix=$(awk '/^== Delegate.Method over receivers without a recorded case ==$/ { exit } { print }' <<<"$out")
+    assert_output "$prefix" "$before"
+    for line in "$@"; do
+        grep -Fq -- "$line" <<<"$out" \
+            || { echo "FAIL: unrecorded-receiver Delegate.Method witness missing: $line" >&2; exit 1; }
+    done
+}
+
 # ── Arm 1: no flag — live diff against real .NET ──────────────────────────────
 echo "== Arm 1/4: no flag, exact diff vs real .NET =="
 OUT=artifacts/trimreflect
@@ -121,6 +180,16 @@ else
     assert_delegate_method_lines "$native" \
         '  unrelated stripped interface -> IDefaultKind/base' \
         '  selected stripped interface -> IChosenDefaultKind/chosen'
+    assert_object_virtual_lines "$native" \
+        '  object overriding level -> LibLabel.ToString/label' \
+        '  object inherited override -> LibLabel.ToString/label' \
+        '  object inherited body -> Object.ToString/TrimReflectLib.LibBare' \
+        '  object hash override -> LibLabel.GetHashCode/7' \
+        '  object reflected binding -> LibLabel.ToString/label'
+    assert_unrecorded_receiver_lines "$native" \
+        '  instantiation interface binding -> LibGenericKind`1/generic-kind' \
+        '  unrecorded generic virtual -> LibGvmShape/gvm-base'
+    assert_reflected_unrecorded_lines "$native"
     before=$(strip_cr_win "$(DN2CPP_BEFORE_DELEGATE_METHOD=1 "./$OUT/$PROJECT")")
     prefix=$(awk '/^== Delegate.Method over stripped receivers ==$/ { exit } { print }' \
         <<<"$(strip_cr_win "$native")")
@@ -153,6 +222,16 @@ else
         "  interface slot -> PNSE: Reflection over the members of 'TrimReflectLib.LibWidget'" \
         '  unrelated stripped interface -> IDefaultKind/base' \
         "  selected stripped interface -> PNSE: Reflection over the members of 'TrimReflectLib.IChosenDefaultKind'"
+    assert_object_virtual_lines "$native" \
+        "  object overriding level -> PNSE: Reflection over the members of 'TrimReflectLib.LibLabel'" \
+        "  object inherited override -> PNSE: Reflection over the members of 'TrimReflectLib.LibLabel'" \
+        '  object inherited body -> Object.ToString/TrimReflectLib.LibBare' \
+        "  object hash override -> PNSE: Reflection over the members of 'TrimReflectLib.LibLabel'" \
+        "  object reflected binding -> PNSE: Reflection over the members of 'TrimReflectLib.LibLabel'"
+    assert_unrecorded_receiver_lines "$native" \
+        "  instantiation interface binding -> PNSE: Reflection over the members of 'TrimReflectLib.LibGenericKind\`1[TrimReflect.Widget]'" \
+        "  unrecorded generic virtual -> PNSE: Reflection over the members of 'TrimReflectLib.LibGvmPlain'"
+    assert_reflected_unrecorded_lines "$native"
     gate_cache_commit
 fi
 
@@ -179,6 +258,16 @@ else
         '  interface slot -> LibWidget/8' \
         '  unrelated stripped interface -> IDefaultKind/base' \
         "  selected stripped interface -> PNSE: Reflection over the members of 'TrimReflectLib.IChosenDefaultKind'"
+    assert_object_virtual_lines "$native" \
+        "  object overriding level -> PNSE: Reflection over the members of 'TrimReflectLib.LibLabel'" \
+        "  object inherited override -> PNSE: Reflection over the members of 'TrimReflectLib.LibLabel'" \
+        '  object inherited body -> Object.ToString/TrimReflectLib.LibBare' \
+        "  object hash override -> PNSE: Reflection over the members of 'TrimReflectLib.LibLabel'" \
+        "  object reflected binding -> PNSE: Reflection over the members of 'TrimReflectLib.LibLabel'"
+    assert_unrecorded_receiver_lines "$native" \
+        "  instantiation interface binding -> PNSE: Reflection over the members of 'TrimReflectLib.LibGenericKind\`1[TrimReflect.Widget]'" \
+        "  unrecorded generic virtual -> PNSE: Reflection over the members of 'TrimReflectLib.LibGvmPlain'"
+    assert_reflected_unrecorded_lines "$native"
     gate_cache_commit
 fi
 

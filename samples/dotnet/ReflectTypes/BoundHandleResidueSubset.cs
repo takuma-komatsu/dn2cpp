@@ -45,7 +45,7 @@ namespace BoundHandleResidueSubset
     // The timing subject: an element whose array is named ONLY by a reflection table row.
     // Nothing allocates a LateNoted[], names typeof(LateNoted[]) or casts one, so the
     // one thing that notes the element is the emitter's member-type pre-note
-    // (TypeMetadataEmitter.NoteReflectedMemberArrayElements) — which runs after the
+    // (TypeMetadataEmitter.NoteReflectedMemberTypes) — which runs after the
     // emit fixpoint, where no round can plant rows for it any more. It has a default
     // equality, so had it been noted in time the eager loop would have given it a real
     // dispatch map: 6 rows here means the planting is keyed on noting order again.

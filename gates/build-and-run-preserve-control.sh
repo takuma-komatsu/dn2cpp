@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Preserved reflection-created boxes retain interface dispatch after write-back.
 # Managed DLL stripping and explicit preservation: unreachable metadata is removed,
 # while PreserveAttribute and merged Unity-format link.xml keep selected bodies.
 # ILDietControl also checks Array.Initialize constructors reached through method groups.
@@ -197,7 +198,7 @@ invoke_cli "$APP" -r "$LIBDLL" -r "$ASSEMBLYDLL" --auto-ref --project-root "$ROO
 grep -Fq "_DroppedMethod_" "$WHOLE"/generated* \
     || { echo "FAIL: childless assembly descriptor did not preserve all methods" >&2; exit 1; }
 
-if gate_cache_check "$OUT" "preserve-control|ildiet|com|trim-reflection|cut=PreserveControlLib.UnusedType::UnusedMethod" \
+if gate_cache_check "$OUT" "preserve-control|ildiet|com|trim-reflection|cut=PreserveControlLib.UnusedType::UnusedMethod|preserved-box-prefix:${DN2CPP_BEFORE_PRESERVED_BOXES:-}" \
         "$APP" "$LIBDLL" "$ASSEMBLYDLL" "$ROOT/link.xml" "$ROOT/Nested/link.xml" \
         gates/expected/preserve-control.txt; then
     gate_cache_hit_msg
@@ -205,6 +206,9 @@ else
     compile_console "$OUT" "$PROJECT"
     native=$("./$OUT/$PROJECT")
     assert_output "$(strip_cr_win "$native")" "$(cat gates/expected/preserve-control.txt)"
+    before=$(DN2CPP_BEFORE_PRESERVED_BOXES=1 run_bounded "./$OUT/$PROJECT")
+    prefix=$(awk '/^== preserved reflection boxes ==$/ { exit } { print }' <<< "$native")
+    assert_output "$(strip_cr_win "$prefix")" "$(strip_cr_win "$before")"
     gate_cache_commit
 fi
 

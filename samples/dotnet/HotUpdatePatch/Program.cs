@@ -628,10 +628,39 @@ internal static class Program
         Counter.ConcatProbe = InterpretedConcatSubset.Run;
         Counter.GenericIntImportProbe = GenericIntName;
         Counter.GenericStringImportProbe = GenericStringName;
+        Counter.GenericVirtualProbe = GenericVirtualNames;
+        Counter.GenericVirtualRowProbe = GenericVirtualRows;
+        Counter.PatchShelf = new FrostShelf();
+        Counter.PatchPlaque = new FrostPlaque();
 
         // An exception no patch handler consumes escapes the interpreter into
         // the base program's own try/catch (see HotUpdateBase.Program.Main).
         throw new InvalidOperationException("escaped to base");
+    }
+
+    private static string GenericVirtualNames()
+    {
+        Shelf glass = new GlassShelf();
+        ISorter sorter = new Sorter();
+        return glass.Label<int>(3) + "\n"
+            + new Shelf().Label<int>(5) + "\n"
+            + glass.Kind<int>() + "\n"
+            + glass.Kind<string>() + "\n"
+            + new FrostShelf().Label<int>(6) + "\n"
+            + sorter.Sort<int>(4);
+    }
+
+    // Class callvirts of rows no AOT class callvirt names: the base calls
+    // Crate.Tag<int> only through ITagger, and the abstract Stamp.Mark<int>
+    // only through IMarker.
+    private static string GenericVirtualRows()
+    {
+        Crate crate = new Crate();
+        Crate steel = new SteelCrate();
+        Stamp stamp = new InkStamp();
+        return crate.Tag<int>(2) + "\n"
+            + steel.Tag<int>(3) + "\n"
+            + stamp.Mark<int>(4);
     }
 
     private static string GenericIntName()
@@ -1395,4 +1424,12 @@ internal sealed class PatchEx : Exception
     {
         Tag = "t";
     }
+}
+
+internal sealed class FrostShelf : GlassShelf
+{
+}
+
+internal sealed class FrostPlaque : Plaque
+{
 }

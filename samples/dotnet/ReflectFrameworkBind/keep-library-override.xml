@@ -1,0 +1,10 @@
+<linker>
+  <assembly fullname="System.ReflectFrameworkBind">
+    <type fullname="ReflectFrameworkBindLib.LibraryProvider" preserve="nothing">
+      <method name="RegisterType" />
+    </type>
+    <type fullname="ReflectFrameworkBindLib.LateProvider" required="false" preserve="nothing">
+      <method name="RegisterType" />
+    </type>
+  </assembly>
+</linker>

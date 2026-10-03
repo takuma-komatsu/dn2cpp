@@ -495,7 +495,7 @@ section belongs in a `corelib_diff_gate` (`samples/dotnet/ReflectInvoke`).
 
 #### Reflection metadata representation
 
-The next dispatch and discovery changes are proposed in
+The reflection and generic virtual dispatch contracts are in
 [REFLECTION-DISPATCH-DESIGN.md](REFLECTION-DISPATCH-DESIGN.md).
 
 `Dn2CppTypeInfo` keeps type identity, layout, inheritance, dispatch, generic
@@ -528,8 +528,9 @@ pointers; dynamic rows keep their existing GC roots. Native views read those
 rows directly. Packed views decode onto the stack, and a temporary view's
 address must not escape its expression. Member interning uses the original row
 identity together with the reflected type, never the temporary decoded address.
-A synthesized generic constructor stores its original handle and replacement
-declaring type in a delta descriptor.
+A synthesized generic type's constructor and method rows, and a clone level's
+interned method rows, store their original handle and replacement declaring type
+in a delta descriptor.
 
 `Compilation.ReflectionMetadata.cs` selects native storage for exact types
 named by surviving `ldtoken`/`GetTypeFromHandle` pairs in reached IL. It uses
@@ -570,20 +571,28 @@ only the attribute policy inherits. Generic arguments and array components
 never inherit a format choice.
 Empty cold metadata stays absent. Parameter and attribute interning includes
 the format in its key; both formats retain stable original row identities and
-constant initialization. Emission retains only a method-table symbol and extent
-per completed pointer block, so completed block contents can be released.
+constant initialization. Emission retains only the method- and constructor-table
+symbols and extents of each completed pointer block, so completed block contents
+can be released.
 
-Method invocation uses a bounded thread-local cache of immutable dispatch
-plans for generated packed method rows. Admission requires the row address to
-fall inside the owning block's emitted method table. Local codec records,
-native rows and synthesized deltas bypass the cache. A miss decodes once;
-native invocation reads the original row directly. Plans contain metadata and
-code pointers, never receivers, arguments, results or resolved interface
-implementations. Interface dispatch remains receiver-dependent. The cache
-adds native TLS storage per thread without enlarging managed reflection
-wrappers or changing their allocation budget. Generated images remain loaded
-and their records immutable; unloading or mutating them requires a new cache
-lifetime contract.
+Method invocation reads an immutable dispatch plan. Each native row, each packed
+record inside a generated block's method or constructor table and each
+synthesized delta row publishes one plan, which every thread reads in place; a
+local codec record is planned per call. Plans contain metadata and code
+pointers, never receivers, arguments, results or resolved interface
+implementations. Virtual dispatch remains receiver-dependent. Method and
+parameter descriptors carry generic definition identity, generic virtual chain
+roots and ABI pass modes.
+Invocation validates arguments before entering a generated thunk, copies back
+by-reference cells, boxes an unmanaged pointer result as
+`System.Reflection.Pointer` and wraps callee exceptions. Reflective delegates retain
+the selected row and closed signature; plans never retain invocation state.
+`gates/build-and-run-reflect-invoke.sh` checks each operation's first and
+repeated allocation budget. A published plan is keyed by its row's address
+and never freed, which relies on generated images staying loaded, interned
+native rows and synthesized delta rows never being freed or reused, and all of
+them staying immutable; unloading, collecting or mutating them requires a new
+plan lifetime contract.
 
 Names remain directly comparable UTF-8 strings with exact and suffix sharing.
 Packed signature displays can carry a token stream marked by an invalid UTF-8
@@ -593,14 +602,28 @@ cost when choosing tokenization. Native rows use directly shared UTF-8 displays.
 Attribute records retain order and factories;
 sharing their metadata does not share the attribute instances returned to callers.
 
+Object and ValueType fallback rows answer named lookups through the common
+handle API; member enumeration does not append those fallback rows. Reflection
+discovery closes boxes produced by field reads, constructors, invocation results
+and by-reference write-back before freezing layouts. Delegate invoker
+declarations remain bounded by the finite signature closure.
+
+Reflection-only framework dispatch reaches application bodies and preserved
+library overrides. A literal member name directly following `typeof` can retain
+the named framework surface. A selected body outside that surface remains a
+catchable stripped-body refusal with a preservation remedy. Ordinary compiled
+dispatch keeps its trap behavior.
+
 This is an internal generated-code/runtime ABI: regenerate the C++ and rebuild
 the runtime together. Changes must preserve streaming output, deterministic
-pool indices, trim refusals and the direct type-test/dispatch paths. The
-ReflectInvoke gate combines .NET parity with a native codec boundary fixture;
-its optional `DN2CPP_REFLECTION_MEASURE` mode records per-operation first and
-repeated allocations and clock ticks. `gates/measure-reflection-metadata.py`
-compares those captures and measures linked Mach-O sections and fixup payloads;
-retain symbols when attributing bytes to individual metadata pools.
+pool indices, trim refusals and the direct type-test/dispatch paths.
+`gates/build-and-run-reflect-invoke.sh` combines .NET parity with a native
+codec boundary fixture and always runs the program's
+`DN2CPP_REFLECTION_MEASURE` mode, which records per-operation first and
+repeated allocations and clock ticks.
+`gates/measure-reflection-metadata.py` compares those captures and measures
+linked Mach-O sections and fixup payloads; retain symbols when attributing bytes
+to individual metadata pools.
 
 ### C. A Godot engine call — godot lane
 

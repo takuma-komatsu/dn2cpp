@@ -16,7 +16,40 @@ internal static class Program
         PreservedReflection();
         ReferencedAssemblyReflection();
         LateBoundConstruction();
+        if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_PRESERVED_BOXES") == "1")
+            return;
+        Console.WriteLine("== preserved reflection boxes ==");
+        PreservedValueBoxes();
+        PreservedWrittenBack();
+        Console.WriteLine("preserved reflection boxes end");
     }
+
+    private static void PreservedWrittenBack()
+    {
+        // A struct a preserved method writes back through an out argument or returns by
+        // reference dispatches its interface member through the box reflection makes.
+        const BindingFlags Flags = BindingFlags.NonPublic | BindingFlags.Static;
+        Type type = typeof(PreserveControlLib.PreservedWrites);
+        object[] args = { null };
+        type.GetMethod("Fill", Flags).Invoke(null, args);
+        Console.WriteLine("preserved-written-back=" + Show(args[0]) + ","
+            + Show(type.GetMethod("Lend", Flags).Invoke(null, null)));
+    }
+
+    private static void PreservedValueBoxes()
+    {
+        // A struct that only reflection boxes, read through preserved members or
+        // created from a preserved type, dispatches its interface member.
+        const BindingFlags Flags = BindingFlags.NonPublic | BindingFlags.Static;
+        Type type = typeof(PreserveControlLib.PreservedBoxes);
+        Console.WriteLine("preserved-boxes="
+            + Show(type.GetField("Field", Flags).GetValue(null)) + ","
+            + Show(type.GetProperty("Point", Flags).GetValue(null)) + ","
+            + Show(type.GetMethod("Make", Flags).Invoke(null, null)) + ","
+            + Show(Activator.CreateInstance(typeof(PreserveControlLib.PreservedMade))));
+    }
+
+    private static string Show(object boxed) => ((PreserveControlLib.IPreservedShow)boxed).Show();
 
     private static void LateBoundConstruction()
     {

@@ -44,9 +44,21 @@
 # instantiation's class table still forwards the class and per-method tables.
 # Fixed-type static operands remain direct while type-argument-dependent statics
 # in the same shared body use per-instantiation storage through rgctx.
+# Without reflective delegate binding or row invocation, a shared instance body
+# reads its rgctx off the receiver with no null test, and an abstract class row
+# carries no invoker thunk.
 # A class generic virtual hidden by a subclass `new virtual` (or plain `new`)
 # dispatches a base-typed call to the base body, never to the hider's override.
 # Same-name generic overloads with equal arity and parameter count keep distinct slots.
+# Where substitution makes generic virtual overloads alike (Convert<U>(X) at
+# X = object beside Convert<U>(object)), the generic definitions choose, on every
+# level, the slot an override takes and the body that implements an interface
+# method, whether the class, a base or a derived interface lists the interface
+# or an explicit body names it. A shared body whose receiver or TSelf implements
+# the interface only at its real instantiation binds per instantiation. These
+# GvmHiderSubset cases print the `== generic virtual substitution collisions ==`
+# section, which must reach its end line and leave the earlier output an
+# unchanged prefix.
 # string.Join<T>, string.Concat<T> and StringBuilder.AppendJoin<T> in a generic
 # method called over int and an int-backed enum, or over uint and a uint-backed
 # enum, format each element by its real type: the enum by name.
@@ -362,6 +374,26 @@ pair_def=$(grep -h "^const void\\* const ${pair_table}\\[\\] = " "$out"/generate
 grep -Fq '(&sf_RgctxForwardingSubset_Tally_RgctxForwardingSubset_Cold_Count)' <<< "$pair_def" \
     || { echo "FAIL: forwarded per-method table $pair_table is not defined over Tally<Cold>" >&2; exit 1; }
 
+# This image binds no delegate through reflection and invokes no method row, so
+# a shared instance body derives its rgctx from the receiver without a null test
+# (only a null-bound reflection delegate enters one without a receiver), and the
+# abstract ChainBase<Row>.Render row carries no invoker thunk (only a late-bound
+# entry calls an abstract row's invoker).
+grep -Fq 'const void* const* __rgctx = dn2cpp_rgctx(((const Dn2CppObject*)a0)->type, &' \
+        "$out"/generated* \
+    || { echo "FAIL: no receiver-derived rgctx prologue left to check" >&2; exit 1; }
+if grep -Fq 'dn2cpp_null_receiver_rgctx' "$out"/generated*; then
+    echo "FAIL: a shared body tests for a null receiver no reflective binding can supply" >&2
+    exit 1
+fi
+abstract_row='\(&ti_GvmCanonicalSubset_ChainBase_GvmCanonicalSubset_Row\), \(const void\*\)\(&dn2cpp_string_type\), \(const void\*\)\(md_record_parmpool_[0-9]+ \+ 0 \+ 1\), \(const void\*\)\('
+grep -Eq "${abstract_row}md_display_" "$out"/generated*.cpp \
+    || { echo "FAIL: abstract ChainBase<Row>.Render row missing or reshaped" >&2; exit 1; }
+if grep -Eq "${abstract_row}\(void\*\)&inv_" "$out"/generated*.cpp; then
+    echo "FAIL: an abstract class row carries an invoker thunk nothing late-bound calls" >&2
+    exit 1
+fi
+
 echo "== 5/7 Transpiling with --no-shared-generics (size regression check) =="
 invoke_cli "$app" "${refs[@]}" --no-shared-generics -o "$out-off"
 on_bytes=$(cat "$out"/generated*.cpp | wc -c | tr -d ' ')
@@ -498,4 +530,9 @@ for line in '== same-width constrained interface slots ==' \
         || { echo "FAIL: same-width interface witness missing: $line" >&2; exit 1; }
 done
 
+before_collisions=$(dotnet "$app" before-substitution-collisions) || exit $?
+prefix=$(awk '/^== generic virtual substitution collisions ==$/ { exit } { print }' <<< "$native")
+assert_output "$prefix" "$(strip_cr_win "$before_collisions")"
+grep -Fxq 'generic virtual substitution collisions end' <<< "$native" \
+    || { echo "FAIL: generic virtual substitution collisions did not finish" >&2; exit 1; }
 gate_cache_commit

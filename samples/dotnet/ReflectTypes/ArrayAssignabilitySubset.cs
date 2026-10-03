@@ -19,7 +19,7 @@ using System.Reflection;
 //   - a reflected member type (FieldInfo.FieldType / PropertyInfo.PropertyType /
 //     ParameterInfo.ParameterType): the SAME precise handle — value elements
 //     (int[], enum[]) included — named by CppEmitter.FieldTypeInfoExpr's SZArray
-//     arm and pre-noted by TypeMetadataEmitter.NoteReflectedMemberArrayElements.
+//     arm and pre-noted by TypeMetadataEmitter.NoteReflectedMemberTypes.
 //     So ft == typeof(string[]) holds by handle identity, GetElementType is real,
 //     and the element-precise generic bits (IList<string> <- ft) answer like .NET.
 // The member-type precision is load-bearing for JSON deserialization: Newtonsoft's

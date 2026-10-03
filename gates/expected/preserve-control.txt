@@ -12,3 +12,7 @@ delegate-invoke=True
 initialized-field=41
 non-derived-dropped=True
 late-bound=base:service
+== preserved reflection boxes ==
+preserved-boxes=point:5,point:6,point:7,made:0
+preserved-written-back=filled:8,lent:9
+preserved reflection boxes end
