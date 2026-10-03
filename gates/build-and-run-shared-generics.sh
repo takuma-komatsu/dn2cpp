@@ -59,6 +59,11 @@
 # GvmHiderSubset cases print the `== generic virtual substitution collisions ==`
 # section, which must reach its end line and leave the earlier output an
 # unchanged prefix.
+# An interface generic virtual called through an instantiation the receiver
+# implements only through variance runs the implemented instantiation's body or
+# default body, constrained on a struct or a class, through a box or a bound
+# delegate. A constrained non-generic slot binds the first instantiation variance
+# converts, never another one. The `== variant interface dispatch ==` section runs last.
 # string.Join<T>, string.Concat<T> and StringBuilder.AppendJoin<T> in a generic
 # method called over int and an int-backed enum, or over uint and a uint-backed
 # enum, format each element by its real type: the enum by name.
@@ -535,4 +540,25 @@ prefix=$(awk '/^== generic virtual substitution collisions ==$/ { exit } { print
 assert_output "$prefix" "$(strip_cr_win "$before_collisions")"
 grep -Fxq 'generic virtual substitution collisions end' <<< "$native" \
     || { echo "FAIL: generic virtual substitution collisions did not finish" >&2; exit 1; }
+
+before_variant_dispatch=$(dotnet "$app" before-variant-dispatch) || exit $?
+before_variant_dispatch=$(strip_cr_win "$before_variant_dispatch")
+prefix=$(awk '/^== variant interface dispatch ==$/ { exit } { print }' <<< "$native")
+assert_output "$prefix" "$before_variant_dispatch"
+for line in '== variant interface dispatch ==' \
+    'gvm variant constrained struct in=struct4:Int32:x' \
+    'gvm variant constrained class in=class:Int32:x' \
+    'gvm variant boxed struct in=struct5:Int64:y' \
+    'gvm variant delegate in=struct5:Int32:q' \
+    'gvm variant constrained struct out=struct6:Int32' \
+    'gvm variant constrained struct default=default:Object:Int32:z' \
+    'gvm variant class default=default:Object:Int16:w' \
+    'gvm variant derived level first=3.4' \
+    'plain variant constrained mixed in=object:p' \
+    'plain variant constrained first of two=pair string' \
+    'plain variant constrained struct default=plain default:Object:d' \
+    'variant interface dispatch end'; do
+    grep -Fxq -- "$line" <<< "$native" \
+        || { echo "FAIL: variant interface dispatch witness missing: $line" >&2; exit 1; }
+done
 gate_cache_commit

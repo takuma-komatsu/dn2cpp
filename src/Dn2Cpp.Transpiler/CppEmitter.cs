@@ -5880,7 +5880,9 @@ internal sealed partial class CppEmitter
         var rt = m.Signature.ReturnType;
         string realRet = rt.IsVoid ? "void" : CppTypes.Of(rt);
         string ret = rt.IsVoid ? "void" : MethodCompiler.NfiErasedAbi(realRet);
-        string call = $"{m.CppName}({string.Join(", ", callArgs)})";
+        // A delegate's Invoke has no body of its own; its calls lower to the invoker.
+        string callee = MethodCompiler.IsDelegateInvoke(m) ? $"dginvoke_{m.DeclaringClass.CppName}" : m.CppName;
+        string call = $"{callee}({string.Join(", ", callArgs)})";
         if (!rt.IsVoid && MethodCompiler.IsHeaderlessWrapCpp(realRet))
             call = MethodCompiler.HeaderlessWrapExpr(call, realRet, rt);
         string head = $"{ret} {adapter.CppName}({string.Join(", ", sigParams)})";

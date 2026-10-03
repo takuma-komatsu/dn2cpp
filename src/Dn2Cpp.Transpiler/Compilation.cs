@@ -6335,9 +6335,7 @@ internal sealed partial class Compilation
     /// and move the output of the existing <c>-r DnZlib</c> gates — with not one
     /// motivating defect behind it.</para></summary>
     internal static bool IsFrameworkAssemblyName(string name) =>
-        name is "mscorlib" or "netstandard" or "Dn2Cpp.Runtime"
-        || name.StartsWith("System.", StringComparison.Ordinal)
-        || name.StartsWith("Microsoft.", StringComparison.Ordinal);
+        PreservationReader.IsFrameworkAssemblyName(name);
 
     /// <summary>Whether a module is user/library code rather than a framework/BCL
     /// assembly — the complement of <see cref="IsFrameworkAssemblyName"/>. Used to

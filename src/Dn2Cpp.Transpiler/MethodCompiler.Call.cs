@@ -1499,7 +1499,7 @@ internal sealed partial class MethodCompiler
         if (_intrinsics is not null && _intrinsics.TryEmitCall(this, callee, isCallvirt))
             return;
 
-        if (callee.DeclaringClass.IsDelegate && callee.Name == "Invoke")
+        if (IsDelegateInvoke(callee))
         {
             TranslateDelegateInvoke(callee);
             return;
@@ -3063,6 +3063,29 @@ internal sealed partial class MethodCompiler
         string r = NewTemp(ct);
         Emit($"if (__builtin_{op}_overflow(({opT})({ax}), ({opT})({bx}), ({opT}*)&{r})) dn2cpp_overflow();");
         _stack.Add(new StackEntry(r, kind, ct));
+    }
+
+    /// <summary>Whether <paramref name="m"/> is a delegate type's Invoke. It has no body:
+    /// every call lowers to the class's invoker (<see cref="TranslateDelegateInvoke"/>),
+    /// so taking its address must bind that invoker too
+    /// (<see cref="DelegateInvokeAddress"/>).</summary>
+    internal static bool IsDelegateInvoke(MethodInfo m) =>
+        m.DeclaringClass.IsDelegate && m.Name == "Invoke";
+
+    /// <summary>The <c>f_method</c> of a delegate bound to another delegate's Invoke
+    /// (<c>new Converter&lt;int, string&gt;(func)</c> loads <c>ldftn Func`2::Invoke</c>):
+    /// the source class's invoker, which takes the source delegate from the target slot
+    /// and walks its invocation list. A headerless position goes through the erasing
+    /// adapter, whose callee is the same invoker.</summary>
+    private string DelegateInvokeAddress(MethodInfo invoke)
+    {
+        _c.NoteDelegateInvokerUse(invoke.DeclaringClass);
+        if (!NeedsNfiErasedAdapter(invoke))
+            return $"(void*)&dginvoke_{invoke.DeclaringClass.CppName}";
+        var adapter = new DelegateAdapter(invoke, false, NfiErased: true);
+        if (!_c.DelegateAdapters.Contains(adapter))
+            _c.DelegateAdapters.Add(adapter);
+        return $"(void*)&{adapter.CppName}";
     }
 
     private void TranslateDelegateInvoke(MethodInfo invoke)

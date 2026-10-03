@@ -88,6 +88,11 @@ namespace SharedGenerics
             GvmHiderSubset.Program.RunSubstitutionCollisions();
             GvmHiderSubset.Program.RunCrossLevelCollisions();
             Console.WriteLine("generic virtual substitution collisions end");
+            if (args.Length > 0 && args[0] == "before-variant-dispatch")
+                return;
+            Console.WriteLine("== variant interface dispatch ==");
+            GvmHiderSubset.Program.RunVariantInterfaces();
+            Console.WriteLine("variant interface dispatch end");
         }
     }
 }

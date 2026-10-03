@@ -227,6 +227,28 @@ internal sealed class PreservationReader
         member == "CreateInstance" && parent == "System.Activator"
         || member == "Invoke" && parent == "System.Reflection.ConstructorInfo";
 
+    /// <summary>Whether a call to <paramref name="parent"/>::<paramref name="member"/>
+    /// runs a method that reflection selected at run time. The transpiler then reaches
+    /// every non-constructor application method body, and ILDiet keeps every
+    /// non-constructor method of each retained application type; both arm on this
+    /// predicate and, for a body outside the framework, on
+    /// <see cref="BindsReflectedMethod"/>.</summary>
+    internal static bool RunsReflectedMethod(string? parent, string member) =>
+        member == "Invoke" && parent is "System.Reflection.MethodBase" or "System.Reflection.MethodInfo"
+        || member is "GetValue" or "SetValue" && parent == "System.Reflection.PropertyInfo";
+
+    /// <summary>Whether a call to <paramref name="parent"/>::<paramref name="member"/>
+    /// binds a delegate to a reflected method.</summary>
+    internal static bool BindsReflectedMethod(string? parent, string member) =>
+        member == "CreateDelegate" && parent is "System.Delegate" or "System.Reflection.MethodInfo";
+
+    /// <summary>Whether an assembly is part of the framework rather than user code.
+    /// Compilation.IsFrameworkAssemblyName documents which names belong here.</summary>
+    internal static bool IsFrameworkAssemblyName(string name) =>
+        name is "mscorlib" or "netstandard" or "Dn2Cpp.Runtime"
+        || name.StartsWith("System.", StringComparison.Ordinal)
+        || name.StartsWith("Microsoft.", StringComparison.Ordinal);
+
     internal static IReadOnlyList<string> FindLinkFiles(IReadOnlyList<string> projectRoots)
     {
         var paths = new Dictionary<string, string>(StringComparer.Ordinal);

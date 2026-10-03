@@ -2132,6 +2132,8 @@ internal sealed partial class MethodCompiler
                         adapterExpr = DynamicCodegenFtnStub(method, origin.Key - 1, receiverSlot: fromVirtFtn, delegateClass: cls);
                     else if (_c.IsAbsentNetworkPalMember(method.DeclaringClass, method.Name))
                         adapterExpr = AbsentNetworkPalFtnStub(method, origin.Key - 1, receiverSlot: fromVirtFtn, delegateClass: cls);
+                    else if (IsDelegateInvoke(method))
+                        adapterExpr = DelegateInvokeAddress(method);
                     else if (!fromVirtFtn && (method.IsStatic || NeedsNfiErasedAdapter(method.Emittable)))
                     {
                         var impl = method.Emittable;

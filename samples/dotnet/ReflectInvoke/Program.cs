@@ -129,6 +129,9 @@ namespace ReflectInvoke
             if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_POINTER_RETURNS") == "1")
                 return;
             ReflectInvokeValidationSubset.Program.RunPointerReturns();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_DELEGATE_INVOKE_TARGETS") == "1")
+                return;
+            DelegateInvokeTargetSubset.Program.Run();
             if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_NULL_BOUND_CHAINS") == "1")
                 return;
             ReflectBoundDelegateSubset.Program.RunNullBoundChains();
