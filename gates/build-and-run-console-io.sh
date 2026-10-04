@@ -12,14 +12,16 @@ gate_extra_asserts() {
     assert_exit_code "$2" 0
     assert_exit_code "$3" 0
     before=$(run_bounded dotnet "$_CG_APP" before-standard-streams)
-    prefix=$(awk '/^== standard console streams ==$/ { exit } { print }' "$out/native.out")
-    assert_output "$(strip_cr_win "$prefix")" "$(strip_cr_win "$before")"
-    grep -Fxq 'standard console streams end' "$out/native.out" \
+    native=$(strip_cr_win "$(cat "$out/native.out")")
+    prefix=$(awk '/^== standard console streams ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    grep -Fxq 'standard console streams end' <<< "$native" \
         || { echo 'FAIL: standard console stream section did not run' >&2; return 1; }
     printf ABCDEFGHI > "$out/stdin.bin"
     native=$(run_bounded "./$out/ConsoleIo$EXE_EXT" standard-input < "$out/stdin.bin")
     expected=$(run_bounded dotnet "$_CG_APP" standard-input < "$out/stdin.bin")
-    assert_output "$(strip_cr_win "$native")" "$(strip_cr_win "$expected")"
+    native=$(strip_cr_win "$native")
+    assert_output "$native" "$(strip_cr_win "$expected")"
     grep -Fxq 'standard input end' <<< "$native" \
         || { echo 'FAIL: redirected standard input section did not run' >&2; return 1; }
     if [ -n "$py" ]; then
