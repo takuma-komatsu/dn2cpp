@@ -1719,42 +1719,45 @@ internal sealed partial class MethodCompiler
             _stack.Add(new StackEntry(ex, StackKind.Ref, "Dn2CppObject*"));
             return;
         }
-        // new AggregateException(...) — AggregateException is an opaque intrinsic type (no
-        // resolvable ctor), so it must be intercepted here (like System.Exception) before
-        // the external-ctor throw. Build the runtime aggregate object — the larger
-        // InnerExceptions-carrying layout the Parallel aggregation path also produces — so
-        // AggregateException.InnerExceptions always reads a valid array (not the generic
-        // message-only exception object). The (params) Exception[] ctor seeds
-        // InnerExceptions from its array; the other shapes (parameterless /
-        // IEnumerable<Exception> / (string[, inner])) build an empty aggregate — their
-        // inner content is a carve-out (the Message text isn't modeled either), but the
-        // object is always the correct size.
-        //
-        // BOTH ctor token forms are accepted, UNLIKE the System.Exception arm directly
-        // above — the two arms look interchangeable and are not. Declining here would fall
-        // through to Compilation.IsInterceptedExceptionCtor's OPAQUE branch, which is a
-        // different lowering in two ways, each fatal:
-        //
-        //   1. It sizes the allocation by `ti->instanceSize`, and the hand-written
-        //      dn2cpp_aggregate_exception_type literal (runtime/core/dn2cpp_exceptions.cpp)
-        //      has instanceSize 0, so the object is only sizeof(Dn2CppExceptionObject) —
-        //      the `innerExceptions` slot sits PAST its end and get_InnerExceptions reads
-        //      whatever follows.
-        //   2. It recovers only message/inner, so the (params) Exception[] operand is
-        //      popped and dropped and the aggregate loses its inners.
+        // Opaque aggregates own trailing array/collection slots: the Exception prefix
+        // allocator is too small. Both ctor token forms must use the shared factory.
+        // Enumerable constructors need a separate collection route.
         if (NewobjTypeName(handle) == "System.AggregateException"
             && handle.Kind is HandleKind.MemberReference or HandleKind.MethodDefinition)
         {
             var aggSig = DecodeCtorSignature(handle);
             string innerArr = "nullptr";
+            string singleInner = "nullptr";
+            string message = "nullptr";
+            bool arrayArgument = false;
+            bool singleArgument = false;
             for (int i = aggSig.ParameterTypes.Length - 1; i >= 0; i--)
             {
                 var a = Pop();
-                if (aggSig.ParameterTypes.Length == 1 && aggSig.ParameterTypes[i] is { Kind: TypeKind.SZArray })
+                if (aggSig.ParameterTypes[i].IsString)
+                    message = Cast(a, "Dn2CppString*");
+                else if (aggSig.ParameterTypes[i] is { Kind: TypeKind.SZArray })
+                {
                     innerArr = Cast(a, "Dn2CppArrayRef*");
+                    arrayArgument = true;
+                }
+                else if (IsExceptionParam(aggSig.ParameterTypes[i]))
+                {
+                    singleInner = Cast(a, "Dn2CppObject*");
+                    singleArgument = true;
+                }
+            }
+            if (arrayArgument)
+                Emit($"if ({innerArr} == nullptr) dn2cpp_throw_argument_null_param(\"innerExceptions\");");
+            if (singleArgument)
+            {
+                Emit($"if ({singleInner} == nullptr) dn2cpp_throw_argument_null_param(\"innerException\");");
+                innerArr = NewTemp("Dn2CppArrayRef*");
+                Emit($"{innerArr} = dn2cpp_newarr_ref(1);");
+                Emit($"dn2cpp_gc_store_ref(&{innerArr}->data[0], {singleInner});");
             }
             string agg = NewTemp("Dn2CppObject*");
-            Emit($"{agg} = dn2cpp_aggregate_exception_new({innerArr});");
+            Emit($"{agg} = dn2cpp_aggregate_exception_new({innerArr}, {message});");
             _stack.Add(new StackEntry(agg, StackKind.Ref, "Dn2CppObject*",
                 StaticType: TypeDesc.MakeExternal("System.AggregateException")));
             return;

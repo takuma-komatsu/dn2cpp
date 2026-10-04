@@ -295,6 +295,9 @@ namespace ExceptionMessageSubset
             if (args.Length > 0 && args[0] == "before-runtime-hresult")
                 return;
             RuntimeHResultSubset.Run();
+            if (args.Length > 0 && args[0] == "before-lazy-aggregate-message")
+                return;
+            ExceptionVirtualMembers.RunAggregateMessages();
         }
     }
 }

@@ -65,6 +65,7 @@
 # Former gates: whenall, whenany, when-enumerable, configure-await, delay-order,
 # cancellation, custom-awaitable, multi-awaiter.
 # Task sequences and cold scheduling.
+# Task and cancellation aggregate construction leaves virtual inner Messages unread.
 source "$(dirname "$0")/_common.sh"
 task_python=$(resolve_python) || gate_skip "no working Python 3 interpreter for task call fixtures"
 call_app="gates/fixtures/task-call-validation/bin/$CONFIG/$TFM/TaskCallValidation.dll"
@@ -73,11 +74,33 @@ DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $call_app ${call_app%.dl
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|task-call-validation|cli:$(_gate_cli_hash)"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-pending-task-joins"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-cancellation-callback-faults"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-lazy-aggregate-message"
 
 gate_extra_asserts() {
     local out="$1" native before prefix line
     native=$(run_bounded "./$out/AsyncCombinators")
     native=$(strip_cr_win "$native")
+    before=$(run_bounded dotnet "$_CG_APP" before-lazy-aggregate-message)
+    prefix=$(awk '/^== lazy task and cancellation Message ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    for line in '== lazy task and cancellation Message ==' \
+        'task Exception result=AggregateException reads=0/0' \
+        'task Wait result=AggregateException reads=0/0' \
+        'task Result result=AggregateException reads=0/0' \
+        'task awaiter result=MessageFault reads=0/0' 'task awaiter direct identity=True' \
+        'cancel default result=AggregateException reads=0/0' \
+        'cancel false result=AggregateException reads=0/0' \
+        'cancel true result=MessageFault reads=0/0' 'cancel true direct identity=True' \
+        'cancel false calls=last/first/ canceled=True' \
+        'cancel true calls=last/ canceled=True' \
+        'linked False constructed reads=0 identity=True' \
+        'linked False Message=One or more errors occurred. (One or more errors occurred. (linked:2)) reads=2' \
+        'linked True constructed reads=0 identity=True' \
+        'linked True Message=One or more errors occurred. (linked:2) reads=2' \
+        'lazy task and cancellation Message end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: task/cancellation Message witness missing: $line" >&2; return 1; }
+    done
     before=$(run_bounded dotnet "$_CG_APP" before-cancellation-callback-faults)
     before=$(strip_cr_win "$before")
     prefix=$(awk '/^== cancellation callback faults ==$/ { exit } { print }' <<< "$native")
