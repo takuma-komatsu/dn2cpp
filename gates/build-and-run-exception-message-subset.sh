@@ -50,10 +50,11 @@
 # and Message-only fallback, including NUL and unpaired UTF-16 surrogates.
 # UInt32 and Int32 bound messages retain their suffixes after a collection.
 # Aggregate messages evaluate virtual inner getters lazily on each read.
+# Enumerable aggregate constructors preserve collection and enumerator semantics.
 source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/ExceptionMessageSubset/OrdinaryReflectionArgumentSubset.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-reflection-arguments:${DN2CPP_BEFORE_ORDINARY_REFLECTION_ARGUMENTS:-}"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|before-array-shape-fields|before-runtime-hresult|before-lazy-aggregate-message"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|before-array-shape-fields|before-runtime-hresult|before-lazy-aggregate-message|before-aggregate-enumerable"
 
 ancestry_app="gates/fixtures/runtime-exception-ancestry/bin/$CONFIG/$TFM/RuntimeExceptionAncestry.dll"
 build_gate_proj gates/fixtures/runtime-exception-ancestry/RuntimeExceptionAncestry.csproj
@@ -72,6 +73,37 @@ gate_extra_asserts() {
     local out="$1" native before prefix line app name fixture expected actual
     native=$(run_bounded "./$out/ExceptionMessageSubset")
     native=$(strip_cr_win "$native")
+    before=$(run_bounded dotnet "$_CG_APP" before-aggregate-enumerable)
+    prefix=$(awk '/^== aggregate enumerable constructors ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    for line in '== aggregate enumerable constructors ==' \
+        'enumerable constructed reads=0/0' \
+        'custom sequence trace=Get/Move/Current/Move/Current/Move/Dispose/' \
+        'collection trace=Count/Copy/' \
+        'enumerable first message=One or more errors occurred. (first:1) (second:1)' \
+        'enumerable second message=One or more errors occurred. (first:2) (second:2)' \
+        'enumerable custom message=custom (first:3) (second:3)' \
+        'ctor empty enumerable=One or more errors occurred. count=0' \
+        'ctor empty custom sequence= count=0' \
+        'enumerable null=ArgumentNullException param=innerExceptions' \
+        'enumerable custom null=ArgumentNullException param=innerExceptions' \
+        'enumerable null element=ArgumentException param=' \
+        'enumerable null element trace=Get/Move/Current/Move/Current/Move/Dispose/ reads=3' \
+        'sequence Get fault=sequence fault original=True dispose=False' \
+        'sequence Get trace=Get/' \
+        'sequence Move fault=sequence fault original=True dispose=False' \
+        'sequence Move trace=Get/Move/Dispose/' \
+        'sequence Current fault=sequence fault original=True dispose=False' \
+        'sequence Current trace=Get/Move/Current/Dispose/' \
+        'sequence Dispose fault=dispose fault original=False dispose=True' \
+        'sequence Dispose trace=Get/Move/Current/Move/Dispose/' \
+        'sequence Current+Dispose fault=dispose fault original=False dispose=True' \
+        'sequence Current+Dispose trace=Get/Move/Current/Dispose/' \
+        'aggregate enumerable constructors end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: aggregate enumerable witness missing: $line" >&2; return 1; }
+    done
+    assert_output "$(grep -Fc 'enumerable snapshot count=2 first=True order=True' <<< "$native")" '5'
     before=$(run_bounded dotnet "$_CG_APP" before-lazy-aggregate-message)
     prefix=$(awk '/^== lazy aggregate Message ==$/ { exit } { print }' <<< "$native")
     assert_output "$prefix" "$(strip_cr_win "$before")"

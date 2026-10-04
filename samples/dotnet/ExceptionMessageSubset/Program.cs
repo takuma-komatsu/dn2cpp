@@ -298,6 +298,9 @@ namespace ExceptionMessageSubset
             if (args.Length > 0 && args[0] == "before-lazy-aggregate-message")
                 return;
             ExceptionVirtualMembers.RunAggregateMessages();
+            if (args.Length > 0 && args[0] == "before-aggregate-enumerable")
+                return;
+            ExceptionVirtualMembers.RunEnumerableAggregates();
         }
     }
 }

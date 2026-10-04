@@ -1721,7 +1721,6 @@ internal sealed partial class MethodCompiler
         }
         // Opaque aggregates own trailing array/collection slots: the Exception prefix
         // allocator is too small. Both ctor token forms must use the shared factory.
-        // Enumerable constructors need a separate collection route.
         if (NewobjTypeName(handle) == "System.AggregateException"
             && handle.Kind is HandleKind.MemberReference or HandleKind.MethodDefinition)
         {
@@ -1731,6 +1730,8 @@ internal sealed partial class MethodCompiler
             string message = "nullptr";
             bool arrayArgument = false;
             bool singleArgument = false;
+            StackEntry? sequence = null;
+            TypeDesc? sequenceElement = null;
             for (int i = aggSig.ParameterTypes.Length - 1; i >= 0; i--)
             {
                 var a = Pop();
@@ -1746,6 +1747,34 @@ internal sealed partial class MethodCompiler
                     singleInner = Cast(a, "Dn2CppObject*");
                     singleArgument = true;
                 }
+                else if (aggSig.ParameterTypes[i] is { Kind: TypeKind.Class, Class: { } enumerable }
+                    && Comp.GenericDefFullName(enumerable) == "System.Collections.Generic.IEnumerable"
+                    && enumerable.Context.TypeArgs is [{ } element] && IsExceptionParam(element))
+                {
+                    sequence = a;
+                    sequenceElement = element;
+                }
+            }
+            if (sequence is not null && sequenceElement is not null)
+            {
+                // CoreLib's enumerable ctor materializes through List<Exception>, including
+                // its ICollection fast path and exception-safe enumerator disposal.
+                var listClass = Comp.ListOf(sequenceElement)
+                    ?? throw new NotSupportedException("AggregateException's enumerable constructor requires the managed List<Exception> type.");
+                var listCtor = Comp.ReachManagedMethod(listClass, ".ctor", ps =>
+                    ps is [{ Kind: TypeKind.Class, Class: { } c }]
+                        && Comp.GenericDefFullName(c) == "System.Collections.Generic.IEnumerable", allocates: true)
+                    ?? throw new NotSupportedException("AggregateException's enumerable constructor requires List<Exception>(IEnumerable<Exception>).");
+                var toArray = Comp.ReachManagedMethod(listClass, "ToArray", static ps => ps.Length == 0)
+                    ?? throw new NotSupportedException("AggregateException's enumerable constructor requires List<Exception>.ToArray().");
+                Comp.NoteArrayEnumerableElement(sequenceElement);
+                Emit($"if ({sequence.Expr} == nullptr) dn2cpp_throw_argument_null_param(\"innerExceptions\");");
+                string list = NewTemp(listClass.CppStructName + "*");
+                Emit($"{list} = ({listClass.CppStructName}*)dn2cpp_alloc(sizeof({listClass.CppStructName}));");
+                Emit($"((Dn2CppObject*){list})->type = &{listClass.CppTypeInfoName};");
+                Emit($"{DirectCall(listCtor, new List<string> { list, Cast(sequence, CppTypes.Of(listCtor.Signature.ParameterTypes[0])) })};");
+                innerArr = NewTemp("Dn2CppArrayRef*");
+                Emit($"{innerArr} = (Dn2CppArrayRef*){DirectCall(toArray, new List<string> { list })};");
             }
             if (arrayArgument)
                 Emit($"if ({innerArr} == nullptr) dn2cpp_throw_argument_null_param(\"innerExceptions\");");
