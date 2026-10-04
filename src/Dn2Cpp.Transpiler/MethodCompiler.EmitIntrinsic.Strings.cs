@@ -21,6 +21,16 @@ internal sealed partial class MethodCompiler
         switch (declType, name)
         {
 
+            case ("System.Console", "OpenStandardInput" or "OpenStandardOutput" or "OpenStandardError")
+                when sig.ParameterTypes.Length == 0 || sig.ParameterTypes is [{ Primitive: PrimitiveTypeCode.Int32 }]:
+            {
+                var factory = Comp.ConsoleStandardStreamFactory();
+                string bufferSize = sig.ParameterTypes.Length == 0 ? "256" : Cast(Pop(), "int32_t");
+                int stream = name == "OpenStandardInput" ? 0 : name == "OpenStandardOutput" ? 1 : 2;
+                Push(StackKind.Ref, CppTypes.Of(sig.ReturnType), $"{factory.Emittable.CppName}({stream}, {bufferSize})");
+                return true;
+            }
+
             case ("System.Console", "WriteLine") when sig.ParameterTypes.Length == 0:
                 Emit("dn2cpp_console_writeline_empty();");
                 return true;

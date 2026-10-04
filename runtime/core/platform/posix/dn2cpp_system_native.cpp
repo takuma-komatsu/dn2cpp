@@ -415,6 +415,13 @@ void SystemNative_Free(void* ptr)
 
 // ============================ file descriptors =============================
 
+intptr_t SystemNative_MksTemps(char* pathTemplate, int32_t suffixLength)
+{
+    int descriptor;
+    do { descriptor = ::mkstemps(pathTemplate, suffixLength); } while (descriptor < 0 && errno == EINTR);
+    return descriptor;
+}
+
 // PAL OpenFlags (managed Interop.Sys.OpenFlags) → host O_* bits.
 intptr_t SystemNative_Open(const char* path, int32_t flags, int32_t mode)
 {

@@ -1125,7 +1125,7 @@ internal sealed partial class MethodCompiler
             case "get_Date":
             {
                 var r = Pop(); string t = NewTemp("Dn2CppDateTime"); Emit($"{t} = {DTVal(r)};");
-                Push(StackKind.Struct, "Dn2CppDateTime", $"dn2cpp_datetime_from_ticks({t}.ticks() - ({t}.ticks() % {TPD}), {t}.kind())");
+                Push(StackKind.Struct, "Dn2CppDateTime", $"dn2cpp_dt_word({t}.ticks() - ({t}.ticks() % {TPD}), (uint64_t){t}._dateData >> 62)");
                 return true;
             }
             case "get_TimeOfDay":
@@ -1149,6 +1149,19 @@ internal sealed partial class MethodCompiler
         // Other instance methods.
         switch (name)
         {
+            case "IsDaylightSavingTime" when ps.Length == 0:
+            {
+                var methods = Comp.ReachLocalDaylightSavingTime();
+                if (methods is null)
+                    return false;
+                var receiver = Pop();
+                string value = NewTemp("Dn2CppDateTime");
+                Emit($"{value} = {DTVal(receiver)};");
+                // Utc is always false; TimeZoneInfo's public overload also tolerates invalid clocks.
+                Push(StackKind.I4, "int32_t", $"{value}.kind() != 1 && "
+                    + $"{methods.Value.Daylight.Emittable.CppName}({methods.Value.Local.Emittable.CppName}(), {value})");
+                return true;
+            }
             case "AddTicks" when ps.Length == 1:
             { var b = Pop(); var a = Pop(); Push(StackKind.Struct, "Dn2CppDateTime", $"dn2cpp_datetime_add_ticks({DTVal(a)}, (int64_t)({b.Expr}), \"value\")"); return true; }
             case "AddMonths" when ps.Length == 1:
@@ -1191,14 +1204,9 @@ internal sealed partial class MethodCompiler
                 Emit($"dn2cpp_datetime_get_time_precise({DTVal(a)}, {Cast(h, "int32_t*")}, {Cast(mi, "int32_t*")}, {Cast(s, "int32_t*")}, {Cast(tick, "int32_t*")});");
                 return true;
             }
-            // IsAmbiguousDaylightSavingTime() — an internal predicate TimeZoneInfo's real BCL
-            // IL reads to disambiguate a wall-clock instant landing in the fall-back DST
-            // overlap. Real .NET reads DateTime's KindLocalAmbiguousDst flag (both high
-            // _dateData bits set), set ONLY inside TimeZoneInfo.ConvertTime's ambiguous-time
-            // path; Dn2CppDateTime.kind is one of {Unspecified=0, Utc=1, Local=2} and never
-            // carries that flag, so the predicate is always false.
+            // The repeated daylight hour carries both kind bits, even though Kind is Local.
             case "IsAmbiguousDaylightSavingTime" when ps.Length == 0:
-            { Pop(); Push(StackKind.I4, "int32_t", "0"); return true; }
+            { var a = Pop(); Push(StackKind.I4, "int32_t", $"((uint64_t)({DTVal(a)})._dateData >> 62) == 3"); return true; }
             // Time-zone conversion against the host's local zone. Utc/Unspecified
             // -> Local and Local/Unspecified -> Utc; an already-matching Kind is a no-op.
             case "ToLocalTime" when ps.Length == 0:

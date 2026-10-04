@@ -175,7 +175,7 @@ size_t dn2cpp_pal_malloc_usable_size(void* ptr);
 // callback, an on-screen log or a host-supplied ring buffer has no `stdout` at
 // all, and nothing portable lets the runtime notice. The whole
 // `dn2cpp_console_*` (stdout) and `dn2cpp_textwriter_*` (stderr) family funnels
-// here and nothing else in the runtime writes those two streams.
+// here. Standard byte streams use the opaque-handle operations below.
 //
 // Diagnostics that are not console output — the fatal-error and unhandled-
 // exception reports — deliberately keep their own `std::fprintf(stderr, …)`:
@@ -202,6 +202,30 @@ void dn2cpp_pal_console_write(int stream, const char* bytes, size_t byteCount);
 // the sink is genuinely unbuffered.
 // PAL-CONTRACT: MUST
 void dn2cpp_pal_console_flush(void);
+
+// Standard byte streams use opaque handles. 0/1/2 select stdin/stdout/stderr;
+// open returns -1 only for an absent Windows standard handle. Other failures
+// throw the platform's managed I/O exception, including its native error code.
+// PAL-CONTRACT: MUST
+intptr_t dn2cpp_pal_console_stream_open(int32_t stream);
+
+// Whether SafeHandle must retain/release the opened handle across native I/O.
+// Windows borrows process handles and uses its ConsoleStream disposal semantics.
+// PAL-CONTRACT: MUST
+int32_t dn2cpp_pal_console_stream_owned();
+
+// Release only this wrapper's handle; the process standard stream stays usable.
+// PAL-CONTRACT: MUST
+void dn2cpp_pal_console_stream_close(intptr_t handle);
+
+// Read bytes (zero at EOF). The runtime supplies a kernel-writable destination.
+// PAL-CONTRACT: MUST
+int32_t dn2cpp_pal_console_stream_read(intptr_t handle, uint8_t* buffer, int32_t length);
+
+// Consume the full byte span, tolerating closed output pipes as .NET does.
+// Called with the console lock held, after flushing the text sink.
+// PAL-CONTRACT: MUST
+void dn2cpp_pal_console_stream_write(intptr_t handle, const uint8_t* buffer, int32_t length);
 
 // ── Diagnostics ──────────────────────────────────────────────────────────────
 

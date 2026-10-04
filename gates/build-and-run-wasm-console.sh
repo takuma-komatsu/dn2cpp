@@ -111,6 +111,13 @@ echo "PAL reach OK: MonotonicClock still lowers both clocks to libSystem.Native"
 
 wasm_corelib_diff_gate PalSurface System.Net.Primitives
 
+before=$(run_bounded dotnet "$_CG_APP" before-temp-file)
+native=$(run_bounded node "$_CG_OUT/PalSurface.js")
+prefix=$(awk '/^== temporary file PAL ==$/ { exit } { print }' <<< "$native")
+assert_output "$(strip_cr_win "$prefix")" "$(strip_cr_win "$before")"
+grep -Fxq 'temporary file PAL end' <<< "$native" \
+    || { echo 'FAIL: temporary file PAL section did not run' >&2; exit 1; }
+
 # Same reason as the clock assert above: the section's output is identical whether or
 # not it still reaches these, so only the emitted call set can say it does. The
 # file-I/O half is the whole MEMFS closure — a BCL refactor that routed one operation
@@ -140,7 +147,8 @@ for thunk in \
     dn2cpp_pinvoke_SystemNative_GetFileSystemType \
     dn2cpp_pinvoke_SystemNative_ConvertErrorPalToPlatform \
     dn2cpp_pinvoke_SystemNative_ConvertErrorPlatformToPal \
-    dn2cpp_pinvoke_SystemNative_StrErrorR; do
+    dn2cpp_pinvoke_SystemNative_StrErrorR \
+    dn2cpp_pinvoke_SystemNative_MksTemps; do
     if ! grep -qF "$thunk" "$_CG_OUT"/generated*; then
         echo "FAIL: PalSurface no longer emits $thunk" >&2
         echo "      The section still passes, but it stopped reaching this wasm PAL" >&2

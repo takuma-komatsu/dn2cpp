@@ -7726,10 +7726,8 @@ struct Dn2CppDateTime
     constexpr int64_t ticks() const { return (int64_t)((uint64_t)_dateData & 0x3FFFFFFFFFFFFFFFULL); }
     // The DateTimeKind (0=Unspecified, 1=Utc, 2=Local). The raw flag value 3 is
     // .NET's KindLocalAmbiguousDst, which its public `Kind` property reports as
-    // Local; nothing in dn2cpp mints it, but a program can reach one through
-    // Unsafe.As<long, DateTime> now that the two representations are the same
-    // bits, so answer it the way .NET's property does rather than inventing a
-    // fourth kind.
+    // Local. Binary deserialization and UTC-to-local conversion preserve it so
+    // time-zone queries can distinguish the two instants in a repeated hour.
     constexpr int32_t kind() const
     {
         int32_t flags = (int32_t)((uint64_t)_dateData >> 62);
@@ -8446,6 +8444,11 @@ void dn2cpp_console_write_i8(int64_t v);
 void dn2cpp_console_write_r8(double v);
 void dn2cpp_console_write_r4(float v);
 void dn2cpp_console_write_bool(int32_t v);
+intptr_t dn2cpp_console_stream_open(int32_t stream);
+int32_t dn2cpp_console_stream_owned();
+void dn2cpp_console_stream_close(intptr_t handle);
+int32_t dn2cpp_console_stream_read(intptr_t handle, uint8_t* buffer, int32_t length);
+void dn2cpp_console_stream_write(intptr_t handle, const uint8_t* buffer, int32_t length);
 
 // Console.Error is the process stderr TextWriter. A TextWriter is an
 // opaque handle carrying the destination FILE* stream (defined in the runtime .cpp);

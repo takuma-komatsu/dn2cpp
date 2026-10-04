@@ -449,6 +449,13 @@ int32_t SystemNative_Close(intptr_t fd)
     return ::close((int)fd);
 }
 
+intptr_t SystemNative_MksTemps(char* pathTemplate, int32_t suffixLength)
+{
+    int descriptor;
+    do { descriptor = ::mkstemps(pathTemplate, suffixLength); } while (descriptor < 0 && errno == EINTR);
+    return descriptor;
+}
+
 int32_t SystemNative_Read(intptr_t fd, void* buffer, int32_t bufferSize)
 {
     if (bufferSize < 0)

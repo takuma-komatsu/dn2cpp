@@ -6,6 +6,11 @@
 // under platform/windows/ or platform/wasm/ without touching the intrinsics.
 
 #include "platform/dn2cpp_pal.h"
+#include "platform/dn2cpp_console_errors.h"
+#include <fcntl.h>
+#include <poll.h>
+#include <signal.h>
+#include <pthread.h>
 
 #include <cerrno>
 #include <spawn.h>
@@ -569,4 +574,98 @@ int32_t dn2cpp_pal_run_process(const char* executable, const char* const* argv, 
     *exitCode = WIFEXITED(status) ? WEXITSTATUS(status) : 128 + WTERMSIG(status);
     return 0;
 #endif
+}
+
+intptr_t dn2cpp_pal_console_stream_open(int32_t stream)
+{
+    int handle;
+    // A child must not retain a console pipe after its managed wrapper closes.
+    do { handle = fcntl(stream, F_DUPFD_CLOEXEC, 0); } while (handle < 0 && errno == EINTR);
+    if (handle < 0)
+        dn2cpp_console_throw_errno(errno);
+#ifdef F_SETNOSIGPIPE
+    // Darwin can deliver pipe signals after write returns; suppress them at the fd.
+    if (fcntl(handle, F_SETNOSIGPIPE, 1) < 0)
+    {
+        int error = errno;
+        close(handle);
+        dn2cpp_console_throw_errno(error);
+    }
+#endif
+    return handle;
+}
+
+int32_t dn2cpp_pal_console_stream_owned() { return 1; }
+
+void dn2cpp_pal_console_stream_close(intptr_t handle)
+{
+    // close releases the descriptor even when interrupted on supported hosts.
+    close(static_cast<int>(handle));
+}
+
+int32_t dn2cpp_pal_console_stream_read(intptr_t handle, uint8_t* buffer, int32_t length)
+{
+    ssize_t result;
+    do { result = read(static_cast<int>(handle), buffer, static_cast<size_t>(length)); }
+        while (result < 0 && errno == EINTR);
+    if (result < 0)
+        dn2cpp_console_throw_errno(errno);
+    return static_cast<int32_t>(result);
+}
+
+// A broken pipe is a successful console write in .NET. Suppress only the signal
+// raised by this write, preserving the caller's signal mask and pending signals.
+class Dn2CppConsolePipeSignal
+{
+    sigset_t previous{}, pipe{};
+    bool pending;
+public:
+    Dn2CppConsolePipeSignal()
+    {
+        sigemptyset(&pipe);
+        sigaddset(&pipe, SIGPIPE);
+        sigset_t current{};
+        sigpending(&current);
+        pending = sigismember(&current, SIGPIPE) != 0;
+        pthread_sigmask(SIG_BLOCK, &pipe, &previous);
+    }
+    ~Dn2CppConsolePipeSignal()
+    {
+        sigset_t current{};
+        sigpending(&current);
+        if (!pending && sigismember(&current, SIGPIPE))
+        {
+            int signal;
+            sigwait(&pipe, &signal);
+        }
+        pthread_sigmask(SIG_SETMASK, &previous, nullptr);
+    }
+};
+
+void dn2cpp_pal_console_stream_write(intptr_t handle, const uint8_t* buffer, int32_t length)
+{
+    Dn2CppConsolePipeSignal signal;
+    while (length > 0)
+    {
+        ssize_t written = write(static_cast<int>(handle), buffer, static_cast<size_t>(length));
+        if (written > 0)
+        {
+            buffer += written;
+            length -= static_cast<int32_t>(written);
+            continue;
+        }
+        if (written < 0 && errno == EINTR)
+            continue;
+        if (written < 0 && errno == EPIPE)
+            return;
+        if (written < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
+        {
+            pollfd descriptor{static_cast<int>(handle), POLLOUT, 0};
+            int result;
+            do { result = poll(&descriptor, 1, -1); } while (result < 0 && errno == EINTR);
+            if (result >= 0)
+                continue;
+        }
+        dn2cpp_console_throw_errno(errno);
+    }
 }

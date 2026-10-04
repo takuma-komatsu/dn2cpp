@@ -635,10 +635,8 @@ cuts, and both sides' stderr required to stay empty.
 | UniTask | The tier-2 custom-async-task lane on the .NET build: adoption is declined automatically and the library's own combinators, scheduler and cancellation model transpile as real IL | `gates/build-and-run-unitask.sh` |
 | GDTask | The same tier-2 lane inside the real Godot engine | `gates/build-and-run-gdtask.sh` |
 
-Lua-CSharp registers the listed libraries individually. The gate does not cover
-the basic, I/O, OS or debug libraries: registering the basic and I/O libraries
-reaches the unsupported `Console.OpenStandard*` stream APIs, and `os.date`
-reaches the unsupported `DateTime.IsDaylightSavingTime()` API.
+Lua-CSharp registers all standard libraries. The gate also exercises basic
+protected calls, byte-stream output, fixed UTC dates and debug frame information.
 
 A source generator's output is part of the subject, not a detail of the build:
 Lua-CSharp's generated userdata bindings, MasterMemory's generated database,

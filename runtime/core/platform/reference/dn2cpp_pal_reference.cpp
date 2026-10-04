@@ -39,6 +39,7 @@
 // that sink.
 
 #include "platform/dn2cpp_pal.h"
+#include "platform/dn2cpp_console_errors.h"
 #include "platform/reference/dn2cpp_pal_reference.h"
 
 #include <atomic>     // atomic_thread_fence (the process-wide barrier's weakening)
@@ -349,4 +350,28 @@ int32_t dn2cpp_pal_backtrace(void** buf, int32_t max)
 int32_t dn2cpp_pal_run_process(const char*, const char* const*, int32_t*)
 {
     return -1;
+}
+
+intptr_t dn2cpp_pal_console_stream_open(int32_t stream) { return stream; }
+
+int32_t dn2cpp_pal_console_stream_owned() { return 1; }
+
+void dn2cpp_pal_console_stream_close(intptr_t) {}
+
+int32_t dn2cpp_pal_console_stream_read(intptr_t handle, uint8_t* buffer, int32_t length)
+{
+    if (handle != 0)
+        dn2cpp_console_throw_errno(EBADF);
+    size_t count = std::fread(buffer, 1, static_cast<size_t>(length), stdin);
+    if (count == 0 && std::ferror(stdin))
+        dn2cpp_console_throw_errno(errno);
+    return static_cast<int32_t>(count);
+}
+
+void dn2cpp_pal_console_stream_write(intptr_t handle, const uint8_t* buffer, int32_t length)
+{
+    if (handle != 1 && handle != 2)
+        dn2cpp_console_throw_errno(EBADF);
+    dn2cpp_pal_console_write(handle == 2 ? DN2CPP_PAL_CONSOLE_ERR : DN2CPP_PAL_CONSOLE_OUT,
+        reinterpret_cast<const char*>(buffer), static_cast<size_t>(length));
 }

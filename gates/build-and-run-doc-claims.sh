@@ -219,12 +219,12 @@ pal_marks=$(grep -c '^// PAL-CONTRACT: ' "$pal_h")
 eq "$pal_h — declarations carrying a PAL-CONTRACT marker" "$pal_decls" "$pal_marks" \
    "every seam declaration needs a '// PAL-CONTRACT: MUST' or 'MAY-DEGRADE <sentinel>' line directly above it; that marker is what docs/PORTING.md §2.1 restates"
 
-# The doc's stated total, as an English word, against the header.
+# The doc's stated total against the header.
 # Captured then matched from a here-string rather than piped into `head`/`sed …q`:
 # under `set -o pipefail` a pipeline into an early-exiting consumer reports the
 # consumer's status, and the pipeline-shape section of this very file bans it.
-porting_total=$(w2n "$(sed -nE '1s/.*\*\*([a-z]+)\*\*.*/\1/p' \
-    <<<"$(grep -oE 'The seam declares \*\*[a-z]+\*\* functions' docs/PORTING.md)")")
+porting_total=$(w2n "$(sed -nE '1s/.*\*\*([a-z0-9]+)\*\*.*/\1/p' \
+    <<<"$(grep -oE 'The seam declares \*\*[a-z0-9]+\*\* functions' docs/PORTING.md)")")
 eq "docs/PORTING.md §2.1 'the seam declares N functions'" "$porting_total" "$pal_decls"
 
 # The MAY-DEGRADE set: header markers vs the doc's table rows. A set diff and not a
@@ -242,8 +242,8 @@ set_eq "docs/PORTING.md §2.1 may-degrade table vs the header's markers" \
 # The doc's MUST arithmetic. Stated as "N of the M must answer truly", and it is
 # the one number here that is a subtraction rather than a count — which is the kind
 # that stays wrong longest, because both operands look right.
-porting_must=$(w2n "$(sed -nE '1s/\*\*([A-Za-z]+) of.*/\1/p' \
-    <<<"$(grep -oE '\*\*[A-Za-z]+ of the [a-z]+ must answer truly' docs/PORTING.md)")")
+porting_must=$(w2n "$(sed -nE '1s/\*\*([A-Za-z0-9]+) of.*/\1/p' \
+    <<<"$(grep -oE '\*\*[A-Za-z0-9]+ of the [a-z0-9]+ must answer truly' docs/PORTING.md)")")
 eq "docs/PORTING.md §2.1 'N of the M must answer truly'" \
    "$porting_must" "$((pal_decls - $(printf '%s\n' "$pal_degrade" | grep -c .)))"
 

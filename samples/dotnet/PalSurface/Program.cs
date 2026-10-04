@@ -6,7 +6,7 @@ namespace PalSurface
     // matches a standalone build.
     internal static class Program
     {
-        private static void Main()
+        private static void Main(string[] args)
         {
             // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
@@ -16,6 +16,9 @@ namespace PalSurface
             StderrWritePalSubset.Program.__GateEntry();
             NetworkInterfacePalSubset.Program.__GateEntry();
             FileStreamPalSubset.Program.__GateEntry();
+            if (args.Length > 0 && args[0] == "before-temp-file")
+                return;
+            FileStreamPalSubset.Program.RunTempFile();
         }
     }
 }

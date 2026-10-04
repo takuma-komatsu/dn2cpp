@@ -19,7 +19,7 @@
 # TzSerializedStringSubset covers TimeZoneInfo.FromSerializedString over a fixed
 # serialized zone with adjustment rules — the deserialize path routes a transition
 # time through the internal TimeOnly.ToDateTime().
-# FromBinary/ToBinary cover kind flags, local-zone round trips and invalid payloads.
+# FromBinary/ToBinary and daylight checks cover kind flags and local-zone overlaps.
 # Former gates: datetime, datetime-now, datetime-parse, datetime-format,
 # datetime-tz, datetimeoffset.
 source "$(dirname "$0")/_common.sh"
@@ -63,6 +63,19 @@ gate_extra_asserts() {
     assert_output "$prefix" "$(strip_cr_win "$before")"
     grep -Fxq 'UTF-8 date destinations end' <<< "$native" \
         || { echo "FAIL: UTF-8 date formatting did not run" >&2; exit 1; }
+    before=$(run_bounded dotnet "$_CG_APP" before-daylight)
+    prefix=$(awk '/^== daylight saving time ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    grep -Fxq 'daylight saving time end' <<< "$native" \
+        || { echo 'FAIL: daylight saving time section did not run' >&2; exit 1; }
+    if [ "$EXE_EXT" != .exe ]; then
+        for zone in Etc/UTC Asia/Tokyo America/New_York Australia/Sydney \
+            Asia/Manila America/Sitka America/Juneau Pacific/Guam Pacific/Kiritimati; do
+            native=$(TZ="$zone" run_bounded "./$out/DateTimeOps$EXE_EXT" daylight-only)
+            expected=$(TZ="$zone" run_bounded dotnet "$_CG_APP" daylight-only)
+            assert_output "$(strip_cr_win "$native")" "$(strip_cr_win "$expected")"
+        done
+    fi
 }
 
 corelib_diff_gate DateTimeOps

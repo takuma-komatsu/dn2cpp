@@ -2134,12 +2134,13 @@ internal sealed partial class MethodCompiler
                         adapterExpr = AbsentNetworkPalFtnStub(method, origin.Key - 1, receiverSlot: fromVirtFtn, delegateClass: cls);
                     else if (IsDelegateInvoke(method))
                         adapterExpr = DelegateInvokeAddress(method);
-                    else if (!fromVirtFtn && (method.IsStatic || NeedsNfiErasedAdapter(method.Emittable)))
+                    else if (!fromVirtFtn && (method.IsStatic || method.DeclaringClass.IsValueType
+                        || NeedsNfiErasedAdapter(method.Emittable)))
                     {
                         var impl = method.Emittable;
                         var adapter = new DelegateAdapter(impl,
                             method.IsStatic && IsClosedStaticDelegate(cls, impl),
-                            NeedsNfiErasedAdapter(impl));
+                            !method.IsStatic && method.DeclaringClass.IsValueType || NeedsNfiErasedAdapter(impl));
                         if (!_c.DelegateAdapters.Contains(adapter))
                             _c.DelegateAdapters.Add(adapter);
                         NoteFtnTargetBody(impl);
