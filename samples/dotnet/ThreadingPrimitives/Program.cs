@@ -3,7 +3,7 @@ using System.Globalization;
 namespace ThreadingPrimitives
 {
     // Gate driver: each section keeps its own namespace so namespace-sensitive output
-    // matches a standalone build. All sections are single-threaded and deterministic.
+    // matches a standalone build. Each section prints deterministic observations.
     internal static class Program
     {
         private static void Main(string[] args)
@@ -33,6 +33,9 @@ namespace ThreadingPrimitives
             if (args.Length != 0 && args[0] == "before-lock-identity")
                 return;
             LockTypeSubset.Program.RunIdentity();
+            if (args.Length != 0 && args[0] == "before-cancellation-thread-faults")
+                return;
+            ThreadingPrimitivesCore.Program.RunCancellationFaults();
         }
     }
 }

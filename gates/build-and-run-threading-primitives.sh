@@ -3,9 +3,9 @@
 # contract), Volatile.Read/Write (int/long/double/bool), legacy
 # Thread.VolatileRead/Write (integer/reference/float/double), Interlocked.MemoryBarrier, and
 # [ThreadStatic] (main-thread behavior), and managed WaitHandle subclass key lifetime
-# across collection and address reuse. All single-threaded, so the output is identical
-# to real .NET and is diffed exact (corelib_diff_gate). The genuine cross-thread test
-# (N threads racing a shared counter, Join, exact total) is the Thread gate.
+# across collection and address reuse. Primitive observations are single-threaded;
+# cancellation callback faults run on a joined worker and a controlled timer.
+# Deterministic output is diffed exact vs real .NET (corelib_diff_gate).
 # Also covers the two lowerings of the `lock` STATEMENT, single-threaded and so
 # equally deterministic: LockSubset (`lock (object)` -> Monitor.Enter(ref taken) /
 # finally Exit, plus the explicit Monitor.TryEnter forms) and LockTypeSubset (the
@@ -30,11 +30,24 @@ registration_app="gates/fixtures/registration-object-equality/bin/$CONFIG/$TFM/R
 build_gate_proj gates/fixtures/registration-object-equality/RegistrationObjectEquality.csproj
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $registration_app ${registration_app%.dll}.runtimeconfig.json ${registration_app%.dll}.deps.json"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|registration-object-equality|cli:$(_gate_cli_hash)"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-cancellation-thread-faults"
 gate_extra_asserts() {
     local out="$1" native before prefix line
     [[ "$_CG_APP" == */ThreadingPrimitives.dll ]] || return 0
     native=$(run_bounded "./$out/ThreadingPrimitives")
     native=$(strip_cr_win "$native")
+    before=$(run_bounded dotnet "$_CG_APP" before-cancellation-thread-faults)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== cancellation thread faults ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== cancellation thread faults ==' \
+        'cancel worker False: newer;older;remaining;|AggregateException|identity=True|requested=True' \
+        'cancel worker True: newer;|InvalidOperationException|identity=True|requested=True' \
+        'cancel handled timer: True|newer;older;remaining;|2|timer newer,timer older|requested=True' \
+        'cancellation thread faults end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: cancellation thread fault witness missing: $line" >&2; exit 1; }
+    done
     before=$(dotnet "$_CG_APP" before-argument-fields)
     before=$(strip_cr_win "$before")
     prefix=$(awk '/^== WaitHandle array fields ==$/ { exit } { print }' <<< "$native")

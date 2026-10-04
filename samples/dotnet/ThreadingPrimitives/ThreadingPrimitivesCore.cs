@@ -67,4 +67,61 @@ internal static class Program
         t_value = 123;
         Console.WriteLine(t_value);                                         // 123
     }
+
+    private static void CancellationWorkerFaults(bool first)
+    {
+        using var source = new CancellationTokenSource();
+        var older = new ArgumentException("worker older");
+        var newer = new InvalidOperationException("worker newer");
+        string trace = "";
+        source.Token.Register(() => trace += "remaining;");
+        source.Token.Register(() => { trace += "older;"; throw older; });
+        source.Token.Register(() => { trace += "newer;"; throw newer; });
+        Exception? error = null;
+        var worker = new Thread(() =>
+        {
+            try { source.Cancel(first); }
+            catch (Exception e) { error = e; }
+        });
+        worker.Start();
+        worker.Join();
+        bool identity = error is AggregateException aggregate
+            ? aggregate.InnerExceptions.Count == 2
+                && ReferenceEquals(aggregate.InnerExceptions[0], newer)
+                && ReferenceEquals(aggregate.InnerExceptions[1], older)
+            : ReferenceEquals(error, newer);
+        Console.WriteLine("cancel worker " + first + ": " + trace + "|" + error?.GetType().Name
+            + "|identity=" + identity + "|requested=" + source.IsCancellationRequested);
+    }
+
+    internal static void RunCancellationFaults()
+    {
+        Console.WriteLine("== cancellation thread faults ==");
+        CancellationWorkerFaults(false);
+        CancellationWorkerFaults(true);
+
+        using var source = new CancellationTokenSource();
+        using var finished = new ManualResetEventSlim(false);
+        string trace = "";
+        AggregateException? error = null;
+        source.Token.Register(() => trace += "remaining;");
+        source.Token.Register(() =>
+        {
+            GC.Collect();
+            trace += "older;";
+            throw new ArgumentException("timer older");
+        });
+        source.Token.Register(() => { trace += "newer;"; throw new InvalidOperationException("timer newer"); });
+        using var timer = new Timer(_ =>
+        {
+            try { source.Cancel(false); }
+            catch (AggregateException e) { error = e; }
+            finished.Set();
+        }, null, 1, Timeout.Infinite);
+        bool signaled = finished.Wait(5000);
+        Console.WriteLine("cancel handled timer: " + signaled + "|" + trace + "|"
+            + error?.InnerExceptions.Count + "|" + error?.InnerExceptions[0].Message
+            + "," + error?.InnerExceptions[1].Message + "|requested=" + source.IsCancellationRequested);
+        Console.WriteLine("cancellation thread faults end");
+    }
 }
