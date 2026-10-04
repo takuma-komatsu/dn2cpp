@@ -31,6 +31,10 @@ namespace SpanOps
                 return;
 
             DecimalLayoutSubset.Program.__GateEntry();
+            if (args.Length > 0 && args[0] == "before-span-overlap")
+                return;
+
+            SpanOverlapSubset.Run();
         }
     }
 }

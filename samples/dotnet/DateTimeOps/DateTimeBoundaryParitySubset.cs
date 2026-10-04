@@ -77,4 +77,47 @@ internal static class Program
         Show("dto tryexact both empty reset", () => { var d = new DateTimeOffset(123456789, TimeSpan.Zero); bool ok = DateTimeOffset.TryParseExact("", "", CultureInfo.InvariantCulture, DateTimeStyles.None, out d); return ok + ":" + d.Ticks + ":" + d.Offset.Ticks; });
         Console.WriteLine("datetime offset boundaries end");
     }
+
+    internal static void RunBinary()
+    {
+        Console.WriteLine("== datetime binary ==");
+        foreach (DateTimeKind kind in new[] { DateTimeKind.Unspecified, DateTimeKind.Utc, DateTimeKind.Local })
+        {
+            foreach (long ticks in new[] { 0L, 638713838451234567L, DateTime.MaxValue.Ticks })
+            {
+                var value = new DateTime(ticks, kind);
+                long binary = value.ToBinary();
+                var restored = DateTime.FromBinary(binary);
+                Console.WriteLine("binary:" + kind + ":" + ticks + "=" + binary + ":" + restored.Ticks + ":" + restored.Kind);
+            }
+        }
+        foreach (long value in new[] { DateTime.MaxValue.Ticks + 1, 0x4000000000000000L, long.MaxValue, long.MinValue, -1L })
+            Show("binary raw:" + value, () => { var date = DateTime.FromBinary(value); return date.Ticks + ":" + date.Kind; });
+        foreach (int hour in new[] { 5, 6 })
+        {
+            long utc = new DateTime(2024, 11, 3, hour, 30, 0, DateTimeKind.Utc).Ticks;
+            long payload = utc | long.MinValue;
+            var restored = DateTime.FromBinary(payload);
+            Console.WriteLine("binary repeated:" + hour + "=" + restored.Ticks + ":" + (restored.ToBinary() == payload));
+        }
+        Show("binary invalid local", () => new DateTime(2024, 3, 10, 2, 30, 0, DateTimeKind.Local).ToBinary().ToString());
+        Console.WriteLine("datetime binary end");
+    }
+
+    internal static void RunExactSpans()
+    {
+        Console.WriteLine("== datetime exact spans ==");
+        foreach (string text in new[] { null, "", "invalid", "2025-01-01T12:34:56.1234567Z", "2025-01-01" })
+        {
+            foreach (string format in new[] { "O", "yyyy-MM-dd", "" })
+            {
+                string label = (text ?? "<null>") + ":" + format;
+                Show("date exact string:" + label, () => { var value = new DateTime(123); bool ok = DateTime.TryParseExact(text, format, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out value); return ok + ":" + value.Ticks + ":" + value.Kind; });
+                Show("date exact span:" + label, () => { var value = new DateTime(123); bool ok = DateTime.TryParseExact(text.AsSpan(), format.AsSpan(), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out value); return ok + ":" + value.Ticks + ":" + value.Kind; });
+                Show("date parse exact string:" + label, () => { var value = DateTime.ParseExact(text, format, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind); return value.Ticks + ":" + value.Kind; });
+                Show("date parse exact span:" + label, () => { var value = DateTime.ParseExact(text.AsSpan(), format.AsSpan(), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind); return value.Ticks + ":" + value.Kind; });
+            }
+        }
+        Console.WriteLine("datetime exact spans end");
+    }
 }

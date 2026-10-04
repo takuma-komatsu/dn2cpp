@@ -104,4 +104,21 @@ internal static class Program
         }
         Console.WriteLine("indexed culture compare end");
     }
+
+    public static void RunBooleanEquality()
+    {
+        Console.WriteLine("== Boolean string comparison equality ==");
+        string[] names = { null, "", "Name", "name", "NAME", "Count", "count", "名前" };
+        foreach (string left in names)
+        {
+            foreach (string right in names)
+            {
+                foreach (bool ignoreCase in new[] { false, true })
+                    Console.WriteLine((left ?? "<null>") + ":" + (right ?? "<null>") + ":" + ignoreCase + "=" +
+                        (string.Compare(left, right, ignoreCase) == 0) + ":" +
+                        (string.Compare(left, right, ignoreCase, CultureInfo.InvariantCulture) == 0));
+            }
+        }
+        Console.WriteLine("Boolean string comparison equality end");
+    }
 }

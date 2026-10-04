@@ -385,8 +385,8 @@ internal sealed partial class MethodCompiler
             // An integer primitive's static Clamp is Math.Clamp over the same type.
             case ("System.SByte" or "System.Byte" or "System.Int16" or "System.UInt16"
                     or "System.Int32" or "System.UInt32" or "System.Int64" or "System.UInt64"
-                    or "System.IntPtr" or "System.UIntPtr", "Clamp")
-                    when !sig.Header.IsInstance && sig.ParameterTypes.Length == 3
+                    or "System.IntPtr" or "System.UIntPtr", "Clamp" or "DivRem")
+                    when !sig.Header.IsInstance && sig.ParameterTypes.Length is 2 or 3
                         && TryMathIntrinsic(declType, name, sig):
                 return true;
 
@@ -975,14 +975,9 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.I4, "int32_t", hyph);
                 return true;
             }
-            // ValidateParseStyleInteger / ValidateParseStyleFloatingPoint(NumberStyles) —
-            // static argument guards that throw only on caller-supplied invalid style
-            // combinations (hex/binary specifiers on a float parse; the two together, or
-            // either with non-hex flags, on an integer parse). The transpiled parse
-            // entries pass the fixed valid default, so both are no-ops here.
             case ("System.Globalization.NumberFormatInfo", "ValidateParseStyleInteger"):
             case ("System.Globalization.NumberFormatInfo", "ValidateParseStyleFloatingPoint"):
-                Pop(); // the NumberStyles argument
+                Emit($"{(name == "ValidateParseStyleInteger" ? "dn2cpp_parse_validate_integer_styles" : "dn2cpp_parse_validate_fp_styles")}((int32_t)({Pop().Expr}));");
                 return true;
             // CultureInfo.CompareInfo — a synthesized zero-initialized instance of the
             // transpiled CompareInfo. The real getter's `new CompareInfo(this)` reads
@@ -1489,6 +1484,16 @@ internal sealed partial class MethodCompiler
                     $"dn2cpp_bool_tryparse({Cast(Pop(), "Dn2CppString*")}, (uint8_t*)({outRef.Expr}))");
                 return true;
             }
+            case ("System.Boolean", "TryParse")
+                when sig.ParameterTypes is [var input, { Kind: TypeKind.ByRef }]
+                    && IsReadOnlySpanChar(input):
+            {
+                var outRef = Pop();
+                string sp = SpanPtr(Pop(), CppTypes.Of(input));
+                Push(StackKind.I4, "int32_t",
+                    $"dn2cpp_bool_tryparse_chars((const char16_t*){sp}->f__reference, {sp}->f__length, (uint8_t*)({outRef.Expr}))");
+                return true;
+            }
             // bool.Parse(string): the throwing form over the same trim + ordinal-case
             // matcher — a null input raises ArgumentNullException, anything the TryParse
             // matcher rejects raises FormatException, matching .NET.
@@ -1499,6 +1504,15 @@ internal sealed partial class MethodCompiler
                 Emit($"if ({s} == nullptr) dn2cpp_throw_argument_null_param(\"value\");");
                 string b = NewTemp("uint8_t");
                 Emit($"if (!dn2cpp_bool_tryparse({s}, &{b})) dn2cpp_throw_sr1(&dn2cpp_format_exception_type, DN2CPP_SR_BAD_BOOLEAN, {s});");
+                Push(StackKind.I4, "int32_t", $"(int32_t){b}");
+                return true;
+            }
+            case ("System.Boolean", "Parse")
+                when sig.ParameterTypes is [var input] && IsReadOnlySpanChar(input):
+            {
+                string sp = SpanPtr(Pop(), CppTypes.Of(input));
+                string b = NewTemp("uint8_t");
+                Emit($"if (!dn2cpp_bool_tryparse_chars((const char16_t*){sp}->f__reference, {sp}->f__length, &{b})) dn2cpp_throw_sr1(&dn2cpp_format_exception_type, DN2CPP_SR_BAD_BOOLEAN, dn2cpp_string_from_chars((const char16_t*){sp}->f__reference, {sp}->f__length));");
                 Push(StackKind.I4, "int32_t", $"(int32_t){b}");
                 return true;
             }

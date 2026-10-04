@@ -405,6 +405,15 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.Ref, "Dn2CppString*", $"dn2cpp_char_to_string((char16_t)({DerefReceiver(SubWordCppType(declType))}))");
                 return true;
             }
+            case ("System.Char", "Parse") when sig.ParameterTypes is [{ IsString: true }]:
+            {
+                string text = NewTemp("Dn2CppString*");
+                Emit($"{text} = {Cast(Pop(), "Dn2CppString*")};");
+                Emit($"if ({text} == nullptr) dn2cpp_throw_argument_null_param(\"s\");");
+                Emit($"if ({text}->length != 1) dn2cpp_throw_sr0(&dn2cpp_format_exception_type, DN2CPP_SR_NEED_SINGLE_CHAR);");
+                Push(StackKind.I4, "int32_t", $"(int32_t){text}->chars[0]");
+                return true;
+            }
             // The static char.TryParse(string, out char) — succeeds iff the string is
             // exactly one code unit long (real .NET's definition, culture-free), writing
             // that unit to the out slot; on failure the out slot is 0, like .NET. A null

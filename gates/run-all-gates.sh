@@ -465,6 +465,7 @@ GATE_OWNED_PROJECTS=(
     "samples/dotnet/MessagePackSample/MessagePackSample.csproj"
     "samples/dotnet/MessagePipeSample/MessagePipeSample.csproj"
     "samples/dotnet/R3Sample/R3Sample.csproj"
+    "samples/dotnet/REDoxSample/REDoxSample.csproj"
     "samples/dotnet/UniTaskSample/UniTaskSample.csproj"
     "samples/dotnet/ZLinqSample/ZLinqSample.csproj"
     "samples/dotnet/ZStringSample/ZStringSample.csproj"

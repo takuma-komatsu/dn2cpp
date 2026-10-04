@@ -1727,6 +1727,7 @@ inline constexpr const char* DN2CPP_SR_BAD_YEAR_MONTH_DAY = "ArgumentOutOfRange_
 inline constexpr const char* DN2CPP_SR_DATE_ARITHMETIC = "ArgumentOutOfRange_DateArithmetic";
 inline constexpr const char* DN2CPP_SR_DATE_TIME_BAD_MONTHS = "ArgumentOutOfRange_DateTimeBadMonths";
 inline constexpr const char* DN2CPP_SR_DATE_TIME_BAD_TICKS = "ArgumentOutOfRange_DateTimeBadTicks";
+inline constexpr const char* DN2CPP_SR_DATE_TIME_BAD_BINARY = "Argument_DateTimeBadBinaryData";
 inline constexpr const char* DN2CPP_SR_DATE_TIME_BAD_YEARS = "ArgumentOutOfRange_DateTimeBadYears";
 inline constexpr const char* DN2CPP_SR_FILE_TIME_INVALID = "ArgumentOutOfRange_FileTimeInvalid";
 inline constexpr const char* DN2CPP_SR_FORMAT_OFFSET_OUT_OF_RANGE = "Format_OffsetOutOfRange";
@@ -1797,6 +1798,7 @@ inline constexpr const char* DN2CPP_SR_ENUM_ILLEGAL_VALUE = "Arg_EnumIllegalVal"
 inline constexpr const char* DN2CPP_SR_BAD_BASE64_CHAR = "Format_BadBase64Char";
 inline constexpr const char* DN2CPP_SR_BAD_HEX_LENGTH = "Format_BadHexLength";
 inline constexpr const char* DN2CPP_SR_BAD_HEX_CHAR = "Format_BadHexChar";
+inline constexpr const char* DN2CPP_SR_DECIMAL_BITS = "Arg_DecBitCtor";
 inline constexpr const char* DN2CPP_SR_INVALID_BASE = "Arg_InvalidBase";
 inline constexpr const char* DN2CPP_SR_NEGATIVE_NON_DECIMAL = "Arg_CannotHaveNegativeValue";
 inline constexpr const char* DN2CPP_SR_NEGATIVE_UNSIGNED = "Overflow_NegativeUnsigned";
@@ -4855,6 +4857,7 @@ int32_t dn2cpp_long_tryparse(Dn2CppString* s, int64_t* out);
 int64_t dn2cpp_long_parse(Dn2CppString* s);
 // bool.TryParse: "True"/"False" ordinal-case-insensitive after trimming; 0/1.
 int32_t dn2cpp_bool_tryparse(Dn2CppString* s, uint8_t* out);
+int32_t dn2cpp_bool_tryparse_chars(const char16_t* chars, int32_t length, uint8_t* out);
 // Boolean.IsTrueStringIgnoreCase / IsFalseStringIgnoreCase(ReadOnlySpan<char>):
 // exact-literal ordinal-case-insensitive match (no trimming); 0/1.
 int32_t dn2cpp_bool_is_true_chars(const char16_t* chars, int32_t len);
@@ -4906,6 +4909,7 @@ int32_t dn2cpp_parse_number_styles(const char16_t* p, int32_t n, int32_t styles,
                                    Dn2CppNumberParse* num);
 // ValidateParseStyleFloatingPoint (throws ArgumentException / traps currency).
 void dn2cpp_parse_validate_fp_styles(int32_t styles);
+void dn2cpp_parse_validate_integer_styles(int32_t styles);
 int32_t dn2cpp_integer_tryparse_chars(const char16_t* p, int32_t n, int32_t styles,
                                       const Dn2CppNumberFormatInfo* nfi, int32_t bitWidth,
                                       int32_t isSigned, int64_t* out);
@@ -5053,10 +5057,14 @@ int32_t dn2cpp_convert_try_from_base64_str(Dn2CppString* s, uint8_t* dest, int32
 // accepts either case and traps on odd length / non-hex chars like the BCL.
 Dn2CppString* dn2cpp_convert_to_hex(Dn2CppArrayN* inArray, bool lower);
 Dn2CppString* dn2cpp_convert_to_hex_raw(const uint8_t* data, int32_t n, bool lower);
+int32_t dn2cpp_convert_try_to_hex(const uint8_t* data, int32_t n, void* dest,
+                                int32_t capacity, int32_t* written, bool utf8, bool lower);
 // The (byte[], int offset, int count) overloads; catchable ArgumentNull /
 // ArgumentOutOfRange validation like the BCL.
 Dn2CppString* dn2cpp_convert_to_hex_offset(Dn2CppArrayN* inArray, int32_t offset, int32_t count, bool lower);
 Dn2CppArrayN* dn2cpp_convert_from_hex(Dn2CppString* s, const Dn2CppTypeInfo* ti);
+Dn2CppArrayN* dn2cpp_convert_from_hex_chars(const char16_t* source, int32_t length, const Dn2CppTypeInfo* ti);
+Dn2CppArrayN* dn2cpp_convert_from_hex_utf8(const uint8_t* source, int32_t length, const Dn2CppTypeInfo* ti);
 // The TryDecode-style FromHexString(ReadOnlySpan<char>, Span<byte>, out charsConsumed,
 // out bytesWritten): decodes as many whole hex pairs as fit `bytes`, writing progress to
 // the two out-refs, and returns the System.Buffers.OperationStatus (Done=0,
@@ -5065,6 +5073,10 @@ Dn2CppArrayN* dn2cpp_convert_from_hex(Dn2CppString* s, const Dn2CppTypeInfo* ti)
 int32_t dn2cpp_convert_from_hex_span(const char16_t* chars, int32_t charsLen,
                                      uint8_t* bytes, int32_t bytesLen,
                                      int32_t* charsConsumed, int32_t* bytesWritten);
+int32_t dn2cpp_convert_from_hex_span_utf8(const uint8_t* chars, int32_t charsLen,
+    uint8_t* bytes, int32_t bytesLen, int32_t* consumed, int32_t* written);
+int32_t dn2cpp_convert_from_hex_span_string(Dn2CppString* source,
+    uint8_t* bytes, int32_t bytesLen, int32_t* consumed, int32_t* written);
 
 // Math.Round(value, MidpointRounding mode): mode is the BCL enum value
 // (ToEven=0, AwayFromZero=1, ToZero=2, ToNegativeInfinity=3, ToPositiveInfinity=4);
@@ -7560,6 +7572,8 @@ static_assert(Dn2CppDecimal{ dn2cpp_dec_flags(28, 1), 0, 1 }.scale() == 28
 // isNegative, byte scale)` ctor (and the bit-pattern form); the rest are the
 // numeric implicit/explicit conversions into decimal.
 Dn2CppDecimal dn2cpp_decimal_from_parts(int32_t lo, int32_t mid, int32_t hi, int32_t isNeg, int32_t scale);
+Dn2CppDecimal dn2cpp_decimal_from_bits(const int32_t* bits, int32_t length);
+Dn2CppDecimal dn2cpp_decimal_from_bits_array(Dn2CppArrayI4* bits);
 Dn2CppDecimal dn2cpp_decimal_from_i4(int32_t v);
 Dn2CppDecimal dn2cpp_decimal_from_u4(uint32_t v);
 // Decimal.GetBits: the .NET int[4] layout { lo32, mid32, hi32, flags } — lo32|(mid32<<32)
@@ -7569,6 +7583,7 @@ Dn2CppDecimal dn2cpp_decimal_from_u4(uint32_t v);
 // and returns 4 (the element count written).
 Dn2CppArrayI4* dn2cpp_decimal_get_bits(Dn2CppDecimal a, const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_decimal_get_bits_span(Dn2CppDecimal a, int32_t* dst, int32_t destLen);
+int32_t dn2cpp_decimal_try_get_bits(Dn2CppDecimal a, int32_t* dst, int32_t destLen, int32_t* written);
 Dn2CppDecimal dn2cpp_decimal_from_i8(int64_t v);
 Dn2CppDecimal dn2cpp_decimal_from_u8(uint64_t v);
 Dn2CppDecimal dn2cpp_decimal_from_double(double v);
@@ -7634,10 +7649,14 @@ Dn2CppDecimal dn2cpp_decimal_parse(Dn2CppString* s);
 // styles combination. A null provider means the invariant culture.
 int32_t dn2cpp_decimal_tryparse_styles_chars(const char16_t* p, int32_t n, int32_t styles,
                                              const Dn2CppNumberFormatInfo* nfi, Dn2CppDecimal* out);
+int32_t dn2cpp_decimal_tryparse_styles_utf8(const char* p, int32_t n, int32_t styles,
+                                          const Dn2CppNumberFormatInfo* nfi, Dn2CppDecimal* out);
 int32_t dn2cpp_decimal_tryparse_styles_str(Dn2CppString* s, int32_t styles,
                                            const Dn2CppNumberFormatInfo* nfi, Dn2CppDecimal* out);
 Dn2CppDecimal dn2cpp_decimal_parse_styles_chars(const char16_t* p, int32_t n, int32_t styles,
                                                 const Dn2CppNumberFormatInfo* nfi);
+Dn2CppDecimal dn2cpp_decimal_parse_styles_utf8(const char* p, int32_t n, int32_t styles,
+                                             const Dn2CppNumberFormatInfo* nfi);
 Dn2CppDecimal dn2cpp_decimal_parse_styles_str(Dn2CppString* s, int32_t styles,
                                               const Dn2CppNumberFormatInfo* nfi);
 // Scale-insensitive hash for a boxed decimal: equal values (1.0m == 1.00m) hash
@@ -7945,6 +7964,8 @@ Dn2CppDateTime dn2cpp_datetime_from_ticks(int64_t ticks, int32_t kind);
 // BCL's ToFileTimeUtc, a deliberate asymmetry vs. ToUniversalTime) and throws if the result
 // would be negative (a DateTime before 1601-01-01).
 Dn2CppDateTime dn2cpp_datetime_from_file_time_utc(int64_t fileTime);
+Dn2CppDateTime dn2cpp_datetime_from_binary(int64_t data);
+int64_t dn2cpp_datetime_to_binary(Dn2CppDateTime value);
 int64_t dn2cpp_datetime_to_file_time_utc(Dn2CppDateTime a);
 Dn2CppDateTime dn2cpp_datetime_ymd(int32_t y, int32_t mo, int32_t d, int32_t kind);
 Dn2CppDateTime dn2cpp_datetime_ymdhms(int32_t y, int32_t mo, int32_t d, int32_t h, int32_t mi, int32_t s, int32_t kind);

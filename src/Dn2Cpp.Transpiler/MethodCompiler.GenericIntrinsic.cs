@@ -2263,6 +2263,8 @@ internal sealed partial class MethodCompiler
                 Emit($"{n} = {sStr} ? dn2cpp_string_to_utf8({sStr}, nullptr, 0) : 0;");
                 Emit($"{buf} = (uint8_t*)dn2cpp_alloc_atomic((size_t)({n} + 1));");
                 Emit($"if ({n} > 0) dn2cpp_string_to_utf8({sStr}, (char*){buf}, {n});");
+                // CoreLib's Number.MatchChars scans symbols through their trailing NUL.
+                Emit($"{buf}[{n}] = 0;");
                 Emit($"{symSpan}.f__reference = {buf};");
                 Emit($"{symSpan}.f__length = {n};");
             }

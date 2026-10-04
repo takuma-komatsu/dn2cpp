@@ -17,5 +17,6 @@
     <Compile Include="NestedGenericTypeNameSubset.cs" />
     <Compile Include="GenericDefinitionSymbolNeighbors.cs" />
     <Compile Include="OrdinaryReflectionTypeLeavesProgram.cs" />
+    <Compile Include="PropertyAccessorRowsSubset.cs" />
   </ItemGroup>
 </Project>

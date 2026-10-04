@@ -596,11 +596,34 @@ internal sealed partial class MethodCompiler
                     $"dn2cpp_convert_to_hex_raw((const uint8_t*){sv}.f__reference, {sv}.f__length, {(name == "ToHexStringLower" ? "true" : "false")})");
                 return true;
             }
+            case ("System.Convert", "TryToHexString" or "TryToHexStringLower")
+                when sig.ParameterTypes is [var source, var destination, { Kind: TypeKind.ByRef }]
+                    && IsByteSpan(source)
+                    && (IsByteSpan(destination) || IsSpanOf(destination, PrimitiveTypeCode.Char)):
+            {
+                var written = Pop();
+                string dest = SpanValue(Pop(), CppTypes.Of(destination));
+                string src = SpanValue(Pop(), CppTypes.Of(source));
+                Push(StackKind.I4, "int32_t",
+                    $"dn2cpp_convert_try_to_hex((const uint8_t*){src}.f__reference, {src}.f__length, " +
+                    $"{dest}.f__reference, {dest}.f__length, {Cast(written, "int32_t*")}, " +
+                    $"{(IsByteSpan(destination) ? "true" : "false")}, {(name == "TryToHexStringLower" ? "true" : "false")})");
+                return true;
+            }
             case ("System.Convert", "FromHexString")
                 when sig.ParameterTypes is [{ IsString: true }]:
                 Push(StackKind.Ref, "Dn2CppArrayN*",
                     $"dn2cpp_convert_from_hex({Cast(Pop(), "Dn2CppString*")}, {ByteArrayTypeInfoExpr()})");
                 return true;
+            case ("System.Convert", "FromHexString")
+                when sig.ParameterTypes is [var source] && (IsSpanOf(source, PrimitiveTypeCode.Char) || IsByteSpan(source)):
+            {
+                bool utf8 = IsByteSpan(source);
+                string sp = SpanValue(Pop(), CppTypes.Of(source));
+                Push(StackKind.Ref, "Dn2CppArrayN*",
+                    $"dn2cpp_convert_from_hex_{(utf8 ? "utf8" : "chars")}((const {(utf8 ? "uint8_t" : "char16_t")}*){sp}.f__reference, {sp}.f__length, {ByteArrayTypeInfoExpr()})");
+                return true;
+            }
             // The TryDecode-style FromHexString(ReadOnlySpan<char> chars, Span<byte> bytes,
             // out int charsConsumed, out int bytesWritten) -> OperationStatus: decodes as
             // many whole hex pairs as fit the destination, reports progress through the two
@@ -608,14 +631,28 @@ internal sealed partial class MethodCompiler
             // NeedMoreData=2 / InvalidData=3) rather than throwing.
             case ("System.Convert", "FromHexString")
                 when sig.ParameterTypes is [var hexC, var hexB, { Kind: TypeKind.ByRef }, { Kind: TypeKind.ByRef }]
-                    && IsSpanOf(hexC, PrimitiveTypeCode.Char) && IsByteSpan(hexB):
+                    && (IsSpanOf(hexC, PrimitiveTypeCode.Char) || IsByteSpan(hexC) || hexC.IsString) && IsByteSpan(hexB):
             {
                 var bytesWritten = Pop();  // out int bytesWritten
                 var charsConsumed = Pop(); // out int charsConsumed
                 string sb = SpanValue(Pop(), CppTypes.Of(sig.ParameterTypes[1])); // Span<byte>
-                string sc = SpanValue(Pop(), CppTypes.Of(sig.ParameterTypes[0])); // ReadOnlySpan<char>
+                var source = Pop();
+                string sourceArgs;
+                string suffix;
+                if (hexC.IsString)
+                {
+                    sourceArgs = Cast(source, "Dn2CppString*");
+                    suffix = "_string";
+                }
+                else
+                {
+                    bool utf8 = IsByteSpan(hexC);
+                    string sc = SpanValue(source, CppTypes.Of(hexC));
+                    sourceArgs = $"(const {(utf8 ? "uint8_t" : "char16_t")}*){sc}.f__reference, {sc}.f__length";
+                    suffix = utf8 ? "_utf8" : "";
+                }
                 string st = NewTemp("int32_t");
-                Emit($"{st} = dn2cpp_convert_from_hex_span((const char16_t*){sc}.f__reference, {sc}.f__length, " +
+                Emit($"{st} = dn2cpp_convert_from_hex_span{suffix}({sourceArgs}, " +
                      $"(uint8_t*){sb}.f__reference, {sb}.f__length, " +
                      $"{Cast(charsConsumed, "int32_t*")}, {Cast(bytesWritten, "int32_t*")});");
                 Push(StackKind.I4, "int32_t", st);

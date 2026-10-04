@@ -1031,6 +1031,32 @@ Dn2CppString* dn2cpp_convert_to_hex_raw(const uint8_t* data, int32_t n, bool low
     return r;
 }
 
+int32_t dn2cpp_convert_try_to_hex(const uint8_t* data, int32_t n, void* dest,
+                                int32_t capacity, int32_t* written, bool utf8, bool lower)
+{
+    *written = 0;
+    if (n > capacity / 2)
+        return 0;
+    const char* digits = lower ? "0123456789abcdef" : "0123456789ABCDEF";
+    for (int32_t i = 0; i < n; i++)
+    {
+        uint8_t hi = static_cast<uint8_t>(digits[data[i] >> 4]);
+        uint8_t lo = static_cast<uint8_t>(digits[data[i] & 0x0F]);
+        if (utf8)
+        {
+            static_cast<uint8_t*>(dest)[i * 2] = hi;
+            static_cast<uint8_t*>(dest)[i * 2 + 1] = lo;
+        }
+        else
+        {
+            static_cast<char16_t*>(dest)[i * 2] = hi;
+            static_cast<char16_t*>(dest)[i * 2 + 1] = lo;
+        }
+    }
+    *written = n * 2;
+    return 1;
+}
+
 Dn2CppString* dn2cpp_convert_to_hex(Dn2CppArrayN* inArray, bool lower)
 {
     if (inArray == nullptr)
@@ -1094,28 +1120,44 @@ static int32_t dn2cpp_hex_decode_digit(char16_t c)
     return -1;
 }
 
-Dn2CppArrayN* dn2cpp_convert_from_hex(Dn2CppString* s, const Dn2CppTypeInfo* ti)
+template <typename TChar>
+static Dn2CppArrayN* dn2cpp_convert_from_hex_raw(const TChar* source, int32_t length, const Dn2CppTypeInfo* ti)
 {
-    if (s == nullptr)
-        dn2cpp_throw_argument_null_param("s");
-    if (s->length == 0)
+    if (length == 0)
         return dn2cpp_array_empty_n_atomic(ti, static_cast<int32_t>(sizeof(uint8_t)));
-    if (s->length % 2 != 0)
+    if (length % 2 != 0)
         dn2cpp_throw_sr0(&dn2cpp_format_exception_type, DN2CPP_SR_BAD_HEX_LENGTH);
-    int32_t outLen = s->length / 2;
+    int32_t outLen = length / 2;
     Dn2CppArrayN* out = dn2cpp_newarr_n_t(outLen, static_cast<int32_t>(sizeof(uint8_t)), ti);
     char* od = out->data;
     size_t stride = static_cast<size_t>(out->elemSize);
     for (int32_t i = 0; i < outLen; i++)
     {
-        int32_t hi = dn2cpp_hex_decode_digit(s->chars[i * 2]);
-        int32_t lo = dn2cpp_hex_decode_digit(s->chars[i * 2 + 1]);
+        int32_t hi = dn2cpp_hex_decode_digit(source[i * 2]);
+        int32_t lo = dn2cpp_hex_decode_digit(source[i * 2 + 1]);
         if (hi < 0 || lo < 0)
             dn2cpp_throw_sr0(&dn2cpp_format_exception_type, DN2CPP_SR_BAD_HEX_CHAR);
         *reinterpret_cast<uint8_t*>(od + static_cast<size_t>(i) * stride) =
             static_cast<uint8_t>((hi << 4) | lo);
     }
     return out;
+}
+
+Dn2CppArrayN* dn2cpp_convert_from_hex(Dn2CppString* s, const Dn2CppTypeInfo* ti)
+{
+    if (s == nullptr)
+        dn2cpp_throw_argument_null_param("s");
+    return dn2cpp_convert_from_hex_raw(s->chars, s->length, ti);
+}
+
+Dn2CppArrayN* dn2cpp_convert_from_hex_chars(const char16_t* source, int32_t length, const Dn2CppTypeInfo* ti)
+{
+    return dn2cpp_convert_from_hex_raw(source, length, ti);
+}
+
+Dn2CppArrayN* dn2cpp_convert_from_hex_utf8(const uint8_t* source, int32_t length, const Dn2CppTypeInfo* ti)
+{
+    return dn2cpp_convert_from_hex_raw(source, length, ti);
 }
 
 // FromHexString(ReadOnlySpan<char> chars, Span<byte> bytes, out int charsConsumed,
@@ -1125,7 +1167,8 @@ Dn2CppArrayN* dn2cpp_convert_from_hex(Dn2CppString* s, const Dn2CppTypeInfo* ti)
 // bad LOW nibble advances charsConsumed past the already-valid HIGH nibble, so an invalid
 // pair whose low char is bad reports an odd charsConsumed. An invalid char anywhere in the
 // decoded region overrides the sizing verdict with InvalidData, matching .NET.
-int32_t dn2cpp_convert_from_hex_span(const char16_t* chars, int32_t charsLen,
+template <typename TChar>
+static int32_t dn2cpp_convert_from_hex_span_raw(const TChar* chars, int32_t charsLen,
                                      uint8_t* bytes, int32_t bytesLen,
                                      int32_t* charsConsumed, int32_t* bytesWritten)
 {
@@ -1163,4 +1206,24 @@ int32_t dn2cpp_convert_from_hex_span(const char16_t* chars, int32_t charsLen,
         *bytesWritten = j;
     }
     return status;
+}
+
+int32_t dn2cpp_convert_from_hex_span(const char16_t* chars, int32_t charsLen,
+    uint8_t* bytes, int32_t bytesLen, int32_t* consumed, int32_t* written)
+{
+    return dn2cpp_convert_from_hex_span_raw(chars, charsLen, bytes, bytesLen, consumed, written);
+}
+
+int32_t dn2cpp_convert_from_hex_span_utf8(const uint8_t* chars, int32_t charsLen,
+    uint8_t* bytes, int32_t bytesLen, int32_t* consumed, int32_t* written)
+{
+    return dn2cpp_convert_from_hex_span_raw(chars, charsLen, bytes, bytesLen, consumed, written);
+}
+
+int32_t dn2cpp_convert_from_hex_span_string(Dn2CppString* source,
+    uint8_t* bytes, int32_t bytesLen, int32_t* consumed, int32_t* written)
+{
+    if (source == nullptr)
+        dn2cpp_throw_argument_null_param("source");
+    return dn2cpp_convert_from_hex_span(source->chars, source->length, bytes, bytesLen, consumed, written);
 }

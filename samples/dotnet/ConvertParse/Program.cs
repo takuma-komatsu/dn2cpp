@@ -49,6 +49,15 @@ namespace ConvertParse
             if (args.Length > 0 && args[0] == "before-conversion-fields")
                 return;
             ConvertValidationSubset.Program.Run();
+            if (args.Length > 0 && args[0] == "before-span-conversions")
+                return;
+            ConvertValidationSubset.Program.RunSpanConversions();
+            if (args.Length > 0 && args[0] == "before-hex-decoding")
+                return;
+            ConvertValidationSubset.Program.RunHexDecoding();
+            if (args.Length > 0 && args[0] == "before-primitive-parses")
+                return;
+            Dn2Cpp.PrimitiveParseSubset.Run();
         }
     }
 }

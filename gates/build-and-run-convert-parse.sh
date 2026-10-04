@@ -43,6 +43,10 @@
 # try-format-subset, float-parse-format-info.
 # Convert validates Base64/Hex slices, Boolean text, radix syntax, empty result
 # identity, and named faults with boxed bounds and UTF-16 messages.
+# Boolean span Parse/TryParse and upper/lower hex encoding cover both UTF-16 and
+# UTF-8 destinations, including short buffers that must remain untouched.
+# Scalar Parse/TryParse overloads cover every string/UTF-16/UTF-8 entry point,
+# native integers, Half, Decimal and wide integers, invalid styles and custom symbols.
 source "$(dirname "$0")/_common.sh"
 
 gate_extra_asserts() {
@@ -88,7 +92,53 @@ gate_extra_asserts() {
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: ConvertParse validation witness missing: $line" >&2; exit 1; }
     done
-
+    before=$(dotnet "$_CG_APP" before-span-conversions)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== Boolean spans and hex destinations ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== Boolean spans and hex destinations ==' \
+        'bool span:0 success=False:False' \
+        'bool span:4 success=True:True' \
+        'bool span:5 success=True:False' \
+        'bool slice=True' \
+        'hex chars:5:False=False:0:?????' \
+        'hex chars:6:True=True:6:00abff' \
+        'hex bytes:6:False=True:6:30-30-41-42-46-46' \
+        'empty hex chars=True:0' \
+        'empty hex bytes=True:0' \
+        'Boolean spans and hex destinations end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: span conversion witness missing: $line" >&2; exit 1; }
+    done
+    before=$(dotnet "$_CG_APP" before-hex-decoding)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== hex decoding overloads ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in 'hex array utf8:00aBff success=00-AB-FF' \
+        'hex decode utf8:00aBff:2=DestinationTooSmall:4:2:00-AB' \
+        'empty hex chars array=True' 'empty hex utf8 array=True' \
+        'hex decoding overloads end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: hex decoding witness missing: $line" >&2; exit 1; }
+    done
+    before=$(dotnet "$_CG_APP" before-primitive-parses)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== Primitive parse overloads ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in 'Boolean:Parse:chars=True' 'Char:Parse:string=漢' \
+        'Primitive parse overloads end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: scalar parsing witness missing: $line" >&2; exit 1; }
+    done
+    local type
+    for type in SByte Byte Int16 UInt16 Int32 UInt32 Int64 UInt64 IntPtr UIntPtr Single Double Half Decimal; do
+        grep -Fxq -- "$type:TryParse:utf8/styles/provider/out=True:42" <<< "$native" \
+            || { echo "FAIL: scalar UTF-8 parsing did not run: $type" >&2; exit 1; }
+    done
+    for type in Int128 UInt128; do
+        grep -Fxq -- "$type:TryParse:utf8/styles/provider/out=True:0:42" <<< "$native" \
+            || { echo "FAIL: wide UTF-8 parsing did not run: $type" >&2; exit 1; }
+    done
 }
 
 corelib_diff_gate ConvertParse System.Private.Uri System.ComponentModel.TypeConverter

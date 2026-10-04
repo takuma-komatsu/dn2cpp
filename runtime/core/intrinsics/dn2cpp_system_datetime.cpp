@@ -441,6 +441,136 @@ int32_t dn2cpp_local_offset_minutes(Dn2CppDateTime localClock)
     return (int32_t)((whole - utc.ticks()) / DN2CPP_TPM);
 }
 
+// Local binary payloads hold UTC ticks even when that instant is outside the
+// DateTime range; the clamping public time-zone conversion cannot serve them.
+static bool dn2cpp_dt_same_clock(const std::tm& left, const std::tm& right)
+{
+    return left.tm_year == right.tm_year && left.tm_mon == right.tm_mon
+        && left.tm_mday == right.tm_mday && left.tm_hour == right.tm_hour
+        && left.tm_min == right.tm_min && left.tm_sec == right.tm_sec;
+}
+
+static int64_t dn2cpp_dt_tm_ticks(const std::tm& clock)
+{
+    int year = clock.tm_year + 1900;
+    int64_t cycle = 0;
+    if (year < 1) { year += 400; cycle = -146097LL * DN2CPP_TPD; }
+    if (year > 9999) { year -= 400; cycle = 146097LL * DN2CPP_TPD; }
+    return dn2cpp_dt_date_to_ticks(year, clock.tm_mon + 1, clock.tm_mday) + cycle
+        + dn2cpp_dt_time_to_ticks(clock.tm_hour, clock.tm_min, clock.tm_sec, 0);
+}
+
+static int64_t dn2cpp_dt_binary_zone_offset(int64_t offset)
+{
+    if (offset % DN2CPP_TPM == 0)
+        return offset;
+    // TimeZoneInfo truncates the adjustment relative to its standard base offset.
+    std::tm standard{};
+    dn2cpp_pal_localtime((dn2cpp_datetime_utc_now().ticks() - DN2CPP_UNIX_EPOCH_TICKS) / DN2CPP_TPS, &standard);
+    int64_t wall = dn2cpp_dt_tm_ticks(standard);
+    standard.tm_isdst = 0;
+    int64_t seconds = dn2cpp_pal_mktime_local(&standard);
+    int64_t base = wall - DN2CPP_UNIX_EPOCH_TICKS - seconds * DN2CPP_TPS;
+    base = base / DN2CPP_TPM * DN2CPP_TPM;
+    return base + (offset - base) / DN2CPP_TPM * DN2CPP_TPM;
+}
+
+static int64_t dn2cpp_dt_local_binary_ticks(Dn2CppDateTime value)
+{
+    int y, mo, d;
+    dn2cpp_dt_datepart(value.ticks(), &y, &mo, &d, nullptr);
+    int64_t tod = value.ticks() % DN2CPP_TPD;
+    std::tm local{};
+    local.tm_year = y - 1900;
+    local.tm_mon = mo - 1;
+    local.tm_mday = d;
+    local.tm_hour = static_cast<int>(tod / DN2CPP_TPH);
+    local.tm_min = static_cast<int>((tod / DN2CPP_TPM) % 60);
+    local.tm_sec = static_cast<int>((tod / DN2CPP_TPS) % 60);
+    local.tm_isdst = -1;
+    auto standard = local;
+    auto daylight = local;
+    auto clock = local;
+    int64_t seconds = dn2cpp_pal_mktime_local(&local);
+    standard.tm_isdst = 0;
+    daylight.tm_isdst = 1;
+    int64_t standardSeconds = dn2cpp_pal_mktime_local(&standard);
+    int64_t daylightSeconds = dn2cpp_pal_mktime_local(&daylight);
+    std::tm standardClock{}, daylightClock{};
+    dn2cpp_pal_localtime(standardSeconds, &standardClock);
+    dn2cpp_pal_localtime(daylightSeconds, &daylightClock);
+    if (standardSeconds != daylightSeconds && dn2cpp_dt_same_clock(clock, standardClock)
+        && dn2cpp_dt_same_clock(clock, daylightClock))
+        seconds = (static_cast<uint64_t>(value._dateData) >> 62) == 3 ? daylightSeconds : standardSeconds;
+    int64_t wall = value.ticks() - value.ticks() % DN2CPP_TPS;
+    int64_t offset;
+    if (seconds == -1 && y != 1970)
+    {
+        // Some CRTs reject early years in mktime while localtime still admits them.
+        int64_t naive = (wall - DN2CPP_UNIX_EPOCH_TICKS) / DN2CPP_TPS;
+        std::tm projected{};
+        dn2cpp_pal_localtime(naive, &projected);
+        offset = dn2cpp_dt_tm_ticks(projected) - wall;
+    }
+    else
+        offset = wall - DN2CPP_UNIX_EPOCH_TICKS - seconds * DN2CPP_TPS;
+    return value.ticks() - dn2cpp_dt_binary_zone_offset(offset);
+}
+
+int64_t dn2cpp_datetime_to_binary(Dn2CppDateTime value)
+{
+    if (value.kind() != 2)
+        return value._dateData;
+    int64_t ticks = dn2cpp_dt_local_binary_ticks(value);
+    return static_cast<int64_t>((static_cast<uint64_t>(ticks) & 0x3FFFFFFFFFFFFFFFULL)
+        | 0x8000000000000000ULL);
+}
+
+Dn2CppDateTime dn2cpp_datetime_from_binary(int64_t data)
+{
+    uint64_t word = static_cast<uint64_t>(data);
+    int64_t ticks = static_cast<int64_t>(word & 0x3FFFFFFFFFFFFFFFULL);
+    if ((word & 0x8000000000000000ULL) == 0)
+    {
+        if (ticks > DN2CPP_DT_MAX_TICKS)
+            dn2cpp_throw_argument_param(DN2CPP_SR_DATE_TIME_BAD_BINARY, "dateData");
+        return Dn2CppDateTime{data};
+    }
+    constexpr int64_t ceiling = 0x4000000000000000LL;
+    bool ambiguousDaylight = false;
+    if (ticks > ceiling - DN2CPP_TPD)
+        ticks -= ceiling;
+    if (ticks < 0 || ticks > DN2CPP_DT_MAX_TICKS)
+    {
+        auto boundary = dn2cpp_datetime_pack(ticks < 0 ? 0 : DN2CPP_DT_MAX_TICKS, 2);
+        ticks += boundary.ticks() - dn2cpp_dt_local_binary_ticks(boundary);
+    }
+    else
+    {
+        int64_t secs = (ticks - DN2CPP_UNIX_EPOCH_TICKS) / DN2CPP_TPS;
+        if (ticks < DN2CPP_UNIX_EPOCH_TICKS && (ticks - DN2CPP_UNIX_EPOCH_TICKS) % DN2CPP_TPS != 0)
+            secs--;
+        std::tm local{};
+        dn2cpp_pal_localtime(secs, &local);
+        if (local.tm_isdst > 0)
+        {
+            auto standard = local;
+            standard.tm_isdst = 0;
+            int64_t otherSeconds = dn2cpp_pal_mktime_local(&standard);
+            std::tm otherClock{};
+            dn2cpp_pal_localtime(otherSeconds, &otherClock);
+            ambiguousDaylight = otherSeconds != secs && dn2cpp_dt_same_clock(local, otherClock);
+        }
+        int64_t offset = dn2cpp_dt_tm_ticks(local) - (DN2CPP_UNIX_EPOCH_TICKS + secs * DN2CPP_TPS);
+        ticks += dn2cpp_dt_binary_zone_offset(offset);
+    }
+    if (ticks < 0)
+        ticks += DN2CPP_TPD;
+    if (static_cast<uint64_t>(ticks) > static_cast<uint64_t>(DN2CPP_DT_MAX_TICKS))
+        dn2cpp_throw_argument_param(DN2CPP_SR_DATE_TIME_BAD_BINARY, "dateData");
+    return dn2cpp_dt_word(ticks, ambiguousDaylight ? 3 : 2);
+}
+
 // ---- System.DateTimeOffset ----
 // Ticks at the Unix epoch in *seconds* / *milliseconds* (from the .NET epoch), used by the
 // Unix-time conversions (matches DateTimeOffset.UnixEpochSeconds / UnixEpochMilliseconds).
@@ -1248,7 +1378,8 @@ static bool dn2cpp_dt_parse_custom(const char16_t* p, int pn, const char16_t* in
 
 bool dn2cpp_datetime_try_parse_exact(Dn2CppString* s, Dn2CppString* fmt, Dn2CppDateTime* out)
 {
-    if (s == nullptr || fmt == nullptr) return false;
+    *out = Dn2CppDateTime{0};
+    if (s == nullptr || s->length == 0 || fmt == nullptr || fmt->length == 0) return false;
     const char16_t* pat; int plen; char16_t patbuf[48];
     if (fmt->length == 1)
     {
@@ -1324,6 +1455,7 @@ static bool dn2cpp_dt_parse_general_range(const char16_t* p, int i, int e, int64
 
 bool dn2cpp_datetime_try_parse(Dn2CppString* s, Dn2CppDateTime* out)
 {
+    *out = Dn2CppDateTime{0};
     if (s == nullptr) return false;
     int64_t ticks;
     if (!dn2cpp_dt_parse_general_range(s->chars, 0, s->length, &ticks)) return false;
@@ -1343,6 +1475,8 @@ Dn2CppDateTime dn2cpp_datetime_parse_exact(Dn2CppString* s, Dn2CppString* fmt)
 {
     if (s == nullptr) dn2cpp_throw_argument_null_param("s");
     if (fmt == nullptr) dn2cpp_throw_argument_null_param("format");
+    if (s->length != 0 && fmt->length == 0)
+        dn2cpp_throw_sr1(&dn2cpp_format_exception_type, DN2CPP_SR_BAD_FORMAT_SPECIFIER, fmt);
     Dn2CppDateTime r;
     if (!dn2cpp_datetime_try_parse_exact(s, fmt, &r))
         dn2cpp_throw_sr1(&dn2cpp_format_exception_type, DN2CPP_SR_BAD_DATETIME, s);

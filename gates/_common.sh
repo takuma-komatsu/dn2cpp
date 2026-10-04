@@ -2650,11 +2650,11 @@ gate_cache_commit() {
 #       decline these features.)
 _GATE_SCRATCH_DIRS=()
 
-# _gate_extra_asserts OUT — run the sourcing gate's optional extra asserts.
+# _gate_extra_asserts OUT [NATIVE_STATUS ORACLE_STATUS] — optional extra asserts.
 # Called by each _corelib_gate_check user right before its gate_cache_commit.
 _gate_extra_asserts() {
     if declare -F gate_extra_asserts >/dev/null; then
-        gate_extra_asserts "$1"
+        gate_extra_asserts "$@"
     fi
 }
 
@@ -2717,7 +2717,7 @@ _corelib_gate_out() {
 }
 
 # _corelib_gate_core PROJECT OUT [EXTRA_BCL_NAME | -r DLL | --link-xml FILE |
-#   --reflection-metadata TYPE=LAYOUT | --no-metadata-compression | --no-ildiet]...
+#   --reflection-metadata TYPE=LAYOUT | --no-metadata-compression | --no-ildiet | --auto-ref]...
 # Extras name required references and preprocessing options. Sets _CG_CORELIB, _CG_APP,
 # _CG_OUT; the caller may preset _CG_CORELIB_IN to override the CoreLib flavour.
 # Assert on _CG_OUT: re-deriving _corelib_gate_out gives the DEFAULT dir, so on a
@@ -2746,7 +2746,7 @@ _corelib_gate_core() {
     _CG_EXTRA_REFERENCE_INPUTS=()
     while [ "$#" -gt 0 ]; do
         name="$1"; shift
-        if [ "$name" = --no-ildiet ] || [ "$name" = --no-metadata-compression ]; then
+        if [ "$name" = --no-ildiet ] || [ "$name" = --no-metadata-compression ] || [ "$name" = --auto-ref ]; then
             refs+=("$name")
             continue
         fi
@@ -2915,7 +2915,7 @@ corelib_diff_split_gate() {
     [ "$ok" -eq 1 ] || return 1
     assert_exit_code "$native_code" "$expected_code"
     # Extra asserts run INSIDE the cached region, so a warm hit includes them.
-    _gate_extra_asserts "$out"
+    _gate_extra_asserts "$out" "$native_code" "$expected_code"
     gate_cache_commit
     echo "OK"
 }

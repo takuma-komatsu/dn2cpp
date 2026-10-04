@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.Text;
 
 namespace ConvertValidationSubset;
 
@@ -161,5 +162,87 @@ internal static class Program
         for (int i = 0; i < saved.Length; i++)
             Fault("conversion after GC:" + i, saved[i]);
         Console.WriteLine("Conversion validation fields end");
+    }
+
+    public static void RunSpanConversions()
+    {
+        Console.WriteLine("== Boolean spans and hex destinations ==");
+        string[] texts = { null, "", "true", "FALSE", "\0true\0", "\u00a0FALSE\u2003", "trueX", "tr\0ue", "\ud800" };
+        for (int i = 0; i < texts.Length; i++)
+        {
+            ReadOnlySpan<char> span = texts[i].AsSpan();
+            bool parsed = true;
+            bool success = bool.TryParse(span, out parsed);
+            Console.WriteLine("bool span:" + i + " success=" + success + ":" + parsed);
+            string text = texts[i];
+            Observe("bool span parse:" + i, () => bool.Parse(text.AsSpan()).ToString());
+        }
+        ReadOnlySpan<char> slice = "XTrUeY".AsSpan(1, 4);
+        Console.WriteLine("bool slice=" + bool.Parse(slice));
+
+        byte[] data = { 0, 0xab, 0xff };
+        foreach (int capacity in new[] { 0, 5, 6, 8 })
+        {
+            foreach (bool lower in new[] { false, true })
+            {
+                char[] chars = new char[capacity];
+                byte[] bytes = new byte[capacity];
+                Array.Fill(chars, '?');
+                Array.Fill(bytes, (byte)'?');
+                int written;
+                bool success = lower ? Convert.TryToHexStringLower(data, chars, out written)
+                    : Convert.TryToHexString(data, chars, out written);
+                Console.WriteLine("hex chars:" + capacity + ":" + lower + "=" + success + ":" + written + ":" + new string(chars));
+                success = lower ? Convert.TryToHexStringLower(data, bytes, out written)
+                    : Convert.TryToHexString(data, bytes, out written);
+                Console.WriteLine("hex bytes:" + capacity + ":" + lower + "=" + success + ":" + written + ":" + Bytes(bytes));
+            }
+        }
+        Console.WriteLine("empty hex chars=" + Convert.TryToHexString(ReadOnlySpan<byte>.Empty, Span<char>.Empty, out int emptyChars) + ":" + emptyChars);
+        Console.WriteLine("empty hex bytes=" + Convert.TryToHexStringLower(ReadOnlySpan<byte>.Empty, Span<byte>.Empty, out int emptyBytes) + ":" + emptyBytes);
+        Console.WriteLine("Boolean spans and hex destinations end");
+    }
+
+    public static void RunHexDecoding()
+    {
+        Console.WriteLine("== hex decoding overloads ==");
+        foreach (string text in new[] { null, "", "0", "00aBff", "0x", "x0", "00x0", "000x", "00a", "é0", "漢0", "0123456789abcdef0123456789abcdef0x" })
+        {
+            string label = text ?? "<null>";
+            byte[] utf8 = text is null ? Array.Empty<byte>() : Encoding.UTF8.GetBytes(text);
+            Observe("hex array string:" + label, () => Bytes(Convert.FromHexString(text)));
+            Observe("hex array chars:" + label, () => Bytes(Convert.FromHexString(text.AsSpan())));
+            Observe("hex array utf8:" + label, () => Bytes(Convert.FromHexString(utf8.AsSpan())));
+            foreach (int capacity in new[] { 0, 1, 2, 3, 4, 16 })
+            {
+                byte[] destination = new byte[capacity];
+                int consumed = -1, written = -1;
+                Array.Fill(destination, (byte)77);
+                Observe("hex decode string:" + label + ":" + capacity, () =>
+                    Convert.FromHexString(text, destination.AsSpan(), out consumed, out written) + ":" + consumed + ":" + written);
+                Console.WriteLine("hex decoded=" + Bytes(destination));
+                Array.Fill(destination, (byte)77);
+                var status = Convert.FromHexString(text.AsSpan(), destination.AsSpan(), out consumed, out written);
+                Console.WriteLine("hex decode chars:" + label + ":" + capacity + "=" + status + ":" + consumed + ":" + written + ":" + Bytes(destination));
+                Array.Fill(destination, (byte)77);
+                status = Convert.FromHexString(utf8.AsSpan(), destination.AsSpan(), out consumed, out written);
+                Console.WriteLine("hex decode utf8:" + label + ":" + capacity + "=" + status + ":" + consumed + ":" + written + ":" + Bytes(destination));
+            }
+        }
+        Console.WriteLine("empty hex chars array=" + ReferenceEquals(Convert.FromHexString(ReadOnlySpan<char>.Empty), Array.Empty<byte>()));
+        Console.WriteLine("empty hex utf8 array=" + ReferenceEquals(Convert.FromHexString(ReadOnlySpan<byte>.Empty), Array.Empty<byte>()));
+        Console.WriteLine("hex decoding overloads end");
+    }
+
+    public static void RunDecimalParseFaults()
+    {
+        Console.WriteLine("== decimal parse fault text ==");
+        foreach (string text in new[] { "", "漢\0\ud800" })
+        {
+            Observe("decimal fault string", () => decimal.Parse(text).ToString());
+            Observe("decimal fault chars", () => decimal.Parse(text.AsSpan(), CultureInfo.InvariantCulture).ToString());
+            Observe("decimal fault utf8", () => decimal.Parse(Encoding.UTF8.GetBytes(text).AsSpan(), CultureInfo.InvariantCulture).ToString());
+        }
+        Console.WriteLine("decimal parse fault text end");
     }
 }

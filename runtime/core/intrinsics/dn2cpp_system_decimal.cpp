@@ -253,9 +253,30 @@ static Dn2CppDecimal dec_reduce_round(DecBig s, int sign, int scale)
 
 Dn2CppDecimal dn2cpp_decimal_from_parts(int32_t lo, int32_t mid, int32_t hi, int32_t isNeg, int32_t scale)
 {
+    uint8_t byteScale = static_cast<uint8_t>(scale);
+    if (byteScale > 28)
+        dn2cpp_throw_argument_out_of_range_bound(DN2CPP_SR_MUST_BE_LESS_OR_EQUAL, "scale", byteScale, 28);
     dec_u128 m = (((dec_u128)(uint32_t)hi) << 64) | (((dec_u128)(uint32_t)mid) << 32) | (uint32_t)lo;
-    return dec_pack(m, isNeg ? 1 : 0, scale & 0xFF);
+    return dec_pack(m, isNeg ? 1 : 0, byteScale);
 }
+// The four .NET GetBits words in the { lo32, mid32, hi32, flags } layout.
+Dn2CppDecimal dn2cpp_decimal_from_bits(const int32_t* bits, int32_t length)
+{
+    if (length != 4 || (static_cast<uint32_t>(bits[3]) & 0x7F00FFFFu) != 0
+        || ((static_cast<uint32_t>(bits[3]) >> 16) & 0xFFu) > 28)
+        dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_DECIMAL_BITS);
+    return Dn2CppDecimal{bits[3], static_cast<uint32_t>(bits[2]),
+        static_cast<uint64_t>(static_cast<uint32_t>(bits[0]))
+        | (static_cast<uint64_t>(static_cast<uint32_t>(bits[1])) << 32)};
+}
+
+Dn2CppDecimal dn2cpp_decimal_from_bits_array(Dn2CppArrayI4* bits)
+{
+    if (bits == nullptr)
+        dn2cpp_throw_argument_null_param("bits");
+    return dn2cpp_decimal_from_bits(bits->data, bits->length);
+}
+
 // The four .NET GetBits words in the { lo32, mid32, hi32, flags } layout.
 static inline void dn2cpp_decimal_bits(Dn2CppDecimal a, int32_t out[4])
 {
@@ -283,6 +304,14 @@ int32_t dn2cpp_decimal_get_bits_span(Dn2CppDecimal a, int32_t* dst, int32_t dest
     dn2cpp_decimal_bits(a, bits);
     dst[0] = bits[0]; dst[1] = bits[1]; dst[2] = bits[2]; dst[3] = bits[3];
     return 4;
+}
+int32_t dn2cpp_decimal_try_get_bits(Dn2CppDecimal a, int32_t* dst, int32_t destLen, int32_t* written)
+{
+    *written = 0;
+    if (destLen < 4)
+        return 0;
+    *written = dn2cpp_decimal_get_bits_span(a, dst, destLen);
+    return 1;
 }
 Dn2CppDecimal dn2cpp_decimal_from_i4(int32_t v) { return dec_pack(v < 0 ? (dec_u128)(-(int64_t)v) : (dec_u128)v, v < 0 ? 1 : 0, 0); }
 Dn2CppDecimal dn2cpp_decimal_from_u4(uint32_t v) { return dec_pack((dec_u128)v, 0, 0); }
@@ -808,7 +837,7 @@ Dn2CppDecimal dn2cpp_decimal_parse_styles_chars(const char16_t* p, int32_t n, in
     Dn2CppDecimal r;
     switch (dec_styles_core(p, n, styles, nfi, &r))
     {
-        case 1: dn2cpp_throw_format();
+        case 1: dn2cpp_throw_format_value(dn2cpp_string_from_chars(p, n));
         case 2: dn2cpp_throw_sr0(&dn2cpp_overflow_exception_type, DN2CPP_SR_OVERFLOW_DECIMAL);
         default: break;
     }

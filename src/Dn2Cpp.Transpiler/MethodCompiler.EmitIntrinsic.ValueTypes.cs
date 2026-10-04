@@ -52,7 +52,16 @@ internal sealed partial class MethodCompiler
             return $"dn2cpp_decimal_from_parts((int32_t)({args[0].Expr}), (int32_t)({args[1].Expr}), " +
                    $"(int32_t)({args[2].Expr}), (int32_t)({args[3].Expr}), (int32_t)({args[4].Expr}))";
         if (ps.Length == 1)
+        {
+            if (ps[0] is { Kind: TypeKind.SZArray, Element.Primitive: PrimitiveTypeCode.Int32 })
+                return $"dn2cpp_decimal_from_bits_array({Cast(args[0], "Dn2CppArrayI4*")})";
+            if (IsSpanOf(ps[0], PrimitiveTypeCode.Int32))
+            {
+                string span = SpanValue(args[0], CppTypes.Of(ps[0]));
+                return $"dn2cpp_decimal_from_bits((const int32_t*){span}.f__reference, {span}.f__length)";
+            }
             return DecimalFromScalar(args[0], ps[0]);
+        }
         throw new NotSupportedException(
             $"{Method.DeclaringClass.FullName}.{Method.Name}: decimal ctor with {ps.Length} args is not supported");
     }
@@ -354,13 +363,13 @@ internal sealed partial class MethodCompiler
             }
         }
 
-        // Parsing — string or ReadOnlySpan<char> input, in the plain /
+        // Parsing — string, UTF-16 or UTF-8 span input, in the plain /
         // (NumberStyles) / (IFormatProvider) / (NumberStyles, IFormatProvider)
         // shapes and their TryParse out-forms, routed to the runtime
         // NumberStyles engine (default style: NumberStyles.Number; a
         // null/absent provider parses invariant).
         if (name is "Parse" or "TryParse"
-            && ps.Length >= 1 && (ps[0].IsString || IsReadOnlyCharSpan(ps[0])))
+            && ps.Length >= 1 && (ps[0].IsString || IsReadOnlyCharSpan(ps[0]) || IsReadOnlyByteSpan(ps[0])))
         {
             bool isTry = name == "TryParse";
             int valueArgs = isTry ? ps.Length - 1 : ps.Length;
@@ -390,8 +399,9 @@ internal sealed partial class MethodCompiler
                 else
                 {
                     string sp = SpanValue(Pop(), CppTypes.Of(ps[0]));
-                    args = $"(const char16_t*){sp}.f__reference, {sp}.f__length, {stylesExpr}, {nfiExpr}";
-                    suffix = "chars";
+                    bool utf8 = IsReadOnlyByteSpan(ps[0]);
+                    args = $"(const {(utf8 ? "char" : "char16_t")}*){sp}.f__reference, {sp}.f__length, {stylesExpr}, {nfiExpr}";
+                    suffix = utf8 ? "utf8" : "chars";
                 }
                 if (isTry)
                     Push(StackKind.I4, "int32_t",
@@ -439,6 +449,16 @@ internal sealed partial class MethodCompiler
             var a = Pop();
             Push(StackKind.I4, "int32_t",
                 $"dn2cpp_decimal_get_bits_span({DecVal(a)}, (int32_t*){sp}.f__reference, {sp}.f__length)");
+            return true;
+        }
+        if (name == "TryGetBits" && ps is [var tgD, var tgS, { Kind: TypeKind.ByRef }]
+            && IsDecimal(tgD) && IsSpanOfPrimitive(tgS, PrimitiveTypeCode.Int32))
+        {
+            var written = Pop();
+            string sp = SpanValue(Pop(), CppTypes.Of(ps[1]));
+            var a = Pop();
+            Push(StackKind.I4, "int32_t",
+                $"dn2cpp_decimal_try_get_bits({DecVal(a)}, (int32_t*){sp}.f__reference, {sp}.f__length, (int32_t*)({written.Expr}))");
             return true;
         }
 
@@ -1005,6 +1025,10 @@ internal sealed partial class MethodCompiler
         // Static helpers.
         switch (name)
         {
+            case "FromBinary" when ps.Length == 1:
+            { var a = Pop(); Push(StackKind.Struct, "Dn2CppDateTime", $"dn2cpp_datetime_from_binary((int64_t)({a.Expr}))"); return true; }
+            case "ToBinary" when ps.Length == 0:
+            { var a = Pop(); Push(StackKind.I8, "int64_t", $"dn2cpp_datetime_to_binary({DTVal(a)})"); return true; }
             case "IsLeapYear" when ps.Length == 1:
             { var a = Pop(); Push(StackKind.I4, "int32_t", $"dn2cpp_datetime_is_leap_year((int32_t)({a.Expr}))"); return true; }
             case "DaysInMonth" when ps.Length == 2:
@@ -1022,38 +1046,65 @@ internal sealed partial class MethodCompiler
             { var a = Pop(); Push(StackKind.Struct, "Dn2CppDateTime", $"dn2cpp_datetime_to_local(dn2cpp_datetime_from_file_time_utc((int64_t)({a.Expr})))"); return true; }
         }
 
-        // Parse / TryParse / ParseExact — static, string overloads only (the
-        // ReadOnlySpan<char> and format-array overloads stay carve-outs). The trailing
-        // IFormatProvider / DateTimeStyles args are dropped (invariant); the out result
+        // Parse / TryParse / ParseExact share string and character-span parsers.
+        // Format arrays remain unsupported.
+        // IFormatProvider / DateTimeStyles args are dropped (invariant). The out result
         // is the last param (a ByRef).
-        if (name == "Parse" && ps.Length >= 1 && ps[0].IsString)
+        if (name == "Parse" && ps.Length >= 1 && (ps[0].IsString || IsReadOnlySpanChar(ps[0])))
         {
             for (int x = ps.Length - 1; x >= 1; x--) Pop();
             var s = Pop();
-            Push(StackKind.Struct, "Dn2CppDateTime", $"dn2cpp_datetime_parse({Cast(s, "Dn2CppString*")})");
+            string value;
+            if (ps[0].IsString)
+                value = Cast(s, "Dn2CppString*");
+            else
+            {
+                string sp = SpanPtr(s, CppTypes.Of(ps[0]));
+                value = $"dn2cpp_string_from_chars((const char16_t*){sp}->f__reference, {sp}->f__length)";
+            }
+            Push(StackKind.Struct, "Dn2CppDateTime", $"dn2cpp_datetime_parse({value})");
             return true;
         }
-        if (name == "ParseExact" && ps.Length >= 2 && ps[0].IsString && ps[1].IsString)
-        {
-            for (int x = ps.Length - 1; x >= 2; x--) Pop(); // provider [, styles]
-            var f = Pop(); var s = Pop();
-            Push(StackKind.Struct, "Dn2CppDateTime", $"dn2cpp_datetime_parse_exact({Cast(s, "Dn2CppString*")}, {Cast(f, "Dn2CppString*")})");
-            return true;
-        }
-        if (name == "TryParse" && ps.Length >= 2 && ps[0].IsString)
+        if (name == "TryParse" && ps.Length >= 2 && (ps[0].IsString || IsReadOnlySpanChar(ps[0])))
         {
             var outAddr = Pop();
             for (int x = ps.Length - 2; x >= 1; x--) Pop(); // provider, if present
             var s = Pop();
-            Push(StackKind.I4, "int32_t", $"dn2cpp_datetime_try_parse({Cast(s, "Dn2CppString*")}, {Cast(outAddr, "Dn2CppDateTime*")})");
+            string value;
+            if (ps[0].IsString)
+                value = Cast(s, "Dn2CppString*");
+            else
+            {
+                string sp = SpanPtr(s, CppTypes.Of(ps[0]));
+                value = $"dn2cpp_string_from_chars((const char16_t*){sp}->f__reference, {sp}->f__length)";
+            }
+            Push(StackKind.I4, "int32_t", $"dn2cpp_datetime_try_parse({value}, {Cast(outAddr, "Dn2CppDateTime*")})");
             return true;
         }
-        if (name == "TryParseExact" && ps.Length >= 3 && ps[0].IsString && ps[1].IsString)
+        if (name is "ParseExact" or "TryParseExact" && ps.Length >= 2
+            && (ps[0].IsString || IsReadOnlySpanChar(ps[0]))
+            && (ps[1].IsString || IsReadOnlySpanChar(ps[1])))
         {
-            var outAddr = Pop();
-            for (int x = ps.Length - 2; x >= 2; x--) Pop(); // provider [, styles]
-            var f = Pop(); var s = Pop();
-            Push(StackKind.I4, "int32_t", $"dn2cpp_datetime_try_parse_exact({Cast(s, "Dn2CppString*")}, {Cast(f, "Dn2CppString*")}, {Cast(outAddr, "Dn2CppDateTime*")})");
+            bool isTry = name == "TryParseExact";
+            var outAddr = isTry ? Pop() : default;
+            for (int x = ps.Length - (isTry ? 2 : 1); x >= 2; x--) Pop();
+            string[] values = new string[2];
+            for (int x = 1; x >= 0; x--)
+            {
+                var value = Pop();
+                if (ps[x].IsString)
+                    values[x] = Cast(value, "Dn2CppString*");
+                else
+                {
+                    string sp = SpanPtr(value, CppTypes.Of(ps[x]));
+                    values[x] = NewTemp("Dn2CppString*");
+                    Emit($"{values[x]} = dn2cpp_string_from_chars((const char16_t*){sp}->f__reference, {sp}->f__length);");
+                }
+            }
+            if (isTry)
+                Push(StackKind.I4, "int32_t", $"dn2cpp_datetime_try_parse_exact({values[0]}, {values[1]}, {Cast(outAddr!, "Dn2CppDateTime*")})");
+            else
+                Push(StackKind.Struct, "Dn2CppDateTime", $"dn2cpp_datetime_parse_exact({values[0]}, {values[1]})");
             return true;
         }
 
@@ -1346,7 +1397,7 @@ internal sealed partial class MethodCompiler
             // render into the span (too short -> false); empty format is the invariant
             // default, a standard format routes through dn2cpp_dateonly_format.
             case "TryFormat" when ps is [var d0, { Kind: TypeKind.ByRef }, var d2, _]
-                && IsSpanOfPrimitive(d0, PrimitiveTypeCode.Char) && IsReadOnlySpanChar(d2):
+                && (IsSpanOfPrimitive(d0, PrimitiveTypeCode.Char) || IsSpanOfPrimitive(d0, PrimitiveTypeCode.Byte)) && IsReadOnlySpanChar(d2):
             {
                 Pop();                                            // IFormatProvider — invariant
                 string fmtSpan = SpanValue(Pop(), CppTypes.Of(ps[2]));
@@ -1357,7 +1408,7 @@ internal sealed partial class MethodCompiler
                 Emit($"{sv} = {fmtSpan}.f__length == 0 ? dn2cpp_dateonly_to_string({DOnlyVal(recv)}) " +
                      $": dn2cpp_dateonly_format({DOnlyVal(recv)}, dn2cpp_string_from_chars((const char16_t*){fmtSpan}.f__reference, {fmtSpan}.f__length));");
                 Push(StackKind.I4, "int32_t",
-                    $"dn2cpp_string_try_copy_to_span({sv}, (char16_t*){dPtr}->f__reference, {dPtr}->f__length, {wrote})");
+                    $"{(IsSpanOfPrimitive(d0, PrimitiveTypeCode.Byte) ? "dn2cpp_string_try_copy_to_utf8_span" : "dn2cpp_string_try_copy_to_span")}({sv}, ({(IsSpanOfPrimitive(d0, PrimitiveTypeCode.Byte) ? "uint8_t" : "char16_t")}*){dPtr}->f__reference, {dPtr}->f__length, {wrote})");
                 return true;
             }
             case "ToString":
@@ -1516,7 +1567,7 @@ internal sealed partial class MethodCompiler
             // render into the span (too short -> false); empty format is the invariant
             // default, a standard format routes through dn2cpp_timeonly_format.
             case "TryFormat" when ps is [var d0, { Kind: TypeKind.ByRef }, var d2, _]
-                && IsSpanOfPrimitive(d0, PrimitiveTypeCode.Char) && IsReadOnlySpanChar(d2):
+                && (IsSpanOfPrimitive(d0, PrimitiveTypeCode.Char) || IsSpanOfPrimitive(d0, PrimitiveTypeCode.Byte)) && IsReadOnlySpanChar(d2):
             {
                 Pop();                                            // IFormatProvider — invariant
                 string fmtSpan = SpanValue(Pop(), CppTypes.Of(ps[2]));
@@ -1527,7 +1578,7 @@ internal sealed partial class MethodCompiler
                 Emit($"{sv} = {fmtSpan}.f__length == 0 ? dn2cpp_timeonly_to_string({TOnlyVal(recv)}) " +
                      $": dn2cpp_timeonly_format({TOnlyVal(recv)}, dn2cpp_string_from_chars((const char16_t*){fmtSpan}.f__reference, {fmtSpan}.f__length));");
                 Push(StackKind.I4, "int32_t",
-                    $"dn2cpp_string_try_copy_to_span({sv}, (char16_t*){dPtr}->f__reference, {dPtr}->f__length, {wrote})");
+                    $"{(IsSpanOfPrimitive(d0, PrimitiveTypeCode.Byte) ? "dn2cpp_string_try_copy_to_utf8_span" : "dn2cpp_string_try_copy_to_span")}({sv}, ({(IsSpanOfPrimitive(d0, PrimitiveTypeCode.Byte) ? "uint8_t" : "char16_t")}*){dPtr}->f__reference, {dPtr}->f__length, {wrote})");
                 return true;
             }
             case "ToString":
@@ -1760,20 +1811,21 @@ internal sealed partial class MethodCompiler
             case "GetHashCode" when ps.Length == 0:
             { var a = Pop(); Push(StackKind.I4, "int32_t", $"dn2cpp_datetimeoffset_hash({DTOVal(a)})"); return true; }
             // ISpanFormattable.TryFormat(Span<char> dest, out charsWritten, ROS<char> format,
-            // IFormatProvider): write the round-trip representation into the destination span
-            // (fits -> copy + count + true; too short -> false). The format/provider are
-            // dropped (invariant) — only the default form is produced.
-            case "TryFormat" when ps.Length == 4 && IsSpanOfPrimitive(ps[0], PrimitiveTypeCode.Char):
+            // IFormatProvider): format into a UTF-16 or UTF-8 destination, using
+            // the same invariant formatter as ToString.
+            case "TryFormat" when ps is [var d0, { Kind: TypeKind.ByRef }, var d2, _]
+                && (IsSpanOfPrimitive(d0, PrimitiveTypeCode.Char) || IsSpanOfPrimitive(d0, PrimitiveTypeCode.Byte))
+                && IsReadOnlySpanChar(d2):
             {
                 Pop();                                  // IFormatProvider — invariant
-                Pop();                                  // ReadOnlySpan<char> format — default form
+                string fmtSpan = SpanValue(Pop(), CppTypes.Of(ps[2]));
                 string wrote = Cast(Pop(), "int32_t*"); // out int charsWritten
                 string dPtr = SpanPtr(Pop(), CppTypes.Of(ps[0])); // Span<char> destination
                 var recv = Pop();
                 string sv = NewTemp("Dn2CppString*");
-                Emit($"{sv} = dn2cpp_datetimeoffset_to_string({DTOVal(recv)});");
+                Emit($"{sv} = dn2cpp_datetimeoffset_format({DTOVal(recv)}, dn2cpp_string_from_chars((const char16_t*){fmtSpan}.f__reference, {fmtSpan}.f__length));");
                 Push(StackKind.I4, "int32_t",
-                    $"dn2cpp_string_try_copy_to_span({sv}, (char16_t*){dPtr}->f__reference, {dPtr}->f__length, {wrote})");
+                    $"{(IsSpanOfPrimitive(d0, PrimitiveTypeCode.Byte) ? "dn2cpp_string_try_copy_to_utf8_span" : "dn2cpp_string_try_copy_to_span")}({sv}, ({(IsSpanOfPrimitive(d0, PrimitiveTypeCode.Byte) ? "uint8_t" : "char16_t")}*){dPtr}->f__reference, {dPtr}->f__length, {wrote})");
                 return true;
             }
             // Arithmetic — keep the offset, act on the clock value.

@@ -163,7 +163,7 @@ internal sealed partial class MethodCompiler
         // (DivideByZeroException on a zero divisor, OverflowException on MinValue/-1).
         if (name == "DivRem" && sig.ParameterTypes is [{ Kind: TypeKind.Primitive } d0, _, ..])
         {
-            string ct = CppTypes.Of(d0);
+            string ct = d0.Primitive == PrimitiveTypeCode.UIntPtr ? "uintptr_t" : CppTypes.Of(d0);
             if (sig.ParameterTypes.Length == 2)
             {
                 var b = Pop();
