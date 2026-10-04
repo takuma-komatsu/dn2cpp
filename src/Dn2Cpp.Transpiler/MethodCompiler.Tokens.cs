@@ -542,6 +542,19 @@ internal sealed partial class MethodCompiler
             string indicesInit = string.Join(", ", indices);
             string castedArr = Cast(arr, "Dn2CppMDArray*");
 
+            string? objectValue = null;
+            if (RepOf(arrayType.Element!) == ArrRep.Ref)
+            {
+                // MD Set checks receiver, value type, then indices. The SZ store
+                // checks bounds before value type, so only the type verdict is shared.
+                string receiver = NewTemp("Dn2CppMDArray*");
+                Emit($"{receiver} = dn2cpp_array_require_receiver({castedArr});");
+                castedArr = receiver;
+                objectValue = NewTemp("Dn2CppObject*");
+                Emit($"{objectValue} = {Cast(value, "Dn2CppObject*")};");
+                Emit($"dn2cpp_array_check_store_ref((Dn2CppObject*){receiver}, {objectValue});");
+            }
+
             string addrExpr;
             if (rank == 2)
                 addrExpr = $"dn2cpp_md_elem_addr2({castedArr}, {indices[0]}, {indices[1]})";
@@ -550,13 +563,29 @@ internal sealed partial class MethodCompiler
             else
                 addrExpr = $"dn2cpp_md_elem_addr({castedArr}, dn2cpp_i32s({indicesInit}).v)";
 
-            // Narrow the int32 stack value into the packed slot; st == ct for every
-            // non-sub-word element, so the cast is the original one.
-            Emit(st == ct
-                ? $"*({ct}*){addrExpr} = {Cast(value, ct)};"
-                : $"*({st}*){addrExpr} = ({st})({Cast(value, ct)});");
-            if (arrayType.Element!.ContainsGcReferences())
-                Emit($"dn2cpp_gc_write_barrier((void*)({addrExpr}));");
+            if (objectValue is not null)
+            {
+                string address = NewTemp("void*");
+                Emit($"{address} = {addrExpr};");
+                if (IsHeaderlessWrapCpp(ct))
+                {
+                    // Typed headerless slots keep the pointer ABI exposed by Address.
+                    Emit($"*({ct}*){address} = {HeaderlessUnwrapExpr(objectValue, ct)};");
+                    Emit($"dn2cpp_gc_write_barrier({address});");
+                }
+                else
+                    Emit($"dn2cpp_gc_store_ref((Dn2CppObject**){address}, {objectValue});");
+            }
+            else
+            {
+                // Narrow the int32 stack value into the packed slot; st == ct for
+                // every non-sub-word element, so the cast is the original one.
+                Emit(st == ct
+                    ? $"*({ct}*){addrExpr} = {Cast(value, ct)};"
+                    : $"*({st}*){addrExpr} = ({st})({Cast(value, ct)});");
+                if (arrayType.Element!.ContainsGcReferences())
+                    Emit($"dn2cpp_gc_write_barrier((void*)({addrExpr}));");
+            }
         }
         else if (name == "Address")
         {

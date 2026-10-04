@@ -6495,11 +6495,17 @@ inline Dn2CppObject* dn2cpp_ldelem_ref(Dn2CppArrayRef* arr, int32_t index)
     return arr->data[index];
 }
 
-// Bounds-check opt-outs still enforce the array's actual reference element type.
-inline void dn2cpp_stelem_ref_unchecked(Dn2CppArrayRef* arr, int32_t index, Dn2CppObject* value)
+// Reference stores use the actual element identity on both SZ and MD layouts.
+inline void dn2cpp_array_check_store_ref(Dn2CppObject* arr, Dn2CppObject* value)
 {
     if (value != nullptr && dn2cpp_typeinfo_assignable(value->type, arr->type->elementType) == 0)
         dn2cpp_throw_of(&dn2cpp_array_type_mismatch_exception_type);
+}
+
+// Bounds-check opt-outs still enforce the array's actual reference element type.
+inline void dn2cpp_stelem_ref_unchecked(Dn2CppArrayRef* arr, int32_t index, Dn2CppObject* value)
+{
+    dn2cpp_array_check_store_ref((Dn2CppObject*)arr, value);
     dn2cpp_gc_store_ref(&arr->data[index], value);
 }
 

@@ -88,6 +88,9 @@ namespace ArrayCore
             if (args.Length != 0 && args[0] == "before-covariant-stores")
                 return;
             ArrayCovariantStoreSubset.Program.Run();
+            if (args.Length != 0 && args[0] == "before-covariant-md-stores")
+                return;
+            ArrayCovariantStoreSubset.Program.RunMdStores();
 #endif
         }
     }
