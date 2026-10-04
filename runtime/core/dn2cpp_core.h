@@ -1765,6 +1765,7 @@ inline constexpr const char* DN2CPP_SR_OBJECT_DISPOSED_NAME = "ObjectDisposed_Ob
 inline constexpr const char* DN2CPP_SR_ARITHMETIC = "Arg_ArithmeticException";
 inline constexpr const char* DN2CPP_SR_OUT_OF_MEMORY = "Arg_OutOfMemoryException";
 inline constexpr const char* DN2CPP_SR_INVALID_CAST = "Arg_InvalidCastException";
+inline constexpr const char* DN2CPP_SR_ARRAY_TYPE_MISMATCH = "Arg_ArrayTypeMismatchException";
 inline constexpr const char* DN2CPP_SR_TYPE_LOAD = "Arg_TypeLoadException";
 inline constexpr const char* DN2CPP_SR_NOT_SUPPORTED = "Arg_NotSupportedException";
 inline constexpr const char* DN2CPP_SR_PLATFORM_NOT_SUPPORTED = "Arg_PlatformNotSupported";
@@ -2747,9 +2748,8 @@ extern Dn2CppTypeInfo dn2cpp_key_not_found_exception_type;
 // operands' ranks disagree. The SZ and MD layouts share no field, so the pair
 // cannot be moved at all — and .NET's answer is this type, not an Argument one.
 extern Dn2CppTypeInfo dn2cpp_rank_exception_type;
-// System.ArrayTypeMismatchException: raised by the array block-move helpers when
-// the two operands' element types satisfy no arm of the CLR's Array.Copy
-// compatibility verdict (which lives at dn2cpp_array_copy_checked).
+// System.ArrayTypeMismatchException: an incompatible reference-element store
+// or a pair outside the CLR's Array.Copy compatibility verdict.
 extern Dn2CppTypeInfo dn2cpp_array_type_mismatch_exception_type;
 // System.Reflection.AmbiguousMatchException: raised by the reflection lookups
 // with several undecidable matches (members, interfaces, constructor binding,
@@ -6495,10 +6495,18 @@ inline Dn2CppObject* dn2cpp_ldelem_ref(Dn2CppArrayRef* arr, int32_t index)
     return arr->data[index];
 }
 
+// Bounds-check opt-outs still enforce the array's actual reference element type.
+inline void dn2cpp_stelem_ref_unchecked(Dn2CppArrayRef* arr, int32_t index, Dn2CppObject* value)
+{
+    if (value != nullptr && dn2cpp_typeinfo_assignable(value->type, arr->type->elementType) == 0)
+        dn2cpp_throw_of(&dn2cpp_array_type_mismatch_exception_type);
+    dn2cpp_gc_store_ref(&arr->data[index], value);
+}
+
 inline void dn2cpp_stelem_ref(Dn2CppArrayRef* arr, int32_t index, Dn2CppObject* value)
 {
     dn2cpp_bounds_check(arr, index);
-    dn2cpp_gc_store_ref(&arr->data[index], value);
+    dn2cpp_stelem_ref_unchecked(arr, index, value);
 }
 
 inline void* dn2cpp_elem_addr(Dn2CppArrayN* arr, int32_t index)

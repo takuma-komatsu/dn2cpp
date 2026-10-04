@@ -1923,9 +1923,11 @@ internal sealed partial class Compilation
                 return RgctxTypeInfoEntry(g.Context.TypeArgs[0]);
             }
             case RgctxSlotKind.ArrayTypeInfo:
+            case RgctxSlotKind.NewArrayTypeInfo:
             {
                 var t = RgctxResolveTypeToken(module, handle, ctx);
-                var elem = t.Kind == TypeKind.SZArray ? t.Element! : t;
+                var elem = slot.Kind == RgctxSlotKind.ArrayTypeInfo && t.Kind == TypeKind.SZArray
+                    ? t.Element! : t;
                 NoteArrayElementType(elem);
                 return "&ti_arr_" + ArrayElemMangle(elem);
             }

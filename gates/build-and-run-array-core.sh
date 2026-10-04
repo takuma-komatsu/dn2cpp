@@ -8,6 +8,7 @@
 # System.Buffers.ArrayPool<T>.Shared rented arrays.
 # Nested generic interface variance reaches default comparison, array/span/list
 # sorting and binary search through public and explicit implementations.
+# Covariant reference stores check the actual element type before mutation.
 # Former gates: array-ops, array-contains, array-range, array-resize, array-sort,
 # array-data-ref, byte-array, getsubarray, packed-array, array-collection, enumarray,
 # arraypool.
@@ -211,12 +212,60 @@ gate_extra_asserts() {
     done
 }
 
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|array-box-shared-generics|before-array-provenance|before-nested-interface-variance"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|array-box-shared-generics|before-array-provenance|before-nested-interface-variance|before-covariant-stores"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/ArrayCore/BoxProvenanceOnly.csproj samples/dotnet/ArrayCore/BoxProvenanceProgram.cs samples/dotnet/ArrayCore/ReflectionReturnBoxOnly.csproj samples/dotnet/ArrayCore/ReflectionReturnBoxProgram.cs samples/dotnet/ArrayCore/DiamondProvenanceOnly.csproj samples/dotnet/ArrayCore/DiamondProvenanceProgram.cs samples/dotnet/ArrayCore/FieldAliasProvenanceOnly.csproj samples/dotnet/ArrayCore/FieldAliasProvenanceProgram.cs samples/dotnet/ArrayCore/FieldAliasProvenanceSubset.cs samples/dotnet/ArrayCore/ArrayElementAliasProgram.cs samples/dotnet/ArrayCore/ArrayElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayObjectElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayUnknownElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayErasedElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayReferenceSlotAliasOnly.csproj samples/dotnet/ArrayCore/ArrayReflectedVoidBoxOnly.csproj samples/dotnet/ArrayCore/ArrayReflectedVoidBoxProgram.cs samples/dotnet/ArrayCore/ArrayFutureStoreOnly.csproj samples/dotnet/ArrayCore/ArrayFutureStoreProgram.cs samples/dotnet/ArrayCore/ArrayFutureNullStoreOnly.csproj samples/dotnet/ArrayCore/ArrayObjectFutureStoreOnly.csproj samples/dotnet/ArrayCore/ArrayObjectFutureStoreProgram.cs"
 corelib_diff_gate ArrayCore System.Collections
 
 native=$(run_bounded "./$_CG_OUT/ArrayCore$EXE_EXT")
 native=$(strip_cr_win "$native")
+previous=$(run_bounded dotnet "$_CG_APP" before-covariant-stores)
+prefix=$(awk '/^== covariant reference array stores ==$/ { exit } { print }' <<< "$native")
+assert_output "$prefix" "$(strip_cr_win "$previous")"
+for line in '== covariant reference array stores ==' \
+    'store message=Attempted to access an element as a type incompatible with the array.' \
+    'negative before type=IndexOutOfRangeException/80131508:identity=True' \
+    'past end before type=IndexOutOfRangeException/80131508:identity=True' \
+    'null before type=NullReferenceException/80004003:identity=True' \
+    'allocated array identities=True:True:True:True' \
+    'array token identities=True:True:True' 'array token casts=True:True:True' \
+    'array token cast rejected=InvalidCastException/80004002:identity=True' \
+    'list byte array growth=10:True:True' 'list byte array regrowth=True' \
+    'list int array growth=2:True' 'list reference array growth=2:True' \
+    'constructed mismatch=Attempted to access an element as a type incompatible with the array./80131503' \
+    'covariant reference array stores end'; do
+    grep -Fxq -- "$line" <<< "$native" \
+        || { echo "FAIL: covariant array store witness missing: $line" >&2; exit 1; }
+done
+for line in 'string rejected' 'argument rejected' 'field rejected' 'return rejected' \
+    'shared rejected' 'class rejected' 'interface narrowed rejected' 'interface rejected' \
+    'generic invariant rejected' 'generic variance rejected' 'jagged rejected' \
+    'intrinsic rejected' 'runtime returned rejected' 'generic list rejected' \
+    'allocated array element rejected'; do
+    grep -Fxq -- "$line=ArrayTypeMismatchException/80131503:identity=True" <<< "$native" \
+        || { echo "FAIL: rejected store changed array contents: $line" >&2; exit 1; }
+done
+for line in 'string compatible' 'string null' 'shared compatible' 'class compatible' \
+    'interface narrowed compatible' 'interface compatible' 'boxed interface compatible' \
+    'object boxed compatible' 'object compatible' 'object null' 'generic compatible' \
+    'generic variance compatible' 'jagged compatible' 'intrinsic compatible' 'generic list compatible' \
+    'allocated byte array compatible' 'allocated int array compatible' \
+    'allocated reference array compatible' 'allocated nested array compatible' \
+    'allocated object compatible'; do
+    grep -Fxq -- "$line=ok:identity=True" <<< "$native" \
+        || { echo "FAIL: compatible store lost value identity: $line" >&2; exit 1; }
+done
+shared_store=$(LC_ALL=C awk '{ sub(/\r$/, "") }
+    /^inline void .*_StoreGeneric_TisCnRef_.*\)$/ { in_body = 1 }
+    in_body && /dn2cpp_stelem_ref\(/ { found = 1 }
+    in_body && /^\}/ { in_body = 0 }
+    END { if (found) print "shared reference store" }' "$_CG_OUT"/generated.h)
+assert_output "$shared_store" 'shared reference store'
+shared_array=$(LC_ALL=C awk '{ sub(/\r$/, "") }
+    /^inline Dn2CppArrayRef\* .*_Allocate_TisCnRef_.*\)$/ { in_body = 1 }
+    in_body && /dn2cpp_newarr_ref_t\(.*__rgctx/ { found = 1 }
+    in_body && /^\}/ { in_body = 0 }
+    END { if (found) print "shared array allocation" }' "$_CG_OUT"/generated.h)
+assert_output "$shared_array" 'shared array allocation'
 previous=$(run_bounded "./$_CG_OUT/ArrayCore$EXE_EXT" before-array-provenance)
 prefix=$(awk '/^-- array shape argument checks --$/ { exit } { print }' <<< "$native")
 assert_output "$prefix" "$(strip_cr_win "$previous")"

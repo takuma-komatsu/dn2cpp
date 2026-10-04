@@ -414,6 +414,7 @@ static const char* dn2cpp_default_message_key(const Dn2CppTypeInfo* ti)
     if (ti == &dn2cpp_arithmetic_exception_type) return DN2CPP_SR_ARITHMETIC;
     if (ti == &dn2cpp_out_of_memory_exception_type) return DN2CPP_SR_OUT_OF_MEMORY;
     if (ti == &dn2cpp_invalid_cast_exception_type) return DN2CPP_SR_INVALID_CAST;
+    if (ti == &dn2cpp_array_type_mismatch_exception_type) return DN2CPP_SR_ARRAY_TYPE_MISMATCH;
     if (ti == &dn2cpp_type_load_exception_type) return DN2CPP_SR_TYPE_LOAD;
     if (ti == &dn2cpp_not_supported_exception_type) return DN2CPP_SR_NOT_SUPPORTED;
     if (ti == &dn2cpp_platform_not_supported_exception_type) return DN2CPP_SR_PLATFORM_NOT_SUPPORTED;

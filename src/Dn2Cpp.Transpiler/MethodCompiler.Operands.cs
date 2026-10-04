@@ -393,11 +393,10 @@ internal sealed partial class MethodCompiler
         return e;
     }
 
-    /// <summary>Token-carrying variant for instruction-level sites (newarr,
-    /// typeof(T[]), array cast targets): a placeholder-bearing element loads the
+    /// <summary>Token-carrying variant for typeof(T[]) and array cast targets:
+    /// a placeholder-bearing element loads the
     /// real instantiation's precise array handle out of an rgctx slot keyed on
-    /// the site's raw type token — which resolves to either the element itself
-    /// (newarr) or the SZArray (typeof/cast); the fill projects the element.</summary>
+    /// the site's raw SZArray token; the fill projects its element.</summary>
     internal string PreciseArrayTypeInfoExpr(TypeDesc element, int token)
     {
         if (SharedTrial && Compilation.ContainsCanonPlaceholder(element))

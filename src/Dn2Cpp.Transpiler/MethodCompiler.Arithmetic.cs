@@ -367,7 +367,7 @@ internal sealed partial class MethodCompiler
         // give the allocation that precise handle so arr.GetType is exact.
         _c.NoteArrayElementType(element);
         string ti = token != 0 && SharedTrial && Compilation.ContainsCanonPlaceholder(element)
-            ? "(const Dn2CppTypeInfo*)" + RgctxSlotAccess(RgctxSlotKind.ArrayTypeInfo, token, "newarr", element)
+            ? "(const Dn2CppTypeInfo*)" + RgctxSlotAccess(RgctxSlotKind.NewArrayTypeInfo, token, "newarr", element)
             : PreciseArrayTypeInfoExpr(element);
         switch (RepOf(element))
         {
@@ -1802,14 +1802,14 @@ internal sealed partial class MethodCompiler
 
     /// <summary>The checked element-access expression family — and, under
     /// <c>[HotPath(SkipBoundsChecks = true)]</c>, its raw twin: plain indexing with
-    /// no bounds check and no null check either. Both are the knob's documented UB —
-    /// a field access otherwise carries a catchable NullReferenceException.
+    /// no bounds check and no null check either. Reference stores retain their
+    /// runtime element-type check. A null or out-of-range access is the knob's
+    /// documented UB; a checked access raises a catchable exception.
     /// The knob opts out of BOTH checks rather than only the range one:
     /// its contract is that the caller has proved the access, and a guard on the
     /// pointer that the proof already covers is the cost [HotPath] exists to shed.
     /// Every ldelem/stelem/ldelema emission site routes through these five so the
-    /// knob cannot cover one rep and miss another; with the knob off each returns
-    /// byte-identically the string its call site used to inline. Duplicating
+    /// knob cannot cover one rep and miss another. Duplicating
     /// <c>arr.Expr</c>/<c>idx.Expr</c> is sound by the standing invariant these
     /// sites already rely on (bounds check + use): a popped entry's expression is
     /// stable and side-effect-free.</summary>
@@ -1826,7 +1826,7 @@ internal sealed partial class MethodCompiler
         : $"dn2cpp_stelem_i4(({Cast(arr, "Dn2CppArrayI4*")}), {idx.Expr}, {valExpr});";
 
     private string StelemRef(StackEntry arr, StackEntry idx, string valExpr) => _method.SkipBoundsChecks
-        ? $"dn2cpp_gc_store_ref(&({Cast(arr, "Dn2CppArrayRef*")})->data[{idx.Expr}], {valExpr});"
+        ? $"dn2cpp_stelem_ref_unchecked(({Cast(arr, "Dn2CppArrayRef*")}), {idx.Expr}, {valExpr});"
         : $"dn2cpp_stelem_ref(({Cast(arr, "Dn2CppArrayRef*")}), {idx.Expr}, {valExpr});";
 
     private string ElemAddr(StackEntry arr, StackEntry idx) => _method.SkipBoundsChecks

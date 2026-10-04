@@ -102,6 +102,7 @@ internal static class BclMessages
         "Arg_ArithmeticException",
         "Arg_OutOfMemoryException",
         "Arg_InvalidCastException",
+        "Arg_ArrayTypeMismatchException",
         "Arg_TypeLoadException",
         "Arg_NotSupportedException",
         "Arg_PlatformNotSupported",

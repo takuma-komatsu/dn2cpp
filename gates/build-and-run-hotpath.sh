@@ -7,14 +7,13 @@
 # SkipBoundsChecks knob section (HotPathBoundsSubset) runs in the same diff:
 # every index is in range, so the outputs match real .NET, where the attribute
 # is inert and every access stays checked.
+# Covariant reference stores retain their type check with bounds checks disabled.
 #
 # Placement is then asserted structurally on the transpile output, from inside the
 # wrapper's cached region (the gate_extra_asserts hook, `gates/_common.sh`) — so a
 # warm hit replays a green that includes these asserts rather than re-running them
-# against a build it did not make. They read nothing but the emitted C++, which IS
-# the cache key's surface term, so the key already discriminates every axis they
-# can see; that is why this hook needs no DN2CPP_GATE_EXTRA_CONTEXT, unlike the two
-# gates whose extra asserts run the CLI again:
+# against a build it did not make. Runtime prefix controls and auxiliary CLI
+# inputs are included in the gate-cache context:
 #   - every marked body's symbol is defined in generated_hot.cpp (the C++ link
 #     above already proved each is defined nowhere else — a duplicate would not
 #     link, a miss would grep-fail here);
@@ -46,7 +45,7 @@
 #     these two metadata reads; invocation remains a rejection case.
 source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/HotPathNoAllocMixedBad/ReflectionNoAllocHelpersOnly.csproj samples/dotnet/HotPathNoAllocMixedBad/ReflectionNoAllocHelpersOnlyProgram.cs"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|reflection-noalloc-helpers-v1"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|reflection-noalloc-helpers-v1|covariant-store-prefix:${DN2CPP_BEFORE_COVARIANT_STORES:-}"
 
 # Every block under an emitter-stamped `// Namespace.Class::Name` header — a
 # generic method's instantiations share the header, so all are collected.
@@ -54,6 +53,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|reflection-noalloc-hel
 # dynamic, so a helper called from that frame sees the frame's locals.
 hot_bodies() {
     awk -v anchor="// $1" '
+        { sub(/\r$/, "") }
         $0 == anchor { infn = 1; next }
         infn && /^}/ { infn = 0; next }
         infn { print }
@@ -75,6 +75,25 @@ local hp_out hot hotfast
 hp_out="$1"
 hot="$hp_out/generated_hot.cpp"
 hotfast="$hp_out/generated_hot_fast.cpp"
+local covariant_native covariant_before covariant_prefix covariant_body line
+covariant_native=$(run_bounded "$hp_out/HotPath$EXE_EXT")
+covariant_native=$(strip_cr_win "$covariant_native")
+covariant_before=$(DN2CPP_BEFORE_COVARIANT_STORES=1 run_bounded dotnet "$_CG_APP")
+covariant_prefix=$(awk '/^== unchecked covariant reference stores ==$/ { exit } { print }' <<< "$covariant_native")
+assert_output "$covariant_prefix" "$(strip_cr_win "$covariant_before")"
+for line in '== unchecked covariant reference stores ==' \
+    'unchecked rejected=ArrayTypeMismatchException/80131503' 'unchecked retained=True' \
+    'unchecked compatible=True' 'unchecked null=True' 'unchecked covariant reference stores end'; do
+    grep -Fxq -- "$line" <<< "$covariant_native" \
+        || { echo "FAIL: unchecked covariant store witness missing: $line" >&2; return 1; }
+done
+covariant_body="$(hot_bodies 'HotPathBoundsSubset.Program::StoreCovariantUnchecked')"
+grep -Fq 'dn2cpp_stelem_ref_unchecked(' <<< "$covariant_body" \
+    || { echo 'FAIL: unchecked reference store lost its runtime type check' >&2; return 1; }
+if grep -Eq 'dn2cpp_bounds_check\(|dn2cpp_stelem_ref\(' <<< "$covariant_body"; then
+    echo 'FAIL: unchecked reference store still checks null/bounds' >&2
+    return 1
+fi
 
 echo "== [HotPath] TU placement asserts =="
 [ -f "$hot" ] || { echo "FAIL: $hot was not emitted" >&2; exit 1; }
