@@ -309,7 +309,7 @@
 # Every other line matches real .NET (verified against `dotnet run` at capture
 # time).
 source "$(dirname "$0")/_common.sh"
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_ordinary-reflection.sh samples/dotnet/ReflectTypes/AttributeTypePropertySubset.cs samples/dotnet/ReflectTypes/DataOnlyAttributeRowsOnly.csproj samples/dotnet/ReflectTypes/DataOnlyAttributeRowsOnlyProgram.cs samples/dotnet/ReflectTypes/OrdinaryReflectionTypeLeaves.csproj samples/dotnet/ReflectTypes/OrdinaryReflectionTypeLeavesProgram.cs samples/dotnet/ReflectTypes/ReflectAssemblyErrorSubset.cs samples/dotnet/ReflectTypes/ReflectAttrBoxedSubset.cs samples/dotnet/ReflectTypes/ReflectRuntimeTypeParitySubset.cs samples/dotnet/ReflectTypes/ReflectTypes.csproj samples/dotnet/ReflectTypes/UnreadAttributeRowsOnly.csproj samples/dotnet/ReflectTypes/UnreadAttributeRowsOnlyProgram.cs"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_ordinary-reflection.sh samples/dotnet/ReflectTypes/AttributeTypePropertySubset.cs samples/dotnet/ReflectTypes/DataOnlyAttributeRowsOnly.csproj samples/dotnet/ReflectTypes/DataOnlyAttributeRowsOnlyProgram.cs samples/dotnet/ReflectTypes/OrdinaryReflectionTypeLeaves.csproj samples/dotnet/ReflectTypes/OrdinaryReflectionTypeLeavesProgram.cs samples/dotnet/ReflectTypes/PropertyAccessorRowsSubset.cs samples/dotnet/ReflectTypes/ReflectAssemblyErrorSubset.cs samples/dotnet/ReflectTypes/ReflectAttrBoxedSubset.cs samples/dotnet/ReflectTypes/ReflectRuntimeTypeParitySubset.cs samples/dotnet/ReflectTypes/ReflectTypes.csproj samples/dotnet/ReflectTypes/UnreadAttributeRowsOnly.csproj samples/dotnet/ReflectTypes/UnreadAttributeRowsOnlyProgram.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|before-nested-generic-names"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/NestedGenericTypeNameSubset.cs samples/dotnet/ReflectTypes/GenericDefinitionSymbolNeighbors.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-type-leaves-v1"
@@ -644,7 +644,8 @@ gate_extra_asserts() {
         'Count=True:False:get_Count:<null>' \
         'System.Collections.Generic.ICollection<T>.IsReadOnly=True:False:System.Collections.Generic.ICollection<T>.get_IsReadOnly:<null>' \
         'retained property accessor rows end' '== nested open definition identity ==' \
-        'definitions=True:True:True' 'nested open definition identity end'; do
+        'definitions=True:True:True' 'direct nested flags=True:True:True:False:True' \
+        'nested open definition identity end'; do
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: property accessor witness missing: $line" >&2; return 1; }
     done

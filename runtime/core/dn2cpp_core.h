@@ -510,6 +510,10 @@ constexpr Dn2CppTypeInfo dn2cpp_ti_with_formatspec(
 // replaces. Runtime-owned, stripped and patch levels never carry it.
 #define DN2CPP_TF_OBJECT_MEMBER_ROWS 0x10000000
 
+// A synthetic open definition can resolve enclosing visibility without retaining
+// declaring-type objects. Its own raw TypeAttributes still describe the member.
+#define DN2CPP_TF_HIDDEN_ENCLOSING 0x20000000
+
 // The clone-owned rgctx anchor lookup behind DN2CPP_TF_RUNTIME_SYNTH
 // (dn2cpp_system_reflection.cpp); falls back to the base-chain walk for levels
 // below the placeholder chain.

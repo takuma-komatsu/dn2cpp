@@ -4594,6 +4594,18 @@ internal sealed partial class Compilation
             kind |= GenericDefKind.Sealed;
         if (IsValueTypeDef(reader, td))
             kind |= GenericDefKind.ValueType;
+        if (IsByRefLikeType(reader, td))
+            kind |= GenericDefKind.ByRefLike;
+        if (!td.GetDeclaringType().IsNil)
+            kind |= GenericDefKind.Nested;
+        for (var enclosing = td.GetDeclaringType(); !enclosing.IsNil;)
+        {
+            var outer = reader.GetTypeDefinition(enclosing);
+            var visibility = outer.Attributes & TypeAttributes.VisibilityMask;
+            if (visibility is not (TypeAttributes.Public or TypeAttributes.NestedPublic))
+                kind |= GenericDefKind.HiddenEnclosing;
+            enclosing = outer.GetDeclaringType();
+        }
         return kind;
     }
 

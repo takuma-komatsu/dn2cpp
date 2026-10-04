@@ -1057,6 +1057,23 @@ internal sealed partial class CppEmitter
                     synthInterface,
                     (def.Kind & GenericDefKind.Abstract) != 0,
                     (def.Kind & GenericDefKind.Sealed) != 0);
+                uint synthAttrs = 0;
+                int synthToken = 0;
+                string? synthAssembly = null;
+                if ((def.Kind & GenericDefKind.Nested) != 0)
+                {
+                    flagBits.Add("DN2CPP_TF_NESTED");
+                    if (_c.OpenGenericDefHandleByName(defName) is { } definition)
+                    {
+                        synthAttrs = (uint)definition.Module.Reader.GetTypeDefinition(definition.Handle).Attributes;
+                        synthToken = System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(definition.Handle);
+                        synthAssembly = definition.Module.AssemblyName;
+                    }
+                }
+                if ((def.Kind & GenericDefKind.ByRefLike) != 0)
+                    flagBits.Add("DN2CPP_TF_BYREFLIKE");
+                if ((def.Kind & GenericDefKind.HiddenEnclosing) != 0)
+                    flagBits.Add("DN2CPP_TF_HIDDEN_ENCLOSING");
                 string defFlags = flagBits.Count == 1 ? flagBits[0] : "(" + string.Join(" | ", flagBits) + ")";
                 _o.Header.AppendLine($"extern const Dn2CppTypeInfo {sym};");
                 _sb.AppendLine($"extern const Dn2CppType ty_{sym};");
@@ -1067,6 +1084,7 @@ internal sealed partial class CppEmitter
                     Native = _c.UsesNativeReflectionMetadata(defName),
                     Name = defName, Base = synthBase, Interfaces = synthItfs, InterfaceCount = synthItfCount,
                     Flags = defFlags, GenericDef = "&" + sym, TypeObject = "&ty_" + sym, GenericParamNames = def.ParamNames,
+                    IlAttrs = synthAttrs, MetadataToken = synthToken, AssemblyName = synthAssembly,
                 });
                 _sb.AppendLine($"const Dn2CppType ty_{sym} = {{ {{ &dn2cpp_type_type }}, &{sym} }};");
             }

@@ -253,7 +253,7 @@ internal sealed partial class MethodCompiler
             case ("System.Type", "get_IsValueType"):
             {
                 var a = Pop();
-                Push(StackKind.I4, "int32_t", a.TypeToken is { } tk
+                Push(StackKind.I4, "int32_t", a.TypeToken is { } tk && Compilation.OpenGenericDefBacktickNameOf(tk) is null
                     ? (IsValueTypeStatic(tk) ? "1" : "0")
                     : $"dn2cpp_type_is_value_type(dn2cpp_type_require({Cast(a, "Dn2CppType*")}))");
                 return true;
@@ -262,7 +262,7 @@ internal sealed partial class MethodCompiler
             case ("System.Type", "get_IsClass"):
             {
                 var a = Pop();
-                Push(StackKind.I4, "int32_t", a.TypeToken is { } tk
+                Push(StackKind.I4, "int32_t", a.TypeToken is { } tk && Compilation.OpenGenericDefBacktickNameOf(tk) is null
                     ? ((!IsValueTypeStatic(tk) && !IsInterfaceStatic(tk)) ? "1" : "0")
                     : $"dn2cpp_type_is_class(dn2cpp_type_require({Cast(a, "Dn2CppType*")}))");
                 return true;
@@ -284,7 +284,7 @@ internal sealed partial class MethodCompiler
             case ("System.Type", "get_IsSealed"):
             {
                 var a = Pop();
-                Push(StackKind.I4, "int32_t", a.TypeToken is { } tk
+                Push(StackKind.I4, "int32_t", a.TypeToken is { } tk && Compilation.OpenGenericDefBacktickNameOf(tk) is null
                     ? (IsSealedStatic(tk) ? "1" : "0")
                     : $"dn2cpp_type_is_sealed(dn2cpp_type_require({Cast(a, "Dn2CppType*")}))");
                 return true;
@@ -296,7 +296,7 @@ internal sealed partial class MethodCompiler
             case ("System.Type", "get_IsByRefLike"):
             {
                 var a = Pop();
-                Push(StackKind.I4, "int32_t", a.TypeToken is { } tk
+                Push(StackKind.I4, "int32_t", a.TypeToken is { } tk && Compilation.OpenGenericDefBacktickNameOf(tk) is null
                     ? (IsByRefLikeStatic(tk) ? "1" : "0")
                     : $"dn2cpp_type_is_by_ref_like(dn2cpp_type_require({Cast(a, "Dn2CppType*")}))");
                 return true;
@@ -1559,7 +1559,7 @@ internal sealed partial class MethodCompiler
             case ("System.Type", "get_IsNested"):
             {
                 var a = Pop();
-                Push(StackKind.I4, "int32_t", a.TypeToken is { } nk
+                Push(StackKind.I4, "int32_t", a.TypeToken is { } nk && Compilation.OpenGenericDefBacktickNameOf(nk) is null
                     ? (IsNestedStatic(nk) ? "1" : "0")
                     : $"dn2cpp_type_is_nested(dn2cpp_type_require({Cast(a, "Dn2CppType*")}))");
                 return true;
@@ -1919,11 +1919,25 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.I4, "int32_t", $"dn2cpp_type_is_visible(dn2cpp_type_require({Cast(a, "Dn2CppType*")}))");
                 return true;
             }
-            // Type.IsNestedPublic: the ECMA visibility nibble == NestedPublic.
+            // Nested visibility predicates compare the ECMA visibility nibble.
             case ("System.Type", "get_IsNestedPublic"):
+            case ("System.Type", "get_IsNestedPrivate"):
+            case ("System.Type", "get_IsNestedFamily"):
+            case ("System.Type", "get_IsNestedAssembly"):
+            case ("System.Type", "get_IsNestedFamANDAssem"):
+            case ("System.Type", "get_IsNestedFamORAssem"):
             {
                 var a = Pop();
-                Push(StackKind.I4, "int32_t", $"dn2cpp_type_is_nested_public(dn2cpp_type_require({Cast(a, "Dn2CppType*")}))");
+                int visibility = name switch
+                {
+                    "get_IsNestedPublic" => 2,
+                    "get_IsNestedPrivate" => 3,
+                    "get_IsNestedFamily" => 4,
+                    "get_IsNestedAssembly" => 5,
+                    "get_IsNestedFamANDAssem" => 6,
+                    _ => 7,
+                };
+                Push(StackKind.I4, "int32_t", $"(int32_t)((dn2cpp_type_il_attrs(dn2cpp_type_require({Cast(a, "Dn2CppType*")})) & 7) == {visibility})");
                 return true;
             }
             // Type.IsGenericParameter: always false at runtime — dn2cpp never

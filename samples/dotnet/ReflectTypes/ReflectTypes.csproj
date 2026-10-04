@@ -17,6 +17,7 @@
     <Compile Remove="OrdinaryReflectionTypeLeavesProgram.cs" />
     <Compile Remove="NestedGenericTypeNameSubset.cs" />
     <Compile Remove="GenericDefinitionSymbolNeighbors.cs" />
+    <Compile Remove="PropertyAccessorRowsSubset.cs" />
   </ItemGroup>
 
   <ItemGroup>
