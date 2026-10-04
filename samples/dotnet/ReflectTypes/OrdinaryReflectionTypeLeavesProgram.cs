@@ -16,5 +16,8 @@ static class Program
         if (args.Length > 0 && args[0] == "before-attribute-chain")
             return;
         AttributeTypePropertySubset.ChainedTypes.Run();
+        if (args.Length > 0 && args[0] == "before-nested-generic-names")
+            return;
+        NestedGenericTypeNameSubset.Program.Run();
     }
 }

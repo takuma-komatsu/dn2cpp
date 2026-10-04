@@ -14,6 +14,8 @@
     <Compile Include="ReflectAttrBoxedSubset.cs" />
     <Compile Include="ReflectRuntimeTypeParitySubset.cs" />
     <Compile Include="ReflectAssemblyErrorSubset.cs" />
+    <Compile Include="NestedGenericTypeNameSubset.cs" />
+    <Compile Include="GenericDefinitionSymbolNeighbors.cs" />
     <Compile Include="OrdinaryReflectionTypeLeavesProgram.cs" />
   </ItemGroup>
 </Project>

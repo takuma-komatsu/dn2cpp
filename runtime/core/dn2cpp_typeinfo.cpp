@@ -1044,8 +1044,7 @@ Dn2CppString* dn2cpp_type_name(const Dn2CppTypeInfo* ti)
     // A closed generic reports its definition's simple name (e.g. "List`1"), matching
     // .NET (typeof(List<int>).Name == typeof(List<>).Name), not the dn2cpp-mangled
     // instantiation name. FullName/ToString compose from the same two members
-    // (dn2cpp_type_fullname below); a NESTED closed generic has no genericDef —
-    // CppEmitter.GenericDefInfo carves it out — so all three stay mangled there.
+    // (dn2cpp_type_fullname below).
     if (ti->genericArgCount > 0 && ti->genericDef != nullptr)
         ti = ti->genericDef;
     const char* simple = dn2cpp_simple_type_name(ti->name);

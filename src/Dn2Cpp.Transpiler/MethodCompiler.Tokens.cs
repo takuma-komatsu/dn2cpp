@@ -184,9 +184,7 @@ internal sealed partial class MethodCompiler
     /// same handle a closed instantiation's <c>genericDef</c> points at — and
     /// <see cref="Compilation.NoteTypeofOpenGenericDef"/> makes the emitter guarantee the
     /// symbol is defined even when the program instantiates no close of the definition
-    /// (cut ⟹ route). NESTED definitions are carved out exactly as <c>GenericDefInfo</c>
-    /// carves them (a nested type's FullName is not the simple namespaced name), staying the
-    /// pre-existing null fold.</summary>
+    /// (cut ⟹ route). Nested typeof-open definitions retain their null boundary.</summary>
     private string? OpenGenericDefTypeInfoExpr(TypeDesc target)
     {
         // The name plus, for a synthetic gendef (a def no closed instantiation minted a
@@ -211,7 +209,7 @@ internal sealed partial class MethodCompiler
         if (def.Name is null)
             return null;
         _c.NoteTypeofOpenGenericDef(def.Name, def.Kind, def.ParamNames);
-        return "&gendef_" + CppNaming.Sanitize(def.Name);
+        return "&gendef_" + CppNaming.GenericDefinitionStem(def.Name);
     }
 
     /// <summary>The <see cref="GenericDefKind"/> bits of a resolved open-definition
@@ -229,7 +227,7 @@ internal sealed partial class MethodCompiler
 
     /// <summary>The CLR backtick full name of the top-level open generic definition at
     /// <paramref name="handle"/> in <paramref name="m"/> (e.g. "MyNs.Box`1"), or null for a
-    /// nested one — the same shape and carve-out as <c>CppEmitter.GenericDefInfo</c>.</summary>
+    /// nested one.</summary>
     internal static string? OpenDefBacktickName(Module m, TypeDefinitionHandle handle)
     {
         var reader = m.Reader;

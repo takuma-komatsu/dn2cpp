@@ -6,6 +6,8 @@
 # references, byte[] handling, GetSubArray (ranges), packed/struct-element arrays,
 # array-as-collection (IList/ICollection) APIs, enum-element arrays, and
 # System.Buffers.ArrayPool<T>.Shared rented arrays.
+# Nested generic interface variance reaches default comparison, array/span/list
+# sorting and binary search through public and explicit implementations.
 # Former gates: array-ops, array-contains, array-range, array-resize, array-sort,
 # array-data-ref, byte-array, getsubarray, packed-array, array-collection, enumarray,
 # arraypool.
@@ -209,7 +211,7 @@ gate_extra_asserts() {
     done
 }
 
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|array-box-shared-generics|before-array-provenance"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|array-box-shared-generics|before-array-provenance|before-nested-interface-variance"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/ArrayCore/BoxProvenanceOnly.csproj samples/dotnet/ArrayCore/BoxProvenanceProgram.cs samples/dotnet/ArrayCore/ReflectionReturnBoxOnly.csproj samples/dotnet/ArrayCore/ReflectionReturnBoxProgram.cs samples/dotnet/ArrayCore/DiamondProvenanceOnly.csproj samples/dotnet/ArrayCore/DiamondProvenanceProgram.cs samples/dotnet/ArrayCore/FieldAliasProvenanceOnly.csproj samples/dotnet/ArrayCore/FieldAliasProvenanceProgram.cs samples/dotnet/ArrayCore/FieldAliasProvenanceSubset.cs samples/dotnet/ArrayCore/ArrayElementAliasProgram.cs samples/dotnet/ArrayCore/ArrayElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayObjectElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayUnknownElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayErasedElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayReferenceSlotAliasOnly.csproj samples/dotnet/ArrayCore/ArrayReflectedVoidBoxOnly.csproj samples/dotnet/ArrayCore/ArrayReflectedVoidBoxProgram.cs samples/dotnet/ArrayCore/ArrayFutureStoreOnly.csproj samples/dotnet/ArrayCore/ArrayFutureStoreProgram.cs samples/dotnet/ArrayCore/ArrayFutureNullStoreOnly.csproj samples/dotnet/ArrayCore/ArrayObjectFutureStoreOnly.csproj samples/dotnet/ArrayCore/ArrayObjectFutureStoreProgram.cs"
 corelib_diff_gate ArrayCore System.Collections
 
@@ -249,6 +251,28 @@ for line in '== array search loop provenance ==' \
         'array search loop provenance end'; do
     grep -Fxq -- "$line" <<< "$native" \
         || { echo "FAIL: array loop witness missing: $line" >&2; exit 1; }
+done
+
+previous=$(run_bounded dotnet "$_CG_APP" before-nested-interface-variance)
+previous=$(strip_cr_win "$previous")
+prefix=$(awk '/^== nested generic interface variance ==$/ { exit } { print }' <<< "$native")
+assert_output "$prefix" "$previous"
+for line in '== nested generic interface variance ==' \
+    'nested direct=-1' 'nested covariance=True' 'nested owner distinct=False' \
+    'nested flat neighbor=False' 'nested escape neighbor=False' \
+    'variance nested definition=NestedInterfaceVarianceSubset.Outer+IOut`1' \
+    'variance flat definition=NestedInterfaceVarianceSubset.Outer_IOut`1' \
+    'nested explicit body=1' 'nested explicit interface=-1' \
+    'generic covariance=True' 'generic enclosing invariant=False' \
+    'generic middle invariant=False' 'nested generic interface variance end'; do
+    grep -Fxq -- "$line" <<< "$native" \
+        || { echo "FAIL: nested interface variance witness missing: $line" >&2; exit 1; }
+done
+for name in 'top public' 'top explicit' 'nested public' 'nested explicit' 'deep' 'generic enclosing'; do
+    for result in 'default=-1' 'held=1' 'array=1,2,3' 'search=1' 'span=1,2,3' 'list=1,2,3/1'; do
+        grep -Fxq -- "$name $result" <<< "$native" \
+            || { echo "FAIL: nested interface comparison mouth missing: $name $result" >&2; exit 1; }
+    done
 done
 for line in \
     'direct=0:1' \

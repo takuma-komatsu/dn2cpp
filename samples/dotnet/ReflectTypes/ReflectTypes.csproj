@@ -15,6 +15,8 @@
     <Compile Remove="ReflectRuntimeTypeParitySubset.cs" />
     <Compile Remove="ReflectAssemblyErrorSubset.cs" />
     <Compile Remove="OrdinaryReflectionTypeLeavesProgram.cs" />
+    <Compile Remove="NestedGenericTypeNameSubset.cs" />
+    <Compile Remove="GenericDefinitionSymbolNeighbors.cs" />
   </ItemGroup>
 
   <ItemGroup>
