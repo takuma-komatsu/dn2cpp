@@ -5,9 +5,14 @@
 #
 #     ./gates/pre-merge.sh                # the real thing (~1-2h, plus a self-host
 #                                         # build or a fork-cache refresh when one is due)
+#     ./gates/pre-merge.sh --skip-godot   # strict non-Godot check (partial scope)
 #     ./gates/pre-merge.sh --dry-run      # print the exact runs, execute nothing
 #     ./gates/pre-merge.sh --keep-going   # run Debug even after Release fails
 #     DN2CPP_PREMERGE_SELFTEST=1 ./gates/pre-merge.sh   # self-test, no suite run
+#
+# --skip-godot (also SKIP_GODOT=1) selects the non-Godot scope. It omits the
+# self-host/fork/template inputs, retains strict uncached suites in both configs,
+# and writes a partial-scope verdict and receipt rather than merge approval.
 #
 # WHAT IT RUNS, AND WHY EXACTLY THIS. One harness, the inputs the suites cannot
 # run without, and two full suites, in this order:
@@ -287,12 +292,14 @@ fi
 
 DRY_RUN=0
 KEEP_GOING=0
+SKIP_GODOT=${SKIP_GODOT:-0}
 for arg in "$@"; do
     case "$arg" in
         --dry-run)    DRY_RUN=1 ;;
         --keep-going) KEEP_GOING=1 ;;
+        --skip-godot) SKIP_GODOT=1 ;;
         -h|--help)
-            sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'
+            sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'
             exit 0
             ;;
         *)
@@ -325,8 +332,16 @@ if [ "$DRY_RUN" = "0" ] && [ "${DN2CPP_PREMERGE_SELFTEST:-0}" != "1" ] \
     exit "${PIPESTATUS[0]}"
 fi
 
-# The runner's own TOTAL: every build-and-run-*.sh, Godot gates included.
-EXPECTED_GATES=$(ls "$REPO"/gates/build-and-run-*.sh 2>/dev/null | wc -l | tr -d ' ')
+# Use the runner's phase membership rather than inferring scope from filenames.
+source "$REPO/gates/_godot_gate_chains.sh"
+ALL_GATES=$(ls "$REPO"/gates/build-and-run-*.sh 2>/dev/null | wc -l | tr -d ' ')
+EXCLUDED_GATES=0
+if [ "$SKIP_GODOT" = "1" ]; then
+    for gate in "${GODOT_GATES[@]}"; do
+        [ ! -f "$REPO/$gate" ] || EXCLUDED_GATES=$((EXCLUDED_GATES + 1))
+    done
+fi
+EXPECTED_GATES=$((ALL_GATES - EXCLUDED_GATES))
 
 say()  { printf '\n\033[1;36m══ %s\033[0m\n' "$*"; }
 good() { printf '\033[1;32m✔ %s\033[0m\n' "$*"; }
@@ -562,6 +577,8 @@ premerge_argv() {
         "LOGDIR=$logdir"
         "DN2CPP_REQUIRE_ALL=1"
         "DN2CPP_GATE_CACHE=0"
+        "SKIP_GODOT=$SKIP_GODOT"
+        "DN2CPP_REQUIRE_SCOPE=$([ "$SKIP_GODOT" = 1 ] && printf non-godot || printf all)"
         bash "$REPO/gates/run-all-gates.sh"
     )
 }
@@ -803,6 +820,7 @@ premerge_verdict() {
 # artifacts. Nothing here is a stand-in for either function; the fixtures stand
 # in for the run, which is the only part that cannot be conjured in a second.
 if [ "${DN2CPP_PREMERGE_SELFTEST:-0}" = "1" ]; then
+    SKIP_GODOT=0
     ST_PASS=0
     ST_FAIL=0
     st_ok()  { printf '  \033[32mPASS\033[0m %s\n' "$*"; ST_PASS=$((ST_PASS + 1)); }
@@ -856,9 +874,17 @@ if [ "${DN2CPP_PREMERGE_SELFTEST:-0}" = "1" ]; then
         st_bad "the two argvs differ beyond CONFIG/LOGDIR:\n  $ARGV_REL\n  $ARGV_DBG"
     fi
     case "$ARGV_REL" in
-        *SKIP_GODOT*) st_bad "argv sets SKIP_GODOT — it contradicts DN2CPP_REQUIRE_ALL=1" ;;
-        *)            st_ok "argv sets no SKIP_GODOT" ;;
+        *SKIP_GODOT=0*DN2CPP_REQUIRE_SCOPE=all*) st_ok "full argv selects all gates" ;;
+        *) st_bad "full argv does not select all gates" ;;
     esac
+    SKIP_GODOT=1
+    premerge_argv Debug /tmp/x-dbg
+    case "${PREMERGE_ARGV[*]}" in
+        *DN2CPP_REQUIRE_ALL=1*DN2CPP_GATE_CACHE=0*SKIP_GODOT=1*DN2CPP_REQUIRE_SCOPE=non-godot*)
+            st_ok "non-Godot argv keeps strict prerequisites and disables cache" ;;
+        *) st_bad "non-Godot argv lost strict scope settings" ;;
+    esac
+    SKIP_GODOT=0
 
     say "premerge_verdict"
 
@@ -912,6 +938,7 @@ if [ "${DN2CPP_PREMERGE_SELFTEST:-0}" = "1" ]; then
     FAKE="$ST_TMP/fakerepo"
     mkdir -p "$FAKE/gates"
     cp "$0" "$FAKE/gates/pre-merge.sh"
+    cp "$REPO/gates/_godot_gate_chains.sh" "$FAKE/gates/_godot_gate_chains.sh"
     chmod +x "$FAKE/gates/pre-merge.sh"
     : > "$FAKE/gates/build-and-run-a.sh"
     : > "$FAKE/gates/build-and-run-b.sh"
@@ -1271,8 +1298,7 @@ GFSTUB
         st_bad "fork-false-green: setup exit 0 was trusted without a fresh cache"
     fi
 
-    # A host with no arm for the lane: refused up front with exit 2, the same
-    # status and the same reason as the SKIP_GODOT refusal. Not exit 1 — this is
+    # A host with no arm for the lane: refused up front with exit 2. Not exit 1 — this is
     # not a red merge gate, it is a run that cannot be performed here.
     DN2CPP_STUB_OS=android e2e fork-no-arm 2 0 0 ""
     if grep -q 'no pre-merge run on this host' "$ST_TMP/e2e-fork-no-arm/_out.txt"; then
@@ -1703,6 +1729,7 @@ VERSION
     mkdir -p "$SH_REPO/gates" "$SH_REPO/src" "$SH_REPO/artifacts/selfhost-fullcli"
     printf 'source "%s"\n' "$REPO/gates/_common.sh" > "$SH_REPO/gates/_common.sh"
     cp "$0" "$SH_REPO/gates/pre-merge.sh"
+    cp "$REPO/gates/_godot_gate_chains.sh" "$SH_REPO/gates/_godot_gate_chains.sh"
     : > "$SH_REPO/gates/build-and-run-a.sh"
     printf 'the transpiler\n' > "$SH_REPO/src/a.cs"
     git -C "$SH_REPO" init -q
@@ -1807,17 +1834,30 @@ VERSION
         st_bad "gates/selfhost-emit.sh does not exist — the phase would die at exec"
     fi
 
-    # A pre-merge that honours SKIP_GODOT would be a merge gate with seventeen
-    # gates missing; the refusal has to come from here, not as a mystery exit 2
-    # out of run #1.
-    SG_RC=0
-    SKIP_GODOT=1 DN2CPP_PREMERGE_SELFTEST=0 DN2CPP_PREMERGE_LOGROOT="$ST_TMP/e2e-skipgodot" \
-        bash "$FAKE/gates/pre-merge.sh" >"$ST_TMP/skipgodot.txt" 2>&1 || SG_RC=$?
-    if [ "$SG_RC" = "2" ] && grep -q 'SKIP_GODOT=1 is set' "$ST_TMP/skipgodot.txt"; then
-        st_ok "SKIP_GODOT=1 is refused up front (exit 2)"
-    else
-        st_bad "SKIP_GODOT=1 -> exit $SG_RC without the refusal message"
-    fi
+    say "non-Godot scope"
+    # A non-Godot filename in a Godot chain must still be excluded.
+    : > "$FAKE/gates/build-and-run-sdk-sample.sh"
+    for mode in flag environment; do
+        SG_ROOT="$ST_TMP/e2e-skipgodot-$mode"
+        SG_RC=0
+        SG_ARG=""
+        SG_SKIP=0
+        if [ "$mode" = flag ]; then SG_ARG=--skip-godot; else SG_SKIP=1; fi
+        SKIP_GODOT="$SG_SKIP" DN2CPP_PREMERGE_SELFTEST=0 \
+        DN2CPP_PREMERGE_LOGROOT="$SG_ROOT" \
+        DN2CPP_STUB_SELFHOST_RC=99 DN2CPP_STUB_FORK_RC=99 \
+        DN2CPP_STUB_EMSDK_RC=99 DN2CPP_STUB_OS=unsupported \
+            bash "$FAKE/gates/pre-merge.sh" $SG_ARG >"$ST_TMP/skipgodot-$mode.txt" 2>&1 || SG_RC=$?
+        if [ "$SG_RC" = 0 ] && grep -q 'PARTIAL SCOPE; merge not approved' "$SG_ROOT/_receipt.txt" \
+            && grep -q 'gates:   2 per config' "$SG_ROOT/_receipt.txt" \
+            && [ "$(cat "$SG_ROOT/_stub_calls.txt" | tr '\n' ',')" = 'Release,Debug,' ] \
+            && ! grep -q 'stub self-host\|stub fork setup\|stub emsdk' "$ST_TMP/skipgodot-$mode.txt"; then
+            st_ok "$mode: non-Godot scope runs both suites and excludes Godot inputs"
+        else
+            st_bad "$mode: non-Godot scope failed (exit $SG_RC)"
+        fi
+    done
+    rm "$FAKE/gates/build-and-run-sdk-sample.sh"
 
     say "premerge_cmake_cache_warn"
 
@@ -2113,15 +2153,6 @@ fi
 
 # ── refusals ─────────────────────────────────────────────────────────────────
 
-# SKIP_GODOT and REQUIRE_ALL are a contradiction the runner already refuses
-# (exit 2). Catch it here so the message names the pre-merge contract rather
-# than arriving as a mystery non-zero from run #1.
-if [ "${SKIP_GODOT:-0}" = "1" ]; then
-    bad "SKIP_GODOT=1 is set. The merge gate demands every gate run; there is no"
-    bad "pre-merge run that skips the seventeen Godot gates. Unset it."
-    exit 2
-fi
-
 if [ "$EXPECTED_GATES" -lt 1 ]; then
     bad "found no gates/build-and-run-*.sh under $REPO — wrong directory?"
     exit 2
@@ -2138,6 +2169,7 @@ say "dn2cpp pre-merge gate"
 note "repo:   $REPO"
 note "commit: $HEAD_BRANCH @ $HEAD_SHA$DIRTY"
 note "gates:  $EXPECTED_GATES"
+[ "$SKIP_GODOT" != 1 ] || warn "PARTIAL SCOPE: $EXCLUDED_GATES Godot gates excluded; this run does not approve a merge."
 note "logs:   $LOGROOT"
 [ "$DRY_RUN" = "0" ] && note "record: $TRANSCRIPT"
 
@@ -2155,6 +2187,7 @@ if [ "$DRY_RUN" = "1" ]; then
     printf '\n  culture-invariance harness:\n    '
     printf '%s ' "${PREMERGE_CULTURE_ARGV[@]}"
     printf '\n    then assert: exit 0 (green) or 77 (host cannot decide); 1 is a red merge gate\n'
+    if [ "$SKIP_GODOT" != 1 ]; then
     premerge_selfhost_state
     printf '\n  self-hosted native CLI:\n'
     if [ "$SELFHOST_FRESH" = "0" ]; then
@@ -2209,6 +2242,9 @@ if [ "$DRY_RUN" = "1" ]; then
                 printf '\n'
             done
         fi
+    fi
+    else
+        note "Godot self-host, fork and template provisioning/preflights excluded."
     fi
     for cfg in $CONFIGS; do
         logdir="$LOGROOT/$(printf '%s' "$cfg" | tr 'A-Z' 'a-z')"
@@ -2286,6 +2322,7 @@ esac
 # is why neither is written twice: a build this phase skips and the fork gates
 # then demand is the worst failure shape available — hours of green, then a
 # REQUIRE_ALL skip over a file this run could have produced in minutes.
+if [ "$SKIP_GODOT" != 1 ]; then
 say "self-host native CLI (gates/selfhost-emit.sh)"
 premerge_selfhost_state
 SELFHOST_NOTE="(unset)"
@@ -2483,6 +2520,13 @@ if [ "$INPUTS_RED" -eq 0 ]; then
     fi
 fi
 
+else
+    SELFHOST_NOTE="excluded (non-Godot scope)"
+    FORK_NOTE="excluded (non-Godot scope)"
+    FORK_WEB_NOTE="excluded (non-Godot scope)"
+    RESULTS="${RESULTS}Godot=excluded "
+fi
+
 for cfg in $CONFIGS; do
     logdir="$LOGROOT/$(printf '%s' "$cfg" | tr 'A-Z' 'a-z')"
     # Withheld after a broken input or a plainly red suite, never for a host
@@ -2527,7 +2571,13 @@ if [ "$OVERALL" -eq 0 ]; then
     # was not there. It records the commit, because a green run of a different
     # tree is not evidence about this one.
     {
-        printf 'dn2cpp pre-merge PASSED\n'
+        if [ "$SKIP_GODOT" = 1 ]; then
+            printf 'dn2cpp NON-GODOT CHECK PASSED (PARTIAL SCOPE; merge not approved)\n'
+            printf 'scope:   non-Godot; %s Godot gates excluded\n' "$EXCLUDED_GATES"
+        else
+            printf 'dn2cpp pre-merge PASSED\n'
+            printf 'scope:   all gates\n'
+        fi
         printf 'when:    %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
         printf 'repo:    %s\n' "$REPO"
         printf 'commit:  %s @ %s%s\n' "$HEAD_BRANCH" "$HEAD_SHA" "$DIRTY"
@@ -2550,7 +2600,11 @@ if [ "$OVERALL" -eq 0 ]; then
         [ "$PREMERGE_STALE" -gt 0 ] && \
             printf 'stale:   %s CMake build dir(s) warned about before the run\n' "$PREMERGE_STALE"
     } > "$RECEIPT"
-    good "PRE-MERGE PASSED — both configs, $EXPECTED_GATES gates each, every gate ran."
+    if [ "$SKIP_GODOT" = 1 ]; then
+        good "NON-GODOT CHECK PASSED — both configs, $EXPECTED_GATES gates each; PARTIAL SCOPE, merge not approved."
+    else
+        good "PRE-MERGE PASSED — both configs, $EXPECTED_GATES gates each, every gate ran."
+    fi
     note "receipt: $RECEIPT"
     note "record:  $TRANSCRIPT"
     exit 0

@@ -33,6 +33,12 @@ Running this much locally is enough:
 SKIP_GODOT=1 ./gates/run-all-gates.sh    # the non-Godot suite
 ```
 
+For a strict non-Godot check in both Release and Debug, use
+`./gates/pre-merge.sh --skip-godot` (or `SKIP_GODOT=1`). This omits the Godot
+phase and its self-host/fork/template preparation. Selected gates still must
+run with caching disabled; missing prerequisites fail the check. Its verdict
+and receipt identify the partial scope and do not approve a merge.
+
 **A skip is not a pass.** A gate whose optional prerequisite is absent opts out
 via `gate_skip` (`gates/_common.sh`) and is counted and reported **separately**
 with its reason, so the summary never claims all N passed when some never ran.
