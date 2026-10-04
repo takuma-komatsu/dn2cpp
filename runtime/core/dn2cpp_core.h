@@ -5816,6 +5816,7 @@ int32_t dn2cpp_object_equals(Dn2CppObject* a, Dn2CppObject* b);
 // null included, where dn2cpp_object_equals (static Object.Equals) answers those
 // first. So every `equals` slot accepts a null argument.
 int32_t dn2cpp_object_equals_virtual(Dn2CppObject* self, Dn2CppObject* other);
+int32_t dn2cpp_object_equals_nonvirtual(Dn2CppObject* self, Dn2CppObject* other);
 // Non-generic Array search has a null fast path only for reference arrays.
 // A boxed value with no emitted Equals slot must fail explicitly rather than
 // silently take Object's reference-equality fallback.

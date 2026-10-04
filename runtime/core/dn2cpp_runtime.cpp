@@ -659,6 +659,11 @@ int32_t dn2cpp_object_equals(Dn2CppObject* a, Dn2CppObject* b)
     return 0; // default Object.Equals: reference equality (already !=, so false)
 }
 
+int32_t dn2cpp_object_equals_nonvirtual(Dn2CppObject* self, Dn2CppObject* other)
+{
+    return self == other ? 1 : 0;
+}
+
 int32_t dn2cpp_object_equals_virtual(Dn2CppObject* self, Dn2CppObject* other)
 {
     const Dn2CppTypeInfo* t = dn2cpp_null_check(self)->type;

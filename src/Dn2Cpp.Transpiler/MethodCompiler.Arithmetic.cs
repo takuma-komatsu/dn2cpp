@@ -2129,15 +2129,19 @@ internal sealed partial class MethodCompiler
     /// <summary>The runtime helper a call of System.Object's ToString(), Equals(object) or
     /// GetHashCode() lowers to, whose signature is the method's with the receiver first;
     /// null for any other method.</summary>
-    private static string? ObjectDispatchHelper(MethodInfo m)
+    private static string? ObjectDispatchHelper(MethodInfo m, bool virtualBinding = true)
     {
-        if (m.IsStatic || m.DeclaringClass.FullName != "System.Object")
+        if (m.IsStatic || m.DeclaringClass.FullName != "System.Object"
+            || !CoreIntrinsics.IsObjectVirtualFunctionShape(m.Name, m.Signature))
             return null;
-        return (m.Name, m.Signature.ParameterTypes) switch
+        return (m.Name, virtualBinding) switch
         {
-            ("ToString", []) => "dn2cpp_object_tostring_virtual",
-            ("GetHashCode", []) => "dn2cpp_object_gethashcode",
-            ("Equals", [{ IsObject: true }]) => "dn2cpp_object_equals_virtual",
+            ("ToString", true) => "dn2cpp_object_tostring_virtual",
+            ("GetHashCode", true) => "dn2cpp_object_gethashcode",
+            ("Equals", true) => "dn2cpp_object_equals_virtual",
+            ("ToString", false) => "dn2cpp_object_tostring_nonvirtual",
+            ("GetHashCode", false) => "dn2cpp_object_hashcode",
+            ("Equals", false) => "dn2cpp_object_equals_nonvirtual",
             _ => null,
         };
     }

@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using Dn2Cpp.Runtime;
 
 namespace HotUpdateBase;
@@ -22,6 +23,9 @@ public interface IDescribable
 public delegate int IntTransform(int x);
 public delegate void IntSink(int x);
 public delegate string Describer();
+public delegate bool ObjectComparer(object? value);
+public delegate int ObjectHasher();
+public delegate string? ObjectDescriber();
 // The patch binds Object.GetType (an instance INTRINSIC import) into this via
 // ldftn, driving the delegate route: it reaches the wrapper without crossing a
 // dispatch loop's call arm, so the delegate capture is the only point at which
@@ -94,6 +98,7 @@ public class Counter
     public static Shelf? PatchShelf;
     // A patch-constructed receiver below Plaque, which Main reflects over.
     public static Plaque? PatchPlaque;
+    public static Slate? PatchSlate;
 
     // Hands a QuotaEx to the HotUpdateInvokerPatch / HotUpdateFtnPatch fixtures
     // through a well-known static on a DIFFERENT type: those patches must leave
@@ -463,6 +468,139 @@ public class Plaque
     {
         return "plaque";
     }
+
+    public override bool Equals(object? other)
+    {
+        return other is Plaque;
+    }
+
+    public override int GetHashCode()
+    {
+        return 73;
+    }
+}
+
+public class Slate
+{
+}
+
+public sealed class ExternalObjectAttribute : Attribute
+{
+}
+
+public sealed class ObjectBodyProbe
+{
+    public override string ToString() => "override";
+    public override bool Equals(object? other) => other is ObjectBodyProbe;
+    public override int GetHashCode() => 91;
+    public ObjectDescriber BaseText() => base.ToString;
+    public ObjectComparer BaseEquals() => base.Equals;
+    public ObjectHasher BaseHash() => base.GetHashCode;
+}
+
+public sealed class ObjectGroupOnlyProbe
+{
+    public override string ToString() => "group-only";
+    public override bool Equals(object? other) => other is ObjectGroupOnlyProbe;
+    public override int GetHashCode() => 101;
+}
+
+public static class ObjectVirtualProbe
+{
+    private static string Named(MethodInfo? method)
+    {
+        return method is null ? "null" : method.DeclaringType + "." + method.Name;
+    }
+
+    public static void Inherited(object receiver)
+    {
+        Console.WriteLine("== inherited Object virtuals ==");
+        Type type = receiver.GetType();
+        Console.WriteLine("lookup=" + Named(type.GetMethod("ToString")) + "/"
+            + Named(type.GetMethod("Equals", new[] { typeof(object) })) + "/" + Named(type.GetMethod("GetHashCode")));
+        var text = (Describer)Delegate.CreateDelegate(typeof(Describer), receiver, typeof(object).GetMethod("ToString")!);
+        var equals = (ObjectComparer)Delegate.CreateDelegate(typeof(ObjectComparer), receiver,
+            typeof(object).GetMethod("Equals", new[] { typeof(object) })!);
+        var hash = (ObjectHasher)Delegate.CreateDelegate(typeof(ObjectHasher), receiver, typeof(object).GetMethod("GetHashCode")!);
+        Console.WriteLine("methods=" + Named(text.Method) + "/" + Named(equals.Method) + "/" + Named(hash.Method));
+        Console.WriteLine("targets=" + ReferenceEquals(text.Target, receiver) + "/"
+            + ReferenceEquals(equals.Target, receiver) + "/" + ReferenceEquals(hash.Target, receiver));
+        Console.WriteLine("calls=" + (text() == type.FullName) + "/" + equals(receiver) + "/"
+            + equals(new Slate()) + "/" + (hash() == receiver.GetHashCode()));
+        Console.WriteLine("== inherited Object virtuals end ==");
+    }
+
+    private static void Normal(object receiver)
+    {
+        ObjectDescriber text = receiver.ToString;
+        ObjectComparer equals = receiver.Equals;
+        ObjectHasher hash = receiver.GetHashCode;
+        var textRow = (ObjectDescriber)Delegate.CreateDelegate(typeof(ObjectDescriber), receiver, typeof(object).GetMethod("ToString")!);
+        var equalsRow = (ObjectComparer)Delegate.CreateDelegate(typeof(ObjectComparer), receiver,
+            typeof(object).GetMethod("Equals", new[] { typeof(object) })!);
+        var hashRow = (ObjectHasher)Delegate.CreateDelegate(typeof(ObjectHasher), receiver, typeof(object).GetMethod("GetHashCode")!);
+        Console.WriteLine("group-methods=" + Named(text.Method) + "/" + Named(equals.Method) + "/" + Named(hash.Method));
+        Console.WriteLine("group-rows=" + text.Method.Equals(textRow.Method) + "/"
+            + equals.Method.Equals(equalsRow.Method) + "/" + hash.Method.Equals(hashRow.Method));
+        Console.WriteLine("group-targets=" + ReferenceEquals(text.Target, receiver) + "/"
+            + ReferenceEquals(equals.Target, receiver) + "/" + ReferenceEquals(hash.Target, receiver));
+        Console.WriteLine("group-calls=" + (text() == receiver.ToString()) + "/" + equals(new Plaque()) + "/"
+            + equals(null) + "/" + (hash() == receiver.GetHashCode()));
+    }
+
+    public static void Groups(object belowOverride, object belowObject)
+    {
+        Console.WriteLine("== Object virtual method groups ==");
+        Normal(belowOverride);
+        Normal(belowObject);
+        var receiver = new ObjectBodyProbe();
+        ObjectDescriber text = receiver.BaseText();
+        ObjectComparer equals = receiver.BaseEquals();
+        ObjectHasher hash = receiver.BaseHash();
+        Console.WriteLine("base-methods=" + Named(text.Method) + "/" + Named(equals.Method) + "/" + Named(hash.Method));
+        Console.WriteLine("base-targets=" + ReferenceEquals(text.Target, receiver) + "/"
+            + ReferenceEquals(equals.Target, receiver) + "/" + ReferenceEquals(hash.Target, receiver));
+        Console.WriteLine("base-calls=" + (text() == receiver.GetType().FullName) + "/" + equals(receiver) + "/"
+            + equals(new ObjectBodyProbe()) + "/" + equals(null) + "/" + (hash() == RuntimeHelpers.GetHashCode(receiver)));
+        object virtualReceiver = receiver;
+        Console.WriteLine("override-calls=" + virtualReceiver.ToString() + "/"
+            + virtualReceiver.Equals(new ObjectBodyProbe()) + "/" + virtualReceiver.GetHashCode());
+        object only = new ObjectGroupOnlyProbe();
+        ObjectDescriber onlyText = only.ToString;
+        ObjectComparer onlyEquals = only.Equals;
+        ObjectHasher onlyHash = only.GetHashCode;
+        Console.WriteLine("only-methods=" + Named(onlyText.Method) + "/" + Named(onlyEquals.Method) + "/" + Named(onlyHash.Method));
+        Console.WriteLine("only-calls=" + onlyText() + "/" + onlyEquals(new ObjectGroupOnlyProbe()) + "/" + onlyHash());
+        object? missing = null;
+        try
+        {
+            ObjectDescriber bind = missing!.ToString;
+            Console.WriteLine("null text bound=" + (bind is not null));
+        }
+        catch (NullReferenceException)
+        {
+            Console.WriteLine("null text=NullReferenceException");
+        }
+        try
+        {
+            ObjectComparer bind = missing!.Equals;
+            Console.WriteLine("null equals bound=" + (bind is not null));
+        }
+        catch (NullReferenceException)
+        {
+            Console.WriteLine("null equals=NullReferenceException");
+        }
+        try
+        {
+            ObjectHasher bind = missing!.GetHashCode;
+            Console.WriteLine("null hash bound=" + (bind is not null));
+        }
+        catch (NullReferenceException)
+        {
+            Console.WriteLine("null hash=NullReferenceException");
+        }
+        Console.WriteLine("== Object virtual method groups end ==");
+    }
 }
 
 public interface ISorter
@@ -560,6 +698,19 @@ internal static class Program
         // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+
+        if (args.Length == 1 && args[0] == "--object-inheritance-oracle")
+        {
+            ObjectVirtualProbe.Inherited(new Slate());
+            if (new ExternalObjectAttribute() is null)
+                Console.WriteLine("unreachable");
+            return;
+        }
+        if (args.Length == 1 && args[0] == "--object-groups-oracle")
+        {
+            ObjectVirtualProbe.Groups(new Plaque(), new Slate());
+            return;
+        }
 
         // Deployment-driver modes, dispatched before any output so the classic
         // single-BPI transcript below stays byte-identical. --load-dir applies
@@ -708,6 +859,7 @@ internal static class Program
         object plaque = new Plaque();
         if (plaque.ToString() != "plaque")
             Console.WriteLine("unreachable");
+        _ = new Slate();
         // Receivers the base dispatches only through interfaces. Silent.
         ITagger crate = new Crate();
         ITagger steel = new SteelCrate();
@@ -757,6 +909,10 @@ internal static class Program
             PatchReceiverReflection(Counter.PatchShelf);
         if (Counter.PatchPlaque is not null)
             PatchReceiverObjectVirtuals(Counter.PatchPlaque);
+        if (Counter.PatchSlate is not null)
+            ObjectVirtualProbe.Inherited(Counter.PatchSlate);
+        if (Counter.PatchPlaque is not null && Counter.PatchSlate is not null)
+            ObjectVirtualProbe.Groups(Counter.PatchPlaque, Counter.PatchSlate);
     }
 
     private static string Describe(MethodInfo method)
@@ -790,8 +946,6 @@ internal static class Program
     // A patch type runs its nearest AOT ancestor's Object virtuals, so a delegate
     // over a patch receiver bound to one by reflection reports that ancestor's
     // override, the row a by-name lookup on the patch type finds.
-    // HotUpdateCoreLibBase also binds method groups, which a base without a
-    // CoreLib cannot transpile over an Object virtual.
     private static void PatchReceiverObjectVirtuals(object plaque)
     {
         Console.WriteLine("== object virtuals over a patch receiver ==");

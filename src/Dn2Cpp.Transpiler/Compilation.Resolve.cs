@@ -6,6 +6,69 @@ namespace Dn2Cpp;
 
 internal sealed partial class Compilation
 {
+    // These address-only targets never enter Classes, TypeIndex or metadata walks.
+    private ClassInfo? _runtimeObjectFunctionOwner;
+    private readonly Dictionary<string, MethodInfo> _runtimeObjectFunctions = new(StringComparer.Ordinal);
+
+    internal bool IsRuntimeObjectFunction(MethodInfo method) => _runtimeObjectFunctionOwner is not null
+        && ReferenceEquals(method.DeclaringClass, _runtimeObjectFunctionOwner)
+        && method.IsSynthetic && method.Handle.IsNil;
+
+    internal MethodInfo ResolveFunctionMemberRef(Module module, MemberReferenceHandle handle, GenericContext context) =>
+        TryResolveMemberRefMethod(module, handle, context) ?? TryRuntimeObjectFunction(module, handle)
+        ?? ResolveMemberRefMethod(module, handle, context);
+
+    private MethodInfo? TryRuntimeObjectFunction(Module module, MemberReferenceHandle handle)
+    {
+        var reader = module.Reader;
+        var member = reader.GetMemberReference(handle);
+        string name = reader.GetString(member.Name);
+        if (name is not ("ToString" or "Equals" or "GetHashCode")
+            || member.Parent.Kind != HandleKind.TypeReference
+            || !IsRuntimeObjectTypeReference(module, (TypeReferenceHandle)member.Parent)
+            || ResolveTypeRef(module, (TypeReferenceHandle)member.Parent) is not null)
+            return null;
+        var blob = reader.GetBlobReader(member.Signature);
+        var header = blob.ReadSignatureHeader();
+        if (header.Kind != SignatureKind.Method || !header.IsInstance || header.HasExplicitThis
+            || header.IsGeneric || header.CallingConvention != SignatureCallingConvention.Default)
+            return null;
+        int count = blob.ReadCompressedInteger();
+        int expectedCount = name == "Equals" ? 1 : 0;
+        var result = blob.ReadSignatureTypeCode();
+        var expectedResult = name == "ToString" ? SignatureTypeCode.String
+            : name == "Equals" ? SignatureTypeCode.Boolean : SignatureTypeCode.Int32;
+        if (count != expectedCount || result != expectedResult
+            || (count == 1 && blob.ReadSignatureTypeCode() != SignatureTypeCode.Object)
+            || blob.RemainingBytes != 0)
+            return null;
+        if (_runtimeObjectFunctions.TryGetValue(name, out var cached))
+            return cached;
+        // Reachability warms every address load before parallel body compilation.
+        if (Phase == EmitPhase.Emission)
+            throw new InvalidOperationException($"runtime Object function {name} was not prepared before emission");
+        _runtimeObjectFunctionOwner ??= new ClassInfo
+        {
+            Namespace = "System", Name = "Object", Module = AppModule, Handle = default,
+            IntrinsicCppName = "Dn2CppObject",
+        };
+        var signature = new MethodSignature<TypeDesc>(header,
+            TypeDesc.MakePrimitive(name == "ToString" ? PrimitiveTypeCode.String
+                : name == "Equals" ? PrimitiveTypeCode.Boolean : PrimitiveTypeCode.Int32),
+            count, 0, count == 0 ? System.Collections.Immutable.ImmutableArray<TypeDesc>.Empty
+                : System.Collections.Immutable.ImmutableArray.Create(TypeDesc.MakePrimitive(PrimitiveTypeCode.Object)));
+        if (!CoreIntrinsics.IsObjectVirtualFunctionShape(name, signature))
+            throw new InvalidOperationException($"runtime Object function {name} has an invalid signature");
+        var target = new MethodInfo
+        {
+            DeclaringClass = _runtimeObjectFunctionOwner, Name = name, Module = AppModule, Handle = default,
+            Signature = signature, Attributes = MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.NewSlot,
+            Context = GenericContext.Empty, IsSynthetic = true,
+        };
+        _runtimeObjectFunctions.Add(name, target);
+        return target;
+    }
+
     // ---- call-target resolution: token -> MethodInfo, and its foldable views ----
 
     /// <summary>Resolves a call/newobj/ldftn target to a MethodInfo, or null

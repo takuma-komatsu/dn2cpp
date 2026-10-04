@@ -824,6 +824,17 @@ internal static partial class CoreIntrinsics
     public static bool IsObjectMemberRowName(string name) =>
         name is "ToString" or "Equals" or "GetHashCode" or "GetType" or "Finalize" or "ReferenceEquals";
 
+    internal static bool IsObjectVirtualFunctionShape(string name, MethodSignature<TypeDesc> sig) =>
+        sig.Header.Kind == SignatureKind.Method && sig.Header.IsInstance && !sig.Header.HasExplicitThis
+        && sig.Header.CallingConvention == SignatureCallingConvention.Default && sig.GenericParameterCount == 0
+        && (name, sig.ReturnType, sig.ParameterTypes) switch
+        {
+            ("ToString", { IsString: true }, []) => true,
+            ("Equals", { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }, [{ IsObject: true }]) => true,
+            ("GetHashCode", { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }, []) => true,
+            _ => false,
+        };
+
     /// <summary>The generic members of intrinsic-mapped types whose real CoreLib bodies are
     /// plain managed code. System.Array's: ThrowHelper argument checks, element reads, a
     /// delegate invoke, a List&lt;T&gt; or ReadOnlyCollection&lt;T&gt;, and calls to each

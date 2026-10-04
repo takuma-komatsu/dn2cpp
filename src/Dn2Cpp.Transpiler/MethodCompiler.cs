@@ -3665,6 +3665,10 @@ internal sealed partial class MethodCompiler : IEvalStack
                 {
                     expr = DelegateInvokeAddress(m);
                 }
+                else if (ObjectDispatchHelper(m, virtualBinding: false) is { } objectHelper)
+                {
+                    expr = $"(void*)&{objectHelper}";
+                }
                 else if (m.IsStatic && _ftnDelegateUse.TryGetValue(insn.Offset, out var dgClass))
                 {
                     // Delegates invoke with a target slot; static targets get an

@@ -2599,6 +2599,8 @@ internal sealed partial class CppEmitter
                         || !_e.IsOpaque(cls)
                         || (_e._emit.Contains(bc) && !bc.IsEnum && !_e.SkipsCanonicalMetadata(bc)))
                 ? _e.TypeInfoRef(bc, "base type-info of an emitted class")
+                : !cls.IsValueType && cls.BaseClass is null && Compilation.HasRuntimeObjectBase(cls)
+                    ? "&dn2cpp_object_type"
                 // An UNLOADED BCL exception base (a corelib-less `MyEx : SystemException`):
                 // no ClassInfo exists to chain through, so chain straight to the shared
                 // runtime handle — the per-type one when the runtime raises that base, else
