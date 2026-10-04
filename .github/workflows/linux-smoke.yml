@@ -1,9 +1,10 @@
 # linux-smoke.yml — THIS IS NOT THE MERGE GATE.
 #
-# The merge gate is `./gates/pre-merge.sh` (two full suites, Release and Debug,
-# each under DN2CPP_REQUIRE_ALL=1 DN2CPP_GATE_CACHE=0). It is run by a human on
-# a fully provisioned machine, and it CANNOT be run here. Not "has not been
-# wired up yet" — cannot, and the reasons are structural:
+# The merge gate is `./gates/pre-merge.sh` (Debug by default, strict and uncached).
+# --skip-godot is sufficient for PRs without Godot-specific changes; coding agents
+# may run that check autonomously. Godot-specific changes require a human-run
+# Godot-inclusive check on a fully provisioned machine, which CANNOT run here.
+# The reasons are structural:
 #
 #   - The desktop/iOS/Android/Web editor-export lane runs a scons-built dn2cpp
 #     FORK of the Godot editor. gates/setup-godot-fork.sh builds one here, but
@@ -145,6 +146,8 @@ jobs:
         if: success()
         run: |
           echo "The non-Godot suite passed on Linux, with the runner's declared skips."
-          echo "This is NOT the merge gate. Before merging to main, run:"
-          echo "    ./gates/pre-merge.sh"
-          echo "on a fully provisioned machine (Release + Debug, DN2CPP_REQUIRE_ALL=1)."
+          echo "This is NOT the merge gate. For PRs without Godot-specific changes, run:"
+          echo "    ./gates/pre-merge.sh --skip-godot"
+          echo "Coding agents may run this strict Debug-default check autonomously."
+          echo "Godot-specific changes require a human-run ./gates/pre-merge.sh on a fully provisioned machine."
+          echo "Use --both-configs to run Release followed by Debug."

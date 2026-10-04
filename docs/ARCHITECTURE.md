@@ -765,13 +765,19 @@ that answer a fault differently are directly observable by a hot-update program.
 
 ## 6. Verification gates
 
-A change is DONE only when the full gate suite (`gates/build-and-run-*.sh`)
-exits 0. Run it via the parallel runner:
+A PR that changes no Godot-specific files may merge after the strict non-Godot
+pre-merge check passes in default Debug. Coding agents may run that check
+autonomously for any change. Godot-specific changes require a human-run
+Godot-inclusive pre-merge check; `AGENTS.md` defines the file scope. The
+parallel runner provides smoke checks separately:
 
 ```bash
 ./gates/run-all-gates.sh               # all gates (pre-build once → parallel; Godot chained)
 SKIP_GODOT=1 ./gates/run-all-gates.sh  # skip Godot for a faster smoke check
-./gates/pre-merge.sh                   # the merge gate: Release + Debug, no cache, no skips
+./gates/pre-merge.sh                   # the merge gate: Debug, no cache, no skips
+./gates/pre-merge.sh --skip-godot      # sufficient when no Godot-specific files change
+CONFIG=Release ./gates/pre-merge.sh    # Release only
+./gates/pre-merge.sh --both-configs    # Release then Debug, no cache, no skips
 
 # the representative trio per lane (manual smoke check)
 ./gates/build-and-run-sample.sh        # console

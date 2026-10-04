@@ -1089,14 +1089,17 @@ External contributions are welcome — `CONTRIBUTING.md` is the guide. Read
 `AGENTS.md` first (build, gates, module boundaries, code style) and the
 *Permanent non-goals* above.
 
-The full suite needs toolchains no contributor can be expected to have, so
-the merge gate (`./gates/pre-merge.sh`) runs on a maintainer's machine and
-not in CI. Before opening a PR, run the part that needs none of them:
+The merge gate runs Debug by default. For PRs that change no Godot-specific
+files, a passing `./gates/pre-merge.sh --skip-godot` is sufficient to merge;
+coding agents may run this strict non-Godot check autonomously for any change.
+Godot-specific changes require a human-run `./gates/pre-merge.sh` on a machine
+with the Godot toolchains. `AGENTS.md` defines the file scope, and hosted smoke
+CI does not replace either merge check. For local verification:
 
 ```bash
 ./gates/build-and-run-sample.sh          # console: C# → IL → C++ → native
 ./gates/build-and-run-multiassembly.sh   # multi-assembly (-r)
-SKIP_GODOT=1 ./gates/run-all-gates.sh    # the non-Godot suite
+./gates/pre-merge.sh --skip-godot        # strict Debug non-Godot merge check
 ```
 
 A failing gate is listed in `$LOGDIR/_failures.txt` with its log, a skipped

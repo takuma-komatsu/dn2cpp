@@ -942,8 +942,15 @@ if [ "$N_WARNED" -gt 0 ]; then
 fi
 if [ "$SKIP_GODOT" = "1" ]; then
     echo ""
-    printf '\033[1;33m⊘ %d Godot gate(s) NOT RUN (SKIP_GODOT=1) — this is a smoke check, not the gate.\033[0m\n' \
-        "${#GODOT_GATES[@]}"
+    if [ "$REQUIRE_ALL" = "1" ] && [ "${DN2CPP_GATE_CACHE:-1}" = "0" ] \
+        && [ "${DN2CPP_REQUIRE_SCOPE:-all}" = non-godot ]; then
+        printf '\033[1;33m⊘ %d Godot gate(s) NOT RUN (SKIP_GODOT=1) — strict non-Godot merge scope.\033[0m\n' \
+            "${#GODOT_GATES[@]}"
+        echo "  A passing pre-merge check is sufficient for PRs without Godot-specific changes."
+    else
+        printf '\033[1;33m⊘ %d Godot gate(s) NOT RUN (SKIP_GODOT=1) — this is a smoke check, not the gate.\033[0m\n' \
+            "${#GODOT_GATES[@]}"
+    fi
 fi
 
 echo ""
