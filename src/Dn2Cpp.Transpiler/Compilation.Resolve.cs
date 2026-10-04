@@ -655,6 +655,8 @@ internal sealed partial class Compilation
                     ResolveTypeRef(module, (TypeReferenceHandle)mr.Parent)?.Class
                     ?? throw new NotSupportedException(
                         $"Generic method's declaring type {MemberRefParentTypeName(module, (MemberReferenceHandle)ms.Method)} did not resolve to a loaded class"),
+                HandleKind.TypeDefinition =>
+                    ResolveTypeDefMemberRefClass(module, (TypeDefinitionHandle)mr.Parent),
                 _ => throw new NotSupportedException(
                     $"Generic method via MemberRef with a {mr.Parent.Kind} parent is not supported yet"),
             };
@@ -1165,8 +1167,18 @@ internal sealed partial class Compilation
         return (cls, fld);
     }
 
-    /// <summary>Resolves a method reference whose parent is a closed generic
-    /// instance (MemberRef with a TypeSpec parent).</summary>
+    private static ClassInfo ResolveTypeDefMemberRefClass(Module module, TypeDefinitionHandle handle)
+    {
+        if (module.ClassMap.TryGetValue(handle, out var cls))
+            return cls;
+        string name = TypeFullName(module.Reader, handle);
+        if (module.GenericTemplates.Contains(handle))
+            throw new NotSupportedException($"MemberRef parent '{name}' is an open generic definition; use a TypeSpecification parent");
+        throw new NotSupportedException($"Same-module MemberRef parent '{name}' could not be resolved");
+    }
+
+    /// <summary>Resolves a MemberRef on a closed generic instance, a loaded external
+    /// type, or a same-module non-generic definition.</summary>
     public MethodInfo ResolveMemberRefMethod(Module module, MemberReferenceHandle handle, GenericContext callerCtx)
     {
         var reader = module.Reader;
@@ -1189,6 +1201,10 @@ internal sealed partial class Compilation
             if (tr?.Class == null)
                 throw new NotSupportedException($"External type reference in MemberRef (parent {mr.Parent.Kind} token 0x{SRME.GetToken(mr.Parent):X8}) could not be resolved");
             cls = tr.Class;
+        }
+        else if (mr.Parent.Kind == HandleKind.TypeDefinition)
+        {
+            cls = ResolveTypeDefMemberRefClass(module, (TypeDefinitionHandle)mr.Parent);
         }
         else
         {
@@ -1266,15 +1282,15 @@ internal sealed partial class Compilation
     {
         var reader = module.Reader;
         var mr = reader.GetMemberReference(handle);
-        if (mr.Parent.Kind != HandleKind.TypeReference)
+        if (mr.Parent.Kind is not (HandleKind.TypeReference or HandleKind.TypeDefinition))
             return null;
-        var tr = reader.GetTypeReference((TypeReferenceHandle)mr.Parent);
-        string ns = reader.GetString(tr.Namespace);
-        string nm = reader.GetString(tr.Name);
-        string full = string.IsNullOrEmpty(ns) ? nm : ns + "." + nm;
-        if (CoreIntrinsics.IsIntrinsicType(full))
+        string? full = MemberRefParentTypeName(module, handle);
+        if (full is not null && CoreIntrinsics.IsIntrinsicType(full))
             return null;
-        if (ResolveTypeRef(module, (TypeReferenceHandle)mr.Parent)?.Class is not { } parentCls)
+        ClassInfo? parentCls = mr.Parent.Kind == HandleKind.TypeDefinition
+            ? module.ClassMap.GetValueOrDefault((TypeDefinitionHandle)mr.Parent)
+            : ResolveTypeRef(module, (TypeReferenceHandle)mr.Parent)?.Class;
+        if (parentCls is null)
             return null;
         // An intrinsic-mapped type whose bare full name isn't in s_intrinsicTypes —
         // notably a nested intrinsic value type like Lock.Scope (resolved via the
@@ -1285,7 +1301,7 @@ internal sealed partial class Compilation
         {
             return ResolveMemberRefMethod(module, handle, callerCtx);
         }
-        catch (NotSupportedException)
+        catch (NotSupportedException e) when (!IsMustEscape(e))
         {
             return null;
         }
@@ -1566,10 +1582,16 @@ internal sealed partial class Compilation
     };
 
     /// <summary>Full name of a MemberRef's parent type when it is a plain
-    /// TypeReference (the common cross-assembly BCL case); null otherwise.</summary>
+    /// TypeReference or same-module TypeDefinition; null for a TypeSpec.</summary>
     public string? MemberRefParentTypeName(Module module, MemberReferenceHandle handle)
     {
         var mr = module.Reader.GetMemberReference(handle);
+        if (mr.Parent.Kind == HandleKind.TypeDefinition)
+        {
+            var handleDef = (TypeDefinitionHandle)mr.Parent;
+            return module.ClassMap.TryGetValue(handleDef, out var cls)
+                ? ReflectionTypeName(cls) : TypeFullName(module.Reader, handleDef);
+        }
         if (mr.Parent.Kind != HandleKind.TypeReference)
             return null;
         var tr = module.Reader.GetTypeReference((TypeReferenceHandle)mr.Parent);

@@ -81,7 +81,8 @@ PYGEN
         build_gate_proj "$negative/$kind/Probe.csproj"
         case "$kind" in
             empty) reason='requires at least one reachable' ;;
-            intrinsic|bodyreplace) reason='implementation is replaced by an intrinsic or backend' ;;
+            intrinsic) reason="input type 'System.Math' in assembly 'Probe' conflicts with a CoreLib/runtime type identity" ;;
+            bodyreplace) reason='implementation is replaced by an intrinsic or backend' ;;
             pinvoke) reason='P/Invoke has no managed implementation body' ;;
             async) reason='async methods are not supported' ;;
             iterator) reason='iterator methods are not supported' ;;

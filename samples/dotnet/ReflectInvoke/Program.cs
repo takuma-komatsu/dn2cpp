@@ -144,6 +144,9 @@ namespace ReflectInvoke
             if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_RENAMED_SLOT_FILLERS") == "1")
                 return;
             LdftnLocalSubset.Program.RunRenamedSlotFillers();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_TYPEDEF_MEMBERREF") == "1")
+                return;
+            LdftnLocalSubset.Program.RunTypeDefMemberRefs();
         }
     }
 }

@@ -177,7 +177,10 @@
 # application and ReflectReturnLib whose function pointer types name each one's
 # same-named types: a box over one assembly's type is refused for a parameter over
 # the other's with .NET's ArgumentException.
+# Same-module TypeDef-parent MemberRefs bind overloads, instance and generic
+# methods; closed generic owners retain their TypeSpec identity.
 source "$(dirname "$0")/_common.sh"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|typedef-memberref-prefix:${DN2CPP_BEFORE_TYPEDEF_MEMBERREF:-}"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_ordinary-reflection.sh samples/dotnet/ReflectInvoke/OrdinaryAmbiguousMatchSubset.cs samples/dotnet/ReflectInvoke/OrdinaryReflectionLeaves.csproj samples/dotnet/ReflectInvoke/OrdinaryReflectionLeavesProgram.cs samples/dotnet/ReflectInvoke/OrdinaryWideLookupSubset.cs samples/dotnet/ReflectInvoke/ReflectBindOnly.csproj samples/dotnet/ReflectInvoke/ReflectBindOnlyProgram.cs samples/dotnet/ReflectInvoke/ReflectFieldValidationSubset.cs samples/dotnet/ReflectInvoke/ReflectInvoke.csproj samples/dotnet/ReflectInvoke/ReflectMetadataMeasureSubset.cs samples/dotnet/ReflectInvoke/ReflectionMethodGroupsOnly.csproj samples/dotnet/ReflectInvoke/ReflectionMethodGroupsOnlyProgram.cs samples/dotnet/ReflectInvoke/StrippedOverrideRefusals.csproj samples/dotnet/ReflectInvoke/StrippedOverrideRefusalsProgram.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-reflection-leaves-v1|runtime-member-attributes-prefix:${DN2CPP_BEFORE_RUNTIME_MEMBER_ATTRIBUTES:-}|runtime-return-modifiers-prefix:${DN2CPP_BEFORE_RUNTIME_RETURN_MODIFIERS:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|reflection-dispatch-v1|dispatch-prefix:${DN2CPP_BEFORE_REFLECTION_DISPATCH:-}|attribute-minted-prefix:${DN2CPP_BEFORE_ATTRIBUTE_MINTED:-}|template-accessors-prefix:${DN2CPP_BEFORE_TEMPLATE_ACCESSORS:-}|pointer-returns-prefix:${DN2CPP_BEFORE_POINTER_RETURNS:-}|delegate-invoke-targets-prefix:${DN2CPP_BEFORE_DELEGATE_INVOKE_TARGETS:-}|null-bound-chains-prefix:${DN2CPP_BEFORE_NULL_BOUND_CHAINS:-}|renamed-slot-bindings-prefix:${DN2CPP_BEFORE_RENAMED_SLOT_BINDINGS:-}|settled-object-virtual-prefix:${DN2CPP_BEFORE_SETTLED_OBJECT_VIRTUAL:-}|renamed-slot-fillers-prefix:${DN2CPP_BEFORE_RENAMED_SLOT_FILLERS:-}"
@@ -491,6 +494,19 @@ gate_extra_asserts() {
     grep -Fxq 'ldftn-local-int64=12/Add' "$out/metadata-layout.stdout"
     grep -Fxq 'ldftn-local-address-taken=42/9/12/Add' "$out/metadata-layout.stdout"
     grep -Fxq 'ldftn-local-end' "$out/metadata-layout.stdout"
+    DN2CPP_BEFORE_TYPEDEF_MEMBERREF=1 run_bounded dotnet "$_CG_APP" \
+        > "$out/before-typedef-memberref.stdout"
+    sed '/^== same-module TypeDef MemberRefs ==/,$d' "$out/metadata-layout.stdout" \
+        > "$out/typedef-memberref-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-typedef-memberref.stdout") \
+        <(strip_cr_win_file "$out/typedef-memberref-prefix.stdout")
+    for line in '== same-module TypeDef MemberRefs ==' \
+        'typedef overloads=25/x:body' 'typedef instance=15' \
+        'typedef generic method=9' 'typedef generic owner=31/owner' \
+        'same-module TypeDef MemberRefs end'; do
+        grep -Fxq "$line" "$out/metadata-layout.stdout" \
+            || { echo "FAIL: TypeDef-parent MemberRef witness missing: $line" >&2; exit 1; }
+    done
     DN2CPP_BEFORE_ORDINARY_IL_INTERFACE=1 run_bounded dotnet "$_CG_APP" \
         > "$out/before-ordinary-interface-il.stdout"
     sed '/^== ordinary interface and ValueType IL ==/,$d' "$out/metadata-layout.stdout" \
