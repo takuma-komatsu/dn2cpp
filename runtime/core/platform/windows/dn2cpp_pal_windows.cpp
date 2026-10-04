@@ -21,7 +21,6 @@
 // in this build can reach <windows.h> transitively (bdwgc's GC_WIN32_THREADS
 // headers, this file, ...).
 #include "platform/dn2cpp_pal.h"
-#include "dn2cpp_windows_timezone.h"
 
 #include <windows.h>
 
@@ -180,28 +179,6 @@ void dn2cpp_pal_localtime(int64_t unixSeconds, std::tm* out)
 int64_t dn2cpp_pal_mktime_local(std::tm* localTm)
 {
     return static_cast<int64_t>(std::mktime(localTm));
-}
-
-bool dn2cpp_windows_zone_rule(int year, Dn2CppWindowsZoneRule* out)
-{
-    DYNAMIC_TIME_ZONE_INFORMATION dynamic{};
-    if (::GetDynamicTimeZoneInformation(&dynamic) == TIME_ZONE_ID_INVALID)
-        return false;
-    TIME_ZONE_INFORMATION rule{};
-    if (!::GetTimeZoneInformationForYear(static_cast<USHORT>(year), &dynamic, &rule))
-        return false;
-    out->standardMinutes = -(rule.Bias + rule.StandardBias);
-    out->daylightMinutes = -(rule.Bias + rule.DaylightBias);
-    auto transition = [](const SYSTEMTIME& value) {
-        return Dn2CppWindowsZoneTransition{value.wMonth, value.wYear == 0 ? value.wDay : 0,
-            value.wDayOfWeek, value.wDay, value.wHour, value.wMinute,
-            value.wSecond, value.wMilliseconds};
-    };
-    out->daylightStart = transition(rule.DaylightDate);
-    out->standardStart = transition(rule.StandardDate);
-    if (dynamic.DynamicDaylightTimeDisabled)
-        out->daylightStart.month = out->standardStart.month = 0;
-    return true;
 }
 
 size_t dn2cpp_pal_malloc_usable_size(void* ptr)

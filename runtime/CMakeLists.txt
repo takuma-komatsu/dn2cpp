@@ -852,9 +852,9 @@ else()
         # toolchain file, touch no core file"), performed rather than promised.
         #
         # The host's non-PAL platform TUs stay: the .NET PAL surface
-        # (SystemNative_*) and the memory-mapped-file unit are separate seams
-        # (§2.2, §2.3), and reusing a POSIX TU under a non-POSIX PAL is a move
-        # §2.3 already documents for wasm. So the axis isolates dn2cpp_pal.h's
+        # (SystemNative_*), memory-mapped-file unit and Windows timezone rules.
+        # The first two are separate seams (§2.2, §2.3); §2.3 documents
+        # reusing a POSIX TU under the wasm PAL. The axis isolates dn2cpp_pal.h's
         # implementation and does not pretend to be a non-POSIX host, where
         # §2.2's question (which CoreLib flavour, and what it P/Invokes) is the
         # larger part of the port.
@@ -863,7 +863,9 @@ else()
         # gates/build-and-run-pal-reference.sh.
         file(GLOB DN2CPP_PLATFORM_SRCS CONFIGURE_DEPENDS "${DN2CPP_ROOT}/runtime/core/platform/reference/*.cpp")
         if(WIN32)
-            list(APPEND DN2CPP_PLATFORM_SRCS "${DN2CPP_ROOT}/runtime/core/platform/windows/dn2cpp_mmap_windows.cpp")
+            list(APPEND DN2CPP_PLATFORM_SRCS
+                "${DN2CPP_ROOT}/runtime/core/platform/windows/dn2cpp_mmap_windows.cpp"
+                "${DN2CPP_ROOT}/runtime/core/platform/windows/dn2cpp_windows_timezone.cpp")
         else()
             file(GLOB DN2CPP_PLATFORM_POSIX_REST CONFIGURE_DEPENDS "${DN2CPP_ROOT}/runtime/core/platform/posix/*.cpp")
             list(REMOVE_ITEM DN2CPP_PLATFORM_POSIX_REST "${DN2CPP_ROOT}/runtime/core/platform/posix/dn2cpp_pal_posix.cpp")
