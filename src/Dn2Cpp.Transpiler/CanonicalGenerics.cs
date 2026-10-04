@@ -36,8 +36,8 @@ internal enum RgctxSlotKind
     /// <summary>The type-info of the resolved closed generic's first type
     /// argument — Nullable&lt;T&gt; boxing (the box carries T's identity).</summary>
     TypeArg0TypeInfo,
-    /// <summary>The precise per-element array type-info (<c>ti_arr_*</c>) for a
-    /// newarr (element token) or typeof(T[]) (SZArray token) site.</summary>
+    /// <summary>The precise array type-info (<c>ti_arr_*</c>) of an SZArray token
+    /// used by typeof or a cast target.</summary>
     ArrayTypeInfo,
     /// <summary>The type-info stamped on a reference-type newobj — the token is
     /// the ctor method token; the allocation size is group-uniform
@@ -74,6 +74,9 @@ internal enum RgctxSlotKind
     /// (the token is the call site's MethodSpec token, re-resolved to the real
     /// instantiation whose table the callee runs under).</summary>
     MethodRgctxTable,
+    /// <summary>The precise array type-info for newarr's element token. An array
+    /// element retains its whole identity: newarr of T[] allocates T[][].</summary>
+    NewArrayTypeInfo,
 }
 
 /// <summary>One runtime-generic-context slot of a canonical owner class: the

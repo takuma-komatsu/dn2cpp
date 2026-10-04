@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 
 namespace HotPath
 {
@@ -9,6 +10,8 @@ namespace HotPath
     {
         private static void Main()
         {
+            CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+            CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
             HotPathBasicSubset.Program.__GateEntry();
             HotPathGenericSubset.Program.__GateEntry();
             HotPathMixedSubset.Program.__GateEntry();
@@ -20,6 +23,9 @@ namespace HotPath
             if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_REFLECTION_NOALLOC") == "1")
                 return;
             HotPathNoAllocSubset.Program.__GateReflectionEntry();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_COVARIANT_STORES") == "1")
+                return;
+            HotPathBoundsSubset.Program.__GateCovariantEntry();
         }
     }
 }

@@ -18,7 +18,7 @@ namespace HotPathBoundsSubset
 
     // [HotPath(SkipBoundsChecks = true)]: every index below is in range, so the
     // outputs stay exact-diff-identical to real .NET, where the attribute is
-    // inert and every access stays checked — the knob only removes the checks.
+    // inert and every access stays checked — the knob only removes null/bounds checks.
     // The kernels fan out across every element-access emission path (the I4 /
     // Ref / ArrayN reps, the sized ldelem/stelem prim opcodes, ldelema, the
     // generic ldelem/stelem token forms, and the Span/ReadOnlySpan indexer).
@@ -127,6 +127,34 @@ namespace HotPathBoundsSubset
         private static void SetFirstUnchecked<T>(T[] values, T value) // stelem !T
         {
             values[0] = value;
+        }
+
+        [HotPath(SkipBoundsChecks = true)]
+        private static void StoreCovariantUnchecked(object[] values, object value)
+        {
+            values[0] = value;
+        }
+
+        internal static void __GateCovariantEntry()
+        {
+            Console.WriteLine("== unchecked covariant reference stores ==");
+            object seed = "seed", next = "next";
+            object[] values = new string[] { (string)seed };
+            try
+            {
+                StoreCovariantUnchecked(values, new object());
+                Console.WriteLine("unchecked rejected=no exception");
+            }
+            catch (ArrayTypeMismatchException exception)
+            {
+                Console.WriteLine("unchecked rejected=" + exception.GetType().Name + "/" + exception.HResult.ToString("X8"));
+            }
+            Console.WriteLine("unchecked retained=" + ReferenceEquals(values[0], seed));
+            StoreCovariantUnchecked(values, next);
+            Console.WriteLine("unchecked compatible=" + ReferenceEquals(values[0], next));
+            StoreCovariantUnchecked(values, null);
+            Console.WriteLine("unchecked null=" + (values[0] is null));
+            Console.WriteLine("unchecked covariant reference stores end");
         }
 
         [HotPath(SkipBoundsChecks = true)]

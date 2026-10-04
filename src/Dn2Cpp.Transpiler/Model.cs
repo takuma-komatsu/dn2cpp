@@ -531,7 +531,8 @@ internal sealed class MethodInfo
     /// <summary>True when the [HotPath] attribute sets
     /// <c>SkipBoundsChecks = true</c>: the body's array element accesses compile
     /// to raw indexing (no <c>dn2cpp_bounds_check</c> / checked-wrapper calls; a
-    /// null array joins the field-access posture — the hardware fault), and a
+    /// null array joins the field-access posture — the hardware fault).
+    /// Reference stores retain their runtime element-type check. A
     /// Span/ReadOnlySpan indexer read at the body's call sites lowers to raw
     /// <c>f__reference + index</c> arithmetic. An out-of-range index is UB by the
     /// knob's contract. Implies <see cref="IsHotPath"/> (it rides the same
