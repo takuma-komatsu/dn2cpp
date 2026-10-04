@@ -163,6 +163,35 @@ class Optional
     public static double? Shared;
 }
 
+struct PointerPoint { public int X; }
+
+unsafe class PointerFields
+{
+    public int* Int = (int*)0x120;
+    public uint* UInt = (uint*)0x120;
+    public void* Void = (void*)0x120;
+    public int** Twice = (int**)0x120;
+    public PointerPoint* Point = (PointerPoint*)0x120;
+    public delegate*<int> Function = (delegate*<int>)0x120;
+    public static int* SharedInt = (int*)0x120;
+    public static void* SharedVoid = (void*)0x120;
+    public static int** SharedTwice = (int**)0x120;
+    public static PointerPoint* SharedPoint = (PointerPoint*)0x120;
+    public static delegate*<int> SharedFunction = (delegate*<int>)0x120;
+}
+
+unsafe class PointerReadOnly
+{
+    public static readonly int* Int = (int*)0x120;
+    public static readonly delegate*<int> Function = (delegate*<int>)0x120;
+}
+
+class AccessedReadOnly
+{
+    public static readonly int AfterGet = 41;
+    public static readonly int AfterSet = 42;
+}
+
 static class Program
 {
     private static void Show(string label, Func<object?> run)
@@ -391,5 +420,78 @@ static class Program
         Show("raw primitive readonly static", () => Field(typeof(string), "Empty").GetRawConstantValue());
 
         Console.WriteLine("field validation end");
+    }
+
+    private static unsafe string PointerValue(object? value) => value is Pointer
+        ? value.GetType().FullName + ":" + ((nuint)Pointer.Unbox(value)).ToString("x")
+        : value is IntPtr address ? "System.IntPtr:" + ((nuint)address).ToString("x") : "unexpected";
+
+    private static unsafe nuint PointerStorage(PointerFields target, string name) => name switch
+    {
+        "Int" => (nuint)target.Int,
+        "Void" => (nuint)target.Void,
+        "Twice" => (nuint)target.Twice,
+        "Point" => (nuint)target.Point,
+        "Function" => (nuint)target.Function,
+        "SharedInt" => (nuint)PointerFields.SharedInt,
+        "SharedVoid" => (nuint)PointerFields.SharedVoid,
+        "SharedTwice" => (nuint)PointerFields.SharedTwice,
+        "SharedPoint" => (nuint)PointerFields.SharedPoint,
+        "SharedFunction" => (nuint)PointerFields.SharedFunction,
+        _ => throw new ArgumentException(name),
+    };
+
+    // Pointer getters create managed boxes; setters validate each pointer shape and
+    // store the unboxed address. Compare the box with typed storage without dereferencing it.
+    internal static unsafe void RunPointerFields()
+    {
+        Console.WriteLine("== reflected pointer fields ==");
+        var target = new PointerFields();
+        Type type = typeof(PointerFields);
+        object?[] values = { null, (IntPtr)0x340, (UIntPtr)0x340, 7, "x",
+            Field(type, "Int").GetValue(target), Field(type, "UInt").GetValue(target),
+            Field(type, "Void").GetValue(target), Field(type, "Twice").GetValue(target),
+            Field(type, "Point").GetValue(target) };
+        string[] kinds = { "null", "IntPtr", "UIntPtr", "int", "string", "int*", "uint*", "void*", "int**", "struct*" };
+        foreach (string name in new[] { "Int", "Void", "Twice", "Point", "Function",
+            "SharedInt", "SharedVoid", "SharedTwice", "SharedPoint", "SharedFunction" })
+        {
+            FieldInfo field = Field(type, name);
+            Show(name + " pointer get", () => PointerValue(field.GetValue(target)));
+            for (int i = 0; i < values.Length; i++)
+            {
+                object? value = values[i];
+                Show(name + " pointer set " + kinds[i], () =>
+                {
+                    field.SetValue(target, value);
+                    return PointerValue(field.GetValue(target)) + "/storage:" + PointerStorage(target, name).ToString("x");
+                });
+            }
+        }
+        FieldInfo pointer = Field(type, "Int");
+        Show("pointer null receiver, wrong value", () => { pointer.SetValue(null, "x"); return null; });
+        Show("pointer stranger receiver, wrong value", () => { pointer.SetValue(new Stranger(), "x"); return null; });
+        Show("pointer static ignores receiver", () =>
+        {
+            Field(type, "SharedInt").SetValue("receiver", (IntPtr)0x560);
+            return PointerValue(Field(type, "SharedInt").GetValue(null)) + "/storage:" + ((nuint)PointerFields.SharedInt).ToString("x");
+        });
+        FieldInfo readOnly = Field(typeof(PointerReadOnly), "Int");
+        Show("readonly pointer fresh wrong", () => { readOnly.SetValue(null, "x"); return null; });
+        Show("readonly pointer get", () => PointerValue(readOnly.GetValue(null)));
+        Show("readonly pointer accessed wrong", () => { readOnly.SetValue(null, "x"); return null; });
+        FieldInfo function = Field(typeof(PointerReadOnly), "Function");
+        Show("readonly function fresh null", () => { function.SetValue(null, null); return null; });
+        Show("readonly function fresh wrong", () => { function.SetValue(null, "x"); return null; });
+        Show("readonly function valid refusal", () => { function.SetValue(null, (IntPtr)0x340); return null; });
+        Show("readonly function accessed wrong", () => { function.SetValue(null, "x"); return null; });
+        FieldInfo afterGet = Field(typeof(AccessedReadOnly), "AfterGet");
+        Show("readonly ordinary fresh wrong", () => { afterGet.SetValue(null, "x"); return null; });
+        Show("readonly ordinary get", () => afterGet.GetValue(null));
+        Show("readonly ordinary after get wrong", () => { afterGet.SetValue(null, "x"); return null; });
+        FieldInfo afterSet = Field(typeof(AccessedReadOnly), "AfterSet");
+        Show("readonly ordinary valid refusal", () => { afterSet.SetValue(null, 43); return null; });
+        Show("readonly ordinary after refusal wrong", () => { afterSet.SetValue(null, "x"); return null; });
+        Console.WriteLine("reflected pointer fields end");
     }
 }

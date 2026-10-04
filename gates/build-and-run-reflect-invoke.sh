@@ -179,13 +179,17 @@
 # the other's with .NET's ArgumentException.
 # Same-module TypeDef-parent MemberRefs bind overloads, instance and generic
 # methods; closed generic owners retain their TypeSpec identity.
+# Pointer field accessors box and validate unmanaged/function addresses with
+# packed and native metadata, preserving static-readonly accessor refusal order.
 source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|typedef-memberref-prefix:${DN2CPP_BEFORE_TYPEDEF_MEMBERREF:-}"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_ordinary-reflection.sh samples/dotnet/ReflectInvoke/OrdinaryAmbiguousMatchSubset.cs samples/dotnet/ReflectInvoke/OrdinaryReflectionLeaves.csproj samples/dotnet/ReflectInvoke/OrdinaryReflectionLeavesProgram.cs samples/dotnet/ReflectInvoke/OrdinaryWideLookupSubset.cs samples/dotnet/ReflectInvoke/ReflectBindOnly.csproj samples/dotnet/ReflectInvoke/ReflectBindOnlyProgram.cs samples/dotnet/ReflectInvoke/ReflectFieldValidationSubset.cs samples/dotnet/ReflectInvoke/ReflectInvoke.csproj samples/dotnet/ReflectInvoke/ReflectMetadataMeasureSubset.cs samples/dotnet/ReflectInvoke/ReflectionMethodGroupsOnly.csproj samples/dotnet/ReflectInvoke/ReflectionMethodGroupsOnlyProgram.cs samples/dotnet/ReflectInvoke/StrippedOverrideRefusals.csproj samples/dotnet/ReflectInvoke/StrippedOverrideRefusalsProgram.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-reflection-leaves-v1|runtime-member-attributes-prefix:${DN2CPP_BEFORE_RUNTIME_MEMBER_ATTRIBUTES:-}|runtime-return-modifiers-prefix:${DN2CPP_BEFORE_RUNTIME_RETURN_MODIFIERS:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|reflection-dispatch-v1|dispatch-prefix:${DN2CPP_BEFORE_REFLECTION_DISPATCH:-}|attribute-minted-prefix:${DN2CPP_BEFORE_ATTRIBUTE_MINTED:-}|template-accessors-prefix:${DN2CPP_BEFORE_TEMPLATE_ACCESSORS:-}|pointer-returns-prefix:${DN2CPP_BEFORE_POINTER_RETURNS:-}|delegate-invoke-targets-prefix:${DN2CPP_BEFORE_DELEGATE_INVOKE_TARGETS:-}|null-bound-chains-prefix:${DN2CPP_BEFORE_NULL_BOUND_CHAINS:-}|renamed-slot-bindings-prefix:${DN2CPP_BEFORE_RENAMED_SLOT_BINDINGS:-}|settled-object-virtual-prefix:${DN2CPP_BEFORE_SETTLED_OBJECT_VIRTUAL:-}|renamed-slot-fillers-prefix:${DN2CPP_BEFORE_RENAMED_SLOT_FILLERS:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|stripped-overrides:${DN2CPP_STRIPPED_OVERRIDES:-}|library-struct-prefix:${DN2CPP_BEFORE_LIBRARY_STRUCT_RETURN:-}|function-pointer-identity-prefix:${DN2CPP_BEFORE_FUNCTION_POINTER_IDENTITY:-}"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|pointer-fields-prefix:${DN2CPP_BEFORE_POINTER_FIELDS:-}"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectFrameworkBind/keep-library-override.xml"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/ReflectPointerFieldsOnly.csproj samples/dotnet/ReflectInvoke/ReflectPointerFieldsPreserved.csproj samples/dotnet/ReflectInvoke/ReflectPointerFieldsOnlyProgram.cs samples/dotnet/ReflectInvoke/keep-pointer-field.xml samples/dotnet/ReflectReturnLib/PointerFields.cs"
 
 py="$(resolve_python)"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/check-reflection-layout.py gates/measure-reflection-metadata.py gates/expected/reflection-allocations.csv gates/fixtures/delegate-invocation-cache/DelegateInvocationCache.csproj gates/fixtures/delegate-invocation-cache/Program.cs"
@@ -785,6 +789,32 @@ gate_extra_asserts() {
     modifiers_before=$(strip_cr_win "$modifiers_before")
     modifiers_prefix=$(awk '/^== runtime return modifiers ==$/ { exit } { print }' <<< "$native")
     assert_output "$modifiers_prefix" "$modifiers_before"
+    before=$(DN2CPP_BEFORE_POINTER_FIELDS=1 run_bounded dotnet "$_CG_APP") || return $?
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== reflected pointer fields ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== reflected pointer fields ==' \
+        'Int pointer get: String:System.Reflection.Pointer:120' \
+        'Int pointer set null: String:System.Reflection.Pointer:0/storage:0' \
+        'Int pointer set IntPtr: String:System.Reflection.Pointer:340/storage:340' \
+        'Int pointer set uint*: String:System.Reflection.Pointer:120/storage:120' \
+        'Void pointer set UIntPtr: String:System.Reflection.Pointer:340/storage:340' \
+        'Twice pointer set int**: String:System.Reflection.Pointer:120/storage:120' \
+        'Point pointer set struct*: String:System.Reflection.Pointer:120/storage:120' \
+        'Function pointer get: String:System.IntPtr:120' \
+        'SharedInt pointer set IntPtr: String:System.Reflection.Pointer:340/storage:340' \
+        'SharedVoid pointer set UIntPtr: String:System.Reflection.Pointer:340/storage:340' \
+        'SharedTwice pointer set int**: String:System.Reflection.Pointer:120/storage:120' \
+        'SharedPoint pointer set struct*: String:System.Reflection.Pointer:120/storage:120' \
+        'SharedFunction pointer set IntPtr: String:System.IntPtr:340/storage:340' \
+        'readonly ordinary get: Int32:41' 'reflected pointer fields end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: pointer field witness missing: $line" >&2; return 1; }
+    done
+    local layout=record
+    [[ "$out" = *-native ]] && layout=native
+    grep -wq "md_${layout}_fldtab_ReflectFieldValidationSubset_PointerFields" "$out"/generated*.cpp \
+        || { echo "FAIL: pointer fields lack $layout metadata" >&2; return 1; }
     for line in '== field validation ==' 'field validation end' \
         '== ordinary ambiguous messages ==' 'ordinary ambiguous messages end' \
         'sealed direct=CUSTOM-HELLO' 'sealed bound=CUSTOM-HELLO/IGreeting.Shout' \
@@ -811,9 +841,48 @@ gate_extra_asserts() {
             || { echo "FAIL: ordinary reflection witness missing: $line" >&2; return 1; }
     done
 }
-DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectInvoke OrdinaryReflectionLeaves --no-ildiet
+DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectInvoke OrdinaryReflectionLeaves --no-ildiet \
+    --reflection-metadata ReflectFieldValidationSubset.PointerFields=packed
 DN2CPP_OUT_SUFFIX=-native DN2CPP_STRICT_COMPLETION=1 \
     ordinary_fixture_diff_gate ReflectInvoke OrdinaryReflectionLeaves --no-ildiet --no-metadata-compression
+unset -f gate_extra_asserts
+# These drivers have no application pointer field or pointer-returning method.
+# One reads an allocated library owner's inherited field; the other names only a
+# preserved static field through Type.GetType, so the two rooting paths stand alone.
+build_gate_proj samples/dotnet/ReflectReturnLib/ReflectReturnLib.csproj
+gate_extra_asserts() {
+    local out="$1" native line owner layout=record
+    native=$(run_bounded "$out/$(basename "$_CG_APP" .dll)$EXE_EXT") || return $?
+    native=$(strip_cr_win "$native")
+    local lines=()
+    case "$_CG_APP" in
+        */ReflectPointerFieldsPreserved.dll)
+            owner=ReflectReturnLib_PreservedPointerField
+            lines=('preserved pointer=System.Reflection.Pointer:560' 'preserved stored=System.Reflection.Pointer:780') ;;
+        *)
+            owner=ReflectReturnLib_PointerFieldBase
+            lines=('library inherited=System.Reflection.Pointer:120' 'library static=System.Reflection.Pointer:340' \
+                'library stored=System.Reflection.Pointer:780') ;;
+    esac
+    lines+=('pointer fields only end')
+    for line in "${lines[@]}"; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: isolated pointer field witness missing: $line" >&2; return 1; }
+    done
+    [[ "$out" = *-native ]] && layout=native
+    grep -wq "md_${layout}_fldtab_${owner}" "$out"/generated*.cpp \
+        || { echo "FAIL: isolated pointer field lacks $layout metadata" >&2; return 1; }
+}
+pointer_field_library="$PWD/samples/dotnet/ReflectReturnLib/bin/$CONFIG/$TFM/ReflectReturnLib.dll"
+DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectInvoke ReflectPointerFieldsOnly --no-ildiet -r "$pointer_field_library" \
+    --reflection-metadata ReflectReturnLib.PointerFieldBase=packed
+DN2CPP_OUT_SUFFIX=-native DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectInvoke ReflectPointerFieldsOnly --no-ildiet \
+    -r "$pointer_field_library" --no-metadata-compression
+DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectInvoke ReflectPointerFieldsPreserved --no-ildiet -r "$pointer_field_library" \
+    --link-xml samples/dotnet/ReflectInvoke/keep-pointer-field.xml \
+    --reflection-metadata ReflectReturnLib.PreservedPointerField=packed
+DN2CPP_OUT_SUFFIX=-native DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectInvoke ReflectPointerFieldsPreserved --no-ildiet \
+    -r "$pointer_field_library" --link-xml samples/dotnet/ReflectInvoke/keep-pointer-field.xml --no-metadata-compression
 unset -f gate_extra_asserts
 gate_extra_asserts() {
     local out="$1" native line

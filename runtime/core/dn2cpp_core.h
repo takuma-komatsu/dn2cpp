@@ -821,6 +821,9 @@ struct Dn2CppFieldInfo
     // (including byref/generic spelling) is still available. Trailing for source
     // compatibility with hand-written runtime rows.
     const char* display;
+    // Pointer fields validate and unwrap their value before an initonly refusal.
+    // Other fields use fieldType; hand-written rows leave this callback null.
+    Dn2CppObject* (*valueCheck)(Dn2CppObject* value) = nullptr;
 };
 
 // Dn2CppFieldInfo::attrs bits. PUBLIC/PRIVATE mirror the CLR field
@@ -853,6 +856,8 @@ struct Dn2CppFieldRef : Dn2CppObject
 {
     Dn2CppMetadataHandle<Dn2CppFieldInfo> field;
     const Dn2CppTypeInfo* reflectedType;
+    // A static initonly accessor refuses subsequent stores before value conversion.
+    std::atomic<bool> initOnlyAccessed{false};
 };
 
 // Reflection parameter metadata. One entry per parameter in a method's
@@ -1958,6 +1963,9 @@ int32_t dn2cpp_methodref_is_specialname(Dn2CppMethodRef* m);
 // emitter-generated thunks; reference fields pass the object reference through.
 Dn2CppObject* dn2cpp_fieldref_get_value(Dn2CppFieldRef* f, Dn2CppObject* obj);
 void dn2cpp_fieldref_set_value(Dn2CppFieldRef* f, Dn2CppObject* obj, Dn2CppObject* value);
+Dn2CppObject* dn2cpp_invoke_box_pointer(void* value, const Dn2CppTypeInfo* pointee, int32_t depth);
+Dn2CppObject* dn2cpp_field_pointer_value(Dn2CppObject* value, int32_t passKind,
+    const Dn2CppTypeInfo* passType);
 // FieldInfo.GetRawConstantValue: a constant at its encoded type (an enum's
 // underlying primitive); any other field throws InvalidOperationException.
 Dn2CppObject* dn2cpp_fieldref_get_raw_constant_value(Dn2CppFieldRef* f);

@@ -1,0 +1,7 @@
+<linker>
+  <assembly fullname="ReflectReturnLib">
+    <type fullname="ReflectReturnLib.PreservedPointerField" preserve="nothing">
+      <field name="Address" />
+    </type>
+  </assembly>
+</linker>

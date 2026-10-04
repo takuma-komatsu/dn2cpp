@@ -1512,7 +1512,7 @@ static Dn2CppFieldRef* dn2cpp_make_fieldref(Dn2CppMetadataHandle<Dn2CppFieldInfo
     Dn2CppFieldRef*& slot = g_fieldref_intern[{ f.identity(), reflected }];
     if (slot == nullptr)
     {
-        auto* r = static_cast<Dn2CppFieldRef*>(dn2cpp_alloc_pinned(sizeof(Dn2CppFieldRef)));
+        auto* r = new (dn2cpp_alloc_pinned(sizeof(Dn2CppFieldRef))) Dn2CppFieldRef{};
         r->type = &dn2cpp_fieldinfo_type;
         r->field = f;
         r->reflectedType = reflected;
@@ -1693,7 +1693,11 @@ Dn2CppObject* dn2cpp_fieldref_get_value(Dn2CppFieldRef* f, Dn2CppObject* obj)
         dn2cpp_throw_invalid_operation();
     }
     dn2cpp_field_check_target(f, row.operator->(), obj);
-    return dn2cpp_invoke_box_result(row->fieldType, row->getter(obj));
+    Dn2CppObject* result = row->getter(obj);
+    const int32_t staticInitOnly = DN2CPP_FLDA_STATIC | DN2CPP_FLDA_INITONLY;
+    if ((row->attrs & staticInitOnly) == staticInitOnly)
+        f->initOnlyAccessed.store(true, std::memory_order_release);
+    return dn2cpp_invoke_box_result(row->fieldType, result);
 }
 
 void dn2cpp_fieldref_set_value(Dn2CppFieldRef* f, Dn2CppObject* obj, Dn2CppObject* value)
@@ -1706,6 +1710,8 @@ void dn2cpp_fieldref_set_value(Dn2CppFieldRef* f, Dn2CppObject* obj, Dn2CppObjec
     if (row->setter == nullptr && !initOnly)
         dn2cpp_throw_invalid_operation();
     dn2cpp_field_check_target(f, row.operator->(), obj);
+    if (initOnly && f->initOnlyAccessed.load(std::memory_order_acquire))
+        dn2cpp_field_refuse_initonly(f, row.operator->());
     Dn2CppObject* stored = dn2cpp_field_check_value(row.operator->(), value);
     if (initOnly)
         dn2cpp_field_refuse_initonly(f, row.operator->());
@@ -3251,11 +3257,13 @@ static bool dn2cpp_pointer_box_accepts(const Dn2CppTypeInfo* from, const Dn2CppT
 // Invoke's box of a pointer result: an unmanaged pointer to `pointee` at `depth`
 // levels as a System.Reflection.Pointer, a function pointer (null pointee) as an
 // IntPtr.
-static Dn2CppObject* dn2cpp_invoke_box_pointer(void* value, const Dn2CppTypeInfo* pointee,
+Dn2CppObject* dn2cpp_invoke_box_pointer(void* value, const Dn2CppTypeInfo* pointee,
     int32_t depth)
 {
     if (pointee == nullptr)
         return dn2cpp_box(&dn2cpp_intptr_type, &value, sizeof value);
+    if (g_pointer_box_make == nullptr)
+        dn2cpp_throw_invoke_not_supported("This image cannot box a pointer without System.Reflection.Pointer.");
     return g_pointer_box_make(value, dn2cpp_get_type_from_handle(dn2cpp_pointer_ti(pointee, depth)));
 }
 
@@ -3545,11 +3553,27 @@ static void dn2cpp_field_check_target(const Dn2CppFieldRef* f, const Dn2CppField
         dn2cpp_sr_message(DN2CPP_SR_FIELD_TARGET_MISMATCH, args, 3), 0x80070057u);
 }
 
+// Pointer field conversion shares Invoke's validation without exception wrapping.
+Dn2CppObject* dn2cpp_field_pointer_value(Dn2CppObject* value, int32_t passKind,
+    const Dn2CppTypeInfo* passType)
+{
+    // FieldInfo accepts UIntPtr for void*, while MethodBase.Invoke does not.
+    if (passKind == DN2CPP_PASS_POINTER && passType == &dn2cpp_void_type
+        && value != nullptr && value->type == &dn2cpp_uintptr_type)
+        return *reinterpret_cast<Dn2CppObject**>(value + 1);
+    Dn2CppParamInfo param{};
+    param.passKind = passKind;
+    param.passType = passType;
+    char* cell = nullptr;
+    return dn2cpp_invoke_pass_arg(param, value, false, &cell);
+}
+
 // The box a field's setter thunk stores: a value converts as a reflected argument
-// does, and null stores the default, which a value-type thunk reads from a zeroed
-// box.
+// does, and null stores the default, which a value-type thunk reads from a zeroed box.
 static Dn2CppObject* dn2cpp_field_check_value(const Dn2CppFieldInfo* row, Dn2CppObject* value)
 {
+    if (row->valueCheck != nullptr)
+        return row->valueCheck(value);
     if (value == nullptr)
         return dn2cpp_binder_adapt_arg(nullptr, row->fieldType);
     return dn2cpp_invoke_check_arg(value, row->fieldType);
