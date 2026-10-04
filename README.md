@@ -622,6 +622,7 @@ cuts, and both sides' stderr required to stay empty.
 
 | Library | What its gate drives | Gate |
 |---|---|---|
+| Lua-CSharp | Lua parsing and bytecode execution, closures, tables and metamethods, bit32/math/string/table libraries, host callbacks and source-generated `LuaObject` bindings, suspended async callbacks, coroutines, module caching and error recovery | `gates/build-and-run-luacsharp.sh` |
 | MagicOnion.Client | Its source-generated NativeAOT client proxy first over a mock `CallInvoker`, then over a real `GrpcChannel`: a gate-only adapter carries the generated unary frame in a header so the YetAnotherHttpHandler HTTP/2 POST stays bodyless, while response unmarshalling, trailers and `UnaryResult` await cross the real transport | `gates/build-and-run-magiconion-client.sh`, `gates/build-and-run-magiconion-yetanotherhttphandler.sh` |
 | MasterMemory | Source-generated typed tables over MessagePack data — database build/load, unique and non-unique indexes, composite indexes, exact/range/closest queries and forward/reverse views | `gates/build-and-run-mastermemory.sh` |
 | MemoryPack | Source-generated formatters — object/struct/record, member ordering, `[MemoryPackConstructor]`, the serialization callbacks, unions over an interface and over an abstract base, version-tolerant and explicit layouts, the unmanaged whole-struct memcpy path, the `IBufferWriter` and `ReadOnlySequence` entry points | `gates/build-and-run-memorypack.sh` |
@@ -634,8 +635,14 @@ cuts, and both sides' stderr required to stay empty.
 | UniTask | The tier-2 custom-async-task lane on the .NET build: adoption is declined automatically and the library's own combinators, scheduler and cancellation model transpile as real IL | `gates/build-and-run-unitask.sh` |
 | GDTask | The same tier-2 lane inside the real Godot engine | `gates/build-and-run-gdtask.sh` |
 
+Lua-CSharp registers the listed libraries individually. The gate does not cover
+the basic, I/O, OS or debug libraries: registering the basic and I/O libraries
+reaches the unsupported `Console.OpenStandard*` stream APIs, and `os.date`
+reaches the unsupported `DateTime.IsDaylightSavingTime()` API.
+
 A source generator's output is part of the subject, not a detail of the build:
-MasterMemory's generated database, tables and resolver, MemoryPack's generated
+Lua-CSharp's generated userdata bindings, MasterMemory's generated database,
+tables and resolver, MemoryPack's generated
 formatters, and MessagePack-CSharp's generated resolver and formatters live in their
 driver assemblies, so the transpiled IL is code no human wrote. Where a library
 documents an AOT resolver route, the gate takes it:
