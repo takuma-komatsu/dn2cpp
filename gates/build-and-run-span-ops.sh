@@ -27,6 +27,32 @@
 # CoreLib only — no extra BCL reference is needed by any section.
 # Former gates: span-bulk, span-scan, span-sort, span-instance, span-indexofany,
 # readonlyspan-byte, create-span, memorymarshal-subset.
+# Decimal storage is observable through AsBytes and MemoryMarshal Read/Write;
+# raw bytes and bit-exact round-trips include signed zero and trailing scale.
 source "$(dirname "$0")/_common.sh"
+
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|decimal-layout-prefix:before-decimal-layout"
+gate_extra_asserts() {
+    local out="$1" output oracle before_native before_oracle prefix line
+    output=$(strip_cr_win "$native")
+    oracle=$(strip_cr_win "$expected")
+    before_native=$(run_bounded "./$out/SpanOps" before-decimal-layout)
+    before_oracle=$(run_bounded dotnet "$_CG_APP" before-decimal-layout)
+    before_native=$(strip_cr_win "$before_native")
+    before_oracle=$(strip_cr_win "$before_oracle")
+    assert_output "$before_native" "$before_oracle"
+    prefix=$(awk '/^== decimal raw layout ==$/ { exit } { print }' <<< "$output")
+    assert_output "$prefix" "$before_native"
+    prefix=$(awk '/^== decimal raw layout ==$/ { exit } { print }' <<< "$oracle")
+    assert_output "$prefix" "$before_oracle"
+    for line in '== decimal raw layout ==' 'decimal raw bytes=80' \
+        'negative-zero original bits=00000000,00000000,00000000,80030000' \
+        'negative-zero raw-read bits=00000000,00000000,00000000,80030000' \
+        'negative-zero write-read bits=00000000,00000000,00000000,80030000' \
+        'decimal raw layout end'; do
+        grep -Fxq -- "$line" <<< "$output" \
+            || { echo "FAIL: SpanOps decimal layout witness missing: $line" >&2; exit 1; }
+    done
+}
 
 corelib_diff_gate SpanOps
