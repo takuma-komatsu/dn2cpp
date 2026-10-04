@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # System.Exception.get_Message + GetType, including TypeLoadException's public
 # constructor messages without entering its VM-only lazy formatter.
+# Runtime-created fault HResults match their types while constructor and explicit codes survive.
 # dn2cpp's own catch+inspect code reads a caught exception's .Message and
 # .GetType().Name to build a wrapped exception (MethodCompiler.Compile /
 # Compilation.ScanBodyForGenerics) or a measure-gap record (MeasureGap.From), so
@@ -51,7 +52,7 @@
 source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/ExceptionMessageSubset/OrdinaryReflectionArgumentSubset.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-reflection-arguments:${DN2CPP_BEFORE_ORDINARY_REFLECTION_ARGUMENTS:-}"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|before-array-shape-fields"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|before-array-shape-fields|before-runtime-hresult"
 
 ancestry_app="gates/fixtures/runtime-exception-ancestry/bin/$CONFIG/$TFM/RuntimeExceptionAncestry.dll"
 build_gate_proj gates/fixtures/runtime-exception-ancestry/RuntimeExceptionAncestry.csproj
@@ -80,6 +81,30 @@ gate_extra_asserts() {
         'ordinary reflection argument fields end'; do
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: ordinary reflection argument witness missing: $line" >&2; return 1; }
+    done
+    before=$(run_bounded dotnet "$_CG_APP" before-runtime-hresult)
+    prefix=$(awk '/^== runtime exception HResult ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    for line in '== runtime exception HResult ==' \
+        'null receiver: NullReferenceException/80004003' 'throw null: NullReferenceException/80004003' \
+        'array index: IndexOutOfRangeException/80131508' 'cast: InvalidCastException/80004002' \
+        'unbox: InvalidCastException/80004002' 'checked conversion: OverflowException/80131516' \
+        'checked addition: OverflowException/80131516' 'integer division: DivideByZeroException/80020012' \
+        'integer remainder: DivideByZeroException/80020012' 'integer format: FormatException/80131537' \
+        'parse null: ArgumentNullException/80004003' 'substring range: ArgumentOutOfRangeException/80131502' \
+        'duplicate key: ArgumentException/80070057' 'missing key: KeyNotFoundException/80131577' \
+        'read-only collection: NotSupportedException/80131515' 'changed collection: InvalidOperationException/80131509' \
+        'disposed stream: ObjectDisposedException/80131622' 'missing constructor: MissingMethodException/80131513' \
+        'array rank: RankException/80131517' 'array element type: ArrayTypeMismatchException/80131503' \
+        'constructed null: NullReferenceException/80004003' 'constructed index: IndexOutOfRangeException/80131508' \
+        'constructed cast: InvalidCastException/80004002' 'constructed overflow: OverflowException/80131516' \
+        'constructed division: DivideByZeroException/80020012' 'constructed format: FormatException/80131537' \
+        'constructed base: Exception/80131500' 'custom constructor code: CustomCode/81234567' \
+        'custom argument: CustomArgument/80070057' 'aggregate default: AggregateException/80131500' \
+        'assigned thrown code: Exception/0000007B' 'explicit HRESULT: COMException/81234567' \
+        'runtime exception HResult end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: runtime HResult witness missing: $line" >&2; return 1; }
     done
     before=$(run_bounded "./$out/ExceptionMessageSubset" before-runtime-exception-chains)
     prefix=$(awk '/^== runtime exception ancestry ==$/ { exit } { print }' <<< "$native")

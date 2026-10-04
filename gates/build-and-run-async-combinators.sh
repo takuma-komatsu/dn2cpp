@@ -164,7 +164,7 @@ ${mode#*:}" ]; then
         assert_exit_code "$child_code" "$dotnet_code"
         grep -Fq 'Unhandled exception. System.InvalidOperationException: ' "$out/suspension-oracle.err" \
             || { echo "FAIL: real .NET did not report the rejected suspension as unhandled" >&2; exit 1; }
-        grep -Fq 'dn2cpp fatal: threadpool: unhandled managed exception' "$out/suspension.err" \
+        grep -Fq 'Unhandled exception. System.InvalidOperationException: ' "$out/suspension.err" \
             || { echo "FAIL: the rejected suspension (${mode%%:*}) did not end as an unhandled ThreadPool exception" >&2
                 cat "$out/suspension.err" >&2; exit 1; }
         echo "OK suspension rejection ${mode%%:*}: aborted with $child_code after '${mode#*:}'"

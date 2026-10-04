@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Process termination on an exception escaping Main: real .NET reports to
+# Process termination and managed diagnostics on exceptions escaping Main,
+# pool work, local continuations, nested drains, threads, timers and async void,
+# including a closed generic nested exception's CLR type display.
+# Real .NET reports to
 # stderr and aborts (SIGABRT -> 134), it does not exit(1) — and corelib_diff_gate
 # pins the native exit status to real .NET's. The generated main's catch funnel
 # must therefore abort too, with stdout flushed first (Linux's abort() does not
@@ -9,12 +12,13 @@
 # A second arm reruns the binary capturing stderr and asserts the report
 # carries the throw-time trace — see its comment below.
 source "$(dirname "$0")/_common.sh"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|worker-modes:pool,thread,timer,async-void,local-continuation,nested-drain,generic-exception"
 
 corelib_diff_gate UnhandledExitSubset
 
 # Throw-time-trace arm: the unhandled report must carry the trace captured at throw. The
 # stdout+exit diff above stays pinned to real .NET; stderr can never join that
-# diff (the two runtimes' report wording differs), so it is asserted by hand
+# diff (trace formatting and frame names differ), so it is asserted by hand
 # here: at least one "   at " trace line, and the frame of the method the
 # exception escaped from. Contains-only on purpose — frame COUNT and the
 # neighboring frames are best-effort under -O2 (an inlined or unresolvable
@@ -69,3 +73,32 @@ if ! grep -q '^   at Program\.Main()' <<<"$err"; then
     exit 1
 fi
 echo "OK — the unhandled report names Program.Main in a real '   at ' trace"
+
+echo "== Escaping-worker arms: managed first line and abnormal exit match real .NET =="
+for mode in pool thread timer 'async void' 'local continuation' 'nested drain' 'generic exception'; do
+    set +e
+    native=$(run_bounded "./$out/$project$EXE_EXT" "$mode" 2>"$out/worker.err"); native_code=$?
+    expected=$(run_bounded dotnet "$_CG_APP" "$mode" 2>"$out/worker-oracle.err"); expected_code=$?
+    set -e
+    native=$(strip_cr_win "$native")
+    expected=$(strip_cr_win "$expected")
+    assert_output "$native" "$expected"
+    assert_output "$native" "before throw
+-- escaping worker: $mode --
+throwing $mode"
+    case "$expected_code" in
+        0|1) echo "FAIL: real .NET did not terminate abnormally for $mode" >&2; exit 1 ;;
+    esac
+    assert_exit_code "$native_code" "$expected_code"
+    first=$(strip_cr_win "$(head -n 1 "$out/worker.err")")
+    oracle_first=$(strip_cr_win "$(head -n 1 "$out/worker-oracle.err")")
+    assert_output "$first" "$oracle_first"
+    if [ "$mode" = 'generic exception' ]; then
+        assert_output "$first" 'Unhandled exception. Program+GenericFailure`1[System.Int32]: escaped generic exception'
+    else
+        assert_output "$first" "Unhandled exception. System.InvalidOperationException: escaped $mode"
+    fi
+    grep -q '^   at ' "$out/worker.err" \
+        || { echo "FAIL: $mode report has no managed throw-time trace" >&2; exit 1; }
+    echo "OK worker $mode: reported managed fault and aborted with $native_code"
+done
