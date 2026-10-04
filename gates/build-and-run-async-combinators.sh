@@ -24,6 +24,8 @@
 # leaves the join pending.
 # Pending inputs notify joins before their completion returns, including nested
 # joins and concurrent producers; ordinary await callbacks remain queued.
+# Cancellation callback faults preserve LIFO order and identity, aggregate by
+# default, and stop on the first exception only for Cancel(true).
 # WhenAllFaultSetSubset.cs asserts that Task.WhenAll's fault set is EVERY faulted
 # input rather than the first — a nested join flattens into its own inner set and a
 # cancellation alongside a fault contributes nothing — and that the three mouths that
@@ -70,11 +72,31 @@ build_gate_proj gates/fixtures/task-call-validation/TaskCallValidation.csproj
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $call_app ${call_app%.dll}.runtimeconfig.json ${call_app%.dll}.deps.json gates/fixtures/task-call-validation/patch-call.py"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|task-call-validation|cli:$(_gate_cli_hash)"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-pending-task-joins"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-cancellation-callback-faults"
 
 gate_extra_asserts() {
     local out="$1" native before prefix line
     native=$(run_bounded "./$out/AsyncCombinators")
     native=$(strip_cr_win "$native")
+    before=$(run_bounded dotnet "$_CG_APP" before-cancellation-callback-faults)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== cancellation callback faults ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== cancellation callback faults ==' \
+        'cancel default: newer;older;remaining;|AggregateException/2|identity=True|requested=True/True' \
+        'cancel false: newer;older;remaining;|AggregateException/2|identity=True|requested=True/True' \
+        'cancel true: newer;|InvalidOperationException|identity=True|requested=True/True' \
+        'cancel state/token False: token;state;remaining;|AggregateException/2|identity=True/True/True' \
+        'cancel state/token True: token;|InvalidOperationException|identity=True/False/True' \
+        'cancel linked False: child-newer;child-older;parent;|AggregateException/2|nested=True|identity=True|requested=True/True' \
+        'cancel linked True: child-newer;child-older;|AggregateException/2|nested=False|identity=True|requested=True/True' \
+        'cancel reentrant: outer;immediate;remaining;|AggregateException/1|identity=True' \
+        'cancel already requested register: InvalidOperationException|identity=True' \
+        'cancel collected: newer;older;remaining;|2|collected newer,collected older' \
+        'cancellation callback faults end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: cancellation callback fault witness missing: $line" >&2; exit 1; }
+    done
     before=$(run_bounded dotnet "$_CG_APP" before-pending-task-joins)
     before=$(strip_cr_win "$before")
     prefix=$(awk '/^== pending task joins ==$/ { exit } { print }' <<< "$native")

@@ -479,10 +479,10 @@ internal sealed partial class MethodCompiler
             // ---- cancellation ----
             case ("System.Threading.CancellationTokenSource", "Cancel"):
             {
-                for (int i = 0; i < sig.ParameterTypes.Length; i++)
-                    Pop(); // throwOnFirstException (bool) — unmodeled
+                string throwOnFirstException = sig.ParameterTypes.Length == 0
+                    ? "false" : $"({Pop().Expr}) != 0";
                 var s = Pop();
-                Emit($"dn2cpp_cts_cancel((Dn2CppCancelSource*)({s.Expr}));");
+                Emit($"dn2cpp_cts_cancel((Dn2CppCancelSource*)({s.Expr}), {throwOnFirstException});");
                 return true;
             }
             case ("System.Threading.CancellationTokenSource", "get_Token"):

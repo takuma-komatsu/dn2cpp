@@ -7348,7 +7348,7 @@ Dn2CppCancelSource* dn2cpp_cts_canceled();  // a pre-canceled source (new Cancel
 // hands GetAsyncEnumerator, which is what put these here.
 Dn2CppCancelSource* dn2cpp_cts_link2(Dn2CppCancelSource* a, Dn2CppCancelSource* b);
 Dn2CppCancelSource* dn2cpp_cts_link_array(Dn2CppArrayN* tokens);
-void dn2cpp_cts_cancel(Dn2CppCancelSource* src);
+void dn2cpp_cts_cancel(Dn2CppCancelSource* src, bool throwOnFirstException = false);
 // CancellationTokenSource.CancelAfter(delay): cancel `src` after `ms` milliseconds on the
 // source's timer thread — at most one exists per source, so a second CancelAfter
 // RESCHEDULES rather than arming a second cancel (real .NET's `_timer.Change`). ms == 0

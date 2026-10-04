@@ -1528,7 +1528,7 @@ Dn2CppCancelSource* dn2cpp_cts_canceled()
     return s;
 }
 
-void dn2cpp_cts_cancel(Dn2CppCancelSource* src)
+void dn2cpp_cts_cancel(Dn2CppCancelSource* src, bool throwOnFirstException)
 {
     if (src == nullptr)
         return;
@@ -1548,37 +1548,49 @@ void dn2cpp_cts_cancel(Dn2CppCancelSource* src)
     g_cts_timer_cv.notify_all();
     // `regs` is prepend-ordered (newest first), so walking head->tail runs the
     // callbacks in LIFO registration order — matching real .NET.
+    Dn2CppRefList* faults = nullptr;
     for (Dn2CppCancelReg* r = head; r != nullptr; r = r->next)
     {
-        if (r->task != nullptr)
+        try
         {
-            // A pending Task.Delay bound to this source: its timer entry is skipped
-            // once the task leaves PENDING.
-            if (r->task->status == DN2CPP_TASK_PENDING)
-                dn2cpp_task_set_canceled(r->task);
+            if (r->task != nullptr)
+            {
+                // A pending Task.Delay bound to this source: its timer entry is skipped
+                // once the task leaves PENDING.
+                if (r->task->status == DN2CPP_TASK_PENDING)
+                    dn2cpp_task_set_canceled(r->task);
+            }
+            else if (r->callback != nullptr)
+            {
+                dn2cpp_action_invoke(r->callback);
+            }
+            else if (r->stateCallback != nullptr)
+            {
+                dn2cpp_paramthread_invoke(r->stateCallback, r->state);
+            }
+            else if (r->tokenCallback != nullptr)
+            {
+                dn2cpp_tokenthread_invoke(r->tokenCallback, r->state, Dn2CppCancelToken{ src });
+            }
+            else if (r->child != nullptr)
+            {
+                // A linked child always collects its own faults; the parent policy
+                // decides whether to rethrow that aggregate or keep it as one fault.
+                dn2cpp_cts_cancel(r->child, false);
+            }
         }
-        else if (r->callback != nullptr)
+        catch (const Dn2CppException& exception)
         {
-            dn2cpp_action_invoke(r->callback);
-        }
-        else if (r->stateCallback != nullptr)
-        {
-            dn2cpp_paramthread_invoke(r->stateCallback, r->state);
-        }
-        else if (r->tokenCallback != nullptr)
-        {
-            dn2cpp_tokenthread_invoke(r->tokenCallback, r->state, Dn2CppCancelToken{ src });
-        }
-        else if (r->child != nullptr)
-        {
-            // A LINKED source (CancellationTokenSource.CreateLinkedTokenSource): cancelling
-            // a parent cancels the child, which cascades to the child's own children. Safe
-            // to recurse here — this sweep runs OUTSIDE g_cts_mtx, so the nested Cancel()
-            // takes the lock cleanly, and a source already canceled returns immediately, so
-            // a diamond (two parents linked to one child) cancels it exactly once.
-            dn2cpp_cts_cancel(r->child);
+            if (throwOnFirstException)
+                throw;
+            if (faults == nullptr)
+                faults = dn2cpp_reflist_new();
+            dn2cpp_reflist_add(faults, exception.obj);
+            dn2cpp_exc_inflight_pop(exception.obj); // rooted by faults before leaving the catch
         }
     }
+    if (faults != nullptr)
+        dn2cpp_throw(dn2cpp_aggregate_exception_new(dn2cpp_reflist_to_array(faults)));
 }
 
 // Attach `child` to `parent`: cancelling the parent cancels the child. An already-canceled

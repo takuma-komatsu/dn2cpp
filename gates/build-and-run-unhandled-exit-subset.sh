@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Process termination and managed diagnostics on exceptions escaping Main,
-# pool work, local continuations, nested drains, threads, timers and async void,
+# pool work, local continuations, nested drains, threads, timers, timed cancellation and async void,
 # including a closed generic nested exception's CLR type display.
 # Real .NET reports to
 # stderr and aborts (SIGABRT -> 134), it does not exit(1) — and corelib_diff_gate
@@ -12,7 +12,7 @@
 # A second arm reruns the binary capturing stderr and asserts the report
 # carries the throw-time trace — see its comment below.
 source "$(dirname "$0")/_common.sh"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|worker-modes:pool,thread,timer,async-void,local-continuation,nested-drain,generic-exception"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|worker-modes:pool,thread,timer,cts-timer,async-void,local-continuation,nested-drain,generic-exception"
 
 corelib_diff_gate UnhandledExitSubset
 
@@ -75,7 +75,7 @@ fi
 echo "OK — the unhandled report names Program.Main in a real '   at ' trace"
 
 echo "== Escaping-worker arms: managed first line and abnormal exit match real .NET =="
-for mode in pool thread timer 'async void' 'local continuation' 'nested drain' 'generic exception'; do
+for mode in pool thread timer 'cts timer' 'async void' 'local continuation' 'nested drain' 'generic exception'; do
     set +e
     native=$(run_bounded "./$out/$project$EXE_EXT" "$mode" 2>"$out/worker.err"); native_code=$?
     expected=$(run_bounded dotnet "$_CG_APP" "$mode" 2>"$out/worker-oracle.err"); expected_code=$?
@@ -95,10 +95,15 @@ throwing $mode"
     assert_output "$first" "$oracle_first"
     if [ "$mode" = 'generic exception' ]; then
         assert_output "$first" 'Unhandled exception. Program+GenericFailure`1[System.Int32]: escaped generic exception'
+    elif [ "$mode" = 'cts timer' ]; then
+        assert_output "$first" 'Unhandled exception. System.AggregateException: One or more errors occurred. (escaped cts timer)'
     else
         assert_output "$first" "Unhandled exception. System.InvalidOperationException: escaped $mode"
     fi
-    grep -q '^   at ' "$out/worker.err" \
-        || { echo "FAIL: $mode report has no managed throw-time trace" >&2; exit 1; }
+    # CTS aggregation throws in native code after the managed callback returns.
+    if [ "$mode" != 'cts timer' ]; then
+        grep -q '^   at ' "$out/worker.err" \
+            || { echo "FAIL: $mode report has no managed throw-time trace" >&2; exit 1; }
+    fi
     echo "OK worker $mode: reported managed fault and aborted with $native_code"
 done

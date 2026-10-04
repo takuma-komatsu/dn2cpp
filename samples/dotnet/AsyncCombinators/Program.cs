@@ -60,6 +60,9 @@ namespace AsyncCombinators
             if (args.Length == 1 && args[0] == "before-pending-task-joins")
                 return;
             SettledCombinatorsSubset.Program.RunPending();
+            if (args.Length == 1 && args[0] == "before-cancellation-callback-faults")
+                return;
+            CancellationSubset.Program.RunFaults();
             // Ends the process: a builder suspension's rejected registration is re-raised
             // as an unhandled ThreadPool exception.
             if (args.Length == 2 && args[0] == "suspension-rejection")
