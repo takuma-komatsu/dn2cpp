@@ -7,7 +7,7 @@ namespace SpanOps
     // stay identical to a standalone program.
     internal static class Program
     {
-        private static void Main()
+        private static void Main(string[] args)
         {
             // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
@@ -27,6 +27,10 @@ namespace SpanOps
             MemoryMarshalPinnedSubset.Program.__GateEntry();
             MemoryManagerSubset.Program.__GateEntry();
             MemoryMarshalSubset.Program.__GateEntry();
+            if (args.Length > 0 && args[0] == "before-decimal-layout")
+                return;
+
+            DecimalLayoutSubset.Program.__GateEntry();
         }
     }
 }

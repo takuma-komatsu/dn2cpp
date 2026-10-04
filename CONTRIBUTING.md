@@ -9,9 +9,19 @@ discussed.
 
 The hosted smoke workflows (`.github/workflows/linux-smoke.yml`,
 `.github/workflows/windows-smoke.yml`, `.github/workflows/macos-smoke.yml`) run
-on every pull request and are the only green a contributor can see. They answer
-one question: does the tree still build across Linux, Windows, and macOS, and
-does C# still reach a running native binary.
+basic regression checks on every pull request and push to `main`. Each OS uses
+one job and `gates/ci-smoke.sh` to select its profile. Linux, Windows/MSVC and
+macOS run the same fixed, uncached Debug allowlist covering language, primitive
+values, arrays, strings, collections, generics, async, threads and GC barriers.
+It also checks OS APIs through filesystem, environment, synchronization,
+memory-mapped file and native interop tests. Every selected gate must run. Gate
+logs are uploaded, and the basic profile publishes timings in the job summary.
+
+The same jobs run the wider non-Godot suite daily and through
+`workflow_dispatch`. That profile retains the OSS integration gates and other
+checks outside the basic allowlist. Missing optional prerequisites remain
+reported as skips in its summary and logs. Scheduled and manual runs use a
+separate concurrency group, so a new push cannot cancel them.
 
 The Godot-inclusive merge gate — `./gates/pre-merge.sh` — does not run there and
 cannot. Its header states each structural reason (a scons-built dn2cpp fork of
