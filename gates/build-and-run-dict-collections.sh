@@ -29,6 +29,8 @@
 # and a null-conditional equality call as used by reactive properties.
 # RuntimeTypeHandleKeySubset covers the opaque pointer-backed handle as a direct key and as
 # a synthesized structural field, including nested KeyValuePair dictionary values.
+# NullableEqualitySubset covers nullable default equality: empty values, underlying
+# IEquatable<T>/object/structural dispatch, floating NaN and nullable collection scans.
 # Former gates: dict, dict-api, dict-enum, dict-more, dict-string, hashset,
 # hashkey, sorted-collections, join-enumerable-subset,
 # ordinal-stringset-dedup-subset, struct-key-subset, valuetuple-key-dict-subset.
@@ -47,12 +49,20 @@ gate_extra_asserts() {
     before=$(strip_cr_win "$before")
     prefix=$(awk '/^== default comparison validation ==$/ { exit } { print }' <<< "$native")
     assert_output "$prefix" "$before"
+    before=$(dotnet "$_CG_APP" before-nullable-equality)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== nullable default equality ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
     for line in '== default comparison validation ==' \
         '== default equality mouths ==' \
         'default equality mouths end' \
         'reference IEquatable nongeneric message: Type of argument is not compatible with the generic comparer.' \
         'reference IEquatable nongeneric param: null' \
-        'default comparison validation end'; do
+        'default comparison validation end' \
+        '== nullable default equality ==' \
+        'typed equatable: True False False True False 2' \
+        'generic equatable calls: 2' \
+        'nullable default equality end'; do
         grep -Fxq "$line" <<< "$native" \
             || { echo "FAIL: DictCollections comparison coverage missing: $line" >&2; exit 1; }
     done

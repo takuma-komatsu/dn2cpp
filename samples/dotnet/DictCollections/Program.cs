@@ -38,6 +38,9 @@ namespace DictCollections
             Console.WriteLine("== default comparison validation ==");
             DefaultEqualityMouthsSubset.Program.__GateEntry();
             Console.WriteLine("default comparison validation end");
+            if (args.Length > 0 && args[0] == "before-nullable-equality")
+                return;
+            NullableEqualitySubset.Program.__GateEntry();
         }
     }
 }

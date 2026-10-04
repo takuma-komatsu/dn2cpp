@@ -3605,19 +3605,23 @@ internal sealed partial class MethodCompiler
     /// popped its operands or opened its loop, whether an element type is comparable
     /// at all asks THIS; it builds the expression later, once, at the emit position.
     /// </summary>
-    private bool CanEqualityEquals(TypeDesc t) =>
-        t.IsString
-        || (t.Kind == TypeKind.Primitive && !t.IsObject)
-        || t.IsCanonPlaceholder
-        || t is { Kind: TypeKind.Class, Class.IsEnum: true }
-        || IsReferenceKeyType(t)
-        || IntrinsicValueTypeFn(t) is not null
-        || IsCancellationTokenValue(t)
-        || IntrinsicPointerValueType(t) is not null
-        || (EqualityStructArm(t) is { } sc
-            && (Compilation.EffectiveTypedEquals(sc) is not null
-                || Compilation.EffectiveEquals(sc) is not null
-                || _c.ReachedSynthesizedValueEquals(sc) is not null));
+    private bool CanEqualityEquals(TypeDesc t)
+    {
+        if (Comp.NullableUnderlying(t) is { } underlying)
+            return CanEqualityEquals(underlying);
+        return t.IsString
+            || (t.Kind == TypeKind.Primitive && !t.IsObject)
+            || t.IsCanonPlaceholder
+            || t is { Kind: TypeKind.Class, Class.IsEnum: true }
+            || IsReferenceKeyType(t)
+            || IntrinsicValueTypeFn(t) is not null
+            || IsCancellationTokenValue(t)
+            || IntrinsicPointerValueType(t) is not null
+            || (EqualityStructArm(t) is { } sc
+                && (Compilation.EffectiveTypedEquals(sc) is not null
+                    || Compilation.EffectiveEquals(sc) is not null
+                    || _c.ReachedSynthesizedValueEquals(sc) is not null));
+    }
 
     /// <summary>The devirtualized EqualityComparer&lt;T&gt;.Default.Equals for a
     /// closed key type, as a pure expression over two operands that are already
@@ -3629,6 +3633,18 @@ internal sealed partial class MethodCompiler
     /// NotSupported belongs to the caller, which knows what it was scanning.</summary>
     private string? TryEqualityEqualsLValue(TypeDesc keyType, StackEntry a, StackEntry b)
     {
+        // NullableEqualityComparer<U> compares presence before U's default equality.
+        // Nullable<U>.Equals(object) instead expects a null-or-U box, never its own box.
+        if (NullableLayout(keyType) is (var underlying, var hasValue, var value))
+        {
+            string ct = CppTypes.Of(underlying);
+            var x = new StackEntry($"({a.Expr}).{value}", CppTypes.KindOf(underlying), ct);
+            var y = new StackEntry($"({b.Expr}).{value}", CppTypes.KindOf(underlying), ct);
+            if (TryEqualityEqualsLValue(underlying, x, y) is not { } inner)
+                return null;
+            return $"((({a.Expr}).{hasValue} ? 1 : 0) == (({b.Expr}).{hasValue} ? 1 : 0)"
+                + $" && (!({a.Expr}).{hasValue} || {inner}))";
+        }
         if (keyType.IsCanonPlaceholder && !keyType.IsObject)
         {
             string ct = CppTypes.Of(keyType);
