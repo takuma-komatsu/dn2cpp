@@ -22,6 +22,8 @@
 # since a wait ahead of the read passes whether the join finished inline or was posted
 # to the scheduler; the mixed rows hold the other side, that one pending input still
 # leaves the join pending.
+# Pending inputs notify joins before their completion returns, including nested
+# joins and concurrent producers; ordinary await callbacks remain queued.
 # WhenAllFaultSetSubset.cs asserts that Task.WhenAll's fault set is EVERY faulted
 # input rather than the first — a nested join flattens into its own inner set and a
 # cancellation alongside a fault contributes nothing — and that the three mouths that
@@ -67,11 +69,38 @@ call_app="gates/fixtures/task-call-validation/bin/$CONFIG/$TFM/TaskCallValidatio
 build_gate_proj gates/fixtures/task-call-validation/TaskCallValidation.csproj
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $call_app ${call_app%.dll}.runtimeconfig.json ${call_app%.dll}.deps.json gates/fixtures/task-call-validation/patch-call.py"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|task-call-validation|cli:$(_gate_cli_hash)"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-pending-task-joins"
 
 gate_extra_asserts() {
     local out="$1" native before prefix line
     native=$(run_bounded "./$out/AsyncCombinators")
     native=$(strip_cr_win "$native")
+    before=$(run_bounded dotnet "$_CG_APP" before-pending-task-joins)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== pending task joins ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== pending task joins ==' \
+        'pending int: False,False,True|2|7,9' \
+        'pending long: False,False,True|2|4294967296,-4294967297' \
+        'pending string: False,False,True|2|left,right' \
+        'pending object: False,False,True|2|11,value' \
+        'pending enum: False,False,True|2|Low,High' \
+        'pending struct: False,False,True|2|11/left,12/right' \
+        'pending nongeneric before: False,False' \
+        'pending nongeneric partial: False,True' \
+        'pending nongeneric final: True,True|True,True' \
+        'pending fault partial: False,True|False,True' \
+        'pending fault final: True,True,False|1,pending fault' \
+        'pending cancel partial: False,True|False,True' \
+        'pending cancel final: True,True,False|True' \
+        'pending nested: True,True,True|True' \
+        'pending worker: True,True|4,5,True' \
+        'pending races: 32,32,32' \
+        'ordinary await inline: False' \
+        'pending task joins end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: pending task join witness missing: $line" >&2; exit 1; }
+    done
     before=$(run_bounded dotnet "$_CG_APP" before-value-task-source-handoff)
     before=$(strip_cr_win "$before")
     prefix=$(awk '/^== value task source handoff ==$/ { exit } { print }' <<< "$native")

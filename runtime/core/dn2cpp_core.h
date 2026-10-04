@@ -6985,7 +6985,8 @@ struct Dn2CppScheduler;
 // A queued resumption: re-enter a boxed state machine's MoveNext (fn) with the
 // boxed state machine pointer (state). Used both for the scheduler run queue and
 // for the per-task list of continuations waiting on a task's completion.
-// `owner` is the scheduler the resumption must run on — the thread that registered
+// `owner` is null for an internal synchronous join notification; otherwise it is
+// the scheduler the resumption must run on — the thread that registered
 // the await. A worker thread that completes the task posts the continuation back to
 // `owner` (cross-thread) instead of its own queue, so the state machine resumes on
 // the awaiting thread. For pure single-thread async, owner is always the caller's
@@ -7171,8 +7172,7 @@ void dn2cpp_task_throw_async(Dn2CppObject* exc, Dn2CppObject* syncCtx);
 // left untouched: awaiting/blocking re-raises it directly.
 Dn2CppObject* dn2cpp_task_exception(Dn2CppTask* t);
 
-// Complete a task and post its continuations to the scheduler (SetResult /
-// SetException intrinsics route here so awaiters resume).
+// Joins settle before the producer returns; await resumptions stay queued.
 void dn2cpp_task_set_result(Dn2CppTask* t, uint64_t result);
 void dn2cpp_task_set_exception(Dn2CppTask* t, Dn2CppObject* exception);
 // Async Task/ValueTask builders and source-backed bridges classify

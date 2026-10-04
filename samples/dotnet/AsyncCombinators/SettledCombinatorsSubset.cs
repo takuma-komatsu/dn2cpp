@@ -1,6 +1,7 @@
 #nullable disable
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace SettledCombinatorsSubset
@@ -115,6 +116,174 @@ namespace SettledCombinatorsSubset
         {
             WhenAll();
             WhenAny();
+        }
+
+        private enum PendingCode : ushort { Low = 1, High = 65535 }
+
+        private struct PendingPair
+        {
+            internal int Number;
+            internal string Text;
+            public override string ToString() => Number + "/" + Text;
+        }
+
+        private static void PendingResults<T>(string label, T first, T second)
+        {
+            var a = new TaskCompletionSource<T>();
+            var b = new TaskCompletionSource<T>();
+            var all = Task.WhenAll(new Task<T>[] { a.Task, b.Task });
+            bool before = all.IsCompleted;
+            a.SetResult(first);
+            bool partial = all.IsCompleted;
+            b.SetResult(second);
+            bool final = all.IsCompleted;
+            T[] values = all.Result;
+            Console.WriteLine("pending " + label + ": " + before + "," + partial + "," + final
+                + "|" + values.Length + "|" + values[0] + "," + values[1]);
+        }
+
+        private static void PendingNonGeneric()
+        {
+            var a = new TaskCompletionSource<int>();
+            var b = new TaskCompletionSource<int>();
+            var all = Task.WhenAll((IEnumerable<Task>)new List<Task>
+                { a.Task, Task.CompletedTask, b.Task, a.Task });
+            var any = Task.WhenAny((IEnumerable<Task>)new List<Task> { a.Task, b.Task });
+            Console.WriteLine("pending nongeneric before: " + all.IsCompleted + "," + any.IsCompleted);
+            a.SetResult(1);
+            Console.WriteLine("pending nongeneric partial: " + all.IsCompleted + "," + any.IsCompleted);
+            Task winner = any.Result;
+            b.SetResult(2);
+            Console.WriteLine("pending nongeneric final: " + all.IsCompleted + "," + any.IsCompleted
+                + "|" + ReferenceEquals(winner, a.Task) + "," + ReferenceEquals(any.Result, winner));
+        }
+
+        private static void PendingOutcomes()
+        {
+            var fault = new TaskCompletionSource<int>();
+            var cancel = new TaskCompletionSource<int>();
+            var all = Task.WhenAll(fault.Task, cancel.Task);
+            var any = Task.WhenAny(fault.Task, cancel.Task);
+            fault.SetException(new InvalidOperationException("pending fault"));
+            Console.WriteLine("pending fault partial: " + all.IsCompleted + "," + any.IsCompleted
+                + "|" + any.IsFaulted + "," + ReferenceEquals(any.Result, fault.Task));
+            cancel.SetCanceled();
+            Console.WriteLine("pending fault final: " + all.IsCompleted + "," + all.IsFaulted
+                + "," + all.IsCanceled + "|" + all.Exception.InnerExceptions.Count
+                + "," + all.Exception.InnerException.Message);
+
+            var success = new TaskCompletionSource<int>();
+            var canceled = new TaskCompletionSource<int>();
+            var canceledAll = Task.WhenAll(success.Task, canceled.Task);
+            var canceledAny = Task.WhenAny(canceled.Task, success.Task);
+            canceled.SetCanceled();
+            Console.WriteLine("pending cancel partial: " + canceledAll.IsCompleted + "," + canceledAny.IsCompleted
+                + "|" + canceledAny.IsCanceled + "," + canceledAny.Result.IsCanceled);
+            success.SetResult(3);
+            Console.WriteLine("pending cancel final: " + canceledAll.IsCompleted + "," + canceledAll.IsCanceled
+                + "," + canceledAll.IsFaulted + "|" + (canceledAll.Exception is null));
+        }
+
+        private static void PendingNested()
+        {
+            var source = new TaskCompletionSource<int>();
+            Task chain = source.Task;
+            for (int i = 0; i < 1024; i++)
+                chain = Task.WhenAll(new Task[] { chain, Task.CompletedTask });
+            var any = Task.WhenAny(new Task[] { chain, new TaskCompletionSource<int>().Task });
+            var outer = Task.WhenAll(new Task[] { chain, any });
+            source.SetResult(17);
+            Console.WriteLine("pending nested: " + chain.IsCompleted + "," + any.IsCompleted
+                + "," + outer.IsCompleted + "|" + ReferenceEquals(any.Result, chain));
+        }
+
+        private static void PendingWorker()
+        {
+            var source = new TaskCompletionSource<int>();
+            var all = Task.WhenAll(source.Task, Task.FromResult(5));
+            var any = Task.WhenAny(source.Task, new TaskCompletionSource<int>().Task);
+            bool allAtReturn = false;
+            bool anyAtReturn = false;
+            var worker = new Thread(() =>
+            {
+                source.SetResult(4);
+                allAtReturn = all.IsCompleted;
+                anyAtReturn = any.IsCompleted;
+            });
+            worker.Start();
+            worker.Join();
+            Console.WriteLine("pending worker: " + allAtReturn + "," + anyAtReturn
+                + "|" + all.Result[0] + "," + all.Result[1] + "," + ReferenceEquals(any.Result, source.Task));
+        }
+
+        private static void PendingRaces()
+        {
+            int allCompleted = 0;
+            int anyCompleted = 0;
+            int validResults = 0;
+            for (int i = 0; i < 32; i++)
+            {
+                var a = new TaskCompletionSource<int>();
+                var b = new TaskCompletionSource<int>();
+                using var start = new ManualResetEventSlim(false);
+                var first = new Thread(() => { start.Wait(); a.SetResult(7); });
+                var second = new Thread(() => { start.Wait(); b.SetResult(9); });
+                first.Start();
+                second.Start();
+                if ((i & 1) != 0)
+                    start.Set();
+                // Alternate concurrent pending callbacks with registration/completion races.
+                var all = Task.WhenAll(a.Task, b.Task);
+                var any = Task.WhenAny(a.Task, b.Task);
+                if ((i & 1) == 0)
+                    start.Set();
+                first.Join();
+                second.Join();
+                if (all.IsCompleted)
+                    allCompleted++;
+                if (any.IsCompleted)
+                    anyCompleted++;
+                int[] values = all.Result;
+                Task<int> winner = any.Result;
+                if (values[0] == 7 && values[1] == 9
+                    && (ReferenceEquals(winner, a.Task) || ReferenceEquals(winner, b.Task))
+                    && ReferenceEquals(any.Result, winner))
+                    validResults++;
+            }
+            Console.WriteLine("pending races: " + allCompleted + "," + anyCompleted + "," + validResults);
+        }
+
+        private static void OrdinaryQueuedAwait()
+        {
+            var source = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var callback = new TaskCompletionSource<bool>();
+            int producer = Thread.CurrentThread.ManagedThreadId;
+            bool setting = false;
+            source.Task.GetAwaiter().OnCompleted(() => callback.SetResult(
+                Thread.CurrentThread.ManagedThreadId == producer && setting));
+            setting = true;
+            source.SetResult(1);
+            setting = false;
+            Console.WriteLine("ordinary await inline: " + callback.Task.Result);
+        }
+
+        internal static void RunPending()
+        {
+            Console.WriteLine("== pending task joins ==");
+            PendingResults("int", 7, 9);
+            PendingResults("long", 4294967296L, -4294967297L);
+            PendingResults("string", "left", "right");
+            PendingResults<object>("object", 11, "value");
+            PendingResults("enum", PendingCode.Low, PendingCode.High);
+            PendingResults("struct", new PendingPair { Number = 11, Text = "left" },
+                new PendingPair { Number = 12, Text = "right" });
+            PendingNonGeneric();
+            PendingOutcomes();
+            PendingNested();
+            PendingWorker();
+            PendingRaces();
+            OrdinaryQueuedAwait();
+            Console.WriteLine("pending task joins end");
         }
     }
 }

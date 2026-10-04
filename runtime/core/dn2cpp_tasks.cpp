@@ -595,12 +595,59 @@ static bool dn2cpp_sched_run_one()
     return true;
 }
 
-// Route a completed task's stolen continuation list to each continuation's owner
-// scheduler (oldest first), reusing the existing nodes (no allocation). Runs on
-// whatever thread completed the task; cross-thread continuations land on (and wake)
-// the awaiting thread, same-thread ones land on the caller's own queue.
+// The active drain's list lives on a scanned stack frame; TLS holds only its address.
+// Nested joins append here instead of recursing through their completion callbacks.
+struct Dn2CppJoinDrain
+{
+    static thread_local Dn2CppJoinDrain* active;
+    Dn2CppCont* head = nullptr;
+    Dn2CppCont* tail = nullptr;
+    bool owns = active == nullptr;
+
+    Dn2CppJoinDrain()
+    {
+        if (owns)
+            active = this;
+    }
+
+    ~Dn2CppJoinDrain()
+    {
+        if (owns)
+            active = nullptr;
+    }
+
+    void append(Dn2CppCont* c)
+    {
+        dn2cpp_gc_store_ref(&c->next, static_cast<Dn2CppCont*>(nullptr));
+        if (tail != nullptr)
+            dn2cpp_gc_store_ref(&tail->next, c);
+        else
+            head = c;
+        tail = c;
+    }
+
+    void run()
+    {
+        if (!owns)
+            return;
+        while (head != nullptr)
+        {
+            Dn2CppCont* c = head;
+            head = c->next;
+            if (head == nullptr)
+                tail = nullptr;
+            c->fn(c->state);
+        }
+    }
+};
+
+thread_local Dn2CppJoinDrain* Dn2CppJoinDrain::active = nullptr;
+
+// Join notifications finish before the outer completion returns. Ordinary await
+// continuations still go to their owner scheduler, in registration order.
 static void dn2cpp_fire_conts(Dn2CppCont* conts)
 {
+    Dn2CppJoinDrain drain;
     // The list is built by prepending, so reverse it to preserve await order.
     Dn2CppCont* prev = nullptr;
     for (Dn2CppCont* c = conts; c != nullptr;)
@@ -613,9 +660,13 @@ static void dn2cpp_fire_conts(Dn2CppCont* conts)
     for (Dn2CppCont* c = prev; c != nullptr;)
     {
         Dn2CppCont* next = c->next; // save before the node is relinked
-        dn2cpp_sched_enqueue(c->owner, c);
+        if (c->owner == nullptr)
+            Dn2CppJoinDrain::active->append(c);
+        else
+            dn2cpp_sched_enqueue(c->owner, c);
         c = next;
     }
+    drain.run();
 }
 
 // Detach a completing task's continuation list under g_task_mtx (so a concurrent
@@ -650,7 +701,8 @@ void dn2cpp_task_set_exception(Dn2CppTask* t, Dn2CppObject* exception)
 // Queue `fn` on a PENDING task, or answer false when `t` is already settled and the
 // caller must dispose of the continuation itself. Never runs `fn`, and never runs
 // anything under g_task_mtx.
-static bool dn2cpp_task_try_queue_cont(Dn2CppTask* t, void (*fn)(void*), void* state)
+static bool dn2cpp_task_try_queue_cont(Dn2CppTask* t, void (*fn)(void*), void* state,
+                                        bool synchronous = false)
 {
     // Outside g_task_mtx: arming runs the source's own code and may settle `t`.
     if (t->vtsBridge != nullptr)
@@ -661,7 +713,7 @@ static bool dn2cpp_task_try_queue_cont(Dn2CppTask* t, void (*fn)(void*), void* s
     c->fn = fn;
     c->state = state;
     dn2cpp_gc_write_barrier(&c->state);
-    c->owner = dn2cpp_sched_self();
+    c->owner = synchronous ? nullptr : dn2cpp_sched_self();
     std::lock_guard<std::mutex> lk(g_task_mtx);
     if (t->status != DN2CPP_TASK_PENDING)
         return false;
@@ -705,22 +757,12 @@ void dn2cpp_async_await_on_completed(Dn2CppTask* t, void (*fn)(void*), void* sta
         dn2cpp_sched_post(fn, state);
 }
 
-// Registration with .NET's TaskContinuationOptions.ExecuteSynchronously: an
-// already-settled `t` runs `fn` INLINE, on this thread, before returning. That is what
-// makes Task.WhenAll/WhenAny over settled inputs complete before the call returns, as
-// real .NET does; posting instead leaves the join PENDING until something turns the
-// scheduler loop.
-//
-// Two invariants make inlining safe here, and both must survive any new caller:
-//   * The call is outside g_task_mtx, so a callback that settles a task cannot deadlock.
-//   * A task settling LATER fires through dn2cpp_fire_conts, which only ever enqueues,
-//     so an inline callback cannot re-enter this on a task it just settled — the depth
-//     is one callback, not the chain length of the combinators built over it.
-// It is not the default: ContinueWith over a settled task must still be PENDING on
-// return, and Task.Delay/await ordering is defined by the scheduler queue.
+// Internal join notifications run outside g_task_mtx, both for settled inputs and
+// when a pending input settles. The completion drain bounds nested callback depth.
+// Ordinary await and ContinueWith registrations retain their queued contract.
 static void dn2cpp_task_on_completed_sync(Dn2CppTask* t, void (*fn)(void*), void* state)
 {
-    if (!dn2cpp_task_try_queue_cont(t, fn, state))
+    if (!dn2cpp_task_try_queue_cont(t, fn, state, true))
         fn(state);
 }
 
@@ -901,7 +943,7 @@ struct Dn2CppWhenAllState
 {
     Dn2CppTask* result;
     Dn2CppArrayRef* tasks;
-    int32_t remaining;
+    std::atomic<int32_t> remaining;
     int32_t kind;
     int32_t elemSize;   // DN2CPP_WHENALL_N / STRUCT: byte size of each result element
     // The TResult[] handle the emit arm supplied. The array is materialized inside
@@ -1054,7 +1096,7 @@ static void dn2cpp_when_all_finish(Dn2CppWhenAllState* s)
 static void dn2cpp_when_all_one(void* p)
 {
     auto* s = static_cast<Dn2CppWhenAllState*>(p);
-    if (--s->remaining == 0)
+    if (s->remaining.fetch_sub(1, std::memory_order_acq_rel) == 1)
         dn2cpp_when_all_finish(s);
 }
 
@@ -1080,7 +1122,7 @@ static Dn2CppTask* dn2cpp_task_when_all_impl(Dn2CppArrayRef* tasks, int32_t kind
     if (tasks->length == 0)
         s->result->startKind = DN2CPP_TASK_ORIGIN_STARTED;
     dn2cpp_gc_store_ref(&s->tasks, tasks);
-    s->remaining = tasks->length;
+    s->remaining.store(tasks->length, std::memory_order_relaxed);
     s->kind = kind;
     s->elemSize = elemSize;
     dn2cpp_gc_store_ref(&s->arrTi, arrTi);
@@ -1122,7 +1164,7 @@ Dn2CppTask* dn2cpp_task_when_all_struct(Dn2CppArrayRef* tasks, int32_t elemSize,
 struct Dn2CppWhenAnyState
 {
     Dn2CppTask* result;
-    int32_t done;
+    std::atomic<int32_t> done;
 };
 struct Dn2CppWhenAnyEntry
 {
@@ -1133,9 +1175,8 @@ struct Dn2CppWhenAnyEntry
 static void dn2cpp_when_any_one(void* p)
 {
     auto* e = static_cast<Dn2CppWhenAnyEntry*>(p);
-    if (e->shared->done)
+    if (e->shared->done.exchange(1, std::memory_order_acq_rel) != 0)
         return;
-    e->shared->done = 1;
     dn2cpp_task_set_result(e->shared->result,
         static_cast<uint64_t>(reinterpret_cast<uintptr_t>(e->task)));
 }
@@ -1180,7 +1221,7 @@ Dn2CppTask* dn2cpp_task_when_any(Dn2CppArrayRef* tasks, bool pairSource)
     }
     auto* s = static_cast<Dn2CppWhenAnyState*>(dn2cpp_alloc(sizeof(Dn2CppWhenAnyState)));
     dn2cpp_gc_store_ref(&s->result, dn2cpp_task_alloc());
-    s->done = 0;
+    s->done.store(0, std::memory_order_relaxed);
     for (int32_t i = 0; i < tasks->length; i++)
     {
         auto* e = static_cast<Dn2CppWhenAnyEntry*>(dn2cpp_alloc(sizeof(Dn2CppWhenAnyEntry)));
@@ -1191,7 +1232,7 @@ Dn2CppTask* dn2cpp_task_when_any(Dn2CppArrayRef* tasks, bool pairSource)
         // real .NET. Stop once one has won: a continuation on a still-pending input
         // could only no-op, and would pin the finished join until that input settles.
         dn2cpp_task_on_completed_sync(e->task, &dn2cpp_when_any_one, e);
-        if (s->done)
+        if (s->done.load(std::memory_order_acquire) != 0)
             break;
     }
     return s->result;
