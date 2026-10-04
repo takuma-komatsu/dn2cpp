@@ -1,4 +1,6 @@
 using System;
+using System.Collections;
+using System.Collections.Generic;
 
 namespace ExceptionMessageSubset
 {
@@ -55,6 +57,128 @@ namespace ExceptionMessageSubset
             internal EmptyDerivedAggregate() : base("derived base") { }
             public override string Message => "derived/" + base.Message;
             internal string BaseMessage() => base.Message;
+        }
+
+        private class ExceptionSequence : IEnumerable<Exception>
+        {
+            internal readonly Exception[] Values;
+            internal readonly string Failure;
+            internal readonly Exception Error = new InvalidOperationException("sequence fault");
+            internal readonly Exception DisposeError = new InvalidOperationException("dispose fault");
+            internal string Trace = "";
+            internal ExceptionSequence(Exception[] values, string failure = "")
+            {
+                Values = values;
+                Failure = failure;
+            }
+            public IEnumerator<Exception> GetEnumerator()
+            {
+                Trace += "Get/";
+                if (Failure == "Get") throw Error;
+                return new Enumerator(this);
+            }
+            IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+            private sealed class Enumerator : IEnumerator<Exception>
+            {
+                private readonly ExceptionSequence _owner;
+                private int _index = -1;
+                internal Enumerator(ExceptionSequence owner) => _owner = owner;
+                public bool MoveNext()
+                {
+                    _owner.Trace += "Move/";
+                    if (_owner.Failure == "Move") throw _owner.Error;
+                    return ++_index < _owner.Values.Length;
+                }
+                public Exception Current
+                {
+                    get
+                    {
+                        _owner.Trace += "Current/";
+                        if (_owner.Failure == "Current" || _owner.Failure == "Current+Dispose") throw _owner.Error;
+                        return _owner.Values[_index];
+                    }
+                }
+                object IEnumerator.Current => Current;
+                public void Dispose()
+                {
+                    _owner.Trace += "Dispose/";
+                    if (_owner.Failure == "Dispose" || _owner.Failure == "Current+Dispose") throw _owner.DisposeError;
+                }
+                public void Reset() => throw new NotSupportedException();
+            }
+        }
+
+        private sealed class ExceptionCollection : ExceptionSequence, ICollection<Exception>
+        {
+            internal ExceptionCollection(Exception[] values) : base(values, "Get") { }
+            public int Count { get { Trace += "Count/"; return Values.Length; } }
+            public bool IsReadOnly => true;
+            public void CopyTo(Exception[] array, int index)
+            {
+                Trace += "Copy/";
+                Array.Copy(Values, 0, array, index, Values.Length);
+            }
+            public void Add(Exception value) => throw new NotSupportedException();
+            public void Clear() => throw new NotSupportedException();
+            public bool Contains(Exception value) => throw new NotSupportedException();
+            public bool Remove(Exception value) => throw new NotSupportedException();
+        }
+
+        private static void SequenceFault(string mode)
+        {
+            var sequence = new ExceptionSequence(new Exception[] { new Exception("value") }, mode);
+            try { _ = new AggregateException("custom", sequence); Console.WriteLine("sequence " + mode + " did not throw"); }
+            catch (Exception error)
+            {
+                Console.WriteLine("sequence " + mode + " fault=" + error.Message
+                    + " original=" + ReferenceEquals(error, sequence.Error)
+                    + " dispose=" + ReferenceEquals(error, sequence.DisposeError));
+            }
+            Console.WriteLine("sequence " + mode + " trace=" + sequence.Trace);
+        }
+
+        internal static void RunEnumerableAggregates()
+        {
+            Console.WriteLine("== aggregate enumerable constructors ==");
+            var first = new ChangingMessage("first");
+            var second = new ChangingMessage("second");
+            GC.KeepAlive(new Func<string>(() => first.Message));
+            GC.KeepAlive(new Func<string>(() => second.Message));
+            var values = new Exception[] { first, second };
+            IEnumerable<Exception> view = values;
+            var arrayAggregate = new AggregateException(view);
+            var covariantValues = new[] { first, second };
+            var covariantAggregate = new AggregateException((IEnumerable<Exception>)covariantValues);
+            var list = new List<Exception>(values);
+            var listAggregate = new AggregateException("custom", (IEnumerable<Exception>)list);
+            var sequence = new ExceptionSequence(values);
+            var sequenceAggregate = new AggregateException((string)null, sequence);
+            var collection = new ExceptionCollection(values);
+            var collectionAggregate = new AggregateException("collection", collection);
+            values[0] = new Exception("replacement");
+            covariantValues[0] = new ChangingMessage("replacement");
+            list.Clear();
+            Console.WriteLine("enumerable constructed reads=" + first.Reads + "/" + second.Reads);
+            foreach (var aggregate in new[] { arrayAggregate, covariantAggregate, listAggregate, sequenceAggregate, collectionAggregate })
+                Console.WriteLine("enumerable snapshot count=" + aggregate.InnerExceptions.Count
+                    + " first=" + ReferenceEquals(aggregate.InnerException, first)
+                    + " order=" + (aggregate.InnerExceptions.Count == 2
+                        && ReferenceEquals(aggregate.InnerExceptions[0], first) && ReferenceEquals(aggregate.InnerExceptions[1], second)));
+            Console.WriteLine("custom sequence trace=" + sequence.Trace);
+            Console.WriteLine("collection trace=" + collection.Trace);
+            ReadAggregate("enumerable first", arrayAggregate, first, second);
+            ReadAggregate("enumerable second", arrayAggregate, first, second);
+            ReadAggregate("enumerable custom", listAggregate, first, second);
+            AggregateCtor("empty enumerable", new AggregateException((IEnumerable<Exception>)Array.Empty<Exception>()));
+            AggregateCtor("empty custom sequence", new AggregateException("", new ExceptionSequence(Array.Empty<Exception>())));
+            InvalidAggregate("enumerable null", () => new AggregateException((IEnumerable<Exception>)null));
+            InvalidAggregate("enumerable custom null", () => new AggregateException("custom", (IEnumerable<Exception>)null));
+            var nullElement = new ExceptionSequence(new Exception[] { null, first });
+            InvalidAggregate("enumerable null element", () => new AggregateException(nullElement));
+            Console.WriteLine("enumerable null element trace=" + nullElement.Trace + " reads=" + first.Reads);
+            foreach (string mode in new[] { "Get", "Move", "Current", "Dispose", "Current+Dispose" })
+                SequenceFault(mode);
+            Console.WriteLine("aggregate enumerable constructors end");
         }
 
         private static string Reads(ChangingMessage first, ChangingMessage second)
