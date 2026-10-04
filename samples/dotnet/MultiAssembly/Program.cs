@@ -7,7 +7,7 @@ namespace MultiAssembly
 {
     internal static class Program
     {
-        private static int Main()
+        private static int Main(string[] args)
         {
             System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
             System.Globalization.CultureInfo.CurrentUICulture = System.Globalization.CultureInfo.InvariantCulture;
@@ -259,6 +259,13 @@ namespace MultiAssembly
             Console.WriteLine("qualified attribute argument: "
                 + (qualifiedType is null ? "null" : qualifiedType.GetElementType().GetGenericArguments()[0].Assembly.FullName.StartsWith("MultiAssemblyAlias,")));
             Console.WriteLine("qualified attribute end");
+
+            if (args.Length != 0 && args[0] == "before-type-scope")
+                return 0;
+            AssemblyScopeSubset.Run();
+            if (args.Length != 0 && args[0] == "before-closed-types")
+                return 0;
+            AssemblyScopeSubset.RunClosedGenerics();
 
             return 0;
         }

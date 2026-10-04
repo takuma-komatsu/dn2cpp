@@ -4195,7 +4195,7 @@ internal sealed partial class CppEmitter
         // handle — promote so both mouths answer one identity, else an IDisposable[]
         // elementType reads object and GetElementType()/Array.Copy cannot tell it from
         // object[].
-        if (t is { Kind: TypeKind.External, ExternalName: { } xn } && _c.FindClassByFullName(xn) is { } xc)
+        if (t.Kind == TypeKind.External && _c.ResolveExternalClass(t) is { } xc)
             t = TypeDesc.MakeClass(xc);
         if (t.Kind == TypeKind.Class && t.Class is { } fc)
         {

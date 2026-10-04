@@ -26,11 +26,7 @@ internal sealed class SignatureProvider : ISignatureTypeProvider<TypeDesc, objec
         // Prefer a real cross-assembly definition; otherwise treat as external.
         if (_compilation.ResolveTypeRef(_compilation.ModuleOf(reader), handle) is { } resolved)
             return resolved;
-        var tr = reader.GetTypeReference(handle);
-        string ns = reader.GetString(tr.Namespace);
-        string name = reader.GetString(tr.Name);
-        string full = string.IsNullOrEmpty(ns) ? name : ns + "." + name;
-        return TypeDesc.MakeExternal(full);
+        return _compilation.ExternalTypeRef(_compilation.ModuleOf(reader), handle);
     }
 
     public TypeDesc GetSZArrayType(TypeDesc elementType) => TypeDesc.MakeSZArray(elementType);

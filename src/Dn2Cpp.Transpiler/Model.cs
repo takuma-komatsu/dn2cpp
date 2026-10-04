@@ -29,6 +29,9 @@ internal sealed class TypeDesc
     public PrimitiveTypeCode Primitive;
     public ClassInfo? Class;
     public string? ExternalName;   // namespace-qualified, e.g. "System.String"
+    public Module? ExternalModule;
+    public TypeReferenceHandle ExternalHandle;
+    public string? ExternalAssembly;
     public TypeDesc? Element;      // SZArray element
     public int GenVarIndex;        // GenericVar: parameter index
     public bool GenVarIsMethod;    // GenericVar: !!n (method) vs !n (type)
@@ -130,8 +133,10 @@ internal sealed class TypeDesc
     public static TypeDesc MakeClassUnshared(ClassInfo cls) =>
         Born(new() { Kind = TypeKind.Class, Class = cls });
 
-    public static TypeDesc MakeExternal(string fullName) =>
-        Born(new() { Kind = TypeKind.External, ExternalName = fullName });
+    public static TypeDesc MakeExternal(string fullName, Module? module = null,
+        TypeReferenceHandle handle = default, string? assembly = null) =>
+        Born(new() { Kind = TypeKind.External, ExternalName = fullName,
+            ExternalModule = module, ExternalHandle = handle, ExternalAssembly = assembly });
 
     /// <summary>A closed generic instantiation of a base-image type, already
     /// resolved to its mangled registry name (e.g.
