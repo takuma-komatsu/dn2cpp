@@ -3,10 +3,9 @@
 # including patch receivers below an AOT override. A delegate over such a
 # receiver, bound through the declaring row or by ldvirtftn, reports that
 # override as Delegate.Method and equals a binding of the override.
-# A delegate over a patch receiver bound to an Object virtual, by reflection or,
-# in the real-CoreLib base, by ldvirtftn, reports its nearest AOT ancestor's
-# override or Object's row, the row a by-name lookup on the patch type finds;
-# the intrinsic-BCL base covers the receiver below an AOT override.
+# An Object virtual's method group and reflective binding report the nearest
+# AOT override or Object's row under either BCL load set. Non-virtual base
+# method groups retain Object's own body and declaring row.
 # Class generic virtual rows no AOT class callvirt names, one with a reached body
 # and one abstract, both called by the base only through interfaces, bind to the
 # dispatcher a --hotupdate-base build registers for them; an instantiation the
@@ -215,6 +214,10 @@ invoke_cli "$base_app" --hotupdate-base \
     --hotupdate-refs samples/dotnet/HotUpdatePatch/hotupdate-refs.txt -o "$OUT"
 grep -qw 'md_record_fldtab_HotUpdateBase_Counter' "$OUT"/generated*.cpp \
     || { echo "FAIL: Counter field metadata was not emitted packed" >&2; exit 1; }
+grep -Eq '^const Dn2CppTypeInfo ti_HotUpdateBase_Slate = \{[^,]+, &dn2cpp_object_type,' "$OUT"/generated*.cpp \
+    || { echo "FAIL: intrinsic Object base type-info is missing" >&2; exit 1; }
+grep -Eq '^const Dn2CppTypeInfo ti_HotUpdateBase_ExternalObjectAttribute = \{[^,]+, nullptr,' "$OUT"/generated*.cpp \
+    || { echo "FAIL: an unloaded external base acquired an Object type-info chain" >&2; exit 1; }
 [ -f "$OUT/base-abi.json" ] || { echo "FAIL: base-abi.json sidecar missing" >&2; exit 1; }
 grep -q dn2cpp_base_image_abi_hash "$OUT/generated.cpp" \
     || { echo "FAIL: dn2cpp_base_image_abi_hash constant missing from generated.cpp" >&2; exit 1; }
@@ -562,6 +565,26 @@ expected="$expected_before_object_virtuals
 HotUpdateBase.Plaque.ToString plaque
 HotUpdateBase.Plaque.ToString
 == object virtuals over a patch receiver end =="
+expected_before_inherited_object="$expected"
+inherited_object_oracle=$(dotnet "$base_app" --object-inheritance-oracle)
+inherited_object_oracle=$(strip_cr_win "$inherited_object_oracle")
+grep -Fxq 'methods=System.Object.ToString/System.Object.Equals/System.Object.GetHashCode' <<< "$inherited_object_oracle" \
+    || { echo "FAIL: inherited Object virtual identity witness is missing" >&2; exit 1; }
+expected="$expected
+$inherited_object_oracle"
+expected_before_object_groups="$expected"
+object_groups_oracle=$(dotnet "$base_app" --object-groups-oracle)
+object_groups_oracle=$(strip_cr_win "$object_groups_oracle")
+for line in 'base-methods=System.Object.ToString/System.Object.Equals/System.Object.GetHashCode' \
+    'base-calls=True/True/False/False/True' 'override-calls=override/True/91' \
+    'only-calls=group-only/True/101' 'group-rows=True/True/True' \
+    'group-calls=True/True/False/True' 'group-calls=True/False/False/True' \
+    'null text=NullReferenceException' 'null equals=NullReferenceException' 'null hash=NullReferenceException'; do
+    grep -Fxq "$line" <<< "$object_groups_oracle" \
+        || { echo "FAIL: Object virtual method group witness missing: $line" >&2; exit 1; }
+done
+expected="$expected
+$object_groups_oracle"
 # Exit status captured explicitly (`$(...)` inline would swallow it): a base
 # that aborts in teardown AFTER printing the full transcript must not pass.
 set +e
@@ -588,6 +611,16 @@ object_virtuals_prefix=${normalized%%$'\n== object virtuals over a patch receive
 assert_output "$object_virtuals_prefix" "$expected_before_object_virtuals"
 grep -Fxq '== object virtuals over a patch receiver end ==' <<< "$normalized" \
     || { echo "FAIL: object virtuals over a patch receiver did not complete" >&2; exit 1; }
+assert_output "${normalized%%$'\n== inherited Object virtuals =='*}" "$expected_before_inherited_object"
+grep -Fxq '== inherited Object virtuals end ==' <<< "$normalized" \
+    || { echo "FAIL: inherited Object virtuals over a patch receiver did not complete" >&2; exit 1; }
+inherited_object_native=$("./$OUT/HotUpdateBase" --object-inheritance-oracle)
+assert_output "$(strip_cr_win "$inherited_object_native")" "$inherited_object_oracle"
+assert_output "${normalized%%$'\n== Object virtual method groups =='*}" "$expected_before_object_groups"
+grep -Fxq '== Object virtual method groups end ==' <<< "$normalized" \
+    || { echo "FAIL: Object virtual method groups over patch receivers did not complete" >&2; exit 1; }
+object_groups_native=$("./$OUT/HotUpdateBase" --object-groups-oracle)
+assert_output "$(strip_cr_win "$object_groups_native")" "$object_groups_oracle"
 grep -Fxq '== ordinary generic import identity end ==' <<< "$normalized" \
     || { echo "FAIL: ordinary generic import identity block did not complete" >&2; exit 1; }
 

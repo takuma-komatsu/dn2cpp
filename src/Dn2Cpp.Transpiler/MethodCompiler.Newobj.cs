@@ -2134,6 +2134,8 @@ internal sealed partial class MethodCompiler
                         adapterExpr = AbsentNetworkPalFtnStub(method, origin.Key - 1, receiverSlot: fromVirtFtn, delegateClass: cls);
                     else if (IsDelegateInvoke(method))
                         adapterExpr = DelegateInvokeAddress(method);
+                    else if (!fromVirtFtn && ObjectDispatchHelper(method, virtualBinding: false) is { } objectHelper)
+                        adapterExpr = $"(void*)&{objectHelper}";
                     else if (!fromVirtFtn && (method.IsStatic || method.DeclaringClass.IsValueType
                         || NeedsNfiErasedAdapter(method.Emittable)))
                     {
@@ -2152,7 +2154,7 @@ internal sealed partial class MethodCompiler
                         Emit("    " + nullTargetCheck);
                     if (adapterExpr is not null)
                         Emit($"    {dg}->f_method = {adapterExpr};");
-                    if (!method.Handle.IsNil)
+                    if (!method.Handle.IsNil || _c.IsRuntimeObjectFunction(method))
                     {
                         foreach (var arg in method.Context.MethodArgs)
                             _c.NoteTypeIdentityClosure(arg, keepSeed: false);
@@ -2167,7 +2169,8 @@ internal sealed partial class MethodCompiler
             // The identity is emitted with the method rows, spelled as they spell the
             // declaring type and arguments; the arguments only need type-infos. A
             // canonical target has already tainted at its ldftn/ldvirtftn.
-            if (!identityEmitted && fnPtr.DelegateMethod is { } delegateMethod && !delegateMethod.Handle.IsNil)
+            if (!identityEmitted && fnPtr.DelegateMethod is { } delegateMethod
+                && (!delegateMethod.Handle.IsNil || _c.IsRuntimeObjectFunction(delegateMethod)))
             {
                 foreach (var arg in delegateMethod.Context.MethodArgs)
                     _c.NoteTypeIdentityClosure(arg, keepSeed: false);

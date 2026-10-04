@@ -4967,14 +4967,16 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_object_virtual_target(
     return {};
 }
 
-// The Object virtual whose dispatch helper a delegate holds: MethodCompiler binds
-// `ldvirtftn` of one to the helper a call of it runs.
-static const Dn2CppMetaMember* dn2cpp_object_dispatch_member(const void* fn)
+// Object's address loads bind either its virtual dispatch or its own body.
+static const Dn2CppMetaMember* dn2cpp_object_dispatch_member(const void* fn, bool virtualBinding)
 {
-    const char* name = fn == reinterpret_cast<const void*>(&dn2cpp_object_tostring_virtual) ? "ToString"
-        : fn == reinterpret_cast<const void*>(&dn2cpp_object_equals_virtual) ? "Equals"
-        : fn == reinterpret_cast<const void*>(&dn2cpp_object_gethashcode) ? "GetHashCode"
-        : nullptr;
+    const char* name = virtualBinding
+        ? fn == reinterpret_cast<const void*>(&dn2cpp_object_tostring_virtual) ? "ToString"
+            : fn == reinterpret_cast<const void*>(&dn2cpp_object_equals_virtual) ? "Equals"
+            : fn == reinterpret_cast<const void*>(&dn2cpp_object_gethashcode) ? "GetHashCode" : nullptr
+        : fn == reinterpret_cast<const void*>(&dn2cpp_object_tostring_nonvirtual) ? "ToString"
+            : fn == reinterpret_cast<const void*>(&dn2cpp_object_equals_nonvirtual) ? "Equals"
+            : fn == reinterpret_cast<const void*>(&dn2cpp_object_hashcode) ? "GetHashCode" : nullptr;
     for (int32_t k = 0; name != nullptr && k < g_meta_member_count; k++)
     {
         const Dn2CppMetaMember* d = &g_meta_members[k];
@@ -5224,10 +5226,11 @@ Dn2CppObject* dn2cpp_delegate_get_method(Dn2CppObject* d)
     // virtuals answer from metadata.
     if (!declared)
     {
-        const Dn2CppMetaMember* d = owner == &dn2cpp_object_type && identity->virtualBinding && t != nullptr
-            ? dn2cpp_object_dispatch_member(dg->method) : nullptr;
-        const auto hit = d != nullptr ? dn2cpp_object_virtual_target(t->type, d)
-                                      : Dn2CppMetadataHandle<Dn2CppMethodInfo>{};
+        const Dn2CppMetaMember* d = owner == &dn2cpp_object_type && (!identity->virtualBinding || t != nullptr)
+            ? dn2cpp_object_dispatch_member(dg->method, identity->virtualBinding) : nullptr;
+        const auto hit = d == nullptr ? Dn2CppMetadataHandle<Dn2CppMethodInfo>{}
+            : identity->virtualBinding ? dn2cpp_object_virtual_target(t->type, d)
+            : dn2cpp_meta_row(d, &dn2cpp_object_type, nullptr, 0);
         return hit ? reinterpret_cast<Dn2CppObject*>(dn2cpp_make_methodref(hit, nullptr)) : nullptr;
     }
     if (!identity->virtualBinding || t == nullptr)

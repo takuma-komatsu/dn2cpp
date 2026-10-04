@@ -6067,6 +6067,11 @@ internal sealed partial class Compilation
                     case ILOpCode.Ldvirtftn:
                     {
                         NoteObfuscationCall(module, handle, m.Context);
+                        if (insn.OpCode is ILOpCode.Ldftn or ILOpCode.Ldvirtftn
+                            && handle.Kind == HandleKind.MemberReference
+                            && TryRuntimeObjectFunction(module, (MemberReferenceHandle)handle) is { } objectFunction
+                            && insn.OpCode == ILOpCode.Ldvirtftn && objectFunction.Name is "Equals" or "GetHashCode")
+                            NoteObjectEqualityDispatch();
                         if (insn.OpCode is ILOpCode.Call or ILOpCode.Callvirt
                             && ResolveStaticCallClass(module, handle, m.Context) is
                                 { IsBeforeFieldInit: false, IntrinsicCppName: null } callCls)

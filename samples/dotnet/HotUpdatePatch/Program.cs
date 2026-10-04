@@ -632,6 +632,7 @@ internal static class Program
         Counter.GenericVirtualRowProbe = GenericVirtualRows;
         Counter.PatchShelf = new FrostShelf();
         Counter.PatchPlaque = new FrostPlaque();
+        Counter.PatchSlate = new FrostSlate();
 
         // An exception no patch handler consumes escapes the interpreter into
         // the base program's own try/catch (see HotUpdateBase.Program.Main).
@@ -1431,5 +1432,9 @@ internal sealed class FrostShelf : GlassShelf
 }
 
 internal sealed class FrostPlaque : Plaque
+{
+}
+
+internal sealed class FrostSlate : Slate
 {
 }

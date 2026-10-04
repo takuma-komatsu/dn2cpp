@@ -1571,6 +1571,33 @@ internal sealed partial class Compilation
         return TypeIndex().TryGetValue(key, out var cands) && cands.Count > 0 ? cands[0] : null;
     }
 
+    internal static bool HasRuntimeObjectBase(ClassInfo cls)
+    {
+        var handle = cls.Module.Reader.GetTypeDefinition(cls.Handle).BaseType;
+        return handle.Kind == HandleKind.TypeReference
+            && IsRuntimeObjectTypeReference(cls.Module, (TypeReferenceHandle)handle);
+    }
+
+    internal static bool IsRuntimeObjectTypeReference(Module module, TypeReferenceHandle handle)
+    {
+        var reader = module.Reader;
+        var type = reader.GetTypeReference(handle);
+        if (!reader.StringComparer.Equals(type.Namespace, "System") || !reader.StringComparer.Equals(type.Name, "Object")
+            || type.ResolutionScope.Kind != HandleKind.AssemblyReference)
+            return false;
+        var reference = reader.GetAssemblyReference((AssemblyReferenceHandle)type.ResolutionScope);
+        if ((reference.Flags & AssemblyFlags.PublicKey) != 0)
+            return false;
+        var token = reader.GetBlobReader(reference.PublicKeyOrToken);
+        if (token.Length != 8)
+            return false;
+        ulong expected = reader.StringComparer.Equals(reference.Name, "System.Runtime", true) ? 0x3a0ad5117f5f3fb0UL
+            : reader.StringComparer.Equals(reference.Name, "netstandard", true) ? 0x51dd2dcdff137bccUL
+            : reader.StringComparer.Equals(reference.Name, "mscorlib", true) ? 0x89e03419565c7ab7UL
+            : reader.StringComparer.Equals(reference.Name, "System.Private.CoreLib", true) ? 0x8e79a7bed785ec7cUL : 0;
+        return expected != 0 && token.ReadUInt64() == expected;
+    }
+
     public TypeDesc? ResolveTypeRef(Module from, TypeReferenceHandle handle)
     {
         var tr = from.Reader.GetTypeReference(handle);
