@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 
 namespace ArrayCovariantStoreSubset;
 
@@ -13,6 +14,7 @@ internal static class Program
     private interface IOut<out T> { }
     private sealed class Out<T> : IOut<T> { }
     private static object[] s_values;
+    private static object[,] s_mdValues;
 
     private static object[] Returned() => s_values;
     private static void StoreArgument(object[] values, object value) => values[0] = value;
@@ -20,6 +22,10 @@ internal static class Program
     private static T[] Allocate<T>(int length) => new T[length];
     private static Type ArrayType<T>() => typeof(T[]);
     private static T[] CastArray<T>(object value) => (T[])value;
+    private static void StoreMdArgument(object[,] values, object value) => values[0, 0] = value;
+    private static void StoreMdGeneric<T>(T[,] values, T value) => values[0, 0] = value;
+    private static string ReadMdCulture(ref CultureInfo value) => value.Name;
+    private static void WriteMdCulture(ref CultureInfo value, CultureInfo replacement) => value = replacement;
 
     private static void Observe(string label, object[] values, Action store, object expected, bool message = false)
     {
@@ -147,5 +153,88 @@ internal static class Program
         Console.WriteLine("list int array growth=" + intList.Count + ":" + ReferenceEquals(intList[0], ints));
         var stringList = new List<string[]>(1) { strings, Array.Empty<string>() };
         Console.WriteLine("list reference array growth=" + stringList.Count + ":" + ReferenceEquals(stringList[0], strings));
+    }
+
+    private static void ObserveMd(string label, Action store, Func<object> read, object expected, bool message = false)
+    {
+        string result = "ok";
+        try { store(); }
+        catch (Exception exception)
+        {
+            result = exception.GetType().Name + "/" + exception.HResult.ToString("X8");
+            if (message) Console.WriteLine("md store message=" + exception.Message);
+        }
+        Console.WriteLine(label + "=" + result + ":identity=" + ReferenceEquals(read(), expected));
+    }
+
+    internal static void RunMdStores()
+    {
+        Console.WriteLine("== covariant multidimensional reference stores ==");
+        object seed = "seed", next = "next", bad = new object();
+        object[,] two = new string[1, 1];
+        two[0, 0] = seed;
+        ObserveMd("md rank2 rejected", () => two[0, 0] = bad, () => two[0, 0], seed, true);
+        ObserveMd("md rank2 compatible", () => two[0, 0] = next, () => two[0, 0], next);
+        ObserveMd("md rank2 null", () => two[0, 0] = null, () => two[0, 0], null);
+        two[0, 0] = seed;
+        int negative = -1;
+        ObserveMd("md rank2 type before negative", () => two[negative, 0] = bad, () => two[0, 0], seed);
+        ObserveMd("md rank2 type before past end", () => two[0, 1] = bad, () => two[0, 0], seed);
+        ObserveMd("md rank2 compatible negative", () => two[negative, 0] = next, () => two[0, 0], seed);
+        ObserveMd("md rank2 null past end", () => two[0, 1] = null, () => two[0, 0], seed);
+        object[,] missing = null;
+        ObserveMd("md null before type", () => missing[0, 0] = bad, () => null, null);
+        ObserveMd("md argument rejected", () => StoreMdArgument(two, bad), () => two[0, 0], seed);
+        s_mdValues = new string[1, 1];
+        s_mdValues[0, 0] = seed;
+        ObserveMd("md field rejected", () => s_mdValues[0, 0] = bad, () => s_mdValues[0, 0], seed);
+        ObserveMd("md shared rejected", () => StoreMdGeneric<object>(two, bad), () => two[0, 0], seed);
+        ObserveMd("md shared compatible", () => StoreMdGeneric<string>((string[,])two, (string)next), () => two[0, 0], next);
+        object[,,] three = new string[1, 1, 1];
+        three[0, 0, 0] = seed;
+        ObserveMd("md rank3 rejected", () => three[0, 0, 0] = bad, () => three[0, 0, 0], seed);
+        ObserveMd("md rank3 compatible", () => three[0, 0, 0] = next, () => three[0, 0, 0], next);
+        ObserveMd("md rank3 null", () => three[0, 0, 0] = null, () => three[0, 0, 0], null);
+        three[0, 0, 0] = seed;
+        ObserveMd("md rank3 type before bounds", () => three[0, 0, 1] = bad, () => three[0, 0, 0], seed);
+        ObserveMd("md rank3 compatible bounds", () => three[0, 0, 1] = next, () => three[0, 0, 0], seed);
+        object[,,,] four = new string[1, 1, 1, 1];
+        four[0, 0, 0, 0] = seed;
+        ObserveMd("md rank4 rejected", () => four[0, 0, 0, 0] = bad, () => four[0, 0, 0, 0], seed);
+        ObserveMd("md rank4 compatible", () => four[0, 0, 0, 0] = next, () => four[0, 0, 0, 0], next);
+        ObserveMd("md rank4 null", () => four[0, 0, 0, 0] = null, () => four[0, 0, 0, 0], null);
+        four[0, 0, 0, 0] = seed;
+        ObserveMd("md rank4 type before bounds", () => four[0, 1, 0, 0] = bad, () => four[0, 0, 0, 0], seed);
+        ObserveMd("md rank4 compatible bounds", () => four[0, 1, 0, 0] = next, () => four[0, 0, 0, 0], seed);
+        object[,] created = (object[,])Array.CreateInstance(typeof(string), new int[] { 1, 1 });
+        created[0, 0] = seed;
+        ObserveMd("md created rejected", () => created[0, 0] = bad, () => created[0, 0], seed);
+        ObserveMd("md created compatible", () => created[0, 0] = next, () => created[0, 0], next);
+        var dog = new Dog();
+        Animal[,] classes = new Dog[1, 1];
+        classes[0, 0] = dog;
+        ObserveMd("md class rejected", () => classes[0, 0] = new Cat(), () => classes[0, 0], dog);
+        object[,] interfaces = new ITag[1, 1];
+        ObserveMd("md interface compatible", () => interfaces[0, 0] = dog, () => interfaces[0, 0], dog);
+        ObserveMd("md interface rejected", () => interfaces[0, 0] = bad, () => interfaces[0, 0], dog);
+        object[,] jagged = new string[1, 1][];
+        var leaf = new string[] { "leaf" };
+        ObserveMd("md jagged compatible", () => jagged[0, 0] = leaf, () => jagged[0, 0], leaf);
+        ObserveMd("md jagged rejected", () => jagged[0, 0] = new object[1], () => jagged[0, 0], leaf);
+        object[,] objects = new object[1, 1];
+        object boxed = 7;
+        ObserveMd("md object boxed compatible", () => objects[0, 0] = boxed, () => objects[0, 0], boxed);
+        var culture = new CultureInfo("en-US");
+        var cultures = new CultureInfo[1, 1];
+        cultures[0, 0] = culture;
+        Console.WriteLine("md culture reads=" + cultures[0, 0].Name + ":"
+            + ReferenceEquals(cultures[0, 0], culture));
+        Console.WriteLine("md culture ref read=" + ReadMdCulture(ref cultures[0, 0]));
+        var replacement = new CultureInfo("ja-JP");
+        WriteMdCulture(ref cultures[0, 0], replacement);
+        Console.WriteLine("md culture ref write=" + cultures[0, 0].Name + ":" + ReferenceEquals(cultures[0, 0], replacement));
+        cultures[0, 0] = null;
+        Console.WriteLine("md culture null=" + (cultures[0, 0] is null));
+        Console.WriteLine("multidimensional reference stores end");
     }
 }

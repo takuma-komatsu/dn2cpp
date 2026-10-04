@@ -9,6 +9,8 @@
 # Nested generic interface variance reaches default comparison, array/span/list
 # sorting and binary search through public and explicit implementations.
 # Covariant reference stores check the actual element type before mutation.
+# Multidimensional stores check value type before bounds and retain the typed
+# headerless slot representation used by managed byrefs.
 # Former gates: array-ops, array-contains, array-range, array-resize, array-sort,
 # array-data-ref, byte-array, getsubarray, packed-array, array-collection, enumarray,
 # arraypool.
@@ -212,7 +214,7 @@ gate_extra_asserts() {
     done
 }
 
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|array-box-shared-generics|before-array-provenance|before-nested-interface-variance|before-covariant-stores"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|array-box-shared-generics|before-array-provenance|before-nested-interface-variance|before-covariant-stores|before-covariant-md-stores"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/ArrayCore/BoxProvenanceOnly.csproj samples/dotnet/ArrayCore/BoxProvenanceProgram.cs samples/dotnet/ArrayCore/ReflectionReturnBoxOnly.csproj samples/dotnet/ArrayCore/ReflectionReturnBoxProgram.cs samples/dotnet/ArrayCore/DiamondProvenanceOnly.csproj samples/dotnet/ArrayCore/DiamondProvenanceProgram.cs samples/dotnet/ArrayCore/FieldAliasProvenanceOnly.csproj samples/dotnet/ArrayCore/FieldAliasProvenanceProgram.cs samples/dotnet/ArrayCore/FieldAliasProvenanceSubset.cs samples/dotnet/ArrayCore/ArrayElementAliasProgram.cs samples/dotnet/ArrayCore/ArrayElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayObjectElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayUnknownElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayErasedElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayReferenceSlotAliasOnly.csproj samples/dotnet/ArrayCore/ArrayReflectedVoidBoxOnly.csproj samples/dotnet/ArrayCore/ArrayReflectedVoidBoxProgram.cs samples/dotnet/ArrayCore/ArrayFutureStoreOnly.csproj samples/dotnet/ArrayCore/ArrayFutureStoreProgram.cs samples/dotnet/ArrayCore/ArrayFutureNullStoreOnly.csproj samples/dotnet/ArrayCore/ArrayObjectFutureStoreOnly.csproj samples/dotnet/ArrayCore/ArrayObjectFutureStoreProgram.cs"
 corelib_diff_gate ArrayCore System.Collections
 
@@ -266,6 +268,42 @@ shared_array=$(LC_ALL=C awk '{ sub(/\r$/, "") }
     in_body && /^\}/ { in_body = 0 }
     END { if (found) print "shared array allocation" }' "$_CG_OUT"/generated.h)
 assert_output "$shared_array" 'shared array allocation'
+previous=$(run_bounded dotnet "$_CG_APP" before-covariant-md-stores)
+prefix=$(awk '/^== covariant multidimensional reference stores ==$/ { exit } { print }' <<< "$native")
+assert_output "$prefix" "$(strip_cr_win "$previous")"
+for line in '== covariant multidimensional reference stores ==' \
+    'md store message=Attempted to access an element as a type incompatible with the array.' \
+    'md null before type=NullReferenceException/80004003:identity=True' \
+    'md culture reads=en-US:True' 'md culture ref read=en-US' \
+    'md culture ref write=ja-JP:True' 'md culture null=True' \
+    'multidimensional reference stores end'; do
+    grep -Fxq -- "$line" <<< "$native" \
+        || { echo "FAIL: multidimensional reference store witness missing: $line" >&2; exit 1; }
+done
+for label in 'md rank2 rejected' 'md rank2 type before negative' 'md rank2 type before past end' \
+    'md argument rejected' 'md field rejected' 'md shared rejected' \
+    'md rank3 rejected' 'md rank3 type before bounds' 'md rank4 rejected' 'md rank4 type before bounds' \
+    'md created rejected' 'md class rejected' 'md interface rejected' 'md jagged rejected'; do
+    grep -Fxq -- "$label=ArrayTypeMismatchException/80131503:identity=True" <<< "$native" \
+        || { echo "FAIL: multidimensional incompatible store or retention mismatch: $label" >&2; exit 1; }
+done
+for label in 'md rank2 compatible negative' 'md rank2 null past end' \
+    'md rank3 compatible bounds' 'md rank4 compatible bounds'; do
+    grep -Fxq -- "$label=IndexOutOfRangeException/80131508:identity=True" <<< "$native" \
+        || { echo "FAIL: multidimensional compatible store bounds mismatch: $label" >&2; exit 1; }
+done
+for label in 'md rank2 compatible' 'md rank2 null' 'md shared compatible' \
+    'md rank3 compatible' 'md rank3 null' 'md rank4 compatible' 'md rank4 null' \
+    'md created compatible' 'md interface compatible' 'md jagged compatible' 'md object boxed compatible'; do
+    grep -Fxq -- "$label=ok:identity=True" <<< "$native" \
+        || { echo "FAIL: multidimensional compatible store lost identity: $label" >&2; exit 1; }
+done
+shared_md_store=$(LC_ALL=C awk '{ sub(/\r$/, "") }
+    /^inline void .*_StoreMdGeneric_TisCnRef_.*\)$/ { in_body = 1 }
+    in_body && /dn2cpp_array_check_store_ref\(/ { found = 1 }
+    in_body && /^\}/ { in_body = 0 }
+    END { if (found) print "shared multidimensional store" }' "$_CG_OUT"/generated.h)
+assert_output "$shared_md_store" 'shared multidimensional store'
 previous=$(run_bounded "./$_CG_OUT/ArrayCore$EXE_EXT" before-array-provenance)
 prefix=$(awk '/^-- array shape argument checks --$/ { exit } { print }' <<< "$native")
 assert_output "$prefix" "$(strip_cr_win "$previous")"

@@ -33,8 +33,7 @@ fi
 echo "== 3/4 Asserting a barrier at each external-typed store =="
 # A store system passes when EVERY line matching its pattern carries a barrier on
 # that line or the next; counting matches instead would pass on one barriered
-# site among several. The two element-address patterns are anchored at the start
-# of the line, which is what separates a store from a load of the same address.
+# site among several. Element-address patterns distinguish stores from loads.
 barrier_follows() {
     local what="$1" pattern="$2"
     local bare
@@ -67,7 +66,26 @@ barrier_follows 'external-typed struct field'   '->f_Value = '
 barrier_follows 'whole-struct field'            '->f_Pair = '
 barrier_follows 'reference-bearing struct elem' '^ *\*\(t_ExternalWriteBarrierSubset_Program_ExPair\*\)dn2cpp_elem_addr\('
 barrier_follows 'Array.Fill of a reference'     'for .*->data\[[^]]+\] = '
-barrier_follows 'rank-2 accessor Set'           '^ *\*\(Dn2CppObject\*\*\)dn2cpp_md_elem_addr2\('
+LC_ALL=C awk '
+    { sub(/\r$/, "") }
+    pending {
+        line = $0; gsub(/[[:space:]]/, "", line)
+        if (FILENAME != source || index(line, "dn2cpp_gc_store_ref((Dn2CppObject**)" slot ",") != 1) {
+            print "FAIL: MD store lacks its GC-store helper at " source ":" source_line
+            failed = 1
+        }
+        pending = 0
+    }
+    /^ *[A-Za-z_][A-Za-z0-9_]* = dn2cpp_md_elem_addr2\(/ {
+        hits++; slot = $1; source = FILENAME; source_line = FNR; pending = 1
+    }
+    END {
+        if (pending) { print "FAIL: MD store ends before its GC-store helper at " source ":" source_line; failed = 1 }
+        if (hits == 0) { print "FAIL: the rank-2 accessor Set store is gone from the generated output"; failed = 1 }
+        if (failed) exit 1
+        print "OK: rank-2 accessor Set (" hits " site(s))"
+    }
+' "$OUT"/generated*.cpp
 
 ctx="external_ref_barrier|runs:DN2CPP_GC_INCREMENTAL=0+1|DN2CPP_GC_STATS=1"
 ctx="$ctx|assert:empty-refset+generated-barriers+mode+diff+exit+collection-floor"
