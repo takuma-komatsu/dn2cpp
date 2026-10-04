@@ -1000,6 +1000,11 @@ internal sealed partial class Compilation
             return;
         if (includeHash && EffectiveGetHashCode(sc) is { } gh)
             Reach(gh);
+        if (NullableUnderlying(keyType) is { } underlying)
+        {
+            ReachValueKeyEquality(underlying, includeHash: false);
+            return;
+        }
         if (EffectiveTypedEquals(sc) is { } teq)
             Reach(teq);
         else if (EffectiveEquals(sc) is { } oeq)
