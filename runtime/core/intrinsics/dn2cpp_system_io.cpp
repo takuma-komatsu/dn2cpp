@@ -12,7 +12,7 @@
 #include "dn2cpp_core.h"
 #include "platform/dn2cpp_pal.h" // getcwd/unlink/chdir/stat-kind/getenv via the PAL seam
 
-#include <string>     // managed path strings as NUL-terminated UTF-8 std::string
+#include <string>     // UTF-16 lexical paths and UTF-8 OS inputs
 #include <vector>     // Path.GetFullPath segment stack / Path.Combine buffer
 #include <cstring>    // std::memcpy / std::strlen
 #include <cstdio>     // File read/write (fopen/fread/fwrite/fclose)
@@ -399,55 +399,42 @@ Dn2CppString* dn2cpp_path_get_full_path(Dn2CppString* p)
 Dn2CppString* dn2cpp_path_get_full_path(Dn2CppString* p)
 {
     dn2cpp_path_check_resolvable(p);
-    // Work in UTF-8 ('/' and '.' are ASCII, never a UTF-8 continuation byte): the cwd
-    // comes from getcwd as bytes, and GetFullPath is purely lexical (it collapses
-    // '.'/'..'/'//', it does NOT resolve symlinks or require the path to exist).
-    int32_t un = dn2cpp_string_to_utf8(p, nullptr, 0);
-    std::string rel(static_cast<size_t>(un), '\0');
-    if (un > 0) dn2cpp_string_to_utf8(p, rel.data(), un);
-    std::string combined;
-    if (!rel.empty() && rel[0] == '/')
+    // Lexical normalization preserves managed code units; only the OS cwd is decoded.
+    std::u16string combined;
+    if (p->chars[0] == u'/')
     {
-        combined = rel;
+        combined.assign(p->chars, p->length);
     }
     else
     {
-        // Catchable, not an abort: this is not an input fault -- the argument
-        // passed validation and is merely relative. getcwd fails when the
-        // process's own working directory was deleted out from under it or does
-        // not fit the buffer, an ENVIRONMENT failure no caller selects and one a
-        // program can plausibly recover from by re-rooting itself. See
-        // dn2cpp_throw_getcwd_failure above for the errno mapping.
-        // Heap (see dn2cpp_file_read_all): 4 KiB of stack for a buffer whose
-        // fill is a syscall away buys nothing, and this arm already allocates.
-        std::vector<char> cwd(kDn2cppMaxPathBytes);
-        if (dn2cpp_pal_getcwd(cwd.data(), cwd.size()) == nullptr)
-            dn2cpp_throw_getcwd_failure();
-        combined = std::string(cwd.data()) + "/" + rel;
+        Dn2CppString* cwd = dn2cpp_env_get_current_directory();
+        combined.assign(cwd->chars, cwd->length);
+        combined += u'/';
+        combined.append(p->chars, p->length);
     }
     // .NET preserves a trailing separator only when it is literally present (a
     // removed trailing '.'/'..' segment does not leave one).
-    bool endsSep = combined.size() > 1 && combined.back() == '/';
-    std::vector<std::string> stack;
+    bool endsSep = combined.size() > 1 && combined.back() == u'/';
+    std::vector<std::u16string> stack;
     for (size_t i = 0; i < combined.size();)
     {
-        if (combined[i] == '/') { i++; continue; }
+        if (combined[i] == u'/') { i++; continue; }
         size_t j = i;
-        while (j < combined.size() && combined[j] != '/') j++;
-        std::string seg = combined.substr(i, j - i);
-        if (seg == ".") { /* skip */ }
-        else if (seg == "..") { if (!stack.empty()) stack.pop_back(); } // never above root
+        while (j < combined.size() && combined[j] != u'/') j++;
+        std::u16string seg = combined.substr(i, j - i);
+        if (seg == u".") { /* skip */ }
+        else if (seg == u"..") { if (!stack.empty()) stack.pop_back(); } // never above root
         else stack.push_back(seg);
         i = j;
     }
-    std::string out = "/";
+    std::u16string out = u"/";
     for (size_t k = 0; k < stack.size(); k++)
     {
-        if (k) out += '/';
+        if (k) out += u'/';
         out += stack[k];
     }
-    if (endsSep && !stack.empty()) out += '/';
-    return dn2cpp_string_from_utf8(out.data(), static_cast<int32_t>(out.size()));
+    if (endsSep && !stack.empty()) out += u'/';
+    return dn2cpp_string_from_chars(out.data(), dn2cpp_string_checked_length(static_cast<int64_t>(out.size())));
 }
 #endif // _WIN32
 
@@ -473,12 +460,30 @@ static std::string dn2cpp_path_to_utf8(Dn2CppString* p, const char* paramName = 
 
 // The path of a member that opens the file: ArgumentException.ThrowIfNullOrEmpty's
 // checks, then those of the Path.GetFullPath the open runs.
-static std::string dn2cpp_file_open_path(Dn2CppString* path)
+static std::string dn2cpp_file_open_path(Dn2CppString*& path)
 {
     if (path != nullptr && path->length == 0)
         dn2cpp_throw_argument_param(DN2CPP_SR_EMPTY_STRING, "path");
-    dn2cpp_path_check_resolvable(path);
+    path = dn2cpp_path_get_full_path(path);
     return dn2cpp_path_to_utf8(path, "path");
+}
+
+// Exists suppresses path faults, but allocation failures still propagate.
+static Dn2CppString* dn2cpp_path_try_get_full_path(Dn2CppString* path)
+{
+    try
+    {
+        return dn2cpp_path_get_full_path(path);
+    }
+    catch (const Dn2CppException& error)
+    {
+        if (!dn2cpp_typeinfo_assignable(error.obj->type, &dn2cpp_argument_exception_type)
+            && !dn2cpp_typeinfo_assignable(error.obj->type, &dn2cpp_io_exception_type)
+            && !dn2cpp_typeinfo_assignable(error.obj->type, &dn2cpp_unauthorized_access_exception_type))
+            throw;
+        dn2cpp_exc_inflight_pop(error.obj);
+        return nullptr;
+    }
 }
 
 static bool dn2cpp_file_parent_exists(Dn2CppString* full)
@@ -525,6 +530,8 @@ int32_t dn2cpp_file_exists(Dn2CppString* path)
     // .NET: false (never throws) for null, empty, a path Path.GetFullPath refuses,
     // or one that is missing or a directory (on Windows, a device too).
     if (path == nullptr || path->length == 0 || dn2cpp_path_has_nul(path)) return 0;
+    path = dn2cpp_path_try_get_full_path(path);
+    if (path == nullptr) return 0;
     std::string p = dn2cpp_path_to_utf8(path, "path");
     int kind = dn2cpp_pal_path_kind(p.c_str());
 #if defined(_WIN32)
@@ -537,7 +544,7 @@ int32_t dn2cpp_file_exists(Dn2CppString* path)
 
 void dn2cpp_file_delete(Dn2CppString* path)
 {
-    dn2cpp_path_check_resolvable(path);
+    path = dn2cpp_path_get_full_path(path);
     std::string p = dn2cpp_path_to_utf8(path, "path");
     if (dn2cpp_pal_path_kind(p.c_str()) == DN2CPP_PAL_PATH_DIR)
         dn2cpp_throw_sr1(&dn2cpp_unauthorized_access_exception_type,
@@ -859,6 +866,8 @@ int32_t dn2cpp_directory_exists(Dn2CppString* path)
     // .NET: false (never throws) for null, empty, a path Path.GetFullPath refuses,
     // or a non-directory path.
     if (path == nullptr || path->length == 0 || dn2cpp_path_has_nul(path)) return 0;
+    path = dn2cpp_path_try_get_full_path(path);
+    if (path == nullptr) return 0;
     std::string p = dn2cpp_path_to_utf8(path, "path");
     return (dn2cpp_pal_path_kind(p.c_str()) == DN2CPP_PAL_PATH_DIR) ? 1 : 0;
 }

@@ -28,6 +28,10 @@ namespace FileSystemEnumCore
             FileIoSubset.Program.__GateEntry(root);            // was file-subset
             if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_IO_VALIDATION") == "1") return;
             FileIoPathValidationSubset.Program.Run(root);
+            if (args.Length > 1 && args[1] == "before-managed-path") return;
+            FileIoPathValidationSubset.Program.RunLexicalPathNormalization(root);
+            if (args.Length > 1 && args[1] == "before-file-dot-components") return;
+            FileIoPathValidationSubset.Program.RunFileDotComponents(root);
         }
 
         // Known tree the enumeration sections walk:

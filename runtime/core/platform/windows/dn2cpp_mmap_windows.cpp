@@ -76,6 +76,7 @@ Dn2CppMappedFile* dn2cpp_mmap_create_from_file(Dn2CppString* path, Dn2CppString*
     if (fileMode != 3 && fileMode != 4) // Open=3, OpenOrCreate=4
         dn2cpp_throw_of(&dn2cpp_not_supported_exception_type);
 
+    path = dn2cpp_path_get_full_path(path);
     std::string p = dn2cpp_mmap_path_utf8(path);
     auto* f = dn2cpp_mmap_file_new();
     int oflag = _O_BINARY | ((access == 1) ? _O_RDONLY : _O_RDWR);
