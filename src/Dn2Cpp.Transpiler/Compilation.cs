@@ -22,6 +22,9 @@ internal enum GenericDefKind
     Interface = 2,
     Abstract = 4,
     Sealed = 8,
+    Nested = 16,
+    ByRefLike = 32,
+    HiddenEnclosing = 64,
 }
 
 /// <summary>The monomorphization bound was passed
@@ -1530,11 +1533,11 @@ internal sealed partial class Compilation
     /// <summary>The CLR backtick full name of <paramref name="t"/> when it is an
     /// OPEN generic definition in one of the three shapes a <c>typeof(D&lt;&gt;)</c>
     /// ldtoken decodes to (the <c>OpenGenericDefTypeInfoExpr</c> shapes), else
-    /// null. Nested definitions answer null, matching the gendef carve-out.</summary>
+    /// null. Nested definitions retain their entire declaring chain.</summary>
     internal static string? OpenGenericDefBacktickNameOf(TypeDesc t) => t switch
     {
         { Kind: TypeKind.External, ExternalName: { } en }
-            when en.Contains('`') && !en.Contains('+') => en,
+            when en.Contains('`') => en,
         { Kind: TypeKind.Template, TemplateModule: { } tm } =>
             MethodCompiler.OpenDefBacktickName(tm, t.TemplateHandle),
         { Kind: TypeKind.Class, Class: { GenericArity: > 0 } c } when c.Context.TypeArgs.Length == 0

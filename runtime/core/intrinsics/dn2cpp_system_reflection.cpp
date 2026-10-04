@@ -6841,11 +6841,12 @@ int32_t dn2cpp_type_is_not_public(const Dn2CppTypeInfo* ti)
     return (dn2cpp_type_il_attrs(ti) & DN2CPP_TA_VISMASK) == 0 ? 1 : 0;
 }
 
-// IsVisible: public top-level or nested-public. The enclosing chain is not
-// walkable in this model, so a nested-public type inside a non-public enclosing
-// type over-reports true (carve-out); generic arguments are not consulted.
+// Synthetic definitions stamp enclosing visibility at emission. Other handles
+// answer from their own visibility only; generic arguments are not consulted.
 int32_t dn2cpp_type_is_visible(const Dn2CppTypeInfo* ti)
 {
+    if ((ti->flags & DN2CPP_TF_HIDDEN_ENCLOSING) != 0)
+        return 0;
     int32_t vis = dn2cpp_type_il_attrs(ti) & DN2CPP_TA_VISMASK;
     return (vis == DN2CPP_TA_PUBLIC || vis == DN2CPP_TA_NESTEDPUB) ? 1 : 0;
 }

@@ -9,7 +9,7 @@ internal static class PropertyAccessorRowsSubset
     internal static void Run()
     {
         Console.WriteLine("== retained property accessor rows ==");
-        Type type = typeof(List<int>);
+        Type type = new List<int>().GetType();
         foreach (string name in new[] { "Capacity", "Count", "Item", "System.Collections.Generic.ICollection<T>.IsReadOnly" })
         {
             PropertyInfo property = type.GetProperty(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly)!;
@@ -30,7 +30,27 @@ internal static class PropertyAccessorRowsSubset
         Console.WriteLine("first=" + first!.FullName + ":" + first.IsGenericTypeDefinition + ":" + first.ContainsGenericParameters);
         Console.WriteLine("second=" + second!.FullName + ":" + second.IsGenericTypeDefinition);
         Console.WriteLine("generic outer=" + third.FullName + ":" + third.IsGenericTypeDefinition);
+        int index = 0;
+        foreach (Type definition in OpenDefinitionFlagTypes.Cases())
+            PrintFlags(index++, definition);
+        Console.WriteLine("direct nested flags=" + typeof(OpenDefinitionFlagTypes.Public<>).IsNested + ":"
+            + typeof(OpenDefinitionFlagTypes.Struct<>).IsValueType + ":"
+            + typeof(OpenDefinitionFlagTypes.Struct<>).IsSealed + ":"
+            + typeof(OpenDefinitionFlagTypes.Interface<>).IsClass + ":"
+            + typeof(OpenDefinitionFlagTypes.RefStruct<>).IsByRefLike);
         Console.WriteLine("nested open definition identity end");
+    }
+
+    private static void PrintFlags(int index, Type definition)
+    {
+        Console.WriteLine("open flags:" + index + "=" + definition.IsNested + ":"
+            + definition.IsPublic + ":" + definition.IsNotPublic + ":" + definition.IsVisible + ":"
+            + definition.IsNestedPublic + ":" + definition.IsNestedPrivate + ":"
+            + definition.IsNestedAssembly + ":" + definition.IsNestedFamily + ":"
+            + definition.IsNestedFamANDAssem + ":" + definition.IsNestedFamORAssem + ":"
+            + definition.IsClass + ":" + definition.IsValueType + ":" + definition.IsInterface + ":"
+            + definition.IsAbstract + ":" + definition.IsSealed + ":" + definition.IsByRefLike + ":"
+            + (int)definition.Attributes);
     }
 
     private static class Converters
@@ -43,4 +63,27 @@ internal static class PropertyAccessorRowsSubset
     {
         internal sealed class Inner<U> { }
     }
+}
+
+public class OpenDefinitionFlagTypes
+{
+    public class Public<T> { }
+    private class Private<T> { }
+    internal class Internal<T> { }
+    protected class Protected<T> { }
+    private protected class FamilyAndAssembly<T> { }
+    protected internal class FamilyOrAssembly<T> { }
+    public struct Struct<T> { }
+    public ref struct RefStruct<T> { }
+    public interface Interface<T> { }
+    public abstract class Abstract<T> { }
+    public static class Static<T> { }
+    private class Hidden { public class Child<T> { } }
+
+    internal static Type[] Cases() => new[] {
+        typeof(Public<>), typeof(Private<>), typeof(Internal<>), typeof(Protected<>),
+        typeof(FamilyAndAssembly<>), typeof(FamilyOrAssembly<>), typeof(Struct<>),
+        typeof(RefStruct<>), typeof(Interface<>), typeof(Abstract<>), typeof(Static<>),
+        typeof(Hidden.Child<>)
+    };
 }

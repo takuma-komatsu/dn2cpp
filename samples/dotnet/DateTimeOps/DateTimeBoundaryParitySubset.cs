@@ -83,7 +83,12 @@ internal static class Program
         Console.WriteLine("== datetime binary ==");
         foreach (DateTimeKind kind in new[] { DateTimeKind.Unspecified, DateTimeKind.Utc, DateTimeKind.Local })
         {
-            foreach (long ticks in new[] { 0L, 638713838451234567L, DateTime.MaxValue.Ticks })
+            foreach (long ticks in new[] { 0L, 1L, new DateTime(1600, 2, 29).Ticks,
+                new DateTime(1601, 1, 1).Ticks, new DateTime(1900, 1, 1).Ticks,
+                new DateTime(1969, 12, 31, 23, 59, 59).Ticks,
+                new DateTime(1970, 1, 1).Ticks, 638713838451234567L,
+                new DateTime(3000, 12, 31).Ticks, new DateTime(3001, 1, 1).Ticks,
+                DateTime.MaxValue.Ticks - 1, DateTime.MaxValue.Ticks })
             {
                 var value = new DateTime(ticks, kind);
                 long binary = value.ToBinary();

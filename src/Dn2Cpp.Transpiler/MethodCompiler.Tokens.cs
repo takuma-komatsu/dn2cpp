@@ -217,6 +217,8 @@ internal sealed partial class MethodCompiler
     /// across every close). An interface is also abstract, mirroring the type-info kind rule.</summary>
     private static GenericDefKind ClassKindFlags(ClassInfo c)
     {
+        if (!c.Handle.IsNil)
+            return Compilation.ResolveOpenGenericDefKind(c.Module, c.Handle);
         var kind = GenericDefKind.Unknown;
         if (c.IsValueType) kind |= GenericDefKind.ValueType;
         if (c.IsInterface) kind |= GenericDefKind.Interface | GenericDefKind.Abstract;

@@ -5,6 +5,9 @@
 // and InvariantCulture formatting/parsing, emitted in place of the BCL IL.
 #include "dn2cpp_core.h"
 #include "platform/dn2cpp_pal.h" // localtime_r / mktime via the PAL seam
+#if defined(_WIN32)
+#include "platform/windows/dn2cpp_windows_timezone.h"
+#endif
 
 #include <cstdint>
 #include <cstdio>
@@ -443,6 +446,66 @@ int32_t dn2cpp_local_offset_minutes(Dn2CppDateTime localClock)
 
 // Local binary payloads hold UTC ticks even when that instant is outside the
 // DateTime range; the clamping public time-zone conversion cannot serve them.
+#if defined(_WIN32)
+static int64_t dn2cpp_dt_windows_transition(int year, const Dn2CppWindowsZoneTransition& value)
+{
+    int day = value.day;
+    if (value.week != 0)
+    {
+        int firstWeekday = static_cast<int>((dn2cpp_dt_date_to_ticks(year, value.month, 1) / DN2CPP_TPD + 1) % 7);
+        day = 1 + (value.dayOfWeek - firstWeekday + 7) % 7 + (value.week - 1) * 7;
+        int days = dn2cpp_dt_days_in_month_checked(year, value.month);
+        if (day > days)
+            day -= 7;
+    }
+    return dn2cpp_dt_date_to_ticks(year, value.month, day)
+        + dn2cpp_dt_time_to_ticks(value.hour, value.minute, value.second, value.millisecond);
+}
+
+static int64_t dn2cpp_dt_windows_binary_offset(int64_t ticks, bool utc, bool daylight,
+                                               bool* ambiguousDaylight)
+{
+    int year;
+    dn2cpp_dt_datepart(ticks, &year, nullptr, nullptr, nullptr);
+    Dn2CppWindowsZoneRule rule{};
+    if (!dn2cpp_windows_zone_rule(year, &rule))
+        dn2cpp_throw_invalid_operation();
+    if (utc)
+    {
+        // The OS query takes a local year, which can differ near New Year's Day.
+        int64_t standardTicks = ticks + static_cast<int64_t>(rule.standardMinutes) * DN2CPP_TPM;
+        int localYear;
+        dn2cpp_dt_datepart(standardTicks < 0 ? 0 : standardTicks > DN2CPP_DT_MAX_TICKS
+            ? DN2CPP_DT_MAX_TICKS : standardTicks, &localYear, nullptr, nullptr, nullptr);
+        if (localYear != year)
+        {
+            year = localYear;
+            if (!dn2cpp_windows_zone_rule(year, &rule))
+                dn2cpp_throw_invalid_operation();
+        }
+    }
+    int64_t standard = static_cast<int64_t>(rule.standardMinutes) * DN2CPP_TPM;
+    int64_t summer = static_cast<int64_t>(rule.daylightMinutes) * DN2CPP_TPM;
+    *ambiguousDaylight = false;
+    if (rule.daylightStart.month == 0 || rule.standardStart.month == 0 || standard == summer)
+        return standard;
+    int64_t start = dn2cpp_dt_windows_transition(year, rule.daylightStart) - standard;
+    int64_t end = dn2cpp_dt_windows_transition(year, rule.standardStart) - summer;
+    auto inDaylight = [start, end](int64_t instant) {
+        return start < end ? instant >= start && instant < end : instant >= start || instant < end;
+    };
+    if (utc)
+    {
+        bool isDaylight = inDaylight(ticks);
+        *ambiguousDaylight = isDaylight && !inDaylight(ticks + summer - standard);
+        return isDaylight ? summer : standard;
+    }
+    bool daylightCandidate = inDaylight(ticks - summer);
+    bool standardCandidate = !inDaylight(ticks - standard);
+    // Both candidates are valid in a repeated hour; neither is valid in a gap.
+    return daylightCandidate && (!standardCandidate || daylight) ? summer : standard;
+}
+#else
 static bool dn2cpp_dt_same_clock(const std::tm& left, const std::tm& right)
 {
     return left.tm_year == right.tm_year && left.tm_mon == right.tm_mon
@@ -516,12 +579,24 @@ static int64_t dn2cpp_dt_local_binary_ticks(Dn2CppDateTime value)
         offset = wall - DN2CPP_UNIX_EPOCH_TICKS - seconds * DN2CPP_TPS;
     return value.ticks() - dn2cpp_dt_binary_zone_offset(offset);
 }
+#endif
+
+static int64_t dn2cpp_dt_binary_local_ticks(Dn2CppDateTime value)
+{
+#if defined(_WIN32)
+    bool ambiguous;
+    return value.ticks() - dn2cpp_dt_windows_binary_offset(value.ticks(), false,
+        (static_cast<uint64_t>(value._dateData) >> 62) == 3, &ambiguous);
+#else
+    return dn2cpp_dt_local_binary_ticks(value);
+#endif
+}
 
 int64_t dn2cpp_datetime_to_binary(Dn2CppDateTime value)
 {
     if (value.kind() != 2)
         return value._dateData;
-    int64_t ticks = dn2cpp_dt_local_binary_ticks(value);
+    int64_t ticks = dn2cpp_dt_binary_local_ticks(value);
     return static_cast<int64_t>((static_cast<uint64_t>(ticks) & 0x3FFFFFFFFFFFFFFFULL)
         | 0x8000000000000000ULL);
 }
@@ -543,10 +618,13 @@ Dn2CppDateTime dn2cpp_datetime_from_binary(int64_t data)
     if (ticks < 0 || ticks > DN2CPP_DT_MAX_TICKS)
     {
         auto boundary = dn2cpp_datetime_pack(ticks < 0 ? 0 : DN2CPP_DT_MAX_TICKS, 2);
-        ticks += boundary.ticks() - dn2cpp_dt_local_binary_ticks(boundary);
+        ticks += boundary.ticks() - dn2cpp_dt_binary_local_ticks(boundary);
     }
     else
     {
+#if defined(_WIN32)
+        ticks += dn2cpp_dt_windows_binary_offset(ticks, true, false, &ambiguousDaylight);
+#else
         int64_t secs = (ticks - DN2CPP_UNIX_EPOCH_TICKS) / DN2CPP_TPS;
         if (ticks < DN2CPP_UNIX_EPOCH_TICKS && (ticks - DN2CPP_UNIX_EPOCH_TICKS) % DN2CPP_TPS != 0)
             secs--;
@@ -563,6 +641,7 @@ Dn2CppDateTime dn2cpp_datetime_from_binary(int64_t data)
         }
         int64_t offset = dn2cpp_dt_tm_ticks(local) - (DN2CPP_UNIX_EPOCH_TICKS + secs * DN2CPP_TPS);
         ticks += dn2cpp_dt_binary_zone_offset(offset);
+#endif
     }
     if (ticks < 0)
         ticks += DN2CPP_TPD;
