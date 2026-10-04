@@ -43,6 +43,11 @@ var invokeVirtualLoad = Find("InvokeVirtualLoad");
 var valueTypeEquals = Find("ValueTypeEquals");
 var valueTypeHash = Find("ValueTypeHash");
 var valueTypeText = Find("ValueTypeText");
+var typeDefStubs = new[] { Find("TypeDefInt"), Find("TypeDefString"), Find("TypeDefInstance"), Find("TypeDefGeneric") };
+var memberRefTarget = module.GetType("LdftnLocalSubset.MemberRefTarget")
+    ?? throw new InvalidOperationException("missing TypeDef MemberRef target");
+var memberRefBox = module.GetType("LdftnLocalSubset.MemberRefBox`1")
+    ?? throw new InvalidOperationException("missing generic TypeDef MemberRef target");
 var scale = FindOn("VirtualBase", "Scale");
 var offset = FindOn("InstanceHolder", "Offset");
 var sealedScale = FindOn("ISealedScale", "Scale");
@@ -344,10 +349,75 @@ foreach (var (type, stubName, bodyName) in new[]
 }
 
 string temporary = path + ".ldftn-local.tmp";
+
+MethodReference TypeDefReference(MethodDefinition target)
+{
+    var reference = new MethodReference(target.Name, target.ReturnType, target.DeclaringType)
+    {
+        HasThis = target.HasThis,
+    };
+    foreach (var parameter in target.Parameters)
+        reference.Parameters.Add(new ParameterDefinition(parameter.ParameterType));
+    foreach (var parameter in target.GenericParameters)
+        reference.GenericParameters.Add(new GenericParameter(parameter.Name, reference));
+    return reference;
+}
+
+for (int i = 0; i < typeDefStubs.Length; i++)
+{
+    var target = memberRefTarget.Methods.Single(m => i switch
+    {
+        0 => m.Name == "Select" && m.Parameters[0].ParameterType.MetadataType == MetadataType.Int32,
+        1 => m.Name == "Select" && m.Parameters[0].ParameterType.MetadataType == MetadataType.String,
+        2 => m.Name == "Shift",
+        _ => m.Name == "Echo",
+    });
+    MethodReference reference = TypeDefReference(target);
+    if (i == 3)
+    {
+        var generic = new GenericInstanceMethod(reference);
+        generic.GenericArguments.Add(module.TypeSystem.Int32);
+        reference = generic;
+    }
+    var il = Body(typeDefStubs[i], pointerLocal: false).GetILProcessor();
+    il.Emit(OpCodes.Ldarg_0);
+    if (i == 2)
+        il.Emit(OpCodes.Ldarg_1);
+    il.Emit(i == 2 ? OpCodes.Callvirt : OpCodes.Call, reference);
+    il.Emit(OpCodes.Ret);
+}
+{
+    var stub = memberRefBox.Methods.Single(m => m.Name == "ThroughDefinition");
+    var target = memberRefBox.Methods.Single(m => m.Name == "Read");
+    var closedOwner = new GenericInstanceType(memberRefBox);
+    foreach (var parameter in memberRefBox.GenericParameters)
+        closedOwner.GenericArguments.Add(parameter);
+    var reference = TypeDefReference(target);
+    reference.DeclaringType = closedOwner;
+    var il = Body(stub, pointerLocal: false).GetILProcessor();
+    il.Emit(OpCodes.Ldarg_0);
+    il.Emit(OpCodes.Call, reference);
+    il.Emit(OpCodes.Ret);
+}
+
 try
 {
     assembly.Write(temporary, new WriterParameters { Timestamp = 0, DeterministicMvid = true });
     File.Move(temporary, path, overwrite: true);
+    using var written = AssemblyDefinition.ReadAssembly(path);
+    foreach (var (type, name) in typeDefStubs.Select(m => (m.DeclaringType.FullName, m.Name))
+                 .Append((memberRefBox.FullName, "ThroughDefinition")))
+    {
+        var stub = written.MainModule.GetType(type).Methods.Single(m => m.Name == name);
+        var reference = (MethodReference)stub.Body.Instructions.Single(i => i.OpCode.Code is Code.Call or Code.Callvirt).Operand;
+        if (reference is GenericInstanceMethod generic)
+            reference = generic.ElementMethod;
+        var expectedParent = name == "ThroughDefinition" ? TokenType.TypeSpec : TokenType.TypeDef;
+        if (reference.MetadataToken.TokenType != TokenType.MemberRef
+            || reference.DeclaringType.MetadataToken.TokenType != expectedParent)
+            throw new InvalidOperationException("fixture lost its TypeDef-parent MemberRef: " + name);
+    }
+    Console.WriteLine("TypeDef-parent MemberRef fixtures verified");
 }
 finally
 {

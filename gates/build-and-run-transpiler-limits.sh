@@ -91,6 +91,8 @@
 # the per-phase heap curve. This gate asserts; that one measures.
 # Canonical linking and synthesized-wrapper lowering must preserve fatal bounds
 # while ordinary unsupported wrapper shapes still fall back.
+# Primary-input CoreLib/runtime identity collisions fail before base-chain walks;
+# embedded internal metadata types and ordinary intrinsic-BCL inputs still run.
 source "$(dirname "$0")/_common.sh"
 
 out="artifacts/transpiler-limits"
@@ -114,6 +116,10 @@ build_proj samples/dotnet/TypeofMissingAsmBad/TypeofMissingAsmBad.csproj
 build_gate_proj gates/fixtures/transpiler-limits/CanonicalLink/CanonicalLinkBound.csproj
 build_gate_proj gates/fixtures/transpiler-limits/WrapperExceptions/WrapperExceptions.csproj
 build_gate_proj gates/fixtures/transpiler-limits/ReflectionRouteNesting/ReflectionRouteNesting.csproj
+collision_fixture=gates/fixtures/transpiler-limits/CoreLibCollision
+for shape in Object ValueType Unsafe Control; do
+    build_gate_proj "$collision_fixture/$shape/Collision$shape.csproj"
+done
 rec_app="samples/dotnet/GenericRecursionBad/bin/$CONFIG/$TFM/GenericRecursionBad.dll"
 sig_app="samples/dotnet/GenericSignatureRecursionBad/bin/$CONFIG/$TFM/GenericSignatureRecursionBad.dll"
 fld_app="samples/dotnet/GenericFieldRecursionBad/bin/$CONFIG/$TFM/GenericFieldRecursionBad.dll"
@@ -148,7 +154,7 @@ numerics_dll="$(dirname "$corelib")/System.Runtime.Numerics.dll"
 # ambient DN2CPP_MAX_INSTANTIATIONS or MAX_HEAP_MB fails transpiles this gate
 # expects to complete), and there is no surface in the key to catch that.
 rm -rf "$out" "$sig_out" "$sig_diet_out" "$cut_out" "$mint_out"; mkdir -p "$out"
-if gate_cache_check "$out" "transpiler-limits|canonical-cap:1,2|canonical-refs:none|wrapper-exceptions|sig:no-ildiet+ildiet|cli:$(_gate_cli_hash)|$corelib|$(_gate_transpiler_env_term)" \
+if gate_cache_check "$out" "transpiler-limits|canonical-cap:1,2|canonical-refs:none|wrapper-exceptions|sig:no-ildiet+ildiet|collision:no-ildiet,corelib+intrinsic|cli:$(_gate_cli_hash)|$corelib|$(_gate_transpiler_env_term)" \
         "$rec_app" "$sig_app" "$fld_app" "$afld_app" "$big_app" "$arr_app" "$mint_app" "$tma_app" \
         gates/fixtures/transpiler-limits/CanonicalLink/Program.cs \
         gates/fixtures/transpiler-limits/CanonicalLink/CanonicalLinkBound.csproj \
@@ -156,6 +162,7 @@ if gate_cache_check "$out" "transpiler-limits|canonical-cap:1,2|canonical-refs:n
         gates/fixtures/transpiler-limits/WrapperExceptions/WrapperExceptions.csproj \
         gates/fixtures/transpiler-limits/ReflectionRouteNesting/Program.cs \
         gates/fixtures/transpiler-limits/ReflectionRouteNesting/ReflectionRouteNesting.csproj \
+        "$collision_fixture" \
         "$link_app" "$wrapper_app" "$nest_app" \
         "${link_app%.dll}.runtimeconfig.json" "${link_app%.dll}.deps.json" \
         "${wrapper_app%.dll}.runtimeconfig.json" "${wrapper_app%.dll}.deps.json" \
@@ -734,5 +741,48 @@ if [ "$nest_count" -gt 2000 ]; then
     exit 1
 fi
 echo "OK ($nest_count Nest instantiations, Nest<int>.Name reached)"
+
+echo "== CoreLib type identity collisions =="
+for shape in Object ValueType Unsafe; do
+    collision_app="$collision_fixture/$shape/bin/$CONFIG/$TFM/Collision$shape.dll"
+    collision_oracle=$(run_bounded dotnet "$collision_app")
+    case "$shape" in
+        Object) collision_name=System.Object; collision_expected='application Object: 17' ;;
+        ValueType) collision_name=System.ValueType; collision_expected='application ValueType: ValueType' ;;
+        Unsafe) collision_name=System.Runtime.CompilerServices.Unsafe; collision_expected='application Unsafe: 123' ;;
+    esac
+    assert_output "$(strip_cr_win "$collision_oracle")" "$collision_expected"
+    for axis in corelib intrinsic; do
+        collision_refs=()
+        [ "$axis" != corelib ] || collision_refs=(-r "$corelib")
+        collision_out="${out}-collision-$shape-$axis"
+        rm -rf "$collision_out"
+        collision_rc=0
+        collision_err=$(run_with_watchdog 30 invoke_cli "$collision_app" \
+            ${collision_refs[@]+"${collision_refs[@]}"} --no-ildiet -o "$collision_out" 2>&1 >/dev/null) \
+            || collision_rc=$?
+        if [ "$collision_rc" -ne 2 ] \
+                || ! grep -Fq "input type '$collision_name' in assembly 'Collision$shape' conflicts with a CoreLib/runtime type identity" <<<"$collision_err"; then
+            echo "FAIL: $shape collision ($axis) was not rejected with its type and assembly (exit $collision_rc):" >&2
+            echo "$collision_err" >&2
+            exit 1
+        fi
+        [ ! -f "$collision_out/generated.cpp" ] \
+            || { echo "FAIL: $shape collision emitted C++ before failing" >&2; exit 1; }
+    done
+done
+control_app="$collision_fixture/Control/bin/$CONFIG/$TFM/CollisionControl.dll"
+control_oracle=$(run_bounded dotnet "$control_app")
+assert_output "$(strip_cr_win "$control_oracle")" "$(printf 'embedded attribute: 5\nordinary body: control-body\nordinary input end')"
+for axis in corelib intrinsic; do
+    collision_refs=()
+    [ "$axis" != corelib ] || collision_refs=(-r "$corelib")
+    control_out="${out}-collision-control-$axis"
+    invoke_cli "$control_app" ${collision_refs[@]+"${collision_refs[@]}"} --no-ildiet -o "$control_out" >/dev/null
+    compile_console "$control_out" CollisionControl
+    control_native=$(run_bounded "./$control_out/CollisionControl")
+    assert_output "$(strip_cr_win "$control_native")" "$(strip_cr_win "$control_oracle")"
+done
+echo "OK (CoreLib identities rejected; embedded metadata, helper polyfill and ordinary input preserved)"
 
 gate_cache_commit

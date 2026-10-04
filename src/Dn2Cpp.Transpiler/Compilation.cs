@@ -1899,8 +1899,70 @@ internal sealed partial class Compilation
         }
     }
 
+    private static bool IsEmbeddedMetadataAttribute(MetadataReader reader, TypeDefinition td)
+    {
+        if ((td.Attributes & TypeAttributes.VisibilityMask) != TypeAttributes.NotPublic
+            || reader.GetString(td.Namespace) != "System.Runtime.CompilerServices"
+            || td.BaseType.Kind != HandleKind.TypeReference
+            || TypeRefFullName(reader, (TypeReferenceHandle)td.BaseType) != "System.Attribute")
+            return false;
+        bool compilerGenerated = false;
+        bool embedded = false;
+        foreach (var handle in td.GetCustomAttributes())
+        {
+            string? name = AttributeTypeName(reader, reader.GetCustomAttribute(handle));
+            compilerGenerated |= name == "System.Runtime.CompilerServices.CompilerGeneratedAttribute";
+            embedded |= name == "Microsoft.CodeAnalysis.EmbeddedAttribute";
+        }
+        return compilerGenerated && embedded;
+    }
+
+    private void ValidatePrimaryCoreLibNames()
+    {
+        var input = Modules[0];
+        var publicCoreLibNames = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var module in Modules)
+        {
+            if (module == input || module.AssemblyName is not ("System.Private.CoreLib" or "mscorlib"))
+                continue;
+            var reader = module.Reader;
+            foreach (var handle in reader.TypeDefinitions)
+            {
+                var td = reader.GetTypeDefinition(handle);
+                if (!td.GetDeclaringType().IsNil
+                    || (td.Attributes & TypeAttributes.VisibilityMask) != TypeAttributes.Public)
+                    continue;
+                string ns = reader.GetString(td.Namespace);
+                string name = reader.GetString(td.Name);
+                publicCoreLibNames.Add(string.IsNullOrEmpty(ns) ? name : ns + "." + name);
+            }
+        }
+        // Full-name lookup cannot distinguish input identities owned by CoreLib or
+        // the runtime. Embedded compiler attributes may predate their public CoreLib counterparts.
+        foreach (var handle in input.Reader.TypeDefinitions)
+        {
+            var td = input.Reader.GetTypeDefinition(handle);
+            if (!td.GetDeclaringType().IsNil)
+                continue;
+            string ns = input.Reader.GetString(td.Namespace);
+            string name = input.Reader.GetString(td.Name);
+            string fullName = string.IsNullOrEmpty(ns) ? name : ns + "." + name;
+            int arity = fullName.IndexOf('`');
+            string intrinsicName = arity < 0 ? fullName : fullName[..arity];
+            bool runtimeIdentity = intrinsicName.StartsWith("System.", StringComparison.Ordinal)
+                && (intrinsicName is "System.Object" or "System.ValueType" or "System.Runtime.CompilerServices.Unsafe"
+                    || CoreIntrinsics.RuntimeOwnsTypeInfo(intrinsicName)
+                    || CoreIntrinsics.IntrinsicGenericCppType(intrinsicName) is not null);
+            if (runtimeIdentity || (publicCoreLibNames.Contains(fullName)
+                    && !IsEmbeddedMetadataAttribute(input.Reader, td)))
+                throw new NotSupportedException(
+                    $"input type '{fullName}' in assembly '{input.AssemblyName}' conflicts with a CoreLib/runtime type identity");
+        }
+    }
+
     private void Build()
     {
+        ValidatePrimaryCoreLibNames();
         // The intercept descriptor tables are static data every asker below consults, so
         // check their shape once, before anything reads a row. Armed in Debug (and behind
         // DN2CPP_INTERCEPT_SELFCHECK=1 in Release), a no-op otherwise; it can only abort a

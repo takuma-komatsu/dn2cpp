@@ -140,11 +140,40 @@ class RenamedSource : IRenamedSource<string>
 
 // After Build, gates/fixtures/ldftn-local/Program.cs replaces each throwing stub's
 // body with IL that C# cannot express.
+sealed class MemberRefTarget
+{
+    internal int Delta;
+    internal static int Select(int value) => value + 20;
+    internal static string Select(string value) => value + ":body";
+    internal int Shift(int value) => value + Delta;
+    internal static T Echo<T>(T value) => value;
+}
+
+static class MemberRefBox<T>
+{
+    internal static T Read(T value) => value;
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal static T ThroughDefinition(T value) => throw new InvalidOperationException();
+}
+
 static class Program
 {
     static int Add(int value) => value + 7;
     static int Subtract(int value) => value - 3;
     static string Decorate(string prefix, string value) => prefix + value;
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static int TypeDefInt(int value) => throw new InvalidOperationException();
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static string TypeDefString(string value) => throw new InvalidOperationException();
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static int TypeDefInstance(MemberRefTarget receiver, int value) => throw new InvalidOperationException();
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static int TypeDefGeneric(int value) => throw new InvalidOperationException();
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     static Func<int, int> Stored() => throw new InvalidOperationException();
@@ -211,6 +240,17 @@ static class Program
         long.TryParse("9", out long count);
         Func<int, int> add = Add;
         return handle.ToString() + "/" + count + "/" + add(5) + "/" + add.Method.Name;
+    }
+
+    internal static void RunTypeDefMemberRefs()
+    {
+        Console.WriteLine("== same-module TypeDef MemberRefs ==");
+        Console.WriteLine("typedef overloads=" + TypeDefInt(5) + "/" + TypeDefString("x"));
+        Console.WriteLine("typedef instance=" + TypeDefInstance(new MemberRefTarget { Delta = 10 }, 5));
+        Console.WriteLine("typedef generic method=" + TypeDefGeneric(9));
+        Console.WriteLine("typedef generic owner=" + MemberRefBox<int>.ThroughDefinition(31)
+            + "/" + MemberRefBox<string>.ThroughDefinition("owner"));
+        Console.WriteLine("same-module TypeDef MemberRefs end");
     }
 
     public static void Run()
