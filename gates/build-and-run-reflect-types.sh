@@ -312,7 +312,7 @@ source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_ordinary-reflection.sh samples/dotnet/ReflectTypes/AttributeTypePropertySubset.cs samples/dotnet/ReflectTypes/DataOnlyAttributeRowsOnly.csproj samples/dotnet/ReflectTypes/DataOnlyAttributeRowsOnlyProgram.cs samples/dotnet/ReflectTypes/OrdinaryReflectionTypeLeaves.csproj samples/dotnet/ReflectTypes/OrdinaryReflectionTypeLeavesProgram.cs samples/dotnet/ReflectTypes/PropertyAccessorRowsSubset.cs samples/dotnet/ReflectTypes/ReflectAssemblyErrorSubset.cs samples/dotnet/ReflectTypes/ReflectAttrBoxedSubset.cs samples/dotnet/ReflectTypes/ReflectRuntimeTypeParitySubset.cs samples/dotnet/ReflectTypes/ReflectTypes.csproj samples/dotnet/ReflectTypes/UnreadAttributeRowsOnly.csproj samples/dotnet/ReflectTypes/UnreadAttributeRowsOnlyProgram.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|before-nested-generic-names"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/NestedGenericTypeNameSubset.cs samples/dotnet/ReflectTypes/GenericDefinitionSymbolNeighbors.cs"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-type-leaves-v1"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-type-leaves-v1|before-attribute-display-code-units"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/ReflectionTemplateDispatch.csproj samples/dotnet/ReflectTypes/ReflectionTemplateDispatchProgram.cs samples/dotnet/ReflectTypes/ReflectRuntimeInstantiationSubset.cs"
 
 EXPFILE="$(dirname "$0")/expected/reflect-types.txt"
@@ -579,11 +579,11 @@ grep -q "EventListenerProbe.ProbeListener..ctor <- EventListenerProbe.Program.Ma
     || { echo "FAIL: the refused transpile still emitted C++: $(ls -1 "$ES_OUT" | tr '\n' ' ')" >&2; exit 1; }
 echo "refusal OK: exit $es_code, named the observation side + EventListener + a remedy + the caller, emitted nothing"
 
-# Native String rows, Type construction faults and encoded attribute identity.
+# Native String rows, Type construction faults and lossless attribute displays.
 unset -f gate_extra_asserts
 source gates/_ordinary-reflection.sh
 gate_extra_asserts() {
-    local out="$1" native line before prefix witness label simple mouth
+    local out="$1" native line before prefix witness label simple mouth display
     native=$(run_bounded "$out/OrdinaryReflectionTypeLeaves$EXE_EXT") || return $?
     native=$(strip_cr_win "$native")
     before=$(run_bounded "$out/OrdinaryReflectionTypeLeaves$EXE_EXT" before-attribute-chain) || return $?
@@ -649,12 +649,41 @@ gate_extra_asserts() {
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: property accessor witness missing: $line" >&2; return 1; }
     done
+    before=$(run_bounded dotnet "$_CG_APP" before-attribute-display-code-units) || return $?
+    prefix=$(awk '/^== attribute display code units ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    for line in '== attribute display code units ==' 'scalar high value=D800' \
+        'scalar low value=DFFF' 'scalar nul value=0000' \
+        'boxed array values=D800 DFFF 0000 03A9 empty=0 pair=D83D DE42' \
+        'attribute display code units end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: attribute code-unit witness missing: $line" >&2; return 1; }
+    done
+    for label in 'scalar high' 'scalar low' 'scalar nul' 'boxed array' unicode empty; do
+        grep -Eq "^$label display=" <<< "$native" \
+            || { echo "FAIL: attribute display not read: $label" >&2; return 1; }
+    done
+    for witness in 'scalar high|0027 D800 0027' 'scalar low|0027 DFFF 0027' \
+        'scalar nul|0027 0000 0027' 'boxed array|0027 D800 0027' \
+        'boxed array|0027 DFFF 0027' 'boxed array|0027 0000 0027' \
+        'unicode|0022 03A9 D83D DE42 0022' 'empty|0022 0022'; do
+        label=${witness%%|*}
+        line=${witness#*|}
+        display=$(grep -E "^$label display=" <<< "$native") || return $?
+        grep -Fq -- "$line" <<< "$display" \
+            || { echo "FAIL: attribute display changed code units: $witness" >&2; return 1; }
+    done
+    grep -Eq '^extern const char md_display_[0-9]+\[\] = \{ \(char\)254,' "$out"/generated*.cpp \
+        || { echo 'FAIL: lossless attribute display stream was not emitted' >&2; return 1; }
 }
 DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectTypes OrdinaryReflectionTypeLeaves \
     System.Collections System.ComponentModel.Primitives --no-ildiet
 DN2CPP_OUT_SUFFIX=-diet DN2CPP_STRICT_COMPLETION=1 \
     ordinary_fixture_diff_gate ReflectTypes OrdinaryReflectionTypeLeaves \
     System.Collections System.ComponentModel.Primitives
+DN2CPP_OUT_SUFFIX=-native DN2CPP_STRICT_COMPLETION=1 \
+    ordinary_fixture_diff_gate ReflectTypes OrdinaryReflectionTypeLeaves \
+    System.Collections System.ComponentModel.Primitives --no-ildiet --no-metadata-compression
 # With no attribute read, only the unwalked-row notes reach a chain level a row's
 # Type argument mints, so the deepest level's row must still render.
 gate_extra_asserts() {

@@ -11,6 +11,7 @@
 # Covariant reference stores check the actual element type before mutation.
 # Multidimensional stores check value type before bounds and retain the typed
 # headerless slot representation used by managed byrefs.
+# Runtime handle boxing retains the selected payload's ToString override.
 # Former gates: array-ops, array-contains, array-range, array-resize, array-sort,
 # array-data-ref, byte-array, getsubarray, packed-array, array-collection, enumarray,
 # arraypool.
@@ -214,12 +215,29 @@ gate_extra_asserts() {
     done
 }
 
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|array-box-shared-generics|before-array-provenance|before-nested-interface-variance|before-covariant-stores|before-covariant-md-stores"
+assert_runtime_box_formatting() {
+    local output="$1" line
+    for line in '== runtime-handle boxed formatting ==' \
+        'plain copied=handle:17:17' 'plain mutated=handle:23:handle:29:distinct=True' \
+        'nullable copied=nullable:31:underlying=True' 'nullable empty=True' \
+        'indirect copied=indirect:53:type=True' 'generic payloads=Int32:71/String:79' \
+        'ordinary control=ordinary:83/ordinary:89' 'unselected type=UnselectedPayload' \
+        'runtime-handle boxed formatting end'; do
+        grep -Fxq -- "$line" <<< "$output" \
+            || { echo "FAIL: runtime box formatting witness missing: $line" >&2; exit 1; }
+    done
+}
+
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|array-box-shared-generics|before-array-provenance|before-nested-interface-variance|before-covariant-stores|before-covariant-md-stores|before-runtime-box-formatting"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/ArrayCore/BoxProvenanceOnly.csproj samples/dotnet/ArrayCore/BoxProvenanceProgram.cs samples/dotnet/ArrayCore/ReflectionReturnBoxOnly.csproj samples/dotnet/ArrayCore/ReflectionReturnBoxProgram.cs samples/dotnet/ArrayCore/DiamondProvenanceOnly.csproj samples/dotnet/ArrayCore/DiamondProvenanceProgram.cs samples/dotnet/ArrayCore/FieldAliasProvenanceOnly.csproj samples/dotnet/ArrayCore/FieldAliasProvenanceProgram.cs samples/dotnet/ArrayCore/FieldAliasProvenanceSubset.cs samples/dotnet/ArrayCore/ArrayElementAliasProgram.cs samples/dotnet/ArrayCore/ArrayElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayObjectElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayUnknownElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayErasedElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayReferenceSlotAliasOnly.csproj samples/dotnet/ArrayCore/ArrayReflectedVoidBoxOnly.csproj samples/dotnet/ArrayCore/ArrayReflectedVoidBoxProgram.cs samples/dotnet/ArrayCore/ArrayFutureStoreOnly.csproj samples/dotnet/ArrayCore/ArrayFutureStoreProgram.cs samples/dotnet/ArrayCore/ArrayFutureNullStoreOnly.csproj samples/dotnet/ArrayCore/ArrayObjectFutureStoreOnly.csproj samples/dotnet/ArrayCore/ArrayObjectFutureStoreProgram.cs"
 corelib_diff_gate ArrayCore System.Collections
 
 native=$(run_bounded "./$_CG_OUT/ArrayCore$EXE_EXT")
 native=$(strip_cr_win "$native")
+previous=$(run_bounded dotnet "$_CG_APP" before-runtime-box-formatting)
+prefix=$(awk '/^== runtime-handle boxed formatting ==$/ { exit } { print }' <<< "$native")
+assert_output "$prefix" "$(strip_cr_win "$previous")"
+assert_runtime_box_formatting "$native"
 previous=$(run_bounded dotnet "$_CG_APP" before-covariant-stores)
 prefix=$(awk '/^== covariant reference array stores ==$/ { exit } { print }' <<< "$native")
 assert_output "$prefix" "$(strip_cr_win "$previous")"
@@ -490,6 +508,17 @@ box_native=$(run_bounded "./$box_root/gen/BoxProvenanceOnly$EXE_EXT")
 box_native=$(strip_cr_win "$box_native")
 box_oracle=$(run_bounded dotnet "$box_app")
 assert_output "$(strip_cr_win "$box_native")" "$(strip_cr_win "$box_oracle")"
+box_before_formatting=$(run_bounded dotnet "$box_app" before-runtime-box-formatting)
+box_formatting_prefix=$(awk '/^== runtime-handle boxed formatting ==$/ { exit } { print }' <<< "$box_native")
+assert_output "$box_formatting_prefix" "$(strip_cr_win "$box_before_formatting")"
+assert_runtime_box_formatting "$box_native"
+grep -Eq '^const Dn2CppTypeInfo ti_ArrayRuntimeBoxSubset_Program_UnselectedPayload = ' "$box_root/gen"/generated*.cpp \
+    || { echo 'FAIL: unselected runtime box control type-info is missing' >&2; exit 1; }
+if grep -Eq '^(inline |static )?Dn2CppString\* [[:alnum:]_]+_ToString_m[0-9]+\(t_ArrayRuntimeBoxSubset_Program_UnselectedPayload\*' \
+    "$box_root/gen"/generated*.h "$box_root/gen"/generated*.cpp; then
+    echo 'FAIL: runtime handle boxing rooted an unselected ToString override' >&2
+    exit 1
+fi
 box_previous=$(run_bounded dotnet "$box_app" before-array-search-provenance-additions)
 box_previous=$(strip_cr_win "$box_previous")
 box_prefix=$(awk '/^== array search copy and type provenance ==$/ { exit } { print }' <<< "$box_native")

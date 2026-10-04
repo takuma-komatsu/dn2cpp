@@ -2176,6 +2176,8 @@ internal sealed partial class CppEmitter
             // Array.Initialize's run-time lowering names each element constructor through
             // its row; reach the ones the classes just minted declare.
             _c.ReachRuntimeArrayInitializeCtors();
+            if (_c.ReachRuntimeHandleBoxes())
+                _c.DrainReachability();
             if (_c.ReachNonGenericArrayElementEquality())
                 _c.DrainReachability();
             // Shared-generics planning: instantiations discovered by the bodies

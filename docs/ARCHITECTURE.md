@@ -599,6 +599,8 @@ Packed signature displays can carry a token stream marked by an invalid UTF-8
 leading byte. The display reader computes the final UTF-16 length and writes
 directly into the returned managed string. The emitter accounts for dictionary
 cost when choosing tokenization. Native rows use directly shared UTF-8 displays.
+Displays containing NUL or unpaired surrogates use a length-prefixed UTF-16
+stream in either row format; they never enter the UTF-8 name or token pool.
 Attribute records retain order and factories;
 sharing their metadata does not share the attribute instances returned to callers.
 

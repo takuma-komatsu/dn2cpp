@@ -112,6 +112,22 @@ internal sealed partial class CppEmitter
             throw new InvalidOperationException("Metadata changed a display string.");
     }
 
+    private static void ValidateMetadataUtf16Display(IReadOnlyList<byte> bytes, string expected)
+    {
+        int position = 1;
+        if (bytes.Count == 0 || bytes[0] != 0xfe
+            || ReadMetadataUnsigned(bytes, ref position, bytes.Count) != (ulong)expected.Length
+            || bytes.Count - position != expected.Length * 2L)
+            throw new InvalidOperationException("Invalid UTF-16 metadata display header.");
+        for (int i = 0; i < expected.Length; i++)
+        {
+            char decoded = (char)(bytes[position] | bytes[position + 1] << 8);
+            position += 2;
+            if (decoded != expected[i])
+                throw new InvalidOperationException("Metadata changed a display code unit.");
+        }
+    }
+
     private static void ValidateMetadataNames(IReadOnlyList<string> names, long[] offsets, IReadOnlyList<int> roots, long size)
     {
         var bytes = new List<byte>();

@@ -333,6 +333,18 @@ void dn2cpp_metadata_decode(void* destination, Dn2CppMetadataKind kind, const vo
 Dn2CppString* dn2cpp_metadata_string(const char* display)
 {
     const auto* start = reinterpret_cast<const uint8_t*>(display);
+    if (*start == 0xfe)
+    {
+        auto* cursor = start + 1;
+        uint64_t count = read_unsigned(cursor);
+        if (count > static_cast<uint64_t>(std::numeric_limits<int32_t>::max()))
+            dn2cpp_throw_out_of_memory();
+        char16_t* buffer;
+        auto* result = dn2cpp_string_alloc(&buffer, static_cast<int32_t>(count));
+        for (uint64_t i = 0; i < count; i++, cursor += 2)
+            buffer[i] = static_cast<char16_t>(uint16_t(cursor[0]) | uint16_t(cursor[1]) << 8);
+        return result;
+    }
     if (*start != 0xff)
     {
         int32_t bytes = dn2cpp_string_checked_length(std::strlen(display));

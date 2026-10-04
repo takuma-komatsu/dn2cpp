@@ -165,6 +165,8 @@ internal sealed partial class Compilation
     private int _arraySearchSelectedMemberCount;
     private int _arraySearchSelectedMethodInstanceCount;
     private IReadOnlyList<TypeDesc>? _arraySearchSelectedTypes;
+    private IReadOnlyList<TypeDesc> _runtimeHandleBoxSelectedTypes = Array.Empty<TypeDesc>();
+    private bool _runtimeHandleBoxUsed;
     private HashSet<ArraySearchOrigin>? _arraySearchRelevantOrigins;
     private bool TrackArraySearchOrigins => Phase == EmitPhase.Emission;
 
@@ -660,14 +662,16 @@ internal sealed partial class Compilation
         }
     }
 
-    internal ArraySearchOrigin ArraySearchRuntimeBoxOrigin(ArraySearchOrigin? handle,
+    internal ArraySearchOrigin ArraySearchRuntimeBoxOrigin(MethodInfo owner, ArraySearchOrigin? handle,
         ArraySearchOrigin? slot)
     {
         var origin = TransformArraySearchOrigin(handle, ArraySearchFlowKind.RuntimeTypeToBoxedValue);
         if (TrackArraySearchOrigins)
         {
+            _runtimeHandleBoxUsed = true;
             origin.RuntimeBoxHandle = handle;
             LinkArraySearchOrigin(origin, slot, ArraySearchFlowKind.ReferenceSlotBoxValue);
+            NoteArraySearchOperand(owner, origin);
         }
         return origin;
     }
@@ -2424,8 +2428,7 @@ internal sealed partial class Compilation
         var reflectedStores = new List<ArraySearchClonedReflectedFieldStore>();
         var rooted = new HashSet<(ArraySearchOrigin Operand, ArraySearchFrame Frame)>();
         var rootFrames = new Dictionary<MethodInfo, ArraySearchFrame>();
-        // Start at search bodies and their callers. A helper's parameter frame
-        // must be constructed from each invocation that can reach its search.
+        // Search and runtime-box roots use each invocation's parameter frame.
         var needed = new HashSet<MethodInfo>(_arraySearchOperands.Select(entry => entry.Owner));
         bool added;
         bool repeat;
@@ -2623,11 +2626,20 @@ internal sealed partial class Compilation
         } while (repeat);
         EvaluateArraySearchValues(roots);
         var selected = new Dictionary<string, TypeDesc>(StringComparer.Ordinal);
+        var boxes = new Dictionary<string, TypeDesc>(StringComparer.Ordinal);
         foreach (var operand in roots)
+        {
             if (operand.Values.TryGetValue(ArraySearchValueKind.ArrayElement, out var elements))
                 foreach (var (identity, type) in elements)
                     selected.TryAdd(identity, type);
+            if (operand.RuntimeBoxHandle is not null
+                && operand.Values.TryGetValue(ArraySearchValueKind.BoxedValue, out var boxed))
+                foreach (var (identity, type) in boxed)
+                    boxes.TryAdd(identity, type);
+        }
         _arraySearchSelectedTypes = selected.OrderBy(entry => entry.Key, StringComparer.Ordinal)
+            .Select(entry => entry.Value).ToList();
+        _runtimeHandleBoxSelectedTypes = boxes.OrderBy(entry => entry.Key, StringComparer.Ordinal)
             .Select(entry => entry.Value).ToList();
         _arraySearchRelevantOrigins = cache.Keys.Select(key => key.Origin).ToHashSet();
         _arraySearchSelectedEpoch = _arraySearchGraphEpoch;
@@ -2637,5 +2649,13 @@ internal sealed partial class Compilation
         _arraySearchSelectedMemberCount = _membersCompletedOrder.Count;
         _arraySearchSelectedMethodInstanceCount = _methodInstanceOrder.Count;
         return _arraySearchSelectedTypes;
+    }
+
+    internal IReadOnlyList<TypeDesc> SelectedRuntimeHandleBoxes()
+    {
+        if (!_runtimeHandleBoxUsed || !TrackArraySearchOrigins)
+            return Array.Empty<TypeDesc>();
+        SelectedArraySearchElements();
+        return _runtimeHandleBoxSelectedTypes;
     }
 }

@@ -5615,6 +5615,17 @@ internal sealed partial class Compilation
             NoteReflectionBoxed(c);
     }
 
+    /// <summary>Runtime handle boxing has no IL box edge; retain the selected
+    /// payload's dispatch through the same route as reflection-produced boxes.</summary>
+    internal bool ReachRuntimeHandleBoxes()
+    {
+        int reached = Reachable.Count;
+        int allocated = _allocatedRefTypes.Count;
+        foreach (var type in SelectedRuntimeHandleBoxes().ToList())
+            NoteReflectionBoxed(type);
+        return Reachable.Count != reached || _allocatedRefTypes.Count != allocated;
+    }
+
     /// <summary><see cref="NoteReflectionBoxed(TypeDesc)"/> for each value invoking
     /// <paramref name="m"/> through reflection boxes: its return value and each by-ref
     /// argument it writes back.</summary>

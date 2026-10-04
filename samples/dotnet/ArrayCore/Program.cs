@@ -91,6 +91,9 @@ namespace ArrayCore
             if (args.Length != 0 && args[0] == "before-covariant-md-stores")
                 return;
             ArrayCovariantStoreSubset.Program.RunMdStores();
+            if (args.Length != 0 && args[0] == "before-runtime-box-formatting")
+                return;
+            ArrayRuntimeBoxSubset.Program.RunFormattingRegressions();
 #endif
         }
     }
