@@ -13,6 +13,9 @@ internal static class Program
         if (args.Length != 0 && args[0] == "before-array-search-provenance-additions")
             return;
         DynamicArrayNullEqualitySubset.Program.RunFrameworkBoxAdditions();
+        if (args.Length != 0 && args[0] == "before-runtime-box-formatting")
+            return;
+        ArrayRuntimeBoxSubset.Program.RunFormattingRegressions();
     }
 }
 #endif

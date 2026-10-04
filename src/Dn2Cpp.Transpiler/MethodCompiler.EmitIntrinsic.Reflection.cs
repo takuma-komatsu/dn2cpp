@@ -423,7 +423,7 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.Ref, "Dn2CppObject*",
                     $"dn2cpp_box_by_handle({h.Expr}, (const void*)({r.Expr}))");
                 _stack[^1] = _stack[^1] with { ArraySearchOrigin =
-                    _c.ArraySearchRuntimeBoxOrigin(h.ArraySearchOrigin, r.ArraySearchOrigin) };
+                    _c.ArraySearchRuntimeBoxOrigin(_method, h.ArraySearchOrigin, r.ArraySearchOrigin) };
                 return true;
             }
             // RuntimeHelpers.GetUninitializedObject(Type): allocate without running

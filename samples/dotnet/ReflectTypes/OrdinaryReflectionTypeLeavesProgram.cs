@@ -22,5 +22,8 @@ static class Program
         if (args.Length > 0 && args[0] == "before-property-accessors")
             return;
         PropertyAccessorRowsSubset.Run();
+        if (args.Length > 0 && args[0] == "before-attribute-display-code-units")
+            return;
+        ReflectAttrBoxedSubset.Program.RunSurrogateDisplays();
     }
 }

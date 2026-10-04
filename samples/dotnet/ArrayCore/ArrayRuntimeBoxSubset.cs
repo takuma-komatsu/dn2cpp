@@ -9,6 +9,47 @@ ref struct RefCell { public int Value; }
 
 internal static class Program
 {
+    private struct HandlePayload
+    {
+        public int Value;
+        public override string ToString() => "handle:" + Value;
+    }
+
+    private struct NullablePayload
+    {
+        public int Value;
+        public override string ToString() => "nullable:" + Value;
+    }
+
+    private struct IndirectPayload
+    {
+        public int Value;
+        public override string ToString() => "indirect:" + Value;
+    }
+
+    private struct GenericPayload<T>
+    {
+        public int Value;
+        public override string ToString() => typeof(T).Name + ":" + Value;
+    }
+
+    private struct OrdinaryPayload
+    {
+        public int Value;
+        public override string ToString() => "ordinary:" + Value;
+    }
+
+    private struct UnselectedPayload
+    {
+        public override string ToString() => "unselected override";
+    }
+
+    private static RuntimeTypeHandle _formatHandle;
+
+    private static RuntimeTypeHandle FormatHandle() => typeof(IndirectPayload).TypeHandle;
+    private static object BoxHandle(ref byte value, RuntimeTypeHandle handle) => RuntimeHelpers.Box(ref value, handle);
+    private static object BoxValue<T>(ref T value) => RuntimeHelpers.Box(ref Unsafe.As<T, byte>(ref value), typeof(T).TypeHandle);
+
     private struct SearchBox
     {
         public int Value;
@@ -104,5 +145,39 @@ internal static class Program
         Probe("void rank33 bounds", () => Array.CreateInstance(typeof(void), new int[33], new int[33]).Length.ToString());
         Probe("by-ref-like rank33 bounds", () => Array.CreateInstance(typeof(RefCell), new int[33], new int[33]).Length.ToString());
         Console.WriteLine("array producer and validation order end");
+    }
+
+    internal static void RunFormattingRegressions()
+    {
+        Console.WriteLine("== runtime-handle boxed formatting ==");
+        HandlePayload value = new HandlePayload { Value = 17 };
+        object boxed = RuntimeHelpers.Box(ref Unsafe.As<HandlePayload, byte>(ref value), typeof(HandlePayload).TypeHandle);
+        value.Value = 29;
+        Console.WriteLine("plain copied=" + boxed.ToString() + ":" + ((HandlePayload)boxed).Value);
+        ref HandlePayload payload = ref Unsafe.Unbox<HandlePayload>(boxed);
+        payload.Value = 23;
+        object second = RuntimeHelpers.Box(ref Unsafe.As<HandlePayload, byte>(ref value), typeof(HandlePayload).TypeHandle);
+        Console.WriteLine("plain mutated=" + boxed.ToString() + ":" + second.ToString() + ":distinct=" + !ReferenceEquals(boxed, second));
+        NullablePayload? nullable = new NullablePayload { Value = 31 };
+        object nullableBox = RuntimeHelpers.Box(ref Unsafe.As<NullablePayload?, byte>(ref nullable), typeof(NullablePayload?).TypeHandle);
+        nullable = new NullablePayload { Value = 43 };
+        Console.WriteLine("nullable copied=" + nullableBox.ToString() + ":underlying=" + (nullableBox.GetType() == typeof(NullablePayload)));
+        nullable = null;
+        Console.WriteLine("nullable empty=" + (RuntimeHelpers.Box(ref Unsafe.As<NullablePayload?, byte>(ref nullable), typeof(NullablePayload?).TypeHandle) is null));
+        IndirectPayload indirect = new IndirectPayload { Value = 53 };
+        _formatHandle = FormatHandle();
+        RuntimeTypeHandle localHandle = _formatHandle;
+        object indirectBox = BoxHandle(ref Unsafe.As<IndirectPayload, byte>(ref indirect), localHandle);
+        indirect.Value = 67;
+        Console.WriteLine("indirect copied=" + indirectBox.ToString() + ":type=" + (indirectBox.GetType() == typeof(IndirectPayload)));
+        GenericPayload<int> number = new GenericPayload<int> { Value = 71 };
+        GenericPayload<string> text = new GenericPayload<string> { Value = 79 };
+        Console.WriteLine("generic payloads=" + BoxValue(ref number).ToString() + "/" + BoxValue(ref text).ToString());
+        OrdinaryPayload ordinary = new OrdinaryPayload { Value = 83 };
+        object ordinaryBox = ordinary;
+        ordinary.Value = 89;
+        Console.WriteLine("ordinary control=" + ordinaryBox.ToString() + "/" + ordinary.ToString());
+        Console.WriteLine("unselected type=" + typeof(UnselectedPayload).Name);
+        Console.WriteLine("runtime-handle boxed formatting end");
     }
 }

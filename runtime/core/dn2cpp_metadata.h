@@ -164,5 +164,5 @@ static_assert(sizeof(Dn2CppMetadataTable<Dn2CppMethodInfo>) == sizeof(void*));
 static_assert(std::is_trivially_copyable_v<Dn2CppMetadataHandle<Dn2CppMethodInfo>>);
 static_assert(std::is_trivially_copyable_v<Dn2CppMetadataTable<Dn2CppMethodInfo>>);
 
-// Display token streams begin with 0xff, which cannot begin valid UTF-8.
+// Invalid UTF-8 prefixes mark displays: 0xff tokens, 0xfe length-prefixed UTF-16.
 Dn2CppString* dn2cpp_metadata_string(const char* display);

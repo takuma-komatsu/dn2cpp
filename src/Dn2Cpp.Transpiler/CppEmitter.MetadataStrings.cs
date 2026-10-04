@@ -32,6 +32,23 @@ internal sealed partial class CppEmitter
         return "md_display_" + id;
     }
 
+    private static bool MetadataDisplayNeedsUtf16(string text)
+    {
+        for (int i = 0; i < text.Length; i++)
+        {
+            char ch = text[i];
+            if (ch == '\0' || ch is >= '\udc00' and <= '\udfff')
+                return true;
+            if (ch is >= '\ud800' and <= '\udbff')
+            {
+                if (i + 1 == text.Length || text[i + 1] is < '\udc00' or > '\udfff')
+                    return true;
+                i++;
+            }
+        }
+        return false;
+    }
+
     private static (long[] Offsets, List<int> Roots, long Bytes) MetadataNameLayout(IReadOnlyList<string> names)
     {
         var reversed = new string[names.Count];
@@ -94,9 +111,16 @@ internal sealed partial class CppEmitter
         var tokens = new List<string>();
         var tokenRows = new List<MetadataDisplayRow>();
         var compressed = new bool[_metadataDisplays.Count];
+        var utf16 = new bool[_metadataDisplays.Count];
         int dictionaryBlock = _metadataBlockCount;
         for (int i = 0; i < _metadataDisplays.Count; i++)
         {
+            utf16[i] = MetadataDisplayNeedsUtf16(_metadataDisplays[i]);
+            if (utf16[i])
+            {
+                tokenRows.Add(new MetadataDisplayRow(Array.Empty<int>()));
+                continue;
+            }
             var words = MetadataDisplayTokens(_metadataDisplays[i]);
             var row = new int[words.Count];
             int cost = 1 + MetadataUnsignedLength((ulong)dictionaryBlock) + MetadataUnsignedLength((ulong)row.Length);
@@ -116,9 +140,11 @@ internal sealed partial class CppEmitter
         }
         // The dictionary is charged in full, including tokens from rejected rows.
         // Charge pointers plus relocation entries as well as UTF-8 suffix storage.
-        var rawNames = _metadataNames.Concat(_metadataDisplays).Distinct(System.StringComparer.Ordinal).ToArray();
+        // NUL and unpaired surrogates cannot enter the UTF-8 name or token pool.
+        var rawNames = _metadataNames.Concat(_metadataDisplays.Where((_, index) => !utf16[index]))
+            .Distinct(System.StringComparer.Ordinal).ToArray();
         var packedNames = _metadataNames.Concat(tokens)
-            .Concat(_metadataDisplays.Where((_, index) => !compressed[index]))
+            .Concat(_metadataDisplays.Where((_, index) => !utf16[index] && !compressed[index]))
             .Distinct(System.StringComparer.Ordinal).ToArray();
         long packedBytes = MetadataNameLayout(packedNames).Bytes + tokens.Count * 32L + 48;
         for (int i = 0; i < compressed.Length; i++)
@@ -137,14 +163,29 @@ internal sealed partial class CppEmitter
         }
         for (int i = 0; i < _metadataDisplays.Count; i++)
         {
-            if (useDictionary && compressed[i])
+            List<byte>? bytes = null;
+            if (utf16[i])
             {
-                var bytes = new List<byte> { 0xff };
+                bytes = new List<byte> { 0xfe };
+                WriteMetadataUnsigned(bytes, (ulong)_metadataDisplays[i].Length);
+                foreach (char ch in _metadataDisplays[i])
+                {
+                    bytes.Add((byte)ch);
+                    bytes.Add((byte)(ch >> 8));
+                }
+                ValidateMetadataUtf16Display(bytes, _metadataDisplays[i]);
+            }
+            else if (useDictionary && compressed[i])
+            {
+                bytes = new List<byte> { 0xff };
                 WriteMetadataUnsigned(bytes, (ulong)_metadataDisplayBlock);
                 WriteMetadataUnsigned(bytes, (ulong)tokenRows[i].Tokens.Length);
                 foreach (int id in tokenRows[i].Tokens)
                     WriteMetadataUnsigned(bytes, (ulong)id);
                 ValidateMetadataDisplay(bytes, _metadataDisplayBlock, tokens, _metadataDisplays[i]);
+            }
+            if (bytes is not null)
+            {
                 _metadataHeader.AppendLine($"extern const char md_display_{i}[{bytes.Count}];");
                 sb.Append($"extern const char md_display_{i}[] = {{ ");
                 for (int j = 0; j < bytes.Count; j++)

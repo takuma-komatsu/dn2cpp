@@ -292,7 +292,8 @@ internal sealed partial class CppEmitter
                 var value = rows[i].Values[field];
                 string expression;
                 if (value.StringValue is { } text)
-                    expression = InternMetadataName(text);
+                    expression = value.IsDisplay && MetadataDisplayNeedsUtf16(text)
+                        ? InternMetadataDisplay(text) : InternMetadataName(text);
                 else if (value.Pointer is { } pointer)
                     expression = rowType == "Dn2CppPropInfo" && field is 3 or 4
                         ? $"Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({pointer})"

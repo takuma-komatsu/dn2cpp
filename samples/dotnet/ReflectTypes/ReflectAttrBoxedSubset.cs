@@ -135,8 +135,63 @@ namespace ReflectAttrBoxedSubset
     [Typed(Big.X, UBig.Max, 'e', typeof(EnvironmentVariableTarget))]
     public sealed class ForeignEnums { }
 
+    [AttributeUsage(AttributeTargets.Class)]
+    public sealed class CharDisplayAttribute : Attribute
+    {
+        public CharDisplayAttribute(char value) => Value = value;
+        public char Value;
+    }
+
+    [CharDisplay('\ud800')]
+    public sealed class HighDisplay { }
+    [CharDisplay('\udfff')]
+    public sealed class LowDisplay { }
+    [CharDisplay('\0')]
+    public sealed class NulDisplay { }
+    [Boxed(new object[] { '\ud800', '\udfff', '\0', '\u03a9', "", "\U0001f642" })]
+    public sealed class ArrayDisplay { }
+    [Boxed("\u03a9\U0001f642")]
+    public sealed class UnicodeDisplay { }
+    [Boxed("")]
+    public sealed class EmptyDisplay { }
+
     internal static class Program
     {
+        private static string CodeUnits(string value)
+        {
+            var units = new List<string>();
+            foreach (char ch in value)
+                units.Add(((int)ch).ToString("X4", CultureInfo.InvariantCulture));
+            return string.Join(" ", units);
+        }
+
+        private static void DisplayUnits(string label, Type holder)
+        {
+            foreach (CustomAttributeData data in holder.GetCustomAttributesData())
+                Console.WriteLine(label + " display=" + CodeUnits(data.ToString()));
+        }
+
+        public static void RunSurrogateDisplays()
+        {
+            Console.WriteLine("== attribute display code units ==");
+            var holders = new[] { typeof(HighDisplay), typeof(LowDisplay), typeof(NulDisplay) };
+            var labels = new[] { "scalar high", "scalar low", "scalar nul" };
+            for (int i = 0; i < holders.Length; i++)
+            {
+                var value = (CharDisplayAttribute)holders[i].GetCustomAttributes(false)[0];
+                Console.WriteLine(labels[i] + " value=" + ((int)value.Value).ToString("X4", CultureInfo.InvariantCulture));
+                DisplayUnits(labels[i], holders[i]);
+            }
+            var array = (object[])((BoxedAttribute)typeof(ArrayDisplay).GetCustomAttributes(false)[0]).Value;
+            Console.WriteLine("boxed array values=" + CodeUnits(new string(new[]
+                { (char)array[0], (char)array[1], (char)array[2], (char)array[3] }))
+                + " empty=" + ((string)array[4]).Length + " pair=" + CodeUnits((string)array[5]));
+            DisplayUnits("boxed array", typeof(ArrayDisplay));
+            DisplayUnits("unicode", typeof(UnicodeDisplay));
+            DisplayUnits("empty", typeof(EmptyDisplay));
+            Console.WriteLine("attribute display code units end");
+        }
+
         private static string Describe(object value)
         {
             if (value is null)

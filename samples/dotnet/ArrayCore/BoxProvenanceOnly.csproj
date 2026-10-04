@@ -12,5 +12,6 @@
   <ItemGroup>
     <Compile Include="BoxProvenanceProgram.cs" />
     <Compile Include="DynamicArrayNullEqualitySubset.cs" />
+    <Compile Include="ArrayRuntimeBoxSubset.cs" />
   </ItemGroup>
 </Project>
