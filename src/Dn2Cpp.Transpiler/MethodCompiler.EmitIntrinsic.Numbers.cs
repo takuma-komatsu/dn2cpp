@@ -182,9 +182,7 @@ internal sealed partial class MethodCompiler
             // System.Exception.GetBaseException(): the innermost exception of the
             // inner-chain, or the exception itself when there is none (real .NET's
             // identity case).
-            // INTENTIONAL DIVERGENCE: AggregateException overrides this to collapse
-            // single-child chains — opaque here, so it takes the plain inner walk, the
-            // same documented approximation as its Message.
+            // AggregateException's single-child collapse is not modeled here.
             case ("System.Exception", "GetBaseException"):
             {
                 var o = Pop();
@@ -205,6 +203,13 @@ internal sealed partial class MethodCompiler
                 string fn = CallIsVirtual ? "dn2cpp_exception_message" : "dn2cpp_exception_message_stored";
                 Push(StackKind.Ref, "Dn2CppString*",
                     $"{fn}((Dn2CppObject*)({o.Expr}))");
+                return true;
+            }
+            case ("System.AggregateException", "get_Message"):
+            {
+                var o = Pop();
+                string fn = CallIsVirtual ? "dn2cpp_exception_message" : "dn2cpp_aggregate_exception_message";
+                Push(StackKind.Ref, "Dn2CppString*", $"{fn}((Dn2CppObject*)({o.Expr}))");
                 return true;
             }
             // System.Exception.ToString: "FullTypeName: Message" plus the inner

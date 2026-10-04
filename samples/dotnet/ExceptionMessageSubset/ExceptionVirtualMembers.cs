@@ -27,6 +27,137 @@ namespace ExceptionMessageSubset
     // (System.Exception) receiver. Those reads are exercised below.
     internal static class ExceptionVirtualMembers
     {
+        private sealed class ChangingMessage : Exception
+        {
+            internal int Reads;
+            internal readonly string Label;
+            internal readonly bool Throws;
+            internal ChangingMessage(string label, bool throws = false) : base("stored")
+            {
+                Label = label;
+                Throws = throws;
+            }
+            public override string Message
+            {
+                get
+                {
+                    Reads++;
+                    if (Throws)
+                        throw new InvalidOperationException("message getter");
+                    return Label + ":" + Reads;
+                }
+            }
+            internal string StoredMessage() => base.Message;
+        }
+
+        private sealed class EmptyDerivedAggregate : AggregateException
+        {
+            internal EmptyDerivedAggregate() : base("derived base") { }
+            public override string Message => "derived/" + base.Message;
+            internal string BaseMessage() => base.Message;
+        }
+
+        private static string Reads(ChangingMessage first, ChangingMessage second)
+            => first.Reads + "/" + (second is null ? 0 : second.Reads);
+
+        private static AggregateException ConstructAggregate(string label,
+            Func<AggregateException> make, ChangingMessage first, ChangingMessage second = null)
+        {
+            GC.KeepAlive(new Func<string>(() => first.Message));
+            if (second is not null)
+                GC.KeepAlive(new Func<string>(() => second.Message));
+            try
+            {
+                var aggregate = make();
+                Console.WriteLine(label + " constructed reads=" + Reads(first, second)
+                    + " first=" + ReferenceEquals(aggregate.InnerException, first)
+                    + " order=" + (ReferenceEquals(aggregate.InnerExceptions[0], first)
+                        && (second is null || ReferenceEquals(aggregate.InnerExceptions[1], second))));
+                return aggregate;
+            }
+            catch (Exception error)
+            {
+                Console.WriteLine(label + " constructor threw=" + error.GetType().Name
+                    + " reads=" + Reads(first, second));
+                return null;
+            }
+        }
+
+        private static void ReadAggregate(string label, Exception aggregate,
+            ChangingMessage first, ChangingMessage second = null)
+        {
+            if (aggregate is null)
+                return;
+            try { Console.WriteLine(label + " message=" + aggregate.Message); }
+            catch (Exception error) { Console.WriteLine(label + " getter threw=" + error.GetType().Name + ":" + error.Message); }
+            Console.WriteLine(label + " reads=" + Reads(first, second));
+        }
+
+        private static void AggregateCtor(string label, AggregateException aggregate)
+            => Console.WriteLine("ctor " + label + "=" + aggregate.Message
+                + " count=" + aggregate.InnerExceptions.Count);
+
+        private static void InvalidAggregate(string label, Func<AggregateException> make)
+        {
+            try { _ = make(); Console.WriteLine(label + " did not throw"); }
+            catch (ArgumentException error) { Console.WriteLine(label + "=" + error.GetType().Name + " param=" + error.ParamName); }
+        }
+
+        internal static void RunAggregateMessages()
+        {
+            Console.WriteLine("== lazy aggregate Message ==");
+            var left = new ChangingMessage("left");
+            var right = new ChangingMessage("right");
+            var pair = ConstructAggregate("pair", () => new AggregateException(new Exception[] { left, right }), left, right);
+            ReadAggregate("pair first", pair, left, right);
+            ReadAggregate("pair second", pair, left, right);
+            Console.WriteLine("ordinary stored=" + left.StoredMessage() + " reads=" + left.Reads);
+
+            var throwing = new ChangingMessage("throw", true);
+            var later = new ChangingMessage("later");
+            var stopped = ConstructAggregate("throwing", () => new AggregateException(new Exception[] { throwing, later }), throwing, later);
+            ReadAggregate("throwing first", stopped, throwing, later);
+            ReadAggregate("throwing second", stopped, throwing, later);
+
+            var nestedFault = new ChangingMessage("nested");
+            GC.KeepAlive(new Func<string>(() => nestedFault.Message));
+            var nested = new AggregateException(new Exception[] { nestedFault });
+            var outer = new AggregateException("outer", new Exception[] { nested, new Exception("tail") });
+            Console.WriteLine("nested constructed reads=" + nestedFault.Reads + " identity=" + ReferenceEquals(outer.InnerException, nested));
+            ReadAggregate("nested first", outer, nestedFault);
+            ReadAggregate("nested second", outer, nestedFault);
+
+            AggregateCtor("default", new AggregateException());
+            AggregateCtor("empty array", new AggregateException(Array.Empty<Exception>()));
+            AggregateCtor("custom empty", new AggregateException("custom"));
+            AggregateCtor("empty message", new AggregateException(""));
+            AggregateCtor("null message", new AggregateException((string)null));
+            AggregateCtor("custom single", new AggregateException("custom", new Exception("single")));
+            AggregateCtor("custom array", new AggregateException("custom", new Exception[] { new Exception("one"), new Exception("two") }));
+            AggregateCtor("null array message", new AggregateException((string)null, new Exception[] { new Exception("one") }));
+            var original = new Exception("original");
+            var arguments = new[] { original };
+            var snapshot = new AggregateException(arguments);
+            arguments[0] = new Exception("replacement");
+            Console.WriteLine("ctor snapshot=" + snapshot.Message + " first=" + ReferenceEquals(snapshot.InnerException, original)
+                + " element=" + ReferenceEquals(snapshot.InnerExceptions[0], original));
+            InvalidAggregate("ctor null array", () => new AggregateException((Exception[])null));
+            InvalidAggregate("ctor null element", () => new AggregateException(new Exception[] { null }));
+            InvalidAggregate("ctor null single", () => new AggregateException("custom", (Exception)null));
+
+            var codeUnits = new AggregateException("base\udfff", new Exception[] { new Exception("x\0\ud800y") }).Message;
+            string units = "";
+            foreach (char ch in codeUnits)
+                units += ((int)ch).ToString("X4") + " ";
+            Console.WriteLine("aggregate UTF16=" + units.TrimEnd());
+            var derived = new EmptyDerivedAggregate();
+            Exception asException = derived;
+            Console.WriteLine("derived Message=" + asException.Message + " base=" + derived.BaseMessage());
+            Console.WriteLine("derived ToString=" + asException.ToString());
+            Console.WriteLine("empty ToString=" + new AggregateException("empty").ToString());
+            Console.WriteLine("lazy aggregate Message end");
+        }
+
         // A user exception deriving from a BCL exception that the runtime also raises:
         // its own type-info chains to the runtime's handle for the base, so `catch
         // (ArgumentException)` still sees it — and its OVERRIDE of a base virtual is the

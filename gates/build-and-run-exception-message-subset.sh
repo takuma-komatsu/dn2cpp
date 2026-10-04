@@ -49,10 +49,11 @@
 # with .NET. Separate fixtures cover layouts without explicit exception constructors
 # and Message-only fallback, including NUL and unpaired UTF-16 surrogates.
 # UInt32 and Int32 bound messages retain their suffixes after a collection.
+# Aggregate messages evaluate virtual inner getters lazily on each read.
 source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/ExceptionMessageSubset/OrdinaryReflectionArgumentSubset.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-reflection-arguments:${DN2CPP_BEFORE_ORDINARY_REFLECTION_ARGUMENTS:-}"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|before-array-shape-fields|before-runtime-hresult"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|before-array-shape-fields|before-runtime-hresult|before-lazy-aggregate-message"
 
 ancestry_app="gates/fixtures/runtime-exception-ancestry/bin/$CONFIG/$TFM/RuntimeExceptionAncestry.dll"
 build_gate_proj gates/fixtures/runtime-exception-ancestry/RuntimeExceptionAncestry.csproj
@@ -71,6 +72,31 @@ gate_extra_asserts() {
     local out="$1" native before prefix line app name fixture expected actual
     native=$(run_bounded "./$out/ExceptionMessageSubset")
     native=$(strip_cr_win "$native")
+    before=$(run_bounded dotnet "$_CG_APP" before-lazy-aggregate-message)
+    prefix=$(awk '/^== lazy aggregate Message ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    for line in '== lazy aggregate Message ==' \
+        'pair constructed reads=0/0 first=True order=True' \
+        'pair first message=One or more errors occurred. (left:1) (right:1)' \
+        'pair second message=One or more errors occurred. (left:2) (right:2)' \
+        'ordinary stored=stored reads=2' \
+        'throwing constructed reads=0/0 first=True order=True' \
+        'throwing first getter threw=InvalidOperationException:message getter' \
+        'throwing second reads=2/0' \
+        'nested constructed reads=0 identity=True' \
+        'nested second message=outer (One or more errors occurred. (nested:2)) (tail)' \
+        'ctor snapshot=One or more errors occurred. (original) first=True element=True' \
+        'ctor null array=ArgumentNullException param=innerExceptions' \
+        'ctor null element=ArgumentException param=' \
+        'ctor null single=ArgumentNullException param=innerException' \
+        'aggregate UTF16=0062 0061 0073 0065 DFFF 0020 0028 0078 0000 D800 0079 0029' \
+        'derived Message=derived/derived base base=derived base' \
+        'lazy aggregate Message end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: lazy aggregate Message witness missing: $line" >&2; return 1; }
+    done
+    grep -Eq '^.*vt_ExceptionMessageSubset_ExceptionVirtualMembers_ChangingMessage\[\].*ChangingMessage_get_Message_m[0-9]+' "$out"/generated*.cpp \
+        || { echo 'FAIL: the side-effecting Message override was not installed' >&2; return 1; }
     before=$(DN2CPP_BEFORE_ORDINARY_REFLECTION_ARGUMENTS=1 run_bounded "./$out/ExceptionMessageSubset$EXE_EXT")
     prefix=$(awk '/^-- ordinary reflection argument fields --$/ { exit } { print }' <<< "$native")
     assert_output "$prefix" "$(strip_cr_win "$before")"

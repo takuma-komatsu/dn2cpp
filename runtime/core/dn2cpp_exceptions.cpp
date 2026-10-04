@@ -1060,8 +1060,7 @@ int32_t dn2cpp_exception_hresult(Dn2CppObject* ex)
 // deepest element and return it; with no inner, return the exception ITSELF
 // (real .NET's identity case). INTENTIONAL DIVERGENCE: real
 // AggregateException.GetBaseException OVERRIDES this to collapse single-child
-// chains — an opaque type here, so it takes this plain inner walk (the same
-// documented approximation as its Message).
+// chains; this helper retains the plain inner walk.
 Dn2CppObject* dn2cpp_exception_get_base(Dn2CppObject* ex)
 {
     if (ex == nullptr)
@@ -1111,6 +1110,8 @@ Dn2CppString* dn2cpp_exception_message(Dn2CppObject* ex)
     if (dn2cpp_exception_overrides_message(ex->type))
         return reinterpret_cast<Dn2CppString* (*)(Dn2CppObject*)>(
             const_cast<void*>(ex->type->vtable[dn2cpp_exception_get_message_slot]))(ex);
+    if (ex->type == &dn2cpp_aggregate_exception_type)
+        return dn2cpp_aggregate_exception_message(ex);
     return dn2cpp_exception_message_stored(ex);
 }
 
@@ -1854,43 +1855,67 @@ struct Dn2CppAggregateExceptionObject : Dn2CppExceptionObject
 
 // Build an AggregateException wrapping `inner` (an Exception[]). InnerException is the
 // first element (matching real .NET's AggregateException(Exception[]) ctor), or null
-// when empty. `inner` stays GC-reachable through the returned object's field.
-// The message is composed here the way real .NET's get_Message does — the base text
-// plus each inner's Message in parentheses ("One or more errors occurred. (boom)") —
-// eagerly rather than lazily, because a settled exception's message is immutable and
-// the stored-message slot is what every Message read funnels to. The inner Message
-// reads go through the virtual funnel, so an override is honored.
+// when empty. The snapshot stays GC-reachable through the returned object's field.
 Dn2CppObject* dn2cpp_aggregate_exception_new(Dn2CppArrayRef* inner)
 {
-    std::string msg = "One or more errors occurred.";
+    return dn2cpp_aggregate_exception_new(inner, nullptr);
+}
+
+Dn2CppObject* dn2cpp_aggregate_exception_new(Dn2CppArrayRef* inner, Dn2CppString* message)
+{
+    Dn2CppArrayRef* snapshot = nullptr;
     if (inner != nullptr)
     {
+        snapshot = dn2cpp_newarr_ref_t(inner->length, inner->type);
         for (int32_t i = 0; i < inner->length; i++)
         {
             if (inner->data[i] == nullptr)
-                continue;
-            msg += " (";
-            dn2cpp_append_utf8(msg, dn2cpp_exception_message(inner->data[i]));
-            msg += ")";
+                dn2cpp_throw_argument_msg("An element of innerExceptions was null.");
+            dn2cpp_gc_store_ref(&snapshot->data[i], inner->data[i]);
         }
     }
-    Dn2CppString* msgStr = dn2cpp_string_from_utf8(msg.c_str(), static_cast<int32_t>(msg.size()));
+    if (message == nullptr)
+        message = dn2cpp_string_literal(u"One or more errors occurred.", 28);
     auto* e = static_cast<Dn2CppAggregateExceptionObject*>(dn2cpp_alloc(sizeof(Dn2CppAggregateExceptionObject)));
     e->type = &dn2cpp_aggregate_exception_type;
-    dn2cpp_gc_store_ref(&e->message, msgStr);
+    dn2cpp_gc_store_ref(&e->message, message);
     dn2cpp_gc_store_ref(&e->inner,
-                        (inner != nullptr && inner->length > 0) ? inner->data[0] : nullptr);
+                        (snapshot != nullptr && snapshot->length > 0) ? snapshot->data[0] : nullptr);
     e->hresult = static_cast<int32_t>(0x80131500); // base default; get_HResult reads the shared prefix slot
-    // `inner` is whatever its caller allocated, and the four runtime callers
-    // (dn2cpp_task_block_wait, Task.WaitAll, dn2cpp_task_exception, the Parallel fault
-    // aggregation) all use the untyped allocator, so it arrives tagged System.Object[].
-    // That is not observable: get_InnerExceptions is the only door from managed code to
-    // this array and it stamps the precise ti_arr_System_Exception before handing it
-    // back. Re-tagging at allocation would need a handle the runtime cannot name —
-    // dn2cpp_exception_type is the RUNTIME's Exception, not the transpiled CoreLib's.
-    // A reader that bypasses the getter is what would make this a defect.
-    dn2cpp_gc_store_ref(&e->innerExceptions, inner); // trace stays null (GC alloc zero-fills) until the throw stamps it
+    // Runtime producers may supply an untyped array; the getter binds the snapshot's
+    // precise managed Exception[] handle before exposing it to collection dispatch.
+    dn2cpp_gc_store_ref(&e->innerExceptions, snapshot); // trace stays null (GC alloc zero-fills) until the throw stamps it
     return e;
+}
+
+Dn2CppString* dn2cpp_aggregate_exception_message(Dn2CppObject* ex)
+{
+    Dn2CppString* base = dn2cpp_exception_message_stored(ex);
+    // Emitted derived aggregates have the Exception prefix, without native aggregate slots.
+    if (ex->type != &dn2cpp_aggregate_exception_type)
+        return base;
+    auto* inner = reinterpret_cast<Dn2CppAggregateExceptionObject*>(ex)->innerExceptions;
+    if (inner == nullptr || inner->length == 0)
+        return base;
+    std::u16string result(base->chars, static_cast<size_t>(base->length));
+    for (int32_t i = 0; i < inner->length; i++)
+    {
+        result.append(u" (");
+        Dn2CppString* message = dn2cpp_exception_message(inner->data[i]);
+        if (message != nullptr)
+            result.append(message->chars, static_cast<size_t>(message->length));
+        result += u')';
+    }
+    return dn2cpp_string_from_chars(result.data(), dn2cpp_string_checked_length(static_cast<int64_t>(result.size())));
+}
+
+static Dn2CppAggregateExceptionObject* dn2cpp_require_aggregate(Dn2CppObject* ex)
+{
+    if (ex == nullptr)
+        dn2cpp_throw_null_reference();
+    if (ex->type != &dn2cpp_aggregate_exception_type)
+        dn2cpp_throw_not_supported_msg("AggregateException.InnerExceptions on a derived type requires the aggregate object layout.");
+    return reinterpret_cast<Dn2CppAggregateExceptionObject*>(ex);
 }
 
 // The memoized ReadOnlyCollection<Exception> for get_InnerExceptions, and its setter.
@@ -1900,16 +1925,12 @@ Dn2CppObject* dn2cpp_aggregate_exception_new(Dn2CppArrayRef* inner)
 // field, so two reads are reference-equal.
 Dn2CppObject* dn2cpp_aggregate_inner_wrapper(Dn2CppObject* ex)
 {
-    if (ex == nullptr)
-        dn2cpp_throw_null_reference();
-    return reinterpret_cast<Dn2CppAggregateExceptionObject*>(ex)->innerWrapper;
+    return dn2cpp_require_aggregate(ex)->innerWrapper;
 }
 
 void dn2cpp_aggregate_set_inner_wrapper(Dn2CppObject* ex, Dn2CppObject* wrapper)
 {
-    if (ex == nullptr)
-        dn2cpp_throw_null_reference();
-    dn2cpp_gc_store_ref(&reinterpret_cast<Dn2CppAggregateExceptionObject*>(ex)->innerWrapper,
+    dn2cpp_gc_store_ref(&dn2cpp_require_aggregate(ex)->innerWrapper,
                         wrapper);
 }
 
@@ -1921,9 +1942,8 @@ void dn2cpp_aggregate_set_inner_wrapper(Dn2CppObject* ex, Dn2CppObject* wrapper)
 // property hands back the ReadOnlyCollection above.
 Dn2CppArrayRef* dn2cpp_aggregate_inner_exceptions(Dn2CppObject* ex, const Dn2CppTypeInfo* arrTi)
 {
-    if (ex == nullptr)
-        dn2cpp_throw_null_reference();
-    auto* a = reinterpret_cast<Dn2CppAggregateExceptionObject*>(ex)->innerExceptions;
+    auto* aggregate = dn2cpp_require_aggregate(ex);
+    auto* a = aggregate->innerExceptions;
     if (a == nullptr)
     {
         // A parameterless `new AggregateException()` stores no array, but real .NET's
@@ -1932,7 +1952,7 @@ Dn2CppArrayRef* dn2cpp_aggregate_inner_exceptions(Dn2CppObject* ex, const Dn2Cpp
         // zero-length Exception[] so the empty case reads .Count == 0 like .NET.
         a = dn2cpp_newarr_ref_t(0, arrTi);
         dn2cpp_gc_store_ref(
-            &reinterpret_cast<Dn2CppAggregateExceptionObject*>(ex)->innerExceptions, a);
+            &aggregate->innerExceptions, a);
         return a;
     }
     if (arrTi != nullptr)

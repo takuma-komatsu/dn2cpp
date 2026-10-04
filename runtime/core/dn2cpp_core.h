@@ -3780,8 +3780,8 @@ Dn2CppObject* dn2cpp_exception_new(const Dn2CppTypeInfo* ti, Dn2CppString* messa
 Dn2CppObject* dn2cpp_exception_for_hresult(int32_t hresult);
 // System.Exception.get_Message on an object dn2cpp_exception_new produced, with virtual
 // dispatch: calls a derived get_Message override through the vtable
-// (dn2cpp_exception_get_message_slot) when one is present, else the stored message. This
-// is what `ex.Message` on a base-typed receiver lowers to.
+// (dn2cpp_exception_get_message_slot) when one is present, else the aggregate getter
+// or stored message. Base-typed `ex.Message` lowers here.
 Dn2CppString* dn2cpp_exception_message(Dn2CppObject* ex);
 // Exception.get_StackTrace: the trace captured at throw resolved against the
 // reflection method table, or null — for a never-thrown exception (exact), on
@@ -3845,10 +3845,12 @@ void dn2cpp_report_boundary_exception(Dn2CppObject* exc, const char* where_fmt, 
 // which flushes stdio and abort()s — so the shell sees SIGABRT (134 on Unix),
 // exactly as real .NET's FailFast does. `message` and `exception` may be null.
 [[noreturn]] void dn2cpp_environment_failfast(Dn2CppString* message, Dn2CppObject* exception);
-// Build a System.AggregateException wrapping the Exception[] `inner` (reusable by any
-// exception-aggregation site: Parallel, and later Task sync-wait). InnerException is
-// the first element, or null when empty.
+// Build a System.AggregateException over a snapshot of `inner`. InnerException is
+// the first element, or null when empty; a null message selects the default text.
 Dn2CppObject* dn2cpp_aggregate_exception_new(Dn2CppArrayRef* inner);
+Dn2CppObject* dn2cpp_aggregate_exception_new(Dn2CppArrayRef* inner, Dn2CppString* message);
+// Compose each read from the stored base text and current virtual inner Messages.
+Dn2CppString* dn2cpp_aggregate_exception_message(Dn2CppObject* ex);
 // AggregateException.get_InnerExceptions: the stored Exception[], stamped with the
 // caller-supplied precise per-element array handle (ti_arr_System_Exception) so its
 // SZArray interface-dispatch map serves IReadOnlyList<Exception> member calls.
