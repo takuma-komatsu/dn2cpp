@@ -78,4 +78,48 @@ internal static class Program
         lock (_lock) { _sum += 7; }
         Console.WriteLine(_sum);              // 257
     }
+
+    private static T FromObject<T>(object? value) => (T)value!;
+
+    private static object? ToObject<T>(T value) => value;
+
+    private static Type GenericType<T>() => typeof(T);
+
+#pragma warning disable CS9216 // These identity round trips deliberately pass Lock through Object.
+    private static string RoundTrip(object? value, bool generic)
+    {
+        try
+        {
+            Lock? restored = generic ? FromObject<Lock?>(value) : (Lock?)value;
+            return ReferenceEquals(value, restored).ToString();
+        }
+        catch (InvalidCastException)
+        {
+            return "InvalidCastException";
+        }
+    }
+
+    internal static void RunIdentity()
+    {
+        Console.WriteLine("== Lock runtime identity ==");
+        var value = new Lock();
+        object boxed = value;
+        object genericBox = ToObject(value)!;
+        object wrong = new object();
+        Type actual = value.GetType();
+        Console.WriteLine("Lock type: " + actual.Name + " " + boxed.GetType().FullName
+            + " " + genericBox.GetType().FullName);
+        Console.WriteLine("Lock reflection: " + (actual == typeof(Lock)) + " "
+            + (GenericType<Lock>() == typeof(Lock)) + " " + typeof(Lock).IsAssignableFrom(actual)
+            + " " + actual.IsSealed + " " + (actual.BaseType is null ? "null" : actual.BaseType.FullName));
+        Console.WriteLine("Lock object tests: " + (boxed is Lock) + " " + (genericBox is Lock)
+            + " " + (wrong is Lock));
+        Console.WriteLine("Lock typed round trip: " + RoundTrip(boxed, false) + " "
+            + RoundTrip(null, false) + " " + RoundTrip(wrong, false));
+        Console.WriteLine("Lock shared round trip: " + RoundTrip(genericBox, true) + " "
+            + RoundTrip(null, true) + " " + RoundTrip(wrong, true));
+        FromObject<object>(wrong);
+        Console.WriteLine("Lock runtime identity end");
+    }
+#pragma warning restore CS9216
 }

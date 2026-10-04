@@ -502,6 +502,13 @@ void dn2cpp_monitor_enter(Dn2CppObject* o)
     dn2cpp_monitor_acquire(dn2cpp_monitor_for(o));
 }
 
+extern const Dn2CppType dn2cpp_lock_type_obj;
+const Dn2CppTypeInfo dn2cpp_lock_type = dn2cpp_ti_with_typeobject({
+    "System.Threading.Lock", &dn2cpp_object_type, nullptr, nullptr, nullptr, nullptr,
+    nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+    sizeof(Dn2CppObject), 0, DN2CPP_TF_SEALED, 0, 0, 0, nullptr }, &dn2cpp_lock_type_obj);
+const Dn2CppType dn2cpp_lock_type_obj = { { &dn2cpp_type_type }, &dn2cpp_lock_type };
+
 void dn2cpp_lock_enter(Dn2CppObject* lock)
 {
     dn2cpp_null_check(lock);

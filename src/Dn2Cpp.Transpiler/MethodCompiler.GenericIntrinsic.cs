@@ -1787,11 +1787,12 @@ internal sealed partial class MethodCompiler
             var tres = methodArgs[0];
             var rep = RepOf(tres);
             bool isStruct = CppTypes.KindOf(tres) == StackKind.Struct;
-            if (rep == ArrRep.N && !isStruct && !(tres.Kind == TypeKind.Primitive
+            if (rep == ArrRep.N && !isStruct && !(tres.Kind == TypeKind.Class && tres.Class!.IsEnum)
+                && !(tres.Kind == TypeKind.Primitive
                 && tres.Primitive is PrimitiveTypeCode.Int64 or PrimitiveTypeCode.UInt64 or PrimitiveTypeCode.Double))
                 throw new NotSupportedException(
                     $"{Method.DeclaringClass.FullName}.{Method.Name}: Task.WhenAll<{tres}> " +
-                    "result element kind is not supported yet (int / long / double / reference / struct only)");
+                    "result element kind is not supported yet (int / long / double / enum / reference / struct only)");
             // The operand is a single Task<TResult>[] or IEnumerable<Task<TResult>>;
             // PopTaskArrayOperand normalizes both to a Dn2CppArrayRef*. Decode
             // the closed signature so it can tell the array shape from the enumerable.
@@ -1819,9 +1820,10 @@ internal sealed partial class MethodCompiler
             {
                 ArrRep.I4 => "DN2CPP_WHENALL_I4",
                 ArrRep.Ref => "DN2CPP_WHENALL_REF",
-                _ => "DN2CPP_WHENALL_N8",
+                _ => "DN2CPP_WHENALL_N",
             };
-            PushStampedTask($"dn2cpp_task_when_all({operand}, {kind}, {resArrTi})", asig.ReturnType);
+            string elemSize = rep == ArrRep.N ? $", (int32_t)sizeof({CppTypes.StorageOf(tres)})" : "";
+            PushStampedTask($"dn2cpp_task_when_all({operand}, {kind}, {resArrTi}{elemSize})", asig.ReturnType);
             return;
         }
 

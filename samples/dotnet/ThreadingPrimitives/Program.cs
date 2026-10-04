@@ -30,6 +30,9 @@ namespace ThreadingPrimitives
             if (args.Length != 0 && args[0] == "before-ownership")
                 return;
             MonitorLockValidationSubset.__GateEntry();
+            if (args.Length != 0 && args[0] == "before-lock-identity")
+                return;
+            LockTypeSubset.Program.RunIdentity();
         }
     }
 }

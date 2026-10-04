@@ -2489,8 +2489,9 @@ Dn2CppObject* dn2cpp_enum_get_value(Dn2CppObject* e);
 // GC-visible (scanned), never-collected memory — dn2cpp_alloc_pinned semantics.
 void* dn2cpp_alloc_type_associated(Dn2CppType* t, int32_t size);
 
-// Built-in type metadata (defined in dn2cpp_typeinfo.cpp).
+// Built-in type metadata.
 extern const Dn2CppTypeInfo dn2cpp_object_type;
+extern const Dn2CppTypeInfo dn2cpp_lock_type;
 Dn2CppObject* dn2cpp_default_equality_comparer(const Dn2CppTypeInfo* comparerType,
                                                const Dn2CppTypeInfo* genericInterface,
                                                const Dn2CppTypeInfo* nongenericInterface);
@@ -7167,18 +7168,19 @@ void dn2cpp_task_wait_require_timeout(int64_t ticks);
 // each input task's result, completing once every input completes (or faulting
 // with the first input's fault). `kind` selects how each input's raw result slot
 // is written into the result array and which array struct is allocated:
-// 0 = int[] (Dn2CppArrayI4), 1 = 8-byte element[] (long/double, Dn2CppArrayN),
+// 0 = int[] (Dn2CppArrayI4), 1 = packed scalar[] (long/double/enum, Dn2CppArrayN),
 // 2 = reference[] (Dn2CppArrayRef), 3 = void (non-generic Task.WhenAll — completes
 // with no result array, only the first input fault). The cooperative join is
 // single-threaded: each input posts a continuation that, on the last completion,
 // builds the result array.
-enum { DN2CPP_WHENALL_I4 = 0, DN2CPP_WHENALL_N8 = 1, DN2CPP_WHENALL_REF = 2,
+enum { DN2CPP_WHENALL_I4 = 0, DN2CPP_WHENALL_N = 1, DN2CPP_WHENALL_REF = 2,
        DN2CPP_WHENALL_VOID = 3, DN2CPP_WHENALL_STRUCT = 4 };
 // `arrTi` is the TResult[] handle the emit arm supplies; it rides on the join state
 // because the array is built in the completion callback, where no call site is left
 // to retag. Null (the DN2CPP_WHENALL_VOID arm, which builds no array) degrades
 // to the shared handle.
-Dn2CppTask* dn2cpp_task_when_all(Dn2CppArrayRef* tasks, int32_t kind, const Dn2CppTypeInfo* arrTi);
+Dn2CppTask* dn2cpp_task_when_all(Dn2CppArrayRef* tasks, int32_t kind, const Dn2CppTypeInfo* arrTi,
+                                 int32_t elemSize = 8);
 // Task.WhenAll<TStruct>(Task<TStruct>[]) -> Task<TStruct[]>: copies each input's
 // heap-boxed struct result into a value array of elemSize-byte elements.
 Dn2CppTask* dn2cpp_task_when_all_struct(Dn2CppArrayRef* tasks, int32_t elemSize,
