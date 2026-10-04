@@ -54,6 +54,9 @@ namespace AsyncCombinators
             if (args.Length == 1 && args[0] == "before-registration-rejection")
                 return;
             RegistrationRejectionSubset.Program.__GateEntry();
+            if (args.Length == 1 && args[0] == "before-enum-whenall")
+                return;
+            WhenAllSubset.Program.RunEnumResults();
             // Ends the process: a builder suspension's rejected registration is re-raised
             // as an unhandled ThreadPool exception.
             if (args.Length == 2 && args[0] == "suspension-rejection")

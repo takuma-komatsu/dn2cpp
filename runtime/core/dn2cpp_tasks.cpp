@@ -903,7 +903,7 @@ struct Dn2CppWhenAllState
     Dn2CppArrayRef* tasks;
     int32_t remaining;
     int32_t kind;
-    int32_t elemSize;   // DN2CPP_WHENALL_STRUCT: byte size of each TStruct element
+    int32_t elemSize;   // DN2CPP_WHENALL_N / STRUCT: byte size of each result element
     // The TResult[] handle the emit arm supplied. The array is materialized inside
     // the completion callback, long after the lowering has returned, so a retag at
     // the call site is impossible and the handle has to RIDE here — without
@@ -1031,11 +1031,21 @@ static void dn2cpp_when_all_finish(Dn2CppWhenAllState* s)
         }
         arr = reinterpret_cast<Dn2CppObject*>(a);
     }
-    else // DN2CPP_WHENALL_N8: long/ulong/double, the raw 8-byte result slot
+    else // DN2CPP_WHENALL_N: scalar bits packed at the result type's storage width
     {
-        Dn2CppArrayN* a = dn2cpp_newarr_n_t(n, 8, s->arrTi);
+        if (s->elemSize != 1 && s->elemSize != 2 && s->elemSize != 8)
+            dn2cpp_fail("WhenAll scalar result has invalid element size");
+        Dn2CppArrayN* a = dn2cpp_newarr_n_t(n, s->elemSize, s->arrTi);
         for (int32_t i = 0; i < n; i++)
-            reinterpret_cast<int64_t*>(a->data)[i] = static_cast<int64_t>(reinterpret_cast<Dn2CppTask*>(s->tasks->data[i])->result);
+        {
+            uint64_t bits = reinterpret_cast<Dn2CppTask*>(s->tasks->data[i])->result;
+            if (s->elemSize == 1)
+                reinterpret_cast<uint8_t*>(a->data)[i] = static_cast<uint8_t>(bits);
+            else if (s->elemSize == 2)
+                reinterpret_cast<uint16_t*>(a->data)[i] = static_cast<uint16_t>(bits);
+            else
+                reinterpret_cast<uint64_t*>(a->data)[i] = bits;
+        }
         arr = reinterpret_cast<Dn2CppObject*>(a);
     }
     dn2cpp_task_set_result(s->result, static_cast<uint64_t>(reinterpret_cast<uintptr_t>(arr)));
@@ -1088,9 +1098,10 @@ static Dn2CppTask* dn2cpp_task_when_all_impl(Dn2CppArrayRef* tasks, int32_t kind
     return s->result;
 }
 
-Dn2CppTask* dn2cpp_task_when_all(Dn2CppArrayRef* tasks, int32_t kind, const Dn2CppTypeInfo* arrTi)
+Dn2CppTask* dn2cpp_task_when_all(Dn2CppArrayRef* tasks, int32_t kind, const Dn2CppTypeInfo* arrTi,
+                                 int32_t elemSize)
 {
-    return dn2cpp_task_when_all_impl(tasks, kind, 0, arrTi);
+    return dn2cpp_task_when_all_impl(tasks, kind, elemSize, arrTi);
 }
 
 // Task.WhenAll<TStruct>(Task<TStruct>[]) -> Task<TStruct[]>: each input's result is

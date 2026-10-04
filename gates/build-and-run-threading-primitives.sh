@@ -24,6 +24,7 @@
 # Named argument faults, boxed bounds, validation order and GC-retained fields.
 # Monitor and Lock have independent ownership, checked exits and synchronized epilogues.
 # Registration object equality names its type-info without a box or typeof site.
+# Lock's runtime header preserves its CLR identity through typed and shared casts.
 source "$(dirname "$0")/_common.sh"
 registration_app="gates/fixtures/registration-object-equality/bin/$CONFIG/$TFM/RegistrationObjectEquality.dll"
 build_gate_proj gates/fixtures/registration-object-equality/RegistrationObjectEquality.csproj
@@ -63,6 +64,35 @@ gate_extra_asserts() {
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: ThreadingPrimitives ownership witness missing: $line" >&2; exit 1; }
     done
+    before=$(dotnet "$_CG_APP" before-lock-identity)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== Lock runtime identity ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== Lock runtime identity ==' \
+        'Lock type: Lock System.Threading.Lock System.Threading.Lock' \
+        'Lock reflection: True True True True System.Object' \
+        'Lock typed round trip: True True InvalidCastException' \
+        'Lock shared round trip: True True InvalidCastException' \
+        'Lock runtime identity end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: Lock runtime identity witness missing: $line" >&2; exit 1; }
+    done
+    if ! awk '
+            { sub(/\r$/, "") }
+            $0 == "// LockTypeSubset.Program::FromObject" { subject = 1; next }
+            subject && /^(inline )?Dn2CppObject\* Program_FromObject_TisCnRef_m[0-9]+\(.*\)$/ {
+                body = 1; subject = 0; next
+            }
+            subject && /^\/\// { subject = 0 }
+            body {
+                if (/dn2cpp_castclass/ && /__rgctx\[/) found = 1
+                if (/^}/) body = 0
+            }
+            END { exit !found }
+        ' "$out/generated.h" "$out"/generated*.cpp; then
+        echo 'FAIL: Lock round trip did not exercise a shared generic cast' >&2
+        exit 1
+    fi
     local fixture="$out/registration-object" expected actual
     invoke_cli "$registration_app" -r "$_CG_CORELIB" -o "$fixture"
     compile_console "$fixture" RegistrationObjectEquality

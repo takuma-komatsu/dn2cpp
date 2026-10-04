@@ -1442,6 +1442,7 @@ internal static partial class CoreIntrinsics
         ["System.Threading.Barrier"] = "&dn2cpp_barrier_type",
         ["System.Threading.CountdownEvent"] = "&dn2cpp_countdown_type",
         ["System.Threading.SemaphoreSlim"] = "&dn2cpp_semaphore_type",
+        ["System.Threading.Lock"] = "&dn2cpp_lock_type",
         ["System.Threading.ReaderWriterLockSlim"] = "&dn2cpp_rwlock_type",
         ["System.Threading.CancellationTokenSource"] = "&dn2cpp_cancel_source_type",
         ["System.Threading.Tasks.ParallelLoopState"] = "&dn2cpp_parallel_loop_state_type",

@@ -56,6 +56,8 @@
 # await suspension the throw is re-raised as an unhandled ThreadPool exception, so the
 # suspended method's own catch never runs and the process aborts as real .NET's does.
 # Each suspension mode ends its own run, after the whole default output.
+# WhenAll preserves every enum underlying width and array identity for empty,
+# settled, yielding, pending and enumerable inputs, including unsigned high bits.
 # Former gates: whenall, whenany, when-enumerable, configure-await, delay-order,
 # cancellation, custom-awaitable, multi-awaiter.
 # Task sequences and cold scheduling.
@@ -112,6 +114,25 @@ gate_extra_asserts() {
         'continuation registration rejection end'; do
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: registration rejection witness missing: $line" >&2; exit 1; }
+    done
+    before=$(run_bounded dotnet "$_CG_APP" before-enum-whenall)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== enum WhenAll results ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== enum WhenAll results ==' \
+        'enum byte values: 255,1,128' 'enum sbyte values: -128,127,-1' \
+        'enum short values: -32768,32767,-1' 'enum ushort values: 65535,1,32768' \
+        'enum int values: -2147483648,2147483647,-1' \
+        'enum uint values: 4294967295,1,2147483648' \
+        'enum long values: -9223372036854775808,9223372036854775807,-1' \
+        'enum ulong values: 18446744073709551615,1,9223372036854775808' \
+        'enum WhenAll results end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: enum WhenAll result witness missing: $line" >&2; exit 1; }
+    done
+    for line in byte sbyte short ushort int uint long ulong; do
+        grep -Fxq -- "enum $line: empty=True/0/True settled=True/True yielded=True enumerable=True pending=False/False/True/True" <<< "$native" \
+            || { echo "FAIL: enum WhenAll completion/type/value witness missing: $line" >&2; exit 1; }
     done
     local mode child child_code dotnet_child dotnet_code
     for mode in value-task-source:'source OnCompleted #6' \

@@ -1675,13 +1675,13 @@ internal sealed partial class MethodCompiler
         // new object — a bare allocation (commonly a `lock` sentinel). Object is
         // intrinsic, so allocate the header and stamp the runtime object type-info; no
         // ctor body to run.
-        // new Lock (.NET 9+) is the same: Lock is intrinsic (a minimal reference
-        // object on the single-threaded model), so allocate a header object.
-        if (NewobjTypeName(handle) is "System.Object" or "System.Threading.Lock")
+        // Lock has the same header-sized layout but keeps its own CLR identity.
+        if (NewobjTypeName(handle) is { } headerType && headerType is "System.Object" or "System.Threading.Lock")
         {
             string o = NewTemp("Dn2CppObject*");
+            string ti = headerType == "System.Threading.Lock" ? "dn2cpp_lock_type" : "dn2cpp_object_type";
             Emit($"{o} = (Dn2CppObject*)dn2cpp_alloc(sizeof(Dn2CppObject));");
-            Emit($"{o}->type = &dn2cpp_object_type;");
+            Emit($"{o}->type = &{ti};");
             _stack.Add(new StackEntry(o, StackKind.Ref, "Dn2CppObject*"));
             return;
         }
