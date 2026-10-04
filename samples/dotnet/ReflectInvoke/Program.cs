@@ -147,6 +147,9 @@ namespace ReflectInvoke
             if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_TYPEDEF_MEMBERREF") == "1")
                 return;
             LdftnLocalSubset.Program.RunTypeDefMemberRefs();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_PRIMITIVE_BINDER") == "1")
+                return;
+            ReflectActivatorSubset.Program.RunPrimitiveBinder();
         }
     }
 }

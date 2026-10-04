@@ -939,6 +939,59 @@ void dn2cpp_require_layout(const Dn2CppTypeInfo* ti)
     dn2cpp_throw_platform_not_supported(buf);
 }
 
+// Constructor-free runtime faults use only their owned type handles. Generated
+// exception types keep the base default until their managed constructor sets it.
+static int32_t dn2cpp_exception_default_hresult(const Dn2CppTypeInfo* ti)
+{
+    struct Row { const Dn2CppTypeInfo* type; uint32_t hresult; };
+    static const Row rows[] = {
+        { &dn2cpp_overflow_exception_type, 0x80131516u },
+        { &dn2cpp_index_out_of_range_exception_type, 0x80131508u },
+        { &dn2cpp_argument_exception_type, 0x80070057u },
+        { &dn2cpp_com_exception_type, 0x80004005u },
+        { &dn2cpp_argument_out_of_range_exception_type, 0x80131502u },
+        { &dn2cpp_argument_null_exception_type, 0x80004003u },
+        { &dn2cpp_invalid_operation_exception_type, 0x80131509u },
+        { &dn2cpp_object_disposed_exception_type, 0x80131622u },
+        { &dn2cpp_out_of_memory_exception_type, 0x8007000Eu },
+        { &dn2cpp_arithmetic_exception_type, 0x80070216u },
+        { &dn2cpp_invalid_cast_exception_type, 0x80004002u },
+        { &dn2cpp_type_load_exception_type, 0x80131522u },
+        { &dn2cpp_dll_not_found_exception_type, 0x80131524u },
+        { &dn2cpp_entry_point_not_found_exception_type, 0x80131523u },
+        { &dn2cpp_not_supported_exception_type, 0x80131515u },
+        { &dn2cpp_format_exception_type, 0x80131537u },
+        { &dn2cpp_platform_not_supported_exception_type, 0x80131539u },
+        { &dn2cpp_io_exception_type, 0x80131620u },
+        { &dn2cpp_file_not_found_exception_type, 0x80070002u },
+        { &dn2cpp_file_load_exception_type, 0x80131621u },
+        { &dn2cpp_directory_not_found_exception_type, 0x80070003u },
+        { &dn2cpp_path_too_long_exception_type, 0x800700CEu },
+        { &dn2cpp_unauthorized_access_exception_type, 0x80070005u },
+        { &dn2cpp_key_not_found_exception_type, 0x80131577u },
+        { &dn2cpp_rank_exception_type, 0x80131517u },
+        { &dn2cpp_array_type_mismatch_exception_type, 0x80131503u },
+        { &dn2cpp_ambiguous_match_exception_type, 0x8000211Du },
+        { &dn2cpp_ambiguous_implementation_exception_type, 0x8013106Au },
+        { &dn2cpp_application_exception_type, 0x80131600u },
+        { &dn2cpp_target_invocation_exception_type, 0x80131604u },
+        { &dn2cpp_target_exception_type, 0x80131603u },
+        { &dn2cpp_target_parameter_count_exception_type, 0x8002000Eu },
+        { &dn2cpp_missing_method_exception_type, 0x80131513u },
+        { &dn2cpp_field_access_exception_type, 0x80131507u },
+        { &dn2cpp_bad_image_format_exception_type, 0x8007000Bu },
+        { &dn2cpp_missing_manifest_resource_exception_type, 0x80131532u },
+        { &dn2cpp_null_reference_exception_type, 0x80004003u },
+        { &dn2cpp_divide_by_zero_exception_type, 0x80020012u },
+        { &dn2cpp_synchronization_lock_exception_type, 0x80131518u },
+        { &dn2cpp_thread_state_exception_type, 0x80131520u },
+    };
+    for (const auto& row : rows)
+        if (row.type == ti)
+            return static_cast<int32_t>(row.hresult);
+    return static_cast<int32_t>(0x80131500u);
+}
+
 Dn2CppObject* dn2cpp_exception_new(const Dn2CppTypeInfo* ti, Dn2CppString* message, Dn2CppObject* inner)
 {
     // Size by the type, not by the prefix: a runtime-RAISED ArgumentNullException is
@@ -959,13 +1012,7 @@ Dn2CppObject* dn2cpp_exception_new(const Dn2CppTypeInfo* ti, Dn2CppString* messa
         dn2cpp_register_finalizer(e);
     dn2cpp_gc_store_ref(&e->message, message);
     dn2cpp_gc_store_ref(&e->inner, inner);
-    // System.Exception's base ctor default (COR_E_EXCEPTION). A derived ctor that
-    // runs (the AOT/interp newobj paths) overwrites this with its per-type value via
-    // set_HResult; a runtime-RAISED exception (no ctor body) keeps the base default
-    // rather than the per-type COR_E_*: the runtime carries no per-type HResult to seed,
-    // unlike the argument family's ParamName and ActualValue, which
-    // dn2cpp_raise_argument stores.
-    e->hresult = static_cast<int32_t>(0x80131500);
+    e->hresult = dn2cpp_exception_default_hresult(ti);
     return e;
 }
 
@@ -995,9 +1042,9 @@ Dn2CppObject* dn2cpp_exception_inner(Dn2CppObject* ex)
     return reinterpret_cast<Dn2CppExceptionObject*>(ex)->inner;
 }
 
-// System.Exception.get_HResult: the int32 stored on the prefix — the base
-// COR_E_EXCEPTION default seeded at allocation, overwritten by set_HResult from
-// each derived ctor. A parameterless Argument*/FileNotFound* exception's
+// System.Exception.get_HResult: the int32 stored on the prefix — the type's
+// default seeded at allocation, overwritten by set_HResult from a managed ctor
+// or an API-specific error code. A parameterless Argument*/FileNotFound* exception's
 // get_Message override probes this (`_message == null && HResult == COR_E_*`) to
 // pick its resource default, so a real value here (not a zero stub)
 // makes those default messages exact.
@@ -1319,24 +1366,25 @@ Dn2CppString* dn2cpp_exception_tostring(Dn2CppObject* ex)
     return dn2cpp_string_from_utf8(s.c_str(), static_cast<int32_t>(s.size()));
 }
 
+// Appends a managed string's UTF-8 bytes to `s`.
+static void dn2cpp_append_utf8(std::string& s, Dn2CppString* str);
+
 void dn2cpp_report_unhandled_exception(Dn2CppObject* ex)
 {
+    std::string type;
+    dn2cpp_append_utf8(type, dn2cpp_type_tostring(ex->type));
     Dn2CppString* msg = dn2cpp_exception_message(ex);
     int32_t n = dn2cpp_string_to_utf8(msg, nullptr, 0);
     char* buf = static_cast<char*>(dn2cpp_alloc(static_cast<size_t>(n) + 1));
     dn2cpp_string_to_utf8(msg, buf, n);
     buf[n] = '\0';
-    std::fprintf(stderr, "Unhandled managed exception: %s: %s\n", ex->type->name, buf);
+    std::fprintf(stderr, "Unhandled exception. %s: %s\n", type.c_str(), buf);
     // The trace stamped at throw, when one was captured and resolves —
     // same lines Exception.StackTrace renders, best-effort by design.
     std::string trace;
     if (dn2cpp_exc_trace_render(ex, trace))
         std::fprintf(stderr, "%s\n", trace.c_str());
 }
-
-// Appends a managed string's UTF-8 bytes to `s` (defined just below, beside its
-// other caller).
-static void dn2cpp_append_utf8(std::string& s, Dn2CppString* str);
 
 // ---- the host boundary (see the doctrine at the declarations in dn2cpp_core.h)
 // Written once during a host's initialization, read from every boundary

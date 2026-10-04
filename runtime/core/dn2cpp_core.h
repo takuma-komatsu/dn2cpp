@@ -606,10 +606,11 @@ struct Dn2CppExcTrace
 };
 
 // A message-carrying managed exception object: the object header plus message,
-// inner, HResult (seeded to COR_E_EXCEPTION, overwritten by each derived ctor's
-// set_HResult) and the trace captured at throw (null until then, so an un-thrown
-// exception's StackTrace is null as in real .NET). Every user-defined derived
-// exception struct inherits this prefix, so its own fields sit past `trace`.
+// inner, HResult (seeded to the runtime type's default or COR_E_EXCEPTION,
+// overwritten by a managed ctor) and the trace captured at throw (null until
+// then, so an un-thrown exception's StackTrace is null as in real .NET).
+// Every user-defined derived exception struct inherits this prefix, so its own
+// fields sit past `trace`.
 // INVARIANT: growing this prefix is an ABI change — bump
 // AbiContract.LayoutPolicyVersion so a hot-update BPI built against the old layout
 // is rejected at load.
@@ -3787,8 +3788,8 @@ Dn2CppString* dn2cpp_exception_stacktrace(Dn2CppObject* ex);
 Dn2CppString* dn2cpp_exception_message_stored(Dn2CppObject* ex);
 // System.Exception.get_InnerException: the stored inner exception, or null.
 Dn2CppObject* dn2cpp_exception_inner(Dn2CppObject* ex);
-// System.Exception.get_HResult: the stored HResult (COR_E_EXCEPTION base default,
-// overwritten by each derived ctor's set_HResult).
+// System.Exception.get_HResult: the stored type default, managed constructor code,
+// or explicit error code supplied by a runtime API.
 int32_t dn2cpp_exception_hresult(Dn2CppObject* ex);
 // System.Exception.GetBaseException(): the innermost exception of the inner-chain,
 // or the exception itself when it has no inner (exactly real .NET's identity case).

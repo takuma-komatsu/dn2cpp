@@ -7482,7 +7482,7 @@ void* dn2cpp_alloc_type_associated(Dn2CppType* t, int32_t size)
 // GetValue/SetValue/CreateInstance surface, which lives in
 // dn2cpp_system_array.cpp, reads element slots through them. They stay in
 // this unit beside the Activator argument binder, which shares the
-// CanPrimitiveWiden matrix and the Nullable/enum layout rules.
+// Nullable/enum layout and numeric adaptation rules.
 
 // CorElementType-style primitive codes backing the CLR's CanPrimitiveWiden
 // matrix. IntPtr/UIntPtr deliberately stay outside (exact-type-only, like a
@@ -8188,12 +8188,20 @@ void dn2cpp_array_copy_checked(Dn2CppObject* src, int32_t srcIdx,
 
 // ---- reflection: Activator.CreateInstance with constructor arguments ----
 
+// DefaultBinder.CanChangePrimitive excludes ushort -> char; Invoke's
+// CanPrimitiveWiden admits it. The remaining primitive pairs are shared.
+static bool dn2cpp_binder_prim_widens(int32_t src, int32_t dst)
+{
+    return !(src == DN2CPP_PC_U2 && dst == DN2CPP_PC_CHAR)
+        && dn2cpp_prim_widens(src, dst);
+}
+
 // Whether the boxed argument binds to a parameter of type `p` under the
 // DefaultBinder rules: null matches EVERY parameter type
 // (value types construct from default); a reference parameter checks
 // assignability; a Nullable<U> parameter takes exactly a boxed U; an enum
 // parameter its exact enum type; a primitive parameter admits the
-// CanPrimitiveWiden conversions (an enum argument widening as its underlying).
+// CanChangePrimitive conversions (an enum argument widening as its underlying).
 static bool dn2cpp_binder_arg_matches(Dn2CppObject* a, const Dn2CppTypeInfo* p)
 {
     if (a == nullptr)
@@ -8215,7 +8223,7 @@ static bool dn2cpp_binder_arg_matches(Dn2CppObject* a, const Dn2CppTypeInfo* p)
         ? (at->enumUnderlying != nullptr ? at->enumUnderlying : &dn2cpp_int32_type)
         : at;
     int32_t ac = dn2cpp_prim_code(aeff);
-    return ac >= 0 && dn2cpp_prim_widens(ac, pc);
+    return ac >= 0 && dn2cpp_binder_prim_widens(ac, pc);
 }
 
 // Whether parameter type `a` is at least as specific as `b` — the ordering the
@@ -8235,7 +8243,7 @@ static bool dn2cpp_binder_param_at_least_as_specific(const Dn2CppTypeInfo* a, co
     {
         int32_t ac = dn2cpp_prim_code(a);
         int32_t bc = dn2cpp_prim_code(b);
-        return ac >= 0 && bc >= 0 && dn2cpp_prim_widens(ac, bc);
+        return ac >= 0 && bc >= 0 && dn2cpp_binder_prim_widens(ac, bc);
     }
     return false;
 }

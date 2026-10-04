@@ -19,6 +19,15 @@
 #include <gc.h>
 #endif
 
+// Runtime-owned threads preserve the managed fault report before terminating.
+[[noreturn]] inline void dn2cpp_abort_unhandled_exception(Dn2CppObject* exception)
+{
+    dn2cpp_report_unhandled_exception(exception);
+    dn2cpp_pal_console_flush();
+    std::fflush(stderr);
+    std::abort();
+}
+
 // (dn2cpp_tasks.cpp) Materialize the main thread's Thread object — called once
 // from dn2cpp_runtime_init (dn2cpp_gc.cpp).
 void dn2cpp_thread_materialize_main();

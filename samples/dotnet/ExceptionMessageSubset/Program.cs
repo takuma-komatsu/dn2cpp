@@ -292,6 +292,9 @@ namespace ExceptionMessageSubset
             if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_ORDINARY_REFLECTION_ARGUMENTS") == "1")
                 return;
             OrdinaryReflectionArgumentSubset.Run();
+            if (args.Length > 0 && args[0] == "before-runtime-hresult")
+                return;
+            RuntimeHResultSubset.Run();
         }
     }
 }

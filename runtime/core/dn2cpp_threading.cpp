@@ -2133,7 +2133,14 @@ static void dn2cpp_timer_thread(Dn2CppManagedTimer* t)
         // principal transition happens here — dueMs >= 0 means `counted` already holds.
         t->inCallback = true;
         lk.unlock();
-        dn2cpp_paramthread_invoke(cb, st); // TimerCallback(state) incl. multicast chain
+        try
+        {
+            dn2cpp_paramthread_invoke(cb, st); // TimerCallback(state) incl. multicast chain
+        }
+        catch (const Dn2CppException& exception)
+        {
+            dn2cpp_abort_unhandled_exception(exception.obj);
+        }
         lk.lock();
         t->inCallback = false;
         if (!t->disposed)

@@ -47,6 +47,28 @@ namespace ReflectActivatorSubset
         public override string ToString() => $"OnlyDouble({_d})";
     }
 
+    class OnlyChar
+    {
+        private readonly char _value;
+        public OnlyChar(char value) { _value = value; }
+        public override string ToString() => $"OnlyChar({(int)_value})";
+    }
+
+    class OnlyUShort
+    {
+        private readonly ushort _value;
+        public OnlyUShort(ushort value) { _value = value; }
+        public override string ToString() => $"OnlyUShort({_value})";
+    }
+
+    class CharOrUShort
+    {
+        private readonly string _which;
+        public CharOrUShort(ushort value) { _which = "ushort"; }
+        public CharOrUShort(char value) { _which = "char"; }
+        public override string ToString() => _which;
+    }
+
     class Both
     {
         private readonly string _t;
@@ -108,6 +130,8 @@ namespace ReflectActivatorSubset
 
     static class Program
     {
+        public static int EchoChar(char value) => value;
+
         static void Show(string label, Func<object?> f)
         {
             try
@@ -119,6 +143,33 @@ namespace ReflectActivatorSubset
             {
                 Console.WriteLine($"{label} => threw {e.GetType().Name}");
             }
+        }
+
+        internal static void RunPrimitiveBinder()
+        {
+            Console.WriteLine("== default binder primitive widening ==");
+            Show("binder ushort to char", () => Activator.CreateInstance(typeof(OnlyChar), (ushort)65));
+            Show("binder flags ushort to char", () => Activator.CreateInstance(typeof(OnlyChar),
+                BindingFlags.Public | BindingFlags.Instance, Type.DefaultBinder,
+                new object[] { ushort.MaxValue }, CultureInfo.InvariantCulture));
+            Show("binder byte to char", () => Activator.CreateInstance(typeof(OnlyChar), (byte)65));
+            Show("binder char exact", () => Activator.CreateInstance(typeof(OnlyChar), 'A'));
+            Show("binder null to char", () => Activator.CreateInstance(typeof(OnlyChar), new object?[] { null }));
+            Show("binder sbyte to char", () => Activator.CreateInstance(typeof(OnlyChar), (sbyte)65));
+            Show("binder short to char", () => Activator.CreateInstance(typeof(OnlyChar), (short)65));
+            Show("binder int to char", () => Activator.CreateInstance(typeof(OnlyChar), 65));
+            Show("binder char to ushort", () => Activator.CreateInstance(typeof(OnlyUShort), char.MaxValue));
+            Show("binder char to int", () => Activator.CreateInstance(typeof(OnlyInt), char.MaxValue));
+            Show("binder ushort to int", () => Activator.CreateInstance(typeof(OnlyInt), ushort.MaxValue));
+            Show("binder float to double", () => Activator.CreateInstance(typeof(OnlyDouble), 1.5f));
+            Show("binder double to int", () => Activator.CreateInstance(typeof(OnlyInt), 1.5));
+            Show("binder byte prefers char", () => Activator.CreateInstance(typeof(CharOrUShort), (byte)65));
+            Show("binder ushort prefers ushort", () => Activator.CreateInstance(typeof(CharOrUShort), (ushort)65));
+            Show("invoke ushort to char", () => typeof(Program).GetMethod(nameof(EchoChar))!
+                .Invoke(null, new object[] { ushort.MaxValue }));
+            Show("constructor invoke ushort to char", () => typeof(OnlyChar).GetConstructor(new[] { typeof(char) })!
+                .Invoke(new object[] { ushort.MaxValue }));
+            Console.WriteLine("default binder primitive widening end");
         }
 
         internal static void Run()

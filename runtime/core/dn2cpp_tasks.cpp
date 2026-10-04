@@ -1843,7 +1843,14 @@ static void dn2cpp_cts_timer_thread(Dn2CppCancelSource** cell)
             lk.unlock();
             // `s` is still rooted by the cell, which ~Dn2CppCtsTimerRoot releases after
             // this returns — the walk over the registration chain needs it live.
-            dn2cpp_cts_cancel(s);
+            try
+            {
+                dn2cpp_cts_cancel(s);
+            }
+            catch (const Dn2CppException& exception)
+            {
+                dn2cpp_abort_unhandled_exception(exception.obj);
+            }
             return;
         }
         g_cts_timer_cv.wait_for(lk, std::chrono::nanoseconds(due - now));
@@ -2372,7 +2379,7 @@ void dn2cpp_sched_pump()
             if (dn2cpp_boundary_sink_installed())
                 dn2cpp_report_boundary_exception(__ex.obj, "a pumped async continuation");
             else
-                dn2cpp_fail("async: unhandled managed exception in a pumped continuation");
+                dn2cpp_abort_unhandled_exception(__ex.obj);
         }
         c = next;
     }
@@ -2451,12 +2458,12 @@ static void dn2cpp_thread_trampoline(Dn2CppThread* t)
         else
             dn2cpp_action_invoke(t->start);
     }
-    catch (const Dn2CppException&)
+    catch (const Dn2CppException& exception)
     {
         // An unhandled exception on a thread terminates the process in .NET.
         t->alive = 0;
         dn2cpp_thread_signal_done(t); // release any timed Join before we bail out
-        dn2cpp_fail("thread: unhandled managed exception");
+        dn2cpp_abort_unhandled_exception(exception.obj);
     }
     t->alive = 0;
     dn2cpp_thread_signal_done(t);
@@ -2933,9 +2940,9 @@ static void dn2cpp_pool_worker()
                 if (!dn2cpp_sched_run_one())
                     dn2cpp_sched_advance_timers(INT64_MAX);
             }
-            catch (const Dn2CppException&)
+            catch (const Dn2CppException& exception)
             {
-                dn2cpp_fail("threadpool: unhandled managed exception in a local continuation");
+                dn2cpp_abort_unhandled_exception(exception.obj);
             }
             dn2cpp_sched_sync_pool_principal(scheduler);
             continue;
@@ -2954,9 +2961,9 @@ static void dn2cpp_pool_worker()
             {
                 dn2cpp_paramthread_invoke(it.node->del, it.node->state);
             }
-            catch (const Dn2CppException&)
+            catch (const Dn2CppException& exception)
             {
-                dn2cpp_fail("threadpool: unhandled managed exception");
+                dn2cpp_abort_unhandled_exception(exception.obj);
             }
             dn2cpp_sched_sync_pool_principal(scheduler);
             dn2cpp_pool_unlink(it.node);
@@ -3019,9 +3026,9 @@ static void dn2cpp_pool_worker()
                     {
                         dn2cpp_task_drain(inner);
                     }
-                    catch (const Dn2CppException&)
+                    catch (const Dn2CppException& exception)
                     {
-                        dn2cpp_fail("threadpool: unhandled managed exception while draining a nested task");
+                        dn2cpp_abort_unhandled_exception(exception.obj);
                     }
                 }
             }
@@ -3898,7 +3905,7 @@ int32_t dn2cpp_threadpool_queue_workitem(Dn2CppObject* wi, const void* executeFn
 // treatment across the threading surface.
 static void dn2cpp_rethrow_thunk(Dn2CppObject* target, Dn2CppObject* /*state*/)
 {
-    dn2cpp_rethrow(target); // target is the exception; the pool's ff catch -> dn2cpp_fail
+    dn2cpp_rethrow(target); // the pool reports this fault and terminates the process
 }
 
 void dn2cpp_task_throw_async(Dn2CppObject* exc, Dn2CppObject* /*syncCtx*/)

@@ -2,6 +2,7 @@
 # Virtual and generic virtual reflection dispatch, by-reference copy-back,
 # null-bound delegates, DynamicInvoke and catchable stripped-body refusals, which a
 # nested reflective call raises to the outer call as a fault of its target.
+# DefaultBinder primitive widening and specificity differ from Invoke's ushort-to-char policy.
 # Consolidated reflection-invocation gate. Merges the former reflect dynamic-use
 # subset gates into one multi-section program, transpiled once against the
 # tree-shaken real CoreLib and diffed exactly against real .NET. Covers:
@@ -182,7 +183,7 @@
 # Pointer field accessors box and validate unmanaged/function addresses with
 # packed and native metadata, preserving static-readonly accessor refusal order.
 source "$(dirname "$0")/_common.sh"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|typedef-memberref-prefix:${DN2CPP_BEFORE_TYPEDEF_MEMBERREF:-}"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|typedef-memberref-prefix:${DN2CPP_BEFORE_TYPEDEF_MEMBERREF:-}|primitive-binder-prefix:${DN2CPP_BEFORE_PRIMITIVE_BINDER:-}"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_ordinary-reflection.sh samples/dotnet/ReflectInvoke/OrdinaryAmbiguousMatchSubset.cs samples/dotnet/ReflectInvoke/OrdinaryReflectionLeaves.csproj samples/dotnet/ReflectInvoke/OrdinaryReflectionLeavesProgram.cs samples/dotnet/ReflectInvoke/OrdinaryWideLookupSubset.cs samples/dotnet/ReflectInvoke/ReflectBindOnly.csproj samples/dotnet/ReflectInvoke/ReflectBindOnlyProgram.cs samples/dotnet/ReflectInvoke/ReflectFieldValidationSubset.cs samples/dotnet/ReflectInvoke/ReflectInvoke.csproj samples/dotnet/ReflectInvoke/ReflectMetadataMeasureSubset.cs samples/dotnet/ReflectInvoke/ReflectionMethodGroupsOnly.csproj samples/dotnet/ReflectInvoke/ReflectionMethodGroupsOnlyProgram.cs samples/dotnet/ReflectInvoke/StrippedOverrideRefusals.csproj samples/dotnet/ReflectInvoke/StrippedOverrideRefusalsProgram.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-reflection-leaves-v1|runtime-member-attributes-prefix:${DN2CPP_BEFORE_RUNTIME_MEMBER_ATTRIBUTES:-}|runtime-return-modifiers-prefix:${DN2CPP_BEFORE_RUNTIME_RETURN_MODIFIERS:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|reflection-dispatch-v1|dispatch-prefix:${DN2CPP_BEFORE_REFLECTION_DISPATCH:-}|attribute-minted-prefix:${DN2CPP_BEFORE_ATTRIBUTE_MINTED:-}|template-accessors-prefix:${DN2CPP_BEFORE_TEMPLATE_ACCESSORS:-}|pointer-returns-prefix:${DN2CPP_BEFORE_POINTER_RETURNS:-}|delegate-invoke-targets-prefix:${DN2CPP_BEFORE_DELEGATE_INVOKE_TARGETS:-}|null-bound-chains-prefix:${DN2CPP_BEFORE_NULL_BOUND_CHAINS:-}|renamed-slot-bindings-prefix:${DN2CPP_BEFORE_RENAMED_SLOT_BINDINGS:-}|settled-object-virtual-prefix:${DN2CPP_BEFORE_SETTLED_OBJECT_VIRTUAL:-}|renamed-slot-fillers-prefix:${DN2CPP_BEFORE_RENAMED_SLOT_FILLERS:-}"
@@ -231,6 +232,27 @@ gate_extra_asserts() {
     esac
     run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/metadata-layout.stdout"
     native=$(strip_cr_win_file "$out/metadata-layout.stdout")
+    local primitive_before primitive_prefix
+    primitive_before=$(DN2CPP_BEFORE_PRIMITIVE_BINDER=1 run_bounded dotnet "$_CG_APP")
+    primitive_prefix=$(awk '/^== default binder primitive widening ==$/ { exit } { print }' <<< "$native")
+    assert_output "$primitive_prefix" "$(strip_cr_win "$primitive_before")"
+    for line in '== default binder primitive widening ==' \
+        'binder ushort to char => threw MissingMethodException' \
+        'binder flags ushort to char => threw MissingMethodException' \
+        'binder byte to char => OnlyChar(65)' 'binder char exact => OnlyChar(65)' \
+        'binder null to char => OnlyChar(0)' \
+        'binder sbyte to char => threw MissingMethodException' \
+        'binder short to char => threw MissingMethodException' \
+        'binder int to char => threw MissingMethodException' \
+        'binder char to ushort => OnlyUShort(65535)' 'binder char to int => OnlyInt(65535)' \
+        'binder ushort to int => OnlyInt(65535)' 'binder float to double => OnlyDouble(1.5)' \
+        'binder double to int => threw MissingMethodException' \
+        'binder byte prefers char => char' 'binder ushort prefers ushort => ushort' \
+        'invoke ushort to char => 65535' 'constructor invoke ushort to char => OnlyChar(65535)' \
+        'default binder primitive widening end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: primitive binder witness missing: $line" >&2; return 1; }
+    done
     DN2CPP_BEFORE_REFLECTION_DISPATCH=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-reflection-dispatch.stdout"
     sed '/^== reflection dispatch extensions ==/,$d' "$out/metadata-layout.stdout" > "$out/reflection-dispatch-prefix.stdout"
     diff -u <(strip_cr_win_file "$out/before-reflection-dispatch.stdout") \
