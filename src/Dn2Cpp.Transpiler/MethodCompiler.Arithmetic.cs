@@ -614,7 +614,7 @@ internal sealed partial class MethodCompiler
         {
             TypeKind.Primitive => a.Primitive == b.Primitive && a.IsCanonPlaceholder == b.IsCanonPlaceholder,
             TypeKind.Class => a.Class == b.Class,
-            TypeKind.External => a.ExternalName == b.ExternalName,
+            TypeKind.External => Compilation.ArrayElemMangle(a) == Compilation.ArrayElemMangle(b),
             TypeKind.SZArray => SameCopyElement(a.Element, b.Element),
             _ => false,
         };

@@ -109,15 +109,17 @@ internal sealed partial class MethodCompiler
                 // instead of the unsupported-External throw. The **non-generic SZArray
                 // collection interfaces** resolve to their loaded class so a runtime
                 // `(IList)arr` cast/`is` verifies against the interface's type-info — the
-                // same symbol the array's per-element dispatch map entry uses. Other
-                // reference types stay External: a caught exception type must keep
+                // same symbol the array's per-element dispatch map entry uses. Loaded
+                // user types retain their scoped identity. Other CoreLib reference
+                // types stay External: a caught exception type must keep
                 // degrading to a catch-all rather than naming a per-type metadata symbol
                 // the runtime-trap exceptions never materialize.
                 _ => _c.ResolveTypeRef(_module, h) is { Kind: TypeKind.Class, Class: { } rcls } rc
-                        && (rcls.IsValueType || rcls.IsEnum
+                        && (rcls.Module.AssemblyName != "System.Private.CoreLib"
+                            || rcls.IsValueType || rcls.IsEnum
                             || rcls.FullName is "System.Collections.IList" or "System.Collections.ICollection")
                     ? rc
-                    : TypeDesc.MakeExternal(full),
+                    : _c.ExternalTypeRef(_module, h),
             };
         }
     }

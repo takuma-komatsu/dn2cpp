@@ -7,8 +7,7 @@
 # is not a root — it is pulled in by ALLOCATING its declaring type — and the `<Module>`
 # pseudo-type that holds the initializer's .cctor is never allocated, so without an
 # explicit cross-module root the library's initializer would silently never run. The
-# app's Main asserts it did and exits non-zero if not: this gate has no stdout oracle,
-# so the assertion has to live in the program.
+# app's Main asserts it did and exits non-zero if not.
 #
 # Also pins field closure for the full canonical-owner layout floated by an opaque
 # referenced-only base chain. Its by-value field requires both size and alignment.
@@ -16,6 +15,8 @@
 # selectors from every assembly declaring that full name.
 # Attribute storage policies resolve external ancestry and assembly scopes without
 # adding retention roots, including when ILDiet removes unreachable code.
+# Same-name application and library types keep the defining assembly in calls,
+# layouts, array elements and reflected signatures.
 source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} "
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|library-enum-prefix:${DN2CPP_BEFORE_LIBRARY_ENUM_ATTRIBUTE:-}"
@@ -46,6 +47,24 @@ shared_definition_layout() {
 metadata_section='metadata-assembly-begin'
 expected_output=$(run_bounded dotnet "$app") || exit $?
 expected_output=$(strip_cr_win "$expected_output")
+expected_scope_prefix=$(run_bounded dotnet "$app" before-type-scope)
+expected_scope_prefix=$(strip_cr_win "$expected_scope_prefix")
+expected_closed_prefix=$(run_bounded dotnet "$app" before-closed-types)
+expected_closed_prefix=$(strip_cr_win "$expected_closed_prefix")
+for scope_line in 'assembly-type-scope-begin' 'bodies=application/library' \
+    'layouts=17/29/9000000000' 'tests=True/False/False/True/True/False' \
+    'signature=True/True/True/True' 'scope-overloads=18/31/20/33' \
+    'invoke-wrong=ArgumentException' 'assembly-type-scope-end'; do
+    grep -Fxq "$scope_line" <<< "$expected_output" \
+        || { echo "FAIL: assembly scope witness missing: $scope_line" >&2; exit 1; }
+done
+for closed_line in 'assembly-closed-types-begin' 'generic-bodies=application/library' \
+    'generic-distinct=True/True/True' 'generic-owners=True/True' \
+    'generic-tests=True/False' 'generic-statics=1/2/67' \
+    'generic-attribute=True/True/True' 'assembly-closed-types-end'; do
+    grep -Fxq "$closed_line" <<< "$expected_output" \
+        || { echo "FAIL: closed type identity witness missing: $closed_line" >&2; exit 1; }
+done
 assert_output "$(sed '/^metadata-policy-assembly-begin$/,$d' <<<"$expected_output")" \
     "$(cat gates/expected/multiassembly-prefix.txt)"
 expected_metadata=$(sed -n '/^metadata-assembly-begin$/,/^metadata-assembly-end$/p' <<<"$expected_output")
@@ -67,6 +86,18 @@ metadata_section_parity() {
     actual=$(sed -n '/^metadata-policy-assembly-begin$/,/^metadata-policy-assembly-end$/p' "$out/metadata-assembly.stdout")
     assert_output "$actual" "$expected_policy"
     assert_output "$(cat "$out/metadata-assembly.stdout")" "$expected_output"
+    actual=$(run_bounded "$out/MultiAssembly$EXE_EXT" before-type-scope)
+    assert_output "$(strip_cr_win "$actual")" "$expected_scope_prefix"
+    assert_output "$(sed '/^assembly-type-scope-begin$/,$d' "$out/metadata-assembly.stdout")" "$expected_scope_prefix"
+    actual=$(run_bounded "$out/MultiAssembly$EXE_EXT" before-closed-types)
+    assert_output "$(strip_cr_win "$actual")" "$expected_closed_prefix"
+    assert_output "$(sed '/^assembly-closed-types-begin$/,$d' "$out/metadata-assembly.stdout")" "$expected_closed_prefix"
+    for module in 0 2; do
+        for argument in Int32 String; do
+            grep -qw "ti_m${module}_AssemblyScopeCollision_Generic_$argument" "$out/generated.h" \
+                || { echo "FAIL: $out lacks a distinct closed type handle for module $module" >&2; return 1; }
+        done
+    done
 }
 
 policy_layout() {
@@ -90,8 +121,8 @@ for out in artifacts/multiasm artifacts/multiasm-inference; do
     policy_layout "$out" ti_MultiAssembly_MetadataScopeUnmarked record
     policy_layout "$out" ti_MultiAssembly_MetadataScopeMarked native
     policy_layout "$out" gendef_MetadataCompressionCollision_SharedSubject_1 native
-    policy_layout "$out" ti_MetadataCompressionCollision_SharedSubject_Int32 record
-    policy_layout "$out" ti_MetadataCompressionCollision_SharedSubject_String native
+    policy_layout "$out" ti_m1_MetadataCompressionCollision_SharedSubject_Int32 record
+    policy_layout "$out" ti_m2_MetadataCompressionCollision_SharedSubject_String native
 done
 if grep -Eq 'MetadataUnreachable|MustRemainUnreachable' artifacts/multiasm/generated*.cpp artifacts/multiasm/generated.h; then
     echo "FAIL: metadata storage attributes retained unused types or members" >&2

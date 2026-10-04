@@ -554,7 +554,7 @@ internal sealed partial class CppEmitter
                 NoteReflectedType(element);
                 return;
             }
-            if (t is { Kind: TypeKind.External, ExternalName: { } xn } && _c.FindClassByFullName(xn) is { } xc)
+            if (t.Kind == TypeKind.External && _c.ResolveExternalClass(t) is { } xc)
                 t = TypeDesc.MakeClass(xc);
             if (t is { Kind: TypeKind.Class, Class: { IsEnum: true } en })
             {

@@ -1494,8 +1494,7 @@ internal sealed partial class Compilation
     /// <summary>Resolves a cross-assembly TypeRef to a TypeDef/Template in a
     /// loaded module, or null when the target assembly is not loaded (in which
     /// case the type is treated as an intrinsic/external reference).</summary>
-    // (namespace, name) -> the TypeDefs that declare it, in module order so the
-    // app module (index 0) wins ties. Built once; a real CoreLib has thousands
+    // (namespace, name) -> the TypeDefs that declare it. Built once; a real CoreLib has thousands
     // of types, so a per-TypeRef linear scan would be O(types^2).
     private Dictionary<(string, string), List<(Module Module, TypeDefinitionHandle Handle)>>? _typeIndex;
 
@@ -1521,8 +1520,8 @@ internal sealed partial class Compilation
     /// <summary>Everything a SYNTHETIC <c>gendef_</c> handle needs about the generic
     /// definition whose CLR backtick full name is <paramref name="defName"/> — its kind bits
     /// and its declared type-parameter names — read off the definition's own metadata,
-    /// located through the type index (app module wins ties, as <see cref="ResolveTypeRef"/>
-    /// does). Both facts ride the ONE lookup because both are facts about that one TypeDef;
+    /// located through the type index (app module wins name-only ties). Both facts ride
+    /// the ONE lookup because both are facts about that one TypeDef;
     /// the degrade when no loaded module declares the name is
     /// <see cref="GenericDefKind.Unknown"/> with no bracket group.
     /// <para>The by-NAME counterpart of <see cref="ResolveOpenGenericDefKind"/> /
@@ -1597,11 +1596,132 @@ internal sealed partial class Compilation
             return null;
         }
 
-        foreach (var (target, tdh) in candidates)
-            if (MakeTypeDescFor(target, tdh) is { } td)
-                return td;
+        if (tr.ResolutionScope.Kind == HandleKind.AssemblyReference)
+        {
+            string assembly = from.Reader.GetString(from.Reader.GetAssemblyReference(
+                (AssemblyReferenceHandle)tr.ResolutionScope).Name);
+            return ResolveAssemblyType(assembly, ns, name, candidates, from,
+                (AssemblyReferenceHandle)tr.ResolutionScope);
+        }
+        if (tr.ResolutionScope.Kind == HandleKind.ModuleDefinition || tr.ResolutionScope.IsNil)
+            foreach (var (target, tdh) in candidates)
+                if (target == from && target.Reader.GetTypeDefinition(tdh).GetDeclaringType().IsNil)
+                    return MakeTypeDescFor(target, tdh);
         return null;
     }
+
+    private Dictionary<(string Assembly, string Namespace, string Name), (Module Module, AssemblyReferenceHandle Scope)>? _typeForwarders;
+    private Dictionary<string, string>? _loadedAssemblyNames;
+
+    private TypeDesc? ResolveAssemblyType(string assembly, string ns, string name,
+        List<(Module, TypeDefinitionHandle)> candidates, Module scopeModule, AssemblyReferenceHandle scope)
+    {
+        if (_typeForwarders is null)
+        {
+            _typeForwarders = new();
+            _loadedAssemblyNames = new(StringComparer.OrdinalIgnoreCase);
+            foreach (var module in Modules)
+            {
+                _loadedAssemblyNames.TryAdd(module.AssemblyName, module.AssemblyName);
+                foreach (var handle in module.Reader.ExportedTypes)
+                {
+                    var type = module.Reader.GetExportedType(handle);
+                    if (type.Implementation.Kind != HandleKind.AssemblyReference)
+                        continue;
+                    _typeForwarders.TryAdd((module.AssemblyName, module.Reader.GetString(type.Namespace),
+                        module.Reader.GetString(type.Name)), (module, (AssemblyReferenceHandle)type.Implementation));
+                }
+            }
+        }
+        for (int hops = 0; hops <= Modules.Count; hops++)
+        {
+            if (_loadedAssemblyNames!.TryGetValue(assembly, out var canonical))
+                assembly = canonical;
+            foreach (var (module, handle) in candidates)
+                if (module.AssemblyName.Equals(assembly, StringComparison.OrdinalIgnoreCase)
+                    && module.Reader.GetTypeDefinition(handle).GetDeclaringType().IsNil)
+                    return MakeTypeDescFor(module, handle);
+            if (_typeForwarders.TryGetValue((assembly, ns, name), out var forwarded))
+            {
+                scopeModule = forwarded.Module;
+                scope = forwarded.Scope;
+                assembly = scopeModule.Reader.GetString(scopeModule.Reader.GetAssemblyReference(scope).Name);
+                continue;
+            }
+            // Signed facades can be omitted when their implementation is loaded.
+            if (!_loadedAssemblyNames.ContainsKey(assembly)
+                && IsSignedStandardFacadeScope(scopeModule, scope, assembly))
+            {
+                string target = IsPrivateUriFacadeType(scopeModule, scope, assembly, ns, name)
+                    ? "System.Private.Uri" : "System.Private.CoreLib";
+                foreach (var (module, handle) in candidates)
+                    if (module.AssemblyName == target
+                        && module.Reader.GetTypeDefinition(handle).GetDeclaringType().IsNil)
+                        return MakeTypeDescFor(module, handle);
+            }
+            return null;
+        }
+        return null;
+    }
+
+    private static bool IsPrivateUriFacadeType(Module module, AssemblyReferenceHandle scope,
+        string assembly, string ns, string name)
+    {
+        bool runtime = assembly.Equals("System.Runtime", StringComparison.OrdinalIgnoreCase);
+        if (ns != "System" || (!runtime
+            && !assembly.Equals("netstandard", StringComparison.OrdinalIgnoreCase)))
+            return false;
+        var reference = module.Reader.GetAssemblyReference(scope);
+        var token = module.Reader.GetBlobReader(reference.PublicKeyOrToken);
+        if (token.Length != 8 || token.ReadUInt64() != (runtime
+            ? 0x3a0ad5117f5f3fb0UL : 0x51dd2dcdff137bccUL))
+            return false;
+        // These public forwarding rows share Private.Uri; nested rows resolve through their owner.
+        return name is "FileStyleUriParser" or "FtpStyleUriParser" or "GenericUriParser"
+            or "GenericUriParserOptions" or "GopherStyleUriParser" or "HttpStyleUriParser"
+            or "LdapStyleUriParser" or "NetPipeStyleUriParser" or "NetTcpStyleUriParser"
+            or "NewsStyleUriParser" or "Uri" or "UriBuilder" or "UriComponents"
+            or "UriFormat" or "UriFormatException" or "UriHostNameType" or "UriKind"
+            or "UriParser" or "UriPartial" || (runtime && name == "UriCreationOptions");
+    }
+
+    private static bool IsSignedStandardFacadeScope(Module module, AssemblyReferenceHandle scope, string assembly)
+    {
+        if (!assembly.StartsWith("System.", StringComparison.OrdinalIgnoreCase)
+            && !assembly.Equals("netstandard", StringComparison.OrdinalIgnoreCase)
+            && !assembly.Equals("mscorlib", StringComparison.OrdinalIgnoreCase))
+            return false;
+        var reference = module.Reader.GetAssemblyReference(scope);
+        var token = module.Reader.GetBlobReader(reference.PublicKeyOrToken);
+        if (token.Length != 8)
+            return false;
+        return token.ReadUInt64() is 0x3a0ad5117f5f3fb0UL or 0x51dd2dcdff137bccUL
+            or 0x8e79a7bed785ec7cUL or 0x89e03419565c7ab7UL;
+    }
+
+    internal TypeDesc ExternalTypeRef(Module module, TypeReferenceHandle handle)
+    {
+        var type = module.Reader.GetTypeReference(handle);
+        string name = module.Reader.GetString(type.Name);
+        string ns = module.Reader.GetString(type.Namespace);
+        string full = ns.Length == 0 ? name : ns + "." + name;
+        string assembly = module.AssemblyName;
+        if (type.ResolutionScope.Kind == HandleKind.TypeReference)
+        {
+            var declaring = ExternalTypeRef(module, (TypeReferenceHandle)type.ResolutionScope);
+            full = declaring.ExternalName + "+" + name;
+            assembly = declaring.ExternalAssembly!;
+        }
+        else if (type.ResolutionScope.Kind == HandleKind.AssemblyReference)
+            assembly = module.Reader.GetString(module.Reader.GetAssemblyReference(
+                (AssemblyReferenceHandle)type.ResolutionScope).Name);
+        return TypeDesc.MakeExternal(full, module, handle, assembly);
+    }
+
+    // A scoped unresolved TypeRef must never be promoted through a different assembly's name.
+    internal ClassInfo? ResolveExternalClass(TypeDesc type) => type.ExternalModule is { } module
+        ? ResolveTypeRef(module, type.ExternalHandle)?.Class
+        : type.ExternalName is { } name ? FindClassByFullName(name) : null;
 
     /// <summary>A loaded type def's TypeDesc — concrete (ClassMap) or open
     /// template — or null if the handle is neither.</summary>
@@ -2584,6 +2704,7 @@ internal sealed partial class Compilation
             Name = mangled,
             Handle = templateHandle,
             Module = module,
+            CppNamePrefix = GenericTypeCppPrefix(module, templateHandle),
             IsAbstract = (td.Attributes & TypeAttributes.Abstract) != 0,
             IsSealed = (td.Attributes & TypeAttributes.Sealed) != 0,
             IsPublic = (td.Attributes & TypeAttributes.VisibilityMask) == TypeAttributes.Public,
@@ -2614,6 +2735,28 @@ internal sealed partial class Compilation
             && TypeIndex().TryGetValue(("System.Threading.Tasks", "Task`1"), out var taskDefs))
             Instantiate(taskDefs[0].Item1, taskDefs[0].Item2, args);
         return spec;
+    }
+
+    private readonly Dictionary<(int Module, int Token), string> _genericCppPrefixes = new();
+
+    private string GenericTypeCppPrefix(Module module, TypeDefinitionHandle handle)
+    {
+        var key = (module.Index, SRME.GetToken(handle));
+        if (_genericCppPrefixes.TryGetValue(key, out var prefix))
+            return prefix;
+        var type = module.Reader.GetTypeDefinition(handle);
+        var name = (module.Reader.GetString(type.Namespace), module.Reader.GetString(type.Name));
+        string full = MethodCompiler.OpenDefBacktickName(module, handle)!;
+        prefix = "";
+        if (TypeIndex().TryGetValue(name, out var candidates))
+            foreach (var (other, definition) in candidates)
+                if (other != module && MethodCompiler.OpenDefBacktickName(other, definition) == full)
+                {
+                    prefix = "m" + module.Index + "_";
+                    break;
+                }
+        _genericCppPrefixes.Add(key, prefix);
+        return prefix;
     }
 
     /// <summary>Force-emits one hotupdate-refs.txt root — a closed generic
@@ -2854,7 +2997,7 @@ internal sealed partial class Compilation
                 // An ExternalGeneric's name is already the closed instantiation's mangled
                 // registry name, so it identifies the type exactly as a plain external's does.
                 { Kind: TypeKind.External or TypeKind.ExternalGeneric } =>
-                    CppNaming.MangleFragment(CppNaming.Sanitize(t.ExternalName!)),
+                    ExternalMangle(t),
                 // The type-constructor arms: base + one marker per level, read back right to
                 // left (CppNaming.MangleFragment states the injectivity contract). A single
                 // "T" for all of them would put Shadow<int[,]> and Shadow<double[,]> in one
@@ -2875,6 +3018,21 @@ internal sealed partial class Compilation
                     + "spell a fragment no other kind can, or two type arguments share one "
                     + "specialization (CppNaming.MangleFragment)"),
             };
+
+    private static string ExternalMangle(TypeDesc type)
+    {
+        string name = CppNaming.Sanitize(type.ExternalName!);
+        // An unavailable scoped type cannot share an array or instantiation key with a loaded namesake.
+        if (type.ExternalModule is { } module && CppTypes.ExternalCppName(type.ExternalName) is null
+            && module.Owner.ResolveExternalClass(type) is null)
+        {
+            string assembly = type.ExternalAssembly!.ToUpperInvariant();
+            // Gtpl's reserved leaf space keeps this scoped key apart from named types.
+            return "GtplExternal_" + CppNaming.GenericDefinitionStem(
+                assembly.Length + "_" + assembly + "+" + type.ExternalName);
+        }
+        return CppNaming.MangleFragment(name);
+    }
 
     /// <summary>The metadata-facing type fragment shown in a generic method's
     /// readable symbol stem. Identity stays in <see cref="MangleArg"/> and the
@@ -3069,7 +3227,7 @@ internal sealed partial class Compilation
     {
         if (element.Kind != TypeKind.External || element.ExternalName is not { } name)
             return element;
-        if (FindClassByFullName(name) is not { } cls)
+        if (ResolveExternalClass(element) is not { } cls)
             return element;
         var promoted = TypeDesc.MakeClass(cls);
         return ArrayElemMangle(promoted) == ArrayElemMangle(element) ? promoted : element;

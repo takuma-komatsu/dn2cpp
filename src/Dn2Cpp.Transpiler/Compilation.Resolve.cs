@@ -671,7 +671,7 @@ internal sealed partial class Compilation
             // (e.g. Select(Func<T,R>) vs Select(Func<T,int,R>)).
             var wantParams = mr.DecodeMethodSignature(SigProvider, GenericContext.Empty).ParameterTypes;
             int paramCount = wantParams.Length;
-            string wantKey = string.Join(",", wantParams.Select(p => p.ToString()));
+            string wantKey = ParameterIdentityKey(wantParams);
             templateHandle = FindGenericMethodTemplate(defModule, declClass.Handle, mname, methodArgs.Length, paramCount, wantKey)
                 ?? throw new NotSupportedException(
                     $"{declClass.FullName}: no generic method {mname}<{methodArgs.Length}>/{paramCount}");
@@ -828,7 +828,7 @@ internal sealed partial class Compilation
         // lookups, as described above.
         var openParams = callee.Module.Reader.GetMethodDefinition(callee.Handle)
             .DecodeSignature(SigProvider, GenericContext.Empty).ParameterTypes;
-        string wantKey = string.Join(",", openParams.Select(p => p.ToString()));
+        string wantKey = ParameterIdentityKey(openParams);
         for (var c = scc; c is not null; c = c.BaseClass)
         {
             var tmpl = !sccIntrinsic ? FindInterfaceGenericMethodImpl(c, callee) : null;
@@ -884,7 +884,7 @@ internal sealed partial class Compilation
             var ps = md.DecodeSignature(SigProvider, GenericContext.Empty).ParameterTypes;
             if (ps.Length != paramCount)
                 return 0;
-            return wantKey is null || string.Join(",", ps.Select(p => p.ToString())) == wantKey ? 2 : 1;
+            return wantKey is null || ParameterIdentityKey(ps) == wantKey ? 2 : 1;
         }
         if (explicitItf is not null)
         {
@@ -1241,8 +1241,7 @@ internal sealed partial class Compilation
         }
         else
         {
-            static string Key(IEnumerable<TypeDesc> ps) => string.Join(",", ps.Select(p => p.ToString()));
-            string want = Key(sig.ParameterTypes);
+            string want = ParameterIdentityKey(sig.ParameterTypes);
             // Conversion operators (op_Implicit/op_Explicit) overload on RETURN type
             // alone — every overload shares the same single parameter type — so a
             // params-only match binds the first-declared one (e.g. a struct-returning
@@ -1250,9 +1249,8 @@ internal sealed partial class Compilation
             // to a pointer -> segfault). Prefer a candidate that matches both the
             // parameter types AND the return type; fall back to params-only, then the
             // first candidate (cross-module return-type representational differences).
-            string wantRet = sig.ReturnType.ToString();
-            var exact = candidates.Where(x => Key(x.Signature.ParameterTypes) == want
-                                              && x.Signature.ReturnType.ToString() == wantRet).ToList();
+            var exact = candidates.Where(x => ParameterIdentityKey(x.Signature.ParameterTypes) == want
+                                              && SameTypeArg(x.Signature.ReturnType, sig.ReturnType)).ToList();
             if (exact.Count > 1)
             {
                 // Substitution can make overloads alike that their definitions tell apart
@@ -1264,7 +1262,7 @@ internal sealed partial class Compilation
             else
             {
                 resolved = exact.Count == 1 ? exact[0]
-                    : candidates.FirstOrDefault(x => Key(x.Signature.ParameterTypes) == want) ?? candidates[0];
+                    : candidates.FirstOrDefault(x => ParameterIdentityKey(x.Signature.ParameterTypes) == want) ?? candidates[0];
             }
         }
         if (typeRefParent)
@@ -1273,6 +1271,10 @@ internal sealed partial class Compilation
             _memberRefMethodsBySpec[(module.Index, SRME.GetToken(handle), cls)] = resolved;
         return resolved;
     }
+
+    // Display names omit the defining assembly; overload keys use the model's type identity.
+    private static string ParameterIdentityKey(IEnumerable<TypeDesc> types) =>
+        string.Join(",", types.Select(MangleArg));
 
     /// <summary>Best-effort resolution of a non-generic MemberRef call to a real
     /// loaded method — e.g. a BCL method whose IL lives in a CoreLib passed with
