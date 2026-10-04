@@ -603,6 +603,7 @@ internal sealed partial class CppEmitter
                 bool keepRefl = _c.KeepsReflectionMetadata(cls);
                 bool appCls = cls.Module == _c.AppModule && !_e.IsOpaque(cls);
                 bool trim = !appCls && !_e._hotUpdateBase;
+                var propertyAccessors = PropertyAccessorHandles(cls);
                 var accessorRows = new HashSet<MethodDefinitionHandle>();
                 foreach (var m in cls.Methods)
                 {
@@ -616,7 +617,8 @@ internal sealed partial class CppEmitter
                     // (constructors are deliberately not stripped); methtab/proptab are not.
                     if (!(ctorRow || (methodRow && keepRefl)))
                         continue;
-                    if (trim && m.Rva != 0 && !_c.Reachable.Contains(m) && !_c.KeepsUnreachedRow(m))
+                    if (trim && m.Rva != 0 && !_c.Reachable.Contains(m) && !_c.KeepsUnreachedRow(m)
+                        && !propertyAccessors.Contains(m.Handle))
                         continue;
                     NoteReflectedType(m.Signature.ReturnType);
                     foreach (var p in m.Signature.ParameterTypes)
@@ -631,8 +633,8 @@ internal sealed partial class CppEmitter
                     }
                 }
                 // BuildPropTable's rows: a property renders (with its decoded type) when
-                // either accessor is in the type's method list, even if the accessor's own
-                // row was trimmed — so the property type is noted off that same condition.
+                // either accessor is in the type's method list; accessor descriptions
+                // survive trimming, and the property type is noted by the same condition.
                 if (!keepRefl)
                     continue;
                 try
@@ -2085,19 +2087,22 @@ internal sealed partial class CppEmitter
             bool attrCls = _c.IsUserModule(cls.Module) && !_e.IsOpaque(cls);
             // A reference assembly's unreached members are reflected but never callable:
             // their fnPtr/invoker are null below, so Invoke throws and the row is nothing
-            // but GetMethods() bloat. Drop them. An app module keeps every declared member,
+            // but GetMethods() bloat. Property accessors still need descriptions so
+            // a visible property never loses its getter/setter. An app module keeps every declared member,
             // so GetMethods() over the user's own types is unchanged, mirroring how a
             // program that reflects-and-invokes force-reaches app-module bodies only. A
             // hot-update base keeps everything: the interpreter binds a patch's imports by
             // walking these tables.
             // (Row filter mirrored by NoteReflectedMemberTypes — keep in step.)
             bool trim = !appCls && !_e._hotUpdateBase;
+            var propertyAccessors = PropertyAccessorHandles(cls);
             foreach (var m in members)
             {
                 // Rva == 0 is a bodiless declaration -- an interface or abstract slot,
                 // which is never reached (dispatch reaches the impl) yet must stay
                 // visible, or the type's GetMethods() would come back empty.
-                if (trim && m.Rva != 0 && !_c.Reachable.Contains(m) && !_c.KeepsUnreachedRow(m))
+                if (trim && m.Rva != 0 && !_c.Reachable.Contains(m) && !_c.KeepsUnreachedRow(m)
+                    && !propertyAccessors.Contains(m.Handle))
                     continue;
                 _memberAddr[m] = rows.Count.ToString();
                 if (prefix == "methtab" && !m.Handle.IsNil && CoreIntrinsics.IsObjectMemberRowName(m.Name))
@@ -2360,12 +2365,25 @@ internal sealed partial class CppEmitter
             return (tab, rows.Count);
         }
 
-        // Builds the Dn2CppPropInfo[] property table for a type by reading its
-        // PropertyDefs from metadata and pointing each accessor at its method-table
-        // entry. `methods` is the type's deduped method list (whose addresses
-        // are recorded in _memberAddr). Returns null when the type has no properties.
-        // (Row condition + property-type decode mirrored by
-        // NoteReflectedMemberTypes — keep the two in step.)
+        private static HashSet<MethodDefinitionHandle> PropertyAccessorHandles(ClassInfo cls)
+        {
+            // A visible property must retain accessor descriptions even when their
+            // bodies are unreachable; otherwise GetMethod reports a missing accessor.
+            var result = new HashSet<MethodDefinitionHandle>();
+            if (cls.Handle.IsNil)
+                return result;
+            var reader = cls.Module.Reader;
+            foreach (var handle in reader.GetTypeDefinition(cls.Handle).GetProperties())
+            {
+                var accessors = reader.GetPropertyDefinition(handle).GetAccessors();
+                if (!accessors.Getter.IsNil) result.Add(accessors.Getter);
+                if (!accessors.Setter.IsNil) result.Add(accessors.Setter);
+            }
+            return result;
+        }
+
+        // Accessors refer to retained method-table descriptions; unreachable
+        // bodies remain uncallable. Row conditions mirror NoteReflectedMemberTypes.
         private (string Expr, int Count)? BuildPropTable(ClassInfo cls, List<MethodInfo> methods)
         {
             var byHandle = new Dictionary<MethodDefinitionHandle, MethodInfo>();

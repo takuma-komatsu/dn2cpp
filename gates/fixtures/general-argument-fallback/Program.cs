@@ -19,7 +19,7 @@ internal static class Program
         }
     }
 
-    private static void Main()
+    private static void Main(string[] args)
     {
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
@@ -42,5 +42,16 @@ internal static class Program
         collection.Dispose();
         Bound("general collection disposed", () => Console.WriteLine(collection.Count));
         Console.WriteLine("general BCL Message fallback end");
+        if (args.Length > 0 && args[0] == "before-decimal-fault-text")
+            return;
+        Console.WriteLine("-- decimal parse Message fallback --");
+        foreach (string text in new[] { "", "漢\0\ud800" })
+        {
+            Bound("decimal string", () => decimal.Parse(text));
+            Bound("decimal chars", () => decimal.Parse(text.AsSpan(), CultureInfo.InvariantCulture));
+            byte[] utf8 = text.Length == 0 ? Array.Empty<byte>() : new byte[] { 0xe6, 0xbc, 0xa2, 0, 0xef, 0xbf, 0xbd };
+            Bound("decimal utf8", () => decimal.Parse(utf8.AsSpan(), CultureInfo.InvariantCulture));
+        }
+        Console.WriteLine("decimal parse Message fallback end");
     }
 }

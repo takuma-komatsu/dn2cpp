@@ -1526,8 +1526,7 @@ internal sealed partial class Compilation
     /// <see cref="GenericParamNames(Module, TypeDefinitionHandle)"/>, and the arm that makes
     /// a typeof of an INTRINSIC definition answer: dn2cpp mints neither ClassInfo nor
     /// Template for one, so <c>typeof(Vector128&lt;&gt;)</c> decodes to an External name.
-    /// A nested name (carrying '+') resolves to nothing and degrades, which is where the
-    /// gendef mouths carve nested definitions out anyway.</para></summary>
+    /// Nested names are resolved by their entire declaring chain.</para></summary>
     /// <summary>The CLR backtick full name of <paramref name="t"/> when it is an
     /// OPEN generic definition in one of the three shapes a <c>typeof(D&lt;&gt;)</c>
     /// ldtoken decodes to (the <c>OpenGenericDefTypeInfoExpr</c> shapes), else
@@ -1555,6 +1554,16 @@ internal sealed partial class Compilation
     /// RAW name, arity backtick included.</summary>
     internal (Module Module, TypeDefinitionHandle Handle)? OpenGenericDefHandleByName(string defName)
     {
+        int nested = defName.LastIndexOf('+');
+        if (nested >= 0)
+        {
+            var nestedKey = ("", defName[(nested + 1)..]);
+            if (TypeIndex().TryGetValue(nestedKey, out var nestedCandidates))
+                foreach (var (module, handle) in nestedCandidates)
+                    if (MethodCompiler.OpenDefBacktickName(module, handle) == defName)
+                        return (module, handle);
+            return null;
+        }
         int cut = defName.LastIndexOf('.');
         var key = cut < 0 ? ("", defName) : (defName[..cut], defName[(cut + 1)..]);
         return TypeIndex().TryGetValue(key, out var cands) && cands.Count > 0 ? cands[0] : null;

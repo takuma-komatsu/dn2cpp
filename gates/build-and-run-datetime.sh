@@ -19,6 +19,7 @@
 # TzSerializedStringSubset covers TimeZoneInfo.FromSerializedString over a fixed
 # serialized zone with adjustment rules — the deserialize path routes a transition
 # time through the internal TimeOnly.ToDateTime().
+# FromBinary/ToBinary cover kind flags, local-zone round trips and invalid payloads.
 # Former gates: datetime, datetime-now, datetime-parse, datetime-format,
 # datetime-tz, datetimeoffset.
 source "$(dirname "$0")/_common.sh"
@@ -37,6 +38,31 @@ gate_extra_asserts() {
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: date validation witness missing: $line" >&2; exit 1; }
     done
+    before=$(run_bounded "./$out/DateTimeOps$EXE_EXT" before-date-binary)
+    prefix=$(awk '/^== datetime binary ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    for line in '== datetime binary ==' 'datetime binary end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: date binary witness missing: $line" >&2; exit 1; }
+    done
+    local zone expected
+    for zone in Etc/UTC Asia/Tokyo America/New_York; do
+        native=$(TZ="$zone" run_bounded "./$out/DateTimeOps$EXE_EXT" binary-only)
+        expected=$(TZ="$zone" run_bounded dotnet "$_CG_APP" binary-only)
+        assert_output "$(strip_cr_win "$native")" "$(strip_cr_win "$expected")"
+    done
+    before=$(run_bounded dotnet "$_CG_APP" before-date-exact-spans)
+    native=$(run_bounded "./$out/DateTimeOps$EXE_EXT")
+    native=$(strip_cr_win "$native")
+    prefix=$(awk '/^== datetime exact spans ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    grep -Fxq 'datetime exact spans end' <<< "$native" \
+        || { echo "FAIL: exact date span parsing did not run" >&2; exit 1; }
+    before=$(run_bounded dotnet "$_CG_APP" before-date-utf8)
+    prefix=$(awk '/^== UTF-8 date destinations ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    grep -Fxq 'UTF-8 date destinations end' <<< "$native" \
+        || { echo "FAIL: UTF-8 date formatting did not run" >&2; exit 1; }
 }
 
 corelib_diff_gate DateTimeOps

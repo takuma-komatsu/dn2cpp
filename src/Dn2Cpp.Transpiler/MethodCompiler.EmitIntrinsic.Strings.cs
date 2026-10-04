@@ -1700,9 +1700,12 @@ internal sealed partial class MethodCompiler
             // OrdinalIgnoreCase fold, mirroring the Replace sibling.
             case ("System.String", "Compare")
                 when sig.ParameterTypes is [{ IsString: true }, { IsString: true },
+                    { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }]:
+            case ("System.String", "Compare")
+                when sig.ParameterTypes is [{ IsString: true }, { IsString: true },
                     { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }, _]:
             {
-                Pop(); // culture — ignored
+                if (sig.ParameterTypes.Length == 4) Pop(); // culture — ignored
                 var ign = Pop();
                 var b = Pop();
                 var a = Pop();

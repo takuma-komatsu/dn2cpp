@@ -53,7 +53,7 @@ static bool ns_is_digit(char16_t c) { return c >= u'0' && c <= u'9'; }
 // other), throw ArgumentException — from TryParse too. AllowCurrencySymbol is
 // NOT an invalid style (it is part of NumberStyles.Any / .Currency, which .NET
 // accepts): it passes validation here and is handled at parse time.
-static void ns_validate_integer(int32_t styles)
+void dn2cpp_parse_validate_integer_styles(int32_t styles)
 {
     if ((styles & ~0x7FF) != 0)
         dn2cpp_throw_argument_param(DN2CPP_SR_INVALID_NUMBER_STYLES, "style");
@@ -294,6 +294,9 @@ int32_t dn2cpp_parse_number_styles(const char16_t* p, int32_t n, int32_t styles,
             break;
         }
 
+        // Only an all-NUL suffix may follow the grammar's trailing whitespace.
+        while (i < n && p[i] == 0)
+            i++;
         if ((state & ST_PARENS) == 0 && i == n)
         {
             if ((state & ST_NONZERO) == 0)
@@ -368,6 +371,8 @@ static int32_t ns_hexbin_from_chars(const char16_t* p, int32_t n, int32_t styles
 {
     *out = 0;
     int32_t i = 0, end = n;
+    while (end > 0 && p[end - 1] == 0)
+        end--;
     if ((styles & NS_LEADWHITE) != 0)
         while (i < end && ns_is_white(p[i]))
             i++;
@@ -426,7 +431,7 @@ static int32_t ns_integer_core(const char16_t* p, int32_t n, int32_t styles,
                                const Dn2CppNumberFormatInfo* nfi, int32_t bitWidth,
                                int32_t isSigned, int64_t* out)
 {
-    ns_validate_integer(styles);
+    dn2cpp_parse_validate_integer_styles(styles);
     *out = 0;
     if ((styles & NS_HEX) != 0)
         return ns_hexbin_from_chars(p, n, styles, bitWidth, isSigned, true, out);
@@ -452,7 +457,7 @@ int32_t dn2cpp_integer_tryparse_str(Dn2CppString* s, int32_t styles,
     if (s == nullptr)
     {
         // Styles are validated (and may throw) before the null check, like .NET.
-        ns_validate_integer(styles);
+        dn2cpp_parse_validate_integer_styles(styles);
         *out = 0;
         return 0;
     }
@@ -643,16 +648,36 @@ int64_t dn2cpp_integer_parse_utf8(const char* p, int32_t n, int32_t styles,
     return dn2cpp_integer_parse_chars(s->chars, s->length, styles, nfi, bitWidth, isSigned);
 }
 
+// .NET's UTF-8 floating/decimal entry points validate integer styles, then
+// run the decimal scanner; hex/binary flags do not select a radix here.
 int32_t dn2cpp_fp_tryparse_utf8(const char* p, int32_t n, int32_t styles,
                                 const Dn2CppNumberFormatInfo* nfi, int32_t isSingle, double* out)
 {
+    dn2cpp_parse_validate_integer_styles(styles);
     Dn2CppString* s = ns_utf8_widen(p, n);
-    return dn2cpp_fp_tryparse_chars(s->chars, s->length, styles, nfi, isSingle, out);
+    return dn2cpp_fp_tryparse_chars(s->chars, s->length, styles & ~(NS_HEX | NS_BINARY), nfi, isSingle, out);
 }
 
 double dn2cpp_fp_parse_utf8(const char* p, int32_t n, int32_t styles,
                             const Dn2CppNumberFormatInfo* nfi, int32_t isSingle)
 {
+    dn2cpp_parse_validate_integer_styles(styles);
     Dn2CppString* s = ns_utf8_widen(p, n);
-    return dn2cpp_fp_parse_chars(s->chars, s->length, styles, nfi, isSingle);
+    return dn2cpp_fp_parse_chars(s->chars, s->length, styles & ~(NS_HEX | NS_BINARY), nfi, isSingle);
+}
+
+int32_t dn2cpp_decimal_tryparse_styles_utf8(const char* p, int32_t n, int32_t styles,
+                                          const Dn2CppNumberFormatInfo* nfi, Dn2CppDecimal* out)
+{
+    dn2cpp_parse_validate_integer_styles(styles);
+    Dn2CppString* s = ns_utf8_widen(p, n);
+    return dn2cpp_decimal_tryparse_styles_chars(s->chars, s->length, styles & ~(NS_HEX | NS_BINARY), nfi, out);
+}
+
+Dn2CppDecimal dn2cpp_decimal_parse_styles_utf8(const char* p, int32_t n, int32_t styles,
+                                             const Dn2CppNumberFormatInfo* nfi)
+{
+    dn2cpp_parse_validate_integer_styles(styles);
+    Dn2CppString* s = ns_utf8_widen(p, n);
+    return dn2cpp_decimal_parse_styles_chars(s->chars, s->length, styles & ~(NS_HEX | NS_BINARY), nfi);
 }

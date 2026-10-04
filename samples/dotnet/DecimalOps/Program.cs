@@ -17,7 +17,7 @@ namespace DecimalOps
     // from the shared dn2cpp_decimal_type handle instead.
     internal static class Program
     {
-        private static void Main()
+        private static void Main(string[] args)
         {
             // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
@@ -28,6 +28,8 @@ namespace DecimalOps
             DecimalSubset.Program.Run();
             BoxedDecimalSubset.Program.Run();
             NegativeZeroSubset.Program.Run();
+            if (args.Length > 0 && args[0] == "before-decimal-bits") return;
+            Dn2Cpp.DecimalBitsSubset.Run();
         }
     }
 }

@@ -19,5 +19,8 @@ static class Program
         if (args.Length > 0 && args[0] == "before-nested-generic-names")
             return;
         NestedGenericTypeNameSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-property-accessors")
+            return;
+        PropertyAccessorRowsSubset.Run();
     }
 }

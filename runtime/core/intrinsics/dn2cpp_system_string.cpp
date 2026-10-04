@@ -1225,13 +1225,17 @@ int64_t dn2cpp_long_parse(Dn2CppString* s)
 // fails and leaves the result false, matching .NET.
 int32_t dn2cpp_bool_tryparse(Dn2CppString* s, uint8_t* out)
 {
+    return dn2cpp_bool_tryparse_chars(s == nullptr ? nullptr : s->chars,
+                                     s == nullptr ? 0 : s->length, out);
+}
+
+int32_t dn2cpp_bool_tryparse_chars(const char16_t* chars, int32_t length, uint8_t* out)
+{
     *out = 0;
-    if (s == nullptr)
-        return 0;
-    int32_t a = 0, b = s->length;
-    while (a < b && (dn2cpp_char_is_whitespace(s->chars[a]) || s->chars[a] == u'\0'))
+    int32_t a = 0, b = length;
+    while (a < b && (dn2cpp_char_is_whitespace(chars[a]) || chars[a] == u'\0'))
         a++;
-    while (b > a && (dn2cpp_char_is_whitespace(s->chars[b - 1]) || s->chars[b - 1] == u'\0'))
+    while (b > a && (dn2cpp_char_is_whitespace(chars[b - 1]) || chars[b - 1] == u'\0'))
         b--;
     int32_t n = b - a;
     auto matches = [&](const char* lit, int32_t litLen) {
@@ -1239,7 +1243,7 @@ int32_t dn2cpp_bool_tryparse(Dn2CppString* s, uint8_t* out)
             return false;
         for (int32_t i = 0; i < n; i++)
         {
-            char16_t c = s->chars[a + i];
+            char16_t c = chars[a + i];
             if (c >= u'A' && c <= u'Z')
                 c = static_cast<char16_t>(c + 32);
             char16_t lc = static_cast<char16_t>(lit[i]);

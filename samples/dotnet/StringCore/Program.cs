@@ -72,6 +72,9 @@ namespace StringCore
             if (args.Length > 0 && args[0] == "before-span-flag-faults")
                 return;
             StringValidationThrowSubset.Program.RunSpanAndFlagFaults();
+            if (args.Length > 0 && args[0] == "before-boolean-compare")
+                return;
+            IndexedCultureCompareSubset.Program.RunBooleanEquality();
         }
     }
 }

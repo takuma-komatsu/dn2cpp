@@ -636,6 +636,18 @@ gate_extra_asserts() {
         echo 'FAIL: reserved definition symbol was not used by its shared receiver anchor' >&2
         return 1
     fi
+    before=$(run_bounded "$out/OrdinaryReflectionTypeLeaves$EXE_EXT" before-property-accessors) || return $?
+    prefix=$(awk '/^== retained property accessor rows ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    for line in '== retained property accessor rows ==' \
+        'Capacity=True:True:get_Capacity:set_Capacity' \
+        'Count=True:False:get_Count:<null>' \
+        'System.Collections.Generic.ICollection<T>.IsReadOnly=True:False:System.Collections.Generic.ICollection<T>.get_IsReadOnly:<null>' \
+        'retained property accessor rows end' '== nested open definition identity ==' \
+        'definitions=True:True:True' 'nested open definition identity end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: property accessor witness missing: $line" >&2; return 1; }
+    done
 }
 DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectTypes OrdinaryReflectionTypeLeaves \
     System.Collections System.ComponentModel.Primitives --no-ildiet

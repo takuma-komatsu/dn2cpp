@@ -54,6 +54,7 @@
 source "$(dirname "$0")/_common.sh"
 
 # Default order and equality preserve the earlier bucket and run the appended cases.
+# Direct integer DivRem calls cover every scalar width, zero divisors and signed minima.
 gate_extra_asserts() {
     local out="$1" native before prefix line
     native=$(run_bounded "./$out/MathSubset")
@@ -68,6 +69,15 @@ gate_extra_asserts() {
         'default comparison validation end'; do
         grep -Fxq "$line" <<< "$native" \
             || { echo "FAIL: MathSubset comparison coverage missing: $line" >&2; exit 1; }
+    done
+    before=$(dotnet "$_CG_APP" before-scalar-divrem)
+    prefix=$(awk '/^== scalar DivRem ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    for line in '== scalar DivRem ==' 'int:17:5=3:2' \
+        'long:-9223372036854775808:-1=OverflowException' \
+        'nuint:17:0=DivideByZeroException' 'scalar DivRem end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: scalar DivRem coverage missing: $line" >&2; exit 1; }
     done
 }
 

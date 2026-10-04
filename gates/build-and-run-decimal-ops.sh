@@ -32,4 +32,19 @@
 # host-independent. See the csproj.
 source "$(dirname "$0")/_common.sh"
 
+gate_extra_asserts() {
+    local out="$1" native before prefix line
+    native=$(run_bounded "./$out/DecimalOps$EXE_EXT")
+    native=$(strip_cr_win "$native")
+    before=$(run_bounded dotnet "$_CG_APP" before-decimal-bits)
+    prefix=$(awk '/^== decimal bit conversions ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    for line in '== decimal bit conversions ==' \
+        'try bits:0:3=False:0:77,77,77' 'try bits:0:4=True:4:0,0,0,0' \
+        'parts:28=-1,-1,-1,-2145648640' 'decimal bit conversions end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: decimal bits witness missing: $line" >&2; exit 1; }
+    done
+}
+
 corelib_diff_gate DecimalOps System.Linq System.Collections System.Runtime

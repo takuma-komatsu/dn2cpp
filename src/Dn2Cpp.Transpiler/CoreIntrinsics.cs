@@ -863,7 +863,8 @@ internal static partial class CoreIntrinsics
 
     /// <summary>Primitive members lowered inline despite their declaring type not always
     /// being intrinsic: the sub-word integers' format/parse family, plus both
-    /// <c>CompareTo</c> overloads of every scalar primitive. The latter is one sibling
+    /// <c>CompareTo</c> overloads of every scalar primitive, and integer <c>DivRem</c>.
+    /// The comparison overloads are one sibling
     /// family because <c>CompareTo(object)</c> adds null/type checks around the same typed
     /// order, and pointer-sized/sub-word types otherwise fall through to real IL while the
     /// 32/64-bit, floating, Boolean and Char bodies are already cut with their type.
@@ -874,7 +875,10 @@ internal static partial class CoreIntrinsics
     public static bool IsInlineLoweredPrimitiveMember(string? fullTypeName, string name) =>
         (fullTypeName is "System.Byte" or "System.SByte" or "System.Int16" or "System.UInt16"
             && name is "ToString" or "Parse" or "TryParse" or "TryFormat")
-        || (name == "CompareTo" && IsScalarPrimitive(fullTypeName));
+        || (name == "CompareTo" && IsScalarPrimitive(fullTypeName))
+        || (name == "DivRem" && fullTypeName is "System.Byte" or "System.SByte"
+            or "System.Int16" or "System.UInt16" or "System.Int32" or "System.UInt32"
+            or "System.Int64" or "System.UInt64" or "System.IntPtr" or "System.UIntPtr");
 
     /// <summary>A non-floating primitive value type's <c>Equals(object)</c> overload.
     /// Shape-keyed so the typed <c>Equals(T)</c> sibling keeps its ordinary route.</summary>

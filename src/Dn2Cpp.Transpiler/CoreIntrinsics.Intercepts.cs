@@ -663,7 +663,7 @@ internal static partial class CoreIntrinsics
         && element.IsString;
 
     /// <summary>The sub-word integers' ToString/Parse/TryParse/TryFormat and every scalar
-    /// primitive's two CompareTo overloads
+    /// primitive's two CompareTo overloads and integer DivRem
     /// (<see cref="IsInlineLoweredPrimitiveMember"/>), lowered inline at every
     /// call site so the System.Number format/parse cascade stays out of the
     /// tree.</summary>
@@ -834,7 +834,7 @@ internal static partial class CoreIntrinsics
         extra: static (dt, n, sig) => LoweredToolProcess(sig()));
 
     /// <summary>The sub-word integers' ToString/Parse/TryParse/TryFormat and every scalar
-    /// primitive's two CompareTo overloads
+    /// primitive's two CompareTo overloads and integer DivRem
     /// (<see cref="IsInlineLoweredPrimitiveMember"/>) — the MemberRef twin of
     /// <see cref="MdInlinePrimitive"/>.</summary>
     public static readonly MemberRefIntercept MrInlinePrimitive = new(

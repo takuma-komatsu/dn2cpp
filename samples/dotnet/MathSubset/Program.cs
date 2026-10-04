@@ -37,6 +37,9 @@ namespace MathSubset
             Console.WriteLine("== default comparison validation ==");
             MathGenericClampBounds.Program.Run();
             Console.WriteLine("default comparison validation end");
+            if (args.Length > 0 && args[0] == "before-scalar-divrem")
+                return;
+            Dn2Cpp.ScalarDivRemSubset.Run();
         }
     }
 }

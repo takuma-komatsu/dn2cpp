@@ -284,6 +284,16 @@ gate_extra_asserts() {
             || { echo "FAIL: String argument field witness missing: $line" >&2; exit 1; }
     done
 
+    before=$(dotnet "$_CG_APP" before-boolean-compare)
+    prefix=$(awk '/^== Boolean string comparison equality ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    for line in '== Boolean string comparison equality ==' \
+        'Name:name:True=True:True' 'Name:name:False=False:False' \
+        '<null>::True=False:False' '名前:名前:False=True:True' \
+        'Boolean string comparison equality end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: Boolean comparison witness missing: $line" >&2; exit 1; }
+    done
 }
 
 corelib_diff_gate StringCore System.Linq

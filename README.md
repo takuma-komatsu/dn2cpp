@@ -630,6 +630,7 @@ cuts, and both sides' stderr required to stay empty.
 | ZLinq | The zero-allocation LINQ pipeline: struct value-enumerator chains, aggregations, ordering, set operations, grouping and joining, materialization | `gates/build-and-run-zlinq.sh` |
 | ZString | `Utf16ValueStringBuilder` and `Utf8ValueStringBuilder`, `ZString.Format`/`Concat`/`Join`, custom numeric formats | `gates/build-and-run-zstring.sh` |
 | R3 | Subject subscriptions, `Where`/`Select`/`Scan`, resumable and terminal errors, `ReactiveProperty`, `Timer`, Channels-backed async enumeration | `gates/build-and-run-r3.sh` |
+| RE:Dox | JSON/JSON5 DOM parsing and mutation, UTF-8 and stream input, DOX conversion, cloning, object/collection/constructor binding, scalar round-trips and custom converters through the library's reflection-based AOT fallback | `gates/build-and-run-redox.sh` |
 | UniTask | The tier-2 custom-async-task lane on the .NET build: adoption is declined automatically and the library's own combinators, scheduler and cancellation model transpile as real IL | `gates/build-and-run-unitask.sh` |
 | GDTask | The same tier-2 lane inside the real Godot engine | `gates/build-and-run-gdtask.sh` |
 
@@ -645,6 +646,10 @@ that no AOT target can serve — `MakeGenericType` plus `Activator` to mint a
 formatter for a shape nothing named — the driver takes the library's documented
 AOT route and registers the closed type instead; the gate says so at the call
 site rather than hiding it.
+
+RE:Dox runs with `AllowDynamicGenericConverters = false` on both sides so its
+own reflection-based converters perform serialization without compiling
+expression trees at runtime.
 
 ### Runtime services
 

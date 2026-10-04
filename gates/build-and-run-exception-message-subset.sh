@@ -193,6 +193,12 @@ gate_extra_asserts() {
             fi
             grep -Fxq 'general BCL Message fallback end' <<< "$actual" \
                 || { echo 'FAIL: general Message-only fixture did not run' >&2; exit 1; }
+            local decimal_prefix decimal_before
+            decimal_prefix=$(awk '/^-- decimal parse Message fallback --$/ { exit } { print }' <<< "$actual")
+            decimal_before=$(run_bounded dotnet "$app" before-decimal-fault-text)
+            assert_output "$decimal_prefix" "$(strip_cr_win "$decimal_before")"
+            grep -Fxq 'decimal parse Message fallback end' <<< "$actual" \
+                || { echo 'FAIL: decimal Message-only faults did not run' >&2; exit 1; }
         else
             grep -Fxq 'const int32_t dn2cpp_type_bind_count = 0;' "$fixture/generated.cpp" \
                 || { echo 'FAIL: fallback fixture reached a managed exception layout' >&2; exit 1; }
