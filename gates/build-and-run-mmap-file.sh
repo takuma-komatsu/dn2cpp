@@ -16,6 +16,7 @@
 # CreateViewStream are unsupported. Unix named file maps raise the library
 # platform refusal after the source checks. Accessor bounds, factory parameters,
 # library messages, view ranges and missing paths are diffed against .NET.
+# File-backed factories normalize lexical dot components before opening the file.
 #
 # The sample takes a scratch directory as args[0]; we give the native build and real
 # .NET SEPARATE fresh directories and diff their output exactly — the program prints
@@ -89,6 +90,14 @@ gate_extra_asserts() {
     before=$(strip_cr_win "$before")
     prefix=$(awk '$0 == "== mmap validation ==" { exit } { print }' <<< "$output")
     assert_output "$prefix" "$before"
+    before_scratch=$(mktemp -d artifacts/mmap-path-before.XXXXXX)
+    before=$(run_bounded dotnet "$_CG_APP" "$before_scratch" before-mmap-full-path) || return $?
+    rm -rf "$before_scratch"
+    prefix=$(awk '$0 == "-- lexical mapped file paths --" { exit } { print }' <<< "$output")
+    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    grep -Fxq -- '-- lexical mapped file paths --' <<< "$output" || return 1
+    grep -Fxq 'mapped lexical byte=51' <<< "$output" || return 1
+    grep -Fxq -- '-- lexical mapped file paths end --' <<< "$output" || return 1
 }
-export DN2CPP_GATE_EXTRA_CONTEXT="uninitialized:MMAP_UNINITIALIZED_ONLY|cli:$(_gate_cli_hash)"
+export DN2CPP_GATE_EXTRA_CONTEXT="uninitialized:MMAP_UNINITIALIZED_ONLY|before-mmap-full-path|cli:$(_gate_cli_hash)"
 corelib_diff_gate MmapFile System.IO.MemoryMappedFiles

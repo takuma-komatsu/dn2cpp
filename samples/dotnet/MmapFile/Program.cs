@@ -189,10 +189,30 @@ internal static class Program
         TestMissingPathAndNamedMap(dir);
         TestOffsetAndWriteMessages(dir);
         Console.WriteLine("mmap validation complete");
+        if (args.Length > 1 && args[1] == "before-mmap-full-path") return;
+        TestFullPathMap(dir);
 #endif
     }
 
 #if !MMAP_UNINITIALIZED_ONLY
+    private static void TestFullPathMap(string dir)
+    {
+        Console.WriteLine("-- lexical mapped file paths --");
+        File.WriteAllBytes(Path.Combine(dir, "dotmap.bin"), new byte[] { 51 });
+        try
+        {
+            using var map = MemoryMappedFile.CreateFromFile(Path.Combine(dir, "absent", "..", "dotmap.bin"),
+                FileMode.Open, null, 0, MemoryMappedFileAccess.Read);
+            using var view = map.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read);
+            Console.WriteLine("mapped lexical byte=" + view.ReadByte(0));
+        }
+        catch (Exception error)
+        {
+            Console.WriteLine("mapped lexical fault=" + error.GetType().Name);
+        }
+        Console.WriteLine("-- lexical mapped file paths end --");
+    }
+
     private static void TestMissingPathAndNamedMap(string dir)
     {
         Console.WriteLine("== mmap missing paths ==");
