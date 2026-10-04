@@ -51,6 +51,9 @@ header's preamble states what is deliberately *not* in the seam — stdio *file*
 I/O, `std::chrono`, `std::tm` — because those already build everywhere, and a seam
 that abstracts a portable facility is a seam somebody has to keep in sync for
 nothing. Console output **is** in the seam, though it reads like it should not be.
+Standard byte streams also open, retain, read, write and close opaque handles
+through this seam. The reference PAL routes their output through its installed
+sink; disposing one wrapper never closes the process standard stream.
 
 **Do not start from this section and a blank file. Start from
 `runtime/core/platform/reference/`** — a complete implementation of the seam in
@@ -58,7 +61,7 @@ portable C++17 that names no operating system, and that compiles, links and runs
 Copy the directory, add the CMake arm (§3.3), and replace bodies one at a time. The
 `PAL_REFERENCE=1` axis of `gates/build-and-run-pal-reference.sh` keeps it working.
 
-The seam declares **eighteen** functions, plus enums. Re-derive the function count:
+The seam declares **23** functions, plus enums. Re-derive the function count:
 
 ```bash
 grep -cE '^[A-Za-z_].*\bdn2cpp_pal_[a-z_0-9]+\(' runtime/core/platform/dn2cpp_pal.h
@@ -77,7 +80,7 @@ declaration in `dn2cpp_pal.h` carries a `// PAL-CONTRACT: MUST` or
 `// PAL-CONTRACT: MAY-DEGRADE <sentinel>` line, that marker is the source of truth,
 and `gates/build-and-run-doc-claims.sh` diffs it against the table below.
 
-**Fourteen of the eighteen must answer truly.** The remaining entries have a
+**19 of the 23 must answer truly.** The remaining entries have a
 documented "unavailable" answer that their callers handle:
 
 | may degrade | the sentinel | who handles it |
@@ -136,7 +139,7 @@ user identity, and the low-level monitor.
   directly in already-blittable shapes, so those calls direct-link once the
   modules are admitted to `Compilation.IsRuntimeProvidedPInvokeModule`. The port
   is a line in the transpiler and a `target_link_libraries` row.
-- **wasm defines 29.** They live in
+- **wasm defines 30.** They live in
   `runtime/core/platform/wasm/dn2cpp_system_native_wasm.cpp`, in groups.
   The **non-file** entries are there each for their own reason:
   `SystemNative_GetCryptographicallySecureRandomBytes`, whose caller is not a

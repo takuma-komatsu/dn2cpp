@@ -684,17 +684,17 @@ internal sealed partial class MethodCompiler : IEvalStack
         => (m.IsAggressiveInlining && m.IsSmallIlBody || m.IsTinyIlBody)
             && !m.IsNoInlining && !m.IsObfuscationTarget && !m.IsUnmanagedCallersOnly && !m.IsHotPath;
 
+    // Intrinsic value types use the runtime layout for address-taken instance methods too.
+    private static string ReceiverCppType(ClassInfo cls) => cls.FullName == "System.String"
+        ? "Dn2CppString*"
+        : cls.IsValueType ? CppTypes.Of(TypeDesc.MakeClass(cls)) + "*" : cls.CppStructName + "*";
+
     public static string Signature(MethodInfo m)
     {
         var ps = new List<string>();
         int i = 0;
         if (!m.IsStatic)
-            // A transpiled String interface impl takes the runtime string as its
-            // receiver, not the opaque t_System_String shell; every other declaring
-            // class keeps its struct pointer.
-            ps.Add(m.DeclaringClass.FullName == "System.String"
-                ? $"Dn2CppString* a{i++}"
-                : $"{m.DeclaringClass.CppStructName}* a{i++}");
+            ps.Add($"{ReceiverCppType(m.DeclaringClass)} a{i++}");
         foreach (var p in m.Signature.ParameterTypes)
             ps.Add($"{CppTypes.Of(p)}{(NoAliasParam(m, p) ? " __restrict" : "")} a{i++}");
         // A shared canonical body with no receiver-derivable context source
@@ -1532,9 +1532,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             // `this` is a managed pointer for value types, object ref otherwise.
             // A transpiled String interface impl receives the runtime string
             // (matching Signature), not the opaque t_System_String shell.
-            string t = _method.DeclaringClass.FullName == "System.String"
-                ? "Dn2CppString*"
-                : _method.DeclaringClass.CppStructName + "*";
+            string t = ReceiverCppType(_method.DeclaringClass);
             _args.Add(($"a{i++}", t, _method.DeclaringClass.IsValueType ? StackKind.Ptr : StackKind.Ref, null));
         }
         foreach (var p in _method.Signature.ParameterTypes)
@@ -3688,14 +3686,13 @@ internal sealed partial class MethodCompiler : IEvalStack
                     expr = $"(void*)&{adapter.CppName}";
                 }
                 else if (!m.IsStatic && _ftnDelegateUse.ContainsKey(insn.Offset)
-                         && NeedsNfiErasedAdapter(m.Emittable))
+                         && (m.DeclaringClass.IsValueType || NeedsNfiErasedAdapter(m.Emittable)))
                 {
                     // An INSTANCE target normally goes into f_method as its own
                     // symbol — the invoker's cast passes the receiver through the
                     // target slot and every other position renders alike. A
-                    // headerless intrinsic position does not render alike, so the
-                    // method gets the NFI-erasing adapter: the one shape for which an
-                    // instance target has an adapter at all.
+                    // headerless intrinsic position needs the NFI-erasing adapter;
+                    // a boxed value receiver needs it to reach the payload too.
                     NoteFtnTargetBody(m.Emittable);
                     var adapter = new DelegateAdapter(m.Emittable, false, NfiErased: true);
                     if (!_c.DelegateAdapters.Contains(adapter))

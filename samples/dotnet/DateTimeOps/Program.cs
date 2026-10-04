@@ -13,6 +13,11 @@ namespace DateTimeOps
             // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
             CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+            if (args.Length > 0 && args[0] == "daylight-only")
+            {
+                DateTimeDaylightSubset.Program.Run();
+                return;
+            }
             if (args.Length > 0 && args[0] == "binary-only")
             {
                 DateTimeBoundaryParitySubset.Program.RunBinary();
@@ -46,6 +51,9 @@ namespace DateTimeOps
             if (args.Length > 0 && args[0] == "before-date-utf8")
                 return;
             TryFormatDatesSubset.Program.RunUtf8();
+            if (args.Length > 0 && args[0] == "before-daylight")
+                return;
+            DateTimeDaylightSubset.Program.Run();
         }
     }
 }

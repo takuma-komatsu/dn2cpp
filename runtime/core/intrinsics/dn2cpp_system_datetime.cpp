@@ -270,7 +270,7 @@ Dn2CppDateTime dn2cpp_datetime_add_ticks(Dn2CppDateTime a, int64_t ticks, const 
     uint64_t sum = static_cast<uint64_t>(a.ticks()) + static_cast<uint64_t>(ticks);
     if (sum > static_cast<uint64_t>(DN2CPP_DT_MAX_TICKS))
         dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_DATE_ARITHMETIC, paramName);
-    return dn2cpp_datetime_pack(static_cast<int64_t>(sum), a.kind());
+    return dn2cpp_dt_word(static_cast<int64_t>(sum), static_cast<uint64_t>(a._dateData) >> 62);
 }
 // Negating TimeSpan.MinValue must raise a range fault before signed arithmetic.
 Dn2CppDateTime dn2cpp_datetime_subtract_ticks(Dn2CppDateTime a, int64_t ticks, const char* paramName)
@@ -308,7 +308,7 @@ Dn2CppDateTime dn2cpp_datetime_add_months(Dn2CppDateTime a, int32_t months)
     const int* days = dn2cpp_dt_isleap(y) ? s_daysToMonth366 : s_daysToMonth365;
     int dim = days[mo] - days[mo - 1];
     if (d > dim) d = dim; // clamp (e.g. Jan 31 + 1 month -> Feb 28)
-    return dn2cpp_datetime_pack(dn2cpp_dt_date_to_ticks(y, mo, d) + tod, a.kind());
+    return dn2cpp_dt_word(dn2cpp_dt_date_to_ticks(y, mo, d) + tod, static_cast<uint64_t>(a._dateData) >> 62);
 }
 // AddYears names "value" for both of its rejections, so they precede the month walk.
 Dn2CppDateTime dn2cpp_datetime_add_years(Dn2CppDateTime a, int32_t years)
@@ -368,22 +368,13 @@ Dn2CppDateTime dn2cpp_datetime_utc_now()
 // fraction (whole-second remainder of the UTC instant) is added back.
 Dn2CppDateTime dn2cpp_datetime_now()
 {
-    using namespace std::chrono;
-    using tick_dur = duration<int64_t, std::ratio<1, 10000000>>;
-    int64_t unix_ticks = duration_cast<tick_dur>(system_clock::now().time_since_epoch()).count();
-    std::time_t secs = (std::time_t)(unix_ticks / DN2CPP_TPS);
-    int64_t frac = unix_ticks % DN2CPP_TPS;
-    std::tm lt{};
-    dn2cpp_pal_localtime((int64_t)secs, &lt);
-    int64_t date_ticks = dn2cpp_dt_date_to_ticks(lt.tm_year + 1900, lt.tm_mon + 1, lt.tm_mday);
-    int64_t time_ticks = dn2cpp_dt_time_to_ticks(lt.tm_hour, lt.tm_min, lt.tm_sec, 0);
-    return dn2cpp_datetime_pack(date_ticks + time_ticks + frac, 2);
+    return dn2cpp_datetime_to_local(dn2cpp_datetime_utc_now());
 }
 // Today: local midnight (Now with the time-of-day stripped), Kind=Local.
 Dn2CppDateTime dn2cpp_datetime_today()
 {
     Dn2CppDateTime n = dn2cpp_datetime_now();
-    return dn2cpp_datetime_pack(n.ticks() - (n.ticks() % DN2CPP_TPD), n.kind());
+    return dn2cpp_dt_word(n.ticks() - (n.ticks() % DN2CPP_TPD), static_cast<uint64_t>(n._dateData) >> 62);
 }
 
 // ---- DateTime time-zone conversion (host local zone, DST included) ----
@@ -401,37 +392,53 @@ Dn2CppDateTime dn2cpp_datetime_today()
 // TimeZoneInfo, which clamps the shifted instant to MinValue/MaxValue instead of
 // raising. Routing them through the checked pack would turn a value real .NET
 // answers into an exception.
+#if defined(_WIN32)
+static int64_t dn2cpp_dt_windows_binary_offset(int64_t ticks, bool utc, bool daylight,
+                                               bool* ambiguousDaylight);
+#else
+static bool dn2cpp_dt_same_clock(const std::tm& left, const std::tm& right);
+static int64_t dn2cpp_dt_tm_ticks(const std::tm& clock);
+static int64_t dn2cpp_dt_binary_zone_offset(int64_t offset);
+#endif
+static int64_t dn2cpp_dt_binary_local_ticks(Dn2CppDateTime value);
+
 Dn2CppDateTime dn2cpp_datetime_to_local(Dn2CppDateTime a)
 {
     if (a.kind() == 2) return a; // already Local
+    bool ambiguousDaylight = false;
+#if defined(_WIN32)
+    int64_t ticks = a.ticks() + dn2cpp_dt_windows_binary_offset(a.ticks(), true, false, &ambiguousDaylight);
+    if (ticks < 0) return dn2cpp_datetime_pack(0, 2);
+    if (ticks > DN2CPP_DT_MAX_TICKS) return dn2cpp_datetime_pack(DN2CPP_DT_MAX_TICKS, 2);
+    return dn2cpp_dt_word(ticks, ambiguousDaylight ? 3 : 2);
+#else
     int64_t frac = a.ticks() % DN2CPP_TPS;                       // sub-second remainder
     int64_t whole = a.ticks() - frac;                            // whole-second UTC instant
     std::time_t secs = (std::time_t)((whole - DN2CPP_UNIX_EPOCH_TICKS) / DN2CPP_TPS);
     std::tm lt{};
     dn2cpp_pal_localtime((int64_t)secs, &lt);
-    int year = lt.tm_year + 1900;
-    if (year < 1) return dn2cpp_datetime_pack(0, 2);
-    if (year > 9999) return dn2cpp_datetime_pack(DN2CPP_DT_MAX_TICKS, 2);
-    int64_t date_ticks = dn2cpp_dt_date_to_ticks(year, lt.tm_mon + 1, lt.tm_mday);
-    int64_t time_ticks = dn2cpp_dt_time_to_ticks(lt.tm_hour, lt.tm_min, lt.tm_sec, 0);
-    return dn2cpp_datetime_pack_clamped(date_ticks + time_ticks + frac, 2);
+    int64_t offset = dn2cpp_dt_binary_zone_offset(dn2cpp_dt_tm_ticks(lt) - whole);
+    int64_t ticks = a.ticks() + offset;
+    if (ticks < 0) return dn2cpp_datetime_pack(0, 2);
+    if (ticks > DN2CPP_DT_MAX_TICKS) return dn2cpp_datetime_pack(DN2CPP_DT_MAX_TICKS, 2);
+    if (lt.tm_isdst > 0)
+    {
+        auto standard = lt;
+        standard.tm_isdst = 0;
+        int64_t otherSeconds = dn2cpp_pal_mktime_local(&standard);
+        std::tm otherClock{};
+        dn2cpp_pal_localtime(otherSeconds, &otherClock);
+        ambiguousDaylight = otherSeconds != secs && dn2cpp_dt_same_clock(lt, otherClock);
+    }
+    return dn2cpp_dt_word(ticks, ambiguousDaylight ? 3 : 2);
+#endif
 }
 // ToUniversalTime: Local/Unspecified are treated as local wall clock and folded
 // back to the UTC instant (Kind=Utc). An already-Utc value is returned unchanged.
 Dn2CppDateTime dn2cpp_datetime_to_universal(Dn2CppDateTime a)
 {
     if (a.kind() == 1) return a; // already Utc
-    int64_t frac = a.ticks() % DN2CPP_TPS;
-    int y, mo, d; dn2cpp_dt_datepart(a.ticks(), &y, &mo, &d, nullptr);
-    int64_t tod = a.ticks() % DN2CPP_TPD;
-    std::tm lt{};
-    lt.tm_year = y - 1900; lt.tm_mon = mo - 1; lt.tm_mday = d;
-    lt.tm_hour = (int)(tod / DN2CPP_TPH);
-    lt.tm_min  = (int)((tod / DN2CPP_TPM) % 60);
-    lt.tm_sec  = (int)((tod / DN2CPP_TPS) % 60);
-    lt.tm_isdst = -1; // let mktime resolve DST for this local instant
-    std::time_t secs = (std::time_t)dn2cpp_pal_mktime_local(&lt);
-    return dn2cpp_datetime_pack_clamped(DN2CPP_UNIX_EPOCH_TICKS + (int64_t)secs * DN2CPP_TPS + frac, 1);
+    return dn2cpp_datetime_pack_clamped(dn2cpp_dt_binary_local_ticks(a), 1);
 }
 // The host's UTC offset (whole minutes) for a local wall-clock instant. mktime maps the
 // local components to the UTC instant; the offset is the (clock - UTC) difference. Whole-
@@ -525,17 +532,21 @@ static int64_t dn2cpp_dt_tm_ticks(const std::tm& clock)
 
 static int64_t dn2cpp_dt_binary_zone_offset(int64_t offset)
 {
-    if (offset % DN2CPP_TPM == 0)
-        return offset;
-    // TimeZoneInfo truncates the adjustment relative to its standard base offset.
-    std::tm standard{};
-    dn2cpp_pal_localtime((dn2cpp_datetime_utc_now().ticks() - DN2CPP_UNIX_EPOCH_TICKS) / DN2CPP_TPS, &standard);
-    int64_t wall = dn2cpp_dt_tm_ticks(standard);
-    standard.tm_isdst = 0;
-    int64_t seconds = dn2cpp_pal_mktime_local(&standard);
-    int64_t base = wall - DN2CPP_UNIX_EPOCH_TICKS - seconds * DN2CPP_TPS;
-    base = base / DN2CPP_TPM * DN2CPP_TPM;
-    return base + (offset - base) / DN2CPP_TPM * DN2CPP_TPM;
+    if (offset % DN2CPP_TPM != 0)
+    {
+        // TimeZoneInfo rebuilds the adjustment from Hours/Minutes, omitting days.
+        std::tm standard{};
+        dn2cpp_pal_localtime((dn2cpp_datetime_utc_now().ticks() - DN2CPP_UNIX_EPOCH_TICKS) / DN2CPP_TPS, &standard);
+        int64_t wall = dn2cpp_dt_tm_ticks(standard);
+        standard.tm_isdst = 0;
+        int64_t seconds = dn2cpp_pal_mktime_local(&standard);
+        int64_t base = wall - DN2CPP_UNIX_EPOCH_TICKS - seconds * DN2CPP_TPS;
+        base = base / DN2CPP_TPM * DN2CPP_TPM;
+        offset = base + ((offset - base) % DN2CPP_TPD) / DN2CPP_TPM * DN2CPP_TPM;
+    }
+    // TZif history can exceed the adjustment-rule range accepted by TimeZoneInfo.
+    constexpr int64_t limit = 14 * DN2CPP_TPH;
+    return offset < -limit ? -limit : offset > limit ? limit : offset;
 }
 
 static int64_t dn2cpp_dt_local_binary_ticks(Dn2CppDateTime value)
@@ -562,9 +573,13 @@ static int64_t dn2cpp_dt_local_binary_ticks(Dn2CppDateTime value)
     std::tm standardClock{}, daylightClock{};
     dn2cpp_pal_localtime(standardSeconds, &standardClock);
     dn2cpp_pal_localtime(daylightSeconds, &daylightClock);
-    if (standardSeconds != daylightSeconds && dn2cpp_dt_same_clock(clock, standardClock)
-        && dn2cpp_dt_same_clock(clock, daylightClock))
+    bool standardValid = dn2cpp_dt_same_clock(clock, standardClock);
+    bool daylightValid = dn2cpp_dt_same_clock(clock, daylightClock);
+    if (standardSeconds != daylightSeconds && standardValid && daylightValid)
         seconds = (static_cast<uint64_t>(value._dateData) >> 62) == 3 ? daylightSeconds : standardSeconds;
+    else if (!standardValid && !daylightValid)
+        // Invalid spring clocks use the standard offset, independent of mktime's gap policy.
+        seconds = standardSeconds;
     int64_t wall = value.ticks() - value.ticks() % DN2CPP_TPS;
     int64_t offset;
     if (seconds == -1 && y != 1970)

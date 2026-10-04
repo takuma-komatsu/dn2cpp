@@ -3705,6 +3705,24 @@ internal sealed partial class Compilation
         return m;
     }
 
+    internal (MethodInfo Local, MethodInfo Daylight)? ReachLocalDaylightSavingTime()
+    {
+        var cls = FindClassByFullName("System.TimeZoneInfo");
+        if (cls is null)
+            return null;
+        var local = cls.EnsureMembers().Methods.FirstOrDefault(m => m.Name == "get_Local"
+            && m.IsStatic && m.Rva != 0 && m.Signature.ParameterTypes.Length == 0);
+        var daylight = cls.Methods.FirstOrDefault(m => m.Name == "IsDaylightSavingTime"
+            && !m.IsStatic && m.Rva != 0 && m.Signature.ParameterTypes is
+                [{ Class.FullName: "System.DateTime" }]);
+        if (local is null || daylight is null)
+            return null;
+        Reach(local);
+        Reach(daylight);
+        DrainReachability();
+        return (local, daylight);
+    }
+
     /// <summary>Reaches String's implementation of a dispatched interface slot,
     /// exempting it from the intrinsic-type cut (the slot table needs the real
     /// transpiled function — there is no call site to intercept). The String half

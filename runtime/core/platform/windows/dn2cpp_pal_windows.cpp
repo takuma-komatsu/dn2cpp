@@ -21,6 +21,7 @@
 // in this build can reach <windows.h> transitively (bdwgc's GC_WIN32_THREADS
 // headers, this file, ...).
 #include "platform/dn2cpp_pal.h"
+#include "dn2cpp_core.h"
 
 #include <windows.h>
 
@@ -334,4 +335,63 @@ int32_t dn2cpp_pal_run_process(const char* executable, const char* const* argv, 
         *exitCode = static_cast<int32_t>(status);
     ::CloseHandle(child.hProcess);
     return error;
+}
+
+
+[[noreturn]] static void dn2cpp_console_throw_win32(DWORD error)
+{
+    wchar_t* buffer = nullptr;
+    DWORD length = FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM
+        | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr, error, 0, reinterpret_cast<wchar_t*>(&buffer), 0, nullptr);
+    while (length > 0 && (buffer[length - 1] == L'\r' || buffer[length - 1] == L'\n'))
+        length--;
+    Dn2CppString* message = length == 0 ? nullptr
+        : dn2cpp_string_from_chars(reinterpret_cast<const char16_t*>(buffer), static_cast<int32_t>(length));
+    if (buffer != nullptr)
+        LocalFree(buffer);
+    auto* type = error == ERROR_ACCESS_DENIED ? &dn2cpp_unauthorized_access_exception_type : &dn2cpp_io_exception_type;
+    auto* exception = reinterpret_cast<Dn2CppExceptionObject*>(dn2cpp_exception_new(type, message, nullptr));
+    exception->hresult = static_cast<int32_t>(0x80070000u | error);
+    dn2cpp_throw(exception);
+}
+
+intptr_t dn2cpp_pal_console_stream_open(int32_t stream)
+{
+    DWORD id = stream == 0 ? STD_INPUT_HANDLE : stream == 1 ? STD_OUTPUT_HANDLE : STD_ERROR_HANDLE;
+    HANDLE handle = GetStdHandle(id);
+    if (handle == nullptr || handle == INVALID_HANDLE_VALUE)
+        return -1;
+    DWORD written;
+    uint8_t probe = 0;
+    if (stream != 0 && !WriteFile(handle, &probe, 0, &written, nullptr))
+        return -1;
+    return reinterpret_cast<intptr_t>(handle);
+}
+
+int32_t dn2cpp_pal_console_stream_owned() { return 0; }
+
+void dn2cpp_pal_console_stream_close(intptr_t) {}
+
+int32_t dn2cpp_pal_console_stream_read(intptr_t handle, uint8_t* buffer, int32_t length)
+{
+    if (length == 0)
+        return 0;
+    DWORD readCount = 0;
+    if (ReadFile(reinterpret_cast<HANDLE>(handle), buffer, static_cast<DWORD>(length), &readCount, nullptr))
+        return static_cast<int32_t>(readCount);
+    DWORD error = GetLastError();
+    if (error == ERROR_BROKEN_PIPE || error == ERROR_NO_DATA)
+        return 0;
+    dn2cpp_console_throw_win32(error);
+}
+
+void dn2cpp_pal_console_stream_write(intptr_t handle, const uint8_t* buffer, int32_t length)
+{
+    DWORD written = 0;
+    if (WriteFile(reinterpret_cast<HANDLE>(handle), buffer, static_cast<DWORD>(length), &written, nullptr))
+        return;
+    DWORD error = GetLastError();
+    if (error == ERROR_BROKEN_PIPE || error == ERROR_NO_DATA || error == ERROR_PIPE_NOT_CONNECTED)
+        return;
+    dn2cpp_console_throw_win32(error);
 }

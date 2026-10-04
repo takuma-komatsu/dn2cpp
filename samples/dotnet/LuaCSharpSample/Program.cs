@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.IO;
 using System.Threading.Tasks;
 using Lua;
 using Lua.Standard;
@@ -8,19 +9,13 @@ namespace Dn2Cpp;
 
 internal static class Program
 {
-    private static async Task Main()
+    private static async Task Main(string[] args)
     {
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
 
         var state = LuaState.Create();
-        // Register the libraries exercised by this deterministic, in-memory driver.
-        state.OpenBitwiseLibrary();
-        state.OpenCoroutineLibrary();
-        state.OpenMathLibrary();
-        state.OpenModuleLibrary();
-        state.OpenStringLibrary();
-        state.OpenTableLibrary();
+        state.OpenStandardLibraries();
         await Language(state);
         await TablesAndLibraries(state);
         await Interop(state);
@@ -28,6 +23,56 @@ internal static class Program
         await Modules(state);
         await Errors(state);
         Console.WriteLine("LuaCSharp end");
+        if (args.Length > 0 && args[0] == "before-standard-libraries")
+            return;
+        await StandardLibraries(state);
+    }
+
+    private static async Task StandardLibraries(LuaState state)
+    {
+        Console.WriteLine("== Lua standard libraries ==");
+        Check("basic", await state.DoStringAsync("""
+            local t = setmetatable({ value = 3 }, { __index = function() return 7 end })
+            rawset(t, 'value', 4)
+            local ok, answer = pcall(function() return assert(t.value == 4) end)
+            local failed, message = xpcall(function() error('failure') end,
+                function() return 'handled' end)
+            return type(t), rawget(t, 'value'), t.missing, ok, answer, failed, message,
+                tonumber('25'), select('#', 'a', 'b')
+            """), "table", 4, 7, true, true, false, "handled", 25, 2);
+        Check("io", await state.DoStringAsync("""
+            io.write('lua stdout: ', 'bytes', '\n')
+            io.stdout:flush()
+            return io.type(io.stdout), io.type(io.stdin), io.type(io.stderr)
+            """), "file", "file", "file");
+        string path = Path.GetTempFileName();
+        state.Environment["gateFile"] = path;
+        try
+        {
+            Check("file io", await state.DoStringAsync("""
+                local file = assert(io.open(gateFile, 'w+'))
+                file:write('first line\n42')
+                file:seek('set', 0)
+                local first, rest = file:read('*l'), file:read('*a')
+                file:close()
+                local removed = os.remove(gateFile)
+                return first, rest, io.type(file), removed
+                """), "first line", "42", "closed file", true);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+        Check("os", await state.DoStringAsync("""
+            local utc = os.date('!*t', 1719835200)
+            return utc.year, utc.month, utc.day, utc.hour, utc.isdst,
+                os.difftime(100, 40), os.date('!%Y-%m-%d', 1719835200)
+            """), 2024, 7, 1, 12, false, 60, "2024-07-01");
+        Check("debug", await state.DoStringAsync("""
+            local function inspect() return debug.getinfo(1, 'S').what end
+            return inspect()
+            """), "Lua");
+        Console.WriteLine("Lua standard libraries end");
     }
 
     private static async Task Language(LuaState state)

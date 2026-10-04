@@ -3142,6 +3142,22 @@ internal sealed partial class Compilation
             + $"{ns}.{name}. Pass Dn2Cpp.Runtime.dll with -r, or place it next to the dn2cpp executable.");
     }
 
+    internal MethodInfo ConsoleStandardStreamFactory()
+    {
+        const string Need = "opening a standard console stream";
+        var (module, handle) = RequireShimType("Dn2Cpp.Runtime", "Dn2CppConsoleStream", Need)[0];
+        if (!module.ClassMap.TryGetValue(handle, out var cls))
+            throw new NotSupportedException("Dn2Cpp.Runtime.Dn2CppConsoleStream is unavailable in the loaded shim.");
+        var factory = cls.EnsureMembers().Methods.FirstOrDefault(m => m.Name == "Open"
+            && m.IsStatic && m.Rva != 0 && m.Signature.ParameterTypes is
+                [{ Primitive: PrimitiveTypeCode.Int32 }, { Primitive: PrimitiveTypeCode.Int32 }]);
+        if (factory is null || cls.BaseClass is null)
+            throw new NotSupportedException("Opening a standard console stream requires the real CoreLib and a matching Dn2Cpp.Runtime.dll.");
+        Reach(factory);
+        DrainReachability();
+        return factory;
+    }
+
     /// <summary>The closed <c>Dn2Cpp.Runtime.SZArrayEnumerable&lt;elem&gt;</c> wrapper
     /// and its <c>(elem[])</c> constructor, instantiated, completed, allocated and
     /// fully reached (so its interface-dispatch tables are emitted). The emit-time

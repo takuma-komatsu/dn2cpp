@@ -7,8 +7,7 @@
 #      core file changes."  -> section 3 builds the whole runtime against
 #      runtime/core/platform/reference/, a PAL implementation that names no
 #      operating system, and section 4 runs a real transpiled program on it.
-#   2. "Console output goes through the seam, so a target with no stdout only has
-#      to implement two functions."  -> section 5 installs a sink through the
+#   2. "Console output and standard byte streams go through the seam."  -> section 5 installs a sink through the
 #      reference target's hook and asserts that every byte a program prints
 #      arrives there instead of on stdout.
 #   3. "-DDN2CPP_USE_GC=OFF is the supported retreat for a target with no working
@@ -227,6 +226,7 @@ cat > "$sinkout/generated_palsinkprobe.cpp" <<'PROBE'
 // _Exit (dn2cpp_environment_exit), which runs no atexit handler and no static
 // destructor, so a buffer would be the thing that vanished.
 #include "platform/reference/dn2cpp_pal_reference.h"
+#include "dn2cpp_core.h"
 #include <cstdio>
 
 namespace
@@ -247,7 +247,22 @@ namespace
     };
     Install g_install;
 }
+void dn2cpp_probe_raw_console()
+{
+    intptr_t output = dn2cpp_console_stream_open(1);
+    intptr_t error = dn2cpp_console_stream_open(2);
+    const uint8_t out[] = "raw output\n";
+    const uint8_t err[] = "raw error\n";
+    dn2cpp_console_stream_write(output, out, sizeof(out) - 1);
+    dn2cpp_console_stream_write(error, err, sizeof(err) - 1);
+    dn2cpp_console_stream_close(output);
+    dn2cpp_console_stream_close(error);
+}
 PROBE
+printf '\nvoid dn2cpp_probe_raw_console();\n' >> "$sinkout/generated.h"
+awk '{ print } /dn2cpp_runtime_init\(\);/ { print "    dn2cpp_probe_raw_console();" }' \
+    "$sinkout/generated.cpp" > "$sinkout/generated.tmp"
+mv "$sinkout/generated.tmp" "$sinkout/generated.cpp"
 ( export PAL_REFERENCE=1; compile_console "$sinkout" HelloWorld ) || \
     fail "the sink-probe build failed"
 sinkstdout="$sinkout/stdout.txt"
@@ -263,16 +278,18 @@ fi
 # CR-insensitive on BOTH sides, unlike the direct comparison in section 4: the
 # tag strip runs through sed, which reads in text mode on Windows and hands back
 # LF where the oracle still carries the host's CRLF.
+sink_expected="$(printf 'raw output\nraw error\n%s' "$oracle")"
 captured=$(strip_cr_win "$(LC_ALL=C sed 's/\[[OE]\]//g' "$sinkstderr")")
-[ "$captured" = "$(strip_cr_win "$oracle")" ] || {
+[ "$captured" = "$(strip_cr_win "$sink_expected")" ] || {
     echo "   captured (tags stripped): $captured" >&2
-    echo "   real .NET               : $oracle" >&2
+    echo "   expected                : $sink_expected" >&2
     fail "the sink did not receive the bytes the program prints"
 }
 # The stream tags are asserted too, not merely stripped: a seam that routed
 # Console.Error to the stdout stream id would produce identical text and the wrong
 # destination on a target where the two are different devices.
 grep -q '\[O\]' "$sinkstderr" || fail "no write arrived tagged as Console.Out"
+grep -Fq '[E]raw error' "$sinkstderr" || fail "standard error bytes missed the error sink"
 echo "   OK stdout empty; the sink received exactly the program's output"
 
 # ── 6/6 The calloc GC fallback ────────────────────────────────────────────────

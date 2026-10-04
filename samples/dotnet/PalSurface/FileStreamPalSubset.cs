@@ -17,6 +17,25 @@ namespace FileStreamPalSubset
     // derived booleans and file CONTENT cross the diff.
     internal static class Program
     {
+        internal static void RunTempFile()
+        {
+            Console.WriteLine("== temporary file PAL ==");
+            string path = Path.GetTempFileName();
+            try
+            {
+                Console.WriteLine("temporary file exists: " + File.Exists(path));
+                Console.WriteLine("temporary file empty: " + (File.ReadAllBytes(path).Length == 0));
+                File.WriteAllText(path, "temporary content");
+                Console.WriteLine("temporary file content: " + File.ReadAllText(path));
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+            Console.WriteLine("temporary file removed: " + !File.Exists(path));
+            Console.WriteLine("temporary file PAL end");
+        }
+
         internal static void __GateEntry()
         {
             Console.WriteLine("-- FileStreamPalSubset --");

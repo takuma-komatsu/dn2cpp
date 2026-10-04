@@ -389,14 +389,36 @@ internal sealed partial class MethodCompiler
         return false;
     }
 
-    /// <summary>Console.Error stderr-write surface: the Dn2CppConsoleWriter TextWriter
-    /// subtype's overrides call these, and a spilled <c>Console.Error.WriteLine($"…")</c>
-    /// callvirt lands on those overrides. Reuse EmitConsoleWrite with the Console.Error
-    /// stream so the write is byte-identical to the non-spilled fast path. The receiver of
-    /// these static helpers is not on the stack — the write target is always the singleton
-    /// stderr.</summary>
+    /// <summary>Native console operations used by the managed Stream and TextWriter shims.</summary>
     private bool TryEmitConsoleRuntimeIntrinsic(string name, MethodSignature<TypeDesc> sig)
     {
+        if (name == "OpenStandardHandle" && sig.ParameterTypes.Length == 1)
+        {
+            Push(StackKind.Ptr, "intptr_t", $"dn2cpp_console_stream_open({Cast(Pop(), "int32_t")})");
+            return true;
+        }
+        if (name == "CloseStandardHandle" && sig.ParameterTypes.Length == 1)
+        {
+            Emit($"dn2cpp_console_stream_close({Cast(Pop(), "intptr_t")});");
+            return true;
+        }
+        if (name == "StandardHandleOwned" && sig.ParameterTypes.Length == 0)
+        {
+            Push(StackKind.I4, "int32_t", "dn2cpp_console_stream_owned()");
+            return true;
+        }
+        if (name is "ReadStandardHandle" or "WriteStandardHandle" && sig.ParameterTypes.Length == 2)
+        {
+            string buffer = SpanValue(Pop(), CppTypes.Of(sig.ParameterTypes[1]));
+            string handle = Cast(Pop(), "intptr_t");
+            string call = $"dn2cpp_console_stream_{(name == "ReadStandardHandle" ? "read" : "write")}("
+                + $"{handle}, {buffer}.f__reference, {buffer}.f__length)";
+            if (name == "ReadStandardHandle")
+                Push(StackKind.I4, "int32_t", call);
+            else
+                Emit(call + ";");
+            return true;
+        }
         const string errStream = "dn2cpp_console_error()";
         if (name == "ErrWriteLine" && sig.ParameterTypes.Length == 0)
         {

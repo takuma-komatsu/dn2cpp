@@ -979,6 +979,42 @@ uint32_t dn2cpp_hashhelpers_fastmod(uint32_t value, uint32_t divisor, uint64_t m
 // single thread.
 static std::recursive_mutex& g_console_mtx = dn2cpp_never_destroyed<std::recursive_mutex>();
 
+intptr_t dn2cpp_console_stream_open(int32_t stream)
+{
+    return dn2cpp_pal_console_stream_open(stream);
+}
+
+int32_t dn2cpp_console_stream_owned()
+{
+    return dn2cpp_pal_console_stream_owned();
+}
+
+void dn2cpp_console_stream_close(intptr_t handle)
+{
+    dn2cpp_pal_console_stream_close(handle);
+}
+
+int32_t dn2cpp_console_stream_read(intptr_t handle, uint8_t* buffer, int32_t length)
+{
+    if (!dn2cpp_gc_kernel_write_unsafe(buffer))
+        return dn2cpp_pal_console_stream_read(handle, buffer, length);
+    // Kernel writes cannot trigger the incremental collector's page barrier.
+    std::vector<uint8_t> scratch(static_cast<size_t>(length));
+    int32_t count = dn2cpp_pal_console_stream_read(handle, scratch.data(), length);
+    if (count > 0)
+        std::memcpy(buffer, scratch.data(), static_cast<size_t>(count));
+    return count;
+}
+
+void dn2cpp_console_stream_write(intptr_t handle, const uint8_t* buffer, int32_t length)
+{
+    if (length == 0)
+        return;
+    std::lock_guard<std::recursive_mutex> lock(g_console_mtx);
+    dn2cpp_pal_console_flush();
+    dn2cpp_pal_console_stream_write(handle, buffer, length);
+}
+
 // The WriteLine line terminator, matching .NET's Environment.NewLine: "\r\n" on
 // Windows, "\n" elsewhere. Emitted verbatim — on Windows stdout/stderr are in
 // binary mode (dn2cpp_runtime_init), so these bytes reach the destination
@@ -990,7 +1026,7 @@ static constexpr char kDn2cppNewline[] = "\r\n";
 static constexpr char kDn2cppNewline[] = "\n";
 #endif
 
-// EVERY console byte the runtime emits leaves through this one call, and that is
+// EVERY console text byte the runtime emits leaves through this one call, and that is
 // the property `dn2cpp_pal_console_write` exists to have: a target whose console
 // is not stdio implements the two PAL entries and nothing in this file — a core
 // file — has to change. So do not reintroduce a direct `std::printf`/`fwrite` to

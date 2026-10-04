@@ -2,6 +2,7 @@
 # The real Lua-CSharp package: parsing and bytecode execution, closures, tables,
 # metamethods, bit32/math/string/table libraries and generated LuaObject
 # bindings, suspended async callbacks, coroutines, module caching and errors.
+# Full standard-library registration reaches basic, I/O, OS and debug delegates.
 # Hash-pinned shipped IL runs against the real CoreLib, with stdout, stderr and
 # exit status diffed against .NET and an empty transpilation gap report required.
 source "$(dirname "$0")/_common.sh"
@@ -30,16 +31,19 @@ while read -r want name; do
 done < "$pin"
 
 gate_extra_asserts() {
-    local out="$1" symbol line
+    local out="$1" symbol line before prefix
     assert_exit_code "$2" 0
     assert_exit_code "$3" 0
     [ ! -s "$out/expected.err" ] && [ ! -s "$out/native.err" ] \
         || { echo "FAIL: Lua-CSharp must run with empty stderr on both sides" >&2; return 1; }
     for line in 'language end' 'tables and libraries end' 'interop end' \
-        'coroutines end' 'modules end' 'errors end' 'LuaCSharp end'; do
+        'coroutines end' 'modules end' 'errors end' 'LuaCSharp end' 'Lua standard libraries end'; do
         grep -Fxq -- "$line" "$out/native.out" \
             || { echo "FAIL: missing Lua-CSharp section witness: $line" >&2; return 1; }
     done
+    before=$(run_bounded dotnet "$_CG_APP" before-standard-libraries)
+    prefix=$(awk '/^== Lua standard libraries ==$/ { exit } { print }' "$out/native.out")
+    assert_output "$(strip_cr_win "$prefix")" "$(strip_cr_win "$before")"
     while IFS= read -r symbol; do
         [ -n "$symbol" ] || continue
         grep -qw -- "$symbol" "$out/generated.h" \

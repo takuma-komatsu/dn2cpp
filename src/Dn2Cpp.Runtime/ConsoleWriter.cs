@@ -36,12 +36,24 @@ internal sealed class Dn2CppConsoleWriter : TextWriter
     public override void WriteLine(bool value) => ConsoleRuntime.ErrWriteLine(value);
 }
 
-/// <summary>The stderr-write surface <see cref="Dn2CppConsoleWriter"/>'s overrides funnel
-/// into. The transpiler intercepts every call by declaring-type name and emits the
-/// matching <c>dn2cpp_textwriter_*(dn2cpp_console_error(), …)</c> helper, so the bodies
-/// below never execute — they throw the same placeholder as <see cref="HotUpdate"/>.</summary>
+/// <summary>Native console operations intercepted by the transpiler.</summary>
 internal static class ConsoleRuntime
 {
+    public static IntPtr OpenStandardHandle(int stream) =>
+        throw new NotSupportedException("ConsoleRuntime.OpenStandardHandle is a dn2cpp intrinsic");
+
+    public static void CloseStandardHandle(IntPtr handle) =>
+        throw new NotSupportedException("ConsoleRuntime.CloseStandardHandle is a dn2cpp intrinsic");
+
+    public static bool StandardHandleOwned() =>
+        throw new NotSupportedException("ConsoleRuntime.StandardHandleOwned is a dn2cpp intrinsic");
+
+    public static int ReadStandardHandle(IntPtr handle, Span<byte> buffer) =>
+        throw new NotSupportedException("ConsoleRuntime.ReadStandardHandle is a dn2cpp intrinsic");
+
+    public static void WriteStandardHandle(IntPtr handle, ReadOnlySpan<byte> buffer) =>
+        throw new NotSupportedException("ConsoleRuntime.WriteStandardHandle is a dn2cpp intrinsic");
+
     public static void ErrWrite(char value) =>
         throw new NotSupportedException("Dn2Cpp.Runtime.ConsoleRuntime.ErrWrite is a dn2cpp intrinsic (no managed implementation)");
 

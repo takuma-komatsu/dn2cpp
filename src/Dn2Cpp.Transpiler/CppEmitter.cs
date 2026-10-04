@@ -5859,7 +5859,9 @@ internal sealed partial class CppEmitter
         var callArgs = new List<string>();
         int start = 0;
         if (!m.IsStatic)
-            callArgs.Add($"({m.DeclaringClass.CppStructName}*)__target");
+            callArgs.Add(m.DeclaringClass.IsValueType
+                ? $"({CppTypes.Of(TypeDesc.MakeClass(m.DeclaringClass))}*)(__target + 1)"
+                : $"({m.DeclaringClass.CppStructName}*)__target");
         else if (adapter.Closed)
         {
             // The bound first argument rides the target slot, which is always a
