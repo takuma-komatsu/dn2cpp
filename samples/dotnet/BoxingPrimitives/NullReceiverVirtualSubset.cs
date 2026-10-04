@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 
 // Object's Equals/GetHashCode/ToString and String's Equals/CompareTo/GetHashCode/ToString
 // on a null receiver — a direct callvirt, a `constrained. !T` call under a generic, and
@@ -10,6 +11,13 @@ namespace NullReceiverVirtualSubset
     internal struct Point
     {
         public int X;
+    }
+
+    internal static class MonomorphicStringText<T>
+    {
+        // A generic owner's static synchronized member retains its specialization.
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        internal static string Read(T value) => value.ToString();
     }
 
     internal static class Program
@@ -32,6 +40,35 @@ namespace NullReceiverVirtualSubset
         private static bool Eq<T>(T value, object other) => value.Equals(other);
         private static int Hash<T>(T value) => value.GetHashCode();
         private static string Text<T>(T value) => value.ToString();
+
+        private static string TextResult(Func<string> call)
+        {
+            try
+            {
+                string result = call();
+                return result is null ? "<null>" : result;
+            }
+            catch (NullReferenceException)
+            {
+                return "NRE";
+            }
+        }
+
+        internal static void RunStringText()
+        {
+            Console.WriteLine("== constrained String ToString receiver ==");
+            string value = new string(new[] { 't', 'e', 'x', 't' });
+            string none = null;
+            Console.WriteLine("direct string text: " + TextResult(() => value.ToString()) + " "
+                + TextResult(() => none.ToString()));
+            Console.WriteLine("shared string text: " + TextResult(() => Text(value)) + " "
+                + TextResult(() => Text(none)));
+            Console.WriteLine("monomorphic string text: " + TextResult(() => MonomorphicStringText<string>.Read(value)) + " "
+                + TextResult(() => MonomorphicStringText<string>.Read(none)));
+            Console.WriteLine("constrained string text identity: " + ReferenceEquals(value, Text(value))
+                + " " + ReferenceEquals(value, MonomorphicStringText<string>.Read(value)));
+            Console.WriteLine("constrained String ToString receiver end");
+        }
 
         internal static void Run()
         {

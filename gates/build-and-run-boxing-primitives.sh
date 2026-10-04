@@ -61,6 +61,10 @@
 #     interface into a fitting and a too-small buffer. Its extra asserts pin that
 #     Int32's answers come from the relation rows the init prologue installs, and that
 #     the output before the section is unchanged.
+#   * StringTypedComparisonSubset — String's typed comparison interface map,
+#     including canonical reference dispatch, null arguments and custom receivers.
+#   * NullReceiverVirtualSubset's final section preserves the result of a constrained
+#     String ToString call, so a null return cannot mask a missing receiver fault.
 #
 # The culture pin is the driver's first two statements, NOT an InvariantGlobalization
 # property — that one pins only the oracle and drops ICU (stated at the
@@ -144,6 +148,67 @@ gate_extra_asserts() {
         grep -Fxq "$line" <<< "$native" \
             || { echo "FAIL: ordinary Object dispatch witness missing: $line" >&2; exit 1; }
     done
+    before=$(dotnet "$_CG_APP" before-string-interface-dispatch)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== string typed interface dispatch ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== string typed interface dispatch ==' \
+        'generic cast string compare: 1 0 -1 1 NRE' \
+        'generic held string compare: 1 0 -1 1 NRE' \
+        'custom typed string comparison: 17' \
+        'string comparison relations: True False False' \
+        'string typed interface dispatch end'; do
+        grep -Fxq "$line" <<< "$native" \
+            || { echo "FAIL: string typed comparison witness missing: $line" >&2; exit 1; }
+    done
+    if ! awk '
+            { sub(/\r$/, "") }
+            $0 == "// StringTypedComparisonSubset.Program::Cast" { subject = 1; next }
+            subject && /^(inline )?int32_t Program_Cast_TisCnRef_m[0-9]+\(.*\)$/ {
+                body = 1; subject = 0; next
+            }
+            subject && /^\/\// { subject = 0 }
+            body {
+                if (/dn2cpp_resolve_interface/ && /&ti_System_IComparable__CnRef/) found = 1
+                if (/^}/) body = 0
+            }
+            END { exit !found }
+        ' "$out/generated.h" "$out"/generated*.cpp; then
+        echo 'FAIL: string comparison did not exercise canonical interface dispatch' >&2
+        exit 1
+    fi
+    before=$(dotnet "$_CG_APP" before-string-constrained-text)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== constrained String ToString receiver ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== constrained String ToString receiver ==' \
+        'monomorphic string text: text NRE' \
+        'shared string text: text NRE' \
+        'constrained string text identity: True True' \
+        'constrained String ToString receiver end'; do
+        grep -Fxq "$line" <<< "$native" \
+            || { echo "FAIL: constrained String ToString witness missing: $line" >&2; exit 1; }
+    done
+    if ! awk '
+            { sub(/\r$/, "") }
+            $0 == "// NullReceiverVirtualSubset.MonomorphicStringText_String::Read" { subject = 1; next }
+            subject && /^(inline )?Dn2CppString\* MonomorphicStringText_[^(]+\(Dn2CppString\* a0\)$/ {
+                body = 1; subject = 0; next
+            }
+            subject && /^\/\// { subject = 0 }
+            body {
+                if (/dn2cpp_null_check/ && /Dn2CppString\*\*/) found = 1
+                if (/^}/) body = 0
+            }
+            END { exit !found }
+        ' "$out/generated.h" "$out"/generated*.cpp; then
+        echo 'FAIL: concrete constrained String ToString body was not exercised' >&2
+        exit 1
+    fi
+    if grep -Eq '^// NullReceiverVirtualSubset.MonomorphicStringText_[^:]*CnRef::Read' "$out/generated.h" "$out"/generated*.cpp; then
+        echo 'FAIL: monomorphic String ToString witness was shared' >&2
+        exit 1
+    fi
 }
 
 corelib_diff_gate BoxingPrimitives

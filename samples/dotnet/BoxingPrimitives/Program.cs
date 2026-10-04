@@ -91,6 +91,12 @@ namespace BoxingPrimitives
             ConstrainedClassContextSubset.Program.RunInterfaceShapes();
             OrdinaryTypeCastSubset.Program.Run();
             Console.WriteLine("ordinary Object and value-type dispatch end");
+            if (args.Length > 0 && args[0] == "before-string-interface-dispatch")
+                return;
+            StringTypedComparisonSubset.Program.Run();
+            if (args.Length > 0 && args[0] == "before-string-constrained-text")
+                return;
+            NullReceiverVirtualSubset.Program.RunStringText();
         }
     }
 }
