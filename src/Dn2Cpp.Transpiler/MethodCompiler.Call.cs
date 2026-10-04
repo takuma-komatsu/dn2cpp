@@ -4434,7 +4434,7 @@ internal sealed partial class MethodCompiler
                 && IsObjectShapedConstrained(handle, name):
             {
                 var receiver = Pop(); // managed pointer to the constrained string
-                Push(StackKind.Ref, "Dn2CppString*", $"(*(Dn2CppString**)({receiver.Expr}))");
+                Push(StackKind.Ref, "Dn2CppString*", ConstrainedReceiverRead(c, receiver.Expr));
                 return true;
             }
             // object::ToString on a value-type struct that overrides it — e.g.
