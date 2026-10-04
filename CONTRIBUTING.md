@@ -13,10 +13,11 @@ on every pull request and are the only green a contributor can see. They answer
 one question: does the tree still build across Linux, Windows, and macOS, and
 does C# still reach a running native binary.
 
-The merge gate — `./gates/pre-merge.sh` — does not run there and cannot. Its
-header states each structural reason (a scons-built dn2cpp fork of the Godot
-editor, Xcode plus an iOS simulator, an Android NDK, a proprietary CRI package);
-read it there rather than trusting a summary. A maintainer runs it on a
+The Godot-inclusive merge gate — `./gates/pre-merge.sh` — does not run there and
+cannot. Its header states each structural reason (a scons-built dn2cpp fork of
+the Godot editor, Xcode plus an iOS simulator, an Android NDK, a proprietary CRI
+package);
+read it there rather than trusting a summary. A human runs it on a
 provisioned machine. The Emscripten SDK is the one prerequisite pre-merge
 provisions itself (`gates/setup-emsdk.sh`); a host missing any other one still
 runs to completion, and the surfaces it cannot cover are reported red at the
@@ -30,14 +31,28 @@ Running this much locally is enough:
 ```bash
 ./gates/build-and-run-sample.sh          # console: C# → IL → C++ → native
 ./gates/build-and-run-multiassembly.sh   # multi-assembly (-r)
-SKIP_GODOT=1 ./gates/run-all-gates.sh    # the non-Godot suite
+./gates/pre-merge.sh --skip-godot        # strict Debug non-Godot check
 ```
 
-For a strict non-Godot check in both Release and Debug, use
-`./gates/pre-merge.sh --skip-godot` (or `SKIP_GODOT=1`). This omits the Godot
-phase and its self-host/fork/template preparation. Selected gates still must
-run with caching disabled; missing prerequisites fail the check. Its verdict
-and receipt identify the partial scope and do not approve a merge.
+The merge gate runs Debug by default, enabling the shared-generics assertions
+while running the suite once. Use `CONFIG=Release ./gates/pre-merge.sh` for
+Release only, or `./gates/pre-merge.sh --both-configs` for Release followed by
+Debug. All selections disable caching and require every selected gate to run.
+
+For a PR that changes no Godot-specific files, a passing default Debug
+`./gates/pre-merge.sh --skip-godot` is sufficient to merge. Coding agents may
+run this strict non-Godot check autonomously for any change. It omits the Godot
+phase and its self-host/fork/template preparation; missing prerequisites still
+fail the selected gates, and caching stays disabled. Its receipt records the
+non-Godot scope, excluded gate count and configurations. Combine `--skip-godot`
+with `--both-configs` to check both configurations.
+
+Godot-specific files are the Godot backends, shim and runtimes in the module
+map, plus Godot-only samples, gates, helpers, packaging and documentation.
+Shared runners and general verification infrastructure are not Godot-specific;
+`AGENTS.md` defines the scope. A PR that changes Godot-specific files still
+requires a human-run Godot-inclusive merge gate. Selecting `--skip-godot` does
+not classify a PR's changed files.
 
 **A skip is not a pass.** A gate whose optional prerequisite is absent opts out
 via `gate_skip` (`gates/_common.sh`) and is counted and reported **separately**

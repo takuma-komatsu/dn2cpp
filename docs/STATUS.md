@@ -98,9 +98,12 @@ never as a reference back to a row.
 
 ## Regression gate
 
-The full gate suite (`gates/build-and-run-*.sh`, each a themed multi-section
-program) is the regression gate — run it through the parallel runner before
-committing:
+Merge verification follows the scoped policy in `AGENTS.md` and
+`CONTRIBUTING.md`: a passing default Debug `./gates/pre-merge.sh --skip-godot`
+is sufficient for PRs without Godot-specific file changes, and coding agents
+may run that check autonomously. Godot-specific changes require a human-run
+Godot-inclusive pre-merge check. The parallel runner provides manual smoke
+checks:
 
 ```bash
 ./gates/run-all-gates.sh               # all gates (pre-build once → parallel; Godot in chains)

@@ -3,39 +3,44 @@
 # merge to `main`, so that "which two commands, under which config, with which
 # environment" stops living in somebody's memory.
 #
-#     ./gates/pre-merge.sh                # the real thing (~1-2h, plus a self-host
-#                                         # build or a fork-cache refresh when one is due)
-#     ./gates/pre-merge.sh --skip-godot   # strict non-Godot check (partial scope)
+#     ./gates/pre-merge.sh                # Debug suite, strict and uncached
+#     CONFIG=Release ./gates/pre-merge.sh  # Release suite only
+#     ./gates/pre-merge.sh --both-configs  # Release, then Debug
+#     ./gates/pre-merge.sh --skip-godot   # merge check for non-Godot changes
 #     ./gates/pre-merge.sh --dry-run      # print the exact runs, execute nothing
-#     ./gates/pre-merge.sh --keep-going   # run Debug even after Release fails
+#     ./gates/pre-merge.sh --keep-going   # run selected suites after an earlier failure
 #     DN2CPP_PREMERGE_SELFTEST=1 ./gates/pre-merge.sh   # self-test, no suite run
 #
 # --skip-godot (also SKIP_GODOT=1) selects the non-Godot scope. It omits the
-# self-host/fork/template inputs, retains strict uncached suites in both configs,
-# and writes a partial-scope verdict and receipt rather than merge approval.
+# self-host/fork/template inputs, retains strict uncached suites in selected configs,
+# and records the excluded gates in its verdict and receipt. A passing default
+# Debug run is sufficient to merge a PR that changes no Godot-specific files.
+# Coding agents may run this scope autonomously for any change. Godot-specific
+# changes require a human-run Godot-inclusive pre-merge; see AGENTS.md for the
+# file scope. This script does not classify the PR's changed files.
 #
 # WHAT IT RUNS, AND WHY EXACTLY THIS. One harness, the inputs the suites cannot
-# run without, and two full suites, in this order:
+# run without, and the selected full suites, in this order:
 #
 #   0. gates/verify-culture-invariance.sh
 #   1. gates/selfhost-emit.sh — only when the binary no longer describes src/
 #   2. gates/setup-godot-fork.sh (+ gates/setup-godot-fork-web.sh per flavor) —
 #      only when the fork cache no longer describes ../godot-dn2cpp
-#   3. CONFIG=Release  DN2CPP_REQUIRE_ALL=1  DN2CPP_GATE_CACHE=0
-#   4. CONFIG=Debug    DN2CPP_REQUIRE_ALL=1  DN2CPP_GATE_CACHE=0
+#   3. CONFIG=Debug (default) or CONFIG=Release, with DN2CPP_REQUIRE_ALL=1
+#      DN2CPP_GATE_CACHE=0; --both-configs runs Release, then Debug.
 #
 #   - REQUIRE_ALL, because "all N gates passed" must mean all N *ran*. Without
 #     it a machine missing a prerequisite reports green over a hole, which is
 #     the shape that let the mono-module lane ship red on `main` for a week.
 #   - GATE_CACHE=0, because the cache key is Release-flavoured: a Debug run over
-#     a warm cache serves Release-keyed greens and the Debug-only shared-generics
-#     backstop (CppEmitter.AssertSharedBodySymbols) never arms. The Debug suite
-#     is the ONLY run that asserts that backstop across the whole corpus, so a
-#     cached Debug suite is a Debug suite that did not happen.
-#   - Both configs, because a regression that lets a shared canonical body name a
-#     grouped instantiation's vt_/rgctx_/sf_ symbol is red only in Debug.
-#   - Release first: it is the configuration everything else in the tree is
-#     measured in, so its failures are the ones with the most context attached.
+#     a warm cache serves Release-keyed greens and the shared-generics backstop
+#     (CppEmitter.AssertSharedBodySymbols) never arms. A cached Debug suite is a
+#     Debug suite that did not happen.
+#   - Debug by default, because it enables the shared-generics assertions that
+#     catch a shared canonical body naming a grouped instantiation's vt_/rgctx_/sf_
+#     symbol. One configuration avoids paying for the full suite twice.
+#   - With --both-configs, Release runs first: it is the configuration everything
+#     else in the tree is measured in, so its failures have the most context.
 #   - The culture harness FIRST, and it is the one exception to the junk-drawer
 #     rule below. It answers a pass/fail question no suite run can (whether a
 #     bucket's verdict is a property of the developer's locale), it is minutes
@@ -74,11 +79,11 @@
 #     the suite. A HOST prerequisite this box lacks (no Xcode, no emcc even after
 #     the unpack) is not a refusal: the suites still run, the affected gates are
 #     red under REQUIRE_ALL, and the verdict lists the gaps. A suite red ONLY
-#     for such gates does not withhold the other configuration either; a suite
+#     for such gates does not withhold later selected suites either; a suite
 #     with any other failure does. Only a repairable ARTIFACT — a stale or
 #     missing zip on a host that could build it — refuses.
 #
-# WHY THIS IS NOT A GATE. It runs the suite — twice. It lives beside
+# WHY THIS IS NOT A GATE. It runs the suite. It lives beside
 # gates/verify-locks.sh and gates/measure-*.sh, outside the build-and-run-*.sh
 # glob the runner globs, for the obvious reason that a gate which runs the whole
 # gate suite does not terminate.
@@ -292,14 +297,17 @@ fi
 
 DRY_RUN=0
 KEEP_GOING=0
+BOTH_CONFIGS=0
+CONFIG=${CONFIG:-Debug}
 SKIP_GODOT=${SKIP_GODOT:-0}
 for arg in "$@"; do
     case "$arg" in
         --dry-run)    DRY_RUN=1 ;;
         --keep-going) KEEP_GOING=1 ;;
+        --both-configs) BOTH_CONFIGS=1 ;;
         --skip-godot) SKIP_GODOT=1 ;;
         -h|--help)
-            sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'
+            sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
             exit 0
             ;;
         *)
@@ -308,6 +316,15 @@ for arg in "$@"; do
             ;;
     esac
 done
+case "$CONFIG" in
+    Debug|Release) ;;
+    *)
+        echo "error: unsupported CONFIG: $CONFIG (expected Debug or Release)" >&2
+        exit 2
+        ;;
+esac
+CONFIGS="$CONFIG"
+[ "$BOTH_CONFIGS" != "1" ] || CONFIGS="Release Debug"
 
 # One log root per repository directory, so two worktrees pre-merging at once do
 # not destroy each other's logs (run-all-gates.sh wipes its LOGDIR at start and
@@ -556,10 +573,10 @@ KEYS
     return 0
 }
 
-# ── the two runs, described in exactly one place ─────────────────────────────
+# ── the suite runs, described in exactly one place ────────────────────────────
 
 # premerge_argv CONFIG LOGDIR — fills PREMERGE_ARGV with the command line for
-# one of the two runs. --dry-run prints this array and the real path EXECUTES
+# one selected run. --dry-run prints this array and the real path EXECUTES
 # it, so what is printed cannot drift from what runs. bash 3.2: plain array.
 premerge_argv() {
     local config="$1" logdir="$2"
@@ -728,7 +745,7 @@ premerge_emsdk_argv() {
 # gate that called gate_skip under DN2CPP_REQUIRE_ALL=1 — its log carries
 # gate_skip's fixed FAIL marker — with the failed gates in VERDICT_PREREQ_GATES.
 # Such a run is still red (the merge needs a host that runs them), but it is not
-# the caller's reason to withhold the other configuration: those gates cannot go
+# the caller's reason to withhold later selected suites: those gates cannot go
 # green on this host whatever the tree says. A gate that failed for any other
 # reason, a skip, a cached record or a missing record makes the run plainly red.
 premerge_verdict() {
@@ -820,6 +837,7 @@ premerge_verdict() {
 # artifacts. Nothing here is a stand-in for either function; the fixtures stand
 # in for the run, which is the only part that cannot be conjured in a second.
 if [ "${DN2CPP_PREMERGE_SELFTEST:-0}" = "1" ]; then
+    unset CONFIG
     SKIP_GODOT=0
     ST_PASS=0
     ST_FAIL=0
@@ -1164,30 +1182,63 @@ GFSTUB
         fi
     }
 
-    e2e both-green   0 0 0 "Release,Debug,"
-    e2e red-release  1 1 0 "Release,"
-    e2e red-debug    1 0 1 "Release,Debug,"
-    e2e keep-going   1 1 1 "Release,Debug," --keep-going
+    e2e default-green 0 1 0 "Debug,"
+    e2e default-red   1 0 1 "Debug,"
+    CONFIG=Debug e2e env-debug 0 1 0 "Debug,"
+    CONFIG=Release e2e env-release 0 0 1 "Release,"
+    CONFIG=Release e2e release-red 1 1 0 "Release,"
+    e2e both-green   0 0 0 "Release,Debug," --both-configs
+    CONFIG=Release e2e env-release-both 0 0 0 "Release,Debug," --both-configs
+    e2e red-release  1 1 0 "Release," --both-configs
+    e2e red-debug    1 0 1 "Release,Debug," --both-configs
+    e2e keep-going   1 1 1 "Release,Debug," "--both-configs --keep-going"
+
+    for selection in default-green:Debug env-debug:Debug env-release:Release both-green:'Release Debug'; do
+        name=${selection%%:*}
+        configs=${selection#*:}
+        if grep -q "^configs: $configs$" "$ST_TMP/e2e-$name/_receipt.txt" \
+            && grep -q "PASSED — $configs, " "$ST_TMP/e2e-$name/_out.txt"; then
+            st_ok "$name: receipt and verdict name only the selected configurations"
+        else
+            st_bad "$name: receipt or verdict misstates the configurations"
+        fi
+    done
+
+    for arg in --unknown '' --both-configs; do
+        invalid="$ST_TMP/invalid-${arg:---config}"
+        invalid_rc=0
+        invalid_config=Unsupported
+        [ "$arg" != --unknown ] || invalid_config=Debug
+        CONFIG="$invalid_config" DN2CPP_PREMERGE_SELFTEST=0 DN2CPP_PREMERGE_LOGROOT="$invalid" \
+            bash "$FAKE/gates/pre-merge.sh" $arg >"$ST_TMP/invalid.txt" 2>&1 || invalid_rc=$?
+        if [ "$invalid_rc" = 2 ] && [ ! -e "$invalid" ]; then
+            st_ok "invalid config/argument ($arg): refused before creating logs"
+        else
+            st_bad "invalid config/argument ($arg): exit $invalid_rc, log root $invalid"
+        fi
+    done
 
     # A Release whose only failures are gate_skips under REQUIRE_ALL is red but
     # does not withhold Debug: those gates cannot pass on this host, and the
     # verdict lists them as a host gap. One plainly failed gate beside them
     # withholds Debug as before.
-    DN2CPP_STUB_FAIL_Release=prereq e2e red-release-prereq-only 1 1 0 "Release,Debug,"
+    DN2CPP_STUB_FAIL_Release=prereq e2e red-release-prereq-only 1 1 0 "Release,Debug," --both-configs
     if grep -q 'host prerequisites absent here: Release: gate02 (prerequisite absent)' \
         "$ST_TMP/e2e-red-release-prereq-only/_out.txt"; then
         st_ok "red-release-prereq-only: the verdict lists the gate as a host gap"
     else
         st_bad "red-release-prereq-only: the verdict does not list gate02 as a host gap — see $ST_TMP/e2e-red-release-prereq-only/_out.txt"
     fi
-    DN2CPP_STUB_FAIL_Release=mixed e2e red-release-mixed 1 1 0 "Release,"
+    DN2CPP_STUB_FAIL_Release=mixed e2e red-release-mixed 1 1 0 "Release," --both-configs
 
     # Phase 0's three outcomes. The one that matters is the middle case: a red
     # culture harness must stop the suites BEFORE they run (empty call list), or
     # the fail-fast the phase exists for is decoration.
-    e2e culture-red           1 0 0 ""                 ""            1
-    e2e culture-red-keepgoing 1 0 0 "Release,Debug,"   --keep-going  1
-    e2e culture-not-performed 0 0 0 "Release,Debug,"   ""            77
+    e2e culture-red           1 0 0 ""               --both-configs 1
+    e2e culture-red-keepgoing 1 0 0 "Release,Debug," "--both-configs --keep-going" 1
+    e2e culture-not-performed 0 0 0 "Release,Debug," --both-configs 77
+    e2e default-culture-red   1 0 0 ""               "" 1
+    e2e default-culture-keepgoing 1 0 0 "Debug," --keep-going 1
     for c in culture-red culture-not-performed; do
         want=$([ "$c" = culture-red ] && echo "culture=RED" || echo "culture=not-performed")
         if grep -q "$want" "$ST_TMP/e2e-$c/_out.txt"; then
@@ -1206,8 +1257,8 @@ GFSTUB
 
     # Phase 1's two outcomes that the driver owns. A red self-host build must stop
     # the suites before they run, for the same reason a red culture harness does.
-    e2e selfhost-red           1 0 0 ""               ""            0 1
-    e2e selfhost-red-keepgoing 1 0 0 "Release,Debug," --keep-going  0 1
+    e2e selfhost-red           1 0 0 ""               --both-configs 0 1
+    e2e selfhost-red-keepgoing 1 0 0 "Release,Debug," "--both-configs --keep-going" 0 1
     if grep -q 'selfhost=RED' "$ST_TMP/e2e-selfhost-red/_out.txt"; then
         st_ok "selfhost-red: verdict names selfhost=RED"
     else
@@ -1236,7 +1287,7 @@ GFSTUB
     #
     # every pre-existing case above already exercised the STALE arm, because the
     # stub answers stale by default — so what is left is the other three answers.
-    DN2CPP_STUB_FORK_FRESH=0 e2e fork-fresh 0 0 0 "Release,Debug,"
+    DN2CPP_STUB_FORK_FRESH=0 e2e fork-fresh 0 0 0 "Release,Debug," --both-configs
     if [ -f "$ST_TMP/e2e-fork-fresh/_fork_calls.txt" ]; then
         st_bad "fork-fresh: the phase rebuilt a cache it was told was current"
     else
@@ -1267,7 +1318,7 @@ GFSTUB
 
     # A failed refresh must stop the suites, exactly as a failed self-host build
     # does: an empty call list is the assertion, not a nicety.
-    DN2CPP_STUB_FORK_RC=1 e2e fork-red 1 0 0 ""
+    DN2CPP_STUB_FORK_RC=1 e2e fork-red 1 0 0 "" --both-configs
     if grep -q 'fork=RED' "$ST_TMP/e2e-fork-red/_out.txt"; then
         st_ok "fork-red: the verdict names fork=RED"
     else
@@ -1277,7 +1328,7 @@ GFSTUB
     # Absent is a DIFFERENT answer from stale, and the phase has to say so before
     # spending tens of minutes: a reader who sees "refreshing" where the truth is
     # "building from nothing" has no way to notice the wrong worktree.
-    DN2CPP_STUB_FORK_COMPLETE=1 e2e fork-absent 0 0 0 "Release,Debug,"
+    DN2CPP_STUB_FORK_COMPLETE=1 e2e fork-absent 0 0 0 "Release,Debug," --both-configs
     if grep -q 'no cache on this box yet' "$ST_TMP/e2e-fork-absent/_out.txt"; then
         st_ok "fork-absent: the phase says it is building a cache, not refreshing one"
     else
@@ -1290,7 +1341,7 @@ GFSTUB
         st_bad "fork-absent: receipt retained pre-build unknowns"
     fi
 
-    DN2CPP_STUB_FORK_NO_MARK=1 e2e fork-false-green 1 0 0 ""
+    DN2CPP_STUB_FORK_NO_MARK=1 e2e fork-false-green 1 0 0 "" --both-configs
     if grep -q 'setup exited 0 but the rebuilt cache is not current' \
         "$ST_TMP/e2e-fork-false-green/_out.txt"; then
         st_ok "fork-false-green: setup exit 0 is re-probed and refused"
@@ -1300,7 +1351,7 @@ GFSTUB
 
     # A host with no arm for the lane: refused up front with exit 2. Not exit 1 — this is
     # not a red merge gate, it is a run that cannot be performed here.
-    DN2CPP_STUB_OS=android e2e fork-no-arm 2 0 0 ""
+    DN2CPP_STUB_OS=android e2e fork-no-arm 2 0 0 "" --both-configs
     if grep -q 'no pre-merge run on this host' "$ST_TMP/e2e-fork-no-arm/_out.txt"; then
         st_ok "fork-no-arm: refused with the reason, before the first suite"
     else
@@ -1312,7 +1363,7 @@ GFSTUB
     # verdict names the gap — with no receipt, because red is red. A repairable
     # ARTIFACT (the zip is absent on a host that could build it) keeps the exit 2
     # refusal before the first suite.
-    DN2CPP_STUB_IOS_KIND=prerequisite e2e forkios-no-xcode 1 0 0 "Release,Debug,"
+    DN2CPP_STUB_IOS_KIND=prerequisite e2e forkios-no-xcode 1 0 0 "Release,Debug," --both-configs
     if grep -q 'forkios=RED' "$ST_TMP/e2e-forkios-no-xcode/_out.txt" \
         && grep -q 'host prerequisites absent here' "$ST_TMP/e2e-forkios-no-xcode/_out.txt"; then
         st_ok "forkios-no-xcode: suites ran, verdict names forkios=RED and the host gap"
@@ -1328,7 +1379,7 @@ GFSTUB
             web_emcc_cri.txt web_emcc_cri_debug.txt; do
         cp "$ST_FORKROOT/$f" "$ST_IOSLESS/$f"
     done
-    DN2CPP_STUB_FORKROOT="$ST_IOSLESS" e2e forkios-stale-artifact 2 0 0 ""
+    DN2CPP_STUB_FORKROOT="$ST_IOSLESS" e2e forkios-stale-artifact 2 0 0 "" --both-configs
     if grep -q 'setup-godot-fork-ios.sh' "$ST_TMP/e2e-forkios-stale-artifact/_out.txt"; then
         st_ok "forkios-stale-artifact: refused naming the iOS aid, before the first suite"
     else
@@ -1344,7 +1395,7 @@ GFSTUB
     cp "$ST_FORKROOT/ios_template.zip" "$ST_WEBLESS/ios_template.zip"
     cp "$ST_FORKROOT/ios_template.zip.provenance" "$ST_WEBLESS/ios_template.zip.provenance"
     DN2CPP_STUB_EMSDK_RESOLVE=1 DN2CPP_STUB_FORKROOT="$ST_WEBLESS" \
-        e2e forkweb-provision 0 0 0 "Release,Debug,"
+        e2e forkweb-provision 0 0 0 "Release,Debug," --both-configs
     ST_EMSDK_CALLS="$(cat "$ST_TMP/e2e-forkweb-provision/_emsdk_calls.txt" 2>/dev/null | tr '\n' ',')"
     ST_BAKED="$(cat "$ST_TMP/e2e-forkweb-provision/_forkweb_calls.txt" 2>/dev/null | tr '\n' ',')"
     if [ "$ST_EMSDK_CALLS" = "called," ] && [ "$ST_BAKED" = "stock,cri," ]; then
@@ -1358,7 +1409,7 @@ GFSTUB
         st_bad "forkweb-provision: the receipt does not record the rebake"
     fi
     DN2CPP_STUB_EMSDK_RESOLVE=1 DN2CPP_STUB_EMSDK_RC=1 DN2CPP_STUB_FORKROOT="$ST_WEBLESS" \
-        e2e forkweb-provision-red 1 0 0 "Release,Debug,"
+        e2e forkweb-provision-red 1 0 0 "Release,Debug," --both-configs
     if grep -q 'forkweb=RED' "$ST_TMP/e2e-forkweb-provision-red/_out.txt" \
         && grep -q 'host prerequisites absent here' "$ST_TMP/e2e-forkweb-provision-red/_out.txt" \
         && grep -q '_emsdk.log' "$ST_TMP/e2e-forkweb-provision-red/_out.txt"; then
@@ -1371,7 +1422,7 @@ GFSTUB
     # reads as "an SDK is provisioned", and the stub records the CRI pin each
     # flavor was invoked under — an ambient CRI=1 leaking into the stock bake
     # (premerge_fork_web_argv's mislabel) would surface here as a wrong line.
-    DN2CPP_STUB_FORKROOT="$ST_WEBLESS" e2e forkweb-bake 0 0 0 "Release,Debug,"
+    DN2CPP_STUB_FORKROOT="$ST_WEBLESS" e2e forkweb-bake 0 0 0 "Release,Debug," --both-configs
     ST_BAKED="$(cat "$ST_TMP/e2e-forkweb-bake/_forkweb_calls.txt" 2>/dev/null | tr '\n' ',')"
     if [ "$ST_BAKED" = "stock,cri," ]; then
         st_ok "forkweb-bake: both flavors baked, each under its own CRI pin"
@@ -1837,25 +1888,37 @@ VERSION
     say "non-Godot scope"
     # A non-Godot filename in a Godot chain must still be excluded.
     : > "$FAKE/gates/build-and-run-sdk-sample.sh"
-    for mode in flag environment; do
-        SG_ROOT="$ST_TMP/e2e-skipgodot-$mode"
-        SG_RC=0
-        SG_ARG=""
-        SG_SKIP=0
-        if [ "$mode" = flag ]; then SG_ARG=--skip-godot; else SG_SKIP=1; fi
-        SKIP_GODOT="$SG_SKIP" DN2CPP_PREMERGE_SELFTEST=0 \
-        DN2CPP_PREMERGE_LOGROOT="$SG_ROOT" \
-        DN2CPP_STUB_SELFHOST_RC=99 DN2CPP_STUB_FORK_RC=99 \
-        DN2CPP_STUB_EMSDK_RC=99 DN2CPP_STUB_OS=unsupported \
-            bash "$FAKE/gates/pre-merge.sh" $SG_ARG >"$ST_TMP/skipgodot-$mode.txt" 2>&1 || SG_RC=$?
-        if [ "$SG_RC" = 0 ] && grep -q 'PARTIAL SCOPE; merge not approved' "$SG_ROOT/_receipt.txt" \
-            && grep -q 'gates:   2 per config' "$SG_ROOT/_receipt.txt" \
-            && [ "$(cat "$SG_ROOT/_stub_calls.txt" | tr '\n' ',')" = 'Release,Debug,' ] \
-            && ! grep -q 'stub self-host\|stub fork setup\|stub emsdk' "$ST_TMP/skipgodot-$mode.txt"; then
-            st_ok "$mode: non-Godot scope runs both suites and excludes Godot inputs"
-        else
-            st_bad "$mode: non-Godot scope failed (exit $SG_RC)"
-        fi
+    for selection in default release both; do
+        for mode in flag environment; do
+            SG_ROOT="$ST_TMP/e2e-skipgodot-$selection-$mode"
+            SG_RC=0
+            SG_ARG=""
+            SG_SKIP=0
+            SG_CONFIG=""
+            SG_BOTH=""
+            SG_CONFIGS=Debug
+            SG_CALLS=Debug,
+            case "$selection" in
+                release) SG_CONFIG=Release; SG_CONFIGS=Release; SG_CALLS=Release, ;;
+                both) SG_BOTH=--both-configs; SG_CONFIGS="Release Debug"; SG_CALLS=Release,Debug, ;;
+            esac
+            if [ "$mode" = flag ]; then SG_ARG=--skip-godot; else SG_SKIP=1; fi
+            CONFIG="$SG_CONFIG" SKIP_GODOT="$SG_SKIP" DN2CPP_PREMERGE_SELFTEST=0 \
+            DN2CPP_PREMERGE_LOGROOT="$SG_ROOT" \
+            DN2CPP_STUB_SELFHOST_RC=99 DN2CPP_STUB_FORK_RC=99 \
+            DN2CPP_STUB_EMSDK_RC=99 DN2CPP_STUB_OS=unsupported \
+                bash "$FAKE/gates/pre-merge.sh" $SG_ARG $SG_BOTH >"$ST_TMP/skipgodot-$selection-$mode.txt" 2>&1 || SG_RC=$?
+            if [ "$SG_RC" = 0 ] && grep -q '^merge scope: PRs without Godot-specific changes$' "$SG_ROOT/_receipt.txt" \
+                && grep -q '^scope:   non-Godot; 1 Godot gates excluded$' "$SG_ROOT/_receipt.txt" \
+                && grep -q 'gates:   2 per config' "$SG_ROOT/_receipt.txt" \
+                && grep -q "^configs: $SG_CONFIGS$" "$SG_ROOT/_receipt.txt" \
+                && [ "$(cat "$SG_ROOT/_stub_calls.txt" | tr '\n' ',')" = "$SG_CALLS" ] \
+                && ! grep -q 'stub self-host\|stub fork setup\|stub emsdk' "$ST_TMP/skipgodot-$selection-$mode.txt"; then
+                st_ok "$selection/$mode: non-Godot scope runs selected suites and excludes Godot inputs"
+            else
+                st_bad "$selection/$mode: non-Godot scope failed (exit $SG_RC)"
+            fi
+        done
     done
     rm "$FAKE/gates/build-and-run-sdk-sample.sh"
 
@@ -2169,7 +2232,11 @@ say "dn2cpp pre-merge gate"
 note "repo:   $REPO"
 note "commit: $HEAD_BRANCH @ $HEAD_SHA$DIRTY"
 note "gates:  $EXPECTED_GATES"
-[ "$SKIP_GODOT" != 1 ] || warn "PARTIAL SCOPE: $EXCLUDED_GATES Godot gates excluded; this run does not approve a merge."
+note "configs: $CONFIGS"
+if [ "$SKIP_GODOT" = 1 ]; then
+    note "scope:  non-Godot; $EXCLUDED_GATES Godot gates excluded."
+    note "merge scope: PRs without Godot-specific changes."
+fi
 note "logs:   $LOGROOT"
 [ "$DRY_RUN" = "0" ] && note "record: $TRANSCRIPT"
 
@@ -2180,7 +2247,6 @@ say "CMake build-dir freshness"
 PREMERGE_STALE=0
 premerge_cmake_cache_warn "$REPO"
 
-CONFIGS="Release Debug"
 if [ "$DRY_RUN" = "1" ]; then
     say "dry run — nothing below is executed"
     premerge_culture_argv
@@ -2262,7 +2328,8 @@ if [ "$DRY_RUN" = "1" ]; then
             "$EXPECTED_GATES" "$logdir/_skips.txt" "$logdir/_failures.txt"
     done
     printf '\n'
-    note "Both runs must be green. --keep-going runs Debug even after a red Release."
+    note "Every selected run ($CONFIGS) must be green."
+    note "--keep-going runs selected suites even after an earlier input or suite fails."
     note "Receipt on success: $RECEIPT"
     exit 0
 fi
@@ -2283,7 +2350,7 @@ T0=$(date +%s)
 # ── phase 0: culture invariance ──────────────────────────────────────────────
 # Before the hours, not after: a bucket added without its culture pin is found
 # here in minutes, and its remedy is a one-line edit that would otherwise be
-# discovered on top of two green suites that have to be run again.
+# discovered on top of green suites that have to be run again.
 say "culture invariance (gates/verify-culture-invariance.sh)"
 premerge_culture_argv
 CULTURE_RC=0
@@ -2530,11 +2597,10 @@ fi
 for cfg in $CONFIGS; do
     logdir="$LOGROOT/$(printf '%s' "$cfg" | tr 'A-Z' 'a-z')"
     # Withheld after a broken input or a plainly red suite, never for a host
-    # gap: a red Release already answers the merge question, but a Release whose
-    # only failures are gates this host lacks the prerequisites for says nothing
-    # about the gates it can run — so Debug runs, and the gap is listed instead.
+    # gap: missing prerequisites say nothing about the gates this host can run,
+    # so later selected suites still run and the gap is listed instead.
     if { [ "$INPUTS_RED" -ne 0 ] || [ "$SUITE_RED" -ne 0 ]; } && [ "$KEEP_GOING" != "1" ]; then
-        bad "$cfg: NOT RUN — an earlier input or suite failed (pass --keep-going to run both regardless)."
+        bad "$cfg: NOT RUN — an earlier input or suite failed (pass --keep-going to run selected suites regardless)."
         RESULTS="$RESULTS$cfg=not-run "
         continue
     fi
@@ -2550,7 +2616,7 @@ for cfg in $CONFIGS; do
         RESULTS="$RESULTS$cfg=RED "
         OVERALL=1
         if [ "$VERDICT_PREREQ_ONLY" = 1 ]; then
-            note "$cfg: red only for prerequisites this host lacks; the other configuration is not withheld."
+            note "$cfg: red only for prerequisites this host lacks; later selected suites are not withheld."
             HOST_GAPS="${HOST_GAPS}$cfg: $VERDICT_PREREQ_GATES (prerequisite absent); "
         else
             SUITE_RED=1
@@ -2563,6 +2629,7 @@ ELAPSED=$(( $(date +%s) - T0 ))
 
 say "pre-merge verdict"
 note "commit:  $HEAD_BRANCH @ $HEAD_SHA$DIRTY"
+note "configs: $CONFIGS"
 note "results: $RESULTS"
 note "elapsed: ${ELAPSED}s"
 
@@ -2572,8 +2639,9 @@ if [ "$OVERALL" -eq 0 ]; then
     # tree is not evidence about this one.
     {
         if [ "$SKIP_GODOT" = 1 ]; then
-            printf 'dn2cpp NON-GODOT CHECK PASSED (PARTIAL SCOPE; merge not approved)\n'
+            printf 'dn2cpp NON-GODOT PRE-MERGE PASSED\n'
             printf 'scope:   non-Godot; %s Godot gates excluded\n' "$EXCLUDED_GATES"
+            printf 'merge scope: PRs without Godot-specific changes\n'
         else
             printf 'dn2cpp pre-merge PASSED\n'
             printf 'scope:   all gates\n'
@@ -2582,6 +2650,7 @@ if [ "$OVERALL" -eq 0 ]; then
         printf 'repo:    %s\n' "$REPO"
         printf 'commit:  %s @ %s%s\n' "$HEAD_BRANCH" "$HEAD_SHA" "$DIRTY"
         printf 'gates:   %s per config\n' "$EXPECTED_GATES"
+        printf 'configs: %s\n' "$CONFIGS"
         printf 'culture: %s\n' "$CULTURE_NOTE"
         # Which sources the binary the fork lane ran on was built from: a green
         # produced over somebody else's self-host binary is a different claim.
@@ -2595,15 +2664,15 @@ if [ "$OVERALL" -eq 0 ]; then
         printf 'runs:    %s\n' "$RESULTS"
         printf 'elapsed: %ss\n' "$ELAPSED"
         # What the green was produced over. A reader who was not there cannot
-        # otherwise tell that these two suites ran against build dirs this tree
+        # otherwise tell that the selected suites ran against build dirs this tree
         # did not configure.
         [ "$PREMERGE_STALE" -gt 0 ] && \
             printf 'stale:   %s CMake build dir(s) warned about before the run\n' "$PREMERGE_STALE"
     } > "$RECEIPT"
     if [ "$SKIP_GODOT" = 1 ]; then
-        good "NON-GODOT CHECK PASSED — both configs, $EXPECTED_GATES gates each; PARTIAL SCOPE, merge not approved."
+        good "NON-GODOT PRE-MERGE PASSED — $CONFIGS, $EXPECTED_GATES gates per config; merge scope: PRs without Godot-specific changes."
     else
-        good "PRE-MERGE PASSED — both configs, $EXPECTED_GATES gates each, every gate ran."
+        good "PRE-MERGE PASSED — $CONFIGS, $EXPECTED_GATES gates per config, every gate ran."
     fi
     note "receipt: $RECEIPT"
     note "record:  $TRANSCRIPT"
@@ -2616,6 +2685,8 @@ if [ -n "$HOST_GAPS" ]; then
     note "host prerequisites absent here: $HOST_GAPS"
     note "Those gates cannot pass on this host; the suites were not withheld for them."
 fi
-note "Per-gate logs: $LOGROOT/{release,debug}/<gate>.log"
+for cfg in $CONFIGS; do
+    note "Per-gate logs ($cfg): $LOGROOT/$(printf '%s' "$cfg" | tr 'A-Z' 'a-z')/<gate>.log"
+done
 note "This run's own output: $TRANSCRIPT"
 exit 1

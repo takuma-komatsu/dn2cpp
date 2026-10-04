@@ -34,10 +34,17 @@ dotnet build src/Dn2Cpp.Cli -c Release
 dotnet run --project src/Dn2Cpp.Cli -- <assembly.dll> [-r <ref.dll>] [-o <dir>] [--gdextension]
 ```
 
-- Coding agents run only the individual gates relevant to the change. They must
-  not run full-suite wrappers such as `./gates/run-all-gates.sh` or
-  `./gates/pre-merge.sh`, regardless of configuration or skip flags. A human
-  must run `./gates/pre-merge.sh` before merge.
+- During development, run the individual gates relevant to the change. Coding
+  agents may also run `./gates/pre-merge.sh --skip-godot` autonomously for any
+  change. Its default Debug run is sufficient to merge a PR that changes no
+  Godot-specific files. PRs that change Godot-specific files require a human to
+  run Godot-inclusive `./gates/pre-merge.sh` before merge. Coding agents must not
+  run Godot-inclusive pre-merge or invoke `./gates/run-all-gates.sh` directly,
+  including with skip flags.
+- Godot-specific files include `src/Dn2Cpp.Godot/`, `src/Dn2Cpp.DotnetModule/`,
+  `src/GodotSharpShim/`, `runtime/godot/`, `runtime/dotnetmodule/`, and Godot-only
+  samples, gates, helpers, packaging and documentation wherever they live.
+  Shared runners and general verification infrastructure are not Godot-specific.
 - Run the relevant build before committing. CMake with Ninja is the only native
   build path; use the individual gate wrappers.
 - `gate_skip` is the only prerequisite opt-out; a skip is not a pass.
