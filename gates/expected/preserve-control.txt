@@ -1,5 +1,5 @@
 preserve control
-Outer_Nested_Int32
+Nested`1
 ConditionalUsed
 built-in
 assembly-aware-derived

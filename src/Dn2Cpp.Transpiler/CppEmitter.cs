@@ -4123,9 +4123,8 @@ internal sealed partial class CppEmitter
 
     /// <summary>For a closed generic instantiation, the CLR open-definition
     /// FullName (with the backtick arity marker, e.g. "System.Collections.Generic.List`1")
-    /// and the type-argument count. Null for a non-generic type or a nested generic
-    /// (a nested type's FullName isn't the simple namespace-qualified name — carved out
-    /// like Type.GetType's nested-name limitation).</summary>
+    /// and the full type-argument count, including declaring-type parameters.
+    /// Nested definitions retain each level's own arity and '+' separator.</summary>
     private (string DefName, int Arity)? GenericDefInfo(ClassInfo cls)
     {
         if (cls.GenericArity == 0 || cls.Context.TypeArgs.Length == 0)
@@ -4134,9 +4133,12 @@ internal sealed partial class CppEmitter
         {
             var reader = cls.Module.Reader;
             var td = reader.GetTypeDefinition(cls.Handle);
-            if (!td.GetDeclaringType().IsNil)
-                return null;
             string name = reader.GetString(td.Name);          // "List`1" (keeps the backtick)
+            for (var declaring = td.GetDeclaringType(); !declaring.IsNil; declaring = td.GetDeclaringType())
+            {
+                td = reader.GetTypeDefinition(declaring);
+                name = reader.GetString(td.Name) + "+" + name;
+            }
             string ns = reader.GetString(td.Namespace);
             string full = string.IsNullOrEmpty(ns) ? name : ns + "." + name;
             return (full, cls.Context.TypeArgs.Length);
@@ -4392,10 +4394,8 @@ internal sealed partial class CppEmitter
         return t.ToString();
     }
 
-    /// <summary>The exact CLR display of a closed nested type. Nested generic
-    /// instantiations deliberately have no synthetic generic-definition handle, so their
-    /// type-info cannot compose this spelling from <c>genericDef</c>/<c>genericArgs</c>.
-    /// Task-family awaiters still need a precise per-instantiation ToString identity.</summary>
+    /// <summary>The exact CLR display retained on a Task-family awaiter's intrinsic
+    /// type-info, including declaring-type arguments.</summary>
     private string ClosedNestedTypeDisplay(ClassInfo cls)
     {
         var reader = cls.Module.Reader;

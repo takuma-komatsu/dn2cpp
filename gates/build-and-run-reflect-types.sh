@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Runtime generic template invocation, member rows, hidden contexts and boxed-value copies.
+# Nested generic type names agree through typeof, GetType and delegate declaring types.
 # A template body that calls through a function pointer over its type parameter never
 # returns a wrong result: its .NET-diffed lines print alike for a refusal and a correct
 # result, and its native-only outcome run pins that the clone refuses every such call
@@ -309,6 +310,8 @@
 # time).
 source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_ordinary-reflection.sh samples/dotnet/ReflectTypes/AttributeTypePropertySubset.cs samples/dotnet/ReflectTypes/DataOnlyAttributeRowsOnly.csproj samples/dotnet/ReflectTypes/DataOnlyAttributeRowsOnlyProgram.cs samples/dotnet/ReflectTypes/OrdinaryReflectionTypeLeaves.csproj samples/dotnet/ReflectTypes/OrdinaryReflectionTypeLeavesProgram.cs samples/dotnet/ReflectTypes/ReflectAssemblyErrorSubset.cs samples/dotnet/ReflectTypes/ReflectAttrBoxedSubset.cs samples/dotnet/ReflectTypes/ReflectRuntimeTypeParitySubset.cs samples/dotnet/ReflectTypes/ReflectTypes.csproj samples/dotnet/ReflectTypes/UnreadAttributeRowsOnly.csproj samples/dotnet/ReflectTypes/UnreadAttributeRowsOnlyProgram.cs"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|before-nested-generic-names"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/NestedGenericTypeNameSubset.cs samples/dotnet/ReflectTypes/GenericDefinitionSymbolNeighbors.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-type-leaves-v1"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/ReflectionTemplateDispatch.csproj samples/dotnet/ReflectTypes/ReflectionTemplateDispatchProgram.cs samples/dotnet/ReflectTypes/ReflectRuntimeInstantiationSubset.cs"
 
@@ -580,7 +583,7 @@ echo "refusal OK: exit $es_code, named the observation side + EventListener + a 
 unset -f gate_extra_asserts
 source gates/_ordinary-reflection.sh
 gate_extra_asserts() {
-    local out="$1" native line before prefix
+    local out="$1" native line before prefix witness label simple mouth
     native=$(run_bounded "$out/OrdinaryReflectionTypeLeaves$EXE_EXT") || return $?
     native=$(strip_cr_win "$native")
     before=$(run_bounded "$out/OrdinaryReflectionTypeLeaves$EXE_EXT" before-attribute-chain) || return $?
@@ -598,6 +601,41 @@ gate_extra_asserts() {
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: ordinary type witness missing: $line" >&2; return 1; }
     done
+    before=$(run_bounded dotnet "$_CG_APP" before-nested-generic-names) || return $?
+    prefix=$(awk '/^== nested generic type names ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    for line in '== nested generic type names ==' 'nested generic type names end' \
+        'neighbor nested definition=NestedGenericTypeNameSubset.Outer+Box`1' \
+        'neighbor flat definition=NestedGenericTypeNameSubset.Outer_Box`1' \
+        'neighbor definitions distinct=True' 'reserved shared=String[]/Object[]' \
+        'reserved closed definition=True' 'reserved open-only=dn2cpp_nested_neighbors.Open`1'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: nested generic type-name block missing: $line" >&2; return 1; }
+    done
+    for witness in 'top|Box`1' 'one class|Box`1' 'one struct|Point`1' \
+        'two class|Box`1' 'two struct|Point`1' 'enclosing class|Box`1' \
+        'enclosing struct|Point`1' 'enclosing node|Node' \
+        'deep enclosing class|Box`1' 'deep enclosing struct|Point`1' \
+        'flat neighbor|Outer_Box`1' 'escape neighbor|Outer_002BBox`1'; do
+        label=${witness%%|*}
+        simple=${witness#*|}
+        for mouth in typeof instance delegate; do
+            line="$label $mouth Name=$simple"
+            grep -Fxq -- "$line" <<< "$native" \
+                || { echo "FAIL: nested generic type-name witness missing: $line" >&2; return 1; }
+        done
+    done
+    if ! awk '
+        FNR == 1 { body = 0 }
+        { sub(/\r$/, "") }
+        /^\/\/ dn2cpp_nested_neighbors[.]Closed_\$CnRef::ArrayName$/ { body = 1 }
+        body && /dn2cpp_rgctx/ && /&gendef_dn2cpp_nested_/ { anchor = 1 }
+        body && /^}$/ { body = 0 }
+        END { exit !anchor }
+    ' "$out"/generated*.cpp "$out/generated.h"; then
+        echo 'FAIL: reserved definition symbol was not used by its shared receiver anchor' >&2
+        return 1
+    fi
 }
 DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectTypes OrdinaryReflectionTypeLeaves \
     System.Collections System.ComponentModel.Primitives --no-ildiet

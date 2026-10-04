@@ -82,6 +82,9 @@ namespace ArrayCore
             if (args.Length != 0 && args[0] == "before-array-search-loops")
                 return;
             ArraySearchLoopSubset.Program.Run();
+            if (args.Length != 0 && args[0] == "before-nested-interface-variance")
+                return;
+            NestedInterfaceVarianceSubset.Program.Run();
 #endif
         }
     }

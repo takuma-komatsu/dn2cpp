@@ -1775,8 +1775,7 @@ internal sealed partial class Compilation
 
     /// <summary>The open-definition type-info symbol a reference-receiver shared
     /// body anchors its rgctx walk on (<c>dn2cpp_rgctx(recv->type, &amp;SYM)</c>),
-    /// or null when the class has none (non-generic, or a nested generic — the
-    /// emitter's generic-definition handles cover top-level generics only).
+    /// or null when the class has none (non-generic or nested generic).
     /// Mirrors the emitter's GenericDefInfo naming, so the symbol is the same
     /// <c>gendef_*</c> the group members' type-infos point at.</summary>
     internal string? RgctxAnchorSym(ClassInfo cls)
@@ -1794,7 +1793,7 @@ internal sealed partial class Compilation
                     string name = reader.GetString(td.Name);
                     string ns = reader.GetString(td.Namespace);
                     string full = string.IsNullOrEmpty(ns) ? name : ns + "." + name;
-                    sym = "gendef_" + CppNaming.Sanitize(full);
+                    sym = "gendef_" + CppNaming.GenericDefinitionStem(full);
                 }
             }
             catch (Exception e) when (!IsMustEscape(e))

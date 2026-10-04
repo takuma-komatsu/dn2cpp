@@ -701,7 +701,7 @@ internal sealed partial class CppEmitter
             {
                 if (_e.GenericDefInfo(c) is not { } gi || _e._genericDefSyms.ContainsKey(gi.DefName))
                     continue;
-                string defBase = CppNaming.Sanitize(gi.DefName);
+                string defBase = CppNaming.GenericDefinitionStem(gi.DefName);
                 string defSym = "gendef_" + defBase;
                 _e._genericDefSyms[gi.DefName] = defSym;
                 var defFlagBits = new List<string> { "DN2CPP_TF_GENERICDEF" };
@@ -974,7 +974,7 @@ internal sealed partial class CppEmitter
             {
                 if (_e.GenericDefInfo(cls) is not { } gi || _e._genericDefSyms.ContainsKey(gi.DefName))
                     continue;
-                string symBase = CppNaming.Sanitize(gi.DefName);
+                string symBase = CppNaming.GenericDefinitionStem(gi.DefName);
                 string sym = "gendef_" + symBase;
                 _e._genericDefSyms[gi.DefName] = sym;
                 // Generic variance rides the definition handle, which is the only place it can:
@@ -1044,7 +1044,7 @@ internal sealed partial class CppEmitter
             {
                 if (_e._genericDefSyms.ContainsKey(defName))
                     continue;
-                string symBase = CppNaming.Sanitize(defName);
+                string symBase = CppNaming.GenericDefinitionStem(defName);
                 string sym = "gendef_" + symBase;
                 _e._genericDefSyms[defName] = sym;
                 var flagBits = new List<string> { "DN2CPP_TF_GENERICDEF" };

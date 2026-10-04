@@ -1434,6 +1434,31 @@ internal static class CppNaming
         return sb.ToString();
     }
 
+    /// <summary>Nested generic definitions preserve punctuation in their symbol stem.
+    /// Flat names reserve the same prefix, and '_' is escaped so a literal name cannot
+    /// impersonate an encoded separator. Other flat definitions retain their symbols.</summary>
+    public static string GenericDefinitionStem(string name)
+    {
+        const string prefix = "dn2cpp_nested_";
+        string flat = Sanitize(name);
+        if (!name.Contains('+') && !flat.StartsWith(prefix, StringComparison.Ordinal))
+            return flat;
+        var sb = new System.Text.StringBuilder(prefix);
+        const string hex = "0123456789ABCDEF";
+        foreach (char c in name)
+        {
+            if (char.IsAsciiLetterOrDigit(c))
+                sb.Append(c);
+            else
+            {
+                sb.Append('_');
+                for (int shift = 12; shift >= 0; shift -= 4)
+                    sb.Append(hex[(c >> shift) & 15]);
+            }
+        }
+        return sb.ToString();
+    }
+
     /// <summary>Render a metadata name with the readable escaping used by IL2CPP
     /// symbols. Separator punctuation collapses to an underscore; every other
     /// unsafe UTF-16 code unit is written as <c>U</c> plus uppercase hexadecimal.</summary>
