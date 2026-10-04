@@ -337,6 +337,25 @@ internal sealed partial class CppEmitter
             return spelled?.FunctionPointer is { } f ? (f.Key, f.Name) : null;
         }
 
+        private (string Key, string Name)? FunctionPointerSpelling(ClassInfo cls,
+            FieldDefinitionHandle handle, TypeDesc type)
+        {
+            while (type is { Kind: TypeKind.Pointer, IsFunctionPointer: false, Element: { } element })
+                type = element;
+            if (!type.IsFunctionPointer || handle.IsNil)
+                return null;
+            try
+            {
+                var field = cls.Module.Reader.GetFieldDefinition(handle);
+                var spelled = field.DecodeSignature(new FunctionPointerSpellingProvider(_e, _c.SigProvider), cls.Context);
+                return spelled.FunctionPointer is { } f ? (f.Key, f.Name) : null;
+            }
+            catch (Exception e) when (!Compilation.IsMustEscape(e))
+            {
+                return null;
+            }
+        }
+
         private ModifierSignature? CustomModifiers(MethodInfo method)
         {
             if (_modifierSignatures.TryGetValue(method, out var cached))
@@ -1933,6 +1952,7 @@ internal sealed partial class CppEmitter
                 // An [InlineArray] struct lays its single field out as a C array
                 // (f_name[N]), which is neither copyable nor assignable — skip its thunks.
                 (string get, string set) = ("nullptr", "nullptr");
+                string valueCheck = "nullptr";
                 long literalBits = 0;
                 if (f.IsLiteral)
                 {
@@ -1960,6 +1980,13 @@ internal sealed partial class CppEmitter
                             : $"(({cls.CppStructName}*)o)->{f.CppName}");
                     string getName = $"fldget_{cls.CppName}_{f.CppName}";
                     string setName = $"fldset_{cls.CppName}_{f.CppName}";
+                    var pointerPass = f.Type.Kind == TypeKind.Pointer
+                        ? _e.ReflectionPass(f.Type, _emittedEnums,
+                            FunctionPointerSpelling(cls, fieldHandles.GetValueOrDefault(f.Name), f.Type))
+                        : (Kind: 0, Type: "nullptr");
+                    bool isPointer = (pointerPass.Kind & PassPointer) != 0;
+                    int pointerDepth = ((pointerPass.Kind >> PassPointerDepthShift) & 0xFF) + 1;
+                    string pointee = (pointerPass.Kind & PassFunctionPointer) != 0 ? "nullptr" : pointerPass.Type;
                     // A reflected static-field access must run the declaring type's
                     // .cctor first (.NET's lazy-initialization guarantee): unlike a
                     // compiled use site, this thunk has no emitted first-use guard,
@@ -1979,7 +2006,9 @@ internal sealed partial class CppEmitter
                     // (memberT erased to Dn2CppObject*) already holds the
                     // managed-object form, so it takes the plain reference path.
                     bool isHeaderless = MethodCompiler.IsHeaderlessWrapCpp(memberT);
-                    string getBody = ensure + (isHeaderless
+                    string getBody = ensure + (isPointer
+                        ? $"return dn2cpp_invoke_box_pointer((void*)({access}), {pointee}, {pointerDepth});"
+                        : isHeaderless
                         ? $"return {MethodCompiler.HeaderlessWrapExpr(access, memberT, f.Type)};"
                         : isRef
                         ? $"return (Dn2CppObject*)({access});"
@@ -2006,6 +2035,16 @@ internal sealed partial class CppEmitter
                     }
                     _sb.AppendLine($"static Dn2CppObject* {getName}([[maybe_unused]] Dn2CppObject* o) {{ {getBody} }}");
                     _sb.AppendLine($"static void {setName}([[maybe_unused]] Dn2CppObject* o, [[maybe_unused]] Dn2CppObject* val) {{ {setBody} }}");
+                    if (isPointer)
+                    {
+                        string checkName = $"fldcheck_{cls.CppName}_{f.CppName}";
+                        // A static initonly function pointer accepts null during value
+                        // validation; the dispatcher then refuses its store.
+                        string nullCheck = f.IsStatic && (f.Attributes & System.Reflection.FieldAttributes.InitOnly) != 0
+                            && (pointerPass.Kind & PassFunctionPointer) != 0 ? "if (val == nullptr) return nullptr; " : "";
+                        _sb.AppendLine($"static Dn2CppObject* {checkName}(Dn2CppObject* val) {{ {nullCheck}return dn2cpp_field_pointer_value(val, {pointerPass.Kind}, {pointerPass.Type}); }}");
+                        valueCheck = $"&{checkName}";
+                    }
                     (get, set) = ($"&{getName}", $"&{setName}");
                 }
                 (string Expr, int Count) ca = ("nullptr", 0);
@@ -2022,6 +2061,7 @@ internal sealed partial class CppEmitter
                     MetadataValue.ExplicitSigned(attrs), MetadataValue.Ref(get), MetadataValue.Ref(set), MetadataValue.Ref(ca.Expr), MetadataValue.Signed(ca.Count),
                     MetadataValue.Signed((int)f.Attributes), MetadataValue.Signed(fldToken), MetadataValue.Signed(literalBits),
                     MetadataValue.Display(_e.ReflectionSignatureType(f.Type) + " " + f.Name),
+                    MetadataValue.Ref(valueCheck),
                 }));
             }
             _e.EmitMetadataTable(_sb, "Dn2CppFieldInfo", $"fldtab_{cls.CppName}", rows);

@@ -116,13 +116,18 @@ back, and its exception reaches the caller wrapped in
 An unmanaged pointer result, read through a by-reference result as well, returns
 as a `System.Reflection.Pointer` of its pointer type, and a function pointer
 result as an `IntPtr`. The compiler keeps the `Pointer` class only when a
-reflectively invoked method returns an unmanaged pointer. A pointer parameter
+reflectively invoked method or reflected field returns an unmanaged pointer. A pointer parameter
 takes an `IntPtr`, or a `Pointer` of a type .NET passes to it: the same type,
 a primitive pointee of the same width and kind one level deep, or any pointer
 for `void*`. Pointer types differ at every level and function pointer types by
 signature and calling convention. A function pointer type, and a pointer's levels
 past those a return row's depth bits count, name a stand-in type-info that the
 compiler interns per type and spells as .NET formats it.
+
+Pointer field accessors use the same boxing and value validation, without wrapping
+setter exceptions; a `void*` field also accepts `UIntPtr`. A static read-only field's
+first store validates its value before refusal. Once its reflected getter has
+read it successfully, later stores refuse before value conversion.
 
 Immutable invoke plans may contain metadata, ABI descriptors and code pointers.
 They must not retain a receiver, arguments, results or a receiver-dependent

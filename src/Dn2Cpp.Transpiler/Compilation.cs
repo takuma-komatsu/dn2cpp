@@ -5141,9 +5141,46 @@ internal sealed partial class Compilation
         // only its instantiations run, and the invoke half notes the boxes of each
         // reached one (NoteReflectionRouteInstanceBoxes).
         while (WalkReflectionRouteClasses() || NoteReflectionRouteInstanceBoxes()
+               || ReachReflectedLibraryPointerFields()
                || ReachReflectedCtorSurface())
         {
         }
+    }
+
+    private int _fieldReadLibraryNamedCursor;
+    private int _fieldReadLibraryAllocatedCursor;
+    private readonly HashSet<ClassInfo> _fieldReadLibraryClasses = new();
+
+    private bool ReachReflectedLibraryPointerFields()
+    {
+        if (!_reflectionFieldReadUsed || PointerBoxClass is not null)
+            return false;
+        // Snapshot the selected owners before decoding fields can grow reachability.
+        // Reading a library field does not reach that library's methods or constructors.
+        var owners = new List<ClassInfo>();
+        int named = _typeofNamedLibraryClasses.Count;
+        int allocated = _invokeRouteAllocatedOwners.Count;
+        for (int i = _fieldReadLibraryNamedCursor; i < named; i++)
+            owners.Add(_typeofNamedLibraryClasses[i]);
+        for (int i = _fieldReadLibraryAllocatedCursor; i < allocated; i++)
+            owners.Add(_invokeRouteAllocatedOwners[i]);
+        _fieldReadLibraryNamedCursor = named;
+        _fieldReadLibraryAllocatedCursor = allocated;
+        foreach (var owner in owners)
+            for (var cls = owner; cls is not null; cls = cls.BaseClass)
+            {
+                if (cls.Module == AppModule || !IsUserModule(cls.Module)
+                    || ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls)
+                    || !KeepsReflectionMetadata(cls) || !_fieldReadLibraryClasses.Add(cls))
+                    continue;
+                foreach (var field in cls.EnsureMembers().Fields)
+                    if (!field.IsLiteral && field.Type is { Kind: TypeKind.Pointer, IsFunctionPointer: false })
+                        NoteReflectionBoxed(field.Type);
+            }
+        if (PointerBoxClass is null)
+            return false;
+        DrainReachability();
+        return true;
     }
 
     /// <summary>How much of <see cref="ReachableSet.Order"/>
@@ -5297,7 +5334,9 @@ internal sealed partial class Compilation
         if (fields)
             foreach (var f in cls.Fields)
                 if (!f.IsLiteral)
+                {
                     (boxed ??= new()).Add(f.Type);
+                }
         if (invoked is not null)
             foreach (var m in invoked)
                 NoteReflectionInvokeBoxes(m);
@@ -5345,12 +5384,18 @@ internal sealed partial class Compilation
     /// reflection — a returned value, a by-ref argument written back or a field's —
     /// with no box site to do it, so the box can dispatch through the type's interface
     /// map and slots. A by-ref type boxes as its referent, a Nullable&lt;T&gt; as a T.
-    /// Bounded to value types declared outside the framework, as a framework struct's
+    /// An unmanaged pointer keeps its runtime-allocated Pointer box. Value types are
+    /// bounded to those declared outside the framework, as a framework struct's
     /// overrides need not transpile.</summary>
     private void NoteReflectionBoxed(TypeDesc t)
     {
         if (t.Kind == TypeKind.ByRef)
             t = t.Element!;
+        if (t is { Kind: TypeKind.Pointer, IsFunctionPointer: false })
+        {
+            ReachPointerBox();
+            return;
+        }
         if ((NullableUnderlying(t) ?? t) is { Kind: TypeKind.Class, Class: { } c })
             NoteReflectionBoxed(c);
     }
@@ -5365,15 +5410,12 @@ internal sealed partial class Compilation
         foreach (var p in sig.ParameterTypes)
             if (p.Kind == TypeKind.ByRef)
                 NoteReflectionBoxed(p);
-        var ret = sig.ReturnType.Kind == TypeKind.ByRef ? sig.ReturnType.Element! : sig.ReturnType;
-        if (ret is { Kind: TypeKind.Pointer, IsFunctionPointer: false })
-            ReachPointerBox();
     }
 
-    /// <summary>The System.Reflection.Pointer class Invoke boxes an unmanaged pointer
-    /// result as, once a reflectively invoked method returns one; the runtime
+    /// <summary>The System.Reflection.Pointer class reflection boxes an unmanaged pointer
+    /// result as, once an invoked method or reflected field returns one; the runtime
     /// allocates it with no IL allocation site. Null otherwise, and in a load set
-    /// without the class, where Invoke refuses such a result.</summary>
+    /// without the class, where reflection refuses such a result.</summary>
     internal ClassInfo? PointerBoxClass { get; private set; }
 
     private void ReachPointerBox()

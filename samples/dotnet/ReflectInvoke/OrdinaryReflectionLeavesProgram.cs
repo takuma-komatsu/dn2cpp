@@ -245,5 +245,8 @@ static class Program
         Console.WriteLine("runtime clone return display=" + clone.ReturnParameter.ToString());
         Console.WriteLine("runtime SizeOf return display=" + size.ReturnParameter.ToString());
         Console.WriteLine("runtime return modifiers end");
+        if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_POINTER_FIELDS") == "1")
+            return;
+        ReflectFieldValidationSubset.Program.RunPointerFields();
     }
 }

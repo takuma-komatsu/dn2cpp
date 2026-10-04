@@ -29,7 +29,7 @@ ordinary_fixture_diff_gate() {
                 shift
                 continue
             fi
-            if [ "$name" = -r ]; then
+            if [ "$name" = -r ] || [ "$name" = --link-xml ]; then
                 [ "$#" -gt 0 ] && [ -f "$1" ] \
                     || { echo "error: $name requires an input file" >&2; return 1; }
                 refs+=("$name" "$1")

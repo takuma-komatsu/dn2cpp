@@ -86,7 +86,7 @@ Dn2CppObject* identity_getter(Dn2CppObject* object) { return object; }
 
 DN2CPP_NATIVE_FIELDS(local_fields,
     { unicode, &original_type, &original_type, DN2CPP_FLDA_PUBLIC, identity_getter,
-        nullptr, nullptr, 0, 0x6, INT32_MAX, INT64_MIN, unicode },
+        nullptr, nullptr, 0, 0x6, INT32_MAX, INT64_MIN, unicode, identity_getter },
     { empty, &original_type, nullptr, 0, nullptr, nullptr, nullptr, 0, 0x6 });
 DN2CPP_NATIVE_METADATA_STORAGE(local_fields);
 constexpr auto packed_local_fields = Dn2CppMetadataTable<Dn2CppFieldInfo>::from_static(local_fields_storage.records.data());
@@ -280,6 +280,17 @@ int main()
         "local block preserves pooled pointers and integer boundaries");
     Dn2CppObject object{ &original_type };
     require(builtin.fields[0]->getter(&object) == &object, "local function pointers remain callable");
+    require(builtin.fields[0]->valueCheck(&object) == &object
+        && builtin.fields[1]->valueCheck == nullptr,
+        "local value checks remain callable and omitted checks remain null");
+    bool pointer_refused = false;
+    try { (void)dn2cpp_invoke_box_pointer(nullptr, &dn2cpp_void_type, 1); }
+    catch (Dn2CppException& ex)
+    {
+        pointer_refused = ex.obj != nullptr && ex.obj->type == &dn2cpp_not_supported_exception_type;
+        dn2cpp_exc_inflight_pop(ex.obj);
+    }
+    require(pointer_refused, "an image without Pointer refuses boxing with a managed exception");
     require(builtin.fields[1]->name == empty && builtin.fields[1]->attrs == 0
         && builtin.fields[1]->ilAttrs == 0x6, "local block preserves empty names and explicit zero flags");
 
