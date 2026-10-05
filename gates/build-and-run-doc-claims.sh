@@ -9,10 +9,10 @@
 # number.** Write it so this file can count it, or do not write it — a count
 # nothing counts is a claim with a decay rate.
 #
-# It runs no build, no transpile and no binary, needs no toolchain and finishes
-# in well under a second, so it can never `gate_skip`. It deliberately takes no
-# result cache: a key that forgot a doc would replay a green over exactly the
-# drift this gate exists to catch.
+# It runs no build, transpile or sample binary and needs only shell text tools
+# and Python, so it can never `gate_skip`. It deliberately takes no result cache:
+# a key that forgot a doc would replay a green over exactly the drift this gate
+# exists to catch.
 #
 # Adding a claim: put the check in the section for its file. Two rules — the
 # failure message must print the MEASURED value, so the fix is a copy out of the
@@ -885,6 +885,43 @@ set_eq "the runtime's DN2CPP_* names against _GATE_RUNTIME_KNOBS" \
     "$(grep -rhoE --include='*.h' --include='*.hpp' --include='*.c' --include='*.cpp' \
         --include='*.inc' --include='*.mm' '"DN2CPP_[A-Z0-9_]+"' runtime | tr -d '"' | sort -u)" \
     "gates/_common.sh" "$(printf '%s\n' $_GATE_RUNTIME_KNOBS | sort -u)"
+
+# The CLI discriminator also covers transpiles below the cache check. Keeping
+# the knob term in the shared check prevents a new behavior gate omitting it.
+cache_definition=$(awk '/^gate_cache_check\(\) \{/,/^\}/' gates/_common.sh)
+if grep -Fq '[[ "$context" == *cli:* ]]' <<<"$cache_definition" \
+        && grep -Eq '^[[:space:]]*_gate_transpiler_env_term([[:space:];]|$)' <<<"$cache_definition"; then
+    ok "gate_cache_check keys transpiler knobs for cli: contexts"
+else
+    bad "gate_cache_check must key transpiler knobs for cli: contexts"
+fi
+manual_terms=$(git ls-files 'gates/*.sh' \
+    | while read -r f; do
+        if [ "$f" = gates/_common.sh ] || [ "$f" = gates/build-and-run-doc-claims.sh ]; then
+            continue
+        fi
+        sed '/^[[:space:]]*#/d' "$f" \
+            | grep -nE '(^|[^[:alnum:]_])_gate_transpiler_env_term([^[:alnum:]_]|$)' \
+            | sed "s|^|$f:|" || true
+      done)
+eq "gate callers adding the transpiler knob term themselves" "none" "${manual_terms:-none}"
+
+# Read the actual Compile items, including secondary drivers and referenced
+# sample projects; removed sources and build products are not program inputs.
+python=$(resolve_python)
+for subject in reflect-invoke trim-reflection boxing-primitives generic-math-ops-subset; do
+    gate="gates/build-and-run-$subject.sh"
+    primary=()
+    [ "$subject" = trim-reflection ] && primary=(samples/dotnet/TrimReflect/TrimReflect.csproj)
+    sample_names=$($python gates/fixtures/sample-cache-env.py "$gate" ${primary[@]+"${primary[@]}"} | tr -d '\r')
+    context_names=$(sed -n '/^DN2CPP_GATE_EXTRA_CONTEXT=/p' "$gate" \
+        | grep -oE '\$\{DN2CPP_[A-Z0-9_]+' | sed 's/^${//' | sort -u)
+    missing=$(comm -23 <(printf '%s\n' "$sample_names") <(printf '%s\n' "$context_names"))
+    eq "$subject sample environment inputs missing from context" "none" "${missing:-none}"
+done
+uncoupled_contexts=$(sed -n '/^[^#]*gate_cache_check /p' gates/build-and-run-trim-reflection.sh \
+    | grep -vF '$(_gate_ctx_extras)' || true)
+eq "trim-reflection cache checks omitting the sample context" "none" "${uncoupled_contexts:-none}"
 
 echo
 if [ "$FAILS" -ne 0 ]; then

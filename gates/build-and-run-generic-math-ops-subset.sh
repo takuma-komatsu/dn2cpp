@@ -41,6 +41,7 @@
 # interface's own explicit static impls resolve the static abstract members, and
 # an unimplemented static-virtual default still binds the default body.
 source "$(dirname "$0")/_common.sh"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|static-impl-selection-prefix:${DN2CPP_BEFORE_STATIC_IMPL_SELECTION:-}"
 
 gate_extra_asserts() {
     local out="$1"

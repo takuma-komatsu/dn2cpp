@@ -2359,9 +2359,9 @@ _GATE_TRANSPILER_KNOBS="DN2CPP_SHARED_ASSERT DN2CPP_INTERCEPT_SELFCHECK
     DN2CPP_MAX_ARRAY_TI_DEGRADES DN2CPP_SPEC_DRAIN DN2CPP_SPLIT_BYTES
     DN2CPP_GODOT_API"
 
-# _gate_transpiler_env_term — the `tenv:` CONTEXT term of a gate that transpiles
-# past its check, where the key's surface sees nothing, so each knob must move the
-# context itself. A cap or assert turns a run into an abort, the drain knob
+# _gate_transpiler_env_term — gate_cache_check's `tenv:` line when CONTEXT carries
+# `cli:`. Such a gate can transpile past its check, where the surface sees
+# nothing. A cap or assert turns a run into an abort, the drain knob
 # reorders the work, and a report knob writes to the streams these gates read.
 # Every EnvKnobs parser reads an empty value as unset, so `:-` loses nothing.
 _gate_transpiler_env_term() {
@@ -2453,6 +2453,8 @@ _gate_surface_lines() {
 # discriminator (helper name, argv, corelib path, inline expected text, engine
 # version); extra args are content inputs — a directory goes through
 # _gate_paths_hash, an absent path is keyed as absent, not an error.
+# A `cli:` context also keys the transpiler's environment, since a transpile
+# after the check can fail or change its reports without changing the surface.
 # Call right after the transpile, and put the native link BELOW the check: that
 # is exactly the work a warm hit exists to skip.
 gate_cache_check() {
@@ -2510,6 +2512,9 @@ $simulator_sdk"
     key=$(
         {
             printf 'context:%s\n' "$context"
+            if [[ "$context" == *cli:* ]]; then
+                _gate_transpiler_env_term
+            fi
             # Every env var that selects a build axis MUST appear here: add an
             # axis (ensure_cmake_runtime, _cmake_app_builddir) ⇒ add it here.
             # LC_ALL, LC_MESSAGES and LANG pick CurrentCulture's default and TZ

@@ -70,6 +70,7 @@
 # property — that one pins only the oracle and drops ICU (stated at the
 # csproj's own PropertyGroup, where the absence would otherwise read as an oversight).
 source "$(dirname "$0")/_common.sh"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|boxed-clr-relations-prefix:${DN2CPP_BEFORE_BOXED_CLR_RELATIONS:-}"
 
 comparison_prior_extra_asserts() {
     local out="$1" managed

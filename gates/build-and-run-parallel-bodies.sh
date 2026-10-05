@@ -23,9 +23,8 @@ rm -rf "$OUT"
 mkdir -p "$OUT"
 
 # This gate measures transpiler behavior directly, so the CLI hash stands in for
-# the implementation and _gate_transpiler_env_term for its environment: a cap or
-# assert knob can change whether the body fixpoint reaches the scheduler.
-if gate_cache_check "$OUT" "parallel-bodies|jobs:2|sharing:off|cli:$(_gate_cli_hash)|$corelib|$(_gate_transpiler_env_term)" \
+# the implementation, including whether the body fixpoint reaches the scheduler.
+if gate_cache_check "$OUT" "parallel-bodies|jobs:2|sharing:off|cli:$(_gate_cli_hash)|$corelib" \
         "$app"; then
     gate_cache_hit_msg
     exit 0
