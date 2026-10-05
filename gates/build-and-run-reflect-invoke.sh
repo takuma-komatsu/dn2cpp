@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Property accessor arrays retain visibility, order, reflected handle identity and boxed invocation.
 # Invoke replaces the canonical Missing singleton with recorded defaults and copies back only after success.
+# A delegate constructor refuses a target whose method-load origin was lost.
 # Virtual and generic virtual reflection dispatch, by-reference copy-back,
 # null-bound delegates, DynamicInvoke and catchable stripped-body refusals, which a
 # nested reflective call raises to the outer call as a fault of its target.
@@ -201,6 +202,8 @@ py="$(resolve_python)"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/check-reflection-layout.py gates/measure-reflection-metadata.py gates/expected/reflection-allocations.csv gates/fixtures/delegate-invocation-cache/DelegateInvocationCache.csproj gates/fixtures/delegate-invocation-cache/Program.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|empty-string-clone-prefix:${DN2CPP_BEFORE_EMPTY_STRING_CLONE:-}|delegate-list-prefix:${DN2CPP_BEFORE_DELEGATE_LISTS:-}|recursive-delegate-prefix:${DN2CPP_BEFORE_RECURSIVE_DELEGATE:-}|ordinary-interface-prefix:${DN2CPP_BEFORE_ORDINARY_IL_INTERFACE:-}|object-methodimpl-prefix:${DN2CPP_BEFORE_OBJECT_METHODIMPL:-}"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/recursive-delegate/RecursiveDelegate.csproj gates/fixtures/recursive-delegate/Program.cs"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|delegate-origin-prefix-argv:before-delegate-origin-boundaries|delegate-origin-modes:argument,field,array,checked-conv,arithmetic,box,call,local,stack-join,byref-argument"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ldftn-local/Program.cs"
 gate_optional_argument_asserts() {
     local out="$1" native line
     native=$(strip_cr_win_file "$out/metadata-layout.stdout")
@@ -436,22 +439,22 @@ gate_extra_asserts() {
     sed '/^== recursive delegate declarations ==/,$d' "$out/metadata-layout.stdout" > "$out/recursive-delegate-prefix.stdout"
     diff -u <(strip_cr_win_file "$out/before-recursive-delegate.stdout") \
         <(strip_cr_win_file "$out/recursive-delegate-prefix.stdout")
-    grep -Fxq 'metadata-layout-begin' "$out/metadata-layout.stdout"
-    grep -Fxq 'metadata-layout-cache-capacity=72/1296' "$out/metadata-layout.stdout"
-    grep -Fxq 'metadata-layout-cache-threads=1296/1296' "$out/metadata-layout.stdout"
-    grep -Fxq 'metadata-layout-interface-receivers=21000' "$out/metadata-layout.stdout"
-    grep -Fxq 'metadata-layout-end' "$out/metadata-layout.stdout"
-    grep -Fxq 'metadata-compression-begin' "$out/metadata-layout.stdout"
-    grep -Fxq 'metadata-compression-labels=field/property/constructor/method/parameter' "$out/metadata-layout.stdout"
-    grep -Fxq 'metadata-compression-inheritance=v5/Direct' "$out/metadata-layout.stdout"
-    grep -Fxq 'metadata-compression-generic-value=15/Int32/True' "$out/metadata-layout.stdout"
-    grep -Fxq 'metadata-compression-generic-reference=text/String/True' "$out/metadata-layout.stdout"
-    grep -Fxq 'metadata-compression-plain-generic=True/True' "$out/metadata-layout.stdout"
-    grep -Fxq 'metadata-compression-end' "$out/metadata-layout.stdout"
-    grep -Fxq 'existing-constructor-message: Exception has been thrown by the target of an invocation.' "$out/metadata-layout.stdout"
-    grep -Fxq 'existing-constructor-method-composed-flags: TargetInvocationException InvalidOperationException 80131604' "$out/metadata-layout.stdout"
-    grep -Fxq 'existing-constructor-end' "$out/metadata-layout.stdout"
-    grep -Fxq 'activator-cold-generic=73' "$out/metadata-layout.stdout"
+    grep -Fxq 'metadata-layout-begin' <<< "$native"
+    grep -Fxq 'metadata-layout-cache-capacity=72/1296' <<< "$native"
+    grep -Fxq 'metadata-layout-cache-threads=1296/1296' <<< "$native"
+    grep -Fxq 'metadata-layout-interface-receivers=21000' <<< "$native"
+    grep -Fxq 'metadata-layout-end' <<< "$native"
+    grep -Fxq 'metadata-compression-begin' <<< "$native"
+    grep -Fxq 'metadata-compression-labels=field/property/constructor/method/parameter' <<< "$native"
+    grep -Fxq 'metadata-compression-inheritance=v5/Direct' <<< "$native"
+    grep -Fxq 'metadata-compression-generic-value=15/Int32/True' <<< "$native"
+    grep -Fxq 'metadata-compression-generic-reference=text/String/True' <<< "$native"
+    grep -Fxq 'metadata-compression-plain-generic=True/True' <<< "$native"
+    grep -Fxq 'metadata-compression-end' <<< "$native"
+    grep -Fxq 'existing-constructor-message: Exception has been thrown by the target of an invocation.' <<< "$native"
+    grep -Fxq 'existing-constructor-method-composed-flags: TargetInvocationException InvalidOperationException 80131604' <<< "$native"
+    grep -Fxq 'existing-constructor-end' <<< "$native"
+    grep -Fxq 'activator-cold-generic=73' <<< "$native"
     DN2CPP_BEFORE_EXISTING_CONSTRUCTOR=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-existing-constructor.stdout"
     sed '/^existing-constructor-begin/,$d' "$out/metadata-layout.stdout" > "$out/existing-constructor-prefix.stdout"
     diff -u <(strip_cr_win_file "$out/before-existing-constructor.stdout") \
@@ -460,64 +463,64 @@ gate_extra_asserts() {
     sed '/^activator-cold-generic=/,$d' "$out/metadata-layout.stdout" > "$out/cold-activator-prefix.stdout"
     diff -u <(strip_cr_win_file "$out/before-cold-activator.stdout") \
         <(strip_cr_win_file "$out/cold-activator-prefix.stdout")
-    grep -Fxq 'delegate-method-shared=True/True' "$out/metadata-layout.stdout"
-    grep -Fxq 'delegate-method-generic=Int32/String' "$out/metadata-layout.stdout"
-    grep -Fxq 'delegate-method-runtime-owned=True/True' "$out/metadata-layout.stdout"
-    grep -Fxq 'delegate-method-struct-interface=StructProbe/Value/31/31' "$out/metadata-layout.stdout"
-    grep -Fxq 'delegate-method-explicit-interface=ExplicitProbe/True/41/41' "$out/metadata-layout.stdout"
-    grep -Fxq 'delegate-method-default-interface=IDefaultProbe/Default/101' "$out/metadata-layout.stdout"
-    grep -Fxq 'delegate-method-interface-generic=ImplicitGeneric/String/ExplicitGeneric/True/Int32/p5' "$out/metadata-layout.stdout"
-    grep -Fxq 'delegate-method-array-generic=Int32[]/String[]' "$out/metadata-layout.stdout"
-    grep -Fxq 'delegate-method-generic-hider=GvmBase/base/GvmLeaf/leaf' "$out/metadata-layout.stdout"
-    grep -Fxq 'delegate-method-generic-covariant=CovariantLeaf/CovariantLeaf/CovariantLeaf' "$out/metadata-layout.stdout"
-    grep -Fxq 'delegate-method-end' "$out/metadata-layout.stdout"
-    grep -Fxq 'delegate-method-interface-begin' "$out/metadata-layout.stdout"
-    grep -Fxq 'delegate-method-generic-explicit-order=explicit/PlainFirstGeneric/True/explicit/ExplicitFirstGeneric/True' "$out/metadata-layout.stdout"
-    grep -Fxq 'delegate-method-derived-default=derived/IDerivedDefault/True' "$out/metadata-layout.stdout"
-    grep -Fxq 'delegate-method-derived-generic=derived/IDerivedGenericDefault/True' "$out/metadata-layout.stdout"
-    grep -Fxq 'delegate-method-derived-struct=derived/IDerivedDefault' "$out/metadata-layout.stdout"
-    grep -Fxq 'delegate-method-derived-inherited=derived/IDerivedDefault' "$out/metadata-layout.stdout"
-    grep -Fxq 'delegate-method-derived-typed=derived/True' "$out/metadata-layout.stdout"
-    grep -Fxq 'delegate-method-derived-same=same/IDerivedSame' "$out/metadata-layout.stdout"
-    grep -Fxq 'delegate-method-derived-runtime-type=derived/IRuntimeDerivedDefault/True' "$out/metadata-layout.stdout"
-    grep -Fxq 'delegate-method-derived-generic-runtime-type=derived/derived/IRuntimeGenericDerivedDefault/True' "$out/metadata-layout.stdout"
-    grep -Fxq 'delegate-method-inherited-generic-runtime-type=mid/mid/RuntimeGvmMid' "$out/metadata-layout.stdout"
-    grep -Fxq 'delegate-method-interface-end' "$out/metadata-layout.stdout"
-    grep -Fxq 'interface-gvm-dispatch-begin' "$out/metadata-layout.stdout"
-    grep -Fxq 'interface-gvm-explicit-overloads=generic/integer' "$out/metadata-layout.stdout"
-    grep -Fxq 'interface-gvm-explicit-overloads-generic-interface=generic/integer' "$out/metadata-layout.stdout"
-    grep -Fxq 'interface-gvm-plain-and-explicit-overload=plain/int-explicit/Pick/True' "$out/metadata-layout.stdout"
-    grep -Fxq 'interface-gvm-qualifier-prefix=plain/longer/Pick/True' "$out/metadata-layout.stdout"
-    grep -Fxq 'interface-gvm-qualifier-arity=plain/explicit-generic/Pick/True' "$out/metadata-layout.stdout"
-    grep -Fxq 'interface-gvm-dispatch-end' "$out/metadata-layout.stdout"
-    grep -Fxq 'interface-redeclaration-begin' "$out/metadata-layout.stdout"
-    grep -Fxq 'interface-redeclaration-plain=derived-plain/derived-plain/RedeclaredDerived/plain' "$out/metadata-layout.stdout"
-    grep -Fxq 'interface-redeclaration-unlisted=base-explicit/base-explicit/RedeclaredBase/explicit' "$out/metadata-layout.stdout"
-    grep -Fxq 'interface-redeclaration-hider=implicit/implicit/ImplicitRedeclared/plain' "$out/metadata-layout.stdout"
-    grep -Fxq 'interface-redeclaration-abstract=abstract-leaf/abstract-leaf/AbstractLeaf/plain' "$out/metadata-layout.stdout"
-    grep -Fxq 'interface-redeclaration-generic-class=shared-box-String/shared-box-String/SharedRedeclaredBox`1/plain' "$out/metadata-layout.stdout"
-    grep -Fxq 'interface-redeclaration-fill=fill-source/fill-source/FillSource/plain/fill-override/fill-override/FillOverride/plain' "$out/metadata-layout.stdout"
-    grep -Fxq 'interface-redeclaration-explicit-mid=explicit-mid/explicit-mid/ExplicitMidRedeclared/explicit' "$out/metadata-layout.stdout"
-    grep -Fxq 'interface-redeclaration-default=default/default/IRedeclaredDefault/plain/default-mid/default-mid/DefaultRedeclared/explicit' "$out/metadata-layout.stdout"
-    grep -Fxq 'interface-redeclaration-closed-generic=of-derived-plain/of-derived-plain/RedeclaredOfDerived/plain' "$out/metadata-layout.stdout"
-    grep -Fxq 'interface-redeclaration-runtime-type=runtime-box/runtime-box/Tag' "$out/metadata-layout.stdout"
-    grep -Fxq 'interface-redeclaration-pick-plain=pick-derived-plain/pick-derived-plain/PickDerived/plain' "$out/metadata-layout.stdout"
-    grep -Fxq 'interface-redeclaration-pick-unlisted=pick-base-explicit/pick-base-explicit/PickBase/explicit' "$out/metadata-layout.stdout"
-    grep -Fxq 'interface-redeclaration-pick-hider=pick-implicit/pick-implicit/PickImplicit/plain/pick-virtual/pick-virtual/PickVirtual/plain' "$out/metadata-layout.stdout"
-    grep -Fxq 'interface-redeclaration-pick-override=pick-override/pick-override/PickOverride/plain' "$out/metadata-layout.stdout"
-    grep -Fxq 'interface-redeclaration-pick-fill=pick-source/pick-source/PickSource/plain/pick-target-override/pick-target-override/PickTargetOverride/plain' "$out/metadata-layout.stdout"
-    grep -Fxq 'interface-redeclaration-end' "$out/metadata-layout.stdout"
-    grep -Fxq 'runtime-level-gvm-begin' "$out/metadata-layout.stdout"
-    grep -Fxq 'runtime-level-gvm-generic-base=root:Int32/String|leaf:Int32/String+root:Int32/String|leaf:Int32/String+root:Int32/String|Tag|True|True|True' "$out/metadata-layout.stdout"
-    grep -Fxq 'runtime-level-gvm-unconstructed-base=leaf:String/Int32+root:String/Int32|leaf:String/Int32+root:String/Int32|True|Int32' "$out/metadata-layout.stdout"
-    grep -Fxq 'runtime-level-gvm-two-arguments=pair:Int32,String/String|pair:Int32,Boolean/String|pair:Int32,Boolean/String|True' "$out/metadata-layout.stdout"
-    grep -Fxq 'runtime-level-gvm-plain-base=own:Decimal/String|own:Decimal/String|True|own:Decimal|True' "$out/metadata-layout.stdout"
-    grep -Fxq 'runtime-level-method-row=True|own:Decimal|True|Who' "$out/metadata-layout.stdout"
-    grep -Fxq 'runtime-level-gvm-chain=chain:String+mid:String/Int32|chain:String+mid:String/Int32|True' "$out/metadata-layout.stdout"
-    grep -Fxq 'runtime-level-gvm-inherited=mid:Boolean/Int32|mid:Boolean/Int32|True|Boolean' "$out/metadata-layout.stdout"
-    grep -Fxq 'runtime-level-gvm-image-level=abstract-mid:Int32/Int32|True|True|True' "$out/metadata-layout.stdout"
-    grep -Fxq 'runtime-level-gvm-interface=picker:Int32/String|picker:Int32/String|True|picker:Int32|True|Name' "$out/metadata-layout.stdout"
-    grep -Fxq 'runtime-level-gvm-end' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-shared=True/True' <<< "$native"
+    grep -Fxq 'delegate-method-generic=Int32/String' <<< "$native"
+    grep -Fxq 'delegate-method-runtime-owned=True/True' <<< "$native"
+    grep -Fxq 'delegate-method-struct-interface=StructProbe/Value/31/31' <<< "$native"
+    grep -Fxq 'delegate-method-explicit-interface=ExplicitProbe/True/41/41' <<< "$native"
+    grep -Fxq 'delegate-method-default-interface=IDefaultProbe/Default/101' <<< "$native"
+    grep -Fxq 'delegate-method-interface-generic=ImplicitGeneric/String/ExplicitGeneric/True/Int32/p5' <<< "$native"
+    grep -Fxq 'delegate-method-array-generic=Int32[]/String[]' <<< "$native"
+    grep -Fxq 'delegate-method-generic-hider=GvmBase/base/GvmLeaf/leaf' <<< "$native"
+    grep -Fxq 'delegate-method-generic-covariant=CovariantLeaf/CovariantLeaf/CovariantLeaf' <<< "$native"
+    grep -Fxq 'delegate-method-end' <<< "$native"
+    grep -Fxq 'delegate-method-interface-begin' <<< "$native"
+    grep -Fxq 'delegate-method-generic-explicit-order=explicit/PlainFirstGeneric/True/explicit/ExplicitFirstGeneric/True' <<< "$native"
+    grep -Fxq 'delegate-method-derived-default=derived/IDerivedDefault/True' <<< "$native"
+    grep -Fxq 'delegate-method-derived-generic=derived/IDerivedGenericDefault/True' <<< "$native"
+    grep -Fxq 'delegate-method-derived-struct=derived/IDerivedDefault' <<< "$native"
+    grep -Fxq 'delegate-method-derived-inherited=derived/IDerivedDefault' <<< "$native"
+    grep -Fxq 'delegate-method-derived-typed=derived/True' <<< "$native"
+    grep -Fxq 'delegate-method-derived-same=same/IDerivedSame' <<< "$native"
+    grep -Fxq 'delegate-method-derived-runtime-type=derived/IRuntimeDerivedDefault/True' <<< "$native"
+    grep -Fxq 'delegate-method-derived-generic-runtime-type=derived/derived/IRuntimeGenericDerivedDefault/True' <<< "$native"
+    grep -Fxq 'delegate-method-inherited-generic-runtime-type=mid/mid/RuntimeGvmMid' <<< "$native"
+    grep -Fxq 'delegate-method-interface-end' <<< "$native"
+    grep -Fxq 'interface-gvm-dispatch-begin' <<< "$native"
+    grep -Fxq 'interface-gvm-explicit-overloads=generic/integer' <<< "$native"
+    grep -Fxq 'interface-gvm-explicit-overloads-generic-interface=generic/integer' <<< "$native"
+    grep -Fxq 'interface-gvm-plain-and-explicit-overload=plain/int-explicit/Pick/True' <<< "$native"
+    grep -Fxq 'interface-gvm-qualifier-prefix=plain/longer/Pick/True' <<< "$native"
+    grep -Fxq 'interface-gvm-qualifier-arity=plain/explicit-generic/Pick/True' <<< "$native"
+    grep -Fxq 'interface-gvm-dispatch-end' <<< "$native"
+    grep -Fxq 'interface-redeclaration-begin' <<< "$native"
+    grep -Fxq 'interface-redeclaration-plain=derived-plain/derived-plain/RedeclaredDerived/plain' <<< "$native"
+    grep -Fxq 'interface-redeclaration-unlisted=base-explicit/base-explicit/RedeclaredBase/explicit' <<< "$native"
+    grep -Fxq 'interface-redeclaration-hider=implicit/implicit/ImplicitRedeclared/plain' <<< "$native"
+    grep -Fxq 'interface-redeclaration-abstract=abstract-leaf/abstract-leaf/AbstractLeaf/plain' <<< "$native"
+    grep -Fxq 'interface-redeclaration-generic-class=shared-box-String/shared-box-String/SharedRedeclaredBox`1/plain' <<< "$native"
+    grep -Fxq 'interface-redeclaration-fill=fill-source/fill-source/FillSource/plain/fill-override/fill-override/FillOverride/plain' <<< "$native"
+    grep -Fxq 'interface-redeclaration-explicit-mid=explicit-mid/explicit-mid/ExplicitMidRedeclared/explicit' <<< "$native"
+    grep -Fxq 'interface-redeclaration-default=default/default/IRedeclaredDefault/plain/default-mid/default-mid/DefaultRedeclared/explicit' <<< "$native"
+    grep -Fxq 'interface-redeclaration-closed-generic=of-derived-plain/of-derived-plain/RedeclaredOfDerived/plain' <<< "$native"
+    grep -Fxq 'interface-redeclaration-runtime-type=runtime-box/runtime-box/Tag' <<< "$native"
+    grep -Fxq 'interface-redeclaration-pick-plain=pick-derived-plain/pick-derived-plain/PickDerived/plain' <<< "$native"
+    grep -Fxq 'interface-redeclaration-pick-unlisted=pick-base-explicit/pick-base-explicit/PickBase/explicit' <<< "$native"
+    grep -Fxq 'interface-redeclaration-pick-hider=pick-implicit/pick-implicit/PickImplicit/plain/pick-virtual/pick-virtual/PickVirtual/plain' <<< "$native"
+    grep -Fxq 'interface-redeclaration-pick-override=pick-override/pick-override/PickOverride/plain' <<< "$native"
+    grep -Fxq 'interface-redeclaration-pick-fill=pick-source/pick-source/PickSource/plain/pick-target-override/pick-target-override/PickTargetOverride/plain' <<< "$native"
+    grep -Fxq 'interface-redeclaration-end' <<< "$native"
+    grep -Fxq 'runtime-level-gvm-begin' <<< "$native"
+    grep -Fxq 'runtime-level-gvm-generic-base=root:Int32/String|leaf:Int32/String+root:Int32/String|leaf:Int32/String+root:Int32/String|Tag|True|True|True' <<< "$native"
+    grep -Fxq 'runtime-level-gvm-unconstructed-base=leaf:String/Int32+root:String/Int32|leaf:String/Int32+root:String/Int32|True|Int32' <<< "$native"
+    grep -Fxq 'runtime-level-gvm-two-arguments=pair:Int32,String/String|pair:Int32,Boolean/String|pair:Int32,Boolean/String|True' <<< "$native"
+    grep -Fxq 'runtime-level-gvm-plain-base=own:Decimal/String|own:Decimal/String|True|own:Decimal|True' <<< "$native"
+    grep -Fxq 'runtime-level-method-row=True|own:Decimal|True|Who' <<< "$native"
+    grep -Fxq 'runtime-level-gvm-chain=chain:String+mid:String/Int32|chain:String+mid:String/Int32|True' <<< "$native"
+    grep -Fxq 'runtime-level-gvm-inherited=mid:Boolean/Int32|mid:Boolean/Int32|True|Boolean' <<< "$native"
+    grep -Fxq 'runtime-level-gvm-image-level=abstract-mid:Int32/Int32|True|True|True' <<< "$native"
+    grep -Fxq 'runtime-level-gvm-interface=picker:Int32/String|picker:Int32/String|True|picker:Int32|True|Name' <<< "$native"
+    grep -Fxq 'runtime-level-gvm-end' <<< "$native"
     DN2CPP_BEFORE_RUNTIME_LEVEL_GVM=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-runtime-level-gvm.stdout"
     sed '/^runtime-level-gvm-begin/,$d' "$out/metadata-layout.stdout" > "$out/runtime-level-gvm-prefix.stdout"
     diff -u <(strip_cr_win_file "$out/before-runtime-level-gvm.stdout") \
@@ -534,20 +537,20 @@ gate_extra_asserts() {
     sed '/^delegate-method-begin/,$d' "$out/metadata-layout.stdout" > "$out/delegate-method-prefix.stdout"
     diff -u <(strip_cr_win_file "$out/before-delegate-method.stdout") \
         <(strip_cr_win_file "$out/delegate-method-prefix.stdout")
-    grep -Fxq 'ldftn-local-direct=12/Add' "$out/metadata-layout.stdout"
-    grep -Fxq 'ldftn-local-nop=12/Add' "$out/metadata-layout.stdout"
-    grep -Fxq 'ldftn-local-conv=12/Add' "$out/metadata-layout.stdout"
-    grep -Fxq 'ldftn-local-snapshot=12/Add' "$out/metadata-layout.stdout"
-    grep -Fxq 'ldftn-local-selected=12/Add/2/Subtract' "$out/metadata-layout.stdout"
-    grep -Fxq 'ldftn-local-stack-join=12/Add/2/Subtract' "$out/metadata-layout.stdout"
-    grep -Fxq 'ldftn-local-closed=C:x/Decorate' "$out/metadata-layout.stdout"
-    grep -Fxq 'ldftn-local-calli=14' "$out/metadata-layout.stdout"
-    grep -Fxq 'ldftn-local-dead-origin=2/Subtract' "$out/metadata-layout.stdout"
-    grep -Fxq 'ldftn-local-virtual=15/VirtualDerived.Scale' "$out/metadata-layout.stdout"
-    grep -Fxq 'ldftn-local-instance=15/Offset' "$out/metadata-layout.stdout"
-    grep -Fxq 'ldftn-local-int64=12/Add' "$out/metadata-layout.stdout"
-    grep -Fxq 'ldftn-local-address-taken=42/9/12/Add' "$out/metadata-layout.stdout"
-    grep -Fxq 'ldftn-local-end' "$out/metadata-layout.stdout"
+    grep -Fxq 'ldftn-local-direct=12/Add' <<< "$native"
+    grep -Fxq 'ldftn-local-nop=12/Add' <<< "$native"
+    grep -Fxq 'ldftn-local-conv=12/Add' <<< "$native"
+    grep -Fxq 'ldftn-local-snapshot=12/Add' <<< "$native"
+    grep -Fxq 'ldftn-local-selected=12/Add/2/Subtract' <<< "$native"
+    grep -Fxq 'ldftn-local-stack-join=12/Add/2/Subtract' <<< "$native"
+    grep -Fxq 'ldftn-local-closed=C:x/Decorate' <<< "$native"
+    grep -Fxq 'ldftn-local-calli=14' <<< "$native"
+    grep -Fxq 'ldftn-local-dead-origin=2/Subtract' <<< "$native"
+    grep -Fxq 'ldftn-local-virtual=15/VirtualDerived.Scale' <<< "$native"
+    grep -Fxq 'ldftn-local-instance=15/Offset' <<< "$native"
+    grep -Fxq 'ldftn-local-int64=12/Add' <<< "$native"
+    grep -Fxq 'ldftn-local-address-taken=42/9/12/Add' <<< "$native"
+    grep -Fxq 'ldftn-local-end' <<< "$native"
     DN2CPP_BEFORE_TYPEDEF_MEMBERREF=1 run_bounded dotnet "$_CG_APP" \
         > "$out/before-typedef-memberref.stdout"
     sed '/^== same-module TypeDef MemberRefs ==/,$d' "$out/metadata-layout.stdout" \
@@ -558,7 +561,7 @@ gate_extra_asserts() {
         'typedef overloads=25/x:body' 'typedef instance=15' \
         'typedef generic method=9' 'typedef generic owner=31/owner' \
         'same-module TypeDef MemberRefs end'; do
-        grep -Fxq "$line" "$out/metadata-layout.stdout" \
+        grep -Fxq "$line" <<< "$native" \
             || { echo "FAIL: TypeDef-parent MemberRef witness missing: $line" >&2; exit 1; }
     done
     DN2CPP_BEFORE_ORDINARY_IL_INTERFACE=1 run_bounded dotnet "$_CG_APP" \
@@ -612,7 +615,7 @@ gate_extra_asserts() {
     tag_owners=$(LC_ALL=C awk '{ sub(/\r$/, "") } /^\/\/ .*::/ { owner = substr($0, 4) }
         /int32_t [A-Za-z0-9_]+_delegate_tag/ { print owner }' "$out"/generated*.cpp | LC_ALL=C sort -u)
     grep -Fxq 'LdftnLocalSubset.Program::Selected' <<<"$tag_owners"
-    stray_owners=$(grep -Ev '^LdftnLocalSubset\.Program::(Stored|NopSeparated|NativeConvert|SnapshotBeforeOverwrite|Selected|StackJoin|ClosedStored|RawCalli|DeadOrigins|VirtualStored|InstanceStored|Int64Stored|SealedInterface|SealedGenericInterface)$' <<<"$tag_owners" || true)
+    stray_owners=$(grep -Ev '^LdftnLocalSubset\.Program::(Stored|NopSeparated|NativeConvert|SnapshotBeforeOverwrite|Selected|StackJoin|ClosedStored|RawCalli|DeadOrigins|VirtualStored|InstanceStored|Int64Stored|SealedInterface|SealedGenericInterface|OriginBoundary)$' <<<"$tag_owners" || true)
     if [ -n "$stray_owners" ]; then
         printf 'error: delegate tags outside the rewritten bodies:\n%s\n' "$stray_owners" >&2
         return 1
@@ -621,22 +624,22 @@ gate_extra_asserts() {
     sed '/^ldftn-local-begin/,$d' "$out/metadata-layout.stdout" > "$out/ldftn-local-prefix.stdout"
     diff -u <(strip_cr_win_file "$out/before-ldftn-local.stdout") \
         <(strip_cr_win_file "$out/ldftn-local-prefix.stdout")
-    grep -Fxq '== reflection invoke validation ==' "$out/metadata-layout.stdout"
-    grep -Fxq 'target calls: 2' "$out/metadata-layout.stdout"
-    grep -Fxq 'plain get, stray index: TargetParameterCountException' "$out/metadata-layout.stdout"
-    grep -Fxq 'bound ValueType delegate: boxed:5' "$out/metadata-layout.stdout"
-    grep -Fxq 'nullable result without value: null' "$out/metadata-layout.stdout"
-    grep -Fxq 'current number format: separator:.' "$out/metadata-layout.stdout"
-    grep -Fxq 'number from int: number:7' "$out/metadata-layout.stdout"
-    grep -Fxq 'number from long: ArgumentException' "$out/metadata-layout.stdout"
+    grep -Fxq '== reflection invoke validation ==' <<< "$native"
+    grep -Fxq 'target calls: 2' <<< "$native"
+    grep -Fxq 'plain get, stray index: TargetParameterCountException' <<< "$native"
+    grep -Fxq 'bound ValueType delegate: boxed:5' <<< "$native"
+    grep -Fxq 'nullable result without value: null' <<< "$native"
+    grep -Fxq 'current number format: separator:.' <<< "$native"
+    grep -Fxq 'number from int: number:7' <<< "$native"
+    grep -Fxq 'number from long: ArgumentException' <<< "$native"
     DN2CPP_BEFORE_INVOKE_VALIDATION=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-invoke-validation.stdout"
     sed '/^== reflection invoke validation ==/,$d' "$out/metadata-layout.stdout" > "$out/invoke-validation-prefix.stdout"
     diff -u <(strip_cr_win_file "$out/before-invoke-validation.stdout") \
         <(strip_cr_win_file "$out/invoke-validation-prefix.stdout")
-    grep -Fxq '== runtime handle relations ==' "$out/metadata-layout.stdout"
-    grep -Fxq 'runtime NullReferenceException chain: NullReferenceException > SystemException > Exception > Object' "$out/metadata-layout.stdout"
-    grep -Fxq 'ManualResetEvent after IDisposable: ObjectDisposedException' "$out/metadata-layout.stdout"
-    grep -Fxq 'runtime handle relations end' "$out/metadata-layout.stdout"
+    grep -Fxq '== runtime handle relations ==' <<< "$native"
+    grep -Fxq 'runtime NullReferenceException chain: NullReferenceException > SystemException > Exception > Object' <<< "$native"
+    grep -Fxq 'ManualResetEvent after IDisposable: ObjectDisposedException' <<< "$native"
+    grep -Fxq 'runtime handle relations end' <<< "$native"
     local install
     for install in 'dn2cpp_set_relation_rows(rel_itf_sets, ' \
             'dn2cpp_intrinsic_set_base(&dn2cpp_null_reference_exception_type, &ti_System_SystemException);' \
@@ -651,6 +654,19 @@ gate_extra_asserts() {
     diff -u <(strip_cr_win_file "$out/before-runtime-handle-relations.stdout") \
         <(strip_cr_win_file "$out/runtime-handle-relations-prefix.stdout")
     gate_empty_string_clone_asserts "$out"
+
+    run_bounded dotnet "$_CG_APP" before-delegate-origin-boundaries > "$out/origin-before.dotnet.stdout"
+    run_bounded "$out/ReflectInvoke$EXE_EXT" before-delegate-origin-boundaries > "$out/origin-before.native.stdout"
+    sed '/^== delegate origin boundaries ==/,$d' "$out/metadata-layout.stdout" > "$out/origin-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/origin-before.dotnet.stdout") \
+        <(strip_cr_win_file "$out/origin-prefix.stdout")
+    diff -u <(strip_cr_win_file "$out/origin-before.native.stdout") \
+        <(strip_cr_win_file "$out/origin-prefix.stdout")
+    for line in '== delegate origin boundaries ==' 'delegate-origin-first=12/Add/True' \
+        'delegate-origin-second=2/Subtract/True' 'delegate origin boundaries end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: delegate origin positive witness missing: $line" >&2; return 1; }
+    done
 
     # Enforce each operation's first and repeated allocation budget independently.
     # The capture reports time too, but timing is not a pass/fail threshold.
@@ -736,7 +752,8 @@ for byref_mode in overwrite overwrite-int64 copy; do
     run_bounded dotnet exec "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
         "$byref_app" "--byref-$byref_mode"
     run_bounded dotnet "$byref_app" > "$byref_dir/dotnet.stdout"
-    grep -Fxq 'ldftn-local-direct=2/Subtract' "$byref_dir/dotnet.stdout"
+    byref_dotnet=$(strip_cr_win_file "$byref_dir/dotnet.stdout")
+    grep -Fxq 'ldftn-local-direct=2/Subtract' <<< "$byref_dotnet"
     sed '/^ldftn-local-begin/,$d' "$byref_dir/dotnet.stdout" > "$byref_dir/dotnet-prefix.stdout"
     diff -u <(strip_cr_win_file "$invalid_out/byref-prefix.stdout") \
         <(strip_cr_win_file "$byref_dir/dotnet-prefix.stdout")
@@ -773,6 +790,74 @@ fi
 sed '/^ldftn-local-begin/,$d' "$byref_copy/native.stdout" > "$byref_copy/native-prefix.stdout"
 diff -u <(strip_cr_win_file "$invalid_out/byref-prefix.stdout") \
     <(strip_cr_win_file "$byref_copy/native-prefix.stdout")
+
+# An argument/field constructor body has no load origin; local and stack joins
+# also have a tracked edge, which must succeed before the untracked edge refuses.
+origin_diagnostic='a delegate target without a preserved method identity is not supported'
+run_bounded dotnet "$_CG_APP" before-delegate-origin-boundaries > "$invalid_out/origin-prefix.stdout"
+for origin_mode in argument field array checked-conv arithmetic box call local stack-join byref-argument; do
+    origin_dir="$invalid_out/origin-$origin_mode"
+    origin_app="$origin_dir/app/ReflectInvoke.dll"
+    mkdir -p "$origin_dir/app"
+    cp "$_CG_APP" "$origin_app"
+    cp "${_CG_APP%.dll}.runtimeconfig.json" "$origin_dir/app/ReflectInvoke.runtimeconfig.json"
+    cp "${_CG_APP%.dll}.deps.json" "$origin_dir/app/ReflectInvoke.deps.json"
+    cp "$(dirname "$_CG_APP")/Dn2Cpp.Runtime.dll" "$origin_dir/app/Dn2Cpp.Runtime.dll"
+    run_bounded dotnet exec "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
+        "$origin_app" "--delegate-origin-$origin_mode" > "$origin_dir/fixture.log"
+    origin_fixture=$(strip_cr_win_file "$origin_dir/fixture.log")
+    grep -Fxq "delegate origin fixture verified: --delegate-origin-$origin_mode" <<< "$origin_fixture"
+    run_bounded dotnet "$origin_app" > "$origin_dir/dotnet.stdout"
+    origin_dotnet=$(strip_cr_win_file "$origin_dir/dotnet.stdout")
+    grep -Fxq 'delegate-origin-first=12/Add/True' <<< "$origin_dotnet"
+    origin_second='delegate-origin-second=12/Add/False'
+    if [ "$origin_mode" = local ] || [ "$origin_mode" = stack-join ]; then
+        origin_second='delegate-origin-second=2/Subtract/True'
+    fi
+    grep -Fxq "$origin_second" <<< "$origin_dotnet"
+    grep -Fxq 'delegate origin boundaries end' <<< "$origin_dotnet"
+    sed '/^== delegate origin boundaries ==/,$d' "$origin_dir/dotnet.stdout" > "$origin_dir/dotnet-prefix.stdout"
+    diff -u <(strip_cr_win_file "$invalid_out/origin-prefix.stdout") \
+        <(strip_cr_win_file "$origin_dir/dotnet-prefix.stdout")
+    origin_status=0
+    run_bounded invoke_cli "$origin_app" -r "$_CG_CORELIB" -r "$typeconverter" --no-ildiet \
+        -o "$origin_dir/out" > "$origin_dir/transpile.log" 2>&1 || origin_status=$?
+    if [ "$origin_mode" = local ] || [ "$origin_mode" = stack-join ]; then
+        if [ "$origin_status" -ne 0 ]; then
+            cat "$origin_dir/transpile.log" >&2
+            echo "error: origin-$origin_mode rejected its tracked construction edge" >&2
+            exit 1
+        fi
+        compile_console "$origin_dir/out" ReflectInvoke
+        origin_status=0
+        run_bounded "$origin_dir/out/ReflectInvoke$EXE_EXT" > "$origin_dir/native.stdout" \
+            2> "$origin_dir/native.stderr" || origin_status=$?
+        origin_native=$(strip_cr_win_file "$origin_dir/native.stdout")
+        if [ "$origin_status" -eq 0 ] \
+            || ! grep -Fq "System.NotSupportedException: $origin_diagnostic" "$origin_dir/native.stderr" \
+            || ! grep -Fxq 'delegate-origin-first=12/Add/True' <<< "$origin_native" \
+            || grep -q '^delegate-origin-second=' <<< "$origin_native"; then
+            cat "$origin_dir/native.stderr" >&2
+            echo "error: origin-$origin_mode did not refuse its untracked construction edge" >&2
+            exit 1
+        fi
+        sed '/^== delegate origin boundaries ==/,$d' "$origin_dir/native.stdout" > "$origin_dir/native-prefix.stdout"
+        diff -u <(strip_cr_win_file "$invalid_out/origin-prefix.stdout") \
+            <(strip_cr_win_file "$origin_dir/native-prefix.stdout")
+    else
+        origin_owner=OriginBoundary
+        [ "$origin_mode" = field ] && origin_owner=FromField
+        if [ "$origin_mode" = argument ] || [ "$origin_mode" = byref-argument ]; then
+            origin_owner=FromArgument
+        fi
+        if [ "$origin_status" -ne 2 ] \
+            || ! grep -Fq "LdftnLocalSubset.Program.$origin_owner: $origin_diagnostic" "$origin_dir/transpile.log"; then
+            cat "$origin_dir/transpile.log" >&2
+            echo "error: origin-$origin_mode delegate target was not rejected" >&2
+            exit 1
+        fi
+    fi
+done
 
 # Exercise representation boundaries that C# metadata cannot express, using
 # the production decoder and the same CMake/Ninja path as the parity binary.
@@ -1018,9 +1103,10 @@ unset -f gate_extra_asserts
 # The refusals need their CoreLib overrides stripped, so they run in an image
 # that holds nothing else, over packed and native metadata.
 gate_extra_asserts() {
-    local out="$1" line
+    local out="$1" line native
     local refusal="the receiver's body was stripped from this image; preserve it with a link.xml descriptor to reach it through reflection"
     DN2CPP_STRIPPED_OVERRIDES=1 run_bounded "$out/StrippedOverrideRefusals$EXE_EXT" > "$out/stripped-overrides.stdout"
+    native=$(strip_cr_win_file "$out/stripped-overrides.stdout")
     for line in \
         "stripped struct-returning slot: NotSupportedException 0x80131515 System.Globalization.GregorianCalendar.AddYears: $refusal" \
         "stripped slot: NotSupportedException 0x80131515 System.Globalization.GregorianCalendar.GetDayOfMonth: $refusal" \
@@ -1033,7 +1119,7 @@ gate_extra_asserts() {
         "stripped slot, nested object virtual: TargetInvocationException 0x80131604 inner NotSupportedException 0x80131515 System.Globalization.GregorianCalendar.GetDayOfMonth: $refusal" \
         "stripped slot, nested constructor: TargetInvocationException 0x80131604 inner NotSupportedException 0x80131515 System.Globalization.GregorianCalendar.GetDayOfMonth: $refusal" \
         'stripped nested end'; do
-        grep -Fxq -- "$line" "$out/stripped-overrides.stdout" \
+        grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: stripped dispatch witness missing: $line" >&2; return 1; }
     done
 }
@@ -1043,18 +1129,18 @@ DN2CPP_OUT_SUFFIX=-native DN2CPP_STRICT_COMPLETION=1 \
 unset -f gate_extra_asserts
 
 gate_extra_asserts() {
-    local out="$1" native
+    local out="$1" native identity
     run_bounded "$out/ReflectFrameworkBind$EXE_EXT" > "$out/library-struct-return.stdout"
-    grep -Fxq '== direct library struct return ==' "$out/library-struct-return.stdout"
-    grep -Fxq 'direct library struct return end' "$out/library-struct-return.stdout"
+    identity=$(strip_cr_win_file "$out/library-struct-return.stdout")
+    grep -Fxq '== direct library struct return ==' <<< "$identity"
+    grep -Fxq 'direct library struct return end' <<< "$identity"
     DN2CPP_BEFORE_LIBRARY_STRUCT_RETURN=1 run_bounded "$out/ReflectFrameworkBind$EXE_EXT" \
         > "$out/before-library-struct-return.stdout"
     sed '/^== direct library struct return ==/,$d' "$out/library-struct-return.stdout" \
         > "$out/library-struct-return-prefix.stdout"
     diff -u <(strip_cr_win_file "$out/library-struct-return-prefix.stdout") \
         <(strip_cr_win_file "$out/before-library-struct-return.stdout")
-    local refused="ArgumentException 0x80070057 Object of type 'System.Reflection.Pointer' cannot be converted to type" line identity
-    identity=$(strip_cr_win_file "$out/library-struct-return.stdout")
+    local refused="ArgumentException 0x80070057 Object of type 'System.Reflection.Pointer' cannot be converted to type" line
     for line in '== function pointer identity ==' 'local leaf cell, local sink: 16' 'peer leaf cell, peer sink: 272' \
         "local leaf cell, peer sink: $refused 'FunctionPointerTwin.Leaf()*'." \
         "peer leaf cell, local sink: $refused 'FunctionPointerTwin.Leaf()*'." \
@@ -1091,11 +1177,12 @@ corelib_diff_gate ReflectFrameworkBind --no-ildiet System.ComponentModel.TypeCon
     -r "samples/dotnet/ReflectFrameworkBind/bin/$CONFIG/$TFM/ReflectReturnLib.dll"
 
 gate_extra_asserts() {
-    local out="$1"
+    local out="$1" dotnet
     DN2CPP_STRIPPED_OVERRIDES=1 run_bounded "$out/ReflectFrameworkBind$EXE_EXT" > "$out/kept-overrides.stdout"
     DN2CPP_STRIPPED_OVERRIDES=1 run_bounded dotnet "$_CG_APP" > "$out/kept-overrides.dotnet.stdout"
-    grep -Fxq 'framework generic virtual row, library override: library:Tagged' "$out/kept-overrides.dotnet.stdout"
-    grep -Fxq 'framework generic virtual row, library receiver allocated late: late:Tagged' "$out/kept-overrides.dotnet.stdout"
+    dotnet=$(strip_cr_win_file "$out/kept-overrides.dotnet.stdout")
+    grep -Fxq 'framework generic virtual row, library override: library:Tagged' <<< "$dotnet"
+    grep -Fxq 'framework generic virtual row, library receiver allocated late: late:Tagged' <<< "$dotnet"
     diff -u <(strip_cr_win_file "$out/kept-overrides.dotnet.stdout") \
         <(strip_cr_win_file "$out/kept-overrides.stdout")
 }

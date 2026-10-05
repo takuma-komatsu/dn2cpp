@@ -6,10 +6,16 @@ CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
 CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
 
 string[] byRefModes = ["--byref-overwrite", "--byref-overwrite-int64", "--byref-copy"];
-if (args.Length is < 1 or > 2 || (args.Length == 2 && !byRefModes.Contains(args[1])))
-    throw new ArgumentException("expected ReflectInvoke.dll [" + string.Join("|", byRefModes) + "]");
+string[] originModes = ["--delegate-origin-argument", "--delegate-origin-field", "--delegate-origin-array",
+    "--delegate-origin-checked-conv", "--delegate-origin-arithmetic", "--delegate-origin-box",
+    "--delegate-origin-call", "--delegate-origin-local", "--delegate-origin-stack-join",
+    "--delegate-origin-byref-argument"];
+if (args.Length is < 1 or > 2 || (args.Length == 2
+    && !byRefModes.Contains(args[1]) && !originModes.Contains(args[1])))
+    throw new ArgumentException("expected ReflectInvoke.dll [" + string.Join("|", byRefModes.Concat(originModes)) + "]");
 
-string? byRefMode = args.Length == 2 ? args[1] : null;
+string? byRefMode = args.Length == 2 && byRefModes.Contains(args[1]) ? args[1] : null;
+string? originMode = args.Length == 2 && originModes.Contains(args[1]) ? args[1] : null;
 
 string path = Path.GetFullPath(args[0]);
 using var assembly = AssemblyDefinition.ReadAssembly(path, new ReaderParameters { InMemory = true });
@@ -37,6 +43,11 @@ var deadOrigins = Find("DeadOrigins");
 var virtualStored = Find("VirtualStored");
 var instanceStored = Find("InstanceStored");
 var int64Stored = Find("Int64Stored");
+var originBoundary = Find("OriginBoundary");
+var fromArgument = Find("FromArgument");
+var fromField = Find("FromField");
+var returnPointer = Find("ReturnPointer");
+var originPointer = owner.Fields.Single(f => f.Name == "OriginPointer");
 var sealedInterface = Find("SealedInterface");
 var sealedGenericInterface = Find("SealedGenericInterface");
 var invokeVirtualLoad = Find("InvokeVirtualLoad");
@@ -259,6 +270,122 @@ MethodBody Body(MethodDefinition method, bool pointerLocal)
     il.Emit(OpCodes.Ret);
 }
 
+{
+    var body = Body(originBoundary, pointerLocal: originMode == "--delegate-origin-local");
+    var il = body.GetILProcessor();
+    switch (originMode)
+    {
+        case "--delegate-origin-argument":
+        case "--delegate-origin-byref-argument":
+        {
+            // The constructor body has no load origin of its own.
+            var argumentBody = Body(fromArgument, pointerLocal: originMode == "--delegate-origin-byref-argument");
+            var argumentIl = argumentBody.GetILProcessor();
+            if (originMode == "--delegate-origin-byref-argument")
+            {
+                argumentIl.Emit(OpCodes.Ldarg_0);
+                argumentIl.Emit(OpCodes.Stloc_0);
+                argumentIl.Emit(OpCodes.Ldloca_S, argumentBody.Variables[0]);
+                argumentIl.Emit(OpCodes.Pop);
+            }
+            argumentIl.Emit(OpCodes.Ldnull);
+            argumentIl.Emit(originMode == "--delegate-origin-byref-argument" ? OpCodes.Ldloc_0 : OpCodes.Ldarg_0);
+            argumentIl.Emit(OpCodes.Newobj, DelegateCtor(fromArgument));
+            argumentIl.Emit(OpCodes.Ret);
+            il.Emit(OpCodes.Ldftn, add);
+            il.Emit(OpCodes.Call, fromArgument);
+            break;
+        }
+        case "--delegate-origin-field":
+        {
+            // Store in the caller; the constructor body only reads the field.
+            var fieldIl = Body(fromField, pointerLocal: false).GetILProcessor();
+            fieldIl.Emit(OpCodes.Ldnull);
+            fieldIl.Emit(OpCodes.Ldsfld, originPointer);
+            fieldIl.Emit(OpCodes.Newobj, DelegateCtor(fromField));
+            fieldIl.Emit(OpCodes.Ret);
+            il.Emit(OpCodes.Ldftn, add);
+            il.Emit(OpCodes.Stsfld, originPointer);
+            il.Emit(OpCodes.Call, fromField);
+            break;
+        }
+        case "--delegate-origin-array":
+            body.Variables.Add(new VariableDefinition(new ArrayType(module.TypeSystem.IntPtr)));
+            il.Emit(OpCodes.Ldc_I4_1);
+            il.Emit(OpCodes.Newarr, module.TypeSystem.IntPtr);
+            il.Emit(OpCodes.Stloc_0);
+            il.Emit(OpCodes.Ldloc_0);
+            il.Emit(OpCodes.Ldc_I4_0);
+            il.Emit(OpCodes.Ldftn, add);
+            il.Emit(OpCodes.Stelem_I);
+            il.Emit(OpCodes.Ldnull);
+            il.Emit(OpCodes.Ldloc_0);
+            il.Emit(OpCodes.Ldc_I4_0);
+            il.Emit(OpCodes.Ldelem_I);
+            il.Emit(OpCodes.Newobj, DelegateCtor(originBoundary));
+            break;
+        case "--delegate-origin-checked-conv":
+            il.Emit(OpCodes.Ldnull);
+            il.Emit(OpCodes.Ldftn, add);
+            il.Emit(OpCodes.Conv_Ovf_U_Un);
+            il.Emit(OpCodes.Newobj, DelegateCtor(originBoundary));
+            break;
+        case "--delegate-origin-arithmetic":
+            il.Emit(OpCodes.Ldnull);
+            il.Emit(OpCodes.Ldftn, add);
+            il.Emit(OpCodes.Ldc_I4_0);
+            il.Emit(OpCodes.Conv_I);
+            il.Emit(OpCodes.Add);
+            il.Emit(OpCodes.Newobj, DelegateCtor(originBoundary));
+            break;
+        case "--delegate-origin-box":
+            il.Emit(OpCodes.Ldnull);
+            il.Emit(OpCodes.Ldftn, add);
+            il.Emit(OpCodes.Conv_I);
+            il.Emit(OpCodes.Box, module.TypeSystem.IntPtr);
+            il.Emit(OpCodes.Unbox_Any, module.TypeSystem.IntPtr);
+            il.Emit(OpCodes.Newobj, DelegateCtor(originBoundary));
+            break;
+        case "--delegate-origin-call":
+            il.Emit(OpCodes.Ldnull);
+            il.Emit(OpCodes.Ldftn, add);
+            il.Emit(OpCodes.Call, returnPointer);
+            il.Emit(OpCodes.Newobj, DelegateCtor(originBoundary));
+            break;
+        case "--delegate-origin-local":
+        {
+            var join = Instruction.Create(OpCodes.Ldloc_0);
+            il.Emit(OpCodes.Ldnull);
+            il.Emit(OpCodes.Ldftn, add);
+            il.Emit(OpCodes.Stloc_0);
+            il.Emit(OpCodes.Ldarg_0);
+            il.Emit(OpCodes.Brtrue, join);
+            il.Emit(OpCodes.Ldftn, subtract);
+            il.Emit(OpCodes.Call, returnPointer);
+            il.Emit(OpCodes.Stloc_0);
+            il.Append(join);
+            il.Emit(OpCodes.Newobj, DelegateCtor(originBoundary));
+            break;
+        }
+        default:
+        {
+            var second = Instruction.Create(OpCodes.Ldftn, subtract);
+            var join = Instruction.Create(OpCodes.Newobj, DelegateCtor(originBoundary));
+            il.Emit(OpCodes.Ldnull);
+            il.Emit(OpCodes.Ldarg_0);
+            il.Emit(OpCodes.Brfalse, second);
+            il.Emit(OpCodes.Ldftn, add);
+            il.Emit(OpCodes.Br, join);
+            il.Append(second);
+            if (originMode == "--delegate-origin-stack-join")
+                il.Emit(OpCodes.Call, returnPointer);
+            il.Append(join);
+            break;
+        }
+    }
+    il.Emit(OpCodes.Ret);
+}
+
 // C# loads a sealed interface member with ldftn; ldvirtftn of one binds its own
 // body as well, whatever virtual of its signature the receiver's class declares.
 foreach (var (stub, target) in new[] { (sealedInterface, (MethodReference)sealedScale),
@@ -418,6 +545,18 @@ try
             throw new InvalidOperationException("fixture lost its TypeDef-parent MemberRef: " + name);
     }
     Console.WriteLine("TypeDef-parent MemberRef fixtures verified");
+    if (originMode is not null)
+    {
+        if (originMode is "--delegate-origin-argument" or "--delegate-origin-field" or "--delegate-origin-byref-argument")
+        {
+            string name = originMode == "--delegate-origin-field" ? "FromField" : "FromArgument";
+            var constructorBody = written.MainModule.GetType(owner.FullName).Methods.Single(m => m.Name == name).Body;
+            if (constructorBody.Instructions.Any(i => i.OpCode.Code is Code.Ldftn or Code.Ldvirtftn)
+                || !constructorBody.Instructions.Any(i => i.OpCode.Code == Code.Newobj))
+                throw new InvalidOperationException("fixture lost its delegate constructor without a load origin: " + name);
+        }
+        Console.WriteLine("delegate origin fixture verified: " + originMode);
+    }
 }
 finally
 {

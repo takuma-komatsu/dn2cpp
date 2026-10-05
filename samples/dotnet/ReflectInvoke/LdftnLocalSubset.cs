@@ -211,6 +211,20 @@ static class Program
     [MethodImpl(MethodImplOptions.NoInlining)]
     static Func<int, int> Int64Stored() => throw new InvalidOperationException();
 
+    static IntPtr OriginPointer;
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static Func<int, int> OriginBoundary(bool first) => throw new InvalidOperationException();
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static Func<int, int> FromArgument(IntPtr pointer) => throw new InvalidOperationException();
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static Func<int, int> FromField() => throw new InvalidOperationException();
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static IntPtr ReturnPointer(IntPtr pointer) => pointer;
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     static Func<int, int> SealedInterface(ISealedScale receiver) => throw new InvalidOperationException();
 
@@ -251,6 +265,18 @@ static class Program
         Console.WriteLine("typedef generic owner=" + MemberRefBox<int>.ThroughDefinition(31)
             + "/" + MemberRefBox<string>.ThroughDefinition("owner"));
         Console.WriteLine("same-module TypeDef MemberRefs end");
+    }
+
+    internal static void RunOriginBoundaries()
+    {
+        Console.WriteLine("== delegate origin boundaries ==");
+        Func<int, int> first = OriginBoundary(true);
+        Console.WriteLine("delegate-origin-first=" + first(5) + "/" + first.Method.Name
+            + "/" + first.Equals((Func<int, int>)Add));
+        Func<int, int> second = OriginBoundary(false);
+        Console.WriteLine("delegate-origin-second=" + second(5) + "/" + second.Method.Name
+            + "/" + second.Equals((Func<int, int>)Subtract));
+        Console.WriteLine("delegate origin boundaries end");
     }
 
     public static void Run()
