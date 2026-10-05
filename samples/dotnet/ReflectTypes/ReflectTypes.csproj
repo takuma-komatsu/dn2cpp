@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <Compile Remove="AttributeTypePropertySubset.cs" />
+    <Compile Remove="AttributeConstructionOrderSubset.cs" />
     <Compile Remove="ReflectAttrBoxedSubset.cs" />
     <Compile Remove="ReflectRuntimeTypeParitySubset.cs" />
     <Compile Remove="ReflectAssemblyErrorSubset.cs" />
