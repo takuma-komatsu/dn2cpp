@@ -168,6 +168,24 @@ internal static class Program
         Console.WriteLine("-- lexical file operation paths end --");
     }
 
+    internal static void RunUnicodeFileNames(string dir)
+    {
+        Console.WriteLine("-- Unicode file names --");
+        string file = Path.Combine(dir, "caf\u00e9-\ud83d\ude00.txt");
+        string directory = Path.Combine(dir, "r\u00e9pertoire-\ud83d\ude00");
+        File.WriteAllText(file, "text");
+        Console.WriteLine("text=" + File.ReadAllText(file) + " exists=" + File.Exists(file));
+        File.WriteAllBytes(file, new byte[] { 7, 8 });
+        byte[] bytes = File.ReadAllBytes(file);
+        Console.WriteLine("bytes=" + bytes.Length + "/" + bytes[0]);
+        Directory.CreateDirectory(directory);
+        Console.WriteLine("directory exists=" + Directory.Exists(directory));
+        File.Delete(file);
+        Directory.Delete(directory);
+        Console.WriteLine("deleted=" + !File.Exists(file) + "/" + !Directory.Exists(directory));
+        Console.WriteLine("-- Unicode file names end --");
+    }
+
     private static void ProbeMissingUnits(string label, string path, string root)
     {
         try

@@ -22,7 +22,7 @@
 # printing). CoreLib only: the whole enumeration stack lives there.
 source "$(dirname "$0")/_common.sh"
 unset DN2CPP_BEFORE_IO_VALIDATION
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|before-managed-path|before-file-dot-components"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|before-managed-path|before-file-dot-components|before-unicode-file-names"
 
 # The sample takes a scratch directory as args[0]; @SCRATCH@ hands each side
 # its own fresh mktemp dir (see the wrapper feature block in _common.sh).
@@ -55,6 +55,11 @@ gate_extra_asserts() {
     rm -rf "$before_scratch"
     prefix=$(awk '$0 == "-- lexical file operation paths --" { exit } { print }' <<< "$output")
     assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    before_scratch=$(mktemp -d artifacts/path-before.XXXXXX)
+    before=$(run_bounded dotnet "$_CG_APP" "$before_scratch" before-unicode-file-names) || return $?
+    rm -rf "$before_scratch"
+    prefix=$(awk '$0 == "-- Unicode file names --" { exit } { print }' <<< "$output")
+    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
     trailing_error=DirectoryNotFoundException
     if [ "$DN2CPP_OS" = windows ]; then
         trailing_error=IOException
@@ -76,6 +81,11 @@ gate_extra_asserts() {
     done
     grep -Eq '^missing high=FileNotFoundException units=.* D800 0027 002E$' <<< "$output" || return 1
     grep -Eq '^missing low=FileNotFoundException units=.* DFFF 0027 002E$' <<< "$output" || return 1
+    for line in '-- Unicode file names --' 'text=text exists=True' 'bytes=2/7' \
+        'directory exists=True' 'deleted=True/True' '-- Unicode file names end --'; do
+        grep -Fxq -- "$line" <<< "$output" \
+            || { echo "FAIL: Unicode file witness missing: $line" >&2; return 1; }
+    done
     if [ "$DN2CPP_OS" != windows ]; then
         grep -Fxq 'deleted cwd file exists=False directory exists=False' <<< "$output" || return 1
     fi
