@@ -94,6 +94,7 @@ public class Counter
     public static Describer? GenericStringImportProbe;
     public static Describer? GenericVirtualProbe;
     public static Describer? GenericVirtualRowProbe;
+    public static Describer? AggregateProbe;
     // A patch-constructed receiver below GlassShelf, which Main reflects over.
     public static Shelf? PatchShelf;
     // A patch-constructed receiver below Plaque, which Main reflects over.
@@ -932,6 +933,13 @@ internal static class Program
             ObjectVirtualProbe.Inherited(Counter.PatchSlate);
         if (Counter.PatchPlaque is not null && Counter.PatchSlate is not null)
             ObjectVirtualProbe.Groups(Counter.PatchPlaque, Counter.PatchSlate);
+        if (args.Length > 1 && args[1] == "before-derived-aggregate")
+            return;
+        if (Counter.AggregateProbe is not null)
+        {
+            DerivedAggregateSubset.Run();
+            Console.WriteLine(Counter.AggregateProbe());
+        }
     }
 
     private static string Describe(MethodInfo method)

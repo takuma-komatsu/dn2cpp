@@ -9,9 +9,15 @@
 # Class generic virtual rows no AOT class callvirt names, one with a reached body
 # and one abstract, both called by the base only through interfaces, bind to the
 # dispatcher a --hotupdate-base build registers for them; an instantiation the
-# base never reached refuses the whole image.
+# base never reached refuses the whole image. Unavailable aggregate constructors
+# also refuse rather than losing their collection; ordinary exception seeding
+# retains its existing boundary. Aggregate and ordinary Exception Message virtual/base
+# calls preserve override dispatch and nonvirtual stored/base getter behavior.
 # Non-generic abstract class imports bind by their receiver slot. AOT and patch
 # overrides run through callvirt; a non-virtual call refuses the missing body.
+# AggregateException subclasses retain their inner snapshot beside user fields,
+# through imported AOT constructors and directly interpreted base constructors.
+# A real-CoreLib inspector also verifies cached InnerExceptions identity and order.
 # A patch whose IL is rewritten after build (callvirt -> call) matches .NET
 # running the same assembly in both code formats: a non-virtual call of an
 # interface or class import runs the named row's own body, a default interface
@@ -153,6 +159,16 @@ OUT=artifacts/hotupdate-subset
 field_packed='HotUpdateBase.Counter=packed'
 field_native='HotUpdateBase.Counter=native'
 
+assert_derived_aggregate_prefix() {
+    local native="$1" previous="$2" line
+    assert_output "${native%%$'\n== AOT derived aggregates =='*}" "$previous"
+    for line in '== AOT derived aggregates ==' 'AOT derived aggregates end' \
+        '== interpreted derived aggregates ==' 'interpreted derived aggregates end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: derived aggregate block did not complete: $line" >&2; return 1; }
+    done
+}
+
 echo "== 1/5 Building base + patch C# assemblies =="
 build_proj samples/dotnet/HotUpdateBase/HotUpdateBase.csproj
 build_proj samples/dotnet/HotUpdatePatch/HotUpdatePatch.csproj
@@ -162,6 +178,8 @@ build_proj samples/dotnet/HotUpdatePatch/NoCtorImportOracle.csproj
 build_proj samples/dotnet/HotUpdatePatch/GvmRowHitPatch.csproj
 build_proj samples/dotnet/HotUpdatePatch/GvmRowMissPatch.csproj
 build_proj samples/dotnet/HotUpdatePatch/GvmCallPatch.csproj
+build_proj samples/dotnet/HotUpdatePatch/AggregateCtorMissPatch.csproj
+build_proj samples/dotnet/HotUpdatePatch/OrdinaryCtorMissPatch.csproj
 build_gate_proj gates/fixtures/interpreted-concat-oracle/InterpretedConcatOracle.csproj
 build_proj samples/dotnet/HotUpdateBadPatch/HotUpdateBadPatch.csproj
 build_proj samples/dotnet/HotUpdateBadPatch/GenericVirtualBad.csproj
@@ -192,6 +210,8 @@ noctor_oracle_app="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/NoCtorImportOr
 gvmhit_app="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/GvmRowHitPatch.dll"
 gvmmiss_app="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/GvmRowMissPatch.dll"
 gvmcall_app="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/GvmCallPatch.dll"
+aggregate_ctor_miss_app="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/AggregateCtorMissPatch.dll"
+ordinary_ctor_miss_app="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/OrdinaryCtorMissPatch.dll"
 concat_oracle_app="gates/fixtures/interpreted-concat-oracle/bin/$CONFIG/$TFM/InterpretedConcatOracle.dll"
 bad_app="samples/dotnet/HotUpdateBadPatch/bin/$CONFIG/$TFM/HotUpdateBadPatch.dll"
 badgvm_app="samples/dotnet/HotUpdateBadPatch/bin/$CONFIG/$TFM/GenericVirtualBad.dll"
@@ -234,7 +254,7 @@ grep -q dn2cpp_base_image_abi_hash "$OUT/generated.cpp" \
 # against the REAL net10.0 CoreLib, so which CoreLib that resolves to is an input
 # of this gate the same way it is of net10_bcl_diff_gate — a runtime bump must
 # not be served a green recorded against the previous one.
-if gate_cache_check "$OUT" "hotupdate-subset|cli:$(_gate_cli_hash)|field-metadata:$field_packed/$field_native|corelib:$(resolve_net10_corelib)" \
+if gate_cache_check "$OUT" "hotupdate-subset|cli:$(_gate_cli_hash)|field-metadata:$field_packed/$field_native|corelib:$(resolve_net10_corelib)|before-derived-aggregate|before-aggregate-collection|before-aggregate-message|before-ordinary-exception-message|oracle:--derived-aggregate/--aggregate-collection|unavailable-aggregate-ctor" \
         "$base_app" "$patch_app" "$bad_app" "$badgvm_app" "$baditf_app" "$baddg_app" \
         "$concat_oracle_app" \
         "$badmc_app" "$dir1_app" "$dir2_app" "$dgrecv_app" "$dgsig_app" \
@@ -246,9 +266,11 @@ if gate_cache_check "$OUT" "hotupdate-subset|cli:$(_gate_cli_hash)|field-metadat
         samples/dotnet/HotUpdatePatch/hotupdate-refs.txt \
         "$noctor_base_app" "$noctor_patch_app" "$noctor_oracle_app" \
         "$gvmhit_app" "$gvmmiss_app" "$gvmcall_app" \
+        "$aggregate_ctor_miss_app" "$ordinary_ctor_miss_app" \
         samples/dotnet/HotUpdatePatch/noctor-import-refs.txt \
         gates/fixtures/hotupdate-import-identity/mutate-native-rows.py \
-        gates/fixtures/hotupdate-import-identity/set-bpi-version.py; then
+        gates/fixtures/hotupdate-import-identity/set-bpi-version.py \
+        gates/fixtures/hotupdate-import-identity/clear-aggregate-ctor-bodies.py; then
     gate_cache_hit_msg
     exit 0
 fi
@@ -586,6 +608,23 @@ for line in 'base-methods=System.Object.ToString/System.Object.Equals/System.Obj
 done
 expected="$expected
 $object_groups_oracle"
+expected_before_derived_aggregate="$expected"
+derived_aggregate_oracle=$(run_bounded dotnet "$concat_oracle_app" --derived-aggregate)
+derived_aggregate_oracle=$(strip_cr_win "$derived_aggregate_oracle")
+for line in '== AOT derived aggregates ==' 'AOT derived aggregates end' \
+    'AOT snapshot=pair (first) (second)/first=True/41/after' \
+    '== interpreted derived aggregates ==' \
+    'patch below AOT=below AOT (first) (second)/first=True/31/derived/patch' \
+    'patch direct=direct (first) (second)/first=True/23/array' \
+    'patch rewritten=direct (first) (second)/first=True/43/after' \
+    'patch further=further (first) (second)/first=True/47/further/9/patch' \
+    'patch empty=One or more errors occurred./first=True/17/empty' \
+    'interpreted derived aggregates end'; do
+    grep -Fxq -- "$line" <<< "$derived_aggregate_oracle" \
+        || { echo "FAIL: managed derived aggregate witness missing: $line" >&2; exit 1; }
+done
+expected="$expected_before_derived_aggregate
+$derived_aggregate_oracle"
 # Exit status captured explicitly (`$(...)` inline would swallow it): a base
 # that aborts in teardown AFTER printing the full transcript must not pass.
 set +e
@@ -594,6 +633,9 @@ set -e
 assert_output "$(strip_cr_win "$hu_out")" "$expected"
 assert_exit_code "$hu_rc" 0
 normalized=$(strip_cr_win "$hu_out")
+assert_derived_aggregate_prefix "$normalized" "$expected_before_derived_aggregate"
+derived_aggregate_before=$(run_bounded "./$OUT/HotUpdateBase$EXE_EXT" "$OUT/HotUpdatePatch.bpi" before-derived-aggregate)
+assert_output "$(strip_cr_win "$derived_aggregate_before")" "$expected_before_derived_aggregate"
 prefix=${normalized%%$'\n== interpreted Concat arrays =='*}
 assert_output "$prefix" "$expected_prefix"
 generic_prefix=${normalized%%$'\n== ordinary generic import identity =='*}
@@ -642,6 +684,7 @@ hu_out=$("./$OUT/HotUpdateBase" "$OUT/stack/HotUpdatePatch.bpi"); hu_rc=$?
 set -e
 assert_output "$(strip_cr_win "$hu_out")" "$expected"
 assert_exit_code "$hu_rc" 0
+assert_derived_aggregate_prefix "$(strip_cr_win "$hu_out")" "$expected_before_derived_aggregate"
 echo "OK (stack-format bake, identical transcript)"
 
 echo "-- conditional default refs: a base whose load set carries a TRIGGER --"
@@ -712,6 +755,7 @@ trig_out=$("./$OUT/trigger/HotUpdateBase" "$OUT/trigger/HotUpdatePatch.bpi"); tr
 set -e
 assert_output "$(strip_cr_win "$trig_out")" "$expected"
 assert_exit_code "$trig_rc" 0
+assert_derived_aggregate_prefix "$(strip_cr_win "$trig_out")" "$expected_before_derived_aggregate"
 echo "OK (trigger-carrying base: shim injected + recorded, ABI hash and BPI unmoved, patch runs)"
 
 echo "-- native field metadata: stack-format replay --"
@@ -722,6 +766,7 @@ trig_out=$("./$OUT/trigger/HotUpdateBase" "$OUT/trigger/stack/HotUpdatePatch.bpi
 set -e
 assert_output "$(strip_cr_win "$trig_out")" "$expected"
 assert_exit_code "$trig_rc" 0
+assert_derived_aggregate_prefix "$(strip_cr_win "$trig_out")" "$expected_before_derived_aggregate"
 echo "OK (native field metadata: stack-format bake, identical transcript)"
 
 echo "-- negative: a patch -r'ing a shim the base image does not carry --"
@@ -1336,16 +1381,91 @@ System.Object.ToString HotUpdateCoreLibPatch.FrostSlate
 System.Object.ToString HotUpdateCoreLibPatch.FrostSlate
 System.Object.ToString
 == object virtuals over a patch receiver end =="
+cl_expected_before_aggregate="$cl_expected"
+aggregate_collection_oracle=$(run_bounded dotnet "$concat_oracle_app" --aggregate-collection)
+aggregate_collection_oracle=$(strip_cr_win "$aggregate_collection_oracle")
+for line in '== interpreted aggregate collections ==' \
+    'collection direct=count=2/cached=True/first=True/order=True/message=direct (first) (second)/31/direct' \
+    'collection rewritten=count=2/cached=True/first=True/order=True/message=direct (first) (second)/43/after' \
+    'collection below AOT=count=2/cached=True/first=True/order=True/message=below AOT (first) (second)/37/derived/patch' \
+    'collection empty=count=0/cached=True/first=True/order=True/message=empty/31/direct' \
+    'interpreted aggregate collections end' \
+    '== interpreted aggregate Message dispatch ==' \
+    'patch Message base=base (inner)' \
+    'patch Message base reads=0/reads' \
+    'patch Message virtual=patch own' \
+    'patch Message virtual reads=1/reads' \
+    'patch Message base again=base (inner)' \
+    'patch Message final reads=1/reads' \
+    'interpreted aggregate Message dispatch end' \
+    '== interpreted ordinary exception Message dispatch ==' \
+    'ordinary Message base=ordinary base' \
+    'ordinary Message base reads=0/reads' \
+    'ordinary Message virtual=ordinary own' \
+    'ordinary Message virtual reads=1/reads' \
+    'ordinary Message base again=ordinary base' \
+    'ordinary Message final reads=1/reads' \
+    'interpreted ordinary exception Message dispatch end'; do
+    grep -Fxq -- "$line" <<< "$aggregate_collection_oracle" \
+        || { echo "FAIL: managed aggregate collection witness missing: $line" >&2; exit 1; }
+done
+aggregate_collection_prefix_oracle=$(run_bounded dotnet "$concat_oracle_app" --aggregate-collection before-aggregate-message)
+aggregate_collection_prefix_oracle=$(strip_cr_win "$aggregate_collection_prefix_oracle")
+assert_output "${aggregate_collection_oracle%%$'\n== interpreted aggregate Message dispatch =='*}" \
+    "$aggregate_collection_prefix_oracle"
+ordinary_message_prefix_oracle=$(run_bounded dotnet "$concat_oracle_app" --aggregate-collection before-ordinary-exception-message)
+ordinary_message_prefix_oracle=$(strip_cr_win "$ordinary_message_prefix_oracle")
+assert_output "${aggregate_collection_oracle%%$'\n== interpreted ordinary exception Message dispatch =='*}" \
+    "$ordinary_message_prefix_oracle"
+cl_expected="$cl_expected_before_aggregate
+$aggregate_collection_oracle"
 set +e
 cl_out=$("./$OUT/corelib/HotUpdateCoreLibBase" "$OUT/corelib/HotUpdateCoreLibPatch.bpi"); cl_rc=$?
 set -e
 assert_output "$(strip_cr_win "$cl_out")" "$cl_expected"
 assert_exit_code "$cl_rc" 0
 cl_normalized=$(strip_cr_win "$cl_out")
+assert_output "${cl_normalized%%$'\n== interpreted aggregate collections =='*}" "$cl_expected_before_aggregate"
+cl_before=$(run_bounded "./$OUT/corelib/HotUpdateCoreLibBase$EXE_EXT" \
+    "$OUT/corelib/HotUpdateCoreLibPatch.bpi" before-aggregate-collection)
+assert_output "$(strip_cr_win "$cl_before")" "$cl_expected_before_aggregate"
+grep -Fxq 'interpreted aggregate collections end' <<< "$cl_normalized" \
+    || { echo 'FAIL: interpreted aggregate collection block did not complete' >&2; exit 1; }
 assert_output "${cl_normalized%%$'\n== object virtuals over a patch receiver =='*}" \
     "$cl_expected_before_object_virtuals"
 grep -Fxq '== object virtuals over a patch receiver end ==' <<< "$cl_normalized" \
     || { echo "FAIL: object virtuals over CoreLib-base patch receivers did not complete" >&2; exit 1; }
+invoke_cli --emit-patch "$cl_patch" --base-abi "$OUT/corelib/base-abi.json" \
+    --patch-stackcode -o "$OUT/corelib/stack"
+set +e
+cl_stack_out=$("./$OUT/corelib/HotUpdateCoreLibBase$EXE_EXT" "$OUT/corelib/stack/HotUpdateCoreLibPatch.bpi"); cl_stack_rc=$?
+set -e
+cl_stack_normalized=$(strip_cr_win "$cl_stack_out")
+assert_output "$cl_stack_normalized" "$cl_expected"
+assert_exit_code "$cl_stack_rc" 0
+assert_output "${cl_stack_normalized%%$'\n== interpreted aggregate collections =='*}" "$cl_expected_before_aggregate"
+cl_before_message=$(run_bounded "./$OUT/corelib/HotUpdateCoreLibBase$EXE_EXT" \
+    "$OUT/corelib/HotUpdateCoreLibPatch.bpi" before-aggregate-message)
+assert_output "$(strip_cr_win "$cl_before_message")" "$cl_expected_before_aggregate
+$aggregate_collection_prefix_oracle"
+cl_before_ordinary_message=$(run_bounded "./$OUT/corelib/HotUpdateCoreLibBase$EXE_EXT" \
+    "$OUT/corelib/HotUpdateCoreLibPatch.bpi" before-ordinary-exception-message)
+assert_output "$(strip_cr_win "$cl_before_ordinary_message")" "$cl_expected_before_aggregate
+$ordinary_message_prefix_oracle"
+for aggregate_message_output in "$cl_normalized" "$cl_stack_normalized"; do
+    assert_output "${aggregate_message_output%%$'\n== interpreted aggregate Message dispatch =='*}" \
+        "$cl_expected_before_aggregate
+$aggregate_collection_prefix_oracle"
+    grep -Fxq 'interpreted aggregate Message dispatch end' <<< "$aggregate_message_output" \
+        || { echo 'FAIL: interpreted aggregate Message block did not complete' >&2; exit 1; }
+    assert_output "${aggregate_message_output%%$'\n== interpreted ordinary exception Message dispatch =='*}" \
+        "$cl_expected_before_aggregate
+$ordinary_message_prefix_oracle"
+    grep -Fxq 'interpreted ordinary exception Message dispatch end' <<< "$aggregate_message_output" \
+        || { echo 'FAIL: interpreted ordinary Message block did not complete' >&2; exit 1; }
+done
+grep -Fxq 'interpreted aggregate collections end' <<< "$cl_stack_normalized" \
+    || { echo 'FAIL: stack-format aggregate collection block did not complete' >&2; exit 1; }
 
 # Invoking the trapped row: HotUpdateCoreLibBadPatch callvirts get_Entry. The
 # refusal is LOUD and CATCHABLE — the loader's one-shot bind pass rejects the
@@ -1497,5 +1617,46 @@ for gvmcall_bpi in "$OUT/gvm-call/GvmCallPatch.bpi" "$OUT/gvm-call/stack/GvmCall
     assert_output "$gvmcall_prefix" "$gvmcall_prefix_oracle"
 done
 echo "OK (non-virtual calls of virtual imports, register and stack formats)"
+
+echo "-- unavailable aggregate constructors refuse without changing ordinary exception seeding --"
+aggregate_ctor_clr=$(DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 run_bounded dotnet "$aggregate_ctor_miss_app")
+ordinary_ctor_clr=$(DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 run_bounded dotnet "$ordinary_ctor_miss_app")
+assert_output "$(strip_cr_win "$aggregate_ctor_clr")" "aggregate ctor=seed (inner)
+unavailable ctor fixture end"
+assert_output "$(strip_cr_win "$ordinary_ctor_clr")" "ordinary ctor=changed:seed/91/field
+unavailable ctor fixture end"
+# Keep the primary image callable. Only this dedicated image loses the two bodies;
+# constructor identities, signatures and its ABI contract remain unchanged.
+aggregate_ctor_base="$OUT/aggregate-ctor/base"
+invoke_cli "$base_app" --hotupdate-base \
+    --reflection-metadata HotUpdateBase.UnavailableAggregateProbe=native \
+    --reflection-metadata HotUpdateBase.UnavailableOrdinaryProbe=native \
+    --hotupdate-refs samples/dotnet/HotUpdatePatch/hotupdate-refs.txt -o "$aggregate_ctor_base"
+aggregate_ctor_fixture=$($hotupdate_python gates/fixtures/hotupdate-import-identity/clear-aggregate-ctor-bodies.py \
+    "$aggregate_ctor_base")
+assert_output "$(strip_cr_win "$aggregate_ctor_fixture")" \
+    'native aggregate/ordinary constructor bodies unavailable:2'
+compile_console "$aggregate_ctor_base" HotUpdateBase
+for aggregate_ctor_format in register stack; do
+    aggregate_ctor_flags=()
+    if [ "$aggregate_ctor_format" = stack ]; then
+        aggregate_ctor_flags+=(--patch-stackcode)
+    fi
+    aggregate_ctor_dir="$OUT/aggregate-ctor/$aggregate_ctor_format"
+    invoke_cli --emit-patch "$ordinary_ctor_miss_app" --base-abi "$aggregate_ctor_base/base-abi.json" \
+        ${aggregate_ctor_flags[@]+"${aggregate_ctor_flags[@]}"} -o "$aggregate_ctor_dir"
+    invoke_cli --emit-patch "$aggregate_ctor_miss_app" --base-abi "$aggregate_ctor_base/base-abi.json" \
+        ${aggregate_ctor_flags[@]+"${aggregate_ctor_flags[@]}"} -o "$aggregate_ctor_dir"
+    # A missing ordinary ctor retains the documented positional seed-only behavior.
+    ordinary_ctor_native=$(run_bounded "./$aggregate_ctor_base/HotUpdateBase$EXE_EXT" --run \
+        "$aggregate_ctor_dir/OrdinaryCtorMissPatch.bpi")
+    assert_output "$(strip_cr_win "$ordinary_ctor_native")" "ordinary ctor=seed/0/field
+unavailable ctor fixture end"
+    aggregate_ctor_native=$(run_bounded "./$aggregate_ctor_base/HotUpdateBase$EXE_EXT" --load-refused \
+        "$aggregate_ctor_dir/AggregateCtorMissPatch.bpi")
+    assert_output "$(strip_cr_win "$aggregate_ctor_native")" "refused:BPI bind: derived AggregateException constructor body was not compiled into the base image
+published nothing"
+done
+echo "OK (unavailable aggregate ctor refused, ordinary seeding preserved in both formats)"
 
 gate_cache_commit

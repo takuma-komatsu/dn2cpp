@@ -34,6 +34,39 @@ namespace ExceptionMessageSubset
             }
         }
 
+        private class LegacyAggregate : AggregateException
+        {
+            internal static int SerializationCalls;
+            internal int Code;
+            internal string Tag;
+
+            public LegacyAggregate(string message, Exception inner) : base(message, inner)
+            {
+                Code = 53;
+                Tag = "normal";
+            }
+
+            // Reflective constructor roots must tolerate the legacy body without executing it.
+            protected LegacyAggregate(SerializationInfo info, StreamingContext context) : base(info, context)
+            {
+                Tag = "serialization";
+                SerializationCalls++;
+            }
+        }
+
+        internal static void RunAggregateSerializationReachability()
+        {
+            Console.WriteLine("== aggregate legacy serialization reachability ==");
+            var inner = new Exception("inner");
+            var value = (LegacyAggregate)Activator.CreateInstance(typeof(LegacyAggregate),
+                new object[] { "legacy", inner })!;
+            Console.WriteLine("legacy aggregate message=" + value.Message);
+            Console.WriteLine("legacy aggregate inner=" + ReferenceEquals(value.InnerException, inner)
+                + "/fields=" + value.Code + "/" + value.Tag);
+            Console.WriteLine("legacy serialization calls=" + LegacyAggregate.SerializationCalls);
+            Console.WriteLine("aggregate legacy serialization reachability end");
+        }
+
         internal static void Run()
         {
             // throw/catch of the override-carrying type: no call is needed to

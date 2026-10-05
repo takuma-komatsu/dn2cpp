@@ -59,6 +59,48 @@ namespace ExceptionMessageSubset
             internal string BaseMessage() => base.Message;
         }
 
+        private class DerivedAggregate : AggregateException
+        {
+            internal int Code = 37;
+            internal string Tag = "ctor";
+            internal DerivedAggregate() { }
+            internal DerivedAggregate(string message) : base(message) { }
+            internal DerivedAggregate(string message, Exception inner) : base(message, inner) { }
+            internal DerivedAggregate(Exception[] inner) : base(inner) { }
+            internal DerivedAggregate(IEnumerable<Exception> inner) : base(inner) { }
+            internal DerivedAggregate(string message, Exception[] inner) : base(message, inner) { }
+            internal DerivedAggregate(string message, IEnumerable<Exception> inner) : base(message, inner) { }
+            internal string BaseMessage() => base.Message;
+        }
+
+        private sealed class FurtherDerivedAggregate : DerivedAggregate
+        {
+            internal readonly int Level;
+            internal FurtherDerivedAggregate(string message, Exception[] inner) : base(message, inner)
+            {
+                Code = 73;
+                Tag = "further";
+                Level = 9;
+            }
+        }
+
+        private sealed class OwnMessageAggregate : DerivedAggregate
+        {
+            internal int Reads;
+            internal bool Throws;
+            internal OwnMessageAggregate(Exception[] inner) : base("own base", inner) { }
+            public override string Message
+            {
+                get
+                {
+                    Reads++;
+                    if (Throws)
+                        throw new InvalidOperationException("own getter");
+                    return "own/" + base.Message;
+                }
+            }
+        }
+
         private class ExceptionSequence : IEnumerable<Exception>
         {
             internal readonly Exception[] Values;
@@ -280,6 +322,151 @@ namespace ExceptionMessageSubset
             Console.WriteLine("derived ToString=" + asException.ToString());
             Console.WriteLine("empty ToString=" + new AggregateException("empty").ToString());
             Console.WriteLine("lazy aggregate Message end");
+        }
+
+        private static void DerivedState(string label, DerivedAggregate aggregate,
+            Exception first = null, Exception second = null)
+        {
+            Console.WriteLine(label + " fields=" + aggregate.Code + "/" + aggregate.Tag);
+            try
+            {
+                var inner = aggregate.InnerExceptions;
+                int count = second is not null ? 2 : first is not null ? 1 : 0;
+                Console.WriteLine(label + " count=" + inner.Count
+                    + " first=" + ReferenceEquals(aggregate.InnerException, first)
+                    + " order=" + (inner.Count == count && (count == 0 || ReferenceEquals(inner[0], first))
+                        && (count < 2 || ReferenceEquals(inner[1], second)))
+                    + " cached=" + ReferenceEquals(inner, aggregate.InnerExceptions));
+            }
+            catch (Exception error)
+            {
+                Console.WriteLine(label + " collection threw=" + error.GetType().Name);
+            }
+        }
+
+        private static void DerivedCtor(string label, DerivedAggregate aggregate,
+            Exception first = null, Exception second = null)
+        {
+            DerivedState("derived ctor " + label, aggregate, first, second);
+            Console.WriteLine("derived ctor " + label + " message=" + aggregate.Message);
+        }
+
+        private static void ReadDerivedBase(string label, DerivedAggregate aggregate,
+            ChangingMessage first, ChangingMessage second)
+        {
+            try { Console.WriteLine(label + " message=" + aggregate.BaseMessage()); }
+            catch (Exception error) { Console.WriteLine(label + " getter threw=" + error.GetType().Name + ":" + error.Message); }
+            Console.WriteLine(label + " reads=" + Reads(first, second));
+        }
+
+        private static void DerivedSequenceFault(string mode)
+        {
+            var sequence = new ExceptionSequence(new Exception[] { new Exception("value") }, mode);
+            try { _ = new DerivedAggregate("custom", sequence); Console.WriteLine("derived sequence " + mode + " did not throw"); }
+            catch (Exception error)
+            {
+                Console.WriteLine("derived sequence " + mode + " fault=" + error.Message
+                    + " original=" + ReferenceEquals(error, sequence.Error)
+                    + " dispose=" + ReferenceEquals(error, sequence.DisposeError));
+            }
+            Console.WriteLine("derived sequence " + mode + " trace=" + sequence.Trace);
+        }
+
+        internal static void RunDerivedAggregates()
+        {
+            Console.WriteLine("== derived aggregate constructors and getters ==");
+            var first = new Exception("first");
+            var second = new Exception("second");
+            var pair = new[] { first, second };
+            DerivedCtor("default", new DerivedAggregate());
+            DerivedCtor("message", new DerivedAggregate("custom"));
+            DerivedCtor("single", new DerivedAggregate("custom", first), first);
+            DerivedCtor("array", new DerivedAggregate(pair), first, second);
+            DerivedCtor("enumerable", new DerivedAggregate((IEnumerable<Exception>)pair), first, second);
+            DerivedCtor("message array", new DerivedAggregate("custom", pair), first, second);
+            DerivedCtor("message enumerable", new DerivedAggregate("custom", (IEnumerable<Exception>)pair), first, second);
+            DerivedCtor("null message", new DerivedAggregate((string)null));
+            DerivedCtor("null single message", new DerivedAggregate(null, first), first);
+            DerivedCtor("null array message", new DerivedAggregate(null, pair), first, second);
+            DerivedCtor("null enumerable message", new DerivedAggregate(null, (IEnumerable<Exception>)pair), first, second);
+            DerivedCtor("empty message", new DerivedAggregate(""));
+            DerivedCtor("empty array", new DerivedAggregate(Array.Empty<Exception>()));
+            DerivedCtor("empty enumerable", new DerivedAggregate((IEnumerable<Exception>)Array.Empty<Exception>()));
+
+            var array = new[] { first, second };
+            var snapshot = new DerivedAggregate("snapshot", array);
+            array[0] = new Exception("replacement");
+            var list = new List<Exception>(pair);
+            var fromList = new DerivedAggregate("list", (IEnumerable<Exception>)list);
+            list.Clear();
+            var sequence = new ExceptionSequence(pair);
+            var fromSequence = new DerivedAggregate(sequence);
+            var collection = new ExceptionCollection(pair);
+            var fromCollection = new DerivedAggregate("collection", collection);
+            DerivedCtor("snapshot", snapshot, first, second);
+            DerivedCtor("list snapshot", fromList, first, second);
+            DerivedCtor("custom sequence", fromSequence, first, second);
+            DerivedCtor("custom collection", fromCollection, first, second);
+            Console.WriteLine("derived custom sequence trace=" + sequence.Trace);
+            Console.WriteLine("derived custom collection trace=" + collection.Trace);
+            snapshot.Code = 41;
+            snapshot.Tag = "after";
+            DerivedState("derived rewritten", snapshot, first, second);
+            try
+            {
+                IList<Exception> readOnly = snapshot.InnerExceptions;
+                Console.WriteLine("derived read-only=" + readOnly.IsReadOnly);
+                try { readOnly.Add(first); Console.WriteLine("derived read-only add succeeded"); }
+                catch (NotSupportedException) { Console.WriteLine("derived read-only add=NotSupportedException"); }
+                Console.WriteLine("derived read-only count=" + readOnly.Count);
+            }
+            catch (Exception error) { Console.WriteLine("derived read-only threw=" + error.GetType().Name); }
+
+            InvalidAggregate("derived null array", () => new DerivedAggregate((Exception[])null));
+            InvalidAggregate("derived message null array", () => new DerivedAggregate("custom", (Exception[])null));
+            InvalidAggregate("derived null enumerable", () => new DerivedAggregate((IEnumerable<Exception>)null));
+            InvalidAggregate("derived message null enumerable", () => new DerivedAggregate("custom", (IEnumerable<Exception>)null));
+            InvalidAggregate("derived null single", () => new DerivedAggregate("custom", (Exception)null));
+            InvalidAggregate("derived null element", () => new DerivedAggregate(new Exception[] { first, null }));
+            InvalidAggregate("derived enumerable null element", () => new DerivedAggregate(new ExceptionSequence(new Exception[] { null, first })));
+            foreach (string mode in new[] { "Get", "Move", "Current", "Dispose", "Current+Dispose" })
+                DerivedSequenceFault(mode);
+
+            var left = new ChangingMessage("derived-left");
+            var right = new ChangingMessage("derived-right");
+            var lazy = new DerivedAggregate("lazy", new Exception[] { left, right });
+            DerivedState("derived lazy", lazy, left, right);
+            Console.WriteLine("derived constructed reads=" + Reads(left, right));
+            ReadAggregate("derived first", lazy, left, right);
+            ReadAggregate("derived second", lazy, left, right);
+            ReadDerivedBase("derived nonvirtual base", lazy, left, right);
+
+            var ownLeft = new ChangingMessage("own-left");
+            var ownRight = new ChangingMessage("own-right");
+            var own = new OwnMessageAggregate(new Exception[] { ownLeft, ownRight });
+            DerivedState("derived own", own, ownLeft, ownRight);
+            Console.WriteLine("derived own constructed reads=" + own.Reads + "/" + Reads(ownLeft, ownRight));
+            ReadAggregate("derived own virtual", own, ownLeft, ownRight);
+            ReadDerivedBase("derived own nonvirtual base", own, ownLeft, ownRight);
+            Console.WriteLine("derived own getter reads=" + own.Reads);
+            own.Throws = true;
+            ReadAggregate("derived own fault", own, ownLeft, ownRight);
+            Console.WriteLine("derived own fault getter reads=" + own.Reads);
+
+            var throwing = new ChangingMessage("throw", true);
+            var later = new ChangingMessage("later");
+            var faults = new FurtherDerivedAggregate("faults", new Exception[] { throwing, later });
+            DerivedState("derived further", faults, throwing, later);
+            Console.WriteLine("derived further level=" + faults.Level + " constructed reads=" + Reads(throwing, later));
+            ReadAggregate("derived inner fault", faults, throwing, later);
+            ReadDerivedBase("derived base inner fault", faults, throwing, later);
+            try { throw snapshot; }
+            catch (AggregateException caught)
+            {
+                Console.WriteLine("derived caught identity=" + ReferenceEquals(caught, snapshot)
+                    + " first=" + ReferenceEquals(caught.InnerException, first));
+            }
+            Console.WriteLine("derived aggregate constructors and getters end");
         }
 
         // A user exception deriving from a BCL exception that the runtime also raises:

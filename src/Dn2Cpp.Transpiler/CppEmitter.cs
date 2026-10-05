@@ -7167,6 +7167,14 @@ internal sealed partial class CppEmitter
             ClassInfo.ShareStructLayout && c.SharedOwner is not null;
         // The class whose emitted struct definition carries c's layout.
         static ClassInfo StructCarrier(ClassInfo c) => IsStructAlias(c) ? c.SharedOwner! : c;
+        static bool InheritsFromAggregateException(ClassInfo c)
+        {
+            for (var b = c; b is not null; b = b.BaseClass)
+                if (b.FullName == "System.AggregateException"
+                    || b.BaseClass is null && b.ExternalBaseName == "System.AggregateException")
+                    return true;
+            return false;
+        }
         static bool InheritsFromWaitHandle(ClassInfo c)
         {
             for (var b = c; b is not null; b = b.BaseClass)
@@ -7269,6 +7277,8 @@ internal sealed partial class CppEmitter
             string baseName;
             if (!IsOpaque(cls) && cls.BaseClass is { } bc && !IsOpaque(bc))
                 baseName = bc.CppStructName;
+            else if (!IsOpaque(cls) && InheritsFromAggregateException(cls))
+                baseName = "Dn2CppAggregateExceptionObject";
             else if (!IsOpaque(cls) && Compilation.InheritsFromException(cls))
                 baseName = "Dn2CppExceptionObject";
             else if (!IsOpaque(cls) && InheritsFromWaitHandle(cls))

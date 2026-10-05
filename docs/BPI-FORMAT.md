@@ -257,23 +257,26 @@ Int64/Double/references) and rounds the final size up to 8.
   the manifest's `instantiations` map; one the base image never emitted hits the
   missing-AOT-instantiation boundary (§Generics on the patch surface).
 - `newobj` on an **exception type** (any base-image type whose chain reaches
-  `System.Exception`): the `.ctor` Import binds to shape `kShapeExceptionNew`,
-  mirroring the AOT newobj interception. The interpreter allocates the uniform
-  message-carrying object (`dn2cpp_exception_new`, stamped with the derived
-  type-info) and seeds `Message`/`innerException` positionally — the shapes
-  `Compilation.ExceptionMessageArgIndex` / `ExceptionInnerArgIndex` recognize
-  are `(string)`, `(string, Exception)`, `(TCode, string)`,
-  `(TCode, string, Exception)`. If the base build reached a real, non-opaque
-  ctor body for that shape (non-null reflection `fnPtr`), the interpreter then
-  runs it through its invoker so a derived exception's own field writes land; an
-  opaque base (`System.Exception`/`AggregateException`) or a never-reached ctor
-  leaves `fnPtr` null and degrades to seed-only. A **patch** type may derive
-  from a base-image exception: the loader lays its fields out after the base's
-  `Dn2CppExceptionObject` message/inner/hresult/trace prefix (the intrinsic
-  exception handles report `instanceSize` 0, so the append is floored at
-  `sizeof(Dn2CppExceptionObject)`), and its interpreted ctor's `base(message)`
-  is a `call` to the base exception ctor taking the same `kShapeExceptionNew`
-  path.
+  `System.Exception`): the `.ctor` Import binds to shape `kShapeExceptionNew`.
+  The interpreter allocates the runtime prefix through `dn2cpp_exception_new`,
+  stamped with the derived type-info, then runs the reached constructor through
+  its invoker so its base initialization and user field writes land. Ordinary
+  opaque or never-reached exception constructors retain positional
+  `Message`/`innerException` seeding through
+  `Compilation.ExceptionMessageArgIndex` / `ExceptionInnerArgIndex`.
+  Exact opaque `AggregateException` imports instead initialize the shared
+  `Dn2CppAggregateExceptionObject` prefix, including a validated snapshot and
+  its first inner exception. Supported imports are `()`, `(string)`,
+  `(string, Exception)`, `(Exception[])`, and `(string, Exception[])`;
+  enumerable and other constructor shapes are rejected at binding. A derived
+  aggregate constructor must have a callable body; positional seeding cannot
+  recover its collection. A **patch** type may derive from a base-image
+  exception: the loader appends fields after the base's live instance size,
+  floored at `Dn2CppExceptionObject` or `Dn2CppAggregateExceptionObject` for
+  ordinary or aggregate exceptions respectively. Its interpreted `base(...)`
+  call uses the same constructor initialization without reallocating the receiver.
+  Exception `Message` imports use their nonvirtual getter for a `call`
+  (`base.Message`), while `callvirt` dispatches the receiver's override.
 - `callvirt` on a **delegate** `Invoke`: baked as an ordinary method-import
   `callvirt` (the import's declaring type is the base-image delegate). At bind
   the runtime sees the `DN2CPP_TF_DELEGATE` flag + the `Invoke` name and routes
@@ -837,7 +840,7 @@ D <SigKey>
   are enabled (the default), `0` for a `--no-shared-generics` build. Sharing
   changes which concrete function a bound symbol resolves to without moving any
   symbolic line. `layout=` is the field-layout policy —
-  `AbiContract.LayoutPolicyVersion` (currently 8) — bumped by any change that
+  `AbiContract.LayoutPolicyVersion` (currently 9) — bumped by any change that
   moves real field offsets/sizes while changing no symbolic `F`/`L`/`V` line
   (field-width narrowing, growth of the runtime `Dn2CppExceptionObject` prefix,
   a repack of a runtime-owned struct). It applies to both sharing modes, so
@@ -1238,13 +1241,14 @@ i.e. `+=`/`-=`) is a conversion-time rejection.
    extended interpreter record (§N2M trampolines), so a trampoline can route
    the receiver back to its image. The base is the resolved `baseRef` type: an
    Import ref binds an AOT base-image class (value types, interfaces,
-   sealed/array/delegate bases, and exception-derived bases are rejected), a
+   and sealed/array/delegate bases are rejected), a
    PatchEntity ref an already-constructed patch type of the same image (the
    TypeTable's base-before-derived order guarantees it — a forward patch base
    fails the load), `0xFFFFFFFF` is `System.Object`. **The instance layout is
    computed here, never by the converter**: each instance field of the type's
    FieldTable run is appended after the live base type-info's `instanceSize` —
-   for a patch base, the size just computed for it — in declaration order with
+   for a patch base, the size just computed for it, floored at the runtime
+   exception or aggregate prefix when applicable — in declaration order with
    natural alignment (4/8 bytes by field kind), the final size rounds up to 8,
    and the per-field byte offsets + storage kinds live on the image. A type
    with a `VtableDesc` gets a **copy** of the base vtable (`vtableLen` entries;

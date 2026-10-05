@@ -51,10 +51,13 @@
 # UInt32 and Int32 bound messages retain their suffixes after a collection.
 # Aggregate messages evaluate virtual inner getters lazily on each read.
 # Enumerable aggregate constructors preserve collection and enumerator semantics.
+# Derived aggregate constructors retain snapshots and cached read-only collections;
+# user fields and virtual or non-virtual Message reads preserve the aggregate prefix.
+# Reflective constructor reachability retains unused legacy aggregate serialization bodies.
 source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/ExceptionMessageSubset/OrdinaryReflectionArgumentSubset.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-reflection-arguments:${DN2CPP_BEFORE_ORDINARY_REFLECTION_ARGUMENTS:-}"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|before-array-shape-fields|before-runtime-hresult|before-lazy-aggregate-message|before-aggregate-enumerable"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|before-array-shape-fields|before-runtime-hresult|before-lazy-aggregate-message|before-aggregate-enumerable|before-derived-aggregate|before-aggregate-serialization"
 
 ancestry_app="gates/fixtures/runtime-exception-ancestry/bin/$CONFIG/$TFM/RuntimeExceptionAncestry.dll"
 build_gate_proj gates/fixtures/runtime-exception-ancestry/RuntimeExceptionAncestry.csproj
@@ -73,6 +76,48 @@ gate_extra_asserts() {
     local out="$1" native before prefix line app name fixture expected actual
     native=$(run_bounded "./$out/ExceptionMessageSubset")
     native=$(strip_cr_win "$native")
+    prefix=$(awk '/^== aggregate legacy serialization reachability ==$/ { exit } { print }' <<< "$native")
+    before=$(run_bounded dotnet "$_CG_APP" before-aggregate-serialization)
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    before=$(run_bounded "./$out/ExceptionMessageSubset$EXE_EXT" before-aggregate-serialization)
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    for line in '== aggregate legacy serialization reachability ==' \
+        'legacy aggregate message=legacy (inner)' \
+        'legacy aggregate inner=True/fields=53/normal' \
+        'legacy serialization calls=0' \
+        'aggregate legacy serialization reachability end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: aggregate serialization reachability witness missing: $line" >&2; return 1; }
+    done
+    prefix=$(awk '/^== derived aggregate constructors and getters ==$/ { exit } { print }' <<< "$native")
+    before=$(run_bounded dotnet "$_CG_APP" before-derived-aggregate)
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    before=$(run_bounded "./$out/ExceptionMessageSubset$EXE_EXT" before-derived-aggregate)
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    for line in '== derived aggregate constructors and getters ==' \
+        'derived ctor default fields=37/ctor' \
+        'derived ctor message array count=2 first=True order=True cached=True' \
+        'derived ctor list snapshot count=2 first=True order=True cached=True' \
+        'derived custom sequence trace=Get/Move/Current/Move/Current/Move/Dispose/' \
+        'derived custom collection trace=Count/Copy/' \
+        'derived rewritten fields=41/after' \
+        'derived read-only=True' 'derived read-only add=NotSupportedException' 'derived read-only count=2' \
+        'derived null array=ArgumentNullException param=innerExceptions' \
+        'derived null single=ArgumentNullException param=innerException' \
+        'derived constructed reads=0/0' \
+        'derived first message=lazy (derived-left:1) (derived-right:1)' \
+        'derived second reads=2/2' 'derived nonvirtual base reads=3/3' \
+        'derived own constructed reads=0/0/0' \
+        'derived own virtual message=own/own base (own-left:1) (own-right:1)' \
+        'derived own getter reads=1' 'derived own fault getter threw=InvalidOperationException:own getter' \
+        'derived own fault getter reads=2' \
+        'derived further fields=73/further' 'derived further level=9 constructed reads=0/0' \
+        'derived inner fault reads=1/0' 'derived base inner fault reads=2/0' \
+        'derived caught identity=True first=True' \
+        'derived aggregate constructors and getters end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: derived aggregate witness missing: $line" >&2; return 1; }
+    done
     before=$(run_bounded dotnet "$_CG_APP" before-aggregate-enumerable)
     prefix=$(awk '/^== aggregate enumerable constructors ==$/ { exit } { print }' <<< "$native")
     assert_output "$prefix" "$(strip_cr_win "$before")"

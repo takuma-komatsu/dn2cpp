@@ -626,6 +626,7 @@ internal static class Program
         DelegateNullFaults();
 
         Counter.ConcatProbe = InterpretedConcatSubset.Run;
+        Counter.AggregateProbe = InterpretedAggregateSubset.Run;
         Counter.GenericIntImportProbe = GenericIntName;
         Counter.GenericStringImportProbe = GenericStringName;
         Counter.GenericVirtualProbe = GenericVirtualNames;

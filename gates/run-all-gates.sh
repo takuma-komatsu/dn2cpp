@@ -416,6 +416,8 @@ ORDERED_PROJECTS=(
     "samples/dotnet/HotUpdatePatch/GvmRowHitPatch.csproj"
     "samples/dotnet/HotUpdatePatch/GvmRowMissPatch.csproj"
     "samples/dotnet/HotUpdatePatch/GvmCallPatch.csproj"
+    "samples/dotnet/HotUpdatePatch/AggregateCtorMissPatch.csproj"
+    "samples/dotnet/HotUpdatePatch/OrdinaryCtorMissPatch.csproj"
     "samples/dotnet/HotUpdateRecvPatch/HotUpdateRecvPatch.csproj"
     "samples/dotnet/HotUpdateArgPatch/HotUpdateArgPatch.csproj"
     "samples/dotnet/HotUpdateInvokerPatch/HotUpdateInvokerPatch.csproj"

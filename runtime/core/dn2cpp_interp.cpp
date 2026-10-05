@@ -117,6 +117,7 @@ enum : uint32_t
     kRecvType = 3,       // System.Type — a Dn2CppType, exactly
     kRecvMemberInfo = 4, // System.Reflection.MemberInfo — the handle headers
                          // dn2cpp_memberinfo_name dispatches on
+    kRecvAggregate = 5, // AggregateException, including subclasses with its prefix
 };
 
 // The same axis one position over: what a row's REFERENCE PARAMETERS must be.
@@ -263,6 +264,8 @@ struct ImportBinding
     MarshalDesc fieldVal;               // Field import: value marshalling
     int8_t excMsgArg;   // exception-ctor intercept: the Message ctor-arg index or -1
     int8_t excInnerArg; // exception-ctor intercept: the innerException arg index or -1
+    int8_t excArrayArg; // exact AggregateException ctor: the Exception[] arg index or -1
+    bool aggregateCtor; // initialize the runtime-owned aggregate prefix
 };
 
 } // namespace
@@ -497,7 +500,11 @@ void intrinsic_console_writeline_bool(int32_t v) { dn2cpp_console_writeline_bool
 // always to the type the wrapper was defined with.
 Dn2CppObject* intrinsic_exception_get_message(Dn2CppObject* e)
 {
-    return reinterpret_cast<Dn2CppObject*>(dn2cpp_exception_message(e));
+    return reinterpret_cast<Dn2CppObject*>(dn2cpp_exception_message_stored(e));
+}
+Dn2CppObject* intrinsic_aggregate_get_message(Dn2CppObject* e)
+{
+    return reinterpret_cast<Dn2CppObject*>(dn2cpp_aggregate_exception_message(e));
 }
 // The instance wrappers below guard their own receiver even though the dispatch
 // loops' intrinsic call arms test it too: `ldftn` hands a wrapper's raw fnPtr to
@@ -648,6 +655,9 @@ const IntrinsicImport g_intrinsicImports[] = {
     { "System.Exception", "get_Message", "():String",
       reinterpret_cast<void*>(&intrinsic_exception_get_message), kShapeRefRetObj, 0, true,
       kRecvException, {}, &dn2cpp_string_type },
+    { "System.AggregateException", "get_Message", "():String",
+      reinterpret_cast<void*>(&intrinsic_aggregate_get_message), kShapeRefRetObj, 0, true,
+      kRecvAggregate, {}, &dn2cpp_string_type },
     // The object/Type reflection-lite surface behind patch-type registry
     // visibility: GetType() reads the live object header (a patch instance
     // reports its loader-constructed type-info), the Type getters unwrap the
@@ -736,6 +746,8 @@ bool intrinsic_receiver_ok(uint32_t recvKind, const Dn2CppObject* self)
             return true;
         case kRecvException:
             return type_is_exception(self->type);
+        case kRecvAggregate:
+            return dn2cpp_is_aggregate_exception_type(self->type);
         case kRecvType:
             return self->type == &dn2cpp_type_type;
         case kRecvMemberInfo:
@@ -1276,17 +1288,9 @@ void bind_method_import(const Dn2CppInterpImage* img, const Dn2CppBpiImport& imp
     {
         if (!isInstance)
             interp_fail("BPI bind: a constructor import must be an instance member");
-        // `new <ExceptionType>(...)`: mirror the AOT newobj interception. Every
-        // exception ctor is intercepted so the object shares the uniform
-        // message-carrying prefix (dn2cpp_exception_new). The Message /
-        // innerException are recovered positionally for the shapes the AOT
-        // ExceptionMessageArgIndex / ExceptionInnerArgIndex recognize; a
-        // non-opaque, actually-reached ctor is then ALSO resolved to its real
-        // body so its own field writes (a derived exception's `Code = c;`) run
-        // — the newobj arms allocate via dn2cpp_exception_new, seed the prefix,
-        // then invoke it. Opaque (System.Exception / AggregateException) and
-        // never-reached ctors leave fnPtr null: a seed-only degrade, exactly as
-        // AOT discards the opaque intrinsic ctor body.
+        // Exception subclasses run their reached ctor after prefix allocation.
+        // Exact AggregateException imports initialize the shared collection prefix;
+        // ordinary opaque exception imports retain positional message/inner seeding.
         if (type_is_exception(declTi))
         {
             if (paramCount > kMaxImportArgs)
@@ -1298,6 +1302,7 @@ void bind_method_import(const Dn2CppInterpImage* img, const Dn2CppBpiImport& imp
                 b.args[j] = marshal_from_ref(img, run[1 + j]);
             b.excMsgArg = -1;
             b.excInnerArg = -1;
+            b.excArrayArg = -1;
             // A parameter is a plain (string) message.
             auto isStringParam = [&](uint32_t j) {
                 return DN2CPP_BPI_REF_TAG(run[1 + j]) == DN2CPP_BPI_TAG_PRIM
@@ -1313,36 +1318,75 @@ void bind_method_import(const Dn2CppInterpImage* img, const Dn2CppBpiImport& imp
                 const Dn2CppTypeInfo* it = img->bindings[DN2CPP_BPI_REF_INDEX(r)].type;
                 return it != nullptr && type_is_exception(it);
             };
-            // Mirror Compilation.ExceptionMessageArgIndex /
-            // ExceptionInnerArgIndex exactly (Compilation.cs): (string),
-            // (string, Exception), (TCode, string), (TCode, string, Exception)
-            // — TCode being a lead param that is neither string nor Exception
-            // (e.g. ZlibException's (ZlibResult, string)).
-            if (paramCount == 1 && isStringParam(0))
+            if (declTi == &dn2cpp_aggregate_exception_type)
             {
-                b.excMsgArg = 0;
+                auto isExceptionArrayParam = [&](uint32_t j) {
+                    uint32_t r = run[1 + j];
+                    if (DN2CPP_BPI_REF_TAG(r) != DN2CPP_BPI_TAG_IMPORT
+                        || DN2CPP_BPI_REF_INDEX(r) >= img->importCount)
+                        return false;
+                    const Dn2CppBpiImport& array = img->imports[DN2CPP_BPI_REF_INDEX(r)];
+                    if (array.kind != DN2CPP_BPI_IMPORT_TYPE || (array.aux0 & 1u) == 0
+                        || DN2CPP_BPI_REF_TAG(array.aux1) != DN2CPP_BPI_TAG_IMPORT
+                        || DN2CPP_BPI_REF_INDEX(array.aux1) >= img->importCount)
+                        return false;
+                    // Array handles can bind after methods; classify by the element
+                    // import instead of requiring an already-published array handle.
+                    uint32_t element = DN2CPP_BPI_REF_INDEX(array.aux1);
+                    return img->imports[element].kind == DN2CPP_BPI_IMPORT_TYPE
+                        && img->bindings[element].type == &dn2cpp_exception_type;
+                };
+                if (paramCount == 1 && isStringParam(0))
+                    b.excMsgArg = 0;
+                else if (paramCount == 1 && isExceptionArrayParam(0))
+                    b.excArrayArg = 0;
+                else if (paramCount == 2 && isStringParam(0) && isExceptionParam(1))
+                {
+                    b.excMsgArg = 0;
+                    b.excInnerArg = 1;
+                }
+                else if (paramCount == 2 && isStringParam(0) && isExceptionArrayParam(1))
+                {
+                    b.excMsgArg = 0;
+                    b.excArrayArg = 1;
+                }
+                else if (paramCount != 0)
+                    interp_fail("BPI bind: AggregateException constructor requires a default, message, single-exception or Exception[] shape");
+                b.aggregateCtor = true;
             }
-            else if (paramCount == 2 && isStringParam(0) && isExceptionParam(1))
+            else
             {
-                b.excMsgArg = 0;
-                b.excInnerArg = 1;
-            }
-            else if (paramCount == 2 && !isStringParam(0) && !isExceptionParam(0)
-                && isStringParam(1))
-            {
-                b.excMsgArg = 1;
-            }
-            else if (paramCount == 3 && !isStringParam(0) && !isExceptionParam(0)
-                && isStringParam(1) && isExceptionParam(2))
-            {
-                b.excMsgArg = 1;
-                b.excInnerArg = 2;
+                // Mirror Compilation.ExceptionMessageArgIndex /
+                // ExceptionInnerArgIndex exactly (Compilation.cs): (string),
+                // (string, Exception), (TCode, string), (TCode, string, Exception)
+                // — TCode being a lead param that is neither string nor Exception
+                // (e.g. ZlibException's (ZlibResult, string)).
+                if (paramCount == 1 && isStringParam(0))
+                {
+                    b.excMsgArg = 0;
+                }
+                else if (paramCount == 2 && isStringParam(0) && isExceptionParam(1))
+                {
+                    b.excMsgArg = 0;
+                    b.excInnerArg = 1;
+                }
+                else if (paramCount == 2 && !isStringParam(0) && !isExceptionParam(0)
+                    && isStringParam(1))
+                {
+                    b.excMsgArg = 1;
+                }
+                else if (paramCount == 3 && !isStringParam(0) && !isExceptionParam(0)
+                    && isStringParam(1) && isExceptionParam(2))
+                {
+                    b.excMsgArg = 1;
+                    b.excInnerArg = 2;
+                }
             }
             // Resolve the real ctor body when the base build reached it (a
             // non-opaque derived exception's ctor with its own field writes).
             // Ambiguity is rejected identically to the normal ctor path; a
-            // miss (opaque type, or a ctor the base never emitted) leaves
-            // fnPtr/invoker null for the seed-only degrade.
+            // Ordinary opaque or unavailable ctors retain seed-only behavior;
+            // aggregate constructors use their initializer or require a real body.
             Dn2CppMetadataHandle<Dn2CppMethodInfo> exFound = nullptr;
             if (resolve_overload(declTi->reflection().ctors, declTi->reflection().ctorCount, nullptr, 0, /*matchName*/ false,
                     paramCount, /*wantStatic*/ false, shape, shapeLen, &exFound) == kOverloadAmbiguous)
@@ -1352,6 +1396,11 @@ void bind_method_import(const Dn2CppInterpImage* img, const Dn2CppBpiImport& imp
                 b.fnPtr = exFound->fnPtr;
                 b.invoker = exFound->invoker;
             }
+            // A missing derived aggregate ctor cannot recover its collection from
+            // positional seeds. Refuse instead of publishing an empty aggregate.
+            if (declTi != &dn2cpp_aggregate_exception_type
+                && dn2cpp_is_aggregate_exception_type(declTi) && b.fnPtr == nullptr)
+                interp_fail("BPI bind: derived AggregateException constructor body was not compiled into the base image");
             b.callShape = kShapeExceptionNew;
             b.type = declTi;
             b.isCtor = true;
@@ -2035,22 +2084,14 @@ Dn2CppInterpImage* dn2cpp_patch_load(const void* blobPtr, size_t len)
                     if ((base->flags & (DN2CPP_TF_VALUETYPE | DN2CPP_TF_INTERFACE
                             | DN2CPP_TF_SEALED | DN2CPP_TF_ARRAY | DN2CPP_TF_DELEGATE)) != 0)
                         interp_fail("BPI bind: patch base type is not an inheritable class");
-                    // A base-image exception base is supported: the field append
-                    // below builds on the base's Dn2CppExceptionObject prefix
-                    // (message/inner live in that prefix, a patch-declared field —
-                    // e.g. Code — lands after it), and a `base(message)` chains to
-                    // the base exception ctor through the kShapeExceptionNew call arm.
+                    // Runtime-owned exception slots precede every patch-declared field.
                 }
             }
-            // The floor for the field append is the base's own instance size, but
-            // never smaller than the layout prefix the base's object shape needs:
-            // sizeof(Dn2CppObject) normally, sizeof(Dn2CppExceptionObject) when the
-            // base is an exception. The intrinsic exception handles carry
-            // instanceSize 0 (dn2cpp_exception_new floors them the same way), so
-            // without this an exception-derived patch type would place its first
-            // field on top of the message/inner prefix and corrupt both.
-            size_t floorSize = type_is_exception(base)
-                ? sizeof(Dn2CppExceptionObject) : sizeof(Dn2CppObject);
+            // Opaque handles may report instanceSize zero; floor at the full runtime
+            // prefix so a derived field cannot overwrite message or collection slots.
+            size_t floorSize = dn2cpp_is_aggregate_exception_type(base)
+                ? sizeof(Dn2CppAggregateExceptionObject)
+                : type_is_exception(base) ? sizeof(Dn2CppExceptionObject) : sizeof(Dn2CppObject);
             uint32_t size = base->instanceSize > static_cast<int32_t>(floorSize)
                 ? static_cast<uint32_t>(base->instanceSize)
                 : static_cast<uint32_t>(floorSize);
@@ -2427,25 +2468,53 @@ const Dn2CppTypeInfo* type_ref_at(const Dn2CppInterpImage* img, uint32_t ref)
 // Dn2CppMethodInfo::invoker).
 using InvokerFn = Dn2CppObject* (*)(void*, Dn2CppObject*, Dn2CppObject**, const Dn2CppTypeInfo*);
 
-// Base-ctor chaining for the exception intercept (`base(message)` from an
-// interpreted patch exception ctor): the receiver is the half-built exception
-// object the patch newobj already allocated, so this must NOT allocate. Seed
-// the Message / innerException the decoded shape carries onto the shared
-// Dn2CppExceptionObject prefix, then — if the base ctor resolved to a real,
-// non-opaque body — run it so its own field writes land. Only indices >= 0 are
-// seeded, so a parameterless `base()` nulls nothing.
-//
-// Deliberately diverges from AOT in *where* it seeds: AOT seeds at the outer
-// newobj positionally, this at the base ctor call, which is closer to real .NET
-// for the shapes the positional rule misses. A null b.fnPtr (an opaque base, or
-// a ctor the base build never reached) is a seed-only degrade.
-//
-// `self` is non-null by contract: both dispatch-loop call sites raise the
-// catchable NullReferenceException on a null receiver first, and a new caller
-// must guard the same way before the seed writes below dereference it.
+// Both constructor mouths initialize exact aggregates through the same prefix.
+// A base call reuses its non-null receiver; newobj allocates before entering here.
+static void exc_init_aggregate(const ImportBinding& b, Dn2CppObject* self,
+    Dn2CppObject** callArgs)
+{
+    Dn2CppObject* messageArg = b.excMsgArg >= 0 ? callArgs[b.excMsgArg] : nullptr;
+    if (!intrinsic_arg_ok(kArgString, messageArg))
+        interp_fail(kIntrinsicArgFail);
+    Dn2CppArrayRef* inner = nullptr;
+    if (b.excArrayArg >= 0)
+    {
+        Dn2CppObject* argument = callArgs[b.excArrayArg];
+        if (argument == nullptr)
+            dn2cpp_throw_argument_null_param("innerExceptions");
+        if (argument->type == nullptr || !intrinsic_arg_ok(kArgRefArray, argument)
+            || argument->type->arrayRank != 1 || argument->type->elementType == nullptr
+            || dn2cpp_typeinfo_assignable(argument->type->elementType, &dn2cpp_exception_type) == 0)
+            interp_fail(kIntrinsicArgFail);
+        inner = reinterpret_cast<Dn2CppArrayRef*>(argument);
+        for (int32_t i = 0; i < inner->length; i++)
+            if (inner->data[i] != nullptr && !receiver_is_a(&dn2cpp_exception_type, inner->data[i]))
+                interp_fail(kIntrinsicArgFail);
+    }
+    else if (b.excInnerArg >= 0)
+    {
+        Dn2CppObject* single = callArgs[b.excInnerArg];
+        if (single == nullptr)
+            dn2cpp_throw_argument_null_param("innerException");
+        if (!receiver_is_a(&dn2cpp_exception_type, single))
+            interp_fail(kIntrinsicArgFail);
+        inner = dn2cpp_newarr_ref(1);
+        dn2cpp_gc_store_ref(&inner->data[0], single);
+    }
+    auto* message = reinterpret_cast<Dn2CppString*>(messageArg);
+    dn2cpp_aggregate_exception_init(self, inner, message);
+}
+
+// `self` is non-null: both interpreter call mouths guard before seeding.
+// Ordinary opaque or unreached exception ctors keep their positional seed behavior.
 static void exc_seed_and_run_base_ctor(const ImportBinding& b, Dn2CppObject* self,
     Dn2CppObject** callArgs)
 {
+    if (b.aggregateCtor)
+    {
+        exc_init_aggregate(b, self, callArgs);
+        return;
+    }
     auto* e = reinterpret_cast<Dn2CppExceptionObject*>(self);
     if (b.excMsgArg >= 0)
         dn2cpp_gc_store_ref(&e->message,
@@ -3392,7 +3461,12 @@ ExecResult interp_run(InterpFrame& f, uint32_t pc)
                                 if (!intrinsic_receiver_ok(b.recvKind, self))
                                     interp_fail("interp: intrinsic call receiver is not an instance of the import's declared type");
                                 Slot v{};
-                                v.ref = reinterpret_cast<Dn2CppObject* (*)(Dn2CppObject*)>(b.fnPtr)(self);
+                                // Exception base.Message uses its own getter; callvirt
+                                // still honors the receiver's Message override.
+                                v.ref = insn.op == 0x6F
+                                    && (b.recvKind == kRecvException || b.recvKind == kRecvAggregate)
+                                    ? reinterpret_cast<Dn2CppObject*>(dn2cpp_exception_message(self))
+                                    : reinterpret_cast<Dn2CppObject* (*)(Dn2CppObject*)>(b.fnPtr)(self);
                                 if (insn.b & 1)
                                     push(v);
                                 break;
@@ -3712,16 +3786,8 @@ ExecResult interp_run(InterpFrame& f, uint32_t pc)
                             interp_fail("interp: eval stack underflow at newobj");
                         if (b.callShape == kShapeExceptionNew)
                         {
-                            // The exception-ctor intercept bound in place of the real
-                            // ctor: marshal the args (ref marshalling is identity, so
-                            // the Message / innerException the recognized shapes carry
-                            // read straight off callArgs by index), allocate the
-                            // runtime's uniform exception object stamped with the
-                            // derived type's own type-info and seeded with those, then
-                            // — if the ctor resolved to a real, non-opaque body — run
-                            // it so a derived exception's own field writes land. This
-                            // is exactly the AOT newobj order (seed the prefix, then
-                            // DirectCall the ctor).
+                            // Allocate the runtime prefix, then initialize an opaque
+                            // aggregate or run the reached derived constructor body.
                             Dn2CppObject* callArgs[kMaxImportArgs];
                             for (uint32_t j = b.argCount; j-- > 0;)
                                 callArgs[j] = marshal_slot_to_object(b.args[j], pop());
@@ -3729,8 +3795,11 @@ ExecResult interp_run(InterpFrame& f, uint32_t pc)
                                 ? reinterpret_cast<Dn2CppString*>(callArgs[b.excMsgArg]) : nullptr;
                             Dn2CppObject* inner = b.excInnerArg >= 0
                                 ? callArgs[b.excInnerArg] : nullptr;
-                            Dn2CppObject* obj = dn2cpp_exception_new(b.type, message, inner);
-                            if (b.fnPtr != nullptr)
+                            Dn2CppObject* obj = dn2cpp_exception_new(b.type,
+                                b.aggregateCtor ? nullptr : message, b.aggregateCtor ? nullptr : inner);
+                            if (b.aggregateCtor)
+                                exc_init_aggregate(b, obj, callArgs);
+                            else if (b.fnPtr != nullptr)
                                 reinterpret_cast<InvokerFn>(b.invoker)(b.fnPtr, obj, callArgs, nullptr);
                             Slot v{};
                             v.ref = obj;
@@ -4690,7 +4759,12 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                                 if (!intrinsic_receiver_ok(b.recvKind, self))
                                     interp_fail("interp: intrinsic call receiver is not an instance of the import's declared type");
                                 Slot v{};
-                                v.ref = reinterpret_cast<Dn2CppObject* (*)(Dn2CppObject*)>(b.fnPtr)(self);
+                                // Exception base.Message uses its own getter; callvirt
+                                // still honors the receiver's Message override.
+                                v.ref = insn.op == R_CALLVIRT
+                                    && (b.recvKind == kRecvException || b.recvKind == kRecvAggregate)
+                                    ? reinterpret_cast<Dn2CppObject*>(dn2cpp_exception_message(self))
+                                    : reinterpret_cast<Dn2CppObject* (*)(Dn2CppObject*)>(b.fnPtr)(self);
                                 if (insn.b & 1)
                                     regs[r0] = v;
                                 break;
@@ -4934,12 +5008,7 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                         const ImportBinding& b = import_at(img, insn.a, DN2CPP_BPI_IMPORT_METHOD);
                         if (b.callShape == kShapeExceptionNew)
                         {
-                            // The exception-ctor intercept, as the stack arm: the
-                            // window holds the ctor args in parameter order. Marshal,
-                            // seed the prefix from the recognized shape's indices,
-                            // allocate the uniform exception, then run the resolved
-                            // real ctor body (field writes land) — seed-before-ctor,
-                            // matching AOT.
+                            // Same prefix initialization as the stack newobj mouth.
                             Dn2CppObject* callArgs[kMaxImportArgs];
                             for (uint32_t j = 0; j < b.argCount; j++)
                                 callArgs[j] = marshal_slot_to_object(b.args[j], regs[r0 + j]);
@@ -4947,8 +5016,11 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                                 ? reinterpret_cast<Dn2CppString*>(callArgs[b.excMsgArg]) : nullptr;
                             Dn2CppObject* inner = b.excInnerArg >= 0
                                 ? callArgs[b.excInnerArg] : nullptr;
-                            Dn2CppObject* obj = dn2cpp_exception_new(b.type, message, inner);
-                            if (b.fnPtr != nullptr)
+                            Dn2CppObject* obj = dn2cpp_exception_new(b.type,
+                                b.aggregateCtor ? nullptr : message, b.aggregateCtor ? nullptr : inner);
+                            if (b.aggregateCtor)
+                                exc_init_aggregate(b, obj, callArgs);
+                            else if (b.fnPtr != nullptr)
                                 reinterpret_cast<InvokerFn>(b.invoker)(b.fnPtr, obj, callArgs, nullptr);
                             regs[r0].ref = obj;
                             break;
