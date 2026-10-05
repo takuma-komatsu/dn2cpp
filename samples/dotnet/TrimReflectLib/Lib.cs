@@ -163,6 +163,17 @@ namespace TrimReflectLib
 
     public class LibGvmPlain : LibGvmShape { }
 
+    public interface ILibTemplateGvm
+    {
+        string GenericKind<U>();
+    }
+
+    public class LibTemplateRead<T> : ILibKind, ILibTemplateGvm
+    {
+        public string Kind() => "library:" + typeof(T).Name;
+        public virtual string GenericKind<U>() => typeof(T).Name + "/" + typeof(U).Name;
+    }
+
     public static class Factory
     {
         // Each returns `object`, never the concrete type: the app's IL must not name what

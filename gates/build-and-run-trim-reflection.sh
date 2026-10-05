@@ -61,17 +61,16 @@
 # a stripped receiver whose dispatch field proves it inherits Object's body answers
 # Object's method. The unrecorded-receiver section binds receivers without a recorded
 # case, whose class levels are walked: a MakeGenericType instantiation under an
-# interface binding, whose level strips with its template though typeof names the
-# definition, and a library subclass that inherits a generic virtual body. Under the
-# flag each throws the PNSE naming its stripped level. The reflection-bound section,
-# the program's last, binds that generic virtual through reflection over the same
+# interface binding keeps its typeof-named definition's members, while a library
+# subclass that inherits a generic virtual body still refuses its stripped level.
+# The reflection-bound section binds that generic virtual through reflection over the same
 # subclass: its dispatcher records no case for it, so it runs the row's own body and
 # every arm names the row.
 # Keep original member metadata while comparing the C++ reflection policies.
 # ILDiet with --trim-reflection is covered by build-and-run-preserve-control.sh.
 source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} "
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|member-enum-prefix:${DN2CPP_BEFORE_MEMBER_ENUM:-}|object-virtual-prefix:${DN2CPP_BEFORE_OBJECT_VIRTUAL:-}|unrecorded-receiver-prefix:${DN2CPP_BEFORE_UNRECORDED_RECEIVER:-}|reflected-unrecorded-receiver-prefix:${DN2CPP_BEFORE_REFLECTED_UNRECORDED_RECEIVER:-}"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|member-enum-prefix:${DN2CPP_BEFORE_MEMBER_ENUM:-}|object-virtual-prefix:${DN2CPP_BEFORE_OBJECT_VIRTUAL:-}|unrecorded-receiver-prefix:${DN2CPP_BEFORE_UNRECORDED_RECEIVER:-}|reflected-unrecorded-receiver-prefix:${DN2CPP_BEFORE_REFLECTED_UNRECORDED_RECEIVER:-}|runtime-template-prefix-argv:before-runtime-template-members"
 
 PROJECT=TrimReflect
 LIBNAME=TrimReflectLib
@@ -156,6 +155,31 @@ assert_unrecorded_receiver_lines() {
     done
 }
 
+# The template section matches CLR under each trim policy; stripped reads remain frozen.
+assert_runtime_template_members() {
+    local actual="$1" before prefix expected_section actual_section line
+    actual=$(strip_cr_win "$actual")
+    before=$(run_bounded "$OUT/$PROJECT$EXE_EXT" before-runtime-template-members) || return $?
+    prefix=$(awk '/^== typeof-kept runtime template members ==$/ { exit } { print }' <<< "$actual")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    expected_section=$(run_bounded dotnet "$APP") || return $?
+    expected_section=$(awk '/^== typeof-kept runtime template members ==$/ { found=1 } found { print }' <<< "$(strip_cr_win "$expected_section")")
+    actual_section=$(awk '/^== typeof-kept runtime template members ==$/ { found=1 } found { print }' <<< "$actual")
+    assert_output "$actual_section" "$expected_section"
+    for line in '== typeof-kept runtime template members ==' \
+        '  application Widget GetMethod/Invoke -> AppTemplateRead`1/application:Widget/same=True' \
+        '  library Widget GetMethod/Invoke -> LibTemplateRead`1/library:Widget/same=True' \
+        '  library Widget Delegate.Method -> LibTemplateRead`1/library:Widget' \
+        '  library Int32 GetMethod/Invoke -> LibTemplateRead`1/library:Int32/same=True' \
+        '  library Int32 Delegate.Method -> LibTemplateRead`1/library:Int32' \
+        '  library Widget generic Delegate.Method -> LibTemplateRead`1/Widget/Int32' \
+        '  library Int32 generic Delegate.Method -> LibTemplateRead`1/Int32/Int32' \
+        'typeof-kept runtime template members end'; do
+        grep -Fxq -- "$line" <<< "$actual" \
+            || { echo "FAIL: runtime template metadata witness missing: $line" >&2; return 1; }
+    done
+}
+
 # ── Arm 1: no flag — live diff against real .NET ──────────────────────────────
 echo "== Arm 1/4: no flag, exact diff vs real .NET =="
 OUT=artifacts/trimreflect
@@ -190,6 +214,7 @@ else
         '  instantiation interface binding -> LibGenericKind`1/generic-kind' \
         '  unrecorded generic virtual -> LibGvmShape/gvm-base'
     assert_reflected_unrecorded_lines "$native"
+    assert_runtime_template_members "$native"
     before=$(strip_cr_win "$(DN2CPP_BEFORE_DELEGATE_METHOD=1 "./$OUT/$PROJECT")")
     prefix=$(awk '/^== Delegate.Method over stripped receivers ==$/ { exit } { print }' \
         <<<"$(strip_cr_win "$native")")
@@ -229,9 +254,10 @@ else
         "  object hash override -> PNSE: Reflection over the members of 'TrimReflectLib.LibLabel'" \
         "  object reflected binding -> PNSE: Reflection over the members of 'TrimReflectLib.LibLabel'"
     assert_unrecorded_receiver_lines "$native" \
-        "  instantiation interface binding -> PNSE: Reflection over the members of 'TrimReflectLib.LibGenericKind\`1[TrimReflect.Widget]'" \
+        '  instantiation interface binding -> LibGenericKind`1/generic-kind' \
         "  unrecorded generic virtual -> PNSE: Reflection over the members of 'TrimReflectLib.LibGvmPlain'"
     assert_reflected_unrecorded_lines "$native"
+    assert_runtime_template_members "$native"
     gate_cache_commit
 fi
 
@@ -265,9 +291,10 @@ else
         "  object hash override -> PNSE: Reflection over the members of 'TrimReflectLib.LibLabel'" \
         "  object reflected binding -> PNSE: Reflection over the members of 'TrimReflectLib.LibLabel'"
     assert_unrecorded_receiver_lines "$native" \
-        "  instantiation interface binding -> PNSE: Reflection over the members of 'TrimReflectLib.LibGenericKind\`1[TrimReflect.Widget]'" \
+        '  instantiation interface binding -> LibGenericKind`1/generic-kind' \
         "  unrecorded generic virtual -> PNSE: Reflection over the members of 'TrimReflectLib.LibGvmPlain'"
     assert_reflected_unrecorded_lines "$native"
+    assert_runtime_template_members "$native"
     gate_cache_commit
 fi
 
