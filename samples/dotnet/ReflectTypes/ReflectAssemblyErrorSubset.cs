@@ -59,8 +59,16 @@ internal static class Program
         }
         catch (Exception e)
         {
+            string message = e.Message.Replace("\r", "\\r").Replace("\n", "\\n");
+            if (e is System.IO.FileNotFoundException missing && missing.FileName is not null)
+            {
+                // The OS supplies a localized explanation after the assembly identity.
+                string prefix = "Could not load file or assembly '" + missing.FileName + "'.";
+                if (message.StartsWith(prefix, StringComparison.Ordinal))
+                    message = prefix;
+            }
             Console.WriteLine("load " + label + ": " + e.GetType().FullName + "|" + e.HResult.ToString("X8")
-                + "|" + e.Message.Replace("\r", "\\r").Replace("\n", "\\n"));
+                + "|" + message);
             if (e is ArgumentException argument)
                 Console.WriteLine("load " + label + " param=" + (argument.ParamName ?? "<null>"));
             if (e is System.IO.FileNotFoundException file)
