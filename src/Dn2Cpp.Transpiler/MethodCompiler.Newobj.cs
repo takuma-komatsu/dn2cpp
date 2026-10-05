@@ -2118,6 +2118,10 @@ internal sealed partial class MethodCompiler
             NoteReferencedType(cls);
             var fnPtr = Pop();
             var target = Pop();
+            // A raw address does not identify the delegate adapter or bound method.
+            if (fnPtr.DelegateMethod is null && fnPtr.DelegateTag is null)
+                throw new NotSupportedException(
+                    $"{_method.DeclaringClass.FullName}.{_method.Name}: a delegate target without a preserved method identity is not supported");
             string dg = NewTemp(cls.CppStructName + "*");
             Emit($"{dg} = ({cls.CppStructName}*)dn2cpp_alloc(sizeof({cls.CppStructName}));");
             Emit($"((Dn2CppObject*){dg})->type = &{cls.CppTypeInfoName};");
@@ -2137,11 +2141,17 @@ internal sealed partial class MethodCompiler
                 if (tag == UntrackedDelegateTag)
                     throw new NotSupportedException(
                         $"{_method.DeclaringClass.FullName}.{_method.Name}: a delegate target loaded from an address-taken local cannot preserve delegate identity");
-                // A literal names the one load that reaches here; a variable holds it
-                // at run time, where a copy of an address-taken local reads -1.
+                if (tag == "0")
+                    throw new NotSupportedException(
+                        $"{_method.DeclaringClass.FullName}.{_method.Name}: a delegate target without a preserved method identity is not supported");
+                // A literal names a load; a variable can also carry 0 for no origin
+                // or -1 for a copied address-taken local.
                 bool literal = tag.All(char.IsAsciiDigit);
                 if (!literal)
+                {
                     Emit($"if ({tag} < 0) dn2cpp_throw_not_supported_msg(\"a delegate target loaded from an address-taken local cannot preserve delegate identity\");");
+                    Emit($"if ({tag} == 0) dn2cpp_throw_not_supported_msg(\"a delegate target without a preserved method identity is not supported\");");
+                }
                 foreach (var origin in _ftnOrigins.OrderBy(pair => pair.Key))
                 {
                     if (literal && origin.Key.ToString() != tag)
