@@ -33,6 +33,9 @@ namespace ConsoleIo
             if (args.Length > 0 && args[0] == "before-standard-streams")
                 return;
             ConsoleStandardStreamSubset.Program.Run();
+            if (args.Length > 0 && args[0] == "before-format-diagnostics")
+                return;
+            ConsoleFormatSubset.Program.RunDiagnostics();
         }
     }
 }

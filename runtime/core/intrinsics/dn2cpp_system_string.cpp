@@ -1473,7 +1473,7 @@ static Dn2CppString* dn2cpp_format_hole_value(Dn2CppObject* obj, Dn2CppString* s
     if (spec == nullptr || spec->length == 0)
         return dn2cpp_object_tostring(obj);
     const Dn2CppTypeInfo* t = (obj != nullptr) ? obj->type : nullptr;
-    const void* payload = obj + 1; // boxed value sits right after the header
+    const void* payload = obj != nullptr ? obj + 1 : nullptr; // boxed value sits right after the header
     if (t == &dn2cpp_int32_type)
         return dn2cpp_format_int_c(*reinterpret_cast<const int32_t*>(payload), 4, spec, nfi);
     if (t == &dn2cpp_int64_type)
@@ -1497,6 +1497,16 @@ static Dn2CppString* dn2cpp_format_hole_value(Dn2CppObject* obj, Dn2CppString* s
     return dn2cpp_object_tostring(obj);
 }
 
+[[noreturn]] static void dn2cpp_throw_format_at(int32_t offset, const char* reason)
+{
+    const char* text = dn2cpp_sr_text(reason);
+    if (text == nullptr)
+        dn2cpp_throw_format();
+    Dn2CppString* detail = dn2cpp_string_from_utf8(text, static_cast<int32_t>(std::strlen(text)));
+    dn2cpp_throw_sr2(&dn2cpp_format_exception_type, DN2CPP_SR_FORMAT_INVALID_STRING_WITH_OFFSET_AND_REASON,
+        dn2cpp_int_to_string(offset), detail);
+}
+
 static Dn2CppString* dn2cpp_string_format_impl(Dn2CppString* fmt, Dn2CppObject** args, int32_t argc,
                                               const Dn2CppNumberFormatInfo* nfi)
 {
@@ -1506,65 +1516,96 @@ static Dn2CppString* dn2cpp_string_format_impl(Dn2CppString* fmt, Dn2CppObject**
     const char16_t* p = fmt->chars;
     int32_t n = fmt->length;
     int32_t i = 0, runStart = 0;
+    // Fault offsets count UTF-16 units, including the attempted next character.
+    const auto move_next = [&]() -> char16_t
+    {
+        i++;
+        if (i >= n)
+            dn2cpp_throw_format_at(i, DN2CPP_SR_FORMAT_UNCLOSED_ITEM);
+        return p[i];
+    };
     while (i < n)
     {
         char16_t c = p[i];
-        if (c == u'{')
+        if (c == u'{' || c == u'}')
         {
-            if (i + 1 < n && p[i + 1] == u'{') // escaped "{{" -> one '{'
+            char16_t brace = c;
+            c = move_next();
+            if (c == brace)
             {
-                dn2cpp_format_append_run(&h, p + runStart, i - runStart + 1);
-                i += 2;
+                dn2cpp_format_append_run(&h, p + runStart, i - runStart);
+                i++;
                 runStart = i;
                 continue;
             }
-            dn2cpp_format_append_run(&h, p + runStart, i - runStart);
-            i++; // past '{'
-            int32_t index = 0;
-            bool hasIndex = false;
-            while (i < n && p[i] >= u'0' && p[i] <= u'9') { index = index * 10 + (p[i] - u'0'); hasIndex = true; i++; }
-            if (!hasIndex)
-                dn2cpp_throw_format();
+            if (brace != u'{')
+                dn2cpp_throw_format_at(i, DN2CPP_SR_FORMAT_UNEXPECTED_CLOSING_BRACE);
+            dn2cpp_format_append_run(&h, p + runStart, i - runStart - 1);
+            int32_t index = c - u'0';
+            if (static_cast<uint32_t>(index) >= 10)
+                dn2cpp_throw_format_at(i, DN2CPP_SR_FORMAT_EXPECTED_ASCII_DIGIT);
+            c = move_next();
             int32_t alignment = 0;
-            if (i < n && p[i] == u',')
-            {
-                i++;
-                bool neg = false;
-                if (i < n && p[i] == u'-') { neg = true; i++; }
-                int32_t a = 0;
-                while (i < n && p[i] >= u'0' && p[i] <= u'9') { a = a * 10 + (p[i] - u'0'); i++; }
-                alignment = neg ? -a : a;
-            }
             Dn2CppString* spec = nullptr;
-            if (i < n && p[i] == u':')
+            if (c != u'}')
             {
-                i++;
-                int32_t specStart = i;
-                while (i < n && p[i] != u'}') i++;
-                int32_t specLen = i - specStart;
-                char16_t* sbuf;
-                spec = dn2cpp_string_alloc(&sbuf, specLen);
-                if (specLen > 0)
-                    std::memcpy(sbuf, p + specStart, static_cast<size_t>(specLen) * sizeof(char16_t));
+                // The digit that reaches the limit is consumed; a further digit is not.
+                constexpr int32_t parseLimit = 1000000;
+                while (c >= u'0' && c <= u'9' && index < parseLimit)
+                {
+                    index = index * 10 + (c - u'0');
+                    c = move_next();
+                }
+                while (c == u' ')
+                    c = move_next();
+                if (c == u',')
+                {
+                    do
+                    {
+                        c = move_next();
+                    } while (c == u' ');
+                    bool neg = c == u'-';
+                    if (neg)
+                        c = move_next();
+                    alignment = c - u'0';
+                    if (static_cast<uint32_t>(alignment) >= 10)
+                        dn2cpp_throw_format_at(i, DN2CPP_SR_FORMAT_EXPECTED_ASCII_DIGIT);
+                    c = move_next();
+                    while (c >= u'0' && c <= u'9' && alignment < parseLimit)
+                    {
+                        alignment = alignment * 10 + (c - u'0');
+                        c = move_next();
+                    }
+                    while (c == u' ')
+                        c = move_next();
+                    if (neg)
+                        alignment = -alignment;
+                }
+                if (c != u'}')
+                {
+                    if (c != u':')
+                        dn2cpp_throw_format_at(i, DN2CPP_SR_FORMAT_UNCLOSED_ITEM);
+                    int32_t specStart = i + 1;
+                    while (true)
+                    {
+                        c = move_next();
+                        if (c == u'}')
+                            break;
+                        if (c == u'{')
+                            dn2cpp_throw_format_at(i, DN2CPP_SR_FORMAT_UNCLOSED_ITEM);
+                    }
+                    int32_t specLen = i - specStart;
+                    char16_t* sbuf;
+                    spec = dn2cpp_string_alloc(&sbuf, specLen);
+                    if (specLen > 0)
+                        std::memcpy(sbuf, p + specStart, static_cast<size_t>(specLen) * sizeof(char16_t));
+                }
             }
-            if (i >= n || p[i] != u'}')
-                dn2cpp_throw_format();
             i++; // past '}'
             runStart = i;
             if (index >= argc)
                 dn2cpp_throw_sr0(&dn2cpp_format_exception_type, DN2CPP_SR_FORMAT_INDEX_OUT_OF_RANGE);
             dn2cpp_isb_append_aligned(&h, dn2cpp_format_hole_value(args[index], spec, nfi), alignment);
-        }
-        else if (c == u'}')
-        {
-            if (i + 1 < n && p[i + 1] == u'}') // escaped "}}" -> one '}'
-            {
-                dn2cpp_format_append_run(&h, p + runStart, i - runStart + 1);
-                i += 2;
-                runStart = i;
-                continue;
-            }
-            dn2cpp_throw_format();
         }
         else
         {

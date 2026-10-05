@@ -75,6 +75,9 @@ namespace StringCore
             if (args.Length > 0 && args[0] == "before-boolean-compare")
                 return;
             IndexedCultureCompareSubset.Program.RunBooleanEquality();
+            if (args.Length > 0 && args[0] == "before-format-diagnostics")
+                return;
+            StringCompositeFormatSubset.Program.Run();
         }
     }
 }

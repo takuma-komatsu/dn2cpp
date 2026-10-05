@@ -44,6 +44,7 @@
 # Equals guards callvirt receivers while a direct IL call enters the real method.
 # Search windows preserve named faults, empty-source precedence and unchecked counts.
 # String argument validation preserves named faults, values and validation order.
+# Composite format faults preserve UTF-16 positions, grammar reasons and argument effects.
 source "$(dirname "$0")/_common.sh"
 string_python=$(resolve_python) || gate_skip "no working Python 3 interpreter for string call fixtures"
 
@@ -51,6 +52,7 @@ call_app="gates/fixtures/string-comparison-call/bin/$CONFIG/$TFM/StringCompariso
 build_gate_proj gates/fixtures/string-comparison-call/StringComparisonCall.csproj
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $call_app ${call_app%.dll}.runtimeconfig.json ${call_app%.dll}.deps.json gates/fixtures/string-comparison-call/patch-call.py"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|string-comparison-call|cli:$(_gate_cli_hash)"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|format-diagnostics-prefix-argv:before-format-diagnostics"
 
 gate_extra_asserts() {
     local out="$1" native before prefix line oracle fixture expected actual
@@ -293,6 +295,31 @@ gate_extra_asserts() {
         'Boolean string comparison equality end'; do
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: Boolean comparison witness missing: $line" >&2; exit 1; }
+    done
+
+    before=$(run_bounded dotnet "$_CG_APP" before-format-diagnostics)
+    prefix=$(awk '/^== String composite format diagnostics ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    before=$(run_bounded "./$out/StringCore$EXE_EXT" before-format-diagnostics)
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    for line in '== String composite format diagnostics ==' \
+        'valid-one result=[7] trace= calls=0' \
+        'valid-null-spec result=[[]] trace= calls=0' \
+        'valid-two result=[7-11] trace= calls=0' \
+        'valid-three result=[7-11-13] trace= calls=0' \
+        'valid-array result=[13/7/11] trace= calls=0' \
+        'valid-spaces result=[[7   ][  0B]] trace= calls=0' \
+        'valid-provider-one result=[1.25] trace= calls=0' \
+        'valid-provider-span result=[1.25/11] trace= calls=0' \
+        'valid-span result=[7/11/13/17] trace= calls=0' \
+        'value-repeated result=[value1/value1] trace=T1T1 calls=2' \
+        'evaluation-order result=[value3/value1/value2] trace=F123T3T1T2 calls=3' \
+        'argument-throw-before-grammar fault=InvalidOperationException:argument-fault trace=F1X calls=0' \
+        'array-evaluation result=[value1] trace=FAT1 calls=1' \
+        'provider-evaluation result=[value1] trace=PF1T1 calls=1' \
+        'String composite format diagnostics end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: composite format witness missing: $line" >&2; exit 1; }
     done
 }
 
