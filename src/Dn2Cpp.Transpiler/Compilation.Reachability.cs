@@ -1918,6 +1918,9 @@ internal sealed partial class Compilation
     /// the overrides a stripping one left out.</summary>
     private void ReachUsedGvm(MethodInfo gvm, bool callSite = true, bool strips = false, bool bindingSite = false)
     {
+        // Dispatchers require concrete method arguments.
+        if (gvm.Context.MethodArgs.Any(ContainsCanonPlaceholder))
+            return;
         if (_usedGvms.TryGetValue(gvm.CppName, out var known))
         {
             known.CallSite |= callSite;
@@ -6462,8 +6465,13 @@ internal sealed partial class Compilation
                             // A generic virtual method has no vtable slot; its dispatch
                             // goes through a per-instantiation type-switch dispatcher whose
                             // override cases are reached here (see ReachUsedGvm).
+                            // A shared trial either binds a constrained call directly
+                            // or taints before dispatch, so it cannot consume a dispatcher.
+                            // A value-type constrained call reaches its direct body below.
                             if ((insn.OpCode == ILOpCode.Callvirt || insn.OpCode == ILOpCode.Ldvirtftn)
-                                && IsGvmCall(t))
+                                && IsGvmCall(t) && !IsCanonicalMethod(m)
+                                && !(insn.OpCode == ILOpCode.Callvirt
+                                     && constrained is { Kind: TypeKind.Class, Class.IsValueType: true }))
                                 ReachUsedGvm(t, bindingSite: insn.OpCode == ILOpCode.Ldvirtftn);
                         }
                         // Array.Sort<T>(…, IComparer<T>) dispatches T's comparer via a

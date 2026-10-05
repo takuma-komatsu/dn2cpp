@@ -93,6 +93,12 @@ namespace SharedGenerics
             Console.WriteLine("== variant interface dispatch ==");
             GvmHiderSubset.Program.RunVariantInterfaces();
             Console.WriteLine("variant interface dispatch end");
+            if (args.Length > 0 && args[0] == "before-trial-dispatch")
+                return;
+            GvmCanonicalSubset.Program.RunTrialDispatch();
+            if (args.Length > 0 && args[0] == "before-interface-rows")
+                return;
+            GvmCanonicalSubset.Program.RunInterfaceRows();
         }
     }
 }

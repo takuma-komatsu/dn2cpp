@@ -45,8 +45,8 @@
 # Fixed-type static operands remain direct while type-argument-dependent statics
 # in the same shared body use per-instantiation storage through rgctx.
 # Without reflective delegate binding or row invocation, a shared instance body
-# reads its rgctx off the receiver with no null test, and an abstract class row
-# carries no invoker thunk.
+# reads its rgctx off the receiver with no null test, and abstract class and
+# signature-only interface rows carry no invoker thunk.
 # A class generic virtual hidden by a subclass `new virtual` (or plain `new`)
 # dispatches a base-typed call to the base body, never to the hider's override.
 # Same-name generic overloads with equal arity and parameter count keep distinct slots.
@@ -63,7 +63,9 @@
 # implements only through variance runs the implemented instantiation's body or
 # default body, constrained on a struct or a class, through a box or a bound
 # delegate. A constrained non-generic slot binds the first instantiation variance
-# converts, never another one. The `== variant interface dispatch ==` section runs last.
+# converts, never another one.
+# Abandoned shared trials leave no unreferenced placeholder-method GVM dispatchers.
+# Grouped concrete owners retain live dispatchers with their shared receiver ABI.
 # string.Join<T>, string.Concat<T> and StringBuilder.AppendJoin<T> in a generic
 # method called over int and an int-backed enum, or over uint and a uint-backed
 # enum, format each element by its real type: the enum by name.
@@ -85,6 +87,7 @@
 # it, and it now transpiles under --shared-generics with DN2CPP_SHARED_ASSERT
 # armed, which it never did standalone.
 source "$(dirname "$0")/_common.sh"
+gvm_python=$(resolve_python) || gate_skip "Python is required to inspect generated GVM references"
 
 project=SharedGenerics
 out="artifacts/sharedgenerics"
@@ -108,7 +111,7 @@ app="samples/dotnet/$project/bin/$CONFIG/$TFM/$project.dll"
 # which would leave this gate uncacheable since it clears the dirs on
 # every run.
 rm -rf "$out" "$out-again" "$out-off"; mkdir -p "$out"
-if gate_cache_check "$out" "shared-generics|cli:$(_gate_cli_hash)|$corelib" \
+if gate_cache_check "$out" "shared-generics|cli:$(_gate_cli_hash)|$corelib|trial-dispatch-prefix-argv:before-trial-dispatch|interface-rows-prefix-argv:before-interface-rows" \
         "$app" "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json"; then
     gate_cache_hit_msg
     exit 0
@@ -388,6 +391,7 @@ if grep -Fq 'dn2cpp_null_receiver_rgctx' "$out"/generated*; then
     exit 1
 fi
 abstract_row='\(&ti_GvmCanonicalSubset_ChainBase_GvmCanonicalSubset_Row\), \(const void\*\)\(&dn2cpp_string_type\), \(const void\*\)\(md_record_parmpool_[0-9]+ \+ 0 \+ 1\), \(const void\*\)\('
+interface_row='^[[:space:]]*\{ md_name_[0-9]+, &ti_GvmCanonicalSubset_IChain_GvmCanonicalSubset_Row, &dn2cpp_string_type, parmpool_[0-9]+, 1LL, 2LL, 0LL, 0, '
 grep -Eq "${abstract_row}md_display_" "$out"/generated*.cpp \
     || { echo "FAIL: abstract ChainBase<Row>.Render row missing or reshaped" >&2; exit 1; }
 if grep -Eq "${abstract_row}\(void\*\)&inv_" "$out"/generated*.cpp; then
@@ -544,6 +548,7 @@ assert_output "$prefix" "$before_variant_dispatch"
 for line in '== variant interface dispatch ==' \
     'gvm variant constrained struct in=struct4:Int32:x' \
     'gvm variant constrained class in=class:Int32:x' \
+    'gvm variant constrained method arg in=struct7:String:g' \
     'gvm variant boxed struct in=struct5:Int64:y' \
     'gvm variant delegate in=struct5:Int32:q' \
     'gvm variant constrained struct out=struct6:Int32' \
@@ -557,4 +562,149 @@ for line in '== variant interface dispatch ==' \
     grep -Fxq -- "$line" <<< "$native" \
         || { echo "FAIL: variant interface dispatch witness missing: $line" >&2; exit 1; }
 done
+before_trial=$(run_bounded dotnet "$app" before-trial-dispatch)
+prefix=$(awk '/^== shared trial generic virtual dispatch ==$/ { exit } { print }' <<< "$native")
+assert_output "$prefix" "$(strip_cr_win "$before_trial")"
+before_trial=$(run_bounded "./$out/$project$EXE_EXT" before-trial-dispatch)
+assert_output "$prefix" "$(strip_cr_win "$before_trial")"
+for line in '== shared trial generic virtual dispatch ==' \
+    'trial interface reference=interface:String/interface:Object' \
+    'trial interface width=interface:Int32/interface:TrialWidth/interface:Int64' \
+    'trial class reference=leaf:String/leaf:Object' \
+    'trial class width=leaf:Int32/leaf:TrialWidth/leaf:Int64' \
+    'trial bound reference=leaf:String/leaf:Object' \
+    'trial bound width=leaf:Int32/leaf:Int64' \
+    'trial nested=interface:String[]/interface:Int32[]' \
+    'trial concrete method args=owned:String/Int32/owned:Object/Int32' \
+    'shared trial generic virtual dispatch end'; do
+    grep -Fxq -- "$line" <<< "$native" \
+        || { echo "FAIL: shared trial dispatch witness missing: $line" >&2; exit 1; }
+done
+
+echo "== Shared-trial GVM dispatcher references =="
+$gvm_python - "$out" <<'PY'
+import collections
+import pathlib
+import re
+import sys
+
+symbol = r"dn2cpp_gvm_[A-Za-z0-9_]+"
+signature = re.compile(r"^[A-Za-z_][\w:*& <>]*\s+(" + symbol + r")\([^;{}]*\)(;?)$")
+reference = re.compile(r"\b(" + symbol + r")\s*\(|&\s*(" + symbol + r")\b")
+canonical_arg = re.compile(r"_TisCn(?:Ref|Any[0-9]+|Boolean|SByte|Byte|Char|Int16|UInt16|Int32|UInt32|Int64|UInt64|IntPtr|UIntPtr|Single|Double)(?:U5B(?:U2C)*U5D|U2A|U26)*(?=_Tis|_m)")
+non_code = re.compile(r'//|/\*|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'')
+
+def code_line(line, in_comment):
+    parts = []
+    pos = 0
+    while pos < len(line):
+        if in_comment:
+            end = line.find("*/", pos)
+            if end < 0:
+                return "".join(parts), True
+            pos = end + 2
+            in_comment = False
+            continue
+        match = non_code.search(line, pos)
+        if match is None:
+            parts.append(line[pos:])
+            break
+        parts.append(line[pos:match.start()])
+        parts.append(" ")
+        pos = match.end()
+        if match.group() == "//":
+            break
+        if match.group() == "/*":
+            in_comment = True
+    return "".join(parts), in_comment
+
+declarations = set()
+definitions = {}
+edges = collections.defaultdict(set)
+roots = set()
+for path in sorted(pathlib.Path(sys.argv[1]).glob("generated*")):
+    if path.suffix not in (".h", ".cpp"):
+        continue
+    current = None
+    depth = 0
+    in_comment = False
+    with path.open(encoding="utf-8") as source:
+        for line in source:
+            code, in_comment = code_line(line, in_comment)
+            match = signature.fullmatch(code.rstrip())
+            if match:
+                name = match.group(1)
+                if match.group(2):
+                    declarations.add(name)
+                else:
+                    definitions[name] = code
+                    current, depth = name, 0
+                continue
+            for match in reference.finditer(code):
+                name = match.group(1) or match.group(2)
+                if current is None:
+                    roots.add(name)
+                else:
+                    edges[current].add(name)
+            if current is not None:
+                depth += code.count("{") - code.count("}")
+                if depth == 0 and "}" in code:
+                    current = None
+
+# A binder/dispatcher cycle needs a consumer outside those generated helpers.
+live = set(roots)
+pending = list(roots)
+while pending:
+    for name in edges[pending.pop()] - live:
+        live.add(name)
+        pending.append(name)
+dispatchers = {name for name in declarations | definitions.keys() if not name.startswith("dn2cpp_gvm_bind_")}
+unused = sorted(dispatchers - live)
+unreferenced_shared = [name for name in unused
+    if canonical_arg.search(name) or "__Cn" in definitions.get(name, "").split("a0", 1)[0]]
+for name in unreferenced_shared:
+    print("unreferenced GVM dispatcher: " + name, file=sys.stderr)
+controls = (
+    "dn2cpp_gvm_ITrial_InterfaceVisit_TisString_",
+    "dn2cpp_gvm_TrialBase_ClassVisit_TisInt32_",
+    "dn2cpp_gvm_ITrial_InterfaceVisit_TisStringU5BU5D_",
+    "dn2cpp_gvm_IOwnedTrial_1_Owned_TisInt32_",
+)
+for prefix in controls:
+    matches = [name for name in dispatchers & live if name.startswith(prefix) and name in definitions]
+    if not matches:
+        sys.exit("FAIL: live GVM control missing: " + prefix)
+    if "IOwnedTrial" in prefix and not any("__CnRef* a0" in definitions[name] for name in matches):
+        sys.exit("FAIL: grouped concrete GVM owner does not use the shared receiver ABI")
+if unreferenced_shared:
+    sys.exit("FAIL: an unreferenced GVM dispatcher uses placeholder arguments or a shared receiver ABI")
+print("shared-trial GVM dispatcher references: OK")
+PY
+
+before_interface_rows=$(run_bounded dotnet "$app" before-interface-rows)
+prefix=$(awk '/^== signature-only interface rows ==$/ { exit } { print }' <<< "$native")
+assert_output "$prefix" "$(strip_cr_win "$before_interface_rows")"
+before_interface_rows=$(run_bounded "./$out/$project$EXE_EXT" before-interface-rows)
+assert_output "$prefix" "$(strip_cr_win "$before_interface_rows")"
+for line in '== signature-only interface rows ==' \
+    'interface row name=Render' 'interface row abstract=True' \
+    'interface row owner=True' 'signature-only interface rows end'; do
+    grep -Fxq -- "$line" <<< "$native" \
+        || { echo "FAIL: signature-only interface row witness missing: $line" >&2; exit 1; }
+done
+echo "== Signature-only interface row invokers =="
+interface_rows=$(awk '
+    /^static const Dn2CppMethodInfo md_native_methtab_GvmCanonicalSubset_IChain_GvmCanonicalSubset_Row\[\] = \{[[:space:]]*$/ { in_table = 1; next }
+    in_table && /^\};/ { in_table = 0 }
+    in_table { print }
+' "$out"/generated*.cpp)
+grep -Eq "$interface_row" <<< "$interface_rows" \
+    || { echo "FAIL: interface IChain<Row>.Render row missing or reshaped" >&2; exit 1; }
+if grep -Eq "${interface_row}\(void\*\)&inv_" <<< "$interface_rows"; then
+    echo "FAIL: an interface signature-only row carries an invoker nothing late-bound calls" >&2
+    exit 1
+fi
+grep -Eq "${interface_row}0," <<< "$interface_rows" \
+    || { echo "FAIL: interface IChain<Row>.Render row without an invoker missing or reshaped" >&2; exit 1; }
+echo "signature-only interface row invokers: OK"
 gate_cache_commit
