@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # An ambiguous default interface slot: two sibling derived interfaces each
 # override one base interface method, whether a plain method, a generic method
-# or a method of a generic interface. An invoked slot throws .NET's catchable
-# AmbiguousImplementationException with its message and HResult, and an unused
-# one leaves the conversion intact. The message names a MakeGenericType
+# or a method of a generic interface. Calls and delegate binding throw .NET's
+# catchable AmbiguousImplementationException with its message and HResult,
+# while an unused slot leaves conversion intact. The message names a MakeGenericType
 # receiver's own instantiation, and overloads whose messages match each throw
 # through a stub of their own signature. C# rejects the shape, so the
 # application compiles against one library version and both sides run against
 # the next: a version-skewed reference set.
 source "$(dirname "$0")/_common.sh"
 
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-constrained-prefix:${DN2CPP_BEFORE_ORDINARY_CONSTRAINED_DEFAULT:-}"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-constrained-prefix:${DN2CPP_BEFORE_ORDINARY_CONSTRAINED_DEFAULT:-}|binding-prefix-argv:before-binding|generic-message-prefix-argv:before-generic-messages"
 
 APP_DIR="samples/dotnet/AmbiguousDefault/bin/$CONFIG/$TFM"
 
@@ -33,7 +33,7 @@ gate_extra_asserts() {
             || { echo "FAIL: $label lost the AmbiguousImplementationException HResult" >&2; exit 1; }
     done
     grep -Fxq 'after: left' <<<"$output" && grep -Fxq 'made after: left' <<<"$output" \
-        && [ "$(tail -n 1 <<<"$output")" = 'constrained after: left' ] \
+        && grep -Fxq 'constrained after: left' <<<"$output" \
         || { echo "FAIL: the program did not continue after the caught exceptions" >&2; exit 1; }
     before=$(DN2CPP_BEFORE_ORDINARY_CONSTRAINED_DEFAULT=1 dotnet "$_CG_APP")
     before=$(strip_cr_win "$before")
@@ -41,6 +41,44 @@ gate_extra_asserts() {
     assert_output "$prefix" "$before"
     grep -Fxq 'constrained plain: left' <<< "$output" \
         || { echo "FAIL: the constrained unambiguous default body did not run" >&2; exit 1; }
+    grep -Fxq '== virtual delegate creation ==' <<< "$output" \
+        || { echo "FAIL: the delegate binding block did not run" >&2; exit 1; }
+    for label in 'unused group' 'generic<int> group' 'generic<string> group' \
+        'generic receiver group' 'made unused group' 'made generic group'; do
+        grep -Fxq "$label created: False" <<< "$output" \
+            && grep -Fxq "$label hresult: 0x8013106A" <<< "$output" \
+            || { echo "FAIL: $label did not throw before creation completed" >&2; exit 1; }
+    done
+    for label in 'null interface group' 'null generic interface group' 'null generic class group'; do
+        grep -Fxq "$label created: False" <<< "$output" \
+            && grep -Fxq "$label hresult: 0x80004003" <<< "$output" \
+            || { echo "FAIL: $label did not reject its null receiver at binding" >&2; exit 1; }
+    done
+    grep -Fxq 'callable groups: left,left,Int32' <<< "$output" \
+        || { echo "FAIL: unambiguous delegates did not remain callable" >&2; exit 1; }
+    before=$(dotnet "$_CG_APP" before-binding)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== virtual delegate creation ==$/ { exit } { print }' <<< "$output")
+    assert_output "$prefix" "$before"
+    grep -Fxq '== generic interface ambiguity messages ==' <<< "$output" \
+        || { echo "FAIL: the generic interface message block did not run" >&2; exit 1; }
+    for label in 'box ref/value' 'box value/ref' 'box pair' 'duo mixed single' \
+        'duo values single' 'duo pair' 'duo triple' 'box pair group' 'duo single group'; do
+        grep -Fxq "$label hresult: 0x8013106A" <<< "$output" \
+            || { echo "FAIL: $label did not report its ambiguity" >&2; exit 1; }
+    done
+    for method in 'IBox`1[U].Select' 'IBox`1[X,Y].Pair' \
+        'IDuo`2[V].Single' 'IDuo`2[X,Y].Pair' 'IDuo`2[X,Y,Z].Triple'; do
+        grep -Fq "$method" <<< "$output" \
+            || { echo "FAIL: $method lost the method definition's parameter names" >&2; exit 1; }
+    done
+    grep -Fxq 'box pair group created: False' <<< "$output" \
+        && grep -Fxq 'duo single group created: False' <<< "$output" \
+        || { echo "FAIL: generic interface ambiguity was delayed until delegate invocation" >&2; exit 1; }
+    before=$(dotnet "$_CG_APP" before-generic-messages)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== generic interface ambiguity messages ==$/ { exit } { print }' <<< "$output")
+    assert_output "$prefix" "$before"
     grep -Fq "'AmbiguousDefaultLib.IBase.Unused()' on interface 'AmbiguousDefaultLib.IBase' with type 'AmbiguousDefault.Both'" \
         "$out"/generated*.cpp \
         || { echo "FAIL: the unused ambiguous slot was not modelled" >&2; exit 1; }

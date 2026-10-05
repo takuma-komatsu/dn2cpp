@@ -9,4 +9,8 @@ namespace AmbiguousDefaultLib
     public interface IBoxRight<T> : IBox<T>
     {
     }
+
+    public interface IDuoRight<TFirst, TSecond> : IDuo<TFirst, TSecond>
+    {
+    }
 }

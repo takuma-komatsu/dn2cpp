@@ -23,12 +23,40 @@ internal sealed partial class CppEmitter
     private static (string Head, string Tail) AmbiguousImplementationMessageParts(
         ClassInfo receiver, ClassInfo itf, MethodInfo slot)
     {
-        string method = ClrTypeName(itf, canonical: true) + "." + slot.Name
+        string method = ClrMethodDeclaringType(itf, slot) + "." + slot.Name
             + "(" + string.Join(", ", ClrSignatureParameters(itf, slot)) + ")";
         return ("Could not call method '" + method + "' on interface '" + ClrTypeName(itf, canonical: false)
                 + "' with type '",
             "' from assembly '" + AssemblyDisplayName(receiver.Module)
                 + "' because there are multiple incompatible interface methods overriding this method.");
+    }
+
+    // A generic method's label uses its definition's parameter names for a generic
+    // owner, even when their arities differ. Its signature keeps the owner's context.
+    private static string ClrMethodDeclaringType(ClassInfo itf, MethodInfo slot)
+    {
+        string fallback = ClrTypeName(itf, canonical: true);
+        if (itf.Context.TypeArgs.Length == 0 || itf.Handle.IsNil || slot.Handle.IsNil)
+            return fallback;
+        try
+        {
+            var reader = slot.Module.Reader;
+            var parameters = reader.GetMethodDefinition(slot.Handle).GetGenericParameters();
+            if (parameters.Count == 0)
+                return fallback;
+            var names = new string[parameters.Count];
+            foreach (var handle in parameters)
+            {
+                var parameter = reader.GetGenericParameter(handle);
+                names[parameter.Index] = reader.GetString(parameter.Name);
+            }
+            return RawSignatureProvider.TypeDefinitionName(itf.Module.Reader, itf.Handle)
+                + "[" + string.Join(",", names) + "]";
+        }
+        catch (Exception e) when (!Compilation.IsMustEscape(e))
+        {
+            return fallback;
+        }
     }
 
     /// <summary><c>Name, Version=v, Culture=c, PublicKeyToken=t</c>, as

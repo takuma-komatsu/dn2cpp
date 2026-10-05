@@ -102,6 +102,7 @@ internal sealed partial class CppEmitter
         // monotonic across the emission so names are unique and deterministic.
         private readonly Dictionary<string, string> _slotStubs = new(System.StringComparer.Ordinal);
         private int _slotStubSeq;
+        private readonly List<string> _ambiguousBindings = new();
         // Per-row invoker trap stubs (invmiss_), the reflection-invoker sibling of the
         // slotmiss_ map above: a member-table row whose invoker thunk cannot be
         // materialized (InvokerThunkBlocker — its signature names a by-value struct
@@ -1199,6 +1200,7 @@ internal sealed partial class CppEmitter
             _sb.AppendLine();
             EmitDelegateIdentities();
             EmitGvmRowDispatch();
+            EmitAmbiguousBindings();
 
             // Last statement of the emission, and it has to be: this object is unreferenced
             // the moment it returns (EmitTypeInfos keeps no field), so a census anywhere
@@ -1433,7 +1435,28 @@ internal sealed partial class CppEmitter
             string? self = _e.IsRuntimeTemplateLevel(cls) && _e.SlotTrapShape(decl) is not null ? "self" : null;
             string body = AmbiguousImplementationThrow(cls, itf, decl, self);
             return PooledSlotStub("slotambig_", body, decl,
-                name => _e.SlotStubDef(name, body, decl, self));
+                name =>
+                {
+                    // The checker lives beside its chunk-local stub. Binding compares
+                    // addresses without calling a target with the slot's arbitrary ABI.
+                    string check = "bind_" + name;
+                    _ambiguousBindings.Add(check);
+                    _o.Header.AppendLine($"void {check}(const void* target, void* self);");
+                    return _e.SlotStubDef(name, body, decl, self) + "\n"
+                        + $"void {check}(const void* target, [[maybe_unused]] void* self) "
+                        + $"{{ if (target == (const void*)&{name}) {body} }}";
+                });
+        }
+
+        private void EmitAmbiguousBindings()
+        {
+            _o.Header.AppendLine("void* dn2cpp_bind_interface_slot(const void* target, void* self);");
+            _sb.AppendLine("void* dn2cpp_bind_interface_slot(const void* target, [[maybe_unused]] void* self)");
+            _sb.AppendLine("{");
+            foreach (string check in _ambiguousBindings)
+                _sb.AppendLine($"    {check}(target, self);");
+            _sb.AppendLine("    return const_cast<void*>(target);");
+            _sb.AppendLine("}");
         }
 
         private string PooledSlotStub(string prefix, string text, MethodInfo decl, Func<string, string> define)

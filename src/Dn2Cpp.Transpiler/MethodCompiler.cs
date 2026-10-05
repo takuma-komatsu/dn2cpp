@@ -3781,10 +3781,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 }
                 else if (Compilation.IsGvmCall(m))
                 {
-                    // A generic virtual method has no vtable slot; its type-switch
-                    // dispatcher (registered for ldvirtftn too) has the same
-                    // (receiver, args) shape, so a delegate binds to it directly.
-                    expr = $"(void*)&{Compilation.GvmDispatchName(m)}";
+                    expr = $"{Compilation.GvmBindingName(m)}({obj.Expr})";
                 }
                 else if (CoreIntrinsics.MdPrimitiveEqualsObject.Matches(virtualTarget))
                 {
@@ -3823,8 +3820,8 @@ internal sealed partial class MethodCompiler : IEvalStack
                     if (m.DeclaringClass.IntrinsicCppName is null)
                         NoteReferencedType(m.DeclaringClass);
                     NoteCanonicalItfDispatch(m.DeclaringClass);
-                    expr = $"(void*)(dn2cpp_resolve_interface(((Dn2CppObject*)dn2cpp_null_check({obj.Expr}))->type, "
-                        + $"&{ItfDispatchTi(m.DeclaringClass).CppTypeInfoName})[{m.VtableSlot}])";
+                    expr = $"dn2cpp_bind_interface_slot(dn2cpp_resolve_interface(((Dn2CppObject*)dn2cpp_null_check({obj.Expr}))->type, "
+                        + $"&{ItfDispatchTi(m.DeclaringClass).CppTypeInfoName})[{m.VtableSlot}], {obj.Expr})";
                 }
                 else
                 {
