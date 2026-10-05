@@ -19,6 +19,7 @@
 #include <cerrno>     // errno / ENOENT / EACCES / EISDIR (preserved across the PAL fs calls)
 #if defined(_WIN32)
 #include <windows.h>  // GetFullPathNameW/GetLongPathNameW — Windows Path.GetFullPath (drive/UNC-aware, 8.3 expansion); winreg.h — Environment's User/Machine registry read
+#include <io.h>       // _wunlink — preserve UTF-16 file names
 #include <algorithm>  // std::find — scan the normalized path for an 8.3 '~' component
 // No #pragma comment(lib, "advapi32.lib") here: advapi32 (RegOpenKeyExW /
 // RegQueryValueExW / RegCloseKey, below) IS in CMake's default Windows link set
@@ -460,12 +461,59 @@ static std::string dn2cpp_path_to_utf8(Dn2CppString* p, const char* paramName = 
 
 // The path of a member that opens the file: ArgumentException.ThrowIfNullOrEmpty's
 // checks, then those of the Path.GetFullPath the open runs.
-static std::string dn2cpp_file_open_path(Dn2CppString*& path)
+static void dn2cpp_file_open_path(Dn2CppString*& path)
 {
     if (path != nullptr && path->length == 0)
         dn2cpp_throw_argument_param(DN2CPP_SR_EMPTY_STRING, "path");
     path = dn2cpp_path_get_full_path(path);
-    return dn2cpp_path_to_utf8(path, "path");
+}
+
+#if defined(_WIN32)
+static std::vector<wchar_t> dn2cpp_path_to_wide(Dn2CppString* path)
+{
+    std::vector<wchar_t> wide(static_cast<size_t>(path->length) + 1);
+    for (int32_t i = 0; i < path->length; i++)
+        wide[static_cast<size_t>(i)] = static_cast<wchar_t>(path->chars[i]);
+    wide[static_cast<size_t>(path->length)] = L'\0';
+    return wide;
+}
+#endif
+
+static int dn2cpp_file_path_kind(Dn2CppString* path)
+{
+#if defined(_WIN32)
+    std::vector<wchar_t> wide = dn2cpp_path_to_wide(path);
+    DWORD attributes = ::GetFileAttributesW(wide.data());
+    if (attributes == INVALID_FILE_ATTRIBUTES) return DN2CPP_PAL_PATH_MISSING;
+    if (attributes & FILE_ATTRIBUTE_DIRECTORY) return DN2CPP_PAL_PATH_DIR;
+    if (attributes & FILE_ATTRIBUTE_DEVICE) return DN2CPP_PAL_PATH_OTHER;
+    return DN2CPP_PAL_PATH_FILE;
+#else
+    std::string utf8 = dn2cpp_path_to_utf8(path, "path");
+    return dn2cpp_pal_path_kind(utf8.c_str());
+#endif
+}
+
+static FILE* dn2cpp_file_fopen(Dn2CppString* path, bool write)
+{
+#if defined(_WIN32)
+    std::vector<wchar_t> wide = dn2cpp_path_to_wide(path);
+    return ::_wfopen(wide.data(), write ? L"wb" : L"rb");
+#else
+    std::string utf8 = dn2cpp_path_to_utf8(path, "path");
+    return std::fopen(utf8.c_str(), write ? "wb" : "rb");
+#endif
+}
+
+static int dn2cpp_file_unlink(Dn2CppString* path)
+{
+#if defined(_WIN32)
+    std::vector<wchar_t> wide = dn2cpp_path_to_wide(path);
+    return ::_wunlink(wide.data());
+#else
+    std::string utf8 = dn2cpp_path_to_utf8(path, "path");
+    return dn2cpp_pal_unlink(utf8.c_str());
+#endif
 }
 
 // Exists suppresses path faults, but allocation failures still propagate.
@@ -532,8 +580,7 @@ int32_t dn2cpp_file_exists(Dn2CppString* path)
     if (path == nullptr || path->length == 0 || dn2cpp_path_has_nul(path)) return 0;
     path = dn2cpp_path_try_get_full_path(path);
     if (path == nullptr) return 0;
-    std::string p = dn2cpp_path_to_utf8(path, "path");
-    int kind = dn2cpp_pal_path_kind(p.c_str());
+    int kind = dn2cpp_file_path_kind(path);
 #if defined(_WIN32)
     return kind == DN2CPP_PAL_PATH_FILE ? 1 : 0;
 #else
@@ -545,11 +592,10 @@ int32_t dn2cpp_file_exists(Dn2CppString* path)
 void dn2cpp_file_delete(Dn2CppString* path)
 {
     path = dn2cpp_path_get_full_path(path);
-    std::string p = dn2cpp_path_to_utf8(path, "path");
-    if (dn2cpp_pal_path_kind(p.c_str()) == DN2CPP_PAL_PATH_DIR)
+    if (dn2cpp_file_path_kind(path) == DN2CPP_PAL_PATH_DIR)
         dn2cpp_throw_sr1(&dn2cpp_unauthorized_access_exception_type,
             DN2CPP_SR_UNAUTHORIZED_ACCESS_PATH, dn2cpp_path_get_full_path(path));
-    if (dn2cpp_pal_unlink(p.c_str()) != 0)
+    if (dn2cpp_file_unlink(path) != 0)
     {
         int err = errno;
         if (err == ENOENT || err == ENOTDIR)
@@ -567,13 +613,13 @@ void dn2cpp_file_delete(Dn2CppString* path)
 }
 
 // Slurp the whole file into `out`.
-static void dn2cpp_file_read_all(Dn2CppString* path, const std::string& p, std::string& out)
+static void dn2cpp_file_read_all(Dn2CppString* path, std::string& out)
 {
     // A read-only open of a directory succeeds on POSIX; .NET refuses it.
-    if (dn2cpp_pal_path_kind(p.c_str()) == DN2CPP_PAL_PATH_DIR)
+    if (dn2cpp_file_path_kind(path) == DN2CPP_PAL_PATH_DIR)
         dn2cpp_throw_sr1(&dn2cpp_unauthorized_access_exception_type,
             DN2CPP_SR_UNAUTHORIZED_ACCESS_PATH, dn2cpp_path_get_full_path(path));
-    FILE* fp = std::fopen(p.c_str(), "rb");
+    FILE* fp = dn2cpp_file_fopen(path, false);
     if (fp == nullptr) dn2cpp_file_throw_open_failure(errno, path);
     // Heap, not stack: 8 KiB is more than a small-stack target (a console, an
     // engine worker thread) can spare for one frame, and this one nests under
@@ -590,9 +636,9 @@ static void dn2cpp_file_read_all(Dn2CppString* path, const std::string& p, std::
 
 Dn2CppString* dn2cpp_file_read_all_text(Dn2CppString* path)
 {
-    std::string p = dn2cpp_file_open_path(path);
+    dn2cpp_file_open_path(path);
     std::string data;
-    dn2cpp_file_read_all(path, p, data);
+    dn2cpp_file_read_all(path, data);
     // .NET strips a leading UTF-8 BOM (EF BB BF). UTF-16/32 BOM detection is a
     // carve-out — dn2cpp writes UTF-8 (no BOM), so reads round-trip.
     const char* s = data.data();
@@ -609,9 +655,9 @@ Dn2CppString* dn2cpp_file_read_all_text(Dn2CppString* path)
 
 Dn2CppArrayN* dn2cpp_file_read_all_bytes(Dn2CppString* path, const Dn2CppTypeInfo* ti)
 {
-    std::string p = dn2cpp_file_open_path(path);
+    dn2cpp_file_open_path(path);
     std::string data;
-    dn2cpp_file_read_all(path, p, data);
+    dn2cpp_file_read_all(path, data);
     Dn2CppArrayN* arr = dn2cpp_newarr_n_t(static_cast<int32_t>(data.size()), 1, ti);
     if (!data.empty())
         std::memcpy(arr->data, data.data(), data.size());
@@ -620,8 +666,8 @@ Dn2CppArrayN* dn2cpp_file_read_all_bytes(Dn2CppString* path, const Dn2CppTypeInf
 
 void dn2cpp_file_write_all_text(Dn2CppString* path, Dn2CppString* contents)
 {
-    std::string p = dn2cpp_file_open_path(path);
-    FILE* fp = std::fopen(p.c_str(), "wb");
+    dn2cpp_file_open_path(path);
+    FILE* fp = dn2cpp_file_fopen(path, true);
     if (fp == nullptr) dn2cpp_file_throw_open_failure(errno, path);
     // .NET: UTF-8, no BOM. null contents writes an empty file.
     if (contents != nullptr && contents->length > 0)
@@ -641,8 +687,8 @@ void dn2cpp_file_write_all_bytes(Dn2CppString* path, Dn2CppArrayN* bytes)
 {
     // .NET checks the bytes before the path.
     if (bytes == nullptr) dn2cpp_throw_argument_null_param("bytes");
-    std::string p = dn2cpp_file_open_path(path);
-    FILE* fp = std::fopen(p.c_str(), "wb");
+    dn2cpp_file_open_path(path);
+    FILE* fp = dn2cpp_file_fopen(path, true);
     if (fp == nullptr) dn2cpp_file_throw_open_failure(errno, path);
     if (bytes->length > 0)
         std::fwrite(bytes->data, 1, static_cast<size_t>(bytes->length), fp);
@@ -868,8 +914,7 @@ int32_t dn2cpp_directory_exists(Dn2CppString* path)
     if (path == nullptr || path->length == 0 || dn2cpp_path_has_nul(path)) return 0;
     path = dn2cpp_path_try_get_full_path(path);
     if (path == nullptr) return 0;
-    std::string p = dn2cpp_path_to_utf8(path, "path");
-    return (dn2cpp_pal_path_kind(p.c_str()) == DN2CPP_PAL_PATH_DIR) ? 1 : 0;
+    return (dn2cpp_file_path_kind(path) == DN2CPP_PAL_PATH_DIR) ? 1 : 0;
 }
 
 // ─── The process image (Environment.ProcessPath / AppContext.BaseDirectory) ──

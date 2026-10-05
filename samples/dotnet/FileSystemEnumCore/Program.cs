@@ -32,6 +32,8 @@ namespace FileSystemEnumCore
             FileIoPathValidationSubset.Program.RunLexicalPathNormalization(root);
             if (args.Length > 1 && args[1] == "before-file-dot-components") return;
             FileIoPathValidationSubset.Program.RunFileDotComponents(root);
+            if (args.Length > 1 && args[1] == "before-unicode-file-names") return;
+            FileIoPathValidationSubset.Program.RunUnicodeFileNames(root);
         }
 
         // Known tree the enumeration sections walk:
