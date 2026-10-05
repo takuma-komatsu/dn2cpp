@@ -6420,6 +6420,7 @@ internal sealed partial class CppEmitter
             // One branch per concrete type whose override differs from the base default;
             // types that don't override fall through to the shared base case.
             var branches = new List<string>();
+            var bindingBranches = new List<string>();
             bool templateCase = false;
             foreach (var (type, impl) in disp.Cases
                          .Where(kv => kv.Value != gvm && _c.Reachable.Contains(kv.Value))
@@ -6451,7 +6452,9 @@ internal sealed partial class CppEmitter
                 templateCase |= template;
                 // __t names a clone's template; the message names the clone.
                 string thrown = AmbiguousImplementationThrow(type, disp.Decl, gvm, template ? "a0" : null);
-                branches.Add($"    if (__t == {TypeInfoRef(type, "generic-virtual dispatcher ambiguous case", caseDetail)}) {thrown}");
+                string branch = $"    if (__t == {TypeInfoRef(type, "generic-virtual dispatcher ambiguous case", caseDetail)}) {thrown}";
+                branches.Add(branch);
+                bindingBranches.Add(branch);
             }
             // A receiver whose override the image stripped reports it to the reflective
             // call that entered through the row, as a trapped slot does.
@@ -6491,6 +6494,21 @@ internal sealed partial class CppEmitter
                         ? $"    return {CppTypes.ZeroInitExpr(ret)};"
                         : $"    return ({ret})0;");
             }
+            o.Data.AppendLine("}");
+            if (!disp.BindingSite)
+                continue;
+            string binding = Compilation.GvmBindingName(gvm);
+            o.Header.AppendLine($"void* {binding}(void* a0);");
+            o.Data.AppendLine($"void* {binding}(void* a0)");
+            o.Data.AppendLine("{");
+            o.Data.AppendLine("    const Dn2CppTypeInfo* __t = ((Dn2CppObject*)dn2cpp_null_check(a0))->type;");
+            if (_hotUpdateBase)
+                o.Data.AppendLine("    while ((__t->flags & DN2CPP_TF_PATCH) != 0) __t = __t->base;");
+            if (templateCase)
+                o.Data.AppendLine("    if ((__t->flags & DN2CPP_TF_RUNTIME_SYNTH) != 0) __t = dn2cpp_runtime_template_of(__t);");
+            foreach (string branch in bindingBranches)
+                o.Data.AppendLine(branch);
+            o.Data.AppendLine($"    return (void*)&{name};");
             o.Data.AppendLine("}");
         }
         o.Header.AppendLine();

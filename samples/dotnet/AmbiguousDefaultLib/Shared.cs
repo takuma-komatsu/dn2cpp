@@ -44,10 +44,28 @@ namespace AmbiguousDefaultLib
     public interface IBox<T>
     {
         string Take(T item, List<T> items) => "base";
+        string Select<U>(T item, U value) => "base";
+        string Pair<X, Y>() => "base";
     }
 
     public interface IBoxLeft<T> : IBox<T>
     {
         string IBox<T>.Take(T item, List<T> items) => "left";
+        string IBox<T>.Select<U>(T item, U value) => "left";
+        string IBox<T>.Pair<X, Y>() => "left";
+    }
+
+    public interface IDuo<TFirst, TSecond>
+    {
+        string Single<V>(TFirst first, TSecond second, V value) => "base";
+        string Pair<X, Y>() => "base";
+        string Triple<X, Y, Z>() => "base";
+    }
+
+    public interface IDuoLeft<TFirst, TSecond> : IDuo<TFirst, TSecond>
+    {
+        string IDuo<TFirst, TSecond>.Single<V>(TFirst first, TSecond second, V value) => "left";
+        string IDuo<TFirst, TSecond>.Pair<X, Y>() => "left";
+        string IDuo<TFirst, TSecond>.Triple<X, Y, Z>() => "left";
     }
 }

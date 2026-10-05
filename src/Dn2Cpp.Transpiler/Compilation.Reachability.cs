@@ -1846,6 +1846,7 @@ internal sealed partial class Compilation
         // A callvirt or ldvirtftn names the instantiation; otherwise only reflection
         // enters the dispatcher, through the row's invoker.
         public bool CallSite;
+        public bool BindingSite;
         // concrete allocated type -> its override impl (or Gvm itself for the base default).
         public readonly Dictionary<ClassInfo, MethodInfo> Cases = new();
         // Interface GVM receivers whose derived-interface overrides have no most
@@ -1881,6 +1882,8 @@ internal sealed partial class Compilation
     /// the registration, and the emitter all agree without threading state.</summary>
     internal static string GvmDispatchName(MethodInfo gvm) => "dn2cpp_gvm_" + gvm.CppName;
 
+    internal static string GvmBindingName(MethodInfo gvm) => "dn2cpp_gvm_bind_" + gvm.CppName;
+
     /// <summary>Registers a used GVM instantiation and reaches each allocated type's
     /// override at its method args (mirrors <see cref="ReachUsedVirtual"/>).
     /// <paramref name="callSite"/> is false for a row no call site names, which
@@ -1888,11 +1891,12 @@ internal sealed partial class Compilation
     /// <paramref name="strips"/> registers a stripping dispatcher
     /// (<see cref="GvmDispatch.Strips"/>). A registration that does not strip reaches
     /// the overrides a stripping one left out.</summary>
-    private void ReachUsedGvm(MethodInfo gvm, bool callSite = true, bool strips = false)
+    private void ReachUsedGvm(MethodInfo gvm, bool callSite = true, bool strips = false, bool bindingSite = false)
     {
         if (_usedGvms.TryGetValue(gvm.CppName, out var known))
         {
             known.CallSite |= callSite;
+            known.BindingSite |= bindingSite;
             if (known.Strips && !strips)
             {
                 known.Strips = false;
@@ -1902,6 +1906,7 @@ internal sealed partial class Compilation
         }
         var disp = NewGvmDispatch(gvm, callSite);
         disp.Strips = strips;
+        disp.BindingSite = bindingSite;
         _usedGvms.Add(gvm.CppName, disp);
         foreach (var c in _allocatedRefTypes.ToList())
             ReachGvmImpl(disp, c);
@@ -6421,7 +6426,7 @@ internal sealed partial class Compilation
                             // override cases are reached here (see ReachUsedGvm).
                             if ((insn.OpCode == ILOpCode.Callvirt || insn.OpCode == ILOpCode.Ldvirtftn)
                                 && IsGvmCall(t))
-                                ReachUsedGvm(t);
+                                ReachUsedGvm(t, bindingSite: insn.OpCode == ILOpCode.Ldvirtftn);
                         }
                         // Array.Sort<T>(…, IComparer<T>) dispatches T's comparer via a
                         // transpiler-emitted thunk, not an IL callvirt — and Array
