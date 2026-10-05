@@ -1376,6 +1376,14 @@ internal sealed partial class MethodCompiler
             // GetGetMethod/GetSetMethod (+ the GetMethod/SetMethod properties,
             // which include non-public accessors): the accessor's reflected
             // MethodInfo, or null. The no-arg overloads pass nonPublic: false.
+            case ("System.Reflection.PropertyInfo", "GetAccessors")
+                when sig.ParameterTypes.Length is 0 or 1:
+            {
+                string nonPublic = sig.ParameterTypes.Length == 1 ? Cast(Pop(), "int32_t") : "0";
+                var p = Pop();
+                PushReflectionMemberArray($"dn2cpp_propref_get_accessors((Dn2CppPropRef*)({p.Expr}), {nonPublic})", sig.ReturnType);
+                return true;
+            }
             case ("System.Reflection.PropertyInfo", "GetGetMethod" or "GetSetMethod")
                 when sig.ParameterTypes.Length is 0 or 1:
             {

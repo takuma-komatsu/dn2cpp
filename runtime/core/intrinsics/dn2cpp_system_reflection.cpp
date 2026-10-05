@@ -5754,16 +5754,34 @@ int32_t dn2cpp_propref_can_write(Dn2CppPropRef* p)
 // is non-public and nonPublic wasn't requested (the no-arg overloads pass 0).
 Dn2CppMethodRef* dn2cpp_propref_accessor(Dn2CppPropRef* p, int32_t setter, int32_t nonPublic)
 {
-    dn2cpp_propref_require(p);
+    const auto property = dn2cpp_propref_require(p);
+    dn2cpp_require_metadata(property->declaringType);
     Dn2CppMetadataHandle<Dn2CppMethodInfo> m = setter != 0 ? p->setter : p->getter;
     if (m == nullptr)
         return nullptr;
     if (nonPublic == 0 && (m->attrs & DN2CPP_MTHA_PUBLIC) == 0)
         return nullptr;
+    // Private accessors are not inherited, even when non-public methods are requested.
+    if (p->reflectedType != property->declaringType && (m->attrs & DN2CPP_MTHA_PRIVATE) != 0)
+        return nullptr;
     // The accessor inherits the PROPERTY handle's reflected type, so
     // typeof(D).GetProperty("P").GetGetMethod() is the same instance as
     // typeof(D).GetMethod("get_P"), as on .NET.
     return dn2cpp_make_methodref(m, p->reflectedType);
+}
+
+Dn2CppArrayRef* dn2cpp_propref_get_accessors(Dn2CppPropRef* p, int32_t nonPublic)
+{
+    dn2cpp_require_metadata(dn2cpp_propref_require(p)->declaringType);
+    Dn2CppMethodRef* getter = dn2cpp_propref_accessor(p, 0, nonPublic);
+    Dn2CppMethodRef* setter = dn2cpp_propref_accessor(p, 1, nonPublic);
+    auto* result = dn2cpp_newarr_ref((getter != nullptr ? 1 : 0) + (setter != nullptr ? 1 : 0));
+    int32_t index = 0;
+    if (getter != nullptr)
+        dn2cpp_gc_store_ref(&result->data[index++], reinterpret_cast<Dn2CppObject*>(getter));
+    if (setter != nullptr)
+        dn2cpp_gc_store_ref(&result->data[index], reinterpret_cast<Dn2CppObject*>(setter));
+    return result;
 }
 
 Dn2CppObject* dn2cpp_propref_get_value(Dn2CppPropRef* p, Dn2CppObject* obj)

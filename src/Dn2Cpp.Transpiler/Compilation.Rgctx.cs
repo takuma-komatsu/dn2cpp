@@ -695,6 +695,7 @@ internal sealed partial class Compilation
         "dn2cpp_activator_create_instance", // + _args/_nonpublic
         "dn2cpp_propref_get_value", // + _indexed
         "dn2cpp_propref_set_value", // + _indexed
+        "dn2cpp_propref_get_accessors(",
         "dn2cpp_get_custom_attribute", // GetCustomAttribute(s) (+ _typed)
         "dn2cpp_assembly_get_custom_attribute", // the assembly's, likewise
     };

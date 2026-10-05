@@ -99,3 +99,9 @@
   library Int32 generic direct=Int32/Int32
   library Int32 generic Delegate.Method -> LibTemplateRead`1/Int32/Int32
 typeof-kept runtime template members end
+== property accessors under trim ==
+  app accessor=get_Name/same=True
+  library accessors default -> get_Tag
+  library accessors false -> get_Tag
+  library accessors true -> get_Tag
+property accessors under trim end
