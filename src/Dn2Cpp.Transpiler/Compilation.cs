@@ -1206,6 +1206,10 @@ internal sealed partial class Compilation
         // members live (an interface has no base chain), so a kept implementor whose
         // interface was stripped would answer a GetInterfaces()-then-GetMethods() walk with a
         // throw. They are cheap — an interface declares no fields.
+        // Runtime instances copy their member tables from the typeof-named definition's template.
+        foreach (var (defName, template, _) in EligibleRuntimeTemplates)
+            if (TypeofOpenGenericDefs.ContainsKey(defName))
+                keep.Add(template);
         var work = new Stack<ClassInfo>(keep);
         while (work.Count > 0)
         {

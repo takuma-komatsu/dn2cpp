@@ -73,7 +73,29 @@
   object hash override -> PNSE: Reflection over the members of 'TrimReflectLib.LibLabel' is not available: this image was transpiled with --trim-reflection, which removes the field, method and property metadata of every type the program was not seen to reflect over. Keep this one with '--reflection-root TrimReflectLib.LibLabel', or transpile without --trim-reflection. (GetConstructor and Activator.CreateInstance still work on this type.)
   object reflected binding -> PNSE: Reflection over the members of 'TrimReflectLib.LibLabel' is not available: this image was transpiled with --trim-reflection, which removes the field, method and property metadata of every type the program was not seen to reflect over. Keep this one with '--reflection-root TrimReflectLib.LibLabel', or transpile without --trim-reflection. (GetConstructor and Activator.CreateInstance still work on this type.)
 == Delegate.Method over receivers without a recorded case ==
-  instantiation interface binding -> PNSE: Reflection over the members of 'TrimReflectLib.LibGenericKind`1[TrimReflect.Widget]' is not available: this image was transpiled with --trim-reflection, which removes the field, method and property metadata of every type the program was not seen to reflect over. Keep this one with '--reflection-root TrimReflectLib.LibGenericKind`1[TrimReflect.Widget]', or transpile without --trim-reflection. (GetConstructor and Activator.CreateInstance still work on this type.)
+  instantiation interface binding -> LibGenericKind`1/generic-kind
   unrecorded generic virtual -> PNSE: Reflection over the members of 'TrimReflectLib.LibGvmPlain' is not available: this image was transpiled with --trim-reflection, which removes the field, method and property metadata of every type the program was not seen to reflect over. Keep this one with '--reflection-root TrimReflectLib.LibGvmPlain', or transpile without --trim-reflection. (GetConstructor and Activator.CreateInstance still work on this type.)
 == reflection-bound Delegate.Method over a receiver without a recorded case ==
   reflected unrecorded generic virtual -> LibGvmShape/gvm-base
+== typeof-kept runtime template members ==
+  application Widget direct=application:Widget
+  application Widget GetMethod/Invoke -> AppTemplateRead`1/application:Widget/same=True
+  application Widget Delegate.Method -> AppTemplateRead`1/application:Widget
+  application Widget generic direct=Widget/Int32
+  application Widget generic Delegate.Method -> AppTemplateRead`1/Widget/Int32
+  library Widget direct=library:Widget
+  library Widget GetMethod/Invoke -> LibTemplateRead`1/library:Widget/same=True
+  library Widget Delegate.Method -> LibTemplateRead`1/library:Widget
+  library Widget generic direct=Widget/Int32
+  library Widget generic Delegate.Method -> LibTemplateRead`1/Widget/Int32
+  application Int32 direct=application:Int32
+  application Int32 GetMethod/Invoke -> AppTemplateRead`1/application:Int32/same=True
+  application Int32 Delegate.Method -> AppTemplateRead`1/application:Int32
+  application Int32 generic direct=Int32/Int32
+  application Int32 generic Delegate.Method -> AppTemplateRead`1/Int32/Int32
+  library Int32 direct=library:Int32
+  library Int32 GetMethod/Invoke -> LibTemplateRead`1/library:Int32/same=True
+  library Int32 Delegate.Method -> LibTemplateRead`1/library:Int32
+  library Int32 generic direct=Int32/Int32
+  library Int32 generic Delegate.Method -> LibTemplateRead`1/Int32/Int32
+typeof-kept runtime template members end

@@ -47,9 +47,15 @@ namespace TrimReflect
         public LibShade Shade;
     }
 
+    public class AppTemplateRead<T> : ILibKind, ILibTemplateGvm
+    {
+        public string Kind() => "application:" + typeof(T).Name;
+        public virtual string GenericKind<U>() => typeof(T).Name + "/" + typeof(U).Name;
+    }
+
     internal static class Program
     {
-        private static void Main()
+        private static void Main(string[] args)
         {
             // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
@@ -75,6 +81,9 @@ namespace TrimReflect
             if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_REFLECTED_UNRECORDED_RECEIVER") == "1")
                 return;
             ReflectedUnrecordedReceiverMethod();
+            if (args.Length != 0 && args[0] == "before-runtime-template-members")
+                return;
+            RuntimeTemplateMembers();
         }
 
         // Consumes side values so the transpiler cannot fold reaching calls away.
@@ -285,11 +294,8 @@ namespace TrimReflect
         private static string Describe(MethodInfo m) =>
             m is null ? "null" : m.DeclaringType.Name + "." + m.Name;
 
-        // 9. Delegate.Method over receivers without a recorded case, resolved by walking
-        //    their class levels: a MakeGenericType instantiation under an interface binding,
-        //    whose level strips with its template though typeof names the definition, and a
-        //    library subclass inheriting a generic virtual body. A stripped level throws PNSE
-        //    naming it.
+        // Runtime template receivers retain the typeof-named definition's members;
+        // an unrecorded library receiver still checks each declaring level's metadata.
         private static void UnrecordedReceiverMethod()
         {
             Console.WriteLine("== Delegate.Method over receivers without a recorded case ==");
@@ -313,6 +319,35 @@ namespace TrimReflect
                     Factory.MakePlainGenericShape(), kind);
                 return bound.Method.DeclaringType.Name + "/" + bound();
             });
+        }
+
+        private static void RuntimeTemplateMembers()
+        {
+            Console.WriteLine("== typeof-kept runtime template members ==");
+            foreach (Type argument in new[] { typeof(Widget), typeof(int) })
+            {
+                TemplateMembers("application " + argument.Name, typeof(AppTemplateRead<>), argument);
+                TemplateMembers("library " + argument.Name, typeof(LibTemplateRead<>), argument);
+            }
+            Console.WriteLine("typeof-kept runtime template members end");
+        }
+
+        private static void TemplateMembers(string label, Type definition, Type argument)
+        {
+            Type type = definition.MakeGenericType(argument);
+            var instance = (ILibKind)Activator.CreateInstance(type);
+            Func<string> bound = instance.Kind;
+            Console.WriteLine("  " + label + " direct=" + bound());
+            Probe(label + " GetMethod/Invoke", () =>
+            {
+                MethodInfo method = type.GetMethod("Kind");
+                return method.DeclaringType.Name + "/" + method.Invoke(instance, null)
+                    + "/same=" + ReferenceEquals(method, type.GetMethod("Kind"));
+            });
+            Probe(label + " Delegate.Method", () => bound.Method.DeclaringType.Name + "/" + bound());
+            Func<string> generic = ((ILibTemplateGvm)instance).GenericKind<int>;
+            Console.WriteLine("  " + label + " generic direct=" + generic());
+            Probe(label + " generic Delegate.Method", () => generic.Method.DeclaringType.Name + "/" + generic());
         }
 
         // Prints what a member-metadata read answers, or the exception it throws. The full
