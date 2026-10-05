@@ -23,7 +23,10 @@ internal sealed partial class CppEmitter
     private static (string Head, string Tail) AmbiguousImplementationMessageParts(
         ClassInfo receiver, ClassInfo itf, MethodInfo slot)
     {
-        string method = ClrMethodDeclaringType(itf, slot) + "." + slot.Name
+        string methodArgs = slot.IsStatic && slot.Context.MethodArgs.Length > 0
+            ? "[" + string.Join(",", slot.Context.MethodArgs.Select(a => ClrTypeName(a, canonical: false))) + "]"
+            : "";
+        string method = ClrMethodDeclaringType(itf, slot) + "." + slot.Name + methodArgs
             + "(" + string.Join(", ", ClrSignatureParameters(itf, slot)) + ")";
         return ("Could not call method '" + method + "' on interface '" + ClrTypeName(itf, canonical: false)
                 + "' with type '",
@@ -31,8 +34,9 @@ internal sealed partial class CppEmitter
                 + "' because there are multiple incompatible interface methods overriding this method.");
     }
 
-    // A generic method's label uses its definition's parameter names for a generic
-    // owner, even when their arities differ. Its signature keeps the owner's context.
+    // A generic method's owner label uses method arguments for a static call,
+    // or definition parameter names for an instance call. Its signature keeps
+    // the declaring interface's context, even when the arities differ.
     private static string ClrMethodDeclaringType(ClassInfo itf, MethodInfo slot)
     {
         string fallback = ClrTypeName(itf, canonical: true);
@@ -40,6 +44,9 @@ internal sealed partial class CppEmitter
             return fallback;
         try
         {
+            if (slot.IsStatic && slot.Context.MethodArgs.Length > 0)
+                return RawSignatureProvider.TypeDefinitionName(itf.Module.Reader, itf.Handle)
+                    + "[" + string.Join(",", slot.Context.MethodArgs.Select(a => ClrTypeName(a, canonical: false))) + "]";
             var reader = slot.Module.Reader;
             var parameters = reader.GetMethodDefinition(slot.Handle).GetGenericParameters();
             if (parameters.Count == 0)

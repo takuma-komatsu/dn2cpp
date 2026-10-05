@@ -1893,7 +1893,19 @@ internal sealed partial class MethodCompiler
             if (SharedTrial && Compilation.ContainsCanonPlaceholder(callee.DeclaringClass)
                 && !_c.ImplementsInterface(scc, callee.DeclaringClass))
                 ThrowSharedTaint("static-virtual", callee.DeclaringClass.FullName);
-            if (_c.ResolveStaticVirtualImpl(scc, callee) is { } simpl)
+            var staticImpl = _c.ResolveStaticVirtualImpl(scc, callee, out bool staticAmbiguous);
+            if (staticAmbiguous)
+            {
+                PopArgs(callee, hasThis: false);
+                Emit(CppEmitter.ConstrainedAmbiguousImplementationThrow(scc, callee));
+                if (!callee.Signature.ReturnType.IsVoid)
+                {
+                    string rt = CppTypes.Of(callee.Signature.ReturnType);
+                    Push(CppTypes.KindOf(callee.Signature.ReturnType), rt, CppTypes.ZeroInitExpr(rt));
+                }
+                return;
+            }
+            if (staticImpl is { } simpl)
             {
                 // The resolved impl may live on an intrinsic-mapped type — e.g. TSelf =
                 // decimal closes IAdditionOperators<TSelf,…>::op_Addition to

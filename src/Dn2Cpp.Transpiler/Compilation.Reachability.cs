@@ -1726,7 +1726,7 @@ internal sealed partial class Compilation
     /// or the generated call references an undeclared function.</summary>
     private void ReachStaticVirtualImpl(ClassInfo cls, MethodInfo target)
     {
-        if (ResolveStaticVirtualImpl(cls, target) is { } impl)
+        if (ResolveStaticVirtualImpl(cls, target, out _) is { } impl)
             Reach(impl);
     }
 
@@ -6418,6 +6418,24 @@ internal sealed partial class Compilation
                             constrained = null;
                             continue;
                         }
+                        // An ambiguous static slot emits a throw, so neither its
+                        // default body nor either competing override is a call edge.
+                        if (insn.OpCode == ILOpCode.Call
+                            && constrained is { Kind: TypeKind.Class, Class: { } staticSelf }
+                            && t is { IsStatic: true, DeclaringClass.IsInterface: true })
+                        {
+                            if (staticSelf.Context.TypeArgs.Length > 0)
+                                EnsureCompleted(staticSelf);
+                            if (!ContainsCanonPlaceholder(staticSelf))
+                            {
+                                ResolveStaticVirtualImpl(staticSelf, t, out bool staticAmbiguous);
+                                if (staticAmbiguous)
+                                {
+                                    constrained = null;
+                                    continue;
+                                }
+                            }
+                        }
                         if (t is not null)
                         {
                             if (insn.OpCode == ILOpCode.Call)
@@ -6708,7 +6726,7 @@ internal sealed partial class Compilation
                             && t is { IsStatic: true } && t.DeclaringClass.IsInterface
                             && CoreIntrinsics.PrimitiveIntegerFullName(cpc) is { } cpn
                             && FindClassByFullName(cpn) is { } pcls
-                            && ResolveStaticVirtualImpl(pcls, t) is { } pimpl
+                            && ResolveStaticVirtualImpl(pcls, t, out _) is { } pimpl
                             && !CoreIntrinsics.IsInlineLoweredPrimitiveMember(pimpl.DeclaringClass.FullName, pimpl.Name))
                             Reach(pimpl);
                         constrained = null;

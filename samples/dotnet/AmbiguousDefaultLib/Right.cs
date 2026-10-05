@@ -13,4 +13,7 @@ namespace AmbiguousDefaultLib
     public interface IDuoRight<TFirst, TSecond> : IDuo<TFirst, TSecond>
     {
     }
+    public interface IStaticRight : IStaticBase
+    {
+    }
 }
