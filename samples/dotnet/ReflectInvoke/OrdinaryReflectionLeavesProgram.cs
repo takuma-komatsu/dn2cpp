@@ -75,8 +75,75 @@ class PropertyCell
     public int ReadOnly => Value;
     public int this[int index] { get => Value + index; set => Value = value - index; }
 }
+class AccessorBase
+{
+    public int Inherited { get; protected set; } = 4;
+    public int PrivateInherited { get; private set; } = 6;
+    public int WriteInherited { private get; set; } = 8;
+}
+class AccessorCell : AccessorBase
+{
+    private int _number;
+    public int Value { get; private set; } = 1;
+    private int Hidden { get; set; } = 2;
+    public int ReadOnly => _number;
+    public int WriteOnly { set => _number = value; }
+    public static int Shared { get; set; }
+    public int Reverse { set => _number = value; get => _number; }
+    public int this[int index] { get => _number + index; set => _number = value - index; }
+}
 static class Program
 {
+    private static string AccessorNames(MethodInfo[] methods)
+    {
+        string names = "";
+        foreach (MethodInfo method in methods)
+            names += (names.Length == 0 ? "" : ",") + method.Name;
+        return names;
+    }
+    private static void Accessors(Type type, string name)
+    {
+        const BindingFlags all = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
+        PropertyInfo property = type.GetProperty(name, all)!;
+        MethodInfo[] methods = property.GetAccessors(true);
+        bool same = methods.GetType() == typeof(MethodInfo[])
+            && methods.Length == (property.GetMethod is null ? 0 : 1) + (property.SetMethod is null ? 0 : 1)
+            && ReferenceEquals(property.GetGetMethod(), property.GetGetMethod(false))
+            && ReferenceEquals(property.GetSetMethod(), property.GetSetMethod(false))
+            && ReferenceEquals(property.GetMethod, property.GetGetMethod(true))
+            && ReferenceEquals(property.SetMethod, property.GetSetMethod(true));
+        foreach (MethodInfo method in methods)
+            same &= ReferenceEquals(method, method.Name.StartsWith("get_") ? property.GetGetMethod(true) : property.GetSetMethod(true))
+                && ReferenceEquals(method, type.GetMethod(method.Name, all));
+        Console.WriteLine("accessors " + type.Name + "/" + name + " default=" + AccessorNames(property.GetAccessors())
+            + ";false=" + AccessorNames(property.GetAccessors(false)) + ";true=" + AccessorNames(methods)
+            + ";identity=" + same + ";declared=" + property.DeclaringType!.Name
+            + ";reflected=" + property.ReflectedType!.Name);
+    }
+    private static void RunPropertyAccessors()
+    {
+        Console.WriteLine("== property accessor arrays ==");
+        foreach (string name in new[] { "Value", "Hidden", "ReadOnly", "WriteOnly", "Shared", "Item", "Reverse", "Inherited", "PrivateInherited", "WriteInherited" })
+            Accessors(typeof(AccessorCell), name);
+        Accessors(typeof(AccessorBase), "PrivateInherited");
+        Accessors(typeof(AccessorBase), "WriteInherited");
+        var cell = new AccessorCell();
+        MethodInfo[] value = typeof(AccessorCell).GetProperty("Value")!.GetAccessors(true);
+        value[1].Invoke(cell, new object[] { 15 });
+        Console.WriteLine("accessors invoke value=" + value[0].Invoke(cell, null));
+        MethodInfo[] shared = typeof(AccessorCell).GetProperty("Shared")!.GetAccessors();
+        shared[1].Invoke(null, new object[] { 23 });
+        Console.WriteLine("accessors invoke static=" + shared[0].Invoke(null, null));
+        MethodInfo[] indexed = typeof(AccessorCell).GetProperty("Item")!.GetAccessors();
+        indexed[1].Invoke(cell, new object[] { 2, 21 });
+        Console.WriteLine("accessors invoke indexed=" + indexed[0].Invoke(cell, new object[] { 2 }));
+        MethodInfo[] inherited = typeof(AccessorCell).GetProperty("Inherited")!.GetAccessors(true);
+        inherited[1].Invoke(cell, new object[] { 17 });
+        Console.WriteLine("accessors invoke inherited=" + inherited[0].Invoke(cell, null));
+        Fault("accessors null default", () => ((PropertyInfo)null!).GetAccessors());
+        Fault("accessors null true", () => ((PropertyInfo)null!).GetAccessors(true));
+        Console.WriteLine("property accessor arrays end");
+    }
     private static int Twice(int value) => value * 2;
     private static long Thrice(long value) => value * 3;
     private static int Read(Counter value) => value.Value;
@@ -251,5 +318,8 @@ static class Program
         if (args.Length != 0 && args[0] == "before-object-method-enumeration")
             return;
         OrdinaryWideLookupSubset.ObjectMethods.Run();
+        if (args.Length != 0 && args[0] == "before-property-accessors")
+            return;
+        RunPropertyAccessors();
     }
 }

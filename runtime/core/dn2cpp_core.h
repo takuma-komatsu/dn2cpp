@@ -2139,6 +2139,7 @@ int32_t dn2cpp_propref_can_write(Dn2CppPropRef* p);
 // GetGetMethod/GetSetMethod/get_GetMethod/get_SetMethod: the accessor's
 // reflected MethodInfo (null when absent, or non-public without nonPublic).
 Dn2CppMethodRef* dn2cpp_propref_accessor(Dn2CppPropRef* p, int32_t setter, int32_t nonPublic);
+Dn2CppArrayRef* dn2cpp_propref_get_accessors(Dn2CppPropRef* p, int32_t nonPublic);
 Dn2CppObject* dn2cpp_propref_get_value(Dn2CppPropRef* p, Dn2CppObject* obj);
 void dn2cpp_propref_set_value(Dn2CppPropRef* p, Dn2CppObject* obj, Dn2CppObject* value);
 // Indexed properties: GetIndexParameters() reads the indexer parameters off

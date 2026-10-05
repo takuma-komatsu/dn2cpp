@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Property accessor arrays answer for kept owners and refuse stripped member metadata.
 # Consolidated --trim-reflection gate. The flag ships OFF by default and ON only for the
 # Godot Web export, so without this nothing in the suite exercises it — yet it changes both
 # the emitted C++ and the runtime reflection semantics. This gate is the console-side oracle
@@ -70,7 +71,7 @@
 # ILDiet with --trim-reflection is covered by build-and-run-preserve-control.sh.
 source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} "
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|member-enum-prefix:${DN2CPP_BEFORE_MEMBER_ENUM:-}|object-virtual-prefix:${DN2CPP_BEFORE_OBJECT_VIRTUAL:-}|unrecorded-receiver-prefix:${DN2CPP_BEFORE_UNRECORDED_RECEIVER:-}|reflected-unrecorded-receiver-prefix:${DN2CPP_BEFORE_REFLECTED_UNRECORDED_RECEIVER:-}|runtime-template-prefix-argv:before-runtime-template-members"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|member-enum-prefix:${DN2CPP_BEFORE_MEMBER_ENUM:-}|object-virtual-prefix:${DN2CPP_BEFORE_OBJECT_VIRTUAL:-}|unrecorded-receiver-prefix:${DN2CPP_BEFORE_UNRECORDED_RECEIVER:-}|reflected-unrecorded-receiver-prefix:${DN2CPP_BEFORE_REFLECTED_UNRECORDED_RECEIVER:-}|runtime-template-prefix-argv:before-runtime-template-members|property-accessors-prefix-argv:before-property-accessors"
 
 PROJECT=TrimReflect
 LIBNAME=TrimReflectLib
@@ -159,12 +160,15 @@ assert_unrecorded_receiver_lines() {
 assert_runtime_template_members() {
     local actual="$1" before prefix expected_section actual_section line
     actual=$(strip_cr_win "$actual")
+    before=$(run_bounded "$OUT/$PROJECT$EXE_EXT" before-property-accessors) || return $?
+    prefix=$(awk '/^== property accessors under trim ==$/ { exit } { print }' <<< "$actual")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
     before=$(run_bounded "$OUT/$PROJECT$EXE_EXT" before-runtime-template-members) || return $?
     prefix=$(awk '/^== typeof-kept runtime template members ==$/ { exit } { print }' <<< "$actual")
     assert_output "$prefix" "$(strip_cr_win "$before")"
     expected_section=$(run_bounded dotnet "$APP") || return $?
-    expected_section=$(awk '/^== typeof-kept runtime template members ==$/ { found=1 } found { print }' <<< "$(strip_cr_win "$expected_section")")
-    actual_section=$(awk '/^== typeof-kept runtime template members ==$/ { found=1 } found { print }' <<< "$actual")
+    expected_section=$(awk '/^== typeof-kept runtime template members ==$/ { found=1 } found { print } /^typeof-kept runtime template members end$/ { found=0 }' <<< "$(strip_cr_win "$expected_section")")
+    actual_section=$(awk '/^== typeof-kept runtime template members ==$/ { found=1 } found { print } /^typeof-kept runtime template members end$/ { found=0 }' <<< "$actual")
     assert_output "$actual_section" "$expected_section"
     for line in '== typeof-kept runtime template members ==' \
         '  application Widget GetMethod/Invoke -> AppTemplateRead`1/application:Widget/same=True' \
@@ -174,7 +178,9 @@ assert_runtime_template_members() {
         '  library Int32 Delegate.Method -> LibTemplateRead`1/library:Int32' \
         '  library Widget generic Delegate.Method -> LibTemplateRead`1/Widget/Int32' \
         '  library Int32 generic Delegate.Method -> LibTemplateRead`1/Int32/Int32' \
-        'typeof-kept runtime template members end'; do
+        'typeof-kept runtime template members end' \
+        '== property accessors under trim ==' '  app accessor=get_Name/same=True' \
+        'property accessors under trim end'; do
         grep -Fxq -- "$line" <<< "$actual" \
             || { echo "FAIL: runtime template metadata witness missing: $line" >&2; return 1; }
     done

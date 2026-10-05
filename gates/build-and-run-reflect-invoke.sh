@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Property accessor arrays retain visibility, order, reflected handle identity and boxed invocation.
 # Virtual and generic virtual reflection dispatch, by-reference copy-back,
 # null-bound delegates, DynamicInvoke and catchable stripped-body refusals, which a
 # nested reflective call raises to the outer call as a fault of its target.
@@ -189,7 +190,7 @@ DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_ordinary-reflecti
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-reflection-leaves-v1|runtime-member-attributes-prefix:${DN2CPP_BEFORE_RUNTIME_MEMBER_ATTRIBUTES:-}|runtime-return-modifiers-prefix:${DN2CPP_BEFORE_RUNTIME_RETURN_MODIFIERS:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|reflection-dispatch-v1|dispatch-prefix:${DN2CPP_BEFORE_REFLECTION_DISPATCH:-}|attribute-minted-prefix:${DN2CPP_BEFORE_ATTRIBUTE_MINTED:-}|template-accessors-prefix:${DN2CPP_BEFORE_TEMPLATE_ACCESSORS:-}|pointer-returns-prefix:${DN2CPP_BEFORE_POINTER_RETURNS:-}|delegate-invoke-targets-prefix:${DN2CPP_BEFORE_DELEGATE_INVOKE_TARGETS:-}|null-bound-chains-prefix:${DN2CPP_BEFORE_NULL_BOUND_CHAINS:-}|renamed-slot-bindings-prefix:${DN2CPP_BEFORE_RENAMED_SLOT_BINDINGS:-}|settled-object-virtual-prefix:${DN2CPP_BEFORE_SETTLED_OBJECT_VIRTUAL:-}|renamed-slot-fillers-prefix:${DN2CPP_BEFORE_RENAMED_SLOT_FILLERS:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|stripped-overrides:${DN2CPP_STRIPPED_OVERRIDES:-}|library-struct-prefix:${DN2CPP_BEFORE_LIBRARY_STRUCT_RETURN:-}|function-pointer-identity-prefix:${DN2CPP_BEFORE_FUNCTION_POINTER_IDENTITY:-}"
-DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|pointer-fields-prefix:${DN2CPP_BEFORE_POINTER_FIELDS:-}|object-methods-prefix-argv:before-object-method-enumeration"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|pointer-fields-prefix:${DN2CPP_BEFORE_POINTER_FIELDS:-}|object-methods-prefix-argv:before-object-method-enumeration|property-accessors-prefix-argv:before-property-accessors"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectFrameworkBind/keep-library-override.xml samples/dotnet/ReflectInvoke/keep-object-methods.xml"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/ReflectPointerFieldsOnly.csproj samples/dotnet/ReflectInvoke/ReflectPointerFieldsPreserved.csproj samples/dotnet/ReflectInvoke/ReflectPointerFieldsOnlyProgram.cs samples/dotnet/ReflectInvoke/keep-pointer-field.xml samples/dotnet/ReflectReturnLib/PointerFields.cs"
 
@@ -820,6 +821,24 @@ gate_extra_asserts() {
     before=$(strip_cr_win "$before")
     prefix=$(awk '/^== Object family method enumeration ==$/ { exit } { print }' <<< "$native")
     assert_output "$prefix" "$before"
+    before=$(run_bounded dotnet "$_CG_APP" before-property-accessors) || return $?
+    prefix=$(awk '/^== property accessor arrays ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    for line in '== property accessor arrays ==' \
+        'accessors AccessorCell/Value default=get_Value;false=get_Value;true=get_Value,set_Value;identity=True;declared=AccessorCell;reflected=AccessorCell' \
+        'accessors AccessorCell/Hidden default=;false=;true=get_Hidden,set_Hidden;identity=True;declared=AccessorCell;reflected=AccessorCell' \
+        'accessors AccessorCell/Reverse default=get_Reverse,set_Reverse;false=get_Reverse,set_Reverse;true=get_Reverse,set_Reverse;identity=True;declared=AccessorCell;reflected=AccessorCell' \
+        'accessors AccessorCell/PrivateInherited default=get_PrivateInherited;false=get_PrivateInherited;true=get_PrivateInherited;identity=True;declared=AccessorBase;reflected=AccessorCell' \
+        'accessors AccessorCell/WriteInherited default=set_WriteInherited;false=set_WriteInherited;true=set_WriteInherited;identity=True;declared=AccessorBase;reflected=AccessorCell' \
+        'accessors AccessorBase/PrivateInherited default=get_PrivateInherited;false=get_PrivateInherited;true=get_PrivateInherited,set_PrivateInherited;identity=True;declared=AccessorBase;reflected=AccessorBase' \
+        'accessors AccessorBase/WriteInherited default=set_WriteInherited;false=set_WriteInherited;true=get_WriteInherited,set_WriteInherited;identity=True;declared=AccessorBase;reflected=AccessorBase' \
+        'accessors invoke value=15' 'accessors invoke static=23' \
+        'accessors invoke indexed=21' 'accessors invoke inherited=17' \
+        'accessors null default: NullReferenceException/<null>' \
+        'accessors null true: NullReferenceException/<null>' 'property accessor arrays end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: property accessor witness missing: $line" >&2; return 1; }
+    done
     for line in '== Object family method enumeration ==' \
         'method order Object/20=GetType/0|ToString/0|Equals/1|GetHashCode/0' \
         'method order Object/28=GetType/0|ToString/0|Equals/1|Equals/2|ReferenceEquals/2|GetHashCode/0' \

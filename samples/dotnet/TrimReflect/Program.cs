@@ -84,6 +84,9 @@ namespace TrimReflect
             if (args.Length != 0 && args[0] == "before-runtime-template-members")
                 return;
             RuntimeTemplateMembers();
+            if (args.Length != 0 && args[0] == "before-property-accessors")
+                return;
+            PropertyAccessors();
         }
 
         // Consumes side values so the transpiler cannot fold reaching calls away.
@@ -319,6 +322,27 @@ namespace TrimReflect
                     Factory.MakePlainGenericShape(), kind);
                 return bound.Method.DeclaringType.Name + "/" + bound();
             });
+        }
+
+        private static string AccessorNames(MethodInfo[] methods)
+        {
+            string names = "";
+            foreach (MethodInfo method in methods)
+                names += (names.Length == 0 ? "" : ",") + method.Name;
+            return names;
+        }
+
+        private static void PropertyAccessors()
+        {
+            Console.WriteLine("== property accessors under trim ==");
+            PropertyInfo app = typeof(Widget).GetProperty("Name");
+            Console.WriteLine("  app accessor=" + AccessorNames(app.GetAccessors())
+                + "/same=" + ReferenceEquals(app.GetAccessors(true)[0], app.GetGetMethod()));
+            Type library = Factory.Make().GetType();
+            Probe("library accessors default", () => AccessorNames(library.GetProperty("Tag").GetAccessors()));
+            Probe("library accessors false", () => AccessorNames(library.GetProperty("Tag").GetAccessors(false)));
+            Probe("library accessors true", () => AccessorNames(library.GetProperty("Tag").GetAccessors(true)));
+            Console.WriteLine("property accessors under trim end");
         }
 
         private static void RuntimeTemplateMembers()
