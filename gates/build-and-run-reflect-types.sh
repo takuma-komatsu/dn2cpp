@@ -7,7 +7,9 @@
 # A template body that calls through a function pointer over its type parameter never
 # returns a wrong result: its .NET-diffed lines print alike for a refusal and a correct
 # result, and its native-only outcome run pins that the clone refuses every such call
-# with InvalidOperationException where .NET runs it.
+# with PlatformNotSupportedException where .NET runs it.
+# Missing reflective bodies share a descriptive refusal across Invoke and delegate creation.
+# Argument validation still runs before that refusal, for packed and native metadata alike.
 # Consolidated reflection-introspection gate. Merges the former per-feature
 # reflect-* subset gates (one tiny sample each) into a single multi-section
 # program, transpiled once against the tree-shaken real CoreLib. Each section
@@ -318,6 +320,7 @@ DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-type-leaves-v1|before-attribute-display-code-units|exception-object-prefix-argv:before-exception-object-members|assembly-name-prefix-argv:before-assembly-name-validation|attribute-construction-prefix-argv:before-attribute-construction-order"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/AttributeConstructionOrderSubset.cs"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/ReflectionTemplateDispatch.csproj samples/dotnet/ReflectTypes/ReflectionTemplateDispatchProgram.cs samples/dotnet/ReflectTypes/ReflectRuntimeInstantiationSubset.cs"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|invoke-diagnostics-prefix-argv:before-invoke-diagnostics|invoke-diagnostics-argv:invoke-diagnostics"
 
 EXPFILE="$(dirname "$0")/expected/reflect-types.txt"
 BCL=(System.Linq.Expressions System.Linq System.Collections \
@@ -766,7 +769,7 @@ DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectTypes UnreadAttribu
 unset -f gate_extra_asserts
 DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectTypes DataOnlyAttributeRowsOnly --no-ildiet
 gate_extra_asserts() {
-    local out="$1" native line before prefix
+    local out="$1" native line before prefix name path
     native=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT") || return $?
     native=$(strip_cr_win "$native")
     before=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-template-members) || return $?
@@ -775,6 +778,11 @@ gate_extra_asserts() {
     before=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-template-function-pointers) || return $?
     prefix=$(awk '/^== template function pointers ==$/ { exit } { print }' <<< "$native")
     assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    prefix=$(awk '/^== missing reflection invocation diagnostics ==$/ { exit } { print }' <<< "$native")
+    before=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-invoke-diagnostics) || return $?
+    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    before=$(run_bounded dotnet "$_CG_APP" before-invoke-diagnostics) || return $?
+    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
     for line in '== reflection template dispatch ==' 'reflection template dispatch end' \
         '== template members ==' \
         'members Int32 get identity: True/True/True/True/True/True' \
@@ -782,18 +790,45 @@ gate_extra_asserts() {
         'sub-members identity: True/True/False/False/True' 'template members end' \
         '== template function pointers ==' 'fnptr Int32: row=True mismatched=False' \
         'fnptr Int64: row=True mismatched=False' 'fnptr String: row=True mismatched=False' \
-        'template function pointers end'; do
+        'template function pointers end' \
+        '== missing reflection invocation diagnostics ==' 'diag control=True' \
+        'missing reflection invocation diagnostics end'; do
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: template dispatch witness missing: $line" >&2; return 1; }
+    done
+    for name in Int32 Int64 String; do
+        for line in "diag $name summary: row=True mismatched=False" \
+            "diag $name validation=TargetException/TargetParameterCountException/ArgumentException/ArgumentException"; do
+            grep -Fxq -- "$line" <<< "$native" \
+                || { echo "FAIL: missing-body invocation control missing: $line" >&2; return 1; }
+        done
     done
     # No clone shares a body that calls through a function pointer over its type
     # parameter. Exact, so a call that runs or refuses differently shows.
     native=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" template-function-pointer-outcomes) || return $?
     assert_output "$(strip_cr_win "$native")" "$(printf '%s\n' '== template function pointers ==' \
-        'fnptr Int32 outcome: refused InvalidOperationException' \
-        'fnptr Int64 outcome: refused InvalidOperationException' \
-        'fnptr String outcome: refused InvalidOperationException' \
-        'template function pointers end')"
+        'fnptr Int32 outcome: refused PlatformNotSupportedException' \
+        'fnptr Int64 outcome: refused PlatformNotSupportedException' \
+        'fnptr String outcome: refused PlatformNotSupportedException' \
+        'template function pointers end')" || return $?
+    native=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" invoke-diagnostics) || return $?
+    native=$(strip_cr_win "$native")
+    for name in Int32 Int64 String; do
+        for path in Invoke DoNotWrap CreateDelegate CreateDelegateFalse; do
+            grep -Eq "^diag $name $path=PlatformNotSupportedException\\|80131539\\|" <<< "$native" \
+                || { echo "FAIL: $name $path missing-body refusal is not a platform exception" >&2; return 1; }
+        done
+        for line in "diag $name same refusal=True" \
+            "diag $name message owner=True member=True reason=True unwrapped=True"; do
+            grep -Fxq -- "$line" <<< "$native" \
+                || { echo "FAIL: incomplete shared invocation diagnosis: $line" >&2; return 1; }
+        done
+    done
+    for line in '== missing reflection invocation diagnostics ==' 'diag control=True' \
+        'missing reflection invocation diagnostics end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: invocation diagnosis block missing: $line" >&2; return 1; }
+    done
 }
 DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectTypes ReflectionTemplateDispatch --no-ildiet
 DN2CPP_OUT_SUFFIX=-native DN2CPP_STRICT_COMPLETION=1 \

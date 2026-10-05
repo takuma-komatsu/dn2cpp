@@ -93,12 +93,152 @@ constexpr auto packed_local_fields = Dn2CppMetadataTable<Dn2CppFieldInfo>::from_
 DN2CPP_NATIVE_TYPE_REFLECTION(local_type, packed_local_fields, 2);
 DN2CPP_NATIVE_METADATA_STORAGE(local_type);
 constexpr auto packed_local_type = Dn2CppMetadataHandle<Dn2CppTypeReflection>::from_static(local_type_storage.records.data());
+
+const Dn2CppTypeInfo invocation_owner_def{ "InvokeDiagnostics.Owner`1" };
+const Dn2CppTypeInfo* const invocation_owner_args[] = { &dn2cpp_int32_type };
+const Dn2CppTypeInfo* const invocation_method_args[] = { &dn2cpp_int64_type };
+const Dn2CppTypeInfo invocation_owner = [] {
+    Dn2CppTypeInfo type{ "Internal_Mangled_Owner_Int32", &dn2cpp_object_type };
+    type.genericDef = &invocation_owner_def;
+    type.genericArgCount = 1;
+    type.genericArgs = invocation_owner_args;
+    return type;
+}();
+
+Dn2CppObject* invocation_target()
+{
+    return reinterpret_cast<Dn2CppObject*>(dn2cpp_string_from_utf8("available", 9));
+}
+
+Dn2CppObject* invocation_thunk(void* fn, Dn2CppObject*, Dn2CppObject**, const Dn2CppTypeInfo*)
+{
+    return reinterpret_cast<Dn2CppObject* (*)()>(fn)();
+}
+
+constexpr char invocation_display[] = "System.String Diagnostic[Int64]()";
+const void* const invocation_pointers[] = { "Diagnostic", &invocation_owner, &dn2cpp_string_type,
+    reinterpret_cast<const void*>(&invocation_target), reinterpret_cast<const void*>(&invocation_thunk),
+    invocation_method_args, invocation_display };
+
+struct InvocationFault
+{
+    Dn2CppString* message = nullptr;
+    bool described = false;
+};
+
+constexpr int32_t invocation_attrs = DN2CPP_MTHA_STATIC | DN2CPP_MTHA_PUBLIC | DN2CPP_MTHA_GENERIC;
+
+Dn2CppMethodInfo invocation_row(int kind)
+{
+    Dn2CppMethodInfo row{};
+    row.name = "Diagnostic";
+    row.declaringType = &invocation_owner;
+    row.returnType = &dn2cpp_string_type;
+    row.attrs = invocation_attrs;
+    row.vtableSlot = -1;
+    row.fnPtr = kind == 1 ? nullptr : reinterpret_cast<void*>(&invocation_target);
+    row.invoker = kind == 0 ? nullptr : reinterpret_cast<void*>(&invocation_thunk);
+    row.ilAttrs = 0x16;
+    row.genericParamCount = 1;
+    row.genericArgs = invocation_method_args;
+    row.display = invocation_display;
+    return row;
+}
+
+template<class Action> InvocationFault invocation_fault(Action action)
+{
+    try { action(); }
+    catch (Dn2CppException& ex)
+    {
+        Dn2CppString* message = dn2cpp_exception_message(ex.obj);
+        auto contains = [message](const char* text) {
+            return dn2cpp_str_contains_cmp(message,
+                dn2cpp_string_from_utf8(text, static_cast<int32_t>(std::strlen(text))), 4) != 0;
+        };
+        bool described = ex.obj->type == &dn2cpp_platform_not_supported_exception_type
+            && dn2cpp_exception_hresult(ex.obj) == static_cast<int32_t>(0x80131539u)
+            && reinterpret_cast<Dn2CppExceptionObject*>(ex.obj)->inner == nullptr
+            && dn2cpp_str_contains_cmp(message, dn2cpp_type_tostring(&invocation_owner), 4) != 0
+            && contains("Diagnostic") && contains("Int64")
+            && contains("the target method's body was not compiled into this image");
+        if (!described)
+            std::fprintf(stderr, "metadata invocation refusal: %s/%08X, complete diagnosis=%d\n",
+                ex.obj->type->name, static_cast<uint32_t>(dn2cpp_exception_hresult(ex.obj)), described);
+        dn2cpp_exc_inflight_pop(ex.obj);
+        return { message, described };
+    }
+    return {};
+}
+
+void check_invocation_rows()
+{
+    std::puts("metadata missing invocation diagnostics begin");
+    bool all_described = true;
+    // Native invocation plans retain row identity; each shape needs an immutable row.
+    static const Dn2CppMethodInfo rows[] = { invocation_row(0), invocation_row(1), invocation_row(2) };
+    constexpr uint64_t presence = (1ULL << 0) | (1ULL << 1) | (1ULL << 2) | (1ULL << 5)
+        | (1ULL << 6) | (1ULL << 12) | (1ULL << 15) | (1ULL << 16) | (1ULL << 22);
+    for (bool packed : { false, true })
+    {
+        // A callable row is the control for both missing-pointer paths.
+        for (int kind : { 2, 0, 1 })
+        {
+            Record bytes = kind == 0
+                ? record(2, presence | (1ULL << 7), { 1, 2, 3, invocation_attrs * 2, 1, 4, 0x16 * 2, 2, 6, 7 })
+                : kind == 1
+                ? record(2, presence | (1ULL << 8), { 1, 2, 3, invocation_attrs * 2, 1, 5, 0x16 * 2, 2, 6, 7 })
+                : record(2, presence | (1ULL << 7) | (1ULL << 8),
+                    { 1, 2, 3, invocation_attrs * 2, 1, 4, 5, 0x16 * 2, 2, 6, 7 });
+            Dn2CppMetadataHandle<Dn2CppMethodInfo> handle = packed
+                ? Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_static(bytes.bytes.data()) : &rows[kind];
+            Dn2CppMethodRef method{};
+            method.type = &dn2cpp_methodinfo_type;
+            method.method = handle;
+            method.reflectedType = &invocation_owner;
+            Dn2CppReflBind bind{};
+            bind.type = &dn2cpp_reflbind_type;
+            bind.method = handle;
+            bind.declaring = &invocation_owner;
+            bind.mode = DN2CPP_DGBIND_OPEN_STATIC;
+            auto invoke = [&] { return dn2cpp_methodref_invoke(&method, nullptr, nullptr); };
+            auto unwrapped = [&] { return dn2cpp_methodref_invoke(&method, nullptr, nullptr, false); };
+            auto bound = [&] { return dn2cpp_reflbind_invoke(&bind, nullptr, nullptr); };
+            bool count_rejected = false;
+            try { (void)dn2cpp_methodref_invoke(&method, nullptr, dn2cpp_newarr_ref(1)); }
+            catch (Dn2CppException& ex)
+            {
+                count_rejected = ex.obj->type == &dn2cpp_target_parameter_count_exception_type;
+                dn2cpp_exc_inflight_pop(ex.obj);
+            }
+            require(count_rejected, "argument count precedes a missing body or invoker");
+            if (kind == 2)
+            {
+                for (Dn2CppObject* value : { invoke(), unwrapped(), bound() })
+                    require(dn2cpp_string_equals(reinterpret_cast<Dn2CppString*>(value),
+                        dn2cpp_string_from_utf8("available", 9)) != 0,
+                        "native and packed callable rows still run through every entry");
+                continue;
+            }
+            std::printf("metadata missing %s %s\n", packed ? "packed" : "native",
+                kind == 0 ? "invoker" : "body");
+            InvocationFault first = invocation_fault(invoke);
+            InvocationFault second = invocation_fault(unwrapped);
+            InvocationFault third = invocation_fault(bound);
+            all_described &= first.described && second.described && third.described
+                && dn2cpp_string_equals(first.message, second.message) != 0
+                && dn2cpp_string_equals(first.message, third.message) != 0;
+        }
+    }
+    require(all_described, "every missing-row entry shares a complete platform refusal");
+    std::puts("metadata missing invocation diagnostics OK");
+}
 }
 
 const Dn2CppMetadataBlock dn2cpp_metadata_blocks[129] = {
     { pointers, display_tokens, image_method.bytes.data(), image_method.length,
         image_ctor.bytes.data(), image_ctor.length },
-    { pointers, nullptr, nullptr, 0, overrun_ctor.bytes.data(), overrun_ctor.length - 2 }
+    { pointers, nullptr, nullptr, 0, overrun_ctor.bytes.data(), overrun_ctor.length - 2 },
+    { invocation_pointers, nullptr, nullptr, 0, nullptr, 0 }
 };
 const std::size_t dn2cpp_metadata_block_count = 129;
 // This native probe supplies the empty generated-image tables required by the runtime.
@@ -330,6 +470,7 @@ int main()
     }
     require(invoker_rejected, "missing invoker carries the NotSupportedException HResult");
     std::puts("metadata invoker refusal fields OK");
+    check_invocation_rows();
     std::fflush(stdout);
     dn2cpp_main_exit(0);
     return 0;

@@ -90,13 +90,15 @@ metadata and generic-context tables freeze. Strict completion checks must prove
 that row construction, invoker rendering and generic-context emission cannot add
 an undiscovered layout or body.
 
-Two boundaries leave a reflectable method without a body where .NET runs it,
-and `MethodInfo.Invoke` of such a method throws `InvalidOperationException`, not
-wrapped in `TargetInvocationException`. A runtime template method whose body
-calls through a function pointer over the template's type parameter is not
-shared with a clone, since no clone can respell that signature per type
-argument, so the clone has no body for it. The reflection-invoke route walks a
-bounded number of the instantiations its bodies mint for each generic
+Structural boundaries leave a reflectable method without a compiled body where
+.NET runs it. `MethodInfo.Invoke` and delegate binding refuse that missing body
+with a shared descriptive `PlatformNotSupportedException`, naming the declaring
+instantiation and member and explaining that the body was not compiled into the
+image. This refusal is not wrapped in `TargetInvocationException`. A runtime
+template method whose body calls through a function pointer over the template's
+type parameter is not shared with a clone, since no clone can respell that
+signature per type argument, so the clone has no body for it. The reflection-invoke
+route walks a bounded number of the instantiations its bodies mint for each generic
 definition, so a minted instantiation past that bound has no body for a method
 that no call site reaches.
 
