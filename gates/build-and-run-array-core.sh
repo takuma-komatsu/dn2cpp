@@ -159,6 +159,7 @@
 # BinarySearch ranges before their loops and the non-generic Array
 # Sort, Reverse and Copy rank and range messages.
 # Array copy, clear, resize and slices preserve fault fields and validation precedence.
+# Default comparer concrete families preserve enum widths, boxed order and user comparisons.
 source "$(dirname "$0")/_common.sh"
 
 comparison_prior_extra_asserts() {
@@ -215,6 +216,30 @@ gate_extra_asserts() {
         grep -Fxq "$line" <<< "$native" \
             || { echo "FAIL: ArrayCore comparison coverage missing: $line" >&2; exit 1; }
     done
+    before=$(run_bounded dotnet "$_CG_APP" before-comparer-identity)
+    prefix=$(awk '/^== default comparer type identity ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    before=$(run_bounded "./$out/ArrayCore$EXE_EXT" before-comparer-identity)
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    for line in '== default comparer type identity ==' \
+        'enum-sbyte comparer Name=EnumComparer`1' 'enum-byte comparer Name=EnumComparer`1' \
+        'enum-int16 comparer Name=EnumComparer`1' 'enum-uint16 comparer Name=EnumComparer`1' \
+        'enum-int32 comparer Name=EnumComparer`1' 'enum-uint32 comparer Name=EnumComparer`1' \
+        'enum-int64 comparer Name=EnumComparer`1' 'enum-uint64 comparer Name=EnumComparer`1' \
+        'nullable-enum-signed comparer Name=NullableComparer`1' \
+        'nullable-enum-unsigned comparer Name=NullableComparer`1' \
+        'object comparer Name=ObjectComparer`1' \
+        'user-generic comparer Name=GenericComparer`1' \
+        'user-nongeneric comparer Name=ObjectComparer`1' \
+        'user-uncomparable comparer Name=ObjectComparer`1' \
+        'int comparer Name=GenericComparer`1' 'string comparer Name=GenericComparer`1' \
+        'user-generic direct=-16/16/-9/0' 'user-generic interface=-16/16/-9/0' \
+        'enum-uint64 default sort=Zero,High,Max search=1/-2' \
+        'enum-uint64 explicit sort=Zero,High,Max search=1/-2' \
+        'default comparer type identity end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: default comparer identity witness missing: $line" >&2; exit 1; }
+    done
 }
 
 assert_runtime_box_formatting() {
@@ -231,6 +256,7 @@ assert_runtime_box_formatting() {
 }
 
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|array-box-shared-generics|before-array-provenance|before-nested-interface-variance|before-covariant-stores|before-covariant-md-stores|before-runtime-box-formatting|before-nullable-array-names|before-excess-array-rank"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|comparer-identity-prefix-argv:before-comparer-identity"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/ArrayCore/BoxProvenanceOnly.csproj samples/dotnet/ArrayCore/BoxProvenanceProgram.cs samples/dotnet/ArrayCore/ReflectionReturnBoxOnly.csproj samples/dotnet/ArrayCore/ReflectionReturnBoxProgram.cs samples/dotnet/ArrayCore/DiamondProvenanceOnly.csproj samples/dotnet/ArrayCore/DiamondProvenanceProgram.cs samples/dotnet/ArrayCore/FieldAliasProvenanceOnly.csproj samples/dotnet/ArrayCore/FieldAliasProvenanceProgram.cs samples/dotnet/ArrayCore/FieldAliasProvenanceSubset.cs samples/dotnet/ArrayCore/ArrayElementAliasProgram.cs samples/dotnet/ArrayCore/ArrayElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayObjectElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayUnknownElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayErasedElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayReferenceSlotAliasOnly.csproj samples/dotnet/ArrayCore/ArrayReflectedVoidBoxOnly.csproj samples/dotnet/ArrayCore/ArrayReflectedVoidBoxProgram.cs samples/dotnet/ArrayCore/ArrayFutureStoreOnly.csproj samples/dotnet/ArrayCore/ArrayFutureStoreProgram.cs samples/dotnet/ArrayCore/ArrayFutureNullStoreOnly.csproj samples/dotnet/ArrayCore/ArrayObjectFutureStoreOnly.csproj samples/dotnet/ArrayCore/ArrayObjectFutureStoreProgram.cs"
 corelib_diff_gate ArrayCore System.Collections
 

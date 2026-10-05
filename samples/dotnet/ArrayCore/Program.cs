@@ -100,6 +100,9 @@ namespace ArrayCore
             if (args.Length != 0 && args[0] == "before-excess-array-rank")
                 return;
             ArrayRuntimeBoxSubset.Program.RunExcessRankMessages();
+            if (args.Length != 0 && args[0] == "before-comparer-identity")
+                return;
+            ArrayDefaultOrderSubset.Program.RunComparerIdentity();
 #endif
         }
     }

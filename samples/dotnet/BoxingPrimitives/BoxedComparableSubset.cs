@@ -39,11 +39,9 @@ internal static class Program
         IComparable<string> cs = (IComparable<string>)os;
         Console.WriteLine(Math.Sign(cs.CompareTo("apple")) + " " + Math.Sign(cs.CompareTo("mango")) + " " + Math.Sign(cs.CompareTo("zebra")));
 
-        // Comparer<object>.Default -> ObjectComparer<object> order: null-handling plus
-        // non-generic System.IComparable dispatch on the boxed values (dn2cpp_object_compare).
-        // dn2cpp synthesizes a GenericComparer<object> for Comparer<T>.Default; its Compare's
-        // `((IComparable<object>)x).CompareTo(y)` (constrained on object) devirtualizes here.
-        // Matches real .NET (which returns ObjectComparer<object>). Math.Sign normalises magnitude.
+        // ObjectComparer<object> calls System.Collections.Comparer.Compare, lowered to
+        // dn2cpp_object_compare for null handling and boxed IComparable dispatch.
+        // Math.Sign normalises magnitude.
         var oc = Comparer<object>.Default;
         Console.WriteLine(Math.Sign(oc.Compare(3, 5)) + " " + oc.Compare(7, 7) + " " + Math.Sign(oc.Compare(9, 2)));
         Console.WriteLine(oc.Compare(null, 1) + " " + oc.Compare(1, null) + " " + oc.Compare(null, null));

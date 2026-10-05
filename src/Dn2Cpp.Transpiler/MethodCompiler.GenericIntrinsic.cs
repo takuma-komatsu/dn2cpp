@@ -22,6 +22,21 @@ internal sealed partial class MethodCompiler
             EmitEmptyArray(methodArgs[0]);
             return true;
         }
+        // EnumComparer's JIT helper uses Enum.CompareTo's width and signedness.
+        // Stabilize both operands for the reused comparison expression.
+        if (declType == "System.Runtime.CompilerServices.RuntimeHelpers" && name == "EnumCompareTo")
+        {
+            var right = Pop();
+            var left = Pop();
+            var t = methodArgs[0];
+            string ct = CppTypes.Of(t);
+            var x = new StackEntry(NewTemp(ct), CppTypes.KindOf(t), ct);
+            var y = new StackEntry(NewTemp(ct), CppTypes.KindOf(t), ct);
+            Emit($"{x.Expr} = {Cast(left, ct)};");
+            Emit($"{y.Expr} = {Cast(right, ct)};");
+            Push(StackKind.I4, "int32_t", CompareExpr(t, x, y));
+            return true;
+        }
         return false;
     }
 
