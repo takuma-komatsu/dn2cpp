@@ -116,17 +116,15 @@ internal sealed partial class MethodCompiler
 
         switch (declType, name)
         {
-            // Any System.Exception constructor (parameterless, message, message+inner,
-            // serialization). The real body is untranspilable (culture-dependent
-            // formatting, ReadOnlyCollection copies), but its ONE observable effect on
-            // dn2cpp's model — the message + inner slots of the uniform
-            // Dn2CppExceptionObject prefix — is reproduced here by storing them straight
-            // onto the receiver. Every transpiled derived-exception ctor chain bottoms
-            // out in this base call, so the message the BCL computed lands on the object
-            // regardless of how many derived ctors sit above it, and a parameterless BCL
-            // exception gains its real default message (its parameterless ctor chains
-            // base(SR.Arg_<Type>)). The opaque System.Exception / AggregateException
-            // newobj paths, where no ctor body runs, keep the positional recovery.
+            // Ordinary exception ctor chains initialize the shared message/inner prefix here,
+            // preserving text computed by real BCL IL rather than inferring it from outer args.
+            // Public AggregateException constructors use their dedicated collection initializer.
+            // Reflection may retain legacy serialization bodies; their base payload remains unmodeled.
+            case ("System.AggregateException", ".ctor") when sig.ParameterTypes is
+                [({ Kind: TypeKind.Class, Class.FullName: "System.Runtime.Serialization.SerializationInfo" }
+                    or { Kind: TypeKind.External, ExternalName: "System.Runtime.Serialization.SerializationInfo" }),
+                 ({ Kind: TypeKind.Class, Class.FullName: "System.Runtime.Serialization.StreamingContext" }
+                    or { Kind: TypeKind.External, ExternalName: "System.Runtime.Serialization.StreamingContext" })]:
             case ("System.Exception", ".ctor"):
             {
                 int msgIdx = Compilation.ExceptionMessageArgIndex(sig.ParameterTypes);
@@ -203,6 +201,13 @@ internal sealed partial class MethodCompiler
                 string fn = CallIsVirtual ? "dn2cpp_exception_message" : "dn2cpp_exception_message_stored";
                 Push(StackKind.Ref, "Dn2CppString*",
                     $"{fn}((Dn2CppObject*)({o.Expr}))");
+                return true;
+            }
+            case ("System.AggregateException", ".ctor"):
+            {
+                var (inner, message) = EmitAggregateConstructorArguments(sig);
+                var self = Pop();
+                Emit($"dn2cpp_aggregate_exception_init((Dn2CppObject*)({self.Expr}), {inner}, {message});");
                 return true;
             }
             case ("System.AggregateException", "get_Message"):

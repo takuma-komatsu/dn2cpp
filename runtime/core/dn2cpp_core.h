@@ -614,8 +614,7 @@ struct Dn2CppExcTrace
 // inner, HResult (seeded to the runtime type's default or COR_E_EXCEPTION,
 // overwritten by a managed ctor) and the trace captured at throw (null until
 // then, so an un-thrown exception's StackTrace is null as in real .NET).
-// Every user-defined derived exception struct inherits this prefix, so its own
-// fields sit past `trace`.
+// Every exception inherits this prefix; specialized runtime slots precede user fields.
 // INVARIANT: growing this prefix is an ABI change — bump
 // AbiContract.LayoutPolicyVersion so a hot-update BPI built against the old layout
 // is rejected at load.
@@ -625,6 +624,16 @@ struct Dn2CppExceptionObject : Dn2CppObject
     Dn2CppObject* inner;
     int32_t hresult;
     const Dn2CppExcTrace* trace;
+};
+
+struct Dn2CppArrayRef;
+
+// AggregateException subclasses place user fields after the snapshot and wrapper.
+// Changing this prefix requires an AbiContract.LayoutPolicyVersion bump.
+struct Dn2CppAggregateExceptionObject : Dn2CppExceptionObject
+{
+    Dn2CppArrayRef* innerExceptions;
+    Dn2CppObject* innerWrapper;
 };
 
 // The capacity of the modeled NumberGroupSizes array (see the field below).
@@ -3865,6 +3874,9 @@ void dn2cpp_report_boundary_exception(Dn2CppObject* exc, const char* where_fmt, 
 // the first element, or null when empty; a null message selects the default text.
 Dn2CppObject* dn2cpp_aggregate_exception_new(Dn2CppArrayRef* inner);
 Dn2CppObject* dn2cpp_aggregate_exception_new(Dn2CppArrayRef* inner, Dn2CppString* message);
+bool dn2cpp_is_aggregate_exception_type(const Dn2CppTypeInfo* ti);
+// Initialize the aggregate prefix without replacing a derived receiver's type.
+void dn2cpp_aggregate_exception_init(Dn2CppObject* ex, Dn2CppArrayRef* inner, Dn2CppString* message);
 // Compose each read from the stored base text and current virtual inner Messages.
 Dn2CppString* dn2cpp_aggregate_exception_message(Dn2CppObject* ex);
 // AggregateException.get_InnerExceptions: the stored Exception[], stamped with the

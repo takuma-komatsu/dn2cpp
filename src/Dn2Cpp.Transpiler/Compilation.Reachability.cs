@@ -369,21 +369,14 @@ internal sealed partial class Compilation
 
     /// <summary>Whether a <c>newobj</c> of this type is intercepted at emit time:
     /// every type whose base chain reaches System.Exception, for ALL ctor shapes.
-    /// Intercepting all shapes keeps every exception object on the uniform
-    /// message-carrying layout — get_Message / get_InnerException reinterpret_cast onto
+    /// Intercepting all shapes keeps every exception object on the shared
+    /// message-carrying prefix — get_Message / get_InnerException reinterpret_cast onto
     /// a Dn2CppExceptionObject prefix.
-    /// <para>Two paths seed that prefix, and they differ in WHERE the message comes from.
-    /// The <b>opaque intrinsics</b> — System.Exception itself and AggregateException — have
-    /// no transpiled ctor body, so their newobj recovers message + inner positionally from
-    /// the ctor args (<see cref="ExceptionMessageArgIndex"/> /
-    /// <see cref="ExceptionInnerArgIndex"/>), the only place the values are available.
-    /// <b>Every other</b> exception type — user-defined or a BCL one — is emitted as an
-    /// inline alloc (zero-filled) + type stamp + DirectCall(ctor): its real ctor chain runs,
-    /// so its own instance-field writes (ZlibException.Result, ArgumentException._paramName)
-    /// land AND the base System.Exception::.ctor intrinsic stores the message/inner the BCL
-    /// computed — real resource text (SR recovery) for the Argument*/FileNotFound family
-    /// that positional recovery would misread. So the positional indices below govern only
-    /// the two opaque paths.</para></summary>
+    /// <para>Opaque System.Exception constructors recover message and inner arguments
+    /// positionally. AggregateException constructors materialize their collection and
+    /// initialize the shared aggregate prefix. Other exceptions allocate their emitted
+    /// layout and run the real ctor chain, preserving user fields and the message computed
+    /// by BCL IL. Aggregate subclasses reserve the collection slots before user fields.</para></summary>
     internal static bool IsInterceptedExceptionCtor(ClassInfo c, ImmutableArray<TypeDesc> ctorParams)
     {
         _ = ctorParams; // every shape is intercepted; kept for call-site symmetry
@@ -391,7 +384,7 @@ internal sealed partial class Compilation
     }
 
     /// <summary>The ctor-arg index of the Message string for an OPAQUE-intrinsic exception
-    /// newobj (System.Exception / AggregateException, whose ctor body never runs), or -1
+    /// newobj (such as System.Exception, whose ctor body never runs), or -1
     /// when the shape carries no plain message. Recognized shapes:
     /// <c>(string message)</c>, <c>(string message, Exception inner)</c>, and the common
     /// user-defined <c>(TCode, string message)</c> / <c>(TCode, string message, Exception

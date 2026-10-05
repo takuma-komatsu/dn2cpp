@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Reflection;
 using Dn2Cpp.Runtime;
 
@@ -124,6 +125,8 @@ internal static class Program
 
     private static void Main(string[] args)
     {
+        CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+        CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
         Console.WriteLine("base: start");
         // Reach System.Enum's REAL bodies: CompareTo/Equals through Enum-typed
         // receivers are transpiled CoreLib IL (ToString alone would route
@@ -150,6 +153,7 @@ internal static class Program
         object plaque = new Plaque();
         if (plaque.ToString() != "plaque")
             PatchReceivers.Hold(new Plaque(), new Slate());
+        AggregateCollectionProbe.EmitSurface();
         // The catch is the negative arm's assert: a patch whose import set
         // names a type this image cannot express (HotUpdateCoreLibBadPatch's
         // get_Entry callvirt) is refused by the loader with a catchable
@@ -165,5 +169,17 @@ internal static class Program
         Console.WriteLine("base: done");
         if (PatchReceivers.BelowOverride is not null && PatchReceivers.BelowObject is not null)
             PatchReceiverObjectVirtuals(PatchReceivers.BelowOverride, PatchReceivers.BelowObject);
+        if (args.Length > 1 && args[1] == "before-aggregate-collection")
+            return;
+        if (AggregateCollectionProbe.PatchRead is not null)
+            Console.WriteLine(AggregateCollectionProbe.PatchRead());
+        if (args.Length > 1 && args[1] == "before-aggregate-message")
+            return;
+        if (AggregateCollectionProbe.PatchMessageRead is not null)
+            Console.WriteLine(AggregateCollectionProbe.PatchMessageRead());
+        if (args.Length > 1 && args[1] == "before-ordinary-exception-message")
+            return;
+        if (AggregateCollectionProbe.PatchOrdinaryMessageRead is not null)
+            Console.WriteLine(AggregateCollectionProbe.PatchOrdinaryMessageRead());
     }
 }

@@ -23,6 +23,7 @@
     <Compile Remove="NoCtorImportOracleProgram.cs" />
     <Compile Remove="GvmRowProbe.cs" />
     <Compile Remove="GvmCallProbe.cs" />
+    <Compile Remove="AggregateCtorBoundaryProbe.cs" />
   </ItemGroup>
 
 </Project>

@@ -34,6 +34,9 @@ internal static class Program
         Console.WriteLine(seen);
         PatchReceivers.Hold(new FrostPlaque(), new FrostSlate());
         Console.WriteLine("patch: done");
+        AggregateCollectionProbe.PatchRead = InterpretedAggregateCollectionSubset.Run;
+        AggregateCollectionProbe.PatchMessageRead = InterpretedAggregateCollectionSubset.RunMessageDispatch;
+        AggregateCollectionProbe.PatchOrdinaryMessageRead = InterpretedAggregateCollectionSubset.RunOrdinaryMessageDispatch;
     }
 }
 

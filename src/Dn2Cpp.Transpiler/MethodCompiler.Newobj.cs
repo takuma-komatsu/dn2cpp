@@ -1719,72 +1719,13 @@ internal sealed partial class MethodCompiler
             _stack.Add(new StackEntry(ex, StackKind.Ref, "Dn2CppObject*"));
             return;
         }
-        // Opaque aggregates own trailing array/collection slots: the Exception prefix
-        // allocator is too small. Both ctor token forms must use the shared factory.
+        // Aggregate constructors materialize their collection before initializing the
+        // runtime-owned prefix, for both opaque ctor token forms.
         if (NewobjTypeName(handle) == "System.AggregateException"
             && handle.Kind is HandleKind.MemberReference or HandleKind.MethodDefinition)
         {
             var aggSig = DecodeCtorSignature(handle);
-            string innerArr = "nullptr";
-            string singleInner = "nullptr";
-            string message = "nullptr";
-            bool arrayArgument = false;
-            bool singleArgument = false;
-            StackEntry? sequence = null;
-            TypeDesc? sequenceElement = null;
-            for (int i = aggSig.ParameterTypes.Length - 1; i >= 0; i--)
-            {
-                var a = Pop();
-                if (aggSig.ParameterTypes[i].IsString)
-                    message = Cast(a, "Dn2CppString*");
-                else if (aggSig.ParameterTypes[i] is { Kind: TypeKind.SZArray })
-                {
-                    innerArr = Cast(a, "Dn2CppArrayRef*");
-                    arrayArgument = true;
-                }
-                else if (IsExceptionParam(aggSig.ParameterTypes[i]))
-                {
-                    singleInner = Cast(a, "Dn2CppObject*");
-                    singleArgument = true;
-                }
-                else if (aggSig.ParameterTypes[i] is { Kind: TypeKind.Class, Class: { } enumerable }
-                    && Comp.GenericDefFullName(enumerable) == "System.Collections.Generic.IEnumerable"
-                    && enumerable.Context.TypeArgs is [{ } element] && IsExceptionParam(element))
-                {
-                    sequence = a;
-                    sequenceElement = element;
-                }
-            }
-            if (sequence is not null && sequenceElement is not null)
-            {
-                // CoreLib's enumerable ctor materializes through List<Exception>, including
-                // its ICollection fast path and exception-safe enumerator disposal.
-                var listClass = Comp.ListOf(sequenceElement)
-                    ?? throw new NotSupportedException("AggregateException's enumerable constructor requires the managed List<Exception> type.");
-                var listCtor = Comp.ReachManagedMethod(listClass, ".ctor", ps =>
-                    ps is [{ Kind: TypeKind.Class, Class: { } c }]
-                        && Comp.GenericDefFullName(c) == "System.Collections.Generic.IEnumerable", allocates: true)
-                    ?? throw new NotSupportedException("AggregateException's enumerable constructor requires List<Exception>(IEnumerable<Exception>).");
-                var toArray = Comp.ReachManagedMethod(listClass, "ToArray", static ps => ps.Length == 0)
-                    ?? throw new NotSupportedException("AggregateException's enumerable constructor requires List<Exception>.ToArray().");
-                Comp.NoteArrayEnumerableElement(sequenceElement);
-                Emit($"if ({sequence.Expr} == nullptr) dn2cpp_throw_argument_null_param(\"innerExceptions\");");
-                string list = NewTemp(listClass.CppStructName + "*");
-                Emit($"{list} = ({listClass.CppStructName}*)dn2cpp_alloc(sizeof({listClass.CppStructName}));");
-                Emit($"((Dn2CppObject*){list})->type = &{listClass.CppTypeInfoName};");
-                Emit($"{DirectCall(listCtor, new List<string> { list, Cast(sequence, CppTypes.Of(listCtor.Signature.ParameterTypes[0])) })};");
-                innerArr = NewTemp("Dn2CppArrayRef*");
-                Emit($"{innerArr} = (Dn2CppArrayRef*){DirectCall(toArray, new List<string> { list })};");
-            }
-            if (arrayArgument)
-                Emit($"if ({innerArr} == nullptr) dn2cpp_throw_argument_null_param(\"innerExceptions\");");
-            if (singleArgument)
-            {
-                Emit($"if ({singleInner} == nullptr) dn2cpp_throw_argument_null_param(\"innerException\");");
-                innerArr = NewTemp("Dn2CppArrayRef*");
-                Emit($"{innerArr} = dn2cpp_newarr_ref(1);");
-                Emit($"dn2cpp_gc_store_ref(&{innerArr}->data[0], {singleInner});");
-            }
+            var (innerArr, message) = EmitAggregateConstructorArguments(aggSig);
             string agg = NewTemp("Dn2CppObject*");
             Emit($"{agg} = dn2cpp_aggregate_exception_new({innerArr}, {message});");
             _stack.Add(new StackEntry(agg, StackKind.Ref, "Dn2CppObject*",
@@ -2011,26 +1952,9 @@ internal sealed partial class MethodCompiler
                 + $"constructor is not one of them. Remedy: --no-adopt-async {cls.Module.AssemblyName}, "
                 + "so the library's real IL transpiles instead");
 
-        // `new <ExceptionType>(...)` for any type whose base chain reaches
-        // System.Exception. Two forms:
-        //
-        //   1. System.Exception itself and runtime-raised BCL exceptions (Overflow,
-        //      ArgumentException, ...) carry no field beyond the base message/inner
-        //      slots in our fieldless-in-our-model Exception design. Use the uniform
-        //      dn2cpp_exception_new allocator — the ctor body has nothing to run.
-        //
-        //   2. A user-defined derived exception may declare its own instance fields
-        //      (e.g. ZlibException.Result). Allocate sizeof(derived struct) so those
-        //      fields have storage past the base Dn2CppExceptionObject prefix, seed
-        //      the type/message/inner slots inline, then DirectCall the derived ctor
-        //      body so its `Result = code;` writes land. The CppEmitter roots each
-        //      such derived struct at Dn2CppExceptionObject so the prefix layout
-        //      matches what dn2cpp_exception_message / _inner reinterpret_cast onto.
-        //
-        // ALL ctor shapes are intercepted so every exception object shares the
-        // message-carrying prefix (get_Message never reads past a plain struct); the
-        // message + inner strings are recovered for the shapes ExceptionMessageArgIndex
-        // recognizes, null otherwise.
+        // Exception objects always reserve their runtime prefix. Opaque types seed
+        // positional arguments; emitted subclasses run the real ctor chain so both
+        // specialized prefix initialization and user field writes land.
         if (Compilation.IsInterceptedExceptionCtor(cls, ctor.Signature.ParameterTypes))
         {
             TaintIfCanonical(cls, "newobj");
@@ -2039,8 +1963,8 @@ internal sealed partial class MethodCompiler
             int innerIdx = Compilation.ExceptionInnerArgIndex(eps);
             // Pop each arg once for both forms: keep the full arg list for a derived
             // ctor's DirectCall, and capture the message / inner casts for the OPAQUE
-            // path only (System.Exception / AggregateException, whose ctor body never
-            // runs). A derived exception seeds neither here — its real ctor chain runs
+            // path only. Exact AggregateException uses its collection arm above.
+            // A derived exception seeds neither here — its real ctor chain runs
             // and the base System.Exception::.ctor intrinsic stores them (see
             // MethodCompiler.EmitIntrinsic.Numbers.cs), which fixes the Argument* family
             // the positional recovery misread.
@@ -2428,6 +2352,84 @@ internal sealed partial class MethodCompiler
                $"{slots}[{members.OnCompleted.VtableSlot}], " +
                $"&{actionCls.CppTypeInfoName}, {kind}, {structResult})";
         return $"Dn2CppTaskAwaiter{{ {StampTask(bridge, taskType)} }}";
+    }
+
+    // newobj and base .ctor share validation, snapshot inputs and enumerable materialization.
+    private (string Inner, string Message) EmitAggregateConstructorArguments(MethodSignature<TypeDesc> signature)
+    {
+        var parameters = signature.ParameterTypes;
+        bool IsSequence(TypeDesc t) =>
+            t is { Kind: TypeKind.SZArray, Element: { } e } && IsExceptionParam(e)
+            || t is { Kind: TypeKind.Class, Class: { } c }
+                && Comp.GenericDefFullName(c) == "System.Collections.Generic.IEnumerable"
+                && c.Context.TypeArgs is [{ } element] && IsExceptionParam(element);
+        if (!(parameters.Length == 0
+            || parameters is [{ IsString: true }]
+            || parameters is [{ } sequenceType] && IsSequence(sequenceType)
+            || parameters is [{ IsString: true }, { } innerType]
+                && (IsExceptionParam(innerType) || IsSequence(innerType))))
+            throw new NotSupportedException("AggregateException constructor shape is not supported.");
+        string innerArr = "nullptr";
+        string singleInner = "nullptr";
+        string message = "nullptr";
+        bool arrayArgument = false;
+        bool singleArgument = false;
+        StackEntry? sequence = null;
+        TypeDesc? sequenceElement = null;
+        for (int i = parameters.Length - 1; i >= 0; i--)
+        {
+            var a = Pop();
+            if (parameters[i].IsString)
+                message = Cast(a, "Dn2CppString*");
+            else if (parameters[i] is { Kind: TypeKind.SZArray })
+            {
+                innerArr = Cast(a, "Dn2CppArrayRef*");
+                arrayArgument = true;
+            }
+            else if (IsExceptionParam(parameters[i]))
+            {
+                singleInner = Cast(a, "Dn2CppObject*");
+                singleArgument = true;
+            }
+            else if (parameters[i] is { Kind: TypeKind.Class, Class: { } enumerable }
+                && Comp.GenericDefFullName(enumerable) == "System.Collections.Generic.IEnumerable"
+                && enumerable.Context.TypeArgs is [{ } element] && IsExceptionParam(element))
+            {
+                sequence = a;
+                sequenceElement = element;
+            }
+        }
+        if (sequence is not null && sequenceElement is not null)
+        {
+            // CoreLib's enumerable ctor materializes through List<Exception>, including
+            // its ICollection fast path and exception-safe enumerator disposal.
+            var listClass = Comp.ListOf(sequenceElement)
+                ?? throw new NotSupportedException("AggregateException's enumerable constructor requires the managed List<Exception> type.");
+            var listCtor = Comp.ReachManagedMethod(listClass, ".ctor", ps =>
+                ps is [{ Kind: TypeKind.Class, Class: { } c }]
+                    && Comp.GenericDefFullName(c) == "System.Collections.Generic.IEnumerable", allocates: true)
+                ?? throw new NotSupportedException("AggregateException's enumerable constructor requires List<Exception>(IEnumerable<Exception>).");
+            var toArray = Comp.ReachManagedMethod(listClass, "ToArray", static ps => ps.Length == 0)
+                ?? throw new NotSupportedException("AggregateException's enumerable constructor requires List<Exception>.ToArray().");
+            Comp.NoteArrayEnumerableElement(sequenceElement);
+            Emit($"if ({sequence.Expr} == nullptr) dn2cpp_throw_argument_null_param(\"innerExceptions\");");
+            string list = NewTemp(listClass.CppStructName + "*");
+            Emit($"{list} = ({listClass.CppStructName}*)dn2cpp_alloc(sizeof({listClass.CppStructName}));");
+            Emit($"((Dn2CppObject*){list})->type = &{listClass.CppTypeInfoName};");
+            Emit($"{DirectCall(listCtor, new List<string> { list, Cast(sequence, CppTypes.Of(listCtor.Signature.ParameterTypes[0])) })};");
+            innerArr = NewTemp("Dn2CppArrayRef*");
+            Emit($"{innerArr} = (Dn2CppArrayRef*){DirectCall(toArray, new List<string> { list })};");
+        }
+        if (arrayArgument)
+            Emit($"if ({innerArr} == nullptr) dn2cpp_throw_argument_null_param(\"innerExceptions\");");
+        if (singleArgument)
+        {
+            Emit($"if ({singleInner} == nullptr) dn2cpp_throw_argument_null_param(\"innerException\");");
+            innerArr = NewTemp("Dn2CppArrayRef*");
+            Emit($"{innerArr} = dn2cpp_newarr_ref(1);");
+            Emit($"dn2cpp_gc_store_ref(&{innerArr}->data[0], {singleInner});");
+        }
+        return (innerArr, message);
     }
 
     /// <summary>Whether a parameter names <c>System.Diagnostics.StackFrame</c> (loaded

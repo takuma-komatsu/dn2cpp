@@ -43,8 +43,9 @@ internal static class AbiContract
     /// 6 = WaitHandle gained its hidden SafeWaitHandle prefix slot;
     /// 7 = Task, Thread and BlockingCollection gained hidden runtime slots.
     /// 8 = delegates gained entry identity and an invocation-list cache.
+    /// 9 = AggregateException subclasses reserve the runtime collection prefix.
     /// Bump on any future layout-mapping change.</summary>
-    public const int LayoutPolicyVersion = 8;
+    public const int LayoutPolicyVersion = 9;
 
     /// <summary>Serializes canonical contract v1 over the emitted classes. The
     /// serialization is symbolic — type names and base chains, layout

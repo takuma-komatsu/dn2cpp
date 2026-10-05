@@ -301,6 +301,12 @@ namespace ExceptionMessageSubset
             if (args.Length > 0 && args[0] == "before-aggregate-enumerable")
                 return;
             ExceptionVirtualMembers.RunEnumerableAggregates();
+            if (args.Length > 0 && args[0] == "before-derived-aggregate")
+                return;
+            ExceptionVirtualMembers.RunDerivedAggregates();
+            if (args.Length > 0 && args[0] == "before-aggregate-serialization")
+                return;
+            ExceptionGetObjectData.RunAggregateSerializationReachability();
         }
     }
 }

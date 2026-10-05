@@ -1000,15 +1000,13 @@ Dn2CppObject* dn2cpp_exception_new(const Dn2CppTypeInfo* ti, Dn2CppString* messa
     // the startup bind the handle says so (instanceSize > 0). Allocating the bare prefix
     // would put that field past the end of the object. The GC zeroes, so a field no site
     // names (dn2cpp_raise_argument stores the argument family's) reads back null.
-    size_t size = ti->instanceSize > static_cast<int32_t>(sizeof(Dn2CppExceptionObject))
-        ? static_cast<size_t>(ti->instanceSize) : sizeof(Dn2CppExceptionObject);
+    const size_t prefix = dn2cpp_is_aggregate_exception_type(ti)
+        ? sizeof(Dn2CppAggregateExceptionObject) : sizeof(Dn2CppExceptionObject);
+    size_t size = ti->instanceSize > static_cast<int32_t>(prefix)
+        ? static_cast<size_t>(ti->instanceSize) : prefix;
     auto* e = static_cast<Dn2CppExceptionObject*>(dn2cpp_alloc(size));
     e->type = ti;
-    // Every managed `new System.Exception` / `new AggregateException` (opaque intrinsics,
-    // no emitted layout) and any runtime-raised exception type lands here. Every OTHER
-    // exception type — user-defined or a BCL one with fields of its own — takes the
-    // intercept path that sizes the allocation for the emitted struct and runs the real
-    // ctor body; the finalize registration below still fires for those that reach here.
+    // Emitted exception types may own finalizers on runtime allocation paths too.
     if (ti->finalize != nullptr)
         dn2cpp_register_finalizer(e);
     dn2cpp_gc_store_ref(&e->message, message);
@@ -1110,7 +1108,7 @@ Dn2CppString* dn2cpp_exception_message(Dn2CppObject* ex)
     if (dn2cpp_exception_overrides_message(ex->type))
         return reinterpret_cast<Dn2CppString* (*)(Dn2CppObject*)>(
             const_cast<void*>(ex->type->vtable[dn2cpp_exception_get_message_slot]))(ex);
-    if (ex->type == &dn2cpp_aggregate_exception_type)
+    if (dn2cpp_is_aggregate_exception_type(ex->type))
         return dn2cpp_aggregate_exception_message(ex);
     return dn2cpp_exception_message_stored(ex);
 }
@@ -1832,26 +1830,13 @@ Dn2CppString* dn2cpp_stacktrace_tostring(Dn2CppObject* obj)
     return dn2cpp_string_from_utf8(s.c_str(), static_cast<int32_t>(s.size()));
 }
 
-// A managed AggregateException: the REAL exception prefix (inherited, exactly
-// like every emitted derived exception struct) plus a trailing slot holding
-// the InnerExceptions array (the aggregated inner exceptions, in a
-// deterministic order chosen by the producer). Inheritance is load-bearing,
-// not style: a hand-mirrored prefix drifts — grow the prefix by one slot (the
-// trace slot) and the mirror silently places
-// `innerExceptions` at the new slot's offset, so throwing the aggregate stamps
-// a trace pointer OVER the inner-exceptions array (a SIGSEGV in the parallel
-// gates). Deriving from Dn2CppExceptionObject makes the layout follow the
-// prefix forever. This is the reusable base both the Parallel
-// exception-aggregation path and (later) Task sync-wait aggregation build.
-struct Dn2CppAggregateExceptionObject : Dn2CppExceptionObject
+bool dn2cpp_is_aggregate_exception_type(const Dn2CppTypeInfo* ti)
 {
-    Dn2CppArrayRef* innerExceptions; // the aggregated inner exceptions
-    // The managed ReadOnlyCollection<Exception> the get_InnerExceptions lowering builds
-    // over `innerExceptions`, memoized because real .NET's InnerExceptions is a stored
-    // FIELD: two reads are reference-equal. Null until the first read; GC alloc
-    // zero-fills, so the construction sites need no initialization.
-    Dn2CppObject* innerWrapper;
-};
+    for (; ti != nullptr; ti = ti->base)
+        if (ti == &dn2cpp_aggregate_exception_type)
+            return true;
+    return false;
+}
 
 // Build an AggregateException wrapping `inner` (an Exception[]). InnerException is the
 // first element (matching real .NET's AggregateException(Exception[]) ctor), or null
@@ -1862,6 +1847,13 @@ Dn2CppObject* dn2cpp_aggregate_exception_new(Dn2CppArrayRef* inner)
 }
 
 Dn2CppObject* dn2cpp_aggregate_exception_new(Dn2CppArrayRef* inner, Dn2CppString* message)
+{
+    Dn2CppObject* e = dn2cpp_exception_new(&dn2cpp_aggregate_exception_type, nullptr, nullptr);
+    dn2cpp_aggregate_exception_init(e, inner, message);
+    return e;
+}
+
+void dn2cpp_aggregate_exception_init(Dn2CppObject* ex, Dn2CppArrayRef* inner, Dn2CppString* message)
 {
     Dn2CppArrayRef* snapshot = nullptr;
     if (inner != nullptr)
@@ -1876,23 +1868,21 @@ Dn2CppObject* dn2cpp_aggregate_exception_new(Dn2CppArrayRef* inner, Dn2CppString
     }
     if (message == nullptr)
         message = dn2cpp_string_literal(u"One or more errors occurred.", 28);
-    auto* e = static_cast<Dn2CppAggregateExceptionObject*>(dn2cpp_alloc(sizeof(Dn2CppAggregateExceptionObject)));
-    e->type = &dn2cpp_aggregate_exception_type;
+    auto* e = reinterpret_cast<Dn2CppAggregateExceptionObject*>(ex);
     dn2cpp_gc_store_ref(&e->message, message);
     dn2cpp_gc_store_ref(&e->inner,
                         (snapshot != nullptr && snapshot->length > 0) ? snapshot->data[0] : nullptr);
     e->hresult = static_cast<int32_t>(0x80131500); // base default; get_HResult reads the shared prefix slot
     // Runtime producers may supply an untyped array; the getter binds the snapshot's
     // precise managed Exception[] handle before exposing it to collection dispatch.
-    dn2cpp_gc_store_ref(&e->innerExceptions, snapshot); // trace stays null (GC alloc zero-fills) until the throw stamps it
-    return e;
+    dn2cpp_gc_store_ref(&e->innerExceptions, snapshot);
+    dn2cpp_gc_store_ref(&e->innerWrapper, static_cast<Dn2CppObject*>(nullptr));
 }
 
 Dn2CppString* dn2cpp_aggregate_exception_message(Dn2CppObject* ex)
 {
     Dn2CppString* base = dn2cpp_exception_message_stored(ex);
-    // Emitted derived aggregates have the Exception prefix, without native aggregate slots.
-    if (ex->type != &dn2cpp_aggregate_exception_type)
+    if (!dn2cpp_is_aggregate_exception_type(ex->type))
         return base;
     auto* inner = reinterpret_cast<Dn2CppAggregateExceptionObject*>(ex)->innerExceptions;
     if (inner == nullptr || inner->length == 0)
@@ -1913,8 +1903,8 @@ static Dn2CppAggregateExceptionObject* dn2cpp_require_aggregate(Dn2CppObject* ex
 {
     if (ex == nullptr)
         dn2cpp_throw_null_reference();
-    if (ex->type != &dn2cpp_aggregate_exception_type)
-        dn2cpp_throw_not_supported_msg("AggregateException.InnerExceptions on a derived type requires the aggregate object layout.");
+    if (!dn2cpp_is_aggregate_exception_type(ex->type))
+        dn2cpp_throw_not_supported_msg("AggregateException member requires the aggregate object layout.");
     return reinterpret_cast<Dn2CppAggregateExceptionObject*>(ex);
 }
 

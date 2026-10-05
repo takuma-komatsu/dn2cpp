@@ -47,9 +47,8 @@ internal sealed partial class MethodCompiler
         // (`base(message)` in a corelib-less `MyEx : SystemException` ctor,
         // `base.Message`, …): try the type's OWN intrinsic arms first — they must keep
         // winning, since an intrinsic-typed member ref never resolves — then fall back to
-        // the System.Exception key. Every BCL exception's remaining observable surface in
-        // dn2cpp's model IS System.Exception's (the uniform Dn2CppExceptionObject prefix),
-        // so the member either lowers there or fails loudly under that key (the reach chain
+        // the System.Exception key for shared prefix members; type-specific slots are
+        // handled by the own arms. The member lowers there or fails loudly (the reach chain
         // in the message still names the true call site).
         // Route-without-cut on the call-site pair: nothing resolved, so there is no edge
         // to cut (same shape as the RuntimeExceptionTypeInfo newobj-by-name arm in
