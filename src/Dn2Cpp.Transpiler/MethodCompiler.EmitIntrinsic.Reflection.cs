@@ -2282,13 +2282,10 @@ internal sealed partial class MethodCompiler
             {
                 var p = Pop();
                 Push(StackKind.I4, "int32_t",
-                    $"((dn2cpp_paramref_attributes((Dn2CppParamRef*)({p.Expr})) & 0x1000) != 0 ? 1 : 0)");
+                    $"dn2cpp_paramref_has_default_value((Dn2CppParamRef*)({p.Expr}))");
                 return true;
             }
-            // ParameterInfo.DefaultValue: the Constant-table blob is not carried
-            // into the AOT image, so the value cannot be reported — loud
-            // (catchable) rather than a silently-wrong null. Callers guard with
-            // HasDefaultValue, which answers exactly above.
+            // Default factories serve Invoke; the raw and boxed getter APIs remain refused.
             case ("System.Reflection.ParameterInfo", "get_DefaultValue" or "get_RawDefaultValue"):
             {
                 Pop();

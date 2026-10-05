@@ -523,6 +523,11 @@ constant rows, so retaining one builtin does not retain unrelated builtins
 through a global pointer array. An omitted derived member flag uses
 the recorded ECMA attributes; an explicitly recorded zero stays zero. Parameter
 modifier knowledge remains separate from the modifier vectors and counts.
+Parameter defaults use nullable factory pointers: a factory returning null records
+a null default, while an absent factory leaves Invoke to the optional/no-default
+rule. Factories retain constant bits and UTF-16 strings, including Decimal and
+DateTime attribute constants. Invoke substitutes the canonical Missing singleton
+before conversion and applies default/by-ref copy-back only after target success.
 
 Packed static records are aligned and identified by the low address bit in a
 pointer-sized handle. Native static and dynamic rows retain untagged real

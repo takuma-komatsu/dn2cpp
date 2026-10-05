@@ -15,8 +15,8 @@ using System.Runtime.CompilerServices;
 // element type never instantiated as an array throws NotSupportedException,
 // CustomAttributeData.ConstructorArguments throws the catchable
 // PlatformNotSupportedException (dn2cpp records AttributeType only),
-// ParameterInfo.DefaultValue throws it too (the Constant-table blob is not
-// carried into the image; HasDefaultValue answers exactly), and
+// ParameterInfo.DefaultValue throws it too (Invoke's default factories do not
+// expose the raw-value API; HasDefaultValue answers exactly), and
 // Type.GetGenericParameterConstraints throws it where real .NET throws
 // InvalidOperationException (no generic-parameter Type ever materializes).
 

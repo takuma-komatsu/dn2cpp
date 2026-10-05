@@ -150,6 +150,9 @@ namespace ReflectInvoke
             if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_PRIMITIVE_BINDER") == "1")
                 return;
             ReflectActivatorSubset.Program.RunPrimitiveBinder();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_OPTIONAL_ARGUMENTS") == "1")
+                return;
+            ReflectInvokeValidationSubset.Program.RunOptionalArguments();
         }
     }
 }

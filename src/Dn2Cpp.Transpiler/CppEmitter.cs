@@ -2892,6 +2892,11 @@ internal sealed partial class CppEmitter
             sb.AppendLine($"        [](Dn2CppObject* o, Dn2CppType** type) -> void* {{ *type = (Dn2CppType*)(({s}*)o)->{pointerType.CppName}; "
                 + $"return (({s}*)o)->{value.CppName}; }});");
         }
+        if (_c.ReflectionMissingValue is { } missing && _emit.Contains(missing.DeclaringClass))
+        {
+            string ensure = missing.DeclaringClass.StaticCctor is { } cc ? cc.CppName + "__ensure(); " : "";
+            sb.AppendLine($"    dn2cpp_set_missing_value_factory(&{missing.DeclaringClass.CppTypeInfoName}, []() -> Dn2CppObject* {{ {ensure}return (Dn2CppObject*){missing.CppStaticAccess}; }});");
+        }
         sb.AppendLine("    dn2cpp_init_strings();");
         // Route the eager startup pass through the same idempotent wrappers the use-site
         // guards call, so a cctor already run on first use is not run a second time here.

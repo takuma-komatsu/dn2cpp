@@ -908,6 +908,32 @@ internal sealed partial class Compilation
         }
     }
 
+    internal FieldInfo? ReflectionMissingValue { get; private set; }
+
+    private ClassInfo ReflectionStaticFieldOwner(ClassInfo owner, string name)
+    {
+        if (owner.Module.AssemblyName is not ("System.Private.CoreLib" or "mscorlib")
+            || (owner.FullName, name) is not (("System.Type", "Missing") or ("System.Reflection.Missing", "Value")))
+            return owner;
+        if (ReflectionMissingValue is null)
+        {
+            if (!TypeIndex().TryGetValue(("System.Reflection", "Missing"), out var candidates))
+                throw new NotSupportedException("Type.Missing requires the loaded Missing.Value definition.");
+            foreach (var (mod, definition) in candidates)
+            {
+                if (mod.AssemblyName is not ("System.Private.CoreLib" or "mscorlib"))
+                    continue;
+                var missing = GetClass(mod, definition);
+                EnsureCompleted(missing);
+                ReflectionMissingValue = missing.Fields.FirstOrDefault(f => f.IsStatic && f.Name == "Value")
+                    ?? throw new NotSupportedException("Missing.Value has no static field in the loaded CoreLib.");
+                break;
+            }
+        }
+        return ReflectionMissingValue?.DeclaringClass
+            ?? throw new NotSupportedException("Type.Missing requires the loaded Missing.Value definition.");
+    }
+
     /// <summary>The loaded declaring class of a static call token, before any intrinsic
     /// or bounded route cuts its MethodInfo edge. This is the type-initialization asker:
     /// a non-beforefieldinit cctor is a first-use edge even when emission replaces the
@@ -6769,7 +6795,12 @@ internal sealed partial class Compilation
                         // Intrinsic/bounded declaring types are cut by ReachCctor ->
                         // Reach, so this does not drag their initializers in.
                         if (ResolveStaticFieldClass(module, handle, m.Context) is { } fc)
-                            ReachCctor(fc);
+                        {
+                            string name = handle.Kind == HandleKind.MemberReference
+                                ? reader.GetString(reader.GetMemberReference((MemberReferenceHandle)handle).Name)
+                                : reader.GetString(reader.GetFieldDefinition((FieldDefinitionHandle)handle).Name);
+                            ReachCctor(ReflectionStaticFieldOwner(fc, name));
+                        }
                         continue;
                     }
                 }

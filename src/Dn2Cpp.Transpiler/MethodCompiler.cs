@@ -1837,6 +1837,12 @@ internal sealed partial class MethodCompiler : IEvalStack
         Emit($"{cc.CppName}__ensure();");
     }
 
+    private FieldInfo ReflectionStaticFieldAlias(FieldInfo field) =>
+        field.DeclaringClass.FullName == "System.Type" && field.Name == "Missing"
+            && field.DeclaringClass.Module.AssemblyName is "System.Private.CoreLib" or "mscorlib"
+        ? _c.ReflectionMissingValue ?? throw new InvalidOperationException("Type.Missing was not reached as Missing.Value.")
+        : field;
+
     /// <summary>A shared body's address expression for a placeholder-bearing
     /// class's static field: the per-instantiation storage address out of an
     /// rgctx slot keyed on the field token, preceded by the instantiation's
@@ -2938,6 +2944,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                     break;
                 }
                 var (_, fld) = ResolveField(insn.Token);
+                fld = ReflectionStaticFieldAlias(fld);
                 // ldsflda of an intrinsic value-type constant (e.g. TimeSpan.Zero.
                 // ToString) — materialize the value into a temp and push its address
                 // so the following value-type instance call has a receiver.
@@ -2979,6 +2986,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             case ILOpCode.Ldsfld:
             {
                 var (_, fld) = ResolveField(insn.Token);
+                fld = ReflectionStaticFieldAlias(fld);
                 // Decimal / TimeSpan / DateTime are intrinsic value types; their
                 // static-field constants (Decimal.Zero/One/MinusOne/Max/Min, TimeSpan.
                 // Zero/Min/Max, DateTime.Min/Max) have no emitted storage — fold them to
