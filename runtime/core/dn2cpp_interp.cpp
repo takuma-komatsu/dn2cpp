@@ -1414,8 +1414,7 @@ void bind_method_import(const Dn2CppInterpImage* img, const Dn2CppBpiImport& imp
                 return;
         }
     }
-    // An abstract row has no body, but its signature-only invoker can call the
-    // dispatcher of an abstract generic virtual row, which shares its signature.
+    // Abstract rows keep a signature-only invoker for receiver-slot or GVM dispatch.
     if (found == nullptr || found->invoker == nullptr
         || (found->fnPtr == nullptr && (isCtor || (found->ilAttrs & DN2CPP_MA_ABSTRACT) == 0)))
         interp_fail("BPI bind: unresolved method import");
@@ -1431,11 +1430,11 @@ void bind_method_import(const Dn2CppInterpImage* img, const Dn2CppBpiImport& imp
     for (uint32_t j = 0; j < paramCount; j++)
         b.args[j] = marshal_from_ref(img, run[1 + j]);
 
-    // A generic virtual row has no slot: a callvirt enters its dispatcher, whose C++
-    // signature is the row's; a call runs the row's own body, which an abstract row
-    // lacks.
+    // A bodiless instance row can dispatch through its slot or GVM. Non-virtual
+    // calls still refuse the missing body in throw_call_without_body.
     void* gvm = isCtor ? nullptr : gvm_row_dispatcher(img, imp, *found);
-    if (found->fnPtr == nullptr && gvm == nullptr)
+    if (found->fnPtr == nullptr && gvm == nullptr
+        && (!isInstance || found->vtableSlot < 0))
         interp_fail("BPI bind: unresolved method import");
 
     b.callShape = kShapeInvoker;

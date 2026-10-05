@@ -659,6 +659,25 @@ public class InkStamp : Stamp
     }
 }
 
+public abstract class AbstractRecord
+{
+    public abstract long Count(int value, long offset);
+    public abstract string Text(string value);
+    public abstract AbstractRecord Identity(AbstractRecord value);
+    public virtual int Body(int value) => value + 10;
+
+    public static string FaultIdentity(Exception fault) => fault.GetType().FullName
+        + "/" + fault.HResult.ToString("X8");
+}
+
+public class AotRecord : AbstractRecord
+{
+    public override long Count(int value, long offset) => value + offset + 100;
+    public override string Text(string value) => "aot:" + value;
+    public override AbstractRecord Identity(AbstractRecord value) => value;
+    public override int Body(int value) => value + 40;
+}
+
 // Default interface bodies, generic virtual and plain: Bin keeps both and
 // GlassBin replaces both. The base calls them only through IBin.
 public interface IBin
