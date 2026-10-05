@@ -15,11 +15,22 @@
     <ProjectReference Include="../AmbiguousDefaultLib/AmbiguousDefaultLib.csproj" />
     <ProjectReference Include="../AmbiguousDefaultLibNext/AmbiguousDefaultLibNext.csproj"
                       ReferenceOutputAssembly="false" Private="false" />
+    <ProjectReference Include="../../../gates/fixtures/static-interface-calls/StaticInterfaceCalls.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
 
   <Target Name="CopyNextLibraryVersion" AfterTargets="CopyFilesToOutputDirectory">
     <Copy SourceFiles="../AmbiguousDefaultLibNext/bin/$(Configuration)/$(TargetFramework)/AmbiguousDefaultLib.dll"
           DestinationFiles="$(OutDir)AmbiguousDefaultLib.dll" />
+  </Target>
+
+  <Target Name="RewriteStaticInterfaceCalls" AfterTargets="Build">
+    <MSBuild Projects="$(MSBuildProjectDirectory)/../../../gates/fixtures/static-interface-calls/StaticInterfaceCalls.csproj"
+             Targets="GetTargetPath"
+             Properties="Configuration=$(Configuration);TargetFramework=$(TargetFramework)">
+      <Output TaskParameter="TargetOutputs" PropertyName="StaticInterfaceCallsPath" />
+    </MSBuild>
+    <Exec Command="dotnet exec &quot;$(StaticInterfaceCallsPath)&quot; &quot;$(TargetPath)&quot;" />
   </Target>
 
 </Project>

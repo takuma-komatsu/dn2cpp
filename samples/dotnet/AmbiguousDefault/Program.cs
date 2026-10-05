@@ -125,6 +125,9 @@ namespace AmbiguousDefault
             if (args.Length != 0 && args[0] == "before-generic-messages")
                 return;
             RunGenericMessages();
+            if (args.Length != 0 && args[0] == "before-static-calls")
+                return;
+            RunStaticCalls();
         }
 
         private class VirtualGroups
@@ -207,6 +210,190 @@ namespace AmbiguousDefault
             {
                 Report(label, e);
             }
+        }
+
+        private sealed class StaticBoth : IStaticLeft, IStaticRight
+        {
+        }
+
+        private struct StaticBothValue : IStaticLeft, IStaticRight
+        {
+        }
+
+        private sealed class StaticBothOf<T> : IStaticLeft, IStaticRight
+        {
+        }
+
+        private sealed class StaticLeftOnly : IStaticLeft
+        {
+        }
+
+        private sealed class StaticResolved : IStaticResolved
+        {
+        }
+
+        private sealed class StaticClassOverride : IStaticLeft, IStaticRight
+        {
+            public static string Default() => "class";
+            public static string DefaultGeneric<U>() => "class";
+            public static string Abstract() => "class";
+            public static string AbstractGeneric<U>() => "class";
+        }
+
+        private sealed class StaticDefaultOnly : IStaticBase
+        {
+            public static string Abstract() => "class";
+            public static string AbstractGeneric<U>() => "class";
+        }
+
+        private static int staticEntries;
+
+        private static string StaticDefaultOf<T>(bool call) where T : IStaticBase
+        {
+            staticEntries++;
+            return call ? T.Default() : "skipped";
+        }
+
+        private static string StaticGenericOf<T, U>(bool call) where T : IStaticBase
+        {
+            staticEntries++;
+            return call ? T.DefaultGeneric<U>() : "skipped";
+        }
+
+        private static string StaticAbstractOf<T>(bool call) where T : IStaticBase
+        {
+            staticEntries++;
+            return call ? T.Abstract() : "skipped";
+        }
+
+        private static string StaticAbstractGenericOf<T, U>(bool call) where T : IStaticBase
+        {
+            staticEntries++;
+            return call ? T.AbstractGeneric<U>() : "skipped";
+        }
+
+        private static string ConcreteDefault(bool call)
+        {
+            staticEntries++;
+            return call ? "rewritten" : "skipped";
+        }
+
+        private static string ConcreteDefaultGeneric(bool call)
+        {
+            staticEntries++;
+            return call ? "rewritten" : "skipped";
+        }
+
+        private static string ConcreteAbstract(bool call)
+        {
+            staticEntries++;
+            return call ? "rewritten" : "skipped";
+        }
+
+        private static string ConcreteAbstractGeneric(bool call)
+        {
+            staticEntries++;
+            return call ? "rewritten" : "skipped";
+        }
+
+        private static string ConcreteValueDefault(bool call)
+        {
+            staticEntries++;
+            return call ? "rewritten" : "skipped";
+        }
+
+        private static string ConcreteValueDefaultGeneric(bool call)
+        {
+            staticEntries++;
+            return call ? "rewritten" : "skipped";
+        }
+
+        private static string ConcreteValueAbstract(bool call)
+        {
+            staticEntries++;
+            return call ? "rewritten" : "skipped";
+        }
+
+        private static string ConcreteValueAbstractGeneric(bool call)
+        {
+            staticEntries++;
+            return call ? "rewritten" : "skipped";
+        }
+
+        private static void RunStaticCalls()
+        {
+            Console.WriteLine("== constrained static interface calls ==");
+            ObserveStaticCall("static default", () => StaticDefaultOf<StaticBoth>(true));
+            ObserveStaticCall("static default skipped", () => StaticDefaultOf<StaticBoth>(false));
+            ObserveStaticCall("static generic", () => StaticGenericOf<StaticBoth, int>(true));
+            ObserveStaticCall("static generic skipped", () => StaticGenericOf<StaticBoth, string>(false));
+            ObserveStaticCall("static abstract", () => StaticAbstractOf<StaticBoth>(true));
+            ObserveStaticCall("static abstract skipped", () => StaticAbstractOf<StaticBoth>(false));
+            ObserveStaticCall("static generic abstract", () => StaticAbstractGenericOf<StaticBoth, int>(true));
+            ObserveStaticCall("static generic ref", () => StaticGenericOf<StaticBoth, string>(true));
+            ObserveStaticCall("static generic receiver", () => StaticDefaultOf<StaticBothOf<string>>(true));
+            ObserveStaticCall("static generic owner ref", () => StaticBoxOf<string, BoxBoth<string>, int>());
+            ObserveStaticCall("static generic owner value", () => StaticBoxAbstractOf<int, BoxBoth<int>, string>());
+            ObserveStaticCall("value default", () => StaticDefaultOf<StaticBothValue>(true));
+            ObserveStaticCall("value default skipped", () => StaticDefaultOf<StaticBothValue>(false));
+            ObserveStaticCall("value generic", () => StaticGenericOf<StaticBothValue, int>(true));
+            ObserveStaticCall("value generic skipped", () => StaticGenericOf<StaticBothValue, string>(false));
+            ObserveStaticCall("value abstract", () => StaticAbstractOf<StaticBothValue>(true));
+            ObserveStaticCall("value abstract skipped", () => StaticAbstractOf<StaticBothValue>(false));
+            ObserveStaticCall("value generic abstract", () => StaticAbstractGenericOf<StaticBothValue, int>(true));
+            ObserveStaticCall("concrete default", () => ConcreteDefault(true));
+            ObserveStaticCall("concrete default skipped", () => ConcreteDefault(false));
+            ObserveStaticCall("concrete generic", () => ConcreteDefaultGeneric(true));
+            ObserveStaticCall("concrete generic skipped", () => ConcreteDefaultGeneric(false));
+            ObserveStaticCall("concrete abstract", () => ConcreteAbstract(true));
+            ObserveStaticCall("concrete abstract skipped", () => ConcreteAbstract(false));
+            ObserveStaticCall("concrete generic abstract", () => ConcreteAbstractGeneric(true));
+            ObserveStaticCall("concrete value default", () => ConcreteValueDefault(true));
+            ObserveStaticCall("concrete value default skipped", () => ConcreteValueDefault(false));
+            ObserveStaticCall("concrete value generic", () => ConcreteValueDefaultGeneric(true));
+            ObserveStaticCall("concrete value generic skipped", () => ConcreteValueDefaultGeneric(false));
+            ObserveStaticCall("concrete value abstract", () => ConcreteValueAbstract(true));
+            ObserveStaticCall("concrete value abstract skipped", () => ConcreteValueAbstract(false));
+            ObserveStaticCall("concrete value generic abstract", () => ConcreteValueAbstractGeneric(true));
+            staticEntries = 0;
+            Func<bool, string> deferred = StaticDefaultOf<StaticBoth>;
+            Console.WriteLine("static group created entries: " + staticEntries);
+            ObserveStaticCall("static group invoked", () => deferred(true));
+            Console.WriteLine("static left bodies: " + StaticBodies<StaticLeftOnly>());
+            Console.WriteLine("static specific bodies: " + StaticBodies<StaticResolved>());
+            Console.WriteLine("static class bodies: " + StaticBodies<StaticClassOverride>());
+            Console.WriteLine("static fallback bodies: " + StaticBodies<StaticDefaultOnly>());
+            Console.WriteLine("static interface calls end");
+        }
+
+        private static string StaticBoxOf<TItem, T, U>() where T : IBox<TItem>
+        {
+            staticEntries++;
+            return T.StaticSelect<U>();
+        }
+
+        private static string StaticBoxAbstractOf<TItem, T, U>() where T : IBox<TItem>
+        {
+            staticEntries++;
+            return T.StaticAbstract<U>();
+        }
+
+        private static string StaticBodies<T>() where T : IStaticBase =>
+            T.Default() + "," + T.DefaultGeneric<int>() + "," + T.Abstract() + "," + T.AbstractGeneric<string>();
+
+        private static void ObserveStaticCall(string label, Func<string> call)
+        {
+            staticEntries = 0;
+            try
+            {
+                Console.WriteLine(label + " returned: " + call());
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(label + ": " + e.GetType().FullName + ": " + e.Message);
+                Console.WriteLine(label + " hresult: 0x" + e.HResult.ToString("X8"));
+            }
+            Console.WriteLine(label + " entries: " + staticEntries);
         }
 
         private static string PlainOf<T>(T value) where T : IBase => value.Plain();

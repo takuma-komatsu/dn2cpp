@@ -46,6 +46,8 @@ namespace AmbiguousDefaultLib
         string Take(T item, List<T> items) => "base";
         string Select<U>(T item, U value) => "base";
         string Pair<X, Y>() => "base";
+        static virtual string StaticSelect<U>() => "base";
+        static abstract string StaticAbstract<U>();
     }
 
     public interface IBoxLeft<T> : IBox<T>
@@ -53,6 +55,8 @@ namespace AmbiguousDefaultLib
         string IBox<T>.Take(T item, List<T> items) => "left";
         string IBox<T>.Select<U>(T item, U value) => "left";
         string IBox<T>.Pair<X, Y>() => "left";
+        static string IBox<T>.StaticSelect<U>() => "left";
+        static string IBox<T>.StaticAbstract<U>() => "left";
     }
 
     public interface IDuo<TFirst, TSecond>
@@ -67,5 +71,27 @@ namespace AmbiguousDefaultLib
         string IDuo<TFirst, TSecond>.Single<V>(TFirst first, TSecond second, V value) => "left";
         string IDuo<TFirst, TSecond>.Pair<X, Y>() => "left";
         string IDuo<TFirst, TSecond>.Triple<X, Y, Z>() => "left";
+    }
+    public interface IStaticBase
+    {
+        static virtual string Default() => "base";
+        static virtual string DefaultGeneric<U>() => "base";
+        static abstract string Abstract();
+        static abstract string AbstractGeneric<U>();
+    }
+
+    public interface IStaticLeft : IStaticBase
+    {
+        static string IStaticBase.Default() => "left";
+        static string IStaticBase.DefaultGeneric<U>() => "left";
+        static string IStaticBase.Abstract() => "left";
+        static string IStaticBase.AbstractGeneric<U>() => "left";
+    }
+    public interface IStaticResolved : IStaticLeft, IStaticRight
+    {
+        static string IStaticBase.Default() => "specific";
+        static string IStaticBase.DefaultGeneric<U>() => "specific";
+        static string IStaticBase.Abstract() => "specific";
+        static string IStaticBase.AbstractGeneric<U>() => "specific";
     }
 }

@@ -395,6 +395,7 @@ ORDERED_PROJECTS=(
     "samples/dotnet/ConvOpSubset/ConvOpSubset.csproj"
     "samples/dotnet/AmbiguousDefaultLib/AmbiguousDefaultLib.csproj"
     "samples/dotnet/AmbiguousDefaultLibNext/AmbiguousDefaultLibNext.csproj"
+    "gates/fixtures/static-interface-calls/StaticInterfaceCalls.csproj"
     "samples/dotnet/AmbiguousDefault/AmbiguousDefault.csproj"
     "samples/dotnet/TrimReflectLib/TrimReflectLib.csproj"
     "samples/dotnet/TrimReflect/TrimReflect.csproj"

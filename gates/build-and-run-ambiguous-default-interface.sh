@@ -2,7 +2,9 @@
 # An ambiguous default interface slot: two sibling derived interfaces each
 # override one base interface method, whether a plain method, a generic method
 # or a method of a generic interface. Calls and delegate binding throw .NET's
-# catchable AmbiguousImplementationException with its message and HResult,
+# catchable AmbiguousImplementationException with its message and HResult.
+# Constrained static slots reject sibling overrides at the call instruction,
+# including concrete IL operands and generic slots without a default body,
 # while an unused slot leaves conversion intact. The message names a MakeGenericType
 # receiver's own instantiation, and overloads whose messages match each throw
 # through a stub of their own signature. C# rejects the shape, so the
@@ -10,7 +12,8 @@
 # the next: a version-skewed reference set.
 source "$(dirname "$0")/_common.sh"
 
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-constrained-prefix:${DN2CPP_BEFORE_ORDINARY_CONSTRAINED_DEFAULT:-}|binding-prefix-argv:before-binding|generic-message-prefix-argv:before-generic-messages"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-constrained-prefix:${DN2CPP_BEFORE_ORDINARY_CONSTRAINED_DEFAULT:-}|binding-prefix-argv:before-binding|generic-message-prefix-argv:before-generic-messages|static-call-prefix-argv:before-static-calls"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/static-interface-calls/Program.cs gates/fixtures/static-interface-calls/StaticInterfaceCalls.csproj"
 
 APP_DIR="samples/dotnet/AmbiguousDefault/bin/$CONFIG/$TFM"
 
@@ -78,6 +81,39 @@ gate_extra_asserts() {
     before=$(dotnet "$_CG_APP" before-generic-messages)
     before=$(strip_cr_win "$before")
     prefix=$(awk '/^== generic interface ambiguity messages ==$/ { exit } { print }' <<< "$output")
+    assert_output "$prefix" "$before"
+    grep -Fxq '== constrained static interface calls ==' <<< "$output" \
+        && grep -Fxq 'static interface calls end' <<< "$output" \
+        || { echo "FAIL: the constrained static call block did not complete" >&2; exit 1; }
+    for label in 'static default' 'static generic' 'static abstract' 'static generic abstract' \
+        'static generic ref' 'static generic receiver' 'static generic owner ref' 'static generic owner value' \
+        'value default' 'value generic' \
+        'value abstract' 'value generic abstract' 'concrete default' 'concrete generic' \
+        'concrete abstract' 'concrete generic abstract' 'concrete value default' \
+        'concrete value generic' 'concrete value abstract' 'concrete value generic abstract' \
+        'static group invoked'; do
+        grep -Fq "$label: System.Runtime.AmbiguousImplementationException: Could not call method " <<< "$output" \
+            && grep -Fxq "$label hresult: 0x8013106A" <<< "$output" \
+            && grep -Fxq "$label entries: 1" <<< "$output" \
+            || { echo "FAIL: $label did not reject ambiguity at the call instruction" >&2; exit 1; }
+    done
+    for label in 'static default skipped' 'static generic skipped' 'static abstract skipped' \
+        'value default skipped' 'value generic skipped' 'value abstract skipped' \
+        'concrete default skipped' 'concrete generic skipped' 'concrete abstract skipped' \
+        'concrete value default skipped' 'concrete value generic skipped' 'concrete value abstract skipped'; do
+        grep -Fxq "$label returned: skipped" <<< "$output" \
+            && grep -Fxq "$label entries: 1" <<< "$output" \
+            || { echo "FAIL: $label rejected a call that never ran" >&2; exit 1; }
+    done
+    for row in 'static group created entries: 0' 'static left bodies: left,left,left,left' \
+        'static specific bodies: specific,specific,specific,specific' \
+        'static class bodies: class,class,class,class' 'static fallback bodies: base,base,class,class'; do
+        grep -Fxq "$row" <<< "$output" \
+            || { echo "FAIL: missing static call witness: $row" >&2; exit 1; }
+    done
+    before=$(run_bounded dotnet "$_CG_APP" before-static-calls)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== constrained static interface calls ==$/ { exit } { print }' <<< "$output")
     assert_output "$prefix" "$before"
     grep -Fq "'AmbiguousDefaultLib.IBase.Unused()' on interface 'AmbiguousDefaultLib.IBase' with type 'AmbiguousDefault.Both'" \
         "$out"/generated*.cpp \

@@ -20,6 +20,8 @@ namespace AmbiguousDefaultLib
         string IBox<T>.Take(T item, List<T> items) => "right";
         string IBox<T>.Select<U>(T item, U value) => "right";
         string IBox<T>.Pair<X, Y>() => "right";
+        static string IBox<T>.StaticSelect<U>() => "right";
+        static string IBox<T>.StaticAbstract<U>() => "right";
     }
 
     public interface IDuoRight<TFirst, TSecond> : IDuo<TFirst, TSecond>
@@ -27,5 +29,12 @@ namespace AmbiguousDefaultLib
         string IDuo<TFirst, TSecond>.Single<V>(TFirst first, TSecond second, V value) => "right";
         string IDuo<TFirst, TSecond>.Pair<X, Y>() => "right";
         string IDuo<TFirst, TSecond>.Triple<X, Y, Z>() => "right";
+    }
+    public interface IStaticRight : IStaticBase
+    {
+        static string IStaticBase.Default() => "right";
+        static string IStaticBase.DefaultGeneric<U>() => "right";
+        static string IStaticBase.Abstract() => "right";
+        static string IStaticBase.AbstractGeneric<U>() => "right";
     }
 }
