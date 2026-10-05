@@ -1825,8 +1825,7 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.Ref, "Dn2CppType*", $"dn2cpp_type_get_nested_type({Cast(a, "Dn2CppType*")}, {Cast(n, "Dn2CppString*")})");
                 return true;
             }
-            // Type.Equals(Type)/Equals(object): type identity. The header-dispatched
-            // member equality handles a non-Type `object` other (compares false).
+            // RuntimeType Equals uses object identity; header dispatch rejects a non-Type other.
             case ("System.Type", "Equals") when sig.ParameterTypes.Length == 1:
             {
                 var other = Pop();

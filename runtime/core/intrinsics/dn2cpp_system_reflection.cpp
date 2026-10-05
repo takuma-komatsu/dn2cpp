@@ -1776,16 +1776,8 @@ Dn2CppType* dn2cpp_memberinfo_reflected_type(Dn2CppObject* m)
     return nullptr;
 }
 
-// MemberInfo equality: two handles are equal when they wrap the same underlying
-// metadata entry (method/field/property row, or the same type-info for a Type receiver)
-// AND were obtained through the same reflected type — .NET's rule, under which
-// typeof(D).GetMethod(m) and typeof(Base).GetMethod(m) are unequal for an inherited m.
-// Both reflectedType fields are mint-time normalized (never null), so the comparison is
-// a plain pointer compare. Handles are interned per (row, reflectedType), so a == b
-// answers the common case; the row comparison stays as the semantic definition — it
-// adjudicates a Type receiver and keeps op_Equality independent of how a handle was
-// minted. The header dispatch keeps one helper serving MethodInfo, ConstructorInfo
-// (also a MethodRef), FieldInfo, PropertyInfo and Type alike.
+// Method/field/property equality includes the metadata row and normalized reflected type.
+// RuntimeType equality is object identity, including for MemberwiseClone copies.
 int32_t dn2cpp_memberinfo_equals(Dn2CppObject* a, Dn2CppObject* b)
 {
     if (a == b)
@@ -1816,8 +1808,6 @@ int32_t dn2cpp_memberinfo_equals(Dn2CppObject* a, Dn2CppObject* b)
         return reinterpret_cast<Dn2CppPropRef*>(a)->prop == reinterpret_cast<Dn2CppPropRef*>(b)->prop
             && reinterpret_cast<Dn2CppPropRef*>(a)->reflectedType
                 == reinterpret_cast<Dn2CppPropRef*>(b)->reflectedType ? 1 : 0;
-    if (a->type == &dn2cpp_type_type)
-        return reinterpret_cast<Dn2CppType*>(a)->typeInfo == reinterpret_cast<Dn2CppType*>(b)->typeInfo ? 1 : 0;
     return 0;
 }
 
@@ -2423,7 +2413,7 @@ static const Dn2CppMetaMember g_meta_members[] = {
     { "System.Runtime.CompilerServices.Unsafe", "SizeOf", 1, &dn2cpp_int32_type,
       DN2CPP_MTHA_STATIC | DN2CPP_MTHA_PUBLIC, 0x0096, dn2cpp_meta_unsafe_sizeof,
       nullptr, 0, nullptr, "Int32", false, 0x0100 },
-    { "System.Object", "GetType", 0, &dn2cpp_type_type, DN2CPP_MTHA_PUBLIC, 0x0086,
+    { "System.Object", "GetType", 0, &dn2cpp_public_type_type, DN2CPP_MTHA_PUBLIC, 0x0086,
       dn2cpp_meta_object_gettype, nullptr, 0, "System.Type GetType()", "System.Type", true },
     { "System.Object", "MemberwiseClone", 0, &dn2cpp_object_type,
       0 /* instance, non-public */, 0x0085, dn2cpp_meta_object_memberwise_clone,
@@ -2444,7 +2434,7 @@ static const Dn2CppMetaMember g_meta_members[] = {
       dn2cpp_meta_object_gethashcode, nullptr, 0, "Int32 GetHashCode()", "Int32", true },
     { "System.Exception", "ToString", 0, &dn2cpp_string_type, DN2CPP_MTHA_PUBLIC, 0x00C6,
       dn2cpp_meta_object_tostring, nullptr, 0, "System.String ToString()", "System.String", true },
-    { "System.Exception", "GetType", 0, &dn2cpp_type_type, DN2CPP_MTHA_PUBLIC, 0x0086,
+    { "System.Exception", "GetType", 0, &dn2cpp_public_type_type, DN2CPP_MTHA_PUBLIC, 0x0086,
       dn2cpp_meta_object_gettype, nullptr, 0, "System.Type GetType()", "System.Type", true },
     { "System.ValueType", "Equals", 0, &dn2cpp_bool_type, DN2CPP_MTHA_PUBLIC, 0x00C6,
       dn2cpp_meta_valuetype_equals, g_meta_params_obj, 1, "Boolean Equals(System.Object)", "Boolean", true },

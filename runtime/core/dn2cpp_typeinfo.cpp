@@ -554,8 +554,7 @@ const Dn2CppType dn2cpp_parallel_loop_result_type_obj = { { &dn2cpp_type_type },
 // intrinsics/dn2cpp_system_datetime.cpp — each next to the formatting, hashing and
 // comparison code its tostring/gethashcode/equals/formatspec slots point at, so a
 // program that never mentions those types does not link those translation units.
-// System.Type derives MemberInfo like real .NET (the handle is declared just
-// below), so a Type handle answers `is MemberInfo` and GetMember results mix.
+// Runtime Type objects carry RuntimeType, whose public bases have distinct handles.
 //
 // System.Type and System.Reflection.Module carry NO field table although real .NET
 // declares public static fields on them: those are MemberFilter/TypeFilter delegates
@@ -564,11 +563,19 @@ const Dn2CppType dn2cpp_parallel_loop_result_type_obj = { { &dn2cpp_type_type },
 // declare.
 extern const Dn2CppType dn2cpp_type_type_obj;
 const Dn2CppTypeInfo dn2cpp_type_type =
-    dn2cpp_ti_with_typeobject({ "System.Type", &dn2cpp_memberinfo_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppType), 0, 0, 0, 0, 0, nullptr }, &dn2cpp_type_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.RuntimeType", &dn2cpp_typeinfo_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppType), 0, DN2CPP_TF_SEALED, 0, 0, 0, nullptr }, &dn2cpp_type_type_obj);
 const Dn2CppType dn2cpp_type_type_obj = { { &dn2cpp_type_type }, &dn2cpp_type_type };
+extern const Dn2CppType dn2cpp_public_type_type_obj;
+const Dn2CppTypeInfo dn2cpp_public_type_type =
+    dn2cpp_ti_with_typeobject({ "System.Type", &dn2cpp_memberinfo_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, DN2CPP_TF_ABSTRACT, 0, 0, 0, nullptr }, &dn2cpp_public_type_type_obj);
+const Dn2CppType dn2cpp_public_type_type_obj = { { &dn2cpp_type_type }, &dn2cpp_public_type_type };
+extern const Dn2CppType dn2cpp_typeinfo_type_obj;
+const Dn2CppTypeInfo dn2cpp_typeinfo_type =
+    dn2cpp_ti_with_typeobject({ "System.Reflection.TypeInfo", &dn2cpp_public_type_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, DN2CPP_TF_ABSTRACT, 0, 0, 0, nullptr }, &dn2cpp_typeinfo_type_obj);
+const Dn2CppType dn2cpp_typeinfo_type_obj = { { &dn2cpp_type_type }, &dn2cpp_typeinfo_type };
 // The reflection handle hierarchy mirrors .NET's: MemberInfo is the root,
 // MethodBase sits between it and MethodInfo/ConstructorInfo, and Type itself
-// derives from MemberInfo (its base is stamped where dn2cpp_type_type is
+// derives from MemberInfo (its base is stamped where dn2cpp_public_type_type is
 // defined above). Casts/`is` against these CLASSES resolve to these shared
 // handles (MethodCompiler.TypeInfoExprOf), so `member is PropertyInfo` /
 // `(MethodInfo)member` behave like real .NET over Get* results. MemberInfo and
@@ -1081,11 +1088,8 @@ Dn2CppString* dn2cpp_type_name(const Dn2CppTypeInfo* ti)
 
 int32_t dn2cpp_type_equals(Dn2CppType* a, Dn2CppType* b)
 {
-    if (a == b)
-        return 1;
-    if (a == nullptr || b == nullptr)
-        return 0;
-    return a->typeInfo == b->typeInfo ? 1 : 0;
+    // Interned handles agree; a MemberwiseClone remains a distinct RuntimeType object.
+    return a == b ? 1 : 0;
 }
 
 // Whether `ti` is a closed generic instantiation, i.e. whether the two names below

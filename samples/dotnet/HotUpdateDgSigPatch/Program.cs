@@ -10,7 +10,7 @@ namespace HotDgSigPatch;
 // pointer, invoked through the delegate's Invoke C++ ABI, so a target of a
 // different shape is called with registers the caller never set.
 //
-// The corruption is two in-place pooled writes onto the single method import:
+// The corruption is two in-place pooled writes onto the Rate method import:
 //
 //   "Rate"             ->  "Warn"              (4 bytes, no prefix to move)
 //   "(Single):String"  ->  "(String):String"   (15 bytes, likewise)
@@ -34,9 +34,20 @@ internal static class Program
     private static void Main()
     {
         QuotaEx q = Counter.SeedQuota;
-        // The one import the gate re-labels; the construction on the next line
+        // The Rate import the gate re-labels; the construction on the next line
         // is what has to refuse it.
         Tuner t = q.Rate;
         Console.WriteLine(t(3f));
+        Counter.TypeGetterSignatureProbe = ReadType;
+    }
+
+    private static string ReadType()
+    {
+        Console.WriteLine("== intrinsic Type getter signature ==");
+        object receiver = Counter.SeedQuota;
+        TypeGetter getter = receiver.GetType;
+        Console.WriteLine("type getter captured");
+        Console.WriteLine("type getter result=" + getter().FullName);
+        return "intrinsic Type getter signature end";
     }
 }

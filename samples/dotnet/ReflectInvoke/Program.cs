@@ -156,6 +156,9 @@ namespace ReflectInvoke
             if (args.Length > 0 && args[0] == "before-delegate-origin-boundaries")
                 return;
             LdftnLocalSubset.Program.RunOriginBoundaries();
+            if (args.Length > 0 && args[0] == "before-runtime-type-relations")
+                return;
+            RuntimeHandleRelationSubset.Program.RunRuntimeTypeRelations();
         }
     }
 }

@@ -4697,10 +4697,10 @@ internal sealed partial class Compilation
     /// the walk stepping past it, the same monotone subset the emitter's definedness
     /// filter makes.</para>
     ///
-    /// <para>Everything ABOVE the nearest invariant ancestor is left out: it becomes the
-    /// shell's base pointer and the runtime's own base walk reaches the rest from there.
-    /// Metadata order throughout — interface list order, then base-chain order — so the
-    /// emitted row order is a pure function of the input.</para></summary>
+    /// <para>The nearest invariant ancestor becomes the shell's base pointer, and its
+    /// interface closure also joins the shell's own rows for interface enumeration.
+    /// Definition metadata order precedes that ancestor's closure order, so the emitted
+    /// row order is a pure function of the input.</para></summary>
     internal (ClassInfo? Base, List<ClassInfo> Interfaces) OpenGenericDefAncestry(
         Module m, TypeDefinitionHandle handle, bool materialize = false)
     {
@@ -4730,6 +4730,10 @@ internal sealed partial class Compilation
             bm.ClassMap.TryGetValue(bh, out nearest);
             break;
         }
+        if (nearest is not null)
+            foreach (var itf in GetInterfaceClosure(nearest).Ordered)
+                if (!itfs.Contains(itf))
+                    itfs.Add(itf);
         return (nearest, itfs);
     }
 

@@ -82,6 +82,8 @@
 #     import (bound signature vs the delegate's Invoke row). Both sit at the
 #     `newobj` / frame boundary rather than at the dereference, because the
 #     receiver tests presume a reference slot holds an object.
+#   - an intrinsic Object.GetType capture retains its declared Type return:
+#     relabelling its delegate to return ICloneable is refused before invocation.
 #   - String.Concat rejects a null string[] and accepts empty arrays and null
 #     elements. These patch cases run after the original transcript and match
 #     a live managed oracle compiled from the same source, through both encodings.
@@ -254,7 +256,7 @@ grep -q dn2cpp_base_image_abi_hash "$OUT/generated.cpp" \
 # against the REAL net10.0 CoreLib, so which CoreLib that resolves to is an input
 # of this gate the same way it is of net10_bcl_diff_gate — a runtime bump must
 # not be served a green recorded against the previous one.
-if gate_cache_check "$OUT" "hotupdate-subset|cli:$(_gate_cli_hash)|field-metadata:$field_packed/$field_native|corelib:$(resolve_net10_corelib)|before-derived-aggregate|before-aggregate-collection|before-aggregate-message|before-ordinary-exception-message|oracle:--derived-aggregate/--aggregate-collection|unavailable-aggregate-ctor" \
+if gate_cache_check "$OUT" "hotupdate-subset|cli:$(_gate_cli_hash)|field-metadata:$field_packed/$field_native|corelib:$(resolve_net10_corelib)|before-derived-aggregate|before-aggregate-collection|before-aggregate-message|before-ordinary-exception-message|oracle:--derived-aggregate/--aggregate-collection|unavailable-aggregate-ctor|type-getter-signature:--type-getter-signature/before-type-getter-signature/register/stack/HotUpdateBase.TypeGetterSignatureFixture::EmitSurface" \
         "$base_app" "$patch_app" "$bad_app" "$badgvm_app" "$baditf_app" "$baddg_app" \
         "$concat_oracle_app" \
         "$badmc_app" "$dir1_app" "$dir2_app" "$dgrecv_app" "$dgsig_app" \
@@ -723,12 +725,16 @@ trig_corelib=$(resolve_net10_corelib)
 trig_bcl=$(dirname "$trig_corelib")
 trig_comp="$trig_bcl/System.IO.Compression.dll"
 [ -f "$trig_comp" ] || { echo "FAIL: real System.IO.Compression not found: $trig_comp" >&2; exit 1; }
+# Interface-returning delegate metadata needs the loaded CoreLib in both arms.
+trig_method_roots="$OUT/corelib-method-refs.txt"
+cp samples/dotnet/HotUpdatePatch/hotupdate-refs.txt "$trig_method_roots"
+printf '\nHotUpdateBase.TypeGetterSignatureFixture::EmitSurface\n' >> "$trig_method_roots"
 for arm in trigger notrigger; do
-    trig_refs=(-r "$trig_corelib")
+    trig_refs=(-r "$trig_corelib" -r "samples/dotnet/HotUpdateCoreLibBase/bin/$CONFIG/$TFM/HotUpdateCoreLibBase.dll")
     [ "$arm" = trigger ] && trig_refs+=(-r "$trig_comp")
     invoke_cli "$base_app" "${trig_refs[@]}" --auto-ref --hotupdate-base \
         --reflection-metadata "$field_native" \
-        --hotupdate-refs samples/dotnet/HotUpdatePatch/hotupdate-refs.txt -o "$OUT/$arm"
+        --hotupdate-refs "$trig_method_roots" -o "$OUT/$arm"
     grep -qw 'md_native_fldtab_HotUpdateBase_Counter' "$OUT/$arm"/generated*.cpp \
         || { echo "FAIL: Counter field metadata was not emitted native" >&2; exit 1; }
     invoke_cli --emit-patch "$patch_app" --base-abi "$OUT/$arm/base-abi.json" -o "$OUT/$arm"
@@ -1236,6 +1242,10 @@ dgsig_out=$("./$OUT/HotUpdateBase" "$OUT/HotUpdateDgSigPatch.bpi")
 grep -q '^rate#3$' <<<"$(strip_cr_win "$dgsig_out")" \
     || { echo "FAIL: the uncorrupted delegate-signature fixture did not print its rate:" >&2
          printf '%s\n' "$dgsig_out" >&2; exit 1; }
+dgsig_before=$(run_bounded "./$OUT/HotUpdateBase" "$OUT/HotUpdateDgSigPatch.bpi" before-type-getter-signature)
+dgsig_out=$(strip_cr_win "$dgsig_out")
+dgsig_before=$(strip_cr_win "$dgsig_before")
+assert_output "${dgsig_out%%$'\n== intrinsic Type getter signature =='*}" "$dgsig_before"
 cp "$OUT/HotUpdateDgSigPatch.bpi" "$OUT/confused-dgsig.bpi"
 dgsig_nameoff=$(LC_ALL=C grep -abo -- 'Rate' "$OUT/confused-dgsig.bpi" | cut -d: -f1)
 dgsig_shapeoff=$(LC_ALL=C grep -abo -- '(Single):String' "$OUT/confused-dgsig.bpi" | cut -d: -f1)
@@ -1262,6 +1272,66 @@ if ! grep -q "is not the delegate's Invoke signature" <<<"$dgsig_err"; then
     exit 1
 fi
 echo "OK (signature-confused AOT delegate target refused)"
+
+echo "-- intrinsic GetType capture validates the declared return in both codecs --"
+getter_oracle=$(run_bounded dotnet "$concat_oracle_app" --type-getter-signature)
+getter_oracle=$(strip_cr_win "$getter_oracle")
+for line in 'clone getter nonthrowing=True' 'clone getter throwing=ArgumentException' \
+        'type getter signature oracle end'; do
+    grep -Fxq -- "$line" <<< "$getter_oracle" \
+        || { echo "FAIL: CLR GetType signature oracle witness missing: $line" >&2; exit 1; }
+done
+getter_expected="${getter_oracle%%$'\nclone getter nonthrowing='*}"
+getter_failed=0
+for getter_codec in register stack; do
+    getter_dir="$OUT/type-getter-$getter_codec"
+    getter_flags=(--emit-patch "$dgsig_app" --base-abi "$OUT/trigger/base-abi.json" -o "$getter_dir")
+    [ "$getter_codec" = stack ] && getter_flags+=(--patch-stackcode)
+    invoke_cli "${getter_flags[@]}"
+    run_bounded "./$OUT/trigger/HotUpdateBase" "$getter_dir/HotUpdateDgSigPatch.bpi" \
+        > "$getter_dir/control.stdout"
+    getter_control=$(strip_cr_win_file "$getter_dir/control.stdout")
+    run_bounded "./$OUT/trigger/HotUpdateBase" "$getter_dir/HotUpdateDgSigPatch.bpi" before-type-getter-signature \
+        > "$getter_dir/before.stdout"
+    getter_before=$(strip_cr_win_file "$getter_dir/before.stdout")
+    assert_output "$getter_before" "$dgsig_before"
+    assert_output "${getter_control%%$'\n== intrinsic Type getter signature =='*}" "$getter_before"
+    assert_output "== intrinsic Type getter signature ==${getter_control#*$'\n== intrinsic Type getter signature =='}" "$getter_expected"
+
+    cp "$getter_dir/HotUpdateDgSigPatch.bpi" "$getter_dir/confused-return.bpi"
+    # The resolver may return an interpreter command with arguments.
+    # shellcheck disable=SC2086
+    $hotupdate_python - "$getter_dir/confused-return.bpi" <<'PY'
+from pathlib import Path
+import sys
+
+p = Path(sys.argv[1])
+data = p.read_bytes()
+old, new = b'HotUpdateBase.TypeGetter', b'HotUpdateBase.CloneThunk'
+if len(old) != len(new) or data.count(old) != 1:
+    raise SystemExit('GetType delegate name is not a unique length-preserving target')
+offset = data.index(old)
+if offset < 2 or int.from_bytes(data[offset - 2:offset], 'little') != len(old):
+    raise SystemExit('GetType delegate name is not a pooled string entry')
+p.write_bytes(data[:offset] + new + data[offset + len(old):])
+PY
+    set +e
+    run_bounded "./$OUT/trigger/HotUpdateBase" "$getter_dir/confused-return.bpi" \
+        > "$getter_dir/confused.stdout" 2> "$getter_dir/confused.stderr"
+    getter_rc=$?
+    set -e
+    getter_stdout=$(strip_cr_win_file "$getter_dir/confused.stdout")
+    getter_stderr=$(strip_cr_win_file "$getter_dir/confused.stderr")
+    if [ "$getter_rc" -eq 0 ] \
+        || ! grep -Fq "is not the delegate's Invoke signature" <<< "$getter_stderr" \
+        || ! grep -Fxq '== intrinsic Type getter signature ==' <<< "$getter_stdout" \
+        || grep -Fxq 'type getter captured' <<< "$getter_stdout"; then
+        echo "FAIL: $getter_codec GetType capture accepted an incompatible declared return or missed its capture refusal" >&2
+        getter_failed=1
+    fi
+done
+[ "$getter_failed" -eq 0 ] || exit 1
+echo "OK (intrinsic GetType declared-return captures refused in both codecs)"
 
 echo "-- deployment: a *.bpi directory loads version-ordered, newest wins --"
 invoke_cli --emit-patch "$dir1_app" --base-abi "$OUT/base-abi.json" --patch-version 1 -o "$OUT"

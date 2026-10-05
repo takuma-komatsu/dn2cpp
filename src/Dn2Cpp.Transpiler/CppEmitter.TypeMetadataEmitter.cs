@@ -687,10 +687,11 @@ internal sealed partial class CppEmitter
 
         /// <summary>The minimal type-infos of the classes <see cref="ReferencedIntrinsicTypeInfos"/>
         /// forward-declared: name, base chain (a reference type chains to System.Object; a
-        /// value type or interface roots at null, runtime-struct size where one exists, and
+        /// value type or interface roots at null), runtime-struct size where one exists, and
         /// the flag bits <c>dn2cpp_isinst</c>/
-        /// <c>dn2cpp_type_is_*</c> read. No vtable and no member/interface tables — those are
-        /// intrinsic-dispatched — and no ty_ companion, so typeof interns lazily. An
+        /// <c>dn2cpp_type_is_*</c> read. Relation-only interface rows may be present; calls
+        /// are intrinsic-dispatched without vtables or member/interface dispatch tables.
+        /// No ty_ companion, so typeof interns lazily. An
         /// intrinsic value that can be boxed wires the object virtuals its runtime payload
         /// can answer without a managed body.
         ///
@@ -728,8 +729,19 @@ internal sealed partial class CppEmitter
             }
             foreach (var c in _e._referencedIntrinsicTis)
             {
+                bool isTask = _c.GenericDefFullName(c) == "System.Threading.Tasks.Task";
+                string interfaces = "nullptr";
+                int interfaceCount = 0;
+                if (isTask)
+                {
+                    // Intrinsic shapes omit managed ancestry; the definition's invariant
+                    // metadata supplies Task's inherited relation rows without decoding its fields.
+                    var ancestry = _c.OpenGenericDefAncestry(c.Module, c.Handle);
+                    (_, interfaces, interfaceCount) = GenericDefRelations(c.CppName,
+                        ancestry.Base, ancestry.Interfaces, c.IsValueType, c.IsInterface);
+                }
                 string baseExpr = c.IsValueType || c.IsInterface ? "nullptr"
-                    : _c.GenericDefFullName(c) == "System.Threading.Tasks.Task"
+                    : isTask
                         ? "&dn2cpp_task_type"
                         : "&dn2cpp_object_type";
                 string size = c.IntrinsicCppName == "Dn2CppTask*"
@@ -788,6 +800,7 @@ internal sealed partial class CppEmitter
                 _e.EmitTypeInfo(_sb, c.CppTypeInfoName, new TypeMetadata {
                     Native = _c.UsesNativeReflectionMetadata(c),
                     Name = displayName, Base = baseExpr, InstanceSize = size,
+                    Interfaces = interfaces, InterfaceCount = interfaceCount,
                     ToStringFn = toString, HashFn = getHash, EqualsFn = equals, Flags = flags,
                     GenericDef = genericDef, GenericArgs = genericArgs, GenericArgCount = genericCount,
                 });

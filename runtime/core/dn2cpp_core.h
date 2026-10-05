@@ -2712,7 +2712,10 @@ extern const Dn2CppTypeInfo dn2cpp_decimal_type;
 // identities even though they share the Dn2CppTaskAwaiter C++ layout.
 extern const Dn2CppTypeInfo dn2cpp_yield_awaiter_type;
 extern const Dn2CppTypeInfo dn2cpp_parallel_loop_result_type;
+// Dn2CppType objects carry RuntimeType; the public abstract bases have distinct identities.
 extern const Dn2CppTypeInfo dn2cpp_type_type;
+extern const Dn2CppTypeInfo dn2cpp_public_type_type;
+extern const Dn2CppTypeInfo dn2cpp_typeinfo_type;
 extern const Dn2CppTypeInfo dn2cpp_exception_type;
 // The fixed set of exception types the runtime *itself* raises (the trap helpers
 // below + the File I/O / cast paths). Each carries a stable handle, based on its nearest

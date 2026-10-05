@@ -115,6 +115,111 @@ static class Program
         return false;
     }
 
+    private static string InterfaceNames(Type type)
+    {
+        var interfaces = type.GetInterfaces();
+        var names = new string[interfaces.Length];
+        for (int i = 0; i < interfaces.Length; i++)
+            names[i] = interfaces[i].FullName ?? interfaces[i].Name;
+        Array.Sort(names, StringComparer.Ordinal);
+        return string.Join("|", names);
+    }
+
+    private static void TypeRelations(string label, Type type)
+    {
+        Console.WriteLine(label + " chain: " + Chain(type));
+        Console.WriteLine(label + " interfaces: " + InterfaceNames(type));
+        foreach (Type itf in new[] { typeof(ICloneable), typeof(IReflectableType), typeof(IReflect),
+            typeof(ICustomAttributeProvider) })
+        {
+            Console.WriteLine(label + " " + itf.Name + ": assign=" + itf.IsAssignableFrom(type)
+                + "/lists=" + Lists(type, itf)
+                + "/named=" + (type.GetInterface(itf.Name)?.FullName ?? "null"));
+        }
+    }
+
+    private static void TaskRelations(string label, Type type, object? instance)
+    {
+        Console.WriteLine(label + " name: " + type.Name);
+        Console.WriteLine(label + " chain: " + Chain(type));
+        Console.WriteLine(label + " interfaces: " + InterfaceNames(type));
+        foreach (Type itf in new[] { typeof(IDisposable), typeof(IAsyncResult) })
+        {
+            Console.WriteLine(label + " " + itf.Name + ": assign=" + itf.IsAssignableFrom(type)
+                + "/lists=" + Lists(type, itf)
+                + "/named=" + (type.GetInterface(itf.Name)?.FullName ?? "null"));
+        }
+        if (instance is not null)
+        {
+            Console.WriteLine(label + " object: type=" + (instance.GetType() == type)
+                + "/task=" + (instance is Task) + "/disposable=" + (instance is IDisposable)
+                + "/async=" + (instance is IAsyncResult));
+        }
+    }
+
+    internal static void RunRuntimeTypeRelations()
+    {
+        Console.WriteLine("== runtime Type and Task relations ==");
+        Type type = typeof(int);
+        object value = type;
+        Type runtime = value.GetType();
+        TypeInfo info = type.GetTypeInfo();
+        Test("Type and TypeInfo identity differs", typeof(Type) != typeof(TypeInfo));
+        Console.WriteLine("runtime Type name: " + runtime.FullName);
+        Test("runtime Type identity differs from Type", runtime != typeof(Type));
+        Test("runtime Type identity differs from TypeInfo", runtime != typeof(TypeInfo));
+        Test("GetTypeInfo keeps runtime object", ReferenceEquals(type, info));
+        Console.WriteLine("runtime Type object relations: clone=" + (value is ICloneable)
+            + "/reflectable=" + (value is IReflectableType) + "/info=" + (value is TypeInfo)
+            + "/reflect=" + (value is IReflect) + "/member=" + (value is MemberInfo));
+        TypeRelations("public Type", typeof(Type));
+        TypeRelations("public TypeInfo", typeof(TypeInfo));
+        TypeRelations("runtime Type", runtime);
+        Test("Type <- TypeInfo", typeof(Type).IsAssignableFrom(typeof(TypeInfo)));
+        Test("TypeInfo <- Type", typeof(TypeInfo).IsAssignableFrom(typeof(Type)));
+        Test("TypeInfo <- runtime Type", typeof(TypeInfo).IsAssignableFrom(runtime));
+        Test("MemberInfo <- runtime Type", typeof(MemberInfo).IsAssignableFrom(runtime));
+
+        MethodInfo cloneMethod = typeof(object).GetMethod("MemberwiseClone",
+            BindingFlags.Instance | BindingFlags.NonPublic)!;
+        object clone = cloneMethod.Invoke(value, null)!;
+        Console.WriteLine("runtime Type clone: distinct=" + !ReferenceEquals(value, clone)
+            + "/type=" + (clone.GetType() == runtime) + "/wrapped=" + ((Type)clone).FullName);
+        Console.WriteLine("runtime Type object methods: text=" + value.ToString()
+            + "/clone-text=" + clone.ToString() + "/equals=" + value.Equals(clone)
+            + "/hash=" + (value.GetHashCode() == clone.GetHashCode())
+            + "/other=" + value.Equals(typeof(string)) + "/null=" + value.Equals(null));
+        Type clonedType = (Type)clone;
+        Type same = typeof(int);
+        Console.WriteLine("runtime Type clone equality: typed=" + type.Equals(clonedType)
+            + "/object=" + type.Equals(clone) + "/operator=" + (type == clonedType)
+            + "/not=" + (type != clonedType) + "/static=" + object.Equals(type, clonedType));
+        Console.WriteLine("runtime Type interned equality: reference=" + ReferenceEquals(type, same)
+            + "/typed=" + type.Equals(same) + "/object=" + type.Equals((object)same)
+            + "/operator=" + (type == same) + "/not=" + (type != same)
+            + "/static=" + object.Equals(type, same));
+        Console.WriteLine("runtime Type hash mouths: source=" + (type.GetHashCode() == value.GetHashCode())
+            + "/clone=" + (clonedType.GetHashCode() == clone.GetHashCode())
+            + "/clone-pair=" + (type.GetHashCode() == clonedType.GetHashCode())
+            + "/interned=" + (type.GetHashCode() == same.GetHashCode()));
+        Test("cloned Type GetTypeInfo keeps object", ReferenceEquals(clone, ((Type)clone).GetTypeInfo()));
+        foreach (Type owner in new[] { typeof(object), typeof(Exception) })
+        {
+            Type returned = owner.GetMethod("GetType")!.ReturnType;
+            Console.WriteLine(owner.Name + " GetType return: " + returned.FullName
+                + "/Type=" + (returned == typeof(Type)) + "/TypeInfo=" + (returned == typeof(TypeInfo))
+                + "/RuntimeType=" + (returned == runtime));
+        }
+
+        TaskRelations("Task<int>", typeof(Task<int>), Task.FromResult(7));
+        TaskRelations("Task<string>", typeof(Task<string>), Task.FromResult("text"));
+        TaskRelations("Task<Holder>", typeof(Task<Holder>), Task.FromResult(new Holder()));
+        TaskRelations("open Task", typeof(Task<>), null);
+        Test("Task <- Task<int>", typeof(Task).IsAssignableFrom(typeof(Task<int>)));
+        Test("Task<object> <- Task<string>", typeof(Task<object>).IsAssignableFrom(typeof(Task<string>)));
+        Console.WriteLine("runtime Type and Task relations end");
+    }
+
     // A receiver typed only as IDisposable: no call site can devirtualize it, so the
     // call goes through the handle's IDisposable map.
     private static string Release(IDisposable value)
