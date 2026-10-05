@@ -473,8 +473,10 @@ nor a statically reached instantiation, so reflection can answer it exactly for
 type arguments no call site named (`Unsafe.SizeOf<T>` static,
 `Object.MemberwiseClone` instance). Add a row to `g_meta_members` in
 `runtime/core/intrinsics/dn2cpp_system_reflection.cpp`, which the *named* lookup
-consults after the type's own rows miss. Four rules: synthesized rows stay out of
-`GetMethods()`; the answer comes from layout reasoning, never from `instanceSize`
+consults after the type's own rows miss. Four rules: partial intrinsic catalogs stay out of
+`GetMethods()`, while Object's complete family and its ValueType/Exception
+replacements share the named-lookup handles and override rules; the answer
+comes from layout reasoning, never from `instanceSize`
 raw (that field is the box-payload width); a row carries its own `attrs`, since
 the lookup's `BindingFlags` filter and the row must not disagree; the lookup
 walks the **base chain**, with the row still naming the declaring type.

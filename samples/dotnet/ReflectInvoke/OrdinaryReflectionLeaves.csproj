@@ -10,6 +10,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../ReflectReturnLib/ReflectReturnLib.csproj" />
     <Compile Include="OrdinaryReflectionLeavesProgram.cs" />
     <Compile Include="ReflectFieldValidationSubset.cs" />
     <Compile Include="OrdinaryAmbiguousMatchSubset.cs" />

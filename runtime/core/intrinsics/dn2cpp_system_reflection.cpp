@@ -2052,6 +2052,12 @@ struct Dn2CppSeenSlots
 
 using Dn2CppMethodCandidates = Dn2CppWalkList<Dn2CppMetadataHandle<Dn2CppMethodInfo>, 16>;
 
+static bool dn2cpp_meta_family_name(const Dn2CppMethodInfo& row);
+static int32_t dn2cpp_meta_collect_family(const Dn2CppTypeInfo* type, int32_t flags,
+    Dn2CppMethodCandidates& emitted, Dn2CppObject** out);
+static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_meta_object_base(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi);
+
+
 // Walk the type and its base chain (stopping at DeclaredOnly), collecting matching
 // methods. A virtual method (vtableSlot >= 0) is reported only at its most-derived
 // override: once a slot is seen walking derived→base, the inherited definition at the
@@ -2063,6 +2069,7 @@ static int32_t dn2cpp_collect_methods(const Dn2CppTypeInfo* type, int32_t flags,
     int32_t n = 0;
     Dn2CppSeenSlots seen;
     Dn2CppGvmHiding gvm;
+    Dn2CppMethodCandidates family;
     for (const Dn2CppTypeInfo* ti = type; ti != nullptr; ti = ti->base)
     {
         dn2cpp_require_metadata(ti);
@@ -2076,6 +2083,8 @@ static int32_t dn2cpp_collect_methods(const Dn2CppTypeInfo* type, int32_t flags,
                 continue;
             if (row->vtableSlot >= 0 ? seen.seen(row->vtableSlot) : gvm.hides(mi, *row.operator->()))
                 continue;
+            if (dn2cpp_meta_family_name(*row.operator->()))
+                family.push_back(mi);
             if (out != nullptr)
                 dn2cpp_gc_store_ref(&out[n],
                     reinterpret_cast<Dn2CppObject*>(dn2cpp_make_methodref(mi, type)));
@@ -2085,7 +2094,7 @@ static int32_t dn2cpp_collect_methods(const Dn2CppTypeInfo* type, int32_t flags,
             break;
         gvm.next_type();
     }
-    return n;
+    return n + dn2cpp_meta_collect_family(type, flags, family, out != nullptr ? out + n : nullptr);
 }
 
 Dn2CppArrayRef* dn2cpp_type_get_methods(Dn2CppType* t, int32_t bindingFlags)
@@ -2413,31 +2422,35 @@ static const Dn2CppMetaMember g_meta_members[] = {
     { "System.Runtime.CompilerServices.Unsafe", "SizeOf", 1, &dn2cpp_int32_type,
       DN2CPP_MTHA_STATIC | DN2CPP_MTHA_PUBLIC, 0x0096, dn2cpp_meta_unsafe_sizeof,
       nullptr, 0, nullptr, "Int32", false, 0x0100 },
+    { "System.Object", "GetType", 0, &dn2cpp_type_type, DN2CPP_MTHA_PUBLIC, 0x0086,
+      dn2cpp_meta_object_gettype, nullptr, 0, "System.Type GetType()", "System.Type", true },
     { "System.Object", "MemberwiseClone", 0, &dn2cpp_object_type,
       0 /* instance, non-public */, 0x0085, dn2cpp_meta_object_memberwise_clone,
       nullptr, 0, "System.Object MemberwiseClone()", "System.Object", false },
+    { "System.Object", "Finalize", 0, &dn2cpp_void_type, 0 /* instance, non-public */, 0x01C4,
+      dn2cpp_meta_object_finalize, nullptr, 0, "Void Finalize()", "Void", true },
     { "System.Object", "ToString", 0, &dn2cpp_string_type, DN2CPP_MTHA_PUBLIC, 0x01C6,
       dn2cpp_meta_object_tostring, nullptr, 0, "System.String ToString()", "System.String", true },
     { "System.Object", "Equals", 0, &dn2cpp_bool_type, DN2CPP_MTHA_PUBLIC, 0x01C6,
       dn2cpp_meta_object_equals, g_meta_params_obj, 1, "Boolean Equals(System.Object)", "Boolean", true },
-    { "System.Object", "GetHashCode", 0, &dn2cpp_int32_type, DN2CPP_MTHA_PUBLIC, 0x01C6,
-      dn2cpp_meta_object_gethashcode, nullptr, 0, "Int32 GetHashCode()", "Int32", true },
-    { "System.Object", "GetType", 0, &dn2cpp_type_type, DN2CPP_MTHA_PUBLIC, 0x0086,
-      dn2cpp_meta_object_gettype, nullptr, 0, "System.Type GetType()", "System.Type", true },
-    { "System.Object", "Finalize", 0, &dn2cpp_void_type, 0 /* instance, non-public */, 0x01C4,
-      dn2cpp_meta_object_finalize, nullptr, 0, "Void Finalize()", "Void", true },
     { "System.Object", "Equals", 0, &dn2cpp_bool_type, DN2CPP_MTHA_STATIC | DN2CPP_MTHA_PUBLIC, 0x0096,
       dn2cpp_meta_object_static_equals, g_meta_params_obj_pair, 2,
       "Boolean Equals(System.Object, System.Object)", "Boolean", true },
     { "System.Object", "ReferenceEquals", 0, &dn2cpp_bool_type, DN2CPP_MTHA_STATIC | DN2CPP_MTHA_PUBLIC, 0x0096,
       dn2cpp_meta_object_reference_equals, g_meta_params_obj_pair, 2,
       "Boolean ReferenceEquals(System.Object, System.Object)", "Boolean", true },
-    { "System.ValueType", "ToString", 0, &dn2cpp_string_type, DN2CPP_MTHA_PUBLIC, 0x00C6,
+    { "System.Object", "GetHashCode", 0, &dn2cpp_int32_type, DN2CPP_MTHA_PUBLIC, 0x01C6,
+      dn2cpp_meta_object_gethashcode, nullptr, 0, "Int32 GetHashCode()", "Int32", true },
+    { "System.Exception", "ToString", 0, &dn2cpp_string_type, DN2CPP_MTHA_PUBLIC, 0x00C6,
       dn2cpp_meta_object_tostring, nullptr, 0, "System.String ToString()", "System.String", true },
+    { "System.Exception", "GetType", 0, &dn2cpp_type_type, DN2CPP_MTHA_PUBLIC, 0x0086,
+      dn2cpp_meta_object_gettype, nullptr, 0, "System.Type GetType()", "System.Type", true },
     { "System.ValueType", "Equals", 0, &dn2cpp_bool_type, DN2CPP_MTHA_PUBLIC, 0x00C6,
       dn2cpp_meta_valuetype_equals, g_meta_params_obj, 1, "Boolean Equals(System.Object)", "Boolean", true },
     { "System.ValueType", "GetHashCode", 0, &dn2cpp_int32_type, DN2CPP_MTHA_PUBLIC, 0x00C6,
       dn2cpp_meta_valuetype_gethashcode, nullptr, 0, "Int32 GetHashCode()", "Int32", true },
+    { "System.ValueType", "ToString", 0, &dn2cpp_string_type, DN2CPP_MTHA_PUBLIC, 0x00C6,
+      dn2cpp_meta_object_tostring, nullptr, 0, "System.String ToString()", "System.String", true },
 };
 static constexpr int32_t g_meta_member_count =
     static_cast<int32_t>(sizeof(g_meta_members) / sizeof(g_meta_members[0]));
@@ -2546,6 +2559,8 @@ static const Dn2CppTypeInfo* dn2cpp_meta_next_level(const Dn2CppTypeInfo* ti)
 {
     if (ti->base != nullptr)
         return ti->base;
+    if (ti == &dn2cpp_exception_type)
+        return &dn2cpp_object_type;
     if ((ti->flags & DN2CPP_TF_ARRAY) != 0)
         return &dn2cpp_object_type;
     if ((ti->flags & DN2CPP_TF_VALUETYPE) != 0)
@@ -2555,6 +2570,8 @@ static const Dn2CppTypeInfo* dn2cpp_meta_next_level(const Dn2CppTypeInfo* ti)
 
 static bool dn2cpp_meta_declares(const Dn2CppTypeInfo* ti, const Dn2CppMetaMember* d)
 {
+    if (std::strcmp(d->typeName, "System.Exception") == 0)
+        return ti == &dn2cpp_exception_type;
     return ti->name != nullptr && std::strcmp(ti->name, d->typeName) == 0;
 }
 
@@ -2564,6 +2581,8 @@ static bool dn2cpp_meta_declares(const Dn2CppTypeInfo* ti, const Dn2CppMetaMembe
 // which reflection reads as declaring none.
 static bool dn2cpp_meta_level_passes(const Dn2CppTypeInfo* ti)
 {
+    if (ti == &dn2cpp_exception_type)
+        return true;
     if ((ti->flags & (DN2CPP_TF_OBJECT_MEMBER_ROWS | DN2CPP_TF_ARRAY | DN2CPP_TF_PATCH)) != 0)
         return true;
     return ti->name != nullptr
@@ -2678,7 +2697,7 @@ static int32_t dn2cpp_meta_object_virtual_index(const Dn2CppMetaMember* d)
     return -1;
 }
 
-// The Object virtual a ValueType member overrides.
+// The Object virtual a synthesized override replaces.
 static const Dn2CppMetaMember* dn2cpp_meta_object_counterpart(const Dn2CppMetaMember* d)
 {
     for (int32_t k = 0; k < g_meta_member_count; k++)
@@ -2705,6 +2724,67 @@ static bool dn2cpp_meta_emitted_on_level(const Dn2CppMethodCandidates& cands,
             return true;
     }
     return false;
+}
+
+// Object's complete family is enumerable; partial intrinsic member catalogs are not.
+static bool dn2cpp_meta_family(const Dn2CppMetaMember* d)
+{
+    return std::strcmp(d->typeName, "System.Object") == 0
+        || std::strcmp(d->typeName, "System.ValueType") == 0
+        || std::strcmp(d->typeName, "System.Exception") == 0;
+}
+
+static bool dn2cpp_meta_family_name(const Dn2CppMethodInfo& row)
+{
+    for (int32_t k = 0; k < g_meta_member_count; k++)
+        if (dn2cpp_meta_family(&g_meta_members[k]) && std::strcmp(row.name, g_meta_members[k].methodName) == 0)
+            return true;
+    return false;
+}
+
+// Overrides replace their Object slot; new slots and nonvirtual names keep both rows.
+static int32_t dn2cpp_meta_collect_family(const Dn2CppTypeInfo* type, int32_t flags,
+    Dn2CppMethodCandidates& emitted, Dn2CppObject** out)
+{
+    int32_t n = 0;
+    bool gatedOpen = true;
+    for (const Dn2CppTypeInfo* ti = type; ti != nullptr; ti = dn2cpp_meta_next_level(ti))
+    {
+        dn2cpp_require_metadata(ti);
+        for (int32_t k = 0; k < g_meta_member_count; k++)
+        {
+            const Dn2CppMetaMember* d = &g_meta_members[k];
+            if (!dn2cpp_meta_family(d) || (d->gated && !gatedOpen) || !dn2cpp_meta_declares(ti, d)
+                || !dn2cpp_member_matches(d->attrs, flags, ti != type))
+                continue;
+            bool present = false;
+            const Dn2CppMetaMember* root = (d->ilAttrs & DN2CPP_MA_VIRTUAL) != 0
+                ? dn2cpp_meta_object_counterpart(d) : nullptr;
+            for (int32_t i = 0; i < emitted.size() && !present; i++)
+            {
+                const Dn2CppMethodInfo row = *emitted[i];
+                present = row.declaringType == ti && row.genericParamCount == d->genericArity
+                    && std::strcmp(row.name, d->methodName) == 0 && dn2cpp_meta_same_params(row, d);
+                if (!present && root != nullptr)
+                {
+                    const auto base = dn2cpp_meta_object_base(emitted[i]);
+                    present = base && dn2cpp_meta_desc_of(base) == root;
+                }
+            }
+            if (present)
+                continue;
+            const auto mi = dn2cpp_meta_row(d, ti, nullptr, 0);
+            emitted.push_back(mi);
+            if (out != nullptr)
+                dn2cpp_gc_store_ref(&out[n], reinterpret_cast<Dn2CppObject*>(dn2cpp_make_methodref(mi, type)));
+            n++;
+        }
+        if (flags & DN2CPP_BF_DECLAREDONLY)
+            break;
+        if (!dn2cpp_meta_level_passes(ti))
+            gatedOpen = false;
+    }
+    return n;
 }
 
 // The named-lookup hook: appends the rows a lookup on `queried` finds after the
@@ -7263,7 +7343,8 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_meta_object_base(Dn2CppMeta
     if ((row.attrs & DN2CPP_MTHA_METAANSWER) != 0)
     {
         const Dn2CppMetaMember* own = dn2cpp_meta_desc_of(mi);
-        if (own != nullptr && std::strcmp(own->typeName, "System.ValueType") == 0)
+        if (own != nullptr && (own->ilAttrs & DN2CPP_MA_VIRTUAL) != 0
+            && (own->ilAttrs & DN2CPP_MA_NEWSLOT) == 0)
             d = dn2cpp_meta_object_counterpart(own);
     }
     else if ((row.ilAttrs & DN2CPP_MA_NEWSLOT) == 0)

@@ -1,0 +1,5 @@
+<linker>
+  <assembly fullname="ReflectReturnLib">
+    <type fullname="ReflectReturnLib.VirtualFactory" preserve="all" />
+  </assembly>
+</linker>

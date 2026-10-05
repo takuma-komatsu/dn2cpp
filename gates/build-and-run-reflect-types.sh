@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Runtime generic template invocation, member rows, hidden contexts and boxed-value copies.
+# Runtime exception Object-family lookups retain declaring types and callable handles.
 # Nested generic type names agree through typeof, GetType and delegate declaring types.
 # A template body that calls through a function pointer over its type parameter never
 # returns a wrong result: its .NET-diffed lines print alike for a refusal and a correct
@@ -312,7 +313,7 @@ source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_ordinary-reflection.sh samples/dotnet/ReflectTypes/AttributeTypePropertySubset.cs samples/dotnet/ReflectTypes/DataOnlyAttributeRowsOnly.csproj samples/dotnet/ReflectTypes/DataOnlyAttributeRowsOnlyProgram.cs samples/dotnet/ReflectTypes/OrdinaryReflectionTypeLeaves.csproj samples/dotnet/ReflectTypes/OrdinaryReflectionTypeLeavesProgram.cs samples/dotnet/ReflectTypes/PropertyAccessorRowsSubset.cs samples/dotnet/ReflectTypes/ReflectAssemblyErrorSubset.cs samples/dotnet/ReflectTypes/ReflectAttrBoxedSubset.cs samples/dotnet/ReflectTypes/ReflectRuntimeTypeParitySubset.cs samples/dotnet/ReflectTypes/ReflectTypes.csproj samples/dotnet/ReflectTypes/UnreadAttributeRowsOnly.csproj samples/dotnet/ReflectTypes/UnreadAttributeRowsOnlyProgram.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|before-nested-generic-names"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/NestedGenericTypeNameSubset.cs samples/dotnet/ReflectTypes/GenericDefinitionSymbolNeighbors.cs"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-type-leaves-v1|before-attribute-display-code-units"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-type-leaves-v1|before-attribute-display-code-units|exception-object-prefix-argv:before-exception-object-members"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/ReflectionTemplateDispatch.csproj samples/dotnet/ReflectTypes/ReflectionTemplateDispatchProgram.cs samples/dotnet/ReflectTypes/ReflectRuntimeInstantiationSubset.cs"
 
 EXPFILE="$(dirname "$0")/expected/reflect-types.txt"
@@ -675,6 +676,26 @@ gate_extra_asserts() {
     done
     grep -Eq '^extern const char md_display_[0-9]+\[\] = \{ \(char\)254,' "$out"/generated*.cpp \
         || { echo 'FAIL: lossless attribute display stream was not emitted' >&2; return 1; }
+    before=$(run_bounded dotnet "$_CG_APP" before-exception-object-members) || return $?
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== exception Object member lookup ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== exception Object member lookup ==' \
+        'Exception.GetHashCode=Object:Exception:True:False:454:base=Object:same=True' \
+        'Exception.ToString=Exception:Exception:True:False:198:base=Object:same=True' \
+        'NeverAllocatedFault.GetType=Exception:NeverAllocatedFault:False:False:134:base=Exception:same=True' \
+        'DescribedFault.ToString=DescribedFault:DescribedFault:True:False:198:base=Object:same=True' \
+        'IndexOutOfRangeException.Equals=Object:IndexOutOfRangeException:True:False:454:base=Object:same=True' \
+        'exception Object member lookup end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: exception member witness missing: $line" >&2; return 1; }
+    done
+    for label in base allocated override raised 'unbound raised'; do
+        grep -Fxq "$label invoke=True:True:True:True" <<< "$native" \
+            && grep -Fxq "$label null receiver=TargetException:null" <<< "$native" \
+            && grep -Fxq "$label wrong receiver=TargetException:null" <<< "$native" \
+            || { echo "FAIL: exception invocation or receiver validation changed: $label" >&2; return 1; }
+    done
 }
 DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectTypes OrdinaryReflectionTypeLeaves \
     System.Collections System.ComponentModel.Primitives --no-ildiet

@@ -180,6 +180,7 @@
 # the other's with .NET's ArgumentException.
 # Same-module TypeDef-parent MemberRefs bind overloads, instance and generic
 # methods; closed generic owners retain their TypeSpec identity.
+# Object-family enumeration includes inherited metadata answers under binding flags.
 # Pointer field accessors box and validate unmanaged/function addresses with
 # packed and native metadata, preserving static-readonly accessor refusal order.
 source "$(dirname "$0")/_common.sh"
@@ -188,8 +189,8 @@ DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_ordinary-reflecti
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-reflection-leaves-v1|runtime-member-attributes-prefix:${DN2CPP_BEFORE_RUNTIME_MEMBER_ATTRIBUTES:-}|runtime-return-modifiers-prefix:${DN2CPP_BEFORE_RUNTIME_RETURN_MODIFIERS:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|reflection-dispatch-v1|dispatch-prefix:${DN2CPP_BEFORE_REFLECTION_DISPATCH:-}|attribute-minted-prefix:${DN2CPP_BEFORE_ATTRIBUTE_MINTED:-}|template-accessors-prefix:${DN2CPP_BEFORE_TEMPLATE_ACCESSORS:-}|pointer-returns-prefix:${DN2CPP_BEFORE_POINTER_RETURNS:-}|delegate-invoke-targets-prefix:${DN2CPP_BEFORE_DELEGATE_INVOKE_TARGETS:-}|null-bound-chains-prefix:${DN2CPP_BEFORE_NULL_BOUND_CHAINS:-}|renamed-slot-bindings-prefix:${DN2CPP_BEFORE_RENAMED_SLOT_BINDINGS:-}|settled-object-virtual-prefix:${DN2CPP_BEFORE_SETTLED_OBJECT_VIRTUAL:-}|renamed-slot-fillers-prefix:${DN2CPP_BEFORE_RENAMED_SLOT_FILLERS:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|stripped-overrides:${DN2CPP_STRIPPED_OVERRIDES:-}|library-struct-prefix:${DN2CPP_BEFORE_LIBRARY_STRUCT_RETURN:-}|function-pointer-identity-prefix:${DN2CPP_BEFORE_FUNCTION_POINTER_IDENTITY:-}"
-DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|pointer-fields-prefix:${DN2CPP_BEFORE_POINTER_FIELDS:-}"
-DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectFrameworkBind/keep-library-override.xml"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|pointer-fields-prefix:${DN2CPP_BEFORE_POINTER_FIELDS:-}|object-methods-prefix-argv:before-object-method-enumeration"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectFrameworkBind/keep-library-override.xml samples/dotnet/ReflectInvoke/keep-object-methods.xml"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/ReflectPointerFieldsOnly.csproj samples/dotnet/ReflectInvoke/ReflectPointerFieldsPreserved.csproj samples/dotnet/ReflectInvoke/ReflectPointerFieldsOnlyProgram.cs samples/dotnet/ReflectInvoke/keep-pointer-field.xml samples/dotnet/ReflectReturnLib/PointerFields.cs"
 
 py="$(resolve_python)"
@@ -815,6 +816,33 @@ gate_extra_asserts() {
     before=$(strip_cr_win "$before")
     prefix=$(awk '/^== reflected pointer fields ==$/ { exit } { print }' <<< "$native")
     assert_output "$prefix" "$before"
+    before=$(run_bounded dotnet "$_CG_APP" before-object-method-enumeration) || return $?
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== Object family method enumeration ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== Object family method enumeration ==' \
+        'method order Object/20=GetType/0|ToString/0|Equals/1|GetHashCode/0' \
+        'method order Object/28=GetType/0|ToString/0|Equals/1|Equals/2|ReferenceEquals/2|GetHashCode/0' \
+        'method order Object/60=GetType/0|MemberwiseClone/0|Finalize/0|ToString/0|Equals/1|Equals/2|ReferenceEquals/2|GetHashCode/0' \
+        'method order ObjectLeaf/20=Local/0|GetType/0|ToString/0|Equals/1|GetHashCode/0' \
+        'method order VirtualFactory/20=MakeVirtual/1|GetType/0|ToString/0|Equals/1|GetHashCode/0' \
+        'methods Object/20=4:same=True' 'methods Object/28=6:same=True' 'methods Object/60=8:same=True' \
+        'methods Object/62=8:same=True' 'methods ObjectLeaf/20=5:same=True' \
+        'methods ObjectLeaf/28=5:same=True' 'methods ObjectLeaf/60=7:same=True' 'methods ObjectLeaf/124=9:same=True' \
+        'methods ObjectLeaf/62=1:same=True' 'methods ObjectLeaf/88=2:same=True' \
+        'methods ObjectLeaf/36=2:same=True' 'methods ObjectLeaf/0=0:same=True' \
+        'methods ObjectOverride/20=5:same=True' 'methods ObjectNewSlot/20=6:same=True' \
+        'methods ObjectNewPlain/20=6:same=True' 'methods ObjectOverload/20=6:same=True' \
+        'methods VirtualFactory/20=5:same=True' 'methods VirtualFactory/62=1:same=True' \
+        'methods VirtualFactory/124=9:same=True' 'methods ObjectValue/20=4:same=True' \
+        'method order ValueType/20=Equals/1|GetHashCode/0|ToString/0|GetType/0' \
+        'method order ObjectPlainValue/20=Equals/1|GetHashCode/0|ToString/0|GetType/0' \
+        'methods ValueType/20=4:same=True' 'methods ObjectPlainValue/20=4:same=True' \
+        'methods ObjectValue/62=1:same=True' 'enumerated invocation=True:True' \
+        'Object family method enumeration end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: Object family enumeration witness missing: $line" >&2; return 1; }
+    done
     for line in '== reflected pointer fields ==' \
         'Int pointer get: String:System.Reflection.Pointer:120' \
         'Int pointer set null: String:System.Reflection.Pointer:0/storage:0' \
@@ -863,10 +891,15 @@ gate_extra_asserts() {
             || { echo "FAIL: ordinary reflection witness missing: $line" >&2; return 1; }
     done
 }
+build_gate_proj samples/dotnet/ReflectReturnLib/ReflectReturnLib.csproj
+object_methods_library="$PWD/samples/dotnet/ReflectReturnLib/bin/$CONFIG/$TFM/ReflectReturnLib.dll"
 DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectInvoke OrdinaryReflectionLeaves --no-ildiet \
+    -r "$object_methods_library" --link-xml samples/dotnet/ReflectInvoke/keep-object-methods.xml \
+    --reflection-metadata ReflectReturnLib.VirtualFactory=packed \
     --reflection-metadata ReflectFieldValidationSubset.PointerFields=packed
 DN2CPP_OUT_SUFFIX=-native DN2CPP_STRICT_COMPLETION=1 \
-    ordinary_fixture_diff_gate ReflectInvoke OrdinaryReflectionLeaves --no-ildiet --no-metadata-compression
+    ordinary_fixture_diff_gate ReflectInvoke OrdinaryReflectionLeaves --no-ildiet --no-metadata-compression \
+        -r "$object_methods_library" --link-xml samples/dotnet/ReflectInvoke/keep-object-methods.xml
 unset -f gate_extra_asserts
 # These drivers have no application pointer field or pointer-returning method.
 # One reads an allocated library owner's inherited field; the other names only a

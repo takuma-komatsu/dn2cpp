@@ -86,4 +86,85 @@ static class Program
         FaultType("span rank0", () => typeof(Span<int>).MakeArrayType(0));
         Console.WriteLine("runtime type reflection end");
     }
+
+    private class AllocatedFault : Exception
+    {
+    }
+
+    private sealed class NeverAllocatedFault : Exception
+    {
+    }
+
+    private sealed class DescribedFault : Exception
+    {
+        public override string ToString() => "described fault";
+        public override bool Equals(object? other) => other is DescribedFault;
+        public override int GetHashCode() => 91;
+    }
+
+    internal static void RunExceptionMembers()
+    {
+        Console.WriteLine("== exception Object member lookup ==");
+        DumpExceptionMembers(typeof(Exception));
+        DumpExceptionMembers(typeof(AllocatedFault));
+        DumpExceptionMembers(typeof(NeverAllocatedFault));
+        DumpExceptionMembers(typeof(DescribedFault));
+        DumpExceptionMembers(typeof(NullReferenceException));
+        CheckExceptionMembers("base", new Exception("plain"));
+        CheckExceptionMembers("allocated", new AllocatedFault());
+        CheckExceptionMembers("override", new DescribedFault());
+        try
+        {
+            object absent = null!;
+            GC.KeepAlive(absent.GetType());
+        }
+        catch (NullReferenceException ex)
+        {
+            CheckExceptionMembers("raised", ex);
+        }
+        try
+        {
+            var array = new int[1];
+            GC.KeepAlive(array[array.Length]);
+        }
+        catch (Exception ex)
+        {
+            DumpExceptionMembers(ex.GetType());
+            CheckExceptionMembers("unbound raised", ex);
+        }
+        Console.WriteLine("exception Object member lookup end");
+    }
+
+    private static void DumpExceptionMembers(Type type)
+    {
+        foreach (string name in new[] { "GetHashCode", "Equals", "ToString", "GetType" })
+        {
+            MethodInfo? method = type.GetMethod(name);
+            Console.WriteLine(type.Name + "." + name + "=" + (method is null ? "missing" :
+                method.DeclaringType!.Name + ":" + method.ReflectedType!.Name + ":" +
+                method.IsVirtual + ":" + method.IsStatic + ":" + (int)method.Attributes +
+                ":base=" + method.GetBaseDefinition().DeclaringType!.Name +
+                ":same=" + ReferenceEquals(method, type.GetMethod(name))));
+        }
+    }
+
+    private static void CheckExceptionMembers(string label, Exception receiver)
+    {
+        Type type = receiver.GetType();
+        MethodInfo? text = type.GetMethod("ToString");
+        MethodInfo? kind = type.GetMethod("GetType");
+        MethodInfo? equals = type.GetMethod("Equals");
+        MethodInfo? hash = type.GetMethod("GetHashCode");
+        if (text is null || kind is null || equals is null || hash is null)
+        {
+            Console.WriteLine(label + " invoke=missing");
+            return;
+        }
+        Console.WriteLine(label + " invoke=" + Equals(text.Invoke(receiver, null), receiver.ToString()) + ":" +
+            ReferenceEquals(kind.Invoke(receiver, null), type) + ":" +
+            Equals(equals.Invoke(receiver, new object[] { receiver }), receiver.Equals(receiver)) + ":" +
+            Equals(hash.Invoke(receiver, null), receiver.GetHashCode()));
+        MemberFault(label + " null receiver", () => kind.Invoke(null, null)!);
+        MemberFault(label + " wrong receiver", () => kind.Invoke(new object(), null)!);
+    }
 }
