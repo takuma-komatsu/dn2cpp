@@ -722,6 +722,7 @@ internal sealed partial class CppEmitter
                     Name = gi.DefName, Base = dfBase, Interfaces = dfItfs, InterfaceCount = dfItfCount,
                     Flags = defFlags, GenericDef = "&" + defSym, TypeObject = "&ty_" + defSym,
                     GenericParamNames = Compilation.GenericParamNames(c.Module, c.Handle),
+                    AssemblyName = string.IsNullOrEmpty(c.Module.AssemblyName) ? null : c.Module.AssemblyName,
                 });
                 _sb.AppendLine($"const Dn2CppType ty_{defSym} = {{ {{ &dn2cpp_type_type }}, &{defSym} }};");
             }
@@ -1027,6 +1028,7 @@ internal sealed partial class CppEmitter
                     Name = gi.DefName, Base = relBase, Interfaces = relItfs, InterfaceCount = relItfCount,
                     Flags = defFlags, GenericDef = "&" + sym, TypeObject = "&ty_" + sym, VarianceMask = varMask,
                     GenericParamNames = Compilation.GenericParamNames(cls.Module, cls.Handle),
+                    AssemblyName = string.IsNullOrEmpty(cls.Module.AssemblyName) ? null : cls.Module.AssemblyName,
                 });
                 _sb.AppendLine($"const Dn2CppType ty_{sym} = {{ {{ &dn2cpp_type_type }}, &{sym} }};");
             }

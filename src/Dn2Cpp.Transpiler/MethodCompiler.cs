@@ -3327,10 +3327,11 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // GetInterfaces()/Name/BaseType on it would throw NullReferenceException.
                 // The fold's remaining subjects — a pointer, a byref, a function pointer —
                 // genuinely have no metadata to name; an MD array does, and the interner
-                // (dn2cpp_array_ti) is where it lives.
+                // (dn2cpp_array_ti) returns its registered static identity.
                 if (target is { Kind: TypeKind.MDArray, Element: { } mdElem, Rank: var mdRank })
                 {
                     _c.NoteMdArrayUse();
+                    _c.NoteMdArrayType(target);
                     if (mdElem.Kind is TypeKind.Class && mdElem.Class is { } mdCls)
                         NoteReferencedType(mdCls);
                     string mdElemTi = MdSzElementTypeInfoExpr(mdElem)

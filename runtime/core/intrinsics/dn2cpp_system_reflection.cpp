@@ -6759,8 +6759,8 @@ Dn2CppString* dn2cpp_type_assembly_qualified_name(Dn2CppType* t)
 }
 
 // Assembly.GetType(name[, throwOnError[, ignoreCase]]): the type-name registry
-// restricted to the receiver assembly's own rows. Same name normalization as
-// dn2cpp_type_get_by_name (cut at the first ','); ignoreCase folds ASCII case
+// restricted to the receiver assembly's own rows. An assembly suffix starts at
+// a comma outside generic arguments and array ranks; ignoreCase folds ASCII case
 // (CLR identifiers). Includes the dynamic side-chain like the global lookup —
 // name-lookup surfaces see runtime-registered patch types.
 Dn2CppType* dn2cpp_assembly_get_type(const char* asmName, Dn2CppString* name,
@@ -6771,8 +6771,19 @@ Dn2CppType* dn2cpp_assembly_get_type(const char* asmName, Dn2CppString* name,
     if (name != nullptr)
     {
         int32_t len = name->length;
+        int32_t depth = 0;
         for (int32_t i = 0; i < name->length; i++)
-            if (name->chars[i] == u',') { len = i; break; }
+        {
+            if (name->chars[i] == u'[')
+                depth++;
+            else if (name->chars[i] == u']')
+                depth--;
+            else if (name->chars[i] == u',' && depth == 0)
+            {
+                len = i;
+                break;
+            }
+        }
         auto fold = [ignoreCase](char16_t c) {
             return (ignoreCase && c >= u'A' && c <= u'Z') ? (char16_t)(c + 32) : c;
         };
@@ -6786,10 +6797,7 @@ Dn2CppType* dn2cpp_assembly_get_type(const char* asmName, Dn2CppString* name,
             return j == len && cand[len] == '\0';
         };
         auto owned = [asmName](const Dn2CppTypeInfo* ti) {
-            const char* owner = ti->reflection().assemblyName;
-            if (owner == nullptr)
-                owner = "System.Private.CoreLib";
-            return std::strcmp(owner, asmName) == 0;
+            return std::strcmp(dn2cpp_ti_assembly_name(ti), asmName) == 0;
         };
         for (int32_t k = 0; k < dn2cpp_type_registry_count; k++)
             if (owned(dn2cpp_type_registry[k].type) && matches(dn2cpp_type_registry[k].name))
@@ -7271,8 +7279,7 @@ const char* dn2cpp_memberinfo_module(Dn2CppObject* m)
         ti = reinterpret_cast<Dn2CppPropRef*>(m)->prop->declaringType;
     else if (m->type == &dn2cpp_type_type)
         ti = reinterpret_cast<Dn2CppType*>(m)->typeInfo;
-    const char* nm = ti != nullptr ? ti->reflection().assemblyName : nullptr;
-    return nm != nullptr ? nm : "System.Private.CoreLib";
+    return dn2cpp_ti_assembly_name(ti);
 }
 
 int32_t dn2cpp_methodref_attributes(Dn2CppMethodRef* m)

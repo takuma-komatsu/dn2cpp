@@ -3148,14 +3148,14 @@ internal sealed partial class Compilation
             NoteMdArrayType(element);
     }
 
-    /// <summary>MDArray types whose identity is named by emitted metadata: either
-    /// as an SZArray element (<c>new int[2][,]</c>, <c>typeof(int[][,])</c>) or
+    /// <summary>MDArray types whose identity is named by a concrete instruction token,
+    /// an SZArray element (<c>new int[2][,]</c>, <c>typeof(int[][,])</c>) or
     /// inside a constructed type's identity closure, keyed by <see cref="ArrayElemMangle"/>.
     /// CppEmitter emits one static <c>ti_md_&lt;key&gt;</c> per entry and registers it in
     /// the type registry, where the runtime interner (<c>dn2cpp_array_ti</c>) resolves
     /// every <c>new T[,]</c> of the shape to it — so the static handle IS the interned
-    /// identity, not a second one. A bare instruction token still uses the runtime
-    /// interner directly unless another emitted identity names its static handle.</summary>
+    /// identity, not a second one. Concrete instruction tokens resolve the same
+    /// static identity through the interner.</summary>
     internal Dictionary<string, TypeDesc> MdArrayTypes { get; } = new(System.StringComparer.Ordinal);
 
     /// <summary>See <see cref="MdArrayTypes"/>. Recurses like NoteArrayElementType so
