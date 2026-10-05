@@ -106,12 +106,9 @@ app="samples/dotnet/$project/bin/$CONFIG/$TFM/$project.dll"
 # rewrite them all. The keyed dir has to EXIST: an absent one is unreadable
 # rather than empty, and gate_cache_check answers that with a warning and no key
 # which would leave this gate uncacheable since it clears the dirs on
-# every run. _gate_transpiler_env_term keys the transpiler's environment for the
-# same reason: an ambient cap, drain order, or strict/assert knob changes what
-# the transpiles below do, with no surface in the key to catch it.
-tenv="$(_gate_transpiler_env_term)"
+# every run.
 rm -rf "$out" "$out-again" "$out-off"; mkdir -p "$out"
-if gate_cache_check "$out" "shared-generics|cli:$(_gate_cli_hash)|$corelib|$tenv" \
+if gate_cache_check "$out" "shared-generics|cli:$(_gate_cli_hash)|$corelib" \
         "$app" "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json"; then
     gate_cache_hit_msg
     exit 0

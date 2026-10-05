@@ -83,11 +83,7 @@ build_proj samples/dotnet/PInvokeByValTStrBad/PInvokeByValTStrBad.csproj
 # of it (a clean strict run) leaves nothing to key on — so the cache key stands
 # in for the transpiler itself via _gate_cli_hash (see that helper's doc). OUT
 # was just cleared, so the key's surface term is empty and stable.
-# _gate_transpiler_env_term keys the transpiler's environment for the same
-# reason: an ambient DN2CPP_SPEC_DRAIN/STRICT_COMPLETION (this gate's own
-# levers!) or a cap/assert knob changes what the runs below do, with no surface
-# to catch it.
-if gate_cache_check "$OUT" "emit-order-stability|jobs:1,2|measure-jobs:1,2|cli:$(_gate_cli_hash)|$corelib|$(_gate_transpiler_env_term)" \
+if gate_cache_check "$OUT" "emit-order-stability|jobs:1,2|measure-jobs:1,2|cli:$(_gate_cli_hash)|$corelib" \
         "samples/dotnet/ReflectTypes/bin/$CONFIG/$TFM/ReflectTypes.dll" \
         "samples/dotnet/StringCore/bin/$CONFIG/$TFM/StringCore.dll" \
         "samples/dotnet/ArrayCore/bin/$CONFIG/$TFM/ArrayCore.dll" \

@@ -71,7 +71,7 @@
 # ILDiet with --trim-reflection is covered by build-and-run-preserve-control.sh.
 source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} "
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|member-enum-prefix:${DN2CPP_BEFORE_MEMBER_ENUM:-}|object-virtual-prefix:${DN2CPP_BEFORE_OBJECT_VIRTUAL:-}|unrecorded-receiver-prefix:${DN2CPP_BEFORE_UNRECORDED_RECEIVER:-}|reflected-unrecorded-receiver-prefix:${DN2CPP_BEFORE_REFLECTED_UNRECORDED_RECEIVER:-}|runtime-template-prefix-argv:before-runtime-template-members|property-accessors-prefix-argv:before-property-accessors"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|delegate-method-prefix:${DN2CPP_BEFORE_DELEGATE_METHOD:-}|member-enum-prefix:${DN2CPP_BEFORE_MEMBER_ENUM:-}|object-virtual-prefix:${DN2CPP_BEFORE_OBJECT_VIRTUAL:-}|unrecorded-receiver-prefix:${DN2CPP_BEFORE_UNRECORDED_RECEIVER:-}|reflected-unrecorded-receiver-prefix:${DN2CPP_BEFORE_REFLECTED_UNRECORDED_RECEIVER:-}|runtime-template-prefix-argv:before-runtime-template-members|property-accessors-prefix-argv:before-property-accessors"
 
 PROJECT=TrimReflect
 LIBNAME=TrimReflectLib
@@ -190,7 +190,7 @@ assert_runtime_template_members() {
 echo "== Arm 1/4: no flag, exact diff vs real .NET =="
 OUT=artifacts/trimreflect
 invoke_cli "$APP" --no-ildiet -r "$CORELIB" -r "$LIBDLL" -o "$OUT"
-if gate_cache_check "$OUT" "trim-reflection-plain|no-ildiet|$CORELIB" \
+if gate_cache_check "$OUT" "trim-reflection-plain|no-ildiet|$CORELIB$(_gate_ctx_extras)" \
         "$APP" "$LIBDLL" "${APP%.dll}.runtimeconfig.json" "${APP%.dll}.deps.json"; then
     gate_cache_hit_msg
 else
@@ -233,7 +233,7 @@ echo "== Arm 2/4: --trim-reflection with native metadata, diff vs frozen snapsho
 OUT=artifacts/trimreflect-trim
 invoke_cli "$APP" --no-ildiet -r "$CORELIB" -r "$LIBDLL" --trim-reflection \
     --reflection-metadata "$LIBNAME.LibWidget=native" -o "$OUT"
-if gate_cache_check "$OUT" "trim-reflection-trim|no-ildiet|--reflection-metadata=$LIBNAME.LibWidget=native|$CORELIB" \
+if gate_cache_check "$OUT" "trim-reflection-trim|no-ildiet|--reflection-metadata=$LIBNAME.LibWidget=native|$CORELIB$(_gate_ctx_extras)" \
         "$APP" "$LIBDLL" "$EXPDIR/trim-reflection-trimmed.txt"; then
     gate_cache_hit_msg
 else
@@ -272,7 +272,7 @@ echo "== Arm 3/4: --reflection-root (exact + arity-stripped def name), diff vs f
 OUT=artifacts/trimreflect-rooted
 invoke_cli "$APP" --no-ildiet -r "$CORELIB" -r "$LIBDLL" --trim-reflection \
     --reflection-root "$LIBNAME.LibWidget" --reflection-root "$LIBNAME.LibBox" -o "$OUT"
-if gate_cache_check "$OUT" "trim-reflection-rooted|no-ildiet|$CORELIB" \
+if gate_cache_check "$OUT" "trim-reflection-rooted|no-ildiet|$CORELIB$(_gate_ctx_extras)" \
         "$APP" "$LIBDLL" "$EXPDIR/trim-reflection-rooted.txt"; then
     gate_cache_hit_msg
 else
