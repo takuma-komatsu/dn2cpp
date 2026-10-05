@@ -898,12 +898,9 @@ internal static partial class CoreIntrinsics
     /// by argument TYPE rather than arity, so no wrong-shape route is possible: the span
     /// Parse overloads realize the span into a Dn2CppString and reuse the string path, and
     /// ToObject covers .NET's whole overload set (the eight integral forms + object).
-    /// Cutting Format and ToObject deletes the GetEnumInfo/GetEnumValuesAndNames +
-    /// RuntimeType-cache reflection cascade and the last transpiled caller of
-    /// Enum.ValidateRuntimeType, whose `enumType is RuntimeType` test is structurally false
-    /// for a dn2cpp Type object (every Type carries the shared &amp;dn2cpp_type_type header,
-    /// and RuntimeType derives from Type, so the isinst can never match) and threw
-    /// Arg_MustBeType at run time.</para>
+    /// Format and ToObject use the intrinsic enum table, so cutting their managed bodies
+    /// avoids the GetEnumInfo/GetEnumValuesAndNames and RuntimeType-cache reflection
+    /// cascade.</para>
     ///
     /// <para>These are STATIC methods, so only the call-site pair reaches them: the
     /// constrained/virtual pair (a slot dispatch) and the scan pair (the enum type is a

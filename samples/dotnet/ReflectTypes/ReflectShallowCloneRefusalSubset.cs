@@ -95,15 +95,9 @@ namespace ReflectShallowCloneRefusalSubset
             var cts = new CancellationTokenSource();
             Probe("CancellationTokenSource", cts);
 
-            // Two clones that SUCCEED but whose runtime type NAME diverges, so the
-            // reflect-invoke live diff cannot carry them and they are frozen here
-            // instead. Neither divergence is about cloning: a closed generic intrinsic
-            // reports the bare `ThreadLocal`1` handle where real .NET reports the
-            // assembly-qualified spelling with its type argument, and dn2cpp's reflection
-            // handles are System.Type where CoreCLR's are the internal RuntimeType. The
-            // rows are here because the clone is what makes those names OBSERVABLE on a
-            // second object — if a future change hands back a truncated clone, the name
-            // is the first thing that stops answering.
+            // ThreadLocal<int> retains the bare generic runtime name rather than CLR's
+            // closed spelling. The Type clone is a control: its RuntimeType header and
+            // represented type remain readable on a distinct object.
             var tl = new ThreadLocal<int>(() => 7);
             object tlc = s_mwc.Invoke(tl, null);
             Console.WriteLine("ThreadLocal<int> -> clone type=" + tlc.GetType().FullName

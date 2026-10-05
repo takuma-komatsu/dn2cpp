@@ -1341,10 +1341,10 @@ internal static partial class CoreIntrinsics
     /// startup (<c>dn2cpp_type_binds</c>).
     ///
     /// <para><b>The invariant both tables serve is that ONE CLR type has exactly ONE
-    /// <c>Dn2CppTypeInfo</c> in the linked program.</b> A dn2cpp <c>Type</c> IS its type-info
-    /// pointer — <c>dn2cpp_get_type_from_handle</c> interns one <c>Dn2CppType</c> per handle,
-    /// so <c>Type.Equals</c> / <c>op_Equality</c> / <c>GetHashCode</c> /
-    /// <c>ReferenceEquals</c> all reduce to that pointer. Two handles for one type are not
+    /// <c>Dn2CppTypeInfo</c> in the linked program.</b>
+    /// <c>dn2cpp_get_type_from_handle</c> interns one <c>Dn2CppType</c> per handle;
+    /// RuntimeType equality and hashing use object identity, so a cloned object stays
+    /// distinct. Two handles for one type are not
     /// assignable to each other, compare unequal, hash apart, and intern two rows in every
     /// table keyed by a declaring type-info — so <c>typeof(MyClass).BaseType ==
     /// typeof(object)</c> would be false while <c>typeof(object) == new
@@ -1398,24 +1398,13 @@ internal static partial class CoreIntrinsics
         // object the runtime hands out (Dn2CppType, Dn2CppMethodRef, …) carries one of these
         // headers, and the transpiled t_* shells do not describe those layouts, so the
         // runtime handle is the only sound identity.
-        ["System.Type"] = "&dn2cpp_type_type",
-        // System.RuntimeType resolves to the SAME handle as System.Type: every Type object
-        // the runtime hands out carries the &dn2cpp_type_type header — a dn2cpp Type IS the
-        // runtime's RuntimeType — so a BCL `(RuntimeType)typeof(bool)` castclass (the real
-        // System.Enum..cctor) or an `enumType is RuntimeType` test verifies against that
-        // header. Against an emitted ti_System_RuntimeType such a castclass is structurally
-        // ALWAYS false, since nothing allocates a transpiled RuntimeType and the shared
-        // handle's base chain never names it. The accepted residue: a body reading a
-        // RuntimeType field off the cast result would misread a Dn2CppType as the
-        // t_System_RuntimeType layout — but those members are InternalCall plumbing dn2cpp
-        // cuts, so no such body enters the tree, and a virtual dispatch lands on vt_ entries
-        // that fail loud (dn2cpp_vcall_unimplemented).
+        // RuntimeType : TypeInfo : Type have distinct identities; every Dn2CppType object
+        // carries the RuntimeType header, including the public bases' Type objects.
+        ["System.Type"] = "&dn2cpp_public_type_type",
+        ["System.Reflection.TypeInfo"] = "&dn2cpp_typeinfo_type",
+        // Internal RuntimeType casts verify against that same object header; its opaque
+        // BCL fields never describe the runtime's Dn2CppType layout.
         ["System.RuntimeType"] = "&dn2cpp_type_type",
-        // TypeInfo sits between Type and MemberInfo in real .NET, and every runtime Type
-        // object IS its own TypeInfo (RuntimeType : TypeInfo) — so `t is TypeInfo` / a
-        // (TypeInfo) cast must match the shared Type handle
-        // (IntrospectionExtensions.GetTypeInfo returns t unchanged).
-        ["System.Reflection.TypeInfo"] = "&dn2cpp_type_type",
         ["System.Reflection.MemberInfo"] = "&dn2cpp_memberinfo_type",
         ["System.Reflection.MethodBase"] = "&dn2cpp_methodbase_type",
         ["System.Reflection.MethodInfo"] = "&dn2cpp_methodinfo_type",

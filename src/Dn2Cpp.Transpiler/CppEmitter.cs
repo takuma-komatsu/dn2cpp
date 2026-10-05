@@ -3577,8 +3577,7 @@ internal sealed partial class CppEmitter
 
     /// <summary>The class a runtime handle states relations for: among the CLR names it
     /// models that load, the one each of the others derives from, whose relations hold for
-    /// all of them (System.Type for Type, RuntimeType and TypeInfo). Null when none
-    /// is.</summary>
+    /// all of them. Null when none is.</summary>
     private ClassInfo? RelationRepresentative(List<string> names)
     {
         var loaded = new List<ClassInfo>();

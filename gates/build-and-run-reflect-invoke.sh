@@ -124,8 +124,10 @@
 # the synchronization handles, Thread, Task, the culture wrappers — and of
 # System.Array: the type test, IsAssignableFrom, BaseType chains, named interface
 # membership and the invoke argument checks, then `using`, an IDisposable-typed
-# Dispose and a reflected IDisposable.Dispose over the synchronization handles. Its
-# greps pin the init-prologue installs those answers come from: the relation rows,
+# Dispose and a reflected IDisposable.Dispose over the synchronization handles. The
+# final section distinguishes Type, TypeInfo and runtime Type object identities,
+# preserves Type clone/Object-family answers, and reads closed/open Task interfaces.
+# Its greps pin the init-prologue installs those answers come from: the relation rows,
 # SystemException spliced under the runtime NullReferenceException's handle, and
 # SemaphoreSlim's IDisposable map.
 # Mixed native/packed metadata preserves inherited members, closed generics,
@@ -204,6 +206,7 @@ DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/check-ref
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|empty-string-clone-prefix:${DN2CPP_BEFORE_EMPTY_STRING_CLONE:-}|delegate-list-prefix:${DN2CPP_BEFORE_DELEGATE_LISTS:-}|recursive-delegate-prefix:${DN2CPP_BEFORE_RECURSIVE_DELEGATE:-}|ordinary-interface-prefix:${DN2CPP_BEFORE_ORDINARY_IL_INTERFACE:-}|object-methodimpl-prefix:${DN2CPP_BEFORE_OBJECT_METHODIMPL:-}"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/recursive-delegate/RecursiveDelegate.csproj gates/fixtures/recursive-delegate/Program.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|delegate-origin-prefix-argv:before-delegate-origin-boundaries|delegate-origin-modes:argument,field,array,checked-conv,arithmetic,box,call,local,stack-join,byref-argument"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|runtime-type-relations-prefix-argv:before-runtime-type-relations"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ldftn-local/Program.cs"
 gate_optional_argument_asserts() {
     local out="$1" native line
@@ -667,6 +670,25 @@ gate_extra_asserts() {
         'delegate-origin-second=2/Subtract/True' 'delegate origin boundaries end'; do
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: delegate origin positive witness missing: $line" >&2; return 1; }
+    done
+
+    run_bounded dotnet "$_CG_APP" > "$out/runtime-type-relations.dotnet.stdout"
+    run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/runtime-type-relations.native.stdout"
+    diff -u <(strip_cr_win_file "$out/runtime-type-relations.dotnet.stdout") \
+        <(strip_cr_win_file "$out/runtime-type-relations.native.stdout")
+    run_bounded dotnet "$_CG_APP" before-runtime-type-relations > "$out/runtime-type-relations-before.dotnet.stdout"
+    run_bounded "$out/ReflectInvoke$EXE_EXT" before-runtime-type-relations > "$out/runtime-type-relations-before.native.stdout"
+    sed '/^== runtime Type and Task relations ==/,$d' "$out/runtime-type-relations.dotnet.stdout" \
+        > "$out/runtime-type-relations-prefix.dotnet.stdout"
+    sed '/^== runtime Type and Task relations ==/,$d' "$out/runtime-type-relations.native.stdout" \
+        > "$out/runtime-type-relations-prefix.native.stdout"
+    diff -u <(strip_cr_win_file "$out/runtime-type-relations-before.dotnet.stdout") \
+        <(strip_cr_win_file "$out/runtime-type-relations-prefix.dotnet.stdout")
+    diff -u <(strip_cr_win_file "$out/runtime-type-relations-before.native.stdout") \
+        <(strip_cr_win_file "$out/runtime-type-relations-prefix.native.stdout")
+    for line in '== runtime Type and Task relations ==' 'runtime Type and Task relations end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: runtime Type relation block witness missing: $line" >&2; return 1; }
     done
 
     # Enforce each operation's first and repeated allocation budget independently.

@@ -667,7 +667,7 @@ const IntrinsicImport g_intrinsicImports[] = {
     // the registry including its dynamic side-chain.
     { "System.Object", "GetType", "():System.Type",
       reinterpret_cast<void*>(&intrinsic_object_get_type), kShapeRefRetObj, 0, true,
-      kRecvAny, {}, &dn2cpp_type_type },
+      kRecvAny, {}, &dn2cpp_public_type_type },
     { "System.Object", "ToString", "():String",
       reinterpret_cast<void*>(&intrinsic_object_tostring), kShapeRefRetObj, 0, true,
       kRecvAny, {}, &dn2cpp_string_type },

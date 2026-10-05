@@ -1078,7 +1078,7 @@ Timer -> PlatformNotSupportedException: MemberwiseClone of 'System.Threading.Tim
 Thread -> PlatformNotSupportedException: MemberwiseClone of 'System.Threading.Thread' is not supported
 CancellationTokenSource -> clone same=False
 ThreadLocal<int> -> clone type=System.Threading.ThreadLocal`1 same=False
-Type -> clone type=System.Type named=System.Int32 same=False
+Type -> clone type=System.RuntimeType named=System.Int32 same=False
 == one CLR type, one type-info ==
 typeof(Root).BaseType == typeof(object) -> True
 typeof(ValueType).BaseType == typeof(object) -> True

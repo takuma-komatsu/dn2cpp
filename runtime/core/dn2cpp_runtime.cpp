@@ -488,18 +488,6 @@ int32_t dn2cpp_object_gethashcode(Dn2CppObject* obj)
     // separately and never de-duplicates them.
     if (t == &dn2cpp_string_type)
         return dn2cpp_string_hashcode(reinterpret_cast<Dn2CppString*>(obj));
-    // System.Type hashes by its type identity (the TypeInfo), not the object
-    // address: dn2cpp_get_type_from_handle hands out a fresh Dn2CppType per
-    // `typeof` call, but dn2cpp_type_equals treats two of the same type as equal,
-    // so the hash must agree (a record's EqualityContract is a Type).
-    if (t == &dn2cpp_type_type)
-    {
-        // Widen to 64 bits before the fold: a 32-bit `uintptr_t >> 32` is
-        // undefined (wasm32), and the widened fold is bit-identical on 64-bit.
-        uint64_t ti = static_cast<uint64_t>(
-            reinterpret_cast<uintptr_t>(reinterpret_cast<Dn2CppType*>(obj)->typeInfo));
-        return static_cast<int32_t>((ti ^ (ti >> 32)) & 0x7fffffff);
-    }
     // Decimal and the date/time value types hash through the gethashcode slot
     // handled above.
     // A boxed enum hashes exactly like Enum.GetHashCode: the underlying primitive's own
@@ -601,10 +589,6 @@ int32_t dn2cpp_object_equals(Dn2CppObject* a, Dn2CppObject* b)
         return (b->type == &dn2cpp_string_type
                 && dn2cpp_string_equals(reinterpret_cast<Dn2CppString*>(a),
                                         reinterpret_cast<Dn2CppString*>(b))) ? 1 : 0;
-    // System.Type compares by type identity (consistent with the hash above and
-    // dn2cpp_type_equals): two Type objects for the same type are equal.
-    if (t == &dn2cpp_type_type && b->type == &dn2cpp_type_type)
-        return reinterpret_cast<Dn2CppType*>(a)->typeInfo == reinterpret_cast<Dn2CppType*>(b)->typeInfo ? 1 : 0;
     // Decimal and the date/time value types compare through the equals slot
     // handled above.
     // Two boxed enums are equal iff same enum type and same underlying value, compared at the
