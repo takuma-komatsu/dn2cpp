@@ -1538,8 +1538,7 @@ internal sealed partial class Compilation
                 is { Kind: TypeKind.Class, Class: { IsInterface: true } stringItf }
             && IsStringDispatchInterface(stringItf))
             NoteStringInterfaces();
-        // A `constrained. System.Object callvirt IComparable<object>::CompareTo` — the
-        // reference-type default order inside GenericComparer<object>.Compare — is
+        // A `constrained. System.Object callvirt IComparable<object>::CompareTo` is
         // emitted as dn2cpp_object_compare through the non-generic System.IComparable
         // (MethodCompiler.TryCompareLValue's Object arm), so lay that interface's
         // type-info down here. The canon placeholder is declined by that arm (kept a
@@ -2966,24 +2965,19 @@ internal sealed partial class Compilation
             ? null
             : DefaultComparerClassFor(elem);
 
-    /// <summary>The CoreLib class behind <c>Comparer&lt;T&gt;.Default</c>, picked as
-    /// <c>ComparerHelpers.CreateDefaultComparer</c> picks it: <c>GenericComparer&lt;T&gt;</c>
-    /// when T is assignable to <c>IComparable&lt;T&gt;</c> (<see cref="IsComparableOfSelf"/>),
-    /// <c>NullableComparer&lt;U&gt;</c> for <c>Nullable&lt;U&gt;</c>, else
-    /// <c>ObjectComparer&lt;T&gt;</c>, whose Compare is the boxed non-generic
-    /// <c>IComparable</c> order and throws <c>ArgumentException</c> for a T that has none. A
-    /// primitive, an enum, an inline-ordered intrinsic value type and System.Object keep
-    /// <c>GenericComparer&lt;T&gt;</c>: the emit devirtualizes its <c>x.CompareTo(y)</c> to
-    /// the order CoreLib's own comparer for T computes (MethodCompiler.TryCompareLValue).
-    /// Every one of these classes is field-less and its constructor only chains to
-    /// <c>Comparer&lt;T&gt;</c>'s, so a shared body's layout serves whichever one an
-    /// instantiation's rgctx slot names. Null without CoreLib.</summary>
+    /// <summary>The concrete CoreLib identity behind <c>Comparer&lt;T&gt;.Default</c>.
+    /// Inline ordering avoids an allocation at sort/search sites, but an explicit
+    /// Default still needs the CLR's comparer family. These classes are field-less,
+    /// so a shared body's layout serves the class its rgctx slot names.
+    /// Null without CoreLib.</summary>
     internal ClassInfo? DefaultComparerClassFor(TypeDesc elem)
     {
         if (elem is { Kind: TypeKind.Class, Class: { IsValueType: true, IsEnum: false } nc }
             && nc.Context.TypeArgs is [var underlying] && GenericDefFullName(nc) == "System.Nullable")
             return CoreLibGenericFor("NullableComparer`1", underlying);
-        return HasInlineOrder(elem) || elem.IsObject || IsComparableOfSelf(elem)
+        if (elem is { Kind: TypeKind.Class, Class.IsEnum: true })
+            return CoreLibGenericFor("EnumComparer`1", elem);
+        return !elem.IsObject && (HasInlineOrder(elem) || IsComparableOfSelf(elem))
             ? GenericComparerFor(elem)
             : CoreLibGenericFor("ObjectComparer`1", elem);
     }

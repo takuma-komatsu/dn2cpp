@@ -17,9 +17,9 @@
 //     value equality), plus null;
 //   * the EXPLICIT IStructuralEquatable calls with EqualityComparer<object>.Default —
 //     the sentinel passed as a visible argument;
-//   * IComparable.CompareTo via Comparer<object>.Default — NOT the sentinel (a real
-//     GenericComparer<object> whose Compare lowers to dn2cpp_object_compare); asserted
-//     here so the whole trio stays covered by one section;
+//   * IComparable.CompareTo via Comparer<object>.Default — ObjectComparer<object>
+//     calls System.Collections.Comparer.Compare, lowered to dn2cpp_object_compare
+//     for boxed IComparable order;
 //   * Tuple.ToString(), including the arity-8 Rest nesting;
 //   * a Dictionary keyed on Tuple (hash + equality through the same comparer path).
 using System;

@@ -1,11 +1,29 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using System.Text;
 
 namespace ArrayDefaultOrderSubset
 {
+    internal enum IdentitySByte : sbyte { Min = sbyte.MinValue, Zero = 0, Max = sbyte.MaxValue }
+    internal enum IdentityByte : byte { Zero = 0, High = 0x80, Max = byte.MaxValue }
+    internal enum IdentityInt16 : short { Min = short.MinValue, Zero = 0, Max = short.MaxValue }
+    internal enum IdentityUInt16 : ushort { Zero = 0, High = 0x8000, Max = ushort.MaxValue }
+    internal enum IdentityInt32 : int { Min = int.MinValue, Zero = 0, Max = int.MaxValue }
+    internal enum IdentityUInt32 : uint { Zero = 0, High = 0x80000000U, Max = uint.MaxValue }
+    internal enum IdentityInt64 : long { Min = long.MinValue, Zero = 0, Max = long.MaxValue }
+    internal enum IdentityUInt64 : ulong { Zero = 0, High = 0x8000000000000000UL, Max = ulong.MaxValue }
+
+    internal sealed class RawGenericOrder : IComparable<RawGenericOrder>
+    {
+        public int V;
+        public RawGenericOrder(int v) { V = v; }
+        public int CompareTo(RawGenericOrder other) => other is null ? 1 : V - other.V;
+        public override string ToString() => "g" + V;
+    }
+
     // The DEFAULT order of an element with no IComparable<T> of its own, and what a sort
     // or search reports when a comparison throws. Comparer<T>.Default is ObjectComparer<T>
     // for such a T — the boxed non-generic IComparable order, which throws
@@ -236,6 +254,95 @@ namespace ArrayDefaultOrderSubset
             Try(n + " default comparer", () => Comparer<T>.Default.GetType().Name);
             Try(n + " default compare", () => Comparer<T>.Default.Compare(mk(1), mk(3)).ToString());
             Try(n + " default interface compare", () => { IComparer<T> c = Comparer<T>.Default; return c.Compare(mk(3), mk(1)).ToString(); });
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void ComparerIdentity<T>(string label)
+        {
+            Type type = Comparer<T>.Default.GetType();
+            Console.WriteLine(label + " comparer Name=" + type.Name);
+            Console.WriteLine(label + " comparer FullName=" + type.FullName);
+            Console.WriteLine(label + " comparer definition=" + type.GetGenericTypeDefinition().FullName);
+            foreach (Type argument in type.GetGenericArguments())
+                Console.WriteLine(label + " comparer argument=" + argument.FullName);
+        }
+
+        private static string IdentityValues<T>(T[] values)
+        {
+            var result = new StringBuilder();
+            for (int i = 0; i < values.Length; i++)
+            {
+                if (i > 0)
+                    result.Append(',');
+                result.Append(values[i] is null ? "null" : values[i].ToString());
+            }
+            return result.ToString();
+        }
+
+        private static void ComparerValues<T>(string label, T low, T middle, T high, T missing)
+        {
+            ComparerIdentity<T>(label);
+            Comparer<T> comparer = Comparer<T>.Default;
+            IComparer<T> viaInterface = comparer;
+            IComparer viaObject = comparer;
+            Console.WriteLine(label + " direct=" + comparer.Compare(low, high) + "/"
+                + comparer.Compare(high, low) + "/" + comparer.Compare(middle, high) + "/"
+                + comparer.Compare(middle, middle));
+            Console.WriteLine(label + " interface=" + viaInterface.Compare(low, high) + "/"
+                + viaInterface.Compare(high, low) + "/" + viaInterface.Compare(middle, high) + "/"
+                + viaInterface.Compare(middle, middle));
+            Console.WriteLine(label + " object interface=" + viaObject.Compare(low, high) + "/"
+                + viaObject.Compare(high, low) + "/" + viaObject.Compare(middle, high) + "/"
+                + viaObject.Compare(middle, middle));
+            var values = new[] { high, low, middle };
+            Array.Sort(values);
+            Console.WriteLine(label + " default sort=" + IdentityValues(values) + " search="
+                + Array.BinarySearch(values, middle) + "/" + Array.BinarySearch(values, missing));
+            values = new[] { high, low, middle };
+            Array.Sort(values, comparer);
+            Console.WriteLine(label + " explicit sort=" + IdentityValues(values) + " search="
+                + Array.BinarySearch(values, middle, comparer) + "/" + Array.BinarySearch(values, missing, comparer));
+        }
+
+        private static void ComparerFaults<T>(string label, T first, T second)
+        {
+            ComparerIdentity<T>(label);
+            Comparer<T> comparer = Comparer<T>.Default;
+            IComparer<T> viaInterface = comparer;
+            IComparer viaObject = comparer;
+            Try(label + " direct fault", () => comparer.Compare(first, second).ToString());
+            Try(label + " interface fault", () => viaInterface.Compare(first, second).ToString());
+            Try(label + " object interface fault", () => viaObject.Compare(first, second).ToString());
+            Try(label + " sort fault", () =>
+            {
+                var values = new[] { first, second };
+                Array.Sort(values);
+                return IdentityValues(values);
+            });
+            Try(label + " search fault", () => Array.BinarySearch(new[] { first, second }, second).ToString());
+        }
+
+        internal static void RunComparerIdentity()
+        {
+            Console.WriteLine("== default comparer type identity ==");
+            ComparerValues("enum-sbyte", IdentitySByte.Min, IdentitySByte.Zero, IdentitySByte.Max, (IdentitySByte)1);
+            ComparerValues("enum-byte", IdentityByte.Zero, IdentityByte.High, IdentityByte.Max, (IdentityByte)1);
+            ComparerValues("enum-int16", IdentityInt16.Min, IdentityInt16.Zero, IdentityInt16.Max, (IdentityInt16)1);
+            ComparerValues("enum-uint16", IdentityUInt16.Zero, IdentityUInt16.High, IdentityUInt16.Max, (IdentityUInt16)1);
+            ComparerValues("enum-int32", IdentityInt32.Min, IdentityInt32.Zero, IdentityInt32.Max, (IdentityInt32)1);
+            ComparerValues("enum-uint32", IdentityUInt32.Zero, IdentityUInt32.High, IdentityUInt32.Max, (IdentityUInt32)1);
+            ComparerValues("enum-int64", IdentityInt64.Min, IdentityInt64.Zero, IdentityInt64.Max, (IdentityInt64)1);
+            ComparerValues("enum-uint64", IdentityUInt64.Zero, IdentityUInt64.High, IdentityUInt64.Max, (IdentityUInt64)1);
+            ComparerValues<IdentityInt64?>("nullable-enum-signed", null, IdentityInt64.Min, IdentityInt64.Max, IdentityInt64.Zero);
+            ComparerValues<IdentityUInt64?>("nullable-enum-unsigned", null, IdentityUInt64.High, IdentityUInt64.Max, (IdentityUInt64)1);
+            ComparerValues<object>("object", null, 1, 17, 8);
+            ComparerValues("user-generic", new RawGenericOrder(1), new RawGenericOrder(8), new RawGenericOrder(17), new RawGenericOrder(9));
+            ComparerValues("user-nongeneric", new BoxedRef(1), new BoxedRef(8), new BoxedRef(17), new BoxedRef(9));
+            ComparerFaults("user-uncomparable", new PlainRef(1), new PlainRef(2));
+            ComparerFaults<object>("object-uncomparable", new PlainRef(1), new PlainRef(2));
+            ComparerValues("int", -17, 0, 23, 3);
+            ComparerValues("string", "", "a", "b", "aa");
+            Console.WriteLine("default comparer type identity end");
         }
 
         internal static void Run()
