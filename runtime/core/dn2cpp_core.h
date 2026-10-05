@@ -903,7 +903,12 @@ struct Dn2CppParamInfo
     // by-ref-like type. Zero otherwise.
     int32_t passKind;
     const Dn2CppTypeInfo* passType;
+    // Null means no recorded default; a factory returning null records a null default.
+    Dn2CppObject* (*defaultValue)();
 };
+
+// The real CoreLib singleton, shared by Type.Missing and Missing.Value.
+void dn2cpp_set_missing_value_factory(const Dn2CppTypeInfo* type, Dn2CppObject* (*factory)());
 
 // Dn2CppParamInfo::passKind bits. The invoker thunk takes a by-ref or pointer
 // argument as the raw pointer in its argument list and returns a by-ref result as
@@ -2493,6 +2498,7 @@ int32_t dn2cpp_fieldref_is_specialname(Dn2CppFieldRef* f);
 // ParameterInfo.Member/Attributes/IsOptional.
 Dn2CppObject* dn2cpp_paramref_member(Dn2CppParamRef* p);
 int32_t dn2cpp_paramref_attributes(Dn2CppParamRef* p);
+int32_t dn2cpp_paramref_has_default_value(Dn2CppParamRef* p);
 int32_t dn2cpp_paramref_is_optional(Dn2CppParamRef* p);
 Dn2CppArrayRef* dn2cpp_paramref_custom_modifiers(Dn2CppParamRef* p, int32_t required);
 // Enum.InternalGetCorElementType: the CorElementType code of the boxed enum's

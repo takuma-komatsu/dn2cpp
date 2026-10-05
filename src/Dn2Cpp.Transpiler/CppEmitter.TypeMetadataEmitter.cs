@@ -1953,6 +1953,70 @@ internal sealed partial class CppEmitter
             return ($"&{name}", 0);
         }
 
+        private string RenderParameterDefault(MethodInfo method, ParameterHandle handle,
+            TypeDesc type, string name)
+        {
+            var reader = method.Module.Reader;
+            var parameter = reader.GetParameter(handle);
+            string? body = null;
+            var constantHandle = parameter.GetDefaultValue();
+            if (!constantHandle.IsNil)
+            {
+                var constant = reader.GetConstant(constantHandle);
+                var blob = reader.GetBlobReader(constant.Value);
+                if (constant.TypeCode == ConstantTypeCode.String)
+                    body = $"return (Dn2CppObject*){_e._literals.GetOrAdd(blob.ReadUTF16(blob.Length))};";
+                else if (constant.TypeCode == ConstantTypeCode.NullReference)
+                    body = "return nullptr;";
+                else if (ConstantPrimitive(constant.TypeCode) is { } primitive)
+                {
+                    long bits = ReadConstantBits(constant.TypeCode, blob);
+                    if (type.Kind == TypeKind.ByRef)
+                        type = type.Element!;
+                    type = _c.NullableUnderlying(type) ?? type;
+                    bool isEnum = type is { Kind: TypeKind.Class, Class.IsEnum: true };
+                    string boxType = isEnum ? _e.MemberTypeInfoExpr(type, _emittedEnums)
+                        : MethodCompiler.TypeInfoExprOf(TypeDesc.MakePrimitive(primitive))!;
+                    bool wide = primitive is PrimitiveTypeCode.Int64 or PrimitiveTypeCode.UInt64 or PrimitiveTypeCode.Double;
+                    string value = wide ? $"int64_t v = (int64_t)0x{unchecked((ulong)bits):x}ULL;"
+                        : $"int32_t v = (int32_t)0x{unchecked((uint)bits):x}u;";
+                    body = $"{value} return dn2cpp_box({boxType}, &v, sizeof(v));";
+                }
+            }
+            else
+            {
+                foreach (var cah in parameter.GetCustomAttributes())
+                {
+                    var attribute = reader.GetCustomAttribute(cah);
+                    string? attributeName = Compilation.AttributeTypeName(reader, attribute);
+                    if (attributeName is not ("System.Runtime.CompilerServices.DecimalConstantAttribute"
+                        or "System.Runtime.CompilerServices.DateTimeConstantAttribute"))
+                        continue;
+                    var blob = reader.GetBlobReader(attribute.Value);
+                    if (blob.ReadUInt16() != 1)
+                        throw new NotSupportedException("An optional parameter constant has an invalid attribute prolog.");
+                    if (attributeName == "System.Runtime.CompilerServices.DateTimeConstantAttribute")
+                    {
+                        long ticks = blob.ReadInt64();
+                        body = $"Dn2CppDateTime v = dn2cpp_datetime_from_ticks((int64_t)0x{unchecked((ulong)ticks):x}ULL, 0); "
+                            + "return dn2cpp_box(&dn2cpp_datetime_type, &v, sizeof(v));";
+                    }
+                    else
+                    {
+                        int scale = blob.ReadByte(), sign = blob.ReadByte();
+                        uint hi = blob.ReadUInt32(), mid = blob.ReadUInt32(), lo = blob.ReadUInt32();
+                        body = $"Dn2CppDecimal v = dn2cpp_decimal_from_parts((int32_t)0x{lo:x}u, (int32_t)0x{mid:x}u, "
+                            + $"(int32_t)0x{hi:x}u, {(sign != 0 ? 1 : 0)}, {scale}); return dn2cpp_box(&dn2cpp_decimal_type, &v, sizeof(v));";
+                    }
+                    break;
+                }
+            }
+            if (body is null)
+                return "nullptr";
+            _sb.AppendLine($"static Dn2CppObject* {name}() {{ {body} }}");
+            return "&" + name;
+        }
+
         // Per-type reflection field tables: one Dn2CppFieldInfo[] per type that
         // declares fields, referenced by the type-info's fields/fieldCount below. Emitted
         // before the type-info definition so the initializer can name it. Each entry
@@ -2193,12 +2257,15 @@ internal sealed partial class CppEmitter
 
                         (string Expr, int Count) pca = ("nullptr", 0);
                         int pAttrs = 0;
+                        string defaultValue = "nullptr";
                         if (paramHandles.TryGetValue(i, out var pph))
                         {
                             if (attrCls)
                                 pca = _e.BuildAttrTable(_sb, $"{prefix}_{cls.CppName}_{rows.Count}_p{i}", m.Module,
                                     m.Module.Reader.GetParameter(pph).GetCustomAttributes());
                             pAttrs = (int)m.Module.Reader.GetParameter(pph).Attributes;
+                            defaultValue = RenderParameterDefault(m, pph, ps[i],
+                                $"{prefix}_{cls.CppName}_{rows.Count}_p{i}_default");
                         }
                         (string Expr, int Count) req = ("nullptr", 0);
                         (string Expr, int Count) opt = ("nullptr", 0);
@@ -2218,6 +2285,7 @@ internal sealed partial class CppEmitter
                             MetadataValue.Signed(modifiersKnown ? 1 : 0), MetadataValue.Display(pdisplay), MetadataValue.Display(genericDefinition is { } pd ? pd.Parameters[i] : null),
                             MetadataValue.Text(genericDefinition is { } pk ? pk.ParameterKeys[i] : null),
                             MetadataValue.Signed(pass.Kind), MetadataValue.Ref(pass.Type),
+                            MetadataValue.Ref(defaultValue),
                         }));
                     }
                     // Intern byte-identical parameter tables across the whole

@@ -6,8 +6,39 @@ using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
+using System.Runtime.InteropServices;
 
 namespace ReflectInvokeValidationSubset;
+
+delegate string OptionalCall(int value = 23);
+
+class OptionalArguments
+{
+    public int Value;
+    public OptionalArguments(int value = 27) => Value = value;
+    public string Instance(int value = 17) => "instance:" + value;
+    public static string Int(int value = 12) => "int:" + value;
+    public static string Primitives(bool b = true, char c = 'λ', sbyte s = -3, byte u = 200,
+        short h = -4, ushort w = 60000, uint i = 4000000000, long l = long.MinValue,
+        ulong n = ulong.MaxValue, float f = -1.25f, double d = -2.5)
+        => b + ":" + (int)c + ":" + s + ":" + u + ":" + h + ":" + w + ":" + i + ":" + l + ":" + n + ":" + f + ":" + d;
+    public static string Text(string? value = "payload") => "text:" + (value ?? "null");
+    public static string Null(object? value = null) => "null:" + (value is null);
+    public static string Boxed([Optional, DefaultParameterValue(5)] object value) => "boxed:" + value;
+    public static string Enums(Tiny tiny = Tiny.B, Wide wide = Wide.High) => "enums:" + (byte)tiny + ":" + (long)wide;
+    public static string Nullable(int? value = null) => "nullable:" + (value.HasValue ? value.Value.ToString() : "null");
+    public static string NullableEnum(Tiny? value = Tiny.B) => "nullable-enum:" + (value.HasValue ? ((byte)value.Value).ToString() : "null");
+    public static string OptionalObject([Optional] object value) => "optional-object:" + ReferenceEquals(value, Missing.Value);
+    public static string OptionalInt([Optional] int value) => "optional-int:" + value;
+    public static string Required(object value) => "required:" + ReferenceEquals(value, Missing.Value);
+    public static string Decimal(decimal value = 1.25m) => "decimal:" + value;
+    public static string Date([Optional, DateTimeConstant(123)] DateTime value) => "date:" + value.Ticks;
+    public static string ByRef([Optional, DefaultParameterValue(6)] ref int value, string text = "ref")
+    { value++; return "byref:" + value + ":" + text; }
+    public static string Pair(int value = 12, string text = "pair") => "pair:" + value + ":" + text;
+    public static string Throws(int value = 12) => throw new InvalidOperationException("optional target:" + value);
+    public static string Generic<T>(T value = default!) => "generic:" + typeof(T).Name + ":" + (value is null ? "null" : value.ToString());
+}
 
 enum Color { Red, Green, Blue }
 
@@ -275,6 +306,65 @@ ref struct RefMade
 
 static class Program
 {
+    private static string OptionalValue(object? value) => ReferenceEquals(value, Missing.Value) ? "missing"
+        : value is null ? "null" : value.GetType().Name + ":" + value;
+
+    private static void OptionalInvoke(string label, MethodInfo method, object?[] arguments,
+        object? receiver = null, BindingFlags flags = BindingFlags.Default)
+    {
+        try { Console.WriteLine(label + ": " + method.Invoke(receiver, flags, null, arguments, null)); }
+        catch (Exception e) { Console.WriteLine(label + ": " + e.GetType().Name + " 0x" + e.HResult.ToString("x8") + " " + e.Message); }
+        string values = "";
+        foreach (object? argument in arguments)
+            values += (values.Length == 0 ? "" : ",") + OptionalValue(argument);
+        Console.WriteLine(label + " args: " + values);
+    }
+
+    public static void RunOptionalArguments()
+    {
+        Console.WriteLine("== reflective optional arguments ==");
+        Console.WriteLine("missing aliases: " + ReferenceEquals(Type.Missing, Missing.Value));
+        Console.WriteLine("missing address alias: " + ReferenceEquals(Unsafe.AsRef(in Type.Missing), Missing.Value));
+        Type type = typeof(OptionalArguments);
+        MethodInfo integer = type.GetMethod("Int")!;
+        Console.WriteLine("default metadata: " + integer.GetParameters()[0].HasDefaultValue + ":"
+            + type.GetMethod("Decimal")!.GetParameters()[0].HasDefaultValue + ":"
+            + type.GetMethod("Date")!.GetParameters()[0].HasDefaultValue + ":"
+            + type.GetMethod("OptionalObject")!.GetParameters()[0].HasDefaultValue + ":"
+            + type.GetMethod("Required")!.GetParameters()[0].HasDefaultValue);
+        OptionalInvoke("integer first", integer, new object?[] { Type.Missing });
+        OptionalInvoke("integer cached", integer, new object?[] { Missing.Value });
+        object?[] primitives = new object?[11];
+        for (int i = 0; i < primitives.Length; i++) primitives[i] = Type.Missing;
+        OptionalInvoke("primitives", type.GetMethod("Primitives")!, primitives);
+        foreach (string name in new[] { "Text", "Null", "Boxed", "Nullable", "NullableEnum", "OptionalObject", "OptionalInt", "Required", "Decimal", "Date" })
+            OptionalInvoke(name, type.GetMethod(name)!, new object?[] { Type.Missing });
+        OptionalInvoke("enums", type.GetMethod("Enums")!, new object?[] { Missing.Value, Type.Missing });
+        OptionalInvoke("byref", type.GetMethod("ByRef")!, new object?[] { Type.Missing, Missing.Value });
+        OptionalInvoke("validation failure", type.GetMethod("Pair")!, new object?[] { Type.Missing, new object() });
+        OptionalInvoke("target failure", type.GetMethod("Throws")!, new object?[] { Type.Missing });
+        OptionalInvoke("unwrapped target", type.GetMethod("Throws")!, new object?[] { Type.Missing }, flags: BindingFlags.DoNotWrapExceptions);
+        OptionalArguments receiver = new OptionalArguments();
+        MethodInfo instance = type.GetMethod("Instance")!;
+        OptionalInvoke("instance", instance, new object?[] { Type.Missing }, receiver);
+        OptionalInvoke("null receiver", instance, new object?[] { Type.Missing });
+        OptionalInvoke("wrong receiver", instance, Array.Empty<object?>(), new object());
+        OptionalInvoke("wrong arity", integer, Array.Empty<object?>());
+        OptionalInvoke("explicit value", integer, new object?[] { (byte)9 });
+        Console.WriteLine("generic direct controls: " + OptionalArguments.Generic<int>(3) + ":" + OptionalArguments.Generic<string>("x"));
+        MethodInfo generic = type.GetMethod("Generic")!;
+        OptionalInvoke("generic value", generic.MakeGenericMethod(typeof(int)), new object?[] { Type.Missing });
+        OptionalInvoke("generic reference", generic.MakeGenericMethod(typeof(string)), new object?[] { Type.Missing });
+        object?[] constructorArgs = { Type.Missing };
+        OptionalArguments constructed = (OptionalArguments)type.GetConstructor(new[] { typeof(int) })!.Invoke(constructorArgs);
+        Console.WriteLine("constructor: " + constructed.Value + ":" + OptionalValue(constructorArgs[0]));
+        OptionalCall call = OptionalArguments.Int;
+        object?[] dynamicArgs = { Type.Missing };
+        Console.WriteLine("dynamic invoke: " + call.DynamicInvoke(dynamicArgs) + ":" + OptionalValue(dynamicArgs[0]));
+        Console.WriteLine("direct delegate: " + call(31));
+        Console.WriteLine("reflective optional arguments end");
+    }
+
     private static void Try(string label, Func<object?> invoke)
     {
         try

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Property accessor arrays retain visibility, order, reflected handle identity and boxed invocation.
+# Invoke replaces the canonical Missing singleton with recorded defaults and copies back only after success.
 # Virtual and generic virtual reflection dispatch, by-reference copy-back,
 # null-bound delegates, DynamicInvoke and catchable stripped-body refusals, which a
 # nested reflective call raises to the outer call as a fault of its target.
@@ -185,7 +186,7 @@
 # Pointer field accessors box and validate unmanaged/function addresses with
 # packed and native metadata, preserving static-readonly accessor refusal order.
 source "$(dirname "$0")/_common.sh"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|typedef-memberref-prefix:${DN2CPP_BEFORE_TYPEDEF_MEMBERREF:-}|primitive-binder-prefix:${DN2CPP_BEFORE_PRIMITIVE_BINDER:-}"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|typedef-memberref-prefix:${DN2CPP_BEFORE_TYPEDEF_MEMBERREF:-}|primitive-binder-prefix:${DN2CPP_BEFORE_PRIMITIVE_BINDER:-}|optional-arguments-prefix:${DN2CPP_BEFORE_OPTIONAL_ARGUMENTS:-}"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_ordinary-reflection.sh samples/dotnet/ReflectInvoke/OrdinaryAmbiguousMatchSubset.cs samples/dotnet/ReflectInvoke/OrdinaryReflectionLeaves.csproj samples/dotnet/ReflectInvoke/OrdinaryReflectionLeavesProgram.cs samples/dotnet/ReflectInvoke/OrdinaryWideLookupSubset.cs samples/dotnet/ReflectInvoke/ReflectBindOnly.csproj samples/dotnet/ReflectInvoke/ReflectBindOnlyProgram.cs samples/dotnet/ReflectInvoke/ReflectFieldValidationSubset.cs samples/dotnet/ReflectInvoke/ReflectInvoke.csproj samples/dotnet/ReflectInvoke/ReflectMetadataMeasureSubset.cs samples/dotnet/ReflectInvoke/ReflectionMethodGroupsOnly.csproj samples/dotnet/ReflectInvoke/ReflectionMethodGroupsOnlyProgram.cs samples/dotnet/ReflectInvoke/StrippedOverrideRefusals.csproj samples/dotnet/ReflectInvoke/StrippedOverrideRefusalsProgram.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-reflection-leaves-v1|runtime-member-attributes-prefix:${DN2CPP_BEFORE_RUNTIME_MEMBER_ATTRIBUTES:-}|runtime-return-modifiers-prefix:${DN2CPP_BEFORE_RUNTIME_RETURN_MODIFIERS:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|reflection-dispatch-v1|dispatch-prefix:${DN2CPP_BEFORE_REFLECTION_DISPATCH:-}|attribute-minted-prefix:${DN2CPP_BEFORE_ATTRIBUTE_MINTED:-}|template-accessors-prefix:${DN2CPP_BEFORE_TEMPLATE_ACCESSORS:-}|pointer-returns-prefix:${DN2CPP_BEFORE_POINTER_RETURNS:-}|delegate-invoke-targets-prefix:${DN2CPP_BEFORE_DELEGATE_INVOKE_TARGETS:-}|null-bound-chains-prefix:${DN2CPP_BEFORE_NULL_BOUND_CHAINS:-}|renamed-slot-bindings-prefix:${DN2CPP_BEFORE_RENAMED_SLOT_BINDINGS:-}|settled-object-virtual-prefix:${DN2CPP_BEFORE_SETTLED_OBJECT_VIRTUAL:-}|renamed-slot-fillers-prefix:${DN2CPP_BEFORE_RENAMED_SLOT_FILLERS:-}"
@@ -198,6 +199,28 @@ py="$(resolve_python)"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/check-reflection-layout.py gates/measure-reflection-metadata.py gates/expected/reflection-allocations.csv gates/fixtures/delegate-invocation-cache/DelegateInvocationCache.csproj gates/fixtures/delegate-invocation-cache/Program.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|empty-string-clone-prefix:${DN2CPP_BEFORE_EMPTY_STRING_CLONE:-}|delegate-list-prefix:${DN2CPP_BEFORE_DELEGATE_LISTS:-}|recursive-delegate-prefix:${DN2CPP_BEFORE_RECURSIVE_DELEGATE:-}|ordinary-interface-prefix:${DN2CPP_BEFORE_ORDINARY_IL_INTERFACE:-}|object-methodimpl-prefix:${DN2CPP_BEFORE_OBJECT_METHODIMPL:-}"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/recursive-delegate/RecursiveDelegate.csproj gates/fixtures/recursive-delegate/Program.cs"
+gate_optional_argument_asserts() {
+    local out="$1" native line
+    native=$(strip_cr_win_file "$out/metadata-layout.stdout")
+    DN2CPP_BEFORE_OPTIONAL_ARGUMENTS=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-optional-arguments.stdout"
+    sed '/^== reflective optional arguments ==/,$d' "$out/metadata-layout.stdout" > "$out/optional-arguments-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-optional-arguments.stdout") \
+        <(strip_cr_win_file "$out/optional-arguments-prefix.stdout")
+    for line in '== reflective optional arguments ==' 'missing aliases: True' 'missing address alias: True' \
+        'default metadata: True:True:True:False:False' \
+        'integer first: int:12' 'integer cached: int:12' 'integer cached args: Int32:12' \
+        'Boxed: boxed:5' 'Boxed args: missing' 'Decimal: decimal:1.25' 'Date: date:123' \
+        'NullableEnum: nullable-enum:7' 'NullableEnum args: Tiny:B' \
+        'enums args: Tiny:B,Wide:High' 'byref args: Int32:7,String:ref' \
+        'validation failure args: missing,Object:System.Object' 'target failure args: missing' \
+        'generic value args: missing' 'generic reference args: null' \
+        'constructor: 27:Int32:27' 'dynamic invoke: int:23:Int32:23' \
+        'direct delegate: int:31' 'reflective optional arguments end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: optional argument witness missing: $line" >&2; return 1; }
+    done
+}
+
 gate_empty_string_clone_asserts() {
     local out="$1" native line
     native=$(strip_cr_win_file "$out/metadata-layout.stdout")
@@ -234,6 +257,7 @@ gate_extra_asserts() {
     esac
     run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/metadata-layout.stdout"
     native=$(strip_cr_win_file "$out/metadata-layout.stdout")
+    gate_optional_argument_asserts "$out"
     local primitive_before primitive_prefix
     primitive_before=$(DN2CPP_BEFORE_PRIMITIVE_BINDER=1 run_bounded dotnet "$_CG_APP")
     primitive_prefix=$(awk '/^== default binder primitive widening ==$/ { exit } { print }' <<< "$native")

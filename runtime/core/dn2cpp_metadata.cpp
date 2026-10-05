@@ -91,6 +91,7 @@ constexpr Field Dn2CppParamInfo_fields[] = {
     { offsetof(Dn2CppParamInfo, genericDefinitionKey), Encoding::Pointer },
     { offsetof(Dn2CppParamInfo, passKind), Encoding::Signed32 },
     { offsetof(Dn2CppParamInfo, passType), Encoding::Pointer },
+    { offsetof(Dn2CppParamInfo, defaultValue), Encoding::Pointer },
 };
 constexpr Field Dn2CppPropInfo_fields[] = {
     { offsetof(Dn2CppPropInfo, name), Encoding::Pointer },

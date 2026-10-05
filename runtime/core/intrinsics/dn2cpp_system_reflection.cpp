@@ -3167,13 +3167,64 @@ static Dn2CppObject* dn2cpp_invoke_check_arg(Dn2CppObject* arg, const Dn2CppType
     dn2cpp_throw_invoke_argument(arg->type, expected);
 }
 
+static const Dn2CppTypeInfo* g_missing_type = nullptr;
+static Dn2CppObject* (*g_missing_value_factory)() = nullptr;
+
+void dn2cpp_set_missing_value_factory(const Dn2CppTypeInfo* type, Dn2CppObject* (*factory)())
+{
+    g_missing_type = type;
+    g_missing_value_factory = factory;
+}
+
+static bool dn2cpp_invoke_is_missing(Dn2CppObject* value)
+{
+    return value != nullptr && value->type == g_missing_type
+        && g_missing_value_factory != nullptr && value == g_missing_value_factory();
+}
+
+// Default substitution precedes conversion. Only successful calls copy back, and
+// CheckValue suppresses a by-value copy-back when the default needs conversion.
+static Dn2CppObject* dn2cpp_invoke_default(const Dn2CppParamInfo& parameter,
+    Dn2CppObject* missing, int32_t index, int32_t argc, Dn2CppArrayI4** copyBack)
+{
+    Dn2CppObject* value;
+    if (parameter.defaultValue != nullptr)
+        value = parameter.defaultValue();
+    else if ((parameter.ilAttrs & 0x10) != 0)
+        value = missing;
+    else
+        dn2cpp_throw_argument_text(&dn2cpp_argument_exception_type,
+            "Missing parameter does not have a default value.", "parameters");
+    const Dn2CppTypeInfo* type = parameter.paramType;
+    if (copyBack != nullptr && parameter.passKind == 0 && type != nullptr
+        && (value != nullptr ? value->type == type || dn2cpp_nullable_underlying_ti(type) != nullptr
+            : (type->flags & DN2CPP_TF_VALUETYPE) == 0))
+    {
+        if (*copyBack == nullptr)
+            *copyBack = dn2cpp_newarr_i4(argc);
+        (*copyBack)->data[index] = 1;
+    }
+    return value;
+}
+
+static void dn2cpp_invoke_write_defaults(Dn2CppMetadataTable<Dn2CppParamInfo> parameters,
+    Dn2CppObject** prepared, Dn2CppObject** caller, const Dn2CppArrayI4* copyBack, int32_t argc)
+{
+    if (copyBack == nullptr)
+        return;
+    for (int32_t i = 0; i < argc; i++)
+        if (copyBack->data[i] != 0)
+            dn2cpp_gc_store_ref(&caller[i], dn2cpp_invoke_box_result(parameters[i]->paramType, prepared[i]));
+}
+
 // The argument list the invoker thunk receives: `args` itself unless an argument
 // converts, then a copy, since a by-value conversion never writes the caller's
 // array. The caller has already matched argc against the row's parameter count.
 // `types` holds the parameter types when the caller's plan carries them;
 // otherwise the row's parameter table answers.
 static Dn2CppObject** dn2cpp_invoke_check_args(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi,
-    const Dn2CppTypeInfo* const* types, Dn2CppObject** args, int32_t argc)
+    const Dn2CppTypeInfo* const* types, Dn2CppObject** args, int32_t argc,
+    Dn2CppArrayI4** defaultCopyBack)
 {
     if (argc == 0)
         return args;
@@ -3185,8 +3236,15 @@ static Dn2CppObject** dn2cpp_invoke_check_args(Dn2CppMetadataHandle<Dn2CppMethod
     {
         if (args[i] == nullptr)
             continue;
-        Dn2CppObject* arg = dn2cpp_invoke_check_arg(args[i],
-            types != nullptr ? types[i] : parameters[i]->paramType);
+        Dn2CppObject* arg = args[i];
+        if (dn2cpp_invoke_is_missing(arg))
+        {
+            if (types != nullptr)
+                parameters = mi->parameters;
+            arg = dn2cpp_invoke_default(*parameters[i].operator->().operator->(), arg, i, argc, defaultCopyBack);
+        }
+        if (arg != nullptr)
+            arg = dn2cpp_invoke_check_arg(arg, types != nullptr ? types[i] : parameters[i]->paramType);
         if (arg == args[i])
             continue;
         if (copy == nullptr)
@@ -3435,17 +3493,19 @@ static Dn2CppObject* dn2cpp_invoke_pass_arg(const Dn2CppParamInfo& param, Dn2Cpp
 // cell reachable (the collector takes no heap word pointing into an object as a
 // reference to it) and names what dn2cpp_invoke_write_back copies back.
 static Dn2CppObject** dn2cpp_invoke_pass_args(Dn2CppMetadataTable<Dn2CppParamInfo> parameters,
-    Dn2CppObject** args, int32_t argc, bool wrapExceptions)
+    Dn2CppObject** args, int32_t argc, bool wrapExceptions, Dn2CppArrayI4** defaultCopyBack)
 {
     Dn2CppArrayRef* list = dn2cpp_newarr_ref(argc * 2);
     for (int32_t i = 0; i < argc; i++)
     {
         const auto param = parameters[i].operator->();
         Dn2CppObject* pass = args[i];
+        if (dn2cpp_invoke_is_missing(pass))
+            pass = dn2cpp_invoke_default(*param.operator->(), pass, i, argc, defaultCopyBack);
         if (param->passKind != 0)
         {
             char* cell = nullptr;
-            pass = dn2cpp_invoke_pass_arg(*param.operator->(), args[i], wrapExceptions, &cell);
+            pass = dn2cpp_invoke_pass_arg(*param.operator->(), pass, wrapExceptions, &cell);
             if (cell != nullptr)
                 dn2cpp_gc_store_ref(&list->data[argc + i], reinterpret_cast<Dn2CppObject*>(cell));
         }
@@ -4013,17 +4073,21 @@ static Dn2CppObject* dn2cpp_invoke_answer(Dn2CppMetadataHandle<Dn2CppMethodInfo>
     const Dn2CppMethodInfo& row, const Dn2CppMetaMember* d, Dn2CppObject* obj, Dn2CppObject** args,
     int32_t argc, bool wrapExceptions, Dn2CppInvokeMode mode, const Dn2CppTypeInfo* reflected)
 {
+    Dn2CppObject** callerArgs = args;
+    Dn2CppArrayI4* defaultCopyBack = nullptr;
     if (mode == Dn2CppInvokeMode::Invoke)
     {
         obj = dn2cpp_invoke_receiver(row, obj, reflected);
         if (argc != row.paramCount)
             dn2cpp_throw_invoke_parameter_count();
-        args = dn2cpp_invoke_check_args(mi, nullptr, args, argc);
+        args = dn2cpp_invoke_check_args(mi, nullptr, args, argc, &defaultCopyBack);
     }
     // An answer refuses nothing itself: a refusal reaching here is a nested call's.
     try
     {
-        return d->answer(row.genericArgs, obj, args);
+        Dn2CppObject* result = d->answer(row.genericArgs, obj, args);
+        dn2cpp_invoke_write_defaults(row.parameters, args, callerArgs, defaultCopyBack, argc);
+        return result;
     }
     catch (Dn2CppException& exception)
     {
@@ -4042,6 +4106,7 @@ static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi
     // A CreateDelegate trampoline passes by-ref and pointer arguments raw and reads
     // a by-ref result raw; only Invoke builds and dereferences them.
     Dn2CppObject** callerArgs = args;
+    Dn2CppArrayI4* defaultCopyBack = nullptr;
     const bool passArgs = invoke && (row.flags & Dn2CppInvokePlan::kPassArgs) != 0;
     const Dn2CppTypeInfo* referent = nullptr;
     if (invoke)
@@ -4057,8 +4122,8 @@ static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi
         obj = dn2cpp_invoke_receiver(row, obj, reflected);
         if (argc != row.paramCount)
             dn2cpp_throw_invoke_parameter_count();
-        args = passArgs ? dn2cpp_invoke_pass_args(row.parameters, args, argc, wrapExceptions)
-                        : dn2cpp_invoke_check_args(mi, row.checkedTypes(), args, argc);
+        args = passArgs ? dn2cpp_invoke_pass_args(row.parameters, args, argc, wrapExceptions, &defaultCopyBack)
+                        : dn2cpp_invoke_check_args(mi, row.checkedTypes(), args, argc, &defaultCopyBack);
         if (isStatic && (row.ilAttrs & DN2CPP_MA_ABSTRACT) != 0
             && (row.declaringType->flags & DN2CPP_TF_INTERFACE) != 0)
             dn2cpp_throw_invoke_static_abstract(wrapExceptions);
@@ -4115,6 +4180,7 @@ static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi
         : dn2cpp_invoke_box_result(row.returnType, result);
     if (passArgs)
         dn2cpp_invoke_write_back(args, callerArgs, argc);
+    dn2cpp_invoke_write_defaults(row.parameters, args, callerArgs, defaultCopyBack, argc);
     return result;
 }
 
@@ -5349,8 +5415,9 @@ static Dn2CppObject* dn2cpp_ctor_invoke_argv(Dn2CppMetadataHandle<Dn2CppMethodIn
         dn2cpp_throw_invoke_parameter_count();
     Dn2CppObject** callerArgs = args;
     const bool passArgs = (plan.flags & Dn2CppInvokePlan::kPassArgs) != 0;
-    args = passArgs ? dn2cpp_invoke_pass_args(plan.parameters, args, argc, wrapExceptions)
-                    : dn2cpp_invoke_check_args(mi, plan.checkedTypes(), args, argc);
+    Dn2CppArrayI4* defaultCopyBack = nullptr;
+    args = passArgs ? dn2cpp_invoke_pass_args(plan.parameters, args, argc, wrapExceptions, &defaultCopyBack)
+                    : dn2cpp_invoke_check_args(mi, plan.checkedTypes(), args, argc, &defaultCopyBack);
     const Dn2CppTypeInfo* ti = plan.declaringType;
     bool isValue = (ti->flags & DN2CPP_TF_VALUETYPE) != 0;
     size_t sz = isValue ? sizeof(Dn2CppObject) + static_cast<size_t>(ti->instanceSize)
@@ -5371,6 +5438,7 @@ static Dn2CppObject* dn2cpp_ctor_invoke_argv(Dn2CppMetadataHandle<Dn2CppMethodIn
     dn2cpp_invoke_target(plan.invoker, plan.fnPtr, self, args, nullptr, wrapExceptions);
     if (passArgs)
         dn2cpp_invoke_write_back(args, callerArgs, argc);
+    dn2cpp_invoke_write_defaults(plan.parameters, args, callerArgs, defaultCopyBack, argc);
     return obj;
 }
 
@@ -7501,6 +7569,12 @@ Dn2CppObject* dn2cpp_paramref_member(Dn2CppParamRef* p)
 int32_t dn2cpp_paramref_attributes(Dn2CppParamRef* p)
 {
     return dn2cpp_paramref_require(p)->param->ilAttrs;
+}
+
+int32_t dn2cpp_paramref_has_default_value(Dn2CppParamRef* p)
+{
+    const auto parameter = dn2cpp_paramref_require(p)->param.operator->();
+    return parameter->defaultValue != nullptr || (parameter->ilAttrs & 0x1000) != 0 ? 1 : 0;
 }
 
 int32_t dn2cpp_paramref_is_optional(Dn2CppParamRef* p)
