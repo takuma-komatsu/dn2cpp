@@ -6299,6 +6299,16 @@ static Dn2CppArrayRef* dn2cpp_attr_table_to_array(Dn2CppMetadataTable<Dn2CppAttr
     return arr;
 }
 
+static Dn2CppObject* dn2cpp_attr_table_to_single(Dn2CppMetadataTable<Dn2CppAttrInfo> tab, int32_t count,
+                                               const Dn2CppTypeInfo* filter)
+{
+    // A later matching constructor's fault takes precedence over ambiguity.
+    Dn2CppArrayRef* attributes = dn2cpp_attr_table_to_array(tab, count, filter);
+    if (attributes->length > 1)
+        dn2cpp_throw_ambiguous_attribute(attributes->data[0]);
+    return attributes->length == 0 ? nullptr : attributes->data[0];
+}
+
 Dn2CppArrayRef* dn2cpp_get_custom_attributes(Dn2CppObject* member, Dn2CppType* attrType)
 {
     int32_t count;
@@ -6328,15 +6338,7 @@ Dn2CppObject* dn2cpp_get_custom_attribute(Dn2CppObject* member, Dn2CppType* attr
     const Dn2CppTypeInfo* filter = attrType->typeInfo;
     int32_t count;
     Dn2CppMetadataTable<Dn2CppAttrInfo> tab = dn2cpp_member_custom_attrs(member, &count);
-    Dn2CppMetadataHandle<Dn2CppAttrInfo> found = nullptr;
-    for (int32_t i = 0; i < count; i++)
-        if (dn2cpp_type_is_a(tab[i]->attrType, filter))
-        {
-            if (found != nullptr)
-                dn2cpp_throw_ambiguous_attribute(found->create());
-            found = tab[i];
-        }
-    return (found != nullptr) ? found->create() : nullptr;
+    return dn2cpp_attr_table_to_single(tab, count, filter);
 }
 
 int32_t dn2cpp_is_defined(Dn2CppObject* member, Dn2CppType* attrType)
@@ -6395,15 +6397,7 @@ Dn2CppObject* dn2cpp_assembly_get_custom_attribute(const char* name, Dn2CppType*
     const Dn2CppTypeInfo* filter = attrType->typeInfo;
     int32_t count;
     Dn2CppMetadataTable<Dn2CppAttrInfo> tab = dn2cpp_assembly_custom_attrs(name, &count);
-    Dn2CppMetadataHandle<Dn2CppAttrInfo> found = nullptr;
-    for (int32_t i = 0; i < count; i++)
-        if (dn2cpp_type_is_a(tab[i]->attrType, filter))
-        {
-            if (found != nullptr)
-                dn2cpp_throw_ambiguous_attribute(found->create());
-            found = tab[i];
-        }
-    return (found != nullptr) ? found->create() : nullptr;
+    return dn2cpp_attr_table_to_single(tab, count, filter);
 }
 
 int32_t dn2cpp_assembly_is_defined(const char* name, Dn2CppType* attrType)

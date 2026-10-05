@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Runtime generic template invocation, member rows, hidden contexts and boxed-value copies.
 # Assembly.Load distinguishes null AssemblyName objects and missing/empty simple names.
+# Single-attribute queries construct every match before ambiguity or a later constructor fault.
 # Runtime exception Object-family lookups retain declaring types and callable handles.
 # Nested generic type names agree through typeof, GetType and delegate declaring types.
 # A template body that calls through a function pointer over its type parameter never
@@ -314,7 +315,8 @@ source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_ordinary-reflection.sh samples/dotnet/ReflectTypes/AttributeTypePropertySubset.cs samples/dotnet/ReflectTypes/DataOnlyAttributeRowsOnly.csproj samples/dotnet/ReflectTypes/DataOnlyAttributeRowsOnlyProgram.cs samples/dotnet/ReflectTypes/OrdinaryReflectionTypeLeaves.csproj samples/dotnet/ReflectTypes/OrdinaryReflectionTypeLeavesProgram.cs samples/dotnet/ReflectTypes/PropertyAccessorRowsSubset.cs samples/dotnet/ReflectTypes/ReflectAssemblyErrorSubset.cs samples/dotnet/ReflectTypes/ReflectAttrBoxedSubset.cs samples/dotnet/ReflectTypes/ReflectRuntimeTypeParitySubset.cs samples/dotnet/ReflectTypes/ReflectTypes.csproj samples/dotnet/ReflectTypes/UnreadAttributeRowsOnly.csproj samples/dotnet/ReflectTypes/UnreadAttributeRowsOnlyProgram.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|before-nested-generic-names"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/NestedGenericTypeNameSubset.cs samples/dotnet/ReflectTypes/GenericDefinitionSymbolNeighbors.cs"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-type-leaves-v1|before-attribute-display-code-units|exception-object-prefix-argv:before-exception-object-members|assembly-name-prefix-argv:before-assembly-name-validation"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-type-leaves-v1|before-attribute-display-code-units|exception-object-prefix-argv:before-exception-object-members|assembly-name-prefix-argv:before-assembly-name-validation|attribute-construction-prefix-argv:before-attribute-construction-order"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/AttributeConstructionOrderSubset.cs"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/ReflectionTemplateDispatch.csproj samples/dotnet/ReflectTypes/ReflectionTemplateDispatchProgram.cs samples/dotnet/ReflectTypes/ReflectRuntimeInstantiationSubset.cs"
 
 EXPFILE="$(dirname "$0")/expected/reflect-types.txt"
@@ -581,7 +583,8 @@ grep -q "EventListenerProbe.ProbeListener..ctor <- EventListenerProbe.Program.Ma
     || { echo "FAIL: the refused transpile still emitted C++: $(ls -1 "$ES_OUT" | tr '\n' ' ')" >&2; exit 1; }
 echo "refusal OK: exit $es_code, named the observation side + EventListener + a remedy + the caller, emitted nothing"
 
-# Native String rows, Type construction faults and lossless attribute displays.
+# Native String rows, Type construction faults, lossless attribute displays,
+# and complete matching attribute construction before single-query ambiguity.
 unset -f gate_extra_asserts
 source gates/_ordinary-reflection.sh
 gate_extra_asserts() {
@@ -707,6 +710,38 @@ gate_extra_asserts() {
         'load object identity=True' 'load string identity=True' 'assembly name load validation end'; do
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: assembly name validation witness missing: $line" >&2; return 1; }
+    done
+    before=$(run_bounded dotnet "$_CG_APP" before-attribute-construction-order) || return $?
+    prefix=$(awk '/^== single attribute construction order ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    before=$(run_bounded "$out/OrdinaryReflectionTypeLeaves$EXE_EXT" before-attribute-construction-order) || return $?
+    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    for line in '== single attribute construction order ==' 'single attribute construction order end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: attribute construction block missing: $line" >&2; return 1; }
+    done
+    local subject query ambiguity
+    ambiguity="AmbiguousMatchException|8000211D|Multiple custom attributes of the same type 'ordered-1' found. trace=ctor:1,ctor:2,ctor:3,display:1"
+    for subject in type method field property parameter assembly; do
+        for query in static extension generic; do
+            for line in "$subject $query/no-fault=$ambiguity" \
+                "$subject $query/second-fault=InvalidOperationException|80131509|attribute fault 2 trace=ctor:1,ctor:2" \
+                "$subject $query/third-fault=InvalidOperationException|80131509|attribute fault 3 trace=ctor:1,ctor:2,ctor:3"; do
+                grep -Fxq -- "$line" <<< "$native" \
+                    || { echo "FAIL: single attribute order witness missing: $line" >&2; return 1; }
+            done
+        done
+        for query in static generic; do
+            for line in "$subject single-$query=value:1 trace=ctor:1" "$subject absent-$query=null trace="; do
+                grep -Fxq -- "$line" <<< "$native" \
+                    || { echo "FAIL: single attribute filter witness missing: $line" >&2; return 1; }
+            done
+        done
+        for line in "$subject defined-static=True trace=" "$subject defined-instance=True trace=" \
+            "$subject absent-defined=False trace="; do
+            grep -Fxq -- "$line" <<< "$native" \
+                || { echo "FAIL: constructor-free IsDefined witness missing: $line" >&2; return 1; }
+        done
     done
 }
 DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectTypes OrdinaryReflectionTypeLeaves \

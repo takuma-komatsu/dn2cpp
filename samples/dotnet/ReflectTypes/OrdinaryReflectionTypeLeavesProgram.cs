@@ -31,5 +31,8 @@ static class Program
         if (args.Length > 0 && args[0] == "before-assembly-name-validation")
             return;
         ReflectAssemblyErrorSubset.Program.RunAssemblyNameValidation();
+        if (args.Length > 0 && args[0] == "before-attribute-construction-order")
+            return;
+        AttributeConstructionOrderSubset.Program.Run();
     }
 }
