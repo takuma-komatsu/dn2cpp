@@ -1441,8 +1441,8 @@ int32_t dn2cpp_type_equals(Dn2CppType* a, Dn2CppType* b);
 // splitter every name-splitting surface shares — a nested type-info's name
 // carries the CLR '+' syntax, so a dot-only split would leak "Outer+Inner".
 const char* dn2cpp_simple_type_name(const char* full);
-// Type.Name — the simple name (after the last '.' or '+'), unlike the qualified
-// Type.FullName / Type.ToString.
+// Type.Name — the definition's simple name, with array element names and ranks
+// composed recursively, unlike the qualified Type.FullName / Type.ToString.
 Dn2CppString* dn2cpp_type_name(const Dn2CppTypeInfo* ti);
 // Type.FullName and Type.ToString. Both are ti->name verbatim ('+'-qualified for a
 // nested type) except for arrays and closed generics. Arrays compose their element
@@ -1456,8 +1456,8 @@ Dn2CppString* dn2cpp_type_name(const Dn2CppTypeInfo* ti);
 Dn2CppString* dn2cpp_type_fullname(const Dn2CppTypeInfo* ti);
 Dn2CppString* dn2cpp_type_tostring(const Dn2CppTypeInfo* ti);
 // Type.Namespace: the declaring chain's namespace — the part before the last '.'
-// of the outermost name (i.e. within the prefix up to the first '+'), empty when
-// the type has none.
+// of the outermost definition name (before the first '+'). Arrays inherit their
+// element's namespace; a type with no namespace returns null.
 Dn2CppString* dn2cpp_type_namespace(const Dn2CppTypeInfo* ti);
 // Type.IsEnum / IsArray / IsInterface / IsAbstract — read the flag bits, so they
 // answer for any type (typeof or a runtime GetType()), not only static folds.
@@ -1514,6 +1514,8 @@ int32_t dn2cpp_type_is_subclass_of(Dn2CppType* a, Dn2CppType* c);
 // and strings (the JIT's HasComponentSize MethodTable bit). ReadOnlyMemory<T>.Span uses
 // it to tell an array-backed memory from a MemoryManager-backed one.
 int32_t dn2cpp_object_has_component_size(Dn2CppObject* o);
+// Array ownership follows its final element; absent assembly metadata means CoreLib.
+const char* dn2cpp_ti_assembly_name(const Dn2CppTypeInfo* ti);
 // Type.Assembly identity: the defining assembly's simple name (null type-info name
 // falls back to "System.Private.CoreLib", since only hand-written CoreLib type-infos
 // omit it). Assembly is modeled as this opaque name pointer; op_Equality compares the

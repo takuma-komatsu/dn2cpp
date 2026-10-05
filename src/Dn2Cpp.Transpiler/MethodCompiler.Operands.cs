@@ -480,6 +480,7 @@ internal sealed partial class MethodCompiler
             // A type token naming an MD array (typeof/castclass/isinst target) keys
             // the shared rank>=2 dispatch map too: the program expects one.
             _c.NoteMdArrayUse();
+            _c.NoteMdArrayType(target);
             if (mdel.Kind is TypeKind.Class && mdel.Class is { } mdCls)
                 NoteReferencedType(mdCls);
             string mdElemTi = MdSzElementTypeInfoExpr(mdel)

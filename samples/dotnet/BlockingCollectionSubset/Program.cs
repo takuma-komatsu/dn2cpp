@@ -267,5 +267,8 @@ static class Program
         if (args.Length == 1 && args[0] == "before-collection-disposal")
             return;
         BlockingCollectionDisposalSubset.RunChecks();
+        if (args.Length == 1 && args[0] == "before-closed-nested-names")
+            return;
+        NestedTypeNameProbe.ClosedNestedReflectionNamesSubset.RunChecks();
     }
 }

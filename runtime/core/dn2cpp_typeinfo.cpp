@@ -1039,8 +1039,36 @@ const char* dn2cpp_simple_type_name(const char* full)
     return simple;
 }
 
+static inline bool dn2cpp_ti_has_array_element(const Dn2CppTypeInfo* ti)
+{
+    return ti != nullptr && (ti->flags & DN2CPP_TF_ARRAY) != 0
+        && ti->elementType != nullptr;
+}
+
+static void dn2cpp_append_simple_type_display(const Dn2CppTypeInfo* ti, std::string& out)
+{
+    if (dn2cpp_ti_has_array_element(ti))
+    {
+        dn2cpp_append_simple_type_display(ti->elementType, out);
+        out += '[';
+        for (int32_t i = 1; i < ti->arrayRank; i++)
+            out += ',';
+        out += ']';
+        return;
+    }
+    if (ti->genericArgCount > 0 && ti->genericDef != nullptr)
+        ti = ti->genericDef;
+    out += dn2cpp_simple_type_name(ti->name);
+}
+
 Dn2CppString* dn2cpp_type_name(const Dn2CppTypeInfo* ti)
 {
+    if (dn2cpp_ti_has_array_element(ti))
+    {
+        std::string s;
+        dn2cpp_append_simple_type_display(ti, s);
+        return dn2cpp_string_from_utf8(s.c_str(), static_cast<int32_t>(s.size()));
+    }
     // A closed generic reports its definition's simple name (e.g. "List`1"), matching
     // .NET (typeof(List<int>).Name == typeof(List<>).Name), not the dn2cpp-mangled
     // instantiation name. FullName/ToString compose from the same two members
@@ -1077,10 +1105,12 @@ static inline bool dn2cpp_ti_shows_generic_params(const Dn2CppTypeInfo* ti, bool
         && ti->reflection().genericParamNames != nullptr;
 }
 
-static inline bool dn2cpp_ti_has_array_element(const Dn2CppTypeInfo* ti)
+const char* dn2cpp_ti_assembly_name(const Dn2CppTypeInfo* ti)
 {
-    return ti != nullptr && (ti->flags & DN2CPP_TF_ARRAY) != 0
-        && ti->elementType != nullptr;
+    while (dn2cpp_ti_has_array_element(ti))
+        ti = ti->elementType;
+    const char* name = ti != nullptr ? ti->reflection().assemblyName : nullptr;
+    return name != nullptr ? name : "System.Private.CoreLib";
 }
 
 // Composes CLR generic and array names recursively. `qualify`
@@ -1121,7 +1151,7 @@ static void dn2cpp_append_type_display(const Dn2CppTypeInfo* ti, bool qualify, s
             out += '[';
             dn2cpp_append_type_display(a, true, out);
             out += ", ";
-            out += dn2cpp_assembly_display_name_utf8(a != nullptr ? a->reflection().assemblyName : nullptr);
+            out += dn2cpp_assembly_display_name_utf8(dn2cpp_ti_assembly_name(a));
             out += ']';
         }
         else
@@ -1154,17 +1184,20 @@ Dn2CppString* dn2cpp_type_tostring(const Dn2CppTypeInfo* ti)
 
 // Type.Namespace: the declaring chain's namespace — everything before the last
 // '.' of the OUTERMOST type's name, i.e. within the prefix up to the first '+'
-// ("Ns.Outer+Inner" -> "Ns", like real .NET's nested-type Namespace). "" when
-// the type has no namespace (.NET returns null there, but it renders identically).
+// ("Ns.Outer+Inner" -> "Ns"). Arrays inherit it; a closed type reads its definition.
 Dn2CppString* dn2cpp_type_namespace(const Dn2CppTypeInfo* ti)
 {
+    while (dn2cpp_ti_has_array_element(ti))
+        ti = ti->elementType;
+    if (dn2cpp_ti_is_closed_generic(ti))
+        ti = ti->genericDef;
     const char* full = ti->name;
     const char* lastDot = nullptr;
     for (const char* p = full; *p != '\0' && *p != '+'; p++)
         if (*p == '.')
             lastDot = p;
     if (lastDot == nullptr)
-        return dn2cpp_string_from_utf8("", 0);
+        return nullptr;
     return dn2cpp_string_from_utf8(full, static_cast<int32_t>(lastDot - full));
 }
 
@@ -1410,8 +1443,7 @@ int32_t dn2cpp_type_is_subclass_of(Dn2CppType* a, Dn2CppType* c)
 // JsonConverter..ctor only asks "is this converter in the STJ assembly?").
 const char* dn2cpp_type_assembly_name(Dn2CppType* a)
 {
-    const char* nm = dn2cpp_type_require(a)->reflection().assemblyName;
-    return nm != nullptr ? nm : "System.Private.CoreLib";
+    return dn2cpp_ti_assembly_name(dn2cpp_type_require(a));
 }
 
 int32_t dn2cpp_assembly_equals(const char* a, const char* b)
