@@ -10,6 +10,37 @@ namespace JaggedMdArraySubset
     // array whose element is an SZArray.
     internal static class Program
     {
+        private enum NameToken : short { First = 1 }
+        private struct NamePayload { }
+
+        internal static void RunNullableNames()
+        {
+            Console.WriteLine("== nullable array type names ==");
+            PrintName("int", typeof(int?[]));
+            PrintName("char", typeof(char?[]));
+            PrintName("enum", typeof(NameToken?[]));
+            PrintName("payload", typeof(NamePayload?[]));
+            PrintName("jagged", typeof(int?[][]));
+            PrintName("md", typeof(char?[,]));
+            PrintName("mixed", typeof(int?[][,]));
+            var values = new int?[] { 7, null };
+            var dynamicValues = Array.CreateInstance(typeof(int?), 2);
+            var dynamicMd = Array.CreateInstance(typeof(char?), new[] { 1, 2 });
+            Console.WriteLine("nullable array identities=" + (values.GetType() == typeof(int?[]))
+                + ":" + (dynamicValues.GetType() == typeof(int?[]))
+                + ":" + (dynamicMd.GetType() == typeof(char?[,])));
+            Console.WriteLine("nullable dynamic names=" + (dynamicValues.GetType().FullName == typeof(int?[]).FullName)
+                + ":" + (dynamicMd.GetType().AssemblyQualifiedName == typeof(char?[,]).AssemblyQualifiedName));
+            Console.WriteLine("nullable array type names end");
+        }
+
+        private static void PrintName(string label, Type type)
+        {
+            Console.WriteLine(label + " full=" + type.FullName);
+            Console.WriteLine(label + " text=" + type.ToString());
+            Console.WriteLine(label + " qualified=" + type.AssemblyQualifiedName);
+        }
+
         internal static void Run()
         {
             var a = new int[2][,];

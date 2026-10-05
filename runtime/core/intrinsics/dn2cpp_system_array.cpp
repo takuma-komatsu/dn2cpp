@@ -11,6 +11,7 @@
 #include <cstring>
 #include <algorithm>
 #include <mutex> // fabricated array type-info interning (Array.CreateInstance)
+#include <string>
 #include <vector>
 
 // ---- Array.Sort / Array.Reverse ----
@@ -821,6 +822,23 @@ static void dn2cpp_array_check_length_elements(const Dn2CppArrayI4* lengths)
         }
 }
 
+// An invalid rank has a diagnostic spelling but must not enter the type interner.
+[[noreturn]] static void dn2cpp_array_throw_excess_rank(const Dn2CppTypeInfo* element, int32_t rank)
+{
+    Dn2CppString* name = dn2cpp_type_tostring(element);
+    Dn2CppString* assembly = dn2cpp_assembly_full_name(element->reflection().assemblyName);
+    std::u16string text = u"'";
+    text.append(name->chars, static_cast<size_t>(name->length));
+    text += u'[';
+    text.append(static_cast<size_t>(rank - 1), u',');
+    text += u"]' from assembly '";
+    text.append(assembly->chars, static_cast<size_t>(assembly->length));
+    text += u"' has too many dimensions.";
+    Dn2CppString* message = dn2cpp_string_from_chars(text.data(),
+        dn2cpp_string_checked_length(static_cast<int64_t>(text.size())));
+    dn2cpp_throw(dn2cpp_exception_new(&dn2cpp_type_load_exception_type, message, nullptr));
+}
+
 // The (Type, int[] lengths[, int[] lowerBounds]) forms, in .NET's check order;
 // hasBounds tells the second form's null lowerBounds from the first form's
 // absent one. More than 32 dimensions is the TypeLoadException the array type
@@ -842,7 +860,7 @@ Dn2CppObject* dn2cpp_array_create_instance_lengths(Dn2CppType* t, Dn2CppArrayI4*
     dn2cpp_array_check_length_elements(lengths);
     dn2cpp_array_require_element_type(t);
     if (lengths->length > 32)
-        dn2cpp_throw_type_load();
+        dn2cpp_array_throw_excess_rank(dn2cpp_type_require(t), lengths->length);
     if (lowerBounds != nullptr)
     {
         for (int32_t i = 0; i < lowerBounds->length; i++)

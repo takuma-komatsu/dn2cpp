@@ -1445,7 +1445,8 @@ const char* dn2cpp_simple_type_name(const char* full);
 // Type.FullName / Type.ToString.
 Dn2CppString* dn2cpp_type_name(const Dn2CppTypeInfo* ti);
 // Type.FullName and Type.ToString. Both are ti->name verbatim ('+'-qualified for a
-// nested type) EXCEPT for a closed generic, which composes Def`N[...] from its
+// nested type) except for arrays and closed generics. Arrays compose their element
+// display and rank; closed generics compose Def`N[...] from their
 // genericDef + genericArgs: the emitted ti->name is the dn2cpp-mangled
 // instantiation and is a contract elsewhere (--trim-reflection's --reflection-root
 // remedy), so it is never changed. FullName qualifies each argument with its
@@ -1767,6 +1768,7 @@ inline constexpr const char* DN2CPP_SR_NOT_ENOUGH_GEN_ARGUMENTS = "Argument_NotE
 inline constexpr const char* DN2CPP_SR_MEMBER_INFO_NOT_FOUND = "Arg_MemberInfoNotFound";
 inline constexpr const char* DN2CPP_SR_NOT_GENERIC_TYPE_DEFINITION = "Arg_NotGenericTypeDefinition";
 inline constexpr const char* DN2CPP_SR_OBJECT_DISPOSED = "ObjectDisposed_Generic";
+inline constexpr const char* DN2CPP_SR_ACCESSOR_CLOSED = "ObjectDisposed_ViewAccessorClosed";
 inline constexpr const char* DN2CPP_SR_OBJECT_DISPOSED_NAME = "ObjectDisposed_ObjectName_Name";
 inline constexpr const char* DN2CPP_SR_ARITHMETIC = "Arg_ArithmeticException";
 inline constexpr const char* DN2CPP_SR_OUT_OF_MEMORY = "Arg_OutOfMemoryException";
@@ -1778,6 +1780,7 @@ inline constexpr const char* DN2CPP_SR_PLATFORM_NOT_SUPPORTED = "Arg_PlatformNot
 inline constexpr const char* DN2CPP_SR_FORMAT = "Arg_FormatException";
 inline constexpr const char* DN2CPP_SR_IO = "Arg_IOException";
 inline constexpr const char* DN2CPP_SR_FILE_NOT_FOUND = "IO_FileNotFound";
+inline constexpr const char* DN2CPP_SR_ASSEMBLY_NOT_FOUND = "FileNotFound_LoadFile";
 inline constexpr const char* DN2CPP_SR_UNAUTHORIZED_ACCESS = "Arg_UnauthorizedAccessException";
 inline constexpr const char* DN2CPP_SR_KEY_NOT_FOUND = "Arg_KeyNotFound";
 inline constexpr const char* DN2CPP_SR_AMBIGUOUS_MATCH = "Arg_AmbiguousMatchException_NoMessage";
@@ -2373,10 +2376,8 @@ const char* dn2cpp_assembly_neutral_resources_culture(const char* asmName,
 // Assembly.GetName() (parsed back through the transpiled AssemblyName(string)
 // ctor) and Type.AssemblyQualifiedName below.
 Dn2CppString* dn2cpp_assembly_full_name(const char* name);
-// Type.AssemblyQualifiedName — "FullName, <assembly display name>". Matches
-// real .NET for non-generic types; a constructed generic prints the type-info's
-// FullName form (INTENTIONAL DIVERGENCE: real .NET assembly-qualifies each
-// type argument inside the brackets).
+// Type.AssemblyQualifiedName — "FullName, <assembly display name>".
+// Generic arguments retain their own assembly-qualified FullName spelling.
 Dn2CppString* dn2cpp_type_assembly_qualified_name(Dn2CppType* t);
 // Assembly.GetType(name[, throwOnError[, ignoreCase]]): the type-name registry
 // lookup restricted to the receiver assembly's own types (dn2cpp_type_get_by_name
@@ -2397,11 +2398,12 @@ Dn2CppArrayRef* dn2cpp_assembly_get_modules(const char* name);
 // PublicKeyToken are ignored (see the implementation note). A miss follows real
 // .NET: dn2cpp_assembly_load throws FileNotFoundException, the obsolete
 // _load_partial returns null. A null name throws ArgumentNullException and an
-// empty one ArgumentException, naming `paramName` ("assemblyName" for
-// Load(String), "assemblyRef" for Load(AssemblyName)) or "partialName"; a blank
-// one throws ArgumentException.
+// empty one ArgumentException, naming `paramName` or "partialName". The string
+// Load's blank name is FileLoadException. Load(AssemblyName) validates its object
+// and simple name before this lookup.
 const char* dn2cpp_assembly_load(Dn2CppString* name, const char* paramName);
 const char* dn2cpp_assembly_load_partial(Dn2CppString* name);
+Dn2CppString* dn2cpp_assembly_name_missing_message(Dn2CppString* fileName);
 // Module.Name / ToString — "<AssemblyName>.dll", the manifest module's file name
 // (matching real .NET; Module.FullyQualifiedName also maps here — INTENTIONAL
 // DIVERGENCE: real .NET reports the full on-disk path, which a self-hosted
@@ -3167,7 +3169,7 @@ template <typename T>
 // ThrowHelper.ThrowObjectDisposedException_StreamClosed, ...) — a use-after-Dispose
 // on a stream, a file handle or a CancellationTokenSource.
 [[noreturn]] void dn2cpp_throw_object_disposed();
-[[noreturn]] void dn2cpp_throw_object_disposed_named(Dn2CppString* objectName);
+[[noreturn]] void dn2cpp_throw_object_disposed_named(Dn2CppString* objectName, Dn2CppString* message = nullptr);
 // Math.Sign on a NaN input — .NET raises ArithmeticException (NaN has no sign).
 [[noreturn]] void dn2cpp_throw_arithmetic();
 // A size computation that cannot be satisfied because the RESULT does not fit,
@@ -6221,7 +6223,7 @@ extern Dn2CppTypeInfo dn2cpp_mappedview_type;
 extern Dn2CppTypeInfo dn2cpp_unmanaged_memory_accessor_type;
 Dn2CppMappedViewObject* dn2cpp_mmap_view_object_new(Dn2CppMappedView view);
 void dn2cpp_mmap_view_object_dispose(Dn2CppMappedViewObject* view);
-Dn2CppMappedView dn2cpp_mmap_view_data(Dn2CppMappedViewObject* view);
+Dn2CppMappedView dn2cpp_mmap_view_data(Dn2CppMappedViewObject* view, bool flushing = false);
 // The address of a `size`-byte UnmanagedMemoryAccessor access, after .NET's checks: the
 // typed Read*/Write* test the view's state before the position, the generic
 // Read<T>/Write<T> (`positionFirst`) the sign of the position first.

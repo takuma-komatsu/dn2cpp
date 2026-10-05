@@ -6892,6 +6892,18 @@ const char* dn2cpp_assembly_load(Dn2CppString* name, const char* paramName)
     return found;
 }
 
+Dn2CppString* dn2cpp_assembly_name_missing_message(Dn2CppString* fileName)
+{
+    Dn2CppString* args[] = { fileName };
+    Dn2CppString* message = dn2cpp_sr_message(DN2CPP_SR_ASSEMBLY_NOT_FOUND, args, 1);
+#ifdef _WIN32
+    auto* newline = dn2cpp_string_literal(u"\r\n", 2);
+#else
+    auto* newline = dn2cpp_string_literal(u"\n", 1);
+#endif
+    return dn2cpp_string_concat2(message, newline);
+}
+
 const char* dn2cpp_assembly_load_partial(Dn2CppString* name)
 {
     // The obsolete partial-name form reports a miss as null, never a throw.

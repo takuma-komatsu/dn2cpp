@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Runtime generic template invocation, member rows, hidden contexts and boxed-value copies.
+# Assembly.Load distinguishes null AssemblyName objects and missing/empty simple names.
 # Runtime exception Object-family lookups retain declaring types and callable handles.
 # Nested generic type names agree through typeof, GetType and delegate declaring types.
 # A template body that calls through a function pointer over its type parameter never
@@ -313,7 +314,7 @@ source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_ordinary-reflection.sh samples/dotnet/ReflectTypes/AttributeTypePropertySubset.cs samples/dotnet/ReflectTypes/DataOnlyAttributeRowsOnly.csproj samples/dotnet/ReflectTypes/DataOnlyAttributeRowsOnlyProgram.cs samples/dotnet/ReflectTypes/OrdinaryReflectionTypeLeaves.csproj samples/dotnet/ReflectTypes/OrdinaryReflectionTypeLeavesProgram.cs samples/dotnet/ReflectTypes/PropertyAccessorRowsSubset.cs samples/dotnet/ReflectTypes/ReflectAssemblyErrorSubset.cs samples/dotnet/ReflectTypes/ReflectAttrBoxedSubset.cs samples/dotnet/ReflectTypes/ReflectRuntimeTypeParitySubset.cs samples/dotnet/ReflectTypes/ReflectTypes.csproj samples/dotnet/ReflectTypes/UnreadAttributeRowsOnly.csproj samples/dotnet/ReflectTypes/UnreadAttributeRowsOnlyProgram.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|before-nested-generic-names"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/NestedGenericTypeNameSubset.cs samples/dotnet/ReflectTypes/GenericDefinitionSymbolNeighbors.cs"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-type-leaves-v1|before-attribute-display-code-units|exception-object-prefix-argv:before-exception-object-members"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-type-leaves-v1|before-attribute-display-code-units|exception-object-prefix-argv:before-exception-object-members|assembly-name-prefix-argv:before-assembly-name-validation"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/ReflectionTemplateDispatch.csproj samples/dotnet/ReflectTypes/ReflectionTemplateDispatchProgram.cs samples/dotnet/ReflectTypes/ReflectRuntimeInstantiationSubset.cs"
 
 EXPFILE="$(dirname "$0")/expected/reflect-types.txt"
@@ -695,6 +696,17 @@ gate_extra_asserts() {
             && grep -Fxq "$label null receiver=TargetException:null" <<< "$native" \
             && grep -Fxq "$label wrong receiver=TargetException:null" <<< "$native" \
             || { echo "FAIL: exception invocation or receiver validation changed: $label" >&2; return 1; }
+    done
+    before=$(run_bounded dotnet "$_CG_APP" before-assembly-name-validation) || return $?
+    prefix=$(awk '/^== assembly name load validation ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    for line in '== assembly name load validation ==' 'load null object param=assemblyRef' \
+        'load null name param=<null>' 'load empty name file=[<Unknown>]' \
+        'load blank name file=[" ", Culture=neutral, PublicKeyToken=null]' \
+        'load string null param=assemblyName' 'load string empty param=assemblyName' \
+        'load object identity=True' 'load string identity=True' 'assembly name load validation end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: assembly name validation witness missing: $line" >&2; return 1; }
     done
 }
 DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectTypes OrdinaryReflectionTypeLeaves \

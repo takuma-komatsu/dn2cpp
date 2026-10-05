@@ -2343,7 +2343,7 @@ internal sealed partial class MethodCompiler
     private string MmfVal(StackEntry e) => $"((Dn2CppMappedFile*)dn2cpp_null_check({Cast(e, "Dn2CppMappedFile*")}))";
     // View handles can arrive by value or through a managed pointer.
     private string MmvRef(StackEntry e) => $"((Dn2CppMappedViewObject*)dn2cpp_null_check({Cast(e, "Dn2CppMappedViewObject*")}))";
-    private string MmvVal(StackEntry e) => $"dn2cpp_mmap_view_data({MmvRef(e)})";
+    private string MmvVal(StackEntry e) => $"dn2cpp_mmap_view_data({MmvRef(e)}, true)";
 
     // An accessor call's receiver and position, spilled in IL order; the receiver is
     // null-checked where the call uses it, after every argument.

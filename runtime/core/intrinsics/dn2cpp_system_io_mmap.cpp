@@ -169,11 +169,17 @@ void dn2cpp_mmap_view_object_dispose(Dn2CppMappedViewObject* view)
     dn2cpp_gc_suppress_finalize(view);
 }
 
-Dn2CppMappedView dn2cpp_mmap_view_data(Dn2CppMappedViewObject* view)
+Dn2CppMappedView dn2cpp_mmap_view_data(Dn2CppMappedViewObject* view, bool flushing)
 {
     dn2cpp_null_check(view);
-    if (view->disposed || (view->safeHandle != nullptr && view->isHandleClosed != nullptr
-        && view->isHandleClosed(view->safeHandle))) dn2cpp_throw_object_disposed();
+    if (view->disposed)
+        dn2cpp_throw_object_disposed_named(flushing
+            ? dn2cpp_string_literal(u"MemoryMappedViewAccessor", 24)
+            : dn2cpp_string_literal(u"UnmanagedMemoryAccessor", 23),
+            dn2cpp_sr_message(DN2CPP_SR_ACCESSOR_CLOSED, nullptr, 0));
+    if (view->safeHandle != nullptr && view->isHandleClosed != nullptr
+        && view->isHandleClosed(view->safeHandle))
+        dn2cpp_throw_object_disposed_named(dn2cpp_type_fullname(view->safeHandle->type));
     return view->view;
 }
 

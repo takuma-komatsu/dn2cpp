@@ -191,10 +191,59 @@ internal static class Program
         Console.WriteLine("mmap validation complete");
         if (args.Length > 1 && args[1] == "before-mmap-full-path") return;
         TestFullPathMap(dir);
+        if (args.Length > 1 && args[1] == "before-mmap-disposal-fields") return;
+        TestClosedAccessorFields(dir);
 #endif
     }
 
 #if !MMAP_UNINITIALIZED_ONLY
+    private static void TestClosedAccessorFields(string dir)
+    {
+        Console.WriteLine("-- mapped accessor disposal fields --");
+        string path = Path.Combine(dir, "closed-accessor.bin");
+        File.WriteAllBytes(path, new byte[64]);
+        using var map = MemoryMappedFile.CreateFromFile(path, FileMode.Open);
+        var closed = map.CreateViewAccessor();
+        closed.Dispose();
+        int[] values = new int[2];
+        Rec value = new Rec { Id = 7 };
+        ProbeClosed("typed read", () => closed.ReadInt32(0));
+        ProbeClosed("typed write", () => closed.Write(0, 1));
+        ProbeClosed("generic read", () => closed.Read<Rec>(0, out _));
+        ProbeClosed("generic write", () => closed.Write(0, ref value));
+        ProbeClosed("array read", () => closed.ReadArray(0, values, 0, 2));
+        ProbeClosed("array write", () => closed.WriteArray(0, values, 0, 2));
+        ProbeClosed("typed negative", () => closed.ReadInt32(-1));
+        ProbeClosed("generic negative", () => closed.Read<Rec>(-1, out _));
+        ProbeClosed("array null", () => closed.ReadArray<int>(0, null, 0, 1));
+        ProbeClosed("array range", () => closed.ReadArray(0, values, 1, 2));
+        ProbeClosed("array negative", () => closed.WriteArray(-1, values, 0, 1));
+        ProbeClosed("flush", () => closed.Flush());
+        using var handleClosed = map.CreateViewAccessor();
+        handleClosed.SafeMemoryMappedViewHandle.Dispose();
+        ProbeClosed("handle read", () => handleClosed.ReadInt32(0));
+        ProbeClosed("handle generic", () => handleClosed.Read<Rec>(0, out _));
+        ProbeClosed("handle array", () => handleClosed.ReadArray(0, values, 0, 1));
+        ProbeClosed("handle flush", () => handleClosed.Flush());
+        Console.WriteLine("mapped accessor disposal fields end");
+    }
+
+    private static void ProbeClosed(string label, Action action)
+    {
+        try
+        {
+            action();
+            Console.WriteLine("closed " + label + ": returned");
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine("closed " + label + ": " + e.GetType().FullName + "|" + e.HResult.ToString("X8")
+                + "|" + e.Message.Replace("\r", "\\r").Replace("\n", "\\n"));
+            if (e is ObjectDisposedException disposed)
+                Console.WriteLine("closed " + label + " object=" + disposed.ObjectName);
+        }
+    }
+
     private static void TestFullPathMap(string dir)
     {
         Console.WriteLine("-- lexical mapped file paths --");

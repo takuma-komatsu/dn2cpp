@@ -98,6 +98,18 @@ gate_extra_asserts() {
     grep -Fxq -- '-- lexical mapped file paths --' <<< "$output" || return 1
     grep -Fxq 'mapped lexical byte=51' <<< "$output" || return 1
     grep -Fxq -- '-- lexical mapped file paths end --' <<< "$output" || return 1
+    before_scratch=$(mktemp -d artifacts/mmap-disposal-before.XXXXXX)
+    before=$(run_bounded dotnet "$_CG_APP" "$before_scratch" before-mmap-disposal-fields) || return $?
+    rm -rf "$before_scratch"
+    prefix=$(awk '$0 == "-- mapped accessor disposal fields --" { exit } { print }' <<< "$output")
+    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    grep -Fxq -- '-- mapped accessor disposal fields --' <<< "$output" || return 1
+    grep -Fxq 'mapped accessor disposal fields end' <<< "$output" || return 1
+    for label in 'typed read' 'generic read' 'array read'; do
+        grep -Fxq "closed $label object=UnmanagedMemoryAccessor" <<< "$output" || return 1
+    done
+    grep -Fxq 'closed flush object=MemoryMappedViewAccessor' <<< "$output" || return 1
+    grep -Fxq 'closed handle read object=Microsoft.Win32.SafeHandles.SafeMemoryMappedViewHandle' <<< "$output" || return 1
 }
-export DN2CPP_GATE_EXTRA_CONTEXT="uninitialized:MMAP_UNINITIALIZED_ONLY|before-mmap-full-path|cli:$(_gate_cli_hash)"
+export DN2CPP_GATE_EXTRA_CONTEXT="uninitialized:MMAP_UNINITIALIZED_ONLY|before-mmap-full-path|before-mmap-disposal-fields|cli:$(_gate_cli_hash)"
 corelib_diff_gate MmapFile System.IO.MemoryMappedFiles

@@ -12,6 +12,8 @@
 # Multidimensional stores check value type before bounds and retain the typed
 # headerless slot representation used by managed byrefs.
 # Runtime handle boxing retains the selected payload's ToString override.
+# Nullable array display composes generic element identities and array ranks.
+# Excessive-rank errors identify the attempted array type and its assembly.
 # Former gates: array-ops, array-contains, array-range, array-resize, array-sort,
 # array-data-ref, byte-array, getsubarray, packed-array, array-collection, enumarray,
 # arraypool.
@@ -228,7 +230,7 @@ assert_runtime_box_formatting() {
     done
 }
 
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|array-box-shared-generics|before-array-provenance|before-nested-interface-variance|before-covariant-stores|before-covariant-md-stores|before-runtime-box-formatting"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|array-box-shared-generics|before-array-provenance|before-nested-interface-variance|before-covariant-stores|before-covariant-md-stores|before-runtime-box-formatting|before-nullable-array-names|before-excess-array-rank"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/ArrayCore/BoxProvenanceOnly.csproj samples/dotnet/ArrayCore/BoxProvenanceProgram.cs samples/dotnet/ArrayCore/ReflectionReturnBoxOnly.csproj samples/dotnet/ArrayCore/ReflectionReturnBoxProgram.cs samples/dotnet/ArrayCore/DiamondProvenanceOnly.csproj samples/dotnet/ArrayCore/DiamondProvenanceProgram.cs samples/dotnet/ArrayCore/FieldAliasProvenanceOnly.csproj samples/dotnet/ArrayCore/FieldAliasProvenanceProgram.cs samples/dotnet/ArrayCore/FieldAliasProvenanceSubset.cs samples/dotnet/ArrayCore/ArrayElementAliasProgram.cs samples/dotnet/ArrayCore/ArrayElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayObjectElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayUnknownElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayErasedElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayReferenceSlotAliasOnly.csproj samples/dotnet/ArrayCore/ArrayReflectedVoidBoxOnly.csproj samples/dotnet/ArrayCore/ArrayReflectedVoidBoxProgram.cs samples/dotnet/ArrayCore/ArrayFutureStoreOnly.csproj samples/dotnet/ArrayCore/ArrayFutureStoreProgram.cs samples/dotnet/ArrayCore/ArrayFutureNullStoreOnly.csproj samples/dotnet/ArrayCore/ArrayObjectFutureStoreOnly.csproj samples/dotnet/ArrayCore/ArrayObjectFutureStoreProgram.cs"
 corelib_diff_gate ArrayCore System.Collections
 
@@ -238,6 +240,35 @@ previous=$(run_bounded dotnet "$_CG_APP" before-runtime-box-formatting)
 prefix=$(awk '/^== runtime-handle boxed formatting ==$/ { exit } { print }' <<< "$native")
 assert_output "$prefix" "$(strip_cr_win "$previous")"
 assert_runtime_box_formatting "$native"
+previous=$(run_bounded dotnet "$_CG_APP" before-nullable-array-names)
+prefix=$(awk '/^== nullable array type names ==$/ { exit } { print }' <<< "$native")
+assert_output "$prefix" "$(strip_cr_win "$previous")"
+for line in '== nullable array type names ==' \
+    'int text=System.Nullable`1[System.Int32][]' \
+    'char text=System.Nullable`1[System.Char][]' \
+    'jagged text=System.Nullable`1[System.Int32][][]' \
+    'md text=System.Nullable`1[System.Char][,]' \
+    'mixed text=System.Nullable`1[System.Int32][,][]' \
+    'nullable array identities=True:True:True' 'nullable dynamic names=True:True' \
+    'nullable array type names end'; do
+    grep -Fxq -- "$line" <<< "$native" \
+        || { echo "FAIL: nullable array name witness missing: $line" >&2; exit 1; }
+done
+previous=$(run_bounded dotnet "$_CG_APP" before-excess-array-rank)
+prefix=$(awk '/^== excessive array rank diagnostics ==$/ { exit } { print }' <<< "$native")
+assert_output "$prefix" "$(strip_cr_win "$previous")"
+for line in '== excessive array rank diagnostics ==' 'rank32 accepted=32:0' \
+    'rank invalid length=ArgumentOutOfRangeException:lengths[0]:<null>:Non-negative number required. (Parameter '\''lengths[0]'\'')' \
+    'rank null lengths=ArgumentNullException:lengths:<none>:Value cannot be null. (Parameter '\''lengths'\'')' \
+    'rank bounds mismatch=ArgumentException:<null>:<none>:Number of lengths and lowerBounds must match.' \
+    'excessive array rank diagnostics end'; do
+    grep -Fxq -- "$line" <<< "$native" \
+        || { echo "FAIL: excessive array rank witness missing: $line" >&2; exit 1; }
+done
+for label in 'int lengths' 'object lengths' 'char lengths' 'int bounds' 'object bounds' 'char bounds'; do
+    grep -Eq "^$label=System.TypeLoadException/80131522:'.*' from assembly '.*' has too many dimensions\\.$" <<< "$native" \
+        || { echo "FAIL: excessive array rank diagnostic missing: $label" >&2; exit 1; }
+done
 previous=$(run_bounded dotnet "$_CG_APP" before-covariant-stores)
 prefix=$(awk '/^== covariant reference array stores ==$/ { exit } { print }' <<< "$native")
 assert_output "$prefix" "$(strip_cr_win "$previous")"
