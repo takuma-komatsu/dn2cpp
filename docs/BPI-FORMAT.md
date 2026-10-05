@@ -228,10 +228,11 @@ Int64/Double/references) and rounds the final size up to 8.
   interpreted override. `call` and a non-virtual `callvirt` invoke the bound
   pointer directly, so `base.Method()` from an override body lands on the base
   implementation and a `call` of an interface method runs its default body.
-  A `call` of an abstract interface or generic virtual row raises
-  `BadImageFormatException` when the call executes (§Carve-outs), and an import
-  of a non-generic abstract class row is refused when the image binds, as an
-  *unresolved method import*. A `.ctor` Import reached by `call` is an
+  A bodiless abstract instance row remains bindable when its signature-only
+  invoker can dispatch through a receiver slot or generic virtual dispatcher.
+  A `call` of an abstract class or interface row raises
+  `BadImageFormatException` when the call executes (§Carve-outs).
+  A `.ctor` Import reached by `call` is an
   inheriting patch ctor's base-ctor chain (a chain to `System.Object::.ctor()`
   folds to `pop` at bake time). A `callvirt` on a *non-virtual* patch method
   canonicalizes to `call`; on a *virtual* patch method it stays `callvirt`, and

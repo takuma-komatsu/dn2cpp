@@ -10,6 +10,8 @@
 # and one abstract, both called by the base only through interfaces, bind to the
 # dispatcher a --hotupdate-base build registers for them; an instantiation the
 # base never reached refuses the whole image.
+# Non-generic abstract class imports bind by their receiver slot. AOT and patch
+# overrides run through callvirt; a non-virtual call refuses the missing body.
 # A patch whose IL is rewritten after build (callvirt -> call) matches .NET
 # running the same assembly in both code formats: a non-virtual call of an
 # interface or class import runs the named row's own body, a default interface
@@ -1465,21 +1467,35 @@ echo "-- non-virtual calls of virtual imports match .NET on the same rewritten I
 # hotupdate-nonvirtual-call rewrites them after build), so the managed run of
 # that assembly is the oracle. Only the rewrite makes .NET raise bad IL.
 # The patch's own CultureInfo imports do not bind, so globalization pins the oracle.
-gvmcall_oracle=$(DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 dotnet "$gvmcall_app")
+gvmcall_oracle=$(DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 run_bounded dotnet "$gvmcall_app")
 gvmcall_oracle=$(strip_cr_win "$gvmcall_oracle")
 grep -Fxq 'describe: System.BadImageFormatException' <<< "$gvmcall_oracle" \
     || { echo "FAIL: GvmCallPatch was not rewritten to non-virtual calls" >&2; exit 1; }
 grep -Fxq '== non-virtual calls of virtual imports end ==' <<< "$gvmcall_oracle" \
     || { echo "FAIL: the managed non-virtual call oracle did not complete" >&2; exit 1; }
+for line in '== abstract class method imports ==' 'aot abstract count' '4294967399' \
+    'patch abstract count' '4294967499' 'aot text=aot:value' 'patch text=patch:value' \
+    'aot identity' 'patch identity' 'aot body' 'patch body' \
+    'aot abstract direct: System.BadImageFormatException/8007000B' \
+    'patch abstract direct: System.BadImageFormatException/8007000B' \
+    'abstract null: System.NullReferenceException/80004003' \
+    'abstract direct null: System.BadImageFormatException/8007000B' \
+    'abstract class method imports end'; do
+    grep -Fxq -- "$line" <<< "$gvmcall_oracle" \
+        || { echo "FAIL: abstract method import witness missing: $line" >&2; exit 1; }
+done
+gvmcall_prefix_oracle=$(awk '/^== abstract class method imports ==$/ { exit } { print }' <<< "$gvmcall_oracle")
 invoke_cli --emit-patch "$gvmcall_app" --base-abi "$OUT/base-abi.json" -o "$OUT/gvm-call"
 invoke_cli --emit-patch "$gvmcall_app" --base-abi "$OUT/base-abi.json" --patch-stackcode \
     -o "$OUT/gvm-call/stack"
 for gvmcall_bpi in "$OUT/gvm-call/GvmCallPatch.bpi" "$OUT/gvm-call/stack/GvmCallPatch.bpi"; do
     set +e
-    gvmcall_out=$("./$OUT/HotUpdateBase" --run "$gvmcall_bpi"); gvmcall_rc=$?
+    gvmcall_out=$(run_bounded "./$OUT/HotUpdateBase" --run "$gvmcall_bpi"); gvmcall_rc=$?
     set -e
     assert_output "$(strip_cr_win "$gvmcall_out")" "$gvmcall_oracle"
     assert_exit_code "$gvmcall_rc" 0
+    gvmcall_prefix=$(awk '/^== abstract class method imports ==$/ { exit } { print }' <<< "$(strip_cr_win "$gvmcall_out")")
+    assert_output "$gvmcall_prefix" "$gvmcall_prefix_oracle"
 done
 echo "OK (non-virtual calls of virtual imports, register and stack formats)"
 
