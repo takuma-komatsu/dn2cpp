@@ -2055,7 +2055,8 @@ using Dn2CppMethodCandidates = Dn2CppWalkList<Dn2CppMetadataHandle<Dn2CppMethodI
 static bool dn2cpp_meta_family_name(const Dn2CppMethodInfo& row);
 static int32_t dn2cpp_meta_collect_family(const Dn2CppTypeInfo* type, int32_t flags,
     Dn2CppMethodCandidates& emitted, Dn2CppObject** out);
-static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_meta_object_base(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi);
+static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_meta_object_base(
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> mi, const Dn2CppMethodInfo& row);
 
 
 // Walk the type and its base chain (stopping at DeclaredOnly), collecting matching
@@ -2492,10 +2493,9 @@ static const Dn2CppMetaMember* dn2cpp_meta_desc_of(Dn2CppMetadataHandle<Dn2CppMe
         reinterpret_cast<const char*>(row) - offsetof(Dn2CppMetaRow, row))->desc;
 }
 
-// The interned row for one (descriptor, declaring type, type arguments). `args ==
-// nullptr` mints the OPEN definition row (genericArgs stays null, so Invoke lands
-// on the InvalidOperationException real .NET raises for a late-bound call on a
-// generic method definition).
+// The interned row for one (descriptor, declaring type, type arguments). A generic
+// member with `args == nullptr` has an OPEN definition row; its definition view
+// rejects late-bound Invoke before entering the invocation plan.
 static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_meta_row(const Dn2CppMetaMember* d,
                                                const Dn2CppTypeInfo* declaring,
                                                const Dn2CppTypeInfo* const* args, int32_t argc)
@@ -2767,7 +2767,7 @@ static int32_t dn2cpp_meta_collect_family(const Dn2CppTypeInfo* type, int32_t fl
                     && std::strcmp(row.name, d->methodName) == 0 && dn2cpp_meta_same_params(row, d);
                 if (!present && root != nullptr)
                 {
-                    const auto base = dn2cpp_meta_object_base(emitted[i]);
+                    const auto base = dn2cpp_meta_object_base(emitted[i], row);
                     present = base && dn2cpp_meta_desc_of(base) == root;
                 }
             }
@@ -3006,8 +3006,8 @@ void dn2cpp_throw_target_invocation(Dn2CppObject* inner)
     dn2cpp_throw(wrapper);
 }
 
-// The caller faults reflection raises before the target runs, with the message and
-// HResult real .NET gives each. None is wrapped in TargetInvocationException.
+// Reflection validation and image-boundary faults occur before the target runs.
+// None is wrapped in TargetInvocationException.
 [[noreturn]] static void dn2cpp_throw_reflection_fault(const Dn2CppTypeInfo* ti,
     Dn2CppString* message, uint32_t hresult)
 {
@@ -3015,6 +3015,23 @@ void dn2cpp_throw_target_invocation(Dn2CppObject* inner)
         message != nullptr ? message : dn2cpp_default_message(ti), nullptr);
     reinterpret_cast<Dn2CppExceptionObject*>(e)->hresult = static_cast<int32_t>(hresult);
     dn2cpp_throw(e);
+}
+
+// A template row's diagnosis names the concrete declaring instantiation.
+// Decode the display only on failure, outside the successful invocation plan path.
+[[noreturn]] static void dn2cpp_throw_invoke_unavailable(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi,
+    const Dn2CppTypeInfo* reflected)
+{
+    const Dn2CppMethodInfo row = *mi;
+    const Dn2CppTypeInfo* declaring = dn2cpp_invoke_declaring(row.declaringType, reflected);
+    const char* name = row.name != nullptr ? row.name : "?";
+    Dn2CppString* member = row.display != nullptr ? dn2cpp_metadata_string(row.display)
+        : dn2cpp_string_from_utf8(name, static_cast<int32_t>(std::strlen(name)));
+    static constexpr char reason[] = ": the target method's body was not compiled into this image";
+    Dn2CppString* message = dn2cpp_string_concat4(dn2cpp_type_tostring(declaring),
+        dn2cpp_string_from_utf8(": ", 2), member,
+        dn2cpp_string_from_utf8(reason, static_cast<int32_t>(sizeof reason - 1)));
+    dn2cpp_throw_reflection_fault(&dn2cpp_platform_not_supported_exception_type, message, 0x80131539u);
 }
 
 [[noreturn]] static void dn2cpp_throw_invoke_target(const Dn2CppObject* obj,
@@ -4056,9 +4073,8 @@ DN2CPP_NOINLINE static const Dn2CppInvokePlan& dn2cpp_invoke_plan_miss(
 
 // A metadata-answerable row carries no body at all: it answers from its own type
 // arguments and receiver. A non-generic row is always closed; a generic one is
-// closed only once MakeGenericMethod has filled genericArgs, and an OPEN
-// definition takes the planned path to the InvalidOperationException real .NET
-// raises for a late-bound call on one. Such rows are synthesized native, never
+// closed only once MakeGenericMethod has filled genericArgs. The OPEN definition
+// view rejects Invoke before planning. Such rows are synthesized native, never
 // emitted, so only a native row is asked. Null when `row` answers nothing.
 static const Dn2CppMetaMember* dn2cpp_invoke_answerer(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi,
     const Dn2CppMethodInfo& row)
@@ -4129,7 +4145,7 @@ static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi
             dn2cpp_throw_invoke_static_abstract(wrapExceptions);
     }
     if (row.invoker == nullptr)
-        dn2cpp_throw_invalid_operation();
+        dn2cpp_throw_invoke_unavailable(mi, reflected);
     // A virtual row runs the body a callvirt binds for the receiver: its class
     // vtable slot or its interface map slot. The row's thunk spells the declared
     // signature every body in the slot shares, and passes the receiver unadjusted,
@@ -4160,7 +4176,7 @@ static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi
     else if (obj != nullptr && row.gvmDispatcher != nullptr)
         fn = row.gvmDispatcher;
     if (fn == nullptr)
-        dn2cpp_throw_invalid_operation();
+        dn2cpp_throw_invoke_unavailable(mi, reflected);
     Dn2CppObject* self = obj;
     if (!isStatic && obj != nullptr && (declaring->flags & DN2CPP_TF_VALUETYPE) != 0)
         self = reinterpret_cast<Dn2CppObject*>(reinterpret_cast<char*>(obj) + sizeof(Dn2CppObject));
@@ -4504,8 +4520,7 @@ Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
     bool answered = (row.attrs & DN2CPP_MTHA_METAANSWER) != 0;
     if (!staticVirtual && !bodiless && !answered
         && (row.invoker == nullptr || (row.fnPtr == nullptr && !slotBound)))
-        dn2cpp_throw_platform_not_supported(
-            "CreateDelegate: the target method's body was not compiled into this image");
+        dn2cpp_throw_invoke_unavailable(mi, m->reflectedType);
 
     auto* node = static_cast<Dn2CppReflBind*>(dn2cpp_alloc(sizeof(Dn2CppReflBind)));
     node->type = &dn2cpp_reflbind_type;
@@ -7435,9 +7450,9 @@ Dn2CppMethodRef* dn2cpp_methodref_make_generic(Dn2CppMethodRef* m, Dn2CppArrayRe
 // whatever the levels above declare, or one whose levels up to Object all pass
 // dn2cpp_meta_level_passes, since a level without the rows could hold the new slot the
 // chain really roots at. Null otherwise.
-static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_meta_object_base(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi)
+static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_meta_object_base(
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> mi, const Dn2CppMethodInfo& row)
 {
-    const Dn2CppMethodInfo row = *mi;
     const Dn2CppMetaMember* d = nullptr;
     if ((row.attrs & DN2CPP_MTHA_METAANSWER) != 0)
     {
@@ -7483,12 +7498,12 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_meta_object_base(Dn2CppMeta
 Dn2CppMethodRef* dn2cpp_methodref_get_base_definition(Dn2CppMethodRef* m)
 {
     Dn2CppMetadataHandle<Dn2CppMethodInfo> mi = dn2cpp_methodref_require(m);
-    if (mi->vtableSlot < 0)
+    Dn2CppMethodInfo row = *mi;
+    if (row.vtableSlot < 0)
     {
-        Dn2CppMethodInfo row = *mi;
         if (!dn2cpp_is_gvm_row(row) || (row.declaringType->flags & DN2CPP_TF_INTERFACE) != 0)
         {
-            const Dn2CppMetadataHandle<Dn2CppMethodInfo> root = dn2cpp_meta_object_base(mi);
+            const Dn2CppMetadataHandle<Dn2CppMethodInfo> root = dn2cpp_meta_object_base(mi, row);
             return root ? dn2cpp_make_methodref(root, nullptr) : m;
         }
         Dn2CppMetadataHandle<Dn2CppMethodInfo> root = mi;
@@ -7502,11 +7517,12 @@ Dn2CppMethodRef* dn2cpp_methodref_get_base_definition(Dn2CppMethodRef* m)
             const auto reflection = ti->reflection();
             for (int32_t i = 0; i < reflection.methodCount; i++)
             {
-                const Dn2CppMethodInfo base = *reflection.methods[i];
+                const auto candidate = reflection.methods[i];
+                const Dn2CppMethodInfo base = *candidate;
                 if (base.vtableSlot < 0 && dn2cpp_is_gvm_row(base)
                     && (slot.known() ? base.metadataToken == slot.token : dn2cpp_gvm_same_signature(row, base)))
                 {
-                    root = reflection.methods[i];
+                    root = candidate;
                     row = base;
                     break;
                 }
@@ -7517,25 +7533,31 @@ Dn2CppMethodRef* dn2cpp_methodref_get_base_definition(Dn2CppMethodRef* m)
         return dn2cpp_make_methodref_defview(root, nullptr);
     }
     Dn2CppMetadataHandle<Dn2CppMethodInfo> best = mi;
-    for (const Dn2CppTypeInfo* ti = mi->declaringType->base; ti != nullptr; ti = ti->base)
+    Dn2CppMethodInfo bestRow = row;
+    for (const Dn2CppTypeInfo* ti = row.declaringType->base; ti != nullptr; ti = ti->base)
     {
         dn2cpp_require_metadata(ti);
-        for (int32_t i = 0; i < ti->reflection().methodCount; i++)
-            if (ti->reflection().methods[i]->vtableSlot == mi->vtableSlot
-                && std::strcmp(ti->reflection().methods[i]->name, mi->name) == 0)
+        const auto reflection = ti->reflection();
+        for (int32_t i = 0; i < reflection.methodCount; i++)
+        {
+            const auto candidate = reflection.methods[i];
+            const Dn2CppMethodInfo base = *candidate;
+            if (base.vtableSlot == row.vtableSlot && std::strcmp(base.name, row.name) == 0)
             {
-                best = ti->reflection().methods[i];
+                best = candidate;
+                bestRow = base;
                 break;
             }
+        }
     }
-    if (const Dn2CppMetadataHandle<Dn2CppMethodInfo> root = dn2cpp_meta_object_base(best))
+    if (const Dn2CppMetadataHandle<Dn2CppMethodInfo> root = dn2cpp_meta_object_base(best, bestRow))
         return dn2cpp_make_methodref(root, nullptr);
     // Declaring-normalized (null): .NET's GetBaseDefinition answers the base declaring
     // type's own instance, so a derived-reflected receiver does not propagate.
     // `best == mi` short-circuits only when the receiver IS declaring-reflected — a
     // derived-reflected handle to a method declared on its own type re-mints the
     // declaring-typed one below, which is .NET's answer there too.
-    return best == mi && m->reflectedType == mi->declaringType
+    return best == mi && m->reflectedType == row.declaringType
         ? m : dn2cpp_make_methodref(best, nullptr);
 }
 

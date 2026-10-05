@@ -6,6 +6,7 @@
 # null-bound delegates, DynamicInvoke and catchable stripped-body refusals, which a
 # nested reflective call raises to the outer call as a fault of its target.
 # DefaultBinder primitive widening and specificity differ from Invoke's ushort-to-char policy.
+# The metadata codec probe checks shared missing-body/invoker refusals through every entry.
 # Consolidated reflection-invocation gate. Merges the former reflect dynamic-use
 # subset gates into one multi-section program, transpiled once against the
 # tree-shaken real CoreLib and diffed exactly against real .NET. Covers:
@@ -199,7 +200,7 @@ DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectFramew
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/ReflectPointerFieldsOnly.csproj samples/dotnet/ReflectInvoke/ReflectPointerFieldsPreserved.csproj samples/dotnet/ReflectInvoke/ReflectPointerFieldsOnlyProgram.cs samples/dotnet/ReflectInvoke/keep-pointer-field.xml samples/dotnet/ReflectReturnLib/PointerFields.cs"
 
 py="$(resolve_python)"
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/check-reflection-layout.py gates/measure-reflection-metadata.py gates/expected/reflection-allocations.csv gates/fixtures/delegate-invocation-cache/DelegateInvocationCache.csproj gates/fixtures/delegate-invocation-cache/Program.cs"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/check-reflection-layout.py gates/measure-reflection-metadata.py gates/expected/reflection-allocations.csv gates/fixtures/delegate-invocation-cache/DelegateInvocationCache.csproj gates/fixtures/delegate-invocation-cache/Program.cs gates/fixtures/reflection-metadata-codec.cpp"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|empty-string-clone-prefix:${DN2CPP_BEFORE_EMPTY_STRING_CLONE:-}|delegate-list-prefix:${DN2CPP_BEFORE_DELEGATE_LISTS:-}|recursive-delegate-prefix:${DN2CPP_BEFORE_RECURSIVE_DELEGATE:-}|ordinary-interface-prefix:${DN2CPP_BEFORE_ORDINARY_IL_INTERFACE:-}|object-methodimpl-prefix:${DN2CPP_BEFORE_OBJECT_METHODIMPL:-}"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/recursive-delegate/RecursiveDelegate.csproj gates/fixtures/recursive-delegate/Program.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|delegate-origin-prefix-argv:before-delegate-origin-boundaries|delegate-origin-modes:argument,field,array,checked-conv,arithmetic,box,call,local,stack-join,byref-argument"
@@ -866,8 +867,16 @@ mkdir -p "$codec_out"
 cp gates/fixtures/reflection-metadata-codec.cpp "$codec_out/generated.cpp"
 printf '#pragma once\n' > "$codec_out/generated.h"
 compile_console "$codec_out" MetadataCodec
-assert_output "$(strip_cr_win "$(run_bounded "$codec_out/MetadataCodec$EXE_EXT")")" \
+codec_native=$(run_bounded "$codec_out/MetadataCodec$EXE_EXT")
+codec_native=$(strip_cr_win "$codec_native")
+codec_prefix=$(awk '/^metadata missing invocation diagnostics begin$/ { exit } { print }' <<< "$codec_native")
+assert_output "$codec_prefix" \
     "$(printf '%s\n' 'metadata codec boundaries OK' 'metadata invoker refusal fields OK')"
+assert_output "$codec_native" "$(printf '%s\n' 'metadata codec boundaries OK' \
+    'metadata invoker refusal fields OK' 'metadata missing invocation diagnostics begin' \
+    'metadata missing native invoker' 'metadata missing native body' \
+    'metadata missing packed invoker' 'metadata missing packed body' \
+    'metadata missing invocation diagnostics OK')"
 
 # The full bucket reflects MemberwiseClone over strings; GC probes need a process
 # that has not performed that unsupported CoreLib operation.
