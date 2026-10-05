@@ -28,5 +28,8 @@ static class Program
         if (args.Length > 0 && args[0] == "before-exception-object-members")
             return;
         ReflectRuntimeTypeParitySubset.Program.RunExceptionMembers();
+        if (args.Length > 0 && args[0] == "before-assembly-name-validation")
+            return;
+        ReflectAssemblyErrorSubset.Program.RunAssemblyNameValidation();
     }
 }

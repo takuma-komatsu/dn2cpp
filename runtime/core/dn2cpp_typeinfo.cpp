@@ -1077,12 +1077,27 @@ static inline bool dn2cpp_ti_shows_generic_params(const Dn2CppTypeInfo* ti, bool
         && ti->reflection().genericParamNames != nullptr;
 }
 
-// Composes a closed generic's CLR name, Def`N[arg,arg], recursively. `qualify`
+static inline bool dn2cpp_ti_has_array_element(const Dn2CppTypeInfo* ti)
+{
+    return ti != nullptr && (ti->flags & DN2CPP_TF_ARRAY) != 0
+        && ti->elementType != nullptr;
+}
+
+// Composes CLR generic and array names recursively. `qualify`
 // wraps each argument as [<fullname>, <assembly display name>] — the difference
 // between Type.FullName and Type.ToString. See dn2cpp_core.h for why ti->name is
 // not the answer and may not be changed.
 static void dn2cpp_append_type_display(const Dn2CppTypeInfo* ti, bool qualify, std::string& out)
 {
+    if (dn2cpp_ti_has_array_element(ti))
+    {
+        dn2cpp_append_type_display(ti->elementType, qualify, out);
+        out += '[';
+        for (int32_t i = 1; i < ti->arrayRank; i++)
+            out += ',';
+        out += ']';
+        return;
+    }
     if (!dn2cpp_ti_is_closed_generic(ti))
     {
         out += ti != nullptr && ti->name != nullptr ? ti->name : "System.Object";
@@ -1119,7 +1134,8 @@ static void dn2cpp_append_type_display(const Dn2CppTypeInfo* ti, bool qualify, s
 
 static Dn2CppString* dn2cpp_type_display(const Dn2CppTypeInfo* ti, bool qualify)
 {
-    if (!dn2cpp_ti_is_closed_generic(ti) && !dn2cpp_ti_shows_generic_params(ti, qualify))
+    if (!dn2cpp_ti_has_array_element(ti) && !dn2cpp_ti_is_closed_generic(ti)
+        && !dn2cpp_ti_shows_generic_params(ti, qualify))
         return dn2cpp_string_from_utf8(ti->name, static_cast<int32_t>(std::strlen(ti->name)));
     std::string s;
     dn2cpp_append_type_display(ti, qualify, s);

@@ -180,4 +180,42 @@ internal static class Program
         Console.WriteLine("unselected type=" + typeof(UnselectedPayload).Name);
         Console.WriteLine("runtime-handle boxed formatting end");
     }
+
+    internal static void RunExcessRankMessages()
+    {
+        Console.WriteLine("== excessive array rank diagnostics ==");
+        RankFailure("int lengths", typeof(int), 33, false);
+        RankFailure("object lengths", typeof(object), 33, false);
+        RankFailure("char lengths", typeof(char), 34, false);
+        RankFailure("int bounds", typeof(int), 33, true);
+        RankFailure("object bounds", typeof(object), 34, true);
+        RankFailure("char bounds", typeof(char), 33, true);
+        Array accepted = Array.CreateInstance(typeof(int), new int[32]);
+        Console.WriteLine("rank32 accepted=" + accepted.Rank + ":" + accepted.Length);
+        Probe("rank invalid length", () =>
+        {
+            var lengths = new int[33];
+            lengths[0] = -1;
+            return Array.CreateInstance(typeof(int), lengths).Length.ToString();
+        });
+        Probe("rank null lengths", () => Array.CreateInstance(typeof(int), (int[])null).Length.ToString());
+        Probe("rank bounds mismatch", () => Array.CreateInstance(typeof(int), new int[33], new int[32]).Length.ToString());
+        Console.WriteLine("excessive array rank diagnostics end");
+    }
+
+    private static void RankFailure(string label, Type element, int rank, bool bounds)
+    {
+        try
+        {
+            int[] lengths = new int[rank];
+            Array value = bounds ? Array.CreateInstance(element, lengths, new int[rank])
+                : Array.CreateInstance(element, lengths);
+            Console.WriteLine(label + "=returned:" + value.Rank);
+        }
+        catch (Exception fault)
+        {
+            Console.WriteLine(label + "=" + fault.GetType().FullName + "/"
+                + fault.HResult.ToString("X8") + ":" + Show(fault.Message));
+        }
+    }
 }

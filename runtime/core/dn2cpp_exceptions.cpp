@@ -766,10 +766,10 @@ void dn2cpp_throw_argument() { dn2cpp_throw_of(&dn2cpp_argument_exception_type);
 void dn2cpp_throw_invalid_operation() { dn2cpp_throw_of(&dn2cpp_invalid_operation_exception_type); }
 void dn2cpp_throw_object_disposed() { dn2cpp_throw_of(&dn2cpp_object_disposed_exception_type); }
 
-[[noreturn]] void dn2cpp_throw_object_disposed_named(Dn2CppString* objectName)
+[[noreturn]] void dn2cpp_throw_object_disposed_named(Dn2CppString* objectName, Dn2CppString* message)
 {
     const Dn2CppTypeInfo* ti = &dn2cpp_object_disposed_exception_type;
-    Dn2CppObject* e = dn2cpp_exception_new(ti, dn2cpp_default_message(ti), nullptr);
+    Dn2CppObject* e = dn2cpp_exception_new(ti, message != nullptr ? message : dn2cpp_default_message(ti), nullptr);
     bool stored = dn2cpp_object_disposed_exception_store(e, objectName);
     if ((!stored || !dn2cpp_exception_overrides_message(ti))
         && objectName != nullptr && objectName->length != 0)

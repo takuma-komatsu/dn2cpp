@@ -609,25 +609,60 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.Ref, "const char*", call);
                 return true;
             }
-            // Assembly.Load(AssemblyName): the same registry lookup keyed on the
-            // managed AssemblyName's simple name, read through its real transpiled
-            // getter (AssemblyName is a plain managed class — the GetName() bridge in
-            // reverse). A null AssemblyName maps to a null name, for which the helper
-            // throws ArgumentNullException like real .NET; an AssemblyName WITH a null
-            // Name also gets ArgumentNullException where real .NET says
-            // ArgumentException (DECLARED DIVERGENCE, same catchable family).
+            // The object, its missing simple name and its empty/blank simple
+            // name have distinct faults. Other names use the linked registry.
             case ("System.Reflection.Assembly", "Load")
                 when sig.ParameterTypes is [{ Kind: TypeKind.Class, Class.FullName: "System.Reflection.AssemblyName" }]:
             {
                 if (Comp.ReachManagedMethod("System.Reflection.AssemblyName", "get_Name",
-                        static ps => ps.Length == 0) is not { } getName)
+                        static ps => ps.Length == 0) is not { } getName
+                    || Comp.ReachManagedMethod("System.Reflection.AssemblyName", "get_FullName",
+                        static ps => ps.Length == 0) is not { } getFullName
+                    || Comp.ReachManagedMethod("System.Reflection.AssemblyName", "Clone",
+                        static ps => ps.Length == 0) is not { } cloneName
+                    || Comp.ReachManagedMethod("System.Reflection.AssemblyName", "get_CultureName",
+                        static ps => ps.Length == 0) is not { } getCultureName
+                    || Comp.ReachManagedMethod("System.Reflection.AssemblyName", "set_CultureName",
+                        static ps => ps is [{ IsString: true }]) is not { } setCultureName
+                    || Comp.ReachManagedMethod("System.Reflection.AssemblyName", "GetPublicKeyToken",
+                        static ps => ps.Length == 0) is not { } getToken
+                    || Comp.ReachManagedMethod("System.Reflection.AssemblyName", "SetPublicKeyToken",
+                        static ps => ps is [{ Kind: TypeKind.SZArray }]) is not { } setToken
+                    || Comp.ReachManagedMethod("System.IO.FileNotFoundException", ".ctor",
+                        static ps => ps is [{ IsString: true }, { IsString: true }], allocates: true) is not { } fileCtor)
                     return false;
                 var an = Pop();
                 var anCls = getName.DeclaringClass;
                 string recv = NewTemp(anCls.CppStructName + "*");
                 Emit($"{recv} = {Cast(an, anCls.CppStructName + "*")};");
+                Emit($"if ({recv} == nullptr) dn2cpp_throw_argument_null_param(\"assemblyRef\");");
                 string nm = NewTemp("Dn2CppString*");
-                Emit($"{nm} = ({recv} == nullptr) ? nullptr : {DirectCall(getName, new List<string> { recv })};");
+                Emit($"{nm} = {DirectCall(getName, new List<string> { recv })};");
+                Emit($"if ({nm} == nullptr) dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_STRING_ZERO_LENGTH);");
+                Emit($"if (dn2cpp_str_is_null_or_whitespace({nm})) {{");
+                string file = NewTemp("Dn2CppString*");
+                Emit($"{file} = dn2cpp_string_literal(u\"<Unknown>\", 9);");
+                Emit($"if ({nm}->length != 0) {{");
+                // Binding diagnostics fill absent culture/token components without
+                // mutating the caller's AssemblyName. Its formatter preserves order.
+                string copy = NewTemp(anCls.CppStructName + "*");
+                Emit($"{copy} = ({anCls.CppStructName}*){DirectCall(cloneName, new List<string> { recv })};");
+                Emit($"if ({DirectCall(getCultureName, new List<string> { copy })} == nullptr) {{");
+                Emit($"{DirectCall(setCultureName, new List<string> { copy, "dn2cpp_string_literal(u\"\", 0)" })};");
+                Emit("}");
+                Emit($"if ({DirectCall(getToken, new List<string> { copy })} == nullptr) {{");
+                EmitNewarr(TypeDesc.MakePrimitive(PrimitiveTypeCode.Byte), "0");
+                var token = Pop();
+                Emit($"{DirectCall(setToken, new List<string> { copy, Cast(token, CppTypes.Of(setToken.Signature.ParameterTypes[0])) })};");
+                Emit("}");
+                Emit($"{file} = {DirectCall(getFullName, new List<string> { copy })};");
+                Emit("}");
+                var exCls = fileCtor.DeclaringClass;
+                string ex = NewTemp(exCls.CppStructName + "*");
+                Emit($"{ex} = ({exCls.CppStructName}*)dn2cpp_exception_new(&{exCls.CppTypeInfoName}, nullptr, nullptr);");
+                Emit($"{DirectCall(fileCtor, new List<string> { ex, "dn2cpp_assembly_name_missing_message(" + file + ")", file })};");
+                Emit($"dn2cpp_throw((Dn2CppObject*){ex});");
+                Emit("}");
                 Push(StackKind.Ref, "const char*", $"dn2cpp_assembly_load({nm}, \"assemblyRef\")");
                 return true;
             }
