@@ -507,7 +507,8 @@ constexpr Dn2CppTypeInfo dn2cpp_ti_with_formatspec(
 // (the gated rows of g_meta_members in dn2cpp_system_reflection.cpp, whose names
 // CoreIntrinsics.IsObjectMemberRowName lists) has a method row, so an Object or
 // ValueType row reached through this level is never one an unseen override
-// replaces. Runtime-owned, stripped and patch levels never carry it.
+// replaces. An unbound runtime exception with no such declaration qualifies too;
+// stripped and patch levels never carry it.
 #define DN2CPP_TF_OBJECT_MEMBER_ROWS 0x10000000
 
 // A synthetic open definition can resolve enclosing visibility without retaining

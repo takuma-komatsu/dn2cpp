@@ -376,6 +376,7 @@ ORDERED_PROJECTS=(
     "samples/dotnet/ReflectInvoke/ReflectInvoke.csproj"
     "samples/dotnet/ReflectFrameworkBindLib/ReflectFrameworkBindLib.csproj"
     "samples/dotnet/ReflectReturnLib/ReflectReturnLib.csproj"
+    "samples/dotnet/ReflectInvoke/OrdinaryReflectionLeaves.csproj"
     "samples/dotnet/ReflectInvoke/ReflectPointerFieldsOnly.csproj"
     "samples/dotnet/ReflectInvoke/ReflectPointerFieldsPreserved.csproj"
     "samples/dotnet/ReflectFrameworkBind/ReflectFrameworkBind.csproj"

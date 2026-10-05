@@ -737,3 +737,85 @@ static class Program
         Console.WriteLine("ordinary wide lookups end");
     }
 }
+
+class ObjectLeaf
+{
+    public string Local() => "local";
+}
+class ObjectOverride : ObjectLeaf
+{
+    public override string ToString() => "override";
+}
+class ObjectNewSlot : ObjectLeaf
+{
+    public new virtual string ToString() => "newslot";
+}
+class ObjectNewPlain : ObjectLeaf
+{
+    public new string ToString() => "newplain";
+}
+class ObjectOverload : ObjectLeaf
+{
+    public string ToString(int number) => "overload:" + number;
+}
+struct ObjectValue
+{
+    public override string ToString() => "value";
+}
+struct ObjectPlainValue { }
+static class ObjectMethods
+{
+    internal static void Run()
+    {
+        Console.WriteLine("== Object family method enumeration ==");
+        const BindingFlags all = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
+        Type[] types = { typeof(object), typeof(ObjectLeaf), typeof(ObjectOverride), typeof(ObjectNewSlot), typeof(ObjectNewPlain),
+            typeof(ObjectOverload), typeof(ReflectReturnLib.VirtualFactory) };
+        BindingFlags[] flags = { BindingFlags.Public | BindingFlags.Instance, BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static, all, all | BindingFlags.FlattenHierarchy,
+            all | BindingFlags.DeclaredOnly, BindingFlags.Static | BindingFlags.Public | BindingFlags.FlattenHierarchy,
+            BindingFlags.Instance | BindingFlags.NonPublic, BindingFlags.Default };
+        foreach (Type type in types)
+            foreach (BindingFlags flag in flags)
+                Dump(type, flag);
+        Dump(typeof(ValueType), BindingFlags.Public | BindingFlags.Instance);
+        Dump(typeof(ObjectPlainValue), BindingFlags.Public | BindingFlags.Instance);
+        Dump(typeof(ObjectValue), BindingFlags.Public | BindingFlags.Instance);
+        Dump(typeof(ObjectValue), all | BindingFlags.DeclaredOnly);
+        object receiver = new ObjectLeaf();
+        MethodInfo? clone = typeof(ObjectLeaf).GetMethod("MemberwiseClone", all);
+        MethodInfo? text = typeof(ObjectLeaf).GetMethod("ToString");
+        Console.WriteLine("enumerated invocation=" + (clone is not null && clone.Invoke(receiver, null)!.GetType() == receiver.GetType())
+            + ":" + (text is not null && (string)text.Invoke(receiver, null)! == receiver.ToString()));
+        Console.WriteLine("Object family method enumeration end");
+    }
+
+    private static void Dump(Type type, BindingFlags flags)
+    {
+        MethodInfo[] methods = flags == (BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static)
+            ? type.GetMethods() : type.GetMethods(flags);
+        string[] rows = new string[methods.Length];
+        string[] order = new string[methods.Length];
+        bool same = true;
+        for (int i = 0; i < methods.Length; i++)
+        {
+            MethodInfo method = methods[i];
+            Type[] parameters = new Type[method.GetParameters().Length];
+            for (int j = 0; j < parameters.Length; j++) parameters[j] = method.GetParameters()[j].ParameterType;
+            if (type != typeof(ObjectNewSlot) && type != typeof(ObjectNewPlain))
+                same &= ReferenceEquals(method, type.GetMethod(method.Name, flags, null, parameters, null));
+            same &= method.ReflectedType == type;
+            order[i] = method.Name + "/" + parameters.Length;
+            rows[i] = method + ":decl=" + method.DeclaringType!.Name + ":virtual=" + method.IsVirtual
+                + ":attrs=" + (int)method.Attributes + ":base=" + method.GetBaseDefinition().DeclaringType!.Name;
+        }
+        if ((type == typeof(object) || type == typeof(ObjectLeaf) || type == typeof(ReflectReturnLib.VirtualFactory)
+                || type == typeof(ValueType) || type == typeof(ObjectPlainValue))
+            && (flags == (BindingFlags.Public | BindingFlags.Instance)
+                || flags == (BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static)
+                || flags == (BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static)))
+            Console.WriteLine("method order " + type.Name + "/" + (int)flags + "=" + string.Join("|", order));
+        Array.Sort(rows, StringComparer.Ordinal);
+        Console.WriteLine("methods " + type.Name + "/" + (int)flags + "=" + rows.Length + ":same=" + same);
+        foreach (string row in rows) Console.WriteLine("  " + row);
+    }
+}

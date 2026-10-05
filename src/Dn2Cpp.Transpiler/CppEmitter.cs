@@ -2860,6 +2860,8 @@ internal sealed partial class CppEmitter
         // The corrected bases the same way: every chain walk must see one chain.
         foreach (var (handle, baseRef) in _runtimeHandleBases)
             sb.AppendLine($"    dn2cpp_intrinsic_set_base({handle}, {baseRef});");
+        foreach (string handle in _runtimeHandleObjectRows)
+            sb.AppendLine($"    ({handle})->flags |= DN2CPP_TF_OBJECT_MEMBER_ROWS;");
         // The shared reference-element SZArray fallback table goes in before any managed
         // code too: a cctor can already dispatch a collection interface on an array it
         // reached through `object` (or on a runtime-built attribute array).
@@ -3506,6 +3508,7 @@ internal sealed partial class CppEmitter
     /// type-info reference), in <see cref="UnboundRuntimeHandles"/> order. Installed by
     /// <see cref="EmitInitCalls"/> (<c>dn2cpp_intrinsic_set_base</c>).</summary>
     private readonly List<(string Handle, string BaseRef)> _runtimeHandleBases = [];
+    private readonly List<string> _runtimeHandleObjectRows = [];
 
     /// <summary>Records the base of each unbound reference-type runtime handle whose
     /// hand-written chain skips a CLR ancestor this image materializes: the nearest one
@@ -3520,6 +3523,20 @@ internal sealed partial class CppEmitter
         {
             if (cls.IsValueType)
                 continue;
+            // An unbound exception with no declared Object-family member cannot hide
+            // one behind a missing row. Audit raw metadata, without decoding members.
+            if (cls.FullName != "System.Exception"
+                && CoreIntrinsics.RuntimeExceptionTypeInfo(cls.FullName) is not null
+                && _c.KeepsReflectionMetadata(cls))
+            {
+                bool declaresObjectMember = false;
+                var reader = cls.Module.Reader;
+                foreach (var method in reader.GetTypeDefinition(cls.Handle).GetMethods())
+                    if (CoreIntrinsics.IsObjectMemberRowName(reader.GetString(reader.GetMethodDefinition(method).Name)))
+                        declaresObjectMember = true;
+                if (!declaresObjectMember)
+                    _runtimeHandleObjectRows.Add(handle);
+            }
             for (var a = cls.BaseClass; a is not null; a = a.BaseClass)
             {
                 if (CoreIntrinsics.RuntimeTypeInfoSymbol(a) is not null)

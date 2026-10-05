@@ -141,7 +141,7 @@ static class Program
             return nameof(PlatformNotSupportedException);
         }
     }
-    private static void Main()
+    private static void Main(string[] args)
     {
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
@@ -248,5 +248,8 @@ static class Program
         if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_POINTER_FIELDS") == "1")
             return;
         ReflectFieldValidationSubset.Program.RunPointerFields();
+        if (args.Length != 0 && args[0] == "before-object-method-enumeration")
+            return;
+        OrdinaryWideLookupSubset.ObjectMethods.Run();
     }
 }
