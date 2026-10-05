@@ -83,8 +83,82 @@ internal sealed class Chain<TElement, TKey> : ChainBase<TElement>
     }
 }
 
+internal enum TrialWidth : int { Value = 17 }
+
+internal interface ITrial
+{
+    string InterfaceVisit<T>(T value);
+}
+
+internal class TrialBase
+{
+    public virtual string ClassVisit<T>(T value) => "base:" + typeof(T).Name;
+}
+
+internal sealed class TrialLeaf : TrialBase, ITrial
+{
+    public override string ClassVisit<T>(T value) => "leaf:" + typeof(T).Name;
+    public string InterfaceVisit<T>(T value) => "interface:" + typeof(T).Name;
+}
+
+internal interface IOwnedTrial<T>
+{
+    string Owned<U>(U value);
+}
+
+internal sealed class OwnedTrial<T> : IOwnedTrial<T>
+{
+    public string Owned<U>(U value) => "owned:" + typeof(T).Name + "/" + typeof(U).Name;
+}
+
 internal static class Program
 {
+    private static string InterfaceTrial<T>(ITrial receiver, T value) => receiver.InterfaceVisit<T>(value);
+    private static string ClassTrial<T>(TrialBase receiver, T value) => receiver.ClassVisit<T>(value);
+
+    private static string BoundTrial<T>(TrialBase receiver, T value)
+    {
+        Func<T, string> bound = receiver.ClassVisit<T>;
+        return bound(value);
+    }
+
+    private static string NestedTrial<T>(ITrial receiver, T value) => receiver.InterfaceVisit<T[]>(new[] { value });
+
+    // The caller fixes the GVM method argument while its owner type varies.
+    private static string ConcreteMethodTrial<T>(IOwnedTrial<T> receiver) => receiver.Owned<int>(23);
+
+    internal static void RunTrialDispatch()
+    {
+        Console.WriteLine("== shared trial generic virtual dispatch ==");
+        TrialBase instance = new TrialLeaf();
+        ITrial viaInterface = (ITrial)instance;
+        Console.WriteLine("trial interface reference=" + InterfaceTrial(viaInterface, "s")
+            + "/" + InterfaceTrial<object>(viaInterface, "o"));
+        Console.WriteLine("trial interface width=" + InterfaceTrial(viaInterface, 17)
+            + "/" + InterfaceTrial(viaInterface, TrialWidth.Value) + "/" + InterfaceTrial(viaInterface, 29L));
+        Console.WriteLine("trial class reference=" + ClassTrial(instance, "s")
+            + "/" + ClassTrial<object>(instance, "o"));
+        Console.WriteLine("trial class width=" + ClassTrial(instance, 17)
+            + "/" + ClassTrial(instance, TrialWidth.Value) + "/" + ClassTrial(instance, 29L));
+        Console.WriteLine("trial bound reference=" + BoundTrial(instance, "s")
+            + "/" + BoundTrial<object>(instance, "o"));
+        Console.WriteLine("trial bound width=" + BoundTrial(instance, 17) + "/" + BoundTrial(instance, 29L));
+        Console.WriteLine("trial nested=" + NestedTrial(viaInterface, "s") + "/" + NestedTrial(viaInterface, 17));
+        Console.WriteLine("trial concrete method args=" + ConcreteMethodTrial<string>(new OwnedTrial<string>())
+            + "/" + ConcreteMethodTrial<object>(new OwnedTrial<object>()));
+        Console.WriteLine("shared trial generic virtual dispatch end");
+    }
+
+    internal static void RunInterfaceRows()
+    {
+        Console.WriteLine("== signature-only interface rows ==");
+        var method = typeof(IChain<Row>).GetMethod(nameof(IChain<Row>.Render))!;
+        Console.WriteLine("interface row name=" + method.Name);
+        Console.WriteLine("interface row abstract=" + method.IsAbstract);
+        Console.WriteLine("interface row owner=" + (method.DeclaringType == typeof(IChain<Row>)));
+        Console.WriteLine("signature-only interface rows end");
+    }
+
     private static List<Row> Rows() => new List<Row>
     {
         new Row("b", "y", 2),

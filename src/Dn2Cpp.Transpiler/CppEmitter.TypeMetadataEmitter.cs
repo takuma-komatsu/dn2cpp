@@ -2357,20 +2357,12 @@ internal sealed partial class CppEmitter
                         ? InvokerMissStub(cls, m, blocked)
                         : _e.EmitInvokerThunk(_sb, m, _invokerThunks, contextArg));
                 }
-                // An unreached interface method or an abstract class method carries no
-                // body (fnPtr stays null), but reflection dispatches a virtual one
-                // late-bound by resolving the receiver's slot to a concrete fn and
-                // calling that through the row's invoker thunk — the ABI matches, because
-                // generated callvirts call slot functions through exactly the declared
-                // shape the thunk spells. So emit that thunk (signature-only) when its ABI
-                // is bridgeable: for every virtual instance row, serving
-                // MethodBase.Invoke / PropertyInfo.GetValue and CreateDelegate; and for
-                // every interface row under --hotupdate-base, whose interpreter binds by
-                // walking these tables. A static or non-virtual row has no slot to
-                // resolve, so normal builds skip it. An abstract class row is entered
-                // only late-bound, so an image that cannot do that gets none.
+                // A bodyless interface or abstract class row needs a signature-only
+                // invoker only when a late-bound consumer resolves the receiver's slot
+                // and calls its concrete body through that ABI. Hot-update base requests
+                // an invoker for every interface row because its interpreter walks these tables.
                 else if (cls.IsInterface
-                    ? _e._hotUpdateBase || (!m.IsStatic && m.IsVirtual)
+                    ? _e._hotUpdateBase || (RowsEnteredLateBound && !m.IsStatic && m.IsVirtual)
                     : m.IsAbstract && RowsEnteredLateBound)
                 {
                     try
