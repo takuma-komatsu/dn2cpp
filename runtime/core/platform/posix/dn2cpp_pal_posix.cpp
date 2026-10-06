@@ -20,6 +20,7 @@
 #include <cstdio>     // snprintf (default-locale name assembly); fwrite/fflush (console sink)
 #include <cstdlib>    // getenv / realpath
 #include <cstring>    // strlen / memcpy / strcmp / strncmp
+#include <clocale>    // setlocale / LC_MESSAGES
 #include <strings.h>  // strncasecmp (en_US_POSIX test of the default-locale id)
 #include <ctime>      // localtime_r / mktime / std::tm / std::time_t
 #include <mutex>      // std::mutex (membarrier fallback serialization)
@@ -87,10 +88,6 @@ const char* dn2cpp_pal_getenv(const char* name)
 // uppercased trailing subtag ("de_AT.UTF-8@euro" -> "de-AT-EURO"). Returns 0 for
 // an id that names no locale.
 //
-// The four shapes above plus the no-locale set are read off real .NET's own
-// behaviour. dn2cpp does not resolve the name any further — an id the culture
-// table does not carry keeps its name over invariant symbols, the same answer
-// `new CultureInfo(thatName)` already gives.
 static int32_t dn2cpp_pal_locale_from_posix_id(const char* id, char* buf, size_t size)
 {
     if (id == nullptr)
@@ -103,6 +100,9 @@ static int32_t dn2cpp_pal_locale_from_posix_id(const char* id, char* buf, size_t
             return 0;
         buf[n++] = id[i] == '_' ? '-' : id[i];
     }
+    // ICU accepts an empty trailing POSIX variant, unlike a constructed name.
+    while (n > 0 && buf[n - 1] == '-')
+        n--;
     // Skip the codeset, keep the modifier.
     while (id[i] != '\0' && id[i] != '@')
         i++;
@@ -185,17 +185,19 @@ int32_t dn2cpp_pal_default_locale_name(char* buf, size_t size)
     if (buf == nullptr || size == 0)
         return 0;
     buf[0] = '\0';
-    // ICU's uprv_getPOSIXIDForCategory scan, which real .NET resolves its
-    // default through on POSIX: the FIRST of these that is set decides, an
-    // empty or "C" value included, so a later variable is never consulted
-    // behind it.
+    // ICU prefers libc's active messages locale. Only C/POSIX or an absent
+    // result falls back to the first set environment variable, including empty.
     static const char* const kVars[] = { "LC_ALL", "LC_MESSAGES", "LANG" };
-    const char* id = nullptr;
-    for (const char* v : kVars)
+    const char* id = ::setlocale(LC_MESSAGES, nullptr);
+    if (id == nullptr || std::strcmp(id, "C") == 0 || std::strcmp(id, "POSIX") == 0)
     {
-        id = ::getenv(v);
-        if (id != nullptr)
-            break;
+        id = nullptr;
+        for (const char* v : kVars)
+        {
+            id = ::getenv(v);
+            if (id != nullptr)
+                break;
+        }
     }
     int32_t n = dn2cpp_pal_locale_from_posix_id(id, buf, size);
     if (n > 0)

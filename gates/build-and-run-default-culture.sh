@@ -58,8 +58,8 @@ _corelib_gate_core "$PROJECT" "$out"
 # developer's machine can actually be in.
 LOCALES="${DN2CPP_CULTURE_LOCALES:-en_US.UTF-8 de_DE.UTF-8 fr_FR.UTF-8 ja_JP.UTF-8 en_GB.UTF-8 pt_BR.UTF-8 sv_SE.UTF-8 hi_IN.UTF-8}"
 
-# WHICH VARIABLE DECIDES. Real .NET takes the first of LC_ALL, LC_MESSAGES and
-# LANG that is SET, an empty one included; a value that names no locale (empty,
+# With libc's initial C locale, real .NET takes the first of LC_ALL, LC_MESSAGES
+# and LANG that is SET, an empty one included; a value that names no locale (empty,
 # C, POSIX, C.UTF-8, en_US_POSIX) leaves the default to the platform: the user's
 # system preference on Apple, the invariant culture elsewhere. A lowercase c is
 # a culture name, and .NET maps it to the invariant culture. Each row below
@@ -87,6 +87,9 @@ ENV_VARIANTS=(
     "LANG=C"
     "LANG=c"
     "LANG=en_US_POSIX"
+    "LANG=de_DE_"
+    "LANG=de_DE@euro"
+    "LANG=DE_de.UTF-8@euro"
     "LC_MESSAGES=$B LANG=$A"
     "LC_MESSAGES= LANG=$A"
     "LC_MESSAGES=C LANG=$A"
@@ -98,7 +101,9 @@ ENV_VARIANTS=(
     "LC_ALL=POSIX.UTF-8 LANG=$A"
 )
 
-if _corelib_gate_check "$out" "default_culture|$PROJECT|$LOCALES|$platform_default|$_CG_CORELIB"; then
+fixture="$(dirname "$0")/fixtures/default-culture-locale"
+if _corelib_gate_check "$out" "default_culture|$PROJECT|$LOCALES|${ENV_VARIANTS[*]}|$platform_default|query-and-initialize|$_CG_CORELIB" \
+        "$fixture/CMakeLists.txt" "$fixture/locale.c"; then
     gate_cache_hit_msg
     exit 0
 fi
@@ -120,6 +125,9 @@ for L in $LOCALES; do
     native="$(LC_ALL="$L" LANG="$L" run_bounded "./$out/$PROJECT")"
     oracle="$(LC_ALL="$L" LANG="$L" run_bounded dotnet "$_CG_APP")"
     assert_output "$native" "$oracle"
+    witness=$(strip_cr_win "$native")
+    grep -Fxq 'default culture identities end' <<< "$witness" \
+        || { echo "FAIL: default culture identities did not run" >&2; exit 1; }
     printf '%s\n' "$native" | LC_ALL=C sed 's/^/   /'
 done
 
@@ -133,5 +141,35 @@ for V in "${ENV_VARIANTS[@]}"; do
 done
 platform_default="${platform_default#Name=}"
 echo "env variants: $ran of ${#ENV_VARIANTS[@]} match real .NET (platform default: ${platform_default:-invariant})"
+
+# A controlled libc query makes this branch independent of installed locales.
+# Inject into both processes so the expectation still comes from real ICU/.NET.
+if [ "$DN2CPP_OS" != windows ]; then
+    "$CMAKE" -S "$fixture" -B "$out/locale-init-build" -G Ninja
+    "$CMAKE" --build "$out/locale-init-build"
+    if [ "$DN2CPP_OS" = macos ]; then
+        injection="DYLD_INSERT_LIBRARIES=$PWD/$out/locale-init-build/libdefault_culture_locale.dylib"
+    else
+        injection="LD_PRELOAD=$PWD/$out/locale-init-build/libdefault_culture_locale.so"
+    fi
+    for query in "$B" C POSIX C.UTF-8; do
+        echo "-- libc messages query: $query"
+        native=$(run_locale_env "LANG=$A" env "$injection" "DN2CPP_GATE_QUERY_LOCALE=$query" "./$out/$PROJECT")
+        oracle=$(run_locale_env "LANG=$A" env "$injection" "DN2CPP_GATE_QUERY_LOCALE=$query" dotnet "$_CG_APP")
+        assert_output "$native" "$oracle"
+        if [ "$query" = "$B" ]; then
+            expected_name="${B%.UTF-8}"
+            assert_output "${oracle%%$'\n'*}" "Name=${expected_name/_/-}"
+        fi
+    done
+    if [ "$DN2CPP_OS" = macos ]; then
+        echo "-- initialized libc locale with empty LC_ALL"
+        native=$(run_locale_env "LC_ALL= LANG=$A" env "$injection" DN2CPP_GATE_INITIALIZE_LOCALE=1 "./$out/$PROJECT")
+        oracle=$(run_locale_env "LC_ALL= LANG=$A" env "$injection" DN2CPP_GATE_INITIALIZE_LOCALE=1 dotnet "$_CG_APP")
+        assert_output "$native" "$oracle"
+        expected_name="${A%.UTF-8}"
+        assert_output "${oracle%%$'\n'*}" "Name=${expected_name/_/-}"
+    fi
+fi
 
 gate_cache_commit

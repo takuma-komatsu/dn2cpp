@@ -2837,6 +2837,7 @@ internal sealed partial class CppEmitter
         sb.AppendLine(_c.UsesPlatformIsa
             ? "    dn2cpp_runtime_init(&dn2cpp_cpu_features_resolve);"
             : "    dn2cpp_runtime_init();");
+        sb.AppendLine("    dn2cpp_set_culture_exception_store(&dn2cpp_image_culture_exception_store);");
         // The image's per-signature vtable trap thunks, so dn2cpp_exception_message can
         // recognise a trapped get_Message slot without calling it. Before any managed
         // code, like every install below.
@@ -5300,6 +5301,7 @@ internal sealed partial class CppEmitter
         sb.AppendLine($"const int32_t dn2cpp_exception_get_message_slot = {_c.ExceptionGetMessageSlot()};");
         EmitArgumentExceptionStore(sb);
         EmitObjectDisposedExceptionStore(sb);
+        EmitCultureExceptionStore(sb);
         EmitItfImplSlots(sb);
         EmitRenamedSlotBodies(sb);
         sb.AppendLine();
@@ -5353,6 +5355,32 @@ internal sealed partial class CppEmitter
         else
         {
             sb.AppendLine("    (void)e; (void)objectName;");
+            sb.AppendLine("    return false;");
+        }
+        sb.AppendLine("}");
+    }
+
+    private void EmitCultureExceptionStore(StringBuilder sb)
+    {
+        var name = BoundInstanceField("System.Globalization.CultureNotFoundException", "_invalidCultureName");
+        var id = BoundInstanceField("System.Globalization.CultureNotFoundException", "_invalidCultureId");
+        sb.AppendLine("static bool dn2cpp_image_culture_exception_store(Dn2CppObject* e, Dn2CppString* invalidCultureName, int32_t invalidCultureId)");
+        sb.AppendLine("{");
+        if (name is var (cls, nf) && id is var (_, idf)
+            && idf.Type.Class is { } nullable
+            && nullable.Fields.FirstOrDefault(f => !f.IsStatic && f.Name == "hasValue") is { } hasValue
+            && nullable.Fields.FirstOrDefault(f => !f.IsStatic && f.Name == "value") is { } value)
+        {
+            sb.AppendLine($"    if (e->type->instanceSize < (int32_t)sizeof({cls.CppStructName}))");
+            sb.AppendLine("        return false;");
+            sb.AppendLine($"    dn2cpp_gc_store_ref(&(({cls.CppStructName}*)e)->{nf.CppName}, invalidCultureName);");
+            sb.AppendLine($"    (({cls.CppStructName}*)e)->{idf.CppName}.{hasValue.CppName} = invalidCultureId != 0;");
+            sb.AppendLine($"    (({cls.CppStructName}*)e)->{idf.CppName}.{value.CppName} = invalidCultureId;");
+            sb.AppendLine("    return true;");
+        }
+        else
+        {
+            sb.AppendLine("    (void)e; (void)invalidCultureName; (void)invalidCultureId;");
             sb.AppendLine("    return false;");
         }
         sb.AppendLine("}");

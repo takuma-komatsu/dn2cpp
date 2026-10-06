@@ -290,7 +290,8 @@ gate_extra_asserts() {
             binds=$(grep '^const Dn2CppTypeBind dn2cpp_type_binds' "$fixture/generated.cpp")
             if [[ "$binds" == *'&dn2cpp_argument_exception_type'* ||
                 "$binds" == *'&dn2cpp_argument_null_exception_type'* ||
-                "$binds" == *'&dn2cpp_argument_out_of_range_exception_type'* ]]; then
+                "$binds" == *'&dn2cpp_argument_out_of_range_exception_type'* ||
+                "$binds" == *'&dn2cpp_culture_not_found_exception_type'* ]]; then
                 echo 'FAIL: general Message-only fixture bound an argument exception layout' >&2
                 exit 1
             fi
@@ -302,6 +303,12 @@ gate_extra_asserts() {
             assert_output "$decimal_prefix" "$(strip_cr_win "$decimal_before")"
             grep -Fxq 'decimal parse Message fallback end' <<< "$actual" \
                 || { echo 'FAIL: decimal Message-only faults did not run' >&2; exit 1; }
+            local culture_prefix culture_before
+            culture_prefix=$(awk '/^-- culture Message fallback --$/ { exit } { print }' <<< "$actual")
+            culture_before=$(run_bounded dotnet "$app" before-culture-fault-text)
+            assert_output "$culture_prefix" "$(strip_cr_win "$culture_before")"
+            grep -Fxq 'culture Message fallback end' <<< "$actual" \
+                || { echo 'FAIL: culture Message-only faults did not run' >&2; exit 1; }
         else
             grep -Fxq 'const int32_t dn2cpp_type_bind_count = 0;' "$fixture/generated.cpp" \
                 || { echo 'FAIL: fallback fixture reached a managed exception layout' >&2; exit 1; }

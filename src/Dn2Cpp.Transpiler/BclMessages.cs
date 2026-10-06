@@ -78,6 +78,8 @@ internal static class BclMessages
         "Arg_OverflowException",
         "Arg_IndexOutOfRangeException",
         "Arg_ArgumentException",
+        "Argument_CultureNotSupported",
+        "Argument_CultureInvalidIdentifier",
         "Arg_ArgumentOutOfRangeException",
         "ArgumentNull_Generic",
         "Arg_InvalidOperationException",

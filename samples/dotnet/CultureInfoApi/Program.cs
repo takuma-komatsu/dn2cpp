@@ -18,11 +18,17 @@ namespace CultureInfoApi
     // questions and dn2cpp carries neither table (see the emit arms).
     internal static class Program
     {
-        private static void Main()
+        private static void Main(string[] args)
         {
             // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
             CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+
+            if (args.Length > 0 && args[0] == "culture-names")
+            {
+                RunCultureNames();
+                return;
+            }
 
             CultureInfo inv = CultureInfo.InvariantCulture;
             Console.WriteLine("== CultureInfo object model ==");
@@ -218,6 +224,138 @@ namespace CultureInfoApi
             Console.WriteLine("  object=" + boxedText.ToString());
             Console.WriteLine("  generic=" + GenericToString(deText));
             Console.WriteLine($"  interp={deText}");
+
+            if (args.Length > 0 && args[0] == "before-culture-names")
+                return;
+            RunCultureNames();
+        }
+
+        private static void RunCultureNames()
+        {
+            Console.WriteLine("== culture name resolution ==");
+            foreach (string name in new[]
+            {
+                "", "C", "c", "POSIX", "PoSiX", "de-DE-EURO", "DE-de-euro",
+                "de-DE-1901", "fr-FR-EURO", "de-Latn-DE-EURO", "xx-YY", "xx-Latn-YY",
+                "de-DE-u-nu-latn", "de-DE-t-en-us", "de-DE-u-nu-LaTn", "de-DE-t-EN-us",
+                "en-US-POSIX", "de-u-nu-latn",
+                "de-ab12", "de-DE\0ignored", "aaaaaaaaaaa", "de-DE-" + new string('a', 79)
+            })
+            {
+                CultureInfo culture = new CultureInfo(name);
+                Console.WriteLine("  '" + name.Replace("\0", "<NUL>") + "' -> '" + culture.Name + "' LCID="
+                    + culture.LCID + " neutral=" + culture.IsNeutralCulture);
+                if (name.StartsWith("de-", StringComparison.OrdinalIgnoreCase)
+                    || name.StartsWith("fr-", StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine("    n=" + (1234.5).ToString("N2", culture)
+                        + " c=" + (1234.5).ToString("C", culture));
+                    Console.WriteLine("    cached=" + CultureInfo.GetCultureInfo(name).Name
+                        + " override=" + new CultureInfo(name, false).Name);
+                }
+            }
+            foreach (string name in new[]
+            {
+                "C.UTF-8", "a", "-de", "de-", "de--DE", "de_-DE", "de__DE", "de_DE_x",
+                "de DE", "de.DE", "de@euro", "dé-DE", "}", new string('a', 12),
+                "de-DE-" + new string('a', 80)
+            })
+            {
+                try
+                {
+                    Console.WriteLine("  invalid '" + name + "': accepted=" + new CultureInfo(name).Name);
+                }
+                catch (CultureNotFoundException exception)
+                {
+                    Console.WriteLine("  invalid '" + name + "': CultureNotFoundException hr="
+                        + exception.HResult.ToString("X8"));
+                    WriteCultureFault(exception);
+                }
+            }
+            try
+            {
+                Console.WriteLine("  invalid cached: accepted=" + CultureInfo.GetCultureInfo("C.UTF-8").Name);
+            }
+            catch (CultureNotFoundException exception)
+            {
+                Console.WriteLine("  invalid cached: CultureNotFoundException hr=" + exception.HResult.ToString("X8"));
+                WriteCultureFault(exception);
+            }
+            try
+            {
+                Console.WriteLine("  invalid cached Unicode: accepted=" + CultureInfo.GetCultureInfo("DÉ-DE").Name);
+            }
+            catch (CultureNotFoundException exception)
+            {
+                Console.WriteLine("  invalid cached Unicode: CultureNotFoundException hr=" + exception.HResult.ToString("X8"));
+                WriteCultureFault(exception);
+            }
+            try
+            {
+                Console.WriteLine("  invalid override: accepted=" + new CultureInfo("C.UTF-8", false).Name);
+            }
+            catch (CultureNotFoundException exception)
+            {
+                Console.WriteLine("  invalid override: CultureNotFoundException hr=" + exception.HResult.ToString("X8"));
+                WriteCultureFault(exception);
+            }
+            CultureInfo first = CultureInfo.GetCultureInfo("de-DE-EURO");
+            CultureInfo second = CultureInfo.GetCultureInfo("DE-de-euro");
+            CultureInfo parent = CultureInfo.GetCultureInfo("de-DE");
+            Console.WriteLine("  identity=" + ReferenceEquals(first, second)
+                + " parent=" + ReferenceEquals(first, parent));
+            Console.WriteLine("  extension identity=" + ReferenceEquals(CultureInfo.GetCultureInfo("de-DE-u-nu-LaTn"),
+                CultureInfo.GetCultureInfo("DE-de-u-nu-latn")));
+            foreach (string name in new[] { "de-DE-U-NU-LATN", "de-DE-T-EN-US" })
+                Console.WriteLine("  cached extension '" + name + "' -> '" + CultureInfo.GetCultureInfo(name).Name + "'");
+            GC.Collect();
+            Console.WriteLine("  after GC=" + first.Name + ":" + (1234.5).ToString("N2", first));
+            foreach (string name in new[] { "de-XX", "de-FOO", "fr-FOO", "de-XX-FOO" })
+            {
+                CultureInfo culture = new CultureInfo(name);
+                Console.WriteLine("  missing region=" + culture.Name + " neutral=" + culture.IsNeutralCulture);
+            }
+            foreach (int lcid in new[] { 4096, 12345 })
+            {
+                try
+                {
+                    Console.WriteLine("  invalid LCID=" + lcid + ": accepted=" + CultureInfo.GetCultureInfo(lcid).Name);
+                }
+                catch (CultureNotFoundException exception)
+                {
+                    Console.WriteLine("  invalid LCID=" + lcid + ": CultureNotFoundException hr="
+                        + exception.HResult.ToString("X8"));
+                    WriteCultureFault(exception);
+                }
+            }
+            foreach (string name in new[] { "de-DE", "de-DE.UTF-8", "en-US;q=0.9", "de-", "-de", "C.UTF-8", "de.DE", "a" })
+            {
+                try
+                {
+                    CultureInfo.CreateSpecificCulture(name);
+                    Console.WriteLine("  specific '" + name + "': accepted");
+                }
+                catch (CultureNotFoundException exception)
+                {
+                    Console.WriteLine("  specific '" + name + "': CultureNotFoundException");
+                    WriteCultureFault(exception);
+                }
+            }
+            foreach (string name in new[] { "zh-Hans-HK", "zh-Hans-TW", "de-Latn-DE", "de-Latn-DE-EURO" })
+            {
+                CultureInfo culture = new CultureInfo(name);
+                Console.WriteLine("  script '" + culture.Name + "': nan=" + culture.NumberFormat.NaNSymbol);
+            }
+            Console.WriteLine("culture name resolution end");
+        }
+
+        private static void WriteCultureFault(CultureNotFoundException exception)
+        {
+            int? id = exception.InvalidCultureId;
+            Console.WriteLine("    param=" + (exception.ParamName ?? "<null>")
+                + " name=" + (exception.InvalidCultureName ?? "<null>")
+                + " id=" + (id.HasValue ? id.Value.ToString(CultureInfo.InvariantCulture) : "<null>")
+                + " message=" + exception.Message.Replace("\r\n", "\n").Replace("\n", "|"));
         }
 
         private static string GenericToString<T>(T value) => value!.ToString()!;

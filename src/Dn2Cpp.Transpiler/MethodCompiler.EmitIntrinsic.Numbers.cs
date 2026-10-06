@@ -788,20 +788,23 @@ internal sealed partial class MethodCompiler
                 Emit($"dn2cpp_culture_set_current_ui({Cast(Pop(), "const Dn2CppNumberFormatInfo*")});");
                 return true;
             case ("System.Globalization.CultureInfo", "GetCultureInfo")
-                or ("System.Globalization.CultureInfo", "CreateSpecificCulture")
                     when sig.ParameterTypes is [{ IsString: true }]:
             {
                 string nm = Cast(Pop(), "Dn2CppString*");
-                Push(StackKind.Ref, "const Dn2CppNumberFormatInfo*", $"dn2cpp_culture_by_name({nm})");
+                Push(StackKind.Ref, "const Dn2CppNumberFormatInfo*", $"dn2cpp_culture_by_name({nm}, true)");
+                return true;
+            }
+            case ("System.Globalization.CultureInfo", "CreateSpecificCulture")
+                    when sig.ParameterTypes is [{ IsString: true }]:
+            {
+                string nm = Cast(Pop(), "Dn2CppString*");
+                Push(StackKind.Ref, "const Dn2CppNumberFormatInfo*", $"dn2cpp_culture_create_specific({nm})");
                 return true;
             }
             // CultureInfo.GetCultureInfo(int culture) — the reverse lookup over the same
             // culture table the name overload uses: 127 is the invariant culture, a
             // modeled culture's real LCID is its own, and anything else is rejected.
             // A non-positive LCID raises the ArgumentOutOfRangeException .NET does.
-            // .NET's CultureNotFoundException IS an ArgumentException and is not
-            // separately modeled — an ArgumentException naming `culture` carries the
-            // family, so a `catch (ArgumentException)` and ParamName behave alike.
             case ("System.Globalization.CultureInfo", "GetCultureInfo")
                     when sig.ParameterTypes is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }]:
             {
@@ -811,7 +814,7 @@ internal sealed partial class MethodCompiler
                 Emit($"{lc} = {lcid.Expr};");
                 Emit($"if ({lc} <= 0) dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE_NON_ZERO, \"culture\", {lc});");
                 Emit($"{r} = dn2cpp_culture_by_lcid({lc});");
-                Emit($"if ({r} == nullptr) dn2cpp_throw_argument_param(DN2CPP_SR_ARGUMENT, \"culture\");");
+                Emit($"if ({r} == nullptr) dn2cpp_throw_culture_not_found(nullptr, {lc});");
                 Push(StackKind.Ref, "const Dn2CppNumberFormatInfo*", r);
                 return true;
             }

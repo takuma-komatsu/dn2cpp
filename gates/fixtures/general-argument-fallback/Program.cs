@@ -53,5 +53,15 @@ internal static class Program
             Bound("decimal utf8", () => decimal.Parse(utf8.AsSpan(), CultureInfo.InvariantCulture));
         }
         Console.WriteLine("decimal parse Message fallback end");
+        if (args.Length > 0 && args[0] == "before-culture-fault-text")
+            return;
+        Console.WriteLine("-- culture Message fallback --");
+        Bound("culture constructor", () => new CultureInfo("C.UTF-8"));
+        Bound("culture cached", () => CultureInfo.GetCultureInfo("C.UTF-8"));
+        Bound("culture cached Unicode", () => CultureInfo.GetCultureInfo("DÉ-DE"));
+        Bound("culture override", () => new CultureInfo("C.UTF-8", false));
+        Bound("culture retry", () => CultureInfo.CreateSpecificCulture("C.UTF-8"));
+        Bound("culture LCID", () => CultureInfo.GetCultureInfo(12345));
+        Console.WriteLine("culture Message fallback end");
     }
 }
