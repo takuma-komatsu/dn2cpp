@@ -10,6 +10,10 @@
 # with PlatformNotSupportedException where .NET runs it.
 # Missing reflective bodies share a descriptive refusal across Invoke and delegate creation.
 # Argument validation still runs before that refusal, for packed and native metadata alike.
+# Reflected template delegates retain their receiver and closed declaring method identity.
+# Template-built delegates and GetMethod share the closed member's identity.
+# Reflected array templates allocate the runtime argument's array through a closed delegate.
+# Template function pointers with a fixed signature run through Invoke and a closed delegate.
 # Consolidated reflection-introspection gate. Merges the former per-feature
 # reflect-* subset gates (one tiny sample each) into a single multi-section
 # program, transpiled once against the tree-shaken real CoreLib. Each section
@@ -321,6 +325,10 @@ DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-type-leaves-v
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/AttributeConstructionOrderSubset.cs"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/ReflectionTemplateDispatch.csproj samples/dotnet/ReflectTypes/ReflectionTemplateDispatchProgram.cs samples/dotnet/ReflectTypes/ReflectRuntimeInstantiationSubset.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|invoke-diagnostics-prefix-argv:before-invoke-diagnostics|invoke-diagnostics-argv:invoke-diagnostics"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|reflected-delegates-prefix-argv:before-reflected-delegates"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|reflected-arrays-prefix-argv:before-reflected-arrays"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|fixed-function-pointers-prefix-argv:before-fixed-function-pointers"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|template-delegate-method-identity-prefix-argv:before-template-delegate-method-identity"
 
 EXPFILE="$(dirname "$0")/expected/reflect-types.txt"
 BCL=(System.Linq.Expressions System.Linq System.Collections \
@@ -769,7 +777,7 @@ DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectTypes UnreadAttribu
 unset -f gate_extra_asserts
 DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectTypes DataOnlyAttributeRowsOnly --no-ildiet
 gate_extra_asserts() {
-    local out="$1" native line before prefix name path
+    local out="$1" native line before prefix name path tail expected_tail
     native=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT") || return $?
     native=$(strip_cr_win "$native")
     before=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-template-members) || return $?
@@ -783,6 +791,26 @@ gate_extra_asserts() {
     assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
     before=$(run_bounded dotnet "$_CG_APP" before-invoke-diagnostics) || return $?
     assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    prefix=$(awk '/^== reflected template delegates ==$/ { exit } { print }' <<< "$native")
+    before=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-reflected-delegates) || return $?
+    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    before=$(run_bounded dotnet "$_CG_APP" before-reflected-delegates) || return $?
+    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    prefix=$(awk '/^== reflected template arrays ==$/ { exit } { print }' <<< "$native")
+    before=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-reflected-arrays) || return $?
+    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    before=$(run_bounded dotnet "$_CG_APP" before-reflected-arrays) || return $?
+    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    prefix=$(awk '/^== fixed template function pointers ==$/ { exit } { print }' <<< "$native")
+    before=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-fixed-function-pointers) || return $?
+    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    before=$(run_bounded dotnet "$_CG_APP" before-fixed-function-pointers) || return $?
+    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    prefix=$(awk '/^== template delegate method identity ==$/ { exit } { print }' <<< "$native")
+    before=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-template-delegate-method-identity) || return $?
+    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    before=$(run_bounded dotnet "$_CG_APP" before-template-delegate-method-identity) || return $?
+    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
     for line in '== reflection template dispatch ==' 'reflection template dispatch end' \
         '== template members ==' \
         'members Int32 get identity: True/True/True/True/True/True' \
@@ -792,7 +820,14 @@ gate_extra_asserts() {
         'fnptr Int64: row=True mismatched=False' 'fnptr String: row=True mismatched=False' \
         'template function pointers end' \
         '== missing reflection invocation diagnostics ==' 'diag control=True' \
-        'missing reflection invocation diagnostics end'; do
+        'missing reflection invocation diagnostics end' \
+        '== reflected template delegates ==' 'reflected template delegates end' \
+        '== reflected template arrays ==' 'reflected template arrays end' \
+        '== fixed template function pointers ==' 'fixed template function pointers end' \
+        'fixedfn Int32 row=True' 'fixedfn Int64 row=True' 'fixedfn String row=True' \
+        '== template delegate method identity ==' 'template delegate method identity end' \
+        'method identity Int32 rows=True' 'method identity Int64 rows=True' \
+        'method identity String rows=True' 'method identity Pair rows=True'; do
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: template dispatch witness missing: $line" >&2; return 1; }
     done
@@ -803,14 +838,55 @@ gate_extra_asserts() {
                 || { echo "FAIL: missing-body invocation control missing: $line" >&2; return 1; }
         done
     done
+    for name in Int32 Int64 String Pair; do
+        for line in "bound $name invoke=$name" \
+            "bound $name identity: target=True method=Kind declaring=True"; do
+            grep -Fxq -- "$line" <<< "$native" \
+                || { echo "FAIL: reflected template delegate witness missing: $line" >&2; return 1; }
+        done
+        for line in "method identity $name bound: operator=True equals=True reference=True reflected=True" \
+            "method identity $name invoke=$name" \
+            "method identity $name created: operator=True equals=True reference=True reflected=True"; do
+            grep -Fxq -- "$line" <<< "$native" \
+                || { echo "FAIL: template delegate method identity missing: $line" >&2; return 1; }
+        done
+    done
+    for name in Int32 Int64 Byte String Pair; do
+        for line in "array $name row=True" "array $name delegate=$name[]" \
+            "array $name identity: target=True method=ArrayName declaring=True" \
+            "array $name storage: length=2 element=True stored=True" \
+            "array $name negative=OverflowException"; do
+            grep -Fxq -- "$line" <<< "$native" \
+                || { echo "FAIL: reflected array template witness missing: $line" >&2; return 1; }
+        done
+    done
+    for path in Invoke CreateDelegate; do
+        for line in "fixedfn Int32 $path=result:int:42" "fixedfn Int64 $path=result:int:-7" \
+            "fixedfn String $path=result:int:0"; do
+            grep -Fxq -- "$line" <<< "$native" \
+                || { echo "FAIL: fixed function pointer result missing: $line" >&2; return 1; }
+        done
+    done
     # No clone shares a body that calls through a function pointer over its type
     # parameter. Exact, so a call that runs or refuses differently shows.
     native=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" template-function-pointer-outcomes) || return $?
-    assert_output "$(strip_cr_win "$native")" "$(printf '%s\n' '== template function pointers ==' \
+    native=$(strip_cr_win "$native")
+    prefix=$(awk '/^== fixed template function pointers ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(printf '%s\n' '== template function pointers ==' \
         'fnptr Int32 outcome: refused PlatformNotSupportedException' \
         'fnptr Int64 outcome: refused PlatformNotSupportedException' \
         'fnptr String outcome: refused PlatformNotSupportedException' \
         'template function pointers end')" || return $?
+    before=$(run_bounded dotnet "$_CG_APP" template-function-pointer-outcomes) || return $?
+    before=$(strip_cr_win "$before")
+    tail=$(awk '/^== fixed template function pointers ==$/ { found=1 } found' <<< "$native")
+    expected_tail=$(awk '/^== fixed template function pointers ==$/ { found=1 } found' <<< "$before")
+    assert_output "$tail" "$expected_tail" || return $?
+    for line in '== fixed template function pointers ==' 'fixed template function pointers end' \
+        'fixedfn Int32 row=True' 'fixedfn Int64 row=True' 'fixedfn String row=True'; do
+        grep -Fxq -- "$line" <<< "$tail" \
+            || { echo "FAIL: fixed function pointer outcome witness missing: $line" >&2; return 1; }
+    done
     native=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" invoke-diagnostics) || return $?
     native=$(strip_cr_win "$native")
     for name in Int32 Int64 String; do

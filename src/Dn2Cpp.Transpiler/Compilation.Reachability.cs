@@ -6432,7 +6432,8 @@ internal sealed partial class Compilation
                         }
                         if (t is not null)
                         {
-                            if (insn.OpCode == ILOpCode.Call)
+                            if (insn.OpCode == ILOpCode.Call
+                                || insn.OpCode == ILOpCode.Ldftn && IsReflectedTemplateInstanceTarget(m, t))
                                 ReachCallFromReflectedTemplateBody(m, t);
                             else
                                 Reach(t);

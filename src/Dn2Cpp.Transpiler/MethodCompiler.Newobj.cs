@@ -2133,8 +2133,8 @@ internal sealed partial class MethodCompiler
             if (!originsSelected && fnPtr.DelegateMethod is { } boundMethod && ClosesOverInstance(boundMethod))
                 Emit(nullTargetCheck);
             // The identity is emitted with the method rows, spelled as they spell the
-            // declaring type and arguments; the arguments only need type-infos. A
-            // canonical target has already tainted at its ldftn/ldvirtftn.
+            // declaring type and arguments; the arguments only need type-infos.
+            // An own-instance template identity is normalized through its receiver.
             if (!identityEmitted && fnPtr.DelegateMethod is { } delegateMethod
                 && (!delegateMethod.Handle.IsNil || _c.IsRuntimeObjectFunction(delegateMethod)))
             {

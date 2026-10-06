@@ -9,10 +9,15 @@ namespace Dn2Cpp;
 // placeholder's ABI in place of T's. The default run proves that every instantiation
 // has a Call row and that no call through it returns a wrong result; a refusal and a
 // correct result print alike there. The template-function-pointer-outcomes argument,
-// which only the native gate passes, prints each call's result or its refusal.
+// prints each call's result or its refusal.
 internal sealed class FunctionPointerCall<T>
 {
     public unsafe string Call(IntPtr fn, object value) => ((delegate*<T, string>)fn)((T)value);
+}
+
+internal sealed class FixedFunctionPointerCall<T>
+{
+    public unsafe string Call(IntPtr fn, int value) => ((delegate*<int, string>)fn)(value);
 }
 
 internal static class ReflectionTemplateDispatchProgram
@@ -24,6 +29,7 @@ internal static class ReflectionTemplateDispatchProgram
         if (args.Length > 0 && args[0] == "template-function-pointer-outcomes")
         {
             RunTemplateFunctionPointers(outcomes: true);
+            RunFixedFunctionPointers();
             return;
         }
         if (args.Length > 0 && args[0] == "invoke-diagnostics")
@@ -46,6 +52,18 @@ internal static class ReflectionTemplateDispatchProgram
         if (args.Length > 0 && args[0] == "before-invoke-diagnostics")
             return;
         RunInvokeDiagnostics(outcomes: false);
+        if (args.Length > 0 && args[0] == "before-reflected-delegates")
+            return;
+        ReflectRuntimeInstantiationSubset.Program.RunReflectedDelegates();
+        if (args.Length > 0 && args[0] == "before-reflected-arrays")
+            return;
+        ReflectRuntimeInstantiationSubset.Program.RunReflectedArrays();
+        if (args.Length > 0 && args[0] == "before-fixed-function-pointers")
+            return;
+        RunFixedFunctionPointers();
+        if (args.Length > 0 && args[0] == "before-template-delegate-method-identity")
+            return;
+        ReflectRuntimeInstantiationSubset.Program.RunReflectedDelegateMethodIdentity();
     }
 
     private static string DescribeInt(int value) => "int:" + value;
@@ -179,5 +197,31 @@ internal static class ReflectionTemplateDispatchProgram
         }
         Console.WriteLine("fnptr " + arg.Name + ": row=" + (call is not null)
             + " mismatched=" + (result is not null && result != expected));
+    }
+
+    private static unsafe void RunFixedFunctionPointers()
+    {
+        Console.WriteLine("== fixed template function pointers ==");
+        delegate*<int, string> describe = &DescribeInt;
+        CallFixedTemplate(typeof(int), (IntPtr)describe, 42);
+        CallFixedTemplate(typeof(long), (IntPtr)describe, -7);
+        CallFixedTemplate(typeof(string), (IntPtr)describe, 0);
+        Console.WriteLine("fixed template function pointers end");
+    }
+
+    private static void CallFixedTemplate(Type arg, IntPtr fn, int value)
+    {
+        Type closed = typeof(FixedFunctionPointerCall<>).MakeGenericType(arg);
+        object inst = Activator.CreateInstance(closed)!;
+        MethodInfo call = closed.GetMethod("Call")
+            ?? throw new InvalidOperationException("The fixed function pointer Call row is missing.");
+        string prefix = "fixedfn " + arg.Name;
+        Console.WriteLine(prefix + " row=True");
+        string? invoked = Attempt(() => (string)call.Invoke(inst, new object[] { fn, value })!,
+            out Exception? invokeFault);
+        string? bound = Attempt(() => ((Func<IntPtr, int, string>)call.CreateDelegate(
+            typeof(Func<IntPtr, int, string>), inst))(fn, value), out Exception? boundFault);
+        Console.WriteLine(prefix + " Invoke=" + DescribeOutcome(invoked, invokeFault));
+        Console.WriteLine(prefix + " CreateDelegate=" + DescribeOutcome(bound, boundFault));
     }
 }

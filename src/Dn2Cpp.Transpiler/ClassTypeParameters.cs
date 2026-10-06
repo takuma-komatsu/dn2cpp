@@ -6,7 +6,8 @@ namespace Dn2Cpp;
 /// <summary>Which class type parameters a metadata token's instantiation mentions, read
 /// off its blobs alone: one bit per parameter index, the last bit standing for every
 /// index past it. A member reference answers its declaring type's, a method
-/// specification its declaring type's and its method arguments'.</summary>
+/// specification its declaring type's and its method arguments', and a stand-alone
+/// signature its return and parameter types'.</summary>
 internal static class ClassTypeParameters
 {
     internal static ulong Of(MetadataReader reader, EntityHandle token)
@@ -24,6 +25,10 @@ internal static class ClassTypeParameters
                 foreach (ulong arg in spec.DecodeSignature(Mask.Instance, null))
                     mask |= arg;
                 return mask;
+            case HandleKind.StandaloneSignature:
+                var signature = reader.GetStandaloneSignature((StandaloneSignatureHandle)token)
+                    .DecodeMethodSignature(Mask.Instance, null);
+                return Mask.Instance.GetFunctionPointerType(signature);
             default:
                 return 0;
         }

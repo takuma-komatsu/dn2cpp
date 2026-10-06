@@ -5385,7 +5385,17 @@ Dn2CppObject* dn2cpp_delegate_get_method(Dn2CppObject* d)
         return hit ? reinterpret_cast<Dn2CppObject*>(dn2cpp_make_methodref(hit, nullptr)) : nullptr;
     }
     if (!identity->virtualBinding || t == nullptr)
-        return reinterpret_cast<Dn2CppObject*>(dn2cpp_make_methodref(declared, nullptr));
+    {
+        auto selected = declared;
+        if (t != nullptr && !identity->virtualBinding
+            && (owner->flags & DN2CPP_TF_RUNTIME_TEMPLATE) != 0)
+        {
+            const Dn2CppMethodInfo row = *declared;
+            if ((row.attrs & DN2CPP_MTHA_STATIC) == 0 && row.genericParamCount == 0)
+                selected = dn2cpp_clone_level_method(t->type, owner, declared, 0, nullptr);
+        }
+        return reinterpret_cast<Dn2CppObject*>(dn2cpp_make_methodref(selected, nullptr));
+    }
     // .NET names the override the binding resolved, so the declaration answers
     // only when no override binds.
     const Dn2CppMethodInfo decl = *declared;
