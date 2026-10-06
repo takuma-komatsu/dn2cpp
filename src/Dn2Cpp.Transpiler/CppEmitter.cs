@@ -4266,19 +4266,22 @@ internal sealed partial class CppEmitter
     /// names its own type, <paramref name="functionPointer"/> as the row's metadata
     /// signature spells it, or System.Void when that signature is not decodable.</summary>
     private (int Kind, string Type) ReflectionPass(TypeDesc t, HashSet<ClassInfo> emittedEnums,
-        (string Key, string Name)? functionPointer = null)
+        (string Key, string Name, bool Known, BindingSignature Binding)? functionPointer = null)
     {
-        int kind = 0;
+        int kind = t.Kind is TypeKind.ByRef or TypeKind.Pointer
+            && (Compilation.ContainsCanonPlaceholder(t) || Compilation.ContainsGenericVar(t))
+            ? PassSignatureUnknown : 0;
         if (t.Kind == TypeKind.ByRef)
         {
-            kind = PassByRef;
+            kind |= PassByRef;
             t = t.Element!;
         }
         if (t.Kind == TypeKind.Pointer)
         {
-            string functionPointerType = functionPointer is { } f ? PointeeStandIn(f.Key, f.Name) : "&dn2cpp_void_type";
+            string functionPointerType = functionPointer is { } f ? PointeeStandIn(f.Key, f.Name, f.Known ? f.Binding : null) : "&dn2cpp_void_type";
+            int signatureUnknown = functionPointer is { Known: true } ? 0 : PassSignatureUnknown;
             if (t.IsFunctionPointer)
-                return (kind | PassPointer | PassFunctionPointer, functionPointerType);
+                return (kind | PassPointer | PassFunctionPointer | signatureUnknown, functionPointerType);
             int levels = 0;
             var pointee = t.Element!;
             while (pointee.Kind == TypeKind.Pointer && !pointee.IsFunctionPointer)
@@ -4287,12 +4290,19 @@ internal sealed partial class CppEmitter
                 pointee = pointee.Element!;
             }
             string type = pointee.IsFunctionPointer ? functionPointerType : MemberTypeInfoExpr(pointee, emittedEnums);
+            if (pointee.IsFunctionPointer)
+                kind |= PassFunctionPointerPointee | signatureUnknown;
             if (levels > ReturnPointerDepthMask)
             {
                 string further = new('*', levels - ReturnPointerDepthMask);
                 string name = pointee.IsFunctionPointer ? functionPointer?.Name ?? "System.Void"
                     : pointee.IsVoid ? "System.Void" : ReflectionSignatureType(pointee, qualifyPrimitive: true);
-                type = PointeeStandIn(type + further, name + further);
+                var binding = pointee.IsFunctionPointer ? functionPointer is { Known: true } knownPointer
+                    ? knownPointer.Binding : null : new BindingSignature(type: pointee);
+                if (binding is not null)
+                    for (int i = 0; i < further.Length; i++)
+                        binding = new BindingSignature(1, children: new[] { binding });
+                type = PointeeStandIn(type + further, name + further, binding);
                 levels = ReturnPointerDepthMask;
             }
             return (kind | PassPointer | (levels << PassPointerDepthShift), type);
@@ -4309,23 +4319,26 @@ internal sealed partial class CppEmitter
             TypeKind.SZArray or TypeKind.MDArray => false,
             _ => null,
         };
-        string cpp;
+        bool copyable;
         try
         {
-            cpp = CppTypes.Of(t);
+            string cpp = CppTypes.Of(t);
+            bool pointerShaped = cpp.EndsWith("*", StringComparison.Ordinal);
+            copyable = valueType switch
+            {
+                true => !pointerShaped && referent != "&dn2cpp_object_type",
+                false => pointerShaped && !MethodCompiler.IsNfiCppType(cpp) && !MethodCompiler.IsAsmCppType(cpp),
+                null => false,
+            };
         }
         catch (NotSupportedException e) when (!Compilation.IsMustEscape(e))
         {
-            return (PassByRef | PassUnsupported, referent);
+            copyable = false;
         }
-        bool pointerShaped = cpp.EndsWith("*", StringComparison.Ordinal);
-        bool copyable = valueType switch
-        {
-            true => !pointerShaped && referent != "&dn2cpp_object_type",
-            false => pointerShaped && !MethodCompiler.IsNfiCppType(cpp) && !MethodCompiler.IsAsmCppType(cpp),
-            null => false,
-        };
-        return (copyable ? PassByRef : PassByRef | PassUnsupported, referent);
+        // Missing marshalling metadata must not erase an unsupported by-ref identity.
+        if (!copyable && referent == "&dn2cpp_object_type")
+            referent = PointeeStandIn(Compilation.IdentityMangle(t), ReflectionSignatureType(t, qualifyPrimitive: true));
+        return (kind | (copyable ? 0 : PassUnsupported), referent);
     }
 
     // Dn2CppParamInfo::passKind bits (DN2CPP_PASS_*).
@@ -4334,6 +4347,8 @@ internal sealed partial class CppEmitter
     private const int PassFunctionPointer = 0x4;
     private const int PassByRefLike = 0x8;
     private const int PassUnsupported = 0x10;
+    private const int PassSignatureUnknown = 0x20;
+    private const int PassFunctionPointerPointee = 0x40;
     private const int PassPointerDepthShift = 8;
     // DN2CPP_MTHA_RETURN_*.
     private const int ReturnByRefRow = 0x400;
@@ -4347,34 +4362,41 @@ internal sealed partial class CppEmitter
 
     /// <summary>The <c>DN2CPP_MTHA_RETURN_*</c> bits and <c>returnPassType</c> of a row
     /// returning <paramref name="t"/>, from <see cref="ReflectionPass"/>, whose pointer
-    /// levels fit the depth bits.</summary>
-    private (int Attrs, string Referent) ReflectionReturnPass(TypeDesc t, HashSet<ClassInfo> emittedEnums,
-        (string Key, string Name)? functionPointer = null)
+    /// levels fit the depth bits. Function-pointer identity stays separate from
+    /// the null referent that Invoke uses for IntPtr boxing. An unresolved ordinary
+    /// referent records Object as its binding-only identity marker.</summary>
+    private (int Attrs, string Referent, string Signature) ReflectionReturnPass(TypeDesc t, HashSet<ClassInfo> emittedEnums,
+        (string Key, string Name, bool Known, BindingSignature Binding)? functionPointer = null)
     {
         var (kind, type) = ReflectionPass(t, emittedEnums, functionPointer);
+        string signature = (kind & PassSignatureUnknown) != 0 ? "&dn2cpp_object_type" : "nullptr";
         if ((kind & PassByRefLike) != 0)
-            return (ReturnByRefLikeRow, "nullptr");
+            return (ReturnByRefLikeRow | ((kind & PassByRef) != 0 ? ReturnByRefRow : 0), type, signature);
         if ((kind & PassPointer) != 0)
         {
             int byRef = (kind & PassByRef) != 0 ? ReturnByRefRow : 0;
             if ((kind & PassFunctionPointer) != 0)
-                return (ReturnPointerRow | byRef, "nullptr");
+                return (ReturnPointerRow | byRef, "nullptr",
+                    (kind & PassSignatureUnknown) != 0 ? "&dn2cpp_void_type" : type);
             int levels = (kind >> PassPointerDepthShift) & 0xFF;
-            return (ReturnPointerRow | byRef | (levels << ReturnPointerDepthShift), type);
+            return (ReturnPointerRow | byRef | (levels << ReturnPointerDepthShift), type,
+                (kind & PassFunctionPointerPointee) != 0
+                    ? functionPointer is { Known: true } f ? PointeeStandIn(f.Key, f.Name, f.Known ? f.Binding : null) : "&dn2cpp_void_type"
+                    : signature);
         }
         if ((kind & PassUnsupported) != 0)
-            return (ReturnUnboxableRow, "nullptr");
-        return kind != 0 ? (ReturnByRefRow, type) : (0, "nullptr");
+            return (ReturnUnboxableRow | ReturnByRefRow, type, signature);
+        return kind != 0 ? (ReturnByRefRow, type, signature) : (0, "nullptr", "nullptr");
     }
 
     private readonly Dictionary<string, string> _pointeeStandIns = new(StringComparer.Ordinal);
 
     /// <summary>The type-info a pointer row names as its pointee where the image has
-    /// none: a function pointer type, or a pointer's levels past those a return row's
-    /// depth bits count. One per <paramref name="key"/> across the image, so equal
+    /// none: an unsupported by-ref referent, a function pointer type, or pointer
+    /// levels beyond a return row's depth bits. One per <paramref name="key"/> across the image, so equal
     /// pointer types share the identity a Pointer box's argument check compares;
     /// <paramref name="name"/> is the type as .NET formats it.</summary>
-    private string PointeeStandIn(string key, string name)
+    private string PointeeStandIn(string key, string name, BindingSignature? binding = null)
     {
         if (!_pointeeStandIns.TryGetValue(key, out var symbol))
         {
@@ -4382,6 +4404,17 @@ internal sealed partial class CppEmitter
             _pointeeStandIns[key] = symbol;
             _metadataHeader.AppendLine(
                 $"inline constexpr Dn2CppTypeInfo {symbol} = dn2cpp_pointee_type_info(\"{CLiteral(name)}\");");
+        }
+        if (binding is not null)
+        {
+            if (_bindingStandIns.TryGetValue(symbol, out var existing))
+            {
+                // A projected identity collision cannot prove either actual leaf.
+                if (existing is not null && !BindingSignaturesAgree(existing, binding))
+                    _bindingStandIns[symbol] = null;
+            }
+            else
+                _bindingStandIns[symbol] = binding;
         }
         return "&" + symbol;
     }
@@ -5544,6 +5577,7 @@ internal sealed partial class CppEmitter
         sb.AppendLine($"const Dn2CppTypeRegEntry dn2cpp_type_registry[] = {{ {string.Join(", ", rows)} }};");
         sb.AppendLine($"const int32_t dn2cpp_type_registry_count = {rows.Count};");
         sb.AppendLine();
+        EmitBindingStandIns(sb);
         EmitRuntimeTemplates(sb);
     }
 
@@ -5575,8 +5609,75 @@ internal sealed partial class CppEmitter
                     sb.AppendLine($"static const int32_t {descSym}[] = {{ {string.Join(", ", desc)} }};");
                     descExpr = descSym;
                 }
+                var bindings = new List<string>();
+                int pathSequence = 0;
+                if (_bindingTypeArguments.TryGetValue(lv, out var signatures))
+                    foreach (var signature in signatures)
+                {
+                    var path = new List<string>();
+                    void Add(int argument, string type)
+                    {
+                        string pathExpr = "nullptr";
+                        if (path.Count > 0)
+                        {
+                            pathExpr = $"bindpath_{lv.CppName}_{pathSequence++}";
+                            sb.AppendLine($"static const Dn2CppBindingTypePath {pathExpr}[] = {{ {string.Join(", ", path)} }};");
+                        }
+                        int depth = BindingPointerDepth(signature.Type);
+                        bindings.Add($"{{ {signature.Token}, {signature.Parameter}, {argument}, {type}, {pathExpr}, {path.Count}, {depth}, nullptr }}");
+                    }
+                    void Walk(TypeDesc type, BindingTypeArgumentPattern pattern)
+                    {
+                        if (pattern.Index >= 0)
+                        {
+                            if (pattern.Index < lv.Context.TypeArgs.Length
+                                && Compilation.ContainsCanonPlaceholder(lv.Context.TypeArgs[pattern.Index]))
+                                Add(pattern.Index, "nullptr");
+                            return;
+                        }
+                        if (pattern.Arguments is { } args && type is { Kind: TypeKind.Class, Class: { } cls }
+                            && cls.Context.TypeArgs.Length == args.Length
+                            && GenericDefInfo(cls) is { } definition
+                            && _genericDefSyms.TryGetValue(definition.DefName, out var symbol))
+                        {
+                            Add(-2, "&" + symbol);
+                            for (int i = 0; i < args.Length; i++)
+                            {
+                                path.Add($"{{ &{symbol}, {i} }}");
+                                Walk(cls.Context.TypeArgs[i], args[i]);
+                                path.RemoveAt(path.Count - 1);
+                            }
+                        }
+                        else if (!Compilation.ContainsCanonPlaceholder(type) && !Compilation.ContainsGenericVar(type))
+                        {
+                            string? known = type.Kind == TypeKind.Primitive
+                                ? type.IsVoid ? "&dn2cpp_void_type" : MethodCompiler.TypeInfoExprOf(type)
+                                : type is { Kind: TypeKind.Class, Class: { } literal }
+                                    && TypeInfoSymbolDefined(literal.CppTypeInfoName)
+                                    ? TypeInfoRef(literal, "binding signature constant") : null;
+                            if (known is not null)
+                                Add(-1, known);
+                        }
+                    }
+                    var referent = signature.Type;
+                    while (referent is { Kind: TypeKind.ByRef or TypeKind.Pointer, IsFunctionPointer: false, Element: { } element })
+                        referent = element;
+                    Walk(referent, signature.Pattern);
+                }
+                if (_bindingFunctionPointers.TryGetValue(lv, out var functionPointers))
+                    foreach (var pointer in functionPointers)
+                    {
+                        string signatureExpr = EmitBindingSignature(sb, pointer.Binding);
+                        bindings.Add($"{{ {pointer.Token}, {pointer.Parameter}, -3, nullptr, nullptr, 0, {BindingPointerDepth(pointer.Type)}, {signatureExpr} }}");
+                    }
+                string bindingsExpr = "nullptr";
+                if (bindings.Count > 0)
+                {
+                    bindingsExpr = "bindargs_" + lv.CppName;
+                    sb.AppendLine($"static const Dn2CppBindingTypeArgument {bindingsExpr}[] = {{ {string.Join(", ", bindings)} }};");
+                }
                 rows.Add($"{{ {levelDef}, {TypeInfoRef(lv, "runtime template row")}, {descExpr}, "
-                    + $"{desc.Length}, {lv.Context.TypeArgs.Length} }}");
+                    + $"{desc.Length}, {lv.Context.TypeArgs.Length}, {bindingsExpr}, {bindings.Count}, {_bindingStandInExpr}, {_bindingStandInCount} }}");
             }
         sb.AppendLine("// ---- runtime-instantiation templates (MakeGenericType clone sources) ----");
         if (rows.Count == 0)
@@ -5590,6 +5691,198 @@ internal sealed partial class CppEmitter
         }
         sb.AppendLine($"const int32_t dn2cpp_runtime_template_count = {rows.Count};");
         sb.AppendLine();
+    }
+
+    private sealed class BindingSignature
+    {
+        internal readonly int Kind;
+        internal readonly TypeDesc? Type;
+        internal readonly int Value;
+        internal readonly BindingSignature[] Children;
+
+        internal BindingSignature(int kind = 0, TypeDesc? type = null, int value = 0, BindingSignature[]? children = null)
+        {
+            Kind = kind;
+            Type = type;
+            Value = value;
+            Children = children ?? Array.Empty<BindingSignature>();
+        }
+    }
+
+    private readonly Dictionary<string, BindingSignature?> _bindingStandIns = new(StringComparer.Ordinal);
+    private readonly Dictionary<ClassInfo, List<(int Token, int Parameter, TypeDesc Type, BindingSignature Binding)>> _bindingFunctionPointers = new();
+    private readonly HashSet<(MethodInfo, int)> _bindingFunctionPointerMethods = new();
+    private int _bindingSignatureSequence;
+    private string _bindingStandInExpr = "nullptr";
+    private int _bindingStandInCount;
+
+    private static int BindingPointerDepth(TypeDesc type)
+    {
+        if (type.Kind == TypeKind.ByRef)
+            type = type.Element!;
+        int depth = 0;
+        while (type is { Kind: TypeKind.Pointer, IsFunctionPointer: false, Element: { } element })
+        {
+            depth++;
+            type = element;
+        }
+        return Math.Max(0, depth - 1 - ReturnPointerDepthMask);
+    }
+
+    private void NoteBindingFunctionPointer(MethodInfo method, int parameter, TypeDesc type, BindingSignature signature)
+    {
+        var cls = method.DeclaringClass;
+        if (!IsRuntimeTemplateLevel(cls) || !_bindingFunctionPointerMethods.Add((method, parameter)))
+            return;
+        if (!_bindingFunctionPointers.TryGetValue(cls, out var rows))
+            _bindingFunctionPointers[cls] = rows = new();
+        rows.Add((System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(method.Handle), parameter, type, signature));
+    }
+
+    private string EmitBindingSignature(StringBuilder sb, BindingSignature signature)
+    {
+        string symbol = "bindsig_" + _bindingSignatureSequence++;
+        var children = new List<string>();
+        foreach (var child in signature.Children)
+        {
+            string childSymbol = EmitBindingSignature(sb, child);
+            children.Add("*" + childSymbol);
+        }
+        string childExpr = "nullptr";
+        if (children.Count > 0)
+        {
+            childExpr = symbol + "_children";
+            sb.AppendLine($"static const Dn2CppBindingSignature {childExpr}[] = {{ {string.Join(", ", children)} }};");
+        }
+        string type = "nullptr";
+        string name = "nullptr";
+        int kind = signature.Kind;
+        if (signature.Type is { } t)
+        {
+            if (kind == 4 && t is { Kind: TypeKind.Class, Class: { } generic }
+                && GenericDefInfo(generic) is { } definition)
+            {
+                name = "\"" + CLiteral(definition.DefName) + "\"";
+                if (_genericDefSyms.TryGetValue(definition.DefName, out var defSymbol))
+                    type = "&" + defSymbol;
+            }
+            else if (kind == 0 && !Compilation.ContainsCanonPlaceholder(t) && !Compilation.ContainsGenericVar(t))
+                type = t.Kind == TypeKind.Primitive
+                    ? t.IsVoid ? "&dn2cpp_void_type" : MethodCompiler.TypeInfoExprOf(t) ?? "nullptr"
+                    : t is { Kind: TypeKind.Class, Class: { } literal } && TypeInfoSymbolDefined(literal.CppTypeInfoName)
+                        ? TypeInfoRef(literal, "binding signature leaf") : "nullptr";
+            if (kind == 0 && !Compilation.ContainsCanonPlaceholder(t) && !Compilation.ContainsGenericVar(t)
+                && t is { Kind: TypeKind.Class, Class: { GenericArity: 0 } named }
+                && named.Context.TypeArgs.Length == 0)
+            {
+                if (type == "nullptr")
+                    kind = 8;
+                name = "\"" + CLiteral(Compilation.ReflectionTypeName(named)) + "\"";
+            }
+        }
+        sb.AppendLine($"static const Dn2CppBindingSignature {symbol} = {{ {kind}, {type}, {signature.Value}, {childExpr}, {children.Count}, {name} }};");
+        return "&" + symbol;
+    }
+
+    private static bool BindingSignaturesAgree(BindingSignature a, BindingSignature b)
+    {
+        if (a.Kind != b.Kind || a.Value != b.Value || a.Children.Length != b.Children.Length)
+            return false;
+        if (a.Type is null ? b.Type is not null : b.Type is null
+            || Compilation.IdentityMangle(a.Type) != Compilation.IdentityMangle(b.Type))
+            return false;
+        for (int i = 0; i < a.Children.Length; i++)
+            if (!BindingSignaturesAgree(a.Children[i], b.Children[i]))
+                return false;
+        return true;
+    }
+
+    private void EmitBindingStandIns(StringBuilder sb)
+    {
+        var rows = new List<string>();
+        foreach (var pair in _bindingStandIns)
+            if (pair.Value is { } signature)
+                rows.Add($"{{ &{pair.Key}, {EmitBindingSignature(sb, signature)} }}");
+        _bindingStandInCount = rows.Count;
+        if (rows.Count > 0)
+        {
+            _bindingStandInExpr = "dn2cpp_binding_stand_in_rows";
+            sb.AppendLine($"static const Dn2CppBindingStandIn {_bindingStandInExpr}[] = {{ {string.Join(", ", rows)} }};");
+        }
+    }
+
+    private readonly Dictionary<ClassInfo, List<(int Token, int Parameter, TypeDesc Type, BindingTypeArgumentPattern Pattern)>> _bindingTypeArguments = new();
+    private readonly HashSet<MethodInfo> _bindingTypeArgumentMethods = new();
+
+    // Called while the reflected row already reads this signature. No unreflected
+    // member signature is completed by the later template-registry emission.
+    private void NoteBindingTypeArguments(ClassInfo cls, MethodInfo method, TypeDesc returnType,
+        IReadOnlyList<TypeDesc> parameters)
+    {
+        if (!IsRuntimeTemplateLevel(cls) || method.Handle.IsNil || !_bindingTypeArgumentMethods.Add(method))
+            return;
+        MethodSignature<BindingTypeArgumentPattern> signature;
+        try
+        {
+            var definition = method.Module.Reader.GetMethodDefinition(method.Handle);
+            if (definition.GetGenericParameters().Count != 0)
+                return;
+            signature = definition.DecodeSignature(new BindingTypeArgumentProvider(), null);
+        }
+        catch (Exception e) when (!Compilation.IsMustEscape(e))
+        {
+            return;
+        }
+        if (!_bindingTypeArguments.TryGetValue(cls, out var entries))
+            _bindingTypeArguments[cls] = entries = new();
+        int token = System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(method.Handle);
+        void Add(TypeDesc type, int parameter, BindingTypeArgumentPattern pattern)
+        {
+            if (pattern.Wrapped && Compilation.ContainsCanonPlaceholder(type))
+                entries.Add((token, parameter, type, pattern));
+        }
+        Add(returnType, -1, signature.ReturnType);
+        for (int i = 0; i < signature.ParameterTypes.Length; i++)
+            Add(parameters[i], i, signature.ParameterTypes[i]);
+    }
+
+    private sealed class BindingTypeArgumentPattern
+    {
+        public readonly int Index;
+        public readonly bool Wrapped;
+        public readonly BindingTypeArgumentPattern[]? Arguments;
+
+        public BindingTypeArgumentPattern(int index = -1, bool wrapped = false, BindingTypeArgumentPattern[]? arguments = null)
+        {
+            Index = index;
+            Wrapped = wrapped;
+            Arguments = arguments;
+        }
+    }
+
+    // Preserve variable positions and generic argument paths without decoding
+    // named types or instantiating classes. The reflected row supplies their types.
+    private sealed class BindingTypeArgumentProvider : ISignatureTypeProvider<BindingTypeArgumentPattern, object?>
+    {
+        private static readonly BindingTypeArgumentPattern Unknown = new();
+        public BindingTypeArgumentPattern GetGenericTypeParameter(object? genericContext, int index) => new(index);
+        public BindingTypeArgumentPattern GetGenericMethodParameter(object? genericContext, int index) => Unknown;
+        public BindingTypeArgumentPattern GetByReferenceType(BindingTypeArgumentPattern elementType) =>
+            new(elementType.Index, true, elementType.Arguments);
+        public BindingTypeArgumentPattern GetPointerType(BindingTypeArgumentPattern elementType) =>
+            new(elementType.Index, true, elementType.Arguments);
+        public BindingTypeArgumentPattern GetModifiedType(BindingTypeArgumentPattern modifier, BindingTypeArgumentPattern unmodifiedType, bool isRequired) => unmodifiedType;
+        public BindingTypeArgumentPattern GetPinnedType(BindingTypeArgumentPattern elementType) => elementType;
+        public BindingTypeArgumentPattern GetPrimitiveType(PrimitiveTypeCode typeCode) => Unknown;
+        public BindingTypeArgumentPattern GetTypeFromDefinition(MetadataReader reader, TypeDefinitionHandle handle, byte rawTypeKind) => Unknown;
+        public BindingTypeArgumentPattern GetTypeFromReference(MetadataReader reader, TypeReferenceHandle handle, byte rawTypeKind) => Unknown;
+        public BindingTypeArgumentPattern GetSZArrayType(BindingTypeArgumentPattern elementType) => Unknown;
+        public BindingTypeArgumentPattern GetArrayType(BindingTypeArgumentPattern elementType, ArrayShape shape) => Unknown;
+        public BindingTypeArgumentPattern GetGenericInstantiation(BindingTypeArgumentPattern genericType,
+            System.Collections.Immutable.ImmutableArray<BindingTypeArgumentPattern> typeArguments) => new(arguments: typeArguments.ToArray());
+        public BindingTypeArgumentPattern GetFunctionPointerType(MethodSignature<BindingTypeArgumentPattern> signature) => Unknown;
+        public BindingTypeArgumentPattern GetTypeFromSpecification(MetadataReader reader, object? genericContext, TypeSpecificationHandle handle, byte rawTypeKind) =>
+            reader.GetTypeSpecification(handle).DecodeSignature(this, genericContext);
     }
 
     /// <summary>Assembly registry: one entry per loaded module (app + -r references),

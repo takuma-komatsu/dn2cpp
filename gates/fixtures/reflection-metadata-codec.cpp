@@ -315,6 +315,11 @@ int main()
     require(dispatch.genericDefinitionReturnKey == unicode && dispatch.gvmRootDepth == 2
         && dispatch.gvmRootToken == 0x06000001 && dispatch.returnPassType == &original_type,
         "method invocation descriptors preserve generic roots and return types");
+    auto function_record = record(0, (1ULL << 5) | (1ULL << 31),
+        { DN2CPP_MTHA_RETURN_POINTER * 2, 1 });
+    auto function = *Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_static(function_record.bytes.data());
+    require(function.returnSignatureType == &original_type && function.returnPassType == nullptr,
+        "function-pointer identity remains separate from Invoke's IntPtr boxing marker");
     auto named = record(0, 1, { 3 });
     require(Dn2CppMetadataHandle<Dn2CppEnumMember>::from_static(named.bytes.data())->name == unicode,
         "Unicode names remain exact pooled bytes");

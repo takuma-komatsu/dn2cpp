@@ -19,6 +19,48 @@ namespace ReflectInvoke
                 return;
             }
 
+            if (args.Length > 0 && args[0] == "delegate-signature-boundary-outcomes")
+            {
+                ReflectDelegateSubset.Program.RunSignatureBoundaries();
+                return;
+            }
+
+            if (args.Length > 0 && args[0] == "delegate-signature-before-ordinary-boundary")
+            {
+                ReflectDelegateSubset.Program.RunSignatureBoundaries(false, false);
+                return;
+            }
+
+            if (args.Length > 0 && args[0] == "delegate-signature-before-overload-boundary")
+            {
+                ReflectDelegateSubset.Program.RunSignatureBoundaries(true, false);
+                return;
+            }
+
+            if (args.Length > 0 && args[0] == "delegate-signature-before-shape-boundary")
+            {
+                ReflectDelegateSubset.Program.RunSignatureBoundaries(true, true, false);
+                return;
+            }
+
+            if (args.Length > 0 && args[0] == "delegate-signature-before-runtime-argument-boundary")
+            {
+                ReflectDelegateSubset.Program.RunSignatureBoundaries(true, true, true, true, true, false);
+                return;
+            }
+
+            if (args.Length > 0 && args[0] == "delegate-signature-before-identity-boundary")
+            {
+                ReflectDelegateSubset.Program.RunSignatureBoundaries(true, true, true, true, false);
+                return;
+            }
+
+            if (args.Length > 0 && args[0] == "delegate-signature-before-leaf-boundary")
+            {
+                ReflectDelegateSubset.Program.RunSignatureBoundaries(true, true, true, false);
+                return;
+            }
+
             if (args.Length > 0 && args[0] == "generic-method-boundary-outcomes")
             {
                 ReflectGenericMethodSubset.Program.RunDefinitionBoundaries();
@@ -208,6 +250,36 @@ namespace ReflectInvoke
             if (args.Length > 0 && args[0] == "before-delegate-name-bindings")
                 return;
             ReflectDelegateSubset.Program.RunNamedBindings();
+            if (args.Length > 0 && args[0] == "before-delegate-signature-bindings")
+                return;
+            ReflectDelegateSubset.Program.RunSignatureBindings();
+            if (args.Length > 0 && args[0] == "before-runtime-function-pointer-invoke")
+                return;
+            ReflectDelegateSubset.Program.RunSignatureInvokeDescriptors();
+            if (args.Length > 0 && args[0] == "before-unsupported-referent-signatures")
+                return;
+            ReflectDelegateSubset.Program.RunOpaqueRefSignatures();
+            if (args.Length > 0 && args[0] == "before-ordinary-template-signatures")
+                return;
+            ReflectDelegateSubset.Program.RunOrdinaryTemplateSignatures();
+            if (args.Length > 0 && args[0] == "before-ordinary-overload-selection")
+                return;
+            ReflectDelegateSubset.Program.RunOrdinaryOverloads();
+            if (args.Length > 0 && args[0] == "before-shape-overload-selection")
+                return;
+            ReflectDelegateSubset.Program.RunShapeOverloads();
+            if (args.Length > 0 && args[0] == "before-leaf-overload-selection")
+                return;
+            ReflectDelegateSubset.Program.RunLeafOverloads();
+            if (args.Length > 0 && args[0] == "before-identity-overload-selection")
+                return;
+            ReflectDelegateSubset.Program.RunIdentityOverloads();
+            if (args.Length > 0 && args[0] == "before-runtime-argument-overloads")
+                return;
+            ReflectDelegateSubset.Program.RunRuntimeArgumentOverloads();
+            if (args.Length > 0 && args[0] == "before-family-type-overloads")
+                return;
+            ReflectDelegateSubset.Program.RunFamilyTypeOverloads();
         }
     }
 }

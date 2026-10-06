@@ -21,7 +21,7 @@ for path in sorted(root.glob("generated*.cpp")):
             raise SystemExit("expected one native constructor row: " + owner)
         row = rows[0]
         fields = row.group(1).split(",")
-        if len(fields) != 31 or fields[1].strip() != "&ti_" + owner or fields[30].strip() != "0":
+        if len(fields) != 32 or fields[1].strip() != "&ti_" + owner or fields[30].strip() != "0" or fields[31].strip() != "0":
             raise SystemExit("unavailable constructor row layout changed: " + owner)
         body = fields[7].strip()
         invoker = fields[8].strip()

@@ -931,6 +931,11 @@ void dn2cpp_set_missing_value_factory(const Dn2CppTypeInfo* type, Dn2CppObject* 
 // A by-ref referent Invoke cannot copy: a value type without a type-info in the
 // image, or a headerless handle.
 #define DN2CPP_PASS_UNSUPPORTED 0x10
+// A function-pointer leaf depends on a signature the metadata cannot identify.
+// Invocation may pass its raw address; delegate binding must refuse the identity.
+#define DN2CPP_PASS_SIGNATURE_UNKNOWN 0x20
+// An unmanaged pointer whose terminal pointee is a function-pointer signature.
+#define DN2CPP_PASS_FNPTR_POINTEE 0x40
 // An unmanaged pointer's levels past the first (int** carries 1), in the byte at
 // this shift; passType then names the innermost pointee, System.Void for void*.
 // Levels past those a return row's depth bits count join a stand-in pointee, as
@@ -1037,6 +1042,10 @@ struct Dn2CppMethodInfo
     const Dn2CppTypeInfo* returnPassType;
     // Formal method parameters, shared by the definition and its compiled rows.
     const Dn2CppMethodGenericParameter* genericParameters;
+    // Binding identity: a function-pointer leaf, Void for an unknown function
+    // signature, or Object for an unresolved ordinary by-ref/pointer referent.
+    // Invoke keeps the null returnPassType marker for IntPtr boxing.
+    const Dn2CppTypeInfo* returnSignatureType;
 };
 
 // A synthesized constructor differs only in its allocation's declaring type.
@@ -1670,6 +1679,43 @@ Dn2CppType* dn2cpp_type_get_by_name(Dn2CppString* name, int32_t throwOnError);
 // clone's table of the level d base steps down (a static callee's context).
 // Synthesized instantiations intern on (def, args) — same arguments, same
 // pointer — and register their closed name on the registry's dynamic side-chain.
+// Binding-only structure for identities whose Invoke descriptor is a stand-in.
+struct Dn2CppBindingSignature
+{
+    int32_t kind; // 0: type, 1: pointer, 2: by-ref, 3: function, 4: generic, 5: clone argument
+                  // 6: SZArray, 7: MDArray, 8: absent-TI nongeneric named leaf
+    const Dn2CppTypeInfo* type;
+    int32_t value; // function convention, clone argument index or array rank
+    const Dn2CppBindingSignature* children;
+    int32_t childCount;
+    const char* name; // absent-TI named leaf: different CLR names prove inequality only
+};
+struct Dn2CppBindingStandIn
+{
+    const Dn2CppTypeInfo* type;
+    const Dn2CppBindingSignature* signature;
+};
+
+struct Dn2CppBindingTypePath
+{
+    const Dn2CppTypeInfo* definition;
+    int32_t argument;
+};
+
+// Binding follows generic arguments from a known referent to prove inequality.
+// Invoke retains its canonical marshalling descriptor.
+struct Dn2CppBindingTypeArgument
+{
+    int32_t methodToken;
+    int32_t parameter; // -1 for the return
+    int32_t typeArgument; // >= 0: clone argument, -1: exact type, -2: generic definition
+    const Dn2CppTypeInfo* type;
+    const Dn2CppBindingTypePath* path;
+    int32_t pathCount;
+    int32_t pointerDepth; // pointer levels beyond the descriptor depth bits
+    const Dn2CppBindingSignature* signature;
+};
+
 struct Dn2CppRuntimeTemplate
 {
     const Dn2CppTypeInfo* def;        // the open-definition handle (gendef_*)
@@ -1677,6 +1723,10 @@ struct Dn2CppRuntimeTemplate
     const int32_t* rgctxDesc;         // slot i -> type-argument index, or ~level steps
     int32_t rgctxDescCount;
     int32_t argCount;
+    const Dn2CppBindingTypeArgument* bindingTypeArguments;
+    int32_t bindingTypeArgumentCount;
+    const Dn2CppBindingStandIn* bindingStandIns;
+    int32_t bindingStandInCount;
 };
 extern const Dn2CppRuntimeTemplate* const dn2cpp_runtime_templates;
 extern const int32_t dn2cpp_runtime_template_count;

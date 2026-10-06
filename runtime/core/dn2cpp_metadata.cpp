@@ -75,6 +75,7 @@ constexpr Field Dn2CppMethodInfo_fields[] = {
     { offsetof(Dn2CppMethodInfo, gvmRootToken), Encoding::Signed32 },
     { offsetof(Dn2CppMethodInfo, returnPassType), Encoding::Pointer },
     { offsetof(Dn2CppMethodInfo, genericParameters), Encoding::Pointer },
+    { offsetof(Dn2CppMethodInfo, returnSignatureType), Encoding::Pointer },
 };
 constexpr Field Dn2CppParamInfo_fields[] = {
     { offsetof(Dn2CppParamInfo, paramType), Encoding::Pointer },
