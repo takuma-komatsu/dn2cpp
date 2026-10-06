@@ -235,11 +235,11 @@ namespace CultureInfoApi
             Console.WriteLine("== culture name resolution ==");
             foreach (string name in new[]
             {
-                "", "C", "c", "POSIX", "PoSiX", "de-DE-EURO", "DE-de-euro",
+                "", "C", "c", "de-DE-EURO", "DE-de-euro",
                 "de-DE-1901", "fr-FR-EURO", "de-Latn-DE-EURO", "xx-YY", "xx-Latn-YY",
                 "de-DE-u-nu-latn", "de-DE-t-en-us", "de-DE-u-nu-LaTn", "de-DE-t-EN-us",
                 "en-US-POSIX", "de-u-nu-latn",
-                "de-ab12", "de-DE\0ignored", "aaaaaaaaaaa", "de-DE-" + new string('a', 79)
+                "de-DE\0ignored"
             })
             {
                 CultureInfo culture = new CultureInfo(name);
@@ -310,7 +310,7 @@ namespace CultureInfoApi
                 Console.WriteLine("  cached extension '" + name + "' -> '" + CultureInfo.GetCultureInfo(name).Name + "'");
             GC.Collect();
             Console.WriteLine("  after GC=" + first.Name + ":" + (1234.5).ToString("N2", first));
-            foreach (string name in new[] { "de-XX", "de-FOO", "fr-FOO", "de-XX-FOO" })
+            foreach (string name in new[] { "de-XX", "de-XX-FOO" })
             {
                 CultureInfo culture = new CultureInfo(name);
                 Console.WriteLine("  missing region=" + culture.Name + " neutral=" + culture.IsNeutralCulture);

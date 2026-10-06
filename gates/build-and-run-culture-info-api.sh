@@ -50,6 +50,8 @@
 # canonical casing, supported variant formatting, cache identity, typed refusal
 # fields/messages and CreateSpecificCulture's retry. Unmodeled regions assert
 # identity only; script regressions prevent using an incompatible regional row.
+# Bare POSIX and unknown tags have host-dependent ICU acceptance, so they
+# cannot be unconditional live-diff inputs.
 #
 # Its LAST TWO sections are not about CultureInfo's API at all; do not prune this
 # bucket by theme.
