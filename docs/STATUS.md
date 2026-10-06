@@ -73,7 +73,10 @@ Android NDK, an Xcode simulator, Emscripten, a scons-built Godot editor) opts ou
 via `gate_skip` and is counted and reported **separately** — the summary says how
 many gates skipped and why, and never claims "all N passed" when some of the N
 never ran. `DN2CPP_REQUIRE_ALL=1` turns any skip into a failure and refuses
-cached partials; that is the mode a merge runs. This is not hypothetical: a whole
+cached partials. Pre-merge enables a narrow exception for an absent proprietary
+CRI SDK: CRI gates skip and are named in the receipt, while other missing
+prerequisites, incomplete coverage and CRI execution failures remain red.
+CRI Web templates are prepared only when that SDK is installed. A whole
 lane once shipped red behind a gate that skipped on every machine lacking its
 artifacts — the default — while the suite reported all-green.
 

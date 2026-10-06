@@ -62,6 +62,7 @@
 # Emscripten toolchain / node, or the proprietary CRI package absent
 # (cri_* resolvers in _common.sh).
 source "$(dirname "$0")/_common.sh"
+cri_sdk_preflight
 source "$(dirname "$0")/_godot_fork.sh"
 
 # --no-bundled: an -O-less link needs the -debug archives the frozen bundle lacks.

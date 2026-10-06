@@ -318,12 +318,20 @@ nuget_global_packages_root() {
 }
 
 # ── Opting out: the skip protocol ─────────────────────────────────────────────
-# gate_skip REASON — the only sanctioned opt-out: "SKIP: REASON", exit 77,
+# gate_skip [--cri-sdk] REASON — the only opt-out: "SKIP: REASON", exit 77,
 # counted apart from the greens (exit 0 after a SKIP line fails), and itself a
-# failure under DN2CPP_REQUIRE_ALL=1.
+# failure under DN2CPP_REQUIRE_ALL=1. Pre-merge permits --cri-sdk only when the
+# SDK is absent, through DN2CPP_ALLOW_MISSING_CRI_SDK=1.
 GATE_SKIP_RC=77
 gate_skip() {
-    if [ "${DN2CPP_REQUIRE_ALL:-0}" = "1" ]; then
+    local optional_cri=0
+    if [ "${1:-}" = --cri-sdk ]; then
+        shift
+        if [ "${DN2CPP_ALLOW_MISSING_CRI_SDK:-0}" = 1 ] && ! cri_nuget_root >/dev/null; then
+            optional_cri=1
+        fi
+    fi
+    if [ "${DN2CPP_REQUIRE_ALL:-0}" = "1" ] && [ "$optional_cri" != 1 ]; then
         printf 'FAIL: prerequisite absent, and DN2CPP_REQUIRE_ALL=1 demands every gate run: %s\n' "$*" >&2
         exit 1
     fi
@@ -407,6 +415,11 @@ cri_nuget_root() {
     local root="${DN2CPP_CRI_NUGET_ROOT:-$HOME/.nuget/packages/criware.criatomle/$CRI_ATOM_VERSION}"
     [ -d "$root" ] || return 1
     printf '%s\n' "$root"
+}
+
+# Only SDK absence is optional in pre-merge; an incomplete installed SDK stays strict.
+cri_sdk_preflight() {
+    cri_nuget_root >/dev/null || gate_skip --cri-sdk "CRI ADX LE SDK not installed"
 }
 
 # cri_managed_dll FLAVOR — echo CriWare.CriAtomLE.dll for desktop, browser or

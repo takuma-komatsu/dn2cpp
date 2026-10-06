@@ -23,6 +23,7 @@
 # the cri_* helpers in _common.sh) and the fork editor cache; each absence is a
 # gate_skip, never a silent pass.
 source "$(dirname "$0")/_common.sh"
+cri_sdk_preflight
 source "$(dirname "$0")/_godot_fork.sh"
 
 OUT=gates/out-cri-android

@@ -29,8 +29,10 @@
 #   3. CONFIG=Debug (default) or CONFIG=Release, with DN2CPP_REQUIRE_ALL=1
 #      DN2CPP_GATE_CACHE=0; --both-configs runs Release, then Debug.
 #
-#   - REQUIRE_ALL, because "all N gates passed" must mean all N *ran*. Without
-#     it a machine missing a prerequisite reports green over a hole, which is
+#   - REQUIRE_ALL, because "all N gates passed" must mean all N *ran*. CRI SDK
+#     absence alone is optional: those gates skip and are counted separately.
+#     With an installed SDK, CRI failures and missing prerequisites stay red.
+#     Without REQUIRE_ALL a missing prerequisite reports green over a hole, which is
 #     the shape that let the mono-module lane ship red on `main` for a week.
 #   - GATE_CACHE=0, because the cache key is Release-flavoured: a Debug run over
 #     a warm cache serves Release-keyed greens and the shared-generics backstop
@@ -118,7 +120,7 @@
 #     whatever the mode. A gate that exits 77 without going through gate_skip —
 #     a bare `exit 77`, a helper that forwards a child's status — is therefore
 #     recorded as a skip in a REQUIRE_ALL run that still exits 0. Asserting
-#     _skips.txt is empty is an independent check, not a restatement.
+#     only declared CRI SDK skips are present is an independent check.
 #   - GATE_CACHE=0 is honoured by each gate's cache helper, not by the runner.
 #     Asserting no gate reported `cached` is what proves the cache was really
 #     off — i.e. that the Debug run actually compiled anything.
@@ -177,6 +179,11 @@ REPO=$(cd "$(dirname "$0")/.." && pwd)
 # not two because the phase acts differently on each: refresh, build, refuse.
 # Collapsing 2 into 1 would report a cold build as a refresh, and collapsing 3
 # into 2 would start a build that cannot succeed.
+if [ "${DN2CPP_PREMERGE_PROBE:-0}" = "cri" ]; then
+    source "$REPO/gates/_common.sh"
+    if cri_nuget_root >/dev/null; then printf 'present\n'; else printf 'absent\n'; fi
+    exit 0
+fi
 if [ "${DN2CPP_PREMERGE_PROBE:-0}" = "1" ]; then
     source "$REPO/gates/_common.sh"
     probe_rc=0
@@ -223,11 +230,12 @@ if [ "${DN2CPP_PREMERGE_PROBE:-0}" = "fork" ]; then
     exit 0
 fi
 # `=forkweb` names the Web template FLAVORS that have to be baked: `ok` alone when
-# both are current, `ok <flavor…>` otherwise. The `ok` is load-bearing — it is how
-# the reader tells "both current" from "the probe could not answer", which must
+# required flavors are current, `ok <flavor…>` otherwise. CRI is required only
+# when its SDK is installed. The `ok` distinguishes "current" from "the probe
+# could not answer", which must
 # mean bake, not skip.
 #
-# A third probe rather than more fields on `=fork` because it asks about a
+# A separate probe rather than more fields on `=fork` because it asks about a
 # different artifact: the two zips can be stale while the desktop cache is current
 # (an interrupted re-bake) and current while it is stale (an engine edit not yet
 # built), so folding them into one answer would let either state hide the other.
@@ -249,7 +257,9 @@ if [ "${DN2CPP_PREMERGE_PROBE:-0}" = "forkweb" ]; then
     BASE_COMMIT="$(cat "$FORK_PIN_EXPECTED")"
     probe_want="$(godot_fork_engine_provenance)"
     probe_stale=""
-    for probe_flavor in stock cri; do
+    probe_flavors=stock
+    cri_nuget_root >/dev/null && probe_flavors="stock cri"
+    for probe_flavor in $probe_flavors; do
         case "$probe_flavor" in
             stock)
                 probe_release_zip="$FORK_ROOT/web_template.zip"
@@ -593,6 +603,7 @@ premerge_argv() {
         "CONFIG=$config"
         "LOGDIR=$logdir"
         "DN2CPP_REQUIRE_ALL=1"
+        "DN2CPP_ALLOW_MISSING_CRI_SDK=1"
         "DN2CPP_GATE_CACHE=0"
         "SKIP_GODOT=$SKIP_GODOT"
         "DN2CPP_REQUIRE_SCOPE=$([ "$SKIP_GODOT" = 1 ] && printf non-godot || printf all)"
@@ -683,13 +694,19 @@ premerge_fork_state() {
     FORK_WHY=${why:-the fork-cache probe returned nothing}
 }
 
+premerge_cri_sdk_absent() {
+    local out=""
+    out=$(DN2CPP_PREMERGE_PROBE=cri bash "$REPO/gates/pre-merge.sh" 2>/dev/null) || out=""
+    [ "$out" = absent ]
+}
+
 # premerge_fork_web_state — which Web template flavors this run has to bake, as a
-# space-separated list in FORK_WEB_STALE (empty when both are current).
+# space-separated list in FORK_WEB_STALE (empty when required flavors are current).
 #
 # Absent and stale are ONE answer here, unlike the desktop cache. Under
 # DN2CPP_REQUIRE_ALL=1 a missing Web template is not a skip — gate_skip converts
 # to a failure — and a present-but-stale one is godot_fork_template_check's hard
-# refusal. So both zips have to exist AND be stamped with the engine provenance
+# refusal. Required zips must exist AND be stamped with the engine provenance
 # before the suite starts, and there is no third outcome to distinguish.
 #
 # The comparison is godot_fork_engine_provenance, the same string
@@ -697,13 +714,15 @@ premerge_fork_state() {
 # this function holds no $FORK.
 premerge_fork_web_state() {
     local out="" tag=""
+    FORK_WEB_FLAVORS="stock cri"
+    premerge_cri_sdk_absent && FORK_WEB_FLAVORS=stock
     out=$(DN2CPP_PREMERGE_PROBE=forkweb bash "$REPO/gates/pre-merge.sh" 2>/dev/null) || out=""
     read -r tag FORK_WEB_STALE <<<"$out" || :
     if [ "${tag:-}" != "ok" ]; then
-        # The probe did not answer. Bake both rather than believe nothing is due:
+        # The probe did not answer. Bake required flavors rather than assume current:
         # premerge_selfhost_state's rule — this phase must never omit work on a
         # guess — and here the guess would be the one that lets the suite start.
-        FORK_WEB_STALE="stock cri"
+        FORK_WEB_STALE="$FORK_WEB_FLAVORS"
         FORK_WEB_SDK=0
         return
     fi
@@ -747,16 +766,19 @@ premerge_emsdk_argv() {
 # Such a run is still red (the merge needs a host that runs them), but it is not
 # the caller's reason to withhold later selected suites: those gates cannot go
 # green on this host whatever the tree says. A gate that failed for any other
-# reason, a skip, a cached record or a missing record makes the run plainly red.
+# reason, an unexpected skip, a cached record or a missing record is plainly red.
 premerge_verdict() {
     local label="$1" rc="$2" logdir="$3" expected="$4"
     local timings="$logdir/_timings.txt"
     local skips="$logdir/_skips.txt"
     local fails="$logdir/_failures.txt"
     local bad_count=0 plain_red=0 n_fail=0 n_prereq=0
-    local n_lines n_ran n_other
+    local n_lines n_ran n_other n reason seconds status
+    local cri_absent=0 n_cri_skips=0 n_bad_skips=0 allowed_skips=""
     VERDICT_PREREQ_ONLY=0
     VERDICT_PREREQ_GATES=""
+    VERDICT_CRI_SKIPS=""
+    VERDICT_CRI_SKIP_COUNT=0
 
     if [ "$rc" -ne 0 ]; then
         bad "$label: the runner exited $rc."
@@ -792,20 +814,47 @@ premerge_verdict() {
     # Independent of the exit code on purpose — see the header. DN2CPP_REQUIRE_ALL
     # is enforced inside gate_skip, and the runner returns 0 for any exit 77.
     if [ -s "$skips" ]; then
-        bad "$label: $(wc -l < "$skips" | tr -d ' ') gate(s) SKIPPED under DN2CPP_REQUIRE_ALL=1."
-        note "A skip here means a gate exited 77 without passing through gate_skip,"
-        note "which the runner records as a skip and still exits 0 for."
-        while IFS= read -r line; do note "skipped: $line"; done < "$skips"
-        bad_count=$((bad_count + 1))
+        premerge_cri_sdk_absent && cri_absent=1
+        while IFS=$'\t' read -r n reason; do
+            case "$n" in
+                cri-android|cri-web|cri-wasm-smoke)
+                    if [ "$cri_absent" = 1 ] \
+                        && [ "$reason" = "CRI ADX LE SDK not installed" ] \
+                        && grep -qxF "SKIP: $reason" "$logdir/$n.log" 2>/dev/null \
+                        && awk -v gate="$n" '$1 == gate { all++; if ($3 == "skipped") skips++ } END { exit !(all == 1 && skips == 1) }' "$timings"; then
+                        case " $allowed_skips " in
+                            *" $n "*) ;;
+                            *)
+                                allowed_skips="$allowed_skips $n"
+                                n_cri_skips=$((n_cri_skips + 1))
+                                VERDICT_CRI_SKIPS="${VERDICT_CRI_SKIPS}$label: $n — $reason"$'\n'
+                                note "optional CRI skip: $n — $reason"
+                                continue
+                                ;;
+                        esac
+                    fi
+                    ;;
+            esac
+            note "unexpected skip: $n — $reason"
+            n_bad_skips=$((n_bad_skips + 1))
+        done < "$skips"
+        if [ "$n_bad_skips" -ne 0 ]; then
+            bad "$label: $n_bad_skips gate(s) SKIPPED under DN2CPP_REQUIRE_ALL=1 without the CRI SDK exception."
+            bad_count=$((bad_count + 1))
+        fi
     fi
 
     n_lines=$(wc -l < "$timings" | tr -d ' ')
     n_ran=$(grep -c ' ran$' "$timings" 2>/dev/null || true)
     [ -n "$n_ran" ] || n_ran=0
-    n_other=$((n_lines - n_ran))
+    n_other=$((n_lines - n_ran - n_cri_skips))
     if [ "$n_other" -ne 0 ]; then
         bad "$label: $n_other of $n_lines gate records are not 'ran' (cached, skipped or failed):"
-        grep -v ' ran$' "$timings" | while IFS= read -r line; do note "$line"; done
+        while read -r n seconds status; do
+            [ "$status" != ran ] || continue
+            case " $allowed_skips " in *" $n "*) continue ;; esac
+            note "$n $seconds $status"
+        done < "$timings"
         note "A 'cached' record under DN2CPP_GATE_CACHE=0 means the cache was not"
         note "actually off, so this configuration's asserts did not arm."
         bad_count=$((bad_count + 1))
@@ -815,20 +864,21 @@ premerge_verdict() {
         bad "$label: $n_lines gate records for $expected gates — $((expected - n_lines)) gate(s) left no record at all."
         bad_count=$((bad_count + 1))
     fi
+    VERDICT_CRI_SKIP_COUNT=$n_cri_skips
 
     if [ "$bad_count" -ne 0 ]; then
-        # Prerequisite-only means: the failed gates all hit gate_skip, no skip
-        # or missing record, and the only non-'ran' records are those failures
+        # Prerequisite-only means: the failed gates all hit gate_skip, no unexpected
+        # skip or missing record, and other non-'ran' records are those failures
         # (a cached record would make n_other exceed them). The runner's own
         # non-zero exit is the expected face of a failed gate, not extra news.
         if [ "$n_fail" -gt 0 ] && [ "$plain_red" -eq 0 ] && [ "$n_prereq" -eq "$n_fail" ] \
-            && [ ! -s "$skips" ] && [ "$n_lines" -eq "$expected" ] && [ "$n_other" -eq "$n_fail" ]; then
+            && [ "$n_bad_skips" -eq 0 ] && [ "$n_lines" -eq "$expected" ] && [ "$n_other" -eq "$n_fail" ]; then
             VERDICT_PREREQ_ONLY=1
             note "$label: prerequisite-only failures: $n_fail — every failed gate called gate_skip under REQUIRE_ALL."
         fi
         return 1
     fi
-    good "$label: $n_lines/$expected gates ran and passed, 0 skipped, 0 cached."
+    good "$label: $n_ran/$expected gates ran and passed, $n_cri_skips optional CRI skips, 0 cached."
     return 0
 }
 
@@ -873,7 +923,7 @@ if [ "${DN2CPP_PREMERGE_SELFTEST:-0}" = "1" ]; then
     premerge_argv Debug /tmp/x-dbg
     ARGV_DBG="${PREMERGE_ARGV[*]}"
 
-    for tok in "CONFIG=Release" "LOGDIR=/tmp/x-rel" "DN2CPP_REQUIRE_ALL=1" "DN2CPP_GATE_CACHE=0" "gates/run-all-gates.sh"; do
+    for tok in "CONFIG=Release" "LOGDIR=/tmp/x-rel" "DN2CPP_REQUIRE_ALL=1" "DN2CPP_ALLOW_MISSING_CRI_SDK=1" "DN2CPP_GATE_CACHE=0" "gates/run-all-gates.sh"; do
         case "$ARGV_REL" in
             *"$tok"*) st_ok "Release argv carries $tok" ;;
             *)        st_bad "Release argv is missing $tok: $ARGV_REL" ;;
@@ -945,6 +995,53 @@ if [ "${DN2CPP_PREMERGE_SELFTEST:-0}" = "1" ]; then
         st_ok "non-empty _failures.txt with rc 0 -> bad"
     fi
 
+    say "CRI SDK preflight (real gates and skip helpers)"
+    ST_CRI="$ST_TMP/cri-preflight"
+    mkdir -p "$ST_CRI/gates" "$ST_CRI/sdk"
+    cp "$REPO/gates/_common.sh" "$ST_CRI/gates/_common.sh"
+    cp "$REPO/gates/build-and-run-cri-android.sh" "$REPO/gates/build-and-run-cri-web.sh" \
+        "$REPO/gates/build-and-run-cri-wasm-smoke.sh" "$ST_CRI/gates/"
+    cat > "$ST_CRI/gates/_godot_fork.sh" <<'CRISTUB'
+cri_prerequisite() { echo 'CRI prerequisite reached'; exit "${DN2CPP_STUB_CRI_RC:-0}"; }
+godot_fork_preflight() { cri_prerequisite; }
+dn2cpp_emsdk_resolve() { cri_prerequisite; }
+CRISTUB
+    for gate in android web wasm-smoke; do
+        for scenario in absent strict present error; do
+            cri_root="$ST_CRI/sdk"
+            cri_allow=1 cri_run_rc=0 cri_want=0 cri_rc=0 cri_want_reached=1
+            case "$scenario" in
+                absent) cri_root="$ST_CRI/absent"; cri_want=77; cri_want_reached=0 ;;
+                strict) cri_root="$ST_CRI/absent"; cri_allow=0; cri_want=1; cri_want_reached=0 ;;
+                error) cri_run_rc=1; cri_want=1 ;;
+            esac
+            DN2CPP_REQUIRE_ALL=1 DN2CPP_ALLOW_MISSING_CRI_SDK="$cri_allow" \
+                DN2CPP_CRI_NUGET_ROOT="$cri_root" DN2CPP_STUB_CRI_RC="$cri_run_rc" \
+                bash "$ST_CRI/gates/build-and-run-cri-$gate.sh" >"$ST_CRI/out" 2>&1 || cri_rc=$?
+            cri_reached=0
+            grep -q 'CRI prerequisite reached' "$ST_CRI/out" && cri_reached=1
+            if [ "$cri_rc" = "$cri_want" ] && [ "$cri_reached" = "$cri_want_reached" ]; then
+                st_ok "CRI $gate $scenario: exit $cri_rc, SDK checked before prerequisites"
+            else
+                st_bad "CRI $gate $scenario: exit $cri_rc (wanted $cri_want)"
+            fi
+        done
+    done
+    cat > "$ST_CRI/gates/strict.sh" <<'CRISTRICT'
+source "$(dirname "$0")/_common.sh"
+case "$1" in
+    skip) gate_skip "unrelated prerequisite absent" ;;
+    partial) gate_partial "CRI coverage section absent" ;;
+esac
+CRISTRICT
+    for scenario in skip partial; do
+        cri_rc=0
+        DN2CPP_REQUIRE_ALL=1 DN2CPP_ALLOW_MISSING_CRI_SDK=1 DN2CPP_CRI_NUGET_ROOT="$ST_CRI/absent" \
+            bash "$ST_CRI/gates/strict.sh" "$scenario" >"$ST_CRI/out" 2>&1 || cri_rc=$?
+        if [ "$cri_rc" = 1 ]; then st_ok "CRI exception preserves strict $scenario";
+        else st_bad "CRI exception allowed $scenario (exit $cri_rc)"; fi
+    done
+
     say "end-to-end (this exact script, against a synthetic repo)"
 
     # The driver below — the loop, the fail-fast, the receipt — is the one part
@@ -972,6 +1069,11 @@ mkdir -p "$LOGDIR"
 : > "$LOGDIR/_failures.txt"
 eval "fail_mode=\${DN2CPP_STUB_FAIL_$CONFIG:-}"
 case "$fail_mode" in
+    skip)
+        printf 'gate01 1 ran\ngate02 1 skipped\n' > "$LOGDIR/_timings.txt"
+        printf 'gate02\tCRI ADX LE SDK not installed\n' > "$LOGDIR/_skips.txt"
+        printf 'SKIP: CRI ADX LE SDK not installed\n' > "$LOGDIR/gate02.log"
+        ;;
     prereq|mixed)
         printf 'FAIL: prerequisite absent, and DN2CPP_REQUIRE_ALL=1 demands every gate run: stub tool missing\n' > "$LOGDIR/gate02.log"
         if [ "$fail_mode" = mixed ]; then
@@ -985,6 +1087,23 @@ case "$fail_mode" in
         ;;
     *) printf 'gate01 1 ran\ngate02 1 ran\n' > "$LOGDIR/_timings.txt" ;;
 esac
+if [ "${DN2CPP_STUB_CRI_RUNNER:-0}" = 1 ]; then
+    for name in cri-android cri-web cri-wasm-smoke; do
+        if [ "${SKIP_GODOT:-0}" = 1 ] && [ "$name" != cri-wasm-smoke ]; then continue; fi
+        if [ "${DN2CPP_STUB_CRI_PRESENT:-1}" = 0 ] || [ "${DN2CPP_STUB_CRI_FORCE_SKIP:-0}" = 1 ]; then
+            printf '%s 1 skipped\n' "$name" >> "$LOGDIR/_timings.txt"
+            printf '%s\tCRI ADX LE SDK not installed\n' "$name" >> "$LOGDIR/_skips.txt"
+            printf 'SKIP: CRI ADX LE SDK not installed\n' > "$LOGDIR/$name.log"
+        elif [ "${DN2CPP_STUB_CRI_FAIL:-}" = "$name" ]; then
+            printf '%s 1 failed\n' "$name" >> "$LOGDIR/_timings.txt"
+            printf '%s\n' "$name" >> "$LOGDIR/_failures.txt"
+            printf 'stub CRI assertion failed\n' > "$LOGDIR/$name.log"
+        else
+            printf '%s 1 ran\n' "$name" >> "$LOGDIR/_timings.txt"
+            printf 'stub CRI executed\n' > "$LOGDIR/$name.log"
+        fi
+    done
+fi
 printf '%s\n' "$CONFIG" >> "$(dirname "$LOGDIR")/_stub_calls.txt"
 eval "exit \${DN2CPP_STUB_RC_$CONFIG:-0}"
 STUB
@@ -1029,6 +1148,7 @@ FSTUB
 echo "stub web template bake (CRI=${CRI:-0})"
 if [ "${CRI:-0}" = "1" ]; then flavor=cri; else flavor=stock; fi
 printf '%s\n' "$flavor" >> "${DN2CPP_STUB_FORKWEB_MARK:-/dev/null}"
+[ "$flavor" != cri ] || exit "${DN2CPP_STUB_FORKWEB_CRI_RC:-${DN2CPP_STUB_FORKWEB_RC:-0}}"
 exit "${DN2CPP_STUB_FORKWEB_RC:-0}"
 WSTUB
     chmod +x "$FAKE/gates/setup-godot-fork-web.sh"
@@ -1062,6 +1182,7 @@ cd -P "$(dirname "${BASH_SOURCE[1]}")/.."
 DN2CPP_OS="${DN2CPP_STUB_OS:-linux}"
 EXE_EXT=
 first_line() { local x="$1"; printf '%s\n' "${x%%$'\n'*}"; }
+cri_nuget_root() { [ "${DN2CPP_STUB_CRI_PRESENT:-1}" = 1 ]; }
 dn2cpp_emsdk_resolve() {
     [ -n "${DN2CPP_STUB_EMSDK_READY:-}" ] && [ -f "$DN2CPP_STUB_EMSDK_READY" ] && return 0
     return "${DN2CPP_STUB_EMSDK_RESOLVE:-0}"
@@ -1230,6 +1351,38 @@ GFSTUB
         st_bad "red-release-prereq-only: the verdict does not list gate02 as a host gap — see $ST_TMP/e2e-red-release-prereq-only/_out.txt"
     fi
     DN2CPP_STUB_FAIL_Release=mixed e2e red-release-mixed 1 1 0 "Release," --both-configs
+
+    for gate in android web wasm-smoke; do : > "$FAKE/gates/build-and-run-cri-$gate.sh"; done
+    DN2CPP_STUB_CRI_RUNNER=1 DN2CPP_STUB_CRI_PRESENT=0 \
+        e2e cri-sdk-absent 0 0 0 "Release,Debug," --both-configs
+    for cfg in Release Debug; do
+        for gate in android web wasm-smoke; do
+            if grep -q "^$cfg: cri-$gate — CRI ADX LE SDK not installed$" "$ST_TMP/e2e-cri-sdk-absent/_receipt.txt"; then
+                st_ok "CRI absent: receipt records $cfg cri-$gate as skipped"
+            else st_bad "CRI absent: receipt omits $cfg cri-$gate skip"; fi
+        done
+    done
+    if grep -q '2/5 gates ran and passed, 3 optional CRI skips' "$ST_TMP/e2e-cri-sdk-absent/_out.txt" \
+        && ! grep -q 'every gate ran' "$ST_TMP/e2e-cri-sdk-absent/_out.txt"; then
+        st_ok "CRI absent: verdict counts skips separately from passes"
+    else st_bad "CRI absent: verdict misstates execution coverage"; fi
+    DN2CPP_STUB_CRI_RUNNER=1 DN2CPP_STUB_CRI_PRESENT=0 \
+        e2e cri-sdk-absent-nongodot 0 0 0 "Debug," --skip-godot
+    if grep -q '^Debug: cri-wasm-smoke — CRI ADX LE SDK not installed$' \
+        "$ST_TMP/e2e-cri-sdk-absent-nongodot/_receipt.txt"; then
+        st_ok "CRI absent: non-Godot receipt includes the console-wasm skip"
+    else st_bad "CRI absent: non-Godot receipt omits the console-wasm skip"; fi
+    DN2CPP_STUB_CRI_RUNNER=1 e2e cri-sdk-present 0 0 0 "Debug,"
+    if grep -q '5/5 gates ran and passed, 0 optional CRI skips' "$ST_TMP/e2e-cri-sdk-present/_out.txt"; then
+        st_ok "CRI present: every gate executes"
+    else st_bad "CRI present: gates did not execute"; fi
+    DN2CPP_STUB_CRI_RUNNER=1 DN2CPP_STUB_CRI_FAIL=cri-web \
+        e2e cri-sdk-present-error 1 0 1 "Debug,"
+    DN2CPP_STUB_CRI_RUNNER=1 DN2CPP_STUB_CRI_FORCE_SKIP=1 \
+        e2e cri-sdk-present-skip 1 0 0 "Debug,"
+    for gate in android web wasm-smoke; do rm "$FAKE/gates/build-and-run-cri-$gate.sh"; done
+    DN2CPP_STUB_CRI_PRESENT=0 DN2CPP_STUB_FAIL_Debug=skip \
+        e2e cri-unrelated-skip 1 0 0 "Debug,"
 
     # Phase 0's three outcomes. The one that matters is the middle case: a red
     # culture harness must stop the suites BEFORE they run (empty call list), or
@@ -1435,6 +1588,21 @@ GFSTUB
         st_bad "forkweb-bake: the receipt does not record the rebake"
     fi
 
+    DN2CPP_STUB_CRI_PRESENT=0 DN2CPP_STUB_FORKROOT="$ST_WEBLESS" \
+        e2e forkweb-no-cri-sdk 0 0 0 "Debug,"
+    DN2CPP_STUB_CRI_PRESENT=0 DN2CPP_STUB_EMSDK_RESOLVE=1 DN2CPP_STUB_FORKROOT="$ST_WEBLESS" \
+        e2e forkweb-no-cri-sdk-provision 0 0 0 "Debug,"
+    for name in forkweb-no-cri-sdk forkweb-no-cri-sdk-provision; do
+        ST_BAKED="$(cat "$ST_TMP/e2e-$name/_forkweb_calls.txt" 2>/dev/null | tr '\n' ',')"
+        if [ "$ST_BAKED" = stock, ]; then
+            st_ok "$name: only stock templates baked"
+        else st_bad "$name: flavors [$ST_BAKED] (want [stock,])"; fi
+    done
+    DN2CPP_STUB_FORKWEB_CRI_RC=1 DN2CPP_STUB_FORKROOT="$ST_WEBLESS" \
+        e2e forkweb-cri-error 1 0 0 ""
+    DN2CPP_STUB_CRI_PRESENT=0 DN2CPP_STUB_FORKWEB_RC=1 DN2CPP_STUB_FORKROOT="$ST_WEBLESS" \
+        e2e forkweb-stock-error-no-cri-sdk 1 0 0 ""
+
     # The forkweb probe must schedule exactly the flavor whose builder contract
     # is broken: flavor, emcc and engine provenance are independent terms.
     web_probe_case() {
@@ -1449,6 +1617,8 @@ GFSTUB
             identical-pair) cp "$root/web_template.zip" "$root/web_template_debug.zip" ;;
             stale-engine) printf 'engine=old base=stubbase\n' > "$root/web_template_cri.zip.provenance" ;;
             stale-debug-engine) printf 'engine=old base=stubbase\n' > "$root/web_template_cri_debug.zip.provenance" ;;
+            sdk-absent-cri) rm -f "$root/web_template_cri.zip" "$root/web_template_cri_debug.zip" ;;
+            sdk-absent-stock) rm -f "$root/web_template_debug.zip" ;;
         esac
         got="$(DN2CPP_GODOT_FORK_ROOT="$root" DN2CPP_PREMERGE_PROBE=forkweb \
             bash "$FAKE/gates/pre-merge.sh" 2>/dev/null || true)"
@@ -1466,6 +1636,8 @@ GFSTUB
     web_probe_case identical-pair "ok stock"
     web_probe_case stale-engine "ok cri"
     web_probe_case stale-debug-engine "ok cri"
+    DN2CPP_STUB_CRI_PRESENT=0 web_probe_case sdk-absent-cri "ok"
+    DN2CPP_STUB_CRI_PRESENT=0 web_probe_case sdk-absent-stock "ok stock"
 
     say "fork artifact freshness predicates (real helpers, synthetic artifacts)"
 
@@ -2293,7 +2465,7 @@ if [ "$DRY_RUN" = "1" ]; then
         premerge_fork_web_state
         printf '\n  godot fork web templates:\n'
         if [ -z "$FORK_WEB_STALE" ]; then
-            printf '    both flavors are baked from these engine sources — NOT rebaked\n'
+            printf '    required flavors (%s) are current — NOT rebaked\n' "$FORK_WEB_FLAVORS"
         else
             if [ "$FORK_WEB_SDK" != 1 ]; then
                 premerge_emsdk_argv
@@ -2324,8 +2496,9 @@ if [ "$DRY_RUN" = "1" ]; then
             esac
         done
         printf '\n'
-        printf '    then assert: exit 0, %s timing records, all "ran", %s empty, %s empty\n' \
-            "$EXPECTED_GATES" "$logdir/_skips.txt" "$logdir/_failures.txt"
+        printf '    then assert: exit 0, %s timing records, no cached records, %s empty\n' \
+            "$EXPECTED_GATES" "$logdir/_failures.txt"
+        printf '    every gate must run; only CRI SDK absence may appear in %s\n' "$logdir/_skips.txt"
     done
     printf '\n'
     note "Every selected run ($CONFIGS) must be green."
@@ -2345,6 +2518,8 @@ INPUTS_RED=0
 SUITE_RED=0
 HOST_GAPS=""
 RESULTS=""
+OPTIONAL_CRI_SKIPS=""
+OPTIONAL_CRI_SKIP_COUNT=0
 T0=$(date +%s)
 
 # ── phase 0: culture invariance ──────────────────────────────────────────────
@@ -2530,10 +2705,11 @@ fi
 FORK_WEB_NOTE="not asked"
 if [ "$INPUTS_RED" -eq 0 ]; then
     premerge_fork_web_state
+    [ "$FORK_WEB_FLAVORS" != stock ] || note "CRI SDK not installed: CRI Web templates are not required."
     FORK_WEB_BAKE=1
     if [ -z "$FORK_WEB_STALE" ]; then
-        FORK_WEB_NOTE="reused (both flavors current)"
-        good "fork web templates: both flavors are baked from these engine sources."
+        FORK_WEB_NOTE="reused ($FORK_WEB_FLAVORS current)"
+        good "fork web templates: required flavors ($FORK_WEB_FLAVORS) are current."
         RESULTS="${RESULTS}forkweb=reused "
         FORK_WEB_BAKE=0
     elif [ "$FORK_WEB_SDK" != 1 ]; then
@@ -2622,6 +2798,8 @@ for cfg in $CONFIGS; do
             SUITE_RED=1
         fi
     fi
+    OPTIONAL_CRI_SKIPS="${OPTIONAL_CRI_SKIPS}${VERDICT_CRI_SKIPS}"
+    OPTIONAL_CRI_SKIP_COUNT=$((OPTIONAL_CRI_SKIP_COUNT + VERDICT_CRI_SKIP_COUNT))
     note "$cfg elapsed: $(( $(date +%s) - t_cfg ))s   logs: $logdir"
 done
 
@@ -2631,6 +2809,7 @@ say "pre-merge verdict"
 note "commit:  $HEAD_BRANCH @ $HEAD_SHA$DIRTY"
 note "configs: $CONFIGS"
 note "results: $RESULTS"
+[ "$OPTIONAL_CRI_SKIP_COUNT" -eq 0 ] || printf '%s' "$OPTIONAL_CRI_SKIPS"
 note "elapsed: ${ELAPSED}s"
 
 if [ "$OVERALL" -eq 0 ]; then
@@ -2662,6 +2841,7 @@ if [ "$OVERALL" -eq 0 ]; then
         printf 'fork:    %s\n' "$FORK_NOTE"
         printf 'forkweb: %s\n' "$FORK_WEB_NOTE"
         printf 'runs:    %s\n' "$RESULTS"
+        [ "$OPTIONAL_CRI_SKIP_COUNT" -eq 0 ] || printf 'optional CRI skips:\n%s' "$OPTIONAL_CRI_SKIPS"
         printf 'elapsed: %ss\n' "$ELAPSED"
         # What the green was produced over. A reader who was not there cannot
         # otherwise tell that the selected suites ran against build dirs this tree
@@ -2672,7 +2852,11 @@ if [ "$OVERALL" -eq 0 ]; then
     if [ "$SKIP_GODOT" = 1 ]; then
         good "NON-GODOT PRE-MERGE PASSED — $CONFIGS, $EXPECTED_GATES gates per config; merge scope: PRs without Godot-specific changes."
     else
-        good "PRE-MERGE PASSED — $CONFIGS, $EXPECTED_GATES gates per config, every gate ran."
+        if [ "$OPTIONAL_CRI_SKIP_COUNT" -eq 0 ]; then
+            good "PRE-MERGE PASSED — $CONFIGS, $EXPECTED_GATES gates per config, every gate ran."
+        else
+            good "PRE-MERGE PASSED — $CONFIGS, $EXPECTED_GATES gates per config, $OPTIONAL_CRI_SKIP_COUNT CRI skips (SDK not installed)."
+        fi
     fi
     note "receipt: $RECEIPT"
     note "record:  $TRANSCRIPT"

@@ -25,13 +25,15 @@ separate concurrency group, so a new push cannot cancel them.
 
 The Godot-inclusive merge gate — `./gates/pre-merge.sh` — does not run there and
 cannot. Its header states each structural reason (a scons-built dn2cpp fork of
-the Godot editor, Xcode plus an iOS simulator, an Android NDK, a proprietary CRI
-package);
+the Godot editor, Xcode plus an iOS simulator, an Android NDK);
 read it there rather than trusting a summary. A human runs it on a
 provisioned machine. The Emscripten SDK is the one prerequisite pre-merge
 provisions itself (`gates/setup-emsdk.sh`); a host missing any other one still
 runs to completion, and the surfaces it cannot cover are reported red at the
-verdict — never green, never skipped.
+verdict. The proprietary CRI SDK is optional: when absent, CRI gates are
+reported as skips and their Web templates are not prepared. With the SDK
+installed, CRI gates run under the same strict checks as the rest of the suite;
+failures, missing other prerequisites and incomplete coverage remain red.
 
 So a green pull request is not permission to merge — and equally, a pull request
 never goes red over a toolchain you cannot install.
@@ -47,13 +49,15 @@ Running this much locally is enough:
 The merge gate runs Debug by default, enabling the shared-generics assertions
 while running the suite once. Use `CONFIG=Release ./gates/pre-merge.sh` for
 Release only, or `./gates/pre-merge.sh --both-configs` for Release followed by
-Debug. All selections disable caching and require every selected gate to run.
+Debug. All selections disable caching and require every selected gate to run,
+except for the reported CRI skips when its SDK is absent.
 
 For a PR that changes no Godot-specific files, a passing default Debug
 `./gates/pre-merge.sh --skip-godot` is sufficient to merge. Coding agents may
 run this strict non-Godot check autonomously for any change. It omits the Godot
 phase and its self-host/fork/template preparation; missing prerequisites still
-fail the selected gates, and caching stays disabled. Its receipt records the
+fail the selected gates except for CRI SDK absence in the console-wasm gate,
+and caching stays disabled. Its receipt records the
 non-Godot scope, excluded gate count and configurations. Combine `--skip-godot`
 with `--both-configs` to check both configurations.
 
@@ -67,7 +71,8 @@ not classify a PR's changed files.
 **A skip is not a pass.** A gate whose optional prerequisite is absent opts out
 via `gate_skip` (`gates/_common.sh`) and is counted and reported **separately**
 with its reason, so the summary never claims all N passed when some never ran.
-If you add a gate, opt out that way and never with `echo SKIP; exit 0`.
+The pre-merge receipt names any CRI SDK skips per configuration. If you add a
+gate, opt out that way and never with `echo SKIP; exit 0`.
 
 ## What to work on
 
