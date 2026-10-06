@@ -33,8 +33,8 @@
 #      it is a slot INDEPENDENT of CurrentCulture (an aliased getter or setter
 #      fails here and nowhere else), and restores the pin before the next section.
 #
-# Uses a frozen snapshot (gates/expected/culture-info-api.txt) rather than a live
-# `dotnet $app` diff, for THREE deliberate divergences. Two are CultureInfo's own:
+# The existing prefix uses a frozen snapshot (gates/expected/culture-info-api.txt)
+# for THREE deliberate divergences. Two are CultureInfo's own:
 # dn2cpp constructs no Calendar object (the real getter reads intrinsic-mapped
 # CultureInfo fields and a synthesized GregorianCalendar would pull the unmodeled
 # CalendarData subtree), so it traps loudly (PlatformNotSupportedException) instead
@@ -46,6 +46,10 @@
 # (Assembly/Module wrap instead, so their lines print the "ok" real .NET prints).
 # Everything else is byte-identical against real .NET under en_US and de_DE.
 # CoreLib only.
+# The appended culture-name section diffs against live .NET: validation,
+# canonical casing, supported variant formatting, cache identity, typed refusal
+# fields/messages and CreateSpecificCulture's retry. Unmodeled regions assert
+# identity only; script regressions prevent using an incompatible regional row.
 #
 # Its LAST TWO sections are not about CultureInfo's API at all; do not prune this
 # bucket by theme.
@@ -65,5 +69,22 @@
 #     carry — keeps the LOUD TRAP.
 source "$(dirname "$0")/_common.sh"
 
+# The appended section has parity semantics; the existing prefix retains its
+# deliberate divergences and is still compared to the unchanged snapshot.
+gate_extra_asserts() {
+    local out="$1" native prefix
+    native=$(run_bounded "./$out/CultureInfoApi")
+    native=$(strip_cr_win "$native")
+    prefix=$(awk '/^== culture name resolution ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(cat "$(dirname "$0")/expected/culture-info-api.txt")"
+    grep -Fxq 'culture name resolution end' <<< "$native" \
+        || { echo "FAIL: culture names section did not finish" >&2; return 1; }
+}
+DN2CPP_GATE_RUN_ARGS=before-culture-names
 corelib_freeze_gate CultureInfoApi "$(dirname "$0")/expected/culture-info-api.txt" \
     --link-xml samples/dotnet/CultureInfoApi/link.xml
+
+unset -f gate_extra_asserts
+DN2CPP_GATE_RUN_ARGS=culture-names
+DN2CPP_OUT_SUFFIX=-names
+corelib_diff_gate CultureInfoApi --link-xml samples/dotnet/CultureInfoApi/link.xml

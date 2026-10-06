@@ -39,6 +39,10 @@ namespace DefaultCulture
             Console.WriteLine("inf=" + double.PositiveInfinity);
             Console.WriteLine("i=" + (-1234567).ToString("N0"));
             Console.WriteLine("interp=" + $"{1234.5:N2}|{-0.5:P1}");
+            Console.WriteLine("== default culture identities ==");
+            Console.WriteLine("ui=" + CultureInfo.CurrentUICulture.Name);
+            Console.WriteLine("installed=" + CultureInfo.InstalledUICulture.Name);
+            Console.WriteLine("default culture identities end");
         }
     }
 }

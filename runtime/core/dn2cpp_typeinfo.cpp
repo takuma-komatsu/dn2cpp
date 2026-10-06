@@ -685,6 +685,10 @@ extern const Dn2CppType dn2cpp_argument_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_argument_exception_type =
     dn2cpp_ti_with_typeobject({ "System.ArgumentException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_argument_exception_type_obj);
 const Dn2CppType dn2cpp_argument_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_argument_exception_type };
+extern const Dn2CppType dn2cpp_culture_not_found_exception_type_obj;
+Dn2CppTypeInfo dn2cpp_culture_not_found_exception_type =
+    dn2cpp_ti_with_typeobject({ "System.Globalization.CultureNotFoundException", &dn2cpp_argument_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_culture_not_found_exception_type_obj);
+const Dn2CppType dn2cpp_culture_not_found_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_culture_not_found_exception_type };
 extern const Dn2CppType dn2cpp_com_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_com_exception_type =
     dn2cpp_ti_with_typeobject({ "System.Runtime.InteropServices.COMException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_com_exception_type_obj);

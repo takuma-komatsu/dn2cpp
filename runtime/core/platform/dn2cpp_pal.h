@@ -107,22 +107,22 @@ char16_t dn2cpp_pal_ansi_decode_char(uint8_t b);
 
 // ── Locale (the host's default culture NAME, never its data) ─────────────────
 //
-// `CultureInfo.CurrentCulture`'s default: the BCP-47 name of the locale the host
+// `CultureInfo.CurrentCulture`'s default: the culture name of the locale the host
 // says the user is in ("ja-JP"), written NUL-terminated into buf; returns the
 // length written, or 0 when the host reports none — which the caller reads as
 // the invariant culture.
 //
-// This seam answers a NAME and nothing else. dn2cpp models no ICU: symbols,
-// separators and patterns come from the runtime's own built-in culture table
-// (dn2cpp_system_globalization.cpp), and a name the table does not carry keeps
-// its name over invariant symbols.
+// This seam answers a name; the runtime validates it. Supported variants share
+// base formatting from the built-in culture table (dn2cpp_system_globalization.cpp).
+// Valid unresolved names retain their identity over invariant symbols; invalid
+// host names resolve to the invariant culture.
 //
 // Each implementation reproduces the rule real .NET resolves the same question
 // by, because the gate suite diffs the two:
-//   POSIX  — ICU's uprv_getPOSIXIDForCategory scan: the first of LC_ALL,
-//            LC_MESSAGES and LANG that is set decides, even when empty. When
-//            none is set, or the deciding value names no locale (empty, C,
-//            POSIX, C.UTF-8, en_US_POSIX), Apple hosts answer CFLocale (the
+//   POSIX  — query setlocale(LC_MESSAGES, nullptr) first. Only a null, C or POSIX
+//            answer falls back to the first set LC_ALL, LC_MESSAGES or LANG,
+//            even when empty. When none is set, or the deciding value names no
+//            locale (empty, C, POSIX, C.UTF-8, en_US_POSIX), Apple hosts answer CFLocale (the
 //            user's system preference) and other hosts 0, as real .NET does.
 //   Windows— GetUserDefaultLocaleName, which is already a BCP-47 name.
 //   WASM   — none (a browser/node module has no locale block); returns 0, so a

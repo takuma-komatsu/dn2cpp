@@ -407,6 +407,7 @@ static const char* dn2cpp_default_message_key(const Dn2CppTypeInfo* ti)
     if (ti == &dn2cpp_overflow_exception_type) return DN2CPP_SR_OVERFLOW;
     if (ti == &dn2cpp_index_out_of_range_exception_type) return DN2CPP_SR_INDEX_OUT_OF_RANGE;
     if (ti == &dn2cpp_argument_exception_type) return DN2CPP_SR_ARGUMENT;
+    if (ti == &dn2cpp_culture_not_found_exception_type) return DN2CPP_SR_CULTURE_NOT_SUPPORTED;
     if (ti == &dn2cpp_argument_out_of_range_exception_type) return DN2CPP_SR_ARGUMENT_OUT_OF_RANGE;
     if (ti == &dn2cpp_argument_null_exception_type) return DN2CPP_SR_ARGUMENT_NULL;
     if (ti == &dn2cpp_invalid_operation_exception_type) return DN2CPP_SR_INVALID_OPERATION;
@@ -657,6 +658,55 @@ static Dn2CppString* dn2cpp_param_name_string(const char* paramName)
     if (paramName == nullptr)
         return nullptr;
     return dn2cpp_string_from_utf8(paramName, static_cast<int32_t>(std::strlen(paramName)));
+}
+
+static bool (*g_culture_exception_store)(Dn2CppObject*, Dn2CppString*, int32_t) = nullptr;
+
+void dn2cpp_set_culture_exception_store(bool (*store)(Dn2CppObject*, Dn2CppString*, int32_t))
+{
+    g_culture_exception_store = store;
+}
+
+bool dn2cpp_culture_exception_store(Dn2CppObject* e, Dn2CppString* invalidCultureName,
+    int32_t invalidCultureId)
+{
+    return g_culture_exception_store != nullptr
+        && g_culture_exception_store(e, invalidCultureName, invalidCultureId);
+}
+
+[[noreturn]] void dn2cpp_throw_culture_not_found(Dn2CppString* invalidCultureName,
+    int32_t invalidCultureId)
+{
+    const Dn2CppTypeInfo* ti = &dn2cpp_culture_not_found_exception_type;
+    Dn2CppObject* e = dn2cpp_exception_new(ti, nullptr, nullptr);
+    Dn2CppString* paramName = dn2cpp_param_name_string(invalidCultureId != 0 ? "culture" : "name");
+    bool argumentStored = dn2cpp_argument_exception_store(e, paramName, nullptr);
+    bool cultureStored = dn2cpp_culture_exception_store(e, invalidCultureName, invalidCultureId);
+    Dn2CppString* message = dn2cpp_default_message(ti);
+    if (message != nullptr && (!argumentStored || !cultureStored || !dn2cpp_exception_overrides_message(ti)))
+    {
+        if (Dn2CppString* tail = dn2cpp_argument_tail(DN2CPP_SR_PARAM_NAME, paramName))
+            message = dn2cpp_string_concat3(message, dn2cpp_string_literal(u" ", 1), tail);
+        Dn2CppString* identifier = invalidCultureName;
+        if (invalidCultureId != 0)
+        {
+            char text[64];
+            int length = std::snprintf(text, sizeof(text), "%d (0x%04x)", invalidCultureId,
+                static_cast<uint32_t>(invalidCultureId));
+            identifier = dn2cpp_string_from_utf8(text, length);
+        }
+        if (Dn2CppString* tail = dn2cpp_argument_tail(DN2CPP_SR_CULTURE_INVALID_IDENTIFIER, identifier))
+        {
+#ifdef _WIN32
+            Dn2CppString* newline = dn2cpp_string_literal(u"\r\n", 2);
+#else
+            Dn2CppString* newline = dn2cpp_string_literal(u"\n", 1);
+#endif
+            message = dn2cpp_string_concat3(message, newline, tail);
+        }
+    }
+    dn2cpp_gc_store_ref(&reinterpret_cast<Dn2CppExceptionObject*>(e)->message, message);
+    dn2cpp_throw(e);
 }
 
 [[noreturn]] void dn2cpp_throw_argument_out_of_range_value(const char* key,
@@ -949,6 +999,7 @@ static int32_t dn2cpp_exception_default_hresult(const Dn2CppTypeInfo* ti)
         { &dn2cpp_overflow_exception_type, 0x80131516u },
         { &dn2cpp_index_out_of_range_exception_type, 0x80131508u },
         { &dn2cpp_argument_exception_type, 0x80070057u },
+        { &dn2cpp_culture_not_found_exception_type, 0x80070057u },
         { &dn2cpp_com_exception_type, 0x80004005u },
         { &dn2cpp_argument_out_of_range_exception_type, 0x80131502u },
         { &dn2cpp_argument_null_exception_type, 0x80004003u },

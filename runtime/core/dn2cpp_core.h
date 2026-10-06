@@ -1708,6 +1708,13 @@ extern const int32_t dn2cpp_exception_get_message_slot;
 bool dn2cpp_argument_exception_store(Dn2CppObject* e, Dn2CppString* paramName,
     Dn2CppObject* actualValue);
 bool dn2cpp_object_disposed_exception_store(Dn2CppObject* e, Dn2CppString* objectName);
+// CultureNotFoundException's extra fields also depend on the emitted layout.
+// The image installs its writer at startup; without one the store returns false.
+// A zero invalidCultureId denotes a named rejection, rather than a rejected LCID.
+bool dn2cpp_culture_exception_store(Dn2CppObject* e, Dn2CppString* invalidCultureName,
+    int32_t invalidCultureId);
+// Init-only registration, before managed code or host callbacks can run.
+void dn2cpp_set_culture_exception_store(bool (*store)(Dn2CppObject*, Dn2CppString*, int32_t));
 // The BCL exception messages this runtime raises, folded in at transpile time from the
 // CoreLib's own Strings.resources, or for an "Assembly:Key" entry from that library's.
 // A runtime resource read is not an option: --no-manifest-resources may have emptied
@@ -1755,6 +1762,8 @@ inline constexpr const char* DN2CPP_SR_WRONG_SIZE_ARRAY_IN_NATIVE_STRUCT = "Argu
 inline constexpr const char* DN2CPP_SR_OVERFLOW = "Arg_OverflowException";
 inline constexpr const char* DN2CPP_SR_INDEX_OUT_OF_RANGE = "Arg_IndexOutOfRangeException";
 inline constexpr const char* DN2CPP_SR_ARGUMENT = "Arg_ArgumentException";
+inline constexpr const char* DN2CPP_SR_CULTURE_NOT_SUPPORTED = "Argument_CultureNotSupported";
+inline constexpr const char* DN2CPP_SR_CULTURE_INVALID_IDENTIFIER = "Argument_CultureInvalidIdentifier";
 inline constexpr const char* DN2CPP_SR_ADD_VALUE = "ArgumentOutOfRange_AddValue";
 inline constexpr const char* DN2CPP_SR_BAD_HOUR_MINUTE_SECOND = "ArgumentOutOfRange_BadHourMinuteSecond";
 inline constexpr const char* DN2CPP_SR_BAD_YEAR_MONTH_DAY = "ArgumentOutOfRange_BadYearMonthDay";
@@ -2750,6 +2759,7 @@ extern const Dn2CppTypeInfo dn2cpp_exception_type;
 extern Dn2CppTypeInfo dn2cpp_overflow_exception_type;
 extern Dn2CppTypeInfo dn2cpp_index_out_of_range_exception_type;
 extern Dn2CppTypeInfo dn2cpp_argument_exception_type;
+extern Dn2CppTypeInfo dn2cpp_culture_not_found_exception_type;
 // System.Runtime.InteropServices.COMException. Marshal.GetExceptionForHR uses
 // this for HRESULT failures that have no more specific managed exception.
 extern Dn2CppTypeInfo dn2cpp_com_exception_type;
@@ -3161,6 +3171,8 @@ void dn2cpp_cctor_run_startup(void (*ensure)(), const char* type);
 // A nonzero hresult supplies an API-specific fault code.
 [[noreturn]] void dn2cpp_throw_argument_sr(const Dn2CppTypeInfo* ti, const char* key,
     const char* paramName, Dn2CppString* const* args, int32_t argc, uint32_t hresult = 0);
+[[noreturn]] void dn2cpp_throw_culture_not_found(Dn2CppString* invalidCultureName,
+    int32_t invalidCultureId);
 // ArgumentException(SR.Format(SR.Argument_InvalidEnumValue, value, enumName), paramName):
 // an undefined value of an enum the callee switches over.
 [[noreturn]] void dn2cpp_throw_invalid_enum_value(int32_t value, const char* enumName,
@@ -7517,8 +7529,9 @@ Dn2CppString* dn2cpp_format_r4(float v, Dn2CppString* fmt);
 // --- Culture-aware (IFormatProvider / CultureInfo / NumberFormatInfo) ---
 // The invariant singleton; a named-culture lookup (a built-in table whose
 // membership rule is stated at kCultures in
-// intrinsics/dn2cpp_system_globalization.cpp — an unknown name still gets an
-// invariant-symbol copy carrying the requested name); and a fresh mutable
+// intrinsics/dn2cpp_system_globalization.cpp — variants share base formatting
+// while retaining their canonical name; unresolved names use invariant symbols);
+// and a fresh mutable
 // instance (copy of invariant) for `new NumberFormatInfo()` + setters.
 const Dn2CppNumberFormatInfo* dn2cpp_nfi_invariant();
 // NumberFormatInfo.InvariantInfo: a DISTINCT singleton with the invariant
@@ -7527,7 +7540,8 @@ const Dn2CppNumberFormatInfo* dn2cpp_nfi_invariant();
 // .NET reports (dn2cpp_nfi_invariant is the CultureInfo singleton). The two
 // format identically; only the recovered managed identity differs.
 const Dn2CppNumberFormatInfo* dn2cpp_nfi_invariant_info();
-const Dn2CppNumberFormatInfo* dn2cpp_culture_by_name(Dn2CppString* name);
+const Dn2CppNumberFormatInfo* dn2cpp_culture_by_name(Dn2CppString* name, bool cached = false);
+const Dn2CppNumberFormatInfo* dn2cpp_culture_create_specific(Dn2CppString* name);
 Dn2CppNumberFormatInfo* dn2cpp_nfi_new();
 // The process-wide CultureInfo.CurrentCulture: defaults to the culture the HOST
 // says the user is in (resolved through dn2cpp_pal_default_locale_name)
