@@ -70,6 +70,7 @@
 # Chrome degrades the browser section to a PARTIAL after every build artifact
 # was asserted.
 source "$(dirname "$0")/_common.sh"
+cri_sdk_preflight
 source "$(dirname "$0")/_godot_fork.sh"
 
 OUT=gates/out-cri-web

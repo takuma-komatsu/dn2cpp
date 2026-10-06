@@ -49,7 +49,9 @@
 #   So: "141/141 passed" now means 141 gates actually ran and asserted.
 #   DN2CPP_REQUIRE_ALL=1 turns any skip (and any partially-skipped section) into
 #   a failure — the mode a pre-merge or CI run uses, where "not run" is not an
-#   acceptable answer. It also refuses cached partials: a gate whose last run was
+#   acceptable answer. Pre-merge enables only the explicit CRI SDK-absence skip
+#   exception; CRI gates still run and fail normally with an installed SDK.
+#   It also refuses cached partials: a gate whose last run was
 #   partial re-runs live, so a warm cache cannot hide a skipped section. A gate
 #   that exits 0 having printed a SKIP line is failed outright: that is the old
 #   silent pattern, and it must not come back.
@@ -909,7 +911,10 @@ if [ "$N_SKIPPED" -gt 0 ]; then
         printf '\033[1;33m    %-42s %s\033[0m\n' "$n" "$reason"
     done < "$SKIPFILE"
     echo "  Install the missing prerequisites to close these holes, or run with"
-    echo "  DN2CPP_REQUIRE_ALL=1 to turn any skip into a failure (pre-merge / CI mode)."
+    echo "  DN2CPP_REQUIRE_ALL=1 to turn skips into failures (strict mode)."
+    if [ "${DN2CPP_ALLOW_MISSING_CRI_SDK:-0}" = 1 ]; then
+        echo "  Pre-merge permits CRI SDK-absence skips; all other prerequisites stay strict."
+    fi
 fi
 # Declared expected partials get a block too. These gates PASSED — including
 # under DN2CPP_REQUIRE_ALL=1 — so the block sits among the greens rather than

@@ -811,8 +811,10 @@ from outside the `.app` and cmake, ninja and Emscripten's clang from inside it.
 The list above is for moving the *base*. A GodotTools edit, or a rebase onto the
 same base with unchanged engine sources, needs no separate cache procedure:
 `gates/pre-merge.sh` asks `godot_fork_cache_fresh` (`gates/_godot_fork.sh`)
-before its suites and refreshes the desktop cache and both stock/CRI Web pairs
-when a stamp disagrees. An engine edit also makes the iOS template stale. That repair
+before its suites and refreshes the desktop cache and stock Web pair
+when a stamp disagrees. It also refreshes the CRI Web pair when the proprietary
+CRI SDK is installed; absent SDKs leave CRI gates as reported skips.
+An engine edit also makes the iOS template stale. That repair
 stays manual because it consumes Xcode and an official templates archive. On a
 host with Xcode, pre-merge refuses before its suites and names
 `gates/setup-godot-fork-ios.sh` rather than discovering the stale template
