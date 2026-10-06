@@ -13,6 +13,22 @@ namespace ReflectInvoke
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
             CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
 
+            if (args.Length > 0 && args[0] == "generic-method-boundary-outcomes")
+            {
+                ReflectGenericMethodSubset.Program.RunDefinitionBoundaries();
+                return;
+            }
+            if (args.Length > 0 && args[0] == "formal-type-boundary-outcomes")
+            {
+                ReflectGenericMethodSubset.Program.RunFormalTypeBoundaries();
+                return;
+            }
+            if (args.Length > 0 && args[0] == "generic-signature-boundary-outcomes")
+            {
+                ReflectGenericMethodSubset.Program.RunSignatureBoundaries();
+                return;
+            }
+
             if (Environment.GetEnvironmentVariable("DN2CPP_REFLECTION_MEASURE") == "1")
             {
                 ReflectMetadataMeasureSubset.Program.Run();
@@ -159,6 +175,30 @@ namespace ReflectInvoke
             if (args.Length > 0 && args[0] == "before-runtime-type-relations")
                 return;
             RuntimeHandleRelationSubset.Program.RunRuntimeTypeRelations();
+            if (args.Length > 0 && args[0] == "before-generic-method-definitions")
+                return;
+            ReflectGenericMethodSubset.Program.RunDefinitionLookups();
+            if (args.Length > 0 && args[0] == "before-formal-method-parameters")
+                return;
+            ReflectGenericMethodSubset.Program.RunFormalParameters();
+            if (args.Length > 0 && args[0] == "before-mixed-generic-definitions")
+                return;
+            ReflectGenericMethodSubset.Program.RunMixedDefinitionLookups();
+            if (args.Length > 0 && args[0] == "before-formal-reflected-owners")
+                return;
+            ReflectGenericMethodSubset.Program.RunFormalReflectedOwners();
+            if (args.Length > 0 && args[0] == "before-formal-classification")
+                return;
+            ReflectGenericMethodSubset.Program.RunFormalClassification();
+            if (args.Length > 0 && args[0] == "before-metadata-formal-attributes")
+                return;
+            ReflectGenericMethodSubset.Program.RunMetadataFormalAttributes();
+            if (args.Length > 0 && args[0] == "before-formal-member-types")
+                return;
+            ReflectGenericMethodSubset.Program.RunFormalMemberTypes();
+            if (args.Length > 0 && args[0] == "before-definition-signature-closure")
+                return;
+            ReflectGenericMethodSubset.Program.RunDefinitionSignatureClosure();
         }
     }
 }

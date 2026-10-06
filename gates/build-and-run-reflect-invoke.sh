@@ -7,6 +7,17 @@
 # nested reflective call raises to the outer call as a fault of its target.
 # DefaultBinder primitive widening and specificity differ from Invoke's ushort-to-char policy.
 # The metadata codec probe checks shared missing-body/invoker refusals through every entry.
+# Generic method lookups and enumeration return one definition with stable parameter identities.
+# Formal parameters retain their defining assembly and refuse allocation and open type composition.
+# Mixed member lookups share generic definition identities; open signature types and constraints are refused.
+# A formal parameter's declaring and reflected types share the typical owner, independent of the lookup.
+# Special constraints classify formal parameters; unavailable unused signatures never force eager decode.
+# Metadata-answerable generic definitions retain formal names and special attributes.
+# Formal parameters remain TypeInfo members while reporting a declaring owner and IsNested.
+# A metadata-only generic definition retains closed signature types that nothing else reaches.
+# Optional definition dependencies are probed without publishing partial or self-expanding layouts.
+# Concrete interface dispatch traps retain signature dependencies that relation-only rows do not need.
+# Completion-signature layout probes remain bounded to the original owner snapshot.
 # Consolidated reflection-invocation gate. Merges the former reflect dynamic-use
 # subset gates into one multi-section program, transpiled once against the
 # tree-shaken real CoreLib and diffed exactly against real .NET. Covers:
@@ -189,6 +200,9 @@
 # Object-family enumeration includes inherited metadata answers under binding flags.
 # Pointer field accessors box and validate unmanaged/function addresses with
 # packed and native metadata, preserving static-readonly accessor refusal order.
+# Unused definition signatures may omit unloaded generic layout dependencies;
+# loaded dependencies retain their closed types, and body-required layouts still fail.
+# Open definition signatures retain their rows without requiring their base's field layout.
 source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|reflection-measure:${DN2CPP_REFLECTION_MEASURE:-}|existing-constructor-prefix:${DN2CPP_BEFORE_EXISTING_CONSTRUCTOR:-}|cold-activator-prefix:${DN2CPP_BEFORE_COLD_ACTIVATOR:-}|delegate-method-prefix:${DN2CPP_BEFORE_DELEGATE_METHOD:-}|ldftn-local-prefix:${DN2CPP_BEFORE_LDFTN_LOCAL:-}|invoke-validation-prefix:${DN2CPP_BEFORE_INVOKE_VALIDATION:-}|runtime-handle-relations-prefix:${DN2CPP_BEFORE_RUNTIME_HANDLE_RELATIONS:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|interface-selection-prefix:${DN2CPP_BEFORE_INTERFACE_SELECTION:-}|interface-redeclaration-prefix:${DN2CPP_BEFORE_INTERFACE_REDECLARATION:-}|runtime-level-gvm-prefix:${DN2CPP_BEFORE_RUNTIME_LEVEL_GVM:-}"
@@ -207,7 +221,22 @@ DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|empty-string-clone-pre
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/recursive-delegate/RecursiveDelegate.csproj gates/fixtures/recursive-delegate/Program.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|delegate-origin-prefix-argv:before-delegate-origin-boundaries|delegate-origin-modes:argument,field,array,checked-conv,arithmetic,box,call,local,stack-join,byref-argument"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|runtime-type-relations-prefix-argv:before-runtime-type-relations"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|generic-method-definitions-prefix-argv:before-generic-method-definitions|generic-method-boundary-argv:generic-method-boundary-outcomes"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|formal-method-parameters-prefix-argv:before-formal-method-parameters|formal-type-boundary-argv:formal-type-boundary-outcomes"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|mixed-generic-definitions-prefix-argv:before-mixed-generic-definitions|generic-signature-boundary-argv:generic-signature-boundary-outcomes"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|formal-reflected-owners-prefix-argv:before-formal-reflected-owners"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|formal-classification-prefix-argv:before-formal-classification|unused-signatures:absent-ext,default,trim,strict-completion"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|metadata-formal-attributes-prefix-argv:before-metadata-formal-attributes"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|formal-member-types-prefix-argv:before-formal-member-types"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|definition-signature-closure-prefix-argv:before-definition-signature-closure"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|nested-signature-layouts:absent-ext,loaded-ext,body-required,default,trim|nested-signature-layout-argv:describe-unused-layouts"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|open-signature-layouts:absent-ext,loaded-ext,default,trim|open-signature-boundary-argv:return-type"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|signature-dependencies:absent-ext,loaded-ext,default,trim,depth40,body-required|signature-dependencies-argv:describe-layout-dependencies|signature-paths-argv:describe-layout-paths|default-interface-layout-argv:describe-default-interface-layout|completion-layout-argv:describe-completion-layouts"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/reflection-unused-signatures/Ext/Ext.csproj gates/fixtures/reflection-unused-signatures/Ext/Box.cs gates/fixtures/reflection-unused-signatures/Lib/Lib.csproj gates/fixtures/reflection-unused-signatures/Lib/Subject.cs gates/fixtures/reflection-unused-signatures/App/App.csproj gates/fixtures/reflection-unused-signatures/App/Program.cs gates/fixtures/reflection-unused-signatures/AppOwned/AppOwned.csproj gates/fixtures/reflection-unused-signatures/AppOwned/Program.cs gates/fixtures/reflection-unused-signatures/Enumeration/Enumeration.csproj gates/fixtures/reflection-unused-signatures/Enumeration/Program.cs"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ldftn-local/Program.cs"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/reflection-unused-signatures/AppNested/AppNested.csproj gates/fixtures/reflection-unused-signatures/AppNested/Program.cs gates/fixtures/reflection-unused-signatures/BodyNeeded/BodyNeeded.csproj"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/reflection-unused-signatures/AppOpen/AppOpen.csproj gates/fixtures/reflection-unused-signatures/AppOpen/Program.cs"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/reflection-unused-signatures/AppDependencies/AppDependencies.csproj gates/fixtures/reflection-unused-signatures/AppDependencies/Program.cs gates/fixtures/reflection-unused-signatures/MethodBodyNeeded/MethodBodyNeeded.csproj gates/fixtures/reflection-unused-signatures/GrowthBodyNeeded/GrowthBodyNeeded.csproj"
 gate_optional_argument_asserts() {
     local out="$1" native line
     native=$(strip_cr_win_file "$out/metadata-layout.stdout")
@@ -249,7 +278,7 @@ gate_empty_string_clone_asserts() {
 }
 
 gate_extra_asserts() {
-    local out="$1" native line registry
+    local out="$1" native line registry boundary axis route query expected parameter
     "$py" gates/fixtures/check-reflection-layout.py "$out" "$reflection_layout_axis"
     # The runtime publishes a constructor's invoke plan only for a record inside a
     # registered extent, so a packed constructor table must appear in the registry.
@@ -689,6 +718,338 @@ gate_extra_asserts() {
     for line in '== runtime Type and Task relations ==' 'runtime Type and Task relations end'; do
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: runtime Type relation block witness missing: $line" >&2; return 1; }
+    done
+
+    run_bounded dotnet "$_CG_APP" > "$out/generic-method-definitions.dotnet.stdout"
+    run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/generic-method-definitions.native.stdout"
+    diff -u <(strip_cr_win_file "$out/generic-method-definitions.dotnet.stdout") \
+        <(strip_cr_win_file "$out/generic-method-definitions.native.stdout")
+    run_bounded dotnet "$_CG_APP" before-generic-method-definitions > "$out/generic-method-definitions-before.dotnet.stdout"
+    run_bounded "$out/ReflectInvoke$EXE_EXT" before-generic-method-definitions > "$out/generic-method-definitions-before.native.stdout"
+    sed '/^== generic method definitions ==/,$d' "$out/generic-method-definitions.dotnet.stdout" \
+        > "$out/generic-method-definitions-prefix.dotnet.stdout"
+    sed '/^== generic method definitions ==/,$d' "$out/generic-method-definitions.native.stdout" \
+        > "$out/generic-method-definitions-prefix.native.stdout"
+    diff -u <(strip_cr_win_file "$out/generic-method-definitions-before.dotnet.stdout") \
+        <(strip_cr_win_file "$out/generic-method-definitions-prefix.dotnet.stdout")
+    diff -u <(strip_cr_win_file "$out/generic-method-definitions-before.native.stdout") \
+        <(strip_cr_win_file "$out/generic-method-definitions-prefix.native.stdout")
+    for line in '== generic method definitions ==' 'generic method definitions end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: generic method definition block witness missing: $line" >&2; return 1; }
+    done
+    for line in class struct owners overloads; do
+        grep -Eq "^definition roots $line=" <<< "$native" \
+            || { echo "FAIL: generic method definition root witness missing: $line" >&2; return 1; }
+    done
+    for line in class struct owner-int owner-string inherited echo private unreached template-unreached; do
+        grep -Fxq -- "definition $line list: count=1 definitions=True identity=True" <<< "$native" \
+            || { echo "FAIL: generic method definition list mismatch: $line" >&2; return 1; }
+        grep -Fxq -- "definition $line flags: generic=True definition=True contains=True" <<< "$native" \
+            || { echo "FAIL: generic method definition flags mismatch: $line" >&2; return 1; }
+        grep -Fxq -- "definition $line parameter 0: name=U generic=True contains=True identity=True" <<< "$native" \
+            || { echo "FAIL: generic method formal parameter mismatch: $line" >&2; return 1; }
+        grep -Fxq -- "definition $line open invoke=InvalidOperationException/InvalidOperationException/InvalidOperationException" <<< "$native" \
+            || { echo "FAIL: generic method definition invocation mismatch: $line" >&2; return 1; }
+    done
+    for line in class struct owner-int owner-string echo private; do
+        grep -Fxq -- "definition $line canonical: operator=True equals=True reference=True lookup=True self=True" <<< "$native" \
+            || { echo "FAIL: generic method definition identity mismatch: $line" >&2; return 1; }
+    done
+    grep -Fxq -- 'definition inherited canonical: operator=True equals=True reference=True lookup=False self=False' <<< "$native"
+    grep -Fxq -- 'definition echo signature: return=True parameter=True' <<< "$native"
+    run_bounded dotnet "$_CG_APP" generic-method-boundary-outcomes > "$out/generic-method-boundary.dotnet.stdout"
+    run_bounded "$out/ReflectInvoke$EXE_EXT" generic-method-boundary-outcomes > "$out/generic-method-boundary.native.stdout"
+    for axis in dotnet native; do
+        boundary=$(strip_cr_win_file "$out/generic-method-boundary.$axis.stdout")
+        for line in '== generic method AOT instantiations ==' 'generic method AOT instantiations end'; do
+            grep -Fxq -- "$line" <<< "$boundary" \
+                || { echo "FAIL: generic method boundary block witness missing ($axis): $line" >&2; return 1; }
+        done
+        for line in unreached missing-argument template-unreached; do
+            grep -Fxq -- "definition boundary $line found=True" <<< "$boundary" \
+                || { echo "FAIL: generic method boundary definition missing ($axis): $line" >&2; return 1; }
+            if [ "$axis" = native ]; then
+                grep -Fxq -- "definition boundary $line fault=PlatformNotSupportedException" <<< "$boundary" \
+                    || { echo "FAIL: missing AOT instantiation was not refused: $line" >&2; return 1; }
+            fi
+        done
+        if [ "$axis" = dotnet ]; then
+            for line in 'definition boundary unreached result=never:Int32:8' \
+                'definition boundary missing-argument result=Boolean:8' \
+                'definition boundary template-unreached result=Int64:8'; do
+                grep -Fxq -- "$line" <<< "$boundary" \
+                    || { echo "FAIL: CLR generic method boundary oracle mismatch: $line" >&2; return 1; }
+            done
+        fi
+    done
+
+    run_bounded dotnet "$_CG_APP" before-formal-method-parameters > "$out/formal-method-parameters-before.dotnet.stdout"
+    run_bounded "$out/ReflectInvoke$EXE_EXT" before-formal-method-parameters > "$out/formal-method-parameters-before.native.stdout"
+    for axis in dotnet native; do
+        sed '/^== formal method parameters ==/,$d' "$out/generic-method-definitions.$axis.stdout" \
+            > "$out/formal-method-parameters-prefix.$axis.stdout"
+        diff -u <(strip_cr_win_file "$out/formal-method-parameters-before.$axis.stdout") \
+            <(strip_cr_win_file "$out/formal-method-parameters-prefix.$axis.stdout")
+    done
+    for line in '== formal method parameters ==' 'formal method parameters end' \
+        'formal names: name=U full=<null> qualified=<null>' 'formal assembly owner=True' \
+        'formal namespaces: parameter=ReflectGenericMethodSubset declaring=ReflectGenericMethodSubset' \
+        'formal global names: namespace=<null> name=U' \
+        'formal assembly closed-owner=True inherited=True' 'formal activation=ArgumentException' \
+        'formal array allocation=NotSupportedException' 'formal uninitialized=ArgumentException' \
+        'formal signature: found=True reference=True' 'formal foreign signature found=False'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: formal method parameter witness missing: $line" >&2; return 1; }
+    done
+    # The CLR oracle decides normalization for both definition and closed sources.
+    grep -Eq '^formal mapped definition: ' <<< "$native"
+    grep -Eq '^formal mapped closed: ' <<< "$native"
+    run_bounded dotnet "$_CG_APP" formal-type-boundary-outcomes > "$out/formal-type-boundary.dotnet.stdout"
+    run_bounded "$out/ReflectInvoke$EXE_EXT" formal-type-boundary-outcomes > "$out/formal-type-boundary.native.stdout"
+    for axis in dotnet native; do
+        boundary=$(strip_cr_win_file "$out/formal-type-boundary.$axis.stdout")
+        for line in '== formal type compositions ==' 'formal type compositions end' \
+            '== formal method compositions ==' 'formal method compositions end'; do
+            grep -Fxq -- "$line" <<< "$boundary" \
+                || { echo "FAIL: formal type composition block witness missing ($axis): $line" >&2; return 1; }
+        done
+        for line in generic array rank2-array; do
+            if [ "$axis" = native ]; then
+                grep -Fxq -- "formal composition $line fault=PlatformNotSupportedException" <<< "$boundary" \
+                    || { echo "FAIL: composed open type was not refused: $line" >&2; return 1; }
+            else
+                grep -Fxq -- "formal composition $line contains=True" <<< "$boundary" \
+                    || { echo "FAIL: CLR formal type composition oracle mismatch: $line" >&2; return 1; }
+            fi
+        done
+        if [ "$axis" = dotnet ]; then
+            grep -Fxq -- 'formal composition generic activation=ArgumentException' <<< "$boundary"
+        fi
+        for line in metadata-answer compiled; do
+            if [ "$axis" = native ]; then
+                grep -Fxq -- "formal method composition $line fault=PlatformNotSupportedException" <<< "$boundary" \
+                    || { echo "FAIL: open generic method was not refused: $line" >&2; return 1; }
+            else
+                grep -Fxq -- "formal method composition $line: definition=False contains=True" <<< "$boundary" \
+                    || { echo "FAIL: CLR open generic method oracle mismatch: $line" >&2; return 1; }
+                grep -Fxq -- "formal method composition $line invoke=InvalidOperationException" <<< "$boundary" \
+                    || { echo "FAIL: CLR open generic method invocation oracle mismatch: $line" >&2; return 1; }
+            fi
+        done
+    done
+
+    run_bounded dotnet "$_CG_APP" before-mixed-generic-definitions > "$out/mixed-generic-definitions-before.dotnet.stdout"
+    run_bounded "$out/ReflectInvoke$EXE_EXT" before-mixed-generic-definitions > "$out/mixed-generic-definitions-before.native.stdout"
+    for axis in dotnet native; do
+        sed '/^== mixed generic method definitions ==/,$d' "$out/generic-method-definitions.$axis.stdout" \
+            > "$out/mixed-generic-definitions-prefix.$axis.stdout"
+        diff -u <(strip_cr_win_file "$out/mixed-generic-definitions-before.$axis.stdout") \
+            <(strip_cr_win_file "$out/mixed-generic-definitions-prefix.$axis.stdout")
+    done
+    for line in '== mixed generic method definitions ==' 'mixed generic method definitions end' 'mixed roots=7/text' \
+        'formal declaring own: reference=True operator=True method-owner=True' \
+        'formal declaring owner-int: reference=True operator=True method-owner=False' \
+        'formal declaring owner-string: reference=True operator=True method-owner=False' \
+        'formal declaring inherited: reference=True operator=True method-owner=True'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: mixed generic definition witness missing: $line" >&2; return 1; }
+    done
+    for line in Never Echo; do
+        grep -Fxq -- "mixed $line GetMethods count=1" <<< "$native"
+        for route in GetMember GetMembers; do
+            grep -Fxq -- "mixed $line $route count=1" <<< "$native"
+            grep -Fxq -- "mixed $line $route flags: generic=True definition=True contains=True" <<< "$native"
+            grep -Fxq -- "mixed $line $route arguments=1 name=U" <<< "$native"
+            grep -Fxq -- "mixed $line $route identity: reference=True operator=True equals=True" <<< "$native"
+            grep -Fxq -- "mixed $line $route signature: return=True parameter=True return-parameter=True" <<< "$native"
+            grep -Fxq -- "mixed $line $route invoke=InvalidOperationException" <<< "$native"
+        done
+    done
+    run_bounded dotnet "$_CG_APP" generic-signature-boundary-outcomes > "$out/generic-signature-boundary.dotnet.stdout"
+    run_bounded "$out/ReflectInvoke$EXE_EXT" generic-signature-boundary-outcomes > "$out/generic-signature-boundary.native.stdout"
+    for axis in dotnet native; do
+        boundary=$(strip_cr_win_file "$out/generic-signature-boundary.$axis.stdout")
+        for line in '== generic signature type boundaries ==' 'generic signature type boundaries end' \
+            'signature roots: array=1 byref=7 list=1 enumerable=True function=True task=True' \
+            'signature closed byref invoke=7 value=7'; do
+            grep -Fxq -- "$line" <<< "$boundary" \
+                || { echo "FAIL: generic signature boundary witness missing ($axis): $line" >&2; return 1; }
+        done
+        for line in ArrayShape RefShape ListShape EnumerableShape FunctionShape TaskShape; do
+            grep -Fxq -- "signature $line GetMethods count=1" <<< "$boundary"
+            grep -Fxq -- "signature $line closed definition=False contains=False" <<< "$boundary"
+            for route in GetMethod GetMethods; do
+                grep -Fxq -- "signature $line $route definition=True contains=True" <<< "$boundary"
+                for query in return parameter return-parameter; do
+                    if [ "$line" = RefShape ] && [ "$query" != parameter ]; then
+                        grep -Fxq -- "signature $line $route $query=type:U|parameter=True|contains=True" <<< "$boundary"
+                    elif [ "$axis" = native ]; then
+                        grep -Fxq -- "signature $line $route $query=fault:PlatformNotSupportedException" <<< "$boundary" \
+                            || { echo "FAIL: composed signature query was not refused: $line $route $query" >&2; return 1; }
+                    else
+                        grep -Eq "^signature $line $route $query=type:.*\\|parameter=False\\|contains=True$" <<< "$boundary" \
+                            || { echo "FAIL: CLR composed signature oracle missing: $line $route $query" >&2; return 1; }
+                    fi
+                done
+            done
+            if [ "$line" != RefShape ]; then
+                case "$line" in
+                    ArrayShape) expected='System.Int32[]' ;;
+                    ListShape) expected='System.Collections.Generic.List`1[System.Int32]' ;;
+                    EnumerableShape) expected='System.Collections.Generic.IEnumerable`1[System.Int32]' ;;
+                    FunctionShape) expected='System.Func`2[System.Int32,System.Boolean]' ;;
+                    TaskShape) expected='System.Threading.Tasks.Task`1[System.Int32]' ;;
+                esac
+                for query in return parameter return-parameter; do
+                    grep -Fxq -- "signature $line closed $query=type:$expected|parameter=False|contains=False" <<< "$boundary"
+                done
+            fi
+        done
+        # Closed byref ParameterType retains the separate signature-handle limit.
+        grep -Fxq -- 'signature RefShape closed return=type:System.Int32|parameter=False|contains=False' <<< "$boundary"
+        grep -Fxq -- 'signature RefShape closed return-parameter=type:System.Int32|parameter=False|contains=False' <<< "$boundary"
+        if [ "$axis" = native ]; then
+            grep -Fxq -- 'signature RefShape closed parameter=type:System.Object|parameter=False|contains=False' <<< "$boundary"
+            for line in Unconstrained ValueConstrained InterfaceConstrained ReferenceConstrained BaseConstrained; do
+                grep -Fxq -- "signature constraints $line fault=PlatformNotSupportedException" <<< "$boundary"
+            done
+        else
+            for line in 'signature RefShape closed parameter=type:System.Int32&|parameter=False|contains=False' \
+                'signature constraints Unconstrained count=0' 'signature constraints ValueConstrained count=1' \
+                'signature constraints ValueConstrained type=System.ValueType' \
+                'signature constraints InterfaceConstrained count=1' \
+                'signature constraints InterfaceConstrained type=ReflectGenericMethodSubset.IDefinitionConstraint' \
+                'signature constraints ReferenceConstrained count=0' 'signature constraints BaseConstrained count=1' \
+                'signature constraints BaseConstrained type=ReflectGenericMethodSubset.DefinitionConstraintBase'; do
+                grep -Fxq -- "$line" <<< "$boundary"
+            done
+        fi
+        if [ "$axis" = native ]; then
+            expected='System.Object'
+            grep -Fxq -- 'signature constrained InterfaceConstrained interfaces=0' <<< "$boundary"
+        else
+            expected='ReflectGenericMethodSubset.DefinitionConstraintBase'
+            grep -Fxq -- 'signature constrained InterfaceConstrained interfaces=1' <<< "$boundary"
+            grep -Fxq -- 'signature constrained InterfaceConstrained interface=ReflectGenericMethodSubset.IDefinitionConstraint' <<< "$boundary"
+        fi
+        grep -Fxq -- "signature constrained BaseConstrained base=$expected" <<< "$boundary"
+        grep -Fxq -- 'signature constrained BaseConstrained interfaces=0' <<< "$boundary"
+        grep -Fxq -- 'signature constrained InterfaceConstrained base=System.Object' <<< "$boundary"
+    done
+
+    run_bounded dotnet "$_CG_APP" before-formal-reflected-owners > "$out/formal-reflected-owners-before.dotnet.stdout"
+    run_bounded "$out/ReflectInvoke$EXE_EXT" before-formal-reflected-owners > "$out/formal-reflected-owners-before.native.stdout"
+    for axis in dotnet native; do
+        sed '/^== formal parameter reflected owners ==/,$d' "$out/generic-method-definitions.$axis.stdout" \
+            > "$out/formal-reflected-owners-prefix.$axis.stdout"
+        diff -u <(strip_cr_win_file "$out/formal-reflected-owners-before.$axis.stdout") \
+            <(strip_cr_win_file "$out/formal-reflected-owners-prefix.$axis.stdout")
+    done
+    for line in '== formal parameter reflected owners ==' 'formal parameter reflected owners end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: formal reflected-owner block witness missing: $line" >&2; return 1; }
+    done
+    for line in own owner-int owner-string inherited global; do
+        grep -Fxq -- "formal reflected $line: declaring-reference=True declaring-operator=True reflected-reference=True reflected-operator=True same-reference=True same-operator=True" <<< "$native"
+        case "$line" in
+            own|global) expected=True ;;
+            *) expected=False ;;
+        esac
+        grep -Fxq -- "formal reflected $line lookup: expected=True parameter-same=$expected" <<< "$native"
+    done
+
+    run_bounded dotnet "$_CG_APP" before-formal-classification > "$out/formal-classification-before.dotnet.stdout"
+    run_bounded "$out/ReflectInvoke$EXE_EXT" before-formal-classification > "$out/formal-classification-before.native.stdout"
+    for axis in dotnet native; do
+        sed '/^== formal method parameter classification ==/,$d' "$out/generic-method-definitions.$axis.stdout" \
+            > "$out/formal-classification-prefix.$axis.stdout"
+        diff -u <(strip_cr_win_file "$out/formal-classification-before.$axis.stdout") \
+            <(strip_cr_win_file "$out/formal-classification-prefix.$axis.stdout")
+    done
+    for line in '== formal method parameter classification ==' 'formal method parameter classification end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: formal classification block witness missing: $line" >&2; return 1; }
+    done
+    for line in Free Value Reference; do
+        expected='nested=True value=False class=True base=System.Object interfaces=0'
+        if [ "$line" = Value ]; then
+            expected='nested=True value=True class=False base=System.ValueType interfaces=0'
+        fi
+        for route in GetMethod GetMethods; do
+            grep -Fxq -- "formal classification $line $route: $expected" <<< "$native"
+        done
+        grep -Fxq -- "formal classification $line GetMethods count=1" <<< "$native"
+    done
+
+    grep -Fxq -- 'formal classification Value allocation: activation=ArgumentException array=NotSupportedException uninitialized=ArgumentException' <<< "$native"
+
+    run_bounded dotnet "$_CG_APP" before-metadata-formal-attributes > "$out/metadata-formal-attributes-before.dotnet.stdout"
+    run_bounded "$out/ReflectInvoke$EXE_EXT" before-metadata-formal-attributes > "$out/metadata-formal-attributes-before.native.stdout"
+    for axis in dotnet native; do
+        sed '/^== metadata formal parameter attributes ==/,$d' "$out/generic-method-definitions.$axis.stdout" \
+            > "$out/metadata-formal-attributes-prefix.$axis.stdout"
+        diff -u <(strip_cr_win_file "$out/metadata-formal-attributes-before.$axis.stdout") \
+            <(strip_cr_win_file "$out/metadata-formal-attributes-prefix.$axis.stdout")
+    done
+    for line in '== metadata formal parameter attributes ==' 'metadata formal parameter attributes end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: metadata formal attribute block witness missing: $line" >&2; return 1; }
+    done
+    for line in metadata ordinary; do
+        case "$line" in
+            metadata) expected=32; parameter=T ;;
+            ordinary) expected=0; parameter=U ;;
+        esac
+        grep -Fxq -- "metadata formal $line: name=$parameter attributes=$expected definition=True contains=True nested=True value=False class=True" <<< "$native"
+        grep -Fxq -- "metadata formal $line definition: attributes=$expected canonical=True" <<< "$native"
+        grep -Fxq -- "metadata formal $line closed definition: attributes=$expected canonical=True" <<< "$native"
+    done
+
+    run_bounded dotnet "$_CG_APP" before-formal-member-types > "$out/formal-member-types-before.dotnet.stdout"
+    run_bounded "$out/ReflectInvoke$EXE_EXT" before-formal-member-types > "$out/formal-member-types-before.native.stdout"
+    for axis in dotnet native; do
+        sed '/^== formal parameter member types ==/,$d' "$out/generic-method-definitions.$axis.stdout" \
+            > "$out/formal-member-types-prefix.$axis.stdout"
+        diff -u <(strip_cr_win_file "$out/formal-member-types-before.$axis.stdout") \
+            <(strip_cr_win_file "$out/formal-member-types-prefix.$axis.stdout")
+    done
+    for line in '== formal parameter member types ==' 'formal parameter member types end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: formal MemberType block witness missing: $line" >&2; return 1; }
+    done
+    for line in free value reference metadata; do
+        grep -Fxq -- "formal member $line: type=32 memberinfo=32 nested=True" <<< "$native"
+    done
+    grep -Fxq -- 'formal member nested: type=128 memberinfo=128 nested=True' <<< "$native"
+    grep -Fxq -- 'formal member top-level: type=32 memberinfo=32 nested=False' <<< "$native"
+
+    run_bounded dotnet "$_CG_APP" before-definition-signature-closure > "$out/definition-signature-closure-before.dotnet.stdout"
+    run_bounded "$out/ReflectInvoke$EXE_EXT" before-definition-signature-closure > "$out/definition-signature-closure-before.native.stdout"
+    for axis in dotnet native; do
+        sed '/^== definition signature closure ==/,$d' "$out/generic-method-definitions.$axis.stdout" \
+            > "$out/definition-signature-closure-prefix.$axis.stdout"
+        diff -u <(strip_cr_win_file "$out/definition-signature-closure-before.$axis.stdout") \
+            <(strip_cr_win_file "$out/definition-signature-closure-prefix.$axis.stdout")
+    done
+    for line in '== definition signature closure ==' 'definition signature closure end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: definition signature closure block witness missing: $line" >&2; return 1; }
+    done
+    for line in Pick QueuePick; do
+        case "$line" in
+            Pick) expected='DefinitionSignatureHolder`1' ;;
+            QueuePick) expected='Queue`1' ;;
+        esac
+        for route in GetMethod GetMethods; do
+            grep -Fxq -- "signature closure $line $route definition=True" <<< "$native"
+            for query in return parameter return-parameter; do
+                grep -Eq -- "^signature closure $line $route $query: name=$expected full=.+ generic=True$" <<< "$native" \
+                    || { echo "FAIL: definition's closed signature type missing: $line $route $query" >&2; return 1; }
+            done
+            grep -Fxq -- "signature closure $line $route identity: parameter=True return-parameter=True" <<< "$native"
+        done
+        grep -Fxq -- "signature closure $line GetMethods count=1" <<< "$native"
     done
 
     # Enforce each operation's first and repeated allocation budget independently.
@@ -1222,3 +1583,353 @@ DN2CPP_OUT_SUFFIX=-kept-override corelib_diff_gate ReflectFrameworkBind --no-ild
     -r "samples/dotnet/ReflectFrameworkBind/bin/$CONFIG/$TFM/ReflectReturnLib.dll" \
     --link-xml samples/dotnet/ReflectFrameworkBind/keep-library-override.xml
 unset -f gate_extra_asserts
+
+# Each load set omits Ext although the CLR build needs it to describe the unused signature.
+unused_fixture="$PWD/gates/fixtures/reflection-unused-signatures"
+for subject in App AppOwned; do
+    dotnet build "$unused_fixture/$subject/$subject.csproj" -c "$CONFIG" --nologo -v q
+    case "$subject" in
+        App) unused_assembly=ReflectionUnusedApp ;;
+        AppOwned) unused_assembly=ReflectionUnusedAppOwned ;;
+    esac
+    unused_app="$unused_fixture/$subject/bin/$CONFIG/$TFM/$unused_assembly.dll"
+    unused_refs=(-r "$_CG_CORELIB")
+    if [ "$subject" = App ]; then
+        unused_refs+=(-r "$unused_fixture/Lib/bin/$CONFIG/$TFM/ReflectionUnusedLib.dll")
+    fi
+    for mode in default trim; do
+        unused_out="artifacts/reflection-unused-signatures/$subject-$mode"
+        unused_flags=()
+        if [ "$mode" = trim ]; then
+            unused_flags=(--trim-reflection)
+        fi
+        DN2CPP_STRICT_COMPLETION=1 run_bounded invoke_cli "$unused_app" "${unused_refs[@]}" \
+            --no-ildiet ${unused_flags[@]+"${unused_flags[@]}"} -o "$unused_out"
+        compile_console "$unused_out" "$unused_assembly"
+        run_bounded dotnet "$unused_app" > "$unused_out/dotnet.stdout"
+        run_bounded "$unused_out/$unused_assembly$EXE_EXT" > "$unused_out/native.stdout"
+        diff -u <(strip_cr_win_file "$unused_out/dotnet.stdout") \
+            <(strip_cr_win_file "$unused_out/native.stdout")
+        unused_native=$(strip_cr_win_file "$unused_out/native.stdout")
+        for line in '== unused generic signature ==' 'used=42' 'supported=7' \
+            'definition=True parameter=U' 'unused generic signature end'; do
+            grep -Fxq -- "$line" <<< "$unused_native" \
+                || { echo "FAIL: unused signature control missing ($subject/$mode): $line" >&2; exit 1; }
+        done
+    done
+done
+
+# Only additional definitions depend on these absent layouts. Explicit references
+# keep the rows; a layout needed by a compiled body cannot use the omission path.
+for subject in AppNested BodyNeeded; do
+    dotnet build "$unused_fixture/$subject/$subject.csproj" -c "$CONFIG" --nologo -v q
+    case "$subject" in
+        AppNested) unused_assembly=ReflectionUnusedAppNested ;;
+        BodyNeeded) unused_assembly=ReflectionSignatureBodyNeeded ;;
+    esac
+    unused_app="$unused_fixture/$subject/bin/$CONFIG/$TFM/$unused_assembly.dll"
+    unused_ext="$unused_fixture/Ext/bin/$CONFIG/$TFM/ReflectionUnusedExt.dll"
+    for mode in default trim; do
+        unused_flags=()
+        if [ "$mode" = trim ]; then
+            unused_flags=(--trim-reflection)
+        fi
+        for load in absent loaded; do
+            unused_out="artifacts/reflection-unused-signatures/$subject-$mode-$load"
+            unused_refs=(-r "$_CG_CORELIB")
+            if [ "$load" = loaded ]; then
+                unused_refs+=(-r "$unused_ext")
+            fi
+            mkdir -p "$unused_out"
+            unused_status=0
+            DN2CPP_STRICT_COMPLETION=1 run_bounded invoke_cli "$unused_app" "${unused_refs[@]}" \
+                --no-ildiet ${unused_flags[@]+"${unused_flags[@]}"} -o "$unused_out" \
+                > "$unused_out/emission.log" 2>&1 || unused_status=$?
+            if [ "$subject" = BodyNeeded ] && [ "$load" = absent ]; then
+                if [ "$unused_status" -ne 2 ] || ! grep -Fq 'external generic types' "$unused_out/emission.log"; then
+                    cat "$unused_out/emission.log" >&2
+                    echo "FAIL: a body-required missing layout was not refused ($mode)" >&2
+                    exit 1
+                fi
+                continue
+            fi
+            if [ "$unused_status" -ne 0 ]; then
+                cat "$unused_out/emission.log" >&2
+                echo "FAIL: optional signature layout rejected the image ($subject/$mode/$load)" >&2
+                exit 1
+            fi
+            compile_console "$unused_out" "$unused_assembly"
+            run_bounded dotnet "$unused_app" > "$unused_out/dotnet.stdout"
+            run_bounded "$unused_out/$unused_assembly$EXE_EXT" > "$unused_out/native.stdout"
+            diff -u <(strip_cr_win_file "$unused_out/dotnet.stdout") \
+                <(strip_cr_win_file "$unused_out/native.stdout")
+            unused_native=$(strip_cr_win_file "$unused_out/native.stdout")
+            for line in '== nested generic signature ==' 'used=42' 'supported=7' \
+                'definition=True parameter=U' 'nested generic signature end'; do
+                grep -Fxq -- "$line" <<< "$unused_native" \
+                    || { echo "FAIL: nested signature control missing ($subject/$mode/$load): $line" >&2; exit 1; }
+            done
+            if [ "$subject" = BodyNeeded ]; then
+                grep -Fxq -- 'body needed=True' <<< "$unused_native"
+            fi
+            run_bounded dotnet "$unused_app" describe-unused-layouts > "$unused_out/definitions.dotnet.stdout"
+            run_bounded "$unused_out/$unused_assembly$EXE_EXT" describe-unused-layouts > "$unused_out/definitions.native.stdout"
+            unused_native=$(strip_cr_win_file "$unused_out/definitions.native.stdout")
+            unused_clr=$(strip_cr_win_file "$unused_out/definitions.dotnet.stdout")
+            for line in '== unused layout definitions ==' 'unused layout definitions end'; do
+                grep -Fxq -- "$line" <<< "$unused_native"
+                grep -Fxq -- "$line" <<< "$unused_clr"
+            done
+            for line in Pick First Second OwnerFirst OwnerSecond TaskShape TaskLayout; do
+                grep -Fxq -- "$line found=True" <<< "$unused_clr"
+                if [ "$load" = absent ]; then
+                    grep -Fxq -- "$line found=False" <<< "$unused_native" \
+                        || { echo "FAIL: an unavailable definition layout survived ($mode): $line" >&2; exit 1; }
+                else
+                    grep -Fxq -- "$line found=True" <<< "$unused_native"
+                    grep -Fxq -- "$line identity=True/True" <<< "$unused_native"
+                fi
+            done
+            if [ "$load" = loaded ]; then
+                diff -u <(strip_cr_win_file "$unused_out/definitions.dotnet.stdout") \
+                    <(strip_cr_win_file "$unused_out/definitions.native.stdout")
+            fi
+        done
+    done
+done
+
+# Ordinary retained rows need their shapes; symbolic field growth cannot be a
+# successful-output decision made by the environment's monomorphization bound.
+for subject in AppDependencies MethodBodyNeeded GrowthBodyNeeded; do
+    dotnet build "$unused_fixture/$subject/$subject.csproj" -c "$CONFIG" --nologo -v q
+    case "$subject" in
+        AppDependencies) unused_assembly=ReflectionSignatureDependencies ;;
+        MethodBodyNeeded) unused_assembly=ReflectionMethodBodyNeeded ;;
+        GrowthBodyNeeded) unused_assembly=ReflectionGrowthBodyNeeded ;;
+    esac
+    unused_app="$unused_fixture/$subject/bin/$CONFIG/$TFM/$unused_assembly.dll"
+    for mode in default trim; do
+        unused_flags=()
+        if [ "$mode" = trim ]; then
+            unused_flags=(--trim-reflection)
+        fi
+        for load in absent loaded; do
+            unused_out="artifacts/reflection-unused-signatures/$subject-$mode-$load"
+            unused_refs=(-r "$_CG_CORELIB" -r "$unused_fixture/Lib/bin/$CONFIG/$TFM/ReflectionUnusedLib.dll")
+            if [ "$load" = loaded ]; then
+                unused_refs+=(-r "$unused_fixture/Ext/bin/$CONFIG/$TFM/ReflectionUnusedExt.dll")
+            fi
+            mkdir -p "$unused_out"
+            unused_status=0
+            DN2CPP_STRICT_COMPLETION=1 run_bounded invoke_cli "$unused_app" "${unused_refs[@]}" \
+                --no-ildiet ${unused_flags[@]+"${unused_flags[@]}"} -o "$unused_out" \
+                > "$unused_out/emission.log" 2>&1 || unused_status=$?
+            if [ "$subject" = GrowthBodyNeeded ] || { [ "$subject" = MethodBodyNeeded ] && [ "$load" = absent ]; }; then
+                if [ "$unused_status" -ne 2 ]; then
+                    cat "$unused_out/emission.log" >&2
+                    echo "FAIL: a required dependency was not refused ($subject/$mode/$load)" >&2
+                    exit 1
+                fi
+                if [ "$subject" = GrowthBodyNeeded ]; then
+                    grep -Fq 'DN2CPP_MAX_GENERIC_DEPTH' "$unused_out/emission.log"
+                    grep -Eq 'Driven by the signature of field .*Node.*\.Next' "$unused_out/emission.log"
+                else
+                    grep -Fq 'external generic types' "$unused_out/emission.log"
+                fi
+                continue
+            fi
+            if [ "$unused_status" -ne 0 ]; then
+                cat "$unused_out/emission.log" >&2
+                echo "FAIL: optional dependencies rejected the image ($subject/$mode/$load)" >&2
+                exit 1
+            fi
+            compile_console "$unused_out" "$unused_assembly"
+            run_bounded dotnet "$unused_app" > "$unused_out/dotnet.stdout"
+            run_bounded "$unused_out/$unused_assembly$EXE_EXT" > "$unused_out/native.stdout"
+            diff -u <(strip_cr_win_file "$unused_out/dotnet.stdout") \
+                <(strip_cr_win_file "$unused_out/native.stdout")
+            if [ "$subject" != AppDependencies ]; then
+                continue
+            fi
+            run_bounded dotnet "$unused_app" describe-layout-dependencies > "$unused_out/dependencies.dotnet.stdout"
+            run_bounded "$unused_out/$unused_assembly$EXE_EXT" describe-layout-dependencies > "$unused_out/dependencies.native.stdout"
+            unused_clr=$(strip_cr_win_file "$unused_out/dependencies.dotnet.stdout")
+            unused_native=$(strip_cr_win_file "$unused_out/dependencies.native.stdout")
+            for line in '== signature dependency layouts ==' 'used=42' 'definition=True parameter=U' \
+                '== unused signature dependencies ==' 'unused signature dependencies end' 'signature dependency layouts end'; do
+                grep -Fxq -- "$line" <<< "$unused_native"
+                grep -Fxq -- "$line" <<< "$unused_clr"
+            done
+            sed '/^== unused signature dependencies ==/,/^unused signature dependencies end/d' \
+                <<< "$unused_native" > "$unused_out/dependencies-prefix.stdout"
+            diff -u <(strip_cr_win_file "$unused_out/native.stdout") "$unused_out/dependencies-prefix.stdout"
+            omitted='Growing|CrossGrowing'
+            if [ "$load" = absent ]; then
+                omitted="$omitted|MethodOnly|CtorOnly|InterfaceOnly"
+            fi
+            for line in MethodOnly CtorOnly InterfaceOnly GenericOwner Growing CrossGrowing Reset Swap Converging; do
+                grep -Fxq -- "$line found=True" <<< "$unused_clr"
+                case "$line/$load" in
+                    Growing/*|CrossGrowing/*|MethodOnly/absent|CtorOnly/absent|InterfaceOnly/absent)
+                        grep -Fxq -- "$line found=False" <<< "$unused_native" ;;
+                    *)
+                        grep -Fxq -- "$line found=True" <<< "$unused_native"
+                        grep -Fxq -- "$line identity=True/True" <<< "$unused_native" ;;
+                esac
+            done
+            grep -Fxq -- 'GenericOwner member found=True' <<< "$unused_clr"
+            if [ "$load" = absent ]; then
+                grep -Fxq -- 'GenericOwner member found=False' <<< "$unused_native"
+            else
+                grep -Fxq -- 'GenericOwner member found=True' <<< "$unused_native"
+            fi
+            diff -u <(sed -E "/^($omitted)( found=| types=| identity=)/d; /^GenericOwner member found=/d" <<< "$unused_clr") \
+                <(sed -E "/^($omitted)( found=| types=| identity=)/d; /^GenericOwner member found=/d" <<< "$unused_native")
+            run_bounded dotnet "$unused_app" describe-layout-paths > "$unused_out/paths.dotnet.stdout"
+            run_bounded "$unused_out/$unused_assembly$EXE_EXT" describe-layout-paths > "$unused_out/paths.native.stdout"
+            unused_clr=$(strip_cr_win_file "$unused_out/paths.dotnet.stdout")
+            unused_native=$(strip_cr_win_file "$unused_out/paths.native.stdout")
+            for line in '== additional signature paths ==' 'additional signature paths end'; do
+                grep -Fxq -- "$line" <<< "$unused_native"
+                grep -Fxq -- "$line" <<< "$unused_clr"
+            done
+            sed '/^== additional signature paths ==/,/^additional signature paths end/d' \
+                <<< "$unused_native" > "$unused_out/paths-prefix.stdout"
+            diff -u <(strip_cr_win_file "$unused_out/native.stdout") "$unused_out/paths-prefix.stdout"
+            omitted='Branched|OriginOverlap'
+            if [ "$load" = absent ]; then
+                omitted="$omitted|OverrideOnly|InheritedSlot"
+            fi
+            for line in Branched OriginOverlap BranchFinite OverrideOnly InheritedSlot VirtualSibling; do
+                grep -Fxq -- "$line found=True" <<< "$unused_clr"
+                case "$line/$load" in
+                    Branched/*|OriginOverlap/*|OverrideOnly/absent|InheritedSlot/absent)
+                        grep -Fxq -- "$line found=False" <<< "$unused_native" ;;
+                    *)
+                        grep -Fxq -- "$line found=True" <<< "$unused_native"
+                        grep -Fxq -- "$line identity=True/True" <<< "$unused_native" ;;
+                esac
+            done
+            diff -u <(sed -E "/^($omitted)( found=| types=| identity=)/d" <<< "$unused_clr") \
+                <(sed -E "/^($omitted)( found=| types=| identity=)/d" <<< "$unused_native")
+            run_bounded dotnet "$unused_app" describe-default-interface-layout > "$unused_out/default-interface.dotnet.stdout"
+            run_bounded "$unused_out/$unused_assembly$EXE_EXT" describe-default-interface-layout > "$unused_out/default-interface.native.stdout"
+            unused_clr=$(strip_cr_win_file "$unused_out/default-interface.dotnet.stdout")
+            unused_native=$(strip_cr_win_file "$unused_out/default-interface.native.stdout")
+            for line in '== default interface layout ==' 'default interface layout end'; do
+                grep -Fxq -- "$line" <<< "$unused_native"
+                grep -Fxq -- "$line" <<< "$unused_clr"
+            done
+            sed '/^== default interface layout ==/,/^default interface layout end/d' \
+                <<< "$unused_native" > "$unused_out/default-interface-prefix.stdout"
+            diff -u <(strip_cr_win_file "$unused_out/native.stdout") "$unused_out/default-interface-prefix.stdout"
+            for line in DefaultInterface SupportedDefaultInterface RelationOnlyInterface; do
+                grep -Fxq -- "$line found=True" <<< "$unused_clr"
+                if [ "$line/$load" = DefaultInterface/absent ]; then
+                    grep -Fxq -- "$line found=False" <<< "$unused_native"
+                else
+                    grep -Fxq -- "$line found=True" <<< "$unused_native"
+                    grep -Fxq -- "$line identity=True/True" <<< "$unused_native"
+                fi
+            done
+            if [ "$load" = absent ]; then
+                diff -u <(sed -E '/^DefaultInterface( found=| types=| identity=)/d' <<< "$unused_clr") \
+                    <(sed -E '/^DefaultInterface( found=| types=| identity=)/d' <<< "$unused_native")
+            else
+                diff -u <(strip_cr_win_file "$unused_out/default-interface.dotnet.stdout") \
+                    <(strip_cr_win_file "$unused_out/default-interface.native.stdout")
+            fi
+            run_bounded dotnet "$unused_app" describe-completion-layouts > "$unused_out/completion.dotnet.stdout"
+            run_bounded "$unused_out/$unused_assembly$EXE_EXT" describe-completion-layouts > "$unused_out/completion.native.stdout"
+            unused_clr=$(strip_cr_win_file "$unused_out/completion.dotnet.stdout")
+            unused_native=$(strip_cr_win_file "$unused_out/completion.native.stdout")
+            for line in '== completion signature layouts ==' 'completion signature layouts end' \
+                'ordinary row=True generic=False' 'OverrideFinite getter=ResetNode`1 identity=True parameters=0'; do
+                grep -Fxq -- "$line" <<< "$unused_native"
+                grep -Fxq -- "$line" <<< "$unused_clr"
+            done
+            sed '/^== completion signature layouts ==/,/^completion signature layouts end/d' \
+                <<< "$unused_native" > "$unused_out/completion-prefix.stdout"
+            diff -u <(strip_cr_win_file "$unused_out/native.stdout") "$unused_out/completion-prefix.stdout"
+            for line in OverrideGrowth OverrideFinite ExplicitGrowth ExplicitFinite StructDefinitionOnly StructPair; do
+                grep -Fxq -- "$line found=True" <<< "$unused_clr"
+                case "$line" in
+                    OverrideGrowth|ExplicitGrowth)
+                        grep -Fxq -- "$line found=False" <<< "$unused_native" ;;
+                    *)
+                        grep -Fxq -- "$line found=True" <<< "$unused_native"
+                        grep -Fxq -- "$line definition=True formal=U" <<< "$unused_native"
+                        grep -Fxq -- "$line identity=True/True" <<< "$unused_native" ;;
+                esac
+            done
+            diff -u <(sed -E '/^(OverrideGrowth|ExplicitGrowth)( found=| definition=| types=| identity=)/d' <<< "$unused_clr") \
+                <(sed -E '/^(OverrideGrowth|ExplicitGrowth)( found=| definition=| types=| identity=)/d' <<< "$unused_native")
+            DN2CPP_MAX_GENERIC_DEPTH=40 DN2CPP_STRICT_COMPLETION=1 run_bounded invoke_cli \
+                "$unused_app" "${unused_refs[@]}" --no-ildiet ${unused_flags[@]+"${unused_flags[@]}"} \
+                -o "$unused_out-depth40" > "$unused_out-depth40.log" 2>&1
+            for unused_generated in "$unused_out"/generated*.cpp "$unused_out"/generated.h; do
+                cmp "$unused_generated" "$unused_out-depth40/$(basename "$unused_generated")"
+            done
+        done
+    done
+done
+
+# An open signature needs its base shape but never the base's unused field layout.
+dotnet build "$unused_fixture/AppOpen/AppOpen.csproj" -c "$CONFIG" --nologo -v q
+unused_app="$unused_fixture/AppOpen/bin/$CONFIG/$TFM/ReflectionUnusedAppOpen.dll"
+for mode in default trim; do
+    unused_flags=()
+    if [ "$mode" = trim ]; then
+        unused_flags=(--trim-reflection)
+    fi
+    for load in absent loaded; do
+        unused_out="artifacts/reflection-unused-signatures/AppOpen-$mode-$load"
+        unused_refs=(-r "$_CG_CORELIB" -r "$unused_fixture/Lib/bin/$CONFIG/$TFM/ReflectionUnusedLib.dll")
+        if [ "$load" = loaded ]; then
+            unused_refs+=(-r "$unused_fixture/Ext/bin/$CONFIG/$TFM/ReflectionUnusedExt.dll")
+        fi
+        DN2CPP_STRICT_COMPLETION=1 run_bounded invoke_cli "$unused_app" "${unused_refs[@]}" \
+            --no-ildiet ${unused_flags[@]+"${unused_flags[@]}"} -o "$unused_out"
+        compile_console "$unused_out" ReflectionUnusedAppOpen
+        run_bounded dotnet "$unused_app" > "$unused_out/dotnet.stdout"
+        run_bounded "$unused_out/ReflectionUnusedAppOpen$EXE_EXT" > "$unused_out/native.stdout"
+        diff -u <(strip_cr_win_file "$unused_out/dotnet.stdout") \
+            <(strip_cr_win_file "$unused_out/native.stdout")
+        unused_native=$(strip_cr_win_file "$unused_out/native.stdout")
+        for line in '== open signature base layout ==' 'used=42' 'found=True' \
+            'definition=True' 'formal=U' 'open signature base layout end'; do
+            grep -Fxq -- "$line" <<< "$unused_native" \
+                || { echo "FAIL: open signature definition missing ($mode/$load): $line" >&2; exit 1; }
+        done
+        run_bounded dotnet "$unused_app" return-type > "$unused_out/return.dotnet.stdout"
+        run_bounded "$unused_out/ReflectionUnusedAppOpen$EXE_EXT" return-type > "$unused_out/return.native.stdout"
+        unused_clr=$(strip_cr_win_file "$unused_out/return.dotnet.stdout")
+        unused_native=$(strip_cr_win_file "$unused_out/return.native.stdout")
+        grep -Fxq -- 'return=OpenHolder`1 contains=True' <<< "$unused_clr" \
+            || { echo "FAIL: CLR open signature type witness missing ($mode/$load)" >&2; exit 1; }
+        grep -Fxq -- 'return exception=PlatformNotSupportedException' <<< "$unused_native" \
+            || { echo "FAIL: native open signature type boundary missing ($mode/$load)" >&2; exit 1; }
+        diff -u <(strip_cr_win_file "$unused_out/dotnet.stdout") \
+            <(sed '/^return=/d' <<< "$unused_clr")
+        diff -u <(strip_cr_win_file "$unused_out/native.stdout") \
+            <(sed '/^return exception=/d' <<< "$unused_native")
+    done
+done
+
+# This driver has no GetMethod or typeof(ValueType) seed for the formal's base handle.
+dotnet build "$unused_fixture/Enumeration/Enumeration.csproj" -c "$CONFIG" --nologo -v q
+formal_enumeration_app="$unused_fixture/Enumeration/bin/$CONFIG/$TFM/FormalMethodEnumeration.dll"
+formal_enumeration_out=artifacts/formal-method-enumeration
+DN2CPP_STRICT_COMPLETION=1 run_bounded invoke_cli "$formal_enumeration_app" -r "$_CG_CORELIB" \
+    --no-ildiet -o "$formal_enumeration_out"
+compile_console "$formal_enumeration_out" FormalMethodEnumeration
+run_bounded dotnet "$formal_enumeration_app" > "$formal_enumeration_out/dotnet.stdout"
+run_bounded "$formal_enumeration_out/FormalMethodEnumeration$EXE_EXT" > "$formal_enumeration_out/native.stdout"
+diff -u <(strip_cr_win_file "$formal_enumeration_out/dotnet.stdout") \
+    <(strip_cr_win_file "$formal_enumeration_out/native.stdout")
+formal_enumeration_native=$(strip_cr_win_file "$formal_enumeration_out/native.stdout")
+for line in '== enumerated formal parameter ==' \
+    'nested=True value=True class=False base=System.ValueType' 'count=1' 'enumerated formal parameter end'; do
+    grep -Fxq -- "$line" <<< "$formal_enumeration_native" \
+        || { echo "FAIL: enumerated formal parameter witness missing: $line" >&2; exit 1; }
+done

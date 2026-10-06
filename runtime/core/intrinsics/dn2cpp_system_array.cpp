@@ -741,6 +741,8 @@ const Dn2CppTypeInfo* dn2cpp_mdarr_ti(const Dn2CppTypeInfo* elem, int32_t rank)
 static const Dn2CppTypeInfo* dn2cpp_array_require_element_type(Dn2CppType* type)
 {
     const Dn2CppTypeInfo* element = type->typeInfo;
+    if ((element->flags & DN2CPP_TF_GENERICPARAM) != 0)
+        dn2cpp_throw_not_supported();
     if (element == &dn2cpp_void_type)
         dn2cpp_throw_not_supported_msg("Arrays of System.Void are not supported.");
     if ((element->flags & DN2CPP_TF_BYREFLIKE) != 0)

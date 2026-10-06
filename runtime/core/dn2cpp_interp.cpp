@@ -1051,7 +1051,7 @@ enum OverloadStatus { kOverloadNone, kOverloadFound, kOverloadAmbiguous };
 // Resolves one method import against a single reflected method table (`methods`
 // / `count`), among entries matching (name — unless `matchName` is false, for
 // constructors —, `paramCount`, `wantStatic`). A --hotupdate-base build stamps a
-// `sigShape` on every row, so the import's `shape` string picks the exact
+// `sigShape` on every callable row, so the import's `shape` string picks the exact
 // overload — chiefly one instantiation out of the several a generic method emits
 // under one name, whose shapes its type arguments lead. Falls back to a lone
 // unshaped candidate (a legacy row with no sigShape — never produced by a
@@ -1074,6 +1074,8 @@ OverloadStatus resolve_overload(
     for (int32_t i = 0; i < count; i++)
     {
         auto mi = methods[i];
+        if (mi->genericParamCount > 0 && mi->genericArgs == nullptr)
+            continue; // Definition-only rows cannot bind a compiled method import.
         if (mi->paramCount != static_cast<int32_t>(paramCount))
             continue;
         if (((mi->attrs & DN2CPP_MTHA_STATIC) != 0) != wantStatic)

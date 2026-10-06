@@ -730,12 +730,12 @@ members-base (14)
 samemeta => 8 Val ret=String
 samemeta-miss => argerr
 gm-direct => Int32
-gm-lookup-isdef => False
-gm-lookup-args => Int32
+gm-lookup-isdef => True
+gm-lookup-args => T
 gm-defview-isdef => True
-gm-defview-args => Int32
-gm-defview-open => False
-gm-remake-eq-lookup => True
+gm-defview-args => T
+gm-defview-open => True
+gm-remake-eq-lookup => False
 gm-unreached => PlatformNotSupportedException
 member=IReadOnlyList`1 item=Int32
 temp=List`1 count=2

@@ -1116,9 +1116,10 @@ internal sealed partial class Compilation
     /// class still carries its name, base, interfaces, layout, vtable, assembly, Type
     /// object, enum members and the ToString/Equals/GetHashCode/Finalize slots — only the
     /// <c>GetFields/GetMethods/GetProperties</c> surface goes, and reading it at run time
-    /// throws (see <c>DN2CPP_TF_METADATA_STRIPPED</c>) rather than answering empty.</summary>
-    public bool KeepsReflectionMetadata(ClassInfo cls) =>
-        _reflectionKeep is null || _reflectionKeep.Contains(cls);
+    /// throws (see <c>DN2CPP_TF_METADATA_STRIPPED</c>) rather than answering empty.
+    /// An unpublished owner belongs to no finalized keep-set.</summary>
+    public bool KeepsReflectionMetadata(ClassInfo? cls) =>
+        _reflectionKeep is null || cls is not null && _reflectionKeep.Contains(cls);
 
     /// <summary>Whether <c>--trim-reflection</c> strips the member metadata of the classes
     /// <see cref="KeepsReflectionMetadata"/> does not keep.</summary>

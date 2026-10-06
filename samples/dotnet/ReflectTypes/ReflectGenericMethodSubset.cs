@@ -4,20 +4,8 @@ using System.Reflection;
 
 namespace ReflectGenericMethodSubset
 {
-    // The intentionally-divergent (AOT-boundary) half of the generic-method
-    // reflection dimension; the real-.NET-parity half lives in the
-    // reflect-invoke diff gate. Divergences frozen here (methtab rows are
-    // per-closed-instantiation — the image has no open generic method rows):
-    //  - GetMethod surfaces a CLOSED instantiation, so IsGenericMethodDefinition
-    //    answers false where real .NET (open definition) answers true, and
-    //    GetGenericArguments reports the closed arguments (Int32, not T). The
-    //    same holds for the GetGenericMethodDefinition view, whose arguments
-    //    stay closed, and ContainsGenericParameters stays false on it.
-    //  - MakeGenericMethod over an instantiation the transpile never reached
-    //    throws the catchable PlatformNotSupportedException (real .NET JITs it).
-    //  - MakeGenericMethod re-resolving the in-image instantiation returns the
-    //    same row the lookup surfaced, so it compares EQUAL to the GetMethod
-    //    result (real .NET: open definition != closed method).
+    // Definition queries follow CLR. MakeGenericMethod can resolve only compiled
+    // instantiations; the live parity coverage is in the reflect-invoke bucket.
     static class GmDiverge
     {
         public static string Pick<T>() => typeof(T).Name;
