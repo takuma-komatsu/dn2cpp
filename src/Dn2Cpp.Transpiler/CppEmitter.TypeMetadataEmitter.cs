@@ -1069,7 +1069,7 @@ internal sealed partial class CppEmitter
         /// a closed instantiation, synthetic for a def with no close) must carry them or the
         /// definition reads as a non-sealed reference class. Interface ⟹ abstract, mirroring
         /// the closed-type flag rule.</summary>
-        private static void AddGenericDefKindFlags(List<string> flagBits, bool isValueType, bool isInterface, bool isAbstract, bool isSealed)
+        private static void AddGenericDefKindFlags(List<string> flagBits, bool isValueType, bool isInterface, bool isAbstract, bool isSealed, bool isDelegate)
         {
             if (isValueType)
                 flagBits.Add("DN2CPP_TF_VALUETYPE");
@@ -1082,6 +1082,8 @@ internal sealed partial class CppEmitter
                 flagBits.Add("DN2CPP_TF_ABSTRACT");
             if (isSealed)
                 flagBits.Add("DN2CPP_TF_SEALED");
+            if (isDelegate)
+                flagBits.Add("DN2CPP_TF_DELEGATE");
         }
 
         /// <summary>Whether <paramref name="defName"/> is one of the five generic collection
@@ -1370,7 +1372,7 @@ internal sealed partial class CppEmitter
                 string defSym = "gendef_" + defBase;
                 _e._genericDefSyms[gi.DefName] = defSym;
                 var defFlagBits = new List<string> { "DN2CPP_TF_GENERICDEF" };
-                AddGenericDefKindFlags(defFlagBits, c.IsValueType, c.IsInterface, c.IsAbstract, c.IsSealed);
+                AddGenericDefKindFlags(defFlagBits, c.IsValueType, c.IsInterface, c.IsAbstract, c.IsSealed, c.IsDelegate);
                 if (IsArrayGenericItfDef(gi.DefName))
                     defFlagBits.Add("DN2CPP_TF_ARRAY_GEN_ITF");
                 string defFlags = "(" + string.Join(" | ", defFlagBits) + ")";
@@ -1667,7 +1669,7 @@ internal sealed partial class CppEmitter
                 // handle, so IsInterface/IsAbstract/IsClass/IsSealed/IsValueType must answer
                 // as real .NET does. An interface is also abstract, mirroring the
                 // closed-type flag rule above.
-                AddGenericDefKindFlags(flagBits, cls.IsValueType, cls.IsInterface, cls.IsAbstract, cls.IsSealed);
+                AddGenericDefKindFlags(flagBits, cls.IsValueType, cls.IsInterface, cls.IsAbstract, cls.IsSealed, cls.IsDelegate);
                 if (varMask != 0)
                     flagBits.Add("DN2CPP_TF_VARIANT");
                 if (_e.IsCovariantGenericDef(cls))
@@ -1731,7 +1733,8 @@ internal sealed partial class CppEmitter
                     synthValueType,
                     synthInterface,
                     (def.Kind & GenericDefKind.Abstract) != 0,
-                    (def.Kind & GenericDefKind.Sealed) != 0);
+                    (def.Kind & GenericDefKind.Sealed) != 0,
+                    (def.Kind & GenericDefKind.Delegate) != 0);
                 uint synthAttrs = 0;
                 int synthToken = 0;
                 string? synthAssembly = null;

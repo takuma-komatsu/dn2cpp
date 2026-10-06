@@ -4631,6 +4631,16 @@ internal sealed partial class Compilation
             kind |= GenericDefKind.Sealed;
         if (IsValueTypeDef(reader, td))
             kind |= GenericDefKind.ValueType;
+        bool isDelegate = td.BaseType switch
+        {
+            { IsNil: false, Kind: HandleKind.TypeDefinition } b =>
+                TypeFullName(reader, (TypeDefinitionHandle)b) is "System.MulticastDelegate" or "System.Delegate",
+            { IsNil: false, Kind: HandleKind.TypeReference } b =>
+                TypeRefFullName(reader, (TypeReferenceHandle)b) is "System.MulticastDelegate" or "System.Delegate",
+            _ => false,
+        };
+        if (isDelegate)
+            kind |= GenericDefKind.Delegate;
         if (IsByRefLikeType(reader, td))
             kind |= GenericDefKind.ByRefLike;
         if (!td.GetDeclaringType().IsNil)

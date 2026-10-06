@@ -327,12 +327,34 @@ internal sealed partial class MethodCompiler
                     $"dn2cpp_delegate_dynamic_invoke({DelegateReceiver(d)}, {Cast(args, "Dn2CppArrayRef*")})");
                 return true;
             }
+            case ("System.Delegate", "CreateDelegate") when sig.ParameterTypes.Length is >= 3 and <= 5
+                && sig.ParameterTypes[2].IsString:
+            {
+                var pt = sig.ParameterTypes;
+                if (pt.Length >= 4 && pt[3] is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+                    || pt.Length == 5 && pt[4] is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean })
+                    return false;
+                Comp.NeedsReflectionDelegateBind = true;
+                string throwExpr = pt.Length == 5 ? Cast(Pop(), "int32_t") : "1";
+                string ignoreCaseExpr = pt.Length >= 4 ? Cast(Pop(), "int32_t") : "0";
+                var methodName = Pop();
+                var target = Pop();
+                var ty = Pop();
+                bool staticForm = (pt[1].Class?.FullName ?? pt[1].ExternalName) == "System.Type";
+                NoteValueTypeRows();
+                Push(StackKind.Ref, "Dn2CppObject*",
+                    $"dn2cpp_delegate_create_named({Cast(ty, "Dn2CppType*")}, "
+                    + $"{(staticForm ? "nullptr" : Cast(target, "Dn2CppObject*"))}, "
+                    + $"{(staticForm ? Cast(target, "Dn2CppType*") : "nullptr")}, "
+                    + $"{Cast(methodName, "Dn2CppString*")}, {(staticForm ? 1 : 0)}, {ignoreCaseExpr}, {throwExpr})");
+                return true;
+            }
             // Delegate.CreateDelegate — the MethodInfo-taking static forms:
             // (Type, MethodInfo[, bool throwOnBindFailure]) and (Type, object firstArgument,
             // MethodInfo[, bool]). They route to the same runtime binder as
             // MethodInfo.CreateDelegate; the firstArgument overloads are the closed forms (a
             // static method's first parameter can be bound; an instance method may bind a
-            // null receiver). The string-method-name forms stay unmapped.
+            // null receiver).
             case ("System.Delegate", "CreateDelegate") when sig.ParameterTypes.Length is >= 2 and <= 4:
             {
                 var pt = sig.ParameterTypes;

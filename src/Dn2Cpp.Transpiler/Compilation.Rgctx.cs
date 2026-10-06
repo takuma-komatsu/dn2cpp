@@ -1721,7 +1721,8 @@ internal sealed partial class Compilation
     /// restricted.</summary>
     private bool RuntimeTemplateShapeEligible(ClassInfo tmpl)
     {
-        if (tmpl.IsValueType || tmpl.IsInterface || tmpl.IsAbstract)
+        // A delegate's runtime-provided Invoke needs a concrete ABI and trampoline.
+        if (tmpl.IsValueType || tmpl.IsInterface || tmpl.IsAbstract || tmpl.IsDelegate)
             return false;
         try
         {

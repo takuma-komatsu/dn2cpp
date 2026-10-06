@@ -70,8 +70,10 @@
 # Keep original member metadata while comparing the C++ reflection policies.
 # ILDiet with --trim-reflection is covered by build-and-run-preserve-control.sh.
 source "$(dirname "$0")/_common.sh"
+# Delegate name lookup refuses stripped receiver metadata even for a soft bind failure.
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} "
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|delegate-method-prefix:${DN2CPP_BEFORE_DELEGATE_METHOD:-}|member-enum-prefix:${DN2CPP_BEFORE_MEMBER_ENUM:-}|object-virtual-prefix:${DN2CPP_BEFORE_OBJECT_VIRTUAL:-}|unrecorded-receiver-prefix:${DN2CPP_BEFORE_UNRECORDED_RECEIVER:-}|reflected-unrecorded-receiver-prefix:${DN2CPP_BEFORE_REFLECTED_UNRECORDED_RECEIVER:-}|runtime-template-prefix-argv:before-runtime-template-members|property-accessors-prefix-argv:before-property-accessors"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|delegate-name-bindings-prefix-argv:before-delegate-name-bindings"
 
 PROJECT=TrimReflect
 LIBNAME=TrimReflectLib
@@ -186,6 +188,20 @@ assert_runtime_template_members() {
     done
 }
 
+assert_named_delegate_lines() {
+    local out="$1" before prefix line
+    shift
+    out=$(strip_cr_win "$out")
+    before=$(run_bounded "$OUT/$PROJECT$EXE_EXT" before-delegate-name-bindings)
+    prefix=$(awk '/^== delegate method names under trim ==$/ { exit } { print }' <<< "$out")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    for line in '== delegate method names under trim ==' '  app name=42' \
+        '  inherited name=1' 'delegate method names under trim end' "$@"; do
+        grep -Fq -- "$line" <<< "$out" \
+            || { echo "FAIL: delegate name trim witness missing: $line" >&2; return 1; }
+    done
+}
+
 # ── Arm 1: no flag — live diff against real .NET ──────────────────────────────
 echo "== Arm 1/4: no flag, exact diff vs real .NET =="
 OUT=artifacts/trimreflect
@@ -221,6 +237,8 @@ else
         '  unrecorded generic virtual -> LibGvmShape/gvm-base'
     assert_reflected_unrecorded_lines "$native"
     assert_runtime_template_members "$native"
+    assert_named_delegate_lines "$native" '  library name -> 42' \
+        '  library missing soft name -> null' '  library static soft name -> null'
     before=$(strip_cr_win "$(DN2CPP_BEFORE_DELEGATE_METHOD=1 "./$OUT/$PROJECT")")
     prefix=$(awk '/^== Delegate.Method over stripped receivers ==$/ { exit } { print }' \
         <<<"$(strip_cr_win "$native")")
@@ -264,6 +282,10 @@ else
         "  unrecorded generic virtual -> PNSE: Reflection over the members of 'TrimReflectLib.LibGvmPlain'"
     assert_reflected_unrecorded_lines "$native"
     assert_runtime_template_members "$native"
+    assert_named_delegate_lines "$native" \
+        "  library name -> PNSE: Reflection over the members of 'TrimReflectLib.LibWidget'" \
+        "  library missing soft name -> PNSE: Reflection over the members of 'TrimReflectLib.LibWidget'" \
+        "  library static soft name -> PNSE: Reflection over the members of 'TrimReflectLib.LibWidget'"
     gate_cache_commit
 fi
 
@@ -301,6 +323,8 @@ else
         "  unrecorded generic virtual -> PNSE: Reflection over the members of 'TrimReflectLib.LibGvmPlain'"
     assert_reflected_unrecorded_lines "$native"
     assert_runtime_template_members "$native"
+    assert_named_delegate_lines "$native" '  library name -> 42' \
+        '  library missing soft name -> null' '  library static soft name -> null'
     gate_cache_commit
 fi
 
