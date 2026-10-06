@@ -1,6 +1,8 @@
 #nullable enable
 using System;
 using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace ReflectDelegateSubset
 {
@@ -119,8 +121,838 @@ namespace ReflectDelegateSubset
     unsafe delegate delegate*<int> NameWrongFunctionArgument(string value);
     enum NameEnum { Value }
 
+    unsafe delegate uint* SignatureUnsignedPointer(uint* value);
+    unsafe delegate void* SignatureVoidPointer(void* value);
+    unsafe delegate int** SignatureDeepPointer(int** value);
+    unsafe delegate uint** SignatureOtherDeepPointer(uint** value);
+    unsafe delegate int***** SignatureFivePointer(int***** value);
+    unsafe delegate int****** SignatureSixPointer(int****** value);
+    unsafe delegate nint* SignatureNativePointer(nint* value);
+    unsafe delegate nuint* SignatureUnsignedNativePointer(nuint* value);
+    unsafe delegate ulong* SignatureLongPointer(ulong* value);
+    unsafe delegate byte* SignatureBytePointer(byte* value);
+    unsafe delegate ushort* SignatureShortPointer(ushort* value);
+    unsafe delegate float* SignatureFloatPointer(float* value);
+    unsafe delegate delegate*<int>* SignatureNestedFunction(int value);
+    unsafe delegate int SignatureNestedFunctionArg(delegate*<int>* value);
+    unsafe delegate delegate*<Guid> SignatureGuidFunction(int value);
+    unsafe delegate delegate*<Guid>* SignatureGuidNestedFunction(int value);
+    unsafe delegate int SignatureGuidNestedFunctionArg(delegate*<Guid>* value);
+    unsafe delegate string SignatureGuidNestedFunctionText(delegate*<Guid>* value);
+    unsafe delegate int SignatureGuidMixedFunctionArg(delegate*<Guid>* value, string extra);
+    delegate int SignatureOpenInstance(SignatureTarget target, ref object value);
+    unsafe delegate int SignatureStringPointerArg(string* value);
+    unsafe delegate int SignatureObjectPointerArg(object* value);
+    unsafe delegate int SignatureDeepStringPointerArg(string** value);
+    unsafe delegate object* SignatureObjectPointerReturn();
+    unsafe delegate string* SignatureStringPointerReturn();
+    delegate ref Assembly SignatureRefAssemblyReturn();
+    delegate Span<int> SignatureSpanReturn(ref Span<int> value);
+    delegate ref Span<int> SignatureRefSpanReturn(ref Span<int> value);
+    delegate ref Span<long> SignatureOtherRefSpanReturn(ref Span<int> value);
+    delegate ref CancellationToken SignatureTokenReturn();
+    delegate ref CancellationTokenRegistration SignatureRegistrationReturn();
+    delegate void SignatureTokenArgument(ref CancellationToken value);
+    delegate void SignatureRegistrationArgument(ref CancellationTokenRegistration value);
+    delegate void SignatureGuidRef(ref Guid value);
+    delegate void SignatureIntRef(ref int value);
+    delegate void SignatureObjectRef(ref object value);
+    delegate void SignatureStringRef(ref string value);
+    delegate void SignatureMixedRef(ref Guid value, int extra);
+    delegate ref Guid SignatureGuidRefReturn();
+    delegate ref int SignatureIntRefReturn();
+    unsafe delegate Guid* SignatureGuidPointer(Guid* value);
+    unsafe delegate Guid* SignatureGuidPointerReturn();
+    unsafe delegate int* SignatureIntPointerReturn();
+    unsafe delegate delegate* unmanaged[Cdecl]<int> SignatureCdecl(int value);
+    unsafe delegate delegate* unmanaged[Stdcall]<int> SignatureStdcall(int value);
+    unsafe delegate delegate* unmanaged[Cdecl, SuppressGCTransition]<int> SignatureSuppress(int value);
+    unsafe delegate delegate* unmanaged[SuppressGCTransition, Cdecl]<int> SignatureReordered(int value);
+    unsafe delegate ref delegate*<int> SignatureRefFunction();
+    unsafe delegate ref delegate*<long> SignatureOtherRefFunction();
+    unsafe delegate int SignatureFunctionArg(delegate*<int> value);
+    unsafe delegate int SignatureOtherFunctionArg(delegate*<long> value);
+    unsafe delegate int SignatureCdeclArg(delegate* unmanaged[Cdecl]<int> value);
+    delegate int SignatureObject(object value);
+    delegate int SignatureOutObject(out object value);
+    delegate int SignatureRefString(ref string value);
+    delegate ref object SignatureRefObjectReturn();
+    delegate ref string SignatureRefStringReturn();
+    delegate int SignatureRefReceiver(ref SignatureTarget target, object value);
+
+    unsafe class SignatureTarget
+    {
+        public static int NestedArgumentCalls;
+        private static object objectSlot = "before";
+        private static string stringSlot = "text";
+        private static delegate*<int> functionSlot = (delegate*<int>)(nint)256;
+        private static Assembly assemblySlot = typeof(SignatureTarget).Assembly;
+        public int Instance(object value) => 42;
+        public int InstanceReference(ref object value) { value = "instance"; return 44; }
+        public static int Value(object value) => 42;
+        public static int Reference(ref object value) { value = "after"; return 42; }
+        public static int Output(out object value) { value = "out"; return 43; }
+        public static int ClosedReference(ref object value, int number) => number;
+        public static int ClosedValue(object value, int number) => number;
+        public static int ClosedBinding(object marker, ref object value) { value = marker; return 45; }
+        public static ref object ObjectReturn() => ref objectSlot;
+        public static ref string StringReturn() => ref stringSlot;
+        public static int* Pointer(int* value) => value;
+        public static void* VoidPointer(void* value) => value;
+        public static int** DeepPointer(int** value) => value;
+        public static int***** FivePointer(int***** value) => value;
+        public static long* LongPointer(long* value) => value;
+        public static nint* NativePointer(nint* value) => value;
+        public static bool* BoolPointer(bool* value) => value;
+        public static char* CharPointer(char* value) => value;
+        public static sbyte* BytePointer(sbyte* value) => value;
+        public static int ObjectPointerArg(object* value) => 46;
+        public static int StringPointerArg(string* value) => 47;
+        public static int DeepObjectPointerArg(object** value) => 48;
+        public static string* StringPointerReturn() => (string*)(nint)256;
+        public static object* ObjectPointerReturn() => (object*)(nint)512;
+        public static ref Assembly RefAssemblyReturn() => ref assemblySlot;
+        public static Assembly AssemblyReturn() => assemblySlot;
+        public static Span<int> SpanReturn(ref Span<int> value) => value;
+        public static ref Span<int> RefSpanReturn(ref Span<int> value) => ref value;
+        public static delegate* unmanaged[Cdecl]<int> Cdecl(int value) => (delegate* unmanaged[Cdecl]<int>)(nint)value;
+        public static delegate* unmanaged[Cdecl, SuppressGCTransition]<int> Suppress(int value) => (delegate* unmanaged[Cdecl, SuppressGCTransition]<int>)(nint)value;
+        public static ref delegate*<int> RefFunction() => ref functionSlot;
+        public static int FunctionArg(delegate*<int> value) => (int)(nint)value;
+        public static int CdeclArg(delegate* unmanaged[Cdecl]<int> value) => (int)(nint)value;
+    }
+
+    class SignatureOpaqueTarget
+    {
+        private static CancellationToken token;
+        private static CancellationTokenRegistration registration;
+        public static ref CancellationToken TokenReturn() => ref token;
+        public static ref CancellationTokenRegistration RegistrationReturn() => ref registration;
+        public static void TokenArgument(ref CancellationToken value) { }
+        public static void RegistrationArgument(ref CancellationTokenRegistration value) { }
+        public static bool TokenCanceled() => token.IsCancellationRequested;
+    }
+
+    unsafe class SignatureGeneric<T>
+    {
+        public Type Kind() => typeof(T);
+        public static delegate*<T> Function(int value) => (delegate*<T>)(nint)value;
+        public static delegate*<int> Fixed(int value) => (delegate*<int>)(nint)value;
+        public static delegate*<T>* Nested(int value) => (delegate*<T>*)(nint)value;
+        public static delegate*<int>* FixedNested(int value) => (delegate*<int>*)(nint)value;
+        public static int NestedArgument(delegate*<T>* value)
+        {
+            SignatureTarget.NestedArgumentCalls++;
+            return (int)(nint)value;
+        }
+        public static int MixedArgument(delegate*<T>* value, int extra) => extra;
+        public static int FixedNestedArgument(delegate*<int>* value) => (int)(nint)value;
+    }
+
+    class SignatureRefGeneric<T>
+    {
+        public static void Ref(ref T value) { }
+        public static void Mixed(ref T value, string extra) { }
+        public static ref T Return() => throw new InvalidOperationException();
+        public static int Fixed() => 7;
+    }
+
+    unsafe class SignaturePointerGeneric<T> where T : unmanaged
+    {
+        public static T* Pointer(T* value) => value;
+        public static T* Return() => null;
+        public static int Fixed() => 8;
+    }
+
+    class SignatureClassRefGeneric<T> where T : class
+    {
+        public static void Ref(ref T value) { }
+        public static ref T Return() => throw new InvalidOperationException();
+    }
+
+    class SignatureAnchoredRef<T> where T : class
+    {
+        public static int Ref(ref T value) => 42;
+    }
+
+    unsafe delegate int SignatureArrayFunctionProbe(delegate*<int[], int> value);
+    unsafe delegate int SignatureMatrixFunctionProbe(delegate*<int[,], int> value);
+    unsafe delegate int SignatureTokenFunctionProbe(delegate*<CancellationToken, int> value);
+
+    unsafe class SignatureArrayOverload<T>
+    {
+        public static int Ref(delegate*<int[], int> value) => 117;
+        public static int Ref(delegate*<T[], int> value) => 118;
+    }
+
+    unsafe class SignatureMatrixOverload<T>
+    {
+        public static int Ref(delegate*<int[,], int> value) => 127;
+        public static int Ref(delegate*<T[,], int> value) => 128;
+    }
+
+    unsafe class SignatureRankOverload<T>
+    {
+        public static int Ref(delegate*<int[,], int> value) => 137;
+        public static int Ref(delegate*<T[,,], int> value) => 138;
+    }
+
+    unsafe class SignatureDirectArrayOverload<T>
+    {
+        public static int Ref(delegate*<int[], int> value) => 147;
+        public static int Ref(delegate*<T, int> value) => 148;
+    }
+
+    unsafe class SignatureTokenOverload<T>
+    {
+        public static int Ref(delegate*<CancellationToken, int> value) => 157;
+        public static int Ref(delegate*<T, int> value) => 158;
+    }
+
+    class SignatureRuntimeArgument<T> { }
+    class SignatureRuntimeKnownBox<T> { }
+    unsafe delegate int SignatureRuntimeIntBoxProbe(delegate*<SignatureRuntimeKnownBox<int>, int> value);
+    unsafe delegate int SignatureRuntimeGuidBoxProbe(delegate*<SignatureRuntimeKnownBox<Guid>, int> value);
+    unsafe class SignatureRuntimeBoxOverload<T>
+    {
+        public static int Ref(delegate*<SignatureRuntimeKnownBox<int>, int> value) => 177;
+        public static int Ref(delegate*<T, int> value) => 178;
+        public static int Matching(delegate*<SignatureRuntimeKnownBox<Guid>, int> value) => 187;
+        public static int Matching(delegate*<T, int> value) => 188;
+    }
+
+    unsafe delegate int SignatureValueTaskFunctionProbe(delegate*<ValueTask<int>, int> value);
+    unsafe class SignatureValueTaskOverload<T>
+    {
+        public static int Ref(delegate*<ValueTask<int>, int> value) => 167;
+        public static int Ref(delegate*<ValueTask<T>, int> value) => 168;
+    }
+
+    unsafe class SignatureValueTaskTypeOverload<T>
+    {
+        public static int Ref(delegate*<ValueTask<int>, int> value) => 197;
+        public static int Ref(delegate*<T, int> value) => 198;
+    }
+
+    unsafe delegate int SignatureFunctionProbe(delegate*<int, int> value);
+    unsafe delegate int SignatureDeepProbe(int***** value);
+
+    unsafe class SignatureFunctionOverload<T>
+    {
+        public static int Ref(delegate*<int, int> value) => 87;
+        public static int Ref(delegate*<T, int> value) => 88;
+    }
+
+    unsafe class SignatureDeepOverload<T> where T : unmanaged
+    {
+        public static int Ref(int***** value) => 97;
+        public static int Ref(T***** value) => 98;
+        public static int Depth(int***** value) => 107;
+        public static int Depth(T****** value) => 108;
+    }
+
+    class SignatureOverload<T>
+    {
+        public static int Ref(ref int value) { value++; return 7; }
+        public static int Ref(ref T value) => 8;
+    }
+
+    class SignatureOverloadBase<T, U>
+    {
+        public static int Ref(ref int value) { value++; return 37; }
+        public static int Ref(ref U value) => 38;
+    }
+
+    class SignatureOverloadDerived<T, U> : SignatureOverloadBase<T, U> { }
+    class SignatureOverloadReordered<T, U> : SignatureOverloadBase<U, T> { }
+
+    class SignatureBox<T> { }
+    class SignatureOtherBox<T> { }
+    class SignaturePairBox<T, U> { }
+    delegate int SignatureBoxRef(ref SignatureBox<int>? value);
+    delegate int SignaturePairBoxRef(ref SignaturePairBox<Guid, int>? value);
+
+    class SignatureComposedOverload<T, U>
+    {
+        public static int Ref(ref SignatureBox<int>? value) { value = null; return 47; }
+        public static int Ref(ref SignatureBox<T>? value) => 48;
+        public static int Family(ref SignatureBox<int>? value) { value = null; return 57; }
+        public static int Family(ref SignatureOtherBox<T>? value) => 58;
+        public static int Constant(ref SignaturePairBox<Guid, int>? value) { value = null; return 67; }
+        public static int Constant(ref SignaturePairBox<T, U>? value) => 68;
+    }
+
+    class SignatureReferenceOverload<T, U> where T : class where U : class
+    {
+        public static int Ref(ref string value) { value = "fixed"; return 27; }
+        public static int Ref(ref U value) => 28;
+    }
+
+    unsafe delegate int SignaturePointerProbe(int* value);
+
+    unsafe class SignaturePointerOverload<T> where T : unmanaged
+    {
+        public static int Pointer(int* value) { (*value)++; return 17; }
+        public static int Pointer(T* value) => 18;
+        public static int* Result() => (int*)(nint)256;
+        public static T* result() => null;
+    }
+
+    class SignatureOverloadStorage { public static int Value; }
+
+    class SignatureReturnOverload<T>
+    {
+        public static ref int Result() => ref SignatureOverloadStorage.Value;
+        public static ref T result() => throw new InvalidOperationException();
+    }
+
     static class Program
     {
+        private static string SignatureOutcome(Func<Delegate?> bind)
+        {
+            try
+            {
+                return bind() is null ? "null" : "bound";
+            }
+            catch (ArgumentException exception)
+            {
+                return exception.GetType().Name + "/" + (exception.ParamName ?? "-");
+            }
+            catch (PlatformNotSupportedException)
+            {
+                return "unsupported";
+            }
+        }
+
+        private static void SignaturePair(string label, Type delegateType, Type owner, string name)
+        {
+            MethodInfo method = owner.GetMethod(name)!;
+            string methodResult = SignatureOutcome(() => Delegate.CreateDelegate(delegateType, method, false));
+            string nameResult = SignatureOutcome(() => Delegate.CreateDelegate(delegateType, owner, name, false, false));
+            Console.WriteLine($"signature {label} => {methodResult}/{nameResult}");
+        }
+
+        internal static unsafe void RunSignatureBindings()
+        {
+            Console.WriteLine("== delegate signature compatibility ==");
+            Type owner = typeof(SignatureTarget);
+            SignaturePair("ref object to value", typeof(NameRefObject), owner, "Value");
+            SignaturePair("value to ref object", typeof(SignatureObject), owner, "Reference");
+            SignaturePair("ref string to ref object", typeof(SignatureRefString), owner, "Reference");
+            SignaturePair("out to ref", typeof(SignatureOutObject), owner, "Reference");
+            SignaturePair("ref to out", typeof(NameRefObject), owner, "Output");
+            SignaturePair("ref return variance", typeof(SignatureRefObjectReturn), owner, "StringReturn");
+            SignaturePair("ref return opposite", typeof(SignatureRefStringReturn), owner, "ObjectReturn");
+            SignaturePair("pointer signedness", typeof(SignatureUnsignedPointer), owner, "Pointer");
+            SignaturePair("pointer to void", typeof(SignatureVoidPointer), owner, "Pointer");
+            SignaturePair("void to pointer", typeof(NamePointer), owner, "VoidPointer");
+            SignaturePair("deep pointer signedness", typeof(SignatureOtherDeepPointer), owner, "DeepPointer");
+            SignaturePair("deep pointer exact", typeof(SignatureDeepPointer), owner, "DeepPointer");
+            SignaturePair("five pointer exact", typeof(SignatureFivePointer), owner, "FivePointer");
+            SignaturePair("pointer depth mismatch", typeof(SignatureSixPointer), owner, "FivePointer");
+            SignaturePair("native vs fixed pointer", typeof(SignatureNativePointer), owner, "LongPointer");
+            SignaturePair("unsigned native vs fixed pointer", typeof(SignatureUnsignedNativePointer), owner, "LongPointer");
+            SignaturePair("native pointer signedness", typeof(SignatureUnsignedNativePointer), owner, "NativePointer");
+            SignaturePair("long pointer signedness", typeof(SignatureLongPointer), owner, "LongPointer");
+            SignaturePair("bool vs byte pointer", typeof(SignatureBytePointer), owner, "BoolPointer");
+            SignaturePair("char vs ushort pointer", typeof(SignatureShortPointer), owner, "CharPointer");
+            SignaturePair("byte pointer signedness", typeof(SignatureBytePointer), owner, "BytePointer");
+            SignaturePair("float vs int pointer", typeof(SignatureFloatPointer), owner, "Pointer");
+            SignaturePair("reference pointer argument", typeof(SignatureStringPointerArg), owner, "ObjectPointerArg");
+            SignaturePair("reference pointer opposite", typeof(SignatureObjectPointerArg), owner, "StringPointerArg");
+            SignaturePair("reference pointer return", typeof(SignatureObjectPointerReturn), owner, "StringPointerReturn");
+            SignaturePair("reference pointer return opposite", typeof(SignatureStringPointerReturn), owner, "ObjectPointerReturn");
+            SignaturePair("reference deep pointer", typeof(SignatureDeepStringPointerArg), owner, "DeepObjectPointerArg");
+            SignaturePair("function leaf to object pointer", typeof(SignatureNestedFunctionArg), owner, "ObjectPointerArg");
+            SignaturePair("headerless ref return exact", typeof(SignatureRefAssemblyReturn), owner, "RefAssemblyReturn");
+            SignaturePair("headerless ref return to value", typeof(Func<Assembly>), owner, "RefAssemblyReturn");
+            SignaturePair("headerless value return to ref", typeof(SignatureRefAssemblyReturn), owner, "AssemblyReturn");
+            SignaturePair("byref-like ref to value", typeof(SignatureSpanReturn), owner, "RefSpanReturn");
+            SignaturePair("byref-like value to ref", typeof(SignatureRefSpanReturn), owner, "SpanReturn");
+            SignaturePair("byref-like ref exact", typeof(SignatureRefSpanReturn), owner, "RefSpanReturn");
+            SignaturePair("byref-like ref referent mismatch", typeof(SignatureOtherRefSpanReturn), owner, "RefSpanReturn");
+            SignaturePair("function return exact", typeof(NameFunctionReturn), typeof(NameTarget), "FunctionReturn");
+            SignaturePair("function return mismatch", typeof(NameOtherFunctionReturn), typeof(NameTarget), "FunctionReturn");
+            SignaturePair("Cdecl exact", typeof(SignatureCdecl), owner, "Cdecl");
+            SignaturePair("Cdecl vs Stdcall", typeof(SignatureStdcall), owner, "Cdecl");
+            SignaturePair("managed vs Cdecl", typeof(NameFunctionReturn), owner, "Cdecl");
+            SignaturePair("suppressed exact", typeof(SignatureSuppress), owner, "Suppress");
+            SignaturePair("suppressed vs Cdecl", typeof(SignatureCdecl), owner, "Suppress");
+            SignaturePair("suppressed order", typeof(SignatureReordered), owner, "Suppress");
+            SignaturePair("ref function exact", typeof(SignatureRefFunction), owner, "RefFunction");
+            SignaturePair("ref function mismatch", typeof(SignatureOtherRefFunction), owner, "RefFunction");
+            SignaturePair("function argument exact", typeof(SignatureFunctionArg), owner, "FunctionArg");
+            SignaturePair("function argument mismatch", typeof(SignatureOtherFunctionArg), owner, "FunctionArg");
+            SignaturePair("function argument convention", typeof(SignatureFunctionArg), owner, "CdeclArg");
+            SignaturePair("generic function exact", typeof(NameFunctionReturn), typeof(SignatureGeneric<int>), "Function");
+            SignaturePair("generic function mismatch", typeof(NameFunctionReturn), typeof(SignatureGeneric<long>), "Function");
+            MethodInfo reference = owner.GetMethod("Reference")!;
+            Console.WriteLine("signature hard siblings => "
+                + SignatureOutcome(() => reference.CreateDelegate(typeof(SignatureObject))) + "/"
+                + SignatureOutcome(() => reference.CreateDelegate<SignatureObject>()) + "/"
+                + SignatureOutcome(() => reference.CreateDelegate(typeof(SignatureObject), null)) + "/"
+                + SignatureOutcome(() => reference.CreateDelegate<SignatureObject>(null)) + "/"
+                + SignatureOutcome(() => Delegate.CreateDelegate(typeof(SignatureObject), reference)) + "/"
+                + SignatureOutcome(() => Delegate.CreateDelegate(typeof(SignatureObject), null, reference)) + "/"
+                + SignatureOutcome(() => Delegate.CreateDelegate(typeof(SignatureObject), null, reference, false)));
+            MethodInfo instance = owner.GetMethod("Instance")!;
+            Console.WriteLine("signature receiver byref => "
+                + SignatureOutcome(() => Delegate.CreateDelegate(typeof(SignatureRefReceiver), instance, false)));
+            MethodInfo closedReference = owner.GetMethod("ClosedReference")!;
+            Console.WriteLine("signature closed static byref => "
+                + SignatureOutcome(() => Delegate.CreateDelegate(typeof(Func<int, int>), "bound", closedReference, false)) + "/"
+                + SignatureOutcome(() => Delegate.CreateDelegate(typeof(Func<int, int>), null, closedReference, false)));
+            foreach (Type shell in new[] { typeof(Delegate), typeof(MulticastDelegate) })
+            {
+                Console.WriteLine($"signature shell {shell.Name} => "
+                    + SignatureOutcome(() => Delegate.CreateDelegate(shell, reference, false)) + "/"
+                    + SignatureOutcome(() => reference.CreateDelegate(shell)));
+            }
+            object value = "initial";
+            var refToOut = (NameRefObject)reference.CreateDelegate(typeof(NameRefObject));
+            Console.WriteLine($"signature ref alias => {refToOut(ref value)}/{value}");
+            SignatureTarget receiver = new SignatureTarget();
+            MethodInfo instanceReference = owner.GetMethod("InstanceReference")!;
+            var closedInstance = instanceReference.CreateDelegate<NameRefObject>(receiver);
+            var openInstance = instanceReference.CreateDelegate<SignatureOpenInstance>();
+            var closedStatic = owner.GetMethod("ClosedBinding")!.CreateDelegate<NameRefObject>("closed");
+            int closedResult = closedInstance(ref value);
+            int openResult = openInstance(receiver, ref value);
+            int staticResult = closedStatic(ref value);
+            Console.WriteLine($"signature byref modes => {closedResult}/{openResult}/{staticResult}/{value}");
+            var alias = owner.GetMethod("ObjectReturn")!.CreateDelegate<SignatureRefObjectReturn>();
+            ref object slot = ref alias();
+            slot = "changed";
+            Console.WriteLine($"signature ref return alias => {alias()}");
+            var pointer = owner.GetMethod("Pointer")!.CreateDelegate<NamePointer>();
+            int number = 42;
+            Console.WriteLine($"signature pointer call => {*pointer(&number)}");
+            var referenceArgument = owner.GetMethod("ObjectPointerArg")!.CreateDelegate<SignatureStringPointerArg>();
+            var referenceReturn = owner.GetMethod("StringPointerReturn")!.CreateDelegate<SignatureObjectPointerReturn>();
+            Console.WriteLine($"signature reference pointer calls => {referenceArgument(null)}/{(nint)referenceReturn()}");
+            var assemblyAlias = owner.GetMethod("RefAssemblyReturn")!.CreateDelegate<SignatureRefAssemblyReturn>();
+            ref Assembly assembly = ref assemblyAlias();
+            assembly = typeof(object).Assembly;
+            Console.WriteLine($"signature headerless ref alias => {assemblyAlias() == typeof(object).Assembly}");
+            var signed = owner.GetMethod("Pointer")!.CreateDelegate<SignatureUnsignedPointer>();
+            Console.WriteLine($"signature relaxed pointer call => {*signed((uint*)&number)}");
+            var function = typeof(NameTarget).GetMethod("FunctionReturn")!.CreateDelegate<NameFunctionReturn>();
+            var namedFunction = (NameFunctionReturn)Delegate.CreateDelegate(typeof(NameFunctionReturn), typeof(NameTarget), "FunctionReturn");
+            Console.WriteLine($"signature function return calls => {(nint)function(256)}/{(nint)namedFunction(512)}");
+            var convention = owner.GetMethod("Cdecl")!.CreateDelegate<SignatureStdcall>();
+            Console.WriteLine($"signature unmanaged return call => {(nint)convention(768)}");
+            var functionArgument = owner.GetMethod("FunctionArg")!.CreateDelegate<SignatureFunctionArg>();
+            Console.WriteLine($"signature function argument call => {functionArgument((delegate*<int>)(nint)1024)}");
+            var functionAlias = owner.GetMethod("RefFunction")!.CreateDelegate<SignatureRefFunction>();
+            ref delegate*<int> functionSlot = ref functionAlias();
+            functionSlot = (delegate*<int>)(nint)1280;
+            Console.WriteLine($"signature ref function alias => {(nint)functionAlias()}");
+            Type template = typeof(SignatureGeneric<>).MakeGenericType(typeof(Guid));
+            SignaturePair("template known return mismatch", typeof(SignatureGuidNestedFunctionText), template, "NestedArgument");
+            SignaturePair("template known argument mismatch", typeof(SignatureGuidMixedFunctionArg), template, "MixedArgument");
+            var fixedFunction = template.GetMethod("Fixed")!.CreateDelegate<NameFunctionReturn>();
+            var fixedNamed = (NameFunctionReturn)Delegate.CreateDelegate(typeof(NameFunctionReturn), template, "Fixed");
+            var fixedNested = template.GetMethod("FixedNested")!.CreateDelegate<SignatureNestedFunction>();
+            var fixedArgument = template.GetMethod("FixedNestedArgument")!.CreateDelegate<SignatureNestedFunctionArg>();
+            Console.WriteLine($"signature template fixed => {(nint)fixedFunction(1536)}/{(nint)fixedNamed(1792)}/{(nint)fixedNested(2048)}/{fixedArgument((delegate*<int>*)(nint)2304)}/{fixedFunction.Method.DeclaringType == template}");
+            Console.WriteLine("delegate signature compatibility end");
+        }
+
+        internal static void RunSignatureBoundaries(bool ordinary = true, bool overloads = true, bool shapes = true, bool leaves = true, bool identities = true, bool runtimeArguments = true)
+        {
+            Console.WriteLine("== runtime delegate signature boundaries ==");
+            Type template = typeof(SignatureGeneric<>).MakeGenericType(typeof(Guid));
+            SignaturePair("template dependent return", typeof(NameFunctionReturn), template, "Function");
+            SignaturePair("template dependent nested return", typeof(SignatureNestedFunction), template, "Nested");
+            SignaturePair("template dependent nested argument", typeof(SignatureNestedFunctionArg), template, "NestedArgument");
+            SignaturePair("template matching return", typeof(SignatureGuidFunction), template, "Function");
+            SignaturePair("template matching nested return", typeof(SignatureGuidNestedFunction), template, "Nested");
+            SignaturePair("template matching nested argument", typeof(SignatureGuidNestedFunctionArg), template, "NestedArgument");
+            Console.WriteLine("signature template missing => "
+                + SignatureOutcome(() => Delegate.CreateDelegate(typeof(SignatureGuidFunction), template, "Missing", false, false)));
+            Type opaque = typeof(SignatureOpaqueTarget);
+            Console.WriteLine("signature opaque return invoke => " + OpaqueInvokeOutcome(opaque.GetMethod("TokenReturn")!, null));
+            Console.WriteLine("signature opaque argument invoke => " + OpaqueInvokeOutcome(opaque.GetMethod("TokenArgument")!, new object[] { "wrong" }));
+            Console.WriteLine("runtime delegate signature boundaries end");
+            if (ordinary)
+                RunOrdinaryTemplateBoundaries();
+            if (overloads)
+                RunOrdinaryOverloadBoundaries();
+            if (overloads && shapes)
+                RunShapeOverloadBoundaries();
+            if (overloads && shapes && leaves)
+                RunLeafOverloadBoundaries();
+            if (overloads && shapes && leaves && identities)
+                RunIdentityOverloadBoundaries();
+            if (overloads && shapes && leaves && identities && runtimeArguments)
+                RunRuntimeArgumentBoundaries();
+        }
+
+        private static void RunOrdinaryTemplateBoundaries()
+        {
+            Console.WriteLine("== ordinary runtime delegate signature boundaries ==");
+            Type refs = typeof(SignatureRefGeneric<>).MakeGenericType(typeof(Guid));
+            Type pointers = typeof(SignaturePointerGeneric<>).MakeGenericType(typeof(Guid));
+            Type classes = typeof(SignatureClassRefGeneric<>).MakeGenericType(typeof(string));
+            SignaturePair("ordinary ref matching", typeof(SignatureGuidRef), refs, "Ref");
+            SignaturePair("ordinary ref mismatch", typeof(SignatureIntRef), refs, "Ref");
+            SignaturePair("ordinary ref object", typeof(SignatureObjectRef), refs, "Ref");
+            SignaturePair("ordinary pointer matching", typeof(SignatureGuidPointer), pointers, "Pointer");
+            SignaturePair("ordinary pointer mismatch", typeof(NamePointer), pointers, "Pointer");
+            SignaturePair("ordinary ref return matching", typeof(SignatureGuidRefReturn), refs, "Return");
+            SignaturePair("ordinary ref return mismatch", typeof(SignatureIntRefReturn), refs, "Return");
+            SignaturePair("ordinary pointer return matching", typeof(SignatureGuidPointerReturn), pointers, "Return");
+            SignaturePair("ordinary pointer return mismatch", typeof(SignatureIntPointerReturn), pointers, "Return");
+            SignaturePair("ordinary class ref matching", typeof(SignatureStringRef), classes, "Ref");
+            SignaturePair("ordinary class ref mismatch", typeof(SignatureObjectRef), classes, "Ref");
+            SignaturePair("ordinary class return matching", typeof(SignatureRefStringReturn), classes, "Return");
+            SignaturePair("ordinary class return mismatch", typeof(SignatureRefObjectReturn), classes, "Return");
+            Console.WriteLine("signature ordinary template missing => "
+                + SignatureOutcome(() => Delegate.CreateDelegate(typeof(SignatureGuidRef), refs, "Missing", false, false)));
+            Console.WriteLine("signature ordinary ref invoke => " + OpaqueInvokeOutcome(refs.GetMethod("Ref")!, new object[] { Guid.Empty }));
+            Console.WriteLine("signature ordinary pointer invoke => " + OpaqueInvokeOutcome(pointers.GetMethod("Pointer")!, new object[] { (nint)0 }));
+            Console.WriteLine("ordinary runtime delegate signature boundaries end");
+        }
+
+        internal static void RunOrdinaryTemplateSignatures()
+        {
+            Console.WriteLine("== ordinary runtime delegate signature controls ==");
+            Type refs = typeof(SignatureRefGeneric<>).MakeGenericType(typeof(Guid));
+            Type pointers = typeof(SignaturePointerGeneric<>).MakeGenericType(typeof(Guid));
+            SignaturePair("ordinary known return mismatch", typeof(NameRef), refs, "Ref");
+            SignaturePair("ordinary known argument mismatch", typeof(SignatureMixedRef), refs, "Mixed");
+            SignaturePair("ordinary known shape mismatch", typeof(Action<Guid>), refs, "Ref");
+            var refFixed = refs.GetMethod("Fixed")!.CreateDelegate<Func<int>>();
+            var pointerFixed = (Func<int>)Delegate.CreateDelegate(typeof(Func<int>), pointers, "Fixed");
+            Console.WriteLine($"signature ordinary template fixed => {refFixed()}/{pointerFixed()}/{refFixed.Method.DeclaringType == refs}");
+            string value = "aot";
+            int direct = SignatureAnchoredRef<string>.Ref(ref value);
+            var anchored = typeof(SignatureAnchoredRef<string>).GetMethod("Ref")!.CreateDelegate<SignatureRefString>();
+            var named = (SignatureRefString)Delegate.CreateDelegate(typeof(SignatureRefString), typeof(SignatureAnchoredRef<string>), "Ref");
+            Console.WriteLine($"signature ordinary compiled ref => {direct}/{anchored(ref value)}/{named(ref value)}");
+            Console.WriteLine("ordinary runtime delegate signature controls end");
+        }
+
+        private static string OverloadRefCall(Type owner, bool throwOnFailure)
+        {
+            try
+            {
+                var target = (NameRef?)Delegate.CreateDelegate(typeof(NameRef), owner, "Ref", false, throwOnFailure);
+                if (target is null)
+                    return "null";
+                int value = 10;
+                int returned = target(ref value);
+                return $"bound/{returned}/{value}";
+            }
+            catch (PlatformNotSupportedException)
+            {
+                return "unsupported";
+            }
+        }
+
+        private static string OverloadBoxCall(Type owner, bool throwOnFailure)
+        {
+            try
+            {
+                var target = (SignatureBoxRef?)Delegate.CreateDelegate(typeof(SignatureBoxRef), owner, "Ref", false, throwOnFailure);
+                if (target is null)
+                    return "null";
+                SignatureBox<int>? value = new();
+                int returned = target(ref value);
+                return $"bound/{returned}/{value is null}";
+            }
+            catch (PlatformNotSupportedException)
+            {
+                return "unsupported";
+            }
+        }
+
+        internal static unsafe void RunOrdinaryOverloads()
+        {
+            Console.WriteLine("== ordinary runtime overload selection ==");
+            Type refs = typeof(SignatureOverload<>).MakeGenericType(typeof(Guid));
+            Console.WriteLine($"signature overload ref => {OverloadRefCall(refs, false)}/{OverloadRefCall(refs, true)}");
+            Type derived = typeof(SignatureOverloadDerived<,>).MakeGenericType(typeof(int), typeof(Guid));
+            Console.WriteLine($"signature overload declaring base => {OverloadRefCall(derived, false)}/{OverloadRefCall(derived, true)}");
+            Type references = typeof(SignatureReferenceOverload<,>).MakeGenericType(typeof(string), typeof(object));
+            var reference = (SignatureRefString)Delegate.CreateDelegate(typeof(SignatureRefString), references, "Ref");
+            string text = "before";
+            int returned = reference(ref text);
+            Console.WriteLine($"signature overload reference arguments => {returned}/{text}");
+            Type pointers = typeof(SignaturePointerOverload<>).MakeGenericType(typeof(Guid));
+            var pointer = (SignaturePointerProbe)Delegate.CreateDelegate(typeof(SignaturePointerProbe), pointers, "Pointer");
+            int value = 10;
+            returned = pointer(&value);
+            Console.WriteLine($"signature overload pointer => {returned}/{value}");
+            var pointerReturn = (SignatureIntPointerReturn)Delegate.CreateDelegate(typeof(SignatureIntPointerReturn), pointers, "Result", true);
+            Console.WriteLine($"signature overload pointer return => {(nint)pointerReturn()}");
+            Type returns = typeof(SignatureReturnOverload<>).MakeGenericType(typeof(Guid));
+            var alias = (SignatureIntRefReturn)Delegate.CreateDelegate(typeof(SignatureIntRefReturn), returns, "Result", true);
+            alias() = 19;
+            Console.WriteLine($"signature overload ref return => {alias()}/{SignatureOverloadStorage.Value}");
+            Type box = typeof(SignatureBox<>).MakeGenericType(typeof(Guid));
+            Type otherBox = typeof(SignatureOtherBox<>).MakeGenericType(typeof(Guid));
+            Type pairBox = typeof(SignaturePairBox<,>).MakeGenericType(typeof(Guid), typeof(string));
+            Console.WriteLine($"signature overload composed types => {box.GetGenericArguments()[0] == typeof(Guid)}/{otherBox.GetGenericArguments()[0] == typeof(Guid)}/{pairBox.GetGenericArguments()[1] == typeof(string)}");
+            Type composed = typeof(SignatureComposedOverload<,>).MakeGenericType(typeof(Guid), typeof(string));
+            Console.WriteLine($"signature overload composed ref => {OverloadBoxCall(composed, false)}/{OverloadBoxCall(composed, true)}");
+            Type family = typeof(SignatureComposedOverload<,>).MakeGenericType(typeof(int), typeof(string));
+            var familyTarget = (SignatureBoxRef)Delegate.CreateDelegate(typeof(SignatureBoxRef), family, "Family");
+            SignatureBox<int>? boxed = new();
+            returned = familyTarget(ref boxed);
+            Console.WriteLine($"signature overload generic family => {returned}/{boxed is null}");
+            var constant = (SignaturePairBoxRef)Delegate.CreateDelegate(typeof(SignaturePairBoxRef), composed, "Constant");
+            SignaturePairBox<Guid, int>? pair = new();
+            returned = constant(ref pair);
+            Console.WriteLine($"signature overload constant argument => {returned}/{pair is null}");
+            Console.WriteLine("ordinary runtime overload selection end");
+        }
+
+        private static void RunOrdinaryOverloadBoundaries()
+        {
+            Console.WriteLine("== unresolved ordinary overload selection ==");
+            Type refs = typeof(SignatureOverload<>).MakeGenericType(typeof(int));
+            Console.WriteLine($"signature overload coincident ref => {OverloadRefCall(refs, false)}/{OverloadRefCall(refs, true)}");
+            Type references = typeof(SignatureReferenceOverload<,>).MakeGenericType(typeof(object), typeof(string));
+            Console.WriteLine("signature overload coincident reference => " + SignatureOutcome(() =>
+                Delegate.CreateDelegate(typeof(SignatureRefString), references, "Ref", false, false)));
+            Type pointers = typeof(SignaturePointerOverload<>).MakeGenericType(typeof(int));
+            Console.WriteLine("signature overload coincident pointer => " + SignatureOutcome(() =>
+                Delegate.CreateDelegate(typeof(SignaturePointerProbe), pointers, "Pointer", false, false)));
+            Console.WriteLine("signature overload coincident pointer return => " + SignatureOutcome(() =>
+                Delegate.CreateDelegate(typeof(SignatureIntPointerReturn), pointers, "Result", true, false)));
+            Type returns = typeof(SignatureReturnOverload<>).MakeGenericType(typeof(int));
+            Console.WriteLine("signature overload coincident ref return => " + SignatureOutcome(() =>
+                Delegate.CreateDelegate(typeof(SignatureIntRefReturn), returns, "Result", true, false)));
+            string reordered;
+            try
+            {
+                Type owner = typeof(SignatureOverloadReordered<,>).MakeGenericType(typeof(Guid), typeof(int));
+                reordered = SignatureOutcome(() => Delegate.CreateDelegate(typeof(NameRef), owner, "Ref", false, false));
+            }
+            catch (NotSupportedException)
+            {
+                reordered = "unsupported";
+            }
+            Console.WriteLine("signature overload reordered base => " + reordered);
+            Type composed = typeof(SignatureComposedOverload<,>).MakeGenericType(typeof(int), typeof(string));
+            Console.WriteLine($"signature overload coincident composed => {OverloadBoxCall(composed, false)}/{OverloadBoxCall(composed, true)}");
+            Type constant = typeof(SignatureComposedOverload<,>).MakeGenericType(typeof(Guid), typeof(int));
+            Console.WriteLine("signature overload coincident constant => " + SignatureOutcome(() =>
+                Delegate.CreateDelegate(typeof(SignaturePairBoxRef), constant, "Constant", false, false)));
+            Console.WriteLine("unresolved ordinary overload selection end");
+        }
+
+        private static unsafe string FunctionOverloadCall(Type owner, bool throwOnFailure)
+        {
+            var target = (SignatureFunctionProbe)Delegate.CreateDelegate(typeof(SignatureFunctionProbe), owner, "Ref", false, throwOnFailure)!;
+            return target((delegate*<int, int>)(nint)256).ToString();
+        }
+
+        private static unsafe string DeepOverloadCall(Type owner, string name, bool throwOnFailure)
+        {
+            var target = (SignatureDeepProbe)Delegate.CreateDelegate(typeof(SignatureDeepProbe), owner, name, false, throwOnFailure)!;
+            return target((int*****)(nint)512).ToString();
+        }
+
+        internal static void RunShapeOverloads()
+        {
+            Console.WriteLine("== structured runtime overload selection ==");
+            Type functions = typeof(SignatureFunctionOverload<>).MakeGenericType(typeof(Guid));
+            Console.WriteLine($"signature overload function => {FunctionOverloadCall(functions, false)}/{FunctionOverloadCall(functions, true)}");
+            Type pointers = typeof(SignatureDeepOverload<>).MakeGenericType(typeof(Guid));
+            Console.WriteLine($"signature overload deep pointer => {DeepOverloadCall(pointers, "Ref", false)}/{DeepOverloadCall(pointers, "Ref", true)}");
+            pointers = typeof(SignatureDeepOverload<>).MakeGenericType(typeof(int));
+            Console.WriteLine($"signature overload distinct deep levels => {DeepOverloadCall(pointers, "Depth", false)}/{DeepOverloadCall(pointers, "Depth", true)}");
+            Console.WriteLine("structured runtime overload selection end");
+        }
+
+        private static void RunShapeOverloadBoundaries()
+        {
+            Console.WriteLine("== unresolved structured overload selection ==");
+            Type functions = typeof(SignatureFunctionOverload<>).MakeGenericType(typeof(int));
+            Console.WriteLine("signature overload coincident function => " + SignatureOutcome(() =>
+                Delegate.CreateDelegate(typeof(SignatureFunctionProbe), functions, "Ref", false, false)));
+            Type pointers = typeof(SignatureDeepOverload<>).MakeGenericType(typeof(int));
+            Console.WriteLine("signature overload coincident deep pointer => " + SignatureOutcome(() =>
+                Delegate.CreateDelegate(typeof(SignatureDeepProbe), pointers, "Ref", false, false)));
+            Console.WriteLine("unresolved structured overload selection end");
+        }
+
+        private static unsafe int LeafOverloadCall(Type owner, int shape, bool throwOnFailure)
+        {
+            Type delegateType = shape == 0 ? typeof(SignatureArrayFunctionProbe)
+                : shape == 1 ? typeof(SignatureMatrixFunctionProbe) : typeof(SignatureTokenFunctionProbe);
+            var target = Delegate.CreateDelegate(delegateType, owner, "Ref", false, throwOnFailure)!;
+            return shape == 0 ? ((SignatureArrayFunctionProbe)target)((delegate*<int[], int>)(nint)256)
+                : shape == 1 ? ((SignatureMatrixFunctionProbe)target)((delegate*<int[,], int>)(nint)512)
+                : ((SignatureTokenFunctionProbe)target)((delegate*<CancellationToken, int>)(nint)768);
+        }
+
+        internal static void RunLeafOverloads()
+        {
+            Console.WriteLine("== function leaf overload selection ==");
+            Type arrays = typeof(SignatureArrayOverload<>).MakeGenericType(typeof(Guid));
+            Console.WriteLine($"signature overload array => {LeafOverloadCall(arrays, 0, false)}/{LeafOverloadCall(arrays, 0, true)}");
+            Type matrices = typeof(SignatureMatrixOverload<>).MakeGenericType(typeof(Guid));
+            Console.WriteLine($"signature overload matrix => {LeafOverloadCall(matrices, 1, false)}/{LeafOverloadCall(matrices, 1, true)}");
+            Type ranks = typeof(SignatureRankOverload<>).MakeGenericType(typeof(int));
+            Console.WriteLine($"signature overload array rank => {LeafOverloadCall(ranks, 1, false)}/{LeafOverloadCall(ranks, 1, true)}");
+            Type tokenGuid = typeof(SignatureTokenOverload<>).MakeGenericType(typeof(Guid));
+            Type tokenInt = typeof(SignatureTokenOverload<>).MakeGenericType(typeof(int));
+            Console.WriteLine($"signature overload opaque function leaf => {LeafOverloadCall(tokenGuid, 2, false)}/{LeafOverloadCall(tokenGuid, 2, true)}/{LeafOverloadCall(tokenInt, 2, false)}/{LeafOverloadCall(tokenInt, 2, true)}");
+            Console.WriteLine("function leaf overload selection end");
+        }
+
+        private static void RunLeafOverloadBoundaries()
+        {
+            Console.WriteLine("== unresolved function leaf overload selection ==");
+            Type arrays = typeof(SignatureArrayOverload<>).MakeGenericType(typeof(int));
+            Console.WriteLine("signature overload coincident array => " + SignatureOutcome(() =>
+                Delegate.CreateDelegate(typeof(SignatureArrayFunctionProbe), arrays, "Ref", false, false)));
+            Type matrices = typeof(SignatureMatrixOverload<>).MakeGenericType(typeof(int));
+            Console.WriteLine("signature overload coincident matrix => " + SignatureOutcome(() =>
+                Delegate.CreateDelegate(typeof(SignatureMatrixFunctionProbe), matrices, "Ref", false, false)));
+            Type direct = typeof(SignatureDirectArrayOverload<>).MakeGenericType(typeof(int[]));
+            Console.WriteLine("signature overload direct array identity => " + SignatureOutcome(() =>
+                Delegate.CreateDelegate(typeof(SignatureArrayFunctionProbe), direct, "Ref", false, false)));
+            Console.WriteLine("unresolved function leaf overload selection end");
+        }
+
+        private static unsafe int ValueTaskOverloadCall(Type owner, bool throwOnFailure)
+        {
+            var target = (SignatureValueTaskFunctionProbe)Delegate.CreateDelegate(
+                typeof(SignatureValueTaskFunctionProbe), owner, "Ref", false, throwOnFailure)!;
+            return target((delegate*<ValueTask<int>, int>)(nint)1024);
+        }
+
+        internal static void RunIdentityOverloads()
+        {
+            Console.WriteLine("== omitted identity overload selection ==");
+            Type values = typeof(SignatureValueTaskOverload<>).MakeGenericType(typeof(Guid));
+            Console.WriteLine($"signature overload absent generic family => {ValueTaskOverloadCall(values, false)}/{ValueTaskOverloadCall(values, true)}");
+            Console.WriteLine("omitted identity overload selection end");
+        }
+
+        private static void RunIdentityOverloadBoundaries()
+        {
+            Console.WriteLine("== unresolved omitted identity overload selection ==");
+            Type values = typeof(SignatureValueTaskOverload<>).MakeGenericType(typeof(int));
+            foreach (bool hard in new bool[] { false, true })
+            {
+                string mode = hard ? "hard" : "soft";
+                Console.WriteLine("signature overload coincident generic family " + mode + " => " + SignatureOutcome(() =>
+                    Delegate.CreateDelegate(typeof(SignatureValueTaskFunctionProbe), values, "Ref", false, hard)));
+            }
+            Console.WriteLine("unresolved omitted identity overload selection end");
+        }
+
+        private static unsafe int RuntimeBoxOverloadCall(Type owner, bool hard)
+        {
+            var target = (SignatureRuntimeIntBoxProbe)Delegate.CreateDelegate(
+                typeof(SignatureRuntimeIntBoxProbe), owner, "Ref", false, hard)!;
+            return target((delegate*<SignatureRuntimeKnownBox<int>, int>)(nint)1280);
+        }
+
+        internal static void RunRuntimeArgumentOverloads()
+        {
+            Console.WriteLine("== runtime type argument overload selection ==");
+            Type argument = typeof(SignatureRuntimeArgument<>).MakeGenericType(typeof(Guid));
+            Type owner = typeof(SignatureFunctionOverload<>).MakeGenericType(argument);
+            Console.WriteLine($"signature overload synthesized argument => {FunctionOverloadCall(owner, false)}/{FunctionOverloadCall(owner, true)}");
+            Type known = typeof(SignatureRuntimeKnownBox<>).MakeGenericType(typeof(Guid));
+            Type boxes = typeof(SignatureRuntimeBoxOverload<>).MakeGenericType(known);
+            Console.WriteLine($"signature overload generic argument difference => {RuntimeBoxOverloadCall(boxes, false)}/{RuntimeBoxOverloadCall(boxes, true)}");
+            Console.WriteLine("runtime type argument overload selection end");
+        }
+
+        internal static void RunFamilyTypeOverloads()
+        {
+            Console.WriteLine("== generic family and runtime type overload selection ==");
+            Type plain = typeof(SignatureValueTaskTypeOverload<>).MakeGenericType(typeof(int));
+            Console.WriteLine($"signature overload nongeneric shape => {ValueTaskOverloadCall(plain, false)}/{ValueTaskOverloadCall(plain, true)}");
+            Type guid = typeof(SignatureRuntimeArgument<>).MakeGenericType(typeof(Guid));
+            Type child = typeof(SignatureValueTaskTypeOverload<>).MakeGenericType(guid);
+            Console.WriteLine($"signature overload runtime child difference => {ValueTaskOverloadCall(child, false)}/{ValueTaskOverloadCall(child, true)}");
+            Type integer = typeof(SignatureRuntimeArgument<>).MakeGenericType(typeof(int));
+            Type family = typeof(SignatureValueTaskTypeOverload<>).MakeGenericType(integer);
+            Console.WriteLine($"signature overload runtime family difference => {ValueTaskOverloadCall(family, false)}/{ValueTaskOverloadCall(family, true)}");
+            Console.WriteLine("generic family and runtime type overload selection end");
+        }
+
+        private static void RunRuntimeArgumentBoundaries()
+        {
+            Console.WriteLine("== matching runtime generic identity boundaries ==");
+            Type known = typeof(SignatureRuntimeKnownBox<>).MakeGenericType(typeof(Guid));
+            Type owner = typeof(SignatureRuntimeBoxOverload<>).MakeGenericType(known);
+            foreach (bool hard in new bool[] { false, true })
+                Console.WriteLine("signature overload generic identity " + (hard ? "hard" : "soft") + " => " + SignatureOutcome(() =>
+                    Delegate.CreateDelegate(typeof(SignatureRuntimeGuidBoxProbe), owner, "Matching", false, hard)));
+            Console.WriteLine("matching runtime generic identity boundaries end");
+        }
+
+        private static string OpaqueInvokeOutcome(MethodInfo method, object[]? arguments)
+        {
+            try
+            {
+                return method.Invoke(null, arguments) is null ? "null" : "returned";
+            }
+            catch (Exception exception)
+            {
+                return exception.GetType().Name;
+            }
+        }
+
+        private static void SignatureInvokeProbe(string label, MethodInfo method, object? argument)
+        {
+            SignatureTarget.NestedArgumentCalls = 0;
+            string outcome;
+            try
+            {
+                outcome = method.Invoke(null, new[] { argument })?.ToString() ?? "null";
+            }
+            catch (Exception exception)
+            {
+                outcome = exception.GetType().Name;
+            }
+            Console.WriteLine($"signature invoke {label} => {outcome}/{SignatureTarget.NestedArgumentCalls}");
+        }
+
+        internal static unsafe void RunSignatureInvokeDescriptors()
+        {
+            Console.WriteLine("== runtime function pointer invocation descriptors ==");
+            Type template = typeof(SignatureGeneric<>).MakeGenericType(typeof(Guid));
+            MethodInfo argument = template.GetMethod("NestedArgument")!;
+            SignatureInvokeProbe("string", argument, "wrong");
+            SignatureInvokeProbe("boxed integer", argument, 42);
+            object pointer = typeof(ReflectInvokeValidationSubset.PointerTarget).GetMethod("Address")!.Invoke(null, null)!;
+            SignatureInvokeProbe("int pointer box", argument, pointer);
+            SignatureInvokeProbe("IntPtr", argument, (nint)256);
+            object box = template.GetMethod("Nested")!.Invoke(null, new object[] { 512 })!;
+            Console.WriteLine($"signature invoke nested box => {box is Pointer}/{(nint)Pointer.Unbox(box)}");
+            SignatureInvokeProbe("nested box roundtrip", argument, box);
+            Console.WriteLine("runtime function pointer invocation descriptors end");
+        }
+
+        internal static void RunOpaqueRefSignatures()
+        {
+            Console.WriteLine("== unsupported referent delegate signatures ==");
+            Type owner = typeof(SignatureOpaqueTarget);
+            SignaturePair("opaque return to object", typeof(SignatureRefObjectReturn), owner, "TokenReturn");
+            SignaturePair("opaque return mismatch", typeof(SignatureRegistrationReturn), owner, "TokenReturn");
+            SignaturePair("opaque return opposite", typeof(SignatureTokenReturn), owner, "RegistrationReturn");
+            SignaturePair("opaque return exact", typeof(SignatureTokenReturn), owner, "TokenReturn");
+            SignaturePair("opaque argument mismatch", typeof(SignatureRegistrationArgument), owner, "TokenArgument");
+            SignaturePair("opaque argument opposite", typeof(SignatureTokenArgument), owner, "RegistrationArgument");
+            SignaturePair("opaque argument exact", typeof(SignatureTokenArgument), owner, "TokenArgument");
+            var alias = (SignatureTokenReturn)Delegate.CreateDelegate(typeof(SignatureTokenReturn), owner, "TokenReturn");
+            ref CancellationToken slot = ref alias();
+            bool before = slot.IsCancellationRequested;
+            slot = new CancellationToken(true);
+            Console.WriteLine($"signature opaque typed alias => {before}/{alias().IsCancellationRequested}/{SignatureOpaqueTarget.TokenCanceled()}");
+            Console.WriteLine("unsupported referent delegate signatures end");
+        }
+
         private static void NameOutcome(string label, Func<Delegate?> bind)
         {
             try

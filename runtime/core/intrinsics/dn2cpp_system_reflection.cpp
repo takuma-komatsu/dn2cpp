@@ -3885,7 +3885,8 @@ Dn2CppObject* dn2cpp_field_pointer_value(Dn2CppObject* value, int32_t passKind,
     const Dn2CppTypeInfo* passType)
 {
     // FieldInfo accepts UIntPtr for void*, while MethodBase.Invoke does not.
-    if (passKind == DN2CPP_PASS_POINTER && passType == &dn2cpp_void_type
+    if ((passKind & ~(DN2CPP_PASS_SIGNATURE_UNKNOWN | DN2CPP_PASS_FNPTR_POINTEE)) == DN2CPP_PASS_POINTER
+        && passType == &dn2cpp_void_type
         && value != nullptr && value->type == &dn2cpp_uintptr_type)
         return *reinterpret_cast<Dn2CppObject**>(value + 1);
     Dn2CppParamInfo param{};
@@ -4529,6 +4530,101 @@ static bool dn2cpp_dgbind_widens(const Dn2CppTypeInfo* from, const Dn2CppTypeInf
                                           dn2cpp_get_type_from_handle(from)) != 0;
 }
 
+static bool dn2cpp_dgbind_delegate_type(const Dn2CppTypeInfo* type)
+{
+    // MulticastDelegate carries the delegate layout flag but is not a callable type.
+    return (type->flags & DN2CPP_TF_DELEGATE) != 0
+        && !(type->base != nullptr && std::strcmp(type->base->name, "System.Delegate") == 0);
+}
+
+static const Dn2CppTypeInfo* dn2cpp_dgbind_pointer_element(const Dn2CppTypeInfo* type)
+{
+    type = dn2cpp_enum_underlying_or_self(type);
+    if (type == &dn2cpp_byte_type) return &dn2cpp_sbyte_type;
+    if (type == &dn2cpp_uint16_type) return &dn2cpp_int16_type;
+    if (type == &dn2cpp_uint32_type) return &dn2cpp_int32_type;
+    if (type == &dn2cpp_uint64_type) return &dn2cpp_int64_type;
+    if (type == &dn2cpp_uintptr_type) return &dn2cpp_intptr_type;
+    return type;
+}
+
+// ABI shapes precede reference variance. By-ref and function-pointer locations
+// are invariant; one-level unmanaged pointers admit primitive and reference casts.
+static bool dn2cpp_dgbind_pass(const Dn2CppTypeInfo* from, int32_t fromKind,
+    const Dn2CppTypeInfo* fromPass, const Dn2CppTypeInfo* to, int32_t toKind,
+    const Dn2CppTypeInfo* toPass, bool relaxed, bool& unknown)
+{
+    constexpr int32_t shape = DN2CPP_PASS_BYREF | DN2CPP_PASS_POINTER | DN2CPP_PASS_FNPTR
+        | DN2CPP_PASS_FNPTR_POINTEE | DN2CPP_PASS_BYREFLIKE | (0xff << DN2CPP_PASS_POINTER_DEPTH_SHIFT);
+    if ((fromKind & shape) != (toKind & shape))
+        return false;
+    if (((fromKind | toKind) & DN2CPP_PASS_SIGNATURE_UNKNOWN) != 0
+        || ((fromKind & DN2CPP_PASS_FNPTR) != 0
+            && (fromPass == nullptr || toPass == nullptr
+                || fromPass == &dn2cpp_void_type || toPass == &dn2cpp_void_type)))
+    {
+        // A known mismatch elsewhere can reject without resolving this signature.
+        unknown = true;
+        return true;
+    }
+    if ((fromKind & (DN2CPP_PASS_BYREF | DN2CPP_PASS_POINTER)) != 0)
+    {
+        if (fromPass == toPass)
+            return true;
+        if (relaxed && (fromKind & (DN2CPP_PASS_BYREF | DN2CPP_PASS_FNPTR
+            | DN2CPP_PASS_FNPTR_POINTEE | (0xff << DN2CPP_PASS_POINTER_DEPTH_SHIFT))) == 0
+            && fromPass != nullptr && toPass != nullptr)
+        {
+            return dn2cpp_dgbind_pointer_element(fromPass) == dn2cpp_dgbind_pointer_element(toPass)
+                || dn2cpp_dgbind_widens(fromPass, toPass);
+        }
+        return false;
+    }
+    return relaxed ? dn2cpp_dgbind_widens(from, to) : from == to;
+}
+
+static bool dn2cpp_dgbind_parameter(const Dn2CppParamInfo& from,
+    const Dn2CppParamInfo& to, bool relaxed, bool& unknown)
+{
+    return dn2cpp_dgbind_pass(from.paramType, from.passKind, from.passType,
+        to.paramType, to.passKind, to.passType, relaxed, unknown);
+}
+
+static bool dn2cpp_dgbind_return(const Dn2CppMethodInfo& from,
+    const Dn2CppMethodInfo& to, bool relaxed, bool& unknown)
+{
+    auto kind = [](const Dn2CppMethodInfo& row) {
+        int32_t value = (row.attrs & DN2CPP_MTHA_RETURN_BYREF) != 0 ? DN2CPP_PASS_BYREF : 0;
+        if ((row.attrs & DN2CPP_MTHA_RETURN_POINTER) != 0)
+        {
+            value |= DN2CPP_PASS_POINTER;
+            value |= ((row.attrs >> DN2CPP_MTHA_RETURN_POINTER_DEPTH_SHIFT)
+                & DN2CPP_MTHA_RETURN_POINTER_DEPTH_MASK) << DN2CPP_PASS_POINTER_DEPTH_SHIFT;
+            if (row.returnPassType == nullptr)
+                value |= DN2CPP_PASS_FNPTR;
+            else if (row.returnSignatureType != nullptr && row.returnSignatureType != &dn2cpp_object_type)
+                value |= DN2CPP_PASS_FNPTR_POINTEE;
+        }
+        if ((row.attrs & DN2CPP_MTHA_RETURN_BYREFLIKE) != 0)
+            value |= DN2CPP_PASS_BYREFLIKE;
+        if (row.returnSignatureType == &dn2cpp_void_type || row.returnSignatureType == &dn2cpp_object_type)
+            value |= DN2CPP_PASS_SIGNATURE_UNKNOWN;
+        return value;
+    };
+    const int32_t fromKind = kind(from), toKind = kind(to);
+    return dn2cpp_dgbind_pass(from.returnType, fromKind,
+        (fromKind & DN2CPP_PASS_FNPTR) != 0 ? from.returnSignatureType : from.returnPassType,
+        to.returnType, toKind,
+        (toKind & DN2CPP_PASS_FNPTR) != 0 ? to.returnSignatureType : to.returnPassType, relaxed, unknown);
+}
+
+static void dn2cpp_dgbind_require_signature(bool unknown)
+{
+    if (unknown)
+        dn2cpp_throw_platform_not_supported(
+            "CreateDelegate: the signature identity is not retained for this instantiation");
+}
+
 // Whether .NET binds `obj` where an instance of `to` is expected: a closed
 // receiver, or a closed static method's first argument. The object is stored
 // unconverted, so a boxed value binds wherever its box is an instance of `to` — an
@@ -4568,7 +4664,7 @@ Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
         return nullptr;
     };
     const Dn2CppTypeInfo* dti = dt->typeInfo;
-    if ((dti->flags & DN2CPP_TF_DELEGATE) == 0)
+    if (!dn2cpp_dgbind_delegate_type(dti))
         dn2cpp_throw_argument_sr(&dn2cpp_argument_exception_type, DN2CPP_SR_MUST_BE_DELEGATE,
             typeParam, nullptr, 0, 0x80070057u);
     if (dn2cpp_type_contains_generic_parameters(dti))
@@ -4639,7 +4735,8 @@ Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
         if ((declTi->flags & DN2CPP_TF_VALUETYPE) != 0)
             dn2cpp_throw_platform_not_supported(
                 "CreateDelegate: an open-instance delegate over a value-type receiver is not supported");
-        if (!dn2cpp_dgbind_widens(inv->parameters[0]->paramType, declTi))
+        if (inv->parameters[0]->passKind != 0
+            || !dn2cpp_dgbind_widens(inv->parameters[0]->paramType, declTi))
             return fail();
     }
     if (mode == DN2CPP_DGBIND_CLOSED_STATIC)
@@ -4648,7 +4745,7 @@ Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
         // the method's first parameter must be a reference type (a value-typed
         // first parameter is ArgumentException in real .NET too).
         const Dn2CppTypeInfo* p0 = row.parameters[0]->paramType;
-        if ((p0->flags & DN2CPP_TF_VALUETYPE) != 0)
+        if (row.parameters[0]->passKind != 0 || (p0->flags & DN2CPP_TF_VALUETYPE) != 0)
             return fail();
         if (target != nullptr && !dn2cpp_dgbind_instance_of(target, p0))
             return fail();
@@ -4657,13 +4754,15 @@ Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
     // (j - dgFirst) + mFirst; contravariant reference widening allowed.
     int32_t dgFirst = (mode == DN2CPP_DGBIND_OPEN_INSTANCE) ? 1 : 0;
     int32_t mFirst = (mode == DN2CPP_DGBIND_CLOSED_STATIC) ? 1 : 0;
+    bool unknown = false;
     for (int32_t j = dgFirst; j < dgArity; j++)
-        if (!dn2cpp_dgbind_widens(inv->parameters[j]->paramType,
-                                  row.parameters[mFirst + (j - dgFirst)]->paramType))
+        if (!dn2cpp_dgbind_parameter(*inv->parameters[j],
+            *row.parameters[mFirst + (j - dgFirst)], true, unknown))
             return fail();
     // Return: covariant reference widening from the method's to the delegate's.
-    if (!dn2cpp_dgbind_widens(row.returnType, inv->returnType))
+    if (!dn2cpp_dgbind_return(row, *inv, true, unknown))
         return fail();
+    dn2cpp_dgbind_require_signature(unknown);
     // .NET binds a static virtual or abstract interface member only open, and a call
     // through that binding finds no entry point (dn2cpp_reflbind_invoke).
     bool staticVirtual = mStatic && (row.ilAttrs & DN2CPP_MA_VIRTUAL) != 0
@@ -4795,32 +4894,215 @@ static bool dn2cpp_dgbind_name_matches(const char* candidate, Dn2CppString* name
     return true;
 }
 
+static const Dn2CppBindingSignature* dn2cpp_dgbind_stand_in(const Dn2CppRuntimeTemplate& level,
+    const Dn2CppTypeInfo* type)
+{
+    for (int32_t i = 0; i < level.bindingStandInCount; i++)
+        if (level.bindingStandIns[i].type == type)
+            return level.bindingStandIns[i].signature;
+    return nullptr;
+}
+
+static bool dn2cpp_dgbind_binding_type_known(const Dn2CppTypeInfo* type)
+{
+    // Public synthesized TIs are interned by definition and actual arguments;
+    // their lazy Type-object cache does not determine their signature identity.
+    return type != nullptr && (type->typeObject != nullptr
+        || ((type->flags & (DN2CPP_TF_RUNTIME_SYNTH | DN2CPP_TF_SHARED_CANON)) == DN2CPP_TF_RUNTIME_SYNTH
+            && type->genericDef != nullptr && type->genericArgs != nullptr && type->genericArgCount > 0));
+}
+
+// Unknown leaves cannot establish inequality. These records affect candidate
+// selection only; Pointer boxes and Invoke retain their original stand-ins.
+static bool dn2cpp_dgbind_binding_mismatch(Dn2CppBindingSignature a, Dn2CppBindingSignature b,
+    const Dn2CppTypeInfo& declaring)
+{
+    if (a.kind == 5)
+    {
+        if (a.value < 0 || a.value >= declaring.genericArgCount)
+            return false;
+        const auto* argument = declaring.genericArgs[a.value];
+        a = { 0, argument, 0, nullptr, 0, nullptr };
+        // Runtime Type arguments can be interned without filling the const TI's
+        // typeObject. Their nongeneric CLR names still prove unequal leaves.
+        if (argument != nullptr && argument->typeObject == nullptr
+            && (argument->flags & (DN2CPP_TF_SHARED_CANON | DN2CPP_TF_GENERICDEF | DN2CPP_TF_ARRAY)) == 0
+            && argument->genericDef == nullptr && argument->genericArgCount == 0
+            && (argument->base != nullptr
+                || (argument->flags & (DN2CPP_TF_VALUETYPE | DN2CPP_TF_INTERFACE)) != 0))
+            a = { 8, nullptr, 0, nullptr, 0, argument->name };
+    }
+    if (a.kind == 0 && a.type != nullptr && a.type->typeObject == nullptr && a.name != nullptr)
+        a.kind = 8;
+    if (b.kind == 0 && b.type != nullptr && b.type->typeObject == nullptr && b.name != nullptr)
+        b.kind = 8;
+    if ((a.kind == 0 && !dn2cpp_dgbind_binding_type_known(a.type))
+        || (b.kind == 0 && !dn2cpp_dgbind_binding_type_known(b.type)))
+        return false;
+    if (a.kind == 8 || b.kind == 8)
+    {
+        // TI names and decoded nongeneric names are CLR FullNames. Equality of
+        // names cannot prove identity across assemblies or absent metadata.
+        const char* left = a.kind == 8 ? a.name : a.kind == 0 ? a.type->name : nullptr;
+        const char* right = b.kind == 8 ? b.name : b.kind == 0 ? b.type->name : nullptr;
+        if (left != nullptr && right != nullptr)
+            return std::strcmp(left, right) != 0;
+        int32_t other = a.kind == 8 ? b.kind : a.kind;
+        return other == 1 || other == 2 || other == 3 || other == 4 || other == 6 || other == 7;
+    }
+    if ((a.kind == 6 || a.kind == 7) && b.kind == 0)
+    {
+        if ((b.type->flags & DN2CPP_TF_ARRAY) == 0)
+            return true;
+        int32_t rank = a.kind == 6 ? 1 : a.value;
+        if (b.type->arrayRank <= 0 || a.childCount != 1)
+            return false;
+        if (rank != b.type->arrayRank)
+            return true;
+        // Rank-one TIs do not distinguish SZArray from MDArray. Their element
+        // can still prove inequality, while equal elements remain unresolved.
+        if (b.type->elementType == nullptr)
+            return false;
+        return dn2cpp_dgbind_binding_mismatch(a.children[0],
+            { 0, b.type->elementType, 0, nullptr, 0, nullptr }, declaring);
+    }
+    if (a.kind == 0 && (b.kind == 6 || b.kind == 7))
+        return dn2cpp_dgbind_binding_mismatch(b, a, declaring);
+    if (a.kind == 0 && b.kind == 0)
+        return a.type != b.type;
+    if (a.kind == 4 && b.kind == 0)
+    {
+        if (b.type->genericDef == nullptr || (a.type != nullptr && a.type != b.type->genericDef))
+            return true;
+        if (a.name != nullptr && b.type->genericDef->name != nullptr
+            && std::strcmp(a.name, b.type->genericDef->name) != 0)
+            return true;
+        if (b.type->genericArgs == nullptr || a.childCount != b.type->genericArgCount)
+            return false;
+        for (int32_t i = 0; i < a.childCount; i++)
+            if (dn2cpp_dgbind_binding_mismatch(a.children[i],
+                { 0, b.type->genericArgs[i], 0, nullptr, 0, nullptr }, declaring))
+                return true;
+        return false;
+    }
+    if (a.kind == 0 && b.kind == 4)
+        return dn2cpp_dgbind_binding_mismatch(b, a, declaring);
+    if (a.kind != b.kind)
+        return true;
+    if (a.kind == 3 && (a.value != b.value || a.childCount != b.childCount))
+        return true;
+    if (a.kind == 7 && a.value != b.value)
+        return true;
+    if (a.kind == 4)
+    {
+        if (a.type != nullptr && b.type != nullptr && a.type != b.type)
+            return true;
+        if (a.name != nullptr && b.name != nullptr && std::strcmp(a.name, b.name) != 0)
+            return true;
+        // Missing family TIs do not erase inequality of corresponding arguments.
+    }
+    if (a.childCount != b.childCount)
+        return false;
+    for (int32_t i = 0; i < a.childCount; i++)
+        if (dn2cpp_dgbind_binding_mismatch(a.children[i], b.children[i], declaring))
+            return true;
+    return false;
+}
+
 // Unlike MethodInfo binding, name binding admits no reference variance.
 // ParameterType alone erases by-ref and pointer shapes; their ABI descriptors
 // must agree too. Ref and out differ only in parameter attributes.
-static bool dn2cpp_dgbind_named_signature(const Dn2CppMethodInfo& row, const Dn2CppMethodInfo& invoke)
+static bool dn2cpp_dgbind_named_argument_mismatch(const Dn2CppMethodInfo& row,
+    const Dn2CppMethodInfo& invoke, const Dn2CppTypeInfo* queried)
 {
-    if (row.genericParamCount != 0 || row.paramCount != invoke.paramCount
-        || row.returnType != invoke.returnType)
+    const auto* declaring = dn2cpp_invoke_declaring(row.declaringType, queried);
+    if ((declaring->flags & DN2CPP_TF_RUNTIME_SYNTH) == 0 || declaring->genericArgs == nullptr)
         return false;
-    constexpr int32_t returnShape = DN2CPP_MTHA_RETURN_BYREF | DN2CPP_MTHA_RETURN_POINTER
-        | (DN2CPP_MTHA_RETURN_POINTER_DEPTH_MASK << DN2CPP_MTHA_RETURN_POINTER_DEPTH_SHIFT);
-    if ((row.attrs & returnShape) != (invoke.attrs & returnShape)
-        || row.returnPassType != invoke.returnPassType)
+    const auto* level = dn2cpp_runtime_template_by_def(declaring->genericDef);
+    if (level == nullptr)
         return false;
+    for (int32_t i = 0; i < level->bindingTypeArgumentCount; i++)
+    {
+        const auto& binding = level->bindingTypeArguments[i];
+        if (binding.methodToken != row.metadataToken
+            || binding.typeArgument >= declaring->genericArgCount)
+            continue;
+        const Dn2CppTypeInfo* known = nullptr;
+        if (binding.parameter == -1)
+        {
+            if ((row.returnSignatureType == &dn2cpp_object_type || row.returnSignatureType == &dn2cpp_void_type)
+                && invoke.returnSignatureType != &dn2cpp_object_type && invoke.returnSignatureType != &dn2cpp_void_type)
+                known = invoke.returnPassType != nullptr ? invoke.returnPassType : invoke.returnSignatureType;
+        }
+        else if (binding.parameter >= 0 && binding.parameter < row.paramCount)
+        {
+            const auto a = row.parameters[binding.parameter].operator->();
+            const auto b = invoke.parameters[binding.parameter].operator->();
+            if ((a->passKind & DN2CPP_PASS_SIGNATURE_UNKNOWN) != 0
+                && (b->passKind & DN2CPP_PASS_SIGNATURE_UNKNOWN) == 0)
+                known = b->passType;
+        }
+        const auto* structure = dn2cpp_dgbind_stand_in(*level, known);
+        int32_t depth = 0;
+        while (structure != nullptr && structure->kind == 1 && structure->childCount == 1)
+        {
+            depth++;
+            structure = structure->children;
+        }
+        if (structure != nullptr || (known != nullptr && known->typeObject != nullptr))
+        {
+            if (depth != binding.pointerDepth)
+                return true;
+        }
+        if (binding.signature != nullptr)
+        {
+            if (structure != nullptr && dn2cpp_dgbind_binding_mismatch(*binding.signature, *structure, *declaring))
+                return true;
+            continue;
+        }
+        if (structure != nullptr)
+            known = structure->kind == 0 ? structure->type : nullptr;
+        // An unrecorded stand-in cannot prove a CLR type inequality.
+        int32_t step = 0;
+        for (; step < binding.pathCount && known != nullptr && known->typeObject != nullptr; step++)
+        {
+            const auto& path = binding.path[step];
+            if (known->genericDef != path.definition)
+                return true;
+            if (known->genericArgs == nullptr || path.argument < 0 || path.argument >= known->genericArgCount)
+                break;
+            known = known->genericArgs[path.argument];
+        }
+        if (step != binding.pathCount || known == nullptr || known->typeObject == nullptr)
+            continue;
+        if (binding.typeArgument >= 0 ? declaring->genericArgs[binding.typeArgument] != known
+            : binding.typeArgument == -2 ? known->genericDef != binding.type : known != binding.type)
+            return true;
+    }
+    return false;
+}
+
+static bool dn2cpp_dgbind_named_signature(const Dn2CppMethodInfo& row, const Dn2CppMethodInfo& invoke,
+    const Dn2CppTypeInfo* queried, bool& skippedUnknown)
+{
+    if (row.genericParamCount != 0 || row.paramCount != invoke.paramCount)
+        return false;
+    bool unknown = false;
     for (int32_t i = 0; i < row.paramCount; i++)
     {
         const auto a = row.parameters[i].operator->();
         const auto b = invoke.parameters[i].operator->();
-        constexpr int32_t passShape = DN2CPP_PASS_BYREF | DN2CPP_PASS_POINTER | DN2CPP_PASS_FNPTR
-            | DN2CPP_PASS_BYREFLIKE | (0xff << DN2CPP_PASS_POINTER_DEPTH_SHIFT);
-        if (a->paramType != b->paramType || (a->passKind & passShape) != (b->passKind & passShape)
-            || a->passType != b->passType)
+        if (!dn2cpp_dgbind_parameter(*a.operator->(), *b.operator->(), false, unknown))
             return false;
     }
-    if ((row.attrs & DN2CPP_MTHA_RETURN_POINTER) != 0 && row.returnPassType == nullptr)
-        dn2cpp_throw_platform_not_supported(
-            "CreateDelegate: function-pointer return signatures are not retained in this image");
+    if (!dn2cpp_dgbind_return(row, invoke, false, unknown))
+        return false;
+    if (unknown && dn2cpp_dgbind_named_argument_mismatch(row, invoke, queried))
+    {
+        skippedUnknown = true;
+        return false;
+    }
+    dn2cpp_dgbind_require_signature(unknown);
     return true;
 }
 
@@ -4839,10 +5121,7 @@ Dn2CppObject* dn2cpp_delegate_create_named(Dn2CppType* dt, Dn2CppObject* target,
         dn2cpp_throw_argument_sr(&dn2cpp_argument_exception_type, DN2CPP_SR_UNBOUND_GENERIC,
             "target", nullptr, 0, 0x80070057u);
     const Dn2CppTypeInfo* dti = dt->typeInfo;
-    // The layout flag also marks MulticastDelegate itself, whose base is Delegate.
-    bool delegateShell = dti->base != nullptr
-        && std::strcmp(dti->base->name, "System.Delegate") == 0;
-    if ((dti->flags & DN2CPP_TF_DELEGATE) == 0 || delegateShell)
+    if (!dn2cpp_dgbind_delegate_type(dti))
         dn2cpp_throw_argument_sr(&dn2cpp_argument_exception_type, DN2CPP_SR_MUST_BE_DELEGATE,
             "type", nullptr, 0, 0x80070057u);
     auto fail = [&]() -> Dn2CppObject* {
@@ -4859,10 +5138,11 @@ Dn2CppObject* dn2cpp_delegate_create_named(Dn2CppType* dt, Dn2CppObject* target,
         dn2cpp_throw_platform_not_supported(
             "CreateDelegate: the delegate type carries no reflected Invoke row in this image");
     const auto invokeView = invoke.operator->();
+    bool skippedUnknown = false;
     auto matches = [&](const Dn2CppMethodInfo& row) {
         return ((row.attrs & DN2CPP_MTHA_STATIC) != 0) == (staticForm != 0)
             && dn2cpp_dgbind_name_matches(row.name, name, ignoreCase)
-            && dn2cpp_dgbind_named_signature(row, *invokeView.operator->());
+            && dn2cpp_dgbind_named_signature(row, *invokeView.operator->(), queried, skippedUnknown);
     };
     auto bind = [&](Dn2CppMetadataHandle<Dn2CppMethodInfo> method) {
         return dn2cpp_delegate_create(dt, target, dn2cpp_make_methodref(method, queried),
@@ -5000,6 +5280,9 @@ Dn2CppObject* dn2cpp_delegate_create_named(Dn2CppType* dt, Dn2CppObject* target,
     const auto metadata = metadataMethod(false);
     if (metadata != nullptr)
         return bind(metadata);
+    // A proved mismatch permits later overloads, but does not make an otherwise
+    // unresolved template signature a supported missing-method query.
+    dn2cpp_dgbind_require_signature(skippedUnknown);
     return fail();
 }
 
