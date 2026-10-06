@@ -41,6 +41,7 @@
 
   <ItemGroup>
     <Compile Remove="ReflectBindOnlyProgram.cs" />
+    <Compile Remove="ReflectNameBindOnlyProgram.cs" />
   </ItemGroup>
 
   <ItemGroup>

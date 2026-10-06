@@ -4571,6 +4571,8 @@ Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
     if ((dti->flags & DN2CPP_TF_DELEGATE) == 0)
         dn2cpp_throw_argument_sr(&dn2cpp_argument_exception_type, DN2CPP_SR_MUST_BE_DELEGATE,
             typeParam, nullptr, 0, 0x80070057u);
+    if (dn2cpp_type_contains_generic_parameters(dti))
+        return fail();
     Dn2CppMetadataHandle<Dn2CppMethodInfo> mi = m->method;
     // A definition view has no invokable body of its own; .NET rejects binding
     // an open generic method with ArgumentException.
@@ -4765,6 +4767,240 @@ Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
     dg->method = tramp;
     dg->prev = nullptr;
     return reinterpret_cast<Dn2CppObject*>(dg);
+}
+
+// Name binding uses invariant casing, rather than the ordinal string fold.
+// The CLR passes the requested name through a NUL-terminated UTF-8 QCall string.
+static bool dn2cpp_dgbind_name_matches(const char* candidate, Dn2CppString* name, int32_t ignoreCase)
+{
+    Dn2CppString* decoded = dn2cpp_string_from_utf8(candidate,
+        static_cast<int32_t>(std::strlen(candidate)));
+    int32_t length = 0;
+    while (length < name->length && name->chars[length] != 0)
+        length++;
+    if (decoded->length != length)
+        return false;
+    for (int32_t i = 0; i < length; i++)
+    {
+        char16_t a = decoded->chars[i];
+        char16_t b = name->chars[i];
+        if (ignoreCase != 0)
+        {
+            a = dn2cpp_char_upper_invariant(a);
+            b = dn2cpp_char_upper_invariant(b);
+        }
+        if (a != b)
+            return false;
+    }
+    return true;
+}
+
+// Unlike MethodInfo binding, name binding admits no reference variance.
+// ParameterType alone erases by-ref and pointer shapes; their ABI descriptors
+// must agree too. Ref and out differ only in parameter attributes.
+static bool dn2cpp_dgbind_named_signature(const Dn2CppMethodInfo& row, const Dn2CppMethodInfo& invoke)
+{
+    if (row.genericParamCount != 0 || row.paramCount != invoke.paramCount
+        || row.returnType != invoke.returnType)
+        return false;
+    constexpr int32_t returnShape = DN2CPP_MTHA_RETURN_BYREF | DN2CPP_MTHA_RETURN_POINTER
+        | (DN2CPP_MTHA_RETURN_POINTER_DEPTH_MASK << DN2CPP_MTHA_RETURN_POINTER_DEPTH_SHIFT);
+    if ((row.attrs & returnShape) != (invoke.attrs & returnShape)
+        || row.returnPassType != invoke.returnPassType)
+        return false;
+    for (int32_t i = 0; i < row.paramCount; i++)
+    {
+        const auto a = row.parameters[i].operator->();
+        const auto b = invoke.parameters[i].operator->();
+        constexpr int32_t passShape = DN2CPP_PASS_BYREF | DN2CPP_PASS_POINTER | DN2CPP_PASS_FNPTR
+            | DN2CPP_PASS_BYREFLIKE | (0xff << DN2CPP_PASS_POINTER_DEPTH_SHIFT);
+        if (a->paramType != b->paramType || (a->passKind & passShape) != (b->passKind & passShape)
+            || a->passType != b->passType)
+            return false;
+    }
+    if ((row.attrs & DN2CPP_MTHA_RETURN_POINTER) != 0 && row.returnPassType == nullptr)
+        dn2cpp_throw_platform_not_supported(
+            "CreateDelegate: function-pointer return signatures are not retained in this image");
+    return true;
+}
+
+Dn2CppObject* dn2cpp_delegate_create_named(Dn2CppType* dt, Dn2CppObject* target,
+    Dn2CppType* targetType, Dn2CppString* name, int32_t staticForm,
+    int32_t ignoreCase, int32_t throwOnFailure)
+{
+    if (dt == nullptr)
+        dn2cpp_throw_argument_null_param("type");
+    if (staticForm != 0 ? targetType == nullptr : target == nullptr)
+        dn2cpp_throw_argument_null_param("target");
+    if (name == nullptr)
+        dn2cpp_throw_argument_null_param("method");
+    const Dn2CppTypeInfo* queried = staticForm != 0 ? targetType->typeInfo : target->type;
+    if (staticForm != 0 && dn2cpp_type_contains_generic_parameters(queried))
+        dn2cpp_throw_argument_sr(&dn2cpp_argument_exception_type, DN2CPP_SR_UNBOUND_GENERIC,
+            "target", nullptr, 0, 0x80070057u);
+    const Dn2CppTypeInfo* dti = dt->typeInfo;
+    // The layout flag also marks MulticastDelegate itself, whose base is Delegate.
+    bool delegateShell = dti->base != nullptr
+        && std::strcmp(dti->base->name, "System.Delegate") == 0;
+    if ((dti->flags & DN2CPP_TF_DELEGATE) == 0 || delegateShell)
+        dn2cpp_throw_argument_sr(&dn2cpp_argument_exception_type, DN2CPP_SR_MUST_BE_DELEGATE,
+            "type", nullptr, 0, 0x80070057u);
+    auto fail = [&]() -> Dn2CppObject* {
+        if (throwOnFailure != 0)
+            dn2cpp_throw_reflection_fault(&dn2cpp_argument_exception_type,
+                dn2cpp_sr_message(DN2CPP_SR_DELEGATE_BIND, nullptr, 0), 0x80070057u);
+        return nullptr;
+    };
+    if (dn2cpp_type_contains_generic_parameters(dti))
+        return fail();
+    dn2cpp_require_metadata(dti);
+    const auto invoke = dn2cpp_delegate_invoke_row(dti);
+    if (invoke == nullptr)
+        dn2cpp_throw_platform_not_supported(
+            "CreateDelegate: the delegate type carries no reflected Invoke row in this image");
+    const auto invokeView = invoke.operator->();
+    auto matches = [&](const Dn2CppMethodInfo& row) {
+        return ((row.attrs & DN2CPP_MTHA_STATIC) != 0) == (staticForm != 0)
+            && dn2cpp_dgbind_name_matches(row.name, name, ignoreCase)
+            && dn2cpp_dgbind_named_signature(row, *invokeView.operator->());
+    };
+    auto bind = [&](Dn2CppMetadataHandle<Dn2CppMethodInfo> method) {
+        return dn2cpp_delegate_create(dt, target, dn2cpp_make_methodref(method, queried),
+            staticForm == 0 ? 1 : 0, throwOnFailure, true);
+    };
+    auto refuseConstructor = [&](const Dn2CppTypeInfo* ti) {
+        if (staticForm != 0 || !dn2cpp_dgbind_name_matches(".ctor", name, ignoreCase))
+            return;
+        const auto reflection = ti->reflection();
+        for (int32_t i = reflection.ctorCount - 1; i >= 0; i--)
+        {
+            const auto row = reflection.ctors[i].operator->();
+            if (matches(*row.operator->()))
+                dn2cpp_throw_platform_not_supported(
+                    "CreateDelegate: constructor bodies are outside the method-binding reachability route");
+        }
+    };
+    // Static initializer rows are absent, so neither their presence nor binding
+    // identity can be inferred from an ordinary method table.
+    dn2cpp_require_metadata(queried);
+    if (staticForm != 0 && invokeView->paramCount == 0
+        && invokeView->returnType == &dn2cpp_void_type
+        && dn2cpp_dgbind_name_matches(".cctor", name, ignoreCase))
+        dn2cpp_throw_platform_not_supported(
+            "CreateDelegate: static initializer method metadata is not retained in this image");
+    auto metadataMethod = [&](bool isVirtual) {
+        Dn2CppMetadataHandle<Dn2CppMethodInfo> selected;
+        for (int32_t k = 0; k < g_meta_member_count; k++)
+        {
+            const auto& descriptor = g_meta_members[k];
+            if (!dn2cpp_dgbind_name_matches(descriptor.methodName, name, ignoreCase))
+                continue;
+            Dn2CppMethodCandidates candidates;
+            Dn2CppString* canonicalName = dn2cpp_string_from_utf8(descriptor.methodName,
+                static_cast<int32_t>(std::strlen(descriptor.methodName)));
+            dn2cpp_meta_lookup(queried, canonicalName, 0, nullptr,
+                DN2CPP_BF_PUBLIC | DN2CPP_BF_NONPUBLIC
+                    | (staticForm != 0 ? DN2CPP_BF_STATIC | DN2CPP_BF_FLATTEN : DN2CPP_BF_INSTANCE), candidates);
+            for (int32_t i = 0; i < candidates.size(); i++)
+            {
+                const auto method = candidates[i];
+                const auto row = method.operator->();
+                if (((row->ilAttrs & DN2CPP_MA_VIRTUAL) != 0) == isVirtual
+                    && matches(*row.operator->()))
+                    return method;
+            }
+        }
+        return selected;
+    };
+
+    // The CLR checks the receiver's non-virtual methods in reverse declaration
+    // order, its virtual slots (inherited ones included), then each base's
+    // non-virtual methods. A compatible overload does not hide its base siblings.
+    refuseConstructor(queried);
+    const auto own = queried->reflection();
+    for (int32_t i = own.methodCount - 1; i >= 0; i--)
+    {
+        const auto method = own.methods[i];
+        const auto row = method.operator->();
+        if (((row->attrs & DN2CPP_MTHA_STATIC) != 0 || (row->ilAttrs & DN2CPP_MA_VIRTUAL) == 0)
+            && matches(*row.operator->()))
+            return bind(method);
+    }
+    if (staticForm == 0)
+    {
+        struct NamedSlot
+        {
+            int32_t slot;
+            bool taken;
+            Dn2CppMetadataHandle<Dn2CppMethodInfo> method;
+        };
+        Dn2CppWalkList<NamedSlot, 64> slots;
+        Dn2CppMetadataHandle<Dn2CppMethodInfo> selected;
+        int32_t selectedSlot = -1;
+        for (const Dn2CppTypeInfo* ti = queried; ti != nullptr; ti = ti->base)
+        {
+            dn2cpp_require_metadata(ti);
+            const auto reflection = ti->reflection();
+            for (int32_t i = reflection.methodCount - 1; i >= 0; i--)
+            {
+                const auto method = reflection.methods[i];
+                const auto row = method.operator->();
+                if ((row->ilAttrs & DN2CPP_MA_VIRTUAL) == 0 || row->genericParamCount != 0
+                    || (row->attrs & DN2CPP_MTHA_STATIC) != 0 || row->vtableSlot < 0)
+                    continue;
+                int32_t index = 0;
+                while (index < slots.size() && slots[index].slot != row->vtableSlot)
+                    index++;
+                if (index == slots.size())
+                    slots.push_back({ row->vtableSlot, false, {} });
+                auto& slot = slots[index];
+                if (!slot.taken)
+                {
+                    slot.taken = true;
+                    slot.method = matches(*row.operator->()) ? method : Dn2CppMetadataHandle<Dn2CppMethodInfo>{};
+                }
+                // New-slot roots are visited in CLR virtual-slot order. A
+                // MethodImpl can alias this chain to a base's C++ dispatch slot;
+                // closing it leaves the base declaration available independently.
+                if ((row->ilAttrs & DN2CPP_MA_NEWSLOT) != 0)
+                {
+                    if (slot.method != nullptr)
+                        return bind(slot.method);
+                    slot.taken = false;
+                }
+            }
+        }
+        // Runtime-owned Object slots have no emitted new-slot declaration.
+        for (int32_t i = 0; i < slots.size(); i++)
+            if (slots[i].taken && slots[i].method != nullptr && slots[i].slot > selectedSlot)
+            {
+                selected = slots[i].method;
+                selectedSlot = slots[i].slot;
+            }
+        if (selected != nullptr)
+            return bind(selected);
+        selected = metadataMethod(true);
+        if (selected != nullptr)
+            return bind(selected);
+    }
+    for (const Dn2CppTypeInfo* ti = queried->base; ti != nullptr; ti = ti->base)
+    {
+        dn2cpp_require_metadata(ti);
+        refuseConstructor(ti);
+        const auto reflection = ti->reflection();
+        for (int32_t i = reflection.methodCount - 1; i >= 0; i--)
+        {
+            const auto method = reflection.methods[i];
+            const auto row = method.operator->();
+            if (((row->attrs & DN2CPP_MTHA_STATIC) != 0 || (row->ilAttrs & DN2CPP_MA_VIRTUAL) == 0)
+                && matches(*row.operator->()))
+                return bind(method);
+        }
+    }
+    const auto metadata = metadataMethod(false);
+    if (metadata != nullptr)
+        return bind(metadata);
+    return fail();
 }
 
 Dn2CppObject* dn2cpp_delegate_get_target(Dn2CppObject* d)

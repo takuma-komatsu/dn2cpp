@@ -105,3 +105,10 @@ typeof-kept runtime template members end
   library accessors false -> get_Tag
   library accessors true -> get_Tag
 property accessors under trim end
+== delegate method names under trim ==
+  app name=42
+  inherited name=1
+  library name -> 42
+  library missing soft name -> null
+  library static soft name -> null
+delegate method names under trim end

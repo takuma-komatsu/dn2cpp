@@ -13,6 +13,12 @@ namespace ReflectInvoke
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
             CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
 
+            if (args.Length > 0 && args[0] == "delegate-name-boundary-outcomes")
+            {
+                ReflectDelegateSubset.Program.RunNamedBoundaries();
+                return;
+            }
+
             if (args.Length > 0 && args[0] == "generic-method-boundary-outcomes")
             {
                 ReflectGenericMethodSubset.Program.RunDefinitionBoundaries();
@@ -199,6 +205,9 @@ namespace ReflectInvoke
             if (args.Length > 0 && args[0] == "before-definition-signature-closure")
                 return;
             ReflectGenericMethodSubset.Program.RunDefinitionSignatureClosure();
+            if (args.Length > 0 && args[0] == "before-delegate-name-bindings")
+                return;
+            ReflectDelegateSubset.Program.RunNamedBindings();
         }
     }
 }

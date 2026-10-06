@@ -25,6 +25,7 @@ internal enum GenericDefKind
     Nested = 16,
     ByRefLike = 32,
     HiddenEnclosing = 64,
+    Delegate = 128,
 }
 
 /// <summary>The monomorphization bound was passed

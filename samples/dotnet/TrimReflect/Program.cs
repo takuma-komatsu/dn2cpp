@@ -87,6 +87,23 @@ namespace TrimReflect
             if (args.Length != 0 && args[0] == "before-property-accessors")
                 return;
             PropertyAccessors();
+            if (args.Length != 0 && args[0] == "before-delegate-name-bindings")
+                return;
+            NamedDelegateBindings();
+        }
+
+        private static void NamedDelegateBindings()
+        {
+            Console.WriteLine("== delegate method names under trim ==");
+            var app = (Func<int, int, int>)Delegate.CreateDelegate(typeof(Func<int, int, int>), new Widget(), "Add");
+            Console.WriteLine("  app name=" + app(20, 22));
+            var inherited = (Func<int>)Delegate.CreateDelegate(typeof(Func<int>), new DerivedWidget(), "Ping");
+            Console.WriteLine("  inherited name=" + inherited());
+            object library = Factory.Make();
+            Probe("library name", () => ((Func<int, int>)Delegate.CreateDelegate(typeof(Func<int, int>), library, "Twice"))(21).ToString());
+            Probe("library missing soft name", () => Delegate.CreateDelegate(typeof(Func<int>), library, "Missing", false, false) is null ? "null" : "bound");
+            Probe("library static soft name", () => Delegate.CreateDelegate(typeof(Func<int, int>), library.GetType(), "Twice", false, false) is null ? "null" : "bound");
+            Console.WriteLine("delegate method names under trim end");
         }
 
         // Consumes side values so the transpiler cannot fold reaching calls away.

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Property accessor arrays retain visibility, order, reflected handle identity and boxed invocation.
+# Delegate method names select strict signatures, inherited private methods and virtual slots.
 # Invoke replaces the canonical Missing singleton with recorded defaults and copies back only after success.
 # A delegate constructor refuses a target whose method-load origin was lost.
 # Virtual and generic virtual reflection dispatch, by-reference copy-back,
@@ -219,6 +220,8 @@ py="$(resolve_python)"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/check-reflection-layout.py gates/measure-reflection-metadata.py gates/expected/reflection-allocations.csv gates/fixtures/delegate-invocation-cache/DelegateInvocationCache.csproj gates/fixtures/delegate-invocation-cache/Program.cs gates/fixtures/reflection-metadata-codec.cpp"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|empty-string-clone-prefix:${DN2CPP_BEFORE_EMPTY_STRING_CLONE:-}|delegate-list-prefix:${DN2CPP_BEFORE_DELEGATE_LISTS:-}|recursive-delegate-prefix:${DN2CPP_BEFORE_RECURSIVE_DELEGATE:-}|ordinary-interface-prefix:${DN2CPP_BEFORE_ORDINARY_IL_INTERFACE:-}|object-methodimpl-prefix:${DN2CPP_BEFORE_OBJECT_METHODIMPL:-}"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/recursive-delegate/RecursiveDelegate.csproj gates/fixtures/recursive-delegate/Program.cs"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/ReflectNameBindOnly.csproj samples/dotnet/ReflectInvoke/ReflectNameBindOnlyProgram.cs"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|delegate-name-boundary-argv:delegate-name-boundary-outcomes"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|delegate-origin-prefix-argv:before-delegate-origin-boundaries|delegate-origin-modes:argument,field,array,checked-conv,arithmetic,box,call,local,stack-join,byref-argument"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|runtime-type-relations-prefix-argv:before-runtime-type-relations"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|generic-method-definitions-prefix-argv:before-generic-method-definitions|generic-method-boundary-argv:generic-method-boundary-outcomes"
@@ -229,6 +232,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|formal-classification-pref
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|metadata-formal-attributes-prefix-argv:before-metadata-formal-attributes"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|formal-member-types-prefix-argv:before-formal-member-types"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|definition-signature-closure-prefix-argv:before-definition-signature-closure"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|delegate-name-bindings-prefix-argv:before-delegate-name-bindings"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|nested-signature-layouts:absent-ext,loaded-ext,body-required,default,trim|nested-signature-layout-argv:describe-unused-layouts"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|open-signature-layouts:absent-ext,loaded-ext,default,trim|open-signature-boundary-argv:return-type"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|signature-dependencies:absent-ext,loaded-ext,default,trim,depth40,body-required|signature-dependencies-argv:describe-layout-dependencies|signature-paths-argv:describe-layout-paths|default-interface-layout-argv:describe-default-interface-layout|completion-layout-argv:describe-completion-layouts"
@@ -1052,6 +1056,56 @@ gate_extra_asserts() {
         grep -Fxq -- "signature closure $line GetMethods count=1" <<< "$native"
     done
 
+    run_bounded dotnet "$_CG_APP" before-delegate-name-bindings > "$out/delegate-name-before.dotnet.stdout"
+    run_bounded "$out/ReflectInvoke$EXE_EXT" before-delegate-name-bindings > "$out/delegate-name-before.native.stdout"
+    for axis in dotnet native; do
+        sed '/^== delegate method name bindings ==/,$d' "$out/generic-method-definitions.$axis.stdout" \
+            > "$out/delegate-name-prefix.$axis.stdout"
+        diff -u <(strip_cr_win_file "$out/delegate-name-before.$axis.stdout") \
+            <(strip_cr_win_file "$out/delegate-name-prefix.$axis.stdout")
+    done
+    for line in '== delegate method name bindings ==' 'delegate method name bindings end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: delegate name binding block witness missing: $line" >&2; return 1; }
+    done
+    # Compact return descriptors have no function-pointer signature identity.
+    run_bounded dotnet "$_CG_APP" delegate-name-boundary-outcomes > "$out/delegate-name-boundary.dotnet.stdout"
+    run_bounded "$out/ReflectInvoke$EXE_EXT" delegate-name-boundary-outcomes > "$out/delegate-name-boundary.native.stdout"
+    for axis in dotnet native; do
+        boundary=$(strip_cr_win_file "$out/delegate-name-boundary.$axis.stdout")
+        for line in '== delegate name signature boundaries ==' \
+            'name boundary unrelated function name => null' \
+            'name boundary function argument mismatch => null' \
+            'name boundary constructor return mismatch => null' \
+            'name boundary constructor argument mismatch => null' \
+            'name boundary initializer argument mismatch => null' \
+            'name boundary MethodInfo ref value mismatch => null' \
+            'delegate name signature boundaries end'; do
+            grep -Fxq -- "$line" <<< "$boundary" \
+                || { echo "FAIL: delegate signature boundary witness missing ($axis): $line" >&2; return 1; }
+        done
+        if [ "$axis" = dotnet ]; then
+            for line in 'function return => bound' 'function return mismatch => null' \
+                'MethodInfo function return mismatch => null' 'enum underlying => bound' \
+                'MethodInfo enum underlying => bound' 'MethodInfo ref object mismatch => null' \
+                'own constructor => bound' 'base constructor => bound' 'static initializer => bound' \
+                'constructor query normalization => bound' 'initializer query normalization => bound'; do
+                grep -Fxq -- "name boundary $line" <<< "$boundary" \
+                    || { echo "FAIL: CLR delegate signature oracle missing: $line" >&2; return 1; }
+            done
+        else
+            for line in 'function return => unsupported' 'function return mismatch => unsupported' \
+                'MethodInfo function return mismatch => bound' 'enum underlying => null' \
+                'MethodInfo enum underlying => null' 'MethodInfo ref object mismatch => bound' \
+                'own constructor => unsupported' 'base constructor => unsupported' \
+                'static initializer => unsupported' 'constructor query normalization => unsupported' \
+                'initializer query normalization => unsupported'; do
+                grep -Fxq -- "name boundary $line" <<< "$boundary" \
+                    || { echo "FAIL: native delegate signature boundary changed: $line" >&2; return 1; }
+            done
+        fi
+    done
+
     # Enforce each operation's first and repeated allocation budget independently.
     # The capture reports time too, but timing is not a pass/fail threshold.
     DN2CPP_REFLECTION_MEASURE=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/allocations.csv"
@@ -1490,6 +1544,21 @@ gate_extra_asserts() {
     done
 }
 ordinary_fixture_diff_gate ReflectInvoke ReflectBindOnly --no-ildiet
+unset -f gate_extra_asserts
+
+gate_extra_asserts() {
+    local out="$1" native line
+    native=$(run_bounded "$out/ReflectNameBindOnly$EXE_EXT") || return $?
+    native=$(strip_cr_win "$native")
+    for line in '== delegate names as the only reflection entry ==' \
+        'instance names: 42/42/42' 'static names: 42/42/42' 'delegate names only end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: isolated delegate name witness missing: $line" >&2; return 1; }
+    done
+}
+DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectInvoke ReflectNameBindOnly --no-ildiet
+DN2CPP_OUT_SUFFIX=-ildiet DN2CPP_STRICT_COMPLETION=1 \
+    ordinary_fixture_diff_gate ReflectInvoke ReflectNameBindOnly
 unset -f gate_extra_asserts
 
 # The refusals need their CoreLib overrides stripped, so they run in an image
