@@ -363,34 +363,48 @@ internal sealed partial class MethodCompiler
         // instantiation.
         if (token == 0)
             TaintIfCanonical(element, "newarr");
-        // Record element[] so a per-element array type-info is emitted for it and
-        // give the allocation that precise handle so arr.GetType is exact.
-        _c.NoteArrayElementType(element);
-        string ti = token != 0 && SharedTrial && Compilation.ContainsCanonPlaceholder(element)
-            ? "(const Dn2CppTypeInfo*)" + RgctxSlotAccess(RgctxSlotKind.NewArrayTypeInfo, token, "newarr", element)
-            : PreciseArrayTypeInfoExpr(element);
-        switch (RepOf(element))
+        if (token != 0 && BoxedTemplateValue(element))
         {
-            case ArrRep.I4:
-                Push(StackKind.Ref, "Dn2CppArrayI4*", $"dn2cpp_newarr_i4_t({lenExpr}, {ti})");
-                break;
-            case ArrRep.Ref: Push(StackKind.Ref, "Dn2CppArrayRef*", $"dn2cpp_newarr_ref_t({lenExpr}, {ti})"); break;
-            default:
+            // A clone's argument can be a value type or a reference type; its
+            // runtime type-info selects storage and GC scanning, not the placeholder.
+            string length = NewTemp("int32_t");
+            Emit($"{length} = (int32_t)({lenExpr});");
+            Emit($"if ({length} < 0) dn2cpp_overflow();");
+            string elementTi = TypeInfoExpr(element, token)!;
+            Push(StackKind.Ref, "Dn2CppObject*",
+                $"dn2cpp_array_create_instance(dn2cpp_get_type_from_handle({elementTi}), &{length}, 1)");
+        }
+        else
+        {
+            // Record element[] so a per-element array type-info is emitted for it and
+            // give the allocation that precise handle so arr.GetType is exact.
+            _c.NoteArrayElementType(element);
+            string ti = token != 0 && SharedTrial && Compilation.ContainsCanonPlaceholder(element)
+                ? "(const Dn2CppTypeInfo*)" + RgctxSlotAccess(RgctxSlotKind.NewArrayTypeInfo, token, "newarr", element)
+                : PreciseArrayTypeInfoExpr(element);
+            switch (RepOf(element))
             {
-                // Element storage is the packed natural width (byte/sbyte -> 1), not
-                // the int32 stack-promoted type, so byte[] is a packed buffer.
-                string st = CppTypes.StorageOf(element);
-                // The sizeof names the value element's t_ struct; force its full layout and
-                // record the naming (a no-op when the element is otherwise reached, as it
-                // almost always is once its elements are written — see NoteArraySizeofStruct).
-                NoteArraySizeofStruct(element);
-                // Reference-free element storage (primitives, enums, ref-free structs)
-                // holds no managed pointers, so allocate it unscanned; a struct that
-                // embeds a string/object still needs the scanned allocator.
-                bool refFree = !element.ContainsGcReferences();
-                string alloc = refFree ? "dn2cpp_newarr_n_atomic_t" : "dn2cpp_newarr_n_t";
-                Push(StackKind.Ref, "Dn2CppArrayN*", $"{alloc}({lenExpr}, (int32_t)sizeof({st}), {ti})");
-                break;
+                case ArrRep.I4:
+                    Push(StackKind.Ref, "Dn2CppArrayI4*", $"dn2cpp_newarr_i4_t({lenExpr}, {ti})");
+                    break;
+                case ArrRep.Ref: Push(StackKind.Ref, "Dn2CppArrayRef*", $"dn2cpp_newarr_ref_t({lenExpr}, {ti})"); break;
+                default:
+                {
+                    // Element storage is the packed natural width (byte/sbyte -> 1), not
+                    // the int32 stack-promoted type, so byte[] is a packed buffer.
+                    string st = CppTypes.StorageOf(element);
+                    // The sizeof names the value element's t_ struct; force its full layout and
+                    // record the naming (a no-op when the element is otherwise reached, as it
+                    // almost always is once its elements are written — see NoteArraySizeofStruct).
+                    NoteArraySizeofStruct(element);
+                    // Reference-free element storage (primitives, enums, ref-free structs)
+                    // holds no managed pointers, so allocate it unscanned; a struct that
+                    // embeds a string/object still needs the scanned allocator.
+                    bool refFree = !element.ContainsGcReferences();
+                    string alloc = refFree ? "dn2cpp_newarr_n_atomic_t" : "dn2cpp_newarr_n_t";
+                    Push(StackKind.Ref, "Dn2CppArrayN*", $"{alloc}({lenExpr}, (int32_t)sizeof({st}), {ti})");
+                    break;
+                }
             }
         }
         // Thread the array's static type so a freshly-allocated array flowing straight
@@ -2073,11 +2087,14 @@ internal sealed partial class MethodCompiler
     /// the main loop never translates.</summary>
     private void NoteFtnTarget(MethodInfo m, bool virtFtn)
     {
-        // A shared body taking the address of a canonical-world method
-        // would bake an owner-group function identity into delegate/
-        // function-pointer state observable per instantiation.
+        // An own-instance runtime-template target keeps its context on the captured
+        // receiver. Other canonical addresses would expose an owner-group identity.
         if (SharedTrial && Compilation.IsCanonicalMethod(m))
-            ThrowSharedTaint("ldftn", m.DeclaringClass.FullName + "." + m.Name);
+        {
+            if (virtFtn || !_c.IsReflectedTemplateInstanceTarget(_method, m))
+                ThrowSharedTaint("ldftn", m.DeclaringClass.FullName + "." + m.Name);
+            SharedDirectCallees?.Add(SharedCallEdge(m));
+        }
         if (virtFtn)
         {
             if (SharedTrial && Compilation.IsGvmCall(m))

@@ -1568,10 +1568,10 @@ internal sealed partial class Compilation
         }
     }
 
-    /// <summary>Reaches the target of a direct call a scanned body makes. A reflected
-    /// template body's call of a template-level method nothing else reached yet leaves
-    /// the callee reflected too: <see cref="IsReflectedTemplateBody"/> vetted it with its
-    /// caller, and the caller's row runs only with it.</summary>
+    /// <summary>Reaches a scanned body's direct-call or own-instance address target.
+    /// A reflected template body's target remains reflected too:
+    /// <see cref="IsReflectedTemplateBody"/> vetted it with its caller, and the caller's
+    /// row runs only with it.</summary>
     private void ReachCallFromReflectedTemplateBody(MethodInfo caller, MethodInfo callee)
     {
         bool reflected = _reflectedTemplateBodies.Count > 0 && _reflectedTemplateBodies.Contains(caller)
@@ -1594,10 +1594,13 @@ internal sealed partial class Compilation
 
     // Whether a clone can run m's body, which only reflection reaches: a non-generic
     // method of a placeholder level with IL, naming the type parameters only bare as
-    // typeof, type-test, cast, unbox.any or box operands (see KeepsTemplateValuesBoxed),
+    // typeof, type-test, cast, unbox.any, box or array element operands
+    // (see KeepsTemplateValuesBoxed),
     // through instance field accesses, or through direct calls of non-virtual methods of
-    // its own level or a base level that are reached already or qualify themselves, and
-    // none in its signature. Every context slot such a body registers is a bare type
+    // its own level or a base level that are reached already or qualify themselves,
+    // or an ldftn of its own non-generic instance method, and none in its signature.
+    // Indirect calls have a class-argument-free signature.
+    // Every context slot such a body registers is a bare type
     // argument or the class table of a base level whose static method it calls.
     private bool IsReflectedTemplateBody(MethodInfo m, HashSet<MethodInfo> visiting)
     {
@@ -1621,22 +1624,25 @@ internal sealed partial class Compilation
             return true;
         foreach (var insn in ILDecoder.Decode(m.Module.PE.GetMethodBody(m.Rva).GetILBytes()!.ToImmutableArrayCompat()))
         {
-            // A calli's stand-alone signature can name a type parameter ClassTypeParameters
-            // does not read, and a clone would call it with the placeholder's ABI.
-            if (insn.OpCode == ILOpCode.Calli)
-                return false;
             // An instance field is placeholder-free (RuntimeTemplateShapeEligible).
             if (insn.Token == 0 || insn.OpCode is ILOpCode.Ldstr or ILOpCode.Ldfld or ILOpCode.Stfld or ILOpCode.Ldflda)
                 continue;
             var token = SRME.EntityHandle(insn.Token);
             if (ClassTypeParameters.Of(reader, token) == 0)
                 continue;
+            // A clone cannot respell an indirect call's ABI per class argument.
+            if (insn.OpCode == ILOpCode.Calli)
+                return false;
             if (insn.OpCode is ILOpCode.Ldtoken or ILOpCode.Isinst or ILOpCode.Castclass
-                    or ILOpCode.Unbox_any or ILOpCode.Box
+                    or ILOpCode.Unbox_any or ILOpCode.Box or ILOpCode.Newarr
                 && ClassTypeParameters.IsBare(reader, token))
                 continue;
             if (insn.OpCode == ILOpCode.Call && TemplateLevelCalleeOrNull(m, token) is { } callee
                 && (Reachable.Contains(callee) || IsReflectedTemplateBody(callee, visiting)))
+                continue;
+            if (insn.OpCode == ILOpCode.Ldftn && TemplateLevelCalleeOrNull(m, token) is { } target
+                && IsOwnTemplateInstanceTarget(m, target)
+                && (Reachable.Contains(target) || IsReflectedTemplateBody(target, visiting)))
                 continue;
             return false;
         }
@@ -1662,6 +1668,19 @@ internal sealed partial class Compilation
                 return callee;
         return null;
     }
+
+    // An own-instance target derives its context from the captured clone receiver.
+    private bool IsOwnTemplateInstanceTarget(MethodInfo caller, MethodInfo target) =>
+        ReferenceEquals(caller.DeclaringClass, target.DeclaringClass)
+        && _runtimeTemplateLevels.Contains(target.DeclaringClass)
+        && !caller.IsStatic && !caller.IsVirtual && caller.NameSuffix == ""
+        && !target.IsStatic && !target.IsVirtual && target.NameSuffix == ""
+        && target.Name is not (".ctor" or ".cctor") && target.Rva != 0 && !target.Handle.IsNil
+        && caller.Module.Reader.GetMethodDefinition(caller.Handle).GetGenericParameters().Count == 0
+        && target.Module.Reader.GetMethodDefinition(target.Handle).GetGenericParameters().Count == 0;
+
+    internal bool IsReflectedTemplateInstanceTarget(MethodInfo caller, MethodInfo target) =>
+        _reflectedTemplateBodies.Contains(caller) && IsOwnTemplateInstanceTarget(caller, target);
 
     /// <summary>The number of base steps from template level <paramref name="level"/>
     /// down to the placeholder level whose class table <paramref name="slot"/>

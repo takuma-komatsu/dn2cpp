@@ -133,6 +133,19 @@ namespace ReflectRuntimeInstantiationSubset
         public object MakeList() => new System.Collections.Generic.List<T>();
     }
 
+    // No closed instantiation is named in source; the bound target reads the clone's context.
+    class BoundTemplate<T>
+    {
+        public string Kind() => typeof(T).Name;
+        public Func<string> Bound() => Kind;
+    }
+
+    class ArrayTemplate<T>
+    {
+        public string ArrayName() => new T[0].GetType().Name;
+        public Array Sized(int length) => new T[length];
+    }
+
     // Only reflection names Show and StaticShow; they reach the base levels'
     // static methods through the table their level forwards.
     class StaticRoot<T>
@@ -561,6 +574,124 @@ namespace ReflectRuntimeInstantiationSubset
             {
                 return ex.GetType().Name;
             }
+        }
+
+        internal static void RunReflectedDelegates()
+        {
+            Console.WriteLine("== reflected template delegates ==");
+            foreach (Type arg in new[] { typeof(int), typeof(long), typeof(string), typeof(Pair) })
+            {
+                Type closed = typeof(BoundTemplate<>).MakeGenericType(arg);
+                object inst = Activator.CreateInstance(closed);
+                MethodInfo bound = closed.GetMethod("Bound")
+                    ?? throw new InvalidOperationException("The reflected Bound row is missing.");
+                string prefix = "bound " + arg.Name;
+                Console.WriteLine(prefix + " row=True");
+                try
+                {
+                    var value = (Func<string>)bound.Invoke(inst, null);
+                    Console.WriteLine(prefix + " invoke=" + value());
+                    Console.WriteLine(prefix + " identity: target=" + ReferenceEquals(value.Target, inst)
+                        + " method=" + value.Method.Name + " declaring=" + (value.Method.DeclaringType == closed));
+                }
+                catch (Exception error)
+                {
+                    Console.WriteLine(prefix + " refused=" + error.GetType().Name);
+                }
+            }
+            Console.WriteLine("reflected template delegates end");
+        }
+
+        internal static void RunReflectedDelegateMethodIdentity()
+        {
+            Console.WriteLine("== template delegate method identity ==");
+            foreach (Type arg in new[] { typeof(int), typeof(long), typeof(string), typeof(Pair) })
+            {
+                Type closed = typeof(BoundTemplate<>).MakeGenericType(arg);
+                object inst = Activator.CreateInstance(closed);
+                MethodInfo bound = closed.GetMethod("Bound")
+                    ?? throw new InvalidOperationException("The reflected Bound row is missing.");
+                MethodInfo kind = closed.GetMethod("Kind")
+                    ?? throw new InvalidOperationException("The reflected Kind row is missing.");
+                string prefix = "method identity " + arg.Name;
+                Console.WriteLine(prefix + " rows=True");
+                try
+                {
+                    var value = (Func<string>)bound.Invoke(inst, null);
+                    MethodInfo method = value.Method;
+                    Console.WriteLine(prefix + " bound: operator=" + (method == kind)
+                        + " equals=" + method.Equals(kind) + " reference=" + ReferenceEquals(method, kind)
+                        + " reflected=" + (method.ReflectedType == closed));
+                    Console.WriteLine(prefix + " invoke=" + method.Invoke(inst, null));
+                    var control = (Func<string>)kind.CreateDelegate(typeof(Func<string>), inst);
+                    MethodInfo controlMethod = control.Method;
+                    Console.WriteLine(prefix + " created: operator=" + (controlMethod == kind)
+                        + " equals=" + controlMethod.Equals(kind)
+                        + " reference=" + ReferenceEquals(controlMethod, kind)
+                        + " reflected=" + (controlMethod.ReflectedType == closed));
+                }
+                catch (Exception error)
+                {
+                    Console.WriteLine(prefix + " refused=" + error.GetType().Name);
+                }
+            }
+            Console.WriteLine("template delegate method identity end");
+        }
+
+        internal static void RunReflectedArrays()
+        {
+            Console.WriteLine("== reflected template arrays ==");
+            Type[] args = { typeof(int), typeof(long), typeof(byte), typeof(string), typeof(Pair) };
+            object[] seeds = { 42, 1234567890123L, (byte)200, "stored", new Pair { X = 3, Y = 4 } };
+            for (int i = 0; i < args.Length; i++)
+            {
+                Type arg = args[i];
+                Type closed = typeof(ArrayTemplate<>).MakeGenericType(arg);
+                object inst = Activator.CreateInstance(closed);
+                MethodInfo arrayName = closed.GetMethod("ArrayName")
+                    ?? throw new InvalidOperationException("The reflected ArrayName row is missing.");
+                string prefix = "array " + arg.Name;
+                Console.WriteLine(prefix + " row=True");
+                try
+                {
+                    var value = (Func<string>)arrayName.CreateDelegate(typeof(Func<string>), inst);
+                    Console.WriteLine(prefix + " delegate=" + value());
+                    Console.WriteLine(prefix + " identity: target=" + ReferenceEquals(value.Target, inst)
+                        + " method=" + value.Method.Name + " declaring=" + (value.Method.DeclaringType == closed));
+                }
+                catch (Exception error)
+                {
+                    Console.WriteLine(prefix + " refused=" + error.GetType().Name);
+                }
+                try
+                {
+                    MethodInfo sized = closed.GetMethod("Sized")
+                        ?? throw new InvalidOperationException("The reflected Sized row is missing.");
+                    var create = (Func<int, Array>)sized.CreateDelegate(typeof(Func<int, Array>), inst);
+                    Array array = create(2);
+                    array.SetValue(seeds[i], 1);
+                    object stored = array.GetValue(1);
+                    bool matched = arg == typeof(Pair)
+                        ? stored is Pair pair && pair.X == 3 && pair.Y == 4
+                        : Equals(stored, seeds[i]);
+                    Console.WriteLine(prefix + " storage: length=" + array.Length
+                        + " element=" + (array.GetType().GetElementType() == arg) + " stored=" + matched);
+                    try
+                    {
+                        create(-1);
+                        Console.WriteLine(prefix + " negative=none");
+                    }
+                    catch (Exception error)
+                    {
+                        Console.WriteLine(prefix + " negative=" + error.GetType().Name);
+                    }
+                }
+                catch (Exception error)
+                {
+                    Console.WriteLine(prefix + " storage refused=" + error.GetType().Name);
+                }
+            }
+            Console.WriteLine("reflected template arrays end");
         }
 
         internal static void RunReflectedBodies()
