@@ -514,6 +514,8 @@ constexpr Dn2CppTypeInfo dn2cpp_ti_with_formatspec(
 // A synthetic open definition can resolve enclosing visibility without retaining
 // declaring-type objects. Its own raw TypeAttributes still describe the member.
 #define DN2CPP_TF_HIDDEN_ENCLOSING 0x20000000
+// A metadata-only method parameter, never an allocation or dispatch type.
+#define DN2CPP_TF_GENERICPARAM 0x40000000
 
 // The clone-owned rgctx anchor lookup behind DN2CPP_TF_RUNTIME_SYNTH
 // (dn2cpp_system_reflection.cpp); falls back to the base-chain walk for levels
@@ -947,6 +949,13 @@ constexpr Dn2CppTypeInfo dn2cpp_pointee_type_info(const char* name)
     return ti;
 }
 
+// The MethodDef's formal parameter names and raw GenericParameterAttributes.
+struct Dn2CppMethodGenericParameter
+{
+    const char* name;
+    int32_t attrs;
+};
+
 // Reflection method metadata. One entry per declared method in a type's
 // Dn2CppTypeInfo::methods table. attrs uses the same STATIC/PUBLIC/PRIVATE bit
 // layout as Dn2CppFieldInfo (DN2CPP_MTHA_* alias DN2CPP_FLDA_*). vtableSlot is the
@@ -991,13 +1000,13 @@ struct Dn2CppMethodInfo
     int32_t ilAttrs;
     int32_t ilImplAttrs;
     int32_t metadataToken;
-    // The generic arity of the method this row instantiates (0 for a non-generic
-    // method; rows are per-closed-instantiation, so a generic row's arity is its
-    // instantiation's argument count). Backs GetMethod(name, genericParameterCount,
-    // …) arity matching. 0-fill trailing convention.
+    // The method's generic arity (0 for a non-generic method), including a
+    // metadata-only definition without a compiled instantiation. Backs
+    // GetMethod(name, genericParameterCount, …) arity matching. 0-fill trailing.
     int32_t genericParamCount;
     // The closed instantiation's type arguments (genericParamCount entries), or
-    // null for a non-generic method. Backs MakeGenericMethod's in-image resolution
+    // null for a non-generic method or a metadata-only definition. Backs
+    // MakeGenericMethod's in-image resolution
     // (rows sharing the definition's metadata token are matched argument-wise) and
     // MethodInfo.GetGenericArguments. 0-fill trailing convention.
     const Dn2CppTypeInfo* const* genericArgs;
@@ -1026,6 +1035,8 @@ struct Dn2CppMethodInfo
     int32_t gvmRootToken;
     // The referent of a by-ref return (DN2CPP_MTHA_RETURN_BYREF), else null.
     const Dn2CppTypeInfo* returnPassType;
+    // Formal method parameters, shared by the definition and its compiled rows.
+    const Dn2CppMethodGenericParameter* genericParameters;
 };
 
 // A synthesized constructor differs only in its allocation's declaring type.
@@ -1111,13 +1122,9 @@ struct Dn2CppMethodRef : Dn2CppObject
     // MemberInfo.ReflectedType; see the Dn2CppFieldRef note for the model and
     // the mint-time normalization (never null on a minted handle).
     const Dn2CppTypeInfo* reflectedType;
-    // Definition-view flag (GetGenericMethodDefinition). The image carries no
-    // open generic method rows — a "definition" handle wraps a representative
-    // closed row, retagged: IsGenericMethodDefinition answers true, equality
-    // compares (declaringType, metadata token) so the definitions obtained from
-    // two different instantiations of one method agree, and MakeGenericMethod
-    // re-resolves in-image. GetGenericArguments still reports the wrapped row's
-    // CLOSED arguments (no open T handles exist), a documented divergence.
+    // A definition view interns over the definition's representative row, exposes
+    // formal parameters and refuses invocation. Closed rows remain available to
+    // MakeGenericMethod's in-image resolution.
     int32_t isGenericDefView;
 };
 
@@ -1130,6 +1137,7 @@ struct Dn2CppParamRef : Dn2CppObject
 {
     Dn2CppMetadataHandle<Dn2CppParamInfo> param;
     int32_t position;
+    int32_t ownerGenericDefView;
     Dn2CppMetadataHandle<Dn2CppMethodInfo> owner;
     // The reflectedType of the member handle GetParameters was called on.
     // ParameterInfo carries no ReflectedType of its own, but .NET's
@@ -1554,6 +1562,9 @@ int32_t dn2cpp_type_is_generic_type(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_is_constructed_generic(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_is_generic_type_definition(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_contains_generic_parameters(const Dn2CppTypeInfo* ti);
+int32_t dn2cpp_type_generic_parameter_attributes(const Dn2CppTypeInfo* ti);
+Dn2CppString* dn2cpp_type_generic_parameter_namespace(const Dn2CppTypeInfo* ti);
+const Dn2CppTypeInfo* dn2cpp_type_generic_parameter_declaring_type(const Dn2CppTypeInfo* ti);
 Dn2CppType* dn2cpp_type_get_generic_type_definition(Dn2CppType* t);
 Dn2CppArrayRef* dn2cpp_type_get_generic_arguments(Dn2CppType* t);
 Dn2CppType* dn2cpp_type_make_generic(Dn2CppType* def, Dn2CppArrayRef* args);
@@ -2495,8 +2506,7 @@ int32_t dn2cpp_methodref_is_constructor(Dn2CppMethodRef* m);
 int32_t dn2cpp_methodref_is_generic(Dn2CppMethodRef* m);
 // MethodBase.GetParameterTypes (internal): the parameter types as a Type[].
 Dn2CppArrayRef* dn2cpp_methodref_get_parameter_types(Dn2CppMethodRef* m);
-// The generic-method dimension over per-closed-instantiation rows (see the
-// Dn2CppMethodRef::isGenericDefView note for the definition-view model).
+// Generic definitions and their in-image closed instantiations.
 // MakeGenericMethod resolves within the image: rows on the declaring type
 // sharing the receiver's definition metadata token are matched argument-wise
 // against the requested Type[]; an instantiation the transpile never reached
@@ -2505,6 +2515,7 @@ Dn2CppMethodRef* dn2cpp_methodref_make_generic(Dn2CppMethodRef* m, Dn2CppArrayRe
 Dn2CppMethodRef* dn2cpp_methodref_get_generic_definition(Dn2CppMethodRef* m);
 Dn2CppArrayRef* dn2cpp_methodref_get_generic_arguments(Dn2CppMethodRef* m);
 int32_t dn2cpp_methodref_is_generic_def(Dn2CppMethodRef* m);
+int32_t dn2cpp_methodref_contains_generic_parameters(Dn2CppMethodRef* m);
 // MethodInfo.GetBaseDefinition: the shallowest base-chain ancestor declaring a
 // row on the receiver's vtable slot (a non-virtual method returns itself).
 Dn2CppMethodRef* dn2cpp_methodref_get_base_definition(Dn2CppMethodRef* m);

@@ -1178,6 +1178,8 @@ static Dn2CppString* dn2cpp_type_display(const Dn2CppTypeInfo* ti, bool qualify)
 
 Dn2CppString* dn2cpp_type_fullname(const Dn2CppTypeInfo* ti)
 {
+    if ((ti->flags & DN2CPP_TF_GENERICPARAM) != 0)
+        return nullptr;
     return dn2cpp_type_display(ti, true);
 }
 
@@ -1188,11 +1190,14 @@ Dn2CppString* dn2cpp_type_tostring(const Dn2CppTypeInfo* ti)
 
 // Type.Namespace: the declaring chain's namespace — everything before the last
 // '.' of the OUTERMOST type's name, i.e. within the prefix up to the first '+'
-// ("Ns.Outer+Inner" -> "Ns"). Arrays inherit it; a closed type reads its definition.
+// ("Ns.Outer+Inner" -> "Ns"). Arrays inherit it; a closed type reads its definition,
+// and a formal method parameter reads its declaring type.
 Dn2CppString* dn2cpp_type_namespace(const Dn2CppTypeInfo* ti)
 {
     while (dn2cpp_ti_has_array_element(ti))
         ti = ti->elementType;
+    if ((ti->flags & DN2CPP_TF_GENERICPARAM) != 0)
+        return dn2cpp_type_generic_parameter_namespace(ti);
     if (dn2cpp_ti_is_closed_generic(ti))
         ti = ti->genericDef;
     const char* full = ti->name;

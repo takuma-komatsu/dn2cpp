@@ -55,8 +55,8 @@ internal sealed partial class MethodCompiler
 
     /// <summary>Notes System.ValueType's type-info, through which the runtime's method
     /// lookup, CreateDelegate and Delegate.Method reach a value type's ValueType and
-    /// Object rows. The runtime finds it by name, because no value type-info names its
-    /// base; only the handle is needed, so it seeds no reflection keep.</summary>
+    /// Object rows, and struct-constrained formal parameters name their base. The runtime
+    /// finds it by name; only the handle is needed, so it seeds no reflection keep.</summary>
     private void NoteValueTypeRows()
     {
         if (Comp.FindClassByFullName("System.ValueType") is { } valueType)
@@ -966,12 +966,14 @@ internal sealed partial class MethodCompiler
             // no-flags overloads use the default BindingFlags.Public|Instance|Static (28).
             case ("System.Type", "GetMethods") when sig.ParameterTypes.Length == 0:
             {
+                NoteValueTypeRows();
                 var t = Pop();
                 PushReflectionMemberArray($"dn2cpp_type_get_methods({Cast(t, "Dn2CppType*")}, 28)", sig.ReturnType);
                 return true;
             }
             case ("System.Type", "GetMethods") when sig.ParameterTypes.Length == 1:
             {
+                NoteValueTypeRows();
                 var flags = Pop();
                 var t = Pop();
                 PushReflectionMemberArray($"dn2cpp_type_get_methods({Cast(t, "Dn2CppType*")}, {Cast(flags, "int32_t")})", sig.ReturnType);
@@ -1017,23 +1019,13 @@ internal sealed partial class MethodCompiler
                 _stack[^1] = _stack[^1] with { ArraySearchOrigin = m.ArraySearchOrigin };
                 return true;
             }
-            // MethodBase.ContainsGenericParameters: the reflection surface only
-            // exposes closed methods (methtab rows are per-instantiation), so no
-            // observable method ever carries an open parameter — constantly false.
-            // This includes the GetGenericMethodDefinition view, whose arguments
-            // stay closed (real .NET answers true there; DECLARED DIVERGENCE).
             case ("System.Reflection.MethodBase", "get_ContainsGenericParameters"):
             {
-                Pop();
-                Push(StackKind.I4, "int32_t", "0");
+                var m = Pop();
+                Push(StackKind.I4, "int32_t", $"dn2cpp_methodref_contains_generic_parameters((Dn2CppMethodRef*)({m.Expr}))");
                 return true;
             }
-            // MethodBase.IsGenericMethodDefinition: true only for the
-            // definition-view handle GetGenericMethodDefinition returns (see the
-            // Dn2CppMethodRef::isGenericDefView model note); every enumerated /
-            // looked-up row is a closed instantiation and answers false — where
-            // real .NET's GetMethod would have surfaced the open definition
-            // (DECLARED DIVERGENCE).
+            // Lookup, enumeration and GetGenericMethodDefinition share the definition view.
             case ("System.Reflection.MethodBase" or "System.Reflection.MethodInfo",
                 "get_IsGenericMethodDefinition"):
             {
@@ -1063,12 +1055,12 @@ internal sealed partial class MethodCompiler
                     $"((Dn2CppObject*)dn2cpp_methodref_get_generic_definition((Dn2CppMethodRef*)({m.Expr})))");
                 return true;
             }
-            // MethodBase.GetGenericArguments: the row's closed type arguments
-            // (empty for a non-generic method; a definition view reports the
-            // wrapped row's closed arguments — the documented divergence).
+            // MethodBase.GetGenericArguments returns formal parameters for a definition
+            // view and closed arguments for an instantiated method.
             case ("System.Reflection.MethodBase" or "System.Reflection.MethodInfo",
                 "GetGenericArguments") when sig.ParameterTypes.Length == 0:
             {
+                NoteValueTypeRows();
                 var m = Pop();
                 PushReflectionMemberArray(
                     $"dn2cpp_methodref_get_generic_arguments((Dn2CppMethodRef*)({m.Expr}))", sig.ReturnType);
@@ -1342,6 +1334,7 @@ internal sealed partial class MethodCompiler
             case ("System.Type", "GetMember") when sig.ParameterTypes.Length is 1 or 2 or 3
                 && sig.ParameterTypes[0].IsString:
             {
+                NoteValueTypeRows();
                 string mflags = "28", memberTypes = "191";
                 if (sig.ParameterTypes.Length == 3)
                 {
@@ -1361,6 +1354,7 @@ internal sealed partial class MethodCompiler
             }
             case ("System.Type", "GetMembers") when sig.ParameterTypes.Length is 0 or 1:
             {
+                NoteValueTypeRows();
                 string mflags = sig.ParameterTypes.Length == 1 ? Cast(Pop(), "int32_t") : "28";
                 var t = Pop();
                 PushReflectionMemberArray(
@@ -1369,6 +1363,7 @@ internal sealed partial class MethodCompiler
             }
             case ("System.Type", "GetDefaultMembers") when sig.ParameterTypes.Length == 0:
             {
+                NoteValueTypeRows();
                 var t = Pop();
                 PushReflectionMemberArray(
                     $"dn2cpp_type_get_default_members({Cast(t, "Dn2CppType*")})", sig.ReturnType);
@@ -1686,9 +1681,8 @@ internal sealed partial class MethodCompiler
             }
             // Generic reflection: flag/metadata reads on the type-info, so they work
             // through a runtime GetType too. IsConstructedGenericType is the
-            // closed-instantiation predicate (genericArgCount > 0); an open definition is
-            // never an instance value here (no typeof(List<>) emit), so it can share the
-            // IsGenericType helper.
+            // closed-instantiation predicate (genericArgCount > 0). Open definitions
+            // and formal parameters have distinct flags and never represent instances.
             case ("System.Type", "get_IsGenericType"):
             {
                 var a = Pop();
@@ -1753,13 +1747,10 @@ internal sealed partial class MethodCompiler
                     $"(({Cast(self, "Dn2CppType*")}) == ({Cast(other, "Dn2CppType*")}) ? 1 : 0)");
                 return true;
             }
-            // Type.GenericParameterAttributes: the reflected registry holds only
-            // closed types — no Type handle is ever an open generic parameter, so
-            // the variance bits are constantly None.
             case ("System.Type", "get_GenericParameterAttributes"):
             {
-                Pop();
-                Push(StackKind.I4, "int32_t", "0");
+                var a = Pop();
+                Push(StackKind.I4, "int32_t", $"dn2cpp_type_generic_parameter_attributes(dn2cpp_type_require({Cast(a, "Dn2CppType*")}))");
                 return true;
             }
             // Type.MakeByRefType/MakePointerType: byref/pointer Types aren't
@@ -1982,13 +1973,12 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.I4, "int32_t", $"(int32_t)((dn2cpp_type_il_attrs(dn2cpp_type_require({Cast(a, "Dn2CppType*")})) & 7) == {visibility})");
                 return true;
             }
-            // Type.IsGenericParameter: always false at runtime — dn2cpp never
-            // materializes an open generic-parameter Type value (the registry and
-            // typeof both yield closed types only), like IsPointer/IsByRef.
             case ("System.Type", "get_IsGenericParameter"):
-                Pop();
-                Push(StackKind.I4, "int32_t", "0");
+            {
+                var a = Pop();
+                Push(StackKind.I4, "int32_t", $"((dn2cpp_type_require({Cast(a, "Dn2CppType*")})->flags & DN2CPP_TF_GENERICPARAM) != 0 ? 1 : 0)");
                 return true;
+            }
             // Type.Module / MemberInfo.Module: modeled as the defining assembly's
             // simple-name handle (single-module assemblies) — the same const char*
             // an Assembly is, so Module equality is a name compare below.
@@ -2259,15 +2249,12 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.I4, "int32_t", $"dn2cpp_fieldref_is_specialname((Dn2CppFieldRef*)({f.Expr}))");
                 return true;
             }
-            // Type.GetGenericParameterConstraints: only meaningful on a
-            // generic-parameter Type, which never materializes at runtime
-            // (IsGenericParameter is constantly false) — so any execution is on an
-            // invalid receiver; throw the catchable PlatformNotSupportedException rather
-            // than fabricate an answer (real .NET: InvalidOperationException).
+            // Formal method parameters carry identity and attributes, but their
+            // constraint type lists are not represented.
             case ("System.Type", "GetGenericParameterConstraints") when sig.ParameterTypes.Length == 0:
             {
                 Pop();
-                Emit("dn2cpp_throw_platform_not_supported(\"Type.GetGenericParameterConstraints: no generic-parameter Type materializes in AOT-compiled code\");");
+                Emit("dn2cpp_throw_platform_not_supported(\"Type.GetGenericParameterConstraints: constraint type lists are not represented\");");
                 Push(StackKind.Ref, "Dn2CppArrayRef*", "((Dn2CppArrayRef*)nullptr)"); // unreachable; stack typing only
                 return true;
             }

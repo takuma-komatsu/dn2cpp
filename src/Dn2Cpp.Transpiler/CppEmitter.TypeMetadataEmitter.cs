@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Reflection.Metadata;
 using System.Text;
 
@@ -6,6 +7,661 @@ namespace Dn2Cpp;
 internal sealed partial class CppEmitter
 {
     private void EmitTypeInfos(CppOutput o) => new TypeMetadataEmitter(this, o).Emit();
+
+    private readonly Dictionary<ClassInfo, List<MethodInfo>> _reflectionDefinitions = new();
+    private readonly HashSet<MethodInfo> _metadataOnlyDefinitions = new();
+    private readonly HashSet<MethodInfo> _unsupportedDefinitions = new();
+    private readonly HashSet<MethodInfo> _describedDefinitions = new();
+
+    // An added definition without a decodable signature contributes no row.
+    private bool CanDescribeReflectionDefinition(MethodInfo method)
+    {
+        if (!_metadataOnlyDefinitions.Contains(method))
+            return true;
+        if (_unsupportedDefinitions.Contains(method))
+            return false;
+        if (_describedDefinitions.Contains(method))
+            return true;
+        try
+        {
+            // Reject missing layout dependencies before decoding can publish partial shapes.
+            new ReflectionDefinitionLayout(this).Check(method);
+            method.EnsureSignature();
+            _describedDefinitions.Add(method);
+            return true;
+        }
+        catch (NotSupportedException e) when (!Compilation.IsMustEscape(e))
+        {
+            _unsupportedDefinitions.Add(method);
+            return false;
+        }
+    }
+
+    private sealed class ReflectionLayoutType
+    {
+        internal Module? Module;
+        internal TypeDefinitionHandle Handle;
+        internal ReflectionLayoutType[] Arguments = Array.Empty<ReflectionLayoutType>();
+        internal PrimitiveTypeCode? Primitive;
+        internal ReflectionLayoutType? Element;
+        internal TypeKind ElementKind;
+        internal int Rank;
+        internal bool Open;
+        internal string? ExternalName;
+        internal bool Intrinsic;
+        internal Dictionary<int, int>? Origins;
+    }
+
+    private sealed class ReflectionLayoutFrame
+    {
+        internal readonly int[] Symbols;
+        internal readonly bool[] Edges;
+        internal readonly bool[] Positive;
+
+        internal ReflectionLayoutFrame(int[] symbols)
+        {
+            Symbols = symbols;
+            Edges = new bool[symbols.Length * symbols.Length];
+            Positive = new bool[Edges.Length];
+        }
+    }
+
+    // This dependency probe reads blobs without instantiating or completing model classes.
+    private sealed class ReflectionDefinitionLayout : ISignatureTypeProvider<ReflectionLayoutType, ReflectionLayoutType[]>
+    {
+        private readonly CppEmitter _e;
+        private readonly Compilation _c;
+        private readonly HashSet<string> _seen = new(StringComparer.Ordinal);
+        private readonly Dictionary<(Module, TypeDefinitionHandle), ReflectionLayoutFrame> _active = new();
+        private readonly HashSet<string> _shapeSeen = new(StringComparer.Ordinal);
+        private readonly HashSet<(Module, TypeDefinitionHandle)> _shapeActive = new();
+        private readonly List<ReflectionLayoutType> _instances = new();
+        private readonly List<ReflectionLayoutType> _layouts = new();
+        private int _originSequence;
+        private bool _checkingLayouts;
+        private static readonly ReflectionLayoutType Open = new() { Open = true };
+        private static readonly ReflectionLayoutType Leaf = new();
+
+        internal ReflectionDefinitionLayout(CppEmitter emitter)
+        {
+            _e = emitter;
+            _c = emitter._c;
+        }
+
+        internal void Check(MethodInfo method)
+        {
+            var arguments = method.Context.TypeArgs.Select(FromType).ToArray();
+            var signature = method.Module.Reader.GetMethodDefinition(method.Handle)
+                .DecodeSignature(this, arguments);
+            int instanceCount = _instances.Count;
+            _checkingLayouts = true;
+            Check(signature.ReturnType);
+            foreach (var parameter in signature.ParameterTypes)
+                Check(parameter);
+            // A closed app specialization also joins the next all-app layout seed.
+            for (int i = 0; i < instanceCount; i++)
+                CheckAppInstance(_instances[i]);
+            // Completion decodes comparator and MethodImpl signatures before rendering.
+            // Only the original layouts contribute these asks; newly named owners do not recurse.
+            var completionLayouts = _layouts.ToList();
+            foreach (var layout in completionLayouts)
+            {
+                CheckVirtualSignatures(layout, renderSlots: false);
+                CheckMethodImplSignatures(layout);
+            }
+            // Newly emitted owners keep ordinary rows too; their signatures need
+            // shape checks, never another signature-layout fixpoint.
+            var layouts = _layouts.ToList();
+            _checkingLayouts = false;
+            foreach (var layout in layouts)
+                CheckMemberSignatures(layout);
+        }
+
+        private void CheckMemberSignatures(ReflectionLayoutType type)
+        {
+            var module = type.Module!;
+            var reader = module.Reader;
+            var definition = reader.GetTypeDefinition(type.Handle);
+            var existing = _c.Classes.FirstOrDefault(c => c.Module == module && c.Handle == type.Handle
+                && c.Context.TypeArgs.Length == type.Arguments.Length
+                && c.Context.TypeArgs.Select(FromType).Select(Key).SequenceEqual(type.Arguments.Select(Key)));
+            if (existing is not null && (_e.IsOpaque(existing) || existing.IsEnum))
+                return;
+            CheckVirtualSignatures(type, RendersVirtualSlots(type, existing));
+            CheckInterfaceSignatures(type, existing);
+            var accessors = new HashSet<MethodDefinitionHandle>();
+            foreach (var handle in definition.GetProperties())
+            {
+                var property = reader.GetPropertyDefinition(handle).GetAccessors();
+                if (!property.Getter.IsNil) accessors.Add(property.Getter);
+                if (!property.Setter.IsNil) accessors.Add(property.Setter);
+            }
+            foreach (var handle in definition.GetMethods())
+            {
+                var method = reader.GetMethodDefinition(handle);
+                // Added generic definitions have their own omission decision.
+                if (method.GetGenericParameters().Count != 0)
+                    continue;
+                string name = reader.GetString(method.Name);
+                bool ctor = name == ".ctor" && (method.Attributes & System.Reflection.MethodAttributes.Static) == 0;
+                if (!ctor && (name is ".ctor" or ".cctor"
+                    || !_c.KeepsReflectionMetadata(existing)))
+                    continue;
+                if (module != _c.AppModule && !_e._hotUpdateBase && method.RelativeVirtualAddress != 0
+                    && !accessors.Contains(handle))
+                {
+                    var model = existing is { MembersReady: true }
+                        ? existing.Methods.FirstOrDefault(m => m.Handle == handle) : null;
+                    if (model is null || !_c.Reachable.Contains(model) && !_c.KeepsUnreachedRow(model))
+                        continue;
+                }
+                CheckSignature(module, handle, type.Arguments);
+            }
+        }
+
+        private void CheckSignature(Module module, MethodDefinitionHandle handle, ReflectionLayoutType[] arguments)
+        {
+            var signature = module.Reader.GetMethodDefinition(handle).DecodeSignature(this, arguments);
+            CheckShape(signature.ReturnType);
+            foreach (var parameter in signature.ParameterTypes)
+                CheckShape(parameter);
+        }
+
+        private void CheckMethodImplSignatures(ReflectionLayoutType type)
+        {
+            var module = type.Module!;
+            var reader = module.Reader;
+            foreach (var handle in reader.GetTypeDefinition(type.Handle).GetMethodImplementations())
+            {
+                var method = reader.GetMethodImplementation(handle);
+                bool genericDeclaration = method.MethodDeclaration.Kind switch
+                {
+                    HandleKind.MemberReference => reader.GetBlobReader(reader.GetMemberReference(
+                        (MemberReferenceHandle)method.MethodDeclaration).Signature).ReadSignatureHeader().IsGeneric,
+                    HandleKind.MethodDefinition => reader.GetMethodDefinition(
+                        (MethodDefinitionHandle)method.MethodDeclaration).GetGenericParameters().Count != 0,
+                    _ => false,
+                };
+                if (genericDeclaration)
+                    continue;
+                if (method.MethodDeclaration.Kind == HandleKind.MemberReference)
+                {
+                    var declaration = reader.GetMemberReference((MemberReferenceHandle)method.MethodDeclaration);
+                    var parent = TypeFromHandle(module, declaration.Parent, type.Arguments);
+                    if (declaration.Parent.Kind == HandleKind.TypeReference && parent.Module is null)
+                        continue;
+                    string? parentName = parent.Module is { } owner && !parent.Handle.IsNil
+                        ? RawSignatureProvider.TypeDefinitionName(owner.Reader, parent.Handle) : parent.ExternalName;
+                    if (parentName == "System.Object" && reader.GetString(declaration.Name) == "Finalize")
+                        continue;
+                }
+                CheckMethodImplReference(module, method.MethodBody, type.Arguments);
+                CheckMethodImplReference(module, method.MethodDeclaration, type.Arguments);
+            }
+        }
+
+        private void CheckMethodImplReference(Module module, EntityHandle handle, ReflectionLayoutType[] arguments)
+        {
+            // A MethodDef resolves by identity; only MemberRef resolution asks signatures.
+            if (handle.Kind != HandleKind.MemberReference)
+                return;
+            var reader = module.Reader;
+            var member = reader.GetMemberReference((MemberReferenceHandle)handle);
+            var parent = TypeFromHandle(module, member.Parent, arguments);
+            if (parent.Module is not { } owner || parent.Handle.IsNil)
+                return;
+            var signature = member.DecodeMethodSignature(this, parent.Arguments);
+            CheckShape(signature.ReturnType);
+            foreach (var parameter in signature.ParameterTypes)
+                CheckShape(parameter);
+            string name = reader.GetString(member.Name);
+            foreach (var candidate in owner.Reader.GetTypeDefinition(parent.Handle).GetMethods())
+            {
+                var definition = owner.Reader.GetMethodDefinition(candidate);
+                if (definition.GetGenericParameters().Count == 0 && owner.Reader.GetString(definition.Name) == name)
+                    CheckSignature(owner, candidate, parent.Arguments);
+            }
+        }
+
+        private void CheckInterfaceSignatures(ReflectionLayoutType type, ClassInfo? existing)
+        {
+            if (existing is not null)
+            {
+                if (existing.IsEnum || _e.SkipsCanonicalMetadata(existing) || _e.IsIntrinsicShaped(existing)
+                    || existing.IsInterface || existing.IsAbstract || _e.IsOpaqueShell(existing)
+                    || existing.IsValueType && !_c.IsAllocated(existing))
+                    return;
+            }
+            else
+            {
+                var typeModule = type.Module!;
+                var definition = typeModule.Reader.GetTypeDefinition(type.Handle);
+                if ((definition.Attributes & (System.Reflection.TypeAttributes.Interface | System.Reflection.TypeAttributes.Abstract)) != 0)
+                    return;
+                if (!definition.BaseType.IsNil)
+                {
+                    var baseType = TypeFromHandle(typeModule, definition.BaseType, type.Arguments);
+                    string? baseName = baseType.Module is { } module && !baseType.Handle.IsNil
+                        ? RawSignatureProvider.TypeDefinitionName(module.Reader, baseType.Handle) : baseType.ExternalName;
+                    // An unpublished value type cannot have joined the allocated set.
+                    if (baseName is "System.ValueType" or "System.Enum")
+                        return;
+                }
+            }
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var levels = new Queue<ReflectionLayoutType>();
+            levels.Enqueue(type);
+            while (levels.Count > 0)
+            {
+                var level = levels.Dequeue();
+                if (level.Module is not { } module || level.Handle.IsNil || level.Intrinsic || !seen.Add(Key(level)))
+                    continue;
+                var reader = module.Reader;
+                var definition = reader.GetTypeDefinition(level.Handle);
+                string name = RawSignatureProvider.TypeDefinitionName(reader, level.Handle);
+                int arity = name.IndexOf('`');
+                if (CoreIntrinsics.IsIntrinsicType(arity < 0 ? name : name[..arity]))
+                    continue;
+                if ((definition.Attributes & System.Reflection.TypeAttributes.Interface) != 0)
+                {
+                    // Dispatch traps type every interface slot, including unreached default bodies.
+                    foreach (var handle in definition.GetMethods())
+                        if (reader.GetMethodDefinition(handle).GetGenericParameters().Count == 0)
+                            CheckSignature(module, handle, level.Arguments);
+                }
+                else if (!definition.BaseType.IsNil)
+                    levels.Enqueue(TypeFromHandle(module, definition.BaseType, level.Arguments));
+                foreach (var handle in definition.GetInterfaceImplementations())
+                    levels.Enqueue(TypeFromHandle(module, reader.GetInterfaceImplementation(handle).Interface, level.Arguments));
+            }
+        }
+
+        private bool RendersVirtualSlots(ReflectionLayoutType type, ClassInfo? existing)
+        {
+            if (existing is not null)
+                return !existing.IsValueType && !existing.IsEnum && !existing.IsInterface
+                    && !existing.IsDelegate && !_e.IsOpaque(existing) && !_e.SkipsCanonicalMetadata(existing);
+            var typeModule = type.Module!;
+            var reader = typeModule.Reader;
+            var definition = reader.GetTypeDefinition(type.Handle);
+            if ((definition.Attributes & System.Reflection.TypeAttributes.Interface) != 0)
+                return false;
+            if (definition.BaseType.IsNil)
+                return true;
+            var baseType = TypeFromHandle(typeModule, definition.BaseType, type.Arguments);
+            string? baseName = baseType.Module is { } module && !baseType.Handle.IsNil
+                ? RawSignatureProvider.TypeDefinitionName(module.Reader, baseType.Handle) : baseType.ExternalName;
+            return baseName is not ("System.ValueType" or "System.Enum" or "System.MulticastDelegate" or "System.Delegate");
+        }
+
+        private void CheckVirtualSignatures(ReflectionLayoutType type, bool renderSlots)
+        {
+            var module = type.Module!;
+            var reader = module.Reader;
+            var definition = reader.GetTypeDefinition(type.Handle);
+            if ((definition.Attributes & System.Reflection.TypeAttributes.Interface) != 0 || definition.BaseType.IsNil)
+                return;
+            var methods = new Dictionary<MethodDefinitionHandle, string>();
+            foreach (var handle in definition.GetMethods())
+            {
+                var method = reader.GetMethodDefinition(handle);
+                if (method.GetGenericParameters().Count != 0
+                    || (method.Attributes & System.Reflection.MethodAttributes.Virtual) == 0)
+                    continue;
+                // Unreached slots still need a typed trap, independently of reflection retention.
+                if (renderSlots)
+                    CheckSignature(module, handle, type.Arguments);
+                if ((method.Attributes & System.Reflection.MethodAttributes.NewSlot) == 0)
+                    methods.Add(handle, reader.GetString(method.Name));
+            }
+            if (methods.Count == 0)
+                return;
+            var names = methods.Values.ToHashSet(StringComparer.Ordinal);
+            var matches = new HashSet<string>(StringComparer.Ordinal);
+            var seen = new HashSet<(Module, TypeDefinitionHandle)>();
+            var level = TypeFromHandle(module, definition.BaseType, type.Arguments);
+            while (level.Module is { } baseModule && !level.Handle.IsNil && seen.Add((baseModule, level.Handle)))
+            {
+                var baseReader = baseModule.Reader;
+                var baseDefinition = baseReader.GetTypeDefinition(level.Handle);
+                foreach (var handle in baseDefinition.GetMethods())
+                {
+                    var method = baseReader.GetMethodDefinition(handle);
+                    string name = baseReader.GetString(method.Name);
+                    if (method.GetGenericParameters().Count == 0
+                        && (method.Attributes & System.Reflection.MethodAttributes.Virtual) != 0 && names.Contains(name))
+                    {
+                        // Vtable completion asks same-name SigKeys even when the
+                        // corresponding reflection body row will be trimmed.
+                        CheckSignature(baseModule, handle, level.Arguments);
+                        matches.Add(name);
+                    }
+                }
+                if (baseDefinition.BaseType.IsNil)
+                    break;
+                level = TypeFromHandle(baseModule, baseDefinition.BaseType, level.Arguments);
+            }
+            foreach (var method in methods)
+                if (matches.Contains(method.Value))
+                    CheckSignature(module, method.Key, type.Arguments);
+        }
+
+        private ReflectionLayoutType FromType(TypeDesc type) => type.Kind switch
+        {
+            TypeKind.Class => new()
+            {
+                Module = type.Class!.Module, Handle = type.Class.Handle,
+                Arguments = type.Class.Context.TypeArgs.Select(FromType).ToArray(),
+                Open = Compilation.ContainsGenericVar(type) || Compilation.ContainsCanonPlaceholder(type),
+                Intrinsic = type.Class.IntrinsicCppName is not null,
+            },
+            TypeKind.Template => new() { Module = type.TemplateModule, Handle = type.TemplateHandle },
+            TypeKind.Primitive => new() { Primitive = type.Primitive, Open = type.IsCanonPlaceholder },
+            TypeKind.GenericVar => Open,
+            TypeKind.SZArray or TypeKind.MDArray or TypeKind.ByRef or TypeKind.Pointer =>
+                Wrap(FromType(type.Element!), type.Kind, type.Rank),
+            _ => new() { ExternalName = type.ExternalName },
+        };
+
+        private static string Key(ReflectionLayoutType type)
+        {
+            if (type.Element is { } element)
+                return type.ElementKind + ":" + type.Rank + "[" + Key(element) + "]";
+            if (type.Module is not { } module)
+                return type.Primitive is { } primitive ? (type.Open ? "!p" : "p") + (int)primitive
+                    : type.Open ? "!" : "e" + type.ExternalName;
+            return module.Index + ":" + System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(type.Handle)
+                + "[" + string.Join(",", type.Arguments.Select(Key)) + "]";
+        }
+
+        private static string OriginKey(ReflectionLayoutType type)
+        {
+            string origins = type.Origins is null ? "" : string.Join(",", type.Origins.OrderBy(p => p.Key)
+                .Select(p => p.Key + ":" + p.Value));
+            return origins + "[" + (type.Element is { } element ? OriginKey(element)
+                : string.Join(";", type.Arguments.Select(OriginKey))) + "]";
+        }
+
+        private void CheckShape(ReflectionLayoutType type)
+        {
+            if (type.Element is { } element)
+            {
+                CheckShape(element);
+                return;
+            }
+            if (type.Module is not { } module || type.Handle.IsNil || type.Intrinsic)
+                return;
+            var identity = (module, type.Handle);
+            if (_shapeActive.Contains(identity))
+            {
+                foreach (var argument in type.Arguments)
+                    CheckShape(argument);
+                return;
+            }
+            if (!_shapeSeen.Add(Key(type)))
+                return;
+            _shapeActive.Add(identity);
+            try
+            {
+                var reader = module.Reader;
+                var definition = reader.GetTypeDefinition(type.Handle);
+                if (!definition.BaseType.IsNil)
+                    CheckShape(TypeFromHandle(module, definition.BaseType, type.Arguments));
+                foreach (var handle in definition.GetInterfaceImplementations())
+                    CheckShape(TypeFromHandle(module, reader.GetInterfaceImplementation(handle).Interface, type.Arguments));
+            }
+            finally
+            {
+                _shapeActive.Remove(identity);
+            }
+        }
+
+        private void CheckAppInstance(ReflectionLayoutType type)
+        {
+            if (type.Module == _c.AppModule && !type.Open)
+                Check(type);
+        }
+
+        private void Check(ReflectionLayoutType type)
+        {
+            if (type.Element is { } element)
+            {
+                Check(element);
+                return;
+            }
+            if (type.Module is not { } module || type.Handle.IsNil || type.Intrinsic)
+                return;
+            if (type.Open)
+            {
+                CheckShape(type);
+                return;
+            }
+            var identity = (module, type.Handle);
+            if (_active.TryGetValue(identity, out var origins))
+            {
+                if (ExpandsCycle(type.Arguments, origins))
+                    throw new NotSupportedException("Self-expanding reflection definition layout");
+                foreach (var argument in type.Arguments)
+                    Check(argument);
+                return;
+            }
+            // Equal actual arguments can still carry different formal dependencies.
+            if (!_seen.Add(Key(type) + "|" + OriginKey(type)))
+                return;
+            var symbols = new int[type.Arguments.Length];
+            var arguments = new ReflectionLayoutType[type.Arguments.Length];
+            for (int i = 0; i < arguments.Length; i++)
+            {
+                symbols[i] = _originSequence++;
+                arguments[i] = WithOrigin(type.Arguments[i], symbols[i]);
+            }
+            _active.Add(identity, new ReflectionLayoutFrame(symbols));
+            try
+            {
+                var reader = module.Reader;
+                var definition = reader.GetTypeDefinition(type.Handle);
+                if (!definition.BaseType.IsNil)
+                    Check(TypeFromHandle(module, definition.BaseType, arguments));
+                foreach (var handle in definition.GetInterfaceImplementations())
+                    Check(TypeFromHandle(module, reader.GetInterfaceImplementation(handle).Interface, arguments));
+                string fullName = RawSignatureProvider.TypeDefinitionName(reader, type.Handle);
+                int arity = fullName.IndexOf('`');
+                if (CoreIntrinsics.IsIntrinsicType(arity < 0 ? fullName : fullName[..arity]))
+                    return;
+                _layouts.Add(type);
+                foreach (var handle in definition.GetFields())
+                    Check(reader.GetFieldDefinition(handle).DecodeSignature(this, arguments));
+            }
+            finally
+            {
+                _active.Remove(identity);
+            }
+        }
+
+        private static ReflectionLayoutType WithOrigin(ReflectionLayoutType type, int symbol)
+        {
+            var origins = type.Origins is null ? new Dictionary<int, int>() : new Dictionary<int, int>(type.Origins);
+            origins[symbol] = 0;
+            return new ReflectionLayoutType
+            {
+                Module = type.Module, Handle = type.Handle, Arguments = type.Arguments,
+                Primitive = type.Primitive, Element = type.Element, ElementKind = type.ElementKind,
+                Rank = type.Rank, Open = type.Open, ExternalName = type.ExternalName,
+                Intrinsic = type.Intrinsic, Origins = origins,
+            };
+        }
+
+        private static Dictionary<int, int>? NestedOrigins(IEnumerable<ReflectionLayoutType> arguments)
+        {
+            Dictionary<int, int>? result = null;
+            foreach (var argument in arguments)
+                if (argument.Origins is { } origins)
+                    foreach (var pair in origins)
+                    {
+                        result ??= new Dictionary<int, int>();
+                        int depth = pair.Value + 1;
+                        if (!result.TryGetValue(pair.Key, out int previous) || depth > previous)
+                            result[pair.Key] = depth;
+                    }
+            return result;
+        }
+
+        // Paths through different fields compose. Positive nesting grows only
+        // on a cycle; constants, permutations and converging resets do not.
+        private static bool ExpandsCycle(ReflectionLayoutType[] arguments, ReflectionLayoutFrame frame)
+        {
+            var symbols = frame.Symbols;
+            int count = symbols.Length;
+            var edges = frame.Edges;
+            var positive = frame.Positive;
+            for (int i = 0; i < Math.Min(count, arguments.Length); i++)
+                if (arguments[i].Origins is { } origins)
+                    for (int j = 0; j < count; j++)
+                        if (origins.TryGetValue(symbols[j], out int depth))
+                        {
+                            edges[i * count + j] = true;
+                            positive[i * count + j] |= depth > 0;
+                        }
+            for (int k = 0; k < count; k++)
+                for (int i = 0; i < count; i++)
+                    for (int j = 0; j < count; j++)
+                        edges[i * count + j] |= edges[i * count + k] && edges[k * count + j];
+            for (int i = 0; i < count; i++)
+                for (int j = 0; j < count; j++)
+                    if (positive[i * count + j] && edges[j * count + i])
+                        return true;
+            return false;
+        }
+
+        private ReflectionLayoutType TypeFromHandle(Module module, EntityHandle handle, ReflectionLayoutType[] arguments) => handle.Kind switch
+        {
+            HandleKind.TypeDefinition => GetTypeFromDefinition(module.Reader, (TypeDefinitionHandle)handle, 0),
+            HandleKind.TypeReference => GetTypeFromReference(module.Reader, (TypeReferenceHandle)handle, 0),
+            HandleKind.TypeSpecification => GetTypeFromSpecification(module.Reader, arguments, (TypeSpecificationHandle)handle, 0),
+            _ => throw new NotSupportedException("Unsupported reflection definition layout dependency"),
+        };
+
+        public ReflectionLayoutType GetGenericInstantiation(ReflectionLayoutType genericType, ImmutableArray<ReflectionLayoutType> typeArguments)
+        {
+            if (genericType.Module is not { } module || genericType.Handle.IsNil)
+                throw new NotSupportedException($"Generic instantiation of {genericType.ExternalName} is not supported yet (external generic types)");
+            var reader = module.Reader;
+            var definition = reader.GetTypeDefinition(genericType.Handle);
+            string name = reader.GetString(definition.Name);
+            int arity = name.IndexOf('`');
+            string ns = reader.GetString(definition.Namespace);
+            string fullName = (ns.Length == 0 ? "" : ns + ".") + (arity < 0 ? name : name[..arity]);
+            var arguments = typeArguments.ToArray();
+            var instance = new ReflectionLayoutType
+            {
+                Module = module, Handle = genericType.Handle, Arguments = arguments,
+                Open = arguments.Any(a => a.Open),
+                Origins = NestedOrigins(arguments),
+                Intrinsic = (CoreIntrinsics.IntrinsicGenericCppType(fullName, arguments.Select(a =>
+                    a.Primitive is { } primitive ? TypeDesc.MakePrimitive(primitive)
+                        : TypeDesc.MakeGenericVar(0, isMethod: false)).ToArray())
+                    ?? _c.AdoptedAsyncCpp(module, genericType.Handle)) is not null,
+            };
+            _instances.Add(instance);
+            // Canonical signature decoding drains every specialization's shape,
+            // including arguments hidden by an intrinsic or function-pointer result.
+            CheckShape(instance);
+            if (_checkingLayouts)
+                CheckAppInstance(instance);
+            return instance;
+        }
+
+        public ReflectionLayoutType GetTypeFromDefinition(MetadataReader reader, TypeDefinitionHandle handle, byte rawTypeKind) =>
+            FromType(_c.GetTypeDescForDefinition(_c.ModuleOf(reader), handle));
+
+        public ReflectionLayoutType GetTypeFromReference(MetadataReader reader, TypeReferenceHandle handle, byte rawTypeKind) =>
+            _c.ResolveTypeRef(_c.ModuleOf(reader), handle) is { } resolved ? FromType(resolved)
+                : new() { ExternalName = RawSignatureProvider.TypeReferenceName(reader, handle) };
+
+        public ReflectionLayoutType GetTypeFromSpecification(MetadataReader reader, ReflectionLayoutType[] genericContext,
+            TypeSpecificationHandle handle, byte rawTypeKind) => reader.GetTypeSpecification(handle).DecodeSignature(this, genericContext);
+        public ReflectionLayoutType GetGenericTypeParameter(ReflectionLayoutType[] genericContext, int index) =>
+            index < genericContext.Length ? genericContext[index] : Open;
+        public ReflectionLayoutType GetGenericMethodParameter(ReflectionLayoutType[] genericContext, int index) => Open;
+        public ReflectionLayoutType GetPrimitiveType(PrimitiveTypeCode typeCode) => new() { Primitive = typeCode };
+        private static ReflectionLayoutType Wrap(ReflectionLayoutType element, TypeKind kind, int rank = 0) =>
+            new() { Element = element, ElementKind = kind, Rank = rank, Open = element.Open,
+                Origins = NestedOrigins(new[] { element }) };
+        public ReflectionLayoutType GetArrayType(ReflectionLayoutType elementType, ArrayShape shape) => Wrap(elementType, TypeKind.MDArray, shape.Rank);
+        public ReflectionLayoutType GetSZArrayType(ReflectionLayoutType elementType) => Wrap(elementType, TypeKind.SZArray);
+        public ReflectionLayoutType GetByReferenceType(ReflectionLayoutType elementType) => Wrap(elementType, TypeKind.ByRef);
+        public ReflectionLayoutType GetPointerType(ReflectionLayoutType elementType) => Wrap(elementType, TypeKind.Pointer);
+        public ReflectionLayoutType GetFunctionPointerType(MethodSignature<ReflectionLayoutType> signature) => Leaf;
+        public ReflectionLayoutType GetModifiedType(ReflectionLayoutType modifier, ReflectionLayoutType unmodifiedType, bool isRequired) => unmodifiedType;
+        public ReflectionLayoutType GetPinnedType(ReflectionLayoutType elementType) => elementType;
+    }
+
+    // Cache only raw definitions: planning may still add closed rows to cls.Methods.
+    private List<MethodInfo> ReflectionMethods(ClassInfo cls)
+    {
+        if (!_reflectionDefinitions.TryGetValue(cls, out var definitions))
+        {
+            definitions = new List<MethodInfo>();
+            if (!cls.Handle.IsNil)
+            {
+                var reader = cls.Module.Reader;
+                foreach (var handle in reader.GetTypeDefinition(cls.Handle).GetMethods())
+                {
+                    var definition = reader.GetMethodDefinition(handle);
+                    if (definition.GetGenericParameters().Count == 0)
+                        continue;
+                    var method = new MethodInfo
+                    {
+                        DeclaringClass = cls, Name = reader.GetString(definition.Name),
+                        Module = cls.Module, Handle = handle, Context = cls.Context,
+                        Attributes = definition.Attributes, ImplAttributes = definition.ImplAttributes,
+                        Rva = definition.RelativeVirtualAddress,
+                    };
+                    _metadataOnlyDefinitions.Add(method);
+                    definitions.Add(method);
+                }
+            }
+            _reflectionDefinitions[cls] = definitions;
+        }
+        var methods = cls.Methods.Where(m => !(_c.SharedGenericsEnabled
+            && m.Context.MethodArgs.Any(Compilation.ContainsCanonPlaceholder))).ToList();
+        var seen = methods.Select(m => m.Handle).ToHashSet();
+        foreach (var definition in definitions)
+            if (seen.Add(definition.Handle))
+                methods.Add(definition);
+        return methods;
+    }
+
+    private bool KeepsReflectionMethodRow(ClassInfo cls, MethodInfo method,
+        HashSet<MethodDefinitionHandle> propertyAccessors)
+    {
+        bool ctor = method.Name == ".ctor" && !method.IsStatic;
+        if (!ctor && (method.Name == ".ctor" || method.Name == ".cctor"
+            || !_c.KeepsReflectionMetadata(cls)
+            || (_c.SharedGenericsEnabled && method.Context.MethodArgs.Any(Compilation.ContainsCanonPlaceholder))))
+            return false;
+        if (cls.Module != _c.AppModule && !_hotUpdateBase && method.Rva != 0
+            && !_c.Reachable.Contains(method) && !_c.KeepsUnreachedRow(method)
+            && !propertyAccessors.Contains(method.Handle))
+            return false;
+        return CanDescribeReflectionDefinition(method);
+    }
+
+    private static HashSet<MethodDefinitionHandle> PropertyAccessorHandles(ClassInfo cls)
+    {
+        // Accessor descriptions survive trimming so visible properties retain their accessors.
+        var result = new HashSet<MethodDefinitionHandle>();
+        if (cls.Handle.IsNil)
+            return result;
+        var reader = cls.Module.Reader;
+        foreach (var handle in reader.GetTypeDefinition(cls.Handle).GetProperties())
+        {
+            var accessors = reader.GetPropertyDefinition(handle).GetAccessors();
+            if (!accessors.Getter.IsNil) result.Add(accessors.Getter);
+            if (!accessors.Setter.IsNil) result.Add(accessors.Setter);
+        }
+        return result;
+    }
 
     /// <summary>Renders the type-metadata section of the emission: the enum and
     /// generic-open-definition type-infos, the shared-generics rgctx tables, and
@@ -545,18 +1201,25 @@ internal sealed partial class CppEmitter
         /// — the same route every <c>newarr</c>/<c>typeof(T[])</c> site takes) so the precise
         /// <c>ti_arr_&lt;elem&gt;</c> handle the SZArray arm names is forward-declared and
         /// emitted. Element kinds mirror the <c>ldtoken typeof(T[])</c> arm, a cross-assembly
-        /// name is promoted as FieldTypeInfoExpr promotes it, and a canonical-placeholder type
-        /// is refused.</summary>
-        private void NoteReflectedType(TypeDesc t)
+        /// name is promoted as FieldTypeInfoExpr promotes it. Additional definitions
+        /// record concrete intrinsic signature identities for the minimal type-info pass.</summary>
+        private void NoteReflectedType(TypeDesc t, bool definitionSignature = false)
         {
             // A by-ref or pointer member names its element (CppEmitter.ReflectionPass).
             if (t is { Kind: TypeKind.ByRef or TypeKind.Pointer, Element: { } element })
             {
-                NoteReflectedType(element);
+                NoteReflectedType(element, definitionSignature);
                 return;
             }
             if (t.Kind == TypeKind.External && _c.ResolveExternalClass(t) is { } xc)
                 t = TypeDesc.MakeClass(xc);
+            if (definitionSignature && t is { Kind: TypeKind.Class, Class.IntrinsicCppName: not null }
+                && !Compilation.ContainsGenericVar(t) && !Compilation.ContainsCanonPlaceholder(t))
+            {
+                // Added definitions need intrinsic signature identities, not managed layouts.
+                _c.NoteTypeIdentityClosure(t, keepSeed: false);
+                return;
+            }
             if (t is { Kind: TypeKind.Class, Class: { IsEnum: true } en })
             {
                 if (!Compilation.ContainsCanonPlaceholder(t))
@@ -566,7 +1229,7 @@ internal sealed partial class CppEmitter
             if (t is not { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Primitive or TypeKind.Class or TypeKind.External or TypeKind.SZArray or TypeKind.MDArray } el })
                 return;
             _c.NoteArrayElementType(el);
-            NoteReflectedType(el);
+            NoteReflectedType(el, definitionSignature);
         }
 
         /// <summary>Pre-notes every type the reflection tables name by its type-info
@@ -602,28 +1265,26 @@ internal sealed partial class CppEmitter
                 if (_e.IsOpaque(cls) || _e.IsCanonicalWorld(cls))
                     continue;
                 bool keepRefl = _c.KeepsReflectionMetadata(cls);
-                bool appCls = cls.Module == _c.AppModule && !_e.IsOpaque(cls);
-                bool trim = !appCls && !_e._hotUpdateBase;
                 var propertyAccessors = PropertyAccessorHandles(cls);
                 var accessorRows = new HashSet<MethodDefinitionHandle>();
-                foreach (var m in cls.Methods)
+                foreach (var m in _e.ReflectionMethods(cls))
                 {
-                    bool ctorRow = m.Name == ".ctor" && !m.IsStatic;
                     bool methodRow = m.Name != ".ctor" && m.Name != ".cctor"
                         && !(_c.SharedGenericsEnabled
                             && m.Context.MethodArgs.Any(Compilation.ContainsCanonPlaceholder));
                     if (methodRow)
                         accessorRows.Add(m.Handle);
-                    // The ctortab is built even for a reflection-stripped class
-                    // (constructors are deliberately not stripped); methtab/proptab are not.
-                    if (!(ctorRow || (methodRow && keepRefl)))
+                    if (!_e.KeepsReflectionMethodRow(cls, m, propertyAccessors))
                         continue;
-                    if (trim && m.Rva != 0 && !_c.Reachable.Contains(m) && !_c.KeepsUnreachedRow(m)
-                        && !propertyAccessors.Contains(m.Handle))
-                        continue;
-                    NoteReflectedType(m.Signature.ReturnType);
+                    bool definitionOnly = m.Signature.GenericParameterCount > 0 && m.Context.MethodArgs.Length == 0;
+                    void NoteSignatureType(TypeDesc type)
+                    {
+                        if (!definitionOnly || !(Compilation.ContainsGenericVar(type) || Compilation.ContainsCanonPlaceholder(type)))
+                            NoteReflectedType(type, definitionOnly && _e._metadataOnlyDefinitions.Contains(m));
+                    }
+                    NoteSignatureType(m.Signature.ReturnType);
                     foreach (var p in m.Signature.ParameterTypes)
-                        NoteReflectedType(p);
+                        NoteSignatureType(p);
                     foreach (var ga in m.Context.MethodArgs)
                         NoteReflectedType(ga);
                     if (CustomModifiers(m) is { } modifiers)
@@ -810,10 +1471,8 @@ internal sealed partial class CppEmitter
         internal void Emit()
         {
             _c.FreezeReflectionMetadataSelection();
-            // Ahead of the note pass, which reads it: the set is a pure function of the
-            // (final) emit set and ReferencedTypes, and the note pass only ever adds an
-            // ENUM to the latter — which this set excludes. The row planting below does add
-            // to it, which is why that step re-derives.
+            // Seed the note pass with identities already named by bodies; reflected
+            // intrinsic types and modifiers can add identities before final declarations.
             _e._referencedIntrinsicTis = ReferencedIntrinsicTypeInfos();
 
             // Before anything is forward-declared: note every array and enum the
@@ -2218,6 +2877,9 @@ internal sealed partial class CppEmitter
             var propertyAccessors = PropertyAccessorHandles(cls);
             foreach (var m in members)
             {
+                int genericCount = m.Handle.IsNil ? 0
+                    : m.Module.Reader.GetMethodDefinition(m.Handle).GetGenericParameters().Count;
+                bool definitionOnly = genericCount > 0 && m.Context.MethodArgs.Length == 0;
                 // Rva == 0 is a bodiless declaration -- an interface or abstract slot,
                 // which is never reached (dispatch reaches the impl) yet must stay
                 // visible, or the type's GetMethods() would come back empty.
@@ -2233,7 +2895,7 @@ internal sealed partial class CppEmitter
                 }
                 int attrs = MetadataMemberAttrs((int)m.Attributes)
                     | (((int)m.Attributes & 0x800) != 0 ? 0x20 : 0)
-                    | (m.Context.MethodArgs.Length > 0 ? 0x40 : 0);
+                    | (genericCount > 0 ? 0x40 : 0);
                 // Method + parameter custom attributes: the MethodDefinition's own
                 // attributes, and each Parameter's, for an app-module non-opaque class.
                 // Parameter handles are collected for every module: the raw
@@ -2268,7 +2930,8 @@ internal sealed partial class CppEmitter
                     var prows = new List<MetadataRow>();
                     for (int i = 0; i < ps.Length; i++)
                     {
-                        string ptInfo = _e.MemberTypeInfoExpr(ps[i], _emittedEnums);
+                        string ptInfo = definitionOnly && (Compilation.ContainsGenericVar(ps[i]) || Compilation.ContainsCanonPlaceholder(ps[i]))
+                            ? "&dn2cpp_object_type" : _e.MemberTypeInfoExpr(ps[i], _emittedEnums);
 
                         (string Expr, int Count) pca = ("nullptr", 0);
                         int pAttrs = 0;
@@ -2291,7 +2954,8 @@ internal sealed partial class CppEmitter
                         }
                         string pdisplay = _e.ReflectionSignatureType(ps[i])
                             + (names[i] is { Length: > 0 } pName ? " " + pName : "");
-                        var pass = _e.ReflectionPass(ps[i], _emittedEnums, FunctionPointerSpelling(m, i, ps[i]));
+                        var pass = definitionOnly ? (Kind: 0, Type: "nullptr")
+                            : _e.ReflectionPass(ps[i], _emittedEnums, FunctionPointerSpelling(m, i, ps[i]));
 
                         prows.Add(new MetadataRow(new[] {
                             MetadataValue.Ref(ptInfo), MetadataValue.Text(names[i] is { Length: > 0 } parameterName ? parameterName : null),
@@ -2334,7 +2998,7 @@ internal sealed partial class CppEmitter
                 // Delegate.DynamicInvoke is in use, its row runs the type's multicast
                 // invoker (dginvoke_*), which takes the delegate as an instance body takes
                 // its receiver.
-                bool delegateInvoke = cls.IsDelegate && m.Name == "Invoke" && !m.IsStatic
+                bool delegateInvoke = !definitionOnly && cls.IsDelegate && m.Name == "Invoke" && !m.IsStatic
                     && (_c.NeedsDelegateInvokeRows || _c.ReflectionInvokeUsed)
                     && (_delegateInvokerNames ??= _e._delegateInvokerClasses
                         .Select(d => d.CppName).ToHashSet(System.StringComparer.Ordinal)).Contains(cls.CppName);
@@ -2351,7 +3015,7 @@ internal sealed partial class CppEmitter
                 // so a patch import fails at load as a standard unresolved import
                 // instead of silently binding the placeholder. Gated on
                 // --hotupdate-base so normal builds stay byte-identical.
-                else if (_c.Reachable.Contains(m)
+                else if (!definitionOnly && _c.Reachable.Contains(m)
                     && (!_e._backend.ShouldSkipMethodBody(m.DeclaringClass, m) || _e._syntheticBodies.Contains(m))
                     && !(_e._hotUpdateBase && _e._backend.HasPlaceholderBody(m.DeclaringClass, m)))
                 {
@@ -2373,10 +3037,10 @@ internal sealed partial class CppEmitter
                 // A bodyless interface or abstract class row needs a signature-only
                 // invoker only when a late-bound consumer resolves the receiver's slot
                 // and calls its concrete body through that ABI. Hot-update base requests
-                // an invoker for every interface row because its interpreter walks these tables.
-                else if (cls.IsInterface
+                // an invoker for every callable interface row because its interpreter walks these tables.
+                else if (!definitionOnly && (cls.IsInterface
                     ? _e._hotUpdateBase || (RowsEnteredLateBound && !m.IsStatic && m.IsVirtual)
-                    : m.IsAbstract && RowsEnteredLateBound)
+                    : m.IsAbstract && RowsEnteredLateBound))
                 {
                     try
                     {
@@ -2405,9 +3069,12 @@ internal sealed partial class CppEmitter
                 // receiver's chain, so such a binding of a delegate's Invoke faults.
                 if (fnPtr != "nullptr" && !m.IsStatic && !delegateInvoke && _c.NeedsReflectionDelegateBind)
                     attrs |= _e.NullReceiverAttrs(cls, m);
-                string retInfo = _e.MemberTypeInfoExpr(m.Signature.ReturnType, _emittedEnums);
-                var retPass = _e.ReflectionReturnPass(m.Signature.ReturnType, _emittedEnums,
-                    FunctionPointerSpelling(m, -1, m.Signature.ReturnType));
+                string retInfo = definitionOnly && (Compilation.ContainsGenericVar(m.Signature.ReturnType)
+                    || Compilation.ContainsCanonPlaceholder(m.Signature.ReturnType))
+                    ? "&dn2cpp_object_type" : _e.MemberTypeInfoExpr(m.Signature.ReturnType, _emittedEnums);
+                var retPass = definitionOnly ? (Attrs: 0, Referent: "nullptr")
+                    : _e.ReflectionReturnPass(m.Signature.ReturnType, _emittedEnums,
+                        FunctionPointerSpelling(m, -1, m.Signature.ReturnType));
                 attrs |= retPass.Attrs;
                 // sigShape: the method-import overload discriminator, baked only in
                 // a --hotupdate-base build (the hot-update loader is the sole reader;
@@ -2458,15 +3125,16 @@ internal sealed partial class CppEmitter
                     MetadataValue.Text(m.Name), MetadataValue.Ref(_e.TypeInfoRef(cls, "method/ctor row's declaring type")),
                     MetadataValue.Ref(retInfo), MetadataValue.Ref(paramsExpr), MetadataValue.Signed(ps.Length), MetadataValue.ExplicitSigned(attrs),
                     MetadataValue.Signed(m.VtableSlot), MetadataValue.Ref(fnPtr), MetadataValue.Ref(invoker),
-                    MetadataValue.Ref(mca.Expr), MetadataValue.Signed(mca.Count), MetadataValue.Text(_e._hotUpdateBase ? AbiContract.ImportShape(m.Signature, m.Context.MethodArgs) : null),
+                    MetadataValue.Ref(mca.Expr), MetadataValue.Signed(mca.Count), MetadataValue.Text(_e._hotUpdateBase && !definitionOnly ? AbiContract.ImportShape(m.Signature, m.Context.MethodArgs) : null),
                     MetadataValue.Signed((int)m.Attributes), MetadataValue.Signed((int)m.ImplAttributes), MetadataValue.Signed(mdToken),
-                    MetadataValue.Signed(m.Context.MethodArgs.Length), MetadataValue.Ref(genArgsExpr),
+                    MetadataValue.Signed(genericCount), MetadataValue.Ref(genArgsExpr),
                     MetadataValue.Ref(retReq.Expr), MetadataValue.Signed(retReq.Count), MetadataValue.Ref(retOpt.Expr), MetadataValue.Signed(retOpt.Count),
                     MetadataValue.Signed(modifiersKnown ? 1 : 0), MetadataValue.Display(_e.ReflectionMethodDisplay(m)), MetadataValue.Display(genericDefinition is { } methodDisplayParts ? methodDisplayParts.Method : null),
                     MetadataValue.Display(_e.ReflectionSignatureType(m.Signature.ReturnType)), MetadataValue.Display(genericDefinition is { } rd ? rd.Return : null),
                     MetadataValue.Text(genericDefinition is { } rk ? rk.ReturnKey : null),
                     MetadataValue.Signed(gvmRootDepth), MetadataValue.Signed(gvmRootToken),
                     MetadataValue.Ref(retPass.Referent),
+                    MetadataValue.Ref(RenderGenericParameters(m)),
                 }));
             }
             // The trim can empty a table the member list did not. A zero-length array is
@@ -2481,21 +3149,31 @@ internal sealed partial class CppEmitter
             return (tab, rows.Count);
         }
 
-        private static HashSet<MethodDefinitionHandle> PropertyAccessorHandles(ClassInfo cls)
+        private readonly HashSet<string> _genericParameterTables = new(System.StringComparer.Ordinal);
+
+        private string RenderGenericParameters(MethodInfo m)
         {
-            // A visible property must retain accessor descriptions even when their
-            // bodies are unreachable; otherwise GetMethod reports a missing accessor.
-            var result = new HashSet<MethodDefinitionHandle>();
-            if (cls.Handle.IsNil)
-                return result;
-            var reader = cls.Module.Reader;
-            foreach (var handle in reader.GetTypeDefinition(cls.Handle).GetProperties())
+            if (m.Handle.IsNil)
+                return "nullptr";
+            var reader = m.Module.Reader;
+            var handles = reader.GetMethodDefinition(m.Handle).GetGenericParameters();
+            if (handles.Count == 0)
+                return "nullptr";
+            string symbol = "methodparams_" + m.Module.Index + "_"
+                + System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(m.Handle);
+            if (_genericParameterTables.Add(symbol))
             {
-                var accessors = reader.GetPropertyDefinition(handle).GetAccessors();
-                if (!accessors.Getter.IsNil) result.Add(accessors.Getter);
-                if (!accessors.Setter.IsNil) result.Add(accessors.Setter);
+                var entries = new string[handles.Count];
+                foreach (var handle in handles)
+                {
+                    var parameter = reader.GetGenericParameter(handle);
+                    entries[parameter.Index] = "{ \"" + CLiteral(reader.GetString(parameter.Name))
+                        + "\", " + (int)parameter.Attributes + " }";
+                }
+                _e._metadataHeader.AppendLine($"extern const Dn2CppMethodGenericParameter {symbol}[{handles.Count}];");
+                _sb.AppendLine($"extern const Dn2CppMethodGenericParameter {symbol}[] = {{ {string.Join(", ", entries)} }};");
             }
-            return result;
+            return symbol;
         }
 
         // Accessors refer to retained method-table descriptions; unreachable
@@ -2582,10 +3260,11 @@ internal sealed partial class CppEmitter
             // real member (no runtime Type exposes it, and its parameter table
             // would name never-emitted canonical-world type-infos) — skip it.
             var seenMethod = new HashSet<string>(System.StringComparer.Ordinal);
-            var methods = cls.Methods
+            bool keepRefl = _c.KeepsReflectionMetadata(cls);
+            var propertyAccessors = PropertyAccessorHandles(cls);
+            var methods = !keepRefl ? new List<MethodInfo>() : _e.ReflectionMethods(cls)
                 .Where(m => m.Name != ".ctor" && m.Name != ".cctor"
-                    && !(_c.SharedGenericsEnabled
-                        && m.Context.MethodArgs.Any(Compilation.ContainsCanonPlaceholder))
+                    && _e.KeepsReflectionMethodRow(cls, m, propertyAccessors)
                     && seenMethod.Add(m.CppName))
                 .ToList();
             // Constructors: instance .ctor only (the static .cctor is not a reflected
@@ -2602,7 +3281,6 @@ internal sealed partial class CppEmitter
             // ctor rows are a small fraction of the relocation budget the other three tables
             // are. Constructors are never inherited, so nothing base-walks them and the kept
             // table is self-contained.
-            bool keepRefl = _c.KeepsReflectionMetadata(cls);
             if (keepRefl && BuildMemberTable(cls, methods, "methtab") is { } mt)
                 _methodTabs[cls] = mt;
             if (BuildMemberTable(cls, ctors, "ctortab") is { } ct)

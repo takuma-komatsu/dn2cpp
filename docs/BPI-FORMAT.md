@@ -987,8 +987,8 @@ method, or one on a sealed class). A `--hotupdate-base` build registers that
 dispatcher for each such row the base reaches, however it reaches it (an AOT
 `callvirt`, a case of an interface dispatcher, `base.M<T>()`, `ldftn`, a
 generic-method root in `hotupdate-refs.txt`), and for each abstract or interface
-instantiation it makes. The instantiations it passes over are none of the rows
-the tables carry: a row is a closed instantiation on a class with a type-info,
+instantiation it makes. Metadata-only definitions never bind imports or own
+dispatchers. A callable generic row is a closed instantiation on a class with a type-info,
 never one over a canonical placeholder or a generic parameter; a shared body
 never calls a generic virtual method, so a call site names only exact
 instantiations; no backend skips a generic virtual body

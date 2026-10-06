@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <DefineConstants>$(DefineConstants);GROWTH_BODY_NEEDED</DefineConstants>
+    <AssemblyName>ReflectionGrowthBodyNeeded</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../AppDependencies/Program.cs" Link="Program.cs" />
+    <ProjectReference Include="../Ext/Ext.csproj" />
+    <ProjectReference Include="../Lib/Lib.csproj" />
+  </ItemGroup>
+</Project>

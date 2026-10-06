@@ -386,6 +386,8 @@ internal sealed partial class CppEmitter
     /// run. It is a ONE-STEP closure and must stay one, but the set is now computed twice — see
     /// the comment at the loop it guards.</summary>
     private bool _sigClosureDone;
+    // Added definition signature roots survive the discarded pre-planning emit set.
+    private readonly HashSet<ClassInfo> _sigClosureRoots = new();
 
     private IEnumerable<ClassInfo> EmittedClasses
     {
@@ -466,18 +468,20 @@ internal sealed partial class CppEmitter
             if (c is not null && set.Add(c))
                 queue.Enqueue(c);
         }
-        void AddType(TypeDesc t)
+        void AddType(TypeDesc t, bool signatureRoot = false)
         {
             switch (t.Kind)
             {
                 case TypeKind.Class:
+                    if (signatureRoot)
+                        _sigClosureRoots.Add(t.Class!);
                     Add(t.Class);
                     break;
                 case TypeKind.SZArray:
                 case TypeKind.MDArray:
                 case TypeKind.ByRef:
                 case TypeKind.Pointer:
-                    AddType(t.Element!);
+                    AddType(t.Element!, signatureRoot);
                     break;
             }
         }
@@ -500,6 +504,8 @@ internal sealed partial class CppEmitter
         // or a by-value struct a body accesses by field. These need their real
         // fields, so they seed the emit set as normal (non-opaque) classes.
         foreach (var c in _c.ForceEmittedClasses)
+            Add(c);
+        foreach (var c in _sigClosureRoots)
             Add(c);
 
         // An app-module class's reflection tables list every member it declares — only a
@@ -528,16 +534,19 @@ internal sealed partial class CppEmitter
                 // for every other set member. Safe against the no-pull rule above: the
                 // ToList() snapshot is closed, so decode-appended classes cannot shift it.
                 _c.EnsureCompleted(c);
-                foreach (var m in c.Methods)
+                var propertyAccessors = PropertyAccessorHandles(c);
+                foreach (var m in ReflectionMethods(c))
                 {
-                    if (m.Name == ".cctor")
-                        continue; // neither a reflected method nor a reflected constructor
-                    if (_c.SharedGenericsEnabled
-                        && m.Context.MethodArgs.Any(Compilation.ContainsCanonPlaceholder))
-                        continue; // not a real member; its parameter table would name the canonical world
-                    AddType(m.Signature.ReturnType);
+                    if (!KeepsReflectionMethodRow(c, m, propertyAccessors))
+                        continue;
+                    void AddSignatureType(TypeDesc type)
+                    {
+                        if (!Compilation.ContainsGenericVar(type) && !Compilation.ContainsCanonPlaceholder(type))
+                            AddType(type, signatureRoot: _metadataOnlyDefinitions.Contains(m));
+                    }
+                    AddSignatureType(m.Signature.ReturnType);
                     foreach (var p in m.Signature.ParameterTypes)
-                        AddType(p);
+                        AddSignatureType(p);
                 }
             }
         }
@@ -4456,7 +4465,7 @@ internal sealed partial class CppEmitter
         ReflectionGenericMethodDefinition(MethodInfo m,
             IReadOnlyList<string?> parameterNames)
     {
-        if (m.Context.MethodArgs.Length == 0 || m.Handle.IsNil)
+        if (m.Handle.IsNil || m.Module.Reader.GetMethodDefinition(m.Handle).GetGenericParameters().Count == 0)
             return null;
         try
         {

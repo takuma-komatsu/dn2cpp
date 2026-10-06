@@ -117,7 +117,7 @@
 # init-only setter return modreq); DefaultValue throws (the Constant blob is not
 # carried; HasDefaultValue/IsOut answer exactly from the attributes word), and
 # Type.GetGenericParameterConstraints throws it where real .NET throws
-# InvalidOperationException (no generic-parameter Type materializes), the
+# InvalidOperationException for its non-parameter receiver, the
 # dynamic-codegen section's Compile()/DynamicMethod throw where the JIT-backed
 # runtime succeeds, and the assembly section's loud cut throws the catchable
 # PlatformNotSupportedException where real .NET probes the loader
@@ -132,15 +132,10 @@
 # live in the reflect-invoke live diff.
 #
 # The generic-method section (ReflectGenericMethodSubset) freezes the AOT
-# boundary of the per-closed-instantiation methtab model (no open generic
-# method rows exist in the image): GetMethod surfaces a CLOSED instantiation,
-# so IsGenericMethodDefinition answers False (real .NET: the open definition,
-# True) and GetGenericArguments reports the closed arguments (Int32, not T) —
-# on the GetGenericMethodDefinition view too, whose ContainsGenericParameters
-# stays False; MakeGenericMethod over a never-reached instantiation throws the
-# catchable PlatformNotSupportedException (real .NET JITs it); and re-making
-# the in-image instantiation returns the row the lookup surfaced, comparing
-# EQUAL to the GetMethod result (real .NET: open definition != closed method).
+# boundary: MakeGenericMethod over a never-reached instantiation throws the
+# catchable PlatformNotSupportedException where real .NET JITs it. Definition
+# lookups and formal-parameter identities follow CLR; their live parity paths
+# are covered by build-and-run-reflect-invoke.sh.
 #
 # The MakeGenericType-seed section (ReflectMakeGenericSeedSubset) covers the
 # canonical-wrapper seed (Compilation.CollectionInterfaceWrapperDefs): a member
