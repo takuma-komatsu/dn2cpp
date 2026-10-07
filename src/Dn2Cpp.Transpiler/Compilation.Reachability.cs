@@ -14,6 +14,23 @@ internal sealed partial class Compilation
 
     private void Reach(MethodInfo m)
     {
+        // New callable constructor closures do not enroll initializers in startup.
+        // A later normal edge rescans that closure with the ordinary first-use rules.
+        if (_reachingBindingOnlyBody)
+        {
+            if (!Reachable.Contains(m))
+            {
+                _bindingOnlyBodies.Add(m);
+                if (m.Name == ".cctor")
+                    _bindingOnlyInitializers.Add(m);
+            }
+        }
+        else if (_bindingOnlyBodies.Remove(m))
+        {
+            _bindingOnlyInitializers.Remove(m);
+            if (_scanned.Remove(m))
+                _toScan.Enqueue(m);
+        }
         if (_reflectedTemplateBodies.Count > 0 && !_reachingReflectedTemplateBody)
             _reflectedTemplateBodies.Remove(m);
         NoteObfuscationMethod(m);
@@ -807,7 +824,7 @@ internal sealed partial class Compilation
     /// static-field access, and reaching it here pulls unwanted BCL initializers. Reached
     /// non-generic .cctors run at startup; closed generic ones run through first-use
     /// guards.</summary>
-    private void ReachCctor(ClassInfo c)
+    private void ReachCctor(ClassInfo c, MethodInfo? caller = null)
     {
         EnsureCompleted(c);   // its .cctor is a member
         // A framework EventSource-derived tracing provider (ArrayPoolEventSource,
@@ -825,7 +842,12 @@ internal sealed partial class Compilation
             return;
         var cctor = c.StaticCctor;
         if (cctor is not null)
+        {
+            // A direct initializer body writing its own statics is not a first use.
+            if (caller != cctor && !_reachingBindingOnlyBody)
+                _bindingOnlyInitializers.Remove(cctor);
             Reach(cctor);
+        }
     }
 
     /// <summary>Whether a class is a framework diagnostics provider: defined in a
@@ -6110,7 +6132,7 @@ internal sealed partial class Compilation
                         if (insn.OpCode is ILOpCode.Call or ILOpCode.Callvirt
                             && ResolveStaticCallClass(module, handle, m.Context) is
                                 { IsBeforeFieldInit: false, IntrinsicCppName: null } callCls)
-                            ReachCctor(callCls);
+                            ReachCctor(callCls, m);
 
                         // MethodInfo/MethodBase.Invoke usage enables the reflection-invoke
                         // reachability route: reach all app-module method bodies so
@@ -6139,6 +6161,14 @@ internal sealed partial class Compilation
                             if (CoreIntrinsics.ScanNeedsParentTypeName(mrName))
                                 mrParent = MemberRefParentTypeName(module, (MemberReferenceHandle)handle);
                             NoteReflectionUsage(module, mrParent, mrName);
+                            if (!_reflectionNamedDelegateBindUsed && IsUserModule(module)
+                                && mrName == "CreateDelegate" && mrParent == "System.Delegate")
+                            {
+                                var named = module.Reader.GetMemberReference((MemberReferenceHandle)handle)
+                                    .DecodeMethodSignature(RawSignatureProvider.Instance, null);
+                                if (named.ParameterTypes.Length >= 3 && named.ParameterTypes[2] == "System.String")
+                                    _reflectionNamedDelegateBindUsed = true;
+                            }
                         }
                         if (insn.OpCode is ILOpCode.Call or ILOpCode.Callvirt && mrName is not null)
                         {
@@ -6187,8 +6217,8 @@ internal sealed partial class Compilation
                                 && mrParent == "System.Runtime.CompilerServices.RuntimeHelpers")
                             {
                                 if (lastLdtokenType is { Kind: TypeKind.Class, Class: { } rcc }
-                                    && rcc.StaticCctor is { } rccc)
-                                    Reach(rccc);
+                                    && rcc.StaticCctor is not null)
+                                    ReachCctor(rcc, m);
                                 constrained = null;
                                 continue;
                             }
@@ -6827,7 +6857,7 @@ internal sealed partial class Compilation
                             string name = handle.Kind == HandleKind.MemberReference
                                 ? reader.GetString(reader.GetMemberReference((MemberReferenceHandle)handle).Name)
                                 : reader.GetString(reader.GetFieldDefinition((FieldDefinitionHandle)handle).Name);
-                            ReachCctor(ReflectionStaticFieldOwner(fc, name));
+                            ReachCctor(ReflectionStaticFieldOwner(fc, name), m);
                         }
                         continue;
                     }

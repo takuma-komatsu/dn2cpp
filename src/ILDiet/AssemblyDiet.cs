@@ -42,6 +42,9 @@ internal sealed partial class AssemblyDiet : IDisposable
     private readonly HashSet<TypeDefinition> _typeTokenSeen = new();
     private bool _constructsFromRuntimeType;
     private bool _runsReflectedMethods;
+    private bool _bindsNamedConstructors;
+    private readonly HashSet<TypeDefinition> _namedConstructorAllocations = new();
+    private readonly HashSet<TypeDefinition> _namedConstructorOwners = new();
     private readonly List<TypeDefinition> _typeTokenLibraryTypes = new();
     private bool _initializesArrays;
     private readonly Dictionary<ModuleDefinition, DietAssembly> _byModule = new();
@@ -387,6 +390,8 @@ internal sealed partial class AssemblyDiet : IDisposable
         if (_policyTypes.TryGetValue(type, out var policy) && _conditional.Add(type)) ApplyPolicy(type, policy, true);
         if (_conditionalOwnMembers.Contains(type)) KeepOwnMembers(type);
         if (_runsReflectedMethods && type.Module == _assemblies[0].Assembly.MainModule) KeepReflectedMethods(type);
+        if (_bindsNamedConstructors && type.Module == _assemblies[0].Assembly.MainModule)
+            KeepNamedConstructorHierarchy(type);
     }
 
     private static bool IsDelegate(TypeDefinition type) => type.BaseType?.FullName is "System.Delegate" or "System.MulticastDelegate";
@@ -509,6 +514,28 @@ internal sealed partial class AssemblyDiet : IDisposable
             || IsProtected(type.Module.Assembly.Name.Name) || !_typeTokenSeen.Add(type)) return;
         _typeTokenLibraryTypes.Add(type);
         if (_runsReflectedMethods) KeepTypeTokenLibrarySurface(type);
+        if (_bindsNamedConstructors) KeepNamedConstructorHierarchy(type);
+    }
+
+    private void ArmNamedConstructorBinding()
+    {
+        if (_bindsNamedConstructors) return;
+        _bindsNamedConstructors = true;
+        foreach (var type in _types.Where(t => t.Module == _assemblies[0].Assembly.MainModule).ToList())
+            KeepNamedConstructorHierarchy(type);
+        foreach (var type in _typeTokenLibraryTypes.Concat(_namedConstructorAllocations).ToList())
+            KeepNamedConstructorHierarchy(type);
+    }
+
+    private void KeepNamedConstructorHierarchy(TypeDefinition owner)
+    {
+        for (TypeDefinition? type = owner; type is not null; type = type.BaseType is null ? null : Resolve(type.BaseType))
+        {
+            if (!IsStripped(type) || IsProtected(type.Module.Assembly.Name.Name)) break;
+            if (!_namedConstructorOwners.Add(type)) continue;
+            foreach (var method in type.Methods)
+                if (method.IsConstructor) MarkMethod(method);
+        }
     }
 
     private void KeepTypeTokenLibrarySurface(TypeDefinition type)
@@ -743,6 +770,11 @@ internal sealed partial class AssemblyDiet : IDisposable
             {
                 case MethodReference target:
                     if (!_registryFactories.ContainsKey(instruction)) MarkMethod(target);
+                    if (instruction.OpCode.Code == Code.Newobj && Resolve(target.DeclaringType) is { } owner)
+                    {
+                        _namedConstructorAllocations.Add(owner);
+                        if (_bindsNamedConstructors) KeepNamedConstructorHierarchy(owner);
+                    }
                     // A method group runs its target through the delegate, so it arms
                     // whatever a call to the target arms.
                     bool runs = instruction.OpCode.Code is Code.Call or Code.Callvirt or Code.Ldftn or Code.Ldvirtftn;
@@ -753,6 +785,9 @@ internal sealed partial class AssemblyDiet : IDisposable
                         && target.DeclaringType.FullName == "System.Array")
                         ArmArrayInitialize();
                     // Every scanned body is user code, whose binding runs the method too.
+                    if (runs && target.DeclaringType.FullName == "System.Delegate" && target.Name == "CreateDelegate"
+                        && target.Parameters.Count >= 3 && target.Parameters[2].ParameterType.FullName == "System.String")
+                        ArmNamedConstructorBinding();
                     if (runs && !_runsReflectedMethods
                         && (PreservationReader.RunsReflectedMethod(target.DeclaringType.FullName, target.Name)
                             || PreservationReader.BindsReflectedMethod(target.DeclaringType.FullName, target.Name)))

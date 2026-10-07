@@ -233,6 +233,13 @@ static const Dn2CppTypeInfo* dn2cpp_synthesize_instantiation(
         }
         synthesized->reflection.ctors = Dn2CppMetadataTable<Dn2CppMethodInfo>::from_raw(ctors);
     }
+    if (const auto initializer = row->templateTi->reflection().initializer)
+    {
+        auto* delta = new Dn2CppMethodDelta{};
+        delta->original = initializer;
+        delta->declaringType = ti;
+        synthesized->reflection.initializer = Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw(delta);
+    }
     // Method rows name the clone as their declaring type, so every binding
     // resolved against the clone's rows reports the clone, as .NET does.
     Dn2CppMethodDelta* methods = nullptr;
@@ -5232,26 +5239,21 @@ Dn2CppObject* dn2cpp_delegate_create_named(Dn2CppType* dt, Dn2CppObject* target,
         return dn2cpp_delegate_create(dt, target, dn2cpp_make_methodref(method, queried),
             staticForm == 0 ? 1 : 0, throwOnFailure, true);
     };
-    auto refuseConstructor = [&](const Dn2CppTypeInfo* ti) {
-        if (staticForm != 0 || !dn2cpp_dgbind_name_matches(".ctor", name, ignoreCase))
-            return;
+    auto constructor = [&](const Dn2CppTypeInfo* ti) {
+        Dn2CppMetadataHandle<Dn2CppMethodInfo> selected;
         const auto reflection = ti->reflection();
-        for (int32_t i = reflection.ctorCount - 1; i >= 0; i--)
+        if (staticForm != 0)
         {
-            const auto row = reflection.ctors[i].operator->();
-            if (matches(*row.operator->()))
-                dn2cpp_throw_platform_not_supported(
-                    "CreateDelegate: constructor bodies are outside the method-binding reachability route");
+            if (reflection.initializer != nullptr && matches(*reflection.initializer.operator->().operator->()))
+                return reflection.initializer;
         }
+        else
+            for (int32_t i = reflection.ctorCount - 1; i >= 0; i--)
+                if (matches(*reflection.ctors[i].operator->().operator->()))
+                    return reflection.ctors[i];
+        return selected;
     };
-    // Static initializer rows are absent, so neither their presence nor binding
-    // identity can be inferred from an ordinary method table.
     dn2cpp_require_metadata(queried);
-    if (staticForm != 0 && invokeView->paramCount == 0
-        && invokeView->returnType == &dn2cpp_void_type
-        && dn2cpp_dgbind_name_matches(".cctor", name, ignoreCase))
-        dn2cpp_throw_platform_not_supported(
-            "CreateDelegate: static initializer method metadata is not retained in this image");
     auto metadataMethod = [&](bool isVirtual) {
         Dn2CppMetadataHandle<Dn2CppMethodInfo> selected;
         for (int32_t k = 0; k < g_meta_member_count; k++)
@@ -5280,7 +5282,8 @@ Dn2CppObject* dn2cpp_delegate_create_named(Dn2CppType* dt, Dn2CppObject* target,
     // The CLR checks the receiver's non-virtual methods in reverse declaration
     // order, its virtual slots (inherited ones included), then each base's
     // non-virtual methods. A compatible overload does not hide its base siblings.
-    refuseConstructor(queried);
+    if (const auto method = constructor(queried))
+        return bind(method);
     const auto own = queried->reflection();
     for (int32_t i = own.methodCount - 1; i >= 0; i--)
     {
@@ -5350,7 +5353,8 @@ Dn2CppObject* dn2cpp_delegate_create_named(Dn2CppType* dt, Dn2CppObject* target,
     for (const Dn2CppTypeInfo* ti = queried->base; ti != nullptr; ti = ti->base)
     {
         dn2cpp_require_metadata(ti);
-        refuseConstructor(ti);
+        if (const auto method = constructor(ti))
+            return bind(method);
         const auto reflection = ti->reflection();
         for (int32_t i = reflection.methodCount - 1; i >= 0; i--)
         {
@@ -6136,6 +6140,12 @@ Dn2CppObject* dn2cpp_delegate_get_method(Dn2CppObject* d)
         const auto bound = dn2cpp_reflbind_method(bind);
         if (!bound)
             return nullptr;
+        if (std::strcmp(bound->name, ".ctor") == 0 || std::strcmp(bound->name, ".cctor") == 0)
+        {
+            static constexpr char message[] = "Unable to cast object of type 'System.Reflection.RuntimeConstructorInfo' to type 'System.Reflection.MethodInfo'.";
+            dn2cpp_throw(dn2cpp_exception_new(&dn2cpp_invalid_cast_exception_type,
+                dn2cpp_string_from_utf8(message, static_cast<int32_t>(sizeof message - 1)), nullptr));
+        }
         // Declaring-normalized: .NET's delegate.Method is the declaring-typed
         // instance even when the delegate was created from a derived-reflected row. A
         // template row's declaring type is the clone level the binding runs on, which

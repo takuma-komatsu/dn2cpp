@@ -21,6 +21,7 @@ internal sealed partial class CppEmitter
         internal uint IlAttrs;
         internal string? DefaultMemberName, EventSourceName, EventSourceGuid;
         internal string? GenericParamNames;
+        internal string Initializer = "nullptr";
         internal ModeledSize? MarshalSize;
     }
 
@@ -33,7 +34,7 @@ internal sealed partial class CppEmitter
             MetadataValue.Ref(data.NestedTypes), MetadataValue.Signed(data.NestedCount), MetadataValue.Text(data.AssemblyName),
             MetadataValue.Unsigned(data.IlAttrs), MetadataValue.Signed(data.MetadataToken), MetadataValue.Text(data.DefaultMemberName),
             MetadataValue.Signed(data.MarshalSize?.Size64 ?? 0), MetadataValue.Text(data.EventSourceName), MetadataValue.Text(data.EventSourceGuid),
-            MetadataValue.Text(data.GenericParamNames),
+            MetadataValue.Text(data.GenericParamNames), MetadataValue.Ref(data.Initializer),
         };
         bool hasCold = cold.Any(value => value.Pointer is not null || value.StringValue is not null || value.Encoded != 0);
         string coldSymbol = "refl_" + symbol;

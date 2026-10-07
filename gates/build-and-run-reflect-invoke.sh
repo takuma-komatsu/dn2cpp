@@ -8,6 +8,9 @@
 # Closed public generic arguments retain family and child identity without a Type-object cache.
 # Known pointee names skip incompatible runtime-generic argument and family overloads.
 # Opaque generic pointees and dynamic array arguments preserve overload inequality.
+# Named constructors run on existing receivers; cold initializer binds do not initialize.
+# Direct initializer calls repeat the body, and constructor Delegate.Method faults.
+# Application-derived types retain callable cold initializers from library bases.
 # By-value delegate binding matches enums to their exact underlying type by name and MethodInfo.
 # Canonical function-pointer descriptors preserve Invoke checks independently of binding identity.
 # Unsupported by-ref referents retain distinct identities without enabling Invoke marshalling.
@@ -253,6 +256,8 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|intrinsic-MD-array-child-p
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|intrinsic-only-array-prefix-argv:before-intrinsic-array-elements"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|intrinsic-array-leaf-prefix-argv:before-intrinsic-array-leaves|intrinsic-constant-leaf-prefix-argv:before-intrinsic-constant-leaves"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|intrinsic-closed-generic-prefix-argv:before-intrinsic-closed-generic-arguments"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|constructor-name-prefix-argv:before-delegate-constructor-names|initializer-name-prefix-argv:before-delegate-initializer-names"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|app-library-initializer-prefix-argv:before-app-library-initializer-names"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|identity-overload-prefix-argv:before-identity-overload-selection|identity-overload-boundary-prefix-argv:delegate-signature-before-identity-boundary"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|delegate-origin-prefix-argv:before-delegate-origin-boundaries|delegate-origin-modes:argument,field,array,checked-conv,arithmetic,box,call,local,stack-join,byref-argument"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|runtime-type-relations-prefix-argv:before-runtime-type-relations"
@@ -1599,6 +1604,31 @@ gate_extra_asserts() {
         done
     done
 
+    for axis in dotnet native; do
+        if [ "$axis" = dotnet ]; then
+            run_bounded dotnet "$_CG_APP" before-delegate-constructor-names > "$out/constructor-name-before.$axis.stdout"
+            run_bounded dotnet "$_CG_APP" > "$out/constructor-name-full.$axis.stdout"
+        else
+            run_bounded "$out/ReflectInvoke$EXE_EXT" before-delegate-constructor-names > "$out/constructor-name-before.$axis.stdout"
+            run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/constructor-name-full.$axis.stdout"
+        fi
+        sed '/^== delegate constructor body names ==/,$d' "$out/constructor-name-full.$axis.stdout" \
+            > "$out/constructor-name-prefix.$axis.stdout"
+        diff -u <(strip_cr_win_file "$out/constructor-name-before.$axis.stdout") \
+            <(strip_cr_win_file "$out/constructor-name-prefix.$axis.stdout") \
+            || { echo "FAIL: constructor name prefix changed: $axis" >&2; return 1; }
+        for line in '== delegate constructor body names ==' 'delegate constructor body names end' \
+            'constructor soft => 5/True/InvalidCastException' \
+            'constructor hard => 17/InvalidCastException' \
+            'constructor normalized => 5/InvalidCastException' \
+            'constructor private base => 29/9/InvalidCastException' \
+            'constructor soft mismatches => True/True/True' 'constructor missing => True' \
+            'constructor hard mismatch => ArgumentException' 'constructor hard missing => ArgumentException'; do
+            test "$(grep -Fxc -- "$line" "$out/constructor-name-full.$axis.stdout")" = 1 \
+                || { echo "FAIL: constructor name witness must run once: $axis/$line" >&2; return 1; }
+        done
+    done
+
     run_bounded dotnet "$_CG_APP" delegate-name-boundary-outcomes > "$out/delegate-name-boundary.dotnet.stdout"
     run_bounded "$out/ReflectInvoke$EXE_EXT" delegate-name-boundary-outcomes > "$out/delegate-name-boundary.native.stdout"
     for axis in dotnet native; do
@@ -1620,22 +1650,12 @@ gate_extra_asserts() {
             grep -Fxq -- "$line" <<< "$boundary" \
                 || { echo "FAIL: delegate signature boundary witness missing ($axis): $line" >&2; return 1; }
         done
-        if [ "$axis" = dotnet ]; then
-            for line in \
-                'own constructor => bound' 'base constructor => bound' 'static initializer => bound' \
-                'constructor query normalization => bound' 'initializer query normalization => bound'; do
-                grep -Fxq -- "name boundary $line" <<< "$boundary" \
-                    || { echo "FAIL: CLR delegate signature oracle missing: $line" >&2; return 1; }
-            done
-        else
-            for line in \
-                'own constructor => unsupported' 'base constructor => unsupported' \
-                'static initializer => unsupported' 'constructor query normalization => unsupported' \
-                'initializer query normalization => unsupported'; do
-                grep -Fxq -- "name boundary $line" <<< "$boundary" \
-                    || { echo "FAIL: native delegate signature boundary changed: $line" >&2; return 1; }
-            done
-        fi
+        for line in \
+            'own constructor => bound' 'base constructor => bound' 'static initializer => bound' \
+            'constructor query normalization => bound' 'initializer query normalization => bound'; do
+            grep -Fxq -- "name boundary $line" <<< "$boundary" \
+                || { echo "FAIL: constructor signature oracle missing ($axis): $line" >&2; return 1; }
+        done
     done
 
     # Initial intrinsic lookup allocates one native method row; enumeration can
@@ -2093,6 +2113,56 @@ gate_extra_asserts() {
     done
     for axis in dotnet native; do
         if [ "$axis" = dotnet ]; then
+            run_bounded dotnet "$_CG_APP" before-delegate-initializer-names > "$out/initializer-name-before.$axis.stdout"
+            run_bounded dotnet "$_CG_APP" > "$out/initializer-name-full.$axis.stdout"
+        else
+            run_bounded "$out/ReflectNameBindOnly$EXE_EXT" before-delegate-initializer-names > "$out/initializer-name-before.$axis.stdout"
+            run_bounded "$out/ReflectNameBindOnly$EXE_EXT" > "$out/initializer-name-full.$axis.stdout"
+        fi
+        sed '/^== delegate cold initializer body names ==/,$d' "$out/initializer-name-full.$axis.stdout" \
+            > "$out/initializer-name-prefix.$axis.stdout"
+        diff -u <(strip_cr_win_file "$out/initializer-name-before.$axis.stdout") \
+            <(strip_cr_win_file "$out/initializer-name-prefix.$axis.stdout") \
+            || { echo "FAIL: initializer name prefix changed: $axis" >&2; return 1; }
+        for line in '== delegate cold initializer body names ==' 'delegate cold initializer body names end' \
+            'cold initializer before => 0' 'cold initializer bind => 0/True/InvalidCastException' \
+            'cold initializer soft call => 1' 'cold initializer hard call => 2/InvalidCastException' \
+            'helper initializer bind => 0' 'helper initializer first => 2' \
+            'helper initializer second => 3/InvalidCastException' \
+            'inherited initializer bind => 0' 'inherited initializer calls => 2/InvalidCastException' \
+            'generic initializer bind => 0' 'generic initializer calls => 2/String/InvalidCastException' \
+            'initializer mismatch => True/True' 'initializer absent => True' \
+            'initializer absent hard => ArgumentException'; do
+            test "$(grep -Fxc -- "$line" "$out/initializer-name-full.$axis.stdout")" = 1 \
+                || { echo "FAIL: initializer name witness must run once: $axis/$line" >&2; return 1; }
+        done
+    done
+
+    for axis in dotnet native; do
+        if [ "$axis" = dotnet ]; then
+            run_bounded dotnet "$_CG_APP" before-app-library-initializer-names > "$out/app-library-initializer-before.$axis.stdout"
+            run_bounded dotnet "$_CG_APP" > "$out/app-library-initializer-full.$axis.stdout"
+        else
+            run_bounded "$out/ReflectNameBindOnly$EXE_EXT" before-app-library-initializer-names > "$out/app-library-initializer-before.$axis.stdout"
+            run_bounded "$out/ReflectNameBindOnly$EXE_EXT" > "$out/app-library-initializer-full.$axis.stdout"
+        fi
+        sed '/^== application library initializer names ==/,$d' "$out/app-library-initializer-full.$axis.stdout" \
+            > "$out/app-library-initializer-prefix.$axis.stdout"
+        diff -u <(strip_cr_win_file "$out/app-library-initializer-before.$axis.stdout") \
+            <(strip_cr_win_file "$out/app-library-initializer-prefix.$axis.stdout") \
+            || { echo "FAIL: application library initializer prefix changed: $axis" >&2; return 1; }
+        for line in '== application library initializer names ==' 'application library initializer names end' \
+            'app library initializer before => 0' \
+            'app library initializer bind => 0/True/True/InvalidCastException' \
+            'app library initializer soft call => 1' \
+            'app library initializer hard call => 2/InvalidCastException'; do
+            test "$(grep -Fxc -- "$line" "$out/app-library-initializer-full.$axis.stdout")" = 1 \
+                || { echo "FAIL: application library initializer witness must run once: $axis/$line" >&2; return 1; }
+        done
+    done
+
+    for axis in dotnet native; do
+        if [ "$axis" = dotnet ]; then
             run_bounded dotnet "$_CG_APP" before-intrinsic-array-elements > "$out/intrinsic-array-element-before.$axis.stdout"
             run_bounded dotnet "$_CG_APP" > "$out/intrinsic-array-element-full.$axis.stdout"
         else
@@ -2187,9 +2257,9 @@ gate_extra_asserts() {
         done
     done
 }
-DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectInvoke ReflectNameBindOnly --no-ildiet
+DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectInvoke ReflectNameBindOnly --no-ildiet -r "$pointer_field_library"
 DN2CPP_OUT_SUFFIX=-ildiet DN2CPP_STRICT_COMPLETION=1 \
-    ordinary_fixture_diff_gate ReflectInvoke ReflectNameBindOnly
+    ordinary_fixture_diff_gate ReflectInvoke ReflectNameBindOnly -r "$pointer_field_library"
 unset -f gate_extra_asserts
 
 # The refusals need their CoreLib overrides stripped, so they run in an image

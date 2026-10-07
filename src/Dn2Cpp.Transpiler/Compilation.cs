@@ -4964,6 +4964,12 @@ internal sealed partial class Compilation
     // Arms ReachReflectedVirtualSlots during discovery, before the lowering sets
     // NeedsReflectionDelegateBind.
     private bool _reflectionDelegateBindScanned;
+    private bool _reflectionNamedDelegateBindUsed;
+    internal bool NamedDelegateBindingUsed => _reflectionNamedDelegateBindUsed;
+    private readonly HashSet<MethodInfo> _bindingOnlyInitializers = new();
+    private readonly HashSet<MethodInfo> _bindingOnlyBodies = new();
+    private bool _reachingBindingOnlyBody;
+    internal bool IsBindingOnlyInitializer(MethodInfo method) => _bindingOnlyInitializers.Contains(method);
 
     // Set when a reached body calls or binds FieldInfo.GetValue. Arms the field half of
     // the reflection-invoke route.
@@ -5363,9 +5369,59 @@ internal sealed partial class Compilation
         // reached one (NoteReflectionRouteInstanceBoxes).
         while (WalkReflectionRouteClasses() || NoteReflectionRouteInstanceBoxes()
                || ReachReflectedLibraryPointerFields()
-               || ReachReflectedCtorSurface())
+               || ReachReflectedCtorSurface() || ReachNamedDelegateLibraryConstructors())
         {
         }
+    }
+
+    private void ReachBindingInitializer(MethodInfo method)
+    {
+        bool previous = _reachingBindingOnlyBody;
+        _reachingBindingOnlyBody = true;
+        try { Reach(method); }
+        finally { _reachingBindingOnlyBody = previous; }
+    }
+
+    private int _namedCtorLibraryCursor;
+    private int _namedCtorAllocatedCursor;
+    private int _namedCtorAppCursor;
+    private readonly List<ClassInfo> _namedCtorAppOwners = new();
+    private readonly HashSet<ClassInfo> _namedCtorLibraryOwners = new();
+
+    private bool ReachNamedDelegateLibraryConstructors()
+    {
+        if (!_reflectionNamedDelegateBindUsed)
+            return false;
+        var owners = new List<ClassInfo>();
+        int named = _typeofNamedLibraryClasses.Count, allocated = _invokeRouteAllocatedOwners.Count;
+        for (; _namedCtorLibraryCursor < named; _namedCtorLibraryCursor++)
+            owners.Add(_typeofNamedLibraryClasses[_namedCtorLibraryCursor]);
+        for (; _namedCtorAllocatedCursor < allocated; _namedCtorAllocatedCursor++)
+            owners.Add(_invokeRouteAllocatedOwners[_namedCtorAllocatedCursor]);
+        int app = _namedCtorAppOwners.Count;
+        for (; _namedCtorAppCursor < app; _namedCtorAppCursor++)
+            owners.Add(_namedCtorAppOwners[_namedCtorAppCursor]);
+        foreach (var owner in owners)
+            for (var cls = owner; cls is not null; cls = cls.BaseClass)
+            {
+                if (cls.Module == AppModule || !IsUserModule(cls.Module) || cls.IntrinsicCppName is not null
+                    || CoreIntrinsics.IsIntrinsicType(cls.FullName)
+                    || ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls)
+                    || !_namedCtorLibraryOwners.Add(cls))
+                    continue;
+                foreach (var method in cls.EnsureMembers().Methods)
+                {
+                    if (method.Name is not (".ctor" or ".cctor") || method.Rva == 0
+                        || _backend?.ShouldSkipMethodBody(cls, method) == true)
+                        continue;
+                    ReachBindingInitializer(method);
+                    NoteReflectionInvokeBoxes(method);
+                }
+            }
+        if (owners.Count == 0)
+            return false;
+        DrainReachability();
+        return true;
     }
 
     private int _fieldReadLibraryNamedCursor;
@@ -5476,13 +5532,16 @@ internal sealed partial class Compilation
 
     /// <summary>Walks, then drains, the classes each armed half of the reflection-invoke
     /// route has not walked; returns whether there were any.</summary>
+    private int _namedCtorRouteCursor;
+
     private bool WalkReflectionRouteClasses()
     {
         int count = Classes.Count;
         int invokeFrom = _reflectionInvokeUsed ? _invokeRouteCursor : count;
         int ctorFrom = _reflectionCtorUsed ? _ctorRouteCursor : count;
         int fieldFrom = _reflectionFieldReadUsed ? _fieldReadRouteCursor : count;
-        int from = Math.Min(invokeFrom, Math.Min(ctorFrom, fieldFrom));
+        int namedFrom = _reflectionNamedDelegateBindUsed ? _namedCtorRouteCursor : count;
+        int from = Math.Min(namedFrom, Math.Min(invokeFrom, Math.Min(ctorFrom, fieldFrom)));
         if (from == count)
             return false;
         if (_invokeRouteDepth < 0)
@@ -5492,13 +5551,16 @@ internal sealed partial class Compilation
         }
         for (int i = from; i < count; i++)
             WalkReflectionRouteClass(Classes[i], invoke: i >= invokeFrom, ctor: i >= ctorFrom,
-                fields: i >= fieldFrom, minted: i >= _invokeRouteFirstClasses);
+                fields: i >= fieldFrom, minted: i >= _invokeRouteFirstClasses,
+                bindConstructors: i >= namedFrom);
         if (invokeFrom < count)
             _invokeRouteCursor = count;
         if (ctorFrom < count)
             _ctorRouteCursor = count;
         if (fieldFrom < count)
             _fieldReadRouteCursor = count;
+        if (namedFrom < count)
+            _namedCtorRouteCursor = count;
         DrainReachability();
         return true;
     }
@@ -5508,11 +5570,14 @@ internal sealed partial class Compilation
     /// and its allocation, <paramref name="fields"/> the boxes its fields' values
     /// become. <paramref name="minted"/>: the class did not exist when the route first
     /// walked.</summary>
-    private void WalkReflectionRouteClass(ClassInfo cls, bool invoke, bool ctor, bool fields, bool minted)
+    private void WalkReflectionRouteClass(ClassInfo cls, bool invoke, bool ctor, bool fields, bool minted,
+        bool bindConstructors)
     {
         if (cls.Module != AppModule || ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls)
             || !RouteWalksDepth(cls, minted))
             return;
+        if (bindConstructors)
+            _namedCtorAppOwners.Add(cls);
         // Unlike the seeding loops, this one runs after the discovery drain: reflection
         // genuinely can invoke a closed generic's methods, so ask for the members here
         // (EnsureMembers).
@@ -5520,8 +5585,14 @@ internal sealed partial class Compilation
         List<TypeDesc>? boxed = null;
         foreach (var m in cls.EnsureMembers().Methods)
         {
-            if (m.Rva == 0 || m.Name == ".cctor")
+            if (m.Rva == 0)
                 continue;
+            if (m.Name == ".cctor")
+            {
+                if (bindConstructors && _backend?.ShouldSkipMethodBody(cls, m) != true)
+                    ReachBindingInitializer(m);
+                continue;
+            }
             // A generic method definition runs only as an instantiation a call site
             // names; decoding its own signature would mint open shells.
             if (m.Context.MethodArgs.Length == 0
@@ -5542,9 +5613,12 @@ internal sealed partial class Compilation
             // boxes the returned value; reach ctor bodies for ConstructorInfo.Invoke /
             // Activator.CreateInstance(Type). Both box each by-ref argument they write
             // back.
-            if (m.Name == ".ctor" ? !ctor : !invoke)
+            if (m.Name == ".ctor" ? !ctor && !bindConstructors : !invoke)
                 continue;
-            Reach(m);
+            if (m.Name == ".ctor" && bindConstructors && !ctor)
+                ReachBindingInitializer(m);
+            else
+                Reach(m);
             (invoked ??= new()).Add(m);
         }
         // A constructed instance is allocated, a value type's box included, so its
@@ -6900,14 +6974,18 @@ internal sealed partial class Compilation
                 var m = _toScan.Dequeue();
                 if (!_scanned.Add(m))
                     continue;
-                if (ReachabilityDiagnostics is null)
-                    ScanBodyForGenerics(m);
-                else
-                    // Measure mode only: record any exception and keep scanning — the
-                    // must-escape pair excepted, as above.
-                    try { ScanBodyForGenerics(m); }
-                    catch (Exception ex) when (!IsMustEscape(ex))
-                    { ReachabilityDiagnostics.Add((m, ex)); }
+                bool previous = _reachingBindingOnlyBody;
+                _reachingBindingOnlyBody = _bindingOnlyBodies.Contains(m);
+                try
+                {
+                    if (ReachabilityDiagnostics is null)
+                        ScanBodyForGenerics(m);
+                    else
+                        try { ScanBodyForGenerics(m); }
+                        catch (Exception ex) when (!IsMustEscape(ex))
+                        { ReachabilityDiagnostics.Add((m, ex)); }
+                }
+                finally { _reachingBindingOnlyBody = previous; }
                 progress = true;
             }
             if (ReachPendingRuntimeRaisedHeirs())

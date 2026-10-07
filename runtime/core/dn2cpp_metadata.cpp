@@ -27,6 +27,7 @@ constexpr Field Dn2CppTypeReflection_fields[] = {
     { offsetof(Dn2CppTypeReflection, eventSourceName), Encoding::Pointer },
     { offsetof(Dn2CppTypeReflection, eventSourceGuid), Encoding::Pointer },
     { offsetof(Dn2CppTypeReflection, genericParamNames), Encoding::Pointer },
+    { offsetof(Dn2CppTypeReflection, initializer), Encoding::Pointer },
 };
 constexpr Field Dn2CppFieldInfo_fields[] = {
     { offsetof(Dn2CppFieldInfo, name), Encoding::Pointer },

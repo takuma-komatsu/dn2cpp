@@ -307,6 +307,9 @@ namespace ReflectInvoke
             if (args.Length > 0 && args[0] == "before-intrinsic-MD-array-children")
                 return;
             ReflectIntrinsicPointerSubset.Program.RunMdArrayChildren();
+            if (args.Length > 0 && args[0] == "before-delegate-constructor-names")
+                return;
+            ReflectDelegateConstructorSubset.Program.Run();
         }
     }
 }

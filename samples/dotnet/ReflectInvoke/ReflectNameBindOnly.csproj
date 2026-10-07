@@ -11,5 +11,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="ReflectNameBindOnlyProgram.cs" />
+    <ProjectReference Include="../ReflectReturnLib/ReflectReturnLib.csproj" />
   </ItemGroup>
 </Project>

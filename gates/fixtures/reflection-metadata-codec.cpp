@@ -91,6 +91,12 @@ DN2CPP_NATIVE_FIELDS(local_fields,
 DN2CPP_NATIVE_METADATA_STORAGE(local_fields);
 constexpr auto packed_local_fields = Dn2CppMetadataTable<Dn2CppFieldInfo>::from_static(local_fields_storage.records.data());
 DN2CPP_NATIVE_TYPE_REFLECTION(local_type, packed_local_fields, 2);
+const Dn2CppMethodInfo initializer_row{};
+DN2CPP_NATIVE_TYPE_REFLECTION(initializer_type,
+    nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0,
+    nullptr, 0, nullptr, 0, 0, nullptr, 0, nullptr, nullptr, nullptr, &initializer_row);
+DN2CPP_NATIVE_METADATA_STORAGE(initializer_type);
+constexpr auto packed_initializer_type = Dn2CppMetadataHandle<Dn2CppTypeReflection>::from_static(initializer_type_storage.records.data());
 DN2CPP_NATIVE_METADATA_STORAGE(local_type);
 constexpr auto packed_local_type = Dn2CppMetadataHandle<Dn2CppTypeReflection>::from_static(local_type_storage.records.data());
 
@@ -267,6 +273,8 @@ const int32_t dn2cpp_runtime_template_count = 0;
 int main()
 {
     static_assert(sizeof(Dn2CppMetadataHandle<Dn2CppFieldInfo>) == sizeof(void*));
+    require(packed_initializer_type->initializer.identity() == &initializer_row,
+        "packed cold rows retain a binding-only initializer handle");
     auto minimum = record(0, 2, { UINT64_MAX });
     auto minimum_handle = Dn2CppMetadataHandle<Dn2CppEnumMember>::from_static(minimum.bytes.data());
     require(minimum_handle->value == INT64_MIN, "ten-byte unsigned integer preserves signed minimum");

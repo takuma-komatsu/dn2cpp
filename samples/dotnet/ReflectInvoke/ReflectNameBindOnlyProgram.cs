@@ -208,6 +208,46 @@ internal static class Program
         Console.WriteLine("intrinsic closed generic pointer argument end");
     }
 
+    private static string InitializerMethodFault(Delegate value)
+    {
+        try { return value.Method.Name; }
+        catch (InvalidCastException) { return "InvalidCastException"; }
+    }
+
+    private static void RunInitializerNames()
+    {
+        Console.WriteLine("== delegate cold initializer body names ==");
+        Console.WriteLine($"cold initializer before => {ReflectReturnLib.NamedInitializerSignals.Cold}");
+        var soft = (Action)Delegate.CreateDelegate(typeof(Action), typeof(ReflectReturnLib.NamedColdInitializer), ".cctor", false, false)!;
+        var hard = (Action)Delegate.CreateDelegate(typeof(Action), typeof(ReflectReturnLib.NamedColdInitializer), ".CCTOR\0suffix", true, true)!;
+        Console.WriteLine($"cold initializer bind => {ReflectReturnLib.NamedInitializerSignals.Cold}/{soft.Target is null}/{InitializerMethodFault(soft)}");
+        soft();
+        Console.WriteLine($"cold initializer soft call => {ReflectReturnLib.NamedInitializerSignals.Cold}");
+        hard();
+        Console.WriteLine($"cold initializer hard call => {ReflectReturnLib.NamedInitializerSignals.Cold}/{InitializerMethodFault(hard)}");
+        var helper = (Action)Delegate.CreateDelegate(typeof(Action), typeof(ReflectReturnLib.NamedHelperInitializer), ".cctor", false, true)!;
+        Console.WriteLine($"helper initializer bind => {ReflectReturnLib.NamedInitializerSignals.Helper}");
+        helper();
+        Console.WriteLine($"helper initializer first => {ReflectReturnLib.NamedInitializerSignals.Helper}");
+        helper();
+        Console.WriteLine($"helper initializer second => {ReflectReturnLib.NamedInitializerSignals.Helper}/{InitializerMethodFault(helper)}");
+        var inherited = (Action)Delegate.CreateDelegate(typeof(Action), typeof(ReflectReturnLib.NamedInitializerDerived), ".cctor", false, true)!;
+        Console.WriteLine($"inherited initializer bind => {ReflectReturnLib.NamedInitializerSignals.Inherited}");
+        inherited();
+        inherited();
+        Console.WriteLine($"inherited initializer calls => {ReflectReturnLib.NamedInitializerSignals.Inherited}/{InitializerMethodFault(inherited)}");
+        var generic = (Action)Delegate.CreateDelegate(typeof(Action), typeof(ReflectReturnLib.NamedGenericInitializer<string>), ".cctor", false, true)!;
+        Console.WriteLine($"generic initializer bind => {ReflectReturnLib.NamedInitializerSignals.Generic}");
+        generic();
+        generic();
+        Console.WriteLine($"generic initializer calls => {ReflectReturnLib.NamedInitializerSignals.Generic}/{ReflectReturnLib.NamedInitializerSignals.GenericName}/{InitializerMethodFault(generic)}");
+        Console.WriteLine($"initializer mismatch => {Delegate.CreateDelegate(typeof(Action<int>), typeof(ReflectReturnLib.NamedColdInitializer), ".cctor", false, false) is null}/{Delegate.CreateDelegate(typeof(Func<int>), typeof(ReflectReturnLib.NamedColdInitializer), ".cctor", false, false) is null}");
+        Console.WriteLine($"initializer absent => {Delegate.CreateDelegate(typeof(Action), typeof(Subject), ".cctor", false, false) is null}");
+        try { Delegate.CreateDelegate(typeof(Action), typeof(Subject), ".cctor", false, true); }
+        catch (ArgumentException) { Console.WriteLine("initializer absent hard => ArgumentException"); }
+        Console.WriteLine("delegate cold initializer body names end");
+    }
+
     private static void Main(string[] args)
     {
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
@@ -267,5 +307,30 @@ internal static class Program
         if (args.Length > 0 && args[0] == "before-intrinsic-closed-generic-arguments")
             return;
         RunClosedGenericArguments();
+        if (args.Length > 0 && args[0] == "before-delegate-initializer-names")
+            return;
+        RunInitializerNames();
+        if (args.Length > 0 && args[0] == "before-app-library-initializer-names")
+            return;
+        RunAppLibraryInitializerNames();
+    }
+
+    private abstract class AppInitializerDerived : ReflectReturnLib.NamedAppInitializerBase
+    {
+        private AppInitializerDerived() { }
+    }
+
+    private static void RunAppLibraryInitializerNames()
+    {
+        Console.WriteLine("== application library initializer names ==");
+        Console.WriteLine($"app library initializer before => {ReflectReturnLib.NamedInitializerSignals.AppInherited}");
+        var soft = (Action)Delegate.CreateDelegate(typeof(Action), typeof(AppInitializerDerived), ".cctor", false, false)!;
+        var hard = (Action)Delegate.CreateDelegate(typeof(Action), typeof(AppInitializerDerived), ".cctor", false, true)!;
+        Console.WriteLine($"app library initializer bind => {ReflectReturnLib.NamedInitializerSignals.AppInherited}/{soft is not null}/{soft.Target is null}/{InitializerMethodFault(soft)}");
+        soft();
+        Console.WriteLine($"app library initializer soft call => {ReflectReturnLib.NamedInitializerSignals.AppInherited}");
+        hard();
+        Console.WriteLine($"app library initializer hard call => {ReflectReturnLib.NamedInitializerSignals.AppInherited}/{InitializerMethodFault(hard)}");
+        Console.WriteLine("application library initializer names end");
     }
 }
