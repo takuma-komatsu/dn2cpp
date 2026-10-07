@@ -17,6 +17,10 @@
 #include <unordered_map>
 #include <vector>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 // ---- generic reflection ----
 
 // Type.IsGenericType: a closed instantiation (genericArgCount > 0) or an open
@@ -4868,7 +4872,21 @@ Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
     return reinterpret_cast<Dn2CppObject*>(dg);
 }
 
-// Name binding uses invariant casing, rather than the ordinal string fold.
+// Delegate name binding uses the host's CLR invariant uppercase mapping.
+static char16_t dn2cpp_dgbind_upper(char16_t c)
+{
+#ifdef _WIN32
+    wchar_t source = static_cast<wchar_t>(c);
+    wchar_t mapped;
+    if (LCMapStringEx(LOCALE_NAME_INVARIANT, LCMAP_UPPERCASE, &source, 1,
+            &mapped, 1, nullptr, nullptr, 0) != 0)
+        return static_cast<char16_t>(mapped);
+    return c;
+#else
+    return dn2cpp_char_upper_invariant(c);
+#endif
+}
+
 // The CLR passes the requested name through a NUL-terminated UTF-8 QCall string.
 static bool dn2cpp_dgbind_name_matches(const char* candidate, Dn2CppString* name, int32_t ignoreCase)
 {
@@ -4883,10 +4901,10 @@ static bool dn2cpp_dgbind_name_matches(const char* candidate, Dn2CppString* name
     {
         char16_t a = decoded->chars[i];
         char16_t b = name->chars[i];
-        if (ignoreCase != 0)
+        if (ignoreCase != 0 && a != b)
         {
-            a = dn2cpp_char_upper_invariant(a);
-            b = dn2cpp_char_upper_invariant(b);
+            a = dn2cpp_dgbind_upper(a);
+            b = dn2cpp_dgbind_upper(b);
         }
         if (a != b)
             return false;

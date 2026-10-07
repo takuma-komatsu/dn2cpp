@@ -1001,7 +1001,9 @@ namespace ReflectDelegateSubset
             }
             Console.WriteLine($"name unicode => {((Func<string, string>)Delegate.CreateDelegate(unary, target, "éCHO", true))("u")}");
             Console.WriteLine($"name greek => {((Func<string, string>)Delegate.CreateDelegate(unary, target, "σEND", true))("g")}");
-            Console.WriteLine($"name invariant casing => {((Func<string, string>)Delegate.CreateDelegate(unary, target, "ſHORT", true))("f")}");
+            Console.WriteLine($"name ascii casing => {((Func<string, string>)Delegate.CreateDelegate(unary, target, "SHORT", true))("a")}");
+            NameOutcome("long s hard", () => Delegate.CreateDelegate(unary, target, "ſHORT", true));
+            NameOutcome("long s soft", () => Delegate.CreateDelegate(unary, target, "ſHORT", true, false));
             Console.WriteLine($"name nul suffix => {((Func<string, string>)Delegate.CreateDelegate(unary, target, "Describe\0ignored"))("n")}");
             var generic = (Func<string, string>)Delegate.CreateDelegate(unary, new NameGeneric<string>(), "Identity");
             var genericStatic = (Func<int, int>)Delegate.CreateDelegate(typeof(Func<int, int>), typeof(NameGeneric<int>), "StaticIdentity");
