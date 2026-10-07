@@ -76,7 +76,7 @@ const Dn2CppTypeInfo original_type{};
 const Dn2CppTypeInfo substituted_type{};
 constexpr char empty[] = "";
 constexpr char unicode[] = "共有接尾辞_Ω_𐐀";
-const void* const pointers[] = { &original_type, empty, unicode };
+const void* const pointers[] = { &original_type, empty, unicode, &substituted_type };
 const char* const display_tokens[] = { "共有", "接尾辞", "_Ω_𐐀" };
 const Record image_method = record(0, 0, {});
 const Record image_ctor = record(0, 0, {});
@@ -320,6 +320,15 @@ int main()
     auto function = *Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_static(function_record.bytes.data());
     require(function.returnSignatureType == &original_type && function.returnPassType == nullptr,
         "function-pointer identity remains separate from Invoke's IntPtr boxing marker");
+    auto pointer_parameter_record = record(0, (1ULL << 14) | (1ULL << 16), { 1, 4 });
+    auto pointer_parameter = *Dn2CppMetadataHandle<Dn2CppParamInfo>::from_static(pointer_parameter_record.bytes.data());
+    require(pointer_parameter.passType == &original_type && pointer_parameter.bindingPointeeType == pointers[3],
+        "pointer binding identity remains separate from parameter marshalling");
+    auto pointer_return_record = record(0, (1ULL << 29) | (1ULL << 32), { 1, 4 });
+    auto pointer_return = *Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_static(pointer_return_record.bytes.data());
+    require(pointer_return.returnPassType == &original_type && pointer_return.returnBindingPointeeType == pointers[3]
+        && pointer_return.returnSignatureType == nullptr,
+        "pointer return binding identity crosses the high presence-mask bit without changing boxing");
     auto named = record(0, 1, { 3 });
     require(Dn2CppMetadataHandle<Dn2CppEnumMember>::from_static(named.bytes.data())->name == unicode,
         "Unicode names remain exact pooled bytes");
@@ -390,11 +399,14 @@ int main()
     original.declaringType = &original_type;
     original.name = unicode;
     original.metadataToken = INT32_MAX;
+    original.returnPassType = &original_type;
+    original.returnBindingPointeeType = &substituted_type;
     Dn2CppMethodDelta deltas[] = { { 1, &original, &substituted_type }, { 1, &original, &original_type } };
     auto delta = Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw(&deltas[0]);
     require(delta.native() == nullptr, "a method delta is decoded instead of treated as a native row");
     require(delta->declaringType == &substituted_type && delta->name == unicode
-        && delta->metadataToken == INT32_MAX && original.declaringType == &original_type,
+        && delta->metadataToken == INT32_MAX && original.declaringType == &original_type
+        && delta->returnPassType == &original_type && delta->returnBindingPointeeType == &substituted_type,
         "constructor delta preserves original metadata and changes only declaring type");
     require(dn2cpp_metadata_at(deltas, Dn2CppMetadataKind::Method, sizeof(Dn2CppMethodInfo), 1) == &deltas[1],
         "constructor delta table uses descriptor stride");

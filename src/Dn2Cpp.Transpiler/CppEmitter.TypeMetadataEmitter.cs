@@ -3002,6 +3002,7 @@ internal sealed partial class CppEmitter
                             MetadataValue.Text(genericDefinition is { } pk ? pk.ParameterKeys[i] : null),
                             MetadataValue.Signed(pass.Kind), MetadataValue.Ref(pass.Type),
                             MetadataValue.Ref(defaultValue),
+                            MetadataValue.Ref(definitionOnly ? "nullptr" : _e.ReflectionBindingPointee(ps[i], _emittedEnums)),
                         }));
                     }
                     // Intern byte-identical parameter tables across the whole
@@ -3173,6 +3174,7 @@ internal sealed partial class CppEmitter
                     MetadataValue.Ref(retPass.Referent),
                     MetadataValue.Ref(RenderGenericParameters(m)),
                     MetadataValue.Ref(retPass.Signature),
+                    MetadataValue.Ref(definitionOnly ? "nullptr" : _e.ReflectionBindingPointee(m.Signature.ReturnType, _emittedEnums)),
                 }));
             }
             // The trim can empty a table the member list did not. A zero-length array is

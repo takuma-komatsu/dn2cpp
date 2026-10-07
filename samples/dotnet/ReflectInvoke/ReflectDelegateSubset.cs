@@ -1512,3 +1512,451 @@ namespace ReflectDelegateEnumSubset
         }
     }
 }
+
+namespace ReflectIntrinsicPointerSubset
+{
+    public unsafe class PointerOverloadOwner<T> where T : unmanaged
+    {
+        public static CancellationToken* Pointer(CancellationToken* value)
+        {
+            Target.Calls += 7;
+            Target.Seen = (nint)value;
+            return value;
+        }
+
+        public static T* Pointer(T* value)
+        {
+            Target.Calls += 8;
+            Target.Seen = (nint)value;
+            return value;
+        }
+    }
+
+    public unsafe class PointerOwner<T>
+    {
+        public static CancellationToken* Token(CancellationToken* value) => Target.Token(value);
+    }
+
+    public unsafe delegate CancellationToken* TokenPointer(CancellationToken* value);
+    public unsafe delegate object* ObjectPointer(object* value);
+    public unsafe delegate CancellationTokenRegistration* RegistrationPointer(CancellationTokenRegistration* value);
+    public unsafe delegate int TokenArgument(CancellationToken* value);
+    public unsafe delegate int ObjectArgument(object* value);
+    public unsafe delegate int RegistrationArgument(CancellationTokenRegistration* value);
+    public unsafe delegate CancellationToken* TokenResult();
+    public unsafe delegate object* ObjectResult();
+    public unsafe delegate CancellationTokenRegistration* RegistrationResult();
+    public unsafe delegate CancellationToken***** DeepToken(CancellationToken***** value);
+    public unsafe delegate CancellationTokenRegistration***** DeepRegistration(CancellationTokenRegistration***** value);
+    public unsafe delegate CancellationToken****** DeeperToken(CancellationToken****** value);
+    public unsafe delegate int* IntPointer(int* value);
+    public unsafe delegate uint* UIntPointer(uint* value);
+    public unsafe delegate long* LongPointer(long* value);
+    public unsafe delegate int** DoubleIntPointer(int** value);
+    public unsafe delegate object* StringArgument(string* value);
+    public unsafe delegate object* ReferencePointer(object* value);
+
+    public static unsafe class Target
+    {
+        public static int Calls;
+        public static nint Seen;
+
+        public static CancellationToken* Token(CancellationToken* value)
+        {
+            Calls++;
+            Seen = (nint)value;
+            return value;
+        }
+
+        public static int Parameter(CancellationToken* value)
+        {
+            Calls++;
+            Seen = (nint)value;
+            return 7;
+        }
+
+        public static CancellationToken* Result()
+        {
+            Calls++;
+            return (CancellationToken*)0x1234;
+        }
+
+        public static CancellationToken***** Deep(CancellationToken***** value)
+        {
+            Calls++;
+            Seen = (nint)value;
+            return value;
+        }
+
+        public static int* Int32(int* value)
+        {
+            Calls++;
+            return value;
+        }
+
+        public static object* Reference(object* value)
+        {
+            Calls++;
+            return value;
+        }
+    }
+
+    public static unsafe class Program
+    {
+        private static Delegate? Bind(Type delegateType, string name, bool named)
+        {
+            return named
+                ? Delegate.CreateDelegate(delegateType, typeof(Target), name, false, false)
+                : Delegate.CreateDelegate(delegateType, typeof(Target).GetMethod(name)!, false);
+        }
+
+        private static void Outcome(string label, Type delegateType, string method, bool named)
+        {
+            int count = Target.Calls;
+            try
+            {
+                Delegate? result = Bind(delegateType, method, named);
+                Console.WriteLine($"bind {label} {(named ? "name" : "method")} => {(result is null ? "null" : "bound")}/calls={Target.Calls - count}");
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"bind {label} {(named ? "name" : "method")} => {e.GetType().Name}/calls={Target.Calls - count}");
+            }
+        }
+
+        private static void MatchingCalls(bool named)
+        {
+            string api = named ? "name" : "method";
+            Target.Calls = 0;
+            var token = (TokenPointer)Bind(typeof(TokenPointer), "Token", named)!;
+            CancellationToken* zero = token(null);
+            CancellationToken* value = token((CancellationToken*)0x1234);
+            Console.WriteLine($"call Token {api} => {zero == null}/{(nint)value}/{Target.Seen}/{Target.Calls}");
+            Target.Calls = 0;
+            var parameter = (TokenArgument)Bind(typeof(TokenArgument), "Parameter", named)!;
+            int result = parameter(null);
+            Console.WriteLine($"call parameter {api} => {result}/{Target.Seen}/{Target.Calls}");
+            Target.Calls = 0;
+            var returned = (TokenResult)Bind(typeof(TokenResult), "Result", named)!;
+            Console.WriteLine($"call return {api} => {(nint)returned()}/{Target.Calls}");
+            Target.Calls = 0;
+            var deep = (DeepToken)Bind(typeof(DeepToken), "Deep", named)!;
+            Console.WriteLine($"call deep {api} => {(nint)deep((CancellationToken*****)0x1234)}/{Target.Seen}/{Target.Calls}");
+            Target.Calls = 0;
+            var ordinary = (IntPointer)Bind(typeof(IntPointer), "Int32", named)!;
+            Console.WriteLine($"call ordinary {api} => {(nint)ordinary((int*)0x1234)}/{Target.Calls}");
+        }
+
+        public static void Run()
+        {
+            Console.WriteLine("== intrinsic pointer identity actual ==");
+            foreach (bool named in new[] { true, false })
+            {
+                Outcome("Token matching", typeof(TokenPointer), "Token", named);
+                Outcome("Token object", typeof(ObjectPointer), "Token", named);
+                Outcome("Token registration", typeof(RegistrationPointer), "Token", named);
+                Outcome("parameter matching", typeof(TokenArgument), "Parameter", named);
+                Outcome("parameter object", typeof(ObjectArgument), "Parameter", named);
+                Outcome("parameter registration", typeof(RegistrationArgument), "Parameter", named);
+                Outcome("return matching", typeof(TokenResult), "Result", named);
+                Outcome("return object", typeof(ObjectResult), "Result", named);
+                Outcome("return registration", typeof(RegistrationResult), "Result", named);
+                Outcome("deep matching", typeof(DeepToken), "Deep", named);
+                Outcome("deep registration", typeof(DeepRegistration), "Deep", named);
+                Outcome("deep depth", typeof(DeeperToken), "Deep", named);
+                Outcome("ordinary matching", typeof(IntPointer), "Int32", named);
+                Outcome("ordinary leaf", typeof(LongPointer), "Int32", named);
+                Outcome("ordinary depth", typeof(DoubleIntPointer), "Int32", named);
+                Outcome("primitive relaxation", typeof(UIntPointer), "Int32", named);
+                Outcome("reference relaxation", typeof(StringArgument), "Reference", named);
+                MatchingCalls(named);
+            }
+            Target.Calls = 0;
+            object pointer = typeof(Target).GetMethod("Result")!.Invoke(null, null)!;
+            Console.WriteLine($"Invoke return => {pointer is Pointer}/{(nint)Pointer.Unbox(pointer)}/{Target.Calls}");
+            Target.Calls = 0;
+            try
+            {
+                typeof(Target).GetMethod("Parameter")!.Invoke(null, new object?[] { "wrong" });
+                Console.WriteLine($"Invoke wrong argument => ran/{Target.Calls}");
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"Invoke wrong argument => {e.GetType().Name}/{Target.Calls}");
+            }
+            Type clone = typeof(PointerOwner<>).MakeGenericType(typeof(Guid));
+            foreach (bool named in new[] { true, false })
+            {
+                Target.Calls = 0;
+                Delegate? incompatible = named
+                    ? Delegate.CreateDelegate(typeof(ObjectPointer), clone, "Token", false, false)
+                    : Delegate.CreateDelegate(typeof(ObjectPointer), clone.GetMethod("Token")!, false);
+                Console.WriteLine($"bind clone object {(named ? "name" : "method")} => {(incompatible is null ? "null" : "bound")}/calls={Target.Calls}");
+                var matching = (TokenPointer)(named
+                    ? Delegate.CreateDelegate(typeof(TokenPointer), clone, "Token", false, false)
+                    : Delegate.CreateDelegate(typeof(TokenPointer), clone.GetMethod("Token")!, false))!;
+                Console.WriteLine($"call clone {(named ? "name" : "method")} => {(nint)matching((CancellationToken*)0x1234)}/{Target.Seen}/{Target.Calls}");
+            }
+            Console.WriteLine("intrinsic pointer identity actual end");
+        }
+
+        public static void RunOverloads()
+        {
+            Console.WriteLine("== intrinsic pointer overload identity ==");
+            Type owner = typeof(PointerOverloadOwner<>).MakeGenericType(typeof(Guid));
+            foreach (bool throwing in new[] { false, true })
+            {
+                Target.Calls = 0;
+                Target.Seen = 0;
+                var matching = (TokenPointer)Delegate.CreateDelegate(
+                    typeof(TokenPointer), owner, "Pointer", false, throwing)!;
+                CancellationToken* zero = matching(null);
+                CancellationToken* returned = matching((CancellationToken*)0x1234);
+                Console.WriteLine($"call pointer overload {(throwing ? "hard" : "soft")} => {zero == null}/{(nint)returned}/{Target.Seen}/{Target.Calls}");
+            }
+            Console.WriteLine("intrinsic pointer overload identity end");
+        }
+
+        public static void RunFamilies()
+        {
+            Console.WriteLine("== intrinsic pointer family identity ==");
+            Console.WriteLine($"pointer family => {typeof(ValueTask<>).Name}");
+            Type owner = typeof(PointerFamilyOwner<>).MakeGenericType(typeof(Guid));
+            foreach (bool throwing in new[] { false, true })
+            {
+                Target.Calls = 0;
+                Target.Seen = 0;
+                var matching = (TokenPointer)Delegate.CreateDelegate(
+                    typeof(TokenPointer), owner, "Pointer", false, throwing)!;
+                CancellationToken* zero = matching(null);
+                CancellationToken* returned = matching((CancellationToken*)0x1234);
+                Console.WriteLine($"call pointer family {(throwing ? "hard" : "soft")} => {zero == null}/{(nint)returned}/{Target.Seen}/{Target.Calls}");
+            }
+            Console.WriteLine("intrinsic pointer family identity end");
+        }
+
+        public static void RunGenericPointees()
+        {
+            Console.WriteLine("== intrinsic generic pointer identity ==");
+            Type owner = typeof(GenericPointeeOwner<>).MakeGenericType(typeof(Guid));
+            int fixedToken = owner.GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly)[0].MetadataToken;
+            foreach (bool throwing in new[] { false, true })
+            {
+                OpaqueSignals.Fixed = 0;
+                OpaqueSignals.Dependent = 0;
+                OpaqueSignals.Seen = 0;
+                var matching = (TaskPointer)Delegate.CreateDelegate(
+                    typeof(TaskPointer), owner, "Pointer", false, throwing)!;
+                if (matching.Method.MetadataToken != fixedToken)
+                    throw new InvalidOperationException("Wrong generic pointee overload");
+                ValueTask<int>* zero = matching(null);
+                ValueTask<int>* returned = matching((ValueTask<int>*)0x1234);
+                Console.WriteLine($"call pointer generic {(throwing ? "hard" : "soft")} => {zero == null}/{(nint)returned}/{OpaqueSignals.Seen}/{OpaqueSignals.Fixed}/{OpaqueSignals.Dependent}/{matching.Method.MetadataToken == fixedToken}");
+            }
+            Console.WriteLine("intrinsic generic pointer identity end");
+        }
+
+        public static void RunArrayArguments()
+        {
+            Console.WriteLine("== intrinsic pointer array argument identity ==");
+            Type array = Array.CreateInstance(typeof(ArrayArgumentElement), 0).GetType();
+            Console.WriteLine($"pointer dynamic array => {array.GetArrayRank()}/{array.GetElementType() == typeof(ArrayArgumentElement)}");
+            Type owner = typeof(ArrayArgumentOwner<>).MakeGenericType(array);
+            int fixedToken = owner.GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly)[0].MetadataToken;
+            foreach (bool throwing in new[] { false, true })
+            {
+                OpaqueSignals.Fixed = 0;
+                OpaqueSignals.Dependent = 0;
+                OpaqueSignals.Seen = 0;
+                var matching = (TokenPointer)Delegate.CreateDelegate(
+                    typeof(TokenPointer), owner, "Pointer", false, throwing)!;
+                if (matching.Method.MetadataToken != fixedToken)
+                    throw new InvalidOperationException("Wrong array argument overload");
+                CancellationToken* zero = matching(null);
+                CancellationToken* returned = matching((CancellationToken*)0x1234);
+                Console.WriteLine($"call pointer array {(throwing ? "hard" : "soft")} => {zero == null}/{(nint)returned}/{OpaqueSignals.Seen}/{OpaqueSignals.Fixed}/{OpaqueSignals.Dependent}/{matching.Method.MetadataToken == fixedToken}");
+            }
+            Console.WriteLine("intrinsic pointer array argument identity end");
+        }
+
+        public static void RunConstantArguments()
+        {
+            Console.WriteLine("== intrinsic pointer constant argument identity ==");
+            Console.WriteLine($"pointer nested families => {typeof(ValueTask<>).Name}/{typeof(Tuple<,>).Name}");
+            Type owner = typeof(ConstantArgumentOwner<>).MakeGenericType(typeof(Guid));
+            int fixedToken = owner.GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly)[0].MetadataToken;
+            foreach (bool throwing in new[] { false, true })
+            {
+                OpaqueSignals.Fixed = 0;
+                OpaqueSignals.Dependent = 0;
+                OpaqueSignals.Seen = 0;
+                var matching = (NestedTaskPointer)Delegate.CreateDelegate(
+                    typeof(NestedTaskPointer), owner, "Pointer", false, throwing)!;
+                if (matching.Method.MetadataToken != fixedToken)
+                    throw new InvalidOperationException("Wrong constant overload");
+                ValueTask<Tuple<Guid, long>>* zero = matching(null);
+                ValueTask<Tuple<Guid, long>>* returned = matching((ValueTask<Tuple<Guid, long>>*)0x1234);
+                Console.WriteLine($"call pointer constant argument {(throwing ? "hard" : "soft")} => {zero == null}/{(nint)returned}/{OpaqueSignals.Seen}/{OpaqueSignals.Fixed}/{OpaqueSignals.Dependent}/{matching.Method.MetadataToken == fixedToken}");
+            }
+            Console.WriteLine("intrinsic pointer constant argument identity end");
+        }
+
+        public static void RunArrayChildren()
+        {
+            Console.WriteLine("== intrinsic pointer array child identity ==");
+            Type owner = typeof(ArrayChildOwner<>).MakeGenericType(typeof(Guid));
+            int fixedToken = owner.GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly)[0].MetadataToken;
+            foreach (bool throwing in new[] { false, true })
+            {
+                OpaqueSignals.Fixed = 0;
+                OpaqueSignals.Dependent = 0;
+                OpaqueSignals.Seen = 0;
+                var matching = (ArrayTaskPointer)Delegate.CreateDelegate(
+                    typeof(ArrayTaskPointer), owner, "Pointer", false, throwing)!;
+                if (matching.Method.MetadataToken != fixedToken)
+                    throw new InvalidOperationException("Wrong array child overload");
+                ValueTask<int[]>* zero = matching(null);
+                ValueTask<int[]>* returned = matching((ValueTask<int[]>*)0x1234);
+                Console.WriteLine($"call pointer array child {(throwing ? "hard" : "soft")} => {zero == null}/{(nint)returned}/{OpaqueSignals.Seen}/{OpaqueSignals.Fixed}/{OpaqueSignals.Dependent}/{matching.Method.MetadataToken == fixedToken}");
+            }
+            Console.WriteLine("intrinsic pointer array child identity end");
+        }
+
+        public static void RunMdArrayChildren()
+        {
+            Console.WriteLine("== intrinsic pointer MD array child identity ==");
+            Type owner = typeof(MdArrayChildOwner<>).MakeGenericType(typeof(Guid));
+            int fixedToken = owner.GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly)[0].MetadataToken;
+            foreach (bool throwing in new[] { false, true })
+            {
+                OpaqueSignals.Fixed = 0;
+                OpaqueSignals.Dependent = 0;
+                OpaqueSignals.Seen = 0;
+                var matching = (MdArrayTaskPointer)Delegate.CreateDelegate(
+                    typeof(MdArrayTaskPointer), owner, "Pointer", false, throwing)!;
+                if (matching.Method.MetadataToken != fixedToken)
+                    throw new InvalidOperationException("Wrong MD array child overload");
+                ValueTask<int[,]>* zero = matching(null);
+                ValueTask<int[,]>* returned = matching((ValueTask<int[,]>*)0x1234);
+                Console.WriteLine($"call pointer MD array child {(throwing ? "hard" : "soft")} => {zero == null}/{(nint)returned}/{OpaqueSignals.Seen}/{OpaqueSignals.Fixed}/{OpaqueSignals.Dependent}/{matching.Method.MetadataToken == fixedToken}");
+            }
+            Console.WriteLine("intrinsic pointer MD array child identity end");
+        }
+    }
+
+    public unsafe class PointerFamilyOwner<T>
+    {
+        public static CancellationToken* Pointer(CancellationToken* value)
+        {
+            Target.Calls += 7;
+            Target.Seen = (nint)value;
+            return value;
+        }
+
+        public static ValueTask<T>* Pointer(ValueTask<T>* value)
+        {
+            Target.Calls += 8;
+            Target.Seen = (nint)value;
+            return value;
+        }
+    }
+
+    public unsafe delegate ValueTask<int>* TaskPointer(ValueTask<int>* value);
+
+    public static class OpaqueSignals
+    {
+        public static int Fixed;
+        public static int Dependent;
+        public static nint Seen;
+    }
+
+    public unsafe class GenericPointeeOwner<T> where T : unmanaged
+    {
+        public static ValueTask<int>* Pointer(ValueTask<int>* value)
+        {
+            OpaqueSignals.Fixed += 7;
+            OpaqueSignals.Seen = (nint)value;
+            return value;
+        }
+
+        public static T* Pointer(T* value)
+        {
+            OpaqueSignals.Dependent += 8;
+            return value;
+        }
+    }
+
+    public class ArrayArgumentElement
+    {
+    }
+
+    public unsafe class ArrayArgumentOwner<T>
+    {
+        public static CancellationToken* Pointer(CancellationToken* value)
+        {
+            OpaqueSignals.Fixed += 7;
+            OpaqueSignals.Seen = (nint)value;
+            return value;
+        }
+
+        public static T* Pointer(T* value)
+        {
+            OpaqueSignals.Dependent += 8;
+            return value;
+        }
+    }
+
+    public unsafe delegate ValueTask<Tuple<Guid, long>>* NestedTaskPointer(ValueTask<Tuple<Guid, long>>* value);
+
+    public unsafe class ConstantArgumentOwner<T>
+    {
+        public static ValueTask<Tuple<Guid, long>>* Pointer(ValueTask<Tuple<Guid, long>>* value)
+        {
+            OpaqueSignals.Fixed += 7;
+            OpaqueSignals.Seen = (nint)value;
+            return value;
+        }
+
+        public static ValueTask<Tuple<T, int>>* Pointer(ValueTask<Tuple<T, int>>* value)
+        {
+            OpaqueSignals.Dependent += 8;
+            return value;
+        }
+    }
+
+    public unsafe delegate ValueTask<int[]>* ArrayTaskPointer(ValueTask<int[]>* value);
+
+    public unsafe class ArrayChildOwner<T>
+    {
+        public static ValueTask<int[]>* Pointer(ValueTask<int[]>* value)
+        {
+            OpaqueSignals.Fixed += 7;
+            OpaqueSignals.Seen = (nint)value;
+            return value;
+        }
+
+        public static ValueTask<T>* Pointer(ValueTask<T>* value)
+        {
+            OpaqueSignals.Dependent += 8;
+            return value;
+        }
+    }
+
+    public unsafe delegate ValueTask<int[,]>* MdArrayTaskPointer(ValueTask<int[,]>* value);
+
+    public unsafe class MdArrayChildOwner<T>
+    {
+        public static ValueTask<int[,]>* Pointer(ValueTask<int[,]>* value)
+        {
+            OpaqueSignals.Fixed += 7;
+            OpaqueSignals.Seen = (nint)value;
+            return value;
+        }
+
+        public static ValueTask<T>* Pointer(ValueTask<T>* value)
+        {
+            OpaqueSignals.Dependent += 8;
+            return value;
+        }
+    }
+}
