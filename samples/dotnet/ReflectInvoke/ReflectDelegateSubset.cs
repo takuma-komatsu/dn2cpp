@@ -1228,3 +1228,287 @@ namespace ReflectDelegateSubset
         }
     }
 }
+
+namespace ReflectDelegateEnumSubset
+{
+    enum S8 : sbyte { }
+    enum S8Other : sbyte { }
+    enum U8 : byte { }
+    enum U8Other : byte { }
+    enum S16 : short { }
+    enum S16Other : short { }
+    enum U16 : ushort { }
+    enum U16Other : ushort { }
+    enum S32 : int { }
+    enum S32Other : int { }
+    enum U32 : uint { }
+    enum U32Other : uint { }
+    enum S64 : long { }
+    enum S64Other : long { }
+    enum U64 : ulong { }
+    enum U64Other : ulong { }
+
+    delegate void RefInt(ref int value);
+    delegate void RefEnum(ref S32 value);
+    delegate void OutInt(out int value);
+    unsafe delegate int* PointerInt(int* value);
+    unsafe delegate uint* PointerUInt(uint* value);
+    delegate ref int RefIntReturn();
+    unsafe delegate int FunctionInt(delegate*<int, int> value);
+
+    unsafe class EnumTarget
+    {
+        internal static long Signed;
+        internal static ulong Unsigned;
+        internal static int Calls;
+        private static S32 cell;
+
+        public static S8 EnumS8(S8 value)
+        {
+            Signed = (long)value;
+            Calls++;
+            return value;
+        }
+
+        public static sbyte PrimitiveS8(sbyte value)
+        {
+            Signed = (long)value;
+            Calls++;
+            return value;
+        }
+
+        public static U8 EnumU8(U8 value)
+        {
+            Unsigned = (ulong)value;
+            Calls++;
+            return value;
+        }
+
+        public static byte PrimitiveU8(byte value)
+        {
+            Unsigned = (ulong)value;
+            Calls++;
+            return value;
+        }
+
+        public static S16 EnumS16(S16 value)
+        {
+            Signed = (long)value;
+            Calls++;
+            return value;
+        }
+
+        public static short PrimitiveS16(short value)
+        {
+            Signed = (long)value;
+            Calls++;
+            return value;
+        }
+
+        public static U16 EnumU16(U16 value)
+        {
+            Unsigned = (ulong)value;
+            Calls++;
+            return value;
+        }
+
+        public static ushort PrimitiveU16(ushort value)
+        {
+            Unsigned = (ulong)value;
+            Calls++;
+            return value;
+        }
+
+        public static S32 EnumS32(S32 value)
+        {
+            Signed = (long)value;
+            Calls++;
+            return value;
+        }
+
+        public static int PrimitiveS32(int value)
+        {
+            Signed = (long)value;
+            Calls++;
+            return value;
+        }
+
+        public static U32 EnumU32(U32 value)
+        {
+            Unsigned = (ulong)value;
+            Calls++;
+            return value;
+        }
+
+        public static uint PrimitiveU32(uint value)
+        {
+            Unsigned = (ulong)value;
+            Calls++;
+            return value;
+        }
+
+        public static S64 EnumS64(S64 value)
+        {
+            Signed = (long)value;
+            Calls++;
+            return value;
+        }
+
+        public static long PrimitiveS64(long value)
+        {
+            Signed = (long)value;
+            Calls++;
+            return value;
+        }
+
+        public static U64 EnumU64(U64 value)
+        {
+            Unsigned = (ulong)value;
+            Calls++;
+            return value;
+        }
+
+        public static ulong PrimitiveU64(ulong value)
+        {
+            Unsigned = (ulong)value;
+            Calls++;
+            return value;
+        }
+
+        public S8 Instance(S8 value)
+        {
+            Signed = (long)value;
+            Calls++;
+            return value;
+        }
+
+        public static U16 Closed(string prefix, U16 value)
+        {
+            Unsigned = (ulong)value + (ulong)prefix.Length;
+            Calls++;
+            return value;
+        }
+
+        public static void RefEnum(ref S32 value) => value = (S32)53;
+        public static void RefInt(ref int value) => value = 59;
+        public static S32* Pointer(S32* value) => value;
+        public static ref S32 RefReturn() => ref cell;
+        public static int Function(delegate*<S32, int> value) => 19;
+        public static S32 BoundValue(S32 value) => value;
+    }
+
+    class EnumRuntimeOwner<T>
+    {
+        public static U32 Enum(U32 value)
+        {
+            EnumTarget.Unsigned = (ulong)value;
+            EnumTarget.Calls++;
+            return value;
+        }
+    }
+
+    static class Program
+    {
+        private static void Probe<T>(string label, string method, T value, bool unsigned, object? target = null)
+        {
+            foreach (bool named in new bool[] { true, false })
+            {
+                Type delegateType = typeof(Func<T, T>);
+                MethodInfo mi = typeof(EnumTarget).GetMethod(method)!;
+                Delegate? bound = named
+                    ? target is null
+                        ? Delegate.CreateDelegate(delegateType, typeof(EnumTarget), method, false, false)
+                        : Delegate.CreateDelegate(delegateType, target, method, false, false)
+                    : target is null
+                        ? Delegate.CreateDelegate(delegateType, mi, false)
+                        : Delegate.CreateDelegate(delegateType, target, mi, false);
+                int count = EnumTarget.Calls;
+                T result = ((Func<T, T>)bound!)(value);
+                string observed = unsigned ? EnumTarget.Unsigned.ToString() : EnumTarget.Signed.ToString();
+                Console.WriteLine($"enum {label} {(named ? "name" : "method")} => {result}/{observed}/{EnumTarget.Calls - count}/{System.Collections.Generic.EqualityComparer<T>.Default.Equals(value, result)}");
+            }
+        }
+
+        private static void Bind(string label, Type delegateType, string method)
+        {
+            foreach (bool named in new bool[] { true, false })
+            {
+                Delegate? bound = named
+                    ? Delegate.CreateDelegate(delegateType, typeof(EnumTarget), method, false, false)
+                    : Delegate.CreateDelegate(delegateType, typeof(EnumTarget).GetMethod(method)!, false);
+                Console.WriteLine($"enum {label} {(named ? "name" : "method")} => {(bound is null ? "null" : "bound")}");
+            }
+        }
+
+        internal static void Run()
+        {
+            Console.WriteLine("== delegate enum signature compatibility ==");
+            Probe("S8 underlying to enum", "EnumS8", (sbyte)(-113), false);
+            Probe("S8 enum to underlying", "PrimitiveS8", (S8)(-113), false);
+            Probe("S8 distinct enums", "EnumS8", (S8Other)(-113), false);
+            Probe("U8 underlying to enum", "EnumU8", (byte)(227), true);
+            Probe("U8 enum to underlying", "PrimitiveU8", (U8)(227), true);
+            Probe("U8 distinct enums", "EnumU8", (U8Other)(227), true);
+            Probe("S16 underlying to enum", "EnumS16", (short)(-30001), false);
+            Probe("S16 enum to underlying", "PrimitiveS16", (S16)(-30001), false);
+            Probe("S16 distinct enums", "EnumS16", (S16Other)(-30001), false);
+            Probe("U16 underlying to enum", "EnumU16", (ushort)(60001), true);
+            Probe("U16 enum to underlying", "PrimitiveU16", (U16)(60001), true);
+            Probe("U16 distinct enums", "EnumU16", (U16Other)(60001), true);
+            Probe("S32 underlying to enum", "EnumS32", (int)(-2000000001), false);
+            Probe("S32 enum to underlying", "PrimitiveS32", (S32)(-2000000001), false);
+            Probe("S32 distinct enums", "EnumS32", (S32Other)(-2000000001), false);
+            Probe("U32 underlying to enum", "EnumU32", (uint)(4045620583U), true);
+            Probe("U32 enum to underlying", "PrimitiveU32", (U32)(4045620583U), true);
+            Probe("U32 distinct enums", "EnumU32", (U32Other)(4045620583U), true);
+            Probe("S64 underlying to enum", "EnumS64", (long)(-8000000000000000001L), false);
+            Probe("S64 enum to underlying", "PrimitiveS64", (S64)(-8000000000000000001L), false);
+            Probe("S64 distinct enums", "EnumS64", (S64Other)(-8000000000000000001L), false);
+            Probe("U64 underlying to enum", "EnumU64", (ulong)(17293822569102704641UL), true);
+            Probe("U64 enum to underlying", "PrimitiveU64", (U64)(17293822569102704641UL), true);
+            Probe("U64 distinct enums", "EnumU64", (U64Other)(17293822569102704641UL), true);
+            Probe("closed instance", "Instance", (sbyte)-113, false, new EnumTarget());
+            MethodInfo byteMethod = typeof(EnumTarget).GetMethod("EnumU8")!;
+            var byteTarget = (Func<byte, byte>)byteMethod.CreateDelegate(typeof(Func<byte, byte>));
+            EnumTarget.Calls = 0;
+            byte byteValue = byteTarget(227);
+            Console.WriteLine($"enum MethodInfo type => {byteValue}/{EnumTarget.Unsigned}/{EnumTarget.Calls}");
+            var ushortTarget = typeof(EnumTarget).GetMethod("EnumU16")!.CreateDelegate<Func<ushort, ushort>>();
+            EnumTarget.Calls = 0;
+            ushort ushortValue = ushortTarget(60001);
+            Console.WriteLine($"enum MethodInfo generic => {ushortValue}/{EnumTarget.Unsigned}/{EnumTarget.Calls}");
+            Type clone = typeof(EnumRuntimeOwner<>).MakeGenericType(typeof(Guid));
+            MethodInfo cloneMethod = clone.GetMethod("Enum")!;
+            foreach (bool named in new bool[] { true, false })
+            {
+                var cloneTarget = (Func<uint, uint>)(named
+                    ? Delegate.CreateDelegate(typeof(Func<uint, uint>), clone, "Enum", false, false)
+                    : Delegate.CreateDelegate(typeof(Func<uint, uint>), cloneMethod, false))!;
+                EnumTarget.Calls = 0;
+                uint cloneValue = cloneTarget(4045620583U);
+                Console.WriteLine($"enum runtime clone {(named ? "name" : "method")} => {cloneValue}/{EnumTarget.Unsigned}/{EnumTarget.Calls}");
+            }
+            Bind("signedness", typeof(Func<byte, byte>), "EnumS8");
+            Bind("width", typeof(Func<short, short>), "EnumS8");
+            Bind("bool", typeof(Func<bool, bool>), "EnumU8");
+            Bind("char", typeof(Func<char, char>), "EnumU16");
+            Bind("native int", typeof(Func<nint, nint>), "EnumS64");
+            Bind("ordinary widening", typeof(Func<int, long>), "PrimitiveS64");
+            Bind("ref enum to int", typeof(RefInt), "RefEnum");
+            Bind("ref int to enum", typeof(RefEnum), "RefInt");
+            Bind("out enum to int", typeof(OutInt), "RefEnum");
+            Bind("pointer enum to int", typeof(PointerInt), "Pointer");
+            Bind("pointer enum to uint", typeof(PointerUInt), "Pointer");
+            Bind("ref return enum", typeof(RefIntReturn), "RefReturn");
+            Bind("function identity", typeof(FunctionInt), "Function");
+            MethodInfo closed = typeof(EnumTarget).GetMethod("Closed")!;
+            var target = (Func<ushort, ushort>)Delegate.CreateDelegate(typeof(Func<ushort, ushort>), "abc", closed)!;
+            EnumTarget.Calls = 0;
+            ushort returned = target(60001);
+            Console.WriteLine($"enum closed static => {returned}/{EnumTarget.Unsigned}/{EnumTarget.Calls}");
+            Delegate? valueBound = Delegate.CreateDelegate(typeof(Func<S32>), (S32)41, typeof(EnumTarget).GetMethod("BoundValue")!, false);
+            Console.WriteLine($"enum closed static value => {(valueBound is null ? "null" : "bound")}");
+            Console.WriteLine("delegate enum signature compatibility end");
+        }
+    }
+}
