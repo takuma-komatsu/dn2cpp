@@ -198,6 +198,19 @@ int32_t dn2cpp_boxed_order(void* ctxp, Dn2CppObject* a, Dn2CppObject* b)
 }
 } // namespace
 
+static Dn2CppObject* (*dn2cpp_array_default_comparer_getter)() = nullptr;
+
+void dn2cpp_array_set_default_comparer_getter(Dn2CppObject* (*getter)())
+{
+    dn2cpp_array_default_comparer_getter = getter;
+}
+
+bool dn2cpp_array_is_default_comparer(Dn2CppObject* comparer)
+{
+    return comparer == nullptr || (dn2cpp_array_default_comparer_getter != nullptr
+        && comparer == dn2cpp_array_default_comparer_getter());
+}
+
 void dn2cpp_array_sort_object(Dn2CppObject* arr, int32_t index, int32_t length,
                               const Dn2CppTypeInfo* icomparable_ti, Dn2CppObject* comparer,
                               const Dn2CppTypeInfo* icomparer_ti, int32_t comparer_slot)
@@ -205,24 +218,50 @@ void dn2cpp_array_sort_object(Dn2CppObject* arr, int32_t index, int32_t length,
     if (arr == nullptr)
         dn2cpp_throw_argument_null_param("keys");
     dn2cpp_array_require_rank1(arr);
-    if (index < 0)
+    int64_t offset = static_cast<int64_t>(index) - dn2cpp_array_get_lower_bound_dyn(arr, 0);
+    if (offset < 0)
         dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_NEED_NON_NEG_NUM, "index");
     if (length < 0)
         dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_NEED_NON_NEG_NUM, "length");
-    if (dn2cpp_array_length_dyn(arr) - index < length)
+    // The BCL range check wraps in Int32; element access still uses wide coordinates.
+    if (static_cast<int32_t>(static_cast<uint32_t>(dn2cpp_array_length_dyn(arr))
+        - static_cast<uint32_t>(offset)) < length)
         dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_INVALID_OFF_LEN);
     if (length <= 1)
         return;
+    const auto* elem = arr->type->elementType;
+    if (dn2cpp_array_is_default_comparer(comparer) && elem != nullptr
+        && (elem->flags & (DN2CPP_TF_PRIMITIVE | DN2CPP_TF_ENUM)) != 0)
+    {
+        if (static_cast<uint32_t>(offset) > static_cast<uint32_t>(dn2cpp_array_length_dyn(arr))
+            || static_cast<uint32_t>(length) > static_cast<uint32_t>(dn2cpp_array_length_dyn(arr)) - static_cast<uint32_t>(offset))
+            dn2cpp_throw_argument_out_of_range();
+    }
+    else if (index >= static_cast<int32_t>(static_cast<uint32_t>(index) + static_cast<uint32_t>(length) - 1u))
+        return;
+    // A wrapped nonexistent start must fault before allocating the boxed window.
+    if (offset >= dn2cpp_array_length_dyn(arr))
+    {
+        try
+        {
+            dn2cpp_array_get_value(arr, static_cast<int64_t>(index));
+        }
+        catch (Dn2CppException& e)
+        {
+            dn2cpp_throw_sort_failed(e.obj, comparer, "System.Collections.Comparer");
+        }
+    }
     // Box the [index, index+length) window into a managed (GC-scanned) ref buffer, so the boxes
     // survive a collection a comparison may trigger; buf itself is stack-rooted here. Sort the
     // buffer with the proven ref primitive, then write the permutation back — dn2cpp_array_set_value
     // applies real .NET's SetValue coercion (unbox to the element's stored rep, widening/exactness).
     Dn2CppArrayRef* buf = dn2cpp_newarr_ref(length);
-    for (int32_t i = 0; i < length; i++)
-        dn2cpp_gc_store_ref(&buf->data[i], dn2cpp_array_get_value(arr, static_cast<int64_t>(index + i)));
     Dn2CppBoxedOrderCtx ctx{ icomparable_ti, comparer, icomparer_ti, comparer_slot };
     try
     {
+        // Element access shares Sort's BadComparer exception boundary with comparisons.
+        for (int32_t i = 0; i < length; i++)
+            dn2cpp_gc_store_ref(&buf->data[i], dn2cpp_array_get_value(arr, static_cast<int64_t>(index) + i));
         dn2cpp_array_sort_cmp_ref(buf, 0, length, &ctx, &dn2cpp_boxed_order);
     }
     catch (Dn2CppException& e)
@@ -231,7 +270,7 @@ void dn2cpp_array_sort_object(Dn2CppObject* arr, int32_t index, int32_t length,
         dn2cpp_throw_sort_failed(e.obj, comparer, "System.Collections.Comparer");
     }
     for (int32_t i = 0; i < length; i++)
-        dn2cpp_array_set_value(arr, buf->data[i], static_cast<int64_t>(index + i));
+        dn2cpp_array_set_value(arr, buf->data[i], static_cast<int64_t>(index) + i);
 }
 
 // Element-sized elements (struct / long / double / short / 64-bit enum …) + a managed
@@ -383,7 +422,7 @@ void dn2cpp_span_sort_cmp_ref(Dn2CppObject** p, int32_t n, void* ctx, int32_t (*
 
 // A uniform runtime view over any array object: the element identity + packed
 // storage, for SZ arrays of every rep (ref / packed-int32 / element-sized) and
-// MD arrays (whose type-info carries arrayRank > 1). Faults loud on an object
+// MD arrays, including rank-one non-SZ arrays. Faults loud on an object
 // without array identity rather than guessing at its element type.
 struct Dn2CppArrayViewRT
 {
@@ -407,7 +446,7 @@ static void dn2cpp_array_view_rt(Dn2CppObject* a, Dn2CppArrayViewRT* v)
     const Dn2CppTypeInfo* el = t->elementType;
     v->elem = el;
     v->elemIsRef = (el->flags & DN2CPP_TF_VALUETYPE) == 0;
-    if (t->arrayRank > 1)
+    if (dn2cpp_is_md_array(t))
     {
         auto* md = reinterpret_cast<Dn2CppMDArray*>(a);
         v->rank = md->rank;
@@ -456,9 +495,10 @@ static void* dn2cpp_array_slot_linear(const Dn2CppArrayViewRT* v, int64_t index)
         dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_HUGE_ARRAY_NOT_SUPPORTED, "index");
     if (v->rank != 1)
         dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_NEED_1D_ARRAY);
-    if (index < 0 || index >= v->length)
+    int64_t offset = index - (v->md != nullptr ? v->md->lowerBounds[0] : 0);
+    if (offset < 0 || offset >= v->length)
         dn2cpp_throw_index_out_of_range();
-    return v->data + static_cast<size_t>(index) * static_cast<size_t>(v->elemSize);
+    return v->data + static_cast<size_t>(offset) * static_cast<size_t>(v->elemSize);
 }
 
 // The element slot for the indices-array forms. Real .NET: null indices throw
@@ -590,7 +630,7 @@ static Dn2CppMDArray* dn2cpp_array_as_md(Dn2CppObject* a)
     if (a == nullptr)
         dn2cpp_throw_null_reference();
     const Dn2CppTypeInfo* t = a->type;
-    if (t != nullptr && (t->flags & DN2CPP_TF_ARRAY) != 0 && t->arrayRank > 1)
+    if (dn2cpp_is_md_array(t))
         return reinterpret_cast<Dn2CppMDArray*>(a);
     return nullptr;
 }
@@ -638,7 +678,8 @@ int32_t dn2cpp_array_get_lower_bound_dyn(Dn2CppObject* a, int32_t dim)
 
 int32_t dn2cpp_array_get_upper_bound_dyn(Dn2CppObject* a, int32_t dim)
 {
-    return dn2cpp_array_get_lower_bound_dyn(a, dim) + dn2cpp_array_get_length_dyn(a, dim) - 1;
+    return static_cast<int32_t>(static_cast<uint32_t>(dn2cpp_array_get_lower_bound_dyn(a, dim))
+        + static_cast<uint32_t>(dn2cpp_array_get_length_dyn(a, dim)) - 1u);
 }
 
 // Array.Reverse(Array[, int index, int length]) checks the range before the rank.
@@ -648,22 +689,34 @@ void dn2cpp_array_reverse_dyn(Dn2CppObject* a, int32_t index, int32_t length)
         dn2cpp_throw_argument_null_param("array");
     Dn2CppArrayViewRT v;
     dn2cpp_array_view_rt(a, &v);
-    if (index < 0)
+    int64_t offset = static_cast<int64_t>(index) - (v.md != nullptr ? v.md->lowerBounds[0] : 0);
+    if (offset < 0)
         dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_NEED_NON_NEG_NUM, "index");
     if (length < 0)
         dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_NEED_NON_NEG_NUM, "length");
-    if (v.length - index < length)
+    if (static_cast<int32_t>(static_cast<uint32_t>(v.length) - static_cast<uint32_t>(offset)) < length)
         dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_INVALID_OFF_LEN);
     if (v.rank != 1)
         dn2cpp_throw_sr0(&dn2cpp_rank_exception_type, DN2CPP_SR_RANK_SINGLE_DIM_ONLY);
     if (length <= 1)
         return;
+    // A wrapped check can admit an invalid slice; never derive a raw data pointer from it.
+    if (offset > v.length || length > v.length - offset)
+    {
+        const auto* elem = a->type->elementType;
+        if (elem != nullptr && (elem->flags & (DN2CPP_TF_PRIMITIVE | DN2CPP_TF_ENUM | DN2CPP_TF_ARRAY)) != 0)
+            dn2cpp_throw_argument_out_of_range();
+        int32_t last = static_cast<int32_t>(static_cast<uint32_t>(index) + static_cast<uint32_t>(length) - 1u);
+        if (index >= last)
+            return;
+        dn2cpp_array_get_value(a, static_cast<int64_t>(index));
+    }
     char tmp[64];
     int32_t w = v.elemSize;
     if (w > 64)
         dn2cpp_throw_platform_not_supported("Array.Reverse over >64-byte elements is not supported");
-    char* lo = v.data + static_cast<size_t>(index) * w;
-    char* hi = v.data + static_cast<size_t>(index + length - 1) * w;
+    char* lo = v.data + static_cast<size_t>(offset) * w;
+    char* hi = v.data + static_cast<size_t>(offset + length - 1) * w;
     while (lo < hi)
     {
         std::memcpy(tmp, lo, w);
@@ -679,7 +732,7 @@ void dn2cpp_array_reverse_dyn(Dn2CppObject* a, int32_t index, int32_t length)
 // Fabricated array type-infos: Array.CreateInstance over an element type whose
 // T[] was never statically instantiated needs a fresh array identity at run
 // time (elementType + rank + the ARRAY flag) so GetValue/SetValue/GetType keep
-// working over the result. Interned per (element, rank) behind a mutex and
+// working over the result. Interned per (element, rank, SZ shape) behind a mutex and
 // allocated uncollectable (a type-info lives for the process). Requests first
 // resolve against the image's static registry (ti_arr_ rows at rank 1, ti_md_
 // rows above it), so an in-image array type keeps its emitted identity.
@@ -687,40 +740,46 @@ struct Dn2CppDynArrayTiNode
 {
     const Dn2CppTypeInfo* elem;
     int32_t rank;
+    bool nonSz;
     const Dn2CppTypeInfo* ti;
     Dn2CppDynArrayTiNode* next;
 };
 
-const Dn2CppTypeInfo* dn2cpp_array_ti(const Dn2CppTypeInfo* elem, int32_t rank)
+const Dn2CppTypeInfo* dn2cpp_array_ti(const Dn2CppTypeInfo* elem, int32_t rank, bool nonSz)
 {
     if (elem == nullptr || rank < 1)
         return nullptr;
-    if (const Dn2CppTypeInfo* st = dn2cpp_find_array_ti_rank(elem, rank))
+    nonSz = nonSz && rank == 1;
+    if (const Dn2CppTypeInfo* st = dn2cpp_find_array_ti_rank(elem, rank, nonSz))
         return st;
     static std::mutex& mtx = dn2cpp_never_destroyed<std::mutex>();
     static Dn2CppDynArrayTiNode* head = nullptr;
     std::lock_guard<std::mutex> lk(mtx);
     for (Dn2CppDynArrayTiNode* n = head; n != nullptr; n = n->next)
-        if (n->elem == elem && n->rank == rank)
+        if (n->elem == elem && n->rank == rank && n->nonSz == nonSz)
             return n->ti;
     // "Elem[]" / "Elem[,]" / … — the CLR array type name.
     size_t base = std::strlen(elem->name);
-    char* name = static_cast<char*>(dn2cpp_alloc_pinned(base + static_cast<size_t>(rank) + 2));
+    char* name = static_cast<char*>(dn2cpp_alloc_pinned(base + static_cast<size_t>(rank) + 2 + (nonSz ? 1 : 0)));
     std::memcpy(name, elem->name, base);
     name[base] = '[';
     for (int32_t i = 0; i < rank - 1; i++)
         name[base + 1 + i] = ',';
-    name[base + static_cast<size_t>(rank)] = ']';
-    name[base + static_cast<size_t>(rank) + 1] = '\0';
+    size_t end = base + static_cast<size_t>(rank);
+    if (nonSz)
+        name[end++] = '*';
+    name[end++] = ']';
+    name[end] = '\0';
     auto* ti = static_cast<Dn2CppTypeInfo*>(dn2cpp_alloc_pinned(sizeof(Dn2CppTypeInfo)));
     *ti = Dn2CppTypeInfo{};
     ti->name = name;
-    ti->flags = DN2CPP_TF_ARRAY | DN2CPP_TF_SEALED;
+    ti->flags = DN2CPP_TF_ARRAY | DN2CPP_TF_SEALED | (nonSz ? DN2CPP_TF_NON_SZ_ARRAY : 0);
     ti->elementType = elem;
     ti->arrayRank = rank;
     auto* node = static_cast<Dn2CppDynArrayTiNode*>(dn2cpp_alloc_pinned(sizeof(Dn2CppDynArrayTiNode)));
     node->elem = elem;
     node->rank = rank;
+    node->nonSz = nonSz;
     node->ti = ti;
     node->next = head;
     head = node;
@@ -735,7 +794,7 @@ const Dn2CppTypeInfo* dn2cpp_mdarr_ti(const Dn2CppTypeInfo* elem, int32_t rank)
 {
     if (elem == nullptr)
         return nullptr;
-    return dn2cpp_array_ti(elem, rank);
+    return dn2cpp_array_ti(elem, rank, rank == 1);
 }
 
 static const Dn2CppTypeInfo* dn2cpp_array_require_element_type(Dn2CppType* type)
@@ -756,7 +815,8 @@ static const Dn2CppTypeInfo* dn2cpp_array_require_element_type(Dn2CppType* type)
 // order: null element type ArgumentNullException, a negative length
 // ArgumentOutOfRangeException, a void or by-ref-like element
 // NotSupportedException. rank > 1 allocates the MD layout.
-Dn2CppObject* dn2cpp_array_create_instance(Dn2CppType* t, const int32_t* lengths, int32_t rank)
+static Dn2CppObject* dn2cpp_array_create_instance_bounds(Dn2CppType* t, const int32_t* lengths,
+                                                        int32_t rank, const int32_t* lowerBounds)
 {
     if (t == nullptr)
         dn2cpp_throw_argument_null_param("elementType");
@@ -773,6 +833,11 @@ Dn2CppObject* dn2cpp_array_create_instance(Dn2CppType* t, const int32_t* lengths
                 rank == 1 ? "length" : i == 0 ? "length1" : i == 1 ? "length2" : "length3",
                 lengths[i]);
     const Dn2CppTypeInfo* el = dn2cpp_array_require_element_type(t);
+    if (lowerBounds != nullptr)
+        for (int32_t i = 0; i < rank; i++)
+            if (static_cast<int64_t>(lowerBounds[i]) + lengths[i] - 1 > INT32_MAX)
+                dn2cpp_throw_argument_text(&dn2cpp_argument_out_of_range_exception_type,
+                    "Higher indices will exceed Int32.MaxValue because of large lower bound and/or length.", nullptr);
     bool isRef = (el->flags & DN2CPP_TF_VALUETYPE) == 0;
     bool isEnum = (el->flags & DN2CPP_TF_ENUM) != 0;
     const Dn2CppTypeInfo* eff = isEnum
@@ -797,9 +862,10 @@ Dn2CppObject* dn2cpp_array_create_instance(Dn2CppType* t, const int32_t* lengths
     else
         dn2cpp_throw_platform_not_supported(
             "Array.CreateInstance: the element type's layout is not modeled in this image");
-    const Dn2CppTypeInfo* arrTi = dn2cpp_array_ti(el, rank);
-    if (rank > 1)
-        return reinterpret_cast<Dn2CppObject*>(dn2cpp_newmdarr(arrTi, rank, lengths, elemSize));
+    bool nonSz = rank == 1 && lowerBounds != nullptr && lowerBounds[0] != 0;
+    const Dn2CppTypeInfo* arrTi = dn2cpp_array_ti(el, rank, nonSz);
+    if (dn2cpp_is_md_array(arrTi))
+        return reinterpret_cast<Dn2CppObject*>(dn2cpp_newmdarr(arrTi, rank, lengths, elemSize, lowerBounds));
     int32_t len = lengths[0];
     if (isRef)
         return reinterpret_cast<Dn2CppObject*>(dn2cpp_newarr_ref_t(len, arrTi));
@@ -810,6 +876,11 @@ Dn2CppObject* dn2cpp_array_create_instance(Dn2CppType* t, const int32_t* lengths
     if (isI4)
         return reinterpret_cast<Dn2CppObject*>(dn2cpp_newarr_i4_t(len, arrTi));
     return reinterpret_cast<Dn2CppObject*>(dn2cpp_newarr_n_atomic_t(len, elemSize, arrTi));
+}
+
+Dn2CppObject* dn2cpp_array_create_instance(Dn2CppType* t, const int32_t* lengths, int32_t rank)
+{
+    return dn2cpp_array_create_instance_bounds(t, lengths, rank, nullptr);
 }
 
 // A negative element of a lengths array: .NET names the element, "lengths[i]".
@@ -844,8 +915,8 @@ static void dn2cpp_array_check_length_elements(const Dn2CppArrayI4* lengths)
 // The (Type, int[] lengths[, int[] lowerBounds]) forms, in .NET's check order;
 // hasBounds tells the second form's null lowerBounds from the first form's
 // absent one. More than 32 dimensions is the TypeLoadException the array type
-// raises after element-type validation. Non-zero lower bounds are not modeled;
-// all-zero bounds route to the plain form.
+// raises after element-type validation. Explicit bounds are retained;
+// all-zero rank-one bounds retain the SZ form.
 Dn2CppObject* dn2cpp_array_create_instance_lengths(Dn2CppType* t, Dn2CppArrayI4* lengths,
                                                    Dn2CppArrayI4* lowerBounds, int32_t hasBounds)
 {
@@ -863,14 +934,8 @@ Dn2CppObject* dn2cpp_array_create_instance_lengths(Dn2CppType* t, Dn2CppArrayI4*
     dn2cpp_array_require_element_type(t);
     if (lengths->length > 32)
         dn2cpp_array_throw_excess_rank(dn2cpp_type_require(t), lengths->length);
-    if (lowerBounds != nullptr)
-    {
-        for (int32_t i = 0; i < lowerBounds->length; i++)
-            if (lowerBounds->data[i] != 0)
-                dn2cpp_throw_platform_not_supported(
-                    "Array.CreateInstance with non-zero lower bounds is not supported");
-    }
-    return dn2cpp_array_create_instance(t, lengths->data, lengths->length);
+    return dn2cpp_array_create_instance_bounds(t, lengths->data, lengths->length,
+        lowerBounds != nullptr ? lowerBounds->data : nullptr);
 }
 
 // The element type of array type `arrayType` when it has `rank` dimensions, else
@@ -911,7 +976,7 @@ Dn2CppObject* dn2cpp_array_create_instance_from_arraytype(Dn2CppType* arrayType,
 
 // The (Type, int[] lengths[, int[] lowerBounds]) forms, in .NET's check order: the
 // nulls, the bounds count, the type and its rank, an SZ type's zero bound, then the
-// lengths. Non-zero MD lower bounds are not modeled, as in CreateInstance.
+// lengths. Non-SZ input types accept explicit bounds.
 Dn2CppObject* dn2cpp_array_create_instance_from_arraytype_lengths(Dn2CppType* arrayType,
                                                                   Dn2CppArrayI4* lengths,
                                                                   Dn2CppArrayI4* lowerBounds,
@@ -926,14 +991,10 @@ Dn2CppObject* dn2cpp_array_create_instance_from_arraytype_lengths(Dn2CppType* ar
     if (lowerBounds != nullptr && lowerBounds->length != lengths->length)
         dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_RANKS_AND_BOUNDS);
     Dn2CppType* elem = dn2cpp_array_type_element_of_rank(arrayType, lengths->length, false);
-    bool sz = arrayType->typeInfo->arrayRank <= 1;
+    bool sz = dn2cpp_is_sz_array(arrayType->typeInfo);
     if (sz && lowerBounds != nullptr && lowerBounds->data[0] != 0)
         dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_NON_ZERO_LOWER_BOUND);
     dn2cpp_array_check_length_elements(lengths);
-    if (lowerBounds != nullptr)
-        for (int32_t i = 0; i < lowerBounds->length; i++)
-            if (lowerBounds->data[i] != 0)
-                dn2cpp_throw_platform_not_supported(
-                    "Array.CreateInstanceFromArrayType with non-zero lower bounds is not supported");
-    return dn2cpp_array_create_instance(elem, lengths->data, lengths->length);
+    return dn2cpp_array_create_instance_bounds(elem, lengths->data, lengths->length,
+        lowerBounds != nullptr ? lowerBounds->data : nullptr);
 }

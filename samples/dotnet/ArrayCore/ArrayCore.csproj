@@ -11,6 +11,9 @@
 
   <ItemGroup>
     <Compile Remove="ReflectionReturnBoxProgram.cs" />
+    <Compile Remove="ArrayLowerBoundsOnlyProgram.cs" />
+    <Compile Remove="ArrayStaticRankOneOnlyProgram.cs" />
+    <Compile Remove="ArrayComparerTypeOnlyProgram.cs" />
     <Compile Remove="DiamondProvenanceProgram.cs" />
     <Compile Remove="FieldAliasProvenanceProgram.cs" />
     <Compile Remove="ArrayElementAliasProgram.cs" />

@@ -770,7 +770,7 @@ static const void** dn2cpp_resolve_interface_walk(const Dn2CppTypeInfo* t, const
     // cannot serve for the invariant IList<T>/ICollection<T>. The VALUETYPE reject is
     // load-bearing: value layouts differ per element, so a silent object-thunk answer
     // would read garbage — keep it a loud dispatch abort.
-    if ((t->flags & DN2CPP_TF_ARRAY) != 0 && t->arrayRank == 1
+    if (dn2cpp_is_sz_array(t)
         && g_array_ref_fallback_itfs != nullptr
         // The imprecise packed handle is a Dn2CppArrayN of unknown element: the
         // object-keyed thunks would read its packed payload as pointers. The
@@ -800,7 +800,7 @@ static const void** dn2cpp_resolve_interface_walk(const Dn2CppTypeInfo* t, const
     // is no variance or element-covariance arm — and the thunks wrap the receiver in
     // the element-agnostic MDArrayEnumerable, sound for every element type and rank
     // because all element access goes through the System.Array reflection surface.
-    if ((t->flags & DN2CPP_TF_ARRAY) != 0 && t->arrayRank > 1
+    if (dn2cpp_is_md_array(t)
         && g_array_md_fallback_itfs != nullptr)
     {
         for (int32_t i = 0; i < g_array_md_fallback_itf_count; i++)
@@ -1260,7 +1260,8 @@ static int32_t dn2cpp_isinst_walk(const Dn2CppTypeInfo* st, const Dn2CppTypeInfo
         // an object[], whose ldelem.ref reads raw payload bytes as managed pointers.
         if (st == &dn2cpp_array_n_type || ti == &dn2cpp_array_n_type)
             return st == ti;
-        return st->arrayRank == ti->arrayRank
+        return (st->arrayRank > 1 ? st->arrayRank : 1) == (ti->arrayRank > 1 ? ti->arrayRank : 1)
+            && (!dn2cpp_is_md_array(st) || !dn2cpp_is_sz_array(ti))
             && dn2cpp_array_elem_covariant(st->elementType, ti->elementType);
     }
     // An array to one of the six non-generic interfaces every array implements
@@ -1273,8 +1274,8 @@ static int32_t dn2cpp_isinst_walk(const Dn2CppTypeInfo* st, const Dn2CppTypeInfo
     // An SZArray (rank 1) to one of the five generic collection interfaces (IList<T> etc.,
     // whose DEFINITION carries DN2CPP_TF_ARRAY_GEN_ITF): true when the array's element is
     // array-element-compatible with the interface's type argument. A multidim array
-    // implements none of these, so this arm is gated on rank == 1. Independent of the map.
-    if ((st->flags & DN2CPP_TF_ARRAY) != 0 && st->arrayRank == 1
+    // implements none of these, so this arm requires the SZ shape. Independent of the map.
+    if (dn2cpp_is_sz_array(st)
         && ti->genericDef != nullptr && (ti->genericDef->flags & DN2CPP_TF_ARRAY_GEN_ITF) != 0
         && ti->genericArgCount == 1)
         // Element-unknown packed handle: no argument compatibility is provable, and a

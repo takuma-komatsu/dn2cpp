@@ -237,4 +237,19 @@ internal static class Program
         Console.WriteLine("md culture null=" + (cultures[0, 0] is null));
         Console.WriteLine("multidimensional reference stores end");
     }
+    internal static void RunLowerBoundStores()
+    {
+        Console.WriteLine("== nonzero covariant array stores ==");
+        object seed = "seed", next = "next", bad = new object();
+        object[,] two = (object[,])Array.CreateInstance(typeof(string), new[] { 1, 1 }, new[] { -2, 3 });
+        two[-2, 3] = seed;
+        ObserveMd("lower typed type before bounds", () => two[0, 0] = bad, () => two[-2, 3], seed);
+        ObserveMd("lower typed compatible bounds", () => two[0, 0] = next, () => two[-2, 3], seed);
+        ObserveMd("lower reflection bounds before type", () => ((Array)two).SetValue(bad, 0, 0), () => two[-2, 3], seed);
+        ObserveMd("lower reflection wrong type", () => ((Array)two).SetValue(bad, -2, 3), () => two[-2, 3], seed);
+        ObserveMd("lower typed compatible", () => two[-2, 3] = next, () => two[-2, 3], next);
+        ObserveMd("lower typed null", () => two[-2, 3] = null, () => two[-2, 3], null);
+        Console.WriteLine("nonzero covariant array stores end");
+    }
+
 }

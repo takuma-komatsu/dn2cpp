@@ -2907,6 +2907,11 @@ internal sealed partial class CppEmitter
             string ensure = missing.DeclaringClass.StaticCctor is { } cc ? cc.CppName + "__ensure(); " : "";
             sb.AppendLine($"    dn2cpp_set_missing_value_factory(&{missing.DeclaringClass.CppTypeInfoName}, []() -> Dn2CppObject* {{ {ensure}return (Dn2CppObject*){missing.CppStaticAccess}; }});");
         }
+        // Compare singleton identity without reaching a comparer initializer for array searches.
+        if (_c.FindClassByFullName("System.Collections.Comparer") is { } comparer
+            && _emit.Contains(comparer) && !IsOpaque(comparer)
+            && comparer.Fields.FirstOrDefault(f => f.IsStatic && f.Name == "Default") is { } defaultComparer)
+            sb.AppendLine($"    dn2cpp_array_set_default_comparer_getter([]() -> Dn2CppObject* {{ return (Dn2CppObject*){defaultComparer.CppStaticAccess}; }});");
         sb.AppendLine("    dn2cpp_init_strings();");
         // Route the eager startup pass through the same idempotent wrappers the use-site
         // guards call, so a cctor already run on first use is not run a second time here.
@@ -3666,7 +3671,8 @@ internal sealed partial class CppEmitter
             string clr = ArrayClrName(md);
             EmitTypeInfo(sb, $"ti_md_{key}", new TypeMetadata {
                 Native = _c.UsesNativeReflectionMetadata(md),
-                Name = clr, Flags = "DN2CPP_TF_ARRAY | DN2CPP_TF_SEALED",
+                Name = clr, Flags = "DN2CPP_TF_ARRAY | DN2CPP_TF_SEALED"
+                    + (md.Rank == 1 ? " | DN2CPP_TF_NON_SZ_ARRAY" : ""),
                 ElementType = ElemTi(md.Element!), ArrayRank = md.Rank, TypeObject = "&ty_md_" + key,
             });
             sb.AppendLine($"const Dn2CppType ty_md_{key} = {{ {{ &dn2cpp_type_type }}, &ti_md_{key} }};");
@@ -3898,7 +3904,8 @@ internal sealed partial class CppEmitter
         TypeKind.External => t.ExternalName!,
         TypeKind.SZArray => ArrayClrName(t.Element!) + "[]",
         // "Elem[,]" — the CLR MD suffix, matching dn2cpp_array_ti's fabricated names.
-        TypeKind.MDArray => ArrayClrName(t.Element!) + "[" + new string(',', t.Rank - 1) + "]",
+        TypeKind.MDArray => ArrayClrName(t.Element!) + "["
+            + (t.Rank == 1 ? "*" : new string(',', t.Rank - 1)) + "]",
         _ => t.ToString(),
     };
 

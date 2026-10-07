@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>ArrayStaticRankOneOnly</AssemblyName>
+    <TargetFramework>net10.0</TargetFramework>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <DisableImplicitFrameworkReferences>true</DisableImplicitFrameworkReferences>
+    <NoStdLib>true</NoStdLib>
+    <Optimize>true</Optimize>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+  <!-- The gate generates the TypeSpec library and supplies its matching runtime references. -->
+  <ItemGroup>
+    <Compile Include="../../../samples/dotnet/ArrayCore/ArrayStaticRankOneOnlyProgram.cs" />
+    <Reference Include="System.Private.CoreLib">
+      <Private>false</Private>
+      <HintPath>$(ArrayRankOneRuntimePath)/System.Private.CoreLib.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Console">
+      <Private>false</Private>
+      <HintPath>$(ArrayRankOneRuntimePath)/System.Console.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Runtime">
+      <Private>false</Private>
+      <HintPath>$(ArrayRankOneRuntimePath)/System.Runtime.dll</HintPath>
+    </Reference>
+    <Reference Include="ArrayRankOneLibrary">
+      <HintPath>$(ArrayRankOneLibraryPath)</HintPath>
+    </Reference>
+  </ItemGroup>
+</Project>

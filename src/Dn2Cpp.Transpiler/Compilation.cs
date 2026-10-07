@@ -4708,10 +4708,9 @@ internal sealed partial class Compilation
 
     private bool _mdArrayUsed;
 
-    /// <summary>Notes that the program can materialize or see a multi-dimensional
-    /// (rank&gt;=2) array: a <c>new T[,]</c> lowering, an MD accessor member
-    /// (<c>Get</c>/<c>Set</c>/<c>Address</c>), an MD type token
-    /// (typeof/castclass/isinst), or a fixed-rank&gt;1 <c>Array.CreateInstance</c>.
+    /// <summary>Notes that the program can materialize or see a non-SZ array:
+    /// an MD allocation/accessor/type token, or a runtime-rank or explicit-bound
+    /// <c>Array.CreateInstance</c>.
     /// Keys wiring the shared MD dispatch map (<see cref="WireMdArrayItfMap"/>, driven
     /// inside the emit fixpoint); a program that never notes wires and emits nothing,
     /// so its output stays byte-identical.</summary>

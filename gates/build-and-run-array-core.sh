@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+# Explicit lower bounds preserve array shape, absolute indices, payloads and store fault order.
+# Non-generic sort and search use absolute indices, including negative hits and insertion points.
+# Wrapped range checks preserve noops and default primitive search slice faults.
+# Sort converts element access faults through the same comparer exception boundary.
+# Type-only comparer references do not register an undeclared Default static field.
+# Non-SZ collection searches call each element's virtual equality for null and self.
+# Collection searches preserve wrapped bounds checks and Contains compares absolute indices.
 # Consolidated array-core gate. Merges the former per-feature array element/storage
 # subset gates into one multi-section program, transpiled once against the
 # tree-shaken real CoreLib and diffed exactly against real .NET. Covers basic
@@ -242,6 +249,71 @@ gate_extra_asserts() {
     done
 }
 
+eval "$(declare -f gate_extra_asserts | sed '1s/gate_extra_asserts/nonzero_prior_extra_asserts/')"
+# Keep the prior whole bucket and prove each appended lower-bound block ran once.
+gate_extra_asserts() {
+    local out="$1" native before prefix line
+    nonzero_prior_extra_asserts "$out"
+    native=$(run_bounded "./$out/ArrayCore$EXE_EXT")
+    native=$(strip_cr_win "$native")
+    prefix=$(awk '/^== nonzero array lower bounds ==$/ { exit } { print }' <<< "$native")
+    before=$(run_bounded dotnet "$_CG_APP" before-nonzero-lower-bounds)
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    before=$(run_bounded "./$out/ArrayCore$EXE_EXT" before-nonzero-lower-bounds)
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    before=$(run_bounded dotnet "$_CG_APP" before-lower-bound-search)
+    prefix=$(awk '/^== lower-bound array sort and search ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    before=$(run_bounded "./$out/ArrayCore$EXE_EXT" before-lower-bound-search)
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    before=$(run_bounded dotnet "$_CG_APP" before-wrapped-array-ranges)
+    prefix=$(awk '/^== wrapped lower-bound array ranges ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    before=$(run_bounded "./$out/ArrayCore$EXE_EXT" before-wrapped-array-ranges)
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    before=$(run_bounded dotnet "$_CG_APP" before-sort-access-faults)
+    prefix=$(awk '/^== lower-bound sort access faults ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    before=$(run_bounded "./$out/ArrayCore$EXE_EXT" before-sort-access-faults)
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    for line in '== lower-bound sort access faults ==' 'lower-bound sort access faults end' \
+        'sort access Int32/2 sort custom=ArgumentException/<none>' \
+        'sort access String/2 sort=ArgumentException/<none>' \
+        'sort access Object/3 sort custom=ArgumentException/<none>' \
+        'sort access Int32/2 sort=ArgumentOutOfRangeException/<none>' \
+        'sort access Object/2 reverse=IndexOutOfRangeException/<none>' \
+        'sort access String/3 binary=InvalidOperationException/<none>' \
+        'sort start Int32/2147483643 default=ArgumentOutOfRangeException/<none>' \
+        'sort start Int32/2147483643 custom=ArgumentException/<none>' \
+        'sort start String/2147483643 default=ArgumentException/<none>' \
+        'sort start Object/2147483643 custom=ArgumentException/<none>'; do
+        [[ $(grep -Fxc -- "$line" <<< "$native") == 1 ]] \
+            || { echo "FAIL: sort access witness must run once: $line" >&2; exit 1; }
+    done
+    for line in '== wrapped lower-bound array ranges ==' 'wrapped lower-bound array ranges end' \
+        'wrapped Int32/-5/0 sort=ok' 'wrapped Int32/-5/1 reverse=ok' \
+        'wrapped Int32/-5/0 binary=ArgumentOutOfRangeException/<none>' \
+        'wrapped Int32/-5/0 binary custom=-2147483648' \
+        'wrapped Int32/-5/2 sort=ArgumentOutOfRangeException/<none>' \
+        'wrapped Int32/-5/2 sort custom=ok' 'wrapped String/-5/2 binary=-2147483648' \
+        'wrapped Object/-5/3 reverse=ok' \
+        'wrapped String/-5/1 binary=InvalidOperationException/<none>' \
+        'wrapped Default=ArgumentOutOfRangeException/<none>' \
+        'wrapped DefaultInvariant=-2147483648' 'wrapped new comparer=-2147483648' \
+        'wrapped null value=-2147483648' 'wrapped wrong value type=-2147483648'; do
+        [[ $(grep -Fxc -- "$line" <<< "$native") == 1 ]] \
+            || { echo "FAIL: wrapped range witness must run once: $line" >&2; exit 1; }
+    done
+    for line in '== nonzero array lower bounds ==' 'nonzero array lower bounds end' \
+        '== nonzero covariant array stores ==' 'nonzero covariant array stores end' \
+        '== lower-bound array sort and search ==' 'lower-bound array sort and search end' \
+        'lower indices=-2/0:-1/-1/-3/-3' 'lower binary=-2/0:-1/0/-2' \
+        'lower extreme sort=9 binary=2147483647' 'lower empty min=2147483647/2147483647/2147483647'; do
+        [[ $(grep -Fxc -- "$line" <<< "$native") == 1 ]] \
+            || { echo "FAIL: lower-bound witness must run once: $line" >&2; exit 1; }
+    done
+}
+
 assert_runtime_box_formatting() {
     local output="$1" line
     for line in '== runtime-handle boxed formatting ==' \
@@ -256,8 +328,8 @@ assert_runtime_box_formatting() {
 }
 
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|array-box-shared-generics|before-array-provenance|before-nested-interface-variance|before-covariant-stores|before-covariant-md-stores|before-runtime-box-formatting|before-nullable-array-names|before-excess-array-rank"
-DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|comparer-identity-prefix-argv:before-comparer-identity"
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/ArrayCore/BoxProvenanceOnly.csproj samples/dotnet/ArrayCore/BoxProvenanceProgram.cs samples/dotnet/ArrayCore/ReflectionReturnBoxOnly.csproj samples/dotnet/ArrayCore/ReflectionReturnBoxProgram.cs samples/dotnet/ArrayCore/DiamondProvenanceOnly.csproj samples/dotnet/ArrayCore/DiamondProvenanceProgram.cs samples/dotnet/ArrayCore/FieldAliasProvenanceOnly.csproj samples/dotnet/ArrayCore/FieldAliasProvenanceProgram.cs samples/dotnet/ArrayCore/FieldAliasProvenanceSubset.cs samples/dotnet/ArrayCore/ArrayElementAliasProgram.cs samples/dotnet/ArrayCore/ArrayElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayObjectElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayUnknownElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayErasedElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayReferenceSlotAliasOnly.csproj samples/dotnet/ArrayCore/ArrayReflectedVoidBoxOnly.csproj samples/dotnet/ArrayCore/ArrayReflectedVoidBoxProgram.cs samples/dotnet/ArrayCore/ArrayFutureStoreOnly.csproj samples/dotnet/ArrayCore/ArrayFutureStoreProgram.cs samples/dotnet/ArrayCore/ArrayFutureNullStoreOnly.csproj samples/dotnet/ArrayCore/ArrayObjectFutureStoreOnly.csproj samples/dotnet/ArrayCore/ArrayObjectFutureStoreProgram.cs"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|comparer-identity-prefix-argv:before-comparer-identity|before-nonzero-lower-bounds|rank1-nonsz-collections|static-rank1-md-typespec|before-lower-bound-search|rank1-collection-virtual-equality|rank1-collection-extreme-bounds|before-extreme-collection|before-wrapped-array-ranges|wrapped-range-default-comparer-identity|before-sort-access-faults|sort-window-access-fault-boundary|opaque-comparer-type-only"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/ArrayCore/ArrayComparerTypeOnly.csproj samples/dotnet/ArrayCore/ArrayComparerTypeOnlyProgram.cs samples/dotnet/ArrayCore/ArrayLowerBoundsOnly.csproj samples/dotnet/ArrayCore/ArrayLowerBoundsOnlyProgram.cs gates/fixtures/array-rank1-md/Driver.csproj samples/dotnet/ArrayCore/ArrayStaticRankOneOnlyProgram.cs gates/fixtures/array-rank1-md/Generate.csproj gates/fixtures/array-rank1-md/Program.cs samples/dotnet/ArrayCore/BoxProvenanceOnly.csproj samples/dotnet/ArrayCore/BoxProvenanceProgram.cs samples/dotnet/ArrayCore/ReflectionReturnBoxOnly.csproj samples/dotnet/ArrayCore/ReflectionReturnBoxProgram.cs samples/dotnet/ArrayCore/DiamondProvenanceOnly.csproj samples/dotnet/ArrayCore/DiamondProvenanceProgram.cs samples/dotnet/ArrayCore/FieldAliasProvenanceOnly.csproj samples/dotnet/ArrayCore/FieldAliasProvenanceProgram.cs samples/dotnet/ArrayCore/FieldAliasProvenanceSubset.cs samples/dotnet/ArrayCore/ArrayElementAliasProgram.cs samples/dotnet/ArrayCore/ArrayElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayObjectElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayUnknownElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayErasedElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayReferenceSlotAliasOnly.csproj samples/dotnet/ArrayCore/ArrayReflectedVoidBoxOnly.csproj samples/dotnet/ArrayCore/ArrayReflectedVoidBoxProgram.cs samples/dotnet/ArrayCore/ArrayFutureStoreOnly.csproj samples/dotnet/ArrayCore/ArrayFutureStoreProgram.cs samples/dotnet/ArrayCore/ArrayFutureNullStoreOnly.csproj samples/dotnet/ArrayCore/ArrayObjectFutureStoreOnly.csproj samples/dotnet/ArrayCore/ArrayObjectFutureStoreProgram.cs"
 corelib_diff_gate ArrayCore System.Collections
 
 native=$(run_bounded "./$_CG_OUT/ArrayCore$EXE_EXT")
@@ -928,4 +1000,82 @@ for line in '== array producer and validation order ==' \
         echo "FAIL: runtime producer witness missing: $line" >&2
         exit 1
     fi
+done
+
+# Non-SZ rank-one collection calls need the MD map without a statically MD array.
+lower_bounds_root="artifacts/arraycore-lower-bounds-only"
+dotnet build samples/dotnet/ArrayCore/ArrayLowerBoundsOnly.csproj -c "$CONFIG" \
+    --nologo -v q -o "$lower_bounds_root/app"
+lower_bounds_app="$lower_bounds_root/app/ArrayLowerBoundsOnly.dll"
+invoke_cli "$lower_bounds_app" -r "$corelib" -o "$lower_bounds_root/gen"
+compile_console "$lower_bounds_root/gen" ArrayLowerBoundsOnly
+lower_bounds_native=$(run_bounded "./$lower_bounds_root/gen/ArrayLowerBoundsOnly$EXE_EXT")
+lower_bounds_native=$(strip_cr_win "$lower_bounds_native")
+lower_bounds_oracle=$(run_bounded dotnet "$lower_bounds_app")
+assert_output "$(strip_cr_win "$lower_bounds_native")" "$(strip_cr_win "$lower_bounds_oracle")"
+lower_bounds_prefix=$(awk '/^== rank1 collection extreme bounds ==$/ { exit } { print }' <<< "$lower_bounds_native")
+lower_bounds_before=$(run_bounded dotnet "$lower_bounds_app" before-extreme-collection)
+assert_output "$lower_bounds_prefix" "$(strip_cr_win "$lower_bounds_before")"
+lower_bounds_before=$(run_bounded "./$lower_bounds_root/gen/ArrayLowerBoundsOnly$EXE_EXT" before-extreme-collection)
+assert_output "$lower_bounds_prefix" "$(strip_cr_win "$lower_bounds_before")"
+for line in '== rank1 non-SZ collection search ==' \
+    'rank1-only=System.Int32[*]:False:36:17:-1:-3:True:False' \
+    'copied=17/19' 'cleared=0/0' 'rank1 non-SZ collection search end' \
+    '== rank1 collection virtual equality ==' 'rank1 collection virtual equality end' \
+    'collection null=-2:-2/1' 'collection contains null=-2:True/1' \
+    'collection self=-2:-3/1' 'collection contains self=-2:False/1' \
+    'collection null=5:5/1' 'collection contains null=5:True/1' \
+    'collection self=5:4/1' 'collection contains self=5:False/1' \
+    '== rank1 collection extreme bounds ==' 'rank1 collection extreme bounds end' \
+    "collection extreme=2147483647/1 index hit=ArgumentOutOfRangeException/startIndex/Index was out of range. Must be non-negative and less than or equal to the size of the collection. (Parameter 'startIndex')" \
+    "collection extreme=2147483647/1 index miss=ArgumentOutOfRangeException/startIndex/Index was out of range. Must be non-negative and less than or equal to the size of the collection. (Parameter 'startIndex')" \
+    "collection extreme=2147483647/1 contains hit=ArgumentOutOfRangeException/startIndex/Index was out of range. Must be non-negative and less than or equal to the size of the collection. (Parameter 'startIndex')" \
+    "collection extreme=2147483647/1 contains miss=ArgumentOutOfRangeException/startIndex/Index was out of range. Must be non-negative and less than or equal to the size of the collection. (Parameter 'startIndex')" \
+    'collection extreme=-2147483648/1 contains miss=True' \
+    'collection extreme=-2147483648/0 contains hit=True' \
+    'collection extreme=-2147483648/0 contains miss=True'; do
+    [[ $(grep -Fxc -- "$line" <<< "$lower_bounds_native") == 1 ]] \
+        || { echo "FAIL: rank1 collection witness must run once: $line" >&2; exit 1; }
+done
+
+# Static TypeSpecs and reflective creation intern the same non-SZ rank-one identity.
+static_rank1_root="artifacts/arraycore-static-rank1"
+dotnet build gates/fixtures/array-rank1-md/Generate.csproj -c "$CONFIG" \
+    --nologo -v q -o "$static_rank1_root/generator"
+run_bounded dotnet "$static_rank1_root/generator/Generate.dll" \
+    "$static_rank1_root/ArrayRankOneLibrary.dll"
+dotnet build gates/fixtures/array-rank1-md/Driver.csproj -c "$CONFIG" \
+    -p:ArrayRankOneLibraryPath="$(pwd)/$static_rank1_root/ArrayRankOneLibrary.dll" \
+    -p:ArrayRankOneRuntimePath="$(dirname "$corelib")" \
+    --nologo -v q -o "$static_rank1_root/app"
+static_rank1_app="$static_rank1_root/app/ArrayStaticRankOneOnly.dll"
+invoke_cli "$static_rank1_app" -r "$corelib" -r "$static_rank1_root/app/ArrayRankOneLibrary.dll" \
+    -o "$static_rank1_root/gen"
+compile_console "$static_rank1_root/gen" ArrayStaticRankOneOnly
+static_rank1_native=$(run_bounded "./$static_rank1_root/gen/ArrayStaticRankOneOnly$EXE_EXT")
+static_rank1_native=$(strip_cr_win "$static_rank1_native")
+static_rank1_oracle=$(run_bounded dotnet exec --runtimeconfig "$static_rank1_root/generator/Generate.runtimeconfig.json" "$static_rank1_app")
+assert_output "$(strip_cr_win "$static_rank1_native")" "$(strip_cr_win "$static_rank1_oracle")"
+for line in '== static rank1 MD identity ==' \
+    'static=System.Int32[*]/Int32[*]/False/1' 'identity=True/True/False' \
+    'static clone=True/23' 'static rank1 MD identity end'; do
+    [[ $(grep -Fxc -- "$line" <<< "$static_rank1_native") == 1 ]] \
+        || { echo "FAIL: static rank1 MD witness must run once: $line" >&2; exit 1; }
+done
+
+# An is-test keeps a comparer shell without making its static fields callable.
+comparer_type_root="artifacts/arraycore-comparer-type-only"
+dotnet build samples/dotnet/ArrayCore/ArrayComparerTypeOnly.csproj -c "$CONFIG" \
+    --nologo -v q -o "$comparer_type_root/app"
+comparer_type_app="$comparer_type_root/app/ArrayComparerTypeOnly.dll"
+invoke_cli "$comparer_type_app" -r "$corelib" -o "$comparer_type_root/gen"
+compile_console "$comparer_type_root/gen" ArrayComparerTypeOnly
+comparer_type_native=$(run_bounded "./$comparer_type_root/gen/ArrayComparerTypeOnly$EXE_EXT")
+comparer_type_native=$(strip_cr_win "$comparer_type_native")
+comparer_type_oracle=$(run_bounded dotnet "$comparer_type_app")
+assert_output "$comparer_type_native" "$(strip_cr_win "$comparer_type_oracle")"
+for line in 'opaque-comparer/is-null:False' 'opaque-comparer/is-string:False' \
+    'opaque comparer type checks end'; do
+    [[ $(grep -Fxc -- "$line" <<< "$comparer_type_native") == 1 ]] \
+        || { echo "FAIL: comparer type-only witness must run once: $line" >&2; exit 1; }
 done
