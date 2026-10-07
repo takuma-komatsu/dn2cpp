@@ -87,6 +87,7 @@ internal sealed partial class AssemblyDiet
                     File.Copy(assembly.Path, path);
                 else
                 {
+                    PreserveArrayKinds(assembly);
                     assembly.Assembly.MainModule.Attributes &= ~ModuleAttributes.StrongNameSigned;
                     assembly.Assembly.Write(path, new WriterParameters { Timestamp = 0, DeterministicMvid = true });
                 }

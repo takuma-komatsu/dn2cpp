@@ -28,6 +28,13 @@ foreach (var handle in reader.TypeDefinitions)
         lines.Add("field " + name + "::" + reader.GetString(reader.GetFieldDefinition(field).Name));
     foreach (var method in type.GetMethods())
         lines.Add("method " + name + "::" + reader.GetString(reader.GetMethodDefinition(method).Name));
+    foreach (var handleProperty in type.GetProperties())
+    {
+        var property = reader.GetPropertyDefinition(handleProperty);
+        var accessors = property.GetAccessors();
+        int count = (accessors.Getter.IsNil ? 0 : 1) + (accessors.Setter.IsNil ? 0 : 1) + accessors.Others.Length;
+        lines.Add("property " + name + "::" + reader.GetString(property.Name) + "/accessors=" + count);
+    }
 }
 lines.Sort(StringComparer.Ordinal);
 foreach (string line in lines)
