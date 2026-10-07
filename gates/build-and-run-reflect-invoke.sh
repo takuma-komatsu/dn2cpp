@@ -2,6 +2,12 @@
 # Property accessor arrays retain visibility, order, reflected handle identity and boxed invocation.
 # Delegate method names select strict signatures, inherited private methods and virtual slots.
 # Delegate ABI compatibility retains by-ref, pointer and function-pointer signature identity.
+# Unanchored intrinsic pointer pointees retain binding identity independently of Invoke boxing.
+# Array shapes and constant nested arguments distinguish runtime pointer overloads.
+# Actual array elements and constant leaves retain known type-name inequality without a Type-object cache.
+# Closed public generic arguments retain family and child identity without a Type-object cache.
+# Known pointee names skip incompatible runtime-generic argument and family overloads.
+# Opaque generic pointees and dynamic array arguments preserve overload inequality.
 # By-value delegate binding matches enums to their exact underlying type by name and MethodInfo.
 # Canonical function-pointer descriptors preserve Invoke checks independently of binding identity.
 # Unsupported by-ref referents retain distinct identities without enabling Invoke marshalling.
@@ -237,6 +243,16 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|intrinsic-only-prefix-argv
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|runtime-argument-prefix-argv:before-runtime-argument-overloads|runtime-argument-boundary-prefix-argv:delegate-signature-before-runtime-argument-boundary"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|family-type-prefix-argv:before-family-type-overloads"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|enum-signature-prefix-argv:before-enum-signature-bindings"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|intrinsic-pointer-prefix-argv:before-intrinsic-pointer-bindings"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|intrinsic-pointer-overload-prefix-argv:before-intrinsic-pointer-overloads"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|intrinsic-pointer-family-prefix-argv:before-intrinsic-pointer-families"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|intrinsic-generic-prefix-argv:before-intrinsic-generic-pointers|intrinsic-array-prefix-argv:before-intrinsic-array-arguments"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|intrinsic-constant-prefix-argv:before-intrinsic-constant-arguments"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|intrinsic-array-child-prefix-argv:before-intrinsic-array-children"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|intrinsic-MD-array-child-prefix-argv:before-intrinsic-MD-array-children"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|intrinsic-only-array-prefix-argv:before-intrinsic-array-elements"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|intrinsic-array-leaf-prefix-argv:before-intrinsic-array-leaves|intrinsic-constant-leaf-prefix-argv:before-intrinsic-constant-leaves"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|intrinsic-closed-generic-prefix-argv:before-intrinsic-closed-generic-arguments"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|identity-overload-prefix-argv:before-identity-overload-selection|identity-overload-boundary-prefix-argv:delegate-signature-before-identity-boundary"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|delegate-origin-prefix-argv:before-delegate-origin-boundaries|delegate-origin-modes:argument,field,array,checked-conv,arithmetic,box,call,local,stack-join,byref-argument"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|runtime-type-relations-prefix-argv:before-runtime-type-relations"
@@ -1313,6 +1329,125 @@ gate_extra_asserts() {
             || { echo "FAIL: MethodInfo enum pointer compatibility changed: $query" >&2; return 1; }
     done
 
+    run_bounded dotnet "$_CG_APP" before-intrinsic-pointer-bindings > "$out/intrinsic-pointer-before.dotnet.stdout"
+    run_bounded "$out/ReflectInvoke$EXE_EXT" before-intrinsic-pointer-bindings > "$out/intrinsic-pointer-before.native.stdout"
+    for axis in dotnet native; do
+        sed '/^== intrinsic pointer identity actual ==/,$d' "$out/generic-method-definitions.$axis.stdout" \
+            > "$out/intrinsic-pointer-prefix.$axis.stdout"
+        diff -u <(strip_cr_win_file "$out/intrinsic-pointer-before.$axis.stdout") \
+            <(strip_cr_win_file "$out/intrinsic-pointer-prefix.$axis.stdout")
+        for line in '== intrinsic pointer identity actual ==' 'intrinsic pointer identity actual end' \
+            'Invoke return => True/4660/1' 'Invoke wrong argument => ArgumentException/0'; do
+            test "$(grep -Fxc -- "$line" "$out/generic-method-definitions.$axis.stdout")" = 1 \
+                || { echo "FAIL: intrinsic pointer witness must run once: $axis/$line" >&2; return 1; }
+        done
+        for api in name method; do
+            for query in 'Token object' 'Token registration' 'parameter object' 'parameter registration' \
+                'return object' 'return registration' 'deep registration' 'deep depth' 'ordinary leaf' 'ordinary depth' 'clone object'; do
+                grep -Fxq -- "bind $query $api => null/calls=0" "$out/generic-method-definitions.$axis.stdout" \
+                    || { echo "FAIL: incompatible intrinsic pointer accepted: $axis/$query/$api" >&2; return 1; }
+            done
+            for line in "call Token $api => True/4660/4660/2" "call parameter $api => 7/0/1" \
+                "call return $api => 4660/1" "call deep $api => 4660/4660/1" "call ordinary $api => 4660/1" \
+                "call clone $api => 4660/4660/1"; do
+                grep -Fxq -- "$line" "$out/generic-method-definitions.$axis.stdout" \
+                    || { echo "FAIL: intrinsic pointer call changed: $axis/$line" >&2; return 1; }
+            done
+        done
+        for query in primitive reference; do
+            for api_result in name:null method:bound; do
+                api=${api_result%%:*}
+                result=${api_result#*:}
+                grep -Fxq -- "bind $query relaxation $api => $result/calls=0" "$out/generic-method-definitions.$axis.stdout" \
+                    || { echo "FAIL: ordinary pointer relaxation changed: $axis/$query/$api" >&2; return 1; }
+            done
+        done
+    done
+
+    run_bounded dotnet "$_CG_APP" before-intrinsic-pointer-overloads > "$out/intrinsic-pointer-overload-before.dotnet.stdout"
+    run_bounded "$out/ReflectInvoke$EXE_EXT" before-intrinsic-pointer-overloads > "$out/intrinsic-pointer-overload-before.native.stdout"
+    for axis in dotnet native; do
+        sed '/^== intrinsic pointer overload identity ==/,$d' "$out/generic-method-definitions.$axis.stdout" \
+            > "$out/intrinsic-pointer-overload-prefix.$axis.stdout"
+        diff -u <(strip_cr_win_file "$out/intrinsic-pointer-overload-before.$axis.stdout") \
+            <(strip_cr_win_file "$out/intrinsic-pointer-overload-prefix.$axis.stdout")
+        for line in '== intrinsic pointer overload identity ==' 'intrinsic pointer overload identity end' \
+            'call pointer overload soft => True/4660/4660/14' 'call pointer overload hard => True/4660/4660/14'; do
+            test "$(grep -Fxc -- "$line" "$out/generic-method-definitions.$axis.stdout")" = 1 \
+                || { echo "FAIL: intrinsic pointer overload witness must run once: $axis/$line" >&2; return 1; }
+        done
+    done
+
+    run_bounded dotnet "$_CG_APP" before-intrinsic-pointer-families > "$out/intrinsic-pointer-family-before.dotnet.stdout"
+    run_bounded "$out/ReflectInvoke$EXE_EXT" before-intrinsic-pointer-families > "$out/intrinsic-pointer-family-before.native.stdout"
+    for axis in dotnet native; do
+        sed '/^== intrinsic pointer family identity ==/,$d' "$out/generic-method-definitions.$axis.stdout" \
+            > "$out/intrinsic-pointer-family-prefix.$axis.stdout"
+        diff -u <(strip_cr_win_file "$out/intrinsic-pointer-family-before.$axis.stdout") \
+            <(strip_cr_win_file "$out/intrinsic-pointer-family-prefix.$axis.stdout")
+        for line in '== intrinsic pointer family identity ==' 'intrinsic pointer family identity end' \
+            'pointer family => ValueTask`1' 'call pointer family soft => True/4660/4660/14' \
+            'call pointer family hard => True/4660/4660/14'; do
+            test "$(grep -Fxc -- "$line" "$out/generic-method-definitions.$axis.stdout")" = 1 \
+                || { echo "FAIL: intrinsic pointer family witness must run once: $axis/$line" >&2; return 1; }
+        done
+    done
+
+    for section in generic array; do
+        if [ "$section" = generic ]; then
+            before=before-intrinsic-generic-pointers
+            begin='== intrinsic generic pointer identity =='
+            end='intrinsic generic pointer identity end'
+        else
+            before=before-intrinsic-array-arguments
+            begin='== intrinsic pointer array argument identity =='
+            end='intrinsic pointer array argument identity end'
+        fi
+        run_bounded dotnet "$_CG_APP" "$before" > "$out/intrinsic-$section-before.dotnet.stdout"
+        run_bounded "$out/ReflectInvoke$EXE_EXT" "$before" > "$out/intrinsic-$section-before.native.stdout"
+        for axis in dotnet native; do
+            sed "/^$begin/,\$d" "$out/generic-method-definitions.$axis.stdout" > "$out/intrinsic-$section-prefix.$axis.stdout"
+            diff -u <(strip_cr_win_file "$out/intrinsic-$section-before.$axis.stdout") \
+                <(strip_cr_win_file "$out/intrinsic-$section-prefix.$axis.stdout") \
+                || { echo "FAIL: opaque pointer prefix changed: $axis/$section" >&2; return 1; }
+            for line in "$begin" "$end" \
+                "call pointer $section soft => True/4660/4660/14/0/True" \
+                "call pointer $section hard => True/4660/4660/14/0/True"; do
+                test "$(grep -Fxc -- "$line" "$out/generic-method-definitions.$axis.stdout")" = 1 \
+                    || { echo "FAIL: opaque pointer witness must run once: $axis/$line" >&2; return 1; }
+            done
+            if [ "$section" = array ]; then
+                test "$(grep -Fxc -- 'pointer dynamic array => 1/True' "$out/generic-method-definitions.$axis.stdout")" = 1 \
+                    || { echo "FAIL: dynamic array must run once: $axis" >&2; return 1; }
+            fi
+        done
+    done
+
+    for section in 'constant argument' 'array child' 'MD array child'; do
+        case "$section" in
+            'constant argument') before=before-intrinsic-constant-arguments ;;
+            'array child') before=before-intrinsic-array-children ;;
+            'MD array child') before=before-intrinsic-MD-array-children ;;
+        esac
+        key=${section// /-}
+        begin="== intrinsic pointer $section identity =="
+        end="intrinsic pointer $section identity end"
+        run_bounded dotnet "$_CG_APP" "$before" > "$out/intrinsic-$key-before.dotnet.stdout"
+        run_bounded "$out/ReflectInvoke$EXE_EXT" "$before" > "$out/intrinsic-$key-before.native.stdout"
+        for axis in dotnet native; do
+            sed "/^$begin/,\$d" "$out/generic-method-definitions.$axis.stdout" > "$out/intrinsic-$key-prefix.$axis.stdout"
+            diff -u <(strip_cr_win_file "$out/intrinsic-$key-before.$axis.stdout") \
+                <(strip_cr_win_file "$out/intrinsic-$key-prefix.$axis.stdout") \
+                || { echo "FAIL: pointer structure prefix changed: $axis/$section" >&2; return 1; }
+            for line in "$begin" "$end" \
+                "call pointer $section soft => True/4660/4660/14/0/True" \
+                "call pointer $section hard => True/4660/4660/14/0/True"; do
+                test "$(grep -Fxc -- "$line" "$out/generic-method-definitions.$axis.stdout")" = 1 \
+                    || { echo "FAIL: pointer structure witness must run once: $axis/$line" >&2; return 1; }
+            done
+        done
+    done
+
     # Matching dependent signatures still lack an invokable substituted body.
     run_bounded dotnet "$_CG_APP" delegate-signature-boundary-outcomes > "$out/delegate-signature-boundary.dotnet.stdout"
     run_bounded "$out/ReflectInvoke$EXE_EXT" delegate-signature-boundary-outcomes > "$out/delegate-signature-boundary.native.stdout"
@@ -1504,7 +1639,7 @@ gate_extra_asserts() {
     done
 
     # Initial intrinsic lookup allocates one native method row; enumeration can
-    # allocate inherited Object rows. Their budgets include signature identity.
+    # allocate inherited Object rows. Each native row includes its binding pointee pointer.
     # Enforce each operation's first and repeated allocation budget independently.
     # The capture reports time too, but timing is not a pass/fail threshold.
     DN2CPP_REFLECTION_MEASURE=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/allocations.csv"
@@ -1956,6 +2091,78 @@ gate_extra_asserts() {
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: isolated delegate name witness missing: $line" >&2; return 1; }
     done
+    for axis in dotnet native; do
+        if [ "$axis" = dotnet ]; then
+            run_bounded dotnet "$_CG_APP" before-intrinsic-array-elements > "$out/intrinsic-array-element-before.$axis.stdout"
+            run_bounded dotnet "$_CG_APP" > "$out/intrinsic-array-element-full.$axis.stdout"
+        else
+            run_bounded "$out/ReflectNameBindOnly$EXE_EXT" before-intrinsic-array-elements > "$out/intrinsic-array-element-before.$axis.stdout"
+            run_bounded "$out/ReflectNameBindOnly$EXE_EXT" > "$out/intrinsic-array-element-full.$axis.stdout"
+        fi
+        sed '/^== intrinsic pointer array element identity ==/,$d' "$out/intrinsic-array-element-full.$axis.stdout" \
+            > "$out/intrinsic-array-element-prefix.$axis.stdout"
+        diff -u <(strip_cr_win_file "$out/intrinsic-array-element-before.$axis.stdout") \
+            <(strip_cr_win_file "$out/intrinsic-array-element-prefix.$axis.stdout") \
+            || { echo "FAIL: array element prefix changed: $axis" >&2; return 1; }
+        for line in '== intrinsic pointer array element identity ==' 'intrinsic pointer array element identity end' \
+            'pointer Token array => 1/True' \
+            'call pointer array element soft => True/4660/4660/14/0/True' \
+            'call pointer array element hard => True/4660/4660/14/0/True'; do
+            test "$(grep -Fxc -- "$line" "$out/intrinsic-array-element-full.$axis.stdout")" = 1 \
+                || { echo "FAIL: array element witness must run once: $axis/$line" >&2; return 1; }
+        done
+    done
+
+    local section before
+    for section in 'array leaf' 'constant leaf'; do
+        if [ "$section" = 'array leaf' ]; then
+            before=before-intrinsic-array-leaves
+        else
+            before=before-intrinsic-constant-leaves
+        fi
+        for axis in dotnet native; do
+            if [ "$axis" = dotnet ]; then
+                run_bounded dotnet "$_CG_APP" "$before" > "$out/intrinsic-$section-before.$axis.stdout"
+                run_bounded dotnet "$_CG_APP" > "$out/intrinsic-$section-full.$axis.stdout"
+            else
+                run_bounded "$out/ReflectNameBindOnly$EXE_EXT" "$before" > "$out/intrinsic-$section-before.$axis.stdout"
+                run_bounded "$out/ReflectNameBindOnly$EXE_EXT" > "$out/intrinsic-$section-full.$axis.stdout"
+            fi
+            sed '/^== intrinsic pointer '"$section"' identity ==/,$d' "$out/intrinsic-$section-full.$axis.stdout" \
+                > "$out/intrinsic-$section-prefix.$axis.stdout"
+            diff -u <(strip_cr_win_file "$out/intrinsic-$section-before.$axis.stdout") \
+                <(strip_cr_win_file "$out/intrinsic-$section-prefix.$axis.stdout") \
+                || { echo "FAIL: pointer leaf prefix changed: $axis/$section" >&2; return 1; }
+            for line in "== intrinsic pointer $section identity ==" "intrinsic pointer $section identity end" \
+                "call pointer $section soft => True/4660/4660/14/0/True" \
+                "call pointer $section hard => True/4660/4660/14/0/True"; do
+                test "$(grep -Fxc -- "$line" "$out/intrinsic-$section-full.$axis.stdout")" = 1 \
+                    || { echo "FAIL: pointer leaf witness must run once: $axis/$line" >&2; return 1; }
+            done
+        done
+    done
+
+    for axis in dotnet native; do
+        if [ "$axis" = dotnet ]; then
+            run_bounded dotnet "$_CG_APP" before-intrinsic-closed-generic-arguments > "$out/intrinsic-closed-generic-before.$axis.stdout"
+            run_bounded dotnet "$_CG_APP" > "$out/intrinsic-closed-generic-full.$axis.stdout"
+        else
+            run_bounded "$out/ReflectNameBindOnly$EXE_EXT" before-intrinsic-closed-generic-arguments > "$out/intrinsic-closed-generic-before.$axis.stdout"
+            run_bounded "$out/ReflectNameBindOnly$EXE_EXT" > "$out/intrinsic-closed-generic-full.$axis.stdout"
+        fi
+        sed '/^== intrinsic closed generic pointer argument ==/,$d' "$out/intrinsic-closed-generic-full.$axis.stdout" \
+            > "$out/intrinsic-closed-generic-prefix.$axis.stdout"
+        diff -u <(strip_cr_win_file "$out/intrinsic-closed-generic-before.$axis.stdout") \
+            <(strip_cr_win_file "$out/intrinsic-closed-generic-prefix.$axis.stdout") \
+            || { echo "FAIL: closed generic pointer prefix changed: $axis" >&2; return 1; }
+        for line in '== intrinsic closed generic pointer argument ==' 'intrinsic closed generic pointer argument end' \
+            'call pointer closed generic soft => True/4660/4660/14/0/True' \
+            'call pointer closed generic hard => True/4660/4660/14/0/True'; do
+            test "$(grep -Fxc -- "$line" "$out/intrinsic-closed-generic-full.$axis.stdout")" = 1 \
+                || { echo "FAIL: closed generic pointer witness must run once: $axis/$line" >&2; return 1; }
+        done
+    done
+
     for axis in dotnet native; do
         if [ "$axis" = dotnet ]; then
             run_bounded dotnet "$_CG_APP" before-intrinsic-overloads > "$out/intrinsic-before.$axis.stdout"

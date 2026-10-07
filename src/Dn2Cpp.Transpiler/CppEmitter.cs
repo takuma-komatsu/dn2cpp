@@ -4390,6 +4390,46 @@ internal sealed partial class CppEmitter
     }
 
     private readonly Dictionary<string, string> _pointeeStandIns = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _bindingPointees = new(StringComparer.Ordinal);
+
+    private string ReflectionBindingPointee(TypeDesc t, HashSet<ClassInfo> emittedEnums)
+    {
+        if (Compilation.ContainsCanonPlaceholder(t) || Compilation.ContainsGenericVar(t))
+            return "nullptr";
+        if (t.Kind == TypeKind.ByRef)
+            t = t.Element!;
+        if (t.Kind != TypeKind.Pointer || t.IsFunctionPointer)
+            return "nullptr";
+        int levels = 0;
+        t = t.Element!;
+        while (t.Kind == TypeKind.Pointer && !t.IsFunctionPointer)
+        {
+            levels++;
+            t = t.Element!;
+        }
+        if (t.Kind == TypeKind.External && _c.ResolveExternalClass(t) is { } external)
+            t = TypeDesc.MakeClass(external);
+        if (t.IsFunctionPointer || t.IsObject || MemberTypeInfoExpr(t, emittedEnums) != "&dn2cpp_object_type")
+            return "nullptr";
+        int remainder = Math.Max(0, levels - ReturnPointerDepthMask);
+        string further = new('*', remainder);
+        string key = Compilation.IdentityMangle(t) + further;
+        if (!_bindingPointees.TryGetValue(key, out var symbol))
+        {
+            symbol = "dn2cpp_binding_pointee_" + _bindingPointees.Count;
+            _bindingPointees[key] = symbol;
+            bool valueType = remainder != 0 || t.Kind == TypeKind.Primitive
+                || t is { Kind: TypeKind.Class, Class.IsValueType: true };
+            string name = ReflectionSignatureType(t, qualifyPrimitive: true) + further;
+            // Binding cannot use the erased Invoke identity or widen a value pointee as a reference.
+            _metadataHeader.AppendLine($"inline constexpr Dn2CppTypeInfo {symbol} = dn2cpp_pointee_type_info(\"{CLiteral(name)}\", {(valueType ? "true" : "false")});");
+            BindingSignature binding = new(type: t);
+            for (int i = 0; i < remainder; i++)
+                binding = new BindingSignature(1, children: new[] { binding });
+            _bindingStandIns[symbol] = binding;
+        }
+        return "&" + symbol;
+    }
 
     /// <summary>The type-info a pointer row names as its pointee where the image has
     /// none: an unsupported by-ref referent, a function pointer type, or pointer
@@ -5741,6 +5781,14 @@ internal sealed partial class CppEmitter
 
     private string EmitBindingSignature(StringBuilder sb, BindingSignature signature)
     {
+        if (signature.Kind == 0 && signature.Type is { Kind: TypeKind.SZArray or TypeKind.MDArray, Element: { } element } array)
+            signature = new BindingSignature(array.Kind == TypeKind.SZArray ? 6 : 7, value: array.Rank,
+                children: new[] { new BindingSignature(type: element) });
+        if (signature.Kind == 0 && signature.Type is { Kind: TypeKind.Class, Class: { } opaque }
+            && opaque.Context.TypeArgs.Length > 0 && !TypeInfoSymbolDefined(opaque.CppTypeInfoName)
+            && !Compilation.ContainsCanonPlaceholder(signature.Type) && !Compilation.ContainsGenericVar(signature.Type))
+            signature = new BindingSignature(4, signature.Type,
+                children: opaque.Context.TypeArgs.Select(t => new BindingSignature(type: t)).ToArray());
         string symbol = "bindsig_" + _bindingSignatureSequence++;
         var children = new List<string>();
         foreach (var child in signature.Children)

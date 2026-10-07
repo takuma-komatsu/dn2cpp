@@ -4598,8 +4598,10 @@ static bool dn2cpp_dgbind_pass(const Dn2CppTypeInfo* from, int32_t fromKind,
 static bool dn2cpp_dgbind_parameter(const Dn2CppParamInfo& from,
     const Dn2CppParamInfo& to, bool relaxed, bool& unknown)
 {
-    return dn2cpp_dgbind_pass(from.paramType, from.passKind, from.passType,
-        to.paramType, to.passKind, to.passType, relaxed, unknown);
+    return dn2cpp_dgbind_pass(from.paramType, from.passKind,
+        from.bindingPointeeType != nullptr ? from.bindingPointeeType : from.passType,
+        to.paramType, to.passKind,
+        to.bindingPointeeType != nullptr ? to.bindingPointeeType : to.passType, relaxed, unknown);
 }
 
 static bool dn2cpp_dgbind_return(const Dn2CppMethodInfo& from,
@@ -4624,10 +4626,14 @@ static bool dn2cpp_dgbind_return(const Dn2CppMethodInfo& from,
         return value;
     };
     const int32_t fromKind = kind(from), toKind = kind(to);
+    auto pointee = [](const Dn2CppMethodInfo& row, int32_t value) {
+        return row.returnBindingPointeeType != nullptr ? row.returnBindingPointeeType
+            : (value & DN2CPP_PASS_FNPTR) != 0 ? row.returnSignatureType : row.returnPassType;
+    };
     return dn2cpp_dgbind_pass(from.returnType, fromKind,
-        (fromKind & DN2CPP_PASS_FNPTR) != 0 ? from.returnSignatureType : from.returnPassType,
+        pointee(from, fromKind),
         to.returnType, toKind,
-        (toKind & DN2CPP_PASS_FNPTR) != 0 ? to.returnSignatureType : to.returnPassType, relaxed, unknown);
+        pointee(to, toKind), relaxed, unknown);
 }
 
 static void dn2cpp_dgbind_require_signature(bool unknown)
@@ -4931,11 +4937,26 @@ static const Dn2CppBindingSignature* dn2cpp_dgbind_stand_in(const Dn2CppRuntimeT
 
 static bool dn2cpp_dgbind_binding_type_known(const Dn2CppTypeInfo* type)
 {
-    // Public synthesized TIs are interned by definition and actual arguments;
+    // Closed public generic TIs retain their definition and actual arguments;
     // their lazy Type-object cache does not determine their signature identity.
     return type != nullptr && (type->typeObject != nullptr
-        || ((type->flags & (DN2CPP_TF_RUNTIME_SYNTH | DN2CPP_TF_SHARED_CANON)) == DN2CPP_TF_RUNTIME_SYNTH
-            && type->genericDef != nullptr && type->genericArgs != nullptr && type->genericArgCount > 0));
+        || ((type->flags & (DN2CPP_TF_SHARED_CANON | DN2CPP_TF_GENERICDEF)) == 0
+            && type->genericDef != nullptr && type->genericArgs != nullptr && type->genericArgCount > 0)
+        || ((type->flags & (DN2CPP_TF_ARRAY | DN2CPP_TF_SHARED_CANON)) == DN2CPP_TF_ARRAY
+            && type->arrayRank > 0 && dn2cpp_dgbind_binding_type_known(type->elementType)));
+}
+
+static Dn2CppBindingSignature dn2cpp_dgbind_actual_type(const Dn2CppTypeInfo* type)
+{
+    // A public nongeneric TI's CLR name proves inequality even while its lazy
+    // Type-object cache is empty. Equal names do not prove type identity.
+    if (type != nullptr && type->typeObject == nullptr && type->name != nullptr
+        && (type->flags & (DN2CPP_TF_SHARED_CANON | DN2CPP_TF_GENERICDEF | DN2CPP_TF_ARRAY)) == 0
+        && type->genericDef == nullptr && type->genericArgCount == 0
+        && (type->base != nullptr
+            || (type->flags & (DN2CPP_TF_VALUETYPE | DN2CPP_TF_INTERFACE)) != 0))
+        return { 8, nullptr, 0, nullptr, 0, type->name };
+    return { 0, type, 0, nullptr, 0, nullptr };
 }
 
 // Unknown leaves cannot establish inequality. These records affect candidate
@@ -4947,21 +4968,45 @@ static bool dn2cpp_dgbind_binding_mismatch(Dn2CppBindingSignature a, Dn2CppBindi
     {
         if (a.value < 0 || a.value >= declaring.genericArgCount)
             return false;
-        const auto* argument = declaring.genericArgs[a.value];
-        a = { 0, argument, 0, nullptr, 0, nullptr };
-        // Runtime Type arguments can be interned without filling the const TI's
-        // typeObject. Their nongeneric CLR names still prove unequal leaves.
-        if (argument != nullptr && argument->typeObject == nullptr
-            && (argument->flags & (DN2CPP_TF_SHARED_CANON | DN2CPP_TF_GENERICDEF | DN2CPP_TF_ARRAY)) == 0
-            && argument->genericDef == nullptr && argument->genericArgCount == 0
-            && (argument->base != nullptr
-                || (argument->flags & (DN2CPP_TF_VALUETYPE | DN2CPP_TF_INTERFACE)) != 0))
-            a = { 8, nullptr, 0, nullptr, 0, argument->name };
+        a = dn2cpp_dgbind_actual_type(declaring.genericArgs[a.value]);
     }
     if (a.kind == 0 && a.type != nullptr && a.type->typeObject == nullptr && a.name != nullptr)
         a.kind = 8;
     if (b.kind == 0 && b.type != nullptr && b.type->typeObject == nullptr && b.name != nullptr)
         b.kind = 8;
+    // Array shape is public even when its element's Type-object cache is empty.
+    auto arrayShape = [](const Dn2CppBindingSignature& value) {
+        return value.kind == 0 && value.type != nullptr
+            && (value.type->flags & (DN2CPP_TF_ARRAY | DN2CPP_TF_SHARED_CANON)) == DN2CPP_TF_ARRAY
+            && value.type->arrayRank > 0;
+    };
+    auto nonArrayShape = [](const Dn2CppBindingSignature& value) {
+        return (value.kind >= 1 && value.kind <= 4) || value.kind == 8
+            || (value.kind == 0 && dn2cpp_dgbind_binding_type_known(value.type)
+                && (value.type->flags & DN2CPP_TF_ARRAY) == 0);
+    };
+    if ((arrayShape(a) && nonArrayShape(b)) || (arrayShape(b) && nonArrayShape(a)))
+        return true;
+    if ((a.kind == 6 || a.kind == 7) && b.kind == 0
+        && (arrayShape(b) || dn2cpp_dgbind_binding_type_known(b.type)))
+    {
+        if ((b.type->flags & DN2CPP_TF_ARRAY) == 0)
+            return true;
+        int32_t rank = a.kind == 6 ? 1 : a.value;
+        if (b.type->arrayRank <= 0 || a.childCount != 1)
+            return false;
+        if (rank != b.type->arrayRank)
+            return true;
+        // Rank-one TIs do not distinguish SZArray from MDArray. Their element
+        // can still prove inequality, while equal elements remain unresolved.
+        if (b.type->elementType == nullptr)
+            return false;
+        return dn2cpp_dgbind_binding_mismatch(a.children[0],
+            dn2cpp_dgbind_actual_type(b.type->elementType), declaring);
+    }
+    if (a.kind == 0 && (b.kind == 6 || b.kind == 7)
+        && (arrayShape(a) || dn2cpp_dgbind_binding_type_known(a.type)))
+        return dn2cpp_dgbind_binding_mismatch(b, a, declaring);
     if ((a.kind == 0 && !dn2cpp_dgbind_binding_type_known(a.type))
         || (b.kind == 0 && !dn2cpp_dgbind_binding_type_known(b.type)))
         return false;
@@ -4976,24 +5021,6 @@ static bool dn2cpp_dgbind_binding_mismatch(Dn2CppBindingSignature a, Dn2CppBindi
         int32_t other = a.kind == 8 ? b.kind : a.kind;
         return other == 1 || other == 2 || other == 3 || other == 4 || other == 6 || other == 7;
     }
-    if ((a.kind == 6 || a.kind == 7) && b.kind == 0)
-    {
-        if ((b.type->flags & DN2CPP_TF_ARRAY) == 0)
-            return true;
-        int32_t rank = a.kind == 6 ? 1 : a.value;
-        if (b.type->arrayRank <= 0 || a.childCount != 1)
-            return false;
-        if (rank != b.type->arrayRank)
-            return true;
-        // Rank-one TIs do not distinguish SZArray from MDArray. Their element
-        // can still prove inequality, while equal elements remain unresolved.
-        if (b.type->elementType == nullptr)
-            return false;
-        return dn2cpp_dgbind_binding_mismatch(a.children[0],
-            { 0, b.type->elementType, 0, nullptr, 0, nullptr }, declaring);
-    }
-    if (a.kind == 0 && (b.kind == 6 || b.kind == 7))
-        return dn2cpp_dgbind_binding_mismatch(b, a, declaring);
     if (a.kind == 0 && b.kind == 0)
         return a.type != b.type;
     if (a.kind == 4 && b.kind == 0)
@@ -5007,7 +5034,7 @@ static bool dn2cpp_dgbind_binding_mismatch(Dn2CppBindingSignature a, Dn2CppBindi
             return false;
         for (int32_t i = 0; i < a.childCount; i++)
             if (dn2cpp_dgbind_binding_mismatch(a.children[i],
-                { 0, b.type->genericArgs[i], 0, nullptr, 0, nullptr }, declaring))
+                dn2cpp_dgbind_actual_type(b.type->genericArgs[i]), declaring))
                 return true;
         return false;
     }
@@ -5058,7 +5085,8 @@ static bool dn2cpp_dgbind_named_argument_mismatch(const Dn2CppMethodInfo& row,
         {
             if ((row.returnSignatureType == &dn2cpp_object_type || row.returnSignatureType == &dn2cpp_void_type)
                 && invoke.returnSignatureType != &dn2cpp_object_type && invoke.returnSignatureType != &dn2cpp_void_type)
-                known = invoke.returnPassType != nullptr ? invoke.returnPassType : invoke.returnSignatureType;
+                known = invoke.returnBindingPointeeType != nullptr ? invoke.returnBindingPointeeType
+                    : invoke.returnPassType != nullptr ? invoke.returnPassType : invoke.returnSignatureType;
         }
         else if (binding.parameter >= 0 && binding.parameter < row.paramCount)
         {
@@ -5066,7 +5094,7 @@ static bool dn2cpp_dgbind_named_argument_mismatch(const Dn2CppMethodInfo& row,
             const auto b = invoke.parameters[binding.parameter].operator->();
             if ((a->passKind & DN2CPP_PASS_SIGNATURE_UNKNOWN) != 0
                 && (b->passKind & DN2CPP_PASS_SIGNATURE_UNKNOWN) == 0)
-                known = b->passType;
+                known = b->bindingPointeeType != nullptr ? b->bindingPointeeType : b->passType;
         }
         const auto* structure = dn2cpp_dgbind_stand_in(*level, known);
         int32_t depth = 0;
@@ -5085,6 +5113,36 @@ static bool dn2cpp_dgbind_named_argument_mismatch(const Dn2CppMethodInfo& row,
             if (structure != nullptr && dn2cpp_dgbind_binding_mismatch(*binding.signature, *structure, *declaring))
                 return true;
             continue;
+        }
+        if (structure != nullptr)
+        {
+            const auto* leaf = structure;
+            int32_t step = 0;
+            for (; step < binding.pathCount; step++)
+            {
+                const auto& path = binding.path[step];
+                if (dn2cpp_dgbind_binding_mismatch(
+                    { 4, path.definition, 0, nullptr, 0, path.definition != nullptr ? path.definition->name : nullptr },
+                    *leaf, *declaring))
+                    return true;
+                if (leaf->kind != 4 || leaf->children == nullptr
+                    || path.argument < 0 || path.argument >= leaf->childCount)
+                    break;
+                leaf = leaf->children + path.argument;
+            }
+            if (step == binding.pathCount && binding.typeArgument >= 0
+                && dn2cpp_dgbind_binding_mismatch(
+                    { 5, nullptr, binding.typeArgument, nullptr, 0, nullptr }, *leaf, *declaring))
+                return true;
+            if (step == binding.pathCount && binding.typeArgument == -2
+                && dn2cpp_dgbind_binding_mismatch(
+                    { 4, binding.type, 0, nullptr, 0, binding.type != nullptr ? binding.type->name : nullptr },
+                    *leaf, *declaring))
+                return true;
+            if (step == binding.pathCount && binding.typeArgument == -1
+                && dn2cpp_dgbind_binding_mismatch(
+                    dn2cpp_dgbind_actual_type(binding.type), *leaf, *declaring))
+                return true;
         }
         if (structure != nullptr)
             known = structure->kind == 0 ? structure->type : nullptr;

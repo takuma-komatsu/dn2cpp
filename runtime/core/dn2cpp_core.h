@@ -916,6 +916,8 @@ struct Dn2CppParamInfo
     const Dn2CppTypeInfo* passType;
     // Null means no recorded default; a factory returning null records a null default.
     Dn2CppObject* (*defaultValue)();
+    // Delegate-only pointee identity when Invoke's descriptor projects to Object.
+    const Dn2CppTypeInfo* bindingPointeeType;
 };
 
 // The real CoreLib singleton, shared by Type.Missing and Missing.Value.
@@ -946,11 +948,11 @@ void dn2cpp_set_missing_value_factory(const Dn2CppTypeInfo* type, Dn2CppObject* 
 // its own: a function pointer type, spelled as .NET formats it, or a pointer's
 // levels past those a return row's depth bits count. The emitter interns one per
 // type, so a pointer to it has one identity.
-constexpr Dn2CppTypeInfo dn2cpp_pointee_type_info(const char* name)
+constexpr Dn2CppTypeInfo dn2cpp_pointee_type_info(const char* name, bool valueType = false)
 {
     Dn2CppTypeInfo ti{};
     ti.name = name;
-    ti.flags = DN2CPP_TF_SEALED;
+    ti.flags = DN2CPP_TF_SEALED | (valueType ? DN2CPP_TF_VALUETYPE : 0);
     return ti;
 }
 
@@ -1046,6 +1048,8 @@ struct Dn2CppMethodInfo
     // signature, or Object for an unresolved ordinary by-ref/pointer referent.
     // Invoke keeps the null returnPassType marker for IntPtr boxing.
     const Dn2CppTypeInfo* returnSignatureType;
+    // Ordinary pointer identity; Invoke keeps returnPassType and its boxing ABI.
+    const Dn2CppTypeInfo* returnBindingPointeeType;
 };
 
 // A synthesized constructor differs only in its allocation's declaring type.

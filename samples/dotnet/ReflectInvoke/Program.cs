@@ -283,6 +283,30 @@ namespace ReflectInvoke
             if (args.Length > 0 && args[0] == "before-enum-signature-bindings")
                 return;
             ReflectDelegateEnumSubset.Program.Run();
+            if (args.Length > 0 && args[0] == "before-intrinsic-pointer-bindings")
+                return;
+            ReflectIntrinsicPointerSubset.Program.Run();
+            if (args.Length > 0 && args[0] == "before-intrinsic-pointer-overloads")
+                return;
+            ReflectIntrinsicPointerSubset.Program.RunOverloads();
+            if (args.Length > 0 && args[0] == "before-intrinsic-pointer-families")
+                return;
+            ReflectIntrinsicPointerSubset.Program.RunFamilies();
+            if (args.Length > 0 && args[0] == "before-intrinsic-generic-pointers")
+                return;
+            ReflectIntrinsicPointerSubset.Program.RunGenericPointees();
+            if (args.Length > 0 && args[0] == "before-intrinsic-array-arguments")
+                return;
+            ReflectIntrinsicPointerSubset.Program.RunArrayArguments();
+            if (args.Length > 0 && args[0] == "before-intrinsic-constant-arguments")
+                return;
+            ReflectIntrinsicPointerSubset.Program.RunConstantArguments();
+            if (args.Length > 0 && args[0] == "before-intrinsic-array-children")
+                return;
+            ReflectIntrinsicPointerSubset.Program.RunArrayChildren();
+            if (args.Length > 0 && args[0] == "before-intrinsic-MD-array-children")
+                return;
+            ReflectIntrinsicPointerSubset.Program.RunMdArrayChildren();
         }
     }
 }
