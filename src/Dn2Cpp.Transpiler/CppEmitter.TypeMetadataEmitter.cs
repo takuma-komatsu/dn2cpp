@@ -636,8 +636,9 @@ internal sealed partial class CppEmitter
         HashSet<MethodDefinitionHandle> propertyAccessors)
     {
         bool ctor = method.Name == ".ctor" && !method.IsStatic;
-        if (!ctor && (method.Name == ".ctor" || method.Name == ".cctor"
-            || !_c.KeepsReflectionMetadata(cls)
+        bool initializer = method.Name == ".cctor" && method.IsStatic && _c.NamedDelegateBindingUsed;
+        if (!ctor && (!_c.KeepsReflectionMetadata(cls)
+            || (!initializer && (method.Name == ".ctor" || method.Name == ".cctor"))
             || (_c.SharedGenericsEnabled && method.Context.MethodArgs.Any(Compilation.ContainsCanonPlaceholder))))
             return false;
         if (cls.Module != _c.AppModule && !_hotUpdateBase && method.Rva != 0
@@ -700,6 +701,7 @@ internal sealed partial class CppEmitter
         private readonly Dictionary<ClassInfo, (string Expr, int Count)> _fieldTabs = new();
         private readonly Dictionary<ClassInfo, (string Expr, int Count)> _methodTabs = new();
         private readonly Dictionary<ClassInfo, (string Expr, int Count)> _ctorTabs = new();
+        private readonly Dictionary<ClassInfo, string> _initializerRows = new();
         private readonly Dictionary<ClassInfo, (string Expr, int Count)> _propTabs = new();
         // The methods under an Object member name that got a method row, per class, for
         // the class's DN2CPP_TF_OBJECT_MEMBER_ROWS decision (CarriesObjectMemberRows).
@@ -3307,8 +3309,8 @@ internal sealed partial class CppEmitter
                     && _e.KeepsReflectionMethodRow(cls, m, propertyAccessors)
                     && seenMethod.Add(m.CppName))
                 .ToList();
-            // Constructors: instance .ctor only (the static .cctor is not a reflected
-            // constructor); never inherited, so no base walk at runtime.
+            // Public constructor lookup keeps its instance-only table; named binding
+            // describes the static initializer separately without exposing a MethodInfo.
             var seenCtor = new HashSet<string>(System.StringComparer.Ordinal);
             var ctors = cls.Methods
                 .Where(m => m.Name == ".ctor" && !m.IsStatic && seenCtor.Add(m.CppName))
@@ -3325,6 +3327,10 @@ internal sealed partial class CppEmitter
                 _methodTabs[cls] = mt;
             if (BuildMemberTable(cls, ctors, "ctortab") is { } ct)
                 _ctorTabs[cls] = ct;
+            if (keepRefl && _c.NamedDelegateBindingUsed && cls.StaticCctor is { } initializer
+                && _e.KeepsReflectionMethodRow(cls, initializer, propertyAccessors)
+                && BuildMemberTable(cls, new List<MethodInfo> { initializer }, "initrow") is { } init)
+                _initializerRows[cls] = _e.MetadataRowAddress(init.Expr, 0);
             // Property table: read the type's PropertyDefs from metadata, map each
             // accessor to its method-table entry (so PropertyInfo.GetValue/SetValue and
             // CanRead/CanWrite work), and emit a Dn2CppPropInfo[]. An accessor the
@@ -3722,6 +3728,7 @@ internal sealed partial class CppEmitter
                 ToStringFn = toStr, HashFn = getHash, EqualsFn = equals, Flags = flags,
                 Fields = fieldsExpr, FieldCount = fieldCount, Methods = methodsExpr, MethodCount = methodCount,
                 Ctors = ctorsExpr, CtorCount = ctorCount, Props = propsExpr, PropCount = propCount,
+                Initializer = _initializerRows.GetValueOrDefault(cls, "nullptr"),
                 CustomAttrs = typeAttrs.Expr, CustomAttrCount = typeAttrs.Count, GenericDef = genDefExpr,
                 GenericArgs = genArgsExpr, GenericArgCount = genArgCount, NestedTypes = nestedExpr, NestedCount = nested.Count,
                 AssemblyName = string.IsNullOrEmpty(cls.Module.AssemblyName) ? null : cls.Module.AssemblyName, FinalizeFn = finalize, Rgctx = rgctxExpr, TypeObject = "&ty_" + cls.CppName,

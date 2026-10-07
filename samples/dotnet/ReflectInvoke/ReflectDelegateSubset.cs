@@ -1960,3 +1960,62 @@ namespace ReflectIntrinsicPointerSubset
         }
     }
 }
+
+namespace ReflectDelegateConstructorSubset
+{
+    internal class Own
+    {
+        internal int Value;
+        public Own() { Value = 5; }
+        private Own(int value) { Value = value; }
+    }
+
+    internal class Base
+    {
+        internal int Value;
+        protected Base() { Value = 3; }
+        private Base(int value) { Value = value; }
+    }
+
+    internal sealed class Derived : Base
+    {
+        internal int DerivedValue = 9;
+    }
+
+    internal static class Program
+    {
+        internal static string MethodFault(Delegate value)
+        {
+            try { return value.Method.Name; }
+            catch (InvalidCastException) { return "InvalidCastException"; }
+        }
+
+        internal static void Run()
+        {
+            Console.WriteLine("== delegate constructor body names ==");
+            Own target = new Own();
+            target.Value = 101;
+            var soft = (Action)Delegate.CreateDelegate(typeof(Action), target, ".ctor", false, false)!;
+            soft();
+            Console.WriteLine($"constructor soft => {target.Value}/{ReferenceEquals(soft.Target, target)}/{MethodFault(soft)}");
+            var hard = (Action<int>)Delegate.CreateDelegate(typeof(Action<int>), target, ".ctor", false, true)!;
+            hard(17);
+            Console.WriteLine($"constructor hard => {target.Value}/{MethodFault(hard)}");
+            var normalized = (Action)Delegate.CreateDelegate(typeof(Action), target, ".CTOR\0suffix", true, true)!;
+            normalized();
+            Console.WriteLine($"constructor normalized => {target.Value}/{MethodFault(normalized)}");
+            Derived derived = new Derived();
+            var inherited = (Action<int>)Delegate.CreateDelegate(typeof(Action<int>), derived, ".ctor", false, true)!;
+            inherited(23);
+            inherited(29);
+            Console.WriteLine($"constructor private base => {derived.Value}/{derived.DerivedValue}/{MethodFault(inherited)}");
+            Console.WriteLine($"constructor soft mismatches => {Delegate.CreateDelegate(typeof(Action<string>), target, ".ctor", false, false) is null}/{Delegate.CreateDelegate(typeof(Func<int>), target, ".ctor", false, false) is null}/{Delegate.CreateDelegate(typeof(Action), typeof(Own), ".ctor", false, false) is null}");
+            Console.WriteLine($"constructor missing => {Delegate.CreateDelegate(typeof(Action), target, ".missing", false, false) is null}");
+            try { Delegate.CreateDelegate(typeof(Action<string>), target, ".ctor", false, true); }
+            catch (ArgumentException) { Console.WriteLine("constructor hard mismatch => ArgumentException"); }
+            try { Delegate.CreateDelegate(typeof(Action), target, ".missing", false, true); }
+            catch (ArgumentException) { Console.WriteLine("constructor hard missing => ArgumentException"); }
+            Console.WriteLine("delegate constructor body names end");
+        }
+    }
+}

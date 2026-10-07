@@ -1223,6 +1223,9 @@ static std::vector<Dn2CppExcFrameEntry>& dn2cpp_exc_fn_index()
             const Dn2CppTypeInfo* ti = dn2cpp_type_registry[k].type;
             add(ti->reflection().methods, ti->reflection().methodCount);
             add(ti->reflection().ctors, ti->reflection().ctorCount);
+            const auto initializer = ti->reflection().initializer;
+            if (initializer != nullptr && initializer->fnPtr != nullptr)
+                rows.push_back({ reinterpret_cast<uintptr_t>(initializer->fnPtr), initializer, false });
         }
         auto nameOf = [](Dn2CppMetadataHandle<Dn2CppMethodInfo> mi, bool decl)
         {

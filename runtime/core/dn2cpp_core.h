@@ -253,6 +253,8 @@ struct Dn2CppTypeReflection
     const char* eventSourceName;
     const char* eventSourceGuid;
     const char* genericParamNames;
+    // Callable initializer identity is independent of public member enumeration.
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> initializer = nullptr;
 };
 
 inline constexpr Dn2CppTypeReflection dn2cpp_empty_type_reflection{};

@@ -1058,7 +1058,7 @@ internal sealed partial class CppEmitter
         // Their static-field mouths already call the idempotent __ensure wrapper, so leave
         // closed generic cctors lazy while retaining the legacy startup pass for other types.
         var startupCctors = allCctors
-            .Where(m => m.DeclaringClass.GenericArity == 0)
+            .Where(m => m.DeclaringClass.GenericArity == 0 && !_c.IsBindingOnlyInitializer(m))
             .ToList();
         // Idempotent first-use wrappers for every static constructor: the eager init
         // loop (EmitInitCalls) and the use-site guards (EnsureCctorBefore) both run a
