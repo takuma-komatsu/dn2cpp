@@ -5004,8 +5004,9 @@ static bool dn2cpp_dgbind_binding_mismatch(Dn2CppBindingSignature a, Dn2CppBindi
             return false;
         if (rank != b.type->arrayRank)
             return true;
-        // Rank-one TIs do not distinguish SZArray from MDArray. Their element
-        // can still prove inequality, while equal elements remain unresolved.
+        if (rank == 1 && (a.kind == 6) == dn2cpp_is_md_array(b.type))
+            return true;
+        // Equal shape still requires a known element identity.
         if (b.type->elementType == nullptr)
             return false;
         return dn2cpp_dgbind_binding_mismatch(a.children[0],
@@ -6278,7 +6279,7 @@ void dn2cpp_array_initialize(Dn2CppObject* a)
         }
         char* data;
         int32_t size, count;
-        if (dn2cpp_array_rank_of(a) > 1)
+        if (dn2cpp_is_md_array(a->type))
         {
             auto* md = static_cast<Dn2CppMDArray*>(a);
             data = md->data;
@@ -7917,7 +7918,7 @@ Dn2CppType* dn2cpp_type_make_array_type(Dn2CppType* t)
     {
         const Dn2CppTypeInfo* cand = dn2cpp_type_registry[k].type;
         if ((cand->flags & DN2CPP_TF_ARRAY) != 0 && cand->elementType == t->typeInfo
-            && cand->arrayRank == 1)
+            && dn2cpp_is_sz_array(cand))
             return dn2cpp_get_type_from_handle(cand);
     }
     dn2cpp_throw_not_supported();
@@ -7943,13 +7944,14 @@ Dn2CppType* dn2cpp_type_make_array_type_rank(Dn2CppType* t, int32_t rank)
 // constant, so the emitter statically defines the MD type-info it names (ti_md_<T>)
 // and registers it — the interner then answers with that same handle for every
 // `new T[,]` of the shape, keeping the identity unique per (elem, rank).
-const Dn2CppTypeInfo* dn2cpp_find_array_ti_rank(const Dn2CppTypeInfo* elem, int32_t rank)
+const Dn2CppTypeInfo* dn2cpp_find_array_ti_rank(const Dn2CppTypeInfo* elem, int32_t rank, bool nonSz)
 {
     for (int32_t k = 0; k < dn2cpp_type_registry_count; k++)
     {
         const Dn2CppTypeInfo* cand = dn2cpp_type_registry[k].type;
         if ((cand->flags & DN2CPP_TF_ARRAY) != 0 && cand->elementType == elem
-            && cand->arrayRank == rank)
+            && cand->arrayRank == rank
+            && (rank != 1 || dn2cpp_is_md_array(cand) == nonSz))
             return cand;
     }
     return nullptr;
@@ -9016,7 +9018,7 @@ struct Dn2CppArrCopyView
 static Dn2CppArrCopyView dn2cpp_array_copy_view(Dn2CppObject* a)
 {
     const Dn2CppTypeInfo* t = a->type;
-    if (t != nullptr && t->arrayRank > 1)
+    if (dn2cpp_is_md_array(t))
     {
         auto* md = reinterpret_cast<Dn2CppMDArray*>(a);
         const Dn2CppTypeInfo* el = t->elementType;

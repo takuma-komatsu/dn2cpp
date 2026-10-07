@@ -310,7 +310,10 @@ internal sealed partial class MethodCompiler
                 Comp.NoteArraySearchCopiedElements(Method, src.ArraySearchOrigin, dst.ArraySearchOrigin,
                     src.StaticType, dst.StaticType, zeroElements: ConstIntOf(len) == 0,
                     offset: _arraySearchInstructionOffset, straightLine: _arraySearchStraightLine);
-                EmitArrayCopy(src, "0", dst, "0", len.Expr);
+                if (ArrayRepOfCppTypeOrNull(src.CppType) is null || ArrayRepOfCppTypeOrNull(dst.CppType) is null)
+                    Emit($"dn2cpp_array_copy_all_dyn({Cast(src, "Dn2CppObject*")}, {Cast(dst, "Dn2CppObject*")}, (int32_t)({len.Expr}));");
+                else
+                    EmitArrayCopy(src, "0", dst, "0", len.Expr);
                 return true;
             }
             case ("System.Array", "Copy") when sig.ParameterTypes.Length == 5:
@@ -713,19 +716,12 @@ internal sealed partial class MethodCompiler
             }
             // Array.CreateInstance(Type, lengths…): a runtime-typed array of the
             // element's storage rep, tagged with the precise (fabricated when
-            // never statically instantiated) array identity. The lowerBounds
-            // form admits all-zero bounds only (non-zero -> a catchable PNSE).
+            // never statically instantiated) array identity and explicit bounds.
             case ("System.Array", "CreateInstance") when sig.ParameterTypes.Length is 2 or 3 or 4
                 && sig.ParameterTypes.Skip(1).All(p => p is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }):
             {
                 int rank = sig.ParameterTypes.Length - 1;
-                // A fixed-arity rank>1 CreateInstance mints an MD array with no
-                // `new T[,]` site anywhere, so it keys the shared rank>=2 dispatch
-                // map itself. The int[]-lengths overloads below stay
-                // un-noted: their rank is a run-time value, so in a program whose
-                // ONLY MD mint is such an overload the map is not installed and an
-                // interface dispatch on the result keeps the loud abort (once any
-                // other site notes, the one shared map serves those arrays too).
+                // Runtime-created MD arrays share the non-generic dispatch map.
                 if (rank > 1)
                     _c.NoteMdArrayUse();
                 var lens = new string[rank];
@@ -766,6 +762,7 @@ internal sealed partial class MethodCompiler
                 string bounds = sig.ParameterTypes.Length == 3 ? Cast(Pop(), "Dn2CppArrayI4*") : "nullptr";
                 var lengths = Pop();
                 var t = Pop();
+                Comp.NoteMdArrayUse();
                 Push(StackKind.Ref, "Dn2CppObject*",
                     $"dn2cpp_array_create_instance_from_arraytype_lengths({Cast(t, "Dn2CppType*")}, {Cast(lengths, "Dn2CppArrayI4*")}, {bounds}, {(sig.ParameterTypes.Length == 3 ? 1 : 0)})");
                 _stack[^1] = _stack[^1] with { ArraySearchOrigin =
@@ -779,6 +776,7 @@ internal sealed partial class MethodCompiler
             {
                 var lengths = Pop();
                 var t = Pop();
+                Comp.NoteMdArrayUse();
                 Push(StackKind.Ref, "Dn2CppObject*",
                     $"dn2cpp_array_create_instance_lengths({Cast(t, "Dn2CppType*")}, {Cast(lengths, "Dn2CppArrayI4*")}, nullptr, 0)");
                 int? rank = Comp.ArraySearchStableFreshLength(lengths.ArraySearchOrigin,
@@ -801,6 +799,7 @@ internal sealed partial class MethodCompiler
                 var bounds = Pop();
                 var lengths = Pop();
                 var t = Pop();
+                Comp.NoteMdArrayUse();
                 Push(StackKind.Ref, "Dn2CppObject*",
                     $"dn2cpp_array_create_instance_lengths({Cast(t, "Dn2CppType*")}, {Cast(lengths, "Dn2CppArrayI4*")}, {Cast(bounds, "Dn2CppArrayI4*")}, 1)");
                 int? rank = Comp.ArraySearchStableFreshLength(lengths.ArraySearchOrigin,
@@ -826,7 +825,7 @@ internal sealed partial class MethodCompiler
                 Emit($"{tmpArr} = {Cast(arr, "Dn2CppObject*")};");
                 // Checked before the length read: .NET's whole-array Reverse names "array".
                 Emit($"if ({tmpArr} == nullptr) dn2cpp_throw_argument_null_param(\"array\");");
-                Emit($"dn2cpp_array_reverse_dyn({tmpArr}, 0, dn2cpp_array_length_dyn({tmpArr}));");
+                Emit($"dn2cpp_array_reverse_dyn({tmpArr}, dn2cpp_array_get_lower_bound_dyn({tmpArr}, 0), dn2cpp_array_length_dyn({tmpArr}));");
                 return true;
             }
             case ("System.Array", "Reverse") when sig.ParameterTypes.Length == 3
@@ -873,43 +872,44 @@ internal sealed partial class MethodCompiler
                 Emit($"if ({arr} == nullptr) dn2cpp_throw_argument_null_param(\"array\");");
                 string len = NewTemp("int32_t");
                 Emit($"{len} = dn2cpp_array_length_dyn({arr});");
-                // A derived count wraps as .NET's int arithmetic does; the startIndex
-                // check rejects every start that wraps it.
+                string lower = NewTemp("int32_t");
+                Emit($"{lower} = dn2cpp_array_get_lower_bound_dyn({arr}, 0);");
+                // Derived indices/counts use CLR int wrapping; loop coordinates stay wide.
                 if (start is null)
-                    Emit($"{first} = {(last ? $"{len} - 1" : "0")};");
+                    Emit($"{first} = {(last ? $"(int32_t)((uint32_t){lower} + (uint32_t){len} - 1u)" : lower)};");
                 if (count is null)
-                    Emit($"{cnt} = {(last
-                        ? (start is null ? len : $"(int32_t)((uint32_t){first} + 1u)")
-                        : $"(int32_t)((uint32_t){len} - (uint32_t){first})")};");
+                    Emit($"{cnt} = {(start is null ? len : last
+                        ? $"(int32_t)((uint32_t){first} - (uint32_t){lower} + 1u)"
+                        : $"(int32_t)((uint32_t){len} - (uint32_t){first} + (uint32_t){lower})")};");
                 string res = NewTemp("int32_t");
-                Emit($"{res} = -1;");
+                Emit($"{res} = (int32_t)((uint32_t){lower} - 1u);");
                 if (last)
                 {
                     Emit($"if ({len} != 0) {{");
-                    Emit($"    if ({first} < 0 || {first} >= {len}) "
+                    Emit($"    if ({first} < {lower} || {first} >= (int32_t)((uint32_t){len} + (uint32_t){lower})) "
                         + "dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_INDEX_MUST_BE_LESS, \"startIndex\");");
                     Emit($"    if ({cnt} < 0) dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_COUNT, \"count\");");
-                    Emit($"    if ({cnt} > {first} + 1) "
+                    Emit($"    if ({cnt} > (int64_t){first} - {lower} + 1) "
                         + "dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_END_INDEX_START_INDEX, \"endIndex\");");
                     Emit($"    dn2cpp_array_require_rank1({arr});");
                 }
                 else
                 {
                     Emit($"dn2cpp_array_require_rank1({arr});");
-                    Emit($"if ({first} < 0 || {first} > {len}) "
+                    Emit($"if ({first} < {lower} || {first} > (int32_t)((uint32_t){len} + (uint32_t){lower})) "
                         + "dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_INDEX_MUST_BE_LESS_OR_EQUAL, \"startIndex\");");
-                    Emit($"if ({cnt} < 0 || {cnt} > {len} - {first}) "
+                    Emit($"if ({cnt} < 0 || {cnt} > (int64_t){len} - {first} + {lower}) "
                         + "dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_COUNT, \"count\");");
                 }
-                string ix = NewTemp("int32_t");
-                string end = NewTemp("int32_t");
-                Emit($"{end} = {(last ? $"{first} - {cnt}" : $"{first} + {cnt}")};");
+                string ix = NewTemp("int64_t");
+                string end = NewTemp("int64_t");
+                Emit($"{end} = (int64_t){first} {(last ? "-" : "+")} {cnt};");
                 Emit(last
                     ? $"for ({ix} = {first}; {ix} > {end}; {ix}--) {{"
                     : $"for ({ix} = {first}; {ix} < {end}; {ix}++) {{");
                 string element = NewTemp("Dn2CppObject*");
                 Emit($"    {element} = dn2cpp_array_get_value({arr}, (int64_t){ix});");
-                Emit($"    if (dn2cpp_array_search_equals({element}, {val}, dn2cpp_is_ref_array({arr}->type))) {{ {res} = {ix}; break; }}");
+                Emit($"    if (dn2cpp_array_search_equals({element}, {val}, dn2cpp_is_ref_array({arr}->type))) {{ {res} = (int32_t){ix}; break; }}");
                 Emit("}");
                 if (last)
                     Emit("}");
@@ -945,7 +945,7 @@ internal sealed partial class MethodCompiler
                 {
                     string tl = NewTemp("int32_t");
                     Emit($"{tl} = dn2cpp_array_total_length(dn2cpp_array_require_arg((Dn2CppObject*)({arr.Expr}), \"array\"));");
-                    EmitArrayClear(arr, "0", tl, ArrayOperandKind.Unchecked);
+                    EmitArrayClear(arr, $"dn2cpp_array_get_lower_bound_dyn({Cast(arr, "Dn2CppObject*")}, 0)", tl, ArrayOperandKind.Unchecked);
                     return true;
                 }
                 string al = NewTemp("Dn2CppArray*");
@@ -1009,7 +1009,7 @@ internal sealed partial class MethodCompiler
                 string srcLen = ArrayRepOfCppTypeOrNull(src.CppType) is null
                     ? $"dn2cpp_array_total_length((Dn2CppObject*){sl})"
                     : $"{sl}->length";
-                EmitArrayCopy(src, "0", new StackEntry(dl, StackKind.Ref, "Dn2CppObject*"),
+                EmitArrayCopy(src, $"dn2cpp_array_get_lower_bound_dyn((Dn2CppObject*){sl}, 0)", new StackEntry(dl, StackKind.Ref, "Dn2CppObject*"),
                     idx.Expr, srcLen, ArrayOperandKind.Unchecked, ArrayOperandKind.Unchecked);
                 return true;
             }
@@ -1231,6 +1231,7 @@ internal sealed partial class MethodCompiler
             // The whole-array forms check "array" before reading its length; the range
             // forms leave the null to the helper, which names "keys" as .NET's do.
             Emit($"if ({arrT} == nullptr) dn2cpp_throw_argument_null_param(\"array\");");
+            indexT = $"dn2cpp_array_get_lower_bound_dyn({arrT}, 0)";
             lengthT = $"dn2cpp_array_length_dyn({arrT})";
         }
         string cmpArgs;
@@ -1273,7 +1274,7 @@ internal sealed partial class MethodCompiler
 
         string arrT = NewTemp("Dn2CppObject*");
         Emit($"{arrT} = {Cast(arrE, "Dn2CppObject*")};");
-        string lo = NewTemp("int32_t"), hi = NewTemp("int32_t");
+        string lo = NewTemp("int64_t"), hi = NewTemp("int64_t");
         string ct = range ? NewTemp("int32_t") : "";
         if (range)
         {
@@ -1293,31 +1294,49 @@ internal sealed partial class MethodCompiler
         // .NET's checks, in its order, once every operand is evaluated: the array, the
         // range, then the rank.
         Emit($"if ({arrT} == nullptr) dn2cpp_throw_argument_null_param(\"array\");");
+        string lower = NewTemp("int32_t");
+        Emit($"{lower} = dn2cpp_array_get_lower_bound_dyn({arrT}, 0);");
         if (range)
         {
-            Emit($"if ({lo} < 0) dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_NEED_NON_NEG_NUM, \"index\");");
+            Emit($"if ({lo} < {lower}) dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_NEED_NON_NEG_NUM, \"index\");");
             Emit($"if ({ct} < 0) dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_NEED_NON_NEG_NUM, \"length\");");
-            Emit($"if (dn2cpp_array_length_dyn({arrT}) - {lo} < {ct}) "
+            Emit($"if ((int32_t)((uint32_t)dn2cpp_array_length_dyn({arrT}) - ((uint32_t){lo} - (uint32_t){lower})) < {ct}) "
                 + "dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_INVALID_OFF_LEN);");
             Emit($"{hi} = {lo} + {ct} - 1;");
         }
         else
         {
-            Emit($"{lo} = 0;");
-            Emit($"{hi} = dn2cpp_array_length_dyn({arrT}) - 1;");
+            Emit($"{lo} = {lower};");
+            Emit($"{hi} = {lo} + dn2cpp_array_length_dyn({arrT}) - 1;");
         }
         Emit($"dn2cpp_array_require_rank1({arrT});");
+        string primitiveDefault = NewTemp("bool");
+        Emit($"{primitiveDefault} = dn2cpp_array_is_default_comparer({cmpT}) && {arrT}->type->elementType != nullptr "
+            + $"&& ({arrT}->type->elementType->flags & (DN2CPP_TF_PRIMITIVE | DN2CPP_TF_ENUM)) != 0;");
+        string primitiveExact = NewTemp("bool");
+        Emit($"{primitiveExact} = {primitiveDefault} && {valT} != nullptr && {valT}->type == {arrT}->type->elementType;");
+        string searchCount = range ? ct : $"dn2cpp_array_length_dyn({arrT})";
+        // Exact primitive values take the BCL's Span slice check outside its comparison guard.
+        Emit($"if ({primitiveExact} "
+            + $"&& ((uint32_t){lo} - (uint32_t){lower} > (uint32_t)dn2cpp_array_length_dyn({arrT}) "
+            + $"|| (uint32_t){searchCount} > (uint32_t)dn2cpp_array_length_dyn({arrT}) - ((uint32_t){lo} - (uint32_t){lower}))) "
+            + "dn2cpp_throw_argument_out_of_range();");
+        // The boxed fallback wraps its Int32 endpoints; the primitive span searches offsets.
+        Emit($"if (!{primitiveExact}) {hi} = (int32_t)((uint32_t){lo} + (uint32_t){searchCount} - 1u);");
         // .NET's Array.BinarySearch loop, exactly: mid = lo + ((hi-lo)>>1); compare(element, value) in
         // that direction; return the found index or ~lo. Default compare = dn2cpp_object_compare
         // (non-generic IComparable); an explicit comparer (null at run time IS Comparer.Default) =
         // the IComparer.Compare dispatch, else the default.
         string icName = NonGenericIComparableTiName();
         string e = NewTemp("Dn2CppObject*");
-        string mid = NewTemp("int32_t"), ord = NewTemp("int32_t"), found = NewTemp("int32_t");
+        string mid = NewTemp("int64_t"), ord = NewTemp("int32_t"), found = NewTemp("int32_t");
+        // Negative indices are valid hits; wide coordinates also retain either end bound.
+        string matched = NewTemp("bool");
         // Every comparison runs inside BinarySearch's guard.
         Emit("try {");
-        Emit($"{found} = -1;");
-        Emit($"while ({lo} <= {hi}) {{");
+        Emit($"{found} = 0;");
+        Emit($"{matched} = false;");
+        Emit($"while ({lo} <= {hi} && !({primitiveDefault} && {valT} == nullptr)) {{");
         Emit($"    {mid} = {lo} + (({hi} - {lo}) >> 1);");
         Emit($"    {e} = dn2cpp_array_get_value({arrT}, (int64_t){mid});");
         string def = $"dn2cpp_object_compare({e}, {valT}, &{icName})";
@@ -1326,11 +1345,12 @@ internal sealed partial class MethodCompiler
             : $"({cmpT} != nullptr ? ((int32_t (*)(Dn2CppObject*, Dn2CppObject*, Dn2CppObject*))"
               + $"dn2cpp_resolve_interface({cmpT}->type, &{icmpTi})[{slot}])({cmpT}, {e}, {valT}) : {def})";
         Emit($"    {ord} = {cmpExpr};");
-        Emit($"    if ({ord} == 0) {{ {found} = {mid}; break; }}");
-        Emit($"    if ({ord} < 0) {lo} = {mid} + 1; else {hi} = {mid} - 1;");
+        Emit($"    if ({ord} == 0) {{ {found} = (int32_t){mid}; {matched} = true; break; }}");
+        Emit($"    if ({ord} < 0) {lo} = {primitiveExact} ? {mid} + 1 : (int32_t)((uint32_t){mid} + 1u); "
+            + $"else {hi} = {primitiveExact} ? {mid} - 1 : (int32_t)((uint32_t){mid} - 1u);");
         Emit("}");
         Emit("} catch (Dn2CppException& __searchex) { dn2cpp_throw_search_failed(__searchex.obj); }");
-        Push(StackKind.I4, "int32_t", $"({found} >= 0 ? {found} : ~{lo})");
+        Push(StackKind.I4, "int32_t", $"({matched} ? {found} : (int32_t)~(uint32_t){lo})");
         return true;
     }
 }

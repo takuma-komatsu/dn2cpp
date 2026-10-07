@@ -6,20 +6,19 @@ using System.Collections;
 
 namespace Dn2Cpp.Runtime
 {
-    // Wraps a multi-dimensional (rank >= 2) array as the six non-generic interfaces a
+    // Wraps a non-SZ array as the six non-generic interfaces a
     // CLR MD array implements — IEnumerable/ICollection/IList/ICloneable/
     // IStructuralComparable/IStructuralEquatable — so an interface dispatch on an MD
     // array resolves through a real managed dispatch table. dn2cpp MD arrays carry a
     // runtime-interned type-info (dn2cpp_mdarr_ti) with no interface rows, so
     // dn2cpp_resolve_interface cannot answer on them; the generated init prologue
-    // installs ONE shared dispatch table for all rank>=2 arrays
+    // installs ONE shared dispatch table for all non-SZ arrays
     // (dn2cpp_array_set_md_fallback_interfaces) whose thunks wrap the receiver into
     // this class.
     //
     // Non-generic over a System.Array receiver on purpose: every member an MD array
-    // answers is either element-agnostic (enumeration, Count/Clear/Clone go through
-    // the Array reflection surface, whose runtime helpers dispatch on the receiver's
-    // type-info) or an unconditional throw, so one class serves every element type
+    // answers goes through the Array reflection surface, whose runtime helpers
+    // dispatch on the receiver's type-info, so one class serves every element type
     // and rank. The transpiler resolves the type by full name
     // (Dn2Cpp.Runtime.MDArrayEnumerable); the name is the contract.
     //
@@ -68,9 +67,8 @@ namespace Dn2Cpp.Runtime
                     throw new InvalidOperationException("Enumeration has not started. Call MoveNext.");
                 if (_index >= _total)
                     throw new InvalidOperationException("Enumeration already finished.");
-                // The flat cursor divmod-decomposed rightmost-fastest into per-
-                // dimension indices (dn2cpp zeroes lower bounds, so 0-based
-                // indices address every element). A zero-length dimension makes
+                // The flat cursor walks offsets from each dimension's lower bound.
+                // A zero-length dimension makes
                 // _total 0, so the guards above keep the divisions unreachable.
                 int rank = _array.Rank;
                 int[] indices = new int[rank];
@@ -78,7 +76,7 @@ namespace Dn2Cpp.Runtime
                 for (int d = rank - 1; d >= 0; d--)
                 {
                     int len = _array.GetLength(d);
-                    indices[d] = rem % len;
+                    indices[d] = _array.GetLowerBound(d) + rem % len;
                     rem /= len;
                 }
                 return _array.GetValue(indices);
@@ -119,7 +117,7 @@ namespace Dn2Cpp.Runtime
                 throw new ArgumentException("Only single dimension arrays are supported here.", nameof(array));
             if (array is null)
                 throw new ArgumentNullException("destinationArray");
-            throw new RankException("The specified arrays must have the same number of dimensions.");
+            Array.Copy(_array, _array.GetLowerBound(0), array, index, _total);
         }
 
         // ---- IList ----
@@ -138,8 +136,8 @@ namespace Dn2Cpp.Runtime
         // whose one-dimensional precondition a rank>=2 receiver always fails.
         public object? this[int index]
         {
-            get { throw new ArgumentException("Array was not a one-dimensional array."); }
-            set { throw new ArgumentException("Array was not a one-dimensional array."); }
+            get { return _array.GetValue(index); }
+            set { _array.SetValue(value, index); }
         }
 
         public int Add(object? value)
@@ -166,12 +164,25 @@ namespace Dn2Cpp.Runtime
         // refusal is Rank-flavored — a different family from the indexer's.
         public bool Contains(object? value)
         {
-            throw new RankException("Only single dimension arrays are supported here.");
+            int lower = _array.GetLowerBound(0);
+            return IndexOf(value) >= lower;
         }
 
         public int IndexOf(object? value)
         {
-            throw new RankException("Only single dimension arrays are supported here.");
+            if (_array.Rank != 1)
+                throw new RankException("Only single dimension arrays are supported here.");
+            int lower = _array.GetLowerBound(0);
+            if (lower > unchecked((int)((long)lower + _total)))
+                throw new ArgumentOutOfRangeException("startIndex", "Index was out of range. Must be non-negative and less than or equal to the size of the collection.");
+            for (int i = 0; i < _total; i++)
+            {
+                object? element = _array.GetValue(lower + i);
+                // Array searches call virtual Equals even for null or identical values.
+                if (element is null ? value is null : element.Equals(value))
+                    return lower + i;
+            }
+            return unchecked((int)((long)lower - 1));
         }
 
         // Real .NET: IList.Clear on an MD array SUCCEEDS and zeroes every element
@@ -180,7 +191,7 @@ namespace Dn2Cpp.Runtime
         // byte-wise whatever the element type.
         public void Clear()
         {
-            Array.Clear(_array, 0, _total);
+            Array.Clear(_array, _array.GetLowerBound(0), _total);
         }
 
         // ---- ICloneable ----
@@ -211,8 +222,12 @@ namespace Dn2Cpp.Runtime
                 throw new ArgumentException(
                     "The object is not an array with the same number of elements as the array to compare it to.",
                     "other");
-            if (_total != 0)
-                throw new ArgumentException("Array was not a one-dimensional array.");
+            for (int i = 0; i < _total; i++)
+            {
+                int result = comparer.Compare(_array.GetValue(i), oa.GetValue(i));
+                if (result != 0)
+                    return result;
+            }
             return 0;
         }
 
@@ -225,8 +240,9 @@ namespace Dn2Cpp.Runtime
             Array? oa = other as Array;
             if (oa is null || oa.Length != _total)
                 return false;
-            if (_total != 0)
-                throw new ArgumentException("Array was not a one-dimensional array.");
+            for (int i = 0; i < _total; i++)
+                if (!comparer.Equals(_array.GetValue(i), oa.GetValue(i)))
+                    return false;
             return true;
         }
 
@@ -234,9 +250,12 @@ namespace Dn2Cpp.Runtime
         {
             if (comparer is null)
                 throw new ArgumentNullException("comparer");
-            if (_total != 0)
-                throw new ArgumentException("Array was not a one-dimensional array.");
-            return 0;
+            if (_total == 0)
+                return 0;
+            HashCode hash = default;
+            for (int i = (_total > 8 ? _total - 8 : 0); i < _total; i++)
+                hash.Add(comparer.GetHashCode(_array.GetValue(i)!));
+            return hash.ToHashCode();
         }
     }
 }

@@ -1062,6 +1062,8 @@ static void dn2cpp_append_simple_type_display(const Dn2CppTypeInfo* ti, std::str
     {
         dn2cpp_append_simple_type_display(ti->elementType, out);
         out += '[';
+        if (ti->arrayRank == 1 && dn2cpp_is_md_array(ti))
+            out += '*';
         for (int32_t i = 1; i < ti->arrayRank; i++)
             out += ',';
         out += ']';
@@ -1131,6 +1133,8 @@ static void dn2cpp_append_type_display(const Dn2CppTypeInfo* ti, bool qualify, s
     {
         dn2cpp_append_type_display(ti->elementType, qualify, out);
         out += '[';
+        if (ti->arrayRank == 1 && dn2cpp_is_md_array(ti))
+            out += '*';
         for (int32_t i = 1; i < ti->arrayRank; i++)
             out += ',';
         out += ']';
@@ -1227,8 +1231,8 @@ int32_t dn2cpp_type_is_array(const Dn2CppTypeInfo* ti)
 int32_t dn2cpp_type_is_szarray(const Dn2CppTypeInfo* ti)
 {
     // A single-rank array (the per-element ti_arr_* type-infos carry rank 1;
-    // the shared array handles leave arrayRank 0, which also means rank 1).
-    return ((ti->flags & DN2CPP_TF_ARRAY) != 0 && ti->arrayRank <= 1) ? 1 : 0;
+    // the shared array handles leave arrayRank 0; a non-SZ flag distinguishes MD rank one).
+    return dn2cpp_is_sz_array(ti) ? 1 : 0;
 }
 
 int32_t dn2cpp_type_is_nested(const Dn2CppTypeInfo* ti)

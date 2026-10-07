@@ -1,5 +1,8 @@
 #nullable enable
 using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
 
 namespace ArrayReflectionSubset
 {
@@ -238,6 +241,246 @@ namespace ArrayReflectionSubset
                     Console.WriteLine("ci rejected: " + e.GetType().Name);
                 }
             }
+        }
+
+        sealed class CountingEquality : IEqualityComparer
+        {
+            public int Calls;
+            public new bool Equals(object? x, object? y) => object.Equals(x, y);
+            public int GetHashCode(object obj) { Calls++; return (int)obj; }
+        }
+
+        internal static void RunLowerBounds()
+        {
+            Console.WriteLine("== nonzero array lower bounds ==");
+            Array one = Array.CreateInstance(typeof(int), new[] { 3 }, new[] { 5 });
+            one.SetValue(11, 5);
+            one.SetValue(22, new[] { 6 });
+            one.SetValue(33, new long[] { 7 });
+            Type nonSz = one.GetType();
+            Console.WriteLine($"rank1 type={nonSz.Name}/{nonSz} sz={nonSz.IsSZArray} rank={one.Rank} length={one.Length} bounds={one.GetLowerBound(0)}/{one.GetUpperBound(0)} values={one.GetValue(5)}/{one.GetValue(new[] { 6 })}/{one.GetValue(new long[] { 7 })}");
+            Console.WriteLine($"rank1 identity={nonSz == Array.CreateInstance(typeof(int), new[] { 0 }, new[] { 5 }).GetType()} assign={nonSz.IsAssignableFrom(typeof(int[]))}/{typeof(int[]).IsAssignableFrom(nonSz)} interfaces={one is IList}/{one is IList<int>}");
+            Array zero = Array.CreateInstance(typeof(int), new[] { 2 }, new[] { 0 });
+            Array from = Array.CreateInstanceFromArrayType(nonSz, new[] { 2 }, new[] { 0 });
+            Array boundedFrom = Array.CreateInstanceFromArrayType(nonSz, new[] { 1 }, new[] { -3 });
+            Console.WriteLine($"zero sz={zero.GetType().IsSZArray} from={from.GetType().IsSZArray}/{boundedFrom.GetLowerBound(0)}");
+            Array copy = (Array)one.Clone();
+            copy.SetValue(44, 5);
+            Console.WriteLine($"clone type={copy.GetType() == nonSz} lower={copy.GetLowerBound(0)} distinct={one.GetValue(5)}/{copy.GetValue(5)}");
+            Array.Reverse(one);
+            int[] moved = new int[3];
+            Array.Copy(one, moved, 3);
+            Array.Copy(moved, 1, one, 6, 2);
+            Array.Clear(one, 6, 1);
+            Console.WriteLine($"moves={moved[0]}/{moved[1]}/{moved[2]} retained={one.GetValue(5)}/{one.GetValue(6)}/{one.GetValue(7)} bytes={Buffer.ByteLength(one)}");
+            GCHandle pin = GCHandle.Alloc(one, GCHandleType.Pinned);
+            Console.WriteLine($"pinned first={Marshal.ReadInt32(pin.AddrOfPinnedObject())}");
+            pin.Free();
+            Buffer.BlockCopy(one, 0, moved, 0, 12);
+            Console.WriteLine($"blockcopy={moved[0]}/{moved[1]}/{moved[2]}");
+            Array negative = Array.CreateInstance(typeof(string), new[] { 2 }, new[] { -2 });
+            IList list = (IList)negative;
+            list[-2] = "left";
+            list[-1] = "right";
+            string enumerated = "";
+            foreach (object value in negative) enumerated += value + "/";
+            object[] destination = new object[2];
+            ((ICollection)negative).CopyTo(destination, 0);
+            Console.WriteLine($"list values={list[-2]}/{list[-1]} enum={enumerated} copied={destination[0]}/{destination[1]}");
+            Try("structural positive", () => ((IStructuralComparable)one).CompareTo(copy, Comparer.Default));
+            Try("structural negative", () => ((IStructuralEquatable)negative).Equals(negative.Clone(), new CountingEquality()));
+            Array hashArray = Array.CreateInstance(typeof(int), new[] { 10 }, new[] { 1 });
+            CountingEquality equality = new CountingEquality();
+            ((IStructuralEquatable)hashArray).GetHashCode(equality);
+            Console.WriteLine($"structural hash calls={equality.Calls}");
+            list.Clear();
+            Console.WriteLine($"list cleared={list[-2] is null}/{list[-1] is null}");
+            foreach (int lower in new[] { int.MinValue, -1, 7, int.MaxValue })
+            {
+                Array empty = Array.CreateInstance(typeof(int), new[] { 0 }, new[] { lower });
+                Console.WriteLine($"empty lower={lower} upper={empty.GetUpperBound(0)} sz={empty.GetType().IsSZArray} clone={((Array)empty.Clone()).GetLowerBound(0)}");
+            }
+            Array extreme = Array.CreateInstance(typeof(int), new[] { 1 }, new[] { int.MaxValue });
+            extreme.SetValue(71, int.MaxValue);
+            Console.WriteLine($"extreme={extreme.GetUpperBound(0)}/{extreme.GetValue(int.MaxValue)}");
+            Try("extreme wrong index", () => extreme.GetValue(int.MinValue));
+            int[,] two = (int[,])Array.CreateInstance(typeof(int), new[] { 2, 2 }, new[] { -3, 4 });
+            two[-3, 4] = 101;
+            ((Array)two).SetValue(102, -2, 5);
+            Console.WriteLine($"rank2={two[-3, 4]}/{two[-2, 5]}/{((Array)two).GetValue(new long[] { -2, 5 })}");
+            int[,] twoCopy = (int[,])Array.CreateInstance(typeof(int), new[] { 2, 2 }, new[] { 7, -8 });
+            Array.Copy(two, twoCopy, 4);
+            Console.WriteLine($"rank2 copy={twoCopy[7, -8]}/{twoCopy[8, -7]}");
+            Array.Clear(two, -3, 1);
+            Console.WriteLine($"rank2 clear={two[-3, 4]}/{two[-2, 5]}");
+            int[,,] three = (int[,,])Array.CreateInstance(typeof(int), new[] { 1, 2, 1 }, new[] { 2, -4, 6 });
+            three[2, -3, 6] = 103;
+            ((Array)three).SetValue(104, 2, -4, 6);
+            Console.WriteLine($"rank3={three[2, -3, 6]}/{three[2, -4, 6]}");
+            byte[,,,] four = (byte[,,,])Array.CreateInstance(typeof(byte), new[] { 1, 1, 1, 1 }, new[] { -1, 2, -3, 4 });
+            four[-1, 2, -3, 4] = 201;
+            Console.WriteLine($"rank4={four[-1, 2, -3, 4]}/{((Array)four).GetValue(new[] { -1, 2, -3, 4 })}");
+            Array enumArray = Array.CreateInstance(typeof(ByteE), new[] { 1 }, new[] { -5 });
+            enumArray.SetValue(ByteE.Q, -5);
+            Array structArray = Array.CreateInstance(typeof(Pt), new[] { 1 }, new[] { 8 });
+            structArray.SetValue(new Pt(9, 10), 8);
+            Array nullableArray = Array.CreateInstance(typeof(int?), new[] { 2 }, new[] { -8 });
+            nullableArray.SetValue(12, -8);
+            nullableArray.SetValue(null, -7);
+            Console.WriteLine($"storage={enumArray.GetValue(-5)}/{structArray.GetValue(8)}/{nullableArray.GetValue(-8)}/{nullableArray.GetValue(-7) is null}");
+            Try("bounds null type", () => Array.CreateInstance(null!, new[] { -1 }, new[] { int.MaxValue }));
+            Try("bounds null lengths", () => Array.CreateInstance(typeof(int), null!, new[] { 0 }));
+            Try("bounds null bounds", () => Array.CreateInstance(typeof(int), new[] { 1 }, null!));
+            Try("bounds rank mismatch", () => Array.CreateInstance(typeof(int), new[] { 1 }, new[] { 0, 0 }));
+            Try("bounds empty rank", () => Array.CreateInstance(typeof(int), Array.Empty<int>(), Array.Empty<int>()));
+            Try("bounds negative before void", () => Array.CreateInstance(typeof(void), new[] { -1 }, new[] { int.MaxValue }));
+            Try("bounds void before overflow", () => Array.CreateInstance(typeof(void), new[] { 2 }, new[] { int.MaxValue }));
+            try { Array.CreateInstance(typeof(int), new[] { 2 }, new[] { int.MaxValue }); }
+            catch (ArgumentOutOfRangeException e) { Console.WriteLine($"bounds overflow={e.ParamName is null}/{e.Message}"); }
+            Try("bounds SZ from type", () => Array.CreateInstanceFromArrayType(typeof(int[]), new[] { 1 }, new[] { 1 }));
+            Console.WriteLine("nonzero array lower bounds end");
+        }
+        static Array SearchArray(int lower, params int[] values)
+        {
+            Array array = Array.CreateInstance(typeof(int), new[] { values.Length }, new[] { lower });
+            for (int i = 0; i < values.Length; i++)
+                array.SetValue(values[i], lower + i);
+            return array;
+        }
+
+        static void SearchFault(string label, Action action)
+        {
+            try { action(); Console.WriteLine($"{label}=ok"); }
+            catch (Exception e) { Console.WriteLine($"{label}={e.GetType().Name}/{(e as ArgumentException)?.ParamName ?? "<none>"}"); }
+        }
+
+        internal static void RunLowerBoundSearches()
+        {
+            Console.WriteLine("== lower-bound array sort and search ==");
+            foreach (int lower in new[] { 5, -2, 0 })
+            {
+                for (int form = 0; form < 4; form++)
+                {
+                    Array array = SearchArray(lower, 7, 1, 3);
+                    if (form == 0) Array.Sort(array);
+                    else if (form == 1) Array.Sort(array, (IComparer?)null);
+                    else if (form == 2) Array.Sort(array, lower, 3);
+                    else Array.Sort(array, lower, 3, (IComparer?)null);
+                    Console.WriteLine($"lower sort={lower}/{form}:{array.GetValue(lower)}/{array.GetValue(lower + 1)}/{array.GetValue(lower + 2)}");
+                }
+                Array sorted = SearchArray(lower, 1, 3, 7);
+                for (int form = 0; form < 3; form++)
+                {
+                    int first = form == 0 ? Array.IndexOf(sorted, 3) : form == 1 ? Array.IndexOf(sorted, 3, lower) : Array.IndexOf(sorted, 3, lower, 3);
+                    int last = form == 0 ? Array.LastIndexOf(sorted, 3) : form == 1 ? Array.LastIndexOf(sorted, 3, lower + 2) : Array.LastIndexOf(sorted, 3, lower + 2, 3);
+                    int missFirst = form == 0 ? Array.IndexOf(sorted, 9) : form == 1 ? Array.IndexOf(sorted, 9, lower) : Array.IndexOf(sorted, 9, lower, 3);
+                    int missLast = form == 0 ? Array.LastIndexOf(sorted, 9) : form == 1 ? Array.LastIndexOf(sorted, 9, lower + 2) : Array.LastIndexOf(sorted, 9, lower + 2, 3);
+                    Console.WriteLine($"lower indices={lower}/{form}:{first}/{last}/{missFirst}/{missLast}");
+                }
+                for (int form = 0; form < 4; form++)
+                {
+                    int hit = form == 0 ? Array.BinarySearch(sorted, 3) : form == 1 ? Array.BinarySearch(sorted, 3, (IComparer?)null) : form == 2 ? Array.BinarySearch(sorted, lower, 3, 3) : Array.BinarySearch(sorted, lower, 3, 3, (IComparer?)null);
+                    int inside = form == 0 ? Array.BinarySearch(sorted, 2) : form == 1 ? Array.BinarySearch(sorted, 2, (IComparer?)null) : form == 2 ? Array.BinarySearch(sorted, lower, 3, 2) : Array.BinarySearch(sorted, lower, 3, 2, (IComparer?)null);
+                    int after = form == 0 ? Array.BinarySearch(sorted, 9) : form == 1 ? Array.BinarySearch(sorted, 9, (IComparer?)null) : form == 2 ? Array.BinarySearch(sorted, lower, 3, 9) : Array.BinarySearch(sorted, lower, 3, 9, (IComparer?)null);
+                    Console.WriteLine($"lower binary={lower}/{form}:{hit}/{inside}/{after}");
+                }
+            }
+            Array values = SearchArray(-2, 1, 3, 7);
+            SearchFault("lower index before range", () => Array.IndexOf(values, 3, -3, -1));
+            SearchFault("lower last count", () => Array.LastIndexOf(values, 3, -2, 2));
+            SearchFault("lower binary before length", () => Array.BinarySearch(values, -3, -1, 3));
+            SearchFault("lower binary length", () => Array.BinarySearch(values, -2, -1, 3));
+            SearchFault("lower binary overrun", () => Array.BinarySearch(values, -1, 3, 3));
+            SearchFault("lower sort below range", () => Array.Sort(values, -3, 1));
+            SearchFault("lower sort length", () => Array.Sort(values, -2, -1));
+            SearchFault("lower sort overrun", () => Array.Sort(values, -1, 3));
+            Array md = Array.CreateInstance(typeof(int), new[] { 1, 1 }, new[] { -2, 3 });
+            SearchFault("lower index rank first", () => Array.IndexOf(md, 3, -3, -1));
+            SearchFault("lower last range first", () => Array.LastIndexOf(md, 3, -3, -1));
+            SearchFault("lower binary range first", () => Array.BinarySearch(md, -3, -1, 3));
+            SearchFault("lower sort rank first", () => Array.Sort(md, -3, -1));
+            SearchFault("lower binary null first", () => Array.BinarySearch(null!, -3, -1, 3));
+            Console.WriteLine($"lower invalid retained={values.GetValue(-2)}/{values.GetValue(-1)}/{values.GetValue(0)}");
+            Array extreme = SearchArray(int.MaxValue, 9);
+            Array.Sort(extreme, (IComparer?)null);
+            Console.WriteLine($"lower extreme sort={extreme.GetValue(int.MaxValue)} binary={Array.BinarySearch(extreme, 9)}");
+            Array empty = SearchArray(int.MinValue);
+            Console.WriteLine($"lower empty min={Array.IndexOf(empty, 9)}/{Array.LastIndexOf(empty, 9)}/{Array.BinarySearch(empty, 9)}");
+            Console.WriteLine("lower-bound array sort and search end");
+        }
+        sealed class RangeZeroComparer : IComparer
+        {
+            public int Compare(object? x, object? y) => 0;
+        }
+
+        static void RangeResult(string label, Func<object> action)
+        {
+            try { Console.WriteLine($"{label}={action()}"); }
+            catch (Exception e) { Console.WriteLine($"{label}={e.GetType().Name}/{(e as ArgumentException)?.ParamName ?? "<none>"}"); }
+        }
+
+        internal static void RunWrappedRanges()
+        {
+            Console.WriteLine("== wrapped lower-bound array ranges ==");
+            foreach (Type type in new[] { typeof(int), typeof(string), typeof(object) })
+                foreach (int lower in new[] { -5, 0, 5 })
+                    foreach (int count in new[] { 0, 1, 2, 3 })
+                    {
+                        Array array = Array.CreateInstance(type, new[] { 3 }, new[] { lower });
+                        object key = type == typeof(string) ? "b" : 3;
+                        for (int i = 0; i < 3; i++)
+                            array.SetValue(type == typeof(string) ? new[] { "a", "b", "c" }[i] : (object)(i + 1), lower + i);
+                        string label = $"wrapped {type.Name}/{lower}/{count}";
+                        RangeResult(label + " sort", () => { Array.Sort(array, int.MaxValue, count); return "ok"; });
+                        RangeResult(label + " sort custom", () => { Array.Sort(array, int.MaxValue, count, new RangeZeroComparer()); return "ok"; });
+                        RangeResult(label + " reverse", () => { Array.Reverse(array, int.MaxValue, count); return "ok"; });
+                        RangeResult(label + " binary", () => Array.BinarySearch(array, int.MaxValue, count, key));
+                        RangeResult(label + " binary custom", () => Array.BinarySearch(array, int.MaxValue, count, key, new RangeZeroComparer()));
+                    }
+            Array values = SearchArray(-5, 1, 2, 3);
+            RangeResult("wrapped Default", () => Array.BinarySearch(values, int.MaxValue, 0, 1, Comparer.Default));
+            RangeResult("wrapped DefaultInvariant", () => Array.BinarySearch(values, int.MaxValue, 0, 1, Comparer.DefaultInvariant));
+            RangeResult("wrapped new comparer", () => Array.BinarySearch(values, int.MaxValue, 0, 1, new Comparer(System.Globalization.CultureInfo.InvariantCulture)));
+            RangeResult("wrapped null value", () => Array.BinarySearch(values, int.MaxValue, 1, null));
+            RangeResult("wrapped wrong value type", () => Array.BinarySearch(values, int.MaxValue, 0, 1L));
+            foreach (object value in new object[] { (byte)1, (sbyte)1, (short)1, (ushort)1, 1, 1u, 1L, 1UL, (nint)1, (nuint)1, true, 'a', 1f, 1d, IntE.B })
+            {
+                Array primitive = Array.CreateInstance(value.GetType(), new[] { 3 }, new[] { -5 });
+                RangeResult("wrapped primitive " + value.GetType().Name, () => Array.BinarySearch(primitive, int.MaxValue, 0, value));
+            }
+            RangeResult("wrapped reverse primitive slice", () => { Array.Reverse(values, int.MaxValue, 2); return "ok"; });
+            Array references = Array.CreateInstance(typeof(string), new[] { 3 }, new[] { -5 });
+            RangeResult("wrapped reverse reference endpoints", () => { Array.Reverse(references, int.MaxValue, 2); return "ok"; });
+            Array md = Array.CreateInstance(typeof(int), new[] { 1, 1 }, new[] { -5, 0 });
+            RangeResult("wrapped binary rank", () => Array.BinarySearch(md, int.MaxValue, 0, 1));
+            RangeResult("wrapped binary null first", () => Array.BinarySearch(null!, int.MaxValue, -1, 1));
+            Console.WriteLine("wrapped lower-bound array ranges end");
+        }
+        internal static void RunSortAccessFaults()
+        {
+            Console.WriteLine("== lower-bound sort access faults ==");
+            foreach (Type type in new[] { typeof(int), typeof(string), typeof(object) })
+                foreach (int count in new[] { 2, 3 })
+                {
+                    Array array = Array.CreateInstance(type, new[] { 3 }, new[] { -10 });
+                    object key = type == typeof(string) ? "b" : 1;
+                    int index = int.MaxValue - 5;
+                    string label = $"sort access {type.Name}/{count}";
+                    RangeResult(label + " sort", () => { Array.Sort(array, index, count); return "ok"; });
+                    RangeResult(label + " sort custom", () => { Array.Sort(array, index, count, new RangeZeroComparer()); return "ok"; });
+                    RangeResult(label + " reverse", () => { Array.Reverse(array, index, count); return "ok"; });
+                    RangeResult(label + " binary", () => Array.BinarySearch(array, index, count, key));
+                    RangeResult(label + " binary custom", () => Array.BinarySearch(array, index, count, key, new RangeZeroComparer()));
+                }
+            foreach (Type type in new[] { typeof(int), typeof(string), typeof(object) })
+                foreach (int count in new[] { 2, int.MaxValue - 4 })
+                {
+                    Array array = Array.CreateInstance(type, new[] { 3 }, new[] { int.MinValue });
+                    string label = $"sort start {type.Name}/{count}";
+                    RangeResult(label + " default", () => { Array.Sort(array, 4, count); return "ok"; });
+                    RangeResult(label + " custom", () => { Array.Sort(array, 4, count, new RangeZeroComparer()); return "ok"; });
+                }
+            Console.WriteLine("lower-bound sort access faults end");
         }
     }
 }

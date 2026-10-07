@@ -103,6 +103,19 @@ namespace ArrayCore
             if (args.Length != 0 && args[0] == "before-comparer-identity")
                 return;
             ArrayDefaultOrderSubset.Program.RunComparerIdentity();
+            if (args.Length != 0 && args[0] == "before-nonzero-lower-bounds")
+                return;
+            ArrayReflectionSubset.Program.RunLowerBounds();
+            ArrayCovariantStoreSubset.Program.RunLowerBoundStores();
+            if (args.Length != 0 && args[0] == "before-lower-bound-search")
+                return;
+            ArrayReflectionSubset.Program.RunLowerBoundSearches();
+            if (args.Length != 0 && args[0] == "before-wrapped-array-ranges")
+                return;
+            ArrayReflectionSubset.Program.RunWrappedRanges();
+            if (args.Length != 0 && args[0] == "before-sort-access-faults")
+                return;
+            ArrayReflectionSubset.Program.RunSortAccessFaults();
 #endif
         }
     }

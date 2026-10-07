@@ -2089,14 +2089,13 @@ Dn2CppObject* dn2cpp_array_clone_dyn(Dn2CppObject* src)
     // below would read its header words as a length. One copy of this arm serves
     // both Clone mouths: Object.MemberwiseClone's array case and the
     // System.Array-typed Array.Clone intrinsic.
-    if (t->arrayRank > 1)
+    if (dn2cpp_is_md_array(t))
     {
         auto* mdSrc = reinterpret_cast<Dn2CppMDArray*>(src);
-        Dn2CppMDArray* dst = dn2cpp_newmdarr(mdSrc->type, mdSrc->rank, mdSrc->lengths, mdSrc->elemSize);
+        Dn2CppMDArray* dst = dn2cpp_newmdarr(mdSrc->type, mdSrc->rank, mdSrc->lengths, mdSrc->elemSize, mdSrc->lowerBounds);
         int32_t total = 1;
         for (int32_t i = 0; i < mdSrc->rank; i++)
         {
-            dst->lowerBounds[i] = mdSrc->lowerBounds[i]; // newmdarr zeroes them; a clone keeps the source's
             total *= mdSrc->lengths[i];
         }
         dn2cpp_gc_memmove_refs(dst->data, mdSrc->data,
@@ -2161,8 +2160,12 @@ static void dn2cpp_array_copy_dyn_impl(Dn2CppObject* src, int32_t srcIdx,
     int32_t rank = dn2cpp_array_rank_of(src);
     if (rank != dn2cpp_array_rank_of(dst))
         dn2cpp_throw_sr0(&dn2cpp_rank_exception_type, DN2CPP_SR_RANK_MUST_MATCH);
+    int32_t srcLower = dn2cpp_array_get_lower_bound_dyn(src, 0);
+    int32_t dstLower = dn2cpp_array_get_lower_bound_dyn(dst, 0);
     dn2cpp_array_copy_range(dn2cpp_array_total_length(src), srcIdx,
-                            dn2cpp_array_total_length(dst), dstIdx, len);
+                            dn2cpp_array_total_length(dst), dstIdx, len, srcLower, dstLower);
+    srcIdx = static_cast<int32_t>(static_cast<int64_t>(srcIdx) - srcLower);
+    dstIdx = static_cast<int32_t>(static_cast<int64_t>(dstIdx) - dstLower);
     if (src->type != dst->type || src->type == nullptr)
     {
         dn2cpp_array_copy_checked(src, srcIdx, dst, dstIdx, len, reliable);
@@ -2172,7 +2175,7 @@ static void dn2cpp_array_copy_dyn_impl(Dn2CppObject* src, int32_t srcIdx,
     // above. Elements are flat in the separate data block, in the row-major
     // order .NET's own MD Copy moves them in, so one byte-wise window serves
     // every element type and every pair of dimension shapes of that rank.
-    if (rank > 1)
+    if (dn2cpp_is_md_array(src->type))
     {
         auto* ms = reinterpret_cast<Dn2CppMDArray*>(src);
         auto* md = reinterpret_cast<Dn2CppMDArray*>(dst);
@@ -2205,6 +2208,16 @@ static void dn2cpp_array_copy_dyn_impl(Dn2CppObject* src, int32_t srcIdx,
     }
 }
 
+void dn2cpp_array_copy_all_dyn(Dn2CppObject* src, Dn2CppObject* dst, int32_t len)
+{
+    if (src == nullptr)
+        dn2cpp_throw_argument_null_param("sourceArray");
+    if (dst == nullptr)
+        dn2cpp_throw_argument_null_param("destinationArray");
+    dn2cpp_array_copy_dyn_impl(src, dn2cpp_array_get_lower_bound_dyn(src, 0),
+        dst, dn2cpp_array_get_lower_bound_dyn(dst, 0), len, false);
+}
+
 void dn2cpp_array_copy_dyn(Dn2CppObject* src, int32_t srcIdx,
                            Dn2CppObject* dst, int32_t dstIdx, int32_t len)
 {
@@ -2224,12 +2237,14 @@ void dn2cpp_array_clear_dyn(Dn2CppObject* arr, int32_t idx, int32_t len)
 {
     if (arr == nullptr)
         dn2cpp_throw_argument_null_param("array");
-    dn2cpp_array_clear_range(dn2cpp_array_total_length(arr), idx, len);
+    int32_t lower = dn2cpp_array_get_lower_bound_dyn(arr, 0);
+    dn2cpp_array_clear_range(dn2cpp_array_total_length(arr), idx, len, lower);
+    idx = static_cast<int32_t>(static_cast<int64_t>(idx) - lower);
     // The MD layout first, for the same header-vs-length reason as the clone
     // above: elements are flat in the separate data block, so a (flat idx, len)
     // window zeroes byte-wise. Reached by Array.Clear over a System.Array-typed
     // MD receiver.
-    if (arr->type != nullptr && arr->type->arrayRank > 1)
+    if (dn2cpp_is_md_array(arr->type))
     {
         auto* md = reinterpret_cast<Dn2CppMDArray*>(arr);
         std::memset(md->data + static_cast<size_t>(idx) * static_cast<size_t>(md->elemSize), 0,
@@ -2367,10 +2382,10 @@ Dn2CppArrayRef* dn2cpp_argv_to_string_array(int argc, char** argv, const Dn2CppT
 // The negative-rank check stays an abort because no caller can produce one: there are
 // two mouths, and both validate first — MethodCompiler.Tokens emits the rank as a
 // literal from the IL's array shape, and dn2cpp_array_create_instance calls in only
-// under `rank > 1` after validating the caller's lengths (which is where a bad request
+// after validating the caller's lengths (which is where a bad request
 // becomes the catchable ArgumentException real .NET gives). It is a backstop against a
 // third mouth added without validation, and a backstop that threw could be swallowed.
-Dn2CppMDArray* dn2cpp_newmdarr(const Dn2CppTypeInfo* ti, int32_t rank, const int32_t* lengths, int32_t elemSize)
+Dn2CppMDArray* dn2cpp_newmdarr(const Dn2CppTypeInfo* ti, int32_t rank, const int32_t* lengths, int32_t elemSize, const int32_t* lowerBounds)
 {
     if (rank < 0)
         dn2cpp_fail("ArgumentOutOfRangeException (negative rank)");
@@ -2410,7 +2425,7 @@ Dn2CppMDArray* dn2cpp_newmdarr(const Dn2CppTypeInfo* ti, int32_t rank, const int
     for (int32_t i = 0; i < rank; i++)
     {
         arr->lengths[i] = lengths[i];
-        arr->lowerBounds[i] = 0;
+        arr->lowerBounds[i] = lowerBounds != nullptr ? lowerBounds[i] : 0;
     }
     
     return arr;

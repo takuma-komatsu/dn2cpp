@@ -518,6 +518,19 @@ constexpr Dn2CppTypeInfo dn2cpp_ti_with_formatspec(
 #define DN2CPP_TF_HIDDEN_ENCLOSING 0x20000000
 // A metadata-only method parameter, never an allocation or dispatch type.
 #define DN2CPP_TF_GENERICPARAM 0x40000000
+#define DN2CPP_TF_NON_SZ_ARRAY (-2147483647 - 1)
+
+// Rank-one non-SZ arrays use the MD payload; rank alone cannot select a layout.
+inline bool dn2cpp_is_md_array(const Dn2CppTypeInfo* t)
+{
+    return t != nullptr && (t->flags & DN2CPP_TF_ARRAY) != 0
+        && (t->arrayRank > 1 || (t->flags & DN2CPP_TF_NON_SZ_ARRAY) != 0);
+}
+
+inline bool dn2cpp_is_sz_array(const Dn2CppTypeInfo* t)
+{
+    return t != nullptr && (t->flags & DN2CPP_TF_ARRAY) != 0 && !dn2cpp_is_md_array(t);
+}
 
 // The clone-owned rgctx anchor lookup behind DN2CPP_TF_RUNTIME_SYNTH
 // (dn2cpp_system_reflection.cpp); falls back to the base-chain walk for levels
@@ -2303,12 +2316,12 @@ Dn2CppObject* dn2cpp_array_create_instance_from_arraytype_lengths(Dn2CppType* ar
 // Array.Initialize when only the array object states its element type: runs that
 // type's parameterless constructor row over every element.
 void dn2cpp_array_initialize(Dn2CppObject* a);
-const Dn2CppTypeInfo* dn2cpp_array_ti(const Dn2CppTypeInfo* elem, int32_t rank);
+const Dn2CppTypeInfo* dn2cpp_array_ti(const Dn2CppTypeInfo* elem, int32_t rank, bool nonSz = false);
 // The registry's SZ-array type-info over `elem`, or null when the image never
 // statically instantiated T[] (defined in the reflection unit's registry-scan
 // cluster; dn2cpp_array_ti falls back to a fabricated identity on a miss).
 const Dn2CppTypeInfo* dn2cpp_find_array_ti(const Dn2CppTypeInfo* elem);
-const Dn2CppTypeInfo* dn2cpp_find_array_ti_rank(const Dn2CppTypeInfo* elem, int32_t rank);
+const Dn2CppTypeInfo* dn2cpp_find_array_ti_rank(const Dn2CppTypeInfo* elem, int32_t rank, bool nonSz = false);
 const Dn2CppTypeInfo* dn2cpp_mdarr_ti(const Dn2CppTypeInfo* elem, int32_t rank);
 int32_t dn2cpp_array_rank_dyn(Dn2CppObject* a);
 int32_t dn2cpp_array_length_dyn(Dn2CppObject* a);
@@ -5827,6 +5840,8 @@ void dn2cpp_array_sort_cmp_ref(Dn2CppArrayRef* a, int32_t start, int32_t count, 
 void dn2cpp_array_sort_object(Dn2CppObject* arr, int32_t index, int32_t length,
                               const Dn2CppTypeInfo* icomparable_ti, Dn2CppObject* comparer,
                               const Dn2CppTypeInfo* icomparer_ti, int32_t comparer_slot);
+void dn2cpp_array_set_default_comparer_getter(Dn2CppObject* (*getter)());
+bool dn2cpp_array_is_default_comparer(Dn2CppObject* comparer);
 // Element-sized elements (struct / long / double / short / 64-bit enum …): the element
 // moves as an opaque byte block and reaches the comparer BY ADDRESS — a struct of arbitrary
 // width has no uniform by-value C signature. Covers every element type the i4/ref reps do
@@ -6038,7 +6053,7 @@ Dn2CppArrayI4* dn2cpp_array_empty_i4(const Dn2CppTypeInfo* ti);
 Dn2CppArrayRef* dn2cpp_array_empty_ref(const Dn2CppTypeInfo* ti);
 Dn2CppArrayN* dn2cpp_array_empty_n(const Dn2CppTypeInfo* ti, int32_t elemSize);
 Dn2CppArrayN* dn2cpp_array_empty_n_atomic(const Dn2CppTypeInfo* ti, int32_t elemSize);
-Dn2CppMDArray* dn2cpp_newmdarr(const Dn2CppTypeInfo* ti, int32_t rank, const int32_t* lengths, int32_t elemSize);
+Dn2CppMDArray* dn2cpp_newmdarr(const Dn2CppTypeInfo* ti, int32_t rank, const int32_t* lengths, int32_t elemSize, const int32_t* lowerBounds = nullptr);
 // Materialize a fixed list of int32_t length/index expressions as a temporary
 // a callee can point at: `dn2cpp_i32s(a, b).v` decays to const int32_t*.
 // Standard-C++ stand-in for a C99 compound literal
@@ -6073,6 +6088,7 @@ Dn2CppObject* dn2cpp_array_clone_dyn(Dn2CppObject* src); // rep from runtime typ
 // like EmitArrayCopy/EmitArrayClear's typed arms; a mixed Copy pair runs the
 // CLR's full compatibility verdict (dn2cpp_array_copy_checked). Clear
 // takes one array, so no type question arises on it.
+void dn2cpp_array_copy_all_dyn(Dn2CppObject* src, Dn2CppObject* dst, int32_t len);
 void dn2cpp_array_copy_dyn(Dn2CppObject* src, int32_t srcIdx, Dn2CppObject* dst, int32_t dstIdx, int32_t len);
 // Array.ConstrainedCopy: the same checks, then only a pair that moves without a
 // per-element conversion; any other pair throws ArrayTypeMismatchException before
@@ -6465,26 +6481,27 @@ inline TArray* dn2cpp_array_require_receiver(TArray* arr)
 // IndexOutOfRangeException. The sums are 64-bit because `idx + len` in int32
 // wraps back under the length test (Array.Clear(a, 1, int.MaxValue)).
 inline void dn2cpp_array_copy_range(int32_t srcLen, int32_t srcIdx,
-                                    int32_t dstLen, int32_t dstIdx, int32_t len)
+                                    int32_t dstLen, int32_t dstIdx, int32_t len,
+                                    int32_t srcLower = 0, int32_t dstLower = 0)
 {
     // Source-window overruns precede a negative destination index.
     if (len < 0)
         dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "length", len);
-    if (srcIdx < 0)
-        dn2cpp_throw_argument_out_of_range_bound(DN2CPP_SR_MUST_BE_GREATER_OR_EQUAL, "sourceIndex", srcIdx, 0);
-    if (static_cast<int64_t>(srcIdx) + len > srcLen)
+    if (srcIdx < srcLower)
+        dn2cpp_throw_argument_out_of_range_bound(DN2CPP_SR_MUST_BE_GREATER_OR_EQUAL, "sourceIndex", srcIdx, srcLower);
+    if (static_cast<int64_t>(srcIdx) - srcLower + len > srcLen)
         dn2cpp_throw_argument_text(&dn2cpp_argument_exception_type,
             dn2cpp_sr_text(DN2CPP_SR_LONGER_THAN_SRC_ARRAY), "sourceArray");
-    if (dstIdx < 0)
-        dn2cpp_throw_argument_out_of_range_bound(DN2CPP_SR_MUST_BE_GREATER_OR_EQUAL, "destinationIndex", dstIdx, 0);
-    if (static_cast<int64_t>(dstIdx) + len > dstLen)
+    if (dstIdx < dstLower)
+        dn2cpp_throw_argument_out_of_range_bound(DN2CPP_SR_MUST_BE_GREATER_OR_EQUAL, "destinationIndex", dstIdx, dstLower);
+    if (static_cast<int64_t>(dstIdx) - dstLower + len > dstLen)
         dn2cpp_throw_argument_text(&dn2cpp_argument_exception_type,
             dn2cpp_sr_text(DN2CPP_SR_LONGER_THAN_DEST_ARRAY), "destinationArray");
 }
 
-inline void dn2cpp_array_clear_range(int32_t arrLen, int32_t idx, int32_t len)
+inline void dn2cpp_array_clear_range(int32_t arrLen, int32_t idx, int32_t len, int32_t lower = 0)
 {
-    if ((idx | len) < 0 || static_cast<int64_t>(idx) + len > arrLen)
+    if (idx < lower || len < 0 || static_cast<int64_t>(idx) - lower + len > arrLen)
         dn2cpp_throw_index_out_of_range();
 }
 
@@ -6649,7 +6666,7 @@ inline void* dn2cpp_elem_addr(Dn2CppArrayN* arr, int32_t index)
 // what that guard exists to stop.
 inline bool dn2cpp_is_ref_array(const Dn2CppTypeInfo* t)
 {
-    if (t == nullptr || (t->flags & DN2CPP_TF_ARRAY) == 0)
+    if (!dn2cpp_is_sz_array(t))
         return false;
     return t->elementType == nullptr ? (t == &dn2cpp_array_ref_type)
                                      : (t->elementType->flags & DN2CPP_TF_VALUETYPE) == 0;
@@ -6686,11 +6703,11 @@ inline void* dn2cpp_pinned_data_addr(Dn2CppObject* o)
         return const_cast<char16_t*>(static_cast<Dn2CppString*>(o)->chars);
     if ((t->flags & DN2CPP_TF_ARRAY) != 0)
     {
-        // Rank decides before the element does: an MD array keeps its elements in a
+        // Non-SZ shape decides before the element: an MD array keeps its elements in a
         // separate block and shares no header field with the SZ reps, so reading one
         // as an SZArray answers a pointer into the MD header. .NET answers element 0
         // at every rank and lower bound.
-        if (t->arrayRank > 1)
+        if (dn2cpp_is_md_array(t))
             return static_cast<Dn2CppMDArray*>(o)->data;
         if (dn2cpp_is_ref_array(t))
             return &static_cast<Dn2CppArrayRef*>(o)->data[0];
@@ -6774,7 +6791,8 @@ inline int32_t dn2cpp_md_get_lower_bound(Dn2CppMDArray* arr, int32_t dim)
 inline int32_t dn2cpp_md_get_upper_bound(Dn2CppMDArray* arr, int32_t dim)
 {
     int32_t d = dn2cpp_md_dim(arr, dim);
-    return arr->lowerBounds[d] + arr->lengths[d] - 1;
+    return static_cast<int32_t>(static_cast<uint32_t>(arr->lowerBounds[d])
+        + static_cast<uint32_t>(arr->lengths[d]) - 1u);
 }
 
 // ── The SHAPE questions the block-move lowerings ask of an operand whose static
@@ -6785,8 +6803,7 @@ inline int32_t dn2cpp_md_get_upper_bound(Dn2CppMDArray* arr, int32_t dim)
 // as an SZArray validates a six-element array against 2 and then memmoves over
 // the other layout's header. Both faults are silent.
 
-// arrayRank is 1 for an emitted ti_arr_<T> and 0 for the shared reference-element
-// fallback header; both mean the SZ layout, so only a value above them is MD.
+// The logical rank remains one for both SZ and non-SZ rank-one arrays.
 inline int32_t dn2cpp_array_rank_of(Dn2CppObject* o)
 {
     int32_t r = o->type != nullptr ? o->type->arrayRank : 1;
@@ -6803,7 +6820,7 @@ inline int32_t dn2cpp_array_element_size(Dn2CppObject* o)
 {
     if (o == nullptr)
         dn2cpp_throw_null_reference();
-    if (dn2cpp_array_rank_of(o) > 1)
+    if (dn2cpp_is_md_array(o->type))
         return static_cast<Dn2CppMDArray*>(o)->elemSize;
     const Dn2CppTypeInfo* t = o->type;
     if (dn2cpp_is_ref_array(t))
@@ -6815,7 +6832,7 @@ inline int32_t dn2cpp_array_element_size(Dn2CppObject* o)
 
 inline int32_t dn2cpp_array_total_length(Dn2CppObject* o)
 {
-    return dn2cpp_array_rank_of(o) > 1
+    return dn2cpp_is_md_array(o->type)
         ? dn2cpp_md_total_length(reinterpret_cast<Dn2CppMDArray*>(o))
         : static_cast<Dn2CppArray*>(o)->length;
 }
@@ -6902,7 +6919,7 @@ inline int32_t dn2cpp_blockcopy_rep_dyn(Dn2CppObject* o)
     const Dn2CppTypeInfo* el = t != nullptr && (t->flags & DN2CPP_TF_ARRAY) != 0 ? t->elementType : nullptr;
     if (el == nullptr || (el->flags & (DN2CPP_TF_PRIMITIVE | DN2CPP_TF_ENUM)) == 0)
         return DN2CPP_BCREP_NONPRIM;
-    if (t->arrayRank > 1)
+    if (dn2cpp_is_md_array(t))
         return DN2CPP_BCREP_MD;
     return dn2cpp_array_is_i4_elem(el) ? DN2CPP_BCREP_I4 : DN2CPP_BCREP_N;
 }
@@ -7018,22 +7035,31 @@ inline void dn2cpp_buffer_setbyte(Dn2CppObject* o, int32_t rep, int32_t index, u
 // Real .NET answers an out-of-range index on ANY dimension with the same
 // IndexOutOfRangeException it raises for an SZArray (measured), so these throw the
 // same catchable fault rather than aborting.
+inline int32_t dn2cpp_md_offset(Dn2CppMDArray* arr, int32_t dim, int32_t index)
+{
+    int64_t offset = static_cast<int64_t>(index) - arr->lowerBounds[dim];
+    if (offset < 0 || offset >= arr->lengths[dim])
+        dn2cpp_throw_index_out_of_range();
+    return static_cast<int32_t>(offset);
+}
+
 inline int32_t dn2cpp_md_flat_index2(Dn2CppMDArray* arr, int32_t i0, int32_t i1)
 {
     if (arr == nullptr)
         dn2cpp_throw_null_reference();
-    if (i0 < 0 || i0 >= arr->lengths[0] || i1 < 0 || i1 >= arr->lengths[1])
-        dn2cpp_throw_index_out_of_range();
-    return i0 * arr->lengths[1] + i1;
+    int32_t o0 = dn2cpp_md_offset(arr, 0, i0);
+    int32_t o1 = dn2cpp_md_offset(arr, 1, i1);
+    return o0 * arr->lengths[1] + o1;
 }
 
 inline int32_t dn2cpp_md_flat_index3(Dn2CppMDArray* arr, int32_t i0, int32_t i1, int32_t i2)
 {
     if (arr == nullptr)
         dn2cpp_throw_null_reference();
-    if (i0 < 0 || i0 >= arr->lengths[0] || i1 < 0 || i1 >= arr->lengths[1] || i2 < 0 || i2 >= arr->lengths[2])
-        dn2cpp_throw_index_out_of_range();
-    return (i0 * arr->lengths[1] + i1) * arr->lengths[2] + i2;
+    int32_t o0 = dn2cpp_md_offset(arr, 0, i0);
+    int32_t o1 = dn2cpp_md_offset(arr, 1, i1);
+    int32_t o2 = dn2cpp_md_offset(arr, 2, i2);
+    return (o0 * arr->lengths[1] + o1) * arr->lengths[2] + o2;
 }
 
 inline int32_t dn2cpp_md_flat_index(Dn2CppMDArray* arr, const int32_t* indices)
@@ -7042,12 +7068,7 @@ inline int32_t dn2cpp_md_flat_index(Dn2CppMDArray* arr, const int32_t* indices)
         dn2cpp_throw_null_reference();
     int32_t flat = 0;
     for (int32_t i = 0; i < arr->rank; i++)
-    {
-        int32_t idx = indices[i];
-        if (idx < 0 || idx >= arr->lengths[i])
-            dn2cpp_throw_index_out_of_range();
-        flat = flat * arr->lengths[i] + idx;
-    }
+        flat = flat * arr->lengths[i] + dn2cpp_md_offset(arr, i, indices[i]);
     return flat;
 }
 
