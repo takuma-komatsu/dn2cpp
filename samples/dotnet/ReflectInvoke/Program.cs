@@ -280,6 +280,9 @@ namespace ReflectInvoke
             if (args.Length > 0 && args[0] == "before-family-type-overloads")
                 return;
             ReflectDelegateSubset.Program.RunFamilyTypeOverloads();
+            if (args.Length > 0 && args[0] == "before-enum-signature-bindings")
+                return;
+            ReflectDelegateEnumSubset.Program.Run();
         }
     }
 }

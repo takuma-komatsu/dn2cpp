@@ -4517,11 +4517,7 @@ Dn2CppObject* dn2cpp_delegate_dynamic_invoke(Dn2CppObject* d, Dn2CppArrayRef* ar
         args != nullptr ? args->length : 0, true, d->type);
 }
 
-// Delegate-binding parameter compatibility: exact type-info identity, or a
-// reference widening `from` -> `to` (argument contravariance / return
-// covariance). Value types must match exactly — .NET delegate binding admits
-// no boxing conversions either. (Divergence: .NET also admits enum <->
-// underlying-primitive bindings; those are rejected here.)
+// Reference variance never converts a boxed value or a bound receiver.
 static bool dn2cpp_dgbind_widens(const Dn2CppTypeInfo* from, const Dn2CppTypeInfo* to)
 {
     if (from == to)
@@ -4532,6 +4528,17 @@ static bool dn2cpp_dgbind_widens(const Dn2CppTypeInfo* from, const Dn2CppTypeInf
         return false;
     return dn2cpp_type_is_assignable_from(dn2cpp_get_type_from_handle(to),
                                           dn2cpp_get_type_from_handle(from)) != 0;
+}
+
+// CLR by-value enum compatibility retains the underlying verifier type,
+// including signedness. By-ref and function-pointer identities stay invariant.
+static bool dn2cpp_dgbind_value_equivalent(const Dn2CppTypeInfo* from, const Dn2CppTypeInfo* to)
+{
+    if (from == to)
+        return true;
+    if (from == nullptr || to == nullptr || ((from->flags | to->flags) & DN2CPP_TF_ENUM) == 0)
+        return false;
+    return dn2cpp_enum_underlying_or_self(from) == dn2cpp_enum_underlying_or_self(to);
 }
 
 static bool dn2cpp_dgbind_delegate_type(const Dn2CppTypeInfo* type)
@@ -4584,7 +4591,8 @@ static bool dn2cpp_dgbind_pass(const Dn2CppTypeInfo* from, int32_t fromKind,
         }
         return false;
     }
-    return relaxed ? dn2cpp_dgbind_widens(from, to) : from == to;
+    return dn2cpp_dgbind_value_equivalent(from, to)
+        || (relaxed && dn2cpp_dgbind_widens(from, to));
 }
 
 static bool dn2cpp_dgbind_parameter(const Dn2CppParamInfo& from,

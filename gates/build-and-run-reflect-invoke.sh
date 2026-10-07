@@ -2,6 +2,7 @@
 # Property accessor arrays retain visibility, order, reflected handle identity and boxed invocation.
 # Delegate method names select strict signatures, inherited private methods and virtual slots.
 # Delegate ABI compatibility retains by-ref, pointer and function-pointer signature identity.
+# By-value delegate binding matches enums to their exact underlying type by name and MethodInfo.
 # Canonical function-pointer descriptors preserve Invoke checks independently of binding identity.
 # Unsupported by-ref referents retain distinct identities without enabling Invoke marshalling.
 # Unresolved template by-ref/pointer identities refuse binding after known mismatches.
@@ -235,6 +236,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|ordinary-overload-prefix-a
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|intrinsic-only-prefix-argv:before-intrinsic-overloads|intrinsic-only-boundary-argv:intrinsic-boundary"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|runtime-argument-prefix-argv:before-runtime-argument-overloads|runtime-argument-boundary-prefix-argv:delegate-signature-before-runtime-argument-boundary"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|family-type-prefix-argv:before-family-type-overloads"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|enum-signature-prefix-argv:before-enum-signature-bindings"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|identity-overload-prefix-argv:before-identity-overload-selection|identity-overload-boundary-prefix-argv:delegate-signature-before-identity-boundary"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|delegate-origin-prefix-argv:before-delegate-origin-boundaries|delegate-origin-modes:argument,field,array,checked-conv,arithmetic,box,call,local,stack-join,byref-argument"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|runtime-type-relations-prefix-argv:before-runtime-type-relations"
@@ -1267,6 +1269,50 @@ gate_extra_asserts() {
             || { echo "FAIL: generic family/type overload witness missing: $line" >&2; return 1; }
     done
 
+    run_bounded dotnet "$_CG_APP" before-enum-signature-bindings > "$out/enum-signature-before.dotnet.stdout"
+    run_bounded "$out/ReflectInvoke$EXE_EXT" before-enum-signature-bindings > "$out/enum-signature-before.native.stdout"
+    for axis in dotnet native; do
+        sed '/^== delegate enum signature compatibility ==/,$d' "$out/generic-method-definitions.$axis.stdout" \
+            > "$out/enum-signature-prefix.$axis.stdout"
+        diff -u <(strip_cr_win_file "$out/enum-signature-before.$axis.stdout") \
+            <(strip_cr_win_file "$out/enum-signature-prefix.$axis.stdout")
+    done
+    for line in '== delegate enum signature compatibility ==' \
+        'enum closed instance name => -113/-113/1/True' \
+        'enum closed instance method => -113/-113/1/True' \
+        'enum MethodInfo type => 227/227/1' 'enum MethodInfo generic => 60001/60001/1' \
+        'enum runtime clone name => 4045620583/4045620583/1' \
+        'enum runtime clone method => 4045620583/4045620583/1' \
+        'enum closed static => 60001/60004/1' 'enum closed static value => null' \
+        'delegate enum signature compatibility end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: enum delegate witness missing: $line" >&2; return 1; }
+    done
+    for backing_value in S8:-113 U8:227 S16:-30001 U16:60001 S32:-2000000001 \
+        U32:4045620583 S64:-8000000000000000001 U64:17293822569102704641; do
+        backing=${backing_value%%:*}
+        value=${backing_value#*:}
+        for relation in 'underlying to enum' 'enum to underlying' 'distinct enums'; do
+            for api in name method; do
+                grep -Fxq -- "enum $backing $relation $api => $value/$value/1/True" <<< "$native" \
+                    || { echo "FAIL: enum delegate value changed: $backing/$relation/$api" >&2; return 1; }
+            done
+        done
+    done
+    for query in signedness width bool char 'native int' 'ordinary widening' \
+        'ref enum to int' 'ref int to enum' 'out enum to int' 'ref return enum' 'function identity'; do
+        for api in name method; do
+            grep -Fxq -- "enum $query $api => null" <<< "$native" \
+                || { echo "FAIL: enum delegate accepted an incompatible signature: $query/$api" >&2; return 1; }
+        done
+    done
+    for query in 'pointer enum to int' 'pointer enum to uint'; do
+        grep -Fxq -- "enum $query name => null" <<< "$native" \
+            || { echo "FAIL: named enum pointer identity changed: $query" >&2; return 1; }
+        grep -Fxq -- "enum $query method => bound" <<< "$native" \
+            || { echo "FAIL: MethodInfo enum pointer compatibility changed: $query" >&2; return 1; }
+    done
+
     # Matching dependent signatures still lack an invokable substituted body.
     run_bounded dotnet "$_CG_APP" delegate-signature-boundary-outcomes > "$out/delegate-signature-boundary.dotnet.stdout"
     run_bounded "$out/ReflectInvoke$EXE_EXT" delegate-signature-boundary-outcomes > "$out/delegate-signature-boundary.native.stdout"
@@ -1433,19 +1479,21 @@ gate_extra_asserts() {
             'name boundary constructor argument mismatch => null' \
             'name boundary initializer argument mismatch => null' \
             'name boundary MethodInfo ref value mismatch => null' \
+            'name boundary enum underlying => bound' \
+            'name boundary MethodInfo enum underlying => bound' \
             'delegate name signature boundaries end'; do
             grep -Fxq -- "$line" <<< "$boundary" \
                 || { echo "FAIL: delegate signature boundary witness missing ($axis): $line" >&2; return 1; }
         done
         if [ "$axis" = dotnet ]; then
-            for line in 'enum underlying => bound' 'MethodInfo enum underlying => bound' \
+            for line in \
                 'own constructor => bound' 'base constructor => bound' 'static initializer => bound' \
                 'constructor query normalization => bound' 'initializer query normalization => bound'; do
                 grep -Fxq -- "name boundary $line" <<< "$boundary" \
                     || { echo "FAIL: CLR delegate signature oracle missing: $line" >&2; return 1; }
             done
         else
-            for line in 'enum underlying => null' 'MethodInfo enum underlying => null' \
+            for line in \
                 'own constructor => unsupported' 'base constructor => unsupported' \
                 'static initializer => unsupported' 'constructor query normalization => unsupported' \
                 'initializer query normalization => unsupported'; do
