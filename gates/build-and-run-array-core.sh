@@ -21,6 +21,7 @@
 # Runtime handle boxing retains the selected payload's ToString override.
 # Nullable array display composes generic element identities and array ranks.
 # Excessive-rank errors identify the attempted array type and its assembly.
+# ILDiet retains rank-one MD signatures without lower bounds and nested vector distinctions.
 # Former gates: array-ops, array-contains, array-range, array-resize, array-sort,
 # array-data-ref, byte-array, getsubarray, packed-array, array-collection, enumarray,
 # arraypool.
@@ -330,6 +331,7 @@ assert_runtime_box_formatting() {
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|array-box-shared-generics|before-array-provenance|before-nested-interface-variance|before-covariant-stores|before-covariant-md-stores|before-runtime-box-formatting|before-nullable-array-names|before-excess-array-rank"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|comparer-identity-prefix-argv:before-comparer-identity|before-nonzero-lower-bounds|rank1-nonsz-collections|static-rank1-md-typespec|before-lower-bound-search|rank1-collection-virtual-equality|rank1-collection-extreme-bounds|before-extreme-collection|before-wrapped-array-ranges|wrapped-range-default-comparer-identity|before-sort-access-faults|sort-window-access-fault-boundary|opaque-comparer-type-only"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/ArrayCore/ArrayComparerTypeOnly.csproj samples/dotnet/ArrayCore/ArrayComparerTypeOnlyProgram.cs samples/dotnet/ArrayCore/ArrayLowerBoundsOnly.csproj samples/dotnet/ArrayCore/ArrayLowerBoundsOnlyProgram.cs gates/fixtures/array-rank1-md/Driver.csproj samples/dotnet/ArrayCore/ArrayStaticRankOneOnlyProgram.cs gates/fixtures/array-rank1-md/Generate.csproj gates/fixtures/array-rank1-md/Program.cs samples/dotnet/ArrayCore/BoxProvenanceOnly.csproj samples/dotnet/ArrayCore/BoxProvenanceProgram.cs samples/dotnet/ArrayCore/ReflectionReturnBoxOnly.csproj samples/dotnet/ArrayCore/ReflectionReturnBoxProgram.cs samples/dotnet/ArrayCore/DiamondProvenanceOnly.csproj samples/dotnet/ArrayCore/DiamondProvenanceProgram.cs samples/dotnet/ArrayCore/FieldAliasProvenanceOnly.csproj samples/dotnet/ArrayCore/FieldAliasProvenanceProgram.cs samples/dotnet/ArrayCore/FieldAliasProvenanceSubset.cs samples/dotnet/ArrayCore/ArrayElementAliasProgram.cs samples/dotnet/ArrayCore/ArrayElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayObjectElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayUnknownElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayErasedElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayReferenceSlotAliasOnly.csproj samples/dotnet/ArrayCore/ArrayReflectedVoidBoxOnly.csproj samples/dotnet/ArrayCore/ArrayReflectedVoidBoxProgram.cs samples/dotnet/ArrayCore/ArrayFutureStoreOnly.csproj samples/dotnet/ArrayCore/ArrayFutureStoreProgram.cs samples/dotnet/ArrayCore/ArrayFutureNullStoreOnly.csproj samples/dotnet/ArrayCore/ArrayObjectFutureStoreOnly.csproj samples/dotnet/ArrayCore/ArrayObjectFutureStoreProgram.cs"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|lower-bound-less-rank1-array-signatures|unsized-array-prefix:${DN2CPP_BEFORE_UNSIZED_ARRAY:-}"
 corelib_diff_gate ArrayCore System.Collections
 
 native=$(run_bounded "./$_CG_OUT/ArrayCore$EXE_EXT")
@@ -1039,6 +1041,7 @@ for line in '== rank1 non-SZ collection search ==' \
 done
 
 # Static TypeSpecs and reflective creation intern the same non-SZ rank-one identity.
+# ILDiet preserves ARRAY kind without lower bounds through fields, tokens, calls and locals.
 static_rank1_root="artifacts/arraycore-static-rank1"
 dotnet build gates/fixtures/array-rank1-md/Generate.csproj -c "$CONFIG" \
     --nologo -v q -o "$static_rank1_root/generator"
@@ -1056,11 +1059,56 @@ static_rank1_native=$(run_bounded "./$static_rank1_root/gen/ArrayStaticRankOneOn
 static_rank1_native=$(strip_cr_win "$static_rank1_native")
 static_rank1_oracle=$(run_bounded dotnet exec --runtimeconfig "$static_rank1_root/generator/Generate.runtimeconfig.json" "$static_rank1_app")
 assert_output "$(strip_cr_win "$static_rank1_native")" "$(strip_cr_win "$static_rank1_oracle")"
+static_rank1_diet=$(run_bounded dotnet exec --runtimeconfig "$static_rank1_root/generator/Generate.runtimeconfig.json" \
+    "$static_rank1_root/gen/ildiet/ArrayStaticRankOneOnly.dll")
+assert_output "$(strip_cr_win "$static_rank1_oracle")" "$(strip_cr_win "$static_rank1_diet")"
+static_rank1_prefix=$(awk '/^== unsized rank1 array signatures ==$/ { exit } { print }' <<< "$static_rank1_native")
+static_rank1_before=$(DN2CPP_BEFORE_UNSIZED_ARRAY=1 run_bounded "./$static_rank1_root/gen/ArrayStaticRankOneOnly$EXE_EXT")
+static_rank1_clr_before=$(DN2CPP_BEFORE_UNSIZED_ARRAY=1 run_bounded dotnet exec \
+    --runtimeconfig "$static_rank1_root/generator/Generate.runtimeconfig.json" "$static_rank1_app")
+assert_output "$static_rank1_prefix" "$(strip_cr_win "$static_rank1_before")"
+assert_output "$static_rank1_prefix" "$(strip_cr_win "$static_rank1_clr_before")"
 for line in '== static rank1 MD identity ==' \
     'static=System.Int32[*]/Int32[*]/False/1' 'identity=True/True/False' \
-    'static clone=True/23' 'static rank1 MD identity end'; do
+    'static clone=True/23' 'static rank1 MD identity end' \
+    '== unsized rank1 array signatures ==' 'unsized rank1 array signatures end' \
+    'Unsized=System.Int32[*]/False/False' 'Unsized identity=True/True/True' \
+    'Sized=System.Int32[*]/False/False' 'Sized identity=True/True/True' \
+    'Vector=System.Int32[]/True/False' 'Vector identity=True/True/True' \
+    'VectorOfUnsized=System.Int32[*][]/True/False' 'VectorOfUnsized identity=True/True/True' \
+    'UnsizedOfVector=System.Int32[][*]/False/True' 'UnsizedOfVector identity=True/True/True'; do
     [[ $(grep -Fxc -- "$line" <<< "$static_rank1_native") == 1 ]] \
         || { echo "FAIL: static rank1 MD witness must run once: $line" >&2; exit 1; }
+done
+
+# CLR metadata inspection covers signature wrappers without widening native type APIs.
+mkdir -p "$static_rank1_root/metadata"
+run_bounded dotnet "$static_rank1_root/generator/Generate.dll" \
+    "$static_rank1_root/metadata/ArrayRankOneLibrary.dll" --metadata-only
+run_bounded dotnet exec "$(dirname "$DN2CPP_CLI_DLL")/ildiet/ILDiet.dll" \
+    "$static_rank1_root/metadata/ArrayRankOneLibrary.dll" -r "$corelib" -o "$static_rank1_root/metadata-diet"
+static_rank1_metadata=$(run_bounded dotnet "$static_rank1_root/generator/Generate.dll" --inspect \
+    "$static_rank1_root/metadata/ArrayRankOneLibrary.dll")
+static_rank1_metadata_diet=$(run_bounded dotnet "$static_rank1_root/generator/Generate.dll" --inspect \
+    "$static_rank1_root/metadata-diet/ArrayRankOneLibrary.dll")
+static_rank1_metadata=$(strip_cr_win "$static_rank1_metadata")
+static_rank1_metadata_diet=$(strip_cr_win "$static_rank1_metadata_diet")
+assert_output "$static_rank1_metadata" "$static_rank1_metadata_diet"
+for line in 'field GenericUnsized=System.Collections.Generic.List`1<System.Int32[*]>;optional=' \
+    'field ModifiedUnsized=System.Int32[*];optional=System.Object' \
+    'field PointerUnsized=System.Int32[*]*;optional=' \
+    'field FunctionUnsized=fn(System.Int32[*][]&)->System.Int32[*];optional=' \
+    'field UnsizedOfUnsized=System.Int32[*][*];optional=' \
+    'method EchoUnsizedOfUnsized=System.Int32[*][*](System.Int32[*][*])' \
+    'token UnsizedOfUnsizedType=System.Int32[*][*]' \
+    'field Sized=System.Int32[*];optional=' \
+    'local EchoSized/0=System.Int32[*]/True' \
+    'property IndexedUnsized=System.Int32[*](System.Int32[*])' \
+    'method get_IndexedUnsized=System.Int32[*](System.Int32[*])' \
+    'token MethodSpecType=System.Int32[*]' \
+    'local EchoUnsized/0=System.Int32[*]/True'; do
+    [[ $(grep -Fxc -- "$line" <<< "$static_rank1_metadata_diet") == 1 ]] \
+        || { echo "FAIL: wrapped rank1 MD witness must run once: $line" >&2; exit 1; }
 done
 
 # An is-test keeps a comparer shell without making its static fields callable.

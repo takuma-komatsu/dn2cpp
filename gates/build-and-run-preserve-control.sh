@@ -2,10 +2,11 @@
 # Preserved reflection-created boxes retain interface dispatch after write-back.
 # Managed DLL stripping and explicit preservation: unreachable metadata is removed,
 # while PreserveAttribute and merged Unity-format link.xml keep selected bodies.
+# A property selected through a nonexistent accessor survives without its getter.
 # ILDietControl also checks Array.Initialize constructors reached through method groups
 # and application members that a reflective invoke selects only by a constant name.
 source "$(dirname "$0")/_common.sh"
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} "
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/preserve-control/accessorless-indexer/AccessorlessIndexer.csproj gates/fixtures/preserve-control/accessorless-indexer/Program.cs gates/fixtures/preserve-control/accessorless-indexer/link.xml"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|attribute-object-prefix:${DN2CPP_BEFORE_ATTRIBUTE_OBJECT:-}|named-reflection-prefix:${DN2CPP_BEFORE_NAMED_REFLECTION:-}"
 PYTHON=$(resolve_python) || gate_skip "no working Python 3 interpreter for ILDiet validation"
 
@@ -19,6 +20,7 @@ build_proj "$ROOT/$PROJECT.csproj"
 build_proj samples/dotnet/ILDietControl/ILDietControl.csproj
 build_proj src/Dn2Cpp.Cli.Console/Dn2Cpp.Cli.Console.csproj
 build_gate_proj gates/fixtures/preserve-control/MetadataProbe.csproj
+build_gate_proj gates/fixtures/preserve-control/accessorless-indexer/AccessorlessIndexer.csproj
 build_gate_proj gates/fixtures/ildiet-roots/App/RootApp.csproj
 if [ -z "${DN2CPP_SKIP_BUILD:-}" ]; then
     dotnet build src/Dn2Cpp.Runtime/Dn2Cpp.Runtime.csproj -c "$CONFIG" -f net8.0 \
@@ -149,6 +151,22 @@ CLI_BIN=$(dirname "$CLI_DLL")
 ILD_DLL="$CLI_BIN/ildiet/ILDiet.dll"
 RUNTIME_DLL="$CLI_BIN/Dn2Cpp.Runtime.dll"
 BCL=$(dirname "$(locate_corelib)")
+echo "== Preserved indexer metadata survives removal of its accessor =="
+INDEXER_FIXTURE=gates/fixtures/preserve-control/accessorless-indexer
+INDEXER_APP="$INDEXER_FIXTURE/bin/$CONFIG/$TFM/AccessorlessIndexer.dll"
+dotnet exec "$ILD_DLL" "$INDEXER_APP" -r "$BCL/System.Private.CoreLib.dll" \
+    -r "$BCL/System.Runtime.dll" --link-xml "$INDEXER_FIXTURE/link.xml" \
+    -o "$STALE_ROOT/accessorless-indexer"
+indexer_original=$(dotnet exec "$PROBE" "$INDEXER_APP")
+indexer_diet=$(dotnet exec "$PROBE" "$STALE_ROOT/accessorless-indexer/AccessorlessIndexer.dll")
+indexer_original=$(strip_cr_win "$indexer_original")
+indexer_diet=$(strip_cr_win "$indexer_diet")
+grep -Fxq 'property PreserveFixture.Indexed::Item/accessors=1' <<<"$indexer_original" \
+    && grep -Fxq 'property PreserveFixture.Indexed::Item/accessors=0' <<<"$indexer_diet" \
+    || { echo "FAIL: a preserved property could not lose its unselected accessor" >&2; exit 1; }
+if grep -Fxq 'method PreserveFixture.Indexed::get_Item' <<<"$indexer_diet"; then
+    echo "FAIL: a nonexistent setter preserved the getter" >&2; exit 1
+fi
 STANDALONE="$STALE_ROOT/standalone 日本語 with spaces"
 standalone_refs=(-r "$LIBDLL" -r "$ASSEMBLYDLL" -r "$RUNTIME_DLL")
 for dll in "$OUT/ildiet/"*.dll; do

@@ -4,6 +4,11 @@ ILDiet removes unreachable managed type and method definitions before dn2cpp
 constructs its transpilation model. It uses Mono.Cecil to write new assemblies;
 input files are never modified.
 
+Rewritten signatures retain the distinction between vectors and multidimensional
+arrays, including rank-one arrays without a lower bound inside other signature
+shapes. ILDiet encodes those arrays with an explicit zero lower bound so Cecil keeps
+their `ARRAY` kind without changing their CLR type.
+
 ```sh
 dotnet run --project src/ILDiet -c Release -- \
     App.dll -r Library.dll -r System.Private.CoreLib.dll \
