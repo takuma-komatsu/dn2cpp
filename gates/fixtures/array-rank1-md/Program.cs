@@ -63,10 +63,12 @@ byte[] vector = { 0x1d, 0x08 };
 byte[] vectorOfUnsized = { 0x1d, 0x14, 0x08, 1, 0, 0 };
 byte[] unsizedOfVector = { 0x14, 0x1d, 0x08, 1, 0, 0 };
 byte[] unsizedOfUnsized = { 0x14, 0x14, 0x08, 1, 0, 0, 1, 0, 0 };
+byte[] unsizedOfRectangle = { 0x14, 0x14, 0x08, 2, 0, 0, 1, 0, 0 };
+byte[] unsizedOfUnsizedOfUnsized = { 0x14, 0x14, 0x14, 0x08, 1, 0, 0, 1, 0, 0, 1, 0, 0 };
 var arrays = new[] {
     ("Unsized", unsized), ("Sized", sized), ("Vector", vector), ("VectorOfUnsized", vectorOfUnsized),
-    ("UnsizedOfVector", unsizedOfVector) };
-if (metadataOnly) arrays = arrays.Append(("UnsizedOfUnsized", unsizedOfUnsized)).ToArray();
+    ("UnsizedOfVector", unsizedOfVector), ("UnsizedOfUnsized", unsizedOfUnsized),
+    ("UnsizedOfRectangle", unsizedOfRectangle), ("UnsizedOfUnsizedOfUnsized", unsizedOfUnsizedOfUnsized) };
 foreach (var (name, signature) in arrays)
 {
     BlobBuilder signatureBlob = new();
@@ -171,6 +173,35 @@ foreach (var (name, signature) in arrays)
     metadata.AddMethodDefinition(MethodAttributes.Public | MethodAttributes.Static, MethodImplAttributes.IL,
         metadata.GetOrAddString("Echo" + name), metadata.GetOrAddBlob(echoSignature),
         echoBody, MetadataTokens.ParameterHandle(1));
+
+    if (name == "UnsizedOfUnsized")
+    {
+        BlobBuilder testInstructions = new();
+        InstructionEncoder testCode = new(testInstructions);
+        testCode.OpCode(ILOpCode.Ldarg_0);
+        testCode.OpCode(ILOpCode.Isinst);
+        testCode.Token(token);
+        testCode.OpCode(ILOpCode.Ldnull);
+        testCode.OpCode(ILOpCode.Cgt_un);
+        testCode.OpCode(ILOpCode.Ret);
+        int testBody = bodyEncoder.AddMethodBody(testCode, maxStack: 2);
+        metadata.AddMethodDefinition(MethodAttributes.Public | MethodAttributes.Static, MethodImplAttributes.IL,
+            metadata.GetOrAddString("IsUnsizedOfUnsized"),
+            metadata.GetOrAddBlob(new byte[] { 0, 1, 0x02, 0x1c }),
+            testBody, MetadataTokens.ParameterHandle(1));
+
+        BlobBuilder castInstructions = new();
+        InstructionEncoder castCode = new(castInstructions);
+        castCode.OpCode(ILOpCode.Ldarg_0);
+        castCode.OpCode(ILOpCode.Castclass);
+        castCode.Token(token);
+        castCode.OpCode(ILOpCode.Ret);
+        int castBody = bodyEncoder.AddMethodBody(castCode, maxStack: 1);
+        metadata.AddMethodDefinition(MethodAttributes.Public | MethodAttributes.Static, MethodImplAttributes.IL,
+            metadata.GetOrAddString("CastUnsizedOfUnsized"),
+            metadata.GetOrAddBlob(new byte[] { 0, 1, 0x1c, 0x1c }),
+            castBody, MetadataTokens.ParameterHandle(1));
+    }
 }
 if (metadataOnly)
 {

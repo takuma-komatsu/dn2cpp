@@ -412,18 +412,21 @@ internal sealed partial class MethodCompiler
     internal static string PreciseArrayTypeInfoExprOf(TypeDesc element) =>
         "&ti_arr_" + Compilation.ArrayElemMangle(element);
 
-    /// <summary>The precise handle for an MD array's SZArray ELEMENT, for the three MD
-    /// identity mouths (<c>new T[,]</c> / <c>typeof(T[,])</c> / castclass-isinst
-    /// targets): <c>typeof(int[,][])</c> names <c>int[]</c> where the generic
-    /// TypeInfoExpr fallback answered null, so <c>dn2cpp_mdarr_ti(nullptr, …)</c> handed
-    /// typeof a null Type — an NRE at the first <c>.Name</c>. Null for every
-    /// other element kind (the callers keep their existing fallback) and for a
-    /// placeholder-bearing element in a shared-body candidate, whose identity is
-    /// instantiation-dependent and keeps the null degrade the ctor site always had.</summary>
-    private string? MdSzElementTypeInfoExpr(TypeDesc el)
+    /// <summary>The precise handle when an MD array's element is itself an array.
+    /// Nested MD identities must be noted before naming their static handle.
+    /// Placeholder-bearing elements in a shared-body trial keep their
+    /// instantiation-dependent identity out of static metadata.</summary>
+    private string? MdArrayElementTypeInfoExpr(TypeDesc el)
     {
         if (SharedTrial && Compilation.ContainsCanonPlaceholder(el))
             return null;
+        if (el.Kind == TypeKind.MDArray)
+        {
+            _c.NoteMdArrayType(el);
+            string e = "&ti_md_" + Compilation.ArrayElemMangle(el);
+            _c.NoteNamedTypeInfoSymbol(_method, e);
+            return e;
+        }
         if (el is not { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Primitive or TypeKind.Class or TypeKind.External or TypeKind.SZArray or TypeKind.MDArray } szEl })
             return null;
         _c.NoteArrayElementType(szEl);
@@ -483,7 +486,7 @@ internal sealed partial class MethodCompiler
             _c.NoteMdArrayType(target);
             if (mdel.Kind is TypeKind.Class && mdel.Class is { } mdCls)
                 NoteReferencedType(mdCls);
-            string mdElemTi = MdSzElementTypeInfoExpr(mdel)
+            string mdElemTi = MdArrayElementTypeInfoExpr(mdel)
                 ?? (token != 0 ? TypeInfoExpr(mdel, token) : TypeInfoExpr(mdel)) ?? "nullptr";
             return $"dn2cpp_mdarr_ti({mdElemTi}, {mdrank})";
         }
