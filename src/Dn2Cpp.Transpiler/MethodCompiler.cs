@@ -3334,7 +3334,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                     _c.NoteMdArrayType(target);
                     if (mdElem.Kind is TypeKind.Class && mdElem.Class is { } mdCls)
                         NoteReferencedType(mdCls);
-                    string mdElemTi = MdSzElementTypeInfoExpr(mdElem)
+                    string mdElemTi = MdArrayElementTypeInfoExpr(mdElem)
                         ?? TypeInfoExpr(mdElem, insn.Token) ?? "nullptr";
                     Push(StackKind.Ptr, "const Dn2CppTypeInfo*",
                         $"dn2cpp_mdarr_ti({mdElemTi}, {mdRank})", target);

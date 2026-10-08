@@ -22,6 +22,7 @@
 # Nullable array display composes generic element identities and array ranks.
 # Excessive-rank errors identify the attempted array type and its assembly.
 # ILDiet retains rank-one MD signatures without lower bounds and nested vector distinctions.
+# Nested MD elements retain precise identities through tokens, allocations and casts.
 # Former gates: array-ops, array-contains, array-range, array-resize, array-sort,
 # array-data-ref, byte-array, getsubarray, packed-array, array-collection, enumarray,
 # arraypool.
@@ -332,6 +333,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|array-box-shared-gener
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|comparer-identity-prefix-argv:before-comparer-identity|before-nonzero-lower-bounds|rank1-nonsz-collections|static-rank1-md-typespec|before-lower-bound-search|rank1-collection-virtual-equality|rank1-collection-extreme-bounds|before-extreme-collection|before-wrapped-array-ranges|wrapped-range-default-comparer-identity|before-sort-access-faults|sort-window-access-fault-boundary|opaque-comparer-type-only"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/ArrayCore/ArrayComparerTypeOnly.csproj samples/dotnet/ArrayCore/ArrayComparerTypeOnlyProgram.cs samples/dotnet/ArrayCore/ArrayLowerBoundsOnly.csproj samples/dotnet/ArrayCore/ArrayLowerBoundsOnlyProgram.cs gates/fixtures/array-rank1-md/Driver.csproj samples/dotnet/ArrayCore/ArrayStaticRankOneOnlyProgram.cs gates/fixtures/array-rank1-md/Generate.csproj gates/fixtures/array-rank1-md/Program.cs samples/dotnet/ArrayCore/BoxProvenanceOnly.csproj samples/dotnet/ArrayCore/BoxProvenanceProgram.cs samples/dotnet/ArrayCore/ReflectionReturnBoxOnly.csproj samples/dotnet/ArrayCore/ReflectionReturnBoxProgram.cs samples/dotnet/ArrayCore/DiamondProvenanceOnly.csproj samples/dotnet/ArrayCore/DiamondProvenanceProgram.cs samples/dotnet/ArrayCore/FieldAliasProvenanceOnly.csproj samples/dotnet/ArrayCore/FieldAliasProvenanceProgram.cs samples/dotnet/ArrayCore/FieldAliasProvenanceSubset.cs samples/dotnet/ArrayCore/ArrayElementAliasProgram.cs samples/dotnet/ArrayCore/ArrayElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayObjectElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayUnknownElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayErasedElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayReferenceSlotAliasOnly.csproj samples/dotnet/ArrayCore/ArrayReflectedVoidBoxOnly.csproj samples/dotnet/ArrayCore/ArrayReflectedVoidBoxProgram.cs samples/dotnet/ArrayCore/ArrayFutureStoreOnly.csproj samples/dotnet/ArrayCore/ArrayFutureStoreProgram.cs samples/dotnet/ArrayCore/ArrayFutureNullStoreOnly.csproj samples/dotnet/ArrayCore/ArrayObjectFutureStoreOnly.csproj samples/dotnet/ArrayCore/ArrayObjectFutureStoreProgram.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|lower-bound-less-rank1-array-signatures|unsized-array-prefix:${DN2CPP_BEFORE_UNSIZED_ARRAY:-}"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|nested-md-array-identities|nested-md-array:--no-ildiet|nested-md-array-prefix:${DN2CPP_BEFORE_NESTED_MD_ARRAY:-}"
 corelib_diff_gate ArrayCore System.Collections
 
 native=$(run_bounded "./$_CG_OUT/ArrayCore$EXE_EXT")
@@ -1068,6 +1070,12 @@ static_rank1_clr_before=$(DN2CPP_BEFORE_UNSIZED_ARRAY=1 run_bounded dotnet exec 
     --runtimeconfig "$static_rank1_root/generator/Generate.runtimeconfig.json" "$static_rank1_app")
 assert_output "$static_rank1_prefix" "$(strip_cr_win "$static_rank1_before")"
 assert_output "$static_rank1_prefix" "$(strip_cr_win "$static_rank1_clr_before")"
+static_rank1_nested_prefix=$(awk '/^== nested MD array identities ==$/ { exit } { print }' <<< "$static_rank1_native")
+static_rank1_nested_before=$(DN2CPP_BEFORE_NESTED_MD_ARRAY=1 run_bounded "./$static_rank1_root/gen/ArrayStaticRankOneOnly$EXE_EXT")
+static_rank1_nested_clr_before=$(DN2CPP_BEFORE_NESTED_MD_ARRAY=1 run_bounded dotnet exec \
+    --runtimeconfig "$static_rank1_root/generator/Generate.runtimeconfig.json" "$static_rank1_app")
+assert_output "$static_rank1_nested_prefix" "$(strip_cr_win "$static_rank1_nested_before")"
+assert_output "$static_rank1_nested_prefix" "$(strip_cr_win "$static_rank1_nested_clr_before")"
 for line in '== static rank1 MD identity ==' \
     'static=System.Int32[*]/Int32[*]/False/1' 'identity=True/True/False' \
     'static clone=True/23' 'static rank1 MD identity end' \
@@ -1076,10 +1084,27 @@ for line in '== static rank1 MD identity ==' \
     'Sized=System.Int32[*]/False/False' 'Sized identity=True/True/True' \
     'Vector=System.Int32[]/True/False' 'Vector identity=True/True/True' \
     'VectorOfUnsized=System.Int32[*][]/True/False' 'VectorOfUnsized identity=True/True/True' \
-    'UnsizedOfVector=System.Int32[][*]/False/True' 'UnsizedOfVector identity=True/True/True'; do
+    'UnsizedOfVector=System.Int32[][*]/False/True' 'UnsizedOfVector identity=True/True/True' \
+    '== nested MD array identities ==' 'nested MD array identities end' \
+    'UnsizedOfUnsized=System.Int32[*][*]/False/False' 'UnsizedOfUnsized identity=True/True/True' \
+    'UnsizedOfRectangle=System.Int32[,][*]/False/False' 'UnsizedOfRectangle identity=True/True/True' \
+    'UnsizedOfUnsizedOfUnsized=System.Int32[*][*][*]/False/False' 'UnsizedOfUnsizedOfUnsized identity=True/True/True' \
+    'nested chain=1/1/True/True' 'nested reflected=True/23' \
+    'nested is=True/False/False/False/True' 'nested covariance rejection=False/False' 'nested cast=True/True' \
+    'nested cast mismatch=InvalidCastException' 'nested value cast mismatch=InvalidCastException' \
+    'nested allocation=True/System.Int32[,][,]/2/2/True/31' \
+    'nested rectangular is=True/False/False/False/False' 'nested rectangular cast=True/True' \
+    'nested rectangular cast mismatch=InvalidCastException'; do
     [[ $(grep -Fxc -- "$line" <<< "$static_rank1_native") == 1 ]] \
         || { echo "FAIL: static rank1 MD witness must run once: $line" >&2; exit 1; }
 done
+
+# The raw ARRAY TypeSpec path must agree with the ILDiet path.
+invoke_cli "$static_rank1_app" -r "$corelib" -r "$static_rank1_root/app/ArrayRankOneLibrary.dll" \
+    --no-ildiet -o "$static_rank1_root/gen-no-ildiet"
+compile_console "$static_rank1_root/gen-no-ildiet" ArrayStaticRankOneOnly
+static_rank1_no_diet_native=$(run_bounded "./$static_rank1_root/gen-no-ildiet/ArrayStaticRankOneOnly$EXE_EXT")
+assert_output "$static_rank1_native" "$(strip_cr_win "$static_rank1_no_diet_native")"
 
 # CLR metadata inspection covers signature wrappers without widening native type APIs.
 mkdir -p "$static_rank1_root/metadata"

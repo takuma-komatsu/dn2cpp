@@ -420,7 +420,7 @@ internal sealed partial class MethodCompiler
         // receiver) can rediscover the shape. A placeholder-bearing element in
         // a shared-body candidate keeps the legacy null header (identity would
         // be instantiation-dependent) rather than tainting the trial.
-        string elemTi = MdSzElementTypeInfoExpr(arrayType.Element!)
+        string elemTi = MdArrayElementTypeInfoExpr(arrayType.Element!)
             ?? (SharedTrial && Compilation.ContainsCanonPlaceholder(arrayType.Element!)
                 ? null : TypeInfoExpr(arrayType.Element!)) ?? "nullptr";
         // dn2cpp_i32s(...).v, not the C99 compound literal (const int32_t[]){...}:

@@ -1260,9 +1260,15 @@ static int32_t dn2cpp_isinst_walk(const Dn2CppTypeInfo* st, const Dn2CppTypeInfo
         // an object[], whose ldelem.ref reads raw payload bytes as managed pointers.
         if (st == &dn2cpp_array_n_type || ti == &dn2cpp_array_n_type)
             return st == ti;
+        const Dn2CppTypeInfo* se = st->elementType;
+        const Dn2CppTypeInfo* de = ti->elementType;
+        // Array recursion stays outside interface variance, whose reachable bodies
+        // follow the transpiler's narrower element-assignability predicate.
+        const bool nestedArrays = se != nullptr && de != nullptr
+            && (se->flags & DN2CPP_TF_ARRAY) != 0 && (de->flags & DN2CPP_TF_ARRAY) != 0;
         return (st->arrayRank > 1 ? st->arrayRank : 1) == (ti->arrayRank > 1 ? ti->arrayRank : 1)
             && (!dn2cpp_is_md_array(st) || !dn2cpp_is_sz_array(ti))
-            && dn2cpp_array_elem_covariant(st->elementType, ti->elementType);
+            && (nestedArrays ? dn2cpp_typeinfo_assignable(se, de) : dn2cpp_array_elem_covariant(se, de));
     }
     // An array to one of the six non-generic interfaces every array implements
     // (IEnumerable/ICollection/IList + ICloneable/IStructuralComparable/IStructural-
