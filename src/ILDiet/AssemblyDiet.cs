@@ -53,7 +53,7 @@ internal sealed partial class AssemblyDiet : IDisposable
     internal AssemblyDiet(DietRequest request)
     {
         _request = request;
-        _metadataResolver = new ClosedMetadataResolver(_resolver);
+        _metadataResolver = new ClosedMetadataResolver(_resolver, PreserveMemberArrayKinds);
     }
 
     internal void Run(string? resultPath)
@@ -926,9 +926,12 @@ internal sealed class ClosedResolver : IAssemblyResolver
 internal sealed class ClosedMetadataResolver : MetadataResolver
 {
     private readonly ClosedResolver _assemblies;
-    internal ClosedMetadataResolver(ClosedResolver assemblies) : base(assemblies)
+    private readonly Action<Mono.Cecil.MemberReference> _preserveArrayKinds;
+    internal ClosedMetadataResolver(ClosedResolver assemblies, Action<Mono.Cecil.MemberReference> preserveArrayKinds)
+        : base(assemblies)
     {
         _assemblies = assemblies;
+        _preserveArrayKinds = preserveArrayKinds;
     }
 
     public override TypeDefinition Resolve(TypeReference type)
@@ -946,5 +949,67 @@ internal sealed class ClosedMetadataResolver : MetadataResolver
                 return definition;
             throw;
         }
+    }
+
+    public override MethodDefinition Resolve(MethodReference method)
+    {
+        _preserveArrayKinds(method);
+        var resolved = base.Resolve(method);
+        if (resolved is null) return null!;
+        method = method.GetElementMethod();
+        _preserveArrayKinds(resolved);
+        if (SameArrayKinds(resolved, method)) return resolved;
+        for (var type = Resolve(method.DeclaringType); type is not null;
+            type = type.BaseType is null ? null : Resolve(type.BaseType))
+        {
+            var candidates = new Mono.Collections.Generic.Collection<MethodDefinition>();
+            foreach (var candidate in type.Methods)
+            {
+                if (candidate.Name != method.Name) continue;
+                _preserveArrayKinds(candidate);
+                if (SameArrayKinds(candidate, method)) candidates.Add(candidate);
+            }
+            // Cecil retains its generic/vararg matching; the filter adds original
+            // SZ versus MD identity recursively through composed signatures.
+            if (MetadataResolver.GetMethod(candidates, method) is { } match) return match;
+        }
+        return null!;
+    }
+
+    private static bool SameArrayKinds(MethodReference definition, MethodReference reference)
+    {
+        if (!SameArrayKinds(definition.ReturnType, reference.ReturnType)
+            || definition.Parameters.Count > reference.Parameters.Count) return false;
+        for (int i = 0; i < definition.Parameters.Count; i++)
+        {
+            var parameter = reference.Parameters[i].ParameterType;
+            if (parameter is SentinelType sentinel) parameter = sentinel.ElementType;
+            if (!SameArrayKinds(definition.Parameters[i].ParameterType, parameter)) return false;
+        }
+        return true;
+    }
+
+    private static bool SameArrayKinds(TypeReference a, TypeReference b)
+    {
+        if (a is ArrayType || b is ArrayType)
+            return a is ArrayType aa && b is ArrayType ab
+                && aa.IsVector == ab.IsVector && SameArrayKinds(aa.ElementType, ab.ElementType);
+        if (a is GenericInstanceType ga && b is GenericInstanceType gb)
+        {
+            if (ga.GenericArguments.Count != gb.GenericArguments.Count) return false;
+            for (int i = 0; i < ga.GenericArguments.Count; i++)
+                if (!SameArrayKinds(ga.GenericArguments[i], gb.GenericArguments[i])) return false;
+        }
+        if (a is FunctionPointerType fa && b is FunctionPointerType fb)
+        {
+            if (!SameArrayKinds(fa.ReturnType, fb.ReturnType) || fa.Parameters.Count != fb.Parameters.Count) return false;
+            for (int i = 0; i < fa.Parameters.Count; i++)
+                if (!SameArrayKinds(fa.Parameters[i].ParameterType, fb.Parameters[i].ParameterType)) return false;
+        }
+        if (a is IModifierType ma && b is IModifierType mb
+            && !SameArrayKinds(ma.ModifierType, mb.ModifierType)) return false;
+        if (a is TypeSpecification sa && b is TypeSpecification sb)
+            return SameArrayKinds(sa.ElementType, sb.ElementType);
+        return true;
     }
 }

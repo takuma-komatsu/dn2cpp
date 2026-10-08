@@ -13,6 +13,19 @@ namespace Dn2Cpp;
 
 internal sealed partial class AssemblyDiet
 {
+    private readonly Dictionary<ModuleDefinition, ArrayKindPreserver> _memberArrayKinds = new();
+
+    private void PreserveMemberArrayKinds(MemberReference member)
+    {
+        if (!_byModule.TryGetValue(member.Module, out var assembly)) return;
+        if (!_memberArrayKinds.TryGetValue(member.Module, out var kinds))
+        {
+            kinds = new ArrayKindPreserver(assembly.PE.GetMetadataReader(), member.Module);
+            _memberArrayKinds.Add(member.Module, kinds);
+        }
+        kinds.Member(member);
+    }
+
     private static void PreserveArrayKinds(DietAssembly assembly)
     {
         var reader = assembly.PE.GetMetadataReader();
