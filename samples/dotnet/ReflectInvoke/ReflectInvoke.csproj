@@ -47,6 +47,7 @@
   <ItemGroup>
     <Compile Remove="StrippedOverrideRefusalsProgram.cs" />
     <Compile Remove="ReflectPointerFieldsOnlyProgram.cs" />
+    <Compile Remove="ReflectAttributeDiscoveryOnlyProgram.cs" />
   </ItemGroup>
 
 </Project>
