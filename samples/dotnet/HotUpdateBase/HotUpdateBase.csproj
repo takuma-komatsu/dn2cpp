@@ -15,6 +15,8 @@
     <ProjectReference Include="../../../src/Dn2Cpp.Runtime/Dn2Cpp.Runtime.csproj" />
     <ProjectReference Include="../../../gates/fixtures/hotupdate-renamed-slot/HotUpdateRenamedSlot.csproj"
                       ReferenceOutputAssembly="false" Private="false" />
+    <ProjectReference Include="../../../gates/fixtures/hotupdate-nonvirtual-call/HotUpdateNonVirtualCall.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
 
   <Target Name="ResolveRenamedSlotFixture">
@@ -31,11 +33,20 @@
   <!-- Rewriting the intermediate assembly keeps no-op reference builds from
        overwriting the bin assembly while another gate reads it. -->
   <Target Name="RewriteRenamedSlots" AfterTargets="CoreCompile" BeforeTargets="CopyFilesToOutputDirectory"
-          DependsOnTargets="ResolveRenamedSlotFixture"
-          Inputs="@(IntermediateAssembly);$(RenamedSlotFixturePath);$(MSBuildProjectFullPath)"
+          DependsOnTargets="ResolveRenamedSlotFixture;ResolveTypePredicateFixture"
+          Inputs="@(IntermediateAssembly);$(RenamedSlotFixturePath);$(TypePredicateFixturePath);$(MSBuildProjectFullPath)"
           Outputs="$(IntermediateOutputPath)renamed-slots.stamp">
     <Exec Command="dotnet exec &quot;$(RenamedSlotFixturePath)&quot; &quot;@(IntermediateAssembly)&quot;" />
+    <Exec Command="dotnet exec &quot;$(TypePredicateFixturePath)&quot; &quot;@(IntermediateAssembly)&quot; --type-predicate-nops" />
     <Touch Files="$(IntermediateOutputPath)renamed-slots.stamp" AlwaysCreate="true" />
+  </Target>
+
+  <Target Name="ResolveTypePredicateFixture">
+    <MSBuild Projects="$(MSBuildProjectDirectory)/../../../gates/fixtures/hotupdate-nonvirtual-call/HotUpdateNonVirtualCall.csproj"
+             Targets="GetTargetPath"
+             Properties="Configuration=$(Configuration);TargetFramework=$(TargetFramework)">
+      <Output TaskParameter="TargetOutputs" PropertyName="TypePredicateFixturePath" />
+    </MSBuild>
   </Target>
 
   <ItemGroup>

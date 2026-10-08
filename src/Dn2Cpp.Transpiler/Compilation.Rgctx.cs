@@ -151,8 +151,9 @@ internal sealed partial class Compilation
     /// <summary>The only mutator of <see cref="Phase"/>. The legal edges are exactly the
     /// pipelines that exist: Emit with shared generics walks Discovery → LayoutClosure →
     /// Planning → Finalized → Emission; <c>--measure</c> skips LayoutClosure (its guarded
-    /// closure runs last, inside Emission); with shared generics off both jump Discovery
-    /// → Emission (no planning protocol exists to misorder). Anything else is a
+    /// closure runs last, inside Emission). With shared generics off, hot-update Emit
+    /// walks Discovery → LayoutClosure → Emission to retain callable interface bodies;
+    /// ordinary Emit and measure jump Discovery → Emission. Anything else is a
     /// transpiler bug: throw <see cref="InvalidOperationException"/> and crash raw.</summary>
     internal void EnterPhase(EmitPhase next)
     {
@@ -161,7 +162,8 @@ internal sealed partial class Compilation
             EmitPhase.LayoutClosure => Phase == EmitPhase.Discovery,
             EmitPhase.Planning => Phase is EmitPhase.Discovery or EmitPhase.LayoutClosure,
             EmitPhase.Finalized => Phase == EmitPhase.Planning,
-            EmitPhase.Emission => Phase is EmitPhase.Discovery or EmitPhase.Finalized,
+            EmitPhase.Emission => Phase is EmitPhase.Discovery or EmitPhase.Finalized
+                || Phase == EmitPhase.LayoutClosure && !SharedGenericsEnabled,
             _ => false,
         };
         if (!legal)
@@ -247,6 +249,10 @@ internal sealed partial class Compilation
     /// never share (statics stay per real instantiation by design).</summary>
     private void ReachSharedCounterpart(MethodInfo m)
     {
+        // Finalized sharing verdicts cannot admit new candidates. Late reachable
+        // methods keep their closed bodies without reopening canonical compilation.
+        if (Phase is EmitPhase.Finalized or EmitPhase.Emission)
+            return;
         if (m.NameSuffix != "" || m.Name == ".cctor" || m.Rva == 0)
             return;
         if (m.DeclaringClass.SharedOwner is not { } owner)
@@ -419,11 +425,10 @@ internal sealed partial class Compilation
         NamedStructSymbols = new Dictionary<string, MethodInfo>(StringComparer.Ordinal);
         // The [HotPath(NoAlloc)] closure recorders arm together with the named-symbol
         // audit — same emission-pass boundary, same write-only "cannot change output"
-        // contract — but ONLY when a NoAlloc method exists, so a program that uses none
-        // pays nothing (null dictionaries, no body scans). NoAllocMethods is complete by
-        // now: the planning pass compiled every reachable body, and MethodCompiler.Compile
-        // touches IsHotPath, which decodes the bit and registers the root.
-        if (NoAllocMethods.Count > 0)
+        // contract. Hotupdate defaults can register a root after earlier callees emitted,
+        // so those images record from the first body. Other programs pay nothing when
+        // no NoAlloc method exists (null dictionaries, no body scans).
+        if (NoAllocMethods.Count > 0 || _hotUpdateBase)
         {
             HotCallEdges = new Dictionary<string, List<MethodInfo>>(StringComparer.Ordinal);
             HotBodyFacts = new Dictionary<string, HotBodyFacts>(StringComparer.Ordinal);
@@ -501,8 +506,8 @@ internal sealed partial class Compilation
         named.TryAdd(sym, caller);
     }
 
-    // ---- [HotPath(NoAlloc)] closure verification (armed only when a NoAlloc method
-    //      exists; see BeginCallSymbolAudit and CppEmitter.AssertNoAllocClosures) ----
+    // ---- [HotPath(NoAlloc)] closure verification (armed for known roots or hotupdate
+    //      defaults; see BeginCallSymbolAudit and CppEmitter.AssertNoAllocClosures) ----
 
     /// <summary>Every method carrying <c>[HotPath(NoAlloc = true)]</c>, appended once
     /// each by <see cref="MethodInfo.NoAlloc"/>'s decode (ComputeHotPathBits is cached).
@@ -515,21 +520,22 @@ internal sealed partial class Compilation
     internal void NoteNoAllocMethod(MethodInfo m) => NoAllocMethods.Add(m);
 
     /// <summary>The direct-call closure edges the NoAlloc BFS follows: caller body
-    /// CppName → the callee bodies it names. Null (unarmed) unless a NoAlloc method
-    /// exists. Filled by <see cref="NoteNamedBodySymbol"/>, the mouth every emitted call
+    /// CppName → the callee bodies it names. Null unless NoAlloc roots or hotupdate
+    /// defaults arm recording. Filled by <see cref="NoteNamedBodySymbol"/>, the mouth
+    /// every emitted call
     /// edge already flows through (direct calls, ldftn/ldvirtftn, the async continuation,
     /// an intrinsic body delegating to a real one).</summary>
     internal Dictionary<string, List<MethodInfo>>? HotCallEdges;
 
     /// <summary>Per-emitted-body allocation/dispatch facts, keyed by body CppName. Filled
-    /// by <see cref="RecordHotBodyFacts"/> as bodies stream through emission. Null unless
-    /// a NoAlloc method exists.</summary>
+    /// by <see cref="RecordHotBodyFacts"/> as bodies stream through emission. Null while
+    /// closure recording is off.</summary>
     internal Dictionary<string, HotBodyFacts>? HotBodyFacts;
 
     /// <summary>Bodies that emit a <c>calli</c> (function-pointer) call, by CppName. That
     /// call's C++ form carries no distinctive runtime token to scan for, so
     /// <see cref="NoteHotIndirectCall"/> marks it here and RecordHotBodyFacts folds it into
-    /// the body's dispatch verdict. Null unless a NoAlloc method exists.</summary>
+    /// the body's dispatch verdict. Null while closure recording is off.</summary>
     internal HashSet<string>? HotIndirectCalls;
 
     /// <summary>Mark that <paramref name="m"/>'s body makes a <c>calli</c> — a statically
@@ -846,6 +852,12 @@ internal sealed partial class Compilation
     internal IReadOnlyDictionary<string, int> SharedTaintReasons => _sharedTaintReasons;
     private readonly Dictionary<string, int> _sharedTaintReasons = new();
 
+    // A patch can pass null this. Receiver-derived context needs a closed body,
+    // including context used only to supply another body's hidden argument.
+    internal bool RequiresNullReceiverContextFallback(MethodInfo m) =>
+        _hotUpdateBase && !WouldNeedRgctxParam(m)
+        && !m.DeclaringClass.Context.TypeArgs.Any(ContainsCanonAny);
+
     /// <summary>Steps 0 and 1 of <see cref="FinalizeSharedGenerics"/> over
     /// <paramref name="taint"/>, which they extend: returns the bodies that read a
     /// runtime generic context (tainted ones included; callers skip those).
@@ -889,6 +901,12 @@ internal sealed partial class Compilation
         while (changed)
         {
             changed = false;
+            foreach (var m in uses)
+                if (!taint.ContainsKey(m) && RequiresNullReceiverContextFallback(m))
+                {
+                    taint[m] = "null-receiver-context";
+                    changed = true;
+                }
             foreach (var kv in SharedCallEdges)
             {
                 var m = kv.Key;

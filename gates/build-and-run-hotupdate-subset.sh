@@ -30,6 +30,18 @@
 # row raises BadImageFormatException: each such call starts its method, so the
 # interpreter, which raises it as the call executes, and .NET, which raises it
 # as the JIT compiles the method, both raise it before any effect.
+# A null receiver enters a named AOT body through call, and callvirt faults
+# before entry. Field and generic-dictionary reads fault after preceding effects.
+# Storage-kind Type predicates on a parameter or the declaring type fold through
+# NOP-separated token/getter windows, plain calls
+# and null-bound delegates, including generic value arguments and exception regions.
+# Default interface bodies remain callable even when every implementer replaces them;
+# a --cut default does not prevent retention from reaching a fixpoint.
+# A generic default retained by a local value layout after planning emits its
+# closed body without reopening canonical sharing candidates; its Object method
+# group address is prepared before body compilation.
+# A late NoAlloc default verifies its direct-call closure, including allocation
+# facts and transitive edges from helpers compiled before the root.
 # Hot update (BPI interpretation): the base program is AOT-transpiled with
 # --hotupdate-base (ABI-contract hash constant + base-abi.json sidecar), the
 # patch assembly is baked into a Baked Patch Image by --emit-patch, and the
@@ -184,6 +196,12 @@ build_proj samples/dotnet/HotUpdatePatch/NoCtorImportOracle.csproj
 build_proj samples/dotnet/HotUpdatePatch/GvmRowHitPatch.csproj
 build_proj samples/dotnet/HotUpdatePatch/GvmRowMissPatch.csproj
 build_proj samples/dotnet/HotUpdatePatch/GvmCallPatch.csproj
+build_proj samples/dotnet/HotUpdatePatch/GvmCallReferenceBase.csproj
+build_proj samples/dotnet/HotUpdatePatch/GvmCallReferencePatch.csproj
+build_proj samples/dotnet/HotUpdatePatch/GvmCallLateLayoutLibrary.csproj
+build_proj samples/dotnet/HotUpdatePatch/GvmCallLateLayout.csproj
+build_proj samples/dotnet/HotUpdatePatch/GvmCallLateNoAllocLibrary.csproj
+build_proj samples/dotnet/HotUpdatePatch/GvmCallLateNoAlloc.csproj
 build_proj samples/dotnet/HotUpdatePatch/RenamedSlotPatch.csproj
 build_proj samples/dotnet/HotUpdatePatch/AggregateCtorMissPatch.csproj
 build_proj samples/dotnet/HotUpdatePatch/OrdinaryCtorMissPatch.csproj
@@ -235,6 +253,12 @@ noctor_oracle_app="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/NoCtorImportOr
 gvmhit_app="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/GvmRowHitPatch.dll"
 gvmmiss_app="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/GvmRowMissPatch.dll"
 gvmcall_app="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/GvmCallPatch.dll"
+gvmcall_reference_base="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/GvmCallReferenceBase.dll"
+gvmcall_reference_patch="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/GvmCallReferencePatch.dll"
+gvmcall_late_layout_library="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/GvmCallLateLayoutLibrary.dll"
+gvmcall_late_layout_app="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/GvmCallLateLayout.dll"
+gvmcall_late_noalloc_library="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/GvmCallLateNoAllocLibrary.dll"
+gvmcall_late_noalloc_app="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/GvmCallLateNoAlloc.dll"
 renamed_slot_app="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/RenamedSlotPatch.dll"
 renamed_slot_fixture="gates/fixtures/hotupdate-renamed-slot/bin/$CONFIG/$TFM/HotUpdateRenamedSlot.dll"
 aggregate_ctor_miss_app="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/AggregateCtorMissPatch.dll"
@@ -281,7 +305,7 @@ grep -q dn2cpp_base_image_abi_hash "$OUT/generated.cpp" \
 # against the REAL net10.0 CoreLib, so which CoreLib that resolves to is an input
 # of this gate the same way it is of net10_bcl_diff_gate — a runtime bump must
 # not be served a green recorded against the previous one.
-if gate_cache_check "$OUT" "hotupdate-subset|cli:$(_gate_cli_hash)|field-metadata:$field_packed/$field_native|corelib:$(resolve_net10_corelib)|before-derived-aggregate|before-aggregate-collection|before-aggregate-message|before-ordinary-exception-message|oracle:--derived-aggregate/--aggregate-collection|unavailable-aggregate-ctor|type-getter-signature:--type-getter-signature/before-type-getter-signature/register/stack/HotUpdateBase.TypeGetterSignatureFixture::EmitSurface|renamed-slots:--renamed-slot-prefix/before-renamed-slots/register/stack/intrinsic-bcl/corelib|renamed-object:--object/--finalize/--renamed-object-oracle/--renamed-finalize-oracle/corelib-refusal/corelib-loaded" \
+if gate_cache_check "$OUT" "hotupdate-subset|cli:$(_gate_cli_hash)|field-metadata:$field_packed/$field_native|corelib:$(resolve_net10_corelib)|before-derived-aggregate|before-aggregate-collection|before-aggregate-message|before-ordinary-exception-message|oracle:--derived-aggregate/--aggregate-collection|unavailable-aggregate-ctor|type-getter-signature:--type-getter-signature/before-type-getter-signature/register/stack/HotUpdateBase.TypeGetterSignatureFixture::EmitSurface|renamed-slots:--renamed-slot-prefix/before-renamed-slots/register/stack/intrinsic-bcl/corelib|renamed-object:--object/--finalize/--renamed-object-oracle/--renamed-finalize-oracle/corelib-refusal/corelib-loaded|instance-body-calls:call/callvirt/default/dictionary/folded-predicates/same-owner/predicate-nops/null-bound/try/method-context/register/stack/intrinsic-bcl/corelib/--no-shared-generics/--cut-HotUpdateBase.IOverriddenBin::Cold|late-default-layout:object-method-group/noalloc-constant/transitive-helper/normal/--hotupdate-base/--no-shared-generics" \
         "$base_app" "$patch_app" "$bad_app" "$badgvm_app" "$baditf_app" "$baddg_app" \
         "$concat_oracle_app" \
         "$badmc_app" "$dir1_app" "$dir2_app" "$dgrecv_app" "$dgsig_app" \
@@ -293,6 +317,9 @@ if gate_cache_check "$OUT" "hotupdate-subset|cli:$(_gate_cli_hash)|field-metadat
         samples/dotnet/HotUpdatePatch/hotupdate-refs.txt \
         "$noctor_base_app" "$noctor_patch_app" "$noctor_oracle_app" \
         "$gvmhit_app" "$gvmmiss_app" "$gvmcall_app" "$renamed_slot_app" \
+        "$gvmcall_reference_base" "$gvmcall_reference_patch" \
+        "$gvmcall_late_layout_library" "$gvmcall_late_layout_app" \
+        "$gvmcall_late_noalloc_library" "$gvmcall_late_noalloc_app" \
         samples/dotnet/HotUpdateBase/RenamedSlotProbe.cs \
         samples/dotnet/HotUpdatePatch/RenamedSlotPatch.csproj \
         samples/dotnet/HotUpdatePatch/RenamedSlotProbe.cs \
@@ -1704,19 +1731,398 @@ for line in '== abstract class method imports ==' 'aot abstract count' '42949673
         || { echo "FAIL: abstract method import witness missing: $line" >&2; exit 1; }
 done
 gvmcall_prefix_oracle=$(awk '/^== abstract class method imports ==$/ { exit } { print }' <<< "$gvmcall_oracle")
-invoke_cli --emit-patch "$gvmcall_app" --base-abi "$OUT/base-abi.json" -o "$OUT/gvm-call"
-invoke_cli --emit-patch "$gvmcall_app" --base-abi "$OUT/base-abi.json" --patch-stackcode \
-    -o "$OUT/gvm-call/stack"
-for gvmcall_bpi in "$OUT/gvm-call/GvmCallPatch.bpi" "$OUT/gvm-call/stack/GvmCallPatch.bpi"; do
-    set +e
-    gvmcall_out=$(run_bounded "./$OUT/HotUpdateBase" --run "$gvmcall_bpi"); gvmcall_rc=$?
-    set -e
-    assert_output "$(strip_cr_win "$gvmcall_out")" "$gvmcall_oracle"
-    assert_exit_code "$gvmcall_rc" 0
-    gvmcall_prefix=$(awk '/^== abstract class method imports ==$/ { exit } { print }' <<< "$(strip_cr_win "$gvmcall_out")")
-    assert_output "$gvmcall_prefix" "$gvmcall_prefix_oracle"
+# The complete transcript before the instance-body blocks must remain a prefix.
+gvmcall_previous="== non-virtual calls of virtual imports ==
+bin:5
+bin:5
+bin
+glass bin:8
+glass bin
+tag: System.BadImageFormatException
+mark: System.BadImageFormatException
+describe: System.BadImageFormatException
+== non-virtual calls of virtual imports end ==
+== abstract class method imports ==
+aot abstract count
+4294967399
+aot text=aot:value
+aot identity
+True
+aot body
+45
+15
+aot abstract direct: System.BadImageFormatException/8007000B
+patch abstract count
+4294967499
+patch text=patch:value
+patch identity
+True
+patch body
+85
+15
+patch abstract direct: System.BadImageFormatException/8007000B
+abstract null: System.NullReferenceException/80004003
+abstract direct null: System.BadImageFormatException/8007000B
+abstract class method imports end"
+gvmcall_before_predicates="$gvmcall_previous
+== null receivers of instance body calls ==
+class call
+15
+interface call=bin
+generic interface call=bin:5
+class callvirt: System.NullReferenceException/80004003
+interface callvirt: System.NullReferenceException/80004003
+generic interface callvirt: System.NullReferenceException/80004003
+field read
+field read body entered
+23
+field read body entered
+field read call: System.NullReferenceException/80004003
+field read callvirt: System.NullReferenceException/80004003
+null receivers of instance body calls end
+== null receivers of shared generic bodies ==
+generic shape=holder
+int identity=System.Int32
+string identity: System.NullReferenceException/80004003
+object identity: System.NullReferenceException/80004003
+generic forward body entered
+forward identity: System.NullReferenceException/80004003
+generic lookup body entered
+entered identity: System.NullReferenceException/80004003
+string array length
+generic array body entered
+1
+object array length
+generic array body entered
+1
+generic array body entered
+string array: System.NullReferenceException/80004003
+generic array body entered
+object array: System.NullReferenceException/80004003
+array callvirt: System.NullReferenceException/80004003
+int null array length
+generic array body entered
+1
+int null array lengths
+generic array body entered
+generic array body entered
+2
+mixed array lengths
+mixed value array body entered
+mixed reference array body entered
+2
+mixed value array body entered
+mixed reference array body entered
+mixed arrays: System.NullReferenceException/80004003
+null receivers of shared generic bodies end
+== overridden default interface bodies ==
+plain call=cold default
+generic call=cold default:9
+plain callvirt=cold override
+generic callvirt=cold override:9
+plain null call=cold default
+generic null call=cold default:9
+overridden default interface bodies end
+== context passed to static generic bodies ==
+static string forward length
+generic static forward body entered
+static generic array body entered
+1
+generic static forward body entered
+static string forward: System.NullReferenceException/80004003
+static int null forward length
+generic static forward body entered
+static generic array body entered
+1
+static forward callvirt: System.NullReferenceException/80004003
+context passed to static generic bodies end"
+gvmcall_before_windows="$gvmcall_before_predicates
+== folded generic type predicates ==
+value predicate body entered
+primitive predicate body entered
+enum predicate body entered
+byref-like predicate body entered
+string positive=False/False/False/False
+value predicate body entered
+primitive predicate body entered
+enum predicate body entered
+byref-like predicate body entered
+string null=False/False/False/False
+value predicate body entered
+primitive predicate body entered
+enum predicate body entered
+byref-like predicate body entered
+object null=False/False/False/False
+value predicate body entered
+primitive predicate body entered
+enum predicate body entered
+byref-like predicate body entered
+int null=True/True/False/False
+value predicate body entered
+primitive predicate body entered
+enum predicate body entered
+byref-like predicate body entered
+cell null=True/False/False/False
+value predicate body entered
+primitive predicate body entered
+enum predicate body entered
+byref-like predicate body entered
+enum null=True/False/True/False
+value predicate body entered
+primitive predicate body entered
+enum predicate body entered
+byref-like predicate body entered
+null-bound predicates=False/False/False/False
+try predicate body entered
+try predicate finally entered
+try false=False
+try predicate body entered
+try predicate branch entered
+try predicate finally entered
+try true=False
+method predicate body entered
+method string=False
+method predicate body entered
+method int=True
+predicate callvirt: System.NullReferenceException/80004003
+class predicate body entered
+class predicate: System.NullReferenceException/80004003
+byref predicate body entered
+byref predicate: System.NullReferenceException/80004003
+pointer predicate body entered
+pointer predicate: System.NullReferenceException/80004003
+folded generic type predicates end"
+assert_gvmcall_body_witnesses() {
+    local output="$1" line kind
+    assert_output "${output%%$'\n== null receivers of instance body calls =='*}" "$gvmcall_previous"
+    assert_output "${output%%$'\n== folded generic type predicates =='*}" "$gvmcall_before_predicates"
+    assert_output "${output%%$'\n== generic predicate operand windows =='*}" "$gvmcall_before_windows"
+    for line in '== generic predicate operand windows ==' \
+        'owner positive=False/False/False/False' 'owner null=False/False/False/False' \
+        'null-bound owner=False/False/False/False' 'nop positive=False/False/False/False' \
+        'nop null=False/False/False/False' 'null-bound nop=False' \
+        'array positive=False' 'cell positive=True' \
+        'nop callvirt: System.NullReferenceException/80004003' \
+        'owner class body entered' 'owner class predicate: System.NullReferenceException/80004003' \
+        'nop class body entered' 'nop class predicate: System.NullReferenceException/80004003' \
+        'generic predicate operand windows end'; do
+        [ "$(grep -Fxc -- "$line" <<< "$output")" = 1 ] \
+            || { echo "FAIL: owner and NOP predicate witness must run once: $line" >&2; return 1; }
+    done
+    for line in 'owner value body entered' 'owner primitive body entered' \
+        'owner enum body entered' 'owner byref-like body entered' 'nop value body entered'; do
+        [ "$(grep -Fxc -- "$line" <<< "$output")" = 3 ] \
+            || { echo "FAIL: plain calls and null-bound bindings must enter folded predicates: $line" >&2; return 1; }
+    done
+    for line in 'nop primitive body entered' 'nop enum body entered' 'nop byref-like body entered'; do
+        [ "$(grep -Fxc -- "$line" <<< "$output")" = 2 ] \
+            || { echo "FAIL: NOP-separated predicates must preserve body entry: $line" >&2; return 1; }
+    done
+    for line in 'array predicate body entered' 'constructed cell body entered'; do
+        [ "$(grep -Fxc -- "$line" <<< "$output")" = 5 ] \
+            || { echo "FAIL: constructed types must retain all lookup faults: $line" >&2; return 1; }
+    done
+    for kind in 0 1 2 3; do
+        for line in "array predicate $kind: System.NullReferenceException/80004003" \
+            "cell predicate $kind: System.NullReferenceException/80004003"; do
+            [ "$(grep -Fxc -- "$line" <<< "$output")" = 1 ] \
+                || { echo "FAIL: constructed type predicate must fault after entry: $line" >&2; return 1; }
+        done
+    done
+    for line in '== folded generic type predicates ==' \
+        'string positive=False/False/False/False' 'string null=False/False/False/False' \
+        'object null=False/False/False/False' 'int null=True/True/False/False' \
+        'cell null=True/False/False/False' 'enum null=True/False/True/False' \
+        'null-bound predicates=False/False/False/False' 'try false=False' 'try true=False' \
+        'try predicate branch entered' 'method string=False' 'method int=True' \
+        'predicate callvirt: System.NullReferenceException/80004003' \
+        'class predicate body entered' 'class predicate: System.NullReferenceException/80004003' \
+        'byref predicate body entered' 'byref predicate: System.NullReferenceException/80004003' \
+        'pointer predicate body entered' 'pointer predicate: System.NullReferenceException/80004003' \
+        'folded generic type predicates end'; do
+        [ "$(grep -Fxc -- "$line" <<< "$output")" = 1 ] \
+            || { echo "FAIL: folded Type predicate witness must run once: $line" >&2; return 1; }
+    done
+    for line in 'value predicate body entered' 'primitive predicate body entered' \
+        'enum predicate body entered' 'byref-like predicate body entered'; do
+        [ "$(grep -Fxc -- "$line" <<< "$output")" = 7 ] \
+            || { echo "FAIL: predicate calls and null-bound delegates must enter, never null callvirt: $line" >&2; return 1; }
+    done
+    for line in 'try predicate body entered' 'try predicate finally entered' 'method predicate body entered'; do
+        [ "$(grep -Fxc -- "$line" <<< "$output")" = 2 ] \
+            || { echo "FAIL: predicate context and exception regions must preserve body order: $line" >&2; return 1; }
+    done
+    for line in '== null receivers of instance body calls ==' 'class call' \
+        'interface call=bin' 'generic interface call=bin:5' \
+        'class callvirt: System.NullReferenceException/80004003' \
+        'interface callvirt: System.NullReferenceException/80004003' \
+        'generic interface callvirt: System.NullReferenceException/80004003' \
+        'field read call: System.NullReferenceException/80004003' \
+        'field read callvirt: System.NullReferenceException/80004003' \
+        'null receivers of instance body calls end' \
+        '== null receivers of shared generic bodies ==' 'generic shape=holder' \
+        'int identity=System.Int32' 'string identity: System.NullReferenceException/80004003' \
+        'object identity: System.NullReferenceException/80004003' 'generic forward body entered' \
+        'forward identity: System.NullReferenceException/80004003' 'generic lookup body entered' \
+        'entered identity: System.NullReferenceException/80004003' \
+        'string array length' 'object array length' \
+        'string array: System.NullReferenceException/80004003' \
+        'object array: System.NullReferenceException/80004003' \
+        'array callvirt: System.NullReferenceException/80004003' \
+        'int null array length' 'int null array lengths' 'mixed array lengths' \
+        'mixed arrays: System.NullReferenceException/80004003' \
+        'null receivers of shared generic bodies end' '== overridden default interface bodies ==' \
+        'plain call=cold default' 'generic call=cold default:9' \
+        'plain callvirt=cold override' 'generic callvirt=cold override:9' \
+        'plain null call=cold default' 'generic null call=cold default:9' \
+        'overridden default interface bodies end' \
+        '== context passed to static generic bodies ==' 'static string forward length' \
+        'static string forward: System.NullReferenceException/80004003' \
+        'static int null forward length' \
+        'static forward callvirt: System.NullReferenceException/80004003' \
+        'context passed to static generic bodies end'; do
+        [ "$(grep -Fxc -- "$line" <<< "$output")" = 1 ] \
+            || { echo "FAIL: instance body witness must run once: $line" >&2; return 1; }
+    done
+    [ "$(grep -Fxc 'field read body entered' <<< "$output")" = 2 ] \
+        || { echo 'FAIL: field read must enter through each call, and never through null callvirt' >&2; return 1; }
+    [ "$(grep -Fxc 'generic array body entered' <<< "$output")" = 7 ] \
+        || { echo 'FAIL: shared array calls must enter before their lookup, never through null callvirt' >&2; return 1; }
+    for line in 'mixed value array body entered' 'mixed reference array body entered'; do
+        [ "$(grep -Fxc "$line" <<< "$output")" = 2 ] \
+            || { echo 'FAIL: mixed value/reference lookups must preserve body-entry order' >&2; return 1; }
+    done
+    [ "$(grep -Fxc 'generic static forward body entered' <<< "$output")" = 3 ] \
+        || { echo 'FAIL: static forwarding must enter each call, never null callvirt' >&2; return 1; }
+    [ "$(grep -Fxc 'static generic array body entered' <<< "$output")" = 2 ] \
+        || { echo 'FAIL: null reference context must fault before the static generic callee' >&2; return 1; }
+}
+assert_gvmcall_body_witnesses "$gvmcall_oracle"
+for gvmcall_base in "$OUT" "$OUT/trigger"; do
+    invoke_cli --emit-patch "$gvmcall_app" --base-abi "$gvmcall_base/base-abi.json" -o "$gvmcall_base/gvm-call"
+    invoke_cli --emit-patch "$gvmcall_app" --base-abi "$gvmcall_base/base-abi.json" --patch-stackcode \
+        -o "$gvmcall_base/gvm-call/stack"
+    for gvmcall_bpi in "$gvmcall_base/gvm-call/GvmCallPatch.bpi" "$gvmcall_base/gvm-call/stack/GvmCallPatch.bpi"; do
+        set +e
+        gvmcall_out=$(run_bounded "./$gvmcall_base/HotUpdateBase" --run "$gvmcall_bpi"); gvmcall_rc=$?
+        set -e
+        gvmcall_out=$(strip_cr_win "$gvmcall_out")
+        assert_output "$gvmcall_out" "$gvmcall_oracle"
+        assert_exit_code "$gvmcall_rc" 0
+        gvmcall_prefix=$(awk '/^== abstract class method imports ==$/ { exit } { print }' <<< "$gvmcall_out")
+        assert_output "$gvmcall_prefix" "$gvmcall_prefix_oracle"
+        assert_gvmcall_body_witnesses "$gvmcall_out"
+    done
 done
-echo "OK (non-virtual calls of virtual imports, register and stack formats)"
+echo "OK (non-virtual instance bodies, null/dictionary faults and defaults, both formats and BCL load sets)"
+
+# The same default row belongs to a reference assembly in this image; its type
+# is retained by the implementation's interface list, without a direct body edge.
+gvmcall_reference_oracle=$(DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 run_bounded dotnet "$gvmcall_reference_patch")
+gvmcall_reference_oracle=$(strip_cr_win "$gvmcall_reference_oracle")
+gvmcall_reference_prefix=$(run_bounded dotnet "$gvmcall_reference_base" --prefix)
+gvmcall_reference_prefix=$(strip_cr_win "$gvmcall_reference_prefix")
+assert_output "$gvmcall_reference_oracle" "== referenced default interface body ==
+library call=cold default
+library null call=cold default
+library callvirt=cold override
+referenced default interface body end"
+for gvmcall_reference_sharing in shared monomorphic; do
+    gvmcall_reference_flags=()
+    [ "$gvmcall_reference_sharing" = monomorphic ] && gvmcall_reference_flags+=(--no-shared-generics)
+    gvmcall_reference_out="$OUT/gvm-reference/$gvmcall_reference_sharing"
+    invoke_cli "$gvmcall_reference_base" -r "$base_app" --hotupdate-base \
+        ${gvmcall_reference_flags[@]+"${gvmcall_reference_flags[@]}"} -o "$gvmcall_reference_out"
+    compile_console "$gvmcall_reference_out" GvmCallReferenceBase
+    for gvmcall_reference_codec in register stack; do
+        gvmcall_reference_codec_flags=()
+        [ "$gvmcall_reference_codec" = stack ] && gvmcall_reference_codec_flags+=(--patch-stackcode)
+        invoke_cli --emit-patch "$gvmcall_reference_patch" --base-abi "$gvmcall_reference_out/base-abi.json" \
+            ${gvmcall_reference_codec_flags[@]+"${gvmcall_reference_codec_flags[@]}"} \
+            -o "$gvmcall_reference_out/$gvmcall_reference_codec"
+        gvmcall_reference_native=$(run_bounded "./$gvmcall_reference_out/GvmCallReferenceBase$EXE_EXT" \
+            "$gvmcall_reference_out/$gvmcall_reference_codec/GvmCallReferencePatch.bpi")
+        gvmcall_reference_native=$(strip_cr_win "$gvmcall_reference_native")
+        assert_output "$gvmcall_reference_native" "$gvmcall_reference_prefix
+$gvmcall_reference_oracle"
+        assert_output "${gvmcall_reference_native%%$'\n== referenced default interface body =='*}" "$gvmcall_reference_prefix"
+    done
+    # Retention must terminate when Reach declines the named default. The base
+    # prefix does not call it, and stays runnable with the same retained interface.
+    gvmcall_reference_cut_out="$OUT/gvm-reference/cut-$gvmcall_reference_sharing"
+    run_bounded dotnet exec "$DN2CPP_CLI_DLL" "$gvmcall_reference_base" -r "$base_app" \
+        --hotupdate-base --cut HotUpdateBase.IOverriddenBin::Cold \
+        ${gvmcall_reference_flags[@]+"${gvmcall_reference_flags[@]}"} -o "$gvmcall_reference_cut_out"
+    compile_console "$gvmcall_reference_cut_out" GvmCallReferenceBase
+    gvmcall_reference_cut_prefix=$(run_bounded "./$gvmcall_reference_cut_out/GvmCallReferenceBase$EXE_EXT" --prefix)
+    assert_output "$(strip_cr_win "$gvmcall_reference_cut_prefix")" "$gvmcall_reference_prefix"
+done
+echo "OK (referenced default bodies, cut retention and both codecs with and without shared generics)"
+
+# isinst links the reference interface during discovery; the by-value local
+# retains its field's full layout only after body compilation.
+gvmcall_late_layout_prefix=$(run_bounded dotnet "$gvmcall_late_layout_app" --prefix)
+gvmcall_late_layout_prefix=$(strip_cr_win "$gvmcall_late_layout_prefix")
+gvmcall_late_layout_oracle=$(run_bounded dotnet "$gvmcall_late_layout_app")
+gvmcall_late_layout_oracle=$(strip_cr_win "$gvmcall_late_layout_oracle")
+assert_output "$gvmcall_late_layout_prefix" 'late layout base'
+gvmcall_late_layout_old="$gvmcall_late_layout_prefix
+== late retained default layout ==
+False
+ok
+late retained default layout end"
+assert_output "${gvmcall_late_layout_oracle%%$'\n== late NoAlloc closure =='*}" "$gvmcall_late_layout_old"
+assert_output "$gvmcall_late_layout_oracle" "$gvmcall_late_layout_old
+== late NoAlloc closure ==
+warm helper=1
+late NoAlloc closure end"
+for gvmcall_late_layout_mode in normal shared monomorphic; do
+    gvmcall_late_layout_flags=()
+    [ "$gvmcall_late_layout_mode" = normal ] || gvmcall_late_layout_flags+=(--hotupdate-base)
+    [ "$gvmcall_late_layout_mode" = monomorphic ] && gvmcall_late_layout_flags+=(--no-shared-generics)
+    gvmcall_late_layout_out="$OUT/gvm-late-layout/$gvmcall_late_layout_mode"
+    run_bounded dotnet exec "$DN2CPP_CLI_DLL" "$gvmcall_late_layout_app" -r "$gvmcall_late_layout_library" \
+        ${gvmcall_late_layout_flags[@]+"${gvmcall_late_layout_flags[@]}"} -o "$gvmcall_late_layout_out"
+    compile_console "$gvmcall_late_layout_out" GvmCallLateLayout
+    gvmcall_late_layout_native=$(run_bounded "./$gvmcall_late_layout_out/GvmCallLateLayout$EXE_EXT")
+    gvmcall_late_layout_native=$(strip_cr_win "$gvmcall_late_layout_native")
+    assert_output "$gvmcall_late_layout_native" "$gvmcall_late_layout_oracle"
+    assert_output "${gvmcall_late_layout_native%%$'\n== late retained default layout =='*}" "$gvmcall_late_layout_prefix"
+    assert_output "${gvmcall_late_layout_native%%$'\n== late NoAlloc closure =='*}" "$gvmcall_late_layout_old"
+    gvmcall_late_layout_native_prefix=$(run_bounded "./$gvmcall_late_layout_out/GvmCallLateLayout$EXE_EXT" --prefix)
+    assert_output "$(strip_cr_win "$gvmcall_late_layout_native_prefix")" "$gvmcall_late_layout_prefix"
+done
+echo "OK (late retained generic default layouts and Object method groups, normal and both hotupdate sharing modes)"
+
+# The allocating helper is reached by Main before the late default. A verifier
+# that starts recording at the late root loses both Count's edge and Allocate's facts.
+gvmcall_late_noalloc_oracle=$(run_bounded dotnet "$gvmcall_late_noalloc_app")
+gvmcall_late_noalloc_oracle=$(strip_cr_win "$gvmcall_late_noalloc_oracle")
+assert_output "$gvmcall_late_noalloc_oracle" "$gvmcall_late_layout_oracle"
+for gvmcall_late_noalloc_mode in normal monomorphic; do
+    gvmcall_late_noalloc_flags=()
+    [ "$gvmcall_late_noalloc_mode" = normal ] || gvmcall_late_noalloc_flags+=(--hotupdate-base --no-shared-generics)
+    gvmcall_late_noalloc_out="$OUT/gvm-late-noalloc/$gvmcall_late_noalloc_mode"
+    run_bounded dotnet exec "$DN2CPP_CLI_DLL" "$gvmcall_late_noalloc_app" -r "$gvmcall_late_noalloc_library" \
+        ${gvmcall_late_noalloc_flags[@]+"${gvmcall_late_noalloc_flags[@]}"} -o "$gvmcall_late_noalloc_out"
+    compile_console "$gvmcall_late_noalloc_out" GvmCallLateNoAlloc
+    gvmcall_late_noalloc_native=$(run_bounded "./$gvmcall_late_noalloc_out/GvmCallLateNoAlloc$EXE_EXT")
+    assert_output "$(strip_cr_win "$gvmcall_late_noalloc_native")" "$gvmcall_late_noalloc_oracle"
+done
+gvmcall_late_noalloc_rejected="$OUT/gvm-late-noalloc/shared"
+set +e
+run_bounded dotnet exec "$DN2CPP_CLI_DLL" "$gvmcall_late_noalloc_app" -r "$gvmcall_late_noalloc_library" \
+    --hotupdate-base -o "$gvmcall_late_noalloc_rejected" > "$OUT/gvm-late-noalloc/shared.err" 2>&1
+gvmcall_late_noalloc_rc=$?
+set -e
+assert_exit_code "$gvmcall_late_noalloc_rc" 2
+grep -Fq '[HotPath(NoAlloc)] closure of HotGvmCall.Library.ILateLayoutBin_String::NoAllocConstant allocates:' \
+    "$OUT/gvm-late-noalloc/shared.err" \
+    || { echo 'FAIL: late NoAlloc root did not reject its allocating helper' >&2; exit 1; }
+grep -Fq 'call chain: HotGvmCall.Library.ILateLayoutBin_String.NoAllocConstant -> HotGvmCall.Library.LateNoAllocHelper.Count -> HotGvmCall.Library.LateNoAllocHelper.Allocate' \
+    "$OUT/gvm-late-noalloc/shared.err" \
+    || { echo 'FAIL: late NoAlloc root lost earlier helper facts or transitive edges' >&2; exit 1; }
+echo "OK (late NoAlloc constant and earlier transitive helper allocation facts)"
 
 echo "-- unavailable aggregate constructors refuse without changing ordinary exception seeding --"
 aggregate_ctor_clr=$(DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 run_bounded dotnet "$aggregate_ctor_miss_app")

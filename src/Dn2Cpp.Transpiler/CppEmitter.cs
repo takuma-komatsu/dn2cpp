@@ -616,8 +616,8 @@ internal sealed partial class CppEmitter
         void EmitBody(MethodInfo m, string body)
         {
             // Scan for [HotPath(NoAlloc)] closure verification BEFORE the inline/hot routing,
-            // so an inline-promoted body is scanned too. A no-op unless a NoAlloc method
-            // armed recording. The body text as-emitted is the ground truth for what it
+            // so an inline-promoted body is scanned too. A no-op while closure recording
+            // is off. The body text as-emitted is the ground truth for what it
             // allocates or dispatches.
             _c.RecordHotBodyFacts(m, body);
             if (teeCanonical && Compilation.IsCanonicalMethod(m))
@@ -649,6 +649,11 @@ internal sealed partial class CppEmitter
         // casts) via Compilation.ReferencedTypes, which feed the opaque emit set
         // below. CompileReachableBodies drives this to a fixpoint.
         var compiledMethods = new List<MethodInfo>();
+        if (_hotUpdateBase && !_c.SharedGenericsEnabled)
+        {
+            _c.EnterPhase(EmitPhase.LayoutClosure);
+            while (_c.ReachPatchCallableInterfaceBodies(ComputeEmitted().ToList())) { }
+        }
         if (_c.SharedGenericsEnabled)
         {
             // Canonical shared generics: a planning pass first compiles every reachable body
@@ -672,7 +677,9 @@ internal sealed partial class CppEmitter
             // EventHandler<T> stops canonicalizing — so the phase transitions make the
             // ordering contract loud.
             _c.EnterPhase(EmitPhase.LayoutClosure);
-            ComputeEmitted();
+            var layouts = ComputeEmitted();
+            while (_c.ReachPatchCallableInterfaceBodies(layouts.ToList()))
+                layouts = ComputeEmitted();
             Timing.Mark("layout-closure");
             _c.EnterPhase(EmitPhase.Planning);
             // Runtime-instantiation templates root here — after the scan and the
@@ -692,9 +699,9 @@ internal sealed partial class CppEmitter
             _c.ResetSharedPlanningState();
             Timing.Mark("finalize-shared");
         }
-        // Decode every reachable method's HotPath bits before the audit arms below, so the
-        // arming decision (BeginCallSymbolAudit reads NoAllocMethods.Count) sees the full
-        // root set. The planning pass does NOT guarantee it: a body synthesized without
+        // Decode reachable methods' HotPath bits before the audit arms below, so the
+        // arming decision sees their roots. The planning pass does NOT guarantee it:
+        // a body synthesized without
         // Compile() — a P/Invoke forwarder, an intrinsic ftn wrapper, an HTTP shim — never
         // touches IsHotPath, so a [HotPath(NoAlloc)] root among those would leave recording
         // unarmed while EmitBody's own read still registers the root, tripping
@@ -713,6 +720,10 @@ internal sealed partial class CppEmitter
         // which is why the audit is armed here and nowhere else.
         _c.BeginCallSymbolAudit();
         CompileReachableBodies(_literals, EmitBody, compiledMethods, diagnostics: null);
+        // Bodies can retain further interface types through signatures and fields.
+        // Close their callable defaults before freezing the defined-symbol set.
+        while (_hotUpdateBase && _c.ReachPatchCallableInterfaceBodies(ComputeEmitted().ToList()))
+            CompileReachableBodies(_literals, EmitBody, compiledMethods, diagnostics: null);
         if (_c.SharedGenericsEnabled)
             AssertSharedBodySymbols(canonicalBodies);
         // The defined set, materialized ONCE and read by two consumers: the named-symbol
@@ -1664,8 +1675,8 @@ internal sealed partial class CppEmitter
     {
         if (_c.NoAllocMethods.Count == 0)
             return;
-        // Recording arms in BeginCallSymbolAudit iff a NoAlloc method exists. If one reached
-        // compilation with recording off, the arming ordering broke — a transpiler bug, so
+        // Recording must cover emission from its first body, including callees compiled
+        // before a late NoAlloc root. Compiling one with recording off breaks that invariant, so
         // crash raw (InvalidOperationException) per the exception contract, never a silent
         // pass. Off during planning / --measure is not this case: this runs only after the
         // real emission pass, whose armed dictionaries are non-null here.
@@ -1675,8 +1686,7 @@ internal sealed partial class CppEmitter
             if (_c.NoAllocMethods.Any(r => compiledSet.Contains(r.CppName)))
                 throw new InvalidOperationException(
                     "[HotPath(NoAlloc)] recording was never armed although a NoAlloc method was "
-                    + "compiled — Compilation.NoAllocMethods must be complete before "
-                    + "BeginCallSymbolAudit arms the closure recorders.");
+                    + "compiled — closure recorders must arm before the first emitted body.");
             return;
         }
 
@@ -2134,7 +2144,7 @@ internal sealed partial class CppEmitter
         // verdicts are already final (or vice versa), which is exactly the lie a
         // caller-passed boolean would make possible.
         bool planning = _c.Phase == EmitPhase.Planning;
-        var compiled = new HashSet<MethodInfo>();
+        var compiled = new HashSet<MethodInfo>(compiledMethods);
         // Per-pass, not per-emitter: this method runs twice (planning, then emission) and
         // the emission pass has to define the same bodies the planning pass discarded.
         var mintedSymbols = new HashSet<string>(StringComparer.Ordinal);
@@ -2562,7 +2572,7 @@ internal sealed partial class CppEmitter
                         // error.
                         if (_c.SharedGenericsEnabled && Compilation.IsCanonicalMethod(m))
                         {
-                            var mc = new MethodCompiler(_c, m, literals, _backend)
+                            var mc = new MethodCompiler(_c, m, literals, _backend, NullReceiverDictionaryChecks(m))
                             {
                                 SharedTrial = true,
                                 SharedDirectCallees = planning ? new List<(MethodInfo, bool, int)>() : null,
@@ -2624,7 +2634,7 @@ internal sealed partial class CppEmitter
                         }
                         if (diagnostics is null)
                         {
-                            var body = new MethodCompiler(_c, m, literals, _backend).Compile();
+                            var body = new MethodCompiler(_c, m, literals, _backend, NullReceiverDictionaryChecks(m)).Compile();
                             if (!planning)
                             {
                                 emitBody?.Invoke(m, body);
@@ -2634,7 +2644,7 @@ internal sealed partial class CppEmitter
                         }
                         try
                         {
-                            string body = new MethodCompiler(_c, m, literals, _backend).Compile();
+                            string body = new MethodCompiler(_c, m, literals, _backend, NullReceiverDictionaryChecks(m)).Compile();
                             emitBody?.Invoke(m, body);
                             compiledMethods.Add(m);
                         }

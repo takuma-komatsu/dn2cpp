@@ -703,9 +703,10 @@ Four rules the existing knobs were shaped by:
   `NoAlloc` scans emitted bodies for runtime-call tokens and walks the call
   closure over edges collected at `Compilation.NoteNamedBodySymbol`; inferring
   from IL would miss the intrinsic emission sites that allocate or throw with no
-  corresponding IL instruction. Recording arms only when a method opts in, and
-  verification runs after the emit fixpoint, failing with a
-  `NotSupportedException`.
+  corresponding IL instruction. Hotupdate images record from the first emitted
+  body so late-retained defaults can verify earlier callees; other builds arm
+  recording for known NoAlloc roots. Verification runs after the emit fixpoint,
+  failing with a `NotSupportedException`.
 
 Auto-`noexcept` is a closed non-goal, not a missing knob; the carve-out is in
 `docs/STATUS.md`.
@@ -743,6 +744,26 @@ Two rules for adding a guard of this kind:
    beside it. `((T*)dn2cpp_null_check(p))->f` is still an lvalue — one splice
    serves the read, the write and `ldflda` — and the call is *sequenced* before
    the member offset is formed, which a bare adjacent compare would not be.
+
+`--hotupdate-base` applies the same receiver rule to interpreted method imports.
+`Compilation.ReachPatchCallableInterfaceBodies` keeps the named default bodies
+of retained user-interface rows and reaches their allocated receivers' dispatch
+targets. Default bodies retained after sharing verdicts finalize compile as
+closed instantiations without adding canonical candidates. A reference-class
+instance body that derives RGCTX from `this` uses a
+per-method monomorphic fallback, preserving the exact closed context on null
+calls and their nested calls. The shared call-edge closure applies that fallback
+when context use propagates from a callee's hidden argument. `CppEmitter.NullReceiver`
+guards each CLR dictionary
+lookup at its IL instruction, after earlier effects. Methods with explicit
+contexts and runtime templates outside the patch ABI keep their sharing path.
+For a class type parameter, direct `typeof(T)` uses of `IsValueType`,
+`IsPrimitive`, `IsEnum` and `IsByRefLike` follow the CLR's storage-kind folds
+without a dictionary lookup. The same predicates fold for the body's own
+constructed declaring type, including intervening `nop` instructions. Arrays,
+other constructed types and other Type getters keep their lookup checks.
+Each affected closed instantiation gets its own body, trading code size for an
+exact context when `this` is null.
 
 **The opt-out is a native build option, never a transpiler flag.**
 `-DDN2CPP_NULL_CHECKS=OFF` / `-DDN2CPP_ARITH_CHECKS=OFF` degrade each family to
