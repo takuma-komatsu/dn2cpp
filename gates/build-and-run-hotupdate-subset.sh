@@ -6,6 +6,10 @@
 # An Object virtual's method group and reflective binding report the nearest
 # AOT override or Object's row under either BCL load set. Non-virtual base
 # method groups retain Object's own body and declaring row.
+# Patch receivers that inherit renamed interface fillers retain the filler's
+# method and delegate identity; replacing the interface body keeps it distinct.
+# Renamed Object overrides require a loaded CoreLib rather than falling back
+# to the declaration's name; loaded ToString and Finalize rows keep their bodies.
 # Class generic virtual rows no AOT class callvirt names, one with a reached body
 # and one abstract, both called by the base only through interfaces, bind to the
 # dispatcher a --hotupdate-base build registers for them; an instantiation the
@@ -180,9 +184,28 @@ build_proj samples/dotnet/HotUpdatePatch/NoCtorImportOracle.csproj
 build_proj samples/dotnet/HotUpdatePatch/GvmRowHitPatch.csproj
 build_proj samples/dotnet/HotUpdatePatch/GvmRowMissPatch.csproj
 build_proj samples/dotnet/HotUpdatePatch/GvmCallPatch.csproj
+build_proj samples/dotnet/HotUpdatePatch/RenamedSlotPatch.csproj
 build_proj samples/dotnet/HotUpdatePatch/AggregateCtorMissPatch.csproj
 build_proj samples/dotnet/HotUpdatePatch/OrdinaryCtorMissPatch.csproj
+renamed_slot_base_state() {
+    $hotupdate_python - "samples/dotnet/HotUpdateBase/bin/$CONFIG/$TFM/HotUpdateBase.dll" \
+        "samples/dotnet/HotUpdateBase/obj/HotUpdateBase/$CONFIG/$TFM/HotUpdateBase.dll" <<'PY'
+import hashlib
+import pathlib
+import sys
+for name in sys.argv[1:]:
+    path = pathlib.Path(name)
+    print(hashlib.sha256(path.read_bytes()).hexdigest(), path.stat().st_mtime_ns)
+PY
+}
+# This gate-owned build references the base even when suite prebuilds are
+# skipped. Its no-op reference build must leave the shared input untouched.
+renamed_slot_state_before=$(renamed_slot_base_state)
 build_gate_proj gates/fixtures/interpreted-concat-oracle/InterpretedConcatOracle.csproj
+assert_output "$(renamed_slot_base_state)" "$renamed_slot_state_before"
+cmp -s "samples/dotnet/HotUpdateBase/bin/$CONFIG/$TFM/HotUpdateBase.dll" \
+    "samples/dotnet/HotUpdateBase/obj/HotUpdateBase/$CONFIG/$TFM/HotUpdateBase.dll" \
+    || { echo "FAIL: rewritten base bin and intermediate assembly differ" >&2; exit 1; }
 build_proj samples/dotnet/HotUpdateBadPatch/HotUpdateBadPatch.csproj
 build_proj samples/dotnet/HotUpdateBadPatch/GenericVirtualBad.csproj
 build_proj samples/dotnet/HotUpdateBadPatchItf/HotUpdateBadPatchItf.csproj
@@ -212,6 +235,8 @@ noctor_oracle_app="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/NoCtorImportOr
 gvmhit_app="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/GvmRowHitPatch.dll"
 gvmmiss_app="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/GvmRowMissPatch.dll"
 gvmcall_app="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/GvmCallPatch.dll"
+renamed_slot_app="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/RenamedSlotPatch.dll"
+renamed_slot_fixture="gates/fixtures/hotupdate-renamed-slot/bin/$CONFIG/$TFM/HotUpdateRenamedSlot.dll"
 aggregate_ctor_miss_app="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/AggregateCtorMissPatch.dll"
 ordinary_ctor_miss_app="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/OrdinaryCtorMissPatch.dll"
 concat_oracle_app="gates/fixtures/interpreted-concat-oracle/bin/$CONFIG/$TFM/InterpretedConcatOracle.dll"
@@ -256,7 +281,7 @@ grep -q dn2cpp_base_image_abi_hash "$OUT/generated.cpp" \
 # against the REAL net10.0 CoreLib, so which CoreLib that resolves to is an input
 # of this gate the same way it is of net10_bcl_diff_gate — a runtime bump must
 # not be served a green recorded against the previous one.
-if gate_cache_check "$OUT" "hotupdate-subset|cli:$(_gate_cli_hash)|field-metadata:$field_packed/$field_native|corelib:$(resolve_net10_corelib)|before-derived-aggregate|before-aggregate-collection|before-aggregate-message|before-ordinary-exception-message|oracle:--derived-aggregate/--aggregate-collection|unavailable-aggregate-ctor|type-getter-signature:--type-getter-signature/before-type-getter-signature/register/stack/HotUpdateBase.TypeGetterSignatureFixture::EmitSurface" \
+if gate_cache_check "$OUT" "hotupdate-subset|cli:$(_gate_cli_hash)|field-metadata:$field_packed/$field_native|corelib:$(resolve_net10_corelib)|before-derived-aggregate|before-aggregate-collection|before-aggregate-message|before-ordinary-exception-message|oracle:--derived-aggregate/--aggregate-collection|unavailable-aggregate-ctor|type-getter-signature:--type-getter-signature/before-type-getter-signature/register/stack/HotUpdateBase.TypeGetterSignatureFixture::EmitSurface|renamed-slots:--renamed-slot-prefix/before-renamed-slots/register/stack/intrinsic-bcl/corelib|renamed-object:--object/--finalize/--renamed-object-oracle/--renamed-finalize-oracle/corelib-refusal/corelib-loaded" \
         "$base_app" "$patch_app" "$bad_app" "$badgvm_app" "$baditf_app" "$baddg_app" \
         "$concat_oracle_app" \
         "$badmc_app" "$dir1_app" "$dir2_app" "$dgrecv_app" "$dgsig_app" \
@@ -267,7 +292,12 @@ if gate_cache_check "$OUT" "hotupdate-subset|cli:$(_gate_cli_hash)|field-metadat
         samples/dotnet/InterpBench/bin/$CONFIG/$TFM/InterpBench.dll \
         samples/dotnet/HotUpdatePatch/hotupdate-refs.txt \
         "$noctor_base_app" "$noctor_patch_app" "$noctor_oracle_app" \
-        "$gvmhit_app" "$gvmmiss_app" "$gvmcall_app" \
+        "$gvmhit_app" "$gvmmiss_app" "$gvmcall_app" "$renamed_slot_app" \
+        samples/dotnet/HotUpdateBase/RenamedSlotProbe.cs \
+        samples/dotnet/HotUpdatePatch/RenamedSlotPatch.csproj \
+        samples/dotnet/HotUpdatePatch/RenamedSlotProbe.cs \
+        gates/fixtures/hotupdate-renamed-slot/HotUpdateRenamedSlot.csproj \
+        gates/fixtures/hotupdate-renamed-slot/Program.cs \
         "$aggregate_ctor_miss_app" "$ordinary_ctor_miss_app" \
         samples/dotnet/HotUpdatePatch/noctor-import-refs.txt \
         gates/fixtures/hotupdate-import-identity/mutate-native-rows.py \
@@ -1728,5 +1758,109 @@ unavailable ctor fixture end"
 published nothing"
 done
 echo "OK (unavailable aggregate ctor refused, ordinary seeding preserved in both formats)"
+
+# A MethodImpl moves the explicit stub's slot to Weigh before either the managed
+# oracle or the AOT build reads the base assembly. A replaced patch interface slot
+# has no inherited filler, even while its class vtable still runs Weigh.
+echo "-- inherited renamed fillers on patch receivers --"
+renamed_slot_oracle=$(run_bounded dotnet "$renamed_slot_app")
+renamed_slot_oracle=$(strip_cr_win "$renamed_slot_oracle")
+renamed_slot_prefix_oracle=$(run_bounded dotnet "$base_app" --renamed-slot-prefix)
+renamed_slot_prefix_oracle=$(strip_cr_win "$renamed_slot_prefix_oracle")
+renamed_slot_lines=(
+    'aot methods=Weigh/Weigh/Weigh/Weigh' 'aot values=31/31/31/31' 'aot equal=True/True/True/True'
+    '== inherited renamed slots on patch receivers =='
+    'patch methods=Weigh/Weigh/Weigh/Weigh' 'patch values=31/31/31/31' 'patch equal=True/True/True/True'
+    'patch child methods=Weigh/Weigh/Weigh/Weigh' 'patch child values=31/31/31/31'
+    'patch child equal=True/True/True/True' 'replacement values=47/31/47/31'
+    'replacement equal=False/False/False/True' 'inherited renamed slots on patch receivers end'
+)
+for line in "${renamed_slot_lines[@]}"; do
+    [ "$(grep -Fxc -- "$line" <<< "$renamed_slot_oracle")" = 1 ] \
+        || { echo "FAIL: CLR renamed-slot witness must run once: $line" >&2; exit 1; }
+done
+assert_output "${renamed_slot_oracle%%$'\n== inherited renamed slots on patch receivers =='*}" \
+    "$renamed_slot_prefix_oracle"
+for renamed_slot_base in "$OUT" "$OUT/trigger"; do
+    for renamed_slot_codec in register stack; do
+        renamed_slot_dir="$renamed_slot_base/renamed-slots/$renamed_slot_codec"
+        renamed_slot_flags=()
+        [ "$renamed_slot_codec" = stack ] && renamed_slot_flags+=(--patch-stackcode)
+        invoke_cli --emit-patch "$renamed_slot_app" --base-abi "$renamed_slot_base/base-abi.json" \
+            ${renamed_slot_flags[@]+"${renamed_slot_flags[@]}"} -o "$renamed_slot_dir"
+        renamed_slot_native=$(run_bounded "./$renamed_slot_base/HotUpdateBase$EXE_EXT" --run \
+            "$renamed_slot_dir/RenamedSlotPatch.bpi")
+        renamed_slot_native=$(strip_cr_win "$renamed_slot_native")
+        assert_output "$renamed_slot_native" "$renamed_slot_oracle"
+        renamed_slot_before=$(run_bounded "./$renamed_slot_base/HotUpdateBase$EXE_EXT" --run \
+            "$renamed_slot_dir/RenamedSlotPatch.bpi" before-renamed-slots)
+        assert_output "$(strip_cr_win "$renamed_slot_before")" "$renamed_slot_prefix_oracle"
+        assert_output "${renamed_slot_native%%$'\n== inherited renamed slots on patch receivers =='*}" \
+            "$renamed_slot_prefix_oracle"
+        for line in "${renamed_slot_lines[@]}"; do
+            [ "$(grep -Fxc -- "$line" <<< "$renamed_slot_native")" = 1 ] \
+                || { echo "FAIL: renamed-slot witness must run once ($renamed_slot_codec): $line" >&2; exit 1; }
+        done
+    done
+done
+echo "OK (inherited renamed interface fillers, replacement control, both formats and BCL load sets)"
+
+# Rewrite copies only: the ordinary base keeps its same-name Object overrides.
+echo "-- renamed Object declarations refuse without CoreLib and dispatch with it --"
+renamed_object_root="$OUT/renamed-object"
+for renamed_object_case in object finalize loaded; do
+    renamed_object_input="$renamed_object_root/$renamed_object_case/input"
+    mkdir -p "$renamed_object_input"
+    cp "${base_app%.dll}.dll" "${base_app%.dll}.deps.json" \
+        "${base_app%.dll}.runtimeconfig.json" "$(dirname "$base_app")/Dn2Cpp.Runtime.dll" \
+        "$renamed_object_input/"
+    renamed_object_copy="$renamed_object_input/HotUpdateBase.dll"
+    if [ "$renamed_object_case" = loaded ]; then
+        run_bounded dotnet "$renamed_slot_fixture" "$renamed_object_copy" --object
+        run_bounded dotnet "$renamed_slot_fixture" "$renamed_object_copy" --finalize
+    else
+        run_bounded dotnet "$renamed_slot_fixture" "$renamed_object_copy" "--$renamed_object_case"
+        set +e
+        invoke_cli "$renamed_object_copy" --hotupdate-base \
+            -o "$renamed_object_root/$renamed_object_case/refused" \
+            > "$renamed_object_root/$renamed_object_case/refused.log" 2>&1
+        renamed_object_rc=$?
+        set -e
+        assert_exit_code "$renamed_object_rc" 2
+        renamed_object_body=Show
+        renamed_object_declaration=ToString
+        if [ "$renamed_object_case" = finalize ]; then
+            renamed_object_body=Release
+            renamed_object_declaration=Finalize
+        fi
+        grep -Fq "renamed MethodImpl body '$renamed_object_body' for System.Object::$renamed_object_declaration requires a CoreLib reference" \
+            "$renamed_object_root/$renamed_object_case/refused.log" \
+            || { echo "FAIL: renamed Object refusal did not explain the missing CoreLib" >&2; exit 1; }
+    fi
+done
+renamed_object_loaded="$renamed_object_root/loaded/native"
+invoke_cli "$renamed_object_copy" -r "$(resolve_net10_corelib)" --auto-ref --hotupdate-base \
+    -o "$renamed_object_loaded"
+compile_console "$renamed_object_loaded" HotUpdateBase
+for renamed_object_case in object finalize; do
+    renamed_object_arg="--renamed-$renamed_object_case-oracle"
+    renamed_object_clr=$(run_bounded dotnet "$renamed_object_copy" "$renamed_object_arg")
+    renamed_object_native=$(run_bounded "./$renamed_object_loaded/HotUpdateBase$EXE_EXT" "$renamed_object_arg")
+    renamed_object_clr=$(strip_cr_win "$renamed_object_clr")
+    renamed_object_native=$(strip_cr_win "$renamed_object_native")
+    assert_output "$renamed_object_native" "$renamed_object_clr"
+    renamed_object_lines=('renamed Object methods=Show/Show' 'renamed Object values=measure/measure'
+        'renamed Object equal=True/True')
+    if [ "$renamed_object_case" = finalize ]; then
+        renamed_object_lines=('renamed Finalize methods=Release/Release' 'renamed Finalize equal=True/True'
+            'renamed Finalize first=1' 'renamed Finalize second=2')
+    fi
+    for line in "${renamed_object_lines[@]}"; do
+        [ "$(grep -Fxc -- "$line" <<< "$renamed_object_clr")" = 1 ] \
+            && [ "$(grep -Fxc -- "$line" <<< "$renamed_object_native")" = 1 ] \
+            || { echo "FAIL: renamed Object witness must run once: $line" >&2; exit 1; }
+    done
+done
+echo "OK (renamed Object and Finalize refusals, loaded method identity and bodies)"
 
 gate_cache_commit

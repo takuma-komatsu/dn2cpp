@@ -24,6 +24,7 @@
     <Compile Remove="GvmRowProbe.cs" />
     <Compile Remove="GvmCallProbe.cs" />
     <Compile Remove="AggregateCtorBoundaryProbe.cs" />
+    <Compile Remove="RenamedSlotProbe.cs" />
   </ItemGroup>
 
 </Project>

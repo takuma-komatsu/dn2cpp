@@ -13,7 +13,30 @@
     <!-- Compile-time surface for Dn2Cpp.Runtime.HotUpdate; the transpiler maps
          the call to the runtime intrinsic and auto-references its own copy. -->
     <ProjectReference Include="../../../src/Dn2Cpp.Runtime/Dn2Cpp.Runtime.csproj" />
+    <ProjectReference Include="../../../gates/fixtures/hotupdate-renamed-slot/HotUpdateRenamedSlot.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
+
+  <Target Name="ResolveRenamedSlotFixture">
+    <MSBuild Projects="$(MSBuildProjectDirectory)/../../../gates/fixtures/hotupdate-renamed-slot/HotUpdateRenamedSlot.csproj"
+             Targets="GetTargetPath"
+             Properties="Configuration=$(Configuration);TargetFramework=$(TargetFramework)">
+      <Output TaskParameter="TargetOutputs" PropertyName="RenamedSlotFixturePath" />
+    </MSBuild>
+    <ItemGroup>
+      <FileWrites Include="$(IntermediateOutputPath)renamed-slots.stamp" />
+    </ItemGroup>
+  </Target>
+
+  <!-- Rewriting the intermediate assembly keeps no-op reference builds from
+       overwriting the bin assembly while another gate reads it. -->
+  <Target Name="RewriteRenamedSlots" AfterTargets="CoreCompile" BeforeTargets="CopyFilesToOutputDirectory"
+          DependsOnTargets="ResolveRenamedSlotFixture"
+          Inputs="@(IntermediateAssembly);$(RenamedSlotFixturePath);$(MSBuildProjectFullPath)"
+          Outputs="$(IntermediateOutputPath)renamed-slots.stamp">
+    <Exec Command="dotnet exec &quot;$(RenamedSlotFixturePath)&quot; &quot;@(IntermediateAssembly)&quot;" />
+    <Touch Files="$(IntermediateOutputPath)renamed-slots.stamp" AlwaysCreate="true" />
+  </Target>
 
   <ItemGroup>
     <Compile Remove="NoCtorImportProgram.cs" />

@@ -5652,10 +5652,21 @@ static const Dn2CppRenamedSlotBody* dn2cpp_renamed_slot_body_of(const Dn2CppType
 // MakeGenericType clone shares its template's slots, so the template's rows name its
 // fillers, each answering as the clone's own level of the filler's definition.
 static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_renamed_slot_method(const Dn2CppTypeInfo* type,
-    const Dn2CppTypeInfo* slotOwner, int32_t key)
+    const Dn2CppTypeInfo* slotOwner, int32_t key, int32_t slot)
 {
-    const Dn2CppRenamedSlotBody* row = dn2cpp_renamed_slot_body_of(dn2cpp_recorded_receiver(type, false),
-        slotOwner, key);
+    const Dn2CppTypeInfo* recorded = dn2cpp_recorded_receiver(type, false);
+    if ((recorded->flags & DN2CPP_TF_PATCH) != 0)
+    {
+        // A patch can replace an interface body independently of its class slots.
+        // Only inherited dispatch can use the nearest AOT level's renamed row.
+        const Dn2CppTypeInfo* aot = dn2cpp_aot_level(recorded);
+        const void** own = dn2cpp_try_resolve_interface(recorded, slotOwner);
+        const void** inherited = dn2cpp_try_resolve_interface(aot, slotOwner);
+        if (slot < 0 || own == nullptr || inherited == nullptr || own[slot] != inherited[slot])
+            return {};
+        recorded = dn2cpp_recorded_receiver(aot, false);
+    }
+    const Dn2CppRenamedSlotBody* row = dn2cpp_renamed_slot_body_of(recorded, slotOwner, key);
     if (row == nullptr)
         return {};
     dn2cpp_require_metadata(row->declaringType);
@@ -5744,7 +5755,7 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_interface_target(
     // A variant instantiation's slot runs the row of the instantiation serving it.
     if (!gvm)
         if (const auto renamed = dn2cpp_renamed_slot_method(receiver,
-                dn2cpp_dispatch_interface_of(receiver, owner), decl.metadataToken))
+                dn2cpp_dispatch_interface_of(receiver, owner), decl.metadataToken, decl.vtableSlot))
             return renamed;
     const size_t nameLength = std::strlen(decl.name);
     size_t qualifierLength = 0;
@@ -5861,7 +5872,7 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_object_virtual_target(
         ? d : dn2cpp_meta_object_counterpart(d);
     const Dn2CppTypeInfo* aot = dn2cpp_aot_level(receiver);
     if (const auto renamed = dn2cpp_renamed_slot_method(aot, &dn2cpp_object_type,
-            dn2cpp_meta_object_virtual_index(root)))
+            dn2cpp_meta_object_virtual_index(root), dn2cpp_meta_object_virtual_index(root)))
         return renamed;
     Dn2CppMetadataHandle<Dn2CppMethodInfo> found{};
     for (const Dn2CppTypeInfo* ti = aot; ti != nullptr; ti = dn2cpp_meta_next_level(ti))
