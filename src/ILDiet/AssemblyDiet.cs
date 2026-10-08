@@ -1,5 +1,6 @@
 using Mono.Cecil;
 using Mono.Cecil.Cil;
+using CecilInstruction = Mono.Cecil.Cil.Instruction;
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
 using PreserveKind = Dn2Cpp.PreservationReader.PreserveKind;
@@ -29,7 +30,9 @@ internal sealed partial class AssemblyDiet : IDisposable
     private readonly Dictionary<TypeDefinition, PreservePolicy> _policyTypes = new();
     private readonly Dictionary<TypeDefinition, PreservePolicy> _exportPolicyTypes = new();
     private readonly HashSet<TypeDefinition> _types = new();
+    private readonly HashSet<TypeDefinition> _runtimeTypes = new();
     private readonly HashSet<MethodDefinition> _methods = new();
+    private readonly HashSet<MethodDefinition> _depthMethods = new();
     private readonly HashSet<FieldDefinition> _fields = new();
     private readonly HashSet<PropertyDefinition> _properties = new();
     private readonly HashSet<EventDefinition> _events = new();
@@ -38,16 +41,22 @@ internal sealed partial class AssemblyDiet : IDisposable
     private readonly HashSet<TypeDefinition> _interfaceHierarchies = new();
     private readonly HashSet<TypeDefinition> _reflectionDataTypes = new();
     private readonly HashSet<GenericParameter> _genericParameters = new();
-    private readonly List<TypeDefinition> _typeTokenTypes = new();
     private readonly HashSet<TypeDefinition> _typeTokenSeen = new();
     private bool _constructsFromRuntimeType;
     private bool _runsReflectedMethods;
+    private bool _depthRunsReflectedMethods;
+    private bool _depthConstructsFromRuntimeType;
+    private bool _depthReadsReflectedFields;
+    private bool _depthBindsNamedConstructors;
+    private bool _depthInitializesArrays;
+    private bool _readsReflectedFields;
     private bool _bindsNamedConstructors;
     private readonly HashSet<TypeDefinition> _namedConstructorAllocations = new();
     private readonly HashSet<TypeDefinition> _namedConstructorOwners = new();
     private readonly List<TypeDefinition> _typeTokenLibraryTypes = new();
     private bool _initializesArrays;
     private readonly Dictionary<ModuleDefinition, DietAssembly> _byModule = new();
+    private readonly HashSet<MethodDefinition> _cutMethods = new();
     private bool _cutsValidated = true;
 
     internal AssemblyDiet(DietRequest request)
@@ -64,6 +73,10 @@ internal sealed partial class AssemblyDiet : IDisposable
         ConfigureBackendPolicy();
         Seed();
         while (_pending.Count != 0) Scan(_pending.Dequeue());
+        NoteClosedCallerDepths();
+        KeepClosedApplicationSignatures();
+        while (_pending.Count != 0) Scan(_pending.Dequeue());
+        NoteClosedCallerDepths();
         CompleteBackendPolicy();
         int removedTypes = 0, removedMethods = 0;
         foreach (var assembly in _assemblies)
@@ -170,6 +183,10 @@ internal sealed partial class AssemblyDiet : IDisposable
                     && (t.Namespace.Length == 0 ? t.Name : t.Namespace + "." + t.Name) == typeName);
             if (type is null || !type.Methods.Any(m => !m.HasGenericParameters && m.Name == methodName))
                 throw new NotSupportedException("--cut " + cut + ": no matching method in the input assemblies");
+            foreach (var owner in types.Where(t => !t.HasGenericParameters
+                    && (t.Namespace.Length == 0 ? t.Name : t.Namespace + "." + t.Name) == typeName))
+                foreach (var method in owner.Methods)
+                    if (method.Name == methodName) _cutMethods.Add(method);
         }
         if (!_cutsValidated)
         {
@@ -196,7 +213,13 @@ internal sealed partial class AssemblyDiet : IDisposable
             }
         }
         foreach (var root in _request.TypeRoots)
-            MarkType(FindPolicyType(root.Assembly, root.Type));
+        {
+            var type = FindPolicyType(root.Assembly, root.Type);
+            MarkType(type);
+            NoteAllocatedTypeDepths(type, type);
+            foreach (var method in type.Methods)
+                if (method.IsConstructor && method.IsStatic) MarkMethod(method);
+        }
         foreach (var root in _request.MethodRoots)
         {
             var type = FindPolicyType(root.Assembly, root.Type);
@@ -237,6 +260,9 @@ internal sealed partial class AssemblyDiet : IDisposable
             if (assembly.Copy && ReferencesReflectedMethodRun(assembly.PE.GetMetadataReader(),
                     !PreservationReader.IsFrameworkAssemblyName(assembly.Assembly.Name.Name)))
                 ArmReflectedMethodRuns();
+        foreach (var assembly in _assemblies)
+            if (assembly.Copy && ReferencesReflectedFieldRead(assembly.PE.GetMetadataReader()))
+                ArmReflectedFieldReads();
         // A copied assembly can still have static references into a stripped library.
         var stripped = _assemblies.Where(a => !a.Copy).Select(a => a.Assembly.Name.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var assembly in _assemblies.Where(a => a.Copy))
@@ -342,54 +368,70 @@ internal sealed partial class AssemblyDiet : IDisposable
         catch (AssemblyResolutionException) { return null; }
     }
 
-    private void MarkType(TypeReference? reference)
+    private void MarkType(TypeReference? reference, bool recordDepth = true)
     {
         if (reference is null) return;
         if (reference is GenericParameter parameter)
         {
             if (!_genericParameters.Add(parameter)) return;
-            foreach (var constraint in parameter.Constraints) MarkType(constraint.ConstraintType);
+            foreach (var constraint in parameter.Constraints) MarkType(constraint.ConstraintType, recordDepth);
             return;
         }
         if (reference is GenericInstanceType generic)
         {
-            foreach (var argument in generic.GenericArguments) MarkType(argument);
+            NoteApplicationInstance(generic, shapeOwner: !recordDepth);
+            foreach (var argument in generic.GenericArguments) MarkType(argument, recordDepth);
             // Generic serializers and factories select data members without direct
             // constructor or accessor tokens for T.
             foreach (var argument in generic.GenericArguments)
                 if (Resolve(argument) is { } concrete) KeepReflectionData(concrete);
         }
-        if (reference is IModifierType modifier) MarkType(modifier.ModifierType);
-        if (reference is TypeSpecification specification) MarkType(specification.ElementType);
+        if (reference is IModifierType modifier) MarkType(modifier.ModifierType, recordDepth);
+        if (reference is TypeSpecification specification) MarkType(specification.ElementType, recordDepth);
         if (reference is FunctionPointerType pointer)
         {
-            MarkType(pointer.ReturnType);
-            foreach (var parameterType in pointer.Parameters) MarkType(parameterType.ParameterType);
+            MarkType(pointer.ReturnType, recordDepth);
+            foreach (var parameterType in pointer.Parameters) MarkType(parameterType.ParameterType, recordDepth);
             return;
         }
         var type = Resolve(reference);
-        if (type is null || !IsStripped(type) || !_types.Add(type)) return;
-        MarkType(type.DeclaringType);
-        MarkType(type.BaseType);
+        if (reference is GenericInstanceType instance && type is not null
+            && _depthRunsReflectedMethods && type.Module == _assemblies[0].Assembly.MainModule)
+            NoteRuntimeTypeDepthContexts(instance, type, reflectionOnly: true);
+        if (type is not null && !type.IsAbstract && _depthConstructsFromRuntimeType && _constructedTypes.Contains(type))
+            NoteAllocatedTypeDepths(reference, type);
+        if (type is null || !IsStripped(type) || !_runtimeTypes.Add(type)) return;
+        _types.Add(type);
+        MarkType(type.DeclaringType, recordDepth);
+        MarkType(type.BaseType, recordDepth);
         MarkAttributes(type);
         MarkSecurity(type);
         foreach (var parameterType in type.GenericParameters)
             MarkGenericParameter(parameterType);
         foreach (var implementation in type.Interfaces)
         {
-            MarkType(implementation.InterfaceType);
+            MarkType(implementation.InterfaceType, recordDepth);
             MarkAttributes(implementation);
         }
         // Instance/static field rows are retained together: layout, RVA initializers,
         // marshalling, and runtime structural equality can observe unused field rows.
-        foreach (var field in type.Fields) MarkField(field);
+        foreach (var field in type.Fields) MarkField(field, recordDepth);
         foreach (var method in type.Methods)
             if (method.IsVirtual || method.HasOverrides || type.IsInterface || IsDelegate(type)
-                || method.IsConstructor && method.IsStatic) MarkMethod(method);
+                || method.IsConstructor && method.IsStatic) MarkMethod(method, method.IsConstructor && type.Module == _assemblies[0].Assembly.MainModule);
         if (type.HasInterfaces) KeepInterfaceHierarchy(type);
         if (_policyTypes.TryGetValue(type, out var policy) && _conditional.Add(type)) ApplyPolicy(type, policy, true);
         if (_conditionalOwnMembers.Contains(type)) KeepOwnMembers(type);
-        if (_runsReflectedMethods && type.Module == _assemblies[0].Assembly.MainModule) KeepReflectedMethods(type);
+        if (type.Module == _assemblies[0].Assembly.MainModule)
+        {
+            KeepApplicationMetadata(type);
+            if (_runsReflectedMethods) KeepReflectedMethods(type);
+            if (_constructsFromRuntimeType)
+            {
+                KeepRuntimeConstructionSurface(type);
+                if (_depthConstructsFromRuntimeType) NoteAllocatedTypeDepths(reference, type);
+            }
+        }
         if (_bindsNamedConstructors && type.Module == _assemblies[0].Assembly.MainModule)
             KeepNamedConstructorHierarchy(type);
     }
@@ -405,7 +447,7 @@ internal sealed partial class AssemblyDiet : IDisposable
             if (!IsStripped(current)) break;
             MarkType(current);
             foreach (var method in current.Methods)
-                if (method.IsPublic || method.HasOverrides) MarkMethod(method);
+                if (method.IsPublic || method.HasOverrides) MarkMethod(method, false);
         }
     }
 
@@ -418,7 +460,7 @@ internal sealed partial class AssemblyDiet : IDisposable
         foreach (var method in type.Methods)
             if (method.IsConstructor && !method.IsStatic)
             {
-                MarkMethod(method);
+                MarkMethod(method, false);
                 foreach (var parameter in method.Parameters) KeepReflectionDataType(parameter.ParameterType);
             }
         foreach (var field in type.Fields)
@@ -426,7 +468,7 @@ internal sealed partial class AssemblyDiet : IDisposable
         foreach (var property in type.Properties)
             if (property.GetMethod is { IsStatic: false } || property.SetMethod is { IsStatic: false })
             {
-                MarkProperty(property, true, true);
+                MarkProperty(property, true, true, false);
                 KeepReflectionDataType(property.PropertyType);
             }
     }
@@ -464,7 +506,27 @@ internal sealed partial class AssemblyDiet : IDisposable
     {
         if (_constructsFromRuntimeType) return;
         _constructsFromRuntimeType = true;
-        foreach (var type in _typeTokenTypes) KeepInstanceConstructors(type);
+        foreach (var type in ReflectionApplicationTypes().ToList())
+        {
+            MarkType(type);
+            KeepRuntimeConstructionSurface(type);
+        }
+        foreach (var instance in _signatureApplicationInstances.ToList())
+            if (Resolve(instance) is { } owner && !_suppressDefaultSeeds.Contains(owner)) MarkType(instance);
+    }
+
+    private static bool ReferencesReflectedFieldRead(MetadataReader reader)
+    {
+        foreach (var handle in reader.MemberReferences)
+        {
+            var member = reader.GetMemberReference(handle);
+            if (member.Parent.Kind != HandleKind.TypeReference) continue;
+            var parent = reader.GetTypeReference((TypeReferenceHandle)member.Parent);
+            string ns = reader.GetString(parent.Namespace), name = reader.GetString(parent.Name);
+            if (PreservationReader.ReadsReflectedField(ns.Length == 0 ? name : ns + "." + name,
+                    reader.GetString(member.Name))) return true;
+        }
+        return false;
     }
 
     private static bool ReferencesReflectedMethodRun(MetadataReader reader, bool userAssembly)
@@ -476,8 +538,7 @@ internal sealed partial class AssemblyDiet : IDisposable
             var parent = reader.GetTypeReference((TypeReferenceHandle)member.Parent);
             string ns = reader.GetString(parent.Namespace), name = reader.GetString(parent.Name);
             string type = ns.Length == 0 ? name : ns + "." + name, method = reader.GetString(member.Name);
-            if (PreservationReader.RunsReflectedMethod(type, method)
-                || userAssembly && PreservationReader.BindsReflectedMethod(type, method)) return true;
+            if (PreservationReader.RunsCopiedReflectedMethod(type, method, userAssembly)) return true;
         }
         return false;
     }
@@ -490,16 +551,26 @@ internal sealed partial class AssemblyDiet : IDisposable
     {
         if (_runsReflectedMethods) return;
         _runsReflectedMethods = true;
-        // Marking grows _types; types it adds keep their methods through MarkType.
-        foreach (var type in AllTypes(_assemblies[0].Assembly.MainModule.Types).Where(_types.Contains).ToList())
+        // Emission models ordinary application definitions before walking the armed route.
+        foreach (var type in ReflectionApplicationTypes().ToList())
+        {
+            MarkType(type);
             KeepReflectedMethods(type);
+        }
+        foreach (var instance in _signatureApplicationInstances.ToList())
+            if (Resolve(instance) is { } owner && !_suppressDefaultSeeds.Contains(owner)) MarkType(instance);
         foreach (var type in _typeTokenLibraryTypes.ToList()) KeepTypeTokenLibrarySurface(type);
     }
 
     private void KeepReflectedMethods(TypeDefinition type)
     {
         foreach (var method in type.Methods)
-            if (!method.IsConstructor) MarkMethod(method);
+            if (!method.IsConstructor)
+            {
+                MarkMethod(method, false);
+                if (_depthRunsReflectedMethods && _reflectionDepthMethods.Add(method))
+                    _virtualDepthContextsChanged = true;
+            }
     }
 
     // The transpiler's reflection-invoke route reaches the same surface of a library type
@@ -534,7 +605,7 @@ internal sealed partial class AssemblyDiet : IDisposable
             if (!IsStripped(type) || IsProtected(type.Module.Assembly.Name.Name)) break;
             if (!_namedConstructorOwners.Add(type)) continue;
             foreach (var method in type.Methods)
-                if (method.IsConstructor) MarkMethod(method);
+                if (method.IsConstructor) MarkMethod(method, _depthBindsNamedConstructors);
         }
     }
 
@@ -547,7 +618,7 @@ internal sealed partial class AssemblyDiet : IDisposable
             if (method.IsSpecialName && (method.Name.StartsWith("get_", StringComparison.Ordinal)
                     || method.Name.StartsWith("set_", StringComparison.Ordinal))
                 || method.IsPublic && !method.HasGenericParameters && method.Parameters.Count == 0)
-                MarkMethod(method);
+                MarkMethod(method, _depthRunsReflectedMethods);
         }
     }
 
@@ -565,31 +636,20 @@ internal sealed partial class AssemblyDiet : IDisposable
                 if (type.IsValueType)
                     foreach (var method in type.Methods)
                         if (method.IsConstructor && !method.IsStatic && method.Parameters.Count == 0)
-                            MarkMethod(method);
+                            MarkMethod(method, _depthInitializesArrays);
         }
     }
 
-    // Activator.CreateInstance(Type) and ConstructorInfo.Invoke can construct any
-    // application type a type token names, including an open generic definition
-    // closed later through MakeGenericType.
-    private void NoteTypeToken(TypeReference reference)
-    {
-        var element = reference.GetElementType();
-        if (element is FunctionPointerType || Resolve(element) is not { } type
-            || type.Module != _assemblies[0].Assembly.MainModule || !_typeTokenSeen.Add(type)) return;
-        _typeTokenTypes.Add(type);
-        if (_constructsFromRuntimeType) KeepInstanceConstructors(type);
-    }
-
-    private void KeepInstanceConstructors(TypeDefinition type)
+    private void KeepInstanceConstructors(TypeDefinition type, bool depthRoot = true)
     {
         foreach (var method in type.Methods)
-            if (method.IsConstructor && !method.IsStatic) MarkMethod(method);
+            if (method.IsConstructor && !method.IsStatic) MarkMethod(method, depthRoot);
     }
 
     private void KeepAll(TypeDefinition type)
     {
         MarkType(type);
+        NoteAllocatedTypeDepths(type, type);
         if (!IsStripped(type)) return;
         foreach (var method in type.Methods) MarkMethod(method);
         foreach (var property in type.Properties) MarkProperty(property, true, true);
@@ -597,19 +657,22 @@ internal sealed partial class AssemblyDiet : IDisposable
         foreach (var nested in type.NestedTypes) KeepAll(nested);
     }
 
-    private void MarkMethod(MethodReference reference)
+    private void MarkMethod(MethodReference reference, bool depthRoot = true)
     {
-        MarkType(reference.DeclaringType);
-        MarkType(reference.ReturnType);
-        foreach (var parameter in reference.Parameters) MarkType(parameter.ParameterType);
+        MarkType(reference.DeclaringType, depthRoot);
+        MarkType(reference.ReturnType, depthRoot);
+        foreach (var parameter in reference.Parameters) MarkType(parameter.ParameterType, depthRoot);
         // Multidimensional array .ctor/Get/Set/Address are CLR pseudo-methods.
         if (reference.DeclaringType is ArrayType) return;
         if (reference is GenericInstanceMethod generic)
+        {
+            if (depthRoot) NoteGenericMethodDepth(generic);
             foreach (var argument in generic.GenericArguments)
             {
-                MarkType(argument);
+                MarkType(argument, depthRoot);
                 if (Resolve(argument) is { } concrete) KeepReflectionData(concrete);
             }
+        }
         MethodDefinition? method;
         try { method = reference.Resolve(); }
         catch (AssemblyResolutionException) { return; }
@@ -619,6 +682,12 @@ internal sealed partial class AssemblyDiet : IDisposable
                 throw new NotSupportedException("cannot resolve managed method: " + reference.FullName);
             return;
         }
+        if (depthRoot)
+        {
+            if (_depthMethods.Add(method)) NoteRootedMethodReceiverDepths(method);
+            NoteMethodDepthContext(reference, method, null,
+                allocateReceiver: method.IsConstructor && !method.IsStatic);
+        }
         if (!IsStripped(method.DeclaringType) || !_methods.Add(method)) return;
         _pending.Enqueue(method);
         MarkMethodMetadata(method);
@@ -627,7 +696,7 @@ internal sealed partial class AssemblyDiet : IDisposable
                 MarkProperty(property, false, false);
         foreach (var @event in method.DeclaringType.Events)
             if (@event.AddMethod == method || @event.RemoveMethod == method || @event.InvokeMethod == method
-                || @event.OtherMethods.Contains(method)) MarkEvent(@event);
+                || @event.OtherMethods.Contains(method)) MarkEvent(@event, false);
     }
 
     private void MarkGenericParameter(GenericParameter parameter)
@@ -652,7 +721,7 @@ internal sealed partial class AssemblyDiet : IDisposable
             MarkMarshal(parameter);
         }
         foreach (var parameter in method.GenericParameters) MarkGenericParameter(parameter);
-        foreach (var overridden in method.Overrides) MarkMethod(overridden);
+        foreach (var overridden in method.Overrides) MarkMethod(overridden, false);
     }
 
     private void MarkMarshal(IMarshalInfoProvider provider)
@@ -662,10 +731,10 @@ internal sealed partial class AssemblyDiet : IDisposable
             KeepAll(type);
     }
 
-    private void MarkField(FieldReference reference)
+    private void MarkField(FieldReference reference, bool recordDepth = true)
     {
-        MarkType(reference.DeclaringType);
-        MarkType(reference.FieldType);
+        MarkType(reference.DeclaringType, recordDepth);
+        MarkType(reference.FieldType, recordDepth);
         FieldDefinition? field;
         try { field = reference.Resolve(); }
         catch (AssemblyResolutionException) { return; }
@@ -674,7 +743,7 @@ internal sealed partial class AssemblyDiet : IDisposable
         MarkMarshal(field);
     }
 
-    private void MarkProperty(PropertyDefinition property, bool getter, bool setter)
+    private void MarkProperty(PropertyDefinition property, bool getter, bool setter, bool depthRoot = true)
     {
         if (_properties.Add(property))
         {
@@ -682,32 +751,41 @@ internal sealed partial class AssemblyDiet : IDisposable
             foreach (var parameter in property.Parameters) MarkType(parameter.ParameterType);
             MarkAttributes(property);
         }
-        if (getter && property.GetMethod is not null) MarkMethod(property.GetMethod);
-        if (setter && property.SetMethod is not null) MarkMethod(property.SetMethod);
+        if (getter && property.GetMethod is not null) MarkMethod(property.GetMethod, depthRoot);
+        if (setter && property.SetMethod is not null) MarkMethod(property.SetMethod, depthRoot);
     }
 
-    private void MarkEvent(EventDefinition @event)
+    private void MarkEvent(EventDefinition @event, bool depthRoot = true)
     {
-        if (!_events.Add(@event)) return;
         MarkType(@event.EventType);
-        MarkAttributes(@event);
-        if (@event.AddMethod is not null) MarkMethod(@event.AddMethod);
-        if (@event.RemoveMethod is not null) MarkMethod(@event.RemoveMethod);
-        if (@event.InvokeMethod is not null) MarkMethod(@event.InvokeMethod);
-        foreach (var method in @event.OtherMethods) MarkMethod(method);
+        if (_events.Add(@event)) MarkAttributes(@event);
+        if (@event.AddMethod is not null) MarkMethod(@event.AddMethod, depthRoot);
+        if (@event.RemoveMethod is not null) MarkMethod(@event.RemoveMethod, depthRoot);
+        if (@event.InvokeMethod is not null) MarkMethod(@event.InvokeMethod, depthRoot);
+        foreach (var method in @event.OtherMethods) MarkMethod(method, depthRoot);
     }
 
-    private void MarkAttributes(ICustomAttributeProvider provider)
+    private void MarkAttributes(ICustomAttributeProvider provider, bool signatureOnly = false)
     {
         if (!provider.HasCustomAttributes) return;
         foreach (var attribute in provider.CustomAttributes)
         {
-            MarkMethod(attribute.Constructor);
+            MarkMethod(attribute.Constructor, false);
             try
             {
                 bool registration = IsRegistrationAttribute(attribute, provider);
+                bool stateMachine = signatureOnly && attribute.AttributeType.FullName is
+                    "System.Runtime.CompilerServices.AsyncStateMachineAttribute"
+                    or "System.Runtime.CompilerServices.IteratorStateMachineAttribute"
+                    or "System.Runtime.CompilerServices.AsyncIteratorStateMachineAttribute";
                 foreach (var argument in attribute.ConstructorArguments)
                     if (registration && IsTypeArray(argument)) MarkType(argument.Type);
+                    else if (stateMachine && argument.Value is TypeReference machine)
+                    {
+                        // Compiler state-machine metadata must not root a deferred body.
+                        MarkType(argument.Type);
+                        MarkSignatureType(machine);
+                    }
                     else MarkArgument(argument);
                 var type = Resolve(attribute.AttributeType);
                 foreach (var argument in attribute.Fields)
@@ -720,7 +798,7 @@ internal sealed partial class AssemblyDiet : IDisposable
                 {
                     MarkArgument(argument.Argument);
                     for (var current = type; current is not null; current = current.BaseType is null ? null : Resolve(current.BaseType))
-                        foreach (var property in current.Properties.Where(p => p.Name == argument.Name)) MarkProperty(property, true, true);
+                        foreach (var property in current.Properties.Where(p => p.Name == argument.Name)) MarkProperty(property, true, true, false);
                 }
             }
             catch (AssemblyResolutionException)
@@ -736,7 +814,6 @@ internal sealed partial class AssemblyDiet : IDisposable
         if (argument.Value is TypeReference type)
         {
             MarkType(type);
-            NoteTypeToken(type);
         }
         else if (argument.Value is CustomAttributeArgument nested) MarkArgument(nested);
         else if (argument.Value is CustomAttributeArgument[] values)
@@ -759,17 +836,19 @@ internal sealed partial class AssemblyDiet : IDisposable
 
     private void Scan(MethodDefinition method)
     {
-        MarkType(method.ReturnType);
-        foreach (var parameter in method.Parameters) MarkType(parameter.ParameterType);
+        // Original-body retention also scans unused calls. Executable caller
+        // contexts record their closed type depths independently.
+        MarkType(method.ReturnType, false);
+        foreach (var parameter in method.Parameters) MarkType(parameter.ParameterType, false);
         if (!method.HasBody) return;
-        foreach (var variable in method.Body.Variables) MarkType(variable.VariableType);
-        foreach (var handler in method.Body.ExceptionHandlers) MarkType(handler.CatchType);
+        foreach (var variable in method.Body.Variables) MarkType(variable.VariableType, false);
+        foreach (var handler in method.Body.ExceptionHandlers) MarkType(handler.CatchType, false);
         foreach (var instruction in method.Body.Instructions)
         {
             switch (instruction.Operand)
             {
                 case MethodReference target:
-                    if (!_registryFactories.ContainsKey(instruction)) MarkMethod(target);
+                    if (!_registryFactories.ContainsKey(instruction)) MarkMethod(target, false);
                     if (instruction.OpCode.Code == Code.Newobj && Resolve(target.DeclaringType) is { } owner)
                     {
                         _namedConstructorAllocations.Add(owner);
@@ -792,19 +871,18 @@ internal sealed partial class AssemblyDiet : IDisposable
                         && (PreservationReader.RunsReflectedMethod(target.DeclaringType.FullName, target.Name)
                             || PreservationReader.BindsReflectedMethod(target.DeclaringType.FullName, target.Name)))
                         ArmReflectedMethodRuns();
+                    if (runs && PreservationReader.ReadsReflectedField(target.DeclaringType.FullName, target.Name))
+                        ArmReflectedFieldReads();
                     break;
-                case FieldReference field: MarkField(field); break;
+                case FieldReference field: MarkField(field, false); break;
                 case TypeReference type:
-                    MarkType(type);
+                    MarkType(type, false);
                     if (instruction.OpCode.Code == Code.Ldtoken)
-                    {
-                        NoteTypeToken(type);
                         NoteTypeTokenLibraryType(type);
-                    }
                     break;
                 case CallSite signature:
-                    MarkType(signature.ReturnType);
-                    foreach (var parameter in signature.Parameters) MarkType(parameter.ParameterType);
+                    MarkType(signature.ReturnType, false);
+                    foreach (var parameter in signature.Parameters) MarkType(parameter.ParameterType, false);
                     break;
             }
         }
@@ -846,15 +924,23 @@ internal sealed partial class AssemblyDiet : IDisposable
             }
             Sweep(type.NestedTypes, ref removedTypes, ref removedMethods);
             for (int j = type.Methods.Count - 1; j >= 0; j--)
-                if (!_methods.Contains(type.Methods[j])) { type.Methods.RemoveAt(j); removedMethods++; }
+            {
+                var method = type.Methods[j];
+                if (_methods.Contains(method)) continue;
+                if (_signatureMethods.Contains(method))
+                {
+                    if (method.HasBody) StubBody(method);
+                }
+                else { type.Methods.RemoveAt(j); removedMethods++; }
+            }
             for (int j = type.Properties.Count - 1; j >= 0; j--)
             {
                 var property = type.Properties[j];
                 if (!_properties.Contains(property)) { type.Properties.RemoveAt(j); continue; }
-                if (property.GetMethod is not null && !_methods.Contains(property.GetMethod)) property.GetMethod = null;
-                if (property.SetMethod is not null && !_methods.Contains(property.SetMethod)) property.SetMethod = null;
+                if (property.GetMethod is not null && !KeepsMethod(property.GetMethod)) property.GetMethod = null;
+                if (property.SetMethod is not null && !KeepsMethod(property.SetMethod)) property.SetMethod = null;
                 for (int k = property.OtherMethods.Count - 1; k >= 0; k--)
-                    if (!_methods.Contains(property.OtherMethods[k])) property.OtherMethods.RemoveAt(k);
+                    if (!KeepsMethod(property.OtherMethods[k])) property.OtherMethods.RemoveAt(k);
             }
             for (int j = type.Events.Count - 1; j >= 0; j--)
                 if (!_events.Contains(type.Events[j])) type.Events.RemoveAt(j);

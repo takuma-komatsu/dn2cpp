@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# CI profiles share the fast bootstrap; the suite keeps its own orchestration.
+# CI profiles share the fast bootstrap; fixed primitive partitions cover the
+# same allowlist without extending a hosted job budget. The suite is unchanged.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 PROFILE=""
+PARTITION=""
 LIST=0
 SELF_TEST=0
 usage() {
-    echo "usage: $0 --profile primitives|suite [--list] | --self-test" >&2
+    echo "usage: $0 --profile primitives|suite [--partition core|limits] [--list] | --self-test" >&2
     exit 2
 }
 while [ "$#" -gt 0 ]; do
@@ -15,6 +17,10 @@ while [ "$#" -gt 0 ]; do
         --profile)
             [ "$#" -ge 2 ] && [ -z "$PROFILE" ] || usage
             PROFILE="$2"; shift 2 ;;
+        --partition)
+            [ "$#" -ge 2 ] && [ -z "$PARTITION" ] || usage
+            case "$2" in core|limits) PARTITION="$2" ;; *) usage ;; esac
+            shift 2 ;;
         --list) [ "$LIST" -eq 0 ] || usage; LIST=1; shift ;;
         --self-test) [ "$SELF_TEST" -eq 0 ] || usage; SELF_TEST=1; shift ;;
         *) usage ;;
@@ -33,7 +39,9 @@ PRIMITIVES=(
 )
 
 self_test() (
-    local fixture name case_name rc expected test_os success_case
+    local fixture name case_name rc expected test_os success_case partition label failure_gate
+    local full core limits combined logdir
+    local runner_args
     fixture=$(mktemp -d "${TMPDIR:-/tmp}/dn2cpp-ci-smoke-test.XXXXXX")
     trap 'rm -rf "$fixture"' EXIT
     mkdir -p "$fixture/gates" "$fixture/bin" "$fixture/runtime/10.0.0"
@@ -86,7 +94,7 @@ set -euo pipefail
 [ -f "$DN2CPP_CLI_DLL" ] && [ -f "$DN2CPP_CORELIB" ]
 name=${0##*/}; name=${name#build-and-run-}; name=${name%.sh}
 printf '%s\n' "$name" >> "$CI_TEST_ORDER"
-if [ "$name" = multiassembly ]; then
+if [ "$name" = "${CI_TEST_FAILURE_GATE:-multiassembly}" ]; then
     case "$CI_TEST_CASE" in
         fail) echo 'fixture failure'; exit 3 ;;
         exit77) exit 77 ;;
@@ -125,79 +133,105 @@ printf 'suite forwarded\n'
 exit 23
 SUITE
 
-    for test_os in linux windows; do
-        success_case=success
-        [ "$test_os" != windows ] || success_case=sample-crlf
-        expected=$(printf '%s\n' "${PRIMITIVES[@]}")
-        [ "$(bash "$fixture/gates/ci-smoke.sh" --profile primitives --list)" = "$expected" ]
-        rc=0
-        PATH="$fixture/bin:$PATH" CONFIG=Sentinel DN2CPP_SKIP_BUILD=1 \
-            DN2CPP_GATE_CACHE=1 DN2CPP_REQUIRE_ALL=0 DN2CPP_CORELIB= DN2CPP_OS="$test_os" \
-            CMAKE_CXX_COMPILER=g++ \
-            CI_TEST_CONFIG=Debug \
-            CI_TEST_CASE="$success_case" CI_TEST_ORDER="$fixture/order" \
-            LOGDIR="$fixture/logs-$test_os" \
-            bash "$fixture/gates/ci-smoke.sh" --profile primitives \
-            > "$fixture/output" 2>&1 || rc=$?
-        [ "$rc" -eq 0 ] || { cat "$fixture/output" >&2; exit 1; }
-        if [ "$test_os" = windows ]; then
-            expected=$(printf 'build\nshutdown\ncorelib\n%s\n' "$expected")
-        else
-            expected=$(printf 'build\ncorelib\n%s\n' "$expected")
-        fi
-        [ "$(cat "$fixture/order")" = "$expected" ]
-        [ -s "$fixture/logs-$test_os/sample-dotnet.stdout" ]
-        [ -s "$fixture/logs-$test_os/sample-native.stdout" ]
-        if [ "$test_os" = windows ]; then
-            ! cmp -s "$fixture/logs-$test_os/sample-dotnet.raw.stdout" \
-                "$fixture/logs-$test_os/sample-native.raw.stdout"
-        fi
-        [ -s "$fixture/logs-$test_os/summary.md" ]
-        [ ! -s "$fixture/logs-$test_os/_failures.txt" ]
-        rm -f "$fixture/order"
-    done
+    full=$(bash "$fixture/gates/ci-smoke.sh" --profile primitives --list)
+    core=$(bash "$fixture/gates/ci-smoke.sh" --profile primitives --partition core --list)
+    limits=$(bash "$fixture/gates/ci-smoke.sh" --profile primitives --partition limits --list)
+    [ "$full" = "$(printf '%s\n' "${PRIMITIVES[@]}")" ]
+    [ "$limits" = transpiler-limits ]
+    [ "$core" = "$(sed '/^transpiler-limits$/d' <<< "$full")" ]
+    combined=$(printf '%s\n%s\n' "$core" "$limits" | LC_ALL=C sort)
+    [ "$combined" = "$(LC_ALL=C sort <<< "$full")" ]
+    [ -z "$(uniq -d <<< "$combined")" ]
+    echo 'OK: primitive partitions are disjoint and cover the exact full allowlist'
 
-    for case_name in fail exit77 skip partial expected-partial cached cached-partial \
-            sample-output sample-status build-fail windows-build-fail missing-cli missing-corelib watchdog missing-gate; do
-        rm -f "$fixture/order"
-        test_os=linux
-        [ "$case_name" != windows-build-fail ] || test_os=windows
-        if [ "$case_name" = missing-gate ]; then
-            rm "$fixture/gates/build-and-run-transpiler-limits.sh"
-        fi
-        rc=0
-        PATH="$fixture/bin:$PATH" DN2CPP_CORELIB= DN2CPP_OS="$test_os" CI_TEST_CONFIG=Debug \
-            CMAKE_CXX_COMPILER=g++ \
-            CI_TEST_CASE="$case_name" CI_TEST_ORDER="$fixture/order" \
-            DN2CPP_GATE_WATCHDOG_SECS=$([ "$case_name" = watchdog ] && echo 1 || echo 30) \
-            LOGDIR="$fixture/logs-$case_name" \
-            bash "$fixture/gates/ci-smoke.sh" --profile primitives \
-            > "$fixture/output" 2>&1 || rc=$?
-        [ "$rc" -ne 0 ] || { echo "FAIL: self-test accepted $case_name" >&2; exit 1; }
-        [ -s "$fixture/logs-$case_name/_failures.txt" ]
-        [ -s "$fixture/logs-$case_name/summary.md" ]
-        case "$case_name" in
-            build-fail|windows-build-fail|missing-cli|missing-corelib|missing-gate)
-                [ -s "$fixture/logs-$case_name/bootstrap.log" ]
-                [ ! -e "$fixture/logs-$case_name/sample.log" ] ;;
-            sample-output|sample-status)
-                [ -s "$fixture/logs-$case_name/sample.log" ]
-                [ ! -e "$fixture/logs-$case_name/multiassembly.log" ] ;;
-            *)
-                [ -s "$fixture/logs-$case_name/multiassembly.log" ]
-                [ ! -e "$fixture/logs-$case_name/lang-versions.log" ] ;;
-        esac
-        if [ "$case_name" = watchdog ]; then
-            grep -q '^WATCHDOG:' "$fixture/logs-$case_name/multiassembly.log"
-        fi
-        if [ "$case_name" = windows-build-fail ]; then
-            grep -q '^FAIL: bootstrap exited 9$' "$fixture/logs-$case_name/bootstrap.log"
-            [ "$(cat "$fixture/order")" = "$(printf 'build\nshutdown\n')" ]
-        fi
+    for partition in '' core limits; do
+        runner_args=(--profile primitives)
+        label=${partition:-full}
+        [ -z "$partition" ] || runner_args+=(--partition "$partition")
+        for test_os in linux windows; do
+            success_case=success
+            [ "$test_os" != windows ] || success_case=sample-crlf
+            expected=$(bash "$fixture/gates/ci-smoke.sh" "${runner_args[@]}" --list)
+            logdir="$fixture/logs-$test_os-$label"
+            rc=0
+            PATH="$fixture/bin:$PATH" CONFIG=Sentinel DN2CPP_SKIP_BUILD=1 \
+                DN2CPP_GATE_CACHE=1 DN2CPP_REQUIRE_ALL=0 DN2CPP_CORELIB= DN2CPP_OS="$test_os" \
+                CMAKE_CXX_COMPILER=g++ CI_TEST_CONFIG=Debug \
+                CI_TEST_CASE="$success_case" CI_TEST_ORDER="$fixture/order" LOGDIR="$logdir" \
+                bash "$fixture/gates/ci-smoke.sh" "${runner_args[@]}" \
+                > "$fixture/output" 2>&1 || rc=$?
+            [ "$rc" -eq 0 ] || { cat "$fixture/output" >&2; exit 1; }
+            if [ "$test_os" = windows ]; then
+                expected=$(printf 'build\nshutdown\ncorelib\n%s\n' "$expected")
+            else
+                expected=$(printf 'build\ncorelib\n%s\n' "$expected")
+            fi
+            [ "$(cat "$fixture/order")" = "$expected" ]
+            if [ "$partition" != limits ]; then
+                [ -s "$logdir/sample-dotnet.stdout" ]
+                [ -s "$logdir/sample-native.stdout" ]
+                if [ "$test_os" = windows ]; then
+                    ! cmp -s "$logdir/sample-dotnet.raw.stdout" "$logdir/sample-native.raw.stdout"
+                fi
+            else
+                [ ! -e "$logdir/sample.log" ]
+            fi
+            [ -s "$logdir/summary.md" ] && [ ! -s "$logdir/_failures.txt" ]
+            rm -f "$fixture/order"
+            echo "OK: $test_os $label uses strict Debug/bootstrap and exactly its selected gates"
+        done
+
+        failure_gate=multiassembly
+        [ "$partition" != limits ] || failure_gate=transpiler-limits
+        for case_name in fail exit77 skip partial expected-partial cached cached-partial \
+                sample-output sample-status build-fail windows-build-fail missing-cli missing-corelib watchdog missing-gate; do
+            case "$partition:$case_name" in limits:sample-output|limits:sample-status) continue ;; esac
+            rm -f "$fixture/order"
+            test_os=linux
+            [ "$case_name" != windows-build-fail ] || test_os=windows
+            logdir="$fixture/logs-$label-$case_name"
+            if [ "$case_name" = missing-gate ]; then
+                rm "$fixture/gates/build-and-run-$failure_gate.sh"
+            fi
+            rc=0
+            PATH="$fixture/bin:$PATH" DN2CPP_CORELIB= DN2CPP_OS="$test_os" CI_TEST_CONFIG=Debug \
+                CMAKE_CXX_COMPILER=g++ CI_TEST_FAILURE_GATE="$failure_gate" \
+                CI_TEST_CASE="$case_name" CI_TEST_ORDER="$fixture/order" \
+                DN2CPP_GATE_WATCHDOG_SECS=$([ "$case_name" = watchdog ] && echo 1 || echo 30) \
+                LOGDIR="$logdir" \
+                bash "$fixture/gates/ci-smoke.sh" "${runner_args[@]}" \
+                > "$fixture/output" 2>&1 || rc=$?
+            [ "$rc" -ne 0 ] || { echo "FAIL: self-test accepted $label $case_name" >&2; exit 1; }
+            [ -s "$logdir/_failures.txt" ] && [ -s "$logdir/summary.md" ]
+            case "$case_name" in
+                build-fail|windows-build-fail|missing-cli|missing-corelib|missing-gate)
+                    [ -s "$logdir/bootstrap.log" ]
+                    [ ! -e "$logdir/$failure_gate.log" ] ;;
+                sample-output|sample-status)
+                    [ -s "$logdir/sample.log" ]
+                    [ ! -e "$logdir/multiassembly.log" ] ;;
+                *)
+                    [ -s "$logdir/$failure_gate.log" ]
+                    [ ! -e "$logdir/lang-versions.log" ] ;;
+            esac
+            if [ "$case_name" = watchdog ]; then
+                grep -q '^WATCHDOG:' "$logdir/$failure_gate.log"
+            fi
+            if [ "$case_name" = windows-build-fail ]; then
+                grep -q '^FAIL: bootstrap exited 9$' "$logdir/bootstrap.log"
+                [ "$(cat "$fixture/order")" = "$(printf 'build\nshutdown\n')" ]
+            fi
+            if [ "$case_name" = missing-gate ]; then
+                cp "$fixture/gates/stub.sh" "$fixture/gates/build-and-run-$failure_gate.sh"
+            fi
+            echo "OK: $label rejects $case_name and records a failed step"
+        done
     done
     for name in '' '--profile unknown' '--profile console' '--profile' '--list' \
             '--profile primitives --profile primitives' '--profile suite --list' \
-            '--self-test --profile primitives'; do
+            '--self-test --profile primitives' '--partition' '--partition other' \
+            '--partition limits --partition core' '--partition limits --list' \
+            '--profile suite --partition limits' '--self-test --partition core'; do
         rc=0
         bash "$fixture/gates/ci-smoke.sh" $name > "$fixture/output" 2>&1 || rc=$?
         [ "$rc" -eq 2 ]
@@ -211,14 +245,23 @@ SUITE
 )
 
 if [ "$SELF_TEST" -eq 1 ]; then
-    [ -z "$PROFILE" ] && [ "$LIST" -eq 0 ] || usage
+    [ -z "$PROFILE" ] && [ -z "$PARTITION" ] && [ "$LIST" -eq 0 ] || usage
     self_test
     exit 0
 fi
 case "$PROFILE" in
-    primitives) GATES=("${PRIMITIVES[@]}"); CONFIG=Debug ;;
+    primitives)
+        GATES=()
+        for name in "${PRIMITIVES[@]}"; do
+            case "$PARTITION:$name" in
+                core:transpiler-limits) continue ;;
+                limits:*) [ "$name" = transpiler-limits ] || continue ;;
+            esac
+            GATES+=("$name")
+        done
+        CONFIG=Debug ;;
     suite)
-        [ "$LIST" -eq 0 ] || usage
+        [ "$LIST" -eq 0 ] && [ -z "$PARTITION" ] || usage
         export SKIP_GODOT=1
         exec bash "$SCRIPT_DIR/run-all-gates.sh" ;;
     *) usage ;;
@@ -248,6 +291,7 @@ summary() {
         printf '# CI smoke: %s\n\n' "$PROFILE"
         printf 'Configuration: %s; elapsed: %ss. Logs: `%s`.\n\n' \
             "$CONFIG" "$((SECONDS - START))" "$LOGDIR"
+        [ -z "$PARTITION" ] || printf 'Partition: `%s`.\n\n' "$PARTITION"
         printf '| Step | Seconds | Result |\n| --- | ---: | --- |\n'
         while read -r name seconds verdict; do
             printf '| %s | %s | %s |\n' "$name" "$seconds" "$verdict"

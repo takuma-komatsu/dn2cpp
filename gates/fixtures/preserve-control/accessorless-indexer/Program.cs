@@ -10,8 +10,3 @@ internal static class Program
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
     }
 }
-
-public sealed class Indexed
-{
-    public int this[int index] => index;
-}

@@ -5,11 +5,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <Optimize>true</Optimize>
-    <DebugType>portable</DebugType>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Remove="LookupOnly/**/*.cs;EventBoundary/**/*.cs;ConstructorOnly/**/*.cs;InvokeOnly/**/*.cs" />
-    <ProjectReference Include="../ILDietControlLib/ILDietControlLib.csproj" />
+    <ProjectReference Include="../../ILDietControlLib/ILDietControlLib.csproj" />
   </ItemGroup>
 </Project>

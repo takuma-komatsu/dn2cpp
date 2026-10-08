@@ -25,10 +25,9 @@
 #      GDTask<T>.SuppressCancellationThrow() -> GDTask<(bool, T)> — the
 #      self-referential-signature runaway, which grows the heap at ~1 GB/s from
 #      `-r GDTask.dll` alone.
-#      Methods are decoded on demand, so nothing reaches Deeper, nothing reads its
-#      signature, and the deeper Box is never named. The bound has nothing to
-#      catch — so this asserts that the transpile COMPLETES, and that it stopped at
-#      one step. That is the suite's proof that the deferral is real: a regression
+#      Completing reached Box<int> can name Deeper's return-type shell, whose own
+#      members must stay deferred. Original and retained application metadata both
+#      stop at exactly two Box specializations. A regression
 #      that decodes an unreached specialization's members makes this input recurse.
 #
 #      A generic whose FIELD does the same — Node<T>.Next : Node<List<T>> — still
@@ -91,8 +90,18 @@
 # the per-phase heap curve. This gate asserts; that one measures.
 # Canonical linking and synthesized-wrapper lowering must preserve fatal bounds
 # while ordinary unsupported wrapper shapes still fall back.
+# Executable ILDiet depth summaries abort on operator budgets, retain deep caller
+# substitutions, and distinguish preserved dispatch/data bodies from execution.
+# Closed copied shapes in unused bodies do not consume the execution budget.
+# Reflection-only whole-class roots keep emission's bounded minted walk.
+# Attribute rows retain bodies; only live attribute reads promote constructors
+# and named setters, without executing getters or a hidden base setter.
+# Branch summaries share boolean getter folds and known loaded type identities;
+# explicit/inherited interface maps, class newslot identities and constrained
+# primitive slots exclude unrelated bodies; ISA guards share the capability verdict.
 # Primary-input CoreLib/runtime identity collisions fail before base-chain walks;
 # embedded internal metadata types and ordinary intrinsic-BCL inputs still run.
+# Validated ordinary cuts exclude body depth summaries while preserving signatures.
 source "$(dirname "$0")/_common.sh"
 
 out="artifacts/transpiler-limits"
@@ -116,6 +125,7 @@ build_proj samples/dotnet/TypeofMissingAsmBad/TypeofMissingAsmBad.csproj
 build_gate_proj gates/fixtures/transpiler-limits/CanonicalLink/CanonicalLinkBound.csproj
 build_gate_proj gates/fixtures/transpiler-limits/WrapperExceptions/WrapperExceptions.csproj
 build_gate_proj gates/fixtures/transpiler-limits/ReflectionRouteNesting/ReflectionRouteNesting.csproj
+build_gate_proj gates/fixtures/transpiler-limits/ReflectionDepthSummary/ReflectionDepthSummary.csproj
 collision_fixture=gates/fixtures/transpiler-limits/CoreLibCollision
 for shape in Object ValueType Unsafe Control; do
     build_gate_proj "$collision_fixture/$shape/Collision$shape.csproj"
@@ -131,6 +141,7 @@ tma_app="samples/dotnet/TypeofMissingAsmBad/bin/$CONFIG/$TFM/TypeofMissingAsmBad
 link_app="gates/fixtures/transpiler-limits/CanonicalLink/bin/$CONFIG/$TFM/CanonicalLinkBound.dll"
 wrapper_app="gates/fixtures/transpiler-limits/WrapperExceptions/bin/$CONFIG/$TFM/WrapperExceptions.dll"
 nest_app="gates/fixtures/transpiler-limits/ReflectionRouteNesting/bin/$CONFIG/$TFM/ReflectionRouteNesting.dll"
+summary_app="gates/fixtures/transpiler-limits/ReflectionDepthSummary/bin/$CONFIG/$TFM/ReflectionDepthSummary.dll"
 # The assembly section 8 withholds and then supplies. It sits beside the CoreLib in
 # the shared framework; a requested reference that is absent is a hard failure, not
 # a quietly dropped one — withholding it is the whole point of the section,
@@ -150,7 +161,7 @@ numerics_dll="$(dirname "$corelib")/System.Runtime.Numerics.dll"
 # gate_cache_check answers that with a warning and no key, which would
 # leave this gate uncacheable since it clears the dirs on every run.
 rm -rf "$out" "$sig_out" "$sig_diet_out" "$cut_out" "$mint_out"; mkdir -p "$out"
-if gate_cache_check "$out" "transpiler-limits|canonical-cap:1,2|canonical-refs:none|wrapper-exceptions|sig:no-ildiet+ildiet|collision:no-ildiet,corelib+intrinsic|cli:$(_gate_cli_hash)|$corelib" \
+if gate_cache_check "$out" "transpiler-limits|recursive-body:ildiet+no-ildiet|canonical-cap:no-ildiet:1,2|canonical-refs:none|wrapper-exceptions|mint-cap:no-ildiet|depth-summary-env:default,depth8,depth64,count128,count2m,depth1-abort,count1-abort,deep64,uncalled-virtual,uncalled-interface,unallocated-receiver,construction-accessor,generic-accessor,generic-ctor,executed-generic-argument,event,late-construction-accessor:depth3-abort,direct-accessor,direct-event-add,invoke-uncalled-virtual,generic-factory:direct,class,method,identity|unused-copied:low2,default32:ildiet+no-ildiet|ordinary-cut:ildiet+no-ildiet|execution-provenance:base-call,base-ctor,object-slot,primitive-dead-branch,abstract-app,abstract-library,nominal-dead-branch,methodimpl,constrained-primitive,const-getter,unused-default-interface,inherited-interface-map,protected-interface-map,class-newslot-map,isa-getter:Sve+Sve2+Arm64:optimize=true|attributes:unread-ctor,unread-getter,read,generic-read:depth3+depth4-abort|sig:no-ildiet+ildiet|collision:no-ildiet,corelib+intrinsic|cli:$(_gate_cli_hash)|$corelib" \
         "$rec_app" "$sig_app" "$fld_app" "$afld_app" "$big_app" "$arr_app" "$mint_app" "$tma_app" \
         gates/fixtures/transpiler-limits/CanonicalLink/Program.cs \
         gates/fixtures/transpiler-limits/CanonicalLink/CanonicalLinkBound.csproj \
@@ -158,8 +169,9 @@ if gate_cache_check "$out" "transpiler-limits|canonical-cap:1,2|canonical-refs:n
         gates/fixtures/transpiler-limits/WrapperExceptions/WrapperExceptions.csproj \
         gates/fixtures/transpiler-limits/ReflectionRouteNesting/Program.cs \
         gates/fixtures/transpiler-limits/ReflectionRouteNesting/ReflectionRouteNesting.csproj \
+        gates/fixtures/transpiler-limits/ReflectionDepthSummary \
         "$collision_fixture" \
-        "$link_app" "$wrapper_app" "$nest_app" \
+        "$link_app" "$wrapper_app" "$nest_app" "$summary_app" \
         "${link_app%.dll}.runtimeconfig.json" "${link_app%.dll}.deps.json" \
         "${wrapper_app%.dll}.runtimeconfig.json" "${wrapper_app%.dll}.deps.json" \
         "${nest_app%.dll}.runtimeconfig.json" "${nest_app%.dll}.deps.json" \
@@ -176,8 +188,24 @@ fi
 # under the pipe buffer, because the race is against grep's EXIT and not against the
 # buffer filling. A here-string is fully materialized before grep starts.
 echo "== 2/9 A self-deepening generic must hit the monomorphization bound =="
+for rec_cap in 32 40; do
+    summary_rec_rc=0
+    summary_rec_out="$out/summary-rec-$rec_cap"
+    summary_rec_err=$(export DN2CPP_MAX_GENERIC_DEPTH="$rec_cap"; \
+        invoke_cli "$rec_app" -r "$corelib" -o "$summary_rec_out" 2>&1 >/dev/null) || summary_rec_rc=$?
+    if [ "$summary_rec_rc" -ne 2 ] || [ -f "$summary_rec_out/ildiet/GenericRecursionBad.dll" ] \
+            || ! grep -q "ILDiet depth summary needs generic nesting depth $((rec_cap + 1)), past the $rec_cap-level limit (DN2CPP_MAX_GENERIC_DEPTH)" <<<"$summary_rec_err" \
+            || ! grep -q 'while summarizing .*Descend' <<<"$summary_rec_err" \
+            || ! grep -q '\[chain: .*Descend.*Main' <<<"$summary_rec_err"; then
+        echo "FAIL: the depth summary must abort at $((rec_cap + 1)) without rewritten IL (exit $summary_rec_rc)" >&2
+        echo "$summary_rec_err" >&2
+        exit 1
+    fi
+    echo "OK (summary abort: depth $((rec_cap + 1)), limit $rec_cap, no rewritten assembly)"
+done
+# Bypass the companion to independently exercise emission's fatal bound and chain.
 rec_rc=0
-rec_err=$(invoke_cli "$rec_app" -r "$corelib" -o "$out" 2>&1 >/dev/null) || rec_rc=$?
+rec_err=$(invoke_cli "$rec_app" -r "$corelib" --no-ildiet -o "$out" 2>&1 >/dev/null) || rec_rc=$?
 if [ "$rec_rc" -ne 2 ]; then
     echo "FAIL: transpiling a self-deepening generic exited $rec_rc (expected 2)" >&2
     echo "$rec_err" >&2
@@ -197,7 +225,7 @@ fi
 # the DEPTH that stops it, at the new level. (invoke_cli is a shell function, so the
 # override goes inside the subshell — bash does not reliably scope `VAR=x func`.)
 deep_rc=0
-deep_err=$(export DN2CPP_MAX_GENERIC_DEPTH=40; invoke_cli "$rec_app" -r "$corelib" -o "$out" 2>&1 >/dev/null) || deep_rc=$?
+deep_err=$(export DN2CPP_MAX_GENERIC_DEPTH=40; invoke_cli "$rec_app" -r "$corelib" --no-ildiet -o "$out" 2>&1 >/dev/null) || deep_rc=$?
 if [ "$deep_rc" -ne 2 ] || ! grep -q "nested 41 deep" <<<"$deep_err"; then
     echo "FAIL: DN2CPP_MAX_GENERIC_DEPTH=40 did not move the bound to 41 (exit $deep_rc)" >&2
     echo "$deep_err" >&2
@@ -210,9 +238,8 @@ echo "== 3/9 A self-deepening METHOD signature must simply not recurse =="
 # This is the self-referential-signature runaway's shape —
 # GDTask<T>.SuppressCancellationThrow() ->
 # GDTask<(bool, T)> — which an eager member decode could only REFUSE at the depth bound.
-# Members are decoded on demand (Compilation.CompleteMembers), and
-# nothing calls Box<T>.Deeper(), so its signature is never read and the deeper Box is never
-# named. The recursion has no step to take.
+# Reached Box<int>'s declarations can name its deeper return type, but
+# Compilation.CompleteMembers must not recursively complete that specialization.
 #
 # So this asserts that the transpile COMPLETES. That is not a
 # weak assertion, and it is the reason it lives here rather than in
@@ -231,11 +258,11 @@ for mode in "--measure" ""; do
     sig_err=$(invoke_cli "$sig_app" -r "$corelib" --no-ildiet $mode -o "$sig_out" 2>&1 >/dev/null) || sig_rc=$?
     if [ "$sig_rc" -ne 0 ]; then
         echo "FAIL: the self-deepening METHOD shape ($label) exited $sig_rc — nothing calls Deeper(), so nothing" >&2
-        echo "      should decode its signature and the transpile should complete:" >&2
+        echo "      should recursively complete the deeper specialization:" >&2
         echo "$sig_err" >&2
         exit 1
     fi
-    echo "OK ($label: completed — an unreached member's signature is never decoded)"
+    echo "OK ($label: completed — the unreached specialization does not recurse)"
 done
 # And it stopped at ONE step, not thirty-two: Box<int> is reached (Main reads its field), so
 # its members ARE decoded, which names Box<Pair<bool,int>> — a shell nothing reaches, whose
@@ -261,17 +288,24 @@ assert_output "$sig_native" "$sig_expected"
 assert_exit_code "$sig_native_rc" "$sig_expected_rc"
 echo "OK (and the undecoded shell still lays out, links and runs — output matches real .NET)"
 
-# Managed stripping removes Deeper before its signature can create even a shell.
+# Application metadata keeps Deeper's signature without reaching its body.
+# Its return type creates the same single shell as unstripped metadata.
 invoke_cli "$sig_app" -r "$corelib" -o "$sig_diet_out"
 diet_boxes=$(grep -o 't_GenericSignatureRecursionBad_Box_[A-Za-z0-9_]*' "$sig_diet_out/generated.h" | sort -u | wc -l | tr -d ' ')
-[ "$diet_boxes" -eq 1 ] || { echo "FAIL: ILDiet retained an unused Box signature ($diet_boxes specializations)" >&2; exit 1; }
+[ "$diet_boxes" -eq 2 ] || { echo "FAIL: expected exactly 2 Box specializations after ILDiet, got $diet_boxes" >&2; exit 1; }
+for emitted in "$sig_out" "$sig_diet_out"; do
+    if grep -q '^// GenericSignatureRecursionBad\.Box.*::Deeper[[:space:]]*$' "$emitted"/generated*; then
+        echo "FAIL: an unused application signature rooted Deeper's executable body" >&2
+        exit 1
+    fi
+done
 compile_console "$sig_diet_out" GenericSignatureRecursionBad
 set +e
 diet_native=$("./$sig_diet_out/GenericSignatureRecursionBad"); diet_native_rc=$?
 set -e
 assert_output "$diet_native" "$sig_expected"
 assert_exit_code "$diet_native_rc" "$sig_expected_rc"
-echo "OK (ILDiet removed the unused signature before model construction; native output matches .NET)"
+echo "OK (ILDiet retains the unused signature without rooting its body; exactly 2 Box types and .NET output)"
 
 echo "== 3b/9 A self-deepening FIELD must still hit the bound, and name the member =="
 # A field is not a method — not because of any eager decode: its type is on demand
@@ -385,7 +419,7 @@ mint_se="$out/mint-stderr.txt"
 mint_run() { # <cap> — transpile under that cap; stdout/stderr to the files above
     rm -rf "$mint_out"
     (export DN2CPP_MAX_INSTANTIATIONS="$1" DN2CPP_SHARED_DUMP=1
-     invoke_cli "$mint_app" -r "$corelib" -o "$mint_out") >"$mint_so" 2>"$mint_se"
+     invoke_cli "$mint_app" --no-ildiet -r "$corelib" -o "$mint_out") >"$mint_so" 2>"$mint_se"
 }
 # Invariant of the search: mint_lo fails, mint_hi succeeds. A cap of 1 always fails (the
 # program creates more than one instantiation); the ceiling doubles until one succeeds.
@@ -475,7 +509,7 @@ for mode in "" "--measure"; do
     link_se="$out/canonical-${label#--}.stderr"
     link_rc=0
     (export DN2CPP_MAX_INSTANTIATIONS=1
-     invoke_cli "$link_app" $mode -o "$link_dir") >"$link_so" 2>"$link_se" || link_rc=$?
+     invoke_cli "$link_app" --no-ildiet $mode -o "$link_dir") >"$link_so" 2>"$link_se" || link_rc=$?
     if [ "$link_rc" -ne 2 ] \
             || ! grep -q 'instantiation count passed the 1 limit while instantiating CanonicalLinkBound.Program::Id<CnRef>' "$link_se" \
             || ! grep -q 'DN2CPP_MAX_INSTANTIATIONS' "$link_se" \
@@ -486,7 +520,7 @@ for mode in "" "--measure"; do
     fi
 
     (export DN2CPP_MAX_INSTANTIATIONS=2
-     invoke_cli "$link_app" $mode -o "$link_dir") >"$link_so" 2>"$link_se"
+     invoke_cli "$link_app" --no-ildiet $mode -o "$link_dir") >"$link_so" 2>"$link_se"
     if [ -z "$mode" ]; then
         if ! grep -Eq '^inline .* Program_Id_TisCnRef_m[0-9]+\([^;]*\)$' "$link_dir/generated.h"; then
             echo "FAIL: raising the bound did not produce the canonical Id<CnRef> body" >&2
@@ -510,6 +544,295 @@ wrapper InstantiationBoundException: OK
 wrapper StrictCompletionException: OK'
 assert_exit_code "$wrapper_rc" 0
 echo "OK (ordinary wrapper failure falls back; fatal exceptions escape unchanged)"
+
+echo "== 3g/9 Operator budgets do not change successful ILDiet depth summaries =="
+summary_diet="$(dirname "${DN2CPP_CLI_DLL:-src/Dn2Cpp.Cli/bin/$CONFIG/$TFM/dn2cpp.dll}")/ildiet/ILDiet.dll"
+summary_library="gates/fixtures/transpiler-limits/ReflectionDepthSummary/Library/bin/$CONFIG/$TFM/DepthData.dll"
+summary_expected=$(dotnet "$summary_app")
+summary_expected=$(strip_cr_win "$summary_expected")
+grep -Fxq second <<< "$summary_expected" \
+    || { echo 'FAIL: depth-summary fixture did not exercise its second field context' >&2; exit 1; }
+for summary_case in default depth8 depth64 count128 count2m; do
+    summary_dir="$out/depth-summary-$summary_case"
+    (
+        unset DN2CPP_MAX_GENERIC_DEPTH DN2CPP_MAX_INSTANTIATIONS
+        case "$summary_case" in
+            depth8) export DN2CPP_MAX_GENERIC_DEPTH=8 ;;
+            depth64) export DN2CPP_MAX_GENERIC_DEPTH=64 ;;
+            count128) export DN2CPP_MAX_INSTANTIATIONS=128 ;;
+            count2m) export DN2CPP_MAX_INSTANTIATIONS=2000000 ;;
+        esac
+        dotnet exec "$summary_diet" "$summary_app" -r "$corelib" -o "$summary_dir"
+    )
+    cmp "$out/depth-summary-default/ReflectionDepthSummary.dll" "$summary_dir/ReflectionDepthSummary.dll"
+    summary_actual=$(dotnet exec --runtimeconfig "${summary_app%.dll}.runtimeconfig.json" \
+        "$summary_dir/ReflectionDepthSummary.dll")
+    assert_output "$(strip_cr_win "$summary_actual")" "$(strip_cr_win "$summary_expected")"
+    echo "OK ($summary_case: identical rewritten IL and original CLR output)"
+done
+(
+    DN2CPP_SAMPLE_PROJECT_DIR=gates/fixtures/transpiler-limits/ReflectionDepthSummary
+    DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|sample-path:$DN2CPP_SAMPLE_PROJECT_DIR"
+    DN2CPP_SKIP_BUILD=1
+    corelib_diff_gate ReflectionDepthSummary
+)
+
+# A budget too small for the summary must abort before any rewritten assembly.
+for summary_case in depth1 count1; do
+    summary_dir="$out/depth-summary-$summary_case"
+    summary_rc=0
+    (
+        unset DN2CPP_MAX_GENERIC_DEPTH DN2CPP_MAX_INSTANTIATIONS
+        case "$summary_case" in
+            depth1) export DN2CPP_MAX_GENERIC_DEPTH=1 ;;
+            count1) export DN2CPP_MAX_INSTANTIATIONS=1 ;;
+        esac
+        dotnet exec "$summary_diet" "$summary_app" -r "$corelib" -o "$summary_dir"
+    ) >"$out/depth-summary-$summary_case.stdout" 2>"$out/depth-summary-$summary_case.stderr" || summary_rc=$?
+    [ "$summary_case" = depth1 ] && summary_knob=DN2CPP_MAX_GENERIC_DEPTH || summary_knob=DN2CPP_MAX_INSTANTIATIONS
+    if [ "$summary_rc" -ne 1 ] || [ -f "$summary_dir/ReflectionDepthSummary.dll" ] \
+            || ! grep -q 'ILDiet depth summary' "$out/depth-summary-$summary_case.stderr" \
+            || ! grep -q "$summary_knob" "$out/depth-summary-$summary_case.stderr"; then
+        echo "FAIL: $summary_case must abort the depth summary without partial rewritten IL" >&2
+        cat "$out/depth-summary-$summary_case.stdout" "$out/depth-summary-$summary_case.stderr" >&2
+        exit 1
+    fi
+    echo "OK ($summary_case: named depth-summary budget; no rewritten assembly)"
+done
+
+# An operator-raised bound must preserve caller substitutions beyond the default.
+summary_deep="$out/depth-summary-deep-input"
+mkdir -p "$summary_deep/bin/$CONFIG/$TFM"
+cp "$summary_library" "$summary_deep/bin/$CONFIG/$TFM/DepthData.dll"
+dotnet build gates/fixtures/transpiler-limits/ReflectionDepthSummary/ReflectionDepthSummary.csproj \
+    -c "$CONFIG" -p:DefineConstants=DEEP_DEPTH_SUMMARY -p:BuildProjectReferences=false \
+    -o "$summary_deep/bin/$CONFIG/$TFM" --nologo -v quiet
+summary_rc=0
+(
+    unset DN2CPP_MAX_GENERIC_DEPTH DN2CPP_MAX_INSTANTIATIONS
+    dotnet exec "$summary_diet" "$summary_deep/bin/$CONFIG/$TFM/ReflectionDepthSummary.dll" \
+        -r "$corelib" -o "$out/depth-summary-deep-default"
+) >"$out/depth-summary-deep-default.stdout" 2>"$out/depth-summary-deep-default.stderr" || summary_rc=$?
+if [ "$summary_rc" -ne 1 ] || [ -f "$out/depth-summary-deep-default/ReflectionDepthSummary.dll" ] \
+        || ! grep -q 'generic nesting depth 33, past the 32-level limit (DN2CPP_MAX_GENERIC_DEPTH)' "$out/depth-summary-deep-default.stderr"; then
+    echo 'FAIL: deep profile must cross the default summary bound without emitting partial IL' >&2
+    cat "$out/depth-summary-deep-default.stdout" "$out/depth-summary-deep-default.stderr" >&2
+    exit 1
+fi
+(
+    export DN2CPP_MAX_GENERIC_DEPTH=64
+    unset DN2CPP_MAX_INSTANTIATIONS
+    DN2CPP_SAMPLE_PROJECT_DIR="$summary_deep"
+    DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|sample-path:$DN2CPP_SAMPLE_PROJECT_DIR|defines:DEEP_DEPTH_SUMMARY|depth:64"
+    DN2CPP_OUT_SUFFIX=-deep-summary
+    DN2CPP_SKIP_BUILD=1
+    corelib_diff_gate ReflectionDepthSummary
+)
+echo "OK (raised depth bound: deep caller substitution preserves the second field context)"
+
+# Original dispatch bodies remain available without making unused slots executable.
+for summary_dispatch in VIRTUAL INTERFACE RECEIVER; do
+    summary_define="UNCALLED_${summary_dispatch}_DEPTH"
+    summary_dispatch_expected=True
+    if [ "$summary_dispatch" = RECEIVER ]; then
+        summary_define=UNALLOCATED_RECEIVER_DEPTH
+        summary_dispatch_expected=Safe
+    fi
+    summary_prepared="$out/depth-summary-uncalled-$summary_dispatch-input"
+    mkdir -p "$summary_prepared/bin/$CONFIG/$TFM"
+    cp "$summary_library" "$summary_prepared/bin/$CONFIG/$TFM/DepthData.dll"
+    dotnet build gates/fixtures/transpiler-limits/ReflectionDepthSummary/ReflectionDepthSummary.csproj \
+        -c "$CONFIG" -p:DefineConstants="$summary_define" -p:BuildProjectReferences=false \
+        -o "$summary_prepared/bin/$CONFIG/$TFM" --nologo -v quiet
+    (
+        DN2CPP_SAMPLE_PROJECT_DIR="$summary_prepared"
+        DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|sample-path:$DN2CPP_SAMPLE_PROJECT_DIR|defines:$summary_define"
+        DN2CPP_OUT_SUFFIX="-uncalled-$summary_dispatch"
+        DN2CPP_SKIP_BUILD=1
+        corelib_diff_gate ReflectionDepthSummary
+    )
+    summary_native=$(run_bounded "./artifacts/reflectiondepthsummary-uncalled-$summary_dispatch/ReflectionDepthSummary")
+    assert_output "$(strip_cr_win "$summary_native")" "$summary_dispatch_expected"
+    if grep -Eq '^[^;]* (UncalledNode[^ ]*_Wrap|UncalledWorker_(Run|Descend)|ReceiverHolder_Uncalled|ColdReceiver[^ ]*_(Run|Descend))_m[0-9]+\(' \
+            "artifacts/reflectiondepthsummary-uncalled-$summary_dispatch"/generated*.cpp; then
+        echo 'FAIL: an uncalled dispatch body became executable' >&2
+        exit 1
+    fi
+    echo "OK ($summary_dispatch: unused original dispatch bodies do not seed recursive depth contexts)"
+done
+
+# Copied framework types in unused bodies do not consume an execution budget.
+for summary_copied in low default; do
+    summary_define=UNUSED_COPIED_SHAPE_DEPTH
+    summary_limit=2
+    if [ "$summary_copied" = default ]; then
+        summary_define=UNUSED_DEEP_COPIED_SHAPE_DEPTH
+        summary_limit=32
+    fi
+    summary_prepared="$out/depth-summary-unused-copied-$summary_copied-input"
+    mkdir -p "$summary_prepared/bin/$CONFIG/$TFM"
+    cp "$summary_library" "$summary_prepared/bin/$CONFIG/$TFM/DepthData.dll"
+    dotnet build gates/fixtures/transpiler-limits/ReflectionDepthSummary/ReflectionDepthSummary.csproj \
+        -c "$CONFIG" -p:DefineConstants="$summary_define" -p:BuildProjectReferences=false \
+        -o "$summary_prepared/bin/$CONFIG/$TFM" --nologo -v quiet
+    for summary_bypass in current original; do
+        (
+            unset DN2CPP_MAX_GENERIC_DEPTH DN2CPP_MAX_INSTANTIATIONS
+            export DN2CPP_MAX_GENERIC_DEPTH="$summary_limit"
+            DN2CPP_SAMPLE_PROJECT_DIR="$summary_prepared"
+            DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|sample-path:$DN2CPP_SAMPLE_PROJECT_DIR|defines:$summary_define|depth:$summary_limit|preprocessing:$summary_bypass"
+            DN2CPP_OUT_SUFFIX="-unused-copied-$summary_copied-$summary_bypass"
+            DN2CPP_SKIP_BUILD=1
+            if [ "$summary_bypass" = current ]; then
+                corelib_diff_gate ReflectionDepthSummary
+            else
+                corelib_diff_gate ReflectionDepthSummary --no-ildiet
+            fi
+        )
+        summary_native=$(run_bounded "./artifacts/reflectiondepthsummary-unused-copied-$summary_copied-$summary_bypass/ReflectionDepthSummary")
+        assert_output "$(strip_cr_win "$summary_native")" True
+        if grep -Eq '^[^;]* CopiedShapeWorker_Uncalled_m[0-9]+\(' \
+                "artifacts/reflectiondepthsummary-unused-copied-$summary_copied-$summary_bypass"/generated*.cpp; then
+            echo 'FAIL: an unused copied-shape body became executable' >&2
+            exit 1
+        fi
+    done
+    echo "OK ($summary_copied: unused copied shape preserves CLR behavior below its retained body depth)"
+done
+
+# Accessor/event association and generic data retention preserve original bodies
+# without executing them. Real calls and a later constructor route still promote.
+for summary_surface in CONSTRUCTION_ACCESSOR GENERIC_ACCESSOR GENERIC_CTOR EXECUTED_GENERIC_ARGUMENT UNCALLED_EVENT LATE_CONSTRUCTION_ACCESSOR DIRECT_ACCESSOR DIRECT_EVENT_ADD INVOKE_UNCALLED_VIRTUAL GENERIC_FACTORY_DIRECT GENERIC_FACTORY_CLASS GENERIC_FACTORY_METHOD GENERIC_FACTORY_IDENTITY; do
+    summary_define="${summary_surface}_DEPTH"
+    summary_surface_expected=True
+    case "$summary_surface" in
+        LATE_CONSTRUCTION_ACCESSOR|DIRECT_ACCESSOR|DIRECT_EVENT_ADD) summary_surface_expected=second ;;
+        INVOKE_UNCALLED_VIRTUAL) summary_surface_expected=$'7\nTrue' ;;
+        GENERIC_FACTORY_*)
+            summary_factory_kind=${summary_surface#GENERIC_FACTORY_}
+            summary_factory_kind=$(printf '%s' "$summary_factory_kind" | tr '[:upper:]' '[:lower:]')
+            summary_surface_expected=$(printf 'second\ngeneric-factory-%s-ran' "$summary_factory_kind") ;;
+
+    esac
+    summary_prepared="$out/depth-summary-$summary_surface-input"
+    mkdir -p "$summary_prepared/bin/$CONFIG/$TFM"
+    cp "$summary_library" "$summary_prepared/bin/$CONFIG/$TFM/DepthData.dll"
+    dotnet build gates/fixtures/transpiler-limits/ReflectionDepthSummary/ReflectionDepthSummary.csproj \
+        -c "$CONFIG" -p:DefineConstants="$summary_define" -p:BuildProjectReferences=false \
+        -o "$summary_prepared/bin/$CONFIG/$TFM" --nologo -v quiet
+    (
+        DN2CPP_SAMPLE_PROJECT_DIR="$summary_prepared"
+        DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|sample-path:$DN2CPP_SAMPLE_PROJECT_DIR|defines:$summary_define|reference:DepthData"
+        DN2CPP_OUT_SUFFIX="-surface-$summary_surface"
+        DN2CPP_SKIP_BUILD=1
+        corelib_diff_gate ReflectionDepthSummary -r "$summary_library"
+    )
+    summary_native=$(run_bounded "./artifacts/reflectiondepthsummary-surface-$summary_surface/ReflectionDepthSummary")
+    assert_output "$(strip_cr_win "$summary_native")" "$summary_surface_expected"
+    if [ "$summary_surface" = INVOKE_UNCALLED_VIRTUAL ]; then
+        (
+            DN2CPP_SAMPLE_PROJECT_DIR="$summary_prepared"
+            DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|sample-path:$DN2CPP_SAMPLE_PROJECT_DIR|defines:$summary_define|no-ildiet"
+            DN2CPP_OUT_SUFFIX=-surface-invoke-original
+            DN2CPP_SKIP_BUILD=1
+            corelib_diff_gate ReflectionDepthSummary --no-ildiet -r "$summary_library"
+        )
+    elif grep -Eq '^[^;]* (AccessorData_get_Value|AccessorData_Descend|ConstructorData_Descend|EventHolder_add_E|EventHolder_Descend|DirectAccessorData_set_Value|DirectAccessorData_Descend|DirectEventHolder_remove_E|DirectEventHolder_Descend)[^ ]*_m[0-9]+\(' \
+            "artifacts/reflectiondepthsummary-surface-$summary_surface"/generated*.cpp; then
+        echo "FAIL: $summary_surface emitted an uncalled accessor/event/data body" >&2
+        exit 1
+    fi
+    if [ "$summary_surface" = LATE_CONSTRUCTION_ACCESSOR ]; then
+        summary_rc=0
+        (export DN2CPP_MAX_GENERIC_DEPTH=3
+         invoke_cli "$summary_prepared/bin/$CONFIG/$TFM/ReflectionDepthSummary.dll" -r "$corelib" \
+             -r "$summary_library" -o "$out/late-accessor-depth3") \
+            >"$out/late-accessor-depth3.stdout" 2>"$out/late-accessor-depth3.stderr" || summary_rc=$?
+        if [ "$summary_rc" -ne 2 ] || [ -f "$out/late-accessor-depth3/ildiet/ReflectionDepthSummary.dll" ] \
+                || ! grep -q 'ILDiet depth summary needs generic nesting depth 4, past the 3-level limit (DN2CPP_MAX_GENERIC_DEPTH)' "$out/late-accessor-depth3.stderr"; then
+            echo 'FAIL: a late constructor route did not promote its retained library getter depth context' >&2
+            cat "$out/late-accessor-depth3.stdout" "$out/late-accessor-depth3.stderr" >&2
+            exit 1
+        fi
+    fi
+    echo "OK ($summary_surface: independent CLR parity; conservative bodies and executable depth roots stay distinct)"
+done
+
+# Exact calls and base constructors do not imply virtual dispatch or allocation.
+# Depth summaries share emission's known identity and boolean getter branch graph.
+for summary_execution in NONVIRTUAL_BASE_CALL BASE_CONSTRUCTOR INHERITED_OBJECT_SLOT DEAD_PRIMITIVE_BRANCH ABSTRACT_APPLICATION ABSTRACT_LIBRARY DEAD_NOMINAL_BRANCH METHODIMPL_PRIORITY CONSTRAINED_PRIMITIVE CONST_GETTER_BRANCH UNUSED_DEFAULT_INTERFACE INHERITED_INTERFACE_MAPPING PROTECTED_INTERFACE_MAPPING CLASS_NEWSLOT_MAPPING ISA_GETTER_BRANCH UNREAD_ATTRIBUTE_CTOR UNREAD_ATTRIBUTE_GETTER ATTRIBUTE_READ ATTRIBUTE_GENERIC_READ; do
+    summary_define="${summary_execution}_DEPTH"
+    summary_execution_refs=(-r "$summary_library")
+    case "$summary_execution" in
+        UNREAD_ATTRIBUTE_CTOR) summary_execution_expected=unread-attribute-ctor-ran ;;
+        UNREAD_ATTRIBUTE_GETTER) summary_execution_expected=unread-attribute-getter-ran ;;
+        ATTRIBUTE_READ|ATTRIBUTE_GENERIC_READ) summary_execution_expected=$'attribute-ctor\nattribute-setter\n7\nattribute-read-ran' ;;
+        NONVIRTUAL_BASE_CALL) summary_execution_expected=base-call-ran ;;
+        BASE_CONSTRUCTOR) summary_execution_expected=$'derived\nbase-constructor-ran' ;;
+        INHERITED_OBJECT_SLOT) summary_execution_expected=$'derived\ninherited-object-slot-ran' ;;
+        DEAD_PRIMITIVE_BRANCH) summary_execution_expected=dead-primitive-branch-ran ;;
+        ABSTRACT_APPLICATION) summary_execution_expected=abstract-application-ran ;;
+        ABSTRACT_LIBRARY) summary_execution_expected=abstract-library-ran ;;
+        DEAD_NOMINAL_BRANCH) summary_execution_expected=dead-nominal-branch-ran ;;
+        METHODIMPL_PRIORITY) summary_execution_expected=$'explicit-slot\nmethodimpl-priority-ran' ;;
+        INHERITED_INTERFACE_MAPPING) summary_execution_expected=$'inherited-interface-ok\ninherited-interface-map-ran' ;;
+        PROTECTED_INTERFACE_MAPPING) summary_execution_expected=$'protected-interface-ok\nprotected-interface-map-ran' ;;
+        CLASS_NEWSLOT_MAPPING) summary_execution_expected=$'original-class-slot-ok\nclass-newslot-map-ran' ;;
+        ISA_GETTER_BRANCH) summary_execution_expected=isa-getter-branch-ran; summary_execution_refs+=(System.Runtime.Intrinsics) ;;
+        CONSTRAINED_PRIMITIVE) summary_execution_expected=$'True\n1\nconstrained-primitive-ran' ;;
+        CONST_GETTER_BRANCH) summary_execution_expected=const-getter-branch-ran; summary_execution_refs+=(System.Diagnostics.Debug) ;;
+        UNUSED_DEFAULT_INTERFACE) summary_execution_expected=$'7\nunused-default-interface-ran' ;;
+    esac
+    summary_prepared="$out/depth-summary-$summary_execution-input"
+    mkdir -p "$summary_prepared/bin/$CONFIG/$TFM"
+    cp "$summary_library" "$summary_prepared/bin/$CONFIG/$TFM/DepthData.dll"
+    dotnet build gates/fixtures/transpiler-limits/ReflectionDepthSummary/ReflectionDepthSummary.csproj \
+        -c "$CONFIG" -p:DefineConstants="$summary_define" -p:Optimize=true -p:BuildProjectReferences=false \
+        -o "$summary_prepared/bin/$CONFIG/$TFM" --nologo -v quiet
+    (
+        DN2CPP_SAMPLE_PROJECT_DIR="$summary_prepared"
+        DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|sample-path:$DN2CPP_SAMPLE_PROJECT_DIR|defines:$summary_define|Optimize:true|reference:DepthData"
+        DN2CPP_OUT_SUFFIX="-execution-$summary_execution"
+        DN2CPP_SKIP_BUILD=1
+        corelib_diff_gate ReflectionDepthSummary "${summary_execution_refs[@]}"
+    )
+    summary_native=$(run_bounded "./artifacts/reflectiondepthsummary-execution-$summary_execution/ReflectionDepthSummary")
+    assert_output "$(strip_cr_win "$summary_native")" "$summary_execution_expected"
+    if grep -Eq '^[^;]* (BaseCallDerived_Run|BaseCallDerived_Descend|ObjectSlotParent_ToString|ObjectSlotParent_Descend|Program_DeadDescend|AbstractApplicationTarget_ToString|AbstractApplicationTarget_Descend|AbstractConstructionData_Reset|AbstractConstructionData_Descend|Program_DeadNominalDescend|Program_DeadGetterDescend|PrioritySlotReceiver_Run|PrioritySlotReceiver_Descend|PrimitiveSlotReceiver_CompareTo|PrimitiveSlotReceiver_Descend|IUnusedDefaultSlot_Run|IUnusedDefaultSlot_Descend|InheritedMappingDerived_Run|InheritedMappingDerived_Descend|ProtectedMappingDerived_Run|ProtectedMappingDerived_Descend|SeparateClassSlotDerived_Run|SeparateClassSlotDerived_Descend|Program_DeadIsaDescend)[^ ]*_m[0-9]+\(' \
+            "artifacts/reflectiondepthsummary-execution-$summary_execution"/generated*.cpp; then
+        echo "FAIL: $summary_execution emitted a nonexecuting dispatch/allocation/branch body" >&2
+        exit 1
+    fi
+    case "$summary_execution" in
+        UNREAD_ATTRIBUTE_CTOR|UNREAD_ATTRIBUTE_GETTER|ATTRIBUTE_READ|ATTRIBUTE_GENERIC_READ)
+            if grep -Eq '^// .*::DepthAttributeRecurse' \
+                    "artifacts/reflectiondepthsummary-execution-$summary_execution"/generated*.cpp; then
+                echo "FAIL: $summary_execution emitted an unread attribute body or named getter/base setter" >&2
+                exit 1
+            fi ;;
+    esac
+    case "$summary_execution" in
+        ATTRIBUTE_READ|ATTRIBUTE_GENERIC_READ)
+            for attribute_cap in 3 4; do
+                attribute_budget_out="$out/attribute-$summary_execution-depth$attribute_cap"
+                attribute_budget_rc=0
+                attribute_budget_err=$(export DN2CPP_MAX_GENERIC_DEPTH="$attribute_cap";
+                    invoke_cli "$summary_prepared/bin/$CONFIG/$TFM/ReflectionDepthSummary.dll" \
+                        -r "$corelib" -r "$summary_library" -o "$attribute_budget_out" 2>&1 >/dev/null) \
+                    || attribute_budget_rc=$?
+                [ "$attribute_cap" = 3 ] && attribute_budget_method=.ctor || attribute_budget_method=set_Level
+                if [ "$attribute_budget_rc" -ne 2 ] \
+                        || [ -f "$attribute_budget_out/ildiet/ReflectionDepthSummary.dll" ] \
+                        || ! grep -Fq "ILDiet depth summary needs generic nesting depth $((attribute_cap + 1))" <<< "$attribute_budget_err" \
+                        || ! grep -Fq "ReadDepthAttribute.$attribute_budget_method" <<< "$attribute_budget_err"; then
+                    echo "FAIL: executable attribute $attribute_budget_method did not supply its required depth context" >&2
+                    echo "$attribute_budget_err" >&2
+                    exit 1
+                fi
+            done ;;
+    esac
+    echo "OK ($summary_execution: CLR parity; exact execution provenance excludes uncalled bodies)"
+done
 
 echo "== 4/9 The heap ceiling fires — in emit AND in --measure =="
 # A program big enough that the model alone passes a small budget: the real
@@ -598,6 +921,41 @@ cut_native=$("./$cut_out/GenericSignatureRecursionBad"); cut_code=$?
 set -e
 assert_output "$(strip_cr_win "$cut_native")" "$(printf '1\ncut')"
 assert_exit_code "$cut_code" 0
+
+# A finite CLR body still has an unbounded generic call graph. Cutting its
+# nongeneric wrapper must exclude that body from the companion's depth summary.
+summary_cut="$out/depth-summary-cut-input"
+mkdir -p "$summary_cut/bin/$CONFIG/$TFM"
+cp "$summary_library" "$summary_cut/bin/$CONFIG/$TFM/DepthData.dll"
+dotnet build gates/fixtures/transpiler-limits/ReflectionDepthSummary/ReflectionDepthSummary.csproj \
+    -c "$CONFIG" -p:DefineConstants=ORDINARY_CUT_DEPTH -p:BuildProjectReferences=false \
+    -o "$summary_cut/bin/$CONFIG/$TFM" --nologo -v quiet
+for summary_cut_mode in ildiet no-ildiet; do
+    (
+        DN2CPP_SAMPLE_PROJECT_DIR="$summary_cut"
+        DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|defines:ORDINARY_CUT_DEPTH|cut:ReflectionDepthSummary.Program::Cut"
+        DN2CPP_SKIP_BUILD=1
+        DN2CPP_OUT_SUFFIX="-ordinary-cut-$summary_cut_mode"
+        gate_extra_asserts() {
+            local out="$1" native prefix
+            native=$(run_bounded "$out/ReflectionDepthSummary$EXE_EXT") || return $?
+            native=$(strip_cr_win "$native")
+            prefix=$(awk '/^== ordinary cut depth summary ==$/ { exit } { print }' <<< "$native")
+            assert_output "$(strip_cr_win "$prefix")" "$(strip_cr_win "$summary_expected")"
+            grep -Fxq 'cut-complete' <<< "$native" \
+                || { echo 'FAIL: ordinary cut depth section did not run' >&2; return 1; }
+            if grep -Eq '^// ReflectionDepthSummary.Program::(Cut|Descend)$' "$out"/generated*.cpp; then
+                echo 'FAIL: a cut body or its generic subtree was emitted' >&2
+                return 1
+            fi
+        }
+        if [ "$summary_cut_mode" = ildiet ]; then
+            corelib_diff_gate ReflectionDepthSummary --cut ReflectionDepthSummary.Program::Cut -r "$summary_library"
+        else
+            corelib_diff_gate ReflectionDepthSummary --no-ildiet --cut ReflectionDepthSummary.Program::Cut -r "$summary_library"
+        fi
+    )
+done
 for bypass in "--no-ildiet" ""; do
     invoke_cli "$sig_app" -r "$corelib" $bypass --cut 'CutNested::Unused' -o "$cut_out" >/dev/null
     for generic in 'GenericSignatureRecursionBad.CutBase_Int32::Value' \

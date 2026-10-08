@@ -30,7 +30,13 @@ ILDiet runs in a companion process over the original metadata, before
 returns rewritten DLL paths plus an effective linker descriptor. The driver
 validates the result, preserves module order and default-reference diagnostics,
 and loads only that resolved output set. Reference discovery cannot reintroduce
-original DLLs afterward. Cecil is confined to ILDiet and never becomes
+original DLLs afterward. ILDiet keeps application member signatures separately
+from executable bodies: metadata-only dependencies retain declarations and
+layouts, and a later executable root promotes them before unreachable bodies
+become throwing stubs. Armed reflection routes retain the same application
+classes and declared constructor data surface that emission walks. Backend
+exclusions and the bounded library surface remain independent.
+Cecil is confined to ILDiet and never becomes
 transpiler self-host input. Cut selectors that require generic specialization
 retain the original DLLs in the output set and defer validation to `Compilation`;
 a raw metadata match must not turn an invalid selector into a silent no-op.

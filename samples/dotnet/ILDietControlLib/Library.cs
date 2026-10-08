@@ -79,3 +79,123 @@ public sealed class UnusedType
 {
     public static int UnusedMethod() => -3;
 }
+
+
+public sealed class ReflectedPayload : PayloadBase
+{
+    public ReflectedPayload() => Label = "library-payload";
+
+    public ReflectedPayload(int value) => Label = "library-payload:" + value;
+
+    public string Label { get; private set; }
+}
+
+
+public class PayloadBase
+{
+    protected PayloadBase() { }
+
+    public PayloadBase(int value) => ConstructorOnlyDependency.Touch();
+}
+
+internal static class ConstructorOnlyDependency
+{
+    public static void Touch() => Console.WriteLine("unused-base-constructor");
+}
+
+
+public static class AccessorOnlyDependency
+{
+    public static string Read() => "unused-accessor";
+}
+
+public struct ReflectionMoney
+{
+    public override string ToString() => "0 USD";
+
+    public static string UnusedBody() => UnusedBoxDependency.Read();
+}
+
+internal static class UnusedBoxDependency
+{
+    public static string Read() => "unused-box-dependency";
+}
+
+public struct ConstructionMoney
+{
+    public override string ToString() => "0 CHF";
+
+    public static int UnusedBody() => ConstructionBodyOnlyDependency.Read();
+}
+
+public static class ConstructionBodyOnlyDependency
+{
+    public static int Read() => -1;
+}
+
+public struct MemberConstructionMoney
+{
+    public override string ToString() => "0 HKD";
+
+    public static int UnusedBody() => MemberConstructionBodyOnlyDependency.Read();
+}
+
+public struct MemberParameterMoney
+{
+    public override string ToString() => "0 CNY";
+
+    public static int UnusedBody() => MemberConstructionBodyOnlyDependency.Read();
+}
+
+public static class MemberConstructionBodyOnlyDependency
+{
+    public static int Read() => -1;
+}
+
+public struct BaseConstructionMoney
+{
+    public override string ToString() => "base-library-return";
+
+    public static int UnusedBody() => BaseConstructionBodyOnlyDependency.Read();
+}
+
+public struct BaseParameterMoney
+{
+    public override string ToString() => "base-library-parameter";
+
+    public static int UnusedBody() => BaseConstructionBodyOnlyDependency.Read();
+}
+
+public static class BaseConstructionBodyOnlyDependency
+{
+    public static int Read() => -1;
+}
+
+public struct InvokeSignatureMoney
+{
+    public override string ToString() => "invoke-library-money";
+
+    public static int UnusedBody() => InvokeBodyOnlyDependency.Read();
+}
+
+public static class InvokeBodyOnlyDependency
+{
+    public static int Read() => -1;
+}
+
+public static class InvokeConstructorOnlyDependency
+{
+    public static int Read() => -1;
+}
+
+public struct ConstructorFieldMoney
+{
+    public override string ToString() => "ctor-field-owner-money";
+
+    public static int UnusedBody() => ConstructorFieldBodyOnlyDependency.Read();
+}
+
+public static class ConstructorFieldBodyOnlyDependency
+{
+    public static int Read() => -1;
+}

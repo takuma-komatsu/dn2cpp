@@ -27,7 +27,11 @@ env:
 
 jobs:
   smoke:
-    name: ${{ (github.event_name == 'pull_request' || github.event_name == 'push') && 'windows-primitives' || 'windows-suite' }}
+    name: ${{ matrix.partition == 'suite' && 'windows-suite' || matrix.partition == 'limits' && 'windows-transpiler-limits' || 'windows-primitives' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        partition: ${{ fromJSON((github.event_name == 'pull_request' || github.event_name == 'push') && '["core","limits"]' || '["suite"]') }}
     runs-on: windows-latest
     timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'push') && 30 || 240 }}
     env:
@@ -95,12 +99,18 @@ jobs:
         run: ./gates/ci-smoke.sh --self-test
 
       - name: Run selected smoke profile
+        env:
+          DN2CPP_GATE_WATCHDOG_SECS: ${{ matrix.partition == 'limits' && 1200 || '' }}
         run: |
           # Keep the heavyweight native ISA probe outside the hosted Windows suite.
           if [ "$SMOKE_PROFILE" = suite ]; then
             export DN2CPP_SKIP_PLATFORM_ISA_NATIVE=1
           fi
-          ./gates/ci-smoke.sh --profile "$SMOKE_PROFILE"
+          smoke_args=(--profile "$SMOKE_PROFILE")
+          if [ "$SMOKE_PROFILE" = primitives ]; then
+            smoke_args+=(--partition "${{ matrix.partition }}")
+          fi
+          ./gates/ci-smoke.sh "${smoke_args[@]}"
 
       # Release inherited log handles before upload-artifact reads the logs.
       - name: Shut down dotnet build servers
@@ -118,7 +128,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: gate-logs-windows
+          name: ${{ matrix.partition == 'suite' && 'gate-logs-windows' || format('gate-logs-windows-{0}', matrix.partition) }}
           path: ${{ env.LOGDIR }}
           retention-days: 7
           if-no-files-found: warn

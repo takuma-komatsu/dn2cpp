@@ -5335,7 +5335,7 @@ internal sealed partial class Compilation
     /// <summary>How many instantiations of one generic definition minted after the
     /// reflection-invoke route first walked it walks within <see cref="_invokeRouteDepth"/>
     /// before the one-per-definition bound applies to them too.</summary>
-    private const int RouteMintedWalksPerDefinition = 32;
+    private const int RouteMintedWalksPerDefinition = PreservationReader.ReflectionRouteMintedWalksPerDefinition;
 
     /// <summary>The reflection routes that reach whole classes, and the value types a
     /// delegate type's Invoke row boxes. Driven by discovery's fixpoint and again each
@@ -5696,18 +5696,15 @@ internal sealed partial class Compilation
     {
         if (_routeDeepWalked.Contains(cls))
             return true;
-        if (cls.GenericDepth <= _invokeRouteDepth)
+        var definition = (cls.Module.Index, SRME.GetToken(cls.Handle));
+        _routeMintedWalks.TryGetValue(definition, out int walks);
+        if (PreservationReader.ReflectionRouteWalksWithinDepth(cls.GenericDepth, _invokeRouteDepth, minted, walks))
         {
             if (!minted)
                 return true;
-            var definition = (cls.Module.Index, SRME.GetToken(cls.Handle));
-            _routeMintedWalks.TryGetValue(definition, out int walks);
-            if (walks < RouteMintedWalksPerDefinition)
-            {
-                _routeMintedWalks[definition] = walks + 1;
-                _routeDeepWalked.Add(cls);
-                return true;
-            }
+            _routeMintedWalks[definition] = walks + 1;
+            _routeDeepWalked.Add(cls);
+            return true;
         }
         if (!_routeWalkedDefinitions.Add((cls.Module.Index, SRME.GetToken(cls.Handle))))
             return false;
