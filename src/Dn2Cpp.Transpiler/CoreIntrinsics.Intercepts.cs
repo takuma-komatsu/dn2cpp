@@ -1521,7 +1521,8 @@ internal static partial class CoreIntrinsics
     /// <para>(b) the hand-written residue: the names that drive the REFLECTION-USAGE
     /// marks (<c>Compilation.NoteReflectionUsage</c>, asked for a method group over the
     /// member exactly as for a call) — Invoke, GetValue, SetValue, CreateDelegate,
-    /// CreateInstance, GetCustomAttributes, GetCustomAttribute, IsDefined,
+    /// CreateInstance, AddEventHandler, RemoveEventHandler,
+    /// GetCustomAttributes, GetCustomAttribute, IsDefined,
     /// GetCustomAttributesData, get_CustomAttributes, MakeGenericType, DynamicInvoke. The
     /// flags those set are not intercepts at all — they do not cut an edge or route a
     /// call, they OPEN a reachability route: <c>_reflectionInvokeUsed</c> reaches every
@@ -1551,6 +1552,7 @@ internal static partial class CoreIntrinsics
         "Equals" or "GetHashCode" or "HasFlag" or "get_CompareInfo"
         // (b) the reflection-usage marks — NOT intercepts, never registry rows.
         or "Invoke" or "GetValue" or "SetValue" or "CreateDelegate" or "CreateInstance"
+        or "AddEventHandler" or "RemoveEventHandler"
         or "GetCustomAttributes" or "GetCustomAttribute" or "IsDefined"
         or "GetCustomAttributesData" or "get_CustomAttributes"
         or "MakeGenericType" or "DynamicInvoke"

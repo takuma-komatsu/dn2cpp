@@ -69,6 +69,31 @@ internal static class Program
         Report("constructor", () => ((Shape)typeof(NamedBuilt).GetConstructor(new[] { typeof(string) })!
             .Invoke(new object[] { "made" })).Who());
         Console.WriteLine("constant-name reflection end");
+        if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_RUNTIME_REFLECTION") == "1")
+            return;
+        Console.WriteLine("== runtime reflection preservation ==");
+        Type fieldType = typeof(ReflectionFields).GetField("Payload")!.FieldType;
+        Report("field-type-construction", () => ((Shape)Activator.CreateInstance(fieldType)!).Who());
+        Console.WriteLine("field-type-constructors=" + fieldType.GetConstructors().Length);
+        Type libraryFieldType = typeof(ReflectionFields).GetField("LibraryPayload")!.FieldType;
+        Report("library-field-type", () => libraryFieldType.GetProperty("Label")!
+            .GetValue(Activator.CreateInstance(libraryFieldType)));
+        Console.WriteLine("library-field-constructors=" + libraryFieldType.GetConstructors().Length);
+        Console.WriteLine("called-only-constructors=" + typeof(CalledOnly).GetConstructors().Length);
+        Type? byType = Type.GetType("ILDietControl.RuntimeNamed");
+        Type? byAssembly = typeof(Program).Assembly.GetType("ILDietControl.RuntimeNamed");
+        Console.WriteLine("type-name=" + (byType is not null));
+        Console.WriteLine("assembly-name=" + (byAssembly is not null));
+        bool listedRuntime = false, listedUnused = false;
+        foreach (Type listedType in typeof(Program).Assembly.GetTypes())
+        {
+            listedRuntime |= listedType.FullName == "ILDietControl.RuntimeNamed";
+            listedUnused |= listedType.FullName == "ILDietControl.UnusedAppType";
+        }
+        Console.WriteLine("assembly-types=" + listedRuntime + ":" + listedUnused);
+        Report("runtime-name-construction", () => ((Shape)Activator.CreateInstance(byType!)!).Who());
+        Report("runtime-name-invoke", () => byAssembly!.GetMethod("Value")!.Invoke(null, null));
+        Console.WriteLine("runtime reflection preservation end");
     }
 
     private static int RunStatic<T>(int value) where T : IStatic<T> => T.Evaluate(value);
@@ -228,4 +253,27 @@ internal sealed class ByArraySecond : Labeled
 internal sealed class ByObject : Labeled
 {
     public ByObject() : base("by-object") { }
+}
+
+
+internal sealed class ReflectionFields
+{
+    public FieldPayload? Payload = null;
+    public ReflectedPayload? LibraryPayload = null;
+}
+
+internal sealed class FieldPayload : Shape
+{
+    public FieldPayload() { }
+
+    public FieldPayload(int value) { }
+
+    public override string Who() => "field-payload";
+}
+
+internal sealed class RuntimeNamed : Shape
+{
+    public override string Who() => "runtime-named";
+
+    public static string Value() => "runtime-value";
 }

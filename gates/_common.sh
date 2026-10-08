@@ -2734,8 +2734,9 @@ _corelib_gate_out() {
     printf 'artifacts/%s\n' "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
 }
 
+# DN2CPP_SAMPLE_PROJECT_DIR can select a nested driver whose assembly name is PROJECT.
 # _corelib_gate_core PROJECT OUT [EXTRA_BCL_NAME | -r DLL | --link-xml FILE |
-#   --reflection-metadata TYPE=LAYOUT | --no-metadata-compression | --no-ildiet | --auto-ref]...
+#   --reflection-metadata TYPE=LAYOUT | --cut TYPE::METHOD | --no-metadata-compression | --no-ildiet | --auto-ref]...
 # Extras name required references and preprocessing options. Sets _CG_CORELIB, _CG_APP,
 # _CG_OUT; the caller may preset _CG_CORELIB_IN to override the CoreLib flavour.
 # Assert on _CG_OUT: re-deriving _corelib_gate_out gives the DEFAULT dir, so on a
@@ -2754,8 +2755,9 @@ _corelib_gate_core() {
     echo "corlib: $_CG_CORELIB"
 
     echo "== 2/4 Building app assembly =="
-    build_proj "samples/dotnet/$project/$project.csproj"
-    _CG_APP="samples/dotnet/$project/bin/$CONFIG/$TFM/$project.dll"
+    local sample_dir="${DN2CPP_SAMPLE_PROJECT_DIR:-samples/dotnet/$project}"
+    build_proj "$sample_dir/$project.csproj"
+    _CG_APP="$sample_dir/bin/$CONFIG/$TFM/$project.dll"
 
     echo "== 3/4 Transpiling app + real CoreLib (tree-shaken) =="
     # Hard error, not a skip: the CONTEXT carries the REQUESTED names, so a
@@ -2771,6 +2773,13 @@ _corelib_gate_core() {
         if [ "$name" = --reflection-metadata ]; then
             [ "$#" -gt 0 ] && [ -n "$1" ] \
                 || { echo "error: $name requires a type layout selector" >&2; return 1; }
+            refs+=("$name" "$1")
+            shift
+            continue
+        fi
+        if [ "$name" = --cut ]; then
+            [ "$#" -gt 0 ] && [ -n "$1" ] \
+                || { echo "error: $name requires a method selector" >&2; return 1; }
             refs+=("$name" "$1")
             shift
             continue

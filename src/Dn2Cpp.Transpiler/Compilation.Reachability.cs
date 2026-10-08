@@ -2808,7 +2808,7 @@ internal sealed partial class Compilation
     /// would, so a call and a method group over the member mark alike.</summary>
     private void NoteReflectionUsage(Module module, string? parent, string name)
     {
-        // MethodBase.Invoke and PropertyInfo.GetValue/SetValue run app-module methods;
+        // Reflected method, property and event calls run app-module methods;
         // ILDiet keeps them on the same predicate. A reflected Object or ValueType row
         // answers Equals and GetHashCode through the same helpers, so the invoke and
         // CreateDelegate marks are object-equality dispatches too.
@@ -2819,7 +2819,7 @@ internal sealed partial class Compilation
                 NoteObjectEqualityDispatch();
         }
         // FieldInfo.GetValue boxes a value-type field's value in the runtime.
-        else if (name == "GetValue" && parent == "System.Reflection.FieldInfo")
+        else if (PreservationReader.ReadsReflectedField(parent, name))
             _reflectionFieldReadUsed = true;
         // CreateDelegate binds a reflected method, whose body runs the same way.
         else if (PreservationReader.BindsReflectedMethod(parent, name))
@@ -2828,7 +2828,7 @@ internal sealed partial class Compilation
         else if (name == "DynamicInvoke" && parent == "System.Delegate")
             _delegateDynamicInvokeUsed = true;
         // ConstructorInfo.Invoke / non-generic Activator.CreateInstance(Type) construct a
-        // runtime-chosen type; ILDiet keeps typeof-named ctors on the same predicate.
+        // runtime-chosen type; ILDiet keeps the same app surface on this predicate.
         else if (PreservationReader.ConstructsFromRuntimeType(parent, name))
             _reflectionCtorUsed = true;
         // Type.MakeGenericType arms the runtime-instantiation template pass, paired with
@@ -2837,15 +2837,7 @@ internal sealed partial class Compilation
             _makeGenericTypeUsed = true;
         // GetCustomAttributes / IsDefined and the CustomAttributeData views render the
         // attribute factories: reach attribute ctors and named setters.
-        else if (name is "GetCustomAttributes" or "GetCustomAttribute" or "IsDefined"
-                or "GetCustomAttributesData" or "get_CustomAttributes"
-            && parent is "System.Reflection.MemberInfo"
-                or "System.Reflection.ParameterInfo" or "System.Attribute"
-                or "System.Reflection.CustomAttributeExtensions"
-                or "System.Reflection.CustomAttributeData"
-                or "System.Type" or "System.Reflection.MethodInfo"
-                or "System.Reflection.FieldInfo" or "System.Reflection.PropertyInfo"
-                or "System.Reflection.Assembly")
+        else if (PreservationReader.ReadsReflectedAttributes(parent, name))
             _reflectionAttrUsed = true;
     }
 

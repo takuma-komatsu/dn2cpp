@@ -1,5 +1,6 @@
 using Mono.Cecil;
 using Mono.Cecil.Cil;
+using CecilInstruction = Mono.Cecil.Cil.Instruction;
 
 namespace Dn2Cpp;
 
@@ -8,7 +9,7 @@ internal sealed partial class AssemblyDiet
     private readonly HashSet<TypeDefinition> _conditionalOwnMembers = new();
     private readonly HashSet<TypeDefinition> _suppressDefaultSeeds = new();
     private readonly HashSet<CustomAttribute> _registrationAttributes = new();
-    private readonly Dictionary<Instruction, RegistryFactory> _registryFactories = new();
+    private readonly Dictionary<CecilInstruction, RegistryFactory> _registryFactories = new();
     private bool _constructorRegistriesRewritten;
 
     private sealed class RegistryFactory
@@ -130,7 +131,7 @@ internal sealed partial class AssemblyDiet
             var store = instructions[index++];
             if (index < instructions.Count && instructions[index].OpCode.Code is Code.Br or Code.Br_S)
             {
-                if (instructions[index].Operand is not Instruction target) return null;
+                if (instructions[index].Operand is not CecilInstruction target) return null;
                 while (target.OpCode.Code == Code.Nop && target.Next is not null) target = target.Next;
                 if (index + 1 >= instructions.Count || instructions[index + 1] != target) return null;
                 index++;
@@ -143,10 +144,10 @@ internal sealed partial class AssemblyDiet
         return new RegistryFactory { Registry = registry, Method = method, ConstructedType = constructed };
     }
 
-    private static bool IsArgumentLoad(Instruction instruction) => instruction.OpCode.Code
+    private static bool IsArgumentLoad(CecilInstruction instruction) => instruction.OpCode.Code
         is Code.Ldarg or Code.Ldarg_S or Code.Ldarg_0 or Code.Ldarg_1 or Code.Ldarg_2 or Code.Ldarg_3;
 
-    private static int ArgumentIndex(Instruction instruction, MethodDefinition method)
+    private static int ArgumentIndex(CecilInstruction instruction, MethodDefinition method)
     {
         int slot = instruction.OpCode.Code switch
         {
@@ -161,12 +162,12 @@ internal sealed partial class AssemblyDiet
         return slot - (method.HasThis ? 1 : 0);
     }
 
-    private static bool IsLocalStore(Instruction instruction) => instruction.OpCode.Code
+    private static bool IsLocalStore(CecilInstruction instruction) => instruction.OpCode.Code
         is Code.Stloc or Code.Stloc_S or Code.Stloc_0 or Code.Stloc_1 or Code.Stloc_2 or Code.Stloc_3;
 
-    private static bool SameLocal(Instruction store, Instruction load)
+    private static bool SameLocal(CecilInstruction store, CecilInstruction load)
     {
-        static int Slot(Instruction instruction) => instruction.OpCode.Code switch
+        static int Slot(CecilInstruction instruction) => instruction.OpCode.Code switch
         {
             Code.Stloc_0 or Code.Ldloc_0 => 0,
             Code.Stloc_1 or Code.Ldloc_1 => 1,
@@ -238,7 +239,7 @@ internal sealed partial class AssemblyDiet
         {
             var type = Resolve(parent);
             if (type is null || !seen.Add(type)) return null;
-            if (_types.Contains(type))
+            if (_runtimeTypes.Contains(type))
             {
                 var candidate = factories.FirstOrDefault(f => f.ConstructedType == type
                     && f.Registry == factory.Registry && CompatibleFactories(factory, f));
@@ -258,7 +259,7 @@ internal sealed partial class AssemblyDiet
             var factories = _registryFactories.Values.Where(f => _methods.Contains(f.Registry)).ToList();
             foreach (var factory in factories)
             {
-                if (_types.Contains(factory.ConstructedType) || FindAncestorFactory(factory, factories) is null)
+                if (_runtimeTypes.Contains(factory.ConstructedType) || FindAncestorFactory(factory, factories) is null)
                     MarkMethod(factory.Method);
             }
             if (_pending.Count == 0) break;
@@ -268,7 +269,7 @@ internal sealed partial class AssemblyDiet
         foreach (var pair in _registryFactories)
         {
             var factory = pair.Value;
-            if (!_methods.Contains(factory.Registry) || _types.Contains(factory.ConstructedType)) continue;
+            if (!_methods.Contains(factory.Registry) || _runtimeTypes.Contains(factory.ConstructedType)) continue;
             var ancestor = FindAncestorFactory(factory, active)
                 ?? throw new InvalidOperationException("constructor registry has no retained compatible ancestor factory");
             pair.Key.Operand = ancestor.Method;
@@ -281,7 +282,7 @@ internal sealed partial class AssemblyDiet
                 if (!IsTypeArray(argument)) continue;
                 var values = (CustomAttributeArgument[])argument.Value;
                 var kept = values.Where(value => value.Value is not TypeReference reference
-                    || Resolve(reference) is not { } type || !IsStripped(type) || _types.Contains(type)).ToArray();
+                    || Resolve(reference) is not { } type || !IsStripped(type) || _runtimeTypes.Contains(type)).ToArray();
                 attribute.ConstructorArguments[i] = new CustomAttributeArgument(argument.Type, kept);
             }
     }

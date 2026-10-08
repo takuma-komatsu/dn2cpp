@@ -4,10 +4,12 @@
 # while PreserveAttribute and merged Unity-format link.xml keep selected bodies.
 # A property selected through a nonexistent accessor survives without its getter.
 # ILDietControl also checks Array.Initialize constructors reached through method groups
-# and application members that a reflective invoke selects only by a constant name.
+# and application constructors/types selected at run time. Lookup-only members
+# retain their signatures and compiler state-machine declarations without keeping
+# unreachable async/iterator body dependencies; runtime roots still promote them.
 source "$(dirname "$0")/_common.sh"
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/preserve-control/accessorless-indexer/AccessorlessIndexer.csproj gates/fixtures/preserve-control/accessorless-indexer/Program.cs gates/fixtures/preserve-control/accessorless-indexer/link.xml"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|attribute-object-prefix:${DN2CPP_BEFORE_ATTRIBUTE_OBJECT:-}|named-reflection-prefix:${DN2CPP_BEFORE_NAMED_REFLECTION:-}"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/preserve-control/Program.cs gates/fixtures/preserve-control/MetadataProbe.csproj gates/fixtures/preserve-control/accessorless-indexer/AccessorlessIndexer.csproj gates/fixtures/preserve-control/accessorless-indexer/Program.cs gates/fixtures/preserve-control/accessorless-indexer/link.xml gates/fixtures/preserve-control/accessorless-indexer/Targets/IndexerTargets.csproj gates/fixtures/preserve-control/accessorless-indexer/Targets/Indexed.cs gates/fixtures/ildiet-metadata-validation/Program.cs gates/fixtures/ildiet-metadata-validation/check.py"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|attribute-object-prefix:${DN2CPP_BEFORE_ATTRIBUTE_OBJECT:-}|named-reflection-prefix:${DN2CPP_BEFORE_NAMED_REFLECTION:-}|runtime-reflection-prefix:${DN2CPP_BEFORE_RUNTIME_REFLECTION:-}|metadata-lookup-prefix:${DN2CPP_BEFORE_METADATA_LOOKUP:-}|signature-construction-prefix:${DN2CPP_BEFORE_SIGNATURE_CONSTRUCTION:-}|signature-invocation-prefix:${DN2CPP_BEFORE_SIGNATURE_INVOCATION:-}|field-boxing-prefix:${DN2CPP_BEFORE_FIELD_BOXING:-}|field-context-prefix:${DN2CPP_BEFORE_FIELD_CONTEXT:-}|field-owner-prefix:${DN2CPP_BEFORE_FIELD_OWNER:-}|field-shape-prefix:${DN2CPP_BEFORE_FIELD_SHAPE:-}|construction-payload-prefix:${DN2CPP_BEFORE_CONSTRUCTION_PAYLOAD:-}|field-cycle-prefix:${DN2CPP_BEFORE_FIELD_CYCLE:-}|member-field-signature-prefix:${DN2CPP_BEFORE_MEMBER_FIELD_SIGNATURE:-}|member-construction-signature-prefix:${DN2CPP_BEFORE_MEMBER_CONSTRUCTION_SIGNATURE:-}|base-field-signature-prefix:${DN2CPP_BEFORE_BASE_FIELD_SIGNATURE:-}|base-construction-signature-prefix:${DN2CPP_BEFORE_BASE_CONSTRUCTION_SIGNATURE:-}|ctor-signature-invocation-prefix:${DN2CPP_BEFORE_CTOR_SIGNATURE_INVOCATION:-}|field-owner-signature-prefix:${DN2CPP_BEFORE_FIELD_OWNER_SIGNATURE:-}|interface-owner-signature-prefix:${DN2CPP_BEFORE_INTERFACE_OWNER_SIGNATURE:-}|ctor-field-owner-signature-prefix:${DN2CPP_BEFORE_CTOR_FIELD_OWNER_SIGNATURE:-}|reflection-depth-seeds-prefix:${DN2CPP_BEFORE_REFLECTION_DEPTH_SEEDS:-}|caller-depth-prefix:${DN2CPP_BEFORE_CALLER_DEPTH:-}|extended-depth-prefix:${DN2CPP_BEFORE_EXTENDED_DEPTH:-}|state-machine-signatures-prefix:${DN2CPP_BEFORE_STATE_MACHINE_SIGNATURES:-}"
 PYTHON=$(resolve_python) || gate_skip "no working Python 3 interpreter for ILDiet validation"
 
 PROJECT=PreserveControl
@@ -18,6 +20,10 @@ ASSEMBLYPROJECT=samples/dotnet/PreserveAssemblyLib
 echo "== Building app and checking both Runtime target frameworks =="
 build_proj "$ROOT/$PROJECT.csproj"
 build_proj samples/dotnet/ILDietControl/ILDietControl.csproj
+build_proj samples/dotnet/ILDietControl/LookupOnly/LookupOnly.csproj
+build_proj samples/dotnet/ILDietControl/EventBoundary/EventBoundary.csproj
+build_proj samples/dotnet/ILDietControl/ConstructorOnly/ConstructorOnly.csproj
+build_proj samples/dotnet/ILDietControl/InvokeOnly/InvokeOnly.csproj
 build_proj src/Dn2Cpp.Cli.Console/Dn2Cpp.Cli.Console.csproj
 build_gate_proj gates/fixtures/preserve-control/MetadataProbe.csproj
 build_gate_proj gates/fixtures/preserve-control/accessorless-indexer/AccessorlessIndexer.csproj
@@ -131,9 +137,8 @@ grep -Fxq 'method PreserveControlLib.AttributeMembers::BuiltInMethod' <<<"$strip
     || { echo "FAIL: ILDiet removed an attributed method" >&2; exit 1; }
 grep -Fxq 'type PreserveControl.UnusedAppType' <<<"$original_app" \
     || { echo "FAIL: original unused-public application fixture is missing" >&2; exit 1; }
-if grep -Fxq 'type PreserveControl.UnusedAppType' <<<"$stripped_app"; then
-    echo "FAIL: an unused public application type survived ILDiet" >&2; exit 1
-fi
+grep -Fxq 'type PreserveControl.UnusedAppType' <<<"$stripped_app" \
+    || { echo "FAIL: the armed reflection route lost an application type" >&2; exit 1; }
 [ "$(wc -l <<<"$stripped_lib")" -lt "$(wc -l <<<"$original_lib")" ] \
     || { echo "FAIL: ILDiet did not reduce the model input" >&2; exit 1; }
 
@@ -155,10 +160,10 @@ echo "== Preserved indexer metadata survives removal of its accessor =="
 INDEXER_FIXTURE=gates/fixtures/preserve-control/accessorless-indexer
 INDEXER_APP="$INDEXER_FIXTURE/bin/$CONFIG/$TFM/AccessorlessIndexer.dll"
 dotnet exec "$ILD_DLL" "$INDEXER_APP" -r "$BCL/System.Private.CoreLib.dll" \
-    -r "$BCL/System.Runtime.dll" --link-xml "$INDEXER_FIXTURE/link.xml" \
+    -r "$BCL/System.Runtime.dll" -r "$INDEXER_FIXTURE/Targets/bin/$CONFIG/$TFM/IndexerTargets.dll" --link-xml "$INDEXER_FIXTURE/link.xml" \
     -o "$STALE_ROOT/accessorless-indexer"
-indexer_original=$(dotnet exec "$PROBE" "$INDEXER_APP")
-indexer_diet=$(dotnet exec "$PROBE" "$STALE_ROOT/accessorless-indexer/AccessorlessIndexer.dll")
+indexer_original=$(dotnet exec "$PROBE" "$INDEXER_FIXTURE/Targets/bin/$CONFIG/$TFM/IndexerTargets.dll")
+indexer_diet=$(dotnet exec "$PROBE" "$STALE_ROOT/accessorless-indexer/IndexerTargets.dll")
 indexer_original=$(strip_cr_win "$indexer_original")
 indexer_diet=$(strip_cr_win "$indexer_diet")
 grep -Fxq 'property PreserveFixture.Indexed::Item/accessors=1' <<<"$indexer_original" \
@@ -251,6 +256,15 @@ gate_extra_asserts() {
         || { echo 'FAIL: a method selected only by its constant name did not run' >&2; return 1; }
     grep -Fxq 'constant-name reflection end' <<< "$native" \
         || { echo 'FAIL: constant-name reflection section did not run' >&2; return 1; }
+    before=$(DN2CPP_BEFORE_RUNTIME_REFLECTION=1 run_bounded "$out/ILDietControl$EXE_EXT") || return $?
+    prefix=$(awk '/^== runtime reflection preservation ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    grep -Fxq 'field-type-construction=field-payload' <<< "$native" \
+        || { echo 'FAIL: construction through a reflected field type did not run' >&2; return 1; }
+    grep -Fxq 'assembly-types=True:True' <<< "$native" \
+        || { echo 'FAIL: application types selected only by name were not listed' >&2; return 1; }
+    grep -Fxq 'runtime reflection preservation end' <<< "$native" \
+        || { echo 'FAIL: runtime reflection preservation section did not run' >&2; return 1; }
 }
 corelib_diff_gate ILDietControl -r "$DIET_LIB"
 unset -f gate_extra_asserts
@@ -271,9 +285,8 @@ for row in 'method ILDietControl.Named::Twice' 'method ILDietControl.Named::Desc
 done
 grep -Fxq 'method ILDietControl.CalledOnly::.ctor' <<<"$original_diet_app" \
     || { echo "FAIL: original fixture is missing CalledOnly's constructor" >&2; exit 1; }
-if grep -Fxq 'method ILDietControl.CalledOnly::.ctor' <<<"$stripped_diet_app"; then
-    echo "FAIL: a constructor no type token selects survived stripping" >&2; exit 1
-fi
+grep -Fxq 'method ILDietControl.CalledOnly::.ctor' <<<"$stripped_diet_app" \
+    || { echo "FAIL: the armed constructor route lost an application constructor" >&2; exit 1; }
 diet_metadata=$(dotnet exec "$PROBE" "$DIET_OUT/ildiet/ILDietControlLib.dll")
 for row in 'method ILDietControlLib.Base::Foo' \
         'method ILDietControlLib.Callbacks::NativeCallback' \
@@ -286,13 +299,393 @@ for row in 'method ILDietControlLib.Base::Foo' \
         || { echo "FAIL: ILDiet lost a runtime or layout dependency: $row" >&2; exit 1; }
 done
 for row in 'method ILDietControlLib.Base::UnusedPrivate' \
-        'type ILDietControlLib.UnusedType'; do
+        'type ILDietControlLib.UnusedType' \
+        'type ILDietControlLib.ConstructorOnlyDependency'; do
     if grep -Fxq "$row" <<<"$diet_metadata"; then
         echo "FAIL: unused ordinary library code survived: $row" >&2; exit 1
     fi
 done
 [ -f "${DIET_LIB%.dll}.pdb" ] && [ ! -e "$DIET_OUT/ildiet/ILDietControlLib.pdb" ] \
     || { echo "FAIL: rewritten DLL retained stale debug symbols" >&2; exit 1; }
+
+echo "== Lookup-only reflection retains declarations without body dependencies =="
+(
+    DN2CPP_SAMPLE_PROJECT_DIR=samples/dotnet/ILDietControl/LookupOnly
+    DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|sample-path:$DN2CPP_SAMPLE_PROJECT_DIR"
+    gate_extra_asserts() {
+        local out="$1" native before prefix original stripped original_library stripped_library row
+        native=$(run_bounded "$out/LookupOnly$EXE_EXT") || return $?
+        native=$(strip_cr_win "$native")
+        before=$(DN2CPP_BEFORE_METADATA_LOOKUP=1 run_bounded "$out/LookupOnly$EXE_EXT") || return $?
+        prefix=$(awk '/^== metadata-only reflection ==$/ { exit } { print }' <<< "$native")
+        assert_output "$(strip_cr_win "$prefix")" "$(strip_cr_win "$before")"
+        grep -Fxq 'event-accessors=True:True' <<< "$native" \
+            || { echo 'FAIL: lookup-only event accessor declarations are absent' >&2; return 1; }
+        grep -Fxq 'metadata-only reflection end' <<< "$native" \
+            || { echo 'FAIL: metadata-only reflection section did not run' >&2; return 1; }
+        before=$(DN2CPP_BEFORE_FIELD_BOXING=1 run_bounded "$out/LookupOnly$EXE_EXT") || return $?
+        prefix=$(awk '/^== reflected field boxing ==$/ { exit } { print }' <<< "$native")
+        assert_output "$(strip_cr_win "$prefix")" "$(strip_cr_win "$before")"
+        grep -Fxq '0 JPY' <<< "$native" && grep -Fxq '0 USD' <<< "$native" \
+            && grep -Fxq '0 EUR' <<< "$native" \
+            && grep -Fxq 'reflected field boxing end' <<< "$native" \
+            || { echo 'FAIL: reflected field boxing section did not run' >&2; return 1; }
+        before=$(DN2CPP_BEFORE_FIELD_CONTEXT=1 run_bounded "$out/LookupOnly$EXE_EXT") || return $?
+        prefix=$(awk '/^== closed field contexts ==$/ { exit } { print }' <<< "$native")
+        assert_output "$(strip_cr_win "$prefix")" "$(strip_cr_win "$before")"
+        grep -Fxq '0 GBP' <<< "$native" && grep -Fxq 'boxed-array-argument' <<< "$native" \
+            && grep -Fxq 'closed field contexts end' <<< "$native" \
+            || { echo 'FAIL: closed field context section did not run' >&2; return 1; }
+        before=$(DN2CPP_BEFORE_FIELD_OWNER=1 run_bounded "$out/LookupOnly$EXE_EXT") || return $?
+        prefix=$(awk '/^== reference field owners ==$/ { exit } { print }' <<< "$native")
+        assert_output "$(strip_cr_win "$prefix")" "$(strip_cr_win "$before")"
+        grep -Fxq '0 CHF' <<< "$native" && grep -Fxq '0 CAD' <<< "$native" \
+            && grep -Fxq 'reference field owners end' <<< "$native" \
+            || { echo 'FAIL: reference field owner section did not run' >&2; return 1; }
+        before=$(DN2CPP_BEFORE_FIELD_SHAPE=1 run_bounded "$out/LookupOnly$EXE_EXT") || return $?
+        prefix=$(awk '/^== field type shapes ==$/ { exit } { print }' <<< "$native")
+        assert_output "$(strip_cr_win "$prefix")" "$(strip_cr_win "$before")"
+        grep -Fxq 'array-owner-box' <<< "$native" && grep -Fxq 'generic-argument-owner-box' <<< "$native" \
+            && grep -Fxq 'field type shapes end' <<< "$native" \
+            || { echo 'FAIL: field type shape section did not run' >&2; return 1; }
+        before=$(DN2CPP_BEFORE_FIELD_CYCLE=1 run_bounded "$out/LookupOnly$EXE_EXT") || return $?
+        prefix=$(awk '/^== finite field contexts ==$/ { exit } { print }' <<< "$native")
+        assert_output "$(strip_cr_win "$prefix")" "$(strip_cr_win "$before")"
+        grep -Fxq 'boxed-cycle-a' <<< "$native" && grep -Fxq 'boxed-cycle-b' <<< "$native" \
+            && grep -Fxq 'finite field contexts end' <<< "$native" \
+            || { echo 'FAIL: finite field context section did not run' >&2; return 1; }
+        before=$(DN2CPP_BEFORE_MEMBER_FIELD_SIGNATURE=1 run_bounded "$out/LookupOnly$EXE_EXT") || return $?
+        prefix=$(awk '/^== closed member field signatures ==$/ { exit } { print }' <<< "$native")
+        assert_output "$prefix" "$(strip_cr_win "$before")"
+        grep -Fxq '0 NZD' <<< "$native" && grep -Fxq '0 SGD' <<< "$native" \
+            && grep -Fxq 'closed member field signatures end' <<< "$native" \
+            || { echo 'FAIL: closed member field signature section did not run' >&2; return 1; }
+        before=$(DN2CPP_BEFORE_BASE_FIELD_SIGNATURE=1 run_bounded "$out/LookupOnly$EXE_EXT") || return $?
+        prefix=$(awk '/^== closed base field signatures ==$/ { exit } { print }' <<< "$native")
+        assert_output "$prefix" "$(strip_cr_win "$before")"
+        grep -Fxq 'base-return-money' <<< "$native" && grep -Fxq 'base-parameter-money' <<< "$native" \
+            && grep -Fxq 'closed base field signatures end' <<< "$native" \
+            || { echo 'FAIL: closed base field signature section did not run' >&2; return 1; }
+        before=$(DN2CPP_BEFORE_FIELD_OWNER_SIGNATURE=1 run_bounded "$out/LookupOnly$EXE_EXT") || return $?
+        prefix=$(awk '/^== field owner member signatures ==$/ { exit } { print }' <<< "$native")
+        assert_output "$prefix" "$(strip_cr_win "$before")"
+        grep -Fxq 'field-owner-money' <<< "$native" \
+            && grep -Fxq 'field owner member signatures end' <<< "$native" \
+            || { echo 'FAIL: field owner member signature section did not run' >&2; return 1; }
+        before=$(DN2CPP_BEFORE_INTERFACE_OWNER_SIGNATURE=1 run_bounded "$out/LookupOnly$EXE_EXT") || return $?
+        prefix=$(awk '/^== interface owner member signatures ==$/ { exit } { print }' <<< "$native")
+        assert_output "$prefix" "$(strip_cr_win "$before")"
+        grep -Fxq 'interface-owner-money' <<< "$native" \
+            && grep -Fxq 'interface owner member signatures end' <<< "$native" \
+            || { echo 'FAIL: interface owner member signature section did not run' >&2; return 1; }
+        before=$(DN2CPP_BEFORE_REFLECTION_DEPTH_SEEDS=1 run_bounded "$out/LookupOnly$EXE_EXT") || return $?
+        prefix=$(awk '/^== reflection depth seeds ==$/ { exit } { print }' <<< "$native")
+        assert_output "$prefix" "$(strip_cr_win "$before")"
+        grep -Fxq 'library-depth-second' <<< "$native" && grep -Fxq 'method-depth-second' <<< "$native" \
+            && grep -Fxq 'reflection depth seeds end' <<< "$native" \
+            || { echo 'FAIL: reflection depth seed section did not run' >&2; return 1; }
+        before=$(DN2CPP_BEFORE_CALLER_DEPTH=1 run_bounded "$out/LookupOnly$EXE_EXT") || return $?
+        prefix=$(awk '/^== caller reflection depth ==$/ { exit } { print }' <<< "$native")
+        assert_output "$prefix" "$(strip_cr_win "$before")"
+        grep -Fxq "$caller_depth_case-caller-depth-second" <<< "$native" \
+            && grep -Fxq 'caller reflection depth end' <<< "$native" \
+            || { echo 'FAIL: the independent caller depth section did not run' >&2; return 1; }
+        if [ "$extended_depth_case" != none ]; then
+            before=$(DN2CPP_BEFORE_EXTENDED_DEPTH=1 run_bounded "$out/LookupOnly$EXE_EXT") || return $?
+            prefix=$(awk '/^== extended reflection depth ==$/ { exit } { print }' <<< "$native")
+            assert_output "$prefix" "$(strip_cr_win "$before")"
+            grep -Fxq "$extended_depth_case-depth-second" <<< "$native" \
+                && grep -Fxq 'extended reflection depth end' <<< "$native" \
+                || { echo 'FAIL: the independent extended depth section did not run' >&2; return 1; }
+        fi
+        before=$(DN2CPP_BEFORE_STATE_MACHINE_SIGNATURES=1 run_bounded "$out/LookupOnly$EXE_EXT") || return $?
+        prefix=$(awk '/^== signature-only state machines ==$/ { exit } { print }' <<< "$native")
+        assert_output "$prefix" "$(strip_cr_win "$before")"
+        for row in '== signature-only state machines ==' 'async metadata=True' \
+            'iterator metadata=True' 'async iterator metadata=True' 'async called=7' \
+            'iterator called=8' 'promoted machine=9' 'signature-only state machines end'; do
+            [ "$(grep -Fxc -- "$row" <<< "$native")" = 1 ] \
+                || { echo "FAIL: state-machine signature block did not run once: $row" >&2; return 1; }
+        done
+        original=$(dotnet exec "$PROBE" "$_CG_APP") || return $?
+        original=$(strip_cr_win "$original")
+        stripped=$(dotnet exec "$PROBE" "$out/ildiet/LookupOnly.dll") || return $?
+        stripped=$(strip_cr_win "$stripped")
+        local state_original state_stripped state_bodies
+        state_original=$(strip_cr_win "$original")
+        state_stripped=$(strip_cr_win "$stripped")
+        for row in AsyncBodyOnlyDependency IteratorBodyOnlyDependency AsyncIteratorBodyOnlyDependency; do
+            grep -Fxq "type ILDietLookupOnly.$row" <<< "$state_original" \
+                || { echo "FAIL: original state-machine fixture has no body dependency: $row" >&2; return 1; }
+            if grep -Fxq "type ILDietLookupOnly.$row" <<< "$state_stripped"; then
+                echo "FAIL: signature-only state machine retained its original body dependency: $row" >&2; return 1
+            fi
+        done
+        for row in CalledAsyncDependency CalledIteratorDependency PromotedMachineDependency ScalarAttributeDependency; do
+            grep -Fxq "method ILDietLookupOnly.$row::Read" <<< "$state_stripped" \
+                || { echo "FAIL: executable or scalar Type attribute root lost its body: $row" >&2; return 1; }
+        done
+        state_bodies=$(dotnet exec "$PROBE" --state-machine-bodies "$out/ildiet/LookupOnly.dll") || return $?
+        assert_output "$(strip_cr_win "$state_bodies")" "state-machine UncalledAsync/method-stub=True/move-next-stub=True
+state-machine UncalledIterator/method-stub=True/move-next-stub=True
+state-machine UncalledAsyncIterator/method-stub=True/move-next-stub=True
+state-machine CalledAsync/method-stub=False/move-next-stub=False
+state-machine CalledIterator/method-stub=False/move-next-stub=False
+state-machine LateRegistration/method-stub=True/move-next-stub=False
+state-machine CalledRegistration/method-stub=False/move-next-stub=False"
+        if [ "$extended_depth_case" != none ]; then
+            grep -Fxq 'type ILDietLookupOnly.ExtendedDepthBodyOnlyDependency' <<< "$original" \
+                || { echo 'FAIL: the original extended depth fixture has no body dependency' >&2; return 1; }
+            if grep -Fxq 'type ILDietLookupOnly.ExtendedDepthBodyOnlyDependency' <<< "$stripped"; then
+                echo 'FAIL: extended depth accounting opened an unused method body' >&2; return 1
+            fi
+        fi
+        grep -Fxq 'type ILDietLookupOnly.CallerDepthBodyOnlyDependency' <<< "$original" \
+            || { echo 'FAIL: the original caller depth fixture has no body dependency' >&2; return 1; }
+        if grep -Fxq 'type ILDietLookupOnly.CallerDepthBodyOnlyDependency' <<< "$stripped"; then
+            echo 'FAIL: caller depth accounting opened an unused method body' >&2; return 1
+        fi
+        grep -Fxq 'type ILDietLookupOnly.DepthBodyOnlyDependency' <<< "$original" \
+            || { echo 'FAIL: the original depth fixture has no body dependency' >&2; return 1; }
+        if grep -Fxq 'type ILDietLookupOnly.DepthBodyOnlyDependency' <<< "$stripped"; then
+            echo 'FAIL: reflection depth accounting opened an unused method body' >&2; return 1
+        fi
+        grep -Fxq 'type ILDietLookupOnly.InterfaceSignatureBodyOnlyDependency' <<< "$original" \
+            || { echo 'FAIL: the original interface owner fixture has no body dependency' >&2; return 1; }
+        if grep -Fxq 'type ILDietLookupOnly.InterfaceSignatureBodyOnlyDependency' <<< "$stripped"; then
+            echo 'FAIL: an interface owner signature opened an unused method body' >&2; return 1
+        fi
+        grep -Fxq 'method ILDietLookupOnly.InterfaceSignatureInner`1::Make' <<< "$stripped" \
+            && grep -Fxq 'method ILDietLookupOnly.InterfaceSignatureMoney::ToString' <<< "$stripped" \
+            || { echo 'FAIL: interface owner signatures lost member metadata or boxed dispatch' >&2; return 1; }
+        grep -Fxq 'type ILDietLookupOnly.FieldSignatureBodyOnlyDependency' <<< "$original" \
+            || { echo 'FAIL: the original field owner fixture has no body dependency' >&2; return 1; }
+        if grep -Fxq 'type ILDietLookupOnly.FieldSignatureBodyOnlyDependency' <<< "$stripped"; then
+            echo 'FAIL: a field owner signature opened an unused method body' >&2; return 1
+        fi
+        grep -Fxq 'method ILDietLookupOnly.FieldSignatureInner`1::Make' <<< "$stripped" \
+            && grep -Fxq 'method ILDietLookupOnly.FieldSignatureMoney::ToString' <<< "$stripped" \
+            || { echo 'FAIL: field owner signatures lost member metadata or boxed dispatch' >&2; return 1; }
+        grep -Fxq 'type ILDietLookupOnly.BodyOnlyDependency' <<< "$original" \
+            || { echo 'FAIL: the original lookup fixture has no body dependency' >&2; return 1; }
+        if grep -Fxq 'type ILDietLookupOnly.BodyOnlyDependency' <<< "$stripped"; then
+            echo 'FAIL: lookup-only signatures kept an unreachable body dependency' >&2; return 1
+        fi
+        grep -Fxq 'type ILDietLookupOnly.SignatureOnlyType' <<< "$stripped" \
+            || { echo 'FAIL: lookup-only signatures lost their parameter type' >&2; return 1; }
+        grep -Fxq 'event ILDietLookupOnly.MetadataOnly::Tick/accessors=2' <<< "$stripped" \
+            || { echo 'FAIL: lookup-only event metadata lost an accessor' >&2; return 1; }
+        local event_original event_stripped
+        event_original=$(dotnet exec "$PROBE" --lookup-event "$_CG_APP" ILDietLookupOnly.MetadataOnly Tick) || return $?
+        event_stripped=$(dotnet exec "$PROBE" --lookup-event "$out/ildiet/LookupOnly.dll" ILDietLookupOnly.MetadataOnly Tick) || return $?
+        assert_output "$(strip_cr_win "$event_stripped")" "$(strip_cr_win "$event_original")"
+        original_library=$(dotnet exec "$PROBE" "$DIET_LIB") || return $?
+        original_library=$(strip_cr_win "$original_library")
+        stripped_library=$(dotnet exec "$PROBE" "$out/ildiet/ILDietControlLib.dll") || return $?
+        stripped_library=$(strip_cr_win "$stripped_library")
+        grep -Fxq 'type ILDietControlLib.UnusedBoxDependency' <<< "$original_library" \
+            || { echo 'FAIL: the original box fixture has no unused body dependency' >&2; return 1; }
+        if grep -Fxq 'type ILDietControlLib.UnusedBoxDependency' <<< "$stripped_library"; then
+            echo 'FAIL: reflected field boxing kept an unused library method body' >&2; return 1
+        fi
+        grep -Fxq 'method ILDietControlLib.ReflectionMoney::ToString' <<< "$stripped_library" \
+            || { echo 'FAIL: reflected field boxing lost user-library dispatch' >&2; return 1; }
+    }
+    dotnet build "$DN2CPP_SAMPLE_PROJECT_DIR/LookupOnly.csproj" -c "$CONFIG" -p:DefineConstants= -p:BuildProjectReferences=false
+    DN2CPP_SKIP_BUILD=1
+    extended_depth_case=none
+    caller_depth_case=class
+    DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|caller-depth-case:$caller_depth_case"
+    corelib_diff_gate LookupOnly -r "$DIET_LIB"
+    (
+        echo "== Copied framework event wrappers keep lookup-only bodies stripped =="
+        DN2CPP_OUT_SUFFIX="${DN2CPP_OUT_SUFFIX:-}-framework-events"
+        corelib_diff_gate LookupOnly -r "$DIET_LIB" -r "$(dirname "$_CG_CORELIB")/System.Runtime.InteropServices.dll"
+    )
+    # Separate DLLs prevent either caller's depth from covering the other route.
+    dotnet build "$DN2CPP_SAMPLE_PROJECT_DIR/LookupOnly.csproj" -c "$CONFIG" \
+        -p:DefineConstants=METHOD_DEPTH_CALLER -p:BuildProjectReferences=false
+    caller_depth_case=method
+    DN2CPP_OUT_SUFFIX="${DN2CPP_OUT_SUFFIX:-}-method-caller"
+    DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|caller-depth-case:$caller_depth_case"
+    DN2CPP_SKIP_BUILD=1
+    corelib_diff_gate LookupOnly -r "$DIET_LIB"
+    for extended_depth_case in virtual framework gvm gvm-owner inherited-virtual factory-virtual symbolic-gvm late-symbolic-gvm; do
+        case "$extended_depth_case" in
+            virtual) depth_constants=EXTENDED_VIRTUAL_DEPTH ;;
+            inherited-virtual) depth_constants=EXTENDED_INHERITED_VIRTUAL_DEPTH ;;
+            factory-virtual) depth_constants=EXTENDED_FACTORY_VIRTUAL_DEPTH ;;
+            symbolic-gvm) depth_constants=EXTENDED_SYMBOLIC_GVM_DEPTH ;;
+            late-symbolic-gvm) depth_constants=EXTENDED_LATE_SYMBOLIC_GVM_DEPTH ;;
+            framework) depth_constants=EXTENDED_FRAMEWORK_DEPTH ;;
+            gvm) depth_constants=EXTENDED_GVM_DEPTH ;;
+            gvm-owner) depth_constants=EXTENDED_GVM_OWNER_DEPTH ;;
+        esac
+        dotnet build "$DN2CPP_SAMPLE_PROJECT_DIR/LookupOnly.csproj" -c "$CONFIG" \
+            -p:DefineConstants="$depth_constants" -p:BuildProjectReferences=false
+        caller_depth_case=class
+        DN2CPP_OUT_SUFFIX="-$extended_depth_case-depth"
+        DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|extended-depth-case:$extended_depth_case"
+        corelib_diff_gate LookupOnly -r "$DIET_LIB"
+    done
+)
+
+echo "== Constructor-only reflection constructs signature-selected types without opening application accessor bodies =="
+(
+    DN2CPP_SAMPLE_PROJECT_DIR=samples/dotnet/ILDietControl/ConstructorOnly
+    DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|sample-path:$DN2CPP_SAMPLE_PROJECT_DIR"
+    gate_extra_asserts() {
+        local out="$1" native before prefix original stripped app original_arming stripped_arming
+        native=$(run_bounded "$out/ConstructorOnly$EXE_EXT") || return $?
+        native=$(strip_cr_win "$native")
+        before=$(DN2CPP_BEFORE_SIGNATURE_CONSTRUCTION=1 run_bounded "$out/ConstructorOnly$EXE_EXT") || return $?
+        prefix=$(awk '/^== signature construction ==$/ { exit } { print }' <<< "$native")
+        assert_output "$(strip_cr_win "$prefix")" "$(strip_cr_win "$before")"
+        grep -Fxq 'accessor-metadata=True' <<< "$native" \
+            && grep -Fxq 'signature construction end' <<< "$native" \
+            || { echo 'FAIL: signature construction section did not run' >&2; return 1; }
+        before=$(DN2CPP_BEFORE_CONSTRUCTION_PAYLOAD=1 run_bounded "$out/ConstructorOnly$EXE_EXT") || return $?
+        prefix=$(awk '/^== generic construction dispatch ==$/ { exit } { print }' <<< "$native")
+        assert_output "$(strip_cr_win "$prefix")" "$(strip_cr_win "$before")"
+        grep -Fxq '0 CHF' <<< "$native" \
+            && grep -Fxq 'generic construction dispatch end' <<< "$native" \
+            || { echo 'FAIL: generic construction dispatch section did not run' >&2; return 1; }
+        before=$(DN2CPP_BEFORE_MEMBER_CONSTRUCTION_SIGNATURE=1 run_bounded "$out/ConstructorOnly$EXE_EXT") || return $?
+        prefix=$(awk '/^== closed member construction signatures ==$/ { exit } { print }' <<< "$native")
+        assert_output "$prefix" "$(strip_cr_win "$before")"
+        grep -Fxq '0 HKD' <<< "$native" && grep -Fxq '0 CNY' <<< "$native" \
+            && grep -Fxq 'closed member construction signatures end' <<< "$native" \
+            || { echo 'FAIL: closed member construction signature section did not run' >&2; return 1; }
+        before=$(DN2CPP_BEFORE_BASE_CONSTRUCTION_SIGNATURE=1 run_bounded "$out/ConstructorOnly$EXE_EXT") || return $?
+        prefix=$(awk '/^== closed base construction signatures ==$/ { exit } { print }' <<< "$native")
+        assert_output "$prefix" "$(strip_cr_win "$before")"
+        grep -Fxq 'base-library-return' <<< "$native" && grep -Fxq 'base-library-parameter' <<< "$native" \
+            && grep -Fxq 'closed base construction signatures end' <<< "$native" \
+            || { echo 'FAIL: closed base construction signature section did not run' >&2; return 1; }
+        before=$(DN2CPP_BEFORE_CTOR_FIELD_OWNER_SIGNATURE=1 run_bounded "$out/ConstructorOnly$EXE_EXT") || return $?
+        prefix=$(awk '/^== constructor field owner signatures ==$/ { exit } { print }' <<< "$native")
+        assert_output "$prefix" "$(strip_cr_win "$before")"
+        grep -Fxq 'ctor-field-owner-money' <<< "$native" \
+            && grep -Fxq 'constructor field owner signatures end' <<< "$native" \
+            || { echo 'FAIL: constructor field owner signature section did not run' >&2; return 1; }
+        original=$(dotnet exec "$PROBE" "$DIET_LIB") || return $?
+        original=$(strip_cr_win "$original")
+        stripped=$(dotnet exec "$PROBE" "$out/ildiet/ILDietControlLib.dll") || return $?
+        stripped=$(strip_cr_win "$stripped")
+        grep -Fxq 'type ILDietControlLib.ConstructorFieldBodyOnlyDependency' <<< "$original" \
+            || { echo 'FAIL: the original constructor field owner fixture has no body dependency' >&2; return 1; }
+        if grep -Fxq 'type ILDietControlLib.ConstructorFieldBodyOnlyDependency' <<< "$stripped"; then
+            echo 'FAIL: constructor field discovery opened an unused method body' >&2; return 1
+        fi
+        grep -Fxq 'method ILDietControlLib.ConstructorFieldMoney::ToString' <<< "$stripped" \
+            || { echo 'FAIL: constructor field discovery lost user-library dispatch' >&2; return 1; }
+        grep -Fxq 'type ILDietControlLib.AccessorOnlyDependency' <<< "$original" \
+            || { echo 'FAIL: the original constructor fixture has no accessor dependency' >&2; return 1; }
+        if grep -Fxq 'type ILDietControlLib.AccessorOnlyDependency' <<< "$stripped"; then
+            echo 'FAIL: the constructor route opened an unused application accessor body' >&2; return 1
+        fi
+        grep -Fxq 'type ILDietControlLib.ConstructionBodyOnlyDependency' <<< "$original" \
+            || { echo 'FAIL: the original construction fixture has no body dependency' >&2; return 1; }
+        if grep -Fxq 'type ILDietControlLib.ConstructionBodyOnlyDependency' <<< "$stripped"; then
+            echo 'FAIL: closed signature construction kept an unused method body' >&2; return 1
+        fi
+        grep -Fxq 'method ILDietControlLib.ConstructionMoney::ToString' <<< "$stripped" \
+            || { echo 'FAIL: signature construction lost user-library dispatch' >&2; return 1; }
+        grep -Fxq 'type ILDietControlLib.MemberConstructionBodyOnlyDependency' <<< "$original" \
+            || { echo 'FAIL: the original member signature fixture has no body dependency' >&2; return 1; }
+        if grep -Fxq 'type ILDietControlLib.MemberConstructionBodyOnlyDependency' <<< "$stripped"; then
+            echo 'FAIL: substituted member signatures opened an unused library method body' >&2; return 1
+        fi
+        for type in MemberConstructionMoney MemberParameterMoney; do
+            grep -Fxq "method ILDietControlLib.$type::ToString" <<< "$stripped" \
+                || { echo 'FAIL: substituted member construction lost user-library dispatch' >&2; return 1; }
+        done
+        grep -Fxq 'type ILDietControlLib.BaseConstructionBodyOnlyDependency' <<< "$original" \
+            || { echo 'FAIL: the original base signature fixture has no body dependency' >&2; return 1; }
+        if grep -Fxq 'type ILDietControlLib.BaseConstructionBodyOnlyDependency' <<< "$stripped"; then
+            echo 'FAIL: substituted base signatures opened an unused library method body' >&2; return 1
+        fi
+        for type in BaseConstructionMoney BaseParameterMoney; do
+            grep -Fxq "method ILDietControlLib.$type::ToString" <<< "$stripped" \
+                || { echo 'FAIL: substituted base construction lost user-library dispatch' >&2; return 1; }
+        done
+        original_arming=$(dotnet exec "$PROBE" --check-construction-only "$_CG_APP" "$CLI_BIN/Dn2Cpp.Transpiler.dll") || return $?
+        original_arming=$(strip_cr_win "$original_arming")
+        stripped_arming=$(dotnet exec "$PROBE" --check-construction-only "$out/ildiet/ConstructorOnly.dll" "$CLI_BIN/Dn2Cpp.Transpiler.dll") || return $?
+        stripped_arming=$(strip_cr_win "$stripped_arming")
+        assert_output "$stripped_arming" "$original_arming"
+        grep -Fxq 'constructor-only descriptors=clean' <<< "$stripped_arming" \
+            || { echo 'FAIL: constructor fixture does not isolate its reflection route' >&2; return 1; }
+        app=$(dotnet exec "$PROBE" "$out/ildiet/ConstructorOnly.dll") || return $?
+        app=$(strip_cr_win "$app")
+        grep -Fxq 'property ILDietConstructorOnly.AccessorOwner::Label/accessors=1' <<< "$app" \
+            || { echo 'FAIL: the constructor route lost application accessor metadata' >&2; return 1; }
+    }
+    corelib_diff_gate ConstructorOnly -r "$DIET_LIB"
+)
+
+echo "== Invoke-only reflection runs methods on signature-selected closed types =="
+(
+    DN2CPP_SAMPLE_PROJECT_DIR=samples/dotnet/ILDietControl/InvokeOnly
+    DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|sample-path:$DN2CPP_SAMPLE_PROJECT_DIR"
+    gate_extra_asserts() {
+        local out="$1" native before prefix original stripped app
+        native=$(run_bounded "$out/InvokeOnly$EXE_EXT") || return $?
+        native=$(strip_cr_win "$native")
+        before=$(DN2CPP_BEFORE_SIGNATURE_INVOCATION=1 run_bounded "$out/InvokeOnly$EXE_EXT") || return $?
+        prefix=$(awk '/^== signature invocation ==$/ { exit } { print }' <<< "$native")
+        assert_output "$(strip_cr_win "$prefix")" "$(strip_cr_win "$before")"
+        grep -Fxq 'signature invocation end' <<< "$native" \
+            || { echo 'FAIL: signature invocation section did not run' >&2; return 1; }
+        before=$(DN2CPP_BEFORE_CTOR_SIGNATURE_INVOCATION=1 run_bounded "$out/InvokeOnly$EXE_EXT") || return $?
+        prefix=$(awk '/^== constructor signature invocation ==$/ { exit } { print }' <<< "$native")
+        assert_output "$prefix" "$(strip_cr_win "$before")"
+        grep -Fxq 'Int32' <<< "$native" && grep -Fxq 'invoke-library-money' <<< "$native" \
+            && grep -Fxq 'constructor signature invocation end' <<< "$native" \
+            || { echo 'FAIL: constructor signature invocation section did not run' >&2; return 1; }
+        original=$(dotnet exec "$PROBE" "$DIET_LIB") || return $?
+        original=$(strip_cr_win "$original")
+        stripped=$(dotnet exec "$PROBE" "$out/ildiet/ILDietControlLib.dll") || return $?
+        stripped=$(strip_cr_win "$stripped")
+        for type in InvokeBodyOnlyDependency InvokeConstructorOnlyDependency; do
+            grep -Fxq "type ILDietControlLib.$type" <<< "$original" \
+                || { echo 'FAIL: the original invocation fixture has no unused dependency' >&2; return 1; }
+            if grep -Fxq "type ILDietControlLib.$type" <<< "$stripped"; then
+                echo 'FAIL: invocation opened an unused library or application constructor body' >&2; return 1
+            fi
+        done
+        grep -Fxq 'method ILDietControlLib.InvokeSignatureMoney::ToString' <<< "$stripped" \
+            || { echo 'FAIL: signature invocation lost user-library dispatch' >&2; return 1; }
+        app=$(dotnet exec "$PROBE" "$out/ildiet/InvokeOnly.dll") || return $?
+        app=$(strip_cr_win "$app")
+        grep -Fxq 'method ILDietInvokeOnly.ConstructorSignatureTarget`1::Value' <<< "$app" \
+            && grep -Fxq 'method ILDietInvokeOnly.LibrarySignatureTarget`1::Get' <<< "$app" \
+            || { echo 'FAIL: signature invocation lost a selected method' >&2; return 1; }
+    }
+    corelib_diff_gate InvokeOnly -r "$DIET_LIB"
+)
+
+echo "== Reflected event subscription retains bodies; native event lookup refuses the unsupported representation =="
+EVENT_APP="samples/dotnet/ILDietControl/EventBoundary/bin/$CONFIG/$TFM/EventBoundary.dll"
+EVENT_DIET="$STALE_ROOT/event-boundary"
+dotnet exec "$ILD_DLL" "$EVENT_APP" -r "$_CG_CORELIB" -o "$EVENT_DIET"
+event_original=$(run_bounded dotnet "$EVENT_APP")
+event_original=$(strip_cr_win "$event_original")
+event_stripped=$(run_bounded dotnet exec --runtimeconfig "${EVENT_APP%.dll}.runtimeconfig.json" "$EVENT_DIET/EventBoundary.dll")
+event_stripped=$(strip_cr_win "$event_stripped")
+assert_output "$(strip_cr_win "$event_stripped")" "$(strip_cr_win "$event_original")"
+grep -Fxq 'event-operations=done' <<< "$event_stripped" \
+    || { echo 'FAIL: reflected event subscription section did not run' >&2; exit 1; }
+for preprocessing in enabled disabled; do
+    event_flags=()
+    [ "$preprocessing" = disabled ] && event_flags=(--no-ildiet)
+    set +e
+    event_error=$(invoke_cli "$EVENT_APP" -r "$_CG_CORELIB" ${event_flags[@]+"${event_flags[@]}"} -o "$STALE_ROOT/event-native-$preprocessing" 2>&1)
+    event_code=$?
+    set -e
+    [ "$event_code" -ne 0 ] && grep -Fq 'System.Type::GetEvent(String) has no intrinsic mapping yet' <<< "$event_error" \
+        || { echo "FAIL: native event lookup crossed its unsupported boundary: $event_error" >&2; exit 1; }
+done
 
 echo "== Failed stripping preserves the last complete output and unrelated directories =="
 TRANSACTION="$STALE_ROOT/transaction"
@@ -424,5 +817,25 @@ script_discovery=$(dotnet exec "gates/fixtures/ildiet-metadata-validation/bin/$C
 assert_output "$(strip_cr_win "$script_discovery")" \
     "godot-script-discovery=all-scenes,autoload,relative-autoload,const-path,triple-path,resource,uid,relative,root-relative,global,import-uid,ignored-strings,binary-image,binary-script,ignored-output,unknown-resource,indirect-uid,escaped-path,missing-project
 godot-script-escapes=controls,unicode-path,unicode-uid,supplementary,surrogates,continuation,raw,invalid,unterminated,zero-replacement,missing-autoload,project-fallback,diagnostics"
+
+echo "== Suppressed signature-only initializers never become throwing startup roots =="
+(
+    DN2CPP_SKIP_BUILD=1
+    eval "$(declare -f compile_console | sed '1s/compile_console/compile_initializer_console/')"
+    compile_console() {
+        # Check the existing runtime completion flags after the eager pass and
+        # before Main; stdout parity alone cannot observe a swallowed failure.
+        $PYTHON gates/fixtures/ildiet-metadata-validation/check.py --instrument-startup "$1" "$initializer_case"
+        compile_initializer_console "$@"
+    }
+    gate_extra_asserts() {
+        echo "native-initializer-policy=$initializer_case"
+    }
+    for initializer_case in signature explicit late original; do
+        DN2CPP_SAMPLE_PROJECT_DIR="artifacts/ildiet-metadata-tests-$CONFIG/initializer-fixtures/$initializer_case/native"
+        DN2CPP_OUT_SUFFIX="-initializer-$initializer_case"
+        corelib_diff_gate InitializerFixture System.Console --no-ildiet
+    done
+)
 
 echo "OK"

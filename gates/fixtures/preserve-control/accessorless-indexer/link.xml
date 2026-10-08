@@ -1,5 +1,5 @@
 <linker>
-  <assembly fullname="AccessorlessIndexer">
+  <assembly fullname="IndexerTargets">
     <type fullname="PreserveFixture.Indexed" preserve="nothing">
       <property name="Item" accessors="set" />
     </type>

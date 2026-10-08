@@ -17,6 +17,12 @@
     <PackageReference Include="Mono.Cecil" Version="0.11.6" />
     <None Update="Mono.Cecil.LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Compile Include="../Dn2Cpp.Transpiler/PreservationReader.cs" Link="PreservationReader.cs" />
+    <Compile Include="../Dn2Cpp.Transpiler/EnvKnobs.cs" Link="EnvKnobs.cs" />
+    <Compile Include="../Dn2Cpp.Transpiler/ILDecoder.cs" Link="ILDecoder.cs" />
+    <Compile Include="../Dn2Cpp.Transpiler/BranchLiveness.cs" Link="BranchLiveness.cs" />
+    <Compile Include="../Dn2Cpp.Transpiler/CoreIntrinsics.ConstFoldedGetters.cs" Link="CoreIntrinsics.ConstFoldedGetters.cs" />
+    <Compile Include="../Dn2Cpp.Transpiler/CoreIntrinsics.PlatformIsa.Metadata.cs" Link="CoreIntrinsics.PlatformIsa.Metadata.cs" />
+    <Compile Include="../Dn2Cpp.Transpiler/CoreIntrinsics.PlatformIsa.g.cs" Link="CoreIntrinsics.PlatformIsa.g.cs" />
   </ItemGroup>
   <Target Name="CollectILDietRuntimeLicenses" BeforeTargets="ComputeFilesToPublish"
           DependsOnTargets="ResolveRuntimePackAssets" Condition="'$(SelfContained)' == 'true'">
