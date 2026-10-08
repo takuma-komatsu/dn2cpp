@@ -7935,21 +7935,30 @@ internal sealed partial class Compilation
         var reader = module.Reader;
         foreach (var mih in td.GetMethodImplementations())
         {
+            var mi = reader.GetMethodImplementation(mih);
+            if (mi.MethodDeclaration.Kind == HandleKind.MemberReference
+                && MemberRefParentTypeName(module, (MemberReferenceHandle)mi.MethodDeclaration) == "System.Object")
+            {
+                var declaration = reader.GetMemberReference((MemberReferenceHandle)mi.MethodDeclaration);
+                string name = reader.GetString(declaration.Name);
+                string bodyName = mi.MethodBody.Kind == HandleKind.MethodDefinition
+                    ? reader.GetString(reader.GetMethodDefinition((MethodDefinitionHandle)mi.MethodBody).Name)
+                    : reader.GetString(reader.GetMemberReference((MemberReferenceHandle)mi.MethodBody).Name);
+                // The intrinsic Object fallback dispatches by name. It cannot
+                // represent a renamed override without the real slot declaration.
+                if (bodyName != name && declaration.Parent.Kind == HandleKind.TypeReference
+                    && ResolveTypeRef(module, (TypeReferenceHandle)declaration.Parent) is null)
+                    throw new NotSupportedException($"{cls.FullName}: renamed MethodImpl body '{bodyName}' "
+                        + $"for System.Object::{name} requires a CoreLib reference");
+                // A normal destructor is wired by EffectiveFinalize even when
+                // Object is not loaded. Renamed bodies need the explicit map.
+                if (name == "Finalize" && bodyName == name)
+                    continue;
+            }
             // A real CoreLib has MethodImpls pointing at members we don't model.
             // Skip those for reference assemblies; the app module stays strict.
             try
             {
-                var mi = reader.GetMethodImplementation(mih);
-                // A C# destructor's MethodImpl row (.override
-                // System.Object::Finalize): Finalize dispatch is wired by name
-                // (EffectiveFinalize -> the type-info finalize slot), never
-                // through the explicit-impl map, and System.Object need not be
-                // a loaded TypeDef (the GDExtension pipeline transpiles with no
-                // BCL assembly) — skip the row instead of resolving strictly.
-                if (mi.MethodDeclaration.Kind == HandleKind.MemberReference
-                    && MemberRefParentTypeName(module, (MemberReferenceHandle)mi.MethodDeclaration) == "System.Object"
-                    && reader.GetString(reader.GetMemberReference((MemberReferenceHandle)mi.MethodDeclaration).Name) == "Finalize")
-                    continue;
                 // An explicit implementation of an interface whose declaring
                 // assembly was not referenced at transpile (a hot-update patch
                 // implementing a base-image interface): the declaration resolves

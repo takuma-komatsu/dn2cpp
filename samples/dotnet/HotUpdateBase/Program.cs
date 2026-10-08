@@ -720,6 +720,23 @@ internal static class Program
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
 
+        if (args.Length == 1 && args[0] == "--renamed-object-oracle")
+        {
+            RenamedSlotProbe.RunCopiedObject();
+            return;
+        }
+        if (args.Length == 1 && args[0] == "--renamed-finalize-oracle")
+        {
+            RenamedSlotProbe.RunCopiedFinalizer();
+            return;
+        }
+
+        if (args.Length == 1 && args[0] == "--renamed-slot-prefix")
+        {
+            RenamedSlotProbe.Run("aot", new RenamedMeasure(), true);
+            return;
+        }
+
         if (args.Length == 1 && args[0] == "--object-inheritance-oracle")
         {
             ObjectVirtualProbe.Inherited(new Slate());
@@ -774,8 +791,10 @@ internal static class Program
             return;
         }
         // A patch whose entry prints its whole transcript.
-        if (args.Length == 2 && args[0] == "--run")
+        if (args.Length >= 2 && args[0] == "--run")
         {
+            if (args.Length == 3 && args[2] == "before-renamed-slots")
+                RenamedSlotProbe.BeforeBlock = 1;
             HotUpdate.Run(args[1]);
             return;
         }
