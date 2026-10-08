@@ -10,6 +10,11 @@ using System.Linq;
 
 CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
 CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+if (args[0] == "--overload-exe")
+{
+    WriteOverloadFixture(args[1]);
+    return;
+}
 if (args[0] == "--inspect")
 {
     Type owner = Assembly.Load(File.ReadAllBytes(args[1])).GetType("ArrayRankOneOwner")!;
@@ -280,4 +285,238 @@ static string Display(Type type)
     if (type.IsGenericType)
         return type.GetGenericTypeDefinition().FullName + "<" + string.Join(",", type.GenericTypeArguments.Select(Display)) + ">";
     return type.FullName!;
+}
+
+static void WriteOverloadFixture(string directory)
+{
+    Directory.CreateDirectory(directory);
+    WriteOverloadLibrary(Path.Combine(directory, "ArrayOverloadLibrary.dll"));
+    MetadataBuilder metadata = new();
+    metadata.AddModule(0, metadata.GetOrAddString("ArrayOverloadCalls.dll"),
+        metadata.GetOrAddGuid(new Guid("a0b9b786-eafe-44c4-9076-6f45464beb16")), default, default);
+    metadata.AddAssembly(metadata.GetOrAddString("ArrayOverloadCalls"), new Version(1, 0, 0, 0),
+        default, default, 0, AssemblyHashAlgorithm.None);
+    AssemblyName core = typeof(object).Assembly.GetName();
+    AssemblyReferenceHandle coreRef = metadata.AddAssemblyReference(metadata.GetOrAddString(core.Name!),
+        core.Version!, default, metadata.GetOrAddBlob(core.GetPublicKeyToken()!), 0, default);
+    AssemblyName console = typeof(Console).Assembly.GetName();
+    AssemblyReferenceHandle consoleRef = metadata.AddAssemblyReference(metadata.GetOrAddString(console.Name!),
+        console.Version!, default, metadata.GetOrAddBlob(console.GetPublicKeyToken()!), 0, default);
+    TypeReferenceHandle objectRef = metadata.AddTypeReference(coreRef,
+        metadata.GetOrAddString("System"), metadata.GetOrAddString("Object"));
+    TypeReferenceHandle consoleType = metadata.AddTypeReference(consoleRef,
+        metadata.GetOrAddString("System"), metadata.GetOrAddString("Console"));
+    TypeReferenceHandle cultureType = metadata.AddTypeReference(coreRef,
+        metadata.GetOrAddString("System.Globalization"), metadata.GetOrAddString("CultureInfo"));
+    TypeReferenceHandle listType = metadata.AddTypeReference(coreRef,
+        metadata.GetOrAddString("System.Collections.Generic"), metadata.GetOrAddString("List`1"));
+    AssemblyReferenceHandle libraryRef = metadata.AddAssemblyReference(metadata.GetOrAddString("ArrayOverloadLibrary"),
+        new Version(1, 0, 0, 0), default, default, 0, default);
+    TypeReferenceHandle libraryType = metadata.AddTypeReference(libraryRef,
+        default, metadata.GetOrAddString("ArrayOverloadLibrary`1"));
+    BlobBuilder libraryInstance = new();
+    new BlobEncoder(libraryInstance).TypeSpecificationSignature().GenericInstantiation(libraryType, 1, false)
+        .AddArgument().Int32();
+    TypeSpecificationHandle libraryOwner = metadata.AddTypeSpecification(metadata.GetOrAddBlob(libraryInstance));
+    BlobBuilder cultureSignature = new();
+    new BlobEncoder(cultureSignature).MethodSignature().Parameters(0,
+        result => result.Type().Type(cultureType, false), parameters => { });
+    MemberReferenceHandle invariant = metadata.AddMemberReference(cultureType,
+        metadata.GetOrAddString("get_InvariantCulture"), metadata.GetOrAddBlob(cultureSignature));
+    BlobBuilder setCultureSignature = new();
+    new BlobEncoder(setCultureSignature).MethodSignature().Parameters(1,
+        result => result.Void(), parameters => parameters.AddParameter().Type().Type(cultureType, false));
+    MemberReferenceHandle setCulture = metadata.AddMemberReference(cultureType,
+        metadata.GetOrAddString("set_CurrentCulture"), metadata.GetOrAddBlob(setCultureSignature));
+    MemberReferenceHandle setUiCulture = metadata.AddMemberReference(cultureType,
+        metadata.GetOrAddString("set_CurrentUICulture"), metadata.GetOrAddBlob(setCultureSignature));
+    MemberReferenceHandle writeText = metadata.AddMemberReference(consoleType,
+        metadata.GetOrAddString("WriteLine"), metadata.GetOrAddBlob(new byte[] { 0, 1, 1, 0x0e }));
+    MemberReferenceHandle writeValue = metadata.AddMemberReference(consoleType,
+        metadata.GetOrAddString("WriteLine"), metadata.GetOrAddBlob(new byte[] { 0, 1, 1, 0x08 }));
+    BlobBuilder bodies = new();
+    MethodBodyStreamEncoder bodyEncoder = new(bodies);
+    byte[] vector = { 0x1d, 0x08 };
+    byte[] bounded = { 0x14, 0x08, 1, 0, 1, 0 };
+    byte[] unsized = { 0x14, 0x08, 1, 0, 0 };
+    byte[] nestedVector = { 0x1d, 0x1d, 0x08 };
+    byte[] nestedMd = { 0x1d, 0x14, 0x08, 1, 0, 0 };
+    byte[] refVector = { 0x10, 0x1d, 0x08 };
+    byte[] refMd = { 0x10, 0x14, 0x08, 1, 0, 0 };
+    byte[] GenericList(byte[] element)
+    {
+        BlobBuilder signature = new();
+        signature.WriteBytes(new byte[] { 0x15, 0x12 });
+        signature.WriteCompressedInteger(MetadataTokens.GetRowNumber(listType) * 4 + 1);
+        signature.WriteByte(1);
+        signature.WriteBytes(element);
+        return signature.ToArray();
+    }
+    BlobHandle Signature(byte[] parameter, bool generic = false)
+    {
+        BlobBuilder signature = new();
+        signature.WriteByte(generic ? (byte)0x10 : (byte)0);
+        if (generic) signature.WriteByte(1);
+        signature.WriteBytes(new byte[] { 1, 0x08 });
+        signature.WriteBytes(parameter);
+        return metadata.GetOrAddBlob(signature);
+    }
+    void AddPair(string name, byte[] first, int firstValue, byte[] second, int secondValue)
+    {
+        foreach (var item in new[] { (first, firstValue), (second, secondValue) })
+        {
+            BlobBuilder instructions = new();
+            InstructionEncoder code = new(instructions);
+            code.LoadConstantI4(item.Item2);
+            code.OpCode(ILOpCode.Ret);
+            int body = bodyEncoder.AddMethodBody(code, maxStack: 1);
+            metadata.AddMethodDefinition(MethodAttributes.Public | MethodAttributes.Static, MethodImplAttributes.IL,
+                metadata.GetOrAddString(name), Signature(item.Item1), body, MetadataTokens.ParameterHandle(1));
+        }
+    }
+    AddPair("Select", vector, 10, bounded, 20);
+    AddPair("SelectUnsized", vector, 11, unsized, 21);
+    AddPair("SelectNested", nestedVector, 12, nestedMd, 22);
+    AddPair("SelectGeneric", GenericList(vector), 13, GenericList(unsized), 23);
+    AddPair("SelectRef", refVector, 14, refMd, 24);
+    AddPair("SelectReverse", unsized, 96, vector, 26);
+    MemberReferenceHandle vectorCall = metadata.AddMemberReference(MetadataTokens.TypeDefinitionHandle(2),
+        metadata.GetOrAddString("Select"), Signature(vector));
+    MemberReferenceHandle boundedCall = metadata.AddMemberReference(MetadataTokens.TypeDefinitionHandle(2),
+        metadata.GetOrAddString("Select"), Signature(bounded));
+    MemberReferenceHandle unsizedCall = metadata.AddMemberReference(MetadataTokens.TypeDefinitionHandle(2),
+        metadata.GetOrAddString("SelectUnsized"), Signature(unsized));
+    MemberReferenceHandle nestedCall = metadata.AddMemberReference(MetadataTokens.TypeDefinitionHandle(2),
+        metadata.GetOrAddString("SelectNested"), Signature(nestedMd));
+    MemberReferenceHandle genericCall = metadata.AddMemberReference(MetadataTokens.TypeDefinitionHandle(2),
+        metadata.GetOrAddString("SelectGeneric"), Signature(GenericList(unsized)));
+    MemberReferenceHandle refCall = metadata.AddMemberReference(MetadataTokens.TypeDefinitionHandle(2),
+        metadata.GetOrAddString("SelectRef"), Signature(refMd));
+    MemberReferenceHandle reverseCall = metadata.AddMemberReference(MetadataTokens.TypeDefinitionHandle(2),
+        metadata.GetOrAddString("SelectReverse"), Signature(vector));
+    MemberReferenceHandle ownerCall = metadata.AddMemberReference(libraryOwner,
+        metadata.GetOrAddString("Select"), Signature(new byte[] { 0x14, 0x13, 0, 1, 0, 0 }));
+    MemberReferenceHandle genericMethod = metadata.AddMemberReference(libraryOwner,
+        metadata.GetOrAddString("SelectMethod"), Signature(new byte[] { 0x14, 0x1e, 0, 1, 0, 0 }, generic: true));
+    MethodSpecificationHandle methodCall = metadata.AddMethodSpecification(genericMethod,
+        metadata.GetOrAddBlob(new byte[] { 0x0a, 1, 0x08 }));
+    BlobBuilder mainInstructions = new();
+    InstructionEncoder main = new(mainInstructions, new ControlFlowBuilder());
+    var end = main.DefineLabel();
+    main.Call(invariant);
+    main.Call(setCulture);
+    main.Call(invariant);
+    main.Call(setUiCulture);
+    main.LoadString(metadata.GetOrAddUserString("== array overload baseline =="));
+    main.Call(writeText);
+    main.OpCode(ILOpCode.Ldnull);
+    main.Call(vectorCall);
+    main.Call(writeValue);
+    main.LoadString(metadata.GetOrAddUserString("array overload baseline end"));
+    main.Call(writeText);
+    main.OpCode(ILOpCode.Ldarg_0);
+    main.OpCode(ILOpCode.Ldlen);
+    main.OpCode(ILOpCode.Conv_i4);
+    main.Branch(ILOpCode.Brtrue, end);
+    main.LoadString(metadata.GetOrAddUserString("== rank1 MD overload resolution =="));
+    main.Call(writeText);
+    void CallSelection(string label, EntityHandle target, bool byref = false)
+    {
+        main.LoadString(metadata.GetOrAddUserString(label));
+        main.Call(writeText);
+        if (byref) main.LoadLocalAddress(0);
+        else main.OpCode(ILOpCode.Ldnull);
+        main.OpCode(ILOpCode.Call);
+        main.Token(target);
+        main.Call(writeValue);
+    }
+    CallSelection("explicit-zero", boundedCall);
+    CallSelection("unsized", unsizedCall);
+    CallSelection("nested", nestedCall);
+    CallSelection("generic-argument", genericCall);
+    CallSelection("byref", refCall, byref: true);
+    CallSelection("MD-first vector", reverseCall);
+    CallSelection("cross-assembly generic-owner", ownerCall);
+    CallSelection("cross-assembly generic-method", methodCall);
+    main.LoadString(metadata.GetOrAddUserString("rank1 MD overload resolution end"));
+    main.Call(writeText);
+    main.MarkLabel(end);
+    main.OpCode(ILOpCode.Ret);
+    BlobBuilder localSignature = new();
+    localSignature.WriteBytes(new byte[] { 0x07, 1 });
+    localSignature.WriteBytes(unsized);
+    StandaloneSignatureHandle locals = metadata.AddStandaloneSignature(metadata.GetOrAddBlob(localSignature));
+    int mainBody = bodyEncoder.AddMethodBody(main, maxStack: 1, localVariablesSignature: locals,
+        attributes: MethodBodyAttributes.InitLocals);
+    MethodDefinitionHandle entry = metadata.AddMethodDefinition(MethodAttributes.Public | MethodAttributes.Static,
+        MethodImplAttributes.IL, metadata.GetOrAddString("Main"),
+        metadata.GetOrAddBlob(new byte[] { 0, 1, 1, 0x1d, 0x0e }), mainBody, MetadataTokens.ParameterHandle(1));
+    metadata.AddTypeDefinition(TypeAttributes.NotPublic, default, metadata.GetOrAddString("<Module>"),
+        default, MetadataTokens.FieldDefinitionHandle(1), MetadataTokens.MethodDefinitionHandle(1));
+    metadata.AddTypeDefinition(TypeAttributes.Public | TypeAttributes.Abstract | TypeAttributes.Sealed,
+        default, metadata.GetOrAddString("ArrayOverloadOwner"), objectRef,
+        MetadataTokens.FieldDefinitionHandle(1), MetadataTokens.MethodDefinitionHandle(1));
+    ManagedPEBuilder pe = new(new PEHeaderBuilder(imageCharacteristics: Characteristics.ExecutableImage),
+        new MetadataRootBuilder(metadata), bodies, entryPoint: entry, flags: CorFlags.ILOnly);
+    BlobBuilder image = new();
+    pe.Serialize(image);
+    File.WriteAllBytes(Path.Combine(directory, "ArrayOverloadCalls.dll"), image.ToArray());
+}
+
+static void WriteOverloadLibrary(string path)
+{
+    MetadataBuilder metadata = new();
+    metadata.AddModule(0, metadata.GetOrAddString("ArrayOverloadLibrary.dll"),
+        metadata.GetOrAddGuid(new Guid("c3a2d2b8-d87a-4c65-8a01-e389b3eccbf7")), default, default);
+    metadata.AddAssembly(metadata.GetOrAddString("ArrayOverloadLibrary"), new Version(1, 0, 0, 0),
+        default, default, 0, AssemblyHashAlgorithm.None);
+    AssemblyName core = typeof(object).Assembly.GetName();
+    AssemblyReferenceHandle coreRef = metadata.AddAssemblyReference(metadata.GetOrAddString(core.Name!),
+        core.Version!, default, metadata.GetOrAddBlob(core.GetPublicKeyToken()!), 0, default);
+    TypeReferenceHandle objectRef = metadata.AddTypeReference(coreRef,
+        metadata.GetOrAddString("System"), metadata.GetOrAddString("Object"));
+    BlobBuilder bodies = new();
+    MethodBodyStreamEncoder bodyEncoder = new(bodies);
+    MethodDefinitionHandle genericVector = default;
+    MethodDefinitionHandle genericMd = default;
+    foreach (var item in new[] { ("Select", false, 30), ("Select", true, 40),
+        ("SelectMethod", false, 32), ("SelectMethod", true, 42) })
+    {
+        bool generic = item.Item1 == "SelectMethod";
+        BlobBuilder signature = new();
+        signature.WriteByte(generic ? (byte)0x10 : (byte)0);
+        if (generic) signature.WriteByte(1);
+        signature.WriteBytes(new byte[] { 1, 0x08 });
+        signature.WriteByte(item.Item2 ? (byte)0x14 : (byte)0x1d);
+        signature.WriteByte(generic ? (byte)0x1e : (byte)0x13);
+        signature.WriteByte(0);
+        if (item.Item2) signature.WriteBytes(new byte[] { 1, 0, 0 });
+        BlobBuilder instructions = new();
+        InstructionEncoder code = new(instructions);
+        code.LoadConstantI4(item.Item3);
+        code.OpCode(ILOpCode.Ret);
+        int body = bodyEncoder.AddMethodBody(code, maxStack: 1);
+        MethodDefinitionHandle method = metadata.AddMethodDefinition(MethodAttributes.Public | MethodAttributes.Static,
+            MethodImplAttributes.IL, metadata.GetOrAddString(item.Item1), metadata.GetOrAddBlob(signature),
+            body, MetadataTokens.ParameterHandle(1));
+        if (generic)
+        {
+            if (item.Item2) genericMd = method;
+            else genericVector = method;
+        }
+    }
+    metadata.AddTypeDefinition(TypeAttributes.NotPublic, default, metadata.GetOrAddString("<Module>"),
+        default, MetadataTokens.FieldDefinitionHandle(1), MetadataTokens.MethodDefinitionHandle(1));
+    TypeDefinitionHandle owner = metadata.AddTypeDefinition(
+        TypeAttributes.Public | TypeAttributes.Abstract | TypeAttributes.Sealed,
+        default, metadata.GetOrAddString("ArrayOverloadLibrary`1"), objectRef,
+        MetadataTokens.FieldDefinitionHandle(1), MetadataTokens.MethodDefinitionHandle(1));
+    metadata.AddGenericParameter(owner, GenericParameterAttributes.None, metadata.GetOrAddString("T"), 0);
+    metadata.AddGenericParameter(genericVector, GenericParameterAttributes.None, metadata.GetOrAddString("U"), 0);
+    metadata.AddGenericParameter(genericMd, GenericParameterAttributes.None, metadata.GetOrAddString("U"), 0);
+    ManagedPEBuilder pe = new(new PEHeaderBuilder(imageCharacteristics: Characteristics.ExecutableImage | Characteristics.Dll),
+        new MetadataRootBuilder(metadata), bodies, flags: CorFlags.ILOnly);
+    BlobBuilder image = new();
+    pe.Serialize(image);
+    File.WriteAllBytes(path, image.ToArray());
 }

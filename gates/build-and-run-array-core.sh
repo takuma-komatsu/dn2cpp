@@ -23,6 +23,7 @@
 # Excessive-rank errors identify the attempted array type and its assembly.
 # ILDiet retains rank-one MD signatures without lower bounds and nested vector distinctions.
 # Nested MD elements retain precise identities through tokens, allocations and casts.
+# Rank-one MD MemberRefs distinguish nested array kinds before overload trimming.
 # Former gates: array-ops, array-contains, array-range, array-resize, array-sort,
 # array-data-ref, byte-array, getsubarray, packed-array, array-collection, enumarray,
 # arraypool.
@@ -334,6 +335,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|comparer-identity-prefix-a
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/ArrayCore/ArrayComparerTypeOnly.csproj samples/dotnet/ArrayCore/ArrayComparerTypeOnlyProgram.cs samples/dotnet/ArrayCore/ArrayLowerBoundsOnly.csproj samples/dotnet/ArrayCore/ArrayLowerBoundsOnlyProgram.cs gates/fixtures/array-rank1-md/Driver.csproj samples/dotnet/ArrayCore/ArrayStaticRankOneOnlyProgram.cs gates/fixtures/array-rank1-md/Generate.csproj gates/fixtures/array-rank1-md/Program.cs samples/dotnet/ArrayCore/BoxProvenanceOnly.csproj samples/dotnet/ArrayCore/BoxProvenanceProgram.cs samples/dotnet/ArrayCore/ReflectionReturnBoxOnly.csproj samples/dotnet/ArrayCore/ReflectionReturnBoxProgram.cs samples/dotnet/ArrayCore/DiamondProvenanceOnly.csproj samples/dotnet/ArrayCore/DiamondProvenanceProgram.cs samples/dotnet/ArrayCore/FieldAliasProvenanceOnly.csproj samples/dotnet/ArrayCore/FieldAliasProvenanceProgram.cs samples/dotnet/ArrayCore/FieldAliasProvenanceSubset.cs samples/dotnet/ArrayCore/ArrayElementAliasProgram.cs samples/dotnet/ArrayCore/ArrayElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayObjectElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayUnknownElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayErasedElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayReferenceSlotAliasOnly.csproj samples/dotnet/ArrayCore/ArrayReflectedVoidBoxOnly.csproj samples/dotnet/ArrayCore/ArrayReflectedVoidBoxProgram.cs samples/dotnet/ArrayCore/ArrayFutureStoreOnly.csproj samples/dotnet/ArrayCore/ArrayFutureStoreProgram.cs samples/dotnet/ArrayCore/ArrayFutureNullStoreOnly.csproj samples/dotnet/ArrayCore/ArrayObjectFutureStoreOnly.csproj samples/dotnet/ArrayCore/ArrayObjectFutureStoreProgram.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|lower-bound-less-rank1-array-signatures|unsized-array-prefix:${DN2CPP_BEFORE_UNSIZED_ARRAY:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|nested-md-array-identities|nested-md-array:--no-ildiet|nested-md-array-prefix:${DN2CPP_BEFORE_NESTED_MD_ARRAY:-}"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|md-array-overload-original-kinds|md-array-overload-native:--no-ildiet|md-array-overload-prefix-argv:before-md-overload"
 corelib_diff_gate ArrayCore System.Collections
 
 native=$(run_bounded "./$_CG_OUT/ArrayCore$EXE_EXT")
@@ -1134,6 +1136,39 @@ for line in 'field GenericUnsized=System.Collections.Generic.List`1<System.Int32
     'local EchoUnsized/0=System.Int32[*]/True'; do
     [[ $(grep -Fxc -- "$line" <<< "$static_rank1_metadata_diet") == 1 ]] \
         || { echo "FAIL: wrapped rank1 MD witness must run once: $line" >&2; exit 1; }
+done
+
+# Direct entrypoint calls keep overload resolution independent of reflection roots.
+md_overload_root="artifacts/arraycore-md-overload"
+run_bounded dotnet "$static_rank1_root/generator/Generate.dll" --overload-exe "$md_overload_root/app"
+md_overload_app="$md_overload_root/app/ArrayOverloadCalls.dll"
+md_overload_oracle=$(run_bounded dotnet exec \
+    --runtimeconfig "$static_rank1_root/generator/Generate.runtimeconfig.json" "$md_overload_app")
+run_bounded dotnet exec "$(dirname "$DN2CPP_CLI_DLL")/ildiet/ILDiet.dll" "$md_overload_app" \
+    -r "$corelib" -r "$md_overload_root/app/ArrayOverloadLibrary.dll" -o "$md_overload_root/diet"
+md_overload_diet=$(run_bounded dotnet exec \
+    --runtimeconfig "$static_rank1_root/generator/Generate.runtimeconfig.json" "$md_overload_root/diet/ArrayOverloadCalls.dll")
+assert_output "$(strip_cr_win "$md_overload_oracle")" "$(strip_cr_win "$md_overload_diet")"
+invoke_cli "$md_overload_root/diet/ArrayOverloadCalls.dll" \
+    -r "$corelib" -r "$md_overload_root/diet/ArrayOverloadLibrary.dll" \
+    --no-ildiet -o "$md_overload_root/gen"
+compile_console "$md_overload_root/gen" ArrayOverloadCalls
+md_overload_native=$(run_bounded "./$md_overload_root/gen/ArrayOverloadCalls$EXE_EXT")
+md_overload_native=$(strip_cr_win "$md_overload_native")
+assert_output "$(strip_cr_win "$md_overload_oracle")" "$md_overload_native"
+md_overload_prefix=$(awk '/^== rank1 MD overload resolution ==$/ { exit } { print }' <<< "$md_overload_native")
+md_overload_before=$(run_bounded "./$md_overload_root/gen/ArrayOverloadCalls$EXE_EXT" before-md-overload)
+md_overload_clr_before=$(run_bounded dotnet exec \
+    --runtimeconfig "$static_rank1_root/generator/Generate.runtimeconfig.json" "$md_overload_app" before-md-overload)
+assert_output "$md_overload_prefix" "$(strip_cr_win "$md_overload_before")"
+assert_output "$md_overload_prefix" "$(strip_cr_win "$md_overload_clr_before")"
+for line in '== array overload baseline ==' '10' 'array overload baseline end' \
+    '== rank1 MD overload resolution ==' 'rank1 MD overload resolution end' \
+    'explicit-zero' '20' 'unsized' '21' 'nested' '22' 'generic-argument' '23' \
+    'byref' '24' 'MD-first vector' '26' \
+    'cross-assembly generic-owner' '40' 'cross-assembly generic-method' '42'; do
+    [[ $(grep -Fxc -- "$line" <<< "$md_overload_native") == 1 ]] \
+        || { echo "FAIL: MD overload witness must run once: $line" >&2; exit 1; }
 done
 
 # An is-test keeps a comparer shell without making its static fields callable.
