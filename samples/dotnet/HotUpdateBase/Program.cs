@@ -4,6 +4,9 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using Dn2Cpp.Runtime;
 
+[assembly: InternalsVisibleTo("GvmCallPatch")]
+[assembly: InternalsVisibleTo("GvmCallReferencePatch")]
+
 namespace HotUpdateBase;
 
 // A non-generic base-image interface a hot-update patch type can implement: its
@@ -284,6 +287,13 @@ public class Counter
     {
         return typeof(T).FullName;
     }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public bool MethodValueType<T>()
+    {
+        Console.WriteLine("method predicate body entered");
+        return typeof(T).IsValueType;
+    }
 }
 
 public class DoubleCounter : Counter
@@ -310,6 +320,11 @@ public sealed class Holder<T>
 {
     private T _value;
 
+    public Holder()
+    {
+        _value = default!;
+    }
+
     public Holder(T value)
     {
         _value = value;
@@ -328,6 +343,291 @@ public sealed class Holder<T>
     public string Shape()
     {
         return "holder";
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public string TypeIdentity()
+    {
+        return typeof(T).FullName!;
+    }
+
+    public string ForwardTypeIdentity()
+    {
+        Console.WriteLine("generic forward body entered");
+        return TypeIdentity();
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public string EnteredTypeIdentity()
+    {
+        Console.WriteLine("generic lookup body entered");
+        return typeof(T).FullName!;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public int ArrayLength()
+    {
+        Console.WriteLine("generic array body entered");
+        return new T[1].Length;
+    }
+
+    public int ArrayLengthTwice()
+    {
+        return ArrayLength() + ArrayLength();
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static int StaticArrayLength()
+    {
+        Console.WriteLine("static generic array body entered");
+        return new T[1].Length;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public int ForwardStaticArrayLength()
+    {
+        Console.WriteLine("generic static forward body entered");
+        return StaticArrayLength();
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public bool IsValueType()
+    {
+        Console.WriteLine("value predicate body entered");
+        return typeof(T).IsValueType;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public bool IsPrimitive()
+    {
+        Console.WriteLine("primitive predicate body entered");
+        return typeof(T).IsPrimitive;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public bool IsEnum()
+    {
+        Console.WriteLine("enum predicate body entered");
+        return typeof(T).IsEnum;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public bool IsByRefLike()
+    {
+        Console.WriteLine("byref-like predicate body entered");
+        return typeof(T).IsByRefLike;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public bool IsClass()
+    {
+        Console.WriteLine("class predicate body entered");
+        return typeof(T).IsClass;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public bool IsByRef()
+    {
+        Console.WriteLine("byref predicate body entered");
+        return typeof(T).IsByRef;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public bool IsPointer()
+    {
+        Console.WriteLine("pointer predicate body entered");
+        return typeof(T).IsPointer;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public bool TryValueType(bool branch)
+    {
+        Console.WriteLine("try predicate body entered");
+        try
+        {
+            if (branch)
+                Console.WriteLine("try predicate branch entered");
+            return typeof(T).IsValueType;
+        }
+        finally
+        {
+            Console.WriteLine("try predicate finally entered");
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public string TypePredicates()
+    {
+        return IsValueType() + "/" + IsPrimitive() + "/" + IsEnum() + "/" + IsByRefLike();
+    }
+
+    public static string NullBoundPredicates()
+    {
+        var type = typeof(Holder<T>);
+        var value = (TypePredicate)Delegate.CreateDelegate(typeof(TypePredicate), null, type.GetMethod(nameof(IsValueType))!);
+        var primitive = (TypePredicate)Delegate.CreateDelegate(typeof(TypePredicate), null, type.GetMethod(nameof(IsPrimitive))!);
+        var enumeration = (TypePredicate)Delegate.CreateDelegate(typeof(TypePredicate), null, type.GetMethod(nameof(IsEnum))!);
+        var byRefLike = (TypePredicate)Delegate.CreateDelegate(typeof(TypePredicate), null, type.GetMethod(nameof(IsByRefLike))!);
+        return value() + "/" + primitive() + "/" + enumeration() + "/" + byRefLike();
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public bool OwnerIsValueType()
+    {
+        Console.WriteLine("owner value body entered");
+        return typeof(Holder<T>).IsValueType;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public bool OwnerIsPrimitive()
+    {
+        Console.WriteLine("owner primitive body entered");
+        return typeof(Holder<T>).IsPrimitive;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public bool OwnerIsEnum()
+    {
+        Console.WriteLine("owner enum body entered");
+        return typeof(Holder<T>).IsEnum;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public bool OwnerIsByRefLike()
+    {
+        Console.WriteLine("owner byref-like body entered");
+        return typeof(Holder<T>).IsByRefLike;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public string OwnerPredicates()
+    {
+        return OwnerIsValueType() + "/" + OwnerIsPrimitive() + "/" + OwnerIsEnum() + "/" + OwnerIsByRefLike();
+    }
+
+    public static string NullBoundOwnerPredicates()
+    {
+        var type = typeof(Holder<T>);
+        var value = (TypePredicate)Delegate.CreateDelegate(typeof(TypePredicate), null, type.GetMethod(nameof(OwnerIsValueType))!);
+        var primitive = (TypePredicate)Delegate.CreateDelegate(typeof(TypePredicate), null, type.GetMethod(nameof(OwnerIsPrimitive))!);
+        var enumeration = (TypePredicate)Delegate.CreateDelegate(typeof(TypePredicate), null, type.GetMethod(nameof(OwnerIsEnum))!);
+        var byRefLike = (TypePredicate)Delegate.CreateDelegate(typeof(TypePredicate), null, type.GetMethod(nameof(OwnerIsByRefLike))!);
+        return value() + "/" + primitive() + "/" + enumeration() + "/" + byRefLike();
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public bool OwnerIsClass()
+    {
+        Console.WriteLine("owner class body entered");
+        return typeof(Holder<T>).IsClass;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public bool ArrayPredicate(int kind)
+    {
+        Console.WriteLine("array predicate body entered");
+        switch (kind)
+        {
+            case 0: return typeof(T[]).IsValueType;
+            case 1: return typeof(T[]).IsPrimitive;
+            case 2: return typeof(T[]).IsEnum;
+            default: return typeof(T[]).IsByRefLike;
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public bool CellPredicate(int kind)
+    {
+        Console.WriteLine("constructed cell body entered");
+        switch (kind)
+        {
+            case 0: return typeof(PredicateCell<T>).IsValueType;
+            case 1: return typeof(PredicateCell<T>).IsPrimitive;
+            case 2: return typeof(PredicateCell<T>).IsEnum;
+            default: return typeof(PredicateCell<T>).IsByRefLike;
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public bool NopBeforeValue()
+    {
+        Console.WriteLine("nop value body entered");
+        return typeof(T).IsValueType;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public bool NopAfterPrimitive()
+    {
+        Console.WriteLine("nop primitive body entered");
+        return typeof(T).IsPrimitive;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public bool NopBeforeEnum()
+    {
+        Console.WriteLine("nop enum body entered");
+        return typeof(T).IsEnum;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public bool NopAfterByRefLike()
+    {
+        Console.WriteLine("nop byref-like body entered");
+        return typeof(T).IsByRefLike;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public bool NopBeforeClass()
+    {
+        Console.WriteLine("nop class body entered");
+        return typeof(T).IsClass;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public string NopPredicates()
+    {
+        return NopBeforeValue() + "/" + NopAfterPrimitive() + "/" + NopBeforeEnum() + "/" + NopAfterByRefLike();
+    }
+
+    public static bool NullBoundNopValue()
+    {
+        var method = typeof(Holder<T>).GetMethod(nameof(NopBeforeValue))!;
+        return ((TypePredicate)Delegate.CreateDelegate(typeof(TypePredicate), null, method))();
+    }
+}
+
+public delegate bool TypePredicate();
+
+public struct PredicateCell<T>
+{
+    public T Item;
+}
+
+public enum PredicateTone { Low, High }
+
+public static class PredicateBindings
+{
+    public static void PinInvariantCulture()
+    {
+        CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+        CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+    }
+
+    public static string CellPredicates()
+    {
+        return Holder<PredicateCell<string>>.NullBoundPredicates();
+    }
+}
+
+public sealed class PairHolder<TValue, TReference>
+{
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public int ArrayLengths()
+    {
+        Console.WriteLine("mixed value array body entered");
+        int first = new TValue[1].Length;
+        Console.WriteLine("mixed reference array body entered");
+        return first + new TReference[1].Length;
     }
 }
 
@@ -663,10 +963,18 @@ public class InkStamp : Stamp
 
 public abstract class AbstractRecord
 {
+    private int _field = 23;
+
     public abstract long Count(int value, long offset);
     public abstract string Text(string value);
     public abstract AbstractRecord Identity(AbstractRecord value);
     public virtual int Body(int value) => value + 10;
+
+    public int ReadField()
+    {
+        Console.WriteLine("field read body entered");
+        return _field;
+    }
 
     public static string FaultIdentity(Exception fault) => fault.GetType().FullName
         + "/" + fault.HResult.ToString("X8");
@@ -699,7 +1007,14 @@ public class Bin : IBin
 {
 }
 
-public class GlassBin : IBin
+// Every implementer replaces these bodies; a patch can still name them by call.
+internal interface IOverriddenBin
+{
+    string Cold() => "cold default";
+    string ColdHold<T>(T item) => "cold default:" + item;
+}
+
+public class GlassBin : IBin, IOverriddenBin
 {
     public string Hold<T>(T item)
     {
@@ -709,6 +1024,14 @@ public class GlassBin : IBin
     public string Name()
     {
         return "glass bin";
+    }
+
+    public string Cold() => "cold override";
+    public string ColdHold<T>(T item) => "cold override:" + item;
+
+    internal static string DefaultCallSurface(IOverriddenBin bin)
+    {
+        return bin.ColdHold<int>(9);
     }
 }
 

@@ -534,7 +534,15 @@ internal sealed partial class MethodCompiler : IEvalStack
         return $", (const void* const*){slot}";
     }
 
+    private readonly HashSet<int>? _nullReceiverDictionaryChecks;
+
     public MethodCompiler(Compilation c, MethodInfo method, LiteralPool literals, IEmitBackend? backend = null)
+        : this(c, method, literals, backend, null)
+    {
+    }
+
+    public MethodCompiler(Compilation c, MethodInfo method, LiteralPool literals, IEmitBackend? backend,
+        HashSet<int>? nullReceiverDictionaryChecks)
     {
         _c = c;
         _method = method;
@@ -543,6 +551,7 @@ internal sealed partial class MethodCompiler : IEvalStack
         _literals = literals;
         _backend = backend;
         _intrinsics = backend?.CallIntrinsics;
+        _nullReceiverDictionaryChecks = nullReceiverDictionaryChecks;
     }
 
     /// <summary>Marks <paramref name="cls"/> and its base chain as referenced so
@@ -987,6 +996,8 @@ internal sealed partial class MethodCompiler : IEvalStack
             // exactly the stack the branch continues with.
             if (_liveness?.ElidedAt(insn.Offset) == true)
                 continue;
+            if (_nullReceiverDictionaryChecks?.Contains(insn.Offset) == true)
+                Emit("dn2cpp_null_check(a0);");
             _arraySearchInstructionOffset = insn.Offset;
             TranslateWithPendingReferenceBarriers(insn);
         }
@@ -996,6 +1007,10 @@ internal sealed partial class MethodCompiler : IEvalStack
 
     private string FinishBody()
     {
+        // A patch call can enter with null this. A lazy receiver-derived context
+        // would fault before the IL, or lose the exact context in nested calls.
+        if (_usedRgctx && _c.RequiresNullReceiverContextFallback(_method))
+            TaintIfCanonical(_method.DeclaringClass, "null-receiver-context");
         // Signature rendering can resolve lazy model state and reject unsupported types.
         // Keep it, prologue taint and rgctx validation in both compile passes.
         string signature = Signature(_method);

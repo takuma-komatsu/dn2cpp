@@ -4294,6 +4294,43 @@ internal sealed partial class Compilation
             DrainReachability();
     }
 
+    // Only retained interface types have rows a patch can bind. Keep both the
+    // named default body for call and the allocated receivers' callvirt targets.
+    internal bool ReachPatchCallableInterfaceBodies(IReadOnlyList<ClassInfo> retained)
+    {
+        if (!_hotUpdateBase)
+            return false;
+        bool marked = false;
+        foreach (var cls in retained)
+        {
+            if (!cls.IsInterface || IsFrameworkAssemblyName(cls.Module.AssemblyName)
+                || ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls))
+                continue;
+            foreach (var m in cls.Methods.ToList())
+            {
+                if (m.IsStatic || m.Rva == 0
+                    || m.Context.MethodArgs.Any(a => ContainsCanonPlaceholder(a) || ContainsGenericVar(a))
+                    || m.Context.MethodArgs.Length == 0
+                        && m.Module.Reader.GetMethodDefinition(m.Handle).GetGenericParameters().Count > 0
+                    || _backend?.ShouldSkipMethodBody(cls, m) == true)
+                    continue;
+                if (m.IsVirtual && !IsGvmCall(m) && !_usedVirtualDecls.Contains(m))
+                {
+                    ReachUsedVirtual(m);
+                    marked = true;
+                }
+                if (!Reachable.Contains(m))
+                {
+                    Reach(m);
+                    marked |= Reachable.Contains(m);
+                }
+            }
+        }
+        if (marked)
+            DrainReachability();
+        return marked;
+    }
+
     /// <summary>Registers the dispatchers of the rows the logs gained since the last
     /// visit; returns whether any was registered.</summary>
     private bool MarkPatchCallableGvms()

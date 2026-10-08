@@ -321,7 +321,7 @@ internal sealed partial class Compilation
         return null;
     }
 
-    private (Module Module, TypeDefinitionHandle Handle)? RawMetadataTypeDefinition(Module module, EntityHandle handle)
+    internal (Module Module, TypeDefinitionHandle Handle)? RawMetadataTypeDefinition(Module module, EntityHandle handle)
     {
         return RawMetadataTypeDefinition(module, handle, new HashSet<(int, int)>());
     }

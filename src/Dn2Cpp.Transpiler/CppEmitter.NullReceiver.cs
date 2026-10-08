@@ -319,6 +319,30 @@ internal sealed partial class CppEmitter
         return scan;
     }
 
+    // A monomorphic body can still replace a CLR dictionary lookup. Preserve
+    // its null fault at the lookup instruction, after any preceding side effects.
+    private HashSet<int>? NullReceiverDictionaryChecks(MethodInfo m)
+    {
+        var cls = m.DeclaringClass;
+        if (!_hotUpdateBase || m.IsStatic || cls.IsValueType || cls.IsInterface
+            || cls.Context.TypeArgs.Length == 0 || m.Context.MethodArgs.Length != 0
+            || cls.Context.TypeArgs.Any(Compilation.ContainsCanonAny)
+            || m.Rva == 0 || HasReplacedBody(cls, m))
+            return null;
+        var code = ILDecoder.Decode(m.Module.PE.GetMethodBody(m.Rva).GetILBytes()!.ToImmutableArrayCompat());
+        HashSet<int>? checks = null;
+        bool afterReadonly = false;
+        for (int i = 0; i < code.Count; i++)
+        {
+            ulong refs = 0, values = 0;
+            NoteDictionaryLookups(m.Module, cls, code, i, afterReadonly, ref refs, ref values);
+            if (LookupHit(cls, refs, values))
+                (checks ??= new()).Add(code[i].Offset);
+            afterReadonly = code[i].OpCode == ILOpCode.Readonly;
+        }
+        return checks;
+    }
+
     // What m's own emitted body does with a null receiver. A value type's body reads its
     // fields through an unchecked pointer, so it may load its receiver only to pass it on.
     // A reference type's field accesses and virtual calls fault on a null receiver as
@@ -376,7 +400,7 @@ internal sealed partial class CppEmitter
                     continue;
             }
             if (classLookups)
-                NoteDictionaryLookups(module, code, i, readonlyPrefix, ref refs, ref values);
+                NoteDictionaryLookups(module, m.DeclaringClass, code, i, readonlyPrefix, ref refs, ref values);
             if (insn.OpCode == ILOpCode.Call && CallsInstanceMethod(reader, insn.Token))
                 (instanceCalls ??= new()).Add(i);
         }
@@ -479,14 +503,18 @@ internal sealed partial class CppEmitter
     // constrained call need one only for a value type, and an element address only to
     // check a reference element type. The JIT folds a box a branch tests directly or
     // through a type test naming no class type parameter.
-    private void NoteDictionaryLookups(Module module, List<Instruction> code, int i, bool readonlyPrefix,
+    private void NoteDictionaryLookups(Module module, ClassInfo declaringClass, List<Instruction> code, int i, bool readonlyPrefix,
         ref ulong refs, ref ulong values)
     {
         var reader = module.Reader;
         var insn = code[i];
         switch (insn.OpCode)
         {
-            case ILOpCode.Ldtoken or ILOpCode.Newarr or ILOpCode.Newobj or ILOpCode.Castclass
+            case ILOpCode.Ldtoken:
+                if (!IsFoldedClassTypePredicate(module, declaringClass, code, i))
+                    AddBoth(Mentions(reader, insn.Token), ref refs, ref values);
+                return;
+            case ILOpCode.Newarr or ILOpCode.Newobj or ILOpCode.Castclass
                 or ILOpCode.Isinst or ILOpCode.Unbox or ILOpCode.Unbox_any or ILOpCode.Mkrefany
                 or ILOpCode.Refanyval or ILOpCode.Ldsfld or ILOpCode.Ldsflda or ILOpCode.Stsfld:
                 AddBoth(Mentions(reader, insn.Token), ref refs, ref values);
@@ -554,6 +582,82 @@ internal sealed partial class CppEmitter
             else if (ClassTypeParameters.IsValueTypeInstance(reader, type) == valueType)
                 AddBoth(mask, ref refs, ref values);
         }
+    }
+
+    // These CLR intrinsics inspect a canonical argument's storage kind without
+    // resolving its exact Type. Other Type getters still require the dictionary.
+    private bool IsFoldedClassTypePredicate(Module module, ClassInfo declaringClass, List<Instruction> code, int at)
+    {
+        if (!ClassTypeParameters.IsBare(module.Reader, SRME.EntityHandle(code[at].Token))
+            && !IsDeclaringTypeToken(module, declaringClass, SRME.EntityHandle(code[at].Token)))
+            return false;
+        int conversion = SkipNops(code, at + 1);
+        int getter = SkipNops(code, conversion + 1);
+        if (getter >= code.Count || code[conversion].OpCode != ILOpCode.Call
+            || _c.ClassifyTypeIdentityCall(module, code[conversion].Token) != TypeIdentityCall.GetTypeFromHandle
+            || code[getter].OpCode is not (ILOpCode.Call or ILOpCode.Callvirt))
+            return false;
+        var reader = module.Reader;
+        var handle = SRME.EntityHandle(code[getter].Token);
+        string name;
+        EntityHandle owner;
+        switch (handle.Kind)
+        {
+            case HandleKind.MemberReference:
+                var member = reader.GetMemberReference((MemberReferenceHandle)handle);
+                name = reader.GetString(member.Name);
+                owner = member.Parent;
+                break;
+            case HandleKind.MethodDefinition:
+                var method = reader.GetMethodDefinition((MethodDefinitionHandle)handle);
+                name = reader.GetString(method.Name);
+                owner = method.GetDeclaringType();
+                break;
+            default:
+                return false;
+        }
+        if (name is not ("get_IsValueType" or "get_IsPrimitive" or "get_IsEnum" or "get_IsByRefLike"))
+            return false;
+        if (!CallShape(reader, code[getter].Token, out int parameters, out bool instance, out var returned)
+            || parameters != 0 || !instance || returned != SignatureTypeCode.Boolean)
+            return false;
+        return owner.Kind switch
+        {
+            HandleKind.TypeReference => reader.GetString(reader.GetTypeReference((TypeReferenceHandle)owner).Namespace) == "System"
+                && reader.GetString(reader.GetTypeReference((TypeReferenceHandle)owner).Name) == "Type",
+            HandleKind.TypeDefinition => reader.GetString(reader.GetTypeDefinition((TypeDefinitionHandle)owner).Namespace) == "System"
+                && reader.GetString(reader.GetTypeDefinition((TypeDefinitionHandle)owner).Name) == "Type",
+            _ => false,
+        };
+
+        static int SkipNops(List<Instruction> code, int at)
+        {
+            while (at < code.Count && code[at].OpCode == ILOpCode.Nop)
+                at++;
+            return at;
+        }
+    }
+
+    // The JIT folds storage predicates on its own declaring instantiation, but
+    // constructing another generic type or an array still resolves a dictionary.
+    private bool IsDeclaringTypeToken(Module module, ClassInfo declaringClass, EntityHandle type)
+    {
+        if (type.Kind != HandleKind.TypeSpecification)
+            return false;
+        var blob = module.Reader.GetBlobReader(module.Reader.GetTypeSpecification((TypeSpecificationHandle)type).Signature);
+        if (blob.ReadSignatureTypeCode() != SignatureTypeCode.GenericTypeInstance)
+            return false;
+        blob.ReadSignatureTypeCode();
+        if (_c.RawMetadataTypeDefinition(module, blob.ReadTypeHandle()) is not { } definition
+            || definition.Module != declaringClass.Module || definition.Handle != declaringClass.Handle)
+            return false;
+        int count = blob.ReadCompressedInteger();
+        if (count != declaringClass.Context.TypeArgs.Length)
+            return false;
+        for (int i = 0; i < count; i++)
+            if (blob.ReadSignatureTypeCode() != SignatureTypeCode.GenericTypeParameter || blob.ReadCompressedInteger() != i)
+                return false;
+        return blob.RemainingBytes == 0;
     }
 
     // The instruction consuming the value code[load] pushes: the first instruction of the

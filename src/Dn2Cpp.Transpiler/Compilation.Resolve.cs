@@ -18,7 +18,8 @@ internal sealed partial class Compilation
         TryResolveMemberRefMethod(module, handle, context) ?? TryRuntimeObjectFunction(module, handle)
         ?? ResolveMemberRefMethod(module, handle, context);
 
-    private MethodInfo? TryRuntimeObjectFunction(Module module, MemberReferenceHandle handle)
+    private MethodInfo? TryRuntimeObjectFunction(Module module, MemberReferenceHandle handle,
+        bool prepare = false)
     {
         var reader = module.Reader;
         var member = reader.GetMemberReference(handle);
@@ -44,8 +45,9 @@ internal sealed partial class Compilation
             return null;
         if (_runtimeObjectFunctions.TryGetValue(name, out var cached))
             return cached;
-        // Reachability warms every address load before parallel body compilation.
-        if (Phase == EmitPhase.Emission)
+        // Serial address-load scans prepare targets before body workers, including
+        // late emission drains. Workers must only consume the cached targets.
+        if (Phase == EmitPhase.Emission && !prepare)
             throw new InvalidOperationException($"runtime Object function {name} was not prepared before emission");
         _runtimeObjectFunctionOwner ??= new ClassInfo
         {

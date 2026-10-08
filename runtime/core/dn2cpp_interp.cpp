@@ -3565,7 +3565,9 @@ ExecResult interp_run(InterpFrame& f, uint32_t pc)
                                     self = static_cast<Dn2CppObject*>(pop().ref);
                                     if (fn == nullptr && insn.op != 0x6F)
                                         throw_call_without_body(b);
-                                    if (self == nullptr)
+                                    // A call passes null into the named body;
+                                    // callvirt faults before entering it.
+                                    if (self == nullptr && insn.op == 0x6F)
                                         dn2cpp_throw_null_reference();
                                     // The vtable index below came from the
                                     // DECLARED type, and a receiver that is not
@@ -3574,7 +3576,7 @@ ExecResult interp_run(InterpFrame& f, uint32_t pc)
                                     // whatever it held. The non-virtual path is
                                     // milder and still wrong: the bound body
                                     // reads fields at the declared offsets.
-                                    if (!import_receiver_ok(b, self))
+                                    if (self != nullptr && !import_receiver_ok(b, self))
                                         interp_fail(kImportRecvFail);
                                     if (insn.op == 0x6F && b.isInterface)
                                     {
@@ -4836,10 +4838,10 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                                     self = static_cast<Dn2CppObject*>(window[0].ref);
                                     if (fn == nullptr && insn.op != R_CALLVIRT)
                                         throw_call_without_body(b);
-                                    if (self == nullptr)
+                                    if (self == nullptr && insn.op == R_CALLVIRT)
                                         dn2cpp_throw_null_reference();
                                     // As the stack loop's arm above.
-                                    if (!import_receiver_ok(b, self))
+                                    if (self != nullptr && !import_receiver_ok(b, self))
                                         interp_fail(kImportRecvFail);
                                     if (insn.op == R_CALLVIRT && b.isInterface)
                                     {
