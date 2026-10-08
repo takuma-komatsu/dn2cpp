@@ -5240,12 +5240,15 @@ internal sealed partial class Compilation
         // structs got boxed and whether anything compares two objects, and the walk it
         // starts can produce more of both (a field's Equals override is a body, and a body
         // can box), exactly as the used×allocated cross product it stands in for does.
-        int admitted, namedOwners, allocatedOwners;
+        // A row's signature can mint a class without reaching another body; that
+        // class's attribute rows need the next walk too.
+        int admitted, namedOwners, allocatedOwners, classes;
         do
         {
             admitted = Reachable.Order.Count;
             namedOwners = _typeofNamedLibraryClasses.Count;
             allocatedOwners = _invokeRouteAllocatedOwners.Count;
+            classes = Classes.Count;
             ReachReflectionClassRoutes();
             ReachReflectionAttributeRoute();
             InstantiateGvmChainRoots();
@@ -5259,7 +5262,8 @@ internal sealed partial class Compilation
         }
         while (Reachable.Order.Count != admitted
                || _typeofNamedLibraryClasses.Count != namedOwners
-               || _invokeRouteAllocatedOwners.Count != allocatedOwners);
+               || _invokeRouteAllocatedOwners.Count != allocatedOwners
+               || Classes.Count != classes);
 
         // The emit side renders an attribute row whatever reached its ctor, and routes other
         // than the walk above reach ctors (the reflection-ctor route reaches every app-module

@@ -34,6 +34,7 @@
 # Optional definition dependencies are probed without publishing partial or self-expanding layouts.
 # Concrete interface dispatch traps retain signature dependencies that relation-only rows do not need.
 # Completion-signature layout probes remain bounded to the original owner snapshot.
+# A class first named by an abstract slot's signature retains callable attribute constructors.
 # Consolidated reflection-invocation gate. Merges the former reflect dynamic-use
 # subset gates into one multi-section program, transpiled once against the
 # tree-shaken real CoreLib and diffed exactly against real .NET. Covers:
@@ -236,6 +237,8 @@ DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/check-ref
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|empty-string-clone-prefix:${DN2CPP_BEFORE_EMPTY_STRING_CLONE:-}|delegate-list-prefix:${DN2CPP_BEFORE_DELEGATE_LISTS:-}|recursive-delegate-prefix:${DN2CPP_BEFORE_RECURSIVE_DELEGATE:-}|ordinary-interface-prefix:${DN2CPP_BEFORE_ORDINARY_IL_INTERFACE:-}|object-methodimpl-prefix:${DN2CPP_BEFORE_OBJECT_METHODIMPL:-}"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/recursive-delegate/RecursiveDelegate.csproj gates/fixtures/recursive-delegate/Program.cs"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/ReflectNameBindOnly.csproj samples/dotnet/ReflectInvoke/ReflectNameBindOnlyProgram.cs"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/ReflectAttributeDiscoveryOnly.csproj samples/dotnet/ReflectInvoke/ReflectAttributeDiscoveryOnlyProgram.cs"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|attribute-discovery-prefix-argv:before-attribute-discovery"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|delegate-name-boundary-argv:delegate-name-boundary-outcomes"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|delegate-signature-prefix-argv:before-delegate-signature-bindings|delegate-signature-boundary-argv:delegate-signature-boundary-outcomes"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|function-pointer-invoke-prefix-argv:before-runtime-function-pointer-invoke"
@@ -2084,6 +2087,35 @@ DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectInvoke ReflectionMe
 unset -f gate_extra_asserts
 DN2CPP_OUT_SUFFIX=-ildiet DN2CPP_STRICT_COMPLETION=1 \
     ordinary_fixture_diff_gate ReflectInvoke ReflectionMethodGroupsOnly
+
+# Other drivers construct reflected application types, which independently roots
+# the attribute constructor this abstract-slot signature must discover.
+gate_extra_asserts() {
+    local out="$1" axis line output
+    run_bounded "$out/ReflectAttributeDiscoveryOnly$EXE_EXT" > "$out/attribute-discovery.native.stdout"
+    run_bounded dotnet "$_CG_APP" > "$out/attribute-discovery.dotnet.stdout"
+    run_bounded "$out/ReflectAttributeDiscoveryOnly$EXE_EXT" before-attribute-discovery \
+        > "$out/attribute-discovery-before.native.stdout"
+    run_bounded dotnet "$_CG_APP" before-attribute-discovery \
+        > "$out/attribute-discovery-before.dotnet.stdout"
+    for axis in native dotnet; do
+        output=$(strip_cr_win_file "$out/attribute-discovery.$axis.stdout")
+        sed '/^== reflection route final-pass attributes ==/,$d' "$out/attribute-discovery.$axis.stdout" \
+            > "$out/attribute-discovery-prefix.$axis.stdout"
+        diff -u <(strip_cr_win_file "$out/attribute-discovery-before.$axis.stdout") \
+            <(strip_cr_win_file "$out/attribute-discovery-prefix.$axis.stdout")
+        for line in 'reflection discovery baseline=23' '== reflection route final-pass attributes ==' \
+            'discovery return rows=1' 'discovery return value=17' \
+            'reflection route final-pass attributes end'; do
+            [ "$(grep -Fxc -- "$line" <<< "$output")" = 1 ] \
+                || { echo "FAIL: attribute-discovery witness must run once ($axis): $line" >&2; return 1; }
+        done
+    done
+}
+DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectInvoke ReflectAttributeDiscoveryOnly --no-ildiet
+DN2CPP_OUT_SUFFIX=-ildiet DN2CPP_STRICT_COMPLETION=1 \
+    ordinary_fixture_diff_gate ReflectInvoke ReflectAttributeDiscoveryOnly
+unset -f gate_extra_asserts
 
 # Delegate binding as a program's only reflection call needs an isolated driver.
 gate_extra_asserts() {
