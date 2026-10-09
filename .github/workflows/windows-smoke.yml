@@ -27,11 +27,11 @@ env:
 
 jobs:
   smoke:
-    name: ${{ matrix.partition == 'suite' && 'windows-suite' || matrix.partition == 'limits' && 'windows-transpiler-limits' || 'windows-primitives' }}
+    name: ${{ matrix.partition == 'suite' && 'windows-suite' || matrix.partition == 'limits' && 'windows-transpiler-limits' || matrix.partition == 'arrays' && 'windows-arrays' || 'windows-primitives' }}
     strategy:
       fail-fast: false
       matrix:
-        partition: ${{ fromJSON((github.event_name == 'pull_request' || github.event_name == 'push') && '["core","limits"]' || '["suite"]') }}
+        partition: ${{ fromJSON((github.event_name == 'pull_request' || github.event_name == 'push') && '["core","arrays","limits"]' || '["suite"]') }}
     runs-on: windows-latest
     timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'push') && 30 || 240 }}
     env:
