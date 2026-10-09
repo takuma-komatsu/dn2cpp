@@ -11,9 +11,9 @@ import sys
 if len(sys.argv) == 4 and sys.argv[1] == "--instrument-startup":
     output = Path(sys.argv[2])
     mode = sys.argv[3]
-    header = (output / "generated.h").read_text()
+    header = (output / "generated.h").read_text(encoding="utf-8")
     source = output / "generated.cpp"
-    text = source.read_text()
+    text = source.read_text(encoding="utf-8")
     checks = []
     for name in ("OrdinaryCell", "SuppressedCell"):
         done = re.search(r"extern std::atomic<int8_t> (" + name + r"__cctor_\w+__done);", header)
@@ -29,7 +29,7 @@ if len(sys.argv) == 4 and sys.argv[1] == "--instrument-startup":
     witness = "    if (!(" + " && ".join(checks) + ")) {\n"
     witness += '        std::fprintf(stderr, "initializer startup state failed\\n");\n'
     witness += "        dn2cpp_main_exit(66);\n        return 66;\n    }\n"
-    source.write_text(text[:entry] + witness + text[entry:])
+    source.write_text(text[:entry] + witness + text[entry:], encoding="utf-8")
     sys.exit(0)
 
 companion, probe, app, library, corelib, directory = map(Path, sys.argv[1:])
