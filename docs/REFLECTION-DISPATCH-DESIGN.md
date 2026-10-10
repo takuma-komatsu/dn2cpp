@@ -196,6 +196,12 @@ format/value family uses its shared shim, with Object overrides retaining the
 common Object helper address. A runtime-owned receiver uses its runtime ABI in
 address-taken wrappers. A WaitHandle interface slot reuses its address-taken
 Dispose wrapper so class and interface bindings agree before identity comparison.
+SafeHandle lifetime method groups recognize the runtime SafeWaitHandle receiver
+before reading an ordinary vtable. Class and interface bindings share the reached
+SafeHandle body and its selected MethodDef identity; interface-only images keep
+the small runtime thunk. Other SafeHandle receivers retain ordinary slot dispatch.
+Final class bindings leave null rejection to the delegate constructor.
+
 Task disposal uses the same completion-state check in direct calls, fast interface
 calls and runtime interface slots. Its allocation routes note the map independently
 of the static receiver type. Inherited WaitHandle and EventSource disposal bodies

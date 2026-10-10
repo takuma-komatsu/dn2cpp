@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SafeHandle method groups share runtime receiver routing, callable and selected-method identity.
 # Runtime-owned and intrinsic-base IDisposable slots preserve cleanup and user virtual overrides.
 # Pointer and function-pointer arrays share allocation/query identity and safe reflection validation.
 # Runtime-owned class method groups share direct-call dispatch and callable identity.
@@ -243,6 +244,7 @@ source gates/_pointer-array-types.sh
 source gates/_runtime-lifetime-interfaces.sh
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_runtime-lifetime-interfaces.sh samples/dotnet/ReflectInvoke/RuntimeLifetimeInterfacesOnly.csproj samples/dotnet/ReflectInvoke/RuntimeLifetimeInterfacesOnlyProgram.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|runtime-lifetime-disposal:isolated,trimmed,unshared|runtime-lifetime-prefix:before-runtime-lifetime-interfaces"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|safehandle-method-groups:isolated,trimmed,unshared|safehandle-prefix:before-safehandle-method-groups"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_pointer-array-types.sh samples/dotnet/ReflectInvoke/PointerArrayTypesOnly.csproj samples/dotnet/ReflectInvoke/PointerArrayTypesOnlyProgram.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|pointer-array-layout:packed,native,uncompressed,trimmed,unshared|pointer-array-prefix-argv:before-pointer-array-types"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_reflection-signature-types.sh samples/dotnet/ReflectInvoke/ReflectionSignatureTypesOnly.csproj"
@@ -343,6 +345,7 @@ gate_extra_asserts() {
     gate_reflection_signature_prefix_asserts "$1"
     gate_pointer_array_prefix_asserts "$1"
     gate_runtime_lifetime_prefix_asserts "$1"
+    gate_safe_handle_group_prefix_asserts "$1"
     local out="$1" native line registry boundary axis route query expected parameter
     "$py" gates/fixtures/check-reflection-layout.py "$out" "$reflection_layout_axis"
     # The runtime publishes a constructor's invoke plan only for a record inside a

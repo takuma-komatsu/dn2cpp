@@ -3459,9 +3459,12 @@ internal sealed partial class CppEmitter
                     slots[s] = "nullptr";
                 // Reuse the address-taken wrapper so class and interface delegates bind
                 // the same callable as the direct disposal lowering.
-                string callable = row.ThunkKind is Compilation.IntrinsicInterfaceThunkKind.WaitHandleDispose
-                        or Compilation.IntrinsicInterfaceThunkKind.TaskDispose
-                    && info.Target is { } target && _c.IntrinsicFtnTargets.Contains(target.Emittable)
+                string callable = info.Target is { } target
+                    && ((row.ThunkKind is Compilation.IntrinsicInterfaceThunkKind.WaitHandleDispose
+                            or Compilation.IntrinsicInterfaceThunkKind.TaskDispose)
+                        && _c.IntrinsicFtnTargets.Contains(target.Emittable)
+                        || row.ThunkKind == Compilation.IntrinsicInterfaceThunkKind.SafeWaitHandleDispose
+                            && _c.Reachable.Contains(target.Emittable))
                     ? target.Emittable.CppName : row.ThunkSym;
                 slots[slot] = $"(const void*)&{callable}";
                 sb.AppendLine($"static const void* intr_itf_{thunk}[] = {{ {string.Join(", ", slots)} }};");

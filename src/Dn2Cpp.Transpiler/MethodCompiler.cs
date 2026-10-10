@@ -3862,6 +3862,22 @@ internal sealed partial class MethodCompiler : IEvalStack
                         ? $"(void*)&{address}"
                         : $"((void)dn2cpp_null_check({obj.Expr}), (void*)&{address})";
                 }
+                else if (m.IsVirtual && CoreIntrinsics.MdSafeHandleLifetime.Matches(m))
+                {
+                    // SafeWaitHandle has no ordinary vtable. Its inherited body already
+                    // selects the runtime cleanup without changing other SafeHandle layouts.
+                    _c.NoteIntrinsicInterfaces("Microsoft.Win32.SafeHandles.SafeWaitHandle");
+                    if (_c.ReachManagedMethod(m.DeclaringClass, m.Name, static args => args.Length == 0) is null)
+                        throw new NotSupportedException("SafeHandle lifetime binding needs its managed body");
+                    _c.NoteNamedBodySymbol(_method, m.Emittable);
+                    string receiver = NewTemp("Dn2CppObject*");
+                    bool isFinal = (m.Attributes & System.Reflection.MethodAttributes.Final) != 0;
+                    Emit($"{receiver} = (Dn2CppObject*)"
+                        + (isFinal ? obj.Expr : $"dn2cpp_null_check({obj.Expr})") + ";");
+                    // A final method leaves null for the delegate constructor to reject.
+                    expr = $"({receiver} == nullptr || dn2cpp_isinst({receiver}, &dn2cpp_safewaithandle_type) != nullptr"
+                        + $" ? (void*)&{m.Emittable.CppName} : (void*){receiver}->type->vtable[{m.VtableSlot}])";
+                }
                 else if (m.IsVirtual && CoreIntrinsics.BrLifetimeDispose.Matches(m.DeclaringClass.FullName, m.Name))
                 {
                     NoteFtnTargetBody(m.Emittable);

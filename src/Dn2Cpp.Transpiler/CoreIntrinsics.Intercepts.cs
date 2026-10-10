@@ -320,6 +320,9 @@ internal enum InterceptEmitArm
     EnumInstanceFormatBody,
     /// <summary>Inherited lifetime wrappers and their protected base implementations.</summary>
     LifetimeDisposeBody,
+    /// <summary>SafeHandle lifetime calls and bindings recognize the runtime SafeWaitHandle layout.
+    /// Route-only in MethodCompiler.Call and ldvirtftn; ordinary bodies remain reachable.</summary>
+    SafeWaitHandleBase,
     /// <summary>A bounded method's call site: drop the arguments and push the
     /// default result (null / zero / nothing-for-void) —
     /// <c>MethodCompiler.EmitManagedCall</c>. The ldftn mouth
@@ -746,6 +749,16 @@ internal static partial class CoreIntrinsics
         InterceptCutKind.Cut, InterceptEmitArm.PlatformIsa,
         extra: static mi => mi.DeclaringClass.PlatformIsa is not null);
 
+    /// <summary>Public SafeHandle lifetime members share the runtime-owned receiver boundary
+    /// in direct calls, method-group binding and selected-method identity. The real bodies
+    /// remain callable for SafeFileHandle and user subclasses.</summary>
+    public static readonly MethodDefIntercept MdSafeHandleLifetime = new(
+        InterceptCutKind.None, InterceptEmitArm.SafeWaitHandleBase,
+        typeGate: "System.Runtime.InteropServices.SafeHandle",
+        extra: static mi => mi.Name is "Dispose" or "Close"
+            && !mi.IsStatic && mi.Signature.ReturnType.IsVoid
+            && mi.Signature.ParameterTypes.Length == 0);
+
     /// <summary>Every MethodDefinition-arm row — a REGISTRY, not a chain: the
     /// order here carries no meaning, because each asker references the rows it
     /// needs at its own chain position (see <see cref="MethodDefIntercept"/> on
@@ -769,6 +782,7 @@ internal static partial class CoreIntrinsics
         MdMemoryMarshalArrayData,
         MdIntrinsicType,
         MdPlatformIsa,
+        MdSafeHandleLifetime,
     ];
 
     /// <summary>First row in <paramref name="rows"/> matching

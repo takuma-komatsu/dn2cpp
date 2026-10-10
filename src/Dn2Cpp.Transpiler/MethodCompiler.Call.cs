@@ -1163,15 +1163,15 @@ internal sealed partial class MethodCompiler
     {
         string name = callee.Name;
         int parameterCount = callee.Signature.ParameterTypes.Length;
-        if (callee.DeclaringClass.FullName != "System.Runtime.InteropServices.SafeHandle"
-            || name switch
-            {
-                "DangerousGetHandle" or "DangerousRelease" or "get_IsInvalid"
-                    or "get_IsClosed" or "Close" or "SetHandleAsInvalid" => parameterCount != 0,
-                "DangerousAddRef" => parameterCount != 1,
-                "Dispose" => parameterCount is not (0 or 1),
-                _ => true,
-            })
+        if (!CoreIntrinsics.MdSafeHandleLifetime.Matches(callee)
+            && (callee.DeclaringClass.FullName != "System.Runtime.InteropServices.SafeHandle"
+                || name switch
+                {
+                    "DangerousGetHandle" or "DangerousRelease" or "get_IsInvalid"
+                        or "get_IsClosed" or "SetHandleAsInvalid" => parameterCount != 0,
+                    "DangerousAddRef" or "Dispose" => parameterCount != 1,
+                    _ => true,
+                }))
             return false;
 
         var args = PopArgs(callee, hasThis: true);

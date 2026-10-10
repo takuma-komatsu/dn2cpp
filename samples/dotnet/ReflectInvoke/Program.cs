@@ -326,6 +326,9 @@ namespace ReflectInvoke
             if (args.Length > 0 && args[0] == "before-runtime-lifetime-interfaces")
                 return;
             RuntimeHandleRelationSubset.Program.RunLifetimeInterfaces();
+            if (args.Length > 0 && args[0] == "before-safehandle-method-groups")
+                return;
+            RuntimeHandleRelationSubset.Program.RunSafeHandleMethodGroups();
         }
     }
 }

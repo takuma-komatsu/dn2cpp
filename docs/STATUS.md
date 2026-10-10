@@ -47,7 +47,6 @@ never as a reference back to a row.
 
 
 
-| 172 | transpiler/runtime | **A SafeWaitHandle class method group reads a missing virtual table before binding.** For `var safe = new SafeWaitHandle(IntPtr.Zero, false); Action dispose = safe.Dispose;`, CLR binds and invokes the inherited `SafeHandle.Dispose` method, and it compares equal to `((IDisposable)safe).Dispose`; native crashes during `ldvirtftn`, before comparison or invocation. The runtime-owned SafeWaitHandle has no emitted vtable, but class method-group lowering reads the ordinary SafeHandle virtual slot. Direct SafeHandle calls already recognize this receiver and use the SafeWaitHandle cleanup helper. Route the class binding through the same runtime-owned receiver boundary, keeping null-binding behavior, the callable address and selected declaring-method identity consistent with the interface slot. Cover equality, Delegate.Remove and separate invocation in ReflectInvoke without forcing SafeHandle emission in an interface-only image. |
 
 ## Regression gate
 
