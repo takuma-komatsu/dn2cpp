@@ -317,6 +317,9 @@ namespace ReflectInvoke
             if (args.Length > 0 && args[0] == "before-runtime-owned-method-groups")
                 return;
             DelegateVirtualIdentitySubset.Program.RunRuntimeOwned();
+            if (args.Length > 0 && args[0] == "before-reflection-signature-types")
+                return;
+            ReflectionSignatureTypesSubset.Program.Run();
         }
     }
 }

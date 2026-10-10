@@ -3314,6 +3314,15 @@ internal sealed partial class MethodCompiler : IEvalStack
                     Push(StackKind.Ptr, "const Dn2CppTypeInfo*", slotTi ?? "nullptr", target);
                     break;
                 }
+                if (CppEmitter.HasSignatureShape(target))
+                {
+                    var signature = CppEmitter.DecodeReflectionType(_c, _method, insn.Token);
+                    if (SharedTrial && signature.Open)
+                        ThrowSharedTaint("type-identity", "signature type token");
+                    string symbol = _c.NoteReflectionTypeToken(_method, insn.Token, signature.Binding);
+                    Push(StackKind.Ptr, "const Dn2CppTypeInfo*", symbol + "()", target);
+                    break;
+                }
                 // typeof(value type) names its ti_ even when the struct is never used as a
                 // value — e.g. typeof(int?) -> Nullable<Int32>, or typeof(Half) appearing
                 // only in a reflection type-equality chain. Such a type is never pulled
@@ -3342,9 +3351,8 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // already builds for an isinst/castclass target. Falling through to the
                 // nullptr fold below would make typeof(int[,]) a null Type, so
                 // GetInterfaces()/Name/BaseType on it would throw NullReferenceException.
-                // The fold's remaining subjects — a pointer, a byref, a function pointer —
-                // genuinely have no metadata to name; an MD array does, and the interner
-                // (dn2cpp_array_ti) returns its registered static identity.
+                // Signature-bearing tokens used their query descriptor above; ordinary
+                // MD arrays use the same interner as allocated arrays.
                 if (target is { Kind: TypeKind.MDArray, Element: { } mdElem, Rank: var mdRank })
                 {
                     _c.NoteMdArrayUse();

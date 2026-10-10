@@ -479,6 +479,7 @@ ORDERED_PROJECTS=(
 # here would turn a missing optional prerequisite into a Phase-3 failure before
 # the gate can report the sanctioned skip.
 GATE_OWNED_PROJECTS=(
+    "samples/dotnet/ReflectInvoke/ReflectionSignatureTypesOnly.csproj"
     "samples/dotnet/LuaCSharpSample/LuaCSharpSample.csproj"
     "samples/dotnet/MagicOnionClientSample/MagicOnionClientSample.csproj"
     "samples/dotnet/MemoryPackSample/MemoryPackSample.csproj"

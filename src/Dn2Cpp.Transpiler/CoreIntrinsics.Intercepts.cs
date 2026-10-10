@@ -799,6 +799,15 @@ internal static partial class CoreIntrinsics
 
     // ---- MemberReference-arm rows ----
 
+    /// <summary>Runtime TypeInfo declared-member queries use the carried member
+    /// tables, since runtime Type handles have no managed vtable. The MemberRef
+    /// emit route leaves the real bodies reachable.</summary>
+    public static readonly MemberRefIntercept MrTypeInfoDeclaredMembers = new(
+        InterceptCutKind.None, InterceptEmitArm.IntrinsicUnderDeclType,
+        typeGate: "System.Reflection.TypeInfo",
+        extra: static (_, n, sig) => (n is "get_DeclaredFields" or "get_DeclaredConstructors")
+            && sig().Header.IsInstance && sig().ParameterTypes.Length == 0);
+
     /// <summary>MemoryExtensions.ToUpperInvariant/ToLowerInvariant over char
     /// spans (<see cref="LoweredSpanCaseFold"/> — shape-keyed; any other overload
     /// falls through and transpiles from its real body). The TypeGate duplicates
@@ -1076,6 +1085,7 @@ internal static partial class CoreIntrinsics
     /// chain position (same contract as <see cref="MethodDefIntercepts"/>).</summary>
     public static readonly MemberRefIntercept[] MemberRefIntercepts =
     [
+        MrTypeInfoDeclaredMembers,
         MrSpanCaseFold,
         MrIoMember,
         MrEnvMember,

@@ -393,6 +393,8 @@ Dn2CppType* dn2cpp_type_make_generic(Dn2CppType* def, Dn2CppArrayRef* args)
     {
         auto* a = reinterpret_cast<Dn2CppType*>(args->data[i]);
         if (a == nullptr || a->typeInfo == nullptr) { haveArgs = false; continue; }
+        if (dn2cpp_signature_kind(a->typeInfo) != 0)
+            dn2cpp_throw_argument_msg("A pointer, by-reference or function-pointer type cannot be a generic argument.");
         if ((a->typeInfo->flags & DN2CPP_TF_GENERICPARAM) != 0)
             dn2cpp_throw_platform_not_supported("Reflection: composed open generic types are not supported");
         argv[i] = a->typeInfo;
@@ -676,6 +678,8 @@ Dn2CppObject* dn2cpp_box_by_handle(const Dn2CppTypeInfo* ti, const void* value)
 {
     if (ti == nullptr)
         dn2cpp_throw_argument_null_param("type");
+    if (dn2cpp_signature_kind(ti) != 0)
+        dn2cpp_throw_argument_msg("Type is not supported.");
     if ((ti->flags & (DN2CPP_TF_GENERICDEF | DN2CPP_TF_GENERICPARAM)) != 0)
         dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_TYPE_NOT_SUPPORTED);
     if ((ti->flags & DN2CPP_TF_BYREFLIKE) != 0)
@@ -699,6 +703,8 @@ Dn2CppObject* dn2cpp_get_uninitialized_object(Dn2CppType* t)
     if (t == nullptr)
         dn2cpp_throw_argument_null_param("type");
     const Dn2CppTypeInfo* ti = t->typeInfo;
+    if (dn2cpp_signature_kind(ti) != 0)
+        dn2cpp_throw_argument_msg("Type is not supported.");
     if ((ti->flags & DN2CPP_TF_GENERICPARAM) != 0)
         dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_TYPE_NOT_SUPPORTED);
     if ((ti->flags & DN2CPP_TF_BYREFLIKE) != 0)
@@ -2153,6 +2159,54 @@ static int32_t dn2cpp_bare_method_parameter_index(const char* key, int32_t count
     return digit && *p == '\0' && index < count ? index : -1;
 }
 
+const Dn2CppTypeInfo* dn2cpp_signature_type(const Dn2CppBindingSignature* signature,
+    const Dn2CppTypeInfo* declaring)
+{
+    if (signature == nullptr)
+        dn2cpp_throw_platform_not_supported("Reflection: unresolved signature type");
+    const auto& sig = *signature;
+    if (sig.kind == 0)
+    {
+        if (sig.type == nullptr || (sig.type->flags & (DN2CPP_TF_SHARED_CANON | DN2CPP_TF_GENERICDEF | DN2CPP_TF_GENERICPARAM)) != 0)
+            dn2cpp_throw_platform_not_supported("Reflection: unresolved signature type");
+        return sig.type;
+    }
+    if (sig.kind == 5)
+    {
+        if (declaring == nullptr || declaring->genericArgs == nullptr
+            || sig.value < 0 || sig.value >= declaring->genericArgCount)
+            dn2cpp_throw_platform_not_supported("Reflection: composed open generic signature types are not supported");
+        Dn2CppBindingSignature actual{0, declaring->genericArgs[sig.value], 0, nullptr, 0, nullptr};
+        return dn2cpp_signature_type(&actual);
+    }
+    if (sig.kind >= 1 && sig.kind <= 3)
+    {
+        std::vector<const Dn2CppTypeInfo*> children;
+        for (int32_t i = 0; i < sig.childCount; i++)
+            children.push_back(dn2cpp_signature_type(&sig.children[i], declaring));
+        return dn2cpp_compound_type(sig.kind, sig.value, children.data(), sig.childCount);
+    }
+    if ((sig.kind == 6 || sig.kind == 7) && sig.childCount == 1)
+        return dn2cpp_array_ti(dn2cpp_signature_type(&sig.children[0], declaring),
+            sig.kind == 6 ? 1 : sig.value, sig.kind == 7);
+    if (sig.kind == 4 && sig.type != nullptr)
+    {
+        auto* args = dn2cpp_newarr_ref(sig.childCount);
+        for (int32_t i = 0; i < sig.childCount; i++)
+            dn2cpp_gc_store_ref(&args->data[i], reinterpret_cast<Dn2CppObject*>(
+                dn2cpp_get_type_from_handle(dn2cpp_signature_type(&sig.children[i], declaring))));
+        return dn2cpp_type_make_generic(dn2cpp_get_type_from_handle(sig.type), args)->typeInfo;
+    }
+    dn2cpp_throw_platform_not_supported("Reflection: unresolved signature type");
+}
+
+static const Dn2CppTypeInfo* dn2cpp_reflection_parameter_type(const Dn2CppParamInfo& parameter,
+    const Dn2CppTypeInfo* declaring)
+{
+    return parameter.reflectionSignature != nullptr
+        ? dn2cpp_signature_type(parameter.reflectionSignature, declaring) : parameter.paramType;
+}
+
 // Exact parameter identities, including a formal parameter of this MethodDef.
 // Composed open signatures are not modeled. A null Type element throws like .NET.
 static bool dn2cpp_params_match_types(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi, Dn2CppArrayRef* types)
@@ -2173,7 +2227,7 @@ static bool dn2cpp_params_match_types(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi,
             if (index < 0 || dn2cpp_method_parameter_type(mi, index) != pt->typeInfo)
                 return false;
         }
-        else if (param.paramType != pt->typeInfo)
+        else if (dn2cpp_reflection_parameter_type(param, row.declaringType) != pt->typeInfo)
             return false;
     }
     return true;
@@ -3080,8 +3134,12 @@ Dn2CppType* dn2cpp_methodref_return_type(Dn2CppMethodRef* m)
 {
     const auto mi = dn2cpp_methodref_require(m);
     const Dn2CppMethodInfo row = *mi;
-    return dn2cpp_get_type_from_handle(m->isGenericDefView != 0
-        ? dn2cpp_method_definition_type(mi, row.genericDefinitionReturnKey, row.returnType) : row.returnType);
+    const auto* declaring = dn2cpp_invoke_declaring(row.declaringType, m->reflectedType);
+    const auto* type = m->isGenericDefView != 0 && row.genericDefinitionReturnKey != nullptr
+        ? dn2cpp_method_definition_type(mi, row.genericDefinitionReturnKey, row.returnType)
+        : row.returnReflectionSignature != nullptr
+            ? dn2cpp_signature_type(row.returnReflectionSignature, declaring) : row.returnType;
+    return dn2cpp_get_type_from_handle(type);
 }
 
 int32_t dn2cpp_methodref_is_static(Dn2CppMethodRef* m)
@@ -3138,6 +3196,7 @@ Dn2CppObject* dn2cpp_methodref_return_parameter(Dn2CppMethodRef* m)
     auto* pi = static_cast<Dn2CppParamInfo*>(dn2cpp_alloc(sizeof(Dn2CppParamInfo)));
     *pi = Dn2CppParamInfo{};
     pi->paramType = row.returnType;
+    pi->reflectionSignature = row.returnReflectionSignature;
     pi->genericDefinitionKey = row.genericDefinitionReturnKey;
     pi->requiredCustomModifiers = row.returnRequiredCustomModifiers;
     pi->requiredCustomModifierCount = row.returnRequiredCustomModifierCount;
@@ -3160,9 +3219,10 @@ Dn2CppType* dn2cpp_paramref_parameter_type(Dn2CppParamRef* p)
 {
     const Dn2CppParamInfo parameter = *dn2cpp_paramref_require(p)->param;
     // Display and attributes remain usable without a composed open Type handle.
-    return dn2cpp_get_type_from_handle(p->ownerGenericDefView != 0
+    const auto* declaring = p->owner ? dn2cpp_invoke_declaring(p->owner->declaringType, p->ownerReflected) : nullptr;
+    return dn2cpp_get_type_from_handle(p->ownerGenericDefView != 0 && parameter.genericDefinitionKey != nullptr
         ? dn2cpp_method_definition_type(p->owner, parameter.genericDefinitionKey, parameter.paramType)
-        : parameter.paramType);
+        : dn2cpp_reflection_parameter_type(parameter, declaring));
 }
 
 int32_t dn2cpp_paramref_position(Dn2CppParamRef* p)
@@ -3621,7 +3681,7 @@ static const char* dn2cpp_pointer_suffix(char (&buf)[260], int32_t depth, bool b
 // value or a System.Reflection.Pointer's of a type the parameter takes; no argument
 // converts to a by-ref-like type. `cell` receives the cell.
 static Dn2CppObject* dn2cpp_invoke_pass_arg(const Dn2CppParamInfo& param, Dn2CppObject* arg,
-    bool wrapExceptions, char** cell)
+    bool wrapExceptions, char** cell, const Dn2CppTypeInfo* declaring = nullptr)
 {
     const int32_t kind = param.passKind;
     const Dn2CppTypeInfo* t = param.passType;
@@ -3666,6 +3726,12 @@ static Dn2CppObject* dn2cpp_invoke_pass_arg(const Dn2CppParamInfo& param, Dn2Cpp
         {
             Dn2CppType* type = nullptr;
             void* value = g_pointer_box_read(arg, &type);
+            // Public Pointer.Box types use query companions; legacy Invoke boxes
+            // keep their ABI identities. Only the full descriptor can equate them.
+            if (type != nullptr && dn2cpp_signature_kind(type->typeInfo) == 1
+                && param.reflectionSignature != nullptr
+                && type->typeInfo == dn2cpp_signature_type(param.reflectionSignature, declaring))
+                return static_cast<Dn2CppObject*>(value);
             if (dn2cpp_pointer_box_accepts(type != nullptr ? type->typeInfo : nullptr, t, depth))
                 return static_cast<Dn2CppObject*>(value);
         }
@@ -3691,7 +3757,8 @@ static Dn2CppObject* dn2cpp_invoke_pass_arg(const Dn2CppParamInfo& param, Dn2Cpp
 // cell reachable (the collector takes no heap word pointing into an object as a
 // reference to it) and names what dn2cpp_invoke_write_back copies back.
 static Dn2CppObject** dn2cpp_invoke_pass_args(Dn2CppMetadataTable<Dn2CppParamInfo> parameters,
-    Dn2CppObject** args, int32_t argc, bool wrapExceptions, Dn2CppArrayI4** defaultCopyBack)
+    Dn2CppObject** args, int32_t argc, bool wrapExceptions, Dn2CppArrayI4** defaultCopyBack,
+    const Dn2CppTypeInfo* declaring)
 {
     Dn2CppArrayRef* list = dn2cpp_newarr_ref(argc * 2);
     for (int32_t i = 0; i < argc; i++)
@@ -3703,7 +3770,7 @@ static Dn2CppObject** dn2cpp_invoke_pass_args(Dn2CppMetadataTable<Dn2CppParamInf
         if (param->passKind != 0)
         {
             char* cell = nullptr;
-            pass = dn2cpp_invoke_pass_arg(*param.operator->(), pass, wrapExceptions, &cell);
+            pass = dn2cpp_invoke_pass_arg(*param.operator->(), pass, wrapExceptions, &cell, declaring);
             if (cell != nullptr)
                 dn2cpp_gc_store_ref(&list->data[argc + i], reinterpret_cast<Dn2CppObject*>(cell));
         }
@@ -3893,7 +3960,7 @@ static void dn2cpp_field_check_target(const Dn2CppFieldRef* f, const Dn2CppField
 
 // Pointer field conversion shares Invoke's validation without exception wrapping.
 Dn2CppObject* dn2cpp_field_pointer_value(Dn2CppObject* value, int32_t passKind,
-    const Dn2CppTypeInfo* passType)
+    const Dn2CppTypeInfo* passType, const Dn2CppBindingSignature* signature)
 {
     // FieldInfo accepts UIntPtr for void*, while MethodBase.Invoke does not.
     if ((passKind & ~(DN2CPP_PASS_SIGNATURE_UNKNOWN | DN2CPP_PASS_FNPTR_POINTEE)) == DN2CPP_PASS_POINTER
@@ -3903,6 +3970,7 @@ Dn2CppObject* dn2cpp_field_pointer_value(Dn2CppObject* value, int32_t passKind,
     Dn2CppParamInfo param{};
     param.passKind = passKind;
     param.passType = passType;
+    param.reflectionSignature = signature;
     char* cell = nullptr;
     return dn2cpp_invoke_pass_arg(param, value, false, &cell);
 }
@@ -4320,7 +4388,8 @@ static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi
         obj = dn2cpp_invoke_receiver(row, obj, reflected);
         if (argc != row.paramCount)
             dn2cpp_throw_invoke_parameter_count();
-        args = passArgs ? dn2cpp_invoke_pass_args(row.parameters, args, argc, wrapExceptions, &defaultCopyBack)
+        args = passArgs ? dn2cpp_invoke_pass_args(row.parameters, args, argc, wrapExceptions, &defaultCopyBack,
+                            dn2cpp_invoke_declaring(row.declaringType, reflected))
                         : dn2cpp_invoke_check_args(mi, row.checkedTypes(), args, argc, &defaultCopyBack);
         if (isStatic && (row.ilAttrs & DN2CPP_MA_ABSTRACT) != 0
             && (row.declaringType->flags & DN2CPP_TF_INTERFACE) != 0)
@@ -6277,7 +6346,8 @@ static Dn2CppObject* dn2cpp_ctor_invoke_argv(Dn2CppMetadataHandle<Dn2CppMethodIn
     Dn2CppObject** callerArgs = args;
     const bool passArgs = (plan.flags & Dn2CppInvokePlan::kPassArgs) != 0;
     Dn2CppArrayI4* defaultCopyBack = nullptr;
-    args = passArgs ? dn2cpp_invoke_pass_args(plan.parameters, args, argc, wrapExceptions, &defaultCopyBack)
+    args = passArgs ? dn2cpp_invoke_pass_args(plan.parameters, args, argc, wrapExceptions, &defaultCopyBack,
+                        plan.declaringType)
                     : dn2cpp_invoke_check_args(mi, plan.checkedTypes(), args, argc, &defaultCopyBack);
     const Dn2CppTypeInfo* ti = plan.declaringType;
     bool isValue = (ti->flags & DN2CPP_TF_VALUETYPE) != 0;
@@ -6410,7 +6480,7 @@ Dn2CppMethodRef* dn2cpp_type_get_constructor_full(Dn2CppType* t, Dn2CppArrayRef*
         for (int32_t j = 0; j < want; j++)
         {
             auto* pt = reinterpret_cast<Dn2CppType*>(paramTypes->data[j]);
-            if (row->parameters[j]->paramType != pt->typeInfo)
+            if (dn2cpp_reflection_parameter_type(*row->parameters[j], ti) != pt->typeInfo)
             {
                 match = false;
                 break;
@@ -7874,6 +7944,14 @@ Dn2CppString* dn2cpp_reflection_handle_tostring(Dn2CppObject* member)
 
 int32_t dn2cpp_type_il_attrs(const Dn2CppTypeInfo* ti)
 {
+    if ((ti->flags & DN2CPP_TF_ARRAY) != 0)
+    {
+        const Dn2CppTypeInfo* element = ti->elementType;
+        while (element != nullptr && (element->flags & DN2CPP_TF_ARRAY) != 0)
+            element = element->elementType;
+        if (dn2cpp_signature_kind(element) != 0)
+            return 0x2101; // CLR arrays: public, sealed, serializable.
+    }
     // Presence test: emitted types always stamp their (nonzero) metadata token,
     // so a genuine all-zero TypeAttributes word (an internal class with a static
     // ctor) is still served exactly rather than falling to the synthesis.
@@ -7906,6 +7984,11 @@ int32_t dn2cpp_type_is_not_public(const Dn2CppTypeInfo* ti)
 // answer from their own visibility only; generic arguments are not consulted.
 int32_t dn2cpp_type_is_visible(const Dn2CppTypeInfo* ti)
 {
+    const Dn2CppTypeInfo* signature = ti;
+    while ((signature->flags & DN2CPP_TF_ARRAY) != 0 && signature->elementType != nullptr)
+        signature = signature->elementType;
+    if (dn2cpp_signature_kind(signature) != 0)
+        return dn2cpp_signature_is_visible(signature);
     if ((ti->flags & DN2CPP_TF_HIDDEN_ENCLOSING) != 0)
         return 0;
     int32_t vis = dn2cpp_type_il_attrs(ti) & DN2CPP_TA_VISMASK;
@@ -7917,12 +8000,11 @@ int32_t dn2cpp_type_is_nested_public(const Dn2CppTypeInfo* ti)
     return (dn2cpp_type_il_attrs(ti) & DN2CPP_TA_VISMASK) == DN2CPP_TA_NESTEDPUB ? 1 : 0;
 }
 
-// HasElementType/GetRootElementType: arrays are the only element-bearing Types
-// that materialize at runtime here (no byref/pointer Type objects exist; the
-// static typeof folds handle those in the transpiler).
+// A function pointer has a signature, but no element type.
 int32_t dn2cpp_type_has_element_type(const Dn2CppTypeInfo* ti)
 {
-    return (ti->flags & DN2CPP_TF_ARRAY) != 0 ? 1 : 0;
+    return (ti->flags & DN2CPP_TF_ARRAY) != 0 || dn2cpp_signature_kind(ti) == 1
+        || dn2cpp_signature_kind(ti) == 2 ? 1 : 0;
 }
 
 Dn2CppType* dn2cpp_type_get_root_element_type(Dn2CppType* t)
@@ -7958,6 +8040,10 @@ Dn2CppString* dn2cpp_type_format_type_name(Dn2CppType* t)
 Dn2CppType* dn2cpp_type_make_array_type(Dn2CppType* t)
 {
     dn2cpp_type_require(t);
+    if (dn2cpp_signature_kind(t->typeInfo) == 2)
+        dn2cpp_throw_type_load();
+    if (dn2cpp_signature_kind(t->typeInfo) != 0)
+        return dn2cpp_get_type_from_handle(dn2cpp_array_ti(t->typeInfo, 1, false));
     if ((t->typeInfo->flags & DN2CPP_TF_GENERICPARAM) != 0)
         dn2cpp_throw_platform_not_supported("Reflection: composed open generic types are not supported");
     if ((t->typeInfo->flags & DN2CPP_TF_BYREFLIKE) != 0)
@@ -7981,6 +8067,12 @@ Dn2CppType* dn2cpp_type_make_array_type_rank(Dn2CppType* t, int32_t rank)
     dn2cpp_type_require(t);
     if (rank <= 0)
         dn2cpp_throw_index_out_of_range();
+    if (dn2cpp_signature_kind(t->typeInfo) != 0 && rank > 32)
+        dn2cpp_throw_type_load();
+    if (dn2cpp_signature_kind(t->typeInfo) == 2)
+        dn2cpp_throw_type_load();
+    if (dn2cpp_signature_kind(t->typeInfo) != 0)
+        return dn2cpp_get_type_from_handle(dn2cpp_array_ti(t->typeInfo, rank, true));
     if ((t->typeInfo->flags & DN2CPP_TF_GENERICPARAM) != 0)
         dn2cpp_throw_platform_not_supported("Reflection: composed open generic types are not supported");
     if ((t->typeInfo->flags & DN2CPP_TF_BYREFLIKE) != 0)
@@ -8273,6 +8365,9 @@ Dn2CppMethodRef* dn2cpp_methodref_make_generic(Dn2CppMethodRef* m, Dn2CppArrayRe
         if ((dn2cpp_type_require(reinterpret_cast<Dn2CppType*>(types->data[i]))->flags
                 & DN2CPP_TF_GENERICPARAM) != 0)
             dn2cpp_throw_platform_not_supported("Reflection: open generic method instantiations are not supported");
+    for (int32_t i = 0; i < argc; i++)
+        if (dn2cpp_signature_kind(reinterpret_cast<Dn2CppType*>(types->data[i])->typeInfo) != 0)
+            dn2cpp_throw_argument_msg("A pointer, by-reference or function-pointer type cannot be a generic argument.");
     // A metadata-answerable member has no compiled instantiations to resolve
     // against: its answer is a function of a concrete type argument, including
     // one no static call site named.
@@ -8448,9 +8543,9 @@ Dn2CppArrayRef* dn2cpp_methodref_get_parameter_types(Dn2CppMethodRef* m)
     {
         const Dn2CppParamInfo parameter = *row.parameters[i];
         dn2cpp_gc_store_ref(&arr->data[i], reinterpret_cast<Dn2CppObject*>(
-            dn2cpp_get_type_from_handle(m->isGenericDefView != 0
+            dn2cpp_get_type_from_handle(m->isGenericDefView != 0 && parameter.genericDefinitionKey != nullptr
                 ? dn2cpp_method_definition_type(m->method, parameter.genericDefinitionKey, parameter.paramType)
-                : parameter.paramType)));
+                : dn2cpp_reflection_parameter_type(parameter, dn2cpp_invoke_declaring(row.declaringType, m->reflectedType)))));
     }
     return arr;
 }

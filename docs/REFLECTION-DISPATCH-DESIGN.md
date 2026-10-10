@@ -104,6 +104,28 @@ that no call site reaches.
 
 ## Invocation and binding
 
+Public signature Type queries use a cold recursive descriptor separate from
+Invoke pass modes and delegate-binding evidence. Native and packed rows retain
+the same descriptor, including on synthesized method and return-parameter rows.
+Its concrete leaves name existing type-infos; a runtime-template class argument
+resolves against the reflected clone. Missing leaves and composed open forms
+refuse explicitly. A query dependency alone cannot promote an Invoke referent
+or discard a binding argument path.
+
+Pointer, by-reference and function-pointer companions are interned by shape and
+actual child identities for the process lifetime. They share the ordinary
+pinned Type-object interner with `typeof` and the `Make*Type` queries. Negative
+`arrayRank` values distinguish these companions without adding hot type-info
+fields or overlapping the array flags. Function pointers carry return and
+parameter children, and have no element type. These handles describe signatures;
+they supply no object layout, array allocation or generic argument capability.
+The shared assignability rule compares matching pointer/byref kinds by immediate
+primitive equivalence or reference assignability; nested signature levels and
+array signature elements require identity.
+An explicit `Pointer.Box` can carry such a pointer Type. Invoke and field setters
+compare its complete query signature before applying the existing ABI validation;
+legacy result boxes retain their internal pointer identities.
+
 A parameter's pass mode tells an ordinary value from a by-reference cell, an
 unmanaged or function pointer and a by-ref-like value; `ref`, `in` and `out`
 parameters share the by-reference mode. Runtime validation establishes target

@@ -520,6 +520,13 @@ constexpr Dn2CppTypeInfo dn2cpp_ti_with_formatspec(
 #define DN2CPP_TF_GENERICPARAM 0x40000000
 #define DN2CPP_TF_NON_SZ_ARRAY (-2147483647 - 1)
 
+// Signature-only companions have no array/layout flags. Negative ranks are
+// reserved for their discriminator; real array ranks remain strictly positive.
+inline int32_t dn2cpp_signature_kind(const Dn2CppTypeInfo* ti)
+{
+    return ti != nullptr && ti->arrayRank < 0 ? -ti->arrayRank : 0;
+}
+
 // Rank-one non-SZ arrays use the MD payload; rank alone cannot select a layout.
 inline bool dn2cpp_is_md_array(const Dn2CppTypeInfo* t)
 {
@@ -895,6 +902,8 @@ struct Dn2CppFieldRef : Dn2CppObject
 // Reflection parameter metadata. One entry per parameter in a method's
 // Dn2CppMethodInfo::parameters table. Position is the array index; name is the
 // source parameter name (or null when the metadata carries none).
+struct Dn2CppBindingSignature;
+
 struct Dn2CppParamInfo
 {
     const Dn2CppTypeInfo* paramType;
@@ -933,6 +942,8 @@ struct Dn2CppParamInfo
     Dn2CppObject* (*defaultValue)();
     // Delegate-only pointee identity when Invoke's descriptor projects to Object.
     const Dn2CppTypeInfo* bindingPointeeType;
+    // Query-only signature; Invoke keeps paramType, passKind and passType.
+    const Dn2CppBindingSignature* reflectionSignature;
 };
 
 // The real CoreLib singleton, shared by Type.Missing and Missing.Value.
@@ -1065,6 +1076,7 @@ struct Dn2CppMethodInfo
     const Dn2CppTypeInfo* returnSignatureType;
     // Ordinary pointer identity; Invoke keeps returnPassType and its boxing ABI.
     const Dn2CppTypeInfo* returnBindingPointeeType;
+    const Dn2CppBindingSignature* returnReflectionSignature;
 };
 
 // A synthesized constructor differs only in its allocation's declaring type.
@@ -1528,15 +1540,20 @@ int32_t dn2cpp_type_is_nested(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_is_interface(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_is_abstract(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_is_sealed(const Dn2CppTypeInfo* ti);
-// Type.IsByRefLike reads the flag bit. Type.IsPointer / IsByRef are always 0 at
-// runtime — dn2cpp never materializes a pointer/byref Type value (only typeof of a
-// pointer/byref type folds to true statically); the helpers take the type so the
-// receiver is still evaluated, matching the other Type-property getters.
 int32_t dn2cpp_type_is_by_ref_like(const Dn2CppTypeInfo* ti);
-// Type.IsNestedPublic: the ECMA visibility nibble of the raw TypeAttributes
-// word equals NestedPublic (the synthesized word for hand-written type-infos
-// never carries a nested visibility, so they answer false).
 int32_t dn2cpp_type_is_nested_public(const Dn2CppTypeInfo* ti);
+// Signature queries read metadata-only companions, independent of allocation layout.
+const Dn2CppTypeInfo* dn2cpp_signature_type(const Dn2CppBindingSignature* signature,
+    const Dn2CppTypeInfo* declaring = nullptr);
+const Dn2CppTypeInfo* dn2cpp_compound_type(int32_t kind, int32_t convention,
+    const Dn2CppTypeInfo* const* children, int32_t count);
+Dn2CppType* dn2cpp_type_make_compound(Dn2CppType* type, int32_t kind);
+int32_t dn2cpp_signature_is_visible(const Dn2CppTypeInfo* ti);
+int32_t dn2cpp_type_is_function_pointer(const Dn2CppTypeInfo* ti);
+int32_t dn2cpp_type_is_unmanaged_function_pointer(const Dn2CppTypeInfo* ti);
+Dn2CppType* dn2cpp_type_function_pointer_return(Dn2CppType* type);
+Dn2CppArrayRef* dn2cpp_type_function_pointer_parameters(Dn2CppType* type);
+Dn2CppArrayRef* dn2cpp_type_function_pointer_conventions(Dn2CppType* type);
 int32_t dn2cpp_type_is_pointer(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_is_by_ref(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_is_value_type(const Dn2CppTypeInfo* ti);
@@ -2101,7 +2118,7 @@ Dn2CppObject* dn2cpp_fieldref_get_value(Dn2CppFieldRef* f, Dn2CppObject* obj);
 void dn2cpp_fieldref_set_value(Dn2CppFieldRef* f, Dn2CppObject* obj, Dn2CppObject* value);
 Dn2CppObject* dn2cpp_invoke_box_pointer(void* value, const Dn2CppTypeInfo* pointee, int32_t depth);
 Dn2CppObject* dn2cpp_field_pointer_value(Dn2CppObject* value, int32_t passKind,
-    const Dn2CppTypeInfo* passType);
+    const Dn2CppTypeInfo* passType, const Dn2CppBindingSignature* signature = nullptr);
 // FieldInfo.GetRawConstantValue: a constant at its encoded type (an enum's
 // underlying primitive); any other field throws InvalidOperationException.
 Dn2CppObject* dn2cpp_fieldref_get_raw_constant_value(Dn2CppFieldRef* f);

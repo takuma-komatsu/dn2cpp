@@ -1050,6 +1050,114 @@ const char* dn2cpp_simple_type_name(const char* full)
     return simple;
 }
 
+struct Dn2CppSignatureType
+{
+    Dn2CppTypeInfo type{};
+    int32_t convention;
+    std::vector<const Dn2CppTypeInfo*> children;
+    std::string name;
+};
+
+static const Dn2CppSignatureType* dn2cpp_signature_companion(const Dn2CppTypeInfo* ti)
+{
+    return dn2cpp_signature_kind(ti) != 0
+        ? reinterpret_cast<const Dn2CppSignatureType*>(ti) : nullptr;
+}
+
+const Dn2CppTypeInfo* dn2cpp_compound_type(int32_t kind, int32_t convention,
+    const Dn2CppTypeInfo* const* children, int32_t count)
+{
+    if (kind < 1 || kind > 3 || count < 1 || (kind != 3 && count != 1))
+        dn2cpp_throw_invalid_operation();
+    for (int32_t i = 0; i < count; i++)
+        if (children[i] == nullptr)
+            dn2cpp_throw_platform_not_supported("Reflection: unresolved signature type");
+    // Companions and their strings live for the process, like array TypeInfos.
+    static std::mutex& mutex = dn2cpp_never_destroyed<std::mutex>();
+    static auto& types = dn2cpp_never_destroyed<std::vector<Dn2CppSignatureType*>>();
+    std::lock_guard<std::mutex> lock(mutex);
+    for (auto* t : types)
+        if (dn2cpp_signature_kind(&t->type) == kind && t->convention == convention
+            && static_cast<int32_t>(t->children.size()) == count
+            && std::equal(t->children.begin(), t->children.end(), children))
+            return &t->type;
+    auto* t = new Dn2CppSignatureType();
+    t->convention = convention;
+    t->children.assign(children, children + count);
+    t->type.arrayRank = -kind;
+    if (kind != 3)
+    {
+        t->type.elementType = children[0];
+        t->name = children[0]->name;
+        t->name += kind == 1 ? '*' : '&';
+    }
+    t->type.name = t->name.c_str();
+    types.push_back(t);
+    return &t->type;
+}
+
+Dn2CppType* dn2cpp_type_make_compound(Dn2CppType* type, int32_t kind)
+{
+    const Dn2CppTypeInfo* ti = dn2cpp_type_require(type);
+    if (dn2cpp_signature_kind(ti) == 2)
+        dn2cpp_throw_type_load();
+    if ((ti->flags & (DN2CPP_TF_GENERICPARAM | DN2CPP_TF_GENERICDEF)) != 0)
+        dn2cpp_throw_platform_not_supported("Reflection: composed open generic signature types are not supported");
+    return dn2cpp_get_type_from_handle(dn2cpp_compound_type(kind, 0, &ti, 1));
+}
+
+int32_t dn2cpp_signature_is_visible(const Dn2CppTypeInfo* ti)
+{
+    const auto* signature = dn2cpp_signature_companion(ti);
+    if (signature == nullptr)
+        dn2cpp_throw_invalid_operation();
+    for (const auto* child : signature->children)
+        if (dn2cpp_type_is_visible(child) == 0)
+            return 0;
+    return 1;
+}
+
+int32_t dn2cpp_type_is_function_pointer(const Dn2CppTypeInfo* ti)
+{
+    return dn2cpp_signature_kind(ti) == 3 ? 1 : 0;
+}
+
+int32_t dn2cpp_type_is_unmanaged_function_pointer(const Dn2CppTypeInfo* ti)
+{
+    const auto* signature = dn2cpp_signature_companion(ti);
+    return signature != nullptr && dn2cpp_signature_kind(ti) == 3
+        && (signature->convention & 0xf) == 9 ? 1 : 0;
+}
+
+static const Dn2CppSignatureType* dn2cpp_require_function_pointer(Dn2CppType* type)
+{
+    const Dn2CppTypeInfo* ti = dn2cpp_type_require(type);
+    if (dn2cpp_signature_kind(ti) != 3)
+        dn2cpp_throw_invalid_operation();
+    return dn2cpp_signature_companion(ti);
+}
+
+Dn2CppType* dn2cpp_type_function_pointer_return(Dn2CppType* type)
+{
+    return dn2cpp_get_type_from_handle(dn2cpp_require_function_pointer(type)->children[0]);
+}
+
+Dn2CppArrayRef* dn2cpp_type_function_pointer_parameters(Dn2CppType* type)
+{
+    const auto* signature = dn2cpp_require_function_pointer(type);
+    auto* result = dn2cpp_newarr_ref(static_cast<int32_t>(signature->children.size()) - 1);
+    for (int32_t i = 0; i < result->length; i++)
+        dn2cpp_gc_store_ref(&result->data[i], reinterpret_cast<Dn2CppObject*>(
+            dn2cpp_get_type_from_handle(signature->children[i + 1])));
+    return result;
+}
+
+Dn2CppArrayRef* dn2cpp_type_function_pointer_conventions(Dn2CppType* type)
+{
+    dn2cpp_require_function_pointer(type);
+    return dn2cpp_newarr_ref(0);
+}
+
 static inline bool dn2cpp_ti_has_array_element(const Dn2CppTypeInfo* ti)
 {
     return ti != nullptr && (ti->flags & DN2CPP_TF_ARRAY) != 0
@@ -1058,6 +1166,15 @@ static inline bool dn2cpp_ti_has_array_element(const Dn2CppTypeInfo* ti)
 
 static void dn2cpp_append_simple_type_display(const Dn2CppTypeInfo* ti, std::string& out)
 {
+    if (dn2cpp_signature_kind(ti) != 0)
+    {
+        if (dn2cpp_signature_kind(ti) != 3)
+        {
+            dn2cpp_append_simple_type_display(ti->elementType, out);
+            out += dn2cpp_signature_kind(ti) == 1 ? '*' : '&';
+        }
+        return;
+    }
     if (dn2cpp_ti_has_array_element(ti))
     {
         dn2cpp_append_simple_type_display(ti->elementType, out);
@@ -1076,7 +1193,7 @@ static void dn2cpp_append_simple_type_display(const Dn2CppTypeInfo* ti, std::str
 
 Dn2CppString* dn2cpp_type_name(const Dn2CppTypeInfo* ti)
 {
-    if (dn2cpp_ti_has_array_element(ti))
+    if (dn2cpp_ti_has_array_element(ti) || dn2cpp_signature_kind(ti) != 0)
     {
         std::string s;
         dn2cpp_append_simple_type_display(ti, s);
@@ -1117,7 +1234,7 @@ static inline bool dn2cpp_ti_shows_generic_params(const Dn2CppTypeInfo* ti, bool
 
 const char* dn2cpp_ti_assembly_name(const Dn2CppTypeInfo* ti)
 {
-    while (dn2cpp_ti_has_array_element(ti))
+    while (dn2cpp_ti_has_array_element(ti) || (dn2cpp_signature_kind(ti) != 0 && ti->elementType != nullptr))
         ti = ti->elementType;
     const char* name = ti != nullptr ? ti->reflection().assemblyName : nullptr;
     return name != nullptr ? name : "System.Private.CoreLib";
@@ -1129,6 +1246,27 @@ const char* dn2cpp_ti_assembly_name(const Dn2CppTypeInfo* ti)
 // not the answer and may not be changed.
 static void dn2cpp_append_type_display(const Dn2CppTypeInfo* ti, bool qualify, std::string& out)
 {
+    if (dn2cpp_signature_kind(ti) != 0)
+    {
+        if (dn2cpp_signature_kind(ti) == 3)
+        {
+            const auto* signature = dn2cpp_signature_companion(ti);
+            dn2cpp_append_type_display(signature->children[0], false, out);
+            out += '(';
+            for (size_t i = 1; i < signature->children.size(); i++)
+            {
+                if (i != 1) out += ", ";
+                dn2cpp_append_type_display(signature->children[i], false, out);
+            }
+            out += ')';
+        }
+        else
+        {
+            dn2cpp_append_type_display(ti->elementType, qualify, out);
+            out += dn2cpp_signature_kind(ti) == 1 ? '*' : '&';
+        }
+        return;
+    }
     if (dn2cpp_ti_has_array_element(ti))
     {
         dn2cpp_append_type_display(ti->elementType, qualify, out);
@@ -1176,7 +1314,7 @@ static void dn2cpp_append_type_display(const Dn2CppTypeInfo* ti, bool qualify, s
 
 static Dn2CppString* dn2cpp_type_display(const Dn2CppTypeInfo* ti, bool qualify)
 {
-    if (!dn2cpp_ti_has_array_element(ti) && !dn2cpp_ti_is_closed_generic(ti)
+    if (dn2cpp_signature_kind(ti) == 0 && !dn2cpp_ti_has_array_element(ti) && !dn2cpp_ti_is_closed_generic(ti)
         && !dn2cpp_ti_shows_generic_params(ti, qualify))
         return dn2cpp_string_from_utf8(ti->name, static_cast<int32_t>(std::strlen(ti->name)));
     std::string s;
@@ -1186,7 +1324,9 @@ static Dn2CppString* dn2cpp_type_display(const Dn2CppTypeInfo* ti, bool qualify)
 
 Dn2CppString* dn2cpp_type_fullname(const Dn2CppTypeInfo* ti)
 {
-    if ((ti->flags & DN2CPP_TF_GENERICPARAM) != 0)
+    const Dn2CppTypeInfo* leaf = ti;
+    while (leaf->elementType != nullptr) leaf = leaf->elementType;
+    if ((leaf->flags & DN2CPP_TF_GENERICPARAM) != 0 || dn2cpp_signature_kind(leaf) == 3)
         return nullptr;
     return dn2cpp_type_display(ti, true);
 }
@@ -1202,8 +1342,10 @@ Dn2CppString* dn2cpp_type_tostring(const Dn2CppTypeInfo* ti)
 // and a formal method parameter reads its declaring type.
 Dn2CppString* dn2cpp_type_namespace(const Dn2CppTypeInfo* ti)
 {
-    while (dn2cpp_ti_has_array_element(ti))
+    while (dn2cpp_ti_has_array_element(ti) || (dn2cpp_signature_kind(ti) != 0 && ti->elementType != nullptr))
         ti = ti->elementType;
+    if (dn2cpp_signature_kind(ti) == 3)
+        return nullptr;
     if ((ti->flags & DN2CPP_TF_GENERICPARAM) != 0)
         return dn2cpp_type_generic_parameter_namespace(ti);
     if (dn2cpp_ti_is_closed_generic(ti))
@@ -1260,20 +1402,14 @@ int32_t dn2cpp_type_is_by_ref_like(const Dn2CppTypeInfo* ti)
     return (ti->flags & DN2CPP_TF_BYREFLIKE) != 0 ? 1 : 0;
 }
 
-// dn2cpp never produces a pointer/byref Type value at runtime (no MakePointerType /
-// MakeByRefType, and typeof of a pointer/byref folds statically), so a runtime
-// IsPointer/IsByRef is always false. The type is taken (and ignored) only so the
-// receiver expression is evaluated like the other getters.
 int32_t dn2cpp_type_is_pointer(const Dn2CppTypeInfo* ti)
 {
-    (void)ti;
-    return 0;
+    return dn2cpp_signature_kind(ti) == 1 ? 1 : 0;
 }
 
 int32_t dn2cpp_type_is_by_ref(const Dn2CppTypeInfo* ti)
 {
-    (void)ti;
-    return 0;
+    return dn2cpp_signature_kind(ti) == 2 ? 1 : 0;
 }
 
 // Type.GetTypeCode: the type's System.TypeCode. An enum unwraps to its underlying
@@ -1345,7 +1481,7 @@ Dn2CppType* dn2cpp_type_base_type(Dn2CppType* a)
     // itself, interfaces, and value types report null/their own base (the latter
     // already had a non-null `base`, e.g. an enum -> System.Enum, so they don't
     // reach here).
-    if (ti == &dn2cpp_object_type)
+    if (ti == &dn2cpp_object_type || dn2cpp_signature_kind(ti) != 0)
         return nullptr;
     if ((ti->flags & (DN2CPP_TF_INTERFACE | DN2CPP_TF_VALUETYPE)) != 0)
         return nullptr;
@@ -1438,6 +1574,8 @@ int32_t dn2cpp_type_is_subclass_of(Dn2CppType* a, Dn2CppType* c)
         dn2cpp_throw_argument_null_param("type");
     const Dn2CppTypeInfo* ta = a->typeInfo;
     const Dn2CppTypeInfo* tc = c->typeInfo;
+    if (dn2cpp_signature_kind(ta) != 0)
+        return tc == &dn2cpp_object_type ? 1 : 0;
     // An array's real .NET base chain is System.Array -> System.Object, but array
     // type-infos carry base=nullptr — mirror dn2cpp_isinst's special cases (the
     // DN2CPP_TF_SYSTEM_ARRAY stamp / shared object handle). Strictness

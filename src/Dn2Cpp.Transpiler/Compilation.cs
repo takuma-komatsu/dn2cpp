@@ -973,6 +973,17 @@ internal sealed partial class Compilation
     /// the final set independent of note order.</summary>
     private readonly HashSet<ClassInfo> _identityOnlyReferences = new();
 
+    internal bool IsIdentityOnlyReference(ClassInfo cls) => _identityOnlyReferences.Contains(cls);
+
+    internal readonly Dictionary<string, CppEmitter.BindingSignature> ReflectionTypeTokens = new(StringComparer.Ordinal);
+
+    internal string NoteReflectionTypeToken(MethodInfo method, int token, CppEmitter.BindingSignature signature)
+    {
+        string symbol = "signature_type_" + method.CppName + "_" + token.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        ReflectionTypeTokens[symbol] = signature;
+        return symbol;
+    }
+
     /// <summary>Notes every concrete handle that a constructed type's runtime identity
     /// points through, including generic arguments and array elements. Without
     /// <paramref name="keepSeed"/> the classes are referenced for their type-info

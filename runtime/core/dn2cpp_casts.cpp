@@ -1044,6 +1044,9 @@ static int32_t dn2cpp_array_elem_assignable(const Dn2CppTypeInfo* se, const Dn2C
         de = &dn2cpp_object_type;
     if (se == de)
         return 1;
+    // Signature elements have no reference layout and remain invariant in arrays.
+    if (dn2cpp_signature_kind(se) != 0 || dn2cpp_signature_kind(de) != 0)
+        return 0;
     // A value-type element on either side requires an exact match (handled above).
     if ((se->flags & DN2CPP_TF_VALUETYPE) != 0 || (de->flags & DN2CPP_TF_VALUETYPE) != 0)
         return 0;
@@ -1365,6 +1368,27 @@ int32_t dn2cpp_typeinfo_assignable(const Dn2CppTypeInfo* st, const Dn2CppTypeInf
         return 0;
     if (st == ti)
         return 1;
+    const int32_t sourceKind = dn2cpp_signature_kind(st);
+    const int32_t targetKind = dn2cpp_signature_kind(ti);
+    if (sourceKind != 0 || targetKind != 0)
+    {
+        if (sourceKind != targetKind || sourceKind == 3)
+            return 0;
+        const auto* se = st->elementType;
+        const auto* de = ti->elementType;
+        if (se == de)
+            return 1;
+        // CLR pointer/byref compatibility normalizes only the immediate leaf;
+        // another signature level requires identity rather than recursive casting.
+        if (se == nullptr || de == nullptr
+            || dn2cpp_signature_kind(se) != 0 || dn2cpp_signature_kind(de) != 0)
+            return 0;
+        const int32_t primitive = dn2cpp_prim_elem_class(se);
+        if (primitive != 0 && primitive == dn2cpp_prim_elem_class(de))
+            return 1;
+        return (se->flags & DN2CPP_TF_VALUETYPE) == 0 && (de->flags & DN2CPP_TF_VALUETYPE) == 0
+            && dn2cpp_typeinfo_assignable(se, de) != 0 ? 1 : 0;
+    }
     // Everything is a System.Object; per-type base chains (runtime trap
     // exceptions, arrays, a transpiled corelib's own ti_System_Object) never
     // point at this shared runtime handle, so match it unconditionally.

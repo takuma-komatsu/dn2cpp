@@ -289,10 +289,7 @@ internal sealed partial class MethodCompiler
                     : $"dn2cpp_type_is_sealed(dn2cpp_type_require({Cast(a, "Dn2CppType*")}))");
                 return true;
             }
-            // IsByRefLike = ref struct; reads the flag bit (set for emitted ref structs).
-            // IsPointer / IsByRef fold to true only for a static pointer/byref typeof
-            // token — dn2cpp never materializes such a Type at runtime, so the runtime
-            // helper is constant 0 (it still takes the type so the receiver is evaluated).
+            // Static tokens and reflected signature companions answer the same shape.
             case ("System.Type", "get_IsByRefLike"):
             {
                 var a = Pop();
@@ -307,7 +304,7 @@ internal sealed partial class MethodCompiler
                 // A placeholder-bearing token folds to 0 (no placeholder ever
                 // stands for a pointer type) instead of consuming the poisoned
                 // runtime handle a shared body carries for it.
-                Push(StackKind.I4, "int32_t", a.TypeToken is { Kind: TypeKind.Pointer }
+                Push(StackKind.I4, "int32_t", a.TypeToken is { Kind: TypeKind.Pointer, IsFunctionPointer: false }
                     ? "1"
                     : a.TypeToken is { } pk && Compilation.ContainsCanonPlaceholder(pk)
                         ? "0"
@@ -860,6 +857,12 @@ internal sealed partial class MethodCompiler
             {
                 var t = Pop();
                 PushAttributeArray($"dn2cpp_type_get_fields({Cast(t, "Dn2CppType*")}, 62)", sig.ReturnType);
+                return true;
+            }
+            case ("System.Reflection.TypeInfo", "get_DeclaredConstructors"):
+            {
+                var t = Pop();
+                PushAttributeArray($"dn2cpp_type_get_constructors({Cast(t, "Dn2CppType*")}, 62)", sig.ReturnType);
                 return true;
             }
             case ("System.Type", "GetField") when sig.ParameterTypes.Length == 1:
@@ -1753,14 +1756,11 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.I4, "int32_t", $"dn2cpp_type_generic_parameter_attributes(dn2cpp_type_require({Cast(a, "Dn2CppType*")}))");
                 return true;
             }
-            // Type.MakeByRefType/MakePointerType: byref/pointer Types aren't
-            // modeled in the reflected type registry — a catchable runtime
-            // NotSupportedException, like an AOT-ungenerated MakeGenericType.
             case ("System.Type", "MakeByRefType" or "MakePointerType") when sig.ParameterTypes.Length == 0:
             {
-                Pop();
-                Emit("dn2cpp_throw_not_supported();");
-                Push(StackKind.Ref, "Dn2CppType*", "nullptr"); // unreachable; stack typing only
+                var a = Pop();
+                Push(StackKind.Ref, "Dn2CppType*",
+                    $"dn2cpp_type_make_compound({Cast(a, "Dn2CppType*")}, {(name == "MakePointerType" ? 1 : 2)})");
                 return true;
             }
             // Type/Enum reflection completion.
@@ -1833,13 +1833,12 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.Ref, "Dn2CppType*", Cast(a, "Dn2CppType*"), a.TypeToken);
                 return true;
             }
-            // Type.HasElementType: array/byref/pointer. Only array Types materialize
-            // at runtime; a static pointer/byref/array token folds like IsSZArray.
+            // Function pointers expose their return/parameters, not an element type.
             case ("System.Type", "get_HasElementType"):
             {
                 var a = Pop();
                 Push(StackKind.I4, "int32_t", a.TypeToken is { } hk
-                    ? (hk.Kind is TypeKind.SZArray or TypeKind.MDArray or TypeKind.Pointer or TypeKind.ByRef ? "1" : "0")
+                    ? (!hk.IsFunctionPointer && hk.Kind is TypeKind.SZArray or TypeKind.MDArray or TypeKind.Pointer or TypeKind.ByRef ? "1" : "0")
                     : $"dn2cpp_type_has_element_type(dn2cpp_type_require({Cast(a, "Dn2CppType*")}))");
                 return true;
             }
@@ -1856,10 +1855,26 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.Ref, "Dn2CppString*", $"dn2cpp_type_format_type_name({Cast(a, "Dn2CppType*")})");
                 return true;
             }
-            // Function-pointer Types never materialize in this model (no typeof of a
-            // function pointer is emitted, and GetType never yields one).
             case ("System.Type", "get_IsFunctionPointer" or "get_IsUnmanagedFunctionPointer"):
-            // Type.IsCOMObject: COM interop is not modeled — constantly false.
+            {
+                var a = Pop();
+                string helper = name == "get_IsFunctionPointer" ? "dn2cpp_type_is_function_pointer" : "dn2cpp_type_is_unmanaged_function_pointer";
+                Push(StackKind.I4, "int32_t", $"{helper}(dn2cpp_type_require({Cast(a, "Dn2CppType*")}))");
+                return true;
+            }
+            case ("System.Type", "GetFunctionPointerReturnType") when sig.ParameterTypes.Length == 0:
+            {
+                var a = Pop();
+                Push(StackKind.Ref, "Dn2CppType*", $"dn2cpp_type_function_pointer_return({Cast(a, "Dn2CppType*")})");
+                return true;
+            }
+            case ("System.Type", "GetFunctionPointerParameterTypes" or "GetFunctionPointerCallingConventions") when sig.ParameterTypes.Length == 0:
+            {
+                var a = Pop();
+                string helper = name == "GetFunctionPointerParameterTypes" ? "dn2cpp_type_function_pointer_parameters" : "dn2cpp_type_function_pointer_conventions";
+                PushReflectionMemberArray($"{helper}({Cast(a, "Dn2CppType*")})", sig.ReturnType);
+                return true;
+            }
             case ("System.Type", "get_IsCOMObject"):
             {
                 Pop();
