@@ -1034,6 +1034,53 @@ internal sealed partial class Compilation
     private readonly HashSet<string> _delegateIdentityTargets = new(StringComparer.Ordinal);
     private bool _delegateIdentitiesFrozen;
     private bool _delegateMethodRead;
+    internal MethodInfo? DelegateCloneBinding { get; private set; }
+    private readonly HashSet<ClassInfo> _delegateCloneBindingOwners = new();
+    private readonly HashSet<MethodInfo> _delegateCloneBindingDeclarations = new();
+    private readonly HashSet<ClassInfo> _runtimeDelegateCloneReceivers = new();
+    internal IEnumerable<ClassInfo> DelegateCloneReceiverTypes =>
+        _allocatedRefTypes.Concat(_runtimeDelegateCloneReceivers).Distinct();
+    private readonly HashSet<ClassInfo> _reflectionDelegateCloneReceivers = new();
+    internal bool HasDelegateCloneBindings => _delegateCloneBindingOwners.Count != 0;
+
+    internal void NoteReflectionDelegateCloneReceiver(ClassInfo receiver) =>
+        _reflectionDelegateCloneReceivers.Add(receiver);
+
+    internal bool IsDelegateCloneBindingReceiver(ClassInfo receiver)
+    {
+        foreach (var owner in _delegateCloneBindingOwners)
+            if (DerivesFromOrIs(receiver, owner))
+                return true;
+        return false;
+    }
+
+    internal void NoteDelegateCloneBinding(MethodInfo method)
+    {
+        // Function-token resolution keeps the callable a call-edge cut omits.
+        _delegateCloneBindingOwners.Add(method.DeclaringClass);
+        _delegateCloneBindingDeclarations.Add(method);
+        ReachUsedVirtual(method);
+        DrainReachability();
+        if (Phase != EmitPhase.Emission)
+            return;
+        int slot = method.VtableSlot;
+        for (var owner = method.DeclaringClass; owner is not null; owner = owner.BaseClass)
+        {
+            if (!owner.MembersReady)
+                throw new InvalidOperationException("Delegate.Clone binding needs completed class slots");
+            if (slot >= 0 && slot < owner.SlotOwners.Count
+                && CoreIntrinsics.BrDelegateClone.Matches(owner.SlotOwners[slot].DeclaringClass.FullName,
+                    owner.SlotOwners[slot].Name))
+            {
+                var declaration = owner.SlotOwners[slot];
+                if (DelegateCloneBinding is not null && DelegateCloneBinding != declaration)
+                    throw new InvalidOperationException("Delegate.Clone bindings disagree on the base class slot");
+                DelegateCloneBinding = declaration;
+                return;
+            }
+        }
+        throw new InvalidOperationException("Delegate.Clone binding has no base class slot");
+    }
 
     /// <summary>The identity symbol a delegate over <paramref name="m"/> points at; one
     /// definition per (method, binding) whichever body names it.</summary>
@@ -2489,7 +2536,7 @@ internal sealed partial class Compilation
         // probes that map. (Specializations already populate via CompleteMembers.)
         foreach (var cls in Classes.ToList())
         {
-            if (cls.IsDelegate || cls.IsEnum || cls.GenericArity > 0)
+            if (cls.IsEnum || cls.GenericArity > 0)
                 continue;
             var td = cls.Module.Reader.GetTypeDefinition(cls.Handle);
             PopulateMethodImpls(cls, td, cls.Module, GenericContext.Empty);
@@ -5402,10 +5449,42 @@ internal sealed partial class Compilation
     /// delegate, and a body a round reaches can typeof-name a library one.</summary>
     internal void ReachReflectionClassRoutes()
     {
+        ReachRuntimeDelegateCloneReceivers();
         ReachReflectionInvokeRoute();
         ReachDecodedReflectionFieldBoxes();
         ReachTypeofNamedLibrarySurface();
         ReachDelegateInvokeBoxes();
+    }
+
+    internal bool ReachRuntimeDelegateCloneReceivers()
+    {
+        if (_delegateCloneBindingOwners.Count == 0)
+            return false;
+        bool added = false;
+        int reached = Reachable.Count;
+        // Runtime binders allocate delegates without a newobj. Cross only their
+        // finite receiver sets admitted by a reached class Clone declaration.
+        var receivers = MarshalFnPtrDelegates.ToList();
+        if (_reflectionDelegateBindScanned || NeedsReflectionDelegateBind)
+            receivers.AddRange(_reflectionDelegateCloneReceivers);
+        foreach (var receiver in receivers)
+            if (receiver.IsDelegate && !ContainsCanonPlaceholder(receiver)
+                && !ContainsGenericVar(receiver) && IsDelegateCloneBindingReceiver(receiver))
+            {
+                EnsureCompleted(receiver);
+                added |= _runtimeDelegateCloneReceivers.Add(receiver);
+            }
+        // These are Clone selections, not general allocation roots: Invoke boxing
+        // would recursively expand delegates whose parameter names a deeper delegate.
+        var declarations = _delegateCloneBindingDeclarations.ToList();
+        foreach (var decl in _usedVirtualDecls.ToList())
+            if (decl.DeclaringClass.FullName == "System.ICloneable" && decl.Name == "Clone")
+                declarations.Add(decl);
+        foreach (var receiver in _runtimeDelegateCloneReceivers.ToList())
+            foreach (var declaration in declarations)
+                ReachVirtualImpl(receiver, declaration);
+        DrainReachability();
+        return added || Reachable.Count != reached;
     }
 
     private readonly HashSet<FieldInfo> _decodedReflectionFieldBoxes = new();
@@ -8137,11 +8216,13 @@ internal sealed partial class Compilation
         var slotOwners = new Dictionary<ClassInfo, List<MethodInfo>>();
         foreach (var cls in TopologicalByBase())
         {
-            if (cls.IsInterface || cls.IsDelegate)
+            if (cls.IsInterface)
             {
                 slotOwners[cls] = new List<MethodInfo>();
                 continue;
             }
+            // Delegates omit a runtime vtable, but class binding and selected-method
+            // identity still need the same completed override slots as other classes.
             // A specialization builds its own vtable when its members are decoded
             // (BuildVtableForSpecialization), and only then — this eager pass has nothing
             // to contribute to one: at this point in the build its method list is empty
