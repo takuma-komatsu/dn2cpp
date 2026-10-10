@@ -481,6 +481,7 @@ ORDERED_PROJECTS=(
 GATE_OWNED_PROJECTS=(
     "samples/dotnet/ReflectInvoke/ReflectionSignatureTypesOnly.csproj"
     "samples/dotnet/ReflectInvoke/PointerArrayTypesOnly.csproj"
+    "samples/dotnet/ReflectInvoke/RuntimeLifetimeInterfacesOnly.csproj"
     "samples/dotnet/LuaCSharpSample/LuaCSharpSample.csproj"
     "samples/dotnet/MagicOnionClientSample/MagicOnionClientSample.csproj"
     "samples/dotnet/MemoryPackSample/MemoryPackSample.csproj"

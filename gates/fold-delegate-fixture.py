@@ -107,7 +107,7 @@ wait_methods = {match[2]: match for source in sources.values()
                 for match in wait_method.finditer(source)}
 if set(wait_methods) != {"Close", "Dispose"}:
     raise SystemExit("missing WaitHandle method-group bodies")
-if wait_methods["Close"][3] != wait_methods["Dispose"][3] or wait_methods["Close"][3].strip() != "dn2cpp_waithandle_close((Dn2CppObject*)(a0));":
+if wait_methods["Close"][3] != wait_methods["Dispose"][3] or "dn2cpp_waithandle_close(" not in wait_methods["Close"][3]:
     raise SystemExit("WaitHandle method-group bodies are not identical")
 wait_address = wait_methods["Close"][1]
 aliases[wait_methods["Dispose"][1]] = wait_address

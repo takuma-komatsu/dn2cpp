@@ -196,6 +196,12 @@ format/value family uses its shared shim, with Object overrides retaining the
 common Object helper address. A runtime-owned receiver uses its runtime ABI in
 address-taken wrappers. A WaitHandle interface slot reuses its address-taken
 Dispose wrapper so class and interface bindings agree before identity comparison.
+Task disposal uses the same completion-state check in direct calls, fast interface
+calls and runtime interface slots. Its allocation routes note the map independently
+of the static receiver type. Inherited WaitHandle and EventSource disposal bodies
+remain callable under a shared body-replacement descriptor: the public wrapper
+dispatches the protected bool slot, while a base cleanup call never redispatches.
+User overrides and explicit interface implementations retain their normal slots.
 Final Array and Enum method groups leave a null target for the delegate
 constructor to reject; non-final virtual bindings keep their binding-time null check.
 

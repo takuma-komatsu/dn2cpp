@@ -915,6 +915,7 @@ internal sealed partial class MethodCompiler
             // with the first input fault. The generic WhenAll<T> (result array) binds
             // in TranslateGenericIntrinsic; this is the void-result join.
             case ("System.Threading.Tasks.Task", "WhenAll"):
+                Comp.NoteIntrinsicInterfaces("System.Threading.Tasks.Task");
                 // A singleton may already carry a closed Task<T> identity.
                 Push(StackKind.Ref, "Dn2CppTask*",
                     $"dn2cpp_task_when_all({PopTaskArrayOperand(sig.ParameterTypes)}, DN2CPP_WHENALL_VOID, nullptr)");
@@ -1098,13 +1099,10 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.I4, "int32_t", "1"); // completed within the timeout
                 return true;
             }
-            // Task.Dispose() — pop the receiver and do nothing: the runtime task is
-            // GC-managed and carries no counterpart of real .NET's lazily-allocated
-            // wait handle, so there is no resource to release. Only the public
-            // parameterless form; the protected Dispose(bool) is not mapped.
             case ("System.Threading.Tasks.Task", "Dispose") when sig.ParameterTypes.Length == 0:
             {
-                Pop(); // this — nothing to release (the task is GC-managed)
+                var self = Pop();
+                Emit($"dn2cpp_task_dispose((Dn2CppTask*)({self.Expr}));");
                 return true;
             }
             case ("System.Threading.Tasks.Task", "GetResult") when sig.ParameterTypes.Length == 0:

@@ -3653,6 +3653,8 @@ internal sealed partial class Compilation
         TimerDisposeAsync,
         CtsDispose,
         WaitHandleDispose,
+        SafeWaitHandleDispose,
+        TaskDispose,
     }
 
     internal sealed record IntrinsicInterfaceRow(
@@ -3707,6 +3709,10 @@ internal sealed partial class Compilation
             "System", "IDisposable", "Dispose", 0, IntrinsicInterfaceThunkKind.NoopDispose),
         // One row serves EventWaitHandle, ManualResetEvent and AutoResetEvent: their
         // handles carry no table of their own, so the resolve walk climbs to this one.
+        new("Microsoft.Win32.SafeHandles.SafeWaitHandle", "dn2cpp_safewaithandle_type", "itfthunk_safewaithandle_dispose",
+            "System", "IDisposable", "Dispose", 0, IntrinsicInterfaceThunkKind.SafeWaitHandleDispose),
+        new("System.Threading.Tasks.Task", "dn2cpp_task_type", "itfthunk_task_dispose",
+            "System", "IDisposable", "Dispose", 0, IntrinsicInterfaceThunkKind.TaskDispose),
         new("System.Threading.WaitHandle", "dn2cpp_waithandle_type", "itfthunk_waithandle_dispose",
             "System", "IDisposable", "Dispose", 0, IntrinsicInterfaceThunkKind.WaitHandleDispose),
     ];
@@ -3785,7 +3791,9 @@ internal sealed partial class Compilation
                     or IntrinsicInterfaceThunkKind.MappedViewDispose
                     or IntrinsicInterfaceThunkKind.NoopDispose or IntrinsicInterfaceThunkKind.CtsDispose
                     or IntrinsicInterfaceThunkKind.BlockingCollectionDispose
-                    or IntrinsicInterfaceThunkKind.WaitHandleDispose => decl.Signature.ReturnType.IsVoid
+                    or IntrinsicInterfaceThunkKind.WaitHandleDispose
+                    or IntrinsicInterfaceThunkKind.SafeWaitHandleDispose
+                    or IntrinsicInterfaceThunkKind.TaskDispose => decl.Signature.ReturnType.IsVoid
                     && decl.Signature.ParameterTypes.Length == 0,
                 IntrinsicInterfaceThunkKind.TimerChange =>
                     decl.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
@@ -4002,6 +4010,8 @@ internal sealed partial class Compilation
 
     public void NoteIntrinsicFtnTarget(MethodInfo m)
     {
+        if (CoreIntrinsics.BrLifetimeDispose.Matches(m.DeclaringClass.FullName, m.Name))
+            Reach(m);
         if (_intrinsicTypeTranspiled.Contains(m))
             return; // real body transpiled — the symbol already exists
         // Its calls already delegate to the real body, which serves the address too.

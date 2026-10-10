@@ -323,6 +323,9 @@ namespace ReflectInvoke
             if (args.Length > 0 && args[0] == "before-pointer-array-types")
                 return;
             ReflectInvokeValidationSubset.Program.RunPointerArrays();
+            if (args.Length > 0 && args[0] == "before-runtime-lifetime-interfaces")
+                return;
+            RuntimeHandleRelationSubset.Program.RunLifetimeInterfaces();
         }
     }
 }

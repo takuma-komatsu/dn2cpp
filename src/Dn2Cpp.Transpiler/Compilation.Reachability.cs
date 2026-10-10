@@ -93,6 +93,19 @@ internal sealed partial class Compilation
             }
             return; // no _toScan.Enqueue -> the replaced IL is never scanned
         }
+        if (CoreIntrinsics.BrLifetimeDispose.Matches(m.DeclaringClass.FullName, m.Name))
+        {
+            if (Reachable.Add(m))
+            {
+                _predTrace.TryAdd(m, _currentScan);
+                m.EnsureSignature();
+                if (m.Signature.ParameterTypes.Length == 0)
+                    ReachLifetimeDisposeCore(m.DeclaringClass.FullName);
+                if (m.IsVirtual)
+                    ReachUsedVirtual(m);
+            }
+            return;
+        }
         // A comparer Compare with no order to run: the emit replaces its body with the
         // ArgumentException (IsUnorderableComparerCompareBody), which names only runtime
         // helpers, so the real IL's box and the Comparer.Default cctor behind it stay out.
@@ -258,7 +271,8 @@ internal sealed partial class Compilation
             _invokeRouteAllocatedOwners.Add(c);
         if (c.IsDelegate)
             _allocatedDelegates.Add(c);
-        foreach (var decl in _usedVirtualDecls)
+        // Reaching an inherited wrapper can introduce the protected slot it dispatches.
+        foreach (var decl in _usedVirtualDecls.ToList())
             ReachVirtualImpl(c, decl);
         // A newly-allocated type also contributes its override to every already-used
         // generic virtual method (the GVM half of the used×allocated cross product).
@@ -1766,6 +1780,34 @@ internal sealed partial class Compilation
         && m.Signature.ParameterTypes is
             [{ Kind: TypeKind.Class, Class: { } sc }, { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }]
         && GenericDefFullName(sc) is "System.ReadOnlySpan" or "System.Span";
+
+    internal MethodInfo ReachLifetimeDisposeCore(string owner)
+    {
+        var cls = FindClassByFullName(owner)
+            ?? throw new InvalidOperationException($"lifetime owner {owner} is not loaded");
+        EnsureCompleted(cls);
+        var method = cls.Methods.FirstOrDefault(m => !m.IsStatic && m.Name == "Dispose"
+            && m.Signature.ReturnType.IsVoid
+            && m.Signature.ParameterTypes is
+                [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }])
+            ?? throw new NotSupportedException($"{owner}.Dispose(bool) has no supported lifetime slot");
+        Reach(method);
+        ReachUsedVirtual(method);
+        return method;
+    }
+
+    internal MethodInfo ReachLifetimeClose(string owner)
+    {
+        var cls = FindClassByFullName(owner)
+            ?? throw new InvalidOperationException($"lifetime owner {owner} is not loaded");
+        EnsureCompleted(cls);
+        var method = cls.Methods.FirstOrDefault(m => !m.IsStatic && m.Name == "Close"
+            && m.Signature.ReturnType.IsVoid && m.Signature.ParameterTypes.Length == 0)
+            ?? throw new NotSupportedException($"{owner}.Close() has no supported lifetime slot");
+        Reach(method);
+        ReachUsedVirtual(method);
+        return method;
+    }
 
     /// <summary>Records that a virtual/interface slot is dispatched (some
     /// callvirt/ldvirtftn targets <paramref name="decl"/>) and reaches that slot's
