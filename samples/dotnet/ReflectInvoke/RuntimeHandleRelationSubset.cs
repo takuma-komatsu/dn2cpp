@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 #nullable enable
 using System;
 using System.Collections;
@@ -113,8 +114,118 @@ class ExplicitLifetimeProvider : EventSource, IDisposable
     void IDisposable.Dispose() => Calls++;
 }
 
+// The interface-only image must not gain a SafeHandle seed from these controls.
+#if !LIFETIME_SAFE
+class GroupSafeHandle : SafeHandle
+{
+    public int DisposeCalls;
+    public int ReleaseCalls;
+    public GroupSafeHandle() : base(IntPtr.Zero, true) => SetHandle(new IntPtr(123));
+    public override bool IsInvalid => handle == IntPtr.Zero;
+    protected override void Dispose(bool disposing)
+    {
+        DisposeCalls++;
+        base.Dispose(disposing);
+    }
+    protected override bool ReleaseHandle()
+    {
+        ReleaseCalls++;
+        return true;
+    }
+}
+
+class ExplicitGroupSafeHandle : GroupSafeHandle, IDisposable
+{
+    public int ExplicitCalls;
+    void IDisposable.Dispose() => ExplicitCalls++;
+}
+
+#endif
+
 static class Program
 {
+#if !LIFETIME_SAFE
+    private static Action SafeBaseDispose(SafeHandle receiver) => receiver.Dispose;
+    private static Action SafeBaseClose(SafeHandle receiver) => receiver.Close;
+
+    internal static void RunSafeHandleGroups()
+    {
+        var safe = new SafeWaitHandle(IntPtr.Zero, false);
+        Action direct = safe.Dispose;
+        Action inherited = SafeBaseDispose(safe);
+        Action throughInterface = ((IDisposable)safe).Dispose;
+        Action close = safe.Close;
+        Console.WriteLine("safe groups aliases: " + (direct == inherited) + "/" + (direct == throughInterface));
+        Console.WriteLine("safe groups remove: " + (Delegate.Remove(direct, throughInterface) is null));
+        Console.WriteLine("safe groups close aliases: " + (close == SafeBaseClose(safe)));
+        Console.WriteLine("safe groups distinct: " + (direct == close) + "/" + ReferenceEquals(Delegate.Remove(direct, close), direct));
+        throughInterface();
+        direct();
+        close();
+        Console.WriteLine("safe groups invoked: " + safe.IsClosed);
+    }
+
+    internal static void RunSafeHandleGroupInvocation()
+    {
+        var safe = new SafeWaitHandle(IntPtr.Zero, false);
+        Action dispose = safe.Dispose;
+        dispose();
+        dispose();
+        Console.WriteLine("safe class group invoked: " + safe.IsClosed);
+        var inherited = new SafeWaitHandle(IntPtr.Zero, false);
+        SafeBaseDispose(inherited)();
+        Console.WriteLine("safe base group invoked: " + inherited.IsClosed);
+        var close = new SafeWaitHandle(IntPtr.Zero, false);
+        SafeBaseClose(close)();
+        Console.WriteLine("safe close group invoked: " + close.IsClosed);
+    }
+
+    internal static void RunSafeHandleOrdinaryGroups()
+    {
+        var file = new SafeFileHandle(new IntPtr(-1), false);
+        Action fileDispose = file.Dispose;
+        Action fileInterface = ((IDisposable)file).Dispose;
+        Console.WriteLine("file groups aliases: " + (fileDispose == fileInterface) + "/" + (Delegate.Remove(fileDispose, fileInterface) is null));
+        fileDispose();
+        Console.WriteLine("file group invoked: " + file.IsClosed);
+        var user = new GroupSafeHandle();
+        Action userDispose = SafeBaseDispose(user);
+        Action userInterface = ((IDisposable)user).Dispose;
+        Console.WriteLine("user groups aliases: " + (userDispose == userInterface) + "/" + (Delegate.Remove(userDispose, userInterface) is null));
+        userDispose();
+        userInterface();
+        SafeBaseClose(user)();
+        Console.WriteLine("user groups invoked: " + user.DisposeCalls + "/" + user.ReleaseCalls + "/" + user.IsClosed);
+        var explicitUser = new ExplicitGroupSafeHandle();
+        Action explicitClass = SafeBaseDispose(explicitUser);
+        Action explicitInterface = ((IDisposable)explicitUser).Dispose;
+        Console.WriteLine("user groups explicit: " + (explicitClass == explicitInterface) + "/" + ReferenceEquals(Delegate.Remove(explicitClass, explicitInterface), explicitClass));
+        explicitInterface();
+        explicitClass();
+        Console.WriteLine("user groups explicit invoked: " + explicitUser.ExplicitCalls + "/" + explicitUser.DisposeCalls + "/" + explicitUser.ReleaseCalls);
+    }
+
+    internal static void RunSafeHandleNullGroups()
+    {
+        // Observe the delegate so optimized fixture IL retains its binding.
+        Try("safe null group", () => { Action group = ((SafeWaitHandle)null!).Dispose; return group.Target; });
+        Try("safe base null group", () => { Action group = SafeBaseDispose(null!); return group.Target; });
+        Try("safe close null group", () => { Action group = ((SafeWaitHandle)null!).Close; return group.Target; });
+        Try("safe interface null group", () => { Action group = ((IDisposable)null!).Dispose; return group.Target; });
+    }
+
+    internal static void RunSafeHandleMethodGroups()
+    {
+        Console.WriteLine("== SafeHandle method groups ==");
+        RunSafeHandleGroups();
+        RunSafeHandleGroupInvocation();
+        RunSafeHandleOrdinaryGroups();
+        RunSafeHandleNullGroups();
+        Console.WriteLine("SafeHandle method groups end");
+    }
+
+#endif
+
     private static void DisposeLifetime(IDisposable value) => value.Dispose();
 
     internal static void RunLifetimeSafeOnly()

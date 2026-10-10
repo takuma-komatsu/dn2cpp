@@ -1932,10 +1932,17 @@ internal sealed partial class CppEmitter
                         && _e.TypeInfoSymbolDefined(owner.CppTypeInfoName))
                         targets.Add((owner, m, true));
                     foreach (var info in _c.IntrinsicInterfaces)
+                    {
                         if (info.Itf == owner && info.SlotDecl == m
                             && info.Receiver is { } intrinsicReceiver && info.Target is { } intrinsicTarget
                             && _e.TypeInfoSymbolDefined(intrinsicTarget.DeclaringClass.CppTypeInfoName))
                             targets.Add((intrinsicReceiver, intrinsicTarget, true));
+                        if (CoreIntrinsics.MdSafeHandleLifetime.Matches(m)
+                            && info.Row.ThunkKind == Compilation.IntrinsicInterfaceThunkKind.SafeWaitHandleDispose
+                            && info.Receiver is { } safeReceiver
+                            && _e.TypeInfoSymbolDefined(owner.CppTypeInfoName))
+                            targets.Add((safeReceiver, m, true));
+                    }
                     if (owner.IsInterface && _c.ArrayDispatchClass is { } arrayClass)
                     {
                         MethodInfo? arrayTarget = null;

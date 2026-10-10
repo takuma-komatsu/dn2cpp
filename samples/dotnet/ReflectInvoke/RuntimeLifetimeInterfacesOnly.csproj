@@ -5,6 +5,11 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <Optimize>true</Optimize>
+    <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'safegroups'">$(DefineConstants);SAFEHANDLE_GROUPS</DefineConstants>
+    <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'safeinvoke'">$(DefineConstants);SAFEHANDLE_INVOCATION</DefineConstants>
+    <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'safeordinary'">$(DefineConstants);SAFEHANDLE_ORDINARY</DefineConstants>
+    <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'safenull'">$(DefineConstants);SAFEHANDLE_NULL</DefineConstants>
+    <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'safeall'">$(DefineConstants);SAFEHANDLE_ALL</DefineConstants>
     <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'safe'">$(DefineConstants);LIFETIME_SAFE</DefineConstants>
     <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'wait'">$(DefineConstants);LIFETIME_WAIT</DefineConstants>
     <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'event'">$(DefineConstants);LIFETIME_EVENT</DefineConstants>

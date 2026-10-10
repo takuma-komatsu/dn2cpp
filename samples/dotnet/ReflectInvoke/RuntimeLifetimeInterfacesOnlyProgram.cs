@@ -2,7 +2,17 @@ using System.Globalization;
 
 CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
 CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
-#if LIFETIME_SAFE
+#if SAFEHANDLE_GROUPS
+RuntimeHandleRelationSubset.Program.RunSafeHandleGroups();
+#elif SAFEHANDLE_INVOCATION
+RuntimeHandleRelationSubset.Program.RunSafeHandleGroupInvocation();
+#elif SAFEHANDLE_ORDINARY
+RuntimeHandleRelationSubset.Program.RunSafeHandleOrdinaryGroups();
+#elif SAFEHANDLE_NULL
+RuntimeHandleRelationSubset.Program.RunSafeHandleNullGroups();
+#elif SAFEHANDLE_ALL
+RuntimeHandleRelationSubset.Program.RunSafeHandleMethodGroups();
+#elif LIFETIME_SAFE
 RuntimeHandleRelationSubset.Program.RunLifetimeSafeOnly();
 #elif LIFETIME_WAIT
 RuntimeHandleRelationSubset.Program.RunLifetimeWait();
