@@ -3206,6 +3206,8 @@ internal sealed partial class Compilation
     /// for each E that is also a noted array type.</summary>
     internal Dictionary<string, ArrayEnumerableInfo> ArrayEnumerableElementTypes { get; } = new(System.StringComparer.Ordinal);
 
+    internal ClassInfo? ArrayDispatchClass { get; private set; }
+
     /// <summary>The element types E requested as <c>IEnumerable&lt;E&gt;</c> at a runtime
     /// array cast. The exact element E gets a map; a covariant cast
     /// <c>(IEnumerable&lt;Base&gt;)derivedArr</c> also needs every <c>Derived[]</c> array
@@ -3289,6 +3291,11 @@ internal sealed partial class Compilation
         var (szae, ctor) = SZArrayEnumerableFor(element);
         ArrayEnumerableElementTypes[ArrayElemMangle(element)] =
             new ArrayEnumerableInfo(element, szae, ctor, BuildArrayItfDispatches(element, szae));
+        if (ArrayDispatchClass is null && FindClassByFullName("System.Array") is { } arrayClass)
+        {
+            ArrayDispatchClass = arrayClass.EnsureMembers();
+            NoteReferencedType(arrayClass);
+        }
         // Force-reach the IEnumerable<E> enumeration triple so an array used purely as a
         // statically-known IEnumerable<E> still emits its GetEnumerator/Current/MoveNext
         // (the wrapper is the enumerator); the other SZArray interfaces' methods are reached
@@ -3669,7 +3676,8 @@ internal sealed partial class Compilation
     /// resolved against the loaded CoreLib: the row, the interface's ClassInfo and the
     /// declaration whose vtable slot the thunk fills. CppEmitter turns each into one
     /// <c>Dn2CppInterfaceEntry</c> row installed by the init prologue.</summary>
-    internal sealed record IntrinsicInterfaceInfo(IntrinsicInterfaceRow Row, ClassInfo Itf, MethodInfo SlotDecl);
+    internal sealed record IntrinsicInterfaceInfo(IntrinsicInterfaceRow Row, ClassInfo Itf,
+        MethodInfo SlotDecl, ClassInfo? Receiver, MethodInfo? Target);
 
     /// <summary>A row whose interface resolved but whose declared slot did not match the
     /// row: the interface and the diagnostic. Recorded rather than thrown, because the
@@ -3758,7 +3766,9 @@ internal sealed partial class Compilation
                     $"{row.SlotMethod} does not match thunk kind {row.ThunkKind}"));
                 continue;
             }
-            _intrinsicItfs[i] = new IntrinsicInterfaceInfo(row, itf, decl);
+            var receiver = FindClassByFullName(row.IntrinsicName);
+            var target = receiver is not null ? ResolveItfImplOrNull(receiver, decl) : null;
+            _intrinsicItfs[i] = new IntrinsicInterfaceInfo(row, itf, decl, receiver, target);
         }
     }
 

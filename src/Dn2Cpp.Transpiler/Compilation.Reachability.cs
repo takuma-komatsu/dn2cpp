@@ -3816,6 +3816,23 @@ internal sealed partial class Compilation
     internal bool ImplementsInterface(ClassInfo c, ClassInfo itf) =>
         GetInterfaceClosure(c).Members.Contains(itf);
 
+    // Match the emitted interface-table order: exact rows precede variant rows.
+    internal MethodInfo? DelegateInterfaceTarget(ClassInfo receiver, MethodInfo declaration,
+        IReadOnlyList<ClassInfo> interfaces)
+    {
+        var owner = declaration.DeclaringClass;
+        if (interfaces.Contains(owner))
+            return ResolveItfImplOrNull(receiver, declaration);
+        int mask = GenericVarianceMask(owner);
+        int slot = declaration.VtableSlot;
+        if (mask == 0 || slot < 0)
+            return null;
+        foreach (var have in interfaces)
+            if (VariantMatches(have, owner, mask) && slot < have.Methods.Count)
+                return ResolveItfImplOrNull(receiver, have.Methods[slot]);
+        return null;
+    }
+
     /// <summary>Whether <paramref name="c"/> implements an instantiation of the
     /// definition of interface <paramref name="itf"/>.</summary>
     internal bool ImplementsInterfaceDefinition(ClassInfo c, ClassInfo itf)

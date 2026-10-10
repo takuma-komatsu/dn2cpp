@@ -145,6 +145,22 @@ call-site dispatcher the base image holds for that instantiation
 ([BPI-FORMAT.md](BPI-FORMAT.md#generic-methods)), and `--emit-patch` rejects a
 patch type that declares a generic virtual method.
 
+IL delegate equality compares the selected closed method, including its method
+arguments, after matching the receiver and callable address. Emitted receiver
+cases carry that key independently of reflection rows, so trimming and identical
+code folding cannot merge distinct methods. Class slots, interface table order
+and generic virtual branches choose the same declaration as ordinary dispatch;
+runtime template owners normalize to the receiver's closed level. These equality
+cases do not widen `Delegate.Method` metadata access or stripped-row refusals.
+Existing String, Enum and intrinsic interface maps also supply selected keys.
+Array interface keys use the real Array implementation for non-generic slots and
+the existing closed wrapper's owner and method as a private SZArrayHelper identity
+namespace for generic slots. That namespace follows the requested element argument,
+including when native variance dispatch shares another element's callable body.
+Runtime-created delegates without a static identity, patch receivers without a
+recorded selection, and opaque owner bindings retain their existing compatibility
+path.
+
 A null-bound instance delegate may run only when verified IL proves that the
 selected body does not require a receiver. That proof must cover the closed
 signature and generic context. It cannot borrow an unrelated receiver or reuse a
