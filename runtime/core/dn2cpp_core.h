@@ -527,6 +527,21 @@ inline int32_t dn2cpp_signature_kind(const Dn2CppTypeInfo* ti)
     return ti != nullptr && ti->arrayRank < 0 ? -ti->arrayRank : 0;
 }
 
+// Pointer and function-pointer elements store native words, even though their
+// reflection Types are not value types. An array element itself is a reference.
+inline bool dn2cpp_has_signature_array_element(const Dn2CppTypeInfo* type)
+{
+    while (type != nullptr && (type->flags & DN2CPP_TF_ARRAY) != 0)
+        type = type->elementType;
+    return dn2cpp_signature_kind(type) != 0;
+}
+
+inline bool dn2cpp_array_element_is_reference(const Dn2CppTypeInfo* element)
+{
+    return element != nullptr && dn2cpp_signature_kind(element) == 0
+        && (element->flags & DN2CPP_TF_VALUETYPE) == 0;
+}
+
 // Rank-one non-SZ arrays use the MD payload; rank alone cannot select a layout.
 inline bool dn2cpp_is_md_array(const Dn2CppTypeInfo* t)
 {
@@ -833,6 +848,8 @@ struct Dn2CppType : Dn2CppObject
 // do the typed access + box/unbox; null when the field has no reflectable
 // storage (a literal/const, or an opaque declaring type), in which case
 // GetValue/SetValue raise InvalidOperationException.
+struct Dn2CppBindingSignature;
+
 struct Dn2CppFieldInfo
 {
     const char* name;
@@ -863,6 +880,9 @@ struct Dn2CppFieldInfo
     // Pointer fields validate and unwrap their value before an initonly refusal.
     // Other fields use fieldType; hand-written rows leave this callback null.
     Dn2CppObject* (*valueCheck)(Dn2CppObject* value) = nullptr;
+    // Signature arrays retain their full element identity independently of the
+    // reference ABI used by getter/setter thunks.
+    const Dn2CppBindingSignature* reflectionSignature = nullptr;
 };
 
 // Dn2CppFieldInfo::attrs bits. PUBLIC/PRIVATE mirror the CLR field
@@ -6686,7 +6706,8 @@ inline void* dn2cpp_elem_addr(Dn2CppArrayN* arr, int32_t index)
 // Whether a type-info describes an SZArray whose elements are REFERENCES, i.e. an
 // object of that type has the Dn2CppArrayRef layout (`length` then `Dn2CppObject*
 // data[]`) rather than Dn2CppArrayI4's or Dn2CppArrayN's. A reference element is any
-// non-value-type; of the null-elementType handles only dn2cpp_array_ref_type is ref —
+// ordinary non-value-type; signature elements use native-word storage. Of the
+// null-elementType handles only dn2cpp_array_ref_type is ref —
 // the imprecise packed dn2cpp_array_n_type answers false, since its layout is
 // Dn2CppArrayN. Shared because two callers must agree and a disagreement is a wrong
 // CAST, not a wrong answer: dn2cpp_pinned_data_addr picks the data offset with it, and
@@ -6698,7 +6719,7 @@ inline bool dn2cpp_is_ref_array(const Dn2CppTypeInfo* t)
     if (!dn2cpp_is_sz_array(t))
         return false;
     return t->elementType == nullptr ? (t == &dn2cpp_array_ref_type)
-                                     : (t->elementType->flags & DN2CPP_TF_VALUETYPE) == 0;
+                                     : dn2cpp_array_element_is_reference(t->elementType);
 }
 
 // Whether a value element packs into Dn2CppArrayI4 rather than Dn2CppArrayN — int32,

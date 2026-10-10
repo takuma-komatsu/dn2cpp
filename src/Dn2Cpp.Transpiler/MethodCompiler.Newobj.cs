@@ -2590,7 +2590,10 @@ internal sealed partial class MethodCompiler
                 continue;
             // The enumerable form, not the plain one: a precise handle without the SZArray
             // map is worse than the shared handle (see PrimArrayTypeInfoExpr).
-            _c.NoteArrayEnumerableElement(f.Type.Element!);
+            if (CppEmitter.IsSignatureArray(f.Type))
+                _c.NoteMdArrayUse();
+            else
+                _c.NoteArrayEnumerableElement(f.Type.Element!);
         }
     }
 }

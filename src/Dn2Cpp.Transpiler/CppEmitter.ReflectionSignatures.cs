@@ -154,6 +154,13 @@ internal sealed partial class CppEmitter
         return signature;
     }
 
+    private SpelledType ReflectionFieldSignature(FieldInfo field) =>
+        field.DeclaringClass.Module.Reader.GetFieldDefinition(field.Handle).DecodeSignature(
+            new FunctionPointerSpellingProvider(this, _c.SigProvider), field.DeclaringClass.Context);
+
+    internal static bool IsSignatureArray(TypeDesc type) =>
+        type.Kind is TypeKind.SZArray or TypeKind.MDArray && HasSignatureShape(type);
+
     internal static bool HasSignatureShape(TypeDesc type) => type.Kind is TypeKind.ByRef or TypeKind.Pointer
         || type.Element is { } element && HasSignatureShape(element);
 
@@ -198,6 +205,25 @@ internal sealed partial class CppEmitter
             throw new InvalidOperationException("Signature type token is not a TypeSpec");
         return method.Module.Reader.GetTypeSpecification((TypeSpecificationHandle)handle).DecodeSignature(
             new FunctionPointerSpellingProvider(null, compilation.SigProvider), method.Context);
+    }
+
+    internal static SpelledType DecodeReflectionMethodArgument(Compilation compilation, MethodInfo method,
+        MethodSpecificationHandle specification, int index) =>
+        method.Module.Reader.GetMethodSpecification(specification).DecodeSignature(
+            new FunctionPointerSpellingProvider(null, compilation.SigProvider), method.Context)[index];
+
+    internal static BindingSignature ArraySignatureFromType(TypeDesc type)
+    {
+        if (type.IsFunctionPointer)
+            throw new NotSupportedException("Function-pointer array identity requires its raw signature");
+        if (type.Kind is TypeKind.Pointer or TypeKind.ByRef or TypeKind.SZArray or TypeKind.MDArray)
+        {
+            int kind = type.Kind == TypeKind.Pointer ? 1 : type.Kind == TypeKind.ByRef ? 2
+                : type.Kind == TypeKind.SZArray ? 6 : 7;
+            return new BindingSignature(kind, value: type.Rank,
+                children: new[] { ArraySignatureFromType(type.Element!) });
+        }
+        return new BindingSignature(type: type);
     }
 
     private readonly HashSet<ClassInfo> _querySignatureIntrinsicTypes = new();

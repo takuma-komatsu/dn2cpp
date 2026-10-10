@@ -3291,6 +3291,15 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // typeof(Regex) from a user assembly). Runtime-raised exception
                 // types stay External and keep their shared runtime handle.
                 var target = ResolveCastTarget(insn.Token);
+                if (CppEmitter.HasSignatureShape(target))
+                {
+                    var signature = CppEmitter.DecodeReflectionType(_c, _method, insn.Token);
+                    if (SharedTrial && signature.Open)
+                        ThrowSharedTaint("type-identity", "signature type token");
+                    string symbol = _c.NoteReflectionTypeToken(_method, insn.Token, signature.Binding);
+                    Push(StackKind.Ptr, "const Dn2CppTypeInfo*", symbol + "()", target);
+                    break;
+                }
                 // Shared-body candidate: typeof over a placeholder-bearing type
                 // loads the real per-instantiation handle out of an rgctx slot
                 // keyed on this token (the box/castclass mechanism), so the Type
@@ -3298,10 +3307,8 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // GetTypeFromHandle chain — is real rather than poisoned; the
                 // pervasive token-only folds (IsValueType / GetTypeCode) still
                 // read the static token riding along, and the runtime-consuming
-                // Type intrinsics still taint on the placeholder token. An MD
-                // array / pointer / byref target keeps the poisoned null handle:
-                // its rgctx entry has no resolvable type-info, and the folds
-                // that apply to it are token-only anyway.
+                // Type intrinsics still taint on the placeholder token. Signature
+                // shapes above taint before any ordinary rgctx slot can erase them.
                 if (SharedTrial && Compilation.ContainsCanonPlaceholder(target))
                 {
                     string? slotTi = target.Kind switch
@@ -3312,15 +3319,6 @@ internal sealed partial class MethodCompiler : IEvalStack
                         _ => null,
                     };
                     Push(StackKind.Ptr, "const Dn2CppTypeInfo*", slotTi ?? "nullptr", target);
-                    break;
-                }
-                if (CppEmitter.HasSignatureShape(target))
-                {
-                    var signature = CppEmitter.DecodeReflectionType(_c, _method, insn.Token);
-                    if (SharedTrial && signature.Open)
-                        ThrowSharedTaint("type-identity", "signature type token");
-                    string symbol = _c.NoteReflectionTypeToken(_method, insn.Token, signature.Binding);
-                    Push(StackKind.Ptr, "const Dn2CppTypeInfo*", symbol + "()", target);
                     break;
                 }
                 // typeof(value type) names its ti_ even when the struct is never used as a

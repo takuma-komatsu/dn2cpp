@@ -219,6 +219,40 @@ unsafe class DeepPointerTarget
     public static long ByRefEntrySink(ref delegate*<int> entry) => 1;
 }
 
+unsafe class PointerArrayTarget
+{
+    public static int Entries;
+    public static int Pointers(int*[] values) { Entries++; return 7; }
+    public static int Functions(delegate*<int>[] values) { Entries++; return 9; }
+    public int*[] PointerField = null!;
+    public delegate*<int>[] FunctionField = null!;
+    public delegate*<int>[][] JaggedField = null!;
+    public static int*[] ReturnPointers(int*[] values) => values;
+    public static delegate*<int>[] ReturnFunctions(delegate*<int>[] values) => values;
+    public static void ReplacePointers(ref int*[] values)
+    {
+        values = new int*[1];
+        values[0] = (int*)0x4560;
+    }
+    public static void ReplaceFunctions(ref delegate*<int>[] values)
+    {
+        values = new delegate*<int>[1];
+        values[0] = (delegate*<int>)0x6780;
+    }
+    public static int LongList(int a, int b, int c, int d, int e, int f, int g, int*[] values)
+    { Entries++; return 11; }
+}
+
+unsafe delegate int PointerArrayCall(int*[] values);
+unsafe delegate int FunctionArrayCall(delegate*<int>[] values);
+
+unsafe class PointerArrayGeneric<T>
+{
+    public static delegate*<T>[] Allocate() => new delegate*<T>[1];
+    public static bool PointerIdentity() => new T*[1].GetType() == typeof(T*[]);
+    public static bool PointerMatrixIdentity() => new T*[1, 1].GetType() == typeof(T*[,]);
+}
+
 // Signatures whose parameters or returns are references, pointers or by-ref-like.
 unsafe class ByRefTarget
 {
@@ -976,5 +1010,238 @@ static class Program
         Probe("delegate* unmanaged[Cdecl]<delegate*<int>, int*>, string", () => DeepPointerCall("NestedEntrySink", "x"));
         Probe("ref delegate*<int>, IntPtr", () => DeepPointerCall("ByRefEntrySink", (nint)0x88));
         Console.WriteLine("pointer returns end");
+    }
+
+    private static string PointerArrayFault(Action action)
+    {
+        try { action(); return "none"; }
+        catch (Exception ex) { return ex.GetType().Name; }
+    }
+
+    private static void CopyPointers(string label, Array source, Array target)
+    {
+        Probe("signature array Copy " + label, () => { Array.Copy(source, target, 2); return "copied"; });
+        Probe("signature array ConstrainedCopy " + label, () => { Array.ConstrainedCopy(source, 0, target, 0, 2); return "copied"; });
+    }
+
+    internal static unsafe void RunPointerArrayFromArrayType()
+    {
+        Type pointerArray = typeof(int*).MakeArrayType();
+        Array pointers = Array.CreateInstanceFromArrayType(pointerArray, 1);
+        var pointerIterator = ((System.Collections.IEnumerable)pointers).GetEnumerator();
+        Console.WriteLine("signature array from array type: " + pointerIterator.MoveNext());
+        Array functions = Array.CreateInstanceFromArrayType(typeof(delegate*<int>).MakeArrayType(), 1);
+        var functionIterator = ((System.Collections.IEnumerable)functions).GetEnumerator();
+        Console.WriteLine("signature array function from array type: " + functionIterator.MoveNext());
+        Array fromArrayType = Array.CreateInstanceFromArrayType(pointerArray.MakeArrayType(), 1);
+        var iterator = ((System.Collections.IEnumerable)fromArrayType).GetEnumerator();
+        Console.WriteLine("signature array composed FromArrayType: " + iterator.MoveNext() + "/" + (iterator.Current == null));
+    }
+
+    internal static unsafe void RunPointerArrayCreateInstance()
+    {
+        Array dynamicJagged = Array.CreateInstance(typeof(int*).MakeArrayType(), 1);
+        var iterator = ((System.Collections.IEnumerable)dynamicJagged).GetEnumerator();
+        Console.WriteLine("signature array composed CreateInstance: " + iterator.MoveNext() + "/" + (iterator.Current == null));
+    }
+
+    internal static unsafe void RunPointerArrayJagged()
+    {
+        Array pointers = new int*[1][];
+        var iterator = ((System.Collections.IEnumerable)pointers).GetEnumerator();
+        Console.WriteLine("signature array isolated jagged: " + iterator.MoveNext() + "/" + (iterator.Current == null));
+        Array functions = new delegate*<int>[1][];
+        iterator = ((System.Collections.IEnumerable)functions).GetEnumerator();
+        Console.WriteLine("signature array isolated function jagged: " + iterator.MoveNext() + "/" + (iterator.Current == null));
+    }
+
+    internal static unsafe void RunPointerArrays()
+    {
+        Console.WriteLine("== pointer array types ==");
+        PointerArrayTarget.Entries = 0;
+        for (int round = 1; round <= 2; round++)
+        {
+            foreach (string name in new[] { "Pointers", "Functions" })
+            {
+                MethodInfo method = typeof(PointerArrayTarget).GetMethod(name)!;
+                Probe("pointer array Invoke " + name + " string " + round,
+                    () => Describe(method.Invoke(null, new object?[] { "wrong" })));
+                Probe("pointer array Invoke " + name + " object " + round,
+                    () => Describe(method.Invoke(null, new object?[] { new object() })));
+                Probe("pointer array Invoke " + name + " long[] " + round,
+                    () => Describe(method.Invoke(null, new object?[] { new long[0] })));
+            }
+        }
+        Console.WriteLine("pointer array rejected entries: " + PointerArrayTarget.Entries);
+        Probe("pointer array Invoke null", () => Describe(typeof(PointerArrayTarget).GetMethod("Pointers")!
+            .Invoke(null, new object?[] { null })));
+        Console.WriteLine("pointer array null entries: " + PointerArrayTarget.Entries);
+#if !POINTER_ARRAY_INVOKE_ONLY
+        var pointers = new int*[2];
+        pointers[0] = (int*)0x1230;
+        var functions = new delegate*<int>[2];
+        functions[0] = (delegate*<int>)0x2340;
+        var nested = new int*[1][];
+        nested[0] = pointers;
+        Console.WriteLine("pointer array allocation: " + pointers.GetType() + "/" + pointers.Length + "/"
+            + (long)pointers[0] + "/" + (pointers.GetType() == typeof(int*[])));
+        Console.WriteLine("function array allocation: " + functions.GetType() + "/" + functions.Length + "/"
+            + (long)functions[0] + "/" + (functions.GetType() == typeof(delegate*<int>[])));
+        Console.WriteLine("pointer array jagged: " + nested.GetType() + "/" + nested.Length + "/"
+            + (long)nested[0][0] + "/" + (nested.GetType() == typeof(int*[][])));
+        var functionJagged = new delegate*<int>[1][];
+        functionJagged[0] = functions;
+        var deep = new delegate*<int>[1][][];
+        deep[0] = functionJagged;
+        var functionCells = new delegate*<int>*[1];
+        functionCells[0] = (delegate*<int>*)0x5670;
+        Console.WriteLine("signature array pointer to function: " + (functionCells.GetType() == typeof(delegate*<int>*[]))
+            + "/" + (long)functionCells[0]);
+        var twice = new int**[1];
+        twice[0] = (int**)0x3450;
+        var matrix = new int*[2, 3];
+        matrix[1, 2] = pointers[0];
+        var functionMatrix = new delegate*<int>[2, 3];
+        functionMatrix[1, 2] = functions[0];
+        var dynamicMatrix = (int*[,])Array.CreateInstance(typeof(int*), 1, 2);
+        var dynamicFunctionMatrix = (delegate*<int>[,])Array.CreateInstance(typeof(delegate*<int>), 1, 2);
+        Console.WriteLine("signature array MD default: " + (long)matrix[0, 0] + "/" + (long)functionMatrix[0, 0]
+            + "/" + (long)dynamicMatrix[0, 0] + "/" + (long)dynamicFunctionMatrix[0, 0]);
+        Console.WriteLine("signature array nested: " + (deep.GetType() == typeof(delegate*<int>[][][]))
+            + "/" + (deep.GetType().GetElementType() == functionJagged.GetType()) + "/" + (long)deep[0][0][0]
+            + "/" + (twice.GetType() == typeof(int**[])) + "/" + (long)twice[0]);
+        Console.WriteLine("signature array MD: " + (matrix.GetType() == typeof(int*[,])) + "/"
+            + (functionMatrix.GetType() == typeof(delegate*<int>[,])) + "/" + (long)matrix[1, 2] + "/" + (long)functionMatrix[1, 2]);
+        Type element = typeof(delegate*<int>);
+        Console.WriteLine("signature array same token: " + (element == functions.GetType().GetElementType())
+            + "/" + (typeof(int*) == pointers.GetType().GetElementType()));
+        Console.WriteLine("signature array identities: " + (typeof(delegate*<int>[]) != typeof(delegate*<long>[]))
+            + "/" + (typeof(delegate*<int>[]) != typeof(delegate*<int, int>[]))
+            + "/" + (typeof(delegate*<int>[]) != typeof(delegate* unmanaged<int>[]))
+            + "/" + (typeof(delegate* unmanaged[Cdecl]<int>[]) == typeof(delegate* unmanaged[Stdcall]<int>[]))
+            + "/" + (typeof(int*[]) != typeof(uint*[])) + "/" + (typeof(int*[]) != typeof(int**[])));
+        Console.WriteLine("signature array composition: " + (typeof(int*).MakeArrayType() == pointers.GetType())
+            + "/" + (element.MakeArrayType() == functions.GetType())
+            + "/" + (element.MakeArrayType(2) == functionMatrix.GetType())
+            + "/" + (functions.GetType().MakeArrayType() == functionJagged.GetType())
+            + "/" + (functionJagged.GetType().MakeArrayType() == deep.GetType()));
+        Console.WriteLine("signature array empty: " + (Array.Empty<int*[]>().GetType() == typeof(int*[][]))
+            + "/" + (Array.Empty<delegate*<int>[]>().GetType() == typeof(delegate*<int>[][]))
+            + "/" + (Array.Empty<delegate*<long>[]>().GetType() == typeof(delegate*<long>[][])));
+        object erased = functions;
+        Console.WriteLine("signature array casts: " + (erased is delegate*<int>[]) + "/" + (erased is delegate*<long>[])
+            + "/" + (((delegate*<int>[])erased).GetType() == functions.GetType()));
+        Console.WriteLine("signature array bad cast: " + PointerArrayFault(() => {
+            _ = ((delegate*<long>[])erased).Length;
+        }));
+        Console.WriteLine("signature array generic: " + (PointerArrayGeneric<int>.Allocate().GetType() == functions.GetType())
+            + "/" + (PointerArrayGeneric<long>.Allocate().GetType() == typeof(delegate*<long>[]))
+            + "/" + PointerArrayGeneric<string>.PointerIdentity() + "/" + PointerArrayGeneric<object>.PointerIdentity()
+            + "/" + PointerArrayGeneric<string>.PointerMatrixIdentity());
+        RunPointerArrayFromArrayType();
+        RunPointerArrayCreateInstance();
+        RunPointerArrayJagged();
+        foreach (Type item in new[] { typeof(int*), element })
+        {
+            Array sz = Array.CreateInstance(item, 2);
+            Array md = Array.CreateInstance(item, 2, 3);
+            Array lengths = Array.CreateInstance(item, new[] { 2 });
+            Array longLengths = Array.CreateInstance(item, new long[] { 2 });
+            Array nonSz = Array.CreateInstance(item, new[] { 2 }, new[] { 1 });
+            Console.WriteLine("signature array dynamic " + item + ": " + (sz.GetType() == item.MakeArrayType())
+                + "/" + (md.GetType() == item.MakeArrayType(2)) + "/" + (nonSz.GetType() == item.MakeArrayType(1))
+                + "/" + sz.Length + "/" + md.Length + "/" + nonSz.GetLowerBound(0)
+                + "/" + (lengths.GetType() == sz.GetType()) + "/" + (longLengths.GetType() == sz.GetType()));
+            Probe("signature array GetValue " + item, () => Describe(sz.GetValue(0)));
+            Probe("signature array SetValue " + item, () => { sz.SetValue(IntPtr.Zero, 0); return "stored"; });
+            Probe("signature array MD GetValue " + item, () => Describe(md.GetValue(new[] { 0, 0 })));
+            Probe("signature array MD SetValue " + item, () => { md.SetValue(IntPtr.Zero, new[] { 0, 0 }); return "stored"; });
+            Probe("signature array IList " + item, () => Describe(((System.Collections.IList)sz)[0]));
+            System.Collections.IEnumerator iterator = ((System.Collections.IEnumerable)sz).GetEnumerator();
+            Console.WriteLine("signature array MoveNext " + item + ": " + iterator.MoveNext());
+            Probe("signature array Current " + item, () => Describe(iterator.Current));
+            Console.WriteLine("signature array Clone " + item + ": " + (((Array)sz.Clone()).GetType() == sz.GetType()));
+            Array.Clear(sz);
+        }
+        GCHandle pin = GCHandle.Alloc(pointers, GCHandleType.Pinned);
+        Console.WriteLine("signature array pinned data: " + (long)*(int**)pin.AddrOfPinnedObject());
+        pin.Free();
+        Console.WriteLine("signature array byte length: " + PointerArrayFault(() => { _ = Buffer.ByteLength(pointers); }));
+        var matrixClone = (int*[,])matrix.Clone();
+        Array.Clear(matrix);
+        Console.WriteLine("signature array MD clone clear: " + (long)matrixClone[1, 2] + "/" + (long)matrix[1, 2]);
+        Array dynamicJagged = Array.CreateInstance(functions.GetType(), 1);
+        dynamicJagged.SetValue(functions, 0);
+        Console.WriteLine("signature array dynamic jagged: " + (dynamicJagged.GetType() == functionJagged.GetType())
+            + "/" + ReferenceEquals(functions, dynamicJagged.GetValue(0)));
+        Console.WriteLine("signature array dynamic convention: " + (Array.CreateInstance(typeof(delegate* unmanaged<int>), 2).GetType()
+            != functions.GetType()));
+        var clone = (int*[])pointers.Clone();
+        Array.Copy(pointers, clone, 2);
+        Console.WriteLine("signature array copy bits: " + (long)clone[0] + "/" + (clone.GetType() == pointers.GetType()));
+        Array.Clear(clone);
+        Console.WriteLine("signature array clear bits: " + (long)clone[0]);
+        CopyPointers("unsigned", pointers, new uint*[2]);
+        CopyPointers("void", pointers, new void*[2]);
+        CopyPointers("nested", new int**[2], new uint**[2]);
+        CopyPointers("references", new string*[2], new object*[2]);
+        CopyPointers("reverse references", new object*[2], new string*[2]);
+        CopyPointers("array leaves", new string[]*[2], new object[]*[2]);
+        CopyPointers("same function", functions, new delegate*<int>[2]);
+        CopyPointers("different function", functions, new delegate*<long>[2]);
+        CopyPointers("different convention", functions, new delegate* unmanaged<int>[2]);
+        Probe("signature array typed Copy", () => { Array.Copy(functions, new delegate*<long>[2], 2); return "copied"; });
+        Probe("signature array typed ConstrainedCopy", () => {
+            Array.ConstrainedCopy(functions, 0, new delegate* unmanaged<int>[2], 0, 2); return "copied"; });
+        CopyPointers("function to pointer", functions, new int*[2]);
+        CopyPointers("pointer to object", pointers, new object[2]);
+        CopyPointers("object to pointer", new object[2], pointers);
+        MethodInfo pointerMethod = typeof(PointerArrayTarget).GetMethod("Pointers")!;
+        MethodInfo functionMethod = typeof(PointerArrayTarget).GetMethod("Functions")!;
+        for (int round = 1; round <= 2; round++)
+        {
+            Probe("signature array Invoke correct " + round, () => Describe(pointerMethod.Invoke(null, new object[] { pointers })));
+            Probe("signature array Invoke function " + round, () => Describe(functionMethod.Invoke(null, new object[] { functions })));
+            Probe("signature array Invoke unsigned " + round, () => Describe(pointerMethod.Invoke(null, new object[] { new uint*[0] })));
+            Probe("signature array Invoke wrong signature " + round,
+                () => Describe(functionMethod.Invoke(null, new object[] { new delegate*<long>[0] })));
+            Probe("signature array Invoke wrong convention " + round,
+                () => Describe(functionMethod.Invoke(null, new object[] { new delegate* unmanaged<int>[0] })));
+            Probe("signature array Invoke long list " + round, () => Describe(typeof(PointerArrayTarget).GetMethod("LongList")!
+                .Invoke(null, new object[] { 1, 2, 3, 4, 5, 6, 7, "wrong" })));
+        }
+        MethodInfo returnMethod = typeof(PointerArrayTarget).GetMethod("ReturnFunctions")!;
+        Console.WriteLine("signature array return: " + (returnMethod.ReturnType == functions.GetType())
+            + "/" + (returnMethod.ReturnParameter.ParameterType == functions.GetType()) + "/"
+            + ReferenceEquals(functions, returnMethod.Invoke(null, new object[] { functions })));
+        object[] cell = { pointers };
+        typeof(PointerArrayTarget).GetMethod("ReplacePointers")!.Invoke(null, cell);
+        Console.WriteLine("signature array byref writeback: " + ((int*[])cell[0]).Length + "/" + (long)((int*[])cell[0])[0]);
+        object[] functionCell = { functions };
+        typeof(PointerArrayTarget).GetMethod("ReplaceFunctions")!.Invoke(null, functionCell);
+        Console.WriteLine("signature array function writeback: " + ((delegate*<int>[])functionCell[0]).Length
+            + "/" + (long)((delegate*<int>[])functionCell[0])[0]);
+        PointerArrayCall call = PointerArrayTarget.Pointers;
+        Probe("signature array DynamicInvoke correct", () => Describe(call.DynamicInvoke(new object[] { pointers })));
+        Probe("signature array DynamicInvoke wrong", () => Describe(call.DynamicInvoke(new object[] { "wrong" })));
+        FunctionArrayCall functionCall = PointerArrayTarget.Functions;
+        Probe("signature array DynamicInvoke function", () => Describe(functionCall.DynamicInvoke(new object[] { functions })));
+        Probe("signature array DynamicInvoke signature", () => Describe(functionCall.DynamicInvoke(new object[] { new delegate*<long>[0] })));
+        var holder = new PointerArrayTarget();
+        FieldInfo pointerField = typeof(PointerArrayTarget).GetField("PointerField")!;
+        FieldInfo functionField = typeof(PointerArrayTarget).GetField("FunctionField")!;
+        FieldInfo jaggedField = typeof(PointerArrayTarget).GetField("JaggedField")!;
+        pointerField.SetValue(holder, pointers);
+        functionField.SetValue(holder, functions);
+        jaggedField.SetValue(holder, functionJagged);
+        Console.WriteLine("signature array fields: " + (pointerField.FieldType == pointers.GetType())
+            + "/" + (functionField.FieldType == functions.GetType()) + "/" + (jaggedField.FieldType == functionJagged.GetType())
+            + "/" + ReferenceEquals(functions, functionField.GetValue(holder)));
+        Probe("signature array field mismatch", () => { functionField.SetValue(holder, new delegate*<long>[0]); return "stored"; });
+        Probe("signature array field object", () => { pointerField.SetValue(holder, "wrong"); return "stored"; });
+        Console.WriteLine("signature array jagged reference: " + ReferenceEquals(functions, ((Array)functionJagged).GetValue(0)));
+
+#endif
+        Console.WriteLine("pointer array types end");
     }
 }

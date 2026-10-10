@@ -82,11 +82,13 @@ const Record image_method = record(0, 0, {});
 const Record image_ctor = record(0, 0, {});
 const Record overrun_ctor = record(1, 0, {});
 
+const Dn2CppBindingSignature field_signature{ 6 };
+
 Dn2CppObject* identity_getter(Dn2CppObject* object) { return object; }
 
 DN2CPP_NATIVE_FIELDS(local_fields,
     { unicode, &original_type, &original_type, DN2CPP_FLDA_PUBLIC, identity_getter,
-        nullptr, nullptr, 0, 0x6, INT32_MAX, INT64_MIN, unicode, identity_getter },
+        nullptr, nullptr, 0, 0x6, INT32_MAX, INT64_MIN, unicode, identity_getter, &field_signature },
     { empty, &original_type, nullptr, 0, nullptr, nullptr, nullptr, 0, 0x6 });
 DN2CPP_NATIVE_METADATA_STORAGE(local_fields);
 constexpr auto packed_local_fields = Dn2CppMetadataTable<Dn2CppFieldInfo>::from_static(local_fields_storage.records.data());
@@ -458,6 +460,9 @@ int main()
     require(builtin.fields[0]->valueCheck(&object) == &object
         && builtin.fields[1]->valueCheck == nullptr,
         "local value checks remain callable and omitted checks remain null");
+    require(builtin.fields[0]->reflectionSignature == &field_signature
+        && builtin.fields[1]->reflectionSignature == nullptr,
+        "local field signature descriptors preserve identity and omitted columns");
     bool pointer_refused = false;
     try { (void)dn2cpp_invoke_box_pointer(nullptr, &dn2cpp_void_type, 1); }
     catch (Dn2CppException& ex)

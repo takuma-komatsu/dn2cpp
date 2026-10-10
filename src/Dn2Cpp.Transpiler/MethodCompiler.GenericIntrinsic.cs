@@ -13,13 +13,15 @@ internal sealed partial class MethodCompiler
     /// which drives it from the resolved instantiation's Context.MethodArgs —
     /// ldftn / delegate method group / delegate*&lt;...&gt; over e.g.
     /// <c>Array.Empty&lt;T&gt;</c>).</summary>
-    private bool TryTokenFreeGenericIntrinsic(string declType, string name, TypeDesc[] methodArgs)
+    private bool TryTokenFreeGenericIntrinsic(string declType, string name, TypeDesc[] methodArgs, MethodSpecificationHandle specification = default)
     {
         // Array.Empty<T> -> the per-element-type cached singleton (matches .NET's
         // EmptyArray<T>.Value: the same instance every call, no per-call allocation).
         if (declType == "System.Array" && name == "Empty")
         {
-            EmitEmptyArray(methodArgs[0]);
+            var signature = !specification.IsNil && CppEmitter.HasSignatureShape(methodArgs[0])
+                ? CppEmitter.DecodeReflectionMethodArgument(_c, _method, specification, 0) : null;
+            EmitEmptyArray(methodArgs[0], signature, specification.IsNil ? 0 : SRME.GetToken(specification));
             return true;
         }
         // EnumComparer's JIT helper uses Enum.CompareTo's width and signedness.
@@ -1391,7 +1393,7 @@ internal sealed partial class MethodCompiler
             return;
         }
 
-        if (TryTokenFreeGenericIntrinsic(declType, name, methodArgs))
+        if (TryTokenFreeGenericIntrinsic(declType, name, methodArgs, msh))
             return;
 
         // Array.Resize<T>(ref T[] array, int newSize): as .NET, read the slot once and

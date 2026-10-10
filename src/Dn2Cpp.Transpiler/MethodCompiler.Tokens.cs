@@ -420,15 +420,19 @@ internal sealed partial class MethodCompiler
         // receiver) can rediscover the shape. A placeholder-bearing element in
         // a shared-body candidate keeps the legacy null header (identity would
         // be instantiation-dependent) rather than tainting the trial.
-        string elemTi = MdArrayElementTypeInfoExpr(arrayType.Element!)
+        bool signatureArray = CppEmitter.HasSignatureShape(arrayType);
+        string elemTi = signatureArray ? "nullptr" : MdArrayElementTypeInfoExpr(arrayType.Element!)
             ?? (SharedTrial && Compilation.ContainsCanonPlaceholder(arrayType.Element!)
                 ? null : TypeInfoExpr(arrayType.Element!)) ?? "nullptr";
+        string arrayTi = signatureArray
+            ? SignatureTypeInfoExpr(System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(mr.Parent))
+            : $"dn2cpp_mdarr_ti({elemTi}, {rank})";
         // dn2cpp_i32s(...).v, not the C99 compound literal (const int32_t[]){...}:
         // that form is a GNU extension in C++ that real MSVC rejects (C4576). The
         // helper's temporary lives to the end of the full expression, and
         // dn2cpp_newmdarr copies the lengths during the call. Same at the
         // md_elem_addr sites below.
-        Emit($"{temp} = dn2cpp_newmdarr(dn2cpp_mdarr_ti({elemTi}, {rank}), {rank}, dn2cpp_i32s({lengthsInit}).v, (int32_t)sizeof({st}));");
+        Emit($"{temp} = dn2cpp_newmdarr({arrayTi}, {rank}, dn2cpp_i32s({lengthsInit}).v, (int32_t)sizeof({st}));");
         Push(StackKind.Ref, "Dn2CppMDArray*", temp);
         _stack[^1] = _stack[^1] with { ArraySearchOrigin =
             _c.SeedArraySearchOrigin(ArraySearchValueKind.ArrayElement, arrayType.Element) };

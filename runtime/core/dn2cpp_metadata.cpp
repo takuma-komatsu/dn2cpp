@@ -43,6 +43,7 @@ constexpr Field Dn2CppFieldInfo_fields[] = {
     { offsetof(Dn2CppFieldInfo, literalValue), Encoding::Signed64 },
     { offsetof(Dn2CppFieldInfo, display), Encoding::Pointer },
     { offsetof(Dn2CppFieldInfo, valueCheck), Encoding::Pointer },
+    { offsetof(Dn2CppFieldInfo, reflectionSignature), Encoding::Pointer },
 };
 constexpr Field Dn2CppMethodInfo_fields[] = {
     { offsetof(Dn2CppMethodInfo, name), Encoding::Pointer },

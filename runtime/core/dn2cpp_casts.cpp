@@ -779,7 +779,7 @@ static const void** dn2cpp_resolve_interface_walk(const Dn2CppTypeInfo* t, const
         && t != &dn2cpp_array_n_type)
     {
         const Dn2CppTypeInfo* e = t->elementType != nullptr ? t->elementType : &dn2cpp_object_type;
-        if ((e->flags & DN2CPP_TF_VALUETYPE) == 0)
+        if (dn2cpp_array_element_is_reference(e))
         {
             for (int32_t i = 0; i < g_array_ref_fallback_itf_count; i++)
                 if (g_array_ref_fallback_itfs[i].itf == itf)
@@ -800,7 +800,9 @@ static const void** dn2cpp_resolve_interface_walk(const Dn2CppTypeInfo* t, const
     // is no variance or element-covariance arm — and the thunks wrap the receiver in
     // the element-agnostic MDArrayEnumerable, sound for every element type and rank
     // because all element access goes through the System.Array reflection surface.
-    if (dn2cpp_is_md_array(t)
+    // Runtime-composed signature arrays use this map too, including jagged arrays
+    // whose reference-element SZ map was never statically seeded.
+    if ((dn2cpp_is_md_array(t) || (dn2cpp_is_sz_array(t) && dn2cpp_has_signature_array_element(t)))
         && g_array_md_fallback_itfs != nullptr)
     {
         for (int32_t i = 0; i < g_array_md_fallback_itf_count; i++)

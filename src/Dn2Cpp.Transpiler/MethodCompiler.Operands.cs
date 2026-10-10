@@ -388,9 +388,34 @@ internal sealed partial class MethodCompiler
     internal string PreciseArrayTypeInfoExpr(TypeDesc element)
     {
         TaintIfCanonical(element, "array-ti");
+        if (CppEmitter.HasSignatureShape(element))
+            return SignatureArrayTypeInfoExpr(element);
         var e = PreciseArrayTypeInfoExprOf(element);
         _c.NoteNamedTypeInfoSymbol(_method, e);
         return e;
+    }
+
+    private string SignatureArrayTypeInfoExpr(TypeDesc element, CppEmitter.SpelledType? signature = null, int token = 0)
+    {
+        if (SharedTrial && signature is { Open: true })
+            ThrowSharedTaint("array-ti", "signature array type");
+        _c.NoteMdArrayUse();
+        var binding = new CppEmitter.BindingSignature(6, children: new[] {
+            signature?.Binding ?? CppEmitter.ArraySignatureFromType(element) });
+        string symbol = _c.NoteReflectionTypeToken(_method, token, binding,
+            signature is null ? "_array_" + Compilation.IdentityMangle(element) : "_array_argument");
+        return symbol + "()";
+    }
+
+    private string SignatureTypeInfoExpr(int token, bool arrayElement = false)
+    {
+        var signature = CppEmitter.DecodeReflectionType(_c, _method, token);
+        if (SharedTrial && signature.Open)
+            ThrowSharedTaint("type-identity", "signature array type");
+        var binding = arrayElement
+            ? new CppEmitter.BindingSignature(6, children: new[] { signature.Binding }) : signature.Binding;
+        string symbol = _c.NoteReflectionTypeToken(_method, token, binding, arrayElement ? "_array" : "");
+        return symbol + "()";
     }
 
     /// <summary>Token-carrying variant for typeof(T[]) and array cast targets:
@@ -399,6 +424,8 @@ internal sealed partial class MethodCompiler
     /// the site's raw SZArray token; the fill projects its element.</summary>
     internal string PreciseArrayTypeInfoExpr(TypeDesc element, int token)
     {
+        if (CppEmitter.HasSignatureShape(element))
+            return SignatureTypeInfoExpr(token);
         if (SharedTrial && Compilation.ContainsCanonPlaceholder(element))
             return "(const Dn2CppTypeInfo*)"
                 + RgctxSlotAccess(RgctxSlotKind.ArrayTypeInfo, token, "array-ti", element);
@@ -466,6 +493,11 @@ internal sealed partial class MethodCompiler
     /// unconditional/identity match.</summary>
     private string? CastTargetTypeInfoExpr(TypeDesc target, int token = 0)
     {
+        if (token != 0 && CppEmitter.HasSignatureShape(target))
+        {
+            _c.NoteMdArrayUse();
+            return SignatureTypeInfoExpr(token);
+        }
         if (target is { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Primitive or TypeKind.Class or TypeKind.External or TypeKind.SZArray or TypeKind.MDArray } el })
         {
             _c.NoteArrayElementType(el);

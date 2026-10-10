@@ -1148,7 +1148,11 @@ internal sealed partial class CppEmitter
                 // RenderFieldTable's guard.
                 if (cls.Fields.Count > 0 && !_e.IsCanonicalWorld(cls) && _c.KeepsReflectionMetadata(cls))
                     foreach (var f in cls.Fields)
+                    {
                         NoteReflectedType(f.Type);
+                        if (IsSignatureArray(f.Type))
+                            _e.NoteReflectionSignatureLeaves(_e.ReflectionFieldSignature(f).Binding, leaf => NoteReflectedType(leaf));
+                    }
                 // RenderTypeInfo's generic-argument vector gate (its _genericDefSyms
                 // lookup succeeds exactly when GenericDefInfo is non-null).
                 if (!_e.IsCanonicalWorld(cls) && !_e.SkipsCanonicalMetadata(cls)
@@ -2740,6 +2744,9 @@ internal sealed partial class CppEmitter
             foreach (var f in cls.Fields)
             {
                 int attrs = MetadataFieldAttrs((int)f.Attributes);
+                var arraySignature = IsSignatureArray(f.Type) ? _e.ReflectionFieldSignature(f) : null;
+                string querySignature = arraySignature is not null
+                    ? _e.EmitBindingSignature(_sb, _e.QuerySignature(arraySignature.Binding), query: true) : "nullptr";
                 string ftInfo = _e.FieldTypeInfoExpr(f.Type, _emittedEnums);
                 // GetValue/SetValue accessor thunks, emitted only when the
                 // field is a real member of the emitted layout: a non-literal field of
@@ -2863,8 +2870,8 @@ internal sealed partial class CppEmitter
                     MetadataValue.Text(f.Name), MetadataValue.Ref(_e.TypeInfoRef(cls, "field row's declaring type")), MetadataValue.Ref(ftInfo),
                     MetadataValue.ExplicitSigned(attrs), MetadataValue.Ref(get), MetadataValue.Ref(set), MetadataValue.Ref(ca.Expr), MetadataValue.Signed(ca.Count),
                     MetadataValue.Signed((int)f.Attributes), MetadataValue.Signed(fldToken), MetadataValue.Signed(literalBits),
-                    MetadataValue.Display(_e.ReflectionSignatureType(f.Type) + " " + f.Name),
-                    MetadataValue.Ref(valueCheck),
+                    MetadataValue.Display((arraySignature?.Name ?? _e.ReflectionSignatureType(f.Type)) + " " + f.Name),
+                    MetadataValue.Ref(valueCheck), MetadataValue.Ref(querySignature),
                 }));
             }
             _e.EmitMetadataTable(_sb, "Dn2CppFieldInfo", $"fldtab_{cls.CppName}", rows);

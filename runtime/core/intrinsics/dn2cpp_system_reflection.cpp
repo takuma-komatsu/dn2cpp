@@ -1665,7 +1665,11 @@ static Dn2CppObject* dn2cpp_memberref_require(Dn2CppObject* m)
 
 Dn2CppType* dn2cpp_fieldref_field_type(Dn2CppFieldRef* f)
 {
-    return dn2cpp_get_type_from_handle(dn2cpp_fieldref_require(f)->fieldType);
+    const auto row = dn2cpp_fieldref_require(f).operator->();
+    const auto* type = row->reflectionSignature != nullptr
+        ? dn2cpp_signature_type(row->reflectionSignature, dn2cpp_invoke_declaring(row->declaringType, f->reflectedType))
+        : row->fieldType;
+    return dn2cpp_get_type_from_handle(type);
 }
 
 int32_t dn2cpp_fieldref_is_static(Dn2CppFieldRef* f)
@@ -1690,7 +1694,8 @@ int32_t dn2cpp_fieldref_is_literal(Dn2CppFieldRef* f)
 
 static void dn2cpp_field_check_target(const Dn2CppFieldRef* f, const Dn2CppFieldInfo* row,
     Dn2CppObject* obj);
-static Dn2CppObject* dn2cpp_field_check_value(const Dn2CppFieldInfo* row, Dn2CppObject* value);
+static Dn2CppObject* dn2cpp_field_check_value(const Dn2CppFieldInfo* row, Dn2CppObject* value,
+    const Dn2CppTypeInfo* declaring);
 static Dn2CppObject* dn2cpp_field_literal(const Dn2CppFieldInfo* row);
 [[noreturn]] static void dn2cpp_field_refuse_constant();
 [[noreturn]] static void dn2cpp_field_refuse_initonly(const Dn2CppFieldRef* f,
@@ -1732,7 +1737,8 @@ void dn2cpp_fieldref_set_value(Dn2CppFieldRef* f, Dn2CppObject* obj, Dn2CppObjec
     dn2cpp_field_check_target(f, row.operator->(), obj);
     if (initOnly && f->initOnlyAccessed.load(std::memory_order_acquire))
         dn2cpp_field_refuse_initonly(f, row.operator->());
-    Dn2CppObject* stored = dn2cpp_field_check_value(row.operator->(), value);
+    Dn2CppObject* stored = dn2cpp_field_check_value(row.operator->(), value,
+        dn2cpp_invoke_declaring(row->declaringType, f->reflectedType));
     if (initOnly)
         dn2cpp_field_refuse_initonly(f, row.operator->());
     row->setter(obj, stored);
@@ -2205,6 +2211,25 @@ static const Dn2CppTypeInfo* dn2cpp_reflection_parameter_type(const Dn2CppParamI
 {
     return parameter.reflectionSignature != nullptr
         ? dn2cpp_signature_type(parameter.reflectionSignature, declaring) : parameter.paramType;
+}
+
+static const Dn2CppBindingSignature* dn2cpp_parameter_array_signature(
+    const Dn2CppParamInfo& parameter, bool referent = false)
+{
+    const auto* signature = parameter.reflectionSignature;
+    if (referent && signature != nullptr && signature->kind == 2 && signature->childCount == 1)
+        signature = &signature->children[0];
+    return signature != nullptr && (signature->kind == 6 || signature->kind == 7) ? signature : nullptr;
+}
+
+// Array validation uses its full element identity; the invoker's ABI columns
+// still describe the unchanged reference/by-ref calling convention.
+static const Dn2CppTypeInfo* dn2cpp_invoke_parameter_type(const Dn2CppParamInfo& parameter,
+    const Dn2CppTypeInfo* declaring, bool referent = false)
+{
+    if (const auto* signature = dn2cpp_parameter_array_signature(parameter, referent))
+        return dn2cpp_signature_type(signature, declaring);
+    return referent ? parameter.passType : parameter.paramType;
 }
 
 // Exact parameter identities, including a formal parameter of this MethodDef.
@@ -3482,7 +3507,7 @@ static void dn2cpp_invoke_write_defaults(Dn2CppMetadataTable<Dn2CppParamInfo> pa
 // otherwise the row's parameter table answers.
 static Dn2CppObject** dn2cpp_invoke_check_args(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi,
     const Dn2CppTypeInfo* const* types, Dn2CppObject** args, int32_t argc,
-    Dn2CppArrayI4** defaultCopyBack)
+    Dn2CppArrayI4** defaultCopyBack, const Dn2CppTypeInfo* declaring)
 {
     if (argc == 0)
         return args;
@@ -3502,7 +3527,8 @@ static Dn2CppObject** dn2cpp_invoke_check_args(Dn2CppMetadataHandle<Dn2CppMethod
             arg = dn2cpp_invoke_default(*parameters[i].operator->().operator->(), arg, i, argc, defaultCopyBack);
         }
         if (arg != nullptr)
-            arg = dn2cpp_invoke_check_arg(arg, types != nullptr ? types[i] : parameters[i]->paramType);
+            arg = dn2cpp_invoke_check_arg(arg, types != nullptr ? types[i]
+                : dn2cpp_invoke_parameter_type(*parameters[i], declaring));
         if (arg == args[i])
             continue;
         if (copy == nullptr)
@@ -3684,7 +3710,7 @@ static Dn2CppObject* dn2cpp_invoke_pass_arg(const Dn2CppParamInfo& param, Dn2Cpp
     bool wrapExceptions, char** cell, const Dn2CppTypeInfo* declaring = nullptr)
 {
     const int32_t kind = param.passKind;
-    const Dn2CppTypeInfo* t = param.passType;
+    const Dn2CppTypeInfo* t = dn2cpp_invoke_parameter_type(param, declaring, true);
     const bool byRef = (kind & DN2CPP_PASS_BYREF) != 0;
     if ((kind & DN2CPP_PASS_UNSUPPORTED) != 0 || t == nullptr)
     {
@@ -3776,7 +3802,7 @@ static Dn2CppObject** dn2cpp_invoke_pass_args(Dn2CppMetadataTable<Dn2CppParamInf
         }
         else if (pass != nullptr)
         {
-            pass = dn2cpp_invoke_check_arg(pass, param->paramType);
+            pass = dn2cpp_invoke_check_arg(pass, dn2cpp_invoke_parameter_type(*param.operator->(), declaring));
         }
         dn2cpp_gc_store_ref(&list->data[i], pass);
     }
@@ -3977,13 +4003,16 @@ Dn2CppObject* dn2cpp_field_pointer_value(Dn2CppObject* value, int32_t passKind,
 
 // The box a field's setter thunk stores: a value converts as a reflected argument
 // does, and null stores the default, which a value-type thunk reads from a zeroed box.
-static Dn2CppObject* dn2cpp_field_check_value(const Dn2CppFieldInfo* row, Dn2CppObject* value)
+static Dn2CppObject* dn2cpp_field_check_value(const Dn2CppFieldInfo* row, Dn2CppObject* value,
+    const Dn2CppTypeInfo* declaring)
 {
     if (row->valueCheck != nullptr)
         return row->valueCheck(value);
+    const auto* type = row->reflectionSignature != nullptr
+        ? dn2cpp_signature_type(row->reflectionSignature, declaring) : row->fieldType;
     if (value == nullptr)
-        return dn2cpp_binder_adapt_arg(nullptr, row->fieldType);
-    return dn2cpp_invoke_check_arg(value, row->fieldType);
+        return dn2cpp_binder_adapt_arg(nullptr, type);
+    return dn2cpp_invoke_check_arg(value, type);
 }
 
 // An invoker or field-getter thunk boxes a Nullable<T> as its raw struct; .NET
@@ -4205,11 +4234,12 @@ struct Dn2CppInvokePlan
     static constexpr uint16_t kParamTypes = 1;
     // A parameter carries DN2CPP_PASS_* bits, which Invoke reads from its table.
     static constexpr uint16_t kPassArgs = 2;
+    static constexpr uint16_t kSignatureArrays = 4;
 
     // The parameter types, or null when the row's parameter table answers.
     const Dn2CppTypeInfo* const* checkedTypes() const
     {
-        if ((flags & kParamTypes) == 0)
+        if ((flags & kParamTypes) == 0 || (flags & kSignatureArrays) != 0)
             return nullptr;
         return paramTypeList != nullptr ? paramTypeList : paramTypes;
     }
@@ -4236,6 +4266,8 @@ static Dn2CppInvokePlan dn2cpp_invoke_plan(const Dn2CppMethodInfo& row, bool wit
             plan.paramTypes[i] = param->paramType;
         if (param->passKind != 0)
             plan.flags |= Dn2CppInvokePlan::kPassArgs;
+        if (dn2cpp_parameter_array_signature(*param.operator->()) != nullptr)
+            plan.flags |= Dn2CppInvokePlan::kSignatureArrays;
     }
     if (inlineTypes)
         plan.flags |= Dn2CppInvokePlan::kParamTypes;
@@ -4346,7 +4378,8 @@ static Dn2CppObject* dn2cpp_invoke_answer(Dn2CppMetadataHandle<Dn2CppMethodInfo>
         obj = dn2cpp_invoke_receiver(row, obj, reflected);
         if (argc != row.paramCount)
             dn2cpp_throw_invoke_parameter_count();
-        args = dn2cpp_invoke_check_args(mi, nullptr, args, argc, &defaultCopyBack);
+        args = dn2cpp_invoke_check_args(mi, nullptr, args, argc, &defaultCopyBack,
+            dn2cpp_invoke_declaring(row.declaringType, reflected));
     }
     // An answer refuses nothing itself: a refusal reaching here is a nested call's.
     try
@@ -4390,7 +4423,8 @@ static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi
             dn2cpp_throw_invoke_parameter_count();
         args = passArgs ? dn2cpp_invoke_pass_args(row.parameters, args, argc, wrapExceptions, &defaultCopyBack,
                             dn2cpp_invoke_declaring(row.declaringType, reflected))
-                        : dn2cpp_invoke_check_args(mi, row.checkedTypes(), args, argc, &defaultCopyBack);
+                        : dn2cpp_invoke_check_args(mi, row.checkedTypes(), args, argc, &defaultCopyBack,
+                            dn2cpp_invoke_declaring(row.declaringType, reflected));
         if (isStatic && (row.ilAttrs & DN2CPP_MA_ABSTRACT) != 0
             && (row.declaringType->flags & DN2CPP_TF_INTERFACE) != 0)
             dn2cpp_throw_invoke_static_abstract(wrapExceptions);
@@ -6348,7 +6382,8 @@ static Dn2CppObject* dn2cpp_ctor_invoke_argv(Dn2CppMetadataHandle<Dn2CppMethodIn
     Dn2CppArrayI4* defaultCopyBack = nullptr;
     args = passArgs ? dn2cpp_invoke_pass_args(plan.parameters, args, argc, wrapExceptions, &defaultCopyBack,
                         plan.declaringType)
-                    : dn2cpp_invoke_check_args(mi, plan.checkedTypes(), args, argc, &defaultCopyBack);
+                    : dn2cpp_invoke_check_args(mi, plan.checkedTypes(), args, argc, &defaultCopyBack,
+                        plan.declaringType);
     const Dn2CppTypeInfo* ti = plan.declaringType;
     bool isValue = (ti->flags & DN2CPP_TF_VALUETYPE) != 0;
     size_t sz = isValue ? sizeof(Dn2CppObject) + static_cast<size_t>(ti->instanceSize)
@@ -8042,7 +8077,7 @@ Dn2CppType* dn2cpp_type_make_array_type(Dn2CppType* t)
     dn2cpp_type_require(t);
     if (dn2cpp_signature_kind(t->typeInfo) == 2)
         dn2cpp_throw_type_load();
-    if (dn2cpp_signature_kind(t->typeInfo) != 0)
+    if (dn2cpp_has_signature_array_element(t->typeInfo))
         return dn2cpp_get_type_from_handle(dn2cpp_array_ti(t->typeInfo, 1, false));
     if ((t->typeInfo->flags & DN2CPP_TF_GENERICPARAM) != 0)
         dn2cpp_throw_platform_not_supported("Reflection: composed open generic types are not supported");
@@ -8067,11 +8102,11 @@ Dn2CppType* dn2cpp_type_make_array_type_rank(Dn2CppType* t, int32_t rank)
     dn2cpp_type_require(t);
     if (rank <= 0)
         dn2cpp_throw_index_out_of_range();
-    if (dn2cpp_signature_kind(t->typeInfo) != 0 && rank > 32)
+    if (dn2cpp_has_signature_array_element(t->typeInfo) && rank > 32)
         dn2cpp_throw_type_load();
     if (dn2cpp_signature_kind(t->typeInfo) == 2)
         dn2cpp_throw_type_load();
-    if (dn2cpp_signature_kind(t->typeInfo) != 0)
+    if (dn2cpp_has_signature_array_element(t->typeInfo))
         return dn2cpp_get_type_from_handle(dn2cpp_array_ti(t->typeInfo, rank, true));
     if ((t->typeInfo->flags & DN2CPP_TF_GENERICPARAM) != 0)
         dn2cpp_throw_platform_not_supported("Reflection: composed open generic types are not supported");
@@ -8938,6 +8973,8 @@ static bool dn2cpp_nullable_layout(const Dn2CppTypeInfo* nullable, const Dn2CppT
 void dn2cpp_array_store_boxed(Dn2CppObject* v, const Dn2CppTypeInfo* elem,
                               void* dst, int32_t elemSize, bool elemIsRef)
 {
+    if (dn2cpp_signature_kind(elem) != 0)
+        dn2cpp_throw_sr0(&dn2cpp_not_supported_exception_type, DN2CPP_SR_TYPE_NOT_SUPPORTED);
     if (elemIsRef)
     {
         if (v != nullptr
@@ -9024,6 +9061,8 @@ void dn2cpp_array_store_boxed(Dn2CppObject* v, const Dn2CppTypeInfo* elem,
 Dn2CppObject* dn2cpp_array_box_element(const Dn2CppTypeInfo* elem, const void* src,
                                        int32_t elemSize, bool elemIsRef)
 {
+    if (dn2cpp_signature_kind(elem) != 0)
+        dn2cpp_throw_sr0(&dn2cpp_not_supported_exception_type, DN2CPP_SR_TYPE_NOT_SUPPORTED);
     if (elemIsRef)
     {
         Dn2CppObject* v;
@@ -9169,12 +9208,12 @@ static Dn2CppArrCopyView dn2cpp_array_copy_view(Dn2CppObject* a)
     {
         auto* md = reinterpret_cast<Dn2CppMDArray*>(a);
         const Dn2CppTypeInfo* el = t->elementType;
-        bool isRef = el != nullptr && (el->flags & DN2CPP_TF_VALUETYPE) == 0;
+        bool isRef = dn2cpp_array_element_is_reference(el);
         return { md->data, static_cast<size_t>(md->elemSize), isRef, el };
     }
     const Dn2CppTypeInfo* el = t != nullptr ? t->elementType : nullptr;
     bool isRef = el == nullptr ? (t == &dn2cpp_array_ref_type)
-                               : (el->flags & DN2CPP_TF_VALUETYPE) == 0;
+                               : dn2cpp_array_element_is_reference(el);
     if (isRef)
     {
         auto* r = static_cast<Dn2CppArrayRef*>(a);
@@ -9246,6 +9285,18 @@ void dn2cpp_array_copy_checked(Dn2CppObject* src, int32_t srcIdx,
     {
         dn2cpp_gc_memmove_refs(dp, sp, static_cast<size_t>(len) * s.stride);
         return;
+    }
+    if (dn2cpp_signature_kind(se) != 0 || dn2cpp_signature_kind(de) != 0)
+    {
+        // Array.Copy admits immediate pointer compatibility, independently of
+        // the invariant array type-test rule. No boxed element is involved.
+        if (dn2cpp_signature_kind(se) == 1 && dn2cpp_signature_kind(de) == 1
+            && dn2cpp_typeinfo_assignable(se, de) != 0)
+        {
+            std::memmove(dp, sp, static_cast<size_t>(len) * s.stride);
+            return;
+        }
+        refuse();
     }
     bool sv = (se->flags & DN2CPP_TF_VALUETYPE) != 0;
     bool dv = (de->flags & DN2CPP_TF_VALUETYPE) != 0;
