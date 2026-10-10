@@ -323,6 +323,7 @@ internal enum InterceptEmitArm
     /// <summary>Delegate.Clone's callable slot uses the same shallow-copy helper as a direct call.</summary>
     DelegateCloneBody,
     DelegateCloneBinding,
+    ArrayCloneBinding,
     /// <summary>SafeHandle lifetime calls and bindings recognize the runtime SafeWaitHandle layout.
     /// Route-only in MethodCompiler.Call and ldvirtftn; ordinary bodies remain reachable.</summary>
     SafeWaitHandleBase,
@@ -762,6 +763,12 @@ internal static partial class CoreIntrinsics
             && !mi.IsStatic && mi.Signature.ReturnType.IsVoid
             && mi.Signature.ParameterTypes.Length == 0);
 
+    public static readonly MethodDefIntercept MdArrayCloneBinding = new(
+        InterceptCutKind.None, InterceptEmitArm.ArrayCloneBinding,
+        typeGate: "System.Array",
+        extra: static mi => mi.Name == "Clone" && mi.IsVirtual && !mi.IsStatic
+            && mi.Signature.ParameterTypes.Length == 0);
+
     /// <summary>Delegate.Clone class bindings select the inherited class slot without a
     /// runtime vtable; a different explicit ICloneable slot remains independent.</summary>
     public static readonly MethodDefIntercept MdDelegateCloneBinding = new(
@@ -811,6 +818,7 @@ internal static partial class CoreIntrinsics
         MdPlatformIsa,
         MdSafeHandleLifetime,
         MdDelegateCloneBinding,
+        MdArrayCloneBinding,
     ];
 
     /// <summary>First row in <paramref name="rows"/> matching

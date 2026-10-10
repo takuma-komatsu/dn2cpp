@@ -6,6 +6,17 @@
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <Optimize>true</Optimize>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'array-clone-md'">$(DefineConstants);ARRAY_CLONE_MD</DefineConstants>
+    <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'array-clone-reflected'">$(DefineConstants);ARRAY_CLONE_REFLECTED</DefineConstants>
+    <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'array-clone-constrained'">$(DefineConstants);ARRAY_CLONE_CONSTRAINED</DefineConstants>
+    <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'array-clone-reference'">$(DefineConstants);ARRAY_CLONE_REFERENCE</DefineConstants>
+    <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'array-clone-all'">$(DefineConstants);ARRAY_CLONE_ALL</DefineConstants>
+    <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'array-clone-aliases'">$(DefineConstants);ARRAY_CLONE_ALIASES</DefineConstants>
+    <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'array-clone-null'">$(DefineConstants);ARRAY_CLONE_NULL</DefineConstants>
+    <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'array-clone-typed'">$(DefineConstants);ARRAY_CLONE_TYPED</DefineConstants>
+    <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'array-clone-erased'">$(DefineConstants);ARRAY_CLONE_ERASED</DefineConstants>
+    <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'array-clone-interface-group'">$(DefineConstants);ARRAY_CLONE_INTERFACE_GROUP</DefineConstants>
+    <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'array-clone-class-group'">$(DefineConstants);ARRAY_CLONE_CLASS_GROUP</DefineConstants>
     <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'clone-class-aliases'">$(DefineConstants);CLONE_CLASS_ALIASES</DefineConstants>
     <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'clone-class-invoke'">$(DefineConstants);CLONE_CLASS_INVOKE</DefineConstants>
     <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'clone-class-null'">$(DefineConstants);CLONE_CLASS_NULL</DefineConstants>
@@ -58,8 +69,10 @@
     <DefineConstants>$(DefineConstants);LIFETIME_FACTORY_ALL</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="RuntimeHandleRelationSubset.cs" Condition="'$(LifetimeInterfaceRoute)' != 'clone-class-reflected-field'" />
+    <Compile Include="RuntimeHandleRelationSubset.cs" Condition="'$(LifetimeInterfaceRoute)' != 'clone-class-reflected-field' And !$(LifetimeInterfaceRoute.StartsWith('array-clone-'))" />
     <Compile Include="DelegateCloneFieldTypeSubset.cs" Condition="'$(LifetimeInterfaceRoute)' == 'clone-class-reflected-field'" />
+    <Compile Include="ArrayCloneInterfaceSubset.cs" Condition="$(LifetimeInterfaceRoute.StartsWith('array-clone-')) And '$(LifetimeInterfaceRoute)' != 'array-clone-reflected'" />
+    <Compile Include="ArrayCloneReflectionOnlySubset.cs" Condition="$(LifetimeInterfaceRoute.StartsWith('array-clone-'))" />
     <Compile Include="RuntimeLifetimeInterfacesOnlyProgram.cs" />
   </ItemGroup>
 </Project>

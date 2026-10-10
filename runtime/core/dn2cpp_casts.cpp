@@ -68,11 +68,14 @@ void dn2cpp_array_set_ref_fallback_interfaces(const Dn2CppInterfaceEntry* entrie
 // the element-agnostic System.Array reflection surface.
 static const Dn2CppInterfaceEntry* g_array_md_fallback_itfs = nullptr;
 static int32_t g_array_md_fallback_itf_count = 0;
+static const Dn2CppTypeInfo* g_array_clone_interface = nullptr;
 
-void dn2cpp_array_set_md_fallback_interfaces(const Dn2CppInterfaceEntry* entries, int32_t count)
+void dn2cpp_array_set_md_fallback_interfaces(const Dn2CppInterfaceEntry* entries, int32_t count,
+    const Dn2CppTypeInfo* cloneInterface)
 {
     g_array_md_fallback_itfs = entries;
     g_array_md_fallback_itf_count = count;
+    g_array_clone_interface = cloneInterface;
 }
 
 // Relation-only rows for the six non-generic array interfaces — the ENUMERATION
@@ -802,7 +805,10 @@ static const void** dn2cpp_resolve_interface_walk(const Dn2CppTypeInfo* t, const
     // because all element access goes through the System.Array reflection surface.
     // Runtime-composed signature arrays use this map too, including jagged arrays
     // whose reference-element SZ map was never statically seeded.
-    if ((dn2cpp_is_md_array(t) || (dn2cpp_is_sz_array(t) && dn2cpp_has_signature_array_element(t)))
+    // Clone reads the runtime shape, so its row also serves an SZ array whose
+    // element has no collection map. Other SZ collection dispatch is unchanged.
+    if ((dn2cpp_is_md_array(t) || (dn2cpp_is_sz_array(t)
+            && (dn2cpp_has_signature_array_element(t) || itf == g_array_clone_interface)))
         && g_array_md_fallback_itfs != nullptr)
     {
         for (int32_t i = 0; i < g_array_md_fallback_itf_count; i++)

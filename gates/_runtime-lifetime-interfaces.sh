@@ -32,7 +32,11 @@ runtime_lifetime_diff_routes() {
         clone-class-aliases clone-class-invoke clone-class-overrides clone-class-override-only \
         clone-class-reflected-generic clone-class-reflected-type clone-class-reflected-trimmed \
         clone-class-reflected-unshared clone-class-reflected-field clone-class-field-trimmed \
-        clone-class-field-unshared clone-class-native clone-class-null clone-class-trimmed clone-class-unshared)
+        clone-class-field-unshared clone-class-native clone-class-null clone-class-trimmed clone-class-unshared \
+        array-clone-typed array-clone-erased array-clone-interface-group array-clone-class-group \
+        array-clone-aliases array-clone-reference array-clone-null array-clone-trimmed array-clone-unshared \
+        array-clone-constrained array-clone-constrained-unshared array-clone-reflected \
+        array-clone-md array-clone-md-unshared)
     if [ "$#" != 0 ]; then routes=("$@"); fi
     for route in "${routes[@]}"; do
         out="artifacts/reflect-invoke-runtime-lifetime-$route"
@@ -40,6 +44,10 @@ runtime_lifetime_diff_routes() {
         flags=()
         app_route="$route"
         case "$route" in
+            array-clone-constrained-unshared) flags=(--no-shared-generics); app_route=array-clone-constrained ;;
+            array-clone-md-unshared) flags=(--no-shared-generics); app_route=array-clone-md ;;
+            array-clone-trimmed) flags=(--trim-reflection); app_route=array-clone-all ;;
+            array-clone-unshared) flags=(--no-shared-generics); app_route=array-clone-all ;;
             trimmed) flags=(--trim-reflection) ;;
             unshared) flags=(--no-shared-generics) ;;
             safe-trimmed) flags=(--trim-reflection); app_route=safeall ;;
@@ -56,7 +64,7 @@ runtime_lifetime_diff_routes() {
         dotnet build samples/dotnet/ReflectInvoke/RuntimeLifetimeInterfacesOnly.csproj \
             -c "$CONFIG" --nologo -v q -p:LifetimeInterfaceRoute="$app_route" -o "$out/app"
         case "$app_route" in
-            clone-class-reflected-field) ;;
+            clone-class-reflected-field|array-clone-*) ;;
             clone-class-*)
                 if [ "$clone_fixture_ready" = false ]; then
                     dotnet build gates/fixtures/ldftn-local/LdftnLocalFixture.csproj -c "$CONFIG" --nologo -v q
@@ -74,11 +82,31 @@ runtime_lifetime_diff_routes() {
         strip_cr_win_file "$out/clr.raw.stdout" > "$out/clr.stdout"
         DN2CPP_STRICT_COMPLETION=1 invoke_cli "$out/app/RuntimeLifetimeInterfacesOnly.dll" -r "$(locate_corelib)" \
             --no-ildiet ${flags[@]+"${flags[@]}"} -o "$out" > "$out/emit.log" 2>&1
+        if [ "$route" = array-clone-reflected ]; then
+            # SZ generic cursors share IEnumerator.MoveNext; the MD enumeration
+            # entry and Current must remain unrooted in this Clone-only image.
+            if rg -qw 't_ArrayCloneInterfaceSubset_Program|MDArrayEnumerable_(GetEnumerator|get_Current)_m[0-9]+' \
+                    "$out"/generated*.cpp "$out/generated.h"; then
+                echo 'FAIL: reflection-only Clone image includes unrelated array methods or MD enumeration' >&2
+                return 1
+            fi
+        fi
         compile_console "$out" RuntimeLifetimeInterfacesOnly
         run_bounded "$out/RuntimeLifetimeInterfacesOnly$EXE_EXT" > "$out/native.raw.stdout"
         strip_cr_win_file "$out/native.raw.stdout" > "$out/native.stdout"
         diff -u "$out/clr.stdout" "$out/native.stdout"
         case "$route" in
+            array-clone-reflected) witness='array clone reflected: True/True/3/2/8' ;;
+            array-clone-md|array-clone-md-unshared) witness='array clone MD: True/True/2/1/4/7/11' ;;
+            array-clone-constrained|array-clone-constrained-unshared) witness='array clone constrained: True/True/3/2/8' ;;
+            array-clone-typed) witness='array clone typed: True/True/3/2/8' ;;
+            array-clone-erased) witness='array clone erased: True/True/3/2/8' ;;
+            array-clone-interface-group) witness='array clone interface group: True/True/3/2/8' ;;
+            array-clone-class-group) witness='array clone class group: True/True/3/2/8' ;;
+            array-clone-aliases) witness='array clone aliases: True/True' ;;
+            array-clone-reference) witness='array clone references: True/True/True/True' ;;
+            array-clone-null) witness='array clone class null: ArgumentException' ;;
+            array-clone-trimmed|array-clone-unshared|array-clone-all) array_clone_asserts "$out/native.stdout"; continue ;;
             safe)
                 witness='lifetime isolated safe: disposed'
                 if rg -qw 'tibind_System_Runtime_InteropServices_SafeHandle' "$out/generated.h"; then
@@ -235,6 +263,38 @@ gate_clone_interface_prefix_asserts() {
         clone_interface_asserts "$out/virtual-delegate-full.$axis.stdout"
     done
     diff -u "$out/clone-prefix.dotnet.stdout" "$out/clone-prefix.native.stdout"
+}
+
+array_clone_asserts() {
+    local output="$1" line
+    for line in '== array Clone interface dispatch ==' 'array Clone interface dispatch end' \
+        'array clone typed: True/True/3/2/8' 'array clone erased: True/True/3/2/8' \
+        'array clone constrained: True/True/3/2/8' \
+        'array clone reflected: True/True/3/2/8' 'array clone MD: True/True/2/1/4/7/11' \
+        'array clone interface group: True/True/3/2/8' 'array clone class group: True/True/3/2/8' \
+        'array clone aliases: True/True' 'array clone remove: True' \
+        'array clone alias invoked: True/True/3/2/8' 'array clone references: True/True/True/True' \
+        'array clone class null: ArgumentException' 'array clone interface null: NullReferenceException'; do
+        test "$(grep -Fxc -- "$line" "$output")" = 1 \
+            || { echo "FAIL: array Clone witness missing or repeated: $output/$line" >&2; return 1; }
+    done
+}
+
+gate_array_clone_prefix_asserts() {
+    local out="$1" axis
+    for axis in dotnet native; do
+        if [ "$axis" = dotnet ]; then
+            run_bounded dotnet "$_CG_APP" before-array-clone-interfaces > "$out/array-clone-prefix.$axis.raw.stdout"
+        else
+            run_bounded "$out/ReflectInvoke$EXE_EXT" before-array-clone-interfaces > "$out/array-clone-prefix.$axis.raw.stdout"
+        fi
+        strip_cr_win_file "$out/array-clone-prefix.$axis.raw.stdout" > "$out/array-clone-prefix.$axis.stdout"
+        awk '/^== array Clone interface dispatch ==$/ { exit } { print }' \
+            "$out/virtual-delegate-full.$axis.stdout" > "$out/array-clone-old.$axis.stdout"
+        diff -u "$out/array-clone-prefix.$axis.stdout" "$out/array-clone-old.$axis.stdout"
+        array_clone_asserts "$out/virtual-delegate-full.$axis.stdout"
+    done
+    diff -u "$out/array-clone-prefix.dotnet.stdout" "$out/array-clone-prefix.native.stdout"
 }
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then

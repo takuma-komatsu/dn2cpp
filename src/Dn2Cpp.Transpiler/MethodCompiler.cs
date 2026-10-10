@@ -2198,8 +2198,9 @@ internal sealed partial class MethodCompiler : IEvalStack
             ThrowSharedTaint("type-identity", $"typeof({tk}) escapes");
     }
 
-    private void NoteStringInterfaceReceiver(StackEntry receiver, ClassInfo itf)
+    private void NoteRuntimeInterfaceReceiver(StackEntry receiver, ClassInfo itf)
     {
+        _c.NoteArrayInterfaceDispatch(itf);
         if (receiver.StaticType is { IsString: true } && itf.IsInterface
             && _c.IsStringDispatchInterface(itf))
             _c.NoteStringInterfaces();
@@ -2241,7 +2242,7 @@ internal sealed partial class MethodCompiler : IEvalStack
         // interface-callvirt receiver slot PopArgs coerces. Wire String's runtime
         // dispatch map so the consumer's dispatch resolves on the string itself.
         if (targetType is { Kind: TypeKind.Class, Class: { IsInterface: true } sic })
-            NoteStringInterfaceReceiver(e, sic);
+            NoteRuntimeInterfaceReceiver(e, sic);
         // Same boundary for a boxed enum: IL lets an enum (or System.Enum-typed) value
         // flow into an IComparable/IFormattable/IConvertible/ISpanFormattable position
         // without a castclass — every enum statically implements them via System.Enum —
@@ -3863,6 +3864,21 @@ internal sealed partial class MethodCompiler : IEvalStack
                         + $"dn2cpp_bind_interface_slot(dn2cpp_resolve_interface({receiver}->type, "
                         + $"&{itf.CppTypeInfoName})[{ge.VtableSlot}], {receiver}))";
                 }
+                else if (CoreIntrinsics.MdArrayCloneBinding.Matches(m))
+                {
+                    if (_c.ReachArrayCloneInterface() is not ({ } itf, { } clone))
+                        throw new NotSupportedException("System.Array.Clone needs ICloneable");
+                    bindsLowering = true;
+                    NoteFtnTargetBody(m.Emittable);
+                    _c.NoteNamedBodySymbol(_method, m.Emittable);
+                    string receiver = NewTemp("Dn2CppObject*");
+                    bool isFinal = (m.Attributes & System.Reflection.MethodAttributes.Final) != 0;
+                    Emit($"{receiver} = (Dn2CppObject*)"
+                        + (isFinal ? obj.Expr : $"dn2cpp_null_check({obj.Expr})") + ";");
+                    expr = $"({receiver} == nullptr ? (void*)&{m.Emittable.CppName} : "
+                        + $"dn2cpp_bind_interface_slot(dn2cpp_resolve_interface({receiver}->type, "
+                        + $"&{itf.CppTypeInfoName})[{clone.VtableSlot}], {receiver}))";
+                }
                 else if (m.IsVirtual && CoreIntrinsics.BrEnumInstanceFormat.Matches(m.DeclaringClass.FullName, m.Name))
                 {
                     _c.NoteEnumInterfaces();
@@ -3915,7 +3931,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 }
                 else if (m.DeclaringClass.IsInterface && m.IsVirtual)
                 {
-                    NoteStringInterfaceReceiver(obj, m.DeclaringClass);
+                    NoteRuntimeInterfaceReceiver(obj, m.DeclaringClass);
                     if (m.DeclaringClass.IntrinsicCppName is null)
                         NoteReferencedType(m.DeclaringClass);
                     NoteCanonicalItfDispatch(m.DeclaringClass);

@@ -3305,7 +3305,10 @@ internal sealed partial class MethodCompiler
         NoteDispatchSignatureTypes(callee);
         string fnPtrType = FnPtrType(callee);
         if (callee.DeclaringClass.IsInterface)
+        {
+            _c.NoteArrayInterfaceDispatch(callee.DeclaringClass);
             NoteCanonicalItfDispatch(callee.DeclaringClass);
+        }
         string dispatch = callee.DeclaringClass.IsInterface
             ? $"dn2cpp_resolve_interface({obj}->type, &{ItfDispatchTi(callee.DeclaringClass).CppTypeInfoName})[{callee.VtableSlot}]"
             : $"{obj}->type->vtable[{callee.VtableSlot}]";

@@ -3213,6 +3213,20 @@ internal sealed partial class Compilation
         return (itf, ge);
     }
 
+    internal (ClassInfo Itf, MethodInfo Clone)? ReachArrayCloneInterface()
+    {
+        if (FindClassByFullName("System.ICloneable") is not { } itf)
+            return null;
+        var clone = itf.EnsureMembers().Methods.FirstOrDefault(m => m.Name == "Clone"
+            && !m.IsStatic && m.Signature.ParameterTypes.Length == 0);
+        if (clone is null || clone.VtableSlot < 0)
+            return null;
+        NoteArrayInterfaceDispatch(itf);
+        ReachUsedVirtual(clone);
+        NoteReferencedType(itf);
+        return (itf, clone);
+    }
+
     /// <summary>The support-shim type <paramref name="ns"/>.<paramref name="name"/>, or a
     /// hard failure naming the remedy. The transpiler synthesizes types out of
     /// Dn2Cpp.Runtime.dll on demand, and every such lowering has a tempting silent

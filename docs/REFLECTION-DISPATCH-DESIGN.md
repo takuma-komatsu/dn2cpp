@@ -202,6 +202,13 @@ SafeHandle body and its selected MethodDef identity; interface-only images keep
 the small runtime thunk. Other SafeHandle receivers retain ordinary slot dispatch.
 Final class bindings leave null rejection to the delegate constructor.
 
+Array ICloneable dispatch uses the element-agnostic Clone row for every array
+shape. Its explicit interface key admits Clone on an SZ array without enabling
+other collection fallbacks. Class method groups share that callable and the real
+Array.Clone declaration identity; a final null binding reaches delegate validation.
+Clone-only demand does not add enumeration slots or reach unrelated MD invokers;
+later MD demand upgrades enumeration through the same discovery fixpoint.
+
 String interface method groups note the same receiver map as call coercions;
 String.Clone calls its real managed body. Delegate.Clone retains a callable base
 slot synthesized from the direct-call shallow-copy helper, preserving the delegate
