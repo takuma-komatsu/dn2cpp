@@ -161,6 +161,15 @@ Runtime-created delegates without a static identity, patch receivers without a
 recorded selection, and opaque owner bindings retain their existing compatibility
 path.
 
+Runtime-owned class method groups bind the same lowered callable as direct calls.
+Array.GetEnumerator uses the receiver's non-generic IEnumerable slot; Enum's
+format/value family uses its shared shim, with Object overrides retaining the
+common Object helper address. A runtime-owned receiver uses its runtime ABI in
+address-taken wrappers. A WaitHandle interface slot reuses its address-taken
+Dispose wrapper so class and interface bindings agree before identity comparison.
+Final Array and Enum method groups leave a null target for the delegate
+constructor to reject; non-final virtual bindings keep their binding-time null check.
+
 A null-bound instance delegate may run only when verified IL proves that the
 selected body does not require a receiver. That proof must cover the closed
 signature and generic context. It cannot borrow an unrelated receiver or reuse a

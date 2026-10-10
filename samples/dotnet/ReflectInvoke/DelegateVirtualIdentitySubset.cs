@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Threading;
 
 namespace DelegateVirtualIdentitySubset;
 
@@ -151,4 +152,89 @@ public static class Program
         Pair("runtime same", runtime.First, runtime.First);
         Console.WriteLine("runtime delegate selected methods end");
     }
+
+    static void BoundPair(string label, Delegate first, Delegate second)
+    {
+        var remaining = Delegate.Remove(Delegate.Combine(first, second), first).GetInvocationList();
+        Console.WriteLine($"runtime-owned binding {label}: {first.Equals(second)}/{(!first.Equals(second) || first.GetHashCode() == second.GetHashCode())}/{ReferenceEquals(remaining[0], second)}");
+    }
+
+    static Array NullArray() => null;
+    static Enum NullEnum() => null;
+    static WaitHandle NullWait() => null;
+
+    static string NullArrayBinding()
+    {
+        try { Func<IEnumerator> get = NullArray().GetEnumerator; return get is null ? "null" : "bound"; }
+        catch (Exception ex) { return ex.GetType().Name; }
+    }
+
+    static string NullEnumBinding()
+    {
+        try { Func<IFormatProvider, string> text = NullEnum().ToString; return text is null ? "null" : "bound"; }
+        catch (Exception ex) { return ex.GetType().Name; }
+    }
+
+    static string NullWaitBinding()
+    {
+        try { Action close = NullWait().Close; return close is null ? "null" : "bound"; }
+        catch (Exception ex) { return ex.GetType().Name; }
+    }
+
+    public static void RunRuntimeOwned()
+    {
+        Console.WriteLine("== runtime-owned class method groups ==");
+        Array array = new string[] { "same" };
+        Func<IEnumerator> arrayClass = array.GetEnumerator;
+        Func<IEnumerator> arrayInterface = ((IEnumerable)array).GetEnumerator;
+        BoundPair("array class interface", arrayClass, arrayInterface);
+        Array values = new int[] { 1 };
+        Func<IEnumerator> valuesClass = values.GetEnumerator;
+        Func<IEnumerator> valuesInterface = ((IEnumerable)values).GetEnumerator;
+        BoundPair("value array class interface", valuesClass, valuesInterface);
+        Array matrix = new int[,] { { 1 } };
+        Func<IEnumerator> matrixClass = matrix.GetEnumerator;
+        Func<IEnumerator> matrixInterface = ((IEnumerable)matrix).GetEnumerator;
+        BoundPair("MD array class interface", matrixClass, matrixInterface);
+        Console.WriteLine($"runtime-owned array invoke: {arrayClass().MoveNext()}/{arrayInterface().MoveNext()}/{valuesClass().MoveNext()}/{matrixClass().MoveNext()}");
+        Enum value = DayOfWeek.Friday;
+        Func<string> enumText = value.ToString;
+        Func<string> objectText = ((object)value).ToString;
+        BoundPair("Enum Object ToString", enumText, objectText);
+        Func<int> enumHash = value.GetHashCode;
+        Func<int> objectHash = ((object)value).GetHashCode;
+        BoundPair("Enum Object GetHashCode", enumHash, objectHash);
+        Func<object, bool> enumEquals = value.Equals;
+        Func<object, bool> objectEquals = ((object)value).Equals;
+        BoundPair("Enum Object Equals", enumEquals, objectEquals);
+        Func<IFormatProvider, string> enumProvider = value.ToString;
+        Func<IFormatProvider, string> convertibleProvider = ((IConvertible)value).ToString;
+        BoundPair("Enum provider interface", enumProvider, convertibleProvider);
+        Func<string, IFormatProvider, string> enumFormatProvider = value.ToString;
+        Func<string, IFormatProvider, string> formattable = ((IFormattable)value).ToString;
+        BoundPair("Enum format interface", enumFormatProvider, formattable);
+        Func<string, string> enumFormat = value.ToString;
+        Func<TypeCode> enumTypeCode = value.GetTypeCode;
+        Func<TypeCode> convertibleTypeCode = ((IConvertible)value).GetTypeCode;
+        BoundPair("Enum TypeCode interface", enumTypeCode, convertibleTypeCode);
+        Func<object, int> enumCompare = value.CompareTo;
+        Func<object, int> comparable = ((IComparable)value).CompareTo;
+        BoundPair("Enum CompareTo interface", enumCompare, comparable);
+        Console.WriteLine($"runtime-owned Enum invoke: {enumText()}/{objectText()}/{enumHash() == objectHash()}/{enumEquals(value)}/{objectEquals("Friday")}/{enumProvider(null)}/{convertibleProvider(null)}/{enumFormat("D")}/{enumFormatProvider("D", null)}/{formattable("D", null)}/{enumTypeCode()}/{enumCompare(value)}");
+        using var wait = new AutoResetEvent(false);
+        Action close = wait.Close;
+        Action dispose = wait.Dispose;
+        Action interfaceDispose = ((IDisposable)wait).Dispose;
+        BoundPair("WaitHandle Close Dispose", close, dispose);
+        BoundPair("WaitHandle Dispose interface", dispose, interfaceDispose);
+        BoundPair("WaitHandle Close same", close, new Action(wait.Close));
+        close();
+        bool closed = false;
+        try { wait.WaitOne(0); }
+        catch (ObjectDisposedException) { closed = true; }
+        Console.WriteLine($"runtime-owned WaitHandle invoke: {closed}");
+        Console.WriteLine($"runtime-owned null binding: {NullArrayBinding()}/{NullEnumBinding()}/{NullWaitBinding()}");
+        Console.WriteLine("runtime-owned class method groups end");
+    }
+
 }

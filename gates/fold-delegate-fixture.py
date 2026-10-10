@@ -98,6 +98,20 @@ for path, source in sources.items():
 for names in wrapper_groups.values():
     for name in names[1:]:
         aliases[name] = names[0]
+# The runtime-owned Close and Dispose wrappers have the same receiver ABI and
+# lowering. Their distinct MethodDefs must survive a real address collision.
+wait_method = re.compile(
+    r"inline void (WaitHandle_(Close|Dispose)_m\d+)\(Dn2CppObject\* a0\)\n"
+    r"\{(.*?)\n\}", re.S)
+wait_methods = {match[2]: match for source in sources.values()
+                for match in wait_method.finditer(source)}
+if set(wait_methods) != {"Close", "Dispose"}:
+    raise SystemExit("missing WaitHandle method-group bodies")
+if wait_methods["Close"][3] != wait_methods["Dispose"][3] or wait_methods["Close"][3].strip() != "dn2cpp_waithandle_close((Dn2CppObject*)(a0));":
+    raise SystemExit("WaitHandle method-group bodies are not identical")
+wait_address = wait_methods["Close"][1]
+aliases[wait_methods["Dispose"][1]] = wait_address
+definitions.extend(match.group(0) for match in wait_methods.values())
 aliases = {name: target for name, target in aliases.items()
            if any(re.search(r"&" + name + r"\b", source) for source in sources.values())}
 originals = sources.copy()
@@ -151,6 +165,14 @@ checks += [f"    const void* volatile string_a = {string_tables[0]}[0];",
 checks += ["    const void* volatile array_a = dn2cpp_resolve_interface(&ti_arr_String, &ti_System_Collections_IEnumerable)[0];",
            "    const void* volatile array_b = dn2cpp_resolve_interface(&ti_arr_String, &ti_System_Collections_Generic_IEnumerable_String)[0];",
            "    if (array_a != array_b) std::abort();"]
+wait_tables = [table for source in originals.values()
+               for table in re.findall(r"static const void\* (intr_itf_\d+)\[\] = \{ \(const void\*\)&"
+                                       + re.escape(wait_methods["Dispose"][1]) + r" \};", source)]
+if len(wait_tables) != 1:
+    raise SystemExit("missing WaitHandle dispatch address")
+checks += [f"    const void* volatile wait_a = (const void*)&{wait_address};",
+           f"    const void* volatile wait_b = {wait_tables[0]}[0];",
+           "    if (wait_a != wait_b) std::abort();"]
 checks.append(f'    std::fputs("delegate folded addresses: {len(checks) // 3}\\n", stderr);')
 main = out / "generated.cpp"
 sources[main] = '#include <cstdio>\n#include <cstdlib>\n' + sources[main]

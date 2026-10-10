@@ -1929,6 +1929,14 @@ internal sealed partial class CppEmitter
             if (identities.Count == 0)
                 return;
             var gvms = _c.UsedGvms.ToDictionary(g => g.Gvm.CppName, System.StringComparer.Ordinal);
+            var enumClass = _c.EnumInterfaces?.EnumClass;
+            if (enumClass is null)
+                foreach (var (_, method, _) in identities)
+                    if (method.DeclaringClass.FullName == "System.Enum")
+                    {
+                        enumClass = method.DeclaringClass;
+                        break;
+                    }
             _sb.AppendLine("// ---- delegate method identities ----");
             foreach (var (sym, m, isVirtual) in identities)
             {
@@ -2035,11 +2043,22 @@ internal sealed partial class CppEmitter
                             && _e.TypeInfoSymbolDefined(target.DeclaringClass.CppTypeInfoName))
                             targets.Add((receiver, target, false));
                     }
-                    if (_c.EnumInterfaces is { } ei && owner.IsInterface
-                        && _c.DelegateInterfaceTarget(ei.EnumClass, m,
-                            ei.Dispatches.Where(d => _e._emit.Contains(d.Itf)).Select(d => d.Itf).ToList()) is { } enumTarget
-                        && _e.TypeInfoSymbolDefined(enumTarget.DeclaringClass.CppTypeInfoName))
-                        targets.Add((ei.EnumClass, enumTarget, true));
+                    if (enumClass is not null)
+                    {
+                        MethodInfo? enumTarget = owner.IsInterface && _c.EnumInterfaces is { } ei
+                            ? _c.DelegateInterfaceTarget(enumClass, m,
+                                ei.Dispatches.Where(d => _e._emit.Contains(d.Itf)).Select(d => d.Itf).ToList())
+                            : owner.FullName == "System.Object" ? m.Name switch
+                            {
+                                "ToString" => Compilation.EffectiveToString(enumClass),
+                                "Equals" => Compilation.EffectiveEquals(enumClass),
+                                "GetHashCode" => Compilation.EffectiveGetHashCode(enumClass),
+                                _ => null,
+                            } : null;
+                        if (enumTarget is not null
+                            && _e.TypeInfoSymbolDefined(enumTarget.DeclaringClass.CppTypeInfoName))
+                            targets.Add((enumClass, enumTarget, true));
+                    }
                     foreach (var info in _c.IntrinsicInterfaces)
                         if (info.Itf == owner && info.SlotDecl == m
                             && info.Receiver is { } intrinsicReceiver && info.Target is { } intrinsicTarget

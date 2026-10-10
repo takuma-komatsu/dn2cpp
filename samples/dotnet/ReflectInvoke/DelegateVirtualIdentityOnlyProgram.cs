@@ -6,3 +6,4 @@ DelegateVirtualIdentitySubset.Program.Run();
 #if !DELEGATE_IDENTITY_IL_ONLY
 DelegateVirtualIdentitySubset.Program.RunReflected();
 #endif
+DelegateVirtualIdentitySubset.Program.RunRuntimeOwned();
