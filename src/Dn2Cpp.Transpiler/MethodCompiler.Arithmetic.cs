@@ -378,8 +378,13 @@ internal sealed partial class MethodCompiler
         {
             // Record element[] so a per-element array type-info is emitted for it and
             // give the allocation that precise handle so arr.GetType is exact.
-            _c.NoteArrayElementType(element);
-            string ti = token != 0 && SharedTrial && Compilation.ContainsCanonPlaceholder(element)
+            bool signatureArray = token != 0 && CppEmitter.HasSignatureShape(element);
+            if (signatureArray)
+                _c.NoteMdArrayUse();
+            else
+                _c.NoteArrayElementType(element);
+            string ti = signatureArray ? SignatureTypeInfoExpr(token, arrayElement: true)
+                : token != 0 && SharedTrial && Compilation.ContainsCanonPlaceholder(element)
                 ? "(const Dn2CppTypeInfo*)" + RgctxSlotAccess(RgctxSlotKind.NewArrayTypeInfo, token, "newarr", element)
                 : PreciseArrayTypeInfoExpr(element);
             switch (RepOf(element))
@@ -422,14 +427,15 @@ internal sealed partial class MethodCompiler
     /// per-call allocation, matching .NET's <c>EmptyArray&lt;T&gt;.Value</c>. Mirrors
     /// <see cref="EmitNewarr(TypeDesc, string, int)"/>'s rep / precise-type-info
     /// selection; the ti_arr_&lt;T&gt; handle doubles as the cache key.</summary>
-    private void EmitEmptyArray(TypeDesc element)
+    private void EmitEmptyArray(TypeDesc element, CppEmitter.SpelledType? signature = null, int token = 0)
     {
         // Same canonical-placeholder rule as newarr: the singleton is tagged (and
         // keyed) by the precise handle, so a shared body must never bake the
         // group handle in.
         TaintIfCanonical(element, "newarr");
         _c.NoteArrayElementType(element);
-        string ti = PreciseArrayTypeInfoExpr(element);
+        string ti = CppEmitter.HasSignatureShape(element)
+            ? SignatureArrayTypeInfoExpr(element, signature, token) : PreciseArrayTypeInfoExpr(element);
         switch (RepOf(element))
         {
             case ArrRep.I4:
@@ -618,6 +624,11 @@ internal sealed partial class MethodCompiler
     /// dn2cpp_array_copy_dyn, whose runtime verdict answers every pair.</summary>
     private static bool SameCopyElement(TypeDesc? a, TypeDesc? b)
     {
+        // The lowering model erases function-pointer signatures. The runtime
+        // array headers retain them and must decide signature-element copies.
+        if (a is not null && CppEmitter.HasSignatureShape(a)
+            || b is not null && CppEmitter.HasSignatureShape(b))
+            return false;
         if (a is null || b is null)
             return false;
         if (ReferenceEquals(a, b))

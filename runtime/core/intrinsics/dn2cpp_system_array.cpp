@@ -445,7 +445,7 @@ static void dn2cpp_array_view_rt(Dn2CppObject* a, Dn2CppArrayViewRT* v)
             "this array carries no element identity in this image (reflection over it is not supported)");
     const Dn2CppTypeInfo* el = t->elementType;
     v->elem = el;
-    v->elemIsRef = (el->flags & DN2CPP_TF_VALUETYPE) == 0;
+    v->elemIsRef = dn2cpp_array_element_is_reference(el);
     if (dn2cpp_is_md_array(t))
     {
         auto* md = reinterpret_cast<Dn2CppMDArray*>(a);
@@ -802,8 +802,6 @@ static const Dn2CppTypeInfo* dn2cpp_array_require_element_type(Dn2CppType* type)
     const Dn2CppTypeInfo* element = type->typeInfo;
     if (dn2cpp_signature_kind(element) == 2)
         dn2cpp_throw_not_supported();
-    if (dn2cpp_signature_kind(element) != 0)
-        dn2cpp_throw_platform_not_supported("Array.CreateInstance: pointer element allocation is not supported");
     if ((element->flags & DN2CPP_TF_GENERICPARAM) != 0)
         dn2cpp_throw_not_supported();
     if (element == &dn2cpp_void_type)
@@ -837,19 +835,22 @@ static Dn2CppObject* dn2cpp_array_create_instance_bounds(Dn2CppType* t, const in
                 rank == 1 ? "length" : i == 0 ? "length1" : i == 1 ? "length2" : "length3",
                 lengths[i]);
     const Dn2CppTypeInfo* el = dn2cpp_array_require_element_type(t);
+    if (dn2cpp_has_signature_array_element(el) && rank > 32)
+        dn2cpp_throw_type_load();
     if (lowerBounds != nullptr)
         for (int32_t i = 0; i < rank; i++)
             if (static_cast<int64_t>(lowerBounds[i]) + lengths[i] - 1 > INT32_MAX)
                 dn2cpp_throw_argument_text(&dn2cpp_argument_out_of_range_exception_type,
                     "Higher indices will exceed Int32.MaxValue because of large lower bound and/or length.", nullptr);
-    bool isRef = (el->flags & DN2CPP_TF_VALUETYPE) == 0;
+    bool isRef = dn2cpp_array_element_is_reference(el);
+    bool isPointer = dn2cpp_signature_kind(el) != 0;
     bool isEnum = (el->flags & DN2CPP_TF_ENUM) != 0;
     const Dn2CppTypeInfo* eff = isEnum
         ? (el->enumUnderlying != nullptr ? el->enumUnderlying : &dn2cpp_int32_type)
         : el;
     int32_t code = isRef ? -1 : dn2cpp_prim_code(eff); // -1: not a primitive (dn2cpp_prim_code's miss value)
     int32_t elemSize;
-    if (isRef)
+    if (isRef || isPointer)
         elemSize = static_cast<int32_t>(sizeof(Dn2CppObject*));
     else if (code >= 0)
         elemSize = dn2cpp_prim_storage_width(code);
@@ -874,7 +875,7 @@ static Dn2CppObject* dn2cpp_array_create_instance_bounds(Dn2CppType* t, const in
     if (isRef)
         return reinterpret_cast<Dn2CppObject*>(dn2cpp_newarr_ref_t(len, arrTi));
     bool isI4 = eff == &dn2cpp_int32_type || eff == &dn2cpp_uint32_type;
-    if (!isRef && !isEnum && code < 0 && el != &dn2cpp_intptr_type && el != &dn2cpp_uintptr_type)
+    if (!isRef && !isPointer && !isEnum && code < 0 && el != &dn2cpp_intptr_type && el != &dn2cpp_uintptr_type)
         // A struct element may hold references: keep the GC scanning it.
         return reinterpret_cast<Dn2CppObject*>(dn2cpp_newarr_n_t(len, elemSize, arrTi));
     if (isI4)

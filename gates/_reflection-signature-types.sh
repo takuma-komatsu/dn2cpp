@@ -86,8 +86,10 @@ reflection_signature_diff_axes() {
         reflection_signature_asserts "$out/native.stdout"
         run_bounded "$out/ReflectionSignatureTypesOnly$EXE_EXT" signature-layout-boundaries > "$out/layout-boundaries.raw.stdout"
         strip_cr_win_file "$out/layout-boundaries.raw.stdout" > "$out/layout-boundaries.stdout"
+        run_bounded dotnet "$out/app/ReflectionSignatureTypesOnly.dll" signature-layout-boundaries > "$out/layout-boundaries.clr.raw.stdout"
+        diff -u <(strip_cr_win_file "$out/layout-boundaries.clr.raw.stdout") "$out/layout-boundaries.stdout"
         for shape in pointer function; do
-            grep -Fxq "signature $shape array allocation: PlatformNotSupportedException" "$out/layout-boundaries.stdout"
+            grep -Fxq "signature $shape array allocation: none" "$out/layout-boundaries.stdout"
         done
     done
 }

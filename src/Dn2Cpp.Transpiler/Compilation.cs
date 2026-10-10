@@ -977,11 +977,26 @@ internal sealed partial class Compilation
 
     internal readonly Dictionary<string, CppEmitter.BindingSignature> ReflectionTypeTokens = new(StringComparer.Ordinal);
 
-    internal string NoteReflectionTypeToken(MethodInfo method, int token, CppEmitter.BindingSignature signature)
+    internal string NoteReflectionTypeToken(MethodInfo method, int token, CppEmitter.BindingSignature signature,
+        string suffix = "")
     {
-        string symbol = "signature_type_" + method.CppName + "_" + token.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        string symbol = "signature_type_" + method.CppName + "_" + token.ToString(System.Globalization.CultureInfo.InvariantCulture) + suffix;
         ReflectionTypeTokens[symbol] = signature;
+        NoteSignatureArrayInterfaces(signature);
         return symbol;
+    }
+
+    private void NoteSignatureArrayInterfaces(CppEmitter.BindingSignature signature)
+    {
+        if (signature.Kind is 6 or 7)
+        {
+            NoteMdArrayUse();
+            // Jagged elements are references and can use the shared SZ interface map.
+            if (signature.Children[0].Kind is 6 or 7)
+                NoteArrayElementType(TypeDesc.MakePrimitive(PrimitiveTypeCode.Object));
+        }
+        foreach (var child in signature.Children)
+            NoteSignatureArrayInterfaces(child);
     }
 
     /// <summary>Notes every concrete handle that a constructed type's runtime identity
@@ -3142,6 +3157,10 @@ internal sealed partial class Compilation
     /// is already monomorphized).</summary>
     public void NoteArrayElementType(TypeDesc element)
     {
+        // Signature arrays use the full raw signature and the runtime interner;
+        // TypeDesc deliberately erases function-pointer signatures.
+        if (CppEmitter.HasSignatureShape(element))
+            return;
         if (element.Kind is not (TypeKind.Primitive or TypeKind.Class or TypeKind.External or TypeKind.SZArray or TypeKind.MDArray))
             return;
         // A canonical placeholder element can only surface while trial-compiling
@@ -3178,6 +3197,8 @@ internal sealed partial class Compilation
     /// generic metadata without a statically visible MD token.</summary>
     internal void NoteMdArrayType(TypeDesc md)
     {
+        if (CppEmitter.HasSignatureShape(md))
+            return;
         if (ContainsCanonPlaceholder(md) || !MdArrayTypes.TryAdd(ArrayElemMangle(md), md))
             return;
         NoteMdArrayUse();
@@ -3238,6 +3259,11 @@ internal sealed partial class Compilation
     /// interfaces). No-op when the support assembly / CoreLib interfaces aren't loaded.</summary>
     public void NoteArrayEnumerableElement(TypeDesc element)
     {
+        if (CppEmitter.HasSignatureShape(element))
+        {
+            NoteMdArrayUse();
+            return;
+        }
         if (element.Kind is not (TypeKind.Primitive or TypeKind.Class or TypeKind.External or TypeKind.SZArray))
             return;
         // See NoteArrayElementType: placeholder-element arrays never exist.
@@ -3289,6 +3315,8 @@ internal sealed partial class Compilation
     /// shim.</summary>
     private void WireArrayEnumerableMap(TypeDesc element)
     {
+        if (CppEmitter.HasSignatureShape(element))
+            return;
         // Promote here, not only in NoteArrayEnumerableElement: ExpandArrayEnumerableMaps
         // (the covariant fan-out) wires straight from the noted-ARRAY set, whose elements
         // come from the newarr/token site and are therefore the degraded External spelling.
@@ -6787,7 +6815,10 @@ internal sealed partial class Compilation
         // cannot close List<T> at all, and an External element resolves to no
         // modeled class, so a seed could open nothing (the runtime MakeGenericType
         // diagnostic stays for both).
-        if (elem.Kind is not (TypeKind.Primitive or TypeKind.Class or TypeKind.SZArray or TypeKind.MDArray))
+        // A speculative generic materialization has no raw signature context
+        // for an array argument's pointer or function-pointer element identity.
+        if (CppEmitter.HasSignatureShape(elem)
+            || elem.Kind is not (TypeKind.Primitive or TypeKind.Class or TypeKind.SZArray or TypeKind.MDArray))
             return;
         if (elem is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Byte }
             || ContainsCanonPlaceholder(elem))

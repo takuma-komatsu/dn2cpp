@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Pointer and function-pointer arrays share allocation/query identity and safe reflection validation.
 # Runtime-owned class method groups share direct-call dispatch and callable identity.
 # Virtual delegate equality and removal retain the selected method under identical-code folding.
 # Property accessor arrays retain visibility, order, reflected handle identity and boxed invocation.
@@ -237,6 +238,9 @@ DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke
 py="$(resolve_python)"
 source gates/_delegate-identity.sh
 source gates/_reflection-signature-types.sh
+source gates/_pointer-array-types.sh
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_pointer-array-types.sh samples/dotnet/ReflectInvoke/PointerArrayTypesOnly.csproj samples/dotnet/ReflectInvoke/PointerArrayTypesOnlyProgram.cs"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|pointer-array-layout:packed,native,uncompressed,trimmed,unshared|pointer-array-prefix-argv:before-pointer-array-types"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_reflection-signature-types.sh samples/dotnet/ReflectInvoke/ReflectionSignatureTypesOnly.csproj"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|signature-type-query:packed,native,uncompressed,trimmed,unshared|signature-prefix-argv:before-reflection-signature-types"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_delegate-identity.sh gates/fold-delegate-fixture.py samples/dotnet/ReflectInvoke/DelegateVirtualIdentityOnly.csproj samples/dotnet/ReflectInvoke/DelegateVirtualIdentityLibrary.csproj samples/dotnet/ReflectInvoke/DelegateVirtualIdentityOnlyProgram.cs"
@@ -333,6 +337,7 @@ gate_extra_asserts() {
     gate_virtual_delegate_prefix_asserts "$1"
     gate_runtime_owned_delegate_prefix_asserts "$1"
     gate_reflection_signature_prefix_asserts "$1"
+    gate_pointer_array_prefix_asserts "$1"
     local out="$1" native line registry boundary axis route query expected parameter
     "$py" gates/fixtures/check-reflection-layout.py "$out" "$reflection_layout_axis"
     # The runtime publishes a constructor's invoke plan only for a record inside a
@@ -2753,3 +2758,5 @@ done
 delegate_identity_diff_axes
 
 reflection_signature_diff_axes
+
+pointer_array_diff_axes

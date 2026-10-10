@@ -2104,7 +2104,7 @@ Dn2CppObject* dn2cpp_array_clone_dyn(Dn2CppObject* src)
     }
     const Dn2CppTypeInfo* el = t->elementType;
     bool isRef = el == nullptr ? (t == &dn2cpp_array_ref_type)
-                               : (el->flags & DN2CPP_TF_VALUETYPE) == 0;
+                               : dn2cpp_array_element_is_reference(el);
     if (isRef)
         return reinterpret_cast<Dn2CppObject*>(dn2cpp_array_clone_ref(static_cast<Dn2CppArrayRef*>(src)));
     bool isI4 = el == &dn2cpp_int32_type || el == &dn2cpp_uint32_type
@@ -2127,7 +2127,7 @@ static int dn2cpp_array_rep_dyn(Dn2CppObject* o, const char* who)
         dn2cpp_fail(who);
     const Dn2CppTypeInfo* el = t->elementType;
     bool isRef = el == nullptr ? (t == &dn2cpp_array_ref_type)
-                               : (el->flags & DN2CPP_TF_VALUETYPE) == 0;
+                               : dn2cpp_array_element_is_reference(el);
     if (isRef)
         return 0;
     bool isI4 = el == &dn2cpp_int32_type || el == &dn2cpp_uint32_type
@@ -2414,7 +2414,11 @@ Dn2CppMDArray* dn2cpp_newmdarr(const Dn2CppTypeInfo* ti, int32_t rank, const int
     size_t dataOffset = (totalAllocSize + dataAlignment - 1) & ~(dataAlignment - 1);
     totalAllocSize = dataOffset + dataSize;
     
-    auto* arr = static_cast<Dn2CppMDArray*>(dn2cpp_alloc(totalAllocSize));
+    bool atomic = ti != nullptr && dn2cpp_signature_kind(ti->elementType) != 0;
+    auto* arr = static_cast<Dn2CppMDArray*>(atomic ? dn2cpp_alloc_atomic(totalAllocSize) : dn2cpp_alloc(totalAllocSize));
+    // Atomic allocation does not clear; every array cell starts at its default value.
+    if (atomic)
+        std::memset(arr, 0, totalAllocSize);
     arr->type = ti;
     arr->rank = rank;
     arr->lengths = reinterpret_cast<int32_t*>(reinterpret_cast<char*>(arr) + lengthsOffset);

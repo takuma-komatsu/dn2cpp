@@ -480,6 +480,7 @@ ORDERED_PROJECTS=(
 # the gate can report the sanctioned skip.
 GATE_OWNED_PROJECTS=(
     "samples/dotnet/ReflectInvoke/ReflectionSignatureTypesOnly.csproj"
+    "samples/dotnet/ReflectInvoke/PointerArrayTypesOnly.csproj"
     "samples/dotnet/LuaCSharpSample/LuaCSharpSample.csproj"
     "samples/dotnet/MagicOnionClientSample/MagicOnionClientSample.csproj"
     "samples/dotnet/MemoryPackSample/MemoryPackSample.csproj"

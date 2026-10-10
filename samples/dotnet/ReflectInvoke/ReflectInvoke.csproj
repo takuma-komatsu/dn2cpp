@@ -49,6 +49,7 @@
     <Compile Remove="ReflectPointerFieldsOnlyProgram.cs" />
     <Compile Remove="ReflectAttributeDiscoveryOnlyProgram.cs" />
     <Compile Remove="DelegateVirtualIdentityOnlyProgram.cs" />
+    <Compile Remove="PointerArrayTypesOnlyProgram.cs" />
   </ItemGroup>
 
 </Project>

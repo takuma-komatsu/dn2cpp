@@ -721,9 +721,9 @@ internal sealed partial class MethodCompiler
                 && sig.ParameterTypes.Skip(1).All(p => p is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }):
             {
                 int rank = sig.ParameterTypes.Length - 1;
-                // Runtime-created MD arrays share the non-generic dispatch map.
-                if (rank > 1)
-                    _c.NoteMdArrayUse();
+                // Runtime-created signature arrays use the element-agnostic
+                // non-generic map at every rank.
+                _c.NoteMdArrayUse();
                 var lens = new string[rank];
                 for (int i = rank - 1; i >= 0; i--)
                     lens[i] = Cast(Pop(), "int32_t");
@@ -746,6 +746,7 @@ internal sealed partial class MethodCompiler
             case ("System.Array", "CreateInstanceFromArrayType") when sig.ParameterTypes.Length == 2
                 && sig.ParameterTypes[1] is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }:
             {
+                _c.NoteMdArrayUse();
                 var len = Pop();
                 var t = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*",

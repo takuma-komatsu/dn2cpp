@@ -516,6 +516,10 @@ internal sealed partial class CppEmitter
             Add(c);
         foreach (var signature in _c.ReflectionTypeTokens.Values.ToList())
             NoteReflectionSignatureLeaves(signature, type => AddType(type));
+        foreach (var owner in _c.PInvokeMarshalStructs.ToList())
+            foreach (var field in owner.Fields)
+                if (CppTypes.IsByValArrayField(field) && IsSignatureArray(field.Type))
+                    NoteReflectionSignatureLeaves(ReflectionFieldSignature(field).Binding, type => AddType(type));
 
         // An app-module class's reflection tables list every member it declares — only a
         // reference assembly's unreached members are trimmed (BuildMemberTable) — and every
@@ -543,6 +547,10 @@ internal sealed partial class CppEmitter
                 // for every other set member. Safe against the no-pull rule above: the
                 // ToList() snapshot is closed, so decode-appended classes cannot shift it.
                 _c.EnsureCompleted(c);
+                if (_c.KeepsReflectionMetadata(c))
+                    foreach (var field in c.Fields)
+                        if (IsSignatureArray(field.Type))
+                            NoteReflectionSignatureLeaves(ReflectionFieldSignature(field).Binding, type => AddType(type));
                 var propertyAccessors = PropertyAccessorHandles(c);
                 foreach (var m in ReflectionMethods(c))
                 {
@@ -4261,6 +4269,8 @@ internal sealed partial class CppEmitter
     /// row or a closed generic-argument vector names.</summary>
     private string FieldTypeInfoExpr(TypeDesc t, HashSet<ClassInfo> emittedEnums)
     {
+        if (t.Kind is TypeKind.SZArray or TypeKind.MDArray && HasSignatureShape(t))
+            return "&dn2cpp_object_type";
         if (t is { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Primitive or TypeKind.Class or TypeKind.External or TypeKind.SZArray or TypeKind.MDArray } el }
             && ArrayTypeInfoDeclared(el, "reflected member type (array)"))
             return MethodCompiler.PreciseArrayTypeInfoExprOf(el);
@@ -7378,7 +7388,7 @@ internal sealed partial class CppEmitter
             o.Data.AppendLine("{");
             foreach (var f in fields)
             {
-                o.Data.AppendLine("    " + MarshalOutField(f, unicode));
+                o.Data.AppendLine("    " + MarshalOutField(o.Data, f, unicode));
                 if (f.Type.ContainsGcReferences())
                     o.Data.AppendLine("    dn2cpp_gc_write_barrier_if_heap((void*)dst);");
             }
@@ -7423,7 +7433,7 @@ internal sealed partial class CppEmitter
     }
 
     /// <summary>The marshal-out statement for one struct field (native src -> managed dst).</summary>
-    private static string MarshalOutField(FieldInfo f, bool unicode)
+    private string MarshalOutField(StringBuilder output, FieldInfo f, bool unicode)
     {
         string fn = f.CppName;
         var ft = f.Type;
@@ -7437,7 +7447,9 @@ internal sealed partial class CppEmitter
             // is guaranteed by MethodCompiler.NotePInvokeMarshalStruct, which notes every
             // ByValArray element when the struct joins PInvokeMarshalStructs — this emitter
             // runs before EmitTypeInfos, so it can neither ask nor note here.
-            string elemTi = MethodCompiler.PreciseArrayTypeInfoExprOf(f.Type.Element!);
+            string elemTi = IsSignatureArray(f.Type)
+                ? $"dn2cpp_signature_type({EmitBindingSignature(output, QuerySignature(ReflectionFieldSignature(f).Binding), query: true)})"
+                : MethodCompiler.PreciseArrayTypeInfoExprOf(f.Type.Element!);
             return CppTypes.ByValArrayRepIsI4(f)
                 ? $"dst->{fn} = dn2cpp_pinvoke_byvalarr_out_i4((const void*)src->{fn}, {f.ByValArraySize}, {elemTi});"
                 : $"dst->{fn} = dn2cpp_pinvoke_byvalarr_out_n((const void*)src->{fn}, {f.ByValArraySize}, "

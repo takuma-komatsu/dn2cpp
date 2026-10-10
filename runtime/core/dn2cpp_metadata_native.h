@@ -72,7 +72,7 @@ constexpr Value pointer(const char* p) { return Value(Source(p)); }
 constexpr Value pointer(const void* p) { return Value(Source(p)); }
 constexpr Value scalar(int64_t value) { return Value(value); }
 
-constexpr std::size_t field_count(const Dn2CppFieldInfo&) { return 13; }
+constexpr std::size_t field_count(const Dn2CppFieldInfo&) { return 14; }
 constexpr Value value(const Dn2CppFieldInfo& row, std::size_t field)
 {
     switch (field)
@@ -90,6 +90,7 @@ constexpr Value value(const Dn2CppFieldInfo& row, std::size_t field)
         case 10: return scalar(row.literalValue);
         case 11: return pointer(row.display);
         case 12: return Value(Source(row.valueCheck));
+        case 13: return pointer(row.reflectionSignature);
     }
     return {};
 }

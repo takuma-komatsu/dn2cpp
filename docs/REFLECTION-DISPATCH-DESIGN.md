@@ -118,7 +118,14 @@ pinned Type-object interner with `typeof` and the `Make*Type` queries. Negative
 `arrayRank` values distinguish these companions without adding hot type-info
 fields or overlapping the array flags. Function pointers carry return and
 parameter children, and have no element type. These handles describe signatures;
-they supply no object layout, array allocation or generic argument capability.
+they supply no object layout or generic argument capability. Arrays over pointer
+and function-pointer companions use the same interned element identity for
+allocation, `typeof`, casts and reflection validation. Their immediate elements
+use unscanned native-word storage; a jagged array still stores reference elements.
+Boxed element access refuses these native words, while Copy compares exact
+function signatures or the shared pointer assignability rule. Invocation and
+field validation resolve an array's cold signature independently of its reference
+ABI, including on a runtime-template clone.
 The shared assignability rule compares matching pointer/byref kinds by immediate
 primitive equivalence or reference assignability; nested signature levels and
 array signature elements require identity.
