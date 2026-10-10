@@ -288,7 +288,8 @@ internal sealed partial class MethodCompiler
                 return true;
             }
             // Delegate.Clone is MemberwiseClone, so a multicast clone keeps its entries.
-            case ("System.Delegate", "Clone") when sig.ParameterTypes.Length == 0:
+            case var _ when CoreIntrinsics.BrDelegateClone.Matches(declType, name)
+                && sig.Header.IsInstance && sig.ParameterTypes.Length == 0 && sig.ReturnType.IsObject:
             {
                 var d = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_object_memberwise_clone({DelegateReceiver(d)})");
@@ -430,6 +431,17 @@ internal sealed partial class MethodCompiler
                 NoteValueTypeRows();
                 var d = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_delegate_get_method({DelegateReceiver(d)})");
+                return true;
+            }
+
+            case ("System.String", "Clone") when sig.Header.IsInstance
+                && sig.ParameterTypes.Length == 0 && sig.ReturnType.IsObject:
+            {
+                if (Comp.ReachStringMethod("Clone", static ps => ps.Length == 0) is not { } clone)
+                    return false;
+                var receiver = Pop();
+                Comp.NoteNamedBodySymbol(Method, clone.Emittable);
+                Push(StackKind.Ref, "Dn2CppObject*", $"{clone.Emittable.CppName}({VirtualReceiver(receiver)})");
                 return true;
             }
 

@@ -2198,6 +2198,13 @@ internal sealed partial class MethodCompiler : IEvalStack
             ThrowSharedTaint("type-identity", $"typeof({tk}) escapes");
     }
 
+    private void NoteStringInterfaceReceiver(StackEntry receiver, ClassInfo itf)
+    {
+        if (receiver.StaticType is { IsString: true } && itf.IsInterface
+            && _c.IsStringDispatchInterface(itf))
+            _c.NoteStringInterfaces();
+    }
+
     private string CoerceTo(StackEntry e, TypeDesc? targetType, string targetCppType)
     {
         TaintPoisonedTypeEscape(e);
@@ -2233,10 +2240,8 @@ internal sealed partial class MethodCompiler : IEvalStack
         // castclass — LINQ over a string is exactly this shape, including the
         // interface-callvirt receiver slot PopArgs coerces. Wire String's runtime
         // dispatch map so the consumer's dispatch resolves on the string itself.
-        if (e.StaticType is { IsString: true }
-            && targetType is { Kind: TypeKind.Class, Class: { IsInterface: true } sic }
-            && _c.IsStringDispatchInterface(sic))
-            _c.NoteStringInterfaces();
+        if (targetType is { Kind: TypeKind.Class, Class: { IsInterface: true } sic })
+            NoteStringInterfaceReceiver(e, sic);
         // Same boundary for a boxed enum: IL lets an enum (or System.Enum-typed) value
         // flow into an IComparable/IFormattable/IConvertible/ISpanFormattable position
         // without a castclass — every enum statically implements them via System.Enum —
@@ -3902,6 +3907,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 }
                 else if (m.DeclaringClass.IsInterface && m.IsVirtual)
                 {
+                    NoteStringInterfaceReceiver(obj, m.DeclaringClass);
                     if (m.DeclaringClass.IntrinsicCppName is null)
                         NoteReferencedType(m.DeclaringClass);
                     NoteCanonicalItfDispatch(m.DeclaringClass);

@@ -320,6 +320,8 @@ internal enum InterceptEmitArm
     EnumInstanceFormatBody,
     /// <summary>Inherited lifetime wrappers and their protected base implementations.</summary>
     LifetimeDisposeBody,
+    /// <summary>Delegate.Clone's callable slot uses the same shallow-copy helper as a direct call.</summary>
+    DelegateCloneBody,
     /// <summary>SafeHandle lifetime calls and bindings recognize the runtime SafeWaitHandle layout.
     /// Route-only in MethodCompiler.Call and ldvirtftn; ordinary bodies remain reachable.</summary>
     SafeWaitHandleBase,
@@ -1654,6 +1656,12 @@ internal static partial class CoreIntrinsics
         extra: static (dt, n) => dt == "System.Threading.WaitHandle" && n is "Dispose" or "Close"
             || dt == "System.Diagnostics.Tracing.EventSource" && n == "Dispose");
 
+    /// <summary>The inherited ICloneable slot needs a callable body even though Delegate's
+    /// managed layout is replaced by the runtime delegate representation.</summary>
+    public static readonly NameKeyedIntercept BrDelegateClone = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.DelegateCloneBody,
+        typeGate: "System.Delegate", nameGate: "Clone");
+
     /// <summary>The core BCL bounded set (<see cref="IsBoundedMethod"/>): body cut at
     /// reachability, call site neutralized to the default result.
     ///
@@ -1728,6 +1736,7 @@ internal static partial class CoreIntrinsics
         BrHttpShim,
         BrEnumInstanceFormat,
         BrLifetimeDispose,
+        BrDelegateClone,
         BdCoreBounded,
         BdStreamSyncFunnel,
         BdDynamicCodegen,

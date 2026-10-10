@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runtime-owned and intrinsic-base IDisposable slots preserve cleanup and virtual overrides.
+# Runtime-owned lifetime and clone slots preserve cleanup, virtual overrides and copy identity.
 runtime_lifetime_asserts() {
     local output="$1" line
     for line in '== runtime lifetime interfaces ==' 'runtime lifetime interfaces end' \
@@ -27,7 +27,8 @@ runtime_lifetime_diff_routes() {
     local route out witness flags app_route
     local routes=(safe wait event task factory-completed factory-result factory-source \
         factory-generic-source factory-async factory-cold factory-run factory-all trimmed unshared \
-        safegroups safeinvoke safeordinary safenull safe-trimmed safe-unshared)
+        safegroups safeinvoke safeordinary safenull safe-trimmed safe-unshared \
+        clone-string clone-string-calls clone-delegate clone-group clone-ordinary clone-trimmed clone-unshared)
     if [ "$#" != 0 ]; then routes=("$@"); fi
     for route in "${routes[@]}"; do
         out="artifacts/reflect-invoke-runtime-lifetime-$route"
@@ -39,6 +40,8 @@ runtime_lifetime_diff_routes() {
             unshared) flags=(--no-shared-generics) ;;
             safe-trimmed) flags=(--trim-reflection); app_route=safeall ;;
             safe-unshared) flags=(--no-shared-generics); app_route=safeall ;;
+            clone-trimmed) flags=(--trim-reflection); app_route=clone-all ;;
+            clone-unshared) flags=(--no-shared-generics); app_route=clone-all ;;
         esac
         dotnet build samples/dotnet/ReflectInvoke/RuntimeLifetimeInterfacesOnly.csproj \
             -c "$CONFIG" --nologo -v q -p:LifetimeInterfaceRoute="$app_route" -o "$out/app"
@@ -66,6 +69,12 @@ runtime_lifetime_diff_routes() {
             safeordinary) witness='user groups explicit invoked: 1/1/1' ;;
             safenull) witness='safe null group: ArgumentException' ;;
             safe-trimmed|safe-unshared|safeall) safe_handle_group_asserts "$out/native.stdout"; continue ;;
+            clone-string) witness='string clone group: True' ;;
+            clone-string-calls) witness='string clone aliases: True/True' ;;
+            clone-delegate) witness='delegate clone independent: 2/1/3' ;;
+            clone-group) witness='delegate clone group: True/True/5' ;;
+            clone-ordinary) witness='string clone null: NullReferenceException' ;;
+            clone-trimmed|clone-unshared|clone-all) clone_interface_asserts "$out/native.stdout"; continue ;;
             factory-*) witness="lifetime factory ${route#factory-}: disposed"; witness="${witness/generic-source/generic source}" ;;
             *) runtime_lifetime_asserts "$out/native.stdout"; continue ;;
         esac
@@ -123,6 +132,40 @@ gate_safe_handle_group_prefix_asserts() {
         safe_handle_group_asserts "$out/virtual-delegate-full.$axis.stdout"
     done
     diff -u "$out/safehandle-prefix.dotnet.stdout" "$out/safehandle-prefix.native.stdout"
+}
+
+clone_interface_asserts() {
+    local output="$1" line
+    for line in '== runtime clone interfaces ==' 'runtime clone interfaces end' \
+        'string clone group: True' 'string clone calls: True/True' \
+        'string clone aliases: True/True' 'delegate clone group: True/True/5' \
+        'delegate clone interface: True/True/True/5' 'delegate clone remove: True' \
+        'delegate clone direct: True/True/6' 'delegate clone closed: True/True/True/13' \
+        'delegate clone multicast: True/True/True/12' 'delegate clone lists: 2/2/True/True/True' \
+        'delegate clone independent: 2/1/3' 'ordinary clone interface: True/7' \
+        'clone interface null: NullReferenceException' \
+        'clone group null: NullReferenceException' 'delegate clone null: NullReferenceException' \
+        'string clone null: NullReferenceException'; do
+        test "$(grep -Fxc -- "$line" "$output")" = 1 \
+            || { echo "FAIL: clone interface witness missing or repeated: $output/$line" >&2; return 1; }
+    done
+}
+
+gate_clone_interface_prefix_asserts() {
+    local out="$1" axis
+    for axis in dotnet native; do
+        if [ "$axis" = dotnet ]; then
+            run_bounded dotnet "$_CG_APP" before-runtime-clone-interfaces > "$out/clone-prefix.$axis.raw.stdout"
+        else
+            run_bounded "$out/ReflectInvoke$EXE_EXT" before-runtime-clone-interfaces > "$out/clone-prefix.$axis.raw.stdout"
+        fi
+        strip_cr_win_file "$out/clone-prefix.$axis.raw.stdout" > "$out/clone-prefix.$axis.stdout"
+        awk '/^== runtime clone interfaces ==$/ { exit } { print }' \
+            "$out/virtual-delegate-full.$axis.stdout" > "$out/clone-old.$axis.stdout"
+        diff -u "$out/clone-prefix.$axis.stdout" "$out/clone-old.$axis.stdout"
+        clone_interface_asserts "$out/virtual-delegate-full.$axis.stdout"
+    done
+    diff -u "$out/clone-prefix.dotnet.stdout" "$out/clone-prefix.native.stdout"
 }
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then

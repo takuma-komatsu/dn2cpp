@@ -142,8 +142,87 @@ class ExplicitGroupSafeHandle : GroupSafeHandle, IDisposable
 
 #endif
 
+class CloneControl : ICloneable
+{
+    public int Value;
+    public object Clone() => new CloneControl { Value = Value };
+    public int Read(int value) => Value + value;
+}
+
 static class Program
 {
+    private static int CloneStatic(int value) => value + 1;
+    private static object CloneLifetime(ICloneable value) => value.Clone();
+
+    internal static void RunCloneStringGroup()
+    {
+        string text = "clone";
+        Func<object> clone = ((ICloneable)text).Clone;
+        Console.WriteLine("string clone group: " + ReferenceEquals(text, clone()));
+    }
+
+    internal static void RunCloneStringCalls()
+    {
+        string text = "clone";
+        Func<object> direct = text.Clone;
+        Func<object> group = ((ICloneable)text).Clone;
+        Console.WriteLine("string clone calls: " + ReferenceEquals(text, text.Clone()) + "/" + ReferenceEquals(text, CloneLifetime(text)));
+        Console.WriteLine("string clone aliases: " + (direct == group) + "/" + (Delegate.Remove(direct, group) is null));
+    }
+
+    internal static void RunCloneDelegateGroup()
+    {
+        Func<int, int> original = CloneStatic;
+        Func<object> clone = ((ICloneable)original).Clone;
+        var copy = (Func<int, int>)clone();
+        Console.WriteLine("delegate clone group: " + !ReferenceEquals(original, copy) + "/" + (original == copy) + "/" + copy(4));
+    }
+
+    internal static void RunCloneDelegates()
+    {
+        Func<int, int> original = CloneStatic;
+        var copy = (Func<int, int>)CloneLifetime(original);
+        Console.WriteLine("delegate clone interface: " + !ReferenceEquals(original, copy) + "/" + (copy.GetType() == original.GetType()) + "/" + (original == copy) + "/" + copy(4));
+        Console.WriteLine("delegate clone remove: " + (Delegate.Remove(original, copy) is null));
+        var direct = (Func<int, int>)original.Clone();
+        Console.WriteLine("delegate clone direct: " + !ReferenceEquals(original, direct) + "/" + (original == direct) + "/" + direct(5));
+        var target = new CloneControl { Value = 10 };
+        Func<int, int> closed = target.Read;
+        var closedCopy = (Func<int, int>)CloneLifetime(closed);
+        Console.WriteLine("delegate clone closed: " + !ReferenceEquals(closed, closedCopy) + "/" + (closed == closedCopy) + "/" + ReferenceEquals(closed.Target, closedCopy.Target) + "/" + closedCopy(3));
+        Func<int, int> multi = original + closed;
+        // Publish the invocation-list cache before cloning as well as after it.
+        Delegate[] before = multi.GetInvocationList();
+        var multiCopy = (Func<int, int>)CloneLifetime(multi);
+        Delegate[] after = multiCopy.GetInvocationList();
+        Console.WriteLine("delegate clone multicast: " + !ReferenceEquals(multi, multiCopy) + "/" + (multi == multiCopy) + "/" + (multiCopy.GetType() == multi.GetType()) + "/" + multiCopy(2));
+        Console.WriteLine("delegate clone lists: " + before.Length + "/" + after.Length + "/" + (before[0] == after[0]) + "/" + (before[1] == after[1]) + "/" + ReferenceEquals(multi.Target, multiCopy.Target));
+        var removed = (Func<int, int>)Delegate.Remove(multiCopy, closed)!;
+        Console.WriteLine("delegate clone independent: " + multi.GetInvocationList().Length + "/" + removed.GetInvocationList().Length + "/" + removed(2));
+    }
+
+    internal static void RunCloneOrdinary()
+    {
+        var original = new CloneControl { Value = 7 };
+        var copy = (CloneControl)CloneLifetime(original);
+        Console.WriteLine("ordinary clone interface: " + !ReferenceEquals(original, copy) + "/" + copy.Value);
+        Try("clone interface null", () => CloneLifetime(null!));
+        Try("clone group null", () => { Func<object> clone = ((ICloneable)null!).Clone; return clone.Target; });
+        Try("delegate clone null", () => ((Delegate)null!).Clone());
+        Try("string clone null", () => ((string)null!).Clone());
+    }
+
+    internal static void RunCloneInterfaces()
+    {
+        Console.WriteLine("== runtime clone interfaces ==");
+        RunCloneStringGroup();
+        RunCloneStringCalls();
+        RunCloneDelegateGroup();
+        RunCloneDelegates();
+        RunCloneOrdinary();
+        Console.WriteLine("runtime clone interfaces end");
+    }
+
 #if !LIFETIME_SAFE
     private static Action SafeBaseDispose(SafeHandle receiver) => receiver.Dispose;
     private static Action SafeBaseClose(SafeHandle receiver) => receiver.Close;
