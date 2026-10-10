@@ -93,6 +93,15 @@ internal sealed partial class Compilation
             }
             return; // no _toScan.Enqueue -> the replaced IL is never scanned
         }
+        if (CoreIntrinsics.BrDelegateClone.Matches(m.DeclaringClass.FullName, m.Name))
+        {
+            if (Reachable.Add(m))
+            {
+                _predTrace.TryAdd(m, _currentScan);
+                m.EnsureSignature();
+            }
+            return;
+        }
         if (CoreIntrinsics.BrLifetimeDispose.Matches(m.DeclaringClass.FullName, m.Name))
         {
             if (Reachable.Add(m))

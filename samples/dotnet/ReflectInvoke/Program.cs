@@ -329,6 +329,9 @@ namespace ReflectInvoke
             if (args.Length > 0 && args[0] == "before-safehandle-method-groups")
                 return;
             RuntimeHandleRelationSubset.Program.RunSafeHandleMethodGroups();
+            if (args.Length > 0 && args[0] == "before-runtime-clone-interfaces")
+                return;
+            RuntimeHandleRelationSubset.Program.RunCloneInterfaces();
         }
     }
 }

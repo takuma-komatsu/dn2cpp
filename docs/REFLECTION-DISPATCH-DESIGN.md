@@ -202,6 +202,11 @@ SafeHandle body and its selected MethodDef identity; interface-only images keep
 the small runtime thunk. Other SafeHandle receivers retain ordinary slot dispatch.
 Final class bindings leave null rejection to the delegate constructor.
 
+String interface method groups note the same receiver map as call coercions;
+String.Clone calls its real managed body. Delegate.Clone retains a callable base
+slot synthesized from the direct-call shallow-copy helper, preserving the delegate
+type, target and invocation list while returning a distinct delegate object.
+
 Task disposal uses the same completion-state check in direct calls, fast interface
 calls and runtime interface slots. Its allocation routes note the map independently
 of the static receiver type. Inherited WaitHandle and EventSource disposal bodies

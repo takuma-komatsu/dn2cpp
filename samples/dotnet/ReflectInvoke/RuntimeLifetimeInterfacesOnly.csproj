@@ -5,6 +5,12 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <Optimize>true</Optimize>
+    <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'clone-string'">$(DefineConstants);CLONE_STRING</DefineConstants>
+    <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'clone-string-calls'">$(DefineConstants);CLONE_STRING_CALLS</DefineConstants>
+    <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'clone-delegate'">$(DefineConstants);CLONE_DELEGATE</DefineConstants>
+    <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'clone-group'">$(DefineConstants);CLONE_GROUP</DefineConstants>
+    <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'clone-ordinary'">$(DefineConstants);CLONE_ORDINARY</DefineConstants>
+    <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'clone-all'">$(DefineConstants);CLONE_ALL</DefineConstants>
     <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'safegroups'">$(DefineConstants);SAFEHANDLE_GROUPS</DefineConstants>
     <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'safeinvoke'">$(DefineConstants);SAFEHANDLE_INVOCATION</DefineConstants>
     <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'safeordinary'">$(DefineConstants);SAFEHANDLE_ORDINARY</DefineConstants>

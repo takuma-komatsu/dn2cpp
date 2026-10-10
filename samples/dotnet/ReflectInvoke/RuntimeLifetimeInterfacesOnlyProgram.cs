@@ -2,7 +2,19 @@ using System.Globalization;
 
 CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
 CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
-#if SAFEHANDLE_GROUPS
+#if CLONE_STRING
+RuntimeHandleRelationSubset.Program.RunCloneStringGroup();
+#elif CLONE_STRING_CALLS
+RuntimeHandleRelationSubset.Program.RunCloneStringCalls();
+#elif CLONE_DELEGATE
+RuntimeHandleRelationSubset.Program.RunCloneDelegates();
+#elif CLONE_GROUP
+RuntimeHandleRelationSubset.Program.RunCloneDelegateGroup();
+#elif CLONE_ORDINARY
+RuntimeHandleRelationSubset.Program.RunCloneOrdinary();
+#elif CLONE_ALL
+RuntimeHandleRelationSubset.Program.RunCloneInterfaces();
+#elif SAFEHANDLE_GROUPS
 RuntimeHandleRelationSubset.Program.RunSafeHandleGroups();
 #elif SAFEHANDLE_INVOCATION
 RuntimeHandleRelationSubset.Program.RunSafeHandleGroupInvocation();
