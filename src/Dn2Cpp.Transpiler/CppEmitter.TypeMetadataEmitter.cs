@@ -1778,6 +1778,7 @@ internal sealed partial class CppEmitter
             _e.NoteRuntimeHandleBases();
             _sb.AppendLine();
             EmitDelegateIdentities();
+            EmitDelegateCloneBinding();
             EmitGvmRowDispatch();
             EmitAmbiguousBindings();
 
@@ -1785,6 +1786,30 @@ internal sealed partial class CppEmitter
             // the moment it returns (EmitTypeInfos keeps no field), so a census anywhere
             // later would report the pools as free rather than as big.
             Census();
+        }
+
+        private void EmitDelegateCloneBinding()
+        {
+            if (_c.DelegateCloneBinding is not { } declaration)
+                return;
+            _o.Header.AppendLine("void* dn2cpp_bind_delegate_clone(Dn2CppObject* receiver);");
+            _sb.AppendLine("void* dn2cpp_bind_delegate_clone(Dn2CppObject* receiver) {");
+            foreach (var receiver in _c.DelegateCloneReceiverTypes.ToList().OrderBy(c => c.CppName, System.StringComparer.Ordinal))
+            {
+                if (!receiver.IsDelegate || !_c.IsDelegateCloneBindingReceiver(receiver)
+                    || _e.SkipsCanonicalMetadata(receiver)
+                    || !_e.TypeInfoSymbolDefined(receiver.CppTypeInfoName))
+                    continue;
+                int slot = declaration.VtableSlot;
+                if (slot < 0 || slot >= receiver.Vtable.Count || receiver.Vtable[slot] is not { } target
+                    || !_c.Reachable.Contains(target))
+                    throw new InvalidOperationException($"Delegate.Clone binding has no reached class slot on {receiver.FullName}");
+                string typeInfo = _e.TypeInfoRef(receiver, "Delegate.Clone binding receiver");
+                _sb.AppendLine($"    if (receiver->type == {typeInfo}) return (void*)&{target.Emittable.CppName};");
+            }
+            _sb.AppendLine("    dn2cpp_throw_platform_not_supported(\"Delegate.Clone binding needs an emitted receiver selection\");");
+            _sb.AppendLine("}");
+            _sb.AppendLine();
         }
 
         /// <summary>The delegate method identities the shipped bodies named, spelled as the
@@ -1837,7 +1862,7 @@ internal sealed partial class CppEmitter
                     // resolve without this table. A clone resolves without it:
                     // its interface slots hold the bodies its own rows name.
                     var targets = new List<(ClassInfo Receiver, MethodInfo Target)>();
-                    foreach (var receiver in _c.AllocatedRefTypes.ToList())
+                    foreach (var receiver in _c.DelegateCloneReceiverTypes.ToList())
                     {
                         if (receiver.IsInterface || !_c.ImplementsInterface(receiver, owner)
                             || _e.SkipsCanonicalMetadata(receiver)
@@ -1874,7 +1899,7 @@ internal sealed partial class CppEmitter
                     // Record the selected declaration, including a default body and a
                     // runtime template receiver, independently of its member rows.
                     var targets = new List<(ClassInfo? Receiver, MethodInfo Target, bool Family)>();
-                    var receivers = _c.AllocatedRefTypes.ToList();
+                    var receivers = _c.DelegateCloneReceiverTypes.ToList();
                     if (_c.StringInterfaces is { } stringInterfaces)
                         receivers.Add(stringInterfaces.StringClass);
                     foreach (var receiver in receivers)
