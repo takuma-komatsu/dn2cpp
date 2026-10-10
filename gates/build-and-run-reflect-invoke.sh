@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Array.Clone calls and method groups share ICloneable dispatch without collection roots.
 # Delegate.Clone class groups preserve class overrides, explicit interface distinctions and null binding.
 # String and delegate ICloneable calls and method groups preserve their CLR copy identity.
 # SafeHandle method groups share runtime receiver routing, callable and selected-method identity.
@@ -244,6 +245,8 @@ source gates/_delegate-identity.sh
 source gates/_reflection-signature-types.sh
 source gates/_pointer-array-types.sh
 source gates/_runtime-lifetime-interfaces.sh
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/ReflectInvoke/ArrayCloneInterfaceSubset.cs samples/dotnet/ReflectInvoke/ArrayCloneReflectionOnlySubset.cs"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|array-clone:typed,erased,constrained,constrained-unshared,interface-group,class-group,alias,null,trimmed,unshared,reflected,md,md-unshared|array-clone-prefix:before-array-clone-interfaces"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_runtime-lifetime-interfaces.sh samples/dotnet/ReflectInvoke/RuntimeLifetimeInterfacesOnly.csproj samples/dotnet/ReflectInvoke/RuntimeLifetimeInterfacesOnlyProgram.cs samples/dotnet/ReflectInvoke/DelegateCloneFieldTypeSubset.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|runtime-lifetime-disposal:isolated,trimmed,unshared|runtime-lifetime-prefix:before-runtime-lifetime-interfaces"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|safehandle-method-groups:isolated,trimmed,unshared|safehandle-prefix:before-safehandle-method-groups"
@@ -352,6 +355,7 @@ gate_extra_asserts() {
     gate_safe_handle_group_prefix_asserts "$1"
     gate_clone_interface_prefix_asserts "$1"
     gate_delegate_clone_class_prefix_asserts "$1"
+    gate_array_clone_prefix_asserts "$1"
     local out="$1" native line registry boundary axis route query expected parameter
     "$py" gates/fixtures/check-reflection-layout.py "$out" "$reflection_layout_axis"
     # The runtime publishes a constructor's invoke plan only for a record inside a

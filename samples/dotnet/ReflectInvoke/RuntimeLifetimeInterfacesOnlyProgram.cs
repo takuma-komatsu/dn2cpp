@@ -2,7 +2,30 @@ using System.Globalization;
 
 CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
 CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
-#if CLONE_CLASS_ALIASES
+#if ARRAY_CLONE_MD
+ArrayCloneInterfaceSubset.Program.RunTyped();
+ArrayCloneInterfaceSubset.Program.RunMd();
+#elif ARRAY_CLONE_REFLECTED
+ArrayCloneReflectionOnlySubset.Program.Run();
+#elif ARRAY_CLONE_CONSTRAINED
+ArrayCloneInterfaceSubset.Program.RunConstrained();
+#elif ARRAY_CLONE_ALL
+ArrayCloneInterfaceSubset.Program.RunAll();
+#elif ARRAY_CLONE_REFERENCE
+ArrayCloneInterfaceSubset.Program.RunReferences();
+#elif ARRAY_CLONE_ALIASES
+ArrayCloneInterfaceSubset.Program.RunAliases();
+#elif ARRAY_CLONE_NULL
+ArrayCloneInterfaceSubset.Program.RunNull();
+#elif ARRAY_CLONE_TYPED
+ArrayCloneInterfaceSubset.Program.RunTyped();
+#elif ARRAY_CLONE_ERASED
+ArrayCloneInterfaceSubset.Program.RunErased();
+#elif ARRAY_CLONE_INTERFACE_GROUP
+ArrayCloneInterfaceSubset.Program.RunInterfaceGroup();
+#elif ARRAY_CLONE_CLASS_GROUP
+ArrayCloneInterfaceSubset.Program.RunClassGroup();
+#elif CLONE_CLASS_ALIASES
 RuntimeHandleRelationSubset.Program.RunDelegateCloneClassAliases();
 #elif CLONE_CLASS_INVOKE
 RuntimeHandleRelationSubset.Program.RunDelegateCloneClassInvocation();

@@ -2710,10 +2710,11 @@ void dn2cpp_array_set_ref_fallback_interfaces(const Dn2CppInterfaceEntry* entrie
 // runtime-interned with no interface rows of their own, so
 // dn2cpp_resolve_interface_walk serves ANY rank>=2 array from this one table —
 // element-agnostic (the wrapper goes through the System.Array reflection surface),
-// unlike the per-element SZ maps. A program that mints no MD array installs nothing
-// and an MD interface dispatch keeps the loud abort. Called once from the generated
-// init prologue before any managed code runs.
-void dn2cpp_array_set_md_fallback_interfaces(const Dn2CppInterfaceEntry* entries, int32_t count);
+// unlike the per-element SZ maps. The Clone interface key also admits its
+// element-agnostic thunk on SZ arrays. Installed when a dispatch route needs it,
+// before any managed code runs.
+void dn2cpp_array_set_md_fallback_interfaces(const Dn2CppInterfaceEntry* entries, int32_t count,
+    const Dn2CppTypeInfo* cloneInterface = nullptr);
 // Installs the RELATION-only row set for the six non-generic interfaces every CLR
 // array implements — the same six the two tables above dispatch, but as rows with
 // NULL slot tables, and for ENUMERATION rather than dispatch.

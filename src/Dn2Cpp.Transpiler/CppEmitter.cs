@@ -2947,7 +2947,11 @@ internal sealed partial class CppEmitter
         // dispatch a collection interface on a rank>=2 array, and MD type-infos are
         // runtime-interned so this table is their ONLY dispatch route.
         if (_mdArrayItfMap is { } mdm)
-            sb.AppendLine($"    dn2cpp_array_set_md_fallback_interfaces({mdm.Sym}, {mdm.Count});");
+        {
+            var cloneItf = _c.MdArrayInterfaces!.Dispatches.FirstOrDefault(d => d.Itf.FullName == "System.ICloneable")?.Itf;
+            string cloneKey = cloneItf is null ? "nullptr" : TypeInfoRef(cloneItf, "array Clone dispatch");
+            sb.AppendLine($"    dn2cpp_array_set_md_fallback_interfaces({mdm.Sym}, {mdm.Count}, {cloneKey});");
+        }
         // The relation-only rows the two tables above cannot carry — the enumeration half.
         // Installed here rather than lazily for the same reason: a cctor can already call
         // Type.GetInterfaces() on an array type.
@@ -3094,8 +3098,7 @@ internal sealed partial class CppEmitter
     private (string Sym, int Count)? _arrayRefFallbackItfMap;
 
     /// <summary>The emitted multi-dimensional array dispatch-map symbol + row count, or
-    /// null when the program mints no MD array (then no rank&gt;=2 receiver can exist and
-    /// nothing is installed — an MD-free program's output stays byte-identical).
+    /// null without MD-array or Clone dispatch demand.
     /// Consumed by <see cref="EmitInitCalls"/>, which registers it as the runtime's
     /// shared rank&gt;=2 dispatch table (<c>dn2cpp_array_set_md_fallback_interfaces</c>)
     /// before any managed code runs. Set by

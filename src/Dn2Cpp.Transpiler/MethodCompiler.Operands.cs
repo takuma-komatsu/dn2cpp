@@ -536,6 +536,8 @@ internal sealed partial class MethodCompiler
                 or "System.Collections.Generic.IReadOnlyList"
             && ic.Context.TypeArgs is [{ } ee])
             _c.NoteArrayEnumerableElement(ee);
+        if (target is { Kind: TypeKind.Class, Class: { IsInterface: true } arrayItf })
+            _c.NoteArrayInterfaceDispatch(arrayItf);
         // A runtime cast to an interface String implements (IEnumerable<char>,
         // IComparable, ICloneable, …) can find a string behind the object — e.g.
         // Comparer<object>.Default's `(IComparable)x` — so wire String's dispatch

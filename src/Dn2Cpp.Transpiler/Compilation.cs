@@ -4124,8 +4124,9 @@ internal sealed partial class Compilation
     {
         bool added = WireObjectArrayFallbackMap();
         // The multi-dimensional sibling: one shared six-interface map for every
-        // rank>=2 array, keyed on any MD array being noted at all.
+        // rank>=2 array, also serving element-agnostic Clone on SZ arrays.
         added |= WireMdArrayItfMap();
+        added |= ReachMdArrayEnumeration();
         // The ENUMERATION counterpart of both: the same six non-generic
         // interfaces as relation-only rows, so Type.GetInterfaces() over an array
         // reports them. Keyed on any array type-info existing at all.
@@ -4205,16 +4206,20 @@ internal sealed partial class Compilation
                             Reach(impl);
                             reached = true;
                         }
-            // The MD map's rows are a dispatch mouth for the same reflection-invoke
-            // arm, so they get the same generosity.
+            // Reflection can invoke every row on an MD receiver. Clone-only SZ
+            // dispatch admits only ICloneable.
             if (MdArrayInterfaces is { } mai)
                 foreach (var d in mai.Dispatches)
+                {
+                    if (!_mdArrayUsed && d.Itf.FullName != "System.ICloneable")
+                        continue;
                     foreach (var (_, impl) in d.Methods)
                         if (!Reachable.Contains(impl))
                         {
                             Reach(impl);
                             reached = true;
                         }
+                }
             if (reached)
                 DrainReachability();
         }
@@ -4850,19 +4855,29 @@ internal sealed partial class Compilation
     internal MdArrayItfInfo? MdArrayInterfaces { get; private set; }
 
     private bool _mdArrayUsed;
+    private bool _arrayCloneDispatchUsed;
+    private bool _mdArrayEnumerationReached;
 
     /// <summary>Notes that the program can materialize or see a non-SZ array:
     /// an MD allocation/accessor/type token, or a runtime-rank or explicit-bound
     /// <c>Array.CreateInstance</c>.
-    /// Keys wiring the shared MD dispatch map (<see cref="WireMdArrayItfMap"/>, driven
-    /// inside the emit fixpoint); a program that never notes wires and emits nothing,
-    /// so its output stays byte-identical.</summary>
+    /// Requests the shared dispatch map and enumeration slots through the emit
+    /// fixpoint; Clone-only demand requests the map separately.</summary>
     public void NoteMdArrayUse()
     {
         _mdArrayUsed = true;
         // An MD array's interned type-info carries no rows of its own, so the shared
         // relation-only set is the ONLY thing GetInterfaces() can report for it.
         NoteArrayItfRowsNeeded();
+    }
+
+    internal void NoteArrayInterfaceDispatch(ClassInfo itf)
+    {
+        if (itf.FullName == "System.ICloneable")
+        {
+            _arrayCloneDispatchUsed = true;
+            NoteArrayItfRowsNeeded();
+        }
     }
 
     /// <summary>The six non-generic interfaces a CLR multi-dimensional array
@@ -4881,7 +4896,7 @@ internal sealed partial class Compilation
             or "System.Collections.IStructuralEquatable";
 
     /// <summary>Wires the shared multi-dimensional array dispatch map once any MD
-    /// array is noted (<see cref="NoteMdArrayUse"/>): resolves + reaches the
+    /// array or Clone dispatch is noted: resolves + reaches the
     /// non-generic <c>MDArrayEnumerable</c> wrapper and records the six-interface
     /// dispatch set for CppEmitter. Mirrors <see cref="WireObjectArrayFallbackMap"/> —
     /// driven each fixpoint round, a pure function of the noted flag. Without a
@@ -4891,7 +4906,7 @@ internal sealed partial class Compilation
     /// first MD interface dispatch would abort at run time.</summary>
     private bool WireMdArrayItfMap()
     {
-        if (!_mdArrayUsed || MdArrayInterfaces is not null)
+        if ((!_mdArrayUsed && !_arrayCloneDispatchUsed) || MdArrayInterfaces is not null)
             return false;
         // Both halves of the no-CoreLib guard: without the non-generic collection
         // interfaces nothing can dispatch, and without a LOADED System.Array the
@@ -4901,7 +4916,7 @@ internal sealed partial class Compilation
         if (!TypeIndex().TryGetValue(("System.Collections", "IEnumerable"), out _)
             || !TypeIndex().TryGetValue(("System", "Array"), out _))
             return false;
-        const string Need = "dispatching a collection interface on a multi-dimensional array";
+        const string Need = "dispatching a non-generic array interface";
         var (mod, tdh) = RequireShimType("Dn2Cpp.Runtime", "MDArrayEnumerable", Need)[0];
         if (!mod.ClassMap.TryGetValue(tdh, out var cls))
             throw new NotSupportedException(
@@ -4916,6 +4931,11 @@ internal sealed partial class Compilation
                 "Dn2Cpp.Runtime.MDArrayEnumerable has no (System.Array) constructor: the loaded "
                 + "Dn2Cpp.Runtime.dll is stale or does not match this dn2cpp. It is needed for "
                 + Need + ".");
+        if (ArrayDispatchClass is null)
+        {
+            ArrayDispatchClass = ctor.Signature.ParameterTypes[0].Class!.EnsureMembers();
+            NoteReferencedType(ArrayDispatchClass);
+        }
         NoteReferencedType(cls);
         // ReachAllocatedType joins the wrapper into the used-virtual cross product, so
         // only the interface members the program actually dispatches get bodies — the
@@ -4940,6 +4960,19 @@ internal sealed partial class Compilation
             NoteReferencedType(itf);
         }
         MdArrayInterfaces = new MdArrayItfInfo(cls, ctor, dispatches);
+        // Wiring happens during body compilation; drain now so the emit fixpoint
+        // picks up the transitive closure of the just-reached wrapper members.
+        DrainReachability();
+        return true;
+    }
+
+    private bool ReachMdArrayEnumeration()
+    {
+        if (!_mdArrayUsed || MdArrayInterfaces is null || _mdArrayEnumerationReached)
+            return false;
+        // Clone can install the map before an MD allocation is discovered. Only
+        // MD/signature-array demand adds enumeration slots to the used-virtual cross product.
+        _mdArrayEnumerationReached = true;
         // Force-reach the non-generic enumeration triple (GetEnumerator +
         // get_Current/MoveNext) so a bare (IEnumerable)md + foreach enumerates even
         // when the program's own callvirts sat in bodies compiled before this wiring —
@@ -4955,8 +4988,6 @@ internal sealed partial class Compilation
                     ReachUsedVirtual(decl);
             NoteReferencedType(enumItf);
         }
-        // Wiring happens during body compilation; drain now so the emit fixpoint
-        // picks up the transitive closure of the just-reached wrapper members.
         DrainReachability();
         return true;
     }
