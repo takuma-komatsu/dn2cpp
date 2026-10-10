@@ -467,13 +467,7 @@ internal sealed partial class MethodCompiler
             }
             case ("System.Threading.WaitHandle", "Dispose"):
             case ("System.Threading.WaitHandle", "Close"):
-            {
-                for (int i = 0; i < sig.ParameterTypes.Length; i++)
-                    Pop();
-                var o = Pop(); // this
-                Emit($"dn2cpp_waithandle_close((Dn2CppObject*)({o.Expr}));");
-                return true;
-            }
+                return TryEmitLifetimeDispose(declType, name, sig);
             case ("Microsoft.Win32.SafeHandles.SafeWaitHandle", "Dispose"):
             case ("Microsoft.Win32.SafeHandles.SafeWaitHandle", "Close"):
             {
@@ -486,6 +480,7 @@ internal sealed partial class MethodCompiler
             // ---- SafeWaitHandle: runtime event alias or an attached OS handle ----
             case ("System.Threading.WaitHandle", "get_SafeWaitHandle"):
             {
+                _c.NoteIntrinsicInterfaces("Microsoft.Win32.SafeHandles.SafeWaitHandle");
                 var o = Pop(); // this
                 Push(StackKind.Ref, "Dn2CppObject*",
                     $"dn2cpp_waithandle_get_safe((Dn2CppObject*)({o.Expr}))");

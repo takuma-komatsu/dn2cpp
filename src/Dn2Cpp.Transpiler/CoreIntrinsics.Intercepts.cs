@@ -318,6 +318,8 @@ internal enum InterceptEmitArm
     /// <c>dn2cpp_type_get_type_code</c>), which dispatch on the boxed enum's runtime
     /// type, so one synthesized body serves every enum.</summary>
     EnumInstanceFormatBody,
+    /// <summary>Inherited lifetime wrappers and their protected base implementations.</summary>
+    LifetimeDisposeBody,
     /// <summary>A bounded method's call site: drop the arguments and push the
     /// default result (null / zero / nothing-for-void) —
     /// <c>MethodCompiler.EmitManagedCall</c>. The ldftn mouth
@@ -1631,6 +1633,13 @@ internal static partial class CoreIntrinsics
         InterceptCutKind.BodyReplace, InterceptEmitArm.EnumInstanceFormatBody,
         extra: static (dt, n) => IsEnumInstanceFormatMethod(dt, n));
 
+    /// <summary>Retains callable inherited disposal slots while replacing the runtime-only
+    /// cleanup. Public wrappers dispatch Dispose(bool); a base bool call never redispatches.</summary>
+    public static readonly NameKeyedIntercept BrLifetimeDispose = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.LifetimeDisposeBody,
+        extra: static (dt, n) => dt == "System.Threading.WaitHandle" && n is "Dispose" or "Close"
+            || dt == "System.Diagnostics.Tracing.EventSource" && n == "Dispose");
+
     /// <summary>The core BCL bounded set (<see cref="IsBoundedMethod"/>): body cut at
     /// reachability, call site neutralized to the default result.
     ///
@@ -1704,6 +1713,7 @@ internal static partial class CoreIntrinsics
     [
         BrHttpShim,
         BrEnumInstanceFormat,
+        BrLifetimeDispose,
         BdCoreBounded,
         BdStreamSyncFunnel,
         BdDynamicCodegen,

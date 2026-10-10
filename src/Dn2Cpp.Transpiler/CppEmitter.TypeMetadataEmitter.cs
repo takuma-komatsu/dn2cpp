@@ -1927,6 +1927,10 @@ internal sealed partial class CppEmitter
                             && _e.TypeInfoSymbolDefined(enumTarget.DeclaringClass.CppTypeInfoName))
                             targets.Add((enumClass, enumTarget, true));
                     }
+                    if (CoreIntrinsics.BrLifetimeDispose.Matches(owner.FullName, m.Name)
+                        && CoreIntrinsics.RuntimeOwnsTypeInfo(owner)
+                        && _e.TypeInfoSymbolDefined(owner.CppTypeInfoName))
+                        targets.Add((owner, m, true));
                     foreach (var info in _c.IntrinsicInterfaces)
                         if (info.Itf == owner && info.SlotDecl == m
                             && info.Receiver is { } intrinsicReceiver && info.Target is { } intrinsicTarget

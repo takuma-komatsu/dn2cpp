@@ -11,6 +11,7 @@ internal sealed partial class MethodCompiler
         if (managedType is not { Kind: TypeKind.Class, Class.IntrinsicCppName: "Dn2CppTask*" })
             throw new InvalidOperationException(
                 $"{Method.DeclaringClass.FullName}.{Method.Name}: cannot stamp non-Task type {managedType}");
+        Comp.NoteIntrinsicInterfaces("System.Threading.Tasks.Task");
         if (SharedTrial && Compilation.ContainsCanonPlaceholder(managedType))
             return "(const Dn2CppTypeInfo*)"
                 + RgctxSlotAccess(RgctxSlotKind.TaskTypeInfo, token, "task typeinfo", managedType);

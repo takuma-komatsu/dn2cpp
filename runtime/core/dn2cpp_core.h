@@ -2823,7 +2823,7 @@ extern const Dn2CppTypeInfo dn2cpp_event_type;
 extern const Dn2CppTypeInfo dn2cpp_manualresetevent_type;
 extern const Dn2CppTypeInfo dn2cpp_autoresetevent_type;
 extern Dn2CppTypeInfo dn2cpp_manualreseteventslim_type;
-extern const Dn2CppTypeInfo dn2cpp_safewaithandle_type;
+extern Dn2CppTypeInfo dn2cpp_safewaithandle_type;
 extern const Dn2CppTypeInfo dn2cpp_array_i4_type;
 extern const Dn2CppTypeInfo dn2cpp_array_ref_type;
 extern const Dn2CppTypeInfo dn2cpp_array_n_type;
@@ -7318,13 +7318,14 @@ void dn2cpp_lock_scope_dispose(Dn2CppLockScope* scope);
 // string taken at GetChunks time. `state` 0 = before the chunk, 1 = done.
 struct Dn2CppSbChunkEnum { Dn2CppString* snapshot; int32_t state; };
 
-extern const Dn2CppTypeInfo dn2cpp_task_type;
+extern Dn2CppTypeInfo dn2cpp_task_type;
 extern const Dn2CppTypeInfo dn2cpp_taskscheduler_type;
 Dn2CppObject* dn2cpp_taskscheduler_default();
 
 // A fresh pending task (status PENDING). The builder completes it via SetResult/
 // SetException once MoveNext finishes.
 Dn2CppTask* dn2cpp_task_alloc();
+void dn2cpp_task_dispose(Dn2CppTask* task);
 // The shared already-completed (void-result) task behind Task.CompletedTask.
 Dn2CppTask* dn2cpp_task_completed();
 // A completed Task<T> carrying a result (behind Task.FromResult). The raw slot

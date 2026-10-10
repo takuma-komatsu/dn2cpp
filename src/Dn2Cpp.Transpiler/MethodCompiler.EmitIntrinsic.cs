@@ -565,7 +565,7 @@ internal sealed partial class MethodCompiler
         }
         switch (name)
         {
-            // Every write/dispose path -> a no-op (see the summary: this is what real .NET
+            // Every write path -> a no-op (see the summary: this is what real .NET
             // does with no listener attached, not a degrade). The provider object is still
             // a real allocation — its own [Event] methods and fields transpile.
             case "WriteEvent":
@@ -573,9 +573,10 @@ internal sealed partial class MethodCompiler
             case "WriteEventWithRelatedActivityId":
             case "WriteEventWithRelatedActivityIdCore":
             case "Write":
-            case "Dispose":
                 PopArgsAndReceiver();
                 return true;
+            case "Dispose":
+                return TryEmitLifetimeDispose("System.Diagnostics.Tracing.EventSource", name, sig);
             // The base ctor. Construction stays a no-op as far as tracing goes, but the
             // overloads that carry IDENTITY hand it to the runtime: `base("MyProvider")`
             // and `base(EventSourceSettings.…)` are per-INSTANCE values that no type-info

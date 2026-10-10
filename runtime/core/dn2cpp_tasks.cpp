@@ -49,7 +49,7 @@
 // ---- async/await ----
 
 extern const Dn2CppType dn2cpp_task_type_obj;
-const Dn2CppTypeInfo dn2cpp_task_type =
+Dn2CppTypeInfo dn2cpp_task_type =
     dn2cpp_ti_with_typeobject({ "System.Threading.Tasks.Task", &dn2cpp_object_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppTask), 0, 0, 0, 0, 0, nullptr }, &dn2cpp_task_type_obj);
 const Dn2CppType dn2cpp_task_type_obj = { { &dn2cpp_type_type }, &dn2cpp_task_type };
 extern const Dn2CppType dn2cpp_taskscheduler_type_obj;
@@ -90,6 +90,15 @@ Dn2CppTask* dn2cpp_task_alloc()
     t->vtsBridge = nullptr;
     t->startKind = DN2CPP_TASK_ORIGIN_PROMISE;
     return t;
+}
+
+void dn2cpp_task_dispose(Dn2CppTask* task)
+{
+    dn2cpp_null_check(task);
+    if (task->status.load(std::memory_order_acquire) == DN2CPP_TASK_PENDING)
+        dn2cpp_throw_invalid_operation_msg(
+            "A task may only be disposed if it is in a completion state (RanToCompletion, Faulted or Canceled).");
+    // The runtime has no lazily allocated Task wait handle to release.
 }
 
 Dn2CppTask* dn2cpp_async_task_alloc()

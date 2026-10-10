@@ -2124,15 +2124,7 @@ internal sealed partial class MethodCompiler
                 $"{_method.DeclaringClass.FullName}.{_method.Name}: {callee.DeclaringClass.FullName}::{callee.Name} " +
                 $"is an InternalCall/extern method with no IL body and no intrinsic mapping [chain: {_c.ReachChain(_method)}]");
 
-        // `using (CancellationTokenSource ...)` / `using (Task ...)` disposal
-        // arrives as `callvirt IDisposable::Dispose` on a receiver that is
-        // statically an intrinsic type. Devirtualize to whatever the direct call to
-        // that type's Dispose already lowers to (see the direct-call intrinsics): Task's
-        // handle has no IDisposable map, and the source's map thunk
-        // (Compilation.IntrinsicInterfaceRows) is this same call. Task's is a no-op (the
-        // object is GC-managed); the source's disarms its pending CancelAfter timer, and
-        // this — not the direct-call arm — is the path a `using` takes, which is how
-        // a CancellationTokenSource is normally scoped.
+        // Statically known runtime receivers use the same helpers as their interface maps.
         if (isCallvirt && callee.Name == "Dispose"
             && callee.DeclaringClass.FullName == "System.IDisposable"
             && _stack.Count > 0 && _stack[^1].CppType is "Dn2CppCancelSource*" or "Dn2CppTask*")
@@ -2141,6 +2133,8 @@ internal sealed partial class MethodCompiler
             var recv = Pop(); // this
             if (disposingCts)
                 Emit($"dn2cpp_cts_dispose((Dn2CppCancelSource*)({recv.Expr}));");
+            else
+                Emit($"dn2cpp_task_dispose((Dn2CppTask*)({recv.Expr}));");
             return;
         }
 

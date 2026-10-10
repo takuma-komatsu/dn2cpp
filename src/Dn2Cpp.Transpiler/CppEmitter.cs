@@ -2048,6 +2048,7 @@ internal sealed partial class CppEmitter
         m.Rva == 0 || m.IsSynthetic
         || CoreIntrinsics.BrHttpShim.Matches(cls.FullName, m.Name)
         || CoreIntrinsics.BrEnumInstanceFormat.Matches(cls.FullName, m.Name)
+        || CoreIntrinsics.BrLifetimeDispose.Matches(cls.FullName, m.Name)
         || _c.PInvokeFtnTargets.Contains(m) || _c.IntrinsicFtnTargets.Contains(m)
         || _c.InterceptFtnTargets.Contains(m) || CoreIntrinsics.MdComparerCompare.Matches(m)
         || _c.IsUnorderableComparerCompareBody(m)
@@ -2460,6 +2461,15 @@ internal sealed partial class CppEmitter
                         {
                             emitBody?.Invoke(m, new MethodCompiler(_c, m, literals, _backend)
                                 .CompileEnumInstanceFormatBody());
+                            compiledMethods.Add(m);
+                            continue;
+                        }
+                        if (CoreIntrinsics.BrLifetimeDispose.Matches(cls.FullName, m.Name))
+                        {
+                            var wrapper = new MethodCompiler(_c, m, literals, _backend)
+                                .CompileCoreIntrinsicWrapper()
+                                ?? throw new NotSupportedException($"{cls.FullName}.{m.Name}: unsupported lifetime body");
+                            emitBody?.Invoke(m, wrapper);
                             compiledMethods.Add(m);
                             continue;
                         }
@@ -3427,6 +3437,10 @@ internal sealed partial class CppEmitter
                         $"static void {row.ThunkSym}(Dn2CppObject* o) {{ dn2cpp_cts_dispose((Dn2CppCancelSource*)o); }}",
                     Compilation.IntrinsicInterfaceThunkKind.WaitHandleDispose =>
                         $"static void {row.ThunkSym}(Dn2CppObject* o) {{ dn2cpp_waithandle_close(o); }}",
+                    Compilation.IntrinsicInterfaceThunkKind.SafeWaitHandleDispose =>
+                        $"static void {row.ThunkSym}(Dn2CppObject* o) {{ dn2cpp_safewaithandle_close(o); }}",
+                    Compilation.IntrinsicInterfaceThunkKind.TaskDispose =>
+                        $"static void {row.ThunkSym}(Dn2CppObject* o) {{ dn2cpp_task_dispose((Dn2CppTask*)o); }}",
                     Compilation.IntrinsicInterfaceThunkKind.TimerChange =>
                         $"static int32_t {row.ThunkSym}(Dn2CppObject* o, Dn2CppTimeSpan due, Dn2CppTimeSpan period) " +
                         "{ int64_t d = (int64_t)dn2cpp_timespan_total(due, 10000LL); " +
@@ -3443,9 +3457,10 @@ internal sealed partial class CppEmitter
                 var slots = new string[slot + 1];
                 for (int s = 0; s < slot; s++)
                     slots[s] = "nullptr";
-                // An address-taken WaitHandle.Dispose already has the exact lowering
-                // ABI. Reuse it so class and interface delegates bind the same callable.
-                string callable = row.ThunkKind == Compilation.IntrinsicInterfaceThunkKind.WaitHandleDispose
+                // Reuse the address-taken wrapper so class and interface delegates bind
+                // the same callable as the direct disposal lowering.
+                string callable = row.ThunkKind is Compilation.IntrinsicInterfaceThunkKind.WaitHandleDispose
+                        or Compilation.IntrinsicInterfaceThunkKind.TaskDispose
                     && info.Target is { } target && _c.IntrinsicFtnTargets.Contains(target.Emittable)
                     ? target.Emittable.CppName : row.ThunkSym;
                 slots[slot] = $"(const void*)&{callable}";

@@ -599,6 +599,7 @@ internal sealed partial class MethodCompiler
                     }
                     if (cls.FullName == "Microsoft.Win32.SafeHandles.SafeWaitHandle")
                     {
+                        _c.NoteIntrinsicInterfaces("Microsoft.Win32.SafeHandles.SafeWaitHandle");
                         Push(StackKind.Ref, "Dn2CppObject*",
                             "dn2cpp_safewaithandle_new((intptr_t)0, 0)");
                         return;

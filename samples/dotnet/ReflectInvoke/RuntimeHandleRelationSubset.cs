@@ -8,6 +8,8 @@ using System.Runtime.Serialization;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Diagnostics.Tracing;
+using Microsoft.Win32.SafeHandles;
 
 // SUBJECT: the CLR relations of objects whose type-info the runtime writes by hand —
 // the reflection objects, Assembly and Module, StringBuilder, Exception and the
@@ -22,7 +24,7 @@ using System.Threading.Tasks;
 //
 // An interface whose members no dispatch map serves on these objects
 // (ICustomAttributeProvider, IReflect, ISerializable, IAsyncResult, ICloneable,
-// IDeserializationCallback, and Task's IDisposable) is tested and passed, never
+// IDeserializationCallback) is tested and passed, never
 // called. Assembly, Module and the culture wrappers are headerless handles until
 // they escape to object, so every test reaches them through object.
 namespace RuntimeHandleRelationSubset;
@@ -60,8 +62,236 @@ static class Sink
     public static string Provider(IFormatProvider value) => "provider";
 }
 
+class LifetimeWait : WaitHandle
+{
+    public LifetimeWait() => SafeWaitHandle = new SafeWaitHandle(IntPtr.Zero, false);
+}
+
+class OverrideLifetimeWait : LifetimeWait
+{
+    public int Calls;
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+            Calls++;
+        base.Dispose(disposing);
+    }
+}
+
+class CloseLifetimeWait : OverrideLifetimeWait
+{
+    public int CloseCalls;
+    public override void Close()
+    {
+        CloseCalls++;
+        base.Close();
+    }
+}
+
+class ExplicitLifetimeWait : LifetimeWait, IDisposable
+{
+    public int Calls;
+    void IDisposable.Dispose() => Calls++;
+}
+
+class LifetimeProvider : EventSource { }
+
+class OverrideLifetimeProvider : EventSource
+{
+    public int Calls;
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+            Calls++;
+        base.Dispose(disposing);
+    }
+}
+
+class ExplicitLifetimeProvider : EventSource, IDisposable
+{
+    public int Calls;
+    void IDisposable.Dispose() => Calls++;
+}
+
 static class Program
 {
+    private static void DisposeLifetime(IDisposable value) => value.Dispose();
+
+    internal static void RunLifetimeSafeOnly()
+    {
+        IDisposable safe = new SafeWaitHandle(IntPtr.Zero, false);
+        DisposeLifetime(safe);
+        DisposeLifetime(safe);
+        Action dispose = safe.Dispose;
+        dispose();
+        Console.WriteLine("lifetime isolated safe: disposed");
+    }
+
+    internal static void RunLifetimeSafe()
+    {
+        var safe = new SafeWaitHandle(IntPtr.Zero, false);
+        Console.WriteLine("lifetime safe initial: " + safe.IsInvalid + "/" + safe.IsClosed);
+        ((IDisposable)safe).Dispose();
+        Console.WriteLine("lifetime safe disposed: " + safe.IsClosed);
+        ((IDisposable)safe).Dispose();
+        Console.WriteLine("lifetime safe repeated: " + safe.IsClosed);
+        var grouped = new SafeWaitHandle(IntPtr.Zero, false);
+        Action dispose = ((IDisposable)grouped).Dispose;
+        dispose();
+        Console.WriteLine("lifetime safe group: " + grouped.IsClosed);
+    }
+
+    internal static void RunLifetimeWait()
+    {
+        var wait = new LifetimeWait();
+        ((IDisposable)wait).Dispose();
+        Console.WriteLine("lifetime wait disposed: " + wait.SafeWaitHandle.IsClosed);
+        var overridden = new OverrideLifetimeWait();
+        ((IDisposable)overridden).Dispose();
+        Console.WriteLine("lifetime wait override: " + overridden.Calls + "/" + overridden.SafeWaitHandle.IsClosed);
+        var explicitWait = new ExplicitLifetimeWait();
+        ((IDisposable)explicitWait).Dispose();
+        Console.WriteLine("lifetime wait explicit: " + explicitWait.Calls + "/" + explicitWait.SafeWaitHandle.IsClosed);
+        var direct = new OverrideLifetimeWait();
+        direct.Dispose();
+        Console.WriteLine("lifetime wait direct: " + direct.Calls + "/" + direct.SafeWaitHandle.IsClosed);
+        RunLifetimeDirect();
+        var grouped = new OverrideLifetimeWait();
+        Action dispose = ((IDisposable)grouped).Dispose;
+        dispose();
+        Console.WriteLine("lifetime wait group: " + grouped.Calls);
+        var groupClose = new CloseLifetimeWait();
+        WaitHandle baseClose = groupClose;
+        Action close = baseClose.Close;
+        Action overriddenClose = groupClose.Close;
+        Console.WriteLine("lifetime wait close alias: " + (close == overriddenClose));
+        close();
+        Console.WriteLine("lifetime wait close group: " + groupClose.CloseCalls + "/" + groupClose.Calls);
+    }
+
+    internal static void RunLifetimeEvent()
+    {
+        ((IDisposable)new LifetimeProvider()).Dispose();
+        Console.WriteLine("lifetime event disposed");
+        var overridden = new OverrideLifetimeProvider();
+        ((IDisposable)overridden).Dispose();
+        Console.WriteLine("lifetime event override: " + overridden.Calls);
+        var explicitProvider = new ExplicitLifetimeProvider();
+        ((IDisposable)explicitProvider).Dispose();
+        Console.WriteLine("lifetime event explicit: " + explicitProvider.Calls);
+        var direct = new OverrideLifetimeProvider();
+        direct.Dispose();
+        Console.WriteLine("lifetime event direct: " + direct.Calls);
+        var grouped = new OverrideLifetimeProvider();
+        Action dispose = ((IDisposable)grouped).Dispose;
+        dispose();
+        Console.WriteLine("lifetime event group: " + grouped.Calls);
+    }
+
+    internal static void RunLifetimeTask()
+    {
+        Try("lifetime task completed", () => { DisposeLifetime(Task.CompletedTask); return "disposed"; });
+        var pending = new TaskCompletionSource();
+        Try("lifetime task pending", () => { DisposeLifetime(pending.Task); return "disposed"; });
+        Try("lifetime task inline pending", () => { ((IDisposable)pending.Task).Dispose(); return "disposed"; });
+        Try("lifetime task direct pending", () => { pending.Task.Dispose(); return "disposed"; });
+        pending.SetResult();
+        Try("lifetime task settled", () => { DisposeLifetime(pending.Task); return "disposed"; });
+        Try("lifetime task repeated", () => { DisposeLifetime(pending.Task); return "disposed"; });
+        Try("lifetime task generic", () => { DisposeLifetime(Task.FromResult(5)); return "disposed"; });
+        IDisposable? missing = null;
+        Try("lifetime task interface null", () => { missing!.Dispose(); return "disposed"; });
+        var grouped = Task.CompletedTask;
+        Action dispose = ((IDisposable)grouped).Dispose;
+        Action directDispose = grouped.Dispose;
+        Console.WriteLine("lifetime task group alias: " + (dispose == directDispose));
+        dispose();
+        Console.WriteLine("lifetime task group: disposed");
+        Action pendingDispose = ((IDisposable)new TaskCompletionSource().Task).Dispose;
+        Try("lifetime task group pending", () => { pendingDispose(); return "disposed"; });
+        var canceled = Task.FromCanceled(new CancellationToken(true));
+        DisposeLifetime(canceled);
+        DisposeLifetime(Task.FromException(new InvalidOperationException()));
+        Console.WriteLine("lifetime task terminal: disposed");
+        Task? missingTask = null;
+        Try("lifetime task direct null", () => { missingTask!.Dispose(); return "disposed"; });
+    }
+
+    internal static void RunLifetimeDirect()
+    {
+        var wait = new OverrideLifetimeWait();
+        wait.Dispose();
+        Console.WriteLine("lifetime direct wait override: " + wait.Calls + "/" + wait.SafeWaitHandle.IsClosed);
+        var provider = new OverrideLifetimeProvider();
+        provider.Dispose();
+        Console.WriteLine("lifetime direct event override: " + provider.Calls);
+        var close = new OverrideLifetimeWait();
+        close.Close();
+        Console.WriteLine("lifetime direct close bool: " + close.Calls);
+        var virtualClose = new CloseLifetimeWait();
+        WaitHandle baseClose = virtualClose;
+        baseClose.Close();
+        Console.WriteLine("lifetime virtual close: " + virtualClose.CloseCalls + "/" + virtualClose.Calls);
+        var directDispose = new CloseLifetimeWait();
+        directDispose.Dispose();
+        Console.WriteLine("lifetime direct dispose close: " + directDispose.CloseCalls + "/" + directDispose.Calls);
+        var interfaceDispose = new CloseLifetimeWait();
+        DisposeLifetime(interfaceDispose);
+        Console.WriteLine("lifetime interface dispose close: " + interfaceDispose.CloseCalls + "/" + interfaceDispose.Calls);
+    }
+
+    internal static void RunLifetimeFactoryCompleted() => FinishLifetimeFactory("completed", Task.CompletedTask);
+    internal static void RunLifetimeFactoryResult() => FinishLifetimeFactory("result", Task.FromResult(3));
+    internal static void RunLifetimeFactorySource()
+    {
+        var source = new TaskCompletionSource();
+        source.SetResult();
+        FinishLifetimeFactory("source", source.Task);
+    }
+    internal static void RunLifetimeFactoryGenericSource()
+    {
+        var source = new TaskCompletionSource<int>();
+        source.SetResult(3);
+        FinishLifetimeFactory("generic source", source.Task);
+    }
+    private static async Task LifetimeAsyncCompleted() => await Task.Yield();
+    internal static void RunLifetimeFactoryAsync() => FinishLifetimeFactory("async", LifetimeAsyncCompleted());
+    internal static void RunLifetimeFactoryCold()
+    {
+        var task = new Task(() => { });
+        Try("lifetime factory cold pending", () => { DisposeLifetime(task); return "disposed"; });
+        task.Start();
+        FinishLifetimeFactory("cold", task);
+    }
+    internal static void RunLifetimeFactoryRun() => FinishLifetimeFactory("run", Task.Run(() => { }));
+    internal static void RunLifetimeFactoryAll() => FinishLifetimeFactory("all", Task.WhenAll(Array.Empty<Task>()));
+    private static void FinishLifetimeFactory(string label, Task task)
+    {
+        task.GetAwaiter().GetResult();
+        DisposeLifetime(task);
+        Action dispose = ((IDisposable)task).Dispose;
+        dispose();
+        Console.WriteLine("lifetime factory " + label + ": disposed");
+    }
+
+    internal static void RunLifetimeInterfaces()
+    {
+        Console.WriteLine("== runtime lifetime interfaces ==");
+        RunLifetimeSafe();
+        RunLifetimeWait();
+        RunLifetimeEvent();
+        RunLifetimeTask();
+        RunLifetimeFactoryCompleted();
+        RunLifetimeFactoryResult();
+        RunLifetimeFactorySource();
+        RunLifetimeFactoryGenericSource();
+        RunLifetimeFactoryAsync();
+        RunLifetimeFactoryCold();
+        RunLifetimeFactoryRun();
+        RunLifetimeFactoryAll();
+        Console.WriteLine("runtime lifetime interfaces end");
+    }
+
     private static int[]? s_null;
     private static int[] s_one = new int[1];
     private static int s_index = 5;

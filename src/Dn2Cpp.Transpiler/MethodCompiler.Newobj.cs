@@ -1014,8 +1014,7 @@ internal sealed partial class MethodCompiler
             TypeDesc taskType = Comp.FindClassByFullName("System.Threading.Tasks.Task") is { } taskClass
                 ? TypeDesc.MakeClass(taskClass)
                 : throw new InvalidOperationException("System.Threading.Tasks.Task is not in the completed image");
-            string taskTypeInfo = TypeInfoExpr(taskType)
-                ?? throw new InvalidOperationException($"{taskType} has no runtime identity");
+            string taskTypeInfo = TaskTypeInfo(taskType);
             Push(StackKind.Ref, "Dn2CppTaskCompletionSource*",
                 $"dn2cpp_tcs_alloc({tcsType}, {taskTypeInfo})");
             return;
@@ -1173,6 +1172,7 @@ internal sealed partial class MethodCompiler
             && handle.Kind is HandleKind.MemberReference or HandleKind.MethodDefinition
             && DecodeCtorSignature(handle).ParameterTypes.Length == 2)
         {
+            _c.NoteIntrinsicInterfaces("Microsoft.Win32.SafeHandles.SafeWaitHandle");
             var owns = Pop();
             var raw = Pop();
             Push(StackKind.Ref, "Dn2CppObject*",

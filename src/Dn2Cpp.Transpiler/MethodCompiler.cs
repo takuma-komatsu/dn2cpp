@@ -3862,6 +3862,15 @@ internal sealed partial class MethodCompiler : IEvalStack
                         ? $"(void*)&{address}"
                         : $"((void)dn2cpp_null_check({obj.Expr}), (void*)&{address})";
                 }
+                else if (m.IsVirtual && CoreIntrinsics.BrLifetimeDispose.Matches(m.DeclaringClass.FullName, m.Name))
+                {
+                    NoteFtnTargetBody(m.Emittable);
+                    _c.NoteNamedBodySymbol(_method, m.Emittable);
+                    string receiver = NewTemp("Dn2CppObject*");
+                    Emit($"{receiver} = (Dn2CppObject*)dn2cpp_null_check({obj.Expr});");
+                    expr = $"({receiver}->type->vtable != nullptr ? (void*){receiver}->type->vtable[{m.VtableSlot}]"
+                        + $" : (void*)&{m.Emittable.CppName})";
+                }
                 else if (m.IsVirtual && !m.DeclaringClass.IsInterface
                          && CoreIntrinsics.IsIntrinsicType(m.DeclaringClass.FullName)
                          && CoreIntrinsics.RuntimeOwnsTypeInfo(m.DeclaringClass))
