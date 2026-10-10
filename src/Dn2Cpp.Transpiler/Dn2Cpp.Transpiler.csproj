@@ -13,6 +13,7 @@
          internal model directly. -->
     <InternalsVisibleTo Include="Dn2Cpp.Godot" />
     <InternalsVisibleTo Include="Dn2Cpp.DotnetModule" />
+    <InternalsVisibleTo Include="Dn2Cpp.UnrealSharp" />
     <InternalsVisibleTo Include="dn2cpp" />
   </ItemGroup>
 
