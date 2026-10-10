@@ -332,6 +332,9 @@ namespace ReflectInvoke
             if (args.Length > 0 && args[0] == "before-runtime-clone-interfaces")
                 return;
             RuntimeHandleRelationSubset.Program.RunCloneInterfaces();
+            if (args.Length > 0 && args[0] == "before-delegate-clone-class-groups")
+                return;
+            RuntimeHandleRelationSubset.Program.RunDelegateCloneClassGroups();
         }
     }
 }

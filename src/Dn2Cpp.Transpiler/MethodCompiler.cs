@@ -3816,6 +3816,14 @@ internal sealed partial class MethodCompiler : IEvalStack
                     bindsLowering = true;
                     expr = DelegateInvokeAddress(m);
                 }
+                else if (CoreIntrinsics.MdDelegateCloneBinding.Matches(m))
+                {
+                    // Delegate type-info has no ordinary vtable. The binding selector
+                    // uses its class slot, independently of an explicit ICloneable slot.
+                    NoteFtnTargetBody(m.Emittable);
+                    _c.NoteDelegateCloneBinding(m);
+                    expr = $"dn2cpp_bind_delegate_clone((Dn2CppObject*)dn2cpp_null_check({obj.Expr}))";
+                }
                 else if (Compilation.IsGvmCall(m))
                 {
                     expr = $"{Compilation.GvmBindingName(m)}({obj.Expr})";

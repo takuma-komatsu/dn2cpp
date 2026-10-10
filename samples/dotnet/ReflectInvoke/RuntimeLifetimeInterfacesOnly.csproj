@@ -5,6 +5,17 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <Optimize>true</Optimize>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'clone-class-aliases'">$(DefineConstants);CLONE_CLASS_ALIASES</DefineConstants>
+    <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'clone-class-invoke'">$(DefineConstants);CLONE_CLASS_INVOKE</DefineConstants>
+    <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'clone-class-null'">$(DefineConstants);CLONE_CLASS_NULL</DefineConstants>
+    <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'clone-class-overrides'">$(DefineConstants);CLONE_CLASS_OVERRIDES</DefineConstants>
+    <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'clone-class-override-only'">$(DefineConstants);CLONE_CLASS_OVERRIDE_ONLY</DefineConstants>
+    <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'clone-class-reflected-generic'">$(DefineConstants);CLONE_CLASS_REFLECTED_GENERIC</DefineConstants>
+    <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'clone-class-reflected-type'">$(DefineConstants);CLONE_CLASS_REFLECTED_TYPE</DefineConstants>
+    <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'clone-class-reflected-field'">$(DefineConstants);CLONE_CLASS_REFLECTED_FIELD</DefineConstants>
+    <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'clone-class-native'">$(DefineConstants);CLONE_CLASS_NATIVE</DefineConstants>
+    <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'clone-class-all'">$(DefineConstants);CLONE_CLASS_ALL</DefineConstants>
     <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'clone-string'">$(DefineConstants);CLONE_STRING</DefineConstants>
     <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'clone-string-calls'">$(DefineConstants);CLONE_STRING_CALLS</DefineConstants>
     <DefineConstants Condition="'$(LifetimeInterfaceRoute)' == 'clone-delegate'">$(DefineConstants);CLONE_DELEGATE</DefineConstants>
@@ -47,7 +58,8 @@
     <DefineConstants>$(DefineConstants);LIFETIME_FACTORY_ALL</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="RuntimeHandleRelationSubset.cs" />
+    <Compile Include="RuntimeHandleRelationSubset.cs" Condition="'$(LifetimeInterfaceRoute)' != 'clone-class-reflected-field'" />
+    <Compile Include="DelegateCloneFieldTypeSubset.cs" Condition="'$(LifetimeInterfaceRoute)' == 'clone-class-reflected-field'" />
     <Compile Include="RuntimeLifetimeInterfacesOnlyProgram.cs" />
   </ItemGroup>
 </Project>

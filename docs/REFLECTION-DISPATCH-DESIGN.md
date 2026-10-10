@@ -206,6 +206,14 @@ String interface method groups note the same receiver map as call coercions;
 String.Clone calls its real managed body. Delegate.Clone retains a callable base
 slot synthesized from the direct-call shallow-copy helper, preserving the delegate
 type, target and invocation list while returning a distinct delegate object.
+Delegate.Clone class method groups select the completed class slot for allocated
+receivers admitted by their binding declarations, including the finite delegate sets
+the reflection and native function-pointer binders can construct. Reflection
+receivers come from the emitted layout closure, including field-only delegate types,
+and reach Clone slots without rooting their Invoke boxing surfaces.
+The selector does not read a runtime vtable. The callable and virtual identity use that same slot, independently of an explicit ICloneable
+implementation. Unknown receiver selections refuse binding rather than assuming the
+base body.
 
 Task disposal uses the same completion-state check in direct calls, fast interface
 calls and runtime interface slots. Its allocation routes note the map independently

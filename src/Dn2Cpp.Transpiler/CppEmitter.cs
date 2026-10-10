@@ -602,8 +602,16 @@ internal sealed partial class CppEmitter
             foreach (var f in c.Fields)
                 AddType(f.Type);
         }
+        // The reflection binder can construct field-layout and referenced-only
+        // delegates, even when no newobj or typeof names their concrete type.
+        foreach (var receiver in set.Concat(_c.ReferencedTypes).ToList())
+            if (IsReflectionDelegateBindCandidate(receiver))
+                _c.NoteReflectionDelegateCloneReceiver(receiver);
         return set;
     }
+
+    private bool IsReflectionDelegateBindCandidate(ClassInfo cls) =>
+        cls.IsDelegate && !IsCanonicalWorld(cls) && !IsOpaque(cls);
 
     /// <summary>Emits the whole program. <paramref name="writeChunk"/> takes each
     /// body/metadata translation unit (fileName, text) the instant it is sealed —
@@ -2335,12 +2343,15 @@ internal sealed partial class CppEmitter
             }
             if (batch.Count == 0 && minted.Count == 0 && !rgctxFilled)
             {
-                // Without planning, layout can first decode a reflected field here.
-                // Compile the boxes' dispatch before the emitted body set is frozen.
-                if (!_c.SharedGenericsEnabled && diagnostics is null)
+                // Layout can reveal runtime-created delegate receivers and reflected
+                // field boxes. Close their dispatch before freezing body symbols.
+                if (!planning && diagnostics is null
+                    && (!_c.SharedGenericsEnabled || _c.HasDelegateCloneBindings))
                 {
                     ComputeEmitted();
-                    if (_c.ReachDecodedReflectionFieldBoxes())
+                    bool dispatchGrew = _c.ReachRuntimeDelegateCloneReceivers();
+                    dispatchGrew |= _c.ReachDecodedReflectionFieldBoxes();
+                    if (dispatchGrew)
                         continue;
                 }
                 // Forwarding slots wait for quiescence: only the complete call
@@ -6516,7 +6527,7 @@ internal sealed partial class CppEmitter
             foreach (var cls in _delegateInvokerClasses)
             {
                 // Shipped signature-only invokers have declarations without a type-info.
-                if (!cls.IsDelegate || !_emit.Contains(cls) || IsCanonicalWorld(cls) || IsOpaque(cls))
+                if (!_emit.Contains(cls) || !IsReflectionDelegateBindCandidate(cls))
                     continue;
                 var invoke = cls.Methods.FirstOrDefault(m => m.Name == "Invoke");
                 if (invoke is null)

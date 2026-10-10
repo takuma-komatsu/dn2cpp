@@ -322,6 +322,7 @@ internal enum InterceptEmitArm
     LifetimeDisposeBody,
     /// <summary>Delegate.Clone's callable slot uses the same shallow-copy helper as a direct call.</summary>
     DelegateCloneBody,
+    DelegateCloneBinding,
     /// <summary>SafeHandle lifetime calls and bindings recognize the runtime SafeWaitHandle layout.
     /// Route-only in MethodCompiler.Call and ldvirtftn; ordinary bodies remain reachable.</summary>
     SafeWaitHandleBase,
@@ -761,6 +762,30 @@ internal static partial class CoreIntrinsics
             && !mi.IsStatic && mi.Signature.ReturnType.IsVoid
             && mi.Signature.ParameterTypes.Length == 0);
 
+    /// <summary>Delegate.Clone class bindings select the inherited class slot without a
+    /// runtime vtable; a different explicit ICloneable slot remains independent.</summary>
+    public static readonly MethodDefIntercept MdDelegateCloneBinding = new(
+        InterceptCutKind.None, InterceptEmitArm.DelegateCloneBinding,
+        extra: static mi => IsDelegateCloneSlot(mi));
+
+    private static bool IsDelegateCloneSlot(MethodInfo method)
+    {
+        if (BrDelegateClone.Matches(method.DeclaringClass.FullName, method.Name))
+            return method.IsVirtual;
+        if (!method.IsVirtual || !method.DeclaringClass.IsDelegate || method.VtableSlot < 0)
+            return false;
+        int slot = method.VtableSlot;
+        for (var owner = method.DeclaringClass; owner is not null; owner = owner.BaseClass)
+        {
+            if (!owner.MembersReady)
+                return false;
+            if (slot < owner.SlotOwners.Count
+                && BrDelegateClone.Matches(owner.SlotOwners[slot].DeclaringClass.FullName, owner.SlotOwners[slot].Name))
+                return true;
+        }
+        return false;
+    }
+
     /// <summary>Every MethodDefinition-arm row — a REGISTRY, not a chain: the
     /// order here carries no meaning, because each asker references the rows it
     /// needs at its own chain position (see <see cref="MethodDefIntercept"/> on
@@ -785,6 +810,7 @@ internal static partial class CoreIntrinsics
         MdIntrinsicType,
         MdPlatformIsa,
         MdSafeHandleLifetime,
+        MdDelegateCloneBinding,
     ];
 
     /// <summary>First row in <paramref name="rows"/> matching

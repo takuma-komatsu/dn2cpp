@@ -5,6 +5,73 @@ using Mono.Cecil.Cil;
 CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
 CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
 
+void RewriteDelegateCloneSlots(ModuleDefinition module, bool required = false)
+{
+    var names = new[] { "CloneOverrideDelegate", "CloneExplicitDelegate" };
+    var types = names.Select(name => module.GetType("RuntimeHandleRelationSubset." + name)).ToArray();
+    if (!required && types.All(type => type is null))
+        return;
+    if (types.Any(type => type is null))
+        throw new InvalidOperationException("missing delegate Clone slot fixtures");
+    var owner = module.GetType("RuntimeHandleRelationSubset.Program")
+        ?? throw new InvalidOperationException("missing delegate Clone fixture owner");
+    Instruction[] CloneLoads(string name, int count)
+    {
+        var caller = owner.Methods.Single(m => m.Name == name);
+        var loads = caller.Body.Instructions.Where(i => i.OpCode.Code == Code.Ldvirtftn
+            && i.Operand is MethodReference method && method.Name is "Clone" or "CloneBody"
+            && method.DeclaringType.FullName != "System.ICloneable").ToArray();
+        if (loads.Length != count)
+            throw new InvalidOperationException("missing class Clone fixture loads");
+        return loads;
+    }
+    // Removing a MethodDefinition clears its declaring type; capture uses first.
+    var classLoads = CloneLoads("RunDelegateCloneClassOverrides", 2);
+    var onlyLoads = CloneLoads("RunDelegateCloneClassOverrideOnly", 1);
+    var cloneable = new TypeReference("System", "ICloneable", module, module.TypeSystem.CoreLibrary);
+    foreach (var type in types)
+    {
+        foreach (var method in type.Methods.Where(m => m.Name is "Clone" or "CloneBody" or "CloneExplicit").ToArray())
+            type.Methods.Remove(method);
+        var clone = new MethodDefinition("CloneBody", MethodAttributes.Public | MethodAttributes.Virtual
+            | MethodAttributes.HideBySig, module.TypeSystem.Object);
+        var delegateType = new TypeReference("System", "Delegate", module, module.TypeSystem.CoreLibrary);
+        clone.Overrides.Add(new MethodReference("Clone", module.TypeSystem.Object, delegateType) { HasThis = true });
+        type.Methods.Add(clone);
+        var il = clone.Body.GetILProcessor();
+        il.Emit(OpCodes.Ldstr, "class clone");
+        il.Emit(OpCodes.Ret);
+        if (type.Name == "CloneExplicitDelegate")
+        {
+            if (!type.Interfaces.Any(i => i.InterfaceType.FullName == cloneable.FullName))
+                type.Interfaces.Add(new InterfaceImplementation(cloneable));
+            var explicitClone = new MethodDefinition("CloneExplicit", MethodAttributes.Private
+                | MethodAttributes.Final | MethodAttributes.Virtual | MethodAttributes.NewSlot
+                | MethodAttributes.HideBySig, module.TypeSystem.Object);
+            explicitClone.Overrides.Add(new MethodReference("Clone", module.TypeSystem.Object, cloneable) { HasThis = true });
+            type.Methods.Add(explicitClone);
+            il = explicitClone.Body.GetILProcessor();
+            il.Emit(OpCodes.Ldstr, "interface clone");
+            il.Emit(OpCodes.Ret);
+        }
+    }
+    for (int i = 0; i < types.Length; i++)
+        classLoads[i].Operand = types[i].Methods.Single(m => m.Name == "CloneBody");
+    onlyLoads[0].Operand = types[0].Methods.Single(m => m.Name == "CloneBody");
+}
+
+if (args.Length == 2 && args[1] == "--delegate-clone-slots")
+{
+    string clonePath = Path.GetFullPath(args[0]);
+    using var cloneAssembly = AssemblyDefinition.ReadAssembly(clonePath, new ReaderParameters { InMemory = true });
+    RewriteDelegateCloneSlots(cloneAssembly.MainModule, required: true);
+    string cloneTemporary = clonePath + ".delegate-clone.tmp";
+    cloneAssembly.Write(cloneTemporary, new WriterParameters { Timestamp = 0, DeterministicMvid = true });
+    File.Move(cloneTemporary, clonePath, overwrite: true);
+    Console.WriteLine("delegate Clone slot fixtures written");
+    return;
+}
+
 string[] byRefModes = ["--byref-overwrite", "--byref-overwrite-int64", "--byref-copy"];
 string[] originModes = ["--delegate-origin-argument", "--delegate-origin-field", "--delegate-origin-array",
     "--delegate-origin-checked-conv", "--delegate-origin-arithmetic", "--delegate-origin-box",
@@ -20,6 +87,7 @@ string? originMode = args.Length == 2 && originModes.Contains(args[1]) ? args[1]
 string path = Path.GetFullPath(args[0]);
 using var assembly = AssemblyDefinition.ReadAssembly(path, new ReaderParameters { InMemory = true });
 var module = assembly.MainModule;
+RewriteDelegateCloneSlots(module);
 var owner = module.GetType("LdftnLocalSubset.Program")
     ?? throw new InvalidOperationException("missing IL fixture owner");
 

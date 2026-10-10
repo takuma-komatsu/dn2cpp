@@ -24,11 +24,15 @@ runtime_lifetime_asserts() {
 }
 
 runtime_lifetime_diff_routes() {
-    local route out witness flags app_route
+    local route out witness flags app_route clone_fixture_ready=false
     local routes=(safe wait event task factory-completed factory-result factory-source \
         factory-generic-source factory-async factory-cold factory-run factory-all trimmed unshared \
         safegroups safeinvoke safeordinary safenull safe-trimmed safe-unshared \
-        clone-string clone-string-calls clone-delegate clone-group clone-ordinary clone-trimmed clone-unshared)
+        clone-string clone-string-calls clone-delegate clone-group clone-ordinary clone-trimmed clone-unshared \
+        clone-class-aliases clone-class-invoke clone-class-overrides clone-class-override-only \
+        clone-class-reflected-generic clone-class-reflected-type clone-class-reflected-trimmed \
+        clone-class-reflected-unshared clone-class-reflected-field clone-class-field-trimmed \
+        clone-class-field-unshared clone-class-native clone-class-null clone-class-trimmed clone-class-unshared)
     if [ "$#" != 0 ]; then routes=("$@"); fi
     for route in "${routes[@]}"; do
         out="artifacts/reflect-invoke-runtime-lifetime-$route"
@@ -42,9 +46,30 @@ runtime_lifetime_diff_routes() {
             safe-unshared) flags=(--no-shared-generics); app_route=safeall ;;
             clone-trimmed) flags=(--trim-reflection); app_route=clone-all ;;
             clone-unshared) flags=(--no-shared-generics); app_route=clone-all ;;
+            clone-class-trimmed) flags=(--trim-reflection); app_route=clone-class-all ;;
+            clone-class-unshared) flags=(--no-shared-generics); app_route=clone-class-all ;;
+            clone-class-reflected-trimmed) flags=(--trim-reflection); app_route=clone-class-reflected-generic ;;
+            clone-class-reflected-unshared) flags=(--no-shared-generics); app_route=clone-class-reflected-type ;;
+            clone-class-field-trimmed) flags=(--trim-reflection); app_route=clone-class-reflected-field ;;
+            clone-class-field-unshared) flags=(--no-shared-generics); app_route=clone-class-reflected-field ;;
         esac
         dotnet build samples/dotnet/ReflectInvoke/RuntimeLifetimeInterfacesOnly.csproj \
             -c "$CONFIG" --nologo -v q -p:LifetimeInterfaceRoute="$app_route" -o "$out/app"
+        case "$app_route" in
+            clone-class-reflected-field) ;;
+            clone-class-*)
+                if [ "$clone_fixture_ready" = false ]; then
+                    dotnet build gates/fixtures/ldftn-local/LdftnLocalFixture.csproj -c "$CONFIG" --nologo -v q
+                    clone_fixture_ready=true
+                fi
+                dotnet exec "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
+                    "$out/app/RuntimeLifetimeInterfacesOnly.dll" --delegate-clone-slots
+                if [ "$route" = clone-class-overrides ]; then
+                    dotnet exec "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
+                        "$out/app/RuntimeLifetimeInterfacesOnly.dll" --delegate-clone-slots
+                fi
+                ;;
+        esac
         run_bounded dotnet "$out/app/RuntimeLifetimeInterfacesOnly.dll" > "$out/clr.raw.stdout"
         strip_cr_win_file "$out/clr.raw.stdout" > "$out/clr.stdout"
         DN2CPP_STRICT_COMPLETION=1 invoke_cli "$out/app/RuntimeLifetimeInterfacesOnly.dll" -r "$(locate_corelib)" \
@@ -75,11 +100,55 @@ runtime_lifetime_diff_routes() {
             clone-group) witness='delegate clone group: True/True/5' ;;
             clone-ordinary) witness='string clone null: NullReferenceException' ;;
             clone-trimmed|clone-unshared|clone-all) clone_interface_asserts "$out/native.stdout"; continue ;;
+            clone-class-aliases) witness='delegate clone class targets: False/True' ;;
+            clone-class-invoke) witness='delegate clone class base: True/True/13' ;;
+            clone-class-overrides) witness='delegate clone explicit invoked: class clone/interface clone' ;;
+            clone-class-override-only) witness='delegate clone own slot only: class clone' ;;
+            clone-class-reflected-generic|clone-class-reflected-trimmed) witness='delegate clone reflected generic: True/True/True/True/7' ;;
+            clone-class-reflected-type|clone-class-reflected-unshared) witness='delegate clone reflected type: True/True/True/True/9' ;;
+            clone-class-reflected-field|clone-class-field-trimmed|clone-class-field-unshared) witness='delegate clone reflected field: True/True/True/True/7' ;;
+            clone-class-native) witness='delegate clone native pointer: True/True/True/True/9' ;;
+            clone-class-null) witness='delegate clone base null: NullReferenceException' ;;
+            clone-class-trimmed|clone-class-unshared|clone-class-all) delegate_clone_class_asserts "$out/native.stdout"; continue ;;
             factory-*) witness="lifetime factory ${route#factory-}: disposed"; witness="${witness/generic-source/generic source}" ;;
             *) runtime_lifetime_asserts "$out/native.stdout"; continue ;;
         esac
         test "$(grep -Fxc -- "$witness" "$out/native.stdout")" = 1
     done
+}
+
+delegate_clone_class_asserts() {
+    local output="$1" line
+    for line in '== Delegate.Clone class method groups ==' 'Delegate.Clone class method groups end' \
+        'delegate clone class aliases: True/True' 'delegate clone class remove: True/True' \
+        'delegate clone class targets: False/True' 'delegate clone class static: True/True/True/5' \
+        'delegate clone class closed: True/True/True/13' 'delegate clone class multicast: True/True/True/12' \
+        'delegate clone class lists: 2/2/True/True/True' 'delegate clone class base: True/True/13' \
+        'delegate clone override aliases: True/True' 'delegate clone override remove: True' \
+        'delegate clone override invoked: class clone/class clone' \
+        'delegate clone explicit aliases: False/True' \
+        'delegate clone explicit invoked: class clone/interface clone' \
+        'delegate clone class null: NullReferenceException' 'delegate clone base null: NullReferenceException'; do
+        test "$(grep -Fxc -- "$line" "$output")" = 1 \
+            || { echo "FAIL: Delegate.Clone class witness missing or repeated: $output/$line" >&2; return 1; }
+    done
+}
+
+gate_delegate_clone_class_prefix_asserts() {
+    local out="$1" axis
+    for axis in dotnet native; do
+        if [ "$axis" = dotnet ]; then
+            run_bounded dotnet "$_CG_APP" before-delegate-clone-class-groups > "$out/delegate-clone-class-prefix.$axis.raw.stdout"
+        else
+            run_bounded "$out/ReflectInvoke$EXE_EXT" before-delegate-clone-class-groups > "$out/delegate-clone-class-prefix.$axis.raw.stdout"
+        fi
+        strip_cr_win_file "$out/delegate-clone-class-prefix.$axis.raw.stdout" > "$out/delegate-clone-class-prefix.$axis.stdout"
+        awk '/^== Delegate.Clone class method groups ==$/ { exit } { print }' \
+            "$out/virtual-delegate-full.$axis.stdout" > "$out/delegate-clone-class-old.$axis.stdout"
+        diff -u "$out/delegate-clone-class-prefix.$axis.stdout" "$out/delegate-clone-class-old.$axis.stdout"
+        delegate_clone_class_asserts "$out/virtual-delegate-full.$axis.stdout"
+    done
+    diff -u "$out/delegate-clone-class-prefix.dotnet.stdout" "$out/delegate-clone-class-prefix.native.stdout"
 }
 
 gate_runtime_lifetime_prefix_asserts() {

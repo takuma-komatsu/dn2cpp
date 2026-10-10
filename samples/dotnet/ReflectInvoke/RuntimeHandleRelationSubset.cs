@@ -149,6 +149,12 @@ class CloneControl : ICloneable
     public int Read(int value) => Value + value;
 }
 
+delegate int CloneOverrideDelegate(int value);
+delegate int CloneExplicitDelegate(int value);
+
+[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+delegate int NativeCloneDelegate(int value);
+
 static class Program
 {
     private static int CloneStatic(int value) => value + 1;
@@ -221,6 +227,125 @@ static class Program
         RunCloneDelegates();
         RunCloneOrdinary();
         Console.WriteLine("runtime clone interfaces end");
+    }
+
+    private static Func<object> DelegateBaseCloneGroup(Delegate value) => value.Clone;
+
+    internal static void RunDelegateCloneClassAliases()
+    {
+        Func<int, int> original = CloneStatic;
+        Func<object> direct = original.Clone;
+        Func<object> viaInterface = ((ICloneable)original).Clone;
+        Func<object> viaBase = DelegateBaseCloneGroup(original);
+        Console.WriteLine("delegate clone class aliases: " + (direct == viaInterface) + "/" + (direct == viaBase));
+        Console.WriteLine("delegate clone class remove: " + (Delegate.Remove(direct, viaInterface) is null) + "/" + (Delegate.Remove(viaBase, direct) is null));
+        var equalTarget = (Func<int, int>)original.Clone();
+        Func<object> other = equalTarget.Clone;
+        Console.WriteLine("delegate clone class targets: " + (direct == other) + "/" + ReferenceEquals(direct, Delegate.Remove(direct, other)));
+    }
+
+    internal static void RunDelegateCloneClassInvocation()
+    {
+        Func<int, int> original = CloneStatic;
+        Func<object> clone = original.Clone;
+        var copy = (Func<int, int>)clone();
+        Console.WriteLine("delegate clone class static: " + !ReferenceEquals(original, copy) + "/" + (original.GetType() == copy.GetType()) + "/" + (original == copy) + "/" + copy(4));
+        var target = new CloneControl { Value = 10 };
+        Func<int, int> closed = target.Read;
+        Func<object> closedClone = closed.Clone;
+        var closedCopy = (Func<int, int>)closedClone();
+        Console.WriteLine("delegate clone class closed: " + !ReferenceEquals(closed, closedCopy) + "/" + (closed == closedCopy) + "/" + ReferenceEquals(closed.Target, closedCopy.Target) + "/" + closedCopy(3));
+        Func<int, int> multi = original + closed;
+        Delegate[] before = multi.GetInvocationList();
+        Func<object> multiClone = multi.Clone;
+        var multiCopy = (Func<int, int>)multiClone();
+        Delegate[] after = multiCopy.GetInvocationList();
+        Console.WriteLine("delegate clone class multicast: " + !ReferenceEquals(multi, multiCopy) + "/" + (multi == multiCopy) + "/" + (multi.GetType() == multiCopy.GetType()) + "/" + multiCopy(2));
+        Console.WriteLine("delegate clone class lists: " + before.Length + "/" + after.Length + "/" + (before[0] == after[0]) + "/" + (before[1] == after[1]) + "/" + ReferenceEquals(multi.Target, multiCopy.Target));
+        Func<object> baseClone = DelegateBaseCloneGroup(multi);
+        var baseCopy = (Func<int, int>)baseClone();
+        Console.WriteLine("delegate clone class base: " + !ReferenceEquals(multi, baseCopy) + "/" + (multi == baseCopy) + "/" + baseCopy(3));
+    }
+
+    internal static void RunDelegateCloneClassNull()
+    {
+        Try("delegate clone class null", () => { Func<int, int> value = null!; Func<object> clone = value.Clone; return clone.Target; });
+        Try("delegate clone base null", () => DelegateBaseCloneGroup(null!).Target);
+    }
+
+    internal static void RunDelegateCloneClassOverrideOnly()
+    {
+        CloneOverrideDelegate original = CloneStatic;
+        Func<object> clone = original.Clone;
+        Console.WriteLine("delegate clone own slot only: " + clone());
+    }
+
+    public static int ReflectedCloneValue() => 7;
+    public static long ReflectedCloneLongValue() => 9;
+
+    [UnmanagedCallersOnly(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
+    private static int NativeCloneValue(int value) => value + 4;
+
+    internal static unsafe void RunDelegateCloneClassNative()
+    {
+        var original = Marshal.GetDelegateForFunctionPointer<NativeCloneDelegate>(
+            (IntPtr)(delegate* unmanaged[Cdecl]<int, int>)&NativeCloneValue);
+        Func<object> clone = original.Clone;
+        Func<object> alias = ((ICloneable)original).Clone;
+        var copy = (NativeCloneDelegate)clone();
+        Console.WriteLine("delegate clone native pointer: " + (clone == alias) + "/"
+            + (Delegate.Remove(clone, alias) is null) + "/" + !ReferenceEquals(original, copy)
+            + "/" + (original.GetType() == copy.GetType()) + "/" + copy(5));
+    }
+
+    internal static void RunDelegateCloneClassReflectedGeneric()
+    {
+        var method = typeof(Program).GetMethod(nameof(ReflectedCloneValue))!;
+        var original = method.CreateDelegate<Func<int>>();
+        Func<object> clone = original.Clone;
+        Func<object> alias = ((ICloneable)original).Clone;
+        var copy = (Func<int>)clone();
+        Console.WriteLine("delegate clone reflected generic: " + (clone == alias) + "/"
+            + (Delegate.Remove(clone, alias) is null) + "/" + !ReferenceEquals(original, copy)
+            + "/" + (original.GetType() == copy.GetType()) + "/" + copy());
+    }
+
+    internal static void RunDelegateCloneClassReflectedType()
+    {
+        var method = typeof(Program).GetMethod(nameof(ReflectedCloneLongValue))!;
+        var original = (Func<long>)method.CreateDelegate(typeof(Func<long>));
+        Func<object> clone = original.Clone;
+        Func<object> alias = ((ICloneable)original).Clone;
+        var copy = (Func<long>)clone();
+        Console.WriteLine("delegate clone reflected type: " + (clone == alias) + "/"
+            + (Delegate.Remove(clone, alias) is null) + "/" + !ReferenceEquals(original, copy)
+            + "/" + (original.GetType() == copy.GetType()) + "/" + copy());
+    }
+
+    internal static void RunDelegateCloneClassOverrides()
+    {
+        CloneOverrideDelegate original = CloneStatic;
+        Func<object> direct = original.Clone;
+        Func<object> viaBase = DelegateBaseCloneGroup(original);
+        Func<object> viaInterface = ((ICloneable)original).Clone;
+        Console.WriteLine("delegate clone override aliases: " + (direct == viaInterface) + "/" + (direct == viaBase));
+        Console.WriteLine("delegate clone override remove: " + (Delegate.Remove(direct, viaInterface) is null));
+        Console.WriteLine("delegate clone override invoked: " + direct() + "/" + viaInterface());
+        CloneExplicitDelegate explicitOriginal = CloneStatic;
+        Func<object> explicitDirect = explicitOriginal.Clone;
+        Func<object> explicitInterface = ((ICloneable)explicitOriginal).Clone;
+        Console.WriteLine("delegate clone explicit aliases: " + (explicitDirect == explicitInterface) + "/" + ReferenceEquals(explicitDirect, Delegate.Remove(explicitDirect, explicitInterface)));
+        Console.WriteLine("delegate clone explicit invoked: " + explicitDirect() + "/" + explicitInterface());
+    }
+
+    internal static void RunDelegateCloneClassGroups()
+    {
+        Console.WriteLine("== Delegate.Clone class method groups ==");
+        RunDelegateCloneClassAliases();
+        RunDelegateCloneClassInvocation();
+        RunDelegateCloneClassOverrides();
+        RunDelegateCloneClassNull();
+        Console.WriteLine("Delegate.Clone class method groups end");
     }
 
 #if !LIFETIME_SAFE
