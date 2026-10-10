@@ -5344,8 +5344,34 @@ internal sealed partial class Compilation
     internal void ReachReflectionClassRoutes()
     {
         ReachReflectionInvokeRoute();
+        ReachDecodedReflectionFieldBoxes();
         ReachTypeofNamedLibrarySurface();
         ReachDelegateInvokeBoxes();
+    }
+
+    private readonly HashSet<FieldInfo> _decodedReflectionFieldBoxes = new();
+
+    internal bool ReachDecodedReflectionFieldBoxes()
+    {
+        if (!_reflectionFieldReadUsed)
+            return false;
+        // Layout and metadata can decode fields after the bounded whole-class route
+        // has passed their owners. Retain their boxes without decoding another field.
+        var boxed = new List<TypeDesc>();
+        foreach (var cls in Classes)
+        {
+            if (cls.Module != AppModule || !cls.MembersReady || !KeepsReflectionMetadata(cls)
+                || ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls))
+                continue;
+            foreach (var field in cls.Fields)
+                if (!field.IsLiteral && field.TypeReady && _decodedReflectionFieldBoxes.Add(field))
+                    boxed.Add(field.Type);
+        }
+        foreach (var type in boxed)
+            NoteReflectionBoxed(type);
+        if (boxed.Count > 0)
+            DrainReachability();
+        return boxed.Count > 0;
     }
 
     /// <summary>The allocated delegate classes, in allocation order, and how many of them

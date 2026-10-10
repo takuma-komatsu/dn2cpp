@@ -1429,13 +1429,16 @@ internal sealed partial class Compilation
     /// reflection); and object-equality dispatched, so a program
     /// that never compares two objects pays nothing. Returns whether anything new was
     /// reached — a fresh box can appear in the drain it triggers.</para></summary>
-    private bool ReachBoxedValueEquality()
+    internal bool ReachBoxedValueEquality()
     {
         if (!_objectEqualityDispatched)
             return false;
         int before = Reachable.Count;
         foreach (var c in _allocatedRefTypes.Where(c => c.IsValueType).ToList())
         {
+            // Planning placeholders describe bodies, never the exact type of a box.
+            if (ContainsCanonPlaceholder(c) || ContainsGenericVar(c))
+                continue;
             if (!CoreIntrinsics.IsIntrinsicType(c.FullName) && c.IntrinsicCppName is null
                 && !CoreIntrinsics.RuntimeOwnsTypeInfo(c)
                 && (IsUserModule(c.Module) || !HoldsUncomparableIntrinsic(c)))

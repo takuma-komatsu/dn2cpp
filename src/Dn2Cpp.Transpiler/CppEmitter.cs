@@ -2197,6 +2197,8 @@ internal sealed partial class CppEmitter
             _c.ReachRuntimeArrayInitializeCtors();
             if (_c.ReachRuntimeHandleBoxes())
                 _c.DrainReachability();
+            if (_c.ReachBoxedValueEquality())
+                _c.DrainReachability();
             if (_c.ReachNonGenericArrayElementEquality())
                 _c.DrainReachability();
             // Shared-generics planning: instantiations discovered by the bodies
@@ -2285,10 +2287,8 @@ internal sealed partial class CppEmitter
             // above: a minted body is deliberately absent from its class's Methods — that
             // absence is what keeps it out of the vtable, the reflection member table and
             // the ABI contract — so the only place it can be seen is the mint list.
-            // Reachability decided the set before either pass began (a mint reads field
-            // types, and that is a decode), which is why there is no registry to reset
-            // between the planning and emission passes: `Reachable` IS the registry, and it
-            // is the same set both times.
+            // Reachable owns this registry across both passes, so there is no separate
+            // registry to reset when planning discovers further boxes.
             var minted = _c.SynthesizedValueBodies
                 .Where(m => _c.Reachable.Contains(m) && !compiled.Contains(m)
                     && !_backend.ShouldSkipMethodBody(m.DeclaringClass, m))
@@ -2308,6 +2308,14 @@ internal sealed partial class CppEmitter
             }
             if (batch.Count == 0 && minted.Count == 0 && !rgctxFilled)
             {
+                // Without planning, layout can first decode a reflected field here.
+                // Compile the boxes' dispatch before the emitted body set is frozen.
+                if (!_c.SharedGenericsEnabled && diagnostics is null)
+                {
+                    ComputeEmitted();
+                    if (_c.ReachDecodedReflectionFieldBoxes())
+                        continue;
+                }
                 // Forwarding slots wait for quiescence: only the complete call
                 // graph says which callees take a context. New slots mean
                 // another round, whose fill resolves them.

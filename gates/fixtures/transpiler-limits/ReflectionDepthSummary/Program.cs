@@ -12,7 +12,7 @@ namespace ReflectionDepthSummary;
 #endif
 internal static class Program
 {
-    private static void Main()
+    private static void Main(string[] args)
     {
         CultureInfo.CurrentCulture = CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
 #if UNREAD_ATTRIBUTE_CTOR_DEPTH
@@ -22,6 +22,15 @@ internal static class Program
 #elif ATTRIBUTE_READ_DEPTH || ATTRIBUTE_GENERIC_READ_DEPTH
         AttributeDepthDriver.Read();
         Console.WriteLine("attribute-read-ran");
+        if (args.Length > 0 && args[0] == "before-reflected-field-boxes")
+            return;
+        Console.WriteLine("== late reflected field boxes ==");
+        Type fieldOwner = typeof(Holder).GetMethod("Uncalled")!.GetParameters()[0].ParameterType;
+        object fieldValue = fieldOwner.GetField("Right")!.FieldType.GetField("Zero")!.GetValue(null)!;
+        Console.WriteLine(fieldValue);
+        Console.WriteLine("field equals=" + fieldValue.Equals("second"));
+        Console.WriteLine("field hash=" + fieldValue.GetHashCode());
+        Console.WriteLine("late reflected field boxes end");
 #elif NONVIRTUAL_BASE_CALL_DEPTH
         new BaseCallDerived().Test();
         Console.WriteLine("base-call-ran");
@@ -231,7 +240,14 @@ internal struct Leaf { }
 internal struct Layer<T> { }
 #endif
 internal struct First<T> { public override string ToString() => "first"; }
-internal struct Second<T> { public override string ToString() => "second"; }
+internal struct Second<T>
+{
+    public override string ToString() => "second";
+#if ATTRIBUTE_READ_DEPTH || ATTRIBUTE_GENERIC_READ_DEPTH
+    public override bool Equals(object? other) => other is string text && text == "second";
+    public override int GetHashCode() => 29;
+#endif
+}
 #endif
 
 #if UNCALLED_VIRTUAL_DEPTH || INVOKE_UNCALLED_VIRTUAL_DEPTH
