@@ -24,15 +24,19 @@ AGENTS.md、CONTRIBUTING.md、[README.md](../README.md)、
 ## 担当と独立レビュー
 
 親セッションは調査・調整・統合・検証を担当し、コード・テスト・文書の
-実装は AGENTS.md の指示どおりサブエージェントへ委譲する。同じ変更の
-実装担当とレビュアーへの委譲は可能だが、書込みの担当を明確にし、同じ
-ファイルや artifact への競合を避ける。
+実装は AGENTS.md の指示どおりサブエージェントへ委譲する。指定がなければ、
+実装サブエージェントは親セッションと同じモデルおよび reasoning effort
+（思考強度）を用いる。同じ変更の実装担当とレビュアーへの委譲は可能だが、
+書込みの担当を明確にし、同じファイルや artifact への競合を避ける。
 
 実装完了後、独立した reviewer に実際にレビューを委譲する。運用上の
-指定は **Codex / Astra / xhigh**、**Claude / Opus / xhigh** とする。
-どちらも reasoning effort（思考強度）を xhigh に指定する。自己レビューや
-別モデルのレビューで代用しない。指定モデルまたは思考強度を利用できない
-場合、レビュー条件を達成済みとせず merge しない。
+指定は **Codex / Astra / xhigh**、**Claude Code / Opus / xhigh** とする。
+Claude Code が利用できない場合は Codex の **Astra / xhigh** と
+**Sol / xhigh**、Codex が利用できない場合は Claude Code の
+**Opus / xhigh** と **Sonnet / xhigh** のペアでレビューする。
+いずれも reasoning effort を xhigh に指定する。自己レビューや上記以外の
+モデルのレビューで代用しない。通常または該当する代替ペアのモデル・
+思考強度を利用できない場合、レビュー条件を達成済みとせず merge しない。
 
 レビューは再現・根拠のある正しさ、デグレ、必要な回帰、repository invariant
 に絞る。無関係な refactor、仕様拡大、些末な style 修正、収拾がつかなくなる
