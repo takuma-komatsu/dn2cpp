@@ -96,6 +96,8 @@
 # Reflection-only whole-class roots keep emission's bounded minted walk.
 # Attribute rows retain bodies; only live attribute reads promote constructors
 # and named setters, without executing getters or a hidden base setter.
+# Late decoded reflected field boxes retain their Object overrides beyond the
+# whole-class walk bounds, with and without shared generics or managed stripping.
 # Branch summaries share boolean getter folds and known loaded type identities;
 # explicit/inherited interface maps, class newslot identities and constrained
 # primitive slots exclude unrelated bodies; ISA guards share the capability verdict.
@@ -161,7 +163,7 @@ numerics_dll="$(dirname "$corelib")/System.Runtime.Numerics.dll"
 # gate_cache_check answers that with a warning and no key, which would
 # leave this gate uncacheable since it clears the dirs on every run.
 rm -rf "$out" "$sig_out" "$sig_diet_out" "$cut_out" "$mint_out"; mkdir -p "$out"
-if gate_cache_check "$out" "transpiler-limits|recursive-body:ildiet+no-ildiet|canonical-cap:no-ildiet:1,2|canonical-refs:none|wrapper-exceptions|mint-cap:no-ildiet|depth-summary-env:default,depth8,depth64,count128,count2m,depth1-abort,count1-abort,deep64,uncalled-virtual,uncalled-interface,unallocated-receiver,construction-accessor,generic-accessor,generic-ctor,executed-generic-argument,event,late-construction-accessor:depth3-abort,direct-accessor,direct-event-add,invoke-uncalled-virtual,generic-factory:direct,class,method,identity|unused-copied:low2,default32:ildiet+no-ildiet|ordinary-cut:ildiet+no-ildiet|execution-provenance:base-call,base-ctor,object-slot,primitive-dead-branch,abstract-app,abstract-library,nominal-dead-branch,methodimpl,constrained-primitive,const-getter,unused-default-interface,inherited-interface-map,protected-interface-map,class-newslot-map,isa-getter:Sve+Sve2+Arm64:optimize=true|attributes:unread-ctor,unread-getter,read,generic-read:depth3+depth4-abort|sig:no-ildiet+ildiet|collision:no-ildiet,corelib+intrinsic|cli:$(_gate_cli_hash)|$corelib" \
+if gate_cache_check "$out" "transpiler-limits|recursive-body:ildiet+no-ildiet|canonical-cap:no-ildiet:1,2|canonical-refs:none|wrapper-exceptions|mint-cap:no-ildiet|depth-summary-env:default,depth8,depth64,count128,count2m,depth1-abort,count1-abort,deep64,uncalled-virtual,uncalled-interface,unallocated-receiver,construction-accessor,generic-accessor,generic-ctor,executed-generic-argument,event,late-construction-accessor:depth3-abort,direct-accessor,direct-event-add,invoke-uncalled-virtual,generic-factory:direct,class,method,identity|unused-copied:low2,default32:ildiet+no-ildiet|ordinary-cut:ildiet+no-ildiet|execution-provenance:base-call,base-ctor,object-slot,primitive-dead-branch,abstract-app,abstract-library,nominal-dead-branch,methodimpl,constrained-primitive,const-getter,unused-default-interface,inherited-interface-map,protected-interface-map,class-newslot-map,isa-getter:Sve+Sve2+Arm64:optimize=true|attributes:unread-ctor,unread-getter,read,generic-read:depth3+depth4-abort:field-boxes=ildiet,no-ildiet,no-shared-generics:prefix=before-reflected-field-boxes|sig:no-ildiet+ildiet|collision:no-ildiet,corelib+intrinsic|cli:$(_gate_cli_hash)|$corelib" \
         "$rec_app" "$sig_app" "$fld_app" "$afld_app" "$big_app" "$arr_app" "$mint_app" "$tma_app" \
         gates/fixtures/transpiler-limits/CanonicalLink/Program.cs \
         gates/fixtures/transpiler-limits/CanonicalLink/CanonicalLinkBound.csproj \
@@ -766,7 +768,7 @@ for summary_execution in NONVIRTUAL_BASE_CALL BASE_CONSTRUCTOR INHERITED_OBJECT_
     case "$summary_execution" in
         UNREAD_ATTRIBUTE_CTOR) summary_execution_expected=unread-attribute-ctor-ran ;;
         UNREAD_ATTRIBUTE_GETTER) summary_execution_expected=unread-attribute-getter-ran ;;
-        ATTRIBUTE_READ|ATTRIBUTE_GENERIC_READ) summary_execution_expected=$'attribute-ctor\nattribute-setter\n7\nattribute-read-ran' ;;
+        ATTRIBUTE_READ|ATTRIBUTE_GENERIC_READ) summary_execution_expected=$'attribute-ctor\nattribute-setter\n7\nattribute-read-ran\n== late reflected field boxes ==\nsecond\nfield equals=True\nfield hash=29\nlate reflected field boxes end' ;;
         NONVIRTUAL_BASE_CALL) summary_execution_expected=base-call-ran ;;
         BASE_CONSTRUCTOR) summary_execution_expected=$'derived\nbase-constructor-ran' ;;
         INHERITED_OBJECT_SLOT) summary_execution_expected=$'derived\ninherited-object-slot-ran' ;;
@@ -794,7 +796,40 @@ for summary_execution in NONVIRTUAL_BASE_CALL BASE_CONSTRUCTOR INHERITED_OBJECT_
         DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|sample-path:$DN2CPP_SAMPLE_PROJECT_DIR|defines:$summary_define|Optimize:true|reference:DepthData"
         DN2CPP_OUT_SUFFIX="-execution-$summary_execution"
         DN2CPP_SKIP_BUILD=1
+        case "$summary_execution" in
+            ATTRIBUTE_READ|ATTRIBUTE_GENERIC_READ)
+                gate_extra_asserts() {
+                    local out="$1" axis output line
+                    run_bounded "$out/ReflectionDepthSummary$EXE_EXT" > "$out/field-boxes.native.stdout"
+                    run_bounded dotnet "$_CG_APP" > "$out/field-boxes.dotnet.stdout"
+                    run_bounded "$out/ReflectionDepthSummary$EXE_EXT" before-reflected-field-boxes \
+                        > "$out/field-boxes-before.native.stdout"
+                    run_bounded dotnet "$_CG_APP" before-reflected-field-boxes \
+                        > "$out/field-boxes-before.dotnet.stdout"
+                    for axis in native dotnet; do
+                        output=$(strip_cr_win_file "$out/field-boxes.$axis.stdout")
+                        awk '/^== late reflected field boxes ==$/ { exit } { print }' \
+                            <<< "$output" > "$out/field-boxes-prefix.$axis.stdout"
+                        diff -u <(strip_cr_win_file "$out/field-boxes-before.$axis.stdout") \
+                            <(strip_cr_win_file "$out/field-boxes-prefix.$axis.stdout")
+                        assert_output "$(strip_cr_win_file "$out/field-boxes-prefix.$axis.stdout")" \
+                            $'attribute-ctor\nattribute-setter\n7\nattribute-read-ran'
+                        for line in '== late reflected field boxes ==' second 'field equals=True' \
+                                'field hash=29' 'late reflected field boxes end'; do
+                            [ "$(grep -Fxc -- "$line" <<< "$output")" = 1 ] \
+                                || { echo "FAIL: reflected field box witness must run once ($axis): $line" >&2; return 1; }
+                        done
+                    done
+                } ;;
+        esac
         corelib_diff_gate ReflectionDepthSummary "${summary_execution_refs[@]}"
+        case "$summary_execution" in
+            ATTRIBUTE_READ|ATTRIBUTE_GENERIC_READ)
+                DN2CPP_OUT_SUFFIX="-execution-$summary_execution-original" \
+                    corelib_diff_gate ReflectionDepthSummary --no-ildiet "${summary_execution_refs[@]}"
+                DN2CPP_OUT_SUFFIX="-execution-$summary_execution-unshared" \
+                    corelib_diff_gate ReflectionDepthSummary --no-ildiet --no-shared-generics "${summary_execution_refs[@]}" ;;
+        esac
     )
     summary_native=$(run_bounded "./artifacts/reflectiondepthsummary-execution-$summary_execution/ReflectionDepthSummary")
     assert_output "$(strip_cr_win "$summary_native")" "$summary_execution_expected"

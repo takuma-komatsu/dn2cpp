@@ -2736,7 +2736,8 @@ _corelib_gate_out() {
 
 # DN2CPP_SAMPLE_PROJECT_DIR can select a nested driver whose assembly name is PROJECT.
 # _corelib_gate_core PROJECT OUT [EXTRA_BCL_NAME | -r DLL | --link-xml FILE |
-#   --reflection-metadata TYPE=LAYOUT | --cut TYPE::METHOD | --no-metadata-compression | --no-ildiet | --auto-ref]...
+#   --reflection-metadata TYPE=LAYOUT | --cut TYPE::METHOD |
+#   --no-metadata-compression | --no-shared-generics | --no-ildiet | --auto-ref]...
 # Extras name required references and preprocessing options. Sets _CG_CORELIB, _CG_APP,
 # _CG_OUT; the caller may preset _CG_CORELIB_IN to override the CoreLib flavour.
 # Assert on _CG_OUT: re-deriving _corelib_gate_out gives the DEFAULT dir, so on a
@@ -2766,7 +2767,8 @@ _corelib_gate_core() {
     _CG_EXTRA_REFERENCE_INPUTS=()
     while [ "$#" -gt 0 ]; do
         name="$1"; shift
-        if [ "$name" = --no-ildiet ] || [ "$name" = --no-metadata-compression ] || [ "$name" = --auto-ref ]; then
+        if [ "$name" = --no-ildiet ] || [ "$name" = --no-metadata-compression ] \
+                || [ "$name" = --no-shared-generics ] || [ "$name" = --auto-ref ]; then
             refs+=("$name")
             continue
         fi
