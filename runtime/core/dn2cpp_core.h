@@ -1248,6 +1248,9 @@ struct Dn2CppDelegateMethodTarget
     const Dn2CppTypeInfo* receiverType;
     const Dn2CppTypeInfo* declaringType;
     int32_t metadataToken;
+    // Equality-only family cases follow the runtime base chain; a null receiver
+    // names the array family, whose type-infos have no System.Array base link.
+    bool receiverFamily;
 };
 
 struct Dn2CppDelegateMethodIdentity
@@ -1259,7 +1262,16 @@ struct Dn2CppDelegateMethodIdentity
     bool virtualBinding;
     int32_t targetCount;
     const Dn2CppDelegateMethodTarget* targets;
+    // Equality cases include defaults and stripped rows; Delegate.Method keeps
+    // its separate metadata-access and refusal contract through targets above.
+    int32_t selectedTargetCount;
+    const Dn2CppDelegateMethodTarget* selectedTargets;
 };
+
+// Resolves emitted dispatch identity without reading reflection metadata. False
+// leaves runtime-created/opaque bindings on their address-based compatibility path.
+bool dn2cpp_delegate_selected_key(const Dn2CppDelegateMethodIdentity* identity,
+    const Dn2CppTypeInfo* receiver, const Dn2CppTypeInfo*& owner, int32_t& token);
 
 // A generic virtual method row has no slot: a reflective call and the BPI import
 // bind (gvm_row_dispatcher) enter it through the dispatcher a callvirt of the same

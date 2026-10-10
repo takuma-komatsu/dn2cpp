@@ -5592,6 +5592,47 @@ static const Dn2CppTypeInfo* dn2cpp_recorded_receiver(const Dn2CppTypeInfo* rece
     return (receiver->flags & DN2CPP_TF_RUNTIME_SYNTH) != 0 ? dn2cpp_runtime_template_of(receiver) : receiver;
 }
 
+bool dn2cpp_delegate_selected_key(const Dn2CppDelegateMethodIdentity* identity,
+    const Dn2CppTypeInfo* receiver, const Dn2CppTypeInfo*& owner, int32_t& token)
+{
+    owner = identity->declaringType;
+    token = identity->metadataToken;
+    if (!identity->virtualBinding || receiver == nullptr)
+    {
+        if (owner != nullptr && receiver != nullptr)
+            owner = dn2cpp_invoke_declaring(owner, receiver);
+        return owner != nullptr;
+    }
+    const auto* recorded = dn2cpp_recorded_receiver(receiver, identity->genericArgCount != 0);
+    for (int32_t i = 0; i < identity->selectedTargetCount; ++i)
+    {
+        const auto& target = identity->selectedTargets[i];
+        if (target.receiverType != nullptr && target.receiverType == recorded)
+        {
+            owner = dn2cpp_invoke_declaring(target.declaringType, receiver);
+            token = target.metadataToken;
+            return owner != nullptr;
+        }
+    }
+    if ((receiver->flags & DN2CPP_TF_PATCH) == 0)
+        for (int32_t i = 0; i < identity->selectedTargetCount; ++i)
+        {
+            const auto& target = identity->selectedTargets[i];
+            if (!target.receiverFamily)
+                continue;
+            bool matches = target.receiverType == nullptr && (receiver->flags & DN2CPP_TF_ARRAY) != 0;
+            for (const auto* level = receiver; !matches && level != nullptr; level = level->base)
+                matches = target.receiverType == level;
+            if (matches)
+            {
+                owner = dn2cpp_invoke_declaring(target.declaringType, receiver);
+                token = target.metadataToken;
+                return owner != nullptr;
+            }
+        }
+    return false;
+}
+
 // The emitter's selected method for an interface or GVM binding over `receiver`, or
 // {} when no case names the receiver.
 static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_recorded_case(

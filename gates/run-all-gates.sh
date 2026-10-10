@@ -376,6 +376,8 @@ ORDERED_PROJECTS=(
     "src/Dn2Cpp.Runtime/Dn2Cpp.Runtime.csproj"
     "src/Dn2Cpp.Cli.Console/Dn2Cpp.Cli.Console.csproj"
     "samples/dotnet/ReflectInvoke/ReflectInvoke.csproj"
+    "samples/dotnet/ReflectInvoke/DelegateVirtualIdentityLibrary.csproj"
+    "samples/dotnet/ReflectInvoke/DelegateVirtualIdentityOnly.csproj"
     "samples/dotnet/ReflectFrameworkBindLib/ReflectFrameworkBindLib.csproj"
     "samples/dotnet/ReflectReturnLib/ReflectReturnLib.csproj"
     "samples/dotnet/ReflectInvoke/ReflectNameBindOnly.csproj"

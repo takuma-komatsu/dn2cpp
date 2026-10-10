@@ -310,6 +310,10 @@ namespace ReflectInvoke
             if (args.Length > 0 && args[0] == "before-delegate-constructor-names")
                 return;
             ReflectDelegateConstructorSubset.Program.Run();
+            if (args.Length > 0 && args[0] == "before-virtual-delegate-identity")
+                return;
+            DelegateVirtualIdentitySubset.Program.Run();
+            DelegateVirtualIdentitySubset.Program.RunReflected();
         }
     }
 }

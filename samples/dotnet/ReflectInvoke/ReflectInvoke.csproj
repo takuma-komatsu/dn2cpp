@@ -48,6 +48,7 @@
     <Compile Remove="StrippedOverrideRefusalsProgram.cs" />
     <Compile Remove="ReflectPointerFieldsOnlyProgram.cs" />
     <Compile Remove="ReflectAttributeDiscoveryOnlyProgram.cs" />
+    <Compile Remove="DelegateVirtualIdentityOnlyProgram.cs" />
   </ItemGroup>
 
 </Project>

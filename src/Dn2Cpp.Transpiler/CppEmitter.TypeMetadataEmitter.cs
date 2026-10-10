@@ -1945,7 +1945,7 @@ internal sealed partial class CppEmitter
                         gargs.Add(_e.MemberTypeInfoExpr(ga, _emittedEnums));
                     argsExpr = TypeArgumentVector(string.Join(", ", gargs));
                 }
-                int token = System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(m.Handle);
+                int token = DelegateIdentityToken(m);
                 string targetsExpr = "nullptr";
                 int targetCount = 0;
                 if (isVirtual && gvms.TryGetValue(m.CppName, out var disp))
@@ -1990,10 +1990,87 @@ internal sealed partial class CppEmitter
                         _sb.AppendLine("};");
                     }
                 }
+                string selectedTargetsExpr = "nullptr";
+                int selectedTargetCount = 0;
+                if (isVirtual)
+                {
+                    // Dispatch identity survives reflection trimming and code folding.
+                    // Record the selected declaration, including a default body and a
+                    // runtime template receiver, independently of its member rows.
+                    var targets = new List<(ClassInfo? Receiver, MethodInfo Target, bool Family)>();
+                    var receivers = _c.AllocatedRefTypes.ToList();
+                    if (_c.StringInterfaces is { } stringInterfaces)
+                        receivers.Add(stringInterfaces.StringClass);
+                    foreach (var receiver in receivers)
+                    {
+                        if (receiver.IsInterface || _e.SkipsCanonicalMetadata(receiver)
+                            || !_e.TypeInfoSymbolDefined(receiver.CppTypeInfoName))
+                            continue;
+                        MethodInfo? target = null;
+                        if (gvms.TryGetValue(m.CppName, out var selectedDisp)
+                            && selectedDisp.Cases.TryGetValue(receiver, out var selectedGvm))
+                            target = selectedGvm;
+                        else if (Compilation.IsGvmCall(m)
+                            && (owner.IsInterface ? _c.ImplementsInterface(receiver, owner)
+                                : Compilation.DerivesFromOrIs(receiver, owner)))
+                            target = m;
+                        else if (owner.IsInterface && _itfTables.TryGetValue(receiver, out var interfaces))
+                            target = _c.DelegateInterfaceTarget(receiver, m, interfaces);
+                        else if (owner.IsInterface && _c.StringInterfaces is { } si
+                            && receiver == si.StringClass)
+                            target = _c.DelegateInterfaceTarget(receiver, m,
+                                si.Dispatches.Where(d => _e._emit.Contains(d.Itf)).Select(d => d.Itf).ToList());
+                        else if (owner.FullName == "System.Object")
+                            target = m.Name switch
+                            {
+                                "ToString" => Compilation.EffectiveToString(receiver) ?? m,
+                                "Equals" => Compilation.EffectiveEquals(receiver) ?? m,
+                                "GetHashCode" => Compilation.EffectiveGetHashCode(receiver) ?? m,
+                                _ => null,
+                            };
+                        else if (Compilation.DerivesFromOrIs(receiver, owner)
+                            && m.VtableSlot >= 0 && m.VtableSlot < receiver.Vtable.Count)
+                            target = receiver.Vtable[m.VtableSlot];
+                        if (target is not null
+                            && _e.TypeInfoSymbolDefined(target.DeclaringClass.CppTypeInfoName))
+                            targets.Add((receiver, target, false));
+                    }
+                    if (_c.EnumInterfaces is { } ei && owner.IsInterface
+                        && _c.DelegateInterfaceTarget(ei.EnumClass, m,
+                            ei.Dispatches.Where(d => _e._emit.Contains(d.Itf)).Select(d => d.Itf).ToList()) is { } enumTarget
+                        && _e.TypeInfoSymbolDefined(enumTarget.DeclaringClass.CppTypeInfoName))
+                        targets.Add((ei.EnumClass, enumTarget, true));
+                    foreach (var info in _c.IntrinsicInterfaces)
+                        if (info.Itf == owner && info.SlotDecl == m
+                            && info.Receiver is { } intrinsicReceiver && info.Target is { } intrinsicTarget
+                            && _e.TypeInfoSymbolDefined(intrinsicTarget.DeclaringClass.CppTypeInfoName))
+                            targets.Add((intrinsicReceiver, intrinsicTarget, true));
+                    if (owner.IsInterface && _c.ArrayDispatchClass is { } arrayClass)
+                    {
+                        MethodInfo? arrayTarget = null;
+                        if (owner.Context.TypeArgs.Length == 0)
+                            arrayTarget = _c.ResolveItfImplOrNull(arrayClass, m);
+                        else if (owner.Context.TypeArgs is [{ } element]
+                            && _c.ArrayEnumerableElementTypes.TryGetValue(Compilation.ArrayElemMangle(element), out var arrayMap)
+                            && arrayMap.Dispatches.Any(d => d.Itf == owner))
+                        {
+                            // SZArrayHelper selects the requested T, even when the native
+                            // variant table uses the receiver element's shared body. The
+                            // existing closed wrapper is its private identity namespace.
+                            arrayTarget = _c.ResolveItfImplOrNull(arrayMap.Szae, m);
+                        }
+                        if (arrayTarget is not null
+                            && _e.TypeInfoSymbolDefined(arrayTarget.DeclaringClass.CppTypeInfoName))
+                            targets.Add((null, arrayTarget, true));
+                    }
+                    selectedTargetCount = EmitDelegateTargets(targets, sym + "_selected_targets");
+                    if (selectedTargetCount > 0)
+                        selectedTargetsExpr = sym + "_selected_targets";
+                }
                 _o.Header.AppendLine($"extern const Dn2CppDelegateMethodIdentity {sym};");
                 _sb.AppendLine($"extern const Dn2CppDelegateMethodIdentity {sym} = "
                     + $"{{ {ownerExpr}, {token}, {margs.Length}, {argsExpr}, {(isVirtual ? "true" : "false")}, "
-                    + $"{targetCount}, {targetsExpr} }};");
+                    + $"{targetCount}, {targetsExpr}, {selectedTargetCount}, {selectedTargetsExpr} }};");
             }
             _sb.AppendLine();
         }
@@ -2022,6 +2099,28 @@ internal sealed partial class CppEmitter
             _sb.AppendLine("};");
             return targets.Count;
         }
+
+        private int EmitDelegateTargets(List<(ClassInfo? Receiver, MethodInfo Target, bool Family)> targets, string symbol)
+        {
+            if (targets.Count == 0)
+                return 0;
+            _sb.AppendLine($"static const Dn2CppDelegateMethodTarget {symbol}[] = {{");
+            foreach (var (receiver, target, family) in targets.OrderBy(t => t.Receiver?.CppName ?? "",
+                System.StringComparer.Ordinal))
+            {
+                string receiverExpr = receiver is not null
+                    ? _e.TypeInfoRef(receiver, "delegate dispatch receiver") : "nullptr";
+                string targetExpr = _e.TypeInfoRef(target.DeclaringClass, "delegate dispatch target");
+                int targetToken = DelegateIdentityToken(target);
+                _sb.AppendLine($"    {{ {receiverExpr}, {targetExpr}, {targetToken}, {(family ? "true" : "false")} }},");
+            }
+            _sb.AppendLine("};");
+            return targets.Count;
+        }
+
+        private static int DelegateIdentityToken(MethodInfo method) => method.Handle.IsNil
+            ? method.Name switch { "ToString" => -1, "Equals" => -2, "GetHashCode" => -3, _ => 0 }
+            : System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(method.Handle);
 
         /// <summary>The dispatcher a generic virtual method row runs through when
         /// reflection or a hot-update import enters it (<c>dn2cpp_gvm_row_dispatch</c>),

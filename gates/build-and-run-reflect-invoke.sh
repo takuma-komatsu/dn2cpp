@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Virtual delegate equality and removal retain the selected method under identical-code folding.
 # Property accessor arrays retain visibility, order, reflected handle identity and boxed invocation.
 # Delegate method names select strict signatures, inherited private methods and virtual slots.
 # Delegate ABI compatibility retains by-ref, pointer and function-pointer signature identity.
@@ -233,6 +234,9 @@ DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectFramew
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/ReflectPointerFieldsOnly.csproj samples/dotnet/ReflectInvoke/ReflectPointerFieldsPreserved.csproj samples/dotnet/ReflectInvoke/ReflectPointerFieldsOnlyProgram.cs samples/dotnet/ReflectInvoke/keep-pointer-field.xml samples/dotnet/ReflectReturnLib/PointerFields.cs"
 
 py="$(resolve_python)"
+source gates/_delegate-identity.sh
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_delegate-identity.sh gates/fold-delegate-fixture.py samples/dotnet/ReflectInvoke/DelegateVirtualIdentityOnly.csproj samples/dotnet/ReflectInvoke/DelegateVirtualIdentityLibrary.csproj samples/dotnet/ReflectInvoke/DelegateVirtualIdentityOnlyProgram.cs"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|virtual-delegate-identity:default,trimmed,unshared,folded|virtual-delegate-prefix-argv:before-virtual-delegate-identity"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/check-reflection-layout.py gates/measure-reflection-metadata.py gates/expected/reflection-allocations.csv gates/fixtures/delegate-invocation-cache/DelegateInvocationCache.csproj gates/fixtures/delegate-invocation-cache/Program.cs gates/fixtures/reflection-metadata-codec.cpp"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|empty-string-clone-prefix:${DN2CPP_BEFORE_EMPTY_STRING_CLONE:-}|delegate-list-prefix:${DN2CPP_BEFORE_DELEGATE_LISTS:-}|recursive-delegate-prefix:${DN2CPP_BEFORE_RECURSIVE_DELEGATE:-}|ordinary-interface-prefix:${DN2CPP_BEFORE_ORDINARY_IL_INTERFACE:-}|object-methodimpl-prefix:${DN2CPP_BEFORE_OBJECT_METHODIMPL:-}"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/recursive-delegate/RecursiveDelegate.csproj gates/fixtures/recursive-delegate/Program.cs"
@@ -322,6 +326,7 @@ gate_empty_string_clone_asserts() {
 }
 
 gate_extra_asserts() {
+    gate_virtual_delegate_prefix_asserts "$1"
     local out="$1" native line registry boundary axis route query expected parameter
     "$py" gates/fixtures/check-reflection-layout.py "$out" "$reflection_layout_axis"
     # The runtime publishes a constructor's invoke plan only for a record inside a
@@ -2735,3 +2740,7 @@ for line in '== enumerated formal parameter ==' \
     grep -Fxq -- "$line" <<< "$formal_enumeration_native" \
         || { echo "FAIL: enumerated formal parameter witness missing: $line" >&2; exit 1; }
 done
+
+# The isolated driver uses the same appended delegate section with actual folding
+# and with receiver reflection metadata absent.
+delegate_identity_diff_axes

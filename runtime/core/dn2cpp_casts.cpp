@@ -1595,7 +1595,16 @@ static bool dn2cpp_delegate_identity_equal(const Dn2CppDelegate* a, const Dn2Cpp
     for (int32_t i = 0; i < x->genericArgCount; ++i)
         if (x->genericArgs[i] != y->genericArgs[i])
             return false;
-    // Virtual declarations can differ while binding the same receiver override.
+    const Dn2CppTypeInfo* xo;
+    const Dn2CppTypeInfo* yo;
+    int32_t xt;
+    int32_t yt;
+    const bool xKnown = dn2cpp_delegate_selected_key(x, a->target != nullptr ? a->target->type : nullptr, xo, xt);
+    const bool yKnown = dn2cpp_delegate_selected_key(y, b->target != nullptr ? b->target->type : nullptr, yo, yt);
+    if (xKnown && yKnown)
+        return xo == yo && xt == yt;
+    // Runtime-created and opaque bindings retain their prior address/declaration
+    // compatibility path when no emitted selected-method key describes them.
     return x->virtualBinding || y->virtualBinding
         || (x->declaringType == y->declaringType && x->metadataToken == y->metadataToken);
 }

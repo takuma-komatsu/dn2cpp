@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <Optimize>true</Optimize>
+    <DebugType>none</DebugType>
+    <DefineConstants Condition="'$(DelegateIdentityIlOnly)' == 'true'">$(DefineConstants);DELEGATE_IDENTITY_IL_ONLY</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="DelegateVirtualIdentityOnlyProgram.cs" />
+    <Compile Include="DelegateVirtualIdentitySubset.cs" Condition="'$(DelegateIdentityIlOnly)' != 'true'" />
+    <ProjectReference Include="DelegateVirtualIdentityLibrary.csproj" Condition="'$(DelegateIdentityIlOnly)' == 'true'" />
+  </ItemGroup>
+</Project>
