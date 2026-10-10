@@ -3418,7 +3418,12 @@ internal sealed partial class CppEmitter
                 var slots = new string[slot + 1];
                 for (int s = 0; s < slot; s++)
                     slots[s] = "nullptr";
-                slots[slot] = $"(const void*)&{row.ThunkSym}";
+                // An address-taken WaitHandle.Dispose already has the exact lowering
+                // ABI. Reuse it so class and interface delegates bind the same callable.
+                string callable = row.ThunkKind == Compilation.IntrinsicInterfaceThunkKind.WaitHandleDispose
+                    && info.Target is { } target && _c.IntrinsicFtnTargets.Contains(target.Emittable)
+                    ? target.Emittable.CppName : row.ThunkSym;
+                slots[slot] = $"(const void*)&{callable}";
                 sb.AppendLine($"static const void* intr_itf_{thunk}[] = {{ {string.Join(", ", slots)} }};");
                 entries.Add($"{{ {TypeInfoRef(info.Itf, "intrinsic-type interface-dispatch map")}, intr_itf_{thunk} }}");
                 NoteRuntimeMapInterface("&" + typeInfoSym, info.Itf);

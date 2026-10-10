@@ -693,10 +693,12 @@ internal sealed partial class MethodCompiler : IEvalStack
         => (m.IsAggressiveInlining && m.IsSmallIlBody || m.IsTinyIlBody)
             && !m.IsNoInlining && !m.IsObfuscationTarget && !m.IsUnmanagedCallersOnly && !m.IsHotPath;
 
-    // Intrinsic value types use the runtime layout for address-taken instance methods too.
+    // Address-taken methods use the runtime receiver ABI when no managed layout exists.
     private static string ReceiverCppType(ClassInfo cls) => cls.FullName == "System.String"
         ? "Dn2CppString*"
-        : cls.IsValueType ? CppTypes.Of(TypeDesc.MakeClass(cls)) + "*" : cls.CppStructName + "*";
+        : cls.IsValueType ? CppTypes.Of(TypeDesc.MakeClass(cls)) + "*"
+        : CoreIntrinsics.RuntimeOwnsTypeInfo(cls) ? CppTypes.Of(TypeDesc.MakeClass(cls))
+        : cls.CppStructName + "*";
 
     public static string Signature(MethodInfo m)
     {
@@ -3825,6 +3827,34 @@ internal sealed partial class MethodCompiler : IEvalStack
                     // runtime-owned object has no vtable, and the slot of a class that does
                     // not override the member holds a trap.
                     expr = $"((void)dn2cpp_null_check({obj.Expr}), (void*)&{helper})";
+                }
+                else if (m.DeclaringClass.FullName == "System.Array" && m.Name == "GetEnumerator"
+                         && m.Signature.ParameterTypes.Length == 0)
+                {
+                    if (_c.ReachNonGenericArrayEnumerator() is not ({ } itf, { } ge))
+                        throw new NotSupportedException("System.Array.GetEnumerator needs the non-generic IEnumerable");
+                    // Bind the same callable as IEnumerable, including each array's thunk.
+                    // CLR's final ldvirtftn leaves null for the delegate constructor to reject.
+                    bindsLowering = true;
+                    NoteFtnTargetBody(m.Emittable);
+                    _c.NoteNamedBodySymbol(_method, m.Emittable);
+                    string receiver = NewTemp("Dn2CppObject*");
+                    Emit($"{receiver} = (Dn2CppObject*){obj.Expr};");
+                    expr = $"({receiver} == nullptr ? (void*)&{m.Emittable.CppName} : "
+                        + $"dn2cpp_bind_interface_slot(dn2cpp_resolve_interface({receiver}->type, "
+                        + $"&{itf.CppTypeInfoName})[{ge.VtableSlot}], {receiver}))";
+                }
+                else if (m.IsVirtual && CoreIntrinsics.BrEnumInstanceFormat.Matches(m.DeclaringClass.FullName, m.Name))
+                {
+                    _c.NoteEnumInterfaces();
+                    bindsLowering = true;
+                    NoteFtnTargetBody(m.Emittable);
+                    _c.NoteNamedBodySymbol(_method, m.Emittable);
+                    string address = EnumObjectDispatchHelper(m) is { } enumHelper
+                        ? enumHelper : m.Emittable.CppName;
+                    expr = (m.Attributes & System.Reflection.MethodAttributes.Final) != 0
+                        ? $"(void*)&{address}"
+                        : $"((void)dn2cpp_null_check({obj.Expr}), (void*)&{address})";
                 }
                 else if (m.IsVirtual && !m.DeclaringClass.IsInterface
                          && CoreIntrinsics.IsIntrinsicType(m.DeclaringClass.FullName)

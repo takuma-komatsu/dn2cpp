@@ -21,6 +21,49 @@ gate_virtual_delegate_prefix_asserts() {
     diff -u "$out/virtual-delegate-prefix.dotnet.stdout" "$out/virtual-delegate-prefix.native.stdout"
 }
 
+gate_runtime_owned_delegate_prefix_asserts() {
+    local out="$1" axis
+    for axis in dotnet native; do
+        if [ "$axis" = dotnet ]; then
+            run_bounded dotnet "$_CG_APP" before-runtime-owned-method-groups > "$out/runtime-owned-prefix.$axis.raw.stdout"
+        else
+            run_bounded "$out/ReflectInvoke$EXE_EXT" before-runtime-owned-method-groups > "$out/runtime-owned-prefix.$axis.raw.stdout"
+        fi
+        strip_cr_win_file "$out/runtime-owned-prefix.$axis.raw.stdout" > "$out/runtime-owned-prefix.$axis.stdout"
+        awk '/^== runtime-owned class method groups ==$/ { exit } { print }' \
+            "$out/virtual-delegate-full.$axis.stdout" > "$out/runtime-owned-old.$axis.stdout"
+        diff -u "$out/runtime-owned-prefix.$axis.stdout" "$out/runtime-owned-old.$axis.stdout"
+        runtime_owned_delegate_asserts "$out/virtual-delegate-full.$axis.stdout"
+    done
+    diff -u "$out/runtime-owned-prefix.dotnet.stdout" "$out/runtime-owned-prefix.native.stdout"
+}
+
+runtime_owned_delegate_asserts() {
+    local output="$1" line
+    for line in '== runtime-owned class method groups ==' \
+        'runtime-owned binding array class interface: True/True/False' \
+        'runtime-owned binding value array class interface: True/True/False' \
+        'runtime-owned binding MD array class interface: True/True/False' \
+        'runtime-owned array invoke: True/True/True/True' \
+        'runtime-owned binding Enum Object ToString: True/True/False' \
+        'runtime-owned binding Enum Object GetHashCode: True/True/False' \
+        'runtime-owned binding Enum Object Equals: True/True/False' \
+        'runtime-owned binding Enum provider interface: True/True/False' \
+        'runtime-owned binding Enum format interface: True/True/False' \
+        'runtime-owned binding Enum TypeCode interface: True/True/False' \
+        'runtime-owned binding Enum CompareTo interface: True/True/False' \
+        'runtime-owned Enum invoke: Friday/Friday/True/True/False/Friday/Friday/5/5/5/Int32/0' \
+        'runtime-owned binding WaitHandle Close Dispose: False/True/True' \
+        'runtime-owned binding WaitHandle Dispose interface: True/True/False' \
+        'runtime-owned binding WaitHandle Close same: True/True/False' \
+        'runtime-owned WaitHandle invoke: True' \
+        'runtime-owned null binding: ArgumentException/ArgumentException/NullReferenceException' \
+        'runtime-owned class method groups end'; do
+        test "$(grep -Fxc -- "$line" "$output")" = 1 \
+            || { echo "FAIL: runtime-owned binding witness: $output/$line" >&2; return 1; }
+    done
+}
+
 delegate_identity_diff_axes() {
     local axis out native line
     for axis in default trimmed unshared; do
@@ -53,6 +96,7 @@ delegate_identity_diff_axes() {
         strip_cr_win_file "$out/folded.stderr" > "$out/folded.normalized.stderr"
         test "$(grep -Ec '^delegate folded addresses: [1-9][0-9]*$' "$out/folded.normalized.stderr")" = 1
         for native in clr native folded; do
+            runtime_owned_delegate_asserts "$out/$native.stdout"
             for line in '== virtual delegate selected methods ==' \
                 'virtual identity distinct overrides: False/True/True/7/7' \
                 'virtual identity base override: True/True/False/7/7' \

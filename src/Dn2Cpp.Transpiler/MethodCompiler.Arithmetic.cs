@@ -2163,6 +2163,19 @@ internal sealed partial class MethodCompiler
         };
     }
 
+    private static string? EnumObjectDispatchHelper(MethodInfo m)
+    {
+        if (!CoreIntrinsics.IsObjectVirtualFunctionShape(m.Name, m.Signature))
+            return null;
+        return m.Name switch
+        {
+            "ToString" => "dn2cpp_object_tostring_virtual",
+            "GetHashCode" => "dn2cpp_object_gethashcode",
+            "Equals" => "dn2cpp_object_equals_virtual",
+            _ => null,
+        };
+    }
+
     /// <summary>A boxed primitive's Object.Equals slot must bind to the primitive
     /// override even though the ldvirtftn token names System.Object.</summary>
     private MethodInfo PrimitiveObjectEqualsVirtualTarget(MethodInfo declared, StackEntry receiver)

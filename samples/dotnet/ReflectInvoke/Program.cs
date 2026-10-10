@@ -314,6 +314,9 @@ namespace ReflectInvoke
                 return;
             DelegateVirtualIdentitySubset.Program.Run();
             DelegateVirtualIdentitySubset.Program.RunReflected();
+            if (args.Length > 0 && args[0] == "before-runtime-owned-method-groups")
+                return;
+            DelegateVirtualIdentitySubset.Program.RunRuntimeOwned();
         }
     }
 }
