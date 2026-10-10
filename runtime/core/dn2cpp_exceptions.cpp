@@ -974,6 +974,8 @@ void dn2cpp_throw_platform_not_supported(const char* message)
 // stamped 1 must not be answered and why the test is the bit rather than the number.
 void dn2cpp_require_layout(const Dn2CppTypeInfo* ti)
 {
+    if (dn2cpp_signature_kind(ti) != 0)
+        dn2cpp_throw_platform_not_supported("Reflection: a signature type has no allocation layout");
     if (ti == nullptr || (ti->flags & DN2CPP_TF_LAYOUT_UNKNOWN) == 0)
         return;
     const char* name = ti->name != nullptr ? ti->name : "<unnamed type>";

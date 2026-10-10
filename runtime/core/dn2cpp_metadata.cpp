@@ -78,6 +78,7 @@ constexpr Field Dn2CppMethodInfo_fields[] = {
     { offsetof(Dn2CppMethodInfo, genericParameters), Encoding::Pointer },
     { offsetof(Dn2CppMethodInfo, returnSignatureType), Encoding::Pointer },
     { offsetof(Dn2CppMethodInfo, returnBindingPointeeType), Encoding::Pointer },
+    { offsetof(Dn2CppMethodInfo, returnReflectionSignature), Encoding::Pointer },
 };
 constexpr Field Dn2CppParamInfo_fields[] = {
     { offsetof(Dn2CppParamInfo, paramType), Encoding::Pointer },
@@ -97,6 +98,7 @@ constexpr Field Dn2CppParamInfo_fields[] = {
     { offsetof(Dn2CppParamInfo, passType), Encoding::Pointer },
     { offsetof(Dn2CppParamInfo, defaultValue), Encoding::Pointer },
     { offsetof(Dn2CppParamInfo, bindingPointeeType), Encoding::Pointer },
+    { offsetof(Dn2CppParamInfo, reflectionSignature), Encoding::Pointer },
 };
 constexpr Field Dn2CppPropInfo_fields[] = {
     { offsetof(Dn2CppPropInfo, name), Encoding::Pointer },

@@ -862,136 +862,6 @@ internal sealed partial class CppEmitter
                 reader.GetTypeSpecification(handle).DecodeSignature(this, genericContext);
         }
 
-        /// <summary>A signature type as .NET formats it, keyed as .NET tells function
-        /// pointer types apart: by calling convention and signature, without custom
-        /// modifiers. <see cref="FunctionPointer"/> is the function pointer type it is,
-        /// or that its pointer or by-ref levels end at.</summary>
-        private sealed class SpelledType
-        {
-            private readonly SpelledType? _functionPointer;
-            private readonly bool _isFunctionPointer;
-
-            internal TypeDesc Type { get; }
-            internal string Name { get; }
-            internal string Key { get; }
-            internal bool Open { get; }
-            internal BindingSignature Binding { get; }
-            internal SpelledType? FunctionPointer => _isFunctionPointer ? this : _functionPointer;
-
-            internal SpelledType(TypeDesc type, string name, string key, SpelledType? functionPointer = null,
-                bool isFunctionPointer = false, bool open = false, BindingSignature? binding = null)
-            {
-                Type = type;
-                Name = name;
-                Key = key;
-                Open = open;
-                Binding = binding ?? new BindingSignature(type: type);
-                _functionPointer = functionPointer;
-                _isFunctionPointer = isFunctionPointer;
-            }
-        }
-
-        /// <summary>Signature decoder that spells function pointer types, whose
-        /// signatures the main TypeDesc decoder drops.</summary>
-        private sealed class FunctionPointerSpellingProvider : ISignatureTypeProvider<SpelledType, object?>
-        {
-            private readonly CppEmitter _e;
-            private readonly SignatureProvider _types;
-
-            internal FunctionPointerSpellingProvider(CppEmitter e, SignatureProvider types)
-            {
-                _e = e;
-                _types = types;
-            }
-
-            // Keyed by the model's identity, so same-named types of two assemblies
-            // name two function pointer types, as they do in .NET.
-            private SpelledType Leaf(TypeDesc type)
-            {
-                string name = type.IsVoid ? "System.Void" : _e.ReflectionSignatureType(type, qualifyPrimitive: true);
-                return new SpelledType(type, name, Compilation.IdentityMangle(type),
-                    open: Compilation.ContainsGenericVar(type) || Compilation.ContainsCanonPlaceholder(type));
-            }
-
-            public SpelledType GetPrimitiveType(PrimitiveTypeCode typeCode) => Leaf(_types.GetPrimitiveType(typeCode));
-            public SpelledType GetTypeFromDefinition(MetadataReader reader, TypeDefinitionHandle handle, byte rawTypeKind) =>
-                Leaf(_types.GetTypeFromDefinition(reader, handle, rawTypeKind));
-            public SpelledType GetTypeFromReference(MetadataReader reader, TypeReferenceHandle handle, byte rawTypeKind) =>
-                Leaf(_types.GetTypeFromReference(reader, handle, rawTypeKind));
-            public SpelledType GetSZArrayType(SpelledType elementType) =>
-                new(_types.GetSZArrayType(elementType.Type), elementType.Name + "[]", elementType.Key + "[]", open: elementType.Open,
-                    binding: new BindingSignature(6, children: new[] { elementType.Binding }));
-            public SpelledType GetArrayType(SpelledType elementType, ArrayShape shape)
-            {
-                string rank = "[" + new string(',', shape.Rank - 1) + "]";
-                return new(_types.GetArrayType(elementType.Type, shape), elementType.Name + rank, elementType.Key + rank, open: elementType.Open,
-                    binding: new BindingSignature(7, value: shape.Rank, children: new[] { elementType.Binding }));
-            }
-            public SpelledType GetByReferenceType(SpelledType elementType) =>
-                new(_types.GetByReferenceType(elementType.Type), elementType.Name + "&", elementType.Key + "&",
-                    elementType.FunctionPointer, open: elementType.Open,
-                    binding: new BindingSignature(2, children: new[] { elementType.Binding }));
-            public SpelledType GetPointerType(SpelledType elementType) =>
-                new(_types.GetPointerType(elementType.Type), elementType.Name + "*", elementType.Key + "*",
-                    elementType.FunctionPointer, open: elementType.Open,
-                    binding: new BindingSignature(1, children: new[] { elementType.Binding }));
-            public SpelledType GetFunctionPointerType(MethodSignature<SpelledType> signature)
-            {
-                var names = new string[signature.ParameterTypes.Length];
-                var keys = new string[names.Length];
-                bool open = signature.ReturnType.Open;
-                for (int i = 0; i < names.Length; i++)
-                {
-                    names[i] = signature.ParameterTypes[i].Name;
-                    keys[i] = signature.ParameterTypes[i].Key;
-                    open |= signature.ParameterTypes[i].Open;
-                }
-                string name = signature.ReturnType.Name + "(" + string.Join(", ", names) + ")";
-                int convention = signature.Header.RawValue;
-                // CLR function-pointer identity merges the unmanaged ABI conventions.
-                if ((convention & 0xf) is >= 1 and <= 4)
-                    convention = (convention & ~0xf) | 9;
-                string key = "fnptr " + convention.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                    + " " + signature.ReturnType.Key + "(" + string.Join(", ", keys) + ")";
-                var children = new BindingSignature[signature.ParameterTypes.Length + 1];
-                children[0] = signature.ReturnType.Binding;
-                for (int i = 0; i < signature.ParameterTypes.Length; i++)
-                    children[i + 1] = signature.ParameterTypes[i].Binding;
-                return new SpelledType(TypeDesc.MakeFunctionPointer(), name, key, isFunctionPointer: true, open: open,
-                    binding: new BindingSignature(3, value: convention, children: children));
-            }
-            public SpelledType GetGenericInstantiation(SpelledType genericType,
-                System.Collections.Immutable.ImmutableArray<SpelledType> typeArguments)
-            {
-                var args = new TypeDesc[typeArguments.Length];
-                for (int i = 0; i < args.Length; i++) args[i] = typeArguments[i].Type;
-                var type = _types.GetGenericInstantiation(genericType.Type,
-                    System.Collections.Immutable.ImmutableArray.Create(args));
-                var leaf = Leaf(type);
-                var children = new BindingSignature[typeArguments.Length];
-                for (int i = 0; i < children.Length; i++)
-                    children[i] = typeArguments[i].Binding;
-                return new SpelledType(type, leaf.Name, leaf.Key, open: leaf.Open,
-                    binding: new BindingSignature(4, type, children: children));
-            }
-            public SpelledType GetGenericMethodParameter(object? genericContext, int index) =>
-                Leaf(_types.GetGenericMethodParameter(genericContext, index));
-            public SpelledType GetGenericTypeParameter(object? genericContext, int index)
-            {
-                var leaf = Leaf(_types.GetGenericTypeParameter(genericContext, index));
-                return new SpelledType(leaf.Type, leaf.Name, leaf.Key, open: leaf.Open,
-                    binding: leaf.Open ? new BindingSignature(5, value: index) : leaf.Binding);
-            }
-            public SpelledType GetModifiedType(SpelledType modifier, SpelledType unmodifiedType, bool isRequired) =>
-                unmodifiedType;
-            public SpelledType GetPinnedType(SpelledType elementType) => elementType;
-            public SpelledType GetTypeFromSpecification(MetadataReader reader, object? genericContext,
-                TypeSpecificationHandle handle, byte rawTypeKind) =>
-                reader.GetTypeSpecification(handle).DecodeSignature(this, genericContext);
-        }
-
-        private readonly Dictionary<MethodInfo, MethodSignature<SpelledType>?> _functionPointerSignatures = new();
-
         /// <summary>The function pointer type that <paramref name="type"/>, parameter
         /// <paramref name="parameter"/> of <paramref name="method"/> (-1 for its return),
         /// is or ends at through pointer and by-ref levels, spelled from the metadata
@@ -1004,19 +874,7 @@ internal sealed partial class CppEmitter
                 t = element;
             if (!t.IsFunctionPointer)
                 return null;
-            if (!_functionPointerSignatures.TryGetValue(method, out var signature))
-            {
-                try
-                {
-                    var md = method.Module.Reader.GetMethodDefinition(method.Handle);
-                    signature = md.DecodeSignature(new FunctionPointerSpellingProvider(_e, _c.SigProvider), method.Context);
-                }
-                catch (Exception e) when (!Compilation.IsMustEscape(e))
-                {
-                    signature = null;
-                }
-                _functionPointerSignatures[method] = signature;
-            }
+            var signature = _e.ReflectionSignature(method);
             if (signature is not { } decoded)
                 return null;
             var spelled = parameter < 0 ? decoded.ReturnType
@@ -1313,14 +1171,20 @@ internal sealed partial class CppEmitter
                     if (!_e.KeepsReflectionMethodRow(cls, m, propertyAccessors))
                         continue;
                     bool definitionOnly = m.Signature.GenericParameterCount > 0 && m.Context.MethodArgs.Length == 0;
-                    void NoteSignatureType(TypeDesc type)
+                    var decodedSignature = HasSignatureShape(m.Signature.ReturnType) || m.Signature.ParameterTypes.Any(HasSignatureShape)
+                        ? _e.ReflectionSignature(m) : null;
+                    void NoteSignatureType(TypeDesc type, BindingSignature? binding)
                     {
-                        if (!definitionOnly || !(Compilation.ContainsGenericVar(type) || Compilation.ContainsCanonPlaceholder(type)))
-                            NoteReflectedType(type, definitionOnly && _e._metadataOnlyDefinitions.Contains(m));
+                        if (definitionOnly && (Compilation.ContainsGenericVar(type) || Compilation.ContainsCanonPlaceholder(type)))
+                            return;
+                        bool addedDefinition = definitionOnly && _e._metadataOnlyDefinitions.Contains(m);
+                        NoteReflectedType(type, addedDefinition);
+                        if (HasSignatureShape(type) && binding is not null)
+                            _e.NoteReflectionSignatureLeaves(binding, leaf => NoteReflectedType(leaf, addedDefinition));
                     }
-                    NoteSignatureType(m.Signature.ReturnType);
-                    foreach (var p in m.Signature.ParameterTypes)
-                        NoteSignatureType(p);
+                    NoteSignatureType(m.Signature.ReturnType, decodedSignature?.ReturnType.Binding);
+                    for (int i = 0; i < m.Signature.ParameterTypes.Length; i++)
+                        NoteSignatureType(m.Signature.ParameterTypes[i], decodedSignature?.ParameterTypes[i].Binding);
                     foreach (var ga in m.Context.MethodArgs)
                         NoteReflectedType(ga);
                     if (CustomModifiers(m) is { } modifiers)
@@ -2916,9 +2780,10 @@ internal sealed partial class CppEmitter
                             : $"(({cls.CppStructName}*)o)->{f.CppName}");
                     string getName = $"fldget_{cls.CppName}_{f.CppName}";
                     string setName = $"fldset_{cls.CppName}_{f.CppName}";
+                    var pointerSpelling = f.Type.Kind == TypeKind.Pointer
+                        ? FunctionPointerSpelling(cls, fieldHandles.GetValueOrDefault(f.Name), f.Type) : null;
                     var pointerPass = f.Type.Kind == TypeKind.Pointer
-                        ? _e.ReflectionPass(f.Type, _emittedEnums,
-                            FunctionPointerSpelling(cls, fieldHandles.GetValueOrDefault(f.Name), f.Type))
+                        ? _e.ReflectionPass(f.Type, _emittedEnums, pointerSpelling)
                         : (Kind: 0, Type: "nullptr");
                     bool isPointer = (pointerPass.Kind & PassPointer) != 0;
                     int pointerDepth = ((pointerPass.Kind >> PassPointerDepthShift) & 0xFF) + 1;
@@ -2978,7 +2843,9 @@ internal sealed partial class CppEmitter
                         // validation; the dispatcher then refuses its store.
                         string nullCheck = f.IsStatic && (f.Attributes & System.Reflection.FieldAttributes.InitOnly) != 0
                             && (pointerPass.Kind & PassFunctionPointer) != 0 ? "if (val == nullptr) return nullptr; " : "";
-                        _sb.AppendLine($"static Dn2CppObject* {checkName}(Dn2CppObject* val) {{ {nullCheck}return dn2cpp_field_pointer_value(val, {pointerPass.Kind}, {pointerPass.Type}); }}");
+                        string signature = _e.EmitBindingSignature(_sb,
+                            _e.QuerySignature(PointerQuerySignature(f.Type, pointerSpelling?.Binding)), query: true);
+                        _sb.AppendLine($"static Dn2CppObject* {checkName}(Dn2CppObject* val) {{ {nullCheck}return dn2cpp_field_pointer_value(val, {pointerPass.Kind}, {pointerPass.Type}, {signature}); }}");
                         valueCheck = $"&{checkName}";
                     }
                     (get, set) = ($"&{getName}", $"&{setName}");
@@ -3088,7 +2955,7 @@ internal sealed partial class CppEmitter
                     for (int i = 0; i < ps.Length; i++)
                     {
                         string ptInfo = definitionOnly && (Compilation.ContainsGenericVar(ps[i]) || Compilation.ContainsCanonPlaceholder(ps[i]))
-                            ? "&dn2cpp_object_type" : _e.MemberTypeInfoExpr(ps[i], _emittedEnums);
+                            ? "&dn2cpp_object_type" : _e.ReflectionAbiTypeInfoExpr(ps[i], _emittedEnums);
 
                         (string Expr, int Count) pca = ("nullptr", 0);
                         int pAttrs = 0;
@@ -3123,6 +2990,7 @@ internal sealed partial class CppEmitter
                             MetadataValue.Signed(pass.Kind), MetadataValue.Ref(pass.Type),
                             MetadataValue.Ref(defaultValue),
                             MetadataValue.Ref(definitionOnly ? "nullptr" : _e.ReflectionBindingPointee(ps[i], _emittedEnums)),
+                            MetadataValue.Ref(_e.EmitReflectionSignature(_sb, m, i)),
                         }));
                     }
                     // Intern byte-identical parameter tables across the whole
@@ -3229,7 +3097,7 @@ internal sealed partial class CppEmitter
                     attrs |= _e.NullReceiverAttrs(cls, m);
                 string retInfo = definitionOnly && (Compilation.ContainsGenericVar(m.Signature.ReturnType)
                     || Compilation.ContainsCanonPlaceholder(m.Signature.ReturnType))
-                    ? "&dn2cpp_object_type" : _e.MemberTypeInfoExpr(m.Signature.ReturnType, _emittedEnums);
+                    ? "&dn2cpp_object_type" : _e.ReflectionAbiTypeInfoExpr(m.Signature.ReturnType, _emittedEnums);
                 var retPass = definitionOnly ? (Attrs: 0, Referent: "nullptr", Signature: "nullptr")
                     : _e.ReflectionReturnPass(m.Signature.ReturnType, _emittedEnums,
                         FunctionPointerSpelling(m, -1, m.Signature.ReturnType));
@@ -3295,6 +3163,7 @@ internal sealed partial class CppEmitter
                     MetadataValue.Ref(RenderGenericParameters(m)),
                     MetadataValue.Ref(retPass.Signature),
                     MetadataValue.Ref(definitionOnly ? "nullptr" : _e.ReflectionBindingPointee(m.Signature.ReturnType, _emittedEnums)),
+                    MetadataValue.Ref(_e.EmitReflectionSignature(_sb, m, -1)),
                 }));
             }
             // The trim can empty a table the member list did not. A zero-length array is

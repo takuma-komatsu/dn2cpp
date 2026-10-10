@@ -337,6 +337,14 @@ int main()
     require(pointer_return.returnPassType == &original_type && pointer_return.returnBindingPointeeType == pointers[3]
         && pointer_return.returnSignatureType == nullptr,
         "pointer return binding identity crosses the high presence-mask bit without changing boxing");
+    auto query_parameter_record = record(0, (1ULL << 14) | (1ULL << 17), { 1, 4 });
+    auto query_parameter = *Dn2CppMetadataHandle<Dn2CppParamInfo>::from_static(query_parameter_record.bytes.data());
+    require(query_parameter.passType == &original_type && query_parameter.reflectionSignature == pointers[3],
+        "query parameter AST relocates independently of Invoke pass type");
+    auto query_return_record = record(0, (1ULL << 29) | (1ULL << 33), { 1, 4 });
+    auto query_return = *Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_static(query_return_record.bytes.data());
+    require(query_return.returnPassType == &original_type && query_return.returnReflectionSignature == pointers[3],
+        "query return AST relocates above the high presence-mask bit");
     auto named = record(0, 1, { 3 });
     require(Dn2CppMetadataHandle<Dn2CppEnumMember>::from_static(named.bytes.data())->name == unicode,
         "Unicode names remain exact pooled bytes");
@@ -409,12 +417,14 @@ int main()
     original.metadataToken = INT32_MAX;
     original.returnPassType = &original_type;
     original.returnBindingPointeeType = &substituted_type;
+    original.returnReflectionSignature = reinterpret_cast<const Dn2CppBindingSignature*>(&substituted_type);
     Dn2CppMethodDelta deltas[] = { { 1, &original, &substituted_type }, { 1, &original, &original_type } };
     auto delta = Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw(&deltas[0]);
     require(delta.native() == nullptr, "a method delta is decoded instead of treated as a native row");
     require(delta->declaringType == &substituted_type && delta->name == unicode
         && delta->metadataToken == INT32_MAX && original.declaringType == &original_type
-        && delta->returnPassType == &original_type && delta->returnBindingPointeeType == &substituted_type,
+        && delta->returnPassType == &original_type && delta->returnBindingPointeeType == &substituted_type
+        && delta->returnReflectionSignature == original.returnReflectionSignature,
         "constructor delta preserves original metadata and changes only declaring type");
     require(dn2cpp_metadata_at(deltas, Dn2CppMetadataKind::Method, sizeof(Dn2CppMethodInfo), 1) == &deltas[1],
         "constructor delta table uses descriptor stride");

@@ -236,6 +236,9 @@ DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke
 
 py="$(resolve_python)"
 source gates/_delegate-identity.sh
+source gates/_reflection-signature-types.sh
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_reflection-signature-types.sh samples/dotnet/ReflectInvoke/ReflectionSignatureTypesOnly.csproj"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|signature-type-query:packed,native,uncompressed,trimmed,unshared|signature-prefix-argv:before-reflection-signature-types"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_delegate-identity.sh gates/fold-delegate-fixture.py samples/dotnet/ReflectInvoke/DelegateVirtualIdentityOnly.csproj samples/dotnet/ReflectInvoke/DelegateVirtualIdentityLibrary.csproj samples/dotnet/ReflectInvoke/DelegateVirtualIdentityOnlyProgram.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|virtual-delegate-identity:default,trimmed,unshared,folded|virtual-delegate-prefix-argv:before-virtual-delegate-identity|runtime-owned-method-groups-prefix-argv:before-runtime-owned-method-groups"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/check-reflection-layout.py gates/measure-reflection-metadata.py gates/expected/reflection-allocations.csv gates/fixtures/delegate-invocation-cache/DelegateInvocationCache.csproj gates/fixtures/delegate-invocation-cache/Program.cs gates/fixtures/reflection-metadata-codec.cpp"
@@ -329,6 +332,7 @@ gate_empty_string_clone_asserts() {
 gate_extra_asserts() {
     gate_virtual_delegate_prefix_asserts "$1"
     gate_runtime_owned_delegate_prefix_asserts "$1"
+    gate_reflection_signature_prefix_asserts "$1"
     local out="$1" native line registry boundary axis route query expected parameter
     "$py" gates/fixtures/check-reflection-layout.py "$out" "$reflection_layout_axis"
     # The runtime publishes a constructor's invoke plan only for a record inside a
@@ -957,11 +961,11 @@ gate_extra_asserts() {
                 done
             fi
         done
-        # Closed byref ParameterType retains the separate signature-handle limit.
+        # Closed byref queries use the same signature handle as MakeByRefType.
         grep -Fxq -- 'signature RefShape closed return=type:System.Int32|parameter=False|contains=False' <<< "$boundary"
         grep -Fxq -- 'signature RefShape closed return-parameter=type:System.Int32|parameter=False|contains=False' <<< "$boundary"
+        grep -Fxq -- 'signature RefShape closed parameter=type:System.Int32&|parameter=False|contains=False' <<< "$boundary"
         if [ "$axis" = native ]; then
-            grep -Fxq -- 'signature RefShape closed parameter=type:System.Object|parameter=False|contains=False' <<< "$boundary"
             for line in Unconstrained ValueConstrained InterfaceConstrained ReferenceConstrained BaseConstrained; do
                 grep -Fxq -- "signature constraints $line fault=PlatformNotSupportedException" <<< "$boundary"
             done
@@ -1670,6 +1674,7 @@ gate_extra_asserts() {
 
     # Initial intrinsic lookup allocates one native method row; enumeration can
     # allocate inherited Object rows. Each native row includes its binding pointee pointer.
+    # Synthesized metadata rows hold MethodInfo inline and are interned on cold lookup.
     # Enforce each operation's first and repeated allocation budget independently.
     # The capture reports time too, but timing is not a pass/fail threshold.
     DN2CPP_REFLECTION_MEASURE=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/allocations.csv"
@@ -2746,3 +2751,5 @@ done
 # The isolated driver uses the same appended delegate section with actual folding
 # and with receiver reflection metadata absent.
 delegate_identity_diff_axes
+
+reflection_signature_diff_axes

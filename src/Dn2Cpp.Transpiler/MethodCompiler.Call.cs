@@ -1063,17 +1063,9 @@ internal sealed partial class MethodCompiler
                         return;
                     }
                 }
-                // TypeInfo.DeclaredFields: a runtime Type IS its own TypeInfo
-                // (GetTypeInfo is the identity), so the property must answer from the
-                // reflection member tables — the resolved virtual dispatch would enter
-                // the runtime-owned dn2cpp_type_type, which carries no vtable.
-                // Intercepted before real resolution; the real body stays reachable
-                // (route-without-cut = bloat, never a link error).
-                if (mrParent == "System.Reflection.TypeInfo" && mrName == "get_DeclaredFields")
-                {
-                    EmitIntrinsic("System.Reflection.TypeInfo", mrName, Sig());
+                if (TryEmitMemberRefIntercept(CoreIntrinsics.MrTypeInfoDeclaredMembers,
+                        mr, mrParent, mrName, Sig))
                     return;
-                }
                 // MemoryExtensions.ToUpperInvariant/ToLowerInvariant(ReadOnlySpan<char>,
                 // Span<char>): the per-code-unit BMP invariant fold in the runtime
                 // (returns the source length, -1 when the destination is too short;

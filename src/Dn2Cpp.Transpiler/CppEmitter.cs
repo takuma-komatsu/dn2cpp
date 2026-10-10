@@ -497,6 +497,13 @@ internal sealed partial class CppEmitter
             AddType(m.Signature.ReturnType);
             foreach (var p in m.Signature.ParameterTypes)
                 AddType(p);
+            if ((HasSignatureShape(m.Signature.ReturnType) || m.Signature.ParameterTypes.Any(HasSignatureShape))
+                && ReflectionSignature(m) is { } signature)
+            {
+                NoteReflectionSignatureLeaves(signature.ReturnType.Binding, type => AddType(type));
+                foreach (var p in signature.ParameterTypes)
+                    NoteReflectionSignatureLeaves(p.Binding, type => AddType(type));
+            }
         }
         // Full-layout emit roots recorded during body compilation: a
         // static-field owner whose static-field symbol a body references (the
@@ -507,6 +514,8 @@ internal sealed partial class CppEmitter
             Add(c);
         foreach (var c in _sigClosureRoots)
             Add(c);
+        foreach (var signature in _c.ReflectionTypeTokens.Values.ToList())
+            NoteReflectionSignatureLeaves(signature, type => AddType(type));
 
         // An app-module class's reflection tables list every member it declares — only a
         // reference assembly's unreached members are trimmed (BuildMemberTable) — and every
@@ -547,6 +556,13 @@ internal sealed partial class CppEmitter
                     AddSignatureType(m.Signature.ReturnType);
                     foreach (var p in m.Signature.ParameterTypes)
                         AddSignatureType(p);
+                    if ((HasSignatureShape(m.Signature.ReturnType) || m.Signature.ParameterTypes.Any(HasSignatureShape))
+                        && ReflectionSignature(m) is { } signature)
+                    {
+                        NoteReflectionSignatureLeaves(signature.ReturnType.Binding, AddSignatureType);
+                        foreach (var p in signature.ParameterTypes)
+                            NoteReflectionSignatureLeaves(p.Binding, AddSignatureType);
+                    }
                 }
             }
         }
@@ -918,6 +934,7 @@ internal sealed partial class CppEmitter
         // which is one of the seeds. A no-op unless the flag was passed.
         _c.ComputeReflectionKeepSet();
         EmitTypeInfos(o);
+        EmitReflectionTypeTokens(o);
         // Every ti_ an emitted body named is now either defined by the type-info emission
         // just run or a genuine hole; assert the former before the C++ link finds the latter.
         AssertNamedTypeInfosDefined();
@@ -4282,6 +4299,13 @@ internal sealed partial class CppEmitter
     private string MemberTypeInfoExpr(TypeDesc t, HashSet<ClassInfo> emittedEnums) =>
         t.IsVoid ? "&dn2cpp_void_type" : FieldTypeInfoExpr(t, emittedEnums);
 
+    // A query-only intrinsic handle supplies identity, not Invoke marshalling or
+    // delegate-binding evidence. Ordinary body/typeof references retain their ABI.
+    private string ReflectionAbiTypeInfoExpr(TypeDesc t, HashSet<ClassInfo> emittedEnums) =>
+        t is { Kind: TypeKind.Class, Class: { } cls } && IsQueryOnlyIntrinsic(cls)
+            && CoreIntrinsics.RuntimeTypeInfoSymbol(cls) is null
+            ? "&dn2cpp_object_type" : MemberTypeInfoExpr(t, emittedEnums);
+
     /// <summary>How Invoke passes an argument of type <paramref name="t"/>, or reads a
     /// return of it, that the invoker thunk cannot take as a box: the
     /// <c>DN2CPP_PASS_*</c> bits of <c>Dn2CppParamInfo::passKind</c> and the type they
@@ -4319,7 +4343,7 @@ internal sealed partial class CppEmitter
                 levels++;
                 pointee = pointee.Element!;
             }
-            string type = pointee.IsFunctionPointer ? functionPointerType : MemberTypeInfoExpr(pointee, emittedEnums);
+            string type = pointee.IsFunctionPointer ? functionPointerType : ReflectionAbiTypeInfoExpr(pointee, emittedEnums);
             if (pointee.IsFunctionPointer)
                 kind |= PassFunctionPointerPointee | signatureUnknown;
             if (levels > ReturnPointerDepthMask)
@@ -4338,10 +4362,10 @@ internal sealed partial class CppEmitter
             return (kind | PassPointer | (levels << PassPointerDepthShift), type);
         }
         if (t is { Kind: TypeKind.Class, Class.IsByRefLike: true })
-            return (kind | PassByRefLike, FieldTypeInfoExpr(t, emittedEnums));
+            return (kind | PassByRefLike, ReflectionAbiTypeInfoExpr(t, emittedEnums));
         if (kind == 0)
             return (0, "nullptr");
-        string referent = FieldTypeInfoExpr(t, emittedEnums);
+        string referent = ReflectionAbiTypeInfoExpr(t, emittedEnums);
         bool? valueType = t.Kind switch
         {
             TypeKind.Primitive => !t.IsString && !t.IsObject && !t.IsVoid,
@@ -4439,7 +4463,7 @@ internal sealed partial class CppEmitter
         }
         if (t.Kind == TypeKind.External && _c.ResolveExternalClass(t) is { } external)
             t = TypeDesc.MakeClass(external);
-        if (t.IsFunctionPointer || t.IsObject || MemberTypeInfoExpr(t, emittedEnums) != "&dn2cpp_object_type")
+        if (t.IsFunctionPointer || t.IsObject || ReflectionAbiTypeInfoExpr(t, emittedEnums) != "&dn2cpp_object_type")
             return "nullptr";
         int remainder = Math.Max(0, levels - ReturnPointerDepthMask);
         string further = new('*', remainder);
@@ -5763,7 +5787,7 @@ internal sealed partial class CppEmitter
         sb.AppendLine();
     }
 
-    private sealed class BindingSignature
+    internal sealed class BindingSignature
     {
         internal readonly int Kind;
         internal readonly TypeDesc? Type;
@@ -5809,21 +5833,24 @@ internal sealed partial class CppEmitter
         rows.Add((System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(method.Handle), parameter, type, signature));
     }
 
-    private string EmitBindingSignature(StringBuilder sb, BindingSignature signature)
+    private string EmitBindingSignature(StringBuilder sb, BindingSignature signature, bool query = false)
     {
         if (signature.Kind == 0 && signature.Type is { Kind: TypeKind.SZArray or TypeKind.MDArray, Element: { } element } array)
             signature = new BindingSignature(array.Kind == TypeKind.SZArray ? 6 : 7, value: array.Rank,
                 children: new[] { new BindingSignature(type: element) });
         if (signature.Kind == 0 && signature.Type is { Kind: TypeKind.Class, Class: { } opaque }
-            && opaque.Context.TypeArgs.Length > 0 && !TypeInfoSymbolDefined(opaque.CppTypeInfoName)
+            && opaque.Context.TypeArgs.Length > 0
+            && (!query || !TypeInfoSymbolDefined(opaque.CppTypeInfoName))
             && !Compilation.ContainsCanonPlaceholder(signature.Type) && !Compilation.ContainsGenericVar(signature.Type))
+            // Binding paths traverse generic arguments even when a query-only
+            // dependency happened to give the closed leaf its own type-info.
             signature = new BindingSignature(4, signature.Type,
                 children: opaque.Context.TypeArgs.Select(t => new BindingSignature(type: t)).ToArray());
         string symbol = "bindsig_" + _bindingSignatureSequence++;
         var children = new List<string>();
         foreach (var child in signature.Children)
         {
-            string childSymbol = EmitBindingSignature(sb, child);
+            string childSymbol = EmitBindingSignature(sb, child, query);
             children.Add("*" + childSymbol);
         }
         string childExpr = "nullptr";
@@ -5848,6 +5875,7 @@ internal sealed partial class CppEmitter
                 type = t.Kind == TypeKind.Primitive
                     ? t.IsVoid ? "&dn2cpp_void_type" : MethodCompiler.TypeInfoExprOf(t) ?? "nullptr"
                     : t is { Kind: TypeKind.Class, Class: { } literal } && TypeInfoSymbolDefined(literal.CppTypeInfoName)
+                        && (query || !IsQueryOnlyIntrinsic(literal))
                         ? TypeInfoRef(literal, "binding signature leaf") : "nullptr";
             if (kind == 0 && !Compilation.ContainsCanonPlaceholder(t) && !Compilation.ContainsGenericVar(t)
                 && t is { Kind: TypeKind.Class, Class: { GenericArity: 0 } named }
