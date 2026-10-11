@@ -521,6 +521,12 @@ internal sealed partial class MethodCompiler
             string st = CppTypes.StorageOf(arrayType.Element!);
             string indicesInit = string.Join(", ", indices);
             string castedArr = Cast(arr, "Dn2CppMDArray*");
+            if (RepOf(arrayType.Element!) == ArrRep.Ref)
+            {
+                string receiver = NewTemp("Dn2CppMDArray*");
+                Emit($"{receiver} = dn2cpp_array_require_receiver({castedArr});");
+                castedArr = receiver;
+            }
 
             string addr;
             if (rank == 2)
@@ -532,8 +538,12 @@ internal sealed partial class MethodCompiler
 
             // Read the packed slot (st) and widen to the int32 stack type; st == ct
             // for every non-sub-word element, so this is the original expression.
-            Push(CppTypes.KindOf(arrayType.Element!), ct,
-                st == ct ? $"*({ct}*){addr}" : $"({ct})(*({st}*){addr})");
+            string read = RepOf(arrayType.Element!) == ArrRep.Ref
+                ? Cast(new StackEntry($"dn2cpp_array_load_ref(({castedArr})->type != nullptr ? ({castedArr})->type->elementType : nullptr, {addr}, true)",
+                    StackKind.Ref, "Dn2CppObject*"), ct)
+                : st == ct ? $"*({ct}*){addr}" : $"({ct})(*({st}*){addr})";
+            Push(CppTypes.KindOf(arrayType.Element!), ct, read);
+            Top = Top with { StaticType = arrayType.Element! };
         }
         else if (name == "Set")
         {
@@ -573,14 +583,7 @@ internal sealed partial class MethodCompiler
             {
                 string address = NewTemp("void*");
                 Emit($"{address} = {addrExpr};");
-                if (IsHeaderlessWrapCpp(ct))
-                {
-                    // Typed headerless slots keep the pointer ABI exposed by Address.
-                    Emit($"*({ct}*){address} = {HeaderlessUnwrapExpr(objectValue, ct)};");
-                    Emit($"dn2cpp_gc_write_barrier({address});");
-                }
-                else
-                    Emit($"dn2cpp_gc_store_ref((Dn2CppObject**){address}, {objectValue});");
+                Emit($"dn2cpp_array_store_ref(({castedArr})->type != nullptr ? ({castedArr})->type->elementType : nullptr, {address}, {objectValue}, true);");
             }
             else
             {
@@ -615,6 +618,7 @@ internal sealed partial class MethodCompiler
                 addrExpr = $"dn2cpp_md_elem_addr({castedArr}, dn2cpp_i32s({indicesInit}).v)";
 
             Push(StackKind.Ptr, st + "*", $"({st}*){addrExpr}");
+            Top = Top with { StaticType = TypeDesc.MakeByRef(arrayType.Element!) };
         }
         else
         {

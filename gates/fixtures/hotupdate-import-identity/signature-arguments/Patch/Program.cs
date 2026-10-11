@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 
 namespace SignatureArgumentImports;
 
@@ -57,5 +58,18 @@ internal static unsafe class PatchProgram
         Console.WriteLine("generic fields still initialized once");
         Console.WriteLine(Surface.FieldInitializations);
         Console.WriteLine("imported generic fields end");
+
+        Console.WriteLine("== imported managed providers ==");
+        IFormatProvider culture = Surface.CultureProvider();
+        Surface.ProviderField = Surface.ForwardProvider(culture);
+        Console.WriteLine(ReferenceEquals(Surface.ProviderField, culture));
+        Console.WriteLine(Surface.ProviderField is CultureInfo);
+        IFormatProvider dates = Surface.DateProvider();
+        Surface.ProviderField = Surface.ForwardProvider(dates);
+        Console.WriteLine(ReferenceEquals(Surface.ProviderField, dates));
+        Console.WriteLine(Surface.ProviderField is DateTimeFormatInfo);
+        Surface.ProviderField = Surface.ForwardProvider(null);
+        Console.WriteLine(Surface.ProviderField is null);
+        Console.WriteLine("imported managed providers end");
     }
 }

@@ -651,6 +651,48 @@ const Dn2CppNumberFormatInfo* dn2cpp_nfi_unwrap(Dn2CppObject* o)
     return reinterpret_cast<const Dn2CppNumberFormatInfo*>(o);
 }
 
+Dn2CppObject* dn2cpp_format_provider_get_format(Dn2CppObject* provider, Dn2CppType* requested)
+{
+    if (provider == nullptr)
+        dn2cpp_throw_null_reference();
+    const Dn2CppTypeInfo* wanted = requested != nullptr ? requested->typeInfo : nullptr;
+    const Dn2CppTypeInfo* held = dn2cpp_nfi_box_ti(provider);
+    if (held != nullptr)
+    {
+        const auto* payload = reinterpret_cast<Dn2CppNfiBox*>(provider)->nfi;
+        if (wanted == &dn2cpp_numberformatinfo_type
+            && (held == &dn2cpp_cultureinfo_type || held == &dn2cpp_numberformatinfo_type))
+            return dn2cpp_nfi_wrap(payload, DN2CPP_NFI_KIND_NFI);
+        if (held == &dn2cpp_cultureinfo_type && wanted != nullptr && wanted->name != nullptr
+            && std::strcmp(wanted->name, "System.Globalization.DateTimeFormatInfo") == 0)
+        {
+            auto* result = static_cast<Dn2CppObject*>(dn2cpp_alloc(
+                static_cast<size_t>(wanted->instanceSize > static_cast<int32_t>(sizeof(Dn2CppObject))
+                    ? wanted->instanceSize : sizeof(Dn2CppObject))));
+            result->type = wanted;
+            return result;
+        }
+        return nullptr;
+    }
+    if (provider->type != nullptr && provider->type->name != nullptr
+        && std::strcmp(provider->type->name, "System.Globalization.DateTimeFormatInfo") == 0)
+        return wanted == provider->type ? provider : nullptr;
+    dn2cpp_throw_platform_not_supported("IFormatProvider.GetFormat has no implementation in this image");
+}
+
+const Dn2CppNumberFormatInfo* dn2cpp_format_provider_nfi(Dn2CppObject* provider)
+{
+    if (provider == nullptr)
+        return nullptr;
+    const Dn2CppTypeInfo* held = dn2cpp_nfi_box_ti(provider);
+    if (held == &dn2cpp_cultureinfo_type || held == &dn2cpp_numberformatinfo_type)
+        return reinterpret_cast<Dn2CppNfiBox*>(provider)->nfi;
+    Dn2CppObject* result = dn2cpp_format_provider_get_format(provider,
+        dn2cpp_get_type_from_handle(&dn2cpp_numberformatinfo_type));
+    return result != nullptr && dn2cpp_nfi_box_ti(result) == &dn2cpp_numberformatinfo_type
+        ? reinterpret_cast<Dn2CppNfiBox*>(result)->nfi : dn2cpp_culture_current();
+}
+
 Dn2CppObject* dn2cpp_nfi_wrap(const Dn2CppNumberFormatInfo* n, int32_t kind)
 {
     if (n == nullptr)

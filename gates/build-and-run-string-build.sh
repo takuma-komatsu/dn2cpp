@@ -15,7 +15,11 @@
 # StringBuilder range Append preserves value faults and zero-count shortcuts.
 # Former gates: string-format, stringbuilder, stringbuilder-edit.
 # String.Format preserves argument precedence and reports argument-list index faults.
+# Composite formatting consumes managed number providers only for numeric specifiers.
 source "$(dirname "$0")/_common.sh"
+source "$(dirname "$0")/_headerless-reference-identity.sh"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_headerless-reference-identity.sh"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|managed-format-provider"
 
 gate_extra_asserts() {
     local out="$1" native before prefix line
@@ -215,6 +219,7 @@ gate_extra_asserts() {
             || { echo "FAIL: String format fault witness missing: $line" >&2; exit 1; }
     done
 
+    headerless_format_provider_asserts "$out"
 }
 
 corelib_diff_gate StringBuild

@@ -1129,7 +1129,7 @@ Dn2CppString* dn2cpp_enum_format(Dn2CppType* t, Dn2CppObject* value, Dn2CppStrin
 // dn2cpp_enum_format does not pin this translation unit into every binary: only a
 // program whose emitted map carries the slot references it. See the header.
 int32_t dn2cpp_enum_box_try_format(Dn2CppObject* box, Dn2CppItfCharSpan dest, int32_t* written,
-                                   Dn2CppItfCharSpan fmt, const Dn2CppNumberFormatInfo*)
+                                   Dn2CppItfCharSpan fmt, Dn2CppObject*)
 {
     Dn2CppString* spec = fmt.length > 0 ? dn2cpp_string_from_chars(fmt.ptr, fmt.length)
                                         : dn2cpp_string_from_utf8("G", 1);
@@ -3394,10 +3394,10 @@ static const Dn2CppTypeInfo* dn2cpp_enum_underlying_or_self(const Dn2CppTypeInfo
 }
 
 // A parameter the invoker thunk receives headerless: CultureInfo, NumberFormatInfo,
-// TextInfo and IFormatProvider as the culture pointer, Assembly and Module as the
+// TextInfo as the culture pointer, Assembly and Module as the
 // name. The thunk unwraps a wrapper and passes anything else through as the raw
 // handle an erased path can leave in the argument array, whose first word is no
-// type-info. Each name is "System." followed by Gl, IF or Re, so a parameter type
+// type-info. Each name is "System." followed by Gl or Re, so a parameter type
 // outside those prefixes is rejected without a string compare.
 static bool dn2cpp_invoke_headerless_param(const Dn2CppTypeInfo* p)
 {
@@ -3413,8 +3413,6 @@ static bool dn2cpp_invoke_headerless_param(const Dn2CppTypeInfo* p)
         return std::strcmp(rest, "Globalization.CultureInfo") == 0
             || std::strcmp(rest, "Globalization.NumberFormatInfo") == 0
             || std::strcmp(rest, "Globalization.TextInfo") == 0;
-    if (rest[0] == 'I' && rest[1] == 'F')
-        return std::strcmp(rest, "IFormatProvider") == 0;
     if (rest[0] == 'R' && rest[1] == 'e')
         return std::strcmp(rest, "Reflection.Assembly") == 0
             || std::strcmp(rest, "Reflection.Module") == 0;
@@ -8970,8 +8968,55 @@ static bool dn2cpp_nullable_layout(const Dn2CppTypeInfo* nullable, const Dn2CppT
 //     primitive-to-primitive non-widening throws ArgumentException, any other
 //     mismatch InvalidCastException;
 //   - any other value type requires the exact type (bitwise copy).
+static int32_t dn2cpp_array_headerless_kind(const Dn2CppTypeInfo* elem)
+{
+    if (elem == nullptr || elem->name == nullptr)
+        return 0;
+    if (std::strcmp(elem->name, "System.Globalization.CultureInfo") == 0)
+        return 1;
+    if (std::strcmp(elem->name, "System.Globalization.NumberFormatInfo") == 0)
+        return 2;
+    if (std::strcmp(elem->name, "System.Globalization.TextInfo") == 0)
+        return 3;
+    if (std::strcmp(elem->name, "System.Reflection.Assembly") == 0)
+        return 4;
+    if (std::strcmp(elem->name, "System.Reflection.Module") == 0)
+        return 5;
+    return 0;
+}
+
+Dn2CppObject* dn2cpp_array_load_ref(const Dn2CppTypeInfo* elem, const void* slot, bool rawReference)
+{
+    Dn2CppObject* value;
+    std::memcpy(&value, slot, sizeof(value));
+    if (!rawReference)
+        return value;
+    int32_t kind = dn2cpp_array_headerless_kind(elem);
+    if (kind >= 1 && kind <= 3)
+        return dn2cpp_nfi_wrap(reinterpret_cast<const Dn2CppNumberFormatInfo*>(value),
+            kind == 1 ? DN2CPP_NFI_KIND_CULTURE : kind == 2 ? DN2CPP_NFI_KIND_NFI : DN2CPP_NFI_KIND_TEXTINFO);
+    if (kind >= 4)
+        return dn2cpp_asm_wrap(reinterpret_cast<const char*>(value),
+            kind == 4 ? DN2CPP_ASM_KIND_ASSEMBLY : DN2CPP_ASM_KIND_MODULE);
+    return value;
+}
+
+void dn2cpp_array_store_ref(const Dn2CppTypeInfo* elem, void* slot, Dn2CppObject* value, bool rawReference)
+{
+    if (rawReference)
+    {
+        int32_t kind = dn2cpp_array_headerless_kind(elem);
+        if (kind >= 1 && kind <= 3)
+            value = reinterpret_cast<Dn2CppObject*>(const_cast<Dn2CppNumberFormatInfo*>(dn2cpp_nfi_unwrap(value)));
+        else if (kind >= 4)
+            value = reinterpret_cast<Dn2CppObject*>(const_cast<char*>(dn2cpp_asm_unwrap(value)));
+    }
+    std::memcpy(slot, &value, sizeof(value));
+    dn2cpp_gc_write_barrier_if_heap(slot);
+}
+
 void dn2cpp_array_store_boxed(Dn2CppObject* v, const Dn2CppTypeInfo* elem,
-                              void* dst, int32_t elemSize, bool elemIsRef)
+                              void* dst, int32_t elemSize, bool elemIsRef, bool rawReference)
 {
     if (dn2cpp_signature_kind(elem) != 0)
         dn2cpp_throw_sr0(&dn2cpp_not_supported_exception_type, DN2CPP_SR_TYPE_NOT_SUPPORTED);
@@ -8981,8 +9026,7 @@ void dn2cpp_array_store_boxed(Dn2CppObject* v, const Dn2CppTypeInfo* elem,
             && dn2cpp_type_is_assignable_from(dn2cpp_get_type_from_handle(elem),
                                               dn2cpp_get_type_from_handle(v->type)) == 0)
             dn2cpp_throw_array_store_mismatch();
-        std::memcpy(dst, &v, sizeof(Dn2CppObject*));
-        dn2cpp_gc_write_barrier_if_heap(dst);
+        dn2cpp_array_store_ref(elem, dst, v, rawReference);
         return;
     }
     if (v == nullptr)
@@ -9059,15 +9103,13 @@ void dn2cpp_array_store_boxed(Dn2CppObject* v, const Dn2CppTypeInfo* elem,
 // packed storage to the box-payload convention (4-byte small ints, natural
 // 8-byte wides); any other value type boxes bitwise under its exact type-info.
 Dn2CppObject* dn2cpp_array_box_element(const Dn2CppTypeInfo* elem, const void* src,
-                                       int32_t elemSize, bool elemIsRef)
+                                       int32_t elemSize, bool elemIsRef, bool rawReference)
 {
     if (dn2cpp_signature_kind(elem) != 0)
         dn2cpp_throw_sr0(&dn2cpp_not_supported_exception_type, DN2CPP_SR_TYPE_NOT_SUPPORTED);
     if (elemIsRef)
     {
-        Dn2CppObject* v;
-        std::memcpy(&v, src, sizeof(Dn2CppObject*));
-        return v;
+        return dn2cpp_array_load_ref(elem, src, rawReference);
     }
     if (const Dn2CppTypeInfo* u = dn2cpp_nullable_underlying_ti(elem))
     {
@@ -9199,6 +9241,7 @@ struct Dn2CppArrCopyView
     size_t stride;
     bool isRef;
     const Dn2CppTypeInfo* elem; // null = element unknown (an imprecise array handle)
+    bool rawReference;
 };
 
 static Dn2CppArrCopyView dn2cpp_array_copy_view(Dn2CppObject* a)
@@ -9209,7 +9252,7 @@ static Dn2CppArrCopyView dn2cpp_array_copy_view(Dn2CppObject* a)
         auto* md = reinterpret_cast<Dn2CppMDArray*>(a);
         const Dn2CppTypeInfo* el = t->elementType;
         bool isRef = dn2cpp_array_element_is_reference(el);
-        return { md->data, static_cast<size_t>(md->elemSize), isRef, el };
+        return { md->data, static_cast<size_t>(md->elemSize), isRef, el, isRef && dn2cpp_array_headerless_kind(el) != 0 };
     }
     const Dn2CppTypeInfo* el = t != nullptr ? t->elementType : nullptr;
     bool isRef = el == nullptr ? (t == &dn2cpp_array_ref_type)
@@ -9217,7 +9260,7 @@ static Dn2CppArrCopyView dn2cpp_array_copy_view(Dn2CppObject* a)
     if (isRef)
     {
         auto* r = static_cast<Dn2CppArrayRef*>(a);
-        return { reinterpret_cast<char*>(r->data), sizeof(Dn2CppObject*), true, el };
+        return { reinterpret_cast<char*>(r->data), sizeof(Dn2CppObject*), true, el, false };
     }
     bool isI4 = el == &dn2cpp_int32_type || el == &dn2cpp_uint32_type
         || (el != nullptr && (el->flags & DN2CPP_TF_ENUM) != 0
@@ -9226,10 +9269,10 @@ static Dn2CppArrCopyView dn2cpp_array_copy_view(Dn2CppObject* a)
     if (isI4)
     {
         auto* i = static_cast<Dn2CppArrayI4*>(a);
-        return { reinterpret_cast<char*>(i->data), sizeof(int32_t), false, el };
+        return { reinterpret_cast<char*>(i->data), sizeof(int32_t), false, el, false };
     }
     auto* n = static_cast<Dn2CppArrayN*>(a);
-    return { n->data, static_cast<size_t>(n->elemSize), false, el };
+    return { n->data, static_cast<size_t>(n->elemSize), false, el, false };
 }
 
 // Array.Copy between two arrays of DIFFERENT identity — the CLR's compatibility
@@ -9281,7 +9324,7 @@ void dn2cpp_array_copy_checked(Dn2CppObject* src, int32_t srcIdx,
         }
         refuse();
     }
-    if (se == de)
+    if (se == de && s.rawReference == d.rawReference)
     {
         dn2cpp_gc_memmove_refs(dp, sp, static_cast<size_t>(len) * s.stride);
         return;
@@ -9408,24 +9451,23 @@ void dn2cpp_array_copy_checked(Dn2CppObject* src, int32_t srcIdx,
         return;
     }
     // Reference <-> reference.
-    if (dn2cpp_typeinfo_assignable(se, de) != 0)
+    bool assignable = dn2cpp_typeinfo_assignable(se, de) != 0;
+    if (assignable && s.rawReference == d.rawReference)
     {
         dn2cpp_gc_memmove_refs(dp, sp, static_cast<size_t>(len) * s.stride);
         return;
     }
-    if (reliable || (dn2cpp_typeinfo_assignable(de, se) == 0
+    if (!assignable && (reliable || (dn2cpp_typeinfo_assignable(de, se) == 0
         && (se->flags & DN2CPP_TF_INTERFACE) == 0
-        && (de->flags & DN2CPP_TF_INTERFACE) == 0))
+        && (de->flags & DN2CPP_TF_INTERFACE) == 0)))
         refuse();
     for (int32_t k = 0; k < len; k++)
     {
-        Dn2CppObject* v;
-        std::memcpy(&v, sp + static_cast<size_t>(k) * s.stride, sizeof(Dn2CppObject*));
+        Dn2CppObject* v = dn2cpp_array_load_ref(se, sp + static_cast<size_t>(k) * s.stride, s.rawReference);
         if (v != nullptr && dn2cpp_typeinfo_assignable(v->type, de) == 0)
             dn2cpp_throw_array_copy_elem_cast();
         char* slot = dp + static_cast<size_t>(k) * d.stride;
-        std::memcpy(slot, &v, sizeof(Dn2CppObject*));
-        dn2cpp_gc_write_barrier_if_heap(slot);
+        dn2cpp_array_store_ref(de, slot, v, d.rawReference);
     }
     return;
 }

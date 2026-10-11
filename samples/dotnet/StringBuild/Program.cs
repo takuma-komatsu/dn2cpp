@@ -48,6 +48,9 @@ namespace StringBuild
             if (args.Length > 0 && args[0] == "before-format-faults")
                 return;
             StringFormatSubset.Program.RunFaults();
+            if (args.Length > 0 && args[0] == "before-managed-format-provider")
+                return;
+            HeaderlessFormatProviderSubset.Program.Run();
         }
     }
 }

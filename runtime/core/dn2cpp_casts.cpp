@@ -365,44 +365,44 @@ static int32_t dn2cpp_wellknown_self_generic_itf(const Dn2CppTypeInfo* st, const
 static int32_t dn2cpp_wellknown_self_generic_canon(const Dn2CppTypeInfo* st, const Dn2CppTypeInfo* ti);
 
 // Every `bbi` thunk takes the box pointer as its receiver, exactly as an emitted
-// unboxing thunk does, and an NFI pointer wherever the interface declares an
-// IFormatProvider (that parameter lowers to the NFI singletons everywhere).
+// unboxing thunk does. IFormatProvider uses the managed reference ABI, including
+// built-in providers; only numeric consumers extract a raw number-format payload.
 
 // IFormattable.ToString(string, IFormatProvider). Sub-word integers widen to an int32
 // payload in the box (see dn2cpp_object_tostring), so their reads are 4-byte.
 static Dn2CppString* dn2cpp_bbi_format(Dn2CppObject* box, Dn2CppString* fmt,
-                                       const Dn2CppNumberFormatInfo* nfi)
+                                       Dn2CppObject* provider)
 {
     const Dn2CppTypeInfo* t = box->type;
     const void* p = box + 1; // boxed value sits right after the header
     if (t == &dn2cpp_int32_type)
-        return dn2cpp_format_int_c(*reinterpret_cast<const int32_t*>(p), 4, fmt, nfi);
+        return dn2cpp_format_int_c(*reinterpret_cast<const int32_t*>(p), 4, fmt, dn2cpp_format_provider_nfi(provider));
     // Sub-words carry their own byte width so a hex/binary mask covers exactly
     // their two's-complement pattern, as at the direct-call arms.
     if (t == &dn2cpp_sbyte_type)
-        return dn2cpp_format_int_c(static_cast<int8_t>(*reinterpret_cast<const int32_t*>(p)), 1, fmt, nfi);
+        return dn2cpp_format_int_c(static_cast<int8_t>(*reinterpret_cast<const int32_t*>(p)), 1, fmt, dn2cpp_format_provider_nfi(provider));
     if (t == &dn2cpp_int16_type)
-        return dn2cpp_format_int_c(static_cast<int16_t>(*reinterpret_cast<const int32_t*>(p)), 2, fmt, nfi);
+        return dn2cpp_format_int_c(static_cast<int16_t>(*reinterpret_cast<const int32_t*>(p)), 2, fmt, dn2cpp_format_provider_nfi(provider));
     if (t == &dn2cpp_byte_type)
-        return dn2cpp_format_uint_c(static_cast<uint8_t>(*reinterpret_cast<const int32_t*>(p)), 1, fmt, nfi);
+        return dn2cpp_format_uint_c(static_cast<uint8_t>(*reinterpret_cast<const int32_t*>(p)), 1, fmt, dn2cpp_format_provider_nfi(provider));
     if (t == &dn2cpp_uint16_type)
-        return dn2cpp_format_uint_c(static_cast<uint16_t>(*reinterpret_cast<const int32_t*>(p)), 2, fmt, nfi);
+        return dn2cpp_format_uint_c(static_cast<uint16_t>(*reinterpret_cast<const int32_t*>(p)), 2, fmt, dn2cpp_format_provider_nfi(provider));
     if (t == &dn2cpp_uint32_type)
-        return dn2cpp_format_uint_c(*reinterpret_cast<const uint32_t*>(p), 4, fmt, nfi);
+        return dn2cpp_format_uint_c(*reinterpret_cast<const uint32_t*>(p), 4, fmt, dn2cpp_format_provider_nfi(provider));
     if (t == &dn2cpp_int64_type)
-        return dn2cpp_format_int_c(*reinterpret_cast<const int64_t*>(p), 8, fmt, nfi);
+        return dn2cpp_format_int_c(*reinterpret_cast<const int64_t*>(p), 8, fmt, dn2cpp_format_provider_nfi(provider));
     if (t == &dn2cpp_uint64_type)
-        return dn2cpp_format_uint_c(*reinterpret_cast<const uint64_t*>(p), 8, fmt, nfi);
+        return dn2cpp_format_uint_c(*reinterpret_cast<const uint64_t*>(p), 8, fmt, dn2cpp_format_provider_nfi(provider));
     if (t == &dn2cpp_intptr_type)
-        return dn2cpp_format_int_c(*reinterpret_cast<const intptr_t*>(p), 8, fmt, nfi);
+        return dn2cpp_format_int_c(*reinterpret_cast<const intptr_t*>(p), 8, fmt, dn2cpp_format_provider_nfi(provider));
     if (t == &dn2cpp_uintptr_type)
-        return dn2cpp_format_uint_c(*reinterpret_cast<const uintptr_t*>(p), 8, fmt, nfi);
+        return dn2cpp_format_uint_c(*reinterpret_cast<const uintptr_t*>(p), 8, fmt, dn2cpp_format_provider_nfi(provider));
     if (t == &dn2cpp_double_type)
-        return dn2cpp_format_r8_c(*reinterpret_cast<const double*>(p), fmt, nfi);
+        return dn2cpp_format_r8_c(*reinterpret_cast<const double*>(p), fmt, dn2cpp_format_provider_nfi(provider));
     if (t == &dn2cpp_single_type)
-        return dn2cpp_format_r4_c(*reinterpret_cast<const float*>(p), fmt, nfi);
+        return dn2cpp_format_r4_c(*reinterpret_cast<const float*>(p), fmt, dn2cpp_format_provider_nfi(provider));
     if (t->formatspec != nullptr)
-        return t->formatspec(box, fmt, nfi);
+        return t->formatspec(box, fmt, t == &dn2cpp_decimal_type ? dn2cpp_format_provider_nfi(provider) : nullptr);
     // No spec asked for (IConvertible.ToString routes here that way), or Char, whose
     // real ToString(format, provider) ignores the spec: the default text.
     if (fmt == nullptr || fmt->length == 0 || t == &dn2cpp_char_type)
@@ -432,10 +432,10 @@ static int32_t dn2cpp_bbi_compareto(Dn2CppObject* box, Dn2CppObject* other)
 // format, then the .NET fits / does-not-fit copy contract. The spans arrive by value
 // (Dn2CppItfCharSpan, shared with the boxed-enum slot in dn2cpp_system_reflection.cpp).
 static int32_t dn2cpp_bbi_try_format(Dn2CppObject* box, Dn2CppItfCharSpan dest, int32_t* written,
-                                     Dn2CppItfCharSpan fmt, const Dn2CppNumberFormatInfo* nfi)
+                                     Dn2CppItfCharSpan fmt, Dn2CppObject* provider)
 {
     Dn2CppString* spec = fmt.length > 0 ? dn2cpp_string_from_chars(fmt.ptr, fmt.length) : nullptr;
-    return dn2cpp_string_try_copy_to_span(dn2cpp_bbi_format(box, spec, nfi),
+    return dn2cpp_string_try_copy_to_span(dn2cpp_bbi_format(box, spec, provider),
         dest.ptr, dest.length, written);
 }
 
@@ -446,10 +446,10 @@ struct Dn2CppItfByteSpan { uint8_t* ptr; int32_t length; };
 // IUtf8SpanFormattable.TryFormat(Span<byte>, out int, ReadOnlySpan<char>, IFormatProvider):
 // the text of the UTF-16 twin above, under the same fits / does-not-fit contract.
 static int32_t dn2cpp_bbi_try_format_utf8(Dn2CppObject* box, Dn2CppItfByteSpan dest, int32_t* written,
-                                          Dn2CppItfCharSpan fmt, const Dn2CppNumberFormatInfo* nfi)
+                                          Dn2CppItfCharSpan fmt, Dn2CppObject* provider)
 {
     Dn2CppString* spec = fmt.length > 0 ? dn2cpp_string_from_chars(fmt.ptr, fmt.length) : nullptr;
-    return dn2cpp_string_try_copy_to_utf8_span(dn2cpp_bbi_format(box, spec, nfi),
+    return dn2cpp_string_try_copy_to_utf8_span(dn2cpp_bbi_format(box, spec, provider),
         dest.ptr, dest.length, written);
 }
 
@@ -461,72 +461,72 @@ static int32_t dn2cpp_bbi_conv_typecode(Dn2CppObject* box)
 {
     return dn2cpp_convert_get_type_code(box);
 }
-static int32_t dn2cpp_bbi_conv_bool(Dn2CppObject* box, const Dn2CppNumberFormatInfo*)
+static int32_t dn2cpp_bbi_conv_bool(Dn2CppObject* box, Dn2CppObject*)
 {
     return dn2cpp_convert_obj_to_bool(box);
 }
-static int32_t dn2cpp_bbi_conv_char(Dn2CppObject* box, const Dn2CppNumberFormatInfo*)
+static int32_t dn2cpp_bbi_conv_char(Dn2CppObject* box, Dn2CppObject*)
 {
     return static_cast<int32_t>(dn2cpp_convert_i64_checked(dn2cpp_convert_obj_to_i64(box), 0, 65535));
 }
-static int32_t dn2cpp_bbi_conv_i1(Dn2CppObject* box, const Dn2CppNumberFormatInfo*)
+static int32_t dn2cpp_bbi_conv_i1(Dn2CppObject* box, Dn2CppObject*)
 {
     return static_cast<int32_t>(dn2cpp_convert_i64_checked(dn2cpp_convert_obj_to_i64(box), -128, 127));
 }
-static int32_t dn2cpp_bbi_conv_u1(Dn2CppObject* box, const Dn2CppNumberFormatInfo*)
+static int32_t dn2cpp_bbi_conv_u1(Dn2CppObject* box, Dn2CppObject*)
 {
     return static_cast<int32_t>(dn2cpp_convert_i64_checked(dn2cpp_convert_obj_to_i64(box), 0, 255));
 }
-static int32_t dn2cpp_bbi_conv_i2(Dn2CppObject* box, const Dn2CppNumberFormatInfo*)
+static int32_t dn2cpp_bbi_conv_i2(Dn2CppObject* box, Dn2CppObject*)
 {
     return static_cast<int32_t>(dn2cpp_convert_i64_checked(dn2cpp_convert_obj_to_i64(box), -32768, 32767));
 }
-static int32_t dn2cpp_bbi_conv_u2(Dn2CppObject* box, const Dn2CppNumberFormatInfo*)
+static int32_t dn2cpp_bbi_conv_u2(Dn2CppObject* box, Dn2CppObject*)
 {
     return static_cast<int32_t>(dn2cpp_convert_i64_checked(dn2cpp_convert_obj_to_i64(box), 0, 65535));
 }
-static int32_t dn2cpp_bbi_conv_i4(Dn2CppObject* box, const Dn2CppNumberFormatInfo*)
+static int32_t dn2cpp_bbi_conv_i4(Dn2CppObject* box, Dn2CppObject*)
 {
     return static_cast<int32_t>(dn2cpp_convert_i64_checked(dn2cpp_convert_obj_to_i64(box),
         INT64_C(-2147483648), INT64_C(2147483647)));
 }
-static uint32_t dn2cpp_bbi_conv_u4(Dn2CppObject* box, const Dn2CppNumberFormatInfo*)
+static uint32_t dn2cpp_bbi_conv_u4(Dn2CppObject* box, Dn2CppObject*)
 {
     return static_cast<uint32_t>(dn2cpp_convert_i64_checked(dn2cpp_convert_obj_to_i64(box),
         0, INT64_C(4294967295)));
 }
-static int64_t dn2cpp_bbi_conv_i8(Dn2CppObject* box, const Dn2CppNumberFormatInfo*)
+static int64_t dn2cpp_bbi_conv_i8(Dn2CppObject* box, Dn2CppObject*)
 {
     return dn2cpp_convert_obj_to_i64(box);
 }
-static uint64_t dn2cpp_bbi_conv_u8(Dn2CppObject* box, const Dn2CppNumberFormatInfo*)
+static uint64_t dn2cpp_bbi_conv_u8(Dn2CppObject* box, Dn2CppObject*)
 {
     return dn2cpp_convert_i64_to_u64(dn2cpp_convert_obj_to_i64(box));
 }
-static float dn2cpp_bbi_conv_r4(Dn2CppObject* box, const Dn2CppNumberFormatInfo*)
+static float dn2cpp_bbi_conv_r4(Dn2CppObject* box, Dn2CppObject*)
 {
     return static_cast<float>(dn2cpp_convert_obj_to_f64(box));
 }
-static double dn2cpp_bbi_conv_r8(Dn2CppObject* box, const Dn2CppNumberFormatInfo*)
+static double dn2cpp_bbi_conv_r8(Dn2CppObject* box, Dn2CppObject*)
 {
     return dn2cpp_convert_obj_to_f64(box);
 }
 // Decimal and DateTime have no widening read of their own; the ChangeType matrix owns
 // both (where a numeric source has no DateTime conversion, as in real .NET).
-static Dn2CppDecimal dn2cpp_bbi_conv_dec(Dn2CppObject* box, const Dn2CppNumberFormatInfo*)
+static Dn2CppDecimal dn2cpp_bbi_conv_dec(Dn2CppObject* box, Dn2CppObject*)
 {
     return *reinterpret_cast<const Dn2CppDecimal*>(dn2cpp_convert_change_type_code(box, 15) + 1);
 }
-static Dn2CppDateTime dn2cpp_bbi_conv_dt(Dn2CppObject* box, const Dn2CppNumberFormatInfo*)
+static Dn2CppDateTime dn2cpp_bbi_conv_dt(Dn2CppObject* box, Dn2CppObject*)
 {
     return *reinterpret_cast<const Dn2CppDateTime*>(dn2cpp_convert_change_type_code(box, 16) + 1);
 }
-static Dn2CppString* dn2cpp_bbi_conv_str(Dn2CppObject* box, const Dn2CppNumberFormatInfo* nfi)
+static Dn2CppString* dn2cpp_bbi_conv_str(Dn2CppObject* box, Dn2CppObject* provider)
 {
-    return dn2cpp_bbi_format(box, nullptr, nfi);
+    return dn2cpp_bbi_format(box, nullptr, provider);
 }
 static Dn2CppObject* dn2cpp_bbi_conv_type(Dn2CppObject* box, Dn2CppType* target,
-                                          const Dn2CppNumberFormatInfo*)
+                                          Dn2CppObject*)
 {
     return dn2cpp_convert_change_type(box, target);
 }
@@ -1487,7 +1487,7 @@ Dn2CppObject* dn2cpp_headerless_escape(const char* managedTypeName)
 }
 
 // ---- castclass/isinst with an NFI-mapped target ----------------------------
-// (CultureInfo / NumberFormatInfo / TextInfo / IFormatProvider — the managed
+// (CultureInfo / NumberFormatInfo / TextInfo — the managed
 // types the transpiler lowers to `const Dn2CppNumberFormatInfo*`.) The source
 // is object-typed and may hold the interned Dn2CppNfiBox wrapper an escape
 // minted (dn2cpp_nfi_wrap); the cast must both VERIFY and UNWRAP, so the

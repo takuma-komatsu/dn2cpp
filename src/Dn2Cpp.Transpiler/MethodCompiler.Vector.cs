@@ -335,7 +335,7 @@ internal sealed partial class MethodCompiler
                     if (ps[i].IsString)
                         format = Cast(arg, "Dn2CppString*");
                     else
-                        nfi = Cast(arg, "const Dn2CppNumberFormatInfo*");
+                        nfi = CastNumberFormatProvider(arg);
                 }
                 var v = Pop();
                 bool numericsVector = vecCpp == "Dn2CppVectorT";

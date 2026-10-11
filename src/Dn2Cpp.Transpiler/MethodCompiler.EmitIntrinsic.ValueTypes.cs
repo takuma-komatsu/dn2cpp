@@ -388,7 +388,7 @@ internal sealed partial class MethodCompiler
             if (shapeOk)
             {
                 string? outRef = isTry ? Pop().Expr : null;
-                string nfiExpr = hasProvider ? Cast(Pop(), "const Dn2CppNumberFormatInfo*") : "nullptr";
+                string nfiExpr = hasProvider ? CastNumberFormatProvider(Pop()) : "nullptr";
                 string stylesExpr = hasStyles ? $"(int32_t)({Pop().Expr})" : "111"; // NumberStyles.Number
                 string args, suffix;
                 if (ps[0].IsString)
@@ -416,9 +416,9 @@ internal sealed partial class MethodCompiler
         if (name == "ToString")
         {
             string? fmt = null, prov = null;
-            if (sig.ParameterTypes is [{ IsString: true }, _]) { var p = Pop(); prov = Cast(p, "const Dn2CppNumberFormatInfo*"); var f = Pop(); fmt = Cast(f, "Dn2CppString*"); }
+            if (sig.ParameterTypes is [{ IsString: true }, _]) { var p = Pop(); prov = CastNumberFormatProvider(p); var f = Pop(); fmt = Cast(f, "Dn2CppString*"); }
             else if (sig.ParameterTypes is [{ IsString: true }]) { var f = Pop(); fmt = Cast(f, "Dn2CppString*"); }
-            else if (sig.ParameterTypes is [_]) { var p = Pop(); prov = Cast(p, "const Dn2CppNumberFormatInfo*"); }
+            else if (sig.ParameterTypes is [_]) { var p = Pop(); prov = CastNumberFormatProvider(p); }
             var recv = Pop();
             string expr = (fmt, prov) switch
             {
@@ -515,7 +515,7 @@ internal sealed partial class MethodCompiler
             && IsReadOnlySpanChar(tfFmt))
         {
             bool isByte = IsSpanOfPrimitive(tfDest, PrimitiveTypeCode.Byte);
-            string prov = Cast(Pop(), "const Dn2CppNumberFormatInfo*");
+            string prov = CastNumberFormatProvider(Pop());
             string fmtSpan = SpanValue(Pop(), CppTypes.Of(ps[2]));  // ReadOnlySpan<char> format
             string wrote = Cast(Pop(), "int32_t*");                 // out int charsWritten
             string dPtr = SpanPtr(Pop(), CppTypes.Of(ps[0]));       // Span destination

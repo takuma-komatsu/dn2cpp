@@ -168,10 +168,10 @@ internal sealed partial class MethodCompiler
     private static void NfiCompareFixup(ref StackEntry a, ref StackEntry b)
     {
         if (IsHeaderlessWrapCpp(a.CppType)
-            && b is { Kind: StackKind.Ref, CppType: "Dn2CppObject*", KnownNull: false })
+            && b.Kind == StackKind.Ref && !b.KnownNull && IsManagedReferenceCpp(b.CppType))
             a = a with { Expr = Cast(a, "Dn2CppObject*"), CppType = "Dn2CppObject*" };
         else if (IsHeaderlessWrapCpp(b.CppType)
-            && a is { Kind: StackKind.Ref, CppType: "Dn2CppObject*", KnownNull: false })
+            && a.Kind == StackKind.Ref && !a.KnownNull && IsManagedReferenceCpp(a.CppType))
             b = b with { Expr = Cast(b, "Dn2CppObject*"), CppType = "Dn2CppObject*" };
     }
 

@@ -243,6 +243,7 @@ DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke
 py="$(resolve_python)"
 source gates/_delegate-identity.sh
 source gates/_reflection-signature-types.sh
+source gates/_headerless-reference-identity.sh
 source gates/_pointer-array-types.sh
 source gates/_runtime-lifetime-interfaces.sh
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/ReflectInvoke/ArrayCloneInterfaceSubset.cs samples/dotnet/ReflectInvoke/ArrayCloneReflectionOnlySubset.cs"
@@ -254,7 +255,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|clone-interfaces:isolated,
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|delegate-clone-class:isolated,override-only,reflection-created,field-type-created,native-created,trimmed,unshared,rewritten-slots|delegate-clone-class-prefix:before-delegate-clone-class-groups"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_pointer-array-types.sh samples/dotnet/ReflectInvoke/PointerArrayTypesOnly.csproj samples/dotnet/ReflectInvoke/PointerArrayTypesOnlyProgram.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|pointer-array-layout:packed,native,uncompressed,trimmed,unshared|pointer-array-prefix-argv:before-pointer-array-types"
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_reflection-signature-types.sh samples/dotnet/ReflectInvoke/ReflectionSignatureTypesOnly.csproj"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_reflection-signature-types.sh gates/_headerless-reference-identity.sh samples/dotnet/ReflectInvoke/ReflectionSignatureTypesOnly.csproj"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|signature-type-query:packed,native,uncompressed,trimmed,unshared|signature-prefix-argv:before-reflection-signature-types|generic-signature-prefix-argv:before-generic-signature-arguments"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_delegate-identity.sh gates/fold-delegate-fixture.py samples/dotnet/ReflectInvoke/DelegateVirtualIdentityOnly.csproj samples/dotnet/ReflectInvoke/DelegateVirtualIdentityLibrary.csproj samples/dotnet/ReflectInvoke/DelegateVirtualIdentityOnlyProgram.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|virtual-delegate-identity:default,trimmed,unshared,folded|virtual-delegate-prefix-argv:before-virtual-delegate-identity|runtime-owned-method-groups-prefix-argv:before-runtime-owned-method-groups"
@@ -347,6 +348,7 @@ gate_empty_string_clone_asserts() {
 }
 
 gate_extra_asserts() {
+    headerless_managed_reference_asserts "$1"
     gate_virtual_delegate_prefix_asserts "$1"
     gate_runtime_owned_delegate_prefix_asserts "$1"
     gate_reflection_signature_prefix_asserts "$1"
@@ -1712,6 +1714,7 @@ gate_extra_asserts() {
 
 # This gate measures C++ member inference from the original assembly metadata.
 # Managed preservation is covered by build-and-run-preserve-control.sh.
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|managed-format-provider-identity|before-headerless-reference-identity"
 reflection_layout_axis=default
 DN2CPP_STRICT_COMPLETION=1 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|strict-completion" \
     corelib_diff_gate ReflectInvoke --no-ildiet System.ComponentModel.TypeConverter

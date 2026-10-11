@@ -341,6 +341,9 @@ namespace ReflectInvoke
             if (args.Length > 0 && args[0] == "before-generic-signature-arguments")
                 return;
             ReflectionSignatureTypesSubset.Program.RunGenericSignatureArguments();
+            if (args.Length > 0 && args[0] == "before-headerless-reference-identity")
+                return;
+            HeaderlessReferenceIdentitySubset.Program.Run();
         }
     }
 }

@@ -529,7 +529,7 @@ Dn2CppObject* dn2cpp_array_get_value(Dn2CppObject* a, int64_t index)
 {
     Dn2CppArrayViewRT v;
     dn2cpp_array_view_rt(a, &v);
-    return dn2cpp_array_box_element(v.elem, dn2cpp_array_slot_linear(&v, index), v.elemSize, v.elemIsRef);
+    return dn2cpp_array_box_element(v.elem, dn2cpp_array_slot_linear(&v, index), v.elemSize, v.elemIsRef, v.md != nullptr);
 }
 
 void dn2cpp_array_set_value(Dn2CppObject* a, Dn2CppObject* value, int64_t index)
@@ -537,7 +537,7 @@ void dn2cpp_array_set_value(Dn2CppObject* a, Dn2CppObject* value, int64_t index)
     Dn2CppArrayViewRT v;
     dn2cpp_array_view_rt(a, &v);
     dn2cpp_array_store_boxed(value, v.elem, dn2cpp_array_slot_linear(&v, index),
-                             v.elemSize, v.elemIsRef);
+                             v.elemSize, v.elemIsRef, v.md != nullptr);
 }
 
 // The indices copied out of the managed int[]/long[] argument (null ->
@@ -575,7 +575,7 @@ Dn2CppObject* dn2cpp_array_get_value_indices(Dn2CppObject* a, Dn2CppObject* indi
     dn2cpp_array_view_rt(a, &v);
     int64_t idx[32];
     int32_t n = dn2cpp_array_copy_indices(indices, isLong, idx);
-    return dn2cpp_array_box_element(v.elem, dn2cpp_array_slot_indices(&v, idx, n), v.elemSize, v.elemIsRef);
+    return dn2cpp_array_box_element(v.elem, dn2cpp_array_slot_indices(&v, idx, n), v.elemSize, v.elemIsRef, v.md != nullptr);
 }
 
 void dn2cpp_array_set_value_indices(Dn2CppObject* a, Dn2CppObject* value, Dn2CppObject* indices, int32_t isLong)
@@ -585,7 +585,7 @@ void dn2cpp_array_set_value_indices(Dn2CppObject* a, Dn2CppObject* value, Dn2Cpp
     int64_t idx[32];
     int32_t n = dn2cpp_array_copy_indices(indices, isLong, idx);
     dn2cpp_array_store_boxed(value, v.elem, dn2cpp_array_slot_indices(&v, idx, n),
-                             v.elemSize, v.elemIsRef);
+                             v.elemSize, v.elemIsRef, v.md != nullptr);
 }
 
 // The fixed-arity GetValue(int, int[, int]) / SetValue(object, int, int[, int])
@@ -606,7 +606,7 @@ Dn2CppObject* dn2cpp_array_get_value_fixed(Dn2CppObject* a, const int32_t* idx, 
     int64_t idx64[3];
     for (int32_t i = 0; i < n; i++)
         idx64[i] = idx[i];
-    return dn2cpp_array_box_element(v.elem, dn2cpp_array_slot_indices(&v, idx64, n), v.elemSize, v.elemIsRef);
+    return dn2cpp_array_box_element(v.elem, dn2cpp_array_slot_indices(&v, idx64, n), v.elemSize, v.elemIsRef, v.md != nullptr);
 }
 
 void dn2cpp_array_set_value_fixed(Dn2CppObject* a, Dn2CppObject* value, const int32_t* idx, int32_t n)
@@ -618,7 +618,7 @@ void dn2cpp_array_set_value_fixed(Dn2CppObject* a, Dn2CppObject* value, const in
     for (int32_t i = 0; i < n; i++)
         idx64[i] = idx[i];
     dn2cpp_array_store_boxed(value, v.elem, dn2cpp_array_slot_indices(&v, idx64, n),
-                             v.elemSize, v.elemIsRef);
+                             v.elemSize, v.elemIsRef, v.md != nullptr);
 }
 
 // Runtime-dispatched array shape queries, for receivers whose static type

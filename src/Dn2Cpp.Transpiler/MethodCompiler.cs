@@ -2000,33 +2000,34 @@ internal sealed partial class MethodCompiler : IEvalStack
     {
         if (e.CppType == targetType)
             return e.Expr;
-        // CultureInfo/NumberFormatInfo/TextInfo/IFormatProvider lower to the
-        // HEADERLESS `const Dn2CppNumberFormatInfo*`, so a conversion to/from
-        // the managed object representation cannot be a plain pointer cast: an
-        // object-generic consumer (ToString dispatch, GetType, equality, an
-        // object[] element) reads a type header the struct does not have — it
-        // misreads the first field (a string pointer) as the TypeInfo and jumps
-        // through literal-pool data. The escape allocates the interned runtime
-        // wrapper instead, and the reverse conversion unwraps it (tolerantly: a
-        // raw pointer that flowed through an erased context passes through
-        // unchanged). The known-null constant keeps the plain cast: null
-        // converts to null either way, and the folds keyed on KnownNull must
-        // keep seeing the literal.
+        // Typed headerless handles acquire an interned wrapper at every managed
+        // reference boundary, including interfaces. Null stays the literal so
+        // the KnownNull folds remain valid.
         if (!e.KnownNull)
         {
-            if (targetType == "Dn2CppObject*" && IsNfiCppType(e.CppType))
-                return NfiWrapExpr(e);
-            if (IsNfiCppType(targetType) && e.CppType == "Dn2CppObject*")
-                return $"(({targetType})dn2cpp_nfi_unwrap({e.Expr}))";
-            if (targetType == "Dn2CppObject*" && IsAsmCppType(e.CppType))
-                return AsmWrapExpr(e);
-            if (IsAsmCppType(targetType) && e.CppType == "Dn2CppObject*")
-                return $"(({targetType})dn2cpp_asm_unwrap({e.Expr}))";
+            if (IsManagedReferenceCpp(targetType) && IsNfiCppType(e.CppType))
+                return $"(({targetType}){NfiWrapExpr(e)})";
+            if (IsNfiCppType(targetType) && IsManagedReferenceCpp(e.CppType))
+                return $"(({targetType})dn2cpp_nfi_unwrap((Dn2CppObject*){e.Expr}))";
+            if (IsManagedReferenceCpp(targetType) && IsAsmCppType(e.CppType))
+                return $"(({targetType}){AsmWrapExpr(e)})";
+            if (IsAsmCppType(targetType) && IsManagedReferenceCpp(e.CppType))
+                return $"(({targetType})dn2cpp_asm_unwrap((Dn2CppObject*){e.Expr}))";
             if (targetType == "Dn2CppObject*" && UnwrappableHeaderlessCpp(e.CppType) is { } opaque)
                 return $"dn2cpp_headerless_escape(\"{opaque}\")";
         }
         return $"(({targetType}){e.Expr})";
     }
+
+    private static string CastNumberFormatProvider(StackEntry entry) =>
+        IsManagedReferenceCpp(entry.CppType) && !entry.KnownNull
+            ? $"dn2cpp_format_provider_nfi((Dn2CppObject*)({entry.Expr}))"
+            : Cast(entry, "const Dn2CppNumberFormatInfo*");
+
+    private static bool IsManagedReferenceCpp(string cpp) => cpp == "Dn2CppObject*"
+        || cpp.StartsWith("t_", StringComparison.Ordinal)
+            && cpp.EndsWith("*", StringComparison.Ordinal)
+            && !cpp.EndsWith("**", StringComparison.Ordinal);
 
     /// <summary>The managed type name of a headerless intrinsic representation that
     /// CANNOT be given a managed wrapper, or null. One remains:
@@ -2051,15 +2052,14 @@ internal sealed partial class MethodCompiler : IEvalStack
     };
 
     /// <summary>True when a C++ type string is the headerless intrinsic
-    /// representation of CultureInfo/NumberFormatInfo/TextInfo/IFormatProvider
+    /// representation of CultureInfo/NumberFormatInfo/TextInfo
     /// (see the NFI arms in <see cref="Cast"/>).</summary>
     internal static bool IsNfiCppType(string? t) =>
         t is "const Dn2CppNumberFormatInfo*" or "Dn2CppNumberFormatInfo*";
 
     /// <summary>The DN2CPP_NFI_KIND_* macro the escape site's static managed
-    /// type resolves to; PROVIDER when the static type is IFormatProvider or
-    /// was lost on a merge — the runtime then recovers the identity from the
-    /// instance's isNfi tag (dn2cpp_nfi_wrap).</summary>
+    /// type resolves to; PROVIDER when the static type was lost on a merge. The
+    /// runtime then recovers identity from the instance's isNfi tag.</summary>
     internal static string NfiKindOf(TypeDesc? t)
     {
         string? n = t?.Kind switch
@@ -3410,8 +3410,8 @@ internal sealed partial class MethodCompiler : IEvalStack
             {
                 var target = ResolveCastTarget(insn.Token);
                 var obj = Pop();
-                // An NFI-mapped target (CultureInfo/NumberFormatInfo/TextInfo/
-                // IFormatProvider — the headerless `const Dn2CppNumberFormatInfo*`
+                // An NFI-mapped target (CultureInfo/NumberFormatInfo/TextInfo —
+                // the headerless `const Dn2CppNumberFormatInfo*`
                 // lowering): an object-typed source may hold the interned wrapper an
                 // escape minted, so the cast must verify AND unwrap
                 // (dn2cpp_nfi_castclass). An NFI-typed source stays the erased

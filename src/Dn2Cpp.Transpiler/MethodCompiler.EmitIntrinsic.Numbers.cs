@@ -555,7 +555,7 @@ internal sealed partial class MethodCompiler
             {
                 bool isByte = IsSpanOfPrimitive(f0, PrimitiveTypeCode.Byte);
                 bool f32 = declType == "System.Single";
-                string prov = Cast(Pop(), "const Dn2CppNumberFormatInfo*");
+                string prov = CastNumberFormatProvider(Pop());
                 string fmtSpan = SpanValue(Pop(), CppTypes.Of(sig.ParameterTypes[2]));
                 string wrote = Cast(Pop(), "int32_t*");
                 string dPtr = SpanPtr(Pop(), CppTypes.Of(sig.ParameterTypes[0]));
@@ -581,13 +581,13 @@ internal sealed partial class MethodCompiler
             // (ToString(format, provider)) shapes both land here.
             case ("System.Double", "ToString") when IsProviderOnly(sig):
             {
-                string prov = Cast(Pop(), "const Dn2CppNumberFormatInfo*");
+                string prov = CastNumberFormatProvider(Pop());
                 Push(StackKind.Ref, "Dn2CppString*", $"dn2cpp_double_to_string_c({DerefReceiver("double")}, {prov})");
                 return true;
             }
             case ("System.Single", "ToString") when IsProviderOnly(sig):
             {
-                string prov = Cast(Pop(), "const Dn2CppNumberFormatInfo*");
+                string prov = CastNumberFormatProvider(Pop());
                 Push(StackKind.Ref, "Dn2CppString*", $"dn2cpp_float_to_string_c({DerefReceiver("float")}, {prov})");
                 return true;
             }
@@ -616,14 +616,14 @@ internal sealed partial class MethodCompiler
             }
             case ("System.Double", "ToString") when IsFormatThenProvider(sig):
             {
-                string prov = Cast(Pop(), "const Dn2CppNumberFormatInfo*");
+                string prov = CastNumberFormatProvider(Pop());
                 string fmt = Cast(Pop(), "Dn2CppString*");
                 Push(StackKind.Ref, "Dn2CppString*", $"dn2cpp_format_r8_c({DerefReceiver("double")}, {fmt}, {prov})");
                 return true;
             }
             case ("System.Single", "ToString") when IsFormatThenProvider(sig):
             {
-                string prov = Cast(Pop(), "const Dn2CppNumberFormatInfo*");
+                string prov = CastNumberFormatProvider(Pop());
                 string fmt = Cast(Pop(), "Dn2CppString*");
                 Push(StackKind.Ref, "Dn2CppString*", $"dn2cpp_format_r4_c({DerefReceiver("float")}, {fmt}, {prov})");
                 return true;
@@ -697,7 +697,7 @@ internal sealed partial class MethodCompiler
             }
             case ("System.Int32", "ToString") or ("System.UInt32", "ToString") when IsFormatThenProvider(sig):
             {
-                string prov = Cast(Pop(), "const Dn2CppNumberFormatInfo*");
+                string prov = CastNumberFormatProvider(Pop());
                 string fmt = Cast(Pop(), "Dn2CppString*");
                 bool uns = declType == "System.UInt32";
                 Push(StackKind.Ref, "Dn2CppString*",
@@ -707,7 +707,7 @@ internal sealed partial class MethodCompiler
             }
             case ("System.Int64", "ToString") or ("System.UInt64", "ToString") when IsFormatThenProvider(sig):
             {
-                string prov = Cast(Pop(), "const Dn2CppNumberFormatInfo*");
+                string prov = CastNumberFormatProvider(Pop());
                 string fmt = Cast(Pop(), "Dn2CppString*");
                 bool uns = declType == "System.UInt64";
                 Push(StackKind.Ref, "Dn2CppString*",
@@ -725,7 +725,7 @@ internal sealed partial class MethodCompiler
             case ("System.Byte", "ToString") or ("System.UInt16", "ToString")
                     when IsFormatThenProvider(sig):
             {
-                string prov = Cast(Pop(), "const Dn2CppNumberFormatInfo*");
+                string prov = CastNumberFormatProvider(Pop());
                 string fmt = Cast(Pop(), "Dn2CppString*");
                 bool b1 = declType == "System.Byte";
                 Push(StackKind.Ref, "Dn2CppString*",
@@ -736,7 +736,7 @@ internal sealed partial class MethodCompiler
             case ("System.SByte", "ToString") or ("System.Int16", "ToString")
                     when IsFormatThenProvider(sig):
             {
-                string prov = Cast(Pop(), "const Dn2CppNumberFormatInfo*");
+                string prov = CastNumberFormatProvider(Pop());
                 string fmt = Cast(Pop(), "Dn2CppString*");
                 // Already sign-extended in its int32 slot, so format_int prints and masks it
                 // correctly at the declared width.
@@ -775,6 +775,7 @@ internal sealed partial class MethodCompiler
             case ("System.Globalization.CultureInfo", "get_CurrentCulture")
                 or ("System.Globalization.NumberFormatInfo", "get_CurrentInfo"):
                 Push(StackKind.Ref, "const Dn2CppNumberFormatInfo*", "dn2cpp_culture_current()");
+                Top = Top with { StaticType = sig.ReturnType };
                 return true;
             // CultureInfo.CurrentCulture = value (static setter).
             case ("System.Globalization.CultureInfo", "set_CurrentCulture"):
@@ -818,45 +819,34 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.Ref, "const Dn2CppNumberFormatInfo*", r);
                 return true;
             }
-            // CultureInfo.NumberFormat / CultureInfo.GetFormat(Type) /
-            // (NumberFormatInfo|IFormatProvider).GetFormat are identity on the runtime
-            // pointer — the receiver already is the NFI. CultureInfo.GetFormat is the
-            // direct public IFormatProvider implementation ON CultureInfo, reached as a
-            // plain call token (CultureInfo::GetFormat), NOT through the IFormatProvider
-            // interface slot — so its own (CultureInfo, GetFormat) tuple is required
-            // beside the IFormatProvider one, which never matches a direct
-            // CultureInfo.GetFormat call. The (Type) argument is dropped (dn2cpp's NFI
-            // stands in for NumberFormatInfo; a DateTimeFormatInfo request is served the
-            // same invariant NFI, as with the sibling GetFormat routes).
-            case ("System.Globalization.CultureInfo", "get_NumberFormat")
-                or ("System.Globalization.CultureInfo", "GetFormat")
-                or ("System.Globalization.NumberFormatInfo", "GetFormat")
-                or ("System.IFormatProvider", "GetFormat"):
+            case ("System.Globalization.CultureInfo", "get_NumberFormat"):
             {
                 var recv = Pop();
-                if (sig.ParameterTypes.Length == 1) Pop(); // GetFormat(Type formatType)
-                // Carry the declared return type as the entry's static type:
-                // get_NumberFormat returns NumberFormatInfo, so an escape of the
-                // result into `object` wraps with the identity .NET reports
-                // (GetFormat declares `object` and stays PROVIDER-kind).
                 Push(StackKind.Ref, "const Dn2CppNumberFormatInfo*",
                     Cast(recv, "const Dn2CppNumberFormatInfo*"));
                 Top = Top with { StaticType = sig.ReturnType };
                 return true;
             }
-            // NumberFormatInfo.GetInstance(IFormatProvider) — provider-or-current.
-            // Both CultureInfo and NumberFormatInfo lower to the same runtime NFI
-            // pointer, so a non-null provider is used as-is; null reads the
-            // process-global current culture, matching the managed null -> CurrentInfo
-            // fallback.
+            case ("System.Globalization.CultureInfo", "GetFormat")
+                or ("System.Globalization.NumberFormatInfo", "GetFormat")
+                or ("System.Globalization.DateTimeFormatInfo", "GetFormat")
+                or ("System.IFormatProvider", "GetFormat"):
+            {
+                string requested = Cast(Pop(), "Dn2CppType*");
+                string provider = Cast(Pop(), "Dn2CppObject*");
+                Push(StackKind.Ref, "Dn2CppObject*",
+                    $"dn2cpp_format_provider_get_format({provider}, {requested})");
+                return true;
+            }
             case ("System.Globalization.NumberFormatInfo", "GetInstance")
                 when sig.ParameterTypes.Length == 1:
             {
-                string prov = Cast(Pop(), "const Dn2CppNumberFormatInfo*");
+                string prov = CastNumberFormatProvider(Pop());
                 string nfi = NewTemp("const Dn2CppNumberFormatInfo*");
                 Emit($"{nfi} = {prov};");
                 Emit($"if ({nfi} == nullptr) {nfi} = dn2cpp_culture_current();");
                 Push(StackKind.Ref, "const Dn2CppNumberFormatInfo*", nfi);
+                Top = Top with { StaticType = sig.ReturnType };
                 return true;
             }
             // NumberFormatInfo property getters — direct reads of the runtime NFI
@@ -1587,8 +1577,8 @@ internal sealed partial class MethodCompiler
             case ("System.Object", "ToString") when sig.ParameterTypes.Length == 0:
             {
                 var o = Pop();
-                // An NFI-typed receiver (CultureInfo/NumberFormatInfo/TextInfo/
-                // IFormatProvider — the raw headerless pointer, on which the vtable
+                // An NFI-typed receiver (CultureInfo/NumberFormatInfo/TextInfo —
+                // the raw headerless pointer, on which the vtable
                 // dispatch below would read garbage): route through the interned
                 // wrapper, whose header dispatches the .NET answer — the culture NAME
                 // for the CultureInfo identity (the fold the CultureInfo.ToString case
@@ -1901,7 +1891,7 @@ internal sealed partial class MethodCompiler
     {
         // Stack (top → bottom): provider, format(span), charsWritten(ByRef),
         // destination(span), receiver. Pop in that order; receiver last.
-        string prov = Cast(Pop(), "const Dn2CppNumberFormatInfo*");
+        string prov = CastNumberFormatProvider(Pop());
         string fmtSpanCt = CppTypes.Of(sig.ParameterTypes[2]);  // ReadOnlySpan<char>
         string fmtPtr = SpanPtr(Pop(), fmtSpanCt);
         string fmt = NewTemp("Dn2CppString*");

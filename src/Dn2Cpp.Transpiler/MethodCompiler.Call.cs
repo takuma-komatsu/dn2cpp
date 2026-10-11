@@ -4821,7 +4821,7 @@ internal sealed partial class MethodCompiler
     /// must not pun into it — it gets the interned wrapper, like every other
     /// NFI→object boundary. The erased spelling is read off the shared donor
     /// (vtable) / the canonical interface's same-slot method (interface); a
-    /// concrete NFI position (a literal IFormatProvider parameter, not a
+    /// concrete NFI position (a literal NumberFormatInfo parameter, not a
     /// substituted T) spells NFI on the donor too and stays raw. An array
     /// receiver's dispatch map thunk declares the concrete element type and
     /// re-wraps tolerantly, so a wrapped argument passes through it unchanged.</summary>
@@ -4872,7 +4872,7 @@ internal sealed partial class MethodCompiler
             return;
         }
         string retC = CppTypes.Of(callee.Signature.ReturnType);
-        // An NFI return (CultureInfo/NumberFormatInfo/TextInfo/IFormatProvider —
+        // An NFI return (CultureInfo/NumberFormatInfo/TextInfo —
         // the headerless intrinsic pointer): an implementation bound through a
         // shared canonical body or an erased vtable/interface dispatch hands
         // back the interned WRAPPER (erased slots hold the managed-object
