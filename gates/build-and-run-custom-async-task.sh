@@ -30,8 +30,7 @@
 #
 #   1. CORRECTNESS. Exact diff vs real .NET. A correct adoption SHOULD match, so the program
 #      is its own oracle. Every await is sequential: completion order must be a property of
-#      the program, never of the clock (the async-combinators gate's live oracle already
-#      flakes on a loaded machine, and this one must not be able to).
+#      the program, never of the clock.
 #
 #   2. THE LIBRARY'S IL IS GONE. Its pool / runner / promise / scheduler must have no
 #      emitted bodies or instance layouts. Identity-only reflection metadata may name them.

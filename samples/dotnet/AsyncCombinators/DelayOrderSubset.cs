@@ -1,28 +1,13 @@
 #nullable enable
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace DelayOrderSubset
 {
-    // real Task.Delay timing/ordering. The cooperative scheduler runs a virtual
-    // clock — concurrent delays complete in DURATION order (shortest first), not in
-    // start order — deterministically and without real sleeping. Equal-duration ties
-    // are unspecified in.NET, so every duration here is distinct. Covers the int-ms
-    // and TimeSpan overloads and the cumulative clock across awaited delays.
-    //
-    // The durations are spaced far wider than the ordering needs. The oracle this is
-    // diffed against is real .NET, whose timer callbacks run late under load; on a
-    // busy machine a 10 ms spacing lets a 20 ms delay land before a 10 ms one, and
-    // the gate fails on the side that is not under test. 100 ms steps were measured
-    // NOT to be enough: a parallel suite (and the culture sweep, which runs this
-    // oracle five times) skewed a 100 ms timer past a 200 ms one. Hence 400 ms steps
-    // — the section pays ~2 s of wall clock to keep the assert off the machine's
-    // load average.
-    //
-    // The appends are serialized under a lock: two timer continuations appending to
-    // one string concurrently is a lost-update race on real .NET's thread pool (a
-    // letter simply vanishes), which the deterministic single-threaded native side
-    // can never reproduce — exactly the wrong side to be the flaky one.
+    // Timer deadlines do not order .NET's callback execution. The live oracle
+    // orders appends through task dependencies; native virtual deadlines have a
+    // separate frozen probe with no such dependencies.
     internal static class Program
     {
         private static readonly object s_gate = new object();
@@ -48,26 +33,106 @@ namespace DelayOrderSubset
             Append(id);
         }
 
-        private static async Task Run()
+        private static async Task AppendAfter(string id, Task delay, Task predecessor)
         {
-            // Four concurrent delays with distinct durations -> completion order is by
-            // duration: B(400) D(800) C(1200) A(1600).
+            await delay;
+            await predecessor;
+            Append(id);
+        }
+
+        private static async Task RunOrdered()
+        {
+            Task aDelay = Task.Delay(1600);
+            Task bDelay = Task.Delay(400);
+            Task cDelay = Task.Delay(1200);
+            Task dDelay = Task.Delay(800);
+            Task b = AppendAfter("B", bDelay, Task.CompletedTask);
+            Task d = AppendAfter("D", dDelay, b);
+            Task c = AppendAfter("C", cDelay, d);
+            Task a = AppendAfter("A", aDelay, c);
+            await Task.WhenAll(a, b, c, d);
+            s_log += "|";
+
+            Task xDelay = Task.Delay(TimeSpan.FromMilliseconds(600));
+            Task yDelay = Task.Delay(TimeSpan.FromMilliseconds(200));
+            Task y = AppendAfter("y", yDelay, Task.CompletedTask);
+            Task x = AppendAfter("x", xDelay, y);
+            await Task.WhenAll(x, y);
+            s_log += "|";
+
+            await Task.Delay(100);
+            s_log += "done";
+        }
+
+        private static async Task RunNativeDeadlines()
+        {
             await Task.WhenAll(Work("A", 1600), Work("B", 400), Work("C", 1200), Work("D", 800));
             s_log += "|";
 
-            // TimeSpan overload, distinct durations -> y(200) before x(600).
             await Task.WhenAll(WorkTs("x", 600), WorkTs("y", 200));
             s_log += "|";
 
-            // A plain awaited delay still suspends and resumes (clock advances).
             await Task.Delay(100);
             s_log += "done";
         }
 
         internal static void __GateEntry()
         {
-            Run().Wait();
-            Console.WriteLine(s_log);                // BDCA|yx|done
+            RunOrdered().Wait();
+            Console.WriteLine(s_log);
+        }
+
+        internal static void RunNativeDeadlineProbe()
+        {
+            Console.WriteLine("== native delay deadlines ==");
+            RunNativeDeadlines().Wait();
+            Console.WriteLine(s_log);
+            Console.WriteLine("native delay deadlines end");
+        }
+
+        private static async Task<bool> ObserveCancellation(Task delay)
+        {
+            try
+            {
+                await delay;
+                return false;
+            }
+            catch (OperationCanceledException)
+            {
+                return true;
+            }
+        }
+
+        private static void CheckSuspension(string label, bool timeSpan)
+        {
+            using var source = new CancellationTokenSource();
+            Task delay = timeSpan
+                ? Task.Delay(Timeout.InfiniteTimeSpan, source.Token)
+                : Task.Delay(Timeout.Infinite, source.Token);
+            Task<bool> observer = ObserveCancellation(delay);
+            bool delayPending = !delay.IsCompleted;
+            bool observerPending = !observer.IsCompleted;
+            source.Cancel();
+            bool resumed = observer.GetAwaiter().GetResult();
+            Console.WriteLine(label + " suspension: " + delayPending + "," + observerPending
+                + "|" + resumed + "," + delay.IsCanceled);
+        }
+
+        internal static void RunSynchronizationChecks()
+        {
+            Console.WriteLine("== delay synchronization ==");
+            CheckSuspension("integer", false);
+            CheckSuspension("TimeSpan", true);
+            s_log = "";
+            var release = new TaskCompletionSource<bool>();
+            Task first = AppendAfter("first", Task.CompletedTask, release.Task);
+            Task second = AppendAfter("second", Task.CompletedTask, first);
+            Console.WriteLine("dependency pending: " + !first.IsCompleted + "," + !second.IsCompleted
+                + "|" + s_log.Length);
+            release.SetResult(true);
+            Task.WhenAll(first, second).GetAwaiter().GetResult();
+            Console.WriteLine("dependency order: " + s_log);
+            Console.WriteLine("delay synchronization end");
         }
     }
 }
