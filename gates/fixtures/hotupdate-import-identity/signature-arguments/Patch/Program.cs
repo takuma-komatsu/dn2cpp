@@ -26,5 +26,36 @@ internal static unsafe class PatchProgram
         Surface.Write<global::Gfn0_5_Int32EndArr>(97);
         Report("signature named imports agree", Surface.Read<delegate*<Leaf>[]>(), Surface.Read<global::Gfn0_5_Int32EndArr>());
         Console.WriteLine("imported generic signature arguments end");
+
+        Console.WriteLine("== imported generic fields ==");
+        Console.WriteLine("generic fields before initialization");
+        Console.WriteLine(Surface.FieldInitializations);
+        Report("generic field defaults", Cell<int>.Value, Cell<string>.Value);
+        Console.WriteLine("generic fields initialized once");
+        Console.WriteLine(Surface.FieldInitializations);
+        Cell<int>.Value = 17;
+        Cell<string>.Value = 29;
+        Report("generic fixed fields", Cell<int>.Value, Cell<string>.Value);
+        Report("generic field method agreement", Surface.Read<int>(), Surface.Read<string>());
+        Cell<int>.Item = 41;
+        Cell<string>.Item = "generic static item";
+        Console.WriteLine("generic typed static fields");
+        Console.WriteLine(Cell<int>.Item);
+        Console.WriteLine(Cell<string>.Item);
+        var ints = new Cell<int>(43);
+        var strings = new Cell<string>(53);
+        ints.InstanceItem = 67;
+        strings.InstanceItem = "generic instance item";
+        Console.WriteLine("generic typed instance fields");
+        Console.WriteLine(ints.InstanceItem);
+        Console.WriteLine(strings.InstanceItem);
+        Report("generic instances retain constructor fields", ints.Read(), strings.Read());
+        Cell<delegate*<int>[]>.Value = 107;
+        Cell<delegate*<uint>[]>.Value = 109;
+        Report("generic signature fields", Cell<delegate*<int>[]>.Value, Cell<delegate*<uint>[]>.Value);
+        Report("generic signature field method agreement", Surface.Read<delegate*<int>[]>(), Surface.Read<delegate*<uint>[]>());
+        Console.WriteLine("generic fields still initialized once");
+        Console.WriteLine(Surface.FieldInitializations);
+        Console.WriteLine("imported generic fields end");
     }
 }

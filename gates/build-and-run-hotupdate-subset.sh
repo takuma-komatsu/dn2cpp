@@ -42,6 +42,8 @@
 # group address is prepared before body compilation.
 # A late NoAlloc default verifies its direct-call closure, including allocation
 # facts and transitive edges from helpers compiled before the root.
+# Unloaded generic field owners import distinct closed static storage, lazy
+# initializers and substituted static/instance field types in both metadata formats.
 # Hot update (BPI interpretation): the base program is AOT-transpiled with
 # --hotupdate-base (ABI-contract hash constant + base-abi.json sidecar), the
 # patch assembly is baked into a Baked Patch Image by --emit-patch, and the
@@ -223,6 +225,7 @@ renamed_slot_state_before=$(renamed_slot_base_state)
 build_gate_proj gates/fixtures/interpreted-concat-oracle/InterpretedConcatOracle.csproj
 signature_arguments_fixture=gates/fixtures/hotupdate-import-identity/signature-arguments
 build_gate_proj "$signature_arguments_fixture/Patch/SignatureArgumentPatch.csproj"
+build_gate_proj "$signature_arguments_fixture/Address/FieldAddressPatch.csproj"
 assert_output "$(renamed_slot_base_state)" "$renamed_slot_state_before"
 cmp -s "samples/dotnet/HotUpdateBase/bin/$CONFIG/$TFM/HotUpdateBase.dll" \
     "samples/dotnet/HotUpdateBase/obj/HotUpdateBase/$CONFIG/$TFM/HotUpdateBase.dll" \
@@ -269,6 +272,7 @@ ordinary_ctor_miss_app="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/OrdinaryC
 concat_oracle_app="gates/fixtures/interpreted-concat-oracle/bin/$CONFIG/$TFM/InterpretedConcatOracle.dll"
 signature_arguments_base="$signature_arguments_fixture/Base/bin/$CONFIG/$TFM/SignatureArgumentBase.dll"
 signature_arguments_patch="$signature_arguments_fixture/Patch/bin/$CONFIG/$TFM/SignatureArgumentPatch.dll"
+signature_arguments_address="$signature_arguments_fixture/Address/bin/$CONFIG/$TFM/FieldAddressPatch.dll"
 bad_app="samples/dotnet/HotUpdateBadPatch/bin/$CONFIG/$TFM/HotUpdateBadPatch.dll"
 badgvm_app="samples/dotnet/HotUpdateBadPatch/bin/$CONFIG/$TFM/GenericVirtualBad.dll"
 baditf_app="samples/dotnet/HotUpdateBadPatchItf/bin/$CONFIG/$TFM/HotUpdateBadPatchItf.dll"
@@ -310,10 +314,10 @@ grep -q dn2cpp_base_image_abi_hash "$OUT/generated.cpp" \
 # against the REAL net10.0 CoreLib, so which CoreLib that resolves to is an input
 # of this gate the same way it is of net10_bcl_diff_gate — a runtime bump must
 # not be served a green recorded against the previous one.
-if gate_cache_check "$OUT" "hotupdate-subset|cli:$(_gate_cli_hash)|field-metadata:$field_packed/$field_native|corelib:$(resolve_net10_corelib)|before-derived-aggregate|before-aggregate-collection|before-aggregate-message|before-ordinary-exception-message|oracle:--derived-aggregate/--aggregate-collection|unavailable-aggregate-ctor|type-getter-signature:--type-getter-signature/before-type-getter-signature/register/stack/HotUpdateBase.TypeGetterSignatureFixture::EmitSurface|renamed-slots:--renamed-slot-prefix/before-renamed-slots/register/stack/intrinsic-bcl/corelib|renamed-object:--object/--finalize/--renamed-object-oracle/--renamed-finalize-oracle/corelib-refusal/corelib-loaded|instance-body-calls:call/callvirt/default/dictionary/folded-predicates/same-owner/predicate-nops/null-bound/try/method-context/register/stack/intrinsic-bcl/corelib/--no-shared-generics/--cut-HotUpdateBase.IOverriddenBin::Cold|late-default-layout:object-method-group/noalloc-constant/transitive-helper/normal/--hotupdate-base/--no-shared-generics|signature-generic-imports:register/stack" \
+if gate_cache_check "$OUT" "hotupdate-subset|cli:$(_gate_cli_hash)|field-metadata:$field_packed/$field_native|corelib:$(resolve_net10_corelib)|before-derived-aggregate|before-aggregate-collection|before-aggregate-message|before-ordinary-exception-message|oracle:--derived-aggregate/--aggregate-collection|unavailable-aggregate-ctor|type-getter-signature:--type-getter-signature/before-type-getter-signature/register/stack/HotUpdateBase.TypeGetterSignatureFixture::EmitSurface|renamed-slots:--renamed-slot-prefix/before-renamed-slots/register/stack/intrinsic-bcl/corelib|renamed-object:--object/--finalize/--renamed-object-oracle/--renamed-finalize-oracle/corelib-refusal/corelib-loaded|instance-body-calls:call/callvirt/default/dictionary/folded-predicates/same-owner/predicate-nops/null-bound/try/method-context/register/stack/intrinsic-bcl/corelib/--no-shared-generics/--cut-HotUpdateBase.IOverriddenBin::Cold|late-default-layout:object-method-group/noalloc-constant/transitive-helper/normal/--hotupdate-base/--no-shared-generics|signature-generic-imports:packed/native/register/stack/fields/field-address-refusal" \
         "$base_app" "$patch_app" "$bad_app" "$badgvm_app" "$baditf_app" "$baddg_app" \
         "$concat_oracle_app" \
-        "$signature_arguments_base" "$signature_arguments_patch" gates/_hotupdate-signature-arguments.sh \
+        "$signature_arguments_base" "$signature_arguments_patch" "$signature_arguments_address" gates/_hotupdate-signature-arguments.sh \
         "$badmc_app" "$dir1_app" "$dir2_app" "$dgrecv_app" "$dgsig_app" \
         "$recv_app" "$arg_app" "$inv_app" "$ftn_app" \
         samples/dotnet/HotUpdateCoreLibBase/bin/$CONFIG/$TFM/HotUpdateCoreLibBase.dll \
@@ -2285,6 +2289,6 @@ done
 echo "OK (renamed Object and Finalize refusals, loaded method identity and bodies)"
 
 hotupdate_signature_argument_roundtrip "$signature_arguments_base" "$signature_arguments_patch" \
-    "$OUT/signature-arguments"
+    "$OUT/signature-arguments" "$signature_arguments_address"
 
 gate_cache_commit
