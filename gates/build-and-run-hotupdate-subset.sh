@@ -1608,7 +1608,7 @@ grep -Fxq 'interpreted aggregate collections end' <<< "$cl_stack_normalized" \
 # refusal is LOUD and CATCHABLE — the loader's one-shot bind pass rejects the
 # image with a NotSupportedException the base's own catch prints, because the
 # interpreter's marshal surface (scalars + references) is strictly narrower
-# than the invoker ABI and the import's signature names the missing struct. It
+# than the invoker ABI and the import's signature names a layoutless value type. It
 # must never be a silent bind, an abort, or a base that failed to compile in the
 # first place. If the marshal surface ever widens,
 # the call proceeds onto the invmiss_ stub and this transcript changes to that
@@ -1620,14 +1620,46 @@ True
 2
 alpha=True
 beta=False
-base caught: BPI bind: unresolved type import in a signature
+base caught: BPI bind: value types in import signatures need a later slice
 base: done"
 set +e
 cl_bad_out=$("./$OUT/corelib/HotUpdateCoreLibBase" "$OUT/corelib/HotUpdateCoreLibBadPatch.bpi"); cl_bad_rc=$?
 set -e
 assert_output "$(strip_cr_win "$cl_bad_out")" "$cl_bad_expected"
 assert_exit_code "$cl_bad_rc" 0
-echo "OK (real-CoreLib base: compiles, blocked rows trapped, patch runs, trapped-row invoke refused catchably)"
+
+# A missing type identity must also fail at bind, independently of the known
+# value-type refusal. Relabel only the standalone type import pool entry; the
+# method's signature shape and every offset remain unchanged.
+cl_missing_patch="$OUT/corelib/HotUpdateCoreLibMissingTypePatch.bpi"
+python3 - "$OUT/corelib/HotUpdateCoreLibBadPatch.bpi" "$cl_missing_patch" <<'PY'
+import pathlib
+import struct
+import sys
+
+source, target = map(pathlib.Path, sys.argv[1:])
+data = source.read_bytes()
+name = b"System.Collections.DictionaryEntry"
+missing = b"System.Collections.XictionaryEntry"
+entry = struct.pack("<H", len(name)) + name
+replacement = struct.pack("<H", len(missing)) + missing
+if len(entry) != len(replacement) or data.count(entry) != 1:
+    raise SystemExit("FAIL: missing-type mutation did not identify one standalone type import")
+shape = b"():" + name
+if data.count(shape) != 1:
+    raise SystemExit("FAIL: trapped method signature shape changed")
+mutated = data.replace(entry, replacement)
+if mutated.count(shape) != 1:
+    raise SystemExit("FAIL: missing-type mutation changed the method signature shape")
+target.write_bytes(mutated)
+PY
+set +e
+cl_missing_out=$("./$OUT/corelib/HotUpdateCoreLibBase" "$cl_missing_patch"); cl_missing_rc=$?
+set -e
+assert_output "$(strip_cr_win "$cl_missing_out")" \
+    "${cl_bad_expected/value types in import signatures need a later slice/unresolved type import in a signature}"
+assert_exit_code "$cl_missing_rc" 0
+echo "OK (real-CoreLib base: blocked rows trapped; known value and missing type imports refused catchably)"
 
 # ---- Console.Error in a CoreLib-less base image ------------------------------
 # The mirror image of the section above: no CoreLib at all in the load set, which

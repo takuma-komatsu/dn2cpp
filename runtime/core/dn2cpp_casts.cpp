@@ -1336,17 +1336,6 @@ static int32_t dn2cpp_isinst_walk(const Dn2CppTypeInfo* st, const Dn2CppTypeInfo
             if (dn2cpp_rows_variant_match(t, ti))
                 return 1;
     }
-    // A generic type DEFINITION needs no arm of its own: the walk above IS the answer.
-    // Its shell carries the definition's SUBSTITUTION-INVARIANT relations — nearest
-    // ancestor naming no type parameter (non-generic, or closed like `B<int>`) as base,
-    // one row per such interface in the closure (CppEmitter's GenericDefRelations) —
-    // which hold for the definition exactly when they hold for every instantiation, so
-    // none need exist. A relation spelled in the definition's parameters
-    // (`IEnumerable<>` <- `List<>`) is False by construction: no row can name one, and
-    // the variance walk cannot lift it, a gendef handle carrying no arguments of its
-    // own. MessagePipe's `AddGlobalMessageHandlerFilter(typeof(LoggingFilter<>))` is
-    // the load-bearing reader.
-
     // Well-known-interface fallback for the row-less primitive/enum/hand-written
     // type-infos (table + rationale at dn2cpp_wellknown_itf_bit above). Last, so a
     // real interface row — a transpiled CoreLib ti that does carry one — always
@@ -1360,6 +1349,15 @@ static int32_t dn2cpp_isinst_walk(const Dn2CppTypeInfo* st, const Dn2CppTypeInfo
             return 1;
     if (dn2cpp_wellknown_self_generic_itf(st, ti) != 0)
         return 1;
+    // Definition shells keep invariant hot relations; their symbolic base is cold.
+    // No executable object carries a definition handle as its header type.
+    if ((st->flags & DN2CPP_TF_GENERICDEF) != 0)
+    {
+        const auto* base = dn2cpp_type_reflection_base(st);
+        dn2cpp_type_ensure_metadata_assignability(base);
+        if (base != nullptr && base != st && dn2cpp_typeinfo_assignable(base, ti) != 0)
+            return 1;
+    }
     return 0;
 }
 

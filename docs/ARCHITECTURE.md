@@ -612,6 +612,18 @@ participate in `ContainsGenericParameters` and the invocation and delegate guard
 Formal array covariance and generic variance require reference-type evidence;
 an unconstrained or dependent parameter alone cannot establish a reference layout.
 
+Generic definitions retain declared member rows decoded from their TypeDefs,
+without a class specialization, object layout or executable thunk. The same
+symbolic recipes describe methods, constructors, fields and property accessors.
+Inherited lookup substitutes the actual declaring level while handles preserve
+their reflected owner; method formals still belong to the typical MethodDef.
+Open base compositions share these immutable tables and interned type identities.
+Cold assignability completes a symbolic base before following its relations.
+Member operations guard the actual declaring type before accessing storage or
+calling an invoker. Literal values remain readable, and a closed declaring base
+remains callable when reflected through an open derived type. Metadata retention
+and packed/native storage use the same policy across definition emission paths.
+
 `Compilation.ReflectionMetadata.cs` selects native storage for exact types
 named by surviving `ldtoken`/`GetTypeFromHandle` pairs in reached IL. It uses
 each closed scan context and excludes canonical placeholders, dead code and

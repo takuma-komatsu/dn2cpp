@@ -71,6 +71,7 @@ internal sealed partial class CppEmitter
         }
 
         private readonly Dictionary<string, ConstraintDefinition> _constraintDefinitions = new(StringComparer.Ordinal);
+        private readonly HashSet<string> _genericDefinitionRoots = new(StringComparer.Ordinal);
         private int _constraintSequence;
 
         private ConstraintSignature[] ConstraintTypes(Module module, GenericParameterHandle handle)
@@ -128,6 +129,7 @@ internal sealed partial class CppEmitter
 
         private void NoteConstraintMetadata()
         {
+            _genericDefinitionRoots.UnionWith(_c.TypeofOpenGenericDefs.Keys);
             foreach (var cls in _e.TopoOrder().ToList())
             {
                 if (_e.IsOpaque(cls) || _e.IsCanonicalWorld(cls))
@@ -154,6 +156,7 @@ internal sealed partial class CppEmitter
             }
             foreach (string name in _c.TypeofOpenGenericDefs.Keys.ToList())
                 NoteConstraintDefinition(name);
+            NoteGenericDefinitionMemberTypes();
         }
 
         private string RenderConstraintSignature(ConstraintSignature signature)
@@ -226,7 +229,7 @@ internal sealed partial class CppEmitter
                 string baseType = definition.Base is { } b ? RenderConstraintSignature(b) : "nullptr";
                 string interfaces = RenderConstraintVector(definition.Interfaces);
                 string symbol = "constraint_type_" + _constraintSequence++;
-                bool available = !_c.TrimsReflection || _c.Classes.Any(c => c.Module == definition.Module
+                bool available = !_c.TrimsReflection || definition.Module == _c.AppModule || _genericDefinitionRoots.Contains(definition.Name) || _c.Classes.Any(c => c.Module == definition.Module
                     && c.Handle == definition.Handle && _c.KeepsReflectionMetadata(c));
                 if (!available)
                     _e._strippedGenericMetadata.Add(definition.Name);

@@ -8,7 +8,7 @@ namespace HotUpdateCoreLibBadPatch;
 // System.Collections.IDictionaryEnumerator::get_Entry, whose DictionaryEntry
 // return the base image never laid out. The row itself stays bindable — its
 // invoker is the trapping invmiss_ stub, not a C++ compile error — but the
-// import's SIGNATURE names the missing struct, and the interpreter's marshal
+// import's SIGNATURE names the layoutless struct, and the interpreter's marshal
 // surface (scalars + references) is strictly narrower than the invoker ABI, so
 // the one-shot bind pass refuses the image with a catchable
 // NotSupportedException the base's own catch prints. That refusal is the

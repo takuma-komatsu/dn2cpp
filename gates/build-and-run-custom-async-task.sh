@@ -33,9 +33,9 @@
 #      the program, never of the clock (the async-combinators gate's live oracle already
 #      flakes on a loaded machine, and this one must not be able to).
 #
-#   2. THE LIBRARY'S IL IS GONE. Its pool / runner / promise / scheduler symbols must not
-#      appear in the generated C++ at all, and the app-declared promise must have no emitted
-#      body. This is the direct assertion of the fix, and it is free and deterministic.
+#   2. THE LIBRARY'S IL IS GONE. Its pool / runner / promise / scheduler must have no
+#      emitted bodies or instance layouts. Identity-only reflection metadata may name them.
+#      The app-declared promise must also have no emitted body.
 #
 #   3. IT STAYS BOUNDED. Pre-fix this input exits 2 FAST (the builder's constrained
 #      IAsyncStateMachine::MoveNext has no lowering), so it never reproduced the
@@ -51,7 +51,7 @@
 # ConcurrentDictionary scheduler — goes through the general pipeline instead of being
 # adopted. The mirror-image assertions ride that transpile:
 #
-#   4. THE LIBRARY'S IL IS IN. The same symbols assertion 2 forbids must now appear (proof
+#   4. THE LIBRARY'S IL IS IN. The bodies/layouts assertion 2 forbids must now appear (proof
 #      the opt-out really re-routed the assembly), while the APP-declared task type — not
 #      named by the opt-out — must still be adopted (the lever is per-assembly).
 #
@@ -252,7 +252,7 @@ shape_surface=$( (cd "$out-shape" && ls -1 | LC_ALL=C sort | grep -E '^generated
 shared_surface=$( (cd "$out-shared" && ls -1 | LC_ALL=C sort | grep -E '^generated' \
     | tr '\n' '\0' | xargs -0 shasum -a 256) | shasum -a 256 | awk '{print $1}')
 if gate_cache_check "$out" \
-        "custom-async-task|$corelib|shape-mode:no-ildiet|real:$real_surface|exceed:$exceed_surface|shape:$shape_surface|shared:$shared_surface" \
+        "custom-async-task|$corelib|shape-mode:no-ildiet|plumbing:bodies-layouts|real:$real_surface|exceed:$exceed_surface|shape:$shape_surface|shared:$shared_surface" \
         "$app" "$app_exceed" "$app_shape" "$app_shared" "$lib" \
         "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json" \
         "${app_exceed%.dll}.runtimeconfig.json" "${app_exceed%.dll}.deps.json" \
@@ -264,14 +264,27 @@ fi
 
 echo "== 6/10 Adopted: the library's async plumbing must not be in the tree =="
 # Adopted, the task type / builder / awaiter lower to runtime structs, so the pool + runner +
-# promise + scheduler hanging off them are never reached and tree-shaking drops them whole.
+# promise + scheduler hanging off them have no bodies or instance layouts. Symbolic
+# generic-definition members can retain their identities without reaching executable IL.
 # The compiler-generated state machines of the library's async METHODS are ordinary user code
 # and DO appear — only the plumbing must not.
+has_emitted_type() {
+    local dir="$1" cpp_name="$2" managed_name="$3"
+    awk -v cpp="$cpp_name" -v managed="$managed_name" '
+        { sub(/\r$/, "") }
+        $0 ~ "^// " managed "(_[^:]*)?::" { found = 1 }
+        layout && /^[[:space:]]*\{/ { found = 1 }
+        {
+            layout = ($0 ~ "^struct t_" cpp "(_[A-Za-z0-9_]*)?([[:space:]]*:[^{;]+)?[[:space:]]*$")
+            if ($0 ~ "^struct t_" cpp "(_[A-Za-z0-9_]*)?([[:space:]]*:[^{;]+)?[[:space:]]*\\{") found = 1
+        }
+        END { exit !found }
+    ' "$dir"/generated*.cpp "$dir/generated.h"
+}
 for sym in TaskPool Runner ITaskPoolNode ICustomTaskSource IStateMachineRunnerPromise \
            AsyncCustomTaskMethodBuilder CustomTaskScheduler FaultedSource CompletedSource; do
-    if grep -qh "CustomAsyncTaskLib_${sym}" "$out"/generated*.cpp "$out/generated.h"; then
+    if has_emitted_type "$out" "CustomAsyncTaskLib_${sym}" "CustomAsyncTaskLib[.]${sym}"; then
         echo "FAIL: the library's $sym is being transpiled — the custom task type was not adopted:" >&2
-        grep -h -m 3 "CustomAsyncTaskLib_${sym}" "$out"/generated*.cpp >&2
         exit 1
     fi
 done
@@ -284,7 +297,8 @@ if grep -qh '^// CustomTaskLocalSubset.LocalPromise::' "$out"/generated*.cpp; th
     exit 1
 fi
 # The scheduler's ConcurrentDictionary is the single fattest thing the closure would drag in.
-if grep -qh "ConcurrentDictionary" "$out"/generated*.cpp; then
+if has_emitted_type "$out" System_Collections_Concurrent_ConcurrentDictionary \
+        'System[.]Collections[.]Concurrent[.]ConcurrentDictionary'; then
     echo "FAIL: the library scheduler's ConcurrentDictionary was pulled into the tree" >&2
     exit 1
 fi
@@ -312,10 +326,10 @@ echo "OK (the library's pool / runner / promise / scheduler never entered the tr
 
 echo "== 7/10 Un-adopted: the library's async plumbing MUST be in the tree =="
 # The exact inverse of step 6, over the --no-adopt-async output: the library's real
-# IL entered the tree, so its plumbing symbols exist. A silently re-fired adoption
+# IL entered the tree, so its plumbing bodies/layouts exist. A silently re-fired adoption
 # (the worst failure: everything still runs, through the wrong machinery) fails here.
 for sym in TaskPool Runner ITaskPoolNode AsyncCustomTaskMethodBuilder CustomTaskScheduler; do
-    if ! grep -qh "CustomAsyncTaskLib_${sym}" "$out-real"/generated*.cpp "$out-real/generated.h"; then
+    if ! has_emitted_type "$out-real" "CustomAsyncTaskLib_${sym}" "CustomAsyncTaskLib[.]${sym}"; then
         echo "FAIL: --no-adopt-async CustomAsyncTaskLib did not put the library's $sym in the" >&2
         echo "      tree — the assembly is still being adopted." >&2
         exit 1
@@ -332,13 +346,13 @@ fi
 echo "OK (the library's real IL is in the tree; the app's own task type stays adopted)"
 
 echo "== 8/10 Auto-declined: the library's async plumbing MUST be in the tree, flag-free =="
-# The same symbol set step 7 asserts for the manual opt-out, over the NO-flags transpile
+# The same body/layout set step 7 asserts for the manual opt-out, over the NO-flags transpile
 # of the exceeding program: the pre-scan's decline must have routed the library's real IL
 # through the general pipeline. A silently re-fired adoption cannot get this far (the
 # out-of-contract Yield would fail loud at emit), so what this catches is a decline that
 # fired for the wrong reason or a stale output directory.
 for sym in TaskPool Runner ITaskPoolNode AsyncCustomTaskMethodBuilder CustomTaskScheduler; do
-    if ! grep -qh "CustomAsyncTaskLib_${sym}" "$out-exceed"/generated*.cpp "$out-exceed/generated.h"; then
+    if ! has_emitted_type "$out-exceed" "CustomAsyncTaskLib_${sym}" "CustomAsyncTaskLib[.]${sym}"; then
         echo "FAIL: the auto-declined transpile did not put the library's $sym in the tree." >&2
         exit 1
     fi

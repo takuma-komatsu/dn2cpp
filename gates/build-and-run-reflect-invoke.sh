@@ -37,6 +37,7 @@
 # Formal constraints preserve typical type/method parameters, recursive identities and transitive interfaces.
 # A formal parameter's declaring and reflected types share the typical owner, independent of the lookup.
 # Special constraints classify formal parameters; unavailable unused signatures never force eager decode.
+# Generic definitions retain symbolic declared members, inherited contexts and operation guards.
 # Metadata-answerable generic definitions retain formal names and special attributes.
 # Formal parameters remain TypeInfo members while reporting a declaring owner and IsNested.
 # A metadata-only generic definition retains closed signature types that nothing else reaches.
@@ -354,6 +355,7 @@ gate_extra_asserts() {
     gate_virtual_delegate_prefix_asserts "$1"
     formal_constraint_prefix_asserts "$1"
     open_signature_prefix_asserts "$1"
+    generic_definition_member_prefix_asserts "$1"
     gate_runtime_owned_delegate_prefix_asserts "$1"
     gate_reflection_signature_prefix_asserts "$1"
     gate_pointer_array_prefix_asserts "$1"
@@ -1693,6 +1695,7 @@ DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_formal-constraint-met
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|formal-constraints:packed,native,uncompressed,trimmed,unshared,parallel,recursive,closed-synth|formal-constraints-unshared-build:-p:FormalConstraintsUnshared=true|formal-constraints-prefix:before-formal-constraint-metadata|stripped-formal-constraints:repeated-owner-guard"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/reflection-unused-signatures/Ext/ConstraintCollision.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|open-signatures:raw-MethodDef-context,metadata-only-methods,validated-Make,parallel,unloaded|formal-constraints:scoped-nongeneric,unloaded-identity,lazy-relations,finite-nested,unloaded-scoped-leaves,nested-assignability"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|definition-members:symbolic,inheritance,typed-lookup,guards,nested,parallel,cold-warm-transitive-relations|definition-members-packed:normal-ildiet|definition-members-prefix:before-generic-definition-members"
 reflection_layout_axis=default
 DN2CPP_STRICT_COMPLETION=1 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|strict-completion" \
     corelib_diff_gate ReflectInvoke --no-ildiet System.ComponentModel.TypeConverter
