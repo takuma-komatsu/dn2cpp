@@ -60,7 +60,6 @@ reflected_event_prefix_asserts() {
             "$out/virtual-delegate-full.$axis.stdout" > "$out/events-prefix.$axis.stdout"
         diff -u "$out/events-before.$axis.stdout" "$out/events-prefix.$axis.stdout"
         reflected_event_asserts "$out/virtual-delegate-full.$axis.stdout"
-        test "$(tail -n 1 "$out/virtual-delegate-full.$axis.stdout")" = 'reflected events end'
     done
 }
 

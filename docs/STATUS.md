@@ -42,7 +42,6 @@ never as a reference back to a row.
 
 
 
-| 186 | runtime | **Formal method parameters do not expose their declaring method.** For a generic method `C.M<U>()`, `typeof(C).GetMethod("M").GetGenericArguments()[0].DeclaringMethod` returns the same typical generic method definition on CLR. Native transpilation refuses `System.Type::get_DeclaringMethod` because the reflection intrinsic has no route, although formal parameter identity already retains its typical owner and MethodDef token. Expose that owner through an interned definition MethodInfo and cover type formals (null), closed declaring contexts, repeated queries and stripped/unloaded constraint metadata without forcing relation completion. |
 
 ## Regression gate
 

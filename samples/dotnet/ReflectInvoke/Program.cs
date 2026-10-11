@@ -357,6 +357,9 @@ namespace ReflectInvoke
             if (args.Length > 0 && args[0] == "before-reflected-events")
                 return;
             EventSubset.Program.RunReflection(false);
+            if (args.Length > 0 && args[0] == "before-formal-declaring-methods")
+                return;
+            ReflectGenericMethodSubset.Program.RunDeclaringMethod(false);
         }
     }
 }

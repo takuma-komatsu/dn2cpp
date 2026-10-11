@@ -12,6 +12,22 @@ internal static class FormalConstraintsOnlyProgram
     {
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+        if (args.Length > 0 && (args[0] == "declaring-method-cold" || args[0] == "declaring-method-reverse"))
+        {
+            ReflectGenericMethodSubset.Program.RunDeclaringMethod(reverse: args[0] == "declaring-method-reverse");
+            return;
+        }
+        if (args.Length > 0 && args[0] == "unloaded-declaring-method")
+        {
+            MethodInfo method = typeof(ForeignConstraint).GetMethod("M")!;
+            Type parameter = method.GetGenericArguments()[0];
+            MethodBase declaring = parameter.DeclaringMethod!;
+            Console.WriteLine("unloaded declaring method before: " + ReferenceEquals(declaring, method));
+            for (int i = 0; i < 2; i++)
+                Console.WriteLine("unloaded declaring constraint: " + Fault(() => parameter.GetGenericParameterConstraints()));
+            Console.WriteLine("unloaded declaring method after: " + ReferenceEquals(declaring, parameter.DeclaringMethod));
+            return;
+        }
         if (args.Length > 0 && (args[0] == "generic-definition-relations-cold" || args[0] == "generic-definition-relations-warm"))
         {
             ReflectGenericMethodSubset.Program.RunGenericDefinitionRelations(args[0] == "generic-definition-relations-warm");
@@ -149,6 +165,7 @@ internal static class FormalConstraintsOnlyProgram
         if (args.Length > 0 && args[0] == "stripped-formal-constraints")
         {
             Type parameter = Factory.MakeBox().GetType().GetGenericTypeDefinition().GetGenericArguments()[0];
+            Console.WriteLine("stripped declaring method: " + (parameter.DeclaringMethod is null));
             for (int i = 0; i < 2; i++)
                 Console.WriteLine("stripped constraint query: " + Fault(() => parameter.GetGenericParameterConstraints()));
             Console.WriteLine("stripped constraint base: " + Fault(() => parameter.BaseType));
@@ -156,6 +173,7 @@ internal static class FormalConstraintsOnlyProgram
             return;
         }
         ReflectGenericMethodSubset.Program.RunConstraintMetadata();
+        ReflectGenericMethodSubset.Program.RunDeclaringMethod();
     }
 
     private static string Fault(Func<object?> action)
