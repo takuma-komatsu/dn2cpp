@@ -245,6 +245,37 @@ foreach (bool readOnly in new[] { false, true })
         metadata.GetOrAddString(readOnly ? "ReadAt" : "WriteAt"), metadata.GetOrAddBlob(accessSignature),
         accessBody, MetadataTokens.ParameterHandle(1));
 }
+foreach (var (name, elementCode) in new[] { ("Ref", (byte)0x1c), ("Int", (byte)0x08), ("Short", (byte)0x06) })
+{
+    TypeSpecificationHandle vectorOwner = metadata.AddTypeSpecification(
+        metadata.GetOrAddBlob(new byte[] { 0x1d, elementCode }));
+    MemberReferenceHandle vectorAddress = metadata.AddMemberReference(vectorOwner,
+        metadata.GetOrAddString("Address"), metadata.GetOrAddBlob(new byte[] { 0x20, 1, 0x10, elementCode, 0x08 }));
+    foreach (bool readOnly in new[] { false, true })
+    {
+        BlobBuilder signature = new();
+        signature.WriteBytes(new byte[] { 0, (byte)(readOnly ? 2 : 3), (byte)(readOnly ? elementCode : 1), 0x1d, elementCode, 0x08 });
+        if (!readOnly) signature.WriteByte(elementCode);
+        BlobBuilder il = new();
+        InstructionEncoder access = new(il);
+        access.OpCode(ILOpCode.Ldarg_0);
+        access.OpCode(ILOpCode.Ldarg_1);
+        if (readOnly) access.OpCode(ILOpCode.Readonly);
+        access.Call(vectorAddress);
+        if (readOnly)
+            access.OpCode(elementCode == 0x1c ? ILOpCode.Ldind_ref : elementCode == 0x08 ? ILOpCode.Ldind_i4 : ILOpCode.Ldind_i2);
+        else
+        {
+            access.OpCode(ILOpCode.Ldarg_2);
+            access.OpCode(elementCode == 0x1c ? ILOpCode.Stind_ref : elementCode == 0x08 ? ILOpCode.Stind_i4 : ILOpCode.Stind_i2);
+        }
+        access.OpCode(ILOpCode.Ret);
+        int vectorBody = bodyEncoder.AddMethodBody(access, maxStack: 2);
+        metadata.AddMethodDefinition(MethodAttributes.Public | MethodAttributes.Static, MethodImplAttributes.IL,
+            metadata.GetOrAddString((readOnly ? "ReadVector" : "WriteVector") + name),
+            metadata.GetOrAddBlob(signature), vectorBody, MetadataTokens.ParameterHandle(1));
+    }
+}
 if (metadataOnly)
 {
     BlobBuilder getterSignature = new();

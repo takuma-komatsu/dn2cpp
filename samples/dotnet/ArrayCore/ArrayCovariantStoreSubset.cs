@@ -22,6 +22,77 @@ internal static class Program
     private static T[] Allocate<T>(int length) => new T[length];
     private static Type ArrayType<T>() => typeof(T[]);
     private static T[] CastArray<T>(object value) => (T[])value;
+    private static T[] AddressReceiver<T>(T[] values, ref int calls) { calls++; return values; }
+    private static void WriteGenericSz<T>(T[] values, T value) => WriteReference(ref values[0], value);
+    private static T ReadGenericSz<T>(T[] values) => ReadReadonly(in values[0]);
+    private static void ClearEventSource(ref System.Diagnostics.Tracing.EventSource value) => value = null;
+    private static class SzOwner<T>
+    {
+        internal static void Write(T[] values, T value) => WriteReference(ref values[0], value);
+        internal static T Read(T[] values) => ReadReadonly(in values[0]);
+    }
+
+    internal static void RunSzAddresses()
+    {
+        Console.WriteLine("== vector writable address identity ==");
+        object seed = "seed", replacement = "replacement";
+        object[] covariant = new string[] { (string)seed };
+        Observe("vector address covariance", covariant, () => WriteObject(ref covariant[0], replacement), seed);
+        Observe("vector address negative", covariant, () => WriteObject(ref covariant[-1], replacement), seed);
+        Observe("vector address past end", covariant, () => WriteObject(ref covariant[1], replacement), seed);
+        Console.WriteLine("vector address readonly covariance=" + ReferenceEquals(ReadReadonly(in covariant[0]), seed));
+        Observe("vector address readonly bounds", covariant, () => ReadReadonly(in covariant[-1]), seed);
+        object[] nil = null;
+        Observe("vector address null", nil, () => WriteObject(ref nil[-1], replacement), null);
+        Observe("vector address readonly null", nil, () => ReadReadonly(in nil[-1]), null);
+        object[] normal = new object[1];
+        WriteObject(ref normal[0], seed);
+        Console.WriteLine("vector address exact=" + ReferenceEquals(normal[0], seed));
+        Observe("vector address exact bounds", normal, () => WriteObject(ref normal[1], replacement), seed);
+        int calls = 0;
+        WriteObject(ref AddressReceiver(normal, ref calls)[0], replacement);
+        Console.WriteLine("vector address receiver once=" + calls + ":" + ReferenceEquals(normal[0], replacement));
+        var strings = new string[1];
+        WriteGenericSz(strings, "text");
+        WriteGenericSz(normal, seed);
+        Console.WriteLine("vector address generic exact=" + ReadGenericSz(strings) + ":" + ReferenceEquals(ReadGenericSz(normal), seed));
+        Observe("vector address generic covariance", strings, () => WriteGenericSz<object>(strings, replacement), "text");
+        Console.WriteLine("vector address generic readonly=" + ReferenceEquals(ReadGenericSz<object>(strings), "text"));
+        SzOwner<string>.Write(strings, "owned");
+        SzOwner<object>.Write(normal, replacement);
+        Console.WriteLine("vector address owner exact=" + SzOwner<string>.Read(strings) + ":" + ReferenceEquals(SzOwner<object>.Read(normal), replacement));
+        Observe("vector address owner covariance", strings, () => SzOwner<object>.Write(strings, seed), "owned");
+        var dog = new Dog();
+        Animal[] animals = new Dog[] { dog };
+        Observe("vector address class covariance", animals, () => WriteGenericSz<Animal>(animals, dog), dog);
+        ITag[] tags = new ITag[1];
+        WriteGenericSz(tags, dog);
+        Console.WriteLine("vector address interface exact=" + ReferenceEquals(ReadGenericSz(tags), dog));
+        ITag[] narrowed = new Dog[] { dog };
+        Observe("vector address interface covariance", narrowed, () => WriteGenericSz<ITag>(narrowed, dog), dog);
+        var boxes = new Box<string>[1];
+        var box = new Box<string>();
+        WriteGenericSz(boxes, box);
+        Console.WriteLine("vector address generic class exact=" + ReferenceEquals(ReadGenericSz(boxes), box));
+        var events = new System.Diagnostics.Tracing.EventSource[1];
+        ClearEventSource(ref events[0]);
+        Console.WriteLine("vector address external exact=" + (events[0] is null));
+        var nested = new string[1][];
+        WriteGenericSz(nested, new[] { "nested" });
+        var rectangles = new string[1][,];
+        WriteGenericSz(rectangles, new string[,] { { "rectangle" } });
+        Console.WriteLine("vector address nested exact=" + nested[0][0] + ":" + rectangles[0][0, 0]);
+        Observe("vector address nested covariance", nested, () => WriteGenericSz<object[]>(nested, new object[1]), nested[0]);
+        var shortSlots = new short[2];
+        shortSlots[1] = 11;
+        WriteShort(ref shortSlots[0]);
+        var pairs = new PairSlot[1];
+        WritePair(ref pairs[0]);
+        var integers = new[] { 7 };
+        WriteReference(ref integers[0], 29);
+        Console.WriteLine("vector address value slots=" + shortSlots[0] + ":" + shortSlots[1] + ":" + pairs[0].Value + ":" + integers[0]);
+        Console.WriteLine("vector writable address identity end");
+    }
     private static void StoreMdArgument(object[,] values, object value) => values[0, 0] = value;
     private static void StoreMdGeneric<T>(T[,] values, T value) => values[0, 0] = value;
     private static string ReadMdCulture(ref CultureInfo value) => value.Name;

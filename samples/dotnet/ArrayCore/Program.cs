@@ -124,6 +124,9 @@ namespace ArrayCore
             ArrayCovariantStoreSubset.Program.RunMdAddresses();
             ArrayCovariantStoreSubset.Program.RunGenericMdAllocations();
             ArrayCovariantStoreSubset.Program.RunGenericMdConsumers();
+            if (args.Length > 0 && args[0] == "before-sz-address-identity")
+                return;
+            ArrayCovariantStoreSubset.Program.RunSzAddresses();
 #endif
         }
     }

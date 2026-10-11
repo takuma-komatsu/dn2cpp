@@ -2720,7 +2720,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 EmitStelem(ResolveTypeToken(insn.Token));
                 break;
             case ILOpCode.Ldelema:
-                EmitLdelema(ResolveTypeToken(insn.Token));
+                EmitLdelema(ResolveTypeToken(insn.Token), insn.Token);
                 _readonlyAddress = false;
                 break;
 

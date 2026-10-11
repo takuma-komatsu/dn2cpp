@@ -135,6 +135,30 @@ namespace HotPathBoundsSubset
             values[0] = value;
         }
 
+        [HotPath(SkipBoundsChecks = true)]
+        private static void AddressCovariantUnchecked(object[] values, object value)
+        {
+            ref object slot = ref values[0];
+            slot = value;
+        }
+
+        internal static void __GateAddressEntry()
+        {
+            Console.WriteLine("== unchecked writable vector addresses ==");
+            object seed = "seed";
+            object[] strings = new[] { (string)seed };
+            try { AddressCovariantUnchecked(strings, "replacement"); }
+            catch (ArrayTypeMismatchException exception)
+            {
+                Console.WriteLine("unchecked address rejected=" + exception.GetType().Name + "/" + exception.HResult.ToString("X8"));
+            }
+            Console.WriteLine("unchecked address retained=" + ReferenceEquals(strings[0], seed));
+            var objects = new object[1];
+            AddressCovariantUnchecked(objects, seed);
+            Console.WriteLine("unchecked address exact=" + ReferenceEquals(objects[0], seed));
+            Console.WriteLine("unchecked writable vector addresses end");
+        }
+
         internal static void __GateCovariantEntry()
         {
             Console.WriteLine("== unchecked covariant reference stores ==");

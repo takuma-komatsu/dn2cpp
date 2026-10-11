@@ -20,6 +20,8 @@
 # headerless slot representation used by managed byrefs.
 # Writable MD addresses check exact element identity before bounds; readonly permits covariance.
 # Shared MD allocations carry their concrete array identity through type-info context slots.
+# Writable SZ addresses retain exact element identity and CLR entry-specific fault order.
+# readonly. ldelema/Address permits covariance; Address uses each element's actual layout.
 # Runtime handle boxing retains the selected payload's ToString override.
 # Nullable array display composes generic element identities and array ranks.
 # Excessive-rank errors identify the attempted array type and its assembly.
@@ -305,6 +307,58 @@ md_address_identity_asserts() {
     done
 }
 
+sz_address_identity_asserts() {
+    local out="$1" axis line shared
+    awk '/^== vector writable address identity ==$/ { exit } { print }' \
+        "$out/headerless-full.native.stdout" > "$out/sz-address-prefix.stdout"
+    for axis in dotnet native; do
+        if [ "$axis" = dotnet ]; then
+            run_bounded dotnet "$_CG_APP" before-sz-address-identity > "$out/sz-address-before.$axis.stdout"
+        else
+            run_bounded "$out/ArrayCore$EXE_EXT" before-sz-address-identity > "$out/sz-address-before.$axis.stdout"
+        fi
+        diff -u <(strip_cr_win_file "$out/sz-address-before.$axis.stdout") \
+            <(strip_cr_win_file "$out/sz-address-prefix.stdout")
+    done
+    for line in '== vector writable address identity ==' 'vector writable address identity end' \
+        'vector address covariance=ArrayTypeMismatchException/80131503:identity=True' \
+        'vector address negative=IndexOutOfRangeException/80131508:identity=True' \
+        'vector address past end=IndexOutOfRangeException/80131508:identity=True' \
+        'vector address readonly covariance=True' \
+        'vector address readonly bounds=IndexOutOfRangeException/80131508:identity=True' \
+        'vector address null=NullReferenceException/80004003:identity=True' \
+        'vector address readonly null=NullReferenceException/80004003:identity=True' \
+        'vector address exact=True' \
+        'vector address exact bounds=IndexOutOfRangeException/80131508:identity=True' \
+        'vector address receiver once=1:True' 'vector address generic exact=text:True' \
+        'vector address generic covariance=ArrayTypeMismatchException/80131503:identity=True' \
+        'vector address generic readonly=True' 'vector address owner exact=owned:True' \
+        'vector address owner covariance=ArrayTypeMismatchException/80131503:identity=True' \
+        'vector address class covariance=ArrayTypeMismatchException/80131503:identity=True' \
+        'vector address interface exact=True' \
+        'vector address interface covariance=ArrayTypeMismatchException/80131503:identity=True' \
+        'vector address generic class exact=True' 'vector address external exact=True' \
+        'vector address nested exact=nested:rectangle' \
+        'vector address nested covariance=ArrayTypeMismatchException/80131503:identity=True' \
+        'vector address value slots=-123:11:37:29'; do
+        [ "$(grep -Fxc -- "$line" "$out/headerless-full.native.stdout")" = 1 ] \
+            || { echo "FAIL: SZ address witness missing or repeated: $line" >&2; return 1; }
+    done
+    shared=$(LC_ALL=C awk '
+        { sub(/\r$/, "") }
+        /^inline void .*_WriteGenericSz_TisCnRef_.*\)$/ { method = 1 }
+        /^inline void .*SzOwner_.*_Write_.*__rgctx\)$/ { owner = 1 }
+        (method || owner) && /dn2cpp_sz_require_address_element\(.*__rgctx/ {
+            if (method) found_method = 1
+            if (owner) found_owner = 1
+        }
+        /^}/ { method = 0; owner = 0 }
+        END { if (found_method && found_owner) print "shared SZ address identities" }
+    ' "$out/generated.h" "$out"/generated*.cpp)
+    [ "$shared" = 'shared SZ address identities' ] \
+        || { echo 'FAIL: SZ method/owner addresses lost shared type-info checks' >&2; return 1; }
+}
+
 eval "$(declare -f gate_extra_asserts | sed '1s/gate_extra_asserts/nonzero_prior_extra_asserts/')"
 # Keep the prior whole bucket and prove each appended lower-bound block ran once.
 gate_extra_asserts() {
@@ -312,6 +366,7 @@ gate_extra_asserts() {
     nonzero_prior_extra_asserts "$out"
     headerless_md_reference_asserts "$out"
     md_address_identity_asserts "$out"
+    sz_address_identity_asserts "$out"
     native=$(run_bounded "./$out/ArrayCore$EXE_EXT")
     native=$(strip_cr_win "$native")
     prefix=$(awk '/^== nonzero array lower bounds ==$/ { exit } { print }' <<< "$native")
@@ -393,6 +448,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|nested-md-array-identities
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|md-array-overload-original-kinds|md-array-overload-native:--no-ildiet|md-array-overload-prefix-argv:before-md-overload"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|headerless-md-reference-conversion|before-headerless-md-identity"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|writable-md-address-exact-element|before-md-address-identity|rank1-md-address-readonly|md-address-prefix:${DN2CPP_BEFORE_MD_ADDRESS:-}|shared-md-allocation-typeinfo"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|writable-sz-address-exact-element|before-sz-address-identity|vector-address-member-layout|vector-address-prefix:${DN2CPP_BEFORE_VECTOR_ADDRESS:-}"
 corelib_diff_gate ArrayCore System.Collections
 
 native=$(run_bounded "./$_CG_OUT/ArrayCore$EXE_EXT")
@@ -1159,6 +1215,20 @@ for line in '== rank1 writable MD address identity ==' 'rank1 writable MD addres
     'rank1 address readonly null=NullReferenceException/80004003' 'rank1 address retained=True'; do
     [[ $(grep -Fxc -- "$line" <<< "$static_rank1_native") == 1 ]] \
         || { echo "FAIL: rank1 MD address witness must run once: $line" >&2; exit 1; }
+done
+static_vector_prefix=$(awk '/^== vector Address member identity ==$/ { exit } { print }' <<< "$static_rank1_native")
+static_vector_before=$(DN2CPP_BEFORE_VECTOR_ADDRESS=1 run_bounded "./$static_rank1_root/gen/ArrayStaticRankOneOnly$EXE_EXT")
+static_vector_clr_before=$(DN2CPP_BEFORE_VECTOR_ADDRESS=1 run_bounded dotnet exec \
+    --runtimeconfig "$static_rank1_root/generator/Generate.runtimeconfig.json" "$static_rank1_app")
+assert_output "$static_vector_prefix" "$(strip_cr_win "$static_vector_before")"
+assert_output "$static_vector_prefix" "$(strip_cr_win "$static_vector_clr_before")"
+for line in '== vector Address member identity ==' 'vector Address member identity end' \
+    'vector member exact=True' 'rank1 address vector covariance=ArrayTypeMismatchException/80131503' \
+    'rank1 address vector type before bounds=ArrayTypeMismatchException/80131503' \
+    'rank1 address vector null=NullReferenceException/80004003' \
+    'vector member readonly=True' 'vector member value slots=29:11:-123:13'; do
+    [ "$(grep -Fxc -- "$line" <<< "$static_rank1_native")" = 1 ] \
+        || { echo "FAIL: vector Address MemberRef witness missing or repeated: $line" >&2; exit 1; }
 done
 for line in '== static rank1 MD identity ==' \
     'static=System.Int32[*]/Int32[*]/False/1' 'identity=True/True/False' \

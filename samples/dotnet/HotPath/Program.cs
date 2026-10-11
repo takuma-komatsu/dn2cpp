@@ -26,6 +26,9 @@ namespace HotPath
             if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_COVARIANT_STORES") == "1")
                 return;
             HotPathBoundsSubset.Program.__GateCovariantEntry();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_VECTOR_ADDRESS") == "1")
+                return;
+            HotPathBoundsSubset.Program.__GateAddressEntry();
         }
     }
 }

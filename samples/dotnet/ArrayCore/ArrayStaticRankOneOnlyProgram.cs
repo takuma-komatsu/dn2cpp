@@ -71,6 +71,23 @@ static class ArrayStaticRankOneOnlyProgram
         AddressFault("readonly null", () => ArrayRankOneOwner.ReadAt(null, 0));
         Console.WriteLine($"rank1 address retained={ReferenceEquals(strings.GetValue(-2), seed)}");
         Console.WriteLine("rank1 writable MD address identity end");
+        if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_VECTOR_ADDRESS") == "1") return;
+        Console.WriteLine("== vector Address member identity ==");
+        var vectorObjects = new object[1];
+        object[] vectorStrings = new[] { (string)seed };
+        ArrayRankOneOwner.WriteVectorRef(vectorObjects, 0, seed);
+        Console.WriteLine("vector member exact=" + ReferenceEquals(ArrayRankOneOwner.ReadVectorRef(vectorObjects, 0), seed));
+        AddressFault("vector covariance", () => ArrayRankOneOwner.WriteVectorRef(vectorStrings, 0, "replacement"));
+        AddressFault("vector type before bounds", () => ArrayRankOneOwner.WriteVectorRef(vectorStrings, -1, seed));
+        AddressFault("vector null", () => ArrayRankOneOwner.WriteVectorRef(null, -1, seed));
+        Console.WriteLine("vector member readonly=" + ReferenceEquals(ArrayRankOneOwner.ReadVectorRef(vectorStrings, 0), seed));
+        var vectorInts = new[] { 7, 11 };
+        var vectorShorts = new short[] { 5, 13 };
+        ArrayRankOneOwner.WriteVectorInt(vectorInts, 0, 29);
+        ArrayRankOneOwner.WriteVectorShort(vectorShorts, 0, -123);
+        Console.WriteLine("vector member value slots=" + ArrayRankOneOwner.ReadVectorInt(vectorInts, 0) + ":" + vectorInts[1]
+            + ":" + ArrayRankOneOwner.ReadVectorShort(vectorShorts, 0) + ":" + vectorShorts[1]);
+        Console.WriteLine("vector Address member identity end");
     }
 
     static void Check(string name, Type literal)
