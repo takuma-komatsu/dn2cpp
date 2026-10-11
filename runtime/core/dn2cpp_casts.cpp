@@ -1058,6 +1058,9 @@ static int32_t dn2cpp_array_elem_assignable(const Dn2CppTypeInfo* se, const Dn2C
     // A value-type element on either side requires an exact match (handled above).
     if ((se->flags & DN2CPP_TF_VALUETYPE) != 0 || (de->flags & DN2CPP_TF_VALUETYPE) != 0)
         return 0;
+    // Unknown formal layouts do not prove reference covariance or variance.
+    if ((se->flags & DN2CPP_TF_GENERICPARAM) != 0 && !dn2cpp_type_reference_argument(se))
+        return 0;
     if (de == &dn2cpp_object_type)
         return 1; // every reference element is assignable to object
     for (const Dn2CppTypeInfo* t = se; t != nullptr; t = t->base)

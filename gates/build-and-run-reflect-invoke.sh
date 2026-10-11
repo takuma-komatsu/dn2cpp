@@ -32,8 +32,8 @@
 # DefaultBinder primitive widening and specificity differ from Invoke's ushort-to-char policy.
 # The metadata codec probe checks shared missing-body/invoker refusals through every entry.
 # Generic method lookups and enumeration return one definition with stable parameter identities.
-# Formal parameters retain their defining assembly and refuse allocation and open type composition.
-# Mixed member lookups share generic definition identities; public open signature composition is refused.
+# Formal parameters retain their defining assembly and refuse allocation.
+# Open signatures and public compositions preserve formal identities without executable bodies.
 # Formal constraints preserve typical type/method parameters, recursive identities and transitive interfaces.
 # A formal parameter's declaring and reflected types share the typical owner, independent of the lookup.
 # Special constraints classify formal parameters; unavailable unused signatures never force eager decode.
@@ -353,6 +353,7 @@ gate_extra_asserts() {
     headerless_managed_reference_asserts "$1"
     gate_virtual_delegate_prefix_asserts "$1"
     formal_constraint_prefix_asserts "$1"
+    open_signature_prefix_asserts "$1"
     gate_runtime_owned_delegate_prefix_asserts "$1"
     gate_reflection_signature_prefix_asserts "$1"
     gate_pointer_array_prefix_asserts "$1"
@@ -898,29 +899,16 @@ gate_extra_asserts() {
                 || { echo "FAIL: formal type composition block witness missing ($axis): $line" >&2; return 1; }
         done
         for line in generic array rank2-array; do
-            if [ "$axis" = native ]; then
-                grep -Fxq -- "formal composition $line fault=PlatformNotSupportedException" <<< "$boundary" \
-                    || { echo "FAIL: composed open type was not refused: $line" >&2; return 1; }
-            else
-                grep -Fxq -- "formal composition $line contains=True" <<< "$boundary" \
-                    || { echo "FAIL: CLR formal type composition oracle mismatch: $line" >&2; return 1; }
-            fi
+            grep -Fxq -- "formal composition $line contains=True" <<< "$boundary"
         done
-        if [ "$axis" = dotnet ]; then
-            grep -Fxq -- 'formal composition generic activation=ArgumentException' <<< "$boundary"
-        fi
+        grep -Fxq -- 'formal composition generic activation=ArgumentException' <<< "$boundary"
         for line in metadata-answer compiled; do
-            if [ "$axis" = native ]; then
-                grep -Fxq -- "formal method composition $line fault=PlatformNotSupportedException" <<< "$boundary" \
-                    || { echo "FAIL: open generic method was not refused: $line" >&2; return 1; }
-            else
-                grep -Fxq -- "formal method composition $line: definition=False contains=True" <<< "$boundary" \
-                    || { echo "FAIL: CLR open generic method oracle mismatch: $line" >&2; return 1; }
-                grep -Fxq -- "formal method composition $line invoke=InvalidOperationException" <<< "$boundary" \
-                    || { echo "FAIL: CLR open generic method invocation oracle mismatch: $line" >&2; return 1; }
-            fi
+            grep -Fxq -- "formal method composition $line: definition=False contains=True" <<< "$boundary"
+            grep -Fxq -- "formal method composition $line invoke=InvalidOperationException" <<< "$boundary"
         done
     done
+    diff -u <(strip_cr_win_file "$out/formal-type-boundary.dotnet.stdout") \
+        <(strip_cr_win_file "$out/formal-type-boundary.native.stdout")
 
     run_bounded dotnet "$_CG_APP" before-mixed-generic-definitions > "$out/mixed-generic-definitions-before.dotnet.stdout"
     run_bounded "$out/ReflectInvoke$EXE_EXT" before-mixed-generic-definitions > "$out/mixed-generic-definitions-before.native.stdout"
@@ -967,9 +955,6 @@ gate_extra_asserts() {
                 for query in return parameter return-parameter; do
                     if [ "$line" = RefShape ] && [ "$query" != parameter ]; then
                         grep -Fxq -- "signature $line $route $query=type:U|parameter=True|contains=True" <<< "$boundary"
-                    elif [ "$axis" = native ]; then
-                        grep -Fxq -- "signature $line $route $query=fault:PlatformNotSupportedException" <<< "$boundary" \
-                            || { echo "FAIL: composed signature query was not refused: $line $route $query" >&2; return 1; }
                     else
                         grep -Eq "^signature $line $route $query=type:.*\\|parameter=False\\|contains=True$" <<< "$boundary" \
                             || { echo "FAIL: CLR composed signature oracle missing: $line $route $query" >&2; return 1; }
@@ -1003,6 +988,9 @@ gate_extra_asserts() {
         grep -Fxq -- 'signature constrained BaseConstrained interfaces=0' <<< "$boundary"
         grep -Fxq -- 'signature constrained InterfaceConstrained base=System.Object' <<< "$boundary"
     done
+
+    diff -u <(strip_cr_win_file "$out/generic-signature-boundary.dotnet.stdout") \
+        <(strip_cr_win_file "$out/generic-signature-boundary.native.stdout")
 
     run_bounded dotnet "$_CG_APP" before-formal-reflected-owners > "$out/formal-reflected-owners-before.dotnet.stdout"
     run_bounded "$out/ReflectInvoke$EXE_EXT" before-formal-reflected-owners > "$out/formal-reflected-owners-before.native.stdout"
@@ -1684,7 +1672,7 @@ gate_extra_asserts() {
     done
 
     # Initial intrinsic lookup allocates one native method row; enumeration can
-    # allocate inherited Object rows. Each native row includes its binding pointee pointer.
+    # allocate inherited Object rows. Each native row includes its symbolic signature pointer.
     # Synthesized metadata rows hold MethodInfo inline and are interned on cold lookup.
     # Enforce each operation's first and repeated allocation budget independently.
     # The capture reports time too, but timing is not a pass/fail threshold.
@@ -1704,7 +1692,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|managed-format-provide
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_formal-constraint-metadata.sh samples/dotnet/ReflectInvoke/FormalConstraintsOnly.csproj samples/dotnet/ReflectInvoke/FormalConstraintsOnlyProgram.cs samples/dotnet/TrimReflectLib/TrimReflectLib.csproj samples/dotnet/TrimReflectLib/Lib.cs samples/dotnet/MultiAssemblyAlias/MultiAssemblyAlias.csproj samples/dotnet/MultiAssemblyAlias/FormalConstraintCollision.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|formal-constraints:packed,native,uncompressed,trimmed,unshared,parallel,recursive,closed-synth|formal-constraints-unshared-build:-p:FormalConstraintsUnshared=true|formal-constraints-prefix:before-formal-constraint-metadata|stripped-formal-constraints:repeated-owner-guard"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/reflection-unused-signatures/Ext/ConstraintCollision.cs"
-DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|formal-constraints:scoped-nongeneric,unloaded-identity,lazy-relations,finite-nested,unloaded-scoped-leaves,nested-assignability"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|open-signatures:raw-MethodDef-context,metadata-only-methods,validated-Make,parallel,unloaded|formal-constraints:scoped-nongeneric,unloaded-identity,lazy-relations,finite-nested,unloaded-scoped-leaves,nested-assignability"
 reflection_layout_axis=default
 DN2CPP_STRICT_COMPLETION=1 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|strict-completion" \
     corelib_diff_gate ReflectInvoke --no-ildiet System.ComponentModel.TypeConverter
@@ -2737,12 +2725,14 @@ for mode in default trim; do
         unused_native=$(strip_cr_win_file "$unused_out/return.native.stdout")
         grep -Fxq -- 'return=OpenHolder`1 contains=True' <<< "$unused_clr" \
             || { echo "FAIL: CLR open signature type witness missing ($mode/$load)" >&2; exit 1; }
-        grep -Fxq -- 'return exception=PlatformNotSupportedException' <<< "$unused_native" \
-            || { echo "FAIL: native open signature type boundary missing ($mode/$load)" >&2; exit 1; }
+        grep -Fxq -- 'return=OpenHolder`1 contains=True' <<< "$unused_native" \
+            || { echo "FAIL: native open signature type witness missing ($mode/$load)" >&2; exit 1; }
+        diff -u <(strip_cr_win_file "$unused_out/return.dotnet.stdout") \
+            <(strip_cr_win_file "$unused_out/return.native.stdout")
         diff -u <(strip_cr_win_file "$unused_out/dotnet.stdout") \
             <(sed '/^return=/d' <<< "$unused_clr")
         diff -u <(strip_cr_win_file "$unused_out/native.stdout") \
-            <(sed '/^return exception=/d' <<< "$unused_native")
+            <(sed '/^return=/d' <<< "$unused_native")
     done
 done
 

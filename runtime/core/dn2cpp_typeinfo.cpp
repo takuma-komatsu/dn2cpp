@@ -1105,8 +1105,6 @@ Dn2CppType* dn2cpp_type_make_compound(Dn2CppType* type, int32_t kind)
     const Dn2CppTypeInfo* ti = dn2cpp_type_require(type);
     if (dn2cpp_signature_kind(ti) == 2)
         dn2cpp_throw_type_load();
-    if (dn2cpp_type_contains_generic_parameters(ti))
-        dn2cpp_throw_platform_not_supported("Reflection: composed open generic signature types are not supported");
     return dn2cpp_get_type_from_handle(dn2cpp_compound_type(kind, 0, &ti, 1));
 }
 

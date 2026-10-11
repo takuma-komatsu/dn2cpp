@@ -601,6 +601,17 @@ allocation or invocation. `ContainsGenericParameters` follows elements and
 generic arguments, never constraints or ancestry. This cold representation does
 not change generic-context slots, hot flag widths or the baked patch wire format.
 
+Generic MethodDef signature recipes resolve type parameters against the actual
+declaring context and method parameters against the typical definition.
+Public signature queries and open `Make*` compositions share the constraint
+interners without eagerly resolving parameter constraints. Constructed method
+views retain their original definition, argument vector and reflected owner in
+immutable cold rows; they never reuse a callable row's invoker. Public composition
+validates declared constraints before publishing a handle. Open method arguments
+participate in `ContainsGenericParameters` and the invocation and delegate guards.
+Formal array covariance and generic variance require reference-type evidence;
+an unconstrained or dependent parameter alone cannot establish a reference layout.
+
 `Compilation.ReflectionMetadata.cs` selects native storage for exact types
 named by surviving `ldtoken`/`GetTypeFromHandle` pairs in reached IL. It uses
 each closed scan context and excludes canonical placeholders, dead code and

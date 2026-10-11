@@ -348,6 +348,9 @@ namespace ReflectInvoke
                 return;
             // CLR string MemberwiseClone precedes this; collection probes run in the isolated driver.
             ReflectGenericMethodSubset.Program.RunConstraintMetadata(false);
+            if (args.Length > 0 && args[0] == "before-open-generic-signatures")
+                return;
+            ReflectGenericMethodSubset.Program.RunOpenSignatures(false);
         }
     }
 }
