@@ -3528,12 +3528,9 @@ internal sealed partial class CppEmitter
     /// <see cref="EmitRelationRows"/> states their relations.</summary>
     private readonly List<ClassInfo> _intrinsicShellRelations = [];
 
-    /// <summary>Whether an intrinsic shell's relation row may name <paramref name="itf"/>:
-    /// a defined type-info not lowered as the headerless NumberFormatInfo handle.
-    /// <c>dn2cpp_nfi_isinst</c> hands back an object that passes that type test
-    /// reinterpreted as the handle, and a shell's instance is no NFI box.</summary>
+    /// <summary>Whether an intrinsic shell's relation row can name a defined type-info.</summary>
     private bool IntrinsicShellRelation(ClassInfo itf) =>
-        RelationRowDefined(itf) && !MethodCompiler.IsNfiCppType(CppTypes.Of(TypeDesc.MakeClass(itf)));
+        RelationRowDefined(itf);
 
     /// <summary>Emits, as relation-only rows the init prologue installs, the CLR interface
     /// relations of the type-infos whose own tables cannot carry dispatch slots for them:

@@ -139,13 +139,7 @@ namespace CultureInfoApi
             CultureInfo unknown = new CultureInfo("xx-YY");
             Console.WriteLine("  unmodeled name='" + unknown.Name + "' LCID=" + unknown.LCID);
 
-            // CultureInfo.GetFormat(Type) — the direct IFormatProvider implementation on
-            // CultureInfo (a plain call token, not the interface slot). Returns a non-null
-            // format object for a format type the invariant culture serves. typeof is on
-            // DateTimeFormatInfo (a real transpiled class with a TypeInfo) rather than
-            // NumberFormatInfo (value-mapped to the runtime struct pointer, so it has no
-            // reflectable Type token); the arm ignores the requested type and hands back
-            // the invariant NFI either way — non-null, as real .NET returns non-null here.
+            // A culture serves the requested DateTimeFormatInfo as a managed object.
             object gf = inv.GetFormat(typeof(DateTimeFormatInfo));
             Console.WriteLine("GetFormat(DTFI) null? " + (gf == null));
 

@@ -1896,7 +1896,7 @@ internal sealed partial class MethodCompiler
         // PROVENANCE to decide whether an int32-promoted slot has to be re-normalized.
         StackEntry? outEntry = isTry ? Pop() : null;
         string? outRef = outEntry?.Expr;
-        string nfiExpr = hasProvider ? Cast(Pop(), "const Dn2CppNumberFormatInfo*") : "nullptr";
+        string nfiExpr = hasProvider ? CastNumberFormatProvider(Pop()) : "nullptr";
         string stylesExpr = hasStyles
             ? $"(int32_t)({Pop().Expr})"
             : isFloat ? "231" /* Float | AllowThousands */ : "7" /* Integer */;

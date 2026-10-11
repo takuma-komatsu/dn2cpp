@@ -1468,12 +1468,18 @@ static void dn2cpp_format_append_run(Dn2CppISB* h, const char16_t* src, int32_t 
 }
 
 static Dn2CppString* dn2cpp_format_hole_value(Dn2CppObject* obj, Dn2CppString* spec,
-                                             const Dn2CppNumberFormatInfo* nfi)
+                                             Dn2CppObject* provider)
 {
     if (spec == nullptr || spec->length == 0)
         return dn2cpp_object_tostring(obj);
     const Dn2CppTypeInfo* t = (obj != nullptr) ? obj->type : nullptr;
     const void* payload = obj != nullptr ? obj + 1 : nullptr; // boxed value sits right after the header
+    // Non-numeric holes ignore the number provider, including date/time formatters.
+    // Extract only after the hole has selected a numeric formatter and a specifier.
+    const bool numeric = t == &dn2cpp_int32_type || t == &dn2cpp_int64_type
+        || t == &dn2cpp_uint64_type || t == &dn2cpp_intptr_type || t == &dn2cpp_uintptr_type
+        || t == &dn2cpp_double_type || t == &dn2cpp_single_type || t == &dn2cpp_decimal_type;
+    const Dn2CppNumberFormatInfo* nfi = numeric ? dn2cpp_format_provider_nfi(provider) : nullptr;
     if (t == &dn2cpp_int32_type)
         return dn2cpp_format_int_c(*reinterpret_cast<const int32_t*>(payload), 4, spec, nfi);
     if (t == &dn2cpp_int64_type)
@@ -1508,7 +1514,7 @@ static Dn2CppString* dn2cpp_format_hole_value(Dn2CppObject* obj, Dn2CppString* s
 }
 
 static Dn2CppString* dn2cpp_string_format_impl(Dn2CppString* fmt, Dn2CppObject** args, int32_t argc,
-                                              const Dn2CppNumberFormatInfo* nfi)
+                                              Dn2CppObject* provider)
 {
     if (fmt == nullptr)
         dn2cpp_throw_argument_null_param("format");
@@ -1605,7 +1611,7 @@ static Dn2CppString* dn2cpp_string_format_impl(Dn2CppString* fmt, Dn2CppObject**
             runStart = i;
             if (index >= argc)
                 dn2cpp_throw_sr0(&dn2cpp_format_exception_type, DN2CPP_SR_FORMAT_INDEX_OUT_OF_RANGE);
-            dn2cpp_isb_append_aligned(&h, dn2cpp_format_hole_value(args[index], spec, nfi), alignment);
+            dn2cpp_isb_append_aligned(&h, dn2cpp_format_hole_value(args[index], spec, provider), alignment);
         }
         else
         {
@@ -1641,29 +1647,29 @@ Dn2CppString* dn2cpp_string_format_arr(Dn2CppString* fmt, Dn2CppArrayRef* args)
     return dn2cpp_string_format_impl(fmt, args->data, args->length, nullptr);
 }
 
-Dn2CppString* dn2cpp_string_format1_c(const Dn2CppNumberFormatInfo* n, Dn2CppString* fmt, Dn2CppObject* a0)
+Dn2CppString* dn2cpp_string_format1_c(Dn2CppObject* provider, Dn2CppString* fmt, Dn2CppObject* a0)
 {
     Dn2CppObject* a[1] = { a0 };
-    return dn2cpp_string_format_impl(fmt, a, 1, n);
+    return dn2cpp_string_format_impl(fmt, a, 1, provider);
 }
 
-Dn2CppString* dn2cpp_string_format2_c(const Dn2CppNumberFormatInfo* n, Dn2CppString* fmt, Dn2CppObject* a0, Dn2CppObject* a1)
+Dn2CppString* dn2cpp_string_format2_c(Dn2CppObject* provider, Dn2CppString* fmt, Dn2CppObject* a0, Dn2CppObject* a1)
 {
     Dn2CppObject* a[2] = { a0, a1 };
-    return dn2cpp_string_format_impl(fmt, a, 2, n);
+    return dn2cpp_string_format_impl(fmt, a, 2, provider);
 }
 
-Dn2CppString* dn2cpp_string_format3_c(const Dn2CppNumberFormatInfo* n, Dn2CppString* fmt, Dn2CppObject* a0, Dn2CppObject* a1, Dn2CppObject* a2)
+Dn2CppString* dn2cpp_string_format3_c(Dn2CppObject* provider, Dn2CppString* fmt, Dn2CppObject* a0, Dn2CppObject* a1, Dn2CppObject* a2)
 {
     Dn2CppObject* a[3] = { a0, a1, a2 };
-    return dn2cpp_string_format_impl(fmt, a, 3, n);
+    return dn2cpp_string_format_impl(fmt, a, 3, provider);
 }
 
-Dn2CppString* dn2cpp_string_format_arr_c(const Dn2CppNumberFormatInfo* n, Dn2CppString* fmt, Dn2CppArrayRef* args)
+Dn2CppString* dn2cpp_string_format_arr_c(Dn2CppObject* provider, Dn2CppString* fmt, Dn2CppArrayRef* args)
 {
     if (args == nullptr)
         dn2cpp_throw_argument_null_param(fmt == nullptr ? "format" : "args");
-    return dn2cpp_string_format_impl(fmt, args->data, args->length, n);
+    return dn2cpp_string_format_impl(fmt, args->data, args->length, provider);
 }
 
 // The params ReadOnlySpan<object> overloads: the transpiler passes the span's
@@ -1673,10 +1679,10 @@ Dn2CppString* dn2cpp_string_format_spanobjs(Dn2CppString* fmt, Dn2CppObject* con
     return dn2cpp_string_format_impl(fmt, const_cast<Dn2CppObject**>(args), n < 0 ? 0 : n, nullptr);
 }
 
-Dn2CppString* dn2cpp_string_format_spanobjs_c(const Dn2CppNumberFormatInfo* nfi, Dn2CppString* fmt,
+Dn2CppString* dn2cpp_string_format_spanobjs_c(Dn2CppObject* provider, Dn2CppString* fmt,
                                               Dn2CppObject* const* args, int32_t n)
 {
-    return dn2cpp_string_format_impl(fmt, const_cast<Dn2CppObject**>(args), n < 0 ? 0 : n, nfi);
+    return dn2cpp_string_format_impl(fmt, const_cast<Dn2CppObject**>(args), n < 0 ? 0 : n, provider);
 }
 
 Dn2CppString* dn2cpp_string_concat_objects(Dn2CppArrayRef* objs)

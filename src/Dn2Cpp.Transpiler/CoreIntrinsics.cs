@@ -169,8 +169,8 @@ internal static partial class CoreIntrinsics
         // Culture-aware formatting. The real CultureInfo/NumberFormatInfo
         // are vast (ICU, resource lookup, per-thread caches); model them as a
         // const Dn2CppNumberFormatInfo* carrying the separators/signs/symbols and
-        // intercept the members below. IFormatProvider (their interface) lowers to
-        // the same pointer so a CultureInfo/NumberFormatInfo flows as the provider.
+        // intercept the members below. IFormatProvider retains a managed header
+        // so each implementation preserves its type and object identity.
         "System.Globalization.CultureInfo",
         "System.Globalization.NumberFormatInfo",
         "System.Globalization.DateTimeFormatInfo",
@@ -2104,12 +2104,11 @@ internal static partial class CoreIntrinsics
         // assembly's carried .resources blob. See s_intrinsicTypes for why the real
         // body cannot be transpiled at all.
         ["System.Resources.ResourceManager"] = "Dn2CppResourceManager*",
-        // CultureInfo / NumberFormatInfo / IFormatProvider all lower to the runtime
-        // number-format struct pointer; the format helpers' culture variants take it
-        // directly, so a provider local/field/parameter carries the same type.
+        // Typed culture data uses the raw formatter payload. An interface keeps a
+        // managed header so providers with different CLR identities stay distinguishable.
         ["System.Globalization.CultureInfo"] = "const Dn2CppNumberFormatInfo*",
         ["System.Globalization.NumberFormatInfo"] = "const Dn2CppNumberFormatInfo*",
-        ["System.IFormatProvider"] = "const Dn2CppNumberFormatInfo*",
+        ["System.IFormatProvider"] = "Dn2CppObject*",
         // TextInfo carries the same culture pointer for ListSeparator and ToString.
         ["System.Globalization.TextInfo"] = "const Dn2CppNumberFormatInfo*",
         // System.Decimal: an intrinsic value type backed by the runtime 96-bit

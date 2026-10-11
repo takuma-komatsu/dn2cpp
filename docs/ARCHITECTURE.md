@@ -334,6 +334,25 @@ leave the shape test to the emitter, which has already paid for the signature;
 receiver's static type, say), make the cut agree or **delete the cut** and let
 the real body be reachable — never approximate it.
 
+#### Headerless managed references
+
+Culture, number-format, text, assembly and module typed values use raw runtime
+payloads. Every conversion to an object or interface acquires an interned managed
+wrapper with the source CLR identity. `IFormatProvider` uses the managed reference
+ABI; numeric intrinsics extract a known provider's number-format payload only when
+formatting or parsing consumes it. Composite formatting defers extraction until
+a numeric hole uses a format specifier. Other providers refuse explicitly until their
+`GetFormat` dispatch is implemented. Internal format-spec callbacks retain their
+raw number-format payload ABI.
+
+Multidimensional array slots retain the typed raw payload ABI exposed by
+`Address`. Erased loads/stores and reflection convert using the actual element
+type, including covariant access and copies between MD and SZ representations.
+SZ reference slots contain managed wrappers. Type and bounds checks precede
+conversion and mutation in each entry's CLR order.
+Canonical reference MD allocations without a concrete type header retain managed
+reference cells; a missing element type does not imply a headerless payload.
+
 #### Platform ISA contract
 
 The `System.Runtime.Intrinsics.X86` / `.Arm` / `.Wasm` families are one

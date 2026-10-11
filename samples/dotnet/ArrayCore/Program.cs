@@ -116,6 +116,9 @@ namespace ArrayCore
             if (args.Length != 0 && args[0] == "before-sort-access-faults")
                 return;
             ArrayReflectionSubset.Program.RunSortAccessFaults();
+            if (args.Length != 0 && args[0] == "before-headerless-md-identity")
+                return;
+            ArrayCovariantStoreSubset.Program.RunHeaderlessMdStores();
 #endif
         }
     }

@@ -171,6 +171,7 @@
 # Array copy, clear, resize and slices preserve fault fields and validation precedence.
 # Default comparer concrete families preserve enum widths, boxed order and user comparisons.
 source "$(dirname "$0")/_common.sh"
+source gates/_headerless-reference-identity.sh
 
 comparison_prior_extra_asserts() {
     local out="$1" native before prefix line
@@ -257,6 +258,7 @@ eval "$(declare -f gate_extra_asserts | sed '1s/gate_extra_asserts/nonzero_prior
 gate_extra_asserts() {
     local out="$1" native before prefix line
     nonzero_prior_extra_asserts "$out"
+    headerless_md_reference_asserts "$out"
     native=$(run_bounded "./$out/ArrayCore$EXE_EXT")
     native=$(strip_cr_win "$native")
     prefix=$(awk '/^== nonzero array lower bounds ==$/ { exit } { print }' <<< "$native")
@@ -332,10 +334,11 @@ assert_runtime_box_formatting() {
 
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|array-box-shared-generics|before-array-provenance|before-nested-interface-variance|before-covariant-stores|before-covariant-md-stores|before-runtime-box-formatting|before-nullable-array-names|before-excess-array-rank"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|comparer-identity-prefix-argv:before-comparer-identity|before-nonzero-lower-bounds|rank1-nonsz-collections|static-rank1-md-typespec|before-lower-bound-search|rank1-collection-virtual-equality|rank1-collection-extreme-bounds|before-extreme-collection|before-wrapped-array-ranges|wrapped-range-default-comparer-identity|before-sort-access-faults|sort-window-access-fault-boundary|opaque-comparer-type-only"
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/ArrayCore/ArrayComparerTypeOnly.csproj samples/dotnet/ArrayCore/ArrayComparerTypeOnlyProgram.cs samples/dotnet/ArrayCore/ArrayLowerBoundsOnly.csproj samples/dotnet/ArrayCore/ArrayLowerBoundsOnlyProgram.cs gates/fixtures/array-rank1-md/Driver.csproj samples/dotnet/ArrayCore/ArrayStaticRankOneOnlyProgram.cs gates/fixtures/array-rank1-md/Generate.csproj gates/fixtures/array-rank1-md/Program.cs samples/dotnet/ArrayCore/BoxProvenanceOnly.csproj samples/dotnet/ArrayCore/BoxProvenanceProgram.cs samples/dotnet/ArrayCore/ReflectionReturnBoxOnly.csproj samples/dotnet/ArrayCore/ReflectionReturnBoxProgram.cs samples/dotnet/ArrayCore/DiamondProvenanceOnly.csproj samples/dotnet/ArrayCore/DiamondProvenanceProgram.cs samples/dotnet/ArrayCore/FieldAliasProvenanceOnly.csproj samples/dotnet/ArrayCore/FieldAliasProvenanceProgram.cs samples/dotnet/ArrayCore/FieldAliasProvenanceSubset.cs samples/dotnet/ArrayCore/ArrayElementAliasProgram.cs samples/dotnet/ArrayCore/ArrayElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayObjectElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayUnknownElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayErasedElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayReferenceSlotAliasOnly.csproj samples/dotnet/ArrayCore/ArrayReflectedVoidBoxOnly.csproj samples/dotnet/ArrayCore/ArrayReflectedVoidBoxProgram.cs samples/dotnet/ArrayCore/ArrayFutureStoreOnly.csproj samples/dotnet/ArrayCore/ArrayFutureStoreProgram.cs samples/dotnet/ArrayCore/ArrayFutureNullStoreOnly.csproj samples/dotnet/ArrayCore/ArrayObjectFutureStoreOnly.csproj samples/dotnet/ArrayCore/ArrayObjectFutureStoreProgram.cs"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_headerless-reference-identity.sh samples/dotnet/ArrayCore/ArrayComparerTypeOnly.csproj samples/dotnet/ArrayCore/ArrayComparerTypeOnlyProgram.cs samples/dotnet/ArrayCore/ArrayLowerBoundsOnly.csproj samples/dotnet/ArrayCore/ArrayLowerBoundsOnlyProgram.cs gates/fixtures/array-rank1-md/Driver.csproj samples/dotnet/ArrayCore/ArrayStaticRankOneOnlyProgram.cs gates/fixtures/array-rank1-md/Generate.csproj gates/fixtures/array-rank1-md/Program.cs samples/dotnet/ArrayCore/BoxProvenanceOnly.csproj samples/dotnet/ArrayCore/BoxProvenanceProgram.cs samples/dotnet/ArrayCore/ReflectionReturnBoxOnly.csproj samples/dotnet/ArrayCore/ReflectionReturnBoxProgram.cs samples/dotnet/ArrayCore/DiamondProvenanceOnly.csproj samples/dotnet/ArrayCore/DiamondProvenanceProgram.cs samples/dotnet/ArrayCore/FieldAliasProvenanceOnly.csproj samples/dotnet/ArrayCore/FieldAliasProvenanceProgram.cs samples/dotnet/ArrayCore/FieldAliasProvenanceSubset.cs samples/dotnet/ArrayCore/ArrayElementAliasProgram.cs samples/dotnet/ArrayCore/ArrayElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayObjectElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayUnknownElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayErasedElementAliasOnly.csproj samples/dotnet/ArrayCore/ArrayReferenceSlotAliasOnly.csproj samples/dotnet/ArrayCore/ArrayReflectedVoidBoxOnly.csproj samples/dotnet/ArrayCore/ArrayReflectedVoidBoxProgram.cs samples/dotnet/ArrayCore/ArrayFutureStoreOnly.csproj samples/dotnet/ArrayCore/ArrayFutureStoreProgram.cs samples/dotnet/ArrayCore/ArrayFutureNullStoreOnly.csproj samples/dotnet/ArrayCore/ArrayObjectFutureStoreOnly.csproj samples/dotnet/ArrayCore/ArrayObjectFutureStoreProgram.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|lower-bound-less-rank1-array-signatures|unsized-array-prefix:${DN2CPP_BEFORE_UNSIZED_ARRAY:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|nested-md-array-identities|nested-md-array:--no-ildiet|nested-md-array-prefix:${DN2CPP_BEFORE_NESTED_MD_ARRAY:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|md-array-overload-original-kinds|md-array-overload-native:--no-ildiet|md-array-overload-prefix-argv:before-md-overload"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|headerless-md-reference-conversion|before-headerless-md-identity"
 corelib_diff_gate ArrayCore System.Collections
 
 native=$(run_bounded "./$_CG_OUT/ArrayCore$EXE_EXT")

@@ -24,6 +24,11 @@ public class Cell<T>
 public static unsafe class Surface
 {
     public static int FieldInitializations;
+    public static IFormatProvider ProviderField;
+
+    public static IFormatProvider ForwardProvider(IFormatProvider value) => value;
+    public static IFormatProvider CultureProvider() => CultureInfo.InvariantCulture;
+    public static DateTimeFormatInfo DateProvider() => DateTimeFormatInfo.InvariantInfo;
 
     public static void Reset()
     {
@@ -55,6 +60,10 @@ public static unsafe class Surface
         if (new Cell<delegate*<Leaf>[]>(61).Read() != 61
             || new Cell<global::Gfn0_5_Int32EndArr>(73).Read() != 73)
             throw new InvalidOperationException("Named signature imports failed.");
+        if (!typeof(IFormatProvider).IsAssignableFrom(typeof(DateTimeFormatInfo)))
+            throw new InvalidOperationException("Date providers lost their interface relation.");
+        ProviderField = ForwardProvider(CultureProvider());
+        ProviderField = ForwardProvider(DateProvider());
         RootFields(false);
     }
 

@@ -66,29 +66,70 @@ barrier_follows 'external-typed struct field'   '->f_Value = '
 barrier_follows 'whole-struct field'            '->f_Pair = '
 barrier_follows 'reference-bearing struct elem' '^ *\*\(t_ExternalWriteBarrierSubset_Program_ExPair\*\)dn2cpp_elem_addr\('
 barrier_follows 'Array.Fill of a reference'     'for .*->data\[[^]]+\] = '
-LC_ALL=C awk '
-    { sub(/\r$/, "") }
-    pending {
-        line = $0; gsub(/[[:space:]]/, "", line)
-        if (FILENAME != source || index(line, "dn2cpp_gc_store_ref((Dn2CppObject**)" slot ",") != 1) {
-            print "FAIL: MD store lacks its GC-store helper at " source ":" source_line
-            failed = 1
+md_store_barrier_asserts() {
+    local out="$1" runtime_source="$2"
+    LC_ALL=C awk '
+        { sub(/\r$/, "") }
+        pending {
+            line = $0; gsub(/[[:space:]]/, "", line)
+            call = "^dn2cpp_array_store_ref\\([^,]+," slot ",[A-Za-z_][A-Za-z0-9_]*,true\\);$"
+            if (FILENAME != source || line !~ call) {
+                print "FAIL: MD store lacks its reference-store helper at " source ":" source_line
+                failed = 1
+            }
+            pending = 0
         }
-        pending = 0
-    }
-    /^ *[A-Za-z_][A-Za-z0-9_]* = dn2cpp_md_elem_addr2\(/ {
-        hits++; slot = $1; source = FILENAME; source_line = FNR; pending = 1
-    }
-    END {
-        if (pending) { print "FAIL: MD store ends before its GC-store helper at " source ":" source_line; failed = 1 }
-        if (hits == 0) { print "FAIL: the rank-2 accessor Set store is gone from the generated output"; failed = 1 }
-        if (failed) exit 1
-        print "OK: rank-2 accessor Set (" hits " site(s))"
-    }
-' "$OUT"/generated*.cpp
+        /^ *[A-Za-z_][A-Za-z0-9_]* = dn2cpp_md_elem_addr2\(/ {
+            hits++; slot = $1; source = FILENAME; source_line = FNR; pending = 1
+        }
+        END {
+            if (pending) { print "FAIL: MD store ends before its reference-store helper at " source ":" source_line; failed = 1 }
+            if (hits == 0) { print "FAIL: the rank-2 accessor Set store is gone from the generated output"; failed = 1 }
+            if (failed) exit 1
+            print "OK: rank-2 accessor Set (" hits " site(s))"
+        }
+    ' "$out"/generated*.cpp || return 1
+
+    # Generated stores must reach the barrier on every successful helper path.
+    # The heap-only barrier also accepts reflection/byref slots outside the heap.
+    LC_ALL=C awk '
+        function fail(reason) { print "FAIL: reference-store helper " reason; failed = 1 }
+        /^void dn2cpp_array_store_ref\(/ { found++; active = 1; depth = 0; stage = 0; stores = 0; barriers = 0; next }
+        active {
+            line = $0; sub(/\/\/.*$/, "", line)
+            if (line ~ /(^|[^A-Za-z0-9_])(return|goto)([^A-Za-z0-9_]|$)/)
+                fail("exits before its barrier")
+            gsub(/[[:space:]]/, "", line)
+            if (line == "") next
+            if (stage == 1) {
+                if (depth != 1 || line != "dn2cpp_gc_write_barrier_if_heap(slot);")
+                    fail("does not barrier the written slot immediately after its store")
+                stage = 2
+            } else if (stage == 2) {
+                if (depth != 1 || line != "}") fail("does not end after its unconditional barrier")
+                stage = 3
+            } else if (line == "std::memcpy(slot,&value,sizeof(value));") {
+                if (depth != 1) fail("conditionally stores the reference")
+                stores++; stage = 1
+            }
+            if (line == "dn2cpp_gc_write_barrier_if_heap(slot);") barriers++
+            depth += gsub(/\{/, "{", line) - gsub(/\}/, "}", line)
+            if (depth == 0 && line == "}") {
+                if (stage != 3 || stores != 1 || barriers != 1) fail("has no unique store/barrier epilogue")
+                active = 0
+            }
+        }
+        END {
+            if (found != 1 || active) fail("definition is missing, repeated or incomplete")
+            if (failed) exit 1
+            print "OK: reference-store helper publishes then barriers the same slot"
+        }
+    ' "$runtime_source"
+}
+md_store_barrier_asserts "$OUT" runtime/core/intrinsics/dn2cpp_system_reflection.cpp
 
 ctx="external_ref_barrier|runs:DN2CPP_GC_INCREMENTAL=0+1|DN2CPP_GC_STATS=1"
-ctx="$ctx|assert:empty-refset+generated-barriers+mode+diff+exit+collection-floor"
+ctx="$ctx|assert:empty-refset+generated-barriers+md-reference-helper+mode+diff+exit+collection-floor"
 ctx="$ctx$(_gate_ctx_extras)"
 if gate_cache_check "$OUT" "$ctx" \
         "$app" "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json"; then

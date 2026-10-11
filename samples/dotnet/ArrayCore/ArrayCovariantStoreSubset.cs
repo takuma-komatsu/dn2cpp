@@ -252,4 +252,91 @@ internal static class Program
         Console.WriteLine("nonzero covariant array stores end");
     }
 
+    private static object ReadText(ref TextInfo value) => value;
+    private static object ReadModule(ref System.Reflection.Module value) => value;
+    private static T ReadDefaultMd<T>() where T : class => (new T[1, 1])[0, 0];
+    private static T StoreNullMd<T>() where T : class
+    {
+        var values = new T[1, 1];
+        values[0, 0] = null;
+        return values[0, 0];
+    }
+    private static CultureInfo[,] MdReceiver(CultureInfo[,] value, ref int calls)
+    {
+        calls++;
+        return value;
+    }
+
+    internal static void RunHeaderlessMdStores()
+    {
+        Console.WriteLine("== headerless multidimensional reference identity ==");
+        var first = CultureInfo.InvariantCulture;
+        var second = new CultureInfo("ja-JP");
+        var typed = new CultureInfo[1, 1];
+        typed[0, 0] = first;
+        Array reflected = typed;
+        object[,] erased = typed;
+        Console.WriteLine("headerless md typed to reflective=" + ReferenceEquals(reflected.GetValue(0, 0), first));
+        Console.WriteLine("headerless md typed to covariant=" + ReferenceEquals(erased[0, 0], first));
+        reflected.SetValue(second, 0, 0);
+        Console.WriteLine("headerless md reflective to typed=" + typed[0, 0].Name + ":" + ReferenceEquals(typed[0, 0], second));
+        Console.WriteLine("headerless md reflective byref=" + ReadMdCulture(ref typed[0, 0]));
+        WriteMdCulture(ref typed[0, 0], first);
+        Console.WriteLine("headerless md byref to reflective=" + ReferenceEquals(reflected.GetValue(new int[] { 0, 0 }), first));
+        erased[0, 0] = second;
+        Console.WriteLine("headerless md covariant to typed=" + typed[0, 0].Name + ":" + ReferenceEquals(typed[0, 0], second));
+        reflected.SetValue(null, new long[] { 0, 0 });
+        Console.WriteLine("headerless md reflective null=" + (typed[0, 0] is null) + ":" + (erased[0, 0] is null));
+        reflected.SetValue(first, new int[] { 0, 0 });
+        ObserveMd("headerless md incompatible store", () => erased[0, 0] = "wrong", () => reflected.GetValue(0, 0), first);
+        var lower = Array.CreateInstance(typeof(CultureInfo), new[] { 1, 1 }, new[] { -2, 3 });
+        lower.SetValue(second, -2, 3);
+        var lowerTyped = (CultureInfo[,])lower;
+        Console.WriteLine("headerless lower md identity=" + lowerTyped[-2, 3].Name + ":" + ReferenceEquals(lower.GetValue(-2, 3), second));
+        var assemblies = new System.Reflection.Assembly[1, 1];
+        var assembly = typeof(Program).Assembly;
+        assemblies[0, 0] = assembly;
+        Console.WriteLine("headerless assembly md identity=" + ReferenceEquals(((Array)assemblies).GetValue(0, 0), assembly));
+        ((Array)assemblies).SetValue(assembly, 0, 0);
+        Console.WriteLine("headerless assembly md typed read=" + ReferenceEquals(assemblies[0, 0], assembly));
+        var texts = new TextInfo[1, 1];
+        texts[0, 0] = second.TextInfo;
+        object text = texts[0, 0];
+        Console.WriteLine("headerless text md kinds=" + (text is TextInfo) + ":" + (ReadText(ref texts[0, 0]) is TextInfo)
+            + ":" + ReferenceEquals(text, ((Array)texts).GetValue(0, 0)) + ":" + ReferenceEquals(text, second.TextInfo));
+        var numbers = new NumberFormatInfo[1, 1];
+        numbers[0, 0] = second.NumberFormat;
+        object numeric = numbers[0, 0];
+        Console.WriteLine("headerless numbers md identity=" + (numeric is NumberFormatInfo) + ":"
+            + ReferenceEquals(numeric, ((Array)numbers).GetValue(0, 0)) + ":" + ReferenceEquals(numeric, second.NumberFormat));
+        var modules = new System.Reflection.Module[1, 1];
+        modules[0, 0] = typeof(Program).Module;
+        object module = modules[0, 0];
+        Console.WriteLine("headerless module md kinds=" + (module is System.Reflection.Module) + ":"
+            + (ReadModule(ref modules[0, 0]) is System.Reflection.Module) + ":"
+            + ReferenceEquals(module, ((Array)modules).GetValue(0, 0)));
+        int calls = 0;
+        Console.WriteLine("headerless md receiver once=" + ReferenceEquals(MdReceiver(typed, ref calls)[0, 0], first) + ":" + calls);
+        try { object value = MdReceiver(null, ref calls)[0, 0]; Console.WriteLine("headerless md null=accepted"); }
+        catch (NullReferenceException) { Console.WriteLine("headerless md null=NullReferenceException:" + calls); }
+        var objects = new object[1, 1];
+        Array.Copy(typed, objects, 1);
+        Console.WriteLine("headerless md copy to object=" + ReferenceEquals(objects[0, 0], first));
+        objects[0, 0] = second;
+        Array.Copy(objects, typed, 1);
+        Console.WriteLine("headerless md copy to typed=" + ReferenceEquals(typed[0, 0], second) + ":" + typed[0, 0].Name);
+        Array one = Array.CreateInstance(typeof(CultureInfo), new[] { 2 }, new[] { -1 });
+        one.SetValue(first, -1);
+        one.SetValue(second, 0L);
+        var sz = new CultureInfo[2];
+        Array.Copy(one, -1, sz, 0, 2);
+        Console.WriteLine("headerless rank1 copy to SZ=" + ReferenceEquals(sz[0], first) + ":" + ReferenceEquals(sz[1], second));
+        sz[0] = second;
+        Array.Copy(sz, 0, one, -1, 2);
+        Console.WriteLine("headerless rank1 copy to MD=" + ReferenceEquals(one.GetValue(-1L), second) + ":" + ReferenceEquals(one.GetValue(0), second));
+        Console.WriteLine("generic md default reads=" + (ReadDefaultMd<string>() is null) + ":" + (ReadDefaultMd<object>() is null));
+        Console.WriteLine("generic md null stores=" + (StoreNullMd<string>() is null) + ":" + (StoreNullMd<object>() is null));
+        Console.WriteLine("headerless multidimensional reference identity end");
+    }
+
 }

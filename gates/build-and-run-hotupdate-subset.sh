@@ -2288,6 +2288,7 @@ for renamed_object_case in object finalize; do
 done
 echo "OK (renamed Object and Finalize refusals, loaded method identity and bodies)"
 
+# Provider imports retain the managed parameter/return/field ABI with loaded CoreLib.
 hotupdate_signature_argument_roundtrip "$signature_arguments_base" "$signature_arguments_patch" \
     "$OUT/signature-arguments" "$signature_arguments_address"
 

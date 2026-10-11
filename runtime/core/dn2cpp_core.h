@@ -731,7 +731,7 @@ struct Dn2CppNumberFormatInfo
     // 1 when this instance was minted through the NumberFormatInfo surface
     // (`new NumberFormatInfo()` / NumberFormatInfo.InvariantInfo), 0 for a
     // culture. Read by dn2cpp_nfi_wrap to recover the managed identity of a
-    // value whose static type was erased to IFormatProvider before it escaped
+    // value whose static type was lost before it escaped
     // into an `object` context. (Trailing member: zero-init covers cultures.)
     int32_t isNfi;
 };
@@ -757,7 +757,7 @@ extern const Dn2CppTypeInfo dn2cpp_numberformatinfo_type;
 extern const Dn2CppTypeInfo dn2cpp_textinfo_type;
 
 // DN2CPP_NFI_KIND_*: the ESCAPE SITE's static managed type, deciding the
-// wrapper's identity. PROVIDER (IFormatProvider, or an unknown static type)
+// wrapper's identity. PROVIDER (an unknown static type)
 // resolves at run time through Dn2CppNumberFormatInfo::isNfi.
 #define DN2CPP_NFI_KIND_CULTURE  0
 #define DN2CPP_NFI_KIND_NFI      1
@@ -772,6 +772,9 @@ Dn2CppObject* dn2cpp_nfi_wrap(const Dn2CppNumberFormatInfo* n, int32_t kind);
 // through an erased context; the probe is a value compare, never a dereference
 // through the misread header).
 const Dn2CppNumberFormatInfo* dn2cpp_nfi_unwrap(Dn2CppObject* o);
+// Numeric formatting consumes the payload; a managed provider keeps its own identity.
+const Dn2CppNumberFormatInfo* dn2cpp_format_provider_nfi(Dn2CppObject* provider);
+Dn2CppObject* dn2cpp_format_provider_get_format(Dn2CppObject* provider, Dn2CppType* requested);
 // castclass/isinst with an NFI-mapped target type: a wrapper is matched by
 // kind (PROVIDER accepts CultureInfo and NumberFormatInfo, as the interface
 // does) and unwrapped; a non-wrapper object falls back to the generic
@@ -1716,7 +1719,7 @@ struct Dn2CppItfCharSpan { char16_t* ptr; int32_t length; };
 // span mouth and the IFormattable mouth cannot answer differently. An empty format
 // span is "G", matching Enum.TryFormat's own default.
 int32_t dn2cpp_enum_box_try_format(Dn2CppObject* box, Dn2CppItfCharSpan dest, int32_t* written,
-                                   Dn2CppItfCharSpan fmt, const Dn2CppNumberFormatInfo* nfi);
+                                   Dn2CppItfCharSpan fmt, Dn2CppObject* nfi);
 // Type.GetNestedTypes()/GetNestedType(name): the type's public nested types
 // (the emitted, non-generic ones), wrapped as Type[] / a single Type or null.
 Dn2CppArrayRef* dn2cpp_type_get_nested_types(Dn2CppType* t);
@@ -2330,10 +2333,13 @@ void dn2cpp_propref_set_value_indexed(Dn2CppPropRef* p, Dn2CppObject* obj, Dn2Cp
 // such a code (NOT the widened box-payload width).
 int32_t dn2cpp_prim_code(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_prim_storage_width(int32_t code);
+// Headerless MD elements retain their typed/byref ABI; erased reads use wrappers.
+Dn2CppObject* dn2cpp_array_load_ref(const Dn2CppTypeInfo* elem, const void* slot, bool rawReference);
+void dn2cpp_array_store_ref(const Dn2CppTypeInfo* elem, void* slot, Dn2CppObject* value, bool rawReference);
 Dn2CppObject* dn2cpp_array_box_element(const Dn2CppTypeInfo* elem, const void* src,
-                                       int32_t elemSize, bool elemIsRef);
+                                       int32_t elemSize, bool elemIsRef, bool rawReference = false);
 void dn2cpp_array_store_boxed(Dn2CppObject* v, const Dn2CppTypeInfo* elem,
-                              void* dst, int32_t elemSize, bool elemIsRef);
+                              void* dst, int32_t elemSize, bool elemIsRef, bool rawReference = false);
 
 // Non-generic System.Array reflection surface. GetValue/SetValue dispatch on
 // the receiver's runtime type-info (any SZ rep or an MD array) and follow real
@@ -5005,14 +5011,14 @@ Dn2CppString* dn2cpp_string_format2(Dn2CppString* fmt, Dn2CppObject* a0, Dn2CppO
 Dn2CppString* dn2cpp_string_format3(Dn2CppString* fmt, Dn2CppObject* a0, Dn2CppObject* a1, Dn2CppObject* a2);
 Dn2CppString* dn2cpp_string_format_arr(Dn2CppString* fmt, Dn2CppArrayRef* args);
 // string.Format(IFormatProvider, …) — composite formatting under a culture.
-Dn2CppString* dn2cpp_string_format1_c(const Dn2CppNumberFormatInfo* n, Dn2CppString* fmt, Dn2CppObject* a0);
-Dn2CppString* dn2cpp_string_format2_c(const Dn2CppNumberFormatInfo* n, Dn2CppString* fmt, Dn2CppObject* a0, Dn2CppObject* a1);
-Dn2CppString* dn2cpp_string_format3_c(const Dn2CppNumberFormatInfo* n, Dn2CppString* fmt, Dn2CppObject* a0, Dn2CppObject* a1, Dn2CppObject* a2);
-Dn2CppString* dn2cpp_string_format_arr_c(const Dn2CppNumberFormatInfo* n, Dn2CppString* fmt, Dn2CppArrayRef* args);
+Dn2CppString* dn2cpp_string_format1_c(Dn2CppObject* provider, Dn2CppString* fmt, Dn2CppObject* a0);
+Dn2CppString* dn2cpp_string_format2_c(Dn2CppObject* provider, Dn2CppString* fmt, Dn2CppObject* a0, Dn2CppObject* a1);
+Dn2CppString* dn2cpp_string_format3_c(Dn2CppObject* provider, Dn2CppString* fmt, Dn2CppObject* a0, Dn2CppObject* a1, Dn2CppObject* a2);
+Dn2CppString* dn2cpp_string_format_arr_c(Dn2CppObject* provider, Dn2CppString* fmt, Dn2CppArrayRef* args);
 // The params ReadOnlySpan<object> overloads (net10; Roslyn prefers them for 4+
 // loose args): the span lowers to its data pointer + length.
 Dn2CppString* dn2cpp_string_format_spanobjs(Dn2CppString* fmt, Dn2CppObject* const* args, int32_t n);
-Dn2CppString* dn2cpp_string_format_spanobjs_c(const Dn2CppNumberFormatInfo* nfi, Dn2CppString* fmt,
+Dn2CppString* dn2cpp_string_format_spanobjs_c(Dn2CppObject* provider, Dn2CppString* fmt,
                                               Dn2CppObject* const* args, int32_t n);
 // String.Split engine behind every Split overload -> string[]. Separator
 // selection: string-array mode when `sepStrs` has entries (first matching

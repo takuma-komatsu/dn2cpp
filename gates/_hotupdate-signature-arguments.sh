@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Closed generic imports preserve signature identity, field storage and lazy cctors.
+# Imports preserve generic storage and managed provider parameter/return/field identity.
 hotupdate_signature_argument_roundtrip() {
     local base="$1" patch="$2" out="$3" address="$4" encoding metadata actual expected previous arm line owner
     local int_owner='SignatureArgumentImports.Cell`1[System.Int32]'
@@ -61,7 +61,19 @@ generic signature field method agreement
 generic fields still initialized once
 6
 imported generic fields end'
+    previous="$expected"
+    expected+=$'\n'
+    expected+='== imported managed providers ==
+True
+True
+True
+True
+True
+imported managed providers end'
     assert_output "$(cat "$out/clr.stdout")" "$expected"
+    actual=$(cat "$out/clr.stdout")
+    assert_output "${actual%%$'\n== imported managed providers =='*}" "$previous"
+    previous="${previous%%$'\n== imported generic fields =='*}"
     actual=$(cat "$out/clr.stdout")
     assert_output "${actual%%$'\n== imported generic fields =='*}" "$previous"
     for line in '== imported generic fields ==' 'imported generic fields end'; do
@@ -72,7 +84,7 @@ imported generic fields end'
     assert_output "$(strip_cr_win "$actual")" '1'
     for metadata in packed native; do
         arm="$out/$metadata"
-        invoke_cli "$base" --hotupdate-base --reflection-metadata "$int_owner=$metadata" \
+        invoke_cli "$base" -r "$(locate_corelib)" --hotupdate-base --reflection-metadata "$int_owner=$metadata" \
             --reflection-metadata "$string_owner=$metadata" -o "$arm"
         local table=md_record_fldtab
         [ "$metadata" != native ] || table=md_native_fldtab
@@ -107,5 +119,5 @@ signature update rejected: BPI: unsupported format version'
                 || { cat "$arm/$encoding.address.log" >&2; return 1; }
         done
     done
-    echo "OK (closed generic imports and fields, packed/native, register/stack)"
+    echo "OK (generic and provider imports, packed/native, register/stack)"
 }
