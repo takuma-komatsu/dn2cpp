@@ -18,6 +18,8 @@
 # Covariant reference stores check the actual element type before mutation.
 # Multidimensional stores check value type before bounds and retain the typed
 # headerless slot representation used by managed byrefs.
+# Writable MD addresses check exact element identity before bounds; readonly permits covariance.
+# Shared MD allocations carry their concrete array identity through type-info context slots.
 # Runtime handle boxing retains the selected payload's ToString override.
 # Nullable array display composes generic element identities and array ranks.
 # Excessive-rank errors identify the attempted array type and its assembly.
@@ -253,12 +255,63 @@ gate_extra_asserts() {
     done
 }
 
+md_address_identity_asserts() {
+    local out="$1" axis line
+    awk '/^== multidimensional writable address identity ==$/ { exit } { print }' \
+        "$out/headerless-full.native.stdout" > "$out/md-address-prefix.stdout"
+    for axis in dotnet native; do
+        if [ "$axis" = dotnet ]; then
+            run_bounded dotnet "$_CG_APP" before-md-address-identity > "$out/md-address-before.$axis.stdout"
+        else
+            run_bounded "$out/ArrayCore$EXE_EXT" before-md-address-identity > "$out/md-address-before.$axis.stdout"
+        fi
+        diff -u <(strip_cr_win_file "$out/md-address-before.$axis.stdout") \
+            <(strip_cr_win_file "$out/md-address-prefix.stdout")
+    done
+    for line in '== multidimensional writable address identity ==' \
+        'address covariance=ArrayTypeMismatchException/80131503:identity=True' \
+        'address covariance before bounds=ArrayTypeMismatchException/80131503:identity=True' \
+        'address readonly covariance=True' \
+        'address readonly bounds=IndexOutOfRangeException/80131508:identity=True' \
+        'address exact=True' 'address exact bounds=IndexOutOfRangeException/80131508:identity=True' \
+        'address null before bounds=NullReferenceException/80004003:identity=True' \
+        'address readonly null=NullReferenceException/80004003:identity=True' \
+        'address rank3=ArrayTypeMismatchException/80131503:identity=True' \
+        'address rank3 before bounds=ArrayTypeMismatchException/80131503:identity=True' \
+        'address readonly rank3=True' 'address rank4=ArrayTypeMismatchException/80131503:identity=True' \
+        'address readonly rank4=True' 'address lower=ArrayTypeMismatchException/80131503:identity=True' \
+        'address lower before bounds=ArrayTypeMismatchException/80131503:identity=True' \
+        'address readonly lower=True' 'address receiver once=1:True' 'address generic exact=text:True' \
+        'address generic covariance=ArrayTypeMismatchException/80131503:identity=True' \
+        'address generic readonly=True' 'address generic allocation=allocated:True' \
+        'address nested exact=nested:True' 'address nested covariance=ArrayTypeMismatchException/80131503:identity=True' \
+        'address packed=0:-123' 'address value=37' 'address headerless=ja-JP:True' \
+        'multidimensional writable address identity end' '== shared multidimensional allocation identity ==' \
+        'allocation references=allocated:True' 'allocation reference types=True:True' 'allocation shape=2:1:0:True' \
+        'allocation separate caller covariance=ArrayTypeMismatchException/80131503:identity=True' \
+        'allocation separate caller exact=changed' 'allocation values=29:Value:-12' \
+        'allocation value types=True:True:True' 'allocation nested=nested:rectangle:True:True' \
+        'allocation generic owner=changed:True:True' \
+        'address generic owner covariance=ArrayTypeMismatchException/80131503:identity=True' \
+        'allocation headerless=True:True:True' 'shared multidimensional allocation identity end' \
+        '== generic multidimensional type consumers ==' 'generic multidimensional type consumers end' \
+        'generic md is=True:True:False:False:False:False' \
+        'generic md cast=same:same:InvalidCastException:same' \
+        'generic md nested is=True:True:True:False' \
+        'generic md nested cast=same:same:same:InvalidCastException' \
+        'generic md tokens=True:True:True:True'; do
+        [ "$(grep -Fxc -- "$line" "$out/headerless-full.native.stdout")" = 1 ] \
+            || { echo "FAIL: MD address/allocation witness missing or repeated: $line" >&2; return 1; }
+    done
+}
+
 eval "$(declare -f gate_extra_asserts | sed '1s/gate_extra_asserts/nonzero_prior_extra_asserts/')"
 # Keep the prior whole bucket and prove each appended lower-bound block ran once.
 gate_extra_asserts() {
     local out="$1" native before prefix line
     nonzero_prior_extra_asserts "$out"
     headerless_md_reference_asserts "$out"
+    md_address_identity_asserts "$out"
     native=$(run_bounded "./$out/ArrayCore$EXE_EXT")
     native=$(strip_cr_win "$native")
     prefix=$(awk '/^== nonzero array lower bounds ==$/ { exit } { print }' <<< "$native")
@@ -339,6 +392,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|lower-bound-less-rank1-arr
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|nested-md-array-identities|nested-md-array:--no-ildiet|nested-md-array-prefix:${DN2CPP_BEFORE_NESTED_MD_ARRAY:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|md-array-overload-original-kinds|md-array-overload-native:--no-ildiet|md-array-overload-prefix-argv:before-md-overload"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|headerless-md-reference-conversion|before-headerless-md-identity"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|writable-md-address-exact-element|before-md-address-identity|rank1-md-address-readonly|md-address-prefix:${DN2CPP_BEFORE_MD_ADDRESS:-}|shared-md-allocation-typeinfo"
 corelib_diff_gate ArrayCore System.Collections
 
 native=$(run_bounded "./$_CG_OUT/ArrayCore$EXE_EXT")
@@ -460,6 +514,15 @@ shared_md_store=$(LC_ALL=C awk '{ sub(/\r$/, "") }
     in_body && /^\}/ { in_body = 0 }
     END { if (found) print "shared multidimensional store" }' "$_CG_OUT"/generated.h)
 assert_output "$shared_md_store" 'shared multidimensional store'
+shared_md_identity=$(LC_ALL=C awk '{ sub(/\r$/, "") }
+    /_AllocateMd_TisCnRef_.*\)$/ { allocation = 1 }
+    allocation && /dn2cpp_newmdarr\(.*__rgctx/ { allocation_ti = 1 }
+    /_WriteGenericMd_TisCnRef_.*\)$/ { address = 1 }
+    address && /dn2cpp_md_require_address_element\(.*__rgctx/ { address_ti = 1 }
+    /^\}/ { allocation = 0; address = 0 }
+    END { if (allocation_ti && address_ti) print "shared MD identities" }' "$_CG_OUT"/generated.h "$_CG_OUT"/generated*.cpp)
+assert_output "$shared_md_identity" 'shared MD identities'
+
 previous=$(run_bounded "./$_CG_OUT/ArrayCore$EXE_EXT" before-array-provenance)
 prefix=$(awk '/^-- array shape argument checks --$/ { exit } { print }' <<< "$native")
 assert_output "$prefix" "$(strip_cr_win "$previous")"
@@ -1081,6 +1144,22 @@ static_rank1_nested_clr_before=$(DN2CPP_BEFORE_NESTED_MD_ARRAY=1 run_bounded dot
     --runtimeconfig "$static_rank1_root/generator/Generate.runtimeconfig.json" "$static_rank1_app")
 assert_output "$static_rank1_nested_prefix" "$(strip_cr_win "$static_rank1_nested_before")"
 assert_output "$static_rank1_nested_prefix" "$(strip_cr_win "$static_rank1_nested_clr_before")"
+static_rank1_address_prefix=$(awk '/^== rank1 writable MD address identity ==$/ { exit } { print }' <<< "$static_rank1_native")
+static_rank1_address_before=$(DN2CPP_BEFORE_MD_ADDRESS=1 run_bounded "./$static_rank1_root/gen/ArrayStaticRankOneOnly$EXE_EXT")
+static_rank1_address_clr_before=$(DN2CPP_BEFORE_MD_ADDRESS=1 run_bounded dotnet exec \
+    --runtimeconfig "$static_rank1_root/generator/Generate.runtimeconfig.json" "$static_rank1_app")
+assert_output "$static_rank1_address_prefix" "$(strip_cr_win "$static_rank1_address_before")"
+assert_output "$static_rank1_address_prefix" "$(strip_cr_win "$static_rank1_address_clr_before")"
+for line in '== rank1 writable MD address identity ==' 'rank1 writable MD address identity end' \
+    'rank1 address exact=True' 'rank1 address covariance=ArrayTypeMismatchException/80131503' \
+    'rank1 address type before bounds=ArrayTypeMismatchException/80131503' \
+    'rank1 address exact bounds=IndexOutOfRangeException/80131508' \
+    'rank1 address null before bounds=NullReferenceException/80004003' \
+    'rank1 address readonly=True' 'rank1 address readonly bounds=IndexOutOfRangeException/80131508' \
+    'rank1 address readonly null=NullReferenceException/80004003' 'rank1 address retained=True'; do
+    [[ $(grep -Fxc -- "$line" <<< "$static_rank1_native") == 1 ]] \
+        || { echo "FAIL: rank1 MD address witness must run once: $line" >&2; exit 1; }
+done
 for line in '== static rank1 MD identity ==' \
     'static=System.Int32[*]/Int32[*]/False/1' 'identity=True/True/False' \
     'static clone=True/23' 'static rank1 MD identity end' \

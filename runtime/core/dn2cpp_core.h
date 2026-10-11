@@ -7092,6 +7092,16 @@ inline void dn2cpp_buffer_setbyte(Dn2CppObject* o, int32_t rep, int32_t index, u
 // Real .NET answers an out-of-range index on ANY dimension with the same
 // IndexOutOfRangeException it raises for an SZArray (measured), so these throw the
 // same catchable fault rather than aborting.
+inline Dn2CppMDArray* dn2cpp_md_require_address_element(Dn2CppMDArray* arr,
+    const Dn2CppTypeInfo* element)
+{
+    if (arr == nullptr)
+        dn2cpp_throw_null_reference();
+    if (arr->type == nullptr || arr->type->elementType != element)
+        dn2cpp_throw_of(&dn2cpp_array_type_mismatch_exception_type);
+    return arr;
+}
+
 inline int32_t dn2cpp_md_offset(Dn2CppMDArray* arr, int32_t dim, int32_t index)
 {
     int64_t offset = static_cast<int64_t>(index) - arr->lowerBounds[dim];

@@ -54,6 +54,23 @@ static class ArrayStaticRankOneOnlyProgram
         try { CastNestedMd(new int[1, 2][]); }
         catch (InvalidCastException) { Console.WriteLine("nested rectangular cast mismatch=InvalidCastException"); }
         Console.WriteLine("nested MD array identities end");
+        if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_MD_ADDRESS") == "1") return;
+        Console.WriteLine("== rank1 writable MD address identity ==");
+        Array objects = Array.CreateInstance(typeof(object), new[] { 1 }, new[] { -2 });
+        Array strings = Array.CreateInstance(typeof(string), new[] { 1 }, new[] { -2 });
+        object seed = "seed";
+        strings.SetValue(seed, -2);
+        ArrayRankOneOwner.WriteAt(objects, -2, seed);
+        Console.WriteLine($"rank1 address exact={ReferenceEquals(objects.GetValue(-2), seed)}");
+        AddressFault("covariance", () => ArrayRankOneOwner.WriteAt(strings, -2, "replacement"));
+        AddressFault("type before bounds", () => ArrayRankOneOwner.WriteAt(strings, 0, "replacement"));
+        AddressFault("exact bounds", () => ArrayRankOneOwner.WriteAt(objects, 0, seed));
+        AddressFault("null before bounds", () => ArrayRankOneOwner.WriteAt(null, 0, seed));
+        Console.WriteLine($"rank1 address readonly={ReferenceEquals(ArrayRankOneOwner.ReadAt(strings, -2), seed)}");
+        AddressFault("readonly bounds", () => ArrayRankOneOwner.ReadAt(strings, 0));
+        AddressFault("readonly null", () => ArrayRankOneOwner.ReadAt(null, 0));
+        Console.WriteLine($"rank1 address retained={ReferenceEquals(strings.GetValue(-2), seed)}");
+        Console.WriteLine("rank1 writable MD address identity end");
     }
 
     static void Check(string name, Type literal)
@@ -67,6 +84,12 @@ static class ArrayStaticRankOneOnlyProgram
     }
 
     static bool IsNestedMd(object value) => value is int[,][,];
+
+    static void AddressFault(string name, Action action)
+    {
+        try { action(); Console.WriteLine($"rank1 address {name}=ok"); }
+        catch (Exception exception) { Console.WriteLine($"rank1 address {name}={exception.GetType().Name}/{exception.HResult:X8}"); }
+    }
 
     static object CastNestedMd(object value) => (int[,][,])value;
 }

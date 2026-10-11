@@ -350,8 +350,11 @@ Multidimensional array slots retain the typed raw payload ABI exposed by
 type, including covariant access and copies between MD and SZ representations.
 SZ reference slots contain managed wrappers. Type and bounds checks precede
 conversion and mutation in each entry's CLR order.
-Canonical reference MD allocations without a concrete type header retain managed
-reference cells; a missing element type does not imply a headerless payload.
+Writable MD `Address` checks null and exact element identity before bounds;
+`readonly.` access permits covariance. Shared MD allocations and writable
+addresses resolve their precise array identity through the existing type-info
+context slots. A raw headerless element requires a typed body rather than a
+canonical managed-reference byref ABI.
 
 #### Platform ISA contract
 

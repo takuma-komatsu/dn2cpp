@@ -218,6 +218,7 @@ internal sealed partial class MethodCompiler : IEvalStack
     // here were never scanned — emission and reachability stay in lockstep.
     private BranchLiveness? _liveness;
     private TypeDesc? _constrained; // pending constrained. prefix for the next callvirt
+    private bool _readonlyAddress;
 
     /// <summary>Armed while compiling a canonical-owner-world method (a shared
     /// body candidate under <c>--shared-generics</c>): every
@@ -2720,6 +2721,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 break;
             case ILOpCode.Ldelema:
                 EmitLdelema(ResolveTypeToken(insn.Token));
+                _readonlyAddress = false;
                 break;
 
             case ILOpCode.Ldelem_ref:
@@ -3980,9 +3982,10 @@ internal sealed partial class MethodCompiler : IEvalStack
             case ILOpCode.Volatile:
                 Emit("__atomic_thread_fence(__ATOMIC_SEQ_CST);");
                 break;
-            // Prefixes with no effect in our alignment-agnostic model. They precede a
-            // real instruction, which is emitted next.
             case ILOpCode.Readonly:
+                _readonlyAddress = true;
+                break;
+            // Prefixes with no effect in our alignment-agnostic model.
             case ILOpCode.Tail:
             case ILOpCode.Unaligned:
                 break;
@@ -3991,6 +3994,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             case ILOpCode.Callvirt:
                 TranslateCall(insn, isCallvirt: op == ILOpCode.Callvirt);
                 _constrained = null;
+                _readonlyAddress = false;
                 break;
             case ILOpCode.Calli:
                 TranslateCalli(insn);

@@ -417,15 +417,16 @@ internal sealed partial class MethodCompiler
         // The MD array's runtime identity: an interned per-(element, rank)
         // type-info carrying elementType + arrayRank, so the reflection surface
         // (Array.GetValue/SetValue/GetLength/Rank on a System.Array-typed
-        // receiver) can rediscover the shape. A placeholder-bearing element in
-        // a shared-body candidate keeps the legacy null header (identity would
-        // be instantiation-dependent) rather than tainting the trial.
+        // receiver) can rediscover the shape. Shared allocations need the real
+        // array identity too: a later writable Address validates its element.
         bool signatureArray = CppEmitter.HasSignatureShape(arrayType);
         string elemTi = signatureArray ? "nullptr" : MdArrayElementTypeInfoExpr(arrayType.Element!)
             ?? (SharedTrial && Compilation.ContainsCanonPlaceholder(arrayType.Element!)
                 ? null : TypeInfoExpr(arrayType.Element!)) ?? "nullptr";
         string arrayTi = signatureArray
             ? SignatureTypeInfoExpr(System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(mr.Parent))
+            : SharedTrial && Compilation.ContainsCanonPlaceholder(arrayType)
+            ? MdArrayTypeInfoExpr(arrayType, mr)
             : $"dn2cpp_mdarr_ti({elemTi}, {rank})";
         // dn2cpp_i32s(...).v, not the C99 compound literal (const int32_t[]){...}:
         // that form is a GNU extension in C++ that real MSVC rejects (C4576). The
@@ -439,6 +440,20 @@ internal sealed partial class MethodCompiler
         _c.AddArraySearchSeed(_stack[^1].ArraySearchOrigin!, ArraySearchValueKind.ArrayRuntimeType,
             arrayType);
         _stack[^1].ArraySearchOrigin!.ArrayAllocation = true;
+    }
+
+    private string MdArrayTypeInfoExpr(TypeDesc arrayType, MemberReference mr)
+    {
+        int token = System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(mr.Parent);
+        if (CppEmitter.HasSignatureShape(arrayType))
+            return SignatureTypeInfoExpr(token);
+        if (SharedTrial && Compilation.ContainsCanonPlaceholder(arrayType))
+            return TypeInfoExpr(arrayType, token)!;
+        _c.NoteTypeIdentityClosure(arrayType);
+        _c.NoteMdArrayType(arrayType);
+        string ti = "&ti_md_" + Compilation.ArrayElemMangle(arrayType);
+        _c.NoteNamedTypeInfoSymbol(_method, ti);
+        return ti;
     }
 
     private void TranslateArrayMethodCall(TypeDesc arrayType, MemberReference mr)
@@ -608,6 +623,16 @@ internal sealed partial class MethodCompiler
             string st = CppTypes.StorageOf(arrayType.Element!);
             string indicesInit = string.Join(", ", indices);
             string castedArr = Cast(arr, "Dn2CppMDArray*");
+
+            if (!_readonlyAddress && RepOf(arrayType.Element!) == ArrRep.Ref)
+            {
+                string receiver = NewTemp("Dn2CppMDArray*");
+                string expected = MdArrayTypeInfoExpr(arrayType, mr);
+                // Writable references expose the raw slot only after null/type
+                // checks. readonly. permits covariance and checks bounds alone.
+                Emit($"{receiver} = dn2cpp_md_require_address_element({castedArr}, ({expected})->elementType);");
+                castedArr = receiver;
+            }
 
             string addrExpr;
             if (rank == 2)
