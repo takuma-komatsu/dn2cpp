@@ -354,6 +354,9 @@ namespace ReflectInvoke
             if (args.Length > 0 && args[0] == "before-generic-definition-members")
                 return;
             ReflectGenericMethodSubset.Program.RunGenericDefinitionMembers(false);
+            if (args.Length > 0 && args[0] == "before-reflected-events")
+                return;
+            EventSubset.Program.RunReflection(false);
         }
     }
 }

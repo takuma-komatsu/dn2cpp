@@ -94,7 +94,7 @@ constexpr Value value(const Dn2CppFieldInfo& row, std::size_t field)
     }
     return {};
 }
-constexpr std::size_t field_count(const Dn2CppTypeReflection&) { return 24; }
+constexpr std::size_t field_count(const Dn2CppTypeReflection&) { return 26; }
 constexpr Value value(const Dn2CppTypeReflection& row, std::size_t field)
 {
     switch (field)
@@ -123,6 +123,8 @@ constexpr Value value(const Dn2CppTypeReflection& row, std::size_t field)
         case 21: return pointer(row.genericParamNames);
         case 22: return pointer(row.initializer.identity());
         case 23: return pointer(row.genericMetadata);
+        case 24: return pointer(row.events.identity());
+        case 25: return scalar(row.eventCount);
     }
     return {};
 }
@@ -141,6 +143,34 @@ constexpr bool present(const Dn2CppFieldInfo& row, std::size_t field)
     if ((row.ilAttrs & 0x20) != 0) derived |= DN2CPP_FLDA_INITONLY;
     if ((row.ilAttrs & 0x40) != 0) derived |= DN2CPP_FLDA_LITERAL;
     return row.attrs != derived;
+}
+
+constexpr std::size_t field_count(const Dn2CppEventInfo&) { return 15; }
+constexpr Value value(const Dn2CppEventInfo& row, std::size_t field)
+{
+    switch (field)
+    {
+        case 0: return pointer(row.name);
+        case 1: return pointer(row.declaringType);
+        case 2: return pointer(row.handlerType);
+        case 3: return pointer(row.adder.identity());
+        case 4: return pointer(row.remover.identity());
+        case 5: return pointer(row.raiser.identity());
+        case 6: return pointer(row.others);
+        case 7: return scalar(row.otherCount);
+        case 8: return scalar(row.accessorAttrs);
+        case 9: return scalar(row.eventAttributes);
+        case 10: return pointer(row.customAttrs.identity());
+        case 11: return scalar(row.customAttrCount);
+        case 12: return scalar(row.metadataToken);
+        case 13: return pointer(row.display);
+        case 14: return pointer(row.handlerRecipe);
+    }
+    return {};
+}
+constexpr bool present(const Dn2CppEventInfo& row, std::size_t field)
+{
+    return value(row, field).present();
 }
 
 template<std::size_t Capacity> struct Sources

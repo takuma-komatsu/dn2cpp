@@ -674,6 +674,8 @@ internal sealed partial class Compilation
         // first time a member is asked for and are absent.
         "dn2cpp_type_get_fields(",
         "dn2cpp_type_get_properties(",
+        "dn2cpp_type_get_events(",
+        "dn2cpp_eventref_other_methods(",
         "dn2cpp_type_get_methods(",
         "dn2cpp_type_get_constructors(",
         "dn2cpp_type_get_members(",
@@ -720,6 +722,7 @@ internal sealed partial class Compilation
         "dn2cpp_ctorref_invoke(",
         "dn2cpp_activator_create_instance", // + _args/_nonpublic
         "dn2cpp_propref_get_value", // + _indexed
+        "dn2cpp_eventref_handler(",       // EventInfo.Add/RemoveEventHandler: the selected accessor
         "dn2cpp_propref_set_value", // + _indexed
         "dn2cpp_propref_get_accessors(",
         "dn2cpp_get_custom_attribute", // GetCustomAttribute(s) (+ _typed)
@@ -745,6 +748,7 @@ internal sealed partial class Compilation
         "dn2cpp_ctorref_invoke(",       // ConstructorInfo.Invoke: the row's constructor
         "dn2cpp_activator_create_instance", // Activator.CreateInstance: a constructor chosen at run time
         "dn2cpp_propref_get_value",     // PropertyInfo.GetValue: the getter's body or override
+        "dn2cpp_eventref_handler(",       // EventInfo.Add/RemoveEventHandler: the selected accessor
         "dn2cpp_propref_set_value",     // PropertyInfo.SetValue: the setter's body or override
         "dn2cpp_get_custom_attribute",  // attribute reads: the attribute constructors and setters
         "dn2cpp_assembly_get_custom_attribute",

@@ -112,6 +112,7 @@ internal static partial class CoreIntrinsics
         // GetValue/SetValue delegate to the accessor invoker thunks. Its real
         // RuntimePropertyInfo IL stays out of the tree.
         "System.Reflection.PropertyInfo",
+        "System.Reflection.EventInfo",
         // System.Reflection.Assembly is opaque: an Assembly value is its defining
         // assembly's simple-name handle (Type.Assembly / GetEntryAssembly identity;
         // op_Equality is a name compare) and its reflected members (GetCustomAttributes/
@@ -1413,6 +1414,7 @@ internal static partial class CoreIntrinsics
         ["System.Reflection.ConstructorInfo"] = "&dn2cpp_constructorinfo_type",
         ["System.Reflection.FieldInfo"] = "&dn2cpp_fieldinfo_type",
         ["System.Reflection.PropertyInfo"] = "&dn2cpp_propertyinfo_type",
+        ["System.Reflection.EventInfo"] = "&dn2cpp_eventinfo_type",
         ["System.Reflection.ParameterInfo"] = "&dn2cpp_parameterinfo_type",
         ["System.Reflection.CustomAttributeData"] = "&dn2cpp_customattributedata_type",
         // The headerless `const char*` Assembly/Module handles escape into `object` through
@@ -2253,6 +2255,7 @@ internal static partial class CoreIntrinsics
         ["System.Reflection.ParameterInfo"] = "Dn2CppObject*",
         ["System.Reflection.ConstructorInfo"] = "Dn2CppObject*",
         ["System.Reflection.PropertyInfo"] = "Dn2CppObject*",
+        ["System.Reflection.EventInfo"] = "Dn2CppObject*",
         // System.Reflection.Assembly is modeled as its defining assembly's
         // simple-name pointer (Type.Assembly identity / the assembly-registry
         // key). Module is the same handle (single-module assemblies).

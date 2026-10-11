@@ -295,7 +295,8 @@ internal sealed partial class CppEmitter
                     expression = value.IsDisplay && MetadataDisplayNeedsUtf16(text)
                         ? InternMetadataDisplay(text) : InternMetadataName(text);
                 else if (value.Pointer is { } pointer)
-                    expression = rowType == "Dn2CppPropInfo" && field is 3 or 4
+                    expression = (rowType == "Dn2CppPropInfo" && field is 3 or 4)
+                        || (rowType == "Dn2CppEventInfo" && field is 3 or 4 or 5)
                         ? $"Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({pointer})"
                         : pointer;
                 else if (value.IsSigned)

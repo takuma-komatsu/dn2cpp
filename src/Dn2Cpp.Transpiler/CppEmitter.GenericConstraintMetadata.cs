@@ -134,7 +134,7 @@ internal sealed partial class CppEmitter
             {
                 if (_e.IsOpaque(cls) || _e.IsCanonicalWorld(cls))
                     continue;
-                var accessors = PropertyAccessorHandles(cls);
+                var accessors = ReflectionAccessorHandles(cls);
                 foreach (var method in _e.ReflectionMethods(cls).ToList())
                 {
                     if (method.Handle.IsNil || !_e.KeepsReflectionMethodRow(cls, method, accessors))
@@ -150,6 +150,12 @@ internal sealed partial class CppEmitter
                     foreach (var parameter in method.Module.Reader.GetMethodDefinition(method.Handle).GetGenericParameters())
                         foreach (var constraint in ConstraintTypes(method.Module, parameter))
                             NoteConstraintSignature(constraint);
+                }
+                if (_c.KeepsReflectionMetadata(cls) && !cls.Handle.IsNil)
+                {
+                    var provider = new ConstraintProvider(_c);
+                    foreach (var handle in cls.Module.Reader.GetTypeDefinition(cls.Handle).GetEvents())
+                        NoteConstraintSignature(provider.Decode(cls.Module, cls.Module.Reader.GetEventDefinition(handle).Type));
                 }
                 if (_e.GenericDefInfo(cls) is { } generic)
                     NoteConstraintDefinition(generic.DefName, TypeDesc.MakeClass(cls));

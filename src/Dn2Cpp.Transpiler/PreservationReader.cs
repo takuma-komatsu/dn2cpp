@@ -106,6 +106,8 @@ internal sealed class PreservationReader
     {
         if (!accessors.Adder.IsNil) policy.Methods.Add(accessors.Adder);
         if (!accessors.Remover.IsNil) policy.Methods.Add(accessors.Remover);
+        if (!accessors.Raiser.IsNil) policy.Methods.Add(accessors.Raiser);
+        foreach (var other in accessors.Others) policy.Methods.Add(other);
     }
 
     private static void AddBackingField(PreservationModule module, TypeDefinition td,
@@ -266,7 +268,7 @@ internal sealed class PreservationReader
             or "System.Attribute" or "System.Reflection.CustomAttributeExtensions"
             or "System.Reflection.CustomAttributeData" or "System.Type"
             or "System.Reflection.MethodInfo" or "System.Reflection.FieldInfo"
-            or "System.Reflection.PropertyInfo" or "System.Reflection.Assembly";
+            or "System.Reflection.PropertyInfo" or "System.Reflection.EventInfo" or "System.Reflection.Assembly";
 
     /// <summary>Whether a call to <paramref name="parent"/>::<paramref name="member"/>
     /// binds a delegate to a reflected method.</summary>
@@ -711,6 +713,11 @@ internal sealed class PreservationReader
         if (selected is not ("all" or "add" or "remove")) throw LinkError(path, $"invalid accessors='{selected}'");
         if (selected is "all" or "add" && !a.Adder.IsNil) methods.Add(a.Adder);
         if (selected is "all" or "remove" && !a.Remover.IsNil) methods.Add(a.Remover);
+        if (selected == "all")
+        {
+            if (!a.Raiser.IsNil) methods.Add(a.Raiser);
+            foreach (var other in a.Others) methods.Add(other);
+        }
     }
 
     private bool FeatureEnabled(LinkNode node) =>

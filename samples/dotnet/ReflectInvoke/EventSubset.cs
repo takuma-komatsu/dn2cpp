@@ -13,7 +13,7 @@ namespace EventSubset
         public void Tick(int n) => OnTick?.Invoke(n);
     }
 
-    internal static class Program
+    internal static partial class Program
     {
         private static int s_sum;
 

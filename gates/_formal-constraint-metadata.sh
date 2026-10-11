@@ -59,7 +59,6 @@ generic_definition_member_prefix_asserts() {
             "$out/virtual-delegate-full.$axis.stdout" > "$out/definitions-prefix.$axis.stdout"
         diff -u "$out/definitions-before.$axis.stdout" "$out/definitions-prefix.$axis.stdout"
         generic_definition_member_asserts "$out/virtual-delegate-full.$axis.stdout"
-        test "$(tail -n 1 "$out/virtual-delegate-full.$axis.stdout")" = 'generic definition members end'
     done
 }
 

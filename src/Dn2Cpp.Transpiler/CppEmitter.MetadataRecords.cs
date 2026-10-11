@@ -13,8 +13,8 @@ internal sealed partial class CppEmitter
         internal string FinalizeFn = "nullptr", Rgctx = "nullptr", TypeObject = "nullptr", FormatSpec = "nullptr";
         internal string InstanceSize = "0", Flags = "0";
         internal int InterfaceCount, GenericArgCount, ArrayRank, VarianceMask;
-        internal string Fields = "nullptr", Methods = "nullptr", Ctors = "nullptr", Props = "nullptr", CustomAttrs = "nullptr";
-        internal int FieldCount, MethodCount, CtorCount, PropCount, CustomAttrCount;
+        internal string Fields = "nullptr", Methods = "nullptr", Ctors = "nullptr", Props = "nullptr", Events = "nullptr", CustomAttrs = "nullptr";
+        internal int FieldCount, MethodCount, CtorCount, PropCount, EventCount, CustomAttrCount;
         internal string EnumMembers = "nullptr", NestedTypes = "nullptr";
         internal string? AssemblyName;
         internal int EnumMemberCount, NestedCount, MetadataToken;
@@ -40,6 +40,7 @@ internal sealed partial class CppEmitter
             MetadataValue.Text(data.GenericParamNames), MetadataValue.Ref(data.Initializer),
             MetadataValue.Ref(_genericMetadata.TryGetValue(data.Flags.Contains("DN2CPP_TF_GENERICDEF", StringComparison.Ordinal)
                 ? "generic:" + data.Name : "type:" + symbol, out var genericMetadata) ? genericMetadata : "nullptr"),
+            MetadataValue.Ref(data.Events), MetadataValue.Signed(data.EventCount),
         };
         bool hasCold = cold.Any(value => value.Pointer is not null || value.StringValue is not null || value.Encoded != 0);
         string coldSymbol = "refl_" + symbol;

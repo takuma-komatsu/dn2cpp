@@ -12,6 +12,7 @@ struct Dn2CppFieldInfo;
 struct Dn2CppMethodInfo;
 struct Dn2CppParamInfo;
 struct Dn2CppPropInfo;
+struct Dn2CppEventInfo;
 struct Dn2CppAttrInfo;
 struct Dn2CppEnumMember;
 
@@ -31,7 +32,7 @@ extern const std::size_t dn2cpp_metadata_block_count;
 
 enum class Dn2CppMetadataKind : unsigned char
 {
-    Type, Field, Method, Parameter, Property, Attribute, EnumMember
+    Type, Field, Method, Parameter, Property, Attribute, EnumMember, Event
 };
 template<class Row> struct Dn2CppMetadataTraits;
 #define DN2CPP_METADATA_KIND(Row, Kind) \
@@ -42,6 +43,7 @@ DN2CPP_METADATA_KIND(Dn2CppFieldInfo, Field);
 DN2CPP_METADATA_KIND(Dn2CppMethodInfo, Method);
 DN2CPP_METADATA_KIND(Dn2CppParamInfo, Parameter);
 DN2CPP_METADATA_KIND(Dn2CppPropInfo, Property);
+DN2CPP_METADATA_KIND(Dn2CppEventInfo, Event);
 DN2CPP_METADATA_KIND(Dn2CppAttrInfo, Attribute);
 DN2CPP_METADATA_KIND(Dn2CppEnumMember, EnumMember);
 #undef DN2CPP_METADATA_KIND

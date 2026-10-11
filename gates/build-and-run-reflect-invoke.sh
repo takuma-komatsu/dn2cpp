@@ -7,6 +7,7 @@
 # Pointer and function-pointer arrays share allocation/query identity and safe reflection validation.
 # Runtime-owned class method groups share direct-call dispatch and callable identity.
 # Virtual delegate equality and removal retain the selected method under identical-code folding.
+# Reflected events retain visibility, accessor identity, symbolic owners and guarded subscription.
 # Property accessor arrays retain visibility, order, reflected handle identity and boxed invocation.
 # Delegate method names select strict signatures, inherited private methods and virtual slots.
 # Delegate ABI compatibility retains by-ref, pointer and function-pointer signature identity.
@@ -247,6 +248,7 @@ source gates/_delegate-identity.sh
 source gates/_reflection-signature-types.sh
 source gates/_headerless-reference-identity.sh
 source gates/_formal-constraint-metadata.sh
+source gates/_reflected-events.sh
 source gates/_pointer-array-types.sh
 source gates/_runtime-lifetime-interfaces.sh
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/ReflectInvoke/ArrayCloneInterfaceSubset.cs samples/dotnet/ReflectInvoke/ArrayCloneReflectionOnlySubset.cs"
@@ -356,6 +358,7 @@ gate_extra_asserts() {
     formal_constraint_prefix_asserts "$1"
     open_signature_prefix_asserts "$1"
     generic_definition_member_prefix_asserts "$1"
+    reflected_event_prefix_asserts "$1"
     gate_runtime_owned_delegate_prefix_asserts "$1"
     gate_reflection_signature_prefix_asserts "$1"
     gate_pointer_array_prefix_asserts "$1"
@@ -1696,14 +1699,16 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|formal-constraints:packed,
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/reflection-unused-signatures/Ext/ConstraintCollision.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|open-signatures:raw-MethodDef-context,metadata-only-methods,validated-Make,parallel,unloaded|formal-constraints:scoped-nongeneric,unloaded-identity,lazy-relations,finite-nested,unloaded-scoped-leaves,nested-assignability"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|definition-members:symbolic,inheritance,typed-lookup,guards,nested,parallel,cold-warm-transitive-relations|definition-members-packed:normal-ildiet|definition-members-prefix:before-generic-definition-members"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_reflected-events.sh samples/dotnet/ReflectInvoke/ReflectedEventsOnly.csproj samples/dotnet/ReflectInvoke/ReflectedEventsOnlyProgram.cs samples/dotnet/ReflectInvoke/ReflectedEventsPreservationProgram.cs gates/fixtures/reflected-event-preservation.xml"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|reflected-events:packed,native,uncompressed,trimmed,unshared,normal-ildiet,exotic-semantics,runtime-owner|reflected-events-unshared-build:-p:ReflectedEventsUnshared=true|reflected-events-prefix:before-reflected-events|reflected-events-preservation-build:-p:ReflectedEventsPreservation=true"
 reflection_layout_axis=default
 DN2CPP_STRICT_COMPLETION=1 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|strict-completion" \
-    corelib_diff_gate ReflectInvoke --no-ildiet System.ComponentModel.TypeConverter
+    corelib_diff_gate ReflectInvoke --no-ildiet System.ComponentModel.TypeConverter System.Linq System.Threading.Tasks.Parallel
 typeconverter="$(dirname "$_CG_CORELIB")/System.ComponentModel.TypeConverter.dll"
 
 reflection_layout_axis=overrides
 DN2CPP_OUT_SUFFIX="${DN2CPP_OUT_SUFFIX:-}-metadata-overrides" \
-    corelib_diff_gate ReflectInvoke --no-ildiet System.ComponentModel.TypeConverter \
+    corelib_diff_gate ReflectInvoke --no-ildiet System.ComponentModel.TypeConverter System.Linq System.Threading.Tasks.Parallel \
         --reflection-metadata 'ReflectInvoke::ReflectMetadataLayoutSubset.NativeBase=packed' \
         --reflection-metadata 'ReflectMetadataLayoutSubset.PackedBase=native' \
         --reflection-metadata 'ReflectMetadataLayoutSubset.Generic`1[System.String]=packed' \
@@ -1715,14 +1720,15 @@ DN2CPP_OUT_SUFFIX="${DN2CPP_OUT_SUFFIX:-}-metadata-overrides" \
 
 reflection_layout_axis=uncompressed
 DN2CPP_OUT_SUFFIX="${DN2CPP_OUT_SUFFIX:-}-metadata-uncompressed" \
-    corelib_diff_gate ReflectInvoke --no-ildiet --no-metadata-compression System.ComponentModel.TypeConverter \
+    corelib_diff_gate ReflectInvoke --no-ildiet --no-metadata-compression System.ComponentModel.TypeConverter System.Linq System.Threading.Tasks.Parallel \
         --reflection-metadata 'ReflectMetadataLayoutSubset.NativeBase=packed' \
         --reflection-metadata 'ReflectMetadataCompressionSubset.Direct=packed' \
         --reflection-metadata 'System.String=packed'
 
 # A global opt-out dominates packed selectors in either argument order.
 uncompressed_reverse=artifacts/reflection-metadata-uncompressed-reverse
-run_bounded invoke_cli "$_CG_APP" -r "$_CG_CORELIB" -r "$typeconverter" --no-ildiet \
+run_bounded invoke_cli "$_CG_APP" -r "$_CG_CORELIB" -r "$typeconverter" \
+        -r "$(dirname "$_CG_CORELIB")/System.Linq.dll" -r "$(dirname "$_CG_CORELIB")/System.Threading.Tasks.Parallel.dll" --no-ildiet \
     --reflection-metadata 'ReflectMetadataLayoutSubset.NativeBase=packed' \
     --reflection-metadata 'ReflectMetadataCompressionSubset.Direct=packed' \
     --reflection-metadata 'System.String=packed' --no-metadata-compression \
@@ -1734,7 +1740,8 @@ mkdir -p "$invalid_out"
 expect_policy_rejection() {
     local name="$1" diagnostic="$2" status=0
     shift 2
-    run_bounded invoke_cli "$_CG_APP" -r "$_CG_CORELIB" -r "$typeconverter" --no-ildiet \
+    run_bounded invoke_cli "$_CG_APP" -r "$_CG_CORELIB" -r "$typeconverter" \
+        -r "$(dirname "$_CG_CORELIB")/System.Linq.dll" -r "$(dirname "$_CG_CORELIB")/System.Threading.Tasks.Parallel.dll" --no-ildiet \
         -o "$invalid_out/$name" "$@" > "$invalid_out/$name.log" 2>&1 || status=$?
     if [ "$status" -ne 2 ] || ! grep -Fq -- "$diagnostic" "$invalid_out/$name.log"; then
         cat "$invalid_out/$name.log" >&2
@@ -1772,7 +1779,8 @@ for byref_mode in overwrite overwrite-int64 copy; do
     diff -u <(strip_cr_win_file "$invalid_out/byref-prefix.stdout") \
         <(strip_cr_win_file "$byref_dir/dotnet-prefix.stdout")
     byref_status=0
-    run_bounded invoke_cli "$byref_app" -r "$_CG_CORELIB" -r "$typeconverter" --no-ildiet \
+    run_bounded invoke_cli "$byref_app" -r "$_CG_CORELIB" -r "$typeconverter" \
+        -r "$(dirname "$_CG_CORELIB")/System.Linq.dll" -r "$(dirname "$_CG_CORELIB")/System.Threading.Tasks.Parallel.dll" --no-ildiet \
         -o "$byref_dir/out" > "$byref_dir/transpile.log" 2>&1 || byref_status=$?
     if [ "$byref_mode" = copy ]; then
         if [ "$byref_status" -ne 0 ]; then
@@ -1834,7 +1842,8 @@ for origin_mode in argument field array checked-conv arithmetic box call local s
     diff -u <(strip_cr_win_file "$invalid_out/origin-prefix.stdout") \
         <(strip_cr_win_file "$origin_dir/dotnet-prefix.stdout")
     origin_status=0
-    run_bounded invoke_cli "$origin_app" -r "$_CG_CORELIB" -r "$typeconverter" --no-ildiet \
+    run_bounded invoke_cli "$origin_app" -r "$_CG_CORELIB" -r "$typeconverter" \
+        -r "$(dirname "$_CG_CORELIB")/System.Linq.dll" -r "$(dirname "$_CG_CORELIB")/System.Threading.Tasks.Parallel.dll" --no-ildiet \
         -o "$origin_dir/out" > "$origin_dir/transpile.log" 2>&1 || origin_status=$?
     if [ "$origin_mode" = local ] || [ "$origin_mode" = stack-join ]; then
         if [ "$origin_status" -ne 0 ]; then
@@ -2767,3 +2776,7 @@ pointer_array_diff_axes
 runtime_lifetime_diff_routes
 
 formal_constraint_diff_axes
+
+reflected_event_diff_axes
+
+reflected_event_preservation

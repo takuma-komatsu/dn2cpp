@@ -60,6 +60,48 @@ void RewriteDelegateCloneSlots(ModuleDefinition module, bool required = false)
     onlyLoads[0].Operand = types[0].Methods.Single(m => m.Name == "CloneBody");
 }
 
+void RewriteReflectedEvents(ModuleDefinition module, bool required = false)
+{
+    foreach (string name in new[] { "ExoticEventOwner", "AttributeEventOwner", "XmlEventOwner" })
+    {
+        var owner = module.GetType("EventSubset." + name);
+        if (owner is null)
+        {
+            if (required) throw new InvalidOperationException("missing reflected event fixture owner");
+            continue;
+        }
+        var item = owner.Events.Single(e => e.Name == "Exotic");
+        // Cecil loads the existing associations lazily; hydrate them before assigning a raiser.
+        if (item.AddMethod is null || item.RemoveMethod is null)
+            throw new InvalidOperationException("missing reflected event add/remove semantics");
+        item.Attributes |= EventAttributes.SpecialName;
+        item.InvokeMethod = owner.Methods.Single(m => m.Name == "RaiseExotic");
+        item.OtherMethods.Clear();
+        item.OtherMethods.Add(owner.Methods.Single(m => m.Name == "OtherPublic"));
+        item.OtherMethods.Add(owner.Methods.Single(m => m.Name == "OtherPrivate"));
+    }
+    if (module.GetType("EventSubset.GenericOtherEventOwner") is { } genericOwner)
+    {
+        var item = genericOwner.Events.Single(e => e.Name == "Tick");
+        if (item.AddMethod is null || item.RemoveMethod is null)
+            throw new InvalidOperationException("missing generic event associations");
+        item.OtherMethods.Clear();
+        item.OtherMethods.Add(genericOwner.Methods.Single(m => m.Name == "Other"));
+    }
+}
+
+if (args.Length == 2 && args[1] == "--reflected-events")
+{
+    string eventPath = Path.GetFullPath(args[0]);
+    using var eventAssembly = AssemblyDefinition.ReadAssembly(eventPath, new ReaderParameters { InMemory = true });
+    RewriteReflectedEvents(eventAssembly.MainModule, required: true);
+    string eventTemporary = eventPath + ".events.tmp";
+    eventAssembly.Write(eventTemporary, new WriterParameters { Timestamp = 0, DeterministicMvid = true });
+    File.Move(eventTemporary, eventPath, overwrite: true);
+    Console.WriteLine("reflected event fixtures written");
+    return;
+}
+
 if (args.Length == 2 && args[1] == "--delegate-clone-slots")
 {
     string clonePath = Path.GetFullPath(args[0]);
@@ -88,6 +130,7 @@ string path = Path.GetFullPath(args[0]);
 using var assembly = AssemblyDefinition.ReadAssembly(path, new ReaderParameters { InMemory = true });
 var module = assembly.MainModule;
 RewriteDelegateCloneSlots(module);
+RewriteReflectedEvents(module);
 var owner = module.GetType("LdftnLocalSubset.Program")
     ?? throw new InvalidOperationException("missing IL fixture owner");
 

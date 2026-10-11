@@ -136,6 +136,14 @@ internal sealed partial class CppEmitter
                 if (!property.Getter.IsNil) accessors.Add(property.Getter);
                 if (!property.Setter.IsNil) accessors.Add(property.Setter);
             }
+            foreach (var handle in definition.GetEvents())
+            {
+                var item = reader.GetEventDefinition(handle).GetAccessors();
+                if (!item.Adder.IsNil) accessors.Add(item.Adder);
+                if (!item.Remover.IsNil) accessors.Add(item.Remover);
+                if (!item.Raiser.IsNil) accessors.Add(item.Raiser);
+                foreach (var other in item.Others) accessors.Add(other);
+            }
             foreach (var handle in definition.GetMethods())
             {
                 var method = reader.GetMethodDefinition(handle);
@@ -648,7 +656,7 @@ internal sealed partial class CppEmitter
         return CanDescribeReflectionDefinition(method);
     }
 
-    private static HashSet<MethodDefinitionHandle> PropertyAccessorHandles(ClassInfo cls)
+    private static HashSet<MethodDefinitionHandle> ReflectionAccessorHandles(ClassInfo cls)
     {
         // Accessor descriptions survive trimming so visible properties retain their accessors.
         var result = new HashSet<MethodDefinitionHandle>();
@@ -660,6 +668,14 @@ internal sealed partial class CppEmitter
             var accessors = reader.GetPropertyDefinition(handle).GetAccessors();
             if (!accessors.Getter.IsNil) result.Add(accessors.Getter);
             if (!accessors.Setter.IsNil) result.Add(accessors.Setter);
+        }
+        foreach (var handle in reader.GetTypeDefinition(cls.Handle).GetEvents())
+        {
+            var accessors = reader.GetEventDefinition(handle).GetAccessors();
+            if (!accessors.Adder.IsNil) result.Add(accessors.Adder);
+            if (!accessors.Remover.IsNil) result.Add(accessors.Remover);
+            if (!accessors.Raiser.IsNil) result.Add(accessors.Raiser);
+            foreach (var other in accessors.Others) result.Add(other);
         }
         return result;
     }
@@ -703,6 +719,7 @@ internal sealed partial class CppEmitter
         private readonly Dictionary<ClassInfo, (string Expr, int Count)> _ctorTabs = new();
         private readonly Dictionary<ClassInfo, string> _initializerRows = new();
         private readonly Dictionary<ClassInfo, (string Expr, int Count)> _propTabs = new();
+        private readonly Dictionary<ClassInfo, (string Expr, int Count)> _eventTabs = new();
         // The methods under an Object member name that got a method row, per class, for
         // the class's DN2CPP_TF_OBJECT_MEMBER_ROWS decision (CarriesObjectMemberRows).
         private readonly Dictionary<ClassInfo, HashSet<MethodDefinitionHandle>> _objectMemberRows = new();
@@ -1175,7 +1192,7 @@ internal sealed partial class CppEmitter
                 if (_e.IsOpaque(cls) || _e.IsCanonicalWorld(cls))
                     continue;
                 bool keepRefl = _c.KeepsReflectionMetadata(cls);
-                var propertyAccessors = PropertyAccessorHandles(cls);
+                var propertyAccessors = ReflectionAccessorHandles(cls);
                 var accessorRows = new HashSet<MethodDefinitionHandle>();
                 foreach (var m in _e.ReflectionMethods(cls))
                 {
@@ -1219,6 +1236,7 @@ internal sealed partial class CppEmitter
                 {
                     var reader = cls.Module.Reader;
                     var td = reader.GetTypeDefinition(cls.Handle);
+
                     foreach (var ph in td.GetProperties())
                     {
                         var acc = reader.GetPropertyDefinition(ph).GetAccessors();
@@ -2993,7 +3011,7 @@ internal sealed partial class CppEmitter
             // walking these tables.
             // (Row filter mirrored by NoteReflectedMemberTypes — keep in step.)
             bool trim = !appCls && !_e._hotUpdateBase;
-            var propertyAccessors = PropertyAccessorHandles(cls);
+            var propertyAccessors = ReflectionAccessorHandles(cls);
             foreach (var m in members)
             {
                 int genericCount = m.Handle.IsNil ? 0
@@ -3385,7 +3403,7 @@ internal sealed partial class CppEmitter
             // would name never-emitted canonical-world type-infos) — skip it.
             var seenMethod = new HashSet<string>(System.StringComparer.Ordinal);
             bool keepRefl = _c.KeepsReflectionMetadata(cls);
-            var propertyAccessors = PropertyAccessorHandles(cls);
+            var propertyAccessors = ReflectionAccessorHandles(cls);
             var methods = !keepRefl ? new List<MethodInfo>() : _e.ReflectionMethods(cls)
                 .Where(m => m.Name != ".ctor" && m.Name != ".cctor"
                     && _e.KeepsReflectionMethodRow(cls, m, propertyAccessors)
@@ -3423,6 +3441,8 @@ internal sealed partial class CppEmitter
             // table it points into.
             if (keepRefl && BuildPropTable(cls, methods) is { } pt)
                 _propTabs[cls] = pt;
+            if (keepRefl && BuildEventTable(cls, methods) is { } events)
+                _eventTabs[cls] = events;
         }
 
         /// <summary>Whether every method <paramref name="cls"/> declares under a name
@@ -3755,6 +3775,7 @@ internal sealed partial class CppEmitter
             var (methodsExpr, methodCount) = _methodTabs.TryGetValue(cls, out var mtv) ? (mtv.Expr, mtv.Count) : ("nullptr", 0);
             var (ctorsExpr, ctorCount) = _ctorTabs.TryGetValue(cls, out var ctv) ? (ctv.Expr, ctv.Count) : ("nullptr", 0);
             var (propsExpr, propCount) = _propTabs.TryGetValue(cls, out var ptv) ? (ptv.Expr, ptv.Count) : ("nullptr", 0);
+            var (eventsExpr, eventCount) = _eventTabs.TryGetValue(cls, out var etv) ? (etv.Expr, etv.Count) : ("nullptr", 0);
             // Type-level custom attributes: user-module (app + referenced library)
             // non-opaque classes, so an attribute on a library-declared class is emitted.
             (string Expr, int Count) typeAttrs = ("nullptr", 0);
@@ -3810,6 +3831,7 @@ internal sealed partial class CppEmitter
                 ToStringFn = toStr, HashFn = getHash, EqualsFn = equals, Flags = flags,
                 Fields = fieldsExpr, FieldCount = fieldCount, Methods = methodsExpr, MethodCount = methodCount,
                 Ctors = ctorsExpr, CtorCount = ctorCount, Props = propsExpr, PropCount = propCount,
+                Events = eventsExpr, EventCount = eventCount,
                 Initializer = _initializerRows.GetValueOrDefault(cls, "nullptr"),
                 CustomAttrs = typeAttrs.Expr, CustomAttrCount = typeAttrs.Count, GenericDef = genDefExpr,
                 GenericArgs = genArgsExpr, GenericArgCount = genArgCount, NestedTypes = nestedExpr, NestedCount = nested.Count,

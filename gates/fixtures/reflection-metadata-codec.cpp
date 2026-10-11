@@ -93,11 +93,21 @@ DN2CPP_NATIVE_FIELDS(local_fields,
 DN2CPP_NATIVE_METADATA_STORAGE(local_fields);
 constexpr auto packed_local_fields = Dn2CppMetadataTable<Dn2CppFieldInfo>::from_static(local_fields_storage.records.data());
 DN2CPP_NATIVE_TYPE_REFLECTION(local_type, packed_local_fields, 2);
+static constexpr Dn2CppMethodInfo event_methods_rows[] = { {} };
+alignas(2) constexpr uint8_t event_method_record[] = { 0, 4, 0, 0 };
+constexpr auto packed_event_method = Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_static(event_method_record);
+static constexpr Dn2CppMetadataHandle<Dn2CppMethodInfo> event_others[] = { packed_event_method, &event_methods_rows[0] };
+static constexpr Dn2CppEventInfo event_rows[] = {
+    { unicode, &original_type, &substituted_type, packed_event_method, &event_methods_rows[0],
+        packed_event_method, event_others, 2, DN2CPP_MTHA_PUBLIC, 0x200, nullptr, 0, 0x14000001, unicode, &field_signature },
+};
+DN2CPP_NATIVE_METADATA_STORAGE(event);
+constexpr auto packed_event = Dn2CppMetadataHandle<Dn2CppEventInfo>::from_static(event_storage.records.data());
 const Dn2CppMethodInfo initializer_row{};
 const Dn2CppGenericTypeMetadata generic_type_metadata{};
 DN2CPP_NATIVE_TYPE_REFLECTION(initializer_type,
     nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0,
-    nullptr, 0, nullptr, 0, 0, nullptr, 0, nullptr, nullptr, nullptr, &initializer_row, &generic_type_metadata);
+    nullptr, 0, nullptr, 0, 0, nullptr, 0, nullptr, nullptr, nullptr, &initializer_row, &generic_type_metadata, Dn2CppMetadataTable<Dn2CppEventInfo>::from_static(event_storage.records.data()), 1);
 DN2CPP_NATIVE_METADATA_STORAGE(initializer_type);
 constexpr auto packed_initializer_type = Dn2CppMetadataHandle<Dn2CppTypeReflection>::from_static(initializer_type_storage.records.data());
 DN2CPP_NATIVE_METADATA_STORAGE(local_type);
@@ -277,6 +287,21 @@ int main()
 {
     static_assert(sizeof(Dn2CppMetadataHandle<Dn2CppFieldInfo>) == sizeof(void*));
     static_assert(offsetof(Dn2CppMethodInfo, definitionSignature) + sizeof(void*) == sizeof(Dn2CppMethodInfo));
+    auto event = packed_event.operator->();
+    require(event->name == unicode && event->declaringType == &original_type
+        && event->handlerType == &substituted_type && event->handlerRecipe == &field_signature
+        && event->eventAttributes == 0x200 && event->metadataToken == 0x14000001,
+        "event schema preserves handler identity, symbolic recipes and event attributes");
+    require(event->adder.identity() == packed_event_method.identity()
+        && event->remover.identity() == &event_methods_rows[0]
+        && event->raiser.identity() == packed_event_method.identity()
+        && event->otherCount == 2 && event->others[0].identity() == packed_event_method.identity()
+        && event->others[1].identity() == &event_methods_rows[0],
+        "event accessors preserve original packed and native method handles");
+    require(event_rows[0].adder.identity() == packed_event_method.identity()
+        && packed_initializer_type->eventCount == 1
+        && packed_initializer_type->events[0].identity() == packed_event.identity(),
+        "native event owners retain packed accessor identity and cold type rows retain events");
     require(packed_initializer_type->initializer.identity() == &initializer_row,
         "packed cold rows retain a binding-only initializer handle");
     require(packed_initializer_type->genericMetadata == &generic_type_metadata,

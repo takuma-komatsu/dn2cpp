@@ -174,6 +174,11 @@ namespace TrimReflectLib
         public virtual string GenericKind<U>() => typeof(T).Name + "/" + typeof(U).Name;
     }
 
+    public sealed class LibEventOwner
+    {
+        public event System.Action Tick;
+    }
+
     public static class Factory
     {
         // Each returns `object`, never the concrete type: the app's IL must not name what
@@ -201,6 +206,13 @@ namespace TrimReflectLib
         public static object MakeLabel() => new LibLabel();
         public static object MakePlainLabel() => new LibPlainLabel();
         public static object MakeBare() => new LibBare();
+        public static object MakeEvent()
+        {
+            var owner = new LibEventOwner();
+            owner.Tick += null;
+            owner.Tick -= null;
+            return owner;
+        }
         public static LibGvmShape MakePlainGenericShape() => new LibGvmPlain();
     }
 }

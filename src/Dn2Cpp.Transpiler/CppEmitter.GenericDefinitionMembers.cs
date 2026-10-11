@@ -35,6 +35,8 @@ internal sealed partial class CppEmitter
                     }
                     foreach (var handle in definition.GetFields())
                         NoteConstraintSignature(reader.GetFieldDefinition(handle).DecodeSignature(provider, null));
+                    foreach (var handle in definition.GetEvents())
+                        NoteConstraintSignature(provider.Decode(owner.Module, reader.GetEventDefinition(handle).Type));
                 }
             }
         }
@@ -187,6 +189,8 @@ internal sealed partial class CppEmitter
             if (properties.Count > 0)
                 _e.EmitMetadataTable(_sb, "Dn2CppPropInfo", data.Props = "definition_" + stem + "_properties", properties);
             data.PropCount = properties.Count;
+            if (available)
+                GenericDefinitionEvents(data, owner.Module, definition, stem, declaring, typeNames, addresses, attributes);
             data.IlAttrs = (uint)definition.Attributes;
             data.MetadataToken = System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(owner.Handle);
             data.AssemblyName = owner.Module.AssemblyName;
