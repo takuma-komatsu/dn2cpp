@@ -73,5 +73,28 @@ namespace HotPathNoAllocSubset
             Console.WriteLine(InspectTypes(typeof(int), typeof(string), typeof(int[,])));
             Console.WriteLine("NoAlloc reflection reads end");
         }
+
+        [HotPath(NoAlloc = true)]
+        private static object ReadReference(in object value) => value;
+
+        [HotPath(NoAlloc = true)]
+        private static T ReadReference<T>(in T value) => value;
+
+        internal static void __GateReadonlyEntry()
+        {
+            Console.WriteLine("== NoAlloc readonly reference reads ==");
+            object seed = "seed";
+            var normal = new object[,] { { seed } };
+            Console.WriteLine(ReferenceEquals(ReadReference(in seed), seed));
+            Console.WriteLine(ReferenceEquals(ReadReference(in normal[0, 0]), seed));
+            Console.WriteLine(ReferenceEquals(ReadReference<object>(in normal[0, 0]), seed));
+            var cultures = new System.Globalization.CultureInfo[1, 1];
+            var culture = new System.Globalization.CultureInfo("ja-JP");
+            cultures[0, 0] = culture;
+            object[,] erased = cultures;
+            Console.WriteLine(ReferenceEquals(ReadReference(in erased[0, 0]), culture));
+            Console.WriteLine(ReferenceEquals(ReadReference<object>(in erased[0, 0]), culture));
+            Console.WriteLine("NoAlloc readonly reference reads end");
+        }
     }
 }

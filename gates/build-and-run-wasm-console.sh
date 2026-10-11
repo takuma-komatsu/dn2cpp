@@ -9,8 +9,7 @@
 # static roots registered via the dn2cpp_roots section. Emscripten's MEMFS
 # backs the filesystem.
 #
-# Seven sections, six of them diffed against real .NET. StringCore covers the
-# string/formatting core, and
+# StringCore covers the string/formatting core and is diffed against real .NET.
 # NestedFinallySubset proves the -fwasm-exceptions EH pipeline — a throw
 # (dn2cpp_throw -> C++ `throw Dn2CppException`) unwinding through nested
 # finally regions into a typed catch, plus the non-exceptional leave/goto
@@ -61,6 +60,8 @@
 # Machines without the Emscripten toolchain (or node) skip: the suite stays
 # usable without emscripten, but the runner reports the gate as SKIPPED rather
 # than passed (gate_skip in _common.sh).
+# Raw MD readonly aliases keep live interior roots and safe owner lookup on wasm32.
+# Runtime argument messages keep earlier generated operands live across later allocations.
 source "$(dirname "$0")/_common.sh"
 
 # --no-bundled: an -O-less link needs the -debug archives the frozen bundle lacks.
@@ -72,7 +73,18 @@ for tool in em++ emcmake node; do
 done
 
 export WASM=1
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|readonly-raw-md-live-alias-wasm32"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_md-readonly-byrefs.sh gates/fixtures/md-readonly-byrefs/MdReadonlyByrefs.csproj gates/fixtures/md-readonly-byrefs/Program.cs gates/fixtures/md-readonly-byrefs/runtime-checks.cpp samples/dotnet/ArrayCore/ArrayCovariantStoreSubset.cs"
 wasm_corelib_diff_gate StringCore System.Linq
+argument_roots=$(run_bounded node "$_CG_OUT/StringCore.js")
+argument_roots=$(strip_cr_win "$argument_roots")
+argument_prefix=$(awk '/^== Collected runtime argument operands ==$/ { exit } { print }' <<< "$argument_roots")
+argument_before=$(run_bounded dotnet "$_CG_APP" before-argument-roots)
+assert_output "$argument_prefix" "$(strip_cr_win "$argument_before")"
+for line in '== Collected runtime argument operands ==' 'Collected runtime argument operands end'; do
+    [ "$(grep -Fxc -- "$line" <<< "$argument_roots")" = 1 ] \
+        || { echo "FAIL: wasm runtime argument root block missing or repeated: $line" >&2; exit 1; }
+done
 wasm_corelib_diff_gate NestedFinallySubset
 wasm_corelib_diff_gate Finalizers --link-xml samples/dotnet/Finalizers/link.xml
 gate_expected_partial "FinalizerSuppressQueuedSubset's post-enqueue window never opens here: this build never collects an object first named inside a finalizer body while that frame is live, so nothing is observed queued and no setting on either side changes it — the section runs and folds the window into its booleans, and gates/build-and-run-finalizers.sh asserts that surface for real."
@@ -87,6 +99,7 @@ if [ "$pending_barriers" -ne 1 ]; then
     echo "FAIL: wasm WeakReferences emitted $pending_barriers pending-reference liveness barriers, expected 1" >&2
     exit 1
 fi
+
 wasm_corelib_diff_gate MonotonicClock
 
 # The section's booleans prove clocks ran; they do not prove they were THESE two.
@@ -225,3 +238,6 @@ else
     assert_output "$_wh_actual" "$_wh_expected"
     gate_cache_commit
 fi
+
+source gates/_md-readonly-byrefs.sh
+(md_readonly_byrefs_gate wasm)

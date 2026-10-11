@@ -51,6 +51,7 @@
 // default; build with DN2CPP_NO_GC=1 to opt out to the calloc fallback.
 #ifdef DN2CPP_USE_BOEHM_GC
 #include <gc.h>
+#include <gc_mark.h>
 
 // ── GC stop-the-world pause-time instrumentation (opt-in: DN2CPP_GC_STATS) ─────
 // A diagnostic (not on any hot path) for measuring collection pauses — used by
@@ -969,6 +970,98 @@ void* dn2cpp_alloc(size_t size)
         dn2cpp_fail("OutOfMemoryException");
     gc_account_alloc(size);
     return p;
+}
+
+namespace
+{
+#ifdef DN2CPP_USE_BOEHM_GC
+std::atomic<int> g_rawMdKind{-1};
+
+int raw_md_kind()
+{
+    // Scan and clear like NORMAL, with a distinct kind so arbitrary GC buffers
+    // can never be mistaken for an array header by an erased byref reader.
+    static const int kind = static_cast<int>(GC_new_kind(GC_new_free_list(), GC_DS_LENGTH, 1, 1));
+    g_rawMdKind.store(kind, std::memory_order_release);
+    return kind;
+}
+#else
+struct RawMdRange
+{
+    uintptr_t start;
+    size_t size;
+};
+std::atomic<bool> g_hasRawMdRanges{false};
+
+std::vector<RawMdRange>& raw_md_ranges()
+{
+    // The calloc fallback never frees managed allocations; these owners have
+    // the same lifetime. Boehm needs no registry or additional strong roots.
+    static auto& ranges = dn2cpp_never_destroyed<std::vector<RawMdRange>>();
+    return ranges;
+}
+
+std::mutex& raw_md_mutex()
+{
+    static auto& mutex = dn2cpp_never_destroyed<std::mutex>();
+    return mutex;
+}
+#endif
+}
+
+void* dn2cpp_alloc_raw_md(size_t size)
+{
+#ifdef DN2CPP_USE_BOEHM_GC
+    void* p = GC_generic_malloc(size, raw_md_kind());
+#else
+    void* p = std::calloc(1, size);
+#endif
+    if (p == nullptr)
+        dn2cpp_fail("OutOfMemoryException");
+    gc_account_alloc(size);
+#ifndef DN2CPP_USE_BOEHM_GC
+    try
+    {
+        std::lock_guard<std::mutex> lock(raw_md_mutex());
+        auto& ranges = raw_md_ranges();
+        uintptr_t start = reinterpret_cast<uintptr_t>(p);
+        auto it = std::lower_bound(ranges.begin(), ranges.end(), start,
+            [](const RawMdRange& range, uintptr_t address) { return range.start < address; });
+        ranges.insert(it, {start, size});
+        g_hasRawMdRanges.store(true, std::memory_order_release);
+    }
+    catch (const std::bad_alloc&)
+    {
+        dn2cpp_fail("OutOfMemoryException");
+    }
+#endif
+    return p;
+}
+
+Dn2CppMDArray* dn2cpp_raw_md_owner(const void* slot)
+{
+#ifdef DN2CPP_USE_BOEHM_GC
+    int kind = g_rawMdKind.load(std::memory_order_acquire);
+    if (kind < 0)
+        return nullptr;
+    void* owner = GC_base(const_cast<void*>(slot));
+    if (owner == nullptr || GC_get_kind_and_size(owner, nullptr) != kind)
+        return nullptr;
+    return static_cast<Dn2CppMDArray*>(owner);
+#else
+    if (!g_hasRawMdRanges.load(std::memory_order_acquire))
+        return nullptr;
+    std::lock_guard<std::mutex> lock(raw_md_mutex());
+    auto& ranges = raw_md_ranges();
+    uintptr_t address = reinterpret_cast<uintptr_t>(slot);
+    auto it = std::upper_bound(ranges.begin(), ranges.end(), address,
+        [](uintptr_t value, const RawMdRange& range) { return value < range.start; });
+    if (it == ranges.begin())
+        return nullptr;
+    --it;
+    return address - it->start < it->size
+        ? reinterpret_cast<Dn2CppMDArray*>(it->start) : nullptr;
+#endif
 }
 
 void* dn2cpp_alloc_atomic(size_t size)

@@ -8985,6 +8985,28 @@ static int32_t dn2cpp_array_headerless_kind(const Dn2CppTypeInfo* elem)
     return 0;
 }
 
+bool dn2cpp_array_has_raw_ref_element(const Dn2CppTypeInfo* elem)
+{
+    return dn2cpp_array_headerless_kind(elem) != 0;
+}
+
+Dn2CppObject* dn2cpp_byref_load_ref(const void* slot)
+{
+    auto* owner = dn2cpp_raw_md_owner(slot);
+    if (owner != nullptr)
+    {
+        uintptr_t address = reinterpret_cast<uintptr_t>(slot);
+        uintptr_t data = reinterpret_cast<uintptr_t>(owner->data);
+        size_t cells = 1;
+        for (int32_t i = 0; i < owner->rank; i++)
+            cells *= static_cast<size_t>(owner->lengths[i]);
+        if (owner->elemSize == sizeof(void*) && address >= data && (address - data) / sizeof(void*) < cells
+            && (address - data) % sizeof(void*) == 0)
+            return dn2cpp_array_load_ref(owner->type->elementType, slot, true);
+    }
+    return dn2cpp_array_load_ref(nullptr, slot, false);
+}
+
 Dn2CppObject* dn2cpp_array_load_ref(const Dn2CppTypeInfo* elem, const void* slot, bool rawReference)
 {
     Dn2CppObject* value;

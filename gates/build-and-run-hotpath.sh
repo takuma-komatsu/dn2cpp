@@ -9,6 +9,7 @@
 # is inert and every access stays checked.
 # Covariant reference stores retain their type check with bounds checks disabled.
 # Writable SZ addresses retain exact element checks with bounds checks disabled.
+# NoAlloc readonly readers retain ordinary cells and interned raw MD identities.
 #
 # Placement is then asserted structurally on the transpile output, from inside the
 # wrapper's cached region (the gate_extra_asserts hook, `gates/_common.sh`) — so a
@@ -48,6 +49,7 @@ source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/HotPathNoAllocMixedBad/ReflectionNoAllocHelpersOnly.csproj samples/dotnet/HotPathNoAllocMixedBad/ReflectionNoAllocHelpersOnlyProgram.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|reflection-noalloc-helpers-v1|covariant-store-prefix:${DN2CPP_BEFORE_COVARIANT_STORES:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|writable-vector-address|vector-address-prefix:${DN2CPP_BEFORE_VECTOR_ADDRESS:-}"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|readonly-byref-identity-interning|readonly-prefix:${DN2CPP_BEFORE_READONLY_BYREF:-}"
 
 # Every block under an emitter-stamped `// Namespace.Class::Name` header — a
 # generic method's instantiations share the header, so all are collected.
@@ -135,6 +137,19 @@ for sym in SumOfSquares SumSpan InspectTypes; do
     [ -n "$(hot_bodies "HotPathNoAllocSubset.Program::$sym")" ] \
         || { echo "FAIL: NoAlloc kernel $sym not defined in generated_hot.cpp" >&2; exit 1; }
 done
+readonly_bodies="$(hot_bodies 'HotPathNoAllocSubset.Program::ReadReference')"
+[ "$(grep -Fc 'dn2cpp_byref_load_ref(' <<<"$readonly_bodies")" = 2 ] \
+    || { echo 'FAIL: NoAlloc reference and generic readers lost their managed load helper' >&2; return 1; }
+readonly_text=$(strip_cr_win "$native")
+for line in '== NoAlloc readonly reference reads ==' 'NoAlloc readonly reference reads end'; do
+    [ "$(grep -Fxc -- "$line" <<<"$readonly_text")" = 1 ] \
+        || { echo "FAIL: NoAlloc readonly witness missing or repeated: $line" >&2; return 1; }
+done
+readonly_prefix=$(awk '/^== NoAlloc readonly reference reads ==$/ { exit } { print }' <<<"$readonly_text")
+readonly_before=$(DN2CPP_BEFORE_READONLY_BYREF=1 run_bounded "./$hp_out/HotPath$EXE_EXT")
+assert_output "$(strip_cr_win "$readonly_before")" "$readonly_prefix"
+readonly_before=$(DN2CPP_BEFORE_READONLY_BYREF=1 run_bounded dotnet "$_CG_APP")
+assert_output "$(strip_cr_win "$readonly_before")" "$readonly_prefix"
 
 metadata_body="$(hot_bodies "HotPathNoAllocSubset.Program::InspectTypes")"
 for helper in 'dn2cpp_type_is_assignable_from(' 'dn2cpp_type_get_array_rank('; do

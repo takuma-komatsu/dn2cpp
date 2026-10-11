@@ -22,6 +22,9 @@
 # Shared MD allocations carry their concrete array identity through type-info context slots.
 # Writable SZ addresses retain exact element identity and CLR entry-specific fault order.
 # readonly. ldelema/Address permits covariance; Address uses each element's actual layout.
+# Erased readonly byrefs retain live raw MD aliases, including alias-only GC roots.
+# Owner lookup rejects ordinary buffers and noncells on GC, NoGC and upstream axes.
+# Pending evaluation-stack references stay live across wrapper materialization reads.
 # Runtime handle boxing retains the selected payload's ToString override.
 # Nullable array display composes generic element identities and array ranks.
 # Excessive-rank errors identify the attempted array type and its assembly.
@@ -176,6 +179,7 @@
 # Default comparer concrete families preserve enum widths, boxed order and user comparisons.
 source "$(dirname "$0")/_common.sh"
 source gates/_headerless-reference-identity.sh
+source gates/_md-readonly-byrefs.sh
 
 comparison_prior_extra_asserts() {
     local out="$1" native before prefix line
@@ -359,6 +363,40 @@ sz_address_identity_asserts() {
         || { echo 'FAIL: SZ method/owner addresses lost shared type-info checks' >&2; return 1; }
 }
 
+md_readonly_alias_asserts() {
+    local out="$1" line shared
+    headerless_reference_prefix_asserts "$out" ArrayCore before-md-readonly-aliases \
+        '== headerless multidimensional readonly aliases ==' 'headerless multidimensional readonly aliases end'
+    for line in 'readonly raw initial=True' 'readonly raw live alias=True' \
+        'readonly raw callee mutation=True' 'readonly raw generic=True' 'readonly raw owner=True' \
+        'readonly raw unaligned=True' 'readonly raw span=True' 'readonly typed raw=True' \
+        'readonly pending indirect=True' 'readonly pending generic=True' \
+        'readonly pending array indirect=True' 'readonly pending array generic=True' \
+        'readonly pending field indirect=True' 'readonly pending field generic=True' \
+        'readonly raw null payload=True' 'readonly number=True:True' 'readonly text=True:True' \
+        'readonly assembly=True:True' 'readonly module=True:True' 'readonly raw ranks=True:True' \
+        'readonly raw lower=True' 'readonly raw clone=True' 'readonly managed cell=True' \
+        'readonly managed vector=True' 'readonly managed nested=nested' 'readonly raw alias lifetime=True' \
+        'readonly raw null=NullReferenceException/80004003:identity=True' \
+        'readonly raw bounds=IndexOutOfRangeException/80131508:identity=True'; do
+        [ "$(grep -Fxc -- "$line" "$out/headerless-full.native.stdout")" = 1 ] \
+            || { echo "FAIL: readonly MD alias witness missing or repeated: $line" >&2; return 1; }
+    done
+    shared=$(awk '
+        { sub(/\r$/, "") }
+        /^\/\/ ArrayCovariantStoreSubset.Program::ReadReadonly$/ { method = 1; next }
+        /^\/\/ Program_ReadonlyOwner_\$CnRef::Read$/ { owner = 1; next }
+        /^\/\/ / { method = 0; owner = 0 }
+        method && /Program_ReadReadonly_TisCnRef.*\)$/ { method_body = 1 }
+        method_body && /dn2cpp_byref_load_ref\(/ { found_method = 1; method_body = 0 }
+        owner && /dn2cpp_byref_load_ref\(/ { found_owner = 1 }
+        END { if (found_method && found_owner) print "shared readonly MD reads" }
+    ' "$out/generated.h" "$out"/generated*.cpp)
+    [ "$shared" = 'shared readonly MD reads' ] \
+        || { echo 'FAIL: readonly method/owner reads lost shared managed-reference loads' >&2; return 1; }
+    md_readonly_pending_asserts "$out"
+}
+
 eval "$(declare -f gate_extra_asserts | sed '1s/gate_extra_asserts/nonzero_prior_extra_asserts/')"
 # Keep the prior whole bucket and prove each appended lower-bound block ran once.
 gate_extra_asserts() {
@@ -367,6 +405,7 @@ gate_extra_asserts() {
     headerless_md_reference_asserts "$out"
     md_address_identity_asserts "$out"
     sz_address_identity_asserts "$out"
+    md_readonly_alias_asserts "$out"
     native=$(run_bounded "./$out/ArrayCore$EXE_EXT")
     native=$(strip_cr_win "$native")
     prefix=$(awk '/^== nonzero array lower bounds ==$/ { exit } { print }' <<< "$native")
@@ -449,6 +488,8 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|md-array-overload-original
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|headerless-md-reference-conversion|before-headerless-md-identity"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|writable-md-address-exact-element|before-md-address-identity|rank1-md-address-readonly|md-address-prefix:${DN2CPP_BEFORE_MD_ADDRESS:-}|shared-md-allocation-typeinfo"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|writable-sz-address-exact-element|before-sz-address-identity|vector-address-member-layout|vector-address-prefix:${DN2CPP_BEFORE_VECTOR_ADDRESS:-}"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|readonly-raw-md-live-alias|before-md-readonly-aliases|readonly-owner-axes:unity,nogc,upstream"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_md-readonly-byrefs.sh gates/fixtures/md-readonly-byrefs/MdReadonlyByrefs.csproj gates/fixtures/md-readonly-byrefs/Program.cs gates/fixtures/md-readonly-byrefs/runtime-checks.cpp"
 corelib_diff_gate ArrayCore System.Collections
 
 native=$(run_bounded "./$_CG_OUT/ArrayCore$EXE_EXT")
@@ -471,6 +512,7 @@ for line in '== nullable array type names ==' \
     grep -Fxq -- "$line" <<< "$native" \
         || { echo "FAIL: nullable array name witness missing: $line" >&2; exit 1; }
 done
+
 previous=$(run_bounded dotnet "$_CG_APP" before-excess-array-rank)
 prefix=$(awk '/^== excessive array rank diagnostics ==$/ { exit } { print }' <<< "$native")
 assert_output "$prefix" "$(strip_cr_win "$previous")"
@@ -1339,3 +1381,7 @@ for line in 'opaque-comparer/is-null:False' 'opaque-comparer/is-string:False' \
     [[ $(grep -Fxc -- "$line" <<< "$comparer_type_native") == 1 ]] \
         || { echo "FAIL: comparer type-only witness must run once: $line" >&2; exit 1; }
 done
+
+(md_readonly_byrefs_gate unity)
+(export DN2CPP_NO_GC=1; md_readonly_byrefs_gate nogc)
+(export DN2CPP_GC_BACKEND=upstream; md_readonly_byrefs_gate upstream)

@@ -45,6 +45,7 @@
 # Search windows preserve named faults, empty-source precedence and unchecked counts.
 # String argument validation preserves named faults, values and validation order.
 # Composite format faults preserve UTF-16 positions, grammar reasons and argument effects.
+# Runtime argument messages retain named/boxed operands across Web collections.
 source "$(dirname "$0")/_common.sh"
 string_python=$(resolve_python) || gate_skip "no working Python 3 interpreter for string call fixtures"
 
@@ -52,7 +53,7 @@ call_app="gates/fixtures/string-comparison-call/bin/$CONFIG/$TFM/StringCompariso
 build_gate_proj gates/fixtures/string-comparison-call/StringComparisonCall.csproj
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $call_app ${call_app%.dll}.runtimeconfig.json ${call_app%.dll}.deps.json gates/fixtures/string-comparison-call/patch-call.py"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|string-comparison-call|cli:$(_gate_cli_hash)"
-DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|format-diagnostics-prefix-argv:before-format-diagnostics"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|format-diagnostics-prefix-argv:before-format-diagnostics|argument-roots-prefix-argv:before-argument-roots"
 
 gate_extra_asserts() {
     local out="$1" native before prefix line oracle fixture expected actual
@@ -320,6 +321,20 @@ gate_extra_asserts() {
         'String composite format diagnostics end'; do
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: composite format witness missing: $line" >&2; exit 1; }
+    done
+    before=$(run_bounded dotnet "$_CG_APP" before-argument-roots)
+    prefix=$(awk '/^== Collected runtime argument operands ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    before=$(run_bounded "./$out/StringCore$EXE_EXT" before-argument-roots)
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    for line in '== Collected runtime argument operands ==' 'Collected runtime argument operands end'; do
+        [ "$(grep -Fxc -- "$line" <<< "$native")" = 1 ] \
+            || { echo "FAIL: runtime argument root block missing or repeated: $line" >&2; exit 1; }
+    done
+    for line in 'roots signed' 'roots unsigned' 'roots float' 'roots double' \
+        'roots managed message' 'roots monitor message' 'roots boxed actual'; do
+        [ "$(grep -Ec "^$line=Argument(OutOfRange)?Exception:" <<< "$native")" = 1 ] \
+            || { echo "FAIL: collected runtime argument witness missing or repeated: $line" >&2; exit 1; }
     done
 }
 

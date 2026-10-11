@@ -357,6 +357,16 @@ contract, and `readonly.` access permits covariance. Shared MD allocations and w
 addresses resolve their precise array identity through the existing type-info
 context slots. A raw headerless MD element requires a typed body rather than a
 canonical managed-reference byref ABI.
+Readonly covariance keeps the original cell address. Erased indirect reference
+loads recover raw MD owners from a dedicated scanned GC allocation kind before
+reading their headers, then intern the current payload's managed wrapper. The
+calloc fallback indexes its never-freed raw MD allocations instead. Neither path
+copies the cell or retains an extra GC root, so saved and returned aliases remain
+live across writes and collections. Exact typed headerless reads keep their raw ABI.
+An erased indirect read can materialize an identity wrapper; pending objects and managed byrefs
+on the IL evaluation stack therefore stay live across `ldind.ref` and `ldobj` on Web.
+Runtime argument-exception helpers likewise keep earlier managed operands live
+while constructing later message, parameter-name and boxed-value operands.
 
 #### Platform ISA contract
 

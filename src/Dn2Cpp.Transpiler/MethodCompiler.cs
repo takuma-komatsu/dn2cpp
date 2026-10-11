@@ -2919,6 +2919,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                     var exObj = Pop();
                     string ect = ExceptionFieldCppType(fld);
                     Push(StackKind.Ptr, ect + "*", $"&({ExceptionFieldLValue(fld, exObj)})");
+                    Top = Top with { StaticType = TypeDesc.MakeByRef(fld.Type) };
                     break;
                 }
                 NoteFieldOwnerLayout(cls);
@@ -2941,7 +2942,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                     // stays consistent with the existing managed-pointer path below.
                     string saddr = $"&(({StructLValue(obj)}).{fld.CppName}{elemDecay})";
                     Push(StackKind.Ptr, wantPtr, erasedMember ? $"(({wantPtr}){saddr})" : saddr);
-                    _stack[^1] = _stack[^1] with { ArraySearchOrigin =
+                    _stack[^1] = _stack[^1] with { StaticType = TypeDesc.MakeByRef(fld.Type), ArraySearchOrigin =
                         _c.ArraySearchFieldReadOrigin(fld, obj.ArraySearchOrigin,
                             _method, insn.Offset, _arraySearchStraightLine) };
                     _stack[^1].ArraySearchOrigin!.FieldAddress = true;
@@ -2949,7 +2950,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 }
                 string addr = $"&({FieldAccess(cls, fld, obj)}{elemDecay})";
                 Push(StackKind.Ptr, wantPtr, erasedMember ? $"(({wantPtr}){addr})" : addr);
-                _stack[^1] = _stack[^1] with { ArraySearchOrigin =
+                _stack[^1] = _stack[^1] with { StaticType = TypeDesc.MakeByRef(fld.Type), ArraySearchOrigin =
                     _c.ArraySearchFieldReadOrigin(fld, obj.ArraySearchOrigin,
                         _method, insn.Offset, _arraySearchStraightLine) };
                 _stack[^1].ArraySearchOrigin!.FieldAddress = true;
@@ -3144,7 +3145,9 @@ internal sealed partial class MethodCompiler : IEvalStack
                 string mt = CppTypes.StorageOf(t);
                 var p = Pop();
                 Push(CppTypes.KindOf(t), ct,
-                    mt == ct ? $"*(({ct}*)({p.Expr}))" : $"({ct})(*(({mt}*)({p.Expr})))");
+                    CppTypes.KindOf(t) == StackKind.Ref && !IsHeaderlessWrapCpp(ct)
+                        ? $"({ct})dn2cpp_byref_load_ref((const void*)({p.Expr}))"
+                        : mt == ct ? $"*(({ct}*)({p.Expr}))" : $"({ct})(*(({mt}*)({p.Expr})))");
                 if (CppTypes.KindOf(t) == StackKind.Ref)
                     _stack[^1] = _stack[^1] with { ArraySearchOrigin = p.ArraySearchOrigin };
                 break;
@@ -4023,7 +4026,8 @@ internal sealed partial class MethodCompiler : IEvalStack
     private void TranslateWithPendingReferenceBarriers(Instruction insn)
     {
         if (insn.OpCode is not (ILOpCode.Call or ILOpCode.Callvirt or ILOpCode.Calli
-                or ILOpCode.Newobj or ILOpCode.Newarr or ILOpCode.Box or ILOpCode.Ldstr)
+                or ILOpCode.Newobj or ILOpCode.Newarr or ILOpCode.Box or ILOpCode.Ldstr
+                or ILOpCode.Ldind_ref or ILOpCode.Ldobj)
             || _stack.Count == 0)
         {
             Translate(insn);
@@ -4033,7 +4037,8 @@ internal sealed partial class MethodCompiler : IEvalStack
         List<StackEntry>? pending = null;
         foreach (var entry in _stack)
         {
-            if (entry.Kind != StackKind.Ref)
+            if (entry.Kind != StackKind.Ref
+                && !(entry.Kind == StackKind.Ptr && entry.StaticType?.Kind == TypeKind.ByRef))
                 continue;
             pending ??= new List<StackEntry>();
             pending.Add(entry);

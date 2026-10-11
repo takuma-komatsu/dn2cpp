@@ -40,7 +40,7 @@ PRIMITIVES=(
 
 self_test() (
     local fixture name case_name rc expected test_os success_case partition label failure_gate
-    local full core arrays limits combined logdir
+    local full core arrays limits combined logdir expected_budgets
     local runner_args
     fixture=$(mktemp -d "${TMPDIR:-/tmp}/dn2cpp-ci-smoke-test.XXXXXX")
     trap 'rm -rf "$fixture"' EXIT
@@ -52,6 +52,10 @@ self_test() (
     cat >> "$fixture/gates/_common.sh" <<'WATCHDOG'
 run_with_watchdog() {
     local secs="$1"; shift
+    if [ -n "${CI_TEST_BUDGETS:-}" ] &&
+            { [ "${1:-}" = bootstrap ] || [ "${1:-}" = run_fast_gate ]; }; then
+        printf '%s %s\n' "${2:-$1}" "$secs" >> "$CI_TEST_BUDGETS"
+    fi
     if [ "${CI_TEST_CASE:-}" = watchdog ] && [ "${1:-}" = run_fast_gate ] &&
             [ "${2:-}" = "${CI_TEST_FAILURE_GATE:-}" ]; then
         secs=1
@@ -166,13 +170,16 @@ SUITE
         label=${partition:-full}
         [ -z "$partition" ] || runner_args+=(--partition "$partition")
         for test_os in linux windows; do
+            rm -f "$fixture/order" "$fixture/budgets"
             success_case=success
             [ "$test_os" != windows ] || success_case=sample-crlf
             expected=$(bash "$fixture/gates/ci-smoke.sh" "${runner_args[@]}" --list)
+            expected_budgets=$(printf 'bootstrap\n%s\n' "$expected" | awk '{ print $0, ($0 == "array-core" ? 1200 : 600) }')
             logdir="$fixture/logs-$test_os-$label"
             rc=0
             PATH="$fixture/bin:$PATH" CONFIG=Sentinel DN2CPP_SKIP_BUILD=1 \
                 DN2CPP_GATE_CACHE=1 DN2CPP_REQUIRE_ALL=0 DN2CPP_CORELIB= DN2CPP_OS="$test_os" \
+                DN2CPP_GATE_WATCHDOG_SECS= CI_TEST_BUDGETS="$fixture/budgets" \
                 CMAKE_CXX_COMPILER=g++ CI_TEST_CONFIG=Debug \
                 CI_TEST_CASE="$success_case" CI_TEST_ORDER="$fixture/order" LOGDIR="$logdir" \
                 bash "$fixture/gates/ci-smoke.sh" "${runner_args[@]}" \
@@ -184,6 +191,11 @@ SUITE
                 expected=$(printf 'build\ncorelib\n%s\n' "$expected")
             fi
             [ "$(cat "$fixture/order")" = "$expected" ]
+            if [ "$(cat "$fixture/budgets")" != "$expected_budgets" ]; then
+                echo "FAIL: $test_os $label watchdog budgets differ" >&2
+                diff -u <(printf '%s\n' "$expected_budgets") "$fixture/budgets" >&2 || true
+                exit 1
+            fi
             if [ -z "$partition" ] || [ "$partition" = core ]; then
                 [ -s "$logdir/sample-dotnet.stdout" ]
                 [ -s "$logdir/sample-native.stdout" ]
@@ -194,8 +206,8 @@ SUITE
                 [ ! -e "$logdir/sample.log" ]
             fi
             [ -s "$logdir/summary.md" ] && [ ! -s "$logdir/_failures.txt" ]
-            rm -f "$fixture/order"
-            echo "OK: $test_os $label uses strict Debug/bootstrap and exactly its selected gates"
+            rm -f "$fixture/order" "$fixture/budgets"
+            echo "OK: $test_os $label uses strict Debug/bootstrap, selected gates and bounded step budgets"
         done
 
         case "$partition" in
@@ -208,7 +220,7 @@ SUITE
             case "$partition:$case_name" in
                 arrays:sample-output|arrays:sample-status|limits:sample-output|limits:sample-status) continue ;;
             esac
-            rm -f "$fixture/order"
+            rm -f "$fixture/order" "$fixture/budgets"
             test_os=linux
             [ "$case_name" != windows-build-fail ] || test_os=windows
             logdir="$fixture/logs-$label-$case_name"
@@ -218,7 +230,7 @@ SUITE
             rc=0
             PATH="$fixture/bin:$PATH" DN2CPP_CORELIB= DN2CPP_OS="$test_os" CI_TEST_CONFIG=Debug \
                 CMAKE_CXX_COMPILER=g++ CI_TEST_FAILURE_GATE="$failure_gate" \
-                CI_TEST_CASE="$case_name" CI_TEST_ORDER="$fixture/order" \
+                CI_TEST_CASE="$case_name" CI_TEST_ORDER="$fixture/order" CI_TEST_BUDGETS="$fixture/budgets" \
                 DN2CPP_GATE_WATCHDOG_SECS=30 \
                 LOGDIR="$logdir" \
                 bash "$fixture/gates/ci-smoke.sh" "${runner_args[@]}" \
@@ -238,6 +250,8 @@ SUITE
             esac
             if [ "$case_name" = watchdog ]; then
                 grep -q '^WATCHDOG:' "$logdir/$failure_gate.log"
+                grep -qx "$failure_gate 30" "$fixture/budgets"
+                awk '$2 != 30 { exit 1 }' "$fixture/budgets"
             fi
             if [ "$case_name" = windows-build-fail ]; then
                 grep -q '^FAIL: bootstrap exited 9$' "$logdir/bootstrap.log"
@@ -324,9 +338,11 @@ summary() {
 }
 
 run_step() {
-    local name="$1" start=$SECONDS rc=0
+    local name="$1" start=$SECONDS rc=0 budget=600
     shift
-    run_with_watchdog "${DN2CPP_GATE_WATCHDOG_SECS:-600}" "$@" \
+    # ArrayCore independently builds the runtime for each allocator axis.
+    [ "$name" != array-core ] || budget=1200
+    run_with_watchdog "${DN2CPP_GATE_WATCHDOG_SECS:-$budget}" "$@" \
         > "$LOGDIR/$name.log" 2>&1 || rc=$?
     if [ "$rc" -eq 0 ] && grep -Eq \
             '^(SKIP|PARTIAL:|EXPECTED PARTIAL:)|cached (green|partial)' "$LOGDIR/$name.log"; then

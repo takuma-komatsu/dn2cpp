@@ -127,6 +127,9 @@ namespace ArrayCore
             if (args.Length > 0 && args[0] == "before-sz-address-identity")
                 return;
             ArrayCovariantStoreSubset.Program.RunSzAddresses();
+            if (args.Length > 0 && args[0] == "before-md-readonly-aliases")
+                return;
+            ArrayCovariantStoreSubset.Program.RunMdReadonlyAliases();
 #endif
         }
     }

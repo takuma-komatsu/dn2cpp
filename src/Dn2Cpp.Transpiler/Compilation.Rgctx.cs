@@ -569,11 +569,15 @@ internal sealed partial class Compilation
     // dn2cpp_array_empty_* (a cached per-type singleton, no per-call allocation). A custom
     // exception type derived from a BCL exception still allocates through dn2cpp_alloc and
     // so is still flagged — accepted, not special-cased.
+    // Headerless reference wrappers intern identity like reflection handles below;
+    // array_load_ref/byref_load_ref may materialize that wrapper once, but neither
+    // allocates a fresh result on each read. Ordinary managed byref reads allocate nothing.
     private static readonly string[] HotAllocTokens =
     {
         // Objects, arrays, boxes.
         "dn2cpp_alloc(",            // objects, delegates, boxed state machines
         "dn2cpp_alloc_atomic(",     // pointer-free buffers (a span's transcoded bytes)
+        "dn2cpp_alloc_raw_md(",     // raw reference MD storage with recoverable ownership
         "dn2cpp_alloc_type_associated(", // RuntimeHelpers.AllocateTypeAssociatedMemory
         "dn2cpp_newarr_",           // every array-allocation variant (i4/ref/n, _t, _atomic_t)
         "dn2cpp_newmdarr(",         // multi-dimensional array newobj
