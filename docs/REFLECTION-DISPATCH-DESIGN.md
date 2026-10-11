@@ -129,6 +129,16 @@ ABI, including on a runtime-template clone.
 The shared assignability rule compares matching pointer/byref kinds by immediate
 primitive equivalence or reference assignability; nested signature levels and
 array signature elements require identity.
+Generic specialization keys retain function-pointer children and calling
+conventions independently of their native pointer ABI. Address-taken wrappers,
+direct calls and generic-body substitutions resolve the same structural array
+identity. Closed type and method argument vectors use interned signature handles;
+their dedicated mutable slots are filled after runtime registration and before
+managed static constructors. Packed metadata and ordinary constant pools remain
+immutable. A shared body requiring a signature-array type-info uses its closed
+body when the generic-context table cannot represent that structural query.
+Reflection-only collection materializations over signature-array arguments use
+the same specialization keys and actual argument handles.
 An explicit `Pointer.Box` can carry such a pointer Type. Invoke and field setters
 compare its complete query signature before applying the existing ABI validation;
 legacy result boxes retain their internal pointer identities.

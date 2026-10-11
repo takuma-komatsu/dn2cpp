@@ -270,6 +270,7 @@ internal sealed partial class Compilation
     /// than a real instantiation.</summary>
     internal static bool ContainsCanonPlaceholder(TypeDesc t) => t.IsCanonPlaceholder || t.Kind switch
     {
+        TypeKind.Pointer when t.FunctionSignature is { } signature => signature.Types.Any(ContainsCanonPlaceholder),
         TypeKind.SZArray or TypeKind.MDArray or TypeKind.ByRef or TypeKind.Pointer =>
             ContainsCanonPlaceholder(t.Element!),
         TypeKind.Class => ContainsCanonPlaceholder(t.Class!),
@@ -287,6 +288,7 @@ internal sealed partial class Compilation
     internal static bool ContainsGenericVar(TypeDesc t) => t.Kind switch
     {
         TypeKind.GenericVar => true,
+        TypeKind.Pointer when t.FunctionSignature is { } signature => signature.Types.Any(ContainsGenericVar),
         TypeKind.SZArray or TypeKind.MDArray or TypeKind.ByRef or TypeKind.Pointer =>
             ContainsGenericVar(t.Element!),
         TypeKind.Class => ContainsGenericVar(t.Class!),
@@ -304,9 +306,21 @@ internal sealed partial class Compilation
     /// alike), so its consumers strip the token and run the runtime read.</summary>
     internal static bool ContainsCanonAny(TypeDesc t) => t.CanonAnyIndex >= 0 || t.Kind switch
     {
+        TypeKind.Pointer when t.FunctionSignature is { } signature => signature.Types.Any(ContainsCanonAny),
         TypeKind.SZArray or TypeKind.MDArray or TypeKind.ByRef or TypeKind.Pointer =>
             ContainsCanonAny(t.Element!),
         TypeKind.Class => t.Class!.Context.TypeArgs.Any(ContainsCanonAny),
+        _ => false,
+    };
+
+    // Function-signature children affect identity but never the native pointer ABI.
+    // A template-dependent calli is rejected separately from its raw IL signature.
+    private static bool ContainsAbiCanonAny(TypeDesc t) => t.CanonAnyIndex >= 0 || t.Kind switch
+    {
+        TypeKind.Pointer when t.IsFunctionPointer => false,
+        TypeKind.SZArray or TypeKind.MDArray or TypeKind.ByRef or TypeKind.Pointer =>
+            ContainsAbiCanonAny(t.Element!),
+        TypeKind.Class => t.Class!.Context.TypeArgs.Any(ContainsAbiCanonAny),
         _ => false,
     };
 
@@ -320,6 +334,7 @@ internal sealed partial class Compilation
         // agreement holds for it.
         (t.IsCanonPlaceholder && t.IsObject && t.CanonAnyIndex < 0) || t.Kind switch
         {
+            TypeKind.Pointer when t.FunctionSignature is { } signature => signature.Types.Any(ContainsRefPlaceholder),
             TypeKind.SZArray or TypeKind.MDArray or TypeKind.ByRef or TypeKind.Pointer =>
                 ContainsRefPlaceholder(t.Element!),
             TypeKind.Class => t.Class!.Context.TypeArgs.Any(ContainsRefPlaceholder),
@@ -1292,9 +1307,9 @@ internal sealed partial class Compilation
                     // A signature naming a type parameter moves T VALUES across the
                     // call boundary — the body trial cannot see that (the body just
                     // uses its argument), so the boundary is checked here.
-                    bool sigAny = ContainsCanonAny(m.Signature.ReturnType);
+                    bool sigAny = ContainsAbiCanonAny(m.Signature.ReturnType);
                     foreach (var pt in m.Signature.ParameterTypes)
-                        sigAny |= ContainsCanonAny(pt);
+                        sigAny |= ContainsAbiCanonAny(pt);
                     if (sigAny)
                     {
                         ok = false;
@@ -1631,7 +1646,7 @@ internal sealed partial class Compilation
             return false;
         try
         {
-            if (ContainsCanonAny(m.Signature.ReturnType) || m.Signature.ParameterTypes.Any(ContainsCanonAny))
+            if (ContainsAbiCanonAny(m.Signature.ReturnType) || m.Signature.ParameterTypes.Any(ContainsAbiCanonAny))
                 return false;
         }
         catch (Exception e) when (!IsMustEscape(e))
@@ -1967,6 +1982,8 @@ internal sealed partial class Compilation
                 var t = RgctxResolveTypeToken(module, handle, ctx);
                 var elem = slot.Kind == RgctxSlotKind.ArrayTypeInfo && t.Kind == TypeKind.SZArray
                     ? t.Element! : t;
+                if (CppEmitter.HasSignatureShape(elem))
+                    throw new NotSupportedException("rgctx: signature array allocation requires its closed body");
                 NoteArrayElementType(elem);
                 return "&ti_arr_" + ArrayElemMangle(elem);
             }
@@ -2218,6 +2235,8 @@ internal sealed partial class Compilation
     /// object-protocol overrides the boxed form can dispatch reached.</summary>
     private string RgctxTypeInfoEntry(TypeDesc t)
     {
+        if (CppEmitter.HasSignatureShape(t))
+            throw new NotSupportedException("rgctx: signature type identity requires its closed body");
         NoteTypeIdentityClosure(t);
         if (t is { Kind: TypeKind.Class, Class: { } c })
         {

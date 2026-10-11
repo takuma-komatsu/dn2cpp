@@ -21,7 +21,7 @@
 #define DN2CPP_BPI_MAGIC "DN2BPI\0"
 // The only format version the loader accepts: +1 on any change a BPI of another
 // version would misread, a record layout or an import identity (sigShape).
-#define DN2CPP_BPI_VERSION 2u
+#define DN2CPP_BPI_VERSION 3u
 
 // Header.flags bits (offset 12). bit0 = register-based bytecode.
 #define DN2CPP_BPI_FLAG_REGCODE 0x1u

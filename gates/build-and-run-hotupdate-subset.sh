@@ -171,6 +171,7 @@
 # references) is strictly narrower than the invoker ABI; if that surface ever
 # widens the call lands on the invmiss_ stub and raises the same exception.
 source "$(dirname "$0")/_common.sh"
+source "$(dirname "$0")/_hotupdate-signature-arguments.sh"
 hotupdate_python=$(resolve_python) || gate_skip "no working Python 3 interpreter for import fixtures"
 
 OUT=artifacts/hotupdate-subset
@@ -220,6 +221,8 @@ PY
 # skipped. Its no-op reference build must leave the shared input untouched.
 renamed_slot_state_before=$(renamed_slot_base_state)
 build_gate_proj gates/fixtures/interpreted-concat-oracle/InterpretedConcatOracle.csproj
+signature_arguments_fixture=gates/fixtures/hotupdate-import-identity/signature-arguments
+build_gate_proj "$signature_arguments_fixture/Patch/SignatureArgumentPatch.csproj"
 assert_output "$(renamed_slot_base_state)" "$renamed_slot_state_before"
 cmp -s "samples/dotnet/HotUpdateBase/bin/$CONFIG/$TFM/HotUpdateBase.dll" \
     "samples/dotnet/HotUpdateBase/obj/HotUpdateBase/$CONFIG/$TFM/HotUpdateBase.dll" \
@@ -264,6 +267,8 @@ renamed_slot_fixture="gates/fixtures/hotupdate-renamed-slot/bin/$CONFIG/$TFM/Hot
 aggregate_ctor_miss_app="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/AggregateCtorMissPatch.dll"
 ordinary_ctor_miss_app="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/OrdinaryCtorMissPatch.dll"
 concat_oracle_app="gates/fixtures/interpreted-concat-oracle/bin/$CONFIG/$TFM/InterpretedConcatOracle.dll"
+signature_arguments_base="$signature_arguments_fixture/Base/bin/$CONFIG/$TFM/SignatureArgumentBase.dll"
+signature_arguments_patch="$signature_arguments_fixture/Patch/bin/$CONFIG/$TFM/SignatureArgumentPatch.dll"
 bad_app="samples/dotnet/HotUpdateBadPatch/bin/$CONFIG/$TFM/HotUpdateBadPatch.dll"
 badgvm_app="samples/dotnet/HotUpdateBadPatch/bin/$CONFIG/$TFM/GenericVirtualBad.dll"
 baditf_app="samples/dotnet/HotUpdateBadPatchItf/bin/$CONFIG/$TFM/HotUpdateBadPatchItf.dll"
@@ -305,9 +310,10 @@ grep -q dn2cpp_base_image_abi_hash "$OUT/generated.cpp" \
 # against the REAL net10.0 CoreLib, so which CoreLib that resolves to is an input
 # of this gate the same way it is of net10_bcl_diff_gate — a runtime bump must
 # not be served a green recorded against the previous one.
-if gate_cache_check "$OUT" "hotupdate-subset|cli:$(_gate_cli_hash)|field-metadata:$field_packed/$field_native|corelib:$(resolve_net10_corelib)|before-derived-aggregate|before-aggregate-collection|before-aggregate-message|before-ordinary-exception-message|oracle:--derived-aggregate/--aggregate-collection|unavailable-aggregate-ctor|type-getter-signature:--type-getter-signature/before-type-getter-signature/register/stack/HotUpdateBase.TypeGetterSignatureFixture::EmitSurface|renamed-slots:--renamed-slot-prefix/before-renamed-slots/register/stack/intrinsic-bcl/corelib|renamed-object:--object/--finalize/--renamed-object-oracle/--renamed-finalize-oracle/corelib-refusal/corelib-loaded|instance-body-calls:call/callvirt/default/dictionary/folded-predicates/same-owner/predicate-nops/null-bound/try/method-context/register/stack/intrinsic-bcl/corelib/--no-shared-generics/--cut-HotUpdateBase.IOverriddenBin::Cold|late-default-layout:object-method-group/noalloc-constant/transitive-helper/normal/--hotupdate-base/--no-shared-generics" \
+if gate_cache_check "$OUT" "hotupdate-subset|cli:$(_gate_cli_hash)|field-metadata:$field_packed/$field_native|corelib:$(resolve_net10_corelib)|before-derived-aggregate|before-aggregate-collection|before-aggregate-message|before-ordinary-exception-message|oracle:--derived-aggregate/--aggregate-collection|unavailable-aggregate-ctor|type-getter-signature:--type-getter-signature/before-type-getter-signature/register/stack/HotUpdateBase.TypeGetterSignatureFixture::EmitSurface|renamed-slots:--renamed-slot-prefix/before-renamed-slots/register/stack/intrinsic-bcl/corelib|renamed-object:--object/--finalize/--renamed-object-oracle/--renamed-finalize-oracle/corelib-refusal/corelib-loaded|instance-body-calls:call/callvirt/default/dictionary/folded-predicates/same-owner/predicate-nops/null-bound/try/method-context/register/stack/intrinsic-bcl/corelib/--no-shared-generics/--cut-HotUpdateBase.IOverriddenBin::Cold|late-default-layout:object-method-group/noalloc-constant/transitive-helper/normal/--hotupdate-base/--no-shared-generics|signature-generic-imports:register/stack" \
         "$base_app" "$patch_app" "$bad_app" "$badgvm_app" "$baditf_app" "$baddg_app" \
         "$concat_oracle_app" \
+        "$signature_arguments_base" "$signature_arguments_patch" gates/_hotupdate-signature-arguments.sh \
         "$badmc_app" "$dir1_app" "$dir2_app" "$dgrecv_app" "$dgsig_app" \
         "$recv_app" "$arg_app" "$inv_app" "$ftn_app" \
         samples/dotnet/HotUpdateCoreLibBase/bin/$CONFIG/$TFM/HotUpdateCoreLibBase.dll \
@@ -1652,8 +1658,17 @@ DN2CPP_STRICT_COMPLETION=1 invoke_cli "$noctor_base_app" --hotupdate-base \
     --hotupdate-refs samples/dotnet/HotUpdatePatch/noctor-import-refs.txt -o "$noctor_out/normal"
 invoke_cli --emit-patch "$noctor_patch_app" --base-abi "$noctor_out/normal/base-abi.json" -o "$noctor_out"
 noctor_bpi="$noctor_out/NoCtorImportPatch.bpi"
-[ "$(od -An -tx1 -j8 -N4 "$noctor_bpi" | tr -d ' ')" = "02000000" ] \
-    || { echo "FAIL: ordinary import BPI header does not name the current format" >&2; exit 1; }
+$hotupdate_python - "$noctor_bpi" runtime/core/dn2cpp_interp.h <<'PY'
+import pathlib
+import re
+import struct
+import sys
+header = pathlib.Path(sys.argv[2]).read_text()
+version = int(re.search(r"^#define DN2CPP_BPI_VERSION ([0-9]+)u$", header, re.M).group(1))
+image = pathlib.Path(sys.argv[1]).read_bytes()
+if struct.unpack_from("<I", image, 8)[0] != version:
+    raise SystemExit("FAIL: ordinary import BPI header does not name the current format")
+PY
 noctor_oracle=$(dotnet "$noctor_oracle_app")
 noctor_oracle=$(strip_cr_win "$noctor_oracle")
 assert_output "$noctor_oracle" "== noctor generic import identity ==
@@ -1693,7 +1708,7 @@ done
 
 echo "-- BPI format rejection at hard-load and directory-header mouths --"
 mkdir -p "$noctor_out/wrong-formats"
-for wrong_format in 1 2147483647; do
+for wrong_format in 1 2 2147483647; do
     wrong_bpi="$noctor_out/wrong-formats/format-$wrong_format.bpi"
     $hotupdate_python gates/fixtures/hotupdate-import-identity/set-bpi-version.py \
         "$noctor_bpi" "$wrong_bpi" "$wrong_format"
@@ -1704,8 +1719,8 @@ done
 noctor_result=$("./$noctor_out/normal/NoCtorImportBase$EXE_EXT" --load-dir \
     "$noctor_out/wrong-formats" 2> "$noctor_out/wrong-formats.err")
 assert_output "$(strip_cr_win "$noctor_result")" 'noctor directory:0'
-[ "$(grep -c 'unsupported BPI format version' "$noctor_out/wrong-formats.err")" = 2 ] \
-    || { echo "FAIL: directory header prevalidation did not reject both wrong formats" >&2; exit 1; }
+[ "$(grep -c 'unsupported BPI format version' "$noctor_out/wrong-formats.err")" = 3 ] \
+    || { echo "FAIL: directory header prevalidation did not reject all wrong formats" >&2; exit 1; }
 echo "OK (ordinary generic import identity, ambiguity and format fences)"
 
 echo "-- non-virtual calls of virtual imports match .NET on the same rewritten IL --"
@@ -2268,5 +2283,8 @@ for renamed_object_case in object finalize; do
     done
 done
 echo "OK (renamed Object and Finalize refusals, loaded method identity and bodies)"
+
+hotupdate_signature_argument_roundtrip "$signature_arguments_base" "$signature_arguments_patch" \
+    "$OUT/signature-arguments"
 
 gate_cache_commit

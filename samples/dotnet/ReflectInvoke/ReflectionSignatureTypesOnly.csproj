@@ -15,5 +15,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="ReflectionSignatureTypesSubset.cs" />
+    <Compile Include="FunctionSignatureMangleShadow.cs" />
   </ItemGroup>
 </Project>

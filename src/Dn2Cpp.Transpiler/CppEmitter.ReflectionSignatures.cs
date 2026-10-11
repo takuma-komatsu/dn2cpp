@@ -34,8 +34,7 @@ internal sealed partial class CppEmitter
         }
     }
 
-    /// <summary>Signature decoder that spells function pointer types, whose
-    /// signatures the main TypeDesc decoder drops.</summary>
+    /// <summary>Signature decoder for query spelling and binding structure.</summary>
     private sealed class FunctionPointerSpellingProvider : ISignatureTypeProvider<SpelledType, object?>
     {
         private readonly CppEmitter? _e;
@@ -54,6 +53,32 @@ internal sealed partial class CppEmitter
             string name = type.IsVoid ? "System.Void" : _e is not null ? _e.ReflectionSignatureType(type, qualifyPrimitive: true) : "";
             return new SpelledType(type, name, Compilation.IdentityMangle(type),
                 open: Compilation.ContainsGenericVar(type) || Compilation.ContainsCanonPlaceholder(type));
+        }
+
+        private SpelledType FromType(TypeDesc type)
+        {
+            if (type.FunctionSignature is { } function)
+            {
+                var parameters = new SpelledType[function.Types.Length - 1];
+                for (int i = 0; i < parameters.Length; i++)
+                    parameters[i] = FromType(function.Types[i + 1]);
+                return GetFunctionPointerType(new MethodSignature<SpelledType>(
+                    new SignatureHeader((byte)function.Convention), FromType(function.Types[0]),
+                    parameters.Length, 0, System.Collections.Immutable.ImmutableArray.Create(parameters)));
+            }
+            if (type.Element is { } element)
+            {
+                var child = FromType(element);
+                if (type.Kind == TypeKind.SZArray)
+                    return GetSZArrayType(child);
+                if (type.Kind == TypeKind.MDArray)
+                    return GetArrayType(child, new ArrayShape(type.Rank, default, default));
+                if (type.Kind == TypeKind.ByRef)
+                    return GetByReferenceType(child);
+                if (type.Kind == TypeKind.Pointer)
+                    return GetPointerType(child);
+            }
+            return Leaf(type);
         }
 
         public SpelledType GetPrimitiveType(PrimitiveTypeCode typeCode) => Leaf(_types.GetPrimitiveType(typeCode));
@@ -100,7 +125,13 @@ internal sealed partial class CppEmitter
             children[0] = signature.ReturnType.Binding;
             for (int i = 0; i < signature.ParameterTypes.Length; i++)
                 children[i + 1] = signature.ParameterTypes[i].Binding;
-            return new SpelledType(TypeDesc.MakeFunctionPointer(), name, key, isFunctionPointer: true, open: open,
+            var parameters = new TypeDesc[signature.ParameterTypes.Length];
+            for (int i = 0; i < parameters.Length; i++)
+                parameters[i] = signature.ParameterTypes[i].Type;
+            var type = _types.GetFunctionPointerType(new MethodSignature<TypeDesc>(signature.Header,
+                signature.ReturnType.Type, signature.RequiredParameterCount, signature.GenericParameterCount,
+                System.Collections.Immutable.ImmutableArray.Create(parameters)));
+            return new SpelledType(type, name, key, isFunctionPointer: true, open: open,
                 binding: new BindingSignature(3, value: convention, children: children));
         }
         public SpelledType GetGenericInstantiation(SpelledType genericType,
@@ -118,10 +149,10 @@ internal sealed partial class CppEmitter
                 binding: new BindingSignature(4, type, children: children));
         }
         public SpelledType GetGenericMethodParameter(object? genericContext, int index) =>
-            Leaf(_types.GetGenericMethodParameter(genericContext, index));
+            FromType(_types.GetGenericMethodParameter(genericContext, index));
         public SpelledType GetGenericTypeParameter(object? genericContext, int index)
         {
-            var leaf = Leaf(_types.GetGenericTypeParameter(genericContext, index));
+            var leaf = FromType(_types.GetGenericTypeParameter(genericContext, index));
             return new SpelledType(leaf.Type, leaf.Name, leaf.Key, open: leaf.Open,
                 binding: leaf.Open ? new BindingSignature(5, value: index) : leaf.Binding);
         }
@@ -215,7 +246,14 @@ internal sealed partial class CppEmitter
     internal static BindingSignature ArraySignatureFromType(TypeDesc type)
     {
         if (type.IsFunctionPointer)
-            throw new NotSupportedException("Function-pointer array identity requires its raw signature");
+        {
+            if (type.FunctionSignature is not { } signature)
+                throw new NotSupportedException("Function-pointer identity requires its structural signature");
+            var children = new BindingSignature[signature.Types.Length];
+            for (int i = 0; i < children.Length; i++)
+                children[i] = ArraySignatureFromType(signature.Types[i]);
+            return new BindingSignature(3, value: signature.Convention, children: children);
+        }
         if (type.Kind is TypeKind.Pointer or TypeKind.ByRef or TypeKind.SZArray or TypeKind.MDArray)
         {
             int kind = type.Kind == TypeKind.Pointer ? 1 : type.Kind == TypeKind.ByRef ? 2

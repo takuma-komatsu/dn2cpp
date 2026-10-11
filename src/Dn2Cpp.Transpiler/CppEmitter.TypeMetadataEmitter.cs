@@ -833,7 +833,15 @@ internal sealed partial class CppEmitter
             public ModifiedType GetArrayType(ModifiedType elementType, ArrayShape shape) => Plain(_types.GetArrayType(elementType.Type, shape));
             public ModifiedType GetByReferenceType(ModifiedType elementType) => Plain(_types.GetByReferenceType(elementType.Type));
             public ModifiedType GetPointerType(ModifiedType elementType) => Plain(_types.GetPointerType(elementType.Type));
-            public ModifiedType GetFunctionPointerType(MethodSignature<ModifiedType> signature) => Plain(TypeDesc.MakeFunctionPointer());
+            public ModifiedType GetFunctionPointerType(MethodSignature<ModifiedType> signature)
+            {
+                var parameters = new TypeDesc[signature.ParameterTypes.Length];
+                for (int i = 0; i < parameters.Length; i++)
+                    parameters[i] = signature.ParameterTypes[i].Type;
+                return Plain(_types.GetFunctionPointerType(new MethodSignature<TypeDesc>(signature.Header,
+                    signature.ReturnType.Type, signature.RequiredParameterCount, signature.GenericParameterCount,
+                    System.Collections.Immutable.ImmutableArray.Create(parameters))));
+            }
             public ModifiedType GetGenericInstantiation(ModifiedType genericType,
                 System.Collections.Immutable.ImmutableArray<ModifiedType> typeArguments)
             {
@@ -1099,6 +1107,13 @@ internal sealed partial class CppEmitter
         /// record concrete intrinsic signature identities for the minimal type-info pass.</summary>
         private void NoteReflectedType(TypeDesc t, bool definitionSignature = false)
         {
+            if (CppEmitter.HasSignatureShape(t) && !Compilation.ContainsGenericVar(t)
+                && !Compilation.ContainsCanonPlaceholder(t))
+            {
+                _e.NoteReflectionSignatureLeaves(CppEmitter.ArraySignatureFromType(t), _ => { });
+                if (t.Kind is TypeKind.SZArray or TypeKind.MDArray)
+                    _c.NoteMdArrayUse();
+            }
             // A by-ref or pointer member names its element (CppEmitter.ReflectionPass).
             if (t is { Kind: TypeKind.ByRef or TypeKind.Pointer, Element: { } element })
             {
@@ -1235,8 +1250,45 @@ internal sealed partial class CppEmitter
         /// never the array's address.</summary>
         private string GenericArgVector(ClassInfo cls)
         {
-            string gaInit = string.Join(", ", cls.Context.TypeArgs.Select(a => _e.FieldTypeInfoExpr(a, _emittedEnums)));
-            return TypeArgumentVector(gaInit);
+            return TypeArgumentVector(cls.Context.TypeArgs);
+        }
+
+        private string TypeArgumentVector(TypeDesc[] arguments)
+        {
+            if (!arguments.Any(CppEmitter.HasSignatureShape))
+                return TypeArgumentVector(string.Join(", ", arguments.Select(a => _e.MemberTypeInfoExpr(a, _emittedEnums))));
+            string key = "signature:" + string.Join("|", arguments.Select(Compilation.IdentityMangle));
+            if (_genargPools.TryGetValue(key, out var pooled))
+                return pooled;
+            string arr = $"genargpool_{_genargPoolSeq++}";
+            var initializers = new string[arguments.Length];
+            var assignments = new List<string>();
+            for (int i = 0; i < arguments.Length; i++)
+            {
+                var argument = arguments[i];
+                if (CppEmitter.HasSignatureShape(argument))
+                {
+                    initializers[i] = "nullptr";
+                    string signature = _e.EmitBindingSignature(_sb,
+                        _e.QuerySignature(CppEmitter.ArraySignatureFromType(argument)), query: true);
+                    assignments.Add($"    {arr}[{i}] = dn2cpp_signature_type({signature});");
+                }
+                else
+                    initializers[i] = _e.MemberTypeInfoExpr(argument, _emittedEnums);
+            }
+            // Interned signature handles exist only after runtime initialization.
+            // Publish the complete vector before any managed body or cctor can run.
+            _sb.AppendLine($"const Dn2CppTypeInfo* {arr}[] = {{ {string.Join(", ", initializers)} }};");
+            _o.Header.AppendLine($"extern const Dn2CppTypeInfo* {arr}[];");
+            string init = "init_" + arr;
+            _sb.AppendLine($"void {init}() {{");
+            foreach (string assignment in assignments)
+                _sb.AppendLine(assignment);
+            _sb.AppendLine("}");
+            _o.Header.AppendLine($"void {init}();");
+            _e._signatureTypeArgumentInitializers.Add(init);
+            _genargPools[key] = arr;
+            return arr;
         }
 
         private string TypeArgumentVector(string gaInit)
@@ -1840,12 +1892,7 @@ internal sealed partial class CppEmitter
                 var margs = m.Context.MethodArgs;
                 string argsExpr = "nullptr";
                 if (margs.Length > 0)
-                {
-                    var gargs = new List<string>(margs.Length);
-                    foreach (var ga in margs)
-                        gargs.Add(_e.MemberTypeInfoExpr(ga, _emittedEnums));
-                    argsExpr = TypeArgumentVector(string.Join(", ", gargs));
-                }
+                    argsExpr = TypeArgumentVector(margs);
                 int token = DelegateIdentityToken(m);
                 string targetsExpr = "nullptr";
                 int targetCount = 0;
@@ -2074,12 +2121,10 @@ internal sealed partial class CppEmitter
                 string name = Compilation.GvmDispatchName(gvm);
                 string targetsExpr = "gvmrow_targets_" + entries.Count;
                 int targetCount = EmitGvmTargets(disp, targetsExpr);
-                var gargs = new List<string>(gvm.Context.MethodArgs.Length);
-                foreach (var ga in gvm.Context.MethodArgs)
-                    gargs.Add(_e.MemberTypeInfoExpr(ga, _emittedEnums));
+                var gargs = gvm.Context.MethodArgs;
                 int token = System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(gvm.Handle);
                 entries.Add($"    {{ {{ {_e.TypeInfoRef(gvm.DeclaringClass, "generic virtual row dispatch owner")}, "
-                    + $"{token}, {gargs.Count}, {TypeArgumentVector(string.Join(", ", gargs))}, true, "
+                    + $"{token}, {gargs.Length}, {TypeArgumentVector(gargs)}, true, "
                     + $"{targetCount}, {(targetCount > 0 ? targetsExpr : "nullptr")} }}, (void*)&{name}, "
                     + $"{(disp.Strips ? "true" : "false")} }},");
                 _e._reflectedGvmDispatchers.Add(name);
@@ -3160,12 +3205,7 @@ internal sealed partial class CppEmitter
                 // token match argument-wise) and GetGenericArguments answers exactly.
                 string genArgsExpr = "nullptr";
                 if (m.Context.MethodArgs.Length > 0)
-                {
-                    var gargs = new List<string>(m.Context.MethodArgs.Length);
-                    foreach (var ga in m.Context.MethodArgs)
-                        gargs.Add(_e.MemberTypeInfoExpr(ga, _emittedEnums));
-                    genArgsExpr = TypeArgumentVector(string.Join(", ", gargs));
-                }
+                    genArgsExpr = TypeArgumentVector(m.Context.MethodArgs);
                 (string Expr, int Count) retReq = ("nullptr", 0);
                 (string Expr, int Count) retOpt = ("nullptr", 0);
                 if (modifiersKnown)

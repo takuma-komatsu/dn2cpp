@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Reflection;
@@ -50,6 +51,19 @@ public class ConstructorBase
     public ConstructorBase(int value) { }
 }
 
+public static class SignatureArgument<T>
+{
+    private static readonly Type s_identity = typeof(SignatureArgument<T>).GetGenericArguments()[0];
+    public static T[] Create() => new T[1];
+    public static Type Identity() => s_identity;
+}
+
+public unsafe class SignatureCollections
+{
+    public delegate*<int>[][] Integers;
+    public delegate*<uint>[][] Unsigned;
+}
+
 public unsafe class DeclaredConstructors : ConstructorBase
 {
     public DeclaredConstructors(ref int value) : base(value) { }
@@ -58,6 +72,72 @@ public unsafe class DeclaredConstructors : ConstructorBase
 
 public static unsafe class Program
 {
+    private static T[] Create<T>() => new T[1];
+    private static T[] Empty<T>() => System.Array.Empty<T>();
+    private static Type Identity<T>() => typeof(T);
+    private static Type NestedIdentity<T>() => Identity<T[]>();
+
+    public static void RunGenericSignatureArguments()
+    {
+        Console.WriteLine("== generic function signature arguments ==");
+        Func<delegate*<int>[][]> integers = System.Array.Empty<delegate*<int>[]>;
+        Func<delegate*<uint>[][]> unsigned = System.Array.Empty<delegate*<uint>[]>;
+        Func<delegate* unmanaged[Cdecl]<int>[][]> unmanaged = System.Array.Empty<delegate* unmanaged[Cdecl]<int>[]>;
+        Func<delegate* unmanaged[Stdcall]<int>[][]> equivalent = System.Array.Empty<delegate* unmanaged[Stdcall]<int>[]>;
+        var first = integers();
+        var second = unsigned();
+        Console.WriteLine("generic signature Empty addresses: " + (first.GetType() == typeof(delegate*<int>[][])) + "/"
+            + (second.GetType() == typeof(delegate*<uint>[][])) + "/"
+            + (unmanaged().GetType() == typeof(delegate* unmanaged[Cdecl]<int>[][])));
+        Console.WriteLine("generic signature Empty identity: " + ReferenceEquals(first, integers()) + "/"
+            + ReferenceEquals(first, System.Array.Empty<delegate*<int>[]>()) + "/"
+            + ReferenceEquals(first, second) + "/" + ReferenceEquals(unmanaged(), equivalent()));
+        Func<delegate*<int>[][]> createInt = Create<delegate*<int>[]>;
+        Func<delegate*<uint>[][]> createUInt = Create<delegate*<uint>[]>;
+        Func<delegate*<int>[][]> emptyInt = Empty<delegate*<int>[]>;
+        Console.WriteLine("generic signature body arrays: " + (createInt().GetType() == typeof(delegate*<int>[][])) + "/"
+            + (createUInt().GetType() == typeof(delegate*<uint>[][])) + "/" + ReferenceEquals(first, emptyInt()));
+        Func<Type> intIdentity = Identity<delegate*<int>[]>;
+        Func<Type> uintIdentity = Identity<delegate*<uint>[]>;
+        Func<Type> nested = NestedIdentity<delegate*<delegate*<int>, int*[,], ref long, void>[]>;
+        Console.WriteLine("generic signature body types: " + (intIdentity() == typeof(delegate*<int>[])) + "/"
+            + (uintIdentity() == typeof(delegate*<uint>[])) + "/"
+            + (nested() == typeof(delegate*<delegate*<int>, int*[,], ref long, void>[][])));
+        Func<delegate*<int>[][]> classInt = SignatureArgument<delegate*<int>[]>.Create;
+        Func<delegate*<uint>[][]> classUInt = SignatureArgument<delegate*<uint>[]>.Create;
+        Console.WriteLine("generic signature class arguments: " + (classInt().GetType() == typeof(delegate*<int>[][])) + "/"
+            + (classUInt().GetType() == typeof(delegate*<uint>[][])) + "/"
+            + (SignatureArgument<delegate*<int>[]>.Identity() == typeof(delegate*<int>[])) + "/"
+            + (SignatureArgument<delegate*<uint>[]>.Identity() == typeof(delegate*<uint>[])));
+        Console.WriteLine("generic signature unequal: " + (first.GetType() != second.GetType()) + "/"
+            + (first.GetType() != unmanaged().GetType()) + "/" + (intIdentity() != uintIdentity()));
+        Func<Type> repeated = Identity<delegate*<int>[]>;
+        Console.WriteLine("generic signature method arguments: "
+            + (intIdentity.Method.GetGenericArguments()[0] == typeof(delegate*<int>[])) + "/"
+            + (uintIdentity.Method.GetGenericArguments()[0] == typeof(delegate*<uint>[])) + "/"
+            + (intIdentity == repeated) + "/" + (intIdentity == uintIdentity));
+        Console.WriteLine("generic signature type arguments: "
+            + (typeof(SignatureArgument<delegate*<int>[]>).GetGenericArguments()[0] == typeof(delegate*<int>[])) + "/"
+            + (typeof(SignatureArgument<delegate*<uint>[]>).GetGenericArguments()[0] == typeof(delegate*<uint>[])));
+        Func<Type> namedIdentity = Identity<global::Gfn0_5_Int32End[]>;
+        Console.WriteLine("generic signature mangle shadow: " + (namedIdentity() == typeof(global::Gfn0_5_Int32End[])) + "/"
+            + (namedIdentity() != intIdentity()));
+        var integerElement = typeof(SignatureCollections).GetField("Integers").FieldType.GetElementType();
+        var unsignedElement = typeof(SignatureCollections).GetField("Unsigned").FieldType.GetElementType();
+        var integerListType = typeof(List<>).MakeGenericType(integerElement);
+        var unsignedListType = typeof(List<>).MakeGenericType(unsignedElement);
+        var integerList = (IList)Activator.CreateInstance(integerListType);
+        var unsignedList = (IList)Activator.CreateInstance(unsignedListType);
+        integerList.Add(new delegate*<int>[1]);
+        unsignedList.Add(new delegate*<uint>[2]);
+        Console.WriteLine("generic signature collections: " + (integerListType.GetGenericArguments()[0] == integerElement) + "/"
+            + (unsignedListType.GetGenericArguments()[0] == unsignedElement) + "/"
+            + (integerListType != unsignedListType) + "/" + integerList.Count + "/" + unsignedList.Count);
+        Console.WriteLine("generic signature collection values: " + (integerList[0].GetType() == typeof(delegate*<int>[])) + "/"
+            + (unsignedList[0].GetType() == typeof(delegate*<uint>[])));
+        Console.WriteLine("generic function signature arguments end");
+    }
+
     private static string Text(string value) => value is null ? "<null>" : "[" + value + "]";
     private static void Describe(string label, Type type)
     {
@@ -247,6 +327,9 @@ public static unsafe class Program
             return;
         }
         Run();
+        if (args.Length != 0 && args[0] == "before-generic-signature-arguments")
+            return;
+        RunGenericSignatureArguments();
     }
 #endif
 }

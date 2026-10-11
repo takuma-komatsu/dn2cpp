@@ -1282,8 +1282,9 @@ internal sealed partial class MethodCompiler : IEvalStack
         // A delegate-to-the-real-body lowering (e.g. String.CompareTo →
         // ReachStringMethod) names the method itself: as this method's own body it
         // would be infinite recursion. The signature line accounts for one
-        // occurrence — any further one is a self-call. Fall back to the real IL.
-        if (CountOf(body, _method.Emittable.CppName) > 1)
+        // occurrence — any further call is recursion. Signature identity helpers
+        // can include this method's name in their own longer symbols.
+        if (CountOf(body, _method.Emittable.CppName + "(") > 1)
             return null;
         return body;
     }
