@@ -1667,7 +1667,7 @@ import pathlib
 import re
 import struct
 import sys
-header = pathlib.Path(sys.argv[2]).read_text()
+header = pathlib.Path(sys.argv[2]).read_text(encoding="utf-8")
 version = int(re.search(r"^#define DN2CPP_BPI_VERSION ([0-9]+)u$", header, re.M).group(1))
 image = pathlib.Path(sys.argv[1]).read_bytes()
 if struct.unpack_from("<I", image, 8)[0] != version:
