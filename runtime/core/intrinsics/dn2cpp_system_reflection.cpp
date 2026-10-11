@@ -117,6 +117,10 @@ const Dn2CppTypeInfo* dn2cpp_runtime_template_of(const Dn2CppTypeInfo* clone)
 static const Dn2CppTypeInfo* dn2cpp_invoke_declaring(const Dn2CppTypeInfo* declaring,
     const Dn2CppTypeInfo* reflected)
 {
+    if ((declaring->flags & DN2CPP_TF_GENERICDEF) != 0 && reflected != nullptr)
+        for (const auto* type = reflected; type != nullptr; type = dn2cpp_type_reflection_base(type))
+            if (type == declaring || type->genericDef == declaring)
+                return type;
     if ((declaring->flags & DN2CPP_TF_RUNTIME_TEMPLATE) == 0)
         return declaring;
     const Dn2CppRuntimeTemplate* level = dn2cpp_runtime_template_by_ti(declaring);
@@ -1476,9 +1480,11 @@ static void dn2cpp_require_metadata(const Dn2CppTypeInfo* ti)
 static const Dn2CppTypeInfo* dn2cpp_reflection_base(const Dn2CppTypeInfo* ti)
 {
     // DeclaredOnly reads its own rows without resolving unrelated constraints.
-    dn2cpp_type_ensure_metadata_relations(ti);
-    return ti->base;
+    return dn2cpp_type_reflection_base(ti);
 }
+
+static const Dn2CppTypeInfo* dn2cpp_symbolic_member_type(const Dn2CppBindingSignature* signature,
+    const Dn2CppTypeInfo* declaring);
 
 // Shared by fields and methods (attrs use the same STATIC/PUBLIC/PRIVATE bit layout).
 // CLR member-binding rules: an inherited member is excluded if private, an inherited
@@ -1708,8 +1714,11 @@ static Dn2CppObject* dn2cpp_memberref_require(Dn2CppObject* m)
 Dn2CppType* dn2cpp_fieldref_field_type(Dn2CppFieldRef* f)
 {
     const auto row = dn2cpp_fieldref_require(f).operator->();
+    const auto* declaring = dn2cpp_invoke_declaring(row->declaringType, f->reflectedType);
     const auto* type = row->reflectionSignature != nullptr
-        ? dn2cpp_signature_type(row->reflectionSignature, dn2cpp_invoke_declaring(row->declaringType, f->reflectedType))
+        ? (row->declaringType->flags & DN2CPP_TF_GENERICDEF) != 0
+            ? dn2cpp_symbolic_member_type(row->reflectionSignature, declaring)
+            : dn2cpp_signature_type(row->reflectionSignature, declaring)
         : row->fieldType;
     return dn2cpp_get_type_from_handle(type);
 }
@@ -1753,6 +1762,9 @@ static Dn2CppObject* dn2cpp_invoke_box_result(const Dn2CppTypeInfo* returnType, 
 Dn2CppObject* dn2cpp_fieldref_get_value(Dn2CppFieldRef* f, Dn2CppObject* obj)
 {
     const auto row = dn2cpp_fieldref_require(f).operator->();
+    if ((row->attrs & DN2CPP_FLDA_LITERAL) == 0 && dn2cpp_type_contains_generic_parameters(
+        dn2cpp_invoke_declaring(row->declaringType, f->reflectedType)))
+        dn2cpp_throw_invalid_operation();
     if (row->getter == nullptr)
     {
         if ((row->attrs & DN2CPP_FLDA_LITERAL) != 0)
@@ -1772,6 +1784,8 @@ void dn2cpp_fieldref_set_value(Dn2CppFieldRef* f, Dn2CppObject* obj, Dn2CppObjec
     const auto row = dn2cpp_fieldref_require(f).operator->();
     if ((row->attrs & DN2CPP_FLDA_LITERAL) != 0)
         dn2cpp_field_refuse_constant();
+    if (dn2cpp_type_contains_generic_parameters(dn2cpp_invoke_declaring(row->declaringType, f->reflectedType)))
+        dn2cpp_throw_invalid_operation();
     const int32_t staticInitOnly = DN2CPP_FLDA_STATIC | DN2CPP_FLDA_INITONLY;
     bool initOnly = (row->attrs & staticInitOnly) == staticInitOnly;
     if (row->setter == nullptr && !initOnly)
@@ -1975,6 +1989,14 @@ static bool dn2cpp_is_gvm_override(const Dn2CppMethodInfo& row)
     return dn2cpp_is_gvm_row(row) && (row.ilAttrs & DN2CPP_MA_NEWSLOT) == 0;
 }
 
+static bool dn2cpp_symbolic_method(const Dn2CppMethodInfo& row)
+{
+    return (row.declaringType->flags & DN2CPP_TF_GENERICDEF) != 0 && row.definitionSignature != nullptr;
+}
+
+static bool dn2cpp_symbolic_parameters_equal(Dn2CppMetadataHandle<Dn2CppMethodInfo> a,
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> b, const Dn2CppTypeInfo* reflected, bool positional);
+
 // Whether two definitions spell one signature type, method type parameters by
 // position: by key where a definition's type names one, else by the closed type
 // both rows then carry.
@@ -2079,6 +2101,7 @@ public:
 // of one definition never hide each other.
 struct Dn2CppGvmHiding
 {
+    const Dn2CppTypeInfo* reflected = nullptr;
     struct Hider
     {
         Dn2CppMetadataHandle<Dn2CppMethodInfo> row;
@@ -2092,20 +2115,25 @@ struct Dn2CppGvmHiding
 
     bool hides(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi, const Dn2CppMethodInfo& row)
     {
-        if (!dn2cpp_is_gvm_row(row))
+        const bool symbolic = dn2cpp_symbolic_method(row) && (row.ilAttrs & DN2CPP_MA_VIRTUAL) != 0;
+        const bool generic = dn2cpp_is_gvm_row(row);
+        if (!generic && !symbolic && (active == 0 || (row.ilAttrs & DN2CPP_MA_VIRTUAL) == 0))
             return false;
         const Dn2CppGvmSlot slot = dn2cpp_gvm_slot(row);
         for (int32_t h = 0; h < active; h++)
         {
-            const bool taken = hiders[h].slot.known() && slot.known()
-                ? hiders[h].slot == slot : dn2cpp_gvm_same_signature(*hiders[h].row, row);
+            const bool taken = symbolic || dn2cpp_symbolic_method(*hiders[h].row)
+                ? std::strcmp(hiders[h].row->name, row.name) == 0
+                    && dn2cpp_symbolic_parameters_equal(hiders[h].row, mi, reflected, true)
+                : hiders[h].slot.known() && slot.known()
+                    ? hiders[h].slot == slot : dn2cpp_gvm_same_signature(*hiders[h].row, row);
             if (!taken)
                 continue;
             if ((row.ilAttrs & DN2CPP_MA_NEWSLOT) != 0)
                 hiders[h].ends = true;
             return true;
         }
-        if (!dn2cpp_is_gvm_override(row))
+        if ((!generic && !symbolic) || (row.ilAttrs & DN2CPP_MA_NEWSLOT) != 0)
             return false;
         for (int32_t h = active; h < hiders.size(); h++)
             if (hiders[h].metadataToken == row.metadataToken && hiders[h].declaringType == row.declaringType)
@@ -2162,6 +2190,7 @@ static int32_t dn2cpp_collect_methods(const Dn2CppTypeInfo* type, int32_t flags,
     int32_t n = 0;
     Dn2CppSeenSlots seen;
     Dn2CppGvmHiding gvm;
+    gvm.reflected = type;
     Dn2CppMethodCandidates family;
     for (const Dn2CppTypeInfo* ti = type; ti != nullptr; ti = dn2cpp_reflection_base(ti))
     {
@@ -2184,7 +2213,7 @@ static int32_t dn2cpp_collect_methods(const Dn2CppTypeInfo* type, int32_t flags,
                     continue;
                 definitions.push_back(row->metadataToken);
             }
-            if (row->vtableSlot >= 0 ? seen.seen(row->vtableSlot) : gvm.hides(mi, *row.operator->()))
+            if ((row->vtableSlot >= 0 && seen.seen(row->vtableSlot)) || gvm.hides(mi, *row.operator->()))
                 continue;
             if (dn2cpp_meta_family_name(*row.operator->()))
                 family.push_back(mi);
@@ -2276,6 +2305,10 @@ static const Dn2CppTypeInfo* dn2cpp_reflection_parameter_type(const Dn2CppParamI
         ? dn2cpp_signature_type(parameter.reflectionSignature, declaring) : parameter.paramType;
 }
 
+static const Dn2CppTypeInfo* dn2cpp_method_definition_type(
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> mi, const char* key, const Dn2CppTypeInfo* closed,
+    const Dn2CppTypeInfo* declaring, int32_t parameter = -1);
+
 static const Dn2CppBindingSignature* dn2cpp_parameter_array_signature(
     const Dn2CppParamInfo& parameter, bool referent = false)
 {
@@ -2297,7 +2330,8 @@ static const Dn2CppTypeInfo* dn2cpp_invoke_parameter_type(const Dn2CppParamInfo&
 
 // Exact parameter identities, including a formal parameter of this MethodDef.
 // Composed open signatures are not modeled. A null Type element throws like .NET.
-static bool dn2cpp_params_match_types(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi, Dn2CppArrayRef* types)
+static bool dn2cpp_params_match_types(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi, Dn2CppArrayRef* types,
+    const Dn2CppTypeInfo* reflected)
 {
     const Dn2CppMethodInfo row = *mi;
     if (row.paramCount != types->length)
@@ -2308,6 +2342,13 @@ static bool dn2cpp_params_match_types(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi,
         if (pt == nullptr)
             dn2cpp_throw_argument_null_param("types");
         const Dn2CppParamInfo param = *row.parameters[j];
+        if ((row.declaringType->flags & DN2CPP_TF_GENERICDEF) != 0 && row.definitionSignature != nullptr)
+        {
+            if (dn2cpp_method_definition_type(mi, "symbolic", param.paramType,
+                dn2cpp_invoke_declaring(row.declaringType, reflected), j) != pt->typeInfo)
+                return false;
+            continue;
+        }
         if (param.genericDefinitionKey != nullptr)
         {
             const int32_t index = dn2cpp_bare_method_parameter_index(
@@ -2331,12 +2372,17 @@ static bool dn2cpp_same_definition(const Dn2CppMethodInfo& a, const Dn2CppMethod
 // method's type parameters are types of its own, so rows of two definitions differ
 // wherever either definition's parameter names one, and otherwise carry the
 // definitions' types.
-static bool dn2cpp_candidates_sig_equal(const Dn2CppMethodInfo& a, const Dn2CppMethodInfo& b)
+static bool dn2cpp_candidates_sig_equal(Dn2CppMetadataHandle<Dn2CppMethodInfo> aHandle,
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> bHandle, const Dn2CppTypeInfo* reflected)
 {
+    const Dn2CppMethodInfo a = *aHandle;
+    const Dn2CppMethodInfo b = *bHandle;
     if (dn2cpp_same_definition(a, b))
         return true;
     if (a.paramCount != b.paramCount)
         return false;
+    if (dn2cpp_symbolic_method(a) || dn2cpp_symbolic_method(b))
+        return dn2cpp_symbolic_parameters_equal(aHandle, bHandle, reflected, false);
     for (int32_t j = 0; j < a.paramCount; j++)
     {
         const Dn2CppParamInfo pa = *a.parameters[j];
@@ -2365,7 +2411,7 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_resolve_method_candidates(D
     const Dn2CppMethodInfo first = *c[0];
     bool allEqual = true;
     for (int32_t i = 1; i < n && allEqual; i++)
-        allEqual = dn2cpp_candidates_sig_equal(first, *c[i]);
+        allEqual = dn2cpp_candidates_sig_equal(c[0], c[i], reflected);
     for (int32_t i = 1; i < n; i++)
     {
         const Dn2CppMethodInfo row = *c[i];
@@ -2831,14 +2877,12 @@ static const Dn2CppTypeInfo* dn2cpp_constraint_instantiation(
             return &node->type;
     auto* node = new Dn2CppFormalType();
     node->type.name = definition->name;
-    node->type.flags = (definition->flags & ~(DN2CPP_TF_GENERICDEF | DN2CPP_TF_RUNTIME_TEMPLATE))
-        | DN2CPP_TF_METADATA_STRIPPED;
+    node->type.flags = definition->flags & ~(DN2CPP_TF_GENERICDEF | DN2CPP_TF_RUNTIME_TEMPLATE);
     node->type.genericDef = definition;
     node->typeArguments = arguments;
     node->type.genericArgs = node->typeArguments.data();
     node->type.genericArgCount = static_cast<int32_t>(arguments.size());
-    node->reflection.assemblyName = dn2cpp_ti_assembly_name(definition);
-    node->reflection.genericMetadata = definition->reflection().genericMetadata;
+    node->reflection = definition->reflection();
     node->type.reflectionData = &node->reflection;
     g_formal_types[&node->type] = node;
     g_constraint_instances.push_back(node);
@@ -3085,6 +3129,30 @@ void dn2cpp_type_ensure_metadata_relations(const Dn2CppTypeInfo* ti)
         dn2cpp_complete_formal_type(found->second);
 }
 
+const Dn2CppTypeInfo* dn2cpp_type_reflection_base(const Dn2CppTypeInfo* ti)
+{
+    dn2cpp_type_ensure_metadata_relations(ti);
+    if ((ti->flags & DN2CPP_TF_GENERICDEF) != 0)
+    {
+        std::lock_guard<std::recursive_mutex> lock(g_formal_types_mtx);
+        const auto* metadata = ti->reflection().genericMetadata;
+        if (metadata != nullptr && metadata->base != nullptr)
+            return dn2cpp_constraint_type(*metadata->base, dn2cpp_formal_type_arguments(ti), {});
+    }
+    return ti->base;
+}
+
+static const Dn2CppTypeInfo* dn2cpp_symbolic_member_type(const Dn2CppBindingSignature* signature,
+    const Dn2CppTypeInfo* declaring)
+{
+    std::lock_guard<std::recursive_mutex> lock(g_formal_types_mtx);
+    auto arguments = (declaring->flags & DN2CPP_TF_GENERICDEF) != 0
+        ? dn2cpp_formal_type_arguments(declaring) : std::vector<const Dn2CppTypeInfo*>();
+    if (declaring->genericArgs != nullptr)
+        arguments.assign(declaring->genericArgs, declaring->genericArgs + declaring->genericArgCount);
+    return dn2cpp_constraint_type(*signature, arguments, {});
+}
+
 static void dn2cpp_complete_metadata_assignability(const Dn2CppTypeInfo* ti,
     std::vector<const Dn2CppTypeInfo*>& visited)
 {
@@ -3149,7 +3217,7 @@ const Dn2CppTypeInfo* dn2cpp_type_generic_parameter_declaring_type(const Dn2CppT
 
 static const Dn2CppTypeInfo* dn2cpp_method_definition_type(
     Dn2CppMetadataHandle<Dn2CppMethodInfo> mi, const char* key, const Dn2CppTypeInfo* closed,
-    const Dn2CppTypeInfo* declaring, int32_t parameter = -1)
+    const Dn2CppTypeInfo* declaring, int32_t parameter)
 {
     if (key == nullptr)
         return closed;
@@ -3164,7 +3232,8 @@ static const Dn2CppTypeInfo* dn2cpp_method_definition_type(
             types = dn2cpp_formal_type_arguments(declaring);
         std::vector<const Dn2CppTypeInfo*> methods;
         for (int32_t i = 0; i < row.genericParamCount; i++)
-            methods.push_back(dn2cpp_method_parameter_type(mi, i));
+            methods.push_back(dn2cpp_symbolic_method(row) && row.genericArgs != nullptr
+                ? row.genericArgs[i] : dn2cpp_method_parameter_type(mi, i));
         const auto* signature = parameter < 0 ? row.definitionSignature->returnType
             : parameter < row.definitionSignature->parameterCount ? &row.definitionSignature->parameters[parameter] : nullptr;
         if (signature == nullptr)
@@ -3175,6 +3244,42 @@ static const Dn2CppTypeInfo* dn2cpp_method_definition_type(
     if (index >= 0)
         return dn2cpp_method_parameter_type(mi, index);
     dn2cpp_throw_platform_not_supported("Reflection: composed open generic signature types are not supported");
+}
+
+// Override signatures compare method parameters by position; named lookup keeps
+// each MethodDef's formal identity. Class parameters always use the actual level.
+static bool dn2cpp_symbolic_parameters_equal(Dn2CppMetadataHandle<Dn2CppMethodInfo> a,
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> b, const Dn2CppTypeInfo* reflected, bool positional)
+{
+    if (a->paramCount != b->paramCount || positional && a->genericParamCount != b->genericParamCount)
+        return false;
+    std::lock_guard<std::recursive_mutex> lock(g_formal_types_mtx);
+    std::vector<const Dn2CppTypeInfo*> methods;
+    for (int32_t i = 0; i < a->genericParamCount; i++)
+        methods.push_back(dn2cpp_method_parameter_type(a, i));
+    auto parameter = [&](Dn2CppMetadataHandle<Dn2CppMethodInfo> method, int32_t index) {
+        const auto row = *method;
+        const auto* declaring = dn2cpp_invoke_declaring(row.declaringType, reflected);
+        if (row.definitionSignature == nullptr)
+            return dn2cpp_reflection_parameter_type(*row.parameters[index], declaring);
+        std::vector<const Dn2CppTypeInfo*> types;
+        if ((declaring->flags & DN2CPP_TF_GENERICDEF) != 0)
+            types = dn2cpp_formal_type_arguments(declaring);
+        else if (declaring->genericArgs != nullptr)
+            types.assign(declaring->genericArgs, declaring->genericArgs + declaring->genericArgCount);
+        std::vector<const Dn2CppTypeInfo*> ownMethods = methods;
+        if (!positional && method != a)
+        {
+            ownMethods.clear();
+            for (int32_t i = 0; i < row.genericParamCount; i++)
+                ownMethods.push_back(dn2cpp_method_parameter_type(method, i));
+        }
+        return dn2cpp_constraint_type(row.definitionSignature->parameters[index], types, ownMethods);
+    };
+    for (int32_t i = 0; i < a->paramCount; i++)
+        if (parameter(a, i) != parameter(b, i))
+            return false;
+    return true;
 }
 
 bool dn2cpp_type_reference_argument(const Dn2CppTypeInfo* argument)
@@ -3263,6 +3368,22 @@ static void dn2cpp_validate_open_arguments(const Dn2CppMethodGenericParameter* p
     }
 }
 
+static std::string dn2cpp_reflection_type_spelling(const Dn2CppTypeInfo* type, bool genericArgument = false)
+{
+    Dn2CppString* text = dn2cpp_type_tostring(type);
+    int32_t size = dn2cpp_string_to_utf8(text, nullptr, 0);
+    std::string result(static_cast<size_t>(size), '\0');
+    dn2cpp_string_to_utf8(text, result.data(), size);
+    const auto* root = type;
+    while (root->elementType != nullptr)
+        root = root->elementType;
+    if ((((root->flags & DN2CPP_TF_PRIMITIVE) != 0 && root != &dn2cpp_string_type && root != &dn2cpp_object_type)
+        || root == &dn2cpp_void_type || genericArgument && (root == &dn2cpp_string_type || root == &dn2cpp_object_type))
+        && result.compare(0, 7, "System.") == 0)
+        result.erase(0, 7);
+    return result;
+}
+
 static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_open_method(
     Dn2CppMetadataHandle<Dn2CppMethodInfo> definition, const Dn2CppTypeInfo* declaring,
     const std::vector<const Dn2CppTypeInfo*>& arguments)
@@ -3307,31 +3428,17 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_open_method(
     node->row.invoker = nullptr;
     node->row.returnType = resolve(-1);
     node->row.returnReflectionSignature = nullptr;
-    auto spelling = [](const Dn2CppTypeInfo* type) {
-        Dn2CppString* text = dn2cpp_type_tostring(type);
-        int32_t size = dn2cpp_string_to_utf8(text, nullptr, 0);
-        std::string result(static_cast<size_t>(size), '\0');
-        dn2cpp_string_to_utf8(text, result.data(), size);
-        const auto* root = type;
-        while (root->elementType != nullptr)
-            root = root->elementType;
-        if (((root->flags & DN2CPP_TF_PRIMITIVE) != 0 || root == &dn2cpp_void_type
-            || root == &dn2cpp_string_type || root == &dn2cpp_object_type)
-            && result.compare(0, 7, "System.") == 0)
-            result.erase(0, 7);
-        return result;
-    };
     auto retain = [](const std::string& text) {
         auto* result = new char[text.size() + 1];
         std::memcpy(result, text.c_str(), text.size() + 1);
         return result;
     };
-    std::string display = spelling(node->row.returnType) + " " + original.name + "[";
+    std::string display = dn2cpp_reflection_type_spelling(node->row.returnType) + " " + original.name + "[";
     for (size_t i = 0; i < arguments.size(); i++)
     {
         if (i != 0)
             display += ',';
-        display += spelling(arguments[i]);
+        display += dn2cpp_reflection_type_spelling(arguments[i], true);
     }
     display += "](";
     for (int32_t i = 0; i < original.paramCount; i++)
@@ -3342,8 +3449,8 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_open_method(
         if (i != 0)
             display += ", ";
         display += dn2cpp_signature_kind(parameter.paramType) == 2
-            ? spelling(parameter.paramType->elementType) + " ByRef" : spelling(parameter.paramType);
-        std::string parameterDisplay = spelling(parameter.paramType);
+            ? dn2cpp_reflection_type_spelling(parameter.paramType->elementType) + " ByRef" : dn2cpp_reflection_type_spelling(parameter.paramType);
+        std::string parameterDisplay = dn2cpp_reflection_type_spelling(parameter.paramType);
         if (parameter.name != nullptr)
             parameterDisplay += std::string(" ") + parameter.name;
         parameter.display = retain(parameterDisplay);
@@ -3351,7 +3458,7 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_open_method(
     }
     display += ')';
     node->row.display = retain(display);
-    node->row.returnDisplay = retain(spelling(node->row.returnType));
+    node->row.returnDisplay = retain(dn2cpp_reflection_type_spelling(node->row.returnType));
     node->row.parameters = node->parameters.data();
     g_open_methods.push_back(node);
     return &node->row;
@@ -3675,6 +3782,7 @@ Dn2CppMethodRef* dn2cpp_type_get_method_full(Dn2CppType* t, Dn2CppString* name,
     Dn2CppMethodCandidates cands;
     Dn2CppSeenSlots seen;
     Dn2CppGvmHiding gvm;
+    gvm.reflected = t->typeInfo;
     for (const Dn2CppTypeInfo* ti = t->typeInfo; ti != nullptr; ti = dn2cpp_reflection_base(ti))
     {
         dn2cpp_require_metadata(ti);
@@ -3689,11 +3797,11 @@ Dn2CppMethodRef* dn2cpp_type_get_method_full(Dn2CppType* t, Dn2CppString* name,
             bool hidden = row->vtableSlot >= 0 && seen.seen(row->vtableSlot);
             if (hidden || !dn2cpp_ascii_str_eq(row->name, name))
                 continue;
-            if (row->vtableSlot < 0 && gvm.hides(mi, *row.operator->()))
+            if (gvm.hides(mi, *row.operator->()))
                 continue;
             if (genericParamCount >= 0 && row->genericParamCount != genericParamCount)
                 continue;
-            if (paramTypes != nullptr && !dn2cpp_params_match_types(mi, paramTypes))
+            if (paramTypes != nullptr && !dn2cpp_params_match_types(mi, paramTypes, t->typeInfo))
                 continue;
             cands.push_back(mi);
         }
@@ -3721,7 +3829,7 @@ Dn2CppType* dn2cpp_methodref_return_type(Dn2CppMethodRef* m)
     const auto mi = dn2cpp_methodref_require(m);
     const Dn2CppMethodInfo row = *mi;
     const auto* declaring = dn2cpp_invoke_declaring(row.declaringType, m->reflectedType);
-    const auto* type = m->isGenericDefView != 0 && row.genericDefinitionReturnKey != nullptr
+    const auto* type = (m->isGenericDefView != 0 || (row.declaringType->flags & DN2CPP_TF_GENERICDEF) != 0) && row.genericDefinitionReturnKey != nullptr
         ? dn2cpp_method_definition_type(mi, row.genericDefinitionReturnKey, row.returnType, declaring)
         : row.returnReflectionSignature != nullptr
             ? dn2cpp_signature_type(row.returnReflectionSignature, declaring) : row.returnType;
@@ -3806,7 +3914,7 @@ Dn2CppType* dn2cpp_paramref_parameter_type(Dn2CppParamRef* p)
     const Dn2CppParamInfo parameter = *dn2cpp_paramref_require(p)->param;
     // Display and attributes remain usable without a composed open Type handle.
     const auto* declaring = p->owner ? dn2cpp_invoke_declaring(p->owner->declaringType, p->ownerReflected) : nullptr;
-    return dn2cpp_get_type_from_handle(p->ownerGenericDefView != 0 && parameter.genericDefinitionKey != nullptr
+    return dn2cpp_get_type_from_handle((p->ownerGenericDefView != 0 || (p->owner && (p->owner->declaringType->flags & DN2CPP_TF_GENERICDEF) != 0)) && parameter.genericDefinitionKey != nullptr
         ? dn2cpp_method_definition_type(p->owner, parameter.genericDefinitionKey, parameter.paramType, declaring, p->position)
         : dn2cpp_reflection_parameter_type(parameter, declaring));
 }
@@ -5064,6 +5172,9 @@ static Dn2CppObject* dn2cpp_invoke_mi(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi,
     const Dn2CppTypeInfo* reflected, Dn2CppInvokeMode mode = Dn2CppInvokeMode::Invoke)
 {
     if (mi == nullptr)
+        dn2cpp_throw_invalid_operation();
+    const auto* declaring = dn2cpp_invoke_declaring(mi->declaringType, reflected);
+    if (dn2cpp_type_contains_generic_parameters(declaring) || dn2cpp_type_metadata_only(declaring))
         dn2cpp_throw_invalid_operation();
     Dn2CppInvokePlan local;
     const Dn2CppInvokePlan& plan = dn2cpp_invoke_plan_of(mi, mode == Dn2CppInvokeMode::Invoke, local);
@@ -6931,6 +7042,8 @@ static Dn2CppObject* dn2cpp_ctor_invoke_argv(Dn2CppMetadataHandle<Dn2CppMethodIn
 {
     Dn2CppInvokePlan local;
     const Dn2CppInvokePlan& plan = dn2cpp_invoke_plan_of(mi, true, local);
+    if ((plan.declaringType->flags & DN2CPP_TF_GENERICDEF) != 0)
+        dn2cpp_throw_member_access("Cannot create an instance of a type with unbound generic parameters.");
     if (dn2cpp_type_contains_generic_parameters(plan.declaringType) || dn2cpp_type_metadata_only(plan.declaringType))
         dn2cpp_throw_invalid_operation();
     // .NET refuses a by-ref-like type's constructor before it looks at the arguments.
@@ -7078,7 +7191,11 @@ Dn2CppMethodRef* dn2cpp_type_get_constructor_full(Dn2CppType* t, Dn2CppArrayRef*
         for (int32_t j = 0; j < want; j++)
         {
             auto* pt = reinterpret_cast<Dn2CppType*>(paramTypes->data[j]);
-            if (dn2cpp_reflection_parameter_type(*row->parameters[j], ti) != pt->typeInfo)
+            const auto parameter = *row->parameters[j];
+            const auto* parameterType = (row->declaringType->flags & DN2CPP_TF_GENERICDEF) != 0 && row->definitionSignature != nullptr
+                ? dn2cpp_method_definition_type(ci, "symbolic", parameter.paramType, ti, j)
+                : dn2cpp_reflection_parameter_type(parameter, ti);
+            if (parameterType != pt->typeInfo)
             {
                 match = false;
                 break;
@@ -7247,20 +7364,32 @@ static Dn2CppMetadataTable<Dn2CppParamInfo> dn2cpp_prop_index_parameters(
 // Whether two property rows have the same reflection signature (property type +
 // indexer parameter list) — the equality behind .NET's most-derived-wins rule
 // for an overridden/`new`-redeclared property.
-static bool dn2cpp_props_sig_equal(Dn2CppMetadataHandle<Dn2CppPropInfo> a, Dn2CppMetadataHandle<Dn2CppPropInfo> b)
+static const Dn2CppTypeInfo* dn2cpp_property_signature_type(Dn2CppMetadataHandle<Dn2CppPropInfo> property,
+    const Dn2CppTypeInfo* reflected, int32_t parameter = -1)
+{
+    const auto accessor = property->getter != nullptr ? property->getter : property->setter;
+    if (accessor != nullptr && dn2cpp_symbolic_method(*accessor))
+        return dn2cpp_method_definition_type(accessor, "symbolic", property->propType,
+            dn2cpp_invoke_declaring(property->declaringType, reflected), parameter >= 0 ? parameter
+                : property->getter != nullptr ? -1 : accessor->paramCount - 1);
+    return parameter < 0 ? property->propType : accessor->parameters[parameter]->paramType;
+}
+
+static bool dn2cpp_props_sig_equal(Dn2CppMetadataHandle<Dn2CppPropInfo> a, Dn2CppMetadataHandle<Dn2CppPropInfo> b,
+    const Dn2CppTypeInfo* reflected)
 {
     const auto rowA = a.operator->();
     const auto rowB = b.operator->();
-    if (rowA->propType != rowB->propType)
+    if (dn2cpp_property_signature_type(a, reflected) != dn2cpp_property_signature_type(b, reflected))
         return false;
     int32_t countA;
     int32_t countB;
-    const auto paramsA = dn2cpp_prop_index_parameters(rowA.operator->(), &countA);
-    const auto paramsB = dn2cpp_prop_index_parameters(rowB.operator->(), &countB);
+    dn2cpp_prop_index_parameters(rowA.operator->(), &countA);
+    dn2cpp_prop_index_parameters(rowB.operator->(), &countB);
     if (countA != countB)
         return false;
     for (int32_t i = 0; i < countA; i++)
-        if (paramsA[i]->paramType != paramsB[i]->paramType)
+        if (dn2cpp_property_signature_type(a, reflected, i) != dn2cpp_property_signature_type(b, reflected, i))
             return false;
     return true;
 }
@@ -7298,7 +7427,7 @@ Dn2CppPropRef* dn2cpp_type_get_property_full(Dn2CppType* t, Dn2CppString* name, 
             if (indexTypes != nullptr)
             {
                 int32_t count;
-                const auto parameters = dn2cpp_prop_index_parameters(row.operator->(), &count);
+                dn2cpp_prop_index_parameters(row.operator->(), &count);
                 if (count != indexTypes->length)
                     continue;
                 for (int32_t j = 0; j < indexTypes->length; j++)
@@ -7308,12 +7437,12 @@ Dn2CppPropRef* dn2cpp_type_get_property_full(Dn2CppType* t, Dn2CppString* name, 
                 for (int32_t j = 0; j < indexTypes->length; j++)
                 {
                     auto* pt = reinterpret_cast<Dn2CppType*>(indexTypes->data[j]);
-                    if (parameters[j]->paramType != pt->typeInfo) { match = false; break; }
+                    if (dn2cpp_property_signature_type(p, t->typeInfo, j) != pt->typeInfo) { match = false; break; }
                 }
                 if (!match)
                     continue;
             }
-            if (returnType != nullptr && row->propType != returnType->typeInfo)
+            if (returnType != nullptr && dn2cpp_property_signature_type(p, t->typeInfo) != returnType->typeInfo)
                 continue;
             cands.push_back(p);
         }
@@ -7323,7 +7452,7 @@ Dn2CppPropRef* dn2cpp_type_get_property_full(Dn2CppType* t, Dn2CppString* name, 
     if (cands.size() == 0)
         return nullptr;
     for (int32_t i = 1; i < cands.size(); i++)
-        if (!dn2cpp_props_sig_equal(cands[0], cands[i]))
+        if (!dn2cpp_props_sig_equal(cands[0], cands[i], t->typeInfo))
             dn2cpp_throw_ambiguous_member(reinterpret_cast<Dn2CppObject*>(dn2cpp_make_propref(cands[0], t->typeInfo)));
     return dn2cpp_make_propref(cands[0], t->typeInfo);
 }
@@ -7335,7 +7464,7 @@ Dn2CppPropRef* dn2cpp_type_get_property(Dn2CppType* t, Dn2CppString* name, int32
 
 Dn2CppType* dn2cpp_propref_property_type(Dn2CppPropRef* p)
 {
-    return dn2cpp_get_type_from_handle(dn2cpp_propref_require(p)->propType);
+    return dn2cpp_get_type_from_handle(dn2cpp_property_signature_type(dn2cpp_propref_require(p), p->reflectedType));
 }
 
 int32_t dn2cpp_propref_can_read(Dn2CppPropRef* p)
@@ -7363,7 +7492,8 @@ Dn2CppMethodRef* dn2cpp_propref_accessor(Dn2CppPropRef* p, int32_t setter, int32
     if (nonPublic == 0 && (m->attrs & DN2CPP_MTHA_PUBLIC) == 0)
         return nullptr;
     // Private accessors are not inherited, even when non-public methods are requested.
-    if (p->reflectedType != property->declaringType && (m->attrs & DN2CPP_MTHA_PRIVATE) != 0)
+    if (p->reflectedType != dn2cpp_invoke_declaring(property->declaringType, p->reflectedType)
+        && (m->attrs & DN2CPP_MTHA_PRIVATE) != 0)
         return nullptr;
     // The accessor inherits the PROPERTY handle's reflected type, so
     // typeof(D).GetProperty("P").GetGetMethod() is the same instance as
@@ -7485,6 +7615,7 @@ static int32_t dn2cpp_collect_member_matches(const Dn2CppTypeInfo* type, Dn2CppS
     {
         Dn2CppSeenSlots seen;
         Dn2CppGvmHiding gvm;
+        gvm.reflected = type;
         for (const Dn2CppTypeInfo* ti = type; ti != nullptr; ti = dn2cpp_reflection_base(ti))
         {
             dn2cpp_require_metadata(ti);
@@ -7509,7 +7640,7 @@ static int32_t dn2cpp_collect_member_matches(const Dn2CppTypeInfo* type, Dn2CppS
                 bool hidden = row->vtableSlot >= 0 && seen.seen(row->vtableSlot);
                 if (hidden || !dn2cpp_name_pattern_matches(row->name, name))
                     continue;
-                if (row->vtableSlot < 0 && gvm.hides(mi, *row.operator->()))
+                if (gvm.hides(mi, *row.operator->()))
                     continue;
                 if (out != nullptr)
                     dn2cpp_gc_store_ref(&out[n],
@@ -7558,7 +7689,7 @@ static int32_t dn2cpp_collect_member_matches(const Dn2CppTypeInfo* type, Dn2CppS
                     continue;
                 bool hidden = false;
                 for (int32_t s = 0; s < seenP.size() && !hidden; s++)
-                    hidden = std::strcmp(seenP[s]->name, row->name) == 0 && dn2cpp_props_sig_equal(seenP[s], p);
+                    hidden = std::strcmp(seenP[s]->name, row->name) == 0 && dn2cpp_props_sig_equal(seenP[s], p, type);
                 if (hidden)
                     continue;
                 seenP.push_back(p);
@@ -8511,6 +8642,87 @@ Dn2CppType* dn2cpp_attrdata_attribute_type(Dn2CppAttrDataRef* d)
 Dn2CppString* dn2cpp_reflection_handle_tostring(Dn2CppObject* member)
 {
     dn2cpp_memberref_require(member);
+    std::string symbolic;
+    bool resolved = false;
+    if (dn2cpp_is_methodref_header(member->type))
+    {
+        auto* method = reinterpret_cast<Dn2CppMethodRef*>(member);
+        const auto row = method->method;
+        if (dn2cpp_symbolic_method(*row))
+        {
+            const auto* declaring = dn2cpp_invoke_declaring(row->declaringType, method->reflectedType);
+            symbolic = dn2cpp_reflection_type_spelling(dn2cpp_method_definition_type(row, "symbolic", row->returnType, declaring))
+                + " " + row->name;
+            if (row->genericParamCount > 0)
+            {
+                symbolic += '[';
+                for (int32_t i = 0; i < row->genericParamCount; i++)
+                {
+                    if (i != 0)
+                        symbolic += ',';
+                    symbolic += dn2cpp_reflection_type_spelling(row->genericArgs != nullptr ? row->genericArgs[i]
+                        : dn2cpp_method_parameter_type(row, i), true);
+                }
+                symbolic += ']';
+            }
+            symbolic += '(';
+            for (int32_t i = 0; i < row->paramCount; i++)
+            {
+                if (i != 0)
+                    symbolic += ", ";
+                const auto* type = dn2cpp_method_definition_type(row, "symbolic", row->parameters[i]->paramType, declaring, i);
+                symbolic += dn2cpp_signature_kind(type) == 2
+                    ? dn2cpp_reflection_type_spelling(type->elementType) + " ByRef" : dn2cpp_reflection_type_spelling(type);
+            }
+            symbolic += ')';
+            resolved = true;
+        }
+    }
+    else if (member->type == &dn2cpp_parameterinfo_type)
+    {
+        auto* parameter = reinterpret_cast<Dn2CppParamRef*>(member);
+        if (parameter->owner != nullptr && dn2cpp_symbolic_method(*parameter->owner))
+        {
+            symbolic = dn2cpp_reflection_type_spelling(dn2cpp_paramref_parameter_type(parameter)->typeInfo);
+            if (parameter->param->name != nullptr)
+                symbolic += std::string(" ") + parameter->param->name;
+            resolved = true;
+        }
+    }
+    else if (member->type == &dn2cpp_fieldinfo_type)
+    {
+        auto* field = reinterpret_cast<Dn2CppFieldRef*>(member);
+        if ((field->field->declaringType->flags & DN2CPP_TF_GENERICDEF) != 0)
+        {
+            symbolic = dn2cpp_reflection_type_spelling(dn2cpp_fieldref_field_type(field)->typeInfo) + " " + field->field->name;
+            resolved = true;
+        }
+    }
+    else if (member->type == &dn2cpp_propertyinfo_type)
+    {
+        auto* property = reinterpret_cast<Dn2CppPropRef*>(member);
+        if ((property->prop->declaringType->flags & DN2CPP_TF_GENERICDEF) != 0)
+        {
+            symbolic = dn2cpp_reflection_type_spelling(dn2cpp_property_signature_type(property->prop, property->reflectedType))
+                + " " + property->prop->name;
+            int32_t count;
+            dn2cpp_prop_index_parameters(property->prop.operator->().operator->(), &count);
+            if (count > 0)
+            {
+                symbolic += " [";
+                for (int32_t i = 0; i < count; i++)
+                {
+                    if (i != 0)
+                        symbolic += ", ";
+                    symbolic += dn2cpp_reflection_type_spelling(dn2cpp_property_signature_type(property->prop, property->reflectedType, i));
+                }
+                symbolic += ']';
+            }
+            resolved = true;
+        }
+    }
+    if (resolved)
+        return dn2cpp_string_from_utf8(symbolic.c_str(), static_cast<int32_t>(symbolic.size()));
     const char* display = nullptr;
     if (member->type == &dn2cpp_fieldinfo_type)
         display = dn2cpp_fieldref_require(reinterpret_cast<Dn2CppFieldRef*>(member))->display;
@@ -8914,7 +9126,7 @@ int32_t dn2cpp_methodref_is_generic_def(Dn2CppMethodRef* m)
 int32_t dn2cpp_methodref_contains_generic_parameters(Dn2CppMethodRef* m)
 {
     const auto mi = dn2cpp_methodref_require(m);
-    if (m->isGenericDefView != 0 || dn2cpp_type_contains_generic_parameters(mi->declaringType))
+    if (m->isGenericDefView != 0 || dn2cpp_type_contains_generic_parameters(dn2cpp_invoke_declaring(mi->declaringType, m->reflectedType)))
         return 1;
     if (mi->genericArgs != nullptr)
         for (int32_t i = 0; i < mi->genericParamCount; i++)
@@ -8946,7 +9158,8 @@ Dn2CppMethodRef* dn2cpp_methodref_get_generic_definition(Dn2CppMethodRef* m)
 {
     if ((dn2cpp_methodref_require(m)->attrs & DN2CPP_MTHA_GENERIC) == 0)
         dn2cpp_throw_invalid_operation();
-    return dn2cpp_make_methodref_defview(m->method, nullptr);
+    return dn2cpp_make_methodref_defview(m->method,
+        dn2cpp_invoke_declaring(m->method->declaringType, m->reflectedType));
 }
 
 // MethodInfo.MakeGenericMethod(Type[]): in-image resolution. Rows on the
@@ -8971,7 +9184,7 @@ Dn2CppMethodRef* dn2cpp_methodref_make_generic(Dn2CppMethodRef* m, Dn2CppArrayRe
         dn2cpp_throw_sr2(&dn2cpp_argument_exception_type, DN2CPP_SR_NOT_ENOUGH_GEN_ARGUMENTS,
             dn2cpp_format_int(argc, 4, nullptr),
             dn2cpp_format_int(def->genericParamCount, 4, nullptr));
-    bool open = false;
+    bool open = dn2cpp_type_contains_generic_parameters(dn2cpp_invoke_declaring(def->declaringType, m->reflectedType));
     std::vector<const Dn2CppTypeInfo*> arguments;
     for (int32_t i = 0; i < argc; i++)
     {
@@ -9093,6 +9306,32 @@ Dn2CppMethodRef* dn2cpp_methodref_get_base_definition(Dn2CppMethodRef* m)
 {
     Dn2CppMetadataHandle<Dn2CppMethodInfo> mi = dn2cpp_methodref_require(m);
     Dn2CppMethodInfo row = *mi;
+    if (dn2cpp_symbolic_method(row) && (row.ilAttrs & DN2CPP_MA_VIRTUAL) != 0)
+    {
+        auto root = mi;
+        const auto* declaring = dn2cpp_invoke_declaring(row.declaringType, m->reflectedType);
+        const auto* rootType = declaring;
+        for (const auto* type = dn2cpp_reflection_base(declaring);
+             type != nullptr && (root->ilAttrs & DN2CPP_MA_NEWSLOT) == 0; type = dn2cpp_reflection_base(type))
+        {
+            dn2cpp_require_metadata(type);
+            const auto reflection = type->reflection();
+            for (int32_t i = 0; i < reflection.methodCount; i++)
+            {
+                const auto candidate = reflection.methods[i];
+                if ((candidate->ilAttrs & DN2CPP_MA_VIRTUAL) != 0 && std::strcmp(candidate->name, row.name) == 0
+                    && dn2cpp_symbolic_parameters_equal(mi, candidate, m->reflectedType, true))
+                {
+                    root = candidate;
+                    rootType = type;
+                    break;
+                }
+            }
+        }
+        if (const auto objectRoot = dn2cpp_meta_object_base(root, *root))
+            return dn2cpp_make_methodref(objectRoot, nullptr);
+        return row.genericParamCount > 0 ? dn2cpp_make_methodref_defview(root, rootType) : dn2cpp_make_methodref(root, rootType);
+    }
     if (row.vtableSlot < 0)
     {
         if (!dn2cpp_is_gvm_row(row) || (row.declaringType->flags & DN2CPP_TF_INTERFACE) != 0)
@@ -9163,7 +9402,7 @@ Dn2CppArrayRef* dn2cpp_methodref_get_parameter_types(Dn2CppMethodRef* m)
     {
         const Dn2CppParamInfo parameter = *row.parameters[i];
         dn2cpp_gc_store_ref(&arr->data[i], reinterpret_cast<Dn2CppObject*>(
-            dn2cpp_get_type_from_handle(m->isGenericDefView != 0 && parameter.genericDefinitionKey != nullptr
+            dn2cpp_get_type_from_handle((m->isGenericDefView != 0 || (row.declaringType->flags & DN2CPP_TF_GENERICDEF) != 0) && parameter.genericDefinitionKey != nullptr
                 ? dn2cpp_method_definition_type(m->method, parameter.genericDefinitionKey, parameter.paramType,
                     dn2cpp_invoke_declaring(row.declaringType, m->reflectedType), i)
                 : dn2cpp_reflection_parameter_type(parameter, dn2cpp_invoke_declaring(row.declaringType, m->reflectedType)))));

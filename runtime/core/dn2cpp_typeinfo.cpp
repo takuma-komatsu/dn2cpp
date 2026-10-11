@@ -1477,9 +1477,8 @@ int32_t dn2cpp_type_is_primitive(const Dn2CppTypeInfo* ti)
 Dn2CppType* dn2cpp_type_base_type(Dn2CppType* a)
 {
     const Dn2CppTypeInfo* ti = dn2cpp_type_require(a);
-    dn2cpp_type_ensure_metadata_relations(ti);
-    if (ti->base != nullptr)
-        return dn2cpp_get_type_from_handle(ti->base);
+    if (const auto* base = dn2cpp_type_reflection_base(ti))
+        return dn2cpp_get_type_from_handle(base);
     // Chain ended. A reference type's chain stops here instead of pointing at the
     // object handle, but .NET's base IS System.Object — synthesize it. Object
     // itself, interfaces, and value types report null/their own base (the latter
@@ -1602,7 +1601,7 @@ int32_t dn2cpp_type_is_subclass_of(Dn2CppType* a, Dn2CppType* c)
     if ((ta->flags & DN2CPP_TF_ARRAY) != 0
         && ((tc->flags & DN2CPP_TF_SYSTEM_ARRAY) != 0 || tc == &dn2cpp_object_type))
         return 1;
-    for (const Dn2CppTypeInfo* t = ta->base; t != nullptr; t = t->base)
+    for (const Dn2CppTypeInfo* t = dn2cpp_type_reflection_base(ta); t != nullptr; t = dn2cpp_type_reflection_base(t))
         if (t == tc)
             return 1;
     return 0;

@@ -351,6 +351,9 @@ namespace ReflectInvoke
             if (args.Length > 0 && args[0] == "before-open-generic-signatures")
                 return;
             ReflectGenericMethodSubset.Program.RunOpenSignatures(false);
+            if (args.Length > 0 && args[0] == "before-generic-definition-members")
+                return;
+            ReflectGenericMethodSubset.Program.RunGenericDefinitionMembers(false);
         }
     }
 }

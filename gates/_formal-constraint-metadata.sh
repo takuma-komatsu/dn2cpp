@@ -1,5 +1,69 @@
 #!/usr/bin/env bash
-# Formal constraints preserve typical identities, transitive relations and cold publication.
+# Formal constraints and definition members preserve symbolic contexts and cold publication.
+generic_definition_member_asserts() {
+    local output="$1" line
+    for line in '== generic definition members ==' \
+        'definition transitive relations: True/True' \
+        'definition closed control: 7' \
+        'definition method found: True' \
+        'definition field found: True' \
+        'definition property found: True' \
+        'definition constructors: 2' \
+        'definition method shape: True/True/True/True' \
+        'definition base shape: True' \
+        'definition base assignability: True/True' \
+        'definition inherited found: True' \
+        'definition inherited shape: True/True/True' \
+        'definition bare found: True' \
+        'definition generic shape: True/True/True/True' \
+        'definition member types: True/True/True' \
+        'definition accessors: True/True/True/True' \
+        'definition special names: True/False/True' \
+        'definition constants: 19/19/literal/True/True/True' \
+        'definition field guards: InvalidOperationException/InvalidOperationException/InvalidOperationException/InvalidOperationException' \
+        'definition invoke guards: InvalidOperationException/MemberAccessException/InvalidOperationException/InvalidOperationException' \
+        'definition constructed method: True/True/True/True/True' \
+        'definition constructed signature: True/True/True' \
+        'definition constructed display: System.String Mixed[String](System.Collections.Generic.Dictionary`2[T,System.String[]])' \
+        'definition delegate guard: ArgumentException' \
+        'definition closed inherited operation: 23/29/31/True' \
+        'definition private accessor: True/True' \
+        'definition mixed virtual: 3/1/1' \
+        'definition object inheritance: 4/True' \
+        'definition inherited generic: True/True/True/True' \
+        'definition filtered lookup: True/True/True/True' \
+        'definition inherited selection: True/True/1' \
+        'definition base method: True' \
+        'definition displays: T Echo(T)/T[] Echo(T[])/T[] value' \
+        'definition nested owner: 2/True/True/True/True' \
+        'definition parameter member: True/True/True/True' \
+        'definition default member: 1/Item' \
+        'definition parallel: True' \
+        'definition repeated: True' \
+        'generic definition members end'; do
+        test "$(grep -Fxc -- "$line" "$output")" = 1 \
+            || { echo "FAIL: generic definition member witness missing or repeated: $line" >&2; return 1; }
+    done
+}
+
+generic_definition_member_prefix_asserts() {
+    local out="$1" axis
+    for axis in dotnet native; do
+        if [ "$axis" = dotnet ]; then
+            run_bounded dotnet "$_CG_APP" before-generic-definition-members > "$out/definitions-before.$axis.raw.stdout"
+        else
+            run_bounded "$out/ReflectInvoke$EXE_EXT" before-generic-definition-members > "$out/definitions-before.$axis.raw.stdout"
+        fi
+        strip_cr_win_file "$out/definitions-before.$axis.raw.stdout" > "$out/definitions-before.$axis.stdout"
+        awk '/^== generic definition members ==$/ { exit } { print }' \
+            "$out/virtual-delegate-full.$axis.stdout" > "$out/definitions-prefix.$axis.stdout"
+        diff -u "$out/definitions-before.$axis.stdout" "$out/definitions-prefix.$axis.stdout"
+        generic_definition_member_asserts "$out/virtual-delegate-full.$axis.stdout"
+        test "$(tail -n 1 "$out/virtual-delegate-full.$axis.stdout")" = 'generic definition members end'
+    done
+}
+
+
 open_signature_asserts() {
     local output="$1" line
     for line in '== open generic signature types ==' \
@@ -96,10 +160,10 @@ formal_constraint_diff_axes() {
     for axis in packed native uncompressed trimmed unshared; do
         out="artifacts/formal-constraint-metadata-$axis"
         mkdir -p "$out"
-        local flags=() build_flags=()
+        local flags=() build_flags=() diet_flags=(--no-ildiet)
         case "$axis" in
-            packed) flags=(--reflection-metadata 'ReflectGenericMethodSubset.ConstraintOwner`1[ReflectGenericMethodSubset.ConstraintRoot]=packed') ;;
-            native) flags=(--reflection-metadata 'ReflectGenericMethodSubset.ConstraintOwner`1[ReflectGenericMethodSubset.ConstraintRoot]=native') ;;
+            packed) flags=(--reflection-metadata 'ReflectGenericMethodSubset.ConstraintOwner`1[ReflectGenericMethodSubset.ConstraintRoot]=packed' --reflection-metadata 'ReflectGenericMethodSubset.GenericMemberBase`1=packed'); diet_flags=() ;;
+            native) flags=(--reflection-metadata 'ReflectGenericMethodSubset.ConstraintOwner`1[ReflectGenericMethodSubset.ConstraintRoot]=native' --reflection-metadata 'ReflectGenericMethodSubset.GenericMemberBase`1=native') ;;
             uncompressed) flags=(--no-metadata-compression) ;;
             trimmed) flags=(--trim-reflection) ;;
             unshared) flags=(--no-shared-generics); build_flags=(-p:FormalConstraintsUnshared=true) ;;
@@ -110,22 +174,27 @@ formal_constraint_diff_axes() {
         DN2CPP_STRICT_COMPLETION=1 invoke_cli "$out/app/FormalConstraintsOnly.dll" -r "$(locate_corelib)" \
             -r "$out/app/TrimReflectLib.dll" \
             -r "$out/app/MultiAssemblyAlias.dll" \
-            --no-ildiet ${flags[@]+"${flags[@]}"} -o "$out" > "$out/emit.log" 2>&1
+            ${diet_flags[@]+"${diet_flags[@]}"} ${flags[@]+"${flags[@]}"} -o "$out" > "$out/emit.log" 2>&1
         case "$axis" in
             packed|native)
                 local representation=record
                 [ "$axis" != native ] || representation=native
                 grep -Eq "^(alignas\(2\) extern const uint8_t|static const Dn2CppMethodInfo) md_${representation}_methtab_ReflectGenericMethodSubset_ConstraintOwner_ReflectGenericMethodSubset_ConstraintRoot\\[\\]" "$out"/generated_m*.cpp
                 grep -Eq "^(alignas\(2\) static const uint8_t|static const Dn2CppTypeReflection) md_${representation}_refl_ti_ReflectGenericMethodSubset_ConstraintOwner_ReflectGenericMethodSubset_ConstraintRoot\\[\\]" "$out"/generated_m*.cpp
+                grep -Eq "^(alignas\(2\) static const uint8_t|static const Dn2CppMethodInfo) md_${representation}_definition_ReflectGenericMethodSubset_GenericMemberBase_1_methods\[\]" "$out"/generated*.cpp
                 ;;
         esac
+        if grep -Eq '^struct ReflectGenericMethodSubset_GenericMemberBare' "$out/generated.h"; then
+            echo 'FAIL: bare generic definition fabricated a class layout' >&2
+            return 1
+        fi
         compile_console "$out" FormalConstraintsOnly
         run_bounded "$out/FormalConstraintsOnly$EXE_EXT" > "$out/native.raw.stdout"
         strip_cr_win_file "$out/native.raw.stdout" > "$out/native.stdout"
         diff -u "$out/clr.stdout" "$out/native.stdout"
         formal_constraint_asserts "$out/native.stdout"
         local mode
-        for mode in unloaded-method-identity unloaded-self-assignability retained-formal-members formal-interface-order constraint-scope nested-constraint nested-assignability open-generic-signatures unloaded-open-signatures; do
+        for mode in unloaded-method-identity unloaded-self-assignability retained-formal-members formal-interface-order constraint-scope nested-constraint nested-assignability open-generic-signatures unloaded-open-signatures generic-definition-members generic-definition-relations-cold generic-definition-relations-warm; do
             run_bounded dotnet "$out/app/FormalConstraintsOnly.dll" "$mode" > "$out/$mode.clr.raw.stdout"
             strip_cr_win_file "$out/$mode.clr.raw.stdout" > "$out/$mode.clr.stdout"
             run_bounded "$out/FormalConstraintsOnly$EXE_EXT" "$mode" > "$out/$mode.native.raw.stdout"
@@ -133,6 +202,10 @@ formal_constraint_diff_axes() {
             diff -u "$out/$mode.clr.stdout" "$out/$mode.native.stdout"
             if [ "$mode" = open-generic-signatures ]; then
                 open_signature_asserts "$out/$mode.native.stdout"
+            elif [ "$mode" = generic-definition-members ]; then
+                generic_definition_member_asserts "$out/$mode.native.stdout"
+            elif [[ "$mode" = generic-definition-relations-* ]]; then
+                test "$(grep -Fxc 'definition transitive relations: True/True' "$out/$mode.native.stdout")" = 1
             fi
         done
         run_bounded "$out/FormalConstraintsOnly$EXE_EXT" unloaded-relations > "$out/unloaded-relations.native.raw.stdout"

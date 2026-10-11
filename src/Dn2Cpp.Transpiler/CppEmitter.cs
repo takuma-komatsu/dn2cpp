@@ -4048,13 +4048,16 @@ internal sealed partial class CppEmitter
     /// identifier names are stamped (a non-ASCII name cannot be rendered as a
     /// plain C literal here and CLR member names in practice are ASCII).</summary>
     private static string? DefaultMemberName(ClassInfo cls)
+        => DefaultMemberName(cls.Module, cls.Handle);
+
+    private static string? DefaultMemberName(Module module, TypeDefinitionHandle handle)
     {
-        if (cls.Handle.IsNil)
+        if (handle.IsNil)
             return null;
         try
         {
-            var reader = cls.Module.Reader;
-            foreach (var cah in reader.GetTypeDefinition(cls.Handle).GetCustomAttributes())
+            var reader = module.Reader;
+            foreach (var cah in reader.GetTypeDefinition(handle).GetCustomAttributes())
             {
                 var ca = reader.GetCustomAttribute(cah);
                 string? attrType = ca.Constructor.Kind switch

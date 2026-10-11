@@ -104,6 +104,61 @@ namespace ReflectGenericMethodSubset
         public static Tuple<U, V> Pair<U, V>(Tuple<U, V> value) => value;
     }
 
+    class GenericMemberBase<T> where T : notnull
+    {
+        public T Field = default!;
+        public static T StaticField = default!;
+        public const int Number = 19;
+        public const string Text = "literal";
+        public T Property { get; set; } = default!;
+        public T PrivateSet { get; private set; } = default!;
+        public T WriteOnly { set => Field = value; }
+        public T this[T index] { get => Field; set => Field = value; }
+        public GenericMemberBase() { }
+        public GenericMemberBase(T value) => Field = value;
+        public T Echo(T value) => value;
+        public virtual T Virtual(T value) => value;
+        public T Hidden(T value) => value;
+        public void Optional(int number = 17, string text = "default", T value = default!) { }
+        public U Mixed<U>(Dictionary<T, U[]> value) where U : class => default!;
+    }
+
+    class GenericMemberDerived<T> : GenericMemberBase<T[]>
+    {
+        public override T[] Virtual(T[] value) => value;
+        public new T[] Hidden(T[] value) => value;
+    }
+
+    interface IGenericMember<T>
+    {
+        void Ordinary(T value);
+    }
+    class GenericClosedBaseDerived<T> : GenericMemberBase<int>
+    {
+        public override int Virtual(int value) => value;
+    }
+
+    interface IGenericMemberRelation<T> { }
+    class GenericMemberRelationRoot<T> : IGenericMemberRelation<T> { }
+    class GenericMemberRelationMiddle<T> : GenericMemberRelationRoot<T> { }
+    class GenericMemberRelationLeaf<T> : GenericMemberRelationMiddle<T> { }
+
+    class GenericMemberBare<T>
+    {
+        public T Value = default!;
+        public T Read(T value) => value;
+    }
+
+    class GenericMemberOuter<T>
+    {
+        public class Inner<U>
+        {
+            public T Outer = default!;
+            public U InnerValue = default!;
+            public Tuple<T, U> Pair(T first, U second) => new(first, second);
+        }
+    }
+
     class OpenSignatureValue<T> where T : struct { }
     class OpenSignatureReference<T> where T : class { }
     class OpenSignatureBase<T> where T : DefinitionConstraintBase { }
@@ -898,6 +953,157 @@ namespace ReflectGenericMethodSubset
             Console.WriteLine("open signature repeated: " + ReferenceEquals(mixed.ReturnType, typeof(OpenSignatureOwner<int>).GetMethod("Mixed")!.ReturnType)
                 + "/" + ReferenceEquals(definition.MakeGenericMethod(formal), composed));
             Console.WriteLine("open generic signature types end");
+        }
+
+        private static string DefinitionWriteFault(Action action) => DefinitionFault(() =>
+        {
+            action();
+            return null;
+        });
+
+        internal static void RunGenericDefinitionRelations(bool warm)
+        {
+            Type leaf = typeof(GenericMemberRelationLeaf<>);
+            Type formal = leaf.GetGenericArguments()[0];
+            Type root = typeof(GenericMemberRelationRoot<>).MakeGenericType(formal);
+            Type itf = typeof(IGenericMemberRelation<>).MakeGenericType(formal);
+            if (warm)
+                _ = leaf.BaseType!.GetInterfaces();
+            Console.WriteLine("definition transitive relations: " + root.IsAssignableFrom(leaf) + "/" + itf.IsAssignableFrom(leaf));
+        }
+
+        internal static void RunGenericDefinitionMembers(bool forceCollection = true)
+        {
+            Console.WriteLine("== generic definition members ==");
+            RunGenericDefinitionRelations(false);
+            var closed = new GenericMemberBase<int>(7);
+            Console.WriteLine("definition closed control: " + closed.Echo(closed.Field));
+            Type owner = typeof(GenericMemberBase<>);
+            Type formal = owner.GetGenericArguments()[0];
+            MethodInfo? echo = owner.GetMethod("Echo");
+            Console.WriteLine("definition method found: " + (echo is not null));
+            Console.WriteLine("definition field found: " + (owner.GetField("Field") is not null));
+            Console.WriteLine("definition property found: " + (owner.GetProperty("Property") is not null));
+            Console.WriteLine("definition constructors: " + owner.GetConstructors().Length);
+            if (echo is not null)
+                Console.WriteLine("definition method shape: " + ReferenceEquals(echo.ReturnType, formal) + "/"
+                    + ReferenceEquals(echo.GetParameters()[0].ParameterType, formal) + "/"
+                    + ReferenceEquals(echo.DeclaringType, owner) + "/" + ReferenceEquals(echo.ReflectedType, owner));
+            Type derived = typeof(GenericMemberDerived<>);
+            Console.WriteLine("definition base shape: " + ReferenceEquals(derived.BaseType!.GetGenericArguments()[0], derived.GetGenericArguments()[0].MakeArrayType()));
+            Console.WriteLine("definition base assignability: " + derived.BaseType!.IsAssignableFrom(derived) + "/"
+                + derived.IsAssignableTo(derived.BaseType));
+            MethodInfo? inherited = derived.GetMethod("Echo");
+            Console.WriteLine("definition inherited found: " + (inherited is not null));
+            if (inherited is not null)
+                Console.WriteLine("definition inherited shape: " + ReferenceEquals(inherited.DeclaringType, derived.BaseType) + "/"
+                    + ReferenceEquals(inherited.ReflectedType, derived) + "/"
+                    + ReferenceEquals(inherited.ReturnType, derived.GetGenericArguments()[0].MakeArrayType()));
+            Console.WriteLine("definition bare found: " + (typeof(GenericMemberBare<>).GetMethod("Read") is not null));
+            MethodInfo mixed = owner.GetMethod("Mixed")!;
+            Type methodFormal = mixed.GetGenericArguments()[0];
+            Console.WriteLine("definition generic shape: " + ReferenceEquals(mixed.ReturnType, methodFormal) + "/"
+                + ReferenceEquals(mixed.GetParameters()[0].ParameterType.GetGenericArguments()[0], formal) + "/"
+                + ReferenceEquals(methodFormal.DeclaringType, owner) + "/" + mixed.ContainsGenericParameters);
+            Console.WriteLine("definition member types: " + ReferenceEquals(owner.GetField("Field")!.FieldType, formal) + "/"
+                + ReferenceEquals(owner.GetProperty("Property")!.PropertyType, formal) + "/"
+                + ReferenceEquals(owner.GetConstructor(new[] { formal })!.GetParameters()[0].ParameterType, formal));
+            PropertyInfo property = owner.GetProperty("Property")!;
+            Console.WriteLine("definition accessors: " + ReferenceEquals(property.GetGetMethod(), owner.GetMethod("get_Property")) + "/"
+                + ReferenceEquals(property.GetSetMethod(), owner.GetMethod("set_Property")) + "/"
+                + ReferenceEquals(owner.GetProperty("WriteOnly")!.PropertyType, formal) + "/"
+                + ReferenceEquals(owner.GetProperty("Item")!.GetIndexParameters()[0].ParameterType, formal));
+            Console.WriteLine("definition special names: " + owner.GetMethod("get_Property")!.IsSpecialName + "/"
+                + typeof(IGenericMember<>).GetMethod("Ordinary")!.IsSpecialName + "/"
+                + owner.GetConstructor(Type.EmptyTypes)!.IsSpecialName);
+            ParameterInfo[] optional = owner.GetMethod("Optional")!.GetParameters();
+            Console.WriteLine("definition constants: " + owner.GetField("Number")!.GetValue(null) + "/"
+                + owner.GetField("Number")!.GetRawConstantValue() + "/" + owner.GetField("Text")!.GetValue(null) + "/"
+                + optional[0].HasDefaultValue + "/" + optional[1].IsOptional + "/" + optional[2].HasDefaultValue);
+            Console.WriteLine("definition field guards: " + DefinitionFault(() => owner.GetField("Field")!.GetValue(closed)) + "/"
+                + DefinitionFault(() => owner.GetField("StaticField")!.GetValue(null)) + "/"
+                + DefinitionWriteFault(() => owner.GetField("Field")!.SetValue(closed, null)) + "/"
+                + DefinitionWriteFault(() => owner.GetField("StaticField")!.SetValue(null, null)));
+            Console.WriteLine("definition invoke guards: " + DefinitionFault(() => echo!.Invoke(closed, new object?[] { null })) + "/"
+                + DefinitionFault(() => owner.GetConstructor(Type.EmptyTypes)!.Invoke(null)) + "/"
+                + DefinitionFault(() => property.GetValue(closed)) + "/" + DefinitionWriteFault(() => property.SetValue(closed, null)));
+            MethodInfo constructed = mixed.MakeGenericMethod(typeof(string));
+            Console.WriteLine("definition constructed method: " + !constructed.IsGenericMethodDefinition + "/"
+                + constructed.ContainsGenericParameters + "/" + ReferenceEquals(constructed.GetGenericArguments()[0], typeof(string)) + "/"
+                + ReferenceEquals(constructed.GetGenericMethodDefinition(), mixed) + "/" + ReferenceEquals(constructed.DeclaringType, owner));
+            Console.WriteLine("definition constructed signature: " + ReferenceEquals(constructed.ReturnType, typeof(string)) + "/"
+                + ReferenceEquals(constructed.GetParameters()[0].ParameterType.GetGenericArguments()[1].GetElementType(), typeof(string)) + "/"
+                + ReferenceEquals(constructed.ReturnParameter.ParameterType, typeof(string)));
+            Console.WriteLine("definition constructed display: " + constructed);
+            Console.WriteLine("definition delegate guard: " + DefinitionFault(() => echo!.CreateDelegate(typeof(Func<int, int>), closed)));
+            Type closedBaseView = typeof(GenericClosedBaseDerived<>);
+            PropertyInfo inheritedProperty = closedBaseView.GetProperty("Property")!;
+            inheritedProperty.SetValue(closed, 23);
+            FieldInfo inheritedStatic = closedBaseView.GetField("StaticField", BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy)!;
+            inheritedStatic.SetValue(null, 29);
+            Console.WriteLine("definition closed inherited operation: " + inheritedProperty.GetValue(closed) + "/"
+                + inheritedStatic.GetValue(null) + "/"
+                + closedBaseView.GetMethod("Echo")!.Invoke(closed, new object[] { 31 }) + "/"
+                + !closedBaseView.GetMethod("Echo")!.ContainsGenericParameters);
+            MethodInfo inheritedMixed = derived.GetMethod("Mixed")!;
+            Type inheritedFormal = inheritedMixed.GetGenericArguments()[0];
+            MethodInfo inheritedConstructed = inheritedMixed.MakeGenericMethod(typeof(string));
+            Type actualBase = derived.BaseType!;
+            Console.WriteLine("definition private accessor: " + (actualBase.GetProperty("PrivateSet")!.GetSetMethod(true) is not null) + "/"
+                + (derived.GetProperty("PrivateSet")!.GetSetMethod(true) is null));
+            int mixedVirtuals = 0;
+            foreach (MethodInfo method in closedBaseView.GetMethods())
+                if (method.Name == "Virtual")
+                    mixedVirtuals++;
+            Console.WriteLine("definition mixed virtual: " + closed.Virtual(3) + "/" + mixedVirtuals + "/"
+                + closedBaseView.GetMember("Virtual").Length);
+            int objectMethods = 0;
+            foreach (MethodInfo method in owner.GetMethods())
+                if (method.DeclaringType == typeof(object))
+                    objectMethods++;
+            Console.WriteLine("definition object inheritance: " + objectMethods + "/"
+                + (owner.GetMethod("MemberwiseClone", BindingFlags.Instance | BindingFlags.NonPublic) is not null));
+            Console.WriteLine("definition inherited generic: " + ReferenceEquals(inheritedFormal, mixed.GetGenericArguments()[0]) + "/"
+                + ReferenceEquals(inheritedFormal.DeclaringType, owner) + "/"
+                + ReferenceEquals(inheritedConstructed.GetGenericMethodDefinition().DeclaringType, actualBase) + "/"
+                + ReferenceEquals(inheritedConstructed.GetGenericMethodDefinition().ReflectedType, actualBase));
+            Type arrayFormal = derived.GetGenericArguments()[0].MakeArrayType();
+            Console.WriteLine("definition filtered lookup: " + ReferenceEquals(derived.GetMethod("Echo", new[] { arrayFormal }), inherited) + "/"
+                + ReferenceEquals(owner.GetMethod("Echo", new[] { formal }), echo) + "/"
+                + (owner.GetMethod("Echo", new[] { typeof(int) }) is null) + "/"
+                + ReferenceEquals(owner.GetProperty("Item", formal, new[] { formal }), owner.GetProperty("Item")));
+            int virtuals = 0;
+            foreach (MethodInfo method in derived.GetMethods())
+                if (method.Name == "Virtual")
+                    virtuals++;
+            Console.WriteLine("definition inherited selection: " + ReferenceEquals(derived.GetMethod("Virtual")!.DeclaringType, derived) + "/"
+                + ReferenceEquals(derived.GetMethod("Hidden")!.DeclaringType, derived) + "/" + virtuals);
+            Console.WriteLine("definition base method: " + ReferenceEquals(derived.GetMethod("Virtual")!.GetBaseDefinition().DeclaringType, actualBase));
+            Console.WriteLine("definition displays: " + echo + "/" + inherited + "/" + inherited!.GetParameters()[0]);
+            Type nested = typeof(GenericMemberOuter<>.Inner<>);
+            Type[] nestedFormals = nested.GetGenericArguments();
+            MethodInfo pair = nested.GetMethod("Pair")!;
+            Console.WriteLine("definition nested owner: " + nestedFormals.Length + "/"
+                + ReferenceEquals(pair.GetParameters()[0].ParameterType, nestedFormals[0]) + "/"
+                + ReferenceEquals(pair.GetParameters()[1].ParameterType, nestedFormals[1]) + "/"
+                + ReferenceEquals(nested.GetField("InnerValue")!.FieldType, nestedFormals[1]) + "/"
+                + ReferenceEquals(pair.ReturnType.GetGenericArguments()[0], nestedFormals[0]));
+            Console.WriteLine("definition parameter member: " + ReferenceEquals(inherited.GetParameters()[0].Member, inherited) + "/"
+                + ReferenceEquals(inherited.ReturnParameter.Member, inherited) + "/"
+                + ReferenceEquals(derived.GetField("Field")!.FieldType, arrayFormal) + "/"
+                + ReferenceEquals(derived.GetProperty("Property")!.GetGetMethod()!.ReturnType, arrayFormal));
+            Console.WriteLine("definition default member: " + owner.GetDefaultMembers().Length + "/" + owner.GetDefaultMembers()[0].Name);
+            Task<MethodInfo>[] queries = new Task<MethodInfo>[4];
+            for (int i = 0; i < queries.Length; i++)
+                queries[i] = Task.Run(() => derived.GetMethod("Echo")!);
+            bool parallel = true;
+            foreach (Task<MethodInfo> query in queries)
+                parallel &= ReferenceEquals(query.Result, inherited);
+            Console.WriteLine("definition parallel: " + parallel);
+            if (forceCollection)
+                GC.Collect();
+            Console.WriteLine("definition repeated: " + ReferenceEquals(echo, owner.GetMethod("Echo")));
+            Console.WriteLine("generic definition members end");
         }
 
         internal static void RunSignatureBoundaries()

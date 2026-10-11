@@ -1013,8 +1013,8 @@ internal sealed partial class CppEmitter
         /// whole invariant: it makes <c>typeof(IMarker).IsAssignableFrom(typeof(Box&lt;&gt;))</c>
         /// answer True with nothing minted HERE — the reads this side makes are lookup-only,
         /// and a closed entry a typeof-only program never instantiates was minted upstream by
-        /// the wiring pass — while every relation spelled in the definition's own parameters
-        /// stays False by construction, because no row here can name one.</para>
+        /// the wiring pass. Relations spelled in the definition's parameters are absent from
+        /// these hot rows; cold reflection resolves its symbolic base separately.</para>
         ///
         /// <para>Rows are filtered by the definedness test rather than force-emitted, exactly
         /// as RenderItfTables filters its own, so the answer degrades to a SUBSET of .NET's
@@ -1073,12 +1073,9 @@ internal sealed partial class CppEmitter
             bool Eligible(ClassInfo c) => !c.IsEnum
                 && !_e._emit.Contains(c)
                 && !topo.Contains(c)
-                // A runtime-OWNED type's ti_ is the runtime's own definition —
-                // minting a minimal one here would be the second identity this
-                // table exists to prevent. Not subsumed by the TypeInfoExprOf
-                // comparison below, which holds for every class since the Class
-                // arm answers "&" + CppTypeInfoName.
-                && !CoreIntrinsics.RuntimeOwnsTypeInfo(c)
+                // Runtime handles already supply identity. Bound handles receive
+                // full metadata through the class-major pass, never a minimal const TI.
+                && CoreIntrinsics.RuntimeTypeInfoSymbol(c) is null
                 && MethodCompiler.TypeInfoExprOf(TypeDesc.MakeClass(c)) == "&" + c.CppTypeInfoName;
             var result = _c.ReferencedTypes.Where(Eligible).ToHashSet();
             var pending = result.ToList();
@@ -1335,13 +1332,13 @@ internal sealed partial class CppEmitter
                 var defAnc = _c.OpenGenericDefAncestry(c.Module, c.Handle);
                 var (dfBase, dfItfs, dfItfCount) =
                     GenericDefRelations(defBase, defAnc.Base, defAnc.Interfaces, c.IsValueType, c.IsInterface);
-                _e.EmitTypeInfo(_sb, defSym, new TypeMetadata {
+                _e.EmitTypeInfo(_sb, defSym, GenericDefinitionMembers(new TypeMetadata {
                     Native = _c.UsesNativeReflectionMetadata(gi.DefName),
                     Name = gi.DefName, Base = dfBase, Interfaces = dfItfs, InterfaceCount = dfItfCount,
                     Flags = defFlags, GenericDef = "&" + defSym, TypeObject = "&ty_" + defSym,
                     GenericParamNames = Compilation.GenericParamNames(c.Module, c.Handle),
                     AssemblyName = string.IsNullOrEmpty(c.Module.AssemblyName) ? null : c.Module.AssemblyName,
-                });
+                }));
                 _sb.AppendLine($"const Dn2CppType ty_{defSym} = {{ {{ &dn2cpp_type_type }}, &{defSym} }};");
             }
             foreach (var c in _e._referencedIntrinsicTis)
@@ -1656,13 +1653,13 @@ internal sealed partial class CppEmitter
                 // trailing 0-fill convention would otherwise leave implicit (formatspec, ilAttrs,
                 // metadataToken, defaultMemberName); an invariant one stops at typeObject exactly
                 // as before, so its text is unchanged.
-                _e.EmitTypeInfo(_sb, sym, new TypeMetadata {
+                _e.EmitTypeInfo(_sb, sym, GenericDefinitionMembers(new TypeMetadata {
                     Native = _c.UsesNativeReflectionMetadata(gi.DefName),
                     Name = gi.DefName, Base = relBase, Interfaces = relItfs, InterfaceCount = relItfCount,
                     Flags = defFlags, GenericDef = "&" + sym, TypeObject = "&ty_" + sym, VarianceMask = varMask,
                     GenericParamNames = Compilation.GenericParamNames(cls.Module, cls.Handle),
                     AssemblyName = string.IsNullOrEmpty(cls.Module.AssemblyName) ? null : cls.Module.AssemblyName,
-                });
+                }));
                 _sb.AppendLine($"const Dn2CppType ty_{sym} = {{ {{ &dn2cpp_type_type }}, &{sym} }};");
             }
 
@@ -1717,12 +1714,12 @@ internal sealed partial class CppEmitter
                 var synthAnc = _c.OpenGenericDefAncestryByName(defName);
                 var (synthBase, synthItfs, synthItfCount) = GenericDefRelations(
                     symBase, synthAnc.Base, synthAnc.Interfaces, synthValueType, synthInterface);
-                _e.EmitTypeInfo(_sb, sym, new TypeMetadata {
+                _e.EmitTypeInfo(_sb, sym, GenericDefinitionMembers(new TypeMetadata {
                     Native = _c.UsesNativeReflectionMetadata(defName),
                     Name = defName, Base = synthBase, Interfaces = synthItfs, InterfaceCount = synthItfCount,
                     Flags = defFlags, GenericDef = "&" + sym, TypeObject = "&ty_" + sym, GenericParamNames = def.ParamNames,
                     IlAttrs = synthAttrs, MetadataToken = synthToken, AssemblyName = synthAssembly,
-                });
+                }));
                 _sb.AppendLine($"const Dn2CppType ty_{sym} = {{ {{ &dn2cpp_type_type }}, &{sym} }};");
             }
 
@@ -2699,8 +2696,12 @@ internal sealed partial class CppEmitter
         // boxes in a getter thunk instead.
         private (string Get, long Bits) RenderLiteral(ClassInfo cls, FieldInfo f,
             FieldDefinitionHandle handle, string fieldTypeInfo)
+            => RenderLiteral(cls.Module, f.Type, $"fldget_{cls.CppName}_{f.CppName}", handle, fieldTypeInfo);
+
+        private (string Get, long Bits) RenderLiteral(Module module, TypeDesc type, string name,
+            FieldDefinitionHandle handle, string fieldTypeInfo)
         {
-            var reader = cls.Module.Reader;
+            var reader = module.Reader;
             var constantHandle = reader.GetFieldDefinition(handle).GetDefaultValue();
             if (constantHandle.IsNil)
                 return ("nullptr", 0);
@@ -2714,10 +2715,10 @@ internal sealed partial class CppEmitter
             else if (ConstantPrimitive(constant.TypeCode) is { } primitive)
             {
                 long bits = ReadConstantBits(constant.TypeCode, blob);
-                bool enumField = f.Type is { Kind: TypeKind.Class, Class.IsEnum: true }
+                bool enumField = type is { Kind: TypeKind.Class, Class.IsEnum: true }
                     && fieldTypeInfo != "&dn2cpp_object_type"
                     && primitive is not (PrimitiveTypeCode.Single or PrimitiveTypeCode.Double);
-                if (enumField || (f.Type.Kind == TypeKind.Primitive && f.Type.Primitive == primitive))
+                if (enumField || (type.Kind == TypeKind.Primitive && type.Primitive == primitive))
                     return ("nullptr", bits);
                 bool wide = primitive is PrimitiveTypeCode.Int64 or PrimitiveTypeCode.UInt64
                     or PrimitiveTypeCode.Double;
@@ -2731,15 +2732,18 @@ internal sealed partial class CppEmitter
             {
                 return ("nullptr", 0);
             }
-            string name = $"fldget_{cls.CppName}_{f.CppName}";
             _sb.AppendLine($"static Dn2CppObject* {name}(Dn2CppObject*) {{ {body} }}");
             return ($"&{name}", 0);
         }
 
         private string RenderParameterDefault(MethodInfo method, ParameterHandle handle,
             TypeDesc type, string name)
+            => RenderParameterDefault(method.Module, handle, type, name);
+
+        private string RenderParameterDefault(Module module, ParameterHandle handle,
+            TypeDesc type, string name)
         {
-            var reader = method.Module.Reader;
+            var reader = module.Reader;
             var parameter = reader.GetParameter(handle);
             string? body = null;
             var constantHandle = parameter.GetDefaultValue();

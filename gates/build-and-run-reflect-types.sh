@@ -758,16 +758,16 @@ DN2CPP_OUT_SUFFIX=-diet DN2CPP_STRICT_COMPLETION=1 \
 DN2CPP_OUT_SUFFIX=-native DN2CPP_STRICT_COMPLETION=1 \
     ordinary_fixture_diff_gate ReflectTypes OrdinaryReflectionTypeLeaves \
     System.Collections System.ComponentModel.Primitives --no-ildiet --no-metadata-compression
-# With no attribute read, only the unwalked-row notes reach a chain level a row's
-# Type argument mints, so the deepest level's row must still render.
+# With no attribute read, the closed owner's retained row must reach the deepest
+# Type argument. Interning may share that row with its generic definition.
 gate_extra_asserts() {
     local out="$1" native
-    grep -qw 'attrtab_ReflectAttrUnread_ChainSecond_Int32' "$out"/generated*.cpp "$out/generated.h" \
-        || { echo "FAIL: attribute chain's deepest row did not render" >&2; return 1; }
+    python3 gates/fixtures/unread-attribute-rows/check-chain.py "$out" || return $?
     native=$(run_bounded "$out/UnreadAttributeRowsOnly$EXE_EXT") || return $?
     grep -Fxq 'chain holder: ChainHolder' <<< "$(strip_cr_win "$native")" \
         || { echo "FAIL: attribute chain block did not run" >&2; return 1; }
 }
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/unread-attribute-rows/check-chain.py" \
 DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectTypes UnreadAttributeRowsOnly --no-ildiet
 unset -f gate_extra_asserts
 DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectTypes DataOnlyAttributeRowsOnly --no-ildiet

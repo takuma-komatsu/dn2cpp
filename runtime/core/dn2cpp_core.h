@@ -1680,6 +1680,7 @@ Dn2CppArrayRef* dn2cpp_type_get_generic_arguments(Dn2CppType* t);
 Dn2CppArrayRef* dn2cpp_type_get_generic_parameter_constraints(Dn2CppType* t);
 bool dn2cpp_type_metadata_only(const Dn2CppTypeInfo* ti);
 void dn2cpp_type_ensure_metadata_relations(const Dn2CppTypeInfo* ti);
+const Dn2CppTypeInfo* dn2cpp_type_reflection_base(const Dn2CppTypeInfo* ti);
 void dn2cpp_type_ensure_metadata_assignability(const Dn2CppTypeInfo* ti);
 Dn2CppType* dn2cpp_type_make_generic(Dn2CppType* def, Dn2CppArrayRef* args);
 

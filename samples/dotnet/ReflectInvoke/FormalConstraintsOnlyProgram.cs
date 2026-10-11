@@ -12,6 +12,16 @@ internal static class FormalConstraintsOnlyProgram
     {
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+        if (args.Length > 0 && (args[0] == "generic-definition-relations-cold" || args[0] == "generic-definition-relations-warm"))
+        {
+            ReflectGenericMethodSubset.Program.RunGenericDefinitionRelations(args[0] == "generic-definition-relations-warm");
+            return;
+        }
+        if (args.Length > 0 && args[0] == "generic-definition-members")
+        {
+            ReflectGenericMethodSubset.Program.RunGenericDefinitionMembers();
+            return;
+        }
         if (args.Length > 0 && args[0] == "open-generic-signatures")
         {
             ReflectGenericMethodSubset.Program.RunOpenSignatures();
