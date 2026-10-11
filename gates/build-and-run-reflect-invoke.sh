@@ -33,7 +33,8 @@
 # The metadata codec probe checks shared missing-body/invoker refusals through every entry.
 # Generic method lookups and enumeration return one definition with stable parameter identities.
 # Formal parameters retain their defining assembly and refuse allocation and open type composition.
-# Mixed member lookups share generic definition identities; open signature types and constraints are refused.
+# Mixed member lookups share generic definition identities; public open signature composition is refused.
+# Formal constraints preserve typical type/method parameters, recursive identities and transitive interfaces.
 # A formal parameter's declaring and reflected types share the typical owner, independent of the lookup.
 # Special constraints classify formal parameters; unavailable unused signatures never force eager decode.
 # Metadata-answerable generic definitions retain formal names and special attributes.
@@ -244,6 +245,7 @@ py="$(resolve_python)"
 source gates/_delegate-identity.sh
 source gates/_reflection-signature-types.sh
 source gates/_headerless-reference-identity.sh
+source gates/_formal-constraint-metadata.sh
 source gates/_pointer-array-types.sh
 source gates/_runtime-lifetime-interfaces.sh
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/ReflectInvoke/ArrayCloneInterfaceSubset.cs samples/dotnet/ReflectInvoke/ArrayCloneReflectionOnlySubset.cs"
@@ -350,6 +352,7 @@ gate_empty_string_clone_asserts() {
 gate_extra_asserts() {
     headerless_managed_reference_asserts "$1"
     gate_virtual_delegate_prefix_asserts "$1"
+    formal_constraint_prefix_asserts "$1"
     gate_runtime_owned_delegate_prefix_asserts "$1"
     gate_reflection_signature_prefix_asserts "$1"
     gate_pointer_array_prefix_asserts "$1"
@@ -990,29 +993,12 @@ gate_extra_asserts() {
         grep -Fxq -- 'signature RefShape closed return=type:System.Int32|parameter=False|contains=False' <<< "$boundary"
         grep -Fxq -- 'signature RefShape closed return-parameter=type:System.Int32|parameter=False|contains=False' <<< "$boundary"
         grep -Fxq -- 'signature RefShape closed parameter=type:System.Int32&|parameter=False|contains=False' <<< "$boundary"
-        if [ "$axis" = native ]; then
-            for line in Unconstrained ValueConstrained InterfaceConstrained ReferenceConstrained BaseConstrained; do
-                grep -Fxq -- "signature constraints $line fault=PlatformNotSupportedException" <<< "$boundary"
-            done
-        else
-            for line in 'signature RefShape closed parameter=type:System.Int32&|parameter=False|contains=False' \
-                'signature constraints Unconstrained count=0' 'signature constraints ValueConstrained count=1' \
-                'signature constraints ValueConstrained type=System.ValueType' \
-                'signature constraints InterfaceConstrained count=1' \
-                'signature constraints InterfaceConstrained type=ReflectGenericMethodSubset.IDefinitionConstraint' \
-                'signature constraints ReferenceConstrained count=0' 'signature constraints BaseConstrained count=1' \
-                'signature constraints BaseConstrained type=ReflectGenericMethodSubset.DefinitionConstraintBase'; do
-                grep -Fxq -- "$line" <<< "$boundary"
-            done
-        fi
-        if [ "$axis" = native ]; then
-            expected='System.Object'
-            grep -Fxq -- 'signature constrained InterfaceConstrained interfaces=0' <<< "$boundary"
-        else
-            expected='ReflectGenericMethodSubset.DefinitionConstraintBase'
-            grep -Fxq -- 'signature constrained InterfaceConstrained interfaces=1' <<< "$boundary"
-            grep -Fxq -- 'signature constrained InterfaceConstrained interface=ReflectGenericMethodSubset.IDefinitionConstraint' <<< "$boundary"
-        fi
+        for line in 'signature constraints Unconstrained count=0' 'signature constraints ValueConstrained count=1'             'signature constraints ValueConstrained type=System.ValueType'             'signature constraints InterfaceConstrained count=1'             'signature constraints InterfaceConstrained type=ReflectGenericMethodSubset.IDefinitionConstraint'             'signature constraints ReferenceConstrained count=0' 'signature constraints BaseConstrained count=1'             'signature constraints BaseConstrained type=ReflectGenericMethodSubset.DefinitionConstraintBase'; do
+            grep -Fxq -- "$line" <<< "$boundary"
+        done
+        expected='ReflectGenericMethodSubset.DefinitionConstraintBase'
+        grep -Fxq -- 'signature constrained InterfaceConstrained interfaces=1' <<< "$boundary"
+        grep -Fxq -- 'signature constrained InterfaceConstrained interface=ReflectGenericMethodSubset.IDefinitionConstraint' <<< "$boundary"
         grep -Fxq -- "signature constrained BaseConstrained base=$expected" <<< "$boundary"
         grep -Fxq -- 'signature constrained BaseConstrained interfaces=0' <<< "$boundary"
         grep -Fxq -- 'signature constrained InterfaceConstrained base=System.Object' <<< "$boundary"
@@ -1715,6 +1701,10 @@ gate_extra_asserts() {
 # This gate measures C++ member inference from the original assembly metadata.
 # Managed preservation is covered by build-and-run-preserve-control.sh.
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|managed-format-provider-identity|before-headerless-reference-identity"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_formal-constraint-metadata.sh samples/dotnet/ReflectInvoke/FormalConstraintsOnly.csproj samples/dotnet/ReflectInvoke/FormalConstraintsOnlyProgram.cs samples/dotnet/TrimReflectLib/TrimReflectLib.csproj samples/dotnet/TrimReflectLib/Lib.cs samples/dotnet/MultiAssemblyAlias/MultiAssemblyAlias.csproj samples/dotnet/MultiAssemblyAlias/FormalConstraintCollision.cs"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|formal-constraints:packed,native,uncompressed,trimmed,unshared,parallel,recursive,closed-synth|formal-constraints-unshared-build:-p:FormalConstraintsUnshared=true|formal-constraints-prefix:before-formal-constraint-metadata|stripped-formal-constraints:repeated-owner-guard"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/reflection-unused-signatures/Ext/ConstraintCollision.cs"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|formal-constraints:scoped-nongeneric,unloaded-identity,lazy-relations,finite-nested,unloaded-scoped-leaves,nested-assignability"
 reflection_layout_axis=default
 DN2CPP_STRICT_COMPLETION=1 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|strict-completion" \
     corelib_diff_gate ReflectInvoke --no-ildiet System.ComponentModel.TypeConverter
@@ -2782,3 +2772,5 @@ reflection_signature_diff_axes
 
 pointer_array_diff_axes
 runtime_lifetime_diff_routes
+
+formal_constraint_diff_axes

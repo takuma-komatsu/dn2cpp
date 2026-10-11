@@ -307,6 +307,9 @@ namespace ExceptionMessageSubset
             if (args.Length > 0 && args[0] == "before-aggregate-serialization")
                 return;
             ExceptionGetObjectData.RunAggregateSerializationReachability();
+            if (args.Length > 0 && args[0] == "before-member-access-constructors")
+                return;
+            RuntimeHResultSubset.RunMemberAccessConstructors();
         }
     }
 }

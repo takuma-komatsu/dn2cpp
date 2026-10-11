@@ -1294,6 +1294,7 @@ internal static partial class CoreIntrinsics
         // same check the RankException row above covers.
         ["System.ArrayTypeMismatchException"] = "&dn2cpp_array_type_mismatch_exception_type",
         ["System.MissingMethodException"] = "&dn2cpp_missing_method_exception_type",
+        ["System.MemberAccessException"] = "&dn2cpp_member_access_exception_type",
         // FieldInfo.SetValue's refusal of a constant or a static read-only field.
         ["System.FieldAccessException"] = "&dn2cpp_field_access_exception_type",
         // MethodBase.Invoke's fault on a static abstract interface member.

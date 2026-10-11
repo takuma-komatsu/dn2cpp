@@ -344,6 +344,10 @@ namespace ReflectInvoke
             if (args.Length > 0 && args[0] == "before-headerless-reference-identity")
                 return;
             HeaderlessReferenceIdentitySubset.Program.Run();
+            if (args.Length > 0 && args[0] == "before-formal-constraint-metadata")
+                return;
+            // CLR string MemberwiseClone precedes this; collection probes run in the isolated driver.
+            ReflectGenericMethodSubset.Program.RunConstraintMetadata(false);
         }
     }
 }

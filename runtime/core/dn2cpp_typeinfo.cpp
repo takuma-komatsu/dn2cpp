@@ -669,7 +669,7 @@ void dn2cpp_enum_set_interfaces(const Dn2CppInterfaceEntry* entries, int32_t cou
 // can name the SAME handle the trap helpers stamp. Each is based on its nearest CLR
 // ancestor that has a handle (forward-referenceable — declared in the header), so e.g.
 // a runtime-trapped ArgumentNullException is caught by `catch (ArgumentException)`. An
-// ancestor without one — SystemException, ExternalException, MemberAccessException,
+// ancestor without one — SystemException, ExternalException,
 // MissingMemberException — is an emitted type-info only the image can name; a CoreLib
 // image defines every one and its init prologue splices it in
 // (dn2cpp_intrinsic_set_base), so the chain is .NET's.
@@ -824,6 +824,10 @@ Dn2CppTypeInfo dn2cpp_target_parameter_count_exception_type =
 const Dn2CppType dn2cpp_target_parameter_count_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_target_parameter_count_exception_type };
 // Activator/ConstructorInfo constructor resolution with no matching ctor,
 // matching .NET's MissingMethodException.
+extern const Dn2CppType dn2cpp_member_access_exception_type_obj;
+Dn2CppTypeInfo dn2cpp_member_access_exception_type =
+    dn2cpp_ti_with_typeobject({ "System.MemberAccessException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_member_access_exception_type_obj);
+const Dn2CppType dn2cpp_member_access_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_member_access_exception_type };
 extern const Dn2CppType dn2cpp_missing_method_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_missing_method_exception_type =
     dn2cpp_ti_with_typeobject({ "System.MissingMethodException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_missing_method_exception_type_obj);
@@ -1101,7 +1105,7 @@ Dn2CppType* dn2cpp_type_make_compound(Dn2CppType* type, int32_t kind)
     const Dn2CppTypeInfo* ti = dn2cpp_type_require(type);
     if (dn2cpp_signature_kind(ti) == 2)
         dn2cpp_throw_type_load();
-    if ((ti->flags & (DN2CPP_TF_GENERICPARAM | DN2CPP_TF_GENERICDEF)) != 0)
+    if (dn2cpp_type_contains_generic_parameters(ti))
         dn2cpp_throw_platform_not_supported("Reflection: composed open generic signature types are not supported");
     return dn2cpp_get_type_from_handle(dn2cpp_compound_type(kind, 0, &ti, 1));
 }
@@ -1326,7 +1330,8 @@ Dn2CppString* dn2cpp_type_fullname(const Dn2CppTypeInfo* ti)
 {
     const Dn2CppTypeInfo* leaf = ti;
     while (leaf->elementType != nullptr) leaf = leaf->elementType;
-    if ((leaf->flags & DN2CPP_TF_GENERICPARAM) != 0 || dn2cpp_signature_kind(leaf) == 3)
+    if (((ti->flags & DN2CPP_TF_GENERICDEF) == 0 && dn2cpp_type_contains_generic_parameters(ti))
+        || dn2cpp_signature_kind(leaf) == 3)
         return nullptr;
     return dn2cpp_type_display(ti, true);
 }
@@ -1474,6 +1479,7 @@ int32_t dn2cpp_type_is_primitive(const Dn2CppTypeInfo* ti)
 Dn2CppType* dn2cpp_type_base_type(Dn2CppType* a)
 {
     const Dn2CppTypeInfo* ti = dn2cpp_type_require(a);
+    dn2cpp_type_ensure_metadata_relations(ti);
     if (ti->base != nullptr)
         return dn2cpp_get_type_from_handle(ti->base);
     // Chain ended. A reference type's chain stops here instead of pointing at the
@@ -1529,6 +1535,10 @@ int32_t dn2cpp_type_is_assignable_from(Dn2CppType* a, Dn2CppType* b)
     dn2cpp_type_require(a);
     if (b == nullptr)
         return 0;
+    if (a->typeInfo == b->typeInfo || a->typeInfo == &dn2cpp_object_type)
+        return dn2cpp_typeinfo_assignable(b->typeInfo, a->typeInfo);
+    dn2cpp_type_ensure_metadata_assignability(a->typeInfo);
+    dn2cpp_type_ensure_metadata_assignability(b->typeInfo);
     // ONE rule with isinst (dn2cpp_typeinfo_assignable): a.IsAssignableFrom(b)
     // is exactly "is a b-headed instance an a?", so it must run the same walk a
     // cast runs — base chain + interface rows, generic variance, and the array
@@ -1558,6 +1568,9 @@ int32_t dn2cpp_type_is_instance_of_type(Dn2CppType* a, Dn2CppObject* obj)
     if (obj == nullptr)
         return 0;
     const Dn2CppTypeInfo* ta = a->typeInfo;
+    if (dn2cpp_type_contains_generic_parameters(ta))
+        return 0;
+    dn2cpp_type_ensure_metadata_relations(ta);
     if (ta == &dn2cpp_object_type)
         return 1;
     return dn2cpp_isinst(obj, ta) != nullptr ? 1 : 0;
@@ -1574,6 +1587,11 @@ int32_t dn2cpp_type_is_subclass_of(Dn2CppType* a, Dn2CppType* c)
         dn2cpp_throw_argument_null_param("type");
     const Dn2CppTypeInfo* ta = a->typeInfo;
     const Dn2CppTypeInfo* tc = c->typeInfo;
+    if (ta == tc)
+        return 0;
+    if ((ta->flags & DN2CPP_TF_GENERICPARAM) != 0 && tc == &dn2cpp_object_type)
+        return dn2cpp_typeinfo_assignable(ta, tc);
+    dn2cpp_type_ensure_metadata_relations(ta);
     if (dn2cpp_signature_kind(ta) != 0)
         return tc == &dn2cpp_object_type ? 1 : 0;
     // An array's real .NET base chain is System.Array -> System.Object, but array

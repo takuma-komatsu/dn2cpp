@@ -672,7 +672,7 @@ internal sealed partial class CppEmitter
     /// numbers land in output bytes, so the class-major rendering order and the
     /// monotonic per-kind counters are part of the output contract (see the
     /// class-major loop in <see cref="Emit"/>).</summary>
-    private sealed class TypeMetadataEmitter
+    private sealed partial class TypeMetadataEmitter
     {
         private readonly CppEmitter _e;
         private readonly Compilation _c;
@@ -1434,6 +1434,7 @@ internal sealed partial class CppEmitter
             // Before anything is forward-declared: note every array and enum the
             // reflection tables below will type a member or a generic argument with, so its
             // precise ti_arr_ or enum ti_ is declared and emitted like a body-noted one.
+            NoteConstraintMetadata();
             NoteReflectedMemberTypes();
 
             // The note pass also discovers custom-modifier types. Unlike member
@@ -1595,6 +1596,8 @@ internal sealed partial class CppEmitter
                 _sb.AppendLine($"const Dn2CppType ty_{en.CppName} = {{ {{ &dn2cpp_type_type }}, {_e.TypeInfoRef(en, "enum ty_ companion")} }};");
             }
             _e._metadataNativeRows = false;
+
+            EmitConstraintMetadata();
 
             // Generic open-definition type-infos: one synthetic Dn2CppTypeInfo per
             // distinct closed-generic definition, so GetGenericTypeDefinition() returns a
@@ -3279,8 +3282,10 @@ internal sealed partial class CppEmitter
                 foreach (var handle in handles)
                 {
                     var parameter = reader.GetGenericParameter(handle);
+                    var constraints = ConstraintTypes(m.Module, handle);
+                    string vector = RenderConstraintVector(constraints);
                     entries[parameter.Index] = "{ \"" + CLiteral(reader.GetString(parameter.Name))
-                        + "\", " + (int)parameter.Attributes + " }";
+                        + "\", " + (int)parameter.Attributes + ", " + vector + ", " + constraints.Length + " }";
                 }
                 _e._metadataHeader.AppendLine($"extern const Dn2CppMethodGenericParameter {symbol}[{handles.Count}];");
                 _sb.AppendLine($"extern const Dn2CppMethodGenericParameter {symbol}[] = {{ {string.Join(", ", entries)} }};");

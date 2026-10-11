@@ -93,4 +93,16 @@ internal static class RuntimeHResultSubset
         Fault("explicit HRESULT", () => Marshal.ThrowExceptionForHR(unchecked((int)0x81234567)));
         Console.WriteLine("runtime exception HResult end");
     }
+
+    internal static void RunMemberAccessConstructors()
+    {
+        Console.WriteLine("== member access exception constructors ==");
+        var inner = new Exception("inner");
+        Exception[] values = { new MemberAccessException(), new MemberAccessException("member"), new MemberAccessException("nested", inner) };
+        foreach (Exception value in values)
+            Console.WriteLine("member access ctor: " + value.GetType().Name + "/" + value.Message + "/"
+                + value.HResult.ToString("X8") + "/" + (value.GetType().BaseType == typeof(SystemException)));
+        Console.WriteLine("member access inner: " + ReferenceEquals(values[2].InnerException, inner));
+        Console.WriteLine("member access exception constructors end");
+    }
 }

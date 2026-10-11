@@ -682,6 +682,7 @@ internal sealed partial class Compilation
         "dn2cpp_type_find_interfaces(",
         "dn2cpp_type_get_nested_types(",
         "dn2cpp_type_get_generic_arguments(",
+        "dn2cpp_type_get_generic_parameter_constraints(",
         "dn2cpp_type_get_default_members(",
         "dn2cpp_type_get_enum_names(",
         "dn2cpp_type_get_enum_values_as_underlying(",

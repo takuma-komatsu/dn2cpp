@@ -112,6 +112,13 @@ resolves against the reflected clone. Missing leaves and composed open forms
 refuse explicitly. A query dependency alone cannot promote an Invoke referent
 or discard a binding argument path.
 
+Formal parameter constraint queries resolve symbolic type and method parameter
+references against the typical declaration. They return fresh arrays over
+interned Type identities, with explicit base constraints and transitive interface
+relations. Composed constraint types are metadata-only unless an existing AOT or
+runtime-template instantiation supplies their layout. This internal recipe path
+does not widen public open signature queries, `Make*Type` or `MakeGenericMethod`.
+
 Pointer, by-reference and function-pointer companions are interned by shape and
 actual child identities for the process lifetime. They share the ordinary
 pinned Type-object interner with `typeof` and the `Make*Type` queries. Negative

@@ -948,6 +948,12 @@ void dn2cpp_throw_invalid_operation_msg(const char* message)
 // Constructor-resolution miss (Activator.CreateInstance and friends): a
 // catchable MissingMethodException carrying the diagnosable reason, like the
 // dynamic-codegen PNSE trap below.
+void dn2cpp_throw_member_access(const char* message)
+{
+    dn2cpp_throw(dn2cpp_exception_new(&dn2cpp_member_access_exception_type,
+        dn2cpp_string_from_utf8(message, static_cast<int32_t>(std::strlen(message))), nullptr));
+}
+
 void dn2cpp_throw_missing_method(const char* message)
 {
     dn2cpp_throw(dn2cpp_exception_new(&dn2cpp_missing_method_exception_type,
@@ -1078,6 +1084,7 @@ static int32_t dn2cpp_exception_default_hresult(const Dn2CppTypeInfo* ti)
         { &dn2cpp_target_exception_type, 0x80131603u },
         { &dn2cpp_target_parameter_count_exception_type, 0x8002000Eu },
         { &dn2cpp_missing_method_exception_type, 0x80131513u },
+        { &dn2cpp_member_access_exception_type, 0x8013151Au },
         { &dn2cpp_field_access_exception_type, 0x80131507u },
         { &dn2cpp_bad_image_format_exception_type, 0x8007000Bu },
         { &dn2cpp_missing_manifest_resource_exception_type, 0x80131532u },
