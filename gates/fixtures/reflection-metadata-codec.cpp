@@ -344,6 +344,9 @@ int main()
     require(std::strcmp(failed_formal->typeInfo->name, "U") == 0
         && dn2cpp_type_generic_parameter_attributes(failed_formal->typeInfo) == 0,
         "unresolved constraints cannot prevent formal identity queries");
+    auto* failed_declaring = dn2cpp_type_generic_parameter_declaring_method(failed_formal->typeInfo);
+    require(failed_declaring->method.identity() == &failed_method && failed_declaring->isGenericDefView != 0,
+        "formal declaring methods preserve token-zero row identity without resolving constraints");
     for (int attempt = 0; attempt < 2; attempt++)
     {
         bool refused = false;
@@ -356,6 +359,8 @@ int main()
         require(refused, "failed constraint initialization must not publish partial answers on retry");
         require(dn2cpp_methodref_get_generic_arguments(&failed_reference)->data[0] == reinterpret_cast<Dn2CppObject*>(failed_formal),
             "a failed relation query preserves the formal identity");
+        require(dn2cpp_type_generic_parameter_declaring_method(failed_formal->typeInfo) == failed_declaring,
+            "failed constraint completion cannot change a formal declaring method");
     }
     static const Dn2CppGenericTypeMetadata failed_owner_metadata{&failed_parameter, 1, nullptr, nullptr, 0, true};
     static const Dn2CppTypeReflection failed_owner_reflection = [] {
@@ -378,6 +383,9 @@ int main()
     owner_reference.method = &owner_method;
     auto* owner_formal = reinterpret_cast<Dn2CppType*>(dn2cpp_type_get_generic_arguments(dn2cpp_get_type_from_handle(&failed_owner))->data[0]);
     Dn2CppObject* method_formal = dn2cpp_methodref_get_generic_arguments(&owner_reference)->data[0];
+    auto* owner_declaring = dn2cpp_type_generic_parameter_declaring_method(reinterpret_cast<Dn2CppType*>(method_formal)->typeInfo);
+    require(owner_declaring->method.identity() == &owner_method && owner_declaring->reflectedType == &failed_owner,
+        "a formal declaring method retains its typical owner without resolving owner constraints");
     for (int attempt = 0; attempt < 2; attempt++)
     {
         bool refused = false;
@@ -391,6 +399,8 @@ int main()
             "unresolved owner relations cannot leave a method parameter context partially initialized");
         require(dn2cpp_type_get_generic_parameter_constraints(reinterpret_cast<Dn2CppType*>(method_formal))->length == 0,
             "an unconstrained method formal does not require its owner's unresolved constraints");
+        require(dn2cpp_type_generic_parameter_declaring_method(reinterpret_cast<Dn2CppType*>(method_formal)->typeInfo) == owner_declaring,
+            "failed owner completion cannot change a formal declaring method");
     }
     static const Dn2CppTypeInfo layoutless_definition = [] {
         Dn2CppTypeInfo ti{};

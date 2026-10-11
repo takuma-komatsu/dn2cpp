@@ -2879,6 +2879,7 @@ struct Dn2CppFormalType
     const Dn2CppTypeInfo* declaringType = nullptr;
     Dn2CppTypeReflection reflection{};
     const Dn2CppMethodGenericParameter* descriptor = nullptr;
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> declaringMethod;
     std::vector<const Dn2CppTypeInfo*> typeArguments;
     std::vector<const Dn2CppTypeInfo*> methodArguments;
     std::vector<const Dn2CppTypeInfo*> constraints;
@@ -3142,6 +3143,7 @@ static const Dn2CppTypeInfo* dn2cpp_method_parameter_type(
         {
             node->typeArguments = types;
             node->methodArguments = methods;
+            node->declaringMethod = mi;
         }
     }
     return &parameters[index]->type;
@@ -3254,6 +3256,38 @@ Dn2CppString* dn2cpp_type_generic_parameter_namespace(const Dn2CppTypeInfo* ti)
 const Dn2CppTypeInfo* dn2cpp_type_generic_parameter_declaring_type(const Dn2CppTypeInfo* ti)
 {
     return reinterpret_cast<const Dn2CppFormalType*>(ti)->declaringType;
+}
+
+Dn2CppMethodRef* dn2cpp_type_generic_parameter_declaring_method(const Dn2CppTypeInfo* ti)
+{
+    if ((ti->flags & DN2CPP_TF_GENERICPARAM) == 0)
+        dn2cpp_throw_invalid_operation();
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> method;
+    const Dn2CppTypeInfo* owner;
+    {
+        std::lock_guard<std::recursive_mutex> lock(g_formal_types_mtx);
+        const auto* node = g_formal_types.at(ti);
+        method = node->declaringMethod;
+        owner = node->declaringType;
+    }
+    if (!method)
+        return nullptr;
+    // A formal first queried through a closed owner still belongs to its typical MethodDef.
+    if (method->declaringType != owner)
+    {
+        const auto reflection = owner->reflection();
+        const int32_t token = method->metadataToken;
+        method = {};
+        for (int32_t i = 0; token != 0 && i < reflection.methodCount; i++)
+            if (reflection.methods[i]->metadataToken == token && reflection.methods[i]->genericParamCount > 0)
+            {
+                method = reflection.methods[i];
+                break;
+            }
+        if (!method)
+            dn2cpp_throw_platform_not_supported("Reflection: typical method definition metadata is not retained");
+    }
+    return dn2cpp_make_methodref_defview(method, owner);
 }
 
 static const Dn2CppTypeInfo* dn2cpp_method_definition_type(

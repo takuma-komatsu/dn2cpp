@@ -593,7 +593,10 @@ accessor roles through both attributes and link descriptors.
 
 Generic parameter constraints use immutable cold recipes on method descriptors
 and type reflection rows. Formal method parameters are interned by the typical
-MethodDef, and formal type parameters by the generic definition. Recursive
+MethodDef, and formal type parameters by the generic definition. `DeclaringMethod`
+returns that typical definition through the shared method-handle interner,
+independent of closed or inherited lookup contexts and constraint availability.
+Type formals return null; nonparameters refuse the query. Recursive
 initialization publishes identity and immutable parameter contexts under a cold
 lock before relation queries resolve dependent parameters and F-bounds.
 Reflection assignability completes nested formal relations before the shared

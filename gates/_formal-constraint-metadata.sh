@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Formal constraints and definition members preserve symbolic contexts and cold publication.
+# Formal parameters preserve declaring methods, symbolic constraints and cold member contexts.
 generic_definition_member_asserts() {
     local output="$1" line
     for line in '== generic definition members ==' \
@@ -113,6 +113,44 @@ open_signature_prefix_asserts() {
     done
 }
 
+declaring_method_asserts() {
+    local output="$1" line
+    while IFS= read -r line; do
+        test "$(grep -Fxc -- "$line" "$output")" = 1 \
+            || { echo "FAIL: declaring method witness missing or repeated: $line" >&2; return 1; }
+    done <<'WITNESSES'
+== formal parameter declaring methods ==
+declaring method typical: True/True/True/True
+declaring method contexts: True/True/True/True
+declaring method positions: True/True
+declaring method composition: True/True/InvalidOperationException
+declaring method nested: True/True
+declaring method intrinsic: True
+declaring method type formals: True
+declaring method ordinary guards: InvalidOperationException/InvalidOperationException/InvalidOperationException
+declaring method shape guards: InvalidOperationException/InvalidOperationException/InvalidOperationException/NullReferenceException
+declaring method repeated: True/True
+formal parameter declaring methods end
+WITNESSES
+}
+
+declaring_method_prefix_asserts() {
+    local out="$1" axis
+    for axis in dotnet native; do
+        if [ "$axis" = dotnet ]; then
+            run_bounded dotnet "$_CG_APP" before-formal-declaring-methods > "$out/declaring-before.$axis.raw.stdout"
+        else
+            run_bounded "$out/ReflectInvoke$EXE_EXT" before-formal-declaring-methods > "$out/declaring-before.$axis.raw.stdout"
+        fi
+        strip_cr_win_file "$out/declaring-before.$axis.raw.stdout" > "$out/declaring-before.$axis.stdout"
+        awk '/^== formal parameter declaring methods ==$/ { exit } { print }' \
+            "$out/virtual-delegate-full.$axis.stdout" > "$out/declaring-prefix.$axis.stdout"
+        diff -u "$out/declaring-before.$axis.stdout" "$out/declaring-prefix.$axis.stdout"
+        declaring_method_asserts "$out/virtual-delegate-full.$axis.stdout"
+        test "$(tail -n 1 "$out/virtual-delegate-full.$axis.stdout")" = 'formal parameter declaring methods end'
+    done
+}
+
 formal_constraint_asserts() {
     local output="$1" line
     for line in '== formal constraint metadata ==' \
@@ -161,8 +199,8 @@ formal_constraint_diff_axes() {
         mkdir -p "$out"
         local flags=() build_flags=() diet_flags=(--no-ildiet)
         case "$axis" in
-            packed) flags=(--reflection-metadata 'ReflectGenericMethodSubset.ConstraintOwner`1[ReflectGenericMethodSubset.ConstraintRoot]=packed' --reflection-metadata 'ReflectGenericMethodSubset.GenericMemberBase`1=packed'); diet_flags=() ;;
-            native) flags=(--reflection-metadata 'ReflectGenericMethodSubset.ConstraintOwner`1[ReflectGenericMethodSubset.ConstraintRoot]=native' --reflection-metadata 'ReflectGenericMethodSubset.GenericMemberBase`1=native') ;;
+            packed) flags=(--reflection-metadata 'ReflectGenericMethodSubset.ConstraintOwner`1[ReflectGenericMethodSubset.ConstraintRoot]=packed' --reflection-metadata 'ReflectGenericMethodSubset.GenericMemberBase`1=packed' --reflection-metadata 'ReflectGenericMethodSubset.DeclaringMethodOwner`1=packed' --reflection-metadata 'ReflectGenericMethodSubset.DeclaringMethodOwner`1[System.Int32]=packed'); diet_flags=() ;;
+            native) flags=(--reflection-metadata 'ReflectGenericMethodSubset.ConstraintOwner`1[ReflectGenericMethodSubset.ConstraintRoot]=native' --reflection-metadata 'ReflectGenericMethodSubset.GenericMemberBase`1=native' --reflection-metadata 'ReflectGenericMethodSubset.DeclaringMethodOwner`1=native' --reflection-metadata 'ReflectGenericMethodSubset.DeclaringMethodOwner`1[System.Int32]=native') ;;
             uncompressed) flags=(--no-metadata-compression) ;;
             trimmed) flags=(--trim-reflection) ;;
             unshared) flags=(--no-shared-generics); build_flags=(-p:FormalConstraintsUnshared=true) ;;
@@ -181,6 +219,7 @@ formal_constraint_diff_axes() {
                 grep -Eq "^(alignas\(2\) extern const uint8_t|static const Dn2CppMethodInfo) md_${representation}_methtab_ReflectGenericMethodSubset_ConstraintOwner_ReflectGenericMethodSubset_ConstraintRoot\\[\\]" "$out"/generated_m*.cpp
                 grep -Eq "^(alignas\(2\) static const uint8_t|static const Dn2CppTypeReflection) md_${representation}_refl_ti_ReflectGenericMethodSubset_ConstraintOwner_ReflectGenericMethodSubset_ConstraintRoot\\[\\]" "$out"/generated_m*.cpp
                 grep -Eq "^(alignas\(2\) static const uint8_t|static const Dn2CppMethodInfo) md_${representation}_definition_ReflectGenericMethodSubset_GenericMemberBase_1_methods\[\]" "$out"/generated*.cpp
+                grep -Eq "^(alignas\(2\) static const uint8_t|static const Dn2CppMethodInfo) md_${representation}_definition_ReflectGenericMethodSubset_DeclaringMethodOwner_1_methods\[\]" "$out"/generated*.cpp
                 ;;
         esac
         if grep -Eq '^struct ReflectGenericMethodSubset_GenericMemberBare' "$out/generated.h"; then
@@ -192,14 +231,18 @@ formal_constraint_diff_axes() {
         strip_cr_win_file "$out/native.raw.stdout" > "$out/native.stdout"
         diff -u "$out/clr.stdout" "$out/native.stdout"
         formal_constraint_asserts "$out/native.stdout"
+        declaring_method_asserts "$out/native.stdout"
+        test "$(tail -n 1 "$out/native.stdout")" = 'formal parameter declaring methods end'
         local mode
-        for mode in unloaded-method-identity unloaded-self-assignability retained-formal-members formal-interface-order constraint-scope nested-constraint nested-assignability open-generic-signatures unloaded-open-signatures generic-definition-members generic-definition-relations-cold generic-definition-relations-warm; do
+        for mode in declaring-method-cold declaring-method-reverse unloaded-method-identity unloaded-self-assignability retained-formal-members formal-interface-order constraint-scope nested-constraint nested-assignability open-generic-signatures unloaded-open-signatures generic-definition-members generic-definition-relations-cold generic-definition-relations-warm; do
             run_bounded dotnet "$out/app/FormalConstraintsOnly.dll" "$mode" > "$out/$mode.clr.raw.stdout"
             strip_cr_win_file "$out/$mode.clr.raw.stdout" > "$out/$mode.clr.stdout"
             run_bounded "$out/FormalConstraintsOnly$EXE_EXT" "$mode" > "$out/$mode.native.raw.stdout"
             strip_cr_win_file "$out/$mode.native.raw.stdout" > "$out/$mode.native.stdout"
             diff -u "$out/$mode.clr.stdout" "$out/$mode.native.stdout"
-            if [ "$mode" = open-generic-signatures ]; then
+            if [[ "$mode" = declaring-method-* ]]; then
+                declaring_method_asserts "$out/$mode.native.stdout"
+            elif [ "$mode" = open-generic-signatures ]; then
                 open_signature_asserts "$out/$mode.native.stdout"
             elif [ "$mode" = generic-definition-members ]; then
                 generic_definition_member_asserts "$out/$mode.native.stdout"
@@ -207,6 +250,16 @@ formal_constraint_diff_axes() {
                 test "$(grep -Fxc 'definition transitive relations: True/True' "$out/$mode.native.stdout")" = 1
             fi
         done
+        run_bounded dotnet "$out/app/FormalConstraintsOnly.dll" unloaded-declaring-method > "$out/unloaded-declaring.clr.raw.stdout"
+        strip_cr_win_file "$out/unloaded-declaring.clr.raw.stdout" > "$out/unloaded-declaring.clr.stdout"
+        run_bounded "$out/FormalConstraintsOnly$EXE_EXT" unloaded-declaring-method > "$out/unloaded-declaring.native.raw.stdout"
+        strip_cr_win_file "$out/unloaded-declaring.native.raw.stdout" > "$out/unloaded-declaring.native.stdout"
+        for mode in clr native; do
+            grep -Fxq 'unloaded declaring method before: True' "$out/unloaded-declaring.$mode.stdout"
+            grep -Fxq 'unloaded declaring method after: True' "$out/unloaded-declaring.$mode.stdout"
+        done
+        test "$(grep -Fxc 'unloaded declaring constraint: none' "$out/unloaded-declaring.clr.stdout")" = 2
+        test "$(grep -Fxc 'unloaded declaring constraint: PlatformNotSupportedException' "$out/unloaded-declaring.native.stdout")" = 2
         run_bounded "$out/FormalConstraintsOnly$EXE_EXT" unloaded-relations > "$out/unloaded-relations.native.raw.stdout"
         strip_cr_win_file "$out/unloaded-relations.native.raw.stdout" > "$out/unloaded-relations.native.stdout"
         test "$(grep -Fxc 'unloaded constraint query: PlatformNotSupportedException' "$out/unloaded-relations.native.stdout")" = 2
@@ -223,6 +276,7 @@ formal_constraint_diff_axes() {
         grep -Fxq 'unloaded scoped stable: True/True' "$out/unloaded-scoped.native.stdout"
         run_bounded "$out/FormalConstraintsOnly$EXE_EXT" stripped-formal-constraints > "$out/stripped.native.raw.stdout"
         strip_cr_win_file "$out/stripped.native.raw.stdout" > "$out/stripped.native.stdout"
+        grep -Fxq 'stripped declaring method: True' "$out/stripped.native.stdout"
         if [ "$axis" = trimmed ]; then
             test "$(grep -Fxc 'stripped constraint query: PlatformNotSupportedException' "$out/stripped.native.stdout")" = 2
             grep -Fxq 'stripped constraint base: PlatformNotSupportedException' "$out/stripped.native.stdout"

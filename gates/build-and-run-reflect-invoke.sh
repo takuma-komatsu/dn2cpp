@@ -33,7 +33,7 @@
 # DefaultBinder primitive widening and specificity differ from Invoke's ushort-to-char policy.
 # The metadata codec probe checks shared missing-body/invoker refusals through every entry.
 # Generic method lookups and enumeration return one definition with stable parameter identities.
-# Formal parameters retain their defining assembly and refuse allocation.
+# Formal parameters retain their typical declaring methods, defining assembly and allocation guards.
 # Open signatures and public compositions preserve formal identities without executable bodies.
 # Formal constraints preserve typical type/method parameters, recursive identities and transitive interfaces.
 # A formal parameter's declaring and reflected types share the typical owner, independent of the lookup.
@@ -359,6 +359,7 @@ gate_extra_asserts() {
     open_signature_prefix_asserts "$1"
     generic_definition_member_prefix_asserts "$1"
     reflected_event_prefix_asserts "$1"
+    declaring_method_prefix_asserts "$1"
     gate_runtime_owned_delegate_prefix_asserts "$1"
     gate_reflection_signature_prefix_asserts "$1"
     gate_pointer_array_prefix_asserts "$1"
@@ -1695,7 +1696,7 @@ gate_extra_asserts() {
 # Managed preservation is covered by build-and-run-preserve-control.sh.
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|managed-format-provider-identity|before-headerless-reference-identity"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_formal-constraint-metadata.sh samples/dotnet/ReflectInvoke/FormalConstraintsOnly.csproj samples/dotnet/ReflectInvoke/FormalConstraintsOnlyProgram.cs samples/dotnet/TrimReflectLib/TrimReflectLib.csproj samples/dotnet/TrimReflectLib/Lib.cs samples/dotnet/MultiAssemblyAlias/MultiAssemblyAlias.csproj samples/dotnet/MultiAssemblyAlias/FormalConstraintCollision.cs"
-DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|formal-constraints:packed,native,uncompressed,trimmed,unshared,parallel,recursive,closed-synth|formal-constraints-unshared-build:-p:FormalConstraintsUnshared=true|formal-constraints-prefix:before-formal-constraint-metadata|stripped-formal-constraints:repeated-owner-guard"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|formal-constraints:packed,native,uncompressed,trimmed,unshared,parallel,recursive,closed-synth|formal-declaring-methods:typical-owner,cold-reverse,token-zero,unloaded,stripped,parallel|formal-declaring-methods-prefix:before-formal-declaring-methods|formal-constraints-unshared-build:-p:FormalConstraintsUnshared=true|formal-constraints-prefix:before-formal-constraint-metadata|stripped-formal-constraints:repeated-owner-guard"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/reflection-unused-signatures/Ext/ConstraintCollision.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|open-signatures:raw-MethodDef-context,metadata-only-methods,validated-Make,parallel,unloaded|formal-constraints:scoped-nongeneric,unloaded-identity,lazy-relations,finite-nested,unloaded-scoped-leaves,nested-assignability"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|definition-members:symbolic,inheritance,typed-lookup,guards,nested,parallel,cold-warm-transitive-relations|definition-members-packed:normal-ildiet|definition-members-prefix:before-generic-definition-members"

@@ -224,8 +224,75 @@ namespace ReflectGenericMethodSubset
         public static void Pick<U>() where U : V { }
     }
 
+    class DeclaringMethodOwner<T>
+    {
+        public static U Pick<U, V>(U value) => value;
+        public static U Other<U>(U value) => value;
+    }
+
+    class DeclaringMethodChild<T> : DeclaringMethodOwner<T> { }
+
+    class DeclaringMethodOuter<T>
+    {
+        public class Inner<V>
+        {
+            public static U Pick<U>(U value) => value;
+        }
+    }
+
     static class Program
     {
+        internal static void RunDeclaringMethod(bool collect = true, bool reverse = false)
+        {
+            Console.WriteLine("== formal parameter declaring methods ==");
+            _ = DeclaringMethodOwner<int>.Pick<int, string>(3);
+            MethodInfo first = reverse ? typeof(DeclaringMethodOwner<string>).GetMethod("Pick")!
+                : typeof(DeclaringMethodOwner<int>).GetMethod("Pick")!;
+            Type parameter = first.GetGenericArguments()[0];
+            MethodBase declaring = parameter.DeclaringMethod!;
+            MethodInfo typical = typeof(DeclaringMethodOwner<>).GetMethod("Pick")!;
+            MethodInfo inherited = typeof(DeclaringMethodChild<int>).GetMethod("Pick", BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy)!;
+            Console.WriteLine("declaring method typical: " + ReferenceEquals(declaring, typical) + "/"
+                + ReferenceEquals(declaring.DeclaringType, typeof(DeclaringMethodOwner<>)) + "/"
+                + ReferenceEquals(declaring.ReflectedType, typeof(DeclaringMethodOwner<>)) + "/" + declaring.IsGenericMethodDefinition);
+            Console.WriteLine("declaring method contexts: " + ReferenceEquals(declaring, typeof(DeclaringMethodOwner<int>).GetMethod("Pick")!.GetGenericArguments()[0].DeclaringMethod) + "/"
+                + ReferenceEquals(declaring, typeof(DeclaringMethodOwner<string>).GetMethod("Pick")!.GetGenericArguments()[0].DeclaringMethod) + "/"
+                + ReferenceEquals(declaring, inherited.GetGenericArguments()[0].DeclaringMethod) + "/"
+                + ReferenceEquals(parameter, typical.GetGenericArguments()[0]));
+            Console.WriteLine("declaring method positions: " + ReferenceEquals(declaring, first.GetGenericArguments()[1].DeclaringMethod) + "/"
+                + !ReferenceEquals(declaring, typeof(DeclaringMethodOwner<int>).GetMethod("Other")!.GetGenericArguments()[0].DeclaringMethod));
+            Type foreign = typeof(DefinitionClass).GetMethod("Echo")!.GetGenericArguments()[0];
+            MethodInfo composed = first.MakeGenericMethod(foreign, typeof(string));
+            Console.WriteLine("declaring method composition: " + ReferenceEquals(composed.GetGenericArguments()[0].DeclaringMethod, foreign.DeclaringMethod) + "/"
+                + ReferenceEquals(composed.GetGenericArguments()[0].DeclaringMethod, typeof(DefinitionClass).GetMethod("Echo")) + "/"
+                + ConstraintAllocationFault(() => typeof(DeclaringMethodOwner<int>).GetMethod("Pick")!.MakeGenericMethod(typeof(int), typeof(string)).GetGenericArguments()[0].DeclaringMethod));
+            Type nested = typeof(DeclaringMethodOuter<int>.Inner<string>).GetMethod("Pick")!.GetGenericArguments()[0];
+            Console.WriteLine("declaring method nested: " + ReferenceEquals(nested.DeclaringMethod, typeof(DeclaringMethodOuter<>.Inner<>).GetMethod("Pick")) + "/"
+                + (typeof(DeclaringMethodOuter<>.Inner<>).GetGenericArguments()[1].DeclaringMethod is null));
+            MethodInfo size = typeof(Unsafe).GetMethod("SizeOf")!;
+            Console.WriteLine("declaring method intrinsic: " + ReferenceEquals(size.GetGenericArguments()[0].DeclaringMethod, size));
+            Console.WriteLine("declaring method type formals: " + (typeof(DeclaringMethodOwner<>).GetGenericArguments()[0].DeclaringMethod is null));
+            Console.WriteLine("declaring method ordinary guards: " + ConstraintAllocationFault(() => typeof(object).DeclaringMethod) + "/"
+                + ConstraintAllocationFault(() => typeof(DeclaringMethodOwner<>).DeclaringMethod) + "/"
+                + ConstraintAllocationFault(() => typeof(DeclaringMethodOwner<int>).DeclaringMethod));
+            Console.WriteLine("declaring method shape guards: " + ConstraintAllocationFault(() => parameter.MakeArrayType().DeclaringMethod) + "/"
+                + ConstraintAllocationFault(() => parameter.MakeByRefType().DeclaringMethod) + "/"
+                + ConstraintAllocationFault(() => parameter.MakePointerType().DeclaringMethod) + "/"
+                + ConstraintAllocationFault(() => ((Type)null!).DeclaringMethod));
+            Task<MethodBase?>[] queries = new Task<MethodBase?>[4];
+            for (int i = 0; i < queries.Length; i++)
+                queries[i] = Task.Run(() => typeof(DeclaringMethodOwner<string>).GetMethod("Pick")!.GetGenericArguments()[0].DeclaringMethod);
+            bool stable = true;
+            foreach (Task<MethodBase?> query in queries)
+                stable &= ReferenceEquals(declaring, query.Result);
+            for (int i = 0; i < 32; i++)
+                stable &= ReferenceEquals(declaring, parameter.DeclaringMethod);
+            if (collect)
+                GC.Collect();
+            Console.WriteLine("declaring method repeated: " + stable + "/" + ReferenceEquals(declaring, parameter.DeclaringMethod));
+            Console.WriteLine("formal parameter declaring methods end");
+        }
+
         internal static void RunNestedConstraint()
         {
             Type parameter = typeof(ConstraintOwner<ConstraintRoot>).GetMethod("Nested")!.GetGenericArguments()[0];
