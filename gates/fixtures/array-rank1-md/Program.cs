@@ -208,6 +208,43 @@ foreach (var (name, signature) in arrays)
             castBody, MetadataTokens.ParameterHandle(1));
     }
 }
+TypeReferenceHandle arrayRef = metadata.AddTypeReference(coreRef,
+    metadata.GetOrAddString("System"), metadata.GetOrAddString("Array"));
+TypeSpecificationHandle objectArray = metadata.AddTypeSpecification(
+    metadata.GetOrAddBlob(new byte[] { 0x14, 0x1c, 1, 0, 0 }));
+MemberReferenceHandle address = metadata.AddMemberReference(objectArray,
+    metadata.GetOrAddString("Address"), metadata.GetOrAddBlob(new byte[] { 0x20, 1, 0x10, 0x1c, 0x08 }));
+foreach (bool readOnly in new[] { false, true })
+{
+    BlobBuilder accessSignature = new();
+    new BlobEncoder(accessSignature).MethodSignature().Parameters(readOnly ? 2 : 3,
+        result => { if (readOnly) result.Type().Object(); else result.Void(); },
+        parameters =>
+        {
+            parameters.AddParameter().Type().Type(arrayRef, false);
+            parameters.AddParameter().Type().Int32();
+            if (!readOnly) parameters.AddParameter().Type().Object();
+        });
+    BlobBuilder accessInstructions = new();
+    InstructionEncoder accessCode = new(accessInstructions);
+    accessCode.OpCode(ILOpCode.Ldarg_0);
+    accessCode.OpCode(ILOpCode.Castclass);
+    accessCode.Token(objectArray);
+    accessCode.OpCode(ILOpCode.Ldarg_1);
+    if (readOnly) accessCode.OpCode(ILOpCode.Readonly);
+    accessCode.Call(address);
+    if (readOnly) accessCode.OpCode(ILOpCode.Ldind_ref);
+    else
+    {
+        accessCode.OpCode(ILOpCode.Ldarg_2);
+        accessCode.OpCode(ILOpCode.Stind_ref);
+    }
+    accessCode.OpCode(ILOpCode.Ret);
+    int accessBody = bodyEncoder.AddMethodBody(accessCode, maxStack: 2);
+    metadata.AddMethodDefinition(MethodAttributes.Public | MethodAttributes.Static, MethodImplAttributes.IL,
+        metadata.GetOrAddString(readOnly ? "ReadAt" : "WriteAt"), metadata.GetOrAddBlob(accessSignature),
+        accessBody, MetadataTokens.ParameterHandle(1));
+}
 if (metadataOnly)
 {
     BlobBuilder getterSignature = new();

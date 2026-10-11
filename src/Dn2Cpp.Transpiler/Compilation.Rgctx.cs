@@ -2238,6 +2238,20 @@ internal sealed partial class Compilation
         if (CppEmitter.HasSignatureShape(t))
             throw new NotSupportedException("rgctx: signature type identity requires its closed body");
         NoteTypeIdentityClosure(t);
+        if (t.Kind == TypeKind.MDArray)
+        {
+            // CnRef byrefs expose managed cells; these MD elements expose raw
+            // handles. Keep their bodies typed rather than sharing that ABI.
+            if (MethodCompiler.IsHeaderlessWrapCpp(CppTypes.Of(t.Element!)))
+                throw new NotSupportedException("rgctx: raw MD reference slots require their closed body");
+            NoteMdArrayType(t);
+            return "&ti_md_" + ArrayElemMangle(t);
+        }
+        if (t.Kind == TypeKind.SZArray)
+        {
+            NoteArrayElementType(t.Element!);
+            return MethodCompiler.PreciseArrayTypeInfoExprOf(t.Element!);
+        }
         if (t is { Kind: TypeKind.Class, Class: { } c })
         {
             if (c.IsValueType)

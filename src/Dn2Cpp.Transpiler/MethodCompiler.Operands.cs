@@ -503,15 +503,12 @@ internal sealed partial class MethodCompiler
             _c.NoteArrayElementType(el);
             return token != 0 ? PreciseArrayTypeInfoExpr(el, token) : PreciseArrayTypeInfoExpr(el);
         }
-        // A multidim array target (int[,]): without a real type-info the isinst opcode's null
-        // arm folds the test to an unconditional TRUE, so `int[] is int[,]` would answer True.
-        // Build the target's interned (element, rank) identity at run time via dn2cpp_mdarr_ti
-        // — the SAME handle a `new T[,]` of that shape carries — so dn2cpp_isinst runs its
-        // element+rank compare. A reference/enum element needs its ti emitted for the symbol
-        // to link; a primitive names a runtime handle. A null element ti (a shared-body
-        // placeholder) degrades dn2cpp_mdarr_ti to a fabricated identity — no match, no crash.
+        // An MD target needs its precise identity. A shared token slot carries
+        // the whole array type; static targets use the allocation interner.
         if (target is { Kind: TypeKind.MDArray, Element: { } mdel, Rank: var mdrank })
         {
+            if (token != 0 && SharedTrial && Compilation.ContainsCanonPlaceholder(target))
+                return TypeInfoExpr(target, token);
             // A type token naming an MD array (typeof/castclass/isinst target) keys
             // the shared rank>=2 dispatch map too: the program expects one.
             _c.NoteMdArrayUse();
@@ -519,7 +516,7 @@ internal sealed partial class MethodCompiler
             if (mdel.Kind is TypeKind.Class && mdel.Class is { } mdCls)
                 NoteReferencedType(mdCls);
             string mdElemTi = MdArrayElementTypeInfoExpr(mdel)
-                ?? (token != 0 ? TypeInfoExpr(mdel, token) : TypeInfoExpr(mdel)) ?? "nullptr";
+                ?? TypeInfoExpr(mdel) ?? "nullptr";
             return $"dn2cpp_mdarr_ti({mdElemTi}, {mdrank})";
         }
         // A runtime cast to a closed SZArray collection interface (IEnumerable<E>/

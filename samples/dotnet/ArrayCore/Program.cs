@@ -119,6 +119,11 @@ namespace ArrayCore
             if (args.Length != 0 && args[0] == "before-headerless-md-identity")
                 return;
             ArrayCovariantStoreSubset.Program.RunHeaderlessMdStores();
+            if (args.Length > 0 && args[0] == "before-md-address-identity")
+                return;
+            ArrayCovariantStoreSubset.Program.RunMdAddresses();
+            ArrayCovariantStoreSubset.Program.RunGenericMdAllocations();
+            ArrayCovariantStoreSubset.Program.RunGenericMdConsumers();
 #endif
         }
     }

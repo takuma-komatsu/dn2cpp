@@ -339,4 +339,167 @@ internal static class Program
         Console.WriteLine("headerless multidimensional reference identity end");
     }
 
+    private static void WriteObject(ref object slot, object value) => slot = value;
+    private static T ReadReadonly<T>(in T slot) => slot;
+    private static void WriteReference<T>(ref T slot, T value) => slot = value;
+    private static void WriteGenericMd<T>(T[,] values, T value) where T : class => WriteReference(ref values[0, 0], value);
+    private static T ReadGenericMd<T>(T[,] values) where T : class => ReadReadonly(in values[0, 0]);
+    private static T AllocateRefMd<T>(T value) where T : class
+    {
+        var values = new T[1, 1];
+        WriteReference(ref values[0, 0], value);
+        return values[0, 0];
+    }
+    private static void WriteShort(ref short slot) => slot = -123;
+    private static void WritePair(ref PairSlot slot) => slot.Value = 37;
+    private struct PairSlot { internal int Value; }
+    private static object[,] AddressReceiver(object[,] values, ref int calls)
+    {
+        calls++;
+        return values;
+    }
+
+    private static T[,] AllocateMd<T>(T value)
+    {
+        var values = new T[1, 1];
+        values[0, 0] = value;
+        return values;
+    }
+
+    private static T[,] AllocateHeaderlessMd<T>(T value) where T : class
+    {
+        var values = new T[1, 1];
+        values[0, 0] = value;
+        return values;
+    }
+
+    private enum MdCode { Value = 29 }
+    private static bool IsMd<T>(object value) => value is T[,];
+    private static T[,] CastMd<T>(object value) => (T[,])value;
+    private static Type MdType<T>() => typeof(T[,]);
+    private static string CastMdIdentity<T>(object value)
+    {
+        try { return ReferenceEquals(CastMd<T>(value), value) ? "same" : "different"; }
+        catch (InvalidCastException) { return "InvalidCastException"; }
+    }
+
+    internal static void RunGenericMdConsumers()
+    {
+        Console.WriteLine("== generic multidimensional type consumers ==");
+        var strings = new string[1, 1];
+        var objects = new object[1, 1];
+        var nested = new string[1, 1][];
+        var rectangular = new string[1, 1][,];
+        Console.WriteLine("generic md is=" + IsMd<string>(strings) + ":" + IsMd<object>(strings) + ":" + IsMd<string>(objects) + ":" + IsMd<string>(new string[1]) + ":" + IsMd<string>(new string[1, 1, 1]) + ":" + IsMd<string>(null));
+        Console.WriteLine("generic md cast=" + CastMdIdentity<string>(strings) + ":" + CastMdIdentity<object>(strings) + ":" + CastMdIdentity<string>(objects) + ":" + CastMdIdentity<string>(null));
+        Console.WriteLine("generic md nested is=" + IsMd<string[]>(nested) + ":" + IsMd<object[]>(nested) + ":" + IsMd<string[,]>(rectangular) + ":" + IsMd<string[,]>(nested));
+        Console.WriteLine("generic md nested cast=" + CastMdIdentity<string[]>(nested) + ":" + CastMdIdentity<object[]>(nested) + ":" + CastMdIdentity<string[,]>(rectangular) + ":" + CastMdIdentity<string[,]>(nested));
+        Console.WriteLine("generic md tokens=" + (MdType<string>() == strings.GetType()) + ":" + (MdType<object>() == objects.GetType()) + ":" + (MdType<string[]>() == nested.GetType()) + ":" + (MdType<string[,]>() == rectangular.GetType()));
+        Console.WriteLine("generic multidimensional type consumers end");
+    }
+
+    private sealed class MdOwner<T> where T : class
+    {
+        internal static T[,] Allocate(T value)
+        {
+            var values = new T[1, 1];
+            values[0, 0] = value;
+            return values;
+        }
+
+        internal static void Write(T[,] values, T value) => WriteReference(ref values[0, 0], value);
+    }
+
+    internal static void RunGenericMdAllocations()
+    {
+        Console.WriteLine("== shared multidimensional allocation identity ==");
+        object seed = new object();
+        var strings = AllocateMd("allocated");
+        var objects = AllocateMd(seed);
+        Console.WriteLine("allocation references=" + strings[0, 0] + ":" + ReferenceEquals(objects[0, 0], seed));
+        Console.WriteLine("allocation reference types=" + (strings.GetType() == typeof(string[,])) + ":" + (objects.GetType() == typeof(object[,])));
+        Console.WriteLine("allocation shape=" + strings.Rank + ":" + strings.GetLength(0) + ":" + strings.GetLowerBound(1) + ":" + (strings.GetType().GetElementType() == typeof(string)));
+        ObserveMd("allocation separate caller covariance", () => WriteGenericMd<object>(strings, seed), () => strings[0, 0], "allocated");
+        WriteGenericMd(strings, "changed");
+        Console.WriteLine("allocation separate caller exact=" + strings[0, 0]);
+        var integers = AllocateMd(29);
+        var codes = AllocateMd(MdCode.Value);
+        var shorts = AllocateMd((short)-12);
+        Console.WriteLine("allocation values=" + integers[0, 0] + ":" + codes[0, 0] + ":" + shorts[0, 0]);
+        Console.WriteLine("allocation value types=" + (integers.GetType() == typeof(int[,])) + ":" + (codes.GetType() == typeof(MdCode[,])) + ":" + (shorts.GetType() == typeof(short[,])));
+        var nested = AllocateMd(new[] { "nested" });
+        var rectangular = AllocateMd(new string[,] { { "rectangle" } });
+        Console.WriteLine("allocation nested=" + nested[0, 0][0] + ":" + rectangular[0, 0][0, 0] + ":" + (nested.GetType() == typeof(string[,][])) + ":" + (rectangular.GetType() == typeof(string[,][,])));
+        var ownedStrings = MdOwner<string>.Allocate("owned");
+        var ownedObjects = MdOwner<object>.Allocate(seed);
+        MdOwner<string>.Write(ownedStrings, "changed");
+        Console.WriteLine("allocation generic owner=" + ownedStrings[0, 0] + ":" + ReferenceEquals(ownedObjects[0, 0], seed) + ":" + (ownedStrings.GetType() == typeof(string[,])));
+        ObserveMd("address generic owner covariance", () => MdOwner<object>.Write(ownedStrings, seed), () => ownedStrings[0, 0], "changed");
+        var culture = new CultureInfo("ja-JP");
+        var cultures = AllocateHeaderlessMd(culture);
+        Console.WriteLine("allocation headerless=" + ReferenceEquals(cultures[0, 0], culture) + ":" + ReferenceEquals(((Array)cultures).GetValue(0, 0), culture) + ":" + (cultures.GetType() == typeof(CultureInfo[,])));
+        Console.WriteLine("shared multidimensional allocation identity end");
+    }
+
+    internal static void RunMdAddresses()
+    {
+        Console.WriteLine("== multidimensional writable address identity ==");
+        object seed = "seed";
+        object replacement = "replacement";
+        object[,] covariant = new string[1, 1];
+        covariant[0, 0] = seed;
+        ObserveMd("address covariance", () => WriteObject(ref covariant[0, 0], replacement), () => covariant[0, 0], seed);
+        ObserveMd("address covariance before bounds", () => WriteObject(ref covariant[-1, 0], replacement), () => covariant[0, 0], seed);
+        Console.WriteLine("address readonly covariance=" + ReferenceEquals(ReadReadonly(in covariant[0, 0]), seed));
+        ObserveMd("address readonly bounds", () => ReadReadonly(in covariant[-1, 0]), () => covariant[0, 0], seed);
+        object[,] normal = new object[1, 1];
+        WriteObject(ref normal[0, 0], seed);
+        Console.WriteLine("address exact=" + ReferenceEquals(normal[0, 0], seed));
+        ObserveMd("address exact bounds", () => WriteObject(ref normal[0, 1], replacement), () => normal[0, 0], seed);
+        object[,] nil = null;
+        ObserveMd("address null before bounds", () => WriteObject(ref nil[-1, 0], replacement), () => null, null);
+        ObserveMd("address readonly null", () => ReadReadonly(in nil[-1, 0]), () => null, null);
+        object[,,] three = new string[1, 1, 1];
+        three[0, 0, 0] = seed;
+        ObserveMd("address rank3", () => WriteObject(ref three[0, 0, 0], replacement), () => three[0, 0, 0], seed);
+        ObserveMd("address rank3 before bounds", () => WriteObject(ref three[0, 0, -1], replacement), () => three[0, 0, 0], seed);
+        Console.WriteLine("address readonly rank3=" + ReferenceEquals(ReadReadonly(in three[0, 0, 0]), seed));
+        object[,,,] four = new string[1, 1, 1, 1];
+        four[0, 0, 0, 0] = seed;
+        ObserveMd("address rank4", () => WriteObject(ref four[0, 0, 0, 0], replacement), () => four[0, 0, 0, 0], seed);
+        Console.WriteLine("address readonly rank4=" + ReferenceEquals(ReadReadonly(in four[0, 0, 0, 0]), seed));
+        var lower = (object[,])Array.CreateInstance(typeof(string), new[] { 1, 1 }, new[] { -2, 3 });
+        lower[-2, 3] = seed;
+        ObserveMd("address lower", () => WriteObject(ref lower[-2, 3], replacement), () => lower[-2, 3], seed);
+        ObserveMd("address lower before bounds", () => WriteObject(ref lower[0, 0], replacement), () => lower[-2, 3], seed);
+        Console.WriteLine("address readonly lower=" + ReferenceEquals(ReadReadonly(in lower[-2, 3]), seed));
+        int calls = 0;
+        WriteObject(ref AddressReceiver(normal, ref calls)[0, 0], replacement);
+        Console.WriteLine("address receiver once=" + calls + ":" + ReferenceEquals(normal[0, 0], replacement));
+        var strings = new string[1, 1];
+        WriteGenericMd(strings, "text");
+        WriteGenericMd(normal, seed);
+        Console.WriteLine("address generic exact=" + ReadGenericMd(strings) + ":" + ReferenceEquals(ReadGenericMd(normal), seed));
+        ObserveMd("address generic covariance", () => WriteGenericMd<object>(strings, replacement), () => strings[0, 0], "text");
+        Console.WriteLine("address generic readonly=" + ReferenceEquals(ReadGenericMd<object>(strings), "text"));
+        Console.WriteLine("address generic allocation=" + AllocateRefMd("allocated") + ":" + ReferenceEquals(AllocateRefMd(seed), seed));
+        var nested = new string[1, 1][];
+        WriteGenericMd(nested, new[] { "nested" });
+        var nestedObjects = new object[1, 1][];
+        WriteGenericMd(nestedObjects, new object[] { seed });
+        Console.WriteLine("address nested exact=" + nested[0, 0][0] + ":" + ReferenceEquals(nestedObjects[0, 0][0], seed));
+        ObserveMd("address nested covariance", () => WriteGenericMd<object[]>(nested, new object[] { seed }), () => nested[0, 0], nested[0, 0]);
+        var packed = new short[1, 2];
+        WriteShort(ref packed[0, 1]);
+        Console.WriteLine("address packed=" + packed[0, 0] + ":" + packed[0, 1]);
+        var pairs = new PairSlot[1, 1];
+        WritePair(ref pairs[0, 0]);
+        Console.WriteLine("address value=" + pairs[0, 0].Value);
+        var cultures = new CultureInfo[1, 1];
+        var culture = new CultureInfo("ja-JP");
+        WriteMdCulture(ref cultures[0, 0], culture);
+        Console.WriteLine("address headerless=" + ReadMdCulture(ref cultures[0, 0]) + ":" + ReferenceEquals(((Array)cultures).GetValue(0, 0), culture));
+        Console.WriteLine("multidimensional writable address identity end");
+    }
+
 }
