@@ -5451,17 +5451,82 @@ static bool dn2cpp_dgbind_pass(const Dn2CppTypeInfo* from, int32_t fromKind,
         || (relaxed && dn2cpp_dgbind_widens(from, to));
 }
 
-static bool dn2cpp_dgbind_parameter(const Dn2CppParamInfo& from,
-    const Dn2CppParamInfo& to, bool relaxed, bool& unknown)
+// Binding identities share the public compound/array/generic interners. Names
+// without a retained TI remain negative evidence only; never resolve them by name.
+static const Dn2CppTypeInfo* dn2cpp_dgbind_signature_type(const Dn2CppBindingSignature* signature,
+    const Dn2CppTypeInfo* declaring)
 {
-    return dn2cpp_dgbind_pass(from.paramType, from.passKind,
-        from.bindingPointeeType != nullptr ? from.bindingPointeeType : from.passType,
-        to.paramType, to.passKind,
-        to.bindingPointeeType != nullptr ? to.bindingPointeeType : to.passType, relaxed, unknown);
+    if (signature == nullptr)
+        return nullptr;
+    const auto& sig = *signature;
+    if (sig.kind == 0)
+        return sig.type != nullptr && (sig.type->flags
+            & (DN2CPP_TF_SHARED_CANON | DN2CPP_TF_GENERICPARAM | DN2CPP_TF_GENERICDEF)) == 0 ? sig.type : nullptr;
+    if (sig.kind == 5)
+    {
+        if (declaring == nullptr || declaring->genericArgs == nullptr
+            || sig.value < 0 || sig.value >= declaring->genericArgCount)
+            return nullptr;
+        Dn2CppBindingSignature actual{0, declaring->genericArgs[sig.value], 0, nullptr, 0, nullptr};
+        return dn2cpp_dgbind_signature_type(&actual, nullptr);
+    }
+    if (sig.kind == 8 || sig.kind == 9 || (sig.kind == 4 && sig.type == nullptr))
+        return nullptr;
+    std::vector<const Dn2CppTypeInfo*> children;
+    for (int32_t i = 0; i < sig.childCount; i++)
+    {
+        const auto* child = dn2cpp_dgbind_signature_type(&sig.children[i], declaring);
+        if (child == nullptr)
+            return nullptr;
+        children.push_back(child);
+    }
+    if (sig.kind >= 1 && sig.kind <= 3)
+        return dn2cpp_compound_type(sig.kind, sig.value, children.data(), sig.childCount);
+    if ((sig.kind == 6 || sig.kind == 7) && sig.childCount == 1)
+        return dn2cpp_array_ti(children[0], sig.kind == 6 ? 1 : sig.value, sig.kind == 7);
+    if (sig.kind == 4)
+    {
+        std::lock_guard<std::recursive_mutex> lock(g_formal_types_mtx);
+        return dn2cpp_constraint_instantiation(sig.type, children);
+    }
+    return nullptr;
+}
+
+static const Dn2CppTypeInfo* dn2cpp_dgbind_signature_pointee(
+    const Dn2CppBindingSignature* signature, const Dn2CppTypeInfo* declaring,
+    int32_t& kind, const Dn2CppTypeInfo* fallback)
+{
+    const auto* type = dn2cpp_dgbind_signature_type(signature, declaring);
+    if (type == nullptr)
+        return fallback;
+    kind &= ~DN2CPP_PASS_SIGNATURE_UNKNOWN;
+    if (dn2cpp_signature_kind(type) == 2)
+        type = type->elementType;
+    // Descriptor depth bits name the outer levels; excess levels remain in the
+    // pointee identity, just as they do in the emitted ABI descriptors.
+    int32_t levels = (kind >> DN2CPP_PASS_POINTER_DEPTH_SHIFT) & 0xff;
+    if ((kind & DN2CPP_PASS_POINTER) != 0 && (kind & DN2CPP_PASS_FNPTR) == 0)
+        for (int32_t i = 0; i <= levels && dn2cpp_signature_kind(type) == 1; i++)
+            type = type->elementType;
+    return type;
+}
+
+static bool dn2cpp_dgbind_parameter(const Dn2CppParamInfo& from,
+    const Dn2CppParamInfo& to, bool relaxed, bool& unknown,
+    const Dn2CppTypeInfo* fromDeclaring = nullptr, const Dn2CppTypeInfo* toDeclaring = nullptr)
+{
+    int32_t fromKind = from.passKind, toKind = to.passKind;
+    const auto* fromPass = dn2cpp_dgbind_signature_pointee(from.reflectionSignature, fromDeclaring,
+        fromKind, from.bindingPointeeType != nullptr ? from.bindingPointeeType : from.passType);
+    const auto* toPass = dn2cpp_dgbind_signature_pointee(to.reflectionSignature, toDeclaring,
+        toKind, to.bindingPointeeType != nullptr ? to.bindingPointeeType : to.passType);
+    return dn2cpp_dgbind_pass(from.paramType, fromKind, fromPass,
+        to.paramType, toKind, toPass, relaxed, unknown);
 }
 
 static bool dn2cpp_dgbind_return(const Dn2CppMethodInfo& from,
-    const Dn2CppMethodInfo& to, bool relaxed, bool& unknown)
+    const Dn2CppMethodInfo& to, bool relaxed, bool& unknown,
+    const Dn2CppTypeInfo* fromDeclaring = nullptr, const Dn2CppTypeInfo* toDeclaring = nullptr)
 {
     auto kind = [](const Dn2CppMethodInfo& row) {
         int32_t value = (row.attrs & DN2CPP_MTHA_RETURN_BYREF) != 0 ? DN2CPP_PASS_BYREF : 0;
@@ -5481,15 +5546,17 @@ static bool dn2cpp_dgbind_return(const Dn2CppMethodInfo& from,
             value |= DN2CPP_PASS_SIGNATURE_UNKNOWN;
         return value;
     };
-    const int32_t fromKind = kind(from), toKind = kind(to);
+    int32_t fromKind = kind(from), toKind = kind(to);
     auto pointee = [](const Dn2CppMethodInfo& row, int32_t value) {
         return row.returnBindingPointeeType != nullptr ? row.returnBindingPointeeType
             : (value & DN2CPP_PASS_FNPTR) != 0 ? row.returnSignatureType : row.returnPassType;
     };
-    return dn2cpp_dgbind_pass(from.returnType, fromKind,
-        pointee(from, fromKind),
-        to.returnType, toKind,
-        pointee(to, toKind), relaxed, unknown);
+    const auto* fromPass = dn2cpp_dgbind_signature_pointee(from.returnReflectionSignature, fromDeclaring,
+        fromKind, pointee(from, fromKind));
+    const auto* toPass = dn2cpp_dgbind_signature_pointee(to.returnReflectionSignature, toDeclaring,
+        toKind, pointee(to, toKind));
+    return dn2cpp_dgbind_pass(from.returnType, fromKind, fromPass,
+        to.returnType, toKind, toPass, relaxed, unknown);
 }
 
 static void dn2cpp_dgbind_require_signature(bool unknown)
@@ -5632,10 +5699,10 @@ Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
     bool unknown = false;
     for (int32_t j = dgFirst; j < dgArity; j++)
         if (!dn2cpp_dgbind_parameter(*inv->parameters[j],
-            *row.parameters[mFirst + (j - dgFirst)], true, unknown))
+            *row.parameters[mFirst + (j - dgFirst)], true, unknown, dti, declTi))
             return fail();
     // Return: covariant reference widening from the method's to the delegate's.
-    if (!dn2cpp_dgbind_return(row, *inv, true, unknown))
+    if (!dn2cpp_dgbind_return(row, *inv, true, unknown, declTi, dti))
         return fail();
     dn2cpp_dgbind_require_signature(unknown);
     // .NET binds a static virtual or abstract interface member only open, and a call
@@ -6030,14 +6097,16 @@ static bool dn2cpp_dgbind_named_signature(const Dn2CppMethodInfo& row, const Dn2
     if (row.genericParamCount != 0 || row.paramCount != invoke.paramCount)
         return false;
     bool unknown = false;
+    const auto* declaring = dn2cpp_invoke_declaring(row.declaringType, queried);
     for (int32_t i = 0; i < row.paramCount; i++)
     {
         const auto a = row.parameters[i].operator->();
         const auto b = invoke.parameters[i].operator->();
-        if (!dn2cpp_dgbind_parameter(*a.operator->(), *b.operator->(), false, unknown))
+        if (!dn2cpp_dgbind_parameter(*a.operator->(), *b.operator->(), false, unknown,
+            declaring, invoke.declaringType))
             return false;
     }
-    if (!dn2cpp_dgbind_return(row, invoke, false, unknown))
+    if (!dn2cpp_dgbind_return(row, invoke, false, unknown, declaring, invoke.declaringType))
         return false;
     if (unknown && dn2cpp_dgbind_named_argument_mismatch(row, invoke, queried))
     {

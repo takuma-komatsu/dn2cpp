@@ -621,6 +621,12 @@ views retain their original definition, argument vector and reflected owner in
 immutable cold rows; they never reuse a callable row's invoker. Public composition
 validates declared constraints before publishing a handle. Open method arguments
 participate in `ContainsGenericParameters` and the invocation and delegate guards.
+Runtime-template delegate binding resolves full location recipes after clone
+publication, against the actual declaring level. Both sides share structural
+interners; unknown names cannot establish equality. Raw address forwarding does
+not permit canonical value or reference-slot access, and Invoke retains its
+independent boxing and copy-cell checks.
+
 Formal array covariance and generic variance require reference-type evidence;
 an unconstrained or dependent parameter alone cannot establish a reference layout.
 

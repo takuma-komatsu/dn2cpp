@@ -19,6 +19,16 @@ namespace ReflectInvoke
                 return;
             }
 
+            if (args.Length > 0 && args[0] == "runtime-template-bindings")
+            {
+                ReflectDelegateSubset.Program.RunRuntimeTemplateBindings();
+                return;
+            }
+            if (args.Length > 0 && args[0] == "runtime-template-unsafe-bindings")
+            {
+                ReflectDelegateSubset.Program.RunUnsafeTemplateBindings();
+                return;
+            }
             if (args.Length > 0 && args[0] == "delegate-signature-boundary-outcomes")
             {
                 ReflectDelegateSubset.Program.RunSignatureBoundaries();
@@ -360,6 +370,9 @@ namespace ReflectInvoke
             if (args.Length > 0 && args[0] == "before-formal-declaring-methods")
                 return;
             ReflectGenericMethodSubset.Program.RunDeclaringMethod(false);
+            if (args.Length > 0 && args[0] == "before-runtime-template-bindings")
+                return;
+            ReflectDelegateSubset.Program.RunRuntimeTemplateBindings(false);
         }
     }
 }
