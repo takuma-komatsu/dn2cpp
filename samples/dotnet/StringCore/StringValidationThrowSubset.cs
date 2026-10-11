@@ -342,5 +342,35 @@ namespace StringValidationThrowSubset
                 ArgumentFault("fault after GC:" + i, saved[i]);
             Console.WriteLine("String argument fields end");
         }
+
+        private static void CollectedArgumentFault(string label, Action action)
+        {
+            ArgumentException saved = null;
+            try { action(); }
+            catch (ArgumentException exception) { saved = exception; }
+            GC.Collect();
+            if (saved is null)
+            {
+                Console.WriteLine(label + "=accepted");
+                return;
+            }
+            object actual = saved is ArgumentOutOfRangeException range ? range.ActualValue : null;
+            Console.WriteLine(label + "=" + saved.GetType().Name + ":" + saved.ParamName
+                + ":" + saved.Message.Replace("\r", "").Replace("\n", "|") + ":actual=" + actual);
+        }
+
+        internal static void RunArgumentRoots()
+        {
+            Console.WriteLine("== Collected runtime argument operands ==");
+            CollectedArgumentFault("roots signed", () => Math.Clamp(0L, 3L, 2L));
+            CollectedArgumentFault("roots unsigned", () => Math.Clamp(0UL, 3UL, 2UL));
+            CollectedArgumentFault("roots float", () => Math.Clamp(0f, 3.5f, 2.5f));
+            CollectedArgumentFault("roots double", () => Math.Clamp(0d, 3.5d, 2.5d));
+            CollectedArgumentFault("roots managed message", () => Convert.ToBase64String(new byte[] { 1 }, (Base64FormattingOptions)4));
+            bool taken = true;
+            CollectedArgumentFault("roots monitor message", () => System.Threading.Monitor.Enter(new object(), ref taken));
+            CollectedArgumentFault("roots boxed actual", () => "root".CopyTo(-1, new char[4], 0, 1));
+            Console.WriteLine("Collected runtime argument operands end");
+        }
     }
 }

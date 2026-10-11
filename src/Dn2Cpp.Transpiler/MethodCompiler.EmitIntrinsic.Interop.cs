@@ -218,6 +218,11 @@ internal sealed partial class MethodCompiler
                 NoteBuiltStructLayout(ga[0]);
                 string st = CppTypes.StorageOf(ga[0]);
                 string ct = CppTypes.Of(ga[0]);
+                if (CppTypes.KindOf(ga[0]) == StackKind.Ref && !IsHeaderlessWrapCpp(ct))
+                {
+                    Push(StackKind.Ref, ct, $"({ct})dn2cpp_byref_load_ref((const void*)({src.Expr}))");
+                    return true;
+                }
                 string load = $"*(({st}*)({src.Expr}))";
                 Push(CppTypes.KindOf(ga[0]), ct, st == ct ? load : $"({ct})({load})");
                 return true;
@@ -228,6 +233,11 @@ internal sealed partial class MethodCompiler
                 NoteBuiltStructLayout(ga[0]);
                 string st = CppTypes.StorageOf(ga[0]);
                 string ct = CppTypes.Of(ga[0]);
+                if (CppTypes.KindOf(ga[0]) == StackKind.Ref && !IsHeaderlessWrapCpp(ct))
+                {
+                    Push(StackKind.Ref, ct, $"({ct})dn2cpp_byref_load_ref((const void*)({src.Expr}))");
+                    return true;
+                }
                 string tmp = NewTemp(st);
                 Emit($"std::memcpy(&{tmp}, (const void*)({src.Expr}), sizeof({st}));");
                 Push(CppTypes.KindOf(ga[0]), ct, st == ct ? tmp : $"({ct})({tmp})");

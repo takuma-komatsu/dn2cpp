@@ -2335,6 +2335,8 @@ int32_t dn2cpp_prim_code(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_prim_storage_width(int32_t code);
 // Headerless MD elements retain their typed/byref ABI; erased reads use wrappers.
 Dn2CppObject* dn2cpp_array_load_ref(const Dn2CppTypeInfo* elem, const void* slot, bool rawReference);
+bool dn2cpp_array_has_raw_ref_element(const Dn2CppTypeInfo* elem);
+Dn2CppObject* dn2cpp_byref_load_ref(const void* slot);
 void dn2cpp_array_store_ref(const Dn2CppTypeInfo* elem, void* slot, Dn2CppObject* value, bool rawReference);
 Dn2CppObject* dn2cpp_array_box_element(const Dn2CppTypeInfo* elem, const void* src,
                                        int32_t elemSize, bool elemIsRef, bool rawReference = false);
@@ -4217,6 +4219,8 @@ int32_t dn2cpp_stackframe_line_number(Dn2CppStackFrame* sf);
 int32_t dn2cpp_stackframe_column_number(Dn2CppStackFrame* sf);
 
 void* dn2cpp_alloc(size_t size);
+void* dn2cpp_alloc_raw_md(size_t size);
+Dn2CppMDArray* dn2cpp_raw_md_owner(const void* slot);
 
 // Pointer-free ("atomic") GC allocation: the block is collectible and reachable
 // like dn2cpp_alloc's, but the collector never scans its contents for pointers.

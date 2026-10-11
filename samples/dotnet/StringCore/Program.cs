@@ -78,6 +78,9 @@ namespace StringCore
             if (args.Length > 0 && args[0] == "before-format-diagnostics")
                 return;
             StringCompositeFormatSubset.Program.Run();
+            if (args.Length > 0 && args[0] == "before-argument-roots")
+                return;
+            StringValidationThrowSubset.Program.RunArgumentRoots();
         }
     }
 }

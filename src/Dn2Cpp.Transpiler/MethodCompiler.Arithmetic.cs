@@ -2034,8 +2034,9 @@ internal sealed partial class MethodCompiler
     /// first field as a type header. The pointer operand's own C++ spelling is the
     /// discriminator and is always present: a byref to a T-typed slot is emitted as
     /// <c>T*</c>, so stripping one <c>*</c> recovers the slot type. Anything that is
-    /// not a headerless representation keeps the erased <c>Dn2CppObject*</c> exactly as
-    /// before, so the emitted text is unchanged everywhere else.</summary>
+    /// not a headerless representation uses the managed reference spelling. An
+    /// erased readonly alias may still point into raw MD storage; its load must
+    /// recover the allocation's element representation at runtime.</summary>
     private static string RefSlotCppType(StackEntry p)
     {
         if (p.CppType.EndsWith("**", StringComparison.Ordinal))
@@ -2056,7 +2057,9 @@ internal sealed partial class MethodCompiler
     {
         var p = Pop();
         string slot = RefSlotCppType(p);
-        Push(StackKind.Ref, slot, $"({slot})(*(({slot}*)({p.Expr})))");
+        Push(StackKind.Ref, slot, slot == "Dn2CppObject*"
+            ? $"dn2cpp_byref_load_ref((const void*)({p.Expr}))"
+            : $"({slot})(*(({slot}*)({p.Expr})))");
         if (p.StaticType is { Kind: TypeKind.ByRef, Element: { } el })
             _stack[^1] = _stack[^1] with { StaticType = el };
         _stack[^1] = _stack[^1] with { ArraySearchOrigin = p.ArraySearchOrigin };

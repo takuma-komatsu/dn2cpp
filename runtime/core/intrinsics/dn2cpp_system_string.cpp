@@ -2421,7 +2421,9 @@ Dn2CppMDArray* dn2cpp_newmdarr(const Dn2CppTypeInfo* ti, int32_t rank, const int
     totalAllocSize = dataOffset + dataSize;
     
     bool atomic = ti != nullptr && dn2cpp_signature_kind(ti->elementType) != 0;
-    auto* arr = static_cast<Dn2CppMDArray*>(atomic ? dn2cpp_alloc_atomic(totalAllocSize) : dn2cpp_alloc(totalAllocSize));
+    bool rawReference = ti != nullptr && dn2cpp_array_has_raw_ref_element(ti->elementType);
+    auto* arr = static_cast<Dn2CppMDArray*>(atomic ? dn2cpp_alloc_atomic(totalAllocSize)
+        : rawReference ? dn2cpp_alloc_raw_md(totalAllocSize) : dn2cpp_alloc(totalAllocSize));
     // Atomic allocation does not clear; every array cell starts at its default value.
     if (atomic)
         std::memset(arr, 0, totalAllocSize);

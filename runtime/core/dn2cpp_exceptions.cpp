@@ -612,7 +612,10 @@ static Dn2CppString* dn2cpp_argument_tail(const char* key, Dn2CppString* value)
     if (text == nullptr)
         return nullptr;
     Dn2CppString* pattern = dn2cpp_string_from_utf8(text, static_cast<int32_t>(std::strlen(text)));
-    return dn2cpp_str_replace_str(pattern, dn2cpp_string_literal(u"{0}", 3), value);
+    Dn2CppString* placeholder = dn2cpp_string_literal(u"{0}", 3);
+    DN2CPP_WEB_GC_LIVENESS(pattern);
+    DN2CPP_WEB_GC_LIVENESS(value);
+    return dn2cpp_str_replace_str(pattern, placeholder, value);
 }
 
 // Managed overrides append the parameter/value tails from the stored fields. Without
@@ -632,7 +635,10 @@ static Dn2CppString* dn2cpp_argument_tail(const char* key, Dn2CppString* value)
         {
             if (Dn2CppString* tail = dn2cpp_argument_tail(DN2CPP_SR_PARAM_NAME, paramName); tail != nullptr)
             {
-                message = dn2cpp_string_concat3(message, dn2cpp_string_literal(u" ", 1), tail);
+                Dn2CppString* separator = dn2cpp_string_literal(u" ", 1);
+                DN2CPP_WEB_GC_LIVENESS(message);
+                DN2CPP_WEB_GC_LIVENESS(tail);
+                message = dn2cpp_string_concat3(message, separator, tail);
             }
         }
         if (actualText != nullptr)
@@ -645,6 +651,8 @@ static Dn2CppString* dn2cpp_argument_tail(const char* key, Dn2CppString* value)
 #else
                 Dn2CppString* newline = dn2cpp_string_literal(u"\n", 1);
 #endif
+                DN2CPP_WEB_GC_LIVENESS(message);
+                DN2CPP_WEB_GC_LIVENESS(tail);
                 message = dn2cpp_string_concat3(message, newline, tail);
             }
         }
@@ -658,6 +666,18 @@ static Dn2CppString* dn2cpp_param_name_string(const char* paramName)
     if (paramName == nullptr)
         return nullptr;
     return dn2cpp_string_from_utf8(paramName, static_cast<int32_t>(std::strlen(paramName)));
+}
+
+// Each generated operand must survive later operand construction on Web;
+// a local alone may still be folded back onto the wasm operand stack.
+[[noreturn]] static void dn2cpp_raise_argument_named(const Dn2CppTypeInfo* ti,
+    Dn2CppString* message, const char* paramName, Dn2CppObject* actual,
+    const std::string* actualText, uint32_t hresult = 0)
+{
+    Dn2CppString* name = dn2cpp_param_name_string(paramName);
+    DN2CPP_WEB_GC_LIVENESS(message);
+    DN2CPP_WEB_GC_LIVENESS(actual);
+    dn2cpp_raise_argument(ti, message, name, actual, actualText, hresult);
 }
 
 static bool (*g_culture_exception_store)(Dn2CppObject*, Dn2CppString*, int32_t) = nullptr;
@@ -686,7 +706,12 @@ bool dn2cpp_culture_exception_store(Dn2CppObject* e, Dn2CppString* invalidCultur
     if (message != nullptr && (!argumentStored || !cultureStored || !dn2cpp_exception_overrides_message(ti)))
     {
         if (Dn2CppString* tail = dn2cpp_argument_tail(DN2CPP_SR_PARAM_NAME, paramName))
-            message = dn2cpp_string_concat3(message, dn2cpp_string_literal(u" ", 1), tail);
+        {
+            Dn2CppString* separator = dn2cpp_string_literal(u" ", 1);
+            DN2CPP_WEB_GC_LIVENESS(message);
+            DN2CPP_WEB_GC_LIVENESS(tail);
+            message = dn2cpp_string_concat3(message, separator, tail);
+        }
         Dn2CppString* identifier = invalidCultureName;
         if (invalidCultureId != 0)
         {
@@ -702,6 +727,8 @@ bool dn2cpp_culture_exception_store(Dn2CppObject* e, Dn2CppString* invalidCultur
 #else
             Dn2CppString* newline = dn2cpp_string_literal(u"\n", 1);
 #endif
+            DN2CPP_WEB_GC_LIVENESS(message);
+            DN2CPP_WEB_GC_LIVENESS(tail);
             message = dn2cpp_string_concat3(message, newline, tail);
         }
     }
@@ -715,23 +742,23 @@ bool dn2cpp_culture_exception_store(Dn2CppObject* e, Dn2CppString* invalidCultur
     Dn2CppString* text = dn2cpp_format_int(value, 4, nullptr);
     std::string args[2] = { std::string(paramName), dn2cpp_sr_arg(text) };
     Dn2CppString* sentence = dn2cpp_sr_format(key, args, 2);
-    dn2cpp_raise_argument(&dn2cpp_argument_out_of_range_exception_type,
-        sentence,
-        dn2cpp_param_name_string(paramName),
-        dn2cpp_box(&dn2cpp_int32_type, &value, sizeof(value)), &args[1]);
+    Dn2CppObject* actual = dn2cpp_box(&dn2cpp_int32_type, &value, sizeof(value));
+    DN2CPP_WEB_GC_LIVENESS(sentence);
+    dn2cpp_raise_argument_named(&dn2cpp_argument_out_of_range_exception_type,
+        sentence, paramName, actual, &args[1]);
 }
 
 [[noreturn]] void dn2cpp_throw_argument_param(const char* key, const char* paramName)
 {
-    dn2cpp_raise_argument(&dn2cpp_argument_exception_type, dn2cpp_sr_format(key, nullptr, 0),
-        dn2cpp_param_name_string(paramName), nullptr, nullptr);
+    dn2cpp_raise_argument_named(&dn2cpp_argument_exception_type, dn2cpp_sr_format(key, nullptr, 0),
+        paramName, nullptr, nullptr);
 }
 
 [[noreturn]] void dn2cpp_throw_argument_out_of_range_param(const char* key,
     const char* paramName)
 {
-    dn2cpp_raise_argument(&dn2cpp_argument_out_of_range_exception_type, dn2cpp_sr_format(key, nullptr, 0),
-        dn2cpp_param_name_string(paramName), nullptr, nullptr);
+    dn2cpp_raise_argument_named(&dn2cpp_argument_out_of_range_exception_type, dn2cpp_sr_format(key, nullptr, 0),
+        paramName, nullptr, nullptr);
 }
 
 [[noreturn]] static void dn2cpp_raise_out_of_range_bound(const char* key,
@@ -740,16 +767,22 @@ bool dn2cpp_culture_exception_store(Dn2CppObject* e, Dn2CppString* invalidCultur
 {
     std::string args[3] = { paramName != nullptr ? std::string(paramName) : std::string(),
         dn2cpp_sr_arg(valueText), dn2cpp_sr_arg(boundText) };
-    dn2cpp_raise_argument(&dn2cpp_argument_out_of_range_exception_type,
-        dn2cpp_sr_format(key, args, 3), dn2cpp_param_name_string(paramName),
-        actual, &args[1]);
+    Dn2CppString* sentence = dn2cpp_sr_format(key, args, 3);
+    DN2CPP_WEB_GC_LIVENESS(actual);
+    dn2cpp_raise_argument_named(&dn2cpp_argument_out_of_range_exception_type,
+        sentence, paramName, actual, &args[1]);
 }
 
 [[noreturn]] void dn2cpp_throw_argument_out_of_range_bound(const char* key,
     const char* paramName, int32_t value, int32_t bound)
 {
-    dn2cpp_raise_out_of_range_bound(key, paramName, dn2cpp_format_int(value, 4, nullptr),
-        dn2cpp_format_int(bound, 4, nullptr), dn2cpp_box(&dn2cpp_int32_type, &value, sizeof(value)));
+    Dn2CppString* valueText = dn2cpp_format_int(value, 4, nullptr);
+    Dn2CppString* boundText = dn2cpp_format_int(bound, 4, nullptr);
+    DN2CPP_WEB_GC_LIVENESS(valueText);
+    Dn2CppObject* actual = dn2cpp_box(&dn2cpp_int32_type, &value, sizeof(value));
+    DN2CPP_WEB_GC_LIVENESS(valueText);
+    DN2CPP_WEB_GC_LIVENESS(boundText);
+    dn2cpp_raise_out_of_range_bound(key, paramName, valueText, boundText, actual);
 }
 
 [[noreturn]] void dn2cpp_throw_argument_out_of_range_bound(const char* key,
@@ -760,8 +793,13 @@ bool dn2cpp_culture_exception_store(Dn2CppObject* e, Dn2CppString* invalidCultur
             static_cast<int32_t>(value), static_cast<int32_t>(bound));
     if (byteWidth != 8)
         dn2cpp_throw_invalid_operation();
-    dn2cpp_raise_out_of_range_bound(key, paramName, dn2cpp_format_int(value, 8, nullptr),
-        dn2cpp_format_int(bound, 8, nullptr), dn2cpp_box(&dn2cpp_int64_type, &value, sizeof(value)));
+    Dn2CppString* valueText = dn2cpp_format_int(value, 8, nullptr);
+    Dn2CppString* boundText = dn2cpp_format_int(bound, 8, nullptr);
+    DN2CPP_WEB_GC_LIVENESS(valueText);
+    Dn2CppObject* actual = dn2cpp_box(&dn2cpp_int64_type, &value, sizeof(value));
+    DN2CPP_WEB_GC_LIVENESS(valueText);
+    DN2CPP_WEB_GC_LIVENESS(boundText);
+    dn2cpp_raise_out_of_range_bound(key, paramName, valueText, boundText, actual);
 }
 
 [[noreturn]] void dn2cpp_throw_argument_out_of_range_actual(const char* sentence,
@@ -771,27 +809,35 @@ bool dn2cpp_culture_exception_store(Dn2CppObject* e, Dn2CppString* invalidCultur
     Dn2CppString* message = sentence != nullptr
         ? dn2cpp_string_from_utf8(sentence, static_cast<int32_t>(std::strlen(sentence)))
         : nullptr;
-    dn2cpp_raise_argument(&dn2cpp_argument_out_of_range_exception_type, message,
-        dn2cpp_param_name_string(paramName), actual, &text);
+    DN2CPP_WEB_GC_LIVENESS(actual);
+    dn2cpp_raise_argument_named(&dn2cpp_argument_out_of_range_exception_type, message,
+        paramName, actual, &text);
 }
 
 [[noreturn]] void dn2cpp_throw_argument_out_of_range_bound_u32(const char* key,
     const char* paramName, uint32_t value, uint32_t bound)
 {
-    dn2cpp_raise_out_of_range_bound(key, paramName, dn2cpp_format_uint(value, 4, nullptr),
-        dn2cpp_format_uint(bound, 4, nullptr), dn2cpp_box(&dn2cpp_uint32_type, &value, sizeof(value)));
+    Dn2CppString* valueText = dn2cpp_format_uint(value, 4, nullptr);
+    Dn2CppString* boundText = dn2cpp_format_uint(bound, 4, nullptr);
+    DN2CPP_WEB_GC_LIVENESS(valueText);
+    Dn2CppObject* actual = dn2cpp_box(&dn2cpp_uint32_type, &value, sizeof(value));
+    DN2CPP_WEB_GC_LIVENESS(valueText);
+    DN2CPP_WEB_GC_LIVENESS(boundText);
+    dn2cpp_raise_out_of_range_bound(key, paramName, valueText, boundText, actual);
 }
 
 [[noreturn]] void dn2cpp_throw_argument_null_param(const char* paramName)
 {
-    dn2cpp_raise_argument(&dn2cpp_argument_null_exception_type,
-        dn2cpp_sr_format(DN2CPP_SR_ARGUMENT_NULL, nullptr, 0), dn2cpp_param_name_string(paramName), nullptr, nullptr);
+    dn2cpp_raise_argument_named(&dn2cpp_argument_null_exception_type,
+        dn2cpp_sr_format(DN2CPP_SR_ARGUMENT_NULL, nullptr, 0), paramName, nullptr, nullptr);
 }
 
 [[noreturn]] void dn2cpp_throw_argument_null_name(Dn2CppString* paramName)
 {
+    Dn2CppString* message = dn2cpp_sr_format(DN2CPP_SR_ARGUMENT_NULL, nullptr, 0);
+    DN2CPP_WEB_GC_LIVENESS(paramName);
     dn2cpp_raise_argument(&dn2cpp_argument_null_exception_type,
-        dn2cpp_sr_format(DN2CPP_SR_ARGUMENT_NULL, nullptr, 0), paramName, nullptr, nullptr);
+        message, paramName, nullptr, nullptr);
 }
 
 [[noreturn]] void dn2cpp_throw_argument_text(const Dn2CppTypeInfo* ti, const char* sentence,
@@ -800,13 +846,13 @@ bool dn2cpp_culture_exception_store(Dn2CppObject* e, Dn2CppString* invalidCultur
     Dn2CppString* message = sentence != nullptr
         ? dn2cpp_string_from_utf8(sentence, static_cast<int32_t>(std::strlen(sentence)))
         : nullptr;
-    dn2cpp_raise_argument(ti, message, dn2cpp_param_name_string(paramName), nullptr, nullptr);
+    dn2cpp_raise_argument_named(ti, message, paramName, nullptr, nullptr);
 }
 
 [[noreturn]] void dn2cpp_throw_argument_message(Dn2CppString* message, const char* paramName)
 {
-    dn2cpp_raise_argument(&dn2cpp_argument_exception_type, message,
-        dn2cpp_param_name_string(paramName), nullptr, nullptr);
+    dn2cpp_raise_argument_named(&dn2cpp_argument_exception_type, message,
+        paramName, nullptr, nullptr);
 }
 
 void dn2cpp_throw_index_out_of_range() { dn2cpp_throw_of(&dn2cpp_index_out_of_range_exception_type); }
@@ -2010,8 +2056,7 @@ Dn2CppArrayRef* dn2cpp_aggregate_inner_exceptions(Dn2CppObject* ex, const Dn2Cpp
     const char* paramName, Dn2CppString* const* args, int32_t argc, uint32_t hresult)
 {
     Dn2CppString* message = dn2cpp_sr_message(key, args, argc);
-    dn2cpp_raise_argument(ti, message,
-        paramName != nullptr ? dn2cpp_param_name_string(paramName) : nullptr, nullptr, nullptr, hresult);
+    dn2cpp_raise_argument_named(ti, message, paramName, nullptr, nullptr, hresult);
 }
 
 [[noreturn]] void dn2cpp_throw_invalid_enum_value(int32_t value, const char* enumName,
@@ -2030,24 +2075,34 @@ Dn2CppArrayRef* dn2cpp_aggregate_inner_exceptions(Dn2CppObject* ex, const Dn2Cpp
 
 [[noreturn]] void dn2cpp_throw_min_max_int(int64_t min, int64_t max, int32_t byteWidth)
 {
-    dn2cpp_throw_min_max(dn2cpp_format_int(min, byteWidth, nullptr),
-        dn2cpp_format_int(max, byteWidth, nullptr));
+    Dn2CppString* minText = dn2cpp_format_int(min, byteWidth, nullptr);
+    Dn2CppString* maxText = dn2cpp_format_int(max, byteWidth, nullptr);
+    DN2CPP_WEB_GC_LIVENESS(minText);
+    dn2cpp_throw_min_max(minText, maxText);
 }
 
 [[noreturn]] void dn2cpp_throw_min_max_uint(uint64_t min, uint64_t max, int32_t byteWidth)
 {
-    dn2cpp_throw_min_max(dn2cpp_format_uint(min, byteWidth, nullptr),
-        dn2cpp_format_uint(max, byteWidth, nullptr));
+    Dn2CppString* minText = dn2cpp_format_uint(min, byteWidth, nullptr);
+    Dn2CppString* maxText = dn2cpp_format_uint(max, byteWidth, nullptr);
+    DN2CPP_WEB_GC_LIVENESS(minText);
+    dn2cpp_throw_min_max(minText, maxText);
 }
 
 [[noreturn]] void dn2cpp_throw_min_max_r8(double min, double max)
 {
-    dn2cpp_throw_min_max(dn2cpp_double_to_string(min), dn2cpp_double_to_string(max));
+    Dn2CppString* minText = dn2cpp_double_to_string(min);
+    Dn2CppString* maxText = dn2cpp_double_to_string(max);
+    DN2CPP_WEB_GC_LIVENESS(minText);
+    dn2cpp_throw_min_max(minText, maxText);
 }
 
 [[noreturn]] void dn2cpp_throw_min_max_r4(float min, float max)
 {
-    dn2cpp_throw_min_max(dn2cpp_float_to_string(min), dn2cpp_float_to_string(max));
+    Dn2CppString* minText = dn2cpp_float_to_string(min);
+    Dn2CppString* maxText = dn2cpp_float_to_string(max);
+    DN2CPP_WEB_GC_LIVENESS(minText);
+    dn2cpp_throw_min_max(minText, maxText);
 }
 
 
@@ -2056,7 +2111,9 @@ Dn2CppArrayRef* dn2cpp_aggregate_inner_exceptions(Dn2CppObject* ex, const Dn2Cpp
 {
     Dn2CppString* args[] = { arg };
     Dn2CppString* sentence = dn2cpp_sr_message(key, args, 1);
+    DN2CPP_WEB_GC_LIVENESS(actual);
+    DN2CPP_WEB_GC_LIVENESS(actualText);
     std::string text = dn2cpp_sr_arg(actualText);
-    dn2cpp_raise_argument(&dn2cpp_argument_out_of_range_exception_type, sentence,
-        dn2cpp_param_name_string(paramName), actual, &text);
+    dn2cpp_raise_argument_named(&dn2cpp_argument_out_of_range_exception_type, sentence,
+        paramName, actual, &text);
 }

@@ -97,6 +97,136 @@ internal static class Program
     private static void StoreMdGeneric<T>(T[,] values, T value) => values[0, 0] = value;
     private static string ReadMdCulture(ref CultureInfo value) => value.Name;
     private static void WriteMdCulture(ref CultureInfo value, CultureInfo replacement) => value = replacement;
+    private static object ReadErasedReadonly(in object value) => value;
+    private static object ReadAfterMutation(in object value, Action mutate)
+    {
+        mutate();
+        return value;
+    }
+    private static class ReadonlyOwner<T>
+    {
+        internal static T Read(in T value) => value;
+    }
+    private static ref readonly object AllocateReadonlyAlias()
+    {
+        object[,] values = new CultureInfo[1, 1024];
+        ((CultureInfo[,])values)[0, 1023] = new CultureInfo("fr-FR");
+        return ref values[0, 1023];
+    }
+    private static object ReadReadonlyNumber(in NumberFormatInfo value) => value;
+    private static object ReadReadonlyText(in TextInfo value) => value;
+    private static object ReadAssembly(in System.Reflection.Assembly value) => value;
+    private static object ReadReadonlyModule(in System.Reflection.Module value) => value;
+    private static object ReadUnalignedAlias(in object value) =>
+        System.Runtime.CompilerServices.Unsafe.ReadUnaligned<object>(
+            ref System.Runtime.CompilerServices.Unsafe.As<object, byte>(
+                ref System.Runtime.CompilerServices.Unsafe.AsRef(in value)));
+    private sealed class PendingPayload
+    {
+        internal int Value;
+    }
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static PendingPayload ProducePending() => new PendingPayload { Value = 83 };
+    private static T ConsumePending<T>(PendingPayload first, T second) => first.Value == 83 ? second : default;
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static object PendingIndirect(in object value) => ConsumePending(ProducePending(), value);
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static T PendingObject<T>(in T value) => ConsumePending(ProducePending(), value);
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static object[] ProducePendingArray() => new object[] { ProducePending() };
+    private static T ConsumePendingArray<T>(ref object first, T second) =>
+        ((PendingPayload)first).Value == 83 ? second : default;
+    private static T ConsumePendingField<T>(ref int first, T second) => first == 83 ? second : default;
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static object PendingArrayIndirect(in object value) => ConsumePendingArray(ref ProducePendingArray()[0], value);
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static T PendingArrayObject<T>(in T value) => ConsumePendingArray(ref ProducePendingArray()[0], value);
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static object PendingFieldIndirect(in object value) => ConsumePendingField(ref ProducePending().Value, value);
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static T PendingFieldObject<T>(in T value) => ConsumePendingField(ref ProducePending().Value, value);
+
+    internal static void RunMdReadonlyAliases()
+    {
+        Console.WriteLine("== headerless multidimensional readonly aliases ==");
+        var culture = new CultureInfo("ja-JP");
+        var replacement = new CultureInfo("en-US");
+        var cultures = new CultureInfo[1, 2];
+        cultures[0, 1] = culture;
+        object[,] erased = cultures;
+        ref readonly object alias = ref erased[0, 1];
+        Console.WriteLine("readonly raw initial=" + ReferenceEquals(ReadErasedReadonly(in alias), culture));
+        cultures[0, 1] = replacement;
+        Console.WriteLine("readonly raw live alias=" + ReferenceEquals(ReadErasedReadonly(in alias), replacement));
+        Console.WriteLine("readonly raw callee mutation=" + ReferenceEquals(ReadAfterMutation(in alias, () => cultures[0, 1] = culture), culture));
+        Console.WriteLine("readonly raw generic=" + ReferenceEquals(ReadReadonly(in alias), culture));
+        Console.WriteLine("readonly raw owner=" + ReferenceEquals(ReadonlyOwner<object>.Read(in alias), culture));
+        Console.WriteLine("readonly raw unaligned=" + ReferenceEquals(ReadUnalignedAlias(in alias), culture));
+        var span = System.Runtime.InteropServices.MemoryMarshal.CreateReadOnlySpan(
+            ref System.Runtime.CompilerServices.Unsafe.AsRef(in alias), 1);
+        Console.WriteLine("readonly raw span=" + ReferenceEquals(span[0], culture));
+        Console.WriteLine("readonly pending indirect=" + ReferenceEquals(PendingIndirect(in alias), culture));
+        Console.WriteLine("readonly pending generic=" + ReferenceEquals(PendingObject(in alias), culture));
+        Console.WriteLine("readonly pending array indirect=" + ReferenceEquals(PendingArrayIndirect(in alias), culture));
+        Console.WriteLine("readonly pending array generic=" + ReferenceEquals(PendingArrayObject(in alias), culture));
+        Console.WriteLine("readonly pending field indirect=" + ReferenceEquals(PendingFieldIndirect(in alias), culture));
+        Console.WriteLine("readonly pending field generic=" + ReferenceEquals(PendingFieldObject(in alias), culture));
+        Console.WriteLine("readonly typed raw=" + (ReadMdCulture(ref cultures[0, 1]) == "ja-JP"));
+        cultures[0, 1] = null;
+        Console.WriteLine("readonly raw null payload=" + (ReadErasedReadonly(in alias) is null));
+        cultures[0, 1] = culture;
+        var numbers = new NumberFormatInfo[1, 1];
+        var number = new NumberFormatInfo { NumberDecimalSeparator = ":" };
+        numbers[0, 0] = number;
+        object[,] numberView = numbers;
+        Console.WriteLine("readonly number=" + ReferenceEquals(ReadErasedReadonly(in numberView[0, 0]), number)
+            + ":" + ReferenceEquals(ReadReadonlyNumber(in numbers[0, 0]), number));
+        var texts = new TextInfo[1, 1];
+        var text = culture.TextInfo;
+        texts[0, 0] = text;
+        object[,] textView = texts;
+        Console.WriteLine("readonly text=" + ReferenceEquals(ReadErasedReadonly(in textView[0, 0]), text)
+            + ":" + ReferenceEquals(ReadReadonlyText(in texts[0, 0]), text));
+        var assemblies = new System.Reflection.Assembly[1, 1];
+        var assembly = typeof(Program).Assembly;
+        assemblies[0, 0] = assembly;
+        object[,] assemblyView = assemblies;
+        Console.WriteLine("readonly assembly=" + ReferenceEquals(ReadErasedReadonly(in assemblyView[0, 0]), assembly)
+            + ":" + ReferenceEquals(ReadAssembly(in assemblies[0, 0]), assembly));
+        var modules = new System.Reflection.Module[1, 1];
+        var module = assembly.ManifestModule;
+        modules[0, 0] = module;
+        object[,] moduleView = modules;
+        Console.WriteLine("readonly module=" + ReferenceEquals(ReadErasedReadonly(in moduleView[0, 0]), module)
+            + ":" + ReferenceEquals(ReadReadonlyModule(in modules[0, 0]), module));
+        object[,,] rank3 = new CultureInfo[1, 1, 1];
+        ((CultureInfo[,,])rank3)[0, 0, 0] = culture;
+        object[,,,] rank4 = new CultureInfo[1, 1, 1, 1];
+        ((CultureInfo[,,,])rank4)[0, 0, 0, 0] = replacement;
+        Console.WriteLine("readonly raw ranks=" + ReferenceEquals(ReadErasedReadonly(in rank3[0, 0, 0]), culture)
+            + ":" + ReferenceEquals(ReadErasedReadonly(in rank4[0, 0, 0, 0]), replacement));
+        var lower = (CultureInfo[,])Array.CreateInstance(typeof(CultureInfo), new[] { 1, 1 }, new[] { -2, 3 });
+        lower[-2, 3] = culture;
+        object[,] lowerView = lower;
+        Console.WriteLine("readonly raw lower=" + ReferenceEquals(ReadErasedReadonly(in lowerView[-2, 3]), culture));
+        var clone = (CultureInfo[,])cultures.Clone();
+        object[,] cloneView = clone;
+        Console.WriteLine("readonly raw clone=" + ReferenceEquals(ReadErasedReadonly(in cloneView[0, 1]), culture));
+        var objects = new object[,] { { replacement } };
+        Console.WriteLine("readonly managed cell=" + ReferenceEquals(ReadErasedReadonly(in objects[0, 0]), replacement));
+        var vector = new object[] { culture };
+        Console.WriteLine("readonly managed vector=" + ReferenceEquals(ReadErasedReadonly(in vector[0]), culture));
+        var nested = new object[,] { { new[] { "nested" } } };
+        Console.WriteLine("readonly managed nested=" + ((string[])ReadonlyOwner<object>.Read(in nested[0, 0]))[0]);
+        ref readonly object held = ref AllocateReadonlyAlias();
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        Console.WriteLine("readonly raw alias lifetime=" + (((CultureInfo)ReadErasedReadonly(in held)).Name == "fr-FR"));
+        object[,] nil = null;
+        ObserveMd("readonly raw null", () => ReadErasedReadonly(in nil[0, 0]), () => null, null);
+        ObserveMd("readonly raw bounds", () => ReadErasedReadonly(in erased[0, 2]), () => cultures[0, 1], culture);
+        Console.WriteLine("headerless multidimensional readonly aliases end");
+    }
 
     private static void Observe(string label, object[] values, Action store, object expected, bool message = false)
     {
