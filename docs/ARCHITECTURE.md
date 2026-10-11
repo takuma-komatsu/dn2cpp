@@ -351,9 +351,11 @@ type, including covariant access and copies between MD and SZ representations.
 SZ reference slots contain managed wrappers. Type and bounds checks precede
 conversion and mutation in each entry's CLR order.
 Writable MD `Address` checks null and exact element identity before bounds;
-`readonly.` access permits covariance. Shared MD allocations and writable
+SZ `ldelema` checks null and bounds before exact element identity, while its
+`Address` method checks type before bounds. Bounds opt-outs retain the element
+contract, and `readonly.` access permits covariance. Shared MD allocations and writable
 addresses resolve their precise array identity through the existing type-info
-context slots. A raw headerless element requires a typed body rather than a
+context slots. A raw headerless MD element requires a typed body rather than a
 canonical managed-reference byref ABI.
 
 #### Platform ISA contract

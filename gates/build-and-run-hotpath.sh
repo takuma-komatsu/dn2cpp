@@ -8,6 +8,7 @@
 # every index is in range, so the outputs match real .NET, where the attribute
 # is inert and every access stays checked.
 # Covariant reference stores retain their type check with bounds checks disabled.
+# Writable SZ addresses retain exact element checks with bounds checks disabled.
 #
 # Placement is then asserted structurally on the transpile output, from inside the
 # wrapper's cached region (the gate_extra_asserts hook, `gates/_common.sh`) — so a
@@ -46,6 +47,7 @@
 source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/HotPathNoAllocMixedBad/ReflectionNoAllocHelpersOnly.csproj samples/dotnet/HotPathNoAllocMixedBad/ReflectionNoAllocHelpersOnlyProgram.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|reflection-noalloc-helpers-v1|covariant-store-prefix:${DN2CPP_BEFORE_COVARIANT_STORES:-}"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|writable-vector-address|vector-address-prefix:${DN2CPP_BEFORE_VECTOR_ADDRESS:-}"
 
 # Every block under an emitter-stamped `// Namespace.Class::Name` header — a
 # generic method's instantiations share the header, so all are collected.
@@ -96,6 +98,26 @@ if grep -Eq 'dn2cpp_bounds_check\(|dn2cpp_stelem_ref\(' <<< "$covariant_body"; t
 fi
 
 echo "== [HotPath] TU placement asserts =="
+local address_before address_prefix address_body
+address_before=$(DN2CPP_BEFORE_VECTOR_ADDRESS=1 run_bounded dotnet "$_CG_APP")
+address_prefix=$(awk '/^== unchecked writable vector addresses ==$/ { exit } { print }' <<< "$covariant_native")
+assert_output "$address_prefix" "$(strip_cr_win "$address_before")"
+address_before=$(DN2CPP_BEFORE_VECTOR_ADDRESS=1 run_bounded "$hp_out/HotPath$EXE_EXT")
+assert_output "$address_prefix" "$(strip_cr_win "$address_before")"
+for line in '== unchecked writable vector addresses ==' \
+    'unchecked address rejected=ArrayTypeMismatchException/80131503' \
+    'unchecked address retained=True' 'unchecked address exact=True' \
+    'unchecked writable vector addresses end'; do
+    [ "$(grep -Fxc -- "$line" <<< "$covariant_native")" = 1 ] \
+        || { echo "FAIL: unchecked address witness missing or repeated: $line" >&2; return 1; }
+done
+address_body=$(hot_bodies 'HotPathBoundsSubset.Program::AddressCovariantUnchecked')
+grep -Fq 'dn2cpp_sz_require_address_element(' <<< "$address_body" \
+    || { echo 'FAIL: unchecked address lost its element check' >&2; return 1; }
+if grep -Eq 'dn2cpp_bounds_check\(|dn2cpp_elem_addr\(' <<< "$address_body"; then
+    echo 'FAIL: unchecked address retained its bounds check' >&2
+    return 1
+fi
 [ -f "$hot" ] || { echo "FAIL: $hot was not emitted" >&2; exit 1; }
 
 for sym in SumInts DotProduct AxpyVecs PickLast BuildAndCount HotTinyAdd; do

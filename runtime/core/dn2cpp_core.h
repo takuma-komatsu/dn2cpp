@@ -6684,6 +6684,17 @@ inline Dn2CppObject* dn2cpp_ldelem_ref(Dn2CppArrayRef* arr, int32_t index)
     return arr->data[index];
 }
 
+// Writable SZ byrefs require exact element identity. Each entry sequences bounds
+// in CLR order; bounds opt-outs retain this contract and readonly. permits covariance.
+inline void dn2cpp_sz_require_address_element(Dn2CppArrayRef* arr,
+    const Dn2CppTypeInfo* element)
+{
+    if (arr == nullptr)
+        dn2cpp_throw_null_reference();
+    if (arr->type == nullptr || arr->type->elementType != element)
+        dn2cpp_throw_of(&dn2cpp_array_type_mismatch_exception_type);
+}
+
 // Reference stores use the actual element identity on both SZ and MD layouts.
 inline void dn2cpp_array_check_store_ref(Dn2CppObject* arr, Dn2CppObject* value)
 {

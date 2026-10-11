@@ -1924,10 +1924,28 @@ internal sealed partial class MethodCompiler
         }
     }
 
-    private void EmitLdelema(TypeDesc element)
+    private void EmitLdelema(TypeDesc element, int token, string? expectedElement = null, bool addressCall = false)
     {
         var idx = Pop();
         var arr = Pop();
+        if (RepOf(element) == ArrRep.Ref)
+        {
+            string receiver = NewTemp("Dn2CppArrayRef*");
+            Emit($"{receiver} = {Cast(arr, "Dn2CppArrayRef*")};");
+            arr = arr with { Expr = receiver, CppType = "Dn2CppArrayRef*" };
+            // ldelema checks bounds before type; the Address method reverses them.
+            if (!addressCall && !_method.SkipBoundsChecks)
+                Emit($"dn2cpp_bounds_check({receiver}, {idx.Expr});");
+            if (!_readonlyAddress)
+            {
+                // Promote loaded external identity without changing the slot's ABI.
+                expectedElement ??= CastTargetTypeInfoExpr(ResolveCastTarget(token), token)
+                    ?? throw new NotSupportedException($"Array address element {element} has no runtime identity");
+                Emit($"dn2cpp_sz_require_address_element({receiver}, {expectedElement});");
+            }
+            if (addressCall && !_method.SkipBoundsChecks)
+                Emit($"dn2cpp_bounds_check({receiver}, {idx.Expr});");
+        }
         string ct = CppTypes.Of(element);
         // The N-path address points at the packed slot, so its type is the storage
         // type (uint8_t* for byte[]); st == ct for every non-sub-word type.
@@ -1943,10 +1961,11 @@ internal sealed partial class MethodCompiler
             _ => $"({st}*){ElemAddr(arr, idx)}",
         };
         string ptrType = RepOf(element) == ArrRep.N ? st + "*" : ct + "*";
-        // Bounds-check the I4/Ref paths (the N path checks inside dn2cpp_elem_addr).
-        if (RepOf(element) != ArrRep.N && !_method.SkipBoundsChecks)
+        // The N path checks inside dn2cpp_elem_addr; Ref was checked above.
+        if (RepOf(element) == ArrRep.I4 && !_method.SkipBoundsChecks)
             Emit($"dn2cpp_bounds_check((Dn2CppArray*)({arr.Expr}), {idx.Expr});");
         Push(StackKind.Ptr, ptrType, addr);
+        Top = Top with { StaticType = TypeDesc.MakeByRef(element) };
     }
 
     private void EmitLdelemPrim(string memType, StackKind kind, string stackType)

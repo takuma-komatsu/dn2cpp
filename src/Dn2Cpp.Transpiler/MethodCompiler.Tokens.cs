@@ -517,10 +517,15 @@ internal sealed partial class MethodCompiler
             }
             else if (name == "Address")
             {
-                var idx = Pop();
-                var arr = Pop();
-                string et = CppTypes.Of(arrayType.Element!);
-                Push(StackKind.Ptr, et + "*", $"({et}*)dn2cpp_elem_addr(({Cast(arr, "Dn2CppArrayN*")}), {idx.Expr})");
+                int token = System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(mr.Parent);
+                string? expected = null;
+                if (!_readonlyAddress && RepOf(arrayType.Element!) == ArrRep.Ref)
+                {
+                    string owner = CastTargetTypeInfoExpr(arrayType, token)
+                        ?? throw new NotSupportedException($"Array address owner {arrayType} has no runtime identity");
+                    expected = $"({owner})->elementType";
+                }
+                EmitLdelema(arrayType.Element!, token, expected, addressCall: true);
             }
             return;
         }
