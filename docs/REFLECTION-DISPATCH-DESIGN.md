@@ -110,8 +110,14 @@ the same descriptor, including on synthesized method and return-parameter rows.
 Its concrete leaves name existing type-infos; a runtime-template class argument
 resolves against the reflected clone. Missing leaves refuse explicitly.
 Symbolic MethodDef queries resolve composed open forms using the typical method
-parameters and actual declaring type arguments. A query dependency cannot promote an Invoke referent
-or discard a binding argument path.
+parameters and actual declaring type arguments. Delegate binding resolves retained
+location recipes lazily against the actual declaring level, using the same
+compound, array and generic identity interners on both sides. A name without a
+type-info proves inequality only; it cannot establish a matching signature.
+Resolved identities do not validate an executable ABI: canonical by-ref and
+pointer bodies may forward raw addresses, but unknown value access and reference
+slot access remain refused. Invoke separately refuses canonical copy cells and
+referent returns while preserving function-pointer boxing.
 
 Formal parameter constraint queries resolve symbolic type and method parameter
 references against the typical declaration. They return fresh arrays over

@@ -4373,6 +4373,10 @@ internal sealed partial class CppEmitter
         int kind = t.Kind is TypeKind.ByRef or TypeKind.Pointer
             && (Compilation.ContainsCanonPlaceholder(t) || Compilation.ContainsGenericVar(t))
             ? PassSignatureUnknown : 0;
+        // Binding resolves dependent locations independently. Invoke cannot use
+        // a canonical reference cell to copy an arbitrary substituted referent.
+        if ((kind & PassSignatureUnknown) != 0 && functionPointer is null)
+            kind |= PassUnsupported;
         if (t.Kind == TypeKind.ByRef)
         {
             kind |= PassByRef;
@@ -4481,7 +4485,8 @@ internal sealed partial class CppEmitter
                 return (ReturnPointerRow | byRef, "nullptr",
                     (kind & PassSignatureUnknown) != 0 ? "&dn2cpp_void_type" : type);
             int levels = (kind >> PassPointerDepthShift) & 0xFF;
-            return (ReturnPointerRow | byRef | (levels << ReturnPointerDepthShift), type,
+            return (ReturnPointerRow | byRef | (levels << ReturnPointerDepthShift)
+                | ((kind & PassUnsupported) != 0 ? ReturnUnboxableRow : 0), type,
                 (kind & PassFunctionPointerPointee) != 0
                     ? functionPointer is { Known: true } f ? PointeeStandIn(f.Key, f.Name, f.Known ? f.Binding : null) : "&dn2cpp_void_type"
                     : signature);

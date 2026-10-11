@@ -23,7 +23,7 @@
 # By-value delegate binding matches enums to their exact underlying type by name and MethodInfo.
 # Canonical function-pointer descriptors preserve Invoke checks independently of binding identity.
 # Unsupported by-ref referents retain distinct identities without enabling Invoke marshalling.
-# Unresolved template by-ref/pointer identities refuse binding after known mismatches.
+# Runtime-template binding substitutes full location identities while unsafe bodies and Invoke cells stay refused.
 # Provably incompatible template overloads permit a fixed body without selecting a coincident wrong target.
 # Invoke replaces the canonical Missing singleton with recorded defaults and copies back only after success.
 # A delegate constructor refuses a target whose method-load origin was lost.
@@ -249,6 +249,7 @@ source gates/_reflection-signature-types.sh
 source gates/_headerless-reference-identity.sh
 source gates/_formal-constraint-metadata.sh
 source gates/_reflected-events.sh
+source gates/_runtime-template-bindings.sh
 source gates/_pointer-array-types.sh
 source gates/_runtime-lifetime-interfaces.sh
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/ReflectInvoke/ArrayCloneInterfaceSubset.cs samples/dotnet/ReflectInvoke/ArrayCloneReflectionOnlySubset.cs"
@@ -273,6 +274,8 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|attribute-discovery-prefix
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|delegate-name-boundary-argv:delegate-name-boundary-outcomes"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|delegate-signature-prefix-argv:before-delegate-signature-bindings|delegate-signature-boundary-argv:delegate-signature-boundary-outcomes"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|function-pointer-invoke-prefix-argv:before-runtime-function-pointer-invoke"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_runtime-template-bindings.sh gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj samples/dotnet/ReflectInvoke/RuntimeTemplateBindingOnly.csproj samples/dotnet/ReflectInvoke/RuntimeTemplateBindingOnlyProgram.cs"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|runtime-template-binding:packed,native,uncompressed,trimmed,ildiet|runtime-template-binding-prefix:before-runtime-template-bindings"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|unsupported-referent-prefix-argv:before-unsupported-referent-signatures"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|ordinary-template-prefix-argv:before-ordinary-template-signatures|ordinary-template-boundary-prefix-argv:delegate-signature-before-ordinary-boundary"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|ordinary-overload-prefix-argv:before-ordinary-overload-selection|ordinary-overload-boundary-prefix-argv:delegate-signature-before-overload-boundary|shape-overload-prefix-argv:before-shape-overload-selection|shape-overload-boundary-prefix-argv:delegate-signature-before-shape-boundary|leaf-overload-prefix-argv:before-leaf-overload-selection|leaf-overload-boundary-prefix-argv:delegate-signature-before-leaf-boundary"
@@ -1472,7 +1475,9 @@ gate_extra_asserts() {
         done
     done
 
-    # Matching dependent signatures still lack an invokable substituted body.
+    runtime_template_binding_prefix_asserts "$out"
+
+    # Full identities bind independently of Invoke marshalling and template shape.
     run_bounded dotnet "$_CG_APP" delegate-signature-boundary-outcomes > "$out/delegate-signature-boundary.dotnet.stdout"
     run_bounded "$out/ReflectInvoke$EXE_EXT" delegate-signature-boundary-outcomes > "$out/delegate-signature-boundary.native.stdout"
     for axis in dotnet native; do
@@ -1482,13 +1487,8 @@ gate_extra_asserts() {
             grep -Fxq -- "$line" <<< "$boundary"
         done
         for query in 'return' 'nested return' 'nested argument'; do
-            if [ "$axis" = dotnet ]; then
-                grep -Fxq -- "signature template dependent $query => null/null" <<< "$boundary"
-                grep -Fxq -- "signature template matching $query => bound/bound" <<< "$boundary"
-            else
-                grep -Fxq -- "signature template dependent $query => unsupported/unsupported" <<< "$boundary"
-                grep -Fxq -- "signature template matching $query => unsupported/unsupported" <<< "$boundary"
-            fi
+            grep -Fxq -- "signature template dependent $query => null/null" <<< "$boundary"
+            grep -Fxq -- "signature template matching $query => bound/bound" <<< "$boundary"
         done
         if [ "$axis" = dotnet ]; then
             grep -Fxq -- 'signature opaque return invoke => returned' <<< "$boundary"
@@ -1498,22 +1498,17 @@ gate_extra_asserts() {
             grep -Fxq -- 'signature opaque argument invoke => NotSupportedException' <<< "$boundary"
         fi
         for query in 'ref' 'pointer' 'ref return' 'pointer return' 'class ref' 'class return'; do
-            if [ "$axis" = dotnet ]; then
-                grep -Fxq -- "signature ordinary $query matching => bound/bound" <<< "$boundary"
-                grep -Fxq -- "signature ordinary $query mismatch => null/null" <<< "$boundary"
-            else
-                grep -Fxq -- "signature ordinary $query matching => unsupported/unsupported" <<< "$boundary"
-                grep -Fxq -- "signature ordinary $query mismatch => unsupported/unsupported" <<< "$boundary"
-            fi
+            grep -Fxq -- "signature ordinary $query matching => bound/bound" <<< "$boundary"
+            grep -Fxq -- "signature ordinary $query mismatch => null/null" <<< "$boundary"
         done
         if [ "$axis" = dotnet ]; then
             grep -Fxq -- 'signature ordinary ref object => null/null' <<< "$boundary"
             grep -Fxq -- 'signature ordinary ref invoke => null' <<< "$boundary"
             grep -Fxq -- 'signature ordinary pointer invoke => returned' <<< "$boundary"
         else
-            grep -Fxq -- 'signature ordinary ref object => unsupported/unsupported' <<< "$boundary"
-            grep -Fxq -- 'signature ordinary ref invoke => PlatformNotSupportedException' <<< "$boundary"
-            grep -Fxq -- 'signature ordinary pointer invoke => PlatformNotSupportedException' <<< "$boundary"
+            grep -Fxq -- 'signature ordinary ref object => null/null' <<< "$boundary"
+            grep -Fxq -- 'signature ordinary ref invoke => NotSupportedException' <<< "$boundary"
+            grep -Fxq -- 'signature ordinary pointer invoke => NotSupportedException' <<< "$boundary"
         fi
         for line in '== ordinary runtime delegate signature boundaries ==' \
             'signature ordinary template missing => null' 'ordinary runtime delegate signature boundaries end'; do
@@ -1539,17 +1534,14 @@ gate_extra_asserts() {
         for line in '== unresolved ordinary overload selection ==' 'unresolved ordinary overload selection end'; do
             grep -Fxq -- "$line" <<< "$boundary"
         done
-        if [ "$axis" = dotnet ]; then
-            grep -Fxq -- 'signature overload coincident ref => bound/8/10/bound/8/10' <<< "$boundary"
-            grep -Fxq -- 'signature overload coincident composed => bound/48/False/bound/48/False' <<< "$boundary"
-            result=bound
-        else
-            grep -Fxq -- 'signature overload coincident ref => unsupported/unsupported' <<< "$boundary"
-            grep -Fxq -- 'signature overload coincident composed => unsupported/unsupported' <<< "$boundary"
-            result=unsupported
-        fi
+        grep -Fxq -- 'signature overload coincident ref => bound/8/10/bound/8/10' <<< "$boundary"
+        grep -Fxq -- 'signature overload coincident composed => bound/48/False/bound/48/False' <<< "$boundary"
+        result=bound
+        # Runtime cloning retains only identity base projections, not permutations.
+        if [ "$axis" = dotnet ]; then reordered=bound; else reordered=unsupported; fi
+        grep -Fxq -- "signature overload reordered base => $reordered" <<< "$boundary"
         for query in 'coincident reference' 'coincident pointer' 'coincident pointer return' \
-            'coincident ref return' 'reordered base' 'coincident constant'; do
+            'coincident ref return' 'coincident constant'; do
             grep -Fxq -- "signature overload $query => $result" <<< "$boundary"
         done
     done
@@ -1565,7 +1557,7 @@ gate_extra_asserts() {
         for line in '== unresolved structured overload selection ==' 'unresolved structured overload selection end'; do
             grep -Fxq -- "$line" <<< "$boundary"
         done
-        if [ "$axis" = dotnet ]; then result=bound; else result=unsupported; fi
+        result=bound
         for query in 'coincident function' 'coincident deep pointer'; do
             grep -Fxq -- "signature overload $query => $result" <<< "$boundary"
         done
@@ -1582,7 +1574,7 @@ gate_extra_asserts() {
         for line in '== unresolved function leaf overload selection ==' 'unresolved function leaf overload selection end'; do
             grep -Fxq -- "$line" <<< "$boundary"
         done
-        if [ "$axis" = dotnet ]; then result=bound; else result=unsupported; fi
+        result=bound
         for query in 'coincident array' 'coincident matrix' 'direct array identity'; do
             grep -Fxq -- "signature overload $query => $result" <<< "$boundary"
         done
@@ -1599,7 +1591,7 @@ gate_extra_asserts() {
         for line in '== unresolved omitted identity overload selection ==' 'unresolved omitted identity overload selection end'; do
             grep -Fxq -- "$line" <<< "$boundary"
         done
-        if [ "$axis" = dotnet ]; then result=bound; else result=unsupported; fi
+        result=bound
         for query in 'coincident generic family'; do
             for mode in soft hard; do
                 grep -Fxq -- "signature overload $query $mode => $result" <<< "$boundary"
@@ -1615,7 +1607,7 @@ gate_extra_asserts() {
         diff -u <(strip_cr_win_file "$out/runtime-argument-boundary-before.$axis.stdout") \
             <(strip_cr_win_file "$out/runtime-argument-boundary-prefix.$axis.stdout")
         boundary=$(strip_cr_win_file "$out/delegate-signature-boundary.$axis.stdout")
-        if [ "$axis" = dotnet ]; then result=bound; else result=unsupported; fi
+        result=bound
         for line in '== matching runtime generic identity boundaries ==' 'matching runtime generic identity boundaries end' \
             "signature overload generic identity soft => $result" "signature overload generic identity hard => $result"; do
             grep -Fxq -- "$line" <<< "$boundary" \
@@ -2299,12 +2291,10 @@ gate_extra_asserts() {
             run_bounded dotnet "$_CG_APP" before-intrinsic-overloads > "$out/intrinsic-before.$axis.stdout"
             run_bounded dotnet "$_CG_APP" > "$out/intrinsic-full.$axis.stdout"
             run_bounded dotnet "$_CG_APP" intrinsic-boundary > "$out/intrinsic-boundary.$axis.stdout"
-            result=bound
         else
             run_bounded "$out/ReflectNameBindOnly$EXE_EXT" before-intrinsic-overloads > "$out/intrinsic-before.$axis.stdout"
             run_bounded "$out/ReflectNameBindOnly$EXE_EXT" > "$out/intrinsic-full.$axis.stdout"
             run_bounded "$out/ReflectNameBindOnly$EXE_EXT" intrinsic-boundary > "$out/intrinsic-boundary.$axis.stdout"
-            result=unsupported
         fi
         sed '/^== intrinsic identity overload selection ==/,$d' "$out/intrinsic-full.$axis.stdout" \
             > "$out/intrinsic-prefix.$axis.stdout"
@@ -2312,11 +2302,13 @@ gate_extra_asserts() {
             <(strip_cr_win_file "$out/intrinsic-prefix.$axis.stdout")
         boundary=$(strip_cr_win_file "$out/intrinsic-boundary.$axis.stdout")
         for line in '== matching intrinsic overload boundary ==' 'matching intrinsic overload boundary end' \
-            "intrinsic coincident soft => $result" "intrinsic coincident hard => $result"; do
+            'intrinsic coincident soft => bound' 'intrinsic coincident hard => bound'; do
             grep -Fxq -- "$line" <<< "$boundary" \
                 || { echo "FAIL: isolated intrinsic matching witness missing: $line" >&2; return 1; }
         done
     done
+    diff -u <(strip_cr_win_file "$out/intrinsic-boundary.dotnet.stdout") \
+        <(strip_cr_win_file "$out/intrinsic-boundary.native.stdout")
 }
 DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectInvoke ReflectNameBindOnly --no-ildiet -r "$pointer_field_library"
 DN2CPP_OUT_SUFFIX=-ildiet DN2CPP_STRICT_COMPLETION=1 \
@@ -2781,3 +2773,5 @@ formal_constraint_diff_axes
 reflected_event_diff_axes
 
 reflected_event_preservation
+
+runtime_template_binding_diff_axes

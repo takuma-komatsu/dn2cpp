@@ -90,6 +90,45 @@ void RewriteReflectedEvents(ModuleDefinition module, bool required = false)
     }
 }
 
+// A different IL producer may use tokenless reference-slot operations for T*.
+void RewriteTemplatePointerSlots(ModuleDefinition module, bool required = false)
+{
+    var owner = module.GetType("ReflectDelegateSubset.SignatureUnsafePointer`1");
+    if (owner is null && !required)
+        return;
+    if (owner is null)
+        throw new InvalidOperationException("missing template pointer slot fixture");
+    foreach (string name in new[] { "Read", "Clear", "ReadNested", "ClearNested" })
+    {
+        var method = owner.Methods.Single(m => m.Name == name);
+        method.Body = new MethodBody(method);
+        var il = method.Body.GetILProcessor();
+        il.Emit(OpCodes.Ldarg_0);
+        if (name.EndsWith("Nested", StringComparison.Ordinal))
+            il.Emit(OpCodes.Ldind_I);
+        if (name.StartsWith("Read", StringComparison.Ordinal))
+            il.Emit(OpCodes.Ldind_Ref);
+        else
+        {
+            il.Emit(OpCodes.Ldnull);
+            il.Emit(OpCodes.Stind_Ref);
+        }
+        il.Emit(OpCodes.Ret);
+    }
+}
+
+if (args.Length == 2 && args[1] == "--template-pointer-slots")
+{
+    string slotPath = Path.GetFullPath(args[0]);
+    using var slotAssembly = AssemblyDefinition.ReadAssembly(slotPath, new ReaderParameters { InMemory = true });
+    RewriteTemplatePointerSlots(slotAssembly.MainModule, required: true);
+    string slotTemporary = slotPath + ".pointer-slots.tmp";
+    slotAssembly.Write(slotTemporary, new WriterParameters { Timestamp = 0, DeterministicMvid = true });
+    File.Move(slotTemporary, slotPath, overwrite: true);
+    Console.WriteLine("template pointer slot fixtures written");
+    return;
+}
+
 if (args.Length == 2 && args[1] == "--reflected-events")
 {
     string eventPath = Path.GetFullPath(args[0]);
@@ -131,6 +170,7 @@ using var assembly = AssemblyDefinition.ReadAssembly(path, new ReaderParameters 
 var module = assembly.MainModule;
 RewriteDelegateCloneSlots(module);
 RewriteReflectedEvents(module);
+RewriteTemplatePointerSlots(module);
 var owner = module.GetType("LdftnLocalSubset.Program")
     ?? throw new InvalidOperationException("missing IL fixture owner");
 

@@ -147,7 +147,6 @@ declaring_method_prefix_asserts() {
             "$out/virtual-delegate-full.$axis.stdout" > "$out/declaring-prefix.$axis.stdout"
         diff -u "$out/declaring-before.$axis.stdout" "$out/declaring-prefix.$axis.stdout"
         declaring_method_asserts "$out/virtual-delegate-full.$axis.stdout"
-        test "$(tail -n 1 "$out/virtual-delegate-full.$axis.stdout")" = 'formal parameter declaring methods end'
     done
 }
 

@@ -313,13 +313,12 @@ internal sealed partial class Compilation
         _ => false,
     };
 
-    // Function-signature children affect identity but never the native pointer ABI.
-    // A template-dependent calli is rejected separately from its raw IL signature.
+    // Pointer and by-ref locations have a fixed address ABI. Their dependent
+    // identities are substituted at binding; value access and calli remain guarded.
     private static bool ContainsAbiCanonAny(TypeDesc t) => t.CanonAnyIndex >= 0 || t.Kind switch
     {
-        TypeKind.Pointer when t.IsFunctionPointer => false,
-        TypeKind.SZArray or TypeKind.MDArray or TypeKind.ByRef or TypeKind.Pointer =>
-            ContainsAbiCanonAny(t.Element!),
+        TypeKind.ByRef or TypeKind.Pointer => false,
+        TypeKind.SZArray or TypeKind.MDArray => ContainsAbiCanonAny(t.Element!),
         TypeKind.Class => t.Class!.Context.TypeArgs.Any(ContainsAbiCanonAny),
         _ => false,
     };
@@ -1316,7 +1315,8 @@ internal sealed partial class Compilation
                     // A signature naming a type parameter moves T VALUES across the
                     // call boundary — the body trial cannot see that (the body just
                     // uses its argument), so the boundary is checked here.
-                    bool sigAny = ContainsAbiCanonAny(m.Signature.ReturnType);
+                    bool sigAny = ContainsAbiCanonAny(m.Signature.ReturnType)
+                        || UsesUnknownTemplateReferenceSlot(m);
                     foreach (var pt in m.Signature.ParameterTypes)
                         sigAny |= ContainsAbiCanonAny(pt);
                     if (sigAny)
@@ -1634,13 +1634,30 @@ internal sealed partial class Compilation
         }
     }
 
+    private static bool UsesUnknownTemplateReferenceSlot(MethodInfo method)
+    {
+        static bool UnknownReferent(TypeDesc type)
+        {
+            while (type.Kind == TypeKind.ByRef || type.Kind == TypeKind.Pointer && !type.IsFunctionPointer)
+                type = type.Element!;
+            return type.CanonAnyIndex >= 0;
+        }
+        if (!UnknownReferent(method.Signature.ReturnType) && !method.Signature.ParameterTypes.Any(UnknownReferent))
+            return false;
+        // A headerless class argument and a managed reference use different cells.
+        // Forwarding an address is safe; canonical ldind.ref/stind.ref cannot choose.
+        return ILDecoder.Decode(method.Module.PE.GetMethodBody(method.Rva).GetILBytes()!.ToImmutableArrayCompat())
+            .Any(instruction => instruction.OpCode is ILOpCode.Ldind_ref or ILOpCode.Stind_ref);
+    }
+
     // Whether a clone can run m's body, which only reflection reaches: a non-generic
     // method of a placeholder level with IL, naming the type parameters only bare as
     // typeof, type-test, cast, unbox.any, box or array element operands
     // (see KeepsTemplateValuesBoxed),
     // through instance field accesses, or through direct calls of non-virtual methods of
     // its own level or a base level that are reached already or qualify themselves,
-    // or an ldftn of its own non-generic instance method, and none in its signature.
+    // or an ldftn of its own non-generic instance method. Dependent signature locations
+    // carry addresses only, never a type-argument value.
     // Indirect calls have a class-argument-free signature.
     // Every context slot such a body registers is a bare type
     // argument or the class table of a base level whose static method it calls.
@@ -1655,7 +1672,8 @@ internal sealed partial class Compilation
             return false;
         try
         {
-            if (ContainsAbiCanonAny(m.Signature.ReturnType) || m.Signature.ParameterTypes.Any(ContainsAbiCanonAny))
+            if (ContainsAbiCanonAny(m.Signature.ReturnType) || m.Signature.ParameterTypes.Any(ContainsAbiCanonAny)
+                || UsesUnknownTemplateReferenceSlot(m))
                 return false;
         }
         catch (Exception e) when (!IsMustEscape(e))

@@ -409,6 +409,7 @@ ORDERED_PROJECTS=(
     "samples/dotnet/TrimReflectLib/TrimReflectLib.csproj"
     "samples/dotnet/ReflectInvoke/ReflectedEventsOnly.csproj"
     "samples/dotnet/ReflectInvoke/FormalConstraintsOnly.csproj"
+    "samples/dotnet/ReflectInvoke/RuntimeTemplateBindingOnly.csproj"
     "samples/dotnet/TrimReflect/TrimReflect.csproj"
     "samples/dotnet/PInvokeRefLib/PInvokeRefLib.csproj"
     "samples/dotnet/PInvokeNative/PInvokeNative.csproj"

@@ -30,6 +30,7 @@
 
   <ItemGroup>
     <Compile Remove="FormalConstraintsOnlyProgram.cs" />
+    <Compile Remove="RuntimeTemplateBindingOnlyProgram.cs" />
     <Compile Remove="ReflectedEventsOnlyProgram.cs" />
     <Compile Remove="ReflectedEventsPreservationProgram.cs" />
     <Compile Remove="OrdinaryReflectionLeavesProgram.cs" />
