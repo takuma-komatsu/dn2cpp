@@ -58,14 +58,29 @@ internal sealed class TypeDesc
 
     /// <summary>A metadata function-pointer type (FNPTR — <c>delegate*&lt;...&gt;</c>, any
     /// calling convention). Kind stays Pointer over Void: a function pointer is one
-    /// unmanaged pointer everywhere layout, codegen, mangling and the hot-update sigShape
-    /// look, and the last two are baked into emitted builds, so this shape must not print
-    /// or mangle apart from <c>void*</c>. The flag carries the one distinction real .NET
+    /// unmanaged pointer everywhere layout, codegen and the hot-update sigShape look.
+    /// Structural identity is retained separately for generic arguments and reflection.
+    /// The flag carries the distinction real .NET
     /// draws: <c>[MarshalAs(FunctionPtr)]</c> is valid on it alone — refused on
     /// <c>void*</c>, as every width descriptor is on both (measured). Read by
     /// <c>Compilation.MarshalDescribedExtent</c>, <c>CppTypes.MarshalAsNativeType</c> and
     /// <c>CppTypes.StructFieldDescriptorSupported</c>.</summary>
     public bool IsFunctionPointer;
+    public FunctionPointerInfo? FunctionSignature;
+
+    internal sealed class FunctionPointerInfo
+    {
+        internal readonly int Convention;
+        internal readonly TypeDesc[] Types; // return type, then parameter types
+
+        internal FunctionPointerInfo(int convention, TypeDesc[] types)
+        {
+            // CLR identity merges the unmanaged ABI conventions and ignores modifiers.
+            Convention = (convention & 0xf) is >= 1 and <= 4
+                ? (convention & ~0xf) | 9 : convention;
+            Types = types;
+        }
+    }
 
     /// <summary>Lazily cached <c>Compilation.MangleArg</c> fragment — write-once and
     /// content-derived, so the never-mutated-after-construction rule above stays honest. The
@@ -161,16 +176,22 @@ internal sealed class TypeDesc
     public static TypeDesc MakePointer(TypeDesc element) =>
         Born(new() { Kind = TypeKind.Pointer, Element = element });
 
-    /// <summary>The interned function-pointer descriptor — ONE instance, because the
-    /// decoded signature is deliberately dropped (see
-    /// <c>SignatureProvider.GetFunctionPointerType</c>) and function pointers pervade real
-    /// CoreLib signatures. Declared after <see cref="s_primitives"/>, whose Void entry it
-    /// reads at static init.</summary>
-    private static readonly TypeDesc s_functionPointer = new()
-        { Kind = TypeKind.Pointer, IsFunctionPointer = true,
-          Element = MakePrimitive(PrimitiveTypeCode.Void) };
+    public static TypeDesc MakeFunctionPointer(MethodSignature<TypeDesc> signature)
+    {
+        var types = new TypeDesc[signature.ParameterTypes.Length + 1];
+        types[0] = signature.ReturnType;
+        for (int i = 0; i < signature.ParameterTypes.Length; i++)
+            types[i + 1] = signature.ParameterTypes[i];
+        return MakeFunctionPointer(signature.Header.RawValue, types);
+    }
 
-    public static TypeDesc MakeFunctionPointer() => s_functionPointer;
+    private static TypeDesc MakeFunctionPointer(int convention, TypeDesc[] types) => Born(new()
+    {
+        Kind = TypeKind.Pointer,
+        IsFunctionPointer = true,
+        Element = MakePrimitive(PrimitiveTypeCode.Void),
+        FunctionSignature = new FunctionPointerInfo(convention, types),
+    });
 
     /// <summary>The interned generic-parameter placeholders, two rows (type <c>!n</c>
     /// / method <c>!!n</c>) indexed by parameter position. Real arities sit far under
@@ -224,8 +245,8 @@ internal sealed class TypeDesc
         TypeKind.SZArray => MakeSZArray(Element!.Substitute(ctx)),
         TypeKind.MDArray => MakeMDArray(Element!.Substitute(ctx), Rank),
         TypeKind.ByRef => MakeByRef(Element!.Substitute(ctx)),
-        // A function pointer's element is the interned Void — nothing to substitute, and
-        // rebuilding through MakePointer would silently drop the flag.
+        TypeKind.Pointer when FunctionSignature is { } signature =>
+            MakeFunctionPointer(signature.Convention, signature.Types.Select(t => t.Substitute(ctx)).ToArray()),
         TypeKind.Pointer when IsFunctionPointer => this,
         TypeKind.Pointer => MakePointer(Element!.Substitute(ctx)),
         _ => this,
@@ -1550,7 +1571,7 @@ internal static class CppNaming
     /// (base, marker list) decomposition of any mangle is unique, read right to left, and
     /// injectivity reduces to the bases. Those are pairwise distinct across kinds:
     /// placeholders carry '$' (unreachable from <see cref="Sanitize"/>), the
-    /// generic-parameter and open-template bases carry a reserved
+    /// generic-parameter, open-template and function-signature bases carry a reserved
     /// <see cref="HasKindLeafPrefix">prefix</see>, and the escape itself is injective
     /// over names — a name ending in the marker is escaped too, so <c>n + "_Cls"</c> is
     /// reachable only from <c>n</c>. It deliberately does NOT separate two named types that
@@ -1594,13 +1615,14 @@ internal static class CppNaming
         return i < name.Length && i >= 2 && name[i - 1] == 'd' && name[i - 2] == 'M';
     }
 
-    /// <summary>The prefixes reserved for the mangle's two LEAF bases that are not names:
-    /// a generic parameter ("Gvar") and an open generic definition ("Gtpl"). A prefix
+    /// <summary>The prefixes reserved for bases that are not names: a generic parameter
+    /// ("Gvar"), an open generic definition ("Gtpl") and a function signature ("Gfn"). A prefix
     /// test rather than the exact token shapes, because a coarse reservation costs a
     /// suffixed name nobody spells and cannot drift out of step with the arms.</summary>
     private static bool HasKindLeafPrefix(string name) =>
         name.StartsWith("Gvar", StringComparison.Ordinal)
-        || name.StartsWith("Gtpl", StringComparison.Ordinal);
+        || name.StartsWith("Gtpl", StringComparison.Ordinal)
+        || name.StartsWith("Gfn", StringComparison.Ordinal);
 
     /// <summary>The <c>PrimitiveTypeCode.ToString()</c> renderings
     /// <c>Compilation.MangleArg</c>'s primitive arm can produce. Written as a switch

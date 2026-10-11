@@ -43,11 +43,9 @@ internal sealed class SignatureProvider : ISignatureTypeProvider<TypeDesc, objec
     // actually use them out of the output unless they are reached.
     public TypeDesc GetPointerType(TypeDesc elementType) => TypeDesc.MakePointer(elementType);
 
-    // A function pointer keeps the same opaque pointer shape (the decoded signature is
-    // dropped) but stays distinguishable from void*: [MarshalAs(FunctionPtr)] is valid on
-    // it alone, so folding the two refuses a descriptor real .NET accepts.
+    // Layout stays Pointer/Void; generic argument identity keeps the full signature.
     public TypeDesc GetFunctionPointerType(MethodSignature<TypeDesc> signature) =>
-        TypeDesc.MakeFunctionPointer();
+        TypeDesc.MakeFunctionPointer(signature);
 
     public TypeDesc GetGenericInstantiation(TypeDesc genericType, ImmutableArray<TypeDesc> typeArguments)
     {

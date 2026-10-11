@@ -178,8 +178,11 @@ backend projects and `ConsoleBackend.cs`; run it when you widen the surface.
 
 ## 3. Key data structures (`src/Dn2Cpp.Transpiler/Model.cs`)
 
-- `TypeDesc` — a type (Primitive / Class / External / SZArray / ByRef /
-  GenericVar / Template). `Substitute(GenericContext)` substitutes type arguments.
+- `TypeDesc` — a type (Primitive / Class / External / SZArray / MDArray / ByRef /
+  Pointer / GenericVar / Template). `Substitute(GenericContext)` substitutes type
+  arguments, including function-signature children. Function pointers retain their
+  convention, return and parameter types for structural generic identity while
+  layout, native spelling and hot-update method ABI remain one unmanaged pointer.
 - `ClassInfo` — a type definition: `Module`, `BaseClass`, `Interfaces`, `Fields`,
   `Methods`, `Vtable`, `GenericArity` / `Context` / `Completed`.
 - `MethodInfo` — a method: `Module`, `Signature`, `Context`, `VtableSlot`, `Rva`.

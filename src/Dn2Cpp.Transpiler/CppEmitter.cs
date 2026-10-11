@@ -2896,6 +2896,8 @@ internal sealed partial class CppEmitter
         sb.AppendLine();
     }
 
+    private readonly List<string> _signatureTypeArgumentInitializers = new();
+
     /// <summary>Emits the runtime-init prologue shared by backend epilogues
     /// (runtime init, string literal table init, then static constructors).</summary>
     internal void EmitInitCalls(StringBuilder sb, IReadOnlyList<MethodInfo> cctors)
@@ -2982,6 +2984,8 @@ internal sealed partial class CppEmitter
             && _emit.Contains(comparer) && !IsOpaque(comparer)
             && comparer.Fields.FirstOrDefault(f => f.IsStatic && f.Name == "Default") is { } defaultComparer)
             sb.AppendLine($"    dn2cpp_array_set_default_comparer_getter([]() -> Dn2CppObject* {{ return (Dn2CppObject*){defaultComparer.CppStaticAccess}; }});");
+        foreach (string initializer in _signatureTypeArgumentInitializers)
+            sb.AppendLine($"    {initializer}();");
         sb.AppendLine("    dn2cpp_init_strings();");
         // Route the eager startup pass through the same idempotent wrappers the use-site
         // guards call, so a cctor already run on first use is not run a second time here.

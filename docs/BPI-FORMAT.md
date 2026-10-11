@@ -130,7 +130,9 @@ in `TypeDesc` rendering — e.g. `WriteLine(string)` is `(String):Void`. A
 method import of a closed generic-method instantiation, and the base method row
 it binds, lead that with the method's type arguments (`AbiContract.ImportShape`):
 `TypeName<int>()` is `<Int32>():String`, so instantiations whose signatures
-never name a type argument stay distinct.
+never name a type argument stay distinct. Argument identities containing function
+signatures use the structural wire rendering below; the parameter and return ABI
+rendering remains unchanged.
 
 **Nested base-image types are outside the type-import boundary.** The registry
 keys a nested type by its CLR reflection name (`Ns.Outer+Inner`), but the
@@ -925,7 +927,7 @@ name; it computes only a **lookup key** and reads the mangled name back from
 the manifest's `instantiations` map:
 
 - **InstantiationKey** = the arity-stripped open-definition full name, then the
-  closed type arguments rendered by `TypeDesc.ToString`, e.g.
+  closed type arguments rendered by `AbiContract.ArgumentIdentity`, e.g.
   `System.Collections.Generic.List[Int32]`, `Box[String]`,
   `System.Func[Int32,Int32]`. Both sides compute it from metadata alone (the
   base build from the emitted specialization, the converter from the patch
@@ -943,6 +945,19 @@ the manifest's `instantiations` map:
   instantiations (`Nullable<int>`, `KeyValuePair<…>`) are not in the map
   (reference types only) and hit the boundary below; a generic **method** is
   §Generic methods below.
+
+Ordinary argument identities retain `TypeDesc.ToString`. An argument containing
+a function signature through array, pointer or by-reference constructors instead
+uses `@signature:` followed by a structural tree. `A`, `M<rank>:`, `P` and `R`
+prefix those constructors; `F<convention>[...]` holds the return then parameter
+children, each prefixed by its string length and `:`. A primitive leaf is `V`
+plus its primitive-code name; a named leaf is `N<length>:<registry-name>`. Named
+leaves agree between loaded base classes and unloaded patch references. The
+convention follows CLR signature identity, merging the unmanaged ABI conventions
+and ignoring custom modifiers. Ordinary names starting with `@` gain an `@name:`
+prefix, keeping named types disjoint from structural identities. This rendering
+also leads generic-method import shapes, so same-ABI function signatures remain
+distinct without changing native parameter or return marshalling.
 
 **Missing-AOT-instantiation boundary.** An instantiation the base image never
 emitted is absent from the `instantiations` map, so the converter rejects it

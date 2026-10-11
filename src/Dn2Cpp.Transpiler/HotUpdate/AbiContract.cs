@@ -179,7 +179,7 @@ internal static class AbiContract
         {
             if (i > 0)
                 sb.Append(',');
-            sb.Append(methodArgs[i]);
+            sb.Append(ArgumentIdentity(methodArgs[i]));
         }
         sb.Append('>').Append(SigShape(sig));
         return sb.ToString();
@@ -187,15 +187,15 @@ internal static class AbiContract
 
     /// <summary>The base⇄converter lookup key for a closed generic
     /// instantiation: the arity-stripped open-definition full name plus the
-    /// closed type arguments rendered by <see cref="TypeDesc.ToString"/>, e.g.
+    /// closed type arguments rendered by <see cref="TypeDesc.ToString"/> or, when that
+    /// erases function-pointer signatures, a structural wire identity, e.g.
     /// <c>System.Collections.Generic.List[Int32]</c>. Both sides compute it from
     /// metadata alone — the base build from the emitted specialization, the
     /// patch converter from the patch IL's TypeSpec — so the manifest's
     /// <c>instantiations</c> map (this key → the mangled registry name the base
-    /// owns) lets the converter bind a base-image generic type it never
-    /// loaded. The rendering is deterministic for non-generic arguments (the
-    /// H-08a surface); a nested closed-generic argument would embed the base's
-    /// mangled inner name and is a converter-side rejection.</summary>
+    /// owns) lets the converter bind a base-image generic type it never loaded.
+    /// Function signatures use metadata-derived named leaves, independently of
+    /// compilation-local C++ names and their pointer ABI.</summary>
     public static string InstantiationKey(string openDefFullName, IReadOnlyList<TypeDesc> args)
     {
         var sb = new StringBuilder(openDefFullName).Append('[');
@@ -203,10 +203,56 @@ internal static class AbiContract
         {
             if (i > 0)
                 sb.Append(',');
-            sb.Append(args[i]);
+            sb.Append(ArgumentIdentity(args[i]));
         }
         sb.Append(']');
         return sb.ToString();
+    }
+
+    // Wire identities cannot depend on loaded Class versus unloaded External mangles.
+    // Escape the reserved prefix on ordinary names to keep the two domains disjoint.
+    private static string ArgumentIdentity(TypeDesc type)
+    {
+        if (ContainsFunctionSignature(type))
+            return "@signature:" + SignatureArgumentIdentity(type);
+        string name = type.ToString();
+        return name.StartsWith("@", StringComparison.Ordinal) ? "@name:" + name : name;
+    }
+
+    private static bool ContainsFunctionSignature(TypeDesc type) => type.FunctionSignature is not null
+        || type.Element is { } element && ContainsFunctionSignature(element);
+
+    private static string SignatureArgumentIdentity(TypeDesc type)
+    {
+        if (type.FunctionSignature is { } signature)
+        {
+            var key = new StringBuilder("F").Append(signature.Convention).Append('[');
+            foreach (var child in signature.Types)
+            {
+                string identity = SignatureArgumentIdentity(child);
+                key.Append(identity.Length).Append(':').Append(identity);
+            }
+            return key.Append(']').ToString();
+        }
+        if (type.Element is { } element)
+        {
+            string marker = type.Kind switch
+            {
+                TypeKind.SZArray => "A",
+                TypeKind.MDArray => "M" + type.Rank + ":",
+                TypeKind.Pointer => "P",
+                TypeKind.ByRef => "R",
+                _ => throw new NotSupportedException($"Unsupported signature argument kind: {type.Kind}"),
+            };
+            return marker + SignatureArgumentIdentity(element);
+        }
+        if (type.Kind == TypeKind.Primitive)
+            return "V" + type.Primitive;
+        // Named leaves use the runtime registry's name space on both sides.
+        string name = type.Kind == TypeKind.Class ? Compilation.ReflectionTypeName(type.Class!)
+            : type.Kind is TypeKind.External or TypeKind.ExternalGeneric ? type.ExternalName!
+            : throw new NotSupportedException($"Unsupported signature argument kind: {type.Kind}");
+        return "N" + name.Length + ":" + name;
     }
 
     /// <summary>64-bit FNV-1a over the UTF-8 encoding of <paramref name="text"/>.

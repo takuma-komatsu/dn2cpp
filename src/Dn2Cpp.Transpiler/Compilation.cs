@@ -2619,6 +2619,7 @@ internal sealed partial class Compilation
     private static int TypeArgDepth(TypeDesc t) => t.Kind switch
     {
         TypeKind.Class => t.Class!.GenericDepth,
+        TypeKind.Pointer when t.FunctionSignature is { } signature => 1 + MaxArgDepth(signature.Types),
         TypeKind.SZArray or TypeKind.MDArray or TypeKind.ByRef or TypeKind.Pointer =>
             1 + TypeArgDepth(t.Element!),
         // Hot-update patch converter only: a base-image generic the converter never
@@ -3110,6 +3111,7 @@ internal sealed partial class Compilation
                 // specialization — one static, one type-info — silently.
                 { Kind: TypeKind.SZArray } => MangleArg(t.Element!) + "Arr",
                 { Kind: TypeKind.MDArray } => MangleArg(t.Element!) + "Md" + t.Rank,
+                { FunctionSignature: { } signature } => FunctionPointerMangle(signature),
                 { Kind: TypeKind.Pointer } => MangleArg(t.Element!) + "Pointer",
                 { Kind: TypeKind.ByRef } => MangleArg(t.Element!) + "Byref",
                 // The two leaf bases that are not names. Degenerate as a type argument, yet
@@ -3124,6 +3126,17 @@ internal sealed partial class Compilation
                     + "spell a fragment no other kind can, or two type arguments share one "
                     + "specialization (CppNaming.MangleFragment)"),
             };
+
+    private static string FunctionPointerMangle(TypeDesc.FunctionPointerInfo signature)
+    {
+        var key = new System.Text.StringBuilder("Gfn").Append(signature.Convention).Append('_');
+        foreach (var type in signature.Types)
+        {
+            string child = MangleArg(type);
+            key.Append(child.Length).Append('_').Append(child);
+        }
+        return key.Append("End").ToString();
+    }
 
     private static string ExternalMangle(TypeDesc type)
     {
@@ -3204,8 +3217,7 @@ internal sealed partial class Compilation
     /// is already monomorphized).</summary>
     public void NoteArrayElementType(TypeDesc element)
     {
-        // Signature arrays use the full raw signature and the runtime interner;
-        // TypeDesc deliberately erases function-pointer signatures.
+        // Signature arrays use their structural signature and the runtime interner.
         if (CppEmitter.HasSignatureShape(element))
             return;
         if (element.Kind is not (TypeKind.Primitive or TypeKind.Class or TypeKind.External or TypeKind.SZArray or TypeKind.MDArray))
@@ -6935,10 +6947,7 @@ internal sealed partial class Compilation
         // cannot close List<T> at all, and an External element resolves to no
         // modeled class, so a seed could open nothing (the runtime MakeGenericType
         // diagnostic stays for both).
-        // A speculative generic materialization has no raw signature context
-        // for an array argument's pointer or function-pointer element identity.
-        if (CppEmitter.HasSignatureShape(elem)
-            || elem.Kind is not (TypeKind.Primitive or TypeKind.Class or TypeKind.SZArray or TypeKind.MDArray))
+        if (elem.Kind is not (TypeKind.Primitive or TypeKind.Class or TypeKind.SZArray or TypeKind.MDArray))
             return;
         if (elem is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Byte }
             || ContainsCanonPlaceholder(elem))
