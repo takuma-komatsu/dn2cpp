@@ -407,6 +407,7 @@ ORDERED_PROJECTS=(
     "gates/fixtures/static-interface-calls/StaticInterfaceCalls.csproj"
     "samples/dotnet/AmbiguousDefault/AmbiguousDefault.csproj"
     "samples/dotnet/TrimReflectLib/TrimReflectLib.csproj"
+    "samples/dotnet/ReflectInvoke/ReflectedEventsOnly.csproj"
     "samples/dotnet/ReflectInvoke/FormalConstraintsOnly.csproj"
     "samples/dotnet/TrimReflect/TrimReflect.csproj"
     "samples/dotnet/PInvokeRefLib/PInvokeRefLib.csproj"

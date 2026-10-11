@@ -266,6 +266,8 @@ struct Dn2CppTypeReflection
     // Callable initializer identity is independent of public member enumeration.
     Dn2CppMetadataHandle<Dn2CppMethodInfo> initializer = nullptr;
     const Dn2CppGenericTypeMetadata* genericMetadata = nullptr;
+    Dn2CppMetadataTable<Dn2CppEventInfo> events;
+    int32_t eventCount = 0;
 };
 
 inline constexpr Dn2CppTypeReflection dn2cpp_empty_type_reflection{};
@@ -1270,6 +1272,33 @@ struct Dn2CppPropRef : Dn2CppObject
     // property row.
     Dn2CppMetadataHandle<Dn2CppMethodInfo> getter;
     Dn2CppMetadataHandle<Dn2CppMethodInfo> setter;
+};
+
+// Event accessors retain their original method-row identities across packed and
+// native metadata. EventAttributes are independent of accessor visibility flags.
+struct Dn2CppEventInfo
+{
+    const char* name;
+    const Dn2CppTypeInfo* declaringType;
+    const Dn2CppTypeInfo* handlerType;
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> adder;
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> remover;
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> raiser;
+    const Dn2CppMetadataHandle<Dn2CppMethodInfo>* others;
+    int32_t otherCount;
+    int32_t accessorAttrs;
+    int32_t eventAttributes;
+    Dn2CppMetadataTable<Dn2CppAttrInfo> customAttrs;
+    int32_t customAttrCount;
+    int32_t metadataToken;
+    const char* display;
+    const Dn2CppBindingSignature* handlerRecipe;
+};
+
+struct Dn2CppEventRef : Dn2CppObject
+{
+    Dn2CppMetadataHandle<Dn2CppEventInfo> event;
+    const Dn2CppTypeInfo* reflectedType;
 };
 
 struct Dn2CppArray : Dn2CppObject
@@ -2306,6 +2335,7 @@ Dn2CppObject* dn2cpp_activator_create_instance_args(Dn2CppType* t, Dn2CppArrayRe
 // through the property's getter/setter accessor invoker thunks. PropertyType/CanRead/
 // CanWrite read the table; Name/DeclaringType route through dn2cpp_memberinfo_*.
 extern const Dn2CppTypeInfo dn2cpp_propertyinfo_type;
+extern const Dn2CppTypeInfo dn2cpp_eventinfo_type;
 Dn2CppArrayRef* dn2cpp_type_get_properties(Dn2CppType* t, int32_t bindingFlags);
 Dn2CppPropRef* dn2cpp_type_get_property(Dn2CppType* t, Dn2CppString* name, int32_t bindingFlags);
 // The unified worker behind EVERY Type.GetProperty overload. returnType (null =
@@ -2332,6 +2362,15 @@ Dn2CppArrayRef* dn2cpp_type_get_default_members(Dn2CppType* t);
 // (metadata token, defining assembly) so it crosses generic instantiations.
 // Throws ArgumentException when the type has no such member, like real .NET.
 Dn2CppObject* dn2cpp_type_get_member_same_metadata(Dn2CppType* t, Dn2CppObject* member);
+Dn2CppEventRef* dn2cpp_type_get_event(Dn2CppType* t, Dn2CppString* name, int32_t flags);
+Dn2CppArrayRef* dn2cpp_type_get_events(Dn2CppType* t, int32_t flags);
+Dn2CppType* dn2cpp_eventref_handler_type(Dn2CppEventRef* event);
+Dn2CppMethodRef* dn2cpp_eventref_accessor(Dn2CppEventRef* event, int32_t accessor, int32_t nonPublic);
+Dn2CppArrayRef* dn2cpp_eventref_other_methods(Dn2CppEventRef* event, int32_t nonPublic);
+int32_t dn2cpp_eventref_attributes(Dn2CppEventRef* event);
+int32_t dn2cpp_eventref_is_multicast(Dn2CppEventRef* event);
+void dn2cpp_eventref_handler(Dn2CppEventRef* event, Dn2CppObject* target, Dn2CppObject* handler, int32_t remove);
+
 Dn2CppType* dn2cpp_propref_property_type(Dn2CppPropRef* p);
 int32_t dn2cpp_propref_can_read(Dn2CppPropRef* p);
 int32_t dn2cpp_propref_can_write(Dn2CppPropRef* p);

@@ -582,6 +582,15 @@ A synthesized generic type's constructor and method rows, and a clone level's
 interned method rows, store their original handle and replacement declaring type
 in a delta descriptor.
 
+Event rows retain original add/remove/raise method handles and an ordered vector
+of other method handles. Event handles intern the row and reflected owner;
+handler recipes substitute the actual declaring context. Inherited lookup drops
+private declarations, then hides exact names before applying binding flags.
+Accessor queries share method handles with ordinary lookup, including runtime
+generic clones. Subscription uses the existing invocation guards and arming;
+metadata lookup alone does not retain accessor bodies. Preservation retains all
+accessor roles through both attributes and link descriptors.
+
 Generic parameter constraints use immutable cold recipes on method descriptors
 and type reflection rows. Formal method parameters are interned by the typical
 MethodDef, and formal type parameters by the generic definition. Recursive
@@ -614,7 +623,7 @@ an unconstrained or dependent parameter alone cannot establish a reference layou
 
 Generic definitions retain declared member rows decoded from their TypeDefs,
 without a class specialization, object layout or executable thunk. The same
-symbolic recipes describe methods, constructors, fields and property accessors.
+symbolic recipes describe methods, constructors, fields and property/event accessors.
 Inherited lookup substitutes the actual declaring level while handles preserve
 their reflected owner; method formals still belong to the typical MethodDef.
 Open base compositions share these immutable tables and interned type identities.
@@ -657,7 +666,7 @@ conflicting explicit formats for the same physical row are rejected. This
 aggregation does not merge closed-type metadata identities.
 
 The selected format applies to the type's cold row and its own fields,
-methods, constructors, properties, parameters, custom attributes and enum
+methods, constructors, properties, events, parameters, custom attributes and enum
 members. Automatic and explicit choices do not propagate along inheritance;
 only the attribute policy inherits. Generic arguments and array components
 never inherit a format choice.

@@ -283,14 +283,14 @@ static const Dn2CppTypeInfo* dn2cpp_synthesize_instantiation(
         }
         synthesized->reflection.fields = Dn2CppMetadataTable<Dn2CppFieldInfo>::from_raw(fields);
     }
-    if (tmpl.propCount > 0)
-    {
-        auto clone_accessor = [&](Dn2CppMetadataHandle<Dn2CppMethodInfo> accessor) {
+    auto clone_accessor = [&](Dn2CppMetadataHandle<Dn2CppMethodInfo> accessor) {
             for (int32_t j = 0; accessor && j < tmpl.methodCount; j++)
                 if (methods[j].original == accessor)
                     return Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw(&methods[j]);
             return accessor;
         };
+    if (tmpl.propCount > 0)
+    {
         auto* props = new Dn2CppPropInfo[tmpl.propCount];
         for (int32_t i = 0; i < tmpl.propCount; i++)
         {
@@ -300,6 +300,26 @@ static const Dn2CppTypeInfo* dn2cpp_synthesize_instantiation(
             props[i].setter = clone_accessor(props[i].setter);
         }
         synthesized->reflection.props = Dn2CppMetadataTable<Dn2CppPropInfo>::from_raw(props);
+    }
+    if (tmpl.eventCount > 0)
+    {
+        auto* events = new Dn2CppEventInfo[tmpl.eventCount];
+        for (int32_t i = 0; i < tmpl.eventCount; i++)
+        {
+            events[i] = *tmpl.events[i];
+            events[i].declaringType = ti;
+            events[i].adder = clone_accessor(events[i].adder);
+            events[i].remover = clone_accessor(events[i].remover);
+            events[i].raiser = clone_accessor(events[i].raiser);
+            if (events[i].otherCount > 0)
+            {
+                auto* others = new Dn2CppMetadataHandle<Dn2CppMethodInfo>[events[i].otherCount];
+                for (int32_t j = 0; j < events[i].otherCount; j++)
+                    others[j] = clone_accessor(events[i].others[j]);
+                events[i].others = others;
+            }
+        }
+        synthesized->reflection.events = events;
     }
     if (ti->base != nullptr && (ti->base->flags & DN2CPP_TF_RUNTIME_TEMPLATE) != 0)
     {
@@ -1568,6 +1588,8 @@ static Dn2CppMemberInternMap<Dn2CppMethodRef>& g_methodref_intern =
     dn2cpp_never_destroyed<Dn2CppMemberInternMap<Dn2CppMethodRef>>();
 static Dn2CppMemberInternMap<Dn2CppMethodRef>& g_methodref_defview_intern =
     dn2cpp_never_destroyed<Dn2CppMemberInternMap<Dn2CppMethodRef>>();
+static Dn2CppMemberInternMap<Dn2CppEventRef>& g_eventref_intern =
+    dn2cpp_never_destroyed<Dn2CppMemberInternMap<Dn2CppEventRef>>();
 static Dn2CppMemberInternMap<Dn2CppPropRef>& g_propref_intern =
     dn2cpp_never_destroyed<Dn2CppMemberInternMap<Dn2CppPropRef>>();
 
@@ -1679,6 +1701,13 @@ static Dn2CppMetadataHandle<Dn2CppPropInfo> dn2cpp_propref_require(Dn2CppPropRef
     if (p == nullptr || p->prop == nullptr)
         dn2cpp_throw_null_reference();
     return p->prop;
+}
+
+static Dn2CppMetadataHandle<Dn2CppEventInfo> dn2cpp_eventref_require(Dn2CppEventRef* event)
+{
+    if (event == nullptr || event->event == nullptr)
+        dn2cpp_throw_null_reference();
+    return event->event;
 }
 
 // The ParameterInfo guard hands back the HANDLE, not the row: Position lives on
@@ -1813,6 +1842,8 @@ Dn2CppString* dn2cpp_memberinfo_name(Dn2CppObject* m)
         nm = reinterpret_cast<Dn2CppMethodRef*>(m)->method->name;
     else if (m->type == &dn2cpp_propertyinfo_type)
         nm = reinterpret_cast<Dn2CppPropRef*>(m)->prop->name;
+    else if (m->type == &dn2cpp_eventinfo_type)
+        nm = reinterpret_cast<Dn2CppEventRef*>(m)->event->name;
     if (nm != nullptr)
         return dn2cpp_string_from_utf8(nm, static_cast<int32_t>(std::strlen(nm)));
     return dn2cpp_type_name(reinterpret_cast<Dn2CppType*>(m)->typeInfo);
@@ -1836,6 +1867,11 @@ Dn2CppType* dn2cpp_memberinfo_declaring_type(Dn2CppObject* m)
         auto* p = reinterpret_cast<Dn2CppPropRef*>(m);
         return dn2cpp_get_type_from_handle(dn2cpp_invoke_declaring(p->prop->declaringType, p->reflectedType));
     }
+    if (m->type == &dn2cpp_eventinfo_type)
+    {
+        auto* event = reinterpret_cast<Dn2CppEventRef*>(m);
+        return dn2cpp_get_type_from_handle(dn2cpp_invoke_declaring(event->event->declaringType, event->reflectedType));
+    }
     if (m->type == &dn2cpp_type_type)
     {
         const auto* ti = reinterpret_cast<Dn2CppType*>(m)->typeInfo;
@@ -1858,6 +1894,8 @@ Dn2CppType* dn2cpp_memberinfo_reflected_type(Dn2CppObject* m)
         return dn2cpp_get_type_from_handle(reinterpret_cast<Dn2CppMethodRef*>(m)->reflectedType);
     if (m->type == &dn2cpp_propertyinfo_type)
         return dn2cpp_get_type_from_handle(reinterpret_cast<Dn2CppPropRef*>(m)->reflectedType);
+    if (m->type == &dn2cpp_eventinfo_type)
+        return dn2cpp_get_type_from_handle(reinterpret_cast<Dn2CppEventRef*>(m)->reflectedType);
     if (m->type == &dn2cpp_type_type)
     {
         const auto* ti = reinterpret_cast<Dn2CppType*>(m)->typeInfo;
@@ -1895,6 +1933,9 @@ int32_t dn2cpp_memberinfo_equals(Dn2CppObject* a, Dn2CppObject* b)
         return reinterpret_cast<Dn2CppFieldRef*>(a)->field == reinterpret_cast<Dn2CppFieldRef*>(b)->field
             && reinterpret_cast<Dn2CppFieldRef*>(a)->reflectedType
                 == reinterpret_cast<Dn2CppFieldRef*>(b)->reflectedType ? 1 : 0;
+    if (a->type == &dn2cpp_eventinfo_type)
+        return reinterpret_cast<Dn2CppEventRef*>(a)->event == reinterpret_cast<Dn2CppEventRef*>(b)->event
+            && reinterpret_cast<Dn2CppEventRef*>(a)->reflectedType == reinterpret_cast<Dn2CppEventRef*>(b)->reflectedType ? 1 : 0;
     if (a->type == &dn2cpp_propertyinfo_type)
         return reinterpret_cast<Dn2CppPropRef*>(a)->prop == reinterpret_cast<Dn2CppPropRef*>(b)->prop
             && reinterpret_cast<Dn2CppPropRef*>(a)->reflectedType
@@ -7590,10 +7631,192 @@ void dn2cpp_propref_set_value_indexed(Dn2CppPropRef* p, Dn2CppObject* obj, Dn2Cp
     dn2cpp_invoke_mi(p->setter, obj, args, n + 1, wrapExceptions, p->reflectedType);
 }
 
+// ---- reflection: events ----
+
+static Dn2CppEventRef* dn2cpp_make_eventref(Dn2CppMetadataHandle<Dn2CppEventInfo> event,
+    const Dn2CppTypeInfo* reflected)
+{
+    if (reflected == nullptr)
+        reflected = event->declaringType;
+    std::lock_guard<std::mutex> lock(g_memberref_intern_mtx);
+    auto*& slot = g_eventref_intern[{ event.identity(), reflected }];
+    if (slot == nullptr)
+    {
+        slot = static_cast<Dn2CppEventRef*>(dn2cpp_alloc_pinned(sizeof(Dn2CppEventRef)));
+        slot->type = &dn2cpp_eventinfo_type;
+        slot->event = event;
+        slot->reflectedType = reflected;
+    }
+    return slot;
+}
+
+static bool dn2cpp_event_name_matches(const char* candidate, Dn2CppString* name, int32_t flags, bool pattern)
+{
+    if (name == nullptr)
+        return true;
+    char16_t local[128];
+    std::vector<char16_t> spill;
+    int32_t bytes = static_cast<int32_t>(std::strlen(candidate));
+    char16_t* decoded = local;
+    if (bytes > 128)
+    {
+        spill.resize(static_cast<size_t>(bytes));
+        decoded = spill.data();
+    }
+    int32_t decodedLength = dn2cpp_utf8_to_utf16(candidate, bytes, decoded);
+    int32_t length = name->length;
+    bool prefix = pattern && length > 0 && name->chars[length - 1] == u'*';
+    if (prefix)
+        length--;
+    if (decodedLength < length || (!prefix && decodedLength != length))
+        return false;
+    for (int32_t i = 0; i < length; i++)
+    {
+        char16_t a = decoded[i], b = name->chars[i];
+        if ((flags & 1) != 0 && a != b)
+        {
+            a = dn2cpp_dgbind_upper(a);
+            b = dn2cpp_dgbind_upper(b);
+        }
+        if (a != b)
+            return false;
+    }
+    return true;
+}
+
+// Event hiding is by exact name, before BindingFlags filtering. Inherited
+// private declarations do not participate in the visible name set.
+static int32_t dn2cpp_collect_events(const Dn2CppTypeInfo* type, Dn2CppString* name,
+    int32_t flags, Dn2CppObject** out, bool pattern = false,
+    Dn2CppMetadataHandle<Dn2CppEventInfo>* first = nullptr)
+{
+    Dn2CppWalkList<const char*, 64> seen;
+    int32_t count = 0;
+    for (auto* ti = type; ti != nullptr; ti = dn2cpp_reflection_base(ti))
+    {
+        dn2cpp_require_metadata(ti);
+        const auto reflection = ti->reflection();
+        bool inherited = ti != type;
+        for (int32_t i = 0; i < reflection.eventCount; i++)
+        {
+            const auto event = reflection.events[i];
+            const auto row = event.operator->();
+            if (inherited && (row->accessorAttrs & DN2CPP_MTHA_PRIVATE) != 0)
+                continue;
+            bool hidden = false;
+            for (int32_t j = 0; j < seen.size(); j++)
+                if (std::strcmp(seen[j], row->name) == 0) { hidden = true; break; }
+            if (hidden)
+                continue;
+            seen.push_back(row->name);
+            if (!dn2cpp_member_matches(row->accessorAttrs, flags, inherited))
+                continue;
+            if (!dn2cpp_event_name_matches(row->name, name, flags, pattern))
+                continue;
+            if (first != nullptr && count == 0)
+                *first = event;
+            if (out != nullptr)
+                dn2cpp_gc_store_ref(&out[count], reinterpret_cast<Dn2CppObject*>(dn2cpp_make_eventref(event, type)));
+            count++;
+        }
+        if ((flags & DN2CPP_BF_DECLAREDONLY) != 0)
+            break;
+    }
+    return count;
+}
+
+Dn2CppArrayRef* dn2cpp_type_get_events(Dn2CppType* type, int32_t flags)
+{
+    dn2cpp_type_require(type);
+    int32_t count = dn2cpp_collect_events(type->typeInfo, nullptr, flags, nullptr);
+    auto* result = dn2cpp_newarr_ref(count);
+    dn2cpp_collect_events(type->typeInfo, nullptr, flags, result->data);
+    return result;
+}
+
+Dn2CppEventRef* dn2cpp_type_get_event(Dn2CppType* type, Dn2CppString* name, int32_t flags)
+{
+    dn2cpp_type_require(type);
+    if (name == nullptr)
+        dn2cpp_throw_argument_null_param("name");
+    Dn2CppMetadataHandle<Dn2CppEventInfo> first;
+    int32_t count = dn2cpp_collect_events(type->typeInfo, name, flags, nullptr, false, &first);
+    if (count == 0)
+        return nullptr;
+    auto* result = dn2cpp_make_eventref(first, type->typeInfo);
+    if (count > 1)
+        dn2cpp_throw_ambiguous_member(reinterpret_cast<Dn2CppObject*>(result));
+    return result;
+}
+
+Dn2CppType* dn2cpp_eventref_handler_type(Dn2CppEventRef* event)
+{
+    const auto row = dn2cpp_eventref_require(event);
+    const auto* type = row->handlerRecipe != nullptr
+        ? dn2cpp_symbolic_member_type(row->handlerRecipe, dn2cpp_invoke_declaring(row->declaringType, event->reflectedType))
+        : row->handlerType;
+    return dn2cpp_get_type_from_handle(type);
+}
+
+static Dn2CppMethodRef* dn2cpp_event_accessor(Dn2CppEventRef* event,
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> method, int32_t nonPublic)
+{
+    if (!method || (nonPublic == 0 && (method->attrs & DN2CPP_MTHA_PUBLIC) == 0))
+        return nullptr;
+    if (event->reflectedType != dn2cpp_invoke_declaring(event->event->declaringType, event->reflectedType)
+        && (method->attrs & DN2CPP_MTHA_PRIVATE) != 0)
+        return nullptr;
+    return method->genericParamCount > 0 ? dn2cpp_make_methodref_defview(method, event->reflectedType)
+        : dn2cpp_make_methodref(method, event->reflectedType);
+}
+
+Dn2CppMethodRef* dn2cpp_eventref_accessor(Dn2CppEventRef* event, int32_t accessor, int32_t nonPublic)
+{
+    const auto row = dn2cpp_eventref_require(event);
+    dn2cpp_require_metadata(row->declaringType);
+    return dn2cpp_event_accessor(event, accessor == 0 ? row->adder : accessor == 1 ? row->remover : row->raiser, nonPublic);
+}
+
+Dn2CppArrayRef* dn2cpp_eventref_other_methods(Dn2CppEventRef* event, int32_t nonPublic)
+{
+    const auto row = dn2cpp_eventref_require(event).operator->();
+    dn2cpp_require_metadata(row->declaringType);
+    int32_t count = 0;
+    for (int32_t i = 0; i < row->otherCount; i++)
+        if (dn2cpp_event_accessor(event, row->others[i], nonPublic) != nullptr)
+            count++;
+    auto* result = dn2cpp_newarr_ref(count);
+    count = 0;
+    for (int32_t i = 0; i < row->otherCount; i++)
+        if (auto* method = dn2cpp_event_accessor(event, row->others[i], nonPublic))
+            dn2cpp_gc_store_ref(&result->data[count++], reinterpret_cast<Dn2CppObject*>(method));
+    return result;
+}
+
+int32_t dn2cpp_eventref_attributes(Dn2CppEventRef* event)
+{
+    return dn2cpp_eventref_require(event)->eventAttributes;
+}
+
+int32_t dn2cpp_eventref_is_multicast(Dn2CppEventRef* event)
+{
+    return (dn2cpp_eventref_handler_type(event)->typeInfo->flags & DN2CPP_TF_DELEGATE) != 0;
+}
+
+void dn2cpp_eventref_handler(Dn2CppEventRef* event, Dn2CppObject* target, Dn2CppObject* handler, int32_t remove)
+{
+    auto* method = dn2cpp_eventref_accessor(event, remove != 0 ? 1 : 0, 0);
+    if (method == nullptr)
+        dn2cpp_throw_invalid_operation();
+    Dn2CppObject* args[] = { handler };
+    dn2cpp_invoke_mi(method->method, target, args, 1, true, event->reflectedType);
+}
+
 // ---- reflection: mixed member lookup (GetMember/GetMembers/GetDefaultMembers) ----
 
 // System.Reflection.MemberTypes bits.
 #define DN2CPP_MT_CONSTRUCTOR 0x01
+#define DN2CPP_MT_EVENT       0x02
 #define DN2CPP_MT_FIELD       0x04
 #define DN2CPP_MT_METHOD      0x08
 #define DN2CPP_MT_PROPERTY    0x10
@@ -7704,6 +7927,8 @@ static int32_t dn2cpp_collect_member_matches(const Dn2CppTypeInfo* type, Dn2CppS
                 break;
         }
     }
+    if (memberTypes & DN2CPP_MT_EVENT)
+        n += dn2cpp_collect_events(type, name, flags, out != nullptr ? out + n : nullptr, true);
     if (memberTypes & DN2CPP_MT_FIELD)
         for (const Dn2CppTypeInfo* ti = type; ti != nullptr; ti = dn2cpp_reflection_base(ti))
         {
@@ -7877,6 +8102,24 @@ Dn2CppObject* dn2cpp_type_get_member_same_metadata(Dn2CppType* t, Dn2CppObject* 
             }
         }
     }
+    else if (member->type == &dn2cpp_eventinfo_type)
+    {
+        const auto event = reinterpret_cast<Dn2CppEventRef*>(member)->event;
+        const auto memberRow = event.operator->();
+        const char* assembly = dn2cpp_ti_assembly_name(memberRow->declaringType);
+        for (auto* ti = t->typeInfo; ti != nullptr; ti = dn2cpp_reflection_base(ti))
+        {
+            dn2cpp_require_metadata(ti);
+            const auto reflection = ti->reflection();
+            for (int32_t i = 0; i < reflection.eventCount; i++)
+            {
+                const auto candidate = reflection.events[i];
+                if (candidate == event || dn2cpp_same_metadata_def(candidate->metadataToken,
+                    reflection.assemblyName, memberRow->metadataToken, assembly))
+                    return reinterpret_cast<Dn2CppObject*>(dn2cpp_make_eventref(candidate, t->typeInfo));
+            }
+        }
+    }
     else if (member->type == &dn2cpp_type_type)
     {
         const Dn2CppTypeInfo* mi = reinterpret_cast<Dn2CppType*>(member)->typeInfo;
@@ -7929,6 +8172,12 @@ static Dn2CppMetadataTable<Dn2CppAttrInfo> dn2cpp_member_custom_attrs(Dn2CppObje
         Dn2CppMetadataHandle<Dn2CppPropInfo> p = reinterpret_cast<Dn2CppPropRef*>(m)->prop;
         *count = p->customAttrCount;
         return p->customAttrs;
+    }
+    if (m->type == &dn2cpp_eventinfo_type)
+    {
+        const auto event = reinterpret_cast<Dn2CppEventRef*>(m)->event;
+        *count = event->customAttrCount;
+        return event->customAttrs;
     }
     if (m->type == &dn2cpp_parameterinfo_type)
     {
@@ -8721,6 +8970,12 @@ Dn2CppString* dn2cpp_reflection_handle_tostring(Dn2CppObject* member)
             resolved = true;
         }
     }
+    else if (member->type == &dn2cpp_eventinfo_type)
+    {
+        auto* event = reinterpret_cast<Dn2CppEventRef*>(member);
+        symbolic = dn2cpp_reflection_type_spelling(dn2cpp_eventref_handler_type(event)->typeInfo) + " " + event->event->name;
+        resolved = true;
+    }
     if (resolved)
         return dn2cpp_string_from_utf8(symbolic.c_str(), static_cast<int32_t>(symbolic.size()));
     const char* display = nullptr;
@@ -9033,6 +9288,8 @@ int32_t dn2cpp_memberinfo_member_type(Dn2CppObject* m)
         return 0x04;
     if (m->type == &dn2cpp_propertyinfo_type)
         return 0x10;
+    if (m->type == &dn2cpp_eventinfo_type)
+        return 0x02;
     if (m->type == &dn2cpp_type_type)
     {
         // Formal parameters have a declaring owner but remain TypeInfo members.
@@ -9055,6 +9312,8 @@ int32_t dn2cpp_memberinfo_metadata_token(Dn2CppObject* m)
         return reinterpret_cast<Dn2CppFieldRef*>(m)->field->metadataToken;
     if (m->type == &dn2cpp_propertyinfo_type)
         return reinterpret_cast<Dn2CppPropRef*>(m)->prop->metadataToken;
+    if (m->type == &dn2cpp_eventinfo_type)
+        return reinterpret_cast<Dn2CppEventRef*>(m)->event->metadataToken;
     if (m->type == &dn2cpp_type_type)
         return reinterpret_cast<Dn2CppType*>(m)->typeInfo->reflection().metadataToken;
     return 0;
@@ -9072,6 +9331,8 @@ const char* dn2cpp_memberinfo_module(Dn2CppObject* m)
         ti = reinterpret_cast<Dn2CppFieldRef*>(m)->field->declaringType;
     else if (m->type == &dn2cpp_propertyinfo_type)
         ti = reinterpret_cast<Dn2CppPropRef*>(m)->prop->declaringType;
+    else if (m->type == &dn2cpp_eventinfo_type)
+        ti = reinterpret_cast<Dn2CppEventRef*>(m)->event->declaringType;
     else if (m->type == &dn2cpp_type_type)
         ti = reinterpret_cast<Dn2CppType*>(m)->typeInfo;
     return dn2cpp_ti_assembly_name(ti);

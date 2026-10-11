@@ -1,0 +1,7 @@
+<linker>
+  <assembly fullname="ReflectedEventsOnly">
+    <type fullname="EventSubset.XmlEventOwner" preserve="nothing">
+      <event name="Exotic" />
+    </type>
+  </assembly>
+</linker>

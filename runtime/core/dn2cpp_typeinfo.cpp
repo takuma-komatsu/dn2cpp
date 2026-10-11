@@ -623,6 +623,10 @@ extern const Dn2CppType dn2cpp_propertyinfo_type_obj;
 const Dn2CppTypeInfo dn2cpp_propertyinfo_type =
     dn2cpp_ti_with_typeobject({ "System.Reflection.PropertyInfo", &dn2cpp_memberinfo_type, nullptr, nullptr, &dn2cpp_reflection_handle_tostring, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppPropRef), 0, 0, 0, 0, 0, nullptr }, &dn2cpp_propertyinfo_type_obj);
 const Dn2CppType dn2cpp_propertyinfo_type_obj = { { &dn2cpp_type_type }, &dn2cpp_propertyinfo_type };
+extern const Dn2CppType dn2cpp_eventinfo_type_obj;
+const Dn2CppTypeInfo dn2cpp_eventinfo_type =
+    dn2cpp_ti_with_typeobject({ "System.Reflection.EventInfo", &dn2cpp_memberinfo_type, nullptr, nullptr, &dn2cpp_reflection_handle_tostring, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppEventRef), 0, 0, 0, 0, 0, nullptr }, &dn2cpp_eventinfo_type_obj);
+const Dn2CppType dn2cpp_eventinfo_type_obj = { { &dn2cpp_type_type }, &dn2cpp_eventinfo_type };
 extern const Dn2CppType dn2cpp_customattributedata_type_obj;
 const Dn2CppTypeInfo dn2cpp_customattributedata_type =
     dn2cpp_ti_with_typeobject({ "System.Reflection.CustomAttributeData", nullptr, nullptr, nullptr, &dn2cpp_reflection_handle_tostring, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppAttrDataRef), 0, 0, 0, 0, 0, nullptr }, &dn2cpp_customattributedata_type_obj);

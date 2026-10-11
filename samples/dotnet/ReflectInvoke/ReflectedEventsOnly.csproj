@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <Nullable>disable</Nullable>
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(ReflectedEventsUnshared)' == 'true'">
+    <DefineConstants>$(DefineConstants);REFLECTED_EVENTS_UNSHARED</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../TrimReflectLib/TrimReflectLib.csproj" />
+    <Compile Include="EventSubset.cs" />
+    <Compile Include="EventSubset.Reflection.cs" />
+    <Compile Include="ReflectedEventsOnlyProgram.cs" Condition="'$(ReflectedEventsPreservation)' != 'true'" />
+    <Compile Include="ReflectedEventsPreservationProgram.cs" Condition="'$(ReflectedEventsPreservation)' == 'true'" />
+    <ProjectReference Include="../../../gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
+  </ItemGroup>
+  <Target Name="RewriteReflectedEventFixture" AfterTargets="Build">
+    <MSBuild Projects="$(MSBuildProjectDirectory)/../../../gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
+             Targets="GetTargetPath"
+             Properties="Configuration=$(Configuration);TargetFramework=$(TargetFramework)">
+      <Output TaskParameter="TargetOutputs" PropertyName="EventFixturePath" />
+    </MSBuild>
+    <Exec Command="dotnet exec &quot;$(EventFixturePath)&quot; &quot;$(TargetPath)&quot; --reflected-events" />
+  </Target>
+</Project>

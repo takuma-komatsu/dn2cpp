@@ -76,7 +76,7 @@ internal sealed partial class MethodCompiler
     [
         "System.Reflection.MemberInfo", "System.Reflection.ParameterInfo",
         "System.Type", "System.Reflection.MethodInfo", "System.Reflection.MethodBase",
-        "System.Reflection.FieldInfo", "System.Reflection.PropertyInfo",
+        "System.Reflection.FieldInfo", "System.Reflection.PropertyInfo", "System.Reflection.EventInfo",
         "System.Reflection.ConstructorInfo",
     ];
 

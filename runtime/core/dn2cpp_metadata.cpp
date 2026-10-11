@@ -29,6 +29,8 @@ constexpr Field Dn2CppTypeReflection_fields[] = {
     { offsetof(Dn2CppTypeReflection, genericParamNames), Encoding::Pointer },
     { offsetof(Dn2CppTypeReflection, initializer), Encoding::Pointer },
     { offsetof(Dn2CppTypeReflection, genericMetadata), Encoding::Pointer },
+    { offsetof(Dn2CppTypeReflection, events), Encoding::Pointer },
+    { offsetof(Dn2CppTypeReflection, eventCount), Encoding::Signed32 },
 };
 constexpr Field Dn2CppFieldInfo_fields[] = {
     { offsetof(Dn2CppFieldInfo, name), Encoding::Pointer },
@@ -115,6 +117,23 @@ constexpr Field Dn2CppPropInfo_fields[] = {
     { offsetof(Dn2CppPropInfo, metadataToken), Encoding::Signed32 },
     { offsetof(Dn2CppPropInfo, display), Encoding::Pointer },
 };
+constexpr Field Dn2CppEventInfo_fields[] = {
+    { offsetof(Dn2CppEventInfo, name), Encoding::Pointer },
+    { offsetof(Dn2CppEventInfo, declaringType), Encoding::Pointer },
+    { offsetof(Dn2CppEventInfo, handlerType), Encoding::Pointer },
+    { offsetof(Dn2CppEventInfo, adder), Encoding::Pointer },
+    { offsetof(Dn2CppEventInfo, remover), Encoding::Pointer },
+    { offsetof(Dn2CppEventInfo, raiser), Encoding::Pointer },
+    { offsetof(Dn2CppEventInfo, others), Encoding::Pointer },
+    { offsetof(Dn2CppEventInfo, otherCount), Encoding::Signed32 },
+    { offsetof(Dn2CppEventInfo, accessorAttrs), Encoding::Signed32 },
+    { offsetof(Dn2CppEventInfo, eventAttributes), Encoding::Signed32 },
+    { offsetof(Dn2CppEventInfo, customAttrs), Encoding::Pointer },
+    { offsetof(Dn2CppEventInfo, customAttrCount), Encoding::Signed32 },
+    { offsetof(Dn2CppEventInfo, metadataToken), Encoding::Signed32 },
+    { offsetof(Dn2CppEventInfo, display), Encoding::Pointer },
+    { offsetof(Dn2CppEventInfo, handlerRecipe), Encoding::Pointer },
+};
 constexpr Field Dn2CppAttrInfo_fields[] = {
     { offsetof(Dn2CppAttrInfo, attrType), Encoding::Pointer },
     { offsetof(Dn2CppAttrInfo, create), Encoding::Pointer },
@@ -132,6 +151,7 @@ constexpr Schema schemas[] = {
     { Dn2CppPropInfo_fields, sizeof(Dn2CppPropInfo_fields) / sizeof(Field), sizeof(Dn2CppPropInfo) },
     { Dn2CppAttrInfo_fields, sizeof(Dn2CppAttrInfo_fields) / sizeof(Field), sizeof(Dn2CppAttrInfo) },
     { Dn2CppEnumMember_fields, sizeof(Dn2CppEnumMember_fields) / sizeof(Field), sizeof(Dn2CppEnumMember) },
+    { Dn2CppEventInfo_fields, sizeof(Dn2CppEventInfo_fields) / sizeof(Field), sizeof(Dn2CppEventInfo) },
 };
 
 // Relative records and native rows can cross subobject boundaries. Resolve

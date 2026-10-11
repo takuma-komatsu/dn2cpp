@@ -551,7 +551,7 @@ internal sealed partial class CppEmitter
                     foreach (var field in c.Fields)
                         if (IsSignatureArray(field.Type))
                             NoteReflectionSignatureLeaves(ReflectionFieldSignature(field).Binding, type => AddType(type));
-                var propertyAccessors = PropertyAccessorHandles(c);
+                var propertyAccessors = ReflectionAccessorHandles(c);
                 foreach (var m in ReflectionMethods(c))
                 {
                     if (!KeepsReflectionMethodRow(c, m, propertyAccessors))

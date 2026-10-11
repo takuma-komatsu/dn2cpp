@@ -125,7 +125,7 @@ internal sealed partial class MethodCompiler
         {
             case ("System.Reflection.MemberInfo" or "System.Reflection.MethodBase"
                     or "System.Reflection.MethodInfo" or "System.Reflection.ConstructorInfo"
-                    or "System.Reflection.FieldInfo" or "System.Reflection.PropertyInfo"
+                    or "System.Reflection.FieldInfo" or "System.Reflection.PropertyInfo" or "System.Reflection.EventInfo"
                     or "System.Reflection.ParameterInfo" or "System.Reflection.CustomAttributeData",
                 "ToString") when sig.ParameterTypes.Length == 0:
             {
@@ -384,7 +384,7 @@ internal sealed partial class MethodCompiler
             // FieldInfo/PropertyInfo/Type alike.
             case ("System.Reflection.MemberInfo" or "System.Reflection.MethodBase"
                     or "System.Reflection.MethodInfo" or "System.Reflection.ConstructorInfo"
-                    or "System.Reflection.FieldInfo" or "System.Reflection.PropertyInfo",
+                    or "System.Reflection.FieldInfo" or "System.Reflection.PropertyInfo" or "System.Reflection.EventInfo",
                 "op_Equality") when sig.ParameterTypes.Length == 2:
             {
                 var b = Pop();
@@ -394,7 +394,7 @@ internal sealed partial class MethodCompiler
             }
             case ("System.Reflection.MemberInfo" or "System.Reflection.MethodBase"
                     or "System.Reflection.MethodInfo" or "System.Reflection.ConstructorInfo"
-                    or "System.Reflection.FieldInfo" or "System.Reflection.PropertyInfo",
+                    or "System.Reflection.FieldInfo" or "System.Reflection.PropertyInfo" or "System.Reflection.EventInfo",
                 "op_Inequality") when sig.ParameterTypes.Length == 2:
             {
                 var b = Pop();
@@ -1290,6 +1290,67 @@ internal sealed partial class MethodCompiler
                     $"dn2cpp_activator_create_instance_args({Cast(t, "Dn2CppType*")}, {Cast(args, "Dn2CppArrayRef*")}, {Cast(flags, "int32_t")}, {Cast(binder, "Dn2CppObject*")}, {actAttrs})");
                 return true;
             }
+            case ("System.Type", "GetEvents") when sig.ParameterTypes.Length is 0 or 1:
+            {
+                string flags = sig.ParameterTypes.Length == 1 ? Cast(Pop(), "int32_t") : "28";
+                var type = Pop();
+                PushReflectionMemberArray($"dn2cpp_type_get_events({Cast(type, "Dn2CppType*")}, {flags})", sig.ReturnType);
+                return true;
+            }
+            case ("System.Type", "GetEvent") when sig.ParameterTypes.Length is 1 or 2 && sig.ParameterTypes[0].IsString:
+            {
+                string flags = sig.ParameterTypes.Length == 2 ? Cast(Pop(), "int32_t") : "28";
+                var eventName = Pop();
+                var type = Pop();
+                Push(StackKind.Ref, "Dn2CppObject*", $"((Dn2CppObject*)dn2cpp_type_get_event({Cast(type, "Dn2CppType*")}, {Cast(eventName, "Dn2CppString*")}, {flags}))");
+                return true;
+            }
+            case ("System.Reflection.EventInfo", "GetAddMethod" or "GetRemoveMethod" or "GetRaiseMethod")
+                when sig.ParameterTypes.Length is 0 or 1:
+            case ("System.Reflection.EventInfo", "get_AddMethod" or "get_RemoveMethod" or "get_RaiseMethod"):
+            {
+                string nonPublic = name.StartsWith("get_", StringComparison.Ordinal) ? "1"
+                    : sig.ParameterTypes.Length == 1 ? Cast(Pop(), "int32_t") : "0";
+                var item = Pop();
+                int accessor = name is "GetAddMethod" or "get_AddMethod" ? 0 : name is "GetRemoveMethod" or "get_RemoveMethod" ? 1 : 2;
+                Push(StackKind.Ref, "Dn2CppObject*", $"((Dn2CppObject*)dn2cpp_eventref_accessor((Dn2CppEventRef*)({item.Expr}), {accessor}, {nonPublic}))");
+                return true;
+            }
+            case ("System.Reflection.EventInfo", "GetOtherMethods") when sig.ParameterTypes.Length is 0 or 1:
+            {
+                string nonPublic = sig.ParameterTypes.Length == 1 ? Cast(Pop(), "int32_t") : "0";
+                var item = Pop();
+                PushReflectionMemberArray($"dn2cpp_eventref_other_methods((Dn2CppEventRef*)({item.Expr}), {nonPublic})", sig.ReturnType);
+                return true;
+            }
+            case ("System.Reflection.EventInfo", "get_EventHandlerType"):
+            {
+                var item = Pop();
+                Push(StackKind.Ref, "Dn2CppType*", $"dn2cpp_eventref_handler_type((Dn2CppEventRef*)({item.Expr}))");
+                return true;
+            }
+            case ("System.Reflection.EventInfo", "get_Attributes" or "get_IsSpecialName"):
+            {
+                var item = Pop();
+                string attrs = $"dn2cpp_eventref_attributes((Dn2CppEventRef*)({item.Expr}))";
+                string type = CppTypes.Of(sig.ReturnType);
+                Push(CppTypes.KindOf(sig.ReturnType), type, name == "get_IsSpecialName" ? $"(int32_t)(({attrs} & 0x200) != 0)" : $"({type}){attrs}");
+                return true;
+            }
+            case ("System.Reflection.EventInfo", "get_IsMulticast"):
+            {
+                var item = Pop();
+                Push(StackKind.I4, "int32_t", $"dn2cpp_eventref_is_multicast((Dn2CppEventRef*)({item.Expr}))");
+                return true;
+            }
+            case ("System.Reflection.EventInfo", "AddEventHandler" or "RemoveEventHandler") when sig.ParameterTypes.Length == 2:
+            {
+                var handler = Pop();
+                var target = Pop();
+                var item = Pop();
+                Emit($"dn2cpp_eventref_handler((Dn2CppEventRef*)({item.Expr}), {Cast(target, "Dn2CppObject*")}, {Cast(handler, "Dn2CppObject*")}, {(name == "RemoveEventHandler" ? 1 : 0)});");
+                return true;
+            }
             // Reflection property enumeration + access. GetProperties([flags]) ->
             // PropertyInfo[], GetProperty(name[, flags]) -> the match or null. The no-flags
             // overloads use the default BindingFlags.Public|Instance|Static (= 28).
@@ -2110,7 +2171,7 @@ internal sealed partial class MethodCompiler
             // discriminated by name in the runtime.
             case ("System.Reflection.MemberInfo" or "System.Type" or "System.Reflection.MethodBase"
                     or "System.Reflection.MethodInfo" or "System.Reflection.ConstructorInfo"
-                    or "System.Reflection.FieldInfo" or "System.Reflection.PropertyInfo",
+                    or "System.Reflection.FieldInfo" or "System.Reflection.PropertyInfo" or "System.Reflection.EventInfo",
                 "get_MemberType"):
             {
                 var a = Pop();
@@ -2121,7 +2182,7 @@ internal sealed partial class MethodCompiler
             }
             case ("System.Reflection.MemberInfo" or "System.Type" or "System.Reflection.MethodBase"
                     or "System.Reflection.MethodInfo" or "System.Reflection.ConstructorInfo"
-                    or "System.Reflection.FieldInfo" or "System.Reflection.PropertyInfo",
+                    or "System.Reflection.FieldInfo" or "System.Reflection.PropertyInfo" or "System.Reflection.EventInfo",
                 "get_MetadataToken"):
             {
                 var a = Pop();
@@ -2332,7 +2393,7 @@ internal sealed partial class MethodCompiler
             // Type/field/method/ctor/property/parameter; Assembly has its own form.
             case ("System.Reflection.MemberInfo" or "System.Type" or "System.Reflection.MethodBase"
                     or "System.Reflection.MethodInfo" or "System.Reflection.ConstructorInfo"
-                    or "System.Reflection.FieldInfo" or "System.Reflection.PropertyInfo"
+                    or "System.Reflection.FieldInfo" or "System.Reflection.PropertyInfo" or "System.Reflection.EventInfo"
                     or "System.Reflection.ParameterInfo",
                 "get_CustomAttributes" or "GetCustomAttributesData")
                 when sig.ParameterTypes.Length == 0:
