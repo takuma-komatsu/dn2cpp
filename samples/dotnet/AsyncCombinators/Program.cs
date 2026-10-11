@@ -12,6 +12,11 @@ namespace AsyncCombinators
         {
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
             CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+            if (args.Length == 1 && args[0] == "native-delay-deadlines")
+            {
+                DelayOrderSubset.Program.RunNativeDeadlineProbe();
+                return;
+            }
             WhenAllSubset.Program.__GateEntry();
             WhenAnySubset.Program.__GateEntry();
             WhenEnumerableSubset.Program.__GateEntry();
@@ -66,6 +71,9 @@ namespace AsyncCombinators
             if (args.Length == 1 && args[0] == "before-lazy-aggregate-message")
                 return;
             WhenAllFaultSetSubset.Program.RunAggregateMessages();
+            if (args.Length == 1 && args[0] == "before-delay-synchronization")
+                return;
+            DelayOrderSubset.Program.RunSynchronizationChecks();
             // Ends the process: a builder suspension's rejected registration is re-raised
             // as an unhandled ThreadPool exception.
             if (args.Length == 2 && args[0] == "suspension-rejection")

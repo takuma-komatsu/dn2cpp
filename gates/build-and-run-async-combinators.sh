@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Consolidated async-combinators gate: Task.WhenAll/WhenAny, WhenAll over an
-# enumerable, ConfigureAwait, Task.Delay ordering, CancellationToken, a custom
+# enumerable, ConfigureAwait, synchronized Delay consumers, CancellationToken, a custom
 # awaitable, and multiple awaiter types. Diffed exactly vs real .NET.
+# Infinite integer/TimeSpan delays prove suspension until controlled cancellation.
+# Unsynchronized virtual deadline order is frozen separately from the live oracle.
 # WaitAsyncContinueWithSubset.cs asserts Task.WaitAsync(CancellationToken)'s race in
 # both directions and Task.ContinueWith's CONDITIONAL continuations (every
 # TaskContinuationOptions filter spelling against every antecedent outcome, including
@@ -75,11 +77,25 @@ DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|task-call-validation|c
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-pending-task-joins"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-cancellation-callback-faults"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-lazy-aggregate-message"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-delay-synchronization"
 
 gate_extra_asserts() {
     local out="$1" native before prefix line
     native=$(run_bounded "./$out/AsyncCombinators")
     native=$(strip_cr_win "$native")
+    before=$(run_bounded dotnet "$_CG_APP" before-delay-synchronization)
+    prefix=$(awk '/^== delay synchronization ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    [ "$(grep -Fxc '== delay synchronization ==' <<< "$native")" = 1 ] \
+        || { echo 'FAIL: delay synchronization block did not run once' >&2; return 1; }
+    [ "${native##*$'\n'}" = 'delay synchronization end' ] \
+        || { echo 'FAIL: delay synchronization block did not complete last' >&2; return 1; }
+    for line in 'integer suspension: True,True|True,True' \
+        'TimeSpan suspension: True,True|True,True' \
+        'dependency pending: True,True|0' 'dependency order: firstsecond'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: delay synchronization witness missing: $line" >&2; return 1; }
+    done
     before=$(run_bounded dotnet "$_CG_APP" before-lazy-aggregate-message)
     prefix=$(awk '/^== lazy task and cancellation Message ==$/ { exit } { print }' <<< "$native")
     assert_output "$prefix" "$(strip_cr_win "$before")"
@@ -307,3 +323,11 @@ ${mode#*:}" ]; then
 }
 
 corelib_diff_gate AsyncCombinators
+
+(
+    unset -f gate_extra_asserts
+    deadline_out="$(_corelib_gate_out AsyncCombinators)${DN2CPP_OUT_SUFFIX:-}-native-deadlines"
+    _corelib_gate_out() { printf '%s\n' "$deadline_out"; }
+    DN2CPP_GATE_RUN_ARGS=native-delay-deadlines \
+        corelib_freeze_gate AsyncCombinators "$(dirname "$0")/expected/async-delay-deadlines.txt"
+)
