@@ -935,7 +935,10 @@ internal sealed partial class Compilation
                 var mr = reader.GetMemberReference((MemberReferenceHandle)handle);
                 return mr.Parent.Kind switch
                 {
-                    HandleKind.TypeSpecification => ResolveMemberRefField(module, (MemberReferenceHandle)handle, ctx).Item1,
+                    // An unloaded base-image generic owner has no local initializer.
+                    // Its imported field accessor owns the runtime cctor guard.
+                    HandleKind.TypeSpecification => reader.GetTypeSpecification((TypeSpecificationHandle)mr.Parent)
+                        .DecodeSignature(SigProvider, ctx).Class,
                     HandleKind.TypeDefinition => GetClass(module, (TypeDefinitionHandle)mr.Parent),
                     HandleKind.TypeReference => ResolveTypeRef(module, (TypeReferenceHandle)mr.Parent) is { Kind: TypeKind.Class } t ? t.Class : null,
                     _ => null,

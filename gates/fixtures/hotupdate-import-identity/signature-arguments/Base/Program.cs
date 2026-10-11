@@ -11,7 +11,11 @@ public sealed class Leaf
 public class Cell<T>
 {
     public static int Value;
+    public static T Item = default!;
+    public T InstanceItem = default!;
     private readonly int _value;
+
+    static Cell() => Surface.FieldInitializations++;
 
     public Cell(int value) => _value = value;
     public int Read() => _value;
@@ -19,6 +23,8 @@ public class Cell<T>
 
 public static unsafe class Surface
 {
+    public static int FieldInitializations;
+
     public static void Reset()
     {
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
@@ -49,6 +55,24 @@ public static unsafe class Surface
         if (new Cell<delegate*<Leaf>[]>(61).Read() != 61
             || new Cell<global::Gfn0_5_Int32EndArr>(73).Read() != 73)
             throw new InvalidOperationException("Named signature imports failed.");
+        RootFields(false);
+    }
+
+    private static void RootFields(bool run)
+    {
+        if (!run)
+            return;
+        // Emit accessors and constructors without initializing these closed types.
+        Cell<int>.Value = Read<int>();
+        Cell<string>.Value = Read<string>();
+        Write<int>(0);
+        Write<string>(0);
+        Cell<int>.Item = 0;
+        Cell<string>.Item = "root";
+        new Cell<int>(0).InstanceItem = Cell<int>.Item;
+        new Cell<string>(0).InstanceItem = Cell<string>.Item;
+        _ = new Cell<int>(0).Read();
+        _ = new Cell<string>(0).Read();
     }
 }
 

@@ -917,7 +917,8 @@ The base image monomorphizes every reachable closed generic instantiation
 are each an ordinary emitted type with a mangled name (`List_Int32`,
 `Box_Int32`), the generic-ness fully erased. A patch may **use** an
 instantiation the base carries — as a local/arg/field/return, a `newobj`, and
-instance/static member calls on it — and bind a method into a generic delegate;
+instance/static member calls and field reads/writes on it — and bind a method
+into a generic delegate;
 the runtime needs no generic machinery, because a monomorphized instantiation
 is a plain type bound by its registry name whose members match by
 `(name, arity)` on the specialized type.
@@ -937,6 +938,12 @@ the manifest's `instantiations` map:
   parent; the converter resolves it to the mangled name and decodes the member
   signature under the instantiation's type arguments, so `List<int>.Add(!0)`
   bakes as `Add(Int32)`.
+- A generic field import names the closed owner's registry entry and decodes
+  its field type under that owner's arguments (`Cell<int>.Item: !0` becomes
+  `Int32`). Discovery reaches only loaded owners' initializers. An unloaded
+  base owner's bound accessor supplies its static storage and lazy initializer
+  guard; each closed owner retains separate storage. Taking a field's address
+  (`ldflda`/`ldsflda`) remains a conversion-time rejection.
 - Supported surface: instantiations whose type arguments are all
   **non-generic** (a primitive, String, or a non-generic reference type) — the
   key renders identically on both sides. A nested closed-generic argument
