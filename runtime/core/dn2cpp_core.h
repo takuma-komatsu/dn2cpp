@@ -231,6 +231,13 @@ struct Dn2CppInterfaceEntry
 struct Dn2CppGenericTypeMetadata;
 struct Dn2CppBindingSignature;
 
+struct Dn2CppMethodDefinitionSignature
+{
+    const Dn2CppBindingSignature* returnType;
+    const Dn2CppBindingSignature* parameters;
+    int32_t parameterCount;
+};
+
 struct Dn2CppTypeReflection
 {
     Dn2CppMetadataTable<Dn2CppFieldInfo> fields;
@@ -1026,6 +1033,7 @@ struct Dn2CppGenericTypeMetadata
     const Dn2CppBindingSignature* interfaces;
     int32_t interfaceCount;
     bool parameterMetadataAvailable;
+    bool publicDefaultConstructor = false;
 };
 
 // Reflection method metadata. One entry per declared method in a type's
@@ -1116,6 +1124,8 @@ struct Dn2CppMethodInfo
     // Ordinary pointer identity; Invoke keeps returnPassType and its boxing ABI.
     const Dn2CppTypeInfo* returnBindingPointeeType;
     const Dn2CppBindingSignature* returnReflectionSignature;
+    // Symbolic query context; never evidence for an invoker or delegate ABI.
+    const Dn2CppMethodDefinitionSignature* definitionSignature;
 };
 
 // A synthesized constructor differs only in its allocation's declaring type.
@@ -1662,6 +1672,7 @@ int32_t dn2cpp_type_is_constructed_generic(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_is_generic_type_definition(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_contains_generic_parameters(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_generic_parameter_attributes(const Dn2CppTypeInfo* ti);
+bool dn2cpp_type_reference_argument(const Dn2CppTypeInfo* ti);
 Dn2CppString* dn2cpp_type_generic_parameter_namespace(const Dn2CppTypeInfo* ti);
 const Dn2CppTypeInfo* dn2cpp_type_generic_parameter_declaring_type(const Dn2CppTypeInfo* ti);
 Dn2CppType* dn2cpp_type_get_generic_type_definition(Dn2CppType* t);

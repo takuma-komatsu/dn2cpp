@@ -94,7 +94,21 @@ namespace ReflectGenericMethodSubset
         public static U InterfaceConstrained<U>(U value) where U : IDefinitionConstraint => value;
         public static U ReferenceConstrained<U>(U value) where U : class => value;
         public static U BaseConstrained<U>(U value) where U : DefinitionConstraintBase => value;
+        public static U NewConstrained<U>(U value) where U : new() => value;
+        public static void DependentReference<U, V>() where U : V where V : class { }
     }
+
+    class OpenSignatureOwner<T> where T : notnull
+    {
+        public static Dictionary<T, U[]> Mixed<U>(Dictionary<T, U[]> value) => value;
+        public static Tuple<U, V> Pair<U, V>(Tuple<U, V> value) => value;
+    }
+
+    class OpenSignatureValue<T> where T : struct { }
+    class OpenSignatureReference<T> where T : class { }
+    class OpenSignatureBase<T> where T : DefinitionConstraintBase { }
+    class OpenSignatureInterface<T> where T : IDefinitionConstraint { }
+    class OpenSignatureNew<T> where T : new() { }
 
     struct DefinitionStruct
     {
@@ -750,6 +764,140 @@ namespace ReflectGenericMethodSubset
             Console.WriteLine("formal classification " + label + ": nested=" + parameter.IsNested
                 + " value=" + parameter.IsValueType + " class=" + parameter.IsClass
                 + " base=" + parameter.BaseType?.FullName + " interfaces=" + parameter.GetInterfaces().Length);
+        }
+
+        internal static void RunOpenSignatures(bool forceCollection = true)
+        {
+            Console.WriteLine("== open generic signature types ==");
+            foreach (string name in new[] { "ArrayShape", "RefShape", "ListShape", "EnumerableShape", "FunctionShape", "TaskShape" })
+            {
+                MethodInfo method = typeof(DefinitionSignatureOwner).GetMethod(name)!;
+                Type parameter = method.GetGenericArguments()[0];
+                Type shape = method.GetParameters()[0].ParameterType;
+                Type expected = name switch
+                {
+                    "ArrayShape" => parameter.MakeArrayType(),
+                    "RefShape" => parameter.MakeByRefType(),
+                    "ListShape" => typeof(List<>).MakeGenericType(parameter),
+                    "EnumerableShape" => typeof(IEnumerable<>).MakeGenericType(parameter),
+                    "FunctionShape" => typeof(Func<,>).MakeGenericType(parameter, typeof(bool)),
+                    _ => typeof(Task<>).MakeGenericType(parameter),
+                };
+                Type child = shape.HasElementType ? shape.GetElementType()! : shape.GetGenericArguments()[0];
+                Console.WriteLine("open signature " + name + ": " + ReferenceEquals(shape, expected) + "/"
+                    + ReferenceEquals(child, parameter) + "/" + shape.ContainsGenericParameters + "/"
+                    + (shape.FullName is null) + "/" + ReferenceEquals(method.ReturnType, method.ReturnParameter.ParameterType)
+                    + "/" + ReferenceEquals(method.GetParameters()[0].Member, method));
+            }
+            MethodInfo mixed = typeof(OpenSignatureOwner<int>).GetMethod("Mixed")!;
+            Type formal = mixed.GetGenericArguments()[0];
+            Type[] children = mixed.ReturnType.GetGenericArguments();
+            Console.WriteLine("open signature owner context: " + ReferenceEquals(children[0], typeof(int)) + "/"
+                + ReferenceEquals(children[1].GetElementType(), formal) + "/"
+                + ReferenceEquals(formal.DeclaringType, typeof(OpenSignatureOwner<>)));
+            Type sz = formal.MakeArrayType();
+            Type rank1 = formal.MakeArrayType(1);
+            Type rank2 = formal.MakeArrayType(2);
+            Console.WriteLine("open signature arrays: " + sz.IsSZArray + "/" + rank1.IsSZArray + "/"
+                + rank1.GetArrayRank() + "/" + rank2.GetArrayRank() + "/"
+                + ReferenceEquals(rank2.GetElementType(), formal) + "/" + !ReferenceEquals(sz, rank1));
+            MethodInfo definition = typeof(DefinitionClass).GetMethod("Echo")!;
+            MethodInfo composed = definition.MakeGenericMethod(formal);
+            MethodInfo repeated = definition.MakeGenericMethod(formal);
+            Console.WriteLine("open method identity: " + !composed.IsGenericMethodDefinition + "/"
+                + composed.ContainsGenericParameters + "/" + ReferenceEquals(composed, repeated) + "/"
+                + ReferenceEquals(composed.GetGenericMethodDefinition(), definition) + "/"
+                + ReferenceEquals(composed.GetGenericArguments()[0], formal));
+            Console.WriteLine("open method signature: " + ReferenceEquals(composed.ReturnType, formal) + "/"
+                + ReferenceEquals(composed.GetParameters()[0].ParameterType, formal) + "/"
+                + ReferenceEquals(composed.ReturnParameter.ParameterType, formal) + "/"
+                + ReferenceEquals(composed.GetParameters()[0].Member, composed) + "/"
+                + ReferenceEquals(composed.ReturnParameter.Member, composed));
+            MethodInfo nested = definition.MakeGenericMethod(sz);
+            MethodInfo partial = typeof(OpenSignatureOwner<int>).GetMethod("Pair")!.MakeGenericMethod(typeof(string), formal);
+            Console.WriteLine("open method nested context: " + ReferenceEquals(nested.ReturnType, sz) + "/"
+                + ReferenceEquals(partial.ReturnType.GetGenericArguments()[0], typeof(string)) + "/"
+                + ReferenceEquals(partial.ReturnType.GetGenericArguments()[1], formal) + "/"
+                + !ReferenceEquals(nested, composed));
+            Console.WriteLine("open method display: " + composed + "/" + composed.GetParameters()[0]);
+            Console.WriteLine("open method partial display: " + partial + "/" + partial.GetParameters()[0]);
+            MethodInfo inheritedDefinition = typeof(DefinitionChild).GetMethod("Echo",
+                BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy)!;
+            MethodInfo inherited = inheritedDefinition.MakeGenericMethod(formal);
+            Console.WriteLine("open method inherited context: " + ReferenceEquals(inherited.DeclaringType, typeof(DefinitionClass))
+                + "/" + ReferenceEquals(inherited.ReflectedType, typeof(DefinitionChild)) + "/"
+                + ReferenceEquals(inherited.GetGenericMethodDefinition(), definition) + "/"
+                + ReferenceEquals(inherited.GetParameters()[0].Member, inherited) + "/" + inherited);
+            Console.WriteLine("open signature guards: " + DefinitionFault(() => composed.Invoke(null, new object[] { 7 }))
+                + "/" + DefinitionFault(() => composed.CreateDelegate(typeof(Func<int, int>))) + "/"
+                + DefinitionFault(() => Array.CreateInstance(formal, 1)) + "/"
+                + DefinitionFault(() => Activator.CreateInstance(typeof(List<>).MakeGenericType(formal))));
+            Console.WriteLine("open signature validation: " + DefinitionFault(() => formal.MakeArrayType(0)) + "/"
+                + DefinitionFault(() => typeof(List<>).MakeGenericType(new Type[] { null! })) + "/"
+                + DefinitionFault(() => typeof(List<>).MakeGenericType(formal, formal)) + "/"
+                + DefinitionFault(() => composed.MakeGenericMethod(typeof(int))));
+            Type span = typeof(Span<>).MakeGenericType(formal);
+            Console.WriteLine("open signature ref-like identity: " + typeof(Span<>).IsByRefLike + "/" + span.IsByRefLike);
+            Console.WriteLine("open signature ref-like arrays: " + DefinitionFault(() => typeof(Span<>).MakeArrayType()) + "/"
+                + DefinitionFault(() => typeof(Span<>).MakeArrayType(1)) + "/"
+                + DefinitionFault(() => span.MakeArrayType(2)));
+            Type[] constraintParameters = typeof(ConstraintOwner<ConstraintRoot>).GetMethod("Composed")!.GetGenericArguments();
+            Type constraint = constraintParameters[0].GetGenericParameterConstraints()[0];
+            Type madeConstraint = typeof(ConstraintHolder<>).MakeGenericType(constraintParameters[1]);
+            Console.WriteLine("open signature shared interner: " + ReferenceEquals(constraint, madeConstraint) + "/"
+                + !ReferenceEquals(typeof(List<>).MakeGenericType(formal), typeof(List<>).MakeGenericType(constraintParameters[1])));
+            Type[] constrainedTypes = { typeof(OpenSignatureValue<>), typeof(OpenSignatureReference<>),
+                typeof(OpenSignatureBase<>), typeof(OpenSignatureInterface<>) };
+            string[] constrainedMethods = { "ValueConstrained", "ReferenceConstrained", "BaseConstrained", "InterfaceConstrained" };
+            for (int i = 0; i < constrainedTypes.Length; i++)
+            {
+                MethodInfo constrained = typeof(DefinitionSignatureOwner).GetMethod(constrainedMethods[i])!;
+                Type good = constrained.GetGenericArguments()[0];
+                Console.WriteLine("open signature constraints " + constrainedMethods[i] + ": "
+                    + DefinitionFault(() => constrainedTypes[i].MakeGenericType(formal)) + "/"
+                    + DefinitionFault(() => constrained.MakeGenericMethod(formal)) + "/"
+                    + constrainedTypes[i].MakeGenericType(good).ContainsGenericParameters + "/"
+                    + constrained.MakeGenericMethod(good).ContainsGenericParameters);
+            }
+            Type baseFormal = typeof(DefinitionSignatureOwner).GetMethod("BaseConstrained")!.GetGenericArguments()[0];
+            Type dependentFormal = typeof(DefinitionSignatureOwner).GetMethod("DependentReference")!.GetGenericArguments()[0];
+            Type newFormal = typeof(DefinitionSignatureOwner).GetMethod("NewConstrained")!.GetGenericArguments()[0];
+            Type valueFormal = typeof(DefinitionSignatureOwner).GetMethod("ValueConstrained")!.GetGenericArguments()[0];
+            Console.WriteLine("open signature constraint evidence: "
+                + DefinitionFault(() => typeof(OpenSignatureReference<>).MakeGenericType(baseFormal)) + "/"
+                + DefinitionFault(() => typeof(OpenSignatureReference<>).MakeGenericType(dependentFormal)) + "/"
+                + DefinitionFault(() => typeof(OpenSignatureNew<>).MakeGenericType(newFormal)) + "/"
+                + DefinitionFault(() => typeof(OpenSignatureNew<>).MakeGenericType(valueFormal)) + "/"
+                + DefinitionFault(() => typeof(OpenSignatureNew<>).MakeGenericType(typeof(List<>).MakeGenericType(formal))) + "/"
+                + DefinitionFault(() => typeof(OpenSignatureNew<>).MakeGenericType(formal)));
+            Type referenceFormal = typeof(DefinitionSignatureOwner).GetMethod("ReferenceConstrained")!.GetGenericArguments()[0];
+            Console.WriteLine("open signature array assignability: "
+                + typeof(object[]).IsAssignableFrom(formal.MakeArrayType()) + "/"
+                + typeof(object[]).IsAssignableFrom(referenceFormal.MakeArrayType()) + "/"
+                + typeof(object[]).IsAssignableFrom(valueFormal.MakeArrayType()) + "/"
+                + typeof(object[]).IsAssignableFrom(baseFormal.MakeArrayType()) + "/"
+                + typeof(object[]).IsAssignableFrom(dependentFormal.MakeArrayType()));
+            Type[] varianceArguments = { formal, referenceFormal, valueFormal, baseFormal, dependentFormal };
+            string[] varianceNames = { "unconstrained", "reference", "value", "base", "dependent" };
+            for (int i = 0; i < varianceArguments.Length; i++)
+                Console.WriteLine("open signature variance " + varianceNames[i] + ": "
+                    + typeof(IEnumerable<object>).IsAssignableFrom(typeof(IEnumerable<>).MakeGenericType(varianceArguments[i])) + "/"
+                    + typeof(Action<>).MakeGenericType(varianceArguments[i]).IsAssignableFrom(typeof(Action<object>)));
+            Type ownerFormal = typeof(OpenSignatureOwner<>).GetGenericArguments()[0];
+            Console.WriteLine("open signature foreign owner: " + ReferenceEquals(definition.MakeGenericMethod(ownerFormal).ReturnType, ownerFormal)
+                + "/" + !ReferenceEquals(ownerFormal, formal));
+            Task<Type>[] queries = new Task<Type>[4];
+            for (int i = 0; i < queries.Length; i++)
+                queries[i] = Task.Run(() => definition.MakeGenericMethod(sz).ReturnType);
+            bool parallel = true;
+            foreach (Task<Type> query in queries)
+                parallel &= ReferenceEquals(query.Result, sz);
+            Console.WriteLine("open signature parallel: " + parallel);
+            if (forceCollection)
+                GC.Collect();
+            Console.WriteLine("open signature repeated: " + ReferenceEquals(mixed.ReturnType, typeof(OpenSignatureOwner<int>).GetMethod("Mixed")!.ReturnType)
+                + "/" + ReferenceEquals(definition.MakeGenericMethod(formal), composed));
+            Console.WriteLine("open generic signature types end");
         }
 
         internal static void RunSignatureBoundaries()

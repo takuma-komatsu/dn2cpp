@@ -276,6 +276,7 @@ const int32_t dn2cpp_runtime_template_count = 0;
 int main()
 {
     static_assert(sizeof(Dn2CppMetadataHandle<Dn2CppFieldInfo>) == sizeof(void*));
+    static_assert(offsetof(Dn2CppMethodInfo, definitionSignature) + sizeof(void*) == sizeof(Dn2CppMethodInfo));
     require(packed_initializer_type->initializer.identity() == &initializer_row,
         "packed cold rows retain a binding-only initializer handle");
     require(packed_initializer_type->genericMetadata == &generic_type_metadata,
@@ -383,7 +384,7 @@ int main()
     auto* closed = reinterpret_cast<Dn2CppType*>(dn2cpp_type_get_generic_parameter_constraints(closed_formal)->data[0]);
     require(!dn2cpp_type_contains_generic_parameters(closed->typeInfo) && dn2cpp_type_metadata_only(closed->typeInfo),
         "a closed constraint recipe without an AOT layout remains metadata-only");
-    for (int action = 0; action < 4; action++)
+    for (int action = 0; action < 5; action++)
     {
         bool refused = false;
         try
@@ -393,6 +394,12 @@ int main()
             if (action == 1) (void)dn2cpp_get_uninitialized_object(closed);
             if (action == 2) (void)dn2cpp_activator_create_instance(closed);
             if (action == 3) (void)dn2cpp_array_create_instance(closed, &length, 1);
+            if (action == 4)
+            {
+                auto* arguments = dn2cpp_newarr_ref(1);
+                arguments->data[0] = reinterpret_cast<Dn2CppObject*>(closed);
+                (void)dn2cpp_type_make_generic(dn2cpp_get_type_from_handle(&layoutless_definition), arguments);
+            }
         }
         catch (Dn2CppException& ex)
         {
@@ -400,7 +407,7 @@ int main()
                 ? &dn2cpp_not_supported_exception_type : &dn2cpp_platform_not_supported_exception_type);
             dn2cpp_exc_inflight_pop(ex.obj);
         }
-        require(refused, "closed metadata-only constraints cannot enter allocation or boxing");
+        require(refused, "closed metadata-only constraints cannot enter allocation, boxing or executable generic composition");
     }
     auto minimum = record(0, 2, { UINT64_MAX });
     auto minimum_handle = Dn2CppMetadataHandle<Dn2CppEnumMember>::from_static(minimum.bytes.data());
@@ -472,6 +479,10 @@ int main()
     auto query_return = *Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_static(query_return_record.bytes.data());
     require(query_return.returnPassType == &original_type && query_return.returnReflectionSignature == pointers[3],
         "query return AST relocates above the high presence-mask bit");
+    auto definition_signature_record = record(0, (1ULL << 29) | (1ULL << 34), { 1, 4 });
+    auto definition_signature = *Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_static(definition_signature_record.bytes.data());
+    require(definition_signature.returnPassType == &original_type && definition_signature.definitionSignature == pointers[3],
+        "symbolic MethodDef query recipes relocate independently of Invoke pass types");
     auto named = record(0, 1, { 3 });
     require(Dn2CppMetadataHandle<Dn2CppEnumMember>::from_static(named.bytes.data())->name == unicode,
         "Unicode names remain exact pooled bytes");
@@ -545,13 +556,15 @@ int main()
     original.returnPassType = &original_type;
     original.returnBindingPointeeType = &substituted_type;
     original.returnReflectionSignature = reinterpret_cast<const Dn2CppBindingSignature*>(&substituted_type);
+    original.definitionSignature = reinterpret_cast<const Dn2CppMethodDefinitionSignature*>(&substituted_type);
     Dn2CppMethodDelta deltas[] = { { 1, &original, &substituted_type }, { 1, &original, &original_type } };
     auto delta = Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw(&deltas[0]);
     require(delta.native() == nullptr, "a method delta is decoded instead of treated as a native row");
     require(delta->declaringType == &substituted_type && delta->name == unicode
         && delta->metadataToken == INT32_MAX && original.declaringType == &original_type
         && delta->returnPassType == &original_type && delta->returnBindingPointeeType == &substituted_type
-        && delta->returnReflectionSignature == original.returnReflectionSignature,
+        && delta->returnReflectionSignature == original.returnReflectionSignature
+        && delta->definitionSignature == original.definitionSignature,
         "constructor delta preserves original metadata and changes only declaring type");
     require(dn2cpp_metadata_at(deltas, Dn2CppMetadataKind::Method, sizeof(Dn2CppMethodInfo), 1) == &deltas[1],
         "constructor delta table uses descriptor stride");

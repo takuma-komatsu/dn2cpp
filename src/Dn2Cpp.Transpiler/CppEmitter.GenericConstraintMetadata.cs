@@ -137,6 +137,14 @@ internal sealed partial class CppEmitter
                 {
                     if (method.Handle.IsNil || !_e.KeepsReflectionMethodRow(cls, method, accessors))
                         continue;
+                    var methodDefinition = method.Module.Reader.GetMethodDefinition(method.Handle);
+                    if (methodDefinition.GetGenericParameters().Count > 0)
+                    {
+                        var signature = methodDefinition.DecodeSignature(new ConstraintProvider(_c), null);
+                        NoteConstraintSignature(signature.ReturnType);
+                        foreach (var parameterType in signature.ParameterTypes)
+                            NoteConstraintSignature(parameterType);
+                    }
                     foreach (var parameter in method.Module.Reader.GetMethodDefinition(method.Handle).GetGenericParameters())
                         foreach (var constraint in ConstraintTypes(method.Module, parameter))
                             NoteConstraintSignature(constraint);
@@ -193,6 +201,21 @@ internal sealed partial class CppEmitter
             return symbol;
         }
 
+        private string RenderMethodDefinitionSignature(MethodInfo method)
+        {
+            if (method.Handle.IsNil)
+                return "nullptr";
+            var definition = method.Module.Reader.GetMethodDefinition(method.Handle);
+            if (definition.GetGenericParameters().Count == 0)
+                return "nullptr";
+            var signature = definition.DecodeSignature(new ConstraintProvider(_c), null);
+            string returnType = RenderConstraintSignature(signature.ReturnType);
+            string parameters = RenderConstraintVector(signature.ParameterTypes.ToArray());
+            string symbol = "method_signature_" + _constraintSequence++;
+            _sb.AppendLine($"static const Dn2CppMethodDefinitionSignature {symbol} = {{ {returnType}, {parameters}, {signature.ParameterTypes.Length} }};");
+            return "&" + symbol;
+        }
+
         private void EmitConstraintMetadata()
         {
             foreach (var pair in _constraintDefinitions.OrderBy(p => p.Key, StringComparer.Ordinal))
@@ -207,8 +230,15 @@ internal sealed partial class CppEmitter
                     && c.Handle == definition.Handle && _c.KeepsReflectionMetadata(c));
                 if (!available)
                     _e._strippedGenericMetadata.Add(definition.Name);
+                bool defaultConstructor = definition.Module.Reader.GetTypeDefinition(definition.Handle).GetMethods().Any(handle =>
+                {
+                    var method = definition.Module.Reader.GetMethodDefinition(handle);
+                    return definition.Module.Reader.GetString(method.Name) == ".ctor"
+                        && (method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask) == System.Reflection.MethodAttributes.Public
+                        && method.DecodeSignature(new ConstraintProvider(_c), null).ParameterTypes.Length == 0;
+                });
                 _e._metadataHeader.AppendLine($"extern const Dn2CppGenericTypeMetadata {symbol};");
-                _sb.AppendLine($"extern const Dn2CppGenericTypeMetadata {symbol} = {{ {parameters}, {handles.Count}, {baseType}, {interfaces}, {definition.Interfaces.Length}, {(available ? "true" : "false")} }};");
+                _sb.AppendLine($"extern const Dn2CppGenericTypeMetadata {symbol} = {{ {parameters}, {handles.Count}, {baseType}, {interfaces}, {definition.Interfaces.Length}, {(available ? "true" : "false")}, {(defaultConstructor ? "true" : "false")} }};");
                 _e._genericMetadata[pair.Key] = "&" + symbol;
             }
         }

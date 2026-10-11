@@ -1,5 +1,55 @@
 #!/usr/bin/env bash
 # Formal constraints preserve typical identities, transitive relations and cold publication.
+open_signature_asserts() {
+    local output="$1" line
+    for line in '== open generic signature types ==' \
+        'open signature ArrayShape: True/True/True/True/True/True' \
+        'open signature RefShape: True/True/True/True/True/True' \
+        'open signature ListShape: True/True/True/True/True/True' \
+        'open signature EnumerableShape: True/True/True/True/True/True' \
+        'open signature FunctionShape: True/True/True/True/True/True' \
+        'open signature TaskShape: True/True/True/True/True/True' \
+        'open signature owner context: True/True/True' \
+        'open signature arrays: True/False/1/2/True/True' \
+        'open method identity: True/True/True/True/True' \
+        'open method signature: True/True/True/True/True' \
+        'open method nested context: True/True/True/True' \
+        'open signature guards: InvalidOperationException/ArgumentException/NotSupportedException/ArgumentException' \
+        'open signature validation: IndexOutOfRangeException/ArgumentNullException/ArgumentException/InvalidOperationException' \
+        'open signature ref-like identity: True/True' \
+        'open signature ref-like arrays: TypeLoadException/TypeLoadException/TypeLoadException' \
+        'open signature shared interner: True/True' \
+        'open signature constraint evidence: none/ArgumentException/none/none/none/ArgumentException' \
+        'open signature array assignability: False/True/False/True/False' \
+        'open signature variance unconstrained: False/False' \
+        'open signature variance reference: True/True' \
+        'open signature variance value: False/False' \
+        'open signature variance base: True/True' \
+        'open signature variance dependent: False/False' \
+        'open signature foreign owner: True/True' \
+        'open signature parallel: True' 'open signature repeated: True/True' \
+        'open generic signature types end'; do
+        test "$(grep -Fxc -- "$line" "$output")" = 1 \
+            || { echo "FAIL: open signature witness missing or repeated: $line" >&2; return 1; }
+    done
+}
+
+open_signature_prefix_asserts() {
+    local out="$1" axis
+    for axis in dotnet native; do
+        if [ "$axis" = dotnet ]; then
+            run_bounded dotnet "$_CG_APP" before-open-generic-signatures > "$out/open-before.$axis.raw.stdout"
+        else
+            run_bounded "$out/ReflectInvoke$EXE_EXT" before-open-generic-signatures > "$out/open-before.$axis.raw.stdout"
+        fi
+        strip_cr_win_file "$out/open-before.$axis.raw.stdout" > "$out/open-before.$axis.stdout"
+        awk '/^== open generic signature types ==$/ { exit } { print }' \
+            "$out/virtual-delegate-full.$axis.stdout" > "$out/open-prefix.$axis.stdout"
+        diff -u "$out/open-before.$axis.stdout" "$out/open-prefix.$axis.stdout"
+        open_signature_asserts "$out/virtual-delegate-full.$axis.stdout"
+    done
+}
+
 formal_constraint_asserts() {
     local output="$1" line
     for line in '== formal constraint metadata ==' \
@@ -75,12 +125,15 @@ formal_constraint_diff_axes() {
         diff -u "$out/clr.stdout" "$out/native.stdout"
         formal_constraint_asserts "$out/native.stdout"
         local mode
-        for mode in unloaded-method-identity unloaded-self-assignability retained-formal-members formal-interface-order constraint-scope nested-constraint nested-assignability; do
+        for mode in unloaded-method-identity unloaded-self-assignability retained-formal-members formal-interface-order constraint-scope nested-constraint nested-assignability open-generic-signatures unloaded-open-signatures; do
             run_bounded dotnet "$out/app/FormalConstraintsOnly.dll" "$mode" > "$out/$mode.clr.raw.stdout"
             strip_cr_win_file "$out/$mode.clr.raw.stdout" > "$out/$mode.clr.stdout"
             run_bounded "$out/FormalConstraintsOnly$EXE_EXT" "$mode" > "$out/$mode.native.raw.stdout"
             strip_cr_win_file "$out/$mode.native.raw.stdout" > "$out/$mode.native.stdout"
             diff -u "$out/$mode.clr.stdout" "$out/$mode.native.stdout"
+            if [ "$mode" = open-generic-signatures ]; then
+                open_signature_asserts "$out/$mode.native.stdout"
+            fi
         done
         run_bounded "$out/FormalConstraintsOnly$EXE_EXT" unloaded-relations > "$out/unloaded-relations.native.raw.stdout"
         strip_cr_win_file "$out/unloaded-relations.native.raw.stdout" > "$out/unloaded-relations.native.stdout"

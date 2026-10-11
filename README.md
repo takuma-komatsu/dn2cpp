@@ -945,10 +945,12 @@ it does not come back as a ticket.
   BPI bytecode does *not* fall under this — the interpreter never emits
   native code.
 - **`MakeGenericType`/`MakeGenericMethod` over instantiations absent from
-  the AOT image.** The instantiation does not exist in the binary and
+  the AOT image.** Executable instantiations do not exist in the binary and
   cannot be created; the call throws a catchable
   `PlatformNotSupportedException`. `System.Text.Json` avoids the boundary
   through source-gen; reflection-based `Deserialize<T>` stays carved out.
+  Open Type and MethodInfo compositions retain metadata identity and signature
+  queries, but cannot allocate objects, invoke methods or bind delegates.
   The one class-side carve-in is the typeof-only runtime-instantiation
   template (a definition whose bodies never give a type argument value
   semantics — asserted by `gates/build-and-run-reflect-types.sh`, section

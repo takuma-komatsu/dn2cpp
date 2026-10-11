@@ -1627,6 +1627,8 @@ internal sealed partial class CppEmitter
                 // as real .NET does. An interface is also abstract, mirroring the
                 // closed-type flag rule above.
                 AddGenericDefKindFlags(flagBits, cls.IsValueType, cls.IsInterface, cls.IsAbstract, cls.IsSealed, cls.IsDelegate);
+                if (cls.IsByRefLike)
+                    flagBits.Add("DN2CPP_TF_BYREFLIKE");
                 if (varMask != 0)
                     flagBits.Add("DN2CPP_TF_VARIANT");
                 if (_e.IsCovariantGenericDef(cls))
@@ -3250,6 +3252,7 @@ internal sealed partial class CppEmitter
                     MetadataValue.Ref(retPass.Signature),
                     MetadataValue.Ref(definitionOnly ? "nullptr" : _e.ReflectionBindingPointee(m.Signature.ReturnType, _emittedEnums)),
                     MetadataValue.Ref(_e.EmitReflectionSignature(_sb, m, -1)),
+                    MetadataValue.Ref(RenderMethodDefinitionSignature(m)),
                 }));
             }
             // The trim can empty a table the member list did not. A zero-length array is

@@ -12,6 +12,24 @@ internal static class FormalConstraintsOnlyProgram
     {
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+        if (args.Length > 0 && args[0] == "open-generic-signatures")
+        {
+            ReflectGenericMethodSubset.Program.RunOpenSignatures();
+            return;
+        }
+        if (args.Length > 0 && args[0] == "unloaded-open-signatures")
+        {
+            MethodInfo definition = typeof(ReflectGenericMethodSubset.DefinitionClass).GetMethod("Echo")!;
+            Type formal = typeof(ForeignConstraint).GetMethod("M")!.GetGenericArguments()[0];
+            Type shape = typeof(System.Collections.Generic.List<>).MakeGenericType(formal.MakeArrayType());
+            MethodInfo method = definition.MakeGenericMethod(shape);
+            Console.WriteLine("unloaded open signature identity: " + ReferenceEquals(method.ReturnType, shape) + "/"
+                + ReferenceEquals(shape.GetGenericArguments()[0].GetElementType(), formal) + "/"
+                + ReferenceEquals(method.GetGenericMethodDefinition(), definition));
+            Console.WriteLine("unloaded open signature shape: " + shape.ContainsGenericParameters + "/"
+                + shape.IsConstructedGenericType + "/" + (shape.FullName is null));
+            return;
+        }
         if (args.Length > 0 && args[0] == "formal-interface-order")
         {
             Type missing = typeof(ForeignConstraint).GetMethod("M")!.GetGenericArguments()[0];

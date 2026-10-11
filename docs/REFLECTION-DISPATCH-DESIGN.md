@@ -108,8 +108,9 @@ Public signature Type queries use a cold recursive descriptor separate from
 Invoke pass modes and delegate-binding evidence. Native and packed rows retain
 the same descriptor, including on synthesized method and return-parameter rows.
 Its concrete leaves name existing type-infos; a runtime-template class argument
-resolves against the reflected clone. Missing leaves and composed open forms
-refuse explicitly. A query dependency alone cannot promote an Invoke referent
+resolves against the reflected clone. Missing leaves refuse explicitly.
+Symbolic MethodDef queries resolve composed open forms using the typical method
+parameters and actual declaring type arguments. A query dependency cannot promote an Invoke referent
 or discard a binding argument path.
 
 Formal parameter constraint queries resolve symbolic type and method parameter
@@ -117,7 +118,9 @@ references against the typical declaration. They return fresh arrays over
 interned Type identities, with explicit base constraints and transitive interface
 relations. Composed constraint types are metadata-only unless an existing AOT or
 runtime-template instantiation supplies their layout. This internal recipe path
-does not widen public open signature queries, `Make*Type` or `MakeGenericMethod`.
+also interns public open signature and `Make*` compositions. Open constructed
+methods have metadata-only rows, with independent definition and reflected
+identities; signature answers do not supply invocation or delegate-binding evidence.
 
 Pointer, by-reference and function-pointer companions are interned by shape and
 actual child identities for the process lifetime. They share the ordinary
