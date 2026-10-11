@@ -94,9 +94,10 @@ DN2CPP_NATIVE_METADATA_STORAGE(local_fields);
 constexpr auto packed_local_fields = Dn2CppMetadataTable<Dn2CppFieldInfo>::from_static(local_fields_storage.records.data());
 DN2CPP_NATIVE_TYPE_REFLECTION(local_type, packed_local_fields, 2);
 const Dn2CppMethodInfo initializer_row{};
+const Dn2CppGenericTypeMetadata generic_type_metadata{};
 DN2CPP_NATIVE_TYPE_REFLECTION(initializer_type,
     nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0,
-    nullptr, 0, nullptr, 0, 0, nullptr, 0, nullptr, nullptr, nullptr, &initializer_row);
+    nullptr, 0, nullptr, 0, 0, nullptr, 0, nullptr, nullptr, nullptr, &initializer_row, &generic_type_metadata);
 DN2CPP_NATIVE_METADATA_STORAGE(initializer_type);
 constexpr auto packed_initializer_type = Dn2CppMetadataHandle<Dn2CppTypeReflection>::from_static(initializer_type_storage.records.data());
 DN2CPP_NATIVE_METADATA_STORAGE(local_type);
@@ -277,6 +278,130 @@ int main()
     static_assert(sizeof(Dn2CppMetadataHandle<Dn2CppFieldInfo>) == sizeof(void*));
     require(packed_initializer_type->initializer.identity() == &initializer_row,
         "packed cold rows retain a binding-only initializer handle");
+    require(packed_initializer_type->genericMetadata == &generic_type_metadata,
+        "native packing and cold decoding preserve the generic descriptor pointer");
+    static const Dn2CppTypeInfo constraint_interface = [] {
+        Dn2CppTypeInfo ti{};
+        ti.name = "Codec.IConstraint";
+        ti.flags = DN2CPP_TF_INTERFACE;
+        return ti;
+    }();
+    static const Dn2CppBindingSignature interface_constraint{8, &constraint_interface};
+    static const Dn2CppMethodGenericParameter interface_parameter{"W", 0, &interface_constraint, 1};
+    static Dn2CppMethodInfo interface_method{};
+    interface_method.name = "InterfaceConstraint";
+    interface_method.declaringType = &original_type;
+    interface_method.attrs = DN2CPP_MTHA_GENERIC;
+    interface_method.genericParamCount = 1;
+    interface_method.genericParameters = &interface_parameter;
+    Dn2CppMethodRef interface_reference{};
+    interface_reference.type = &dn2cpp_methodinfo_type;
+    interface_reference.method = &interface_method;
+    interface_reference.isGenericDefView = 1;
+    auto* interface_formal = reinterpret_cast<Dn2CppType*>(dn2cpp_methodref_get_generic_arguments(&interface_reference)->data[0]);
+    require(dn2cpp_type_implement_interface(interface_formal, dn2cpp_get_type_from_handle(&constraint_interface)) != 0,
+        "internal interface queries complete cold formal relations before their first read");
+    static const Dn2CppBindingSignature missing_constraint{8, nullptr, 0, nullptr, 0, "Missing.Constraint.Type"};
+    static const Dn2CppMethodGenericParameter failed_parameter{"U", 0, &missing_constraint, 1};
+    static Dn2CppMethodInfo failed_method{};
+    failed_method.name = "FailedConstraint";
+    failed_method.declaringType = &original_type;
+    failed_method.attrs = DN2CPP_MTHA_GENERIC;
+    failed_method.genericParamCount = 1;
+    failed_method.genericParameters = &failed_parameter;
+    Dn2CppMethodRef failed_reference{};
+    failed_reference.type = &dn2cpp_methodinfo_type;
+    failed_reference.method = &failed_method;
+    failed_reference.reflectedType = &original_type;
+    failed_reference.isGenericDefView = 1;
+    auto* failed_formal = reinterpret_cast<Dn2CppType*>(dn2cpp_methodref_get_generic_arguments(&failed_reference)->data[0]);
+    require(std::strcmp(failed_formal->typeInfo->name, "U") == 0
+        && dn2cpp_type_generic_parameter_attributes(failed_formal->typeInfo) == 0,
+        "unresolved constraints cannot prevent formal identity queries");
+    for (int attempt = 0; attempt < 2; attempt++)
+    {
+        bool refused = false;
+        try { (void)dn2cpp_type_get_generic_parameter_constraints(failed_formal); }
+        catch (Dn2CppException& ex)
+        {
+            refused = ex.obj != nullptr && ex.obj->type == &dn2cpp_platform_not_supported_exception_type;
+            dn2cpp_exc_inflight_pop(ex.obj);
+        }
+        require(refused, "failed constraint initialization must not publish partial answers on retry");
+        require(dn2cpp_methodref_get_generic_arguments(&failed_reference)->data[0] == reinterpret_cast<Dn2CppObject*>(failed_formal),
+            "a failed relation query preserves the formal identity");
+    }
+    static const Dn2CppGenericTypeMetadata failed_owner_metadata{&failed_parameter, 1, nullptr, nullptr, 0, true};
+    static const Dn2CppTypeReflection failed_owner_reflection = [] {
+        Dn2CppTypeReflection row{};
+        row.genericMetadata = &failed_owner_metadata;
+        return row;
+    }();
+    static const Dn2CppTypeInfo failed_owner = [] {
+        Dn2CppTypeInfo ti{};
+        ti.name = "FailedOwner`1";
+        ti.flags = DN2CPP_TF_GENERICDEF;
+        ti.reflectionData = &failed_owner_reflection;
+        return ti;
+    }();
+    static const Dn2CppMethodGenericParameter unconstrained_parameter{"V", 0};
+    static Dn2CppMethodInfo owner_method = failed_method;
+    owner_method.declaringType = &failed_owner;
+    owner_method.genericParameters = &unconstrained_parameter;
+    Dn2CppMethodRef owner_reference = failed_reference;
+    owner_reference.method = &owner_method;
+    auto* owner_formal = reinterpret_cast<Dn2CppType*>(dn2cpp_type_get_generic_arguments(dn2cpp_get_type_from_handle(&failed_owner))->data[0]);
+    Dn2CppObject* method_formal = dn2cpp_methodref_get_generic_arguments(&owner_reference)->data[0];
+    for (int attempt = 0; attempt < 2; attempt++)
+    {
+        bool refused = false;
+        try { (void)dn2cpp_type_base_type(owner_formal); }
+        catch (Dn2CppException& ex)
+        {
+            refused = ex.obj != nullptr && ex.obj->type == &dn2cpp_platform_not_supported_exception_type;
+            dn2cpp_exc_inflight_pop(ex.obj);
+        }
+        require(refused && dn2cpp_methodref_get_generic_arguments(&owner_reference)->data[0] == method_formal,
+            "unresolved owner relations cannot leave a method parameter context partially initialized");
+        require(dn2cpp_type_get_generic_parameter_constraints(reinterpret_cast<Dn2CppType*>(method_formal))->length == 0,
+            "an unconstrained method formal does not require its owner's unresolved constraints");
+    }
+    static const Dn2CppTypeInfo layoutless_definition = [] {
+        Dn2CppTypeInfo ti{};
+        ti.name = "MetadataOnly`1";
+        ti.flags = DN2CPP_TF_GENERICDEF;
+        return ti;
+    }();
+    static const Dn2CppBindingSignature closed_child{0, &dn2cpp_int32_type};
+    static const Dn2CppBindingSignature closed_constraint{4, &layoutless_definition, 0, &closed_child, 1};
+    static const Dn2CppMethodGenericParameter closed_parameter{"U", 0, &closed_constraint, 1};
+    static Dn2CppMethodInfo closed_method = failed_method;
+    closed_method.genericParameters = &closed_parameter;
+    Dn2CppMethodRef closed_reference = failed_reference;
+    closed_reference.method = &closed_method;
+    auto* closed_formal = reinterpret_cast<Dn2CppType*>(dn2cpp_methodref_get_generic_arguments(&closed_reference)->data[0]);
+    auto* closed = reinterpret_cast<Dn2CppType*>(dn2cpp_type_get_generic_parameter_constraints(closed_formal)->data[0]);
+    require(!dn2cpp_type_contains_generic_parameters(closed->typeInfo) && dn2cpp_type_metadata_only(closed->typeInfo),
+        "a closed constraint recipe without an AOT layout remains metadata-only");
+    for (int action = 0; action < 4; action++)
+    {
+        bool refused = false;
+        try
+        {
+            int32_t length = 1;
+            if (action == 0) (void)dn2cpp_box_by_handle(closed->typeInfo, nullptr);
+            if (action == 1) (void)dn2cpp_get_uninitialized_object(closed);
+            if (action == 2) (void)dn2cpp_activator_create_instance(closed);
+            if (action == 3) (void)dn2cpp_array_create_instance(closed, &length, 1);
+        }
+        catch (Dn2CppException& ex)
+        {
+            refused = ex.obj != nullptr && ex.obj->type == (action == 3
+                ? &dn2cpp_not_supported_exception_type : &dn2cpp_platform_not_supported_exception_type);
+            dn2cpp_exc_inflight_pop(ex.obj);
+        }
+        require(refused, "closed metadata-only constraints cannot enter allocation or boxing");
+    }
     auto minimum = record(0, 2, { UINT64_MAX });
     auto minimum_handle = Dn2CppMetadataHandle<Dn2CppEnumMember>::from_static(minimum.bytes.data());
     require(minimum_handle->value == INT64_MIN, "ten-byte unsigned integer preserves signed minimum");

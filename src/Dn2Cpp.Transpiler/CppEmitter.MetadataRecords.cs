@@ -27,6 +27,9 @@ internal sealed partial class CppEmitter
 
     private void EmitTypeInfo(StringBuilder sb, string symbol, TypeMetadata data)
     {
+        if (data.Flags.Contains("DN2CPP_TF_GENERICDEF", StringComparison.Ordinal)
+            && _strippedGenericMetadata.Contains(data.Name))
+            data.Flags = "(" + data.Flags + " | DN2CPP_TF_METADATA_STRIPPED)";
         MetadataValue[] cold = {
             MetadataValue.Ref(data.Fields), MetadataValue.Signed(data.FieldCount), MetadataValue.Ref(data.Methods), MetadataValue.Signed(data.MethodCount),
             MetadataValue.Ref(data.Ctors), MetadataValue.Signed(data.CtorCount), MetadataValue.Ref(data.Props), MetadataValue.Signed(data.PropCount),
@@ -35,6 +38,8 @@ internal sealed partial class CppEmitter
             MetadataValue.Unsigned(data.IlAttrs), MetadataValue.Signed(data.MetadataToken), MetadataValue.Text(data.DefaultMemberName),
             MetadataValue.Signed(data.MarshalSize?.Size64 ?? 0), MetadataValue.Text(data.EventSourceName), MetadataValue.Text(data.EventSourceGuid),
             MetadataValue.Text(data.GenericParamNames), MetadataValue.Ref(data.Initializer),
+            MetadataValue.Ref(_genericMetadata.TryGetValue(data.Flags.Contains("DN2CPP_TF_GENERICDEF", StringComparison.Ordinal)
+                ? "generic:" + data.Name : "type:" + symbol, out var genericMetadata) ? genericMetadata : "nullptr"),
         };
         bool hasCold = cold.Any(value => value.Pointer is not null || value.StringValue is not null || value.Encoded != 0);
         string coldSymbol = "refl_" + symbol;

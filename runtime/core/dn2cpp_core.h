@@ -228,6 +228,9 @@ struct Dn2CppInterfaceEntry
 // Runtime type metadata (IL2CPP "klass" equivalent). One instance per
 // managed type; boxed values and objects point at it from their header.
 // Cold reflection metadata is absent for types without recorded answers.
+struct Dn2CppGenericTypeMetadata;
+struct Dn2CppBindingSignature;
+
 struct Dn2CppTypeReflection
 {
     Dn2CppMetadataTable<Dn2CppFieldInfo> fields;
@@ -255,6 +258,7 @@ struct Dn2CppTypeReflection
     const char* genericParamNames;
     // Callable initializer identity is independent of public member enumeration.
     Dn2CppMetadataHandle<Dn2CppMethodInfo> initializer = nullptr;
+    const Dn2CppGenericTypeMetadata* genericMetadata = nullptr;
 };
 
 inline constexpr Dn2CppTypeReflection dn2cpp_empty_type_reflection{};
@@ -1010,6 +1014,18 @@ struct Dn2CppMethodGenericParameter
 {
     const char* name;
     int32_t attrs;
+    const Dn2CppBindingSignature* constraints = nullptr;
+    int32_t constraintCount = 0;
+};
+
+struct Dn2CppGenericTypeMetadata
+{
+    const Dn2CppMethodGenericParameter* parameters;
+    int32_t parameterCount;
+    const Dn2CppBindingSignature* base;
+    const Dn2CppBindingSignature* interfaces;
+    int32_t interfaceCount;
+    bool parameterMetadataAvailable;
 };
 
 // Reflection method metadata. One entry per declared method in a type's
@@ -1650,6 +1666,10 @@ Dn2CppString* dn2cpp_type_generic_parameter_namespace(const Dn2CppTypeInfo* ti);
 const Dn2CppTypeInfo* dn2cpp_type_generic_parameter_declaring_type(const Dn2CppTypeInfo* ti);
 Dn2CppType* dn2cpp_type_get_generic_type_definition(Dn2CppType* t);
 Dn2CppArrayRef* dn2cpp_type_get_generic_arguments(Dn2CppType* t);
+Dn2CppArrayRef* dn2cpp_type_get_generic_parameter_constraints(Dn2CppType* t);
+bool dn2cpp_type_metadata_only(const Dn2CppTypeInfo* ti);
+void dn2cpp_type_ensure_metadata_relations(const Dn2CppTypeInfo* ti);
+void dn2cpp_type_ensure_metadata_assignability(const Dn2CppTypeInfo* ti);
 Dn2CppType* dn2cpp_type_make_generic(Dn2CppType* def, Dn2CppArrayRef* args);
 
 // Type/Enum reflection completion. GetInterfaces returns the type's (transitive,
@@ -2944,6 +2964,7 @@ extern Dn2CppTypeInfo dn2cpp_application_exception_type;
 // System.MissingMethodException: raised by the Activator/ConstructorInfo
 // helpers when constructor resolution finds no invokable match.
 extern Dn2CppTypeInfo dn2cpp_missing_method_exception_type;
+extern Dn2CppTypeInfo dn2cpp_member_access_exception_type;
 // System.FieldAccessException: raised by FieldInfo.SetValue on a constant or a
 // static read-only field.
 extern Dn2CppTypeInfo dn2cpp_field_access_exception_type;
@@ -3382,6 +3403,7 @@ void dn2cpp_require_layout(const Dn2CppTypeInfo* ti);
 // friends), matching .NET's MissingMethodException; the message carries the
 // diagnosable reason (like the dynamic-codegen PNSE trap).
 [[noreturn]] void dn2cpp_throw_missing_method(const char* message);
+[[noreturn]] void dn2cpp_throw_member_access(const char* message);
 // An invoked interface slot or generic-virtual case with no most specific
 // default body. The emitter bakes .NET's message into the call; the exception
 // carries .NET's HResult.

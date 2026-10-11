@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+# Formal constraints preserve typical identities, transitive relations and cold publication.
+formal_constraint_asserts() {
+    local output="$1" line
+    for line in '== formal constraint metadata ==' \
+        'constraint simple Unconstrained: 0/System.Object/0' \
+        'constraint simple ValueConstrained: 1/System.ValueType/0' \
+        'constraint simple ReferenceConstrained: 0/System.Object/0' \
+        'constraint simple BaseConstrained: 1/ReflectGenericMethodSubset.DefinitionConstraintBase/0' \
+        'constraint simple InterfaceConstrained: 1/System.Object/1' \
+        'constraint typical owner: True/True/True/True' \
+        'constraint method dependency: True/True/1' \
+        'constraint composed: 2/True/True/True/True/True/True/2' \
+        'constraint recursive: True/True/True' \
+        'constraint repeated identity: True/True' \
+        'constraint fresh arrays: True/True' \
+        'constraint owner index: 2/True/True' \
+        'constraint parallel identity: True/True' \
+        'constraint closed identity: True/True' \
+        'constraint open guards: ArgumentException/MemberAccessException/NotSupportedException' \
+        'constraint nested: True/True/True/True' \
+        'formal constraint metadata end'; do
+        test "$(grep -Fxc -- "$line" "$output")" = 1 \
+            || { echo "FAIL: formal constraint witness missing or repeated: $output/$line" >&2; return 1; }
+    done
+}
+
+formal_constraint_prefix_asserts() {
+    local out="$1" axis
+    for axis in dotnet native; do
+        if [ "$axis" = dotnet ]; then
+            run_bounded dotnet "$_CG_APP" before-formal-constraint-metadata > "$out/constraints-before.$axis.raw.stdout"
+        else
+            run_bounded "$out/ReflectInvoke$EXE_EXT" before-formal-constraint-metadata > "$out/constraints-before.$axis.raw.stdout"
+        fi
+        strip_cr_win_file "$out/constraints-before.$axis.raw.stdout" > "$out/constraints-before.$axis.stdout"
+        awk '/^== formal constraint metadata ==$/ { exit } { print }' \
+            "$out/virtual-delegate-full.$axis.stdout" > "$out/constraints-prefix.$axis.stdout"
+        diff -u "$out/constraints-before.$axis.stdout" "$out/constraints-prefix.$axis.stdout"
+        formal_constraint_asserts "$out/virtual-delegate-full.$axis.stdout"
+    done
+}
+
+formal_constraint_diff_axes() {
+    local axis out
+    for axis in packed native uncompressed trimmed unshared; do
+        out="artifacts/formal-constraint-metadata-$axis"
+        mkdir -p "$out"
+        local flags=() build_flags=()
+        case "$axis" in
+            packed) flags=(--reflection-metadata 'ReflectGenericMethodSubset.ConstraintOwner`1[ReflectGenericMethodSubset.ConstraintRoot]=packed') ;;
+            native) flags=(--reflection-metadata 'ReflectGenericMethodSubset.ConstraintOwner`1[ReflectGenericMethodSubset.ConstraintRoot]=native') ;;
+            uncompressed) flags=(--no-metadata-compression) ;;
+            trimmed) flags=(--trim-reflection) ;;
+            unshared) flags=(--no-shared-generics); build_flags=(-p:FormalConstraintsUnshared=true) ;;
+        esac
+        dotnet build samples/dotnet/ReflectInvoke/FormalConstraintsOnly.csproj -c "$CONFIG" --nologo -v q ${build_flags[@]+"${build_flags[@]}"} -o "$out/app"
+        run_bounded dotnet "$out/app/FormalConstraintsOnly.dll" > "$out/clr.raw.stdout"
+        strip_cr_win_file "$out/clr.raw.stdout" > "$out/clr.stdout"
+        DN2CPP_STRICT_COMPLETION=1 invoke_cli "$out/app/FormalConstraintsOnly.dll" -r "$(locate_corelib)" \
+            -r "$out/app/TrimReflectLib.dll" \
+            -r "$out/app/MultiAssemblyAlias.dll" \
+            --no-ildiet ${flags[@]+"${flags[@]}"} -o "$out" > "$out/emit.log" 2>&1
+        case "$axis" in
+            packed|native)
+                local representation=record
+                [ "$axis" != native ] || representation=native
+                grep -Eq "^(alignas\(2\) extern const uint8_t|static const Dn2CppMethodInfo) md_${representation}_methtab_ReflectGenericMethodSubset_ConstraintOwner_ReflectGenericMethodSubset_ConstraintRoot\\[\\]" "$out"/generated_m*.cpp
+                grep -Eq "^(alignas\(2\) static const uint8_t|static const Dn2CppTypeReflection) md_${representation}_refl_ti_ReflectGenericMethodSubset_ConstraintOwner_ReflectGenericMethodSubset_ConstraintRoot\\[\\]" "$out"/generated_m*.cpp
+                ;;
+        esac
+        compile_console "$out" FormalConstraintsOnly
+        run_bounded "$out/FormalConstraintsOnly$EXE_EXT" > "$out/native.raw.stdout"
+        strip_cr_win_file "$out/native.raw.stdout" > "$out/native.stdout"
+        diff -u "$out/clr.stdout" "$out/native.stdout"
+        formal_constraint_asserts "$out/native.stdout"
+        local mode
+        for mode in unloaded-method-identity unloaded-self-assignability retained-formal-members formal-interface-order constraint-scope nested-constraint nested-assignability; do
+            run_bounded dotnet "$out/app/FormalConstraintsOnly.dll" "$mode" > "$out/$mode.clr.raw.stdout"
+            strip_cr_win_file "$out/$mode.clr.raw.stdout" > "$out/$mode.clr.stdout"
+            run_bounded "$out/FormalConstraintsOnly$EXE_EXT" "$mode" > "$out/$mode.native.raw.stdout"
+            strip_cr_win_file "$out/$mode.native.raw.stdout" > "$out/$mode.native.stdout"
+            diff -u "$out/$mode.clr.stdout" "$out/$mode.native.stdout"
+        done
+        run_bounded "$out/FormalConstraintsOnly$EXE_EXT" unloaded-relations > "$out/unloaded-relations.native.raw.stdout"
+        strip_cr_win_file "$out/unloaded-relations.native.raw.stdout" > "$out/unloaded-relations.native.stdout"
+        test "$(grep -Fxc 'unloaded constraint query: PlatformNotSupportedException' "$out/unloaded-relations.native.stdout")" = 2
+        grep -Fxq 'unloaded constraint base: PlatformNotSupportedException' "$out/unloaded-relations.native.stdout"
+        grep -Fxq 'unloaded constraint interfaces: PlatformNotSupportedException' "$out/unloaded-relations.native.stdout"
+        run_bounded dotnet "$out/app/FormalConstraintsOnly.dll" scoped-constraint-targets > "$out/scoped-targets.clr.raw.stdout"
+        strip_cr_win_file "$out/scoped-targets.clr.raw.stdout" > "$out/scoped-targets.clr.stdout"
+        grep -Fxq 'scoped constraint targets: False/False' "$out/scoped-targets.clr.stdout"
+        run_bounded "$out/FormalConstraintsOnly$EXE_EXT" unloaded-scoped-constraints > "$out/unloaded-scoped.native.raw.stdout"
+        strip_cr_win_file "$out/unloaded-scoped.native.raw.stdout" > "$out/unloaded-scoped.native.stdout"
+        grep -Fxq 'unloaded scoped identity: U/V' "$out/unloaded-scoped.native.stdout"
+        test "$(grep -Fxc 'unloaded scoped leaf: PlatformNotSupportedException' "$out/unloaded-scoped.native.stdout")" = 2
+        test "$(grep -Fxc 'unloaded scoped generic: PlatformNotSupportedException' "$out/unloaded-scoped.native.stdout")" = 2
+        grep -Fxq 'unloaded scoped stable: True/True' "$out/unloaded-scoped.native.stdout"
+        run_bounded "$out/FormalConstraintsOnly$EXE_EXT" stripped-formal-constraints > "$out/stripped.native.raw.stdout"
+        strip_cr_win_file "$out/stripped.native.raw.stdout" > "$out/stripped.native.stdout"
+        if [ "$axis" = trimmed ]; then
+            test "$(grep -Fxc 'stripped constraint query: PlatformNotSupportedException' "$out/stripped.native.stdout")" = 2
+            grep -Fxq 'stripped constraint base: PlatformNotSupportedException' "$out/stripped.native.stdout"
+            grep -Fxq 'stripped constraint interfaces: PlatformNotSupportedException' "$out/stripped.native.stdout"
+        else
+            run_bounded dotnet "$out/app/FormalConstraintsOnly.dll" stripped-formal-constraints > "$out/stripped.clr.raw.stdout"
+            strip_cr_win_file "$out/stripped.clr.raw.stdout" > "$out/stripped.clr.stdout"
+            diff -u "$out/stripped.clr.stdout" "$out/stripped.native.stdout"
+        fi
+        echo "formal constraints $axis OK"
+    done
+}

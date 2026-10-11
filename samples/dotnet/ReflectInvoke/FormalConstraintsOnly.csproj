@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(FormalConstraintsUnshared)' == 'true'">
+    <DefineConstants>$(DefineConstants);FORMAL_CONSTRAINTS_UNSHARED</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../TrimReflectLib/TrimReflectLib.csproj" />
+    <ProjectReference Include="../MultiAssemblyAlias/MultiAssemblyAlias.csproj" Aliases="metadataAlias" />
+    <ProjectReference Include="../../../gates/fixtures/reflection-unused-signatures/Ext/Ext.csproj" Aliases="foreignConstraintAlias" />
+    <Compile Include="ReflectGenericMethodSubset.cs" />
+    <Compile Include="FormalConstraintsOnlyProgram.cs" />
+  </ItemGroup>
+</Project>

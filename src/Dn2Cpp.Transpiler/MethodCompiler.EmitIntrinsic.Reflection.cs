@@ -2264,13 +2264,10 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.I4, "int32_t", $"dn2cpp_fieldref_is_specialname((Dn2CppFieldRef*)({f.Expr}))");
                 return true;
             }
-            // Formal method parameters carry identity and attributes, but their
-            // constraint type lists are not represented.
             case ("System.Type", "GetGenericParameterConstraints") when sig.ParameterTypes.Length == 0:
             {
-                Pop();
-                Emit("dn2cpp_throw_platform_not_supported(\"Type.GetGenericParameterConstraints: constraint type lists are not represented\");");
-                Push(StackKind.Ref, "Dn2CppArrayRef*", "((Dn2CppArrayRef*)nullptr)"); // unreachable; stack typing only
+                var type = Pop();
+                Push(StackKind.Ref, "Dn2CppArrayRef*", $"dn2cpp_type_get_generic_parameter_constraints((Dn2CppType*)({type.Expr}))");
                 return true;
             }
             // ParameterInfo long-tail: Member (the declaring MethodBase handle),

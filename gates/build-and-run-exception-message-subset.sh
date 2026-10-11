@@ -54,10 +54,12 @@
 # Derived aggregate constructors retain snapshots and cached read-only collections;
 # user fields and virtual or non-virtual Message reads preserve the aggregate prefix.
 # Reflective constructor reachability retains unused legacy aggregate serialization bodies.
+# MemberAccessException constructors retain messages, inner identity and the SystemException chain.
 source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/ExceptionMessageSubset/OrdinaryReflectionArgumentSubset.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-reflection-arguments:${DN2CPP_BEFORE_ORDINARY_REFLECTION_ARGUMENTS:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|before-array-shape-fields|before-runtime-hresult|before-lazy-aggregate-message|before-aggregate-enumerable|before-derived-aggregate|before-aggregate-serialization"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|before-member-access-constructors"
 
 ancestry_app="gates/fixtures/runtime-exception-ancestry/bin/$CONFIG/$TFM/RuntimeExceptionAncestry.dll"
 build_gate_proj gates/fixtures/runtime-exception-ancestry/RuntimeExceptionAncestry.csproj
@@ -76,6 +78,18 @@ gate_extra_asserts() {
     local out="$1" native before prefix line app name fixture expected actual
     native=$(run_bounded "./$out/ExceptionMessageSubset")
     native=$(strip_cr_win "$native")
+    prefix=$(awk '/^== member access exception constructors ==$/ { exit } { print }' <<< "$native")
+    before=$(run_bounded dotnet "$_CG_APP" before-member-access-constructors)
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    before=$(run_bounded "./$out/ExceptionMessageSubset$EXE_EXT" before-member-access-constructors)
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    for line in '== member access exception constructors ==' \
+        'member access ctor: MemberAccessException/Cannot access member./8013151A/True' \
+        'member access ctor: MemberAccessException/member/8013151A/True' \
+        'member access ctor: MemberAccessException/nested/8013151A/True' \
+        'member access inner: True' 'member access exception constructors end'; do
+        assert_output "$(grep -Fxc -- "$line" <<< "$native")" '1'
+    done
     prefix=$(awk '/^== aggregate legacy serialization reachability ==$/ { exit } { print }' <<< "$native")
     before=$(run_bounded dotnet "$_CG_APP" before-aggregate-serialization)
     assert_output "$prefix" "$(strip_cr_win "$before")"

@@ -130,8 +130,145 @@ namespace ReflectGenericMethodSubset
         public new virtual string W() => "DerV.W";
     }
 
+    interface IConstraintRoot { }
+    interface IConstraintChild<T> : IConstraintRoot { }
+    interface IConstraintLink<T> { }
+    class NestedConstraint<T> : IConstraintLink<ConstraintHolder<ConstraintHolder<T>>> { }
+    class ConstraintRoot : IConstraintRoot { }
+    class ConstraintDerived : ConstraintRoot { }
+    class ConstraintHolder<T> : ConstraintRoot { }
+    class ConstraintOwner<T> where T : ConstraintRoot
+    {
+        public static void FromOwner<U>() where U : T { }
+        public static void FromMethod<U, V>() where U : V where V : ConstraintRoot { }
+        public static void Composed<U, V>() where U : ConstraintHolder<V>, IConstraintChild<T[]> where V : T { }
+        public static void Concurrent<U>() where U : IConstraintLink<U> { }
+        public static void Closed<U>() where U : ConstraintHolder<Guid> { }
+        public static void ClosedAgain<U>() where U : ConstraintHolder<decimal> { }
+        public static void FBound<U>() where U : IConstraintLink<U> { }
+        public static void Mutual<U, V>() where U : IConstraintLink<V> where V : IConstraintLink<U> { }
+        public static void Nested<U>() where U : NestedConstraint<U> { }
+    }
+
+    class ConstraintPair<T, V> where T : ConstraintRoot where V : T
+    {
+        public static void Pick<U>() where U : V { }
+    }
+
     static class Program
     {
+        internal static void RunNestedConstraint()
+        {
+            Type parameter = typeof(ConstraintOwner<ConstraintRoot>).GetMethod("Nested")!.GetGenericArguments()[0];
+            Type constraint = parameter.GetGenericParameterConstraints()[0];
+            Type relation = parameter.GetInterfaces()[0];
+            Type child = relation.GetGenericArguments()[0];
+            Console.WriteLine("constraint nested: " + ReferenceEquals(constraint.GetGenericArguments()[0], parameter)
+                + "/" + ReferenceEquals(child.GetGenericTypeDefinition(), typeof(ConstraintHolder<>))
+                + "/" + ReferenceEquals(child.GetGenericArguments()[0].GetGenericArguments()[0], parameter)
+                + "/" + child.ContainsGenericParameters);
+        }
+
+        internal static void RunConstraintMetadata(bool collect = true)
+        {
+            Console.WriteLine("== formal constraint metadata ==");
+            string[] names = { "Unconstrained", "ValueConstrained", "ReferenceConstrained", "BaseConstrained", "InterfaceConstrained" };
+            foreach (string name in names)
+            {
+                Type parameter = typeof(DefinitionSignatureOwner).GetMethod(name)!.GetGenericArguments()[0];
+                Type[] constraints = parameter.GetGenericParameterConstraints();
+                Console.WriteLine("constraint simple " + name + ": " + constraints.Length + "/" + parameter.BaseType + "/" + parameter.GetInterfaces().Length);
+            }
+            Type owner = typeof(ConstraintOwner<>).GetGenericArguments()[0];
+            Type first = typeof(ConstraintOwner<ConstraintRoot>).GetMethod("FromOwner")!.GetGenericArguments()[0];
+            Type second = typeof(ConstraintOwner<ConstraintDerived>).GetMethod("FromOwner")!.GetGenericArguments()[0];
+            Console.WriteLine("constraint typical owner: " + ReferenceEquals(first, second) + "/"
+                + ReferenceEquals(first.DeclaringType, typeof(ConstraintOwner<>)) + "/"
+                + ReferenceEquals(first.GetGenericParameterConstraints()[0], owner) + "/"
+                + ReferenceEquals(owner.GetGenericParameterConstraints()[0], typeof(ConstraintRoot)));
+            Type[] dependent = typeof(ConstraintOwner<ConstraintRoot>).GetMethod("FromMethod")!.GetGenericArguments();
+            Console.WriteLine("constraint method dependency: " + ReferenceEquals(dependent[0].GetGenericParameterConstraints()[0], dependent[1])
+                + "/" + ReferenceEquals(dependent[0].BaseType, typeof(object)) + "/" + dependent[0].GetInterfaces().Length);
+            Type[] composed = typeof(ConstraintOwner<ConstraintRoot>).GetMethod("Composed")!.GetGenericArguments();
+            Type[] shapes = composed[0].GetGenericParameterConstraints();
+            Console.WriteLine("constraint composed: " + shapes.Length + "/" + shapes[0].ContainsGenericParameters + "/"
+                + shapes[0].IsConstructedGenericType + "/" + (shapes[0].FullName is null) + "/"
+                + ReferenceEquals(shapes[0].GetGenericArguments()[0], composed[1]) + "/"
+                + ReferenceEquals(shapes[1].GetGenericArguments()[0].GetElementType(), owner) + "/"
+                + ReferenceEquals(composed[0].BaseType, shapes[0]) + "/" + composed[0].GetInterfaces().Length);
+            Type f = typeof(ConstraintOwner<ConstraintRoot>).GetMethod("FBound")!.GetGenericArguments()[0];
+            Type[] mutual = typeof(ConstraintOwner<ConstraintRoot>).GetMethod("Mutual")!.GetGenericArguments();
+            Console.WriteLine("constraint recursive: " + ReferenceEquals(f.GetGenericParameterConstraints()[0].GetGenericArguments()[0], f)
+                + "/" + ReferenceEquals(mutual[0].GetGenericParameterConstraints()[0].GetGenericArguments()[0], mutual[1])
+                + "/" + ReferenceEquals(mutual[1].GetGenericParameterConstraints()[0].GetGenericArguments()[0], mutual[0]));
+            Type saved = shapes[0];
+            bool stable = true;
+            for (int i = 0; i < 32; i++)
+                stable &= ReferenceEquals(saved, composed[0].GetGenericParameterConstraints()[0]);
+            if (collect)
+                GC.Collect();
+            Console.WriteLine("constraint repeated identity: " + stable + "/" + ReferenceEquals(saved, composed[0].GetGenericParameterConstraints()[0]));
+            Type[] detached = composed[0].GetGenericParameterConstraints();
+            detached[0] = typeof(object);
+            Console.WriteLine("constraint fresh arrays: " + !ReferenceEquals(detached, composed[0].GetGenericParameterConstraints())
+                + "/" + ReferenceEquals(saved, composed[0].GetGenericParameterConstraints()[0]));
+            Type pair = typeof(ConstraintPair<ConstraintRoot, ConstraintDerived>).GetMethod("Pick")!.GetGenericArguments()[0];
+            Type[] pairParameters = typeof(ConstraintPair<,>).GetGenericArguments();
+            Console.WriteLine("constraint owner index: " + pairParameters.Length + "/"
+                + ReferenceEquals(pair.GetGenericParameterConstraints()[0], pairParameters[1]) + "/"
+                + ReferenceEquals(pairParameters[1].GetGenericParameterConstraints()[0], pairParameters[0]));
+            MethodInfo concurrent = typeof(ConstraintOwner<ConstraintRoot>).GetMethod("Concurrent")!;
+            Task<Type>[] queries = new Task<Type>[4];
+            for (int i = 0; i < queries.Length; i++)
+                queries[i] = Task.Run(() => ConcurrentConstraint(concurrent));
+            Type identity = queries[0].Result;
+            bool parallel = true;
+            foreach (Task<Type> query in queries)
+                parallel &= ReferenceEquals(identity, query.Result);
+            if (collect)
+                GC.Collect();
+            Console.WriteLine("constraint parallel identity: " + parallel + "/"
+                + ReferenceEquals(identity, ConcurrentConstraint(concurrent)));
+#if FORMAL_CONSTRAINTS_UNSHARED
+            GC.KeepAlive(typeof(ConstraintHolder<Guid>));
+            GC.KeepAlive(typeof(ConstraintHolder<decimal>));
+#endif
+            Type closed = typeof(ConstraintOwner<ConstraintRoot>).GetMethod("Closed")!.GetGenericArguments()[0].GetGenericParameterConstraints()[0];
+            Type made = typeof(ConstraintHolder<>).MakeGenericType(typeof(Guid));
+            Type madeFirst = typeof(ConstraintHolder<>).MakeGenericType(typeof(decimal));
+            Type closedLater = typeof(ConstraintOwner<ConstraintRoot>).GetMethod("ClosedAgain")!.GetGenericArguments()[0].GetGenericParameterConstraints()[0];
+            Console.WriteLine("constraint closed identity: " + ReferenceEquals(closed, made) + "/" + ReferenceEquals(madeFirst, closedLater));
+            Console.WriteLine("constraint open guards: " + ConstraintAllocationFault(() => Activator.CreateInstance(saved))
+                + "/" + ConstraintAllocationFault(() => RuntimeHelpers.GetUninitializedObject(saved))
+                + "/" + ConstraintAllocationFault(() => Array.CreateInstance(saved, 1)));
+            RunNestedConstraint();
+            Console.WriteLine("formal constraint metadata end");
+        }
+
+        private static Type ConcurrentConstraint(MethodInfo method)
+        {
+            Type parameter = method.GetGenericArguments()[0];
+            Type result = parameter.GetGenericParameterConstraints()[0];
+            for (int i = 0; i < 16; i++)
+                if (!ReferenceEquals(result, parameter.GetGenericParameterConstraints()[0])
+                    || !ReferenceEquals(result.GetGenericArguments()[0], parameter))
+                    throw new InvalidOperationException("Constraint identity changed");
+            return result;
+        }
+
+        private static string ConstraintAllocationFault(Func<object?> action)
+        {
+            try
+            {
+                action();
+                return "none";
+            }
+            catch (Exception error)
+            {
+                return error.GetType().Name;
+            }
+        }
+
         private const BindingFlags DefinitionFlags = BindingFlags.Public | BindingFlags.Instance
             | BindingFlags.Static | BindingFlags.DeclaredOnly;
 

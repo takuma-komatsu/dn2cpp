@@ -582,6 +582,25 @@ A synthesized generic type's constructor and method rows, and a clone level's
 interned method rows, store their original handle and replacement declaring type
 in a delta descriptor.
 
+Generic parameter constraints use immutable cold recipes on method descriptors
+and type reflection rows. Formal method parameters are interned by the typical
+MethodDef, and formal type parameters by the generic definition. Recursive
+initialization publishes identity and immutable parameter contexts under a cold
+lock before relation queries resolve dependent parameters and F-bounds.
+Reflection assignability completes nested formal relations before the shared
+cast predicate caches an answer. Unloaded named recipes cannot resolve against
+another assembly's matching name.
+Stripped definitions expose formal identity, but constraint and relation queries
+guard the declaring definition through `dn2cpp_require_metadata`.
+
+Constraint recipes reuse existing array and compound interning. Constructed
+constraints reuse an AOT or runtime-template identity when available; otherwise
+they receive an interned metadata-only descriptor with no layout or dispatch.
+Open compositions and closed descriptors without a runtime layout cannot enter
+allocation or invocation. `ContainsGenericParameters` follows elements and
+generic arguments, never constraints or ancestry. This cold representation does
+not change generic-context slots, hot flag widths or the baked patch wire format.
+
 `Compilation.ReflectionMetadata.cs` selects native storage for exact types
 named by surviving `ldtoken`/`GetTypeFromHandle` pairs in reached IL. It uses
 each closed scan context and excludes canonical placeholders, dead code and

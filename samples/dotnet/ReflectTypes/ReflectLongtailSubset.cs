@@ -235,10 +235,8 @@ namespace ReflectLongtailSubset
             {
                 Console.WriteLine("p-default=PlatformNotSupportedException");
             }
-            // GetGenericParameterConstraints: no generic-parameter Type ever
-            // materializes, so the call throws the catchable
-            // PlatformNotSupportedException (real .NET: InvalidOperationException
-            // on a non-parameter receiver — also a throw, different type).
+            // A non-parameter receiver retains the explicit native refusal;
+            // CLR reports InvalidOperationException at this boundary.
             try
             {
                 tg.GetGenericParameterConstraints();
