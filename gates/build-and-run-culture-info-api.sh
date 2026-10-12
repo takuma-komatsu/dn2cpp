@@ -54,6 +54,11 @@
 # regional numeric data and neutral-to-specific mappings. Uppercase constructor
 # extensions run in a fresh process before lowercase CultureData cache entries.
 # Separate override cases pin which constructor first owns each CultureData entry.
+# Numbering data covers complete unknown Unicode values, locale-specific signs
+# and patterns, and independent number, currency and percent grouping. Each
+# numbering case also runs in a fresh process before any CultureData cache entry.
+# Algorithmic numbering preserves ICU's invalid grouping data and checks the
+# managed formatter's typed failure independently for each numeric format.
 # Bare POSIX and unknown tags have host-dependent ICU acceptance, so they
 # cannot be unconditional live-diff inputs.
 #
@@ -102,11 +107,28 @@ LOCALE_CASES=(
     culture-wrapper-sort-first
     culture-wrapper-unicode-first
 )
+NUMBERING_CASES=(
+    en-US-u-nu-arab-foo
+    en-US-u-nu-unknown
+    hi-IN-u-nu-arab
+    bn-IN-u-nu-arab
+    fr-FR-u-nu-arab
+    ja-JP-u-nu-arab
+    en-US-u-nu
+    en-US-u-nu-roman
+    zh-CN-u-nu-hans
+    ar-EG-u-nu-native
+    ar-EG-u-nu-finance
+    ja-JP-u-nu-traditio
+    az-Latn-AZ-u-nu-arab
+)
 gate_extra_asserts() {
     local out="$1" native expected mode marker
     native=$(run_bounded "./$out/CultureInfoApi" culture-names)
     grep -Fxq 'culture locale data end' <<< "$(strip_cr_win "$native")" \
         || { echo "FAIL: culture locale data section did not finish" >&2; return 1; }
+    grep -Fxq 'culture numbering data end' <<< "$(strip_cr_win "$native")" \
+        || { echo "FAIL: culture numbering data section did not finish" >&2; return 1; }
     for mode in "${LOCALE_CASES[@]}"; do
         native=$(run_bounded "./$out/CultureInfoApi" "$mode")
         expected=$(run_bounded dotnet "$_CG_APP" "$mode")
@@ -121,8 +143,15 @@ gate_extra_asserts() {
         grep -Fxq "$marker" <<< "$(strip_cr_win "$native")" \
             || { echo "FAIL: $mode did not finish" >&2; return 1; }
     done
+    for mode in "${NUMBERING_CASES[@]}"; do
+        native=$(run_bounded "./$out/CultureInfoApi" culture-numbering-data "$mode")
+        expected=$(run_bounded dotnet "$_CG_APP" culture-numbering-data "$mode")
+        assert_output "$native" "$expected"
+        grep -Fxq 'culture numbering data end' <<< "$(strip_cr_win "$native")" \
+            || { echo "FAIL: numbering data for $mode did not finish" >&2; return 1; }
+    done
 }
 DN2CPP_GATE_RUN_ARGS=culture-names
-DN2CPP_GATE_EXTRA_CONTEXT="${LOCALE_CASES[*]}"
+DN2CPP_GATE_EXTRA_CONTEXT="${LOCALE_CASES[*]} ${NUMBERING_CASES[*]}"
 DN2CPP_OUT_SUFFIX=-names
 corelib_diff_gate CultureInfoApi --link-xml samples/dotnet/CultureInfoApi/link.xml

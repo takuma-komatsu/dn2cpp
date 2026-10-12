@@ -2231,9 +2231,7 @@ internal sealed partial class MethodCompiler
         // behind Half.ToString for char, the Utf8Formatter path for byte). BOTH widths read
         // the SAME modeled culture: the byte arm transcodes the very string the char arm
         // spans, so a non-invariant provider prints its own separators in UTF-8 too.
-        // PositiveSign and PerMilleSymbol are not carried in the model — every modeled
-        // culture keeps the invariant "+" / "‰" — and the DateTimeFormatInfo model is
-        // invariant-only, matching its property intercepts.
+        // DateTimeFormatInfo remains invariant-only, matching its property intercepts.
         if ((declType is "System.Globalization.NumberFormatInfo" or "System.Globalization.DateTimeFormatInfo")
             && name.EndsWith("TChar", StringComparison.Ordinal))
         {
@@ -2276,8 +2274,8 @@ internal sealed partial class MethodCompiler
                     "CurrencySymbolTChar" => $"{nfiPtr}->currencySymbol",
                     "CurrencyDecimalSeparatorTChar" => $"{nfiPtr}->currencyDecimal",
                     "CurrencyGroupSeparatorTChar" => $"{nfiPtr}->currencyGroup",
-                    "PositiveSignTChar" => Literals.GetOrAdd("+"),
-                    "PerMilleSymbolTChar" => Literals.GetOrAdd("‰"),
+                    "PositiveSignTChar" => $"{nfiPtr}->positiveSign",
+                    "PerMilleSymbolTChar" => $"{nfiPtr}->perMilleSymbol",
                     _ => throw new NotSupportedException(
                         $"{Method.DeclaringClass.FullName}.{Method.Name}: {declType}::{name} " +
                         "has no runtime NFI field mapping yet"),

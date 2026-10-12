@@ -447,8 +447,7 @@ internal sealed partial class MethodCompiler
     /// <summary>System.Number's private group-sizes readers — the only members of the
     /// transpiled Number that <c>ldfld</c> the intrinsic-mapped NumberFormatInfo directly (its
     /// C++ lowering is the runtime NFI struct, so a managed field access cannot be emitted).
-    /// The runtime model carries ONE NumberGroupSizes array, used for the number/currency/
-    /// percent groups alike, so all three readers lower to the same helper.</summary>
+    /// The axis selects the same independent array as the public getter.</summary>
     private bool TryEmitNumberGroupSizes(MethodInfo callee)
     {
         if (callee.DeclaringClass.FullName != "System.Number"
@@ -457,8 +456,9 @@ internal sealed partial class MethodCompiler
             return false;
         var gsNfi = Pop();
         string gsArr = NewTemp("Dn2CppArrayI4*");
+        int axis = callee.Name == "CurrencyGroupSizes" ? 1 : callee.Name == "PercentGroupSizes" ? 2 : 0;
         Emit($"{gsArr} = dn2cpp_nfi_group_sizes({Cast(gsNfi, "const Dn2CppNumberFormatInfo*")}, "
-            + $"{PrimArrayTypeInfoExpr(PrimitiveTypeCode.Int32)});");
+            + $"{PrimArrayTypeInfoExpr(PrimitiveTypeCode.Int32)}, {axis});");
         Push(StackKind.Ref, "Dn2CppArrayI4*", gsArr);
         return true;
     }

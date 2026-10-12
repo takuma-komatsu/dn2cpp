@@ -9,6 +9,37 @@ struct Dn2CppCultureNameMapping
     const char16_t* target;
 };
 
+// ICU replaces grandfathered prefixes before parsing extension syntax. Some
+// replacements introduce private use, which must prevent a later nu override.
+// Source: unicode-org/icu, icu4c/source/common/uloc_tag.cpp, LEGACY.
+static const Dn2CppCultureNameMapping kCultureNumberingLegacyNames[] = {
+    { u"art-lojban", u"jbo" },
+    { u"en-gb-oed", u"en-gb-oxendict" },
+    { u"i-ami", u"ami" },
+    { u"i-bnn", u"bnn" },
+    { u"i-hak", u"hak" },
+    { u"i-klingon", u"tlh" },
+    { u"i-lux", u"lb" },
+    { u"i-navajo", u"nv" },
+    { u"i-pwn", u"pwn" },
+    { u"i-tao", u"tao" },
+    { u"i-tay", u"tay" },
+    { u"i-tsu", u"tsu" },
+    { u"no-bok", u"nb" },
+    { u"no-nyn", u"nn" },
+    { u"sgn-be-fr", u"sfb" },
+    { u"sgn-be-nl", u"vgt" },
+    { u"sgn-ch-de", u"sgg" },
+    { u"zh-guoyu", u"cmn" },
+    { u"zh-hakka", u"hak" },
+    { u"zh-min-nan", u"nan" },
+    { u"zh-xiang", u"hsn" },
+    { u"i-default", u"en-x-i-default" },
+    { u"i-enochian", u"und-x-i-enochian" },
+    { u"i-mingo", u"see-x-i-mingo" },
+    { u"zh-min", u"nan-x-zh-min" },
+};
+
 static const Dn2CppCultureNameMapping kCultureLanguageAliases[] = {
     { u"afr", u"af" },
     { u"amh", u"am" },
@@ -177,12 +208,4 @@ static const Dn2CppCultureRow kCultureIdentifierFormats[] = {
     { u"zh-Hans", u".", u",", u"-", u"NaN", u"-\u221e", u"\u00a4", u"%", 4, 2, 0, 1, 1, 1, 1, 3, -1 },
     { u"zh-Hant", u".", u",", u"-", u"\u975e\u6578\u503c", u"-\u221e", u"\u00a4", u"%", 31748, 2, 0, 1, 1, 1, 1, 3, -1 },
     { u"de-Latn", u",", u".", u"-", u"NaN", u"-\u221e", u"\u00a4", u"%", 4096, 2, 3, 8, 0, 0, 1, 3, -1 },
-};
-
-// Numbering-system data is locale-specific; only measured representable rows
-// participate. Other locales retain their existing numeric-data fallback.
-static const Dn2CppCultureRow kCultureArabicFormats[] = {
-    { u"en-US", u"\u066b", u"\u066c", u"\u061c-", u"NaN", u"\u061c-\u221e", u"$", u"\u066a\u061c", 4096, 2, 3, 8, 1, 1, 0, 3, -1 },
-    { u"de-DE", u"\u066b", u"\u066c", u"\u061c-", u"NaN", u"\u061c-\u221e", u"\u20ac", u"\u066a\u061c", 4096, 2, 3, 8, 1, 1, 0, 3, -1 },
-    { u"sv-SE", u"\u066b", u"\u00a0", u"\u061c\u2212", u"NaN", u"\u061c\u2212\u221e", u"kr", u"\u066a\u061c", 4096, 2, 3, 8, 1, 1, 0, 3, -1 },
 };

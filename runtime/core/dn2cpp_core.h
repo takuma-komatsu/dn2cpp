@@ -698,10 +698,8 @@ struct Dn2CppAggregateExceptionObject : Dn2CppExceptionObject
     Dn2CppObject* innerWrapper;
 };
 
-// The capacity of the modeled NumberGroupSizes array (see the field below).
-// Four, because every culture a host can be set to is [3] or [3,2]; a longer
-// array is refused loudly rather than truncated, since truncating one would
-// punctuate a large number in the wrong places.
+// Group arrays exceeding this capacity are refused rather than truncated:
+// truncation would punctuate a large number in the wrong places.
 #define DN2CPP_MAX_GROUP_SIZES 4
 
 // Culture-aware numeric formatting data. Models the subset of
@@ -714,23 +712,30 @@ struct Dn2CppNumberFormatInfo
 {
     Dn2CppString* numberDecimal;     // NumberDecimalSeparator
     Dn2CppString* numberGroup;       // NumberGroupSeparator
-    // NumberGroupSizes — and CurrencyGroupSizes and PercentGroupSizes, which share
-    // this one array. INVARIANT: a culture's three are equal (the generator refuses
-    // a candidate whose are not), so the property setters validate-and-trap rather
-    // than write; a write to one would silently move the other two.
-    //
+    // NumberGroupSizes. Currency and percent use independent arrays because a
+    // numbering-system override can change only one axis.
     // Semantics: the sizes are consumed RIGHT to LEFT — groupSizes[0] digits, then
     // [1], and the LAST element repeats for everything further left. A trailing 0
     // means STOP, not "repeat nothing": [3,0] renders 123456789012345 as
     // 123456789012,345 where [3] renders 123,456,789,012,345. 0 is legal only as the
-    // last element, and groupSizeCount == 0 means no grouping at all.
+    // last element, and groupSizeCount == 0 means no grouping at all. ICU's
+    // algorithmic numbering sentinel -1 is preserved and rejected by rendering.
     int8_t groupSizes[DN2CPP_MAX_GROUP_SIZES];
     int8_t groupSizeCount;
+    int8_t currencyGroupSizes[DN2CPP_MAX_GROUP_SIZES];
+    int8_t currencyGroupSizeCount;
+    int8_t percentGroupSizes[DN2CPP_MAX_GROUP_SIZES];
+    int8_t percentGroupSizeCount;
+    int32_t numberDigits;           // NumberDecimalDigits
+    int32_t percentDigits;          // PercentDecimalDigits
+    int32_t numberNegPattern;       // NumberNegativePattern (0..4)
+    Dn2CppString* positiveSign;      // PositiveSign
     Dn2CppString* negativeSign;      // NegativeSign
     Dn2CppString* nan;               // NaNSymbol
     Dn2CppString* posInf;            // PositiveInfinitySymbol
     Dn2CppString* negInf;            // NegativeInfinitySymbol
     Dn2CppString* percentSymbol;     // PercentSymbol
+    Dn2CppString* perMilleSymbol;    // PerMilleSymbol
     Dn2CppString* percentDecimal;    // PercentDecimalSeparator
     Dn2CppString* percentGroup;      // PercentGroupSeparator
     int32_t percentPosPattern;       // PercentPositivePattern (0..3)
@@ -7982,12 +7987,11 @@ void dn2cpp_nfi_set_currency_symbol(Dn2CppNumberFormatInfo* n, Dn2CppString* v);
 // NumberGroupSizes / CurrencyGroupSizes / PercentGroupSizes. The getter builds a
 // fresh int[] per call, as real .NET's does (two reads are not reference-equal, and
 // mutating the returned array does not move the culture's formatting). The setter
-// validates against the modeled array and traps on anything else — `which` names the
-// property in the message, since the three share one array and honoring a write to
-// one would silently move the others.
+// validates against the selected axis and traps on changes to modeled grouping.
+// `which` names the property in the message.
 // `ti` is the Int32[] handle the emit arms supply — see dn2cpp_decimal_get_bits for
 // why the shared int-array handle is not enough. Null degrades to it.
-Dn2CppArrayI4* dn2cpp_nfi_group_sizes(const Dn2CppNumberFormatInfo* n, const Dn2CppTypeInfo* ti);
+Dn2CppArrayI4* dn2cpp_nfi_group_sizes(const Dn2CppNumberFormatInfo* n, const Dn2CppTypeInfo* ti, int32_t axis = 0);
 void dn2cpp_nfi_set_group_sizes(const Dn2CppNumberFormatInfo* n, Dn2CppArrayI4* v, const char* which);
 // Shared culture helpers used by every numeric formatter: resolve a possibly-null
 // NFI to the CURRENT culture (.NET's null-provider rule — see the contract at the
