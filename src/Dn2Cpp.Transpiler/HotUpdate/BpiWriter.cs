@@ -111,6 +111,10 @@ internal sealed class BpiWriter
     private readonly LeBuffer _localSig = new();     // LocalSigTable (9)
     private readonly LeBuffer _userStrings = new();  // UserStringPool (10)
     private readonly LeBuffer _itfdesc = new();      // ItfDescTable (12)
+    private readonly LeBuffer _methodMetadata = new(); // MethodMetadata (13)
+    private readonly LeBuffer _parameterMetadata = new(); // ParameterMetadata (14)
+    private uint _methodMetadataCount;
+    private uint _parameterMetadataCount;
 
     private readonly Dictionary<string, uint> _stringOffsets = new(StringComparer.Ordinal);
     private readonly Dictionary<string, uint> _userStringOffsets = new(StringComparer.Ordinal);
@@ -231,6 +235,30 @@ internal sealed class BpiWriter
         return MethodCount++;
     }
 
+    public uint AddParameterMetadata(uint typeRef, uint nameOff, uint attrs, uint displayOff)
+    {
+        _parameterMetadata.U32(typeRef);
+        _parameterMetadata.U32(nameOff);
+        _parameterMetadata.U32(attrs);
+        _parameterMetadata.U32(displayOff);
+        return _parameterMetadataCount++;
+    }
+
+    public void AddMethodMetadata(uint methodIdx, uint token, uint attrs, uint implAttrs,
+        uint returnRef, uint displayOff, uint returnDisplayOff, uint parameterStart, uint parameterCount)
+    {
+        _methodMetadata.U32(methodIdx);
+        _methodMetadata.U32(token);
+        _methodMetadata.U32(attrs);
+        _methodMetadata.U32(implAttrs);
+        _methodMetadata.U32(returnRef);
+        _methodMetadata.U32(displayOff);
+        _methodMetadata.U32(returnDisplayOff);
+        _methodMetadata.U32(parameterStart);
+        _methodMetadata.U32(parameterCount);
+        _methodMetadataCount++;
+    }
+
     /// <summary>Appends one pre-resolved instruction (12 bytes).</summary>
     public void AddInsn(uint op, uint pfx, uint a, uint b)
     {
@@ -342,6 +370,11 @@ internal sealed class BpiWriter
         if (_itfdesc.Length > 0)
             sections.Add((12u, _itfdesc, 0u));
 
+        if (_methodMetadataCount > 0)
+            sections.Add((13u, _methodMetadata, _methodMetadataCount));
+        if (_parameterMetadataCount > 0)
+            sections.Add((14u, _parameterMetadata, _parameterMetadataCount));
+
         const int headerSize = 64;
         const int sectionEntrySize = 16;
         int sectionTableOff = headerSize;
@@ -360,7 +393,7 @@ internal sealed class BpiWriter
         head.Utf8("DN2BPI");
         head.Byte(0);
         head.Byte(0);
-        head.U32(3);                    // formatVersion (DN2CPP_BPI_VERSION)
+        head.U32(4);                    // formatVersion (DN2CPP_BPI_VERSION)
         head.U32(flags);                // flags (bit0 = register code format)
         head.U64(baseImageAbiHash);
         head.U32((uint)sections.Count);

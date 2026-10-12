@@ -108,8 +108,8 @@
 # ReflectDelegateIdentitySubset asserts Delegate.Method for IL-bound delegates:
 # class and generic virtual overrides (new-slot hiders and covariant returns
 # included), interface bindings over class, struct, explicit, default and
-# generic implementations, array generic arguments, and runtime-owned declaring
-# types, which may answer null but never a wrong method. Its interface section
+# generic implementations, array generic arguments, and exact runtime-owned
+# declaring methods. Its interface section
 # pins the selected method for competing plain and explicit generic bodies in
 # either metadata order, and for a derived interface's override of a default
 # over class, struct, inherited, typed, generic, identical-body and
@@ -231,6 +231,7 @@
 # Unused definition signatures may omit unloaded generic layout dependencies;
 # loaded dependencies retain their closed types, and body-required layouts still fail.
 # Open definition signatures retain their rows without requiring their base's field layout.
+# An opaque exception's missing ToString row cannot hide inherited Object delegate methods.
 source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|reflection-measure:${DN2CPP_REFLECTION_MEASURE:-}|existing-constructor-prefix:${DN2CPP_BEFORE_EXISTING_CONSTRUCTOR:-}|cold-activator-prefix:${DN2CPP_BEFORE_COLD_ACTIVATOR:-}|delegate-method-prefix:${DN2CPP_BEFORE_DELEGATE_METHOD:-}|ldftn-local-prefix:${DN2CPP_BEFORE_LDFTN_LOCAL:-}|invoke-validation-prefix:${DN2CPP_BEFORE_INVOKE_VALIDATION:-}|runtime-handle-relations-prefix:${DN2CPP_BEFORE_RUNTIME_HANDLE_RELATIONS:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|interface-selection-prefix:${DN2CPP_BEFORE_INTERFACE_SELECTION:-}|interface-redeclaration-prefix:${DN2CPP_BEFORE_INTERFACE_REDECLARATION:-}|runtime-level-gvm-prefix:${DN2CPP_BEFORE_RUNTIME_LEVEL_GVM:-}"
@@ -264,7 +265,13 @@ DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|pointer-array-layout:p
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_reflection-signature-types.sh gates/_headerless-reference-identity.sh samples/dotnet/ReflectInvoke/ReflectionSignatureTypesOnly.csproj"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|signature-type-query:packed,native,uncompressed,trimmed,unshared|signature-prefix-argv:before-reflection-signature-types|generic-signature-prefix-argv:before-generic-signature-arguments"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_delegate-identity.sh gates/fold-delegate-fixture.py samples/dotnet/ReflectInvoke/DelegateVirtualIdentityOnly.csproj samples/dotnet/ReflectInvoke/DelegateVirtualIdentityLibrary.csproj samples/dotnet/ReflectInvoke/DelegateVirtualIdentityOnlyProgram.cs"
-DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|virtual-delegate-identity:default,trimmed,unshared,folded|virtual-delegate-prefix-argv:before-virtual-delegate-identity|runtime-owned-method-groups-prefix-argv:before-runtime-owned-method-groups"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/DelegateObjectEqualityOnly.csproj samples/dotnet/ReflectInvoke/DelegateObjectEqualityOnlyProgram.cs"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|object-equality-only:default,trimmed,no-Method-read,retained-Object-virtual-tokens"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|virtual-delegate-identity:default,trimmed,unshared,folded,opaque|virtual-delegate-prefix-argv:before-virtual-delegate-identity|runtime-owned-method-groups-prefix-argv:before-runtime-owned-method-groups"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|opaque-object-virtual-prefix-argv:before-opaque-object-virtuals|opaque-object-virtual-inheritance:il,reflected,subclass,override"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|runtime-delegate-identities-prefix-argv:before-runtime-delegate-identities|runtime-delegate-identities:static,instance,object,interface,array,closed-generic,value-default"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|object-virtual-equality-prefix-argv:before-object-virtual-equality|object-virtual-equality:base,override,reflection,remove,hash,unknown-metadata"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|inherited-object-virtual-equality-prefix-argv:before-inherited-object-virtual-equality|inherited-object-virtual-equality:Exception,AggregateException,private-ancestor"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/check-reflection-layout.py gates/measure-reflection-metadata.py gates/expected/reflection-allocations.csv gates/fixtures/delegate-invocation-cache/DelegateInvocationCache.csproj gates/fixtures/delegate-invocation-cache/Program.cs gates/fixtures/reflection-metadata-codec.cpp"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|empty-string-clone-prefix:${DN2CPP_BEFORE_EMPTY_STRING_CLONE:-}|delegate-list-prefix:${DN2CPP_BEFORE_DELEGATE_LISTS:-}|recursive-delegate-prefix:${DN2CPP_BEFORE_RECURSIVE_DELEGATE:-}|ordinary-interface-prefix:${DN2CPP_BEFORE_ORDINARY_IL_INTERFACE:-}|object-methodimpl-prefix:${DN2CPP_BEFORE_OBJECT_METHODIMPL:-}"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/recursive-delegate/RecursiveDelegate.csproj gates/fixtures/recursive-delegate/Program.cs"
@@ -355,6 +362,123 @@ gate_empty_string_clone_asserts() {
     done
 }
 
+gate_opaque_object_virtual_asserts() {
+    local out="$1" axis line
+    for axis in dotnet native; do
+        if [ "$axis" = dotnet ]; then
+            run_bounded dotnet "$_CG_APP" before-opaque-object-virtuals > "$out/opaque-object-virtual-prefix.$axis.raw.stdout"
+        else
+            run_bounded "$out/ReflectInvoke$EXE_EXT" before-opaque-object-virtuals > "$out/opaque-object-virtual-prefix.$axis.raw.stdout"
+        fi
+        strip_cr_win_file "$out/opaque-object-virtual-prefix.$axis.raw.stdout" > "$out/opaque-object-virtual-prefix.$axis.stdout"
+        awk '/^== opaque exception inherited Object virtuals ==$/ { exit } { print }' \
+            "$out/virtual-delegate-full.$axis.stdout" > "$out/opaque-object-virtual-old.$axis.stdout"
+        diff -u "$out/opaque-object-virtual-prefix.$axis.stdout" "$out/opaque-object-virtual-old.$axis.stdout"
+        for line in '== opaque exception inherited Object virtuals ==' \
+            'opaque-object-virtual-AggregateException=Object.GetHashCode>Object.GetHashCode/True/True/True|Object.Equals>Object.Equals/True/True/True|Object.GetHashCode>Object.GetHashCode/True/True/True|Object.Equals>Object.Equals/True/True/True' \
+            'opaque-object-virtual-InheritingAggregateException=Object.GetHashCode>Object.GetHashCode/True/True/True|Object.Equals>Object.Equals/True/True/True|Object.GetHashCode>Object.GetHashCode/True/True/True|Object.Equals>Object.Equals/True/True/True' \
+            'opaque-object-virtual-HashEqualsAggregateException=HashEqualsAggregateException.GetHashCode>Object.GetHashCode/False/False/True|HashEqualsAggregateException.Equals>Object.Equals/False/False/True|HashEqualsAggregateException.GetHashCode>Object.GetHashCode/False/False/True|HashEqualsAggregateException.Equals>Object.Equals/False/False/True' \
+            'opaque exception inherited Object virtuals end'; do
+            test "$(grep -Fxc -- "$line" "$out/virtual-delegate-full.$axis.stdout")" = 1 \
+                || { echo "FAIL: opaque exception Object virtual witness: $axis/$line" >&2; return 1; }
+        done
+        test "$(grep -Fxc -- 'opaque-object-virtual-text=True' "$out/virtual-delegate-full.$axis.stdout")" = 3 \
+            || { echo "FAIL: opaque exception ToString bound to a wrong method: $axis" >&2; return 1; }
+    done
+    diff -u "$out/opaque-object-virtual-prefix.dotnet.stdout" "$out/opaque-object-virtual-prefix.native.stdout"
+    grep -Fq -- '{ &dn2cpp_aggregate_exception_type, 14 }' "$out"/generated*.cpp \
+        || { echo 'FAIL: opaque exception virtual inheritance has no raw-metadata proof' >&2; return 1; }
+}
+
+gate_runtime_delegate_method_asserts() {
+    local out="$1" axis line section
+    for axis in dotnet native; do
+        if [ "$axis" = dotnet ]; then
+            run_bounded dotnet "$_CG_APP" before-runtime-delegate-identities > "$out/runtime-delegate-prefix.$axis.raw.stdout"
+        else
+            run_bounded "$out/ReflectInvoke$EXE_EXT" before-runtime-delegate-identities > "$out/runtime-delegate-prefix.$axis.raw.stdout"
+        fi
+        strip_cr_win_file "$out/runtime-delegate-prefix.$axis.raw.stdout" > "$out/runtime-delegate-prefix.$axis.stdout"
+        awk '/^== runtime delegate method identities ==$/ { exit } { print }' \
+            "$out/virtual-delegate-full.$axis.stdout" > "$out/runtime-delegate-old.$axis.stdout"
+        diff -u "$out/runtime-delegate-prefix.$axis.stdout" "$out/runtime-delegate-old.$axis.stdout"
+        for line in '== runtime delegate method identities ==' 'runtime delegate method identities end'; do
+            test "$(grep -Fxc -- "$line" "$out/virtual-delegate-full.$axis.stdout")" = 1 \
+                || { echo "FAIL: runtime delegate method section must run once: $axis/$line" >&2; return 1; }
+        done
+        for line in static instance object-nonvirtual object-clone object-roundtrip object-String object-reflected-String \
+                object-Int32 object-reflected-Int32 interface-number interface-string interface-array \
+                interface-array-definition interface-array-native interface-closed interface-closed-values interface-value-default; do
+            test "$(grep -c -- "^runtime-$line=" "$out/virtual-delegate-full.$axis.stdout")" = 1 \
+                || { echo "FAIL: runtime delegate method witness must run once: $axis/$line" >&2; return 1; }
+        done
+        section=$(awk '/^== runtime delegate method identities ==$/ { p=1; next }
+                /^runtime delegate method identities end$/ { exit } p { print }' \
+                "$out/virtual-delegate-full.$axis.stdout")
+        if grep -Eq -- 'False|missing|accepted' <<< "$section"; then
+            echo "FAIL: runtime delegate method identity/invocation mismatch: $axis" >&2
+            return 1
+        fi
+    done
+    diff -u "$out/runtime-delegate-prefix.dotnet.stdout" "$out/runtime-delegate-prefix.native.stdout"
+}
+
+gate_object_virtual_equality_asserts() {
+    local out="$1" axis line
+    for axis in dotnet native; do
+        if [ "$axis" = dotnet ]; then
+            run_bounded dotnet "$_CG_APP" before-object-virtual-equality > "$out/object-virtual-equality-prefix.$axis.raw.stdout"
+        else
+            run_bounded "$out/ReflectInvoke$EXE_EXT" before-object-virtual-equality > "$out/object-virtual-equality-prefix.$axis.raw.stdout"
+        fi
+        strip_cr_win_file "$out/object-virtual-equality-prefix.$axis.raw.stdout" > "$out/object-virtual-equality-prefix.$axis.stdout"
+        awk '/^== Object virtual delegate equality ==$/ { exit } { print }' \
+            "$out/virtual-delegate-full.$axis.stdout" > "$out/object-virtual-equality-old.$axis.stdout"
+        diff -u "$out/object-virtual-equality-prefix.$axis.stdout" "$out/object-virtual-equality-old.$axis.stdout"
+        for line in '== Object virtual delegate equality ==' \
+                'object-virtual-equality-methods=Object/ObjectVirtualEqualityCase/ObjectVirtualEqualityCase' \
+                'object-virtual-equality-values=ReflectDelegateIdentitySubset.ObjectVirtualEqualityProgram+ObjectVirtualEqualityCase/override/override' \
+                'object-virtual-equality-base=False/False' 'object-virtual-equality-override=True/True/True' \
+                'object-virtual-equality-root=True/True/True' \
+                'object-virtual-equality-remove=True/override/True/ReflectDelegateIdentitySubset.ObjectVirtualEqualityProgram+ObjectVirtualEqualityCase' \
+                'Object virtual delegate equality end'; do
+            test "$(grep -Fxc -- "$line" "$out/virtual-delegate-full.$axis.stdout")" = 1 \
+                || { echo "FAIL: Object virtual delegate equality witness: $axis/$line" >&2; return 1; }
+        done
+    done
+    diff -u "$out/object-virtual-equality-prefix.dotnet.stdout" "$out/object-virtual-equality-prefix.native.stdout"
+}
+
+gate_inherited_object_virtual_equality_asserts() {
+    local out="$1" axis line
+    for axis in dotnet native; do
+        if [ "$axis" = dotnet ]; then
+            run_bounded dotnet "$_CG_APP" before-inherited-object-virtual-equality > "$out/inherited-object-virtual-equality-prefix.$axis.raw.stdout"
+        else
+            run_bounded "$out/ReflectInvoke$EXE_EXT" before-inherited-object-virtual-equality > "$out/inherited-object-virtual-equality-prefix.$axis.raw.stdout"
+        fi
+        strip_cr_win_file "$out/inherited-object-virtual-equality-prefix.$axis.raw.stdout" > "$out/inherited-object-virtual-equality-prefix.$axis.stdout"
+        awk '/^== inherited Object virtual delegate equality ==$/ { exit } { print }' \
+            "$out/virtual-delegate-full.$axis.stdout" > "$out/inherited-object-virtual-equality-old.$axis.stdout"
+        diff -u "$out/inherited-object-virtual-equality-prefix.$axis.stdout" "$out/inherited-object-virtual-equality-old.$axis.stdout"
+        for line in '== inherited Object virtual delegate equality ==' \
+                'object-inherited-Exception-methods=Exception/ExceptionVirtualEqualityCase/ExceptionVirtualEqualityCase' \
+                'object-inherited-Exception-values=True/exception-override/exception-override' \
+                'object-inherited-Exception-equality=False/False/True/True/True' \
+                'object-inherited-Exception-remove=True/True/True/True' \
+                'object-inherited-AggregateException-methods=AggregateVirtualEqualityCase/AggregateVirtualEqualityCase' \
+                'object-inherited-AggregateException-values=aggregate-override/aggregate-override' \
+                'object-inherited-AggregateException-equality=True/True/True' \
+                'object-inherited-AggregateException-remove=True/aggregate-override' \
+                'inherited Object virtual delegate equality end'; do
+            test "$(grep -Fxc -- "$line" "$out/virtual-delegate-full.$axis.stdout")" = 1 \
+                || { echo "FAIL: inherited Object virtual delegate equality witness: $axis/$line" >&2; return 1; }
+        done
+        test "$(tail -n 1 "$out/virtual-delegate-full.$axis.stdout")" = 'inherited Object virtual delegate equality end'
+    done
+    diff -u "$out/inherited-object-virtual-equality-prefix.dotnet.stdout" "$out/inherited-object-virtual-equality-prefix.native.stdout"
+}
+
 gate_extra_asserts() {
     headerless_managed_reference_asserts "$1"
     gate_virtual_delegate_prefix_asserts "$1"
@@ -371,6 +495,10 @@ gate_extra_asserts() {
     gate_clone_interface_prefix_asserts "$1"
     gate_delegate_clone_class_prefix_asserts "$1"
     gate_array_clone_prefix_asserts "$1"
+    gate_opaque_object_virtual_asserts "$1"
+    gate_runtime_delegate_method_asserts "$1"
+    gate_object_virtual_equality_asserts "$1"
+    gate_inherited_object_virtual_equality_asserts "$1"
     local out="$1" native line registry boundary axis route query expected parameter
     "$py" gates/fixtures/check-reflection-layout.py "$out" "$reflection_layout_axis"
     # The runtime publishes a constructor's invoke plan only for a record inside a
@@ -1891,7 +2019,22 @@ assert_output "$codec_native" "$(printf '%s\n' 'metadata codec boundaries OK' \
     'metadata invoker refusal fields OK' 'metadata missing invocation diagnostics begin' \
     'metadata missing native invoker' 'metadata missing native body' \
     'metadata missing packed invoker' 'metadata missing packed body' \
+    'metadata missing invocation diagnostics OK' 'metadata unrecorded interface guard begin' \
+    'metadata unrecorded interface guard OK' 'metadata Object virtual equality guard begin' \
+    'metadata Object virtual equality guard OK')"
+codec_old=$(awk '/^metadata unrecorded interface guard begin$/ { exit } { print }' <<< "$codec_native")
+assert_output "$codec_old" "$(printf '%s\n' 'metadata codec boundaries OK' \
+    'metadata invoker refusal fields OK' 'metadata missing invocation diagnostics begin' \
+    'metadata missing native invoker' 'metadata missing native body' \
+    'metadata missing packed invoker' 'metadata missing packed body' \
     'metadata missing invocation diagnostics OK')"
+codec_object_old=$(awk '/^metadata Object virtual equality guard begin$/ { exit } { print }' <<< "$codec_native")
+assert_output "$codec_object_old" "$(printf '%s\n' 'metadata codec boundaries OK' \
+    'metadata invoker refusal fields OK' 'metadata missing invocation diagnostics begin' \
+    'metadata missing native invoker' 'metadata missing native body' \
+    'metadata missing packed invoker' 'metadata missing packed body' \
+    'metadata missing invocation diagnostics OK' 'metadata unrecorded interface guard begin' \
+    'metadata unrecorded interface guard OK')"
 
 # The full bucket reflects MemberwiseClone over strings; GC probes need a process
 # that has not performed that unsupported CoreLib operation.
@@ -2761,6 +2904,7 @@ done
 
 # The isolated driver uses the same appended delegate section with actual folding
 # and with receiver reflection metadata absent.
+delegate_object_equality_only
 delegate_identity_diff_axes
 
 reflection_signature_diff_axes

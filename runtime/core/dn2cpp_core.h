@@ -219,10 +219,18 @@ struct Dn2CppEnumMember { const char* name; int64_t value; };
 
 // One row per implemented interface: pointer to the interface's type
 // metadata plus the method slots implementing it (declaration order).
+struct Dn2CppInterfaceMethodTarget
+{
+    const Dn2CppTypeInfo* declaringType;
+    int32_t metadataToken;
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> method = {};
+};
+
 struct Dn2CppInterfaceEntry
 {
     const Dn2CppTypeInfo* itf;
     const void** slots;
+    const Dn2CppInterfaceMethodTarget* methodTargets = nullptr;
 };
 
 // Runtime type metadata (IL2CPP "klass" equivalent). One instance per
@@ -1332,6 +1340,36 @@ struct Dn2CppMDArray : Dn2CppObject
     char* data;
 };
 
+// Delegate-only rows do not turn an opaque owner's named member catalog into a
+// partial reflection table. Their identity and invocation metadata stay exact.
+struct Dn2CppDelegateMethodCatalog
+{
+    const Dn2CppTypeInfo* declaringType;
+    Dn2CppMetadataTable<Dn2CppMethodInfo> methods;
+    int32_t methodCount;
+};
+void dn2cpp_set_delegate_method_catalog(const Dn2CppDelegateMethodCatalog* rows, int32_t count);
+Dn2CppObject* dn2cpp_delegate_object_virtual_invoker(void* fn, Dn2CppObject* receiver,
+    Dn2CppObject** arguments, const Dn2CppTypeInfo* returnType);
+
+struct Dn2CppDelegateInterfaceInvocation
+{
+    const Dn2CppTypeInfo* interfaceType;
+    int32_t slot;
+    void* invoker;
+};
+struct Dn2CppDelegateInterfaceTarget
+{
+    // Null names the array family; its helper identity uses the requested interface's arguments.
+    const Dn2CppTypeInfo* receiverType;
+    const Dn2CppTypeInfo* interfaceType;
+    int32_t slot;
+    Dn2CppInterfaceMethodTarget target;
+};
+void dn2cpp_set_delegate_interface_targets(const Dn2CppDelegateInterfaceTarget* rows, int32_t count);
+Dn2CppObject* dn2cpp_delegate_interface_invoker(void* context, Dn2CppObject* receiver,
+    Dn2CppObject** arguments, const Dn2CppTypeInfo* returnType);
+
 // Exact receiver-to-method cases selected during emission.
 struct Dn2CppDelegateMethodTarget
 {
@@ -1352,16 +1390,23 @@ struct Dn2CppDelegateMethodIdentity
     bool virtualBinding;
     int32_t targetCount;
     const Dn2CppDelegateMethodTarget* targets;
-    // Equality cases include defaults and stripped rows; Delegate.Method keeps
-    // its separate metadata-access and refusal contract through targets above.
+    // Selected cases include defaults and stripped receivers. Reading their
+    // MethodInfo still requires the selected declaring owner's metadata.
     int32_t selectedTargetCount;
     const Dn2CppDelegateMethodTarget* selectedTargets;
+    int32_t interfaceSlot = -1;
 };
 
-// Resolves emitted dispatch identity without reading reflection metadata. False
+// Resolves exact dispatch identity without trim refusals. False
 // leaves runtime-created/opaque bindings on their address-based compatibility path.
 bool dn2cpp_delegate_selected_key(const Dn2CppDelegateMethodIdentity* identity,
-    const Dn2CppTypeInfo* receiver, const Dn2CppTypeInfo*& owner, int32_t& token);
+    const Dn2CppTypeInfo* receiver, const Dn2CppTypeInfo*& owner, int32_t& token,
+    int32_t* selectedArgCount = nullptr, const Dn2CppTypeInfo* const** selectedArgs = nullptr);
+
+// The interpreter registers exact selected rows without linking its object into
+// programs which never load a patch.
+using Dn2CppPatchVirtualMethodResolver = Dn2CppMetadataHandle<Dn2CppMethodInfo> (*)(const Dn2CppTypeInfo*, int32_t, bool);
+void dn2cpp_set_patch_virtual_method_resolver(Dn2CppPatchVirtualMethodResolver resolver);
 
 // A generic virtual method row has no slot: a reflective call and the BPI import
 // bind (gvm_row_dispatcher) enter it through the dispatcher a callvirt of the same
@@ -1500,6 +1545,9 @@ Dn2CppObject* dn2cpp_delegate_create_named(Dn2CppType* dt, Dn2CppObject* target,
 Dn2CppObject* dn2cpp_reflbind_invoke(Dn2CppReflBind* ctx, Dn2CppObject* self, Dn2CppObject** argv);
 // Whether two closed-instance bindings of different rows over one receiver bind
 // one method, the answer delegate equality gives for them.
+bool dn2cpp_reflbind_selected_key(const Dn2CppReflBind* bind,
+    const Dn2CppTypeInfo*& owner, int32_t& token, int32_t& genericArgCount,
+    const Dn2CppTypeInfo* const*& genericArgs);
 bool dn2cpp_reflbind_same_method(const Dn2CppReflBind* a, const Dn2CppReflBind* b);
 // The class vtable slot implementing each slot of interface `itf` on `type`, -1 where
 // none does. Emitted for the receivers --trim-reflection strips of their member rows
@@ -1538,6 +1586,15 @@ struct Dn2CppRenamedSlotBody
 };
 extern const Dn2CppRenamedSlotBody dn2cpp_renamed_slot_bodies[];
 extern const int32_t dn2cpp_renamed_slot_body_count;
+// Opaque exception levels with no declaration of particular Object virtuals.
+// Bits index ToString, Equals, GetHashCode and Finalize, like Object slot keys.
+// Raw metadata proves inheritance independently of missing rows and folded bodies.
+struct Dn2CppObjectVirtualInheritance
+{
+    const Dn2CppTypeInfo* type;
+    int32_t inheritedMask;
+};
+void dn2cpp_set_object_virtual_inheritance(const Dn2CppObjectVirtualInheritance* rows, int32_t count);
 // Delegate.Target / Delegate.Method: the bound receiver / reflected MethodInfo,
 // unwrapping a reflection-bind node or resolving an IL delegate's metadata identity.
 Dn2CppObject* dn2cpp_delegate_get_target(Dn2CppObject* d);
@@ -4441,6 +4498,7 @@ const void** dn2cpp_try_resolve_interface(const Dn2CppTypeInfo* t, const Dn2CppT
 // The interface whose row of `t`'s chain serves a dispatch through `itf`: `itf` for an
 // exact row, the implemented instantiation for a variant one, and `itf` when no row
 // of the chain serves it.
+const Dn2CppInterfaceEntry* dn2cpp_dispatch_interface_row_of(const Dn2CppTypeInfo* t, const Dn2CppTypeInfo* itf);
 const Dn2CppTypeInfo* dn2cpp_dispatch_interface_of(const Dn2CppTypeInfo* t, const Dn2CppTypeInfo* itf);
 // The traps an interface / vtable slot with no implementing body is filled with (see the
 // definitions). A call through 0x0 would say nothing. dn2cpp_itf_slot_missing reads the

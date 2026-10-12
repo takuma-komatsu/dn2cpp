@@ -692,7 +692,8 @@ internal sealed partial class Compilation
     /// an instance of <paramref name="c"/>. The Object declaration identifies the slot;
     /// the vtable chooses its body, including differently named MethodImpl overrides
     /// and excluding same-name newslot hiders.</summary>
-    private static MethodInfo? ObjectVirtualOverride(ClassInfo c, string name, Func<MethodInfo, bool> shape)
+    private static MethodInfo? ObjectVirtualOverride(ClassInfo c, string name, Func<MethodInfo, bool> shape,
+        bool metadataOnly = false)
     {
         c.EnsureMembers();
         var root = c;
@@ -709,7 +710,7 @@ internal sealed partial class Compilation
                     continue;
                 if ((m.Attributes & MethodAttributes.NewSlot) != 0)
                     found = null;
-                else if (found is null && m.Rva != 0)
+                else if (found is null && (metadataOnly || m.Rva != 0))
                     found = m;
             }
             return found;
@@ -719,8 +720,32 @@ internal sealed partial class Compilation
         if (declaration is null || declaration.VtableSlot < 0 || declaration.VtableSlot >= c.Vtable.Count)
             return null;
         var implementation = c.Vtable[declaration.VtableSlot];
-        return implementation is { Rva: not 0 } && implementation.DeclaringClass != root
+        return implementation is not null && (metadataOnly || implementation.Rva != 0)
+            && implementation.DeclaringClass != root
             ? implementation : null;
+    }
+
+    internal MethodInfo? ObjectVirtualMetadataTarget(ClassInfo receiver, string name)
+    {
+        MethodInfo? Select(ClassInfo type) => name switch
+        {
+            "ToString" => ObjectVirtualOverride(type, name,
+                static m => m.Signature.ParameterTypes.Length == 0 && m.Signature.ReturnType.IsString, true),
+            "GetHashCode" => ObjectVirtualOverride(type, name,
+                static m => m.Signature.ParameterTypes.Length == 0
+                    && m.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }, true),
+            "Equals" => ObjectVirtualOverride(type, name,
+                static m => m.Signature.ParameterTypes is [{ IsObject: true }]
+                    && m.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }, true),
+            _ => null,
+        };
+        var selected = Select(receiver);
+        // Cross-assembly value types have a synthetic ValueType/Enum base.
+        if (selected is null && receiver.IsValueType && receiver.BaseClass is null
+            && FindClassByFullName(receiver.IsEnum ? "System.Enum" : "System.ValueType") is { } baseType
+            && baseType != receiver)
+            selected = Select(baseType);
+        return selected;
     }
 
     /// <summary>The GetHashCode() override (a 0-arg, int-returning instance method

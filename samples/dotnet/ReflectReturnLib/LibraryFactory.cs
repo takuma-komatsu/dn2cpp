@@ -1,5 +1,10 @@
 namespace ReflectReturnLib;
 
+public class TypeOnlyException<T> : System.Exception
+{
+    public override string ToString() => "type-only exception";
+}
+
 public interface ILibraryResult
 {
     string Label();

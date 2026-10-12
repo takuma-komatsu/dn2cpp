@@ -5,15 +5,10 @@ using System.Globalization;
 
 namespace TrimReflect
 {
-    // The app half of the --trim-reflection bucket. ONE program transpiled three ways, and
-    // the three oracles one flag apart are the assertion: no flag (diffed against real
-    // .NET, so the throws in the other arms are caused by the FLAG and not by a gap);
-    // --trim-reflection (a frozen snapshot where the library types' member reads are
-    // PlatformNotSupportedException, so an empty list — the silent wrong answer — reads as
-    // `any=False` against a snapshot saying `PNSE`); and one more with --reflection-root,
-    // where exactly the rooted types answer again. Nothing here asserts "this must throw":
-    // one source runs in all three arms, so the oracles decide. See TrimReflectLib/Lib.cs
-    // for why the library types are reached only as `object`.
+    // Object-virtual delegate identities can select every allocated receiver's
+    // override, so their declaring types retain metadata under every trim policy.
+    // StrippedMembersOnlyProgram reads the same library types without these
+    // identities and verifies that unrelated metadata still strips.
 
     // App-module type: the app module is kept whole, so this is unchanged in every arm.
     public class Widget
@@ -145,8 +140,8 @@ namespace TrimReflect
             Console.WriteLine("  interface method(Twice)=" + (itf.GetMethod("Twice") != null));
         }
 
-        // 3. A library type met only as `object`: its sole route to a Type is GetType(),
-        //    which no static keep-set can see, so the trim strips it.
+        // A library type met only as object. Its selected ToString declaration
+        // keeps it here; the isolated driver tests the genuinely stripped case.
         private static void Stripped()
         {
             object o = Factory.Make();
@@ -256,9 +251,8 @@ namespace TrimReflect
             Probe("GetField(Value)", () => "found=" + (bt.GetField("Value") != null));
         }
 
-        // 6. Delegate.Method over stripped receivers. The declaring type is kept for the
-        //    read, and a stripped receiver level is passed only where its vtable proves it
-        //    inherits the slot; a level that overrides it answers PNSE naming that level.
+        // Known dispatch selections keep their declaring metadata. Receivers that
+        // inherit a selection do not need member rows of their own.
         private static void DelegateMethod()
         {
             Console.WriteLine("== Delegate.Method over stripped receivers ==");
@@ -288,10 +282,8 @@ namespace TrimReflect
             Probe("GetFields", () => shade.Name + " fields=" + shade.GetFields().Length);
         }
 
-        // 8. Delegate.Method of an Object virtual bound through a receiver met only as
-        //    `object`. A stripped level the answer needs throws PNSE naming that level; a
-        //    stripped level whose dispatch field equals its base's inherits the body and
-        //    is passed.
+        // Object bindings retain their known selected declarations, including an
+        // inherited override, without keeping unrelated receiver member rows.
         private static void ObjectVirtualMethod()
         {
             Console.WriteLine("== Delegate.Method of Object virtuals over stripped receivers ==");
@@ -314,8 +306,8 @@ namespace TrimReflect
         private static string Describe(MethodInfo m) =>
             m is null ? "null" : m.DeclaringType.Name + "." + m.Name;
 
-        // Runtime template receivers retain the typeof-named definition's members;
-        // an unrecorded library receiver still checks each declaring level's metadata.
+        // Runtime templates keep the typeof-named definition's members. An inherited
+        // generic slot names its root without reading an unrelated receiver level.
         private static void UnrecordedReceiverMethod()
         {
             Console.WriteLine("== Delegate.Method over receivers without a recorded case ==");

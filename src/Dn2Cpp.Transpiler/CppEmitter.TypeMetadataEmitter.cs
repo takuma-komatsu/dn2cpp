@@ -1840,6 +1840,7 @@ internal sealed partial class CppEmitter
                     _o.AppendMetadata(block.ToString());
             }
 
+            EmitDelegateMethodCatalog();
             _e.EmitArrayTypeInfos(_sb, _emittedEnums);
             _e.EmitMdArrayItfMap(_sb);
             _e.EmitArrayNongenericItfRows(_sb);
@@ -1849,6 +1850,7 @@ internal sealed partial class CppEmitter
             _e.EmitRelationRows(_sb);
             _e.NoteRuntimeHandleBases();
             _sb.AppendLine();
+            EmitOpaqueObjectVirtualInheritance();
             EmitDelegateIdentities();
             EmitDelegateCloneBinding();
             EmitGvmRowDispatch();
@@ -1858,6 +1860,83 @@ internal sealed partial class CppEmitter
             // the moment it returns (EmitTypeInfos keeps no field), so a census anywhere
             // later would report the pools as free rather than as big.
             Census();
+        }
+
+        private void EmitDelegateMethodCatalog()
+        {
+            if (!_c.ReadsDelegateMethod && !_c.NeedsReflectionDelegateBind)
+                return;
+            _invokerThunks.Clear();
+            _invokerMissStubs.Clear();
+            _slotStubs.Clear();
+            var entries = new List<string>();
+            if (_c.ReadsDelegateMethod)
+                foreach (var (method, address) in _memberAddr)
+                    _e._delegateMetadataMethods[method] = address;
+            foreach (var cls in _c.Classes.ToList().OrderBy(c => c.CppName, System.StringComparer.Ordinal))
+            {
+                // Object descriptors need their declaration tokens for delegate
+                // equality even when the program never reads Delegate.Method.
+                if (!_c.ReadsDelegateMethod && cls.FullName != "System.Object")
+                    continue;
+                if (_e.SkipsCanonicalMetadata(cls) || !_c.KeepsReflectionMetadata(cls)
+                    || !_e.TypeInfoSymbolDefined(cls.CppTypeInfoName)
+                    || (CoreIntrinsics.RuntimeTypeInfoSymbol(cls) is null && !_e.IsOpaque(cls)))
+                    continue;
+                cls.EnsureMembers();
+                var methods = cls.Methods.Where(m => !m.Handle.IsNil
+                    && (_c.Reachable.Contains(m) || _c.KeepsUnreachedRow(m)
+                        || cls.FullName == "System.SZArrayHelper" && m.Context.MethodArgs.Length != 0)).ToList();
+                if (!_c.ReadsDelegateMethod)
+                    methods = _c.GetDelegateIdentityDeclarations().Where(m => m.DeclaringClass == cls
+                        && !m.Handle.IsNil && !m.IsStatic && m.IsVirtual
+                        && m.Name is "ToString" or "Equals" or "GetHashCode").Distinct().ToList();
+                else
+                {
+                    foreach (string name in new[] { "ToString", "Equals", "GetHashCode" })
+                        if (_c.ObjectVirtualMetadataTarget(cls, name) is { } target
+                            && target.DeclaringClass == cls && !target.Handle.IsNil && !methods.Contains(target))
+                            methods.Add(target);
+                    foreach (var (_, _, target) in _c.RuntimeDelegateInterfaceTargets)
+                        if (target.DeclaringClass == cls && !methods.Contains(target))
+                            methods.Add(target);
+                }
+                methods = methods.OrderBy(m => m.CppName, System.StringComparer.Ordinal).ToList();
+                if (BuildMemberTable(cls, methods, "delegatetab") is { } table)
+                {
+                    entries.Add($"{{ {_e.TypeInfoRef(cls, "delegate-only method owner")}, {table.Expr}, {table.Count} }}");
+                    foreach (var method in methods)
+                        if (_memberAddr.TryGetValue(method, out var address))
+                            _e._delegateMetadataMethods[method] = address;
+                }
+            }
+            var interfaceTargets = new List<string>();
+            foreach (var pair in _c.ArrayDelegateMetadataTargets.OrderBy(p => p.Key.CppName, System.StringComparer.Ordinal))
+                if (_e._emit.Contains(pair.Key.DeclaringClass)
+                    && _e._delegateMetadataMethods.TryGetValue(pair.Value, out var address))
+                    interfaceTargets.Add($"{{ nullptr, {_e.TypeInfoRef(pair.Key.DeclaringClass, "array delegate interface declaration")}, "
+                        + $"{pair.Key.VtableSlot}, {{ {_e.TypeInfoRef(pair.Value.DeclaringClass, "array delegate selected method")}, "
+                        + $"{DelegateIdentityToken(pair.Value)}, Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({address}) }} }}");
+            foreach (var (receiver, declaration, target) in _c.RuntimeDelegateInterfaceTargets
+                .OrderBy(t => t.Receiver.CppName, System.StringComparer.Ordinal)
+                .ThenBy(t => t.Declaration.CppName, System.StringComparer.Ordinal))
+                if (_e._emit.Contains(declaration.DeclaringClass)
+                    && _e._delegateMetadataMethods.TryGetValue(target, out var address))
+                    interfaceTargets.Add($"{{ {_e.TypeInfoRef(receiver, "runtime delegate interface receiver")}, "
+                        + $"{_e.TypeInfoRef(declaration.DeclaringClass, "runtime delegate interface declaration")}, {declaration.VtableSlot}, "
+                        + $"{{ {_e.TypeInfoRef(target.DeclaringClass, "runtime delegate selected method")}, {DelegateIdentityToken(target)}, "
+                        + $"Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({address}) }} }}");
+            if (interfaceTargets.Count > 0)
+            {
+                const string targetSymbol = "delegate_interface_targets";
+                _sb.AppendLine($"static const Dn2CppDelegateInterfaceTarget {targetSymbol}[] = {{ {string.Join(", ", interfaceTargets)} }};");
+                _e._delegateInterfaceTargets = (targetSymbol, interfaceTargets.Count);
+            }
+            if (entries.Count == 0)
+                return;
+            const string symbol = "delegate_method_catalog";
+            _sb.AppendLine($"static const Dn2CppDelegateMethodCatalog {symbol}[] = {{ {string.Join(", ", entries)} }};");
+            _e._delegateMethodCatalog = (symbol, entries.Count);
         }
 
         private void EmitDelegateCloneBinding()
@@ -1991,9 +2070,9 @@ internal sealed partial class CppEmitter
                         else if (owner.FullName == "System.Object")
                             target = m.Name switch
                             {
-                                "ToString" => Compilation.EffectiveToString(receiver) ?? m,
-                                "Equals" => Compilation.EffectiveEquals(receiver) ?? m,
-                                "GetHashCode" => Compilation.EffectiveGetHashCode(receiver) ?? m,
+                                "ToString" => _c.ObjectVirtualMetadataTarget(receiver, "ToString") ?? m,
+                                "Equals" => _c.ObjectVirtualMetadataTarget(receiver, "Equals") ?? m,
+                                "GetHashCode" => _c.ObjectVirtualMetadataTarget(receiver, "GetHashCode") ?? m,
                                 _ => null,
                             };
                         else if (Compilation.DerivesFromOrIs(receiver, owner)
@@ -2010,9 +2089,9 @@ internal sealed partial class CppEmitter
                                 ei.Dispatches.Where(d => _e._emit.Contains(d.Itf)).Select(d => d.Itf).ToList())
                             : owner.FullName == "System.Object" ? m.Name switch
                             {
-                                "ToString" => Compilation.EffectiveToString(enumClass),
-                                "Equals" => Compilation.EffectiveEquals(enumClass),
-                                "GetHashCode" => Compilation.EffectiveGetHashCode(enumClass),
+                                "ToString" => _c.ObjectVirtualMetadataTarget(enumClass, "ToString"),
+                                "Equals" => _c.ObjectVirtualMetadataTarget(enumClass, "Equals"),
+                                "GetHashCode" => _c.ObjectVirtualMetadataTarget(enumClass, "GetHashCode"),
                                 _ => null,
                             } : null;
                         if (enumTarget is not null
@@ -2044,10 +2123,7 @@ internal sealed partial class CppEmitter
                             && _c.ArrayEnumerableElementTypes.TryGetValue(Compilation.ArrayElemMangle(element), out var arrayMap)
                             && arrayMap.Dispatches.Any(d => d.Itf == owner))
                         {
-                            // SZArrayHelper selects the requested T, even when the native
-                            // variant table uses the receiver element's shared body. The
-                            // existing closed wrapper is its private identity namespace.
-                            arrayTarget = _c.ResolveItfImplOrNull(arrayMap.Szae, m);
+                            arrayTarget = _c.ArrayInterfaceMetadataTarget(m);
                         }
                         if (arrayTarget is not null
                             && _e.TypeInfoSymbolDefined(arrayTarget.DeclaringClass.CppTypeInfoName))
@@ -2060,7 +2136,7 @@ internal sealed partial class CppEmitter
                 _o.Header.AppendLine($"extern const Dn2CppDelegateMethodIdentity {sym};");
                 _sb.AppendLine($"extern const Dn2CppDelegateMethodIdentity {sym} = "
                     + $"{{ {ownerExpr}, {token}, {margs.Length}, {argsExpr}, {(isVirtual ? "true" : "false")}, "
-                    + $"{targetCount}, {targetsExpr}, {selectedTargetCount}, {selectedTargetsExpr} }};");
+                    + $"{targetCount}, {targetsExpr}, {selectedTargetCount}, {selectedTargetsExpr}, {m.VtableSlot} }};");
             }
             _sb.AppendLine();
         }
@@ -2070,16 +2146,24 @@ internal sealed partial class CppEmitter
         /// clone up by its template level. Returns how many; none emits no array.</summary>
         private int EmitGvmTargets(Compilation.GvmDispatch disp, string symbol)
         {
-            var targets = disp.Cases
-                .Where(kv => kv.Value != disp.Gvm && _c.Reachable.Contains(kv.Value)
+            var targets = new Dictionary<ClassInfo, MethodInfo>(disp.Cases);
+            foreach (var receiver in _c.DelegateCloneReceiverTypes.ToList())
+                if (!receiver.IsInterface && !targets.ContainsKey(receiver)
+                    && (disp.Gvm.DeclaringClass.IsInterface
+                        ? _c.ImplementsInterface(receiver, disp.Gvm.DeclaringClass)
+                        : Compilation.DerivesFromOrIs(receiver, disp.Gvm.DeclaringClass)))
+                    targets[receiver] = disp.Gvm;
+            var emitted = targets
+                .Where(kv => _c.Reachable.Contains(kv.Value)
                     && !_e.SkipsCanonicalMetadata(kv.Key)
+                    && _e.TypeInfoSymbolDefined(kv.Key.CppTypeInfoName)
                     && _e.TypeInfoSymbolDefined(kv.Value.DeclaringClass.CppTypeInfoName))
                 .OrderBy(kv => kv.Key.CppName, System.StringComparer.Ordinal)
                 .ToList();
-            if (targets.Count == 0)
+            if (emitted.Count == 0)
                 return 0;
             _sb.AppendLine($"static const Dn2CppDelegateMethodTarget {symbol}[] = {{");
-            foreach (var (receiver, target) in targets)
+            foreach (var (receiver, target) in emitted)
             {
                 string receiverExpr = _e.TypeInfoRef(receiver, "delegate GVM receiver");
                 string targetExpr = _e.TypeInfoRef(target.DeclaringClass, "delegate GVM target");
@@ -2087,7 +2171,7 @@ internal sealed partial class CppEmitter
                 _sb.AppendLine($"    {{ {receiverExpr}, {targetExpr}, {targetToken} }},");
             }
             _sb.AppendLine("};");
-            return targets.Count;
+            return emitted.Count;
         }
 
         private int EmitDelegateTargets(List<(ClassInfo? Receiver, MethodInfo Target, bool Family)> targets, string symbol)
@@ -2407,6 +2491,7 @@ internal sealed partial class CppEmitter
             // array (see the intern below), shared with any earlier table in
             // the emission whose initializer is byte-identical.
             var slotSyms = new Dictionary<ClassInfo, string>();
+            var targetSyms = new Dictionary<ClassInfo, string>();
             // A receiver whose member rows --trim-reflection strips states which class slot
             // implements each slot of a kept interface, which is what reflection-bound
             // delegates over it compare (Dn2CppItfImplSlots); a stripped interface has no
@@ -2416,6 +2501,7 @@ internal sealed partial class CppEmitter
             foreach (var itf in transitive)
             {
                 var slots = new List<string>();
+                var targets = new List<string>();
                 var ims = itf.Methods.ToList();
                 int[]? implSlots = recordImplSlots && _c.KeepsReflectionMetadata(itf)
                     ? Enumerable.Repeat(-1, ims.Count).ToArray()
@@ -2427,6 +2513,11 @@ internal sealed partial class CppEmitter
                     // e.g. a boxed primitive's corlib ClassInfo gets a full interface table
                     // but IntPtr has no concrete IBinaryInteger.DivRem.
                     var impl = _c.ResolveItfImplOrNull(cls, im, out bool ambiguous);
+                    targets.Add(!ambiguous && impl is not null && _c.Reachable.Contains(impl)
+                        && !_e.SkipsCanonicalMetadata(impl.DeclaringClass)
+                        && _e.TypeInfoSymbolDefined(impl.DeclaringClass.CppTypeInfoName)
+                        ? $"{{ {_e.TypeInfoRef(impl.DeclaringClass, "interface selected method owner")}, {DelegateIdentityToken(impl)} }}"
+                        : "{ nullptr, 0 }");
                     if (recordRenamed && !ambiguous && impl is { IsStatic: false } && !impl.DeclaringClass.IsInterface
                         && im.IsVirtual && im.Signature.GenericParameterCount == 0
                         && RenamesSlot(impl.Name, im.Name) && _c.Reachable.Contains(impl))
@@ -2519,11 +2610,17 @@ internal sealed partial class CppEmitter
                     _itfPools[slotsInit] = tn;
                     slotSyms[itf] = tn;
                 }
+                if ((_c.ReadsDelegateMethod || _c.NeedsReflectionDelegateBind) && targets.Count > 0)
+                {
+                    string targetSymbol = $"itfmethods_{cls.CppName}_{itf.CppName}";
+                    _sb.AppendLine($"static const Dn2CppInterfaceMethodTarget {targetSymbol}[] = {{ {string.Join(", ", targets)} }};");
+                    targetSyms[itf] = targetSymbol;
+                }
                 // A missing row already reads as no class slot.
                 if (implSlots is not null && implSlots.Any(slot => slot >= 0))
                     _e._itfImplSlotRows.Add((cls, itf, implSlots));
             }
-            var entries = transitive.Select(itf => $"{{ {_e.TypeInfoRef(itf, "interface-dispatch table row")}, {slotSyms[itf]} }}").ToList();
+            var entries = transitive.Select(itf => $"{{ {_e.TypeInfoRef(itf, "interface-dispatch table row")}, {slotSyms[itf]}, {targetSyms.GetValueOrDefault(itf, "nullptr")} }}").ToList();
             // Canonical alias rows: for each implemented closed generic
             // interface whose canonical form differs, add a row carrying the
             // canonical interface's type-info over the SAME slot table, so a
@@ -2539,7 +2636,7 @@ internal sealed partial class CppEmitter
                 var aliased = new HashSet<ClassInfo>(transitive);
                 foreach (var itf in transitive)
                     if (_c.CanonicalInterfaceOf(itf) is { } citf && aliased.Add(citf))
-                        entries.Add($"{{ {_e.TypeInfoRef(citf, "interface-dispatch table (canonical alias row)")}, {slotSyms[itf]} }}");
+                        entries.Add($"{{ {_e.TypeInfoRef(citf, "interface-dispatch table (canonical alias row)")}, {slotSyms[itf]}, {targetSyms.GetValueOrDefault(itf, "nullptr")} }}");
             }
             _itfRowCounts[cls] = entries.Count;
             InternItfEntryTable(cls, string.Join(", ", entries));
@@ -3010,7 +3107,7 @@ internal sealed partial class CppEmitter
             // hot-update base keeps everything: the interpreter binds a patch's imports by
             // walking these tables.
             // (Row filter mirrored by NoteReflectedMemberTypes — keep in step.)
-            bool trim = !appCls && !_e._hotUpdateBase;
+            bool trim = prefix != "delegatetab" && !appCls && !_e._hotUpdateBase;
             var propertyAccessors = ReflectionAccessorHandles(cls);
             foreach (var m in members)
             {
@@ -3203,12 +3300,33 @@ internal sealed partial class CppEmitter
                         // A signature CppTypes cannot render stays un-invokable.
                     }
                 }
+                if (!_c.Reachable.Contains(m))
+                    foreach (var (_, declaration, target) in _c.RuntimeDelegateInterfaceTargets)
+                        if (target == m && _e._emit.Contains(declaration.DeclaringClass))
+                        {
+                            string context = $"delegate_itf_invoke_{m.CppName}";
+                            string thunk = _e.EmitInvokerThunk(_sb, declaration, _invokerThunks);
+                            _sb.AppendLine($"static const Dn2CppDelegateInterfaceInvocation {context} = "
+                                + $"{{ {_e.TypeInfoRef(declaration.DeclaringClass, "delegate method invocation interface")}, {declaration.VtableSlot}, (void*)&{thunk} }};");
+                            fnPtr = $"(void*)&{context}";
+                            invoker = "(void*)&dn2cpp_delegate_interface_invoker";
+                            break;
+                        }
+                if (prefix == "delegatetab" && !m.IsStatic && m.IsVirtual
+                    && _c.ObjectVirtualMetadataTarget(cls, m.Name) == m)
+                {
+                    fnPtr = "(void*)&" + (m.Name == "ToString" ? "dn2cpp_object_tostring_virtual"
+                        : m.Name == "Equals" ? "dn2cpp_object_equals_virtual" : "dn2cpp_object_gethashcode");
+                    invoker = "(void*)&dn2cpp_delegate_object_virtual_invoker";
+                }
                 // The null-receiver run modes and a template level's
                 // DN2CPP_MTHA_NULLLOOKUP_* masks: only a CreateDelegate binding called
                 // with a null receiver (closed over null, or open over a non-virtual row)
                 // enters an instance body without one. A multicast invoker reads its
                 // receiver's chain, so such a binding of a delegate's Invoke faults.
-                if (fnPtr != "nullptr" && !m.IsStatic && !delegateInvoke && _c.NeedsReflectionDelegateBind)
+                if (fnPtr != "nullptr" && !m.IsStatic && !delegateInvoke && _c.NeedsReflectionDelegateBind
+                    && invoker != "(void*)&dn2cpp_delegate_object_virtual_invoker"
+                    && invoker != "(void*)&dn2cpp_delegate_interface_invoker")
                     attrs |= _e.NullReceiverAttrs(cls, m);
                 string retInfo = definitionOnly && (Compilation.ContainsGenericVar(m.Signature.ReturnType)
                     || Compilation.ContainsCanonPlaceholder(m.Signature.ReturnType))
@@ -3488,6 +3606,40 @@ internal sealed partial class CppEmitter
             filler != member && !filler.EndsWith("." + member, System.StringComparison.Ordinal);
 
         private static readonly string[] ObjectVirtualNames = { "ToString", "Equals", "GetHashCode", "Finalize" };
+
+        // One missing override row must not hide another virtual this level inherits.
+        // MethodImpl can rename a body, so only name-complete raw declarations qualify.
+        private void EmitOpaqueObjectVirtualInheritance()
+        {
+            var rows = new List<string>();
+            if (RecordsRenamedSlotBodies)
+                foreach (var cls in _e.TopoOrder().OrderBy(c => c.CppName, System.StringComparer.Ordinal))
+                {
+                    if (!_e.IsOpaque(cls) || _e.SkipsCanonicalMetadata(cls) || !Compilation.InheritsFromException(cls)
+                        || cls.FullName == "System.Exception" || cls.Handle.IsNil
+                        || !_c.KeepsReflectionMetadata(cls))
+                        continue;
+                    var reader = cls.Module.Reader;
+                    var definition = reader.GetTypeDefinition(cls.Handle);
+                    if (definition.GetMethodImplementations().Count != 0)
+                        continue;
+                    int inherited = (1 << ObjectVirtualNames.Length) - 1;
+                    foreach (var method in definition.GetMethods())
+                    {
+                        string name = reader.GetString(reader.GetMethodDefinition(method).Name);
+                        for (int i = 0; i < ObjectVirtualNames.Length; i++)
+                            if (name == ObjectVirtualNames[i])
+                                inherited &= ~(1 << i);
+                    }
+                    if (inherited != 0 && inherited != (1 << ObjectVirtualNames.Length) - 1)
+                        rows.Add($"{{ {_e.TypeInfoRef(cls, "opaque Object virtual inheritance")}, {inherited} }}");
+                }
+            if (rows.Count == 0)
+                return;
+            const string symbol = "object_virtual_inheritance";
+            _sb.AppendLine($"static const Dn2CppObjectVirtualInheritance {symbol}[] = {{ {string.Join(", ", rows)} }};");
+            _e._objectVirtualInheritance = (symbol, rows.Count);
+        }
 
         /// <summary>Records the bodies <paramref name="cls"/>'s vtable runs for Object's virtual
         /// ToString, Equals, GetHashCode and Finalize, in the order

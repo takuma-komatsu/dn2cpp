@@ -37,7 +37,6 @@ runtime_template_binding_prefix_asserts() {
             "$out/virtual-delegate-full.$axis.stdout" > "$out/template-prefix.$axis.stdout"
         diff -u "$out/template-before.$axis.stdout" "$out/template-prefix.$axis.stdout"
         runtime_template_binding_asserts "$out/virtual-delegate-full.$axis.stdout"
-        test "$(tail -n 1 "$out/virtual-delegate-full.$axis.stdout")" = 'substituted runtime delegate signatures end'
     done
 }
 

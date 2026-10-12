@@ -1054,6 +1054,21 @@ internal static class Program
             return;
         }
 
+        if (args.Length == 1 && args[0] == "--delegate-route-oracle")
+        {
+            RenamedSlotProbe.RunCrossRouteEquality();
+            return;
+        }
+
+        if (args.Length == 1 && args[0] == "--patch-interface-surface")
+        {
+            RenamedSlotProbe.RunPatchIdentity("aot", new RenamedMeasure());
+            RenamedSlotProbe.RunVirtualPatchIdentity("aot", new RenamedMeasure());
+            RenamedSlotProbe.RunVirtualPatchOverride(new RenamedMeasure(), new RenamedMeasure());
+            RenamedSlotProbe.RunVirtualSplitIdentity(new RenamedMeasure(), new RenamedMeasure());
+            return;
+        }
+
         if (args.Length == 1 && args[0] == "--renamed-slot-prefix")
         {
             RenamedSlotProbe.Run("aot", new RenamedMeasure(), true);
@@ -1118,6 +1133,8 @@ internal static class Program
         {
             if (args.Length == 3 && args[2] == "before-renamed-slots")
                 RenamedSlotProbe.BeforeBlock = 1;
+            if (args.Length == 3 && args[2] == "patch-metadata-refusals")
+                RenamedSlotProbe.MetadataRefusals = 1;
             HotUpdate.Run(args[1]);
             return;
         }

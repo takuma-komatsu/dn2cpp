@@ -1100,8 +1100,8 @@ internal sealed partial class Compilation
         return sym;
     }
 
-    /// <summary>Records that a shipped body reads <c>Delegate.Method</c>: only then do the
-    /// identities' declaring types need their method rows.</summary>
+    /// <summary>Records that a shipped body reads <c>Delegate.Method</c>: only then do
+    /// its known selected declarations need their method rows.</summary>
     internal void NoteDelegateMethodRead()
     {
         if (Phase == EmitPhase.Emission)
@@ -1202,9 +1202,13 @@ internal sealed partial class Compilation
     /// <summary>Materializes the reflection keep-set. Called by the emitter immediately
     /// before <c>EmitTypeInfos</c>, and it must not run earlier: <c>ComputeEmitted</c>'s
     /// delegate-invoker pass still appends to <see cref="ReferencedTypes"/>, which is a
-    /// seed. Idempotent, and a no-op when trimming is off.</summary>
+    /// seed. Selected delegate rows survive even when metadata trimming is off.</summary>
     public void ComputeReflectionKeepSet()
     {
+        var delegateMethods = _delegateMethodRead ? GetDelegateSelectedMethods().ToList() : null;
+        if (delegateMethods is not null)
+            foreach (var method in delegateMethods)
+                _delegateIdentityTargets.Add(method.CppName);
         if (!_trimReflection || _reflectionKeep is not null)
             return;
         var keep = new HashSet<ClassInfo>();
@@ -1249,10 +1253,10 @@ internal sealed partial class Compilation
             if (_explicitReflectionKeep.Contains(cls))
                 keep.Add(cls);
         }
-        // Delegate.Method answers from the method rows of each delegate target's
-        // declaring type, a type the delegate's IL names but no token keeps.
-        if (_delegateMethodRead)
-            foreach (var (m, _) in _delegateIdentities.Values)
+        // A virtual binding names its selected declaration, which can belong to
+        // a receiver override or derived-interface default absent from the IL.
+        if (delegateMethods is not null)
+            foreach (var m in delegateMethods)
                 keep.Add(m.DeclaringClass);
         // A root matching no loaded type is a hard error: a typo silently becoming a no-op
         // root would surface as a PlatformNotSupportedException in a shipped game, which is

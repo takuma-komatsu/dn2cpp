@@ -2216,6 +2216,8 @@ internal sealed partial class CppEmitter
             // reaching the wrapper support so the next batch compiles it. Runs each round
             // because the noted-array / cast-target sets keep growing as bodies compile.
             _c.ExpandArrayEnumerableMaps();
+            _c.PrepareArrayDelegateMetadata();
+            _c.PrepareRuntimeDelegateInterfaceMetadata();
             // Reflection can invoke the bodies of an application class the bodies just
             // compiled minted.
             _c.ReachReflectionClassRoutes();
@@ -2940,6 +2942,12 @@ internal sealed partial class CppEmitter
             sb.AppendLine($"    dn2cpp_intrinsic_set_base({handle}, {baseRef});");
         foreach (string handle in _runtimeHandleObjectRows)
             sb.AppendLine($"    ({handle})->flags |= DN2CPP_TF_OBJECT_MEMBER_ROWS;");
+        if (_delegateInterfaceTargets is { } interfaceTargets)
+            sb.AppendLine($"    dn2cpp_set_delegate_interface_targets({interfaceTargets.Sym}, {interfaceTargets.Count});");
+        if (_delegateMethodCatalog is { } delegateMethods)
+            sb.AppendLine($"    dn2cpp_set_delegate_method_catalog({delegateMethods.Sym}, {delegateMethods.Count});");
+        if (_objectVirtualInheritance is { } objectVirtuals)
+            sb.AppendLine($"    dn2cpp_set_object_virtual_inheritance({objectVirtuals.Sym}, {objectVirtuals.Count});");
         // The shared reference-element SZArray fallback table goes in before any managed
         // code too: a cctor can already dispatch a collection interface on an array it
         // reached through `object` (or on a runtime-built attribute array).
@@ -3239,11 +3247,39 @@ internal sealed partial class CppEmitter
                 slots[decl.VtableSlot] = $"(const void*)&{thunk}";
             }
             sb.AppendLine($"static const void* mdarr_itf_{i}[] = {{ {string.Join(", ", slots)} }};");
-            entries.Add($"{{ {TypeInfoRef(disp.Itf, "MDArray interface-dispatch map")}, mdarr_itf_{i} }}");
+            string methods = EmitInterfaceMethodTargets(sb, $"mdarr_itf_methods_{i}", slotCount, disp.Methods, array: true);
+            entries.Add($"{{ {TypeInfoRef(disp.Itf, "MDArray interface-dispatch map")}, mdarr_itf_{i}, {methods} }}");
             i++;
         }
         sb.AppendLine($"static const Dn2CppInterfaceEntry mdarr_itfs[] = {{ {string.Join(", ", entries)} }};");
         _mdArrayItfMap = ("mdarr_itfs", entries.Count);
+    }
+
+    private readonly Dictionary<MethodInfo, string> _delegateMetadataMethods = new();
+
+    private string EmitInterfaceMethodTargets(StringBuilder sb, string symbol, int slotCount,
+        IReadOnlyList<(MethodInfo Decl, MethodInfo Impl)> methods, bool array = false)
+    {
+        if (!_c.ReadsDelegateMethod && !_c.NeedsReflectionDelegateBind)
+            return "nullptr";
+        var targets = Enumerable.Repeat("{ nullptr, 0 }", slotCount).ToArray();
+        foreach (var (declaration, implementation) in methods)
+        {
+            if (declaration.VtableSlot < 0 || !_c.Reachable.Contains(implementation))
+                continue;
+            var target = array ? _c.ArrayInterfaceMetadataTarget(declaration) : implementation;
+            if (target is null || SkipsCanonicalMetadata(target.DeclaringClass)
+                || !TypeInfoSymbolDefined(target.DeclaringClass.CppTypeInfoName))
+                continue;
+            int token = target.Handle.IsNil ? 0 : System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(target.Handle);
+            string direct = array && _delegateMetadataMethods.TryGetValue(target, out var address)
+                ? $", Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({address})" : "";
+            targets[declaration.VtableSlot] = $"{{ {TypeInfoRef(target.DeclaringClass, "interface selected method owner")}, {token}{direct} }}";
+        }
+        if (targets.Length == 0)
+            return "nullptr";
+        sb.AppendLine($"static const Dn2CppInterfaceMethodTarget {symbol}[] = {{ {string.Join(", ", targets)} }};");
+        return symbol;
     }
 
     /// <summary>Emits String's interface-dispatch rows (one slot table per interface
@@ -3281,10 +3317,11 @@ internal sealed partial class CppEmitter
                 slots[decl.VtableSlot] = $"(const void*)&{impl.Emittable.CppName}";
             }
             sb.AppendLine($"static const void* str_itf_{i}[] = {{ {string.Join(", ", slots)} }};");
-            entries.Add($"{{ {TypeInfoRef(disp.Itf, "String interface-dispatch map")}, str_itf_{i} }}");
+            string methods = EmitInterfaceMethodTargets(sb, $"str_itf_methods_{i}", slotCount, disp.Methods);
+            entries.Add($"{{ {TypeInfoRef(disp.Itf, "String interface-dispatch map")}, str_itf_{i}, {methods} }}");
             NoteRuntimeMapInterface(CoreIntrinsics.RuntimeTypeInfoSymbol("System.String")!, disp.Itf);
             if (_c.SharedGenericsEnabled && _c.CanonicalInterfaceOf(disp.Itf) is { } citf)
-                entries.Add($"{{ {TypeInfoRef(citf, "String interface-dispatch map (canonical alias row)")}, str_itf_{i} }}");
+                entries.Add($"{{ {TypeInfoRef(citf, "String interface-dispatch map (canonical alias row)")}, str_itf_{i}, {methods} }}");
             i++;
         }
         if (entries.Count == 0)
@@ -3612,6 +3649,9 @@ internal sealed partial class CppEmitter
     /// <see cref="EmitInitCalls"/> (<c>dn2cpp_intrinsic_set_base</c>).</summary>
     private readonly List<(string Handle, string BaseRef)> _runtimeHandleBases = [];
     private readonly List<string> _runtimeHandleObjectRows = [];
+    private (string Sym, int Count)? _objectVirtualInheritance;
+    private (string Sym, int Count)? _delegateMethodCatalog;
+    private (string Sym, int Count)? _delegateInterfaceTargets;
 
     /// <summary>Records the base of each unbound reference-type runtime handle whose
     /// hand-written chain skips a CLR ancestor this image materializes: the nearest one
@@ -3929,12 +3969,13 @@ internal sealed partial class CppEmitter
                 sb.AppendLine($"static const void* {slotSym}[] = {{ {slotsInit} }};");
                 arrItfPools[slotsInit] = slotSym;
             }
-            entries.Add($"{{ {TypeInfoRef(disp.Itf, "SZArray interface-dispatch map")}, {slotSym} }}");
+            string methods = EmitInterfaceMethodTargets(sb, $"arr_itf_methods_{key}_{i}", slotCount, disp.Methods, array: true);
+            entries.Add($"{{ {TypeInfoRef(disp.Itf, "SZArray interface-dispatch map")}, {slotSym}, {methods} }}");
             // Canonical alias row (shared generics): a shared body enumerating
             // an enum-element array through the canonical interface handle must
             // resolve on the array's own dispatch map too.
             if (_c.SharedGenericsEnabled && _c.CanonicalInterfaceOf(disp.Itf) is { } citf)
-                entries.Add($"{{ {TypeInfoRef(citf, "SZArray interface-dispatch map (canonical alias row)")}, {slotSym} }}");
+                entries.Add($"{{ {TypeInfoRef(citf, "SZArray interface-dispatch map (canonical alias row)")}, {slotSym}, {methods} }}");
             i++;
         }
         sb.AppendLine($"static const Dn2CppInterfaceEntry arr_itfs_{key}[] = {{ {string.Join(", ", entries)} }};");

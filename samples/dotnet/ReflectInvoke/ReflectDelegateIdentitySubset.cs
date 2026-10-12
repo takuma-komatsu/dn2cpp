@@ -435,11 +435,11 @@ namespace ReflectDelegateIdentitySubset
             Console.WriteLine("delegate-method-reflection=" + open.Method.Name + "/" + closed.Method.Name + "/" + closed("x"));
             Func<string, string> closedIl = "il:".Decorate;
             Console.WriteLine("delegate-method-closed-static=" + closedIl.Method.Name + "/" + closedIl.Method.IsStatic + "/" + closedIl("x"));
-            // A runtime-owned declaring type may answer null; the name must not lie.
+            // Runtime-owned declarations retain the method a delegate names.
             Func<string, bool> empty = string.IsNullOrEmpty;
             Func<string> text2 = receiver.ToString;
-            Console.WriteLine("delegate-method-runtime-owned=" + (empty.Method is null || empty.Method.Name == "IsNullOrEmpty")
-                + "/" + (text2.Method is null || text2.Method.Name == "ToString"));
+            Console.WriteLine("delegate-method-runtime-owned=" + (empty.Method is not null && empty.Method.Name == "IsNullOrEmpty")
+                + "/" + (text2.Method is not null && text2.Method.Name == "ToString"));
             IProbe boxed = new StructProbe();
             Func<int, int> structMethod = boxed.Value;
             Console.WriteLine("delegate-method-struct-interface=" + structMethod.Method.DeclaringType.Name + "/" + structMethod.Method.Name
@@ -756,10 +756,8 @@ namespace ReflectDelegateIdentitySubset
             + "|" + Describe(type.GetMethod("GetHashCode", Type.EmptyTypes).GetBaseDefinition())
             + "|" + Describe(type.GetMethod("Equals", new[] { typeof(object) }).GetBaseDefinition());
 
-        // A binding that inherits the member through a level without Object-member rows
-        // may answer null, never another method.
-        static bool NullOr(Delegate binding, Type declaring) =>
-            binding.Method is null || binding.Method.DeclaringType == declaring;
+        static bool HasDeclaringType(Delegate binding, Type declaring) =>
+            binding.Method is not null && binding.Method.DeclaringType == declaring;
 
         // Delegate.Method of an Object virtual whose override sits below exception
         // levels without Object-member rows, and GetBaseDefinition of the answer.
@@ -778,11 +776,305 @@ namespace ReflectDelegateIdentitySubset
             Func<int> numberHash = number.GetHashCode;
             Func<string> plainText = plain.ToString;
             Func<int> plainHash = plain.GetHashCode;
-            Console.WriteLine("settled-object-virtual-unsettled=" + NullOr(stringText, typeof(string))
-                + "/" + NullOr(numberText, typeof(int)) + "/" + NullOr(numberHash, typeof(int))
-                + "/" + NullOr(plainText, typeof(Exception)) + "/" + NullOr(plainHash, typeof(object))
+            Console.WriteLine("settled-object-virtual-unsettled=" + HasDeclaringType(stringText, typeof(string))
+                + "/" + HasDeclaringType(numberText, typeof(int)) + "/" + HasDeclaringType(numberHash, typeof(int))
+                + "/" + HasDeclaringType(plainText, typeof(Exception)) + "/" + HasDeclaringType(plainHash, typeof(object))
                 + "/" + stringText() + "/" + numberText() + "/" + (numberHash() == 5) + "/" + (plainHash() == plain.GetHashCode()));
             Console.WriteLine("settled Object virtual answers end");
+        }
+
+        class InheritingAggregateException : AggregateException { }
+
+        class HashEqualsAggregateException : AggregateException
+        {
+            public override int GetHashCode() => 37;
+            public override bool Equals(object other) => ReferenceEquals(this, other);
+        }
+
+        static string InheritedObjectBinding(Delegate binding, MethodInfo root, object receiver,
+            object[] arguments, object expected)
+        {
+            var method = binding.Method;
+            return method is null ? "null" : Rooted(method) + "/" + ReferenceEquals(method, root)
+                + "/" + (method.ReflectedType == typeof(object)) + "/" + Equals(method.Invoke(receiver, arguments), expected);
+        }
+
+        static void InheritedObjectVirtuals(object receiver)
+        {
+            var hashRoot = typeof(object).GetMethod("GetHashCode", Type.EmptyTypes);
+            var equalsRoot = typeof(object).GetMethod("Equals", new[] { typeof(object) });
+            Func<int> hash = receiver.GetHashCode;
+            Func<object, bool> equals = receiver.Equals;
+            var reflectedHash = (Func<int>)hashRoot.CreateDelegate(typeof(Func<int>), receiver);
+            var reflectedEquals = (Func<object, bool>)equalsRoot.CreateDelegate(typeof(Func<object, bool>), receiver);
+            Console.WriteLine("opaque-object-virtual-" + receiver.GetType().Name + "="
+                + InheritedObjectBinding(hash, hashRoot, receiver, null, hash()) + "|"
+                + InheritedObjectBinding(equals, equalsRoot, receiver, new[] { receiver }, true) + "|"
+                + InheritedObjectBinding(reflectedHash, hashRoot, receiver, null, hash()) + "|"
+                + InheritedObjectBinding(reflectedEquals, equalsRoot, receiver, new object[] { null }, false));
+            Func<string> text = receiver.ToString;
+            Console.WriteLine("opaque-object-virtual-text=" + HasDeclaringType(text, typeof(AggregateException)));
+        }
+
+        // An opaque override and its inherited siblings retain independent identities.
+        public static void RunOpaqueObjectVirtualInheritance()
+        {
+            Console.WriteLine("== opaque exception inherited Object virtuals ==");
+            InheritedObjectVirtuals(new AggregateException());
+            InheritedObjectVirtuals(new InheritingAggregateException());
+            InheritedObjectVirtuals(new HashEqualsAggregateException());
+            Console.WriteLine("opaque exception inherited Object virtuals end");
+        }
+
+        interface IClosedPick<T> { int Pick(); }
+        class ClosedPicks : IClosedPick<int>, IClosedPick<string>
+        {
+            int IClosedPick<int>.Pick() => 31;
+            int IClosedPick<string>.Pick() => 47;
+        }
+
+        class CloneOwner
+        {
+            public Func<object> BindClone() => MemberwiseClone;
+        }
+
+        static string RuntimeBinding(Delegate binding, string owner, string name, string root,
+            object receiver, object[] arguments, object expected)
+        {
+            var method = binding.Method;
+            if (method is null)
+                return "missing";
+            return method.Name + "/" + (method.DeclaringType.FullName == owner)
+                + "/" + (method.ReflectedType == method.DeclaringType)
+                + "/" + (method.Name == name) + "/" + (method.GetBaseDefinition().DeclaringType.FullName == root)
+                + "/" + ReferenceEquals(method, binding.Method)
+                + "/" + Equals(method.Invoke(receiver, arguments), expected)
+                + "/" + (int)method.Attributes + "/" + (int)method.GetMethodImplementationFlags()
+                + "/" + method.MetadataToken
+                + "/" + method.ToString();
+        }
+
+        static void RuntimeObjectBindings(object receiver, string owner, string root)
+        {
+            Func<string> text = receiver.ToString;
+            Func<int> hash = receiver.GetHashCode;
+            Func<object, bool> equals = receiver.Equals;
+            Console.WriteLine("runtime-object-" + receiver.GetType().Name + "="
+                + RuntimeBinding(text, owner, "ToString", root, receiver, null, text()) + "|"
+                + RuntimeBinding(hash, owner, "GetHashCode", root, receiver, null, hash()) + "|"
+                + RuntimeBinding(equals, owner, "Equals", root, receiver, new[] { receiver }, true));
+            var textRow = typeof(object).GetMethod("ToString", Type.EmptyTypes);
+            var hashRow = typeof(object).GetMethod("GetHashCode", Type.EmptyTypes);
+            var equalsRow = typeof(object).GetMethod("Equals", new[] { typeof(object) });
+            Console.WriteLine("runtime-object-reflected-" + receiver.GetType().Name + "="
+                + RuntimeBinding(textRow.CreateDelegate(typeof(Func<string>), receiver), owner, "ToString", root, receiver, null, text()) + "|"
+                + RuntimeBinding(hashRow.CreateDelegate(typeof(Func<int>), receiver), owner, "GetHashCode", root, receiver, null, hash()) + "|"
+                + RuntimeBinding(equalsRow.CreateDelegate(typeof(Func<object, bool>), receiver), owner, "Equals", root, receiver, new[] { receiver }, true));
+        }
+
+        static string ArrayHelperBinding(Delegate binding, object receiver)
+        {
+            var method = binding.Method;
+            if (method is null)
+                return "missing";
+            string invoke;
+            try { method.Invoke(receiver, null); invoke = "accepted"; }
+            catch (TargetException) { invoke = "target"; }
+            string create;
+            try { method.CreateDelegate(binding.GetType(), receiver); create = "accepted"; }
+            catch (ArgumentException) { create = "target"; }
+            var definition = method.GetGenericMethodDefinition();
+            return (method.DeclaringType.FullName == "System.SZArrayHelper")
+                + "/" + (method.ReflectedType == method.DeclaringType)
+                + "/" + method.IsGenericMethod + "/" + !method.IsGenericMethodDefinition
+                + "/" + (method.GetGenericArguments()[0] == typeof(int))
+                + "/" + !method.IsVirtual + "/" + invoke + "/" + create
+                + "/" + definition.IsGenericMethodDefinition
+                + "/" + definition.GetGenericArguments()[0].IsGenericParameter
+                + "/" + ReferenceEquals(definition, method.GetGenericMethodDefinition())
+                + "/" + (definition.MakeGenericMethod(typeof(int)) == method)
+                + "/" + (int)method.Attributes + "/" + (int)method.GetMethodImplementationFlags()
+                + "/" + method.MetadataToken + "/" + method;
+        }
+
+        public static void RunRuntimeMethodCatalog()
+        {
+            Console.WriteLine("== runtime delegate method identities ==");
+            Func<string, bool> empty = string.IsNullOrEmpty;
+            Func<int, int> absolute = Math.Abs;
+            Func<char, bool> digit = char.IsDigit;
+            TimeSpan span = TimeSpan.FromSeconds(-3);
+            Func<TimeSpan> duration = span.Duration;
+            var builder = new System.Text.StringBuilder("text");
+            Func<System.Text.StringBuilder> clear = builder.Clear;
+            Console.WriteLine("runtime-static="
+                + RuntimeBinding(empty, "System.String", "IsNullOrEmpty", "System.String", null, new object[] { "" }, true) + "|"
+                + RuntimeBinding(absolute, "System.Math", "Abs", "System.Math", null, new object[] { -9 }, 9) + "|"
+                + RuntimeBinding(digit, "System.Char", "IsDigit", "System.Char", null, new object[] { '7' }, true));
+            Console.WriteLine("runtime-instance="
+                + RuntimeBinding(duration, "System.TimeSpan", "Duration", "System.TimeSpan", span, null, TimeSpan.FromSeconds(3)) + "|"
+                + RuntimeBinding(clear, "System.Text.StringBuilder", "Clear", "System.Text.StringBuilder", builder, null, builder));
+            object plain = new object();
+            Func<Type> getType = plain.GetType;
+            Func<object, object, bool> staticEquals = object.Equals;
+            Func<object, object, bool> referenceEquals = object.ReferenceEquals;
+            Console.WriteLine("runtime-object-nonvirtual="
+                + RuntimeBinding(getType, "System.Object", "GetType", "System.Object", plain, null, typeof(object)) + "|"
+                + RuntimeBinding(staticEquals, "System.Object", "Equals", "System.Object", null, new[] { plain, plain }, true) + "|"
+                + RuntimeBinding(referenceEquals, "System.Object", "ReferenceEquals", "System.Object", null, new[] { plain, plain }, true));
+            var cloneOwner = new CloneOwner();
+            var clone = cloneOwner.BindClone();
+            var cloned = clone.Method.Invoke(cloneOwner, null);
+            Console.WriteLine("runtime-object-clone=" + (clone.Method.DeclaringType == typeof(object))
+                + "/" + (clone.Method.ReflectedType == typeof(object)) + "/" + (cloned.GetType() == typeof(CloneOwner))
+                + "/" + !ReferenceEquals(cloned, cloneOwner));
+            Func<object> typeAsObject = cloneOwner.GetType;
+            var reflectedType = (Func<object>)typeAsObject.Method.CreateDelegate(typeof(Func<object>), cloneOwner);
+            var reflectedClone = (Func<object>)clone.Method.CreateDelegate(typeof(Func<object>), cloneOwner);
+            Console.WriteLine("runtime-object-roundtrip=" + (typeAsObject == reflectedType)
+                + "/" + (reflectedType == typeAsObject) + "/" + (clone == reflectedClone)
+                + "/" + (reflectedClone == clone) + "/" + (typeAsObject != reflectedClone)
+                + "/" + (reflectedType != clone) + "/" + (typeAsObject.GetHashCode() == reflectedType.GetHashCode()));
+            RuntimeObjectBindings("text", "System.String", "System.Object");
+            RuntimeObjectBindings(5, "System.Int32", "System.Object");
+            IComparable comparable = 7;
+            Func<object, int> compare = comparable.CompareTo;
+            var compareBound = typeof(IComparable).GetMethod("CompareTo").CreateDelegate(typeof(Func<object, int>), comparable);
+            Console.WriteLine("runtime-interface-number="
+                + RuntimeBinding(compare, "System.Int32", "CompareTo", "System.Int32", comparable, new object[] { 7 }, 0) + "|"
+                + RuntimeBinding(compareBound, "System.Int32", "CompareTo", "System.Int32", comparable, new object[] { 7 }, 0));
+            IComparable stringComparable = "text";
+            Func<object, int> stringCompare = stringComparable.CompareTo;
+            var stringBound = typeof(IComparable).GetMethod("CompareTo").CreateDelegate(typeof(Func<object, int>), stringComparable);
+            Console.WriteLine("runtime-interface-string="
+                + RuntimeBinding(stringCompare, "System.String", "CompareTo", "System.String", stringComparable, new object[] { "text" }, 0) + "|"
+                + RuntimeBinding(stringBound, "System.String", "CompareTo", "System.String", stringComparable, new object[] { "text" }, 0));
+            int[] array = { 3, 4 };
+            Func<System.Collections.Generic.IEnumerator<int>> enumerate = ((System.Collections.Generic.IEnumerable<int>)array).GetEnumerator;
+            var enumerateBound = typeof(System.Collections.Generic.IEnumerable<int>).GetMethod("GetEnumerator")
+                .CreateDelegate(typeof(Func<System.Collections.Generic.IEnumerator<int>>), array);
+            Console.WriteLine("runtime-interface-array=" + ArrayHelperBinding(enumerate, array) + "|" + ArrayHelperBinding(enumerateBound, array));
+            Func<System.Collections.Generic.IEnumerator<string>> stringEnumerate = ((System.Collections.Generic.IEnumerable<string>)new[] { "text" }).GetEnumerator;
+            Func<System.Collections.Generic.IEnumerator<object>> variantEnumerate = ((System.Collections.Generic.IEnumerable<object>)new[] { "text" }).GetEnumerator;
+            Console.WriteLine("runtime-interface-array-definition="
+                + ReferenceEquals(enumerate.Method.GetGenericMethodDefinition(), stringEnumerate.Method.GetGenericMethodDefinition())
+                + "/" + (stringEnumerate.Method.GetGenericArguments()[0] == typeof(string))
+                + "/" + (variantEnumerate.Method.GetGenericArguments()[0] == typeof(object))
+                + "/" + (stringEnumerate.Method != variantEnumerate.Method));
+            Func<System.Collections.IEnumerator> nongeneric = ((System.Collections.IEnumerable)array).GetEnumerator;
+            var nongenericResult = nongeneric.Method.Invoke(array, null);
+            Func<object> arrayClone = ((ICloneable)array).Clone;
+            var arrayCloneResult = (int[])arrayClone.Method.Invoke(array, null);
+            Console.WriteLine("runtime-interface-array-native=" + (nongeneric.Method.DeclaringType == typeof(Array))
+                + "/" + (nongenericResult is System.Collections.IEnumerator) + "/" + (arrayClone.Method.DeclaringType == typeof(Array))
+                + "/" + (arrayCloneResult.Length == 2 && arrayCloneResult[1] == 4));
+            var picks = new ClosedPicks();
+            Func<int> numberPick = ((IClosedPick<int>)picks).Pick;
+            Func<int> textPick = ((IClosedPick<string>)picks).Pick;
+            var numberBound = typeof(IClosedPick<int>).GetMethod("Pick").CreateDelegate(typeof(Func<int>), picks);
+            var textBound = typeof(IClosedPick<string>).GetMethod("Pick").CreateDelegate(typeof(Func<int>), picks);
+            Console.WriteLine("runtime-interface-closed="
+                + RuntimeBinding(numberPick, typeof(ClosedPicks).FullName, "ReflectDelegateIdentitySubset.Program.IClosedPick<System.Int32>.Pick", typeof(ClosedPicks).FullName, picks, null, 31));
+            Console.WriteLine("runtime-interface-closed-values=" + numberPick() + "/" + textPick()
+                + "/" + numberBound.DynamicInvoke() + "/" + textBound.DynamicInvoke()
+                + "/" + (numberPick.Method == numberBound.Method) + "/" + (textPick.Method == textBound.Method)
+                + "/" + (numberPick.Method != textPick.Method));
+            IBaseDefault boxed = (IBaseDefault)Activator.CreateInstance(typeof(StructDerivedDefault));
+            Func<string> defaultPick = boxed.Pick;
+            var defaultBound = typeof(IBaseDefault).GetMethod("Pick").CreateDelegate(typeof(Func<string>), boxed);
+            Console.WriteLine("runtime-interface-value-default=" + (defaultPick.Method.DeclaringType == typeof(IDerivedDefault))
+                + "/" + (defaultBound.Method.DeclaringType == typeof(IDerivedDefault))
+                + "/" + defaultPick() + "/" + defaultBound.DynamicInvoke()
+                + "/" + defaultPick.Method.Invoke(boxed, null));
+            Console.WriteLine("runtime delegate method identities end");
+        }
+
+    }
+
+    public static class ObjectVirtualEqualityProgram
+    {
+        class ObjectVirtualEqualityCase
+        {
+            public override string ToString() => "override";
+            public Func<string> DirectBase() => base.ToString;
+        }
+
+        class ExceptionVirtualEqualityCase : Exception
+        {
+            public override string ToString() => "exception-override";
+            public Func<string> DirectBase() => base.ToString;
+        }
+
+        class AggregateVirtualEqualityCase : AggregateException
+        {
+            public override string ToString() => "aggregate-override";
+        }
+
+        public static void Run()
+        {
+            Console.WriteLine("== Object virtual delegate equality ==");
+            var receiver = new ObjectVirtualEqualityCase();
+            Func<string> directBase = receiver.DirectBase();
+            Func<string> compiled = receiver.ToString;
+            var reflected = (Func<string>)typeof(object).GetMethod("ToString", Type.EmptyTypes)
+                .CreateDelegate(typeof(Func<string>), receiver);
+            Console.WriteLine("object-virtual-equality-methods=" + directBase.Method.DeclaringType.Name
+                + "/" + compiled.Method.DeclaringType.Name + "/" + reflected.Method.DeclaringType.Name);
+            Console.WriteLine("object-virtual-equality-values=" + directBase() + "/" + compiled() + "/" + reflected());
+            Console.WriteLine("object-virtual-equality-base=" + directBase.Equals(reflected) + "/" + reflected.Equals(directBase));
+            Console.WriteLine("object-virtual-equality-override=" + compiled.Equals(reflected) + "/" + reflected.Equals(compiled)
+                + "/" + (compiled.GetHashCode() == reflected.GetHashCode()));
+            var root = new object();
+            Func<string> rootCompiled = root.ToString;
+            var rootReflected = (Func<string>)typeof(object).GetMethod("ToString", Type.EmptyTypes)
+                .CreateDelegate(typeof(Func<string>), root);
+            Console.WriteLine("object-virtual-equality-root=" + rootCompiled.Equals(rootReflected) + "/" + rootReflected.Equals(rootCompiled)
+                + "/" + (rootCompiled.GetHashCode() == rootReflected.GetHashCode()));
+            var remainingVirtual = Delegate.Remove(directBase + reflected, directBase).GetInvocationList();
+            var remainingBase = Delegate.Remove(reflected + directBase, reflected).GetInvocationList();
+            Console.WriteLine("object-virtual-equality-remove=" + ReferenceEquals(remainingVirtual[0], reflected)
+                + "/" + ((Func<string>)remainingVirtual[0])() + "/" + ReferenceEquals(remainingBase[0], directBase)
+                + "/" + ((Func<string>)remainingBase[0])());
+            Console.WriteLine("Object virtual delegate equality end");
+        }
+
+        public static void RunInherited()
+        {
+            Console.WriteLine("== inherited Object virtual delegate equality ==");
+            var exception = new ExceptionVirtualEqualityCase();
+            CheckInherited("Exception", exception, exception.DirectBase(), exception.ToString);
+            var aggregate = new AggregateVirtualEqualityCase();
+            Func<string> compiled = aggregate.ToString;
+            var reflected = (Func<string>)typeof(object).GetMethod("ToString", Type.EmptyTypes)
+                .CreateDelegate(typeof(Func<string>), aggregate);
+            Console.WriteLine("object-inherited-AggregateException-methods=" + compiled.Method.DeclaringType.Name
+                + "/" + reflected.Method.DeclaringType.Name);
+            Console.WriteLine("object-inherited-AggregateException-values=" + compiled() + "/" + reflected());
+            Console.WriteLine("object-inherited-AggregateException-equality=" + compiled.Equals(reflected)
+                + "/" + reflected.Equals(compiled) + "/" + (compiled.GetHashCode() == reflected.GetHashCode()));
+            var remaining = Delegate.Remove(compiled + reflected, compiled).GetInvocationList();
+            Console.WriteLine("object-inherited-AggregateException-remove=" + ReferenceEquals(remaining[0], compiled)
+                + "/" + ((Func<string>)remaining[0])());
+            Console.WriteLine("inherited Object virtual delegate equality end");
+        }
+
+        static void CheckInherited(string name, object receiver, Func<string> directBase, Func<string> compiled)
+        {
+            var reflected = (Func<string>)typeof(object).GetMethod("ToString", Type.EmptyTypes)
+                .CreateDelegate(typeof(Func<string>), receiver);
+            Console.WriteLine("object-inherited-" + name + "-methods=" + directBase.Method.DeclaringType.Name
+                + "/" + compiled.Method.DeclaringType.Name + "/" + reflected.Method.DeclaringType.Name);
+            Console.WriteLine("object-inherited-" + name + "-values=" + (directBase() != reflected())
+                + "/" + compiled() + "/" + reflected());
+            Console.WriteLine("object-inherited-" + name + "-equality=" + directBase.Equals(reflected)
+                + "/" + reflected.Equals(directBase) + "/" + compiled.Equals(reflected) + "/" + reflected.Equals(compiled)
+                + "/" + (compiled.GetHashCode() == reflected.GetHashCode()));
+            var remainingVirtual = Delegate.Remove(directBase + reflected, directBase).GetInvocationList();
+            var remainingBase = Delegate.Remove(reflected + directBase, reflected).GetInvocationList();
+            Console.WriteLine("object-inherited-" + name + "-remove=" + ReferenceEquals(remainingVirtual[0], reflected)
+                + "/" + (((Func<string>)remainingVirtual[0])() == compiled())
+                + "/" + ReferenceEquals(remainingBase[0], directBase)
+                + "/" + (((Func<string>)remainingBase[0])() == directBase()));
         }
     }
 }

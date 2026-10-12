@@ -720,6 +720,14 @@ discovery closes boxes produced by field reads, constructors, invocation results
 and by-reference write-back before freezing layouts. Delegate invoker
 declarations remain bounded by the finite signature closure.
 
+Delegate method identities use a private catalog for runtime-owned and opaque
+owners, registered before managed code runs. These rows do not enter named
+lookup or member enumeration. Interface dispatch rows retain the selected
+declaring method independently of its callable adapter; array identities retain
+the CLR helper's requested generic arguments even when variance shares an
+execution row. Reflection trimming preserves known selected declaring rows.
+An unknown stripped level still refuses through `dn2cpp_require_metadata`.
+
 Reflection-only framework dispatch reaches application bodies and preserved
 library overrides. A literal member name directly following `typeof` can retain
 the named framework surface. A selected body outside that surface remains a

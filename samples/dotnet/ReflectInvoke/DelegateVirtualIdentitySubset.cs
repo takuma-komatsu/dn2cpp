@@ -22,6 +22,10 @@ class Child : Base, IAlias, IOut<string>
     public override int Second() => 7;
 }
 
+#if DELEGATE_IDENTITY_IL_ONLY
+class InheritedChild : Child { }
+#endif
+
 class Hider : Base
 {
     public new virtual int First() => 7;
@@ -61,7 +65,11 @@ struct Boxed : IFirst, IAlias
 
 public static class Program
 {
+#if DELEGATE_IDENTITY_IL_ONLY
+    static Base NewChild() => new InheritedChild();
+#else
     static Base NewChild() => new Child();
+#endif
 
     static void Pair(string label, Func<int> first, Func<int> second)
     {

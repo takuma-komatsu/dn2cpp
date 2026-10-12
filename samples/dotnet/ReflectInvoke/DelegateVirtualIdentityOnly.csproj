@@ -9,6 +9,7 @@
     <DefineConstants Condition="'$(DelegateIdentityIlOnly)' == 'true'">$(DefineConstants);DELEGATE_IDENTITY_IL_ONLY</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../ReflectReturnLib/ReflectReturnLib.csproj" />
     <Compile Include="DelegateVirtualIdentityOnlyProgram.cs" />
     <Compile Include="DelegateVirtualIdentitySubset.cs" Condition="'$(DelegateIdentityIlOnly)' != 'true'" />
     <ProjectReference Include="DelegateVirtualIdentityLibrary.csproj" Condition="'$(DelegateIdentityIlOnly)' == 'true'" />

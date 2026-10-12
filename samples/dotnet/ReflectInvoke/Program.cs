@@ -373,6 +373,18 @@ namespace ReflectInvoke
             if (args.Length > 0 && args[0] == "before-runtime-template-bindings")
                 return;
             ReflectDelegateSubset.Program.RunRuntimeTemplateBindings(false);
+            if (args.Length > 0 && args[0] == "before-opaque-object-virtuals")
+                return;
+            ReflectDelegateIdentitySubset.Program.RunOpaqueObjectVirtualInheritance();
+        if (args.Length > 0 && args[0] == "before-runtime-delegate-identities")
+            return;
+        ReflectDelegateIdentitySubset.Program.RunRuntimeMethodCatalog();
+        if (args.Length > 0 && args[0] == "before-object-virtual-equality")
+            return;
+        ReflectDelegateIdentitySubset.ObjectVirtualEqualityProgram.Run();
+        if (args.Length > 0 && args[0] == "before-inherited-object-virtual-equality")
+            return;
+        ReflectDelegateIdentitySubset.ObjectVirtualEqualityProgram.RunInherited();
         }
     }
 }
