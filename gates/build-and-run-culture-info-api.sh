@@ -50,6 +50,10 @@
 # canonical casing, supported variant formatting, cache identity, typed refusal
 # fields/messages and CreateSpecificCulture's retry. Unmodeled regions assert
 # identity only; script regressions prevent using an incompatible regional row.
+# The locale-data tail covers aliases, alternate-sort metadata, numbering systems,
+# regional numeric data and neutral-to-specific mappings. Uppercase constructor
+# extensions run in a fresh process before lowercase CultureData cache entries.
+# Separate override cases pin which constructor first owns each CultureData entry.
 # Bare POSIX and unknown tags have host-dependent ICU acceptance, so they
 # cannot be unconditional live-diff inputs.
 #
@@ -86,7 +90,39 @@ DN2CPP_GATE_RUN_ARGS=before-culture-names
 corelib_freeze_gate CultureInfoApi "$(dirname "$0")/expected/culture-info-api.txt" \
     --link-xml samples/dotnet/CultureInfoApi/link.xml
 
-unset -f gate_extra_asserts
+LOCALE_CASES=(
+    culture-locale-upper
+    culture-locale-cache-true
+    culture-locale-cache-false
+    culture-sort-strings
+    culture-sort-upper-key
+    culture-numbering-boundaries
+    culture-wrapper-alias-first
+    culture-wrapper-base-first
+    culture-wrapper-sort-first
+    culture-wrapper-unicode-first
+)
+gate_extra_asserts() {
+    local out="$1" native expected mode marker
+    native=$(run_bounded "./$out/CultureInfoApi" culture-names)
+    grep -Fxq 'culture locale data end' <<< "$(strip_cr_win "$native")" \
+        || { echo "FAIL: culture locale data section did not finish" >&2; return 1; }
+    for mode in "${LOCALE_CASES[@]}"; do
+        native=$(run_bounded "./$out/CultureInfoApi" "$mode")
+        expected=$(run_bounded dotnet "$_CG_APP" "$mode")
+        assert_output "$native" "$expected"
+        case "$mode" in
+            culture-locale-upper) marker='culture uppercase extensions end' ;;
+            culture-locale-cache-*) marker='culture data cache end' ;;
+            culture-sort-strings|culture-sort-upper-key) marker='culture sort strings end' ;;
+            culture-numbering-boundaries) marker='culture numbering boundaries end' ;;
+            culture-wrapper-*) marker='culture wrapper cache end' ;;
+        esac
+        grep -Fxq "$marker" <<< "$(strip_cr_win "$native")" \
+            || { echo "FAIL: $mode did not finish" >&2; return 1; }
+    done
+}
 DN2CPP_GATE_RUN_ARGS=culture-names
+DN2CPP_GATE_EXTRA_CONTEXT="${LOCALE_CASES[*]}"
 DN2CPP_OUT_SUFFIX=-names
 corelib_diff_gate CultureInfoApi --link-xml samples/dotnet/CultureInfoApi/link.xml

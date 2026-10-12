@@ -27,7 +27,7 @@ static Dn2CppString* dn2cpp_lit16(const char16_t* p)
 
 static void dn2cpp_nfi_init_invariant(Dn2CppNumberFormatInfo* n)
 {
-    n->cultureName = dn2cpp_lit16(u"");
+    n->cultureName = n->cultureRealName = dn2cpp_lit16(u"");
     n->lcid = 127; // the invariant culture's LCID (0x7F)
     n->numberDecimal = dn2cpp_lit16(u".");
     n->numberGroup = dn2cpp_lit16(u",");
@@ -99,8 +99,7 @@ const Dn2CppNumberFormatInfo* dn2cpp_nfi_or_current(const Dn2CppNumberFormatInfo
 // honest fallback — invariant symbols under the requested name — rather than a
 // row that would put the right currency symbol on wrongly punctuated digits.
 //
-// Four properties of every row below are CHECKED by the generator against real
-// .NET, so they are invariants of this table rather than hopes about it:
+// The generator checks these properties against .NET:
 //   - the percent and currency separators equal the number separators (the
 //     struct has three separate pairs, but nothing in the candidate set ever
 //     made them differ, and the row carries one pair);
@@ -139,6 +138,8 @@ struct Dn2CppCultureRow
 #include "dn2cpp_culture_table.inc"
 static const size_t kCultureCount = sizeof(kCultures) / sizeof(kCultures[0]);
 
+#include "dn2cpp_culture_identifiers.inc"
+
 // ASCII case-insensitive compare of a managed culture name against a row's
 // literal. .NET's own lookup is case-insensitive (`new CultureInfo("pt-br")` is
 // pt-BR), and a case-sensitive table would drop it to the unknown path —
@@ -164,6 +165,9 @@ static const Dn2CppCultureRow* dn2cpp_culture_find_row(Dn2CppString* name)
     // Linear scan: this runs on `new CultureInfo(x)` and once for the host
     // default, never inside a format. A binary search would add an ordering
     // invariant that, broken, fails by silently missing rows.
+    for (const Dn2CppCultureRow& row : kCultureIdentifierFormats)
+        if (dn2cpp_culture_name_eq_ci(name, row.name))
+            return &row;
     for (size_t i = 0; i < kCultureCount; i++)
         if (dn2cpp_culture_name_eq_ci(name, kCultures[i].name))
             return &kCultures[i];
@@ -271,7 +275,63 @@ static Dn2CppString* dn2cpp_culture_normalize_name(Dn2CppString* name)
             char16_t c = name->chars[i];
             normalized[i] = c >= u'A' && c <= u'Z' ? static_cast<char16_t>(c - u'A' + u'a') : c;
         }
-    return dn2cpp_string_from_chars(normalized, length);
+    // ICU recognizes extension markers without regard to case, even when
+    // CultureData does not retain that extension in the public name.
+    for (int32_t i = 0; i + 2 < length; i++)
+        if (normalized[i] == u'-'
+            && (normalized[i + 1] == u'U' || normalized[i + 1] == u'T')
+            && normalized[i + 2] == u'-')
+        {
+            for (int32_t j = i; j < length; j++)
+                if (normalized[j] >= u'A' && normalized[j] <= u'Z')
+                    normalized[j] = static_cast<char16_t>(normalized[j] - u'A' + u'a');
+            break;
+        }
+    std::u16string canonical(normalized, static_cast<size_t>(length));
+    size_t languageEnd = canonical.find_first_of(u"-_");
+    if (languageEnd == std::u16string::npos)
+        languageEnd = canonical.size();
+    Dn2CppString language{};
+    language.chars = canonical.data();
+    language.length = static_cast<int32_t>(languageEnd);
+    for (const Dn2CppCultureNameMapping& alias : kCultureLanguageAliases)
+        if (dn2cpp_culture_name_eq_ci(&language, alias.name))
+        {
+            canonical.replace(0, languageEnd, alias.target);
+            break;
+        }
+    if (canonical == u"und")
+        canonical.clear();
+    // An underscore introduces a sort identifier, not a country. ICU keeps
+    // its spelling; the managed name limits it to the Windows sort width.
+    size_t sort = canonical.find(u'_');
+    if (sort != std::u16string::npos)
+    {
+        int32_t originalSort = 0;
+        while (originalSort < length && name->chars[originalSort] != u'_')
+            originalSort++;
+        canonical.resize(sort + 1);
+        int32_t count = length - originalSort - 1;
+        if (count > 8)
+            count = 8;
+        canonical.append(name->chars + originalSort + 1, static_cast<size_t>(count));
+    }
+    else
+    {
+        size_t collation = canonical.find(u"-u-co-");
+        if (collation != std::u16string::npos)
+        {
+            std::u16string value = canonical.substr(collation + 6);
+            if (value == u"phonebk")
+                value = u"phonebook";
+            if (value.size() > 8)
+                value.resize(8);
+            canonical.resize(collation);
+            canonical += u'_';
+            canonical += value;
+        }
+    }
+    return dn2cpp_string_from_chars(canonical.data(), static_cast<int32_t>(canonical.size()));
 }
 
 // Never remove a requested country to find numeric data for another country.
@@ -287,6 +347,8 @@ static int32_t dn2cpp_culture_region_end(Dn2CppString* name)
         int32_t count = end - start;
         if (part > 0)
         {
+            if (name->chars[start - 1] == u'_')
+                return 0;
             if (part == 1 && dn2cpp_culture_is_script(name->chars + start, count))
             {
                 start = end + 1;
@@ -299,6 +361,59 @@ static int32_t dn2cpp_culture_region_end(Dn2CppString* name)
         part++;
     }
     return 0;
+}
+
+static Dn2CppString* dn2cpp_culture_public_name(Dn2CppString* input, Dn2CppString* canonical)
+{
+    for (int32_t i = 0; i < canonical->length; i++)
+        if (canonical->chars[i] == u'_')
+        {
+            if (dn2cpp_culture_region_end(canonical) == 0)
+                return canonical;
+            for (int32_t j = 0; j + 5 < input->length; j++)
+                if (input->chars[j] == u'-' && input->chars[j + 1] == u'u'
+                    && input->chars[j + 2] == u'-'
+                    && (input->chars[j + 3] == u'c' || input->chars[j + 3] == u'C')
+                    && (input->chars[j + 4] == u'o' || input->chars[j + 4] == u'O')
+                    && input->chars[j + 5] == u'-'
+                    && (input->chars[j + 3] != u'c' || input->chars[j + 4] != u'o'))
+                {
+                    int32_t end = j;
+                    while (end < input->length && input->chars[end] != u'\0')
+                        end++;
+                    std::u16string publicName(canonical->chars, static_cast<size_t>(i));
+                    publicName.append(input->chars + j, static_cast<size_t>(end - j));
+                    return dn2cpp_string_from_chars(publicName.data(), static_cast<int32_t>(publicName.size()));
+                }
+            return dn2cpp_string_from_chars(canonical->chars, i);
+        }
+    int32_t canonicalExtension = -1;
+    for (int32_t i = 0; i + 2 < canonical->length; i++)
+        if (canonical->chars[i] == u'-'
+            && (canonical->chars[i + 1] == u'u' || canonical->chars[i + 1] == u't')
+            && canonical->chars[i + 2] == u'-')
+        {
+            canonicalExtension = i;
+            break;
+        }
+    if (canonicalExtension < 0)
+        return canonical;
+    for (int32_t i = 0; i + 2 < input->length; i++)
+        if (input->chars[i] == u'-'
+            && (input->chars[i + 1] == u'u' || input->chars[i + 1] == u't'
+                || input->chars[i + 1] == u'U' || input->chars[i + 1] == u'T')
+            && input->chars[i + 2] == u'-')
+        {
+            if (input->chars[i + 1] == u'U' || input->chars[i + 1] == u'T')
+                return dn2cpp_string_from_chars(canonical->chars, canonicalExtension);
+            int32_t end = i;
+            while (end < input->length && input->chars[end] != u'\0')
+                end++;
+            std::u16string publicName(canonical->chars, static_cast<size_t>(canonicalExtension));
+            publicName.append(input->chars + i, static_cast<size_t>(end - i));
+            return dn2cpp_string_from_chars(publicName.data(), static_cast<int32_t>(publicName.size()));
+        }
+    return canonical;
 }
 
 static const Dn2CppCultureRow* dn2cpp_culture_find_format_row(Dn2CppString* name)
@@ -349,21 +464,119 @@ struct Dn2CppCultureCacheNode
 {
     Dn2CppNumberFormatInfo nfi;
     const Dn2CppCultureRow* row; // null for an unmodeled name
+    Dn2CppString* identity;
+    bool arabNumbering;
     Dn2CppCultureCacheNode* next;
 };
 static DN2CPP_GC_STATIC_ROOT Dn2CppCultureCacheNode* g_cultureCache = nullptr;
 static std::mutex& g_cultureCacheMutex = dn2cpp_never_destroyed<std::mutex>();
 
+static bool dn2cpp_culture_has_arab_numbering(Dn2CppString* identity)
+{
+    int32_t length = 0;
+    // ICU stops at NUL. An underscore selects its legacy collation path,
+    // where Unicode numbering extensions are not interpreted.
+    while (length < identity->length && identity->chars[length] != u'\0')
+    {
+        if (identity->chars[length] == u'_')
+            return false;
+        length++;
+    }
+    std::u16string locale(identity->chars, static_cast<size_t>(length));
+    size_t start = 0;
+    bool unicodeExtension = false;
+    while (start < locale.size())
+    {
+        size_t end = locale.find(u'-', start);
+        if (end == std::u16string::npos)
+            end = locale.size();
+        if (start > 0 && end - start == 1)
+        {
+            if (locale[start] == u'x' || locale[start] == u'X')
+                return false;
+            if (locale[start] == u'u')
+            {
+                unicodeExtension = true;
+                start = end + 1;
+                break;
+            }
+        }
+        start = end + 1;
+    }
+    if (!unicodeExtension)
+        return false;
+    while (start < locale.size())
+    {
+        size_t end = locale.find(u'-', start);
+        if (end == std::u16string::npos)
+            end = locale.size();
+        size_t count = end - start;
+        if (count == 1)
+            break;
+        if (count != 2)
+        {
+            start = end + 1;
+            continue;
+        }
+        bool numbering = locale[start] == u'n' && locale[start + 1] == u'u';
+        size_t valueStart = end + 1;
+        size_t valueEnd = end;
+        start = valueStart;
+        while (start < locale.size())
+        {
+            end = locale.find(u'-', start);
+            if (end == std::u16string::npos)
+                end = locale.size();
+            if (end - start < 3)
+                break;
+            valueEnd = end;
+            start = end + 1;
+        }
+        if (numbering)
+            return valueEnd >= valueStart && valueEnd - valueStart == 4
+                && locale.compare(valueStart, 4, u"arab") == 0;
+    }
+    return false;
+}
+
+static void dn2cpp_culture_apply_format(Dn2CppNumberFormatInfo* n, const Dn2CppCultureRow* row)
+{
+    n->numberDecimal = n->percentDecimal = n->currencyDecimal =
+        dn2cpp_lit16(row->decimalSep);
+    n->numberGroup = n->percentGroup = n->currencyGroup =
+        dn2cpp_lit16(row->groupSep);
+    n->groupSizes[0] = row->groupSize0;
+    n->groupSizes[1] = row->groupSize1;
+    n->groupSizeCount = row->groupSize1 < 0 ? 1 : 2;
+    n->negativeSign = dn2cpp_lit16(row->negativeSign);
+    n->nan = dn2cpp_lit16(row->nan);
+    n->posInf = dn2cpp_lit16(u"∞");
+    n->negInf = dn2cpp_lit16(row->negInf);
+    n->percentSymbol = dn2cpp_lit16(row->percent);
+    n->currencySymbol = dn2cpp_lit16(row->currency);
+    n->currencyDigits = row->currencyDigits;
+    n->currencyPosPattern = row->currencyPos;
+    n->currencyNegPattern = row->currencyNeg;
+    n->percentPosPattern = row->percentPos;
+    n->percentNegPattern = row->percentNeg;
+}
+
 // Intern the requested identity over its formatting row, or invariant symbols
 // when no row resolves. Caller must NOT hold the lock.
-static const Dn2CppNumberFormatInfo* dn2cpp_culture_intern(const Dn2CppCultureRow* row, Dn2CppString* name)
+static const Dn2CppNumberFormatInfo* dn2cpp_culture_intern(const Dn2CppCultureRow* row,
+    Dn2CppString* identity, Dn2CppString* name = nullptr, int32_t lcid = -1,
+    bool arabNumbering = false)
 {
+    if (identity == nullptr)
+        identity = dn2cpp_lit16(row->name);
     if (name == nullptr)
-        name = dn2cpp_lit16(row->name);
+        name = identity;
     std::lock_guard<std::mutex> lock(g_cultureCacheMutex);
     for (Dn2CppCultureCacheNode* p = g_cultureCache; p != nullptr; p = p->next)
     {
-        if (p->row == row && dn2cpp_string_equals(p->nfi.cultureName, name))
+        if (p->row == row && p->arabNumbering == arabNumbering
+            && dn2cpp_string_equals(p->identity, identity)
+            && dn2cpp_string_equals(p->nfi.cultureName, name))
             return &p->nfi;
     }
     // Allocate and LINK first, then fill: once linked, the node is reachable from
@@ -372,10 +585,27 @@ static const Dn2CppNumberFormatInfo* dn2cpp_culture_intern(const Dn2CppCultureRo
     auto* node = static_cast<Dn2CppCultureCacheNode*>(dn2cpp_alloc(sizeof(Dn2CppCultureCacheNode)));
     node->nfi = *dn2cpp_nfi_invariant();
     node->row = row;
+    node->arabNumbering = arabNumbering;
     dn2cpp_gc_store_ref(&node->next, g_cultureCache);
     g_cultureCache = node;
+    dn2cpp_gc_store_ref(&node->identity, identity);
     dn2cpp_gc_store_ref(&node->nfi.cultureName, name);
-    node->nfi.lcid = 4096;
+    Dn2CppString* realName = name;
+    for (int32_t i = 0; i < identity->length; i++)
+        if (identity->chars[i] == u'_')
+        {
+            if (dn2cpp_string_equals(name, identity))
+                realName = identity;
+            else
+            {
+                std::u16string resolved(name->chars, static_cast<size_t>(name->length));
+                resolved.append(identity->chars + i, static_cast<size_t>(identity->length - i));
+                realName = dn2cpp_string_from_chars(resolved.data(), static_cast<int32_t>(resolved.size()));
+            }
+            break;
+        }
+    dn2cpp_gc_store_ref(&node->nfi.cultureRealName, realName);
+    node->nfi.lcid = lcid >= 0 ? lcid : 4096;
     node->nfi.isNeutralCulture = dn2cpp_culture_region_end(name) == 0 ? 1 : 0;
     if (row == nullptr)
     {
@@ -387,46 +617,136 @@ static const Dn2CppNumberFormatInfo* dn2cpp_culture_intern(const Dn2CppCultureRo
     }
     if (dn2cpp_culture_name_eq_ci(name, row->name))
     {
-        node->nfi.lcid = row->lcid;
+        if (lcid < 0)
+            node->nfi.lcid = row->lcid;
         node->nfi.isNeutralCulture = row->isNeutral;
     }
-    node->nfi.numberDecimal = node->nfi.percentDecimal = node->nfi.currencyDecimal =
-        dn2cpp_lit16(row->decimalSep);
-    node->nfi.numberGroup = node->nfi.percentGroup = node->nfi.currencyGroup =
-        dn2cpp_lit16(row->groupSep);
-    node->nfi.groupSizes[0] = row->groupSize0;
-    node->nfi.groupSizes[1] = row->groupSize1;
-    node->nfi.groupSizeCount = row->groupSize1 < 0 ? 1 : 2;
-    node->nfi.negativeSign = dn2cpp_lit16(row->negativeSign);
-    node->nfi.nan = dn2cpp_lit16(row->nan);
-    node->nfi.posInf = dn2cpp_lit16(u"∞");
-    node->nfi.negInf = dn2cpp_lit16(row->negInf);
-    node->nfi.percentSymbol = dn2cpp_lit16(row->percent);
-    node->nfi.currencySymbol = dn2cpp_lit16(row->currency);
-    node->nfi.currencyDigits = row->currencyDigits;
-    node->nfi.currencyPosPattern = row->currencyPos;
-    node->nfi.currencyNegPattern = row->currencyNeg;
-    node->nfi.percentPosPattern = row->percentPos;
-    node->nfi.percentNegPattern = row->percentNeg;
+    dn2cpp_culture_apply_format(&node->nfi, row);
+    if (arabNumbering)
+    {
+        Dn2CppString base{};
+        base.chars = row->name;
+        while (row->name[base.length] != u'\0')
+            base.length++;
+        for (const Dn2CppCultureRow& numeric : kCultureArabicFormats)
+            if (dn2cpp_culture_name_eq_ci(&base, numeric.name))
+            {
+                dn2cpp_culture_apply_format(&node->nfi, &numeric);
+                break;
+            }
+    }
     return &node->nfi;
 }
 
-const Dn2CppNumberFormatInfo* dn2cpp_culture_by_name(Dn2CppString* name, bool cached)
+// CultureData keys its case-insensitive cache separately for each override
+// choice. GetCultureInfo lowercases before entering the no-override cache.
+struct Dn2CppCultureRequestCacheNode
 {
-    // Real .NET's CultureData maps the one-letter name "C", in either case, to
-    // the invariant culture, and so does a host default of LANG=c.
+    Dn2CppString* key;
+    const Dn2CppNumberFormatInfo* nfi;
+    bool useUserOverride;
+    Dn2CppCultureRequestCacheNode* next;
+};
+static DN2CPP_GC_STATIC_ROOT Dn2CppCultureRequestCacheNode* g_cultureRequestCache = nullptr;
+
+static const Dn2CppNumberFormatInfo* dn2cpp_culture_request_cache(Dn2CppString* key,
+    bool useUserOverride, const Dn2CppNumberFormatInfo* resolved = nullptr)
+{
+    std::lock_guard<std::mutex> lock(g_cultureCacheMutex);
+    for (Dn2CppCultureRequestCacheNode* p = g_cultureRequestCache; p != nullptr; p = p->next)
+        if (p->useUserOverride == useUserOverride && dn2cpp_string_equals(p->key, key))
+            return p->nfi;
+    if (resolved == nullptr)
+        return nullptr;
+    auto* node = static_cast<Dn2CppCultureRequestCacheNode*>(dn2cpp_alloc(sizeof(Dn2CppCultureRequestCacheNode)));
+    dn2cpp_gc_store_ref(&node->next, g_cultureRequestCache);
+    g_cultureRequestCache = node;
+    dn2cpp_gc_store_ref(&node->key, key);
+    dn2cpp_gc_store_ref(&node->nfi, resolved);
+    node->useUserOverride = useUserOverride;
+    return resolved;
+}
+
+// CultureInfo's object cache is separate from CultureData. Lookup uses the
+// requested name, while insertion uses the resolved name (including its sort).
+struct Dn2CppNamedCultureCacheNode
+{
+    Dn2CppString* key;
+    const Dn2CppNumberFormatInfo* nfi;
+    Dn2CppNamedCultureCacheNode* next;
+};
+static DN2CPP_GC_STATIC_ROOT Dn2CppNamedCultureCacheNode* g_namedCultureCache = nullptr;
+
+static const Dn2CppNumberFormatInfo* dn2cpp_culture_named_lookup(Dn2CppString* key)
+{
+    std::lock_guard<std::mutex> lock(g_cultureCacheMutex);
+    for (Dn2CppNamedCultureCacheNode* p = g_namedCultureCache; p != nullptr; p = p->next)
+        if (dn2cpp_string_equals(p->key, key))
+            return p->nfi;
+    return nullptr;
+}
+
+static const Dn2CppNumberFormatInfo* dn2cpp_culture_named_create(
+    const Dn2CppNumberFormatInfo* data)
+{
+    auto* result = static_cast<Dn2CppNumberFormatInfo*>(dn2cpp_alloc(sizeof(Dn2CppNumberFormatInfo)));
+    *result = *data;
+    Dn2CppString* key = dn2cpp_culture_lower_ascii(data->cultureRealName);
+    std::lock_guard<std::mutex> lock(g_cultureCacheMutex);
+    for (Dn2CppNamedCultureCacheNode* p = g_namedCultureCache; p != nullptr; p = p->next)
+        if (dn2cpp_string_equals(p->key, key))
+            return result;
+    auto* node = static_cast<Dn2CppNamedCultureCacheNode*>(dn2cpp_alloc(sizeof(Dn2CppNamedCultureCacheNode)));
+    dn2cpp_gc_store_ref(&node->next, g_namedCultureCache);
+    g_namedCultureCache = node;
+    dn2cpp_gc_store_ref(&node->key, key);
+    dn2cpp_gc_store_ref(&node->nfi, static_cast<const Dn2CppNumberFormatInfo*>(result));
+    return result;
+}
+
+const Dn2CppNumberFormatInfo* dn2cpp_culture_by_name(Dn2CppString* name, bool cached, bool useUserOverride)
+{
     if (name == nullptr || name->length == 0
         || (name->length == 1 && (name->chars[0] == u'C' || name->chars[0] == u'c')))
         return dn2cpp_nfi_invariant();
-    // GetCultureInfo ASCII-lowercases its cache key before parsing, including refusals.
+    Dn2CppString* key = dn2cpp_culture_lower_ascii(name);
     if (cached)
-        name = dn2cpp_culture_lower_ascii(name);
+    {
+        name = key;
+        useUserOverride = false;
+        if (const Dn2CppNumberFormatInfo* existing = dn2cpp_culture_named_lookup(key))
+            return existing;
+    }
+    if (const Dn2CppNumberFormatInfo* existing = dn2cpp_culture_request_cache(key, useUserOverride))
+        return cached ? dn2cpp_culture_named_create(existing) : existing;
     Dn2CppString* canonical = dn2cpp_culture_normalize_name(name);
     if (canonical == nullptr)
         dn2cpp_throw_culture_not_found(name, 0);
     if (canonical->length == 0)
         return dn2cpp_nfi_invariant();
-    return dn2cpp_culture_intern(dn2cpp_culture_find_format_row(canonical), canonical);
+    Dn2CppString* publicName = dn2cpp_culture_public_name(name, canonical);
+    int32_t lcid = 4096;
+    bool sorted = false;
+    for (int32_t i = 0; i < canonical->length; i++)
+        sorted = sorted || canonical->chars[i] == u'_';
+    if (sorted)
+    {
+        for (const Dn2CppCultureSortIdentifier& sort : kCultureSortIdentifiers)
+            if (dn2cpp_culture_name_eq_ci(canonical, sort.name)
+                && publicName->length < canonical->length
+                && canonical->chars[publicName->length] == u'_')
+            {
+                lcid = sort.lcid;
+                break;
+            }
+    }
+    else if (const Dn2CppCultureRow* metadata = dn2cpp_culture_find_row(publicName))
+        lcid = metadata->lcid;
+    const Dn2CppNumberFormatInfo* result = dn2cpp_culture_intern(
+        dn2cpp_culture_find_format_row(canonical), canonical, publicName, lcid,
+        dn2cpp_culture_has_arab_numbering(key));
+    result = dn2cpp_culture_request_cache(key, useUserOverride, result);
+    return cached ? dn2cpp_culture_named_create(result) : result;
 }
 
 const Dn2CppNumberFormatInfo* dn2cpp_culture_create_specific(Dn2CppString* name)
@@ -435,27 +755,65 @@ const Dn2CppNumberFormatInfo* dn2cpp_culture_create_specific(Dn2CppString* name)
         && !(name->length == 1 && (name->chars[0] == u'C' || name->chars[0] == u'c'))
         && dn2cpp_culture_normalize_name(name) == nullptr)
     {
-        // CreateSpecificCulture retries malformed input through its language prefix.
+        // Malformed country/variant input retries through its language prefix.
         for (int32_t i = 0; i < name->length; i++)
             if (name->chars[i] == u'-')
-                return dn2cpp_culture_by_name(dn2cpp_string_from_chars(name->chars, i));
+                return dn2cpp_culture_create_specific(dn2cpp_string_from_chars(name->chars, i));
     }
-    return dn2cpp_culture_by_name(name);
+    const Dn2CppNumberFormatInfo* culture = dn2cpp_culture_by_name(name);
+    if (culture->isNeutralCulture == 0)
+        return culture;
+    for (const Dn2CppCultureNameMapping& specific : kCultureSpecificNames)
+        if (dn2cpp_culture_name_eq_ci(culture->cultureName, specific.name))
+            return dn2cpp_culture_by_name(dn2cpp_lit16(specific.target));
+    return dn2cpp_nfi_invariant();
 }
+
+struct Dn2CppLcidCultureCacheNode
+{
+    int32_t lcid;
+    const Dn2CppNumberFormatInfo* nfi;
+    Dn2CppLcidCultureCacheNode* next;
+};
+static DN2CPP_GC_STATIC_ROOT Dn2CppLcidCultureCacheNode* g_lcidCultureCache = nullptr;
 
 const Dn2CppNumberFormatInfo* dn2cpp_culture_by_lcid(int32_t lcid)
 {
     if (lcid == 127)
         return dn2cpp_nfi_invariant();
-    // 4096 is LOCALE_CUSTOM_UNSPECIFIED — what a culture WITHOUT an LCID
-    // reports. Several rows carry it, so honouring it would hand back whichever
-    // came first. Real .NET refuses it too.
+    // LOCALE_CUSTOM_UNSPECIFIED names the absence of an LCID, not a row.
     if (lcid == 4096)
         return nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_cultureCacheMutex);
+        for (Dn2CppLcidCultureCacheNode* p = g_lcidCultureCache; p != nullptr; p = p->next)
+            if (p->lcid == lcid)
+                return p->nfi;
+    }
+    const Dn2CppNumberFormatInfo* data = nullptr;
+    for (const Dn2CppCultureSortIdentifier& sort : kCultureSortIdentifiers)
+        if (sort.lcid == lcid)
+            data = dn2cpp_culture_by_name(dn2cpp_lit16(sort.name), false, false);
+    for (const Dn2CppCultureRow& row : kCultureIdentifierFormats)
+        if (row.lcid == lcid)
+            data = dn2cpp_culture_intern(&row, nullptr);
     for (size_t i = 0; i < kCultureCount; i++)
         if (kCultures[i].lcid == lcid)
-            return dn2cpp_culture_intern(&kCultures[i], nullptr);
-    return nullptr;
+            data = dn2cpp_culture_intern(&kCultures[i], nullptr);
+    if (data == nullptr)
+        return nullptr;
+    auto* result = static_cast<Dn2CppNumberFormatInfo*>(dn2cpp_alloc(sizeof(Dn2CppNumberFormatInfo)));
+    *result = *data;
+    std::lock_guard<std::mutex> lock(g_cultureCacheMutex);
+    for (Dn2CppLcidCultureCacheNode* p = g_lcidCultureCache; p != nullptr; p = p->next)
+        if (p->lcid == lcid)
+            return p->nfi;
+    auto* node = static_cast<Dn2CppLcidCultureCacheNode*>(dn2cpp_alloc(sizeof(Dn2CppLcidCultureCacheNode)));
+    dn2cpp_gc_store_ref(&node->next, g_lcidCultureCache);
+    g_lcidCultureCache = node;
+    dn2cpp_gc_store_ref(&node->nfi, static_cast<const Dn2CppNumberFormatInfo*>(result));
+    node->lcid = lcid;
+    return result;
 }
 
 int32_t dn2cpp_culture_lcid(const Dn2CppNumberFormatInfo* c)
@@ -508,10 +866,10 @@ static const Dn2CppNumberFormatInfo* dn2cpp_culture_host_default()
     std::call_once(g_hostCultureOnce, [] {
         char name[128];
         int32_t n = dn2cpp_pal_default_locale_name(name, sizeof(name));
-        Dn2CppString* canonical = n > 0
-            ? dn2cpp_culture_normalize_name(dn2cpp_string_from_utf8(name, n)) : nullptr;
+        Dn2CppString* requested = n > 0 ? dn2cpp_string_from_utf8(name, n) : nullptr;
+        Dn2CppString* canonical = requested != nullptr ? dn2cpp_culture_normalize_name(requested) : nullptr;
         g_hostCulture = canonical != nullptr && canonical->length > 0
-            ? dn2cpp_culture_by_name(canonical) : dn2cpp_nfi_invariant();
+            ? dn2cpp_culture_by_name(requested) : dn2cpp_nfi_invariant();
     });
     return g_hostCulture;
 }
@@ -565,7 +923,7 @@ const Dn2CppNumberFormatInfo* dn2cpp_culture_installed_ui()
     return dn2cpp_culture_host_default();
 }
 
-// CultureInfo.Name / ToString. Defensive: a zeroed mutable NFI (or any culture
+// CultureInfo.Name. Defensive: a zeroed mutable NFI (or any culture
 // built before the name was modeled) reads as the invariant "".
 Dn2CppString* dn2cpp_culture_name(const Dn2CppNumberFormatInfo* c)
 {
@@ -574,12 +932,19 @@ Dn2CppString* dn2cpp_culture_name(const Dn2CppNumberFormatInfo* c)
     return c->cultureName;
 }
 
+Dn2CppString* dn2cpp_culture_tostring(const Dn2CppNumberFormatInfo* c)
+{
+    if (c == nullptr || c->cultureRealName == nullptr)
+        return dn2cpp_culture_name(c);
+    return c->cultureRealName;
+}
+
 Dn2CppString* dn2cpp_textinfo_tostring(const Dn2CppNumberFormatInfo* c)
 {
     if (c == nullptr)
         dn2cpp_throw_null_reference();
     return dn2cpp_string_concat2(
-        dn2cpp_string_from_utf8("TextInfo - ", 11), dn2cpp_culture_name(c));
+        dn2cpp_string_from_utf8("TextInfo - ", 11), dn2cpp_culture_tostring(c));
 }
 
 // `new NumberFormatInfo()` — a mutable GC-heap copy of the invariant; the object
@@ -619,12 +984,12 @@ Dn2CppObject* dn2cpp_nfi_clone(const Dn2CppNumberFormatInfo* n, int32_t kind)
 // The managed types lower to the headerless `const Dn2CppNumberFormatInfo*`,
 // so an escape into an `object` context allocates a real managed object around
 // the pointer (Dn2CppNfiBox, dn2cpp_core.h). ToString on the CultureInfo form
-// is the culture NAME ("" for invariant), matching CultureInfo.ToString.
+// retains the resolved name and alternate sort, matching CultureInfo.ToString.
 // NumberFormatInfo keeps the default type-name display; TextInfo's slot
 // preserves its culture-bearing "TextInfo - {culture}" display after wrapping.
 static Dn2CppString* dn2cpp_cultureinfo_box_tostring(Dn2CppObject* o)
 {
-    return dn2cpp_culture_name(reinterpret_cast<Dn2CppNfiBox*>(o)->nfi);
+    return dn2cpp_culture_tostring(reinterpret_cast<Dn2CppNfiBox*>(o)->nfi);
 }
 
 static Dn2CppString* dn2cpp_textinfo_box_tostring(Dn2CppObject* o)

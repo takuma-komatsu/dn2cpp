@@ -1509,10 +1509,16 @@ internal sealed partial class MethodCompiler
                 ? _reader.GetMemberReference((MemberReferenceHandle)handle)
                     .DecodeMethodSignature(_c.SigProvider, _method.Context).ParameterTypes
                 : ResolveMethodDef((MethodDefinitionHandle)handle).Signature.ParameterTypes;
+            string useUserOverride = "true";
             for (int i = ciParams.Length - 1; i >= 1; i--)
-                Pop(); // useUserOverride / CultureInfo-parent overloads: keep only the name
+            {
+                var argument = Pop();
+                if (i == 1 && ciParams[i].Kind == TypeKind.Primitive
+                    && ciParams[i].Primitive == PrimitiveTypeCode.Boolean)
+                    useUserOverride = Cast(argument, "int32_t");
+            }
             string nm = Cast(Pop(), "Dn2CppString*");
-            Push(StackKind.Ref, "const Dn2CppNumberFormatInfo*", $"dn2cpp_culture_by_name({nm})");
+            Push(StackKind.Ref, "const Dn2CppNumberFormatInfo*", $"dn2cpp_culture_by_name({nm}, false, {useUserOverride})");
             return;
         }
         if (NewobjTypeName(handle) == "System.Globalization.NumberFormatInfo")

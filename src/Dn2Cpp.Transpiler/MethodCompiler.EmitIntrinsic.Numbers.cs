@@ -1210,11 +1210,13 @@ internal sealed partial class MethodCompiler
             // invariant culture and plain NumberFormatInfo read as ""). BCL code keys
             // case-folding tiers and caches off it, so the name must survive the
             // CultureInfo -> NFI lowering.
-            case ("System.Globalization.CultureInfo", "get_Name")
-                or ("System.Globalization.CultureInfo", "ToString")
-                    when sig.ParameterTypes.Length == 0:
+            case ("System.Globalization.CultureInfo", "get_Name") when sig.ParameterTypes.Length == 0:
                 Push(StackKind.Ref, "Dn2CppString*",
                     $"dn2cpp_culture_name({Cast(Pop(), "const Dn2CppNumberFormatInfo*")})");
+                return true;
+            case ("System.Globalization.CultureInfo", "ToString") when sig.ParameterTypes.Length == 0:
+                Push(StackKind.Ref, "Dn2CppString*",
+                    $"dn2cpp_culture_tostring({Cast(Pop(), "const Dn2CppNumberFormatInfo*")})");
                 return true;
             // ---- CultureInfo object-model accessors beyond the NFI symbols ----
             // These read per-culture metadata the runtime carries no table for, and each

@@ -30,6 +30,42 @@ namespace CultureInfoApi
                 return;
             }
 
+            if (args.Length > 0 && args[0] == "culture-locale-upper")
+            {
+                Console.WriteLine("== culture uppercase extensions ==");
+                foreach (string name in new[] { "de-DE-U-NU-LATN", "en-US-U-NU-ARAB" })
+                {
+                    WriteLocaleData(name, false);
+                    Console.WriteLine("  cached after constructor=" + CultureInfo.GetCultureInfo(name).Name);
+                }
+                Console.WriteLine("culture uppercase extensions end");
+                return;
+            }
+
+            if (args.Length > 0 && (args[0] == "culture-locale-cache-true"
+                || args[0] == "culture-locale-cache-false"))
+            {
+                RunCultureDataCache(args[0] == "culture-locale-cache-true");
+                return;
+            }
+
+            if (args.Length > 0 && args[0] == "culture-numbering-boundaries")
+            {
+                RunNumberingBoundaries();
+                return;
+            }
+
+            if (args.Length > 0 && (args[0] == "culture-sort-strings" || args[0] == "culture-sort-upper-key"))
+            {
+                RunSortStrings(args[0] == "culture-sort-upper-key");
+                return;
+            }
+            if (args.Length > 0 && args[0].StartsWith("culture-wrapper-", StringComparison.Ordinal))
+            {
+                RunWrapperCache(args[0]);
+                return;
+            }
+
             CultureInfo inv = CultureInfo.InvariantCulture;
             Console.WriteLine("== CultureInfo object model ==");
             Console.WriteLine("NativeName=" + inv.NativeName);
@@ -341,6 +377,175 @@ namespace CultureInfoApi
                 Console.WriteLine("  script '" + culture.Name + "': nan=" + culture.NumberFormat.NaNSymbol);
             }
             Console.WriteLine("culture name resolution end");
+            RunLocaleData();
+        }
+
+        private static void RunLocaleData()
+        {
+            Console.WriteLine("== culture locale data ==");
+            foreach (string name in new[]
+            {
+                "eng", "eng-US", "deu-DE", "fra-FR", "und", "de_DE",
+                "de-DE_phoneb", "de-DE_PHONEB", "de-DE-u-co-phoneb", "de-DE-u-co-phonebk",
+                "de-DE-u-co-phoneb-foo", "en-US-u-co-phoneb-nu-arab", "de-DE-u-co-phonebk-nu-arab",
+                "en-US-u-nu-arab", "en-US-u-ca-gregory-x-nu-arab", "de-NO", "de-FOO", "zh-Hans-HK", "zh-Hans-TW",
+                "de-Latn", "de-Latn-DE", "zh-Hans", "zh-Hant"
+            })
+                WriteLocaleData(name);
+            CultureInfo undefinedLanguage = new CultureInfo("und-US");
+            Console.WriteLine("  undefined language name='" + undefinedLanguage.Name
+                + "' LCID=" + undefinedLanguage.LCID + " neutral=" + undefinedLanguage.IsNeutralCulture
+                + " override=" + new CultureInfo("und-US", false).Name);
+            foreach (string name in new[]
+            {
+                "", "und", "eng", "de", "de-Latn", "zh", "zh-Hans", "zh-Hant", "de_DE",
+                "bn", "sr", "sr-Latn", "de-DE.UTF-8", "de-", "en-US;q=0.9"
+            })
+                Console.WriteLine("  specific '" + name + "' -> '" + CultureInfo.CreateSpecificCulture(name).Name + "'");
+            foreach (int lcid in new[] { 66567, 1034, 133124 })
+            {
+                CultureInfo reverse = CultureInfo.GetCultureInfo(lcid);
+                string sortName = lcid == 66567 ? "de-DE_phoneb"
+                    : lcid == 1034 ? "es-ES_tradnl" : "zh-CN_stroke";
+                Console.WriteLine("  sort LCID=" + lcid + " -> '" + reverse.Name + "' LCID=" + reverse.LCID
+                    + " named=" + ReferenceEquals(reverse, CultureInfo.GetCultureInfo(sortName))
+                    + " repeat=" + ReferenceEquals(reverse, CultureInfo.GetCultureInfo(lcid)));
+            }
+            CultureInfo baseNumeric = CultureInfo.GetCultureInfo(1031);
+            Console.WriteLine("  base LCID named=" + ReferenceEquals(baseNumeric, CultureInfo.GetCultureInfo("de-DE"))
+                + " repeat=" + ReferenceEquals(baseNumeric, CultureInfo.GetCultureInfo(1031)));
+            CultureInfo sort = CultureInfo.GetCultureInfo("de-DE_phoneb");
+            Console.WriteLine("  sort cache case=" + ReferenceEquals(sort, CultureInfo.GetCultureInfo("DE-de_PHONEB"))
+                + " base=" + ReferenceEquals(sort, CultureInfo.GetCultureInfo("de-DE")));
+            CultureInfo arab = CultureInfo.GetCultureInfo("en-US-u-nu-arab");
+            Console.WriteLine("  numbering cache case=" + ReferenceEquals(arab, CultureInfo.GetCultureInfo("EN-us-U-NU-ARAB"))
+                + " base=" + ReferenceEquals(arab, CultureInfo.GetCultureInfo("en-US")));
+            Console.WriteLine("culture locale data end");
+        }
+
+        private static void RunNumberingBoundaries()
+        {
+            Console.WriteLine("== culture numbering boundaries ==");
+            foreach (string name in new[]
+            {
+                "en-US-x-u-nu-arab", "en-US-u-nu-latn-nu-arab", "sv-SE-u-nu-arab",
+                "en-US\0-u-nu-arab", "en-US-u-nu-arab\0ignored", "en-US_phoneb-u-nu-arab",
+                "en-US-u-nu-arab_phoneb"
+            })
+            {
+                CultureInfo culture = new CultureInfo(name);
+                NumberFormatInfo n = culture.NumberFormat;
+                Console.WriteLine("  '" + name + "': decimal=" + n.NumberDecimalSeparator
+                    + " group=" + n.NumberGroupSeparator + " negative=" + n.NegativeSign
+                    + " currency=" + n.CurrencySymbol + " percent=" + n.PercentSymbol);
+                Console.WriteLine("    patterns=" + n.CurrencyPositivePattern + "," + n.CurrencyNegativePattern
+                    + "," + n.PercentPositivePattern + "," + n.PercentNegativePattern
+                    + " n=" + (-1234.5).ToString("N2", culture)
+                    + " c=" + (1234.5).ToString("C", culture)
+                    + " p=" + (-0.125).ToString("P2", culture));
+            }
+            Console.WriteLine("culture numbering boundaries end");
+        }
+
+        private static void RunSortStrings(bool upperKey)
+        {
+            Console.WriteLine("== culture sort strings ==");
+            string[] names = upperKey ? new[] { "de-DE-u-CO-phoneb" }
+                : new[] { "de-DE_PHONEB", "de-DE-u-co-phoneb", "de-DE-u-co-phonebk" };
+            foreach (string name in names)
+            {
+                CultureInfo culture = new CultureInfo(name);
+                object boxed = culture;
+                TextInfo text = culture.TextInfo;
+                object boxedText = text;
+                Console.WriteLine("  '" + name + "': name=" + culture.Name + " direct=" + culture.ToString()
+                    + " object=" + boxed.ToString() + " generic=" + GenericToString(culture)
+                    + " concat=" + culture + $" interp={culture}");
+                Console.WriteLine("    text=" + text.ToString() + " object=" + boxedText.ToString()
+                    + " generic=" + GenericToString(text) + " concat=" + text + $" interp={text}");
+            }
+            Console.WriteLine("culture sort strings end");
+        }
+
+        private static void RunWrapperCache(string mode)
+        {
+            string firstName;
+            string secondName;
+            if (mode == "culture-wrapper-alias-first")
+            {
+                firstName = "eng";
+                secondName = "en";
+            }
+            else if (mode == "culture-wrapper-base-first")
+            {
+                firstName = "en";
+                secondName = "eng";
+            }
+            else if (mode == "culture-wrapper-sort-first")
+            {
+                firstName = "de-DE_phoneb";
+                secondName = "de-DE-u-co-phoneb";
+            }
+            else
+            {
+                firstName = "de-DE-u-co-phoneb";
+                secondName = "de-DE_phoneb";
+            }
+            CultureInfo first = CultureInfo.GetCultureInfo(firstName);
+            CultureInfo second = CultureInfo.GetCultureInfo(secondName);
+            CultureInfo third = CultureInfo.GetCultureInfo(firstName);
+            CultureInfo fourth = CultureInfo.GetCultureInfo(secondName);
+            Console.WriteLine("== " + mode + " ==");
+            Console.WriteLine("  first=" + first.Name + ":" + first.LCID
+                + " second=" + second.Name + ":" + second.LCID);
+            Console.WriteLine("  pair=" + ReferenceEquals(first, second)
+                + " repeat first=" + ReferenceEquals(first, third)
+                + " repeat second=" + ReferenceEquals(second, fourth));
+            Console.WriteLine("culture wrapper cache end");
+        }
+
+        // CultureData keys lowercase input and the override flag; GetCultureInfo uses false.
+        private static void RunCultureDataCache(bool useUserOverride)
+        {
+            Console.WriteLine("== culture data cache override=" + useUserOverride + " ==");
+            foreach (string name in new[] { "de-DE-U-NU-LATN", "en-US-U-NU-ARAB" })
+            {
+                string lower = name.ToLowerInvariant();
+                CultureInfo first = new CultureInfo(name, useUserOverride);
+                CultureInfo cached = CultureInfo.GetCultureInfo(lower);
+                CultureInfo otherOverride = new CultureInfo(lower, !useUserOverride);
+                CultureInfo sameOverride = new CultureInfo(lower, useUserOverride);
+                Console.WriteLine("  '" + name + "': first='" + first.Name + "' LCID=" + first.LCID
+                    + " cached='" + cached.Name + "' LCID=" + cached.LCID);
+                Console.WriteLine("    other override='" + otherOverride.Name + "' LCID=" + otherOverride.LCID
+                    + " same override='" + sameOverride.Name + "' LCID=" + sameOverride.LCID);
+                Console.WriteLine("    number=" + (1234.5).ToString("N2", first)
+                    + "|" + (1234.5).ToString("N2", cached)
+                    + "|" + (1234.5).ToString("N2", otherOverride)
+                    + "|" + (1234.5).ToString("N2", sameOverride));
+                Console.WriteLine("    cache identity=" + ReferenceEquals(cached, CultureInfo.GetCultureInfo(name)));
+            }
+            Console.WriteLine("culture data cache end");
+        }
+
+        private static void WriteLocaleData(string name, bool includeOverride = true)
+        {
+            CultureInfo culture = new CultureInfo(name);
+            NumberFormatInfo n = culture.NumberFormat;
+            Console.WriteLine("  locale '" + name + "' -> '" + culture.Name + "' LCID=" + culture.LCID
+                + " neutral=" + culture.IsNeutralCulture
+                + (includeOverride ? " override=" + new CultureInfo(name, false).Name : ""));
+            Console.WriteLine("    separators=" + n.NumberDecimalSeparator + "|" + n.NumberGroupSeparator
+                + "|" + n.CurrencyDecimalSeparator + "|" + n.CurrencyGroupSeparator
+                + "|" + n.PercentDecimalSeparator + "|" + n.PercentGroupSeparator);
+            Console.WriteLine("    symbols=" + n.NegativeSign + "|" + n.NaNSymbol + "|" + n.PositiveInfinitySymbol
+                + "|" + n.NegativeInfinitySymbol + "|" + n.CurrencySymbol + "|" + n.PercentSymbol);
+            Console.WriteLine("    groups=" + Sizes(n.NumberGroupSizes) + "|" + Sizes(n.CurrencyGroupSizes)
+                + "|" + Sizes(n.PercentGroupSizes) + " currencyDigits=" + n.CurrencyDecimalDigits
+                + " patterns=" + n.CurrencyPositivePattern + "," + n.CurrencyNegativePattern
+                + "," + n.PercentPositivePattern + "," + n.PercentNegativePattern);
+            Console.WriteLine("    n=" + (-1234567.89).ToString("N2", culture)
+                + " c=" + (1234.5).ToString("C", culture) + " p=" + (-0.125).ToString("P2", culture));
         }
 
         private static void WriteCultureFault(CultureNotFoundException exception)
