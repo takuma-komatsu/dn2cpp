@@ -1323,14 +1323,18 @@ internal sealed class ClassInfo
     private string? _cppName;
     public string CppName => _cppName ??= CppNaming.Sanitize(CppNamePrefix + FullName);
 
-    /// <summary>This class's fragment in a generic-argument mangle — <see cref="CppName"/>,
-    /// escaped when another mangle spelling could produce it
+    /// <summary>This class's fragment in a generic-argument mangle. Closed generics
+    /// preserve their definition and argument boundaries; other names are escaped
+    /// when another mangle spelling could produce them
     /// (<see cref="CppNaming.MangleFragment"/>). Cached HERE rather than in
     /// <c>TypeDesc.MangleCache</c> for the same reason CppName is not cached there: the
     /// <see cref="CppNamePrefix"/> setter can still move it, and it invalidates this
     /// alongside the name it derives from.</summary>
     private string? _mangleFragment;
-    internal string MangleFragment => _mangleFragment ??= CppNaming.MangleFragment(CppName);
+    internal string MangleFragment => _mangleFragment ??=
+        !Handle.IsNil && Context.TypeArgs.Length > 0
+            ? Compilation.ClosedTypeMangle(this)
+            : CppNaming.MangleFragment(CppName);
 
     /// <summary>A content-derived order key: where this class sits in the *input*
     /// metadata, never where discovery happened to put it in
@@ -1616,12 +1620,14 @@ internal static class CppNaming
     }
 
     /// <summary>The prefixes reserved for bases that are not names: a generic parameter
-    /// ("Gvar"), an open generic definition ("Gtpl") and a function signature ("Gfn"). A prefix
+    /// ("Gvar"), an open generic definition ("Gtpl"), a closed generic type ("Ginst")
+    /// and a function signature ("Gfn"). A prefix
     /// test rather than the exact token shapes, because a coarse reservation costs a
     /// suffixed name nobody spells and cannot drift out of step with the arms.</summary>
     private static bool HasKindLeafPrefix(string name) =>
         name.StartsWith("Gvar", StringComparison.Ordinal)
         || name.StartsWith("Gtpl", StringComparison.Ordinal)
+        || name.StartsWith("Ginst", StringComparison.Ordinal)
         || name.StartsWith("Gfn", StringComparison.Ordinal);
 
     /// <summary>The <c>PrimitiveTypeCode.ToString()</c> renderings

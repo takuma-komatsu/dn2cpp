@@ -1636,7 +1636,7 @@ assert_exit_code "$cl_bad_rc" 0
 # value-type refusal. Relabel only the standalone type import pool entry; the
 # method's signature shape and every offset remain unchanged.
 cl_missing_patch="$OUT/corelib/HotUpdateCoreLibMissingTypePatch.bpi"
-python3 - "$OUT/corelib/HotUpdateCoreLibBadPatch.bpi" "$cl_missing_patch" <<'PY'
+$hotupdate_python - "$OUT/corelib/HotUpdateCoreLibBadPatch.bpi" "$cl_missing_patch" <<'PY'
 import pathlib
 import struct
 import sys
@@ -2312,6 +2312,7 @@ for metadata_codec in register stack; do
         ${metadata_flags[@]+"${metadata_flags[@]}"} -o "$metadata_base/$metadata_codec"
     metadata_refusals=$(run_bounded "./$metadata_base/HotUpdateBase$EXE_EXT" --run \
         "$metadata_base/$metadata_codec/RenamedSlotPatch.bpi" patch-metadata-refusals)
+    metadata_refusals=$(strip_cr_win "$metadata_refusals")
     assert_output "${metadata_refusals%%$'\n== patch interface method identities =='*}" \
         "$(printf '%s\n' "${renamed_slot_lines[@]}")"
     for refusal in method-attributes parameter-attributes parameter-modifiers return-modifiers; do

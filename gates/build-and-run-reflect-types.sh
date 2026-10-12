@@ -762,7 +762,7 @@ DN2CPP_OUT_SUFFIX=-native DN2CPP_STRICT_COMPLETION=1 \
 # Type argument. Interning may share that row with its generic definition.
 gate_extra_asserts() {
     local out="$1" native
-    python3 gates/fixtures/unread-attribute-rows/check-chain.py "$out" || return $?
+    $py gates/fixtures/unread-attribute-rows/check-chain.py "$out" || return $?
     native=$(run_bounded "$out/UnreadAttributeRowsOnly$EXE_EXT") || return $?
     grep -Fxq 'chain holder: ChainHolder' <<< "$(strip_cr_win "$native")" \
         || { echo "FAIL: attribute chain block did not run" >&2; return 1; }
