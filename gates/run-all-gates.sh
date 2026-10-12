@@ -477,6 +477,9 @@ ORDERED_PROJECTS=(
     # no DnHttp.dll and http-get fails, while build_proj inside the gate no-ops
     # under SKIP_BUILD — a warm worktree hid it, a cold one does not.
     "internal/DnHttp/src/DnHttp/DnHttp.csproj"
+    # Shared fixture outside samples/: build once before array-core and
+    # wasm-console consume it under DN2CPP_SKIP_BUILD.
+    "gates/fixtures/md-readonly-byrefs/MdReadonlyByrefs.csproj"
 )
 
 # Projects whose restore/build is part of the gate's asserted acquisition path.
