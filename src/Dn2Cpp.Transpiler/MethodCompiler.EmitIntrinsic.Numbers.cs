@@ -409,7 +409,7 @@ internal sealed partial class MethodCompiler
             // Primitive ToString: the receiver is a managed pointer (ldloca)
             // or the value itself.
             case ("System.Int32", "ToString") when sig.ParameterTypes.Length == 0:
-                Push(StackKind.Ref, "Dn2CppString*", $"dn2cpp_int_to_string({DerefReceiver("int32_t")})");
+                Push(StackKind.Ref, "Dn2CppString*", $"dn2cpp_format_int({DerefReceiver("int32_t")}, 4, nullptr)");
                 return true;
             // UInt32 must format unsigned — int_to_string would print values above
             // Int32.MaxValue as negative (e.g. uint.MaxValue as -1).
@@ -432,10 +432,10 @@ internal sealed partial class MethodCompiler
                 // elements. A value receiver still carries the int32 slot, which
                 // DerefReceiver casts correctly.
                 Push(StackKind.Ref, "Dn2CppString*",
-                    $"dn2cpp_int_to_string((int32_t)({DerefReceiver(SubWordCppType(declType))}))");
+                    $"dn2cpp_format_int((int32_t)({DerefReceiver(SubWordCppType(declType))}), {(declType is "System.Byte" or "System.SByte" ? 1 : 2)}, nullptr)");
                 return true;
             case ("System.Int64", "ToString") when sig.ParameterTypes.Length == 0:
-                Push(StackKind.Ref, "Dn2CppString*", $"dn2cpp_long_to_string({DerefReceiver("int64_t")})");
+                Push(StackKind.Ref, "Dn2CppString*", $"dn2cpp_format_int({DerefReceiver("int64_t")}, 8, nullptr)");
                 return true;
             // UInt64 must format unsigned, like the boxed path (box_to_string).
             case ("System.UInt64", "ToString") when sig.ParameterTypes.Length == 0:
@@ -801,9 +801,13 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.Ref, "const Dn2CppNumberFormatInfo*", "dn2cpp_nfi_invariant_info()");
                 Top = Top with { StaticType = sig.ReturnType };
                 return true;
-            case ("System.Globalization.CultureInfo", "get_CurrentCulture")
-                or ("System.Globalization.NumberFormatInfo", "get_CurrentInfo"):
+            case ("System.Globalization.CultureInfo", "get_CurrentCulture"):
                 Push(StackKind.Ref, "const Dn2CppNumberFormatInfo*", "dn2cpp_culture_current()");
+                Top = Top with { StaticType = sig.ReturnType };
+                return true;
+            case ("System.Globalization.NumberFormatInfo", "get_CurrentInfo"):
+                Push(StackKind.Ref, "const Dn2CppNumberFormatInfo*",
+                    "dn2cpp_culture_number_format(dn2cpp_culture_current())");
                 Top = Top with { StaticType = sig.ReturnType };
                 return true;
             // CultureInfo.CurrentCulture = value (static setter).
@@ -852,7 +856,7 @@ internal sealed partial class MethodCompiler
             {
                 var recv = Pop();
                 Push(StackKind.Ref, "const Dn2CppNumberFormatInfo*",
-                    Cast(recv, "const Dn2CppNumberFormatInfo*"));
+                    $"dn2cpp_culture_number_format({Cast(recv, "const Dn2CppNumberFormatInfo*")})");
                 Top = Top with { StaticType = sig.ReturnType };
                 return true;
             }
@@ -873,8 +877,7 @@ internal sealed partial class MethodCompiler
             {
                 string prov = CastNumberFormatProvider(Pop());
                 string nfi = NewTemp("const Dn2CppNumberFormatInfo*");
-                Emit($"{nfi} = {prov};");
-                Emit($"if ({nfi} == nullptr) {nfi} = dn2cpp_culture_current();");
+                Emit($"{nfi} = dn2cpp_nfi_or_current({prov});");
                 Push(StackKind.Ref, "const Dn2CppNumberFormatInfo*", nfi);
                 Top = Top with { StaticType = sig.ReturnType };
                 return true;

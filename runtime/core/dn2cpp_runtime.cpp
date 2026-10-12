@@ -155,9 +155,9 @@ Dn2CppString* dn2cpp_object_tostring(Dn2CppObject* obj)
         return reinterpret_cast<Dn2CppString*>(obj);
     const void* payload = obj + 1; // boxed value sits right after the header
     if (t == &dn2cpp_int32_type)
-        return dn2cpp_int_to_string(*reinterpret_cast<const int32_t*>(payload));
+        return dn2cpp_format_int(*reinterpret_cast<const int32_t*>(payload), 4, nullptr);
     if (t == &dn2cpp_int64_type)
-        return dn2cpp_long_to_string(*reinterpret_cast<const int64_t*>(payload));
+        return dn2cpp_format_int(*reinterpret_cast<const int64_t*>(payload), 8, nullptr);
     if (t == &dn2cpp_double_type)
         return dn2cpp_double_to_string(*reinterpret_cast<const double*>(payload));
     if (t == &dn2cpp_single_type)
@@ -173,13 +173,13 @@ Dn2CppString* dn2cpp_object_tostring(Dn2CppObject* obj)
     }
     if (t == &dn2cpp_byte_type || t == &dn2cpp_sbyte_type
         || t == &dn2cpp_int16_type || t == &dn2cpp_uint16_type) // all widen to int32
-        return dn2cpp_int_to_string(*reinterpret_cast<const int32_t*>(payload));
+        return dn2cpp_format_int(*reinterpret_cast<const int32_t*>(payload), 4, nullptr);
     if (t == &dn2cpp_uint32_type) // unsigned; format via int64 so >int.MaxValue stays positive
         return dn2cpp_long_to_string(static_cast<int64_t>(*reinterpret_cast<const uint32_t*>(payload)));
     if (t == &dn2cpp_uint64_type) // unsigned; format via the uint64 formatter
         return dn2cpp_format_uint(*reinterpret_cast<const uint64_t*>(payload), 8, nullptr);
     if (t == &dn2cpp_intptr_type) // signed 8-byte; like int64
-        return dn2cpp_long_to_string(*reinterpret_cast<const intptr_t*>(payload));
+        return dn2cpp_format_int(*reinterpret_cast<const intptr_t*>(payload), sizeof(intptr_t), nullptr);
     if (t == &dn2cpp_uintptr_type) // unsigned 8-byte; like uint64
         return dn2cpp_format_uint(*reinterpret_cast<const uintptr_t*>(payload), 8, nullptr);
     // Decimal and the date/time value types reach their formatter through the

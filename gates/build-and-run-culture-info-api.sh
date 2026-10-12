@@ -111,7 +111,12 @@ LOCALE_CASES=(
     culture-wrapper-private-first
     culture-wrapper-canonical-first
     culture-primary-currency
+    culture-missing-cache-first
+    culture-missing-cache-empty-first
+    culture-missing-upper-constructor-first
+    culture-missing-upper-cached-first
 )
+MISSING_NUMBER_CASES=(bare nul upper lower invariant und)
 NUMBERING_CASES=(
     en-US-u-nu-arab-foo
     en-US-u-nu-unknown
@@ -157,6 +162,8 @@ gate_extra_asserts() {
         || { echo "FAIL: culture fallback identities section did not finish" >&2; return 1; }
     grep -Fxq 'culture primary currency end' <<< "$(strip_cr_win "$native")" \
         || { echo "FAIL: culture primary currency section did not finish" >&2; return 1; }
+    grep -Fxq 'culture missing number format end' <<< "$(strip_cr_win "$native")" \
+        || { echo "FAIL: culture missing number format section did not finish" >&2; return 1; }
     for mode in "${LOCALE_CASES[@]}"; do
         native=$(run_bounded "./$out/CultureInfoApi" "$mode")
         expected=$(run_bounded dotnet "$_CG_APP" "$mode")
@@ -168,6 +175,8 @@ gate_extra_asserts() {
             culture-numbering-boundaries) marker='culture numbering boundaries end' ;;
             culture-wrapper-*) marker='culture wrapper cache end' ;;
             culture-primary-currency) marker='culture primary currency end' ;;
+            culture-missing-cache-*) marker='culture missing number format cache end' ;;
+            culture-missing-upper-*) marker='culture missing number format uppercase cache end' ;;
         esac
         grep -Fxq "$marker" <<< "$(strip_cr_win "$native")" \
             || { echo "FAIL: $mode did not finish" >&2; return 1; }
@@ -186,8 +195,15 @@ gate_extra_asserts() {
         grep -Fxq 'culture fallback identities end' <<< "$(strip_cr_win "$native")" \
             || { echo "FAIL: fallback identities for $mode did not finish" >&2; return 1; }
     done
+    for mode in "${MISSING_NUMBER_CASES[@]}"; do
+        native=$(run_bounded "./$out/CultureInfoApi" culture-missing-number-format "$mode")
+        expected=$(run_bounded dotnet "$_CG_APP" culture-missing-number-format "$mode")
+        assert_output "$native" "$expected"
+        grep -Fxq 'culture missing number format end' <<< "$(strip_cr_win "$native")" \
+            || { echo "FAIL: missing number format for $mode did not finish" >&2; return 1; }
+    done
 }
 DN2CPP_GATE_RUN_ARGS=culture-names
-DN2CPP_GATE_EXTRA_CONTEXT="${LOCALE_CASES[*]} ${NUMBERING_CASES[*]} ${FALLBACK_CASES[*]}"
+DN2CPP_GATE_EXTRA_CONTEXT="${LOCALE_CASES[*]} ${NUMBERING_CASES[*]} ${FALLBACK_CASES[*]} culture-missing-number-format ${MISSING_NUMBER_CASES[*]}"
 DN2CPP_OUT_SUFFIX=-names
 corelib_diff_gate CultureInfoApi --link-xml samples/dotnet/CultureInfoApi/link.xml

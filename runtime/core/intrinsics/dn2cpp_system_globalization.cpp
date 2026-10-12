@@ -31,6 +31,7 @@ static void dn2cpp_nfi_init_invariant(Dn2CppNumberFormatInfo* n)
 {
     n->cultureName = n->cultureRealName = dn2cpp_lit16(u"");
     n->lcid = 127; // the invariant culture's LCID (0x7F)
+    n->missingNumberFormat = 0;
     n->numberDecimal = dn2cpp_lit16(u".");
     n->numberGroup = dn2cpp_lit16(u",");
     n->groupSizes[0] = 3;            // the invariant culture's NumberGroupSizes == [3]
@@ -68,6 +69,13 @@ const Dn2CppNumberFormatInfo* dn2cpp_nfi_invariant()
     return &inv;
 }
 
+const Dn2CppNumberFormatInfo* dn2cpp_culture_number_format(const Dn2CppNumberFormatInfo* culture)
+{
+    if (culture == nullptr || culture->missingNumberFormat != 0)
+        dn2cpp_throw_null_reference();
+    return culture;
+}
+
 // A null IFormatProvider means the CURRENT culture, not the invariant one
 // (.NET's NumberFormatInfo.GetInstance(null) is CurrentInfo), in both
 // directions: `d.ToString("N2", null)` formats in it and `double.Parse(s)` reads
@@ -78,7 +86,7 @@ const Dn2CppNumberFormatInfo* dn2cpp_nfi_invariant()
 // dn2cpp_nfi_invariant() singleton), so it is unaffected.
 const Dn2CppNumberFormatInfo* dn2cpp_nfi_or_current(const Dn2CppNumberFormatInfo* n)
 {
-    return n != nullptr ? n : dn2cpp_culture_current();
+    return dn2cpp_culture_number_format(n != nullptr ? n : dn2cpp_culture_current());
 }
 
 // ===== The named-culture table ==============================================
@@ -1081,6 +1089,7 @@ static const Dn2CppNumberFormatInfo* dn2cpp_culture_intern(const Dn2CppCultureRo
     dn2cpp_gc_store_ref(&node->nfi.cultureRealName, realName);
     node->nfi.lcid = lcid >= 0 ? lcid : 4096;
     node->nfi.isNeutralCulture = dn2cpp_culture_region_end(name) == 0 ? 1 : 0;
+    node->nfi.missingNumberFormat = node->nfi.lcid == 4096 && name->length == 0 ? 1 : 0;
     if (row == nullptr)
     {
         if (numeric != nullptr)
@@ -1173,8 +1182,7 @@ static const Dn2CppNumberFormatInfo* dn2cpp_culture_named_create(
 
 const Dn2CppNumberFormatInfo* dn2cpp_culture_by_name(Dn2CppString* name, bool cached, bool useUserOverride)
 {
-    if (name == nullptr || name->length == 0
-        || (name->length == 1 && (name->chars[0] == u'C' || name->chars[0] == u'c')))
+    if (name == nullptr)
         return dn2cpp_nfi_invariant();
     Dn2CppString* key = dn2cpp_culture_lower_ascii(name);
     if (cached)
@@ -1184,6 +1192,9 @@ const Dn2CppNumberFormatInfo* dn2cpp_culture_by_name(Dn2CppString* name, bool ca
         if (const Dn2CppNumberFormatInfo* existing = dn2cpp_culture_named_lookup(key))
             return existing;
     }
+    if (name->length == 0
+        || (name->length == 1 && (name->chars[0] == u'C' || name->chars[0] == u'c')))
+        return cached ? dn2cpp_culture_named_create(dn2cpp_nfi_invariant()) : dn2cpp_nfi_invariant();
     if (const Dn2CppNumberFormatInfo* existing = dn2cpp_culture_request_cache(key, useUserOverride))
         return cached ? dn2cpp_culture_named_create(existing) : existing;
     Dn2CppString* canonical = dn2cpp_culture_normalize_name(name);
@@ -1201,7 +1212,7 @@ const Dn2CppNumberFormatInfo* dn2cpp_culture_by_name(Dn2CppString* name, bool ca
     if (privateAlias.length > 10 && privateAlias.chars[10] == u'-')
         privateAlias.length = 10;
     if (canonical->length == 0 && !dn2cpp_culture_name_eq_ci(&privateAlias, u"i-enochian"))
-        return dn2cpp_nfi_invariant();
+        return cached ? dn2cpp_culture_named_create(dn2cpp_nfi_invariant()) : dn2cpp_nfi_invariant();
     Dn2CppString* publicName = dn2cpp_culture_public_name(name, canonical);
     int32_t lcid = 4096;
     bool sorted = false;
@@ -1529,7 +1540,7 @@ Dn2CppObject* dn2cpp_format_provider_get_format(Dn2CppObject* provider, Dn2CppTy
         const auto* payload = reinterpret_cast<Dn2CppNfiBox*>(provider)->nfi;
         if (wanted == &dn2cpp_numberformatinfo_type
             && (held == &dn2cpp_cultureinfo_type || held == &dn2cpp_numberformatinfo_type))
-            return dn2cpp_nfi_wrap(payload, DN2CPP_NFI_KIND_NFI);
+            return dn2cpp_nfi_wrap(dn2cpp_culture_number_format(payload), DN2CPP_NFI_KIND_NFI);
         if (held == &dn2cpp_cultureinfo_type && wanted != nullptr && wanted->name != nullptr
             && std::strcmp(wanted->name, "System.Globalization.DateTimeFormatInfo") == 0)
         {

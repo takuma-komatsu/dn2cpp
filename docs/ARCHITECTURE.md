@@ -342,6 +342,10 @@ wrapper with the source CLR identity. `IFormatProvider` uses the managed referen
 ABI; numeric intrinsics extract a known provider's number-format payload only when
 formatting or parsing consumes it. Composite formatting defers extraction until
 a numeric hole needs provider data, including empty and default formats.
+Culture identity and missing numeric data are separate payload state. Cloning,
+current-culture assignment and wrapper caching preserve that state without forcing
+the number-format getter. Numeric consumers enforce it when provider data are
+needed; positive integer decimal and hexadecimal fast paths do not need them.
 Consuming a custom numeric provider reaches
 its `GetFormat(Type)` implementation and accepts only a `NumberFormatInfo` result;
 other results fall back to the current culture. Allocation, identity conversion,

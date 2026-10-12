@@ -433,6 +433,7 @@ static int32_t ns_integer_core(const char16_t* p, int32_t n, int32_t styles,
 {
     dn2cpp_parse_validate_integer_styles(styles);
     *out = 0;
+    nfi = dn2cpp_nfi_or_current(nfi);
     if ((styles & NS_HEX) != 0)
         return ns_hexbin_from_chars(p, n, styles, bitWidth, isSigned, true, out);
     if ((styles & NS_BINARY) != 0)

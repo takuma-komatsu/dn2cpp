@@ -761,8 +761,11 @@ struct Dn2CppNumberFormatInfo
     // (`new NumberFormatInfo()` / NumberFormatInfo.InvariantInfo), 0 for a
     // culture. Read by dn2cpp_nfi_wrap to recover the managed identity of a
     // value whose static type was lost before it escaped
-    // into an `object` context. (Trailing member: zero-init covers cultures.)
+    // into an `object` context. Zero-init covers cultures.
     int32_t isNfi;
+    // A custom CultureInfo can have valid identity without numeric data.
+    // Identity operations and cloning do not force its NumberFormat getter.
+    int32_t missingNumberFormat;
 };
 
 // A CultureInfo / NumberFormatInfo / TextInfo escaped into an `object` context.
@@ -7940,6 +7943,7 @@ Dn2CppString* dn2cpp_format_r4(float v, Dn2CppString* fmt);
 // and a fresh mutable
 // instance (copy of invariant) for `new NumberFormatInfo()` + setters.
 const Dn2CppNumberFormatInfo* dn2cpp_nfi_invariant();
+const Dn2CppNumberFormatInfo* dn2cpp_culture_number_format(const Dn2CppNumberFormatInfo* culture);
 // NumberFormatInfo.InvariantInfo: a DISTINCT singleton with the invariant
 // field values but isNfi=1, so an InvariantInfo that escapes to `object`
 // through an IFormatProvider-typed slot reports the NumberFormatInfo identity

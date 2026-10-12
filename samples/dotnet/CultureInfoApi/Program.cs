@@ -73,6 +73,24 @@ namespace CultureInfoApi
                 return;
             }
 
+            if (args.Length > 0 && args[0] == "culture-missing-number-format")
+            {
+                RunMissingNumberFormat(args.Length > 1 ? args[1] : null);
+                return;
+            }
+            if (args.Length > 0 && (args[0] == "culture-missing-cache-first"
+                || args[0] == "culture-missing-cache-empty-first"))
+            {
+                RunMissingNumberFormatCache(args[0] == "culture-missing-cache-first");
+                return;
+            }
+            if (args.Length > 0 && (args[0] == "culture-missing-upper-constructor-first"
+                || args[0] == "culture-missing-upper-cached-first"))
+            {
+                RunMissingUpperCache(args[0] == "culture-missing-upper-constructor-first");
+                return;
+            }
+
             if (args.Length > 0 && (args[0] == "culture-sort-strings" || args[0] == "culture-sort-upper-key"))
             {
                 RunSortStrings(args[0] == "culture-sort-upper-key");
@@ -442,6 +460,192 @@ namespace CultureInfoApi
             RunNumberingData();
             RunFallbackIdentities();
             RunPrimaryCurrency();
+            RunMissingNumberFormat();
+        }
+
+        private static void RunMissingNumberFormat(string caseName = null)
+        {
+            Console.WriteLine("== culture missing number format ==");
+            foreach (string kind in caseName is null ? new[] { "bare", "nul", "upper", "lower", "invariant", "und" }
+                : new[] { caseName })
+            {
+                string name = kind == "bare" ? "i-enochian" : kind == "nul" ? "i-enochian\0ignored"
+                    : kind == "upper" ? "i-enochian-US-U-NU-ARAB" : kind == "lower" ? "i-enochian-US-u-nu-arab"
+                    : kind == "und" ? "und" : "";
+                CultureInfo culture = new CultureInfo(name);
+                Console.WriteLine("  " + kind + " '" + name.Replace("\0", "<NUL>") + "'=" + MissingCultureIdentity(culture));
+                CaptureMissingNumber("getter", () => MissingNumberData(culture.NumberFormat));
+                CaptureMissingNumber("getformat number", () => MissingNumberData((NumberFormatInfo)culture.GetFormat(typeof(NumberFormatInfo))));
+                IFormatProvider provider = culture;
+                CaptureMissingNumber("interface getformat number", () => MissingNumberData((NumberFormatInfo)provider.GetFormat(typeof(NumberFormatInfo))));
+                CaptureMissingNumber("getformat string", () => culture.GetFormat(typeof(string)) is null ? "null" : "value");
+                CaptureMissingNumber("getformat null", () => culture.GetFormat(null) is null ? "null" : "value");
+                foreach (string format in new[] { "G", "N2" })
+                {
+                    CaptureMissingNumber("double " + format, () => (-12.5).ToString(format, culture));
+                    CaptureMissingNumber("decimal " + format, () => (-12.5m).ToString(format, culture));
+                    CaptureMissingNumber("int positive " + format, () => 12.ToString(format, culture));
+                    CaptureMissingNumber("int negative " + format, () => (-12).ToString(format, culture));
+                }
+                object boxed = culture;
+                CaptureMissingNumber("getinstance direct", () => MissingNumberData(NumberFormatInfo.GetInstance(culture)));
+                CaptureMissingNumber("getinstance boxed", () => MissingNumberData(NumberFormatInfo.GetInstance((IFormatProvider)boxed)));
+                CaptureMissingNumber("boxed provider", () => (-12.5).ToString("N2", (IFormatProvider)boxed));
+                CaptureMissingNumber("int positive provider", () => 12.ToString(provider));
+                CaptureMissingNumber("int negative provider", () => (-12).ToString(provider));
+                CaptureMissingNumber("parse double", () => double.TryParse("12", NumberStyles.Float, culture, out double value) + ":" + value);
+                CaptureMissingNumber("parse decimal", () => decimal.TryParse("12", NumberStyles.Float, culture, out decimal value) + ":" + value);
+                CaptureMissingNumber("parse int", () => int.TryParse("12", NumberStyles.Integer, culture, out int value) + ":" + value);
+                foreach (string input in new string[] { "12", null })
+                {
+                    string label = input is null ? "null" : input;
+                    decimal decimalOut = 123m;
+                    int intOut = 123;
+                    double doubleOut = 123.0;
+                    CaptureMissingNumber("sentinel decimal " + label, () => decimal.TryParse(input, NumberStyles.Float, culture, out decimalOut).ToString());
+                    Console.WriteLine("    decimal out=" + decimalOut);
+                    CaptureMissingNumber("sentinel int " + label, () => int.TryParse(input, NumberStyles.Integer, culture, out intOut).ToString());
+                    Console.WriteLine("    int out=" + intOut);
+                    CaptureMissingNumber("sentinel double " + label, () => double.TryParse(input, NumberStyles.Float, culture, out doubleOut).ToString());
+                    Console.WriteLine("    double out=" + doubleOut);
+                }
+                foreach (string input in new string[] { null, "" })
+                {
+                    string label = input is null ? "null" : "empty";
+                    CaptureMissingNumber("try double " + label, () => double.TryParse(input, NumberStyles.Float, culture, out double value) + ":" + value);
+                    CaptureMissingNumber("try decimal " + label, () => decimal.TryParse(input, NumberStyles.Float, culture, out decimal value) + ":" + value);
+                    CaptureMissingNumber("try int " + label, () => int.TryParse(input, NumberStyles.Integer, culture, out int value) + ":" + value);
+                    CaptureMissingNumber("boxed try double " + label, () => double.TryParse(input, NumberStyles.Float, (IFormatProvider)boxed, out double value) + ":" + value);
+                }
+                CaptureMissingNumber("parse double null", () => double.Parse((string)null, NumberStyles.Float, culture).ToString(CultureInfo.InvariantCulture));
+                CaptureMissingNumber("parse decimal null", () => decimal.Parse((string)null, NumberStyles.Float, culture).ToString(CultureInfo.InvariantCulture));
+                CaptureMissingNumber("parse int null", () => int.Parse((string)null, NumberStyles.Integer, culture).ToString(CultureInfo.InvariantCulture));
+                foreach (NumberStyles style in new[] { NumberStyles.HexNumber, NumberStyles.AllowBinarySpecifier })
+                {
+                    string input = style == NumberStyles.HexNumber ? "12" : "10";
+                    CaptureMissingNumber("try int " + style, () => int.TryParse(input, style, culture, out int value) + ":" + value);
+                    CaptureMissingNumber("parse int " + style, () => int.Parse(input, style, culture).ToString(CultureInfo.InvariantCulture));
+                    CaptureMissingNumber("boxed try int " + style, () => int.TryParse(input, style, (IFormatProvider)boxed, out int value) + ":" + value);
+                    CaptureMissingNumber("try uint " + style, () => uint.TryParse(input, style, culture, out uint value) + ":" + value);
+                }
+                CaptureMissingNumber("current assignment", () => WithMissingCulture(culture, () =>
+                    MissingCultureIdentity(CultureInfo.CurrentCulture) + "|" + MissingCultureIdentity(CultureInfo.CurrentUICulture)));
+                CaptureMissingNumber("current info", () => WithMissingCulture(culture, () => MissingNumberData(NumberFormatInfo.CurrentInfo)));
+                CaptureMissingNumber("current double", () => WithMissingCulture(culture, () => (-12.5).ToString("N2")));
+                CaptureMissingNumber("current int positive", () => WithMissingCulture(culture, () => 12.ToString("G")));
+                CaptureMissingNumber("current int positive default", () => WithMissingCulture(culture, () => 12.ToString()));
+                CaptureMissingNumber("current int negative default", () => WithMissingCulture(culture, () => (-12).ToString()));
+                CaptureMissingNumber("current long positive default", () => WithMissingCulture(culture, () => 12L.ToString()));
+                CaptureMissingNumber("current long negative default", () => WithMissingCulture(culture, () => (-12L).ToString()));
+                CaptureMissingNumber("current short positive default", () => WithMissingCulture(culture, () => ((short)12).ToString()));
+                CaptureMissingNumber("current short negative default", () => WithMissingCulture(culture, () => ((short)-12).ToString()));
+                CaptureMissingNumber("current generic int positive", () => WithMissingCulture(culture, () => GenericToString(12)));
+                CaptureMissingNumber("current generic int negative", () => WithMissingCulture(culture, () => GenericToString(-12)));
+                CaptureMissingNumber("current generic long positive", () => WithMissingCulture(culture, () => GenericToString(12L)));
+                CaptureMissingNumber("current generic long negative", () => WithMissingCulture(culture, () => GenericToString(-12L)));
+                CaptureMissingNumber("current generic short positive", () => WithMissingCulture(culture, () => GenericToString((short)12)));
+                CaptureMissingNumber("current generic short negative", () => WithMissingCulture(culture, () => GenericToString((short)-12)));
+                CaptureMissingNumber("current boxed int positive", () => WithMissingCulture(culture, () => ((object)12).ToString()));
+                CaptureMissingNumber("current boxed int negative", () => WithMissingCulture(culture, () => ((object)(-12)).ToString()));
+                CaptureMissingNumber("current boxed long positive", () => WithMissingCulture(culture, () => ((object)12L).ToString()));
+                CaptureMissingNumber("current boxed long negative", () => WithMissingCulture(culture, () => ((object)(-12L)).ToString()));
+                CaptureMissingNumber("current boxed short positive", () => WithMissingCulture(culture, () => ((object)(short)12).ToString()));
+                CaptureMissingNumber("current boxed short negative", () => WithMissingCulture(culture, () => ((object)(short)-12).ToString()));
+                CaptureMissingNumber("current parse", () => WithMissingCulture(culture, () => double.TryParse("12", out double value) + ":" + value));
+                CultureInfo clone = (CultureInfo)culture.Clone();
+                Console.WriteLine("    clone=" + MissingCultureIdentity(clone));
+                CaptureMissingNumber("clone number", () => MissingNumberData(clone.NumberFormat));
+                CaptureMissingNumber("cached number", () => MissingNumberData(CultureInfo.GetCultureInfo(name).NumberFormat));
+            }
+            Console.WriteLine("culture missing number format end");
+        }
+
+        private static void RunMissingNumberFormatCache(bool missingFirst)
+        {
+            string firstName = missingFirst ? "i-enochian" : "";
+            string secondName = missingFirst ? "" : "i-enochian";
+            CultureInfo first = CultureInfo.GetCultureInfo(firstName);
+            CultureInfo second = CultureInfo.GetCultureInfo(secondName);
+            CultureInfo third = CultureInfo.GetCultureInfo(firstName);
+            CultureInfo fourth = CultureInfo.GetCultureInfo(secondName);
+            Console.WriteLine("== culture missing number format cache ==");
+            Console.WriteLine("  first=" + MissingCultureIdentity(first) + " second=" + MissingCultureIdentity(second));
+            Console.WriteLine("  pair=" + ReferenceEquals(first, second) + " first repeat=" + ReferenceEquals(first, third)
+                + " second repeat=" + ReferenceEquals(second, fourth));
+            CaptureMissingNumber("first number", () => MissingNumberData(first.NumberFormat));
+            CaptureMissingNumber("second number", () => MissingNumberData(second.NumberFormat));
+            CaptureMissingNumber("third number", () => MissingNumberData(third.NumberFormat));
+            CaptureMissingNumber("fourth number", () => MissingNumberData(fourth.NumberFormat));
+            Console.WriteLine("  invariant=" + MissingCultureIdentity(CultureInfo.InvariantCulture)
+                + ":" + MissingNumberData(CultureInfo.InvariantCulture.NumberFormat));
+            Console.WriteLine("culture missing number format cache end");
+        }
+
+        private static void RunMissingUpperCache(bool constructorFirst)
+        {
+            const string upper = "i-enochian-US-U-NU-ARAB";
+            const string lower = "i-enochian-us-u-nu-arab";
+            CultureInfo constructor;
+            CultureInfo cachedLower;
+            if (constructorFirst)
+            {
+                constructor = new CultureInfo(upper, false);
+                cachedLower = CultureInfo.GetCultureInfo(lower);
+            }
+            else
+            {
+                cachedLower = CultureInfo.GetCultureInfo(lower);
+                constructor = new CultureInfo(upper, false);
+            }
+            CultureInfo cachedUpper = CultureInfo.GetCultureInfo(upper);
+            Console.WriteLine("== culture missing number format uppercase cache ==");
+            Console.WriteLine("  constructor=" + MissingCultureIdentity(constructor));
+            Console.WriteLine("  cached lower=" + MissingCultureIdentity(cachedLower));
+            Console.WriteLine("  cached upper=" + MissingCultureIdentity(cachedUpper));
+            Console.WriteLine("  cached pair=" + ReferenceEquals(cachedLower, cachedUpper));
+            CaptureMissingNumber("constructor number", () => MissingNumberData(constructor.NumberFormat));
+            CaptureMissingNumber("cached lower number", () => MissingNumberData(cachedLower.NumberFormat));
+            CaptureMissingNumber("cached upper number", () => MissingNumberData(cachedUpper.NumberFormat));
+            Console.WriteLine("culture missing number format uppercase cache end");
+        }
+
+        private static string MissingCultureIdentity(CultureInfo culture) => "'" + culture.Name + "':" + culture.LCID
+            + ":neutral=" + culture.IsNeutralCulture;
+
+        private static string MissingNumberData(NumberFormatInfo n) => "'" + n.NumberDecimalSeparator
+            + "'|'" + n.NumberGroupSeparator + "':" + n.NumberDecimalDigits;
+
+        private static void CaptureMissingNumber(string label, Func<string> action)
+        {
+            try
+            {
+                Console.WriteLine("    " + label + "=" + action());
+            }
+            catch (NullReferenceException)
+            {
+                Console.WriteLine("    " + label + "=" + nameof(NullReferenceException));
+            }
+            catch (ArgumentNullException)
+            {
+                Console.WriteLine("    " + label + "=" + nameof(ArgumentNullException));
+            }
+        }
+
+        private static string WithMissingCulture(CultureInfo culture, Func<string> action)
+        {
+            CultureInfo previous = CultureInfo.CurrentCulture;
+            CultureInfo previousUI = CultureInfo.CurrentUICulture;
+            try
+            {
+                CultureInfo.CurrentCulture = culture;
+                CultureInfo.CurrentUICulture = culture;
+                return action();
+            }
+            finally
+            {
+                CultureInfo.CurrentCulture = previous;
+                CultureInfo.CurrentUICulture = previousUI;
+            }
         }
 
         private static void RunFallbackIdentities(string? name = null)

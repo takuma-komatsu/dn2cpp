@@ -835,6 +835,7 @@ static int32_t dec_styles_core(const char16_t* p, int32_t n, int32_t styles,
                                const Dn2CppNumberFormatInfo* nfi, Dn2CppDecimal* out)
 {
     dn2cpp_parse_validate_fp_styles(styles);
+    nfi = dn2cpp_nfi_or_current(nfi);
     *out = dec_pack(0, 0, 0);
     Dn2CppNumberParse num;
     if (!dn2cpp_parse_number_styles(p, n, styles, nfi, 2, &num))
