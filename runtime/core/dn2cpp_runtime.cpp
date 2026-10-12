@@ -467,12 +467,17 @@ int32_t dn2cpp_object_gethashcode(Dn2CppObject* obj)
     // dn2cpp_delegate_equal below.
     if (t != nullptr && (t->flags & DN2CPP_TF_DELEGATE) != 0)
         return dn2cpp_delegate_hash(obj);
-    // An NFI wrapper (CultureInfo/NumberFormatInfo/TextInfo escaped to object,
-    // dn2cpp_nfi_wrap) hashes by its WRAPPED pointer, so the wrapper and a raw
-    // pointer that flowed through an erased context land in the same bucket —
-    // the hash counterpart of the identity rule dn2cpp_object_equals applies.
-    if (t == &dn2cpp_cultureinfo_type || t == &dn2cpp_numberformatinfo_type
-        || t == &dn2cpp_textinfo_type)
+    // Culture and text wrappers have value identity, including alternate sort.
+    // NumberFormatInfo retains reference identity even when its fields match.
+    if (t == &dn2cpp_cultureinfo_type || t == &dn2cpp_textinfo_type)
+    {
+        const auto* n = reinterpret_cast<Dn2CppNfiBox*>(obj)->nfi;
+        uint32_t hash = static_cast<uint32_t>(dn2cpp_string_hashcode(dn2cpp_culture_tostring(n)));
+        if (t == &dn2cpp_cultureinfo_type)
+            hash += static_cast<uint32_t>(dn2cpp_string_hashcode(dn2cpp_culture_name(n)));
+        return static_cast<int32_t>(hash);
+    }
+    if (t == &dn2cpp_numberformatinfo_type)
     {
         uint64_t n = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(
             reinterpret_cast<Dn2CppNfiBox*>(obj)->nfi));
@@ -565,22 +570,27 @@ int32_t dn2cpp_object_equals(Dn2CppObject* a, Dn2CppObject* b)
     // slot — the BCL override is not transpiled), matching Delegate.Equals.
     if (t != nullptr && (t->flags & DN2CPP_TF_DELEGATE) != 0)
         return dn2cpp_delegate_equal(a, b);
-    // An NFI wrapper (dn2cpp_nfi_wrap) compares by its WRAPPED pointer — the
-    // culture/format-info identity. Wrapper-vs-wrapper requires the same
-    // wrapper type too (a CultureInfo never equals the TextInfo sharing its
-    // runtime pointer); against a non-wrapper the raw pointer is compared
-    // as-is, so a raw NFI pointer that flowed through an erased context still
-    // equals its wrapped form. (Reading b->type is a value compare only —
-    // never dereferenced — so a punned raw operand stays safe.)
+    // Wrapper types remain distinct. Only culture/text wrappers compare names;
+    // number-format wrappers and escaped raw payloads keep reference identity.
     if (t == &dn2cpp_cultureinfo_type || t == &dn2cpp_numberformatinfo_type
         || t == &dn2cpp_textinfo_type)
     {
-        const void* an = reinterpret_cast<Dn2CppNfiBox*>(a)->nfi;
+        const auto* an = reinterpret_cast<Dn2CppNfiBox*>(a)->nfi;
         const Dn2CppTypeInfo* bt = b->type;
         if (bt == &dn2cpp_cultureinfo_type || bt == &dn2cpp_numberformatinfo_type
             || bt == &dn2cpp_textinfo_type)
-            return (bt == t && an == reinterpret_cast<Dn2CppNfiBox*>(b)->nfi) ? 1 : 0;
-        return an == static_cast<const void*>(b) ? 1 : 0;
+        {
+            if (bt != t)
+                return 0;
+            const auto* bn = reinterpret_cast<Dn2CppNfiBox*>(b)->nfi;
+            if (t == &dn2cpp_numberformatinfo_type)
+                return an == bn ? 1 : 0;
+            return dn2cpp_string_equals(dn2cpp_culture_tostring(an), dn2cpp_culture_tostring(bn))
+                && (t != &dn2cpp_cultureinfo_type
+                    || dn2cpp_string_equals(dn2cpp_culture_name(an), dn2cpp_culture_name(bn))) ? 1 : 0;
+        }
+        // A raw payload's first word is compared as a type address only.
+        return static_cast<const void*>(an) == static_cast<const void*>(b) ? 1 : 0;
     }
     // A string compares by value (String overrides Equals). Strings have no t->equals
     // slot, so handle them here — otherwise object.Equals / static Object.Equals would

@@ -5609,7 +5609,7 @@ internal sealed partial class CppEmitter
             sb.AppendLine($"    if (e->type->instanceSize < (int32_t)sizeof({cls.CppStructName}))");
             sb.AppendLine("        return false;");
             sb.AppendLine($"    dn2cpp_gc_store_ref(&(({cls.CppStructName}*)e)->{nf.CppName}, invalidCultureName);");
-            sb.AppendLine($"    (({cls.CppStructName}*)e)->{idf.CppName}.{hasValue.CppName} = invalidCultureId != 0;");
+            sb.AppendLine($"    (({cls.CppStructName}*)e)->{idf.CppName}.{hasValue.CppName} = invalidCultureName == nullptr;");
             sb.AppendLine($"    (({cls.CppStructName}*)e)->{idf.CppName}.{value.CppName} = invalidCultureId;");
             sb.AppendLine("    return true;");
         }

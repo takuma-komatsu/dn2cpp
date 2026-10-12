@@ -699,7 +699,7 @@ bool dn2cpp_culture_exception_store(Dn2CppObject* e, Dn2CppString* invalidCultur
 {
     const Dn2CppTypeInfo* ti = &dn2cpp_culture_not_found_exception_type;
     Dn2CppObject* e = dn2cpp_exception_new(ti, nullptr, nullptr);
-    Dn2CppString* paramName = dn2cpp_param_name_string(invalidCultureId != 0 ? "culture" : "name");
+    Dn2CppString* paramName = dn2cpp_param_name_string(invalidCultureName == nullptr ? "culture" : "name");
     bool argumentStored = dn2cpp_argument_exception_store(e, paramName, nullptr);
     bool cultureStored = dn2cpp_culture_exception_store(e, invalidCultureName, invalidCultureId);
     Dn2CppString* message = dn2cpp_default_message(ti);
@@ -713,7 +713,7 @@ bool dn2cpp_culture_exception_store(Dn2CppObject* e, Dn2CppString* invalidCultur
             message = dn2cpp_string_concat3(message, separator, tail);
         }
         Dn2CppString* identifier = invalidCultureName;
-        if (invalidCultureId != 0)
+        if (invalidCultureName == nullptr)
         {
             char text[64];
             int length = std::snprintf(text, sizeof(text), "%d (0x%04x)", invalidCultureId,

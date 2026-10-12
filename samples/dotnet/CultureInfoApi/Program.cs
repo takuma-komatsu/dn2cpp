@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 
 namespace CultureInfoApi
@@ -75,6 +76,26 @@ namespace CultureInfoApi
             if (args.Length > 0 && args[0] == "culture-variant-order")
             {
                 RunVariantOrder(args.Length > 1 ? args[1] : null);
+                return;
+            }
+            if (args.Length > 0 && args[0] == "culture-invariant-lcid-cache")
+            {
+                RunInvariantLcidCache(args.Length > 1 ? args[1] : "lcid-empty-missing");
+                return;
+            }
+            if (args.Length > 0 && args[0] == "culture-instance-number-format")
+            {
+                RunInstanceNumberFormat(args.Length > 1 ? args[1] : null);
+                return;
+            }
+            if (args.Length > 0 && args[0] == "culture-integer-constructors")
+            {
+                RunIntegerCultureConstructors();
+                return;
+            }
+            if (args.Length > 0 && args[0] == "culture-instance-equality")
+            {
+                RunInstanceEquality(args.Length > 1 ? args[1] : null, args.Length > 2 ? args[2] : null);
                 return;
             }
 
@@ -467,6 +488,339 @@ namespace CultureInfoApi
             RunPrimaryCurrency();
             RunMissingNumberFormat();
             RunVariantOrder();
+            RunInvariantLcidCache("lcid-empty-missing");
+            RunInstanceNumberFormat();
+            RunIntegerCultureConstructors();
+            RunInstanceEquality();
+        }
+
+        private static void RunInstanceEquality(string leftName = null, string rightName = null)
+        {
+            Console.WriteLine("== culture instance equality ==");
+            string[] leftNames = leftName is null ? new[]
+            {
+                "en-US", "en-US", "de-DE", "de-DE_phoneb", "i-enochian", "i-enochian", "i-klingon",
+                "en-US-u-nu-latn", "en-US-u-nu-latn", "en-US-POSIX-abcde-u-nu-latn"
+            } : new[] { leftName };
+            string[] rightNames = leftName is null ? new[]
+            {
+                "en-US", "EN-us", "de-DE_phoneb", "DE-de_PHONEB", "", "i-enochian", "tlh",
+                "en-US-u-nu-LATN", "en-US-u-nu-arab", "en-US-abcde-POSIX-u-nu-latn"
+            } : new[] { rightName };
+            for (int i = 0; i < leftNames.Length; i++)
+            {
+                CultureInfo left = new CultureInfo(leftNames[i]);
+                CultureInfo right = new CultureInfo(rightNames[i]);
+                object boxedLeft = left;
+                object boxedRight = right;
+                Console.WriteLine("  pair='" + leftNames[i] + "'/'" + rightNames[i] + "'");
+                Console.WriteLine("    identity=" + left.Name + "/" + right.Name + " value=" + left + "/" + right);
+                Console.WriteLine("    reference=" + ReferenceEquals(left, right));
+                Console.WriteLine("    equals=" + object.Equals(left, right) + "/" + boxedLeft.Equals(boxedRight)
+                    + "/" + EqualityComparer<CultureInfo>.Default.Equals(left, right));
+                Console.WriteLine("    self/null/other=" + boxedLeft.Equals(boxedLeft) + "/" + boxedLeft.Equals(null)
+                    + "/" + boxedLeft.Equals(leftNames[i]));
+                Console.WriteLine("    equal hashes=" + (object.Equals(left, right)
+                    ? (boxedLeft.GetHashCode() == boxedRight.GetHashCode()).ToString() : "<unequal>")
+                    + "/" + (EqualityComparer<CultureInfo>.Default.Equals(left, right)
+                    ? (EqualityComparer<CultureInfo>.Default.GetHashCode(left) == EqualityComparer<CultureInfo>.Default.GetHashCode(right)).ToString()
+                    : "<unequal>"));
+                CaptureInstanceNumber("NFI reference", () => ReferenceEquals(left.NumberFormat, right.NumberFormat).ToString());
+                CaptureInstanceNumber("NFI equals", () => object.Equals(left.NumberFormat, right.NumberFormat)
+                    + "/" + ((object)left.NumberFormat).Equals((object)right.NumberFormat)
+                    + "/" + EqualityComparer<NumberFormatInfo>.Default.Equals(left.NumberFormat, right.NumberFormat));
+                TextInfo leftText = left.TextInfo;
+                TextInfo rightText = right.TextInfo;
+                object boxedLeftText = leftText;
+                object boxedRightText = rightText;
+                Console.WriteLine("    text reference=" + ReferenceEquals(leftText, rightText));
+                Console.WriteLine("    text equals=" + object.Equals(leftText, rightText) + "/" + boxedLeftText.Equals(boxedRightText)
+                    + "/" + EqualityComparer<TextInfo>.Default.Equals(leftText, rightText));
+                Console.WriteLine("    text null/other=" + boxedLeftText.Equals(null) + "/" + boxedLeftText.Equals(left));
+                Console.WriteLine("    text equal hashes=" + (object.Equals(leftText, rightText)
+                    ? (boxedLeftText.GetHashCode() == boxedRightText.GetHashCode()).ToString() : "<unequal>"));
+                if (leftNames[i] == "en-US" && rightNames[i] == "en-US")
+                {
+                    Dictionary<CultureInfo, int> cultures = new Dictionary<CultureInfo, int>();
+                    cultures[left] = 1;
+                    cultures[right] = 2;
+                    Console.WriteLine("    culture dictionary=" + cultures.Count + ":" + cultures[left] + ":" + cultures[right]);
+                    HashSet<CultureInfo> cultureSet = new HashSet<CultureInfo>();
+                    Console.WriteLine("    culture set=" + cultureSet.Add(left) + ":" + cultureSet.Add(right) + ":" + cultureSet.Count);
+                    Dictionary<TextInfo, int> texts = new Dictionary<TextInfo, int>();
+                    texts[leftText] = 1;
+                    texts[rightText] = 2;
+                    Console.WriteLine("    text dictionary=" + texts.Count + ":" + texts[leftText] + ":" + texts[rightText]);
+                    HashSet<TextInfo> textSet = new HashSet<TextInfo>();
+                    Console.WriteLine("    text set=" + textSet.Add(leftText) + ":" + textSet.Add(rightText) + ":" + textSet.Count);
+                    HashSet<NumberFormatInfo> numberSet = new HashSet<NumberFormatInfo>();
+                    Console.WriteLine("    NFI set=" + numberSet.Add(left.NumberFormat) + ":" + numberSet.Add(right.NumberFormat) + ":" + numberSet.Count);
+                }
+            }
+            Console.WriteLine("== culture specific instances ==");
+            foreach (string name in new[] { "en-US", "en", "" })
+            {
+                CultureInfo specific = CultureInfo.CreateSpecificCulture(name);
+                CultureInfo repeated = CultureInfo.CreateSpecificCulture(name);
+                WriteInstanceCulture("specific '" + name + "'", specific);
+                Console.WriteLine("    specific reference=" + ReferenceEquals(specific, repeated)
+                    + " invariant=" + ReferenceEquals(specific, CultureInfo.InvariantCulture)
+                    + " NFI reference=" + ReferenceEquals(specific.NumberFormat, repeated.NumberFormat));
+                Console.WriteLine("    specific number=" + InstanceNumberData(specific.NumberFormat));
+                NumberFormatInfo number = new NumberFormatInfo { NumberDecimalSeparator = "@" };
+                specific.NumberFormat = number;
+                Console.WriteLine("    specific assignment=" + ReferenceEquals(specific.NumberFormat, number)
+                    + " sibling=" + InstanceNumberData(repeated.NumberFormat));
+            }
+            Console.WriteLine("culture specific instances end");
+            Console.WriteLine("culture instance equality end");
+        }
+
+        private static void RunInstanceNumberFormat(string name = null)
+        {
+            Console.WriteLine("== culture instance number format ==");
+            foreach (string input in name is null ? new[] { "i-enochian", "en-US", "en", "" } : new[] { name })
+            {
+                Console.WriteLine("  input='" + input + "'");
+                CultureInfo culture = new CultureInfo(input);
+                NumberFormatInfo custom = new NumberFormatInfo
+                {
+                    NumberDecimalSeparator = "@", NumberGroupSeparator = "_", NegativeSign = "~"
+                };
+                WriteInstanceCulture("initial", culture);
+                NumberFormatInfo previous = null;
+                CaptureInstanceNumber("initial number", () =>
+                {
+                    previous = culture.NumberFormat;
+                    return InstanceNumberData(previous) + ":stable=" + ReferenceEquals(previous, culture.NumberFormat)
+                        + ":sibling=" + ReferenceEquals(previous, new CultureInfo(input).NumberFormat);
+                });
+                CaptureInstanceNumber("writable null", () => { culture.NumberFormat = null; return "ok"; });
+                culture.NumberFormat = custom;
+                WriteInstanceNumberRoutes("assigned", culture, custom);
+                if (previous is not null)
+                {
+                    Console.WriteLine("    old number=" + InstanceNumberData(previous) + ":same=" + ReferenceEquals(previous, custom));
+                    previous.NumberDecimalSeparator = "%";
+                    Console.WriteLine("    old mutation=" + InstanceNumberData(previous) + "/" + InstanceNumberData(custom));
+                }
+                CaptureInstanceNumber("sibling number", () => InstanceNumberData(new CultureInfo(input).NumberFormat));
+                CaptureInstanceNumber("cached number", () => InstanceNumberData(CultureInfo.GetCultureInfo(input).NumberFormat));
+                CaptureInstanceNumber("double format", () => (-1234.5).ToString("N2", culture));
+                CaptureInstanceNumber("decimal format", () => (-1234.5m).ToString("N2", culture));
+                CaptureInstanceNumber("integer format", () => (-12).ToString(culture));
+                CaptureInstanceNumber("double parse", () => double.Parse("~12@5", culture).ToString(CultureInfo.InvariantCulture));
+                CaptureInstanceNumber("decimal parse", () => decimal.Parse("~12@5", culture).ToString(CultureInfo.InvariantCulture));
+                CaptureInstanceNumber("integer parse", () => int.Parse("~12", culture).ToString(CultureInfo.InvariantCulture));
+                CultureInfo savedCulture = CultureInfo.CurrentCulture;
+                CultureInfo savedUI = CultureInfo.CurrentUICulture;
+                try
+                {
+                    CultureInfo.CurrentCulture = culture;
+                    CultureInfo.CurrentUICulture = culture;
+                    Console.WriteLine("    current same=" + ReferenceEquals(CultureInfo.CurrentCulture, culture)
+                        + " UI same=" + ReferenceEquals(CultureInfo.CurrentUICulture, culture));
+                    Console.WriteLine("    current info=" + ReferenceEquals(NumberFormatInfo.CurrentInfo, custom)
+                        + " UI number=" + ReferenceEquals(CultureInfo.CurrentUICulture.NumberFormat, custom));
+                    Console.WriteLine("    current format=" + (-12).ToString());
+                }
+                finally
+                {
+                    CultureInfo.CurrentCulture = savedCulture;
+                    CultureInfo.CurrentUICulture = savedUI;
+                }
+
+                CultureInfo clone = (CultureInfo)culture.Clone();
+                WriteInstanceCulture("clone", clone);
+                Console.WriteLine("    clone same=" + ReferenceEquals(clone, culture)
+                    + " number same=" + ReferenceEquals(clone.NumberFormat, custom));
+                Console.WriteLine("    clone number=" + InstanceNumberData(clone.NumberFormat));
+                custom.NumberDecimalSeparator = "#";
+                Console.WriteLine("    source mutation=" + InstanceNumberData(custom) + "/" + InstanceNumberData(clone.NumberFormat));
+                clone.NumberFormat.NumberDecimalSeparator = "%";
+                Console.WriteLine("    clone mutation=" + InstanceNumberData(custom) + "/" + InstanceNumberData(clone.NumberFormat));
+                custom.NumberDecimalSeparator = "@";
+
+                CultureInfo readOnly = CultureInfo.ReadOnly(culture);
+                WriteInstanceCulture("readonly", readOnly);
+                Console.WriteLine("    readonly same=" + ReferenceEquals(readOnly, culture)
+                    + " repeat=" + ReferenceEquals(readOnly, CultureInfo.ReadOnly(readOnly))
+                    + " number same=" + ReferenceEquals(readOnly.NumberFormat, custom));
+                Console.WriteLine("    readonly number=" + InstanceNumberData(readOnly.NumberFormat));
+                custom.NumberDecimalSeparator = "#";
+                Console.WriteLine("    readonly source mutation=" + InstanceNumberData(custom) + "/" + InstanceNumberData(readOnly.NumberFormat));
+                ValidateInstanceAssignment("readonly", readOnly, custom);
+                CultureInfo readOnlyClone = (CultureInfo)readOnly.Clone();
+                WriteInstanceCulture("readonly clone", readOnlyClone);
+                Console.WriteLine("    readonly clone number same=" + ReferenceEquals(readOnlyClone.NumberFormat, readOnly.NumberFormat)
+                    + " data=" + InstanceNumberData(readOnlyClone.NumberFormat));
+                readOnlyClone.NumberFormat = custom;
+                Console.WriteLine("    readonly clone assignment=" + ReferenceEquals(readOnlyClone.NumberFormat, custom));
+
+                CultureInfo lazy = new CultureInfo(input);
+                CultureInfo lazyClone = (CultureInfo)lazy.Clone();
+                CultureInfo lazyReadOnly = CultureInfo.ReadOnly(lazy);
+                WriteInstanceCulture("lazy clone", lazyClone);
+                WriteInstanceCulture("lazy readonly", lazyReadOnly);
+                CaptureInstanceNumber("lazy clone number", () => InstanceNumberData(lazyClone.NumberFormat));
+                CaptureInstanceNumber("lazy readonly number", () => InstanceNumberData(lazyReadOnly.NumberFormat));
+                CaptureInstanceNumber("lazy number refs", () => ReferenceEquals(lazy.NumberFormat, lazyClone.NumberFormat)
+                    + "/" + ReferenceEquals(lazy.NumberFormat, lazyReadOnly.NumberFormat));
+                lazyClone.NumberFormat = custom;
+                Console.WriteLine("    lazy clone assignment=" + ReferenceEquals(lazyClone.NumberFormat, custom));
+
+                NumberFormatInfo frozenNumber = NumberFormatInfo.ReadOnly(custom);
+                Console.WriteLine("    NFI readonly=" + InstanceNumberData(frozenNumber) + ":same=" + ReferenceEquals(frozenNumber, custom)
+                    + ":repeat=" + ReferenceEquals(frozenNumber, NumberFormatInfo.ReadOnly(frozenNumber)));
+                culture.NumberFormat = frozenNumber;
+                WriteInstanceNumberRoutes("readonly NFI assigned", culture, frozenNumber);
+                Console.WriteLine("    readonly assigned NFI wrapper same="
+                    + ReferenceEquals(CultureInfo.ReadOnly(culture).NumberFormat, frozenNumber));
+                NumberFormatInfo clonedNumber = (NumberFormatInfo)frozenNumber.Clone();
+                clonedNumber.NumberDecimalSeparator = "%";
+                Console.WriteLine("    NFI clone=" + InstanceNumberData(clonedNumber) + ":same=" + ReferenceEquals(clonedNumber, frozenNumber));
+                CultureInfo frozenClone = (CultureInfo)culture.Clone();
+                Console.WriteLine("    assigned readonly NFI clone=" + InstanceNumberData(frozenClone.NumberFormat)
+                    + ":same=" + ReferenceEquals(frozenClone.NumberFormat, frozenNumber));
+                CaptureInstanceNumber("readonly decimal null", () => { frozenNumber.NumberDecimalSeparator = null; return "ok"; });
+                CaptureInstanceNumber("readonly decimal empty", () => { frozenNumber.NumberDecimalSeparator = ""; return "ok"; });
+                CaptureInstanceNumber("readonly decimal valid", () => { frozenNumber.NumberDecimalSeparator = "!"; return "ok"; });
+                CaptureInstanceNumber("readonly sign null", () => { frozenNumber.NegativeSign = null; return "ok"; });
+                CaptureInstanceNumber("readonly currency digits invalid", () => { frozenNumber.CurrencyDecimalDigits = -1; return "ok"; });
+                CaptureInstanceNumber("readonly groups null", () => { frozenNumber.NumberGroupSizes = null; return "ok"; });
+                CaptureInstanceNumber("readonly groups invalid", () => { frozenNumber.NumberGroupSizes = new[] { -1 }; return "ok"; });
+
+                culture.NumberFormat = NumberFormatInfo.InvariantInfo;
+                WriteInstanceNumberRoutes("invariant assigned", culture, NumberFormatInfo.InvariantInfo);
+                Console.WriteLine("    retained clone=" + InstanceNumberData(clone.NumberFormat)
+                    + " readonly=" + InstanceNumberData(readOnly.NumberFormat));
+                ValidateInstanceAssignment("cached", CultureInfo.GetCultureInfo(input), custom);
+                CultureInfo cachedClone = (CultureInfo)CultureInfo.GetCultureInfo(input).Clone();
+                WriteInstanceCulture("cached clone", cachedClone);
+                cachedClone.NumberFormat = custom;
+                Console.WriteLine("    cached clone assignment=" + ReferenceEquals(cachedClone.NumberFormat, custom));
+            }
+            NumberFormatInfo value = new NumberFormatInfo();
+            ValidateInstanceAssignment("invariant", CultureInfo.InvariantCulture, value);
+            ValidateInstanceAssignment("integer invariant", CultureInfo.GetCultureInfo(127), value);
+            ValidateInstanceAssignment("integer cached", CultureInfo.GetCultureInfo(1033), value);
+            CaptureInstanceNumber("ReadOnly null", () => CultureInfo.ReadOnly(null).Name);
+            Console.WriteLine("culture instance number format end");
+        }
+
+        private static string InstanceNumberData(NumberFormatInfo number) => number.NumberDecimalSeparator + ":"
+            + number.NumberGroupSeparator + ":" + number.NegativeSign + ":" + number.NumberDecimalDigits
+            + ":readonly=" + number.IsReadOnly;
+
+        private static void WriteInstanceCulture(string label, CultureInfo culture) => Console.WriteLine("    " + label
+            + "=" + MissingCultureIdentity(culture) + ":readonly=" + culture.IsReadOnly);
+
+        private static void WriteInstanceNumberRoutes(string label, CultureInfo culture, NumberFormatInfo expected)
+        {
+            Console.WriteLine("    " + label + "=" + InstanceNumberData(culture.NumberFormat)
+                + ":same=" + ReferenceEquals(culture.NumberFormat, expected));
+            Console.WriteLine("    " + label + " routes=" + ReferenceEquals(culture.GetFormat(typeof(NumberFormatInfo)), expected)
+                + "/" + ReferenceEquals(((IFormatProvider)culture).GetFormat(typeof(NumberFormatInfo)), expected)
+                + "/" + ReferenceEquals(NumberFormatInfo.GetInstance(culture), expected)
+                + "/" + ReferenceEquals(NumberFormatInfo.GetInstance((IFormatProvider)culture), expected));
+        }
+
+        private static void ValidateInstanceAssignment(string label, CultureInfo culture, NumberFormatInfo value)
+        {
+            WriteInstanceCulture(label, culture);
+            CaptureInstanceNumber(label + " null", () => { culture.NumberFormat = null; return "ok"; });
+            CaptureInstanceNumber(label + " nonnull", () => { culture.NumberFormat = value; return "ok"; });
+        }
+
+        private static void CaptureInstanceNumber(string label, Func<string> action)
+        {
+            try
+            {
+                Console.WriteLine("    " + label + "=" + action());
+            }
+            catch (ArgumentException exception)
+            {
+                Console.WriteLine("    " + label + "=" + exception.GetType().Name + ":" + exception.ParamName);
+            }
+            catch (InvalidOperationException)
+            {
+                Console.WriteLine("    " + label + "=" + nameof(InvalidOperationException));
+            }
+            catch (NullReferenceException)
+            {
+                Console.WriteLine("    " + label + "=" + nameof(NullReferenceException));
+            }
+        }
+
+        private static void RunIntegerCultureConstructors()
+        {
+            Console.WriteLine("== culture integer constructors ==");
+            foreach (int lcid in new[] { 127, 1033, -1, 0, 4096, 65535 })
+            {
+                foreach (string option in new[] { "default", "true", "false" })
+                {
+                    string label = lcid + ":" + option;
+                    try
+                    {
+                        CultureInfo culture = option == "default" ? new CultureInfo(lcid) : new CultureInfo(lcid, option == "true");
+                        WriteInstanceCulture(label, culture);
+                        Console.WriteLine("    number=" + InstanceNumberData(culture.NumberFormat)
+                            + ":stable=" + ReferenceEquals(culture.NumberFormat, culture.NumberFormat)
+                            + ":sibling=" + ReferenceEquals(culture.NumberFormat, new CultureInfo(lcid).NumberFormat));
+                    }
+                    catch (CultureNotFoundException exception)
+                    {
+                        Console.WriteLine("    " + label + "=" + nameof(CultureNotFoundException) + ":" + exception.ParamName
+                            + ":id=" + exception.InvalidCultureId.Value + ":name=" + (exception.InvalidCultureName ?? "<null>"));
+                    }
+                    catch (ArgumentOutOfRangeException exception)
+                    {
+                        Console.WriteLine("    " + label + "=" + nameof(ArgumentOutOfRangeException) + ":" + exception.ParamName);
+                    }
+                }
+            }
+            Console.WriteLine("culture integer constructors end");
+        }
+
+        private static void RunInvariantLcidCache(string lookupOrder)
+        {
+            Console.WriteLine("== culture invariant lcid cache ==");
+            Console.WriteLine("  order=" + lookupOrder);
+            string[] order = lookupOrder.Split('-');
+            CultureInfo[] cultures = new CultureInfo[order.Length];
+            for (int i = 0; i < order.Length; i++)
+            {
+                cultures[i] = GetInvariantCacheCulture(order[i]);
+                WriteInvariantCacheCulture(order[i], cultures[i]);
+            }
+            for (int i = 0; i < order.Length; i++)
+            {
+                CultureInfo repeated = GetInvariantCacheCulture(order[i]);
+                WriteInvariantCacheCulture(order[i] + " repeat", repeated);
+                Console.WriteLine("  " + order[i] + " same=" + ReferenceEquals(cultures[i], repeated)
+                    + " invariant=" + ReferenceEquals(repeated, CultureInfo.InvariantCulture));
+                for (int j = i + 1; j < order.Length; j++)
+                    Console.WriteLine("  " + order[i] + "/" + order[j] + "=" + ReferenceEquals(cultures[i], cultures[j]));
+            }
+            WriteInvariantCacheCulture("invariant", CultureInfo.InvariantCulture);
+            Console.WriteLine("culture invariant lcid cache end");
+        }
+
+        private static CultureInfo GetInvariantCacheCulture(string key)
+        {
+            if (key == "lcid")
+                return CultureInfo.GetCultureInfo(127);
+            if (key == "empty")
+                return CultureInfo.GetCultureInfo("");
+            return CultureInfo.GetCultureInfo("i-enochian");
+        }
+
+        private static void WriteInvariantCacheCulture(string label, CultureInfo culture)
+        {
+            Console.WriteLine("  " + label + "=" + MissingCultureIdentity(culture) + ":value='" + culture.ToString() + "'");
+            CaptureMissingNumber(label + " number", () => MissingNumberData(culture.NumberFormat)
+                + ":invariant=" + ReferenceEquals(culture.NumberFormat, NumberFormatInfo.InvariantInfo));
+            CaptureMissingNumber(label + " format", () => (1234.5).ToString("N2", culture));
         }
 
         private static void RunVariantOrder(string name = null)
