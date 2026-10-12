@@ -61,7 +61,7 @@ portable C++17 that names no operating system, and that compiles, links and runs
 Copy the directory, add the CMake arm (§3.3), and replace bodies one at a time. The
 `PAL_REFERENCE=1` axis of `gates/build-and-run-pal-reference.sh` keeps it working.
 
-The seam declares **23** functions, plus enums. Re-derive the function count:
+The seam declares **24** functions, plus enums. Re-derive the function count:
 
 ```bash
 grep -cE '^[A-Za-z_].*\bdn2cpp_pal_[a-z_0-9]+\(' runtime/core/platform/dn2cpp_pal.h
@@ -80,7 +80,7 @@ declaration in `dn2cpp_pal.h` carries a `// PAL-CONTRACT: MUST` or
 `// PAL-CONTRACT: MAY-DEGRADE <sentinel>` line, that marker is the source of truth,
 and `gates/build-and-run-doc-claims.sh` diffs it against the table below.
 
-**19 of the 23 must answer truly.** The remaining entries have a
+**19 of the 24 must answer truly.** The remaining entries have a
 documented "unavailable" answer that their callers handle:
 
 | may degrade | the sentinel | who handles it |
@@ -89,6 +89,7 @@ documented "unavailable" answer that their callers handle:
 | `dn2cpp_pal_executable_path` | returns `-1` | `runtime/core/intrinsics/dn2cpp_system_io.cpp` caches the failure; `Environment.ProcessPath` → null, `AppContext.BaseDirectory` → `""`. The wasm arm returns `-1` unconditionally: a wasm instance is not a process image on a file system. |
 | `dn2cpp_pal_backtrace` | returns `0` | `runtime/core/dn2cpp_exceptions.cpp` stamps no trace and `Exception.StackTrace` stays null. The wasm arm returns `0` because `-fwasm-exceptions` exposes no unwinder and a release build carries no name section. |
 | `dn2cpp_pal_default_locale_name` | returns `0` | The caller reads it as the invariant culture. The wasm and reference arms return `0` unconditionally — neither has a user to ask. dn2cpp models no ICU, so an invariant default is correct behaviour, merely not localised. |
+| `dn2cpp_pal_numeric_fallback_locale_name` | returns `0` | Undefined-language numeric fallback uses the frozen root profile. The wasm and reference arms have no host resource locale and return `0`. |
 
 Everything else — the file-system calls, `getenv`, the ANSI transforms,
 the process-wide barrier, the time conversions, the usable-size query, and the

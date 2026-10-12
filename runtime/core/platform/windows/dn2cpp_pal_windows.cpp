@@ -99,6 +99,20 @@ int32_t dn2cpp_pal_default_locale_name(char* buf, size_t size)
     return static_cast<int32_t>(written);
 }
 
+int32_t dn2cpp_pal_numeric_fallback_locale_name(char* buf, size_t size)
+{
+    // ICU uses GetLocaleInfoEx(USER_DEFAULT, SNAME), the same user's locale
+    // name as GetUserDefaultLocaleName. Its unavailable answer is en-US.
+    int32_t n = dn2cpp_pal_default_locale_name(buf, size);
+    if (n > 0)
+        return n;
+    static const char fallback[] = "en-US";
+    if (buf == nullptr || size < sizeof(fallback))
+        return 0;
+    std::memcpy(buf, fallback, sizeof(fallback));
+    return sizeof(fallback) - 1;
+}
+
 int32_t dn2cpp_pal_ansi_encode(const char16_t* src, int32_t srcLen, char* buf, int32_t bufSize, int32_t bestFit)
 {
     if (src == nullptr || srcLen <= 0)

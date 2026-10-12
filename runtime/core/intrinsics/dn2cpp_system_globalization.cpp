@@ -5,7 +5,8 @@
 // the host default, a mutable NumberFormatInfo, and the *_c formatters that
 // localize digits/sign/group/decimal symbols.
 #include "dn2cpp_core.h"
-#include "platform/dn2cpp_pal.h" // dn2cpp_pal_default_locale_name (CurrentCulture's default)
+#include "platform/dn2cpp_pal.h"
+#include "platform/dn2cpp_locale_id.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -152,8 +153,8 @@ struct Dn2CppCultureNumericGroups
     int8_t count;
 };
 
-// Numbering profiles leave culture identity with the base row. Currency symbols
-// are stored per locale; every numeric axis is independently representable.
+// Numeric profiles do not define culture identity. Currency symbols are stored
+// separately; every numeric axis is independently representable.
 struct Dn2CppCultureNumericData
 {
     const char16_t* numberDecimal;
@@ -184,6 +185,7 @@ struct Dn2CppCultureNumericData
 };
 
 #include "dn2cpp_culture_numbering.inc"
+#include "dn2cpp_culture_fallback.inc"
 
 // ASCII case-insensitive compare of a managed culture name against a row's
 // literal. .NET's own lookup is case-insensitive (`new CultureInfo("pt-br")` is
@@ -247,6 +249,144 @@ static bool dn2cpp_culture_is_script(const char16_t* chars, int32_t count)
 
 // CultureData's ICU validation runs before native canonicalization. NUL is
 // accepted for compatibility, but ICU only consumes the prefix before it.
+static std::u16string dn2cpp_culture_lower(std::u16string value)
+{
+    for (char16_t& c : value)
+        if (c >= u'A' && c <= u'Z')
+            c = static_cast<char16_t>(c - u'A' + u'a');
+    return value;
+}
+
+static void dn2cpp_culture_recase_script(std::u16string& name)
+{
+    size_t start = name.find(u'-');
+    if (start == std::u16string::npos)
+        return;
+    start++;
+    size_t end = name.find(u'-', start);
+    if (end == std::u16string::npos)
+        end = name.size();
+    if (end - start != 4)
+        return;
+    for (size_t i = start; i < end; i++)
+        if (!((name[i] >= u'a' && name[i] <= u'z') || (name[i] >= u'A' && name[i] <= u'Z')))
+            return;
+    for (size_t i = start; i < end; i++)
+        if (i == start && name[i] >= u'a' && name[i] <= u'z')
+            name[i] = static_cast<char16_t>(name[i] - u'a' + u'A');
+        else if (i > start && name[i] >= u'A' && name[i] <= u'Z')
+            name[i] = static_cast<char16_t>(name[i] - u'A' + u'a');
+}
+
+static void dn2cpp_culture_canonicalize_language_tag(std::u16string& name)
+{
+    if (name.find(u'_') != std::u16string::npos)
+        return;
+    std::u16string lower = dn2cpp_culture_lower(name);
+    size_t languageEnd = name.find(u'-');
+    bool languageTag = languageEnd == 1;
+    for (size_t i = 0; i + 2 < name.size(); i++)
+        if (name[i] == u'-' && name[i + 2] == u'-')
+            languageTag = true;
+    // Legacy ICU aliases also canonicalize without a BCP47 extension.
+    static const Dn2CppCultureNameMapping bareAliases[] = {
+        { u"art-lojban", u"jbo" }, { u"zh-guoyu", u"zh" },
+        { u"zh-hakka", u"hak" }, { u"zh-min-nan", u"nan" },
+        { u"zh-xiang", u"hsn" },
+    };
+    if (!languageTag)
+    {
+        for (const Dn2CppCultureNameMapping& alias : bareAliases)
+            if (lower == alias.name)
+            {
+                name = alias.target;
+                return;
+            }
+        return;
+    }
+    size_t legacyLength = 0;
+    const char16_t* target = nullptr;
+    for (const Dn2CppCultureNameMapping& legacy : kCultureNumberingLegacyNames)
+    {
+        size_t count = std::char_traits<char16_t>::length(legacy.name);
+        if (count > legacyLength && lower.compare(0, count, legacy.name) == 0
+            && (lower.size() == count || lower[count] == u'-'))
+        {
+            legacyLength = count;
+            target = legacy.target;
+        }
+    }
+    if (target != nullptr)
+    {
+        std::u16string base(target);
+        size_t privateUse = base.find(u"-x-");
+        if (privateUse != std::u16string::npos)
+        {
+            base.resize(privateUse);
+            // Suffix regions and variants belong to the introduced private
+            // use. CultureData retains only the original u/t extension tail.
+            size_t extension = lower.find(u"-u-", legacyLength);
+            size_t transform = lower.find(u"-t-", legacyLength);
+            if (extension == std::u16string::npos || transform < extension)
+                extension = transform;
+            name = extension != std::u16string::npos ? name.substr(extension) : u"";
+            legacyLength = 0;
+        }
+        if (base == u"und")
+            base.clear();
+        for (size_t i = base.find(u'-'); i != std::u16string::npos && i < base.size(); i++)
+            if (base[i] >= u'a' && base[i] <= u'z')
+                base[i] = static_cast<char16_t>(base[i] - u'a' + u'A');
+        name.replace(0, legacyLength, base);
+        dn2cpp_culture_recase_script(name);
+        return;
+    }
+    // BCP47's first extlang becomes ICU's language; the legacy locale path
+    // keeps an identically spelled three-letter country instead.
+    bool alphabetic = languageEnd >= 2 && languageEnd <= 3;
+    for (size_t i = 0; alphabetic && i < languageEnd; i++)
+        alphabetic = lower[i] >= u'a' && lower[i] <= u'z';
+    if (alphabetic && languageEnd + 4 <= name.size())
+    {
+        size_t end = name.find(u'-', languageEnd + 1);
+        if (end == languageEnd + 4)
+        {
+            bool letters = true;
+            for (size_t i = languageEnd + 1; i < end; i++)
+                letters = letters && lower[i] >= u'a' && lower[i] <= u'z';
+            if (letters)
+            {
+                size_t tail = end;
+                for (int count = 1; count < 3 && tail < name.size(); count++)
+                {
+                    size_t next = name.find(u'-', tail + 1);
+                    if (next == std::u16string::npos)
+                        next = name.size();
+                    if (next - tail != 4)
+                        break;
+                    bool extlang = true;
+                    for (size_t i = tail + 1; i < next; i++)
+                        extlang = extlang && lower[i] >= u'a' && lower[i] <= u'z';
+                    if (!extlang)
+                        break;
+                    tail = next;
+                }
+                size_t next = name.find(u'-', tail + 1);
+                if (next == std::u16string::npos)
+                    next = name.size();
+                bool extraExtlang = tail < name.size() && next - tail == 4;
+                for (size_t i = tail + 1; extraExtlang && i < next; i++)
+                    extraExtlang = lower[i] >= u'a' && lower[i] <= u'z';
+                // A fourth extlang ends ICU's BCP47 parse before any region
+                // or extension; it cannot become the promoted language's country.
+                name = lower.substr(languageEnd + 1, 3)
+                    + (extraExtlang ? std::u16string() : name.substr(tail));
+                dn2cpp_culture_recase_script(name);
+            }
+        }
+    }
+}
+
 static Dn2CppString* dn2cpp_culture_normalize_name(Dn2CppString* name)
 {
     if (name->length == 1 || name->length > 85)
@@ -333,6 +473,7 @@ static Dn2CppString* dn2cpp_culture_normalize_name(Dn2CppString* name)
             break;
         }
     std::u16string canonical(normalized, static_cast<size_t>(length));
+    dn2cpp_culture_canonicalize_language_tag(canonical);
     size_t languageEnd = canonical.find_first_of(u"-_");
     if (languageEnd == std::u16string::npos)
         languageEnd = canonical.size();
@@ -461,8 +602,21 @@ static Dn2CppString* dn2cpp_culture_public_name(Dn2CppString* input, Dn2CppStrin
     return canonical;
 }
 
+static bool dn2cpp_culture_is_posix(Dn2CppString* name)
+{
+    if (name->length < 11)
+        return false;
+    Dn2CppString base = *name;
+    base.length = 11;
+    return dn2cpp_culture_name_eq_ci(&base, u"en-US-POSIX")
+        && (name->length == 11 || (name->length > 13
+            && name->chars[11] == u'-' && name->chars[13] == u'-'));
+}
+
 static const Dn2CppCultureRow* dn2cpp_culture_find_format_row(Dn2CppString* name)
 {
+    if (dn2cpp_culture_is_posix(name))
+        return nullptr;
     Dn2CppString prefix = *name;
     int32_t regionEnd = dn2cpp_culture_region_end(name);
     for (;;)
@@ -511,6 +665,7 @@ struct Dn2CppCultureCacheNode
     const Dn2CppCultureRow* row; // null for an unmodeled name
     Dn2CppString* identity;
     const Dn2CppCultureNumericData* numeric;
+    const Dn2CppCultureFallbackEntry* fallback;
     Dn2CppCultureCacheNode* next;
 };
 static DN2CPP_GC_STATIC_ROOT Dn2CppCultureCacheNode* g_cultureCache = nullptr;
@@ -681,6 +836,131 @@ static const Dn2CppCultureNumericData* dn2cpp_culture_numeric_data(
     return nullptr;
 }
 
+static size_t dn2cpp_culture_fallback_host_index(Dn2CppString* name)
+{
+    if (name == nullptr)
+        return 0;
+    Dn2CppString prefix = *name;
+    while (prefix.length > 0)
+    {
+        for (size_t i = 0; i < sizeof(kCultureFallbackHosts) / sizeof(kCultureFallbackHosts[0]); i++)
+            if (dn2cpp_culture_name_eq_ci(&prefix, kCultureFallbackHosts[i]))
+                return i;
+        int32_t end = prefix.length;
+        while (end > 0 && prefix.chars[end - 1] != u'-' && prefix.chars[end - 1] != u'_')
+            end--;
+        prefix.length = end > 0 ? end - 1 : 0;
+    }
+    return 0;
+}
+
+static size_t dn2cpp_culture_fallback_host()
+{
+    // This descriptor cannot call by_name or host_default: either can be the
+    // caller while resolving an undefined host locale for the first time.
+    static const size_t host = [] {
+        char name[128];
+        int32_t length = dn2cpp_pal_numeric_fallback_locale_name(name, sizeof(name));
+        Dn2CppString* requested = length > 0 ? dn2cpp_string_from_utf8(name, length) : nullptr;
+        if (requested != nullptr)
+        {
+            std::u16string raw = dn2cpp_culture_lower(std::u16string(requested->chars, requested->length));
+            // A private-use ICU default does not select the alias's public
+            // resource language. CultureInfo's displayed name omits that state.
+            if (raw == u"i-default" || raw.compare(0, 10, u"i-default-") == 0)
+                return size_t{0};
+            if (raw.compare(0, 12, u"en-us-posix-") == 0)
+            {
+                Dn2CppLocalePosixState parsed = dn2cpp_locale_posix_parse(raw.data(), raw.size());
+                Dn2CppString resource{};
+                resource.chars = parsed.ordinaryResources ? u"en-US" : u"en-US-POSIX";
+                resource.length = parsed.ordinaryResources ? 5 : 11;
+                return dn2cpp_culture_fallback_host_index(&resource);
+            }
+        }
+        Dn2CppString* canonical = requested != nullptr ? dn2cpp_culture_normalize_name(requested) : nullptr;
+        return dn2cpp_culture_fallback_host_index(canonical);
+    }();
+    return host;
+}
+
+static const Dn2CppCultureFallbackEntry* dn2cpp_culture_fallback_entry(
+    Dn2CppString* name, Dn2CppString* request)
+{
+    size_t host = 0;
+    Dn2CppString language = *name;
+    language.length = 0;
+    while (language.length < name->length && name->chars[language.length] != u'-'
+        && name->chars[language.length] != u'_')
+        language.length++;
+    bool root = language.length == 0 && name->length > 0;
+#if defined(__APPLE__)
+    root = root || dn2cpp_culture_name_eq_ci(&language, u"nv")
+        || dn2cpp_culture_name_eq_ci(&language, u"jbo");
+#endif
+    if (dn2cpp_culture_is_posix(name))
+    {
+        Dn2CppString posix{};
+        posix.chars = u"en-US-POSIX";
+        posix.length = 11;
+        host = dn2cpp_culture_fallback_host_index(&posix);
+    }
+    else if (dn2cpp_culture_name_eq_ci(request, u"zh-min"))
+    {
+        Dn2CppString english{};
+        english.chars = u"en";
+        english.length = 2;
+        host = dn2cpp_culture_fallback_host_index(&english);
+    }
+    else if (!root)
+    {
+        if (language.length < 2)
+            return nullptr;
+        for (int32_t i = 0; i < language.length; i++)
+            if (!((language.chars[i] >= u'a' && language.chars[i] <= u'z')
+                || (language.chars[i] >= u'A' && language.chars[i] <= u'Z')))
+                return nullptr;
+        for (const char16_t* resource : kCultureResourceLanguages)
+            if (dn2cpp_culture_name_eq_ci(&language, resource))
+                return nullptr;
+        host = dn2cpp_culture_fallback_host();
+    }
+    int32_t regionEnd = dn2cpp_culture_region_end(name);
+    Dn2CppString region{};
+    if (regionEnd > 0)
+    {
+        int32_t start = regionEnd;
+        while (start > 0 && name->chars[start - 1] != u'-')
+            start--;
+        region.chars = name->chars + start;
+        region.length = regionEnd - start;
+    }
+    for (size_t i = 0; i < sizeof(kCultureFallbackRegions) / sizeof(kCultureFallbackRegions[0]); i++)
+    {
+        if (dn2cpp_culture_name_eq_ci(&region, kCultureFallbackRegions[i]))
+            return &kCultureFallbackEntries[host][i];
+    }
+    return &kCultureFallbackEntries[host][0];
+}
+
+static const Dn2CppCultureNumericData* dn2cpp_culture_fallback_numeric(
+    const Dn2CppCultureFallbackEntry* entry, Dn2CppString* request)
+{
+    uint8_t family = 0;
+    std::u16string value;
+    if (dn2cpp_culture_numbering_type(request, value))
+    {
+        family = kFallbackUnknownFamily;
+        for (const Dn2CppCultureNumberingType& type : kCultureFallbackTypes)
+            if (value == type.name)
+            {
+                family = type.family;
+                break;
+            }
+    }
+    return &kCultureFallbackProfiles[kCultureFallbackVectors[entry->vector][family]];
+}
+
 static void dn2cpp_culture_apply_numeric(Dn2CppNumberFormatInfo* n,
     const Dn2CppCultureNumericData* data, const Dn2CppCultureRow* row)
 {
@@ -745,6 +1025,7 @@ static void dn2cpp_culture_apply_format(Dn2CppNumberFormatInfo* n, const Dn2CppC
     n->negInf = dn2cpp_lit16(row->negInf);
     n->percentSymbol = dn2cpp_lit16(row->percent);
     n->currencySymbol = dn2cpp_lit16(row->currency);
+    n->numberDigits = n->percentDigits = 3;
     n->currencyDigits = row->currencyDigits;
     n->currencyPosPattern = row->currencyPos;
     n->currencyNegPattern = row->currencyNeg;
@@ -752,11 +1033,12 @@ static void dn2cpp_culture_apply_format(Dn2CppNumberFormatInfo* n, const Dn2CppC
     n->percentNegPattern = row->percentNeg;
 }
 
-// Intern the requested identity over its formatting row, or invariant symbols
-// when no row resolves. Caller must NOT hold the lock.
+// Intern identity separately from numeric data. Fallback entries also select
+// localized currency symbols, so they participate in the key. Caller holds no lock.
 static const Dn2CppNumberFormatInfo* dn2cpp_culture_intern(const Dn2CppCultureRow* row,
     Dn2CppString* identity, Dn2CppString* name = nullptr, int32_t lcid = -1,
-    const Dn2CppCultureNumericData* numeric = nullptr)
+    const Dn2CppCultureNumericData* numeric = nullptr,
+    const Dn2CppCultureFallbackEntry* fallback = nullptr)
 {
     if (identity == nullptr)
         identity = dn2cpp_lit16(row->name);
@@ -765,7 +1047,7 @@ static const Dn2CppNumberFormatInfo* dn2cpp_culture_intern(const Dn2CppCultureRo
     std::lock_guard<std::mutex> lock(g_cultureCacheMutex);
     for (Dn2CppCultureCacheNode* p = g_cultureCache; p != nullptr; p = p->next)
     {
-        if (p->row == row && p->numeric == numeric
+        if (p->row == row && p->numeric == numeric && p->fallback == fallback
             && dn2cpp_string_equals(p->identity, identity)
             && dn2cpp_string_equals(p->nfi.cultureName, name))
             return &p->nfi;
@@ -777,6 +1059,7 @@ static const Dn2CppNumberFormatInfo* dn2cpp_culture_intern(const Dn2CppCultureRo
     node->nfi = *dn2cpp_nfi_invariant();
     node->row = row;
     node->numeric = numeric;
+    node->fallback = fallback;
     dn2cpp_gc_store_ref(&node->next, g_cultureCache);
     g_cultureCache = node;
     dn2cpp_gc_store_ref(&node->identity, identity);
@@ -801,11 +1084,13 @@ static const Dn2CppNumberFormatInfo* dn2cpp_culture_intern(const Dn2CppCultureRo
     if (row == nullptr)
     {
         if (numeric != nullptr)
+        {
             dn2cpp_culture_apply_numeric(&node->nfi, numeric, row);
-        // Unmodeled: invariant symbols, but the requested name is preserved so
-        // callers that key behavior on the name (e.g. RegexCaseEquivalences'
-        // Turkish/NonTurkish tiering) stay faithful, and the LCID says "this
-        // culture has none" rather than claiming to be the invariant one.
+            if (fallback != nullptr && !numeric->emptyCurrency)
+                node->nfi.currencySymbol = dn2cpp_lit16(kCultureFallbackCurrencies[fallback->currency]);
+        }
+        // Without a numeric profile, known resource languages outside the
+        // modeled inventory retain invariant symbols and their own identity.
         return &node->nfi;
     }
     if (dn2cpp_culture_name_eq_ci(name, row->name))
@@ -904,7 +1189,18 @@ const Dn2CppNumberFormatInfo* dn2cpp_culture_by_name(Dn2CppString* name, bool ca
     Dn2CppString* canonical = dn2cpp_culture_normalize_name(name);
     if (canonical == nullptr)
         dn2cpp_throw_culture_not_found(name, 0);
-    if (canonical->length == 0)
+    Dn2CppString request = *key;
+    for (int32_t i = 0; i < request.length; i++)
+        if (request.chars[i] == u'\0')
+        {
+            request.length = i;
+            break;
+        }
+    // An empty custom identity is distinct from the invariant culture's LCID.
+    Dn2CppString privateAlias = request;
+    if (privateAlias.length > 10 && privateAlias.chars[10] == u'-')
+        privateAlias.length = 10;
+    if (canonical->length == 0 && !dn2cpp_culture_name_eq_ci(&privateAlias, u"i-enochian"))
         return dn2cpp_nfi_invariant();
     Dn2CppString* publicName = dn2cpp_culture_public_name(name, canonical);
     int32_t lcid = 4096;
@@ -925,8 +1221,12 @@ const Dn2CppNumberFormatInfo* dn2cpp_culture_by_name(Dn2CppString* name, bool ca
     else if (const Dn2CppCultureRow* metadata = dn2cpp_culture_find_row(publicName))
         lcid = metadata->lcid;
     const Dn2CppCultureRow* row = dn2cpp_culture_find_format_row(canonical);
+    const Dn2CppCultureFallbackEntry* fallback = row == nullptr
+        ? dn2cpp_culture_fallback_entry(canonical, &request) : nullptr;
+    const Dn2CppCultureNumericData* numeric = fallback != nullptr
+        ? dn2cpp_culture_fallback_numeric(fallback, key) : dn2cpp_culture_numeric_data(row, key);
     const Dn2CppNumberFormatInfo* result = dn2cpp_culture_intern(
-        row, canonical, publicName, lcid, dn2cpp_culture_numeric_data(row, key));
+        row, canonical, publicName, lcid, numeric, fallback);
     result = dn2cpp_culture_request_cache(key, useUserOverride, result);
     return cached ? dn2cpp_culture_named_create(result) : result;
 }
@@ -1021,10 +1321,9 @@ int32_t dn2cpp_culture_is_neutral(const Dn2CppNumberFormatInfo* c)
 //
 // The host is asked for a NAME only, and the answer runs through the same
 // dn2cpp_culture_by_name as `new CultureInfo(x)`, so a modeled locale gets its
-// real symbols, variants share their base data, and an unresolved name keeps
-// invariant symbols. No
-// ICU is consulted; the PAL reproduces only .NET's rule for WHICH locale the
-// user is in.
+// real symbols and undefined languages use frozen host fallback profiles.
+// Known resource languages outside the modeled inventory retain invariant
+// symbols. No ICU is consulted; the PAL answers locale names only.
 //
 // Per-culture DATE formatting is NOT in the model (the DateTime formatters take
 // no NumberFormatInfo and are invariant unconditionally); this default does not

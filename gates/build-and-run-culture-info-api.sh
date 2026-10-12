@@ -59,6 +59,8 @@
 # numbering case also runs in a fresh process before any CultureData cache entry.
 # Algorithmic numbering preserves ICU's invalid grouping data and checks the
 # managed formatter's typed failure independently for each numeric format.
+# Undefined-language and grandfathered names assert identity without reading
+# host-dependent numeric data; the default-culture gate covers that data.
 # Bare POSIX and unknown tags have host-dependent ICU acceptance, so they
 # cannot be unconditional live-diff inputs.
 #
@@ -106,6 +108,9 @@ LOCALE_CASES=(
     culture-wrapper-base-first
     culture-wrapper-sort-first
     culture-wrapper-unicode-first
+    culture-wrapper-private-first
+    culture-wrapper-canonical-first
+    culture-primary-currency
 )
 NUMBERING_CASES=(
     en-US-u-nu-arab-foo
@@ -122,6 +127,25 @@ NUMBERING_CASES=(
     ja-JP-u-nu-traditio
     az-Latn-AZ-u-nu-arab
 )
+FALLBACK_CASES=(
+    und-US und-DE und-FR und-JP und-Latn-US
+    und-US-u-nu-arab und-US-u-nu-latn und-US-u-nu-native
+    und-US-u-nu-finance und-US-u-nu-traditio und-US-u-nu-foo
+    foo foo-US foo-u-nu-default foo-US-u-nu-default
+    de-FOO de-FOO-u-ca-gregory de-FOO-u-nu-latn de-FOO-u-nu-arab
+    de-FOO-u-nu-native de-FOO-u-nu-finance de-FOO-u-nu-traditio
+    de-FOO-u-nu-default de-FOO-u-nu-foo en-GB-oed en-GB-oed-u-nu-foo
+    i-klingon i-klingon-u-nu-foo i-default i-default-u-nu-foo
+    i-enochian i-enochian-u-nu-foo i-mingo i-mingo-u-nu-foo
+    zh-min zh-min-u-nu-foo zh-min-nan-u-nu-foo
+    nv jbo cmn i-navajo-u-nu-native art-lojban-u-nu-native zh-guoyu-u-nu-native
+    de-foo-bar-u-nu-latn de-foo-bar-US-u-nu-latn de-foo-Latn-US-u-nu-latn
+    de-foo-bar-baz-US-u-nu-latn de-foo-bar-baz-zzz-US-u-nu-latn
+    foo-QQ foo-999 und-QQ foo-ZZ i-default-US-u-nu-arab
+    i-enochian-US-u-nu-arab i-mingo-US-u-nu-arab zh-min-US-u-nu-arab
+    i-default-abcde-u-nu-arab i-enochian-US-U-NU-ARAB
+    i-klingon-Latn-US i-klingon-Latn-US-u-nu-latn zh-min-nan-Latn-US-u-nu-latn
+)
 gate_extra_asserts() {
     local out="$1" native expected mode marker
     native=$(run_bounded "./$out/CultureInfoApi" culture-names)
@@ -129,6 +153,10 @@ gate_extra_asserts() {
         || { echo "FAIL: culture locale data section did not finish" >&2; return 1; }
     grep -Fxq 'culture numbering data end' <<< "$(strip_cr_win "$native")" \
         || { echo "FAIL: culture numbering data section did not finish" >&2; return 1; }
+    grep -Fxq 'culture fallback identities end' <<< "$(strip_cr_win "$native")" \
+        || { echo "FAIL: culture fallback identities section did not finish" >&2; return 1; }
+    grep -Fxq 'culture primary currency end' <<< "$(strip_cr_win "$native")" \
+        || { echo "FAIL: culture primary currency section did not finish" >&2; return 1; }
     for mode in "${LOCALE_CASES[@]}"; do
         native=$(run_bounded "./$out/CultureInfoApi" "$mode")
         expected=$(run_bounded dotnet "$_CG_APP" "$mode")
@@ -139,6 +167,7 @@ gate_extra_asserts() {
             culture-sort-strings|culture-sort-upper-key) marker='culture sort strings end' ;;
             culture-numbering-boundaries) marker='culture numbering boundaries end' ;;
             culture-wrapper-*) marker='culture wrapper cache end' ;;
+            culture-primary-currency) marker='culture primary currency end' ;;
         esac
         grep -Fxq "$marker" <<< "$(strip_cr_win "$native")" \
             || { echo "FAIL: $mode did not finish" >&2; return 1; }
@@ -150,8 +179,15 @@ gate_extra_asserts() {
         grep -Fxq 'culture numbering data end' <<< "$(strip_cr_win "$native")" \
             || { echo "FAIL: numbering data for $mode did not finish" >&2; return 1; }
     done
+    for mode in "${FALLBACK_CASES[@]}"; do
+        native=$(run_bounded "./$out/CultureInfoApi" culture-fallback-identities "$mode")
+        expected=$(run_bounded dotnet "$_CG_APP" culture-fallback-identities "$mode")
+        assert_output "$native" "$expected"
+        grep -Fxq 'culture fallback identities end' <<< "$(strip_cr_win "$native")" \
+            || { echo "FAIL: fallback identities for $mode did not finish" >&2; return 1; }
+    done
 }
 DN2CPP_GATE_RUN_ARGS=culture-names
-DN2CPP_GATE_EXTRA_CONTEXT="${LOCALE_CASES[*]} ${NUMBERING_CASES[*]}"
+DN2CPP_GATE_EXTRA_CONTEXT="${LOCALE_CASES[*]} ${NUMBERING_CASES[*]} ${FALLBACK_CASES[*]}"
 DN2CPP_OUT_SUFFIX=-names
 corelib_diff_gate CultureInfoApi --link-xml samples/dotnet/CultureInfoApi/link.xml

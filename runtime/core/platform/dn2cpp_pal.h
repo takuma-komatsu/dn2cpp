@@ -130,6 +130,13 @@ char16_t dn2cpp_pal_ansi_decode_char(uint8_t b);
 // PAL-CONTRACT: MAY-DEGRADE returns 0 (the caller reads it as the invariant culture)
 int32_t dn2cpp_pal_default_locale_name(char* buf, size_t size);
 
+// Locale used by undefined-language numeric resource fallback. Unlike the
+// managed default, POSIX C maps to en-US-POSIX and an empty locale stays root;
+// Apple system preferences do not replace either answer. Returns a normalized
+// name, or 0 for root. No platform implementation loads ICU.
+// PAL-CONTRACT: MAY-DEGRADE returns 0 (numeric resource fallback uses the frozen root profile)
+int32_t dn2cpp_pal_numeric_fallback_locale_name(char* buf, size_t size);
+
 // ── Process ──────────────────────────────────────────────────────────────────
 
 // Absolute path of the running executable, NUL-terminated into buf (size bytes);
