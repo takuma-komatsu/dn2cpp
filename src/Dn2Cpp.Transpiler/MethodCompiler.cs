@@ -695,7 +695,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             && !m.IsNoInlining && !m.IsObfuscationTarget && !m.IsUnmanagedCallersOnly && !m.IsHotPath;
 
     // Address-taken methods use the runtime receiver ABI when no managed layout exists.
-    private static string ReceiverCppType(ClassInfo cls) => cls.FullName == "System.String"
+    internal static string ReceiverCppType(ClassInfo cls) => cls.FullName == "System.String"
         ? "Dn2CppString*"
         : cls.IsValueType ? CppTypes.Of(TypeDesc.MakeClass(cls)) + "*"
         : CoreIntrinsics.RuntimeOwnsTypeInfo(cls) ? CppTypes.Of(TypeDesc.MakeClass(cls))
@@ -1208,7 +1208,7 @@ internal sealed partial class MethodCompiler : IEvalStack
         {
             _stack.Add(new StackEntry($"a{i++}",
                 _method.DeclaringClass.IsValueType ? StackKind.Ptr : StackKind.Ref,
-                recvCppType));
+                recvCppType, StaticType: TypeDesc.MakeClass(_method.DeclaringClass)));
         }
         foreach (var p in _method.Signature.ParameterTypes)
         {
@@ -1263,11 +1263,16 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// Null when the method has no intrinsic lowering to synthesize from.</summary>
     internal string? CompileCoreIntrinsicWrapper()
     {
-        string dispatch = CoreIntrinsics.IsIntrinsicType(_method.DeclaringClass.FullName)
+        string dispatch = _c.RuntimeInterfaceLowerings.TryGetValue(_method, out var runtimeDispatch)
+            ? runtimeDispatch
+            : CoreIntrinsics.IsIntrinsicType(_method.DeclaringClass.FullName)
             ? _method.DeclaringClass.FullName
             : IntrinsicDispatchName(_method.DeclaringClass);
+        string name = _method.Name;
+        if (runtimeDispatch is not null && name.LastIndexOf('.') is var lastDot && lastDot >= 0)
+            name = name[(lastDot + 1)..];
         string? body = SynthesizeWrapperBody(
-            CppTypes.Of(TypeDesc.MakeClass(_method.DeclaringClass)),
+            ReceiverCppType(_method.DeclaringClass),
             () =>
             {
                 if (_method.Context.MethodArgs is { Length: > 0 } targs)
@@ -1280,7 +1285,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                     // overload would lower the wrong shape).
                     return TryTokenFreeGenericIntrinsic(dispatch, _method.Name, targs);
                 }
-                EmitIntrinsic(dispatch, _method.Name, _method.Signature);
+                EmitIntrinsic(dispatch, name, _method.Signature);
                 return true;
             },
             "synthesized from the call intrinsic's lowering");
@@ -2026,10 +2031,23 @@ internal sealed partial class MethodCompiler : IEvalStack
         return $"(({targetType}){e.Expr})";
     }
 
-    private static string CastNumberFormatProvider(StackEntry entry) =>
-        IsManagedReferenceCpp(entry.CppType) && !entry.KnownNull
-            ? $"dn2cpp_format_provider_nfi((Dn2CppObject*)({entry.Expr}))"
-            : Cast(entry, "const Dn2CppNumberFormatInfo*");
+    private string FormatProviderDispatchArgs(StackEntry? provider = null)
+    {
+        if (provider is { } value && (value.KnownNull || IsNfiCppType(value.CppType)
+            || value.StaticType is { Kind: TypeKind.Class, Class.FullName:
+                "System.Globalization.CultureInfo" or "System.Globalization.NumberFormatInfo"
+                or "System.Globalization.DateTimeFormatInfo" or "System.Globalization.TextInfo" }))
+            return "nullptr, 0";
+        var declaration = _c.ReachFormatProviderGetFormat();
+        return $"{TypeInfoExpr(TypeDesc.MakeClass(declaration.DeclaringClass))}, {declaration.VtableSlot}";
+    }
+
+    private string CastNumberFormatProvider(StackEntry entry)
+    {
+        if (!IsManagedReferenceCpp(entry.CppType) || entry.KnownNull)
+            return Cast(entry, "const Dn2CppNumberFormatInfo*");
+        return $"dn2cpp_format_provider_nfi((Dn2CppObject*)({entry.Expr}), {FormatProviderDispatchArgs(entry)})";
+    }
 
     private static bool IsManagedReferenceCpp(string cpp) => cpp == "Dn2CppObject*"
         || cpp.StartsWith("t_", StringComparison.Ordinal)
@@ -2105,7 +2123,7 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// are the overwhelmingly common case; a Module handle's producers all stamp
     /// the Module static type on the pushed entry).</summary>
     internal static string AsmKindOf(TypeDesc? t) => t is
-            { Kind: TypeKind.Class, Class.FullName: "System.Reflection.Module" }
+            { Kind: TypeKind.Class, Class.FullName: "System.Reflection.Module" or "System.Reflection.RuntimeModule" }
             or { Kind: TypeKind.External, ExternalName: "System.Reflection.Module" }
         ? "DN2CPP_ASM_KIND_MODULE"
         : "DN2CPP_ASM_KIND_ASSEMBLY";
@@ -2902,7 +2920,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                     // struct's addressable temp so a dup'd sibling (the object-
                     // initializer / readonly defensive-copy pattern that leaves the
                     // mutated value on the stack) observes the store.
-                    Emit($"({StructLValue(obj)}).{fld.CppName} = {Cast(val, storeType)};");
+                    Emit($"{FieldAccess(cls, fld, obj with { Expr = StructLValue(obj) })} = {Cast(val, storeType)};");
                     break;
                 }
                 Emit($"{FieldAccess(cls, fld, obj)} = {Cast(val, storeType)};");
@@ -2946,7 +2964,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                     // field inside the struct's addressable temp. The pointer type
                     // mirrors the struct body's field layout (CppTypes.FieldOf), so it
                     // stays consistent with the existing managed-pointer path below.
-                    string saddr = $"&(({StructLValue(obj)}).{fld.CppName}{elemDecay})";
+                    string saddr = $"&({FieldAccess(cls, fld, obj with { Expr = StructLValue(obj) })}{elemDecay})";
                     Push(StackKind.Ptr, wantPtr, erasedMember ? $"(({wantPtr}){saddr})" : saddr);
                     _stack[^1] = _stack[^1] with { StaticType = TypeDesc.MakeByRef(fld.Type), ArraySearchOrigin =
                         _c.ArraySearchFieldReadOrigin(fld, obj.ArraySearchOrigin,
@@ -3682,6 +3700,8 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // (Compilation.TrimLdftnRedirect; table frozen before emission).
                 if (_c.TrimLdftnRedirect(m) is { } trimRedirect)
                     m = trimRedirect;
+                if (Compilation.RuntimeNumericProviderConsumer(m))
+                    _c.ReachFormatProviderGetFormat();
                 NoteFtnTarget(m, virtFtn: false);
                 bool ftnBounded = _c.IsBoundedMethod(m.DeclaringClass.FullName, m.Name);
                 string expr;
@@ -3778,6 +3798,8 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // delegate (e.g. the EnumerableSorter<T> comparison helpers) resolves to
                 // its vtable slot, rather than only a plain MethodDefinition.
                 var m = ResolveMethodHandle(SRME.EntityHandle(insn.Token), "ldvirtftn");
+                if (Compilation.RuntimeNumericProviderConsumer(m))
+                    _c.ReachFormatProviderGetFormat();
                 NoteFtnTarget(m, virtFtn: true);
                 var obj = Pop();
                 var virtualTarget = PrimitiveObjectEqualsVirtualTarget(m, obj);

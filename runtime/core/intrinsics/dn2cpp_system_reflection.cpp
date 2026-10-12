@@ -552,23 +552,25 @@ namespace
 {
 struct Dn2CppEffectiveItfs
 {
-    const Dn2CppTypeInfo* ti;
+    const Dn2CppInterfaceEntry* own;
+    int32_t ownCount;
     const Dn2CppInterfaceEntry* extra;
     int32_t extraCount;
     const Dn2CppInterfaceEntry* rel;
     int32_t relCount;
 
     explicit Dn2CppEffectiveItfs(const Dn2CppTypeInfo* type)
-        : ti(type), extra(nullptr), extraCount(0), rel(nullptr), relCount(0)
+        : own(nullptr), ownCount(0), extra(nullptr), extraCount(0), rel(nullptr), relCount(0)
     {
+        own = dn2cpp_type_interfaces(type, &ownCount);
         extra = dn2cpp_array_nongeneric_interfaces(type, &extraCount);
         rel = dn2cpp_relation_interfaces(type, &relCount);
     }
 
     bool OwnRowCarries(const Dn2CppTypeInfo* itf) const
     {
-        for (int32_t i = 0; i < ti->interfaceCount; i++)
-            if (ti->interfaces[i].itf == itf)
+        for (int32_t i = 0; i < ownCount; i++)
+            if (own[i].itf == itf)
                 return true;
         return false;
     }
@@ -585,9 +587,9 @@ struct Dn2CppEffectiveItfs
     // CLR type's own metadata order), then extra order.
     template <typename F> void ForEach(F fn) const
     {
-        for (int32_t i = 0; i < ti->interfaceCount; i++)
-            if (!dn2cpp_itf_row_is_canonical_alias(ti->interfaces[i]) && ti->interfaces[i].itf != nullptr)
-                fn(ti->interfaces[i].itf);
+        for (int32_t i = 0; i < ownCount; i++)
+            if (!dn2cpp_itf_row_is_canonical_alias(own[i]) && own[i].itf != nullptr)
+                fn(own[i].itf);
         for (int32_t i = 0; i < relCount; i++)
             if (rel[i].itf != nullptr && !OwnRowCarries(rel[i].itf))
                 fn(rel[i].itf);
@@ -6865,8 +6867,10 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_renamed_slot_method(const D
 
 static bool dn2cpp_interface_rows_contain(const Dn2CppTypeInfo* type, const Dn2CppTypeInfo* itf)
 {
-    for (int32_t i = 0; i < type->interfaceCount; i++)
-        if (type->interfaces[i].itf == itf)
+    int32_t count;
+    const auto* entries = dn2cpp_type_interfaces(type, &count);
+    for (int32_t i = 0; i < count; i++)
+        if (entries[i].itf == itf)
             return true;
     return false;
 }
@@ -6887,9 +6891,11 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_derived_interface_
     std::vector<Candidate> candidates;
     const size_t nameLength = std::strlen(decl.name);
     size_t qualifierLength = 0;
-    for (int32_t i = 0; i < receiver->interfaceCount; i++)
+    int32_t count;
+    const auto* entries = dn2cpp_type_interfaces(receiver, &count);
+    for (int32_t i = 0; i < count; i++)
     {
-        const Dn2CppTypeInfo* derived = receiver->interfaces[i].itf;
+        const Dn2CppTypeInfo* derived = entries[i].itf;
         if (derived == nullptr || derived == owner || (derived->flags & DN2CPP_TF_SHARED_CANON) != 0
             || !dn2cpp_interface_rows_contain(derived, owner))
             continue;
@@ -7264,8 +7270,10 @@ static bool dn2cpp_reflbind_receiver_described(const Dn2CppTypeInfo* receiver)
     {
         if ((ti->flags & DN2CPP_TF_METADATA_STRIPPED) != 0)
             return false;
-        for (int32_t i = 0; i < ti->interfaceCount; i++)
-            if ((ti->interfaces[i].itf->flags & DN2CPP_TF_METADATA_STRIPPED) != 0)
+        int32_t count;
+        const auto* entries = dn2cpp_type_interfaces(ti, &count);
+        for (int32_t i = 0; i < count; i++)
+            if ((entries[i].itf->flags & DN2CPP_TF_METADATA_STRIPPED) != 0)
                 return false;
     }
     return true;
@@ -8661,6 +8669,17 @@ Dn2CppObject* dn2cpp_type_get_member_same_metadata(Dn2CppType* t, Dn2CppObject* 
 static Dn2CppMetadataTable<Dn2CppAttrInfo> dn2cpp_member_custom_attrs(Dn2CppObject* m, int32_t* count)
 {
     *count = 0;
+    if (m != nullptr && m->type == &dn2cpp_runtime_module_type)
+    {
+        const char* name = dn2cpp_asm_unwrap(m);
+        for (int32_t i = 0; i < dn2cpp_assembly_registry_count; i++)
+            if (std::strcmp(dn2cpp_assembly_registry[i].name, name) == 0)
+            {
+                *count = dn2cpp_assembly_registry[i].moduleCustomAttrCount;
+                return dn2cpp_assembly_registry[i].moduleCustomAttrs;
+            }
+        return nullptr;
+    }
     dn2cpp_memberref_require(m);
     if (m->type == &dn2cpp_type_type)
     {
@@ -9784,8 +9803,10 @@ int32_t dn2cpp_type_implement_interface(Dn2CppType* t, Dn2CppType* itf)
     const Dn2CppTypeInfo* target = itf->typeInfo;
     for (const Dn2CppTypeInfo* ti = t->typeInfo; ti != nullptr; ti = ti->base)
     {
-        for (int32_t i = 0; i < ti->interfaceCount; i++)
-            if (ti->interfaces[i].itf == target)
+        int32_t count;
+        const auto* entries = dn2cpp_type_interfaces(ti, &count);
+        for (int32_t i = 0; i < count; i++)
+            if (entries[i].itf == target)
                 return 1;
         int32_t n;
         const Dn2CppInterfaceEntry* rel = dn2cpp_relation_interfaces(ti, &n);

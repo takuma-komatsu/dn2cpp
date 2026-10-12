@@ -1453,9 +1453,8 @@ float dn2cpp_float_parse(Dn2CppString* s)
 // ---- string.Format composite formatting ----
 // Reuses the interpolation builder (ISB) and the numeric formatters. Holes are
 // `{index[,alignment][:spec]}`; `{{`/`}}` are literal braces. A hole's value is
-// the boxed arg formatted by its runtime type — with an explicit `:spec` the
-// boxed int32/int64/double/single route to the standard numeric formatters,
-// everything else (and the no-spec case) goes through Object.ToString.
+// the boxed arg formatted by its runtime type. Numeric holes share their provider
+// and format handling with boxed IFormattable calls.
 
 static void dn2cpp_format_append_run(Dn2CppISB* h, const char16_t* src, int32_t len)
 {
@@ -1470,35 +1469,14 @@ static void dn2cpp_format_append_run(Dn2CppISB* h, const char16_t* src, int32_t 
 static Dn2CppString* dn2cpp_format_hole_value(Dn2CppObject* obj, Dn2CppString* spec,
                                              Dn2CppObject* provider)
 {
+    if (Dn2CppString* formatted = dn2cpp_format_boxed_numeric(obj, spec, provider))
+        return formatted;
     if (spec == nullptr || spec->length == 0)
         return dn2cpp_object_tostring(obj);
     const Dn2CppTypeInfo* t = (obj != nullptr) ? obj->type : nullptr;
-    const void* payload = obj != nullptr ? obj + 1 : nullptr; // boxed value sits right after the header
-    // Non-numeric holes ignore the number provider, including date/time formatters.
-    // Extract only after the hole has selected a numeric formatter and a specifier.
-    const bool numeric = t == &dn2cpp_int32_type || t == &dn2cpp_int64_type
-        || t == &dn2cpp_uint64_type || t == &dn2cpp_intptr_type || t == &dn2cpp_uintptr_type
-        || t == &dn2cpp_double_type || t == &dn2cpp_single_type || t == &dn2cpp_decimal_type;
-    const Dn2CppNumberFormatInfo* nfi = numeric ? dn2cpp_format_provider_nfi(provider) : nullptr;
-    if (t == &dn2cpp_int32_type)
-        return dn2cpp_format_int_c(*reinterpret_cast<const int32_t*>(payload), 4, spec, nfi);
-    if (t == &dn2cpp_int64_type)
-        return dn2cpp_format_int_c(*reinterpret_cast<const int64_t*>(payload), 8, spec, nfi);
-    if (t == &dn2cpp_uint64_type) // unsigned hole formatting
-        return dn2cpp_format_uint_c(*reinterpret_cast<const uint64_t*>(payload), 8, spec, nfi);
-    if (t == &dn2cpp_intptr_type) // signed 8-byte hole formatting
-        return dn2cpp_format_int_c(*reinterpret_cast<const intptr_t*>(payload), 8, spec, nfi);
-    if (t == &dn2cpp_uintptr_type) // unsigned 8-byte hole formatting
-        return dn2cpp_format_uint_c(*reinterpret_cast<const uintptr_t*>(payload), 8, spec, nfi);
-    if (t == &dn2cpp_double_type)
-        return dn2cpp_format_r8_c(*reinterpret_cast<const double*>(payload), spec, nfi);
-    if (t == &dn2cpp_single_type)
-        return dn2cpp_format_r4_c(*reinterpret_cast<const float*>(payload), spec, nfi);
-    // Everything else spec-aware — Decimal and the date/time value types — formats
-    // through the slot on its own type-info. Naming their formatters here would pin
-    // those translation units into every program that interpolates anything at all.
+    // Date/time value types retain their own formatter and ignore number providers.
     if (t != nullptr && t->formatspec != nullptr)
-        return t->formatspec(obj, spec, nfi);
+        return t->formatspec(obj, spec, nullptr);
     // Other boxed types with an explicit spec fall back to default text.
     return dn2cpp_object_tostring(obj);
 }

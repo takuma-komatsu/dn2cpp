@@ -4,6 +4,7 @@
 # String and delegate ICloneable calls and method groups preserve their CLR copy identity.
 # SafeHandle method groups share runtime receiver routing, callable and selected-method identity.
 # Runtime-owned and intrinsic-base IDisposable slots preserve cleanup and user virtual overrides.
+# Runtime-held interface slots retain reflection, serialization, task lifetime and provider dispatch.
 # Pointer and function-pointer arrays share allocation/query identity and safe reflection validation.
 # Runtime-owned class method groups share direct-call dispatch and callable identity.
 # Virtual delegate equality and removal retain the selected method under identical-code folding.
@@ -234,7 +235,9 @@
 # Open definition signatures retain their rows without requiring their base's field layout.
 # An opaque exception's missing ToString row cannot hide inherited Object delegate methods.
 source "$(dirname "$0")/_common.sh"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|reflection-measure:${DN2CPP_REFLECTION_MEASURE:-}|existing-constructor-prefix:${DN2CPP_BEFORE_EXISTING_CONSTRUCTOR:-}|cold-activator-prefix:${DN2CPP_BEFORE_COLD_ACTIVATOR:-}|delegate-method-prefix:${DN2CPP_BEFORE_DELEGATE_METHOD:-}|ldftn-local-prefix:${DN2CPP_BEFORE_LDFTN_LOCAL:-}|invoke-validation-prefix:${DN2CPP_BEFORE_INVOKE_VALIDATION:-}|runtime-handle-relations-prefix:${DN2CPP_BEFORE_RUNTIME_HANDLE_RELATIONS:-}"
+# Task cache storage comparisons use CoreLib IL in every CLR oracle.
+export DOTNET_ReadyToRun=0
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|clr-oracle:DOTNET_ReadyToRun=0|reflection-measure:${DN2CPP_REFLECTION_MEASURE:-}|existing-constructor-prefix:${DN2CPP_BEFORE_EXISTING_CONSTRUCTOR:-}|cold-activator-prefix:${DN2CPP_BEFORE_COLD_ACTIVATOR:-}|delegate-method-prefix:${DN2CPP_BEFORE_DELEGATE_METHOD:-}|ldftn-local-prefix:${DN2CPP_BEFORE_LDFTN_LOCAL:-}|invoke-validation-prefix:${DN2CPP_BEFORE_INVOKE_VALIDATION:-}|runtime-handle-relations-prefix:${DN2CPP_BEFORE_RUNTIME_HANDLE_RELATIONS:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|interface-selection-prefix:${DN2CPP_BEFORE_INTERFACE_SELECTION:-}|interface-redeclaration-prefix:${DN2CPP_BEFORE_INTERFACE_REDECLARATION:-}|runtime-level-gvm-prefix:${DN2CPP_BEFORE_RUNTIME_LEVEL_GVM:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|typedef-memberref-prefix:${DN2CPP_BEFORE_TYPEDEF_MEMBERREF:-}|primitive-binder-prefix:${DN2CPP_BEFORE_PRIMITIVE_BINDER:-}|optional-arguments-prefix:${DN2CPP_BEFORE_OPTIONAL_ARGUMENTS:-}"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_ordinary-reflection.sh samples/dotnet/ReflectInvoke/OrdinaryAmbiguousMatchSubset.cs samples/dotnet/ReflectInvoke/OrdinaryReflectionLeaves.csproj samples/dotnet/ReflectInvoke/OrdinaryReflectionLeavesProgram.cs samples/dotnet/ReflectInvoke/OrdinaryWideLookupSubset.cs samples/dotnet/ReflectInvoke/ReflectBindOnly.csproj samples/dotnet/ReflectInvoke/ReflectBindOnlyProgram.cs samples/dotnet/ReflectInvoke/ReflectFieldValidationSubset.cs samples/dotnet/ReflectInvoke/ReflectInvoke.csproj samples/dotnet/ReflectInvoke/ReflectMetadataMeasureSubset.cs samples/dotnet/ReflectInvoke/ReflectionMethodGroupsOnly.csproj samples/dotnet/ReflectInvoke/ReflectionMethodGroupsOnlyProgram.cs samples/dotnet/ReflectInvoke/StrippedOverrideRefusals.csproj samples/dotnet/ReflectInvoke/StrippedOverrideRefusalsProgram.cs"
@@ -254,6 +257,211 @@ source gates/_reflected-events.sh
 source gates/_runtime-template-bindings.sh
 source gates/_pointer-array-types.sh
 source gates/_runtime-lifetime-interfaces.sh
+runtime_held_interface_asserts() {
+    local output="$1" attributes="${2:-0/False}" line route
+    for line in '== runtime-held interface calls ==' 'runtime-held interface calls end' \
+        'attributes type=1/True/True' 'attributes method=1/True/True' \
+        'attributes constructor=1/True/True' 'attributes field=1/True/True' \
+        'attributes property=1/True/True' 'attributes event=1/True/True' \
+        'attributes parameter=1/True/True' \
+        'reflect single=Number/Echo/Echo/Value/Value' 'reflect arrays=1/5/1/1/9' \
+        'reflect type identities=True/True/True' \
+        'serialize plain=completed' 'serialize bcl=completed' 'serialize argument=completed' \
+        'serialize argument parameter=value' 'serialize inherited user=completed' 'serialize user=37' \
+        'serialize raised DivideByZeroException=completed' 'serialize StringBuilder=completed' \
+        'serialize builder payload=2147483647/True/runtime-held/0' 'serialize builder null=info' \
+        'serialize Assembly=PlatformNotSupportedException' 'serialize Decimal=completed' 'serialize DateTime=completed' \
+        'task cold=True/False/False' 'task handle cold=True/False' \
+        'task completed=True/True/False/True/True' 'task disposed=ObjectDisposedException/ObjectDisposedException' \
+        'task generic cold=True/False' 'task generic completed=23/True' \
+        'task source cold=True/False' 'task source completed=31/True' 'task source disposed=ObjectDisposedException' \
+        'task faulted=True/False/True/True' 'task faulted disposed=ObjectDisposedException' \
+        'task canceled=True/False/True/True' 'task canceled disposed=ObjectDisposedException' \
+        'task incomplete dispose=InvalidOperationException' 'task closed handle=True/ObjectDisposedException' \
+        'task closed handle disposed=ObjectDisposedException' 'task factory completed=True/True/False/True' \
+        'task factory disposed=True/True/True' 'task cached bool=True/True/True/True' 'task cached int=0/True/True/True' \
+        'task uncached int=31/ObjectDisposedException/ObjectDisposedException' 'task continuation cold=True/True/False' \
+        'task continuation completed=True/True/True/42' 'task continuation disposed=ObjectDisposedException/ObjectDisposedException' \
+        'task delay timed=True/True/True' 'task await untimed=True/True/43' \
+        'task delay waitany=0/True/True' \
+        'valuetask default int=True/True/True' 'valuetask cached bool=True/True/True' 'valuetask cached int=True/True/True' \
+        'valuetask uncached int=True/ObjectDisposedException/ObjectDisposedException' 'valuetask null string=True/True/True' \
+        'valuetask value string=True/ObjectDisposedException/ObjectDisposedException' \
+        'valuetask value object=True/ObjectDisposedException/ObjectDisposedException' 'valuetask default reference=True/True/True' \
+        'valuetask default struct reference=True/ObjectDisposedException/ObjectDisposedException' \
+        'clone culture=True/./~' 'clone number=True/./:' 'clone text=True/,/CLONE' 'clone date=True///!' \
+        'text deserialization=PlatformNotSupportedException' 'deserialization callbacks=,/12.5' \
+        'compare deserialization before=True' 'compare deserialization null=completed/True' \
+        'compare deserialization sender=completed/True' \
+        'binary integer counts=4/10' 'binary integer bytes=True/4/FFFFFEFE/True/4/FEFEFFFF' \
+        'binary integer short=False/0' 'convertible metadata=17/True' 'convertible invoke=Int32/65/65' \
+        'provider valid=12~5/True/2/True' 'provider integer=minus12/3/True' \
+        'provider wrong=12.5/True/2/True' 'provider null=1,234.0/True/2/True' 'provider exception=provider fault' \
+        'provider boxed formattable=12~5/1' 'provider composite=number=12~5;integer=1,234~0/2' \
+        'provider boxed ignored=12/12/0012/000C/00001100/0' 'provider boxed negative=minus12/minus0012/2' \
+        'provider composite default=default=minus12;empty=12~5/2'; do
+        test "$(grep -Fxc -- "$line" "$output")" = 1 \
+            || { echo "FAIL: runtime-held interface witness missing or repeated: $output/$line" >&2; return 1; }
+    done
+    for line in 'valuetask sync task=' 'valuetask sync task cached int=' 'valuetask sync task uncached int=' \
+        'valuetask sync valuetask=' 'valuetask sync valuetask cached int=' 'valuetask sync valuetask uncached int=' \
+        'valuetask suspended task=' 'valuetask suspended task int=' \
+        'valuetask suspended valuetask=' 'valuetask suspended valuetask int='; do
+        test "$(grep -Ec "^$line" "$output")" = 1 \
+            || { echo "FAIL: async completion disposal witness missing or repeated: $output/$line" >&2; return 1; }
+    done
+    for route in from-result value sync; do
+        for line in empty 'padded default' 'padded zero' 'padded value' \
+            'nested default' 'nested zero' 'nested value' 'nested negative zero' \
+            'float zero' 'float negative zero' 'enum default' 'enum value' 'nullable null' 'nullable value' \
+            'parallel loop default' 'dependent handle default' 'parallel wrapper default' 'dependent wrapper default' \
+            'explicit storage zero' 'explicit storage value' 'sequential storage zero' 'sequential storage value' \
+            'alignment storage zero' 'alignment storage value' \
+            'date offset default' 'date offset storage zero' 'date offset storage value' \
+            'empty storage zero' 'empty storage value' 'yield awaiter storage zero' 'yield awaiter storage value'; do
+            test "$(grep -Ec "^valuetask cache $route $line=" "$output")" = 1 \
+                || { echo "FAIL: task cache storage witness missing or repeated: $output/$route/$line" >&2; return 1; }
+        done
+    done
+    for line in explicit sequential alignment; do
+        test "$(grep -Ec "^task cache $line fields=" "$output")" = 1 \
+            || { echo "FAIL: task cache storage fields witness missing or repeated: $output/$line" >&2; return 1; }
+    done
+    for line in empty padded nested; do
+        test "$(grep -Ec "^valuetask yielded cache $line=" "$output")" = 1 \
+            || { echo "FAIL: yielded task cache result witness missing or repeated: $output/$line" >&2; return 1; }
+    done
+    for line in assembly module; do
+        grep -Fxq "attributes $line=$attributes/True" "$output" \
+            || { echo "FAIL: runtime-held interface attribute payload missing: $output/$line" >&2; return 1; }
+    done
+}
+
+runtime_held_interface_prefix_asserts() {
+    local out="$1" axis
+    for axis in dotnet native; do
+        if [ "$axis" = dotnet ]; then
+            run_bounded dotnet "$_CG_APP" before-runtime-held-interfaces > "$out/runtime-held-before.$axis.stdout"
+            run_bounded dotnet "$_CG_APP" > "$out/runtime-held-full.$axis.stdout"
+        else
+            run_bounded "$out/ReflectInvoke$EXE_EXT" before-runtime-held-interfaces > "$out/runtime-held-before.$axis.stdout"
+            run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/runtime-held-full.$axis.stdout"
+        fi
+        strip_cr_win_file "$out/runtime-held-full.$axis.stdout" > "$out/runtime-held-normalized.$axis.stdout"
+        awk '/^== runtime-held interface calls ==$/ { exit } { print }' \
+            "$out/runtime-held-normalized.$axis.stdout" > "$out/runtime-held-prefix.$axis.stdout"
+        diff -u <(strip_cr_win_file "$out/runtime-held-before.$axis.stdout") "$out/runtime-held-prefix.$axis.stdout"
+        runtime_held_interface_asserts "$out/runtime-held-normalized.$axis.stdout"
+    done
+    diff -u <(strip_cr_win_file "$out/runtime-held-before.dotnet.stdout") \
+        <(strip_cr_win_file "$out/runtime-held-before.native.stdout")
+}
+
+runtime_held_interface_diff_axes() {
+    local core_definition asserts_definition axis runtime_held_identity_only=false runtime_held_convertible_only=false
+    local runtime_held_project=RuntimeHeldInterfacesOnly runtime_held_convertible_route=direct runtime_held_reflected_value_only=false
+    local flags=()
+    core_definition=$(declare -f _corelib_gate_core)
+    asserts_definition=$(declare -f gate_extra_asserts || true)
+    _corelib_gate_core() {
+        local project="$1" out="$2"
+        shift 2
+        _CG_OUT="$out"
+        _CG_CORELIB=$(locate_corelib)
+        _CG_EXTRA_REFERENCE_INPUTS=()
+        dotnet build samples/dotnet/ReflectInvoke/RuntimeHeldInterfacesOnly.csproj \
+            -c "$CONFIG" --nologo -v q -p:BuildInParallel=false \
+            -p:RuntimeHeldProviderIdentityOnly="$runtime_held_identity_only" -p:RuntimeHeldReflectionOnly=false \
+            -p:RuntimeHeldConvertibleProviderOnly="$runtime_held_convertible_only" \
+            -p:RuntimeHeldConvertibleProviderRoute="$runtime_held_convertible_route" \
+            -p:RuntimeHeldReflectedValueOnly="$runtime_held_reflected_value_only" \
+            -o "$out/app"
+        _CG_APP="$out/app/$project.dll"
+        invoke_cli "$_CG_APP" -r "$_CG_CORELIB" "$@" -o "$out"
+    }
+    gate_extra_asserts() {
+        local out="$1" axis label="$runtime_held_convertible_route"
+        run_bounded dotnet "$_CG_APP" > "$out/runtime-held.raw.dotnet.stdout"
+        run_bounded "$out/RuntimeHeldInterfacesOnly$EXE_EXT" > "$out/runtime-held.raw.native.stdout"
+        for axis in dotnet native; do
+            strip_cr_win_file "$out/runtime-held.raw.$axis.stdout" > "$out/runtime-held.$axis.stdout"
+        done
+        if [ "$runtime_held_identity_only" = true ]; then
+            grep -Fxq 'unused provider identity=True/True' "$out/runtime-held.native.stdout"
+            grep -Fxq 'unused provider unrelated numeric=12.5/-12/23' "$out/runtime-held.native.stdout"
+            grep -Fxq 'unused provider convertible metadata=Int32/17' "$out/runtime-held.native.stdout"
+            grep -Fxq 'unused exception metadata=True' "$out/runtime-held.native.stdout"
+            if grep -Eq 'UnusedException_GetObjectData_m[0-9]+[[:space:]]*\(' "$out/generated.h" "$out"/generated*.cpp; then
+                echo 'FAIL: an unallocated exception retained an unused serialization body' >&2
+                return 1
+            fi
+            if grep -Eq 'UnusedProvider_GetFormat_m[0-9]+[[:space:]]*\(' "$out/generated.h" "$out"/generated*.cpp; then
+                echo 'FAIL: provider identity or unrelated numeric formatting retained an unused GetFormat body' >&2
+                return 1
+            fi
+        elif [ "$runtime_held_convertible_only" = true ]; then
+            if [ "$label" = direct ]; then label=only; fi
+            for axis in dotnet native; do
+                test "$(grep -Ec "^provider convertible $label=" "$out/runtime-held.$axis.stdout")" = 1 \
+                    || { echo "FAIL: standalone convertible provider witness missing or repeated: $axis/$label" >&2; return 1; }
+            done
+        elif [ "$runtime_held_reflected_value_only" = true ]; then
+            for axis in dotnet native; do
+                for label in 'reflected DateTime serialization=completed' 'reflected Decimal callback=completed'; do
+                    test "$(grep -Fxc -- "$label" "$out/runtime-held.$axis.stdout")" = 1 \
+                        || { echo "FAIL: reflected runtime value witness missing or repeated: $axis/$label" >&2; return 1; }
+                done
+            done
+        else
+            runtime_held_interface_asserts "$out/runtime-held.dotnet.stdout" 1/True
+            runtime_held_interface_asserts "$out/runtime-held.native.stdout" 1/True
+        fi
+    }
+    for axis in default trimmed unshared ildiet identity identity-trimmed convertible convertible-ildiet \
+        convertible-group convertible-group-ildiet convertible-reflected convertible-reflected-ildiet \
+        convertible-reflected-delegate convertible-reflected-delegate-ildiet \
+        convertible-to-type convertible-to-type-ildiet reflected-values reflected-values-ildiet; do
+        flags=(--no-ildiet)
+        runtime_held_identity_only=false
+        runtime_held_convertible_only=false
+        runtime_held_convertible_route=direct
+        runtime_held_reflected_value_only=false
+        case "$axis" in
+            trimmed) flags+=(--trim-reflection) ;;
+            unshared) flags+=(--no-shared-generics) ;;
+            ildiet) flags=() ;;
+            identity) runtime_held_identity_only=true ;;
+            identity-trimmed) runtime_held_identity_only=true; flags+=(--trim-reflection) ;;
+            convertible) runtime_held_convertible_only=true ;;
+            convertible-ildiet) runtime_held_convertible_only=true; flags=() ;;
+            convertible-group) runtime_held_convertible_only=true; runtime_held_convertible_route=group ;;
+            convertible-group-ildiet) runtime_held_convertible_only=true; runtime_held_convertible_route=group; flags=() ;;
+            convertible-reflected) runtime_held_convertible_only=true; runtime_held_convertible_route=reflected ;;
+            convertible-reflected-ildiet) runtime_held_convertible_only=true; runtime_held_convertible_route=reflected; flags=() ;;
+            convertible-reflected-delegate) runtime_held_convertible_only=true; runtime_held_convertible_route=reflected-delegate ;;
+            convertible-reflected-delegate-ildiet) runtime_held_convertible_only=true; runtime_held_convertible_route=reflected-delegate; flags=() ;;
+            convertible-to-type) runtime_held_convertible_only=true; runtime_held_convertible_route=to-type ;;
+            convertible-to-type-ildiet) runtime_held_convertible_only=true; runtime_held_convertible_route=to-type; flags=() ;;
+            reflected-values) runtime_held_reflected_value_only=true ;;
+            reflected-values-ildiet) runtime_held_reflected_value_only=true; flags=() ;;
+        esac
+        DN2CPP_STRICT_COMPLETION=1 DN2CPP_OUT_SUFFIX="-runtime-held-$axis" \
+            DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|runtime-held-axis:$axis|strict-completion" \
+            corelib_diff_gate "$runtime_held_project" ${flags[@]+"${flags[@]}"}
+    done
+    eval "$core_definition"
+    if [ -n "$asserts_definition" ]; then
+        eval "$asserts_definition"
+    else
+        unset -f gate_extra_asserts
+    fi
+}
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/ReflectInvoke/RuntimeHeldInterfacesSubset.cs samples/dotnet/ReflectInvoke/RuntimeHeldConvertibleProviderSubset.cs samples/dotnet/ReflectInvoke/RuntimeHeldReflectedValueSubset.cs samples/dotnet/ReflectInvoke/RuntimeHeldInterfacesOnly.csproj samples/dotnet/ReflectInvoke/RuntimeHeldInterfacesOnlyProgram.cs"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|runtime-held-interface:default,trimmed,unshared,ildiet,provider-identity,provider-identity-trimmed,convertible,convertible-ildiet,convertible-group,convertible-group-ildiet,convertible-reflected,convertible-reflected-ildiet,convertible-reflected-delegate,convertible-reflected-delegate-ildiet,convertible-to-type,convertible-to-type-ildiet,reflected-values,reflected-values-ildiet|runtime-held-prefix:before-runtime-held-interfaces|provider-identity-build:RuntimeHeldProviderIdentityOnly=true|runtime-held-reflection-build:RuntimeHeldReflectionOnly=false|runtime-held-convertible-build:RuntimeHeldConvertibleProviderOnly=true|runtime-held-convertible-route:direct,group,reflected,reflected-delegate,to-type|runtime-held-reflected-value-build:RuntimeHeldReflectedValueOnly=true|runtime-held-isolated-assembly-attributes:RUNTIME_HELD_ASSEMBLY_ATTRIBUTES|runtime-held-only:${DN2CPP_RUNTIME_HELD_ONLY:-}"
+if [ "${DN2CPP_RUNTIME_HELD_ONLY:-}" = 1 ]; then
+    runtime_held_interface_diff_axes
+    exit 0
+fi
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/ReflectInvoke/ArrayCloneInterfaceSubset.cs samples/dotnet/ReflectInvoke/ArrayCloneReflectionOnlySubset.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|array-clone:typed,erased,constrained,constrained-unshared,interface-group,class-group,alias,null,trimmed,unshared,reflected,md,md-unshared|array-clone-prefix:before-array-clone-interfaces"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_runtime-lifetime-interfaces.sh samples/dotnet/ReflectInvoke/RuntimeLifetimeInterfacesOnly.csproj samples/dotnet/ReflectInvoke/RuntimeLifetimeInterfacesOnlyProgram.cs samples/dotnet/ReflectInvoke/DelegateCloneFieldTypeSubset.cs"
@@ -476,12 +684,14 @@ gate_inherited_object_virtual_equality_asserts() {
             test "$(grep -Fxc -- "$line" "$out/virtual-delegate-full.$axis.stdout")" = 1 \
                 || { echo "FAIL: inherited Object virtual delegate equality witness: $axis/$line" >&2; return 1; }
         done
-        test "$(tail -n 1 "$out/virtual-delegate-full.$axis.stdout")" = 'runtime generic base projections end'
+        test "$(tail -n 1 "$out/runtime-held-prefix.$axis.stdout")" = 'runtime generic base projections end' \
+            || { echo "FAIL: original output prefix lost its runtime generic base projection terminator: $axis" >&2; return 1; }
     done
     diff -u "$out/inherited-object-virtual-equality-prefix.dotnet.stdout" "$out/inherited-object-virtual-equality-prefix.native.stdout"
 }
 
 gate_extra_asserts() {
+    runtime_held_interface_prefix_asserts "$1"
     headerless_managed_reference_asserts "$1"
     gate_virtual_delegate_prefix_asserts "$1"
     formal_constraint_prefix_asserts "$1"
@@ -2911,6 +3121,7 @@ reflection_signature_diff_axes
 
 pointer_array_diff_axes
 runtime_lifetime_diff_routes
+runtime_held_interface_diff_axes
 
 formal_constraint_diff_axes
 

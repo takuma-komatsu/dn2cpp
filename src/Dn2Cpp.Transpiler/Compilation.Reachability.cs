@@ -102,6 +102,12 @@ internal sealed partial class Compilation
             }
             return;
         }
+        if (CoreIntrinsics.BrInvariantCompareInfoCallback.Matches(m.DeclaringClass.FullName, m.Name))
+        {
+            _predTrace.TryAdd(m, _currentScan);
+            NoteIntrinsicFtnTarget(m);
+            return;
+        }
         if (CoreIntrinsics.BrLifetimeDispose.Matches(m.DeclaringClass.FullName, m.Name))
         {
             if (Reachable.Add(m))
@@ -142,14 +148,15 @@ internal sealed partial class Compilation
             return;
         // An intrinsic-mapped type whose bare full name isn't in s_intrinsicTypes —
         // a nested intrinsic value type (Lock.Scope, or the StringBuilder interpolated
-        // -string handler), or an adopted async task type. It is emitted inline, never
-        // transpiled, so its members are never a reachability edge even on the
-        // alloc/vtable path. This guard is also what makes ResolveCallTarget's
+        // -string handler), or an adopted async task type. Except for an explicitly
+        // selected real body, its members are not edges even on the alloc/vtable
+        // path. This guard is also what makes ResolveCallTarget's
         // MethodDefinition arm sound with only the name-table test: a call edge that
         // arm resolves into such a type dies right here, before any IL is scanned, so
         // the narrower cut there costs nothing. Do not narrow this to the name table —
         // the two-part test here is the backstop.
-        if (m.DeclaringClass.IntrinsicCppName is not null)
+        if (m.DeclaringClass.IntrinsicCppName is not null
+            && !_intrinsicTypeTranspiled.Contains(m))
             return;
         // A platform-ISA facade's members are lowered at every call site (the
         // MdPlatformIsa row); like the intrinsic guard above, this is the drain-side

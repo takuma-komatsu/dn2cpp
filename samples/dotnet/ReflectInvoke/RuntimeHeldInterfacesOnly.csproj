@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <Optimize>true</Optimize>
+    <DebugType>none</DebugType>
+    <DefineConstants>$(DefineConstants);RUNTIME_HELD_ASSEMBLY_ATTRIBUTES</DefineConstants>
+    <DefineConstants Condition="'$(RuntimeHeldProviderIdentityOnly)' == 'true'">$(DefineConstants);PROVIDER_IDENTITY_ONLY</DefineConstants>
+    <DefineConstants Condition="'$(RuntimeHeldReflectionOnly)' == 'true'">$(DefineConstants);REFLECTION_ONLY</DefineConstants>
+    <DefineConstants Condition="'$(RuntimeHeldConvertibleProviderOnly)' == 'true'">$(DefineConstants);CONVERTIBLE_PROVIDER_ONLY</DefineConstants>
+    <DefineConstants Condition="'$(RuntimeHeldConvertibleProviderRoute)' == 'group'">$(DefineConstants);CONVERTIBLE_PROVIDER_GROUP</DefineConstants>
+    <DefineConstants Condition="'$(RuntimeHeldConvertibleProviderRoute)' == 'reflected'">$(DefineConstants);CONVERTIBLE_PROVIDER_REFLECTED</DefineConstants>
+    <DefineConstants Condition="'$(RuntimeHeldConvertibleProviderRoute)' == 'reflected-delegate'">$(DefineConstants);CONVERTIBLE_PROVIDER_REFLECTED_DELEGATE</DefineConstants>
+    <DefineConstants Condition="'$(RuntimeHeldConvertibleProviderRoute)' == 'to-type'">$(DefineConstants);CONVERTIBLE_PROVIDER_TO_TYPE</DefineConstants>
+    <DefineConstants Condition="'$(RuntimeHeldReflectedValueOnly)' == 'true'">$(DefineConstants);REFLECTED_VALUE_ONLY</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="RuntimeHeldInterfacesSubset.cs" Condition="'$(RuntimeHeldConvertibleProviderOnly)' != 'true' and '$(RuntimeHeldReflectedValueOnly)' != 'true'" />
+    <Compile Include="RuntimeHeldConvertibleProviderSubset.cs" Condition="'$(RuntimeHeldConvertibleProviderOnly)' == 'true'" />
+    <Compile Include="RuntimeHeldReflectedValueSubset.cs" Condition="'$(RuntimeHeldReflectedValueOnly)' == 'true'" />
+    <Compile Include="RuntimeHeldInterfacesOnlyProgram.cs" />
+  </ItemGroup>
+</Project>

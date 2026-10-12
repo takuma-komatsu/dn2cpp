@@ -143,6 +143,31 @@ internal sealed partial class MethodCompiler
                     "ThreadPool work-item overload is not modeled");
 
             // ---- System.Text.StringBuilder ----
+            case ("System.Text.StringBuilder", "GetObjectData"
+                or "System.Runtime.Serialization.ISerializable.GetObjectData")
+                when sig.ParameterTypes.Length == 2:
+            {
+                var addInt = Comp.ReachManagedMethod("System.Runtime.Serialization.SerializationInfo", "AddValue",
+                    static ps => ps is [{ IsString: true },
+                        { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }])
+                    ?? throw new NotSupportedException("SerializationInfo.AddValue(string, int) is unavailable");
+                var addObject = Comp.ReachManagedMethod("System.Runtime.Serialization.SerializationInfo", "AddValue",
+                    static ps => ps is [{ IsString: true }, { IsObject: true }])
+                    ?? throw new NotSupportedException("SerializationInfo.AddValue(string, object) is unavailable");
+                Pop();
+                string info = Cast(Pop(), addInt.DeclaringClass.CppStructName + "*");
+                string builder = PopBuilderReceiver();
+                Emit($"if ({info} == nullptr) dn2cpp_throw_argument_null_param(\"info\");");
+                Emit($"{DirectCall(addInt, new List<string>
+                    { info, Literals.GetOrAdd("m_MaxCapacity"), "2147483647" })};");
+                Emit($"{DirectCall(addInt, new List<string>
+                    { info, Literals.GetOrAdd("Capacity"), $"dn2cpp_sb_capacity({builder})" })};");
+                Emit($"{DirectCall(addObject, new List<string>
+                    { info, Literals.GetOrAdd("m_StringValue"), $"(Dn2CppObject*)dn2cpp_sb_tostring({builder})" })};");
+                Emit($"{DirectCall(addInt, new List<string>
+                    { info, Literals.GetOrAdd("m_currentThread"), "0" })};");
+                return true;
+            }
             // Append(ref AppendInterpolatedStringHandler) — the overload `sb.Append($"...")`
             // binds to. The handler is modeled as the underlying StringBuilder pointer and
             // already appended every literal/hole to it during construction,
@@ -859,13 +884,14 @@ internal sealed partial class MethodCompiler
                 {
                     var v = Pop();
                     var b = Pop();
+                    string cache = TaskCachedResultDisposal(v, sig.ParameterTypes[0]);
                     string store = EmitTaskResultStore(v); // may emit a boxing temp first
-                    Emit($"dn2cpp_task_set_result(((Dn2CppAsyncBuilder*)({b.Expr}))->task, {store});");
+                    Emit($"dn2cpp_async_task_set_result(((Dn2CppAsyncBuilder*)({b.Expr}))->task, {store}, {cache});");
                 }
                 else // non-generic builder (async Task): no result value
                 {
                     var b = Pop();
-                    Emit($"dn2cpp_task_set_result(((Dn2CppAsyncBuilder*)({b.Expr}))->task, 0);");
+                    Emit($"dn2cpp_async_task_set_result(((Dn2CppAsyncBuilder*)({b.Expr}))->task, 0, true);");
                 }
                 return true;
             }

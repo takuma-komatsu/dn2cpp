@@ -790,14 +790,19 @@ extern const Dn2CppTypeInfo dn2cpp_textinfo_type;
 // object <- culture escape: interned wrapper allocation (null passes through;
 // a value that is already a wrapper passes through unchanged).
 Dn2CppObject* dn2cpp_nfi_wrap(const Dn2CppNumberFormatInfo* n, int32_t kind);
+Dn2CppObject* dn2cpp_nfi_clone(const Dn2CppNumberFormatInfo* n, int32_t kind);
 // culture <- object: total and tolerant — null stays null, a wrapper yields its
 // inner pointer, anything else is returned as-is (a raw pointer that flowed
 // through an erased context; the probe is a value compare, never a dereference
 // through the misread header).
 const Dn2CppNumberFormatInfo* dn2cpp_nfi_unwrap(Dn2CppObject* o);
 // Numeric formatting consumes the payload; a managed provider keeps its own identity.
+void dn2cpp_set_format_provider_dispatch(const Dn2CppTypeInfo* interfaceType, int32_t slot);
 const Dn2CppNumberFormatInfo* dn2cpp_format_provider_nfi(Dn2CppObject* provider);
-Dn2CppObject* dn2cpp_format_provider_get_format(Dn2CppObject* provider, Dn2CppType* requested);
+const Dn2CppNumberFormatInfo* dn2cpp_format_provider_nfi(Dn2CppObject* provider,
+    const Dn2CppTypeInfo* interfaceType, int32_t slot);
+Dn2CppObject* dn2cpp_format_provider_get_format(Dn2CppObject* provider, Dn2CppType* requested,
+    const Dn2CppTypeInfo* interfaceType, int32_t slot);
 // castclass/isinst with an NFI-mapped target type: a wrapper is matched by
 // kind (PROVIDER accepts CultureInfo and NumberFormatInfo, as the interface
 // does) and unwrapped; a non-wrapper object falls back to the generic
@@ -2622,6 +2627,8 @@ struct Dn2CppAssemblyRegEntry
     // table, since a program that reads no manifest resource cannot ask.
     const char* neutralResourcesCulture;
     int32_t neutralResourcesSatellite;
+    Dn2CppMetadataTable<Dn2CppAttrInfo> moduleCustomAttrs;
+    int32_t moduleCustomAttrCount;
 };
 extern const Dn2CppAssemblyRegEntry dn2cpp_assembly_registry[];
 extern const int32_t dn2cpp_assembly_registry_count;
@@ -2911,6 +2918,11 @@ void dn2cpp_set_relation_rows(const Dn2CppRelationRows* sets, int32_t count);
 // The relation rows installed for exactly `type` (not its bases), or nullptr with
 // *count 0.
 const Dn2CppInterfaceEntry* dn2cpp_relation_interfaces(const Dn2CppTypeInfo* type, int32_t* count);
+// Runtime-held type-infos can be const. Their image-specific dispatch maps live in
+// an immutable overlay installed before managed startup, rather than in the handle.
+void dn2cpp_set_runtime_interface_maps(const Dn2CppRelationRows* sets, int32_t count);
+// Returns the effective own dispatch rows, preferring an installed overlay.
+const Dn2CppInterfaceEntry* dn2cpp_type_interfaces(const Dn2CppTypeInfo* type, int32_t* count);
 // Installs an interface-dispatch map onto an INTRINSIC type's runtime-owned type-info.
 // An intrinsic type has no per-class emitted type-info to carry a map, so without this
 // every interface mouth — `using (…)`, an interface-typed local, an isinst/castclass —
@@ -5656,6 +5668,13 @@ Dn2CppTask* dn2cpp_task_cold_struct(Dn2CppObject* del, uint64_t (*invoke)(Dn2Cpp
 // new Task(Action<object?>, object? state): the worker/inline run invokes the
 // 1-arg delegate with `state` (same shape as dn2cpp_task_run_void_state).
 Dn2CppTask* dn2cpp_task_cold_void_state(Dn2CppObject* del, Dn2CppObject* state);
+Dn2CppTask* dn2cpp_task_cold_i4_state(Dn2CppObject* del, Dn2CppObject* state);
+Dn2CppTask* dn2cpp_task_cold_i8_state(Dn2CppObject* del, Dn2CppObject* state);
+Dn2CppTask* dn2cpp_task_cold_r4_state(Dn2CppObject* del, Dn2CppObject* state);
+Dn2CppTask* dn2cpp_task_cold_r8_state(Dn2CppObject* del, Dn2CppObject* state);
+Dn2CppTask* dn2cpp_task_cold_ref_state(Dn2CppObject* del, Dn2CppObject* state);
+Dn2CppTask* dn2cpp_task_cold_struct_state(Dn2CppObject* del, Dn2CppObject* state,
+    uint64_t (*invoke)(Dn2CppObject*, Dn2CppObject*));
 // Task.Start(): claim the cold work exactly once and submit it to the worker pool.
 // A second Start, or Start on a task that was never cold (an async-method task,
 // Task.Run, a settled task), throws InvalidOperationException like real .NET.
@@ -5697,6 +5716,8 @@ Dn2CppTask* dn2cpp_task_continue_with(Dn2CppTask* t, Dn2CppObject* del, Dn2CppOb
 Dn2CppTask* dn2cpp_task_continue_with_struct(Dn2CppTask* t, Dn2CppObject* del,
                                             uint64_t (*invoke)(Dn2CppObject*, Dn2CppObject*),
                                             int32_t options);
+Dn2CppTask* dn2cpp_task_continue_with_state_result(Dn2CppTask* t, Dn2CppObject* del,
+    Dn2CppObject* state, uint64_t (*invoke)(Dn2CppObject*, Dn2CppObject*, Dn2CppObject*), int32_t options);
 // Task.WaitAsync(CancellationToken): a task that mirrors `t`'s outcome, but settles
 // CANCELED as soon as `src` cancels — whichever happens first wins, exactly once. `t`
 // itself keeps running; WaitAsync bounds the WAIT, not the work. A null source can never
@@ -5884,6 +5905,8 @@ void dn2cpp_safewaithandle_set_invalid(Dn2CppObject* safeHandle);
 int32_t dn2cpp_safewaithandle_addref(Dn2CppObject* safeHandle);
 void dn2cpp_safewaithandle_release(Dn2CppObject* safeHandle);
 void dn2cpp_event_set(Dn2CppObject* e);                      // Set()
+void dn2cpp_event_set_if_open(Dn2CppObject* e);
+Dn2CppObject* dn2cpp_task_event_new();
 void dn2cpp_event_reset(Dn2CppObject* e);                    // Reset()
 int32_t dn2cpp_event_wait(Dn2CppObject* e);                  // WaitOne()/Wait() (returns 1)
 int32_t dn2cpp_event_wait_timeout(Dn2CppObject* e, int32_t ms); // WaitOne/Wait(int/TimeSpan): 1=signaled, 0=timeout
@@ -7415,6 +7438,9 @@ struct Dn2CppTask : Dn2CppObject
     // Distinguishes cold tasks from promise and continuation tasks after their
     // delegate has been claimed. Start and RunSynchronously use different errors.
     std::atomic<int32_t> startKind; // DN2CPP_TASK_ORIGIN_*
+    Dn2CppObject* asyncState;
+    Dn2CppObject* completionWaitHandle;
+    int32_t disposed; // negative: cached-task Dispose is a no-op
 };
 
 struct Dn2CppTaskCompletionSource : Dn2CppObject
@@ -7460,8 +7486,7 @@ struct Dn2CppTaskAwaiter
 // completing its write synchronously). dn2cpp_vtask normalizes that for the
 // ValueTask read paths (IsCompleted / GetResult / Result / AsTask): null maps
 // to a shared immutable pre-completed sentinel (SUCCEEDED, result 0). The
-// sentinel is only ever read — every reader sees a non-PENDING status, so the
-// suspend/continuation paths (which mutate a task) are unreachable for it.
+// result and status are immutable; its IAsyncResult wait handle is attached lazily.
 extern Dn2CppTask dn2cpp_task_default_completed;
 static inline Dn2CppTask* dn2cpp_vtask(Dn2CppTask* t)
 {
@@ -7473,7 +7498,7 @@ static inline Dn2CppTask* dn2cpp_vtask(Dn2CppTask* t)
 // always false), so awaiting it always takes the suspend path; the suspension
 // posts the resumption straight onto the cooperative run queue, yielding the
 // current turn to other ready continuations.
-struct Dn2CppYieldAwaiter { };
+struct Dn2CppYieldAwaiter { uint8_t storage[1]{}; };
 
 // System.Threading.Lock.Scope (.NET 9+). The ref struct EnterScope() returns and
 // the `lock(lockVar)` body's finally disposes. It carries the Lock object so Dispose
@@ -7495,15 +7520,85 @@ Dn2CppObject* dn2cpp_taskscheduler_default();
 // SetException once MoveNext finishes.
 Dn2CppTask* dn2cpp_task_alloc();
 void dn2cpp_task_dispose(Dn2CppTask* task);
+Dn2CppObject* dn2cpp_task_async_wait_handle(Dn2CppTask* task);
 // The shared already-completed (void-result) task behind Task.CompletedTask.
 Dn2CppTask* dn2cpp_task_completed();
 // A completed Task<T> carrying a result (behind Task.FromResult). The raw slot
 // is reinterpreted by T at the get_Result/GetResult intrinsics.
-Dn2CppTask* dn2cpp_task_from_result(uint64_t result);
+Dn2CppTask* dn2cpp_task_from_result(uint64_t result, bool doNotDispose = false);
+// BCL Task.FromResult caches reference-free default values of these widths.
+struct Dn2CppTaskResultCacheBits
+{
+    uint8_t bytes[16];
+};
+
+// Modeled storage arrays preserve managed bytes outside declared fields.
+template <typename T>
+inline auto dn2cpp_task_copy_declared_result_bits(uint8_t* bits, const void* root, const T& value, int)
+    -> decltype(value.__explicit_pad, bool())
+{
+    std::memcpy(bits + (reinterpret_cast<const uint8_t*>(&value.__explicit_pad)
+        - static_cast<const uint8_t*>(root)), value.__explicit_pad, sizeof(value.__explicit_pad));
+    return true;
+}
+
+template <typename T>
+inline auto dn2cpp_task_copy_declared_result_bits(uint8_t* bits, const void* root, const T& value, long)
+    -> decltype(value.__struct_size_pad, bool())
+{
+    std::memcpy(bits + (reinterpret_cast<const uint8_t*>(&value.__struct_size_pad)
+        - static_cast<const uint8_t*>(root)), value.__struct_size_pad, sizeof(value.__struct_size_pad));
+    return true;
+}
+
+template <typename T>
+inline bool dn2cpp_task_copy_declared_result_bits(uint8_t*, const void*, const T&, ...)
+{
+    return false;
+}
+
+template <typename T>
+inline auto dn2cpp_task_copy_fixed_result_bits(uint8_t* bits, const void* root, const T& value, int)
+    -> decltype(value.__fixedbuffer_pad, void())
+{
+    std::memcpy(bits + (reinterpret_cast<const uint8_t*>(&value.__fixedbuffer_pad)
+        - static_cast<const uint8_t*>(root)), value.__fixedbuffer_pad, sizeof(value.__fixedbuffer_pad));
+}
+
+template <typename T>
+inline void dn2cpp_task_copy_fixed_result_bits(uint8_t*, const void*, const T&, ...)
+{
+}
+
+template <typename T>
+inline auto dn2cpp_task_copy_padding_result_bits(uint8_t* bits, const void* root, const T& value, int)
+    -> decltype(T::dn2cpp_copy_task_cache_padding(bits, root, value), void())
+{
+    T::dn2cpp_copy_task_cache_padding(bits, root, value);
+}
+
+template <typename T>
+inline void dn2cpp_task_copy_padding_result_bits(uint8_t*, const void*, const T&, ...)
+{
+}
+
+inline bool dn2cpp_task_default_result_bits(const void* value, size_t size)
+{
+    if (size != 1 && size != 2 && size != 4 && size != 8 && size != 16)
+        return false;
+    if (value == nullptr)
+        return true;
+    const auto* bytes = static_cast<const uint8_t*>(value);
+    for (size_t i = 0; i < size; i++)
+        if (bytes[i] != 0)
+            return false;
+    return true;
+}
+
 // Stamp the closed managed Task identity at the producer mouth that knows it. A
 // default(ValueTask)'s shared sentinel is cloned before stamping.
 Dn2CppTask* dn2cpp_task_stamp(Dn2CppTask* task, const Dn2CppTypeInfo* type);
-Dn2CppTask* dn2cpp_vtask_as_task(Dn2CppTask* task, const Dn2CppTypeInfo* type);
+Dn2CppTask* dn2cpp_vtask_as_task(Dn2CppTask* task, const Dn2CppTypeInfo* type, bool cacheDefault = true);
 // ValueTask<T>.ToString is a non-consuming observation: only a successful task
 // formats its result; pending/faulted/canceled tasks return an empty string without
 // waiting or rethrowing. The boxed mouth discovers T from the ValueTask<T> type-info.
@@ -7511,7 +7606,7 @@ Dn2CppString* dn2cpp_valuetask_tostring(Dn2CppTaskAwaiter* valueTask,
                                         const Dn2CppTypeInfo* resultType);
 Dn2CppString* dn2cpp_valuetask_box_tostring(Dn2CppObject* valueTaskBox);
 Dn2CppTaskCompletionSource* dn2cpp_tcs_alloc(const Dn2CppTypeInfo* type,
-                                              const Dn2CppTypeInfo* taskType);
+                                              const Dn2CppTypeInfo* taskType, Dn2CppObject* state = nullptr);
 // TaskAwaiter.GetResult: re-raise the stored exception if the task faulted,
 // otherwise a no-op. (Task<T>.GetResult adds the typed result load inline.)
 void dn2cpp_task_throw_if_faulted(Dn2CppTask* t);
@@ -7531,6 +7626,8 @@ Dn2CppObject* dn2cpp_task_exception(Dn2CppTask* t);
 
 // Joins settle before the producer returns; await resumptions stay queued.
 void dn2cpp_task_set_result(Dn2CppTask* t, uint64_t result);
+// Unexposed synchronous async success follows Task.FromResult's cache policy.
+void dn2cpp_async_task_set_result(Dn2CppTask* t, uint64_t result, bool cacheResult);
 void dn2cpp_task_set_exception(Dn2CppTask* t, Dn2CppObject* exception);
 // Async Task/ValueTask builders and source-backed bridges classify
 // OperationCanceledException (and derived exceptions) as cancellation while
@@ -7903,6 +8000,11 @@ Dn2CppString* dn2cpp_format_int_c(int64_t v, int32_t byteWidth, Dn2CppString* fm
 Dn2CppString* dn2cpp_format_uint_c(uint64_t v, int32_t byteWidth, Dn2CppString* fmt, const Dn2CppNumberFormatInfo* n);
 Dn2CppString* dn2cpp_format_r8_c(double v, Dn2CppString* fmt, const Dn2CppNumberFormatInfo* n);
 Dn2CppString* dn2cpp_format_r4_c(float v, Dn2CppString* fmt, const Dn2CppNumberFormatInfo* n);
+int32_t dn2cpp_integral_format_uses_provider(Dn2CppString* fmt, int32_t negative);
+// Returns nullptr for a nonnumeric box; numeric default and explicit formats
+// use the same provider consumption rules as direct numeric calls.
+Dn2CppString* dn2cpp_format_boxed_numeric(Dn2CppObject* box, Dn2CppString* fmt,
+    Dn2CppObject* provider);
 
 // --- System.Decimal ---
 // A value type modeled as an intrinsic (the real corelib Decimal.ToString reaches
@@ -8152,7 +8254,13 @@ inline Dn2CppDateTime dn2cpp_datetime_pack_clamped(int64_t ticks, int32_t kind)
 // System.DateTimeOffset. Mirrors the real BCL layout: a "clock" tick count
 // (the wall-clock value as observed at this offset, = the DateTime property's ticks)
 // plus the offset from UTC in whole minutes. UtcTicks = ticks - offsetMinutes*TPM.
-struct Dn2CppDateTimeOffset { int64_t ticks; int32_t offsetMinutes; };
+struct Dn2CppDateTimeOffset
+{
+    int64_t ticks;
+    int32_t offsetMinutes;
+    // Task's raw default-result comparison observes the whole managed extent.
+    uint8_t storageTail[4]{};
+};
 // System.DateOnly: a date with no time, stored as a day number (days since
 // 0001-01-01; DayNumber 0..3652058). System.TimeOnly: a time within a day, stored as
 // a tick count since midnight (0..863999999999). Both passed by value, InvariantCulture

@@ -961,6 +961,9 @@ internal sealed partial class Compilation
     /// compiles, never as live layouts.</summary>
     public HashSet<ClassInfo> ReferencedTypes { get; } = new();
 
+    // Task's default-result cache observes managed storage between fields too.
+    internal HashSet<ClassInfo> TaskResultCacheLayouts { get; } = new();
+
     public void NoteReferencedType(ClassInfo cls)
     {
         ReferencedTypes.Add(cls);
@@ -3932,6 +3935,40 @@ internal sealed partial class Compilation
         return m;
     }
 
+    internal readonly HashSet<FieldInfo> IntrinsicManagedStaticFields = new();
+
+    internal MethodInfo ReachIntrinsicStaticMethod(string ownerName, string name)
+    {
+        var owner = FindClassByFullName(ownerName)
+            ?? throw new NotSupportedException($"{ownerName} is not loaded");
+        var method = owner.EnsureMembers().Methods.FirstOrDefault(m => m.IsStatic && m.Rva != 0
+            && m.Name == name && m.Signature.ParameterTypes.Length == 0)
+            ?? throw new NotSupportedException($"{ownerName}.{name} has no managed getter");
+        foreach (var field in owner.Fields)
+            if (field.IsStatic && !field.IsLiteral)
+            {
+                IntrinsicManagedStaticFields.Add(field);
+                if (field.Type is { Kind: TypeKind.Class, Class: { } fieldClass })
+                    NoteReferencedType(fieldClass);
+            }
+        ReachIntrinsicTypeMethod(method);
+        DrainReachability();
+        return method;
+    }
+
+    internal MethodInfo ReachIntrinsicStaticMethod(string ownerName, string name,
+        Func<MethodInfo, bool> matches)
+    {
+        var owner = FindClassByFullName(ownerName)
+            ?? throw new NotSupportedException($"{ownerName} is not loaded");
+        var method = owner.EnsureMembers().Methods.FirstOrDefault(m => m.IsStatic && m.Rva != 0
+            && m.Name == name && matches(m))
+            ?? throw new NotSupportedException($"{ownerName}.{name} has no matching managed body");
+        ReachIntrinsicTypeMethod(method);
+        DrainReachability();
+        return method;
+    }
+
     /// <summary>The non-generic counterpart of <see cref="ReachIntrinsicTypeMethodSpec"/>:
     /// System.Array's own CoreLib method <paramref name="name"/> with exactly
     /// <paramref name="sig"/>'s parameter types
@@ -5928,8 +5965,8 @@ internal sealed partial class Compilation
     /// with no box site to do it, so the box can dispatch through the type's interface
     /// map and slots. A by-ref type boxes as its referent, a Nullable&lt;T&gt; as a T.
     /// An unmanaged pointer keeps its runtime-allocated Pointer box. Value types are
-    /// bounded to those declared outside the framework, as a framework struct's
-    /// overrides need not transpile.</summary>
+    /// bounded to user structs and the modeled Decimal/DateTime payloads; other
+    /// framework structs' overrides need not transpile.</summary>
     private void NoteReflectionBoxed(TypeDesc t)
     {
         if (t.Kind == TypeKind.ByRef)
@@ -5993,7 +6030,8 @@ internal sealed partial class Compilation
     /// NotSupportedException.</summary>
     private void NoteReflectionBoxed(ClassInfo c)
     {
-        if (IsUserModule(c.Module) && !ContainsCanonPlaceholder(c) && !ContainsGenericVar(c)
+        if ((IsUserModule(c.Module) || c.FullName is "System.Decimal" or "System.DateTime")
+            && !ContainsCanonPlaceholder(c) && !ContainsGenericVar(c)
             && EnsureShape(c) is { IsValueType: true, IsByRefLike: false })
         {
             ReachAllocatedType(c);
@@ -7073,6 +7111,7 @@ internal sealed partial class Compilation
             try
             {
                 ReachAttributesOf(module, module.Reader.GetAssemblyDefinition().GetCustomAttributes(), reach);
+                ReachAttributesOf(module, module.Reader.GetModuleDefinition().GetCustomAttributes(), reach);
             }
             catch (Exception e) when (!IsMustEscape(e))
             {

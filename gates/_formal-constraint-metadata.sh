@@ -215,7 +215,7 @@ formal_constraint_diff_axes() {
             packed|native)
                 local representation=record
                 [ "$axis" != native ] || representation=native
-                grep -Eq "^(alignas\(2\) extern const uint8_t|static const Dn2CppMethodInfo) md_${representation}_methtab_ReflectGenericMethodSubset_ConstraintOwner_ReflectGenericMethodSubset_ConstraintRoot\\[\\]" "$out"/generated_m*.cpp
+                grep -Eq "^(alignas\(2\) extern const uint8_t|extern const Dn2CppMethodInfo) md_${representation}_methtab_ReflectGenericMethodSubset_ConstraintOwner_ReflectGenericMethodSubset_ConstraintRoot\\[\\]" "$out"/generated_m*.cpp
                 grep -Eq "^(alignas\(2\) static const uint8_t|static const Dn2CppTypeReflection) md_${representation}_refl_ti_ReflectGenericMethodSubset_ConstraintOwner_ReflectGenericMethodSubset_ConstraintRoot\\[\\]" "$out"/generated_m*.cpp
                 grep -Eq "^(alignas\(2\) static const uint8_t|static const Dn2CppMethodInfo) md_${representation}_definition_ReflectGenericMethodSubset_GenericMemberBase_1_methods\[\]" "$out"/generated*.cpp
                 grep -Eq "^(alignas\(2\) static const uint8_t|static const Dn2CppMethodInfo) md_${representation}_definition_ReflectGenericMethodSubset_DeclaringMethodOwner_1_methods\[\]" "$out"/generated*.cpp

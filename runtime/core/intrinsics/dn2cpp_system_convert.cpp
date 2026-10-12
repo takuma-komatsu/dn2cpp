@@ -390,13 +390,17 @@ Dn2CppObject* dn2cpp_convert_change_type(Dn2CppObject* value, Dn2CppType* target
 static bool dn2cpp_implements_iconvertible(const Dn2CppTypeInfo* ti)
 {
     for (; ti != nullptr; ti = ti->base)
-        for (int32_t i = 0; i < ti->interfaceCount; i++)
+    {
+        int32_t count;
+        const auto* entries = dn2cpp_type_interfaces(ti, &count);
+        for (int32_t i = 0; i < count; i++)
         {
-            const Dn2CppTypeInfo* itf = ti->interfaces[i].itf;
+            const Dn2CppTypeInfo* itf = entries[i].itf;
             if (itf != nullptr && itf->name != nullptr
                 && std::strcmp(itf->name, "System.IConvertible") == 0)
                 return true;
         }
+    }
     return false;
 }
 

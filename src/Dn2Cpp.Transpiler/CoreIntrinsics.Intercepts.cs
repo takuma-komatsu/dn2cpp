@@ -1696,6 +1696,13 @@ internal static partial class CoreIntrinsics
         InterceptCutKind.BodyReplace, InterceptEmitArm.DelegateCloneBody,
         typeGate: "System.Delegate", nameGate: "Clone");
 
+    /// <summary>CompareInfo instances use the synthetic invariant representation from
+    /// CultureInfo.CompareInfo; deserialization preserves it without creating ICU state.</summary>
+    public static readonly NameKeyedIntercept BrInvariantCompareInfoCallback = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.IntrinsicUnderDeclType,
+        typeGate: "System.Globalization.CompareInfo",
+        nameGate: "System.Runtime.Serialization.IDeserializationCallback.OnDeserialization");
+
     /// <summary>The core BCL bounded set (<see cref="IsBoundedMethod"/>): body cut at
     /// reachability, call site neutralized to the default result.
     ///
@@ -1771,6 +1778,7 @@ internal static partial class CoreIntrinsics
         BrEnumInstanceFormat,
         BrLifetimeDispose,
         BrDelegateClone,
+        BrInvariantCompareInfoCallback,
         BdCoreBounded,
         BdStreamSyncFunnel,
         BdDynamicCodegen,

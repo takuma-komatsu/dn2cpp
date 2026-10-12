@@ -1642,7 +1642,7 @@ const void* find_dg_invoke_bridge(const Dn2CppTypeInfo* dg)
 // implementation. Interfaces the type inherits unchanged keep sharing the base
 // entries. Sets ti->interfaces / interfaceCount.
 //
-// `ti` and `base` are non-null by contract and the reads below are raw; a new
+// `ti` and `base` are non-null by contract; a new
 // caller must establish both the way the single existing one does (`ti` is the
 // fresh loader allocation, `base` defaults to &dn2cpp_object_type and an
 // unresolved import is rejected earlier).
@@ -1653,7 +1653,9 @@ void build_patch_itf_map(const Dn2CppInterpImage* img, Dn2CppTypeInfo* ti,
     const uint8_t* p = itfdesc_at(img, itfDescOff, &itfCount);
     const uint8_t* end = img->itfdesc + img->itfdescLen;
 
-    uint32_t maxCount = static_cast<uint32_t>(base->interfaceCount) + itfCount;
+    int32_t baseInterfaceCount;
+    const auto* baseInterfaces = dn2cpp_type_interfaces(base, &baseInterfaceCount);
+    uint32_t maxCount = static_cast<uint32_t>(baseInterfaceCount) + itfCount;
     auto* entries = static_cast<Dn2CppInterfaceEntry*>(
         dn2cpp_alloc(maxCount * sizeof(Dn2CppInterfaceEntry)));
     const Dn2CppTypeInfo** rebuilt = itfCount > 0
@@ -1685,12 +1687,16 @@ void build_patch_itf_map(const Dn2CppInterpImage* img, Dn2CppTypeInfo* ti,
         const Dn2CppInterfaceEntry* inheritedEntry = nullptr;
         const Dn2CppTypeInfo* dispatchItf = dn2cpp_dispatch_interface_of(base, itfTi);
         for (const Dn2CppTypeInfo* level = base; level != nullptr && inheritedEntry == nullptr; level = level->base)
-            for (int32_t i = 0; i < level->interfaceCount; i++)
-                if (level->interfaces[i].itf == dispatchItf && level->interfaces[i].slots != nullptr)
+        {
+            int32_t count;
+            const auto* levelInterfaces = dn2cpp_type_interfaces(level, &count);
+            for (int32_t i = 0; i < count; i++)
+                if (levelInterfaces[i].itf == dispatchItf && levelInterfaces[i].slots != nullptr)
                 {
-                    inheritedEntry = &level->interfaces[i];
+                    inheritedEntry = &levelInterfaces[i];
                     break;
                 }
+        }
         if (inheritedEntry != nullptr && inheritedEntry->methodTargets != nullptr)
             std::memcpy(targets, inheritedEntry->methodTargets,
                 fullSlotCount * sizeof(Dn2CppInterfaceMethodTarget));
@@ -1748,16 +1754,16 @@ void build_patch_itf_map(const Dn2CppInterpImage* img, Dn2CppTypeInfo* ti,
     }
     // Inherit the base's remaining interface entries (those this type does not
     // re-implement) unchanged.
-    for (int32_t bi = 0; bi < base->interfaceCount; bi++)
+    for (int32_t bi = 0; bi < baseInterfaceCount; bi++)
     {
-        const Dn2CppTypeInfo* bItf = base->interfaces[bi].itf;
+        const Dn2CppTypeInfo* bItf = baseInterfaces[bi].itf;
         bool rebuiltHere = false;
         for (uint32_t e = 0; e < itfCount && !rebuiltHere; e++)
             if (rebuilt[e] == bItf)
                 rebuiltHere = true;
         if (rebuiltHere)
             continue;
-        entries[n++] = base->interfaces[bi];
+        entries[n++] = baseInterfaces[bi];
     }
     dn2cpp_gc_write_barrier(entries); // the loops above filled it with plain stores
     dn2cpp_gc_store_ref(&ti->interfaces, static_cast<const Dn2CppInterfaceEntry*>(entries));
@@ -2210,8 +2216,7 @@ Dn2CppInterpImage* dn2cpp_patch_load(const void* blobPtr, size_t len)
             ti->base = base;
             ti->instanceSize = static_cast<int32_t>(size);
             ti->vtable = base->vtable;
-            ti->interfaces = base->interfaces;
-            ti->interfaceCount = base->interfaceCount;
+            ti->interfaces = dn2cpp_type_interfaces(base, &ti->interfaceCount);
             ti->tostring = base->tostring;
             ti->gethashcode = base->gethashcode;
             ti->equals = base->equals;
@@ -5843,9 +5848,11 @@ void materialize_patch_methods(Dn2CppInterpImage* img)
     for (uint32_t i = 0; i < img->typeCount; i++)
     {
         const auto* type = img->patchTypes[i];
-        for (int32_t j = 0; j < type->interfaceCount; j++)
+        int32_t count;
+        const auto* entries = dn2cpp_type_interfaces(type, &count);
+        for (int32_t j = 0; j < count; j++)
         {
-            const auto& entry = type->interfaces[j];
+            const auto& entry = entries[j];
             if (entry.methodTargets == nullptr)
                 continue;
             const auto reflection = entry.itf->reflection();

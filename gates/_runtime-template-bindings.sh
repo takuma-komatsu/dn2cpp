@@ -104,7 +104,7 @@ runtime_template_binding_diff_axes() {
             packed|native)
                 representation=record
                 [ "$axis" != native ] || representation=native
-                grep -Eq "^(alignas\(2\) extern const uint8_t|static const Dn2CppMethodInfo) md_${representation}_methtab_ReflectDelegateSubset_SignatureGuidAlias\[\]" "$out"/generated_m*.cpp
+                grep -Eq "^(alignas\(2\) extern const uint8_t|extern const Dn2CppMethodInfo) md_${representation}_methtab_ReflectDelegateSubset_SignatureGuidAlias\[\]" "$out"/generated_m*.cpp
                 ;;
         esac
         if grep -Eq '^extern const Dn2CppTypeInfo ti_ReflectDelegateSubset_SignatureAliasGeneric_(System_)?(Guid|Int32);' "$out/generated.h"; then

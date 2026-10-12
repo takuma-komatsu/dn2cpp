@@ -218,6 +218,7 @@ internal sealed partial class CppEmitter
     /// owner's, so identity would flag the owner and miss every real member. Ask the
     /// question the stamp asks.</para></summary>
     private readonly HashSet<string> _layoutUnknown = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _taskResultCacheLayouts = new(StringComparer.Ordinal);
 
     /// <summary>Every struct name the layout emission actually RENDERED — each field's
     /// storage type and each struct header's base — checked at the end of
@@ -2218,6 +2219,7 @@ internal sealed partial class CppEmitter
             _c.ExpandArrayEnumerableMaps();
             _c.PrepareArrayDelegateMetadata();
             _c.PrepareRuntimeDelegateInterfaceMetadata();
+            _c.PrepareRuntimeInterfaces();
             // Reflection can invoke the bodies of an application class the bodies just
             // compiled minted.
             _c.ReachReflectionClassRoutes();
@@ -2510,8 +2512,16 @@ internal sealed partial class CppEmitter
                         if (_c.IntrinsicFtnTargets.Contains(m))
                         {
                             var wrapper = new MethodCompiler(_c, m, literals, _backend)
-                                    .CompileCoreIntrinsicWrapper()
-                                ?? throw new NotSupportedException(
+                                    .CompileCoreIntrinsicWrapper();
+                            if (wrapper is null && _c.RuntimeInterfaceLowerings.ContainsKey(m))
+                            {
+                                _c.ReachRuntimeInterfaceBody(m);
+                                compiled.Remove(m);
+                                reachCursor = 0;
+                                continue;
+                            }
+                            if (wrapper is null)
+                                throw new NotSupportedException(
                                     $"taking the address of {m.DeclaringClass.FullName}::{m.Name} " +
                                     "(delegate method group / function pointer): the method has no " +
                                     "intrinsic lowering to synthesize a function body from");
@@ -2933,6 +2943,10 @@ internal sealed partial class CppEmitter
         // code can `using`-dispose one through the interface.
         foreach (var (tiSym, sym, count) in _intrinsicItfMaps)
             sb.AppendLine($"    dn2cpp_intrinsic_set_interfaces(&{tiSym}, {sym}, {count});");
+        if (_runtimeInterfaceMaps is { } runtimeMaps)
+            sb.AppendLine($"    dn2cpp_set_runtime_interface_maps({runtimeMaps.Sym}, {runtimeMaps.Count});");
+        if (_c.FormatProviderGetFormat is { } getFormat)
+            sb.AppendLine($"    dn2cpp_set_format_provider_dispatch({TypeInfoRef(getFormat.DeclaringClass, "numeric format provider")}, {getFormat.VtableSlot});");
         // The relation rows before any managed code can run a type test: the isinst pair
         // cache must never hold an answer from before.
         if (_relationRowSets is { } rrs)
@@ -6118,6 +6132,8 @@ internal sealed partial class CppEmitter
             if (name.Length == 0 || !seen.Add(name))
                 continue;
             (string Expr, int Count) ca = ("nullptr", 0);
+            var moduleAttributes = BuildAttrTable(sb, $"module{module.Index}", module,
+                module.Reader.GetModuleDefinition().GetCustomAttributes());
             // Identity pieces for the .NET display name (Assembly.FullName /
             // Type.AssemblyQualifiedName / AssemblyName): the metadata version,
             // culture ("neutral" when empty, as displayed) and the public-key
@@ -6158,6 +6174,10 @@ internal sealed partial class CppEmitter
                       + $"{CppUtf8Literal(nrl.Culture)}, {(nrl.Satellite ? 1 : 0)}"
                 : res.Dropped ? $", {res.Expr}, {res.Count}, 1"
                 : res.Count == 0 ? "" : $", {res.Expr}, {res.Count}";
+            if (moduleAttributes.Count != 0)
+                tail = $", {res.Expr}, {res.Count}, {(res.Dropped ? 1 : 0)}, "
+                    + $"{(nrl.Culture is null ? "nullptr" : CppUtf8Literal(nrl.Culture))}, {(nrl.Satellite ? 1 : 0)}, "
+                    + $"{moduleAttributes.Expr}, {moduleAttributes.Count}";
             rows.Add($"{{ \"{name}\", {ca.Expr}, {ca.Count}, {version}, {culture}, {pkt}{tail} }}");
         }
         sb.AppendLine($"const Dn2CppAssemblyRegEntry dn2cpp_assembly_registry[] = {{ {string.Join(", ", rows)} }};");
@@ -7705,6 +7725,9 @@ internal sealed partial class CppEmitter
     {
         sb.AppendLine("// ---- managed type layouts ----");
         _renderedStructRefs.Clear();
+        _taskResultCacheLayouts.Clear();
+        foreach (var cls in _c.TaskResultCacheLayouts)
+            _taskResultCacheLayouts.Add(cls.CppStructName);
         // A grouped specialization's layout IS its canonical owner's
         // (CppStructName redirects), so the alias defines no struct of its own —
         // the owner's single definition serves the whole group.
@@ -7898,6 +7921,11 @@ internal sealed partial class CppEmitter
             else if (!cls.IsEnum)
                 _layoutUnknown.Add(cls.CppStructName);
         }
+        if (cls.FullName == "System.Globalization.DateTimeFormatInfo")
+        {
+            sb.AppendLine("    Dn2CppString* dn2cpp_date_separator;");
+            sb.AppendLine("    int32_t dn2cpp_read_only;");
+        }
         // Opaque reference types (Object/Exception, dead-branch refs): members are
         // inlined and real fields never materialized.
         if (!IsOpaque(cls))
@@ -7944,8 +7972,15 @@ internal sealed partial class CppEmitter
             }
             else
             {
-                foreach (var f in instanceFields)
+                var gaps = cls.IsValueType && _taskResultCacheLayouts.Contains(cls.CppStructName)
+                    ? TaskResultCacheGaps(cls, instanceFields) : null;
+                for (int i = 0; i < instanceFields.Count; i++)
+                {
+                    if (gaps is not null)
+                        EmitTaskResultCacheGap(sb, i, gaps[i], copy: false);
+                    var f = instanceFields[i];
                     sb.AppendLine($"    {FieldStorage(cls, f)} {f.CppName};");
+                }
                 // A C# `fixed E buf[N]` lowers to a compiler-generated <buf>e__FixedBuffer
                 // value type with a single element field of type E and an explicit
                 // ClassLayout size of N*sizeof(E). The buffer is addressed as
@@ -7955,6 +7990,19 @@ internal sealed partial class CppEmitter
                 int pad = FixedBufferPadding(cls, instanceFields);
                 if (pad > 0)
                     sb.AppendLine($"    uint8_t __fixedbuffer_pad[{pad}];");
+                if (gaps is not null)
+                {
+                    EmitTaskResultCacheGap(sb, instanceFields.Count, gaps[instanceFields.Count], copy: false);
+                    if (gaps.Any(g => g.Wide > 0 || g.Narrow > 0))
+                    {
+                        sb.AppendLine($"    static void dn2cpp_copy_task_cache_padding(uint8_t* bits, const void* root, const {cls.CppStructName}& value)");
+                        sb.AppendLine("    {");
+                        sb.AppendLine("        (void)bits; (void)root; (void)value;");
+                        for (int i = 0; i < gaps.Length; i++)
+                            EmitTaskResultCacheGap(sb, i, gaps[i], copy: true);
+                        sb.AppendLine("    }");
+                    }
+                }
             }
         }
         sb.AppendLine("};");
@@ -7984,6 +8032,59 @@ internal sealed partial class CppEmitter
             var sz = PointerWidth.Model(ext.Size, TryStructExtent(cls, PointerWidth.Bytes32)?.Size);
             sb.AppendLine($"static_assert({(sz.Guarded ? "sizeof(void*) != 8 || " : "")}sizeof({cls.CppStructName}) == {sz.Text}, \"sequential layout size mismatch: {cls.FullName}\");");
         }
+    }
+
+    // Named arrays make managed layout gaps, including a fieldless value's
+    // storage byte, survive initialized C++ aggregate copies.
+    private (int Wide, int Narrow)[]? TaskResultCacheGaps(ClassInfo cls, List<FieldInfo> fields)
+    {
+        if (fields.Count == 0)
+            return [(1, 1)];
+        int[]? AtWidth(int ptr)
+        {
+            var gaps = new int[fields.Count + 1];
+            int cursor = 0, align = 1;
+            for (int i = 0; i < fields.Count; i++)
+            {
+                if (TryFieldExtent(fields[i].Type, ptr, taskCache: true) is not { } extent)
+                    return null;
+                int a = cls.LayoutPack > 0 ? Math.Min(cls.LayoutPack, extent.Align) : extent.Align;
+                align = Math.Max(align, a);
+                int offset = RoundUp(cursor, a);
+                gaps[i] = offset - cursor;
+                cursor = offset + extent.Size;
+            }
+            cursor += FixedBufferPadding(cls, fields);
+            gaps[fields.Count] = RoundUp(cursor, align) - cursor;
+            return gaps;
+        }
+
+        if (AtWidth(PointerWidth.Bytes64) is not { } wide
+            || AtWidth(PointerWidth.Bytes32) is not { } narrow)
+            throw new NotSupportedException($"{cls.FullName}: cannot preserve Task result cache layout gaps at both pointer widths");
+        var result = new (int Wide, int Narrow)[wide.Length];
+        for (int i = 0; i < result.Length; i++)
+            result[i] = (wide[i], narrow[i]);
+        return result;
+    }
+
+    private static void EmitTaskResultCacheGap(StringBuilder sb, int index, (int Wide, int Narrow) gap, bool copy)
+    {
+        if (gap.Wide == 0 && gap.Narrow == 0)
+            return;
+        if (gap.Wide == 0 || gap.Narrow == 0)
+            sb.AppendLine(gap.Wide > 0 ? "#if INTPTR_MAX == INT64_MAX" : "#if INTPTR_MAX == INT32_MAX");
+        string name = $"__task_cache_pad_{index}";
+        if (copy)
+            sb.AppendLine($"        std::memcpy(bits + (reinterpret_cast<const uint8_t*>(&value.{name}) - static_cast<const uint8_t*>(root)), value.{name}, sizeof(value.{name}));");
+        else
+        {
+            string size = gap.Wide > 0 && gap.Narrow > 0
+                ? PointerWidth.Model(gap.Wide, gap.Narrow).Text : Math.Max(gap.Wide, gap.Narrow).ToString();
+            sb.AppendLine($"    uint8_t {name}[{size}];");
+        }
+        if (gap.Wide == 0 || gap.Narrow == 0)
+            sb.AppendLine("#endif");
     }
 
     /// <summary>Emits the body of a <c>[StructLayout(LayoutKind.Explicit)]</c> value
@@ -8061,7 +8162,7 @@ internal sealed partial class CppEmitter
     /// emission cannot represent; see <see cref="EmitExplicitLayoutBody"/>. A declared
     /// size makes max(Size, field end) the byte count that must be representable, so
     /// the refusal names that total rather than the Size that may not be the offender.</summary>
-    private (int Size, int Align) ExplicitLayoutExtent(ClassInfo cls, List<FieldInfo> fields, int ptr)
+    private (int Size, int Align) ExplicitLayoutExtent(ClassInfo cls, List<FieldInfo> fields, int ptr, bool taskCache = false)
     {
         int pack = cls.LayoutPack;
         int align = 1, end = 0;
@@ -8071,7 +8172,7 @@ internal sealed partial class CppEmitter
             if (f.ExplicitOffset < 0)
                 throw new NotSupportedException(
                     $"{cls.FullName}.{f.Name}: a LayoutKind.Explicit field without [FieldOffset] is not supported");
-            if (TryFieldExtent(f.Type, ptr) is not { } e)
+            if (TryFieldExtent(f.Type, ptr, taskCache) is not { } e)
                 throw new NotSupportedException(
                     $"{cls.FullName}.{f.Name}: cannot compute the size of field type {f.Type} inside a LayoutKind.Explicit struct");
             int a = pack > 0 && e.Align > pack ? pack : e.Align;
@@ -8165,11 +8266,11 @@ internal sealed partial class CppEmitter
     /// <c>Size - end</c> — recomputing it would move types whose declared size merely
     /// equals their natural one onto the declared-size union arm for nothing. Asserted
     /// by build-and-run-marshal-pinning.sh's negative arms.</para></summary>
-    private int SequentialSizePadding(ClassInfo cls, List<FieldInfo> fields, int ptr)
+    private int SequentialSizePadding(ClassInfo cls, List<FieldInfo> fields, int ptr, bool taskCache = false)
     {
         if (!cls.IsValueType || cls.LayoutSize <= 0)
             return 0;
-        if (TrySequentialFieldsEnd(cls, fields, ptr) is not { } e)
+        if (TrySequentialFieldsEnd(cls, fields, ptr, taskCache) is not { } e)
             return 0;
         int total = Math.Max(cls.LayoutSize, e.End);
         if (total % e.Align != 0)
@@ -8187,13 +8288,13 @@ internal sealed partial class CppEmitter
     /// <see cref="CppTypes.FieldOf"/> width, aligned to its (pack-capped) natural
     /// alignment. Includes the fixed-buffer trailing pad. Null when a member's
     /// extent is unknown (an intrinsic/opaque/external field type).</summary>
-    private (int End, int Align)? TrySequentialFieldsEnd(ClassInfo cls, List<FieldInfo> fields, int ptr)
+    private (int End, int Align)? TrySequentialFieldsEnd(ClassInfo cls, List<FieldInfo> fields, int ptr, bool taskCache = false)
     {
         int pack = cls.LayoutPack;
         int cursor = 0, align = 1;
         foreach (var f in fields)
         {
-            if (TryFieldExtent(f.Type, ptr) is not { } e)
+            if (TryFieldExtent(f.Type, ptr, taskCache) is not { } e)
                 return null;
             int a = pack > 0 && e.Align > pack ? pack : e.Align;
             if (a > align) align = a;
@@ -8249,7 +8350,7 @@ internal sealed partial class CppEmitter
     /// the caller reads it at both widths and hands the pair to
     /// <see cref="PointerWidth.Model"/>, which is what makes the emitted text
     /// target-independent.</summary>
-    private (int Size, int Align)? TryFieldExtent(TypeDesc t, int ptr)
+    private (int Size, int Align)? TryFieldExtent(TypeDesc t, int ptr, bool taskCache = false)
     {
         string ct;
         try
@@ -8276,6 +8377,20 @@ internal sealed partial class CppEmitter
         // TypeRef of the same type answer identically.
         if (s_intrinsicStructExtents.TryGetValue(ct, out var ise))
             return ise;
+        // These runtime representations are sized only for the cache's gap walk;
+        // ordinary explicit-layout support retains its existing field policy.
+        if (taskCache)
+        {
+            switch (ct)
+            {
+                case "Dn2CppGCHandle" or "Dn2CppDependentHandle": return (ptr, ptr);
+                case "Dn2CppYieldAwaiter": return (1, 1);
+                case "Dn2CppVector64": return (8, 8);
+                case "Dn2CppVector128" or "Dn2CppVectorT": return (16, 16);
+                case "Dn2CppVector256": return (32, 16);
+                case "Dn2CppVector512": return (64, 16);
+            }
+        }
         // Opaque structs are NOT excluded here: their extent feeds the opaque-shell pad
         // (EmitOneStruct), which is what makes the shell's sizeof — and the instanceSize
         // stamped from it — truthful. Recursing into an opaque field type cannot
@@ -8285,29 +8400,29 @@ internal sealed partial class CppEmitter
         // specialization's field rows are never pulled just to size a shell.
         if (t is { Kind: TypeKind.Class, Class: { IsValueType: true, IsEnum: false, IntrinsicCppName: null } fc }
             && fc.MembersReady)
-            return TryStructExtent(fc, ptr);
+            return TryStructExtent(fc, ptr, taskCache);
         return null;
     }
 
     // Memoized per-struct extents, keyed on the pointer width the reading assumed (a
     // value type cannot contain itself by value, so the null pre-seed below only guards
     // a malformed cycle, not a real layout).
-    private readonly Dictionary<(ClassInfo Cls, int Ptr), (int Size, int Align)?> _structExtents = new();
+    private readonly Dictionary<(ClassInfo Cls, int Ptr, bool TaskCache), (int Size, int Align)?> _structExtents = new();
 
     /// <summary>The C++ <c>sizeof</c>/<c>alignof</c> of an emitted value-type struct,
     /// mirroring <see cref="EmitOneStruct"/>'s body exactly (inline-array repetition,
     /// explicit-layout union, fixed-buffer and declared-size trailing pads, pack
     /// capping), with pointers <paramref name="ptr"/> bytes wide. Null when a member's
     /// extent is unknown.</summary>
-    private (int Size, int Align)? TryStructExtent(ClassInfo cls, int ptr)
+    private (int Size, int Align)? TryStructExtent(ClassInfo cls, int ptr, bool taskCache = false)
     {
-        if (_structExtents.TryGetValue((cls, ptr), out var cached))
+        if (_structExtents.TryGetValue((cls, ptr, taskCache), out var cached))
             return cached;
-        _structExtents[(cls, ptr)] = null;
+        _structExtents[(cls, ptr, taskCache)] = null;
         (int Size, int Align)? r;
         try
         {
-            r = ComputeStructExtent(cls, ptr);
+            r = ComputeStructExtent(cls, ptr, taskCache);
         }
         catch (NotSupportedException e) when (!Compilation.IsMustEscape(e))
         {
@@ -8322,7 +8437,7 @@ internal sealed partial class CppEmitter
             // failing the transpile.
             r = null;
         }
-        _structExtents[(cls, ptr)] = r;
+        _structExtents[(cls, ptr, taskCache)] = r;
         return r;
     }
 
@@ -8338,27 +8453,27 @@ internal sealed partial class CppEmitter
         return size.Guarded || align.Guarded ? null : (size, align);
     }
 
-    private (int Size, int Align)? ComputeStructExtent(ClassInfo cls, int ptr)
+    private (int Size, int Align)? ComputeStructExtent(ClassInfo cls, int ptr, bool taskCache = false)
     {
         var fields = cls.Fields.Where(f => !f.IsStatic).ToList();
         if (cls.InlineArrayLength > 0 && fields.Count == 1)
         {
             // realWidth: the buffer is emitted at storage width (see the struct
             // body emission), so the extent must use the same stride.
-            if (TryFieldExtent(fields[0].Type, ptr) is not { } el)
+            if (TryFieldExtent(fields[0].Type, ptr, taskCache) is not { } el)
                 return null;
             return (el.Size * cls.InlineArrayLength, el.Align);
         }
         if (cls.IsExplicitLayout)
         {
-            var (size, align) = ExplicitLayoutExtent(cls, fields, ptr);
+            var (size, align) = ExplicitLayoutExtent(cls, fields, ptr, taskCache);
             // The pack cap applies to the arms, already folded into the extent; the
             // union's own alignment is the max arm alignment.
             return (size, align);
         }
-        if (TrySequentialFieldsEnd(cls, fields, ptr) is not { } e)
+        if (TrySequentialFieldsEnd(cls, fields, ptr, taskCache) is not { } e)
             return null;
-        int end = e.End + SequentialSizePadding(cls, fields, ptr);
+        int end = e.End + SequentialSizePadding(cls, fields, ptr, taskCache);
         return (Math.Max(RoundUp(end, e.Align), 1), e.Align);
     }
 
@@ -8394,7 +8509,8 @@ internal sealed partial class CppEmitter
     {
         var statics = EmittedClasses
             .Where(c => !IsOpaque(c) && !SkipsCanonicalMetadata(c))
-            .SelectMany(c => c.Fields.Where(f => f.IsStatic && !f.IsLiteral)).ToList();
+            .SelectMany(c => c.Fields.Where(f => f.IsStatic && !f.IsLiteral))
+            .Concat(_c.IntrinsicManagedStaticFields).Distinct().ToList();
         if (statics.Count == 0)
             return;
         o.Header.AppendLine("// ---- static fields ----");

@@ -145,6 +145,19 @@ internal sealed partial class MethodCompiler
     private bool TryEmitDecimalIntrinsic(string name, MethodSignature<TypeDesc> sig)
     {
         var ps = sig.ParameterTypes;
+        if (name == "IsValid" && ps is
+                [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }]
+            && sig.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean })
+        {
+            var method = Comp.ReachIntrinsicStaticMethod("System.Decimal", name,
+                m => m.Signature.ParameterTypes is
+                    [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }]
+                    && m.Signature.ReturnType is
+                        { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean });
+            var flags = Pop();
+            Push(StackKind.I4, "int32_t", $"{DirectCallSym(method)}({Cast(flags, "int32_t")})");
+            return true;
+        }
 
         //.ctor — the ldloca+call (address-init) form. The newobj expression form is
         // handled in TranslateNewobj. Args are above the `this` pointer on the stack.

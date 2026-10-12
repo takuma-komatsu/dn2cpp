@@ -267,6 +267,8 @@ internal sealed class PreservationReader
         && parent is "System.Reflection.MemberInfo" or "System.Reflection.ParameterInfo"
             or "System.Attribute" or "System.Reflection.CustomAttributeExtensions"
             or "System.Reflection.CustomAttributeData" or "System.Type"
+            or "System.Reflection.ICustomAttributeProvider" or "System.Reflection.Module"
+            or "System.Reflection.ConstructorInfo" or "System.Reflection.MethodBase"
             or "System.Reflection.MethodInfo" or "System.Reflection.FieldInfo"
             or "System.Reflection.PropertyInfo" or "System.Reflection.EventInfo" or "System.Reflection.Assembly";
 

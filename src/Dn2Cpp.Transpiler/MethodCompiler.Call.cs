@@ -1491,6 +1491,9 @@ internal sealed partial class MethodCompiler
         if (_intrinsics is not null && _intrinsics.TryEmitCall(this, callee, isCallvirt))
             return;
 
+        if (Compilation.RuntimeNumericProviderConsumer(callee))
+            FormatProviderDispatchArgs(_stack[^1]);
+
         if (IsDelegateInvoke(callee))
         {
             TranslateDelegateInvoke(callee);

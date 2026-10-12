@@ -178,6 +178,9 @@ internal sealed partial class CppEmitter
             throw new InvalidOperationException("An empty metadata table has no address.");
         if (!_c.CompressMetadata || (native ?? _metadataNativeRows))
         {
+            // Selected-method catalogs can name method rows from another unit.
+            external |= rowType == "Dn2CppMethodInfo"
+                && symbol.StartsWith("methtab_", System.StringComparison.Ordinal);
             EmitNativeMetadataTable(sb, rowType, symbol, rows, external);
             return;
         }

@@ -261,13 +261,14 @@ internal sealed partial class MethodCompiler
                 {
                     var v = Pop();
                     var b = Pop();
+                    string cache = TaskCachedResultDisposal(v, sig.ParameterTypes[0]);
                     string store = EmitTaskResultStore(v);
-                    Emit($"dn2cpp_task_set_result(((Dn2CppAsyncBuilder*)({b.Expr}))->task, {store});");
+                    Emit($"dn2cpp_async_task_set_result(((Dn2CppAsyncBuilder*)({b.Expr}))->task, {store}, {cache});");
                 }
                 else
                 {
                     var b = Pop();
-                    Emit($"dn2cpp_task_set_result(((Dn2CppAsyncBuilder*)({b.Expr}))->task, 0);");
+                    Emit($"dn2cpp_async_task_set_result(((Dn2CppAsyncBuilder*)({b.Expr}))->task, 0, true);");
                 }
                 return true;
             }
@@ -352,7 +353,7 @@ internal sealed partial class MethodCompiler
                     && Comp.GenericDefFullName(pcl) == "System.Threading.Tasks.Task";
                 string task = fromTask
                     ? $"(Dn2CppTask*)({arg.Expr})"
-                    : StampTask($"dn2cpp_task_from_result({EmitTaskResultStore(arg)})",
+                    : StampTask($"dn2cpp_task_from_result({EmitTaskResultStore(arg)}, {TaskCachedResultDisposal(arg, sig.ParameterTypes[0])})",
                         TaskTypeForResult(sig.ParameterTypes[0]));
                 Emit($"*(Dn2CppTaskAwaiter*)({self.Expr}) = Dn2CppTaskAwaiter{{ {task} }};");
                 Emit($"dn2cpp_gc_write_barrier_if_heap((void*)({self.Expr}));");
@@ -373,7 +374,7 @@ internal sealed partial class MethodCompiler
                 var v = Pop();
                 Push(StackKind.Ref, "Dn2CppTask*",
                     $"dn2cpp_vtask_as_task(((Dn2CppTaskAwaiter*)({v.Expr}))->task, "
-                    + $"{TaskTypeInfo(sig.ReturnType)})");
+                    + $"{TaskTypeInfo(sig.ReturnType)}, {TaskDefaultResultDisposal(sig.ReturnType)})");
                 return true;
             }
             case ("System.Threading.Tasks.ValueTask", "get_IsCompleted"):

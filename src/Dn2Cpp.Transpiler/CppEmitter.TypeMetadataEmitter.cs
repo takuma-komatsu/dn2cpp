@@ -1189,7 +1189,7 @@ internal sealed partial class CppEmitter
                     foreach (var a in cls.Context.TypeArgs)
                         NoteReflectedType(a);
                 // RenderMemberTables' guard + BuildMemberTable's row trim.
-                if (_e.IsOpaque(cls) || _e.IsCanonicalWorld(cls))
+                if (_e.IsOpaque(cls) && !_c.RuntimeInterfaceMetadata.Contains(cls) || _e.IsCanonicalWorld(cls))
                     continue;
                 bool keepRefl = _c.KeepsReflectionMetadata(cls);
                 var propertyAccessors = ReflectionAccessorHandles(cls);
@@ -1847,6 +1847,7 @@ internal sealed partial class CppEmitter
             _e.EmitStringInterfaceMap(_sb);
             _e.EmitEnumInterfaceMap(_sb);
             _e.EmitIntrinsicInterfaceMaps(_sb);
+            _e.EmitRuntimeInterfaceMaps(_sb);
             _e.EmitRelationRows(_sb);
             _e.NoteRuntimeHandleBases();
             _sb.AppendLine();
@@ -2459,11 +2460,10 @@ internal sealed partial class CppEmitter
             var transitive = new List<ClassInfo>();
             for (var c = cls; c is not null; c = c.BaseClass)
                 foreach (var itf in c.Interfaces)
-                    // Skip interfaces inherited from an opaque intrinsic base
-                    // (e.g. Exception : ISerializable) — they are not in the emit
-                    // set, so their dispatch tables/type-info aren't materialized
-                    // and we never dispatch through them.
-                    if (_e._emit.Contains(itf) && !transitive.Contains(itf))
+                    // Intrinsic interface handles can be declared outside the layout
+                    // set. Their relations survive even when no slot body is reached.
+                    if ((_e._emit.Contains(itf) || _e._referencedIntrinsicTis.Contains(itf))
+                        && !transitive.Contains(itf))
                         transitive.Add(itf);
             if (transitive.Count == 0)
                 return;
@@ -3511,7 +3511,8 @@ internal sealed partial class CppEmitter
             // chains, so emitting a table here would leak Object.ToString/Equals/etc.
             // into GetMethods, which unlike real .NET lists no Object member; a named
             // lookup answers those from the runtime's rows (dn2cpp_meta_lookup).
-            if (cls.IsEnum || _e.IsOpaque(cls) || _e.IsCanonicalWorld(cls))
+            if (cls.IsEnum || _e.IsOpaque(cls) && !_c.RuntimeInterfaceMetadata.Contains(cls)
+                || _e.IsCanonicalWorld(cls))
                 return;
             // Dedupe by CppName: a class can list the same method twice (e.g. an
             // interface-impl entry shares the method's handle), which would both emit a

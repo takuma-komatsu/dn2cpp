@@ -214,6 +214,59 @@ void dn2cpp_intrinsic_set_interfaces(Dn2CppTypeInfo* type, const Dn2CppInterface
     type->interfaces = entries;
     type->interfaceCount = count;
 }
+
+// Runtime-owned handles may live in read-only storage. Their image-specific maps
+// are immutable after startup, just like the handles themselves.
+static const Dn2CppRelationRows* const* g_runtime_interface_index = nullptr;
+static uint32_t g_runtime_interface_index_mask = 0;
+
+static uint32_t dn2cpp_runtime_interface_slot(const Dn2CppTypeInfo* type, uint32_t mask)
+{
+    uint64_t h = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(type)) * UINT64_C(0x9E3779B97F4A7C15);
+    return static_cast<uint32_t>(h >> 32) & mask;
+}
+
+void dn2cpp_set_runtime_interface_maps(const Dn2CppRelationRows* sets, int32_t count)
+{
+    if (count <= 0)
+        return;
+    uint32_t size = 2;
+    while (size < 2u * static_cast<uint32_t>(count))
+        size <<= 1;
+    // Readers retain pointers into this index and the emitted arrays for the image's lifetime.
+    auto** index = new const Dn2CppRelationRows*[size]();
+    uint32_t mask = size - 1;
+    for (int32_t k = 0; k < count; k++)
+    {
+        uint32_t i = dn2cpp_runtime_interface_slot(sets[k].type, mask);
+        for (; index[i] != nullptr; i = (i + 1) & mask)
+            if (index[i]->type == sets[k].type)
+                dn2cpp_fail("dn2cpp_set_runtime_interface_maps: two maps for one type-info");
+        index[i] = &sets[k];
+    }
+    g_runtime_interface_index_mask = mask;
+    g_runtime_interface_index = index;
+}
+
+const Dn2CppInterfaceEntry* dn2cpp_type_interfaces(const Dn2CppTypeInfo* type, int32_t* count)
+{
+    if (g_runtime_interface_index != nullptr)
+        for (uint32_t i = dn2cpp_runtime_interface_slot(type, g_runtime_interface_index_mask);;
+             i = (i + 1) & g_runtime_interface_index_mask)
+        {
+            const Dn2CppRelationRows* rows = g_runtime_interface_index[i];
+            if (rows == nullptr)
+                break;
+            if (rows->type == type)
+            {
+                *count = rows->count;
+                return rows->entries;
+            }
+        }
+    *count = type->interfaceCount;
+    return type->interfaces;
+}
+
 void dn2cpp_intrinsic_set_base(Dn2CppTypeInfo* type, const Dn2CppTypeInfo* base)
 {
     type->base = base;

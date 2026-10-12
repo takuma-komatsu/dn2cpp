@@ -341,9 +341,12 @@ payloads. Every conversion to an object or interface acquires an interned manage
 wrapper with the source CLR identity. `IFormatProvider` uses the managed reference
 ABI; numeric intrinsics extract a known provider's number-format payload only when
 formatting or parsing consumes it. Composite formatting defers extraction until
-a numeric hole uses a format specifier. Other providers refuse explicitly until their
-`GetFormat` dispatch is implemented. Internal format-spec callbacks retain their
-raw number-format payload ABI.
+a numeric hole needs provider data, including empty and default formats.
+Consuming a custom numeric provider reaches
+its `GetFormat(Type)` implementation and accepts only a `NumberFormatInfo` result;
+other results fall back to the current culture. Allocation, identity conversion,
+and unrelated known-provider formatting do not retain unused provider bodies.
+Internal format-spec callbacks retain their raw number-format payload ABI.
 
 Multidimensional array slots retain the typed raw payload ABI exposed by
 `Address`. Erased loads/stores and reflection convert using the actual element

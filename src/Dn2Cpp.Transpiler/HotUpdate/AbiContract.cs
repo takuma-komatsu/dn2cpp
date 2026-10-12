@@ -44,8 +44,9 @@ internal static class AbiContract
     /// 7 = Task, Thread and BlockingCollection gained hidden runtime slots.
     /// 8 = delegates gained entry identity and an invocation-list cache.
     /// 9 = AggregateException subclasses reserve the runtime collection prefix.
+    /// 10 = Task async-result state and DateTimeFormatInfo fields use runtime storage.
     /// Bump on any future layout-mapping change.</summary>
-    public const int LayoutPolicyVersion = 9;
+    public const int LayoutPolicyVersion = 10;
 
     /// <summary>Serializes canonical contract v1 over the emitted classes. The
     /// serialization is symbolic — type names and base chains, layout
