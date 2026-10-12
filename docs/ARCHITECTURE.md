@@ -361,6 +361,9 @@ and region inventory follows the modeled culture candidates; known resource
 languages outside that inventory retain the existing unmodeled numeric fallback.
 Apple and standard ICU resource-language inventories remain separate.
 Internal format-spec callbacks retain their raw number-format payload ABI.
+Named and managed-default culture identities sort accepted BCP47 variants before
+discarding an invalid tail. The legacy locale path preserves variant order;
+raw host numeric-resource selection remains separate from managed identity.
 
 Multidimensional array slots retain the typed raw payload ABI exposed by
 `Address`. Erased loads/stores and reflection convert using the actual element
