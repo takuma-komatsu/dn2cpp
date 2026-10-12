@@ -106,6 +106,7 @@ int32_t dn2cpp_parse_number_styles(const char16_t* p, int32_t n, int32_t styles,
     Dn2CppString* decSep = nfi->numberDecimal;
     Dn2CppString* grpSep = nfi->numberGroup;
     Dn2CppString* negSign = nfi->negativeSign;
+    Dn2CppString* posSign = nfi->positiveSign;
 
     // AllowCurrencySymbol permits — does not require — the culture's currency
     // symbol, and the state machine below does not model consuming one. An input
@@ -132,13 +133,12 @@ int32_t dn2cpp_parse_number_styles(const char16_t* p, int32_t n, int32_t styles,
     int32_t state = 0;
     int32_t i = 0;
 
-    // Leading whitespace / sign / '('. Whitespace is not consumed once a sign
-    // was seen ("- 123" fails) — the modeled cultures all have
-    // NumberNegativePattern != 2, so .NET's currency-pattern carve-out is moot.
+    // A leading sign permits following whitespace only for the spaced
+    // negative-number pattern.
     while (i < n)
     {
         char16_t ch = p[i];
-        if (ns_is_white(ch) && (styles & NS_LEADWHITE) != 0 && (state & ST_SIGN) == 0)
+        if (ns_is_white(ch) && (styles & NS_LEADWHITE) != 0 && ((state & ST_SIGN) == 0 || nfi->numberNegPattern == 2))
         {
             i++;
             continue;
@@ -146,10 +146,10 @@ int32_t dn2cpp_parse_number_styles(const char16_t* p, int32_t n, int32_t styles,
         int32_t next;
         if ((styles & NS_LEADSIGN) != 0 && (state & ST_SIGN) == 0)
         {
-            if (ch == u'+')
+            if ((next = ns_match_str(p, n, i, posSign)) >= 0)
             {
                 state |= ST_SIGN;
-                i++;
+                i = next;
                 continue;
             }
             if ((next = ns_match_str(p, n, i, negSign)) >= 0)
@@ -234,8 +234,8 @@ int32_t dn2cpp_parse_number_styles(const char16_t* p, int32_t n, int32_t styles,
             bool negExp = false;
             int32_t next;
             i++;
-            if (i < n && p[i] == u'+')
-                i++;
+            if ((next = ns_match_str(p, n, i, posSign)) >= 0)
+                i = next;
             else if ((next = ns_match_str(p, n, i, negSign)) >= 0)
             {
                 i = next;
@@ -271,10 +271,10 @@ int32_t dn2cpp_parse_number_styles(const char16_t* p, int32_t n, int32_t styles,
             int32_t next;
             if ((styles & NS_TRAILSIGN) != 0 && (state & ST_SIGN) == 0)
             {
-                if (ch == u'+')
+                if ((next = ns_match_str(p, n, i, posSign)) >= 0)
                 {
                     state |= ST_SIGN;
-                    i++;
+                    i = next;
                     continue;
                 }
                 if ((next = ns_match_str(p, n, i, negSign)) >= 0)
@@ -531,10 +531,11 @@ static bool ns_fp_special(const char16_t* p, int32_t n, const Dn2CppNumberFormat
     if (ns_eq_icase(q, m, nfi->posInf)) { *out = INFINITY; return true; }
     if (ns_eq_icase(q, m, nfi->negInf)) { *out = -INFINITY; return true; }
     if (ns_eq_icase(q, m, nfi->nan)) { *out = NAN; return true; }
-    if (m > 0 && q[0] == u'+')
+    int32_t positiveEnd = ns_match_str(q, m, 0, nfi->positiveSign);
+    if (positiveEnd > 0)
     {
-        if (ns_eq_icase(q + 1, m - 1, nfi->posInf)) { *out = INFINITY; return true; }
-        if (ns_eq_icase(q + 1, m - 1, nfi->nan)) { *out = NAN; return true; }
+        if (ns_eq_icase(q + positiveEnd, m - positiveEnd, nfi->posInf)) { *out = INFINITY; return true; }
+        if (ns_eq_icase(q + positiveEnd, m - positiveEnd, nfi->nan)) { *out = NAN; return true; }
         return false;
     }
     int32_t next = ns_match_str(q, m, 0, nfi->negativeSign);

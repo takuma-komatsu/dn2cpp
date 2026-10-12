@@ -55,6 +55,12 @@ namespace CultureInfoApi
                 return;
             }
 
+            if (args.Length > 0 && args[0] == "culture-numbering-data")
+            {
+                RunNumberingData(args.Length > 1 ? args[1] : null);
+                return;
+            }
+
             if (args.Length > 0 && (args[0] == "culture-sort-strings" || args[0] == "culture-sort-upper-key"))
             {
                 RunSortStrings(args[0] == "culture-sort-upper-key");
@@ -421,6 +427,129 @@ namespace CultureInfoApi
             Console.WriteLine("  numbering cache case=" + ReferenceEquals(arab, CultureInfo.GetCultureInfo("EN-us-U-NU-ARAB"))
                 + " base=" + ReferenceEquals(arab, CultureInfo.GetCultureInfo("en-US")));
             Console.WriteLine("culture locale data end");
+            RunNumberingData();
+        }
+
+        private static void RunNumberingData(string? name = null)
+        {
+            Console.WriteLine("== culture numbering data ==");
+            foreach (string cultureName in name is null ? new[]
+            {
+                "en-US-u-nu-arab-foo", "en-US-u-nu-unknown", "hi-IN-u-nu-arab",
+                "bn-IN-u-nu-arab", "fr-FR-u-nu-arab", "ja-JP-u-nu-arab",
+                "en-US-u-nu", "en-US-u-nu-roman", "zh-CN-u-nu-hans",
+                "ar-EG-u-nu-native", "ar-EG-u-nu-finance", "ja-JP-u-nu-traditio",
+                "az-Latn-AZ-u-nu-arab"
+            } : new[] { name })
+            {
+                CultureInfo culture = new CultureInfo(cultureName);
+                NumberFormatInfo n = culture.NumberFormat;
+                Console.WriteLine("  locale '" + cultureName + "' -> '" + culture.Name + "' LCID=" + culture.LCID
+                    + " neutral=" + culture.IsNeutralCulture
+                    + " override=" + new CultureInfo(cultureName, false).Name);
+                Console.WriteLine("    separators=" + n.NumberDecimalSeparator + "|" + n.NumberGroupSeparator
+                    + "|" + n.CurrencyDecimalSeparator + "|" + n.CurrencyGroupSeparator
+                    + "|" + n.PercentDecimalSeparator + "|" + n.PercentGroupSeparator);
+                Console.WriteLine("    symbols=" + n.NegativeSign + "|" + n.NaNSymbol + "|" + n.PositiveInfinitySymbol
+                    + "|" + n.NegativeInfinitySymbol + "|" + n.CurrencySymbol + "|" + n.PercentSymbol);
+                Console.WriteLine("    groups=" + Sizes(n.NumberGroupSizes) + "|" + Sizes(n.CurrencyGroupSizes)
+                    + "|" + Sizes(n.PercentGroupSizes)
+                    + " patterns=" + n.CurrencyPositivePattern + "," + n.CurrencyNegativePattern
+                    + "," + n.PercentPositivePattern + "," + n.PercentNegativePattern);
+                Console.WriteLine("    positive=" + n.PositiveSign
+                    + " per mille=" + n.PerMilleSymbol
+                    + " digits=" + n.NumberDecimalDigits + "," + n.CurrencyDecimalDigits + "," + n.PercentDecimalDigits
+                    + " negative pattern=" + n.NumberNegativePattern);
+                foreach (string format in new[]
+                {
+                    "N", "N2", "C", "C2", "P", "P2", "F", "F2", "G", "E2", "0.00E+00", "0.00‰", "#,##0.00"
+                })
+                {
+                    Console.WriteLine("    " + format + " negative double=" + FormatNumbering(-1234567.89, format, culture)
+                        + " decimal=" + FormatNumbering(-1234567.89m, format, culture));
+                    Console.WriteLine("    " + format + " positive double=" + FormatNumbering(1234567.89, format, culture)
+                        + " decimal=" + FormatNumbering(1234567.89m, format, culture));
+                }
+                Console.WriteLine("    special=" + double.NaN.ToString(culture)
+                    + "|" + double.PositiveInfinity.ToString(culture)
+                    + "|" + double.NegativeInfinity.ToString(culture));
+                Console.WriteLine("    N minimum double=" + FormatNumbering(double.MinValue, "N", culture));
+                string paddedFormat = "#,##" + new string('0', 55) + ".00";
+                Console.WriteLine("    custom padded double=" + FormatNumbering(1.0, paddedFormat, culture)
+                    + " decimal=" + FormatNumbering(1m, paddedFormat, culture));
+                string literalFormat = "'" + new string('x', 252) + "'0E+0";
+                Console.WriteLine("    custom literal double=" + FormatNumbering(1.0, literalFormat, culture)
+                    + " decimal=" + FormatNumbering(1m, literalFormat, culture));
+                foreach (string format in new[] { "N2", "C2", "P2" })
+                {
+                    Console.WriteLine("    " + format + " zero double=" + FormatNumbering(0.0, format, culture)
+                        + " decimal=" + FormatNumbering(0m, format, culture));
+                    Console.WriteLine("    " + format + " one double=" + FormatNumbering(1.0, format, culture)
+                        + " decimal=" + FormatNumbering(1m, format, culture));
+                    foreach (decimal fraction in new[] { 0.25m, 0.1m, 0.004m })
+                    {
+                        Console.WriteLine("    " + format + " fraction " + fraction + " double="
+                            + FormatNumbering((double)fraction, format, culture)
+                            + " decimal=" + FormatNumbering(fraction, format, culture));
+                        Console.WriteLine("    " + format + " negative fraction " + fraction + " double="
+                            + FormatNumbering(-(double)fraction, format, culture)
+                            + " decimal=" + FormatNumbering(-fraction, format, culture));
+                    }
+                }
+                foreach (string format in new[] { "N", "N2", "F", "F2", "C", "C2", "P", "P2" })
+                {
+                    foreach (long integer in new[] { 0L, 1L, -1234567L })
+                        Console.WriteLine("    " + format + " integer " + integer + "=" + FormatNumbering(integer, format, culture));
+                }
+                foreach (string input in new[]
+                {
+                    n.PositiveSign + "12", n.NegativeSign + "12", "1E" + n.PositiveSign + "2",
+                    "", n.PositiveSign + n.PositiveInfinitySymbol
+                })
+                {
+                    bool doubleParsed = double.TryParse(input, NumberStyles.Float, culture, out double doubleValue);
+                    bool decimalParsed = decimal.TryParse(input, NumberStyles.Float, culture, out decimal decimalValue);
+                    Console.WriteLine("    parse '" + input + "' double=" + doubleParsed + ":" + doubleValue
+                        + " decimal=" + decimalParsed + ":" + decimalValue);
+                }
+            }
+            Console.WriteLine("culture numbering data end");
+        }
+
+        private static string FormatNumbering(double value, string format, CultureInfo culture)
+        {
+            try
+            {
+                return value.ToString(format, culture);
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return nameof(ArgumentOutOfRangeException);
+            }
+        }
+
+        private static string FormatNumbering(decimal value, string format, CultureInfo culture)
+        {
+            try
+            {
+                return value.ToString(format, culture);
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return nameof(ArgumentOutOfRangeException);
+            }
+        }
+
+        private static string FormatNumbering(long value, string format, CultureInfo culture)
+        {
+            try
+            {
+                return value.ToString(format, culture);
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return nameof(ArgumentOutOfRangeException);
+            }
         }
 
         private static void RunNumberingBoundaries()
@@ -430,7 +559,29 @@ namespace CultureInfoApi
             {
                 "en-US-x-u-nu-arab", "en-US-u-nu-latn-nu-arab", "sv-SE-u-nu-arab",
                 "en-US\0-u-nu-arab", "en-US-u-nu-arab\0ignored", "en-US_phoneb-u-nu-arab",
-                "en-US-u-nu-arab_phoneb"
+                "en-US-u-nu-arab_phoneb", "en-US-u-aa-123456789-nu-foo",
+                "en-US-u-nu-arab-123456789", "en-US-a-u-nu-foo", "en-US-t-u-nu-foo",
+                "en-US-0-u-nu-foo", "en-US-a-b-u-nu-foo", "en-US-a-foo-a-bar-u-nu-foo",
+                "en-US-a-foo-A-bar-u-nu-foo", "en-US-abcde-abcde-u-nu-foo",
+                "en-US-abc-u-nu-foo", "en-US-abcdefghi-u-nu-foo", "en-US-a-123456789-u-nu-foo",
+                "en-US-Abcd-u-nu-foo", "en-US-abc1-u-nu-foo", "en-US-001-u-nu-foo",
+                "en-US-US-u-nu-foo", "en-Latn-Latn-u-nu-foo", "en-US-abcde-fghij-ABCDE-u-nu-foo",
+                "en-US-t-en-u-nu-foo", "en-US-a-en-u-nu-foo", "en-US-a-fo-u-nu-foo",
+                "en-US-a-1-u-nu-foo", "en-US-1abc-u-nu-foo", "en-US-1234-u-nu-foo",
+                "en-US-u-ca-foo-ca-bar-nu-foo", "en-US-u-attr-attr-nu-foo",
+                "en-US-u-aa-123456789-nu", "en-US-u-aa-12345678-nu",
+                "en-US-u-nu-123456789", "en-US-u-foo-u-nu-foo",
+                "art-lojban-u-nu-foo", "cel-gaulish-u-nu-foo", "en-GB-oed-u-nu-foo",
+                "i-ami-u-nu-foo", "i-bnn-u-nu-foo", "i-hak-u-nu-foo", "i-klingon-u-nu-foo",
+                "i-lux-u-nu-foo", "i-navajo-u-nu-foo", "i-pwn-u-nu-foo", "i-tao-u-nu-foo",
+                "i-tay-u-nu-foo", "i-tsu-u-nu-foo", "no-bok-u-nu-foo", "no-nyn-u-nu-foo",
+                "sgn-BE-FR-u-nu-foo", "sgn-BE-NL-u-nu-foo", "sgn-CH-DE-u-nu-foo",
+                "zh-guoyu-u-nu-foo", "zh-hakka-u-nu-foo", "zh-min-nan-u-nu-foo", "zh-xiang-u-nu-foo",
+                "en-US-u-nu-arab-00-foo", "en-US-u-nu-arab-a0-foo", "en-US-u-nu-arab-11-foo",
+                "en-US-u-nu-arab-a1-foo", "en-US-u-nu-arab-0a-foo", "en-US-u-nu-arab-1a-foo",
+                "en-US-u-nu-arab-aa-foo", "en-US-u-nu-roman-a0-foo", "en-US-u-nu-roman-0a-foo",
+                "en-US-u-00-nu-arab", "en-US-u-a0-nu-arab", "en-US-u-aa-00-nu-arab",
+                "en-US-u-a0-foo-nu-arab", "en-US-u-nu-00-arab", "en-US-u-aa-00-nu-roman"
             })
             {
                 CultureInfo culture = new CultureInfo(name);
@@ -440,9 +591,28 @@ namespace CultureInfoApi
                     + " currency=" + n.CurrencySymbol + " percent=" + n.PercentSymbol);
                 Console.WriteLine("    patterns=" + n.CurrencyPositivePattern + "," + n.CurrencyNegativePattern
                     + "," + n.PercentPositivePattern + "," + n.PercentNegativePattern
-                    + " n=" + (-1234.5).ToString("N2", culture)
-                    + " c=" + (1234.5).ToString("C", culture)
-                    + " p=" + (-0.125).ToString("P2", culture));
+                    + " n=" + FormatNumbering(-1234.5, "N2", culture)
+                    + " c=" + FormatNumbering(1234.5, "C", culture)
+                    + " p=" + FormatNumbering(-0.125, "P2", culture));
+            }
+            foreach (string prefix in new[] { "e-US", "123-US", "abcdefghi-US" })
+            {
+                NumberFormatInfo baseData = new CultureInfo(prefix).NumberFormat;
+                NumberFormatInfo extended = new CultureInfo(prefix + "-u-nu-foo").NumberFormat;
+                Console.WriteLine("  uninterpreted prefix '" + prefix + "' keeps numeric data="
+                    + (baseData.NumberDecimalSeparator == extended.NumberDecimalSeparator
+                        && baseData.NumberGroupSeparator == extended.NumberGroupSeparator
+                        && baseData.CurrencySymbol == extended.CurrencySymbol
+                        && baseData.NaNSymbol == extended.NaNSymbol
+                        && baseData.NegativeSign == extended.NegativeSign
+                        && baseData.NumberDecimalDigits == extended.NumberDecimalDigits));
+            }
+            foreach (string prefix in new[] { "i-default", "i-enochian", "i-mingo", "zh-min" })
+            {
+                NumberFormatInfo n = new CultureInfo(prefix + "-u-nu-foo").NumberFormat;
+                Console.WriteLine("  private prefix '" + prefix + "' ignores nu: decimal="
+                    + (n.NumberDecimalSeparator.Length > 0) + " negative=" + (n.NegativeSign.Length > 0)
+                    + " groups=" + (n.NumberGroupSizes[0] >= 0));
             }
             Console.WriteLine("culture numbering boundaries end");
         }
@@ -559,9 +729,7 @@ namespace CultureInfoApi
 
         private static string GenericToString<T>(T value) => value!.ToString()!;
 
-        // NumberGroupSizes spelled out. The three axes are one modeled array here and three
-        // properties in .NET, so all three are printed: a row whose axes disagreed would be
-        // refused by the table generator, and this asserts they agree at run time too.
+        // Number, currency and percent grouping can differ for the same culture.
         private static string Sizes(int[] a)
         {
             string s = "[";

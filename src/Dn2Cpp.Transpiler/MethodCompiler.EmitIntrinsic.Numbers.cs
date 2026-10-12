@@ -906,19 +906,13 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.Ref, "Dn2CppString*",
                     $"({Cast(Pop(), "const Dn2CppNumberFormatInfo*")})->negInf");
                 return true;
-            // PositiveSign is not carried in the runtime NFI model; every modeled
-            // culture keeps the invariant "+" (the model stores only the fields
-            // that actually vary across the cultures dn2cpp ships).
             case ("System.Globalization.NumberFormatInfo", "get_PositiveSign"):
-                Pop(); // the NFI receiver
-                Push(StackKind.Ref, "Dn2CppString*", Literals.GetOrAdd("+"));
+                Push(StackKind.Ref, "Dn2CppString*",
+                    $"({Cast(Pop(), "const Dn2CppNumberFormatInfo*")})->positiveSign");
                 return true;
-            // PerMilleSymbol is not carried in the runtime NFI model either; every modeled
-            // culture keeps the invariant U+2030 ("‰") (matching the GenericIntrinsic
-            // PerMilleSymbolTChar arm, which folds the same literal).
             case ("System.Globalization.NumberFormatInfo", "get_PerMilleSymbol"):
-                Pop(); // the NFI receiver
-                Push(StackKind.Ref, "Dn2CppString*", Literals.GetOrAdd("‰"));
+                Push(StackKind.Ref, "Dn2CppString*",
+                    $"({Cast(Pop(), "const Dn2CppNumberFormatInfo*")})->perMilleSymbol");
                 return true;
             case ("System.Globalization.NumberFormatInfo", "get_CurrencyDecimalDigits"):
                 Push(StackKind.I4, "int32_t",
@@ -964,30 +958,26 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.Ref, "Dn2CppString*",
                     $"({Cast(Pop(), "const Dn2CppNumberFormatInfo*")})->percentGroup");
                 return true;
-            // Number/PercentDecimalDigits are not carried in the runtime NFI model;
-            // every modeled culture keeps the invariant default of 2.
-            case ("System.Globalization.NumberFormatInfo", "get_NumberDecimalDigits")
-                or ("System.Globalization.NumberFormatInfo", "get_PercentDecimalDigits"):
-                Pop(); // the NFI receiver
-                Push(StackKind.I4, "int32_t", "2");
+            case ("System.Globalization.NumberFormatInfo", "get_NumberDecimalDigits"):
+                Push(StackKind.I4, "int32_t",
+                    $"({Cast(Pop(), "const Dn2CppNumberFormatInfo*")})->numberDigits");
                 return true;
-            // NumberNegativePattern is not carried in the runtime NFI model; every
-            // modeled culture keeps the invariant default of 1 ("-n").
+            case ("System.Globalization.NumberFormatInfo", "get_PercentDecimalDigits"):
+                Push(StackKind.I4, "int32_t",
+                    $"({Cast(Pop(), "const Dn2CppNumberFormatInfo*")})->percentDigits");
+                return true;
             case ("System.Globalization.NumberFormatInfo", "get_NumberNegativePattern"):
-                Pop(); // the NFI receiver
-                Push(StackKind.I4, "int32_t", "1");
+                Push(StackKind.I4, "int32_t",
+                    $"({Cast(Pop(), "const Dn2CppNumberFormatInfo*")})->numberNegPattern");
                 return true;
-            // HasInvariantNumberSigns — the parser's fast-path test that the
-            // culture's signs are the invariant "+"/"-". The runtime NFI model
-            // keeps PositiveSign invariant for every culture (see get_PositiveSign
-            // above), so only the negative sign decides; a model without an
-            // explicit negative sign is the invariant "-".
             case ("System.Globalization.NumberFormatInfo", "get_HasInvariantNumberSigns"):
             {
                 string invNfi = Cast(Pop(), "const Dn2CppNumberFormatInfo*");
                 string inv = NewTemp("int32_t");
-                Emit($"{{ Dn2CppString* _ns = ({invNfi})->negativeSign; "
-                     + $"{inv} = (_ns == nullptr || (_ns->length == 1 && _ns->chars[0] == (char16_t)0x2D)) ? 1 : 0; }}");
+                Emit($"{{ const Dn2CppNumberFormatInfo* _nfi = {invNfi}; "
+                     + "Dn2CppString* _ns = _nfi->negativeSign; Dn2CppString* _ps = _nfi->positiveSign; "
+                     + $"{inv} = (_ns != nullptr && _ns->length == 1 && _ns->chars[0] == (char16_t)0x2D "
+                     + "&& _ps != nullptr && _ps->length == 1 && _ps->chars[0] == (char16_t)0x2B) ? 1 : 0; }");
                 Push(StackKind.I4, "int32_t", inv);
                 return true;
             }
@@ -1489,12 +1479,8 @@ internal sealed partial class MethodCompiler
                 Emit($"{recv}->currencyDigits = (int32_t)({val.Expr});");
                 return true;
             }
-            // set_{Number,Currency,Percent}GroupSizes(int[]) — VALIDATE-AND-TRAP, like the
-            // separator setters above. The runtime carries ONE array serving all three
-            // properties (a culture row's three are equal by construction), so honoring a
-            // write to one would silently move the other two. A write of the value the
-            // model already holds is a true no-op; anything else traps loudly with a
-            // catchable PlatformNotSupportedException naming the property.
+            // Group-size setters retain the validate-and-trap contract for
+            // changes, with each property checked against its own axis.
             case ("System.Globalization.NumberFormatInfo", "set_CurrencyGroupSizes"):
             case ("System.Globalization.NumberFormatInfo", "set_NumberGroupSizes"):
             case ("System.Globalization.NumberFormatInfo", "set_PercentGroupSizes"):
@@ -1515,21 +1501,16 @@ internal sealed partial class MethodCompiler
             {
                 string recv = Cast(Pop(), "const Dn2CppNumberFormatInfo*");
                 string gsArr = NewTemp("Dn2CppArrayI4*");
-                Emit($"{gsArr} = dn2cpp_nfi_group_sizes({recv}, {PrimArrayTypeInfoExpr(PrimitiveTypeCode.Int32)});");
+                int axis = name == "get_CurrencyGroupSizes" ? 1 : name == "get_PercentGroupSizes" ? 2 : 0;
+                Emit($"{gsArr} = dn2cpp_nfi_group_sizes({recv}, {PrimArrayTypeInfoExpr(PrimitiveTypeCode.Int32)}, {axis});");
                 Push(StackKind.Ref, "Dn2CppArrayI4*", gsArr);
                 return true;
             }
-            // set_NumberDecimalDigits(int) — ACCEPT-AND-IGNORE. Unlike the currency-digit
-            // slot there is NO numberDecimalDigits field: the model keeps every culture at
-            // the invariant 2 (get_NumberDecimalDigits below returns that constant), and the
-            // formatters this model localizes ("G"/round-trip, and "N"/"F" with an explicit
-            // precision) never consult it. So the write is accepted and discarded rather
-            // than trapped — library code sets it as a "max precision" sentinel, and
-            // trapping would raise a runtime exception while changing no reachable output.
-            // The value is not read back, so no consumer sees a stored-but-unhonored number.
+            // Preserve the accepted precision-sentinel write used by libraries;
+            // setters do not replace the culture's stored numeric defaults.
             case ("System.Globalization.NumberFormatInfo", "set_NumberDecimalDigits"):
             {
-                Pop();  // the int value — accepted, not carried by the model (see above)
+                Pop();  // accepted precision sentinel
                 Pop();  // the receiver
                 return true;
             }

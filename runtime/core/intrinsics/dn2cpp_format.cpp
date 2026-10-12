@@ -15,11 +15,13 @@
 #include <cstring>
 #include <cstdlib>
 #include <cmath>
+#include <string>
 
 // Unit-local formatting primitives, used before their definitions below: `put`
 // appends a string into a char16_t buffer at offset `o`; `format_int_exact`
 // renders an integer at full precision for the N/F/C/G(no-precision) specs.
 static void dn2cpp_put(char16_t* out, int& o, Dn2CppString* s);
+static void dn2cpp_group_marks(int n, const int8_t* sizes, int count, unsigned char* sepAfter);
 static Dn2CppString* dn2cpp_format_int_exact(unsigned long long mag, bool neg, char letter,
                                              int prec, const Dn2CppNumberFormatInfo* nfi);
 
@@ -315,30 +317,38 @@ static Dn2CppString* dn2cpp_format_section(const char16_t* p, int L, double mag,
     // Integer block: left-pad to the '0' count, then group. Emitted whole at the
     // first integer placeholder (interleaving literals between integer digits is not
     // modeled — vanishingly rare).
-    char16_t intOut[80]; int io = 0;
+    std::u16string intOut;
     {
         int pad = intZeros > iLen ? intZeros - iLen : 0;
         char dg[80]; int dn = 0;
         for (int i = 0; i < pad; i++) dg[dn++] = '0';
         for (int i = 0; i < iLen; i++) dg[dn++] = idig[i];
+        unsigned char sepAfter[80];
+        // Custom formats skip grouping altogether when its symbol is empty.
+        if (group && nfi->numberGroup != nullptr && nfi->numberGroup->length > 0)
+            dn2cpp_group_marks(dn, nfi->groupSizes, nfi->groupSizeCount, sepAfter);
+        else
+            for (int i = 0; i < dn; i++) sepAfter[i] = 0;
         for (int i = 0; i < dn; i++)
         {
-            intOut[io++] = (char16_t)dg[i];
-            int rem = dn - 1 - i;
-            if (group && rem > 0 && rem % 3 == 0) dn2cpp_put(intOut, io, nfi->numberGroup);
+            intOut.push_back(static_cast<char16_t>(dg[i]));
+            if (sepAfter[i]) intOut.append(nfi->numberGroup->chars, static_cast<size_t>(nfi->numberGroup->length));
         }
     }
 
     // ---- weave the output: digits into placeholders, everything else literal ----
-    char16_t out[256]; int o = 0;
-    if (emitSign) dn2cpp_put(out, o, nfi->negativeSign);
+    std::u16string out;
+    auto put = [&out](Dn2CppString* value) {
+        if (value != nullptr) out.append(value->chars, static_cast<size_t>(value->length));
+    };
+    if (emitSign) put(nfi->negativeSign);
     bool intDone = false, fracDone = false;
     bool inq = false; char16_t q = 0;
     for (int i = 0; i < L; i++)
     {
         char16_t c = p[i];
-        if (inq) { if (c == q) inq = false; else out[o++] = c; continue; }
-        if (c == u'\\') { if (i + 1 < L) out[o++] = p[++i]; continue; }
+        if (inq) { if (c == q) inq = false; else out.push_back(c); continue; }
+        if (c == u'\\') { if (i + 1 < L) out.push_back(p[++i]); continue; }
         if (c == u'\'' || c == u'"') { inq = true; q = c; continue; }
         // A digit placeholder is integer or fraction depending on whether a '.'
         // precedes it; the whole integer/fraction block lands at its first placeholder.
@@ -346,14 +356,14 @@ static Dn2CppString* dn2cpp_format_section(const char16_t* p, int L, double mag,
         {
             bool beforeDot = true;
             for (int k = 0; k < i; k++) { char16_t d = p[k]; if (d == u'.') { beforeDot = false; break; } }
-            if (beforeDot) { if (!intDone) { for (int k = 0; k < io; k++) out[o++] = intOut[k]; intDone = true; } }
-            else { if (!fracDone) { for (int k = 0; k < fLen; k++) out[o++] = (char16_t)fdig[k]; fracDone = true; } }
+            if (beforeDot) { if (!intDone) { out.append(intOut); intDone = true; } }
+            else { if (!fracDone) { for (int k = 0; k < fLen; k++) out.push_back(static_cast<char16_t>(fdig[k])); fracDone = true; } }
             continue;
         }
-        if (c == u'.') { if (fLen > 0) dn2cpp_put(out, o, nfi->numberDecimal); continue; }
+        if (c == u'.') { if (fLen > 0) put(nfi->numberDecimal); continue; }
         if (c == u',') continue;                 // grouping marker, not a literal
-        if (c == u'%') { dn2cpp_put(out, o, nfi->percentSymbol); continue; }
-        if (c == u'‰') { out[o++] = u'‰'; continue; }
+        if (c == u'%') { put(nfi->percentSymbol); continue; }
+        if (c == u'‰') { put(nfi->perMilleSymbol); continue; }
         if (c == u'E' || c == u'e')
         {
             int j = i + 1; bool fs = false;
@@ -361,22 +371,21 @@ static Dn2CppString* dn2cpp_format_section(const char16_t* p, int L, double mag,
             int z = 0; while (j < L && p[j] == u'0') { z++; j++; }
             if (z > 0)
             {
-                out[o++] = expUpper ? u'E' : u'e';
-                if (expVal < 0) out[o++] = u'-';
-                else if (fs) out[o++] = u'+';
+                out.push_back(expUpper ? u'E' : u'e');
+                if (expVal < 0) put(nfi->negativeSign);
+                else if (fs) put(nfi->positiveSign);
                 char eb[16]; int el = std::snprintf(eb, sizeof(eb), "%d", expVal < 0 ? -expVal : expVal);
-                for (int z2 = el; z2 < z; z2++) out[o++] = u'0';
-                for (int k = 0; k < el; k++) out[o++] = (char16_t)eb[k];
+                for (int z2 = el; z2 < z; z2++) out.push_back(u'0');
+                for (int k = 0; k < el; k++) out.push_back(static_cast<char16_t>(eb[k]));
                 i = j - 1;
                 continue;
             }
         }
-        out[o++] = c; // any other character is a literal emitted in place
+        out.push_back(c); // any other character is a literal emitted in place
     }
-    char16_t* buf;
-    Dn2CppString* s = dn2cpp_string_alloc(&buf, o);
-    for (int i = 0; i < o; i++) buf[i] = out[i];
-    return s;
+    if (out.size() > INT32_MAX)
+        dn2cpp_throw_out_of_memory();
+    return dn2cpp_string_from_chars(out.data(), static_cast<int32_t>(out.size()));
 }
 
 static Dn2CppString* dn2cpp_format_custom_c(double v, Dn2CppString* fmt, const Dn2CppNumberFormatInfo* nfi)
@@ -635,6 +644,8 @@ static void dn2cpp_group_marks(int n, const int8_t* sizes, int count, unsigned c
         return;
     int idx = 0;
     int size = sizes[0];
+    if (size < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "", size);
     int run = 0;
     for (int i = n - 1; i >= 0; i--)
     {
@@ -680,7 +691,8 @@ static Dn2CppString* dn2cpp_localize_fixed_mag(double mag, int prec, Dn2CppStrin
     int dot = len;
     for (int i = 0; i < len; i++) if (buf[i] == '.') { dot = i; break; }
     unsigned char sepAfter[DN2CPP_MAX_INT_DIGITS + 192];
-    if (doGroup)
+    // .NET skips grouping when the rounded number has no integer digits.
+    if (doGroup && !(dot == 1 && buf[0] == '0'))
         dn2cpp_group_marks(dot, sizes, sizeCount, sepAfter);
     else
         for (int i = 0; i < dot; i++) sepAfter[i] = 0;
@@ -715,7 +727,7 @@ static Dn2CppString* dn2cpp_localize_fixed_int(unsigned long long mag, int fracD
     char buf[24];
     int len = std::snprintf(buf, sizeof(buf), "%llu", mag);
     unsigned char sepAfter[24];
-    if (doGroup)
+    if (doGroup && mag != 0)
         dn2cpp_group_marks(len, sizes, sizeCount, sepAfter);
     else
         for (int i = 0; i < len; i++) sepAfter[i] = 0;
@@ -742,23 +754,33 @@ static Dn2CppString* dn2cpp_localize_fixed_int(unsigned long long mag, int fracD
 // Lay a non-negative magnitude string `num` into one of .NET's currency/percent
 // pattern templates (e.g. "($n)", "n %"): `symCh` ('$' for currency, '%' for
 // percent) -> `sym`; 'n' -> `num`; '-' -> `neg`; everything else (space, parens)
-// is a literal. Backs the Currency/Percent positive/negative pattern indices.
+// is a literal. Pattern expansion allocates its exact size so a large fixed
+// number or a multi-character symbol cannot overrun a scratch buffer.
 static Dn2CppString* dn2cpp_lay_pattern(const char16_t* tpl, char16_t symCh, Dn2CppString* sym,
                                         Dn2CppString* num, Dn2CppString* neg)
 {
-    char16_t out[256];
+    int64_t total = 0;
+    for (int i = 0; tpl[i] != u'\0'; i++)
+    {
+        char16_t c = tpl[i];
+        if (c == symCh) total += sym != nullptr ? sym->length : 0;
+        else if (c == u'n') total += num != nullptr ? num->length : 0;
+        else if (c == u'-') total += neg != nullptr ? neg->length : 0;
+        else total++;
+    }
+    if (total > INT32_MAX)
+        dn2cpp_throw_out_of_memory();
+    char16_t* dst;
+    Dn2CppString* s = dn2cpp_string_alloc(&dst, static_cast<int32_t>(total));
     int o = 0;
     for (int i = 0; tpl[i] != u'\0'; i++)
     {
         char16_t c = tpl[i];
-        if (c == symCh) dn2cpp_put(out, o, sym);
-        else if (c == u'n') dn2cpp_put(out, o, num);
-        else if (c == u'-') dn2cpp_put(out, o, neg);
-        else out[o++] = c;
+        if (c == symCh) dn2cpp_put(dst, o, sym);
+        else if (c == u'n') dn2cpp_put(dst, o, num);
+        else if (c == u'-') dn2cpp_put(dst, o, neg);
+        else dst[o++] = c;
     }
-    char16_t* dst;
-    Dn2CppString* s = dn2cpp_string_alloc(&dst, o);
-    for (int i = 0; i < o; i++) dst[i] = out[i];
     return s;
 }
 
@@ -781,6 +803,7 @@ static int dn2cpp_pad_exponent_buf(const char* buf, int len, char* out)
     return o;
 }
 
+static const char16_t* const s_numberNeg[5] = { u"(n)", u"-n", u"- n", u"n-", u"n -" };
 static const char16_t* const s_currencyPos[4] = { u"$n", u"n$", u"$ n", u"n $" };
 static const char16_t* const s_currencyNeg[16] = {
     u"($n)", u"-$n", u"$-n", u"$n-", u"(n$)", u"-n$", u"n-$", u"n$-",
@@ -797,21 +820,22 @@ static Dn2CppString* dn2cpp_format_int_exact(unsigned long long mag, bool neg, c
     {
         case 'f': case 'F':
         {
-            Dn2CppString* num = dn2cpp_localize_fixed_int(mag, prec < 0 ? 2 : prec,
+            Dn2CppString* num = dn2cpp_localize_fixed_int(mag, prec < 0 ? nfi->numberDigits : prec,
                 nfi->numberGroup, nfi->numberDecimal, nfi->groupSizes, nfi->groupSizeCount, false);
             return neg ? dn2cpp_string_concat2(nfi->negativeSign, num) : num;
         }
         case 'n': case 'N':
         {
-            Dn2CppString* num = dn2cpp_localize_fixed_int(mag, prec < 0 ? 2 : prec,
+            Dn2CppString* num = dn2cpp_localize_fixed_int(mag, prec < 0 ? nfi->numberDigits : prec,
                 nfi->numberGroup, nfi->numberDecimal, nfi->groupSizes, nfi->groupSizeCount, true);
-            return neg ? dn2cpp_string_concat2(nfi->negativeSign, num) : num;
+            return neg ? dn2cpp_lay_pattern(s_numberNeg[nfi->numberNegPattern % 5],
+                0, nullptr, num, nfi->negativeSign) : num;
         }
         case 'c': case 'C':
         {
             int cd = prec < 0 ? nfi->currencyDigits : prec;
             Dn2CppString* num = dn2cpp_localize_fixed_int(mag, cd,
-                nfi->currencyGroup, nfi->currencyDecimal, nfi->groupSizes, nfi->groupSizeCount, true);
+                nfi->currencyGroup, nfi->currencyDecimal, nfi->currencyGroupSizes, nfi->currencyGroupSizeCount, true);
             const char16_t* tpl = neg ? s_currencyNeg[nfi->currencyNegPattern % 16]
                                       : s_currencyPos[nfi->currencyPosPattern % 4];
             return dn2cpp_lay_pattern(tpl, u'$', nfi->currencySymbol, num, nfi->negativeSign);
@@ -969,16 +993,17 @@ Dn2CppString* dn2cpp_format_r8_c(double v, Dn2CppString* fmt, const Dn2CppNumber
         case 'f':
         case 'F':
         {
-            Dn2CppString* num = dn2cpp_localize_fixed_mag(mag, prec < 0 ? 2 : prec,
+            Dn2CppString* num = dn2cpp_localize_fixed_mag(mag, prec < 0 ? nfi->numberDigits : prec,
                 nfi->numberGroup, nfi->numberDecimal, nfi->groupSizes, nfi->groupSizeCount, false);
             return neg ? dn2cpp_string_concat2(nfi->negativeSign, num) : num;
         }
         case 'n':
         case 'N':
         {
-            Dn2CppString* num = dn2cpp_localize_fixed_mag(mag, prec < 0 ? 2 : prec,
+            Dn2CppString* num = dn2cpp_localize_fixed_mag(mag, prec < 0 ? nfi->numberDigits : prec,
                 nfi->numberGroup, nfi->numberDecimal, nfi->groupSizes, nfi->groupSizeCount, true);
-            return neg ? dn2cpp_string_concat2(nfi->negativeSign, num) : num;
+            return neg ? dn2cpp_lay_pattern(s_numberNeg[nfi->numberNegPattern % 5],
+                0, nullptr, num, nfi->negativeSign) : num;
         }
         case 'e':
         case 'E':
@@ -1009,8 +1034,8 @@ Dn2CppString* dn2cpp_format_r8_c(double v, Dn2CppString* fmt, const Dn2CppNumber
         {
             // Percent: scale by 100, group with the percent separators, then lay
             // the magnitude into the culture's percent pos/neg pattern.
-            Dn2CppString* num = dn2cpp_localize_fixed_mag(mag * 100.0, prec < 0 ? 2 : prec,
-                nfi->percentGroup, nfi->percentDecimal, nfi->groupSizes, nfi->groupSizeCount, true);
+            Dn2CppString* num = dn2cpp_localize_fixed_mag(mag * 100.0, prec < 0 ? nfi->percentDigits : prec,
+                nfi->percentGroup, nfi->percentDecimal, nfi->percentGroupSizes, nfi->percentGroupSizeCount, true);
             const char16_t* tpl = neg ? s_percentNeg[nfi->percentNegPattern % 12]
                                       : s_percentPos[nfi->percentPosPattern % 4];
             return dn2cpp_lay_pattern(tpl, u'%', nfi->percentSymbol, num, nfi->negativeSign);
@@ -1022,7 +1047,7 @@ Dn2CppString* dn2cpp_format_r8_c(double v, Dn2CppString* fmt, const Dn2CppNumber
             // count, laid into the culture's currency pos/neg pattern.
             int cd = prec < 0 ? nfi->currencyDigits : prec;
             Dn2CppString* num = dn2cpp_localize_fixed_mag(mag, cd,
-                nfi->currencyGroup, nfi->currencyDecimal, nfi->groupSizes, nfi->groupSizeCount, true);
+                nfi->currencyGroup, nfi->currencyDecimal, nfi->currencyGroupSizes, nfi->currencyGroupSizeCount, true);
             const char16_t* tpl = neg ? s_currencyNeg[nfi->currencyNegPattern % 16]
                                       : s_currencyPos[nfi->currencyPosPattern % 4];
             return dn2cpp_lay_pattern(tpl, u'$', nfi->currencySymbol, num, nfi->negativeSign);

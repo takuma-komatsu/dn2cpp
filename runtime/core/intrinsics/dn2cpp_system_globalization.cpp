@@ -13,6 +13,7 @@
 #include <cstdlib>
 #include <cmath>
 #include <string>
+#include <vector>
 #include <mutex>   // std::call_once for thread-safe culture-table init
 
 // ===== Culture / NumberFormatInfo ============================================
@@ -32,7 +33,12 @@ static void dn2cpp_nfi_init_invariant(Dn2CppNumberFormatInfo* n)
     n->numberDecimal = dn2cpp_lit16(u".");
     n->numberGroup = dn2cpp_lit16(u",");
     n->groupSizes[0] = 3;            // the invariant culture's NumberGroupSizes == [3]
-    n->groupSizeCount = 1;
+    n->groupSizeCount = n->currencyGroupSizeCount = n->percentGroupSizeCount = 1;
+    n->currencyGroupSizes[0] = n->percentGroupSizes[0] = 3;
+    n->numberDigits = n->percentDigits = 2;
+    n->numberNegPattern = 1;
+    n->positiveSign = dn2cpp_lit16(u"+");
+    n->perMilleSymbol = dn2cpp_lit16(u"‰");
     n->negativeSign = dn2cpp_lit16(u"-");
     n->nan = dn2cpp_lit16(u"NaN");
     n->posInf = dn2cpp_lit16(u"Infinity");
@@ -139,6 +145,45 @@ struct Dn2CppCultureRow
 static const size_t kCultureCount = sizeof(kCultures) / sizeof(kCultures[0]);
 
 #include "dn2cpp_culture_identifiers.inc"
+
+struct Dn2CppCultureNumericGroups
+{
+    int8_t sizes[DN2CPP_MAX_GROUP_SIZES];
+    int8_t count;
+};
+
+// Numbering profiles leave culture identity with the base row. Currency symbols
+// are stored per locale; every numeric axis is independently representable.
+struct Dn2CppCultureNumericData
+{
+    const char16_t* numberDecimal;
+    const char16_t* numberGroup;
+    const char16_t* currencyDecimal;
+    const char16_t* currencyGroup;
+    const char16_t* percentDecimal;
+    const char16_t* percentGroup;
+    const char16_t* negativeSign;
+    const char16_t* positiveSign;
+    const char16_t* nan;
+    const char16_t* posInf;
+    const char16_t* negInf;
+    const char16_t* percentSymbol;
+    const char16_t* perMilleSymbol;
+    Dn2CppCultureNumericGroups numberGroups;
+    Dn2CppCultureNumericGroups currencyGroups;
+    Dn2CppCultureNumericGroups percentGroups;
+    int8_t numberDigits;
+    int8_t currencyDigits;
+    int8_t percentDigits;
+    int8_t numberNegPattern;
+    int8_t currencyPosPattern;
+    int8_t currencyNegPattern;
+    int8_t percentPosPattern;
+    int8_t percentNegPattern;
+    bool emptyCurrency;
+};
+
+#include "dn2cpp_culture_numbering.inc"
 
 // ASCII case-insensitive compare of a managed culture name against a row's
 // literal. .NET's own lookup is case-insensitive (`new CultureInfo("pt-br")` is
@@ -465,13 +510,13 @@ struct Dn2CppCultureCacheNode
     Dn2CppNumberFormatInfo nfi;
     const Dn2CppCultureRow* row; // null for an unmodeled name
     Dn2CppString* identity;
-    bool arabNumbering;
+    const Dn2CppCultureNumericData* numeric;
     Dn2CppCultureCacheNode* next;
 };
 static DN2CPP_GC_STATIC_ROOT Dn2CppCultureCacheNode* g_cultureCache = nullptr;
 static std::mutex& g_cultureCacheMutex = dn2cpp_never_destroyed<std::mutex>();
 
-static bool dn2cpp_culture_has_arab_numbering(Dn2CppString* identity)
+static bool dn2cpp_culture_numbering_type(Dn2CppString* identity, std::u16string& value)
 {
     int32_t length = 0;
     // ICU stops at NUL. An underscore selects its legacy collation path,
@@ -483,23 +528,84 @@ static bool dn2cpp_culture_has_arab_numbering(Dn2CppString* identity)
         length++;
     }
     std::u16string locale(identity->chars, static_cast<size_t>(length));
+    size_t legacyLength = 0;
+    const char16_t* legacyTarget = nullptr;
+    for (const Dn2CppCultureNameMapping& legacy : kCultureNumberingLegacyNames)
+    {
+        size_t count = std::char_traits<char16_t>::length(legacy.name);
+        if (count > legacyLength && locale.compare(0, count, legacy.name) == 0
+            && (locale.size() == count || locale[count] == u'-'))
+        {
+            legacyLength = count;
+            legacyTarget = legacy.target;
+        }
+    }
+    if (legacyTarget != nullptr)
+        locale.replace(0, legacyLength, legacyTarget);
     size_t start = 0;
     bool unicodeExtension = false;
+    int phase = 0; // 0: extlangs/script, 2: region, 3: variants, 4: extensions
+    int extlangs = 0;
+    uint64_t singletons = 0;
+    std::vector<std::u16string> variants;
+    size_t languageLength = 0;
+    bool extensionValue = false;
     while (start < locale.size())
     {
         size_t end = locale.find(u'-', start);
         if (end == std::u16string::npos)
             end = locale.size();
-        if (start > 0 && end - start == 1)
+        size_t count = end - start;
+        if (count == 0 || count > 8)
+            return false;
+        bool alpha = true, digits = true;
+        for (size_t i = start; i < end; i++)
         {
-            if (locale[start] == u'x' || locale[start] == u'X')
+            alpha = alpha && locale[i] >= u'a' && locale[i] <= u'z';
+            digits = digits && locale[i] >= u'0' && locale[i] <= u'9';
+        }
+        if (start == 0)
+        {
+            if (count < 2 || !alpha) return false;
+            languageLength = count;
+        }
+        else if (count == 1)
+        {
+            // ICU stops before an empty or duplicate singleton extension.
+            if (phase == 4 && !extensionValue) return false;
+            char16_t marker = locale[start];
+            int index = marker >= u'a' ? marker - u'a' + 10 : marker - u'0';
+            uint64_t bit = uint64_t{1} << index;
+            if ((singletons & bit) != 0) return false;
+            singletons |= bit;
+            if (marker == u'x')
                 return false;
-            if (locale[start] == u'u')
+            if (marker == u'u')
             {
                 unicodeExtension = true;
                 start = end + 1;
                 break;
             }
+            phase = 4;
+            extensionValue = false;
+        }
+        else if (phase == 4)
+            extensionValue = true;
+        else if (phase == 0 && languageLength <= 3 && count == 3 && alpha && extlangs < 3)
+            extlangs++;
+        else if (phase <= 1 && count == 4 && alpha)
+            phase = 2;
+        else if (phase <= 2 && ((count == 2 && alpha) || (count == 3 && digits)))
+            phase = 3;
+        else
+        {
+            if (!(count >= 5 || (count == 4 && locale[start] >= u'0' && locale[start] <= u'9')))
+                return false;
+            std::u16string variant = locale.substr(start, count);
+            for (const std::u16string& prior : variants)
+                if (prior == variant) return false;
+            variants.push_back(variant);
+            phase = 3;
         }
         start = end + 1;
     }
@@ -511,9 +617,9 @@ static bool dn2cpp_culture_has_arab_numbering(Dn2CppString* identity)
         if (end == std::u16string::npos)
             end = locale.size();
         size_t count = end - start;
-        if (count == 1)
+        if (count == 1 || count > 8)
             break;
-        if (count != 2)
+        if (count != 2 || locale[start + 1] < u'a' || locale[start + 1] > u'z')
         {
             start = end + 1;
             continue;
@@ -527,16 +633,99 @@ static bool dn2cpp_culture_has_arab_numbering(Dn2CppString* identity)
             end = locale.find(u'-', start);
             if (end == std::u16string::npos)
                 end = locale.size();
-            if (end - start < 3)
+            size_t typeLength = end - start;
+            // ICU recognizes a two-character key only with an alphabetic
+            // second character; other pairs remain part of the full value.
+            if (typeLength < 2 || typeLength > 8
+                || (typeLength == 2 && locale[start + 1] >= u'a' && locale[start + 1] <= u'z'))
                 break;
             valueEnd = end;
             start = end + 1;
         }
         if (numbering)
-            return valueEnd >= valueStart && valueEnd - valueStart == 4
-                && locale.compare(valueStart, 4, u"arab") == 0;
+        {
+            value = valueEnd >= valueStart ? locale.substr(valueStart, valueEnd - valueStart) : u"";
+            return true;
+        }
     }
     return false;
+}
+
+static const Dn2CppCultureNumericData* dn2cpp_culture_numeric_data(
+    const Dn2CppCultureRow* row, Dn2CppString* request)
+{
+    std::u16string value;
+    if (!dn2cpp_culture_numbering_type(request, value))
+        return nullptr;
+    uint8_t family = kNumberingUnknownFamily;
+    for (const Dn2CppCultureNumberingType& type : kCultureNumberingTypes)
+        if (value == type.name)
+        {
+            family = type.family;
+            break;
+        }
+    if (family == kNumberingUnknownFamily)
+        return &kCultureNumericProfiles[kNumberingUnknownProfile];
+    if (family == kNumberingAlgorithmicFamily)
+        return &kCultureNumericProfiles[kNumberingAlgorithmicProfile];
+    if (row != nullptr)
+    {
+        Dn2CppString name{};
+        name.chars = row->name;
+        while (row->name[name.length] != u'\0')
+            name.length++;
+        for (const Dn2CppCultureNumberingLocale& locale : kCultureNumberingLocales)
+            if (dn2cpp_culture_name_eq_ci(&name, locale.name))
+                return &kCultureNumericProfiles[kCultureNumericVectors[locale.vector][family]];
+    }
+    return nullptr;
+}
+
+static void dn2cpp_culture_apply_numeric(Dn2CppNumberFormatInfo* n,
+    const Dn2CppCultureNumericData* data, const Dn2CppCultureRow* row)
+{
+    n->numberDecimal = dn2cpp_lit16(data->numberDecimal);
+    n->numberGroup = dn2cpp_lit16(data->numberGroup);
+    n->currencyDecimal = dn2cpp_lit16(data->currencyDecimal);
+    n->currencyGroup = dn2cpp_lit16(data->currencyGroup);
+    n->percentDecimal = dn2cpp_lit16(data->percentDecimal);
+    n->percentGroup = dn2cpp_lit16(data->percentGroup);
+    n->negativeSign = dn2cpp_lit16(data->negativeSign);
+    n->positiveSign = dn2cpp_lit16(data->positiveSign);
+    n->nan = dn2cpp_lit16(data->nan);
+    n->posInf = dn2cpp_lit16(data->posInf);
+    n->negInf = dn2cpp_lit16(data->negInf);
+    n->percentSymbol = dn2cpp_lit16(data->percentSymbol);
+    n->perMilleSymbol = dn2cpp_lit16(data->perMilleSymbol);
+    std::memcpy(n->groupSizes, data->numberGroups.sizes, sizeof(n->groupSizes));
+    std::memcpy(n->currencyGroupSizes, data->currencyGroups.sizes, sizeof(n->currencyGroupSizes));
+    std::memcpy(n->percentGroupSizes, data->percentGroups.sizes, sizeof(n->percentGroupSizes));
+    n->groupSizeCount = data->numberGroups.count;
+    n->currencyGroupSizeCount = data->currencyGroups.count;
+    n->percentGroupSizeCount = data->percentGroups.count;
+    n->numberDigits = data->numberDigits;
+    n->currencyDigits = data->currencyDigits;
+    n->percentDigits = data->percentDigits;
+    n->numberNegPattern = data->numberNegPattern;
+    n->currencyPosPattern = data->currencyPosPattern;
+    n->currencyNegPattern = data->currencyNegPattern;
+    n->percentPosPattern = data->percentPosPattern;
+    n->percentNegPattern = data->percentNegPattern;
+    if (data->emptyCurrency)
+        n->currencySymbol = dn2cpp_lit16(u"");
+    else if (row != nullptr)
+    {
+        Dn2CppString name{};
+        name.chars = row->name;
+        while (row->name[name.length] != u'\0')
+            name.length++;
+        for (const Dn2CppCultureNumberingLocale& locale : kCultureNumberingLocales)
+            if (dn2cpp_culture_name_eq_ci(&name, locale.name))
+            {
+                n->currencySymbol = dn2cpp_lit16(locale.currency);
+                break;
+            }
+    }
 }
 
 static void dn2cpp_culture_apply_format(Dn2CppNumberFormatInfo* n, const Dn2CppCultureRow* row)
@@ -547,7 +736,9 @@ static void dn2cpp_culture_apply_format(Dn2CppNumberFormatInfo* n, const Dn2CppC
         dn2cpp_lit16(row->groupSep);
     n->groupSizes[0] = row->groupSize0;
     n->groupSizes[1] = row->groupSize1;
-    n->groupSizeCount = row->groupSize1 < 0 ? 1 : 2;
+    n->groupSizeCount = n->currencyGroupSizeCount = n->percentGroupSizeCount = row->groupSize1 < 0 ? 1 : 2;
+    std::memcpy(n->currencyGroupSizes, n->groupSizes, sizeof(n->groupSizes));
+    std::memcpy(n->percentGroupSizes, n->groupSizes, sizeof(n->groupSizes));
     n->negativeSign = dn2cpp_lit16(row->negativeSign);
     n->nan = dn2cpp_lit16(row->nan);
     n->posInf = dn2cpp_lit16(u"∞");
@@ -565,7 +756,7 @@ static void dn2cpp_culture_apply_format(Dn2CppNumberFormatInfo* n, const Dn2CppC
 // when no row resolves. Caller must NOT hold the lock.
 static const Dn2CppNumberFormatInfo* dn2cpp_culture_intern(const Dn2CppCultureRow* row,
     Dn2CppString* identity, Dn2CppString* name = nullptr, int32_t lcid = -1,
-    bool arabNumbering = false)
+    const Dn2CppCultureNumericData* numeric = nullptr)
 {
     if (identity == nullptr)
         identity = dn2cpp_lit16(row->name);
@@ -574,7 +765,7 @@ static const Dn2CppNumberFormatInfo* dn2cpp_culture_intern(const Dn2CppCultureRo
     std::lock_guard<std::mutex> lock(g_cultureCacheMutex);
     for (Dn2CppCultureCacheNode* p = g_cultureCache; p != nullptr; p = p->next)
     {
-        if (p->row == row && p->arabNumbering == arabNumbering
+        if (p->row == row && p->numeric == numeric
             && dn2cpp_string_equals(p->identity, identity)
             && dn2cpp_string_equals(p->nfi.cultureName, name))
             return &p->nfi;
@@ -585,7 +776,7 @@ static const Dn2CppNumberFormatInfo* dn2cpp_culture_intern(const Dn2CppCultureRo
     auto* node = static_cast<Dn2CppCultureCacheNode*>(dn2cpp_alloc(sizeof(Dn2CppCultureCacheNode)));
     node->nfi = *dn2cpp_nfi_invariant();
     node->row = row;
-    node->arabNumbering = arabNumbering;
+    node->numeric = numeric;
     dn2cpp_gc_store_ref(&node->next, g_cultureCache);
     g_cultureCache = node;
     dn2cpp_gc_store_ref(&node->identity, identity);
@@ -609,6 +800,8 @@ static const Dn2CppNumberFormatInfo* dn2cpp_culture_intern(const Dn2CppCultureRo
     node->nfi.isNeutralCulture = dn2cpp_culture_region_end(name) == 0 ? 1 : 0;
     if (row == nullptr)
     {
+        if (numeric != nullptr)
+            dn2cpp_culture_apply_numeric(&node->nfi, numeric, row);
         // Unmodeled: invariant symbols, but the requested name is preserved so
         // callers that key behavior on the name (e.g. RegexCaseEquivalences'
         // Turkish/NonTurkish tiering) stay faithful, and the LCID says "this
@@ -622,19 +815,8 @@ static const Dn2CppNumberFormatInfo* dn2cpp_culture_intern(const Dn2CppCultureRo
         node->nfi.isNeutralCulture = row->isNeutral;
     }
     dn2cpp_culture_apply_format(&node->nfi, row);
-    if (arabNumbering)
-    {
-        Dn2CppString base{};
-        base.chars = row->name;
-        while (row->name[base.length] != u'\0')
-            base.length++;
-        for (const Dn2CppCultureRow& numeric : kCultureArabicFormats)
-            if (dn2cpp_culture_name_eq_ci(&base, numeric.name))
-            {
-                dn2cpp_culture_apply_format(&node->nfi, &numeric);
-                break;
-            }
-    }
+    if (numeric != nullptr)
+        dn2cpp_culture_apply_numeric(&node->nfi, numeric, row);
     return &node->nfi;
 }
 
@@ -742,9 +924,9 @@ const Dn2CppNumberFormatInfo* dn2cpp_culture_by_name(Dn2CppString* name, bool ca
     }
     else if (const Dn2CppCultureRow* metadata = dn2cpp_culture_find_row(publicName))
         lcid = metadata->lcid;
+    const Dn2CppCultureRow* row = dn2cpp_culture_find_format_row(canonical);
     const Dn2CppNumberFormatInfo* result = dn2cpp_culture_intern(
-        dn2cpp_culture_find_format_row(canonical), canonical, publicName, lcid,
-        dn2cpp_culture_has_arab_numbering(key));
+        row, canonical, publicName, lcid, dn2cpp_culture_numeric_data(row, key));
     result = dn2cpp_culture_request_cache(key, useUserOverride, result);
     return cached ? dn2cpp_culture_named_create(result) : result;
 }
@@ -1144,39 +1326,43 @@ void dn2cpp_nfi_set_currency_symbol(Dn2CppNumberFormatInfo* n, Dn2CppString* v) 
 // reference-equal, and writing through the returned array does not move the
 // culture's formatting. The single place where the modeled array becomes a
 // managed int[], serving the public properties and System.Number's readers.
-Dn2CppArrayI4* dn2cpp_nfi_group_sizes(const Dn2CppNumberFormatInfo* n, const Dn2CppTypeInfo* ti)
+Dn2CppArrayI4* dn2cpp_nfi_group_sizes(const Dn2CppNumberFormatInfo* n, const Dn2CppTypeInfo* ti, int32_t axis)
 {
-    int32_t count = (n == nullptr || n->groupSizeCount <= 0) ? 0 : n->groupSizeCount;
+    const int8_t* sizes = n == nullptr ? nullptr : axis == 1 ? n->currencyGroupSizes
+        : axis == 2 ? n->percentGroupSizes : n->groupSizes;
+    int32_t count = n == nullptr ? 0 : axis == 1 ? n->currencyGroupSizeCount
+        : axis == 2 ? n->percentGroupSizeCount : n->groupSizeCount;
     if (count > DN2CPP_MAX_GROUP_SIZES) count = DN2CPP_MAX_GROUP_SIZES;
     Dn2CppArrayI4* a = dn2cpp_newarr_i4_t(count, ti);
     for (int32_t i = 0; i < count; i++)
-        a->data[i] = n->groupSizes[i];
+        a->data[i] = sizes[i];
     return a;
 }
 
-// The setter — validate and trap. ONE array serves NumberGroupSizes,
-// CurrencyGroupSizes and PercentGroupSizes (the table's row invariant), so
-// honoring a write to one would silently move the other two. A write of the
-// value already modeled is a true no-op and is accepted (YamlDotNet assigns
-// `new[] { 3 }` to a clone of the invariant NFI); anything else throws a
-// catchable PlatformNotSupportedException naming the property.
+// Group-size writes retain the validate-and-trap contract. Each property is
+// checked against its own numeric axis.
 void dn2cpp_nfi_set_group_sizes(const Dn2CppNumberFormatInfo* n, Dn2CppArrayI4* v, const char* which)
 {
-    bool same = v != nullptr && n != nullptr && v->length == n->groupSizeCount;
+    int32_t axis = std::strcmp(which, "CurrencyGroupSizes") == 0 ? 1
+        : std::strcmp(which, "PercentGroupSizes") == 0 ? 2 : 0;
+    const int8_t* sizes = n == nullptr ? nullptr : axis == 1 ? n->currencyGroupSizes
+        : axis == 2 ? n->percentGroupSizes : n->groupSizes;
+    int32_t count = n == nullptr ? 0 : axis == 1 ? n->currencyGroupSizeCount
+        : axis == 2 ? n->percentGroupSizeCount : n->groupSizeCount;
+    bool same = v != nullptr && n != nullptr && v->length == count;
     if (same)
         for (int32_t i = 0; i < v->length; i++)
-            if (v->data[i] != n->groupSizes[i]) { same = false; break; }
+            if (v->data[i] != sizes[i]) { same = false; break; }
     if (!same)
     {
         char msg[192];
         std::snprintf(msg, sizeof(msg),
-                      "NumberFormatInfo.%s: dn2cpp models the number, currency and percent group "
-                      "sizes as ONE array, so a write that changes it is unsupported", which);
+                      "NumberFormatInfo.%s: changing modeled group sizes is unsupported", which);
         dn2cpp_throw_platform_not_supported(msg);
     }
 }
 
-// Replace the ASCII '-' sign (only ever leading) and '.' decimal point in a
+// Replace ASCII signs and the decimal point in a
 // freshly-rendered numeric ASCII buffer with the culture's multi-char symbols,
 // widening the rest to UTF-16. Grouping is applied separately upstream.
 Dn2CppString* dn2cpp_localize_ascii(const char* buf, int len, const Dn2CppNumberFormatInfo* n)
@@ -1187,6 +1373,7 @@ Dn2CppString* dn2cpp_localize_ascii(const char* buf, int len, const Dn2CppNumber
     {
         char c = buf[i];
         Dn2CppString* rep = (c == '-') ? n->negativeSign
+                          : (c == '+') ? n->positiveSign
                           : (c == '.') ? n->numberDecimal
                                        : nullptr;
         if (rep != nullptr)
