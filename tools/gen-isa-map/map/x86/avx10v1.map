@@ -3,5 +3,6 @@
 # that has AVX10 without 512-bit vectors. Every method here is one of theirs, so the rows are
 # taken from their maps; the sources that declare a method twice (Extract / Insert of 64-bit
 # lanes in F and DQ) agree, and the VL families come first so the VL row is the one taken.
+# The width selects a legacy compiler feature; current Clang uses the unsuffixed version.
 target = avx10.1-256
 derive = X86.Avx512F.VL, X86.Avx512BW.VL, X86.Avx512CD.VL, X86.Avx512DQ.VL, X86.Avx512Vbmi.VL, X86.Avx512Vbmi2.VL, X86.Avx512F, X86.Avx512BW, X86.Avx512DQ

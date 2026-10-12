@@ -178,6 +178,9 @@ Method(i32,i32) @targetonly = ...
   mapped directly (not derive in turn) and a source row's `@target` is not carried. .NET 10's
   `Avx10v1` is the AVX-512 VL and scalar surfaces under one token, which is what the directive
   is for: copied rows would drift when a source row is fixed, and `--check` could not see it.
+- AVX10 targets retain their version and width separately in the generated attribute.
+  Clang's unsuffixed AVX10 features are selected when the compiler no longer exposes
+  width-specific features; other compilers retain the map's width-specific spelling.
 - `@ref(<C# expression>)` names a portable `System.Runtime.Intrinsics` computation of the
   same result over `$0`, `$1`, … (`Add(v128{T},v128{T}) @ref(Vector128.Add($0, $1)) = …`;
   a pointer operand is dereferenced as `*$0`, an immediate is its literal). The generated
