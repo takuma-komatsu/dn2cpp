@@ -111,8 +111,24 @@ static int32_t dn2cpp_pal_locale_from_posix_id(const char* id, char* buf, size_t
         for (size_t part = 1; part + 2 < n; part++)
             if (buf[part] == '-' && buf[part + 2] == '-')
             {
+                // The grandfathered BCP47 prefix must resolve before OED can
+                // be mistaken for an invalid variant. Bare legacy names retain it.
+                if (n > 9 && buf[9] == '-' && ::strncasecmp(buf, "en-GB-oed", 9) == 0)
+                {
+                    if (n + 5 >= size)
+                        return 0;
+                    std::memmove(buf + 14, buf + 9, n - 9);
+                    std::memcpy(buf, "en-GB-OXENDICT", 14);
+                    n += 5;
+                    part += 5;
+                }
+                // Keep the BCP47 path even if an invalid variant tail removes
+                // the singleton that selected it; extlangs still need promotion.
+                n = dn2cpp_locale_sort_variants(buf, n).length;
+                if (part > n)
+                    part = n;
                 if (posixBase)
-                    part = posix.baseEnd;
+                    part = posix.baseEnd < n ? posix.baseEnd : n;
                 size_t language = 0;
                 while (language < part && buf[language] != '-')
                     language++;

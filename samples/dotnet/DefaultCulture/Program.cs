@@ -19,6 +19,11 @@ namespace DefaultCulture
     {
         private static void Main(string[] args)
         {
+            if (args.Length > 0 && args[0] == "culture-variant-order")
+            {
+                WriteVariantIdentities(CultureInfo.CurrentCulture, CultureInfo.CurrentUICulture, CultureInfo.InstalledUICulture);
+                return;
+            }
             if (args.Length > 0 && args[0] == "culture-fallback")
             {
                 RunFallbackData(args.Length > 1 ? args[1] : null);
@@ -49,8 +54,23 @@ namespace DefaultCulture
             Console.WriteLine("ui=" + CultureInfo.CurrentUICulture.Name);
             Console.WriteLine("installed=" + CultureInfo.InstalledUICulture.Name);
             Console.WriteLine("default culture identities end");
+            CultureInfo originalUI = CultureInfo.CurrentUICulture;
+            CultureInfo originalInstalled = CultureInfo.InstalledUICulture;
             RunFallbackData();
+            WriteVariantIdentities(c, originalUI, originalInstalled);
         }
+
+        private static void WriteVariantIdentities(CultureInfo current, CultureInfo ui, CultureInfo installed)
+        {
+            Console.WriteLine("== default culture variant identities ==");
+            Console.WriteLine("  current=" + VariantIdentity(current));
+            Console.WriteLine("  ui=" + VariantIdentity(ui));
+            Console.WriteLine("  installed=" + VariantIdentity(installed));
+            Console.WriteLine("culture variant order end");
+        }
+
+        private static string VariantIdentity(CultureInfo culture) => "'" + culture.Name
+            + "' value='" + culture.ToString() + "' LCID=" + culture.LCID + " neutral=" + culture.IsNeutralCulture;
 
         private static void RunFallbackData(string name = null)
         {

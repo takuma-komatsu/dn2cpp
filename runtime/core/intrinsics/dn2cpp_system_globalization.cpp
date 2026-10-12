@@ -286,6 +286,27 @@ static void dn2cpp_culture_recase_script(std::u16string& name)
             name[i] = static_cast<char16_t>(name[i] - u'A' + u'a');
 }
 
+static void dn2cpp_culture_sort_variants(std::u16string& name)
+{
+    Dn2CppLocaleVariantState parsed = dn2cpp_locale_sort_variants(name.data(), name.size());
+    if (parsed.variantEnd == 0)
+        return;
+    name.resize(parsed.length);
+    if (name.size() > parsed.variantEnd)
+    {
+        // ICU keywords discard a/x extensions from the managed identity.
+        // CultureData retains the original u/t suffix when a keyword exists.
+        size_t extension = name.find(u"-u-", parsed.variantEnd);
+        size_t transform = name.find(u"-t-", parsed.variantEnd);
+        if (extension == std::u16string::npos || transform < extension)
+            extension = transform;
+        if (extension == std::u16string::npos)
+            name.resize(parsed.variantEnd);
+        else
+            name.erase(parsed.variantEnd, extension - parsed.variantEnd);
+    }
+}
+
 static void dn2cpp_culture_canonicalize_language_tag(std::u16string& name)
 {
     if (name.find(u'_') != std::u16string::npos)
@@ -347,6 +368,7 @@ static void dn2cpp_culture_canonicalize_language_tag(std::u16string& name)
                 base[i] = static_cast<char16_t>(base[i] - u'a' + u'A');
         name.replace(0, legacyLength, base);
         dn2cpp_culture_recase_script(name);
+        dn2cpp_culture_sort_variants(name);
         return;
     }
     // BCP47's first extlang becomes ICU's language; the legacy locale path
@@ -393,6 +415,7 @@ static void dn2cpp_culture_canonicalize_language_tag(std::u16string& name)
             }
         }
     }
+    dn2cpp_culture_sort_variants(name);
 }
 
 static Dn2CppString* dn2cpp_culture_normalize_name(Dn2CppString* name)

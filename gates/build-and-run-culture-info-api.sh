@@ -117,6 +117,30 @@ LOCALE_CASES=(
     culture-missing-upper-cached-first
 )
 MISSING_NUMBER_CASES=(bare nul upper lower invariant und)
+VARIANT_CASES=(
+    en-US-POSIX-abcde-abcde-u-nu-arab en-US-abcde-POSIX-abcde-u-nu-arab
+    en-US-POSIX-abcde-u-nu-arab en-US-abcde-POSIX-u-nu-arab
+    en-US-zzzzz-POSIX-u-nu-latn en-US-POSIX-zzzzz-u-nu-latn
+    en-US-POSIX-1234-u-ca-gregory en-US-1234-POSIX-u-ca-gregory
+    en-US-POSIX-abcde-ab-u-nu-arab en-US-POSIX-abcde-abcdefghi-u-nu-arab
+    en-US-POSIX-abcde--u-nu-arab en-US-POSIX-abcde-ABCDE-u-nu-arab
+    en-US-POSIX-abcde-x-foo en-US-POSIX-abcde-a-foo
+    en-US-POSIX-abcde-t-de-DE en-US-POSIX-abcde-u-ca-gregory
+    en-US-POSIX-abcde-U-NU-ARAB en-US-POSIX-abcde-T-de-DE
+    en-US-POSIX-abcde-t-de-DE-123456789 en-US-POSIX-abcde-u-ca-gregory-123456789
+    en-US-POSIX-abcde-a-foo-u-nu-latn en-US-POSIX-abcde-x-foo-u-nu-latn
+    en-US-POSIX-abcde en-US-abcde-POSIX en-US-POSIX-abcde-abcde
+    en-US-POSIX-1234 en-US-1234-POSIX
+    de-DE-zzzzz-abcde-u-ca-gregory de-DE-abcde-zzzzz-u-ca-gregory
+    de-DE-zzzzz-abcde de-DE-abcde-zzzzz en-US-zzzzz-abcde-u-nu-latn
+    en-US-POSIX-abcde-u-a de-Latn-DE-zzzzz-abcde-u-nu-latn
+    de-foo-US-zzzzz-abcde-u-nu-latn i-klingon-Latn-US-zzzzz-abcde-u-nu-latn
+    de-foo-US-zzzzz-abcde-abcde-u-nu-latn
+    en-GB-oed-zzzzz-abcde-u-nu-latn en-US-zzzzz-abcde_phoneb
+    en-GB-oed-zzzzz-abcde-abcde-u-nu-latn
+    en-GB-oed-zzzzz-abcde-u-a en-GB-oed-zzzzz-abcde-x-foo
+    i-klingon-US-zzzzz-abcde
+)
 NUMBERING_CASES=(
     en-US-u-nu-arab-foo
     en-US-u-nu-unknown
@@ -164,6 +188,8 @@ gate_extra_asserts() {
         || { echo "FAIL: culture primary currency section did not finish" >&2; return 1; }
     grep -Fxq 'culture missing number format end' <<< "$(strip_cr_win "$native")" \
         || { echo "FAIL: culture missing number format section did not finish" >&2; return 1; }
+    grep -Fxq 'culture variant order end' <<< "$(strip_cr_win "$native")" \
+        || { echo "FAIL: culture variant order section did not finish" >&2; return 1; }
     for mode in "${LOCALE_CASES[@]}"; do
         native=$(run_bounded "./$out/CultureInfoApi" "$mode")
         expected=$(run_bounded dotnet "$_CG_APP" "$mode")
@@ -202,8 +228,15 @@ gate_extra_asserts() {
         grep -Fxq 'culture missing number format end' <<< "$(strip_cr_win "$native")" \
             || { echo "FAIL: missing number format for $mode did not finish" >&2; return 1; }
     done
+    for mode in "${VARIANT_CASES[@]}"; do
+        native=$(run_bounded "./$out/CultureInfoApi" culture-variant-order "$mode")
+        expected=$(run_bounded dotnet "$_CG_APP" culture-variant-order "$mode")
+        assert_output "$native" "$expected"
+        grep -Fxq 'culture variant order end' <<< "$(strip_cr_win "$native")" \
+            || { echo "FAIL: variant order for $mode did not finish" >&2; return 1; }
+    done
 }
 DN2CPP_GATE_RUN_ARGS=culture-names
-DN2CPP_GATE_EXTRA_CONTEXT="${LOCALE_CASES[*]} ${NUMBERING_CASES[*]} ${FALLBACK_CASES[*]} culture-missing-number-format ${MISSING_NUMBER_CASES[*]}"
+DN2CPP_GATE_EXTRA_CONTEXT="${LOCALE_CASES[*]} ${NUMBERING_CASES[*]} ${FALLBACK_CASES[*]} culture-missing-number-format ${MISSING_NUMBER_CASES[*]} culture-variant-order ${VARIANT_CASES[*]}"
 DN2CPP_OUT_SUFFIX=-names
 corelib_diff_gate CultureInfoApi --link-xml samples/dotnet/CultureInfoApi/link.xml

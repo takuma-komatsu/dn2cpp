@@ -72,6 +72,11 @@ namespace CultureInfoApi
                 RunPrimaryCurrency();
                 return;
             }
+            if (args.Length > 0 && args[0] == "culture-variant-order")
+            {
+                RunVariantOrder(args.Length > 1 ? args[1] : null);
+                return;
+            }
 
             if (args.Length > 0 && args[0] == "culture-missing-number-format")
             {
@@ -461,7 +466,60 @@ namespace CultureInfoApi
             RunFallbackIdentities();
             RunPrimaryCurrency();
             RunMissingNumberFormat();
+            RunVariantOrder();
         }
+
+        private static void RunVariantOrder(string name = null)
+        {
+            Console.WriteLine("== culture variant order ==");
+            foreach (string input in name is null ? new[]
+            {
+                "en-US-POSIX-abcde-abcde-u-nu-arab", "en-US-abcde-POSIX-abcde-u-nu-arab",
+                "en-US-POSIX-abcde-u-nu-arab", "en-US-abcde-POSIX-u-nu-arab",
+                "en-US-zzzzz-POSIX-u-nu-latn", "en-US-POSIX-zzzzz-u-nu-latn",
+                "en-US-POSIX-1234-u-ca-gregory", "en-US-1234-POSIX-u-ca-gregory",
+                "en-US-POSIX-abcde-ab-u-nu-arab", "en-US-POSIX-abcde-abcdefghi-u-nu-arab",
+                "en-US-POSIX-abcde--u-nu-arab", "en-US-POSIX-abcde-ABCDE-u-nu-arab",
+                "en-US-POSIX-abcde-x-foo", "en-US-POSIX-abcde-a-foo",
+                "en-US-POSIX-abcde-t-de-DE", "en-US-POSIX-abcde-u-ca-gregory",
+                "en-US-POSIX-abcde-U-NU-ARAB", "en-US-POSIX-abcde-T-de-DE",
+                "en-US-POSIX-abcde-t-de-DE-123456789", "en-US-POSIX-abcde-u-ca-gregory-123456789",
+                "en-US-POSIX-abcde-a-foo-u-nu-latn", "en-US-POSIX-abcde-x-foo-u-nu-latn",
+                "en-US-POSIX-abcde", "en-US-abcde-POSIX", "en-US-POSIX-abcde-abcde",
+                "en-US-POSIX-1234", "en-US-1234-POSIX",
+                "de-DE-zzzzz-abcde-u-ca-gregory", "de-DE-abcde-zzzzz-u-ca-gregory",
+                "de-DE-zzzzz-abcde", "de-DE-abcde-zzzzz", "en-US-zzzzz-abcde-u-nu-latn",
+                "en-US-POSIX-abcde-u-a", "de-Latn-DE-zzzzz-abcde-u-nu-latn",
+                "de-foo-US-zzzzz-abcde-u-nu-latn", "i-klingon-Latn-US-zzzzz-abcde-u-nu-latn",
+                "de-foo-US-zzzzz-abcde-abcde-u-nu-latn",
+                "en-GB-oed-zzzzz-abcde-u-nu-latn", "en-US-zzzzz-abcde_phoneb",
+                "en-GB-oed-zzzzz-abcde-abcde-u-nu-latn",
+                "en-GB-oed-zzzzz-abcde-u-a", "en-GB-oed-zzzzz-abcde-x-foo",
+                "i-klingon-US-zzzzz-abcde"
+            } : new[] { name })
+            {
+                Console.WriteLine("  '" + input + "'");
+                try
+                {
+                    CultureInfo culture = new CultureInfo(input);
+                    CultureInfo cached = CultureInfo.GetCultureInfo(input);
+                    Console.WriteLine("    constructor=" + VariantCultureIdentity(culture));
+                    Console.WriteLine("    without override=" + VariantCultureIdentity(new CultureInfo(input, false)));
+                    Console.WriteLine("    cached=" + VariantCultureIdentity(cached));
+                    Console.WriteLine("    specific=" + VariantCultureIdentity(CultureInfo.CreateSpecificCulture(input)));
+                    Console.WriteLine("    repeat=" + ReferenceEquals(cached, CultureInfo.GetCultureInfo(input))
+                        + " canonical=" + ReferenceEquals(cached, CultureInfo.GetCultureInfo(cached.Name)));
+                }
+                catch (CultureNotFoundException)
+                {
+                    Console.WriteLine("    " + nameof(CultureNotFoundException));
+                }
+            }
+            Console.WriteLine("culture variant order end");
+        }
+
+        private static string VariantCultureIdentity(CultureInfo culture) => "'" + culture.Name
+            + "' value='" + culture.ToString() + "' LCID=" + culture.LCID + " neutral=" + culture.IsNeutralCulture;
 
         private static void RunMissingNumberFormat(string caseName = null)
         {
