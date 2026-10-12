@@ -2,6 +2,7 @@
 # Platform-ISA reachability owns its native compile surface: no ISA use emits no
 # detector TU, while one reached family emits its detector and that family only.
 # The full PlatformIsaProbe remains the all-family end of this 0/1/all contract.
+# Every AVX10 helper also compiles out of line against the configured compiler.
 source "$(dirname "$0")/_common.sh"
 
 unset DN2CPP_CPU_FEATURES DN2CPP_ENABLE_AVX10V2
@@ -104,5 +105,18 @@ check_axis wasm PROBE_WASM \
     isa/wasm/dn2cpp_isa_wasm_packedsimd.h \
     DN2CPP_ISA_Wasm_PackedSimd \
     dn2cpp_isa_wasm_packedsimd_add_v128i32_v128i32
+
+echo "== AVX10: compiling every generated helper against the configured compiler =="
+avx10_args=(-S gates/fixtures/platform-isa-header -B "$scratch/avx10" -G Ninja
+    -DCMAKE_BUILD_TYPE="$CONFIG")
+[ -n "${CMAKE_CXX_COMPILER:-}" ] && avx10_args+=(-DCMAKE_CXX_COMPILER="$CMAKE_CXX_COMPILER")
+if [ "$DN2CPP_OS" = macos ]; then
+    # An object-only cross-compile needs no x86 runtime or instruction execution.
+    avx10_args+=(-DCMAKE_OSX_ARCHITECTURES=x86_64 -DDN2CPP_AVX10_EXPECT_X64=ON)
+elif [ "$(uname -m)" = x86_64 ] || [ "$(uname -m)" = amd64 ]; then
+    avx10_args+=(-DDN2CPP_AVX10_EXPECT_X64=ON)
+fi
+"$CMAKE" "${avx10_args[@]}"
+"$CMAKE" --build "$scratch/avx10"
 
 echo "PASS: each reached platform-ISA family owns exactly its helper and detector compile surface"

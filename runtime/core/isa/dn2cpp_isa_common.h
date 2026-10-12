@@ -51,6 +51,13 @@ static inline v128_t dn2cpp_isa_wasm_flip_sign64(v128_t v)
 #else
 #define DN2CPP_ISA_TARGET(x)
 #endif
+// Clang's current AVX10 features have no width suffix. Keep width-specific
+// features for compilers whose intrinsic headers still distinguish them.
+#if defined(__clang__) && __clang_major__ >= 22
+#define DN2CPP_ISA_TARGET_AVX10(version, width) DN2CPP_ISA_TARGET(version)
+#else
+#define DN2CPP_ISA_TARGET_AVX10(version, width) DN2CPP_ISA_TARGET(version "-" width)
+#endif
 #define DN2CPP_ISA_INLINE static inline
 
 template <class To, int N>

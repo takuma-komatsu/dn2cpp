@@ -1751,7 +1751,15 @@ static class Emit
         {
             string body = Body(f, m, m.Row);
             string target = m.Row.Target ?? f.Target ?? "";
-            string attr = target.Length > 0 ? $"DN2CPP_ISA_TARGET(\"{target}\") " : "";
+            string attr = target switch
+            {
+                "avx10.1-256" => "DN2CPP_ISA_TARGET_AVX10(\"avx10.1\", \"256\") ",
+                "avx10.1-512" => "DN2CPP_ISA_TARGET_AVX10(\"avx10.1\", \"512\") ",
+                "avx10.2-256" => "DN2CPP_ISA_TARGET_AVX10(\"avx10.2\", \"256\") ",
+                "avx10.2-512" => "DN2CPP_ISA_TARGET_AVX10(\"avx10.2\", \"512\") ",
+                "" => "",
+                _ => $"DN2CPP_ISA_TARGET(\"{target}\") "
+            };
             sb.Append(attr).Append("DN2CPP_ISA_INLINE ").Append(ret).Append(' ').Append(m.HelperName)
               .Append('(').Append(string.Join(", ", paramDecls)).Append(")\n{\n");
             if (!m.Row.TargetOnly)

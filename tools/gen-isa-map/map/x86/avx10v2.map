@@ -7,7 +7,8 @@
 # the sign handling, over the 32 values .NET range-checks; the scalar form works on lane 0 and
 # keeps the upper lanes of the first operand. MoveScalar (VMOVW / VMOVD) keeps lane 0 and
 # zeroes the rest; StoreScalar writes the 16 bits of lane 0. The intrinsic spellings are
-# clang 21's (LLVM renamed the AVX10.2 conversions between releases).
+# admitted by the Clang compiler-capability guard. The target width selects a legacy
+# compiler feature; current Clang uses the unsuffixed version.
 target = avx10.2-256
 ConvertToByteWithSaturationAndZeroExtendToInt32(v{W}f32) = {mm}_ipcvts_ps_epu8($0) for W in 128,256
 ConvertToByteWithTruncatedSaturationAndZeroExtendToInt32(v{W}f32) = {mm}_ipcvtts_ps_epu8($0) for W in 128,256
