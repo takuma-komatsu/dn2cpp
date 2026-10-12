@@ -37,7 +37,43 @@ runtime_template_binding_prefix_asserts() {
             "$out/virtual-delegate-full.$axis.stdout" > "$out/template-prefix.$axis.stdout"
         diff -u "$out/template-before.$axis.stdout" "$out/template-prefix.$axis.stdout"
         runtime_template_binding_asserts "$out/virtual-delegate-full.$axis.stdout"
+        if [ "$axis" = dotnet ]; then
+            run_bounded dotnet "$_CG_APP" before-runtime-base-projections > "$out/base-before.$axis.raw.stdout"
+        else
+            run_bounded "$out/ReflectInvoke$EXE_EXT" before-runtime-base-projections > "$out/base-before.$axis.raw.stdout"
+        fi
+        strip_cr_win_file "$out/base-before.$axis.raw.stdout" > "$out/base-before.$axis.stdout"
+        awk '/^== runtime generic base projections ==$/ { exit } { print }' \
+            "$out/virtual-delegate-full.$axis.stdout" > "$out/base-prefix.$axis.stdout"
+        diff -u "$out/base-before.$axis.stdout" "$out/base-prefix.$axis.stdout"
+        runtime_base_projection_asserts "$out/virtual-delegate-full.$axis.stdout"
     done
+}
+
+runtime_base_projection_asserts() {
+    local output="$1" line
+    while IFS= read -r line; do
+        test "$(grep -Fxc -- "$line" "$output")" = 1 \
+            || { echo "FAIL: runtime base projection witness missing or repeated: $line" >&2; return 1; }
+    done <<'WITNESSES'
+== runtime generic base projections ==
+projection swapped => Int32/Guid/Guid
+projection AOT base => True/True/True
+projection generic virtual => Guid/True/Guid
+projection standalone => Guid/String/True
+projection chained => Guid/String/String/String
+projection local arguments => String/Guid/True/True
+projection interning => True/True/True
+projection inherited overload => 37/11/True
+projection constructor layouts => Guid/Guid/True/True
+projection constructor source => String/True
+projection body layouts => String/String/True/True
+projection null Forward/String => Guid
+projection null Again/String => Guid
+projection null Forward/Guid => NullReferenceException
+projection null Again/Guid => NullReferenceException
+runtime generic base projections end
+WITNESSES
 }
 
 runtime_template_binding_diff_axes() {
@@ -84,10 +120,10 @@ runtime_template_binding_diff_axes() {
             strip_cr_win_file "$out/$mode.clr.raw.stdout" > "$out/$mode.clr.stdout"
             strip_cr_win_file "$out/$mode.native.raw.stdout" > "$out/$mode.native.stdout"
             if [ "$mode" = boundary ]; then
-                # Invoke marshalling and permuted-base cloning retain independent refusals.
+                # Invoke marshalling retains independent refusals.
                 local runtime
                 for runtime in clr native; do
-                    sed -E '/^signature (opaque (return|argument) invoke|ordinary (ref|pointer) invoke|overload reordered base) =>/d' \
+                    sed -E '/^signature (opaque (return|argument) invoke|ordinary (ref|pointer) invoke) =>/d' \
                         "$out/$mode.$runtime.stdout" > "$out/$mode.$runtime.parity.stdout"
                 done
                 diff -u "$out/$mode.clr.parity.stdout" "$out/$mode.native.parity.stdout"
@@ -95,7 +131,7 @@ runtime_template_binding_diff_axes() {
                     'signature opaque argument invoke => NotSupportedException' \
                     'signature ordinary ref invoke => NotSupportedException' \
                     'signature ordinary pointer invoke => NotSupportedException' \
-                    'signature overload reordered base => unsupported'; do
+                    'signature overload reordered base => bound'; do
                     grep -Fxq "$line" "$out/$mode.native.stdout"
                 done
             elif [ "$mode/$axis" = stripped/trimmed ]; then
@@ -106,7 +142,18 @@ runtime_template_binding_diff_axes() {
             fi
         done
         runtime_template_binding_asserts "$out/default.native.stdout"
-        test "$(tail -n 1 "$out/default.native.stdout")" = 'substituted runtime delegate signatures end'
+        runtime_base_projection_asserts "$out/default.native.stdout"
+        test "$(tail -n 1 "$out/default.native.stdout")" = 'runtime generic base projections end'
+        for mode in clr native; do
+            if [ "$mode" = clr ]; then
+                run_bounded dotnet "$out/app/RuntimeTemplateBindingOnly.dll" before-base-projections > "$out/base-before.$mode.raw.stdout"
+            else
+                run_bounded "$out/RuntimeTemplateBindingOnly$EXE_EXT" before-base-projections > "$out/base-before.$mode.raw.stdout"
+            fi
+            strip_cr_win_file "$out/base-before.$mode.raw.stdout" > "$out/base-before.$mode.stdout"
+            awk '/^== runtime generic base projections ==$/ { exit } { print }' "$out/default.$mode.stdout" > "$out/base-prefix.$mode.stdout"
+            diff -u "$out/base-before.$mode.stdout" "$out/base-prefix.$mode.stdout"
+        done
         run_bounded "$out/RuntimeTemplateBindingOnly$EXE_EXT" unsafe > "$out/unsafe.raw.stdout"
         strip_cr_win_file "$out/unsafe.raw.stdout" > "$out/unsafe.stdout"
         local line
@@ -133,6 +180,10 @@ runtime_template_binding_diff_axes() {
             'signature unsafe nested read => bound/bound' \
             'signature unsafe nested clear => bound/bound'; do
             grep -Fxq "$line" "$out/unsafe.clr.stdout"
+        done
+        for line in 'ProjectionRepeated`2' 'ProjectionConstant`2' 'ProjectionConstructed`2'; do
+            grep -Fxq "projection unsupported $line => unsupported" "$out/unsafe.stdout"
+            grep -Fxq "projection unsupported $line => created" "$out/unsafe.clr.stdout"
         done
         echo "runtime-template binding $axis OK"
     done

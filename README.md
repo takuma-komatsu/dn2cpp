@@ -957,6 +957,9 @@ it does not come back as a ticket.
   Generic virtual overrides on the definition and its generic bases are
   included; a body that instantiates a generic method over the definition's
   own type parameter is not.
+  A generic base may reorder or omit the level's bare type parameters;
+  repeating parameters or mixing them with constant or constructed arguments
+  remains outside this subset.
 - **`__arglist` / `TypedReference`**, and varargs or HasThis function-pointer
   signatures. IL2CPP does not support them either.
 - **`res://` / `user://` translation inside `System.IO` (Godot lane).**

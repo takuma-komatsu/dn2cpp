@@ -5779,94 +5779,108 @@ internal sealed partial class CppEmitter
     {
         var rows = new List<string>();
         var seen = new HashSet<ClassInfo>();
+        var sources = new List<(string DefName, ClassInfo Level)>();
+        // A rooted definition retains its callable constructors; an intermediate
+        // source can retain only the constructors reached through its derived type.
+        foreach (var (defName, tmpl, _) in _c.EligibleRuntimeTemplates)
+            sources.Add((defName, tmpl));
         foreach (var (defName, _, levels) in _c.EligibleRuntimeTemplates)
-            foreach (var lv in levels)
+            foreach (var level in levels)
+                sources.Add((defName, level));
+        foreach (var (defName, lv) in sources)
+        {
+            if (!seen.Add(lv))
+                continue;
+            string levelDef = GenericDefInfo(lv) is { } gdi
+                    && _genericDefSyms.TryGetValue(gdi.DefName, out var sym)
+                ? "&" + sym
+                : throw new InvalidOperationException(
+                    $"runtime template {lv.FullName}: no gendef symbol (def {defName})");
+            var desc = _c.RuntimeTemplateSlotDescriptor(lv);
+            var baseProjection = Compilation.RuntimeTemplateBaseProjection(lv);
+            string baseExpr = "nullptr";
+            if (baseProjection.Length > 0)
             {
-                if (!seen.Add(lv))
-                    continue;
-                string levelDef = GenericDefInfo(lv) is { } gdi
-                        && _genericDefSyms.TryGetValue(gdi.DefName, out var sym)
-                    ? "&" + sym
-                    : throw new InvalidOperationException(
-                        $"runtime template {lv.FullName}: no gendef symbol (def {defName})");
-                var desc = _c.RuntimeTemplateSlotDescriptor(lv);
-                string descExpr = "nullptr";
-                if (desc.Length > 0)
-                {
-                    string descSym = "rgctxdesc_" + lv.CppName;
-                    sb.AppendLine($"static const int32_t {descSym}[] = {{ {string.Join(", ", desc)} }};");
-                    descExpr = descSym;
-                }
-                var bindings = new List<string>();
-                int pathSequence = 0;
-                if (_bindingTypeArguments.TryGetValue(lv, out var signatures))
-                    foreach (var signature in signatures)
-                {
-                    var path = new List<string>();
-                    void Add(int argument, string type)
-                    {
-                        string pathExpr = "nullptr";
-                        if (path.Count > 0)
-                        {
-                            pathExpr = $"bindpath_{lv.CppName}_{pathSequence++}";
-                            sb.AppendLine($"static const Dn2CppBindingTypePath {pathExpr}[] = {{ {string.Join(", ", path)} }};");
-                        }
-                        int depth = BindingPointerDepth(signature.Type);
-                        bindings.Add($"{{ {signature.Token}, {signature.Parameter}, {argument}, {type}, {pathExpr}, {path.Count}, {depth}, nullptr }}");
-                    }
-                    void Walk(TypeDesc type, BindingTypeArgumentPattern pattern)
-                    {
-                        if (pattern.Index >= 0)
-                        {
-                            if (pattern.Index < lv.Context.TypeArgs.Length
-                                && Compilation.ContainsCanonPlaceholder(lv.Context.TypeArgs[pattern.Index]))
-                                Add(pattern.Index, "nullptr");
-                            return;
-                        }
-                        if (pattern.Arguments is { } args && type is { Kind: TypeKind.Class, Class: { } cls }
-                            && cls.Context.TypeArgs.Length == args.Length
-                            && GenericDefInfo(cls) is { } definition
-                            && _genericDefSyms.TryGetValue(definition.DefName, out var symbol))
-                        {
-                            Add(-2, "&" + symbol);
-                            for (int i = 0; i < args.Length; i++)
-                            {
-                                path.Add($"{{ &{symbol}, {i} }}");
-                                Walk(cls.Context.TypeArgs[i], args[i]);
-                                path.RemoveAt(path.Count - 1);
-                            }
-                        }
-                        else if (!Compilation.ContainsCanonPlaceholder(type) && !Compilation.ContainsGenericVar(type))
-                        {
-                            string? known = type.Kind == TypeKind.Primitive
-                                ? type.IsVoid ? "&dn2cpp_void_type" : MethodCompiler.TypeInfoExprOf(type)
-                                : type is { Kind: TypeKind.Class, Class: { } literal }
-                                    && TypeInfoSymbolDefined(literal.CppTypeInfoName)
-                                    ? TypeInfoRef(literal, "binding signature constant") : null;
-                            if (known is not null)
-                                Add(-1, known);
-                        }
-                    }
-                    var referent = signature.Type;
-                    while (referent is { Kind: TypeKind.ByRef or TypeKind.Pointer, IsFunctionPointer: false, Element: { } element })
-                        referent = element;
-                    Walk(referent, signature.Pattern);
-                }
-                if (_bindingFunctionPointers.TryGetValue(lv, out var functionPointers))
-                    foreach (var pointer in functionPointers)
-                    {
-                        string signatureExpr = EmitBindingSignature(sb, pointer.Binding);
-                        bindings.Add($"{{ {pointer.Token}, {pointer.Parameter}, -3, nullptr, nullptr, 0, {BindingPointerDepth(pointer.Type)}, {signatureExpr} }}");
-                    }
-                string bindingsExpr = "nullptr";
-                if (bindings.Count > 0)
-                {
-                    bindingsExpr = "bindargs_" + lv.CppName;
-                    sb.AppendLine($"static const Dn2CppBindingTypeArgument {bindingsExpr}[] = {{ {string.Join(", ", bindings)} }};");
-                }
-                rows.Add($"{{ {levelDef}, {TypeInfoRef(lv, "runtime template row")}, {descExpr}, "
-                    + $"{desc.Length}, {lv.Context.TypeArgs.Length}, {bindingsExpr}, {bindings.Count}, {_bindingStandInExpr}, {_bindingStandInCount} }}");
+                baseExpr = "baseargs_" + lv.CppName;
+                sb.AppendLine($"static const int32_t {baseExpr}[] = {{ {string.Join(", ", baseProjection)} }};");
             }
+            string descExpr = "nullptr";
+            if (desc.Length > 0)
+            {
+                string descSym = "rgctxdesc_" + lv.CppName;
+                sb.AppendLine($"static const int32_t {descSym}[] = {{ {string.Join(", ", desc)} }};");
+                descExpr = descSym;
+            }
+            var bindings = new List<string>();
+            int pathSequence = 0;
+            if (_bindingTypeArguments.TryGetValue(lv, out var signatures))
+                foreach (var signature in signatures)
+            {
+                var path = new List<string>();
+                void Add(int argument, string type)
+                {
+                    string pathExpr = "nullptr";
+                    if (path.Count > 0)
+                    {
+                        pathExpr = $"bindpath_{lv.CppName}_{pathSequence++}";
+                        sb.AppendLine($"static const Dn2CppBindingTypePath {pathExpr}[] = {{ {string.Join(", ", path)} }};");
+                    }
+                    int depth = BindingPointerDepth(signature.Type);
+                    bindings.Add($"{{ {signature.Token}, {signature.Parameter}, {argument}, {type}, {pathExpr}, {path.Count}, {depth}, nullptr }}");
+                }
+                void Walk(TypeDesc type, BindingTypeArgumentPattern pattern)
+                {
+                    if (pattern.Index >= 0)
+                    {
+                        if (pattern.Index < lv.Context.TypeArgs.Length
+                            && Compilation.ContainsCanonPlaceholder(lv.Context.TypeArgs[pattern.Index]))
+                            Add(pattern.Index, "nullptr");
+                        return;
+                    }
+                    if (pattern.Arguments is { } args && type is { Kind: TypeKind.Class, Class: { } cls }
+                        && cls.Context.TypeArgs.Length == args.Length
+                        && GenericDefInfo(cls) is { } definition
+                        && _genericDefSyms.TryGetValue(definition.DefName, out var symbol))
+                    {
+                        Add(-2, "&" + symbol);
+                        for (int i = 0; i < args.Length; i++)
+                        {
+                            path.Add($"{{ &{symbol}, {i} }}");
+                            Walk(cls.Context.TypeArgs[i], args[i]);
+                            path.RemoveAt(path.Count - 1);
+                        }
+                    }
+                    else if (!Compilation.ContainsCanonPlaceholder(type) && !Compilation.ContainsGenericVar(type))
+                    {
+                        string? known = type.Kind == TypeKind.Primitive
+                            ? type.IsVoid ? "&dn2cpp_void_type" : MethodCompiler.TypeInfoExprOf(type)
+                            : type is { Kind: TypeKind.Class, Class: { } literal }
+                                && TypeInfoSymbolDefined(literal.CppTypeInfoName)
+                                ? TypeInfoRef(literal, "binding signature constant") : null;
+                        if (known is not null)
+                            Add(-1, known);
+                    }
+                }
+                var referent = signature.Type;
+                while (referent is { Kind: TypeKind.ByRef or TypeKind.Pointer, IsFunctionPointer: false, Element: { } element })
+                    referent = element;
+                Walk(referent, signature.Pattern);
+            }
+            if (_bindingFunctionPointers.TryGetValue(lv, out var functionPointers))
+                foreach (var pointer in functionPointers)
+                {
+                    string signatureExpr = EmitBindingSignature(sb, pointer.Binding);
+                    bindings.Add($"{{ {pointer.Token}, {pointer.Parameter}, -3, nullptr, nullptr, 0, {BindingPointerDepth(pointer.Type)}, {signatureExpr} }}");
+                }
+            string bindingsExpr = "nullptr";
+            if (bindings.Count > 0)
+            {
+                bindingsExpr = "bindargs_" + lv.CppName;
+                sb.AppendLine($"static const Dn2CppBindingTypeArgument {bindingsExpr}[] = {{ {string.Join(", ", bindings)} }};");
+            }
+            rows.Add($"{{ {levelDef}, {TypeInfoRef(lv, "runtime template row")}, {descExpr}, "
+                + $"{desc.Length}, {lv.Context.TypeArgs.Length}, {bindingsExpr}, {bindings.Count}, {_bindingStandInExpr}, {_bindingStandInCount}, {baseExpr}, {baseProjection.Length} }}");
+        }
         sb.AppendLine("// ---- runtime-instantiation templates (MakeGenericType clone sources) ----");
         if (rows.Count == 0)
         {

@@ -17,6 +17,7 @@ internal static class Program
         if (args.Length > 0 && args[0] == "unsafe")
         {
             ReflectDelegateSubset.Program.RunUnsafeTemplateBindings();
+            ReflectDelegateSubset.RuntimeBaseProjectionSubset.RunBoundaries();
             return;
         }
         if (args.Length > 0 && args[0] == "invoke")
@@ -43,5 +44,8 @@ internal static class Program
             return;
         }
         ReflectDelegateSubset.Program.RunRuntimeTemplateBindings();
+        if (args.Length > 0 && args[0] == "before-base-projections")
+            return;
+        ReflectDelegateSubset.RuntimeBaseProjectionSubset.Run();
     }
 }

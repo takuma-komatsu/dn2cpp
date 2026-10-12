@@ -25,6 +25,7 @@
 # Unsupported by-ref referents retain distinct identities without enabling Invoke marshalling.
 # Runtime-template binding substitutes full location identities while unsafe bodies and Invoke cells stay refused.
 # Provably incompatible template overloads permit a fixed body without selecting a coincident wrong target.
+# Runtime generic bases project local arguments through permutations and dropped parameters.
 # Invoke replaces the canonical Missing singleton with recorded defaults and copies back only after success.
 # A delegate constructor refuses a target whose method-load origin was lost.
 # Virtual and generic virtual reflection dispatch, by-reference copy-back,
@@ -283,6 +284,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|delegate-signature-prefix-
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|function-pointer-invoke-prefix-argv:before-runtime-function-pointer-invoke"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_runtime-template-bindings.sh gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj samples/dotnet/ReflectInvoke/RuntimeTemplateBindingOnly.csproj samples/dotnet/ReflectInvoke/RuntimeTemplateBindingOnlyProgram.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|runtime-template-binding:packed,native,uncompressed,trimmed,ildiet|runtime-template-binding-prefix:before-runtime-template-bindings"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|runtime-base-projections:permuted,dropped,chained,AOT,synthesized,generic-virtual|runtime-base-projection-prefix:before-runtime-base-projections"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|unsupported-referent-prefix-argv:before-unsupported-referent-signatures"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|ordinary-template-prefix-argv:before-ordinary-template-signatures|ordinary-template-boundary-prefix-argv:delegate-signature-before-ordinary-boundary"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|ordinary-overload-prefix-argv:before-ordinary-overload-selection|ordinary-overload-boundary-prefix-argv:delegate-signature-before-overload-boundary|shape-overload-prefix-argv:before-shape-overload-selection|shape-overload-boundary-prefix-argv:delegate-signature-before-shape-boundary|leaf-overload-prefix-argv:before-leaf-overload-selection|leaf-overload-boundary-prefix-argv:delegate-signature-before-leaf-boundary"
@@ -474,7 +476,7 @@ gate_inherited_object_virtual_equality_asserts() {
             test "$(grep -Fxc -- "$line" "$out/virtual-delegate-full.$axis.stdout")" = 1 \
                 || { echo "FAIL: inherited Object virtual delegate equality witness: $axis/$line" >&2; return 1; }
         done
-        test "$(tail -n 1 "$out/virtual-delegate-full.$axis.stdout")" = 'inherited Object virtual delegate equality end'
+        test "$(tail -n 1 "$out/virtual-delegate-full.$axis.stdout")" = 'runtime generic base projections end'
     done
     diff -u "$out/inherited-object-virtual-equality-prefix.dotnet.stdout" "$out/inherited-object-virtual-equality-prefix.native.stdout"
 }
@@ -1665,9 +1667,7 @@ gate_extra_asserts() {
         grep -Fxq -- 'signature overload coincident ref => bound/8/10/bound/8/10' <<< "$boundary"
         grep -Fxq -- 'signature overload coincident composed => bound/48/False/bound/48/False' <<< "$boundary"
         result=bound
-        # Runtime cloning retains only identity base projections, not permutations.
-        if [ "$axis" = dotnet ]; then reordered=bound; else reordered=unsupported; fi
-        grep -Fxq -- "signature overload reordered base => $reordered" <<< "$boundary"
+        grep -Fxq -- 'signature overload reordered base => bound' <<< "$boundary"
         for query in 'coincident reference' 'coincident pointer' 'coincident pointer return' \
             'coincident ref return' 'coincident constant'; do
             grep -Fxq -- "signature overload $query => $result" <<< "$boundary"

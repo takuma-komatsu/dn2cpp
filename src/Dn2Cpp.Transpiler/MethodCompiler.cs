@@ -1089,8 +1089,14 @@ internal sealed partial class MethodCompiler : IEvalStack
         if (rgctxAnchor is not null)
         {
             string receiverContext = $"dn2cpp_rgctx(((const Dn2CppObject*)a0)->type, &{rgctxAnchor})";
+            string nullContext = $"dn2cpp_null_receiver_rgctx(&{rgctxAnchor})";
+            if (_c.EligibleRuntimeTemplateLevels.Contains(_method.DeclaringClass))
+            {
+                receiverContext = $"dn2cpp_rgctx_template(((const Dn2CppObject*)a0)->type, &{_method.DeclaringClass.CppTypeInfoName})";
+                nullContext = $"dn2cpp_null_receiver_rgctx(&{rgctxAnchor}, &{_method.DeclaringClass.CppTypeInfoName})";
+            }
             sb.AppendLine("    const void* const* __rgctx = " + (_c.NullReceiverRgctx
-                ? $"a0 != nullptr ? {receiverContext} : dn2cpp_null_receiver_rgctx(&{rgctxAnchor});"
+                ? $"a0 != nullptr ? {receiverContext} : {nullContext};"
                 : receiverContext + ";"));
         }
         // [HotPath(NoAlias)] span parameters: the element pointer hoisted once,

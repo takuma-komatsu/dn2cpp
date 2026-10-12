@@ -385,6 +385,9 @@ namespace ReflectInvoke
         if (args.Length > 0 && args[0] == "before-inherited-object-virtual-equality")
             return;
         ReflectDelegateIdentitySubset.ObjectVirtualEqualityProgram.RunInherited();
+        if (args.Length > 0 && args[0] == "before-runtime-base-projections")
+            return;
+        ReflectDelegateSubset.RuntimeBaseProjectionSubset.Run();
         }
     }
 }

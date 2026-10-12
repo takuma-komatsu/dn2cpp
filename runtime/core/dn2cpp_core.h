@@ -575,10 +575,11 @@ inline bool dn2cpp_is_sz_array(const Dn2CppTypeInfo* t)
     return t != nullptr && (t->flags & DN2CPP_TF_ARRAY) != 0 && !dn2cpp_is_md_array(t);
 }
 
-// The clone-owned rgctx anchor lookup behind DN2CPP_TF_RUNTIME_SYNTH
-// (dn2cpp_system_reflection.cpp); falls back to the base-chain walk for levels
-// below the placeholder chain.
+// Ordinary shared bodies use the actual closed base's layout through a
+// synthesized receiver; template bodies select their source layout separately.
 const void* const* dn2cpp_rgctx_synth(const Dn2CppTypeInfo* t, const Dn2CppTypeInfo* genericDef);
+// Template sources of one definition can retain different slot layouts.
+const void* const* dn2cpp_rgctx_template(const Dn2CppTypeInfo* t, const Dn2CppTypeInfo* source);
 
 // The runtime-generic-context table of the base-chain level whose generic
 // definition matches `genericDef` — a shared canonical body derives its context
@@ -603,7 +604,8 @@ static inline const void* const* dn2cpp_rgctx(const Dn2CppTypeInfo* t, const Dn2
 
 // Consume the declaring type a null-bound reflection delegate supplied for its
 // first shared-body rgctx prologue. A missing or unmatched context faults.
-const void* const* dn2cpp_null_receiver_rgctx(const Dn2CppTypeInfo* genericDef);
+const void* const* dn2cpp_null_receiver_rgctx(const Dn2CppTypeInfo* genericDef,
+    const Dn2CppTypeInfo* source = nullptr);
 
 // Every managed object starts with a type pointer (dispatch goes
 // header -> type -> vtable; no C++ virtual functions in managed layouts).
@@ -1863,10 +1865,11 @@ Dn2CppType* dn2cpp_type_get_by_name(Dn2CppString* name, int32_t throwOnError);
 // the clone copies `templateTi`, stamps genericDef/genericArgs/name, clears the
 // two template bits, gives its method, constructor, field and property rows
 // itself as declaring type (a property's accessors being its method rows),
-// synthesizes its base the same way when the template's base is itself a
-// row (looked up by templateTi), and fills a fresh rgctx table per level with
-// rgctx[i] = args[rgctxDesc[i]]'s type-info, or for a negative entry ~d the
-// clone's table of the level d base steps down (a static callee's context).
+// projects baseArguments before recursively synthesizing its base. A rooted
+// definition's row is preferred over intermediate sources for the copied metadata.
+// Each closed level supplies every source's rgctx layout: a nonnegative entry
+// indexes that level's local arguments; a negative entry ~d names the source
+// table d base steps down (a static callee's context).
 // Synthesized instantiations intern on (def, args) — same arguments, same
 // pointer — and register their closed name on the registry's dynamic side-chain.
 // Binding-only structure for identities whose Invoke descriptor is a stand-in.
@@ -1917,11 +1920,13 @@ struct Dn2CppRuntimeTemplate
     int32_t bindingTypeArgumentCount;
     const Dn2CppBindingStandIn* bindingStandIns;
     int32_t bindingStandInCount;
+    const int32_t* baseArguments; // base argument i -> this level's argument index
+    int32_t baseArgumentCount;
 };
 extern const Dn2CppRuntimeTemplate* const dn2cpp_runtime_templates;
 extern const int32_t dn2cpp_runtime_template_count;
-// The template type-info a DN2CPP_TF_RUNTIME_SYNTH clone was copied from (its
-// definition's row). Generic-virtual dispatchers and Delegate.Method key a
+// The template type-info a DN2CPP_TF_RUNTIME_SYNTH clone was copied from.
+// Generic-virtual dispatchers and Delegate.Method key a
 // clone's case on it; the emitter keeps that case independent of the clone's
 // type arguments.
 const Dn2CppTypeInfo* dn2cpp_runtime_template_of(const Dn2CppTypeInfo* clone);
