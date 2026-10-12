@@ -346,6 +346,16 @@ Consuming a custom numeric provider reaches
 its `GetFormat(Type)` implementation and accepts only a `NumberFormatInfo` result;
 other results fall back to the current culture. Allocation, identity conversion,
 and unrelated known-provider formatting do not retain unused provider bodies.
+
+Numeric culture data are frozen CLR/ICU snapshots in `runtime/core/intrinsics/`.
+A separate PAL locale name selects undefined-language fallback profiles: managed
+current cultures do not change ICU resource fallback. The selector keeps only a
+frozen host index and never constructs a culture, preventing recursive default
+culture initialization. Fallback profiles preserve the requested region's
+localized currency and resolve numbering aliases against the host. Their host
+and region inventory follows the modeled culture candidates; known resource
+languages outside that inventory retain the existing unmodeled numeric fallback.
+Apple and standard ICU resource-language inventories remain separate.
 Internal format-spec callbacks retain their raw number-format payload ABI.
 
 Multidimensional array slots retain the typed raw payload ABI exposed by

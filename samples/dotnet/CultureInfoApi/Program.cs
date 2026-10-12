@@ -61,6 +61,18 @@ namespace CultureInfoApi
                 return;
             }
 
+            if (args.Length > 0 && args[0] == "culture-fallback-identities")
+            {
+                RunFallbackIdentities(args.Length > 1 ? args[1] : null);
+                return;
+            }
+
+            if (args.Length > 0 && args[0] == "culture-primary-currency")
+            {
+                RunPrimaryCurrency();
+                return;
+            }
+
             if (args.Length > 0 && (args[0] == "culture-sort-strings" || args[0] == "culture-sort-upper-key"))
             {
                 RunSortStrings(args[0] == "culture-sort-upper-key");
@@ -428,6 +440,51 @@ namespace CultureInfoApi
                 + " base=" + ReferenceEquals(arab, CultureInfo.GetCultureInfo("en-US")));
             Console.WriteLine("culture locale data end");
             RunNumberingData();
+            RunFallbackIdentities();
+            RunPrimaryCurrency();
+        }
+
+        private static void RunFallbackIdentities(string? name = null)
+        {
+            Console.WriteLine("== culture fallback identities ==");
+            foreach (string input in name is null ? new[]
+            {
+                "und-US", "und-DE", "und-FR", "und-JP", "und-Latn-US",
+                "und-US-u-nu-arab", "und-US-u-nu-latn", "und-US-u-nu-native",
+                "und-US-u-nu-finance", "und-US-u-nu-traditio", "und-US-u-nu-foo",
+                "foo", "foo-US", "foo-u-nu-default", "foo-US-u-nu-default",
+                "de-FOO", "de-FOO-u-ca-gregory", "de-FOO-u-nu-latn", "de-FOO-u-nu-arab",
+                "de-FOO-u-nu-native", "de-FOO-u-nu-finance", "de-FOO-u-nu-traditio",
+                "de-FOO-u-nu-default", "de-FOO-u-nu-foo", "en-GB-oed", "en-GB-oed-u-nu-foo",
+                "i-klingon", "i-klingon-u-nu-foo", "i-default", "i-default-u-nu-foo",
+                "i-enochian", "i-enochian-u-nu-foo", "i-mingo", "i-mingo-u-nu-foo",
+                "zh-min", "zh-min-u-nu-foo", "zh-min-nan-u-nu-foo",
+                "nv", "jbo", "cmn", "i-navajo-u-nu-native", "art-lojban-u-nu-native", "zh-guoyu-u-nu-native",
+                "i-enochian\0ignored", "zh-min\0ignored",
+                "de-foo-bar-u-nu-latn", "de-foo-bar-US-u-nu-latn", "de-foo-Latn-US-u-nu-latn",
+                "de-foo-bar-baz-US-u-nu-latn", "de-foo-bar-baz-zzz-US-u-nu-latn",
+                "foo-QQ", "foo-999", "und-QQ", "foo-ZZ", "i-default-US-u-nu-arab",
+                "i-enochian-US-u-nu-arab", "i-mingo-US-u-nu-arab", "zh-min-US-u-nu-arab",
+                "i-default-abcde-u-nu-arab", "i-enochian-US-U-NU-ARAB",
+                "i-klingon-Latn-US", "i-klingon-Latn-US-u-nu-latn", "zh-min-nan-Latn-US-u-nu-latn"
+            } : new[] { name })
+            {
+                CultureInfo culture = new CultureInfo(input);
+                Console.WriteLine("  '" + input.Replace("\0", "<NUL>") + "' -> '" + culture.Name + "' value='" + culture.ToString()
+                    + "' LCID=" + culture.LCID + " neutral=" + culture.IsNeutralCulture);
+                Console.WriteLine("    specific='" + CultureInfo.CreateSpecificCulture(input).Name
+                    + "' cached='" + CultureInfo.GetCultureInfo(input).Name
+                    + "' without override='" + new CultureInfo(input, false).Name + "'");
+            }
+            Console.WriteLine("culture fallback identities end");
+        }
+
+        private static void RunPrimaryCurrency()
+        {
+            Console.WriteLine("== culture primary currency ==");
+            foreach (string input in new[] { "12-eng-US-u-nu-arab", "ab1-eng-US-u-nu-arab" })
+                Console.WriteLine("  '" + input + "' currency=" + new CultureInfo(input).NumberFormat.CurrencySymbol);
+            Console.WriteLine("culture primary currency end");
         }
 
         private static void RunNumberingData(string? name = null)
@@ -656,6 +713,16 @@ namespace CultureInfoApi
                 firstName = "de-DE_phoneb";
                 secondName = "de-DE-u-co-phoneb";
             }
+            else if (mode == "culture-wrapper-private-first")
+            {
+                firstName = "i-default-u-nu-foo";
+                secondName = "en-u-nu-foo";
+            }
+            else if (mode == "culture-wrapper-canonical-first")
+            {
+                firstName = "en-u-nu-foo";
+                secondName = "i-default-u-nu-foo";
+            }
             else
             {
                 firstName = "de-DE-u-co-phoneb";
@@ -671,7 +738,21 @@ namespace CultureInfoApi
             Console.WriteLine("  pair=" + ReferenceEquals(first, second)
                 + " repeat first=" + ReferenceEquals(first, third)
                 + " repeat second=" + ReferenceEquals(second, fourth));
+            if (mode == "culture-wrapper-private-first" || mode == "culture-wrapper-canonical-first")
+            {
+                WriteWrapperNumbering("first", first.NumberFormat);
+                WriteWrapperNumbering("second", second.NumberFormat);
+                WriteWrapperNumbering("first again", third.NumberFormat);
+                WriteWrapperNumbering("second again", fourth.NumberFormat);
+            }
             Console.WriteLine("culture wrapper cache end");
+        }
+
+        private static void WriteWrapperNumbering(string label, NumberFormatInfo n)
+        {
+            Console.WriteLine("  " + label + " has decimal=" + (n.NumberDecimalSeparator.Length > 0)
+                + " negative=" + (n.NegativeSign.Length > 0) + " digits=" + n.NumberDecimalDigits
+                + " group=" + n.NumberGroupSizes[0]);
         }
 
         // CultureData keys lowercase input and the override flag; GetCultureInfo uses false.

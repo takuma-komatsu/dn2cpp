@@ -78,6 +78,13 @@ int32_t dn2cpp_pal_default_locale_name(char* buf, size_t size)
     return 0;
 }
 
+int32_t dn2cpp_pal_numeric_fallback_locale_name(char* buf, size_t size)
+{
+    if (buf != nullptr && size > 0)
+        buf[0] = '\0';
+    return 0;
+}
+
 // The runtime's raw UTF-8 codec cores (defined in intrinsics/dn2cpp_system_reflection.cpp).
 // Forward-declared here rather than pulling in the whole runtime header, exactly as the
 // POSIX PAL does: Emscripten's narrow encoding is UTF-8 (musl, and the JS string bridge

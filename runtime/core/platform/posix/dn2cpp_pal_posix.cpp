@@ -6,6 +6,7 @@
 // under platform/windows/ or platform/wasm/ without touching the intrinsics.
 
 #include "platform/dn2cpp_pal.h"
+#include "platform/dn2cpp_locale_id.h"
 #include "platform/dn2cpp_console_errors.h"
 #include <fcntl.h>
 #include <poll.h>
@@ -88,7 +89,8 @@ const char* dn2cpp_pal_getenv(const char* name)
 // uppercased trailing subtag ("de_AT.UTF-8@euro" -> "de-AT-EURO"). Returns 0 for
 // an id that names no locale.
 //
-static int32_t dn2cpp_pal_locale_from_posix_id(const char* id, char* buf, size_t size)
+static int32_t dn2cpp_pal_locale_from_posix_id(const char* id, char* buf, size_t size,
+    bool keepExtensions = false)
 {
     if (id == nullptr)
         return 0;
@@ -100,14 +102,66 @@ static int32_t dn2cpp_pal_locale_from_posix_id(const char* id, char* buf, size_t
             return 0;
         buf[n++] = id[i] == '_' ? '-' : id[i];
     }
-    // The default locale uses ICU's base name. Numbering, transform and
-    // private-use extensions do not select the host's CultureInfo data.
-    for (size_t part = 1; part + 2 < n; part++)
-        if (buf[part] == '-' && buf[part + 2] == '-')
-        {
-            n = part;
-            break;
-        }
+    // The raw fallback selector must see the extension before ICU's extlang
+    // conversion. Managed defaults retain only the converted base name.
+    bool posixBase = n > 11 && buf[11] == '-' && ::strncasecmp(buf, "en-US-POSIX", 11) == 0;
+    Dn2CppLocalePosixState posix = posixBase
+        ? dn2cpp_locale_posix_parse(buf, n) : Dn2CppLocalePosixState{0, false, false};
+    if (!keepExtensions)
+        for (size_t part = 1; part + 2 < n; part++)
+            if (buf[part] == '-' && buf[part + 2] == '-')
+            {
+                if (posixBase)
+                    part = posix.baseEnd;
+                size_t language = 0;
+                while (language < part && buf[language] != '-')
+                    language++;
+                bool alphabetic = language >= 2 && language <= 3;
+                for (size_t j = 0; alphabetic && j < language; j++)
+                    alphabetic = (buf[j] >= 'a' && buf[j] <= 'z')
+                        || (buf[j] >= 'A' && buf[j] <= 'Z');
+                if (alphabetic && language + 4 <= part
+                    && buf[language + 4] == '-')
+                {
+                    bool letters = true;
+                    for (size_t j = language + 1; j < language + 4; j++)
+                        letters = letters && ((buf[j] >= 'a' && buf[j] <= 'z')
+                            || (buf[j] >= 'A' && buf[j] <= 'Z'));
+                    if (letters)
+                    {
+                        size_t tail = language + 4;
+                        for (int count = 1; count < 3 && tail < part; count++)
+                        {
+                            size_t next = tail + 1;
+                            while (next < part && buf[next] != '-')
+                                next++;
+                            if (next - tail != 4)
+                                break;
+                            bool extlang = true;
+                            for (size_t j = tail + 1; j < next; j++)
+                                extlang = extlang && ((buf[j] >= 'a' && buf[j] <= 'z')
+                                    || (buf[j] >= 'A' && buf[j] <= 'Z'));
+                            if (!extlang)
+                                break;
+                            tail = next;
+                        }
+                        size_t next = tail + 1;
+                        while (next < part && buf[next] != '-')
+                            next++;
+                        bool extraExtlang = tail < part && next - tail == 4;
+                        for (size_t j = tail + 1; extraExtlang && j < next; j++)
+                            extraExtlang = (buf[j] >= 'a' && buf[j] <= 'z')
+                                || (buf[j] >= 'A' && buf[j] <= 'Z');
+                        if (extraExtlang)
+                            part = tail;
+                        std::memmove(buf, buf + language + 1, 3);
+                        std::memmove(buf + 3, buf + tail, part - tail);
+                        part = 3 + part - tail;
+                    }
+                }
+                n = part;
+                break;
+            }
     // ICU accepts an empty trailing POSIX variant, unlike a constructed name.
     while (n > 0 && buf[n - 1] == '-')
         n--;
@@ -119,7 +173,7 @@ static int32_t dn2cpp_pal_locale_from_posix_id(const char* id, char* buf, size_t
     // en_US_POSIX, like an empty base, as no locale at all.
     if (!modifier
         && ((n == 1 && buf[0] == 'C') || (n == 5 && std::memcmp(buf, "POSIX", 5) == 0)
-            || (n == 11 && ::strncasecmp(buf, "en-US-POSIX", 11) == 0)))
+            || (!posix.extension && n == 11 && ::strncasecmp(buf, "en-US-POSIX", 11) == 0)))
         return 0;
     if (modifier)
     {
@@ -218,6 +272,35 @@ int32_t dn2cpp_pal_default_locale_name(char* buf, size_t size)
     // Real .NET maps that default to the invariant culture.
     return 0;
 #endif
+}
+
+int32_t dn2cpp_pal_numeric_fallback_locale_name(char* buf, size_t size)
+{
+    if (buf == nullptr || size == 0)
+        return 0;
+    buf[0] = '\0';
+    const char* id = ::setlocale(LC_MESSAGES, nullptr);
+    if (id == nullptr || std::strcmp(id, "C") == 0 || std::strcmp(id, "POSIX") == 0)
+    {
+        id = ::getenv("LC_ALL");
+        if (id == nullptr) id = ::getenv("LC_MESSAGES");
+        if (id == nullptr) id = ::getenv("LANG");
+    }
+    // ICU's default resource locale is independent of .NET's Apple preference
+    // fallback. A set empty environment value is root, not the POSIX locale.
+    size_t base = id != nullptr ? std::strcspn(id, ".@") : 0;
+    if (id == nullptr || (base == 1 && id[0] == 'C')
+        || (base == 5 && std::memcmp(id, "POSIX", 5) == 0)
+        || (base == 11 && ::strncasecmp(id, "en_US_POSIX", 11) == 0)
+        || (base == 11 && ::strncasecmp(id, "en-US-POSIX", 11) == 0))
+    {
+        static const char name[] = "en-US-POSIX";
+        if (sizeof(name) > size)
+            return 0;
+        std::memcpy(buf, name, sizeof(name));
+        return sizeof(name) - 1;
+    }
+    return dn2cpp_pal_locale_from_posix_id(id, buf, size, true);
 }
 
 // The runtime's raw UTF-8 codec cores (defined in intrinsics/dn2cpp_system_reflection.cpp).
