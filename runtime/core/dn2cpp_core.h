@@ -742,6 +742,7 @@ struct Dn2CppNumberFormatInfo
     int32_t currencyPosPattern;      // CurrencyPositivePattern (0..3)
     int32_t currencyNegPattern;      // CurrencyNegativePattern (0..15)
     Dn2CppString* cultureName;       // CultureInfo.Name ("" for invariant / plain NumberFormatInfo)
+    Dn2CppString* cultureRealName;   // CultureInfo.ToString, including any alternate sort
     // CultureInfo.LCID. 127 (0x7F) for the invariant culture; the real Windows LCID
     // for a culture the table carries; 4096 (LOCALE_CUSTOM_UNSPECIFIED) for one it
     // does not — which is also what real .NET answers for a culture it can
@@ -7940,7 +7941,7 @@ const Dn2CppNumberFormatInfo* dn2cpp_nfi_invariant();
 // .NET reports (dn2cpp_nfi_invariant is the CultureInfo singleton). The two
 // format identically; only the recovered managed identity differs.
 const Dn2CppNumberFormatInfo* dn2cpp_nfi_invariant_info();
-const Dn2CppNumberFormatInfo* dn2cpp_culture_by_name(Dn2CppString* name, bool cached = false);
+const Dn2CppNumberFormatInfo* dn2cpp_culture_by_name(Dn2CppString* name, bool cached = false, bool useUserOverride = true);
 const Dn2CppNumberFormatInfo* dn2cpp_culture_create_specific(Dn2CppString* name);
 Dn2CppNumberFormatInfo* dn2cpp_nfi_new();
 // The process-wide CultureInfo.CurrentCulture: defaults to the culture the HOST
@@ -7959,6 +7960,7 @@ const Dn2CppNumberFormatInfo* dn2cpp_culture_current_ui();
 void dn2cpp_culture_set_current_ui(const Dn2CppNumberFormatInfo* c);
 const Dn2CppNumberFormatInfo* dn2cpp_culture_installed_ui();
 Dn2CppString* dn2cpp_culture_name(const Dn2CppNumberFormatInfo* c);
+Dn2CppString* dn2cpp_culture_tostring(const Dn2CppNumberFormatInfo* c);
 Dn2CppString* dn2cpp_textinfo_tostring(const Dn2CppNumberFormatInfo* c);
 // CultureInfo.LCID (see Dn2CppNumberFormatInfo::lcid for the three answers), and
 // the reverse lookup CultureInfo.GetCultureInfo(int) needs. The reverse lookup

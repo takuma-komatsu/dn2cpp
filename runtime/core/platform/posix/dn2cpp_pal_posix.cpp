@@ -100,6 +100,14 @@ static int32_t dn2cpp_pal_locale_from_posix_id(const char* id, char* buf, size_t
             return 0;
         buf[n++] = id[i] == '_' ? '-' : id[i];
     }
+    // The default locale uses ICU's base name. Numbering, transform and
+    // private-use extensions do not select the host's CultureInfo data.
+    for (size_t part = 1; part + 2 < n; part++)
+        if (buf[part] == '-' && buf[part + 2] == '-')
+        {
+            n = part;
+            break;
+        }
     // ICU accepts an empty trailing POSIX variant, unlike a constructed name.
     while (n > 0 && buf[n - 1] == '-')
         n--;
