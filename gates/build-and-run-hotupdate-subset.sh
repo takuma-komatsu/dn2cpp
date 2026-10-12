@@ -192,6 +192,7 @@ assert_derived_aggregate_prefix() {
 
 echo "== 1/5 Building base + patch C# assemblies =="
 build_proj samples/dotnet/HotUpdateBase/HotUpdateBase.csproj
+build_proj samples/dotnet/HotUpdateBase/HotUpdateMetadataBase.csproj
 build_proj samples/dotnet/HotUpdatePatch/HotUpdatePatch.csproj
 build_proj samples/dotnet/HotUpdateBase/NoCtorImportBase.csproj
 build_proj samples/dotnet/HotUpdatePatch/NoCtorImportPatch.csproj
@@ -314,7 +315,7 @@ grep -q dn2cpp_base_image_abi_hash "$OUT/generated.cpp" \
 # against the REAL net10.0 CoreLib, so which CoreLib that resolves to is an input
 # of this gate the same way it is of net10_bcl_diff_gate — a runtime bump must
 # not be served a green recorded against the previous one.
-if gate_cache_check "$OUT" "hotupdate-subset|cli:$(_gate_cli_hash)|field-metadata:$field_packed/$field_native|corelib:$(resolve_net10_corelib)|before-derived-aggregate|before-aggregate-collection|before-aggregate-message|before-ordinary-exception-message|oracle:--derived-aggregate/--aggregate-collection|unavailable-aggregate-ctor|type-getter-signature:--type-getter-signature/before-type-getter-signature/register/stack/HotUpdateBase.TypeGetterSignatureFixture::EmitSurface|renamed-slots:--renamed-slot-prefix/before-renamed-slots/register/stack/intrinsic-bcl/corelib|renamed-object:--object/--finalize/--renamed-object-oracle/--renamed-finalize-oracle/corelib-refusal/corelib-loaded|instance-body-calls:call/callvirt/default/dictionary/folded-predicates/same-owner/predicate-nops/null-bound/try/method-context/register/stack/intrinsic-bcl/corelib/--no-shared-generics/--cut-HotUpdateBase.IOverriddenBin::Cold|late-default-layout:object-method-group/noalloc-constant/transitive-helper/normal/--hotupdate-base/--no-shared-generics|signature-generic-imports:packed/native/register/stack/fields/field-address-refusal" \
+if gate_cache_check "$OUT" "hotupdate-subset|cli:$(_gate_cli_hash)|field-metadata:$field_packed/$field_native|corelib:$(resolve_net10_corelib)|before-derived-aggregate|before-aggregate-collection|before-aggregate-message|before-ordinary-exception-message|oracle:--derived-aggregate/--aggregate-collection|unavailable-aggregate-ctor|type-getter-signature:--type-getter-signature/before-type-getter-signature/register/stack/HotUpdateBase.TypeGetterSignatureFixture::EmitSurface|patch-method-identities:private-rows/roundtrip/virtual-override/invoke/refusal-variant/metadata-v4|renamed-slots:--renamed-slot-prefix/before-renamed-slots/register/stack/intrinsic-bcl/corelib|renamed-object:--object/--finalize/--renamed-object-oracle/--renamed-finalize-oracle/corelib-refusal/corelib-loaded|instance-body-calls:call/callvirt/default/dictionary/folded-predicates/same-owner/predicate-nops/null-bound/try/method-context/register/stack/intrinsic-bcl/corelib/--no-shared-generics/--cut-HotUpdateBase.IOverriddenBin::Cold|late-default-layout:object-method-group/noalloc-constant/transitive-helper/normal/--hotupdate-base/--no-shared-generics|signature-generic-imports:packed/native/register/stack/fields/field-address-refusal" \
         "$base_app" "$patch_app" "$bad_app" "$badgvm_app" "$baditf_app" "$baddg_app" \
         "$concat_oracle_app" \
         "$signature_arguments_base" "$signature_arguments_patch" "$signature_arguments_address" gates/_hotupdate-signature-arguments.sh \
@@ -331,6 +332,8 @@ if gate_cache_check "$OUT" "hotupdate-subset|cli:$(_gate_cli_hash)|field-metadat
         "$gvmcall_late_layout_library" "$gvmcall_late_layout_app" \
         "$gvmcall_late_noalloc_library" "$gvmcall_late_noalloc_app" \
         samples/dotnet/HotUpdateBase/RenamedSlotProbe.cs \
+        samples/dotnet/HotUpdateBase/HotUpdateMetadataBase.csproj \
+        samples/dotnet/HotUpdateBase/bin/metadata/$CONFIG/$TFM/HotUpdateBase.dll \
         samples/dotnet/HotUpdatePatch/RenamedSlotPatch.csproj \
         samples/dotnet/HotUpdatePatch/RenamedSlotProbe.cs \
         gates/fixtures/hotupdate-renamed-slot/HotUpdateRenamedSlot.csproj \
@@ -339,6 +342,7 @@ if gate_cache_check "$OUT" "hotupdate-subset|cli:$(_gate_cli_hash)|field-metadat
         samples/dotnet/HotUpdatePatch/noctor-import-refs.txt \
         gates/fixtures/hotupdate-import-identity/mutate-native-rows.py \
         gates/fixtures/hotupdate-import-identity/set-bpi-version.py \
+        gates/fixtures/hotupdate-import-identity/mutate-method-metadata.py \
         gates/fixtures/hotupdate-import-identity/clear-aggregate-ctor-bodies.py; then
     gate_cache_hit_msg
     exit 0
@@ -1744,7 +1748,7 @@ done
 
 echo "-- BPI format rejection at hard-load and directory-header mouths --"
 mkdir -p "$noctor_out/wrong-formats"
-for wrong_format in 1 2 2147483647; do
+for wrong_format in 1 2 3 2147483647; do
     wrong_bpi="$noctor_out/wrong-formats/format-$wrong_format.bpi"
     $hotupdate_python gates/fixtures/hotupdate-import-identity/set-bpi-version.py \
         "$noctor_bpi" "$wrong_bpi" "$wrong_format"
@@ -1755,7 +1759,7 @@ done
 noctor_result=$("./$noctor_out/normal/NoCtorImportBase$EXE_EXT" --load-dir \
     "$noctor_out/wrong-formats" 2> "$noctor_out/wrong-formats.err")
 assert_output "$(strip_cr_win "$noctor_result")" 'noctor directory:0'
-[ "$(grep -c 'unsupported BPI format version' "$noctor_out/wrong-formats.err")" = 3 ] \
+[ "$(grep -c 'unsupported BPI format version' "$noctor_out/wrong-formats.err")" = 4 ] \
     || { echo "FAIL: directory header prevalidation did not reject all wrong formats" >&2; exit 1; }
 echo "OK (ordinary generic import identity, ambiguity and format fences)"
 
@@ -2238,6 +2242,34 @@ for line in "${renamed_slot_lines[@]}"; do
 done
 assert_output "${renamed_slot_oracle%%$'\n== inherited renamed slots on patch receivers =='*}" \
     "$renamed_slot_prefix_oracle"
+assert_output "${renamed_slot_oracle%%$'\n== patch interface method identities =='*}" \
+    "$(printf '%s\n' "${renamed_slot_lines[@]}")"
+patch_method_lines=(
+    '== patch interface method identities =='
+    'replacement identity methods=Measure/Weigh/Measure/Weigh'
+    'replacement rows=True/True/True/True' 'replacement invoke=47/47/True/True'
+    'replacement parameter=HotUpdateBase.IPatchScore.Score/Replaced/amount/Int32/False/0/True'
+    'replacement score=52/52/True' 'replacement wrong receiver refused'
+    'replacement child rows=True/True/True/True' 'replacement child invoke=47/47/True/True'
+    'replacement child score=52/52/True' 'replacement child wrong receiver refused'
+    'explicit replacement rows=True/True/True/True' 'explicit replacement invoke=61/61/True/True'
+    'explicit replacement parameter=Score/ExplicitReplacement/argument/Int32/False/0/True'
+    'explicit replacement score=66/66/True' 'explicit replacement wrong receiver refused'
+    'replacement virtual base=Weigh/RenamedMeasure'
+    'replacement virtual rows=True/True/True/True' 'replacement virtual invoke=73/73'
+    'replacement child virtual base=Weigh/RenamedMeasure'
+    'replacement child virtual rows=True/True/True/True' 'replacement child virtual invoke=79/79'
+    'patch virtual override rows=True/True/VirtualChild' 'patch virtual override invoke=79/79'
+    'split virtual equal=False/False' 'split virtual invoke=83/83/89'
+    'split reflective equal=False/False'
+    'aot cross-route=True/True/True/False'
+    'aot cross-route lists=True/True/2/True/8/8'
+    'patch interface method identities end'
+)
+for line in "${patch_method_lines[@]}"; do
+    [ "$(grep -Fxc -- "$line" <<< "$renamed_slot_oracle")" = 1 ] \
+        || { echo "FAIL: CLR patch method witness must run once: $line" >&2; exit 1; }
+done
 for renamed_slot_base in "$OUT" "$OUT/trigger"; do
     for renamed_slot_codec in register stack; do
         renamed_slot_dir="$renamed_slot_base/renamed-slots/$renamed_slot_codec"
@@ -2254,13 +2286,62 @@ for renamed_slot_base in "$OUT" "$OUT/trigger"; do
         assert_output "$(strip_cr_win "$renamed_slot_before")" "$renamed_slot_prefix_oracle"
         assert_output "${renamed_slot_native%%$'\n== inherited renamed slots on patch receivers =='*}" \
             "$renamed_slot_prefix_oracle"
-        for line in "${renamed_slot_lines[@]}"; do
+        assert_output "${renamed_slot_native%%$'\n== patch interface method identities =='*}" \
+            "$(printf '%s\n' "${renamed_slot_lines[@]}")"
+        for line in "${renamed_slot_lines[@]}" "${patch_method_lines[@]}"; do
             [ "$(grep -Fxc -- "$line" <<< "$renamed_slot_native")" = 1 ] \
                 || { echo "FAIL: renamed-slot witness must run once ($renamed_slot_codec): $line" >&2; exit 1; }
         done
     done
 done
-echo "OK (inherited renamed interface fillers, replacement control, both formats and BCL load sets)"
+echo "OK (inherited and replaced interface identities, Invoke and delegate roundtrips, both formats and BCL load sets)"
+# Attribute reads arm global attribute reachability. Keep their refusal witness in
+# a separate base so the unreached-default-shim ABI comparison stays unchanged.
+metadata_base="$OUT/patch-method-metadata"
+invoke_cli "samples/dotnet/HotUpdateBase/bin/metadata/$CONFIG/$TFM/HotUpdateBase.dll" \
+    --hotupdate-base --hotupdate-refs samples/dotnet/HotUpdatePatch/hotupdate-refs.txt -o "$metadata_base"
+compile_console "$metadata_base" HotUpdateBase
+if grep -q 'RunUnavailablePatchMetadata' "$OUT"/generated*.cpp; then
+    echo "FAIL: patch metadata refusal query leaked into the ordinary base" >&2
+    exit 1
+fi
+for metadata_codec in register stack; do
+    metadata_flags=()
+    [ "$metadata_codec" = stack ] && metadata_flags+=(--patch-stackcode)
+    invoke_cli --emit-patch "$renamed_slot_app" --base-abi "$metadata_base/base-abi.json" \
+        ${metadata_flags[@]+"${metadata_flags[@]}"} -o "$metadata_base/$metadata_codec"
+    metadata_refusals=$(run_bounded "./$metadata_base/HotUpdateBase$EXE_EXT" --run \
+        "$metadata_base/$metadata_codec/RenamedSlotPatch.bpi" patch-metadata-refusals)
+    assert_output "${metadata_refusals%%$'\n== patch interface method identities =='*}" \
+        "$(printf '%s\n' "${renamed_slot_lines[@]}")"
+    for refusal in method-attributes parameter-attributes parameter-modifiers return-modifiers; do
+        [ "$(grep -Fxc -- "patch ${refusal//-/ } refused" <<< "$metadata_refusals")" = 3 ] \
+            || { echo "FAIL: patch metadata did not refuse unknown $refusal ($metadata_codec)" >&2; exit 1; }
+    done
+    [ "$(grep -Fxc -- 'patch unrecorded override refused' <<< "$metadata_refusals")" = 1 ] \
+        || { echo "FAIL: unrecorded patch override metadata did not refuse ($metadata_codec)" >&2; exit 1; }
+    [ "$(grep -Fxc -- 'patch interface method identities end' <<< "$metadata_refusals")" = 1 ] \
+        || { echo "FAIL: patch metadata refusal block did not complete ($metadata_codec)" >&2; exit 1; }
+done
+echo "OK (unrecorded patch method metadata refused in both formats)"
+for mutation in extent parameter-count return-type ownership; do
+    malformed="$OUT/renamed-slots/register/metadata-$mutation.bpi"
+    $hotupdate_python gates/fixtures/hotupdate-import-identity/mutate-method-metadata.py \
+        "$OUT/renamed-slots/register/RenamedSlotPatch.bpi" "$malformed" "$mutation"
+    set +e
+    malformed_output=$(run_bounded "./$OUT/HotUpdateBase$EXE_EXT" --run "$malformed" 2>&1)
+    malformed_rc=$?
+    set -e
+    [ "$malformed_rc" != 0 ] \
+        || { echo "FAIL: malformed patch method metadata was accepted: $mutation" >&2; exit 1; }
+    grep -Eq 'BPI: (method metadata section extent mismatch|invalid method metadata identity or signature|interface implementation metadata signature mismatch|interface implementation method ownership mismatch)' <<< "$malformed_output" \
+        || { echo "FAIL: wrong patch metadata refusal ($mutation): $malformed_output" >&2; exit 1; }
+    if grep -Fq '== patch interface method identities ==' <<< "$malformed_output"; then
+        echo "FAIL: malformed patch metadata ran its entry point: $mutation" >&2
+        exit 1
+    fi
+done
+echo "OK (malformed patch method metadata refused before execution)"
 
 # Rewrite copies only: the ordinary base keeps its same-name Object overrides.
 echo "-- renamed Object declarations refuse without CoreLib and dispatch with it --"

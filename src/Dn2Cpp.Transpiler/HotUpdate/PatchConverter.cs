@@ -164,10 +164,18 @@ internal static class PatchConverter
             // body, so an injected-but-unreached shim emits no type and moves neither the
             // ABI hash nor the BPI. The reverse direction is not, and
             // CheckDefaultRefSymmetry rejects it above against the sidecar's record.
+            var externalGenericDisplays = new Dictionary<string, string>(StringComparer.Ordinal);
             var compilation = Compilation.Create(paths, new TranspileOptions
             {
                 ExternalGenericResolver =
-                    (openDef, args) => ResolveExternalGeneric(baseInstantiations, openDef, args),
+                    (openDef, args) =>
+                    {
+                        var resolved = ResolveExternalGeneric(baseInstantiations, openDef, args);
+                        if (resolved is not null)
+                            externalGenericDisplays[resolved.ExternalName!] = openDef + "["
+                                + string.Join(",", args.Select(a => MethodMetadataTypeDisplay(a, externalGenericDisplays, true))) + "]";
+                        return resolved;
+                    },
                 HotUpdatePosture = true,
                 SharedGenerics = false,
             });
@@ -360,6 +368,9 @@ internal static class PatchConverter
                         vtableSlot: vtableSlot);
                     if (compilation.EntryPoint == m)
                         entryMethodIdx = idx;
+                    if (itfImplsByType.Values.Any(entries => entries.Any(entry => entry.Slots.Any(slot => slot.Impl == m))))
+                        BakeInterfaceMethodMetadata(w, typeImports, typeIndex, externalGenericDisplays, m, idx);
+
                 }
 
                 // ItfDesc run: for each base-image interface this type
@@ -917,6 +928,67 @@ internal static class PatchConverter
             typeImports[typeName] = typeImport;
         }
         return typeImport;
+    }
+
+    private static string MethodMetadataTypeDisplay(TypeDesc type,
+        Dictionary<string, string> externalGenericDisplays, bool qualifyPrimitive = false)
+    {
+        if (type.IsVoid)
+            return "Void";
+        if (type.IsString)
+            return "System.String";
+        if (type.IsObject)
+            return "System.Object";
+        if (type.Kind == TypeKind.SZArray)
+            return MethodMetadataTypeDisplay(type.Element!, externalGenericDisplays, qualifyPrimitive) + "[]";
+        if (type.Kind == TypeKind.Class)
+            return Compilation.ReflectionTypeName(type.Class!);
+        if (type.Kind == TypeKind.ExternalGeneric)
+            return externalGenericDisplays[type.ExternalName!];
+        if (qualifyPrimitive && type.Kind == TypeKind.Primitive)
+            return "System." + type.Primitive;
+        return type.ToString();
+    }
+
+    private static void BakeInterfaceMethodMetadata(BpiWriter writer,
+        Dictionary<string, uint> typeImports, Dictionary<ClassInfo, uint> typeIndex,
+        Dictionary<string, string> externalGenericDisplays, MethodInfo method, uint methodIdx)
+    {
+        var reader = method.Module.Reader;
+        var definition = reader.GetMethodDefinition(method.Handle);
+        var parameters = method.Signature.ParameterTypes;
+        var names = new string?[parameters.Length];
+        var attrs = new uint[parameters.Length];
+        foreach (var handle in definition.GetParameters())
+        {
+            var parameter = reader.GetParameter(handle);
+            int index = parameter.SequenceNumber - 1;
+            if ((uint)index < (uint)parameters.Length)
+            {
+                names[index] = parameter.Name.IsNil ? null : reader.GetString(parameter.Name);
+                attrs[index] = (uint)parameter.Attributes;
+            }
+        }
+        uint parameterStart = 0;
+        for (int i = 0; i < parameters.Length; i++)
+        {
+            uint index = writer.AddParameterMetadata(
+                SlotRefOf(writer, typeImports, typeIndex, parameters[i], method.Name, "parameter"),
+                names[i] is { Length: > 0 } name ? writer.InternName(name) : 0xFFFFFFFFu,
+                attrs[i], writer.InternName(MethodMetadataTypeDisplay(parameters[i], externalGenericDisplays)
+                    + (names[i] is { Length: > 0 } parameterName ? " " + parameterName : "")));
+            if (i == 0)
+                parameterStart = index;
+        }
+        string returnDisplay = MethodMetadataTypeDisplay(method.Signature.ReturnType, externalGenericDisplays);
+        string display = returnDisplay + " " + method.Name + "("
+            + string.Join(", ", parameters.Select(p => MethodMetadataTypeDisplay(p, externalGenericDisplays))) + ")";
+        uint returnRef = method.Signature.ReturnType.IsVoid ? PrimRef(PrimitiveTypeCode.Void)
+            : SlotRefOf(writer, typeImports, typeIndex, method.Signature.ReturnType, method.Name, "return");
+        writer.AddMethodMetadata(methodIdx, (uint)SRME.GetToken(method.Handle),
+            (uint)definition.Attributes, (uint)definition.ImplAttributes, returnRef,
+            writer.InternName(display), writer.InternName(returnDisplay),
+            parameterStart, (uint)parameters.Length);
     }
 
     /// <summary>Fences the local signature and shapes the method frame: arg and

@@ -251,6 +251,170 @@ void check_invocation_rows()
     require(all_described, "every missing-row entry shares a complete platform refusal");
     std::puts("metadata missing invocation diagnostics OK");
 }
+
+Dn2CppString* default_kind(Dn2CppObject*) { return dn2cpp_string_from_utf8("default", 7); }
+Dn2CppString* derived_kind(Dn2CppObject*) { return dn2cpp_string_from_utf8("derived", 7); }
+
+void check_unrecorded_interface_guard()
+{
+    std::puts("metadata unrecorded interface guard begin");
+    static Dn2CppTypeInfo declaration{ "MetadataGuard.IDefaultKind" };
+    static Dn2CppTypeInfo derived{ "MetadataGuard.ISelectedKind" };
+    static const Dn2CppMethodInfo declaration_row = [] {
+        Dn2CppMethodInfo row{};
+        row.name = "Kind";
+        row.declaringType = &declaration;
+        row.returnType = &dn2cpp_string_type;
+        row.attrs = DN2CPP_MTHA_PUBLIC;
+        row.ilAttrs = DN2CPP_MA_VIRTUAL;
+        row.vtableSlot = 0;
+        row.metadataToken = 0x06000001;
+        row.fnPtr = reinterpret_cast<void*>(&default_kind);
+        return row;
+    }();
+    static const Dn2CppMethodInfo derived_row = [] {
+        Dn2CppMethodInfo row = declaration_row;
+        row.name = "MetadataGuard.IDefaultKind.Kind";
+        row.declaringType = &derived;
+        row.metadataToken = 0x06000002;
+        row.fnPtr = reinterpret_cast<void*>(&derived_kind);
+        return row;
+    }();
+    static const Dn2CppTypeReflection declaration_reflection = [] {
+        Dn2CppTypeReflection reflection{};
+        reflection.methods = &declaration_row;
+        reflection.methodCount = 1;
+        return reflection;
+    }();
+    static const Dn2CppTypeReflection derived_reflection = [] {
+        Dn2CppTypeReflection reflection{};
+        reflection.methods = &derived_row;
+        reflection.methodCount = 1;
+        return reflection;
+    }();
+    static const void* default_slots[] = { reinterpret_cast<void*>(&default_kind) };
+    static const void* derived_slots[] = { reinterpret_cast<void*>(&derived_kind) };
+    static const Dn2CppInterfaceEntry derived_interfaces[] = { { &declaration, nullptr } };
+    static const Dn2CppInterfaceEntry default_interfaces[] = { { &declaration, default_slots } };
+    static const Dn2CppInterfaceEntry selected_interfaces[] = {
+        { &declaration, derived_slots }, { &derived, nullptr }
+    };
+    declaration.flags = DN2CPP_TF_INTERFACE;
+    declaration.reflectionData = &declaration_reflection;
+    derived.flags = DN2CPP_TF_INTERFACE;
+    derived.interfaces = derived_interfaces;
+    derived.interfaceCount = 1;
+    derived.reflectionData = &derived_reflection;
+    static Dn2CppTypeInfo receiver{ "MetadataGuard.UnrecordedReceiver" };
+    receiver.base = &dn2cpp_object_type;
+    receiver.interfaces = default_interfaces;
+    receiver.interfaceCount = 1;
+    static Dn2CppObject object{ &receiver };
+    static const Dn2CppDelegateMethodIdentity identity{ &declaration, 0x06000001, 0, nullptr, true };
+    Dn2CppDelegate delegate{};
+    delegate.type = &dn2cpp_object_type;
+    delegate.target = &object;
+    delegate.identity = &identity;
+    delegate.method = reinterpret_cast<void*>(&default_kind);
+    auto* method = reinterpret_cast<Dn2CppMethodRef*>(dn2cpp_delegate_get_method(&delegate));
+    require(method != nullptr && method->method == &declaration_row,
+        "an unrecorded receiver with the declaration default answers its declaration");
+    receiver.interfaces = selected_interfaces;
+    receiver.interfaceCount = 2;
+    delegate.method = reinterpret_cast<void*>(&derived_kind);
+    method = reinterpret_cast<Dn2CppMethodRef*>(dn2cpp_delegate_get_method(&delegate));
+    require(method != nullptr && method->method == &derived_row,
+        "an unrecorded receiver selects a described derived-interface override");
+    derived.flags |= DN2CPP_TF_METADATA_STRIPPED;
+    derived.reflectionData = nullptr;
+    bool rejected = false;
+    try { (void)dn2cpp_delegate_get_method(&delegate); }
+    catch (Dn2CppException& exception)
+    {
+        auto* message = dn2cpp_exception_message(exception.obj);
+        rejected = exception.obj->type == &dn2cpp_platform_not_supported_exception_type
+            && dn2cpp_str_contains_cmp(message, dn2cpp_string_from_utf8(derived.name,
+                static_cast<int32_t>(std::strlen(derived.name))), 4) != 0
+            && dn2cpp_str_contains_cmp(message, dn2cpp_string_from_utf8("--reflection-root", 17), 4) != 0
+            && dn2cpp_str_contains_cmp(message, dn2cpp_string_from_utf8("--trim-reflection", 17), 4) != 0;
+        dn2cpp_exc_inflight_pop(exception.obj);
+    }
+    require(rejected, "an unknown stripped derived-interface selection refuses with its owner and remedies");
+    std::puts("metadata unrecorded interface guard OK");
+}
+
+void check_object_virtual_equality_guard()
+{
+    std::puts("metadata Object virtual equality guard begin");
+    auto* root = dn2cpp_type_get_method(dn2cpp_get_type_from_handle(&dn2cpp_object_type),
+        dn2cpp_string_from_utf8("ToString", 8), 20);
+    require(root != nullptr, "Object virtual equality has its declaration descriptor");
+    static Dn2CppTypeInfo described{ "MetadataEquality.Described" };
+    static const Dn2CppMethodInfo override_row = [] {
+        Dn2CppMethodInfo row{};
+        row.name = "ToString";
+        row.declaringType = &described;
+        row.returnType = &dn2cpp_string_type;
+        row.attrs = DN2CPP_MTHA_PUBLIC;
+        row.ilAttrs = DN2CPP_MA_VIRTUAL;
+        row.metadataToken = 0x06000003;
+        return row;
+    }();
+    static const Dn2CppTypeReflection described_reflection = [] {
+        Dn2CppTypeReflection reflection{};
+        reflection.methods = &override_row;
+        reflection.methodCount = 1;
+        return reflection;
+    }();
+    described.base = &dn2cpp_object_type;
+    described.tostring = dn2cpp_object_type.tostring;
+    described.flags = DN2CPP_TF_OBJECT_MEMBER_ROWS;
+    described.reflectionData = &described_reflection;
+    Dn2CppObject receiver{ &described };
+    Dn2CppReflBind binding{};
+    binding.method = root->method;
+    binding.declaring = &dn2cpp_object_type;
+    binding.target = &receiver;
+    binding.mode = DN2CPP_DGBIND_CLOSED_INSTANCE;
+    binding.virtualRow = 1;
+    binding.slotKind = DN2CPP_DGBIND_SLOT_OBJECT;
+    binding.slot = 0;
+    const Dn2CppTypeInfo* owner;
+    int32_t token, argc;
+    const Dn2CppTypeInfo* const* args;
+    require(dn2cpp_reflbind_selected_key(&binding, owner, token, argc, args)
+        && owner == &described && token == override_row.metadataToken && argc == 0,
+        "Object virtual equality selects an override from rows without a distinct body address");
+    static Dn2CppTypeInfo catalog_base{ "MetadataEquality.CatalogBase" };
+    static const Dn2CppMethodInfo base_row = [] {
+        Dn2CppMethodInfo row = override_row;
+        row.declaringType = &catalog_base;
+        row.metadataToken = 0x06000004;
+        return row;
+    }();
+    static const Dn2CppDelegateMethodCatalog catalog[] = {
+        { &catalog_base, &base_row, 1 }
+    };
+    catalog_base.base = &dn2cpp_object_type;
+    catalog_base.tostring = dn2cpp_object_type.tostring;
+    described.base = &catalog_base;
+    dn2cpp_set_delegate_method_catalog(catalog, 1);
+    require(dn2cpp_reflbind_selected_key(&binding, owner, token, argc, args)
+        && owner == &described && token == override_row.metadataToken,
+        "a private ancestor row preserves the most derived overriding row");
+    dn2cpp_set_delegate_method_catalog(nullptr, 0);
+    static Dn2CppTypeInfo opaque{ "MetadataEquality.Opaque" };
+    opaque.base = &dn2cpp_object_type;
+    opaque.tostring = dn2cpp_object_type.tostring;
+    receiver.type = &opaque;
+    require(!dn2cpp_reflbind_selected_key(&binding, owner, token, argc, args),
+        "Object virtual equality declines an opaque unknown level without throwing");
+    described.flags |= DN2CPP_TF_METADATA_STRIPPED;
+    receiver.type = &described;
+    require(!dn2cpp_reflbind_selected_key(&binding, owner, token, argc, args),
+        "Object virtual equality declines a stripped unknown level without throwing");
+    std::puts("metadata Object virtual equality guard OK");
+}
 }
 
 const Dn2CppMetadataBlock dn2cpp_metadata_blocks[129] = {
@@ -684,6 +848,8 @@ int main()
     require(invoker_rejected, "missing invoker carries the NotSupportedException HResult");
     std::puts("metadata invoker refusal fields OK");
     check_invocation_rows();
+    check_unrecorded_interface_guard();
+    check_object_virtual_equality_guard();
     std::fflush(stdout);
     dn2cpp_main_exit(0);
     return 0;

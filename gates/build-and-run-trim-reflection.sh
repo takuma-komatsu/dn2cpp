@@ -1,83 +1,19 @@
 #!/usr/bin/env bash
-# Property accessor arrays answer for kept owners and refuse stripped member metadata.
-# Consolidated --trim-reflection gate. The flag ships OFF by default and ON only for the
-# Godot Web export, so without this nothing in the suite exercises it — yet it changes both
-# the emitted C++ and the runtime reflection semantics. This gate is the console-side oracle
-# for both (the real-engine oracle is build-and-run-godot-dotnet-trim.sh).
-#
-# ONE program (samples/dotnet/TrimReflect, over the reference library TrimReflectLib),
-# transpiled three ways one flag apart, plus a fourth transpile that must FAIL:
-#
-#   1. no flag  -> diffed LIVE against real .NET (`dotnet TrimReflect.dll`). The control.
-#      Every line is one real .NET and dn2cpp already agree on, so this arm certifies the
-#      program's answers correct — which is what lets the two frozen arms below attribute
-#      their every difference to the FLAG rather than to a transpiler gap or tree-shaking.
-#
-#   2. --trim-reflection -> diffed against a frozen snapshot. Reflecting over the MEMBERS of
-#      a stripped framework type (TrimReflectLib.LibWidget / LibGadget / LibBox, which the
-#      app meets only as `object`) throws the catchable PlatformNotSupportedException naming
-#      the type and both remedies — it never answers an empty member list, which is the
-#      silent wrong answer the flag exists not to ship. The snapshot holds those PNSE lines
-#      verbatim, so a refactor that drops the DN2CPP_TF_METADATA_STRIPPED bit (turning the
-#      throw back into an empty `any=False`) fails the diff. Everything the flag must NOT
-#      touch is in the same snapshot answering unchanged: app-module reflection, the
-#      base-chain / interface closure (an app type's inherited + interface members), the
-#      whole non-reflection surface of a stripped type (Name/FullName/BaseType/cast/`is`/
-#      boxing/enum.ToString), and — deliberately outside the strip — GetConstructor /
-#      GetConstructors / Activator.CreateInstance, which keep answering on a stripped type.
-#      Selecting native metadata for LibWidget does not preserve its stripped members.
-#
-#   3. --trim-reflection --reflection-root TrimReflectLib.LibWidget --reflection-root
-#      TrimReflectLib.LibBox -> a second frozen snapshot in which exactly the rooted types
-#      answer again: LibWidget by its EXACT full name, LibBox by its ARITY-STRIPPED generic
-#      definition name (one root covering LibBox<int>, whose own name is the mangled
-#      LibBox_Int32). LibGadget, rooted by neither, still throws — a root keeps exactly the
-#      type it names and no more.
-#
-#   4. --reflection-root TrimReflectLib.NoSuchType -> the transpile must FAIL (a root
-#      matching no loaded type is a hard error, not a silent no-op: a typo that quietly
-#      became a no-op root would surface as a PlatformNotSupportedException only in the
-#      shipped game, the one place the diagnostic reaches nobody).
-#
-# Why the stripped-type arms can only be FROZEN and not diffed live against real .NET: real
-# .NET does not trim, so it never throws here; and dn2cpp tree-shakes UNREACHED members out
-# of its reflection tables, so a member the app reflects over but never calls reads absent
-# off dn2cpp and present off real .NET regardless of the flag. The program sidesteps that in
-# the control arm by reaching every member it probes by name through a route that does NOT
-# name (and so does not keep) the stripped type — an interface-slot dispatch for LibWidget's
-# Twice/Tag, a field (fields are never tree-shaken) for the rest — so arm 1 matches real
-# .NET exactly while those same types still strip. See samples/dotnet/TrimReflect/Program.cs.
-# Every arm also runs a Delegate.Method section over library receivers met only as
-# their base: the delegate's declaring type is kept for the read, a stripped
-# receiver that inherits the slot answers through its vtable, and a stripped level
-# that overrides it throws the same PNSE naming that level. Generic-virtual
-# bindings use the dispatcher's selected target with the same trim guard. Under
-# the flag, its interface-default probes pin that a receiver bound to the
-# declaration's default answers beside a stripped derived interface that
-# overrides nothing, while a derived interface's selected override throws the
-# PNSE naming that stripped interface. Arm 1 answers as .NET and keeps its
-# pre-section output unchanged when skipped. The Object-virtual section binds Object's
-# ToString and GetHashCode through library receivers met only as `object`: under the
-# flag a stripped level whose override the answer needs throws the PNSE naming it, and
-# a stripped receiver whose dispatch field proves it inherits Object's body answers
-# Object's method. The unrecorded-receiver section binds receivers without a recorded
-# case, whose class levels are walked: a MakeGenericType instantiation under an
-# interface binding keeps its typeof-named definition's members, while a library
-# subclass that inherits a generic virtual body still refuses its stripped level.
-# The reflection-bound section binds that generic virtual through reflection over the same
-# subclass: its dispatcher records no case for it, so it runs the row's own body and
-# every arm names the row.
-# Keep original member metadata while comparing the C++ reflection policies.
+# Delegate.Method retains known selected owners, while unrelated member metadata strips.
+# The full program compares each trim policy with live .NET. Its Object-virtual
+# identities can select each allocated receiver's override, so their owners keep
+# metadata. The isolated driver reads the same library types without those
+# identities and pins the stripped reads and exact/generic-definition roots.
+# Keep original IL metadata while comparing the native reflection policies.
 # ILDiet with --trim-reflection is covered by build-and-run-preserve-control.sh.
 source "$(dirname "$0")/_common.sh"
 # Delegate name lookup refuses stripped receiver metadata even for a soft bind failure.
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} "
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/TrimReflect/StrippedMembersOnly.csproj samples/dotnet/TrimReflect/StrippedMembersOnlyProgram.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|delegate-method-prefix:${DN2CPP_BEFORE_DELEGATE_METHOD:-}|member-enum-prefix:${DN2CPP_BEFORE_MEMBER_ENUM:-}|object-virtual-prefix:${DN2CPP_BEFORE_OBJECT_VIRTUAL:-}|unrecorded-receiver-prefix:${DN2CPP_BEFORE_UNRECORDED_RECEIVER:-}|reflected-unrecorded-receiver-prefix:${DN2CPP_BEFORE_REFLECTED_UNRECORDED_RECEIVER:-}|runtime-template-prefix-argv:before-runtime-template-members|property-accessors-prefix-argv:before-property-accessors"
-DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|delegate-name-bindings-prefix-argv:before-delegate-name-bindings"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|delegate-name-bindings-prefix-argv:before-delegate-name-bindings|isolated-stripped-members:plain,trimmed,rooted"
 
 PROJECT=TrimReflect
 LIBNAME=TrimReflectLib
-EXPDIR="$(dirname "$0")/expected"
 
 echo "== Building the app + reference library assemblies =="
 build_proj "samples/dotnet/$PROJECT/$PROJECT.csproj"
@@ -91,8 +27,7 @@ LIBDLL="samples/dotnet/$PROJECT/bin/$CONFIG/$TFM/$LIBNAME.dll"
 CORELIB=$(locate_corelib)
 echo "corelib: $CORELIB"
 
-# Delegate.Method witnesses (a PNSE line by its prefix), so the section cannot drop
-# out of a frozen snapshot unnoticed.
+# Delegate.Method witnesses keep every selected-owner answer observable.
 assert_delegate_method_lines() {
     local out="$1" line
     shift
@@ -246,81 +181,83 @@ else
     gate_cache_commit
 fi
 
-# ── Arm 2: --trim-reflection — freeze ─────────────────────────────────────────
-echo "== Arm 2/4: --trim-reflection with native metadata, diff vs frozen snapshot =="
+# ── Arm 2: --trim-reflection — live diff ─────────────────────────────────────────
+echo "== Arm 2/4: --trim-reflection with native metadata, live diff vs real .NET =="
 OUT=artifacts/trimreflect-trim
 invoke_cli "$APP" --no-ildiet -r "$CORELIB" -r "$LIBDLL" --trim-reflection \
     --reflection-metadata "$LIBNAME.LibWidget=native" -o "$OUT"
 if gate_cache_check "$OUT" "trim-reflection-trim|no-ildiet|--reflection-metadata=$LIBNAME.LibWidget=native|$CORELIB$(_gate_ctx_extras)" \
-        "$APP" "$LIBDLL" "$EXPDIR/trim-reflection-trimmed.txt"; then
+        "$APP" "$LIBDLL" "${APP%.dll}.runtimeconfig.json" "${APP%.dll}.deps.json"; then
     gate_cache_hit_msg
 else
     grep -qw 'md_native_refl_ti_TrimReflectLib_LibWidget' "$OUT"/generated*.cpp \
-        || { echo "FAIL: the stripped LibWidget type did not retain its selected native metadata layout" >&2; exit 1; }
+        || { echo "FAIL: the selected LibWidget owner did not retain its selected native metadata layout" >&2; exit 1; }
     compile_console "$OUT" "$PROJECT"
     set +e
     native=$("./$OUT/$PROJECT"); native_code=$?
     set -e
-    assert_output "$(strip_cr_win "$native")" "$(cat "$EXPDIR/trim-reflection-trimmed.txt")"
+    expected=$(run_bounded dotnet "$APP")
+    assert_output "$(strip_cr_win "$native")" "$(strip_cr_win "$expected")"
     assert_exit_code "$native_code" 0
     assert_delegate_method_lines "$native" \
         '  inherited slot -> LibShape/shape' \
-        "  overriding level -> PNSE: Reflection over the members of 'TrimReflectLib.LibCircle'" \
-        "  inherited override -> PNSE: Reflection over the members of 'TrimReflectLib.LibCircle'" \
-        "  generic virtual -> PNSE: Reflection over the members of 'TrimReflectLib.LibGvmLeaf'" \
-        "  interface slot -> PNSE: Reflection over the members of 'TrimReflectLib.LibWidget'" \
+        '  overriding level -> LibCircle/circle' \
+        '  inherited override -> LibCircle/circle' \
+        '  generic virtual -> LibGvmLeaf/gvm-leaf' \
+        '  interface slot -> LibWidget/8' \
         '  unrelated stripped interface -> IDefaultKind/base' \
-        "  selected stripped interface -> PNSE: Reflection over the members of 'TrimReflectLib.IChosenDefaultKind'"
+        '  selected stripped interface -> IChosenDefaultKind/chosen'
     assert_object_virtual_lines "$native" \
-        "  object overriding level -> PNSE: Reflection over the members of 'TrimReflectLib.LibLabel'" \
-        "  object inherited override -> PNSE: Reflection over the members of 'TrimReflectLib.LibLabel'" \
+        '  object overriding level -> LibLabel.ToString/label' \
+        '  object inherited override -> LibLabel.ToString/label' \
         '  object inherited body -> Object.ToString/TrimReflectLib.LibBare' \
-        "  object hash override -> PNSE: Reflection over the members of 'TrimReflectLib.LibLabel'" \
-        "  object reflected binding -> PNSE: Reflection over the members of 'TrimReflectLib.LibLabel'"
+        '  object hash override -> LibLabel.GetHashCode/7' \
+        '  object reflected binding -> LibLabel.ToString/label'
     assert_unrecorded_receiver_lines "$native" \
         '  instantiation interface binding -> LibGenericKind`1/generic-kind' \
-        "  unrecorded generic virtual -> PNSE: Reflection over the members of 'TrimReflectLib.LibGvmPlain'"
+        '  unrecorded generic virtual -> LibGvmShape/gvm-base'
     assert_reflected_unrecorded_lines "$native"
     assert_runtime_template_members "$native"
     assert_named_delegate_lines "$native" \
-        "  library name -> PNSE: Reflection over the members of 'TrimReflectLib.LibWidget'" \
-        "  library missing soft name -> PNSE: Reflection over the members of 'TrimReflectLib.LibWidget'" \
-        "  library static soft name -> PNSE: Reflection over the members of 'TrimReflectLib.LibWidget'"
+        '  library name -> 42' \
+        '  library missing soft name -> null' \
+        '  library static soft name -> null'
     gate_cache_commit
 fi
 
-# ── Arm 3: --trim-reflection with two roots — freeze ──────────────────────────
-echo "== Arm 3/4: --reflection-root (exact + arity-stripped def name), diff vs frozen =="
+# ── Arm 3: --trim-reflection with two roots — live diff ──────────────────────────
+echo "== Arm 3/4: --reflection-root (exact + arity-stripped def name), live diff vs real .NET =="
 OUT=artifacts/trimreflect-rooted
 invoke_cli "$APP" --no-ildiet -r "$CORELIB" -r "$LIBDLL" --trim-reflection \
     --reflection-root "$LIBNAME.LibWidget" --reflection-root "$LIBNAME.LibBox" -o "$OUT"
 if gate_cache_check "$OUT" "trim-reflection-rooted|no-ildiet|$CORELIB$(_gate_ctx_extras)" \
-        "$APP" "$LIBDLL" "$EXPDIR/trim-reflection-rooted.txt"; then
+        "$APP" "$LIBDLL" "${APP%.dll}.runtimeconfig.json" "${APP%.dll}.deps.json"; then
     gate_cache_hit_msg
 else
     compile_console "$OUT" "$PROJECT"
     set +e
     native=$("./$OUT/$PROJECT"); native_code=$?
     set -e
-    assert_output "$(strip_cr_win "$native")" "$(cat "$EXPDIR/trim-reflection-rooted.txt")"
+    expected=$(run_bounded dotnet "$APP")
+    assert_output "$(strip_cr_win "$native")" "$(strip_cr_win "$expected")"
     assert_exit_code "$native_code" 0
     assert_delegate_method_lines "$native" \
         '  inherited slot -> LibShape/shape' \
-        "  overriding level -> PNSE: Reflection over the members of 'TrimReflectLib.LibCircle'" \
-        "  inherited override -> PNSE: Reflection over the members of 'TrimReflectLib.LibCircle'" \
-        "  generic virtual -> PNSE: Reflection over the members of 'TrimReflectLib.LibGvmLeaf'" \
+        '  overriding level -> LibCircle/circle' \
+        '  inherited override -> LibCircle/circle' \
+        '  generic virtual -> LibGvmLeaf/gvm-leaf' \
         '  interface slot -> LibWidget/8' \
         '  unrelated stripped interface -> IDefaultKind/base' \
-        "  selected stripped interface -> PNSE: Reflection over the members of 'TrimReflectLib.IChosenDefaultKind'"
+        '  selected stripped interface -> IChosenDefaultKind/chosen'
     assert_object_virtual_lines "$native" \
-        "  object overriding level -> PNSE: Reflection over the members of 'TrimReflectLib.LibLabel'" \
-        "  object inherited override -> PNSE: Reflection over the members of 'TrimReflectLib.LibLabel'" \
+        '  object overriding level -> LibLabel.ToString/label' \
+        '  object inherited override -> LibLabel.ToString/label' \
         '  object inherited body -> Object.ToString/TrimReflectLib.LibBare' \
-        "  object hash override -> PNSE: Reflection over the members of 'TrimReflectLib.LibLabel'" \
-        "  object reflected binding -> PNSE: Reflection over the members of 'TrimReflectLib.LibLabel'"
+        '  object hash override -> LibLabel.GetHashCode/7' \
+        '  object reflected binding -> LibLabel.ToString/label'
     assert_unrecorded_receiver_lines "$native" \
         '  instantiation interface binding -> LibGenericKind`1/generic-kind' \
-        "  unrecorded generic virtual -> PNSE: Reflection over the members of 'TrimReflectLib.LibGvmPlain'"
+        '  unrecorded generic virtual -> LibGvmShape/gvm-base'
     assert_reflected_unrecorded_lines "$native"
     assert_runtime_template_members "$native"
     assert_named_delegate_lines "$native" '  library name -> 42' \
@@ -373,4 +310,49 @@ set -e
     || { echo "FAIL: missing ILDiet root did not fail naming the selector" >&2; exit 1; }
 ! compgen -G "$OUT/generated*" >/dev/null \
     || { echo "FAIL: invalid ILDiet root reached C++ emission" >&2; exit 1; }
+echo "== Isolated member reads without selected delegate identities =="
+dotnet build samples/dotnet/TrimReflect/StrippedMembersOnly.csproj -c "$CONFIG" --nologo -v q -m:1
+strip_app="samples/dotnet/TrimReflect/bin/$CONFIG/$TFM/StrippedMembersOnly.dll"
+strip_clr=$(run_bounded dotnet "$strip_app")
+for mode in plain trimmed rooted; do
+    OUT="artifacts/trimreflect-stripped-members-$mode"
+    strip_flags=()
+    case "$mode" in
+        trimmed) strip_flags=(--trim-reflection --reflection-metadata "$LIBNAME.LibWidget=native") ;;
+        rooted) strip_flags=(--trim-reflection --reflection-root "$LIBNAME.LibWidget" --reflection-root "$LIBNAME.LibBox") ;;
+    esac
+    invoke_cli "$strip_app" --no-ildiet -r "$CORELIB" -r "$LIBDLL" ${strip_flags[@]+"${strip_flags[@]}"} -o "$OUT"
+    compile_console "$OUT" StrippedMembersOnly
+    strip_native=$(strip_cr_win "$(run_bounded "$OUT/StrippedMembersOnly$EXE_EXT")")
+    for line in '== isolated stripped member metadata ==' 'direct interface=42/lib' \
+        'isolated stripped member metadata end'; do
+        test "$(grep -Fxc -- "$line" <<< "$strip_native")" = 1 \
+            || { echo "FAIL: isolated member metadata witness: $mode/$line" >&2; exit 1; }
+    done
+    if [ "$mode" = plain ]; then
+        assert_output "$strip_native" "$(strip_cr_win "$strip_clr")"
+        continue
+    fi
+    for owner in LibWidget LibGadget LibBox_Int32; do
+        if [ "$mode" = rooted ] && [ "$owner" != LibGadget ]; then
+            continue
+        fi
+        grep -Eq "^const Dn2CppTypeInfo ti_TrimReflectLib_$owner = .*DN2CPP_TF_METADATA_STRIPPED" "$OUT"/generated*.cpp \
+            || { echo "FAIL: unrelated member owner was kept: $mode/$owner" >&2; exit 1; }
+        grep -Fq "PNSE: Reflection over the members of 'TrimReflectLib.$owner'" <<< "$strip_native" \
+            || { echo "FAIL: stripped member read did not name its owner: $mode/$owner" >&2; exit 1; }
+    done
+    if [ "$mode" = trimmed ]; then
+        test "$(grep -Fc -- ' -> PNSE:' <<< "$strip_native")" = 8
+        grep -qw 'md_native_refl_ti_TrimReflectLib_LibWidget' "$OUT"/generated*.cpp
+    else
+        test "$(grep -Fc -- ' -> PNSE:' <<< "$strip_native")" = 2
+        for line in 'widget methods -> any=True' 'widget field -> found=True' \
+            'widget property -> found=True' 'widget name bind -> 42' \
+            'box methods -> any=True' 'box field -> found=True'; do
+            grep -Fxq -- "$line" <<< "$strip_native" \
+                || { echo "FAIL: rooted member read missing: $line" >&2; exit 1; }
+        done
+    fi
+done
 echo "OK"

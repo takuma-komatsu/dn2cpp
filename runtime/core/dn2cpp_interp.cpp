@@ -284,6 +284,11 @@ struct Dn2CppInterpImage
     uint32_t fieldCount;
     const Dn2CppBpiMethod* methods;
     uint32_t methodCount;
+    const Dn2CppBpiMethodMetadata* methodMetadata;
+    uint32_t methodMetadataCount;
+    const Dn2CppBpiParameterMetadata* parameterMetadata;
+    uint32_t parameterMetadataCount;
+    Dn2CppMethodInfo* patchMethods;
     const Dn2CppBpiInsn* code;
     uint32_t insnCount;
     const Dn2CppBpiEH* eh;
@@ -1675,6 +1680,20 @@ void build_patch_itf_map(const Dn2CppInterpImage* img, Dn2CppTypeInfo* ti,
 
         auto** slots = static_cast<const void**>(
             dn2cpp_alloc_atomic(fullSlotCount * sizeof(const void*)));
+        auto* targets = static_cast<Dn2CppInterfaceMethodTarget*>(
+            dn2cpp_alloc(fullSlotCount * sizeof(Dn2CppInterfaceMethodTarget)));
+        const Dn2CppInterfaceEntry* inheritedEntry = nullptr;
+        const Dn2CppTypeInfo* dispatchItf = dn2cpp_dispatch_interface_of(base, itfTi);
+        for (const Dn2CppTypeInfo* level = base; level != nullptr && inheritedEntry == nullptr; level = level->base)
+            for (int32_t i = 0; i < level->interfaceCount; i++)
+                if (level->interfaces[i].itf == dispatchItf && level->interfaces[i].slots != nullptr)
+                {
+                    inheritedEntry = &level->interfaces[i];
+                    break;
+                }
+        if (inheritedEntry != nullptr && inheritedEntry->methodTargets != nullptr)
+            std::memcpy(targets, inheritedEntry->methodTargets,
+                fullSlotCount * sizeof(Dn2CppInterfaceMethodTarget));
         const void** baseSlots = dn2cpp_try_resolve_interface(base, itfTi);
         if (baseSlots != nullptr)
             std::memcpy(slots, baseSlots, fullSlotCount * sizeof(const void*));
@@ -1685,9 +1704,31 @@ void build_patch_itf_map(const Dn2CppInterpImage* img, Dn2CppTypeInfo* ti,
             interp_fail("BPI: interface description slots out of bounds");
         for (uint32_t s = 0; s < implCount; s++)
         {
-            uint32_t slot;
+            uint32_t slot, methodIdx;
             std::memcpy(&slot, p, 4);
-            p += 8; // skip the baked patchMethodIdx (resolved at dispatch)
+            std::memcpy(&methodIdx, p + 4, 4);
+            p += 8;
+            const auto* interpreted = reinterpret_cast<const InterpTypeInfo*>(ti);
+            if (methodIdx >= img->methodCount)
+                interp_fail("BPI: interface implementation method index out of bounds");
+            uint32_t declaringIndex = img->methods[methodIdx].declTypeIdx;
+            const Dn2CppTypeInfo* declaring = declaringIndex == interpreted->typeIdx ? ti
+                : declaringIndex < img->typeCount ? img->patchTypes[declaringIndex] : nullptr;
+            bool ownsReceiver = false;
+            for (const Dn2CppTypeInfo* level = ti; level != nullptr; level = level->base)
+                if (level == declaring)
+                    ownsReceiver = true;
+            if (!ownsReceiver)
+                interp_fail("BPI: interface implementation method ownership mismatch");
+            const Dn2CppBpiMethodMetadata* metadata = nullptr;
+            for (uint32_t i = 0; i < img->methodMetadataCount; i++)
+                if (img->methodMetadata[i].methodIdx == methodIdx)
+                {
+                    metadata = &img->methodMetadata[i];
+                    break;
+                }
+            if (metadata == nullptr)
+                interp_fail("BPI: interface implementation method metadata missing");
             if (slot >= fullSlotCount)
                 interp_fail("BPI: interface override slot out of bounds");
             const void* fn = find_itf_trampoline(itfTi, slot);
@@ -1695,9 +1736,12 @@ void build_patch_itf_map(const Dn2CppInterpImage* img, Dn2CppTypeInfo* ti,
                 interp_fail("BPI bind: no N2M interface trampoline for the implemented slot "
                             "(signature shape outside the bridged surface)");
             slots[slot] = fn;
+            targets[slot] = { declaring, static_cast<int32_t>(metadata->token), &img->patchMethods[methodIdx] };
         }
+        dn2cpp_gc_write_barrier(targets);
         entries[n].itf = itfTi;
         entries[n].slots = slots;
+        entries[n].methodTargets = targets;
         if (rebuilt != nullptr)
             rebuilt[e] = itfTi;
         n++;
@@ -1719,6 +1763,9 @@ void build_patch_itf_map(const Dn2CppInterpImage* img, Dn2CppTypeInfo* ti,
     dn2cpp_gc_store_ref(&ti->interfaces, static_cast<const Dn2CppInterfaceEntry*>(entries));
     ti->interfaceCount = static_cast<int32_t>(n);
 }
+
+void materialize_patch_methods(Dn2CppInterpImage* img);
+Dn2CppMetadataHandle<Dn2CppMethodInfo> patch_virtual_method(const Dn2CppTypeInfo* receiver, int32_t slot, bool requireMetadata);
 
 // ---- register code format: load-time verification ----
 
@@ -1908,6 +1955,18 @@ Dn2CppInterpImage* dn2cpp_patch_load(const void* blobPtr, size_t len)
                 img->methods = reinterpret_cast<const Dn2CppBpiMethod*>(data);
                 img->methodCount = s.count;
                 break;
+            case DN2CPP_BPI_SEC_METHODMETADATA:
+                if (static_cast<uint64_t>(s.count) * sizeof(Dn2CppBpiMethodMetadata) != s.length)
+                    interp_fail("BPI: method metadata section extent mismatch");
+                img->methodMetadata = reinterpret_cast<const Dn2CppBpiMethodMetadata*>(data);
+                img->methodMetadataCount = s.count;
+                break;
+            case DN2CPP_BPI_SEC_PARAMETERMETADATA:
+                if (static_cast<uint64_t>(s.count) * sizeof(Dn2CppBpiParameterMetadata) != s.length)
+                    interp_fail("BPI: parameter metadata section extent mismatch");
+                img->parameterMetadata = reinterpret_cast<const Dn2CppBpiParameterMetadata*>(data);
+                img->parameterMetadataCount = s.count;
+                break;
             case DN2CPP_BPI_SEC_CODE:
                 img->code = reinterpret_cast<const Dn2CppBpiInsn*>(data);
                 img->insnCount = s.count;
@@ -1940,6 +1999,24 @@ Dn2CppInterpImage* dn2cpp_patch_load(const void* blobPtr, size_t len)
     }
     if (img->importCount != h->importCount || img->typeCount != h->patchTypeCount)
         interp_fail("BPI: header counts disagree with the section table");
+
+    if (img->methodCount > 0)
+        dn2cpp_gc_store_ref(&img->patchMethods, static_cast<Dn2CppMethodInfo*>(
+            dn2cpp_alloc(img->methodCount * sizeof(Dn2CppMethodInfo))));
+    for (uint32_t i = 0; i < img->methodMetadataCount; i++)
+    {
+        const auto& metadata = img->methodMetadata[i];
+        if (metadata.methodIdx >= img->methodCount
+            || (metadata.token & 0xFF000000u) != 0x06000000u || (metadata.token & 0xFFFFFFu) == 0
+            || static_cast<uint64_t>(metadata.parameterStart) + metadata.parameterCount > img->parameterMetadataCount
+            || metadata.parameterCount + ((metadata.attrs & 0x10u) == 0 ? 1u : 0u)
+                != img->methods[metadata.methodIdx].argCount)
+            interp_fail("BPI: invalid method metadata identity or signature");
+        for (uint32_t j = 0; j < i; j++)
+            if (img->methodMetadata[j].methodIdx == metadata.methodIdx
+                || img->methodMetadata[j].token == metadata.token)
+                interp_fail("BPI: duplicate method metadata identity");
+    }
 
     // One-shot bind pass — the only load-time allocation besides the image
     // itself, proportional to the import count. Types first (methods anchor to
@@ -2276,6 +2353,8 @@ Dn2CppInterpImage* dn2cpp_patch_load(const void* blobPtr, size_t len)
         dn2cpp_gc_store_ref(&img->bindings[i].type, static_cast<const Dn2CppTypeInfo*>(ti));
     }
 
+    materialize_patch_methods(img);
+
     // A register-format image gets one linear verification scan per method
     // before anything publishes: import binding and patch-type construction
     // are done, so call windows can read callee argCounts, and a failing
@@ -2315,6 +2394,7 @@ Dn2CppInterpImage* dn2cpp_patch_load(const void* blobPtr, size_t len)
         dn2cpp_gc_store_ref(&img->frameNames, static_cast<const char* const*>(names));
     }
 
+    dn2cpp_set_patch_virtual_method_resolver(&patch_virtual_method);
     if (img->typeCount > 0)
     {
         // Registry visibility: every constructed patch type-info becomes
@@ -5603,6 +5683,192 @@ Slot interp_call(const Dn2CppInterpImage* img, uint32_t methodIdx, const Slot* a
     if (r.kind != ExecKind::Return)
         interp_fail("BPI: endfinally outside a running finally handler");
     return r.value;
+}
+
+const Dn2CppTypeInfo* patch_metadata_type(const Dn2CppInterpImage* img, uint32_t reference)
+{
+    if (DN2CPP_BPI_REF_TAG(reference) == DN2CPP_BPI_TAG_PRIM)
+    {
+        switch (DN2CPP_BPI_REF_INDEX(reference))
+        {
+            case kPrimVoid: return &dn2cpp_void_type;
+            case kPrimBoolean: return &dn2cpp_bool_type;
+            case kPrimChar: return &dn2cpp_char_type;
+            case kPrimInt32: return &dn2cpp_int32_type;
+            case kPrimInt64: return &dn2cpp_int64_type;
+            case kPrimSingle: return &dn2cpp_single_type;
+            case kPrimDouble: return &dn2cpp_double_type;
+            case kPrimString: return &dn2cpp_string_type;
+            default: break;
+        }
+    }
+    else if (DN2CPP_BPI_REF_TAG(reference) == DN2CPP_BPI_TAG_IMPORT)
+    {
+        uint32_t index = DN2CPP_BPI_REF_INDEX(reference);
+        if (index < img->importCount && img->imports[index].kind == DN2CPP_BPI_IMPORT_TYPE
+            && img->bindings[index].type != nullptr)
+            return img->bindings[index].type;
+    }
+    else if (DN2CPP_BPI_REF_TAG(reference) == DN2CPP_BPI_TAG_PATCH)
+    {
+        uint32_t index = DN2CPP_BPI_REF_INDEX(reference);
+        if (index < img->typeCount && img->patchTypes[index] != nullptr)
+            return img->patchTypes[index];
+    }
+    interp_fail("BPI: unresolved method metadata signature type");
+}
+
+const char* patch_metadata_name(const Dn2CppInterpImage* img, uint32_t offset)
+{
+    if (offset == DN2CPP_BPI_REF_NONE)
+        return nullptr;
+    uint32_t length;
+    const char* value = pool_name(img, offset, &length);
+    char* copy = static_cast<char*>(dn2cpp_alloc_atomic(length + 1));
+    std::memcpy(copy, value, length);
+    copy[length] = '\0';
+    return copy;
+}
+
+struct PatchMethodContext
+{
+    const Dn2CppInterpImage* image;
+    uint32_t methodIdx;
+    const Dn2CppBpiMethodMetadata* metadata;
+};
+
+Dn2CppObject* invoke_patch_method(void* function, Dn2CppObject* receiver,
+    Dn2CppObject** arguments, const Dn2CppTypeInfo*)
+{
+    const auto* context = static_cast<const PatchMethodContext*>(function);
+    const auto* img = context->image;
+    const auto& metadata = *context->metadata;
+    const uint32_t self = (metadata.attrs & 0x10u) == 0 ? 1u : 0u;
+    if (self != 0 && receiver != nullptr && !patch_receiver_ok(img, context->methodIdx, receiver))
+        interp_fail(kPatchRecvFail);
+    uint32_t selected = context->methodIdx;
+    if (receiver != nullptr && img->methods[selected].vtableSlot != 0xFFFFu)
+    {
+        const auto* type = reinterpret_cast<const InterpTypeInfo*>(receiver->type);
+        if ((receiver->type->flags & DN2CPP_TF_PATCH) != 0 && type->img == img)
+        {
+            uint32_t replacement = resolve_override_method(img, type->typeIdx, img->methods[selected].vtableSlot);
+            if (replacement != DN2CPP_BPI_REF_NONE)
+                selected = replacement;
+        }
+    }
+    Slot frame[kMaxFrame];
+    if (self != 0)
+        frame[0].ref = receiver;
+    for (uint32_t i = 0; i < metadata.parameterCount; i++)
+        frame[self + i] = marshal_object_to_slot(
+            marshal_from_ref(img, img->parameterMetadata[metadata.parameterStart + i].typeRef), arguments[i]);
+    interp_ensure_cctor(img, img->methods[selected].declTypeIdx, 0);
+    Slot result = interp_call(img, selected, frame, 0);
+    return marshal_slot_to_object(marshal_from_ref(img, metadata.returnRef), result);
+}
+
+Dn2CppMetadataHandle<Dn2CppMethodInfo> patch_virtual_method(const Dn2CppTypeInfo* receiver, int32_t slot, bool requireMetadata)
+{
+    if (receiver == nullptr || (receiver->flags & DN2CPP_TF_PATCH) == 0 || slot < 0)
+        return {};
+    const auto* type = reinterpret_cast<const InterpTypeInfo*>(receiver);
+    if (type->magic != kInterpTypeInfoMagic || type->img == nullptr)
+        interp_fail("BPI: invalid patch virtual metadata receiver");
+    const auto* image = type->img;
+    uint32_t selected = resolve_override_method(image, type->typeIdx, static_cast<uint32_t>(slot));
+    if (selected == DN2CPP_BPI_REF_NONE)
+        return {};
+    if (selected >= image->methodCount)
+        interp_fail("BPI: patch virtual metadata method index out of bounds");
+    if (image->patchMethods[selected].declaringType == nullptr)
+    {
+        if (requireMetadata)
+            dn2cpp_throw_platform_not_supported("Delegate.Method: selected patch method metadata is not recorded in the image");
+        return {};
+    }
+    return &image->patchMethods[selected];
+}
+
+void materialize_patch_methods(Dn2CppInterpImage* img)
+{
+    for (uint32_t i = 0; i < img->methodMetadataCount; i++)
+    {
+        const auto& metadata = img->methodMetadata[i];
+        const auto& method = img->methods[metadata.methodIdx];
+        if (method.declTypeIdx >= img->typeCount || metadata.parameterCount >= kMaxFrame)
+            interp_fail("BPI: method metadata declaring type or frame out of bounds");
+        auto* context = static_cast<PatchMethodContext*>(dn2cpp_alloc(sizeof(PatchMethodContext)));
+        *context = { img, metadata.methodIdx, &metadata };
+        auto* parameters = static_cast<Dn2CppParamInfo*>(
+            dn2cpp_alloc(metadata.parameterCount * sizeof(Dn2CppParamInfo)));
+        for (uint32_t j = 0; j < metadata.parameterCount; j++)
+        {
+            const auto& baked = img->parameterMetadata[metadata.parameterStart + j];
+            parameters[j].paramType = patch_metadata_type(img, baked.typeRef);
+            parameters[j].name = patch_metadata_name(img, baked.nameOff);
+            parameters[j].ilAttrs = static_cast<int32_t>(baked.attrs);
+            parameters[j].display = patch_metadata_name(img, baked.displayOff);
+        }
+        auto& row = img->patchMethods[metadata.methodIdx];
+        row.name = patch_metadata_name(img, method.nameOff);
+        row.declaringType = img->patchTypes[method.declTypeIdx];
+        row.returnType = patch_metadata_type(img, metadata.returnRef);
+        row.parameters = parameters;
+        row.paramCount = static_cast<int32_t>(metadata.parameterCount);
+        row.attrs = ((metadata.attrs & 0x10u) != 0 ? DN2CPP_MTHA_STATIC : 0)
+            | ((metadata.attrs & 7u) == 6u ? DN2CPP_MTHA_PUBLIC : 0)
+            | ((metadata.attrs & 7u) == 1u ? DN2CPP_MTHA_PRIVATE : 0)
+            | ((metadata.attrs & 0x800u) != 0 ? DN2CPP_MTHA_SPECIALNAME : 0)
+            | DN2CPP_MTHA_NULLSAFE;
+        row.vtableSlot = method.vtableSlot == 0xFFFFu ? -1 : static_cast<int32_t>(method.vtableSlot);
+        row.fnPtr = context;
+        row.invoker = reinterpret_cast<void*>(&invoke_patch_method);
+        row.sigShape = patch_metadata_name(img, method.sigShapeOff);
+        row.ilAttrs = static_cast<int32_t>(metadata.attrs);
+        row.ilImplAttrs = static_cast<int32_t>(metadata.implAttrs);
+        row.metadataToken = static_cast<int32_t>(metadata.token);
+        row.display = patch_metadata_name(img, metadata.displayOff);
+        row.returnDisplay = patch_metadata_name(img, metadata.returnDisplayOff);
+        uint32_t self = (metadata.attrs & 0x10u) == 0 ? 1u : 0u;
+        if (static_cast<uint64_t>(method.localSigOff) + method.argCount > img->localSigCount)
+            interp_fail("BPI: method metadata frame signature out of bounds");
+        for (uint32_t j = 0; j < metadata.parameterCount; j++)
+            if (img->localSigs[method.localSigOff + self + j]
+                != img->parameterMetadata[metadata.parameterStart + j].typeRef)
+                interp_fail("BPI: method metadata does not match its frame signature");
+        dn2cpp_gc_write_barrier(context);
+        dn2cpp_gc_write_barrier(parameters);
+    }
+    for (uint32_t i = 0; i < img->typeCount; i++)
+    {
+        const auto* type = img->patchTypes[i];
+        for (int32_t j = 0; j < type->interfaceCount; j++)
+        {
+            const auto& entry = type->interfaces[j];
+            if (entry.methodTargets == nullptr)
+                continue;
+            const auto reflection = entry.itf->reflection();
+            for (int32_t k = 0; k < reflection.methodCount; k++)
+            {
+                const auto declaration = reflection.methods[k];
+                if (declaration->vtableSlot < 0)
+                    continue;
+                const auto& target = entry.methodTargets[declaration->vtableSlot];
+                if (!target.method)
+                    continue;
+                const auto selected = target.method.operator->();
+                if ((selected->attrs & DN2CPP_MTHA_STATIC) != 0
+                    || selected->returnType != declaration->returnType
+                    || selected->paramCount != declaration->paramCount)
+                    interp_fail("BPI: interface implementation metadata signature mismatch");
+                for (int32_t p = 0; p < selected->paramCount; p++)
+                    if (selected->parameters[p]->paramType != declaration->parameters[p]->paramType)
+                        interp_fail("BPI: interface implementation metadata signature mismatch");
+            }
+        }
+    }
+    dn2cpp_gc_write_barrier(img->patchMethods);
 }
 
 } // namespace

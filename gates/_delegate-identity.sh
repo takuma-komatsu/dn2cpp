@@ -64,29 +64,102 @@ runtime_owned_delegate_asserts() {
     done
 }
 
+delegate_object_equality_only() {
+    local axis out catalog
+    for axis in default trimmed; do
+        out="artifacts/reflect-invoke-object-equality-only-$axis"
+        local emit_flags=()
+        [ "$axis" != trimmed ] || emit_flags=(--trim-reflection)
+        dotnet build samples/dotnet/ReflectInvoke/DelegateObjectEqualityOnly.csproj \
+            -c "$CONFIG" --nologo -v q -m:1 -o "$out/app"
+        run_bounded dotnet "$out/app/DelegateObjectEqualityOnly.dll" > "$out/clr.raw.stdout"
+        strip_cr_win_file "$out/clr.raw.stdout" > "$out/clr.stdout"
+        invoke_cli "$out/app/DelegateObjectEqualityOnly.dll" -r "$(locate_corelib)" \
+            --no-ildiet ${emit_flags[@]+"${emit_flags[@]}"} -o "$out"
+        if grep -Eq 'dn2cpp_delegate_get_method\(' "$out"/generated*.cpp; then
+            echo 'FAIL: equality-only delegate driver reads Delegate.Method' >&2
+            return 1
+        fi
+        catalog=$(awk '/^static const Dn2CppDelegateMethodCatalog delegate_method_catalog\[\] = / { print }' "$out"/generated*.cpp)
+        grep -Fq '{ &dn2cpp_object_type,' <<< "$catalog" \
+            || { echo 'FAIL: equality-only Object binding has no declaration tokens' >&2; return 1; }
+        test "$(grep -oF '{ &' <<< "$catalog" | wc -l | tr -d ' ')" = 1 \
+            || { echo 'FAIL: equality-only binding retained unrelated private catalogs' >&2; return 1; }
+        compile_console "$out" DelegateObjectEqualityOnly
+        run_bounded "$out/DelegateObjectEqualityOnly$EXE_EXT" > "$out/native.raw.stdout"
+        strip_cr_win_file "$out/native.raw.stdout" > "$out/native.stdout"
+        diff -u "$out/clr.stdout" "$out/native.stdout"
+        assert_output "$(cat "$out/native.stdout")" "$(printf '%s\n' \
+            '== equality without Method ==' 'Object-values=True' \
+            'Object-equality=True/True/True' 'Object-remove=True/System.Object' \
+            'Override-values=True' 'Override-equality=True/True/True' 'Override-remove=True/override' \
+            'base-equality=False/False' 'base-remove=True/override' \
+            'Object-Equals=True/True/True/True/True' 'Object-GetHashCode=True/True/True/True' \
+            'equality without Method end')"
+    done
+}
+
 delegate_identity_diff_axes() {
     local axis out native line
-    for axis in default trimmed unshared; do
+    for axis in default opaque trimmed unshared; do
         out="artifacts/reflect-invoke-delegate-identity-$axis"
         local build_flags=() emit_flags=()
         case "$axis" in
+            opaque) build_flags=(-p:DelegateIdentityIlOnly=true); emit_flags=(-r "$out/app/DelegateVirtualIdentityLibrary.dll") ;;
             trimmed) build_flags=(-p:DelegateIdentityIlOnly=true); emit_flags=(--trim-reflection -r "$out/app/DelegateVirtualIdentityLibrary.dll") ;;
             unshared) build_flags=(-p:DelegateIdentityIlOnly=true); emit_flags=(--no-shared-generics -r "$out/app/DelegateVirtualIdentityLibrary.dll") ;;
         esac
         dotnet build samples/dotnet/ReflectInvoke/DelegateVirtualIdentityOnly.csproj \
-            -c "$CONFIG" --nologo -v q ${build_flags[@]+"${build_flags[@]}"} -o "$out/app"
+            -c "$CONFIG" --nologo -v q -m:1 ${build_flags[@]+"${build_flags[@]}"} -o "$out/app"
         run_bounded dotnet "$out/app/DelegateVirtualIdentityOnly.dll" > "$out/clr.raw.stdout"
         strip_cr_win_file "$out/clr.raw.stdout" > "$out/clr.stdout"
         invoke_cli "$out/app/DelegateVirtualIdentityOnly.dll" -r "$(locate_corelib)" \
+            -r "$out/app/ReflectReturnLib.dll" \
             --no-ildiet ${emit_flags[@]+"${emit_flags[@]}"} -o "$out"
         if [ "$axis" = trimmed ]; then
-            grep -Eq '^const Dn2CppTypeInfo ti_DelegateVirtualIdentitySubset_Child = .*DN2CPP_TF_METADATA_STRIPPED' "$out"/generated*.cpp \
+            # Selected declaring owners survive Method reads; inheriting receivers do not.
+            grep -Eq '^const Dn2CppTypeInfo ti_DelegateVirtualIdentitySubset_InheritedChild = .*DN2CPP_TF_METADATA_STRIPPED' "$out"/generated*.cpp \
                 || { echo 'FAIL: delegate receiver metadata was not stripped' >&2; return 1; }
+            grep -Eq '^const Dn2CppTypeInfo ti_DelegateVirtualIdentitySubset_Child = ' "$out"/generated*.cpp \
+                || { echo 'FAIL: selected delegate owner metadata was not emitted' >&2; return 1; }
+            if grep -Eq '^const Dn2CppTypeInfo ti_DelegateVirtualIdentitySubset_Child = .*DN2CPP_TF_METADATA_STRIPPED' "$out"/generated*.cpp; then
+                echo 'FAIL: selected delegate owner metadata was stripped' >&2
+                return 1
+            fi
+            grep -Eq '^const Dn2CppTypeInfo ti_DelegateVirtualIdentitySubset_Program = .*DN2CPP_TF_METADATA_STRIPPED' "$out"/generated*.cpp \
+                || { echo 'FAIL: unrelated delegate library owner metadata was not stripped' >&2; return 1; }
+        fi
+        if [ "$axis" = opaque ]; then
+            grep -qw 'ti_ReflectReturnLib_TypeOnlyException_String' "$out"/generated*.cpp \
+                || { echo 'FAIL: referenced-only exception type was not emitted' >&2; return 1; }
+            if grep -qw 'ti_ReflectReturnLib_TypeOnlyException__CnRef' "$out"/generated*.cpp "$out/generated.h" \
+                || grep -Eq 'TypeOnlyException_1_ToString_m[0-9]+\(' "$out"/generated*.cpp "$out/generated.h"; then
+                echo 'FAIL: a type-only exception acquired canonical metadata or a reached override' >&2
+                return 1
+            fi
         fi
         compile_console "$out" DelegateVirtualIdentityOnly
         run_bounded "$out/DelegateVirtualIdentityOnly$EXE_EXT" > "$out/native.raw.stdout"
         strip_cr_win_file "$out/native.raw.stdout" > "$out/native.stdout"
         diff -u "$out/clr.stdout" "$out/native.stdout"
+        for native in clr native; do
+            if [ "$native" = clr ]; then
+                run_bounded dotnet "$out/app/DelegateVirtualIdentityOnly.dll" before-type-only-exception > "$out/type-only-prefix.$native.raw.stdout"
+            else
+                run_bounded "$out/DelegateVirtualIdentityOnly$EXE_EXT" before-type-only-exception > "$out/type-only-prefix.$native.raw.stdout"
+            fi
+            strip_cr_win_file "$out/type-only-prefix.$native.raw.stdout" > "$out/type-only-prefix.$native.stdout"
+            awk '/^== type-only generic exception identity ==$/ { exit } { print }' "$out/$native.stdout" > "$out/type-only-old.$native.stdout"
+            diff -u "$out/type-only-prefix.$native.stdout" "$out/type-only-old.$native.stdout"
+            for line in '== type-only generic exception identity ==' \
+                'exception type=TypeOnlyException`1' \
+                'type-only generic exception identity end'; do
+                test "$(grep -Fxc -- "$line" "$out/$native.stdout")" = 1 \
+                    || { echo "FAIL: type-only generic exception witness: $axis/$native/$line" >&2; return 1; }
+            done
+            grep -Eq '^separate delegate method=.+/7$' "$out/$native.stdout" \
+                || { echo "FAIL: separate delegate Method read missing: $axis/$native" >&2; return 1; }
+        done
         "$(resolve_python)" gates/fold-delegate-fixture.py "$out" > "$out/folding.log"
         grep -Eq '^folded delegate methods: [1-9][0-9]*; address references: [1-9][0-9]*$' "$out/folding.log"
         compile_console "$out" DelegateVirtualIdentityOnly

@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup>
+    <DefineConstants>$(DefineConstants);PATCH_METADATA_REFUSALS</DefineConstants>
+    <AssemblyName>HotUpdateBase</AssemblyName>
+    <BaseOutputPath>bin/metadata/</BaseOutputPath>
+  </PropertyGroup>
+  <Import Project="HotUpdateBase.csproj" />
+</Project>

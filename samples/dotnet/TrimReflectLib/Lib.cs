@@ -92,9 +92,8 @@ namespace TrimReflectLib
         public int Echo(int x) => x;
     }
 
-    // Delegate.Method over receivers met only through library bases. LibSquare
-    // inherits a slot; LibCircle overrides it; LibDisc inherits that override;
-    // LibGvmLeaf overrides a generic virtual slot. The receivers can all strip.
+    // Delegate.Method keeps selected declarations on library receivers met only
+    // through their bases. Inheriting a declaration does not keep a receiver.
     public class LibShape
     {
         public virtual string Kind() => "shape";
@@ -135,9 +134,8 @@ namespace TrimReflectLib
 
     public class LibChosenDefault : IChosenDefaultKind { }
 
-    // Object virtuals bound through receivers met only as `object`. LibLabel overrides
-    // ToString and GetHashCode, LibPlainLabel inherits both, and LibBare overrides
-    // neither. All three can strip.
+    // Object bindings keep LibLabel's overrides; inheriting them does not keep
+    // LibPlainLabel, and inheriting Object's body does not keep LibBare.
     public class LibLabel
     {
         public override string ToString() => "label";

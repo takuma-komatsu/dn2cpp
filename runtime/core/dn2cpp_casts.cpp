@@ -758,10 +758,10 @@ const Dn2CppTypeInfo* dn2cpp_dispatch_interface_of(const Dn2CppTypeInfo* t, cons
 
 // The uncached walk behind dn2cpp_try_resolve_interface (which fronts it with
 // g_itf_slots_cache): the dispatching row, then the fallback tables.
-static const void** dn2cpp_resolve_interface_walk(const Dn2CppTypeInfo* t, const Dn2CppTypeInfo* itf)
+const Dn2CppInterfaceEntry* dn2cpp_dispatch_interface_row_of(const Dn2CppTypeInfo* t, const Dn2CppTypeInfo* itf)
 {
     if (const Dn2CppInterfaceEntry* row = dn2cpp_interface_row_walk(t, itf))
-        return row->slots;
+        return row;
     // Reference-element SZArray fallback: a rank-1 array of reference elements
     // services the SZArray collection interfaces through the shared object-element
     // table even when its own per-element map was never wired. Sound because every
@@ -786,14 +786,14 @@ static const void** dn2cpp_resolve_interface_walk(const Dn2CppTypeInfo* t, const
         {
             for (int32_t i = 0; i < g_array_ref_fallback_itf_count; i++)
                 if (g_array_ref_fallback_itfs[i].itf == itf)
-                    return g_array_ref_fallback_itfs[i].slots;
+                    return &g_array_ref_fallback_itfs[i];
             if (itf->genericDef != nullptr
                 && (itf->genericDef->flags & DN2CPP_TF_ARRAY_GEN_ITF) != 0
                 && itf->genericArgCount == 1
                 && dn2cpp_array_elem_covariant(e, itf->genericArgs[0]))
                 for (int32_t i = 0; i < g_array_ref_fallback_itf_count; i++)
                     if (g_array_ref_fallback_itfs[i].itf->genericDef == itf->genericDef)
-                        return g_array_ref_fallback_itfs[i].slots;
+                        return &g_array_ref_fallback_itfs[i];
         }
     }
     // Multi-dimensional (rank >= 2) array dispatch: an MD array's runtime-interned
@@ -813,7 +813,7 @@ static const void** dn2cpp_resolve_interface_walk(const Dn2CppTypeInfo* t, const
     {
         for (int32_t i = 0; i < g_array_md_fallback_itf_count; i++)
             if (g_array_md_fallback_itfs[i].itf == itf)
-                return g_array_md_fallback_itfs[i].slots;
+                return &g_array_md_fallback_itfs[i];
     }
     // Ref-erased wrapper rows: the SZArrayEnumerable<object> wrapper the fallback
     // table hands back is dispatched at the CALLER's element typing, which variance
@@ -841,8 +841,15 @@ static const void** dn2cpp_resolve_interface_walk(const Dn2CppTypeInfo* t, const
                         break;
                     }
                 if (allRef)
-                    return c->interfaces[i].slots;
+                    return &c->interfaces[i];
             }
+    return nullptr;
+}
+
+static const void** dn2cpp_resolve_interface_walk(const Dn2CppTypeInfo* t, const Dn2CppTypeInfo* itf)
+{
+    if (const auto* row = dn2cpp_dispatch_interface_row_of(t, itf))
+        return row->slots;
     // Boxed built-in dispatch: the hand-written primitive and formatspec-slotted
     // type-infos take no map. The gate is the type TEST's own predicate pair, so the
     // set that answers `is IConvertible` and the set that can dispatch one are the
@@ -1623,17 +1630,20 @@ static bool dn2cpp_delegate_identity_equal(const Dn2CppDelegate* a, const Dn2Cpp
     const auto* y = b->identity;
     if (x == y || x == nullptr || y == nullptr)
         return true;
-    if (x->genericArgCount != y->genericArgCount)
-        return false;
-    for (int32_t i = 0; i < x->genericArgCount; ++i)
-        if (x->genericArgs[i] != y->genericArgs[i])
-            return false;
     const Dn2CppTypeInfo* xo;
     const Dn2CppTypeInfo* yo;
-    int32_t xt;
-    int32_t yt;
-    const bool xKnown = dn2cpp_delegate_selected_key(x, a->target != nullptr ? a->target->type : nullptr, xo, xt);
-    const bool yKnown = dn2cpp_delegate_selected_key(y, b->target != nullptr ? b->target->type : nullptr, yo, yt);
+    int32_t xt, yt, xargc, yargc;
+    const Dn2CppTypeInfo* const* xargs;
+    const Dn2CppTypeInfo* const* yargs;
+    const bool xKnown = dn2cpp_delegate_selected_key(x, a->target != nullptr ? a->target->type : nullptr,
+        xo, xt, &xargc, &xargs);
+    const bool yKnown = dn2cpp_delegate_selected_key(y, b->target != nullptr ? b->target->type : nullptr,
+        yo, yt, &yargc, &yargs);
+    if (xargc != yargc)
+        return false;
+    for (int32_t i = 0; i < xargc; ++i)
+        if (xargs[i] != yargs[i])
+            return false;
     if (xKnown && yKnown)
         return xo == yo && xt == yt;
     // Runtime-created and opaque bindings retain their prior address/declaration
@@ -1791,14 +1801,52 @@ DN2CPP_NOINLINE static bool dn2cpp_delegate_binds_equal(const Dn2CppObject* a, c
         || dn2cpp_reflbind_same_method(ra, rb);
 }
 
+// A reflection closure and a compiled binding can name one logical method even
+// though their callable adapters and stored targets differ.
+DN2CPP_NOINLINE static bool dn2cpp_delegate_plain_bind_equal(
+    const Dn2CppDelegate* plain, const Dn2CppDelegate* reflected)
+{
+    if (plain->identity == nullptr || reflected->target == nullptr
+        || reflected->target->type != &dn2cpp_reflbind_type)
+        return false;
+    const auto* bind = reinterpret_cast<const Dn2CppReflBind*>(reflected->target);
+    if ((bind->mode == DN2CPP_DGBIND_CLOSED_INSTANCE && plain->target != bind->target)
+        || (bind->mode == DN2CPP_DGBIND_OPEN_STATIC && plain->target != nullptr))
+        return false;
+    const Dn2CppTypeInfo* reflectedOwner;
+    int32_t reflectedToken, genericArgCount;
+    const Dn2CppTypeInfo* const* genericArgs;
+    if (!dn2cpp_reflbind_selected_key(bind, reflectedOwner, reflectedToken, genericArgCount, genericArgs))
+        return false;
+    const Dn2CppTypeInfo* plainOwner;
+    int32_t plainToken, plainArgCount;
+    const Dn2CppTypeInfo* const* plainArgs;
+    if (!dn2cpp_delegate_selected_key(plain->identity,
+            plain->target != nullptr ? plain->target->type : nullptr,
+            plainOwner, plainToken, &plainArgCount, &plainArgs)
+        || plainOwner != reflectedOwner || plainToken != reflectedToken || plainArgCount != genericArgCount)
+        return false;
+    for (int32_t i = 0; i < genericArgCount; i++)
+        if (plainArgs[i] != genericArgs[i])
+            return false;
+    return true;
+}
+
 // One invocation-list entry against another, as Delegate.Equals compares them.
 // Inline, so Delegate.Remove compares a plain entry without a call.
 static inline bool dn2cpp_delegate_entry_equal(const Dn2CppDelegate* a, const Dn2CppDelegate* b)
 {
-    return (a->target == b->target
-               || (dn2cpp_delegate_targets_bind(a->target, b->target)
-                   && dn2cpp_delegate_binds_equal(a->target, b->target)))
-        && a->method == b->method && dn2cpp_delegate_identity_equal(a, b);
+    if (a->target != b->target)
+    {
+        const bool aBound = a->target != nullptr && a->target->type == &dn2cpp_reflbind_type;
+        const bool bBound = b->target != nullptr && b->target->type == &dn2cpp_reflbind_type;
+        if (aBound != bBound)
+            return aBound ? dn2cpp_delegate_plain_bind_equal(b, a) : dn2cpp_delegate_plain_bind_equal(a, b);
+        if (!dn2cpp_delegate_targets_bind(a->target, b->target)
+            || !dn2cpp_delegate_binds_equal(a->target, b->target))
+            return false;
+    }
+    return a->method == b->method && dn2cpp_delegate_identity_equal(a, b);
 }
 
 // Pairwise chain comparison (MulticastDelegate compares invocation lists
@@ -1874,8 +1922,7 @@ int32_t dn2cpp_delegate_equal(Dn2CppObject* a, Dn2CppObject* b)
     {
         if (dn2cpp_delegate_targets_bind(da->target, db->target))
             return dn2cpp_delegate_lists_equal(da, db);
-        if (da->target != db->target || da->method != db->method
-            || !dn2cpp_delegate_identity_equal(da, db))
+        if (!dn2cpp_delegate_entry_equal(da, db))
             return 0;
         da = reinterpret_cast<Dn2CppDelegate*>(da->prev);
         db = reinterpret_cast<Dn2CppDelegate*>(db->prev);
@@ -1887,32 +1934,16 @@ int32_t dn2cpp_delegate_hash(Dn2CppObject* d)
 {
     if (d == nullptr)
         return 0;
-    // FNV-1a fold over the chain's (target, method) pairs: equal delegates
-    // (same type, matching chains) always agree, and distinct instances over
-    // the same method/target agree too (the property engine-side Callable
-    // dedup relies on). Stable per process; the exact .NET number (which is
-    // type-identity based) is not modeled.
-    uint64_t h = 1469598103934665603ull;
+    // Callable adapters do not identify a method. Hash logical targets and list
+    // shape so compiled and reflective bindings which compare equal agree.
+    uint64_t h = (1469598103934665603ull ^ reinterpret_cast<uintptr_t>(d->type)) * 1099511628211ull;
     for (auto* n = reinterpret_cast<Dn2CppDelegate*>(d); n != nullptr;
          n = reinterpret_cast<Dn2CppDelegate*>(n->prev))
     {
-        // A reflection-bind node hashes by content, so the separately created equal
-        // bindings agree with the equality above. A closed binding of a virtual row
-        // over a receiver equals one through any row binding the same method on it,
-        // whatever its name (a MethodImpl may rename the body), so the receiver alone
-        // keys it, as it keys every closed delegate in .NET.
-        Dn2CppObject* t = n->target;
-        if (t != nullptr && t->type == &dn2cpp_reflbind_type)
-        {
-            auto* rb = reinterpret_cast<Dn2CppReflBind*>(t);
-            if (rb->mode != DN2CPP_DGBIND_CLOSED_INSTANCE || rb->target == nullptr || rb->virtualRow == 0)
-                h = (h ^ static_cast<uint64_t>(reinterpret_cast<uintptr_t>(rb->method.identity())))
-                    * 1099511628211ull;
-            h = (h ^ static_cast<uint64_t>(reinterpret_cast<uintptr_t>(rb->target))) * 1099511628211ull;
-        }
-        else
-            h = (h ^ static_cast<uint64_t>(reinterpret_cast<uintptr_t>(t))) * 1099511628211ull;
-        h = (h ^ static_cast<uint64_t>(reinterpret_cast<uintptr_t>(n->method))) * 1099511628211ull;
+        Dn2CppObject* target = n->target;
+        if (target != nullptr && target->type == &dn2cpp_reflbind_type)
+            target = reinterpret_cast<Dn2CppReflBind*>(target)->target;
+        h = (h ^ reinterpret_cast<uintptr_t>(target)) * 1099511628211ull;
     }
     return static_cast<int32_t>((h ^ (h >> 32)) & 0x7fffffff);
 }

@@ -21,7 +21,7 @@
 #define DN2CPP_BPI_MAGIC "DN2BPI\0"
 // The only format version the loader accepts: +1 on any change a BPI of another
 // version would misread, a record layout or an import identity (sigShape).
-#define DN2CPP_BPI_VERSION 3u
+#define DN2CPP_BPI_VERSION 4u
 
 // Header.flags bits (offset 12). bit0 = register-based bytecode.
 #define DN2CPP_BPI_FLAG_REGCODE 0x1u
@@ -54,6 +54,8 @@ enum Dn2CppBpiSectionKind : uint32_t
     DN2CPP_BPI_SEC_LOCALSIG = 9,       // flat u32 EntityRef[] (arg+local type refs)
     DN2CPP_BPI_SEC_USERSTRINGS = 10,   // UTF-16 ldstr arena: { u32 charLen; u16 utf16[charLen] }
     DN2CPP_BPI_SEC_SWITCHTABLE = 11,   // flat u32[] (instruction indices)
+    DN2CPP_BPI_SEC_METHODMETADATA = 13, // Dn2CppBpiMethodMetadata[]
+    DN2CPP_BPI_SEC_PARAMETERMETADATA = 14, // Dn2CppBpiParameterMetadata[]
     DN2CPP_BPI_SEC_ITFDESC = 12,       // interface-implementation descriptions for patch types:
                                        //   { u32 itfCount;
                                        //     { u32 itfImport; u32 fullSlotCount; u32 implCount;
@@ -169,6 +171,31 @@ struct Dn2CppBpiMethod
     uint16_t vtableSlot;   // occupied slot; 0xFFFF if non-virtual
 };
 static_assert(sizeof(Dn2CppBpiMethod) == 40, "BPI method record is 40 bytes");
+
+// Private rows for interpreted interface implementations; ordinary type member
+// enumeration remains separate from dispatch identity.
+struct Dn2CppBpiMethodMetadata
+{
+    uint32_t methodIdx;
+    uint32_t token;
+    uint32_t attrs;
+    uint32_t implAttrs;
+    uint32_t returnRef;
+    uint32_t displayOff;
+    uint32_t returnDisplayOff;
+    uint32_t parameterStart;
+    uint32_t parameterCount;
+};
+static_assert(sizeof(Dn2CppBpiMethodMetadata) == 36, "BPI method metadata is 36 bytes");
+
+struct Dn2CppBpiParameterMetadata
+{
+    uint32_t typeRef;
+    uint32_t nameOff;
+    uint32_t attrs;
+    uint32_t displayOff;
+};
+static_assert(sizeof(Dn2CppBpiParameterMetadata) == 16, "BPI parameter metadata is 16 bytes");
 
 // One pre-resolved instruction (12 bytes, fixed). `op` is the raw ECMA-335
 // opcode value (u16; two-byte opcodes encode as 0xFExx), with short forms

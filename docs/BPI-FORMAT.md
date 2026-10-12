@@ -83,6 +83,8 @@ region) stay readable without a `formatVersion` bump.
 | 10 | UserStringPool | UTF-16 arena for `ldstr` |
 | 11 | SwitchTable | target-index sequences for `switch` |
 | 12 | ItfDescTable | interface-implementation descriptions for patch types |
+| 13 | MethodMetadata | private reflection identities of interpreted interface implementations |
+| 14 | ParameterMetadata | parameters of those method identities |
 
 ## Section details
 
@@ -198,6 +200,28 @@ Int64/Double/references) and rounds the final size up to 8.
 | 32 | 4 | `ehStart` (EHTable index) |
 | 36 | 2 | `ehCount` |
 | 38 | 2 | `vtableSlot` (occupied slot; `0xFFFF` if non-virtual) |
+
+### MethodMetadata (13) and ParameterMetadata (14)
+
+MethodMetadata contains sparse records for the patch methods selected by interface
+dispatch. Each record contains `methodIdx`, the original MethodDef `token`, raw
+MethodAttributes and MethodImplAttributes, the return EntityRef, method and return
+display StringPool offsets, and a ParameterMetadata start/count. ParameterMetadata
+records contain the parameter EntityRef, name StringPool offset (`0xFFFFFFFF` for
+no name), raw ParameterAttributes, and display StringPool offset. The native
+record declarations in `dn2cpp_interp.h` define the fixed layout.
+
+The loader validates identities, descriptor extents, declaring-type ownership,
+frame signatures and implemented interface signatures before publication. Each
+replaced interface slot retains its selected method row, including the true
+patch declaring type. `Delegate.Method` and a reflective interface binding use
+that identity; their returned MethodInfo invokes the interpreted body and can
+roundtrip through `CreateDelegate`. These rows are private dispatch metadata and
+do not add patch members to type member enumeration. Rebinding a virtual row to
+an override without private MethodMetadata refuses `Delegate.Method`; equality
+can return a conservative false without requesting missing metadata. Method and parameter custom
+attributes, parameter default values and signature custom modifiers are not
+recorded; queries needing those values refuse explicitly.
 
 ### CodeSection (6) — `Insn` (12 bytes, fixed)
 | off | size | field |
@@ -1503,14 +1527,15 @@ surface — see also the carve-out list below.
   on the patch surface); generic **methods** on generic types, generic patch
   types, and nested/value-type generic arguments are not.
   Patch types are also not enumerated by `Assembly.GetTypes` (registration is
-  name-lookup-only). A patch type carries no member rows of its own, so member
+  name-lookup-only). A patch type carries no enumerable member rows of its own, so member
   reflection answers as if it declared no members: `GetMethods`, `GetFields`,
   `GetProperties` and the by-name lookups see only what its AOT ancestors
   declare (nothing under `DeclaredOnly`), `GetMethod` of a method the patch
   overrides returns the AOT row, and a delegate over a patch receiver bound to
   a plain virtual method, an Object virtual included, reports as
   `Delegate.Method` the nearest AOT ancestor's override, or the bound method
-  itself, never the patch override.
+  itself, never the patch override. Interface bindings instead retain their selected
+  interpreted implementation's private MethodMetadata row.
 - **Bad-IL timing**: .NET raises `BadImageFormatException` for a `call` of an
   abstract method when the JIT compiles the calling method, before that method
   runs. The interpreter raises it when the call executes, so the calling
