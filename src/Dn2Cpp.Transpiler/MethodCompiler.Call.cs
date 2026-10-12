@@ -4629,7 +4629,7 @@ internal sealed partial class MethodCompiler
     /// <see cref="IsToStringablePrimitive"/> already vetted the code.</summary>
     private static string PrimitiveToStringExpr(TypeDesc c, string v) => c.Primitive switch
     {
-        PrimitiveTypeCode.Int64 => $"dn2cpp_long_to_string((int64_t)({v}))",
+        PrimitiveTypeCode.Int64 => $"dn2cpp_format_int((int64_t)({v}), 8, nullptr)",
         // UInt64/UInt32 must format unsigned — the signed formatters would print
         // values above the signed max as negative (e.g. uint.MaxValue as -1).
         PrimitiveTypeCode.UInt64 => $"dn2cpp_format_uint((uint64_t)({v}), 8, nullptr)",
@@ -4638,7 +4638,7 @@ internal sealed partial class MethodCompiler
         PrimitiveTypeCode.Single => $"dn2cpp_float_to_string((float)({v}))",
         PrimitiveTypeCode.Boolean => $"dn2cpp_bool_to_string((int32_t)({v}))",
         PrimitiveTypeCode.Char => $"dn2cpp_char_to_string((char16_t)({v}))",
-        _ => $"dn2cpp_int_to_string((int32_t)({v}))",
+        _ => $"dn2cpp_format_int((int32_t)({v}), 4, nullptr)",
     };
 
     private TypeDesc? TypedItfConstrainedArg(EntityHandle handle, string itfName)

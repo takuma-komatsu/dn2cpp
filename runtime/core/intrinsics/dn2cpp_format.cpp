@@ -424,7 +424,8 @@ static Dn2CppString* dn2cpp_format_custom_c(double v, Dn2CppString* fmt, const D
 // declared type width, used by hex to size the two's-complement pattern.
 Dn2CppString* dn2cpp_format_int_c(int64_t v, int32_t byteWidth, Dn2CppString* fmt, const Dn2CppNumberFormatInfo* nfi)
 {
-    nfi = dn2cpp_nfi_or_current(nfi);
+    nfi = dn2cpp_integral_format_uses_provider(fmt, v < 0)
+        ? dn2cpp_nfi_or_current(nfi) : dn2cpp_nfi_invariant();
     if (!dn2cpp_is_standard_fmt(fmt))
         return dn2cpp_format_custom_c(static_cast<double>(v), fmt, nfi);
     char letter;
@@ -479,7 +480,8 @@ Dn2CppString* dn2cpp_format_int(int64_t v, int32_t byteWidth, Dn2CppString* fmt)
 // Unsigned integral hole (byte/ushort/uint/ulong/nuint).
 Dn2CppString* dn2cpp_format_uint_c(uint64_t v, int32_t byteWidth, Dn2CppString* fmt, const Dn2CppNumberFormatInfo* nfi)
 {
-    nfi = dn2cpp_nfi_or_current(nfi);
+    nfi = dn2cpp_integral_format_uses_provider(fmt, false)
+        ? dn2cpp_nfi_or_current(nfi) : dn2cpp_nfi_invariant();
     if (!dn2cpp_is_standard_fmt(fmt))
         return dn2cpp_format_custom_c(static_cast<double>(v), fmt, nfi);
     char letter;
