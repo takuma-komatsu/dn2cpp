@@ -117,6 +117,18 @@ LOCALE_CASES=(
     culture-missing-upper-cached-first
 )
 MISSING_NUMBER_CASES=(bare nul upper lower invariant und)
+INVARIANT_CACHE_ORDERS=(
+    lcid-empty-missing lcid-missing-empty
+    empty-lcid-missing empty-missing-lcid
+    missing-lcid-empty missing-empty-lcid
+)
+INSTANCE_CULTURES=(i-enochian en-US en "")
+EQUALITY_PAIRS=(
+    'en-US|en-US' 'en-US|EN-us' 'de-DE|de-DE_phoneb' 'de-DE_phoneb|DE-de_PHONEB'
+    'i-enochian|' 'i-enochian|i-enochian' 'i-klingon|tlh'
+    'en-US-u-nu-latn|en-US-u-nu-LATN' 'en-US-u-nu-latn|en-US-u-nu-arab'
+    'en-US-POSIX-abcde-u-nu-latn|en-US-abcde-POSIX-u-nu-latn'
+)
 VARIANT_CASES=(
     en-US-POSIX-abcde-abcde-u-nu-arab en-US-abcde-POSIX-abcde-u-nu-arab
     en-US-POSIX-abcde-u-nu-arab en-US-abcde-POSIX-u-nu-arab
@@ -190,6 +202,16 @@ gate_extra_asserts() {
         || { echo "FAIL: culture missing number format section did not finish" >&2; return 1; }
     grep -Fxq 'culture variant order end' <<< "$(strip_cr_win "$native")" \
         || { echo "FAIL: culture variant order section did not finish" >&2; return 1; }
+    grep -Fxq 'culture invariant lcid cache end' <<< "$(strip_cr_win "$native")" \
+        || { echo "FAIL: culture invariant LCID cache section did not finish" >&2; return 1; }
+    grep -Fxq 'culture instance number format end' <<< "$(strip_cr_win "$native")" \
+        || { echo "FAIL: culture instance number format section did not finish" >&2; return 1; }
+    grep -Fxq 'culture integer constructors end' <<< "$(strip_cr_win "$native")" \
+        || { echo "FAIL: culture integer constructor section did not finish" >&2; return 1; }
+    grep -Fxq 'culture instance equality end' <<< "$(strip_cr_win "$native")" \
+        || { echo "FAIL: culture instance equality section did not finish" >&2; return 1; }
+    grep -Fxq 'culture specific instances end' <<< "$(strip_cr_win "$native")" \
+        || { echo "FAIL: culture specific instances section did not finish" >&2; return 1; }
     for mode in "${LOCALE_CASES[@]}"; do
         native=$(run_bounded "./$out/CultureInfoApi" "$mode")
         expected=$(run_bounded dotnet "$_CG_APP" "$mode")
@@ -235,8 +257,36 @@ gate_extra_asserts() {
         grep -Fxq 'culture variant order end' <<< "$(strip_cr_win "$native")" \
             || { echo "FAIL: variant order for $mode did not finish" >&2; return 1; }
     done
+    for mode in "${INVARIANT_CACHE_ORDERS[@]}"; do
+        native=$(run_bounded "./$out/CultureInfoApi" culture-invariant-lcid-cache "$mode")
+        expected=$(run_bounded dotnet "$_CG_APP" culture-invariant-lcid-cache "$mode")
+        assert_output "$native" "$expected"
+        grep -Fxq 'culture invariant lcid cache end' <<< "$(strip_cr_win "$native")" \
+            || { echo "FAIL: invariant LCID cache order $mode did not finish" >&2; return 1; }
+    done
+    for mode in "${INSTANCE_CULTURES[@]}"; do
+        native=$(run_bounded "./$out/CultureInfoApi" culture-instance-number-format "$mode")
+        expected=$(run_bounded dotnet "$_CG_APP" culture-instance-number-format "$mode")
+        assert_output "$native" "$expected"
+        grep -Fxq 'culture instance number format end' <<< "$(strip_cr_win "$native")" \
+            || { echo "FAIL: culture instance number format for '$mode' did not finish" >&2; return 1; }
+    done
+    native=$(run_bounded "./$out/CultureInfoApi" culture-integer-constructors)
+    expected=$(run_bounded dotnet "$_CG_APP" culture-integer-constructors)
+    assert_output "$native" "$expected"
+    grep -Fxq 'culture integer constructors end' <<< "$(strip_cr_win "$native")" \
+        || { echo "FAIL: culture integer constructor mode did not finish" >&2; return 1; }
+    for mode in "${EQUALITY_PAIRS[@]}"; do
+        native=$(run_bounded "./$out/CultureInfoApi" culture-instance-equality "${mode%%|*}" "${mode#*|}")
+        expected=$(run_bounded dotnet "$_CG_APP" culture-instance-equality "${mode%%|*}" "${mode#*|}")
+        assert_output "$native" "$expected"
+        grep -Fxq 'culture instance equality end' <<< "$(strip_cr_win "$native")" \
+            || { echo "FAIL: culture equality pair '$mode' did not finish" >&2; return 1; }
+        grep -Fxq 'culture specific instances end' <<< "$(strip_cr_win "$native")" \
+            || { echo "FAIL: culture specific instances for '$mode' did not finish" >&2; return 1; }
+    done
 }
 DN2CPP_GATE_RUN_ARGS=culture-names
-DN2CPP_GATE_EXTRA_CONTEXT="${LOCALE_CASES[*]} ${NUMBERING_CASES[*]} ${FALLBACK_CASES[*]} culture-missing-number-format ${MISSING_NUMBER_CASES[*]} culture-variant-order ${VARIANT_CASES[*]}"
+DN2CPP_GATE_EXTRA_CONTEXT="${LOCALE_CASES[*]} ${NUMBERING_CASES[*]} ${FALLBACK_CASES[*]} culture-missing-number-format ${MISSING_NUMBER_CASES[*]} culture-variant-order ${VARIANT_CASES[*]} culture-invariant-lcid-cache ${INVARIANT_CACHE_ORDERS[*]} culture-instance-number-format [${INSTANCE_CULTURES[*]}] culture-integer-constructors culture-instance-equality ${EQUALITY_PAIRS[*]}"
 DN2CPP_OUT_SUFFIX=-names
 corelib_diff_gate CultureInfoApi --link-xml samples/dotnet/CultureInfoApi/link.xml

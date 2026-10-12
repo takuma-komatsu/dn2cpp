@@ -852,6 +852,29 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.Ref, "const Dn2CppNumberFormatInfo*", r);
                 return true;
             }
+            case ("System.Globalization.CultureInfo", "get_IsReadOnly")
+                or ("System.Globalization.NumberFormatInfo", "get_IsReadOnly"):
+                Push(StackKind.I4, "int32_t",
+                    $"dn2cpp_nfi_is_read_only({Cast(Pop(), "const Dn2CppNumberFormatInfo*")})");
+                return true;
+            case ("System.Globalization.CultureInfo", "ReadOnly")
+                or ("System.Globalization.NumberFormatInfo", "ReadOnly")
+                when sig.ParameterTypes.Length == 1:
+            {
+                string source = Cast(Pop(), "const Dn2CppNumberFormatInfo*");
+                string helper = declType == "System.Globalization.CultureInfo"
+                    ? "dn2cpp_culture_read_only" : "dn2cpp_nfi_read_only";
+                Push(StackKind.Ref, "const Dn2CppNumberFormatInfo*", $"{helper}({source})");
+                Top = Top with { StaticType = sig.ReturnType };
+                return true;
+            }
+            case ("System.Globalization.CultureInfo", "set_NumberFormat"):
+            {
+                string value = Cast(Pop(), "const Dn2CppNumberFormatInfo*");
+                string culture = Cast(Pop(), "Dn2CppNumberFormatInfo*");
+                Emit($"dn2cpp_culture_set_number_format({culture}, {value});");
+                return true;
+            }
             case ("System.Globalization.CultureInfo", "get_NumberFormat"):
             {
                 var recv = Pop();
@@ -1448,38 +1471,15 @@ internal sealed partial class MethodCompiler
                 EmitNfiSet("dn2cpp_nfi_set_percent_symbol"); return true;
             case ("System.Globalization.NumberFormatInfo", "set_CurrencySymbol"):
                 EmitNfiSet("dn2cpp_nfi_set_currency_symbol"); return true;
-            // set_CurrencyDecimalSeparator / set_CurrencyGroupSeparator — PLAIN FIELD
-            // WRITES into the per-instance mutable copy, exactly like the number-separator
-            // and CurrencySymbol siblings above. `new NumberFormatInfo()` is a fresh
-            // GC-heap copy of the invariant (dn2cpp_nfi_new), so honoring the write is both
-            // safe and correct: library code does set a non-invariant currency separator,
-            // and a validate-and-trap would turn that live write into a runtime
-            // PlatformNotSupportedException. Writing a shared culture singleton is outside
-            // the modeled surface, the same caveat the other plain-write setters carry.
             case ("System.Globalization.NumberFormatInfo", "set_CurrencyDecimalSeparator"):
-            {
-                string val = Cast(Pop(), "Dn2CppString*");
-                string recv = Cast(Pop(), "Dn2CppNumberFormatInfo*");
-                Emit($"{recv}->currencyDecimal = {val};");
-                Emit($"dn2cpp_gc_write_barrier((void*)({recv}));");
-                return true;
-            }
+                EmitNfiSet("dn2cpp_nfi_set_currency_decimal"); return true;
             case ("System.Globalization.NumberFormatInfo", "set_CurrencyGroupSeparator"):
-            {
-                string val = Cast(Pop(), "Dn2CppString*");
-                string recv = Cast(Pop(), "Dn2CppNumberFormatInfo*");
-                Emit($"{recv}->currencyGroup = {val};");
-                Emit($"dn2cpp_gc_write_barrier((void*)({recv}));");
-                return true;
-            }
-            // set_CurrencyDecimalDigits(int) — PLAIN FIELD WRITE (the currencyDigits slot
-            // exists and get_CurrencyDecimalDigits already reads it, so this round-trips).
-            // Only "C"-format output consults it.
+                EmitNfiSet("dn2cpp_nfi_set_currency_group"); return true;
             case ("System.Globalization.NumberFormatInfo", "set_CurrencyDecimalDigits"):
             {
                 var val = Pop();
                 string recv = Cast(Pop(), "Dn2CppNumberFormatInfo*");
-                Emit($"{recv}->currencyDigits = (int32_t)({val.Expr});");
+                Emit($"dn2cpp_nfi_set_digits({recv}, (int32_t)({val.Expr}), true);");
                 return true;
             }
             // Group-size setters retain the validate-and-trap contract for
@@ -1513,8 +1513,9 @@ internal sealed partial class MethodCompiler
             // setters do not replace the culture's stored numeric defaults.
             case ("System.Globalization.NumberFormatInfo", "set_NumberDecimalDigits"):
             {
-                Pop();  // accepted precision sentinel
-                Pop();  // the receiver
+                var val = Pop();
+                string recv = Cast(Pop(), "Dn2CppNumberFormatInfo*");
+                Emit($"dn2cpp_nfi_set_digits({recv}, (int32_t)({val.Expr}), false);");
                 return true;
             }
             // Deref the receiver at the real 1-byte width (SubWordCppType): a bool* into

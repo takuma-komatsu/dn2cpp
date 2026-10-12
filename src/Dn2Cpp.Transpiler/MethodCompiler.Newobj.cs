@@ -1517,8 +1517,12 @@ internal sealed partial class MethodCompiler
                     && ciParams[i].Primitive == PrimitiveTypeCode.Boolean)
                     useUserOverride = Cast(argument, "int32_t");
             }
-            string nm = Cast(Pop(), "Dn2CppString*");
-            Push(StackKind.Ref, "const Dn2CppNumberFormatInfo*", $"dn2cpp_culture_by_name({nm}, false, {useUserOverride})");
+            var culture = Pop();
+            bool integerCulture = ciParams[0].Kind == TypeKind.Primitive
+                && ciParams[0].Primitive == PrimitiveTypeCode.Int32;
+            string value = Cast(culture, integerCulture ? "int32_t" : "Dn2CppString*");
+            string helper = integerCulture ? "dn2cpp_culture_new_lcid" : "dn2cpp_culture_new_name";
+            Push(StackKind.Ref, "const Dn2CppNumberFormatInfo*", $"{helper}({value}, {useUserOverride})");
             return;
         }
         if (NewobjTypeName(handle) == "System.Globalization.NumberFormatInfo")

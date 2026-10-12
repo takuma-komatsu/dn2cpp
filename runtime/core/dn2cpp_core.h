@@ -766,6 +766,10 @@ struct Dn2CppNumberFormatInfo
     // A custom CultureInfo can have valid identity without numeric data.
     // Identity operations and cloning do not force its NumberFormat getter.
     int32_t missingNumberFormat;
+    // Culture instances own their lazy or assigned NFI; immutable culture-data
+    // cache entries never share this slot with writable constructor results.
+    const Dn2CppNumberFormatInfo* numberFormat;
+    int32_t isReadOnly;
 };
 
 // A CultureInfo / NumberFormatInfo / TextInfo escaped into an `object` context.
@@ -1972,7 +1976,7 @@ bool dn2cpp_argument_exception_store(Dn2CppObject* e, Dn2CppString* paramName,
 bool dn2cpp_object_disposed_exception_store(Dn2CppObject* e, Dn2CppString* objectName);
 // CultureNotFoundException's extra fields also depend on the emitted layout.
 // The image installs its writer at startup; without one the store returns false.
-// A zero invalidCultureId denotes a named rejection, rather than a rejected LCID.
+// A null invalidCultureName denotes a rejected LCID, including zero.
 bool dn2cpp_culture_exception_store(Dn2CppObject* e, Dn2CppString* invalidCultureName,
     int32_t invalidCultureId);
 // Init-only registration, before managed code or host callbacks can run.
@@ -7944,6 +7948,16 @@ Dn2CppString* dn2cpp_format_r4(float v, Dn2CppString* fmt);
 // instance (copy of invariant) for `new NumberFormatInfo()` + setters.
 const Dn2CppNumberFormatInfo* dn2cpp_nfi_invariant();
 const Dn2CppNumberFormatInfo* dn2cpp_culture_number_format(const Dn2CppNumberFormatInfo* culture);
+void dn2cpp_culture_set_number_format(Dn2CppNumberFormatInfo* culture, const Dn2CppNumberFormatInfo* value);
+const Dn2CppNumberFormatInfo* dn2cpp_culture_new_name(Dn2CppString* name, bool useUserOverride);
+const Dn2CppNumberFormatInfo* dn2cpp_culture_new_lcid(int32_t lcid, bool useUserOverride);
+const Dn2CppNumberFormatInfo* dn2cpp_culture_read_only(const Dn2CppNumberFormatInfo* culture);
+const Dn2CppNumberFormatInfo* dn2cpp_nfi_read_only(const Dn2CppNumberFormatInfo* n);
+int32_t dn2cpp_nfi_is_read_only(const Dn2CppNumberFormatInfo* n);
+void dn2cpp_nfi_verify_writable(const Dn2CppNumberFormatInfo* n);
+void dn2cpp_nfi_set_digits(Dn2CppNumberFormatInfo* n, int32_t value, bool currency);
+void dn2cpp_nfi_set_currency_decimal(Dn2CppNumberFormatInfo* n, Dn2CppString* value);
+void dn2cpp_nfi_set_currency_group(Dn2CppNumberFormatInfo* n, Dn2CppString* value);
 // NumberFormatInfo.InvariantInfo: a DISTINCT singleton with the invariant
 // field values but isNfi=1, so an InvariantInfo that escapes to `object`
 // through an IFormatProvider-typed slot reports the NumberFormatInfo identity

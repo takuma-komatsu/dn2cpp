@@ -32,6 +32,8 @@ static void dn2cpp_nfi_init_invariant(Dn2CppNumberFormatInfo* n)
     n->cultureName = n->cultureRealName = dn2cpp_lit16(u"");
     n->lcid = 127; // the invariant culture's LCID (0x7F)
     n->missingNumberFormat = 0;
+    n->numberFormat = nullptr;
+    n->isReadOnly = 1;
     n->numberDecimal = dn2cpp_lit16(u".");
     n->numberGroup = dn2cpp_lit16(u",");
     n->groupSizes[0] = 3;            // the invariant culture's NumberGroupSizes == [3]
@@ -69,11 +71,80 @@ const Dn2CppNumberFormatInfo* dn2cpp_nfi_invariant()
     return &inv;
 }
 
+static Dn2CppNumberFormatInfo* dn2cpp_nfi_copy(const Dn2CppNumberFormatInfo* source,
+    int32_t isNfi, int32_t isReadOnly)
+{
+    auto* result = static_cast<Dn2CppNumberFormatInfo*>(dn2cpp_alloc(sizeof(Dn2CppNumberFormatInfo)));
+    *result = *source;
+    result->numberFormat = nullptr;
+    result->isNfi = isNfi;
+    result->isReadOnly = isReadOnly;
+    return result;
+}
+
 const Dn2CppNumberFormatInfo* dn2cpp_culture_number_format(const Dn2CppNumberFormatInfo* culture)
 {
-    if (culture == nullptr || culture->missingNumberFormat != 0)
+    if (culture == nullptr)
         dn2cpp_throw_null_reference();
-    return culture;
+    if (culture->isNfi != 0)
+        return culture;
+    if (culture == dn2cpp_nfi_invariant())
+        return dn2cpp_nfi_invariant_info();
+    static std::mutex& mutex = dn2cpp_never_destroyed<std::mutex>();
+    std::lock_guard<std::mutex> lock(mutex);
+    if (culture->numberFormat != nullptr)
+        return culture->numberFormat;
+    if (culture->missingNumberFormat != 0)
+        dn2cpp_throw_null_reference();
+    const Dn2CppNumberFormatInfo* number = dn2cpp_nfi_copy(culture, 1, culture->isReadOnly);
+    dn2cpp_gc_store_ref(&const_cast<Dn2CppNumberFormatInfo*>(culture)->numberFormat, number);
+    return number;
+}
+
+int32_t dn2cpp_nfi_is_read_only(const Dn2CppNumberFormatInfo* n)
+{
+    if (n == nullptr)
+        dn2cpp_throw_null_reference();
+    return n->isReadOnly;
+}
+
+void dn2cpp_nfi_verify_writable(const Dn2CppNumberFormatInfo* n)
+{
+    if (dn2cpp_nfi_is_read_only(n) != 0)
+        dn2cpp_throw_invalid_operation_msg("Instance is read-only.");
+}
+
+void dn2cpp_culture_set_number_format(Dn2CppNumberFormatInfo* culture,
+    const Dn2CppNumberFormatInfo* value)
+{
+    if (culture == nullptr)
+        dn2cpp_throw_null_reference();
+    if (value == nullptr)
+        dn2cpp_throw_argument_null_param("value");
+    dn2cpp_nfi_verify_writable(culture);
+    dn2cpp_gc_store_ref(&culture->numberFormat, value);
+}
+
+const Dn2CppNumberFormatInfo* dn2cpp_nfi_read_only(const Dn2CppNumberFormatInfo* n)
+{
+    if (n == nullptr)
+        dn2cpp_throw_argument_null_param("nfi");
+    return n->isReadOnly != 0 ? n : dn2cpp_nfi_copy(n, 1, 1);
+}
+
+const Dn2CppNumberFormatInfo* dn2cpp_culture_read_only(const Dn2CppNumberFormatInfo* culture)
+{
+    if (culture == nullptr)
+        dn2cpp_throw_argument_null_param("ci");
+    if (culture->isReadOnly != 0)
+        return culture;
+    auto* result = dn2cpp_nfi_copy(culture, 0, 1);
+    // Neutral ReadOnly preserves an already assigned mutable NFI. A lazy slot
+    // stays lazy and is later initialized using the new culture's readonly flag.
+    if (culture->numberFormat != nullptr)
+        dn2cpp_gc_store_ref(&result->numberFormat, culture->isNeutralCulture != 0
+            ? culture->numberFormat : dn2cpp_nfi_read_only(culture->numberFormat));
+    return result;
 }
 
 // A null IFormatProvider means the CURRENT culture, not the invariant one
@@ -1190,6 +1261,8 @@ static const Dn2CppNumberFormatInfo* dn2cpp_culture_named_create(
 {
     auto* result = static_cast<Dn2CppNumberFormatInfo*>(dn2cpp_alloc(sizeof(Dn2CppNumberFormatInfo)));
     *result = *data;
+    result->numberFormat = nullptr;
+    result->isReadOnly = 1;
     Dn2CppString* key = dn2cpp_culture_lower_ascii(data->cultureRealName);
     std::lock_guard<std::mutex> lock(g_cultureCacheMutex);
     for (Dn2CppNamedCultureCacheNode* p = g_namedCultureCache; p != nullptr; p = p->next)
@@ -1265,6 +1338,24 @@ const Dn2CppNumberFormatInfo* dn2cpp_culture_by_name(Dn2CppString* name, bool ca
     return cached ? dn2cpp_culture_named_create(result) : result;
 }
 
+const Dn2CppNumberFormatInfo* dn2cpp_culture_new_name(Dn2CppString* name, bool useUserOverride)
+{
+    if (name == nullptr)
+        dn2cpp_throw_argument_null_param("name");
+    return dn2cpp_nfi_copy(dn2cpp_culture_by_name(name, false, useUserOverride), 0, 0);
+}
+
+const Dn2CppNumberFormatInfo* dn2cpp_culture_new_lcid(int32_t lcid, bool useUserOverride)
+{
+    (void)useUserOverride;
+    if (lcid < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "culture", lcid);
+    const Dn2CppNumberFormatInfo* data = dn2cpp_culture_by_lcid(lcid);
+    if (data == nullptr)
+        dn2cpp_throw_culture_not_found(nullptr, lcid);
+    return dn2cpp_nfi_copy(data, 0, 0);
+}
+
 const Dn2CppNumberFormatInfo* dn2cpp_culture_create_specific(Dn2CppString* name)
 {
     if (name != nullptr && name->length > 0
@@ -1276,13 +1367,13 @@ const Dn2CppNumberFormatInfo* dn2cpp_culture_create_specific(Dn2CppString* name)
             if (name->chars[i] == u'-')
                 return dn2cpp_culture_create_specific(dn2cpp_string_from_chars(name->chars, i));
     }
-    const Dn2CppNumberFormatInfo* culture = dn2cpp_culture_by_name(name);
+    const Dn2CppNumberFormatInfo* culture = dn2cpp_culture_new_name(name, true);
     if (culture->isNeutralCulture == 0)
         return culture;
     for (const Dn2CppCultureNameMapping& specific : kCultureSpecificNames)
         if (dn2cpp_culture_name_eq_ci(culture->cultureName, specific.name))
-            return dn2cpp_culture_by_name(dn2cpp_lit16(specific.target));
-    return dn2cpp_nfi_invariant();
+            return dn2cpp_culture_new_name(dn2cpp_lit16(specific.target), true);
+    return dn2cpp_culture_new_name(dn2cpp_lit16(u""), true);
 }
 
 struct Dn2CppLcidCultureCacheNode
@@ -1295,8 +1386,6 @@ static DN2CPP_GC_STATIC_ROOT Dn2CppLcidCultureCacheNode* g_lcidCultureCache = nu
 
 const Dn2CppNumberFormatInfo* dn2cpp_culture_by_lcid(int32_t lcid)
 {
-    if (lcid == 127)
-        return dn2cpp_nfi_invariant();
     // LOCALE_CUSTOM_UNSPECIFIED names the absence of an LCID, not a row.
     if (lcid == 4096)
         return nullptr;
@@ -1306,7 +1395,7 @@ const Dn2CppNumberFormatInfo* dn2cpp_culture_by_lcid(int32_t lcid)
             if (p->lcid == lcid)
                 return p->nfi;
     }
-    const Dn2CppNumberFormatInfo* data = nullptr;
+    const Dn2CppNumberFormatInfo* data = lcid == 127 ? dn2cpp_nfi_invariant() : nullptr;
     for (const Dn2CppCultureSortIdentifier& sort : kCultureSortIdentifiers)
         if (sort.lcid == lcid)
             data = dn2cpp_culture_by_name(dn2cpp_lit16(sort.name), false, false);
@@ -1320,6 +1409,8 @@ const Dn2CppNumberFormatInfo* dn2cpp_culture_by_lcid(int32_t lcid)
         return nullptr;
     auto* result = static_cast<Dn2CppNumberFormatInfo*>(dn2cpp_alloc(sizeof(Dn2CppNumberFormatInfo)));
     *result = *data;
+    result->numberFormat = nullptr;
+    result->isReadOnly = 1;
     std::lock_guard<std::mutex> lock(g_cultureCacheMutex);
     for (Dn2CppLcidCultureCacheNode* p = g_lcidCultureCache; p != nullptr; p = p->next)
         if (p->lcid == lcid)
@@ -1468,10 +1559,7 @@ Dn2CppString* dn2cpp_textinfo_tostring(const Dn2CppNumberFormatInfo* c)
 // identity (see dn2cpp_nfi_wrap).
 Dn2CppNumberFormatInfo* dn2cpp_nfi_new()
 {
-    auto* n = static_cast<Dn2CppNumberFormatInfo*>(dn2cpp_alloc(sizeof(Dn2CppNumberFormatInfo)));
-    *n = *dn2cpp_nfi_invariant();
-    n->isNfi = 1;
-    return n;
+    return dn2cpp_nfi_copy(dn2cpp_nfi_invariant(), 1, 0);
 }
 
 // NumberFormatInfo.InvariantInfo — same field values as the invariant culture
@@ -1490,8 +1578,12 @@ Dn2CppObject* dn2cpp_nfi_clone(const Dn2CppNumberFormatInfo* n, int32_t kind)
 {
     if (n == nullptr)
         dn2cpp_throw_null_reference();
-    auto* clone = static_cast<Dn2CppNumberFormatInfo*>(dn2cpp_alloc(sizeof(Dn2CppNumberFormatInfo)));
-    *clone = *n;
+    auto* clone = dn2cpp_nfi_copy(n, kind == DN2CPP_NFI_KIND_NFI ? 1 : n->isNfi, 0);
+    if (kind == DN2CPP_NFI_KIND_CULTURE && n->numberFormat != nullptr)
+    {
+        const Dn2CppNumberFormatInfo* number = dn2cpp_nfi_copy(n->numberFormat, 1, 0);
+        dn2cpp_gc_store_ref(&clone->numberFormat, number);
+    }
     return dn2cpp_nfi_wrap(clone, kind);
 }
 
@@ -1644,15 +1736,75 @@ Dn2CppObject* dn2cpp_nfi_wrap(const Dn2CppNumberFormatInfo* n, int32_t kind)
     return &node->box;
 }
 
-// An NFI is a field of a cache node, so each setter dirties that node's slot.
-void dn2cpp_nfi_set_number_decimal(Dn2CppNumberFormatInfo* n, Dn2CppString* v) { dn2cpp_gc_store_ref(&n->numberDecimal, v); }
-void dn2cpp_nfi_set_number_group(Dn2CppNumberFormatInfo* n, Dn2CppString* v) { dn2cpp_gc_store_ref(&n->numberGroup, v); }
-void dn2cpp_nfi_set_negative_sign(Dn2CppNumberFormatInfo* n, Dn2CppString* v) { dn2cpp_gc_store_ref(&n->negativeSign, v); }
-void dn2cpp_nfi_set_nan(Dn2CppNumberFormatInfo* n, Dn2CppString* v) { dn2cpp_gc_store_ref(&n->nan, v); }
-void dn2cpp_nfi_set_pos_inf(Dn2CppNumberFormatInfo* n, Dn2CppString* v) { dn2cpp_gc_store_ref(&n->posInf, v); }
-void dn2cpp_nfi_set_neg_inf(Dn2CppNumberFormatInfo* n, Dn2CppString* v) { dn2cpp_gc_store_ref(&n->negInf, v); }
-void dn2cpp_nfi_set_percent_symbol(Dn2CppNumberFormatInfo* n, Dn2CppString* v) { dn2cpp_gc_store_ref(&n->percentSymbol, v); }
-void dn2cpp_nfi_set_currency_symbol(Dn2CppNumberFormatInfo* n, Dn2CppString* v) { dn2cpp_gc_store_ref(&n->currencySymbol, v); }
+// String properties preserve CLR's validation order around the readonly guard.
+static void dn2cpp_nfi_set_string(Dn2CppNumberFormatInfo* n, Dn2CppString** slot,
+    Dn2CppString* value, bool separator, bool decimal)
+{
+    if (n == nullptr)
+        dn2cpp_throw_null_reference();
+    if (separator)
+        dn2cpp_nfi_verify_writable(n);
+    if (value == nullptr)
+        dn2cpp_throw_argument_null_param("value");
+    if (!separator)
+        dn2cpp_nfi_verify_writable(n);
+    if (decimal && value->length == 0)
+        dn2cpp_throw_argument_param(DN2CPP_SR_EMPTY_STRING, "value");
+    dn2cpp_gc_store_ref(slot, value);
+}
+
+void dn2cpp_nfi_set_number_decimal(Dn2CppNumberFormatInfo* n, Dn2CppString* v)
+{
+    dn2cpp_nfi_set_string(n, n != nullptr ? &n->numberDecimal : nullptr, v, true, true);
+}
+void dn2cpp_nfi_set_number_group(Dn2CppNumberFormatInfo* n, Dn2CppString* v)
+{
+    dn2cpp_nfi_set_string(n, n != nullptr ? &n->numberGroup : nullptr, v, true, false);
+}
+void dn2cpp_nfi_set_currency_decimal(Dn2CppNumberFormatInfo* n, Dn2CppString* v)
+{
+    dn2cpp_nfi_set_string(n, n != nullptr ? &n->currencyDecimal : nullptr, v, true, true);
+}
+void dn2cpp_nfi_set_currency_group(Dn2CppNumberFormatInfo* n, Dn2CppString* v)
+{
+    dn2cpp_nfi_set_string(n, n != nullptr ? &n->currencyGroup : nullptr, v, true, false);
+}
+void dn2cpp_nfi_set_negative_sign(Dn2CppNumberFormatInfo* n, Dn2CppString* v)
+{
+    dn2cpp_nfi_set_string(n, n != nullptr ? &n->negativeSign : nullptr, v, false, false);
+}
+void dn2cpp_nfi_set_nan(Dn2CppNumberFormatInfo* n, Dn2CppString* v)
+{
+    dn2cpp_nfi_set_string(n, n != nullptr ? &n->nan : nullptr, v, false, false);
+}
+void dn2cpp_nfi_set_pos_inf(Dn2CppNumberFormatInfo* n, Dn2CppString* v)
+{
+    dn2cpp_nfi_set_string(n, n != nullptr ? &n->posInf : nullptr, v, false, false);
+}
+void dn2cpp_nfi_set_neg_inf(Dn2CppNumberFormatInfo* n, Dn2CppString* v)
+{
+    dn2cpp_nfi_set_string(n, n != nullptr ? &n->negInf : nullptr, v, false, false);
+}
+void dn2cpp_nfi_set_percent_symbol(Dn2CppNumberFormatInfo* n, Dn2CppString* v)
+{
+    dn2cpp_nfi_set_string(n, n != nullptr ? &n->percentSymbol : nullptr, v, false, false);
+}
+void dn2cpp_nfi_set_currency_symbol(Dn2CppNumberFormatInfo* n, Dn2CppString* v)
+{
+    dn2cpp_nfi_set_string(n, n != nullptr ? &n->currencySymbol : nullptr, v, false, false);
+}
+
+void dn2cpp_nfi_set_digits(Dn2CppNumberFormatInfo* n, int32_t value, bool currency)
+{
+    if (n == nullptr)
+        dn2cpp_throw_null_reference();
+    if (value < 0 || value > 99)
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_ARGUMENT_OUT_OF_RANGE, "value");
+    dn2cpp_nfi_verify_writable(n);
+    if (currency)
+        n->currencyDigits = value;
+    // NumberDecimalDigits retains the accepted precision-sentinel contract.
+}
 
 // NumberGroupSizes / CurrencyGroupSizes / PercentGroupSizes — the getter. A
 // fresh array per call, matching real .NET's defensive copy: two reads are not
@@ -1676,6 +1828,11 @@ Dn2CppArrayI4* dn2cpp_nfi_group_sizes(const Dn2CppNumberFormatInfo* n, const Dn2
 // checked against its own numeric axis.
 void dn2cpp_nfi_set_group_sizes(const Dn2CppNumberFormatInfo* n, Dn2CppArrayI4* v, const char* which)
 {
+    if (n == nullptr)
+        dn2cpp_throw_null_reference();
+    if (v == nullptr)
+        dn2cpp_throw_argument_null_param("value");
+    dn2cpp_nfi_verify_writable(n);
     int32_t axis = std::strcmp(which, "CurrencyGroupSizes") == 0 ? 1
         : std::strcmp(which, "PercentGroupSizes") == 0 ? 2 : 0;
     const int8_t* sizes = n == nullptr ? nullptr : axis == 1 ? n->currencyGroupSizes
