@@ -199,7 +199,7 @@ static int64_t dn2cpp_box_read_i64(Dn2CppObject* v)
         if (u == &dn2cpp_uint32_type) return *static_cast<const uint32_t*>(p);
         return *static_cast<const int32_t*>(p);
     }
-    dn2cpp_throw_invalid_operation();
+    dn2cpp_throw_sr0(&dn2cpp_invalid_cast_exception_type, DN2CPP_SR_INVALID_CAST);
 }
 
 // Read a boxed primitive (or numeric string) as double — Convert.ChangeType's floating /
@@ -229,7 +229,7 @@ static double dn2cpp_box_read_f64(Dn2CppObject* v)
         if (u == &dn2cpp_uint32_type) return static_cast<double>(*static_cast<const uint32_t*>(p));
         return *static_cast<const int32_t*>(p);
     }
-    dn2cpp_throw_invalid_operation();
+    dn2cpp_throw_sr0(&dn2cpp_invalid_cast_exception_type, DN2CPP_SR_INVALID_CAST);
 }
 
 // Format a boxed primitive as its .NET string (Convert.ChangeType(.., typeof(string))).
@@ -242,6 +242,7 @@ static Dn2CppString* dn2cpp_box_to_string(Dn2CppObject* v)
     if (t == &dn2cpp_double_type) return dn2cpp_double_to_string(dn2cpp_box_read_f64(v));
     if (t == &dn2cpp_char_type) return dn2cpp_char_to_string(static_cast<char16_t>(dn2cpp_box_read_i64(v)));
     if (t == &dn2cpp_decimal_type) return dn2cpp_decimal_to_string(*static_cast<const Dn2CppDecimal*>(dn2cpp_box_payload(v)));
+    if (t == &dn2cpp_datetime_type) return dn2cpp_datetime_to_string(*static_cast<const Dn2CppDateTime*>(dn2cpp_box_payload(v)));
     // A boxed enum stringifies to its member name (Convert.ToString(enum) == enum.ToString()),
     // recovered from the per-enum (name, value) table; an undefined value falls back to the
     // underlying number (flag combinations stay a carve-out).
@@ -271,24 +272,46 @@ static Dn2CppString* dn2cpp_box_to_string(Dn2CppObject* v)
 // Convert.ChangeType(value, targetType): convert a boxed value to targetType via the
 // IConvertible matrix (the common practical subset — primitives + string, the shapes a
 // deserializer hits). A null value passes through (matches .NET for reference/Nullable
-// targets); an unsupported source/target throws InvalidOperation (standing in for
-// InvalidCastException). String<->primitive uses the same parse/format helpers as the
-// statically-typed Convert.To* intrinsics, so results are identical.
+// targets); an unsupported source/target throws InvalidCastException. Numeric
+// parsing and formatting extract the provider only when the conversion consumes it.
 
-static Dn2CppObject* dn2cpp_change_type_to(Dn2CppObject* value, const Dn2CppTypeInfo* tt)
+static int64_t dn2cpp_change_type_integer(Dn2CppObject* value, Dn2CppObject* provider,
+    int32_t bits, int32_t isSigned)
+{
+    if (value->type != &dn2cpp_string_type)
+        return dn2cpp_box_read_i64(value);
+    auto* text = reinterpret_cast<Dn2CppString*>(value);
+    return dn2cpp_integer_parse_chars(text->chars, text->length, 7 /* Integer */,
+        dn2cpp_format_provider_nfi(provider), bits, isSigned);
+}
+
+static Dn2CppObject* dn2cpp_change_type_to(Dn2CppObject* value, const Dn2CppTypeInfo* tt,
+    Dn2CppObject* provider)
 {
     if (value == nullptr || tt == nullptr)
         return nullptr;
     if (value->type == tt)
         return value; // already the target type
+    const Dn2CppTypeInfo* source = value->type;
+    if ((source == &dn2cpp_char_type && (tt == &dn2cpp_bool_type
+            || tt == &dn2cpp_single_type || tt == &dn2cpp_double_type || tt == &dn2cpp_decimal_type))
+        || (tt == &dn2cpp_char_type && (source == &dn2cpp_bool_type
+            || source == &dn2cpp_single_type || source == &dn2cpp_double_type || source == &dn2cpp_decimal_type)))
+        dn2cpp_throw_sr0(&dn2cpp_invalid_cast_exception_type, DN2CPP_SR_INVALID_CAST);
     if (tt == &dn2cpp_string_type)
+    {
+        if (Dn2CppString* formatted = dn2cpp_format_boxed_numeric(value, nullptr, provider))
+            return reinterpret_cast<Dn2CppObject*>(formatted);
         return reinterpret_cast<Dn2CppObject*>(dn2cpp_box_to_string(value));
+    }
     if (tt == &dn2cpp_decimal_type)
     {
         // A string parses; a floating source keeps its fraction (2.5 -> 2.5m); every
         // other (integral / bool / enum) source converts through its integer value.
         Dn2CppDecimal d = (value->type == &dn2cpp_string_type)
-            ? dn2cpp_decimal_parse(reinterpret_cast<Dn2CppString*>(value))
+            ? dn2cpp_decimal_parse_styles_chars(reinterpret_cast<Dn2CppString*>(value)->chars,
+                reinterpret_cast<Dn2CppString*>(value)->length, 111 /* Number */,
+                dn2cpp_format_provider_nfi(provider))
             : (value->type == &dn2cpp_single_type || value->type == &dn2cpp_double_type)
                 ? dn2cpp_decimal_from_double(dn2cpp_box_read_f64(value))
                 : dn2cpp_decimal_from_i8(dn2cpp_box_read_i64(value));
@@ -300,7 +323,7 @@ static Dn2CppObject* dn2cpp_change_type_to(Dn2CppObject* value, const Dn2CppType
         // invariant DateTime.Parse machinery). A DateTime source is the identity case
         // above; every numeric source throws InvalidCast in real .NET.
         if (value->type != &dn2cpp_string_type)
-            dn2cpp_throw_invalid_operation();
+            dn2cpp_throw_sr0(&dn2cpp_invalid_cast_exception_type, DN2CPP_SR_INVALID_CAST);
         Dn2CppDateTime dt = dn2cpp_datetime_parse(reinterpret_cast<Dn2CppString*>(value));
         return dn2cpp_box(tt, &dt, sizeof(dt));
     }
@@ -313,74 +336,78 @@ static Dn2CppObject* dn2cpp_change_type_to(Dn2CppObject* value, const Dn2CppType
     }
     if (tt == &dn2cpp_double_type)
     {
-        double d = dn2cpp_box_read_f64(value);
+        double d = value->type == &dn2cpp_string_type
+            ? dn2cpp_fp_parse_str(reinterpret_cast<Dn2CppString*>(value), 231 /* Float | AllowThousands */,
+                dn2cpp_format_provider_nfi(provider), 0)
+            : dn2cpp_box_read_f64(value);
         return dn2cpp_box(tt, &d, sizeof(d));
     }
     if (tt == &dn2cpp_single_type)
     {
-        float f = static_cast<float>(dn2cpp_box_read_f64(value));
+        float f = static_cast<float>(value->type == &dn2cpp_string_type
+            ? dn2cpp_fp_parse_str(reinterpret_cast<Dn2CppString*>(value), 231 /* Float | AllowThousands */,
+                dn2cpp_format_provider_nfi(provider), 1)
+            : dn2cpp_box_read_f64(value));
         return dn2cpp_box(tt, &f, sizeof(f));
     }
     if (tt == &dn2cpp_int64_type)
     {
-        int64_t i = dn2cpp_box_read_i64(value);
+        int64_t i = dn2cpp_change_type_integer(value, provider, 64, 1);
         return dn2cpp_box(tt, &i, sizeof(i));
     }
     if (tt == &dn2cpp_uint64_type)
     {
-        // A string source parses unsigned (so values > Int64.MaxValue round-trip);
-        // every other source reads through its integer value, reinterpreted unsigned.
-        uint64_t i = (value->type == &dn2cpp_string_type)
-            ? static_cast<uint64_t>(dn2cpp_convert_from_base_any(
-                  reinterpret_cast<Dn2CppString*>(value), 10, 64, 1))
-            : static_cast<uint64_t>(dn2cpp_box_read_i64(value));
+        uint64_t i = static_cast<uint64_t>(dn2cpp_change_type_integer(value, provider, 64, 0));
         return dn2cpp_box(tt, &i, sizeof(i));
     }
     if (tt == &dn2cpp_uint32_type)
     {
-        uint32_t i = static_cast<uint32_t>(dn2cpp_box_read_i64(value));
+        uint32_t i = static_cast<uint32_t>(dn2cpp_change_type_integer(value, provider, 32, 0));
         return dn2cpp_box(tt, &i, sizeof(i));
     }
     if (tt == &dn2cpp_int32_type)
     {
         int32_t i = (value->type == &dn2cpp_string_type)
-            ? dn2cpp_int_parse(reinterpret_cast<Dn2CppString*>(value))
+            ? static_cast<int32_t>(dn2cpp_change_type_integer(value, provider, 32, 1))
             : dn2cpp_convert_i64_to_i32(dn2cpp_box_read_i64(value));
         return dn2cpp_box(tt, &i, sizeof(i));
     }
     if (tt == &dn2cpp_int16_type)
     {
-        int16_t i = static_cast<int16_t>(dn2cpp_box_read_i64(value));
+        int16_t i = static_cast<int16_t>(dn2cpp_change_type_integer(value, provider, 16, 1));
         return dn2cpp_box(tt, &i, sizeof(i));
     }
     if (tt == &dn2cpp_uint16_type)
     {
-        uint16_t i = static_cast<uint16_t>(dn2cpp_box_read_i64(value));
+        uint16_t i = static_cast<uint16_t>(dn2cpp_change_type_integer(value, provider, 16, 0));
         return dn2cpp_box(tt, &i, sizeof(i));
     }
     if (tt == &dn2cpp_byte_type)
     {
-        uint8_t i = static_cast<uint8_t>(dn2cpp_box_read_i64(value));
+        uint8_t i = static_cast<uint8_t>(dn2cpp_change_type_integer(value, provider, 8, 0));
         return dn2cpp_box(tt, &i, sizeof(i));
     }
     if (tt == &dn2cpp_sbyte_type)
     {
-        int8_t i = static_cast<int8_t>(dn2cpp_box_read_i64(value));
+        int8_t i = static_cast<int8_t>(dn2cpp_change_type_integer(value, provider, 8, 1));
         return dn2cpp_box(tt, &i, sizeof(i));
     }
     if (tt == &dn2cpp_char_type)
     {
-        uint16_t i = static_cast<uint16_t>(dn2cpp_box_read_i64(value));
+        uint16_t i = value->type == &dn2cpp_string_type
+            ? dn2cpp_convert_str_to_char(reinterpret_cast<Dn2CppString*>(value))
+            : static_cast<uint16_t>(dn2cpp_box_read_i64(value));
         return dn2cpp_box(tt, &i, sizeof(i));
     }
-    dn2cpp_throw_invalid_operation(); // unsupported target type (incl. enum target, matching .NET)
+    dn2cpp_throw_sr0(&dn2cpp_invalid_cast_exception_type, DN2CPP_SR_INVALID_CAST);
 }
 
-Dn2CppObject* dn2cpp_convert_change_type(Dn2CppObject* value, Dn2CppType* targetType)
+Dn2CppObject* dn2cpp_convert_change_type(Dn2CppObject* value, Dn2CppType* targetType,
+    Dn2CppObject* provider)
 {
     if (value == nullptr || targetType == nullptr)
         return nullptr;
-    return dn2cpp_change_type_to(value, targetType->typeInfo);
+    return dn2cpp_change_type_to(value, targetType->typeInfo, provider);
 }
 
 // Whether a type implements System.IConvertible. The interface set is walked at
@@ -453,14 +480,15 @@ static const Dn2CppTypeInfo* dn2cpp_type_info_for_code(int32_t code)
     }
 }
 
-Dn2CppObject* dn2cpp_convert_change_type_code(Dn2CppObject* value, int32_t typeCode)
+Dn2CppObject* dn2cpp_convert_change_type_code(Dn2CppObject* value, int32_t typeCode,
+    Dn2CppObject* provider)
 {
     if (value == nullptr)
         return nullptr;
     const Dn2CppTypeInfo* tt = dn2cpp_type_info_for_code(typeCode);
     if (tt == nullptr)
         dn2cpp_throw_invalid_operation(); // unsupported TypeCode target
-    return dn2cpp_change_type_to(value, tt);
+    return dn2cpp_change_type_to(value, tt, provider);
 }
 
 // ---- Convert.To*(object, IFormatProvider) — boxed-source IConvertible overloads ----

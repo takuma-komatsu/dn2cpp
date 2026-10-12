@@ -5311,16 +5311,19 @@ int64_t dn2cpp_convert_r8_checked(double value, int64_t lo, int64_t hi);
 uint64_t dn2cpp_convert_r8_to_u64(double value);
 int64_t dn2cpp_convert_str_to_int(Dn2CppString* s, int32_t bits, int32_t isSigned);
 // Convert.ChangeType(object, Type): convert a boxed value to the runtime target type via
-// the IConvertible matrix (primitives + string + Decimal). Decimal targets/sources and a
+// the IConvertible matrix (primitives + string + Decimal + DateTime). Decimal targets/sources and a
 // boxed-enum source (read as its underlying, or its member name for a string target) are
 // covered. Null passes through; an unsupported source/target throws. Shares the
-// parse/format helpers with the Convert.To* intrinsics.
-Dn2CppObject* dn2cpp_convert_change_type(Dn2CppObject* value, Dn2CppType* targetType);
+// parse/format helpers with the Convert.To* intrinsics and consumes the managed
+// provider only for numeric parsing and formatting.
+Dn2CppObject* dn2cpp_convert_change_type(Dn2CppObject* value, Dn2CppType* targetType,
+    Dn2CppObject* provider = nullptr);
 // Convert.ChangeType(object, TypeCode): same conversion matrix, but the target is named
 // by a System.TypeCode value (the int the enum boxes to) rather than a runtime Type. The
 // codes with a modeled boxed type-info (Boolean/Char/the integral widths/Single/Double/
-// Decimal/String) are supported; others (UInt64/DateTime/Object/…) throw.
-Dn2CppObject* dn2cpp_convert_change_type_code(Dn2CppObject* value, int32_t typeCode);
+// Decimal/DateTime/String) share the runtime-Type route.
+Dn2CppObject* dn2cpp_convert_change_type_code(Dn2CppObject* value, int32_t typeCode,
+    Dn2CppObject* provider = nullptr);
 // Convert.GetTypeCode(object): the value's System.TypeCode. Null is TypeCode.Empty.
 // Real .NET answers this by asking the value's own IConvertible.GetTypeCode() rather
 // than by looking at its type, and the two can only disagree for a type whose type

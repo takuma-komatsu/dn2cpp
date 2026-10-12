@@ -30,17 +30,16 @@ internal sealed partial class MethodCompiler
             // ToInt32: string -> parse; double/float -> banker's round (range-checked);
             // long -> range-checked narrowing; bool -> 0/1; int -> identity.
             // Convert.ChangeType(object, Type[, IFormatProvider]) — runtime-Type-driven
-            // conversion via the IConvertible matrix. The optional provider is ignored
-            // (InvariantCulture, as everywhere in the transpiler). 2nd arg is the Type.
+            // conversion via the IConvertible matrix. Provider extraction is deferred
+            // until the runtime selects a numeric parse or format conversion.
             case ("System.Convert", "ChangeType")
                 when sig.ParameterTypes is [_, { } ct, ..] && ct.ToString() == "System.Type":
             {
-                if (sig.ParameterTypes.Length == 3)
-                    Pop(); // IFormatProvider
+                string provider = PopChangeTypeProvider(sig, false);
                 var target = Pop();
                 var value = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*",
-                    $"dn2cpp_convert_change_type({Cast(value, "Dn2CppObject*")}, {Cast(target, "Dn2CppType*")})");
+                    $"dn2cpp_convert_change_type({Cast(value, "Dn2CppObject*")}, {Cast(target, "Dn2CppType*")}, {provider})");
                 return true;
             }
             // Convert.ChangeType(object, TypeCode[, IFormatProvider]) — same matrix, target
@@ -48,26 +47,25 @@ internal sealed partial class MethodCompiler
             case ("System.Convert", "ChangeType")
                 when sig.ParameterTypes is [_, { } ct2, ..] && ct2.ToString() == "System.TypeCode":
             {
-                if (sig.ParameterTypes.Length == 3)
-                    Pop(); // IFormatProvider
+                string provider = PopChangeTypeProvider(sig, true);
                 var code = Pop();
                 var value = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*",
-                    $"dn2cpp_convert_change_type_code({Cast(value, "Dn2CppObject*")}, {Cast(code, "int32_t")})");
+                    $"dn2cpp_convert_change_type_code({Cast(value, "Dn2CppObject*")}, {Cast(code, "int32_t")}, {provider})");
                 return true;
             }
             // Convert.DefaultToType(IConvertible value, Type targetType, IFormatProvider)
             // — the internal fallback each primitive's IConvertible.ToType delegates to;
             // the same runtime-Type-driven IConvertible matrix as ChangeType(object, Type)
-            // above. The value arrives boxed, the provider is invariant and dropped.
+            // above. The value arrives boxed and the provider keeps its managed ABI.
             case ("System.Convert", "DefaultToType")
                 when sig.ParameterTypes is [_, { } dtt, _] && dtt.ToString() == "System.Type":
             {
-                Pop(); // IFormatProvider (invariant)
+                string provider = PopChangeTypeProvider(sig, false);
                 var target = Pop();
                 var value = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*",
-                    $"dn2cpp_convert_change_type({Cast(value, "Dn2CppObject*")}, {Cast(target, "Dn2CppType*")})");
+                    $"dn2cpp_convert_change_type({Cast(value, "Dn2CppObject*")}, {Cast(target, "Dn2CppType*")}, {provider})");
                 return true;
             }
             case ("System.Convert", "ToInt32") when sig.ParameterTypes is [{ IsString: true }]
@@ -777,6 +775,48 @@ internal sealed partial class MethodCompiler
         }
         return false;
     }
+
+    private string PopChangeTypeProvider(MethodSignature<TypeDesc> sig, bool typeCode)
+    {
+        if (sig.ParameterTypes.Length != 3)
+            return "nullptr";
+        var provider = Pop();
+        var target = _stack[^1];
+        var value = _stack[^2];
+        int sourceKind = ChangeTypeProviderKind(value.StaticType);
+        // Unsigned sources ignore providers; unsigned targets still parse strings.
+        if (value.StaticType is { Kind: TypeKind.Primitive, IsCanonPlaceholder: false,
+            Primitive: PrimitiveTypeCode.Byte or PrimitiveTypeCode.UInt16
+                or PrimitiveTypeCode.UInt32 or PrimitiveTypeCode.UInt64 })
+            sourceKind = 3;
+        if (value.CppType == "Dn2CppString*")
+            sourceKind = 2;
+        int targetKind = typeCode ? ConstIntOf(target) switch
+        {
+            >= 5 and <= 15 => 1,
+            18 => 2,
+            null => 0,
+            _ => 3
+        } : ChangeTypeProviderKind(target.TypeToken);
+        // Unknown source/target shapes may select a numeric consumer at runtime.
+        // Proven numeric identities and provider-free conversions retain no slot.
+        if (!value.KnownNull && sourceKind != 3 && targetKind != 3
+            && !(sourceKind == 1 && targetKind == 1 || sourceKind == 2 && targetKind == 2))
+            _ = FormatProviderDispatchArgs(provider);
+        return Cast(provider, "Dn2CppObject*");
+    }
+
+    private static int ChangeTypeProviderKind(TypeDesc? type) => type switch
+    {
+        { IsCanonPlaceholder: true } => 0,
+        { IsString: true } => 2,
+        { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean or PrimitiveTypeCode.Char } => 3,
+        { Kind: TypeKind.Primitive, Primitive: not (PrimitiveTypeCode.Object or PrimitiveTypeCode.Void) } => 1,
+        { Kind: TypeKind.Class, Class.FullName: "System.Decimal" } => 1,
+        { Kind: TypeKind.Class, Class.FullName: "System.DateTime" } => 3,
+        { Kind: TypeKind.Class, Class.IsEnum: true } => 3,
+        _ => 0
+    };
 
     /// <summary>System.Base64FormattingOptions (an enum; None = 0,
     /// InsertLineBreaks = 1) as a parameter type.</summary>

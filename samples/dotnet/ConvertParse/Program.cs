@@ -58,6 +58,12 @@ namespace ConvertParse
             if (args.Length > 0 && args[0] == "before-primitive-parses")
                 return;
             Dn2Cpp.PrimitiveParseSubset.Run();
+            if (args.Length > 0 && args[0] == "before-change-type-providers")
+                return;
+            ConvertChangeTypeSubset.Program.RunProviders();
+            if (args.Length > 0 && args[0] == "before-change-type-faults")
+                return;
+            ConvertChangeTypeSubset.Program.RunFaults();
         }
     }
 }

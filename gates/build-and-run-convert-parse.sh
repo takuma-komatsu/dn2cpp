@@ -47,6 +47,8 @@
 # UTF-8 destinations, including short buffers that must remain untouched.
 # Scalar Parse/TryParse overloads cover every string/UTF-16/UTF-8 entry point,
 # native integers, Half, Decimal and wide integers, invalid styles and custom symbols.
+# ChangeType forwards custom numeric providers only to consumed conversions.
+# Unsupported DateTime, Boolean, Char and object conversions retain CLR faults.
 source "$(dirname "$0")/_common.sh"
 
 gate_extra_asserts() {
@@ -139,6 +141,75 @@ gate_extra_asserts() {
         grep -Fxq -- "$type:TryParse:utf8/styles/provider/out=True:0:42" <<< "$native" \
             || { echo "FAIL: wide UTF-8 parsing did not run: $type" >&2; exit 1; }
     done
+    before=$(dotnet "$_CG_APP" before-change-type-providers)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== ChangeType format providers ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== ChangeType format providers ==' \
+        'provider Type:format Int32=minus12/1' \
+        'provider TypeCode:format Int32=minus12/1' \
+        'provider Type:parse fraction=-12.5/1' \
+        'provider TypeCode:parse decimal=-12.5/1' \
+        'provider Type:parse overflow=OverflowException/1' \
+        'provider TypeCode:numeric=-12/0' \
+        'provider Type:parse Char=x/0' \
+        'provider TypeCode:wrong format=-12.5/1' \
+        'ChangeType format providers end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: ChangeType provider witness missing: $line" >&2; exit 1; }
+    done
+    for type in Byte UInt16 UInt32 UInt64; do
+        for line in "provider Type:parse $type=12/1" "provider TypeCode:parse $type=12/1"; do
+            grep -Fxq -- "$line" <<< "$native" \
+                || { echo "FAIL: ChangeType unsigned parsing witness missing: $line" >&2; exit 1; }
+        done
+    done
+    before=$(dotnet "$_CG_APP" before-change-type-faults)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== ChangeType unsupported conversions ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== ChangeType unsupported conversions ==' \
+        'ChangeType fault Type:Int32 to DateTime=InvalidCastException' \
+        'ChangeType fault TypeCode:Int32 to DateTime=InvalidCastException' \
+        'ChangeType fault Type:DateTime to Decimal=InvalidCastException' \
+        'ChangeType fault TypeCode:DateTime to Double=InvalidCastException' \
+        'ChangeType fault Type:DateTime identity=01/02/2024 03:04:05' \
+        'ChangeType fault TypeCode:DateTime string=01/02/2024 03:04:05' \
+        'ChangeType fault Type:DateTime bad parse=FormatException' \
+        'ChangeType fault TypeCode:Boolean to Char=InvalidCastException' \
+        'ChangeType fault Type:Char to Decimal=InvalidCastException' \
+        'ChangeType fault TypeCode:Object to Int32=InvalidCastException' \
+        'ChangeType unsupported conversions end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: ChangeType fault witness missing: $line" >&2; exit 1; }
+    done
 }
 
 corelib_diff_gate ConvertParse System.Private.Uri System.ComponentModel.TypeConverter
+
+(
+    gate_extra_asserts() {
+        local out="$1" native
+        native=$(run_bounded "./$out/ChangeTypeKnownProvidersOnly")
+        native=$(strip_cr_win "$native")
+        grep -Fxq 'ChangeType unused provider=True' <<< "$native"
+        grep -Fxq 'ChangeType unused identity=-12/-12' <<< "$native"
+        grep -Fxq 'ChangeType unused numeric=-12/-12' <<< "$native"
+        grep -Fxq 'ChangeType unused Boolean=True/True' <<< "$native"
+        grep -Fxq 'ChangeType unused Char=x/x' <<< "$native"
+        grep -Fxq 'ChangeType unused parse Boolean=True/True' <<< "$native"
+        grep -Fxq 'ChangeType unused parse Char=x/x' <<< "$native"
+        grep -Fxq 'ChangeType NumberFormatInfo=minus12/minus12' <<< "$native"
+        grep -Fxq 'ChangeType unused Byte=12/12' <<< "$native"
+        grep -Fxq 'ChangeType unused UInt16=12/12' <<< "$native"
+        grep -Fxq 'ChangeType unused UInt32=4294967295/4294967295' <<< "$native"
+        grep -Fxq 'ChangeType unused UInt64=18446744073709551615/18446744073709551615' <<< "$native"
+        if grep -Eq 'UnusedProvider_GetFormat_m[0-9]+[[:space:]]*\(' "$out/generated.h" "$out"/generated*.cpp; then
+            echo 'FAIL: known ChangeType providers retained an unused GetFormat body' >&2
+            exit 1
+        fi
+    }
+    DN2CPP_SAMPLE_PROJECT_DIR=samples/dotnet/ConvertParse
+    DN2CPP_GATE_EXTRA_INPUTS=samples/dotnet/ConvertParse
+    corelib_diff_gate ChangeTypeKnownProvidersOnly
+)

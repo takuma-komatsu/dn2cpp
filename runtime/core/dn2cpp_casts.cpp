@@ -516,10 +516,7 @@ static Dn2CppString* dn2cpp_bbi_conv_str(Dn2CppObject* box, Dn2CppObject* provid
 static Dn2CppObject* dn2cpp_bbi_conv_type(Dn2CppObject* box, Dn2CppType* target,
                                           Dn2CppObject* provider)
 {
-    if (target != nullptr && target->typeInfo == &dn2cpp_string_type)
-        if (Dn2CppString* formatted = dn2cpp_format_boxed_numeric(box, nullptr, provider))
-            return reinterpret_cast<Dn2CppObject*>(formatted);
-    return dn2cpp_convert_change_type(box, target);
+    return dn2cpp_convert_change_type(box, target, provider);
 }
 
 // IComparable<Self>.CompareTo(Self) / IEquatable<Self>.Equals(Self). The argument
