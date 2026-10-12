@@ -11,11 +11,11 @@ deep-chain trace:
    at ShadowStack.Program.Main()
 == SharedGenericFrame ==
 Box<string> trace:
-   at SharedGenericFrame.Box_String.Poke() [shared generic]
+   at SharedGenericFrame.Box_Ginst31_XSystem_002EPrivate_002ECoreLib50_XSystem_002ECollections_002EGeneric_002EList_00601_1_6_NInt32End.Poke() [shared generic]
    at SharedGenericFrame.Program.__GateEntry()
    at ShadowStack.Program.Main()
 Box<List<int>> trace:
-   at SharedGenericFrame.Box_String.Poke() [shared generic]
+   at SharedGenericFrame.Box_Ginst31_XSystem_002EPrivate_002ECoreLib50_XSystem_002ECollections_002EGeneric_002EList_00601_1_6_NInt32End.Poke() [shared generic]
    at SharedGenericFrame.Program.__GateEntry()
    at ShadowStack.Program.Main()
 leaf frame carries shared-generic mark: True

@@ -3145,6 +3145,54 @@ internal sealed partial class Compilation
         return key.Append("End").ToString();
     }
 
+    /// <summary>A closed generic used as an argument retains its definition's arity
+    /// and nesting, plus each child's boundary. Its readable C++ name alone cannot
+    /// distinguish a pair followed by a key from a triple.</summary>
+    internal static string ClosedTypeMangle(ClassInfo type)
+    {
+        string assembly = GenericIdentitySymbol(type.Module.AssemblyName);
+        string definition = GenericIdentitySymbol(
+            MethodCompiler.OpenDefBacktickName(type.Module, type.Handle)!);
+        // Metadata row numbers and module indices can change between a hot-update
+        // base and patch, while the assembly and open-definition names remain stable.
+        var key = new System.Text.StringBuilder("Ginst")
+            .Append(assembly.Length).Append('_').Append(assembly)
+            .Append(definition.Length).Append('_').Append(definition)
+            .Append('_').Append(type.Context.TypeArgs.Length).Append('_');
+        foreach (var arg in type.Context.TypeArgs)
+        {
+            string child = GenericIdentitySymbol(MangleArg(arg));
+            key.Append(child.Length).Append('_').Append(child);
+        }
+        return key.Append("End").ToString();
+    }
+
+    private static string GenericIdentitySymbol(string identity)
+    {
+        bool safe = true;
+        foreach (char c in identity)
+            if (!char.IsAsciiLetterOrDigit(c) && c != '_')
+                safe = false;
+        if (safe)
+            return "N" + identity;
+        // Preserve punctuation before Sanitize; escape underscores as well so a
+        // literal identifier cannot impersonate an encoded separator or '$' token.
+        var symbol = new System.Text.StringBuilder("X");
+        const string hex = "0123456789ABCDEF";
+        foreach (char c in identity)
+        {
+            if (char.IsAsciiLetterOrDigit(c))
+                symbol.Append(c);
+            else
+            {
+                symbol.Append('_');
+                for (int shift = 12; shift >= 0; shift -= 4)
+                    symbol.Append(hex[(c >> shift) & 15]);
+            }
+        }
+        return symbol.ToString();
+    }
+
     private static string ExternalMangle(TypeDesc type)
     {
         string name = CppNaming.Sanitize(type.ExternalName!);

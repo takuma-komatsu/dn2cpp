@@ -12,7 +12,9 @@
 # CreateOrderedEnumerable<TKey> call, i.e. its only interface GVM, and
 # LinqOrderStructKeySubset is the shape whose canonical group owner lands in the
 # dispatcher's allocated case set. See gate_extra_asserts below.
+# Nested tuple elements retain generic argument boundaries in iterator layouts.
 source "$(dirname "$0")/_common.sh"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|before-tuple-ordering"
 
 # A dn2cpp_gvm_* dispatcher spells `&ti_<T>` out itself, so it is the one
 # family of type-info names AssertNamedTypeInfosDefined cannot see — that backstop
@@ -52,6 +54,21 @@ gate_extra_asserts() {
         return 1
     fi
     echo "gvm dispatcher type-info names all declared: OK"
+
+    local native before prefix
+    native=$(run_bounded "./$out/LinqOrdering$EXE_EXT") || return $?
+    native=$(strip_cr_win "$native")
+    before=$(run_bounded dotnet "$_CG_APP" before-tuple-ordering) || return $?
+    prefix=$(awk '/^== tuple ordering generic boundaries ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    for line in '== tuple ordering generic boundaries ==' 'pair a/y' 'pair a/z' 'pair b/x' \
+            'triple a/z/1' 'triple a/y/3' 'triple b/x/2' \
+            'left a/y/1' 'left b/x/2' 'right a/y/1' 'right b/x/2' \
+            'tuple ordering generic boundaries end'; do
+        grep -Fxq "$line" <<< "$native" \
+            || { echo "FAIL: tuple ordering witness missing: $line" >&2; return 1; }
+    done
+    echo "tuple ordering witnesses and unchanged prefix: OK"
 }
 
 corelib_diff_gate LinqOrdering \

@@ -13,8 +13,8 @@ def unique(pattern, text, subject):
 
 
 out = pathlib.Path(sys.argv[1])
-source = "\n".join(path.read_text() for path in sorted(out.glob("generated*.cpp")))
-schema_source = pathlib.Path("runtime/core/dn2cpp_metadata.cpp").read_text()
+source = "\n".join(path.read_text(encoding="utf-8") for path in sorted(out.glob("generated*.cpp")))
+schema_source = pathlib.Path("runtime/core/dn2cpp_metadata.cpp").read_text(encoding="utf-8")
 blocks = unique(r"const Dn2CppMetadataBlock dn2cpp_metadata_blocks\[\] = \{(.*?)\n\};",
                 source, "metadata block registry")
 pools = re.findall(r"\{\s*(md_ptr_[0-9]+),", blocks)
@@ -75,9 +75,9 @@ if reflection["customAttrCount"] != 1:
 attribute = decode(reflection["customAttrs"], "AttrInfo")
 factory = unique(r"\b(attrcreate_[0-9]+)\b", attribute["create"], "attribute factory")
 body = unique(r"^Dn2CppObject\* " + factory + r"\(\)\n\{(.*?)^\}", source, "factory body")
-if not re.search(r"dn2cpp_get_type_from_handle\(&ti_arr_ReflectAttrUnread_ChainLast_Int32\)", body):
-    raise SystemExit("FAIL: closed chain attribute does not reach the deepest array handle")
-array = unique(r"^const Dn2CppTypeInfo ti_arr_ReflectAttrUnread_ChainLast_Int32 = ([^\n]+);$",
+array_handle = unique(r"dn2cpp_get_type_from_handle\(&(ti_arr_\w+)\)",
+                      body, "deepest array handle in attribute factory")
+array = unique(r"^const Dn2CppTypeInfo " + re.escape(array_handle) + r" = ([^\n]+);$",
                source, "deepest array TI")
 if not re.search(r"&ti_ReflectAttrUnread_ChainLast_Int32\b", array):
     raise SystemExit("FAIL: deepest array lost its element identity")
