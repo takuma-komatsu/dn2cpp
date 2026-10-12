@@ -1248,9 +1248,38 @@ internal sealed partial class Compilation
                 throw new InvalidOperationException(
                     $"runtime template {level.FullName}: emission slot {i} resolves to {t}, "
                     + "not a bare type argument");
-            desc[i] = t.CanonAnyIndex;
+            desc[i] = RuntimeTemplateArgumentIndex(level, t);
+            if (desc[i] < 0)
+                throw new InvalidOperationException(
+                    $"runtime template {level.FullName}: emission slot {i} is not a level argument");
         }
         return desc;
+    }
+
+    private static int RuntimeTemplateArgumentIndex(ClassInfo level, TypeDesc argument)
+    {
+        for (int i = 0; i < level.Context.TypeArgs.Length; i++)
+            if (ReferenceEquals(level.Context.TypeArgs[i], argument))
+                return i;
+        return -1;
+    }
+
+    /// <summary>The base's local argument vector, projected from this level's
+    /// local arguments. Placeholder identities may differ between levels of
+    /// one definition, so neither descriptors nor recipes use their global index.</summary>
+    internal static int[] RuntimeTemplateBaseProjection(ClassInfo level)
+    {
+        if (level.BaseClass is not { } parent || !ContainsCanonPlaceholder(parent))
+            return Array.Empty<int>();
+        var projection = new int[parent.Context.TypeArgs.Length];
+        for (int i = 0; i < projection.Length; i++)
+        {
+            projection[i] = RuntimeTemplateArgumentIndex(level, parent.Context.TypeArgs[i]);
+            if (projection[i] < 0)
+                throw new InvalidOperationException(
+                    $"runtime template {level.FullName}: base argument {i} is not a level argument");
+        }
+        return projection;
     }
 
     /// <summary>Judges each rooted template (see
@@ -1552,14 +1581,20 @@ internal sealed partial class Compilation
             RuntimeInstantiationTemplates.Add((defName, tmpl));
             // Before the rooting below: it crosses the template with the used
             // generic virtual methods, whose cases ask these sets.
-            _runtimeTemplateRoots.Add(tmpl);
             for (ClassInfo? lv = tmpl; lv is not null && ContainsCanonPlaceholder(lv); lv = lv.BaseClass)
+            {
+                _runtimeTemplateRoots.Add(lv);
                 _runtimeTemplateLevels.Add(lv);
+            }
             // Root it like an allocated type: arms the used-slot × allocated-type
             // cross product, so every virtual override a base-typed caller can
             // dispatch into is trial-compiled; instance ctors are what the
             // reflection-ctor path (Activator over the synthesized Type) invokes.
-            ReachAllocatedType(tmpl);
+            // Every chain level supplies a definition row that MakeGenericType
+            // can allocate directly, including a permuted intermediate source.
+            for (ClassInfo? lv = tmpl; lv is not null && ContainsCanonPlaceholder(lv); lv = lv.BaseClass)
+                if (!lv.IsAbstract)
+                    ReachAllocatedType(lv);
             var ctors = new List<MethodInfo>();
             foreach (var m in tmpl.Methods)
                 if (m.Name == ".ctor" && !m.IsStatic && m.Rva != 0)
@@ -1774,9 +1809,11 @@ internal sealed partial class Compilation
     /// concrete top-level reference definition whose placeholder-bearing chain
     /// levels carry no per-instantiation storage (no statics, no cctor), no
     /// field or directly-implemented interface naming a type parameter, and an
-    /// identity base projection (<c>D2&lt;T&gt; : D1&lt;T&gt;</c>, same order) —
+    /// injective bare-parameter base projection —
     /// each restriction is exactly a thing the runtime clone cannot synthesize
-    /// (AOT storage symbols, per-argument layout, a permuted argument map). The
+    /// (AOT storage symbols or per-argument layout). Repeated placeholders can
+    /// collapse type identities in a body, so those levels cannot serve a
+    /// definition's arbitrary argument vector. The
     /// non-placeholder tail of the chain is ordinary emitted code and is not
     /// restricted.</summary>
     private bool RuntimeTemplateShapeEligible(ClassInfo tmpl)
@@ -1792,6 +1829,15 @@ internal sealed partial class Compilation
                     break;
                 if (lv.IsValueType || RgctxAnchorSym(lv) is null)
                     return false;
+                var arguments = lv.Context.TypeArgs;
+                for (int i = 0; i < arguments.Length; i++)
+                {
+                    if (arguments[i].CanonAnyIndex < 0)
+                        return false;
+                    for (int j = 0; j < i; j++)
+                        if (ReferenceEquals(arguments[i], arguments[j]))
+                            return false;
+                }
                 // An intrinsic-mapped level (BlockingCollection<T> -> Dn2CppBlockingCollection*)
                 // is a memberless shell whose metadata nothing emits, so a template row
                 // would name a type-info this emission never defines. Skipped, the runtime
@@ -1815,7 +1861,7 @@ internal sealed partial class Compilation
                 {
                     var ba = b.Context.TypeArgs;
                     for (int j = 0; j < ba.Length; j++)
-                        if (!ReferenceEquals(ba[j], Canon.AnyPlaceholder(j)))
+                        if (RuntimeTemplateArgumentIndex(lv, ba[j]) < 0)
                             return false;
                 }
             }

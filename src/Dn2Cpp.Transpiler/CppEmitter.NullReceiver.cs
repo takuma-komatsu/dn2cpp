@@ -122,8 +122,8 @@ internal sealed partial class CppEmitter
     // walk keeps only finished components' verdicts, so each is exact and independent of
     // which row asked first, and each body is visited once. A body known to fault visits no
     // more callees: its component and its callers fault whatever else it reaches. The masks
-    // are a runtime template level's lookups over the bodies reached; template levels
-    // project their type parameters onto their bases' in order.
+    // are a runtime template level's lookups over the bodies reached, projected
+    // into each caller's local type-parameter order.
     private (bool Runs, ulong Ref, ulong Value) NullReceiverVerdict(ClassInfo cls, MethodInfo m, NullReceiverRun run)
     {
         if (_nullReceiverVerdicts.TryGetValue((m, run), out var known))
@@ -138,7 +138,7 @@ internal sealed partial class CppEmitter
             {
                 var callee = callees[visit.Next++];
                 if (_nullReceiverVerdicts.TryGetValue((callee, run), out var finished))
-                    Join(visit, finished);
+                    Join(visit, callee.DeclaringClass, finished);
                 else if (visits.TryGetValue(callee, out var reached))
                     visit.Low = Math.Min(visit.Low, reached.Number);
                 else
@@ -161,7 +161,7 @@ internal sealed partial class CppEmitter
                     _nullReceiverVerdicts[(open[i].Method, run)] = verdict;
                 open.RemoveRange(visit.Slot, open.Count - visit.Slot);
                 if (path.Count > 0)
-                    Join(path[^1], verdict);
+                    Join(path[^1], visit.Method.DeclaringClass, verdict);
             }
             else
             {
@@ -182,12 +182,25 @@ internal sealed partial class CppEmitter
             return visit;
         }
 
-        static void Join(NullReceiverVisit visit, (bool Runs, ulong Ref, ulong Value) verdict)
+        static void Join(NullReceiverVisit visit, ClassInfo callee, (bool Runs, ulong Ref, ulong Value) verdict)
         {
             visit.Runs &= verdict.Runs;
-            visit.Ref |= verdict.Ref;
-            visit.Value |= verdict.Value;
+            visit.Ref |= ProjectNullLookups(visit.Method.DeclaringClass, callee, verdict.Ref);
+            visit.Value |= ProjectNullLookups(visit.Method.DeclaringClass, callee, verdict.Value);
         }
+    }
+
+    private static ulong ProjectNullLookups(ClassInfo caller, ClassInfo callee, ulong mask)
+    {
+        if (caller == callee || mask == 0)
+            return mask;
+        ulong projected = 0;
+        for (int i = 0; i < callee.Context.TypeArgs.Length; i++)
+            if ((mask & (1UL << Math.Min(i, 63))) != 0)
+                for (int j = 0; j < caller.Context.TypeArgs.Length; j++)
+                    if (ReferenceEquals(callee.Context.TypeArgs[i], caller.Context.TypeArgs[j]))
+                        projected |= 1UL << Math.Min(j, 63);
+        return projected;
     }
 
     // A null binding supplies one receiver-derived context. Before the body that
@@ -225,16 +238,20 @@ internal sealed partial class CppEmitter
                         verdict = (false, 0, 0);
                         break;
                     }
-                    verdict.Ref |= next.Ref;
-                    verdict.Value |= next.Value;
+                    verdict.Ref |= ProjectNullLookups(c, callee.DeclaringClass, next.Ref);
+                    verdict.Value |= ProjectNullLookups(c, callee.DeclaringClass, next.Value);
                 }
             break;
         }
+        var verdictClass = body.DeclaringClass;
         for (int i = chain.Count - 1; i >= 0; i--)
         {
+            var caller = chain[i].Method.DeclaringClass;
             if (verdict.Runs)
-                verdict = (true, verdict.Ref | chain[i].Ref, verdict.Value | chain[i].Value);
+                verdict = (true, ProjectNullLookups(caller, verdictClass, verdict.Ref) | chain[i].Ref,
+                    ProjectNullLookups(caller, verdictClass, verdict.Value) | chain[i].Value);
             _nullReceiverContextVerdicts[chain[i].Method] = verdict;
+            verdictClass = caller;
         }
         return verdict;
     }

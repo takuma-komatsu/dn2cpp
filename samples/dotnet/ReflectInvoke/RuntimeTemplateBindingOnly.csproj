@@ -25,4 +25,9 @@
     </MSBuild>
     <Exec Command="dotnet exec &quot;$(TemplatePointerFixturePath)&quot; &quot;$(TargetPath)&quot; --template-pointer-slots" />
   </Target>
+  <!-- Keep existing top-level method tokens stable. -->
+  <ItemGroup>
+    <Compile Remove="RuntimeBaseProjectionSubset.cs" />
+    <Compile Include="RuntimeBaseProjectionSubset.cs" />
+  </ItemGroup>
 </Project>

@@ -102,13 +102,6 @@ static const Dn2CppRuntimeTemplate* dn2cpp_runtime_template_by_ti(const Dn2CppTy
     return nullptr;
 }
 
-// One row per definition, so the clone's genericDef names the row it was copied from.
-const Dn2CppTypeInfo* dn2cpp_runtime_template_of(const Dn2CppTypeInfo* clone)
-{
-    const Dn2CppRuntimeTemplate* row = dn2cpp_runtime_template_by_def(clone->genericDef);
-    return row != nullptr ? row->templateTi : clone;
-}
-
 // The type a member row belongs to: the one it runs on and DeclaringType reports.
 // A MakeGenericType clone's own member rows name the clone, but a row read off a
 // template level names the template, and no clone's base chain reaches a template:
@@ -140,13 +133,25 @@ struct Dn2CppSynthInst
 {
     const Dn2CppTypeInfo* def;
     const Dn2CppTypeInfo* ti;
+    const Dn2CppTypeInfo* templateTi;
     Dn2CppSynthInst* next;
 };
-static Dn2CppSynthInst* g_synth_insts = nullptr;
+static std::atomic<Dn2CppSynthInst*> g_synth_insts{ nullptr };
 static std::mutex& g_synth_mtx = dn2cpp_never_destroyed<std::mutex>();
 
+// A definition can appear at differently permuted placeholder levels. Dispatch
+// and binding use the actual source of the interned clone, not the first row
+// with its definition. Publication precedes every escape of the clone.
+const Dn2CppTypeInfo* dn2cpp_runtime_template_of(const Dn2CppTypeInfo* clone)
+{
+    for (Dn2CppSynthInst* n = g_synth_insts.load(std::memory_order_acquire); n != nullptr; n = n->next)
+        if (n->ti == clone)
+            return n->templateTi;
+    return clone;
+}
+
 // The rgctx anchor tables of the synthesized instantiations, one node per
-// placeholder chain level, keyed (clone type-info, level definition). A clone's
+// placeholder source level, keyed (clone type-info, source type-info). A clone's
 // base interns onto the AOT type-info when the image carries that instantiation,
 // and an AOT base cannot anchor the clone's shared bodies (see
 // DN2CPP_TF_RUNTIME_SYNTH) — only a table shaped by the TEMPLATE's descriptor
@@ -156,20 +161,25 @@ static std::mutex& g_synth_mtx = dn2cpp_never_destroyed<std::mutex>();
 struct Dn2CppSynthAnchor
 {
     const Dn2CppTypeInfo* ti;
-    const Dn2CppTypeInfo* def;
+    const Dn2CppTypeInfo* source;
     const void* const* table;
     Dn2CppSynthAnchor* next;
 };
 static std::atomic<Dn2CppSynthAnchor*> g_synth_anchors{ nullptr };
 
-const void* const* dn2cpp_rgctx_synth(const Dn2CppTypeInfo* t, const Dn2CppTypeInfo* genericDef)
+const void* const* dn2cpp_rgctx_template(const Dn2CppTypeInfo* t, const Dn2CppTypeInfo* source)
 {
     for (Dn2CppSynthAnchor* n = g_synth_anchors.load(std::memory_order_acquire);
          n != nullptr; n = n->next)
-        if (n->ti == t && n->def == genericDef)
+        if (n->ti == t && n->source == source)
             return n->table;
-    // A level below the placeholder chain (a concrete generic base the template
-    // shape bound allows above it): the ordinary base-chain anchor.
+    dn2cpp_throw_invalid_operation();
+}
+
+const void* const* dn2cpp_rgctx_synth(const Dn2CppTypeInfo* t, const Dn2CppTypeInfo* genericDef)
+{
+    // Ordinary emitted bodies retain the actual base's layout. Template bodies
+    // request their source layout through dn2cpp_rgctx_template instead.
     while (t != nullptr && t->genericDef != genericDef)
         t = t->base;
     return t != nullptr ? t->rgctx : nullptr;
@@ -200,15 +210,33 @@ static const Dn2CppTypeInfo* dn2cpp_find_aot_instantiation(
     return nullptr;
 }
 
-// Clones `row`'s template for the given argument vector (caller holds g_synth_mtx;
-// argument count already checked against row->argCount). Recursive for the base
-// chain: a template base is itself a row, and its identity argument projection
-// (established by the emitter's eligibility shape bound) means it takes the same
-// leading arguments.
+// Each row projects its own local argument vector into its base's.
+static std::vector<const Dn2CppTypeInfo*> dn2cpp_project_base_arguments(
+    const Dn2CppRuntimeTemplate* row, const Dn2CppRuntimeTemplate* base,
+    const Dn2CppTypeInfo* const* args)
+{
+    if (base == nullptr || row->baseArgumentCount != base->argCount)
+        dn2cpp_throw_invalid_operation();
+    std::vector<const Dn2CppTypeInfo*> projected;
+    for (int32_t i = 0; i < row->baseArgumentCount; i++)
+    {
+        const int32_t index = row->baseArguments[i];
+        if (index < 0 || index >= row->argCount)
+            dn2cpp_throw_invalid_operation();
+        projected.push_back(args[index]);
+    }
+    return projected;
+}
+
+// Clones `row`'s template for the argument vector (caller holds g_synth_mtx;
+// argument count already checked against row->argCount), recursively for bases.
 static const Dn2CppTypeInfo* dn2cpp_synthesize_instantiation(
     const Dn2CppRuntimeTemplate* row, const Dn2CppTypeInfo* const* args)
 {
-    for (Dn2CppSynthInst* n = g_synth_insts; n != nullptr; n = n->next)
+    // Recursive bases use the same preferred metadata source as direct creation.
+    // Otherwise an intermediate source can discard a rooted constructor body.
+    row = dn2cpp_runtime_template_by_def(row->def);
+    for (Dn2CppSynthInst* n = g_synth_insts.load(std::memory_order_relaxed); n != nullptr; n = n->next)
     {
         if (n->def != row->def)
             continue;
@@ -324,29 +352,37 @@ static const Dn2CppTypeInfo* dn2cpp_synthesize_instantiation(
     if (ti->base != nullptr && (ti->base->flags & DN2CPP_TF_RUNTIME_TEMPLATE) != 0)
     {
         const Dn2CppRuntimeTemplate* brow = dn2cpp_runtime_template_by_ti(ti->base);
-        if (brow == nullptr || brow->argCount > row->argCount)
-            dn2cpp_throw_invalid_operation();
+        const auto baseArgs = dn2cpp_project_base_arguments(row, brow, args);
         // Interns onto the AOT instantiation when the image carries it (the
         // pointer-comparing walks demand the one type-info); such a base's
         // rgctx never serves the clone — the anchor loop below does.
-        ti->base = dn2cpp_synthesize_instantiation(brow, args);
+        ti->base = dn2cpp_synthesize_instantiation(brow, baseArgs.data());
     }
-    // Every placeholder level's rgctx table lives on the CLONE, keyed by the
-    // level's definition: the clone's $CnAny bodies index with the template's
-    // slot layout, which the interned base chain cannot provide. A level's table
-    // can forward a lower level's, so all are allocated before any is filled.
-    std::vector<std::pair<const Dn2CppRuntimeTemplate*, const void**>> levels;
-    for (const Dn2CppRuntimeTemplate* r = row; r != nullptr; )
+    // An inherited row can come from any interned source of its definition,
+    // whose reached bodies need not have the same slot layout. Supply each
+    // source layout over the actual level's local arguments on this receiver.
+    // Allocate all tables before filling forwarded source tables.
+    struct SynthesizedLevel
     {
-        levels.emplace_back(r, r->rgctxDescCount > 0 ? new const void*[r->rgctxDescCount] : nullptr);
-        const Dn2CppTypeInfo* bt = r->templateTi->base;
-        r = bt != nullptr && (bt->flags & DN2CPP_TF_RUNTIME_TEMPLATE) != 0
-            ? dn2cpp_runtime_template_by_ti(bt)
-            : nullptr;
-    }
+        const Dn2CppRuntimeTemplate* row;
+        const void** table;
+        std::vector<const Dn2CppTypeInfo*> arguments;
+    };
+    std::vector<SynthesizedLevel> levels;
+    for (const Dn2CppTypeInfo* closed = ti; closed != nullptr; closed = closed->base)
+        for (int32_t j = 0; j < dn2cpp_runtime_template_count; j++)
+        {
+            const auto* r = &dn2cpp_runtime_templates[j];
+            if (r->def != closed->genericDef)
+                continue;
+            levels.push_back({ r, r->rgctxDescCount > 0 ? new const void*[r->rgctxDescCount] : nullptr,
+                std::vector<const Dn2CppTypeInfo*>(closed->genericArgs, closed->genericArgs + closed->genericArgCount) });
+        }
     for (size_t k = 0; k < levels.size(); k++)
     {
-        const auto [r, table] = levels[k];
+        const auto& level = levels[k];
+        const auto* r = level.row;
+        const auto table = level.table;
         if (table == nullptr)
             continue;
         for (int32_t i = 0; i < r->rgctxDescCount; i++)
@@ -354,17 +390,25 @@ static const Dn2CppTypeInfo* dn2cpp_synthesize_instantiation(
             const int32_t entry = r->rgctxDesc[i];
             if (entry >= 0)
             {
-                table[i] = args[entry];
+                if (entry >= r->argCount)
+                    dn2cpp_throw_invalid_operation();
+                table[i] = level.arguments[entry];
                 continue;
             }
-            const size_t at = k + static_cast<size_t>(~entry);
-            if (at >= levels.size() || levels[at].second == nullptr)
+            const auto* target = r->templateTi;
+            for (int32_t depth = ~entry; depth > 0 && target != nullptr; depth--)
+                target = target->base;
+            const void** forwarded = nullptr;
+            for (const auto& candidate : levels)
+                if (candidate.row->templateTi == target)
+                    forwarded = candidate.table;
+            if (forwarded == nullptr)
                 dn2cpp_throw_invalid_operation();
-            table[i] = levels[at].second;
+            table[i] = forwarded;
         }
-        if (k == 0)
+        if (r == row)
             ti->rgctx = table;
-        auto* an = new Dn2CppSynthAnchor{ ti, r->def, table,
+        auto* an = new Dn2CppSynthAnchor{ ti, r->templateTi, table,
             g_synth_anchors.load(std::memory_order_relaxed) };
         g_synth_anchors.store(an, std::memory_order_release);
     }
@@ -383,8 +427,8 @@ static const Dn2CppTypeInfo* dn2cpp_synthesize_instantiation(
     char* name = new char[nm.size() + 1];
     std::memcpy(name, nm.c_str(), nm.size() + 1);
     ti->name = name;
-    auto* node = new Dn2CppSynthInst{ row->def, ti, g_synth_insts };
-    g_synth_insts = node;
+    auto* node = new Dn2CppSynthInst{ row->def, ti, row->templateTi, g_synth_insts.load(std::memory_order_relaxed) };
+    g_synth_insts.store(node, std::memory_order_release);
     dn2cpp_type_registry_add(ti->name, ti);
     return ti;
 }
@@ -5295,13 +5339,14 @@ const Dn2CppTypeInfo dn2cpp_reflbind_type = { "<ReflectionDelegateBind>", nullpt
 
 static thread_local const Dn2CppTypeInfo* t_null_receiver_context_type = nullptr;
 
-const void* const* dn2cpp_null_receiver_rgctx(const Dn2CppTypeInfo* genericDef)
+const void* const* dn2cpp_null_receiver_rgctx(const Dn2CppTypeInfo* genericDef, const Dn2CppTypeInfo* source)
 {
     const Dn2CppTypeInfo* type = t_null_receiver_context_type;
     t_null_receiver_context_type = nullptr;
     if (type == nullptr)
         dn2cpp_throw_null_reference();
-    const void* const* context = dn2cpp_rgctx(type, genericDef);
+    const void* const* context = source != nullptr
+        ? dn2cpp_rgctx_template(type, source) : dn2cpp_rgctx(type, genericDef);
     if (context == nullptr)
         dn2cpp_throw_null_reference();
     return context;
@@ -6008,7 +6053,7 @@ static bool dn2cpp_dgbind_named_argument_mismatch(const Dn2CppMethodInfo& row,
     const auto* declaring = dn2cpp_invoke_declaring(row.declaringType, queried);
     if ((declaring->flags & DN2CPP_TF_RUNTIME_SYNTH) == 0 || declaring->genericArgs == nullptr)
         return false;
-    const auto* level = dn2cpp_runtime_template_by_def(declaring->genericDef);
+    const auto* level = dn2cpp_runtime_template_by_ti(dn2cpp_runtime_template_of(declaring));
     if (level == nullptr)
         return false;
     for (int32_t i = 0; i < level->bindingTypeArgumentCount; i++)
