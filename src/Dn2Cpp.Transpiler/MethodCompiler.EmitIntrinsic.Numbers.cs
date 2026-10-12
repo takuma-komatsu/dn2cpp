@@ -109,6 +109,12 @@ internal sealed partial class MethodCompiler
 
     private bool TryEmitNumbersIntrinsic(string declType, string name, MethodSignature<TypeDesc> sig)
     {
+        if (CoreIntrinsics.BrInvariantCompareInfoCallback.Matches(declType, name))
+        {
+            Pop(); // sender
+            Pop(); // the existing invariant CompareInfo
+            return true;
+        }
         if (name == "CompareTo" && TryEmitPrimitiveCompareTo(declType, sig))
             return true;
         if (name == "Equals" && TryEmitPrimitiveEqualsObject(declType, sig))
@@ -595,23 +601,27 @@ internal sealed partial class MethodCompiler
                     or ("System.Int64", "ToString") or ("System.UInt64", "ToString")
                     when IsProviderOnly(sig):
             {
-                Pop(); // provider: an integer's default representation is culture-invariant text
+                var provider = Pop();
                 bool i64 = declType is "System.Int64" or "System.UInt64";
+                bool unsigned = declType is "System.UInt32" or "System.UInt64";
+                string prov = unsigned ? "nullptr" : CastNumberFormatProvider(provider);
+                string value = DerefReceiver(i64 ? "int64_t" : "int32_t");
                 Push(StackKind.Ref, "Dn2CppString*",
-                    i64 ? $"dn2cpp_long_to_string({DerefReceiver("int64_t")})"
-                        : $"dn2cpp_int_to_string({DerefReceiver("int32_t")})");
+                    unsigned ? $"dn2cpp_format_uint_c(({(i64 ? "uint64_t" : "uint32_t")})({value}), {(i64 ? 8 : 4)}, nullptr, nullptr)"
+                        : $"dn2cpp_format_int_c({value}, {(i64 ? 8 : 4)}, nullptr, ({value}) < 0 ? {prov} : nullptr)");
                 return true;
             }
-            // Sub-word ToString(provider) — same culture-invariant decimal print as
-            // the parameterless case above (deref at the real sub-word width; the
-            // signed int32 print is exact for all four).
             case ("System.Byte", "ToString") or ("System.SByte", "ToString")
                     or ("System.Int16", "ToString") or ("System.UInt16", "ToString")
                     when IsProviderOnly(sig):
             {
-                Pop(); // provider: an integer's default representation is culture-invariant text
+                var provider = Pop();
+                bool signed = declType is "System.SByte" or "System.Int16";
+                string prov = signed ? CastNumberFormatProvider(provider) : "nullptr";
+                string value = DerefReceiver(SubWordCppType(declType));
                 Push(StackKind.Ref, "Dn2CppString*",
-                    $"dn2cpp_int_to_string((int32_t)({DerefReceiver(SubWordCppType(declType))}))");
+                    signed ? $"dn2cpp_format_int_c({value}, {(declType == "System.SByte" ? 1 : 2)}, nullptr, ({value}) < 0 ? {prov} : nullptr)"
+                        : $"dn2cpp_int_to_string((int32_t)({value}))");
                 return true;
             }
             case ("System.Double", "ToString") when IsFormatThenProvider(sig):
@@ -700,9 +710,11 @@ internal sealed partial class MethodCompiler
                 string prov = CastNumberFormatProvider(Pop());
                 string fmt = Cast(Pop(), "Dn2CppString*");
                 bool uns = declType == "System.UInt32";
+                string value = DerefReceiver("int32_t");
+                prov = IntegerFormatProviderExpr(prov, fmt, uns ? "0" : $"({value}) < 0");
                 Push(StackKind.Ref, "Dn2CppString*",
-                    uns ? $"dn2cpp_format_uint_c((uint32_t)({DerefReceiver("int32_t")}), 4, {fmt}, {prov})"
-                        : $"dn2cpp_format_int_c({DerefReceiver("int32_t")}, 4, {fmt}, {prov})");
+                    uns ? $"dn2cpp_format_uint_c((uint32_t)({value}), 4, {fmt}, {prov})"
+                        : $"dn2cpp_format_int_c({value}, 4, {fmt}, {prov})");
                 return true;
             }
             case ("System.Int64", "ToString") or ("System.UInt64", "ToString") when IsFormatThenProvider(sig):
@@ -710,9 +722,11 @@ internal sealed partial class MethodCompiler
                 string prov = CastNumberFormatProvider(Pop());
                 string fmt = Cast(Pop(), "Dn2CppString*");
                 bool uns = declType == "System.UInt64";
+                string value = DerefReceiver("int64_t");
+                prov = IntegerFormatProviderExpr(prov, fmt, uns ? "0" : $"({value}) < 0");
                 Push(StackKind.Ref, "Dn2CppString*",
-                    uns ? $"dn2cpp_format_uint_c((uint64_t)({DerefReceiver("int64_t")}), 8, {fmt}, {prov})"
-                        : $"dn2cpp_format_int_c({DerefReceiver("int64_t")}, 8, {fmt}, {prov})");
+                    uns ? $"dn2cpp_format_uint_c((uint64_t)({value}), 8, {fmt}, {prov})"
+                        : $"dn2cpp_format_int_c({value}, 8, {fmt}, {prov})");
                 return true;
             }
             // Sub-word ToString(format, provider) — the culture-aware twin of the
@@ -728,6 +742,7 @@ internal sealed partial class MethodCompiler
                 string prov = CastNumberFormatProvider(Pop());
                 string fmt = Cast(Pop(), "Dn2CppString*");
                 bool b1 = declType == "System.Byte";
+                prov = IntegerFormatProviderExpr(prov, fmt, "0");
                 Push(StackKind.Ref, "Dn2CppString*",
                     $"dn2cpp_format_uint_c(({(b1 ? "uint8_t" : "uint16_t")})({DerefReceiver(SubWordCppType(declType))}), "
                     + $"{(b1 ? 1 : 2)}, {fmt}, {prov})");
@@ -738,14 +753,28 @@ internal sealed partial class MethodCompiler
             {
                 string prov = CastNumberFormatProvider(Pop());
                 string fmt = Cast(Pop(), "Dn2CppString*");
+                string value = DerefReceiver(SubWordCppType(declType));
+                prov = IntegerFormatProviderExpr(prov, fmt, $"({value}) < 0");
                 // Already sign-extended in its int32 slot, so format_int prints and masks it
                 // correctly at the declared width.
                 Push(StackKind.Ref, "Dn2CppString*",
-                    $"dn2cpp_format_int_c({DerefReceiver(SubWordCppType(declType))}, "
+                    $"dn2cpp_format_int_c({value}, "
                     + $"{(declType == "System.SByte" ? 1 : 2)}, {fmt}, {prov})");
                 return true;
             }
             // ---- CultureInfo / NumberFormatInfo ----
+            case ("System.Globalization.CultureInfo", "Clone")
+                or ("System.Globalization.NumberFormatInfo", "Clone")
+                or ("System.Globalization.TextInfo", "Clone")
+                when sig.ParameterTypes.Length == 0:
+            {
+                string source = Cast(Pop(), "const Dn2CppNumberFormatInfo*");
+                string kind = declType == "System.Globalization.CultureInfo" ? "DN2CPP_NFI_KIND_CULTURE"
+                    : declType == "System.Globalization.NumberFormatInfo" ? "DN2CPP_NFI_KIND_NFI"
+                    : "DN2CPP_NFI_KIND_TEXTINFO";
+                Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_nfi_clone({source}, {kind})");
+                return true;
+            }
             // Static culture accessors. All three culture axes read the HOST: the
             // CurrentCulture slot, the CurrentUICulture slot and InstalledUICulture each
             // default to the locale dn2cpp_pal_default_locale_name resolves. Only
@@ -833,9 +862,10 @@ internal sealed partial class MethodCompiler
                 or ("System.IFormatProvider", "GetFormat"):
             {
                 string requested = Cast(Pop(), "Dn2CppType*");
-                string provider = Cast(Pop(), "Dn2CppObject*");
+                var receiver = Pop();
+                string provider = Cast(receiver, "Dn2CppObject*");
                 Push(StackKind.Ref, "Dn2CppObject*",
-                    $"dn2cpp_format_provider_get_format({provider}, {requested})");
+                    $"dn2cpp_format_provider_get_format({provider}, {requested}, {FormatProviderDispatchArgs(receiver)})");
                 return true;
             }
             case ("System.Globalization.NumberFormatInfo", "GetInstance")
@@ -1017,6 +1047,7 @@ internal sealed partial class MethodCompiler
                 string o = NewTemp(dtfiCls.CppStructName + "*");
                 Emit($"{o} = ({dtfiCls.CppStructName}*)dn2cpp_alloc(sizeof({dtfiCls.CppStructName}));");
                 Emit($"((Dn2CppObject*){o})->type = &{dtfiCls.CppTypeInfoName};");
+                Emit($"{o}->dn2cpp_read_only = 1;");
                 Push(StackKind.Ref, dtfiCls.CppStructName + "*", o);
                 return true;
             }
@@ -1030,12 +1061,27 @@ internal sealed partial class MethodCompiler
                 string o = NewTemp(dtfiCls.CppStructName + "*");
                 Emit($"{o} = ({dtfiCls.CppStructName}*)dn2cpp_alloc(sizeof({dtfiCls.CppStructName}));");
                 Emit($"((Dn2CppObject*){o})->type = &{dtfiCls.CppTypeInfoName};");
+                Emit($"{o}->dn2cpp_read_only = 1;");
                 Push(StackKind.Ref, dtfiCls.CppStructName + "*", o);
                 return true;
             }
             case ("System.Globalization.DateTimeFormatInfo", "ReadOnly"):
             {
-                // Returns the same instance
+                string source = DateTimeFormatReceiver();
+                string clone = NewTemp(DateTimeFormatCppType());
+                Emit($"{clone} = {source};");
+                Emit($"if (!{source}->dn2cpp_read_only) {{ {clone} = ({DateTimeFormatCppType()})dn2cpp_object_memberwise_clone((Dn2CppObject*){source}); {clone}->dn2cpp_read_only = 1; }}");
+                Push(StackKind.Ref, DateTimeFormatCppType(), clone);
+                return true;
+            }
+            case ("System.Globalization.DateTimeFormatInfo", "Clone")
+                when sig.ParameterTypes.Length == 0:
+            {
+                string source = DateTimeFormatReceiver();
+                string clone = NewTemp(DateTimeFormatCppType());
+                Emit($"{clone} = ({DateTimeFormatCppType()})dn2cpp_object_memberwise_clone((Dn2CppObject*){source});");
+                Emit($"{clone}->dn2cpp_read_only = 0;");
+                Push(StackKind.Ref, "Dn2CppObject*", $"(Dn2CppObject*){clone}");
                 return true;
             }
             case ("System.Globalization.DateTimeFormatInfo", "get_DecimalSeparator"):
@@ -1046,8 +1092,18 @@ internal sealed partial class MethodCompiler
             }
             case ("System.Globalization.DateTimeFormatInfo", "get_DateSeparator"):
             {
-                Pop();
-                Push(StackKind.Ref, "Dn2CppString*", Literals.GetOrAdd("/"));
+                string separator = DateTimeFormatReceiver() + "->dn2cpp_date_separator";
+                Push(StackKind.Ref, "Dn2CppString*",
+                    $"({separator} != nullptr ? {separator} : {Literals.GetOrAdd("/")})");
+                return true;
+            }
+            case ("System.Globalization.DateTimeFormatInfo", "set_DateSeparator"):
+            {
+                string separator = Cast(Pop(), "Dn2CppString*");
+                string receiver = DateTimeFormatReceiver();
+                Emit($"if ({receiver}->dn2cpp_read_only) dn2cpp_throw_invalid_operation_msg(\"Instance is read-only.\");");
+                Emit($"if ({separator} == nullptr) dn2cpp_throw_argument_null_param(\"value\");");
+                Emit($"dn2cpp_gc_store_ref(&{receiver}->dn2cpp_date_separator, {separator});");
                 return true;
             }
             case ("System.Globalization.DateTimeFormatInfo", "get_TimeSeparator"):
@@ -1257,6 +1313,14 @@ internal sealed partial class MethodCompiler
                 var recv = Pop();
                 Push(StackKind.Ref, "Dn2CppString*",
                     $"dn2cpp_textinfo_tostring({Cast(recv, "const Dn2CppNumberFormatInfo*")})");
+                return true;
+            }
+            case ("System.Globalization.TextInfo", "OnDeserialization")
+                when sig.ParameterTypes.Length == 1:
+            {
+                Pop();
+                Emit($"dn2cpp_null_check({Cast(Pop(), "const Dn2CppNumberFormatInfo*")});");
+                Emit("dn2cpp_throw_platform_not_supported(\"TextInfo deserialization is not supported\");");
                 return true;
             }
             // TextInfo casing — the TextInfo model is the invariant culture pointer (see
@@ -1871,6 +1935,22 @@ internal sealed partial class MethodCompiler
         }
     }
 
+    private string DateTimeFormatCppType()
+    {
+        var owner = Comp.FindClassByFullName("System.Globalization.DateTimeFormatInfo")
+            ?? throw new InvalidOperationException("DateTimeFormatInfo is not loaded");
+        NoteReferenceClass(TypeDesc.MakeClass(owner));
+        return owner.CppStructName + "*";
+    }
+
+    private string DateTimeFormatReceiver()
+    {
+        string receiver = NewTemp(DateTimeFormatCppType());
+        Emit($"{receiver} = {Cast(Pop(), DateTimeFormatCppType())};");
+        Emit($"dn2cpp_null_check({receiver});");
+        return receiver;
+    }
+
     /// <summary>Whether <paramref name="t"/> is <c>System.Span&lt;T&gt;</c> closed over the
     /// given primitive element. The TryFormat destination discriminator: the char16 and
     /// UTF-8 span-write formatters share an otherwise identical parameter shape.</summary>
@@ -1929,7 +2009,11 @@ internal sealed partial class MethodCompiler
                 _ => $"(uint64_t)({recv})",
             })
             : $"(int64_t)({recv})";
+        prov = IntegerFormatProviderExpr(prov, fmt, uns ? "0" : $"({valExpr}) < 0");
         Push(StackKind.I4, "int32_t",
             $"({helper}({valExpr}, {width}, {fmt}, ({destCast}){destPtr}->f__reference, {destPtr}->f__length, {wrote}, {prov}) ? 1 : 0)");
     }
+
+    private static string IntegerFormatProviderExpr(string provider, string format, string negative) =>
+        $"(dn2cpp_integral_format_uses_provider({format}, {negative}) ? {provider} : nullptr)";
 }

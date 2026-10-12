@@ -180,8 +180,10 @@ static bool dn2cpp_relation_carries(const Dn2CppTypeInfo* t, const Dn2CppTypeInf
 // rows.
 static bool dn2cpp_rows_carry(const Dn2CppTypeInfo* t, const Dn2CppTypeInfo* itf)
 {
-    for (int32_t i = 0; i < t->interfaceCount; i++)
-        if (t->interfaces[i].itf == itf)
+    int32_t count;
+    const auto* entries = dn2cpp_type_interfaces(t, &count);
+    for (int32_t i = 0; i < count; i++)
+        if (entries[i].itf == itf)
             return true;
     return dn2cpp_relation_carries(t, itf);
 }
@@ -248,8 +250,10 @@ static int32_t dn2cpp_itf_variant_match(const Dn2CppTypeInfo* have, const Dn2Cpp
 // Whether a row `t` itself states, own or relation, satisfies the variant `want`.
 static bool dn2cpp_rows_variant_match(const Dn2CppTypeInfo* t, const Dn2CppTypeInfo* want)
 {
-    for (int32_t i = 0; i < t->interfaceCount; i++)
-        if (dn2cpp_itf_variant_match(t->interfaces[i].itf, want))
+    int32_t count;
+    const auto* entries = dn2cpp_type_interfaces(t, &count);
+    for (int32_t i = 0; i < count; i++)
+        if (dn2cpp_itf_variant_match(entries[i].itf, want))
             return true;
     int32_t n;
     const Dn2CppInterfaceEntry* rel = dn2cpp_relation_interfaces(t, &n);
@@ -368,41 +372,15 @@ static int32_t dn2cpp_wellknown_self_generic_canon(const Dn2CppTypeInfo* st, con
 // unboxing thunk does. IFormatProvider uses the managed reference ABI, including
 // built-in providers; only numeric consumers extract a raw number-format payload.
 
-// IFormattable.ToString(string, IFormatProvider). Sub-word integers widen to an int32
-// payload in the box (see dn2cpp_object_tostring), so their reads are 4-byte.
+// IFormattable.ToString(string, IFormatProvider).
 static Dn2CppString* dn2cpp_bbi_format(Dn2CppObject* box, Dn2CppString* fmt,
                                        Dn2CppObject* provider)
 {
     const Dn2CppTypeInfo* t = box->type;
-    const void* p = box + 1; // boxed value sits right after the header
-    if (t == &dn2cpp_int32_type)
-        return dn2cpp_format_int_c(*reinterpret_cast<const int32_t*>(p), 4, fmt, dn2cpp_format_provider_nfi(provider));
-    // Sub-words carry their own byte width so a hex/binary mask covers exactly
-    // their two's-complement pattern, as at the direct-call arms.
-    if (t == &dn2cpp_sbyte_type)
-        return dn2cpp_format_int_c(static_cast<int8_t>(*reinterpret_cast<const int32_t*>(p)), 1, fmt, dn2cpp_format_provider_nfi(provider));
-    if (t == &dn2cpp_int16_type)
-        return dn2cpp_format_int_c(static_cast<int16_t>(*reinterpret_cast<const int32_t*>(p)), 2, fmt, dn2cpp_format_provider_nfi(provider));
-    if (t == &dn2cpp_byte_type)
-        return dn2cpp_format_uint_c(static_cast<uint8_t>(*reinterpret_cast<const int32_t*>(p)), 1, fmt, dn2cpp_format_provider_nfi(provider));
-    if (t == &dn2cpp_uint16_type)
-        return dn2cpp_format_uint_c(static_cast<uint16_t>(*reinterpret_cast<const int32_t*>(p)), 2, fmt, dn2cpp_format_provider_nfi(provider));
-    if (t == &dn2cpp_uint32_type)
-        return dn2cpp_format_uint_c(*reinterpret_cast<const uint32_t*>(p), 4, fmt, dn2cpp_format_provider_nfi(provider));
-    if (t == &dn2cpp_int64_type)
-        return dn2cpp_format_int_c(*reinterpret_cast<const int64_t*>(p), 8, fmt, dn2cpp_format_provider_nfi(provider));
-    if (t == &dn2cpp_uint64_type)
-        return dn2cpp_format_uint_c(*reinterpret_cast<const uint64_t*>(p), 8, fmt, dn2cpp_format_provider_nfi(provider));
-    if (t == &dn2cpp_intptr_type)
-        return dn2cpp_format_int_c(*reinterpret_cast<const intptr_t*>(p), 8, fmt, dn2cpp_format_provider_nfi(provider));
-    if (t == &dn2cpp_uintptr_type)
-        return dn2cpp_format_uint_c(*reinterpret_cast<const uintptr_t*>(p), 8, fmt, dn2cpp_format_provider_nfi(provider));
-    if (t == &dn2cpp_double_type)
-        return dn2cpp_format_r8_c(*reinterpret_cast<const double*>(p), fmt, dn2cpp_format_provider_nfi(provider));
-    if (t == &dn2cpp_single_type)
-        return dn2cpp_format_r4_c(*reinterpret_cast<const float*>(p), fmt, dn2cpp_format_provider_nfi(provider));
+    if (Dn2CppString* formatted = dn2cpp_format_boxed_numeric(box, fmt, provider))
+        return formatted;
     if (t->formatspec != nullptr)
-        return t->formatspec(box, fmt, t == &dn2cpp_decimal_type ? dn2cpp_format_provider_nfi(provider) : nullptr);
+        return t->formatspec(box, fmt, nullptr);
     // No spec asked for (IConvertible.ToString routes here that way), or Char, whose
     // real ToString(format, provider) ignores the spec: the default text.
     if (fmt == nullptr || fmt->length == 0 || t == &dn2cpp_char_type)
@@ -511,14 +489,24 @@ static double dn2cpp_bbi_conv_r8(Dn2CppObject* box, Dn2CppObject*)
 {
     return dn2cpp_convert_obj_to_f64(box);
 }
-// Decimal and DateTime have no widening read of their own; the ChangeType matrix owns
-// both (where a numeric source has no DateTime conversion, as in real .NET).
+// Decimal and the supported DateTime conversions share the ChangeType matrix.
+// Numeric ToDateTime rejects the conversion with IConvertible's exception contract.
 static Dn2CppDecimal dn2cpp_bbi_conv_dec(Dn2CppObject* box, Dn2CppObject*)
 {
     return *reinterpret_cast<const Dn2CppDecimal*>(dn2cpp_convert_change_type_code(box, 15) + 1);
 }
 static Dn2CppDateTime dn2cpp_bbi_conv_dt(Dn2CppObject* box, Dn2CppObject*)
 {
+    if (box->type != &dn2cpp_datetime_type && box->type != &dn2cpp_string_type)
+    {
+        const char* source = box->type->name;
+        if (const char* separator = std::strrchr(source, '.'))
+            source = separator + 1;
+        dn2cpp_throw(dn2cpp_exception_new(&dn2cpp_invalid_cast_exception_type,
+            dn2cpp_string_concat3(dn2cpp_string_from_utf8("Invalid cast from '", 19),
+                dn2cpp_string_from_utf8(source, static_cast<int32_t>(std::strlen(source))),
+                dn2cpp_string_from_utf8("' to 'DateTime'.", 16)), nullptr));
+    }
     return *reinterpret_cast<const Dn2CppDateTime*>(dn2cpp_convert_change_type_code(box, 16) + 1);
 }
 static Dn2CppString* dn2cpp_bbi_conv_str(Dn2CppObject* box, Dn2CppObject* provider)
@@ -526,8 +514,11 @@ static Dn2CppString* dn2cpp_bbi_conv_str(Dn2CppObject* box, Dn2CppObject* provid
     return dn2cpp_bbi_format(box, nullptr, provider);
 }
 static Dn2CppObject* dn2cpp_bbi_conv_type(Dn2CppObject* box, Dn2CppType* target,
-                                          Dn2CppObject*)
+                                          Dn2CppObject* provider)
 {
+    if (target != nullptr && target->typeInfo == &dn2cpp_string_type)
+        if (Dn2CppString* formatted = dn2cpp_format_boxed_numeric(box, nullptr, provider))
+            return reinterpret_cast<Dn2CppObject*>(formatted);
     return dn2cpp_convert_change_type(box, target);
 }
 
@@ -726,10 +717,12 @@ static const Dn2CppInterfaceEntry* dn2cpp_interface_row_walk(const Dn2CppTypeInf
 {
     for (const Dn2CppTypeInfo* c = t; c != nullptr; c = c->base)
     {
-        for (int32_t i = 0; i < c->interfaceCount; i++)
+        int32_t count;
+        const auto* entries = dn2cpp_type_interfaces(c, &count);
+        for (int32_t i = 0; i < count; i++)
         {
-            if (c->interfaces[i].itf == itf && c->interfaces[i].slots != nullptr)
-                return &c->interfaces[i];
+            if (entries[i].itf == itf && entries[i].slots != nullptr)
+                return &entries[i];
         }
     }
     // Variant fallback: a request for a variant I<X> is served by an implemented I<Y>
@@ -743,10 +736,14 @@ static const Dn2CppInterfaceEntry* dn2cpp_interface_row_walk(const Dn2CppTypeInf
     // unfilled slot.
     if (dn2cpp_itf_is_variant(itf))
         for (const Dn2CppTypeInfo* c = t; c != nullptr; c = c->base)
-            for (int32_t i = 0; i < c->interfaceCount; i++)
-                if (c->interfaces[i].slots != nullptr
-                    && dn2cpp_itf_variant_match(c->interfaces[i].itf, itf))
-                    return &c->interfaces[i];
+        {
+            int32_t count;
+            const auto* entries = dn2cpp_type_interfaces(c, &count);
+            for (int32_t i = 0; i < count; i++)
+                if (entries[i].slots != nullptr
+                    && dn2cpp_itf_variant_match(entries[i].itf, itf))
+                    return &entries[i];
+        }
     return nullptr;
 }
 
@@ -825,10 +822,13 @@ const Dn2CppInterfaceEntry* dn2cpp_dispatch_interface_row_of(const Dn2CppTypeInf
     // here, so type tests are unchanged.
     if ((t->flags & DN2CPP_TF_REF_ERASED_ITF) != 0 && itf->genericDef != nullptr)
         for (const Dn2CppTypeInfo* c = t; c != nullptr; c = c->base)
-            for (int32_t i = 0; i < c->interfaceCount; i++)
+        {
+            int32_t count;
+            const auto* entries = dn2cpp_type_interfaces(c, &count);
+            for (int32_t i = 0; i < count; i++)
             {
-                const Dn2CppTypeInfo* have = c->interfaces[i].itf;
-                if (c->interfaces[i].slots == nullptr
+                const Dn2CppTypeInfo* have = entries[i].itf;
+                if (entries[i].slots == nullptr
                     || have->genericDef != itf->genericDef
                     || have->genericArgCount != itf->genericArgCount)
                     continue;
@@ -841,8 +841,9 @@ const Dn2CppInterfaceEntry* dn2cpp_dispatch_interface_row_of(const Dn2CppTypeInf
                         break;
                     }
                 if (allRef)
-                    return &c->interfaces[i];
+                    return &entries[i];
             }
+        }
     return nullptr;
 }
 
@@ -904,10 +905,12 @@ const void** dn2cpp_try_resolve_interface(const Dn2CppTypeInfo* t, const Dn2CppT
     // base-chain rows, variant fallbacks, and negative answers.
     // A relation-only row (nullptr slots — an interface/abstract type's table)
     // falls through to the cached walk, which skips such rows.
-    for (int32_t i = 0; i < t->interfaceCount; i++)
+    int32_t count;
+    const auto* entries = dn2cpp_type_interfaces(t, &count);
+    for (int32_t i = 0; i < count; i++)
     {
-        if (t->interfaces[i].itf == itf && t->interfaces[i].slots != nullptr)
-            return t->interfaces[i].slots;
+        if (entries[i].itf == itf && entries[i].slots != nullptr)
+            return entries[i].slots;
     }
     return dn2cpp_resolve_interface_cached(t, itf);
 }
@@ -1018,10 +1021,12 @@ const void** dn2cpp_resolve_interface(const Dn2CppTypeInfo* t, const Dn2CppTypeI
     // body (call on miss only) measurably matters on a tight dispatch loop —
     // routing the hit path through one more call/ret costs ~5% there.
     // A relation-only row (nullptr slots) falls through to the cached walk.
-    for (int32_t i = 0; i < t->interfaceCount; i++)
+    int32_t count;
+    const auto* entries = dn2cpp_type_interfaces(t, &count);
+    for (int32_t i = 0; i < count; i++)
     {
-        if (t->interfaces[i].itf == itf && t->interfaces[i].slots != nullptr)
-            return t->interfaces[i].slots;
+        if (entries[i].itf == itf && entries[i].slots != nullptr)
+            return entries[i].slots;
     }
     if (const void** slots = dn2cpp_resolve_interface_cached(t, itf))
         return slots;

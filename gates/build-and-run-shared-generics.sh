@@ -694,7 +694,7 @@ for line in '== signature-only interface rows ==' \
 done
 echo "== Signature-only interface row invokers =="
 interface_rows=$(awk '
-    /^static const Dn2CppMethodInfo md_native_methtab_GvmCanonicalSubset_IChain_GvmCanonicalSubset_Row\[\] = \{[[:space:]]*$/ { in_table = 1; next }
+    /^extern const Dn2CppMethodInfo md_native_methtab_GvmCanonicalSubset_IChain_GvmCanonicalSubset_Row\[\] = \{[[:space:]]*$/ { in_table = 1; next }
     in_table && /^\};/ { in_table = 0 }
     in_table { print }
 ' "$out"/generated*.cpp)

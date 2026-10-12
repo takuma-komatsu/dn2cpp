@@ -694,9 +694,12 @@ int32_t dn2cpp_object_equals_default_t(Dn2CppObject* a, Dn2CppObject* b,
         return dn2cpp_string_equals(reinterpret_cast<Dn2CppString*>(a),
                                     reinterpret_cast<Dn2CppString*>(b));
     for (const Dn2CppTypeInfo* owner = elementType; owner != nullptr; owner = owner->base)
-        for (int32_t i = 0; i < owner->interfaceCount; i++)
+    {
+        int32_t count;
+        const auto* entries = dn2cpp_type_interfaces(owner, &count);
+        for (int32_t i = 0; i < count; i++)
         {
-            const Dn2CppTypeInfo* itf = owner->interfaces[i].itf;
+            const Dn2CppTypeInfo* itf = entries[i].itf;
             if (itf == nullptr || itf->genericDef == nullptr || itf->genericDef->name == nullptr
                 || itf->genericArgCount != 1 || itf->genericArgs == nullptr
                 || itf->genericArgs[0] != elementType
@@ -705,6 +708,7 @@ int32_t dn2cpp_object_equals_default_t(Dn2CppObject* a, Dn2CppObject* b,
             const void** slots = dn2cpp_resolve_interface(a->type, itf);
             return ((int32_t (*)(Dn2CppObject*, Dn2CppObject*))slots[0])(a, b);
         }
+    }
     return dn2cpp_object_equals_virtual(a, b);
 }
 

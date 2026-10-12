@@ -6,6 +6,139 @@ namespace Dn2Cpp;
 
 internal sealed partial class MethodCompiler
 {
+    private string TaskDefaultResultDisposal(TypeDesc taskType)
+    {
+        if (taskType is not { Kind: TypeKind.Class, Class.Context.TypeArgs: [{ } resultType] })
+            return "true";
+        if (CppTypes.KindOf(resultType) == StackKind.Ref)
+            return "true";
+        TaintIfCanonical(resultType, "task-default-result-cache");
+        if (resultType is { Kind: TypeKind.Class, Class: { } cls }
+                && Comp.GenericDefFullName(cls) == "System.Nullable")
+            return "true";
+        if (!TaskResultCacheLayoutAllowed(resultType))
+            return "false";
+        return $"dn2cpp_task_default_result_bits(nullptr, sizeof({CppTypes.Of(resultType)}))";
+    }
+
+    private string TaskCachedResultDisposal(StackEntry value, TypeDesc type)
+    {
+        if (value.Kind == StackKind.Ref)
+            return $"({value.Expr} == nullptr)";
+        TaintIfCanonical(type, "task-result-cache");
+        if (type is { Kind: TypeKind.Class, Class: { } cls }
+            && Comp.GenericDefFullName(cls) == "System.Nullable")
+        {
+            var nullable = NullableLayout(type)
+                ?? throw new InvalidOperationException("Nullable result has no layout");
+            return $"!(({StructLValue(value)}).{nullable.HasValueField})";
+        }
+        var primitive = type.Kind == TypeKind.Class
+            ? Compilation.WellKnownPrimitive(type.Class!.FullName) ?? type
+            : type;
+        if (primitive is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean })
+            return "true";
+        if (primitive is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 })
+            return $"((uint32_t)({value.Expr}) + 1u < 10u)";
+        if (!TaskResultCacheLayoutAllowed(type))
+            return "false";
+        string storage = NewTemp(CppTypes.Of(primitive));
+        Emit($"{storage} = {Cast(value, CppTypes.Of(primitive))};");
+        string bits = NewTemp("Dn2CppTaskResultCacheBits");
+        string cache = NewTemp("bool");
+        Emit($"{cache} = dn2cpp_task_default_result_bits(nullptr, sizeof({storage}));");
+        Emit($"if ({cache}) {{");
+        Emit($"{bits} = {{}};");
+        CopyTaskResultCacheFields(primitive, storage, storage, bits);
+        Emit($"{cache} = dn2cpp_task_default_result_bits({bits}.bytes, sizeof({storage}));");
+        Emit("}");
+        return cache;
+    }
+
+    private bool TaskResultCacheLayoutAllowed(TypeDesc type)
+    {
+        string cpp = CppTypes.Of(type);
+        // Its managed bool/Nullable<long> payload exceeds the cache's largest width.
+        if (cpp == "Dn2CppParallelLoopResult")
+            return false;
+        // The collectible cell is a runtime edge; the managed handle is one nint.
+        if (cpp == "Dn2CppDependentHandle")
+            return true;
+        if (type is not { Kind: TypeKind.Class, Class: { IsValueType: true, IsEnum: false } cls })
+            return !type.ContainsGcReferences();
+        if (cls.IntrinsicCppName is { } native && CoreIntrinsics.IntrinsicValueTypeHoldsGcReference(native))
+            return false;
+
+        _c.EnsureCompleted(cls);
+        foreach (var field in cls.Fields.ToArray())
+        {
+            if (!field.IsStatic && !field.IsLiteral && !TaskResultCacheLayoutAllowed(field.Type))
+                return false;
+        }
+        return true;
+    }
+
+    private void CopyTaskResultCacheFields(TypeDesc type, string value, string root, string bits)
+    {
+        // Copy managed fields and modeled storage without reading implicit
+        // C++ padding or an indeterminate empty-struct placeholder.
+        string cpp = CppTypes.Of(type);
+        string[]? nativeFields = cpp switch
+        {
+            "Dn2CppDecimal" => ["_flags", "_hi32", "_lo64"],
+            "Dn2CppTimeSpan" or "Dn2CppTimeOnly" => ["ticks"],
+            "Dn2CppDateTime" => ["_dateData"],
+            "Dn2CppDateTimeOffset" => ["ticks", "offsetMinutes", "storageTail"],
+            "Dn2CppDateOnly" => ["dayNumber"],
+            "Dn2CppGCHandle" or "Dn2CppDependentHandle" => ["cell"],
+            "Dn2CppParallelLoopResult" => ["isCompleted", "hasLowestBreak", "lowestBreakIteration"],
+            "Dn2CppVector64" or "Dn2CppVector128" or "Dn2CppVector256"
+                or "Dn2CppVector512" or "Dn2CppVectorT" => ["b"],
+            "Dn2CppYieldAwaiter" => ["storage"],
+            _ => null,
+        };
+        if (nativeFields is not null)
+        {
+            foreach (string field in nativeFields)
+                CopyTaskResultCacheLeaf($"({value}).{field}", root, bits);
+            return;
+        }
+        if (type is not { Kind: TypeKind.Class, Class: { IsValueType: true, IsEnum: false } cls }
+            || cpp.EndsWith('*')
+            || Compilation.WellKnownPrimitive(cls.FullName) is not null)
+        {
+            CopyTaskResultCacheLeaf(value, root, bits);
+            return;
+        }
+
+        _c.EnsureCompleted(cls);
+        _c.TaskResultCacheLayouts.Add(cls);
+        Emit($"if (!dn2cpp_task_copy_declared_result_bits({bits}.bytes, &({root}), ({value}), 0)) {{");
+        foreach (var field in cls.Fields.ToArray())
+        {
+            if (field.IsStatic)
+                continue;
+            string member = FieldAccess(cls, field, new StackEntry(value, StackKind.Struct, cpp));
+            if (cls.InlineArrayLength > 0)
+            {
+                string index = NewTemp("size_t");
+                Emit($"for ({index} = 0; {index} < {cls.InlineArrayLength}; {index}++) {{");
+                CopyTaskResultCacheFields(field.Type, $"({member})[{index}]", root, bits);
+                Emit("}");
+            }
+            else
+                CopyTaskResultCacheFields(field.Type, member, root, bits);
+        }
+        Emit($"dn2cpp_task_copy_fixed_result_bits({bits}.bytes, &({root}), ({value}), 0);");
+        Emit($"dn2cpp_task_copy_padding_result_bits({bits}.bytes, &({root}), ({value}), 0);");
+        Emit("}");
+    }
+
+    private void CopyTaskResultCacheLeaf(string value, string root, string bits)
+    {
+        Emit($"std::memcpy({bits}.bytes + ((const uint8_t*)&({value}) - (const uint8_t*)&({root})), &({value}), sizeof({value}));");
+    }
+
     /// <summary>True for the binary-integer primitives whose generic-math conversions
     /// (CreateTruncating/CreateChecked/CreateSaturating) lower as a plain numeric cast.
     /// Char/Boolean and the floating types are excluded: a float source needs saturating
@@ -805,6 +938,29 @@ internal sealed partial class MethodCompiler
       + $"return reinterpret_cast<{cppStruct} (*)(Dn2CppObject*)>(__dg->method)(__dg->target); }} }}; "
       + $"{cppStruct} __r = __chain::run(__d); "
       + $"return (uint64_t)(uintptr_t)dn2cpp_struct_result_box(&__r, (int32_t)sizeof({cppStruct})); }}";
+
+    private static string TaskStructResultStateThunk(string cppStruct) =>
+        $"+[](Dn2CppObject* __d, Dn2CppObject* __s) -> uint64_t {{ "
+      + $"struct __chain {{ static {cppStruct} run(Dn2CppObject* __o, Dn2CppObject* __s) {{ "
+      + $"auto* __dg = reinterpret_cast<Dn2CppDelegate*>(__o); "
+      + $"if (__dg->prev != nullptr) run(__dg->prev, __s); "
+      + $"return reinterpret_cast<{cppStruct} (*)(Dn2CppObject*, Dn2CppObject*)>(__dg->method)(__dg->target, __s); }} }}; "
+      + $"{cppStruct} __r = __chain::run(__d, __s); "
+      + $"return (uint64_t)(uintptr_t)dn2cpp_struct_result_box(&__r, (int32_t)sizeof({cppStruct})); }}";
+
+    private static string TaskContWithStateResultThunk(TypeDesc resultType)
+    {
+        string cpp = CppTypes.Of(resultType);
+        string result = CppTypes.KindOf(resultType) == StackKind.Struct
+            ? $"(uint64_t)(uintptr_t)dn2cpp_struct_result_box(&__r, (int32_t)sizeof({cpp}))"
+            : TaskResultStore(new StackEntry("__r", CppTypes.KindOf(resultType), cpp));
+        return $"+[](Dn2CppObject* __d, Dn2CppObject* __a, Dn2CppObject* __s) -> uint64_t {{ "
+            + $"struct __chain {{ static {cpp} run(Dn2CppObject* __o, Dn2CppObject* __a, Dn2CppObject* __s) {{ "
+            + "auto* __dg = reinterpret_cast<Dn2CppDelegate*>(__o); "
+            + "if (__dg->prev != nullptr) run(__dg->prev, __a, __s); "
+            + $"return reinterpret_cast<{cpp} (*)(Dn2CppObject*, Dn2CppObject*, Dn2CppObject*)>(__dg->method)(__dg->target, __a, __s); }} }}; "
+            + $"{cpp} __r = __chain::run(__d, __a, __s); return {result}; }}";
+    }
 
     /// <summary>The <c>Task.ContinueWith</c> mirror of <see cref="TaskStructResultThunk"/>:
     /// a two-argument trampoline over <c>(delegate, settled antecedent)</c> whose

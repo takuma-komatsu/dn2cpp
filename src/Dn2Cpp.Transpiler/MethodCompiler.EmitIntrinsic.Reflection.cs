@@ -1612,6 +1612,12 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.Ref, "Dn2CppType*", Cast(t, "Dn2CppType*"));
                 return true;
             }
+            case ("System.Type", "GetTypeInfo" or "Clone") when sig.ParameterTypes.Length == 0:
+            {
+                var value = Pop();
+                Push(StackKind.Ref, "Dn2CppType*", Cast(value, "Dn2CppType*"));
+                return true;
+            }
             // MethodInfo.ReturnParameter: a synthesized ParameterInfo over the
             // return type (Position -1, Name null), matching real .NET.
             case ("System.Reflection.MethodInfo", "get_ReturnParameter"):

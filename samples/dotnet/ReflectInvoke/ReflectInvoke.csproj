@@ -56,11 +56,16 @@
     <Compile Remove="DelegateObjectEqualityOnlyProgram.cs" />
     <Compile Remove="PointerArrayTypesOnlyProgram.cs" />
     <Compile Remove="RuntimeLifetimeInterfacesOnlyProgram.cs" />
+    <Compile Remove="RuntimeHeldInterfacesOnlyProgram.cs" />
+    <Compile Remove="RuntimeHeldConvertibleProviderSubset.cs" />
+    <Compile Remove="RuntimeHeldReflectedValueSubset.cs" />
   </ItemGroup>
 
   <!-- Keep existing top-level method tokens stable. -->
   <ItemGroup>
     <Compile Remove="RuntimeBaseProjectionSubset.cs" />
     <Compile Include="RuntimeBaseProjectionSubset.cs" />
+    <Compile Remove="RuntimeHeldInterfacesSubset.cs" />
+    <Compile Include="RuntimeHeldInterfacesSubset.cs" />
   </ItemGroup>
 </Project>

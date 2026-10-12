@@ -388,6 +388,9 @@ namespace ReflectInvoke
         if (args.Length > 0 && args[0] == "before-runtime-base-projections")
             return;
         ReflectDelegateSubset.RuntimeBaseProjectionSubset.Run();
+        if (args.Length > 0 && args[0] == "before-runtime-held-interfaces")
+            return;
+        RuntimeHeldInterfacesSubset.Program.Run();
         }
     }
 }

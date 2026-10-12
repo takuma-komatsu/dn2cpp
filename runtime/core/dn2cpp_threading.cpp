@@ -761,6 +761,7 @@ struct Dn2CppEvent : Dn2CppWaitHandle
     bool signaled;
     bool manualReset;
     bool closed;
+    bool pumpsTaskScheduler;
 };
 
 struct Dn2CppSafeWaitHandle : Dn2CppObject
@@ -901,7 +902,15 @@ Dn2CppObject* dn2cpp_event_new(int32_t initial, int32_t manualReset, const Dn2Cp
     e->signaled = initial != 0;
     e->manualReset = manualReset != 0;
     e->closed = false;
+    e->pumpsTaskScheduler = false;
     return e;
+}
+
+Dn2CppObject* dn2cpp_task_event_new()
+{
+    auto* event = static_cast<Dn2CppEvent*>(dn2cpp_event_new(0, 1, &dn2cpp_manualresetevent_type));
+    event->pumpsTaskScheduler = true;
+    return event;
 }
 
 static Dn2CppSafeWaitHandle* dn2cpp_as_safe_handle(Dn2CppObject* o)
@@ -1192,6 +1201,18 @@ void dn2cpp_event_set(Dn2CppObject* o)
         e->cv.notify_one();
 }
 
+void dn2cpp_event_set_if_open(Dn2CppObject* o)
+{
+    auto* event = static_cast<Dn2CppEvent*>(o);
+    {
+        std::lock_guard<std::mutex> lock(event->m);
+        if (event->closed)
+            return;
+        event->signaled = true;
+    }
+    event->cv.notify_all();
+}
+
 void dn2cpp_event_reset(Dn2CppObject* o)
 {
     Dn2CppSafeWaitHandle* external = nullptr;
@@ -1216,6 +1237,24 @@ void dn2cpp_event_reset(Dn2CppObject* o)
     e->signaled = false;
 }
 
+// Task completion can depend on the waiting thread's timers and continuations.
+// Only task-owned events drive that scheduler; a zero timeout remains a pure probe.
+static bool dn2cpp_task_event_wait(Dn2CppEvent* event, std::unique_lock<std::mutex>& lock, int32_t ms)
+{
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(ms < 0 ? 0 : ms);
+    while (!event->signaled && !event->closed)
+    {
+        if (ms == 0 || (ms > 0 && std::chrono::steady_clock::now() >= deadline))
+            return false;
+        lock.unlock();
+        dn2cpp_sched_pump();
+        lock.lock();
+        if (!event->signaled && !event->closed)
+            event->cv.wait_for(lock, std::chrono::milliseconds(1));
+    }
+    return true;
+}
+
 int32_t dn2cpp_event_wait(Dn2CppObject* o)
 {
     Dn2CppSafeWaitHandle* external = nullptr;
@@ -1223,7 +1262,10 @@ int32_t dn2cpp_event_wait(Dn2CppObject* o)
     if (external != nullptr)
         return dn2cpp_external_wait(external, -1);
     std::unique_lock<std::mutex> lk(e->m);
-    e->cv.wait(lk, [e] { return e->signaled || e->closed; });
+    if (e->pumpsTaskScheduler)
+        dn2cpp_task_event_wait(e, lk, -1);
+    else
+        e->cv.wait(lk, [e] { return e->signaled || e->closed; });
     if (e->closed)
         dn2cpp_throw_object_disposed();
     if (!e->manualReset)
@@ -1246,8 +1288,9 @@ int32_t dn2cpp_event_wait_timeout(Dn2CppObject* o, int32_t ms)
     if (external != nullptr)
         return dn2cpp_external_wait(external, ms);
     std::unique_lock<std::mutex> lk(e->m);
-    if (!e->cv.wait_for(lk, std::chrono::milliseconds(ms),
-            [e] { return e->signaled || e->closed; }))
+    bool ready = e->pumpsTaskScheduler ? dn2cpp_task_event_wait(e, lk, ms)
+        : e->cv.wait_for(lk, std::chrono::milliseconds(ms), [e] { return e->signaled || e->closed; });
+    if (!ready)
         return 0;
     if (e->closed)
         dn2cpp_throw_object_disposed();
@@ -1318,6 +1361,16 @@ int32_t dn2cpp_event_wait_any(Dn2CppArrayRef* handles)
         {
             if (dn2cpp_event_try_wait(handles->data[i]))
                 return i;
+        }
+        for (int32_t i = 0; i < handles->length; i++)
+        {
+            Dn2CppSafeWaitHandle* external = nullptr;
+            auto* event = dn2cpp_event_from_operand(handles->data[i], &external);
+            if (external == nullptr && event->pumpsTaskScheduler)
+            {
+                dn2cpp_sched_pump();
+                break;
+            }
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }

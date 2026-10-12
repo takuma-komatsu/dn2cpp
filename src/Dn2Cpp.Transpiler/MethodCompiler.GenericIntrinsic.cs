@@ -1530,7 +1530,7 @@ internal sealed partial class MethodCompiler
         {
             var tsig = DecodeGenericCallSignature(msh, methodArgs);
             var v = Pop();
-            PushStampedTask($"dn2cpp_task_from_result({EmitTaskResultStore(v)})", tsig.ReturnType);
+            PushStampedTask($"dn2cpp_task_from_result({EmitTaskResultStore(v)}, {TaskCachedResultDisposal(v, methodArgs[0])})", tsig.ReturnType);
             return;
         }
 
@@ -1589,7 +1589,7 @@ internal sealed partial class MethodCompiler
         {
             var v = Pop();
             Push(StackKind.Struct, "Dn2CppTaskAwaiter",
-                $"Dn2CppTaskAwaiter{{ {StampTask($"dn2cpp_task_from_result({EmitTaskResultStore(v)})", TaskTypeForResult(methodArgs[0]))} }}");
+                $"Dn2CppTaskAwaiter{{ {StampTask($"dn2cpp_task_from_result({EmitTaskResultStore(v)}, {TaskCachedResultDisposal(v, methodArgs[0])})", TaskTypeForResult(methodArgs[0]))} }}");
             return;
         }
 
@@ -1914,8 +1914,7 @@ internal sealed partial class MethodCompiler
         // receiver — has none). TaskContinuationOptions travels to the runtime node
         // (PopContinuationHints), the same as on the non-generic overloads: it is a
         // run/don't-run filter, not a hint, so it may not be dropped. The
-        // Func<Task, object?, TNewResult> state form is not supported yet, mirroring
-        // StartNew<TResult>'s carve-out.
+        // Optional state remains attached to the returned task as AsyncState.
         if (declType == "System.Threading.Tasks.Task" && name == "ContinueWith")
         {
             var tnew = methodArgs[0];
@@ -1932,14 +1931,28 @@ internal sealed partial class MethodCompiler
                 : System.Array.Empty<TypeDesc>();
             var cwsig = cwmr.DecodeMethodSignature(Comp.SigProvider, new GenericContext(cwTypeArgs, methodArgs));
             if (cwsig.ParameterTypes[0] is not { Kind: TypeKind.Class, Class: { } cwDel }
-                || cwDel.Context.TypeArgs.Length != 2)
+                || cwDel.Context.TypeArgs.Length is not (2 or 3))
                 throw new NotSupportedException(
                     $"{Method.DeclaringClass.FullName}.{Method.Name}: Task.ContinueWith<{tnew}> " +
-                    "with a state argument (Func<Task, object?, TNewResult>) is not supported yet");
+                    "requires a Func<Task, TResult> or Func<Task, object?, TResult> continuation");
             // The antecedent's callvirt check precedes the continuation's.
             if (CallIsVirtual)
                 NullCheckReceiverUnder(cwsig.ParameterTypes.Length);
-            string cwOpts = PopContinuationHints(cwsig.ParameterTypes, 1, out var cwScheduler);
+            bool cwHasState = cwDel.Context.TypeArgs.Length == 3;
+            string cwOpts = PopContinuationHints(cwsig.ParameterTypes, cwHasState ? 2 : 1, out var cwScheduler);
+            if (cwHasState)
+            {
+                var state = Pop();
+                var continuation = Pop();
+                var antecedent = Pop();
+                EmitArgumentRequired(continuation, "continuationFunction");
+                if (cwScheduler is { } scheduler)
+                    EmitArgumentRequired(scheduler, "scheduler");
+                PushStampedTask($"dn2cpp_task_continue_with_state_result((Dn2CppTask*)({antecedent.Expr}), "
+                    + $"(Dn2CppObject*)({continuation.Expr}), {Cast(state, "Dn2CppObject*")}, "
+                    + $"{TaskContWithStateResultThunk(tnew)}, {cwOpts})", cwsig.ReturnType);
+                return;
+            }
             // A value-type continuation result rides the boxing trampoline (the ContinueWith
             // mirror of Task.Run<TStruct>); the delegate takes the settled antecedent.
             if (CppTypes.KindOf(tnew) == StackKind.Struct)

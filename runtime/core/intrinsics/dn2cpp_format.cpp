@@ -123,18 +123,23 @@ static void dn2cpp_parse_fmt(Dn2CppString* fmt, char* letter, int* prec)
 
 // Decimal with a minimum digit count (.NET "D"/"Dn"): zero-pad the magnitude to
 // `prec` digits, keeping the sign outside the padding ("-007" for -7, "D3").
-static Dn2CppString* dn2cpp_decimal_padded(unsigned long long mag, bool neg, int prec)
+static Dn2CppString* dn2cpp_decimal_padded(unsigned long long mag, bool neg, int prec,
+    Dn2CppString* negativeSign)
 {
     char digits[24];
     int dl = std::snprintf(digits, sizeof(digits), "%llu", mag);
     int minDigits = prec < 0 ? 1 : prec;
     int zeros = dl < minDigits ? minDigits - dl : 0;
-    int total = (neg ? 1 : 0) + zeros + dl;
+    int signLength = neg ? negativeSign->length : 0;
+    int total = signLength + zeros + dl;
     char16_t* dst;
     Dn2CppString* s = dn2cpp_string_alloc(&dst, total);
     int i = 0;
-    if (neg)
-        dst[i++] = u'-';
+    if (signLength != 0)
+    {
+        std::memcpy(dst, negativeSign->chars, static_cast<size_t>(signLength) * sizeof(char16_t));
+        i += signLength;
+    }
     for (int z = 0; z < zeros; z++)
         dst[i++] = u'0';
     for (int k = 0; k < dl; k++)
@@ -195,6 +200,19 @@ static bool dn2cpp_is_standard_fmt(Dn2CppString* fmt)
         if (fmt->chars[i] < u'0' || fmt->chars[i] > u'9')
             return false;
     return true;
+}
+
+int32_t dn2cpp_integral_format_uses_provider(Dn2CppString* fmt, int32_t negative)
+{
+    if (!dn2cpp_is_standard_fmt(fmt))
+        return 1;
+    char letter;
+    int precision;
+    dn2cpp_parse_fmt(fmt, &letter, &precision);
+    char upper = static_cast<char>(letter & 0x5f);
+    if (letter == 0 || upper == 'D' || (upper == 'G' && precision < 1))
+        return negative != 0;
+    return upper != 'X' && upper != 'B';
 }
 
 // Render `mag` (a non-negative magnitude) under one custom-numeric-format section
@@ -408,6 +426,8 @@ Dn2CppString* dn2cpp_format_int_c(int64_t v, int32_t byteWidth, Dn2CppString* fm
     unsigned long long mag = neg
         ? (0ULL - static_cast<unsigned long long>(v))
         : static_cast<unsigned long long>(v);
+    if (letter == 0 || ((letter == 'g' || letter == 'G') && prec < 1))
+        return dn2cpp_decimal_padded(mag, neg, -1, nfi->negativeSign);
     switch (letter)
     {
         case 'x':
@@ -418,7 +438,7 @@ Dn2CppString* dn2cpp_format_int_c(int64_t v, int32_t byteWidth, Dn2CppString* fm
             return dn2cpp_binary(static_cast<uint64_t>(v), byteWidth, prec);
         case 'd':
         case 'D':
-            return dn2cpp_decimal_padded(mag, neg, prec);
+            return dn2cpp_decimal_padded(mag, neg, prec, nfi->negativeSign);
         case 'e':
         case 'E':
         case 'p':
@@ -456,6 +476,8 @@ Dn2CppString* dn2cpp_format_uint_c(uint64_t v, int32_t byteWidth, Dn2CppString* 
     char letter;
     int prec;
     dn2cpp_parse_fmt(fmt, &letter, &prec);
+    if (letter == 0 || ((letter == 'g' || letter == 'G') && prec < 1))
+        return dn2cpp_decimal_padded(v, false, -1, nullptr);
     switch (letter)
     {
         case 'x':
@@ -466,7 +488,7 @@ Dn2CppString* dn2cpp_format_uint_c(uint64_t v, int32_t byteWidth, Dn2CppString* 
             return dn2cpp_binary(v, byteWidth, prec);
         case 'd':
         case 'D':
-            return dn2cpp_decimal_padded(v, false, prec);
+            return dn2cpp_decimal_padded(v, false, prec, nullptr);
         case 'e':
         case 'E':
         case 'p':
@@ -1043,4 +1065,52 @@ Dn2CppString* dn2cpp_format_r4_c(float v, Dn2CppString* fmt, const Dn2CppNumberF
 Dn2CppString* dn2cpp_format_r4(float v, Dn2CppString* fmt)
 {
     return dn2cpp_format_r4_c(v, fmt, nullptr);
+}
+
+Dn2CppString* dn2cpp_format_boxed_numeric(Dn2CppObject* box, Dn2CppString* fmt,
+    Dn2CppObject* provider)
+{
+    if (box == nullptr)
+        return nullptr;
+    const Dn2CppTypeInfo* type = box->type;
+    const void* payload = box + 1;
+    auto signedFormat = [&](int64_t value, int32_t width)
+    {
+        const Dn2CppNumberFormatInfo* nfi = dn2cpp_integral_format_uses_provider(fmt, value < 0)
+            ? dn2cpp_format_provider_nfi(provider) : nullptr;
+        return dn2cpp_format_int_c(value, width, fmt, nfi);
+    };
+    auto unsignedFormat = [&](uint64_t value, int32_t width)
+    {
+        const Dn2CppNumberFormatInfo* nfi = dn2cpp_integral_format_uses_provider(fmt, 0)
+            ? dn2cpp_format_provider_nfi(provider) : nullptr;
+        return dn2cpp_format_uint_c(value, width, fmt, nfi);
+    };
+    if (type == &dn2cpp_int32_type)
+        return signedFormat(*reinterpret_cast<const int32_t*>(payload), 4);
+    if (type == &dn2cpp_sbyte_type)
+        return signedFormat(static_cast<int8_t>(*reinterpret_cast<const int32_t*>(payload)), 1);
+    if (type == &dn2cpp_int16_type)
+        return signedFormat(static_cast<int16_t>(*reinterpret_cast<const int32_t*>(payload)), 2);
+    if (type == &dn2cpp_byte_type)
+        return unsignedFormat(static_cast<uint8_t>(*reinterpret_cast<const int32_t*>(payload)), 1);
+    if (type == &dn2cpp_uint16_type)
+        return unsignedFormat(static_cast<uint16_t>(*reinterpret_cast<const int32_t*>(payload)), 2);
+    if (type == &dn2cpp_uint32_type)
+        return unsignedFormat(*reinterpret_cast<const uint32_t*>(payload), 4);
+    if (type == &dn2cpp_int64_type)
+        return signedFormat(*reinterpret_cast<const int64_t*>(payload), 8);
+    if (type == &dn2cpp_uint64_type)
+        return unsignedFormat(*reinterpret_cast<const uint64_t*>(payload), 8);
+    if (type == &dn2cpp_intptr_type)
+        return signedFormat(*reinterpret_cast<const intptr_t*>(payload), static_cast<int32_t>(sizeof(intptr_t)));
+    if (type == &dn2cpp_uintptr_type)
+        return unsignedFormat(*reinterpret_cast<const uintptr_t*>(payload), static_cast<int32_t>(sizeof(uintptr_t)));
+    if (type == &dn2cpp_double_type)
+        return dn2cpp_format_r8_c(*reinterpret_cast<const double*>(payload), fmt, dn2cpp_format_provider_nfi(provider));
+    if (type == &dn2cpp_single_type)
+        return dn2cpp_format_r4_c(*reinterpret_cast<const float*>(payload), fmt, dn2cpp_format_provider_nfi(provider));
+    if (type == &dn2cpp_decimal_type && type->formatspec != nullptr)
+        return type->formatspec(box, fmt, dn2cpp_format_provider_nfi(provider));
+    return nullptr;
 }

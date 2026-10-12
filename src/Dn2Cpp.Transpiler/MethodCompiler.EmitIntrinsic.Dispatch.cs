@@ -242,7 +242,7 @@ internal sealed partial class MethodCompiler
     {
         string sp = PopSpanTemp(sig.ParameterTypes[^1]);
         string fmt = Cast(Pop(), "Dn2CppString*");
-        string prov = Cast(Pop(), "Dn2CppObject*");
+        string prov = PopCompositeFormatProvider();
         return $"dn2cpp_string_format_spanobjs_c({prov}, {fmt}, (Dn2CppObject* const*){sp}.f__reference, {sp}.f__length)";
     }
 
@@ -304,7 +304,7 @@ internal sealed partial class MethodCompiler
         {
             var args = Cast(Pop(), "Dn2CppArrayRef*");
             var fmt = Cast(Pop(), "Dn2CppString*");
-            var prov = Cast(Pop(), "Dn2CppObject*");
+            var prov = PopCompositeFormatProvider();
             return $"dn2cpp_string_format_arr_c({prov}, {fmt}, {args})";
         }
         int n = sig.ParameterTypes.Length - 2; // minus provider and format
@@ -312,7 +312,7 @@ internal sealed partial class MethodCompiler
         for (int i = n - 1; i >= 0; i--)
             objs[i] = Cast(Pop(), "Dn2CppObject*");
         string fmtExpr = Cast(Pop(), "Dn2CppString*");
-        string provExpr = Cast(Pop(), "Dn2CppObject*");
+        string provExpr = PopCompositeFormatProvider();
         return $"dn2cpp_string_format{n}_c({provExpr}, {fmtExpr}, {string.Join(", ", objs)})";
     }
 
@@ -417,14 +417,14 @@ internal sealed partial class MethodCompiler
             {
                 string args = Cast(Pop(), "Dn2CppArrayRef*");
                 string fmt = PopCompositeFormatString(pts[1]);
-                string prov = Cast(Pop(), "Dn2CppObject*");
+                string prov = PopCompositeFormatProvider();
                 return $"dn2cpp_string_format_arr_c({prov}, {fmt}, {args})";
             }
             if (IsObjectSpan(pts[2]))
             {
                 string sp = PopSpanTemp(pts[2]);
                 string fmt = PopCompositeFormatString(pts[1]);
-                string prov = Cast(Pop(), "Dn2CppObject*");
+                string prov = PopCompositeFormatProvider();
                 return $"dn2cpp_string_format_spanobjs_c({prov}, {fmt}, "
                     + $"(Dn2CppObject* const*){sp}.f__reference, {sp}.f__length)";
             }
@@ -438,8 +438,15 @@ internal sealed partial class MethodCompiler
         for (int i = n - 1; i >= 0; i--)
             objs[i] = BoxCompositeFormatArg(pts[2 + i]);
         string fmtExpr = PopCompositeFormatString(pts[1]);
-        string provExpr = Cast(Pop(), "Dn2CppObject*");
+        string provExpr = PopCompositeFormatProvider();
         return $"dn2cpp_string_format{n}_c({provExpr}, {fmtExpr}, {string.Join(", ", objs)})";
+    }
+
+    private string PopCompositeFormatProvider()
+    {
+        var provider = Pop();
+        _ = FormatProviderDispatchArgs(provider);
+        return Cast(provider, "Dn2CppObject*");
     }
 
     /// <summary>Emits a NumberFormatInfo property setter: pops the value + receiver

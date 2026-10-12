@@ -357,6 +357,13 @@ internal sealed partial class MethodCompiler
                     $"(int32_t)dn2cpp_hashhelpers_fastmod((uint32_t)({value.Expr}), (uint32_t)({divisor.Expr}), (uint64_t)({mult.Expr}))");
                 return true;
             }
+            case ("System.Collections.HashHelpers", "get_SerializationInfoTable"):
+            {
+                var getter = Comp.ReachIntrinsicStaticMethod(declType, name);
+                Push(CppTypes.KindOf(sig.ReturnType), CppTypes.Of(sig.ReturnType),
+                    $"{DirectCallSym(getter)}()");
+                return true;
+            }
             // HashHelpers.Primes: a static ReadOnlySpan<int> over the cached prime
             // ladder (FrozenHashTable.CalcNumBuckets reads it). The BCL builds it via
             // RuntimeHelpers.CreateSpan over an RVA blob we don't model; hand out a

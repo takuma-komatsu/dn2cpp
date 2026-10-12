@@ -73,6 +73,10 @@ static int32_t dn2cpp_task_next_id()
     return next.fetch_add(1, std::memory_order_relaxed);
 }
 
+static void dn2cpp_vts_arm(Dn2CppTask* t);
+
+static std::mutex& g_task_mtx = dn2cpp_never_destroyed<std::mutex>();
+
 Dn2CppTask* dn2cpp_task_alloc()
 {
     auto* t = static_cast<Dn2CppTask*>(dn2cpp_alloc(sizeof(Dn2CppTask)));
@@ -89,16 +93,67 @@ Dn2CppTask* dn2cpp_task_alloc()
     t->cold.store(nullptr, std::memory_order_relaxed);
     t->vtsBridge = nullptr;
     t->startKind = DN2CPP_TASK_ORIGIN_PROMISE;
+    t->asyncState = nullptr;
+    t->completionWaitHandle = nullptr;
+    t->disposed = 0;
     return t;
 }
 
 void dn2cpp_task_dispose(Dn2CppTask* task)
 {
     dn2cpp_null_check(task);
-    if (task->status.load(std::memory_order_acquire) == DN2CPP_TASK_PENDING)
+    Dn2CppObject* handle = nullptr;
+    bool pending;
+    {
+        std::lock_guard<std::mutex> lock(g_task_mtx);
+        pending = task->status.load(std::memory_order_acquire) == DN2CPP_TASK_PENDING;
+        if (!pending && task->disposed >= 0)
+        {
+            task->disposed = 1;
+            handle = task->completionWaitHandle;
+        }
+    }
+    if (pending)
         dn2cpp_throw_invalid_operation_msg(
             "A task may only be disposed if it is in a completion state (RanToCompletion, Faulted or Canceled).");
-    // The runtime has no lazily allocated Task wait handle to release.
+    if (handle != nullptr)
+        dn2cpp_waithandle_close(handle);
+}
+
+Dn2CppObject* dn2cpp_task_async_wait_handle(Dn2CppTask* task)
+{
+    dn2cpp_null_check(task);
+    Dn2CppObject* handle;
+    bool disposed;
+    {
+        std::lock_guard<std::mutex> lock(g_task_mtx);
+        disposed = task->disposed > 0;
+        handle = task->completionWaitHandle;
+    }
+    if (disposed)
+        dn2cpp_throw_object_disposed();
+    if (handle != nullptr)
+        return handle;
+    if (task->vtsBridge != nullptr)
+        dn2cpp_vts_arm(task);
+    Dn2CppObject* candidate = dn2cpp_task_event_new();
+    {
+        std::lock_guard<std::mutex> lock(g_task_mtx);
+        disposed = task->disposed > 0;
+        handle = task->completionWaitHandle;
+        if (!disposed && handle == nullptr)
+        {
+            handle = candidate;
+            dn2cpp_gc_store_ref(&task->completionWaitHandle, handle);
+            if (task->status.load(std::memory_order_acquire) != DN2CPP_TASK_PENDING)
+                dn2cpp_event_set_if_open(handle);
+        }
+    }
+    if (handle != candidate)
+        dn2cpp_waithandle_close(candidate);
+    if (disposed)
+        dn2cpp_throw_object_disposed();
+    return handle;
 }
 
 Dn2CppTask* dn2cpp_async_task_alloc()
@@ -113,6 +168,7 @@ Dn2CppTask* dn2cpp_asyncbuilder_task(Dn2CppAsyncBuilder* builder)
     if (builder->task == nullptr)
         dn2cpp_gc_store_ref(&builder->task, dn2cpp_async_task_alloc());
     Dn2CppTask* task = builder->task;
+    std::lock_guard<std::mutex> lk(g_task_mtx);
     int32_t origin = DN2CPP_TASK_ORIGIN_ASYNC_UNEXPOSED;
     int32_t exposedOrigin = task->status.load(std::memory_order_acquire) == DN2CPP_TASK_SUCCEEDED
         ? DN2CPP_TASK_ORIGIN_STARTED : DN2CPP_TASK_ORIGIN_PROMISE;
@@ -124,6 +180,7 @@ void dn2cpp_async_task_suspend(Dn2CppTask* task)
 {
     if (task == nullptr)
         return;
+    std::lock_guard<std::mutex> lk(g_task_mtx);
     int32_t origin = DN2CPP_TASK_ORIGIN_ASYNC_UNEXPOSED;
     task->startKind.compare_exchange_strong(origin, DN2CPP_TASK_ORIGIN_PROMISE,
         std::memory_order_relaxed);
@@ -134,26 +191,26 @@ Dn2CppTask* dn2cpp_task_completed()
     auto* t = dn2cpp_task_alloc();
     t->startKind = DN2CPP_TASK_ORIGIN_STARTED;
     t->status.store(DN2CPP_TASK_SUCCEEDED, std::memory_order_relaxed);
+    t->disposed = -1;
     return t;
 }
 
-// The shared immutable pre-completed sentinel a default(ValueTask)'s null task
-// normalizes to (dn2cpp_vtask in dn2cpp.h). Lives in the scanned static data
-// segment and references nothing; read-only by construction — every reader sees
-// the non-PENDING status before touching result/exception, so the mutating
-// suspend/continuation paths never run on it.
+// The shared pre-completed sentinel a default(ValueTask)'s null task normalizes
+// to. Its status and result are immutable; IAsyncResult may lazily attach a wait
+// handle. Like the BCL cached tasks, Dispose does not close that shared handle.
 // Aggregate-initialized: an atomic member makes Dn2CppTask non-copyable.
 Dn2CppTask dn2cpp_task_default_completed{
     { &dn2cpp_task_type }, DN2CPP_TASK_SUCCEEDED,
     dn2cpp_task_next_id(), nullptr, nullptr, 0, nullptr, nullptr, nullptr, nullptr,
-    DN2CPP_TASK_ORIGIN_STARTED };
+    DN2CPP_TASK_ORIGIN_STARTED, nullptr, nullptr, -1 };
 
-Dn2CppTask* dn2cpp_task_from_result(uint64_t result)
+Dn2CppTask* dn2cpp_task_from_result(uint64_t result, bool doNotDispose)
 {
     auto* t = dn2cpp_task_alloc();
     t->startKind = DN2CPP_TASK_ORIGIN_STARTED;
     t->status.store(DN2CPP_TASK_SUCCEEDED, std::memory_order_relaxed);
     t->result = result;
+    t->disposed = doNotDispose ? -1 : 0;
     dn2cpp_gc_write_barrier(&t->result);
     return t;
 }
@@ -269,22 +326,23 @@ Dn2CppString* dn2cpp_valuetask_box_tostring(Dn2CppObject* valueTaskBox)
 // wait and AsTask over it arms the bridge first (the bridge section, end of file).
 static void dn2cpp_vts_arm(Dn2CppTask* t);
 
-Dn2CppTask* dn2cpp_vtask_as_task(Dn2CppTask* task, const Dn2CppTypeInfo* type)
+Dn2CppTask* dn2cpp_vtask_as_task(Dn2CppTask* task, const Dn2CppTypeInfo* type, bool cacheDefault)
 {
     if (task == nullptr || task == &dn2cpp_task_default_completed)
-        return dn2cpp_task_stamp(dn2cpp_task_from_result(0), type);
+        return dn2cpp_task_stamp(dn2cpp_task_from_result(0, cacheDefault), type);
     if (task->vtsBridge != nullptr)
         dn2cpp_vts_arm(task);
     return task;
 }
 
 Dn2CppTaskCompletionSource* dn2cpp_tcs_alloc(const Dn2CppTypeInfo* type,
-                                              const Dn2CppTypeInfo* taskType)
+                                              const Dn2CppTypeInfo* taskType, Dn2CppObject* state)
 {
     auto* source = static_cast<Dn2CppTaskCompletionSource*>(
         dn2cpp_alloc(sizeof(Dn2CppTaskCompletionSource)));
     source->type = type;
     dn2cpp_gc_store_ref(&source->task, dn2cpp_task_stamp(dn2cpp_task_alloc(), taskType));
+    dn2cpp_gc_store_ref(&source->task->asyncState, state);
     return source;
 }
 
@@ -492,7 +550,6 @@ void dn2cpp_timer_principal_mark_self()
 // Serializes a task's {status, continuations} transitions so a worker completing a
 // task and a cooperative thread registering an await on it cannot race. Uncontended
 // (and thus behavior-neutral) for pure single-thread async.
-static std::mutex& g_task_mtx = dn2cpp_never_destroyed<std::mutex>();
 
 // Global static-rooted mirrors of every scheduler's pending work. A scheduler lives
 // on the malloc heap, reached only through a thread-local pointer — neither is memory
@@ -680,7 +737,8 @@ static void dn2cpp_fire_conts(Dn2CppCont* conts)
 
 // Detach a completing task's continuation list under g_task_mtx (so a concurrent
 // await-registration sees a settled status), then fire it outside the lock.
-static void dn2cpp_task_complete(Dn2CppTask* t, int32_t status, uint64_t result, Dn2CppObject* exception)
+static void dn2cpp_task_complete(Dn2CppTask* t, int32_t status, uint64_t result, Dn2CppObject* exception,
+    bool cacheSynchronous = false)
 {
     Dn2CppCont* conts;
     {
@@ -688,9 +746,13 @@ static void dn2cpp_task_complete(Dn2CppTask* t, int32_t status, uint64_t result,
         t->result = result;
         dn2cpp_gc_write_barrier(&t->result);
         dn2cpp_gc_store_ref(&t->exception, exception);
+        if (cacheSynchronous && t->startKind == DN2CPP_TASK_ORIGIN_ASYNC_UNEXPOSED)
+            t->disposed = -1;
         // Settled last, with release: await-registration gates on it under this
         // lock, and the drain reads it — and then result/exception — without it.
         t->status.store(status, std::memory_order_release);
+        if (t->completionWaitHandle != nullptr)
+            dn2cpp_event_set_if_open(t->completionWaitHandle);
         conts = t->continuations;
         dn2cpp_gc_store_ref(&t->continuations, static_cast<Dn2CppCont*>(nullptr));
     }
@@ -700,6 +762,11 @@ static void dn2cpp_task_complete(Dn2CppTask* t, int32_t status, uint64_t result,
 void dn2cpp_task_set_result(Dn2CppTask* t, uint64_t result)
 {
     dn2cpp_task_complete(t, DN2CPP_TASK_SUCCEEDED, result, t->exception);
+}
+
+void dn2cpp_async_task_set_result(Dn2CppTask* t, uint64_t result, bool cacheResult)
+{
+    dn2cpp_task_complete(t, DN2CPP_TASK_SUCCEEDED, result, t->exception, cacheResult);
 }
 
 void dn2cpp_task_set_exception(Dn2CppTask* t, Dn2CppObject* exception)
@@ -1433,6 +1500,8 @@ static int32_t dn2cpp_task_try_complete(Dn2CppTask* t, int32_t status, uint64_t 
         dn2cpp_gc_write_barrier(&t->result);
         dn2cpp_gc_store_ref(&t->exception, exception);
         t->status.store(status, std::memory_order_release); // settled last, as above
+        if (t->completionWaitHandle != nullptr)
+            dn2cpp_event_set_if_open(t->completionWaitHandle);
         conts = t->continuations;
         dn2cpp_gc_store_ref(&t->continuations, static_cast<Dn2CppCont*>(nullptr));
     }
@@ -3260,6 +3329,7 @@ static Dn2CppTask* dn2cpp_pool_submit_state(Dn2CppObject* del, Dn2CppObject* sta
 {
     Dn2CppTask* t = dn2cpp_task_alloc();
     t->startKind = DN2CPP_TASK_ORIGIN_STARTED;
+    dn2cpp_gc_store_ref(&t->asyncState, state);
     dn2cpp_pool_enqueue(t, del, state, nullptr, invoke2);
     return t;
 }
@@ -3512,6 +3582,7 @@ static Dn2CppTask* dn2cpp_task_cold(Dn2CppObject* del, Dn2CppObject* state,
     c->invoke = invoke;
     c->invoke2 = invoke2;
     dn2cpp_gc_store_ref(&t->cold, c);
+    dn2cpp_gc_store_ref(&t->asyncState, state);
     t->startKind = DN2CPP_TASK_ORIGIN_COLD;
     return t;
 }
@@ -3529,6 +3600,16 @@ Dn2CppTask* dn2cpp_task_cold_struct(Dn2CppObject* del, uint64_t (*invoke)(Dn2Cpp
 Dn2CppTask* dn2cpp_task_cold_void_state(Dn2CppObject* del, Dn2CppObject* state)
 {
     return dn2cpp_task_cold(del, state, nullptr, &dn2cpp_run_void_state);
+}
+Dn2CppTask* dn2cpp_task_cold_i4_state(Dn2CppObject* del, Dn2CppObject* state) { return dn2cpp_task_cold(del, state, nullptr, &dn2cpp_run_i4_state); }
+Dn2CppTask* dn2cpp_task_cold_i8_state(Dn2CppObject* del, Dn2CppObject* state) { return dn2cpp_task_cold(del, state, nullptr, &dn2cpp_run_i8_state); }
+Dn2CppTask* dn2cpp_task_cold_r4_state(Dn2CppObject* del, Dn2CppObject* state) { return dn2cpp_task_cold(del, state, nullptr, &dn2cpp_run_r4_state); }
+Dn2CppTask* dn2cpp_task_cold_r8_state(Dn2CppObject* del, Dn2CppObject* state) { return dn2cpp_task_cold(del, state, nullptr, &dn2cpp_run_r8_state); }
+Dn2CppTask* dn2cpp_task_cold_ref_state(Dn2CppObject* del, Dn2CppObject* state) { return dn2cpp_task_cold(del, state, nullptr, &dn2cpp_run_ref_state); }
+Dn2CppTask* dn2cpp_task_cold_struct_state(Dn2CppObject* del, Dn2CppObject* state,
+    uint64_t (*invoke)(Dn2CppObject*, Dn2CppObject*))
+{
+    return dn2cpp_task_cold(del, state, nullptr, invoke);
 }
 
 // Claim a cold task's unstarted work exactly once, under g_task_mtx (the same
@@ -3609,6 +3690,7 @@ struct Dn2CppContWith
     // DN2CPP_CONTWITH_STRUCT only: a transpiler-emitted trampoline over (del, antecedent)
     // that boxes the struct result; null for every other kind.
     uint64_t (*invokeStruct)(Dn2CppObject*, Dn2CppObject*);
+    uint64_t (*invokeState)(Dn2CppObject*, Dn2CppObject*, Dn2CppObject*);
 };
 
 // The ContinueWith result-kind thunks: the two-argument mirror of the dn2cpp_run_*
@@ -3705,7 +3787,9 @@ static void dn2cpp_cont_with_run(void* p)
     try
     {
         uint64_t r = 0;
-        switch (c->kind)
+        if (c->invokeState != nullptr)
+            r = c->invokeState(c->del, ante, c->state);
+        else switch (c->kind)
         {
             case DN2CPP_CONTWITH_VOID: // Action<Task> (multicast-aware)
                 dn2cpp_paramthread_invoke(c->del, ante);
@@ -3747,6 +3831,7 @@ Dn2CppTask* dn2cpp_task_continue_with(Dn2CppTask* t, Dn2CppObject* del, Dn2CppOb
     dn2cpp_null_check(t);
     Dn2CppTask* ct = dn2cpp_task_alloc();
     ct->startKind = DN2CPP_TASK_ORIGIN_CONTINUATION;
+    dn2cpp_gc_store_ref(&ct->asyncState, state);
     // A caller holding the continuation task also keeps its delegate reachable.
     dn2cpp_gc_store_ref(&ct->workerKeepAlive, del);
     auto* c = static_cast<Dn2CppContWith*>(dn2cpp_alloc(sizeof(Dn2CppContWith)));
@@ -3757,8 +3842,30 @@ Dn2CppTask* dn2cpp_task_continue_with(Dn2CppTask* t, Dn2CppObject* del, Dn2CppOb
     c->kind = kind;
     c->options = options;
     c->invokeStruct = nullptr;
+    c->invokeState = nullptr;
     dn2cpp_task_on_completed(t, &dn2cpp_cont_with_run, c);
     return ct;
+}
+
+Dn2CppTask* dn2cpp_task_continue_with_state_result(Dn2CppTask* t, Dn2CppObject* del,
+    Dn2CppObject* state, uint64_t (*invoke)(Dn2CppObject*, Dn2CppObject*, Dn2CppObject*), int32_t options)
+{
+    dn2cpp_null_check(t);
+    Dn2CppTask* task = dn2cpp_task_alloc();
+    task->startKind = DN2CPP_TASK_ORIGIN_CONTINUATION;
+    dn2cpp_gc_store_ref(&task->asyncState, state);
+    dn2cpp_gc_store_ref(&task->workerKeepAlive, del);
+    auto* continuation = static_cast<Dn2CppContWith*>(dn2cpp_alloc(sizeof(Dn2CppContWith)));
+    dn2cpp_gc_store_ref(&continuation->antecedent, t);
+    dn2cpp_gc_store_ref(&continuation->task, task);
+    dn2cpp_gc_store_ref(&continuation->del, del);
+    dn2cpp_gc_store_ref(&continuation->state, state);
+    continuation->kind = DN2CPP_CONTWITH_STRUCT;
+    continuation->options = options;
+    continuation->invokeStruct = nullptr;
+    continuation->invokeState = invoke;
+    dn2cpp_task_on_completed(t, &dn2cpp_cont_with_run, continuation);
+    return task;
 }
 
 // ---- Task.WaitAsync(CancellationToken) --------------------------------------
@@ -3871,6 +3978,7 @@ Dn2CppTask* dn2cpp_task_continue_with_struct(Dn2CppTask* t, Dn2CppObject* del,
     c->kind = DN2CPP_CONTWITH_STRUCT;
     c->options = options;
     c->invokeStruct = invoke;
+    c->invokeState = nullptr;
     dn2cpp_task_on_completed(t, &dn2cpp_cont_with_run, c);
     return ct;
 }

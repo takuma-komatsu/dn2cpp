@@ -78,6 +78,7 @@ internal sealed partial class MethodCompiler
         "System.Type", "System.Reflection.MethodInfo", "System.Reflection.MethodBase",
         "System.Reflection.FieldInfo", "System.Reflection.PropertyInfo", "System.Reflection.EventInfo",
         "System.Reflection.ConstructorInfo",
+        "System.Reflection.Module",
     ];
 
     /// <summary>The file-backed memory-map surface (POSIX mmap subset).</summary>
@@ -241,6 +242,7 @@ internal sealed partial class MethodCompiler
     /// the numbers probe) to a loud throw.</summary>
     private static readonly IntrinsicProbe[] s_intrinsicFallbackProbes =
     [
+        static (mc, dt, n, sig) => mc.TryEmitRuntimeHeldIntrinsic(dt, n, sig),
         static (mc, dt, n, sig) => mc.TryEmitReflectionIntrinsic(dt, n, sig),
         static (mc, dt, n, sig) => mc.TryEmitEnumArrayIntrinsic(dt, n, sig),
         static (mc, dt, n, sig) => mc.TryEmitThreadingIntrinsic(dt, n, sig),

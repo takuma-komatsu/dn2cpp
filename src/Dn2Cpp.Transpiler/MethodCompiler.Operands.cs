@@ -114,11 +114,50 @@ internal sealed partial class MethodCompiler
     /// always emitted anyway).</summary>
     private string FieldAccess(ClassInfo cls, FieldInfo fld, StackEntry obj)
     {
+        if (RuntimeValueFieldLValue(cls, fld, obj) is { } runtimeField)
+            return runtimeField;
         if (obj.Kind == StackKind.Struct)
             return $"({obj.Expr}).{fld.CppName}";
         if (!cls.IsEnum)
             _c.NoteNamedStructSymbol(_method, cls.CppStructName);
         return $"(({cls.CppStructName}*){NullCheckReceiver(obj)})->{fld.CppName}";
+    }
+
+    /// <summary>Maps managed field IL onto runtime value storage while preserving
+    /// a writable lvalue of the field's declared width.</summary>
+    private string? RuntimeValueFieldLValue(ClassInfo cls, FieldInfo fld, StackEntry obj)
+    {
+        if (cls.FullName == "System.AggregateException" && fld.Name == "_innerExceptions")
+            return $"((Dn2CppAggregateExceptionObject*)({NullCheckReceiver(obj)}))->innerExceptions";
+        if (Compilation.WellKnownPrimitive(cls.FullName) is
+            { Kind: TypeKind.Primitive, Primitive: not (PrimitiveTypeCode.Object or PrimitiveTypeCode.String) } primitive)
+        {
+            if (fld.Name is not ("m_value" or "_value"))
+                throw new NotSupportedException($"{cls.FullName}.{fld.Name} has no runtime value field");
+            string storage = CppTypes.StorageOf(primitive);
+            return obj.Kind is StackKind.Ptr or StackKind.Ref
+                ? $"(*({storage}*)({NullCheckReceiver(obj)}))"
+                : $"(*({storage}*)&({StructLValue(obj)}))";
+        }
+
+        (string Type, string Field, string Storage)? native = (cls.FullName, fld.Name) switch
+        {
+            ("System.Decimal", "_flags") => ("Dn2CppDecimal", "_flags", "int32_t"),
+            ("System.Decimal", "_hi32") => ("Dn2CppDecimal", "_hi32", "uint32_t"),
+            ("System.Decimal", "_lo64") => ("Dn2CppDecimal", "_lo64", "uint64_t"),
+            ("System.DateTime", "_dateData") => ("Dn2CppDateTime", "_dateData", "int64_t"),
+            ("System.TimeSpan", "_ticks") => ("Dn2CppTimeSpan", "ticks", "int64_t"),
+            ("System.DateOnly", "_dayNumber") => ("Dn2CppDateOnly", "dayNumber", "int32_t"),
+            ("System.TimeOnly", "_ticks") => ("Dn2CppTimeOnly", "ticks", "int64_t"),
+            _ => null,
+        };
+        if (native is not { } layout)
+            return null;
+        string field = obj.Kind == StackKind.Struct
+            ? $"({StructLValue(obj)}).{layout.Field}"
+            : $"(({layout.Type}*)({NullCheckReceiver(obj)}))->{layout.Field}";
+        string declared = CppTypes.FieldOf(fld);
+        return declared == layout.Storage ? field : $"(*({declared}*)&({field}))";
     }
 
     /// <summary>Wraps a receiver expression in the <c>dn2cpp_null_check</c> guard

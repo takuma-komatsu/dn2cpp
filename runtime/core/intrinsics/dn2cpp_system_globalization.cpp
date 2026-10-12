@@ -606,6 +606,15 @@ const Dn2CppNumberFormatInfo* dn2cpp_nfi_invariant_info()
     return &inv;
 }
 
+Dn2CppObject* dn2cpp_nfi_clone(const Dn2CppNumberFormatInfo* n, int32_t kind)
+{
+    if (n == nullptr)
+        dn2cpp_throw_null_reference();
+    auto* clone = static_cast<Dn2CppNumberFormatInfo*>(dn2cpp_alloc(sizeof(Dn2CppNumberFormatInfo)));
+    *clone = *n;
+    return dn2cpp_nfi_wrap(clone, kind);
+}
+
 // ---- CultureInfo/NumberFormatInfo/TextInfo escaped into `object` ------------
 // The managed types lower to the headerless `const Dn2CppNumberFormatInfo*`,
 // so an escape into an `object` context allocates a real managed object around
@@ -651,7 +660,19 @@ const Dn2CppNumberFormatInfo* dn2cpp_nfi_unwrap(Dn2CppObject* o)
     return reinterpret_cast<const Dn2CppNumberFormatInfo*>(o);
 }
 
-Dn2CppObject* dn2cpp_format_provider_get_format(Dn2CppObject* provider, Dn2CppType* requested)
+// Fixed interface thunks share the image's demanded GetFormat slot. Generated
+// initialization publishes it before managed code can enter those thunks.
+static const Dn2CppTypeInfo* dn2cpp_format_provider_interface = nullptr;
+static int32_t dn2cpp_format_provider_slot = 0;
+
+void dn2cpp_set_format_provider_dispatch(const Dn2CppTypeInfo* interfaceType, int32_t slot)
+{
+    dn2cpp_format_provider_interface = interfaceType;
+    dn2cpp_format_provider_slot = slot;
+}
+
+Dn2CppObject* dn2cpp_format_provider_get_format(Dn2CppObject* provider, Dn2CppType* requested,
+    const Dn2CppTypeInfo* interfaceType, int32_t slot)
 {
     if (provider == nullptr)
         dn2cpp_throw_null_reference();
@@ -677,10 +698,16 @@ Dn2CppObject* dn2cpp_format_provider_get_format(Dn2CppObject* provider, Dn2CppTy
     if (provider->type != nullptr && provider->type->name != nullptr
         && std::strcmp(provider->type->name, "System.Globalization.DateTimeFormatInfo") == 0)
         return wanted == provider->type ? provider : nullptr;
-    dn2cpp_throw_platform_not_supported("IFormatProvider.GetFormat has no implementation in this image");
+    if (interfaceType == nullptr)
+        dn2cpp_throw_invalid_operation_msg("A numeric provider has no demanded GetFormat slot");
+    const void** methods = dn2cpp_resolve_interface(provider->type, interfaceType);
+    auto getFormat = reinterpret_cast<Dn2CppObject* (*)(Dn2CppObject*, Dn2CppType*)>(
+        const_cast<void*>(methods[slot]));
+    return getFormat(provider, requested);
 }
 
-const Dn2CppNumberFormatInfo* dn2cpp_format_provider_nfi(Dn2CppObject* provider)
+const Dn2CppNumberFormatInfo* dn2cpp_format_provider_nfi(Dn2CppObject* provider,
+    const Dn2CppTypeInfo* interfaceType, int32_t slot)
 {
     if (provider == nullptr)
         return nullptr;
@@ -688,9 +715,15 @@ const Dn2CppNumberFormatInfo* dn2cpp_format_provider_nfi(Dn2CppObject* provider)
     if (held == &dn2cpp_cultureinfo_type || held == &dn2cpp_numberformatinfo_type)
         return reinterpret_cast<Dn2CppNfiBox*>(provider)->nfi;
     Dn2CppObject* result = dn2cpp_format_provider_get_format(provider,
-        dn2cpp_get_type_from_handle(&dn2cpp_numberformatinfo_type));
+        dn2cpp_get_type_from_handle(&dn2cpp_numberformatinfo_type), interfaceType, slot);
     return result != nullptr && dn2cpp_nfi_box_ti(result) == &dn2cpp_numberformatinfo_type
         ? reinterpret_cast<Dn2CppNfiBox*>(result)->nfi : dn2cpp_culture_current();
+}
+
+const Dn2CppNumberFormatInfo* dn2cpp_format_provider_nfi(Dn2CppObject* provider)
+{
+    return dn2cpp_format_provider_nfi(provider,
+        dn2cpp_format_provider_interface, dn2cpp_format_provider_slot);
 }
 
 Dn2CppObject* dn2cpp_nfi_wrap(const Dn2CppNumberFormatInfo* n, int32_t kind)
