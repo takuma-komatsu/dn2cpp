@@ -165,6 +165,28 @@ POSIX_FALLBACK_VARIANTS=(
     "LANG=en-US-POSIX-zzzzz-u-nu-arab"
     "LANG=en-US-POSIX-abcde"
 )
+EXTENSION_LOCALES=(
+    en-US-a-foo en-US-x-foo en-US-b-foo en-US-0-foo en-US-a-foo-b-bar
+    en-US-u-nu-latn en-US-u-ca-gregory en-US-u-foo en-US-u-ca
+    en-US-u-1234 en-US-u-00 en-US-u en-US-u-a en-US-u-123456789
+    en-US-t-de-DE en-US-t-foo en-US-t-a en-US-t
+    en-US-a-foo-u-nu-latn en-US-x-foo-u-nu-latn en-US-a-foo-u-a
+    en-US-a-foo-t-de-DE en-US-u-ca-gregory-123456789 en-US-t-de-DE-123456789
+    en-US-u-nu-latn-u-ca-gregory en-US-a-foo-a-bar-u-nu-latn
+    en-US-U-NU-ARAB en-US-T-de-DE en-US-A-FOO de-DE-a-foo
+    de-Latn-DE-a-foo i-klingon-a-foo en-GB-oed-a-foo en-US-POSIX-a-foo
+    en-US-abcde en-US-zzzzz-abcde de-DE_phoneb
+    en-US-x-foo-u-a en-US-u-a0 en-US-u-aa en-US-U-ca-gregory-u-nu-latn
+    en-US-a-foo-a-bar-u-a en-US-u-co-phoneb-a-foo
+    de-DE-u-co-phonebk-nu-arab en-US-a-foo-u-co-phoneb
+    en-US-x-lvariant-foo en-US-x-foo-lvariant-bar
+    en-US-abcde-x-lvariant-abcde en-US-POSIX-x-lvariant-foo
+    en-US-zzzzz-x-lvariant-abcde en-US-abcde-x-lvariant-ABCDE
+    en-US-abcde-x-lvariant-abcde-bar en-US-x-lvariant-foo-foo-bar-foo
+    en-US-zzzzz-abcde-x-lvariant-abcde-bar-zzzzz en-US-POSIX-x-lvariant-POSIX-bar
+    en-US-POSIX-x-foo-lvariant-POSIX-bar en-US-POSIX-a-foo-x-lvariant-POSIX-bar
+    en-US-POSIX-u-nu-arab-x-lvariant-POSIX-bar
+)
 VARIANT_LOCALES=(
     en-US-POSIX-abcde-abcde-u-nu-arab en-US-abcde-POSIX-abcde-u-nu-arab
     en-US-POSIX-abcde-u-nu-arab en-US-abcde-POSIX-u-nu-arab
@@ -191,7 +213,7 @@ VARIANT_LOCALES=(
 )
 
 fixture="$(dirname "$0")/fixtures/default-culture-locale"
-if _corelib_gate_check "$out" "default_culture|$PROJECT|$LOCALES|${ENV_VARIANTS[*]}|${POSIX_FALLBACK_VARIANTS[*]}|culture-fallback foo-US|${FALLBACK_CASES[*]}|culture-variant-order ${VARIANT_LOCALES[*]}|$platform_default|query-and-initialize|$_CG_CORELIB" \
+if _corelib_gate_check "$out" "default_culture|$PROJECT|$LOCALES|${ENV_VARIANTS[*]}|${POSIX_FALLBACK_VARIANTS[*]}|culture-fallback foo-US|${FALLBACK_CASES[*]}|culture-variant-order ${VARIANT_LOCALES[*]}|culture-extension-identities ${EXTENSION_LOCALES[*]}|$platform_default|query-and-initialize|$_CG_CORELIB" \
         "$fixture/CMakeLists.txt" "$fixture/locale.c"; then
     gate_cache_hit_msg
     exit 0
@@ -221,6 +243,8 @@ for L in $LOCALES; do
         || { echo "FAIL: culture host fallback data did not run" >&2; exit 1; }
     grep -Fxq 'culture variant order end' <<< "$witness" \
         || { echo "FAIL: culture variant identities did not run" >&2; exit 1; }
+    grep -Fxq 'culture extension identities end' <<< "$witness" \
+        || { echo "FAIL: culture extension identities did not run" >&2; exit 1; }
     printf '%s\n' "$native" | LC_ALL=C sed 's/^/   /'
     for name in "${FALLBACK_CASES[@]}"; do
         native="$(LC_ALL="$L" LANG="$L" run_bounded "./$out/$PROJECT" culture-fallback "$name")"
@@ -260,6 +284,15 @@ for name in "${VARIANT_LOCALES[@]}"; do
     assert_output "$native" "$oracle"
     grep -Fxq 'culture variant order end' <<< "$(strip_cr_win "$native")" \
         || { echo "FAIL: default variant identities for $name did not run" >&2; exit 1; }
+done
+
+for name in "${EXTENSION_LOCALES[@]}"; do
+    echo "-- extension identity env: LANG=$name"
+    native="$(run_locale_env "LANG=$name" "./$out/$PROJECT" culture-extension-identities)"
+    oracle="$(run_locale_env "LANG=$name" dotnet "$_CG_APP" culture-extension-identities)"
+    assert_output "$native" "$oracle"
+    grep -Fxq 'culture extension identities end' <<< "$(strip_cr_win "$native")" \
+        || { echo "FAIL: default extension identities for $name did not run" >&2; exit 1; }
 done
 
 # A controlled libc query makes this branch independent of installed locales.

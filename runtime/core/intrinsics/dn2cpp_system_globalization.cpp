@@ -357,31 +357,20 @@ static void dn2cpp_culture_recase_script(std::u16string& name)
             name[i] = static_cast<char16_t>(name[i] - u'A' + u'a');
 }
 
-static void dn2cpp_culture_sort_variants(std::u16string& name)
+static void dn2cpp_culture_sort_variants(std::u16string& name,
+    Dn2CppLocaleExtensionState<char16_t>& extensions)
 {
     Dn2CppLocaleVariantState parsed = dn2cpp_locale_sort_variants(name.data(), name.size());
-    if (parsed.variantEnd == 0)
-        return;
     name.resize(parsed.length);
-    if (name.size() > parsed.variantEnd)
-    {
-        // ICU keywords discard a/x extensions from the managed identity.
-        // CultureData retains the original u/t suffix when a keyword exists.
-        size_t extension = name.find(u"-u-", parsed.variantEnd);
-        size_t transform = name.find(u"-t-", parsed.variantEnd);
-        if (extension == std::u16string::npos || transform < extension)
-            extension = transform;
-        if (extension == std::u16string::npos)
-            name.resize(parsed.variantEnd);
-        else
-            name.erase(parsed.variantEnd, extension - parsed.variantEnd);
-    }
+    extensions = dn2cpp_locale_identity_extensions(name.data(), name.size(), parsed);
+    name.resize(extensions.baseEnd);
 }
 
-static void dn2cpp_culture_canonicalize_language_tag(std::u16string& name)
+static bool dn2cpp_culture_canonicalize_language_tag(std::u16string& name,
+    Dn2CppLocaleExtensionState<char16_t>& extensions)
 {
     if (name.find(u'_') != std::u16string::npos)
-        return;
+        return false;
     std::u16string lower = dn2cpp_culture_lower(name);
     size_t languageEnd = name.find(u'-');
     bool languageTag = languageEnd == 1;
@@ -400,9 +389,9 @@ static void dn2cpp_culture_canonicalize_language_tag(std::u16string& name)
             if (lower == alias.name)
             {
                 name = alias.target;
-                return;
+                return false;
             }
-        return;
+        return false;
     }
     size_t legacyLength = 0;
     const char16_t* target = nullptr;
@@ -423,14 +412,11 @@ static void dn2cpp_culture_canonicalize_language_tag(std::u16string& name)
         if (privateUse != std::u16string::npos)
         {
             base.resize(privateUse);
-            // Suffix regions and variants belong to the introduced private
-            // use. CultureData retains only the original u/t extension tail.
-            size_t extension = lower.find(u"-u-", legacyLength);
-            size_t transform = lower.find(u"-t-", legacyLength);
-            if (extension == std::u16string::npos || transform < extension)
-                extension = transform;
-            name = extension != std::u16string::npos ? name.substr(extension) : u"";
-            legacyLength = 0;
+            // The introduced private-use keyword absorbs the entire suffix;
+            // only CultureData's original u/t spelling can reappear later.
+            name = base == u"und" ? u"" : base;
+            extensions = {name.size(), true, false, {}, 0, false, false};
+            return true;
         }
         if (base == u"und")
             base.clear();
@@ -439,8 +425,8 @@ static void dn2cpp_culture_canonicalize_language_tag(std::u16string& name)
                 base[i] = static_cast<char16_t>(base[i] - u'a' + u'A');
         name.replace(0, legacyLength, base);
         dn2cpp_culture_recase_script(name);
-        dn2cpp_culture_sort_variants(name);
-        return;
+        dn2cpp_culture_sort_variants(name, extensions);
+        return true;
     }
     // BCP47's first extlang becomes ICU's language; the legacy locale path
     // keeps an identically spelled three-letter country instead.
@@ -486,7 +472,8 @@ static void dn2cpp_culture_canonicalize_language_tag(std::u16string& name)
             }
         }
     }
-    dn2cpp_culture_sort_variants(name);
+    dn2cpp_culture_sort_variants(name, extensions);
+    return true;
 }
 
 static Dn2CppString* dn2cpp_culture_normalize_name(Dn2CppString* name)
@@ -575,7 +562,21 @@ static Dn2CppString* dn2cpp_culture_normalize_name(Dn2CppString* name)
             break;
         }
     std::u16string canonical(normalized, static_cast<size_t>(length));
-    dn2cpp_culture_canonicalize_language_tag(canonical);
+    std::u16string undefinedLegacy;
+    if (canonical.compare(0, 4, u"und-") == 0)
+    {
+        size_t suffix = canonical.find(u"-u-");
+        size_t transform = canonical.find(u"-t-");
+        if (suffix == std::u16string::npos || transform < suffix)
+            suffix = transform;
+        undefinedLegacy = canonical.substr(0, suffix);
+    }
+    Dn2CppLocaleExtensionState<char16_t> extensions{};
+    bool languageTag = dn2cpp_culture_canonicalize_language_tag(canonical, extensions);
+    // With no keyword, Apple ICU retains und's legacy spelling but removes u/t.
+    // An extension-bearing und is custom even when its suffix was rejected.
+    if (canonical == u"und" && !extensions.keywords && !undefinedLegacy.empty())
+        canonical = undefinedLegacy;
     size_t languageEnd = canonical.find_first_of(u"-_");
     if (languageEnd == std::u16string::npos)
         languageEnd = canonical.size();
@@ -588,7 +589,7 @@ static Dn2CppString* dn2cpp_culture_normalize_name(Dn2CppString* name)
             canonical.replace(0, languageEnd, alias.target);
             break;
         }
-    if (canonical == u"und")
+    if (canonical == u"und" && !languageTag)
         canonical.clear();
     // An underscore introduces a sort identifier, not a country. ICU keeps
     // its spelling; the managed name limits it to the Windows sort width.
@@ -604,19 +605,14 @@ static Dn2CppString* dn2cpp_culture_normalize_name(Dn2CppString* name)
             count = 8;
         canonical.append(name->chars + originalSort + 1, static_cast<size_t>(count));
     }
-    else
+    else if (languageTag)
     {
-        size_t collation = canonical.find(u"-u-co-");
-        if (collation != std::u16string::npos)
+        if (extensions.keywords && extension >= 0 && extension < length)
+            canonical.append(name->chars + extension, static_cast<size_t>(length - extension));
+        if (extensions.collation)
         {
-            std::u16string value = canonical.substr(collation + 6);
-            if (value == u"phonebk")
-                value = u"phonebook";
-            if (value.size() > 8)
-                value.resize(8);
-            canonical.resize(collation);
             canonical += u'_';
-            canonical += value;
+            canonical.append(extensions.sort, extensions.sortLength);
         }
     }
     return dn2cpp_string_from_chars(canonical.data(), static_cast<int32_t>(canonical.size()));
@@ -653,6 +649,16 @@ static int32_t dn2cpp_culture_region_end(Dn2CppString* name)
 
 static Dn2CppString* dn2cpp_culture_public_name(Dn2CppString* input, Dn2CppString* canonical)
 {
+    bool legacySort = false;
+    for (int32_t i = 0; i < input->length && input->chars[i] != u'\0'; i++)
+        legacySort = legacySort || input->chars[i] == u'_';
+    if (!legacySort)
+    {
+        for (int32_t i = 0; i < canonical->length; i++)
+            if (canonical->chars[i] == u'_' && dn2cpp_culture_region_end(canonical) != 0)
+                return dn2cpp_string_from_chars(canonical->chars, i);
+        return canonical;
+    }
     for (int32_t i = 0; i < canonical->length; i++)
         if (canonical->chars[i] == u'_')
         {

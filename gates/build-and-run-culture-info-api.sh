@@ -63,6 +63,8 @@
 # host-dependent numeric data; the default-culture gate covers that data.
 # Bare POSIX and unknown tags have host-dependent ICU acceptance, so they
 # cannot be unconditional live-diff inputs.
+# Extension-only names follow ICU keyword acceptance while preserving legacy
+# spellings. Fresh constructor/cache orders pin which casing owns culture data.
 #
 # Its LAST TWO sections are not about CultureInfo's API at all; do not prune this
 # bucket by theme.
@@ -123,6 +125,34 @@ INVARIANT_CACHE_ORDERS=(
     missing-lcid-empty missing-empty-lcid
 )
 INSTANCE_CULTURES=(i-enochian en-US en "")
+UNDEFINED_EXTENSION_CASES=(und und-u-a und-t-a und-u-123456789 und-a-a und-a-123456789)
+EXTENSION_CASES=(
+    en-US-a-foo en-US-x-foo en-US-b-foo en-US-0-foo en-US-a-foo-b-bar
+    en-US-u-nu-latn en-US-u-ca-gregory en-US-u-foo en-US-u-ca
+    en-US-u-1234 en-US-u-00 en-US-u en-US-u-a en-US-u-123456789
+    en-US-t-de-DE en-US-t-foo en-US-t-a en-US-t
+    en-US-a-foo-u-nu-latn en-US-x-foo-u-nu-latn en-US-a-foo-u-a
+    en-US-a-foo-t-de-DE en-US-u-ca-gregory-123456789 en-US-t-de-DE-123456789
+    en-US-u-nu-latn-u-ca-gregory en-US-a-foo-a-bar-u-nu-latn
+    en-US-U-NU-ARAB en-US-T-de-DE en-US-A-FOO de-DE-a-foo
+    de-Latn-DE-a-foo i-klingon-a-foo en-GB-oed-a-foo en-US-POSIX-a-foo
+    en-US-abcde en-US-zzzzz-abcde de-DE_phoneb
+    en-US-x-foo-u-a en-US-u-a0 en-US-u-aa en-US-U-ca-gregory-u-nu-latn
+    en-US-a-foo-a-bar-u-a en-US-u-co-phoneb-a-foo
+    de-DE-u-co-phonebk-nu-arab en-US-a-foo-u-co-phoneb
+    en-US-x-lvariant-foo en-US-x-foo-lvariant-bar
+    en-US-abcde-x-lvariant-abcde en-US-POSIX-x-lvariant-foo
+    en-US-zzzzz-x-lvariant-abcde en-US-abcde-x-lvariant-ABCDE
+    en-US-abcde-x-lvariant-abcde-bar en-US-x-lvariant-foo-foo-bar-foo
+    en-US-zzzzz-abcde-x-lvariant-abcde-bar-zzzzz en-US-POSIX-x-lvariant-POSIX-bar
+    en-US-POSIX-x-foo-lvariant-POSIX-bar en-US-POSIX-a-foo-x-lvariant-POSIX-bar
+    en-US-POSIX-u-nu-arab-x-lvariant-POSIX-bar
+)
+EXTENSION_ORDER_PAIRS=(
+    'en-US-A-FOO|en-US-a-foo' 'en-US-U-NU-ARAB|en-US-u-nu-arab'
+    'en-US-U-CA-GREGORY|en-US-u-ca-gregory' 'en-US-T-de-DE|en-US-t-de-DE'
+    'en-US-a-foo|en-US' 'en-US|en-US-a-foo'
+)
 EQUALITY_PAIRS=(
     'en-US|en-US' 'en-US|EN-us' 'de-DE|de-DE_phoneb' 'de-DE_phoneb|DE-de_PHONEB'
     'i-enochian|' 'i-enochian|i-enochian' 'i-klingon|tlh'
@@ -212,6 +242,10 @@ gate_extra_asserts() {
         || { echo "FAIL: culture instance equality section did not finish" >&2; return 1; }
     grep -Fxq 'culture specific instances end' <<< "$(strip_cr_win "$native")" \
         || { echo "FAIL: culture specific instances section did not finish" >&2; return 1; }
+    grep -Fxq 'culture extension identities end' <<< "$(strip_cr_win "$native")" \
+        || { echo "FAIL: culture extension identities section did not finish" >&2; return 1; }
+    grep -Fxq 'culture undefined extension metadata end' <<< "$(strip_cr_win "$native")" \
+        || { echo "FAIL: culture undefined extension metadata section did not finish" >&2; return 1; }
     for mode in "${LOCALE_CASES[@]}"; do
         native=$(run_bounded "./$out/CultureInfoApi" "$mode")
         expected=$(run_bounded dotnet "$_CG_APP" "$mode")
@@ -285,8 +319,32 @@ gate_extra_asserts() {
         grep -Fxq 'culture specific instances end' <<< "$(strip_cr_win "$native")" \
             || { echo "FAIL: culture specific instances for '$mode' did not finish" >&2; return 1; }
     done
+    for mode in "${EXTENSION_CASES[@]}"; do
+        native=$(run_bounded "./$out/CultureInfoApi" culture-extension-identities "$mode")
+        expected=$(run_bounded dotnet "$_CG_APP" culture-extension-identities "$mode")
+        assert_output "$native" "$expected"
+        grep -Fxq 'culture extension identities end' <<< "$(strip_cr_win "$native")" \
+            || { echo "FAIL: extension identity '$mode' did not finish" >&2; return 1; }
+    done
+    for mode in "${UNDEFINED_EXTENSION_CASES[@]}"; do
+        native=$(run_bounded "./$out/CultureInfoApi" culture-undefined-extension-metadata "$mode")
+        expected=$(run_bounded dotnet "$_CG_APP" culture-undefined-extension-metadata "$mode")
+        assert_output "$native" "$expected"
+        grep -Fxq 'culture undefined extension metadata end' <<< "$(strip_cr_win "$native")" \
+            || { echo "FAIL: undefined extension metadata '$mode' did not finish" >&2; return 1; }
+    done
+    local pair order
+    for pair in "${EXTENSION_ORDER_PAIRS[@]}"; do
+        for order in constructor-first cached-first; do
+            native=$(run_bounded "./$out/CultureInfoApi" culture-extension-order "${pair%%|*}" "${pair#*|}" "$order")
+            expected=$(run_bounded dotnet "$_CG_APP" culture-extension-order "${pair%%|*}" "${pair#*|}" "$order")
+            assert_output "$native" "$expected"
+            grep -Fxq 'culture extension cache order end' <<< "$(strip_cr_win "$native")" \
+                || { echo "FAIL: extension cache order '$pair' '$order' did not finish" >&2; return 1; }
+        done
+    done
 }
 DN2CPP_GATE_RUN_ARGS=culture-names
-DN2CPP_GATE_EXTRA_CONTEXT="${LOCALE_CASES[*]} ${NUMBERING_CASES[*]} ${FALLBACK_CASES[*]} culture-missing-number-format ${MISSING_NUMBER_CASES[*]} culture-variant-order ${VARIANT_CASES[*]} culture-invariant-lcid-cache ${INVARIANT_CACHE_ORDERS[*]} culture-instance-number-format [${INSTANCE_CULTURES[*]}] culture-integer-constructors culture-instance-equality ${EQUALITY_PAIRS[*]}"
+DN2CPP_GATE_EXTRA_CONTEXT="${LOCALE_CASES[*]} ${NUMBERING_CASES[*]} ${FALLBACK_CASES[*]} culture-missing-number-format ${MISSING_NUMBER_CASES[*]} culture-variant-order ${VARIANT_CASES[*]} culture-invariant-lcid-cache ${INVARIANT_CACHE_ORDERS[*]} culture-instance-number-format [${INSTANCE_CULTURES[*]}] culture-integer-constructors culture-instance-equality ${EQUALITY_PAIRS[*]} culture-extension-identities ${EXTENSION_CASES[*]} culture-undefined-extension-metadata ${UNDEFINED_EXTENSION_CASES[*]} culture-extension-order ${EXTENSION_ORDER_PAIRS[*]} constructor-first cached-first"
 DN2CPP_OUT_SUFFIX=-names
 corelib_diff_gate CultureInfoApi --link-xml samples/dotnet/CultureInfoApi/link.xml

@@ -19,6 +19,11 @@ namespace DefaultCulture
     {
         private static void Main(string[] args)
         {
+            if (args.Length > 0 && args[0] == "culture-extension-identities")
+            {
+                WriteExtensionIdentities(CultureInfo.CurrentCulture, CultureInfo.CurrentUICulture, CultureInfo.InstalledUICulture);
+                return;
+            }
             if (args.Length > 0 && args[0] == "culture-variant-order")
             {
                 WriteVariantIdentities(CultureInfo.CurrentCulture, CultureInfo.CurrentUICulture, CultureInfo.InstalledUICulture);
@@ -58,6 +63,16 @@ namespace DefaultCulture
             CultureInfo originalInstalled = CultureInfo.InstalledUICulture;
             RunFallbackData();
             WriteVariantIdentities(c, originalUI, originalInstalled);
+            WriteExtensionIdentities(c, originalUI, originalInstalled);
+        }
+
+        private static void WriteExtensionIdentities(CultureInfo current, CultureInfo ui, CultureInfo installed)
+        {
+            Console.WriteLine("== default culture extension identities ==");
+            Console.WriteLine("  current=" + VariantIdentity(current));
+            Console.WriteLine("  ui=" + VariantIdentity(ui));
+            Console.WriteLine("  installed=" + VariantIdentity(installed));
+            Console.WriteLine("culture extension identities end");
         }
 
         private static void WriteVariantIdentities(CultureInfo current, CultureInfo ui, CultureInfo installed)
