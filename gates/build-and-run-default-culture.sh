@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Failed locale probes retain the command, exit status and both output streams.
 # The DEFAULT CultureInfo.CurrentCulture — the one a program that never names a
 # culture formats and parses through — asserted against real .NET under
 # several FORCED locales.
@@ -38,6 +39,102 @@
 # divergence to report; it is an oracle that has been told there is nothing to
 # ask about.
 source "$(dirname "$0")/_common.sh"
+
+gate_run_logs_init default_culture "DefaultCulture runs"
+
+# Command substitutions must retain a failed child's output before set -e exits.
+default_culture_run() {
+    local side="$1" output code command_line stderr_file
+    shift
+    stderr_file="$_GATE_RUN_LOG_DIR/$side.stderr"
+    printf -v command_line '%q ' "$@"
+    if output=$(run_bounded "$@" 2>"$stderr_file"); then
+        code=0
+    else
+        code=$?
+    fi
+    if [ "$code" -ne 0 ]; then
+        gate_run_diag "DefaultCulture $side: $command_line" "$code" "$output" "$stderr_file" >&2
+        return "$code"
+    fi
+    if [ -s "$stderr_file" ]; then
+        cat "$stderr_file" >&2
+    fi
+    printf '%s' "$output"
+    return 0
+}
+
+run_locale_env() {
+    local side="$1" assigns=()
+    shift
+    read -r -a assigns <<< "$1"
+    shift
+    default_culture_run "$side" env -u LC_ALL -u LC_MESSAGES -u LANG ${assigns[@]+"${assigns[@]}"} "$@"
+}
+
+default_culture_diagnostics_self_test() {
+    local side code actual actual_code diagnostics child quoted_args
+    child='
+        [ "$#" -eq 5 ] && [ "$2" = "culture-fallback" ] \
+            && [ "$3" = "foo QQ" ] && [ "$4" = "" ] \
+            && [ "$5" = "$(printf "foo\047QQ")" ] \
+            && [ "$LANG" = "de_DE.UTF-8" ] && [ "${LC_ALL+x}" != x ] \
+            && [ "${LC_MESSAGES+x}" != x ] || exit 91
+        printf "same output\n"
+        printf "injected stderr\n" >&2
+        exit "$1"
+    '
+    printf -v quoted_args '%q ' culture-fallback "foo QQ" "" "foo'QQ"
+    for side in native oracle; do
+        diagnostics="$_GATE_RUN_LOG_DIR/self-test-$side.stderr"
+        actual=$(LC_ALL=C LC_MESSAGES=C LANG=C run_locale_env "$side" "LANG=de_DE.UTF-8" bash -c "$child" _ 0 \
+            culture-fallback "foo QQ" "" "foo'QQ" 2>"$diagnostics")
+        [ "$actual" = "same output" ] \
+            || { echo "FAIL: $side successful stdout, locale or quoted arguments changed" >&2; return 1; }
+        grep -Fxq 'injected stderr' "$diagnostics" \
+            || { echo "FAIL: $side successful stderr disappeared" >&2; return 1; }
+        code=23
+        [ "$side" = native ] || code=29
+        if actual=$(LC_ALL=C LC_MESSAGES=C LANG=C run_locale_env "$side" "LANG=de_DE.UTF-8" bash -c "$child" _ "$code" \
+            culture-fallback "foo QQ" "" "foo'QQ" 2>"$diagnostics"); then
+            echo "FAIL: $side nonzero exit with matching stdout passed" >&2
+            return 1
+        else
+            actual_code=$?
+        fi
+        [ "$actual_code" -eq "$code" ] \
+            || { echo "FAIL: $side child exit code changed" >&2; return 1; }
+        grep -Fq "DefaultCulture $side:" "$diagnostics" \
+            && grep -Fq 'env -u LC_ALL -u LC_MESSAGES -u LANG LANG=de_DE.UTF-8 ' "$diagnostics" \
+            && grep -Fq "$quoted_args" "$diagnostics" \
+            && grep -Fxq "exit code: $code" "$diagnostics" \
+            && grep -Fxq 'termination: nonzero exit' "$diagnostics" \
+            && grep -Fxq 'stdout:' "$diagnostics" \
+            && grep -Fxq 'same output' "$diagnostics" \
+            && grep -Fxq 'stderr:' "$diagnostics" \
+            && grep -Fxq 'injected stderr' "$diagnostics" \
+            || { echo "FAIL: $side failed-run diagnostics are incomplete" >&2; cat "$diagnostics" >&2; return 1; }
+        if actual=$(default_culture_run "$side" bash -c 'exit 37' 2>"$diagnostics"); then
+            echo "FAIL: $side empty failed run passed" >&2
+            return 1
+        else
+            actual_code=$?
+        fi
+        [ "$actual_code" -eq 37 ] && [ -z "$actual" ] \
+            && grep -Fq "DefaultCulture $side:" "$diagnostics" \
+            && grep -Fxq 'exit code: 37' "$diagnostics" \
+            && grep -Fxq 'stdout: <empty>' "$diagnostics" \
+            && grep -Fxq 'stderr: <empty>' "$diagnostics" \
+            || { echo "FAIL: $side empty failed-run diagnostics are incomplete" >&2; cat "$diagnostics" >&2; return 1; }
+    done
+    echo "OK: DefaultCulture run diagnostics"
+    return 0
+}
+
+default_culture_diagnostics_self_test
+if [ "${1:-}" = --self-test ]; then
+    exit 0
+fi
 
 PROJECT=DefaultCulture
 out="$(_corelib_gate_out "$PROJECT")"
@@ -93,13 +190,7 @@ FALLBACK_CASES=(
 # other than the platform's own answer, so a row resolved through the wrong
 # variable prints a different culture on every host. That answer is a host
 # setting no variable carries, so it is cache context.
-run_locale_env() {
-    local assigns=()
-    read -r -a assigns <<< "$1"
-    shift
-    run_bounded env -u LC_ALL -u LC_MESSAGES -u LANG ${assigns[@]+"${assigns[@]}"} "$@"
-}
-platform_default="$(run_locale_env "" dotnet "$_CG_APP")"
+platform_default="$(run_locale_env oracle "" dotnet "$_CG_APP")"
 platform_default="${platform_default%%$'\n'*}"
 decoys=()
 for L in de_DE fr_FR sv_SE; do
@@ -225,7 +316,7 @@ compile_console "$out" "$PROJECT"
 # The oracle has to be able to answer at all. An invariant-globalization runtime
 # reports the empty culture for every locale; diffing against it would report a
 # dn2cpp bug for a .NET that has no culture data installed.
-probe="$(LC_ALL=de_DE.UTF-8 LANG=de_DE.UTF-8 dotnet "$_CG_APP")"
+probe="$(default_culture_run oracle env LC_ALL=de_DE.UTF-8 LANG=de_DE.UTF-8 dotnet "$_CG_APP")"
 probe="${probe%%$'\n'*}"
 if [ "$probe" = "Name=" ]; then
     gate_skip "the host's .NET reports no culture for LC_ALL=de_DE.UTF-8 (invariant globalization / no ICU), so the oracle cannot answer the question this gate asks"
@@ -233,8 +324,8 @@ fi
 
 for L in $LOCALES; do
     echo "-- LC_ALL=$L"
-    native="$(LC_ALL="$L" LANG="$L" run_bounded "./$out/$PROJECT")"
-    oracle="$(LC_ALL="$L" LANG="$L" run_bounded dotnet "$_CG_APP")"
+    native="$(default_culture_run native env LC_ALL="$L" LANG="$L" "./$out/$PROJECT")"
+    oracle="$(default_culture_run oracle env LC_ALL="$L" LANG="$L" dotnet "$_CG_APP")"
     assert_output "$native" "$oracle"
     witness=$(strip_cr_win "$native")
     grep -Fxq 'default culture identities end' <<< "$witness" \
@@ -249,8 +340,8 @@ for L in $LOCALES; do
         || { echo "FAIL: user number digits did not run" >&2; exit 1; }
     printf '%s\n' "$native" | LC_ALL=C sed 's/^/   /'
     for name in "${FALLBACK_CASES[@]}"; do
-        native="$(LC_ALL="$L" LANG="$L" run_bounded "./$out/$PROJECT" culture-fallback "$name")"
-        oracle="$(LC_ALL="$L" LANG="$L" run_bounded dotnet "$_CG_APP" culture-fallback "$name")"
+        native="$(default_culture_run native env LC_ALL="$L" LANG="$L" "./$out/$PROJECT" culture-fallback "$name")"
+        oracle="$(default_culture_run oracle env LC_ALL="$L" LANG="$L" dotnet "$_CG_APP" culture-fallback "$name")"
         assert_output "$native" "$oracle"
         grep -Fxq 'culture host fallback data end' <<< "$(strip_cr_win "$native")" \
             || { echo "FAIL: fallback data for $name under $L did not run" >&2; exit 1; }
@@ -260,8 +351,8 @@ done
 ran=0
 for V in "${ENV_VARIANTS[@]}"; do
     echo "-- env: ${V:-none of LC_ALL LC_MESSAGES LANG}"
-    native="$(run_locale_env "$V" "./$out/$PROJECT")"
-    oracle="$(run_locale_env "$V" dotnet "$_CG_APP")"
+    native="$(run_locale_env native "$V" "./$out/$PROJECT")"
+    oracle="$(run_locale_env oracle "$V" dotnet "$_CG_APP")"
     assert_output "$native" "$oracle"
     ran=$((ran + 1))
 done
@@ -272,8 +363,8 @@ echo "env variants: $ran of ${#ENV_VARIANTS[@]} match real .NET (platform defaul
 # of the managed default culture's variant ordering.
 for V in "${POSIX_FALLBACK_VARIANTS[@]}"; do
     echo "-- numeric fallback env: $V"
-    native="$(run_locale_env "$V" "./$out/$PROJECT" culture-fallback foo-US)"
-    oracle="$(run_locale_env "$V" dotnet "$_CG_APP" culture-fallback foo-US)"
+    native="$(run_locale_env native "$V" "./$out/$PROJECT" culture-fallback foo-US)"
+    oracle="$(run_locale_env oracle "$V" dotnet "$_CG_APP" culture-fallback foo-US)"
     assert_output "$native" "$oracle"
     grep -Fxq 'culture host fallback data end' <<< "$(strip_cr_win "$native")" \
         || { echo "FAIL: numeric fallback for $V did not run" >&2; exit 1; }
@@ -281,8 +372,8 @@ done
 
 for name in "${VARIANT_LOCALES[@]}"; do
     echo "-- variant identity env: LANG=$name"
-    native="$(run_locale_env "LANG=$name" "./$out/$PROJECT" culture-variant-order)"
-    oracle="$(run_locale_env "LANG=$name" dotnet "$_CG_APP" culture-variant-order)"
+    native="$(run_locale_env native "LANG=$name" "./$out/$PROJECT" culture-variant-order)"
+    oracle="$(run_locale_env oracle "LANG=$name" dotnet "$_CG_APP" culture-variant-order)"
     assert_output "$native" "$oracle"
     grep -Fxq 'culture variant order end' <<< "$(strip_cr_win "$native")" \
         || { echo "FAIL: default variant identities for $name did not run" >&2; exit 1; }
@@ -290,8 +381,8 @@ done
 
 for name in "${EXTENSION_LOCALES[@]}"; do
     echo "-- extension identity env: LANG=$name"
-    native="$(run_locale_env "LANG=$name" "./$out/$PROJECT" culture-extension-identities)"
-    oracle="$(run_locale_env "LANG=$name" dotnet "$_CG_APP" culture-extension-identities)"
+    native="$(run_locale_env native "LANG=$name" "./$out/$PROJECT" culture-extension-identities)"
+    oracle="$(run_locale_env oracle "LANG=$name" dotnet "$_CG_APP" culture-extension-identities)"
     assert_output "$native" "$oracle"
     grep -Fxq 'culture extension identities end' <<< "$(strip_cr_win "$native")" \
         || { echo "FAIL: default extension identities for $name did not run" >&2; exit 1; }
@@ -309,8 +400,8 @@ if [ "$DN2CPP_OS" != windows ]; then
     fi
     for query in "$B" C POSIX C.UTF-8; do
         echo "-- libc messages query: $query"
-        native=$(run_locale_env "LANG=$A" env "$injection" "DN2CPP_GATE_QUERY_LOCALE=$query" "./$out/$PROJECT")
-        oracle=$(run_locale_env "LANG=$A" env "$injection" "DN2CPP_GATE_QUERY_LOCALE=$query" dotnet "$_CG_APP")
+        native=$(run_locale_env native "LANG=$A" env "$injection" "DN2CPP_GATE_QUERY_LOCALE=$query" "./$out/$PROJECT")
+        oracle=$(run_locale_env oracle "LANG=$A" env "$injection" "DN2CPP_GATE_QUERY_LOCALE=$query" dotnet "$_CG_APP")
         assert_output "$native" "$oracle"
         if [ "$query" = "$B" ]; then
             expected_name="${B%.UTF-8}"
@@ -319,8 +410,8 @@ if [ "$DN2CPP_OS" != windows ]; then
     done
     if [ "$DN2CPP_OS" = macos ]; then
         echo "-- initialized libc locale with empty LC_ALL"
-        native=$(run_locale_env "LC_ALL= LANG=$A" env "$injection" DN2CPP_GATE_INITIALIZE_LOCALE=1 "./$out/$PROJECT")
-        oracle=$(run_locale_env "LC_ALL= LANG=$A" env "$injection" DN2CPP_GATE_INITIALIZE_LOCALE=1 dotnet "$_CG_APP")
+        native=$(run_locale_env native "LC_ALL= LANG=$A" env "$injection" DN2CPP_GATE_INITIALIZE_LOCALE=1 "./$out/$PROJECT")
+        oracle=$(run_locale_env oracle "LC_ALL= LANG=$A" env "$injection" DN2CPP_GATE_INITIALIZE_LOCALE=1 dotnet "$_CG_APP")
         assert_output "$native" "$oracle"
         expected_name="${A%.UTF-8}"
         assert_output "${oracle%%$'\n'*}" "Name=${expected_name/_/-}"
