@@ -2864,6 +2864,8 @@ corelib_subset_gate() {
 # real-.NET output (`dotnet $app`). Deterministic programs only. The optional
 # DN2CPP_ORACLE_DOTNET_ENABLE_AVX knob applies only to that oracle process; its
 # caller must include the resulting behavior axis in DN2CPP_GATE_EXTRA_CONTEXT.
+# Optional gate_run_oracle and gate_capture_diff_output hooks retain the same
+# oracle arguments and expose output only after stdout and exit-status parity.
 corelib_diff_gate() {
     local project="$1"; shift
     local out
@@ -2885,20 +2887,28 @@ corelib_diff_gate() {
     # Real .NET is the oracle for the exit status too (Finalizers' last section
     # aborts deliberately). DN2CPP_GATE_RUN_ARGS: fresh @SCRATCH@ per side.
     local native native_code expected expected_code
+    local oracle=(run_bounded dotnet)
+    if declare -F gate_run_oracle >/dev/null; then
+        oracle=(gate_run_oracle)
+    fi
     set +e
     _gate_run_argv
     native=$(run_bounded "./$out/$project" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}); native_code=$?
     _gate_run_argv
     if [ -n "${DN2CPP_ORACLE_DOTNET_ENABLE_AVX:-}" ]; then
         expected=$(DOTNET_EnableAVX="$DN2CPP_ORACLE_DOTNET_ENABLE_AVX" \
-            run_bounded dotnet "$_CG_APP" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}); expected_code=$?
+            "${oracle[@]}" "$_CG_APP" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}); expected_code=$?
     else
-        expected=$(run_bounded dotnet "$_CG_APP" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}); expected_code=$?
+        expected=$("${oracle[@]}" "$_CG_APP" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}); expected_code=$?
     fi
     set -e
     _gate_scratch_cleanup
     assert_output "$native" "$expected"
     assert_exit_code "$native_code" "$expected_code"
+    if declare -F gate_capture_diff_output >/dev/null; then
+        gate_capture_diff_output "$out" "$project" "$native" "$expected" \
+            ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}
+    fi
     _gate_extra_asserts "$out"
     gate_cache_commit
 }

@@ -2,7 +2,8 @@
 # Runtime-owned lifetime and clone slots preserve cleanup, virtual overrides and copy identity.
 runtime_lifetime_asserts() {
     local output="$1" line
-    for line in '== runtime lifetime interfaces ==' 'runtime lifetime interfaces end' \
+    reflection_assert_lines "$output" 1 \
+        '== runtime lifetime interfaces ==' 'runtime lifetime interfaces end' \
         'lifetime safe group: True' 'lifetime wait override: 1/True' \
         'lifetime wait explicit: 1/False' 'lifetime wait close alias: True' \
         'lifetime wait close group: 1/1' 'lifetime direct dispose close: 0/1' \
@@ -17,10 +18,7 @@ runtime_lifetime_asserts() {
         'lifetime factory completed: disposed' 'lifetime factory result: disposed' \
         'lifetime factory source: disposed' 'lifetime factory generic source: disposed' \
         'lifetime factory async: disposed' 'lifetime factory cold: disposed' \
-        'lifetime factory run: disposed' 'lifetime factory all: disposed'; do
-        test "$(grep -Fxc -- "$line" "$output")" = 1 \
-            || { echo "FAIL: runtime lifetime witness missing or repeated: $output/$line" >&2; return 1; }
-    done
+        'lifetime factory run: disposed' 'lifetime factory all: disposed'
 }
 
 runtime_lifetime_diff_routes() {
@@ -61,8 +59,7 @@ runtime_lifetime_diff_routes() {
             clone-class-field-trimmed) flags=(--trim-reflection); app_route=clone-class-reflected-field ;;
             clone-class-field-unshared) flags=(--no-shared-generics); app_route=clone-class-reflected-field ;;
         esac
-        dotnet build samples/dotnet/ReflectInvoke/RuntimeLifetimeInterfacesOnly.csproj \
-            -c "$CONFIG" --nologo -v q -p:LifetimeInterfaceRoute="$app_route" -o "$out/app"
+        reflection_build_once samples/dotnet/ReflectInvoke/RuntimeLifetimeInterfacesOnly.csproj "$out/app" -p:LifetimeInterfaceRoute="$app_route"
         case "$app_route" in
             clone-class-reflected-field|array-clone-*) ;;
             clone-class-*)
@@ -78,7 +75,7 @@ runtime_lifetime_diff_routes() {
                 fi
                 ;;
         esac
-        run_bounded dotnet "$out/app/RuntimeLifetimeInterfacesOnly.dll" > "$out/clr.raw.stdout"
+        reflection_oracle "$out/app/RuntimeLifetimeInterfacesOnly.dll" > "$out/clr.raw.stdout"
         strip_cr_win_file "$out/clr.raw.stdout" > "$out/clr.stdout"
         DN2CPP_STRICT_COMPLETION=1 invoke_cli "$out/app/RuntimeLifetimeInterfacesOnly.dll" -r "$(locate_corelib)" \
             --no-ildiet ${flags[@]+"${flags[@]}"} -o "$out" > "$out/emit.log" 2>&1
@@ -147,7 +144,8 @@ runtime_lifetime_diff_routes() {
 
 delegate_clone_class_asserts() {
     local output="$1" line
-    for line in '== Delegate.Clone class method groups ==' 'Delegate.Clone class method groups end' \
+    reflection_assert_lines "$output" 1 \
+        '== Delegate.Clone class method groups ==' 'Delegate.Clone class method groups end' \
         'delegate clone class aliases: True/True' 'delegate clone class remove: True/True' \
         'delegate clone class targets: False/True' 'delegate clone class static: True/True/True/5' \
         'delegate clone class closed: True/True/True/13' 'delegate clone class multicast: True/True/True/12' \
@@ -156,17 +154,14 @@ delegate_clone_class_asserts() {
         'delegate clone override invoked: class clone/class clone' \
         'delegate clone explicit aliases: False/True' \
         'delegate clone explicit invoked: class clone/interface clone' \
-        'delegate clone class null: NullReferenceException' 'delegate clone base null: NullReferenceException'; do
-        test "$(grep -Fxc -- "$line" "$output")" = 1 \
-            || { echo "FAIL: Delegate.Clone class witness missing or repeated: $output/$line" >&2; return 1; }
-    done
+        'delegate clone class null: NullReferenceException' 'delegate clone base null: NullReferenceException'
 }
 
 gate_delegate_clone_class_prefix_asserts() {
     local out="$1" axis
     for axis in dotnet native; do
         if [ "$axis" = dotnet ]; then
-            run_bounded dotnet "$_CG_APP" before-delegate-clone-class-groups > "$out/delegate-clone-class-prefix.$axis.raw.stdout"
+            reflection_oracle "$_CG_APP" before-delegate-clone-class-groups > "$out/delegate-clone-class-prefix.$axis.raw.stdout"
         else
             run_bounded "$out/ReflectInvoke$EXE_EXT" before-delegate-clone-class-groups > "$out/delegate-clone-class-prefix.$axis.raw.stdout"
         fi
@@ -183,7 +178,7 @@ gate_runtime_lifetime_prefix_asserts() {
     local out="$1" axis
     for axis in dotnet native; do
         if [ "$axis" = dotnet ]; then
-            run_bounded dotnet "$_CG_APP" before-runtime-lifetime-interfaces > "$out/runtime-lifetime-prefix.$axis.raw.stdout"
+            reflection_oracle "$_CG_APP" before-runtime-lifetime-interfaces > "$out/runtime-lifetime-prefix.$axis.raw.stdout"
         else
             run_bounded "$out/ReflectInvoke$EXE_EXT" before-runtime-lifetime-interfaces > "$out/runtime-lifetime-prefix.$axis.raw.stdout"
         fi
@@ -199,7 +194,8 @@ gate_runtime_lifetime_prefix_asserts() {
 
 safe_handle_group_asserts() {
     local output="$1" line
-    for line in '== SafeHandle method groups ==' 'SafeHandle method groups end' \
+    reflection_assert_lines "$output" 1 \
+        '== SafeHandle method groups ==' 'SafeHandle method groups end' \
         'safe groups aliases: True/True' 'safe groups remove: True' \
         'safe groups close aliases: True' 'safe groups distinct: False/True' \
         'safe groups invoked: True' 'safe class group invoked: True' \
@@ -208,17 +204,14 @@ safe_handle_group_asserts() {
         'user groups aliases: True/True' 'user groups invoked: 3/1/True' \
         'user groups explicit: False/True' 'user groups explicit invoked: 1/1/1' \
         'safe null group: ArgumentException' 'safe base null group: ArgumentException' \
-        'safe close null group: ArgumentException' 'safe interface null group: NullReferenceException'; do
-        test "$(grep -Fxc -- "$line" "$output")" = 1 \
-            || { echo "FAIL: SafeHandle method-group witness missing or repeated: $output/$line" >&2; return 1; }
-    done
+        'safe close null group: ArgumentException' 'safe interface null group: NullReferenceException'
 }
 
 gate_safe_handle_group_prefix_asserts() {
     local out="$1" axis
     for axis in dotnet native; do
         if [ "$axis" = dotnet ]; then
-            run_bounded dotnet "$_CG_APP" before-safehandle-method-groups > "$out/safehandle-prefix.$axis.raw.stdout"
+            reflection_oracle "$_CG_APP" before-safehandle-method-groups > "$out/safehandle-prefix.$axis.raw.stdout"
         else
             run_bounded "$out/ReflectInvoke$EXE_EXT" before-safehandle-method-groups > "$out/safehandle-prefix.$axis.raw.stdout"
         fi
@@ -233,7 +226,8 @@ gate_safe_handle_group_prefix_asserts() {
 
 clone_interface_asserts() {
     local output="$1" line
-    for line in '== runtime clone interfaces ==' 'runtime clone interfaces end' \
+    reflection_assert_lines "$output" 1 \
+        '== runtime clone interfaces ==' 'runtime clone interfaces end' \
         'string clone group: True' 'string clone calls: True/True' \
         'string clone aliases: True/True' 'delegate clone group: True/True/5' \
         'delegate clone interface: True/True/True/5' 'delegate clone remove: True' \
@@ -242,17 +236,14 @@ clone_interface_asserts() {
         'delegate clone independent: 2/1/3' 'ordinary clone interface: True/7' \
         'clone interface null: NullReferenceException' \
         'clone group null: NullReferenceException' 'delegate clone null: NullReferenceException' \
-        'string clone null: NullReferenceException'; do
-        test "$(grep -Fxc -- "$line" "$output")" = 1 \
-            || { echo "FAIL: clone interface witness missing or repeated: $output/$line" >&2; return 1; }
-    done
+        'string clone null: NullReferenceException'
 }
 
 gate_clone_interface_prefix_asserts() {
     local out="$1" axis
     for axis in dotnet native; do
         if [ "$axis" = dotnet ]; then
-            run_bounded dotnet "$_CG_APP" before-runtime-clone-interfaces > "$out/clone-prefix.$axis.raw.stdout"
+            reflection_oracle "$_CG_APP" before-runtime-clone-interfaces > "$out/clone-prefix.$axis.raw.stdout"
         else
             run_bounded "$out/ReflectInvoke$EXE_EXT" before-runtime-clone-interfaces > "$out/clone-prefix.$axis.raw.stdout"
         fi
@@ -267,24 +258,22 @@ gate_clone_interface_prefix_asserts() {
 
 array_clone_asserts() {
     local output="$1" line
-    for line in '== array Clone interface dispatch ==' 'array Clone interface dispatch end' \
+    reflection_assert_lines "$output" 1 \
+        '== array Clone interface dispatch ==' 'array Clone interface dispatch end' \
         'array clone typed: True/True/3/2/8' 'array clone erased: True/True/3/2/8' \
         'array clone constrained: True/True/3/2/8' \
         'array clone reflected: True/True/3/2/8' 'array clone MD: True/True/2/1/4/7/11' \
         'array clone interface group: True/True/3/2/8' 'array clone class group: True/True/3/2/8' \
         'array clone aliases: True/True' 'array clone remove: True' \
         'array clone alias invoked: True/True/3/2/8' 'array clone references: True/True/True/True' \
-        'array clone class null: ArgumentException' 'array clone interface null: NullReferenceException'; do
-        test "$(grep -Fxc -- "$line" "$output")" = 1 \
-            || { echo "FAIL: array Clone witness missing or repeated: $output/$line" >&2; return 1; }
-    done
+        'array clone class null: ArgumentException' 'array clone interface null: NullReferenceException'
 }
 
 gate_array_clone_prefix_asserts() {
     local out="$1" axis
     for axis in dotnet native; do
         if [ "$axis" = dotnet ]; then
-            run_bounded dotnet "$_CG_APP" before-array-clone-interfaces > "$out/array-clone-prefix.$axis.raw.stdout"
+            reflection_oracle "$_CG_APP" before-array-clone-interfaces > "$out/array-clone-prefix.$axis.raw.stdout"
         else
             run_bounded "$out/ReflectInvoke$EXE_EXT" before-array-clone-interfaces > "$out/array-clone-prefix.$axis.raw.stdout"
         fi

@@ -1,11 +1,8 @@
 #!/usr/bin/env bash
 # Reflected events retain accessor handles, visibility, symbolic owners and guarded operations.
 reflected_event_asserts() {
-    local output="$1" line
-    while IFS= read -r line; do
-        test "$(grep -Fxc -- "$line" "$output")" = 1 \
-            || { echo "FAIL: reflected event witness missing or repeated: $line" >&2; return 1; }
-    done <<'WITNESSES'
+    local output="$1"
+    reflection_assert_witnesses "$output" <<'WITNESSES'
 == reflected events ==
 event basic: BaseTick/add_BaseTick/remove_BaseTick/True/0
 event shape: True/True/False/True
@@ -51,7 +48,7 @@ reflected_event_prefix_asserts() {
     local out="$1" axis
     for axis in dotnet native; do
         if [ "$axis" = dotnet ]; then
-            run_bounded dotnet "$_CG_APP" before-reflected-events > "$out/events-before.$axis.raw.stdout"
+            reflection_oracle "$_CG_APP" before-reflected-events > "$out/events-before.$axis.raw.stdout"
         else
             run_bounded "$out/ReflectInvoke$EXE_EXT" before-reflected-events > "$out/events-before.$axis.raw.stdout"
         fi
@@ -78,8 +75,8 @@ reflected_event_diff_axes() {
             trimmed) flags=(--trim-reflection) ;;
             unshared) flags=(--no-shared-generics); build_flags=(-p:ReflectedEventsUnshared=true) ;;
         esac
-        dotnet build samples/dotnet/ReflectInvoke/ReflectedEventsOnly.csproj -c "$CONFIG" --nologo -v q ${build_flags[@]+"${build_flags[@]}"} -o "$out/app"
-        run_bounded dotnet "$out/app/ReflectedEventsOnly.dll" > "$out/clr.raw.stdout"
+        reflection_build_once samples/dotnet/ReflectInvoke/ReflectedEventsOnly.csproj "$out/app" ${build_flags[@]+"${build_flags[@]}"}
+        reflection_oracle "$out/app/ReflectedEventsOnly.dll" > "$out/clr.raw.stdout"
         strip_cr_win_file "$out/clr.raw.stdout" > "$out/clr.stdout"
         DN2CPP_STRICT_COMPLETION=1 invoke_cli "$out/app/ReflectedEventsOnly.dll" -r "$corelib" \
             -r "$bcl/System.Linq.dll" -r "$bcl/System.Threading.Tasks.Parallel.dll" -r "$out/app/TrimReflectLib.dll" \
@@ -107,7 +104,7 @@ reflected_event_diff_axes() {
             test "$(grep -Fxc 'stripped event query: PlatformNotSupportedException' "$out/stripped.native.stdout")" = 2
             test "$(grep -Fxc 'stripped events query: PlatformNotSupportedException' "$out/stripped.native.stdout")" = 2
         else
-            run_bounded dotnet "$out/app/ReflectedEventsOnly.dll" stripped-events > "$out/stripped.clr.raw.stdout"
+            reflection_oracle "$out/app/ReflectedEventsOnly.dll" stripped-events > "$out/stripped.clr.raw.stdout"
             strip_cr_win_file "$out/stripped.clr.raw.stdout" > "$out/stripped.clr.stdout"
             diff -u "$out/stripped.clr.stdout" "$out/stripped.native.stdout"
         fi
@@ -117,8 +114,7 @@ reflected_event_diff_axes() {
 
 reflected_event_preservation() {
     local out=artifacts/reflected-event-preservation owner method
-    dotnet build samples/dotnet/ReflectInvoke/ReflectedEventsOnly.csproj -c "$CONFIG" --nologo -v q \
-        -p:ReflectedEventsPreservation=true -o "$out/app"
+    reflection_build_once samples/dotnet/ReflectInvoke/ReflectedEventsOnly.csproj "$out/app" -p:ReflectedEventsPreservation=true
     DN2CPP_STRICT_COMPLETION=1 invoke_cli "$out/app/ReflectedEventsOnly.dll" -r "$(locate_corelib)" \
         --link-xml gates/fixtures/reflected-event-preservation.xml -o "$out" > "$out/emit.log" 2>&1
     for owner in AttributeEventOwner XmlEventOwner; do
@@ -133,6 +129,6 @@ reflected_event_preservation() {
     fi
     compile_console "$out" ReflectedEventsOnly
     assert_output "$(strip_cr_win "$(run_bounded "$out/ReflectedEventsOnly$EXE_EXT")")" \
-        "$(strip_cr_win "$(run_bounded dotnet "$out/app/ReflectedEventsOnly.dll")")"
+        "$(strip_cr_win "$(reflection_oracle "$out/app/ReflectedEventsOnly.dll")")"
     echo 'reflected event attribute/link.xml preservation OK'
 }

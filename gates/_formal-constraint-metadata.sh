@@ -2,7 +2,8 @@
 # Formal parameters preserve declaring methods, symbolic constraints and cold member contexts.
 generic_definition_member_asserts() {
     local output="$1" line
-    for line in '== generic definition members ==' \
+    reflection_assert_lines "$output" 1 \
+        '== generic definition members ==' \
         'definition transitive relations: True/True' \
         'definition closed control: 7' \
         'definition method found: True' \
@@ -40,17 +41,14 @@ generic_definition_member_asserts() {
         'definition default member: 1/Item' \
         'definition parallel: True' \
         'definition repeated: True' \
-        'generic definition members end'; do
-        test "$(grep -Fxc -- "$line" "$output")" = 1 \
-            || { echo "FAIL: generic definition member witness missing or repeated: $line" >&2; return 1; }
-    done
+        'generic definition members end'
 }
 
 generic_definition_member_prefix_asserts() {
     local out="$1" axis
     for axis in dotnet native; do
         if [ "$axis" = dotnet ]; then
-            run_bounded dotnet "$_CG_APP" before-generic-definition-members > "$out/definitions-before.$axis.raw.stdout"
+            reflection_oracle "$_CG_APP" before-generic-definition-members > "$out/definitions-before.$axis.raw.stdout"
         else
             run_bounded "$out/ReflectInvoke$EXE_EXT" before-generic-definition-members > "$out/definitions-before.$axis.raw.stdout"
         fi
@@ -65,7 +63,8 @@ generic_definition_member_prefix_asserts() {
 
 open_signature_asserts() {
     local output="$1" line
-    for line in '== open generic signature types ==' \
+    reflection_assert_lines "$output" 1 \
+        '== open generic signature types ==' \
         'open signature ArrayShape: True/True/True/True/True/True' \
         'open signature RefShape: True/True/True/True/True/True' \
         'open signature ListShape: True/True/True/True/True/True' \
@@ -91,17 +90,14 @@ open_signature_asserts() {
         'open signature variance dependent: False/False' \
         'open signature foreign owner: True/True' \
         'open signature parallel: True' 'open signature repeated: True/True' \
-        'open generic signature types end'; do
-        test "$(grep -Fxc -- "$line" "$output")" = 1 \
-            || { echo "FAIL: open signature witness missing or repeated: $line" >&2; return 1; }
-    done
+        'open generic signature types end'
 }
 
 open_signature_prefix_asserts() {
     local out="$1" axis
     for axis in dotnet native; do
         if [ "$axis" = dotnet ]; then
-            run_bounded dotnet "$_CG_APP" before-open-generic-signatures > "$out/open-before.$axis.raw.stdout"
+            reflection_oracle "$_CG_APP" before-open-generic-signatures > "$out/open-before.$axis.raw.stdout"
         else
             run_bounded "$out/ReflectInvoke$EXE_EXT" before-open-generic-signatures > "$out/open-before.$axis.raw.stdout"
         fi
@@ -138,7 +134,7 @@ declaring_method_prefix_asserts() {
     local out="$1" axis
     for axis in dotnet native; do
         if [ "$axis" = dotnet ]; then
-            run_bounded dotnet "$_CG_APP" before-formal-declaring-methods > "$out/declaring-before.$axis.raw.stdout"
+            reflection_oracle "$_CG_APP" before-formal-declaring-methods > "$out/declaring-before.$axis.raw.stdout"
         else
             run_bounded "$out/ReflectInvoke$EXE_EXT" before-formal-declaring-methods > "$out/declaring-before.$axis.raw.stdout"
         fi
@@ -152,7 +148,8 @@ declaring_method_prefix_asserts() {
 
 formal_constraint_asserts() {
     local output="$1" line
-    for line in '== formal constraint metadata ==' \
+    reflection_assert_lines "$output" 1 \
+        '== formal constraint metadata ==' \
         'constraint simple Unconstrained: 0/System.Object/0' \
         'constraint simple ValueConstrained: 1/System.ValueType/0' \
         'constraint simple ReferenceConstrained: 0/System.Object/0' \
@@ -169,17 +166,14 @@ formal_constraint_asserts() {
         'constraint closed identity: True/True' \
         'constraint open guards: ArgumentException/MemberAccessException/NotSupportedException' \
         'constraint nested: True/True/True/True' \
-        'formal constraint metadata end'; do
-        test "$(grep -Fxc -- "$line" "$output")" = 1 \
-            || { echo "FAIL: formal constraint witness missing or repeated: $output/$line" >&2; return 1; }
-    done
+        'formal constraint metadata end'
 }
 
 formal_constraint_prefix_asserts() {
     local out="$1" axis
     for axis in dotnet native; do
         if [ "$axis" = dotnet ]; then
-            run_bounded dotnet "$_CG_APP" before-formal-constraint-metadata > "$out/constraints-before.$axis.raw.stdout"
+            reflection_oracle "$_CG_APP" before-formal-constraint-metadata > "$out/constraints-before.$axis.raw.stdout"
         else
             run_bounded "$out/ReflectInvoke$EXE_EXT" before-formal-constraint-metadata > "$out/constraints-before.$axis.raw.stdout"
         fi
@@ -204,8 +198,8 @@ formal_constraint_diff_axes() {
             trimmed) flags=(--trim-reflection) ;;
             unshared) flags=(--no-shared-generics); build_flags=(-p:FormalConstraintsUnshared=true) ;;
         esac
-        dotnet build samples/dotnet/ReflectInvoke/FormalConstraintsOnly.csproj -c "$CONFIG" --nologo -v q ${build_flags[@]+"${build_flags[@]}"} -o "$out/app"
-        run_bounded dotnet "$out/app/FormalConstraintsOnly.dll" > "$out/clr.raw.stdout"
+        reflection_build_once samples/dotnet/ReflectInvoke/FormalConstraintsOnly.csproj "$out/app" ${build_flags[@]+"${build_flags[@]}"}
+        reflection_oracle "$out/app/FormalConstraintsOnly.dll" > "$out/clr.raw.stdout"
         strip_cr_win_file "$out/clr.raw.stdout" > "$out/clr.stdout"
         DN2CPP_STRICT_COMPLETION=1 invoke_cli "$out/app/FormalConstraintsOnly.dll" -r "$(locate_corelib)" \
             -r "$out/app/TrimReflectLib.dll" \
@@ -234,7 +228,7 @@ formal_constraint_diff_axes() {
         test "$(tail -n 1 "$out/native.stdout")" = 'formal parameter declaring methods end'
         local mode
         for mode in declaring-method-cold declaring-method-reverse unloaded-method-identity unloaded-self-assignability retained-formal-members formal-interface-order constraint-scope nested-constraint nested-assignability open-generic-signatures unloaded-open-signatures generic-definition-members generic-definition-relations-cold generic-definition-relations-warm; do
-            run_bounded dotnet "$out/app/FormalConstraintsOnly.dll" "$mode" > "$out/$mode.clr.raw.stdout"
+            reflection_oracle "$out/app/FormalConstraintsOnly.dll" "$mode" > "$out/$mode.clr.raw.stdout"
             strip_cr_win_file "$out/$mode.clr.raw.stdout" > "$out/$mode.clr.stdout"
             run_bounded "$out/FormalConstraintsOnly$EXE_EXT" "$mode" > "$out/$mode.native.raw.stdout"
             strip_cr_win_file "$out/$mode.native.raw.stdout" > "$out/$mode.native.stdout"
@@ -249,7 +243,7 @@ formal_constraint_diff_axes() {
                 test "$(grep -Fxc 'definition transitive relations: True/True' "$out/$mode.native.stdout")" = 1
             fi
         done
-        run_bounded dotnet "$out/app/FormalConstraintsOnly.dll" unloaded-declaring-method > "$out/unloaded-declaring.clr.raw.stdout"
+        reflection_oracle "$out/app/FormalConstraintsOnly.dll" unloaded-declaring-method > "$out/unloaded-declaring.clr.raw.stdout"
         strip_cr_win_file "$out/unloaded-declaring.clr.raw.stdout" > "$out/unloaded-declaring.clr.stdout"
         run_bounded "$out/FormalConstraintsOnly$EXE_EXT" unloaded-declaring-method > "$out/unloaded-declaring.native.raw.stdout"
         strip_cr_win_file "$out/unloaded-declaring.native.raw.stdout" > "$out/unloaded-declaring.native.stdout"
@@ -264,7 +258,7 @@ formal_constraint_diff_axes() {
         test "$(grep -Fxc 'unloaded constraint query: PlatformNotSupportedException' "$out/unloaded-relations.native.stdout")" = 2
         grep -Fxq 'unloaded constraint base: PlatformNotSupportedException' "$out/unloaded-relations.native.stdout"
         grep -Fxq 'unloaded constraint interfaces: PlatformNotSupportedException' "$out/unloaded-relations.native.stdout"
-        run_bounded dotnet "$out/app/FormalConstraintsOnly.dll" scoped-constraint-targets > "$out/scoped-targets.clr.raw.stdout"
+        reflection_oracle "$out/app/FormalConstraintsOnly.dll" scoped-constraint-targets > "$out/scoped-targets.clr.raw.stdout"
         strip_cr_win_file "$out/scoped-targets.clr.raw.stdout" > "$out/scoped-targets.clr.stdout"
         grep -Fxq 'scoped constraint targets: False/False' "$out/scoped-targets.clr.stdout"
         run_bounded "$out/FormalConstraintsOnly$EXE_EXT" unloaded-scoped-constraints > "$out/unloaded-scoped.native.raw.stdout"
@@ -281,7 +275,7 @@ formal_constraint_diff_axes() {
             grep -Fxq 'stripped constraint base: PlatformNotSupportedException' "$out/stripped.native.stdout"
             grep -Fxq 'stripped constraint interfaces: PlatformNotSupportedException' "$out/stripped.native.stdout"
         else
-            run_bounded dotnet "$out/app/FormalConstraintsOnly.dll" stripped-formal-constraints > "$out/stripped.clr.raw.stdout"
+            reflection_oracle "$out/app/FormalConstraintsOnly.dll" stripped-formal-constraints > "$out/stripped.clr.raw.stdout"
             strip_cr_win_file "$out/stripped.clr.raw.stdout" > "$out/stripped.clr.stdout"
             diff -u "$out/stripped.clr.stdout" "$out/stripped.native.stdout"
         fi

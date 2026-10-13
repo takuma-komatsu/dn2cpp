@@ -2,9 +2,9 @@
 # Selected virtual method identity survives code folding and receiver metadata trimming.
 gate_virtual_delegate_prefix_asserts() {
     local out="$1" axis line
-    run_bounded dotnet "$_CG_APP" > "$out/virtual-delegate-full.dotnet.raw.stdout"
-    run_bounded dotnet "$_CG_APP" before-virtual-delegate-identity > "$out/virtual-delegate-prefix.dotnet.raw.stdout"
-    run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/virtual-delegate-full.native.raw.stdout"
+    reflection_oracle "$_CG_APP" > "$out/virtual-delegate-full.dotnet.raw.stdout"
+    reflection_oracle "$_CG_APP" before-virtual-delegate-identity > "$out/virtual-delegate-prefix.dotnet.raw.stdout"
+    reflection_native_full "$out" ReflectInvoke > "$out/virtual-delegate-full.native.raw.stdout"
     run_bounded "$out/ReflectInvoke$EXE_EXT" before-virtual-delegate-identity > "$out/virtual-delegate-prefix.native.raw.stdout"
     for axis in dotnet native; do
         strip_cr_win_file "$out/virtual-delegate-full.$axis.raw.stdout" > "$out/virtual-delegate-full.$axis.stdout"
@@ -12,11 +12,9 @@ gate_virtual_delegate_prefix_asserts() {
         awk '/^== virtual delegate selected methods ==$/ { exit } { print }' \
             "$out/virtual-delegate-full.$axis.stdout" > "$out/virtual-delegate-old.$axis.stdout"
         diff -u "$out/virtual-delegate-prefix.$axis.stdout" "$out/virtual-delegate-old.$axis.stdout"
-        for line in '== virtual delegate selected methods ==' 'virtual delegate selected methods end' \
-            '== runtime delegate selected methods ==' 'runtime delegate selected methods end'; do
-            test "$(grep -Fxc -- "$line" "$out/virtual-delegate-full.$axis.stdout")" = 1 \
-                || { echo "FAIL: delegate identity block must run once: $axis/$line" >&2; return 1; }
-        done
+        reflection_assert_lines "$out/virtual-delegate-full.$axis.stdout" 1 \
+            '== virtual delegate selected methods ==' 'virtual delegate selected methods end' \
+            '== runtime delegate selected methods ==' 'runtime delegate selected methods end'
     done
     diff -u "$out/virtual-delegate-prefix.dotnet.stdout" "$out/virtual-delegate-prefix.native.stdout"
 }
@@ -25,7 +23,7 @@ gate_runtime_owned_delegate_prefix_asserts() {
     local out="$1" axis
     for axis in dotnet native; do
         if [ "$axis" = dotnet ]; then
-            run_bounded dotnet "$_CG_APP" before-runtime-owned-method-groups > "$out/runtime-owned-prefix.$axis.raw.stdout"
+            reflection_oracle "$_CG_APP" before-runtime-owned-method-groups > "$out/runtime-owned-prefix.$axis.raw.stdout"
         else
             run_bounded "$out/ReflectInvoke$EXE_EXT" before-runtime-owned-method-groups > "$out/runtime-owned-prefix.$axis.raw.stdout"
         fi
@@ -40,7 +38,8 @@ gate_runtime_owned_delegate_prefix_asserts() {
 
 runtime_owned_delegate_asserts() {
     local output="$1" line
-    for line in '== runtime-owned class method groups ==' \
+    reflection_assert_lines "$output" 1 \
+        '== runtime-owned class method groups ==' \
         'runtime-owned binding array class interface: True/True/False' \
         'runtime-owned binding value array class interface: True/True/False' \
         'runtime-owned binding MD array class interface: True/True/False' \
@@ -58,10 +57,7 @@ runtime_owned_delegate_asserts() {
         'runtime-owned binding WaitHandle Close same: True/True/False' \
         'runtime-owned WaitHandle invoke: True' \
         'runtime-owned null binding: ArgumentException/ArgumentException/NullReferenceException' \
-        'runtime-owned class method groups end'; do
-        test "$(grep -Fxc -- "$line" "$output")" = 1 \
-            || { echo "FAIL: runtime-owned binding witness: $output/$line" >&2; return 1; }
-    done
+        'runtime-owned class method groups end'
 }
 
 delegate_object_equality_only() {
@@ -70,9 +66,8 @@ delegate_object_equality_only() {
         out="artifacts/reflect-invoke-object-equality-only-$axis"
         local emit_flags=()
         [ "$axis" != trimmed ] || emit_flags=(--trim-reflection)
-        dotnet build samples/dotnet/ReflectInvoke/DelegateObjectEqualityOnly.csproj \
-            -c "$CONFIG" --nologo -v q -m:1 -o "$out/app"
-        run_bounded dotnet "$out/app/DelegateObjectEqualityOnly.dll" > "$out/clr.raw.stdout"
+        reflection_build_once samples/dotnet/ReflectInvoke/DelegateObjectEqualityOnly.csproj "$out/app" -m:1
+        reflection_oracle "$out/app/DelegateObjectEqualityOnly.dll" > "$out/clr.raw.stdout"
         strip_cr_win_file "$out/clr.raw.stdout" > "$out/clr.stdout"
         invoke_cli "$out/app/DelegateObjectEqualityOnly.dll" -r "$(locate_corelib)" \
             --no-ildiet ${emit_flags[@]+"${emit_flags[@]}"} -o "$out"
@@ -109,9 +104,8 @@ delegate_identity_diff_axes() {
             trimmed) build_flags=(-p:DelegateIdentityIlOnly=true); emit_flags=(--trim-reflection -r "$out/app/DelegateVirtualIdentityLibrary.dll") ;;
             unshared) build_flags=(-p:DelegateIdentityIlOnly=true); emit_flags=(--no-shared-generics -r "$out/app/DelegateVirtualIdentityLibrary.dll") ;;
         esac
-        dotnet build samples/dotnet/ReflectInvoke/DelegateVirtualIdentityOnly.csproj \
-            -c "$CONFIG" --nologo -v q -m:1 ${build_flags[@]+"${build_flags[@]}"} -o "$out/app"
-        run_bounded dotnet "$out/app/DelegateVirtualIdentityOnly.dll" > "$out/clr.raw.stdout"
+        reflection_build_once samples/dotnet/ReflectInvoke/DelegateVirtualIdentityOnly.csproj "$out/app" -m:1 ${build_flags[@]+"${build_flags[@]}"}
+        reflection_oracle "$out/app/DelegateVirtualIdentityOnly.dll" > "$out/clr.raw.stdout"
         strip_cr_win_file "$out/clr.raw.stdout" > "$out/clr.stdout"
         invoke_cli "$out/app/DelegateVirtualIdentityOnly.dll" -r "$(locate_corelib)" \
             -r "$out/app/ReflectReturnLib.dll" \
@@ -144,19 +138,17 @@ delegate_identity_diff_axes() {
         diff -u "$out/clr.stdout" "$out/native.stdout"
         for native in clr native; do
             if [ "$native" = clr ]; then
-                run_bounded dotnet "$out/app/DelegateVirtualIdentityOnly.dll" before-type-only-exception > "$out/type-only-prefix.$native.raw.stdout"
+                reflection_oracle "$out/app/DelegateVirtualIdentityOnly.dll" before-type-only-exception > "$out/type-only-prefix.$native.raw.stdout"
             else
                 run_bounded "$out/DelegateVirtualIdentityOnly$EXE_EXT" before-type-only-exception > "$out/type-only-prefix.$native.raw.stdout"
             fi
             strip_cr_win_file "$out/type-only-prefix.$native.raw.stdout" > "$out/type-only-prefix.$native.stdout"
             awk '/^== type-only generic exception identity ==$/ { exit } { print }' "$out/$native.stdout" > "$out/type-only-old.$native.stdout"
             diff -u "$out/type-only-prefix.$native.stdout" "$out/type-only-old.$native.stdout"
-            for line in '== type-only generic exception identity ==' \
+            reflection_assert_lines "$out/$native.stdout" 1 \
+                '== type-only generic exception identity ==' \
                 'exception type=TypeOnlyException`1' \
-                'type-only generic exception identity end'; do
-                test "$(grep -Fxc -- "$line" "$out/$native.stdout")" = 1 \
-                    || { echo "FAIL: type-only generic exception witness: $axis/$native/$line" >&2; return 1; }
-            done
+                'type-only generic exception identity end'
             grep -Eq '^separate delegate method=.+/7$' "$out/$native.stdout" \
                 || { echo "FAIL: separate delegate Method read missing: $axis/$native" >&2; return 1; }
         done
@@ -170,7 +162,8 @@ delegate_identity_diff_axes() {
         test "$(grep -Ec '^delegate folded addresses: [1-9][0-9]*$' "$out/folded.normalized.stderr")" = 1
         for native in clr native folded; do
             runtime_owned_delegate_asserts "$out/$native.stdout"
-            for line in '== virtual delegate selected methods ==' \
+            reflection_assert_lines "$out/$native.stdout" 1 \
+                '== virtual delegate selected methods ==' \
                 'virtual identity distinct overrides: False/True/True/7/7' \
                 'virtual identity base override: True/True/False/7/7' \
                 'virtual identity class interface: True/True/False/7/7' \
@@ -195,21 +188,16 @@ delegate_identity_diff_axes() {
                 'virtual identity array enumerators: False/True/True/True/True' \
                 'virtual identity array variant: False/True/True/True/True' \
                 'virtual identity array same: True/True/False/True/True' \
-                'virtual delegate selected methods end'; do
-                test "$(grep -Fxc -- "$line" "$out/$native.stdout")" = 1 \
-                    || { echo "FAIL: delegate identity witness: $axis/$native/$line" >&2; return 1; }
-            done
+                'virtual delegate selected methods end'
             if [ "$axis" = default ]; then
-                for line in '== runtime delegate selected methods ==' \
+                reflection_assert_lines "$out/$native.stdout" 1 \
+                    '== runtime delegate selected methods ==' \
                     'virtual identity reflected distinct: False/True/True/7/7' \
                     'virtual identity reflected override: True/True/False/7/7' \
                     'virtual identity runtime distinct: False/True/True/7/7' \
                     'virtual identity runtime interface: True/True/False/7/7' \
                     'virtual identity runtime same: True/True/False/7/7' \
-                    'runtime delegate selected methods end'; do
-                    test "$(grep -Fxc -- "$line" "$out/$native.stdout")" = 1 \
-                        || { echo "FAIL: runtime delegate identity witness: $axis/$native/$line" >&2; return 1; }
-                done
+                    'runtime delegate selected methods end'
             fi
         done
     done
