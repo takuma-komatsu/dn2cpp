@@ -373,6 +373,9 @@ u/t suffix; collation and private-use legacy variants retain their identity.
 Undefined-language spelling follows the ICU platform; an empty custom name
 retains its LCID, neutral state and missing numeric data independently of the
 invariant culture and participates in the resolved-name wrapper cache.
+An empty BCP47 locale conversion retries the original legacy name before
+extlang promotion can replace its country identity. Nonempty converted root
+locales omit a promoted undefined-language prefix.
 The legacy locale path preserves variant order; raw host numeric-resource
 selection remains separate from managed identity.
 
