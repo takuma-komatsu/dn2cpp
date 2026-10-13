@@ -98,6 +98,11 @@ namespace CultureInfoApi
                 RunInstanceEquality(args.Length > 1 ? args[1] : null, args.Length > 2 ? args[2] : null);
                 return;
             }
+            if (args.Length > 0 && args[0] == "culture-rejected-extension-identities")
+            {
+                RunRejectedExtensionIdentities(args.Length > 1 ? args[1] : null);
+                return;
+            }
             if (args.Length > 0 && args[0] == "culture-extension-identities")
             {
                 RunExtensionIdentities(args.Length > 1 ? args[1] : null);
@@ -520,6 +525,23 @@ namespace CultureInfoApi
             RunExtensionIdentities();
             RunUndefinedExtensionMetadata();
             RunUndefinedPlatformIdentities();
+            RunRejectedExtensionIdentities();
+        }
+
+        private static void RunRejectedExtensionIdentities(string name = null)
+        {
+            Console.WriteLine("== culture rejected extension identities ==");
+            foreach (string input in name is null ? new[]
+            {
+                "en-und-x-123456789", "en-und-x-lvariant", "en-und-u-a", "en-und-t-a", "en-und-a-a",
+                "en-und-x-foo", "en-und-u-nu-latn", "en-und-t-de-DE", "en-und-a-foo",
+                "en-und-a-foo-u-a", "en-und-u-ca-gregory-u-a",
+                "en-und-Latn-x-123456789", "en-und-US-x-123456789", "en-und-abcde-x-123456789",
+                "en-und", "en-und-US", "en-und-abcde", "und-u-a", "en-abc-u-a",
+                "en-und-abc-def-ghi-a-foo", "en-und-abc-def-a-foo", "EN-und-U-A"
+            } : new[] { name })
+                RunExtensionIdentities(input);
+            Console.WriteLine("culture rejected extension identities end");
         }
 
         private static void RunUndefinedPlatformIdentities(string name = null)

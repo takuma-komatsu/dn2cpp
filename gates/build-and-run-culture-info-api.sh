@@ -67,6 +67,8 @@
 # spellings. Fresh constructor/cache orders pin which casing owns culture data.
 # Undefined-language identities use the target ICU platform, including private-use
 # acceptance and empty-name cache ownership independently of invariant data.
+# Rejected first keywords preserve the legacy base when extlang promotion would
+# erase it; accepted keywords and nonempty promoted bases take the ICU path.
 #
 # Its LAST TWO sections are not about CultureInfo's API at all; do not prune this
 # bucket by theme.
@@ -128,6 +130,14 @@ INVARIANT_CACHE_ORDERS=(
 )
 INSTANCE_CULTURES=(i-enochian en-US en "")
 UNDEFINED_EXTENSION_CASES=(und und-u-a und-t-a und-u-123456789 und-a-a und-a-123456789)
+REJECTED_EXTENSION_CASES=(
+    en-und-x-123456789 en-und-x-lvariant en-und-u-a en-und-t-a en-und-a-a
+    en-und-x-foo en-und-u-nu-latn en-und-t-de-DE en-und-a-foo
+    en-und-a-foo-u-a en-und-u-ca-gregory-u-a
+    en-und-Latn-x-123456789 en-und-US-x-123456789 en-und-abcde-x-123456789
+    en-und en-und-US en-und-abcde und-u-a en-abc-u-a
+    en-und-abc-def-ghi-a-foo en-und-abc-def-a-foo EN-und-U-A
+)
 UNDEFINED_PLATFORM_CASES=(
     "" und und-a-foo und-u-a und-t-a und-u-nu-latn
     und-U-nu-latn und-u-co-phonebk und-a-a und-a-a-u-nu-latn
@@ -263,6 +273,8 @@ gate_extra_asserts() {
         || { echo "FAIL: culture undefined extension metadata section did not finish" >&2; return 1; }
     grep -Fxq 'culture undefined platform identities end' <<< "$(strip_cr_win "$native")" \
         || { echo "FAIL: undefined platform identities section did not finish" >&2; return 1; }
+    grep -Fxq 'culture rejected extension identities end' <<< "$(strip_cr_win "$native")" \
+        || { echo "FAIL: rejected extension identities section did not finish" >&2; return 1; }
     for mode in "${LOCALE_CASES[@]}"; do
         native=$(run_bounded "./$out/CultureInfoApi" "$mode")
         expected=$(run_bounded dotnet "$_CG_APP" "$mode")
@@ -366,6 +378,13 @@ gate_extra_asserts() {
         grep -Fxq 'culture undefined platform cache end' <<< "$(strip_cr_win "$native")" \
             || { echo "FAIL: undefined platform cache order '$mode' did not finish" >&2; return 1; }
     done
+    for mode in "${REJECTED_EXTENSION_CASES[@]}"; do
+        native=$(run_bounded "./$out/CultureInfoApi" culture-rejected-extension-identities "$mode")
+        expected=$(run_bounded dotnet "$_CG_APP" culture-rejected-extension-identities "$mode")
+        assert_output "$native" "$expected"
+        grep -Fxq 'culture rejected extension identities end' <<< "$(strip_cr_win "$native")" \
+            || { echo "FAIL: rejected extension identity '$mode' did not finish" >&2; return 1; }
+    done
     local pair order
     for pair in "${EXTENSION_ORDER_PAIRS[@]}"; do
         for order in constructor-first cached-first; do
@@ -378,6 +397,6 @@ gate_extra_asserts() {
     done
 }
 DN2CPP_GATE_RUN_ARGS=culture-names
-DN2CPP_GATE_EXTRA_CONTEXT="${LOCALE_CASES[*]} ${NUMBERING_CASES[*]} ${FALLBACK_CASES[*]} culture-missing-number-format ${MISSING_NUMBER_CASES[*]} culture-variant-order ${VARIANT_CASES[*]} culture-invariant-lcid-cache ${INVARIANT_CACHE_ORDERS[*]} culture-instance-number-format [${INSTANCE_CULTURES[*]}] culture-integer-constructors culture-instance-equality ${EQUALITY_PAIRS[*]} culture-extension-identities ${EXTENSION_CASES[*]} culture-undefined-extension-metadata ${UNDEFINED_EXTENSION_CASES[*]} culture-extension-order ${EXTENSION_ORDER_PAIRS[*]} constructor-first cached-first culture-undefined-platform-identities [${UNDEFINED_PLATFORM_CASES[*]}] culture-undefined-platform-cache ${UNDEFINED_PLATFORM_CACHE_ORDERS[*]}"
+DN2CPP_GATE_EXTRA_CONTEXT="${LOCALE_CASES[*]} ${NUMBERING_CASES[*]} ${FALLBACK_CASES[*]} culture-missing-number-format ${MISSING_NUMBER_CASES[*]} culture-variant-order ${VARIANT_CASES[*]} culture-invariant-lcid-cache ${INVARIANT_CACHE_ORDERS[*]} culture-instance-number-format [${INSTANCE_CULTURES[*]}] culture-integer-constructors culture-instance-equality ${EQUALITY_PAIRS[*]} culture-extension-identities ${EXTENSION_CASES[*]} culture-undefined-extension-metadata ${UNDEFINED_EXTENSION_CASES[*]} culture-extension-order ${EXTENSION_ORDER_PAIRS[*]} constructor-first cached-first culture-undefined-platform-identities [${UNDEFINED_PLATFORM_CASES[*]}] culture-undefined-platform-cache ${UNDEFINED_PLATFORM_CACHE_ORDERS[*]} culture-rejected-extension-identities ${REJECTED_EXTENSION_CASES[*]}"
 DN2CPP_OUT_SUFFIX=-names
 corelib_diff_gate CultureInfoApi --link-xml samples/dotnet/CultureInfoApi/link.xml

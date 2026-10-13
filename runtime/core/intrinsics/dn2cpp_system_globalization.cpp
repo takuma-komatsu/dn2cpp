@@ -366,6 +366,20 @@ static void dn2cpp_culture_sort_variants(std::u16string& name,
     name.resize(extensions.baseEnd);
 }
 
+static std::u16string dn2cpp_culture_legacy_base(std::u16string name)
+{
+    for (size_t i = 0; i + 2 < name.size(); i++)
+        if (name[i] == u'-' && name[i + 2] == u'-'
+            && (name[i + 1] == u'u' || name[i + 1] == u'U'
+                || name[i + 1] == u't' || name[i + 1] == u'T'
+                || name[i + 1] == u'x' || name[i + 1] == u'X'))
+        {
+            name.resize(i);
+            break;
+        }
+    return name;
+}
+
 static bool dn2cpp_culture_canonicalize_language_tag(std::u16string& name,
     Dn2CppLocaleExtensionState<char16_t>& extensions)
 {
@@ -433,6 +447,8 @@ static bool dn2cpp_culture_canonicalize_language_tag(std::u16string& name,
     bool alphabetic = languageEnd >= 2 && languageEnd <= 3;
     for (size_t i = 0; alphabetic && i < languageEnd; i++)
         alphabetic = lower[i] >= u'a' && lower[i] <= u'z';
+    bool undefinedExtlang = false;
+    std::u16string legacyName;
     if (alphabetic && languageEnd + 4 <= name.size())
     {
         size_t end = name.find(u'-', languageEnd + 1);
@@ -443,6 +459,9 @@ static bool dn2cpp_culture_canonicalize_language_tag(std::u16string& name,
                 letters = letters && lower[i] >= u'a' && lower[i] <= u'z';
             if (letters)
             {
+                undefinedExtlang = lower.compare(languageEnd + 1, 3, u"und") == 0;
+                if (undefinedExtlang)
+                    legacyName = dn2cpp_culture_legacy_base(name);
                 size_t tail = end;
                 for (int count = 1; count < 3 && tail < name.size(); count++)
                 {
@@ -473,6 +492,17 @@ static bool dn2cpp_culture_canonicalize_language_tag(std::u16string& name,
         }
     }
     dn2cpp_culture_sort_variants(name, extensions);
+    if (undefinedExtlang)
+    {
+        // An empty converted locale retries the original legacy name.
+        if (name == u"und" && !extensions.keywords)
+        {
+            name = legacyName;
+            return false;
+        }
+        if (name.compare(0, 4, u"und-") == 0)
+            name.erase(0, 3);
+    }
     return true;
 }
 
@@ -567,16 +597,7 @@ static Dn2CppString* dn2cpp_culture_normalize_name(Dn2CppString* name,
     std::u16string canonical(normalized, static_cast<size_t>(length));
     std::u16string undefinedLegacy;
     if (canonical.compare(0, 4, u"und-") == 0)
-    {
-        size_t suffix = canonical.find(u"-u-");
-        size_t transform = canonical.find(u"-t-");
-        if (suffix == std::u16string::npos || transform < suffix)
-            suffix = transform;
-        size_t privateUse = canonical.find(u"-X-");
-        if (suffix == std::u16string::npos || privateUse < suffix)
-            suffix = privateUse;
-        undefinedLegacy = canonical.substr(0, suffix);
-    }
+        undefinedLegacy = dn2cpp_culture_legacy_base(canonical);
     Dn2CppLocaleExtensionState<char16_t> extensions{};
     bool languageTag = dn2cpp_culture_canonicalize_language_tag(canonical, extensions);
     if (customUndefined != nullptr)
