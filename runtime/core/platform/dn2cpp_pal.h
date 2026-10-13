@@ -137,6 +137,19 @@ int32_t dn2cpp_pal_default_locale_name(char* buf, size_t size);
 // PAL-CONTRACT: MAY-DEGRADE returns 0 (numeric resource fallback uses the frozen root profile)
 int32_t dn2cpp_pal_numeric_fallback_locale_name(char* buf, size_t size);
 
+// Additional platform validation after ICU-style culture canonicalization.
+// Windows requires GetLocaleInfoEx(LOCALE_SNAME) to accept the resolved name;
+// other targets impose no OS locale inventory restriction. The name is UTF-16
+// with an explicit length and need not be NUL-terminated.
+// PAL-CONTRACT: MUST
+bool dn2cpp_pal_locale_name_supported(const char16_t* name, int32_t length);
+
+// User-selected fractional digits for the resolved Windows user-default name.
+// Returns -1 for other names or targets without this override. This entry only
+// supplies fractional digits; it does not model every numeric user preference.
+// PAL-CONTRACT: MUST
+int32_t dn2cpp_pal_locale_number_digits_override(const char16_t* name, int32_t length);
+
 // ── Process ──────────────────────────────────────────────────────────────────
 
 // Absolute path of the running executable, NUL-terminated into buf (size bytes);

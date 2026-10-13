@@ -918,7 +918,11 @@ static const char16_t* const kCultureFallbackCurrencies[] = {
     u"US$",
     u"USD",
     u"VND",
+#if defined(_WIN32)
+    u"XAG",
+#else
     u"XAD",
+#endif
     u"YUM",
     u"ZAR",
     u"kr",

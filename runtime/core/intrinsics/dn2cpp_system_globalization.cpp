@@ -263,7 +263,11 @@ struct Dn2CppCultureNumericData
     bool emptyCurrency;
 };
 
+#if defined(_WIN32)
+#include "dn2cpp_culture_numbering_windows.inc"
+#else
 #include "dn2cpp_culture_numbering.inc"
+#endif
 #include "dn2cpp_culture_fallback.inc"
 
 // ASCII case-insensitive compare of a managed culture name against a row's
@@ -507,10 +511,12 @@ static bool dn2cpp_culture_canonicalize_language_tag(std::u16string& name,
 }
 
 static Dn2CppString* dn2cpp_culture_normalize_name(Dn2CppString* name,
-    bool* customUndefined = nullptr)
+    bool* customUndefined = nullptr, bool* hasKeywords = nullptr)
 {
     if (customUndefined != nullptr)
         *customUndefined = false;
+    if (hasKeywords != nullptr)
+        *hasKeywords = false;
     if (name->length == 1 || name->length > 85)
         return nullptr;
     int32_t extension = -1;
@@ -576,6 +582,9 @@ static Dn2CppString* dn2cpp_culture_normalize_name(Dn2CppString* name,
         start = end + 1;
         part++;
     }
+#if defined(_WIN32)
+    std::u16string legacy(normalized, static_cast<size_t>(length));
+#endif
     if (extension >= 0 && extension < length)
         for (int32_t i = extension; i < length; i++)
         {
@@ -600,12 +609,20 @@ static Dn2CppString* dn2cpp_culture_normalize_name(Dn2CppString* name,
         undefinedLegacy = dn2cpp_culture_legacy_base(canonical);
     Dn2CppLocaleExtensionState<char16_t> extensions{};
     bool languageTag = dn2cpp_culture_canonicalize_language_tag(canonical, extensions);
+    if (hasKeywords != nullptr)
+        *hasKeywords = extensions.keywords;
     if (customUndefined != nullptr)
         *customUndefined = languageTag && canonical == u"und";
     // Without keywords, undefined-language names keep their legacy base.
     // Custom identity is independent of the platform's visible und spelling.
     if (canonical == u"und" && !extensions.keywords && !undefinedLegacy.empty())
+#if defined(_WIN32)
+        // Windows ICU retries the entire legacy identifier when the converted
+        // language tag is empty, including an unconsumed extension suffix.
+        canonical = legacy;
+#else
         canonical = undefinedLegacy;
+#endif
     if (canonical == u"und" && languageTag)
     {
 #if defined(__APPLE__)
@@ -653,6 +670,10 @@ static Dn2CppString* dn2cpp_culture_normalize_name(Dn2CppString* name,
             canonical.append(extensions.sort, extensions.sortLength);
         }
     }
+    // .NET's Windows ICU path also validates the resolved real name through
+    // NLS. Validate after aliases and extensions, never the requested spelling.
+    if (!dn2cpp_pal_locale_name_supported(canonical.data(), static_cast<int32_t>(canonical.size())))
+        return nullptr;
     return dn2cpp_string_from_chars(canonical.data(), static_cast<int32_t>(canonical.size()));
 }
 
@@ -755,7 +776,8 @@ static bool dn2cpp_culture_is_posix(Dn2CppString* name)
     Dn2CppString base = *name;
     base.length = 11;
     return dn2cpp_culture_name_eq_ci(&base, u"en-US-POSIX")
-        && (name->length == 11 || (name->length > 13
+        && (name->length == 11 || (name->length > 12 && name->chars[11] == u'_')
+            || (name->length > 13
             && name->chars[11] == u'-' && name->chars[13] == u'-'));
 }
 
@@ -1320,6 +1342,22 @@ static const Dn2CppNumberFormatInfo* dn2cpp_culture_named_create(
     return result;
 }
 
+static const Dn2CppNumberFormatInfo* dn2cpp_culture_user_number_digits(
+    const Dn2CppNumberFormatInfo* data, bool useUserOverride)
+{
+    if (!useUserOverride)
+        return data;
+    Dn2CppString* name = data->cultureRealName;
+    int32_t digits = dn2cpp_pal_locale_number_digits_override(name->chars, name->length);
+    if (digits < 0)
+        return data;
+    // Override and no-override requests may share an interned profile. Its
+    // number and percent digits must remain immutable for the latter cache.
+    auto* result = dn2cpp_nfi_copy(data, 0, data->isReadOnly);
+    result->numberDigits = result->percentDigits = digits;
+    return result;
+}
+
 const Dn2CppNumberFormatInfo* dn2cpp_culture_by_name(Dn2CppString* name, bool cached, bool useUserOverride)
 {
     if (name == nullptr)
@@ -1338,7 +1376,8 @@ const Dn2CppNumberFormatInfo* dn2cpp_culture_by_name(Dn2CppString* name, bool ca
     if (const Dn2CppNumberFormatInfo* existing = dn2cpp_culture_request_cache(key, useUserOverride))
         return cached ? dn2cpp_culture_named_create(existing) : existing;
     bool customUndefined = false;
-    Dn2CppString* canonical = dn2cpp_culture_normalize_name(name, &customUndefined);
+    bool hasKeywords = false;
+    Dn2CppString* canonical = dn2cpp_culture_normalize_name(name, &customUndefined, &hasKeywords);
     if (canonical == nullptr)
         dn2cpp_throw_culture_not_found(name, 0);
     Dn2CppString request = *key;
@@ -1380,6 +1419,9 @@ const Dn2CppNumberFormatInfo* dn2cpp_culture_by_name(Dn2CppString* name, bool ca
         ? dn2cpp_culture_fallback_numeric(fallback, key) : dn2cpp_culture_numeric_data(row, key);
     const Dn2CppNumberFormatInfo* result = dn2cpp_culture_intern(
         row, canonical, publicName, lcid, numeric, fallback);
+    // ICU keywords distinguish the OS resource name even when the managed
+    // culture's displayed identity drops them.
+    result = dn2cpp_culture_user_number_digits(result, useUserOverride && !hasKeywords);
     result = dn2cpp_culture_request_cache(key, useUserOverride, result);
     return cached ? dn2cpp_culture_named_create(result) : result;
 }
@@ -1393,19 +1435,19 @@ const Dn2CppNumberFormatInfo* dn2cpp_culture_new_name(Dn2CppString* name, bool u
 
 const Dn2CppNumberFormatInfo* dn2cpp_culture_new_lcid(int32_t lcid, bool useUserOverride)
 {
-    (void)useUserOverride;
     if (lcid < 0)
         dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "culture", lcid);
     const Dn2CppNumberFormatInfo* data = dn2cpp_culture_by_lcid(lcid);
     if (data == nullptr)
         dn2cpp_throw_culture_not_found(nullptr, lcid);
-    return dn2cpp_nfi_copy(data, 0, 0);
+    return dn2cpp_nfi_copy(dn2cpp_culture_user_number_digits(data, useUserOverride), 0, 0);
 }
 
 const Dn2CppNumberFormatInfo* dn2cpp_culture_create_specific(Dn2CppString* name)
 {
     if (name != nullptr && name->length > 0
         && !(name->length == 1 && (name->chars[0] == u'C' || name->chars[0] == u'c'))
+        && dn2cpp_culture_request_cache(dn2cpp_culture_lower_ascii(name), true) == nullptr
         && dn2cpp_culture_normalize_name(name) == nullptr)
     {
         // Malformed country/variant input retries through its language prefix.

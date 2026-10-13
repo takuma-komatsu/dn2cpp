@@ -88,11 +88,84 @@
 #     carry — keeps the LOUD TRAP.
 source "$(dirname "$0")/_common.sh"
 
+gate_run_logs_init culture_info_api "CultureInfoApi runs"
+
+# Command substitutions must retain a failed child's output before set -e exits.
+culture_info_run() {
+    local side="$1" output code command_line stderr_file
+    shift
+    stderr_file="$_GATE_RUN_LOG_DIR/$side.stderr"
+    printf -v command_line '%q ' "$@"
+    if output=$(run_bounded "$@" 2>"$stderr_file"); then
+        code=0
+    else
+        code=$?
+    fi
+    if [ "$code" -ne 0 ]; then
+        gate_run_diag "CultureInfoApi $side: $command_line" "$code" "$output" "$stderr_file" >&2
+        return "$code"
+    fi
+    if [ -s "$stderr_file" ]; then
+        cat "$stderr_file" >&2
+    fi
+    printf '%s' "$output"
+    return 0
+}
+
+culture_info_diagnostics_self_test() {
+    local side code actual actual_code diagnostics child quoted_args
+    child='
+        [ "$#" -eq 5 ] && [ "$2" = "culture-fallback-identities" ] \
+            && [ "$3" = "foo QQ" ] && [ "$4" = "" ] \
+            && [ "$5" = "$(printf "foo\047QQ")" ] || exit 91
+        printf "same output\n"
+        printf "injected stderr\n" >&2
+        exit "$1"
+    '
+    printf -v quoted_args '%q ' culture-fallback-identities "foo QQ" "" "foo'QQ"
+    for side in native oracle; do
+        diagnostics="$_GATE_RUN_LOG_DIR/self-test-$side.stderr"
+        actual=$(culture_info_run "$side" bash -c "$child" _ 0 \
+            culture-fallback-identities "foo QQ" "" "foo'QQ" 2>"$diagnostics")
+        [ "$actual" = "same output" ] \
+            || { echo "FAIL: $side successful stdout or quoted arguments changed" >&2; return 1; }
+        grep -Fxq 'injected stderr' "$diagnostics" \
+            || { echo "FAIL: $side successful stderr disappeared" >&2; return 1; }
+        code=23
+        [ "$side" = native ] || code=29
+        if actual=$(culture_info_run "$side" bash -c "$child" _ "$code" \
+            culture-fallback-identities "foo QQ" "" "foo'QQ" 2>"$diagnostics"); then
+            echo "FAIL: $side nonzero exit with matching stdout passed" >&2
+            return 1
+        else
+            actual_code=$?
+        fi
+        [ "$actual_code" -eq "$code" ] \
+            || { echo "FAIL: $side child exit code changed" >&2; return 1; }
+        grep -Fq "CultureInfoApi $side:" "$diagnostics" \
+            && grep -Fq "$quoted_args" "$diagnostics" \
+            && grep -Fxq "exit code: $code" "$diagnostics" \
+            && grep -Fxq 'termination: nonzero exit' "$diagnostics" \
+            && grep -Fxq 'stdout:' "$diagnostics" \
+            && grep -Fxq 'same output' "$diagnostics" \
+            && grep -Fxq 'stderr:' "$diagnostics" \
+            && grep -Fxq 'injected stderr' "$diagnostics" \
+            || { echo "FAIL: $side failed-run diagnostics are incomplete" >&2; cat "$diagnostics" >&2; return 1; }
+    done
+    echo "OK: CultureInfoApi run diagnostics"
+    return 0
+}
+
+culture_info_diagnostics_self_test
+if [ "${1:-}" = --self-test ]; then
+    exit 0
+fi
+
 # The appended section has parity semantics; the existing prefix retains its
 # deliberate divergences and is still compared to the unchanged snapshot.
 gate_extra_asserts() {
     local out="$1" native prefix
-    native=$(run_bounded "./$out/CultureInfoApi")
+    native=$(culture_info_run native "./$out/CultureInfoApi")
     native=$(strip_cr_win "$native")
     prefix=$(awk '/^== culture name resolution ==$/ { exit } { print }' <<< "$native")
     assert_output "$prefix" "$(cat "$(dirname "$0")/expected/culture-info-api.txt")"
@@ -244,7 +317,7 @@ FALLBACK_CASES=(
 )
 gate_extra_asserts() {
     local out="$1" native expected mode marker
-    native=$(run_bounded "./$out/CultureInfoApi" culture-names)
+    native=$(culture_info_run native "./$out/CultureInfoApi" culture-names)
     grep -Fxq 'culture locale data end' <<< "$(strip_cr_win "$native")" \
         || { echo "FAIL: culture locale data section did not finish" >&2; return 1; }
     grep -Fxq 'culture numbering data end' <<< "$(strip_cr_win "$native")" \
@@ -275,9 +348,16 @@ gate_extra_asserts() {
         || { echo "FAIL: undefined platform identities section did not finish" >&2; return 1; }
     grep -Fxq 'culture rejected extension identities end' <<< "$(strip_cr_win "$native")" \
         || { echo "FAIL: rejected extension identities section did not finish" >&2; return 1; }
+    grep -Fxq 'culture platform name validation end' <<< "$(strip_cr_win "$native")" \
+        || { echo "FAIL: platform name validation section did not finish" >&2; return 1; }
+    native=$(culture_info_run native "./$out/CultureInfoApi" culture-platform-name-validation)
+    expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-platform-name-validation)
+    assert_output "$native" "$expected"
+    grep -Fxq 'culture platform name validation end' <<< "$(strip_cr_win "$native")" \
+        || { echo "FAIL: platform name validation mode did not finish" >&2; return 1; }
     for mode in "${LOCALE_CASES[@]}"; do
-        native=$(run_bounded "./$out/CultureInfoApi" "$mode")
-        expected=$(run_bounded dotnet "$_CG_APP" "$mode")
+        native=$(culture_info_run native "./$out/CultureInfoApi" "$mode")
+        expected=$(culture_info_run oracle dotnet "$_CG_APP" "$mode")
         assert_output "$native" "$expected"
         case "$mode" in
             culture-locale-upper) marker='culture uppercase extensions end' ;;
@@ -293,55 +373,55 @@ gate_extra_asserts() {
             || { echo "FAIL: $mode did not finish" >&2; return 1; }
     done
     for mode in "${NUMBERING_CASES[@]}"; do
-        native=$(run_bounded "./$out/CultureInfoApi" culture-numbering-data "$mode")
-        expected=$(run_bounded dotnet "$_CG_APP" culture-numbering-data "$mode")
+        native=$(culture_info_run native "./$out/CultureInfoApi" culture-numbering-data "$mode")
+        expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-numbering-data "$mode")
         assert_output "$native" "$expected"
         grep -Fxq 'culture numbering data end' <<< "$(strip_cr_win "$native")" \
             || { echo "FAIL: numbering data for $mode did not finish" >&2; return 1; }
     done
     for mode in "${FALLBACK_CASES[@]}"; do
-        native=$(run_bounded "./$out/CultureInfoApi" culture-fallback-identities "$mode")
-        expected=$(run_bounded dotnet "$_CG_APP" culture-fallback-identities "$mode")
+        native=$(culture_info_run native "./$out/CultureInfoApi" culture-fallback-identities "$mode")
+        expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-fallback-identities "$mode")
         assert_output "$native" "$expected"
         grep -Fxq 'culture fallback identities end' <<< "$(strip_cr_win "$native")" \
             || { echo "FAIL: fallback identities for $mode did not finish" >&2; return 1; }
     done
     for mode in "${MISSING_NUMBER_CASES[@]}"; do
-        native=$(run_bounded "./$out/CultureInfoApi" culture-missing-number-format "$mode")
-        expected=$(run_bounded dotnet "$_CG_APP" culture-missing-number-format "$mode")
+        native=$(culture_info_run native "./$out/CultureInfoApi" culture-missing-number-format "$mode")
+        expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-missing-number-format "$mode")
         assert_output "$native" "$expected"
         grep -Fxq 'culture missing number format end' <<< "$(strip_cr_win "$native")" \
             || { echo "FAIL: missing number format for $mode did not finish" >&2; return 1; }
     done
     for mode in "${VARIANT_CASES[@]}"; do
-        native=$(run_bounded "./$out/CultureInfoApi" culture-variant-order "$mode")
-        expected=$(run_bounded dotnet "$_CG_APP" culture-variant-order "$mode")
+        native=$(culture_info_run native "./$out/CultureInfoApi" culture-variant-order "$mode")
+        expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-variant-order "$mode")
         assert_output "$native" "$expected"
         grep -Fxq 'culture variant order end' <<< "$(strip_cr_win "$native")" \
             || { echo "FAIL: variant order for $mode did not finish" >&2; return 1; }
     done
     for mode in "${INVARIANT_CACHE_ORDERS[@]}"; do
-        native=$(run_bounded "./$out/CultureInfoApi" culture-invariant-lcid-cache "$mode")
-        expected=$(run_bounded dotnet "$_CG_APP" culture-invariant-lcid-cache "$mode")
+        native=$(culture_info_run native "./$out/CultureInfoApi" culture-invariant-lcid-cache "$mode")
+        expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-invariant-lcid-cache "$mode")
         assert_output "$native" "$expected"
         grep -Fxq 'culture invariant lcid cache end' <<< "$(strip_cr_win "$native")" \
             || { echo "FAIL: invariant LCID cache order $mode did not finish" >&2; return 1; }
     done
     for mode in "${INSTANCE_CULTURES[@]}"; do
-        native=$(run_bounded "./$out/CultureInfoApi" culture-instance-number-format "$mode")
-        expected=$(run_bounded dotnet "$_CG_APP" culture-instance-number-format "$mode")
+        native=$(culture_info_run native "./$out/CultureInfoApi" culture-instance-number-format "$mode")
+        expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-instance-number-format "$mode")
         assert_output "$native" "$expected"
         grep -Fxq 'culture instance number format end' <<< "$(strip_cr_win "$native")" \
             || { echo "FAIL: culture instance number format for '$mode' did not finish" >&2; return 1; }
     done
-    native=$(run_bounded "./$out/CultureInfoApi" culture-integer-constructors)
-    expected=$(run_bounded dotnet "$_CG_APP" culture-integer-constructors)
+    native=$(culture_info_run native "./$out/CultureInfoApi" culture-integer-constructors)
+    expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-integer-constructors)
     assert_output "$native" "$expected"
     grep -Fxq 'culture integer constructors end' <<< "$(strip_cr_win "$native")" \
         || { echo "FAIL: culture integer constructor mode did not finish" >&2; return 1; }
     for mode in "${EQUALITY_PAIRS[@]}"; do
-        native=$(run_bounded "./$out/CultureInfoApi" culture-instance-equality "${mode%%|*}" "${mode#*|}")
-        expected=$(run_bounded dotnet "$_CG_APP" culture-instance-equality "${mode%%|*}" "${mode#*|}")
+        native=$(culture_info_run native "./$out/CultureInfoApi" culture-instance-equality "${mode%%|*}" "${mode#*|}")
+        expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-instance-equality "${mode%%|*}" "${mode#*|}")
         assert_output "$native" "$expected"
         grep -Fxq 'culture instance equality end' <<< "$(strip_cr_win "$native")" \
             || { echo "FAIL: culture equality pair '$mode' did not finish" >&2; return 1; }
@@ -349,22 +429,22 @@ gate_extra_asserts() {
             || { echo "FAIL: culture specific instances for '$mode' did not finish" >&2; return 1; }
     done
     for mode in "${EXTENSION_CASES[@]}"; do
-        native=$(run_bounded "./$out/CultureInfoApi" culture-extension-identities "$mode")
-        expected=$(run_bounded dotnet "$_CG_APP" culture-extension-identities "$mode")
+        native=$(culture_info_run native "./$out/CultureInfoApi" culture-extension-identities "$mode")
+        expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-extension-identities "$mode")
         assert_output "$native" "$expected"
         grep -Fxq 'culture extension identities end' <<< "$(strip_cr_win "$native")" \
             || { echo "FAIL: extension identity '$mode' did not finish" >&2; return 1; }
     done
     for mode in "${UNDEFINED_EXTENSION_CASES[@]}"; do
-        native=$(run_bounded "./$out/CultureInfoApi" culture-undefined-extension-metadata "$mode")
-        expected=$(run_bounded dotnet "$_CG_APP" culture-undefined-extension-metadata "$mode")
+        native=$(culture_info_run native "./$out/CultureInfoApi" culture-undefined-extension-metadata "$mode")
+        expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-undefined-extension-metadata "$mode")
         assert_output "$native" "$expected"
         grep -Fxq 'culture undefined extension metadata end' <<< "$(strip_cr_win "$native")" \
             || { echo "FAIL: undefined extension metadata '$mode' did not finish" >&2; return 1; }
     done
     for mode in "${UNDEFINED_PLATFORM_CASES[@]}"; do
-        native=$(run_bounded "./$out/CultureInfoApi" culture-undefined-platform-identities "$mode")
-        expected=$(run_bounded dotnet "$_CG_APP" culture-undefined-platform-identities "$mode")
+        native=$(culture_info_run native "./$out/CultureInfoApi" culture-undefined-platform-identities "$mode")
+        expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-undefined-platform-identities "$mode")
         assert_output "$native" "$expected"
         grep -Fxq 'culture undefined platform identities end' <<< "$(strip_cr_win "$native")" \
             || { echo "FAIL: undefined platform identity '$mode' did not finish" >&2; return 1; }
@@ -372,15 +452,15 @@ gate_extra_asserts() {
     local first second cache_order
     for mode in "${UNDEFINED_PLATFORM_CACHE_ORDERS[@]}"; do
         IFS='|' read -r first second cache_order <<< "$mode"
-        native=$(run_bounded "./$out/CultureInfoApi" culture-undefined-platform-cache "$first" "$second" "$cache_order")
-        expected=$(run_bounded dotnet "$_CG_APP" culture-undefined-platform-cache "$first" "$second" "$cache_order")
+        native=$(culture_info_run native "./$out/CultureInfoApi" culture-undefined-platform-cache "$first" "$second" "$cache_order")
+        expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-undefined-platform-cache "$first" "$second" "$cache_order")
         assert_output "$native" "$expected"
         grep -Fxq 'culture undefined platform cache end' <<< "$(strip_cr_win "$native")" \
             || { echo "FAIL: undefined platform cache order '$mode' did not finish" >&2; return 1; }
     done
     for mode in "${REJECTED_EXTENSION_CASES[@]}"; do
-        native=$(run_bounded "./$out/CultureInfoApi" culture-rejected-extension-identities "$mode")
-        expected=$(run_bounded dotnet "$_CG_APP" culture-rejected-extension-identities "$mode")
+        native=$(culture_info_run native "./$out/CultureInfoApi" culture-rejected-extension-identities "$mode")
+        expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-rejected-extension-identities "$mode")
         assert_output "$native" "$expected"
         grep -Fxq 'culture rejected extension identities end' <<< "$(strip_cr_win "$native")" \
             || { echo "FAIL: rejected extension identity '$mode' did not finish" >&2; return 1; }
@@ -388,8 +468,8 @@ gate_extra_asserts() {
     local pair order
     for pair in "${EXTENSION_ORDER_PAIRS[@]}"; do
         for order in constructor-first cached-first; do
-            native=$(run_bounded "./$out/CultureInfoApi" culture-extension-order "${pair%%|*}" "${pair#*|}" "$order")
-            expected=$(run_bounded dotnet "$_CG_APP" culture-extension-order "${pair%%|*}" "${pair#*|}" "$order")
+            native=$(culture_info_run native "./$out/CultureInfoApi" culture-extension-order "${pair%%|*}" "${pair#*|}" "$order")
+            expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-extension-order "${pair%%|*}" "${pair#*|}" "$order")
             assert_output "$native" "$expected"
             grep -Fxq 'culture extension cache order end' <<< "$(strip_cr_win "$native")" \
                 || { echo "FAIL: extension cache order '$pair' '$order' did not finish" >&2; return 1; }
@@ -397,6 +477,7 @@ gate_extra_asserts() {
     done
 }
 DN2CPP_GATE_RUN_ARGS=culture-names
-DN2CPP_GATE_EXTRA_CONTEXT="${LOCALE_CASES[*]} ${NUMBERING_CASES[*]} ${FALLBACK_CASES[*]} culture-missing-number-format ${MISSING_NUMBER_CASES[*]} culture-variant-order ${VARIANT_CASES[*]} culture-invariant-lcid-cache ${INVARIANT_CACHE_ORDERS[*]} culture-instance-number-format [${INSTANCE_CULTURES[*]}] culture-integer-constructors culture-instance-equality ${EQUALITY_PAIRS[*]} culture-extension-identities ${EXTENSION_CASES[*]} culture-undefined-extension-metadata ${UNDEFINED_EXTENSION_CASES[*]} culture-extension-order ${EXTENSION_ORDER_PAIRS[*]} constructor-first cached-first culture-undefined-platform-identities [${UNDEFINED_PLATFORM_CASES[*]}] culture-undefined-platform-cache ${UNDEFINED_PLATFORM_CACHE_ORDERS[*]} culture-rejected-extension-identities ${REJECTED_EXTENSION_CASES[*]}"
+DN2CPP_GATE_EXTRA_CONTEXT="culture-platform-name-validation"
+DN2CPP_GATE_EXTRA_CONTEXT+=" ${LOCALE_CASES[*]} ${NUMBERING_CASES[*]} ${FALLBACK_CASES[*]} culture-missing-number-format ${MISSING_NUMBER_CASES[*]} culture-variant-order ${VARIANT_CASES[*]} culture-invariant-lcid-cache ${INVARIANT_CACHE_ORDERS[*]} culture-instance-number-format [${INSTANCE_CULTURES[*]}] culture-integer-constructors culture-instance-equality ${EQUALITY_PAIRS[*]} culture-extension-identities ${EXTENSION_CASES[*]} culture-undefined-extension-metadata ${UNDEFINED_EXTENSION_CASES[*]} culture-extension-order ${EXTENSION_ORDER_PAIRS[*]} constructor-first cached-first culture-undefined-platform-identities [${UNDEFINED_PLATFORM_CASES[*]}] culture-undefined-platform-cache ${UNDEFINED_PLATFORM_CACHE_ORDERS[*]} culture-rejected-extension-identities ${REJECTED_EXTENSION_CASES[*]}"
 DN2CPP_OUT_SUFFIX=-names
 corelib_diff_gate CultureInfoApi --link-xml samples/dotnet/CultureInfoApi/link.xml
