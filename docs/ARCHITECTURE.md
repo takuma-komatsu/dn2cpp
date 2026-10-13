@@ -370,6 +370,9 @@ Internal format-spec callbacks retain their raw number-format payload ABI.
 Named and managed-default culture identities sort accepted BCP47 variants before
 discarding an invalid tail. Accepted ICU keywords enable the original managed
 u/t suffix; collation and private-use legacy variants retain their identity.
+Undefined-language spelling follows the ICU platform; an empty custom name
+retains its LCID, neutral state and missing numeric data independently of the
+invariant culture and participates in the resolved-name wrapper cache.
 The legacy locale path preserves variant order; raw host numeric-resource
 selection remains separate from managed identity.
 

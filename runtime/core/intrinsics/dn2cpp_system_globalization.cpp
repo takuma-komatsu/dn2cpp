@@ -476,8 +476,11 @@ static bool dn2cpp_culture_canonicalize_language_tag(std::u16string& name,
     return true;
 }
 
-static Dn2CppString* dn2cpp_culture_normalize_name(Dn2CppString* name)
+static Dn2CppString* dn2cpp_culture_normalize_name(Dn2CppString* name,
+    bool* customUndefined = nullptr)
 {
+    if (customUndefined != nullptr)
+        *customUndefined = false;
     if (name->length == 1 || name->length > 85)
         return nullptr;
     int32_t extension = -1;
@@ -569,14 +572,28 @@ static Dn2CppString* dn2cpp_culture_normalize_name(Dn2CppString* name)
         size_t transform = canonical.find(u"-t-");
         if (suffix == std::u16string::npos || transform < suffix)
             suffix = transform;
+        size_t privateUse = canonical.find(u"-X-");
+        if (suffix == std::u16string::npos || privateUse < suffix)
+            suffix = privateUse;
         undefinedLegacy = canonical.substr(0, suffix);
     }
     Dn2CppLocaleExtensionState<char16_t> extensions{};
     bool languageTag = dn2cpp_culture_canonicalize_language_tag(canonical, extensions);
-    // With no keyword, Apple ICU retains und's legacy spelling but removes u/t.
-    // An extension-bearing und is custom even when its suffix was rejected.
+    if (customUndefined != nullptr)
+        *customUndefined = languageTag && canonical == u"und";
+    // Without keywords, undefined-language names keep their legacy base.
+    // Custom identity is independent of the platform's visible und spelling.
     if (canonical == u"und" && !extensions.keywords && !undefinedLegacy.empty())
         canonical = undefinedLegacy;
+    if (canonical == u"und" && languageTag)
+    {
+#if defined(__APPLE__)
+        if (extensions.keywords && !extensions.nonPrivateKeywords)
+            canonical.clear();
+#else
+        canonical.clear();
+#endif
+    }
     size_t languageEnd = canonical.find_first_of(u"-_");
     if (languageEnd == std::u16string::npos)
         languageEnd = canonical.size();
@@ -1299,7 +1316,8 @@ const Dn2CppNumberFormatInfo* dn2cpp_culture_by_name(Dn2CppString* name, bool ca
         return cached ? dn2cpp_culture_named_create(dn2cpp_nfi_invariant()) : dn2cpp_nfi_invariant();
     if (const Dn2CppNumberFormatInfo* existing = dn2cpp_culture_request_cache(key, useUserOverride))
         return cached ? dn2cpp_culture_named_create(existing) : existing;
-    Dn2CppString* canonical = dn2cpp_culture_normalize_name(name);
+    bool customUndefined = false;
+    Dn2CppString* canonical = dn2cpp_culture_normalize_name(name, &customUndefined);
     if (canonical == nullptr)
         dn2cpp_throw_culture_not_found(name, 0);
     Dn2CppString request = *key;
@@ -1313,7 +1331,8 @@ const Dn2CppNumberFormatInfo* dn2cpp_culture_by_name(Dn2CppString* name, bool ca
     Dn2CppString privateAlias = request;
     if (privateAlias.length > 10 && privateAlias.chars[10] == u'-')
         privateAlias.length = 10;
-    if (canonical->length == 0 && !dn2cpp_culture_name_eq_ci(&privateAlias, u"i-enochian"))
+    if (canonical->length == 0 && !customUndefined
+        && !dn2cpp_culture_name_eq_ci(&privateAlias, u"i-enochian"))
         return cached ? dn2cpp_culture_named_create(dn2cpp_nfi_invariant()) : dn2cpp_nfi_invariant();
     Dn2CppString* publicName = dn2cpp_culture_public_name(name, canonical);
     int32_t lcid = 4096;
