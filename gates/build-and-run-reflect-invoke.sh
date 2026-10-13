@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# MemberwiseClone parity uses safe empty strings and survives full-driver collections.
 # Array.Clone calls and method groups share ICloneable dispatch without collection roots.
 # Delegate.Clone class groups preserve class overrides, explicit interface distinctions and null binding.
 # String and delegate ICloneable calls and method groups preserve their CLR copy identity.
@@ -493,6 +494,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|function-pointer-invoke-pr
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_runtime-template-bindings.sh gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj samples/dotnet/ReflectInvoke/RuntimeTemplateBindingOnly.csproj samples/dotnet/ReflectInvoke/RuntimeTemplateBindingOnlyProgram.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|runtime-template-binding:packed,native,uncompressed,trimmed,ildiet|runtime-template-binding-prefix:before-runtime-template-bindings"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|runtime-base-projections:permuted,dropped,chained,AOT,synthesized,generic-virtual|runtime-base-projection-prefix:before-runtime-base-projections"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|memberwise-clone-collection-prefix:before-memberwise-clone-collection"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|unsupported-referent-prefix-argv:before-unsupported-referent-signatures"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|ordinary-template-prefix-argv:before-ordinary-template-signatures|ordinary-template-boundary-prefix-argv:delegate-signature-before-ordinary-boundary"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|ordinary-overload-prefix-argv:before-ordinary-overload-selection|ordinary-overload-boundary-prefix-argv:delegate-signature-before-overload-boundary|shape-overload-prefix-argv:before-shape-overload-selection|shape-overload-boundary-prefix-argv:delegate-signature-before-shape-boundary|leaf-overload-prefix-argv:before-leaf-overload-selection|leaf-overload-boundary-prefix-argv:delegate-signature-before-leaf-boundary"
@@ -569,6 +571,28 @@ gate_empty_string_clone_asserts() {
         'empty string clone identity end'; do
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: empty string clone witness missing: $line" >&2; return 1; }
+    done
+}
+
+gate_memberwise_clone_collection_asserts() {
+    local out="$1" axis before full prefix line
+    for axis in dotnet native; do
+        if [ "$axis" = dotnet ]; then
+            before=$(run_bounded dotnet "$_CG_APP" before-memberwise-clone-collection)
+            full=$(run_bounded dotnet "$_CG_APP")
+        else
+            before=$(run_bounded "$out/ReflectInvoke$EXE_EXT" before-memberwise-clone-collection)
+            full=$(run_bounded "$out/ReflectInvoke$EXE_EXT")
+        fi
+        full=$(strip_cr_win "$full")
+        prefix=$(awk '/^== memberwise clone collection ==$/ { exit } { print }' <<< "$full")
+        assert_output "$prefix" "$(strip_cr_win "$before")"
+        for line in '== memberwise clone collection ==' \
+                'empty clones survive GC=0:System.String:False:False:False' \
+                'memberwise clone collection end'; do
+            grep -Fxq -- "$line" <<< "$full" \
+                || { echo "FAIL: memberwise clone collection witness missing ($axis): $line" >&2; return 1; }
+        done
     done
 }
 
@@ -691,6 +715,7 @@ gate_inherited_object_virtual_equality_asserts() {
 }
 
 gate_extra_asserts() {
+    gate_memberwise_clone_collection_asserts "$1"
     runtime_held_interface_prefix_asserts "$1"
     headerless_managed_reference_asserts "$1"
     gate_virtual_delegate_prefix_asserts "$1"
@@ -2246,8 +2271,6 @@ assert_output "$codec_object_old" "$(printf '%s\n' 'metadata codec boundaries OK
     'metadata missing invocation diagnostics OK' 'metadata unrecorded interface guard begin' \
     'metadata unrecorded interface guard OK')"
 
-# The full bucket reflects MemberwiseClone over strings; GC probes need a process
-# that has not performed that unsupported CoreLib operation.
 cache_project=gates/fixtures/delegate-invocation-cache/DelegateInvocationCache.csproj
 run_bounded dotnet build "$cache_project" -c "$CONFIG" --nologo -v:q
 cache_app=gates/fixtures/delegate-invocation-cache/bin/$CONFIG/net10.0/DelegateInvocationCache.dll

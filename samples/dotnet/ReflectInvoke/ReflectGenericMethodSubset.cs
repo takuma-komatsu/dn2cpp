@@ -242,7 +242,7 @@ namespace ReflectGenericMethodSubset
 
     static class Program
     {
-        internal static void RunDeclaringMethod(bool collect = true, bool reverse = false)
+        internal static void RunDeclaringMethod(bool reverse = false)
         {
             Console.WriteLine("== formal parameter declaring methods ==");
             _ = DeclaringMethodOwner<int>.Pick<int, string>(3);
@@ -287,8 +287,7 @@ namespace ReflectGenericMethodSubset
                 stable &= ReferenceEquals(declaring, query.Result);
             for (int i = 0; i < 32; i++)
                 stable &= ReferenceEquals(declaring, parameter.DeclaringMethod);
-            if (collect)
-                GC.Collect();
+            GC.Collect();
             Console.WriteLine("declaring method repeated: " + stable + "/" + ReferenceEquals(declaring, parameter.DeclaringMethod));
             Console.WriteLine("formal parameter declaring methods end");
         }
@@ -305,7 +304,7 @@ namespace ReflectGenericMethodSubset
                 + "/" + child.ContainsGenericParameters);
         }
 
-        internal static void RunConstraintMetadata(bool collect = true)
+        internal static void RunConstraintMetadata()
         {
             Console.WriteLine("== formal constraint metadata ==");
             string[] names = { "Unconstrained", "ValueConstrained", "ReferenceConstrained", "BaseConstrained", "InterfaceConstrained" };
@@ -341,8 +340,7 @@ namespace ReflectGenericMethodSubset
             bool stable = true;
             for (int i = 0; i < 32; i++)
                 stable &= ReferenceEquals(saved, composed[0].GetGenericParameterConstraints()[0]);
-            if (collect)
-                GC.Collect();
+            GC.Collect();
             Console.WriteLine("constraint repeated identity: " + stable + "/" + ReferenceEquals(saved, composed[0].GetGenericParameterConstraints()[0]));
             Type[] detached = composed[0].GetGenericParameterConstraints();
             detached[0] = typeof(object);
@@ -361,8 +359,7 @@ namespace ReflectGenericMethodSubset
             bool parallel = true;
             foreach (Task<Type> query in queries)
                 parallel &= ReferenceEquals(identity, query.Result);
-            if (collect)
-                GC.Collect();
+            GC.Collect();
             Console.WriteLine("constraint parallel identity: " + parallel + "/"
                 + ReferenceEquals(identity, ConcurrentConstraint(concurrent)));
 #if FORMAL_CONSTRAINTS_UNSHARED
@@ -888,7 +885,7 @@ namespace ReflectGenericMethodSubset
                 + " base=" + parameter.BaseType?.FullName + " interfaces=" + parameter.GetInterfaces().Length);
         }
 
-        internal static void RunOpenSignatures(bool forceCollection = true)
+        internal static void RunOpenSignatures()
         {
             Console.WriteLine("== open generic signature types ==");
             foreach (string name in new[] { "ArrayShape", "RefShape", "ListShape", "EnumerableShape", "FunctionShape", "TaskShape" })
@@ -1015,8 +1012,7 @@ namespace ReflectGenericMethodSubset
             foreach (Task<Type> query in queries)
                 parallel &= ReferenceEquals(query.Result, sz);
             Console.WriteLine("open signature parallel: " + parallel);
-            if (forceCollection)
-                GC.Collect();
+            GC.Collect();
             Console.WriteLine("open signature repeated: " + ReferenceEquals(mixed.ReturnType, typeof(OpenSignatureOwner<int>).GetMethod("Mixed")!.ReturnType)
                 + "/" + ReferenceEquals(definition.MakeGenericMethod(formal), composed));
             Console.WriteLine("open generic signature types end");
@@ -1039,7 +1035,7 @@ namespace ReflectGenericMethodSubset
             Console.WriteLine("definition transitive relations: " + root.IsAssignableFrom(leaf) + "/" + itf.IsAssignableFrom(leaf));
         }
 
-        internal static void RunGenericDefinitionMembers(bool forceCollection = true)
+        internal static void RunGenericDefinitionMembers()
         {
             Console.WriteLine("== generic definition members ==");
             RunGenericDefinitionRelations(false);
@@ -1167,8 +1163,7 @@ namespace ReflectGenericMethodSubset
             foreach (Task<MethodInfo> query in queries)
                 parallel &= ReferenceEquals(query.Result, inherited);
             Console.WriteLine("definition parallel: " + parallel);
-            if (forceCollection)
-                GC.Collect();
+            GC.Collect();
             Console.WriteLine("definition repeated: " + ReferenceEquals(echo, owner.GetMethod("Echo")));
             Console.WriteLine("generic definition members end");
         }

@@ -8,7 +8,7 @@ namespace ReflectTypes
     // and other namespace-sensitive output stay identical to the originals.
     internal static class Program
     {
-        private static void Main()
+        private static void Main(string[] args)
         {
             // Host-culture pin. This bucket's expectation is a FIXED snapshot while the
             // transpiled binary resolves the HOST's culture, so any culture-sensitive line
@@ -84,6 +84,9 @@ namespace ReflectTypes
             TaskRuntimeIdentitySubset.Program.Run();
             ReflectShallowCloneRefusalSubset.Program.RunUnwrappedProbe();
             ReflectAttrNullTypeSubset.Program.Run();
+            // Culture verification also runs this driver on CLR; string copies are native-only.
+            if (args.Length > 0 && args[0] == "string-clone-copies")
+                ReflectShallowCloneRefusalSubset.Program.RunStringCopies();
         }
     }
 }

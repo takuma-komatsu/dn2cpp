@@ -134,7 +134,7 @@ internal static partial class Program
         Console.WriteLine("event generic other context: " + ReferenceEquals(constructed, typeof(GenericOtherEventOwner).GetMethod("Other").MakeGenericMethod(typeof(int))) + "/" + ReferenceEquals(constructed.GetGenericMethodDefinition(), other));
     }
 
-    internal static void RunReflection(bool collect = true)
+    internal static void RunReflection()
     {
         Console.WriteLine("== reflected events ==");
         var type = typeof(EventDerived);
@@ -228,11 +228,8 @@ internal static partial class Program
         Console.WriteLine("event null guards: " + Fault(() => type.GetEvent(null)) + "/" + Fault(() => ((EventInfo)null).GetAddMethod()) + "/" + Fault(() => ((EventInfo)null).GetOtherMethods(true)));
         bool parallel = true;
         Parallel.For(0, 12, _ => { if (!ReferenceEquals(item, type.GetEvent("BaseTick")) || !ReferenceEquals(add, item.AddMethod)) parallel = false; });
-        if (collect)
-        {
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-        }
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
         Console.WriteLine("event repeated: " + parallel + "/" + ReferenceEquals(item, type.GetEvent("BaseTick")) + "/" + ReferenceEquals(open.EventHandlerType, handlerType));
         RunGenericOtherReflection();
         Console.WriteLine("reflected events end");
