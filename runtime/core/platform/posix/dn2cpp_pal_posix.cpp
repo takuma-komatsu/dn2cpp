@@ -107,6 +107,7 @@ static int32_t dn2cpp_pal_locale_from_posix_id(const char* id, char* buf, size_t
     bool posixBase = n > 11 && buf[11] == '-' && ::strncasecmp(buf, "en-US-POSIX", 11) == 0;
     Dn2CppLocalePosixState posix = posixBase
         ? dn2cpp_locale_posix_parse(buf, n) : Dn2CppLocalePosixState{0, false, false};
+    bool legacyOnly = false;
     if (!keepExtensions)
         for (size_t part = 1; part + 2 < n; part++)
             if (buf[part] == '-' && buf[part + 2] == '-')
@@ -124,10 +125,17 @@ static int32_t dn2cpp_pal_locale_from_posix_id(const char* id, char* buf, size_t
                 }
                 // Keep the BCP47 path even if an invalid variant tail removes
                 // the singleton that selected it; extlangs still need promotion.
-                n = dn2cpp_locale_sort_variants(buf, n).length;
+                Dn2CppLocaleVariantState prefix = dn2cpp_locale_sort_variants(buf, n);
+                n = prefix.length;
+                Dn2CppLocaleExtensionState<char> extensions =
+                    dn2cpp_locale_identity_extensions(buf, n, prefix);
+                // Private-use keywords do not keep a legacy-only POSIX default.
+                legacyOnly = extensions.legacyVariants && !extensions.nonPrivateKeywords;
+                if (prefix.baseEnd != 0)
+                    part = extensions.baseEnd;
                 if (part > n)
                     part = n;
-                if (posixBase)
+                if (posixBase && !extensions.legacyVariants)
                     part = posix.baseEnd < n ? posix.baseEnd : n;
                 size_t language = 0;
                 while (language < part && buf[language] != '-')
@@ -176,6 +184,14 @@ static int32_t dn2cpp_pal_locale_from_posix_id(const char* id, char* buf, size_t
                     }
                 }
                 n = part;
+                if (extensions.collation)
+                {
+                    if (n + extensions.sortLength + 1 >= size)
+                        return 0;
+                    buf[n++] = '_';
+                    std::memcpy(buf + n, extensions.sort, extensions.sortLength);
+                    n += extensions.sortLength;
+                }
                 break;
             }
     // ICU accepts an empty trailing POSIX variant, unlike a constructed name.
@@ -189,7 +205,8 @@ static int32_t dn2cpp_pal_locale_from_posix_id(const char* id, char* buf, size_t
     // en_US_POSIX, like an empty base, as no locale at all.
     if (!modifier
         && ((n == 1 && buf[0] == 'C') || (n == 5 && std::memcmp(buf, "POSIX", 5) == 0)
-            || (!posix.extension && n == 11 && ::strncasecmp(buf, "en-US-POSIX", 11) == 0)))
+            || ((!posix.extension || legacyOnly) && n == 11
+                && ::strncasecmp(buf, "en-US-POSIX", 11) == 0)))
         return 0;
     if (modifier)
     {
