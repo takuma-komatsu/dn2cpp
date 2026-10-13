@@ -18,6 +18,15 @@ signature = numbering.signature
 literal = numbering.literal
 
 
+def currency_rows(currency):
+    # The frozen standard snapshot uses ICU 78; Windows ICU 72 selects silver
+    # for ZZ. This currency must only occur in the unknown-region column.
+    if currency == "XAD":
+        return ["#if defined(_WIN32)", "    " + literal("XAG") + ",",
+                "#else", "    " + literal(currency) + ",", "#endif"]
+    return ["    " + literal(currency) + ","]
+
+
 def load(folder):
     hosts, languages, provenance = {}, None, None
     for path in sorted(Path(folder).glob("*.jsonl")):
@@ -120,6 +129,11 @@ def main():
             platform.append(regional)
         entries.append(platform)
     profiles, currencies, vectors = sorted(profiles), sorted(currencies), sorted(vectors)
+    for platform in entries:
+        for regional in platform:
+            for region, (_, currency) in zip(regions, regional):
+                if currency == "XAD" and region != "ZZ":
+                    raise ValueError("Windows unknown-region currency correction would affect " + region)
     if any(len(values) > 65535 for values in [profiles, currencies, vectors]):
         raise ValueError("fallback indices exceed uint16_t")
     profile_index = {value: i for i, value in enumerate(profiles)}
@@ -156,7 +170,8 @@ def main():
     out += ["};", "static const char16_t* const kCultureFallbackRegions[] = {"]
     out += ["    " + literal(region) + "," for region in regions]
     out += ["};", "static const char16_t* const kCultureFallbackCurrencies[] = {"]
-    out += ["    " + literal(currency) + "," for currency in currencies]
+    for currency in currencies:
+        out += currency_rows(currency)
     out += ["};", "struct Dn2CppCultureFallbackEntry { uint16_t vector; uint16_t currency; };",
             "static const Dn2CppCultureFallbackEntry kCultureFallbackEntries[][" + str(len(regions)) + "] = {"]
     for platform, data in enumerate(entries):
@@ -170,7 +185,7 @@ def main():
         out.append("#if defined(__APPLE__)" if platform == 0 else "#else")
         out += ["    " + literal(language) + "," for language in languages]
     out += ["#endif", "};"]
-    Path(args.output).write_text("\n".join(out) + "\n")
+    Path(args.output).write_text("\n".join(out) + "\n", encoding="utf-8")
     print("profiles", len(profiles), "vectors", len(vectors), "currencies", len(currencies), "families", len(families),
           "bytes", Path(args.output).stat().st_size)
 

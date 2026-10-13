@@ -25,6 +25,12 @@ namespace CultureInfoApi
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
             CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
 
+            if (args.Length > 0 && args[0] == "culture-platform-name-validation")
+            {
+                RunPlatformNameValidation();
+                return;
+            }
+
             if (args.Length > 0 && args[0] == "culture-names")
             {
                 RunCultureNames();
@@ -526,6 +532,91 @@ namespace CultureInfoApi
             RunUndefinedExtensionMetadata();
             RunUndefinedPlatformIdentities();
             RunRejectedExtensionIdentities();
+            RunPlatformNameValidation();
+        }
+
+        private static void RunPlatformNameValidation()
+        {
+            Console.WriteLine("== culture platform name validation ==");
+            foreach (string name in new[]
+            {
+                "de-FOO", "zh-min", "zh-min\0ignored", "de-FOO-u-nu-latn",
+                "zh-min-u-nu-foo", "zh-min-nan", "de-foo-bar-US-u-nu-latn",
+                "i-enochian-US-U-NU-ARAB", "i-enochian-US-u-nu-arab",
+                "en-US", "de-DE_phoneb"
+            })
+            {
+                Console.WriteLine("  input='" + name.Replace("\0", "<NUL>") + "'");
+                CaptureCultureCreation("constructor", () => new CultureInfo(name));
+                CaptureCultureCreation("without override", () => new CultureInfo(name, false));
+                CaptureCultureCreation("cached", () => CultureInfo.GetCultureInfo(name));
+                CaptureCultureCreation("specific", () => CultureInfo.CreateSpecificCulture(name));
+                CaptureCultureCreation("constructor again", () => new CultureInfo(name));
+            }
+            Console.WriteLine("culture platform name validation end");
+        }
+
+        private static void CaptureCultureCreation(string label, Func<CultureInfo> create)
+        {
+            try
+            {
+                Console.WriteLine("    " + label + "=" + VariantCultureIdentity(create()));
+            }
+            catch (CultureNotFoundException exception)
+            {
+                Console.WriteLine("    " + label + "=" + nameof(CultureNotFoundException));
+                WriteCultureFault(exception);
+            }
+        }
+
+        private static bool TryCreateCulture(string name, out CultureInfo culture)
+        {
+            try
+            {
+                culture = new CultureInfo(name);
+                return true;
+            }
+            catch (CultureNotFoundException exception)
+            {
+                culture = null;
+                Console.WriteLine("  '" + name.Replace("\0", "<NUL>") + "': " + nameof(CultureNotFoundException));
+                WriteCultureFault(exception);
+                return false;
+            }
+        }
+
+        private static string CultureName(Func<CultureInfo> create)
+        {
+            return CultureValue(() => create().Name);
+        }
+
+        private static bool TryCultureCreation(string label, Func<CultureInfo> create, out CultureInfo culture)
+        {
+            try
+            {
+                culture = create();
+                return true;
+            }
+            catch (CultureNotFoundException exception)
+            {
+                culture = null;
+                Console.WriteLine("    " + label + "=" + nameof(CultureNotFoundException));
+                WriteCultureFault(exception);
+                return false;
+            }
+        }
+
+        private static string CultureValue(Func<string> read)
+        {
+            try
+            {
+                return read();
+            }
+            catch (CultureNotFoundException exception)
+            {
+                return nameof(CultureNotFoundException) + " param=" + exception.ParamName
+                    + " name=" + exception.InvalidCultureName;
+            }
         }
 
         private static void RunRejectedExtensionIdentities(string name = null)
@@ -556,18 +647,26 @@ namespace CultureInfoApi
                 "und-x-123456789", "und-a-foo-x-foo", "und-x-lvariant-FOOBAR", "en-und-a-foo"
             } : new[] { name })
             {
-                CultureInfo constructor = new CultureInfo(input);
-                CultureInfo withoutOverride = new CultureInfo(input, false);
-                CultureInfo cached = CultureInfo.GetCultureInfo(input);
-                CultureInfo specific = CultureInfo.CreateSpecificCulture(input);
-                Console.WriteLine("  input='" + input + "'");
-                Console.WriteLine("    constructor=" + UndefinedPlatformIdentity(constructor));
-                Console.WriteLine("    without override=" + UndefinedPlatformIdentity(withoutOverride));
-                Console.WriteLine("    cached=" + UndefinedPlatformIdentity(cached));
-                Console.WriteLine("    specific=" + UndefinedPlatformIdentity(specific));
-                Console.WriteLine("    constructor/cached=" + ReferenceEquals(constructor, cached)
-                    + " repeat=" + ReferenceEquals(cached, CultureInfo.GetCultureInfo(input))
-                    + " canonical=" + ReferenceEquals(cached, CultureInfo.GetCultureInfo(cached.Name)));
+                try
+                {
+                    CultureInfo constructor = new CultureInfo(input);
+                    CultureInfo withoutOverride = new CultureInfo(input, false);
+                    CultureInfo cached = CultureInfo.GetCultureInfo(input);
+                    CultureInfo specific = CultureInfo.CreateSpecificCulture(input);
+                    Console.WriteLine("  input='" + input + "'");
+                    Console.WriteLine("    constructor=" + UndefinedPlatformIdentity(constructor));
+                    Console.WriteLine("    without override=" + UndefinedPlatformIdentity(withoutOverride));
+                    Console.WriteLine("    cached=" + UndefinedPlatformIdentity(cached));
+                    Console.WriteLine("    specific=" + UndefinedPlatformIdentity(specific));
+                    Console.WriteLine("    constructor/cached=" + ReferenceEquals(constructor, cached)
+                        + " repeat=" + ReferenceEquals(cached, CultureInfo.GetCultureInfo(input))
+                        + " canonical=" + ReferenceEquals(cached, CultureInfo.GetCultureInfo(cached.Name)));
+                }
+                catch (CultureNotFoundException exception)
+                {
+                    Console.WriteLine("  input='" + input + "': " + nameof(CultureNotFoundException));
+                    WriteCultureFault(exception);
+                }
             }
             Console.WriteLine("culture undefined platform identities end");
         }
@@ -595,17 +694,25 @@ namespace CultureInfoApi
                 "und", "und-u-a", "und-t-a", "und-u-123456789", "und-a-a", "und-a-123456789"
             } : new[] { name })
             {
-                CultureInfo constructor = new CultureInfo(input);
-                CultureInfo withoutOverride = new CultureInfo(input, false);
-                CultureInfo cached = CultureInfo.GetCultureInfo(input);
-                CultureInfo specific = CultureInfo.CreateSpecificCulture(input);
-                Console.WriteLine("  input='" + input + "'");
-                Console.WriteLine("    constructor=" + UndefinedCultureMetadata(constructor));
-                Console.WriteLine("    without override=" + UndefinedCultureMetadata(withoutOverride));
-                Console.WriteLine("    cached=" + UndefinedCultureMetadata(cached));
-                Console.WriteLine("    specific=" + UndefinedCultureMetadata(specific));
-                Console.WriteLine("    constructor/cached=" + ReferenceEquals(constructor, cached)
-                    + " cached repeat=" + ReferenceEquals(cached, CultureInfo.GetCultureInfo(input)));
+                try
+                {
+                    CultureInfo constructor = new CultureInfo(input);
+                    CultureInfo withoutOverride = new CultureInfo(input, false);
+                    CultureInfo cached = CultureInfo.GetCultureInfo(input);
+                    CultureInfo specific = CultureInfo.CreateSpecificCulture(input);
+                    Console.WriteLine("  input='" + input + "'");
+                    Console.WriteLine("    constructor=" + UndefinedCultureMetadata(constructor));
+                    Console.WriteLine("    without override=" + UndefinedCultureMetadata(withoutOverride));
+                    Console.WriteLine("    cached=" + UndefinedCultureMetadata(cached));
+                    Console.WriteLine("    specific=" + UndefinedCultureMetadata(specific));
+                    Console.WriteLine("    constructor/cached=" + ReferenceEquals(constructor, cached)
+                        + " cached repeat=" + ReferenceEquals(cached, CultureInfo.GetCultureInfo(input)));
+                }
+                catch (CultureNotFoundException exception)
+                {
+                    Console.WriteLine("  input='" + input + "': " + nameof(CultureNotFoundException));
+                    WriteCultureFault(exception);
+                }
             }
             Console.WriteLine("culture undefined extension metadata end");
         }
@@ -640,16 +747,24 @@ namespace CultureInfoApi
                 "en-US-POSIX-u-nu-arab-x-lvariant-POSIX-bar"
             } : new[] { name })
             {
-                CultureInfo constructor = new CultureInfo(input);
-                CultureInfo withoutOverride = new CultureInfo(input, false);
-                CultureInfo cached = CultureInfo.GetCultureInfo(input);
-                Console.WriteLine("  input='" + input + "'");
-                Console.WriteLine("    constructor=" + VariantCultureIdentity(constructor));
-                Console.WriteLine("    without override=" + VariantCultureIdentity(withoutOverride));
-                Console.WriteLine("    cached=" + VariantCultureIdentity(cached));
-                Console.WriteLine("    specific=" + VariantCultureIdentity(CultureInfo.CreateSpecificCulture(input)));
-                Console.WriteLine("    repeat=" + ReferenceEquals(cached, CultureInfo.GetCultureInfo(input))
-                    + " canonical=" + ReferenceEquals(cached, CultureInfo.GetCultureInfo(cached.Name)));
+                try
+                {
+                    CultureInfo constructor = new CultureInfo(input);
+                    CultureInfo withoutOverride = new CultureInfo(input, false);
+                    CultureInfo cached = CultureInfo.GetCultureInfo(input);
+                    Console.WriteLine("  input='" + input + "'");
+                    Console.WriteLine("    constructor=" + VariantCultureIdentity(constructor));
+                    Console.WriteLine("    without override=" + VariantCultureIdentity(withoutOverride));
+                    Console.WriteLine("    cached=" + VariantCultureIdentity(cached));
+                    Console.WriteLine("    specific=" + VariantCultureIdentity(CultureInfo.CreateSpecificCulture(input)));
+                    Console.WriteLine("    repeat=" + ReferenceEquals(cached, CultureInfo.GetCultureInfo(input))
+                        + " canonical=" + ReferenceEquals(cached, CultureInfo.GetCultureInfo(cached.Name)));
+                }
+                catch (CultureNotFoundException exception)
+                {
+                    Console.WriteLine("  input='" + input + "': " + nameof(CultureNotFoundException));
+                    WriteCultureFault(exception);
+                }
             }
             Console.WriteLine("culture extension identities end");
         }
@@ -660,24 +775,28 @@ namespace CultureInfoApi
             CultureInfo second;
             if (constructorFirst)
             {
-                constructor = new CultureInfo(firstName, false);
-                second = CultureInfo.GetCultureInfo(secondName);
+                TryCultureCreation("constructor", () => new CultureInfo(firstName, false), out constructor);
+                TryCultureCreation("second", () => CultureInfo.GetCultureInfo(secondName), out second);
             }
             else
             {
-                second = CultureInfo.GetCultureInfo(secondName);
-                constructor = new CultureInfo(firstName, false);
+                TryCultureCreation("second", () => CultureInfo.GetCultureInfo(secondName), out second);
+                TryCultureCreation("constructor", () => new CultureInfo(firstName, false), out constructor);
             }
-            CultureInfo first = CultureInfo.GetCultureInfo(firstName);
+            TryCultureCreation("first", () => CultureInfo.GetCultureInfo(firstName), out CultureInfo first);
             Console.WriteLine("== culture extension cache order ==");
             Console.WriteLine("  first='" + firstName + "' second='" + secondName + "' constructor first=" + constructorFirst);
-            Console.WriteLine("  constructor=" + VariantCultureIdentity(constructor));
-            Console.WriteLine("  first=" + VariantCultureIdentity(first) + " second=" + VariantCultureIdentity(second));
-            Console.WriteLine("  pair=" + ReferenceEquals(first, second)
-                + " first repeat=" + ReferenceEquals(first, CultureInfo.GetCultureInfo(firstName))
-                + " second repeat=" + ReferenceEquals(second, CultureInfo.GetCultureInfo(secondName)));
-            Console.WriteLine("  first canonical=" + ReferenceEquals(first, CultureInfo.GetCultureInfo(first.Name))
-                + " second canonical=" + ReferenceEquals(second, CultureInfo.GetCultureInfo(second.Name)));
+            if (constructor is not null)
+                Console.WriteLine("  constructor=" + VariantCultureIdentity(constructor));
+            if (first is not null && second is not null)
+            {
+                Console.WriteLine("  first=" + VariantCultureIdentity(first) + " second=" + VariantCultureIdentity(second));
+                Console.WriteLine("  pair=" + ReferenceEquals(first, second)
+                    + " first repeat=" + ReferenceEquals(first, CultureInfo.GetCultureInfo(firstName))
+                    + " second repeat=" + ReferenceEquals(second, CultureInfo.GetCultureInfo(secondName)));
+                Console.WriteLine("  first canonical=" + ReferenceEquals(first, CultureInfo.GetCultureInfo(first.Name))
+                    + " second canonical=" + ReferenceEquals(second, CultureInfo.GetCultureInfo(second.Name)));
+            }
             Console.WriteLine("culture extension cache order end");
         }
 
@@ -1071,7 +1190,8 @@ namespace CultureInfoApi
                 string name = kind == "bare" ? "i-enochian" : kind == "nul" ? "i-enochian\0ignored"
                     : kind == "upper" ? "i-enochian-US-U-NU-ARAB" : kind == "lower" ? "i-enochian-US-u-nu-arab"
                     : kind == "und" ? "und" : "";
-                CultureInfo culture = new CultureInfo(name);
+                if (!TryCreateCulture(name, out CultureInfo culture))
+                    continue;
                 Console.WriteLine("  " + kind + " '" + name.Replace("\0", "<NUL>") + "'=" + MissingCultureIdentity(culture));
                 CaptureMissingNumber("getter", () => MissingNumberData(culture.NumberFormat));
                 CaptureMissingNumber("getformat number", () => MissingNumberData((NumberFormatInfo)culture.GetFormat(typeof(NumberFormatInfo))));
@@ -1188,23 +1308,30 @@ namespace CultureInfoApi
             CultureInfo cachedLower;
             if (constructorFirst)
             {
-                constructor = new CultureInfo(upper, false);
-                cachedLower = CultureInfo.GetCultureInfo(lower);
+                TryCultureCreation("constructor", () => new CultureInfo(upper, false), out constructor);
+                TryCultureCreation("cached lower", () => CultureInfo.GetCultureInfo(lower), out cachedLower);
             }
             else
             {
-                cachedLower = CultureInfo.GetCultureInfo(lower);
-                constructor = new CultureInfo(upper, false);
+                TryCultureCreation("cached lower", () => CultureInfo.GetCultureInfo(lower), out cachedLower);
+                TryCultureCreation("constructor", () => new CultureInfo(upper, false), out constructor);
             }
-            CultureInfo cachedUpper = CultureInfo.GetCultureInfo(upper);
+            TryCultureCreation("cached upper", () => CultureInfo.GetCultureInfo(upper), out CultureInfo cachedUpper);
             Console.WriteLine("== culture missing number format uppercase cache ==");
-            Console.WriteLine("  constructor=" + MissingCultureIdentity(constructor));
-            Console.WriteLine("  cached lower=" + MissingCultureIdentity(cachedLower));
-            Console.WriteLine("  cached upper=" + MissingCultureIdentity(cachedUpper));
-            Console.WriteLine("  cached pair=" + ReferenceEquals(cachedLower, cachedUpper));
-            CaptureMissingNumber("constructor number", () => MissingNumberData(constructor.NumberFormat));
-            CaptureMissingNumber("cached lower number", () => MissingNumberData(cachedLower.NumberFormat));
-            CaptureMissingNumber("cached upper number", () => MissingNumberData(cachedUpper.NumberFormat));
+            if (constructor is not null)
+                Console.WriteLine("  constructor=" + MissingCultureIdentity(constructor));
+            if (cachedLower is not null)
+                Console.WriteLine("  cached lower=" + MissingCultureIdentity(cachedLower));
+            if (cachedUpper is not null)
+                Console.WriteLine("  cached upper=" + MissingCultureIdentity(cachedUpper));
+            if (cachedLower is not null && cachedUpper is not null)
+                Console.WriteLine("  cached pair=" + ReferenceEquals(cachedLower, cachedUpper));
+            if (constructor is not null)
+                CaptureMissingNumber("constructor number", () => MissingNumberData(constructor.NumberFormat));
+            if (cachedLower is not null)
+                CaptureMissingNumber("cached lower number", () => MissingNumberData(cachedLower.NumberFormat));
+            if (cachedUpper is not null)
+                CaptureMissingNumber("cached upper number", () => MissingNumberData(cachedUpper.NumberFormat));
             Console.WriteLine("culture missing number format uppercase cache end");
         }
 
@@ -1223,6 +1350,11 @@ namespace CultureInfoApi
             catch (NullReferenceException)
             {
                 Console.WriteLine("    " + label + "=" + nameof(NullReferenceException));
+            }
+            catch (CultureNotFoundException exception)
+            {
+                Console.WriteLine("    " + label + "=" + nameof(CultureNotFoundException));
+                WriteCultureFault(exception);
             }
             catch (ArgumentNullException)
             {
@@ -1272,12 +1404,13 @@ namespace CultureInfoApi
                 "i-klingon-Latn-US", "i-klingon-Latn-US-u-nu-latn", "zh-min-nan-Latn-US-u-nu-latn"
             } : new[] { name })
             {
-                CultureInfo culture = new CultureInfo(input);
+                if (!TryCreateCulture(input, out CultureInfo culture))
+                    continue;
                 Console.WriteLine("  '" + input.Replace("\0", "<NUL>") + "' -> '" + culture.Name + "' value='" + culture.ToString()
                     + "' LCID=" + culture.LCID + " neutral=" + culture.IsNeutralCulture);
-                Console.WriteLine("    specific='" + CultureInfo.CreateSpecificCulture(input).Name
-                    + "' cached='" + CultureInfo.GetCultureInfo(input).Name
-                    + "' without override='" + new CultureInfo(input, false).Name + "'");
+                Console.WriteLine("    specific='" + CultureName(() => CultureInfo.CreateSpecificCulture(input))
+                    + "' cached='" + CultureName(() => CultureInfo.GetCultureInfo(input))
+                    + "' without override='" + CultureName(() => new CultureInfo(input, false)) + "'");
             }
             Console.WriteLine("culture fallback identities end");
         }
@@ -1286,7 +1419,7 @@ namespace CultureInfoApi
         {
             Console.WriteLine("== culture primary currency ==");
             foreach (string input in new[] { "12-eng-US-u-nu-arab", "ab1-eng-US-u-nu-arab" })
-                Console.WriteLine("  '" + input + "' currency=" + new CultureInfo(input).NumberFormat.CurrencySymbol);
+                Console.WriteLine("  '" + input + "' currency=" + CultureValue(() => new CultureInfo(input).NumberFormat.CurrencySymbol));
             Console.WriteLine("culture primary currency end");
         }
 
@@ -1444,7 +1577,8 @@ namespace CultureInfoApi
                 "en-US-u-a0-foo-nu-arab", "en-US-u-nu-00-arab", "en-US-u-aa-00-nu-roman"
             })
             {
-                CultureInfo culture = new CultureInfo(name);
+                if (!TryCreateCulture(name, out CultureInfo culture))
+                    continue;
                 NumberFormatInfo n = culture.NumberFormat;
                 Console.WriteLine("  '" + name + "': decimal=" + n.NumberDecimalSeparator
                     + " group=" + n.NumberGroupSeparator + " negative=" + n.NegativeSign
@@ -1457,19 +1591,24 @@ namespace CultureInfoApi
             }
             foreach (string prefix in new[] { "e-US", "123-US", "abcdefghi-US" })
             {
-                NumberFormatInfo baseData = new CultureInfo(prefix).NumberFormat;
-                NumberFormatInfo extended = new CultureInfo(prefix + "-u-nu-foo").NumberFormat;
                 Console.WriteLine("  uninterpreted prefix '" + prefix + "' keeps numeric data="
-                    + (baseData.NumberDecimalSeparator == extended.NumberDecimalSeparator
+                    + CultureValue(() =>
+                    {
+                        NumberFormatInfo baseData = new CultureInfo(prefix).NumberFormat;
+                        NumberFormatInfo extended = new CultureInfo(prefix + "-u-nu-foo").NumberFormat;
+                        return (baseData.NumberDecimalSeparator == extended.NumberDecimalSeparator
                         && baseData.NumberGroupSeparator == extended.NumberGroupSeparator
                         && baseData.CurrencySymbol == extended.CurrencySymbol
                         && baseData.NaNSymbol == extended.NaNSymbol
                         && baseData.NegativeSign == extended.NegativeSign
-                        && baseData.NumberDecimalDigits == extended.NumberDecimalDigits));
+                        && baseData.NumberDecimalDigits == extended.NumberDecimalDigits).ToString();
+                    }));
             }
             foreach (string prefix in new[] { "i-default", "i-enochian", "i-mingo", "zh-min" })
             {
-                NumberFormatInfo n = new CultureInfo(prefix + "-u-nu-foo").NumberFormat;
+                if (!TryCreateCulture(prefix + "-u-nu-foo", out CultureInfo culture))
+                    continue;
+                NumberFormatInfo n = culture.NumberFormat;
                 Console.WriteLine("  private prefix '" + prefix + "' ignores nu: decimal="
                     + (n.NumberDecimalSeparator.Length > 0) + " negative=" + (n.NegativeSign.Length > 0)
                     + " groups=" + (n.NumberGroupSizes[0] >= 0));
@@ -1584,7 +1723,8 @@ namespace CultureInfoApi
 
         private static void WriteLocaleData(string name, bool includeOverride = true)
         {
-            CultureInfo culture = new CultureInfo(name);
+            if (!TryCreateCulture(name, out CultureInfo culture))
+                return;
             NumberFormatInfo n = culture.NumberFormat;
             Console.WriteLine("  locale '" + name + "' -> '" + culture.Name + "' LCID=" + culture.LCID
                 + " neutral=" + culture.IsNeutralCulture

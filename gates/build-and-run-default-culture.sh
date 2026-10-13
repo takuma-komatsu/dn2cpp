@@ -213,7 +213,7 @@ VARIANT_LOCALES=(
 )
 
 fixture="$(dirname "$0")/fixtures/default-culture-locale"
-if _corelib_gate_check "$out" "default_culture|$PROJECT|$LOCALES|${ENV_VARIANTS[*]}|${POSIX_FALLBACK_VARIANTS[*]}|culture-fallback foo-US|${FALLBACK_CASES[*]}|culture-variant-order ${VARIANT_LOCALES[*]}|culture-extension-identities ${EXTENSION_LOCALES[*]}|$platform_default|query-and-initialize|$_CG_CORELIB" \
+if _corelib_gate_check "$out" "default_culture|$PROJECT|$LOCALES|${ENV_VARIANTS[*]}|${POSIX_FALLBACK_VARIANTS[*]}|culture-fallback foo-US|${FALLBACK_CASES[*]}|culture-variant-order ${VARIANT_LOCALES[*]}|culture-extension-identities ${EXTENSION_LOCALES[*]}|user-number-digits|$platform_default|query-and-initialize|$_CG_CORELIB" \
         "$fixture/CMakeLists.txt" "$fixture/locale.c"; then
     gate_cache_hit_msg
     exit 0
@@ -245,6 +245,8 @@ for L in $LOCALES; do
         || { echo "FAIL: culture variant identities did not run" >&2; exit 1; }
     grep -Fxq 'culture extension identities end' <<< "$witness" \
         || { echo "FAIL: culture extension identities did not run" >&2; exit 1; }
+    grep -Fxq 'default culture user number digits end' <<< "$witness" \
+        || { echo "FAIL: user number digits did not run" >&2; exit 1; }
     printf '%s\n' "$native" | LC_ALL=C sed 's/^/   /'
     for name in "${FALLBACK_CASES[@]}"; do
         native="$(LC_ALL="$L" LANG="$L" run_bounded "./$out/$PROJECT" culture-fallback "$name")"

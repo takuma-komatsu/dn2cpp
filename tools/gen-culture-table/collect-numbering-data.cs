@@ -1,8 +1,10 @@
 #:property JsonSerializerIsReflectionEnabledByDefault=true
+#:property PublishAot=false
 // Collect a frozen numbering-system oracle; run from the repository root:
 // dotnet run tools/gen-culture-table/collect-numbering-data.cs output.jsonl
 // Run once with Apple ICU and once with standard ICU, then pass both snapshots
 // to gen-numbering-table.py. The runtime never loads ICU for these tables.
+// On Windows, pass its snapshot to gen-numbering-table.py --windows instead.
 // Select app-local ICU through DOTNET_SYSTEM_GLOBALIZATION_APPLOCALICU and the
 // platform library search path; each JSONL header records the loaded version.
 using System.Globalization;
@@ -44,7 +46,16 @@ return;
 
 void Write(string name)
 {
-    var c = new CultureInfo(name);
+    CultureInfo c;
+    try
+    {
+        c = new CultureInfo(name);
+    }
+    catch (CultureNotFoundException)
+    {
+        output.WriteLine(JsonSerializer.Serialize(new { input = name, error = nameof(CultureNotFoundException) }));
+        return;
+    }
     var n = c.NumberFormat;
     output.WriteLine(JsonSerializer.Serialize(new {
         input = name,

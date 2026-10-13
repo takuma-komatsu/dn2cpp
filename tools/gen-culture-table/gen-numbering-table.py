@@ -43,13 +43,13 @@ def literal(value):
     return 'u"' + escaped + '"'
 
 
-def load(path):
+def load(path, allow_bare_rejection=False):
     data = {}
     for line in Path(path).read_text().splitlines():
         row = json.loads(line)
         if "oracle" in row:
             continue
-        if "error" in row:
+        if "error" in row and (not allow_bare_rejection or "-u-nu-" in row["input"]):
             raise ValueError("oracle rejected " + row["input"])
         if "-u-nu-" not in row["input"]:
             continue
@@ -65,17 +65,20 @@ def load(path):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("apple")
-    parser.add_argument("standard")
-    parser.add_argument("output")
+    parser.add_argument("--windows", action="store_true",
+                        help="generate Windows data from one snapshot and an output path")
+    parser.add_argument("paths", nargs="+", metavar="PATH")
     args = parser.parse_args()
+    if len(args.paths) != (2 if args.windows else 3):
+        parser.error("expected Windows snapshot/output or Apple/standard snapshots/output")
+    paths = [args.paths[0], args.paths[0]] if args.windows else args.paths[:2]
     root = Path(__file__).resolve().parent
     kinds = [line for line in (root / "numbering-systems.txt").read_text().splitlines()
              if line and not line.startswith("#")] + ALIASES + [UNKNOWN]
-    sources = [load(args.apple), load(args.standard)]
+    sources = [load(path, allow_bare_rejection=args.windows) for path in paths]
     currencies = []
     currency_sources = []
-    for path in [args.apple, args.standard]:
+    for path in paths:
         values = {}
         symbols = {}
         for line in Path(path).read_text().splitlines():
@@ -121,17 +124,24 @@ def main():
     if len(vectors) > 256:
         raise ValueError("locale-vector indices exceed uint8_t")
     provenance = []
-    for path in [args.apple, args.standard]:
+    for path in paths:
         first = json.loads(Path(path).read_text().splitlines()[0])
         provenance.append(first.get("oracle", "unrecorded oracle") + "; ICU "
                           + str(first.get("icu", "unknown")) + "; " + first.get("host", "unknown host"))
     out = [
         "// GENERATED FILE — do not edit by hand.",
         "// Numeric symbols and patterns are a frozen CLR/ICU snapshot.",
-        "// Apple oracle: " + provenance[0],
-        "// Standard oracle: " + provenance[1],
+    ]
+    if args.windows:
+        out += ["// Windows oracle: " + provenance[0],
+                "// Regenerate with collect-numbering-data.cs on Windows, then",
+                "// gen-numbering-table.py --windows snapshot.jsonl output.inc."]
+    else:
+        out += ["// Apple oracle: " + provenance[0],
+                "// Standard oracle: " + provenance[1],
         "// Regenerate with tools/gen-culture-table/collect-numbering-data.cs on",
-        "// Apple ICU and standard ICU, then gen-numbering-table.py with both JSONL files.",
+        "// Apple ICU and standard ICU, then gen-numbering-table.py with both JSONL files."]
+    out += [
         "// Currency symbols are stored per locale; empty numeric profiles override them.",
         "// NativeDigits and DigitSubstitution do not participate in this numeric model.",
         "static const Dn2CppCultureNumericData kCultureNumericProfiles[] = {",
@@ -183,7 +193,7 @@ def main():
         else:
             out += ["#if defined(__APPLE__)", row(0), "#else", row(1), "#endif"]
     out += ["};", ""]
-    Path(args.output).write_text("\n".join(out))
+    Path(args.paths[-1]).write_text("\n".join(out), encoding="utf-8")
     print(f"families={len(families)}, profiles={len(profiles)}, vectors={len(vectors)}")
 
 

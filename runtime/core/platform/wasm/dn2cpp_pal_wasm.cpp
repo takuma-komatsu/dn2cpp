@@ -71,6 +71,20 @@ const char* dn2cpp_pal_getenv(const char* name)
 // deterministic answer available: `navigator.language` is reachable only through
 // JS, and a module that read it would resolve its culture differently in node
 // and in a browser tab.
+bool dn2cpp_pal_locale_name_supported(const char16_t* name, int32_t length)
+{
+    (void)name;
+    (void)length;
+    return true;
+}
+
+int32_t dn2cpp_pal_locale_number_digits_override(const char16_t* name, int32_t length)
+{
+    (void)name;
+    (void)length;
+    return -1;
+}
+
 int32_t dn2cpp_pal_default_locale_name(char* buf, size_t size)
 {
     if (buf != nullptr && size != 0)

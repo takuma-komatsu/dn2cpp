@@ -113,6 +113,28 @@ int32_t dn2cpp_pal_numeric_fallback_locale_name(char* buf, size_t size)
     return sizeof(fallback) - 1;
 }
 
+bool dn2cpp_pal_locale_name_supported(const char16_t* name, int32_t length)
+{
+    std::wstring resolved(reinterpret_cast<const wchar_t*>(name), static_cast<size_t>(length));
+    wchar_t locale[LOCALE_NAME_MAX_LENGTH];
+    return ::GetLocaleInfoEx(resolved.c_str(), LOCALE_SNAME, locale, LOCALE_NAME_MAX_LENGTH) != 0;
+}
+
+int32_t dn2cpp_pal_locale_number_digits_override(const char16_t* name, int32_t length)
+{
+    wchar_t userLocale[LOCALE_NAME_MAX_LENGTH];
+    if (::GetUserDefaultLocaleName(userLocale, LOCALE_NAME_MAX_LENGTH) == 0)
+        return -1;
+    std::wstring resolved(reinterpret_cast<const wchar_t*>(name), static_cast<size_t>(length));
+    if (resolved != userLocale)
+        return -1;
+    DWORD digits = 0;
+    if (::GetLocaleInfoEx(resolved.c_str(), LOCALE_IDIGITS | LOCALE_RETURN_NUMBER,
+        reinterpret_cast<wchar_t*>(&digits), sizeof(digits) / sizeof(wchar_t)) == 0)
+        return -1;
+    return static_cast<int32_t>(digits);
+}
+
 int32_t dn2cpp_pal_ansi_encode(const char16_t* src, int32_t srcLen, char* buf, int32_t bufSize, int32_t bestFit)
 {
     if (src == nullptr || srcLen <= 0)

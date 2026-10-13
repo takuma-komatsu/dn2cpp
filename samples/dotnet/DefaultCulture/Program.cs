@@ -64,6 +64,48 @@ namespace DefaultCulture
             RunFallbackData();
             WriteVariantIdentities(c, originalUI, originalInstalled);
             WriteExtensionIdentities(c, originalUI, originalInstalled);
+            WriteUserNumberDigits(c);
+        }
+
+        private static void WriteUserNumberDigits(CultureInfo original)
+        {
+            Console.WriteLine("== default culture user number digits ==");
+            string name = original.Name;
+            int lcid = original.LCID;
+            Console.WriteLine("  constructor=" + NumberDigits(() => new CultureInfo(name)));
+            Console.WriteLine("  without override=" + NumberDigits(() => new CultureInfo(name, false)));
+            Console.WriteLine("  cached name=" + NumberDigits(() => CultureInfo.GetCultureInfo(name)));
+            Console.WriteLine("  integer constructor=" + NumberDigits(() => new CultureInfo(lcid)));
+            Console.WriteLine("  integer without override=" + NumberDigits(() => new CultureInfo(lcid, false)));
+            Console.WriteLine("  cached integer=" + NumberDigits(() => CultureInfo.GetCultureInfo(lcid)));
+            Console.WriteLine("  constructor again=" + NumberDigits(() => new CultureInfo(name)));
+            Console.WriteLine("  without override again=" + NumberDigits(() => new CultureInfo(name, false)));
+            foreach (string suffix in new[]
+            {
+                "-a-foo", "-x-foo", "-u-a", "-t-a", "-x-lvariant",
+                "-u-ca-gregory", "-U-NU-LATN", "-u-nu-latn", "-u-co-phoneb"
+            })
+            {
+                string extended = name + suffix;
+                Console.WriteLine("  extended '" + extended + "'=" + NumberDigits(() => new CultureInfo(extended))
+                    + " without override=" + NumberDigits(() => new CultureInfo(extended, false)));
+            }
+            Console.WriteLine("default culture user number digits end");
+        }
+
+        private static string NumberDigits(Func<CultureInfo> create)
+        {
+            try
+            {
+                CultureInfo culture = create();
+                NumberFormatInfo number = culture.NumberFormat;
+                return number.NumberDecimalDigits + "," + number.PercentDecimalDigits
+                    + " N=" + (1234.5).ToString("N", culture) + " P=" + (0.125).ToString("P", culture);
+            }
+            catch (CultureNotFoundException)
+            {
+                return nameof(CultureNotFoundException);
+            }
         }
 
         private static void WriteExtensionIdentities(CultureInfo current, CultureInfo ui, CultureInfo installed)
@@ -102,13 +144,23 @@ namespace DefaultCulture
                 "en-US-POSIX", "en-US-POSIX-u-nu-arab"
             } : new[] { name })
             {
-                CultureInfo culture = new CultureInfo(input);
+                CultureInfo culture;
+                try
+                {
+                    culture = new CultureInfo(input);
+                }
+                catch (CultureNotFoundException exception)
+                {
+                    Console.WriteLine("  '" + input.Replace("\0", "<NUL>") + "': " + nameof(CultureNotFoundException)
+                        + " param=" + exception.ParamName + " name=" + exception.InvalidCultureName.Replace("\0", "<NUL>"));
+                    continue;
+                }
                 NumberFormatInfo n = culture.NumberFormat;
                 Console.WriteLine("  '" + input.Replace("\0", "<NUL>") + "' -> '" + culture.Name + "' value='" + culture.ToString()
                     + "' LCID=" + culture.LCID + " neutral=" + culture.IsNeutralCulture);
-                Console.WriteLine("    specific='" + CultureInfo.CreateSpecificCulture(input).Name
-                    + "' cached='" + CultureInfo.GetCultureInfo(input).Name
-                    + "' without override='" + new CultureInfo(input, false).Name + "'");
+                Console.WriteLine("    specific='" + CultureName(() => CultureInfo.CreateSpecificCulture(input))
+                    + "' cached='" + CultureName(() => CultureInfo.GetCultureInfo(input))
+                    + "' without override='" + CultureName(() => new CultureInfo(input, false)) + "'");
                 Console.WriteLine("    separators=" + n.NumberDecimalSeparator + "|" + n.NumberGroupSeparator
                     + "|" + n.CurrencyDecimalSeparator + "|" + n.CurrencyGroupSeparator
                     + "|" + n.PercentDecimalSeparator + "|" + n.PercentGroupSeparator);
@@ -141,6 +193,19 @@ namespace DefaultCulture
             catch (ArgumentOutOfRangeException)
             {
                 return nameof(ArgumentOutOfRangeException);
+            }
+        }
+
+        private static string CultureName(Func<CultureInfo> create)
+        {
+            try
+            {
+                return create().Name;
+            }
+            catch (CultureNotFoundException exception)
+            {
+                return nameof(CultureNotFoundException) + " param=" + exception.ParamName
+                    + " name=" + exception.InvalidCultureName;
             }
         }
 

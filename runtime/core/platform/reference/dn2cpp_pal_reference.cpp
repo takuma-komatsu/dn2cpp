@@ -222,6 +222,20 @@ char16_t dn2cpp_pal_ansi_decode_char(uint8_t b)
 
 // ── Locale ───────────────────────────────────────────────────────────────────
 
+bool dn2cpp_pal_locale_name_supported(const char16_t* name, int32_t length)
+{
+    (void)name;
+    (void)length;
+    return true;
+}
+
+int32_t dn2cpp_pal_locale_number_digits_override(const char16_t* name, int32_t length)
+{
+    (void)name;
+    (void)length;
+    return -1;
+}
+
 int32_t dn2cpp_pal_default_locale_name(char* buf, size_t size)
 {
     // The declared degrade. A target-free implementation has no user to ask —
