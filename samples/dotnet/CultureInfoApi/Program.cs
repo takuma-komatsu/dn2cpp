@@ -103,6 +103,16 @@ namespace CultureInfoApi
                 RunExtensionIdentities(args.Length > 1 ? args[1] : null);
                 return;
             }
+            if (args.Length > 0 && args[0] == "culture-undefined-platform-identities")
+            {
+                RunUndefinedPlatformIdentities(args.Length > 1 ? args[1] : null);
+                return;
+            }
+            if (args.Length > 3 && args[0] == "culture-undefined-platform-cache")
+            {
+                RunUndefinedPlatformCache(args[1], args[2], args[3] == "constructor-first");
+                return;
+            }
             if (args.Length > 0 && args[0] == "culture-undefined-extension-metadata")
             {
                 RunUndefinedExtensionMetadata(args.Length > 1 ? args[1] : null);
@@ -509,6 +519,50 @@ namespace CultureInfoApi
             RunInstanceEquality();
             RunExtensionIdentities();
             RunUndefinedExtensionMetadata();
+            RunUndefinedPlatformIdentities();
+        }
+
+        private static void RunUndefinedPlatformIdentities(string name = null)
+        {
+            Console.WriteLine("== culture undefined platform identities ==");
+            foreach (string input in name is null ? new[]
+            {
+                "", "und", "und-a-foo", "und-u-a", "und-t-a", "und-u-nu-latn",
+                "und-U-nu-latn", "und-u-co-phonebk", "und-a-a", "und-a-a-u-nu-latn",
+                "und-Latn-u-nu-latn", "und-US-u-nu-latn", "und-FOOBAR-u-nu-latn",
+                "und-x-foo", "und-x-a", "und-x-foo-u-nu-latn", "und-x-lvariant", "und-x-foo-lvariant",
+                "und-x-123456789", "und-a-foo-x-foo", "und-x-lvariant-FOOBAR", "en-und-a-foo"
+            } : new[] { name })
+            {
+                CultureInfo constructor = new CultureInfo(input);
+                CultureInfo withoutOverride = new CultureInfo(input, false);
+                CultureInfo cached = CultureInfo.GetCultureInfo(input);
+                CultureInfo specific = CultureInfo.CreateSpecificCulture(input);
+                Console.WriteLine("  input='" + input + "'");
+                Console.WriteLine("    constructor=" + UndefinedPlatformIdentity(constructor));
+                Console.WriteLine("    without override=" + UndefinedPlatformIdentity(withoutOverride));
+                Console.WriteLine("    cached=" + UndefinedPlatformIdentity(cached));
+                Console.WriteLine("    specific=" + UndefinedPlatformIdentity(specific));
+                Console.WriteLine("    constructor/cached=" + ReferenceEquals(constructor, cached)
+                    + " repeat=" + ReferenceEquals(cached, CultureInfo.GetCultureInfo(input))
+                    + " canonical=" + ReferenceEquals(cached, CultureInfo.GetCultureInfo(cached.Name)));
+            }
+            Console.WriteLine("culture undefined platform identities end");
+        }
+
+        private static string UndefinedPlatformIdentity(CultureInfo culture) => VariantCultureIdentity(culture)
+            + " invariant=" + ReferenceEquals(culture, CultureInfo.InvariantCulture);
+
+        private static void RunUndefinedPlatformCache(string firstName, string secondName, bool constructorFirst)
+        {
+            RunExtensionCacheOrder(firstName, secondName, constructorFirst);
+            CultureInfo invariantLcid = CultureInfo.GetCultureInfo(127);
+            CultureInfo emptyName = CultureInfo.GetCultureInfo("");
+            Console.WriteLine("  invariant LCID=" + UndefinedPlatformIdentity(invariantLcid)
+                + " repeat=" + ReferenceEquals(invariantLcid, CultureInfo.GetCultureInfo(127)));
+            Console.WriteLine("  empty name=" + UndefinedPlatformIdentity(emptyName)
+                + " invariant LCID=" + ReferenceEquals(emptyName, invariantLcid));
+            Console.WriteLine("culture undefined platform cache end");
         }
 
         private static void RunUndefinedExtensionMetadata(string name = null)

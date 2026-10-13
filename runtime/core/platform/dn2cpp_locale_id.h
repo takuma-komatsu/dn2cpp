@@ -297,6 +297,12 @@ static Dn2CppLocaleExtensionState<Char> dn2cpp_locale_identity_extensions(
                 const char* legacy = "lvariant";
                 bool match = itemEnd - item == 8;
                 for (size_t i = 0; match && i < 8; i++) match = lower(name[item + i]) == legacy[i];
+                if (match && itemEnd == valueEnd)
+                {
+                    // A valueless lvariant consumes the private-use keyword.
+                    state.keywords = precedingKeyword;
+                    break;
+                }
                 if (match && itemEnd < valueEnd)
                 {
                     size_t count = valueEnd - itemEnd;
