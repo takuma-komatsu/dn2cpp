@@ -10,9 +10,8 @@ using System.Threading;
 // the same helper through the methtab invoker. Reflection is also the only way
 // an ARRAY or a STRING is ever the receiver, since neither can be derived from.
 //
-// A cloned string is diffed by length, type and identity only: real .NET returns
-// the right Length and first char over uninitialized heap after that, so there is
-// no deterministic content to match.
+// Nonempty string receivers can corrupt the CLR heap. Their safe native copies
+// are frozen in ReflectShallowCloneRefusalSubset; empty strings stay in parity.
 namespace MemberwiseCloneSubset;
 
 static class Program
@@ -161,10 +160,6 @@ static class Program
         md2[1, 2] = 8;
         Console.WriteLine(md[1, 2] + " " + md2[1, 2]);
 
-        // The string: length, type and identity only — see the file header.
-        string s = "hello world";
-        object sc = mwc.Invoke(s, null)!;
-        Console.WriteLine(((string)sc).Length + " " + sc.GetType().FullName + " " + ReferenceEquals(s, sc));
         Console.WriteLine(((string)mwc.Invoke("", null)!).Length);
 
         // A reflected clone of an ordinary class agrees with the call-site route.
@@ -230,5 +225,21 @@ static class Program
         //    pointer, past the object header, so a truncated clone cannot print it.
         var cc = (CultureInfo)mwc.Invoke(CultureInfo.InvariantCulture, null)!;
         Console.WriteLine("[" + cc.Name + "]|" + (cc.Name.Length == 0));
+    }
+
+    internal static void RunAfterCollection()
+    {
+        Console.WriteLine("== memberwise clone collection ==");
+        MethodInfo clone = typeof(object).GetMethod(
+            "MemberwiseClone", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var first = (string)clone.Invoke(string.Empty, null)!;
+        var second = (string)clone.Invoke(first, null)!;
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        Console.WriteLine("empty clones survive GC=" + first.Length + ":" + second.GetType().FullName
+            + ":" + ReferenceEquals(first, string.Empty) + ":" + ReferenceEquals(second, string.Empty)
+            + ":" + ReferenceEquals(first, second));
+        Console.WriteLine("memberwise clone collection end");
     }
 }

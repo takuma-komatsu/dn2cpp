@@ -2,32 +2,12 @@ using System;
 using System.Reflection;
 using System.Threading;
 
-// The DIVERGING half of reflective cloning. Object.MemberwiseClone works for the
-// intrinsic-represented reference types — the agreeing half is diffed live against real
-// .NET by MemberwiseCloneSubset in the reflect-invoke bucket — with SEVEN exceptions,
-// which is what this section freezes.
-//
-// Real .NET clones every one of these (measured on CoreCLR 10.0.9: SemaphoreSlim,
-// ManualResetEventSlim, CountdownEvent, Barrier, ReaderWriterLockSlim, Timer and Thread
-// all hand back a live clone), so the freeze is a DECLARED dn2cpp divergence and not a
-// claim about .NET — the same posture as ReflectMarshalVerdictSubset's
-// PlatformNotSupportedException rows.
-//
-// Why these seven and not the rest: dn2cpp represents them as hand-written C++ structs
-// whose state is owned SINGULARLY rather than pointed at. Five of them
-// (SemaphoreSlim/EventWaitHandle/CountdownEvent/Barrier/ReaderWriterLockSlim) are
-// `new`-allocated on the native heap and embed a std::mutex + std::condition_variable;
-// Timer additionally owns a running std::thread and a slot in a process-wide registry;
-// Thread's handle IS a std::thread. A bitwise copy of any of them is a second OWNER of
-// one resource, which is not what a shallow copy is — so the refusal is loud
-// (DN2CPP_TF_NO_SHALLOW_CLONE, dn2cpp_core.h) rather than a memcpy that compiles.
-// Closing it needs a per-type clone hook that rebuilds the native half; it may not be
-// closed by stamping an extent.
-//
-// Two spellings of the same handle are asserted deliberately: ManualResetEventSlim is
-// intrinsic-mapped onto the one EventWaitHandle representation, so the refusal names
-// `System.Threading.EventWaitHandle` and not the type the source wrote. That is the
-// message a user will actually see, so it is what the freeze records.
+// Native cloning divergences: owning runtime structs refuse a second resource
+// owner, while strings copy their full UTF-16 buffer. Nonempty string receivers
+// can corrupt the CLR heap and must run only through the native opt-in route.
+// The agreeing shapes remain in MemberwiseCloneSubset's live CLR parity gate.
+// ManualResetEventSlim shares the EventWaitHandle representation, so its refusal
+// names that runtime type rather than the source spelling.
 namespace ReflectShallowCloneRefusalSubset
 {
     internal static class Program
@@ -132,6 +112,39 @@ namespace ReflectShallowCloneRefusalSubset
             {
                 Console.WriteLine("SemaphoreSlim unwrapped -> " + e.GetType().Name);
             }
+        }
+
+        internal static void RunStringCopies()
+        {
+            Console.WriteLine("== safe string memberwise copies ==");
+            MethodInfo method = typeof(object).GetMethod(
+                "MemberwiseClone", BindingFlags.Instance | BindingFlags.NonPublic);
+            string[] sources = { "hello world", "A\u03A9\uD83D\uDE00\0Z", new string('\u754C', 257) };
+            var copies = new string[sources.Length];
+            for (int i = 0; i < sources.Length; i++)
+            {
+                string source = sources[i];
+                string copy = (string)method.Invoke(source, null);
+                string second = (string)method.Invoke(copy, null);
+                copies[i] = copy;
+                Console.WriteLine("string copy " + i + "=" + copy.Length + ":" + copy.GetType().FullName
+                    + ":" + (source == copy && copy == second) + ":" + ReferenceEquals(source, copy)
+                    + ":" + ReferenceEquals(copy, second));
+            }
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+            for (int i = 0; i < sources.Length; i++)
+            {
+                string source = sources[i];
+                string copy = copies[i];
+                bool charactersMatch = source.Length == copy.Length;
+                for (int j = 0; j < source.Length && charactersMatch; j++)
+                    charactersMatch &= source[j] == copy[j];
+                Console.WriteLine("string copy GC " + i + "=" + (source == copy)
+                    + ":" + charactersMatch + ":" + copy.Length);
+            }
+            Console.WriteLine("safe string memberwise copies end");
         }
     }
 }

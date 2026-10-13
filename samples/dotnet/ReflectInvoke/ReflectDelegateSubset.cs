@@ -667,7 +667,7 @@ namespace ReflectDelegateSubset
             }
         }
 
-        internal static unsafe void RunRuntimeTemplateBindings(bool forceCollection = true)
+        internal static unsafe void RunRuntimeTemplateBindings()
         {
             Console.WriteLine("== substituted runtime delegate signatures ==");
             Type refs = typeof(SignatureRefGeneric<>).MakeGenericType(typeof(Guid));
@@ -727,8 +727,7 @@ namespace ReflectDelegateSubset
                 Type guid = typeof(SignatureAliasGeneric<>).MakeGenericType(typeof(Guid));
                 Type integer = typeof(SignatureAliasGeneric<>).MakeGenericType(typeof(int));
                 MethodInfo first = guid.GetMethod("Alias")!;
-                if (forceCollection)
-                    GC.Collect();
+                GC.Collect();
                 int failures = 0;
                 Parallel.For(0, 32, i =>
                 {

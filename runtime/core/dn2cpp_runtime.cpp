@@ -276,11 +276,9 @@ Dn2CppString* dn2cpp_object_tostring_nonvirtual(Dn2CppObject* obj)
 //                        header copy alone would be a valid object; the buffer is
 //                        copied anyway (see below).
 //
-// The string arm is a DELIBERATE divergence: real .NET's reflective MemberwiseClone
-// over a string hands back a clone whose chars past the first are uninitialized heap,
-// which is not even deterministic. Copying the buffer answers better than the oracle —
-// which is also why no diff gate can assert the cloned CONTENT, only the length and
-// the reference identity both runtimes agree on.
+// Nonempty string cloning deliberately copies the full buffer: reflective
+// MemberwiseClone can corrupt the CLR heap, so content and collection safety
+// belong in the native-only freeze gate. Empty strings retain live CLR parity.
 //
 // Real .NET clones every intrinsic-represented reference type, so the refusal set here
 // is only the types carrying DN2CPP_TF_NO_SHALLOW_CLONE — a statement about dn2cpp's

@@ -356,23 +356,22 @@ namespace ReflectInvoke
             HeaderlessReferenceIdentitySubset.Program.Run();
             if (args.Length > 0 && args[0] == "before-formal-constraint-metadata")
                 return;
-            // CLR string MemberwiseClone precedes this; collection probes run in the isolated driver.
-            ReflectGenericMethodSubset.Program.RunConstraintMetadata(false);
+            ReflectGenericMethodSubset.Program.RunConstraintMetadata();
             if (args.Length > 0 && args[0] == "before-open-generic-signatures")
                 return;
-            ReflectGenericMethodSubset.Program.RunOpenSignatures(false);
+            ReflectGenericMethodSubset.Program.RunOpenSignatures();
             if (args.Length > 0 && args[0] == "before-generic-definition-members")
                 return;
-            ReflectGenericMethodSubset.Program.RunGenericDefinitionMembers(false);
+            ReflectGenericMethodSubset.Program.RunGenericDefinitionMembers();
             if (args.Length > 0 && args[0] == "before-reflected-events")
                 return;
-            EventSubset.Program.RunReflection(false);
+            EventSubset.Program.RunReflection();
             if (args.Length > 0 && args[0] == "before-formal-declaring-methods")
                 return;
-            ReflectGenericMethodSubset.Program.RunDeclaringMethod(false);
+            ReflectGenericMethodSubset.Program.RunDeclaringMethod();
             if (args.Length > 0 && args[0] == "before-runtime-template-bindings")
                 return;
-            ReflectDelegateSubset.Program.RunRuntimeTemplateBindings(false);
+            ReflectDelegateSubset.Program.RunRuntimeTemplateBindings();
             if (args.Length > 0 && args[0] == "before-opaque-object-virtuals")
                 return;
             ReflectDelegateIdentitySubset.Program.RunOpaqueObjectVirtualInheritance();
@@ -391,6 +390,9 @@ namespace ReflectInvoke
         if (args.Length > 0 && args[0] == "before-runtime-held-interfaces")
             return;
         RuntimeHeldInterfacesSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-memberwise-clone-collection")
+            return;
+        MemberwiseCloneSubset.Program.RunAfterCollection();
         }
     }
 }

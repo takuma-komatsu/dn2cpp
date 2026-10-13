@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Nonempty string MemberwiseClone copies preserve UTF-16 contents and collection safety natively.
 # Runtime generic template invocation, member rows, hidden contexts and boxed-value copies.
 # Assembly.Load distinguishes null AssemblyName objects and missing/empty simple names.
 # Single-attribute queries construct every match before ambiguity or a later constructor fault.
@@ -206,18 +207,12 @@
 # where a transpile-time verdict cannot. Its agreeing half is a LIVE diff, in MarshalPinning's
 # SizeOfOffsetOfSubset; only a deliberate divergence may live here.
 #
-# The shallow-clone refusal section (ReflectShallowCloneRefusalSubset) is
-# NOT about reflection, despite arriving through a reflective Invoke: its subject
-# is which hand-written RUNTIME STRUCTS may be copied bitwise. Object.MemberwiseClone
-# works for the intrinsic-represented reference types (the agreeing half
-# is diffed live in the reflect-invoke bucket, MemberwiseCloneSubset section 5); the
-# seven types carrying DN2CPP_TF_NO_SHALLOW_CLONE keep a loud refusal because their
-# representation OWNS native state — a native-heap allocation, an embedded
-# mutex/condition variable, a running std::thread, a slot in a process-wide registry —
-# so a copy would be a second owner rather than a shallow copy. Real .NET clones all
-# seven, so this is a declared divergence like the marshal-verdict rows above, and its
-# last line is a NEGATIVE control (CancellationTokenSource, an intrinsic type that does
-# clone) whose job is to go red if the refusal set ever widens by accident.
+# ReflectShallowCloneRefusalSubset freezes native cloning divergences. Runtime
+# structs carrying DN2CPP_TF_NO_SHALLOW_CLONE refuse a second owner of native state;
+# CancellationTokenSource remains a copying control. Nonempty strings copy their
+# full UTF-16 buffer through an explicit native-only argument: reflective cloning
+# can corrupt the CLR heap, including in culture verification of this bucket.
+# Safe empty strings and the agreeing runtime shapes remain in reflect-invoke.
 # The TYPE-IDENTITY section (TypeIdentitySubset) is in this bucket for the CoreLib
 # surface it needs, not for its theme, so read what it actually asserts before
 # pruning: it is the invariant that ONE CLR type has exactly ONE
@@ -324,6 +319,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|reflected-delegates-pr
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|reflected-arrays-prefix-argv:before-reflected-arrays"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|fixed-function-pointers-prefix-argv:before-fixed-function-pointers"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|template-delegate-method-identity-prefix-argv:before-template-delegate-method-identity"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|string-clone-copies-native-argv:string-clone-copies"
 
 EXPFILE="$(dirname "$0")/expected/reflect-types.txt"
 BCL=(System.Linq.Expressions System.Linq System.Collections \
@@ -332,7 +328,18 @@ BCL=(System.Linq.Expressions System.Linq System.Collections \
 
 # These comparisons inspect the original metadata through C++ reflection policies.
 # Managed preservation is covered by build-and-run-preserve-control.sh.
-corelib_freeze_gate ReflectTypes "$EXPFILE" "${BCL[@]}" --no-ildiet
+gate_string_clone_prefix_asserts() {
+    local out="$1" before prefix
+    before=$(run_bounded "$out/ReflectTypes$EXE_EXT")
+    prefix=$(awk '/^== safe string memberwise copies ==$/ { exit } { print }' "$EXPFILE")
+    assert_output "$(strip_cr_win "$before")" "$prefix"
+}
+gate_extra_asserts() {
+    gate_string_clone_prefix_asserts "$1"
+}
+DN2CPP_GATE_RUN_ARGS=string-clone-copies \
+    corelib_freeze_gate ReflectTypes "$EXPFILE" "${BCL[@]}" --no-ildiet
+unset -f gate_extra_asserts
 
 # --trim-reflection arm. The flag ships ON for the Godot Web export, and its whole promise
 # is that it touches only the reflection metadata of types the program cannot reflect over —
@@ -359,16 +366,17 @@ for name in "${BCL[@]}"; do
 done
 out=artifacts/reflecttypes-trim
 invoke_cli "$app" "${refs[@]}" --no-ildiet --trim-reflection -o "$out"
-if gate_cache_check "$out" "reflect-types-trim|no-ildiet|$corelib" \
+if gate_cache_check "$out" "reflect-types-trim|no-ildiet|native-argv:string-clone-copies|$corelib" \
         "$app" "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json" "$EXPFILE"; then
     gate_cache_hit_msg
 else
     compile_console "$out" ReflectTypes
     set +e
-    native=$("./$out/ReflectTypes"); native_code=$?
+    native=$("./$out/ReflectTypes" string-clone-copies); native_code=$?
     set -e
     assert_output "$(strip_cr_win "$native")" "$(cat "$EXPFILE")"
     assert_exit_code "$native_code" 0
+    gate_string_clone_prefix_asserts "$out"
     gate_cache_commit
 fi
 

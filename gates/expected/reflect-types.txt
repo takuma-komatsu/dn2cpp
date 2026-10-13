@@ -1492,3 +1492,11 @@ null-type-attribute-count=1
 null-type-positional=True
 null-type-elements=2/String/True
 null-type-named=True
+== safe string memberwise copies ==
+string copy 0=11:System.String:True:False:False
+string copy 1=6:System.String:True:False:False
+string copy 2=257:System.String:True:False:False
+string copy GC 0=True:True:11
+string copy GC 1=True:True:6
+string copy GC 2=True:True:257
+safe string memberwise copies end
