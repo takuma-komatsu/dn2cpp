@@ -11,8 +11,12 @@ ordinary_fixture_diff_gate() {
         _CG_OUT="$out"
         _CG_CORELIB=${_CG_CORELIB_IN:-$(locate_corelib)}
         bcl=$(dirname "$_CG_CORELIB")
-        dotnet build "samples/dotnet/$fixture_bucket/$project.csproj" \
-            -c "$CONFIG" --nologo -v q -o "$out/app"
+        if declare -F gate_build_fixture >/dev/null; then
+            gate_build_fixture "samples/dotnet/$fixture_bucket/$project.csproj" "$out/app"
+        else
+            dotnet build "samples/dotnet/$fixture_bucket/$project.csproj" \
+                -c "$CONFIG" --nologo -v q -o "$out/app"
+        fi
         _CG_APP="$out/app/$project.dll"
         _CG_EXTRA_REFERENCE_INPUTS=()
         local refs=(-r "$_CG_CORELIB")

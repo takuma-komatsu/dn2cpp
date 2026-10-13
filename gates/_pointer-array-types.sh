@@ -2,7 +2,8 @@
 # Pointer and function-pointer array layouts retain full signature identity and validation.
 pointer_array_asserts() {
     local output="$1" line
-    for line in '== pointer array types ==' 'pointer array types end' \
+    reflection_assert_lines "$output" 1 \
+        '== pointer array types ==' 'pointer array types end' \
         'pointer array rejected entries: 0' 'pointer array null entries: 1' \
         'pointer array allocation: System.Int32*[]/2/4656/True' \
         'function array allocation: System.Int32()[]/2/9024/True' \
@@ -19,10 +20,7 @@ pointer_array_asserts() {
         'signature array pinned data: 4656' \
         'signature array MD default: 0/0/0/0' \
         'signature array byte length: ArgumentException' \
-        'signature array MD clone clear: 4656/0'; do
-        test "$(grep -Fxc -- "$line" "$output")" = 1 \
-            || { echo "FAIL: pointer-array block witness missing or repeated: $output/$line" >&2; return 1; }
-    done
+        'signature array MD clone clear: 4656/0'
 }
 
 pointer_array_isolated_routes() {
@@ -30,9 +28,8 @@ pointer_array_isolated_routes() {
     for route in from create jagged; do
         out="artifacts/reflect-invoke-pointer-array-route-$route"
         mkdir -p "$out"
-        dotnet build samples/dotnet/ReflectInvoke/PointerArrayTypesOnly.csproj \
-            -c "$CONFIG" --nologo -v q -p:PointerArrayRoute="$route" -o "$out/app"
-        run_bounded dotnet "$out/app/PointerArrayTypesOnly.dll" > "$out/clr.raw.stdout"
+        reflection_build_once samples/dotnet/ReflectInvoke/PointerArrayTypesOnly.csproj "$out/app" -p:PointerArrayRoute="$route"
+        reflection_oracle "$out/app/PointerArrayTypesOnly.dll" > "$out/clr.raw.stdout"
         strip_cr_win_file "$out/clr.raw.stdout" > "$out/clr.stdout"
         DN2CPP_STRICT_COMPLETION=1 invoke_cli "$out/app/PointerArrayTypesOnly.dll" -r "$(locate_corelib)" \
             --no-ildiet -o "$out" > "$out/emit.log" 2>&1
@@ -65,9 +62,8 @@ pointer_array_diff_axes() {
             trimmed) flags=(--trim-reflection) ;;
             unshared) flags=(--no-shared-generics) ;;
         esac
-        dotnet build samples/dotnet/ReflectInvoke/PointerArrayTypesOnly.csproj \
-            -c "$CONFIG" --nologo -v q -o "$out/app"
-        run_bounded dotnet "$out/app/PointerArrayTypesOnly.dll" > "$out/clr.raw.stdout"
+        reflection_build_once samples/dotnet/ReflectInvoke/PointerArrayTypesOnly.csproj "$out/app"
+        reflection_oracle "$out/app/PointerArrayTypesOnly.dll" > "$out/clr.raw.stdout"
         strip_cr_win_file "$out/clr.raw.stdout" > "$out/clr.stdout"
         DN2CPP_STRICT_COMPLETION=1 invoke_cli "$out/app/PointerArrayTypesOnly.dll" -r "$(locate_corelib)" \
             --no-ildiet ${flags[@]+"${flags[@]}"} -o "$out" > "$out/emit.log" 2>&1
@@ -83,7 +79,7 @@ gate_pointer_array_prefix_asserts() {
     local out="$1" axis
     for axis in dotnet native; do
         if [ "$axis" = dotnet ]; then
-            run_bounded dotnet "$_CG_APP" before-pointer-array-types > "$out/pointer-array-prefix.$axis.raw.stdout"
+            reflection_oracle "$_CG_APP" before-pointer-array-types > "$out/pointer-array-prefix.$axis.raw.stdout"
         else
             run_bounded "$out/ReflectInvoke$EXE_EXT" before-pointer-array-types > "$out/pointer-array-prefix.$axis.raw.stdout"
         fi

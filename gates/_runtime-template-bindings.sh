@@ -28,7 +28,7 @@ runtime_template_binding_prefix_asserts() {
     local out="$1" axis
     for axis in dotnet native; do
         if [ "$axis" = dotnet ]; then
-            run_bounded dotnet "$_CG_APP" before-runtime-template-bindings > "$out/template-before.$axis.raw.stdout"
+            reflection_oracle "$_CG_APP" before-runtime-template-bindings > "$out/template-before.$axis.raw.stdout"
         else
             run_bounded "$out/ReflectInvoke$EXE_EXT" before-runtime-template-bindings > "$out/template-before.$axis.raw.stdout"
         fi
@@ -38,7 +38,7 @@ runtime_template_binding_prefix_asserts() {
         diff -u "$out/template-before.$axis.stdout" "$out/template-prefix.$axis.stdout"
         runtime_template_binding_asserts "$out/virtual-delegate-full.$axis.stdout"
         if [ "$axis" = dotnet ]; then
-            run_bounded dotnet "$_CG_APP" before-runtime-base-projections > "$out/base-before.$axis.raw.stdout"
+            reflection_oracle "$_CG_APP" before-runtime-base-projections > "$out/base-before.$axis.raw.stdout"
         else
             run_bounded "$out/ReflectInvoke$EXE_EXT" before-runtime-base-projections > "$out/base-before.$axis.raw.stdout"
         fi
@@ -93,7 +93,7 @@ runtime_template_binding_diff_axes() {
             trimmed) flags=(--trim-reflection) ;;
             ildiet) diet_flags=() ;;
         esac
-        dotnet build samples/dotnet/ReflectInvoke/RuntimeTemplateBindingOnly.csproj -c "$CONFIG" --nologo -v minimal -o "$out/app" > "$out/build.log" 2>&1 \
+        reflection_build_once samples/dotnet/ReflectInvoke/RuntimeTemplateBindingOnly.csproj "$out/app" -v minimal > "$out/build.log" 2>&1 \
             || { cat "$out/build.log" >&2; return 1; }
         grep -Eq '^[[:space:]]*template pointer slot fixtures written[[:space:]]*$' "$out/build.log"
         DN2CPP_STRICT_COMPLETION=1 invoke_cli "$out/app/RuntimeTemplateBindingOnly.dll" -r "$corelib" \
@@ -115,7 +115,7 @@ runtime_template_binding_diff_axes() {
         for mode in default boundary invoke stripped; do
             local args=()
             [ "$mode" = default ] || args=("$mode")
-            run_bounded dotnet "$out/app/RuntimeTemplateBindingOnly.dll" ${args[@]+"${args[@]}"} > "$out/$mode.clr.raw.stdout"
+            reflection_oracle "$out/app/RuntimeTemplateBindingOnly.dll" ${args[@]+"${args[@]}"} > "$out/$mode.clr.raw.stdout"
             run_bounded "$out/RuntimeTemplateBindingOnly$EXE_EXT" ${args[@]+"${args[@]}"} > "$out/$mode.native.raw.stdout"
             strip_cr_win_file "$out/$mode.clr.raw.stdout" > "$out/$mode.clr.stdout"
             strip_cr_win_file "$out/$mode.native.raw.stdout" > "$out/$mode.native.stdout"
@@ -127,13 +127,12 @@ runtime_template_binding_diff_axes() {
                         "$out/$mode.$runtime.stdout" > "$out/$mode.$runtime.parity.stdout"
                 done
                 diff -u "$out/$mode.clr.parity.stdout" "$out/$mode.native.parity.stdout"
-                for line in 'signature opaque return invoke => NotSupportedException' \
+                reflection_assert_lines "$out/$mode.native.stdout" any \
+                    'signature opaque return invoke => NotSupportedException' \
                     'signature opaque argument invoke => NotSupportedException' \
                     'signature ordinary ref invoke => NotSupportedException' \
                     'signature ordinary pointer invoke => NotSupportedException' \
-                    'signature overload reordered base => bound'; do
-                    grep -Fxq "$line" "$out/$mode.native.stdout"
-                done
+                    'signature overload reordered base => bound'
             elif [ "$mode/$axis" = stripped/trimmed ]; then
                 test "$(grep -Fxc 'template stripped binding => PlatformNotSupportedException' "$out/$mode.native.stdout")" = 2
                 test "$(grep -Fxc 'template stripped binding => True' "$out/$mode.clr.stdout")" = 2
@@ -146,7 +145,7 @@ runtime_template_binding_diff_axes() {
         test "$(tail -n 1 "$out/default.native.stdout")" = 'runtime generic base projections end'
         for mode in clr native; do
             if [ "$mode" = clr ]; then
-                run_bounded dotnet "$out/app/RuntimeTemplateBindingOnly.dll" before-base-projections > "$out/base-before.$mode.raw.stdout"
+                reflection_oracle "$out/app/RuntimeTemplateBindingOnly.dll" before-base-projections > "$out/base-before.$mode.raw.stdout"
             else
                 run_bounded "$out/RuntimeTemplateBindingOnly$EXE_EXT" before-base-projections > "$out/base-before.$mode.raw.stdout"
             fi
@@ -157,7 +156,8 @@ runtime_template_binding_diff_axes() {
         run_bounded "$out/RuntimeTemplateBindingOnly$EXE_EXT" unsafe > "$out/unsafe.raw.stdout"
         strip_cr_win_file "$out/unsafe.raw.stdout" > "$out/unsafe.stdout"
         local line
-        for line in 'signature unsafe indirect method => unsupported' \
+        reflection_assert_lines "$out/unsafe.stdout" any \
+            'signature unsafe indirect method => unsupported' \
             'signature unsafe indirect named => unsupported' \
             'signature unsafe value copy => unsupported' \
             'signature unsafe byref Invoke => NotSupportedException' \
@@ -166,25 +166,28 @@ runtime_template_binding_diff_axes() {
             'signature unsafe pointer clear => unsupported/unsupported' \
             'signature unsafe nested read => unsupported/unsupported' \
             'signature unsafe nested clear => unsupported/unsupported' \
-            'signature unsafe indirect calls => 0'; do
-            grep -Fxq "$line" "$out/unsafe.stdout"
-        done
+            'signature unsafe indirect calls => 0'
         if grep -Eq '^// ReflectDelegateSubset.SignatureUnsafePointer.*::(Read|Clear)' "$out"/generated*.h "$out"/generated_b*.cpp; then
             echo 'FAIL: canonical pointer reference-slot body was emitted' >&2
             return 1
         fi
-        run_bounded dotnet "$out/app/RuntimeTemplateBindingOnly.dll" unsafe > "$out/unsafe.clr.raw.stdout"
+        reflection_oracle "$out/app/RuntimeTemplateBindingOnly.dll" unsafe > "$out/unsafe.clr.raw.stdout"
         strip_cr_win_file "$out/unsafe.clr.raw.stdout" > "$out/unsafe.clr.stdout"
-        for line in 'signature unsafe pointer read => bound/bound' \
+        reflection_assert_lines "$out/unsafe.clr.stdout" any \
+            'signature unsafe pointer read => bound/bound' \
             'signature unsafe pointer clear => bound/bound' \
             'signature unsafe nested read => bound/bound' \
-            'signature unsafe nested clear => bound/bound'; do
-            grep -Fxq "$line" "$out/unsafe.clr.stdout"
-        done
+            'signature unsafe nested clear => bound/bound'
+        reflection_expected_lines=()
         for line in 'ProjectionRepeated`2' 'ProjectionConstant`2' 'ProjectionConstructed`2'; do
-            grep -Fxq "projection unsupported $line => unsupported" "$out/unsafe.stdout"
-            grep -Fxq "projection unsupported $line => created" "$out/unsafe.clr.stdout"
+            reflection_expected_lines+=("projection unsupported $line => unsupported")
         done
+        reflection_assert_lines "$out/unsafe.stdout" any "${reflection_expected_lines[@]}"
+        reflection_expected_lines=()
+        for line in 'ProjectionRepeated`2' 'ProjectionConstant`2' 'ProjectionConstructed`2'; do
+            reflection_expected_lines+=("projection unsupported $line => created")
+        done
+        reflection_assert_lines "$out/unsafe.clr.stdout" any "${reflection_expected_lines[@]}"
         echo "runtime-template binding $axis OK"
     done
 }
