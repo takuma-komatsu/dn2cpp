@@ -291,6 +291,15 @@ static bool dn2cpp_culture_name_eq_ci(Dn2CppString* s, const char16_t* lit)
     return i == s->length;
 }
 
+static const char16_t* dn2cpp_culture_compatibility_name(Dn2CppString* name)
+{
+    if (dn2cpp_culture_name_eq_ci(name, u"zh-CHS"))
+        return u"zh-Hans";
+    if (dn2cpp_culture_name_eq_ci(name, u"zh-CHT"))
+        return u"zh-Hant";
+    return nullptr;
+}
+
 static const Dn2CppCultureRow* dn2cpp_culture_find_row(Dn2CppString* name)
 {
     // Linear scan: this runs on `new CultureInfo(x)` and once for the host
@@ -303,6 +312,20 @@ static const Dn2CppCultureRow* dn2cpp_culture_find_row(Dn2CppString* name)
         if (dn2cpp_culture_name_eq_ci(name, kCultures[i].name))
             return &kCultures[i];
     return nullptr;
+}
+
+static const Dn2CppCultureRow* dn2cpp_culture_find_metadata_row(Dn2CppString* name)
+{
+    // Legacy names share the modern LCID but retain their public identity
+    // and country-shaped neutrality, independently of numeric resources.
+    Dn2CppString compatible{};
+    if (const char16_t* fallback = dn2cpp_culture_compatibility_name(name))
+    {
+        compatible.chars = fallback;
+        compatible.length = static_cast<int32_t>(std::char_traits<char16_t>::length(fallback));
+        name = &compatible;
+    }
+    return dn2cpp_culture_find_row(name);
 }
 
 static bool dn2cpp_culture_ascii_alnum(char16_t c)
@@ -674,7 +697,17 @@ static Dn2CppString* dn2cpp_culture_normalize_name(Dn2CppString* name,
     // .NET's Windows ICU path also validates the resolved real name through
     // NLS. Validate after aliases and extensions, never the requested spelling.
     if (!dn2cpp_pal_locale_name_supported(canonical.data(), static_cast<int32_t>(canonical.size())))
-        return nullptr;
+    {
+        // CultureData retries only the exact legacy Chinese identifiers.
+        // Validate the modern resource name without replacing public identity.
+        Dn2CppString resolved{};
+        resolved.chars = canonical.data();
+        resolved.length = static_cast<int32_t>(canonical.size());
+        const char16_t* fallback = dn2cpp_culture_compatibility_name(&resolved);
+        if (fallback == nullptr || !dn2cpp_pal_locale_name_supported(fallback,
+            static_cast<int32_t>(std::char_traits<char16_t>::length(fallback))))
+            return nullptr;
+    }
     return dn2cpp_string_from_chars(canonical.data(), static_cast<int32_t>(canonical.size()));
 }
 
@@ -784,6 +817,18 @@ static bool dn2cpp_culture_is_posix(Dn2CppString* name)
 
 static const Dn2CppCultureRow* dn2cpp_culture_find_format_row(Dn2CppString* name)
 {
+    if (const char16_t* resource = dn2cpp_culture_compatibility_name(name))
+    {
+        // Windows retries through the modern script. Native ICU accepts the
+        // original country-shaped name, whose numeric resources inherit zh.
+#if !defined(_WIN32)
+        resource = u"zh";
+#endif
+        Dn2CppString resolved{};
+        resolved.chars = resource;
+        resolved.length = static_cast<int32_t>(std::char_traits<char16_t>::length(resource));
+        return dn2cpp_culture_find_row(&resolved);
+    }
     if (dn2cpp_culture_is_posix(name))
         return nullptr;
     Dn2CppString prefix = *name;
@@ -1411,7 +1456,7 @@ const Dn2CppNumberFormatInfo* dn2cpp_culture_by_name(Dn2CppString* name, bool ca
                 break;
             }
     }
-    else if (const Dn2CppCultureRow* metadata = dn2cpp_culture_find_row(publicName))
+    else if (const Dn2CppCultureRow* metadata = dn2cpp_culture_find_metadata_row(publicName))
         lcid = metadata->lcid;
     const Dn2CppCultureRow* row = dn2cpp_culture_find_format_row(canonical);
     const Dn2CppCultureFallbackEntry* fallback = row == nullptr
@@ -1494,6 +1539,11 @@ const Dn2CppNumberFormatInfo* dn2cpp_culture_by_lcid(int32_t lcid)
     for (size_t i = 0; i < kCultureCount; i++)
         if (kCultures[i].lcid == lcid)
             data = dn2cpp_culture_intern(&kCultures[i], nullptr);
+#if !defined(_WIN32)
+    // ICU's reverse LCID map retains legacy Chinese names outside Windows.
+    if (lcid == 4 || lcid == 31748)
+        data = dn2cpp_culture_by_name(dn2cpp_lit16(lcid == 4 ? u"zh-CHS" : u"zh-CHT"), false, false);
+#endif
     if (data == nullptr)
         return nullptr;
     auto* result = static_cast<Dn2CppNumberFormatInfo*>(dn2cpp_alloc(sizeof(Dn2CppNumberFormatInfo)));
