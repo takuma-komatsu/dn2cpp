@@ -8029,6 +8029,11 @@ Dn2CppString* dn2cpp_format_int_c(int64_t v, int32_t byteWidth, Dn2CppString* fm
 Dn2CppString* dn2cpp_format_uint_c(uint64_t v, int32_t byteWidth, Dn2CppString* fmt, const Dn2CppNumberFormatInfo* n);
 Dn2CppString* dn2cpp_format_r8_c(double v, Dn2CppString* fmt, const Dn2CppNumberFormatInfo* n);
 Dn2CppString* dn2cpp_format_r4_c(float v, Dn2CppString* fmt, const Dn2CppNumberFormatInfo* n);
+// A custom format of digits[0..count) x 10^-scale (count <= 29); nullptr when
+// `fmt` is standard. Decimal formats its exact digits, never a double's.
+Dn2CppString* dn2cpp_format_decimal_custom_c(const char* digits, int32_t count, int32_t scale,
+                                             int32_t negative, Dn2CppString* fmt,
+                                             const Dn2CppNumberFormatInfo* n);
 int32_t dn2cpp_integral_format_uses_provider(Dn2CppString* fmt, int32_t negative);
 // Returns nullptr for a nonnumeric box; numeric default and explicit formats
 // use the same provider consumption rules as direct numeric calls.

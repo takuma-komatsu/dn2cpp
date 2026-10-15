@@ -712,6 +712,12 @@ Dn2CppString* dn2cpp_decimal_format_c(Dn2CppDecimal a, Dn2CppString* fmt, const 
         char out[80]; int o = dec_layout(a, out);
         return dn2cpp_localize_ascii(out, o, nfi);
     }
+    {
+        char digits[40];
+        int count = dec_digits(dec_mant(a), digits);
+        if (Dn2CppString* r = dn2cpp_format_decimal_custom_c(digits, count, a.scale(), a.sign(), fmt, nfi))
+            return r;
+    }
     // Standard specifiers route through the double number path for grouping/fixed
     // width (F/N/C/P/E and G with precision). The decimal's exact integer value is
     // preserved for default ToString; spec'd output matches .NET for the practical
