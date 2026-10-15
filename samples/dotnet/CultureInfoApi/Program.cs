@@ -25,6 +25,18 @@ namespace CultureInfoApi
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
             CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
 
+            if (args.Length > 0 && args[0] == "culture-iso-language")
+            {
+                RunIsoLanguage();
+                return;
+            }
+
+            if (args.Length > 0 && args[0] == "culture-iso-language-undefined")
+            {
+                RunIsoLanguageUndefined();
+                return;
+            }
+
             if (args.Length > 0 && args[0] == "culture-platform-name-validation")
             {
                 RunPlatformNameValidation();
@@ -356,6 +368,51 @@ namespace CultureInfoApi
             if (args.Length > 0 && args[0] == "before-culture-names")
                 return;
             RunCultureNames();
+            if (args.Length > 0 && args[0] == "before-iso-language")
+                return;
+            RunIsoLanguage();
+        }
+
+        private static void RunIsoLanguage()
+        {
+            Console.WriteLine("== ISO language names ==");
+            foreach (string name in new[]
+            {
+                "", "EN-us", "de-DE", "zh-Hans", "zh-CHS",
+                "iw", "heb", "eng", "fil", "haw",
+                "tlh", "sr-Latn-RS", "az-Cyrl-AZ", "no-bok", "qaa",
+                "in", "ji", "de-DE_phoneb", "eng-US", "fil-PH",
+                "zul", "bod", "sqi", "yid", "fry",
+                "i-enochian", "x-foo", "i-klingon", "x-foo_phoneb", "x-foobarbaz",
+                "i-foo", "i-foobar", "i-mingo", "und-x-foo", "jaw",
+                "mol", "tgl", "ger", "no-bok-u-nu-arab", "x-foo-US_phoneb",
+                "x-123456789",
+            })
+                WriteIsoLanguage(name);
+            try
+            {
+                Console.WriteLine("iso null=" + ((CultureInfo)null!).TwoLetterISOLanguageName);
+            }
+            catch (NullReferenceException)
+            {
+                Console.WriteLine("iso null=NullReferenceException");
+            }
+            Console.WriteLine("ISO language names end");
+        }
+
+        // Apple's ICU keeps "und" for some of these names; standard ICU reports none.
+        private static void RunIsoLanguageUndefined()
+        {
+            foreach (string name in new[] { "und-US", "und-u-nu-arab" })
+                WriteIsoLanguage(name);
+            Console.WriteLine("ISO undefined language names end");
+        }
+
+        private static void WriteIsoLanguage(string name)
+        {
+            CultureInfo culture = new CultureInfo(name);
+            Console.WriteLine("iso '" + name + "'=" + culture.TwoLetterISOLanguageName
+                + ":" + CultureInfo.GetCultureInfo(name).TwoLetterISOLanguageName);
         }
 
         private static void RunCultureNames()
