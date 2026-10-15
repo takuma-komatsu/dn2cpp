@@ -695,6 +695,21 @@ internal sealed partial class MethodCompiler
                     + $" : dn2cpp_chars_hashcode((const char16_t*){sp}->f__reference, {sp}->f__length))");
                 return true;
             }
+            // Instance and span comparison hashes share the comparison fold and
+            // ordinal hash helpers, including validation of every enum value.
+            case ("System.String", "GetHashCode")
+                    when sig.ParameterTypes is [{ Kind: TypeKind.Class, Class.FullName: "System.StringComparison" }]:
+            {
+                var comparison = Pop();
+                var receiver = Pop();
+                string value = NewTemp("Dn2CppString*");
+                Emit($"{value} = {VirtualReceiver(receiver)};");
+                string folded = NewTemp("int32_t");
+                Emit($"{folded} = dn2cpp_str_comparison_fold((int32_t)({comparison.Expr}));");
+                Push(StackKind.I4, "int32_t",
+                    $"(({folded}) == 5 ? dn2cpp_string_hashcode_oic({value}) : dn2cpp_string_hashcode({value}))");
+                return true;
+            }
             // GetHashCodeOrdinalIgnoreCase: the real body folds via Marvin + TextInfo/ICU
             // for non-ASCII; lower to the ASCII-fold FNV hash, consistent with the
             // EqualsIgnoreCase interception, so the ICU cascade stays unreachable. The

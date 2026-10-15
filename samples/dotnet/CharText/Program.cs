@@ -31,6 +31,9 @@ namespace CharText
             if (args.Length > 0 && args[0] == "before-encoding-receivers")
                 return;
             EncodingReceiverSubset.Program.__GateEntry();
+            if (args.Length > 0 && args[0] == "before-comparison-hashes")
+                return;
+            StringHashComparisonSubset.Run();
         }
     }
 }
