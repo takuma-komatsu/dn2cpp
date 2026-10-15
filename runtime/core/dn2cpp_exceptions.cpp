@@ -1962,6 +1962,23 @@ Dn2CppObject* dn2cpp_aggregate_exception_new(Dn2CppArrayRef* inner, Dn2CppString
     return e;
 }
 
+// `snapshot` becomes the exception's own array: it must hold no nulls and no
+// other owner may mutate it.
+static void dn2cpp_aggregate_exception_adopt(Dn2CppObject* ex, Dn2CppArrayRef* snapshot, Dn2CppString* message)
+{
+    if (message == nullptr)
+        message = dn2cpp_string_literal(u"One or more errors occurred.", 28);
+    auto* e = reinterpret_cast<Dn2CppAggregateExceptionObject*>(ex);
+    dn2cpp_gc_store_ref(&e->message, message);
+    dn2cpp_gc_store_ref(&e->inner,
+                        (snapshot != nullptr && snapshot->length > 0) ? snapshot->data[0] : nullptr);
+    e->hresult = static_cast<int32_t>(0x80131500); // base default; get_HResult reads the shared prefix slot
+    // Runtime producers may supply an untyped array; the getter binds the snapshot's
+    // precise managed Exception[] handle before exposing it to collection dispatch.
+    dn2cpp_gc_store_ref(&e->innerExceptions, snapshot);
+    dn2cpp_gc_store_ref(&e->innerWrapper, static_cast<Dn2CppObject*>(nullptr));
+}
+
 void dn2cpp_aggregate_exception_init(Dn2CppObject* ex, Dn2CppArrayRef* inner, Dn2CppString* message)
 {
     Dn2CppArrayRef* snapshot = nullptr;
@@ -1975,17 +1992,7 @@ void dn2cpp_aggregate_exception_init(Dn2CppObject* ex, Dn2CppArrayRef* inner, Dn
             dn2cpp_gc_store_ref(&snapshot->data[i], inner->data[i]);
         }
     }
-    if (message == nullptr)
-        message = dn2cpp_string_literal(u"One or more errors occurred.", 28);
-    auto* e = reinterpret_cast<Dn2CppAggregateExceptionObject*>(ex);
-    dn2cpp_gc_store_ref(&e->message, message);
-    dn2cpp_gc_store_ref(&e->inner,
-                        (snapshot != nullptr && snapshot->length > 0) ? snapshot->data[0] : nullptr);
-    e->hresult = static_cast<int32_t>(0x80131500); // base default; get_HResult reads the shared prefix slot
-    // Runtime producers may supply an untyped array; the getter binds the snapshot's
-    // precise managed Exception[] handle before exposing it to collection dispatch.
-    dn2cpp_gc_store_ref(&e->innerExceptions, snapshot);
-    dn2cpp_gc_store_ref(&e->innerWrapper, static_cast<Dn2CppObject*>(nullptr));
+    dn2cpp_aggregate_exception_adopt(ex, snapshot, message);
 }
 
 Dn2CppString* dn2cpp_aggregate_exception_message(Dn2CppObject* ex)
@@ -2057,6 +2064,40 @@ Dn2CppArrayRef* dn2cpp_aggregate_inner_exceptions(Dn2CppObject* ex, const Dn2Cpp
     if (arrTi != nullptr)
         a->type = arrTi;
     return a;
+}
+
+Dn2CppObject* dn2cpp_aggregate_exception_flatten(Dn2CppObject* ex)
+{
+    auto* aggregate = dn2cpp_require_aggregate(ex);
+    std::vector<Dn2CppObject*> flattened;
+    std::vector<Dn2CppAggregateExceptionObject*> pending{aggregate};
+    // Aggregate nesting is breadth-first; repeated exception references remain repeated.
+    for (size_t next = 0; next < pending.size(); next++)
+    {
+        auto* inner = pending[next]->innerExceptions;
+        if (inner == nullptr)
+            continue;
+        for (int32_t i = 0; i < inner->length; i++)
+        {
+            auto* current = inner->data[i];
+            if (current == nullptr)
+                continue;
+            if (dn2cpp_is_aggregate_exception_type(current->type))
+                pending.push_back(reinterpret_cast<Dn2CppAggregateExceptionObject*>(current));
+            else
+                flattened.push_back(current);
+        }
+    }
+    auto* result = dn2cpp_newarr_ref_t(dn2cpp_string_checked_length(static_cast<int64_t>(flattened.size())),
+        aggregate->innerExceptions != nullptr ? aggregate->innerExceptions->type : nullptr);
+    for (size_t i = 0; i < flattened.size(); i++)
+        dn2cpp_gc_store_ref(&result->data[i], flattened[i]);
+    // Exact aggregates use the stored base message; subclasses retain virtual Message.
+    auto* message = ex->type == &dn2cpp_aggregate_exception_type
+        ? aggregate->message : dn2cpp_exception_message(ex);
+    Dn2CppObject* e = dn2cpp_exception_new(&dn2cpp_aggregate_exception_type, nullptr, nullptr);
+    dn2cpp_aggregate_exception_adopt(e, result, message);
+    return e;
 }
 
 [[noreturn]] void dn2cpp_throw_argument_sr(const Dn2CppTypeInfo* ti, const char* key,

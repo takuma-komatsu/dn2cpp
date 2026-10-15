@@ -223,6 +223,13 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.Ref, "Dn2CppString*", $"{fn}((Dn2CppObject*)({o.Expr}))");
                 return true;
             }
+            case ("System.AggregateException", "Flatten") when sig.ParameterTypes.Length == 0:
+            {
+                var o = Pop();
+                Push(StackKind.Ref, "Dn2CppObject*",
+                    $"dn2cpp_aggregate_exception_flatten((Dn2CppObject*)({o.Expr}))", sig.ReturnType);
+                return true;
+            }
             // System.Exception.ToString: "FullTypeName: Message" plus the inner
             // " ---> " chain, then the stack-trace section when a trace was
             // captured at throw (absent for an unthrown exception, as in real .NET).

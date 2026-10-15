@@ -64,8 +64,7 @@ static class Program
         Console.WriteLine("byindex " + string.Join("|", byIndex));
 
         // The neighbouring member reading the same runtime array, so a change to the
-        // wrapper cannot quietly move it. Flatten() is not probed: it has no intrinsic
-        // mapping and refuses at transpile time, which would make the bucket untranspilable.
+        // wrapper cannot quietly move it.
         var agg = Two();
         Console.WriteLine("single " + agg.InnerException!.GetType().Name);
 

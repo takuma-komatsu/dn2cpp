@@ -4206,6 +4206,7 @@ Dn2CppArrayRef* dn2cpp_aggregate_inner_exceptions(Dn2CppObject* ex, const Dn2Cpp
 // the way real .NET's stored field is.
 Dn2CppObject* dn2cpp_aggregate_inner_wrapper(Dn2CppObject* ex);
 void dn2cpp_aggregate_set_inner_wrapper(Dn2CppObject* ex, Dn2CppObject* wrapper);
+Dn2CppObject* dn2cpp_aggregate_exception_flatten(Dn2CppObject* ex);
 
 // ---- managed stack traces (degraded when nothing real is available) ----
 // System.Diagnostics.StackTrace / StackFrame are degraded intrinsics answering what
