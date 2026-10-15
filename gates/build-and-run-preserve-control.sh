@@ -609,9 +609,9 @@ echo "== Constructor-only reflection constructs signature-selected types without
             grep -Fxq "method ILDietControlLib.$type::ToString" <<< "$stripped" \
                 || { echo 'FAIL: substituted base construction lost user-library dispatch' >&2; return 1; }
         done
-        original_arming=$(dotnet exec "$PROBE" --check-construction-only "$_CG_APP" "$CLI_BIN/Dn2Cpp.Transpiler.dll") || return $?
+        original_arming=$(dotnet exec "$PROBE" --check-construction-only "$_CG_APP") || return $?
         original_arming=$(strip_cr_win "$original_arming")
-        stripped_arming=$(dotnet exec "$PROBE" --check-construction-only "$out/ildiet/ConstructorOnly.dll" "$CLI_BIN/Dn2Cpp.Transpiler.dll") || return $?
+        stripped_arming=$(dotnet exec "$PROBE" --check-construction-only "$out/ildiet/ConstructorOnly.dll") || return $?
         stripped_arming=$(strip_cr_win "$stripped_arming")
         assert_output "$stripped_arming" "$original_arming"
         grep -Fxq 'constructor-only descriptors=clean' <<< "$stripped_arming" \

@@ -965,17 +965,18 @@ internal sealed partial class AssemblyDiet
     private void NoteExecutableReflectionRoute(MethodReference target)
     {
         string owner = target.DeclaringType.FullName;
-        if (PreservationReader.ReadsReflectedAttributes(owner, target.Name))
+        var api = ClassifyReflectionTarget(target);
+        if (api is { } attributes && ReflectionRoutes.ReadsReflectedAttributes(attributes.Kind))
             _depthReadsReflectionAttributes = true;
-        if (!_depthRunsReflectedMethods && (PreservationReader.RunsReflectedMethod(owner, target.Name)
-            || PreservationReader.BindsReflectedMethod(owner, target.Name)))
+        if (!_depthRunsReflectedMethods && api is { } runs
+            && (ReflectionRoutes.RunsReflectedMethod(runs.Op) || ReflectionRoutes.BindsReflectedMethod(runs.Op)))
         {
             _depthRunsReflectedMethods = true;
             foreach (var type in ReflectionApplicationTypes().ToList()) KeepReflectedMethods(type);
             foreach (var type in _typeTokenLibraryTypes.ToList()) KeepTypeTokenLibrarySurface(type);
         }
         if (!_depthConstructsFromRuntimeType && target.MetadataToken.TokenType == TokenType.MemberRef
-            && PreservationReader.ConstructsFromRuntimeType(owner, target.Name))
+            && api is { } constructs && ReflectionRoutes.ConstructsFromRuntimeType(constructs.Op))
         {
             _depthConstructsFromRuntimeType = true;
             foreach (var type in _constructedTypes.ToList())
@@ -995,7 +996,7 @@ internal sealed partial class AssemblyDiet
             foreach (var type in _constructionSurface.ToList())
                 KeepConstructionAccessors(type);
         }
-        if (!_depthReadsReflectedFields && PreservationReader.ReadsReflectedField(owner, target.Name))
+        if (!_depthReadsReflectedFields && api is { } reads && ReflectionRoutes.ReadsReflectedField(reads.Op))
         {
             _depthReadsReflectedFields = true;
             foreach (var type in _types.ToList()) KeepApplicationShapes(type);
