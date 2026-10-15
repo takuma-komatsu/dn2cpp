@@ -11,5 +11,8 @@ ReflectInvoke.RuntimeHeldConvertibleProviderSubset.Run();
 #elif REFLECTED_VALUE_ONLY
 ReflectInvoke.RuntimeHeldReflectedValueSubset.Run();
 #else
-ReflectInvoke.RuntimeHeldInterfacesSubset.Program.Run(args.Length == 0 ? "all" : args[0]);
+if (args.Length != 0 && args[0] == "before-boxed-type-handle")
+    ReflectInvoke.RuntimeHeldInterfacesSubset.Program.Run(includeHandleSerialization: false);
+else
+    ReflectInvoke.RuntimeHeldInterfacesSubset.Program.Run(args.Length == 0 ? "all" : args[0]);
 #endif

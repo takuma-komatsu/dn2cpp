@@ -96,6 +96,14 @@ Core invariants:
 - **Generation is deterministic**: same input, same output. Nothing in the
   environment may change the C++ a successful transpile emits — the self-host
   fixpoint depends on it.
+- **Non-generic array equality and runtime-handle boxing retain conservative
+  type sets**, without following call contexts or aliases. Array elements,
+  boxed allocations and type tokens contribute candidates; runtime type factories
+  also include closed value types discovered by emitted layout and metadata
+  closure, while unemitted definitions remain deferred.
+  This can retain bodies for types a search never selects. An unsupported value
+  equality keeps its slot empty, and the runtime array-search guard reports
+  `NotSupportedException` if that equality is actually needed.
 
 ## 2. Modules and the core⇄target contract
 

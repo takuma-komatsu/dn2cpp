@@ -21,9 +21,6 @@ internal sealed partial class Compilation
     internal void PrepareRuntimeInterfaces()
     {
         var declarations = _usedVirtualDecls.ToList();
-        var runtimeBoxes = SelectedRuntimeHandleBoxes()
-            .Where(t => t.Kind == TypeKind.Class && t.Class is not null)
-            .Select(t => t.Class!).ToHashSet();
         foreach (var itf in ReferencedTypes.ToList())
         {
             if (!itf.IsInterface)
@@ -47,9 +44,10 @@ internal sealed partial class Compilation
                 continue;
             // Native structs need a map only when a box can carry their payload.
             // Primitive box tokens use Primitive TypeDescs rather than allocation rows.
+            // Conservative handle candidates alone do not establish a supported box.
             if (runtimeReceiver && EnsureShape(receiver).IsValueType
                 && WellKnownPrimitive(receiver.FullName) is null
-                && !_allocatedRefTypes.Contains(receiver) && !runtimeBoxes.Contains(receiver))
+                && !_allocatedRefTypes.Contains(receiver))
                 continue;
             foreach (var declaration in declarations)
             {

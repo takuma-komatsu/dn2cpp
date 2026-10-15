@@ -4,6 +4,7 @@ using System;
 using System.Globalization;
 using System.Numerics;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Serialization;
 using System.Text;
@@ -692,7 +693,30 @@ internal static class RuntimeHeldInterfacesSubset
                 + "/" + defaultCompositeProvider.NumericCalls);
         }
 
-        internal static void Run(string route = "all")
+        private static void RunBoxedTypeHandleSerialization()
+        {
+            Console.WriteLine("== boxed runtime type handle serialization ==");
+            SerializeHandle(default, "empty");
+            SerializeHandle(typeof(int).TypeHandle, "populated");
+            Console.WriteLine("boxed runtime type handle serialization end");
+        }
+
+        private static void SerializeHandle(RuntimeTypeHandle value, string label)
+        {
+            object boxed = RuntimeHelpers.Box(ref Unsafe.As<RuntimeTypeHandle, byte>(ref value),
+                typeof(RuntimeTypeHandle).TypeHandle)!;
+            try
+            {
+                ((ISerializable)boxed).GetObjectData(null!, default);
+                Console.WriteLine("boxed type handle " + label + "=returned");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("boxed type handle " + label + "=" + ex.GetType().Name);
+            }
+        }
+
+        internal static void Run(string route = "all", bool includeHandleSerialization = true)
         {
             Console.WriteLine("== runtime-held interface calls ==");
             if (route == "all" || route == "reflection") RunReflection();
@@ -703,6 +727,8 @@ internal static class RuntimeHeldInterfacesSubset
             if (route == "all" || route == "numbers") RunNumbers();
             if (route == "all" || route == "providers") RunProviders();
             Console.WriteLine("runtime-held interface calls end");
+            if (route == "all" && includeHandleSerialization)
+                RunBoxedTypeHandleSerialization();
         }
     }
 }

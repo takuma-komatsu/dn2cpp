@@ -776,23 +776,6 @@ for name in DirectDynamicMatch ConditionalFirstMatch ConditionalSecondMatch Inde
         exit 1
     fi
 done
-for name in UnusedReflectedMatch GenericUnselectedMatch IndexedUnselectedMatch \
-        OverloadUnselectedMatch EmptySignatureUnselectedMatch \
-        ZeroOverloadUnselectedMatch \
-        UnselectedLocalMatch UnselectedHelperMatch \
-        UnallocatedProviderMatch; do
-    if grep -Eq "^(inline |static )?int32_t ${name}_Equals_m[0-9]+\\(" \
-            "$_CG_OUT"/generated*.h "$_CG_OUT"/generated*.cpp; then
-        echo "FAIL: unsearched value type equality body was emitted: $name" >&2
-        exit 1
-    fi
-done
-if grep -Eq '^int32_t (ObjectGetTypeBoxMatch|CopyShapeBoxMatch)_Equals_m[0-9]+\(' \
-        "$_CG_OUT"/generated*.cpp; then
-    echo 'FAIL: a boxed object[] element changed its array GetType provenance' >&2
-    exit 1
-fi
-
 echo '== isolated framework and reflection boxes =='
 box_root=artifacts/arraycore-box-provenance
 dotnet build samples/dotnet/ArrayCore/BoxProvenanceOnly.csproj -c "$CONFIG" \
@@ -813,11 +796,6 @@ assert_output "$box_formatting_prefix" "$(strip_cr_win "$box_before_formatting")
 assert_runtime_box_formatting "$box_native"
 grep -Eq '^const Dn2CppTypeInfo ti_ArrayRuntimeBoxSubset_Program_UnselectedPayload = ' "$box_root/gen"/generated*.cpp \
     || { echo 'FAIL: unselected runtime box control type-info is missing' >&2; exit 1; }
-if grep -Eq '^(inline |static )?Dn2CppString\* [[:alnum:]_]+_ToString_m[0-9]+\(t_ArrayRuntimeBoxSubset_Program_UnselectedPayload\*' \
-    "$box_root/gen"/generated*.h "$box_root/gen"/generated*.cpp; then
-    echo 'FAIL: runtime handle boxing rooted an unselected ToString override' >&2
-    exit 1
-fi
 box_previous=$(run_bounded dotnet "$box_app" before-array-search-provenance-additions)
 box_previous=$(strip_cr_win "$box_previous")
 box_prefix=$(awk '/^== array search copy and type provenance ==$/ { exit } { print }' <<< "$box_native")
@@ -941,7 +919,7 @@ for name in FrameworkBoxMatch FrameworkListBoxMatch FrameworkCopyBoxMatch Reflec
         StaticErasedMatch StaticDeclaredMatch StaticOverwriteSelectedMatch \
         GenericStaticFirstMatch GenericStaticSecondMatch \
         CctorStaticMatch ConstructorMatch ConstructorOverwriteSelectedMatch \
-        CctorOverwriteSelectedMatch; do
+        CctorOverwriteSelectedMatch UnusedNewarrMatch; do
     if ! awk -v name="$name" '
         FNR == 1 { signature = 0 }
         { sub(/\r$/, "") }
@@ -953,33 +931,6 @@ for name in FrameworkBoxMatch FrameworkListBoxMatch FrameworkCopyBoxMatch Reflec
         exit 1
     fi
 done
-for name in UnusedFrameworkBoxMatch UnusedNewarrMatch UnusedUserBoxMatch \
-        InstanceSnapshotDeadMatch StaticSnapshotDeadMatch HelperSnapshotDeadMatch \
-        ReflectedSnapshotDeadMatch ArrayGetHolderUnsearchedMatch \
-        RejectedConstrainedCopyMatch AfterByRefWriteMatch BeforeNonVoidByRefWriteMatch \
-        ByRefReturnBeforeMatch ByRefReturnWrittenMatch RefStobjBeforeMatch \
-        GenericRefBeforeUnsearchedMatch GenericRefAfterUnsearchedMatch \
-        EmptySignatureUnselectedMatch \
-        RejectedArrayCopyMatch RejectedArrayCopyToMatch \
-        ZeroLengthArrayCopyMatch RankRejectedArrayCopyMatch \
-        RejectedValueArrayCopyMatch \
-        RejectedCreatedArrayCopyMatch \
-        SignaturePairUnselectedMatch HiddenMethodDeadMatch IndexerUnselectedMatch \
-        ArityUnselectedMatch HiddenReflectedFieldDeadMatch \
-        UnselectedFieldStoredMatch OverwrittenDeadMatch \
-        StaticOverwrittenDeadMatch BoxOverwrittenDeadMatch TypeOverwrittenDeadMatch \
-        TypeSnapshotUnselectedMatch SignatureUnselectedMatch \
-        RuntimeSignatureUnselectedMatch ReflectedOverwrittenDeadMatch \
-        ReflectedSetOverwrittenDeadMatch \
-        ConstructorOverwrittenDeadMatch CctorOverwrittenDeadMatch ObjectGetTypeBoxMatch \
-        CopyShapeBoxMatch; do
-    if grep -Eq "^(inline |static )?int32_t ${name}_Equals_m[0-9]+\\(" \
-            "$box_root/gen"/generated*.h "$box_root/gen"/generated*.cpp; then
-        echo "FAIL: an unsearched value rooted its equality body: $name" >&2
-        exit 1
-    fi
-done
-
 grep -Fxq '// DynamicArrayNullEqualitySubset.SharedArraySearcher_$CnInt32::Search' \
     "$box_root/gen/generated.h" "$box_root/gen"/generated*.cpp \
     || { echo 'FAIL: the array search donor lost its canonical body' >&2; exit 1; }
@@ -1062,30 +1013,23 @@ for name in OpaqueHolderMatch ArrayGetHolderMatch StaticHolderSelectedMatch; do
     grep -Eq "^int32_t ${name}_Equals_m[0-9]+\\(" "$field_alias_root/gen"/generated*.cpp \
         || { echo "FAIL: field alias equality body was not emitted: $name" >&2; exit 1; }
 done
-if grep -Eq '^(inline |static )?int32_t StaticHolderOverwrittenMatch_Equals_m[0-9]+\(' \
-        "$field_alias_root/gen"/generated*.h "$field_alias_root/gen"/generated*.cpp; then
-    echo 'FAIL: overwritten static-holder value rooted its equality body' >&2
-    exit 1
-fi
-
-echo '== unsupported selected value equality =='
-unsupported_root=artifacts/arraycore-unsupported-equality
-dotnet build samples/dotnet/ArrayCore/ArrayCore.csproj -c "$CONFIG" \
-    --nologo -v q -p:DefineConstants=ARRAY_UNSUPPORTED_EQUALITY_ONLY \
-    -o "$unsupported_root/app"
-set +e
-invoke_cli "$unsupported_root/app/ArrayCore.dll" -r "$corelib" \
-    -o "$unsupported_root/gen" > "$unsupported_root/refused.log" 2>&1
-unsupported_status=$?
-set -e
-if [ "$unsupported_status" -ne 2 ] \
-        || ! grep -Fq 'UnsupportedStructuralMatch' "$unsupported_root/refused.log" \
-        || ! grep -Fq 'ByValArray' "$unsupported_root/refused.log" \
-        || ! grep -iq 'equal' "$unsupported_root/refused.log"; then
-    echo 'FAIL: selected unsupported value equality was not explicitly refused' >&2
-    cat "$unsupported_root/refused.log" >&2
-    exit 1
-fi
+echo '== unsupported value equality is refused when searched =='
+(
+    _corelib_gate_out() { printf '%s\n' artifacts/arraycore-unsupported-equality; }
+    _corelib_gate_core() {
+        local project="$1" out="$2"
+        _CG_OUT="$out"
+        _CG_CORELIB=$(locate_corelib)
+        _CG_EXTRA_REFERENCE_INPUTS=()
+        dotnet build samples/dotnet/ArrayCore/ArrayCore.csproj -c "$CONFIG" \
+            --nologo -v q -p:DefineConstants=ARRAY_UNSUPPORTED_EQUALITY_ONLY -o "$out/app"
+        _CG_APP="$out/app/$project.dll"
+        invoke_cli "$_CG_APP" -r "$_CG_CORELIB" -o "$out"
+    }
+    DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|ARRAY_UNSUPPORTED_EQUALITY_ONLY|runtime-equality-refusal"
+    unset -f gate_extra_asserts
+    corelib_freeze_gate ArrayCore gates/expected/array-unsupported-equality.txt
+)
 
 # Reference elements retain the stored array identity across a helper update.
 for alias_subject in ArrayElementAliasOnly ArrayObjectElementAliasOnly ArrayUnknownElementAliasOnly ArrayErasedElementAliasOnly ArrayReferenceSlotAliasOnly; do

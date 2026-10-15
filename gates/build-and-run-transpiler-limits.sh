@@ -104,6 +104,7 @@
 # Primary-input CoreLib/runtime identity collisions fail before base-chain walks;
 # embedded internal metadata types and ordinary intrinsic-BCL inputs still run.
 # Validated ordinary cuts exclude body depth summaries while preserving signatures.
+# Measure inventories equality first selected by reflected signature layouts.
 source "$(dirname "$0")/_common.sh"
 
 out="artifacts/transpiler-limits"
@@ -163,7 +164,7 @@ numerics_dll="$(dirname "$corelib")/System.Runtime.Numerics.dll"
 # gate_cache_check answers that with a warning and no key, which would
 # leave this gate uncacheable since it clears the dirs on every run.
 rm -rf "$out" "$sig_out" "$sig_diet_out" "$cut_out" "$mint_out"; mkdir -p "$out"
-if gate_cache_check "$out" "transpiler-limits|recursive-body:ildiet+no-ildiet|canonical-cap:no-ildiet:1,2|canonical-refs:none|wrapper-exceptions|mint-cap:no-ildiet|depth-summary-env:default,depth8,depth64,count128,count2m,depth1-abort,count1-abort,deep64,uncalled-virtual,uncalled-interface,unallocated-receiver,construction-accessor,generic-accessor,generic-ctor,executed-generic-argument,event,late-construction-accessor:depth3-abort,direct-accessor,direct-event-add,invoke-uncalled-virtual,generic-factory:direct,class,method,identity|unused-copied:low2,default32:ildiet+no-ildiet|ordinary-cut:ildiet+no-ildiet|execution-provenance:base-call,base-ctor,object-slot,primitive-dead-branch,abstract-app,abstract-library,nominal-dead-branch,methodimpl,constrained-primitive,const-getter,unused-default-interface,inherited-interface-map,protected-interface-map,class-newslot-map,isa-getter:Sve+Sve2+Arm64:optimize=true|attributes:unread-ctor,unread-getter,read,generic-read:depth3+depth4-abort:field-boxes=ildiet,no-ildiet,no-shared-generics:prefix=before-reflected-field-boxes|sig:no-ildiet+ildiet|collision:no-ildiet,corelib+intrinsic|cli:$(_gate_cli_hash)|$corelib" \
+if gate_cache_check "$out" "transpiler-limits|recursive-body:ildiet+no-ildiet|canonical-cap:no-ildiet:1,2|canonical-refs:none|wrapper-exceptions|mint-cap:no-ildiet|depth-summary-env:default,depth8,depth64,count128,count2m,depth1-abort,count1-abort,deep64,uncalled-virtual,uncalled-interface,unallocated-receiver,construction-accessor,generic-accessor,generic-ctor,executed-generic-argument,event,late-construction-accessor:depth3-abort,direct-accessor,direct-event-add,invoke-uncalled-virtual,generic-factory:direct,class,method,identity|unused-copied:low2,default32:ildiet+no-ildiet|ordinary-cut:ildiet+no-ildiet|execution-provenance:base-call,base-ctor,object-slot,primitive-dead-branch,abstract-app,abstract-library,nominal-dead-branch,methodimpl,constrained-primitive,const-getter,unused-default-interface,inherited-interface-map,protected-interface-map,class-newslot-map,isa-getter:Sve+Sve2+Arm64:optimize=true|attributes:unread-ctor,unread-getter,read,generic-read:depth3+depth4-abort:field-boxes=ildiet,no-ildiet,no-shared-generics:prefix=before-reflected-field-boxes|late-array-equality:no-ildiet:emit+measure|sig:no-ildiet+ildiet|collision:no-ildiet,corelib+intrinsic|cli:$(_gate_cli_hash)|$corelib" \
         "$rec_app" "$sig_app" "$fld_app" "$afld_app" "$big_app" "$arr_app" "$mint_app" "$tma_app" \
         gates/fixtures/transpiler-limits/CanonicalLink/Program.cs \
         gates/fixtures/transpiler-limits/CanonicalLink/CanonicalLinkBound.csproj \
@@ -172,6 +173,7 @@ if gate_cache_check "$out" "transpiler-limits|recursive-body:ildiet+no-ildiet|ca
         gates/fixtures/transpiler-limits/ReflectionRouteNesting/Program.cs \
         gates/fixtures/transpiler-limits/ReflectionRouteNesting/ReflectionRouteNesting.csproj \
         gates/fixtures/transpiler-limits/ReflectionDepthSummary \
+        gates/fixtures/transpiler-limits/LateArrayEquality \
         "$collision_fixture" \
         "$link_app" "$wrapper_app" "$nest_app" "$summary_app" \
         "${link_app%.dll}.runtimeconfig.json" "${link_app%.dll}.deps.json" \
@@ -1071,6 +1073,34 @@ if grep -q "^dangling" "$out/s0-gaps.tsv"; then
     exit 1
 fi
 echo "OK ($sweep)"
+
+late_array_project=gates/fixtures/transpiler-limits/LateArrayEquality/LateArrayEquality.csproj
+build_gate_proj "$late_array_project"
+late_array_app="${late_array_project%/*}/bin/$CONFIG/$TFM/LateArrayEquality.dll"
+late_array_oracle=$(run_bounded dotnet "$late_array_app")
+assert_output "$(strip_cr_win "$late_array_oracle")" 0
+late_array_emit_rc=0
+late_array_emit_err=$(invoke_cli "$late_array_app" -r "$corelib" --no-ildiet \
+    -o "$out/late-array-emit" 2>&1 >/dev/null) || late_array_emit_rc=$?
+if [ "$late_array_emit_rc" -ne 2 ] \
+        || ! grep -Fq 'SignatureMatch_Int32.Equals: Unsupported IL opcode: Mkrefany' <<< "$late_array_emit_err"; then
+    echo 'FAIL: reflected-signature array equality did not reach its unsupported Equals body' >&2
+    echo "$late_array_emit_err" >&2
+    exit 1
+fi
+invoke_cli "$late_array_app" -r "$corelib" --no-ildiet --measure \
+    -o "$out/late-array-measure" > "$out/late-array-measure.stdout"
+late_array_gaps="$out/late-array-measure/s0-gaps.tsv"
+if [ ! -s "$late_array_gaps" ] \
+        || ! grep -Fq 'LateArrayEquality.SignatureMatch_Int32' "$late_array_gaps" \
+        || ! grep -Fq 'Mkrefany' "$late_array_gaps" \
+        || grep -q '^dangling' "$late_array_gaps"; then
+    echo 'FAIL: --measure omitted the reflected-signature array equality gap' >&2
+    cat "$out/late-array-measure.stdout" >&2
+    exit 1
+fi
+echo 'OK (--measure inventories the late reflected-signature equality gap)'
+
 echo "== 8/9 A typeof naming an unloaded assembly's type must REFUSE, not fold to null =="
 # `typeof(System.Numerics.Complex)` with System.Runtime.Numerics absent fails OPEN
 # without this: the TypeRef degrades to an External, TypeInfoExprOf has no arm for

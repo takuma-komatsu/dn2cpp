@@ -260,11 +260,15 @@ source gates/_reflected-events.sh
 source gates/_runtime-template-bindings.sh
 source gates/_pointer-array-types.sh
 source gates/_runtime-lifetime-interfaces.sh
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|boxed-type-handle-prefix:before-boxed-type-handle"
 runtime_held_interface_asserts() {
     local output="$1" attributes="${2:-0/False}" line route
     local prefixes=() reflection_expected_lines=()
     reflection_assert_lines "$output" 1 \
         '== runtime-held interface calls ==' 'runtime-held interface calls end' \
+        '== boxed runtime type handle serialization ==' 'boxed runtime type handle serialization end' \
+        'boxed type handle empty=PlatformNotSupportedException' \
+        'boxed type handle populated=PlatformNotSupportedException' \
         'attributes type=1/True/True' 'attributes method=1/True/True' \
         'attributes constructor=1/True/True' 'attributes field=1/True/True' \
         'attributes property=1/True/True' 'attributes event=1/True/True' \
@@ -413,6 +417,16 @@ runtime_held_interface_diff_axes() {
         else
             runtime_held_interface_asserts "$out/runtime-held.dotnet.stdout" 1/True
             runtime_held_interface_asserts "$out/runtime-held.native.stdout" 1/True
+            for axis in dotnet native; do
+                if [ "$axis" = dotnet ]; then
+                    reflection_oracle "$_CG_APP" before-boxed-type-handle > "$out/handle-before.$axis.stdout"
+                else
+                    run_bounded "$out/RuntimeHeldInterfacesOnly$EXE_EXT" before-boxed-type-handle > "$out/handle-before.$axis.stdout"
+                fi
+                awk '/^== boxed runtime type handle serialization ==$/ { exit } { print }' \
+                    "$out/runtime-held.$axis.stdout" > "$out/handle-prefix.$axis.stdout"
+                diff -u <(strip_cr_win_file "$out/handle-before.$axis.stdout") "$out/handle-prefix.$axis.stdout"
+            done
         fi
     }
     for axis in default trimmed unshared ildiet identity identity-trimmed convertible convertible-ildiet \

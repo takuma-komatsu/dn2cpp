@@ -608,6 +608,7 @@ internal sealed partial class CppEmitter
         foreach (var receiver in set.Concat(_c.ReferencedTypes).ToList())
             if (IsReflectionDelegateBindCandidate(receiver))
                 _c.NoteReflectionDelegateCloneReceiver(receiver);
+        _c.AddConservativeArraySearchLayouts(set);
         return set;
     }
 
@@ -1222,34 +1223,32 @@ internal sealed partial class CppEmitter
             return;
         var forbiddenSyms = new HashSet<string>(System.StringComparer.Ordinal);
         var forbiddenStaticPrefixes = new HashSet<string>(System.StringComparer.Ordinal);
-        foreach (var cls in _c.Classes)
+        // Canonical identity completion can append groups; audit the growing suffix too.
+        for (int cursor = 0; cursor < _c.Classes.Count; cursor++)
         {
+            var cls = _c.Classes[cursor];
             bool grouped = cls.SharedOwner is not null
                 || (cls.GenericArity > 0 && !Compilation.ContainsCanonPlaceholder(cls)
                     && _c.HasCanonicalizableArgs(cls));
-            if (!grouped)
-                continue;
-            // A grouped class's type-info symbol (ti_...) is deliberately NOT forbidden.
-            // The teed bodies are exclusively FULLY-canonical owner bodies, compiled once
-            // under a context where their own group type-arguments are __Canon, so a ti_
-            // reaching one is either the body's own canonical identity (never in this set:
-            // a canonical owner is not `grouped`) or placeholder-free — i.e. sourced from a
-            // concrete IL token, resolving to the SAME type-info for every real member
-            // running the one shared body, with the alias rows guaranteeing that row exists
-            // on every real receiver. The other three arms stay protective: rgctx_ (a
-            // canonical body takes its context as the hidden __rgctx param and must never
-            // bake in a concrete instantiation's), sf_ (a concrete static-storage symbol
-            // needs an independent concrete IL operand to justify that storage), and vt_
-            // (dormant — emitted only in metadata — kept because it is harmless).
-            forbiddenSyms.Add(cls.CppVtableName);
-            forbiddenSyms.Add("rgctx_" + cls.CppName);
-            forbiddenStaticPrefixes.Add("sf_" + cls.CppName + "_");
-        }
-        // Real generic-method instantiations' per-method tables: only their
-        // forwarders and fill-produced table entries may name them — a shared
-        // body baking one in would pin a single instantiation's context.
-        foreach (var cls in _c.Classes)
-        {
+            if (grouped)
+            {
+                // A grouped class's type-info symbol (ti_...) is deliberately NOT forbidden.
+                // The teed bodies are exclusively FULLY-canonical owner bodies, compiled once
+                // under a context where their own group type-arguments are __Canon, so a ti_
+                // reaching one is either the body's own canonical identity (never in this set:
+                // a canonical owner is not `grouped`) or placeholder-free — i.e. sourced from a
+                // concrete IL token, resolving to the SAME type-info for every real member
+                // running the one shared body, with the alias rows guaranteeing that row exists
+                // on every real receiver. The other three arms stay protective: rgctx_ (a
+                // canonical body takes its context as the hidden __rgctx param and must never
+                // bake in a concrete instantiation's), sf_ (a concrete static-storage symbol
+                // needs an independent concrete IL operand to justify that storage), and vt_
+                // (dormant — emitted only in metadata — kept because it is harmless).
+                forbiddenSyms.Add(cls.CppVtableName);
+                forbiddenSyms.Add("rgctx_" + cls.CppName);
+                forbiddenStaticPrefixes.Add("sf_" + cls.CppName + "_");
+            }
+            // Real generic-method instances also own per-method context tables.
             if (!cls.MembersReady)
                 continue; // a specialization nothing reached has no methods to forbid —
                           // and asking it for them would decode every one
@@ -2070,10 +2069,7 @@ internal sealed partial class CppEmitter
         var result = new ParallelBodyResult();
         try
         {
-            var mc = new MethodCompiler(_c, m, literals, _backend)
-            {
-                RecordArraySearchOrigins = false,
-            };
+            var mc = new MethodCompiler(_c, m, literals, _backend);
             if (_c.SharedGenericsEnabled && Compilation.IsCanonicalMethod(m))
             {
                 mc.SharedTrial = true;
@@ -2349,14 +2345,34 @@ internal sealed partial class CppEmitter
             {
                 // Layout can reveal runtime-created delegate receivers and reflected
                 // field boxes. Close their dispatch before freezing body symbols.
-                if (!planning && diagnostics is null
-                    && (!_c.SharedGenericsEnabled || _c.HasDelegateCloneBindings))
+                if (!planning
+                    && (diagnostics is not null || !_c.SharedGenericsEnabled || _c.HasDelegateCloneBindings
+                        || _c.NeedsConservativeArraySearchClosure))
                 {
-                    ComputeEmitted();
-                    bool dispatchGrew = _c.ReachRuntimeDelegateCloneReceivers();
-                    dispatchGrew |= _c.ReachDecodedReflectionFieldBoxes();
+                    // Measure must inventory bodies selected by late metadata too.
+                    // Preserve the attempted-body set while draining those new edges.
+                    try
+                    {
+                        ComputeEmitted();
+                    }
+                    catch (Exception ex) when (diagnostics is not null && !Compilation.IsMustEscape(ex))
+                    {
+                        diagnostics.Add(MeasureGap.From("layout", null, ex));
+                        break;
+                    }
+                    bool dispatchGrew = false;
+                    if (diagnostics is null)
+                    {
+                        dispatchGrew = _c.ReachRuntimeDelegateCloneReceivers();
+                        dispatchGrew |= _c.ReachDecodedReflectionFieldBoxes();
+                    }
+                    dispatchGrew |= _c.ReachRuntimeHandleBoxes();
+                    dispatchGrew |= _c.ReachNonGenericArrayElementEquality();
                     if (dispatchGrew)
+                    {
+                        _c.DrainReachability();
                         continue;
+                    }
                 }
                 // Forwarding slots wait for quiescence: only the complete call
                 // graph says which callees take a context. New slots mean
@@ -2773,9 +2789,9 @@ internal sealed partial class CppEmitter
             // itself; gap rows are collected only from the real pass below.
             //
             // Discovery → Planning directly: --measure runs no LayoutClosure up front — its
-            // guarded closure runs LAST, where a layout failure is a gap row rather than the
-            // run failing. The grouping consequence the up-front closure exists for does not
-            // apply, since measure emits nothing.
+            // guarded closure runs at the real body's fixpoint, where a layout failure is
+            // a gap row rather than the run failing. The grouping consequence of an
+            // up-front closure does not apply, since measure emits nothing.
             _c.EnterPhase(EmitPhase.Planning);
             CompileReachableBodies(new LiteralPool(), null, new List<MethodInfo>(),
                 diagnostics: new List<MeasureGap>());
@@ -2798,26 +2814,7 @@ internal sealed partial class CppEmitter
         // byte of both would be built, retained for the length of the pass, and dropped
         // unread.
         CompileReachableBodies(new LiteralPool(), null, compiledMethods, diagnostics);
-        Timing.Mark("measure-compile-bodies");
-        // The type-layout closure. Field types are decoded on demand and what demands them
-        // is the emit set, so a mode that reports whether a program can be transpiled has to
-        // walk it — otherwise it answers for the bodies and stays silent about the types
-        // they are written in, reporting a program as transpilable that emission cannot
-        // transpile: the one lie a feasibility harness must not tell.
-        //
-        // Guarded, because ComputeEmitted is not: on the emit path a decode failure is the
-        // run failing, here it is a row. The two must-escape exceptions still escape — a
-        // strict-completion violation is a transpiler bug, and recording a bound overrun
-        // while continuing would feed the very growth the bound exists to stop.
-        try
-        {
-            ComputeEmitted();
-        }
-        catch (Exception ex) when (!Compilation.IsMustEscape(ex))
-        {
-            diagnostics.Add(MeasureGap.From("layout", null, ex));
-        }
-        Timing.Mark("measure-layout");
+        Timing.Mark("measure-bodies-layout");
         // "Attempted" counts compile-phase bodies only (reach gaps never got that far, and
         // the dangling rows below are not bodies at all) — snapshot it before the sweep.
         int attempted = compiledMethods.Count + (diagnostics.Count - reachGaps);
