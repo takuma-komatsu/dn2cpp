@@ -6013,8 +6013,8 @@ internal sealed partial class Compilation
     /// with no box site to do it, so the box can dispatch through the type's interface
     /// map and slots. A by-ref type boxes as its referent, a Nullable&lt;T&gt; as a T.
     /// An unmanaged pointer keeps its runtime-allocated Pointer box. Value types are
-    /// bounded to user structs and the modeled Decimal/DateTime payloads; other
-    /// framework structs' overrides need not transpile.</summary>
+    /// bounded to user structs and the modeled Decimal, DateTime and DateTimeOffset
+    /// payloads; other framework structs' overrides need not transpile.</summary>
     private void NoteReflectionBoxed(TypeDesc t)
     {
         if (t.Kind == TypeKind.ByRef)
@@ -6085,7 +6085,7 @@ internal sealed partial class Compilation
     /// NotSupportedException.</summary>
     private void NoteReflectionBoxed(ClassInfo c)
     {
-        if ((IsUserModule(c.Module) || c.FullName is "System.Decimal" or "System.DateTime")
+        if ((IsUserModule(c.Module) || c.FullName is "System.Decimal" or "System.DateTime" or "System.DateTimeOffset")
             && !ContainsCanonPlaceholder(c) && !ContainsGenericVar(c)
             && EnsureShape(c) is { IsValueType: true, IsByRefLike: false })
         {

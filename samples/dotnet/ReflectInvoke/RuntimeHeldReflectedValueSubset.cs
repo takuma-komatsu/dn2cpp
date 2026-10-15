@@ -12,6 +12,7 @@ internal static class RuntimeHeldReflectedValueSubset
 #pragma warning disable CS0649
         public static DateTime DateTimeValue;
         public static decimal DecimalValue;
+        public static DateTimeOffset DateTimeOffsetValue;
 #pragma warning restore CS0649
     }
 
@@ -47,5 +48,20 @@ internal static class RuntimeHeldReflectedValueSubset
         object number = typeof(Holder).GetField(nameof(Holder.DecimalValue))!.GetValue(null)!;
         ((IDeserializationCallback)number).OnDeserialization(null);
         Console.WriteLine("reflected Decimal callback=completed");
+
+        Console.WriteLine("== reflected DateTimeOffset serialization ==");
+        foreach (int minutes in new[] { 0, 90, -330 })
+        {
+            var value = new DateTimeOffset(2020, 2, 3, 4, 5, 6, TimeSpan.FromMinutes(minutes));
+            Holder.DateTimeOffsetValue = value;
+            object offset = typeof(Holder).GetField(nameof(Holder.DateTimeOffsetValue))!.GetValue(null)!;
+            var offsetInfo = new SerializationInfo(offset.GetType(), new Converter());
+            ((ISerializable)offset).GetObjectData(offsetInfo, default);
+            DateTime serialized = offsetInfo.GetDateTime("DateTime");
+            Console.WriteLine("reflected DateTimeOffset offset=" + minutes
+                + ":ticks=" + serialized.Ticks + ":utc=" + (serialized.Ticks == value.UtcTicks)
+                + ":kind=" + serialized.Kind + ":minutes=" + offsetInfo.GetInt16("OffsetMinutes"));
+        }
+        Console.WriteLine("reflected DateTimeOffset serialization end");
     }
 }
