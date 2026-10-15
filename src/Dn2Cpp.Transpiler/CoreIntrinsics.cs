@@ -2182,6 +2182,13 @@ internal static partial class CoreIntrinsics
         : s_intrinsicGenericCpp.TryGetValue(strippedFullName, out var w) ? w
         : null;
 
+    /// <summary>Whether every closed instantiation of an arity-stripped generic definition
+    /// lowers to one runtime handle whose header records no type arguments (the erasures
+    /// <see cref="s_runtimeTypeInfoNotRowed"/> lists), so no closed type of it has an
+    /// identity of its own.</summary>
+    public static bool SharesOneRuntimeType(string strippedFullName) =>
+        IntrinsicGenericCppType(strippedFullName) is "Dn2CppThreadLocal*" or "Dn2CppBlockingCollection*";
+
     /// <summary>Whether the runtime struct behind an intrinsic value type (an
     /// IntrinsicCppName without a trailing <c>*</c>) embeds a pointer into collectible
     /// GC memory. The replaced BCL type's IL fields describe the wrong layout —

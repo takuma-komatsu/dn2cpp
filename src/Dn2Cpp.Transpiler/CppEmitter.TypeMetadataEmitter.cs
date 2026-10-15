@@ -2363,12 +2363,11 @@ internal sealed partial class CppEmitter
         // invoke a member, not a corrupted dispatch table, and the diagnosis has to reach
         // it. Deduplicated per chunk on the descriptor text; the sequence counter stays
         // monotonic across the emission.
-        private string InvokerMissStub(ClassInfo cls, MethodInfo m, string blockedType)
+        private string InvokerMissStub(ClassInfo cls, MethodInfo m, string reason)
         {
             // ASCII only: the text is a runtime exception message (terminals, logs,
             // frozen gate transcripts), not a source comment.
-            string desc = $"{cls.FullName}.{m.Name}: no reflection invoker in this image "
-                + $"(the signature names {blockedType}, whose layout was never emitted)";
+            string desc = $"{cls.FullName}.{m.Name}: no reflection invoker in this image ({reason})";
             if (!_invokerMissStubs.TryGetValue(desc, out var name))
             {
                 name = $"invmiss_{_invokerMissSeq++}";
@@ -2379,6 +2378,18 @@ internal sealed partial class CppEmitter
                 _invokerMissStubs[desc] = name;
             }
             return name;
+        }
+
+        // A row's invoker: its thunk, or the trapping stub when the thunk would not compile
+        // (a by-value struct the image never laid out) or would box a struct the image
+        // never allocates (InvokerBoxBlocker).
+        private string RowInvoker(ClassInfo cls, MethodInfo m, Func<string> thunk)
+        {
+            if (InvokerThunkBlocker(m, DeclaredStructs) is { } blocked)
+                return InvokerMissStub(cls, m, $"the signature names {blocked}, whose layout was never emitted");
+            if (_e.InvokerBoxBlocker(m) is { } unboxed)
+                return InvokerMissStub(cls, m, $"invoking it boxes {unboxed.FullName}, which this image never boxes");
+            return thunk();
         }
 
         // Vtable: the class's virtual dispatch table, file-local — referenced only
@@ -3019,7 +3030,14 @@ internal sealed partial class CppEmitter
                     // (memberT erased to Dn2CppObject*) already holds the
                     // managed-object form, so it takes the plain reference path.
                     bool isHeaderless = MethodCompiler.IsHeaderlessWrapCpp(memberT);
-                    string getBody = ensure + (isPointer
+                    // A struct no box allocated would dispatch into traps once boxed.
+                    var unboxed = !isRef && !isPointer && !isHeaderless ? _e.FieldBoxBlocker(cls, f) : null;
+                    string getBody = unboxed is not null
+                        ? "dn2cpp_throw_not_supported_msg(\""
+                            + $"{cls.FullName}.{f.Name}: reading it boxes {unboxed.FullName}, which this image never boxes"
+                                .Replace("\\", "\\\\").Replace("\"", "\\\"")
+                            + "\");"
+                        : ensure + (isPointer
                         ? $"return dn2cpp_invoke_box_pointer((void*)({access}), {pointee}, {pointerDepth});"
                         : isHeaderless
                         ? $"return {MethodCompiler.HeaderlessWrapExpr(access, memberT, f.Type)};"
@@ -3114,6 +3132,7 @@ internal sealed partial class CppEmitter
                 int genericCount = m.Handle.IsNil ? 0
                     : m.Module.Reader.GetMethodDefinition(m.Handle).GetGenericParameters().Count;
                 bool definitionOnly = genericCount > 0 && m.Context.MethodArgs.Length == 0;
+                bool symbolic = definitionOnly || _e.NamesUnrepresentableTemplateType(cls, m);
                 // Rva == 0 is a bodiless declaration -- an interface or abstract slot,
                 // which is never reached (dispatch reaches the impl) yet must stay
                 // visible, or the type's GetMethods() would come back empty.
@@ -3153,7 +3172,7 @@ internal sealed partial class CppEmitter
                 catch (Exception e) when (!Compilation.IsMustEscape(e))
                 { /* no decodable method metadata */ }
                 var ps = m.Signature.ParameterTypes;
-                if (!definitionOnly)
+                if (!symbolic)
                     _e.NoteBindingTypeArguments(cls, m, m.Signature.ReturnType, ps);
                 var names = ParamNames(m, ps.Length);
                 var genericDefinition = _e.ReflectionGenericMethodDefinition(m, names);
@@ -3166,7 +3185,7 @@ internal sealed partial class CppEmitter
                     var prows = new List<MetadataRow>();
                     for (int i = 0; i < ps.Length; i++)
                     {
-                        string ptInfo = definitionOnly && (Compilation.ContainsGenericVar(ps[i]) || Compilation.ContainsCanonPlaceholder(ps[i]))
+                        string ptInfo = symbolic && (Compilation.ContainsGenericVar(ps[i]) || Compilation.ContainsCanonPlaceholder(ps[i]))
                             ? "&dn2cpp_object_type" : _e.ReflectionAbiTypeInfoExpr(ps[i], _emittedEnums);
 
                         (string Expr, int Count) pca = ("nullptr", 0);
@@ -3190,7 +3209,7 @@ internal sealed partial class CppEmitter
                         }
                         string pdisplay = _e.ReflectionSignatureType(ps[i])
                             + (names[i] is { Length: > 0 } pName ? " " + pName : "");
-                        var pass = definitionOnly ? (Kind: 0, Type: "nullptr")
+                        var pass = symbolic ? (Kind: 0, Type: "nullptr")
                             : _e.ReflectionPass(ps[i], _emittedEnums, FunctionPointerSpelling(m, i, ps[i]));
 
                         prows.Add(new MetadataRow(new[] {
@@ -3201,7 +3220,7 @@ internal sealed partial class CppEmitter
                             MetadataValue.Text(genericDefinition is { } pk ? pk.ParameterKeys[i] : null),
                             MetadataValue.Signed(pass.Kind), MetadataValue.Ref(pass.Type),
                             MetadataValue.Ref(defaultValue),
-                            MetadataValue.Ref(definitionOnly ? "nullptr" : _e.ReflectionBindingPointee(ps[i], _emittedEnums)),
+                            MetadataValue.Ref(symbolic ? "nullptr" : _e.ReflectionBindingPointee(ps[i], _emittedEnums)),
                             MetadataValue.Ref(_e.EmitReflectionSignature(_sb, m, i)),
                         }));
                     }
@@ -3236,16 +3255,14 @@ internal sealed partial class CppEmitter
                 // Delegate.DynamicInvoke is in use, its row runs the type's multicast
                 // invoker (dginvoke_*), which takes the delegate as an instance body takes
                 // its receiver.
-                bool delegateInvoke = !definitionOnly && cls.IsDelegate && m.Name == "Invoke" && !m.IsStatic
+                bool delegateInvoke = !symbolic && cls.IsDelegate && m.Name == "Invoke" && !m.IsStatic
                     && (_c.NeedsDelegateInvokeRows || _c.ReflectionInvokeUsed)
                     && (_delegateInvokerNames ??= _e._delegateInvokerClasses
                         .Select(d => d.CppName).ToHashSet(System.StringComparer.Ordinal)).Contains(cls.CppName);
                 if (delegateInvoke)
                 {
                     fnPtr = $"(void*)&dginvoke_{cls.CppName}";
-                    invoker = "(void*)&" + (InvokerThunkBlocker(m, DeclaredStructs) is { } blocked
-                        ? InvokerMissStub(cls, m, blocked)
-                        : _e.EmitInvokerThunk(_sb, m, _invokerThunks));
+                    invoker = "(void*)&" + RowInvoker(cls, m, () => _e.EmitInvokerThunk(_sb, m, _invokerThunks));
                 }
                 // Hot-update base build: a placeholder-bodied intrinsic surface
                 // (the backend's call intrinsics own every call site; the emitted
@@ -3253,7 +3270,7 @@ internal sealed partial class CppEmitter
                 // so a patch import fails at load as a standard unresolved import
                 // instead of silently binding the placeholder. Gated on
                 // --hotupdate-base so normal builds stay byte-identical.
-                else if (!definitionOnly && _c.Reachable.Contains(m)
+                else if (!symbolic && _c.Reachable.Contains(m)
                     && (!_e._backend.ShouldSkipMethodBody(m.DeclaringClass, m) || _e._syntheticBodies.Contains(m))
                     && !(_e._hotUpdateBase && _e._backend.HasPlaceholderBody(m.DeclaringClass, m)))
                 {
@@ -3263,14 +3280,14 @@ internal sealed partial class CppEmitter
                     bool contextArg = m.IsStatic && m.Emittable.RgctxParam && _e.IsRuntimeTemplateLevel(cls);
                     if (contextArg)
                         attrs |= ContextArgRow;
-                    // The blocker can never fire here — a reached method's emitted body
-                    // names the same CppTypes renderings in its own prototype, so they
+                    // The layout blocker can never fire here — a reached method's emitted
+                    // body names the same CppTypes renderings in its own prototype, so they
                     // are declared (see InvokerThunkBlocker) — but the invariant "an
                     // invoker thunk is emitted only when its C++ compiles; otherwise
-                    // the row's invoker traps" is asked at every mouth, not assumed.
-                    invoker = "(void*)&" + (InvokerThunkBlocker(m, DeclaredStructs) is { } blocked
-                        ? InvokerMissStub(cls, m, blocked)
-                        : _e.EmitInvokerThunk(_sb, m, _invokerThunks, contextArg));
+                    // the row's invoker traps" is asked at every mouth, not assumed. The
+                    // box blocker can: a body a call reached returns a struct no box or
+                    // selection allocated.
+                    invoker = "(void*)&" + RowInvoker(cls, m, () => _e.EmitInvokerThunk(_sb, m, _invokerThunks, contextArg));
                 }
                 // A bodyless interface or abstract class row needs a signature-only
                 // invoker only when a late-bound consumer resolves the receiver's slot
@@ -3289,9 +3306,7 @@ internal sealed partial class CppEmitter
                         // Span<char>), and a thunk over it is C++ that does not compile.
                         // Such a row gets the trapping stub instead: it stays bindable by
                         // name, and the actual invoke raises the catchable diagnosis.
-                        invoker = "(void*)&" + (InvokerThunkBlocker(m, DeclaredStructs) is { } blocked
-                            ? InvokerMissStub(cls, m, blocked)
-                            : _e.EmitInvokerThunk(_sb, m, _invokerThunks));
+                        invoker = "(void*)&" + RowInvoker(cls, m, () => _e.EmitInvokerThunk(_sb, m, _invokerThunks));
                     }
                     // InstantiationBoundException IS a NotSupportedException, so the type
                     // alone does not filter out the must-escape set (Compilation.IsMustEscape).
@@ -3328,10 +3343,10 @@ internal sealed partial class CppEmitter
                     && invoker != "(void*)&dn2cpp_delegate_object_virtual_invoker"
                     && invoker != "(void*)&dn2cpp_delegate_interface_invoker")
                     attrs |= _e.NullReceiverAttrs(cls, m);
-                string retInfo = definitionOnly && (Compilation.ContainsGenericVar(m.Signature.ReturnType)
+                string retInfo = symbolic && (Compilation.ContainsGenericVar(m.Signature.ReturnType)
                     || Compilation.ContainsCanonPlaceholder(m.Signature.ReturnType))
                     ? "&dn2cpp_object_type" : _e.ReflectionAbiTypeInfoExpr(m.Signature.ReturnType, _emittedEnums);
-                var retPass = definitionOnly ? (Attrs: 0, Referent: "nullptr", Signature: "nullptr")
+                var retPass = symbolic ? (Attrs: 0, Referent: "nullptr", Signature: "nullptr")
                     : _e.ReflectionReturnPass(m.Signature.ReturnType, _emittedEnums,
                         FunctionPointerSpelling(m, -1, m.Signature.ReturnType));
                 attrs |= retPass.Attrs;
@@ -3390,7 +3405,7 @@ internal sealed partial class CppEmitter
                     MetadataValue.Ref(retPass.Referent),
                     MetadataValue.Ref(RenderGenericParameters(m)),
                     MetadataValue.Ref(retPass.Signature),
-                    MetadataValue.Ref(definitionOnly ? "nullptr" : _e.ReflectionBindingPointee(m.Signature.ReturnType, _emittedEnums)),
+                    MetadataValue.Ref(symbolic ? "nullptr" : _e.ReflectionBindingPointee(m.Signature.ReturnType, _emittedEnums)),
                     MetadataValue.Ref(_e.EmitReflectionSignature(_sb, m, -1)),
                     MetadataValue.Ref(RenderMethodDefinitionSignature(m)),
                 }));

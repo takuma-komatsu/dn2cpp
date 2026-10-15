@@ -276,25 +276,31 @@ internal sealed partial class MethodCompiler
             && CoreIntrinsics.ScEnumHasFlag.Matches(_c.MemberRefParentTypeName(_module, mrh), n);
     }
 
-    /// <summary>Runs a non-beforefieldinit declaring type's cctor before any call route
-    /// can replace the method and return. Reads only the MemberRef signature header to
-    /// distinguish static from instance; decoding its parameter types here would grow the
-    /// compilation for every call before the route decides whether it needs them.</summary>
-    private void EnsureStaticCallCctorBefore(EntityHandle handle)
+    /// <summary>Runs a precise-init (non-beforefieldinit) declaring type's cctor before any
+    /// call route can replace the method and return, for every call trigger the
+    /// reachability scan reaches it from: a static method, an instance constructor (a
+    /// base-constructor call, a struct constructor on a local) and an instance method of a
+    /// value type. Reads only the MemberRef signature header and name to sort the shapes,
+    /// and decodes a TypeSpec parent only for those shapes; decoding parameter types here
+    /// would grow the compilation for every call before the route decides whether it needs
+    /// them. A shared body cannot name a placeholder owner's initializer, which belongs to
+    /// the instantiation, so a trigger on one taints the body.</summary>
+    private void EnsureCallCctorBefore(EntityHandle handle)
     {
         if (handle.Kind == HandleKind.MethodSpecification)
         {
-            EnsureStaticCallCctorBefore(
+            EnsureCallCctorBefore(
                 _reader.GetMethodSpecification((MethodSpecificationHandle)handle).Method);
             return;
         }
 
         ClassInfo? cls;
+        bool isStatic, isCtor;
         if (handle.Kind == HandleKind.MethodDefinition)
         {
             var md = _reader.GetMethodDefinition((MethodDefinitionHandle)handle);
-            if ((md.Attributes & System.Reflection.MethodAttributes.Static) == 0)
-                return;
+            isStatic = (md.Attributes & System.Reflection.MethodAttributes.Static) != 0;
+            isCtor = !isStatic && _reader.StringComparer.Equals(md.Name, ".ctor");
             var decl = md.GetDeclaringType();
             cls = _module.ClassMap.TryGetValue(decl, out var mapped) ? mapped
                 : _method.DeclaringClass.Handle == decl ? _method.DeclaringClass
@@ -303,7 +309,10 @@ internal sealed partial class MethodCompiler
         else if (handle.Kind == HandleKind.MemberReference)
         {
             var mr = _reader.GetMemberReference((MemberReferenceHandle)handle);
-            if (_reader.GetBlobReader(mr.Signature).ReadSignatureHeader().IsInstance)
+            isStatic = !_reader.GetBlobReader(mr.Signature).ReadSignatureHeader().IsInstance;
+            isCtor = !isStatic && _reader.StringComparer.Equals(mr.Name, ".ctor");
+            if (!isStatic && !isCtor && mr.Parent.Kind == HandleKind.TypeSpecification
+                && !Compilation.IsValueTypeInstantiation(_reader, (TypeSpecificationHandle)mr.Parent))
                 return;
             cls = mr.Parent.Kind switch
             {
@@ -322,8 +331,31 @@ internal sealed partial class MethodCompiler
             return;
         }
 
-        if (cls is { IsBeforeFieldInit: false })
-            EnsureCctorBefore(cls);
+        if (cls is not { IsBeforeFieldInit: false, IntrinsicCppName: null }
+            || !isStatic && !isCtor && !cls.IsValueType)
+            return;
+        EnsureTriggeredCctorBefore(cls);
+    }
+
+    /// <summary>Runs the precise-init initializer of <paramref name="owner"/>, whose
+    /// static method, constructor or value-type instance method a call binds, before the
+    /// call; the reachability scan reaches it from the same binding.</summary>
+    private void EnsureTriggeredCctorBefore(ClassInfo owner)
+    {
+        if (owner is not { IsBeforeFieldInit: false, IntrinsicCppName: null })
+            return;
+        if (owner.StaticCctor is not null)
+            TaintIfCanonical(owner, "type initializer");
+        EnsureCctorBefore(owner);
+    }
+
+    /// <summary>A constrained Object virtual that runs <paramref name="owner"/>'s own
+    /// override is a value-type instance method call, so it triggers the precise-init
+    /// initializer as <see cref="EmitConstrainedCall"/> does.</summary>
+    private void EnsureOwnOverrideCctorBefore(ClassInfo owner, MethodInfo impl)
+    {
+        if (impl.DeclaringClass == owner)
+            EnsureTriggeredCctorBefore(owner);
     }
 
     private void TranslateCall(Instruction insn, bool isCallvirt)
@@ -332,7 +364,7 @@ internal sealed partial class MethodCompiler
         _callSiteToken = insn.Token;
         _callIsVirtual = isCallvirt;
         var handle = SRME.EntityHandle(insn.Token);
-        EnsureStaticCallCctorBefore(handle);
+        EnsureCallCctorBefore(handle);
         // Enum.HasFlag(flag): both the receiver and the flag arrive as boxed Enum
         // values; the call is non-virtual (HasFlag is sealed on Enum). Test the bits
         // inline rather than reaching the real (GetMethodTable/InternalCall) body.
@@ -1923,6 +1955,7 @@ internal sealed partial class MethodCompiler
                 }
                 else
                 {
+                    EnsureTriggeredCctorBefore(simpl.DeclaringClass);
                     var sargs = PopArgs(callee, hasThis: false);
                     EmitCallResult(simpl, DirectCall(simpl, sargs));
                     EmitByRefSlotFixups();
@@ -3253,6 +3286,10 @@ internal sealed partial class MethodCompiler
                 }
                 return;
             }
+            // Running the value type's own method triggers its initializer, which the
+            // folded literal below must not skip.
+            if (impl.DeclaringClass == c.Class)
+                EnsureTriggeredCctorBefore(c.Class);
             // A trivially-constant impl (`ldc; ret`) folds to its literal; the
             // receiver/args were popped above (discarding them is side-effect-free).
             if (TryFoldTrivialConstBody(impl, out string constLit))
@@ -4269,6 +4306,7 @@ internal sealed partial class MethodCompiler
                 && IsObjectShapedConstrained(handle, name):
             {
                 var receiver = Pop();
+                EnsureOwnOverrideCctorBefore(ghs, ghImpl);
                 Push(StackKind.I4, "int32_t", $"{DirectCallSym(ghImpl)}({ArgsWithRgctx(Cast(receiver, ghs.CppStructName + "*"), ghImpl)})");
                 return true;
             }
@@ -4286,6 +4324,7 @@ internal sealed partial class MethodCompiler
             {
                 var other = Pop();
                 var receiver = Pop();
+                EnsureOwnOverrideCctorBefore(eqs, eqImpl);
                 Push(StackKind.I4, "int32_t", $"{DirectCallSym(eqImpl)}({ArgsWithRgctx($"{Cast(receiver, eqs.CppStructName + "*")}, {Cast(other, "Dn2CppObject*")}", eqImpl)})");
                 return true;
             }
@@ -4449,6 +4488,7 @@ internal sealed partial class MethodCompiler
                 && IsObjectShapedConstrained(handle, name):
             {
                 var receiver = Pop(); // managed pointer to the constrained struct
+                EnsureOwnOverrideCctorBefore(vc, tsImpl);
                 EmitCallResult(tsImpl, $"{DirectCallSym(tsImpl)}({ArgsWithRgctx(Cast(receiver, vc.CppStructName + "*"), tsImpl)})");
                 return true;
             }

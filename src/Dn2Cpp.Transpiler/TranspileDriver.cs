@@ -280,6 +280,7 @@ public static class TranspileDriver
                 foreach (var grp in result.Gaps.GroupBy(g => Category(g.Message)).OrderByDescending(g => g.Count()).Take(40))
                     Console.WriteLine($"    {grp.Count(),5}  {grp.Key}");
                 WriteBoundedImportReport(compilation, outDir, options.Verbose);
+                ReportReflectionDiagnostics(compilation, outDir, options.Verbose);
                 compilation.ReportReflectionSummaries();
                 return 0;
             }
@@ -346,6 +347,7 @@ public static class TranspileDriver
                     string.Concat(linkSymbols.Select(s => s + Environment.NewLine).ToArray()));
             else if (File.Exists(symbolManifestPath))
                 File.Delete(symbolManifestPath);
+            ReportReflectionDiagnostics(compilation, outDir, options.Verbose);
             Timing.Mark("write-files");
             // Second census, so the pair brackets emission: whatever grew between
             // the two was pulled in by a body's own tokens, not by discovery.
@@ -498,6 +500,50 @@ public static class TranspileDriver
         foreach (var b in imports)
             Console.WriteLine($"    {b.Module}!{b.EntryPoint}  ({b.Method})  [{VerdictWord(b)}]");
     }
+
+    /// <summary>Reports the reflection sites whose target admission could not select:
+    /// a warning and a remedy per user-module site on stderr (with
+    /// <paramref name="verbose"/>, framework and backend-covered sites and the reach chain
+    /// too), a count line, and every site in <c>reflection-unrecognized.tsv</c> — kind,
+    /// assembly, method, offset, API, reason, fix — rewritten or removed each run.</summary>
+    private static void ReportReflectionDiagnostics(Compilation compilation, string outDir, bool verbose)
+    {
+        string path = Path.Combine(outDir, "reflection-unrecognized.tsv");
+        var diagnostics = compilation.ReflectionDiagnostics;
+        if (diagnostics.Count > 0)
+            File.WriteAllText(path, string.Concat(diagnostics.Select(d =>
+                string.Join('\t', new[]
+                {
+                    d.Kind.ToString(), d.Assembly, d.Method, "IL_" + d.Offset.ToString("x4"), d.Api,
+                    TsvField(d.Reason), TsvField(d.Fix),
+                })
+                + Environment.NewLine).ToArray()));
+        else if (File.Exists(path))
+            File.Delete(path);
+        if (diagnostics.Count == 0)
+            return;
+        int user = 0, framework = 0, covered = 0;
+        foreach (var d in diagnostics)
+        {
+            if (d.BackendCovered)
+                covered++;
+            else if (d.User)
+                user++;
+            else
+                framework++;
+            if (!verbose && (!d.User || d.BackendCovered))
+                continue;
+            Console.Error.WriteLine($"dn2cpp: warning: reflection target not recognized: {d.Assembly} {d.Method} "
+                + $"IL_{d.Offset.ToString("x4")} {d.Api}: {d.Reason}");
+            Console.Error.WriteLine($"  fix: {d.Fix}");
+            if (verbose)
+                Console.Error.WriteLine($"  reached from: {d.Chain}");
+        }
+        Console.Error.WriteLine($"dn2cpp: reflection: {diagnostics.Count} unrecognized sites "
+            + $"({user} user, {framework} framework, {covered} backend-covered) -> {path}");
+    }
+
+    private static string TsvField(string text) => text.Replace('\t', ' ').Replace('\n', ' ').Replace('\r', ' ');
 
     /// <summary>Deletes every generated source this driver writes into
     /// <paramref name="outDir"/>, plus the obfuscation map that names them. The legacy

@@ -973,7 +973,7 @@ internal sealed partial class AssemblyDiet
         {
             _depthRunsReflectedMethods = true;
             foreach (var type in ReflectionApplicationTypes().ToList()) KeepReflectedMethods(type);
-            foreach (var type in _typeTokenLibraryTypes.ToList()) KeepTypeTokenLibrarySurface(type);
+            KeepReflectedOwnerSurfaces(true);
         }
         if (!_depthConstructsFromRuntimeType && target.MetadataToken.TokenType == TokenType.MemberRef
             && api is { } constructs && ReflectionRoutes.ConstructsFromRuntimeType(constructs.Op))
@@ -1135,27 +1135,31 @@ internal sealed partial class AssemblyDiet
     {
         if (!IsStripped(type) || !_applicationMetadata.Add(type)) return;
         foreach (var method in type.Methods) KeepMethodSignature(method);
-        foreach (var property in type.Properties)
-        {
-            _properties.Add(property);
-            MarkSignatureType(property.PropertyType);
-            foreach (var parameter in property.Parameters) MarkSignatureType(parameter.ParameterType);
-            MarkAttributes(property);
-            if (property.GetMethod is not null) KeepMethodSignature(property.GetMethod);
-            if (property.SetMethod is not null) KeepMethodSignature(property.SetMethod);
-            foreach (var method in property.OtherMethods) KeepMethodSignature(method);
-        }
-        foreach (var item in type.Events)
-        {
-            _events.Add(item);
-            MarkSignatureType(item.EventType);
-            MarkAttributes(item);
-            if (item.AddMethod is not null) KeepMethodSignature(item.AddMethod);
-            if (item.RemoveMethod is not null) KeepMethodSignature(item.RemoveMethod);
-            if (item.InvokeMethod is not null) KeepMethodSignature(item.InvokeMethod);
-            foreach (var method in item.OtherMethods) KeepMethodSignature(method);
-        }
+        foreach (var property in type.Properties) KeepPropertySignature(property);
+        foreach (var item in type.Events) KeepEventSignature(item);
         if (_readsReflectedFields) KeepApplicationShapes(type);
+    }
+
+    private void KeepPropertySignature(PropertyDefinition property)
+    {
+        _properties.Add(property);
+        MarkSignatureType(property.PropertyType);
+        foreach (var parameter in property.Parameters) MarkSignatureType(parameter.ParameterType);
+        MarkAttributes(property);
+        if (property.GetMethod is not null) KeepMethodSignature(property.GetMethod);
+        if (property.SetMethod is not null) KeepMethodSignature(property.SetMethod);
+        foreach (var method in property.OtherMethods) KeepMethodSignature(method);
+    }
+
+    private void KeepEventSignature(EventDefinition item)
+    {
+        _events.Add(item);
+        MarkSignatureType(item.EventType);
+        MarkAttributes(item);
+        if (item.AddMethod is not null) KeepMethodSignature(item.AddMethod);
+        if (item.RemoveMethod is not null) KeepMethodSignature(item.RemoveMethod);
+        if (item.InvokeMethod is not null) KeepMethodSignature(item.InvokeMethod);
+        foreach (var method in item.OtherMethods) KeepMethodSignature(method);
     }
 
     private void ArmReflectedFieldReads()
@@ -1400,6 +1404,13 @@ internal sealed partial class AssemblyDiet
         var type = Resolve(reference);
         if (type is null || !IsStripped(type) || !_signatureTypes.Add(type)) return;
         _types.Add(type);
+        // A non-generic array search or a runtime handle box can box any value type
+        // whose layout the transpiler emits, with no box opcode naming it; its
+        // virtual bodies must survive as they would for an IL box. Only its kickoff
+        // body boxes an async state machine, and marking that body marks the machine.
+        if (type.IsValueType && !type.IsEnum && !IsAsyncStateMachine(type)
+            && !HasAttribute(type, "System.Runtime.CompilerServices.IsByRefLikeAttribute"))
+            MarkType(type, recordDepth: false);
         MarkSignatureType(type.DeclaringType);
         MarkSignatureType(type.BaseType);
         MarkAttributes(type);
@@ -1516,9 +1527,17 @@ internal sealed partial class AssemblyDiet
     private bool KeepsMethod(MethodDefinition method) =>
         _methods.Contains(method) || _signatureMethods.Contains(method);
 
+    /// <summary>The marker body of a method kept for its signature only:
+    /// <c>ldc.i4 0x494C4454; pop; ldnull; throw</c>. The transpiler refuses to admit a body
+    /// that is exactly this, so a method ILDiet strips but reachability admits fails the
+    /// transpile instead of throwing at run time.</summary>
+    internal const int StubMarker = 0x494C4454;
+
     private static void StubBody(MethodDefinition method)
     {
         method.Body = new MethodBody(method) { MaxStackSize = 1 };
+        method.Body.Instructions.Add(CecilInstruction.Create(OpCodes.Ldc_I4, StubMarker));
+        method.Body.Instructions.Add(CecilInstruction.Create(OpCodes.Pop));
         method.Body.Instructions.Add(CecilInstruction.Create(OpCodes.Ldnull));
         method.Body.Instructions.Add(CecilInstruction.Create(OpCodes.Throw));
     }

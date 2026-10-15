@@ -80,13 +80,6 @@ internal sealed class GodotBackend : IEmitBackend
     /// build, whose output stays byte-identical.</summary>
     public bool WantsSyntheticBody(ClassInfo cls, MethodInfo m) => ShouldSkipMethodBody(cls, m);
 
-    /// <summary>Same opt-out as DotnetModuleBackend's: the shim assembly (also
-    /// named GodotSharp) typeof-names its wrapper surface while every call is
-    /// lowered inline by <see cref="GodotCallIntrinsics"/> — reflection never
-    /// invokes it, so the surface would only emit placeholder bodies.</summary>
-    public bool WantsTypeofReflectionSurface(ClassInfo cls)
-        => cls.Module.AssemblyName != "GodotSharp";
-
     /// <summary>The placeholder-bodied shim surface outside
     /// <see cref="ShouldSkipMethodBody"/>: Mathf (a static class — not
     /// Godot.Object-derived) and the Godot.Collections wrappers (namespace excluded
@@ -130,55 +123,62 @@ internal sealed class GodotBackend : IEmitBackend
             yield return cls;
     }
 
-    public void EmitEpilogue(CppEmitter emitter, StringBuilder sb, IReadOnlyList<MethodInfo> cctors)
+    /// <summary>The GDScript-callable method binds with their return and parameter Godot
+    /// type tags, which <see cref="AdditionalRootMethods"/> roots and the epilogue wraps,
+    /// so every wrapper names a reached body and nothing else is rooted. Only the app
+    /// module's public non-generic classes outside namespace Godot export; an
+    /// intrinsic-mapped type is bodiless (calls are replaced inline), and the
+    /// IsIntrinsicType name check covers only the BCL's own, so the mapping is tested
+    /// too. A node class exports its instance methods as well. The engine callbacks (the
+    /// <c>_*</c> virtuals bridged through the node-class virtual table, and
+    /// _Notification through the notification slot) are engine entry points, not binds;
+    /// any other leading-underscore method, such as a scene-wired <c>_On...</c> handler,
+    /// is a normal bind. A method whose signature has no Godot mapping is no bind, and
+    /// <paramref name="warnUnsupported"/> reports it. Walks snapshots: matching decodes
+    /// signatures, and a decode can append to the class list.</summary>
+    private static List<(MethodInfo Method, int RetGd, List<int> ArgGds)> GodotExportBinds(
+        IEnumerable<ClassInfo> classes, Func<ClassInfo, bool> isAppModuleClass,
+        Dictionary<string, GodotApi.ClassApi> all, List<GodotApi.EnumApi> globalEnums, bool warnUnsupported)
     {
-        var (_, all, _, _, _, globalEnums) = GodotApi.Load(RequireExtensionApi());
-
-        var exports = new List<(MethodInfo Method, int RetGd, List<int> ArgGds)>();
-        // App-module classes only: the public-surface root rule roots just the app
-        // module's public methods, so a wrapper for a public CoreLib method the program
-        // never calls would reference a body that was never emitted. Intrinsic-mapped
-        // types are bodiless too — calls are replaced inline — and the IsIntrinsicType
-        // name check covers only the BCL's own, so the mapping itself is tested as well
-        // (a game-declared custom async task type adopted into the intrinsic Task
-        // family is just as bodiless).
-        // Snapshotted, because emitter.Classes is the live Compilation.Classes: reading
-        // a method's signature below decodes it, and a decode instantiates the generics
-        // that signature names — appending to the list walked here.
-        foreach (var cls in emitter.Classes.ToList().Where(c =>
-                     c.IsPublic && c.Namespace != "Godot"
-                     && emitter.IsAppModuleClass(c)
-                     && !CoreIntrinsics.IsIntrinsicType(c.FullName)
-                     && c.IntrinsicCppName is null))
+        var result = new List<(MethodInfo Method, int RetGd, List<int> ArgGds)>();
+        foreach (var cls in classes.ToList())
         {
-            bool isNodeClass = GodotExportParent(cls) is not null;
-            // The methods this class resolves as engine callbacks (the `_*`
-            // virtuals bridged through the node-class virtual table, and
-            // _Notification through the notification slot) are engine entry
-            // points, never GDScript-callable user exports. Any other
-            // leading-underscore method (an `_On...` handler wired up in a
-            // scene) is a normal method bind and stays exported.
-            var engineCallbacks = isNodeClass
+            if (!cls.IsPublic || cls.GenericArity != 0 || cls.Namespace == "Godot" || !isAppModuleClass(cls)
+                || CoreIntrinsics.IsIntrinsicType(cls.FullName) || cls.IntrinsicCppName is not null)
+                continue;
+            var engineCallbacks = GodotExportParent(cls) is not null
                 ? EngineVirtualOverridesOf(cls, all, globalEnums)
                 : null;
-
-            foreach (var m in cls.Methods.Where(m => m.IsPublic && m.Rva != 0))
+            foreach (var m in cls.Methods.ToList())
             {
-                if (m.Name == ".ctor") continue;
-                if (!m.IsStatic && !isNodeClass) continue;
-                if (engineCallbacks is not null && engineCallbacks.Contains(m)) continue;
-                // Property accessors must also be exported for ClassDB property registration.
-
+                if (!IsGodotExportCandidate(m, engineCallbacks))
+                    continue;
                 int? ret = GdTypeOf(m.Signature.ReturnType);
                 var argGds = m.Signature.ParameterTypes.Select(GdTypeOf).ToList();
                 if (ret is null || argGds.Any(a => a is null or 0) || argGds.Count > 8)
                 {
-                    Console.Error.WriteLine($"warning: skipping Godot export {cls.Name}.{m.Name} (unsupported signature)");
+                    if (warnUnsupported)
+                        Console.Error.WriteLine($"warning: skipping Godot export {cls.Name}.{m.Name} (unsupported signature)");
                     continue;
                 }
-                exports.Add((m, ret.Value, argGds.Select(a => a!.Value).ToList()));
+                result.Add((m, ret.Value, argGds.Select(a => a!.Value).ToList()));
             }
         }
+        return result;
+    }
+
+    /// <summary>Whether a method of an exporting class is a bind; a node class passes its
+    /// engine callbacks, any other class null.</summary>
+    private static bool IsGodotExportCandidate(MethodInfo m, HashSet<MethodInfo>? nodeEngineCallbacks)
+        => m.IsPublic && m.Rva != 0 && m.Name != ".ctor"
+            && (m.IsStatic || nodeEngineCallbacks is not null)
+            && nodeEngineCallbacks?.Contains(m) != true;
+
+    public void EmitEpilogue(CppEmitter emitter, StringBuilder sb, IReadOnlyList<MethodInfo> cctors)
+    {
+        var (_, all, _, _, _, globalEnums) = GodotApi.Load(RequireExtensionApi());
+
+        var exports = GodotExportBinds(emitter.Classes, emitter.IsAppModuleClass, all, globalEnums, warnUnsupported: true);
 
         sb.AppendLine("// ---- Godot export wrappers ----");
         for (int i = 0; i < exports.Count; i++)
@@ -328,18 +328,25 @@ internal sealed class GodotBackend : IEmitBackend
     }
 
     /// <summary>Seeds the methods the engine calls back into that no C# call graph
-    /// reaches: Godot.Callable.__Dispatch (the custom-callable dispatch bridge), and
-    /// every leading-underscore instance method of an exported class — the engine
-    /// `_*` virtual overrides bridged through the node-class virtual table (and
-    /// _Notification through the notification slot), which the emitted epilogue
-    /// references directly by name.</summary>
+    /// reaches: Godot.Callable.__Dispatch (the custom-callable dispatch bridge), the
+    /// method binds (<see cref="GodotExportBinds"/>), and every leading-underscore
+    /// instance method of an exported class — the engine `_*` virtual overrides bridged
+    /// through the node-class virtual table (and _Notification through the notification
+    /// slot), which the emitted epilogue references directly by name.</summary>
     public IEnumerable<MethodInfo> AdditionalRootMethods(Compilation c)
     {
         if (FindCallableDispatch(c.Classes) is { } dispatch)
             yield return dispatch;
 
-        foreach (var cls in c.Classes.Where(IsExportedGodotClass))
+        var (_, all, _, _, _, globalEnums) = GodotApi.Load(RequireExtensionApi());
+        foreach (var bind in GodotExportBinds(c.Classes, cls => cls.Module == c.AppModule, all, globalEnums, warnUnsupported: false))
+            yield return bind.Method;
+
+        foreach (var cls in c.Classes.ToList().Where(IsExportedGodotClass))
         {
+            // The ClassDB create_instance_func runs the parameterless constructor.
+            if (ClassDBConstructor(cls) is { } ctor)
+                yield return ctor;
             for (var k = cls; k is not null && k.Namespace != "Godot"; k = k.BaseClass)
             {
                 foreach (var m in k.Methods)
@@ -350,6 +357,10 @@ internal sealed class GodotBackend : IEmitBackend
             }
         }
     }
+
+    private static MethodInfo? ClassDBConstructor(ClassInfo cls)
+        => cls.Methods.FirstOrDefault(m =>
+            m.Name == ".ctor" && !m.IsStatic && m.Signature.ParameterTypes.Length == 0 && m.Rva != 0);
 
     /// <summary>Registers with the runtime Variant codec the transpiled type-infos
     /// it must allocate on decode: the boxed shim struct for each big-POD payload
@@ -425,8 +436,7 @@ internal sealed class GodotBackend : IEmitBackend
             var engineBase = GodotExportParent(cls)!;
             string engineName = EngineAncestorName(cls, all)!;
 
-            var ctor = cls.Methods.FirstOrDefault(m =>
-                m.Name == ".ctor" && !m.IsStatic && m.Signature.ParameterTypes.Length == 0 && m.Rva != 0);
+            var ctor = ClassDBConstructor(cls);
 
             // Every engine `_*` virtual (dump `is_virtual`) this class overrides,
             // bridged generically. _Notification is not among them — it is not a
