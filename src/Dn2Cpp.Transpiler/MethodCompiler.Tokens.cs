@@ -435,11 +435,7 @@ internal sealed partial class MethodCompiler
         // md_elem_addr sites below.
         Emit($"{temp} = dn2cpp_newmdarr({arrayTi}, {rank}, dn2cpp_i32s({lengthsInit}).v, (int32_t)sizeof({st}));");
         Push(StackKind.Ref, "Dn2CppMDArray*", temp);
-        _stack[^1] = _stack[^1] with { ArraySearchOrigin =
-            _c.SeedArraySearchOrigin(ArraySearchValueKind.ArrayElement, arrayType.Element) };
-        _c.AddArraySearchSeed(_stack[^1].ArraySearchOrigin!, ArraySearchValueKind.ArrayRuntimeType,
-            arrayType);
-        _stack[^1].ArraySearchOrigin!.ArrayAllocation = true;
+        _c.AddConservativeArraySearchType(arrayType);
     }
 
     private string MdArrayTypeInfoExpr(TypeDesc arrayType, MemberReference mr)

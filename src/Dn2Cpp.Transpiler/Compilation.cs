@@ -6035,7 +6035,14 @@ internal sealed partial class Compilation
         int reached = Reachable.Count;
         int allocated = _allocatedRefTypes.Count;
         foreach (var type in SelectedRuntimeHandleBoxes().ToList())
-            NoteReflectionBoxed(type);
+        {
+            // RuntimeTypeHandle has a native pointer payload and a supported
+            // serialization rejection body, without an IL box allocation edge.
+            if (type is { Kind: TypeKind.Class, Class: { FullName: "System.RuntimeTypeHandle" } handle })
+                ReachAllocatedType(handle);
+            else
+                NoteReflectionBoxed(type);
+        }
         return Reachable.Count != reached || _allocatedRefTypes.Count != allocated;
     }
 

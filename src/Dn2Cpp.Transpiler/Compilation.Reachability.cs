@@ -1536,7 +1536,7 @@ internal sealed partial class Compilation
                 continue;
             if (ContainsCanonPlaceholder(c) || ContainsGenericVar(c)
                 || (!IsUserModule(c.Module) && HoldsUncomparableIntrinsic(c)))
-                throw new NotSupportedException($"{c.FullName}: selected array search equality cannot be emitted");
+                continue;
             MethodInfo? eq = EffectiveEquals(c);
             if (eq is not null)
                 Reach(eq);
@@ -1545,14 +1545,8 @@ internal sealed partial class Compilation
                 ReachSynthesizedValueEquality(c, includeHash: false);
                 eq = ReachedSynthesizedValueEquals(c);
             }
-            if (eq is null || !Reachable.Contains(eq)
-                || _backend?.ShouldSkipMethodBody(eq.DeclaringClass, eq) == true)
-            {
-                bool byValArray = StructuralFields(c).Any(f => f.ByValArraySize >= 0);
-                throw new NotSupportedException($"{c.FullName}: selected array search equality "
-                    + (byValArray ? "cannot be emitted for a ByValArray field"
-                        : "cannot be emitted"));
-            }
+            // Conservative candidates need not occur at a search site. A value
+            // without an emitted body is rejected by the runtime search guard.
         }
         return Reachable.Count != before;
     }

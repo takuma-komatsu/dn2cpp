@@ -1665,12 +1665,28 @@ internal static class Program
     }
 
 #if ARRAY_UNSUPPORTED_EQUALITY_ONLY
-    // Only the refusal build carries this body: a program that runs reflected
-    // methods compiles every non-constructor method of its application types.
+    // Keep the unsupported search out of the ordinary parity driver.
     internal static void RunUnsupportedEquality()
     {
+        Console.WriteLine("== unsupported array equality ==");
         Array values = new UnsupportedStructuralMatch[1];
-        Console.WriteLine(Array.IndexOf(values, null));
+        foreach (bool backwards in new[] { false, true })
+        {
+            string label = backwards ? "last" : "first";
+            try
+            {
+                int index = backwards ? Array.LastIndexOf(values, null) : Array.IndexOf(values, null);
+                Console.WriteLine("unsupported " + label + "=returned:" + index);
+            }
+            catch (NotSupportedException error)
+            {
+                Console.WriteLine("unsupported " + label + "=" + error.GetType().Name
+                    + ":" + (error.Message.Contains(nameof(UnsupportedStructuralMatch))
+                        ? nameof(UnsupportedStructuralMatch) : "<missing type>")
+                    + ":" + error.Message.Contains("Equals(object)"));
+            }
+        }
+        Console.WriteLine("unsupported array equality end");
     }
 #endif
 

@@ -331,8 +331,6 @@ internal sealed partial class MethodCompiler
         // The raw call token, for rgctx slot keying (verified before use).
         _callSiteToken = insn.Token;
         _callIsVirtual = isCallvirt;
-        _arraySearchCallArguments = null;
-        _arraySearchByRefLocalSlots.Clear();
         var handle = SRME.EntityHandle(insn.Token);
         EnsureStaticCallCctorBefore(handle);
         // Enum.HasFlag(flag): both the receiver and the flag arrive as boxed Enum
@@ -3540,7 +3538,7 @@ internal sealed partial class MethodCompiler
         // HashSet<System.Enum> emit Enum::Equals(&box, …) — a value-type `this` against a
         // Dn2CppObject* receiver.
         { Kind: TypeKind.Class } => !t.Class!.IsValueType && !t.Class!.IsEnum,
-        { Kind: TypeKind.External } => true,
+        { Kind: TypeKind.External } => CppTypes.KindOf(t) == StackKind.Ref,
         { Kind: TypeKind.SZArray or TypeKind.MDArray } => true,
         _ => false,
     };
@@ -4064,8 +4062,7 @@ internal sealed partial class MethodCompiler
                 Emit($"if (!{nullable}.{hasValue}) dn2cpp_throw_null_reference();");
             }
             Push(StackKind.Ref, "Dn2CppType*", $"((void)({receiver.Expr}), dn2cpp_get_type_from_handle({ti}))");
-            _stack[^1] = _stack[^1] with { ArraySearchOrigin =
-                _c.SeedArraySearchOrigin(ArraySearchValueKind.RuntimeType, boxed) };
+            _c.AddConservativeArraySearchType(boxed);
             return true;
         }
         if (IsDefaultNameExternalIntrinsic(c) && name == "ToString"
@@ -4866,12 +4863,6 @@ internal sealed partial class MethodCompiler
         if (callee.Signature.ReturnType.IsVoid)
         {
             Emit(call + ";");
-            var callOrigin = _c.ArraySearchCallOrigin(_method, callee,
-                _arraySearchCallArguments ?? Array.Empty<ArraySearchOrigin?>(),
-                _callIsVirtual && callee.IsVirtual, _arraySearchInstructionOffset,
-                _arraySearchStraightLine);
-            NoteArraySearchByRefCallWrite(callee, callOrigin);
-            _arraySearchCallArguments = null;
             return;
         }
         string retC = CppTypes.Of(callee.Signature.ReturnType);
@@ -4902,20 +4893,8 @@ internal sealed partial class MethodCompiler
                 call = $"(({retC})({call}))";
         }
         Push(CppTypes.KindOf(callee.Signature.ReturnType), retC, call);
-        var returnOrigin = _c.ArraySearchCallOrigin(_method, callee,
-            _arraySearchCallArguments ?? Array.Empty<ArraySearchOrigin?>(),
-            _callIsVirtual && callee.IsVirtual, _arraySearchInstructionOffset,
-            _arraySearchStraightLine);
-        NoteArraySearchByRefCallWrite(callee, null);
-        if (callee.Signature.ReturnType is { Kind: TypeKind.SZArray or TypeKind.MDArray,
-                Element: { } returnedElement })
-        {
-            _c.AddArraySearchSeed(returnOrigin, ArraySearchValueKind.ArrayElement, returnedElement);
-            _c.AddArraySearchSeed(returnOrigin, ArraySearchValueKind.ArrayRuntimeType,
-                callee.Signature.ReturnType);
-        }
-        _stack[^1] = _stack[^1] with { ArraySearchOrigin = returnOrigin };
-        _arraySearchCallArguments = null;
+        if (callee.Signature.ReturnType.Kind is TypeKind.SZArray or TypeKind.MDArray)
+            _c.AddConservativeArraySearchType(callee.Signature.ReturnType);
         // Thread the declared return type as the result's StaticType so a List<T>
         // arriving directly from a call (e.g. seq.ToList) is recognised by
         // TryListBacking — lifting the call-result boundary for
@@ -4932,17 +4911,4 @@ internal sealed partial class MethodCompiler
             _stack[^1] = _stack[^1] with { StaticType = callee.Signature.ReturnType };
     }
 
-    private void NoteArraySearchByRefCallWrite(MethodInfo callee, ArraySearchOrigin? callOrigin)
-    {
-        if (!_arraySearchStraightLine || _callIsVirtual || _arraySearchCallArguments is null
-            || _arraySearchByRefLocalSlots.Count != 1)
-            return;
-        var (local, parameter) = _arraySearchByRefLocalSlots[0];
-        var previous = ArraySearchLocal(local);
-        _arraySearchLocals[local] = callOrigin is { } existing
-            ? _c.ArraySearchByRefCallOrigin(existing, _method, callee,
-                previous, local, parameter, _arraySearchInstructionOffset)
-            : _c.ArraySearchByRefCallOrigin(_method, callee, _arraySearchCallArguments,
-                previous, local, parameter, _arraySearchInstructionOffset);
-    }
 }

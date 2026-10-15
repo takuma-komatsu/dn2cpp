@@ -1,0 +1,4 @@
+== unsupported array equality ==
+unsupported first=NotSupportedException:UnsupportedStructuralMatch:True
+unsupported last=NotSupportedException:UnsupportedStructuralMatch:True
+unsupported array equality end
