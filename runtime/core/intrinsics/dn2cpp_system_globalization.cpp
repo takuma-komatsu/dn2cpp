@@ -225,6 +225,7 @@ struct Dn2CppCultureRow
 static const size_t kCultureCount = sizeof(kCultures) / sizeof(kCultures[0]);
 
 #include "dn2cpp_culture_identifiers.inc"
+#include "dn2cpp_culture_language_codes.inc"
 
 struct Dn2CppCultureNumericGroups
 {
@@ -1624,6 +1625,42 @@ Dn2CppString* dn2cpp_culture_name(const Dn2CppNumberFormatInfo* c)
     if (c == nullptr || c->cultureName == nullptr)
         return dn2cpp_lit16(u"");
     return c->cultureName;
+}
+
+Dn2CppString* dn2cpp_culture_two_letter_iso_language_name(const Dn2CppNumberFormatInfo* c)
+{
+    if (c == nullptr)
+        dn2cpp_throw_null_reference();
+    auto* name = dn2cpp_culture_name(c);
+    if (name->length == 0)
+        return dn2cpp_culture_lcid(c) == 127 ? dn2cpp_lit16(u"iv") : name;
+    // The alternate sort, absent from Name, keeps ICU from parsing a language tag.
+    if (c->cultureRealName != nullptr)
+        name = c->cultureRealName;
+    bool sorted = false;
+    for (int32_t i = 0; i < name->length; i++)
+        sorted = sorted || name->chars[i] == u'_';
+    // Legacy i- and private-use x- prefixes belong to the language identifier.
+    bool privateUse = name->length > 2 && name->chars[0] == u'x' && name->chars[1] == u'-';
+    int32_t length = privateUse || (name->length > 2 && name->chars[0] == u'i' && name->chars[1] == u'-')
+        ? 2 : 0;
+    while (length < name->length && name->chars[length] != u'-' && name->chars[length] != u'_')
+        length++;
+    // A well-formed private-use tag has no language; an overlong first subtag
+    // is not a tag, so the identifier survives.
+    if (privateUse && !sorted && length <= 10)
+        return dn2cpp_lit16(u"");
+    auto language = dn2cpp_culture_lower(std::u16string(name->chars, static_cast<size_t>(length)));
+    // Standard ICU reports no language for und.
+    if (language == u"und")
+        return dn2cpp_lit16(u"");
+    // ISO 639-2 terminology codes map to two-letter codes where available;
+    // legacy two-letter spellings and languages without such a code survive.
+    if (length == 3)
+        for (const auto& code : kCultureIsoLanguageCodes)
+            if (std::char_traits<char16_t>::compare(language.data(), code.name, 3) == 0)
+                return dn2cpp_string_from_chars(code.target, 2);
+    return dn2cpp_string_from_chars(language.data(), length);
 }
 
 Dn2CppString* dn2cpp_culture_tostring(const Dn2CppNumberFormatInfo* c)

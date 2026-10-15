@@ -69,6 +69,8 @@
 # acceptance and empty-name cache ownership independently of invariant data.
 # Rejected first keywords preserve the legacy base when extlang promotion would
 # erase it; accepted keywords and nonempty promoted bases take the ICU path.
+# TwoLetterISOLanguageName diffs against live .NET; und names, where Apple's ICU
+# diverges, pin the standard ICU answer natively.
 #
 # Its LAST TWO sections are not about CultureInfo's API at all; do not prune this
 # bucket by theme.
@@ -316,7 +318,38 @@ FALLBACK_CASES=(
     i-klingon-Latn-US i-klingon-Latn-US-u-nu-latn zh-min-nan-Latn-US-u-nu-latn
 )
 gate_extra_asserts() {
-    local out="$1" native expected mode marker
+    local out="$1" native expected mode marker before prefix
+    native=$(culture_info_run native "./$out/CultureInfoApi")
+    native=$(strip_cr_win "$native")
+    before=$(culture_info_run native "./$out/CultureInfoApi" before-iso-language)
+    prefix=$(awk '/^== ISO language names ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    # The frozen divergences also change later CultureData cache identities in a
+    # single process, so .NET proves its own full-run prefix unchanged.
+    expected=$(culture_info_run oracle dotnet "$_CG_APP")
+    prefix=$(awk '/^== ISO language names ==$/ { exit } { print }' <<< "$(strip_cr_win "$expected")")
+    before=$(culture_info_run oracle dotnet "$_CG_APP" before-iso-language)
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    grep -Fxq '== ISO language names ==' <<< "$(strip_cr_win "$expected")" \
+        || { echo "FAIL: .NET ISO language section did not run" >&2; return 1; }
+    native=$(culture_info_run native "./$out/CultureInfoApi" culture-iso-language)
+    expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-iso-language)
+    assert_output "$native" "$expected"
+    native=$(strip_cr_win "$native")
+    for marker in '== ISO language names ==' "iso ''=iv:iv" "iso 'zul'=zu:zu" \
+        "iso 'i-enochian'=:" "iso 'x-foo'=:" "iso 'i-foo'=i-foo:i-foo" \
+        "iso 'x-foo_phoneb'=x-foo:x-foo" "iso 'x-foobarbaz'=x-foobarbaz:x-foobarbaz" \
+        "iso 'x-foo-US_phoneb'=x-foo:x-foo" "iso 'x-123456789'=x-123456789:x-123456789" \
+        'iso null=NullReferenceException' 'ISO language names end'; do
+        grep -Fxq "$marker" <<< "$native" \
+            || { echo "FAIL: ISO language witness missing: $marker" >&2; return 1; }
+    done
+    # Apple's .NET keeps und for some of these names, so the standard ICU
+    # answer is pinned without a host oracle.
+    native=$(culture_info_run native "./$out/CultureInfoApi" culture-iso-language-undefined)
+    assert_output "$(strip_cr_win "$native")" "iso 'und-US'=:
+iso 'und-u-nu-arab'=:
+ISO undefined language names end"
     native=$(culture_info_run native "./$out/CultureInfoApi" culture-names)
     grep -Fxq 'culture locale data end' <<< "$(strip_cr_win "$native")" \
         || { echo "FAIL: culture locale data section did not finish" >&2; return 1; }
@@ -477,7 +510,7 @@ gate_extra_asserts() {
     done
 }
 DN2CPP_GATE_RUN_ARGS=culture-names
-DN2CPP_GATE_EXTRA_CONTEXT="culture-platform-name-validation"
+DN2CPP_GATE_EXTRA_CONTEXT="culture-platform-name-validation culture-iso-language culture-iso-language-undefined before-iso-language"
 DN2CPP_GATE_EXTRA_CONTEXT+=" ${LOCALE_CASES[*]} ${NUMBERING_CASES[*]} ${FALLBACK_CASES[*]} culture-missing-number-format ${MISSING_NUMBER_CASES[*]} culture-variant-order ${VARIANT_CASES[*]} culture-invariant-lcid-cache ${INVARIANT_CACHE_ORDERS[*]} culture-instance-number-format [${INSTANCE_CULTURES[*]}] culture-integer-constructors culture-instance-equality ${EQUALITY_PAIRS[*]} culture-extension-identities ${EXTENSION_CASES[*]} culture-undefined-extension-metadata ${UNDEFINED_EXTENSION_CASES[*]} culture-extension-order ${EXTENSION_ORDER_PAIRS[*]} constructor-first cached-first culture-undefined-platform-identities [${UNDEFINED_PLATFORM_CASES[*]}] culture-undefined-platform-cache ${UNDEFINED_PLATFORM_CACHE_ORDERS[*]} culture-rejected-extension-identities ${REJECTED_EXTENSION_CASES[*]}"
 DN2CPP_OUT_SUFFIX=-names
 corelib_diff_gate CultureInfoApi --link-xml samples/dotnet/CultureInfoApi/link.xml

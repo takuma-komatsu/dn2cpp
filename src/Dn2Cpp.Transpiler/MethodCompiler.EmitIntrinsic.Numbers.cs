@@ -1237,6 +1237,10 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.Ref, "Dn2CppString*",
                     $"dn2cpp_culture_name({Cast(Pop(), "const Dn2CppNumberFormatInfo*")})");
                 return true;
+            case ("System.Globalization.CultureInfo", "get_TwoLetterISOLanguageName") when sig.ParameterTypes.Length == 0:
+                Push(StackKind.Ref, "Dn2CppString*",
+                    $"dn2cpp_culture_two_letter_iso_language_name({Cast(Pop(), "const Dn2CppNumberFormatInfo*")})");
+                return true;
             case ("System.Globalization.CultureInfo", "ToString") when sig.ParameterTypes.Length == 0:
                 Push(StackKind.Ref, "Dn2CppString*",
                     $"dn2cpp_culture_tostring({Cast(Pop(), "const Dn2CppNumberFormatInfo*")})");

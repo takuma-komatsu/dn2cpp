@@ -7984,6 +7984,7 @@ const Dn2CppNumberFormatInfo* dn2cpp_culture_current_ui();
 void dn2cpp_culture_set_current_ui(const Dn2CppNumberFormatInfo* c);
 const Dn2CppNumberFormatInfo* dn2cpp_culture_installed_ui();
 Dn2CppString* dn2cpp_culture_name(const Dn2CppNumberFormatInfo* c);
+Dn2CppString* dn2cpp_culture_two_letter_iso_language_name(const Dn2CppNumberFormatInfo* c);
 Dn2CppString* dn2cpp_culture_tostring(const Dn2CppNumberFormatInfo* c);
 Dn2CppString* dn2cpp_textinfo_tostring(const Dn2CppNumberFormatInfo* c);
 // CultureInfo.LCID (see Dn2CppNumberFormatInfo::lcid for the three answers), and
