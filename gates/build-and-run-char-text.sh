@@ -7,12 +7,26 @@
 # tostring, encoding-getstring.
 # Indexed Char APIs preserve named null/index faults, UTF-16 messages, and fields
 # across collection; classification and ConvertToUtf32 use their own index text.
+# String.GetHashCode(StringComparison) matches each comparer and rejects invalid values.
 source "$(dirname "$0")/_common.sh"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|before-comparison-hashes"
 
 gate_extra_asserts() {
     local out="$1" native before prefix line
     native=$(run_bounded "./$out/CharText")
     native=$(strip_cr_win "$native")
+    before=$(run_bounded dotnet "$_CG_APP" before-comparison-hashes)
+    prefix=$(awk '/^== String comparison hashes ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    before=$(run_bounded "./$out/CharText" before-comparison-hashes)
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    for line in '== String comparison hashes ==' 'hash en-US:0=True:True:True:True' \
+        'hash tr-TR:5=True:True:True:True' 'unicode ordinal ignore case=True' \
+        'hash fault=text:-2147483648:ArgumentException:comparisonType' 'hash null=4' \
+        'hash null=6' 'String comparison hashes end'; do
+        [ "$(grep -Fxc "$line" <<< "$native")" = 1 ] \
+            || { echo "FAIL: string hash witness missing: $line" >&2; exit 1; }
+    done
     before=$(run_bounded dotnet "$_CG_APP" before-encoding-receivers)
     prefix=$(awk '/^== encoding receivers ==$/ { exit } { print }' <<< "$native")
     assert_output "$prefix" "$(strip_cr_win "$before")"
