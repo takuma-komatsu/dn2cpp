@@ -37,6 +37,12 @@ namespace CultureInfoApi
                 return;
             }
 
+            if (args.Length > 0 && args[0] == "culture-legacy-chinese")
+            {
+                RunLegacyChineseCultures(args.Length > 1 ? args[1] : "constructor-first");
+                return;
+            }
+
             if (args.Length > 0 && args[0] == "culture-platform-name-validation")
             {
                 RunPlatformNameValidation();
@@ -371,6 +377,9 @@ namespace CultureInfoApi
             if (args.Length > 0 && args[0] == "before-iso-language")
                 return;
             RunIsoLanguage();
+            if (args.Length > 0 && args[0] == "before-legacy-chinese")
+                return;
+            RunLegacyChineseCultures("constructor-first");
         }
 
         private static void RunIsoLanguage()
@@ -410,9 +419,66 @@ namespace CultureInfoApi
 
         private static void WriteIsoLanguage(string name)
         {
-            CultureInfo culture = new CultureInfo(name);
-            Console.WriteLine("iso '" + name + "'=" + culture.TwoLetterISOLanguageName
-                + ":" + CultureInfo.GetCultureInfo(name).TwoLetterISOLanguageName);
+            Console.WriteLine("iso '" + name + "'=" + ReadIsoLanguage(name, false)
+                + ":" + ReadIsoLanguage(name, true));
+        }
+
+        private static string ReadIsoLanguage(string name, bool cached)
+        {
+            try
+            {
+                CultureInfo culture = cached ? CultureInfo.GetCultureInfo(name) : new CultureInfo(name);
+                return culture.TwoLetterISOLanguageName;
+            }
+            catch (CultureNotFoundException exception)
+            {
+                return "CultureNotFoundException hr=" + exception.HResult.ToString("X8")
+                    + " param=" + (exception.ParamName ?? "<null>")
+                    + " name=" + (exception.InvalidCultureName ?? "<null>")
+                    + " id=" + (exception.InvalidCultureId.HasValue
+                        ? exception.InvalidCultureId.Value.ToString(CultureInfo.InvariantCulture) : "<null>");
+            }
+        }
+
+        private static void RunLegacyChineseCultures(string order)
+        {
+            Console.WriteLine("== legacy Chinese cultures ==");
+            Console.WriteLine("order=" + order);
+            foreach (string name in new[] { "zh-CHS", "zh-CHT", "zh-CHS\0ignored", "zh-CHT\0ignored" })
+            {
+                string modern = name.StartsWith("zh-CHS", StringComparison.Ordinal) ? "zh-Hans" : "zh-Hant";
+                int lcid = modern == "zh-Hans" ? 4 : 31748;
+                Console.WriteLine("legacy '" + name.Replace("\0", "<NUL>") + "'");
+                if (order == "cached-first")
+                    WriteLegacyChineseCulture("first cache", CultureInfo.GetCultureInfo(name.ToUpperInvariant()));
+                if (order == "lcid-first")
+                    WriteLegacyChineseCulture("first LCID", CultureInfo.GetCultureInfo(lcid));
+                WriteLegacyChineseCulture("constructor", new CultureInfo(name));
+                WriteLegacyChineseCulture("no override", new CultureInfo(name, false));
+                CultureInfo cached = CultureInfo.GetCultureInfo(name);
+                WriteLegacyChineseCulture("cache", cached);
+                WriteLegacyChineseCulture("modern", new CultureInfo(modern, false));
+                WriteLegacyChineseCulture("LCID", new CultureInfo(lcid, false));
+                WriteLegacyChineseCulture("LCID cache", CultureInfo.GetCultureInfo(lcid));
+                WriteLegacyChineseCulture("specific", CultureInfo.CreateSpecificCulture(name));
+                Console.WriteLine("  cache casing=" + ReferenceEquals(cached, CultureInfo.GetCultureInfo(name.ToUpperInvariant()))
+                    + " modern=" + ReferenceEquals(cached, CultureInfo.GetCultureInfo(modern))
+                    + " LCID=" + ReferenceEquals(cached, CultureInfo.GetCultureInfo(lcid)));
+            }
+            foreach (string name in new[] { "zh-CHS_phoneb", "zh-CHT_phoneb", "zh-CHS-u-nu-arab", "zh-CHT-u-nu-arab" })
+                WriteIsoLanguage(name);
+            Console.WriteLine("legacy Chinese cultures end");
+        }
+
+        private static void WriteLegacyChineseCulture(string label, CultureInfo culture)
+        {
+            Console.WriteLine("  " + label + "=" + culture.Name + ":" + culture.ToString()
+                + " LCID=" + culture.LCID + " neutral=" + culture.IsNeutralCulture
+                + " iso=" + culture.TwoLetterISOLanguageName + " readonly=" + culture.IsReadOnly
+                + " n=" + (1234.5).ToString("N2", culture) + " currency=" + culture.NumberFormat.CurrencySymbol
+                + " digits=" + culture.NumberFormat.NumberDecimalDigits
+                + " symbols=" + culture.NumberFormat.NaNSymbol + "|" + culture.NumberFormat.PositiveInfinitySymbol
+                + "|" + culture.NumberFormat.NegativeInfinitySymbol);
         }
 
         private static void RunCultureNames()
