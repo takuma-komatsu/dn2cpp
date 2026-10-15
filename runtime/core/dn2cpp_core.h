@@ -8560,6 +8560,8 @@ int32_t dn2cpp_local_offset_minutes(Dn2CppDateTime localClock);
 // ordering/equality/Unix time read the UTC instant. InvariantCulture only; named /
 // historical time zones stay a carve-out (host local zone only).
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_make(int64_t clockTicks, int32_t offsetMinutes);
+int32_t dn2cpp_datetimeoffset_validate_offset(Dn2CppTimeSpan offset);
+Dn2CppDateTime dn2cpp_datetimeoffset_validate_date(Dn2CppDateTime clock, Dn2CppTimeSpan offset);
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_from_ticks(int64_t clockTicks, Dn2CppTimeSpan offset);
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_from_parts(int32_t y, int32_t mo, int32_t d,
     int32_t h, int32_t mi, int32_t s, int32_t ms, int32_t hasMs, Dn2CppTimeSpan offset);

@@ -16,11 +16,12 @@
     <DefineConstants Condition="'$(RuntimeHeldConvertibleProviderRoute)' == 'reflected-delegate'">$(DefineConstants);CONVERTIBLE_PROVIDER_REFLECTED_DELEGATE</DefineConstants>
     <DefineConstants Condition="'$(RuntimeHeldConvertibleProviderRoute)' == 'to-type'">$(DefineConstants);CONVERTIBLE_PROVIDER_TO_TYPE</DefineConstants>
     <DefineConstants Condition="'$(RuntimeHeldReflectedValueOnly)' == 'true'">$(DefineConstants);REFLECTED_VALUE_ONLY</DefineConstants>
+    <DefineConstants Condition="'$(RuntimeHeldHandleValueOnly)' == 'true'">$(DefineConstants);HANDLE_VALUE_ONLY</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="RuntimeHeldInterfacesSubset.cs" Condition="'$(RuntimeHeldConvertibleProviderOnly)' != 'true' and '$(RuntimeHeldReflectedValueOnly)' != 'true'" />
+    <Compile Include="RuntimeHeldInterfacesSubset.cs" Condition="'$(RuntimeHeldConvertibleProviderOnly)' != 'true' and '$(RuntimeHeldReflectedValueOnly)' != 'true' and '$(RuntimeHeldHandleValueOnly)' != 'true'" />
     <Compile Include="RuntimeHeldConvertibleProviderSubset.cs" Condition="'$(RuntimeHeldConvertibleProviderOnly)' == 'true'" />
-    <Compile Include="RuntimeHeldReflectedValueSubset.cs" Condition="'$(RuntimeHeldReflectedValueOnly)' == 'true'" />
+    <Compile Include="RuntimeHeldReflectedValueSubset.cs" Condition="'$(RuntimeHeldReflectedValueOnly)' == 'true' or '$(RuntimeHeldHandleValueOnly)' == 'true'" />
     <Compile Include="RuntimeHeldInterfacesOnlyProgram.cs" />
   </ItemGroup>
 </Project>

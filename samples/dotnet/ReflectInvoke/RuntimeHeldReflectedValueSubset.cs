@@ -1,12 +1,14 @@
 #nullable enable
 #pragma warning disable SYSLIB0050, SYSLIB0051
 using System;
+using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 
 namespace ReflectInvoke;
 
 internal static class RuntimeHeldReflectedValueSubset
 {
+#if !HANDLE_VALUE_ONLY
     private sealed class Holder
     {
 #pragma warning disable CS0649
@@ -37,9 +39,11 @@ internal static class RuntimeHeldReflectedValueSubset
         public uint ToUInt32(object value) => throw new InvalidOperationException("Unexpected conversion");
         public ulong ToUInt64(object value) => throw new InvalidOperationException("Unexpected conversion");
     }
+#endif
 
-    internal static void Run()
+    internal static void Run(bool includeHandleValue = true)
     {
+#if !HANDLE_VALUE_ONLY
         object date = typeof(Holder).GetField(nameof(Holder.DateTimeValue))!.GetValue(null)!;
         var info = new SerializationInfo(date.GetType(), new Converter());
         ((ISerializable)date).GetObjectData(info, default);
@@ -63,5 +67,28 @@ internal static class RuntimeHeldReflectedValueSubset
                 + ":kind=" + serialized.Kind + ":minutes=" + offsetInfo.GetInt16("OffsetMinutes"));
         }
         Console.WriteLine("reflected DateTimeOffset serialization end");
+#endif
+        if (includeHandleValue)
+            RunHandleValue();
+    }
+
+    private static void RunHandleValue()
+    {
+        Console.WriteLine("== handle-only DateTimeOffset callbacks ==");
+        DateTimeOffset value = default;
+        object boxed = RuntimeHelpers.Box(ref Unsafe.As<DateTimeOffset, byte>(ref value),
+            typeof(DateTimeOffset).TypeHandle)!;
+        ((IDeserializationCallback)boxed).OnDeserialization(null);
+        Console.WriteLine("handle-only DateTimeOffset callback=completed");
+        try
+        {
+            ((ISerializable)boxed).GetObjectData(null!, default);
+            Console.WriteLine("handle-only DateTimeOffset null serialization=returned");
+        }
+        catch (ArgumentNullException ex)
+        {
+            Console.WriteLine("handle-only DateTimeOffset null serialization=" + ex.GetType().Name + "/" + ex.ParamName);
+        }
+        Console.WriteLine("handle-only DateTimeOffset callbacks end");
     }
 }

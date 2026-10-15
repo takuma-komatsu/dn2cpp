@@ -1686,6 +1686,14 @@ internal sealed partial class MethodCompiler
         // Statics (no receiver to pop) — must precede the instance getters below.
         switch (name)
         {
+            case "ValidateOffset" when ps.Length == 1 && IsTimeSpan(ps[0]):
+            { var offset = Pop(); Push(StackKind.I4, "int32_t", $"dn2cpp_datetimeoffset_validate_offset({TSVal(offset)})"); return true; }
+            case "ValidateDate" when ps.Length == 2 && IsDateTime(ps[0]) && IsTimeSpan(ps[1]):
+            {
+                var offset = Pop(); var clock = Pop();
+                Push(StackKind.Struct, "Dn2CppDateTime", $"dn2cpp_datetimeoffset_validate_date({DTVal(clock)}, {TSVal(offset)})");
+                return true;
+            }
             // Wall clock. Now = local clock + host offset; UtcNow = UTC instant at offset 0.
             case "get_Now" when ps.Length == 0:
                 Push(StackKind.Struct, "Dn2CppDateTimeOffset", "dn2cpp_datetimeoffset_now()"); return true;
@@ -1789,7 +1797,7 @@ internal sealed partial class MethodCompiler
             case "get_Ticks": { var r = Pop(); Push(StackKind.I8, "int64_t", $"({DTOVal(r)}).ticks"); return true; }
             case "get_UtcTicks": { var r = Pop(); Push(StackKind.I8, "int64_t", $"dn2cpp_datetimeoffset_utc_ticks({DTOVal(r)})"); return true; }
             case "get_Offset": { var r = Pop(); Push(StackKind.Struct, "Dn2CppTimeSpan", $"dn2cpp_datetimeoffset_offset({DTOVal(r)})"); return true; }
-            case "get_DateTime": { var r = Pop(); Push(StackKind.Struct, "Dn2CppDateTime", $"dn2cpp_datetimeoffset_clock({DTOVal(r)})"); return true; }
+            case "get_DateTime" or "get_ClockDateTime": { var r = Pop(); Push(StackKind.Struct, "Dn2CppDateTime", $"dn2cpp_datetimeoffset_clock({DTOVal(r)})"); return true; }
             case "get_UtcDateTime": { var r = Pop(); Push(StackKind.Struct, "Dn2CppDateTime", $"dn2cpp_datetimeoffset_utc({DTOVal(r)})"); return true; }
             case "get_LocalDateTime": { var r = Pop(); Push(StackKind.Struct, "Dn2CppDateTime", $"dn2cpp_datetime_to_local(dn2cpp_datetimeoffset_utc({DTOVal(r)}))"); return true; }
             case "get_Year": { var r = Pop(); Push(StackKind.I4, "int32_t", $"dn2cpp_datetime_year(dn2cpp_datetimeoffset_clock({DTOVal(r)}))"); return true; }

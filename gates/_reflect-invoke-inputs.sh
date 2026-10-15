@@ -116,3 +116,5 @@ reflection_inputs_cleanup() {
         *) echo 'FAIL: unexpected reflection input directory' >&2; return 1 ;;
     esac
 }
+
+gate_add_exit_hook reflection_inputs_cleanup

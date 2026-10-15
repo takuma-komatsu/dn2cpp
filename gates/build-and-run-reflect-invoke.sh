@@ -7,6 +7,7 @@
 # Runtime-owned and intrinsic-base IDisposable slots preserve cleanup and user virtual overrides.
 # Runtime-held interface slots retain reflection, serialization, task lifetime and provider dispatch.
 # Reflected DateTimeOffset serialization keeps its UTC payload and offset.
+# Handle-only DateTimeOffset boxes retain validation callbacks and serialization argument checks.
 # Pointer and function-pointer arrays share allocation/query identity and safe reflection validation.
 # Runtime-owned class method groups share direct-call dispatch and callable identity.
 # Virtual delegate equality and removal retain the selected method under identical-code folding.
@@ -365,6 +366,7 @@ runtime_held_interface_prefix_asserts() {
 runtime_held_interface_diff_axes() {
     local core_definition asserts_definition axis runtime_held_identity_only=false runtime_held_convertible_only=false
     local runtime_held_project=RuntimeHeldInterfacesOnly runtime_held_convertible_route=direct runtime_held_reflected_value_only=false
+    local runtime_held_handle_value_only=false
     local flags=()
     core_definition=$(declare -f _corelib_gate_core)
     asserts_definition=$(declare -f gate_extra_asserts || true)
@@ -378,7 +380,8 @@ runtime_held_interface_diff_axes() {
             -p:RuntimeHeldProviderIdentityOnly="$runtime_held_identity_only" -p:RuntimeHeldReflectionOnly=false \
             -p:RuntimeHeldConvertibleProviderOnly="$runtime_held_convertible_only" \
             -p:RuntimeHeldConvertibleProviderRoute="$runtime_held_convertible_route" \
-            -p:RuntimeHeldReflectedValueOnly="$runtime_held_reflected_value_only"
+            -p:RuntimeHeldReflectedValueOnly="$runtime_held_reflected_value_only" \
+            -p:RuntimeHeldHandleValueOnly="$runtime_held_handle_value_only"
         _CG_APP="$out/app/$project.dll"
         invoke_cli "$_CG_APP" -r "$_CG_CORELIB" "$@" -o "$out"
     }
@@ -408,7 +411,25 @@ runtime_held_interface_diff_axes() {
                 test "$(grep -Ec "^provider convertible $label=" "$out/runtime-held.$axis.stdout")" = 1 \
                     || { echo "FAIL: standalone convertible provider witness missing or repeated: $axis/$label" >&2; return 1; }
             done
-        elif [ "$runtime_held_reflected_value_only" = true ]; then
+        elif [ "$runtime_held_reflected_value_only" = true ] || [ "$runtime_held_handle_value_only" = true ]; then
+            for axis in dotnet native; do
+                reflection_assert_lines "$out/runtime-held.$axis.stdout" 1 \
+                    '== handle-only DateTimeOffset callbacks ==' \
+                    'handle-only DateTimeOffset callback=completed' \
+                    'handle-only DateTimeOffset null serialization=ArgumentNullException/info' \
+                    'handle-only DateTimeOffset callbacks end'
+                if [ "$axis" = dotnet ]; then
+                    reflection_oracle "$_CG_APP" before-handle-value > "$out/handle-value-before.$axis.stdout"
+                else
+                    run_bounded "$out/RuntimeHeldInterfacesOnly$EXE_EXT" before-handle-value > "$out/handle-value-before.$axis.stdout"
+                fi
+                awk '/^== handle-only DateTimeOffset callbacks ==$/ { exit } { print }' \
+                    "$out/runtime-held.$axis.stdout" > "$out/handle-value-prefix.$axis.stdout"
+                diff -u <(strip_cr_win_file "$out/handle-value-before.$axis.stdout") "$out/handle-value-prefix.$axis.stdout"
+            done
+            if [ "$runtime_held_handle_value_only" = true ]; then
+                return
+            fi
             for axis in dotnet native; do
                 assert_output "$(head -n 2 "$out/runtime-held.$axis.stdout")" \
                     $'reflected DateTime serialization=completed\nreflected Decimal callback=completed'
@@ -441,12 +462,14 @@ runtime_held_interface_diff_axes() {
     for axis in default trimmed unshared ildiet identity identity-trimmed convertible convertible-ildiet \
         convertible-group convertible-group-ildiet convertible-reflected convertible-reflected-ildiet \
         convertible-reflected-delegate convertible-reflected-delegate-ildiet \
-        convertible-to-type convertible-to-type-ildiet reflected-values reflected-values-ildiet; do
+        convertible-to-type convertible-to-type-ildiet reflected-values reflected-values-ildiet \
+        handle-values handle-values-ildiet handle-values-trimmed handle-values-unshared; do
         flags=(--no-ildiet)
         runtime_held_identity_only=false
         runtime_held_convertible_only=false
         runtime_held_convertible_route=direct
         runtime_held_reflected_value_only=false
+        runtime_held_handle_value_only=false
         case "$axis" in
             trimmed) flags+=(--trim-reflection) ;;
             unshared) flags+=(--no-shared-generics) ;;
@@ -465,6 +488,10 @@ runtime_held_interface_diff_axes() {
             convertible-to-type-ildiet) runtime_held_convertible_only=true; runtime_held_convertible_route=to-type; flags=() ;;
             reflected-values) runtime_held_reflected_value_only=true ;;
             reflected-values-ildiet) runtime_held_reflected_value_only=true; flags=() ;;
+            handle-values) runtime_held_handle_value_only=true ;;
+            handle-values-ildiet) runtime_held_handle_value_only=true; flags=() ;;
+            handle-values-trimmed) runtime_held_handle_value_only=true; flags+=(--trim-reflection) ;;
+            handle-values-unshared) runtime_held_handle_value_only=true; flags+=(--no-shared-generics) ;;
         esac
         DN2CPP_STRICT_COMPLETION=1 DN2CPP_OUT_SUFFIX="-runtime-held-$axis" \
             DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|runtime-held-axis:$axis|strict-completion" \
@@ -479,7 +506,7 @@ runtime_held_interface_diff_axes() {
 }
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/ReflectInvoke/RuntimeHeldInterfacesSubset.cs samples/dotnet/ReflectInvoke/RuntimeHeldConvertibleProviderSubset.cs samples/dotnet/ReflectInvoke/RuntimeHeldReflectedValueSubset.cs samples/dotnet/ReflectInvoke/RuntimeHeldInterfacesOnly.csproj samples/dotnet/ReflectInvoke/RuntimeHeldInterfacesOnlyProgram.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|runtime-held-interface:default,trimmed,unshared,ildiet,provider-identity,provider-identity-trimmed,convertible,convertible-ildiet,convertible-group,convertible-group-ildiet,convertible-reflected,convertible-reflected-ildiet,convertible-reflected-delegate,convertible-reflected-delegate-ildiet,convertible-to-type,convertible-to-type-ildiet,reflected-values,reflected-values-ildiet|runtime-held-prefix:before-runtime-held-interfaces|provider-identity-build:RuntimeHeldProviderIdentityOnly=true|runtime-held-reflection-build:RuntimeHeldReflectionOnly=false|runtime-held-convertible-build:RuntimeHeldConvertibleProviderOnly=true|runtime-held-convertible-route:direct,group,reflected,reflected-delegate,to-type|runtime-held-reflected-value-build:RuntimeHeldReflectedValueOnly=true|runtime-held-isolated-assembly-attributes:RUNTIME_HELD_ASSEMBLY_ATTRIBUTES|runtime-held-only:${DN2CPP_RUNTIME_HELD_ONLY:-}"
-DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|reflected-datetimeoffset-serialization:0,90,-330|reflected-values-prefix:DateTime,Decimal"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|reflected-datetimeoffset-serialization:0,90,-330|reflected-values-prefix:DateTime,Decimal|handle-datetimeoffset-callback:default,ildiet,trimmed,unshared|handle-value-prefix:before-handle-value|runtime-held-handle-value-build:RuntimeHeldHandleValueOnly=true"
 if [ "${DN2CPP_RUNTIME_HELD_ONLY:-}" = 1 ]; then
     runtime_held_interface_diff_axes
     exit 0
@@ -2021,6 +2048,9 @@ expect_policy_rejection runtime-owned "cannot select packed metadata for runtime
 
 # Each mode rewrites Stored to overwrite its local's Add with Subtract through
 # the local's address. .NET binds Subtract; dn2cpp must refuse, never bind Add.
+ldftn_fixture_dir="$_reflection_inputs/ldftn-local"
+gate_build_fixture gates/fixtures/ldftn-local/LdftnLocalFixture.csproj "$ldftn_fixture_dir"
+ldftn_fixture="$ldftn_fixture_dir/LdftnLocalFixture.dll"
 byref_diagnostic='a delegate target loaded from an address-taken local cannot preserve delegate identity'
 DN2CPP_BEFORE_LDFTN_LOCAL=1 reflection_oracle "$_CG_APP" \
     > "$invalid_out/byref-prefix.stdout"
@@ -2032,7 +2062,7 @@ for byref_mode in overwrite overwrite-int64 copy; do
     cp "${_CG_APP%.dll}.runtimeconfig.json" "$byref_dir/app/ReflectInvoke.runtimeconfig.json"
     cp "${_CG_APP%.dll}.deps.json" "$byref_dir/app/ReflectInvoke.deps.json"
     cp "$(dirname "$_CG_APP")/Dn2Cpp.Runtime.dll" "$byref_dir/app/Dn2Cpp.Runtime.dll"
-    run_bounded dotnet exec "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
+    run_bounded dotnet exec "$ldftn_fixture" \
         "$byref_app" "--byref-$byref_mode"
     reflection_oracle "$byref_app" > "$byref_dir/dotnet.stdout"
     byref_dotnet=$(strip_cr_win_file "$byref_dir/dotnet.stdout")
@@ -2087,7 +2117,7 @@ for origin_mode in argument field array checked-conv arithmetic box call local s
     cp "${_CG_APP%.dll}.runtimeconfig.json" "$origin_dir/app/ReflectInvoke.runtimeconfig.json"
     cp "${_CG_APP%.dll}.deps.json" "$origin_dir/app/ReflectInvoke.deps.json"
     cp "$(dirname "$_CG_APP")/Dn2Cpp.Runtime.dll" "$origin_dir/app/Dn2Cpp.Runtime.dll"
-    run_bounded dotnet exec "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
+    run_bounded dotnet exec "$ldftn_fixture" \
         "$origin_app" "--delegate-origin-$origin_mode" > "$origin_dir/fixture.log"
     origin_fixture=$(strip_cr_win_file "$origin_dir/fixture.log")
     grep -Fxq "delegate origin fixture verified: --delegate-origin-$origin_mode" <<< "$origin_fixture"
@@ -3021,4 +3051,3 @@ reflected_event_diff_axes
 reflected_event_preservation
 
 runtime_template_binding_diff_axes
-reflection_inputs_cleanup

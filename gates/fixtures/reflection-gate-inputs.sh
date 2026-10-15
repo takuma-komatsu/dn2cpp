@@ -6,7 +6,17 @@ py="$1"
 CONFIG=Fixture
 TFM=net10.0
 EXE_EXT=.exe
+_gate_exit_hooks=()
+eval "$(sed -n '/^gate_add_exit_hook() {/,/^}/p; /^_gate_run_exit_hooks() {/,/^}/p' gates/_common.sh)"
 source gates/_reflect-invoke-inputs.sh
+if [ "${2:-}" = --exit-probe ]; then
+    probe_record="$3"
+    printf '%s\n' "$_reflection_inputs" > "$probe_record"
+    fixture_exit_witness() { echo 'other exit hook ran' > "$probe_record.hook"; }
+    gate_add_exit_hook fixture_exit_witness
+    test "$4" = 0
+    exit 0
+fi
 fixture="$_reflection_inputs/fixture"
 mkdir -p "$fixture"
 : > "$fixture/builds"
@@ -106,4 +116,13 @@ unset -f gate_run_oracle gate_capture_diff_output
 corelib_diff_gate Driver > /dev/null
 test "$(wc -l < "$fixture/oracles" | tr -d ' ')" = 5
 echo 'reflection input reuse OK'
-reflection_inputs_cleanup
+for exit_status in 0 1; do
+    probe_record="$fixture/exit-$exit_status"
+    status=0
+    bash gates/fixtures/reflection-gate-inputs.sh "$py" --exit-probe "$probe_record" "$exit_status" || status=$?
+    test "$status" = "$exit_status"
+    read -r exited_inputs < "$probe_record"
+    test ! -e "$exited_inputs"
+    grep -Fxq 'other exit hook ran' "$probe_record.hook"
+done
+echo 'reflection input cleanup OK'

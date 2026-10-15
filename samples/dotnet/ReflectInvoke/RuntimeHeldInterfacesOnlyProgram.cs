@@ -8,8 +8,8 @@ ReflectInvoke.RuntimeHeldInterfacesSubset.Program.RunProviderIdentity();
 ReflectInvoke.RuntimeHeldInterfacesSubset.Program.RunReflection();
 #elif CONVERTIBLE_PROVIDER_ONLY
 ReflectInvoke.RuntimeHeldConvertibleProviderSubset.Run();
-#elif REFLECTED_VALUE_ONLY
-ReflectInvoke.RuntimeHeldReflectedValueSubset.Run();
+#elif REFLECTED_VALUE_ONLY || HANDLE_VALUE_ONLY
+ReflectInvoke.RuntimeHeldReflectedValueSubset.Run(args.Length == 0 || args[0] != "before-handle-value");
 #else
 if (args.Length != 0 && args[0] == "before-boxed-type-handle")
     ReflectInvoke.RuntimeHeldInterfacesSubset.Program.Run(includeHandleSerialization: false);
