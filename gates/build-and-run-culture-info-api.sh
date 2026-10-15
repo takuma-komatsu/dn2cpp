@@ -161,7 +161,67 @@ culture_info_diagnostics_self_test() {
     return 0
 }
 
+culture_info_executable_self_test() (
+    # Model Windows naming on every host, with a stale foreign-host sibling.
+    # Override build/cache work only; publishing and native execution stay real.
+    local EXE_EXT=.exe DN2CPP_GATE_RUN_ARGS=host-executable
+    local HIGHWAY= SCALAR= DN2CPP_OUT_SUFFIX= DN2CPP_ORACLE_DOTNET_ENABLE_AVX=
+    local ANDROID= IOS_SIM= IOS_DEV= WASM=
+    local actual axis
+    mkdir -p "$_GATE_RUN_LOG_DIR/executable-choice/build" \
+        "$_GATE_RUN_LOG_DIR/executable-choice/native"
+    cd "$_GATE_RUN_LOG_DIR/executable-choice"
+    # Create bare names first: MSYS aliases a missing bare name to its .exe.
+    printf '#!/usr/bin/env bash\nexit 91\n' > build/CultureInfoApi
+    chmod +x build/CultureInfoApi
+    cp build/CultureInfoApi native/CultureInfoApi
+    if [ "$DN2CPP_OS" = windows ]; then
+        cp "$(type -P echo)" build/CultureInfoApi.exe
+    else
+        printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$1"\n' > build/CultureInfoApi.exe
+        chmod +x build/CultureInfoApi.exe
+    fi
+    if cmp -s build/CultureInfoApi build/CultureInfoApi.exe; then
+        echo 'FAIL: the executable-choice fixture has aliased siblings' >&2
+        return 1
+    fi
+    printf 'host-executable\n' > expected.txt
+
+    publish_native_assets build native CultureInfoApi
+    cmp build/CultureInfoApi.exe native/CultureInfoApi.exe \
+        || { echo 'FAIL: the host executable was not published' >&2; return 1; }
+    cmp build/CultureInfoApi native/CultureInfoApi \
+        || { echo 'FAIL: publishing replaced the foreign-host sibling' >&2; return 1; }
+
+    _corelib_gate_out() { printf 'native\n'; }
+    _corelib_gate_core() { _CG_CORELIB=unused; _CG_APP=unused; }
+    _corelib_gate_check() { return 1; }
+    compile_console() { return 0; }
+    gate_cache_commit() { return 0; }
+    gate_run_oracle() { cat expected.txt; }
+    corelib_freeze_gate CultureInfoApi expected.txt
+    corelib_diff_gate CultureInfoApi
+    actual=$(culture_info_run native "./native/CultureInfoApi$EXE_EXT" host-executable)
+    assert_output "$actual" host-executable
+    echo 'OK: CultureInfoApi host executable wins over foreign-host sibling'
+
+    mkdir cross
+    printf 'unpublished-target\n' > cross/CultureInfoApi
+    cp build/CultureInfoApi.exe cross/CultureInfoApi.exe
+    for axis in ANDROID IOS_SIM IOS_DEV WASM; do
+        printf 'unpublished-target\n' > cross/CultureInfoApi
+        ( export "$axis=1"; publish_native_assets build cross CultureInfoApi )
+        cmp build/CultureInfoApi cross/CultureInfoApi \
+            || { echo "FAIL: $axis did not publish the target executable" >&2; return 1; }
+        cmp build/CultureInfoApi.exe cross/CultureInfoApi.exe \
+            || { echo "FAIL: $axis publishing replaced the host sibling" >&2; return 1; }
+    done
+    echo 'OK: cross-built executable publishing keeps target naming'
+    return 0
+)
+
 culture_info_diagnostics_self_test
+culture_info_executable_self_test
 if [ "${1:-}" = --self-test ]; then
     exit 0
 fi
@@ -170,7 +230,7 @@ fi
 # deliberate divergences and is still compared to the unchanged snapshot.
 gate_extra_asserts() {
     local out="$1" native prefix
-    native=$(culture_info_run native "./$out/CultureInfoApi")
+    native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT")
     native=$(strip_cr_win "$native")
     prefix=$(awk '/^== culture name resolution ==$/ { exit } { print }' <<< "$native")
     assert_output "$prefix" "$(cat "$(dirname "$0")/expected/culture-info-api.txt")"
@@ -322,9 +382,9 @@ FALLBACK_CASES=(
 )
 gate_extra_asserts() {
     local out="$1" native expected mode marker before prefix
-    native=$(culture_info_run native "./$out/CultureInfoApi")
+    native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT")
     native=$(strip_cr_win "$native")
-    before=$(culture_info_run native "./$out/CultureInfoApi" before-iso-language)
+    before=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" before-iso-language)
     prefix=$(awk '/^== ISO language names ==$/ { exit } { print }' <<< "$native")
     assert_output "$prefix" "$(strip_cr_win "$before")"
     # The frozen divergences also change later CultureData cache identities in a
@@ -336,12 +396,12 @@ gate_extra_asserts() {
     before=$(culture_info_run oracle dotnet "$_CG_APP" before-legacy-chinese)
     prefix=$(awk '/^== legacy Chinese cultures ==$/ { exit } { print }' <<< "$(strip_cr_win "$expected")")
     assert_output "$prefix" "$(strip_cr_win "$before")"
-    before=$(culture_info_run native "./$out/CultureInfoApi" before-legacy-chinese)
+    before=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" before-legacy-chinese)
     prefix=$(awk '/^== legacy Chinese cultures ==$/ { exit } { print }' <<< "$native")
     assert_output "$prefix" "$(strip_cr_win "$before")"
     grep -Fxq '== ISO language names ==' <<< "$(strip_cr_win "$expected")" \
         || { echo "FAIL: .NET ISO language section did not run" >&2; return 1; }
-    native=$(culture_info_run native "./$out/CultureInfoApi" culture-iso-language)
+    native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-iso-language)
     expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-iso-language)
     assert_output "$native" "$expected"
     native=$(strip_cr_win "$native")
@@ -367,7 +427,7 @@ gate_extra_asserts() {
     done
     # Apple's .NET keeps und for some of these names, so the standard ICU
     # answer is pinned without a host oracle.
-    native=$(culture_info_run native "./$out/CultureInfoApi" culture-iso-language-undefined)
+    native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-iso-language-undefined)
     if [ "$DN2CPP_OS" = windows ]; then
         expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-iso-language-undefined)
         assert_output "$native" "$expected"
@@ -379,7 +439,7 @@ iso 'und-u-nu-arab'=:
 ISO undefined language names end"
     fi
     for mode in constructor-first cached-first lcid-first; do
-        native=$(culture_info_run native "./$out/CultureInfoApi" culture-legacy-chinese "$mode")
+        native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-legacy-chinese "$mode")
         expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-legacy-chinese "$mode")
         assert_output "$native" "$expected"
         for marker in '== legacy Chinese cultures ==' "legacy 'zh-CHS'" "legacy 'zh-CHT'" \
@@ -388,7 +448,7 @@ ISO undefined language names end"
                 || { echo "FAIL: legacy Chinese witness missing: $marker" >&2; return 1; }
         done
     done
-    native=$(culture_info_run native "./$out/CultureInfoApi" culture-names)
+    native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-names)
     grep -Fxq 'culture locale data end' <<< "$(strip_cr_win "$native")" \
         || { echo "FAIL: culture locale data section did not finish" >&2; return 1; }
     grep -Fxq 'culture numbering data end' <<< "$(strip_cr_win "$native")" \
@@ -421,13 +481,13 @@ ISO undefined language names end"
         || { echo "FAIL: rejected extension identities section did not finish" >&2; return 1; }
     grep -Fxq 'culture platform name validation end' <<< "$(strip_cr_win "$native")" \
         || { echo "FAIL: platform name validation section did not finish" >&2; return 1; }
-    native=$(culture_info_run native "./$out/CultureInfoApi" culture-platform-name-validation)
+    native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-platform-name-validation)
     expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-platform-name-validation)
     assert_output "$native" "$expected"
     grep -Fxq 'culture platform name validation end' <<< "$(strip_cr_win "$native")" \
         || { echo "FAIL: platform name validation mode did not finish" >&2; return 1; }
     for mode in "${LOCALE_CASES[@]}"; do
-        native=$(culture_info_run native "./$out/CultureInfoApi" "$mode")
+        native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" "$mode")
         expected=$(culture_info_run oracle dotnet "$_CG_APP" "$mode")
         assert_output "$native" "$expected"
         case "$mode" in
@@ -444,54 +504,54 @@ ISO undefined language names end"
             || { echo "FAIL: $mode did not finish" >&2; return 1; }
     done
     for mode in "${NUMBERING_CASES[@]}"; do
-        native=$(culture_info_run native "./$out/CultureInfoApi" culture-numbering-data "$mode")
+        native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-numbering-data "$mode")
         expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-numbering-data "$mode")
         assert_output "$native" "$expected"
         grep -Fxq 'culture numbering data end' <<< "$(strip_cr_win "$native")" \
             || { echo "FAIL: numbering data for $mode did not finish" >&2; return 1; }
     done
     for mode in "${FALLBACK_CASES[@]}"; do
-        native=$(culture_info_run native "./$out/CultureInfoApi" culture-fallback-identities "$mode")
+        native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-fallback-identities "$mode")
         expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-fallback-identities "$mode")
         assert_output "$native" "$expected"
         grep -Fxq 'culture fallback identities end' <<< "$(strip_cr_win "$native")" \
             || { echo "FAIL: fallback identities for $mode did not finish" >&2; return 1; }
     done
     for mode in "${MISSING_NUMBER_CASES[@]}"; do
-        native=$(culture_info_run native "./$out/CultureInfoApi" culture-missing-number-format "$mode")
+        native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-missing-number-format "$mode")
         expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-missing-number-format "$mode")
         assert_output "$native" "$expected"
         grep -Fxq 'culture missing number format end' <<< "$(strip_cr_win "$native")" \
             || { echo "FAIL: missing number format for $mode did not finish" >&2; return 1; }
     done
     for mode in "${VARIANT_CASES[@]}"; do
-        native=$(culture_info_run native "./$out/CultureInfoApi" culture-variant-order "$mode")
+        native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-variant-order "$mode")
         expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-variant-order "$mode")
         assert_output "$native" "$expected"
         grep -Fxq 'culture variant order end' <<< "$(strip_cr_win "$native")" \
             || { echo "FAIL: variant order for $mode did not finish" >&2; return 1; }
     done
     for mode in "${INVARIANT_CACHE_ORDERS[@]}"; do
-        native=$(culture_info_run native "./$out/CultureInfoApi" culture-invariant-lcid-cache "$mode")
+        native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-invariant-lcid-cache "$mode")
         expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-invariant-lcid-cache "$mode")
         assert_output "$native" "$expected"
         grep -Fxq 'culture invariant lcid cache end' <<< "$(strip_cr_win "$native")" \
             || { echo "FAIL: invariant LCID cache order $mode did not finish" >&2; return 1; }
     done
     for mode in "${INSTANCE_CULTURES[@]}"; do
-        native=$(culture_info_run native "./$out/CultureInfoApi" culture-instance-number-format "$mode")
+        native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-instance-number-format "$mode")
         expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-instance-number-format "$mode")
         assert_output "$native" "$expected"
         grep -Fxq 'culture instance number format end' <<< "$(strip_cr_win "$native")" \
             || { echo "FAIL: culture instance number format for '$mode' did not finish" >&2; return 1; }
     done
-    native=$(culture_info_run native "./$out/CultureInfoApi" culture-integer-constructors)
+    native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-integer-constructors)
     expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-integer-constructors)
     assert_output "$native" "$expected"
     grep -Fxq 'culture integer constructors end' <<< "$(strip_cr_win "$native")" \
         || { echo "FAIL: culture integer constructor mode did not finish" >&2; return 1; }
     for mode in "${EQUALITY_PAIRS[@]}"; do
-        native=$(culture_info_run native "./$out/CultureInfoApi" culture-instance-equality "${mode%%|*}" "${mode#*|}")
+        native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-instance-equality "${mode%%|*}" "${mode#*|}")
         expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-instance-equality "${mode%%|*}" "${mode#*|}")
         assert_output "$native" "$expected"
         grep -Fxq 'culture instance equality end' <<< "$(strip_cr_win "$native")" \
@@ -500,21 +560,21 @@ ISO undefined language names end"
             || { echo "FAIL: culture specific instances for '$mode' did not finish" >&2; return 1; }
     done
     for mode in "${EXTENSION_CASES[@]}"; do
-        native=$(culture_info_run native "./$out/CultureInfoApi" culture-extension-identities "$mode")
+        native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-extension-identities "$mode")
         expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-extension-identities "$mode")
         assert_output "$native" "$expected"
         grep -Fxq 'culture extension identities end' <<< "$(strip_cr_win "$native")" \
             || { echo "FAIL: extension identity '$mode' did not finish" >&2; return 1; }
     done
     for mode in "${UNDEFINED_EXTENSION_CASES[@]}"; do
-        native=$(culture_info_run native "./$out/CultureInfoApi" culture-undefined-extension-metadata "$mode")
+        native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-undefined-extension-metadata "$mode")
         expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-undefined-extension-metadata "$mode")
         assert_output "$native" "$expected"
         grep -Fxq 'culture undefined extension metadata end' <<< "$(strip_cr_win "$native")" \
             || { echo "FAIL: undefined extension metadata '$mode' did not finish" >&2; return 1; }
     done
     for mode in "${UNDEFINED_PLATFORM_CASES[@]}"; do
-        native=$(culture_info_run native "./$out/CultureInfoApi" culture-undefined-platform-identities "$mode")
+        native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-undefined-platform-identities "$mode")
         expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-undefined-platform-identities "$mode")
         assert_output "$native" "$expected"
         grep -Fxq 'culture undefined platform identities end' <<< "$(strip_cr_win "$native")" \
@@ -523,14 +583,14 @@ ISO undefined language names end"
     local first second cache_order
     for mode in "${UNDEFINED_PLATFORM_CACHE_ORDERS[@]}"; do
         IFS='|' read -r first second cache_order <<< "$mode"
-        native=$(culture_info_run native "./$out/CultureInfoApi" culture-undefined-platform-cache "$first" "$second" "$cache_order")
+        native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-undefined-platform-cache "$first" "$second" "$cache_order")
         expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-undefined-platform-cache "$first" "$second" "$cache_order")
         assert_output "$native" "$expected"
         grep -Fxq 'culture undefined platform cache end' <<< "$(strip_cr_win "$native")" \
             || { echo "FAIL: undefined platform cache order '$mode' did not finish" >&2; return 1; }
     done
     for mode in "${REJECTED_EXTENSION_CASES[@]}"; do
-        native=$(culture_info_run native "./$out/CultureInfoApi" culture-rejected-extension-identities "$mode")
+        native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-rejected-extension-identities "$mode")
         expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-rejected-extension-identities "$mode")
         assert_output "$native" "$expected"
         grep -Fxq 'culture rejected extension identities end' <<< "$(strip_cr_win "$native")" \
@@ -539,7 +599,7 @@ ISO undefined language names end"
     local pair order
     for pair in "${EXTENSION_ORDER_PAIRS[@]}"; do
         for order in constructor-first cached-first; do
-            native=$(culture_info_run native "./$out/CultureInfoApi" culture-extension-order "${pair%%|*}" "${pair#*|}" "$order")
+            native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-extension-order "${pair%%|*}" "${pair#*|}" "$order")
             expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-extension-order "${pair%%|*}" "${pair#*|}" "$order")
             assert_output "$native" "$expected"
             grep -Fxq 'culture extension cache order end' <<< "$(strip_cr_win "$native")" \

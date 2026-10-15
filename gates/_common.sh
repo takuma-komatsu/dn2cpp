@@ -91,10 +91,9 @@ case "$DN2CPP_OS" in
     *)       LIB_EXT=so;    LIB_PREFIX=lib; LIB_PATH_ENV=LD_LIBRARY_PATH ;;
 esac
 
-# EXE_EXT — ".exe" on Windows, empty elsewhere. Only a script that NAMES a binary
-# it did not compile needs it (the CMake wrappers hand back extension-less names).
-# `test -x` says yes to an extension-less PE image under MSYS, so a guard that
-# omits it does not skip — it proceeds and dies at exec.
+# EXE_EXT — ".exe" on Windows, empty elsewhere. Name it explicitly when running
+# native executables: MSYS otherwise prefers a stale extension-less binary
+# left by another host over the freshly built .exe.
 case "$DN2CPP_OS" in
     windows) EXE_EXT=.exe ;;
     *)       EXE_EXT= ;;
@@ -1697,6 +1696,11 @@ stage_native_assets() {
 
 publish_native_assets() {
     local builddir="$1" out="$2" bin="$3"
+    local exe_ext="$EXE_EXT"
+    # Cross-built executables use the target's naming, not the host's suffix.
+    if [ -n "${WASM:-}${IOS_DEV:-}${IOS_SIM:-}${ANDROID:-}" ]; then
+        exe_ext=
+    fi
     local current_file="$out/.native-generation-current.txt"
     local previous_file="$out/.native-generation-previous.txt"
     local next="$out/.native-generation-next.txt" current="" previous="" next_generation="" old abandoned
@@ -1711,7 +1715,7 @@ publish_native_assets() {
         case "$old" in ''|*[!0-9a-f]*) echo "FAIL: invalid native generation: $old" >&2; return 1 ;; esac
         [ "${#old}" -eq 20 ] || { echo "FAIL: invalid native generation length: $old" >&2; return 1; }
     done
-    stage_binary "$builddir/$bin" "$out/$bin" || return 1
+    stage_binary "$builddir/$bin$exe_ext" "$out/$bin$exe_ext" || return 1
     if [ -n "$previous" ] && [ "$previous" != "$current" ] \
             && [ "$previous" != "$next_generation" ]; then
         rm -rf "$out/.dn2cpp-native/$previous" || return 1
@@ -2847,13 +2851,13 @@ corelib_subset_gate() {
         # after the full output would diff green.
         local native native_code
         set +e
-        native=$(run_bounded "./$out/$project" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}); native_code=$?
+        native=$(run_bounded "./$out/$project$EXE_EXT" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}); native_code=$?
         set -e
         _gate_scratch_cleanup
         assert_output "$(strip_cr_win "$native")" "$expected"
         assert_exit_code "$native_code" 0
     else
-        run_bounded "./$out/$project" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}
+        run_bounded "./$out/$project$EXE_EXT" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}
         _gate_scratch_cleanup
     fi
     _gate_extra_asserts "$out"
@@ -2893,7 +2897,7 @@ corelib_diff_gate() {
     fi
     set +e
     _gate_run_argv
-    native=$(run_bounded "./$out/$project" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}); native_code=$?
+    native=$(run_bounded "./$out/$project$EXE_EXT" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}); native_code=$?
     _gate_run_argv
     if [ -n "${DN2CPP_ORACLE_DOTNET_ENABLE_AVX:-}" ]; then
         expected=$(DOTNET_EnableAVX="$DN2CPP_ORACLE_DOTNET_ENABLE_AVX" \
@@ -2932,7 +2936,7 @@ corelib_diff_split_gate() {
     local native_code expected_code
     set +e
     _gate_run_argv
-    run_bounded "./$out/$project" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"} \
+    run_bounded "./$out/$project$EXE_EXT" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"} \
         >"$out/native.out" 2>"$out/native.err"; native_code=$?
     _gate_run_argv
     run_bounded dotnet "$_CG_APP" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"} \
@@ -3108,7 +3112,7 @@ net10_bcl_diff_gate() {
     # two empty strings from a crashed ORACLE (a nonzero oracle is a broken input).
     local native_out native_code oracle_out oracle_code
     set +e
-    native_out="$(run_bounded "./$out/$project")"; native_code=$?
+    native_out="$(run_bounded "./$out/$project$EXE_EXT")"; native_code=$?
     oracle_out="$(run_bounded dotnet "$app")"; oracle_code=$?
     set -e
     [ "$native_code" -eq 0 ] \
@@ -3147,7 +3151,7 @@ corelib_freeze_gate() {
     local native native_code
     set +e
     _gate_run_argv
-    native=$(run_bounded "./$out/$project" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}); native_code=$?
+    native=$(run_bounded "./$out/$project$EXE_EXT" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}); native_code=$?
     set -e
     _gate_scratch_cleanup
     assert_output "$(strip_cr_win "$native")" "$(cat "$expfile")"
@@ -3180,7 +3184,7 @@ xasm_gate() {
 
     echo "== 3/3 Compiling C++ and running =="
     compile_console "$out" "$project"
-    run_bounded "./$out/$project"
+    run_bounded "./$out/$project$EXE_EXT"
     gate_cache_commit
 }
 
