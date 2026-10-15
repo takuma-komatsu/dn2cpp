@@ -5,9 +5,13 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- The linked PreservationReader fields are assigned only by the transpiler. -->
+    <NoWarn>$(NoWarn);CS0649</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="accessorless-indexer/**/*.cs" />
     <Compile Include="../../../src/Dn2Cpp.Transpiler/ILDietRootPolicy.cs" Link="ILDietRootPolicy.cs" />
+    <Compile Include="../../../src/Dn2Cpp.Transpiler/PreservationReader.cs" Link="PreservationReader.cs" />
+    <Compile Include="../../../src/Dn2Cpp.Transpiler/ReflectionApis.cs" Link="ReflectionApis.cs" />
   </ItemGroup>
 </Project>

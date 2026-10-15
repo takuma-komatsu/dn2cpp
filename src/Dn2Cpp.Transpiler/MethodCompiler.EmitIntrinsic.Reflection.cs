@@ -970,7 +970,7 @@ internal sealed partial class MethodCompiler
             // Defaults mirror .NET: BindingFlags Public|Instance|Static (28).
             case ("System.Type", "GetMethod"):
             {
-                if (PopLookupArgs(sig, name: true, generic: true, returnType: false) is not { } ma)
+                if (PopLookupArgs(sig, "GetMethod") is not { } ma)
                     return false;
                 NoteValueTypeRows();
                 var t = Pop();
@@ -1151,7 +1151,7 @@ internal sealed partial class MethodCompiler
             // mirror .NET: BindingFlags Public|Instance (20).
             case ("System.Type", "GetConstructor"):
             {
-                if (PopLookupArgs(sig, name: false, generic: false, returnType: false) is not { } ca)
+                if (PopLookupArgs(sig, "GetConstructor") is not { } ca)
                     return false;
                 var t = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*",
@@ -1332,7 +1332,7 @@ internal sealed partial class MethodCompiler
             // Defaults mirror .NET: BindingFlags Public|Instance|Static (28).
             case ("System.Type", "GetProperty"):
             {
-                if (PopLookupArgs(sig, name: true, generic: false, returnType: true) is not { } pa)
+                if (PopLookupArgs(sig, "GetProperty") is not { } pa)
                     return false;
                 var t = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*",
@@ -2466,8 +2466,6 @@ internal sealed partial class MethodCompiler
         };
     }
 
-    private enum LookupSlot { Name, GenericCount, Flags, Binder, CallConv, ReturnType, Types, Modifiers }
-
     private static string? LookupParamFullName(TypeDesc t) => t.Kind switch
     {
         TypeKind.Class => t.Class!.FullName,
@@ -2475,87 +2473,55 @@ internal sealed partial class MethodCompiler
         _ => null,
     };
 
-    /// <summary>Maps one parameter of a member-lookup overload onto the shared
-    /// argument vocabulary, or null for a type outside it.</summary>
-    private static LookupSlot? ClassifyLookupParam(TypeDesc p)
+    /// <summary>The <see cref="ReflectionApis.SlotOf"/> name of one lookup parameter, or ""
+    /// outside the vocabulary. String and Int32 count only in their signature encodings,
+    /// a vector only over a class or external element.</summary>
+    private static string LookupParamTypeName(TypeDesc p)
     {
         if (p.IsString)
-            return LookupSlot.Name;
+            return "System.String";
         if (p is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 })
-            return LookupSlot.GenericCount;
-        switch (LookupParamFullName(p))
-        {
-            case "System.Reflection.BindingFlags": return LookupSlot.Flags;
-            case "System.Reflection.Binder": return LookupSlot.Binder;
-            case "System.Reflection.CallingConventions": return LookupSlot.CallConv;
-            case "System.Type": return LookupSlot.ReturnType;
-        }
+            return "System.Int32";
         if (p is { Kind: TypeKind.SZArray, Element: { } el })
-            switch (LookupParamFullName(el))
-            {
-                case "System.Type": return LookupSlot.Types;
-                case "System.Reflection.ParameterModifier": return LookupSlot.Modifiers;
-            }
-        return null;
+            return LookupParamFullName(el) is { } element ? element + "[]" : "";
+        return LookupParamFullName(p) is { } name and not ("System.String" or "System.Int32") ? name : "";
     }
 
-    /// <summary>Classifies a Get{Method,Constructor,Property} overload's
-    /// parameters against the shared lookup vocabulary and, when the whole
-    /// signature fits, pops the arguments into a <see cref="LookupArgs"/>
-    /// (receiver left on the stack). Returns null — with the STACK UNTOUCHED —
-    /// when any parameter falls outside the family's vocabulary (duplicate or
-    /// disallowed slot), so the call site reports a normal gap instead of
-    /// silently mis-binding.</summary>
-    private LookupArgs? PopLookupArgs(MethodSignature<TypeDesc> sig, bool name, bool generic, bool returnType)
+    /// <summary>Classifies a Type.Get{Method,Constructor,Property} overload through
+    /// <see cref="ReflectionApis.Classify"/> — the case label already fixes it as a
+    /// non-generic instance member of System.Type — and, when the whole signature fits
+    /// the family's lookup vocabulary, pops the arguments into a <see cref="LookupArgs"/>
+    /// (receiver left on the stack). Returns null — with the STACK UNTOUCHED — for an
+    /// unrecognized overload, so the call site reports a normal gap instead of silently
+    /// mis-binding.</summary>
+    private LookupArgs? PopLookupArgs(MethodSignature<TypeDesc> sig, string member)
     {
         var ps = sig.ParameterTypes;
-        var slots = new LookupSlot[ps.Length];
-        var seen = new System.Collections.Generic.HashSet<LookupSlot>();
-        bool sawName = false, sawTypes = false;
+        var names = new string[ps.Length];
         for (int i = 0; i < ps.Length; i++)
-        {
-            if (ClassifyLookupParam(ps[i]) is not { } s || !seen.Add(s))
-                return null;
-            bool allowed = s switch
-            {
-                LookupSlot.Name => name,
-                LookupSlot.GenericCount => generic,
-                LookupSlot.ReturnType => returnType,
-                _ => true,
-            };
-            if (!allowed)
-                return null;
-            sawName |= s == LookupSlot.Name;
-            sawTypes |= s == LookupSlot.Types;
-            slots[i] = s;
-        }
-        // The name-keyed families require the name; the ctor family (no name)
-        // requires the Type[] list — every GetConstructor overload carries it.
-        if (name != sawName || (!name && !sawTypes))
+            names[i] = LookupParamTypeName(ps[i]);
+        if (ReflectionApis.Classify("System.Type", member, names, hasThis: true, methodArity: 0)
+            is not { Recognized: true } api)
             return null;
         var a = new LookupArgs();
         for (int i = ps.Length - 1; i >= 0; i--)
         {
             var e = Pop();
-            switch (slots[i])
-            {
-                case LookupSlot.Name:
-                    a.Name = Cast(e, "Dn2CppString*");
-                    break;
-                case LookupSlot.GenericCount:
-                    a.GenericCount = Cast(e, "int32_t");
-                    break;
-                case LookupSlot.Flags:
-                    a.Flags = Cast(e, "int32_t");
-                    break;
-                case LookupSlot.Binder: a.Binder = Cast(e, "Dn2CppObject*"); break;
-                case LookupSlot.CallConv: a.CallConv = Cast(e, "int32_t"); break;
-                case LookupSlot.ReturnType: a.ReturnType = Cast(e, "Dn2CppType*"); break;
-                case LookupSlot.Types:
-                    a.Types = Cast(e, "Dn2CppArrayRef*");
-                    break;
-                case LookupSlot.Modifiers: break; // ignored (CoreCLR ignores it outside COM)
-            }
+            if (i == api.Name)
+                a.Name = Cast(e, "Dn2CppString*");
+            else if (i == api.Arity)
+                a.GenericCount = Cast(e, "int32_t");
+            else if (i == api.Flags)
+                a.Flags = Cast(e, "int32_t");
+            else if (i == api.Binder)
+                a.Binder = Cast(e, "Dn2CppObject*");
+            else if (i == api.CallConv)
+                a.CallConv = Cast(e, "int32_t");
+            else if (i == api.ReturnType)
+                a.ReturnType = Cast(e, "Dn2CppType*");
+            else if (i == api.Types)
+                a.Types = Cast(e, "Dn2CppArrayRef*");
+            // ParameterModifier[] is dropped: CoreCLR ignores it outside COM.
         }
         return a;
     }

@@ -4,27 +4,23 @@ using System.Reflection.PortableExecutable;
 
 CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
 CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
-if (args.Length == 3 && args[0] == "--check-construction-only")
+if (args.Length == 2 && args[0] == "--check-construction-only")
 {
-    var predicates = System.Reflection.Assembly.LoadFrom(Path.GetFullPath(args[2]))
-        .GetType("Dn2Cpp.PreservationReader", true)!;
-    var checks = new[] { "RunsReflectedMethod", "BindsReflectedMethod", "ReadsReflectedField" }
-        .Select(name => predicates.GetMethod(name,
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!).ToArray();
     using var input = File.OpenRead(args[1]);
     using var image = new PEReader(input);
     var metadata = image.GetMetadataReader();
     foreach (var handle in metadata.MemberReferences)
     {
         var member = metadata.GetMemberReference(handle);
-        if (member.Parent.Kind != HandleKind.TypeReference) continue;
-        var parent = metadata.GetTypeReference((TypeReferenceHandle)member.Parent);
-        string ns = metadata.GetString(parent.Namespace), type = metadata.GetString(parent.Name);
-        string full = ns.Length == 0 ? type : ns + "." + type;
+        if (member.Parent.Kind != HandleKind.TypeReference || member.GetKind() != MemberReferenceKind.Method) continue;
+        string full = Dn2Cpp.RawSignatureProvider.TypeReferenceName(metadata, (TypeReferenceHandle)member.Parent);
         string name = metadata.GetString(member.Name);
-        foreach (var check in checks)
-            if ((bool)check.Invoke(null, new object[] { full, name })!)
-                throw new InvalidOperationException("constructor fixture arms another reflection route: " + full + "::" + name);
+        var signature = member.DecodeMethodSignature(Dn2Cpp.RawSignatureProvider.Instance, null);
+        if (Dn2Cpp.ReflectionApis.Classify(full, name, signature.ParameterTypes.AsSpan(),
+                signature.Header.IsInstance, signature.GenericParameterCount) is { } api
+            && (Dn2Cpp.ReflectionRoutes.RunsReflectedMethod(api.Op) || Dn2Cpp.ReflectionRoutes.BindsReflectedMethod(api.Op)
+                || Dn2Cpp.ReflectionRoutes.ReadsReflectedField(api.Op)))
+            throw new InvalidOperationException("constructor fixture arms another reflection route: " + full + "::" + name);
     }
     Console.WriteLine("constructor-only descriptors=clean");
     return;

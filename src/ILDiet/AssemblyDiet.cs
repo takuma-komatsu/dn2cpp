@@ -486,17 +486,78 @@ internal sealed partial class AssemblyDiet : IDisposable
         if (Resolve(reference) is { } type) KeepReflectionData(type);
     }
 
+    // The shared classification of a method MemberReference whose parent is a TypeReference.
+    private static ReflectionApi? ClassifyMemberReference(MetadataReader reader,
+        System.Reflection.Metadata.MemberReference member)
+    {
+        if (member.Parent.Kind != HandleKind.TypeReference || member.GetKind() != MemberReferenceKind.Method)
+            return null;
+        string name = reader.GetString(member.Name);
+        if (!ReflectionApis.IsCandidateName(name))
+            return null;
+        var signature = member.DecodeMethodSignature(RawSignatureProvider.Instance, null);
+        return ReflectionApis.Classify(
+            RawSignatureProvider.TypeReferenceName(reader, (TypeReferenceHandle)member.Parent), name,
+            signature.ParameterTypes.AsSpan(), signature.Header.IsInstance, signature.GenericParameterCount);
+    }
+
+    // The shared classification of a Cecil call target, named as RawSignatureProvider names it.
+    private static ReflectionApi? ClassifyReflectionTarget(MethodReference target)
+    {
+        if (!ReflectionApis.IsCandidateName(target.Name))
+            return null;
+        var parameters = new string[target.Parameters.Count];
+        for (int i = 0; i < parameters.Length; i++)
+            parameters[i] = RawTypeName(target.Parameters[i].ParameterType);
+        int arity = target is GenericInstanceMethod instance
+            ? instance.GenericArguments.Count
+            : target.GenericParameters.Count;
+        var owner = target.DeclaringType is GenericInstanceType generic ? generic.ElementType : target.DeclaringType;
+        return ReflectionApis.Classify(RawTypeName(owner), target.Name, parameters, target.HasThis, arity);
+    }
+
+    private static string RawTypeName(TypeReference type)
+    {
+        switch (type)
+        {
+            case GenericParameter parameter:
+                return (parameter.Type == GenericParameterType.Method ? "!!" : "!") + parameter.Position;
+            case ArrayType array:
+                return RawTypeName(array.ElementType)
+                    + (array.IsVector ? "[]" : "[" + new string(',', array.Rank - 1) + "]");
+            case ByReferenceType byReference:
+                return RawTypeName(byReference.ElementType) + "&";
+            case PointerType pointer:
+                return RawTypeName(pointer.ElementType) + "*";
+            case FunctionPointerType:
+                return "method*";
+            case GenericInstanceType generic:
+                {
+                    var text = new System.Text.StringBuilder(RawTypeName(generic.ElementType)).Append('<');
+                    for (int i = 0; i < generic.GenericArguments.Count; i++)
+                    {
+                        if (i != 0) text.Append(',');
+                        text.Append(RawTypeName(generic.GenericArguments[i]));
+                    }
+                    return text.Append('>').ToString();
+                }
+            case TypeSpecification specification:
+                return RawTypeName(specification.ElementType);
+            default:
+                return type.DeclaringType is { } declaring
+                    ? RawTypeName(declaring) + "+" + type.Name
+                    : type.Namespace.Length == 0 ? type.Name : type.Namespace + "." + type.Name;
+        }
+    }
+
     private static bool ReferencesRuntimeTypeConstruction(MetadataReader reader)
     {
         foreach (var handle in reader.MemberReferences)
         {
             var member = reader.GetMemberReference(handle);
-            if (member.Parent.Kind != HandleKind.TypeReference) continue;
-            var parent = reader.GetTypeReference((TypeReferenceHandle)member.Parent);
-            string ns = reader.GetString(parent.Namespace), name = reader.GetString(parent.Name);
             // A generic method definition is called through a MethodSpec, which never arms.
-            if (PreservationReader.ConstructsFromRuntimeType(ns.Length == 0 ? name : ns + "." + name,
-                    reader.GetString(member.Name))
+            if (ClassifyMemberReference(reader, member) is { } api
+                && ReflectionRoutes.ConstructsFromRuntimeType(api.Op)
                 && !reader.GetBlobReader(member.Signature).ReadSignatureHeader().IsGeneric) return true;
         }
         return false;
@@ -518,28 +579,16 @@ internal sealed partial class AssemblyDiet : IDisposable
     private static bool ReferencesReflectedFieldRead(MetadataReader reader)
     {
         foreach (var handle in reader.MemberReferences)
-        {
-            var member = reader.GetMemberReference(handle);
-            if (member.Parent.Kind != HandleKind.TypeReference) continue;
-            var parent = reader.GetTypeReference((TypeReferenceHandle)member.Parent);
-            string ns = reader.GetString(parent.Namespace), name = reader.GetString(parent.Name);
-            if (PreservationReader.ReadsReflectedField(ns.Length == 0 ? name : ns + "." + name,
-                    reader.GetString(member.Name))) return true;
-        }
+            if (ClassifyMemberReference(reader, reader.GetMemberReference(handle)) is { } api
+                && ReflectionRoutes.ReadsReflectedField(api.Op)) return true;
         return false;
     }
 
     private static bool ReferencesReflectedMethodRun(MetadataReader reader, bool userAssembly)
     {
         foreach (var handle in reader.MemberReferences)
-        {
-            var member = reader.GetMemberReference(handle);
-            if (member.Parent.Kind != HandleKind.TypeReference) continue;
-            var parent = reader.GetTypeReference((TypeReferenceHandle)member.Parent);
-            string ns = reader.GetString(parent.Namespace), name = reader.GetString(parent.Name);
-            string type = ns.Length == 0 ? name : ns + "." + name, method = reader.GetString(member.Name);
-            if (PreservationReader.RunsCopiedReflectedMethod(type, method, userAssembly)) return true;
-        }
+            if (ClassifyMemberReference(reader, reader.GetMemberReference(handle)) is { } api
+                && ReflectionRoutes.RunsCopiedReflectedMethod(api.Op, userAssembly)) return true;
         return false;
     }
 
@@ -857,8 +906,9 @@ internal sealed partial class AssemblyDiet : IDisposable
                     // A method group runs its target through the delegate, so it arms
                     // whatever a call to the target arms.
                     bool runs = instruction.OpCode.Code is Code.Call or Code.Callvirt or Code.Ldftn or Code.Ldvirtftn;
-                    if (runs && target.MetadataToken.TokenType == TokenType.MemberRef
-                        && PreservationReader.ConstructsFromRuntimeType(target.DeclaringType.FullName, target.Name))
+                    ReflectionOp? op = runs ? ClassifyReflectionTarget(target)?.Op : null;
+                    if (op is { } constructs && target.MetadataToken.TokenType == TokenType.MemberRef
+                        && ReflectionRoutes.ConstructsFromRuntimeType(constructs))
                         ArmRuntimeTypeConstruction();
                     if (runs && target.Name == "Initialize" && target.Parameters.Count == 0
                         && target.DeclaringType.FullName == "System.Array")
@@ -867,11 +917,10 @@ internal sealed partial class AssemblyDiet : IDisposable
                     if (runs && target.DeclaringType.FullName == "System.Delegate" && target.Name == "CreateDelegate"
                         && target.Parameters.Count >= 3 && target.Parameters[2].ParameterType.FullName == "System.String")
                         ArmNamedConstructorBinding();
-                    if (runs && !_runsReflectedMethods
-                        && (PreservationReader.RunsReflectedMethod(target.DeclaringType.FullName, target.Name)
-                            || PreservationReader.BindsReflectedMethod(target.DeclaringType.FullName, target.Name)))
+                    if (op is { } invokes && !_runsReflectedMethods
+                        && (ReflectionRoutes.RunsReflectedMethod(invokes) || ReflectionRoutes.BindsReflectedMethod(invokes)))
                         ArmReflectedMethodRuns();
-                    if (runs && PreservationReader.ReadsReflectedField(target.DeclaringType.FullName, target.Name))
+                    if (op is { } reads && ReflectionRoutes.ReadsReflectedField(reads))
                         ArmReflectedFieldReads();
                     break;
                 case FieldReference field: MarkField(field, false); break;

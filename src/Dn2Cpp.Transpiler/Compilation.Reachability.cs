@@ -2889,38 +2889,47 @@ internal sealed partial class Compilation
     /// <see cref="CoreIntrinsics.ScanNeedsParentTypeName"/>). Each opens a reachability route
     /// instead of cutting an edge, and a delegate bound to the trigger runs it as a call
     /// would, so a call and a method group over the member mark alike.</summary>
-    private void NoteReflectionUsage(Module module, string? parent, string name)
+    private void NoteReflectionUsage(Module module, MemberReferenceHandle handle, string? parent, string name)
     {
+        if (parent is null || !ReflectionApis.IsCandidateName(name))
+            return;
+        var reference = module.Reader.GetMemberReference(handle);
+        if (reference.GetKind() != MemberReferenceKind.Method)
+            return;
+        var signature = reference.DecodeMethodSignature(RawSignatureProvider.Instance, null);
+        if (ReflectionApis.Classify(parent, name, signature.ParameterTypes.AsSpan(), signature.Header.IsInstance,
+                signature.GenericParameterCount) is not { } api)
+            return;
         // Reflected method, property and event calls run app-module methods;
-        // ILDiet keeps them on the same predicate. A reflected Object or ValueType row
+        // ILDiet keeps them on the same op set. A reflected Object or ValueType row
         // answers Equals and GetHashCode through the same helpers, so the invoke and
         // CreateDelegate marks are object-equality dispatches too.
-        if (PreservationReader.RunsReflectedMethod(parent, name))
+        if (ReflectionRoutes.RunsReflectedMethod(api.Op))
         {
             _reflectionInvokeUsed = true;
-            if (name == "Invoke")
+            if (api.Op == ReflectionOp.MethodInvoke)
                 NoteObjectEqualityDispatch();
         }
         // FieldInfo.GetValue boxes a value-type field's value in the runtime.
-        else if (PreservationReader.ReadsReflectedField(parent, name))
+        else if (ReflectionRoutes.ReadsReflectedField(api.Op))
             _reflectionFieldReadUsed = true;
         // CreateDelegate binds a reflected method, whose body runs the same way.
-        else if (PreservationReader.BindsReflectedMethod(parent, name))
+        else if (ReflectionRoutes.BindsReflectedMethod(api.Op))
             NoteReflectionDelegateBind(module);
         // DynamicInvoke runs the delegate type's Invoke row, whose invoker boxes.
-        else if (name == "DynamicInvoke" && parent == "System.Delegate")
+        else if (api.Op == ReflectionOp.DynamicInvoke)
             _delegateDynamicInvokeUsed = true;
-        // ConstructorInfo.Invoke / non-generic Activator.CreateInstance(Type) construct a
-        // runtime-chosen type; ILDiet keeps the same app surface on this predicate.
-        else if (PreservationReader.ConstructsFromRuntimeType(parent, name))
+        // ConstructorInfo.Invoke / Activator.CreateInstance construct a runtime-chosen
+        // type; ILDiet keeps the same app surface on this op set.
+        else if (ReflectionRoutes.ConstructsFromRuntimeType(api.Op))
             _reflectionCtorUsed = true;
         // Type.MakeGenericType arms the runtime-instantiation template pass, paired with
         // the scan's typeof(D<>) record.
-        else if (name == "MakeGenericType" && parent == "System.Type")
+        else if (api.Op == ReflectionOp.MakeGenericType)
             _makeGenericTypeUsed = true;
         // GetCustomAttributes / IsDefined and the CustomAttributeData views render the
         // attribute factories: reach attribute ctors and named setters.
-        else if (PreservationReader.ReadsReflectedAttributes(parent, name))
+        else if (ReflectionRoutes.ReadsReflectedAttributes(api.Kind))
             _reflectionAttrUsed = true;
     }
 
@@ -6267,7 +6276,7 @@ internal sealed partial class Compilation
                             mrName = module.Reader.GetString(module.Reader.GetMemberReference((MemberReferenceHandle)handle).Name);
                             if (CoreIntrinsics.ScanNeedsParentTypeName(mrName))
                                 mrParent = MemberRefParentTypeName(module, (MemberReferenceHandle)handle);
-                            NoteReflectionUsage(module, mrParent, mrName);
+                            NoteReflectionUsage(module, (MemberReferenceHandle)handle, mrParent, mrName);
                             if (!_reflectionNamedDelegateBindUsed && IsUserModule(module)
                                 && mrName == "CreateDelegate" && mrParent == "System.Delegate")
                             {

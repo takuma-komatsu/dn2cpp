@@ -225,58 +225,6 @@ internal sealed class PreservationReader
         return null;
     }
 
-    /// <summary>Whether a call through a MemberRef to
-    /// <paramref name="parent"/>::<paramref name="member"/> constructs a type chosen at
-    /// run time. The transpiler then reaches every application instance constructor,
-    /// and ILDiet retains that same application surface; both arm on this
-    /// predicate.</summary>
-    internal static bool ConstructsFromRuntimeType(string? parent, string member) =>
-        member == "CreateInstance" && parent == "System.Activator"
-        || member == "Invoke" && parent == "System.Reflection.ConstructorInfo";
-
-    /// <summary>Whether a call to <paramref name="parent"/>::<paramref name="member"/>
-    /// runs a method that reflection selected at run time. The transpiler then reaches
-    /// every non-constructor application method body, and ILDiet keeps every
-    /// non-constructor method on that same application surface; both arm on this
-    /// predicate and, for a body outside the framework, on
-    /// <see cref="BindsReflectedMethod"/>.</summary>
-    internal static bool RunsReflectedMethod(string? parent, string member) =>
-        member == "Invoke" && parent is "System.Reflection.MethodBase" or "System.Reflection.MethodInfo"
-        || member is "GetValue" or "SetValue" && parent == "System.Reflection.PropertyInfo"
-        || RunsReflectedEventHandler(parent, member);
-
-    private static bool RunsReflectedEventHandler(string? parent, string member) =>
-        member is "AddEventHandler" or "RemoveEventHandler" && parent == "System.Reflection.EventInfo";
-
-    // Unreached framework event wrappers do not arm application invocation merely
-    // by appearing in the copied load set; user wrappers retain their targets.
-    internal static bool RunsCopiedReflectedMethod(string? parent, string member, bool userAssembly) =>
-        RunsReflectedMethod(parent, member) && (userAssembly || !RunsReflectedEventHandler(parent, member))
-        || userAssembly && BindsReflectedMethod(parent, member);
-
-    /// <summary>A reflected field read can box a user value type and run its
-    /// virtual dispatch without an IL box or reflective method invocation.</summary>
-    internal static bool ReadsReflectedField(string? parent, string member) =>
-        member == "GetValue" && parent == "System.Reflection.FieldInfo";
-
-    /// <summary>Whether an executable descriptor reads reflected attributes.
-    /// The shared route materializes constructors and named-property setters.</summary>
-    internal static bool ReadsReflectedAttributes(string? parent, string member) =>
-        member is "GetCustomAttributes" or "GetCustomAttribute" or "IsDefined"
-            or "GetCustomAttributesData" or "get_CustomAttributes"
-        && parent is "System.Reflection.MemberInfo" or "System.Reflection.ParameterInfo"
-            or "System.Attribute" or "System.Reflection.CustomAttributeExtensions"
-            or "System.Reflection.CustomAttributeData" or "System.Type"
-            or "System.Reflection.ICustomAttributeProvider" or "System.Reflection.Module"
-            or "System.Reflection.ConstructorInfo" or "System.Reflection.MethodBase"
-            or "System.Reflection.MethodInfo" or "System.Reflection.FieldInfo"
-            or "System.Reflection.PropertyInfo" or "System.Reflection.EventInfo" or "System.Reflection.Assembly";
-
-    /// <summary>Whether a call to <paramref name="parent"/>::<paramref name="member"/>
-    /// binds a delegate to a reflected method.</summary>
-    internal static bool BindsReflectedMethod(string? parent, string member) =>
-        member == "CreateDelegate" && parent is "System.Delegate" or "System.Reflection.MethodInfo";
-
     /// <summary>Whether an assembly is part of the framework rather than user code.
     /// Compilation.IsFrameworkAssemblyName documents which names belong here.</summary>
     internal static bool IsFrameworkAssemblyName(string name) =>
