@@ -6,6 +6,7 @@
 # SafeHandle method groups share runtime receiver routing, callable and selected-method identity.
 # Runtime-owned and intrinsic-base IDisposable slots preserve cleanup and user virtual overrides.
 # Runtime-held interface slots retain reflection, serialization, task lifetime and provider dispatch.
+# Reflected DateTimeOffset serialization keeps its UTC payload and offset.
 # Pointer and function-pointer arrays share allocation/query identity and safe reflection validation.
 # Runtime-owned class method groups share direct-call dispatch and callable identity.
 # Virtual delegate equality and removal retain the selected method under identical-code folding.
@@ -409,9 +410,17 @@ runtime_held_interface_diff_axes() {
             done
         elif [ "$runtime_held_reflected_value_only" = true ]; then
             for axis in dotnet native; do
-                for label in 'reflected DateTime serialization=completed' 'reflected Decimal callback=completed'; do
+                assert_output "$(head -n 2 "$out/runtime-held.$axis.stdout")" \
+                    $'reflected DateTime serialization=completed\nreflected Decimal callback=completed'
+                for label in 'reflected DateTime serialization=completed' 'reflected Decimal callback=completed' \
+                        '== reflected DateTimeOffset serialization ==' 'reflected DateTimeOffset serialization end'; do
                     test "$(grep -Fxc -- "$label" "$out/runtime-held.$axis.stdout")" = 1 \
                         || { echo "FAIL: reflected runtime value witness missing or repeated: $axis/$label" >&2; return 1; }
+                done
+                for minutes in 0 90 -330; do
+                    test "$(grep -Ec "^reflected DateTimeOffset offset=$minutes:ticks=[0-9]+:utc=True:kind=Unspecified:minutes=$minutes$" \
+                            "$out/runtime-held.$axis.stdout")" = 1 \
+                        || { echo "FAIL: DateTimeOffset serialization changed its UTC payload or offset: $axis/$minutes" >&2; return 1; }
                 done
             done
         else
@@ -470,6 +479,7 @@ runtime_held_interface_diff_axes() {
 }
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/ReflectInvoke/RuntimeHeldInterfacesSubset.cs samples/dotnet/ReflectInvoke/RuntimeHeldConvertibleProviderSubset.cs samples/dotnet/ReflectInvoke/RuntimeHeldReflectedValueSubset.cs samples/dotnet/ReflectInvoke/RuntimeHeldInterfacesOnly.csproj samples/dotnet/ReflectInvoke/RuntimeHeldInterfacesOnlyProgram.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|runtime-held-interface:default,trimmed,unshared,ildiet,provider-identity,provider-identity-trimmed,convertible,convertible-ildiet,convertible-group,convertible-group-ildiet,convertible-reflected,convertible-reflected-ildiet,convertible-reflected-delegate,convertible-reflected-delegate-ildiet,convertible-to-type,convertible-to-type-ildiet,reflected-values,reflected-values-ildiet|runtime-held-prefix:before-runtime-held-interfaces|provider-identity-build:RuntimeHeldProviderIdentityOnly=true|runtime-held-reflection-build:RuntimeHeldReflectionOnly=false|runtime-held-convertible-build:RuntimeHeldConvertibleProviderOnly=true|runtime-held-convertible-route:direct,group,reflected,reflected-delegate,to-type|runtime-held-reflected-value-build:RuntimeHeldReflectedValueOnly=true|runtime-held-isolated-assembly-attributes:RUNTIME_HELD_ASSEMBLY_ATTRIBUTES|runtime-held-only:${DN2CPP_RUNTIME_HELD_ONLY:-}"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|reflected-datetimeoffset-serialization:0,90,-330|reflected-values-prefix:DateTime,Decimal"
 if [ "${DN2CPP_RUNTIME_HELD_ONLY:-}" = 1 ]; then
     runtime_held_interface_diff_axes
     exit 0

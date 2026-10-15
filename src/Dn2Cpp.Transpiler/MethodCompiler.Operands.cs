@@ -123,10 +123,24 @@ internal sealed partial class MethodCompiler
         return $"(({cls.CppStructName}*){NullCheckReceiver(obj)})->{fld.CppName}";
     }
 
+    private string? RuntimeValueFieldRead(ClassInfo cls, FieldInfo fld, StackEntry obj)
+    {
+        if (cls.FullName != "System.DateTimeOffset" || fld.Name is not ("_dateTime" or "_offsetMinutes"))
+            return null;
+        // CoreLib stores UTC ticks with Unspecified kind; native storage uses clock ticks.
+        string value = obj.Kind == StackKind.Struct ? obj.Expr
+            : $"(*((Dn2CppDateTimeOffset*)({NullCheckReceiver(obj)})))";
+        return fld.Name == "_dateTime"
+            ? $"Dn2CppDateTime{{dn2cpp_datetimeoffset_utc_ticks({value})}}"
+            : $"(({CppTypes.FieldOf(fld)})(({value}).offsetMinutes))";
+    }
+
     /// <summary>Maps managed field IL onto runtime value storage while preserving
     /// a writable lvalue of the field's declared width.</summary>
     private string? RuntimeValueFieldLValue(ClassInfo cls, FieldInfo fld, StackEntry obj)
     {
+        if (cls.FullName == "System.DateTimeOffset" && fld.Name is "_dateTime" or "_offsetMinutes")
+            throw new NotSupportedException($"{cls.FullName}.{fld.Name} has no writable runtime field");
         if (cls.FullName == "System.AggregateException" && fld.Name == "_innerExceptions")
             return $"((Dn2CppAggregateExceptionObject*)({NullCheckReceiver(obj)}))->innerExceptions";
         if (Compilation.WellKnownPrimitive(cls.FullName) is

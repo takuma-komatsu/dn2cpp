@@ -2732,7 +2732,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 var obj = Pop();
                 // A shared-layout member is declared with the owner's erased
                 // spelling; cast the load back to this site's real spelling.
-                string fldExpr = FieldAccess(cls, fld, obj);
+                string fldExpr = RuntimeValueFieldRead(cls, fld, obj) ?? FieldAccess(cls, fld, obj);
                 if (LayoutFieldType(cls, fld) != CppTypes.FieldOf(fld))
                     fldExpr = $"(({CppTypes.Of(fld.Type)})({fldExpr}))";
                 Push(CppTypes.KindOf(fld.Type), CppTypes.Of(fld.Type), fldExpr);
