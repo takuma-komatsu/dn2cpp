@@ -720,6 +720,7 @@ internal sealed partial class Compilation
         "dn2cpp_delegate_dynamic_invoke(",
         "dn2cpp_ctorref_invoke(",
         "dn2cpp_activator_create_instance", // + _args/_nonpublic
+        "dn2cpp_assembly_create_instance(",
         "dn2cpp_propref_get_value", // + _indexed
         "dn2cpp_eventref_handler(",       // EventInfo.Add/RemoveEventHandler: the selected accessor
         "dn2cpp_propref_set_value", // + _indexed
@@ -746,6 +747,7 @@ internal sealed partial class Compilation
         "dn2cpp_delegate_dynamic_invoke(", // Delegate.DynamicInvoke: every entry of the chain
         "dn2cpp_ctorref_invoke(",       // ConstructorInfo.Invoke: the row's constructor
         "dn2cpp_activator_create_instance", // Activator.CreateInstance: a constructor chosen at run time
+        "dn2cpp_assembly_create_instance(", // Assembly.CreateInstance, likewise
         "dn2cpp_propref_get_value",     // PropertyInfo.GetValue: the getter's body or override
         "dn2cpp_eventref_handler(",       // EventInfo.Add/RemoveEventHandler: the selected accessor
         "dn2cpp_propref_set_value",     // PropertyInfo.SetValue: the setter's body or override
@@ -1511,7 +1513,7 @@ internal sealed partial class Compilation
     private readonly HashSet<ClassInfo> _runtimeTemplateRoots = new();
     private readonly HashSet<ClassInfo> _runtimeTemplateLevels = new();
 
-    // Level bodies only the reflection-invoke route reaches (see
+    // Level bodies only a selected template reaches (see
     // ReachReflectedTemplateBodies); any other reach of one removes it, making it
     // a body the template needs.
     private readonly HashSet<MethodInfo> _reflectedTemplateBodies = new();
@@ -1527,122 +1529,262 @@ internal sealed partial class Compilation
     /// and copy a value type's payload into a fresh box; and a local holds the
     /// reference. A cast to T, <c>as T</c> and <c>is T t</c> so run as .NET's do,
     /// and only the body holds the box a value lives in. Only a template
-    /// level body the reflection route reached first keeps them boxed; any other
+    /// level body a selected template reached first keeps them boxed; any other
     /// body giving T a value position, and any site needing the value itself (its
     /// address, a constrained call), still taints.</summary>
     internal bool KeepsTemplateValuesBoxed(MethodInfo m) => _boxedValueTemplateBodies.Contains(m);
 
     /// <summary>Builds the runtime-instantiation TEMPLATES: for each open generic
-    /// definition the program both typeofs (<c>ldtoken D&lt;&gt;</c>) and could hand
-    /// to <c>Type.MakeGenericType</c>, instantiate the definition over the
-    /// per-index $CnAny placeholders and root it like an allocated type, so the
-    /// planning pass trial-compiles its bodies. The template is NEVER anyone's
+    /// definition a recognized <c>Type.MakeGenericType</c> site receives with
+    /// arguments no compiled instantiation matches, instantiate the definition over
+    /// the per-index $CnAny placeholders, register its metadata and reach
+    /// the constructors and members sites ask of its clones
+    /// (<see cref="ReachAskedTemplateMembers"/>), so the planning pass trial-compiles
+    /// those bodies; forming the type alone reaches none. A site whose
+    /// receiver is not known gives every typeof'd open definition
+    /// (<c>ldtoken D&lt;&gt;</c>) the template's metadata only, with no
+    /// constructor or reflected body. The template is NEVER anyone's
     /// SharedOwner — real instantiations keep their ordinary grouping — so this
     /// pass composes with the existing machinery instead of re-linking it. The
-    /// whole pass is a no-op unless the program calls MakeGenericType AND typeofs
-    /// an open definition: a corpus without the pattern is byte-identical with the
-    /// pass compiled out. A shape-ineligible definition is skipped here; a body
-    /// that fails the $CnAny trial merely taints, leaving an unused canonical
-    /// world and no emitted template.</summary>
+    /// whole pass is a no-op unless the program calls MakeGenericType: a corpus
+    /// without the pattern is byte-identical with the pass compiled out. A
+    /// shape-ineligible definition is skipped here; a body that fails the $CnAny
+    /// trial merely taints, leaving an unused canonical world and no emitted
+    /// template. A generic class a selected template's member signatures name over
+    /// its placeholders, in any order or subset, gets metadata too,
+    /// so a clone's rows name type-infos this image defines; one that also names a
+    /// concrete argument is no template, and the emitter refuses the rows naming
+    /// it.</summary>
     internal void BuildRuntimeInstantiationTemplates()
     {
         if (!SharedGenericsEnabled || !_makeGenericTypeUsed)
             return;
-        foreach (var defName in _typeofOpenGenericDefNames)
+        var signatureNamed = new List<ClassInfo>();
+        var built = new HashSet<string>(StringComparer.Ordinal);
+        var builtTemplates = new HashSet<ClassInfo>();
+        var selectedTemplates = new List<(ClassInfo Template, string DefName)>();
+        for (int index = 0; index < _typeofOpenGenericDefNames.Count + signatureNamed.Count; index++)
         {
-            int cut = defName.LastIndexOf('.');
-            var key = cut < 0 ? ("", defName) : (defName[..cut], defName[(cut + 1)..]);
-            if (!TypeIndex().TryGetValue(key, out var cands) || cands.Count == 0)
+            bool named = index >= _typeofOpenGenericDefNames.Count;
+            ClassInfo? namedClass = named ? signatureNamed[index - _typeofOpenGenericDefNames.Count] : null;
+            string defName = namedClass is not null
+                ? RawSignatureProvider.TypeDefinitionName(namedClass.Module.Reader, namedClass.Handle)
+                : _typeofOpenGenericDefNames[index];
+            bool selected = !named && _reflectionTemplateSelections.Contains(defName) && TemplateStillRequested(defName);
+            if (!named && (built.Contains(defName) || !selected && !_makeGenericTypeUnknownReceiver))
                 continue;
-            var (module, handle) = cands[0];
             ClassInfo tmpl;
-            try
+            if (namedClass is not null)
+                tmpl = namedClass;
+            else
             {
-                int arity = module.Reader.GetTypeDefinition(handle).GetGenericParameters().Count;
-                if (arity == 0)
+                int cut = defName.LastIndexOf('.');
+                var key = cut < 0 ? ("", defName) : (defName[..cut], defName[(cut + 1)..]);
+                if (!TypeIndex().TryGetValue(key, out var cands) || cands.Count == 0)
                     continue;
-                var args = new TypeDesc[arity];
-                for (int i = 0; i < arity; i++)
-                    args[i] = Canon.AnyPlaceholder(i);
-                tmpl = Instantiate(module, handle, args);
+                var (module, handle) = cands[0];
+                try
+                {
+                    int arity = module.Reader.GetTypeDefinition(handle).GetGenericParameters().Count;
+                    if (arity == 0)
+                        continue;
+                    var args = new TypeDesc[arity];
+                    for (int i = 0; i < arity; i++)
+                        args[i] = Canon.AnyPlaceholder(i);
+                    tmpl = Instantiate(module, handle, args);
+                }
+                catch (Exception e) when (!IsMustEscape(e))
+                {
+                    // A definition that does not instantiate (unresolvable signature,
+                    // bound overflow would escape) is simply not a template; the
+                    // runtime diagnostic still names the missing instantiation.
+                    continue;
+                }
             }
-            catch (Exception e) when (!IsMustEscape(e))
-            {
-                // A definition that does not instantiate (unresolvable signature,
-                // bound overflow would escape) is simply not a template; the
-                // runtime diagnostic still names the missing instantiation.
+            if (builtTemplates.Contains(tmpl))
                 continue;
-            }
             // A fresh specialization's IsValueType/IsAbstract land in CompleteShape,
             // so the shape check reads garbage until the pending queue drains.
             CompletePendingSpecializations();
             if (!RuntimeTemplateShapeEligible(tmpl))
                 continue;
             RuntimeInstantiationTemplates.Add((defName, tmpl));
-            // Before the rooting below: it crosses the template with the used
+            built.Add(defName);
+            builtTemplates.Add(tmpl);
+            // Register every level before selected constructors cross it with used
             // generic virtual methods, whose cases ask these sets.
             for (ClassInfo? lv = tmpl; lv is not null && ContainsCanonPlaceholder(lv); lv = lv.BaseClass)
             {
                 _runtimeTemplateRoots.Add(lv);
                 _runtimeTemplateLevels.Add(lv);
             }
-            // Root it like an allocated type: arms the used-slot × allocated-type
-            // cross product, so every virtual override a base-typed caller can
-            // dispatch into is trial-compiled; instance ctors are what the
-            // reflection-ctor path (Activator over the synthesized Type) invokes.
-            // Every chain level supplies a definition row that MakeGenericType
-            // can allocate directly, including a permuted intermediate source.
-            for (ClassInfo? lv = tmpl; lv is not null && ContainsCanonPlaceholder(lv); lv = lv.BaseClass)
-                if (!lv.IsAbstract)
-                    ReachAllocatedType(lv);
-            var ctors = new List<MethodInfo>();
-            foreach (var m in tmpl.Methods)
-                if (m.Name == ".ctor" && !m.IsStatic && m.Rva != 0)
-                {
-                    Reach(m);
-                    ctors.Add(m);
-                }
-            foreach (var m in ctors)
-                NoteReflectionInvokeBoxes(m);
-            if (_reflectionInvokeUsed)
-                ReachReflectedTemplateBodies(tmpl);
+            if (!selected)
+                continue;
+            selectedTemplates.Add((tmpl, defName));
+            foreach (var signatureClass in TemplateSignatureClasses(tmpl))
+                if (!builtTemplates.Contains(signatureClass) && !signatureNamed.Contains(signatureClass))
+                    signatureNamed.Add(signatureClass);
+        }
+        var asked = new HashSet<(int Module, MethodDefinitionHandle Method)>();
+        foreach (var (tmpl, defName) in selectedTemplates)
+            CollectTemplateSelections(tmpl, defName, asked);
+        // MakeGenericType clones a definition no template is built for from the level row
+        // a deriving template carries, so what sites ask of it is asked of that level.
+        foreach (var (_, tmpl) in RuntimeInstantiationTemplates.ToList())
+            for (ClassInfo? lv = tmpl.BaseClass; lv is not null && ContainsCanonPlaceholder(lv); lv = lv.BaseClass)
+                if (BacktickFullName(lv.Module, lv.Handle) is var levelName && !built.Contains(levelName))
+                    CollectTemplateSelections(lv, levelName, asked);
+        ReachAskedTemplateMembers(asked);
+    }
+
+    /// <summary>The placeholder-bearing generic classes a member signature of one of a
+    /// template's levels names, in signature order.</summary>
+    private List<ClassInfo> TemplateSignatureClasses(ClassInfo tmpl)
+    {
+        var names = new List<ClassInfo>();
+        void Visit(TypeDesc t)
+        {
+            while (t.Kind is TypeKind.ByRef or TypeKind.Pointer or TypeKind.SZArray or TypeKind.MDArray && t.Element is { } element)
+                t = element;
+            if (t is not { Kind: TypeKind.Class, Class: { } c } || c.GenericArity == 0 || !ContainsCanonPlaceholder(c))
+                return;
+            if (!names.Contains(c))
+                names.Add(c);
+        }
+        for (ClassInfo? lv = tmpl; lv is not null && ContainsCanonPlaceholder(lv); lv = lv.BaseClass)
+            foreach (var m in lv.Methods.ToList())
+            {
+                Visit(m.Signature.ReturnType);
+                foreach (var p in m.Signature.ParameterTypes)
+                    Visit(p);
+            }
+        return names;
+    }
+
+    /// <summary>Collects what sites ask of a selected template's clones, over the tuples no
+    /// compiled instantiation covers (<see cref="SelectTemplateMember"/>): the constructors
+    /// a construction selects, and the methods and accessors an invocation or binding
+    /// selects, by definition.</summary>
+    private void CollectTemplateSelections(ClassInfo tmpl, string defName,
+        HashSet<(int Module, MethodDefinitionHandle Method)> asked)
+    {
+        if (!_templateMemberSelections.TryGetValue(defName, out var selections))
+            return;
+        foreach (var selection in selections.ToList())
+        {
+            if (selection.Tuple is { } tuple && InstancesFor(tmpl.Module, tmpl.Handle).ContainsKey(tuple))
+                continue;
+            var lookup = selection.Lookup;
+            if (selection.Construct)
+            {
+                foreach (var e in SelectMembers(tmpl, LookupMemberKind.Constructor, null, lookup.Flags | ReflectionApis.Instance,
+                             lookup.Types, -1))
+                    if (e.Method is { Name: ".ctor", IsStatic: false } ctor && ctor.Rva != 0
+                        && (selection.Arguments < 0 || ctor.Signature.ParameterTypes.Length == selection.Arguments))
+                        asked.Add((ctor.Module.Index, ctor.Handle));
+                continue;
+            }
+            foreach (var e in SelectLookupMembers(tmpl, lookup))
+            {
+                var methods = e.Kind == REntityKind.Method && e.Method is { } method ? new List<MethodInfo> { method }
+                    : e.Kind is REntityKind.Property or REntityKind.Event
+                        ? AccessorsOf(e, selection.Accessor == ReflectionAccessor.None ? ReflectionAccessor.All : selection.Accessor,
+                            selection.PublicAccessors)
+                        : new List<MethodInfo>();
+                foreach (var m in methods)
+                    if (selection.Arguments < 0 || m.Signature.ParameterTypes.Length == selection.Arguments)
+                        asked.Add((m.Module.Index, m.Handle));
+            }
         }
     }
 
-    /// <summary>What the reflection-invoke route reaches on a closed application class,
-    /// reached on a template's application placeholder levels so a clone's row can be
-    /// invoked: each method nothing else reaches whose body a clone could run (see
-    /// <see cref="IsReflectedTemplateBody"/>). Such a body registers no context slot a
-    /// clone cannot fill, the direct calls it makes keep their callees reflected
-    /// (<see cref="ReachCallFromReflectedTemplateBody"/>), and
-    /// <see cref="JudgeRuntimeTemplates"/> drops one that does not share rather than
-    /// failing the template, so which definitions qualify stays what the program's other
-    /// reaches decide.</summary>
-    private void ReachReflectedTemplateBodies(ClassInfo tmpl)
+    /// <summary>Reaches, on every level of every built template, the members sites ask
+    /// (<paramref name="asked"/>) and the members an explicit preserve rule keeps on the
+    /// level's definition. A clone's base interns onto the clone any template level of its
+    /// definition synthesized first, and MakeGenericType clones any level row of the
+    /// definition, so a member is reached on each placeholder level of its definition: one
+    /// shared body per level, never a closed instantiation. A constructor is reached as a
+    /// construction does; any other body only as reflection enters it
+    /// (<see cref="ReachReflectedTemplateBody"/>), so <see cref="JudgeRuntimeTemplates"/>
+    /// drops one a clone cannot run instead of failing the template.</summary>
+    private void ReachAskedTemplateMembers(HashSet<(int Module, MethodDefinitionHandle Method)> asked)
     {
-        for (ClassInfo? lv = tmpl; lv is not null && ContainsCanonPlaceholder(lv); lv = lv.BaseClass)
-        {
-            // The route walks the application module only (WalkReflectionRouteClass).
-            if (lv.Module != AppModule)
-                continue;
-            foreach (var m in lv.Methods.ToList())
+        var visited = new List<ClassInfo>();
+        foreach (var (_, tmpl) in RuntimeInstantiationTemplates.ToList())
+            for (ClassInfo? lv = tmpl; lv is not null && ContainsCanonPlaceholder(lv); lv = lv.BaseClass)
             {
-                if (Reachable.Contains(m) || !IsReflectedTemplateBody(m, new HashSet<MethodInfo>()))
+                if (visited.Contains(lv))
                     continue;
-                _reflectedTemplateBodies.Add(m);
-                _boxedValueTemplateBodies.Add(m);
-                _reachingReflectedTemplateBody = true;
-                try
+                visited.Add(lv);
+                bool preserved = _preservePolicies.ContainsKey((lv.Module.Index, lv.Handle));
+                if (asked.Count == 0 && !preserved)
+                    continue;
+                foreach (var m in lv.Methods.ToList())
                 {
-                    Reach(m);
+                    if (m.Rva == 0 || !asked.Contains((m.Module.Index, m.Handle))
+                        && (!preserved || !PreservesTemplateMember(lv, m)))
+                        continue;
+                    if (m.Name != ".ctor")
+                        ReachReflectedTemplateBody(m);
+                    else if (!m.IsStatic)
+                    {
+                        // Metadata alone creates no receiver. A selected constructor
+                        // admits the clone and every used slot it can dispatch.
+                        if (!lv.IsAbstract)
+                            ReachAllocatedType(lv);
+                        Reach(m);
+                        NoteReflectionInvokeBoxes(m);
+                    }
                 }
-                finally
-                {
-                    _reachingReflectedTemplateBody = false;
-                }
-                NoteReflectionInvokeBoxes(m);
             }
+        // An asked virtual row dispatches on its receiver, so each template deriving from
+        // its level reaches the override bound to that slot.
+        if (asked.Count > 0)
+            foreach (var (_, tmpl) in RuntimeInstantiationTemplates.ToList())
+                for (ClassInfo? lv = tmpl; lv is not null && ContainsCanonPlaceholder(lv); lv = lv.BaseClass)
+                    foreach (var m in lv.Methods.ToList())
+                        if (m is { IsVirtual: true, VtableSlot: >= 0 } && m.VtableSlot < tmpl.Vtable.Count
+                            && asked.Contains((m.Module.Index, m.Handle))
+                            && tmpl.Vtable[m.VtableSlot] is { Rva: not 0 } impl && impl != m)
+                            ReachReflectedTemplateBody(impl);
+        foreach (var lv in visited)
+            foreach (var m in lv.Methods.ToList())
+                if (!Reachable.Contains(m) && IsReflectedTemplateBody(m, new HashSet<MethodInfo>()))
+                    _preservableTemplateRows.Add(m);
+    }
+
+    /// <summary>Bodiless rows of template levels whose body a clone could run
+    /// (<see cref="IsReflectedTemplateBody"/>): a preserve rule on the definition's member
+    /// admits it (<see cref="ReachAskedTemplateMembers"/>), so the row's refusal names that
+    /// rule instead of a static instantiation.</summary>
+    private readonly HashSet<MethodInfo> _preservableTemplateRows = new();
+
+    internal bool IsPreservableTemplateRow(MethodInfo m) =>
+        _preservableTemplateRows.Count > 0 && _preservableTemplateRows.Contains(m);
+
+    /// <summary>Reaches <paramref name="m"/> as reflection enters it on a clone: only on a
+    /// placeholder level of any module, when nothing else reaches it and a clone could run
+    /// it (<see cref="IsReflectedTemplateBody"/>). Such a body registers no context slot a
+    /// clone cannot fill, and the direct calls it makes keep their callees reflected
+    /// (<see cref="ReachCallFromReflectedTemplateBody"/>).</summary>
+    private void ReachReflectedTemplateBody(MethodInfo m)
+    {
+        var lv = m.DeclaringClass;
+        if (!_runtimeTemplateLevels.Contains(lv) || Reachable.Contains(m)
+            || !IsReflectedTemplateBody(m, new HashSet<MethodInfo>()))
+            return;
+        _reflectedTemplateBodies.Add(m);
+        _boxedValueTemplateBodies.Add(m);
+        _reachingReflectedTemplateBody = true;
+        try
+        {
+            Reach(m);
         }
+        finally
+        {
+            _reachingReflectedTemplateBody = false;
+        }
+        NoteReflectionInvokeBoxes(m);
     }
 
     /// <summary>Reaches a scanned body's direct-call or own-instance address target.

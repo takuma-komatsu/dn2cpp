@@ -125,7 +125,7 @@ internal sealed partial class CppEmitter
                     MetadataValue.Signed(signature.ParameterTypes.Length), MetadataValue.ExplicitSigned(attrs), MetadataValue.Signed(-1), MetadataValue.Ref("nullptr"), MetadataValue.Ref("nullptr"),
                     MetadataValue.Ref(methodAttributes.Expr), MetadataValue.Signed(methodAttributes.Count), MetadataValue.Text(null), MetadataValue.Signed((int)method.Attributes), MetadataValue.Signed((int)method.ImplAttributes),
                     MetadataValue.Signed(System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(handle)), MetadataValue.Signed(methodNames.Length), MetadataValue.Ref("nullptr"), MetadataValue.Ref("nullptr"), MetadataValue.Signed(0),
-                    MetadataValue.Ref("nullptr"), MetadataValue.Signed(0), MetadataValue.Signed(0), MetadataValue.Display(display), MetadataValue.Display(display),
+                    MetadataValue.Signed(0), MetadataValue.Ref("nullptr"), MetadataValue.Signed(0), MetadataValue.Signed(0), MetadataValue.Display(display), MetadataValue.Display(display),
                     MetadataValue.Display(returnDisplay), MetadataValue.Display(returnDisplay), MetadataValue.Text("symbolic"), MetadataValue.Signed(0), MetadataValue.Signed(0), MetadataValue.Ref("nullptr"),
                     MetadataValue.Ref(RenderFormalParameters(owner.Module, method.GetGenericParameters())), MetadataValue.Ref("nullptr"), MetadataValue.Ref("nullptr"), MetadataValue.Ref("nullptr"), MetadataValue.Ref("&" + symbol + "_signature"),
                 }));

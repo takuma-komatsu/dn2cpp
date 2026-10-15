@@ -36,11 +36,15 @@ Executable assemblies retain their entry point and application static
 initializers. Non-framework module initializers, native exports, managed native
 implementation adapters, and explicit preservation are roots. A library without
 an entry point retains its public application surface. Unreachable executable
-method bodies remain eligible for removal.
+method bodies remain eligible for removal. These roots and the reflection routes
+below decide what the rewritten DLLs contain: a superset of the bodies dn2cpp
+compiles, which start only from its own roots.
 
 Every retained application type keeps its declared member metadata. Unreached
-methods retain signatures and a throwing stub without retaining their original
-body dependencies. Compiler state-machine Type arguments retain declarations
+methods retain signatures and a marked throwing stub without retaining their
+original body dependencies. dn2cpp refuses to compile a marked stub, so a body
+emission admits but ILDiet stubbed fails the transpile instead of throwing at run
+time. Compiler state-machine Type arguments retain declarations
 without rooting `MoveNext` or its body dependencies. Other scalar Type attribute
 arguments retain their runtime roots. A later call or reflection-invoke root retains the original
 body before stubs are written. Constant-name `GetMethod`, `GetMethods`,
@@ -49,16 +53,19 @@ without requiring an invoke. Event declarations and accessors also survive in
 the rewritten DLL; native event lookup still requires an event metadata and
 handle representation that dn2cpp does not supply.
 
-`FieldInfo.GetValue` boxes user value types declared by retained application
-fields. Their virtual dispatch bodies survive even when the field owner or its
-value type was retained only through member signatures, including user-library
-value types. Closed signature owners substitute their field type parameters
+A retained value type keeps its virtual dispatch bodies even when it was retained
+only through member signatures, including user-library value types: a
+non-generic array search, a runtime handle box, `FieldInfo.GetValue` or
+`Type.InvokeMember` can box any value type whose layout dn2cpp emits without a
+`box` instruction naming it.
+Enums, by-ref-like types and compiler async state machines, which only their
+kickoff body boxes, are excluded. Closed signature owners substitute their field type parameters
 through application base types, reference field owners and array-shaped generic
 arguments. Field type shapes carry closed owner contexts through array elements
 and generic arguments, including arguments of framework containers. Reference
 owners carry metadata context without opening their virtual bodies. Closed
 contexts deduplicate by resolved argument identity, allowing finite cycles while
-emission's reflection route bounds limit growing contexts. Ordinary type
+the reflection route bounds limit growing contexts. Ordinary type
 instantiations from every module and generic method instantiations seed the
 walk depth; a method adds its own instantiation level. Reached user bodies carry
 closed caller type and method argument depths through their IL operands without
@@ -89,19 +96,51 @@ Closed owners admitted by the bounded shape walk also join this snapshot without
 raising the depth seed for subsequent walks or opening their bodies.
 
 Once a retained body calls or binds `MethodBase.Invoke`, `PropertyInfo.GetValue`,
-`PropertyInfo.SetValue`, `EventInfo.AddEventHandler`, `EventInfo.RemoveEventHandler`
-or `CreateDelegate`, directly or through a method group, or a copied assembly
-references one of them (framework event handlers and `CreateDelegate` excepted),
+`PropertyInfo.SetValue`, `EventInfo.AddEventHandler`, `EventInfo.RemoveEventHandler`,
+`Type.InvokeMember` or `CreateDelegate`, directly or through a method group, or a
+copied assembly references one of them (framework event handlers and `CreateDelegate` excepted),
 ILDiet retains the ordinary application type definitions and their non-constructor
-bodies, matching emission's armed application route. Generic definitions already
+bodies, a superset of what a recognized reflection site in dn2cpp can select.
+Generic definitions already
 named by retained signatures keep the same bodies. Retained closed application
 signatures promote their generic arguments as runtime dependencies, preserving
 dispatch when invocation boxes a result. This does not create new closed AOT
-instantiations. Every library type a retained body names with `typeof` then
-retains its instance property accessors and its public parameterless non-generic
-instance methods, except in an engine binding that a backend rewrites, which
-generated trampolines invoke instead. Unnamed library types and library members
-outside that surface still require a descriptor or `PreserveAttribute`.
+instantiations. Once a retained body reflectively invokes, binds, constructs,
+reads attributes, instantiates a generic definition or runs a type initializer,
+every user-library type such a site can resolve as an owner keeps its type
+initializer and the bodies a recognized site could select: members whose names a
+lookup spells as a constant, or that start the constant's text before a
+trailing `*` as `GetMember` reads it, accessors of properties and events so
+named, and constructors for a construction. Owners are the types a retained body names with
+`typeof` and the types an admitting body names with a type argument, an
+allocation, a member token, a constant type name or an assembly listing, closed
+over element types, generic arguments and interfaces, and over base, member and
+nested types once a site derives them. An assembly listing whose assembly comes
+from a type the summary does not name exactly, such as a type parameter's, a
+base type's or that of a box that may hold a derived type, lists every assembly
+ILDiet rewrites. Owners and names come from the terms of
+the site's `ReflectionSummary`, the summary dn2cpp resolves. A base chain
+contributes the members it passes on, which exclude constructors and private
+members. Named delegate binding also retains matching private base methods
+and their rows, following its full-visibility search. A base that declares a
+non-constant, non-private static field such a site can select also keeps its
+type initializer, which reading or writing that field through a derived
+owner runs. A type parameter an admitting body names
+admits every generic argument the program supplies. A lookup without a name, or an enumeration of methods,
+properties, fields, events or members, keeps every body of every owner. A name
+selects on every owner, over-approximating the owner and member pairs dn2cpp
+resolves; the owners' other members are still removed. A generic definition a `MakeGenericType` names also keeps its instance
+constructors and, once reflection invokes, its other bodies, which its
+runtime-instantiation template can run. An engine binding that a backend rewrites
+is excluded, since generated trampolines invoke it instead. Every recognized site,
+including a lookup, a listing or a type identity that runs nothing, keeps the
+declarations of the owners its own operands resolve, and keeps the member rows
+its lookups and listings select on those owners as signature-only stubs; the site
+itself keeps no body or type initializer. Such an owner counts as used, so a
+conditional (`required="false"`) descriptor rule on it applies as it does to any
+used type. A listing keeps every row of its owners. Library
+types no such site resolves and library members outside those sets still require a
+descriptor or `PreserveAttribute`.
 Backend exclusions from default application roots remain in force.
 
 Depth summaries follow executable calls, dispatch slots and allocation hooks.
@@ -120,7 +159,7 @@ receiver slot rather than a whole-class reflection depth root.
 Generic data closures and accessor/event association retain original bodies
 without supplying executable depth roots. A later actual call or reflection
 construction route promotes the already retained surface. Whole-class reflection
-roots share emission's fixed first-walk depth and bounded minted-context admission;
+roots use a fixed first-walk depth and bounded minted-context admission;
 the calls inside admitted bodies still obey the fatal operator budgets.
 Conservatively retained virtual and interface bodies keep their original IL
 without contributing caller instantiations until an execution root reaches them.
@@ -144,13 +183,15 @@ operands. Generic arguments retain instance constructors and property accessors,
 including private setters, because generic factories and serializers can select
 them without direct call tokens. Their base types, instance field and property
 types, and constructor parameter types retain the same data surface recursively.
-Once a retained body calls non-generic `Activator.CreateInstance` or
-`ConstructorInfo.Invoke`, directly or through a method group, or a copied
-assembly references either, ILDiet retains ordinary application type definitions
-and their instance constructors, including application generic definitions named
-only by retained member signatures. Retained closed application signatures
-promote their generic arguments as runtime dependencies, so allocated types keep
-constrained virtual dispatch bodies. Constructor discovery carries closed
+Once a retained body calls non-generic `Activator.CreateInstance`,
+`Assembly.CreateInstance`, `ConstructorInfo.Invoke`, `Type.InvokeMember` or
+`RuntimeHelpers.GetUninitializedObject`, directly or through a
+method group, or a copied assembly references one of them, ILDiet retains
+ordinary application type definitions and their instance constructors, including
+application generic definitions named only by retained member signatures.
+Retained closed application signatures promote their generic arguments as
+runtime dependencies, so allocated types keep constrained virtual dispatch
+bodies. Constructor discovery carries closed
 application reference-field owners into the member snapshot without boxing the
 field values or opening unused method bodies. This allows selection through runtime type
 names and reflected field or method-signature types as well as `typeof`. Declared field, property and

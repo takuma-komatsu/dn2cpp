@@ -22,7 +22,7 @@ namespace Dn2Cpp;
 //     and MethodCompiler.Call.cs, and no walk over an array of rows can decide it.
 //   * Not every intercept is a row: the non-pure predicates, the receiver-side
 //     route-without-cut tests, the argument-rewriting intercepts, the per-instance
-//     halves of the bounded and dynamic-codegen sets, and the reflection-usage marks
+//     halves of the bounded and dynamic-codegen sets, and the RunClassConstructor mouth
 //     ScanNeedsParentTypeName carries are each written out at their site with a comment
 //     naming their counterpart. The rule for telling them apart is in AGENTS.md and
 //     docs/ARCHITECTURE.md §4-B.
@@ -1556,12 +1556,12 @@ internal static partial class CoreIntrinsics
     /// — each row is referenced by the scan at its own position in
     /// <c>ScanBodyForGenerics</c>.
     ///
-    /// <para>The HasFlag row's <c>continue</c> sits AFTER the reflection-usage marks, which
-    /// is an optimisation rather than an ordering constraint: it reuses the name/parent
-    /// strings those marks already read, and the two name sets are disjoint. The real
-    /// constraint lives one level up, in <see cref="ScanNeedsParentTypeName"/>: every name
-    /// any of these sites can want must be in that prefilter, or the parent name is never
-    /// read and the site never runs.</para></summary>
+    /// <para>The HasFlag row's <c>continue</c> reuses the name/parent strings the scan
+    /// already read for the object-equality row; the name sets are disjoint, so the order
+    /// is an optimisation rather than a constraint. The real constraint lives one level
+    /// up, in <see cref="ScanNeedsParentTypeName"/>: every name any of these sites can
+    /// want must be in that prefilter, or the parent name is never read and the site
+    /// never runs.</para></summary>
     public static readonly NameKeyedIntercept[] ScanIntercepts =
     [
         ScObjectEqualityDispatch,
@@ -1574,51 +1574,26 @@ internal static partial class CoreIntrinsics
     /// is cost: the parent read builds a string, the scan runs it per call token of
     /// every reachable body, and only this handful of names can ever want it.
     ///
-    /// <para><b>INVARIANT — this set is a UNION OF THREE THINGS, and deriving it from
-    /// the registry alone breaks the other two SILENTLY.</b> It is:</para>
+    /// <para><b>INVARIANT — this set is a UNION OF TWO THINGS, and deriving it from
+    /// the registry alone breaks the other SILENTLY.</b> It is:</para>
     /// <para>(a) the names of every <see cref="ScanIntercepts"/> row — Equals and
     /// GetHashCode (<see cref="ScObjectEqualityDispatch"/>), HasFlag
     /// (<see cref="ScEnumHasFlag"/>), get_CompareInfo
     /// (<see cref="ScCultureCompareInfo"/>); plus</para>
-    /// <para>(b) the hand-written residue: the names that drive the REFLECTION-USAGE
-    /// marks (<c>Compilation.NoteReflectionUsage</c>, asked for a method group over the
-    /// member exactly as for a call) — Invoke, GetValue, SetValue, CreateDelegate,
-    /// CreateInstance, AddEventHandler, RemoveEventHandler,
-    /// GetCustomAttributes, GetCustomAttribute, IsDefined,
-    /// GetCustomAttributesData, get_CustomAttributes, MakeGenericType, DynamicInvoke. The
-    /// flags those set are not intercepts at all — they do not cut an edge or route a
-    /// call, they OPEN a reachability route: <c>_reflectionInvokeUsed</c> reaches every
-    /// app-module method body, <c>_reflectionCtorUsed</c> every app-module ctor,
-    /// <c>_reflectionFieldReadUsed</c> the value types app-module fields hold,
-    /// <c>_reflectionAttrUsed</c> every reflectable attribute ctor,
-    /// <c>_reflectionDelegateBindScanned</c> arms only the reflected-slot route
-    /// (<c>ReachReflectedVirtualSlots</c>), <c>_makeGenericTypeUsed</c> only the
-    /// runtime-instantiation template pass and <c>_delegateDynamicInvokeUsed</c> only the
-    /// boxes a delegate's Invoke row makes (<c>ReachDelegateInvokeBoxes</c>). No
-    /// descriptor row will ever carry them.</para>
-    /// <para>(c) RunClassConstructor — the MemberRef mouth of the RuntimeHelpers.
+    /// <para>(b) RunClassConstructor — the MemberRef mouth of the RuntimeHelpers.
     /// RunClassConstructor reach effect (reach the ldtoken'd type's cctor body so the
     /// __ensure wrapper the emit intrinsic lowers the call to is not a nullptr no-op).
     /// The in-CoreLib mouth is a MethodDef token and rides the resolved-target arm
     /// further down the scan; this name is what lets the user-module MemberRef mouth
     /// see its parent and fire at all.</para>
-    /// <para>Drop (b) or (c) and nothing fails: the transpile is green, the C++ compiles and
-    /// links, and the shipped binary throws the first time it calls
-    /// <c>PropertyInfo.GetValue</c> on an accessor the reflection route was supposed to have
-    /// reached — or silently skips a class initializer real .NET runs. A silently narrowed
-    /// reachability route with no diagnostic anywhere in the toolchain is why the union is
-    /// written out in full rather than computed from
-    /// <see cref="ScanIntercepts"/>.</para></summary>
+    /// <para>Drop (b) and nothing fails: the transpile is green, the C++ compiles and
+    /// links, and the shipped binary silently skips a class initializer real .NET runs,
+    /// with no diagnostic anywhere in the toolchain. That is why the union is written out
+    /// in full rather than computed from <see cref="ScanIntercepts"/>.</para></summary>
     public static bool ScanNeedsParentTypeName(string name) => name is
         // (a) ScanIntercepts row names.
         "Equals" or "GetHashCode" or "HasFlag" or "get_CompareInfo"
-        // (b) the reflection-usage marks — NOT intercepts, never registry rows.
-        or "Invoke" or "GetValue" or "SetValue" or "CreateDelegate" or "CreateInstance"
-        or "AddEventHandler" or "RemoveEventHandler"
-        or "GetCustomAttributes" or "GetCustomAttribute" or "IsDefined"
-        or "GetCustomAttributesData" or "get_CustomAttributes"
-        or "MakeGenericType" or "DynamicInvoke"
-        // (c) the MemberRef mouth of the RunClassConstructor reach effect.
+        // (b) the MemberRef mouth of the RunClassConstructor reach effect.
         or "RunClassConstructor";
 
     // ---- The BodyReplace and Bounded rows ----

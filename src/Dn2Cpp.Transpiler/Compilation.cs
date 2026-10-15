@@ -1266,6 +1266,10 @@ internal sealed partial class Compilation
         if (delegateMethods is not null)
             foreach (var m in delegateMethods)
                 keep.Add(m.DeclaringClass);
+        // A recognized lookup, enumeration, attribute-data read or type identity names the
+        // owner whose members it reads.
+        foreach (var cls in _reflectionMetadataOwners)
+            keep.Add(cls);
         // A root matching no loaded type is a hard error: a typo silently becoming a no-op
         // root would surface as a PlatformNotSupportedException in a shipped game, which is
         // the one place this diagnostic cannot reach anybody.
@@ -2788,7 +2792,11 @@ internal sealed partial class Compilation
         // call (a mutation would corrupt the spec's Context before it corrupted this key).
         var byArgs = InstancesFor(module, templateHandle);
         if (byArgs.TryGetValue(args, out var existing))
+        {
+            if (_preserveMintedInstances.Count > 0)
+                NotePreserveMint(existing, minted: false);
             return existing;
+        }
 
         var td = reader.GetTypeDefinition(templateHandle);
         string rawName = StripArity(reader.GetString(td.Name));
@@ -2843,6 +2851,7 @@ internal sealed partial class Compilation
         byArgs.Add(args, spec);
         _instanceCount++;
         Classes.Add(spec);
+        NotePreserveMint(spec, minted: true);
         EnqueuePending(spec);
         // Intrinsic ValueTask<T> and TaskCompletionSource<T> both allocate a real
         // Task<T> backing. Create its identity while the model can still grow, even when
@@ -4292,43 +4301,10 @@ internal sealed partial class Compilation
             WireArrayEnumerableMap(v);
             added |= ArrayEnumerableElementTypes.ContainsKey(ArrayElemMangle(v));
         }
-        // MethodBase.Invoke / PropertyInfo.GetValue on an interface-declared row is a
-        // dispatch mouth with no statically visible call site: dn2cpp_invoke_mi's
-        // interface arm resolves the RECEIVER's slot exactly as a callvirt would, so a
-        // program that uses reflection invoke can land on any wired array map's rows.
-        // Mirror that mouth here — reachability must be at least as generous as
-        // dispatch: reach every wired map's impls, so their slots hold thunks
-        // rather than trap stubs. Costs nothing in a program that never invokes;
-        // driven each round because the flag and the map set both grow as bodies
-        // compile. Snapshot the walk — Reach decodes, and a decode can note elements.
-        if (_reflectionInvokeUsed)
-        {
-            bool reached = false;
-            foreach (var aei in ArrayEnumerableElementTypes.Values.ToList())
-                foreach (var d in aei.Dispatches)
-                    foreach (var (_, impl) in d.Methods)
-                        if (!Reachable.Contains(impl))
-                        {
-                            Reach(impl);
-                            reached = true;
-                        }
-            // Reflection can invoke every row on an MD receiver. Clone-only SZ
-            // dispatch admits only ICloneable.
-            if (MdArrayInterfaces is { } mai)
-                foreach (var d in mai.Dispatches)
-                {
-                    if (!_mdArrayUsed && d.Itf.FullName != "System.ICloneable")
-                        continue;
-                    foreach (var (_, impl) in d.Methods)
-                        if (!Reachable.Contains(impl))
-                        {
-                            Reach(impl);
-                            reached = true;
-                        }
-                }
-            if (reached)
-                DrainReachability();
-        }
+        // A reflective invoke of an interface row runs the receiver's slot as a callvirt
+        // would (dn2cpp_invoke_row). The wrappers are allocated, so a recognized
+        // selection's used slot (MarkReflectedSlot) reaches their implementation; an
+        // unselected slot holds a trap that refuses the reflective call catchably.
         if (_arrayEnumerableTargets.Count == 0)
             return added;
         foreach (var a in ArrayElementTypes.Values.ToList())
@@ -4344,120 +4320,6 @@ internal sealed partial class Compilation
                 }
         }
         return added;
-    }
-
-    /// <summary>MethodBase.Invoke, PropertyInfo.GetValue/SetValue and a CreateDelegate
-    /// binding run a class virtual row, or an interface row with a default body,
-    /// through the receiver's slot, as a callvirt would (dn2cpp_invoke_row), so each
-    /// such invocable row is a used slot with no call site. Reachability must be at
-    /// least as generous as that dispatch, or the receiver's slot holds a trap. A
-    /// class row is invocable once reached, or when abstract (its thunk is
-    /// signature-only), and runs only on receivers derived from its class, so a used
-    /// declaration of the slot on that class or a base already covers it. A user
-    /// module's rows are all marked. Marking a framework row reaches every allocated
-    /// framework override of its slot, which need not transpile, so a framework row is
-    /// marked only when a user body names its member on a type token
-    /// (<see cref="_typeofNamedMembers"/>), which bounds that to one member's
-    /// overrides; any other framework row's receiver may hold a trap, which the runtime
-    /// reports as the stripped body it is. A closed generic virtual row has no slot and
-    /// gets its dispatcher (<see cref="ReachReflectedGvm"/>) by the same rule, except that
-    /// a framework row no type token names gets a stripping one, which reaches only
-    /// application bodies and those a preservation rule keeps, and reports any other as
-    /// the stripped body it is; without a dispatcher a row runs its own body. Each row
-    /// the route finds invocable also notes the values Invoke boxes for it with no box
-    /// site (<see cref="NoteReflectedRowBoxes"/>). A row's verdict changes only when its
-    /// class's members are decoded, it is instantiated, it is reached, or its member is
-    /// named, so each of those logs is visited once. Driven by discovery's last fixpoint
-    /// and again each round, as the flags and the logs grow while bodies compile.</summary>
-    public void ReachReflectedVirtualSlots()
-    {
-        if (!_reflectionInvokeUsed && !_reflectionDelegateBindScanned && !NeedsReflectionDelegateBind)
-            return;
-        while (MarkLoggedReflectedRows())
-            DrainReachability();
-    }
-
-    /// <summary>How far <see cref="MarkLoggedReflectedRows"/> has visited
-    /// <see cref="Classes"/>, <see cref="_membersCompletedOrder"/>,
-    /// <see cref="_typeofNamedMembers"/>, <see cref="_methodInstanceOrder"/> and
-    /// <see cref="ReachableSet.Order"/>.</summary>
-    private int _reflectedClassCursor, _reflectedCompletedCursor, _reflectedNamedCursor,
-        _reflectedInstanceCursor, _reflectedReachCursor;
-
-    /// <summary>The rows, by class and method name, that a type token names a member of
-    /// (<see cref="_typeofNamedMembers"/>).</summary>
-    private readonly HashSet<(ClassInfo, string)> _reflectedNamedRows = new();
-
-    /// <summary>Marks the rows the logs gained since the last visit, until marking grows
-    /// none of them; returns whether any row was marked.</summary>
-    private bool MarkLoggedReflectedRows()
-    {
-        bool marked = false;
-        while (_reflectedClassCursor < Classes.Count
-               || _reflectedCompletedCursor < _membersCompletedOrder.Count
-               || _reflectedNamedCursor < _typeofNamedMembers.Count
-               || _reflectedInstanceCursor < _methodInstanceOrder.Count
-               || _reflectedReachCursor < Reachable.Order.Count)
-        {
-            // A specialization's members arrive when CompleteMembers decodes them; every
-            // other class has its members from the start.
-            while (_reflectedClassCursor < Classes.Count)
-            {
-                var cls = Classes[_reflectedClassCursor++];
-                if (cls.GenericArity == 0)
-                    marked |= MarkReflectedRows(cls);
-            }
-            while (_reflectedCompletedCursor < _membersCompletedOrder.Count)
-                marked |= MarkReflectedRows(_membersCompletedOrder[_reflectedCompletedCursor++]);
-            // Type.GetMethod searches the base classes too; an interface only itself.
-            while (_reflectedNamedCursor < _typeofNamedMembers.Count)
-            {
-                var (named, member) = _typeofNamedMembers[_reflectedNamedCursor++];
-                for (var cls = named; cls is not null && CarriesReflectedSlots(cls);
-                     cls = cls.IsInterface ? null : cls.BaseClass)
-                {
-                    if (!DeclaresMemberNamed(cls, member))
-                        continue;
-                    EnsureCompleted(cls);
-                    marked |= MarkNamedSlots(cls, member);
-                    marked |= MarkNamedSlots(cls, "get_" + member);
-                    marked |= MarkNamedSlots(cls, "set_" + member);
-                }
-            }
-            while (_reflectedInstanceCursor < _methodInstanceOrder.Count)
-                marked |= MarkReflectedRow(_methodInstanceOrder[_reflectedInstanceCursor++]);
-            var order = Reachable.Order;
-            while (_reflectedReachCursor < order.Count)
-                marked |= MarkReflectedRow(order[_reflectedReachCursor++]);
-        }
-        return marked;
-    }
-
-    private bool MarkReflectedRows(ClassInfo cls)
-    {
-        if (!IsUserModule(cls.Module) || !CarriesReflectedSlots(cls))
-            return false;
-        bool marked = false;
-        var methods = cls.Methods;
-        for (int i = 0; i < methods.Count; i++)
-            marked |= MarkReflectedRow(methods[i]);
-        return marked;
-    }
-
-    /// <summary>Marks <paramref name="m"/> when reflection can enter it through a slot or a
-    /// generic virtual dispatcher: every row of a user module, and a named row of any. An
-    /// unnamed framework generic virtual row gets a stripping dispatcher.</summary>
-    private bool MarkReflectedRow(MethodInfo m)
-    {
-        if (m.IsStatic || !m.IsVirtual)
-            return false;
-        var cls = m.DeclaringClass;
-        if (!CarriesReflectedSlots(cls) || ContainsGenericVar(cls))
-            return false;
-        bool named = _reflectedNamedRows.Contains((cls, m.Name));
-        if (IsGvmCall(m))
-            return ReachReflectedGvm(cls, m, strips: !named && !IsUserModule(cls.Module));
-        return (named || IsUserModule(cls.Module)) && MarkReflectedSlot(m, named);
     }
 
     /// <summary>Registers the dispatcher a closed generic virtual row runs through: the
@@ -4589,6 +4451,57 @@ internal sealed partial class Compilation
         return true;
     }
 
+    /// <summary>How much of <see cref="_methodInstanceOrder"/> and
+    /// <see cref="ReachableSet.Order"/> <see cref="ReachLateBoundGvmRows"/> has
+    /// visited.</summary>
+    private int _lateBoundGvmInstanceCursor, _lateBoundGvmReachCursor;
+
+    /// <summary>A reflective call can enter any closed generic virtual row the image
+    /// keeps, through a site admission recognizes or not, and without a dispatcher the
+    /// runtime runs the row's own body for every receiver. Each such row gets a stripping
+    /// dispatcher (<see cref="GvmDispatch.Strips"/>), so an allocated receiver that
+    /// overrides the row either has a compiled case or refuses the call as a stripped
+    /// body. A call site or a recognized reflective target registers the non-stripping
+    /// dispatcher instead. Driven with the other routes each round.</summary>
+    public void ReachLateBoundGvmRows()
+    {
+        if (_hotUpdateBase
+            || !_reflectionInvokeUsed && !_reflectionDelegateBindScanned && !NeedsReflectionDelegateBind)
+            return;
+        bool marked;
+        do
+        {
+            marked = false;
+            while (_lateBoundGvmInstanceCursor < _methodInstanceOrder.Count)
+            {
+                var m = _methodInstanceOrder[_lateBoundGvmInstanceCursor++];
+                if (m.Rva == 0)
+                    marked |= MarkLateBoundGvm(m);
+            }
+            var order = Reachable.Order;
+            while (_lateBoundGvmReachCursor < order.Count)
+                marked |= MarkLateBoundGvm(order[_lateBoundGvmReachCursor++]);
+            if (marked)
+                DrainReachability();
+        }
+        while (marked);
+    }
+
+    private bool MarkLateBoundGvm(MethodInfo m)
+    {
+        var cls = m.DeclaringClass;
+        if (!IsGvmCall(m) || cls.IsSealed || (m.Attributes & MethodAttributes.Final) != 0
+            || !CarriesReflectedSlots(cls) || ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls)
+            || _backend?.ShouldSkipMethodBody(cls, m) == true
+            || _usedGvms.ContainsKey(m.CppName))
+            return false;
+        foreach (var arg in m.Context.MethodArgs)
+            if (ContainsCanonPlaceholder(arg) || ContainsGenericVar(arg))
+                return false;
+        ReachUsedGvm(m, callSite: false, strips: true);
+        return true;
+    }
+
     /// <summary>How much of <see cref="_methodInstanceOrder"/>
     /// <see cref="InstantiateGvmChainRoots"/> has visited.</summary>
     private int _gvmChainRootCursor;
@@ -4669,11 +4582,12 @@ internal sealed partial class Compilation
     }
 
     /// <summary>Whether <paramref name="m"/>'s row must survive the unreached-row trim:
-    /// <c>Delegate.Method</c> answers from it (<see cref="KeepsDelegateTargetRow"/>), or it
-    /// introduces the chain of an override whose row the image keeps.</summary>
+    /// <c>Delegate.Method</c> answers from it (<see cref="KeepsDelegateTargetRow"/>), a
+    /// recognized lookup or enumeration lists it, or it introduces the chain of an override
+    /// whose row the image keeps.</summary>
     internal bool KeepsUnreachedRow(MethodInfo m)
     {
-        if (KeepsDelegateTargetRow(m))
+        if (KeepsDelegateTargetRow(m) || IsReflectionListedRow(m))
             return true;
         if (!_gvmChainRoots.TryGetValue(m, out var overrides))
             return false;
@@ -4689,22 +4603,14 @@ internal sealed partial class Compilation
         !cls.IsValueType && !cls.IsDelegate && cls.IntrinsicCppName is null
         && !CoreIntrinsics.IsIntrinsicType(cls.FullName);
 
-    /// <summary>Records the named rows and marks the ones that exist; one instantiated or
-    /// reached later is marked from its log.</summary>
-    private bool MarkNamedSlots(ClassInfo cls, string name)
-    {
-        bool marked = false;
-        if (_reflectedNamedRows.Add((cls, name)) && cls.MethodsNamed(name) is { } methods)
-            for (int i = 0; i < methods.Count; i++)
-                marked |= MarkReflectedRow(methods[i]);
-        return marked;
-    }
-
     /// <summary>Marks the slot of a row reflection can enter when no used declaration
-    /// covers it yet, and notes the row's boxes either way. A library's default body has
-    /// a row only once reached. A bodiless interface row is marked only when a type
-    /// token names it: marking every one would reach each implementer's whole interface
-    /// surface.</summary>
+    /// covers it yet, and notes the row's boxes either way. MethodBase.Invoke,
+    /// PropertyInfo.GetValue/SetValue and a CreateDelegate binding run a class virtual row,
+    /// or an interface row with a default body, through the receiver's slot, as a callvirt
+    /// would (dn2cpp_invoke_row), so a selected row is a used slot with no call site. A
+    /// class row is invocable once reached, or when abstract (its thunk is
+    /// signature-only). A library's default body has a row only once reached. A bodiless
+    /// interface row is marked only when a recognized site names it.</summary>
     private bool MarkReflectedSlot(MethodInfo m, bool named)
     {
         if (m.IsStatic || !m.IsVirtual || m.VtableSlot < 0)
@@ -4745,25 +4651,6 @@ internal sealed partial class Compilation
         return _allocatedRefTypes.Count != allocated;
     }
 
-    /// <summary>Whether the definition of <paramref name="cls"/> declares a method named
-    /// <paramref name="member"/> or an accessor of such a property. Read off the raw
-    /// metadata, so a class named with an unrelated string is never completed.</summary>
-    private static bool DeclaresMemberNamed(ClassInfo cls, string member)
-    {
-        if (cls.Handle.IsNil)
-            return false;
-        var reader = cls.Module.Reader;
-        string getter = "get_" + member, setter = "set_" + member;
-        foreach (var handle in reader.GetTypeDefinition(cls.Handle).GetMethods())
-        {
-            var name = reader.GetMethodDefinition(handle).Name;
-            if (reader.StringComparer.Equals(name, member) || reader.StringComparer.Equals(name, getter)
-                || reader.StringComparer.Equals(name, setter))
-                return true;
-        }
-        return false;
-    }
-
     /// <summary>Set once a scanned body calls or binds Array.Initialize() through a member
     /// reference, or a compiled body lowers it to <c>dn2cpp_array_initialize</c>, which
     /// runs the element's parameterless constructor through the element type's constructor
@@ -4790,8 +4677,8 @@ internal sealed partial class Compilation
     /// parameterless constructor of every user-module value type that declares one, so the
     /// constructor row <c>dn2cpp_array_initialize</c> invokes carries a body. No framework
     /// value type a program can name declares one. Driven by discovery's last fixpoint and
-    /// again each round, like <see cref="ReachReflectedVirtualSlots"/>: a compiled body can
-    /// mint a closed generic value type.</summary>
+    /// again each round, like <see cref="ApplyPendingReflectionSelections"/>: a compiled
+    /// body can mint a closed generic value type.</summary>
     public void ReachRuntimeArrayInitializeCtors()
     {
         if (!_runtimeArrayInitialize)
@@ -4849,47 +4736,6 @@ internal sealed partial class Compilation
                 return handle;
         }
         return default;
-    }
-
-    /// <summary>The members user bodies name on a type token: <c>typeof(T)</c> followed
-    /// at once by a string literal, as <c>GetMethod("Name")</c>,
-    /// <c>GetProperty("Name")</c> or a helper taking both spell it. In first-named order
-    /// (list + set: the consumer's reach order is emit-relevant). Recorded
-    /// unconditionally, like <see cref="_typeofNamedLibraryClasses"/>, so the set does not
-    /// depend on which body the invoke flags were set in.</summary>
-    private readonly List<(ClassInfo Class, string Member)> _typeofNamedMembers = new();
-    private readonly HashSet<(ClassInfo, string)> _typeofNamedMembersSeen = new();
-
-    private void NoteTypeofNamedMembers(MethodInfo method, List<Instruction> instructions,
-        BranchLiveness? liveness)
-    {
-        for (int i = 0; i < instructions.Count; i++)
-        {
-            var token = instructions[i];
-            if (token.OpCode != ILOpCode.Ldtoken || liveness is not null && !liveness.LiveAt(token.Offset))
-                continue;
-            int call = NextNonNop(instructions, i + 1);
-            int literal = call < 0 ? -1 : NextNonNop(instructions, call + 1);
-            if (literal < 0 || instructions[call].OpCode != ILOpCode.Call
-                || instructions[literal].OpCode != ILOpCode.Ldstr
-                || ClassifyTypeIdentityCall(method.Module, instructions[call].Token) != TypeIdentityCall.GetTypeFromHandle)
-                continue;
-            var handle = SRME.EntityHandle(token.Token);
-            if (handle.Kind is not (HandleKind.TypeDefinition or HandleKind.TypeReference or HandleKind.TypeSpecification)
-                || ResolveTypeTokenForScan(method.Module, handle, method.Context) is not { Kind: TypeKind.Class, Class: { } cls } type
-                || ContainsGenericVar(type) || ContainsCanonPlaceholder(type))
-                continue;
-            string member = method.Module.Reader.GetUserString(SRME.UserStringHandle(instructions[literal].Token & 0xFFFFFF));
-            if (_typeofNamedMembersSeen.Add((cls, member)))
-                _typeofNamedMembers.Add((cls, member));
-        }
-    }
-
-    private static int NextNonNop(List<Instruction> instructions, int start)
-    {
-        while (start < instructions.Count && instructions[start].OpCode == ILOpCode.Nop)
-            start++;
-        return start < instructions.Count ? start : -1;
     }
 
     private bool ClassSlotUsedAtOrAbove(MethodInfo m)
@@ -5229,20 +5075,27 @@ internal sealed partial class Compilation
 
     private readonly HashSet<MethodInfo> _scanned = new();
 
-    // Set when a reached body calls or binds MethodInfo/MethodBase.Invoke or
-    // PropertyInfo.GetValue/SetValue, or a user body calls or binds CreateDelegate. Arms
-    // the invoke half of the reflection-invoke route, ReachTypeofNamedLibrarySurface,
-    // ReachReflectedTemplateBodies, ReachReflectedVirtualSlots, ReachDelegateInvokeBoxes,
-    // the array maps' rows ExpandArrayEnumerableMaps reaches, the rows of
-    // EmitGvmRowDispatch, and the binding of each delegate type's Invoke row to the
-    // type's multicast invoker.
+    // Set by a classified site that calls or binds MethodInfo/MethodBase.Invoke,
+    // PropertyInfo.GetValue/SetValue, an event accessor or InvokeMember, or by a user
+    // body's CreateDelegate. An emission switch: invoker thunks and their boxing, the rows
+    // of EmitGvmRowDispatch, the binding of each delegate type's Invoke row to the type's
+    // multicast invoker, ReachReflectedTemplateBodies on a selected template,
+    // ReachDelegateInvokeBoxes and the array maps' rows ExpandArrayEnumerableMaps
+    // reaches. It selects no body a reflection site names.
     private bool _reflectionInvokeUsed;
     internal bool ReflectionInvokeUsed => _reflectionInvokeUsed;
 
+    // Argument-bearing activation requires constructor signatures for runtime binding,
+    // including rows whose bodies are absent. The capability selects no constructor body.
+    private bool _reflectionConstructorBindingUsed;
+    internal bool ReflectionConstructorBindingUsed => _reflectionConstructorBindingUsed;
+
     // Set when any reached body, a framework one included, calls or binds CreateDelegate.
-    // Arms ReachReflectedVirtualSlots during discovery, before the lowering sets
+    // Arms ReachRuntimeDelegateCloneReceivers during discovery, before the lowering sets
     // NeedsReflectionDelegateBind.
     private bool _reflectionDelegateBindScanned;
+    // Set when a user body binds a delegate by name (Delegate.CreateDelegate over a Type
+    // and a method name). Emits the initializer rows the runtime binder runs.
     private bool _reflectionNamedDelegateBindUsed;
     internal bool NamedDelegateBindingUsed => _reflectionNamedDelegateBindUsed;
     private readonly HashSet<MethodInfo> _bindingOnlyInitializers = new();
@@ -5250,67 +5103,30 @@ internal sealed partial class Compilation
     private bool _reachingBindingOnlyBody;
     internal bool IsBindingOnlyInitializer(MethodInfo method) => _bindingOnlyInitializers.Contains(method);
 
-    // Set when a reached body calls or binds FieldInfo.GetValue. Arms the field half of
-    // the reflection-invoke route.
-    private bool _reflectionFieldReadUsed;
-
-    // Set when a reached body calls or binds ConstructorInfo.Invoke or the non-generic
-    // Activator.CreateInstance(Type). Arms the ctor half of the reflection-invoke route
-    // and its surface beyond the application module.
-    private bool _reflectionCtorUsed;
-
     // Set when a reached body calls or binds Delegate.DynamicInvoke, which runs a
     // delegate type's Invoke row as MethodInfo.Invoke does. It or `_reflectionInvokeUsed`
     // arms ReachDelegateInvokeBoxes.
     private bool _delegateDynamicInvokeUsed;
 
-    // One arm of the runtime-instantiation trigger: a reached body calls
-    // Type.MakeGenericType through the MemberRef mouth (a user-module call
-    // site; a CoreLib-internal MethodDef call is deliberately not a trigger —
-    // the templates serve program code that mints closed types by hand).
+    // One arm of the runtime-instantiation trigger: a classified site calls
+    // Type.MakeGenericType.
     private bool _makeGenericTypeUsed;
+    // Set when a MakeGenericType site's receiver definition is not known: every
+    // typeof'd definition then gets template metadata, and no template body.
+    private bool _makeGenericTypeUnknownReceiver;
 
     // The other arm: the CLR backtick full names of every OPEN generic
     // definition a reached body ldtokens (typeof(D<>)), in first-seen order.
     // Recorded unconditionally, not behind _makeGenericTypeUsed — the flag can
     // be set by a body scanned after the ldtoken site, and gating the record on
-    // it would make the set scan-order-dependent (the _appMethodSpecTypeArgs
-    // argument). Consumed once, after the scan closes, by the
-    // runtime-instantiation template pass.
+    // it would make the set scan-order-dependent. Consumed once, after the scan
+    // closes, by the runtime-instantiation template pass.
     private readonly List<string> _typeofOpenGenericDefNames = new();
     private readonly HashSet<string> _typeofOpenGenericDefSeen = new(StringComparer.Ordinal);
 
-    // The generic-METHOD half of the reflection-ctor surface: the type arguments
-    // of every MethodSpec an app-module body instantiates, recorded by
-    // ScanBodyForGenerics off the resolved target's Context (already-closed
-    // TypeDescs — no decode). `serializer.Deserialize<Dictionary<string,
-    // FileLoadedAchievement>>(reader)` names its construction target ONLY here:
-    // it is no field or property type, so the declared-member surface alone
-    // cannot see it. Recorded unconditionally (not behind _reflectionCtorUsed —
-    // the flag can be set by a body scanned AFTER the call site, so gating the
-    // record on it would make the surface scan-order-dependent); consumed by
-    // ReachUserSurfaceNamedSpecializationCtors. Duplicates are fine (the
-    // consumer dedupes); the count is part of the consumer's fixpoint measure.
-    private readonly List<TypeDesc> _appMethodSpecTypeArgs = new();
-
-    // The reflection-ctor route's LIBRARY-target state, persistent across the
-    // fixpoint rounds (consumed and grown by
-    // ReachUserSurfaceNamedSpecializationCtors; their combined count is part of
-    // the caller's fixpoint measure, so a round that opens a new target is
-    // always followed by another round that collects that target's members):
-    //  - _userReflConstructed: library classes the surface NAMED and this route
-    //    opened as construction targets (all instance ctors + allocation);
-    //  - _userReflSurface: those plus their user-module base chains — the
-    //    classes whose declared member types feed the next round's surface and
-    //    whose property accessors are reached (a deserializer populates an
-    //    inherited property through the BASE's accessor body).
-    private readonly HashSet<ClassInfo> _userReflConstructed = new();
-    private readonly HashSet<ClassInfo> _userReflSurface = new();
-
-    // Set when a reached body calls GetCustomAttributes/IsDefined or reads a
-    // CustomAttributeData view. Triggers the reflection-attribute route: reach each
-    // app-module attribute's ctor + named-property setters and allocate the attribute
-    // types so their instances can be materialized.
+    // Set when a classified site calls GetCustomAttributes/IsDefined or reads a
+    // CustomAttributeData view. An emission switch: every reflectable row keeps its
+    // attribute table, and System.Attribute gets the array handle a filter names.
     private bool _reflectionAttrUsed;
 
     // The full names of FRAMEWORK-module classes a reachable USER-module body names
@@ -5326,24 +5142,8 @@ internal sealed partial class Compilation
     // the set are inert — only an attribute ctor's declaring class is ever tested
     // against it. Recorded unconditionally (not behind _reflectionAttrUsed — the flag
     // can be set by a body scanned AFTER the token, so gating would make the set
-    // scan-order-dependent); duplicates are free (a set); the count is part of the
-    // reflection-attribute walk's fixpoint measure below.
+    // scan-order-dependent); duplicates are free (a set).
     private readonly HashSet<string> _userTypeofNamedFrameworkTypes = new();
-
-    // The reflection-invoke route's LIBRARY extension: user-LIBRARY classes a
-    // reachable body names with a type token (`ldtoken <type>` — typeof), in
-    // first-named order (list + set: the consumer's reach order is emit-relevant, and
-    // a HashSet walk is not deterministic). The token is the one statically visible
-    // evidence that the program can reflect over the class (the same keep rule
-    // --trim-reflection uses): Google.Protobuf's descriptor machinery hands
-    // typeof(Value) to GeneratedClrTypeInfo, then GetMethod/Invoke's accessor members
-    // nothing calls statically. Recorded unconditionally (not behind
-    // _reflectionInvokeUsed — the flag can be set by a body scanned AFTER the token,
-    // so gating would make the set scan-order-dependent); consumed by the
-    // typeof-named-library loop beside the app-module invoke route, whose fixpoint
-    // measure is the list's count.
-    private readonly List<ClassInfo> _typeofNamedLibraryClasses = new();
-    private readonly HashSet<ClassInfo> _typeofNamedLibraryClassesSeen = new();
 
     /// <summary>Whether a framework-declared attribute class is reflectable because a
     /// reachable user-module body named it with typeof — the bounded widening of
@@ -5390,43 +5190,26 @@ internal sealed partial class Compilation
 
         SeedPreservedMembers();
 
-        // Seed with the program roots. Only the app module is rooted; reference
-        // assemblies (e.g. a real CoreLib passed with -r) are pulled in solely
-        // through reachability edges, so tree-shaking can keep all but the
-        // handful of BCL methods the program actually uses.
+        // The roots: the entry point, the members preservation keeps, a hot-update base's
+        // export contract, module initializers, native entry points and what the backend
+        // names. Every other body, in the application and its references alike, enters
+        // only through a static edge or a recognized reflection site, and a .cctor only
+        // through a use of its type (ReachCctor). A root runs with no IL caller, so it
+        // triggers its own type's initializer (ReachRootInitializer): .NET runs a
+        // precise-init entry type's .cctor before Main.
         if (EntryPoint is not null)
-            Reach(EntryPoint);
-        foreach (var cls in Classes.ToList())
         {
-            // Undecoded specializations contribute nothing, and asking would change that: this
-            // runs before the first drain, so reading .Methods here would decode the class and
-            // newly root every public method of every public app generic — a reachability
-            // change, and an order-dependent one, since a specialization first instantiated
-            // while compiling a body would never pass through here at all. Whatever IS decoded
-            // by now (a generic base of a non-generic class, via BuildVtables) is still
-            // seeded.
-            if (cls.Module != AppModule || !cls.MembersReady)
-                continue;
-            foreach (var m in cls.Methods)
-            {
-                if (m.Rva == 0)
-                    continue;
-                bool isRoot = m.Name == ".cctor"
-                    || (cls.IsPublic && (m.IsPublic || m.Name == ".ctor"));
-                if (isRoot)
-                    Reach(m);
-            }
+            Reach(EntryPoint);
+            ReachRootInitializer(EntryPoint);
         }
+        SeedExportContract();
 
         // A module initializer is a side effect with NO call edge — that is the entire
         // point of the feature — so a call-graph tree-shaker can never discover it. The
         // `<Module>` .cctor the C# compiler emits to call it is therefore a root, in every
-        // loaded NON-framework module: the app module (where the loop above would already
-        // have rooted it, .cctor being an unconditional app-module root — this loop is
-        // idempotent and states the intent) and every user library pulled in with -r, whose
-        // .cctors are otherwise not roots at all (ReachCctor pulls a reference assembly's
-        // .cctor in on ALLOCATION of its type, and `<Module>` is never allocated, so a
-        // library's initializer would silently never run).
+        // loaded NON-framework module: the app module and every user library pulled in
+        // with -r. No other .cctor is a root (ReachCctor pulls one in on a use of its type,
+        // and `<Module>` is never used, so an initializer would silently never run).
         //
         // .NET runs a module initializer lazily, before the first access to anything in
         // that module; dn2cpp runs every reached .cctor eagerly at startup, so a referenced
@@ -5472,7 +5255,10 @@ internal sealed partial class Compilation
             foreach (var m in cls.Methods)
                 if (m.IsUnmanagedCallersOnly && m.Rva != 0
                     && _backend?.ShouldSkipMethodBody(cls, m) is not true)
+                {
                     Reach(m);
+                    ReachRootInitializer(m);
+                }
         }
 
         // Seed reachability for classes a backend instantiates outside the C# call
@@ -5502,7 +5288,15 @@ internal sealed partial class Compilation
             // C# call graph) as roots — same contract as the externally-allocated
             // classes above.
             foreach (var m in _backend.AdditionalRootMethods(this).ToList())
+            {
                 Reach(m);
+                ReachRootInitializer(m);
+            }
+
+            foreach (var cls in _backend.AttributeReadClasses(this).ToList())
+                ReachBackendAttributeRows(cls);
+            foreach (var module in _backend.AttributeReadAssemblies(this).ToList())
+                ReachAttributesOf(module, module.Reader.GetAssemblyDefinition().GetCustomAttributes(), reach: true);
         }
 
         // Hot-update base build: force-emit the extra closed generic
@@ -5512,28 +5306,30 @@ internal sealed partial class Compilation
                 SeedGenericRoot(root);
 
         DrainReachability();
-        // The reflection routes and the routes that reach bodies no call site names feed
-        // one another: a body any of them reaches can arm a route or widen what one walks.
-        // Alternate them to a fixpoint, so what each reaches is walked, wired, noted and
-        // released like any other body before the notes and the freeze below. Boxed
+        // The reflection selections and the routes that reach bodies no call site names
+        // feed one another: a body any of them reaches can carry a site or mint an
+        // instantiation a pending selection names. Alternate them to a fixpoint, so what
+        // each reaches is walked, wired, noted and released like any other body before the
+        // notes and the freeze below. Boxed
         // equality goes last: it reads two facts the others are still producing, which
         // structs got boxed and whether anything compares two objects, and the walk it
         // starts can produce more of both (a field's Equals override is a body, and a body
         // can box), exactly as the used×allocated cross product it stands in for does.
         // A row's signature can mint a class without reaching another body; that
         // class's attribute rows need the next walk too.
-        int admitted, namedOwners, allocatedOwners, classes;
+        int admitted, classes, selections;
         do
         {
             admitted = Reachable.Order.Count;
-            namedOwners = _typeofNamedLibraryClasses.Count;
-            allocatedOwners = _invokeRouteAllocatedOwners.Count;
             classes = Classes.Count;
-            ReachReflectionClassRoutes();
-            ReachReflectionAttributeRoute();
+            selections = _reflectionSelectionCount;
+            ReachReflectionRuntimeSupport();
+            ApplyPendingReflectionSelections();
+            ReachSelectedAttributeRows();
             InstantiateGvmChainRoots();
-            ReachReflectedVirtualSlots();
             ReachPatchCallableGvms();
+            ReachLateBoundGvmRows();
+            ReachExportContractInstances();
             ReachRuntimeArrayInitializeCtors();
             if (ReachBoxedValueEquality())
                 DrainReachability();
@@ -5541,14 +5337,11 @@ internal sealed partial class Compilation
                 DrainReachability();
         }
         while (Reachable.Order.Count != admitted
-               || _typeofNamedLibraryClasses.Count != namedOwners
-               || _invokeRouteAllocatedOwners.Count != allocatedOwners
-               || Classes.Count != classes);
+               || Classes.Count != classes
+               || _reflectionSelectionCount != selections);
 
-        // The emit side renders an attribute row whatever reached its ctor, and routes other
-        // than the walk above reach ctors (the reflection-ctor route reaches every app-module
-        // one). Note what the rows the walk did not visit name, once ctor reachability has
-        // settled.
+        // The emit side renders an attribute row whatever reached its ctor. Note what every
+        // row names once ctor reachability has settled.
         NoteUnwalkedAttributeRows();
 
         // --trim-godot-classes: the allowlist may only grow while reachability can
@@ -5558,38 +5351,74 @@ internal sealed partial class Compilation
         TrimFreeze();
     }
 
-    /// <summary>How far each half of the reflection-invoke route has walked
-    /// <see cref="Classes"/>, the type-argument nesting past which it walks one
-    /// instantiation per generic definition and how many classes existed when it first
-    /// walked (both set then), and the inputs of the ctor surface walk when it last
-    /// ran.</summary>
-    private int _invokeRouteCursor, _ctorRouteCursor, _fieldReadRouteCursor;
-    private int _invokeRouteDepth = -1, _invokeRouteFirstClasses;
-    private int _ctorSurfaceSpecArgsSeen = -1, _ctorSurfaceOpenedSeen = -1;
+    /// <summary>A hot-update base's export contract: a patch binds, as a friend assembly
+    /// and with no call site in the base, any non-private application method through row
+    /// metadata, and reads the statics every application .cctor sets, so each is a root.</summary>
+    private void SeedExportContract()
+    {
+        if (!_hotUpdateBase)
+            return;
+        foreach (var cls in Classes.ToList())
+        {
+            // Undecoded specializations wait for ReachExportContractInstances, which covers
+            // the ones the program reaches whenever they appear; decoding them here would
+            // root every app generic named anywhere. Whatever IS decoded by now (a generic
+            // base of a non-generic class, via BuildVtables) is seeded.
+            if (cls.Module != AppModule || !cls.MembersReady)
+                continue;
+            foreach (var m in cls.Methods)
+                if (m.Rva != 0 && (m.Name == ".cctor" || !m.IsPrivate))
+                    Reach(m);
+        }
+    }
 
-    /// <summary>The generic definitions that have spent their one walk past the
-    /// reflection-invoke route's other bounds, how many instantiations minted after its
-    /// first walk it has walked within <see cref="_invokeRouteDepth"/> per definition, and
-    /// the classes either bound admitted.</summary>
-    private readonly HashSet<(int Module, int Token)> _routeWalkedDefinitions = new();
-    private readonly Dictionary<(int Module, int Token), int> _routeMintedWalks = new();
-    private readonly HashSet<ClassInfo> _routeDeepWalked = new();
+    private int _exportContractCursor;
+    private int _exportContractDepth = -1;
+    private readonly HashSet<ClassInfo> _exportContractInstances = new();
 
-    /// <summary>How many instantiations of one generic definition minted after the
-    /// reflection-invoke route first walked it walks within <see cref="_invokeRouteDepth"/>
-    /// before the one-per-definition bound applies to them too.</summary>
-    private const int RouteMintedWalksPerDefinition = PreservationReader.ReflectionRouteMintedWalksPerDefinition;
+    /// <summary>The export contract over closed instantiations of application generics:
+    /// the base ABI lists every instantiation the image carries, and a patch binds any
+    /// non-private method of one. Covers each instantiation a reached body belongs to, up
+    /// to the generic depth reached before the first walk, so a contract body that nests
+    /// its own type deeper cannot feed the walk up to the instantiation bound. Generic
+    /// methods stay with the hotupdate-refs roots. Driven by discovery's fixpoint and again
+    /// each compile round.</summary>
+    internal void ReachExportContractInstances()
+    {
+        if (!_hotUpdateBase)
+            return;
+        if (_exportContractDepth < 0)
+            _exportContractDepth = MaxGenericArgDepth;
+        var order = Reachable.Order;
+        bool reached = false;
+        while (_exportContractCursor < order.Count)
+        {
+            var cls = order[_exportContractCursor++].DeclaringClass;
+            if (cls.Module != AppModule || cls.GenericArity == 0 || cls.GenericDepth > _exportContractDepth
+                || ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls) || !_exportContractInstances.Add(cls))
+                continue;
+            foreach (var m in cls.EnsureMembers().Methods.ToList())
+            {
+                if (m.Rva == 0 || m.IsPrivate || m.Name == ".cctor" || m.Context.MethodArgs.Length > 0
+                    || m.Module.Reader.GetMethodDefinition(m.Handle).GetGenericParameters().Count > 0
+                    || _backend?.ShouldSkipMethodBody(cls, m) == true)
+                    continue;
+                Reach(m);
+                reached = true;
+            }
+        }
+        if (reached)
+            DrainReachability();
+    }
 
-    /// <summary>The reflection routes that reach whole classes, and the value types a
-    /// delegate type's Invoke row boxes. Driven by discovery's fixpoint and again each
-    /// compile round: a compiled body can mint an application class or allocate a
-    /// delegate, and a body a round reaches can typeof-name a library one.</summary>
-    internal void ReachReflectionClassRoutes()
+    /// <summary>What reflection runs over delegates with no site naming a body: the Clone
+    /// receivers runtime binders allocate, and the values a delegate type's Invoke row
+    /// boxes for DynamicInvoke and MethodInfo.Invoke. Both are bounded to the delegates the
+    /// program allocates or binds, and gated on the capability bits. Driven by discovery's
+    /// fixpoint and again each compile round: a compiled body can allocate a delegate.</summary>
+    internal void ReachReflectionRuntimeSupport()
     {
         ReachRuntimeDelegateCloneReceivers();
-        ReachReflectionInvokeRoute();
-        ReachDecodedReflectionFieldBoxes();
-        ReachTypeofNamedLibrarySurface();
         ReachDelegateInvokeBoxes();
     }
 
@@ -5624,31 +5453,6 @@ internal sealed partial class Compilation
         return added || Reachable.Count != reached;
     }
 
-    private readonly HashSet<FieldInfo> _decodedReflectionFieldBoxes = new();
-
-    internal bool ReachDecodedReflectionFieldBoxes()
-    {
-        if (!_reflectionFieldReadUsed)
-            return false;
-        // Layout and metadata can decode fields after the bounded whole-class route
-        // has passed their owners. Retain their boxes without decoding another field.
-        var boxed = new List<TypeDesc>();
-        foreach (var cls in Classes)
-        {
-            if (cls.Module != AppModule || !cls.MembersReady || !KeepsReflectionMetadata(cls)
-                || ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls))
-                continue;
-            foreach (var field in cls.Fields)
-                if (!field.IsLiteral && field.TypeReady && _decodedReflectionFieldBoxes.Add(field))
-                    boxed.Add(field.Type);
-        }
-        foreach (var type in boxed)
-            NoteReflectionBoxed(type);
-        if (boxed.Count > 0)
-            DrainReachability();
-        return boxed.Count > 0;
-    }
-
     /// <summary>The allocated delegate classes, in allocation order, and how many of them
     /// <see cref="ReachDelegateInvokeBoxes"/> has walked.</summary>
     private readonly List<ClassInfo> _allocatedDelegates = new();
@@ -5672,345 +5476,12 @@ internal sealed partial class Compilation
         DrainReachability();
     }
 
-    private void ReachReflectionInvokeRoute()
-    {
-        // Reflection-invoke reachability route, in three halves over the app-module
-        // classes. The invoke half (MethodInfo/MethodBase.Invoke,
-        // PropertyInfo.GetValue/SetValue, a user body's CreateDelegate) reaches every
-        // non-ctor method body, so its invoker thunk and argument/return boxing emit.
-        // The ctor half (ConstructorInfo.Invoke, Activator.CreateInstance(Type)) reaches
-        // every ctor and allocates each non-abstract class, a value type's box included.
-        // The runtime boxes, with no box site, a value the invoke half returns (a by-ref
-        // return dereferenced), a by-ref argument either half writes back, and a field
-        // the field half (FieldInfo.GetValue) reads, so the route allocates each such
-        // value type declared outside the framework (NoteReflectionBoxed). Bounded to the
-        // app module so a real CoreLib pulled in with -r is not force-reached (which would
-        // drag untranspilable BCL bodies into the tree). A reflection-only method of a
-        // non-app type stays stripped (IL2CPP-with-managed-stripping semantics).
-        //
-        // A library-DECLARED type is opened by the surface walk below instead, and only
-        // when the user code's declared surface NAMES it (a generic-method type argument,
-        // a member type of an already-opened target). Extending THIS loop to every user
-        // module is not a cost question but a soundness one: allocating every concrete
-        // class of every -r library turns on the used-slot × allocated-type cross product
-        // for classes nothing constructs, which drags untranspilable BCL subtrees (a JSON
-        // DataSet converter reaching System.Data → XmlSerializer) into the transpile for
-        // code no program input can ever select.
-        //
-        // Each half walks every app-module class from the first time its flag is seen
-        // set, alternating with the drain until no class is left. Within the deepest
-        // nesting that existed when the route first walked, it walks every class that
-        // existed then and up to RouteMintedWalksPerDefinition of each generic
-        // definition's closed generics that the bodies it reaches mint since; past that
-        // count or that nesting it walks one more instantiation per generic definition
-        // (RouteWalksDepth): the route reaches whole classes, so a generic that
-        // instantiates itself ever deeper (`Node<Node<T>> Wrap()`) would otherwise
-        // expand to the monomorphization bound. A generic method definition is skipped:
-        // only its instantiations run, and the invoke half notes the boxes of each
-        // reached one (NoteReflectionRouteInstanceBoxes).
-        while (WalkReflectionRouteClasses() || NoteReflectionRouteInstanceBoxes()
-               || ReachReflectedLibraryPointerFields()
-               || ReachReflectedCtorSurface() || ReachNamedDelegateLibraryConstructors())
-        {
-        }
-    }
-
     private void ReachBindingInitializer(MethodInfo method)
     {
         bool previous = _reachingBindingOnlyBody;
         _reachingBindingOnlyBody = true;
         try { Reach(method); }
         finally { _reachingBindingOnlyBody = previous; }
-    }
-
-    private int _namedCtorLibraryCursor;
-    private int _namedCtorAllocatedCursor;
-    private int _namedCtorAppCursor;
-    private readonly List<ClassInfo> _namedCtorAppOwners = new();
-    private readonly HashSet<ClassInfo> _namedCtorLibraryOwners = new();
-
-    private bool ReachNamedDelegateLibraryConstructors()
-    {
-        if (!_reflectionNamedDelegateBindUsed)
-            return false;
-        var owners = new List<ClassInfo>();
-        int named = _typeofNamedLibraryClasses.Count, allocated = _invokeRouteAllocatedOwners.Count;
-        for (; _namedCtorLibraryCursor < named; _namedCtorLibraryCursor++)
-            owners.Add(_typeofNamedLibraryClasses[_namedCtorLibraryCursor]);
-        for (; _namedCtorAllocatedCursor < allocated; _namedCtorAllocatedCursor++)
-            owners.Add(_invokeRouteAllocatedOwners[_namedCtorAllocatedCursor]);
-        int app = _namedCtorAppOwners.Count;
-        for (; _namedCtorAppCursor < app; _namedCtorAppCursor++)
-            owners.Add(_namedCtorAppOwners[_namedCtorAppCursor]);
-        foreach (var owner in owners)
-            for (var cls = owner; cls is not null; cls = cls.BaseClass)
-            {
-                if (cls.Module == AppModule || !IsUserModule(cls.Module) || cls.IntrinsicCppName is not null
-                    || CoreIntrinsics.IsIntrinsicType(cls.FullName)
-                    || ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls)
-                    || !_namedCtorLibraryOwners.Add(cls))
-                    continue;
-                foreach (var method in cls.EnsureMembers().Methods)
-                {
-                    if (method.Name is not (".ctor" or ".cctor") || method.Rva == 0
-                        || _backend?.ShouldSkipMethodBody(cls, method) == true)
-                        continue;
-                    ReachBindingInitializer(method);
-                    NoteReflectionInvokeBoxes(method);
-                }
-            }
-        if (owners.Count == 0)
-            return false;
-        DrainReachability();
-        return true;
-    }
-
-    private int _fieldReadLibraryNamedCursor;
-    private int _fieldReadLibraryAllocatedCursor;
-    private readonly HashSet<ClassInfo> _fieldReadLibraryClasses = new();
-
-    private bool ReachReflectedLibraryPointerFields()
-    {
-        if (!_reflectionFieldReadUsed || PointerBoxClass is not null)
-            return false;
-        // Snapshot the selected owners before decoding fields can grow reachability.
-        // Reading a library field does not reach that library's methods or constructors.
-        var owners = new List<ClassInfo>();
-        int named = _typeofNamedLibraryClasses.Count;
-        int allocated = _invokeRouteAllocatedOwners.Count;
-        for (int i = _fieldReadLibraryNamedCursor; i < named; i++)
-            owners.Add(_typeofNamedLibraryClasses[i]);
-        for (int i = _fieldReadLibraryAllocatedCursor; i < allocated; i++)
-            owners.Add(_invokeRouteAllocatedOwners[i]);
-        _fieldReadLibraryNamedCursor = named;
-        _fieldReadLibraryAllocatedCursor = allocated;
-        foreach (var owner in owners)
-            for (var cls = owner; cls is not null; cls = cls.BaseClass)
-            {
-                if (cls.Module == AppModule || !IsUserModule(cls.Module)
-                    || ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls)
-                    || !KeepsReflectionMetadata(cls) || !_fieldReadLibraryClasses.Add(cls))
-                    continue;
-                foreach (var field in cls.EnsureMembers().Fields)
-                    if (!field.IsLiteral && field.Type is { Kind: TypeKind.Pointer, IsFunctionPointer: false })
-                        NoteReflectionBoxed(field.Type);
-            }
-        if (PointerBoxClass is null)
-            return false;
-        DrainReachability();
-        return true;
-    }
-
-    /// <summary>How much of <see cref="ReachableSet.Order"/>
-    /// <see cref="NoteReflectionRouteInstanceBoxes"/> has visited.</summary>
-    private int _invokeRouteReachCursor;
-    private int _invokeRouteNamedCursor;
-    private int _invokeRouteAllocatedCursor;
-    private readonly List<ClassInfo> _invokeRouteAllocatedOwners = new();
-    private readonly HashSet<ClassInfo> _invokeRouteCandidateOwners = new();
-    private readonly Dictionary<ClassInfo, List<MethodInfo>> _invokeRoutePendingLibraryRows = new();
-
-    /// <summary>Notes boxes for reached generic app methods and directly reached
-    /// user-library methods on a typeof-named or allocated owner. The class walk
-    /// does not cover either row, but a runtime-named MethodInfo can invoke them.
-    /// Notes, then drains; returns whether allocation or reachability grew.</summary>
-    private bool NoteReflectionRouteInstanceBoxes()
-    {
-        if (!_reflectionInvokeUsed)
-            return false;
-        int allocated = _allocatedRefTypes.Count;
-        int reached = Reachable.Order.Count;
-        while (_invokeRouteNamedCursor < _typeofNamedLibraryClasses.Count)
-        {
-            var named = _typeofNamedLibraryClasses[_invokeRouteNamedCursor++];
-            for (var cls = named; cls is not null; cls = cls.BaseClass)
-                if (_invokeRouteCandidateOwners.Add(cls)
-                    && _invokeRoutePendingLibraryRows.TryGetValue(cls, out var pending))
-                {
-                    foreach (var m in pending)
-                        NoteReflectedRowBoxes(m);
-                    _invokeRoutePendingLibraryRows.Remove(cls);
-                }
-        }
-        while (_invokeRouteAllocatedCursor < _invokeRouteAllocatedOwners.Count)
-        {
-            var allocatedOwner = _invokeRouteAllocatedOwners[_invokeRouteAllocatedCursor++];
-            for (var cls = allocatedOwner; cls is not null; cls = cls.BaseClass)
-                if (_invokeRouteCandidateOwners.Add(cls)
-                    && _invokeRoutePendingLibraryRows.TryGetValue(cls, out var pending))
-                {
-                    foreach (var m in pending)
-                        NoteReflectedRowBoxes(m);
-                    _invokeRoutePendingLibraryRows.Remove(cls);
-                }
-        }
-        var order = Reachable.Order;
-        while (_invokeRouteReachCursor < order.Count)
-        {
-            var m = order[_invokeRouteReachCursor++];
-            if (m.Context.MethodArgs.Length > 0 && m.DeclaringClass.Module == AppModule)
-                NoteReflectionInvokeBoxes(m);
-            else if (m.DeclaringClass.Module != AppModule
-                     && m.Name is not ".ctor" and not ".cctor"
-                     && IsUserModule(m.DeclaringClass.Module))
-            {
-                var owner = m.DeclaringClass;
-                if (_invokeRouteCandidateOwners.Contains(owner))
-                    NoteReflectedRowBoxes(m);
-                else
-                {
-                    if (!_invokeRoutePendingLibraryRows.TryGetValue(owner, out var pending))
-                        _invokeRoutePendingLibraryRows.Add(owner, pending = new());
-                    pending.Add(m);
-                }
-            }
-        }
-        if (_allocatedRefTypes.Count == allocated && Reachable.Order.Count == reached)
-            return false;
-        DrainReachability();
-        return true;
-    }
-
-    /// <summary>Walks, then drains, the classes each armed half of the reflection-invoke
-    /// route has not walked; returns whether there were any.</summary>
-    private int _namedCtorRouteCursor;
-
-    private bool WalkReflectionRouteClasses()
-    {
-        int count = Classes.Count;
-        int invokeFrom = _reflectionInvokeUsed ? _invokeRouteCursor : count;
-        int ctorFrom = _reflectionCtorUsed ? _ctorRouteCursor : count;
-        int fieldFrom = _reflectionFieldReadUsed ? _fieldReadRouteCursor : count;
-        int namedFrom = _reflectionNamedDelegateBindUsed ? _namedCtorRouteCursor : count;
-        int from = Math.Min(namedFrom, Math.Min(invokeFrom, Math.Min(ctorFrom, fieldFrom)));
-        if (from == count)
-            return false;
-        if (_invokeRouteDepth < 0)
-        {
-            _invokeRouteDepth = MaxGenericArgDepth;
-            _invokeRouteFirstClasses = count;
-        }
-        for (int i = from; i < count; i++)
-            WalkReflectionRouteClass(Classes[i], invoke: i >= invokeFrom, ctor: i >= ctorFrom,
-                fields: i >= fieldFrom, minted: i >= _invokeRouteFirstClasses,
-                bindConstructors: i >= namedFrom);
-        if (invokeFrom < count)
-            _invokeRouteCursor = count;
-        if (ctorFrom < count)
-            _ctorRouteCursor = count;
-        if (fieldFrom < count)
-            _fieldReadRouteCursor = count;
-        if (namedFrom < count)
-            _namedCtorRouteCursor = count;
-        DrainReachability();
-        return true;
-    }
-
-    /// <summary>What reflection can reach on one class of the reflection-invoke route:
-    /// <paramref name="invoke"/> its non-ctor bodies, <paramref name="ctor"/> its ctors
-    /// and its allocation, <paramref name="fields"/> the boxes its fields' values
-    /// become. <paramref name="minted"/>: the class did not exist when the route first
-    /// walked.</summary>
-    private void WalkReflectionRouteClass(ClassInfo cls, bool invoke, bool ctor, bool fields, bool minted,
-        bool bindConstructors)
-    {
-        if (cls.Module != AppModule || ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls)
-            || !RouteWalksDepth(cls, minted))
-            return;
-        if (bindConstructors)
-            _namedCtorAppOwners.Add(cls);
-        // Unlike the seeding loops, this one runs after the discovery drain: reflection
-        // genuinely can invoke a closed generic's methods, so ask for the members here
-        // (EnsureMembers).
-        List<MethodInfo>? invoked = null;
-        List<TypeDesc>? boxed = null;
-        foreach (var m in cls.EnsureMembers().Methods)
-        {
-            if (m.Rva == 0)
-                continue;
-            if (m.Name == ".cctor")
-            {
-                if (bindConstructors && _backend?.ShouldSkipMethodBody(cls, m) != true)
-                    ReachBindingInitializer(m);
-                continue;
-            }
-            // A generic method definition runs only as an instantiation a call site
-            // names; decoding its own signature would mint open shells.
-            if (m.Context.MethodArgs.Length == 0
-                && m.Module.Reader.GetMethodDefinition(m.Handle).GetGenericParameters().Count > 0)
-                continue;
-            // An interface's virtual body runs through the receiver's slot, which
-            // ReachReflectedVirtualSlots fills; its static and non-virtual bodies
-            // run as themselves.
-            if (cls.IsInterface && m.IsVirtual && !m.IsStatic)
-                continue;
-            // A body the backend replaces wholesale (e.g. the source-generated
-            // GodotPlugins.Game.Main bootstrap the .NET-module backend emits in
-            // C++) is never emitted, so it cannot be reflection-invoked either —
-            // force-reaching it would only drag its dead callees into the tree.
-            if (_backend?.ShouldSkipMethodBody(cls, m) == true)
-                continue;
-            // Reach non-ctor method bodies for MethodInfo.Invoke, whose invoker thunk
-            // boxes the returned value; reach ctor bodies for ConstructorInfo.Invoke /
-            // Activator.CreateInstance(Type). Both box each by-ref argument they write
-            // back.
-            if (m.Name == ".ctor" ? !ctor && !bindConstructors : !invoke)
-                continue;
-            if (m.Name == ".ctor" && bindConstructors && !ctor)
-                ReachBindingInitializer(m);
-            else
-                Reach(m);
-            (invoked ??= new()).Add(m);
-        }
-        // A constructed instance is allocated, a value type's box included, so its
-        // vtable, interface map and type-info emit.
-        if (ctor && !cls.IsAbstract)
-            ReachAllocatedType(cls);
-        // FieldInfo.GetValue boxes a value-type field's value.
-        if (fields)
-            foreach (var f in cls.Fields)
-                if (!f.IsLiteral)
-                {
-                    (boxed ??= new()).Add(f.Type);
-                }
-        if (invoked is not null)
-            foreach (var m in invoked)
-                NoteReflectionInvokeBoxes(m);
-        if (boxed is not null)
-            foreach (var t in boxed)
-                NoteReflectionBoxed(t);
-    }
-
-    /// <summary>Whether the reflection-invoke route walks <paramref name="cls"/> at its
-    /// nesting. Within <see cref="_invokeRouteDepth"/> it walks every class that existed
-    /// when it first walked, and up to <see cref="RouteMintedWalksPerDefinition"/>
-    /// instantiations of each generic definition minted since
-    /// (<paramref name="minted"/>). It walks any other class only while its definition
-    /// has not spent its one further walk, so each definition adds a bounded number of
-    /// walked classes however deeply its methods nest it, and the walk ends short of the
-    /// instantiation bound. A walk under the per-definition count leaves that further
-    /// walk to a deeper class. The bound diverges from .NET, which instantiates on
-    /// demand: the route reaches no body of an instantiation it does not walk, whether
-    /// nested deeper or closed differently at the same depth, so Invoke of a method no
-    /// call site reached there throws InvalidOperationException.</summary>
-    private bool RouteWalksDepth(ClassInfo cls, bool minted)
-    {
-        if (_routeDeepWalked.Contains(cls))
-            return true;
-        var definition = (cls.Module.Index, SRME.GetToken(cls.Handle));
-        _routeMintedWalks.TryGetValue(definition, out int walks);
-        if (PreservationReader.ReflectionRouteWalksWithinDepth(cls.GenericDepth, _invokeRouteDepth, minted, walks))
-        {
-            if (!minted)
-                return true;
-            _routeMintedWalks[definition] = walks + 1;
-            _routeDeepWalked.Add(cls);
-            return true;
-        }
-        if (!_routeWalkedDefinitions.Add((cls.Module.Index, SRME.GetToken(cls.Handle))))
-            return false;
-        _routeDeepWalked.Add(cls);
-        return true;
     }
 
     /// <summary>Marks allocated the value type of a value the runtime boxes for
@@ -6101,992 +5572,29 @@ internal sealed partial class Compilation
         }
     }
 
-    /// <summary>The reflection-ctor route's surface beyond the application module: walks,
-    /// then drains, the types the user code's declared surface names, when that surface
-    /// has grown since the last walk; returns whether it walked.</summary>
-    private bool ReachReflectedCtorSurface()
-    {
-        // The app module is not the whole ctor surface a late-bound
-        // Type.GetConstructor can name: a JSON deserializer constructs the
-        // closed BCL generic a user field/property is DECLARED at
-        // (Dictionary<string, AppType>), which lives in the framework module —
-        // one a user body passes as a generic-method type argument
-        // (serializer.Deserialize<Dictionary<string, AppType>>(reader)) — or a
-        // type DECLARED in a referenced user library (Thrive's GameWiki).
-        // Alternate with the drain to a fixpoint: the drain scans the
-        // bodies the force-reach loop above just queued, and a scan can
-        // record new user MethodSpec type args — and an opened library
-        // target's member types widen the surface for the next round.
-        if (!_reflectionCtorUsed)
-            return false;
-        int opened = _userReflSurface.Count + _userReflConstructed.Count + _typeofNamedLibraryClasses.Count;
-        if (_ctorSurfaceSpecArgsSeen == _appMethodSpecTypeArgs.Count && _ctorSurfaceOpenedSeen == opened)
-            return false;
-        _ctorSurfaceSpecArgsSeen = _appMethodSpecTypeArgs.Count;
-        _ctorSurfaceOpenedSeen = opened;
-        ReachUserSurfaceNamedSpecializationCtors();
-        DrainReachability();
-        return true;
-    }
-
-    /// <summary>How much of <see cref="_typeofNamedLibraryClasses"/> the library extension of
-    /// the reflection-invoke route has walked.</summary>
-    private int _typeofNamedLibraryCursor;
-
-    private void ReachTypeofNamedLibrarySurface()
-    {
-        // Reflection-invoke route, LIBRARY extension: a user-library class a
-        // reachable body typeof-names is a reflection target the app-module loop
-        // cannot see (Google.Protobuf hands typeof(Value) to GeneratedClrTypeInfo,
-        // then its accessor factories GetMethod/Invoke Has*/Clear* members nothing
-        // calls statically — an unreached member has no metadata row, so GetMethod
-        // answers null where real .NET answers the row). Reach the surface a
-        // reflection helper can invoke without synthesizing an argument it cannot
-        // know: instance property accessors and public parameterless non-generic
-        // instance methods. Deliberately NOT every body — the typeof-named bound
-        // keeps the IL2CPP-with-managed-stripping semantics the app loop's comment
-        // states, and the accessor/niladic bound keeps a typeof-named converter
-        // class from force-reaching a parameterized body's untranspilable subtree
-        // (the DataSetConverter.ReadJson failure that rejected opening whole
-        // libraries). The residue stays loud: GetMethod over a parameterized
-        // library method answers null and the caller's own diagnostic names it.
-        // Alternate with the drain: a newly reached body can typeof-name more.
-        if (!_reflectionInvokeUsed)
-            return;
-        while (_typeofNamedLibraryCursor < _typeofNamedLibraryClasses.Count)
-        {
-            int end = _typeofNamedLibraryClasses.Count;
-            for (int i = _typeofNamedLibraryCursor; i < end; i++)
-            {
-                var cls = _typeofNamedLibraryClasses[i];
-                if (cls.IsInterface || cls.IsEnum
-                    || cls.IntrinsicCppName is not null
-                    || CoreIntrinsics.IsIntrinsicType(cls.FullName)
-                    || ContainsCanonPlaceholder(cls)
-                    || _backend?.WantsTypeofReflectionSurface(cls) == false)
-                    continue;
-                List<MethodInfo>? invoked = null;
-                foreach (var m in cls.EnsureMembers().Methods)
-                {
-                    if (m.Rva == 0 || m.IsStatic || m.Name is ".ctor" or ".cctor"
-                        || _backend?.ShouldSkipMethodBody(cls, m) == true)
-                        continue;
-                    if ((m.Attributes & MethodAttributes.SpecialName) != 0
-                        && (m.Name.StartsWith("get_", StringComparison.Ordinal)
-                            || m.Name.StartsWith("set_", StringComparison.Ordinal)))
-                    {
-                        Reach(m);
-                        (invoked ??= new()).Add(m);
-                        continue;
-                    }
-                    if ((m.Attributes & MethodAttributes.MemberAccessMask)
-                        != MethodAttributes.Public)
-                        continue;
-                    try
-                    {
-                        if (m.Signature.GenericParameterCount == 0
-                            && m.Signature.ParameterTypes.Length == 0)
-                        {
-                            Reach(m);
-                            (invoked ??= new()).Add(m);
-                        }
-                    }
-                    catch (Exception e) when (!IsMustEscape(e))
-                    {
-                        // A method whose signature does not decode is not
-                        // reflectively invokable either.
-                    }
-                }
-                // After the walk: allocating a box can instantiate methods on the types
-                // it walks.
-                if (invoked is not null)
-                    foreach (var m in invoked)
-                        NoteReflectionInvokeBoxes(m);
-                if (!cls.IsAbstract)
-                    ReachUserInterfaceImpls(cls);
-            }
-            _typeofNamedLibraryCursor = end;
-            DrainReachability();
-        }
-    }
-
-    /// <summary>How many user-typeof-named framework types the reflection-attribute route
-    /// last walked every class for, and how much of <see cref="Classes"/> it has
-    /// walked.</summary>
-    private int _attributeRouteTypeofSeen = -1, _attributeRouteCursor;
-
-    private void ReachReflectionAttributeRoute()
-    {
-        // Reflection-attribute reachability route: if the program reads attributes
-        // (GetCustomAttributes/IsDefined/CustomAttributeData), reach every reflectable
-        // attribute's ctor + named property setters and allocate the attribute types so
-        // GetCustomAttributes can materialize fresh instances. Elements scanned are
-        // user-module (app + referenced libraries), so an attribute on a library-declared
-        // class is reachable too;
-        // attribute types are bounded to non-framework modules plus the user-typeof-named
-        // framework attributes (per DecodeCustomAttributes) so a real CoreLib pulled in
-        // with -r is not force-reached. Framework modules are skipped rather than merely
-        // bounded on the attribute side because a BCL class can only carry a BCL-declared
-        // attribute (a framework assembly cannot reference user code) — reflectable now
-        // only when user code typeof-names it, a read the emit-time attr tables still
-        // serve (BuildAttrTable decodes per element; RenderAttrCreate drops a row whose
-        // ctor was not reached, so an un-walked framework element's row degrades rather
-        // than naming an unemitted symbol) — and scanning them would pay blob-decode +
-        // MethodMap lookups on every reached CoreLib class for a handful of rows.
-        if (!_reflectionAttrUsed)
-            return;
-        // The base filters a runtime GetCustomAttributes(Type) commonly names beside
-        // a concrete attribute type: give System.Attribute (and object, noted by the
-        // attr-array retag sites anyway) a ti_arr_ handle so the runtime's precise
-        // attrType[] stamp (dn2cpp_find_array_ti) can answer for them too.
-        if (_attributeRouteTypeofSeen < 0
-            && TypeIndex().TryGetValue(("System", "Attribute"), out var attrCands)
-            && attrCands[0].Item1.ClassMap.TryGetValue(attrCands[0].Item2, out var attrBase))
-            NoteArrayElementType(TypeDesc.MakeClass(attrBase));
-        // Alternate the walk with the drain to a fixpoint on the typeof-named
-        // framework-type set and on Classes. Reaching an attribute ctor/setter queues
-        // bodies, the drain scans them, and a scanned USER body can typeof-name a framework
-        // attribute type (_userTypeofNamedFrameworkTypes) that widens what
-        // DecodeCustomAttributes keeps — so the walk must run again to pick up the
-        // rows the earlier round dropped. The walk itself is idempotent (Reach and
-        // the note sites dedupe), so a repeat round costs blob re-decodes only. A
-        // row's Type argument mints the class it names, and walking that class may
-        // reach nothing that would make discovery call this route again, so rounds
-        // continue until no class was minted since the last one.
-        do
-        {
-            bool rewalk = _attributeRouteTypeofSeen != _userTypeofNamedFrameworkTypes.Count;
-            _attributeRouteTypeofSeen = _userTypeofNamedFrameworkTypes.Count;
-            int count = Classes.Count;
-            for (int i = rewalk ? 0 : _attributeRouteCursor; i < count; i++)
-            {
-                var cls = Classes[i];
-                if (!IsUserModule(cls.Module))
-                    continue;
-                _attributeWalked.Add(cls);
-                ReachClassAttributes(cls, reach: true);
-            }
-            _attributeRouteCursor = count;
-            if (rewalk)
-                ReachAssemblyAttributes(reach: true);
-            DrainReachability();
-        }
-        while (_attributeRouteTypeofSeen != _userTypeofNamedFrameworkTypes.Count
-               || _attributeRouteCursor != Classes.Count);
-    }
-
-    /// <summary>Reflection-ctor route, extension beyond the app-module loop: open a
-    /// construction route for every type that the user code's declared surface —
-    /// an app-module (or already-opened library target's) field or property type,
-    /// or a generic-method type argument an app-module body instantiates
-    /// (<see cref="_appMethodSpecTypeArgs"/>) — NAMES (directly, as a nested
-    /// generic argument, or as an array element) and that the app-module loop
-    /// cannot see. Two kinds of named target, two treatments:
-    ///
-    /// <list type="bullet"><item>a FRAMEWORK-module closed generic specialization
-    /// (<c>Dictionary&lt;string, AppType&gt;</c>) gets its parameterless instance
-    /// ctor — the overload <c>GetDefaultConstructor</c> asks for;</item>
-    /// <item>a non-framework LIBRARY class (Thrive's <c>GameWiki</c> in
-    /// ThriveScriptsShared.dll — any arity, non-generic included) gets the app
-    /// treatment: ALL instance ctors (Newtonsoft binds a parameterized ctor when a
-    /// type has no default one — <c>GameWiki.Page</c> has only a 7-argument one),
-    /// allocation, and — with its user-module base chain — its property accessors,
-    /// because the deserializer then populates the object through
-    /// <c>PropertyInfo.SetValue</c> on accessors nothing calls statically
-    /// (GameWiki's <c>{ get; set; } = null!;</c> members: an initializer stores the
-    /// backing field, so the setter has no static caller and its proptab slot
-    /// emitted nullptr). FieldInfo.Get/SetValue needs no reach at all (field
-    /// thunks are data access, emitted with the field table). An opened target's
-    /// own member types join the surface for the next round, so the closure walks
-    /// exactly the deserialization tree.</item></list>
-    ///
-    /// <para>This is the shape a reflection deserializer walks (Newtonsoft.Json's
-    /// <c>ReflectionUtils.GetDefaultConstructor</c>): the target type comes off
-    /// <c>FieldInfo.FieldType</c>/<c>PropertyInfo.PropertyType</c>, so
-    /// <c>Dictionary&lt;string, AppType&gt;</c> appears ONLY as a construction
-    /// target — nothing constructs it statically, so its <c>.ctor</c> is never
-    /// reached and its emitted ctor table reads <c>(nullptr, 0)</c>. The app-module
-    /// loop above cannot see either kind: neither is an app-module class.</para>
-    ///
-    /// <para>The key is the NAMED surface, deliberately NOT library-module
-    /// membership. Opening every class of every -r library is not a cost question but
-    /// a soundness one: allocating every concrete library class turns on the
-    /// used-slot × allocated-type cross product for classes nothing constructs, which
-    /// drags untranspilable BCL subtrees (a JSON DataSet converter reaching
-    /// System.Data → XmlSerializer) into programs that can never select them. The
-    /// residue of the named bound: a library type a deserializer constructs from a
-    /// NAME the static surface never carries (a <c>$type</c> string in the data, a
-    /// bare <c>typeof</c> handed straight to <c>Activator</c>) stays closed and fails
-    /// loudly at run time with the no-constructor diagnostic.</para>
-    ///
-    /// <para>A member declared at an abstract collection INTERFACE
-    /// (<c>IReadOnlyList&lt;int&gt;</c>) takes one more step: the deserializer
-    /// constructs the interface's canonical BCL materialization, which it mints with
-    /// <c>typeof(ReadOnlyCollection&lt;&gt;).MakeGenericType(itemType)</c> — an
-    /// instantiation nothing in the program names statically. The same walk
-    /// therefore also seeds those wrappers
-    /// (<see cref="CollectionInterfaceWrapperDefs"/>), reaching their parameterless
-    /// and single-reference-argument public ctors.</para>
-    ///
-    /// <para>The surface is member TYPES plus creator ARGUMENTS: a deserializer
-    /// binding a parameterized creator deserializes each argument at the ctor's
-    /// declared parameter type, so the instance-ctor parameter types of every
-    /// openable class join <c>named</c> alongside its field/property types.
-    /// And a collection shape a deserializer must mutate through a wrapper of its
-    /// OWN (Newtonsoft's <c>CollectionWrapper&lt;T&gt;</c> /
-    /// <c>DictionaryWrapper&lt;K,V&gt;</c>, minted with <c>MakeGenericType</c>
-    /// exactly like the materializations above, but living in the serializer's
-    /// assembly rather than the BCL) seeds those adapters too
-    /// (<see cref="CollectSerializerWrapperSeeds"/>) — resolved by (ns, name)
-    /// against the loaded module set, so the whole mechanism is a no-op unless the
-    /// program actually links Newtonsoft (Thrive's boot blocker: a
-    /// <c>SerializedData(ICollection&lt;string&gt;)</c> /
-    /// <c>VersionPatchNotes(…, List&lt;string&gt;, …)</c> creator argument dying on
-    /// the missing <c>CollectionWrapper&lt;string&gt;</c>).</para>
-    ///
-    /// <para>An SZARRAY on either surface seeds the TEMPORARY LIST
-    /// (<see cref="CollectArrayTemporaryListSeed"/>): a reflection deserializer
-    /// materializing a <c>T[]</c> member never constructs the array — it builds the
-    /// items into a <c>typeof(List&lt;&gt;).MakeGenericType(elementType)</c>
-    /// temporary first and converts afterwards, and nothing constructs
-    /// <c>List&lt;T&gt;</c> statically when the member is declared <c>T[]</c>
-    /// (Thrive's boot: <c>List&lt;MusicContext&gt;</c> off a <c>MusicContext[]</c>
-    /// member, minted by layout alone, ctor table <c>(nullptr, 0)</c>).</para>
-    ///
-    /// <para>The key is deliberately NOT "every ctor of every specialization" — that
-    /// is the walk-that-filters anti-pattern, and force-reaching arbitrary BCL ctor
-    /// bodies is both bloat and a termination risk. It mirrors how the user route
-    /// keys on user-module membership: the user code's declared member surface is
-    /// what a deserializer can name, so that closure — the same one whose emitted
-    /// field tables give these types their ti_ — is what opens the route, and only
-    /// the parameterless ctor is reached (the overload <c>GetDefaultConstructor</c>
-    /// asks for; a parameterized BCL ctor an app calls is reached normally).</para>
-    ///
-    /// <para>Residues of that bound, neither with a known live trigger. An
-    /// interface named ONLY as a non-ctor method parameter or return type is not member
-    /// surface, so its materialization stays unseeded — fields, properties, instance-ctor
-    /// parameters and app MethodSpec type args are the whole surface collected below. And
-    /// nothing seeds at all unless the program calls <c>ConstructorInfo.Invoke</c> or
-    /// non-generic <c>Activator.CreateInstance(Type)</c>: <c>_reflectionCtorUsed</c> gates
-    /// the entire route, so a program that merely probes <c>MakeGenericType</c> gets no
-    /// seeds. Either miss surfaces as <c>dn2cpp_type_make_generic</c>'s catchable
-    /// NotSupportedException naming the missing instantiation, and the remedy is to widen
-    /// this surface for the corpus that hits it — never to force-reach arbitrary BCL
-    /// ctors, per the paragraph above.</para>
-    ///
-    /// <para>Decode discipline: a field-type/property-signature read is a decode and
-    /// a decode appends to <see cref="Classes"/>, so the walk snapshots and collects
-    /// first, then acts. The decodes land here deterministically (flag-independent
-    /// per input: the route fires off the program's own IL) and are the very reads
-    /// the emit set's layout closure performs later, so the model grows nothing it
-    /// would not have grown — only earlier, inside the drain that shapes it.</para></summary>
-    /// <summary>Reaches <paramref name="cls"/>'s implementations of USER-module
-    /// interface methods — the surface a reflection helper dispatches after
-    /// discovering the interface on an instance (GetInterfaces → GetMethod → Invoke,
-    /// the DI-container injection shape). Parameterized impls included: the interface
-    /// contract is what lets the helper synthesize the arguments a bare parameterized
-    /// method denies it. Framework interfaces stay out for the reason the typeof-named
-    /// loop's niladic bound exists — IEnumerable/IComparable impls over every opened
-    /// class would force-reach subtrees nothing invokes. The values invoking an impl
-    /// boxes are noted as the other routes note them (NoteReflectionInvokeBoxes).</summary>
-    private void ReachUserInterfaceImpls(ClassInfo cls)
-    {
-        List<MethodInfo>? invoked = null;
-        for (var c = cls; c is not null; c = c.BaseClass)
-            foreach (var itf in c.Interfaces)
-            {
-                if (!IsUserModule(itf.Module))
-                    continue;
-                foreach (var im in itf.EnsureMembers().Methods)
-                {
-                    try
-                    {
-                        if (im.Signature.GenericParameterCount == 0
-                            && ResolveItfImplOrNull(cls, im) is { Rva: not 0 } impl
-                            && _backend?.ShouldSkipMethodBody(impl.DeclaringClass, impl) != true)
-                        {
-                            Reach(impl);
-                            (invoked ??= new()).Add(impl);
-                        }
-                    }
-                    catch (Exception e) when (!IsMustEscape(e))
-                    {
-                        // An undecodable signature is not reflectively invokable.
-                    }
-                }
-            }
-        // After the walk: allocating a box can instantiate methods on the types it walks.
-        if (invoked is not null)
-            foreach (var impl in invoked)
-                NoteReflectionInvokeBoxes(impl);
-    }
-
-    // A reflection-constructed instance is also a lifecycle-dispatch target: a
-    // Unity-style invoker calls GetMethod(name, Instance | Public | NonPublic)
-    // then Invoke(target, null) for well-known niladic messages (a generated
-    // view initializer, Awake/OnEnable/Update) — private methods included, and
-    // an unreached method has no metadata row, so GetMethod answers null where
-    // real .NET answers the row and the binding silently never happens. Reach
-    // the non-generic niladic VOID instance methods along the user-module base
-    // chain (GetMethod on the concrete type sees inherited non-private rows;
-    // private ones only on the type itself, but reaching those too costs
-    // nothing new — a niladic body names no argument type). A lifecycle message
-    // is fire-and-forget, so the void bound is what keeps a value-returning
-    // niladic like GDTask's AsValueTask — whose body trips the transpiler's
-    // IValueTaskSource result-kind bound — out of the speculative set.
-    // Parameterized and value-returning methods stay the deliberate residue,
-    // exactly as in the typeof-named loop's bound. NOT
-    // called from the preservation ctor arm: [Preserve] on a type keeps the
-    // type and its ctors only (Unity linker parity, asserted by the
-    // preserve-control gate's stripped-member list).
-    private void ReachUserNiladicInstanceMethods(ClassInfo cls)
-    {
-        for (var c = cls; c is not null && IsUserModule(c.Module); c = c.BaseClass)
-            foreach (var m in c.EnsureMembers().Methods)
-            {
-                if (m.Rva == 0 || m.IsStatic || m.Name == ".ctor"
-                    || _backend?.ShouldSkipMethodBody(c, m) == true)
-                    continue;
-                try
-                {
-                    if (m.Signature.GenericParameterCount == 0
-                        && m.Signature.ParameterTypes.Length == 0
-                        && m.Signature.ReturnType.IsVoid)
-                        Reach(m);
-                }
-                catch (Exception e) when (!IsMustEscape(e))
-                {
-                    // An undecodable signature is not reflectively invokable.
-                }
-            }
-    }
-
-    private void ReachUserSurfaceNamedSpecializationCtors()
-    {
-        // Collect the declared member-type surface: the app module, plus every
-        // library target an earlier round OPENED (with its user-module base
-        // chain) — an opened target's members are what the deserializer
-        // populates next, so its member types are nameable exactly as an app
-        // type's are (Thrive's GameWiki, in ThriveScriptsShared.dll, declares
-        // the List<Page> properties wiki.json deserializes into). NOT every
-        // library class: an un-named library type's members are no more
-        // reachable by a deserializer than the type itself. Snapshot the class
-        // list (reads below grow it); fields are shape but their TYPES decode on
-        // read, and a property type is a signature decode off the metadata row.
-        // Each entry carries its provenance: LibSurface marks a member type of an
-        // OPENED library target rather than of the app module (the MATERIALIZATION
-        // seeds below stay app-surface-only — see the comment at the seed check),
-        // and CreatorArg marks an instance-ctor parameter type (the serializer-
-        // wrapper seeds' generous arm is scoped to those).
-        var named = new List<(TypeDesc Type, bool LibSurface, bool CreatorArg)>();
-        foreach (var cls in Classes.ToList())
-        {
-            bool libSurface = cls.Module != AppModule;
-            if (libSurface && !_userReflSurface.Contains(cls))
-                continue;
-            foreach (var f in cls.Fields)
-                if (!f.IsLiteral)
-                    named.Add((f.Type, libSurface, false));
-            // The generic BASE instantiations' type arguments are surface too: a
-            // framework base takes the derived class's collaborator types as type
-            // parameters (`GlobalPage : PageBase<..., GlobalWindow>`) and its shared
-            // body late-binds `new TWindow()` — a construction site of the ARGUMENT,
-            // visible in no field, property or ctor-parameter signature.
-            for (var b = cls.BaseClass; b is not null; b = b.BaseClass)
-                foreach (var a in b.Context.TypeArgs)
-                    named.Add((a, libSurface, false));
-            try
-            {
-                var reader = cls.Module.Reader;
-                var td = reader.GetTypeDefinition(cls.Handle);
-                foreach (var ph in td.GetProperties())
-                    named.Add((reader.GetPropertyDefinition(ph)
-                        .DecodeSignature(SigProvider, cls.Context).ReturnType, libSurface, false));
-            }
-            catch (Exception e) when (!IsMustEscape(e))
-            {
-                // A class without decodable metadata contributes no property types.
-            }
-            // The CREATOR-ARGUMENT half of the surface: a deserializer that binds a
-            // parameterized creator ([JsonConstructor], the no-default-ctor
-            // fallback) deserializes each argument at the ctor's declared
-            // PARAMETER type before any instance exists (Newtonsoft's
-            // CreateObjectUsingCreatorWithParameters resolves the argument's
-            // contract off ParameterInfo.ParameterType), so an openable class's
-            // instance-ctor parameter types are nameable exactly as its member
-            // types are — and a parameter with no matching property is invisible
-            // to the field/property walk above. MembersReady-guarded: an unpulled
-            // class was never force-reached or opened, so no ctor row of it is
-            // reflectively bindable (and the guard keeps this walk decode-free
-            // under DN2CPP_STRICT_COMPLETION). A reached ctor's signature is
-            // already decoded; reading it again is the memoized read.
-            if (cls.MembersReady)
-            {
-                try
-                {
-                    foreach (var m in cls.Methods)
-                        if (m.Name == ".ctor" && !m.IsStatic && m.Rva != 0)
-                            foreach (var pt in m.Signature.ParameterTypes)
-                                named.Add((pt, libSurface, true));
-                }
-                catch (Exception e) when (!IsMustEscape(e))
-                {
-                    // A ctor whose signature does not decode contributes no
-                    // parameter types (it is not reflectively bindable either).
-                }
-            }
-        }
-
-        // The generic-METHOD half of the surface: type arguments of MethodSpecs
-        // app bodies instantiated, recorded by the scan (closed TypeDescs, so
-        // appending them decodes nothing here). The caller alternates this
-        // method with the drain until the list stops growing, so args recorded
-        // by bodies the force-reach loop queued are picked up on the next round.
-        foreach (var t in _appMethodSpecTypeArgs)
-            named.Add((t, false, false));
-
-        // A typeof-named LIBRARY class contributes its base-chain instantiation
-        // arguments even though its member types stay closed: the class reaches
-        // reflection only through its typeof registration, and its framework base
-        // takes its collaborator types as type parameters and late-binds
-        // `new TArg()` in a shared body — a construction site of the argument
-        // that no field, property or ctor-parameter signature shows.
-        foreach (var cls in _typeofNamedLibraryClasses)
-            for (var b = cls.BaseClass; b is not null; b = b.BaseClass)
-                foreach (var a in b.Context.TypeArgs)
-                    named.Add((a, true, false));
-
-        // Expand the named surface — nested generic arguments and array/byref
-        // elements — into the closed non-app specializations it names. Dedupe into
-        // a list so the act phase runs in first-named order (deterministic).
-        var seen = new HashSet<ClassInfo>();
-        var targets = new List<ClassInfo>();
-        // Library targets staged this round (opened in the act phase below; the
-        // persistent sets grow there, never during the walk).
-        var userTargets = new List<ClassInfo>();
-        // Closed BCL collection INTERFACES on the same surface: a reflection
-        // deserializer cannot construct the interface, so it constructs the
-        // interface's canonical BCL materialization instead — obtained with
-        // typeof(Def<>).MakeGenericType(itemType), which resolves only against
-        // the AOT-generated closed types. Collect them here; seeded after the
-        // concrete targets below. Each staged seed carries the closed type
-        // arguments to instantiate its definitions at (the interface's own args
-        // for the materialization seeds; the matched collection interface's args
-        // for the serializer-wrapper seeds below).
-        var seenItfs = new HashSet<ClassInfo>();
-        var wrapperSeeds = new List<(TypeDesc[] Args, (string Ns, string Name)[] Defs)>();
-        // SERIALIZER-wrapper seeds (the Newtonsoft mirror): a reflection
-        // deserializer that must mutate a collection through a non-IList/
-        // non-IDictionary surface wraps it in the serializer's OWN adapter type,
-        // minted with typeof(CollectionWrapper<>).MakeGenericType(itemType)
-        // (Newtonsoft's JsonArrayContract.CreateWrapper /
-        // JsonDictionaryContract.CreateWrapper) — a library type, not BCL, so the
-        // (ns, name) lookup below finds it only when that library is loaded and
-        // the whole mechanism is a no-op otherwise. Hoisted presence test: every
-        // corpus without the library skips the closure walks entirely, so the
-        // output there is byte-identical with the seed compiled out.
-        bool serializerDefs = SerializerWrapperDefsLoaded();
-        var seenSerializerNodes = new HashSet<ClassInfo>();
-        // TEMPORARY-LIST seeds for SZArrays on the surface. Dedupe on the element
-        // descriptor — interned for the common kinds (primitives by table, classes
-        // via ClassInfo.Desc); a non-interned duplicate (a jagged element) merely
-        // stages twice and the act loop's seenWrappers absorbs it.
-        var seenArrayElems = new HashSet<TypeDesc>();
-        void Visit(TypeDesc t, bool libSurface, bool creatorArg)
-        {
-            if (t.Kind is TypeKind.SZArray or TypeKind.MDArray or TypeKind.ByRef or TypeKind.Pointer)
-            {
-                // An SZArray is a deserialization target whose items a reflection
-                // deserializer builds into a MakeGenericType-minted List<elem>
-                // temporary before converting to the array — seed that temporary
-                // (the helper's summary carries the mirror and its filters).
-                if (t.Kind == TypeKind.SZArray)
-                    CollectArrayTemporaryListSeed(t.Element!, seenArrayElems, wrapperSeeds);
-                Visit(t.Element!, libSurface, creatorArg);
-                return;
-            }
-            if (t.Kind != TypeKind.Class)
-                return;
-            var c = t.Class!;
-            foreach (var a in c.Context.TypeArgs)
-                Visit(a, libSurface, creatorArg);
-            // MATERIALIZATION seeds fire from the APP surface only. A library's
-            // internal member typed at an abstract collection interface is
-            // overwhelmingly its own plumbing, not a deserialization target — and
-            // the seed's ReachAllocatedType arms the used-slot cross product for
-            // the minted List<T>: Godot.Collections.Dictionary's
-            // `ICollection<Variant> Keys` seeded List<Godot.Variant>, whose
-            // IndexOf then failed the transpile on Variant's missing equality.
-            // A library member DECLARED at such an interface is the documented
-            // residue: its wrapper stays unseeded and the runtime MakeGenericType
-            // diagnostic names the missing instantiation.
-            if (!libSurface
-                && c.IsInterface && c.Context.TypeArgs.Length > 0
-                && IsFrameworkAssemblyName(c.Module.AssemblyName)
-                && !ContainsCanonPlaceholder(c)
-                && CollectionInterfaceWrapperDefs(GenericDefFullName(c), c.Context.TypeArgs.Length)
-                    is { } wrapperDefs
-                && seenItfs.Add(c))
-                wrapperSeeds.Add((c.Context.TypeArgs, wrapperDefs));
-            // SERIALIZER-wrapper seeds fire from BOTH surfaces, unlike the
-            // materialization seeds above, because the wrap happens wherever the
-            // deserializer POPULATES a collection, and Thrive's observed sites are
-            // one of each: an app-declared `ICollection<string>` creator argument
-            // (Tutorial.AlreadySeenTutorials' SerializedData) and a library-declared
-            // `List<string>` one (ThriveScriptsShared.VersionPatchNotes). The
-            // Variant residue that keeps the materialization seeds app-only is
-            // handled INSIDE the helper instead of by a surface gate: the wrappers
-            // delegate every element operation through the collection interfaces,
-            // whose Contains/Remove slot uses arm the used-slot × allocated-type
-            // product, so the helper declines any element type without a buildable
-            // comparison (see its CanCompareStructuralField filter and the comment
-            // there naming the Variant failure).
-            if (serializerDefs && !ContainsCanonPlaceholder(c))
-                CollectSerializerWrapperSeeds(c, creatorArg, seenSerializerNodes, wrapperSeeds);
-            if (c.Module == AppModule                 // the app-module loop reaches these
-                || c.IsInterface || c.IsEnum
-                // An intrinsic type's members are never transpiled — both tests, per
-                // the doctrine (the name table misses a closed generic intrinsic).
-                || c.IntrinsicCppName is not null
-                || CoreIntrinsics.IsIntrinsicType(c.FullName)
-                || ContainsCanonPlaceholder(c))
-                return;
-            // A named non-framework LIBRARY class — any arity, non-generic
-            // included, abstract included (its accessors serve the concrete
-            // subclasses the deserializer builds) — is a library target.
-            if (IsUserModule(c.Module))
-            {
-                if (!_userReflConstructed.Contains(c) && seen.Add(c))
-                    userTargets.Add(c);
-                return;
-            }
-            if (c.Context.TypeArgs.Length == 0        // closed generic specializations only
-                || c.IsAbstract)
-                return;
-            if (seen.Add(c))
-                targets.Add(c);
-        }
-        foreach (var (t, libSurface, creatorArg) in named)
-            Visit(t, libSurface, creatorArg);
-
-        // Act on the collected targets: reaching decodes members and grows Classes,
-        // which is why it must not share the walk above. Finding the parameterless
-        // row reads each candidate ctor's signature — an intended decode, on the
-        // specialization being opened to reflection.
-        foreach (var cls in targets)
-        {
-            MethodInfo? ctor = null;
-            foreach (var m in cls.EnsureMembers().Methods)
-                if (m.Name == ".ctor" && !m.IsStatic && m.Rva != 0
-                    && m.Signature.ParameterTypes.Length == 0)
-                {
-                    ctor = m;
-                    break;
-                }
-            if (ctor is null || _backend?.ShouldSkipMethodBody(cls, ctor) == true)
-                continue;
-            Reach(ctor);
-            if (!cls.IsValueType)
-                ReachAllocatedType(cls);
-        }
-
-        // Open the staged library targets: ALL instance ctors + allocation on the
-        // target itself, property accessors on the target and its user-module base
-        // chain (the deserializer populates an inherited property through the
-        // BASE's accessor body — the derived proptab has no row for it), and
-        // _userReflSurface membership so the next round collects their member
-        // types. Instance accessors only: a deserializer reads and writes object
-        // state, never static members, and every method NOT opened here is the
-        // deliberate residue — MethodInfo.Invoke over an arbitrary library method
-        // keeps the IL2CPP-with-managed-stripping bound the app loop's comment
-        // states.
-        foreach (var cls in userTargets)
-        {
-            _userReflConstructed.Add(cls);
-            List<MethodInfo>? invoked = null;
-            if (!cls.IsAbstract)
-            {
-                foreach (var m in cls.EnsureMembers().Methods)
-                    if (m.Name == ".ctor" && !m.IsStatic && m.Rva != 0
-                        && _backend?.ShouldSkipMethodBody(cls, m) is not true)
-                    {
-                        Reach(m);
-                        (invoked ??= new()).Add(m);
-                    }
-                // A constructed instance is allocated, a value type's box included.
-                ReachAllocatedType(cls);
-                // The reflection helper that constructed the instance dispatches its
-                // user-interface surface next (a DI container's GetInterfaces →
-                // GetMethod → Invoke injection pass), so those impls are part of the
-                // opened surface — as are the niladic lifecycle messages a
-                // Unity-style invoker GetMethod-invokes on the fresh instance.
-                ReachUserInterfaceImpls(cls);
-                ReachUserNiladicInstanceMethods(cls);
-            }
-            for (var b = cls; b is not null && IsUserModule(b.Module); b = b.BaseClass)
-            {
-                if (!_userReflSurface.Add(b))
-                    break;      // this base chain is already open from here up
-                foreach (var m in b.EnsureMembers().Methods)
-                    if (m.Rva != 0 && !m.IsStatic
-                        && (m.Attributes & MethodAttributes.SpecialName) != 0
-                        && (m.Name.StartsWith("get_", StringComparison.Ordinal)
-                            || m.Name.StartsWith("set_", StringComparison.Ordinal))
-                        && _backend?.ShouldSkipMethodBody(b, m) is not true)
-                    {
-                        Reach(m);
-                        (invoked ??= new()).Add(m);
-                    }
-            }
-            if (invoked is not null)
-                foreach (var m in invoked)
-                    NoteReflectionInvokeBoxes(m);
-        }
-
-        // Canonical-wrapper seeds. An abstract collection interface on the surface
-        // is a construction target only through its canonical BCL materialization:
-        // Newtonsoft's JsonArrayContract/JsonDictionaryContract compute CreatedType
-        // with typeof(ReadOnlyCollection<>).MakeGenericType(itemType) (and build the
-        // items into a MakeGenericType-minted List<T>/Dictionary<K,V> first), and
-        // dn2cpp's MakeGenericType — like IL2CPP's — resolves only closed types the
-        // AOT closure generated. Nothing constructs ReadOnlyCollection<int>
-        // statically when the member is declared IReadOnlyList<int>, so without this
-        // seed the deserializer dies on a NotSupportedException (Thrive's
-        // AchievementsManager.PerformLoad). Reached ctors: the parameterless one and
-        // the single-reference-argument ones — the copy ctor a read-only wrapper is
-        // built through (ReadOnlyCollection(IList<T>)) and the collection/comparer
-        // ctors a deserializer picks; a primitive-argument ctor (capacity ints) is
-        // no construction route a contract resolver takes. A separate dedupe from
-        // `targets` on purpose: a wrapper that is ALSO a directly-named surface type
-        // still needs its one-argument ctors, which the loop above never reaches.
-        var seenWrappers = new HashSet<ClassInfo>();
-        foreach (var (args, wrapperDefs) in wrapperSeeds)
-            foreach (var (wns, wname) in wrapperDefs)
-            {
-                if (!TypeIndex().TryGetValue((wns, wname), out var cands))
-                    continue;
-                var (mod, tdh) = cands[0];
-                var spec = Instantiate(mod, tdh, args);
-                if (!seenWrappers.Add(spec)
-                    // Both intrinsic tests, per the doctrine (the name table misses
-                    // a closed generic intrinsic).
-                    || spec.IntrinsicCppName is not null
-                    || CoreIntrinsics.IsIntrinsicType(spec.FullName))
-                    continue;
-                foreach (var m in spec.EnsureMembers().Methods)
-                {
-                    if (m.Name != ".ctor" || m.IsStatic || !m.IsPublic || m.Rva == 0
-                        || _backend?.ShouldSkipMethodBody(spec, m) == true)
-                        continue;
-                    var ps = m.Signature.ParameterTypes;
-                    if (ps.Length == 0 || (ps.Length == 1 && ps[0].Kind != TypeKind.Primitive))
-                        Reach(m);
-                }
-                if (!spec.IsValueType)
-                    ReachAllocatedType(spec);
-            }
-    }
-
-    /// <summary>The canonical BCL materializations of an abstract generic collection
-    /// interface — the (namespace, metadata-name) keys of the open definitions a
-    /// late-bound constructor (Newtonsoft's contract resolver, the BCL's own
-    /// collection converters) mints with <c>MakeGenericType</c> when a member is
-    /// declared at the interface. Null for any other definition name/arity. The set
-    /// mirrors Newtonsoft's CreatedType table: the mutable interfaces materialize as
-    /// <c>List&lt;T&gt;</c> / <c>HashSet&lt;T&gt;</c> / <c>Dictionary&lt;K,V&gt;</c>;
-    /// the read-only ones additionally as the <c>ReadOnlyCollection&lt;T&gt;</c> /
-    /// <c>ReadOnlyDictionary&lt;K,V&gt;</c> wrapper (built FROM the mutable one, so
-    /// both are seeded).
-    /// <para>What the table deliberately omits: <c>IReadOnlySet&lt;T&gt;</c>,
-    /// for which Newtonsoft computes no CreatedType, and every NON-collection definition
-    /// a deserializer may mint (<c>Nullable&lt;&gt;</c>, a user generic, an Immutable
-    /// builder) — those have no canonical materialization a mirror could name. Each miss
-    /// is the runtime <c>dn2cpp_type_make_generic</c> NotSupportedException naming the
-    /// instantiation, which is the remedy pointer; extend the table per corpus that hits
-    /// one rather than pre-populating it.</para></summary>
-    private static (string Ns, string Name)[]? CollectionInterfaceWrapperDefs(string defFullName, int arity)
-        => (defFullName, arity) switch
-        {
-            ("System.Collections.Generic.IEnumerable", 1)
-            or ("System.Collections.Generic.ICollection", 1)
-            or ("System.Collections.Generic.IList", 1)
-                => new[] { ("System.Collections.Generic", "List`1") },
-            ("System.Collections.Generic.IReadOnlyCollection", 1)
-            or ("System.Collections.Generic.IReadOnlyList", 1)
-                => new[]
-                {
-                    ("System.Collections.Generic", "List`1"),
-                    ("System.Collections.ObjectModel", "ReadOnlyCollection`1"),
-                },
-            ("System.Collections.Generic.ISet", 1)
-                => new[] { ("System.Collections.Generic", "HashSet`1") },
-            ("System.Collections.Generic.IDictionary", 2)
-                => new[] { ("System.Collections.Generic", "Dictionary`2") },
-            ("System.Collections.Generic.IReadOnlyDictionary", 2)
-                => new[]
-                {
-                    ("System.Collections.Generic", "Dictionary`2"),
-                    ("System.Collections.ObjectModel", "ReadOnlyDictionary`2"),
-                },
-            _ => null,
-        };
-
-    /// <summary>The (namespace, metadata-name) home of Newtonsoft.Json's internal
-    /// collection adapters. These are LIBRARY types, not BCL: the seed resolves them
-    /// by name against whatever modules the program loaded (<see cref="TypeIndex"/>),
-    /// so a program without Newtonsoft — every gate corpus, the self-host — pays
-    /// nothing and emits byte-identical output. The loaded module set is part of the
-    /// transpiler's input, so the lookup is deterministic per input and safe for the
-    /// self-host fixpoint (nothing environment-driven reaches the output).</summary>
-    private const string SerializerWrapperNamespace = "Newtonsoft.Json.Utilities";
-
-    /// <summary>Whether any loaded module defines the serializer's wrapper
-    /// definitions — the hoisted no-op test for the serializer-wrapper seeds.</summary>
-    private bool SerializerWrapperDefsLoaded()
-        => TypeIndex().ContainsKey((SerializerWrapperNamespace, "CollectionWrapper`1"))
-        || TypeIndex().ContainsKey((SerializerWrapperNamespace, "DictionaryWrapper`2"));
-
-    /// <summary>Serializer-wrapper seeds for one surface-named type: when
-    /// <paramref name="c"/> is a collection shape a reflection deserializer can wrap,
-    /// stage <c>Newtonsoft.Json.Utilities.CollectionWrapper&lt;T&gt;</c> /
-    /// <c>DictionaryWrapper&lt;K,V&gt;</c> (closed at the element/key/value types
-    /// read off the shape's own collection interfaces) onto
-    /// <paramref name="seeds"/>, for the act loop that reaches the parameterless and
-    /// single-reference-argument public ctors and allocates the type — exactly the
-    /// treatment the BCL materialization seeds get, because the CreateWrapper call
-    /// this mirrors ends in <c>MakeGenericType(...).GetConstructor(...)</c> +
-    /// invoke, and CollectionWrapper's two ctors (<c>IList</c> /
-    /// <c>ICollection&lt;T&gt;</c>) and DictionaryWrapper's three (<c>IDictionary</c>
-    /// / <c>IDictionary&lt;K,V&gt;</c> / <c>IReadOnlyDictionary&lt;K,V&gt;</c>) are
-    /// all single-reference-argument.
-    ///
-    /// <para>The mirror of Newtonsoft's wrap conditions, one arm per contract side:</para>
-    ///
-    /// <list type="bullet"><item>the collection side (JsonArrayContract) wraps a
-    /// deserialization target that implements <c>ICollection&lt;T&gt;</c> without
-    /// non-generic <c>IList</c> — the interfaces <c>ICollection&lt;T&gt;</c> /
-    /// <c>IList&lt;T&gt;</c> / <c>ISet&lt;T&gt;</c> (whose contract default-creates
-    /// the materialization and wraps it) and every non-IList implementer
-    /// (<c>HashSet&lt;T&gt;</c>, a custom collection) — plus an
-    /// <c>IEnumerable&lt;T&gt;</c>-only CLASS, whose temporary is wrapped when a
-    /// parameterized creator exists. An interface that carries no
-    /// <c>ICollection&lt;T&gt;</c> (<c>IReadOnlyList&lt;T&gt;</c>, exactly-
-    /// <c>IEnumerable&lt;T&gt;</c>) never wraps: its contract either sets no wrapper
-    /// or builds through the materialization's parameterized creator;</item>
-    /// <item>for a CREATOR ARGUMENT (<paramref name="creatorArg"/>) the collection
-    /// arm is deliberately GENEROUS: the IList-assignable exclusion is dropped, so a
-    /// <c>List&lt;T&gt;</c>-typed ctor parameter seeds <c>CollectionWrapper&lt;T&gt;</c>
-    /// too. Real programs wrap such an argument even though the mirror says an
-    /// IList-assignable target never does, and the asymmetry is deliberate: a seed the
-    /// mirror calls unnecessary costs one small delegating type per element type,
-    /// whereas one it wrongly skips is a runtime NotSupportedException in a shipped
-    /// game. The generosity stays scoped to creator arguments because widening it to
-    /// the whole member surface inflates the reachable set by tens of thousands of
-    /// methods (the wrapper bodies' Contains/Remove slot uses arm the used-slot ×
-    /// allocated-type product per element type);</item>
-    /// <item>the dictionary side (JsonDictionaryContract) wraps only when the
-    /// contract's CreatedType is not <c>IDictionary</c>-assignable — i.e. a custom
-    /// <c>IDictionary&lt;K,V&gt;</c>/<c>IReadOnlyDictionary&lt;K,V&gt;</c> implementer
-    /// that skips non-generic <c>IDictionary</c>, plus <c>ConcurrentDictionary</c>
-    /// (wrapped unconditionally, issue #1582 in Newtonsoft) — and the interfaces
-    /// themselves (an existing-value populate wraps through the DECLARED interface
-    /// contract). <c>Dictionary&lt;K,V&gt;</c> and its IDictionary-implementing kin
-    /// never wrap and no failure has ever been observed there, so the precise mirror
-    /// stands on both surfaces. A dictionary-shaped type seeds no CollectionWrapper:
-    /// the contract resolver classifies dictionary-first.</item></list>
-    ///
-    /// <para>Shape discipline: the closure walk reads <c>Interfaces</c>/<c>BaseClass</c>
-    /// only — shape, never a member pull — but a specialization the surface collect
-    /// just decoded may not have had its <c>CompleteShape</c> turn yet, and an empty
-    /// interface list here would silently drop the seed. So the walk completes each
-    /// generic node's shape on entry: the same decode the next drain would perform,
-    /// only earlier — the model grows nothing it would not have grown (and only on a
-    /// corpus that loads Newtonsoft; see the hoisted presence test).</para></summary>
-    private void CollectSerializerWrapperSeeds(ClassInfo c, bool creatorArg,
-        HashSet<ClassInfo> seenNodes,
-        List<(TypeDesc[] Args, (string Ns, string Name)[] Defs)> seeds)
-    {
-        // String implements IEnumerable<char> but resolves to a string contract,
-        // never a collection one — and it is on virtually every surface.
-        if (c.FullName == "System.String")
-            return;
-        // Transitive interface closure of c (c itself included when it IS an
-        // interface), plus the non-generic-IList/IDictionary bits the mirror tests.
-        // Deterministic walk order (list order, base chain order) so the staged
-        // seed order — and with it the reach order — is a pure function of the
-        // input.
-        var closure = new List<ClassInfo>();
-        var visited = new HashSet<ClassInfo>();
-        var stack = new Stack<ClassInfo>();
-        stack.Push(c);
-        bool hasNonGenericIDictionary = false;
-        bool hasNonGenericIList = false;
-        while (stack.Count > 0)
-        {
-            var node = stack.Pop();
-            if (!visited.Add(node))
-                continue;
-            if (node.GenericArity != 0 && !node.ShapeCompleted)
-                CompleteShape(node);
-            if (node.IsInterface)
-            {
-                closure.Add(node);
-                if (node.FullName == "System.Collections.IDictionary")
-                    hasNonGenericIDictionary = true;
-                if (node.FullName == "System.Collections.IList")
-                    hasNonGenericIList = true;
-            }
-            for (var b = node; b is not null; b = b.BaseClass)
-                foreach (var i in b.Interfaces)
-                    stack.Push(i);
-        }
-        var dictNodes = new List<ClassInfo>();
-        var enumNodes = new List<ClassInfo>();
-        bool hasGenericICollection = false;
-        foreach (var itf in closure)
-        {
-            if (itf.Context.TypeArgs.Length == 0 || ContainsCanonPlaceholder(itf)
-                || !IsFrameworkAssemblyName(itf.Module.AssemblyName))
-                continue;
-            // Every element/key/value type must have a buildable comparison
-            // (CanCompareStructuralField — the same pure test the synthesized
-            // value-equality walk uses). The wrappers themselves synthesize no
-            // equality, but their bodies USE the collection interfaces'
-            // Contains/Remove slots, and a used slot demands a compilable body
-            // from every allocated implementer: seeding
-            // CollectionWrapper<Godot.Variant> off GodotSharp's `ICollection<Variant>
-            // Keys` armed ICollection<Variant>.Contains, whose
-            // Dictionary<StringName,Variant>.ValueCollection implementation calls
-            // ContainsValue — Variant equality, a hard transpile failure. An
-            // equality-less element keeps the loud runtime MakeGenericType
-            // diagnostic instead — and no JSON creator argument legitimately
-            // carries one.
-            bool comparable = true;
-            foreach (var a in itf.Context.TypeArgs)
-                comparable &= CanCompareStructuralField(a, hash: false, new HashSet<ClassInfo>());
-            if (!comparable)
-                continue;
-            switch (GenericDefFullName(itf))
-            {
-                case "System.Collections.Generic.IDictionary" when itf.Context.TypeArgs.Length == 2:
-                case "System.Collections.Generic.IReadOnlyDictionary" when itf.Context.TypeArgs.Length == 2:
-                    dictNodes.Add(itf);
-                    break;
-                case "System.Collections.Generic.ICollection" when itf.Context.TypeArgs.Length == 1:
-                    hasGenericICollection = true;
-                    break;
-                case "System.Collections.Generic.IEnumerable" when itf.Context.TypeArgs.Length == 1:
-                    enumNodes.Add(itf);
-                    break;
-            }
-        }
-        if (dictNodes.Count > 0)
-        {
-            bool wraps = c.IsInterface
-                || !hasNonGenericIDictionary
-                || GenericDefFullName(c) == "System.Collections.Concurrent.ConcurrentDictionary";
-            if (!wraps)
-                return;
-            foreach (var n in dictNodes)
-                if (seenNodes.Add(n))
-                    seeds.Add((n.Context.TypeArgs,
-                        new[] { (SerializerWrapperNamespace, "DictionaryWrapper`2") }));
-            return;
-        }
-        // The collection arm's wrap test (see the summary): a creator argument is
-        // generous; a member-surface shape wraps per the contract mirror — never
-        // through non-generic IList, and an interface only with ICollection<T> in
-        // its closure.
-        if (!creatorArg
-            && (hasNonGenericIList || (c.IsInterface && !hasGenericICollection)))
-            return;
-        foreach (var n in enumNodes)
-            if (seenNodes.Add(n))
-                seeds.Add((n.Context.TypeArgs,
-                    new[] { (SerializerWrapperNamespace, "CollectionWrapper`1") }));
-    }
-
-    /// <summary>Temporary-list seed for one SZArray on the named surface: stage
-    /// <c>List&lt;elem&gt;</c> for the act loop that reaches its parameterless and
-    /// single-reference-argument public ctors and allocates it. A reflection
-    /// deserializer materializing a <c>T[]</c> member never constructs the array —
-    /// it builds the items into a <c>typeof(List&lt;&gt;).MakeGenericType(elementType)</c>
-    /// temporary first (Newtonsoft's <c>JsonArrayContract.CreateTemporaryCollection</c>,
-    /// constructed through <c>LateBoundReflectionDelegateFactory.CreateDefaultConstructor</c>
-    /// → <c>GetConstructors()</c> → parameterless <c>ConstructorInfo.Invoke</c>) and
-    /// converts with <c>Array.CreateInstance</c> + <c>CopyTo</c> afterwards. Nothing
-    /// constructs <c>List&lt;T&gt;</c> statically when the member is declared
-    /// <c>T[]</c> — the specialization is minted by the layout closure alone — so
-    /// without the seed the temporary's emitted ctor table reads <c>(nullptr, 0)</c>
-    /// and the deserializer dies on "Unable to find default constructor for
-    /// System.Collections.Generic.List_…" (Thrive's SimulationParameters.LoadRegistry,
-    /// <c>List&lt;MusicContext&gt;</c> off a <c>MusicContext[]</c> member).
-    ///
-    /// <para>This arm is the necessary pair of the precise reflected array member
-    /// types (<c>CppEmitter.FieldTypeInfoExpr</c>'s SZArray arm +
-    /// <c>TypeMetadataEmitter.NoteReflectedMemberTypes</c>): a precise
-    /// <c>T[]</c> member type is what routes the contract resolver onto the ARRAY
-    /// contract — and therefore onto this temporary — where the old
-    /// <c>System.Object</c> degrade fell into the untyped/Linq contract and never
-    /// asked for it. Every reflection-visible array member now takes this path.</para>
-    ///
-    /// <para>Fires from BOTH surfaces, like the serializer-wrapper seeds (an opened
-    /// library target's <c>T[]</c> member is deserialized exactly as an app one),
-    /// and is guarded the same way: every element must have a buildable comparison
-    /// (<see cref="CanCompareStructuralField"/> — the seeded List's allocation arms
-    /// the used-slot × allocated-type product for its Contains/IndexOf/Remove
-    /// bodies, and a <c>List&lt;Godot.Variant&gt;</c> seed would demand Variant
-    /// equality, a hard transpile failure). A declined element keeps the loud
-    /// runtime diagnostic. A BYTE element never seeds:
-    /// Newtonsoft classifies <c>byte[]</c> as a base64 PRIMITIVE contract — no
-    /// temporary list is ever minted for it — and <c>byte[]</c> is on virtually
-    /// every surface. Intrinsic elements are declined with both tests, per the
-    /// doctrine (the name table misses a closed generic intrinsic).</para></summary>
-    private void CollectArrayTemporaryListSeed(TypeDesc elem, HashSet<TypeDesc> seenElems,
-        List<(TypeDesc[] Args, (string Ns, string Name)[] Defs)> seeds)
-    {
-        // Concrete, generic-arg-legal element kinds only: a byref/pointer element
-        // cannot close List<T> at all, and an External element resolves to no
-        // modeled class, so a seed could open nothing (the runtime MakeGenericType
-        // diagnostic stays for both).
-        if (elem.Kind is not (TypeKind.Primitive or TypeKind.Class or TypeKind.SZArray or TypeKind.MDArray))
-            return;
-        if (elem is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Byte }
-            || ContainsCanonPlaceholder(elem))
-            return;
-        if (elem.Class is { } ec
-            && (ec.IntrinsicCppName is not null || CoreIntrinsics.IsIntrinsicType(ec.FullName)))
-            return;
-        if (!CanCompareStructuralField(elem, hash: false, new HashSet<ClassInfo>()))
-            return;
-        if (seenElems.Add(elem))
-            seeds.Add((new[] { elem },
-                new[] { ("System.Collections.Generic", "List`1") }));
-    }
-
     /// <summary>Whether an assembly simple name identifies a .NET framework/BCL
     /// assembly (used to bound the [UnmanagedCallersOnly] rooting to user/library
     /// modules — a non-framework library's native callbacks are rooted, while
     /// the BCL's own host/PAL callbacks stay tree-shaken).
     ///
-    /// <para><c>Dn2Cpp.Runtime</c> — dn2cpp's own managed support shim, auto-loaded
+    /// <para><c>Dn2Cpp.Runtime</c> — dn2cpp's own managed support library, auto-loaded
     /// beside the executable — is the platform's half, not user code: its members
     /// exist to be pulled by the transpiler's dedicated routes (RequireShimType),
     /// and several are transpilable ONLY through them (Dn2CppConsoleWriter's ctor
-    /// names the intrinsic-mapped TextWriter base ctor). The reflection-ctor
-    /// route's library reach is what makes the classification load-bearing:
-    /// treating the shim as a user library opened that ctor as a construction
-    /// target and failed the transpile.</para>
+    /// names the intrinsic-mapped TextWriter base ctor). As a framework assembly it
+    /// contributes no module-initializer or <c>[UnmanagedCallersOnly]</c> root and no
+    /// custom-attribute rows, its value types get no reflection boxes, and its
+    /// reflection sites report as framework sites.</para>
     ///
-    /// <para><b>This list is for assemblies whose transpile FAILS when they are treated
-    /// as user libraries — a name does not belong here merely because dn2cpp ships
-    /// it.</b> The conditional default references (<c>DnZlib</c>, <c>DnBrotli</c>,
-    /// <c>DnHttp</c> — see <see cref="AssemblyLoadSet"/>) are shipped and are
-    /// deliberately absent: none of them has a type of the kind that broke
-    /// Dn2Cpp.Runtime (<c>DnHttp.DnHttpBackend</c> is an <c>internal static class</c>
-    /// with no ctor at all, the two codec shims are ordinary IL on ordinary types, and
-    /// their <c>[NativeImplementation]</c> adapters already satisfy
-    /// <see cref="RegisterNativeImpl"/>'s shape constraints). Adding them would take
+    /// <para><b>This list is for platform assemblies, whose roots, attribute rows and
+    /// boxes belong to the runtime rather than to the application — a name does not
+    /// belong here merely because dn2cpp ships it.</b> The
+    /// conditional default references (<c>DnZlib</c>, <c>DnBrotli</c>, <c>DnHttp</c> —
+    /// see <see cref="AssemblyLoadSet"/>) are shipped and are deliberately absent: they
+    /// are ordinary IL on ordinary types (<c>DnHttp.DnHttpBackend</c> is an
+    /// <c>internal static class</c> with no ctor at all), and their
+    /// <c>[NativeImplementation]</c> adapters already satisfy
+    /// <see cref="RegisterNativeImpl"/>'s shape constraints. Adding them would take
     /// them out of <see cref="IsUserModule"/>, drop their custom-attribute metadata,
     /// and move the output of the existing <c>-r DnZlib</c> gates — with not one
     /// motivating defect behind it.</para></summary>
@@ -7102,18 +5610,13 @@ internal sealed partial class Compilation
     /// unemitted) — accepted, as no real user assembly claims a BCL name.</summary>
     internal bool IsUserModule(Module m) => !IsFrameworkAssemblyName(m.AssemblyName);
 
-    /// <summary>The user-module classes the reflection-attribute walk visited;
-    /// <see cref="NoteUnwalkedAttributeRows"/> covers every other one.</summary>
-    private readonly HashSet<ClassInfo> _attributeWalked = new();
-
     /// <summary>How far <see cref="NoteUnwalkedAttributeRows"/> has visited
     /// <see cref="Classes"/>.</summary>
     private int _unwalkedAttributeCursor;
 
-    /// <summary>Notes what the attribute rows of every user-module class the walk did not
-    /// visit name — all of them when nothing reads attributes, else the classes minted after
-    /// it — and of every assembly, for the attributes whose ctor is reached: those rows
-    /// render, and each handle a row names must be declared. A noted Type argument mints
+    /// <summary>Notes what the attribute rows of every user-module class and of every
+    /// assembly name, for the attributes whose ctor is reached: those rows render, and each
+    /// handle a row names must be declared. A noted Type argument mints
     /// the class it names, and the drain completes its shape, so the notes alternate with
     /// the drain until no class is minted; each class is visited once.</summary>
     private void NoteUnwalkedAttributeRows()
@@ -7124,40 +5627,74 @@ internal sealed partial class Compilation
             for (; _unwalkedAttributeCursor < Classes.Count; _unwalkedAttributeCursor++)
             {
                 var cls = Classes[_unwalkedAttributeCursor];
-                if (IsUserModule(cls.Module) && _attributeWalked.Add(cls))
-                    ReachClassAttributes(cls, reach: false);
+                if (IsUserModule(cls.Module))
+                    ReachClassAttributes(cls, reach: false, CarriesUnretainedRows(cls));
             }
             DrainReachability();
         }
         while (_unwalkedAttributeCursor != Classes.Count);
     }
 
+    /// <summary>Whether the image carries <paramref name="cls"/>'s unretained attribute rows:
+    /// every application class is emitted, a library class only once the program reaches a
+    /// member of it or allocates it. A library loaded but unused therefore adds no
+    /// attribute type-info, and a hot-update base's contract does not move with it.</summary>
+    private bool CarriesUnretainedRows(ClassInfo cls)
+    {
+        if (cls.Module == AppModule || _allocatedRefTypes.Contains(cls))
+            return true;
+        if (!cls.MembersReady)
+            return false;
+        foreach (var m in cls.Methods)
+            if (Reachable.Contains(m))
+                return true;
+        return false;
+    }
+
     /// <summary><see cref="ReachAttributesOf"/> over a class's own attributes and those of
     /// its fields, methods, parameters and properties.</summary>
-    private void ReachClassAttributes(ClassInfo cls, bool reach)
+    private void ReachClassAttributes(ClassInfo cls, bool reach, bool unretained = true)
     {
         try
         {
             var reader = cls.Module.Reader;
             var td = reader.GetTypeDefinition(cls.Handle);
-            ReachAttributesOf(cls.Module, td.GetCustomAttributes(), reach);
+            ReachAttributesOf(cls.Module, td.GetCustomAttributes(), reach, unretained);
             foreach (var fh in td.GetFields())
-                ReachAttributesOf(cls.Module, reader.GetFieldDefinition(fh).GetCustomAttributes(), reach);
+                ReachAttributesOf(cls.Module, reader.GetFieldDefinition(fh).GetCustomAttributes(), reach, unretained);
             foreach (var mh in td.GetMethods())
             {
                 var md = reader.GetMethodDefinition(mh);
-                ReachAttributesOf(cls.Module, md.GetCustomAttributes(), reach);
+                ReachAttributesOf(cls.Module, md.GetCustomAttributes(), reach, unretained);
                 foreach (var pph in md.GetParameters())
-                    ReachAttributesOf(cls.Module, reader.GetParameter(pph).GetCustomAttributes(), reach);
+                    ReachAttributesOf(cls.Module, reader.GetParameter(pph).GetCustomAttributes(), reach, unretained);
             }
             foreach (var ph in td.GetProperties())
-                ReachAttributesOf(cls.Module, reader.GetPropertyDefinition(ph).GetCustomAttributes(), reach);
+                ReachAttributesOf(cls.Module, reader.GetPropertyDefinition(ph).GetCustomAttributes(), reach, unretained);
         }
         catch (Exception e) when (!IsMustEscape(e))
         {
             // A class without decodable metadata (e.g. a generic instance) just
             // contributes no reflected attributes.
         }
+    }
+
+    /// <summary>Whether a row whose constructor nothing reached still renders, with a null
+    /// factory: a metadata read answers from it, and an instance read refuses instead of
+    /// answering a set without it.</summary>
+    internal bool KeepsUnretainedAttributeRow(DecodedAttribute da) => !Reachable.Contains(da.Ctor);
+
+    /// <summary>Constructs the rows on a class a backend's runtime reads
+    /// (<see cref="IEmitBackend.AttributeReadClasses"/>) and on its declared methods.</summary>
+    private void ReachBackendAttributeRows(ClassInfo cls)
+    {
+        if (cls.Handle.IsNil)
+            return;
+        var reader = cls.Module.Reader;
+        var td = reader.GetTypeDefinition(cls.Handle);
+        ReachAttributesOf(cls.Module, td.GetCustomAttributes(), reach: true);
+        foreach (var mh in td.GetMethods())
+            ReachAttributesOf(cls.Module, reader.GetMethodDefinition(mh).GetCustomAttributes(), reach: true);
     }
 
     /// <summary><see cref="ReachAttributesOf"/> over every loaded module's assembly-level
@@ -7182,14 +5719,22 @@ internal sealed partial class Compilation
     /// <summary>Notes what each argument's factory names (<see cref="NoteAttrArg"/>) for
     /// every reflectable custom attribute in the collection, so the argument stays
     /// renderable. With <paramref name="reach"/> it also reaches the attribute's ctor,
-    /// named-property setters and allocated type; without, it notes only the attributes
-    /// whose ctor something else reached, which are the rows the emit side renders.</summary>
-    private void ReachAttributesOf(Module module, CustomAttributeHandleCollection handles, bool reach)
+    /// named-property setters and allocated type; without, it notes only the rows the emit
+    /// side renders: those whose ctor something else reached, and the unretained rows
+    /// (<see cref="KeepsUnretainedAttributeRow"/>) when <paramref name="unretained"/>, whose
+    /// row names the attribute's type-info.</summary>
+    private void ReachAttributesOf(Module module, CustomAttributeHandleCollection handles, bool reach,
+        bool unretained = true)
     {
         // A row only another route rendered is read by nothing unless attributes are read.
         bool keep = reach || _reflectionAttrUsed;
-        foreach (var da in DecodeCustomAttributes(module, handles, reachedCtorsOnly: !reach))
+        foreach (var da in DecodeCustomAttributes(module, handles, reachedCtorsOnly: !reach && !unretained))
         {
+            if (!reach && unretained && KeepsUnretainedAttributeRow(da))
+            {
+                EnsureCompleted(da.AttrClass);
+                NoteTypeIdentityClosure(TypeDesc.MakeClass(da.AttrClass), keepSeed: false);
+            }
             if (reach)
             {
                 Reach(da.Ctor);
@@ -7323,6 +5868,8 @@ internal sealed partial class Compilation
                     continue;
                 bool previous = _reachingBindingOnlyBody;
                 _reachingBindingOnlyBody = _bindingOnlyBodies.Contains(m);
+                _scanningBody = true;
+                _scanningPreserveOnlyBody = _preserveOnlyBodies.Contains(m);
                 try
                 {
                     if (ReachabilityDiagnostics is null)
@@ -7332,9 +5879,17 @@ internal sealed partial class Compilation
                         catch (Exception ex) when (!IsMustEscape(ex))
                         { ReachabilityDiagnostics.Add((m, ex)); }
                 }
-                finally { _reachingBindingOnlyBody = previous; }
+                finally
+                {
+                    _reachingBindingOnlyBody = previous;
+                    _scanningBody = _scanningPreserveOnlyBody = false;
+                }
+                if (_preserveRestored.Count > 0)
+                    ApplyRestoredPreservation();
                 progress = true;
             }
+            if (ReachReachedStrippedGvmCases())
+                progress = true;
             if (ReachPendingRuntimeRaisedHeirs())
                 progress = true;
             if (ActivateConditionalPreservationPolicies())

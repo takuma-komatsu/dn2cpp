@@ -187,12 +187,12 @@ internal sealed class DotnetModuleBackend : IEmitBackend
     public bool ShouldSkipMethodBody(ClassInfo cls, MethodInfo m)
         => cls.FullName == "GodotPlugins.Game.Main";
 
-    /// <summary>GodotSharp typeof-names its whole wrapper surface and invokes it
-    /// through source-generated trampolines, never reflection — the reflection
-    /// surface would more than double the emit set, past V8's per-function ceiling
-    /// on the wasm drop-in's relocation applier.</summary>
-    public bool WantsTypeofReflectionSurface(ClassInfo cls)
-        => cls.Module.AssemblyName != "GodotSharp";
+    /// <summary>The script bridge and delegate serialization reach script types and their
+    /// members through the script contract below, not through a type a call site
+    /// names.</summary>
+    public bool CoversReflectionSite(MethodInfo caller)
+        => caller.Module.AssemblyName == "GodotSharp"
+            && caller.DeclaringClass.FullName is "Godot.Bridge.ScriptManagerBridge" or "Godot.DelegateUtils";
 
     /// <summary>An interop slot returning a core enum returns <c>int32_t</c>: Godot's
     /// C++ enums are int-width and the glue spells the return so, while the bindings
@@ -259,23 +259,99 @@ internal sealed class DotnetModuleBackend : IEmitBackend
         // silent no-op that reports a guaranteed false error every frame-1.
         _nativeCtorNotFound = Compilation.ReflectionTypeName(
             ResolveNestedStruct(c, s_nativeConstructorException.Parent, s_nativeConstructorException.Name));
-        return new[]
+        var roots = new List<MethodInfo>
         {
             _nativeFuncsInitialize, _managedCallbacksCreate, _lookupScriptsInAssembly,
             _syncCtxCtor, _syncCtxExecute, syncCtxPost, syncCtxSend,
             _logException, _pushError,
         };
+        foreach (var script in ScriptClasses(c))
+            if (!script.IsAbstract)
+                foreach (var m in script.Methods)
+                    if (m.Name == ".ctor" && !m.IsStatic && m.Rva != 0)
+                        roots.Add(m);
+        foreach (var cls in ScriptChains(c))
+            foreach (var m in cls.Methods)
+                if (m.IsStatic && m.Rva != 0 && m.Name is "GetGodotMethodList" or "GetGodotSignalList"
+                        or "GetGodotPropertyList" or "GetGodotPropertyDefaultValues")
+                    roots.Add(m);
+        return roots;
+    }
+
+    // The script contract. LookupScriptsInAssembly registers the app assembly's
+    // GodotObject-derived classes that carry [ScriptPath], reading every row of the
+    // assembly and of each type. A script instance is allocated with
+    // GetUninitializedObject and constructed by invoking the instance constructor whose
+    // arity the engine passes. Class info reads every row of each instance method and
+    // invokes the generated static Get*List / GetGodotPropertyDefaultValues members on
+    // the script type and its user bases. A static method call on a script enters
+    // ScriptManagerBridge.CallStatic, which s_boundedMethods cuts, so the generated
+    // static InvokeGodotClassStaticMethod is never bound. Everything else the engine
+    // calls on a script (InvokeGodotClassMethod, Set/GetGodotClassPropertyValue,
+    // Save/RestoreGodotObjectData and their siblings) overrides a GodotObject virtual
+    // that CSharpInstanceBridge calls, so it is reached as a used slot of the allocated
+    // script types.
+
+    /// <summary>The app module's non-generic GodotObject-derived classes carrying
+    /// [ScriptPath].</summary>
+    private static List<ClassInfo> ScriptClasses(Compilation c)
+    {
+        var result = new List<ClassInfo>();
+        foreach (var cls in c.Classes.ToList())
+            if (cls.Module == c.AppModule && cls.GenericArity == 0 && !cls.Handle.IsNil
+                && !cls.IsInterface && !cls.IsValueType && DerivesFromGodotObject(cls) && HasScriptPath(cls))
+                result.Add(cls);
+        return result;
+    }
+
+    /// <summary>The script classes and their bases up to the first GodotSharp class.</summary>
+    private static List<ClassInfo> ScriptChains(Compilation c)
+    {
+        var result = new List<ClassInfo>();
+        var seen = new HashSet<ClassInfo>();
+        foreach (var script in ScriptClasses(c))
+            for (var k = script; k is not null && k.Module.AssemblyName != "GodotSharp"; k = k.BaseClass)
+                if (seen.Add(k))
+                    result.Add(k);
+        return result;
+    }
+
+    private static bool DerivesFromGodotObject(ClassInfo cls)
+    {
+        for (var b = cls.BaseClass; b is not null; b = b.BaseClass)
+            if (b.FullName == "Godot.GodotObject" && b.Module.AssemblyName == "GodotSharp")
+                return true;
+        return false;
+    }
+
+    private static bool HasScriptPath(ClassInfo cls)
+    {
+        var reader = cls.Module.Reader;
+        foreach (var handle in reader.GetTypeDefinition(cls.Handle).GetCustomAttributes())
+            if (Compilation.AttributeTypeName(reader, reader.GetCustomAttribute(handle)) == "Godot.ScriptPathAttribute")
+                return true;
+        return false;
     }
 
     /// <summary>GodotSynchronizationContext is constructed by the emitted C++
     /// (the epilogue's <c>dn2cpp_dm_sync_ctx</c>), not by any managed newobj the
     /// reachability scan could see — without this its vtable/type-info would not
-    /// emit and the virtual Post/Send dispatch would land on nothing.</summary>
+    /// emit and the virtual Post/Send dispatch would land on nothing. The concrete
+    /// script classes are allocated by the script bridge.</summary>
     public IEnumerable<ClassInfo> ExternallyAllocatedClasses(Compilation c)
     {
-        var ctx = c.FindClassByFullName(SyncContextType);
-        return ctx is null ? Array.Empty<ClassInfo>() : new[] { ctx };
+        var result = new List<ClassInfo>();
+        if (c.FindClassByFullName(SyncContextType) is { } ctx)
+            result.Add(ctx);
+        foreach (var script in ScriptClasses(c))
+            if (!script.IsAbstract)
+                result.Add(script);
+        return result;
     }
+
+    public IEnumerable<ClassInfo> AttributeReadClasses(Compilation c) => ScriptChains(c);
+
+    public IEnumerable<Module> AttributeReadAssemblies(Compilation c) => new[] { c.AppModule };
 
     /// <summary>The <c>--trim-godot-classes</c> nomination (see
     /// <see cref="IEmitBackend.GodotClassTrim"/>): the real GodotSharp's

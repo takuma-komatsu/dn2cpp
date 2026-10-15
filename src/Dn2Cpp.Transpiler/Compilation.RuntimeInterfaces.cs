@@ -27,13 +27,6 @@ internal sealed partial class Compilation
                 continue;
             if (itf.FullName == "System.IConvertible")
                 RuntimeInterfaceMetadata.Add(itf.EnsureMembers());
-            // Late-bound native interface rows consume providers without a managed
-            // call site. Metadata enumeration alone must not create this edge.
-            if ((ReflectionInvokeUsed || NeedsReflectionDelegateBind) && itf.FullName is "System.IConvertible"
-                    or "System.IFormattable" or "System.ISpanFormattable" or "System.IUtf8SpanFormattable")
-                foreach (var method in itf.EnsureMembers().Methods)
-                    if (RuntimeNumericProviderConsumer(method))
-                        ReachFormatProviderGetFormat();
         }
         foreach (var receiver in Classes.ToList())
         {

@@ -25,15 +25,6 @@ internal interface IEmitBackend
     /// chains) should be emitted.</summary>
     bool ShouldSkipMethodBody(ClassInfo cls, MethodInfo m);
 
-    /// <summary>False to keep a typeof-named user-LIBRARY class out of the
-    /// reflection-invoke surface <see cref="Compilation"/> opens (instance
-    /// accessors + public niladic methods, reached so a reflection helper can
-    /// invoke what nothing calls statically). An engine-binding assembly
-    /// typeof-names its whole wrapper surface but invokes it through generated
-    /// trampolines, never reflection, so opting it out keeps the wrapper
-    /// accessors out of the emit set. Default: every class gets the surface.</summary>
-    bool WantsTypeofReflectionSurface(ClassInfo cls) => true;
-
     /// <summary>True to synthesize a real, invoker-compatible body for a
     /// skipped-body method in a hot-update base build. The interpreter binds a
     /// patch's method imports through reflection metadata (fnPtr + invoker),
@@ -57,6 +48,11 @@ internal interface IEmitBackend
     /// consulted in a normal build, whose output stays byte-identical.
     /// Default: none.</summary>
     bool HasPlaceholderBody(ClassInfo cls, MethodInfo m) => false;
+
+    /// <summary>True when the backend's own contract retains whatever a reflection site in
+    /// <paramref name="caller"/> can reach, so an unrecognized target there is reported as
+    /// covered rather than as a user remedy. Changes no admission. Default: none.</summary>
+    bool CoversReflectionSite(MethodInfo caller) => false;
 
     /// <summary>Emits the tail of the translation unit: the program entry point
     /// (console) or the target's registration tables (GDExtension).</summary>
@@ -83,6 +79,18 @@ internal interface IEmitBackend
     /// frame-callback slot; GodotBackend seeds the engine-callback surface).
     /// Default: none (ConsoleBackend is unaffected).</summary>
     IEnumerable<MethodInfo> AdditionalRootMethods(Compilation c) => Array.Empty<MethodInfo>();
+
+    /// <summary>Classes whose custom attributes a backend's runtime reads where no site
+    /// names the owner (a registration walk over types it discovers at run time). The rows
+    /// on each class and on its declared methods are constructed as a recognized read of
+    /// that owner constructs them. Called once with the other backend seeds. Default:
+    /// none.</summary>
+    IEnumerable<ClassInfo> AttributeReadClasses(Compilation c) => Array.Empty<ClassInfo>();
+
+    /// <summary>Assemblies whose assembly-level custom attributes a backend's runtime reads
+    /// where no site names the assembly, constructed like
+    /// <see cref="AttributeReadClasses"/>. Default: none.</summary>
+    IEnumerable<Module> AttributeReadAssemblies(Compilation c) => Array.Empty<Module>();
 
     /// <summary>Backend-specific bounded methods, merged with the core BCL set in
     /// <see cref="CoreIntrinsics"/> (see <see cref="Compilation.IsBoundedMethod"/>):

@@ -3521,6 +3521,14 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // (Compilation.TrimLdftnRedirect; table frozen before emission).
                 if (_c.TrimLdftnRedirect(m) is { } trimRedirect)
                     m = trimRedirect;
+                // Whoever invokes the pointer calls the method with no guard, so a static
+                // method's precise-init initializer runs when the pointer is taken.
+                if (m is { IsStatic: true, DeclaringClass: { IsBeforeFieldInit: false, IntrinsicCppName: null } })
+                {
+                    if (m.DeclaringClass.StaticCctor is not null)
+                        TaintIfCanonical(m.DeclaringClass, "type initializer");
+                    EnsureCctorBefore(m.DeclaringClass);
+                }
                 if (Compilation.RuntimeNumericProviderConsumer(m))
                     _c.ReachFormatProviderGetFormat();
                 NoteFtnTarget(m, virtFtn: false);

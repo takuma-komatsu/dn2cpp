@@ -8738,14 +8738,27 @@ static bool dn2cpp_type_is_a(const Dn2CppTypeInfo* sub, const Dn2CppTypeInfo* su
 
 // Materializes an attribute table as an object[] (each entry a fresh instance via
 // its create factory), filtered to `filter` when non-null. Shared by the member
-// element forms and the assembly forms below.
+// element forms and the assembly forms below. A row without a factory is one whose
+// constructor the image did not retain: the read refuses rather than answer a set
+// missing it.
 static Dn2CppArrayRef* dn2cpp_attr_table_to_array(Dn2CppMetadataTable<Dn2CppAttrInfo> tab, int32_t count,
                                                   const Dn2CppTypeInfo* filter)
 {
     int32_t n = 0;
     for (int32_t i = 0; i < count; i++)
         if (filter == nullptr || dn2cpp_type_is_a(tab[i]->attrType, filter))
+        {
+            if (tab[i]->create == nullptr)
+            {
+                char message[512];
+                std::snprintf(message, sizeof message,
+                    "%s: the attribute's constructor was not retained in this image; preserve it "
+                    "to read the attribute through reflection",
+                    tab[i]->attrType->name != nullptr ? tab[i]->attrType->name : "?");
+                dn2cpp_throw_platform_not_supported(message);
+            }
             n++;
+        }
     Dn2CppArrayRef* arr = dn2cpp_newarr_ref(n);
     // .NET's typed forms return an array whose RUNTIME type is attrType[], which is what
     // lets the caller cast/enumerate it as IEnumerable<attrType> (an `a is T[]` fast

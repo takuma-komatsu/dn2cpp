@@ -346,6 +346,24 @@ internal sealed partial class CppEmitter
     private bool IsRuntimeTemplateLevel(ClassInfo c) =>
         _c.EligibleRuntimeTemplateLevels.Count > 0 && _c.EligibleRuntimeTemplateLevels.Contains(c);
 
+    /// <summary>Whether a template level's member signature names an emitted
+    /// canonical-world class that is no template level, such as one over the level's
+    /// placeholders and a concrete argument. No clone can respell that type, so the
+    /// row reports its placeholder-bearing types as System.Object and keeps no body:
+    /// Invoke and delegate creation refuse it.</summary>
+    internal bool NamesUnrepresentableTemplateType(ClassInfo cls, MethodInfo m)
+    {
+        if (!IsRuntimeTemplateLevel(cls))
+            return false;
+        bool Unrepresentable(TypeDesc t)
+        {
+            while (t.Kind is TypeKind.ByRef or TypeKind.Pointer or TypeKind.SZArray or TypeKind.MDArray && t.Element is { } element)
+                t = element;
+            return t is { Kind: TypeKind.Class, Class: { } c } && _emit.Contains(c) && SkipsCanonicalMetadata(c);
+        }
+        return Unrepresentable(m.Signature.ReturnType) || m.Signature.ParameterTypes.Any(Unrepresentable);
+    }
+
     /// <summary>Hot-update base build (<c>--hotupdate-base</c>): emit the
     /// ABI-contract hash constant into the Data TU and hand the base-abi.json
     /// sidecar back through <see cref="EmittedSources.BaseAbiJson"/>. Off (the
@@ -2216,17 +2234,22 @@ internal sealed partial class CppEmitter
             _c.PrepareArrayDelegateMetadata();
             _c.PrepareRuntimeDelegateInterfaceMetadata();
             _c.PrepareRuntimeInterfaces();
-            // Reflection can invoke the bodies of an application class the bodies just
-            // compiled minted.
-            _c.ReachReflectionClassRoutes();
+            // Reflection support for the delegates the bodies just compiled allocate or
+            // bind.
+            _c.ReachReflectionRuntimeSupport();
+            // A selected generic definition can gain instantiations, and a minted class
+            // can carry attribute rows a filter selects.
+            _c.ApplyPendingReflectionSelections();
+            _c.ReachSelectedAttributeRows();
             // A generic virtual override's row needs the row of the method that
-            // introduces its chain; the reflected rows below include those.
+            // introduces its chain.
             _c.InstantiateGvmChainRoots();
-            // Reflection's virtual rows dispatch through the receiver's slot; reach what
-            // those slots hold for the rows the bodies just compiled made invocable.
-            _c.ReachReflectedVirtualSlots();
             // A hot-update patch can callvirt the generic virtual rows those bodies reached.
             _c.ReachPatchCallableGvms();
+            // Reflection can enter the generic virtual rows those bodies reached.
+            _c.ReachLateBoundGvmRows();
+            // A patch binds any non-private method of an instantiation those bodies reached.
+            _c.ReachExportContractInstances();
             // Array.Initialize's run-time lowering names each element constructor through
             // its row; reach the ones the classes just minted declare.
             _c.ReachRuntimeArrayInitializeCtors();
@@ -2364,7 +2387,6 @@ internal sealed partial class CppEmitter
                     if (diagnostics is null)
                     {
                         dispatchGrew = _c.ReachRuntimeDelegateCloneReceivers();
-                        dispatchGrew |= _c.ReachDecodedReflectionFieldBoxes();
                     }
                     dispatchGrew |= _c.ReachRuntimeHandleBoxes();
                     dispatchGrew |= _c.ReachNonGenericArrayElementEquality();
@@ -4517,6 +4539,8 @@ internal sealed partial class CppEmitter
     private const int ReturnPointerDepthMask = 0x3;
     // DN2CPP_MTHA_CONTEXTARG.
     private const int ContextArgRow = 0x2000;
+    // DN2CPP_MTHA_PRESERVABLE.
+    private const int PreservableTemplateRow = 0x8;
 
     /// <summary>The <c>DN2CPP_MTHA_RETURN_*</c> bits and <c>returnPassType</c> of a row
     /// returning <paramref name="t"/>, from <see cref="ReflectionPass"/>, whose pointer
@@ -4760,15 +4784,23 @@ internal sealed partial class CppEmitter
     /// <summary>Emits the Dn2CppAttrInfo[] table (plus its create-function forward decls)
     /// for a reflected element's custom attributes, returning (tableExpr, count) —
     /// or ("nullptr", 0) when there is no reflectable attribute. `key` is a unique C++ name
-    /// fragment. Only attributes whose ctor body is emitted and whose argument shape is
-    /// renderable are included; others are silently dropped (the IL2CPP-stripping bound).</summary>
+    /// fragment. A row whose ctor body is emitted and whose argument shape is renderable
+    /// carries its factory. An attribute whose ctor was not reached keeps its row with a
+    /// null factory, so a metadata read answers from it and an instance read refuses
+    /// instead of answering a set without it (Compilation.ReachAttributesOf notes its type
+    /// for the row). Other rows are dropped (the IL2CPP-stripping bound).</summary>
     private (string Expr, int Count) BuildAttrTable(StringBuilder sb, string key, Module module, CustomAttributeHandleCollection handles)
     {
         var rows = new List<MetadataRow>();
         foreach (var da in _c.DecodeCustomAttributes(module, handles))
-            if (RenderAttrCreate(sb, da) is { } createName)
+        {
+            string? create = RenderAttrCreate(sb, da) is { } createName ? "&" + createName
+                : _c.KeepsUnretainedAttributeRow(da) && TypeInfoSymbolDefined(da.AttrClass.CppTypeInfoName) ? "nullptr"
+                : null;
+            if (create is not null)
                 rows.Add(new MetadataRow(new[] { MetadataValue.Ref(TypeInfoRef(da.AttrClass, "custom-attribute table row")),
-                    MetadataValue.Ref("&" + createName), MetadataValue.Display(RenderAttrDisplay(da)) }));
+                    MetadataValue.Ref(create), MetadataValue.Display(RenderAttrDisplay(da)) }));
+        }
         if (rows.Count == 0)
             return ("nullptr", 0);
         string init = MetadataTableKey(rows);
@@ -5330,6 +5362,48 @@ internal sealed partial class CppEmitter
                 return blockedParam;
         return null;
     }
+
+    /// <summary>The user struct a reflective invoke of <paramref name="m"/> would box,
+    /// returned or written back through a by-ref, when the image allocates no box of it,
+    /// or null. Such a box has no slots or interface map wired, so it would dispatch into
+    /// traps; the row gets the trapping stub instead. A hot-update base keeps every
+    /// invoker: its interpreter calls bodies through them.</summary>
+    internal ClassInfo? InvokerBoxBlocker(MethodInfo m)
+    {
+        if (_hotUpdateBase)
+            return null;
+        var sig = m.Signature;
+        if (!sig.ReturnType.IsVoid && UnallocatedUserStruct(sig.ReturnType) is { } returned)
+            return returned;
+        foreach (var p in sig.ParameterTypes)
+            if (p.Kind == TypeKind.ByRef && UnallocatedUserStruct(p) is { } written)
+                return written;
+        return null;
+    }
+
+    /// <summary><see cref="InvokerBoxBlocker"/> for the GetValue thunk of a field a user
+    /// class declares. The runtime reads framework fields through their thunks itself (a
+    /// Nullable's value), and a hot-update interpreter reads every field through
+    /// them.</summary>
+    internal ClassInfo? FieldBoxBlocker(ClassInfo owner, FieldInfo f)
+        => _hotUpdateBase || !_c.IsUserModule(owner.Module) ? null : UnallocatedUserStruct(f.Type);
+
+    /// <summary>The user struct reflection boxes for a value of type <paramref name="t"/>
+    /// (a by-ref as its referent, a Nullable as its underlying type) when no box of it is
+    /// allocated, or null. Enums box through the runtime's shared enum rows.</summary>
+    internal ClassInfo? UnallocatedUserStruct(TypeDesc t)
+    {
+        if (t.Kind == TypeKind.ByRef)
+            t = t.Element!;
+        return (_c.NullableUnderlying(t) ?? t) is { Kind: TypeKind.Class, Class: { } c }
+            ? UnallocatedUserStruct(c) : null;
+    }
+
+    internal ClassInfo? UnallocatedUserStruct(ClassInfo c)
+        => c.IsValueType && !c.IsEnum && !c.IsByRefLike && _c.IsUserModule(c.Module)
+            && !Compilation.ContainsCanonPlaceholder(c) && !Compilation.ContainsGenericVar(c)
+            && !_c.IsAllocated(c)
+            ? c : null;
 
     /// <summary>Emits (once per distinct C++ ABI shape) the signature-deduplicated
     /// invoker thunk for a reachable method and returns its name. The thunk
@@ -6116,8 +6190,8 @@ internal sealed partial class CppEmitter
     /// Backs Assembly.GetCustomAttributes/IsDefined on any Assembly handle
     /// (Type.Assembly / GetEntryAssembly). The attribute rows follow the same
     /// conditional bound as the member tables: an attribute renders only when its ctor
-    /// was reached (the reflection-attribute route), so a program that never reflects
-    /// attributes gets name-only rows.</summary>
+    /// was reached (a recognized attribute read selects it), so a program that never
+    /// reflects attributes gets name-only rows.</summary>
     private void EmitAssemblyRegistry(StringBuilder sb)
     {
         sb.AppendLine("// ---- assembly registry (Assembly identity + assembly-level custom attributes) ----");

@@ -33,6 +33,8 @@ internal sealed partial class Compilation
         }
         if (_reflectedTemplateBodies.Count > 0 && !_reachingReflectedTemplateBody)
             _reflectedTemplateBodies.Remove(m);
+        if (NotePreserveReach(m) && _scanned.Remove(m))
+            _toScan.Enqueue(m);
         NoteObfuscationMethod(m);
         // A minted body (a value type's structural equality/hash) has no IL: scanning it
         // would ask the PE for a MethodBody at a row that does not exist. Its call edges
@@ -244,6 +246,8 @@ internal sealed partial class Compilation
                     TrimNoteNamedType(p);
             }
             _toScan.Enqueue(m);
+            if (_strippedGvmOverrides.Count > 0)
+                NoteStrippedGvmOverrideReached(m);
             // Canonical shared generics: a grouped specialization's method is a
             // sharing candidate, so its owner counterpart's body must be
             // scanned/compiled too. (Links made after this reach are caught up
@@ -283,10 +287,13 @@ internal sealed partial class Compilation
             return;
         if (!_allocatedRefTypes.Add(c))
             return;
-        if (c.Module != AppModule && IsUserModule(c.Module))
-            _invokeRouteAllocatedOwners.Add(c);
         if (c.IsDelegate)
             _allocatedDelegates.Add(c);
+        // The runtime reads an exception's Message through the get_Message slot with no IL
+        // call (the unhandled-exception report, Exception.ToString, an aggregate's composed
+        // message), so an allocated exception dispatches that slot.
+        if (!_runtimeExceptionMessageReached && InheritsFromException(c))
+            ReachRuntimeExceptionMessage(c);
         // Reaching an inherited wrapper can introduce the protected slot it dispatches.
         foreach (var decl in _usedVirtualDecls.ToList())
             ReachVirtualImpl(c, decl);
@@ -387,6 +394,39 @@ internal sealed partial class Compilation
         // Reference types only — C# disallows a finalizer on a struct.
         if (!c.IsValueType && EffectiveFinalize(c) is { } fin)
             Reach(fin);
+    }
+
+    private bool _runtimeExceptionMessageReached;
+
+    /// <summary>Marks <c>System.Exception::get_Message</c> used once an exception type is
+    /// allocated, so the used-virtual cross product reaches every allocated exception's
+    /// override of the slot the runtime calls. A corelib-less build has no slot to mark.</summary>
+    private void ReachRuntimeExceptionMessage(ClassInfo exception)
+    {
+        for (var b = exception; b is not null; b = b.BaseClass)
+        {
+            if (b.FullName != "System.Exception")
+                continue;
+            _runtimeExceptionMessageReached = true;
+            foreach (var m in b.Methods)
+                if (!m.IsStatic && m.Name == "get_Message")
+                {
+                    ReachExceptionGetMessage(m);
+                    break;
+                }
+            return;
+        }
+    }
+
+    /// <summary>Reaches the initializer a run-time root triggers by running with no IL
+    /// caller (the entry point, a native export, a method a backend calls directly): the
+    /// declaring type's precise-init .cctor, exactly as a call to the root would.</summary>
+    private void ReachRootInitializer(MethodInfo root)
+    {
+        var cls = root.DeclaringClass;
+        if (!cls.IsBeforeFieldInit && cls.IntrinsicCppName is null
+            && (root.IsStatic || root.Name == ".ctor" || EnsureShape(cls).IsValueType))
+            ReachCctor(cls);
     }
 
     /// <summary>Whether <paramref name="c"/>'s base chain reaches System.Exception
@@ -872,13 +912,16 @@ internal sealed partial class Compilation
             && m.Signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { } pc }] && pc == c);
     }
 
-    /// <summary>Reaches a type's static constructor. A reference assembly's
-    /// .cctor is not a root (only the app module's are), so allocation, static-field
-    /// access, and a static call on a non-beforefieldinit type must pull it in. Static
-    /// calls on beforefieldinit types do not: their initializer need only precede a
-    /// static-field access, and reaching it here pulls unwanted BCL initializers. Reached
-    /// non-generic .cctors run at startup; closed generic ones run through first-use
-    /// guards.</summary>
+    /// <summary>Reaches a type's static constructor. No .cctor but a module initializer's
+    /// is a root, so a use of the type pulls it in: an allocation (a backend's included),
+    /// a static-field access (ldsfld, ldsflda, stsfld), on a non-beforefieldinit type a
+    /// static call or method pointer, an instance-constructor call, a value-type instance
+    /// method or a run-time root (<see cref="ReachRootInitializer"/>),
+    /// RuntimeHelpers.RunClassConstructor, and a reflection site that selects a static
+    /// member or constructs the type. Static calls on beforefieldinit types do not: their
+    /// initializer need only precede a static-field access, and reaching it here pulls
+    /// unwanted BCL initializers. Reached non-generic .cctors run at startup; closed
+    /// generic ones run through first-use guards.</summary>
     private void ReachCctor(ClassInfo c, MethodInfo? caller = null)
     {
         EnsureCompleted(c);   // its .cctor is a member
@@ -1007,44 +1050,75 @@ internal sealed partial class Compilation
             ?? throw new NotSupportedException("Type.Missing requires the loaded Missing.Value definition.");
     }
 
-    /// <summary>The loaded declaring class of a static call token, before any intrinsic
-    /// or bounded route cuts its MethodInfo edge. This is the type-initialization asker:
-    /// a non-beforefieldinit cctor is a first-use edge even when emission replaces the
-    /// method body and returns before the ordinary managed-call path.</summary>
-    private ClassInfo? ResolveStaticCallClass(Module module, EntityHandle handle, GenericContext ctx)
+    /// <summary>The loaded declaring class of a call or method-pointer token whose
+    /// invocation is a type-initializer trigger (ECMA-335 II.10.5.3.1), before any
+    /// intrinsic or bounded route cuts its MethodInfo edge: a static method, or with
+    /// <paramref name="instanceCall"/> an instance constructor (a base-constructor call,
+    /// a struct constructor on a local) or any instance method of a value type. Null for
+    /// every other token. A precise-init cctor is a first-use edge even when emission
+    /// replaces the method body and returns before the ordinary managed-call path. Any
+    /// other instance call decodes its parent only for a value-type instantiation.</summary>
+    private ClassInfo? ResolveInitializerTriggerClass(Module module, EntityHandle handle, GenericContext ctx,
+        bool instanceCall)
     {
         var reader = module.Reader;
         if (handle.Kind == HandleKind.MethodSpecification)
-            return ResolveStaticCallClass(module,
-                reader.GetMethodSpecification((MethodSpecificationHandle)handle).Method, ctx);
+            return ResolveInitializerTriggerClass(module,
+                reader.GetMethodSpecification((MethodSpecificationHandle)handle).Method, ctx, instanceCall);
+        ClassInfo? cls;
+        bool isStatic, isCtor;
         if (handle.Kind == HandleKind.MethodDefinition)
         {
             var md = reader.GetMethodDefinition((MethodDefinitionHandle)handle);
-            if ((md.Attributes & MethodAttributes.Static) == 0)
+            isStatic = (md.Attributes & MethodAttributes.Static) != 0;
+            if (!isStatic && !instanceCall)
                 return null;
+            isCtor = !isStatic && reader.StringComparer.Equals(md.Name, ".ctor");
             var decl = md.GetDeclaringType();
-            return module.ClassMap.TryGetValue(decl, out var mapped) ? mapped
+            cls = module.ClassMap.TryGetValue(decl, out var mapped) ? mapped
                 : _currentScan?.DeclaringClass is { } current
                     && current.Module == module && current.Handle == decl ? current
                 : null;
         }
-        if (handle.Kind != HandleKind.MemberReference)
-            return null;
-        var mr = reader.GetMemberReference((MemberReferenceHandle)handle);
-        if (reader.GetBlobReader(mr.Signature).ReadSignatureHeader().IsInstance)
-            return null;
-        return mr.Parent.Kind switch
+        else if (handle.Kind == HandleKind.MemberReference)
         {
-            HandleKind.TypeSpecification => reader.GetTypeSpecification((TypeSpecificationHandle)mr.Parent)
-                .DecodeSignature(SigProvider, ctx).Class,
-            HandleKind.TypeDefinition => module.ClassMap.TryGetValue(
-                (TypeDefinitionHandle)mr.Parent, out var mapped) ? mapped
-                : _currentScan?.DeclaringClass is { } current
-                    && current.Module == module && current.Handle == (TypeDefinitionHandle)mr.Parent
-                        ? current : null,
-            HandleKind.TypeReference => ResolveTypeRef(module, (TypeReferenceHandle)mr.Parent)?.Class,
-            _ => null,
-        };
+            var mr = reader.GetMemberReference((MemberReferenceHandle)handle);
+            isStatic = !reader.GetBlobReader(mr.Signature).ReadSignatureHeader().IsInstance;
+            if (!isStatic && !instanceCall)
+                return null;
+            isCtor = !isStatic && reader.StringComparer.Equals(mr.Name, ".ctor");
+            if (!isStatic && !isCtor && mr.Parent.Kind == HandleKind.TypeSpecification
+                && !IsValueTypeInstantiation(reader, (TypeSpecificationHandle)mr.Parent))
+                return null;
+            cls = mr.Parent.Kind switch
+            {
+                HandleKind.TypeSpecification => reader.GetTypeSpecification((TypeSpecificationHandle)mr.Parent)
+                    .DecodeSignature(SigProvider, ctx).Class,
+                HandleKind.TypeDefinition => module.ClassMap.TryGetValue(
+                    (TypeDefinitionHandle)mr.Parent, out var mapped) ? mapped
+                    : _currentScan?.DeclaringClass is { } current
+                        && current.Module == module && current.Handle == (TypeDefinitionHandle)mr.Parent
+                            ? current : null,
+                HandleKind.TypeReference => ResolveTypeRef(module, (TypeReferenceHandle)mr.Parent)?.Class,
+                _ => null,
+            };
+        }
+        else
+        {
+            return null;
+        }
+        if (cls is null || isStatic || isCtor)
+            return cls;
+        return EnsureShape(cls).IsValueType ? cls : null;
+    }
+
+    /// <summary>Whether a TypeSpec blob is a generic instantiation of a value type, read
+    /// from its first two bytes without decoding the instantiation.</summary>
+    internal static bool IsValueTypeInstantiation(MetadataReader reader, TypeSpecificationHandle handle)
+    {
+        var blob = reader.GetBlobReader(reader.GetTypeSpecification(handle).Signature);
+        return blob.Length >= 2 && blob.ReadByte() == (byte)SignatureTypeCode.GenericTypeInstance
+            && blob.ReadByte() == (byte)SignatureTypeKind.ValueType;
     }
 
     /// <summary>Resolves a type token seen during the reachability scan (the
@@ -1654,7 +1728,7 @@ internal sealed partial class Compilation
                     if (pi.Context.TypeArgs[0] is { Kind: TypeKind.Class, Class: { } selfArg } && selfArg == c
                         && (name == "Equals" ? EffectiveTypedEquals(c) : EffectiveTypedCompareTo(c)) is { } typedSelf)
                     {
-                        Reach(typedSelf);
+                        ReachConstrainedBody(c, typedSelf);
                         return;
                     }
                 }
@@ -1782,6 +1856,9 @@ internal sealed partial class Compilation
     {
         if (body.DeclaringClass.IsInterface)
             ReachAllocatedType(c);
+        // Running a value type's own method triggers its precise-init initializer.
+        else if (body.DeclaringClass == c && c is { IsBeforeFieldInit: false, IntrinsicCppName: null })
+            ReachCctor(c);
         Reach(body);
     }
 
@@ -1796,7 +1873,11 @@ internal sealed partial class Compilation
     private void ReachStaticVirtualImpl(ClassInfo cls, MethodInfo target)
     {
         if (ResolveStaticVirtualImpl(cls, target, out _) is { } impl)
+        {
+            if (impl.DeclaringClass is { IsBeforeFieldInit: false, IntrinsicCppName: null } owner)
+                ReachCctor(owner);
             Reach(impl);
+        }
     }
 
     /// <summary>The <c>IBinaryInteger&lt;TSelf&gt;.ReadBigEndian(ReadOnlySpan&lt;byte&gt;|
@@ -1975,13 +2056,13 @@ internal sealed partial class Compilation
         // Interface GVM receivers whose derived-interface overrides have no most
         // specific body; they must not fall back to the base default.
         public readonly HashSet<ClassInfo> Ambiguous = new();
-        // A framework row only reflection enters, which no type token names: the
-        // dispatcher reaches application bodies and those a preservation rule keeps
-        // only, and a receiver whose override or implementation another assembly
-        // declares without such a rule is Stripped, which reports the body the image
-        // stripped instead of running the base default.
+        // A row only unrecognized reflection enters: the dispatcher reaches the bodies a
+        // preservation rule keeps only, and a receiver whose override or implementation
+        // no such rule keeps is Stripped, which reports the body the image stripped
+        // instead of running the base default.
         public bool Strips;
         public readonly HashSet<ClassInfo> Stripped = new();
+        public readonly Dictionary<ClassInfo, (ClassInfo Owner, MethodDefinitionHandle Method)> StrippedTargets = new();
     }
 
     private readonly Dictionary<string, GvmDispatch> _usedGvms = new();
@@ -2044,6 +2125,7 @@ internal sealed partial class Compilation
     {
         var stripped = disp.Stripped.OrderBy(c => c.CppName, StringComparer.Ordinal).ToList();
         disp.Stripped.Clear();
+        disp.StrippedTargets.Clear();
         foreach (var c in stripped)
             ReachGvmImpl(disp, c);
     }
@@ -2095,9 +2177,9 @@ internal sealed partial class Compilation
                 impl = slot.Gvm;
             if (impl is not null)
             {
-                if (disp.Strips && StripsGvmBody(impl.DeclaringClass, impl.Handle))
+                if (disp.Strips && StripsGvmBody(impl.DeclaringClass, impl.Handle) && !Reachable.Contains(impl))
                 {
-                    disp.Stripped.Add(c);
+                    StripGvmCase(disp, c, impl.DeclaringClass, impl.Handle);
                     return;
                 }
                 Reach(impl);
@@ -2122,9 +2204,9 @@ internal sealed partial class Compilation
         }
         if (ClassGvmOverrideTemplate(disp, c, out var level) is { } tmpl)
         {
-            if (disp.Strips && StripsGvmBody(level, tmpl))
+            if (disp.Strips && StripsGvmBody(level, tmpl) && !GvmOverrideReached(level, tmpl, disp.MethodArgs))
             {
-                disp.Stripped.Add(c);
+                StripGvmCase(disp, c, level, tmpl);
                 return;
             }
             var over = InstantiateMethodOnClass(level, level.Module, tmpl, disp.MethodArgs);
@@ -2136,10 +2218,73 @@ internal sealed partial class Compilation
     }
 
     /// <summary>Whether a stripping dispatcher leaves out the body that method definition
-    /// <paramref name="handle"/> of <paramref name="level"/> declares: one outside the
-    /// application that no preservation rule keeps.</summary>
+    /// <paramref name="handle"/> of <paramref name="level"/> declares: one no preservation
+    /// rule keeps, in any assembly, since only unrecognized reflection enters such a
+    /// dispatcher.</summary>
     private bool StripsGvmBody(ClassInfo level, MethodDefinitionHandle handle) =>
-        level.Module != AppModule && !PreservesMethod(level, handle);
+        !PreservesMethod(level, handle);
+
+    /// <summary>Whether <paramref name="level"/>'s instantiation of override
+    /// <paramref name="handle"/> at <paramref name="methodArgs"/> is reachable: a compiled
+    /// override is a case, never a stripped body. Mints no instantiation.</summary>
+    private bool GvmOverrideReached(ClassInfo level, MethodDefinitionHandle handle, TypeDesc[] methodArgs) =>
+        _methodInstances.TryGetValue((level.Module.Index, SRME.GetToken(handle)), out var byClass)
+        && byClass.TryGetValue((level.CppName, methodArgs), out var over) && Reachable.Contains(over);
+
+    /// <summary>Stripping dispatchers by the definition (module, token) of an override they
+    /// left out, so reaching that override later decides their receivers again.</summary>
+    private readonly Dictionary<(int Module, int Token), List<GvmDispatch>> _strippedGvmOverrides = new();
+    private readonly List<GvmDispatch> _reachedStrippedGvms = new();
+
+    private void StripGvmCase(GvmDispatch disp, ClassInfo c, ClassInfo owner, MethodDefinitionHandle handle)
+    {
+        disp.Stripped.Add(c);
+        disp.StrippedTargets[c] = (owner, handle);
+        var key = (owner.Module.Index, SRME.GetToken(handle));
+        if (!_strippedGvmOverrides.TryGetValue(key, out var dispatchers))
+            _strippedGvmOverrides[key] = dispatchers = new List<GvmDispatch>();
+        if (!dispatchers.Contains(disp))
+            dispatchers.Add(disp);
+    }
+
+    // A raw stripped definition need not have a closed MethodInfo. Unknown cannot
+    // justify claiming that preserving a runtime-template member cannot admit it.
+    internal const int GvmPreservabilityUnknown = 2;
+
+    internal int GvmTargetPreservability(GvmDispatch disp, ClassInfo owner, MethodDefinitionHandle handle)
+    {
+        if (_methodInstances.TryGetValue((owner.Module.Index, SRME.GetToken(handle)), out var byClass)
+            && byClass.TryGetValue((owner.CppName, disp.MethodArgs), out var method))
+            return IsPreservableTemplateRow(method) ? 1 : 0;
+        return GvmPreservabilityUnknown;
+    }
+
+    /// <summary>Queues the stripping dispatchers that left out an override at
+    /// <paramref name="m"/>'s definition, now that <paramref name="m"/> is reachable.</summary>
+    private void NoteStrippedGvmOverrideReached(MethodInfo m)
+    {
+        if (m.Context.MethodArgs.Length == 0 || m.Module is null
+            || !_strippedGvmOverrides.TryGetValue((m.Module.Index, SRME.GetToken(m.Handle)), out var dispatchers))
+            return;
+        foreach (var disp in dispatchers)
+            if (disp.Strips && disp.Stripped.Count > 0 && !_reachedStrippedGvms.Contains(disp))
+                _reachedStrippedGvms.Add(disp);
+    }
+
+    /// <summary>Decides again the receivers of each dispatcher
+    /// <see cref="NoteStrippedGvmOverrideReached"/> queued. Returns whether any was
+    /// queued.</summary>
+    private bool ReachReachedStrippedGvmCases()
+    {
+        if (_reachedStrippedGvms.Count == 0)
+            return false;
+        var queued = _reachedStrippedGvms.OrderBy(d => d.Gvm.CppName, StringComparer.Ordinal).ToList();
+        _reachedStrippedGvms.Clear();
+        foreach (var disp in queued)
+            if (disp.Strips)
+                ReachStrippedGvmCases(disp);
+        return true;
+    }
 
     /// <summary>The body interface GVM <paramref name="disp"/> binds for
     /// <paramref name="c"/> ahead of the declaration's own default: the class body,
@@ -2210,9 +2355,9 @@ internal sealed partial class Compilation
             };
             if (ClassGvmOverrideTemplate(slot, c, out var level) is { } tmpl)
             {
-                if (disp.Strips && StripsGvmBody(level, tmpl))
+                if (disp.Strips && StripsGvmBody(level, tmpl) && !GvmOverrideReached(level, tmpl, disp.MethodArgs))
                 {
-                    disp.Stripped.Add(c);
+                    StripGvmCase(disp, c, level, tmpl);
                     return;
                 }
                 var over = InstantiateMethodOnClass(level, level.Module, tmpl, disp.MethodArgs);
@@ -2846,32 +2991,6 @@ internal sealed partial class Compilation
             && MethodSpecMethodName(module, ms) == "CreateInstance";
     }
 
-    /// <summary>Whether a MethodSpec calls the generic MethodInfo.CreateDelegate, over a
-    /// MemberRef or, inside CoreLib, the MethodDef. The name is compared in place, so the
-    /// parent is read only for that name.</summary>
-    private bool IsCreateDelegateSpec(Module module, MethodSpecificationHandle msh)
-    {
-        var reader = module.Reader;
-        var ms = reader.GetMethodSpecification(msh);
-        var name = ms.Method.Kind switch
-        {
-            HandleKind.MemberReference => reader.GetMemberReference((MemberReferenceHandle)ms.Method).Name,
-            HandleKind.MethodDefinition => reader.GetMethodDefinition((MethodDefinitionHandle)ms.Method).Name,
-            _ => default,
-        };
-        return !name.IsNil && reader.StringComparer.Equals(name, "CreateDelegate")
-            && MethodSpecParentTypeName(module, ms) == "System.Reflection.MethodInfo";
-    }
-
-    /// <summary>Whether a MethodDefinition is Delegate's or MethodInfo's CreateDelegate. The
-    /// name is compared in place, so the parent is read only for that name.</summary>
-    private bool IsCreateDelegateDef(Module module, MethodDefinitionHandle handle)
-    {
-        var reader = module.Reader;
-        return reader.StringComparer.Equals(reader.GetMethodDefinition(handle).Name, "CreateDelegate")
-            && MethodDefParentTypeName(module, handle) is "System.Delegate" or "System.Reflection.MethodInfo";
-    }
-
     /// <summary>Whether a MemberReference's parent is System.Array, whose only Initialize
     /// is the parameterless one. The parent is compared in place.</summary>
     private static bool IsArrayInitializeRef(Module module, MemberReferenceHandle handle)
@@ -2885,58 +3004,11 @@ internal sealed partial class Compilation
             && reader.StringComparer.Equals(tr.Namespace, "System");
     }
 
-    /// <summary>The reflection-usage marks a MemberReference token names (clause (b) of
-    /// <see cref="CoreIntrinsics.ScanNeedsParentTypeName"/>). Each opens a reachability route
-    /// instead of cutting an edge, and a delegate bound to the trigger runs it as a call
-    /// would, so a call and a method group over the member mark alike.</summary>
-    private void NoteReflectionUsage(Module module, MemberReferenceHandle handle, string? parent, string name)
-    {
-        if (parent is null || !ReflectionApis.IsCandidateName(name))
-            return;
-        var reference = module.Reader.GetMemberReference(handle);
-        if (reference.GetKind() != MemberReferenceKind.Method)
-            return;
-        var signature = reference.DecodeMethodSignature(RawSignatureProvider.Instance, null);
-        if (ReflectionApis.Classify(parent, name, signature.ParameterTypes.AsSpan(), signature.Header.IsInstance,
-                signature.GenericParameterCount) is not { } api)
-            return;
-        // Reflected method, property and event calls run app-module methods;
-        // ILDiet keeps them on the same op set. A reflected Object or ValueType row
-        // answers Equals and GetHashCode through the same helpers, so the invoke and
-        // CreateDelegate marks are object-equality dispatches too.
-        if (ReflectionRoutes.RunsReflectedMethod(api.Op))
-        {
-            _reflectionInvokeUsed = true;
-            if (api.Op == ReflectionOp.MethodInvoke)
-                NoteObjectEqualityDispatch();
-        }
-        // FieldInfo.GetValue boxes a value-type field's value in the runtime.
-        else if (ReflectionRoutes.ReadsReflectedField(api.Op))
-            _reflectionFieldReadUsed = true;
-        // CreateDelegate binds a reflected method, whose body runs the same way.
-        else if (ReflectionRoutes.BindsReflectedMethod(api.Op))
-            NoteReflectionDelegateBind(module);
-        // DynamicInvoke runs the delegate type's Invoke row, whose invoker boxes.
-        else if (api.Op == ReflectionOp.DynamicInvoke)
-            _delegateDynamicInvokeUsed = true;
-        // ConstructorInfo.Invoke / Activator.CreateInstance construct a runtime-chosen
-        // type; ILDiet keeps the same app surface on this op set.
-        else if (ReflectionRoutes.ConstructsFromRuntimeType(api.Op))
-            _reflectionCtorUsed = true;
-        // Type.MakeGenericType arms the runtime-instantiation template pass, paired with
-        // the scan's typeof(D<>) record.
-        else if (api.Op == ReflectionOp.MakeGenericType)
-            _makeGenericTypeUsed = true;
-        // GetCustomAttributes / IsDefined and the CustomAttributeData views render the
-        // attribute factories: reach attribute ctors and named setters.
-        else if (ReflectionRoutes.ReadsReflectedAttributes(api.Kind))
-            _reflectionAttrUsed = true;
-    }
-
-    /// <summary>The CreateDelegate mark. Any binding runs its row through the receiver's
-    /// slot, so every one arms <see cref="ReachReflectedVirtualSlots"/>, as its lowering
-    /// does once the body compiles. Only a user body's reaches every app body: a
-    /// framework library binding its own members must not.</summary>
+    /// <summary>The CreateDelegate capability. Any binding can run a runtime binder's
+    /// delegate Clone, which arms <see cref="ReachRuntimeDelegateCloneReceivers"/> before
+    /// the lowering sets <see cref="NeedsReflectionDelegateBind"/>. A user body's binding
+    /// also turns on the invoke emission switch; a framework library binding its own
+    /// members does not.</summary>
     private void NoteReflectionDelegateBind(Module module)
     {
         _reflectionDelegateBindScanned = true;
@@ -5328,8 +5400,8 @@ internal sealed partial class Compilation
     /// (its element reflects an empty set where real .NET reports the row — the same
     /// managed-stripping divergence as before, asserted by the reflect-types gate's
     /// framework-attribute section). <paramref name="reachedCtorsOnly"/> also skips an
-    /// attribute whose ctor is not reached before its blob decodes, so decoding mints no
-    /// instantiation for a row that never renders.</summary>
+    /// attribute, of any module, whose ctor is not reached before its blob decodes, so
+    /// decoding mints no instantiation or type-info for a row that never renders.</summary>
     internal List<DecodedAttribute> DecodeCustomAttributes(Module module, CustomAttributeHandleCollection handles,
         bool reachedCtorsOnly = false)
     {
@@ -6201,6 +6273,21 @@ internal sealed partial class Compilation
         Console.Error.WriteLine(tally.ToString());
     }
 
+    // The body ILDiet gives a method it keeps for its signature only:
+    // ldc.i4 0x494C4454; pop; ldnull; throw.
+    private static readonly byte[] ILDietStubBody = { 0x20, 0x54, 0x44, 0x4C, 0x49, 0x26, 0x14, 0x7A };
+
+    private static bool IsILDietStub(MethodBodyBlock body)
+    {
+        var il = body.GetILReader();
+        if (il.Length != ILDietStubBody.Length)
+            return false;
+        for (int i = 0; i < ILDietStubBody.Length; i++)
+            if (il.ReadByte() != ILDietStubBody[i])
+                return false;
+        return true;
+    }
+
     /// <summary>Decodes the tokens of a reachable method body: materializes
     /// generic instantiations referenced only in IL and follows call/newobj/
     /// ldftn edges so the reachable set grows transitively.</summary>
@@ -6227,6 +6314,10 @@ internal sealed partial class Compilation
         // keeps the token live across the intermediate GetTypeFromHandle /
         // get_TypeHandle calls, so this window persists until the next ldtoken).
         TypeDesc? lastLdtokenType = null;
+        if (IsILDietStub(body))
+            throw new InvalidOperationException(
+                $"{m.DeclaringClass.FullName}::{m.Name} is admitted, but ILDiet kept only its signature: "
+                + "ILDiet's retained set must contain every body reachability admits");
         try
         {
             var insns = ILDecoder.Decode(body.GetILBytes()!.ToImmutableArrayCompat());
@@ -6243,8 +6334,6 @@ internal sealed partial class Compilation
                 tok => ClassifyTypeIdentityCall(module, tok),
                 (tokA, tokB) => TypeEqualityVerdict(module, tokA, tokB, m.Context));
             NoteStaticTypeofMetadata(m, insns, body, liveness);
-            if (IsUserModule(module))
-                NoteTypeofNamedMembers(m, insns, liveness);
             foreach (var insn in insns)
             {
                 if (liveness is not null && !liveness.LiveAt(insn.Offset))
@@ -6281,16 +6370,6 @@ internal sealed partial class Compilation
                                 && lastLdtokenType is { Kind: TypeKind.Class, Class: { } ltc }
                                 && IsFrameworkAssemblyName(ltc.Module.AssemblyName))
                                 _userTypeofNamedFrameworkTypes.Add(ltc.FullName);
-                            // Reflection-invoke keep-set record: a typeof over a
-                            // user-LIBRARY class is the evidence that the program can
-                            // reflect over its members — consumed by the
-                            // typeof-named-library loop beside the app-module invoke
-                            // route (the app module needs no record: that route reaches
-                            // its every body).
-                            if (lastLdtokenType is { Kind: TypeKind.Class, Class: { } lnc }
-                                && lnc.Module != AppModule && IsUserModule(lnc.Module)
-                                && _typeofNamedLibraryClassesSeen.Add(lnc))
-                                _typeofNamedLibraryClasses.Add(lnc);
                             // --trim-godot-classes release trigger: typeof(Sprite2D)
                             // names the wrapper (and a generic token's arguments).
                             if (trimUserSite)
@@ -6332,17 +6411,17 @@ internal sealed partial class Compilation
                                 prepare: true) is { } objectFunction
                             && insn.OpCode == ILOpCode.Ldvirtftn && objectFunction.Name is "Equals" or "GetHashCode")
                             NoteObjectEqualityDispatch();
-                        if (insn.OpCode is ILOpCode.Call or ILOpCode.Callvirt
-                            && ResolveStaticCallClass(module, handle, m.Context) is
+                        // A method pointer to a static method runs the initializer before
+                        // the method does, wherever the pointer is invoked.
+                        if (insn.OpCode != ILOpCode.Ldvirtftn
+                            && ResolveInitializerTriggerClass(module, handle, m.Context,
+                                instanceCall: insn.OpCode != ILOpCode.Ldftn) is
                                 { IsBeforeFieldInit: false, IntrinsicCppName: null } callCls)
                             ReachCctor(callCls, m);
 
-                        // MethodInfo/MethodBase.Invoke usage enables the reflection-invoke
-                        // reachability route: reach all app-module method bodies so
-                        // a reflected method is invokable even if never called directly.
                         // The member NAME gates the parent-name read
                         // (CoreIntrinsics.ScanNeedsParentTypeName, whose set is the scan
-                        // rows' names UNION the reflection-usage names — read the
+                        // rows' names UNION the RunClassConstructor mouth — read the
                         // invariant at its definition before touching it): only that
                         // handful of member names ever consults the parent (the
                         // IsDynamicCodegenMember namespace-prefilter precedent), so
@@ -6363,15 +6442,6 @@ internal sealed partial class Compilation
                             mrName = module.Reader.GetString(module.Reader.GetMemberReference((MemberReferenceHandle)handle).Name);
                             if (CoreIntrinsics.ScanNeedsParentTypeName(mrName))
                                 mrParent = MemberRefParentTypeName(module, (MemberReferenceHandle)handle);
-                            NoteReflectionUsage(module, (MemberReferenceHandle)handle, mrParent, mrName);
-                            if (!_reflectionNamedDelegateBindUsed && IsUserModule(module)
-                                && mrName == "CreateDelegate" && mrParent == "System.Delegate")
-                            {
-                                var named = module.Reader.GetMemberReference((MemberReferenceHandle)handle)
-                                    .DecodeMethodSignature(RawSignatureProvider.Instance, null);
-                                if (named.ParameterTypes.Length >= 3 && named.ParameterTypes[2] == "System.String")
-                                    _reflectionNamedDelegateBindUsed = true;
-                            }
                         }
                         if (insn.OpCode is ILOpCode.Call or ILOpCode.Callvirt && mrName is not null)
                         {
@@ -6411,9 +6481,8 @@ internal sealed partial class Compilation
                             // EnumArray's RunClassConstructor case) carries a real body —
                             // an unreached cctor gets a nullptr body, and the call would
                             // silently initialize nothing where real .NET runs the
-                            // initializer. An app-module type is already rooted; a
-                            // re-Reach is an idempotent no-op. EffectThenSkipResolve,
-                            // like the MethodDef arm. "RunClassConstructor" is clause (c)
+                            // initializer. EffectThenSkipResolve, like the MethodDef arm.
+                            // "RunClassConstructor" is clause (b)
                             // of CoreIntrinsics.ScanNeedsParentTypeName — drop it there
                             // and mrParent is never read, so this arm never fires.
                             if (mrName == "RunClassConstructor"
@@ -6426,12 +6495,6 @@ internal sealed partial class Compilation
                                 continue;
                             }
                         }
-                        // The same CreateDelegate mark, generic mouth: MethodInfo.CreateDelegate<T>
-                        // is a MethodSpec over an intrinsic parent, which resolves to no target.
-                        // A method group over it marks like a call, as NoteReflectionUsage does.
-                        else if (handle.Kind == HandleKind.MethodSpecification
-                            && IsCreateDelegateSpec(module, (MethodSpecificationHandle)handle))
-                            NoteReflectionDelegateBind(module);
                         // A delegate over Object::Equals/GetHashCode binds the helper a call
                         // lowers to (MethodCompiler's ldvirtftn arm): the same dispatch.
                         else if (!_objectEqualityDispatched && insn.OpCode == ILOpCode.Ldvirtftn
@@ -6465,14 +6528,6 @@ internal sealed partial class Compilation
                                 }
                             }
                         }
-                        // The same CreateDelegate mark, in-CoreLib mouth: the loaded CoreLib names
-                        // Delegate's and MethodInfo's members with a MethodDef token. A framework
-                        // body sets only the scan flag, so read until that one is set, and by
-                        // name in place before the parent.
-                        if (!_reflectionDelegateBindScanned
-                            && handle.Kind == HandleKind.MethodDefinition
-                            && IsCreateDelegateDef(module, (MethodDefinitionHandle)handle))
-                            NoteReflectionDelegateBind(module);
                         // CultureInfo.CompareInfo -> a synthesized zero-initialized
                         // CompareInfo (see the MethodCompiler intrinsic in
                         // EmitIntrinsic.Numbers): mark the transpiled CompareInfo
@@ -6508,34 +6563,6 @@ internal sealed partial class Compilation
                             continue;
                         }
                         var t = ResolveCallTarget(module, handle, m.Context);
-                        // Reflection-ctor surface, generic-METHOD half (see
-                        // ReachUserSurfaceNamedSpecializationCtors): record the type
-                        // arguments of a MethodSpec an app-module body instantiates.
-                        // The resolved target's Context already carries the closed
-                        // TypeDescs — reading it decodes nothing — and recording is
-                        // unconditional so the surface cannot depend on when (or
-                        // whether-yet) _reflectionCtorUsed was set. Deliberately the
-                        // APP module only, not every user module: a -r library's
-                        // MethodSpec args are overwhelmingly its own plumbing, not
-                        // deserialization seeds — GodotSharp's marshalling
-                        // instantiations alone opened enough of its surface to
-                        // allocate List<Godot.Variant> and fail the transpile on its
-                        // IndexOf. A Deserialize<T> call INSIDE a library is the
-                        // documented residue of that bound.
-                        if (module == AppModule && t is not null && t.Context.MethodArgs.Length > 0)
-                            _appMethodSpecTypeArgs.AddRange(t.Context.MethodArgs);
-                        // Reflection-usage mark, MethodSpec mouth: the generic
-                        // CustomAttributeExtensions.GetCustomAttribute<T>/
-                        // GetCustomAttributes<T> forms arrive as MethodSpec tokens,
-                        // which the MemberReference mark above never sees. Without
-                        // this, a program whose only attribute read is the generic
-                        // extension emits no attribute tables at all and silently
-                        // answers "no attributes" (MarkThenResolve; the name gates
-                        // the FullName read). A method group marks like a call.
-                        if (handle.Kind == HandleKind.MethodSpecification
-                            && t is { Name: "GetCustomAttributes" or "GetCustomAttribute" }
-                            && t.DeclaringClass.FullName == "System.Reflection.CustomAttributeExtensions")
-                            _reflectionAttrUsed = true;
                         // A bodyless P/Invoke with a registered managed native
                         // implementation: the call site lowers to a direct call to the
                         // implementation (MethodCompiler.EmitNativeImplCall), so reach
@@ -7096,6 +7123,10 @@ internal sealed partial class Compilation
                         break;
                 }
             }
+            // After the edges, so the instantiations this body names exist when its
+            // reflection sites probe for them.
+            if (module.ReflectionSummaries.TryGetValue(m.Handle, out var reflectionSummary))
+                ApplyReflectionSummary(m, reflectionSummary, liveness);
         }
         // Filtered, like every other broad catch (see Compilation.IsMustEscape): this arm
         // does not swallow, but it RE-WRAPS — and a re-wrap is a downgrade. An
