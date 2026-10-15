@@ -673,7 +673,7 @@ static const int64_t DN2CPP_UNIX_EPOCH_MILLIS  = DN2CPP_UNIX_EPOCH_TICKS / DN2CP
 
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_make(int64_t clockTicks, int32_t offsetMinutes)
 { return Dn2CppDateTimeOffset{ clockTicks, offsetMinutes }; }
-static int32_t dn2cpp_dto_validate_offset(Dn2CppTimeSpan offset)
+int32_t dn2cpp_datetimeoffset_validate_offset(Dn2CppTimeSpan offset)
 {
     int64_t minutes = offset.ticks / DN2CPP_TPM;
     if (offset.ticks != minutes * DN2CPP_TPM)
@@ -682,23 +682,32 @@ static int32_t dn2cpp_dto_validate_offset(Dn2CppTimeSpan offset)
         dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_OFFSET_OUT_OF_RANGE, "offset");
     return static_cast<int32_t>(minutes);
 }
+static int64_t dn2cpp_dto_validate_utc_ticks(int64_t clockTicks, int64_t offsetTicks)
+{
+    uint64_t utcTicks = static_cast<uint64_t>(clockTicks) - static_cast<uint64_t>(offsetTicks);
+    if (utcTicks > static_cast<uint64_t>(DN2CPP_DT_MAX_TICKS))
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_UTC_OUT_OF_RANGE, "offset");
+    return static_cast<int64_t>(utcTicks);
+}
+Dn2CppDateTime dn2cpp_datetimeoffset_validate_date(Dn2CppDateTime clock, Dn2CppTimeSpan offset)
+{
+    return dn2cpp_datetime_pack(dn2cpp_dto_validate_utc_ticks(clock.ticks(), offset.ticks), 0);
+}
 static Dn2CppDateTimeOffset dn2cpp_dto_validate_date(int64_t clockTicks, int32_t offsetMinutes)
 {
-    int64_t utcTicks = clockTicks - static_cast<int64_t>(offsetMinutes) * DN2CPP_TPM;
-    if (static_cast<uint64_t>(utcTicks) > static_cast<uint64_t>(DN2CPP_DT_MAX_TICKS))
-        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_UTC_OUT_OF_RANGE, "offset");
+    dn2cpp_dto_validate_utc_ticks(clockTicks, static_cast<int64_t>(offsetMinutes) * DN2CPP_TPM);
     return Dn2CppDateTimeOffset{ clockTicks, offsetMinutes };
 }
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_from_ticks(int64_t clockTicks, Dn2CppTimeSpan offset)
 {
-    int32_t minutes = dn2cpp_dto_validate_offset(offset);
+    int32_t minutes = dn2cpp_datetimeoffset_validate_offset(offset);
     Dn2CppDateTime clock = dn2cpp_datetime_from_ticks(clockTicks, 0);
     return dn2cpp_dto_validate_date(clock.ticks(), minutes);
 }
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_from_parts(int32_t y, int32_t mo, int32_t d,
     int32_t h, int32_t mi, int32_t s, int32_t ms, int32_t hasMs, Dn2CppTimeSpan offset)
 {
-    int32_t minutes = dn2cpp_dto_validate_offset(offset);
+    int32_t minutes = dn2cpp_datetimeoffset_validate_offset(offset);
     Dn2CppDateTime clock = dn2cpp_datetime_ymdhms(y, mo, d, h, mi, s, 0);
     Dn2CppDateTimeOffset result = dn2cpp_dto_validate_date(clock.ticks(), minutes);
     if (hasMs != 0)
@@ -730,7 +739,7 @@ Dn2CppDateTimeOffset dn2cpp_datetimeoffset_from_dt_offset(Dn2CppDateTime dt, Dn2
     if (dt.kind() == 2
         && offset.ticks != static_cast<int64_t>(dn2cpp_local_offset_minutes(dt)) * DN2CPP_TPM)
         dn2cpp_throw_argument_param(DN2CPP_SR_OFFSET_LOCAL_MISMATCH, "offset");
-    int32_t minutes = dn2cpp_dto_validate_offset(offset);
+    int32_t minutes = dn2cpp_datetimeoffset_validate_offset(offset);
     return dn2cpp_dto_validate_date(dt.ticks(), minutes);
 }
 // ToOffset(TimeSpan): same instant, a new offset. The new clock is the UTC instant shifted
@@ -739,7 +748,7 @@ Dn2CppDateTimeOffset dn2cpp_datetimeoffset_to_offset(Dn2CppDateTimeOffset d, Dn2
 {
     int64_t utc = d.ticks - (int64_t)d.offsetMinutes * DN2CPP_TPM;
     Dn2CppDateTime clock = dn2cpp_datetime_add_ticks(dn2cpp_datetime_pack(utc, 0), offset.ticks, "t");
-    int32_t newOff = dn2cpp_dto_validate_offset(offset);
+    int32_t newOff = dn2cpp_datetimeoffset_validate_offset(offset);
     return dn2cpp_dto_validate_date(clock.ticks(), newOff);
 }
 Dn2CppDateTime dn2cpp_datetimeoffset_clock(Dn2CppDateTimeOffset d) { return dn2cpp_datetime_pack(d.ticks, 0); }
