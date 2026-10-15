@@ -25,6 +25,9 @@ namespace StringInterp
             if (args.Length > 0 && args[0] == "before-concat-sequences")
                 return;
             ConcatSequenceSubset.Program.__GateEntry();
+            if (args.Length > 0 && args[0] == "before-comma-scaling")
+                return;
+            CustomFormatSubset.Program.__CommaScalingGate();
         }
     }
 }

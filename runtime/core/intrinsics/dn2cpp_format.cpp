@@ -217,20 +217,95 @@ int32_t dn2cpp_integral_format_uses_provider(Dn2CppString* fmt, int32_t negative
     return upper != 'X' && upper != 'B';
 }
 
+// A non-negative magnitude as custom numeric formats see it: the significant
+// decimal digits d[0..n) of 0.d1d2...dn x 10^scale, no trailing zeros; n == 0
+// is zero. Custom formats round these digits, never the binary value, so a
+// decimal midpoint always rounds away from zero as in .NET.
+struct Dn2CppCustomDigits
+{
+    char d[32];
+    int n;
+    int scale;
+};
+
+static void dn2cpp_custom_digits_trim(Dn2CppCustomDigits& x)
+{
+    while (x.n > 0 && x.d[x.n - 1] == '0') x.n--;
+    if (x.n == 0) x.scale = 0;
+}
+
+static Dn2CppCustomDigits dn2cpp_custom_digits_u64(unsigned long long mag)
+{
+    Dn2CppCustomDigits x;
+    x.n = 0;
+    x.scale = 0;
+    if (mag != 0)
+    {
+        x.n = std::snprintf(x.d, sizeof(x.d), "%llu", mag);
+        x.scale = x.n;
+    }
+    dn2cpp_custom_digits_trim(x);
+    return x;
+}
+
+// `precision` significant digits of a finite magnitude: .NET generates 15 for
+// double and 7 for float before a custom format rounds them again.
+static Dn2CppCustomDigits dn2cpp_custom_digits_real(double mag, int precision)
+{
+    Dn2CppCustomDigits x;
+    x.n = 0;
+    x.scale = 0;
+    if (mag != 0.0)
+    {
+        char eb[40];
+        int len = std::snprintf(eb, sizeof(eb), "%.*e", precision - 1, mag);
+        int i = 0;
+        for (; i < len && eb[i] != 'e'; i++)
+            if (eb[i] != '.') x.d[x.n++] = eb[i];
+        x.scale = std::atoi(eb + i + 1) + 1;
+    }
+    dn2cpp_custom_digits_trim(x);
+    return x;
+}
+
+// Keep the first `pos` digits, rounding half away from zero on the digit string.
+static void dn2cpp_custom_digits_round(Dn2CppCustomDigits& x, int pos)
+{
+    if (pos < 0)
+        x.n = 0;
+    else if (pos < x.n)
+    {
+        bool up = x.d[pos] >= '5';
+        x.n = pos;
+        if (up)
+        {
+            int i = x.n - 1;
+            while (i >= 0 && x.d[i] == '9') i--;
+            if (i < 0) { x.d[0] = '1'; x.n = 1; x.scale++; }
+            else { x.d[i]++; x.n = i + 1; }
+        }
+    }
+    dn2cpp_custom_digits_trim(x);
+}
+
 // Render `mag` (a non-negative magnitude) under one custom-numeric-format section
-// `p[0..L)`. Handles digit placeholders `0`/`#`, `.`, `,` grouping,
+// `p[0..L)`. Handles digit placeholders `0`/`#`, `.`, `,` grouping/scaling,
 // `%`(×100)/`‰`(×1000) scaling with the symbol emitted in place, `\` escapes,
 // `'…'`/`"…"` quoted literals and bare literal characters emitted in position, and
-// custom exponential (`E`/`e` `[+/-]` `0+`). A leading `-` is added when `emitSign`
-// (a single-section negative). One integer placeholder is the common exponential
-// form (`0.00E+00`); engineering grouping for >1 integer placeholders is not modeled.
-static Dn2CppString* dn2cpp_format_section(const char16_t* p, int L, double mag, bool emitSign,
-                                          const Dn2CppNumberFormatInfo* nfi)
+// custom exponential (`E`/`e` `[+/-]` `0+`). `emitSign` (a single-section
+// negative) prefixes `-` when the rounded digits have a nonzero scale or the
+// section printed something; integers and decimal drop it once rounding leaves
+// zero, having no negative zero. One integer placeholder is the common
+// exponential form (`0.00E+00`); engineering grouping for >1 integer
+// placeholders is not modeled.
+static Dn2CppString* dn2cpp_format_section(const char16_t* p, int L, Dn2CppCustomDigits mag, bool emitSign,
+                                          bool floating, const Dn2CppNumberFormatInfo* nfi)
 {
     // ---- pass 1: analyze placeholders, scale, and any exponential spec ----
     int intPlace = 0, intZeros = 0, fracMax = 0, fracMin = 0;
+    int commaPlace = -1, commaCount = 0;
     bool group = false, seenDot = false, inFrac = false;
-    double scale = 1.0;
+    int scaleExp = 0;
     // expForceSign / expDigits are re-parsed from the format by pass 2's exponent
     // emitter, so these copies are only pass-1 bookkeeping.
     bool expMode = false, expUpper = false;
@@ -250,9 +325,18 @@ static Dn2CppString* dn2cpp_format_section(const char16_t* p, int L, double mag,
                 else { intPlace++; if (c == u'0') intZeros++; }
             }
             else if (c == u'.') { if (!seenDot) { seenDot = true; inFrac = true; } }
-            else if (c == u',') { if (!inFrac) group = true; }
-            else if (c == u'%') { scale *= 100.0; }
-            else if (c == u'‰') { scale *= 1000.0; }
+            else if (c == u',' && !inFrac && intPlace > 0)
+            {
+                if (commaPlace == intPlace) commaCount++;
+                else
+                {
+                    if (commaPlace >= 0) group = true;
+                    commaPlace = intPlace;
+                    commaCount = 1;
+                }
+            }
+            else if (c == u'%') { scaleExp += 2; }
+            else if (c == u'‰') { scaleExp += 3; }
             else if (c == u'E' || c == u'e')
             {
                 int j = i + 1; bool fs = false;
@@ -262,11 +346,17 @@ static Dn2CppString* dn2cpp_format_section(const char16_t* p, int L, double mag,
             }
         }
     }
-    mag *= scale;
+    // Commas after the final integer placeholder scale; earlier ones group.
+    if (commaPlace == intPlace)
+        scaleExp -= 3 * commaCount;
+    else if (commaPlace >= 0)
+        group = true;
+    if (mag.n > 0)
+        mag.scale += scaleExp;
+    auto digitAt = [&mag](int i) { return i >= 0 && i < mag.n ? mag.d[i] : '0'; };
 
     // ---- compute the integer/fraction digit streams ----
-    char idig[64]; int iLen = 0;
-    char fdig[64]; int fLen = 0;
+    std::string idig, fdig;
     int expVal = 0;
     if (expMode)
     {
@@ -275,44 +365,22 @@ static Dn2CppString* dn2cpp_format_section(const char16_t* p, int L, double mag,
         // shifted so it is a multiple of that count. .NET: `##0.0E+0` of 1234.5 is
         // "123.5E+1" (3 integer digits), `0.0E+0` is "1.2E+3".
         int wantInt = intPlace < 1 ? 1 : intPlace;
-        if (mag == 0.0)
-        {
-            for (int i = 0; i < wantInt; i++) idig[iLen++] = '0';
-            for (int i = 0; i < fracMax; i++) fdig[fLen++] = '0';
-            expVal = 0;
-        }
-        else
-        {
-            int Ep = static_cast<int>(std::floor(std::log10(mag))) - (wantInt - 1);
-            char eb[80]; int len = 0, dot = 0;
-            for (int guard = 0; guard < 4; guard++)
-            {
-                double mant = mag / std::pow(10.0, Ep);
-                len = std::snprintf(eb, sizeof(eb), "%.*f", fracMax, mant);
-                dot = len;
-                for (int i = 0; i < len; i++) if (eb[i] == '.') { dot = i; break; }
-                int idg = (dot == 1 && eb[0] == '0') ? 0 : dot;
-                if (idg == wantInt) break;
-                Ep += idg - wantInt; // correct a rounding carry / log10 rounding
-            }
-            for (int i = 0; i < dot; i++) idig[iLen++] = eb[i];
-            for (int i = dot + 1; i < len; i++) fdig[fLen++] = eb[i];
-            expVal = Ep;
-        }
-        while (fLen > fracMin && fdig[fLen - 1] == '0') fLen--; // trim '#' frac zeros
+        dn2cpp_custom_digits_round(mag, wantInt + fracMax);
+        for (int i = 0; i < wantInt; i++) idig.push_back(digitAt(i));
+        for (int i = 0; i < fracMax; i++) fdig.push_back(digitAt(wantInt + i));
+        expVal = mag.n > 0 ? mag.scale - wantInt : 0;
     }
     else
     {
-        char buf[80];
-        int len = std::snprintf(buf, sizeof(buf), "%.*f", fracMax, mag);
-        int dot = len;
-        for (int i = 0; i < len; i++) if (buf[i] == '.') { dot = i; break; }
-        int sigInt = (dot == 1 && buf[0] == '0') ? 0 : dot; // magnitude < 1 has no int digits
-        for (int i = 0; i < sigInt; i++) idig[iLen++] = buf[i];
-        int fstart = (dot < len) ? dot + 1 : len;
-        for (int i = fstart; i < len; i++) fdig[fLen++] = buf[i];
-        while (fLen > fracMin && fdig[fLen - 1] == '0') fLen--; // trim '#' frac zeros
+        dn2cpp_custom_digits_round(mag, mag.scale + fracMax);
+        for (int i = 0; i < mag.scale; i++) idig.push_back(digitAt(i)); // < 1 has no int digits
+        for (int i = 0; i < fracMax; i++) fdig.push_back(digitAt(mag.scale + i));
     }
+    if (mag.n == 0 && !floating)
+        emitSign = false;
+    int iLen = static_cast<int>(idig.size());
+    int fLen = static_cast<int>(fdig.size());
+    while (fLen > fracMin && fdig[fLen - 1] == '0') fLen--; // trim '#' frac zeros
 
     // Integer block: left-pad to the '0' count, then group. Emitted whole at the
     // first integer placeholder (interleaving literals between integer digits is not
@@ -320,15 +388,14 @@ static Dn2CppString* dn2cpp_format_section(const char16_t* p, int L, double mag,
     std::u16string intOut;
     {
         int pad = intZeros > iLen ? intZeros - iLen : 0;
-        char dg[80]; int dn = 0;
-        for (int i = 0; i < pad; i++) dg[dn++] = '0';
-        for (int i = 0; i < iLen; i++) dg[dn++] = idig[i];
-        unsigned char sepAfter[80];
+        std::string dg(static_cast<size_t>(pad), '0');
+        dg += idig;
+        int dn = static_cast<int>(dg.size());
+        std::string sepAfter(static_cast<size_t>(dn), '\0');
         // Custom formats skip grouping altogether when its symbol is empty.
         if (group && nfi->numberGroup != nullptr && nfi->numberGroup->length > 0)
-            dn2cpp_group_marks(dn, nfi->groupSizes, nfi->groupSizeCount, sepAfter);
-        else
-            for (int i = 0; i < dn; i++) sepAfter[i] = 0;
+            dn2cpp_group_marks(dn, nfi->groupSizes, nfi->groupSizeCount,
+                reinterpret_cast<unsigned char*>(&sepAfter[0]));
         for (int i = 0; i < dn; i++)
         {
             intOut.push_back(static_cast<char16_t>(dg[i]));
@@ -341,7 +408,6 @@ static Dn2CppString* dn2cpp_format_section(const char16_t* p, int L, double mag,
     auto put = [&out](Dn2CppString* value) {
         if (value != nullptr) out.append(value->chars, static_cast<size_t>(value->length));
     };
-    if (emitSign) put(nfi->negativeSign);
     bool intDone = false, fracDone = false;
     bool inq = false; char16_t q = 0;
     for (int i = 0; i < L; i++)
@@ -383,12 +449,15 @@ static Dn2CppString* dn2cpp_format_section(const char16_t* p, int L, double mag,
         }
         out.push_back(c); // any other character is a literal emitted in place
     }
+    if (emitSign && ((mag.n > 0 && mag.scale != 0) || !out.empty()) && nfi->negativeSign != nullptr)
+        out.insert(0, nfi->negativeSign->chars, static_cast<size_t>(nfi->negativeSign->length));
     if (out.size() > INT32_MAX)
         dn2cpp_throw_out_of_memory();
     return dn2cpp_string_from_chars(out.data(), static_cast<int32_t>(out.size()));
 }
 
-static Dn2CppString* dn2cpp_format_custom_c(double v, Dn2CppString* fmt, const Dn2CppNumberFormatInfo* nfi)
+static Dn2CppString* dn2cpp_format_custom_c(const Dn2CppCustomDigits& mag, bool negative, bool floating,
+                                           Dn2CppString* fmt, const Dn2CppNumberFormatInfo* nfi)
 {
     nfi = dn2cpp_nfi_or_current(nfi);
     // Split into up to 3 sections on a top-level ';' (quotes/escapes shield it):
@@ -408,16 +477,44 @@ static Dn2CppString* dn2cpp_format_custom_c(double v, Dn2CppString* fmt, const D
         secStart[nsec] = start; secLen[nsec] = fmt->length - start; nsec++;
     }
     const char16_t* base = fmt->chars;
-    int sel; bool emitSign; double mag;
-    if (v > 0.0) { sel = 0; emitSign = false; mag = v; }
-    else if (v < 0.0)
-    {
-        mag = -v;
-        if (nsec >= 2) { sel = 1; emitSign = false; }   // section provides the negative form
-        else { sel = 0; emitSign = true; }
-    }
-    else { mag = 0.0; emitSign = false; sel = (nsec >= 3) ? 2 : 0; }
-    return dn2cpp_format_section(base + secStart[sel], secLen[sel], mag, emitSign, nfi);
+    // A negative section provides its own form; section 0 carries an explicit
+    // sign, which a floating negative zero keeps.
+    int sel;
+    if (mag.n == 0) sel = (nsec >= 3) ? 2 : 0;
+    else if (negative) sel = (nsec >= 2) ? 1 : 0;
+    else sel = 0;
+    bool emitSign = negative && sel == 0;
+    return dn2cpp_format_section(base + secStart[sel], secLen[sel], mag, emitSign, floating, nfi);
+}
+
+static Dn2CppString* dn2cpp_format_custom_int(bool negative, unsigned long long mag, Dn2CppString* fmt,
+                                              const Dn2CppNumberFormatInfo* nfi)
+{
+    return dn2cpp_format_custom_c(dn2cpp_custom_digits_u64(mag), negative, false, fmt, nfi);
+}
+
+Dn2CppString* dn2cpp_format_decimal_custom_c(const char* digits, int32_t count, int32_t scale,
+                                             int32_t negative, Dn2CppString* fmt,
+                                             const Dn2CppNumberFormatInfo* nfi)
+{
+    if (dn2cpp_is_standard_fmt(fmt))
+        return nullptr;
+    Dn2CppCustomDigits mag;
+    std::memcpy(mag.d, digits, static_cast<size_t>(count));
+    mag.n = count;
+    mag.scale = count - scale;
+    dn2cpp_custom_digits_trim(mag);
+    return dn2cpp_format_custom_c(mag, negative != 0, false, fmt, nfi);
+}
+
+static Dn2CppString* dn2cpp_format_custom_real(double v, int precision, Dn2CppString* fmt,
+                                               const Dn2CppNumberFormatInfo* nfi)
+{
+    nfi = dn2cpp_nfi_or_current(nfi);
+    if (std::isnan(v)) return nfi->nan;
+    if (std::isinf(v)) return v < 0 ? nfi->negInf : nfi->posInf;
+    return dn2cpp_format_custom_c(dn2cpp_custom_digits_real(std::fabs(v), precision), std::signbit(v),
+                                  true, fmt, nfi);
 }
 
 // Signed integral hole (sbyte/short/int/long/nint). `byteWidth` (1/2/4/8) is the
@@ -426,16 +523,16 @@ Dn2CppString* dn2cpp_format_int_c(int64_t v, int32_t byteWidth, Dn2CppString* fm
 {
     nfi = dn2cpp_integral_format_uses_provider(fmt, v < 0)
         ? dn2cpp_nfi_or_current(nfi) : dn2cpp_nfi_invariant();
-    if (!dn2cpp_is_standard_fmt(fmt))
-        return dn2cpp_format_custom_c(static_cast<double>(v), fmt, nfi);
-    char letter;
-    int prec;
-    dn2cpp_parse_fmt(fmt, &letter, &prec);
     bool neg = v < 0;
     // Modular negation gives the right magnitude even for INT64_MIN.
     unsigned long long mag = neg
         ? (0ULL - static_cast<unsigned long long>(v))
         : static_cast<unsigned long long>(v);
+    if (!dn2cpp_is_standard_fmt(fmt))
+        return dn2cpp_format_custom_int(neg, mag, fmt, nfi);
+    char letter;
+    int prec;
+    dn2cpp_parse_fmt(fmt, &letter, &prec);
     if (letter == 0 || ((letter == 'g' || letter == 'G') && prec < 1))
         return dn2cpp_decimal_padded(mag, neg, -1, nfi->negativeSign);
     switch (letter)
@@ -483,7 +580,7 @@ Dn2CppString* dn2cpp_format_uint_c(uint64_t v, int32_t byteWidth, Dn2CppString* 
     nfi = dn2cpp_integral_format_uses_provider(fmt, false)
         ? dn2cpp_nfi_or_current(nfi) : dn2cpp_nfi_invariant();
     if (!dn2cpp_is_standard_fmt(fmt))
-        return dn2cpp_format_custom_c(static_cast<double>(v), fmt, nfi);
+        return dn2cpp_format_custom_int(false, v, fmt, nfi);
     char letter;
     int prec;
     dn2cpp_parse_fmt(fmt, &letter, &prec);
@@ -979,7 +1076,7 @@ Dn2CppString* dn2cpp_format_r8_c(double v, Dn2CppString* fmt, const Dn2CppNumber
 {
     nfi = dn2cpp_nfi_or_current(nfi);
     if (!dn2cpp_is_standard_fmt(fmt))
-        return dn2cpp_format_custom_c(v, fmt, nfi);
+        return dn2cpp_format_custom_real(v, 15, fmt, nfi);
     char letter;
     int prec;
     dn2cpp_parse_fmt(fmt, &letter, &prec);
@@ -1065,26 +1162,26 @@ Dn2CppString* dn2cpp_format_r8(double v, Dn2CppString* fmt)
 }
 
 // Formatting a float. The "G"/"R" shortest forms (no explicit precision) must
-// round-trip at *float* precision (so 1f/3f is "0.33333334", not the double's digits);
-// every other standard/custom spec rounds identically whether computed from the float
-// or its exact double widening, so they delegate to the double path.
+// round-trip at *float* precision (so 1f/3f is "0.33333334", not the double's digits),
+// and custom formats start from 7 significant digits; every other standard spec
+// rounds identically whether computed from the float or its exact double widening,
+// so they delegate to the double path.
 Dn2CppString* dn2cpp_format_r4_c(float v, Dn2CppString* fmt, const Dn2CppNumberFormatInfo* n)
 {
-    if (dn2cpp_is_standard_fmt(fmt))
+    if (!dn2cpp_is_standard_fmt(fmt))
+        return dn2cpp_format_custom_real(v, 7, fmt, n);
+    char letter; int prec;
+    dn2cpp_parse_fmt(fmt, &letter, &prec);
+    // "R"/"r" accept and IGNORE a precision ("R7" == "R"), so they stay on the
+    // float shortest-round-trip path regardless of digits; "G"/default only
+    // when no precision is given (an explicit G-precision rounds identically
+    // from the exact double widening). The lowercase specifiers render a
+    // lowercase exponent marker.
+    if (letter == 'R' || letter == 'r'
+        || (prec < 0 && (letter == 'G' || letter == 'g' || letter == 0)))
     {
-        char letter; int prec;
-        dn2cpp_parse_fmt(fmt, &letter, &prec);
-        // "R"/"r" accept and IGNORE a precision ("R7" == "R"), so they stay on the
-        // float shortest-round-trip path regardless of digits; "G"/default only
-        // when no precision is given (an explicit G-precision rounds identically
-        // from the exact double widening). The lowercase specifiers render a
-        // lowercase exponent marker.
-        if (letter == 'R' || letter == 'r'
-            || (prec < 0 && (letter == 'G' || letter == 'g' || letter == 0)))
-        {
-            Dn2CppString* s = dn2cpp_float_to_string_c(v, n);
-            return (letter == 'r' || letter == 'g') ? dn2cpp_lower_exp(s) : s;
-        }
+        Dn2CppString* s = dn2cpp_float_to_string_c(v, n);
+        return (letter == 'r' || letter == 'g') ? dn2cpp_lower_exp(s) : s;
     }
     return dn2cpp_format_r8_c(static_cast<double>(v), fmt, n);
 }

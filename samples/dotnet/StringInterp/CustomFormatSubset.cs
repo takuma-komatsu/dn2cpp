@@ -72,4 +72,54 @@ static class Program
         Console.WriteLine((1f / 3f).ToString("F4"));
         Console.WriteLine((1234.5f).ToString("0.00E+00"));
     }
+
+    internal static void __CommaScalingGate()
+    {
+        Console.WriteLine("== Custom numeric comma scaling ==");
+        Console.WriteLine("trillion=" + (100 * 1e12).ToString("0,,,,.####"));
+        Console.WriteLine("fraction=" + 123456789.0.ToString("0,,.###"));
+        Console.WriteLine("integer=" + 1234567L.ToString("0,"));
+        Console.WriteLine("grouped=" + 1234567890L.ToString("#,##0,,"));
+        Console.WriteLine("grouped fraction=" + 1234567890.0.ToString("#,##0,.00"));
+        Console.WriteLine("negative=" + (-1234567.0).ToString("0,,.##;(0,,.##);'zero'"));
+        Console.WriteLine("zero=" + 0.0.ToString("0,,.##;(0,,.##);'zero'"));
+        Console.WriteLine("ordinary grouping=" + 1234567.0.ToString("#,##0"));
+        Console.WriteLine("quoted=" + 1234567.0.ToString("0','"));
+        Console.WriteLine("escaped=" + 1234567.0.ToString("0\\,"));
+        Console.WriteLine("fraction commas=" + 1234.5.ToString("0.0,,"));
+        Console.WriteLine("percent=" + string.Format("{0:0,,.##%}", 1234567.0));
+        Console.WriteLine($"interpolation={1234000f:0,,.###}");
+        // Decimal digit midpoints round away from zero after scaling.
+        Console.WriteLine("midpoint long=" + 1234500L.ToString("0,"));
+        Console.WriteLine("midpoint double=" + 2500.0.ToString("0,"));
+        Console.WriteLine("midpoint fraction=" + 1250000.0.ToString("0,,.0"));
+        Console.WriteLine("midpoint unscaled=" + 2.5.ToString("0"));
+        Console.WriteLine("midpoint negative=" + (-2500.0).ToString("0,"));
+        Console.WriteLine("midpoint float=" + 0.125f.ToString("0.00"));
+        Console.WriteLine("midpoint percent=" + 0.00125.ToString("0.00%"));
+        Console.WriteLine("midpoint exponent=" + 1.25.ToString("0.0E+0"));
+        Console.WriteLine("exact long=" + long.MaxValue.ToString("#,##0"));
+        Console.WriteLine("scaled ulong=" + ulong.MaxValue.ToString("0,"));
+        // The sign follows rounding: integers and decimal have no negative zero,
+        // and a section that prints nothing prints no sign.
+        Console.WriteLine("negative int to zero=" + (-4).ToString("0,"));
+        Console.WriteLine("negative int to nothing=[" + (-4).ToString("#,,") + "]");
+        Console.WriteLine("negative short fraction=" + ((short)-4).ToString("0,.00"));
+        Console.WriteLine($"negative interpolation={-4:0,}");
+        Console.WriteLine("negative literal=" + ((sbyte)-4).ToString("'x'#,"));
+        Console.WriteLine("negative double to zero=" + (-499.0).ToString("0,"));
+        Console.WriteLine("negative double to nothing=[" + (-0.001).ToString("#") + "]");
+        Console.WriteLine("negative double literal=" + (-0.001).ToString("'x'#"));
+        Console.WriteLine("negative zero double=" + (-0.0).ToString("0"));
+        Console.WriteLine("negative decimal to zero=" + (-0.001m).ToString("0.00"));
+        // Decimal formats its exact digits.
+        Console.WriteLine("decimal integer=" + 1234567890123456m.ToString("0"));
+        Console.WriteLine("decimal fraction=" + 0.1234567890123456m.ToString("0.0000000000000000"));
+        Console.WriteLine("decimal grouped=" + 12345678901234567890123.45m.ToString("#,##0.0"));
+        Console.WriteLine("decimal scaled=" + 79228162514264337593543950335m.ToString("0,"));
+        Console.WriteLine("decimal midpoint=" + (-1234567890123456789.5m).ToString("0"));
+        Console.WriteLine("decimal optional=" + 1.50m.ToString("0.##"));
+        Console.WriteLine("decimal exponent=" + 1234567890123456789012345678m.ToString("0.00E+00"));
+        Console.WriteLine("Custom numeric comma scaling end");
+    }
 }
