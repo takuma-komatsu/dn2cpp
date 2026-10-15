@@ -6115,6 +6115,92 @@ internal sealed partial class Compilation
         public string GetPinnedType(string elementType) => elementType;
     }
 
+    private long _reflectionSummaryMs;
+
+    /// <summary>Summarizes the reflection values of a scanned definition once. A summary
+    /// reads raw metadata only, so computing it decodes nothing in the model and cannot
+    /// change what the scan reaches.</summary>
+    private void SummarizeReflection(MethodInfo m, MethodBodyBlock body, List<Instruction> insns)
+    {
+        var module = m.Module;
+        if (module.ReflectionSummaries.ContainsKey(m.Handle))
+            return;
+        long start = Environment.TickCount64;
+        module.ReflectionSummarizer ??= new ReflectionSummarizer(module.Reader, module.PE);
+        module.ReflectionSummaries.Add(m.Handle, module.ReflectionSummarizer.Summarize(m.Handle, body, insns));
+        _reflectionSummaryMs += Environment.TickCount64 - start;
+    }
+
+    /// <summary>Reports the reflection summaries: a <see cref="Timing"/> line, and with
+    /// <see cref="EnvKnobs.DumpReflectionSummary"/> every summary that holds a site, by
+    /// module, method token and IL offset, then the unknown-operand tallies.</summary>
+    internal void ReportReflectionSummaries()
+    {
+        int summaries = 0, interpreted = 0, sites = 0;
+        foreach (var module in Modules)
+            foreach (var summary in module.ReflectionSummaries.Values)
+            {
+                summaries++;
+                if (summary.Interpreted)
+                    interpreted++;
+                sites += summary.Sites.Length;
+            }
+        Timing.ReflectionSummaries(summaries, interpreted, sites, _reflectionSummaryMs);
+        if (!EnvKnobs.BoolIsOne(EnvKnobs.DumpReflectionSummary))
+            return;
+        var reasons = new int[(int)UnknownReason.Unreached + 1];
+        int overBudget = 0, stackShape = 0, maxTerms = 0, known = 0;
+        foreach (var module in Modules)
+        {
+            var tokens = new List<int>();
+            foreach (var handle in module.ReflectionSummaries.Keys)
+                tokens.Add(SRME.GetToken(handle));
+            tokens.Sort();
+            foreach (int token in tokens)
+            {
+                var handle = (MethodDefinitionHandle)SRME.EntityHandle(token);
+                var summary = module.ReflectionSummaries[handle];
+                if (summary.Sites.Length == 0)
+                    continue;
+                if (summary.OverBudget)
+                    overBudget++;
+                if (summary.StackShapeMismatch)
+                    stackShape++;
+                if (summary.Terms.Length > maxTerms)
+                    maxTerms = summary.Terms.Length;
+                foreach (var site in summary.Sites)
+                {
+                    bool any = false;
+                    for (int i = -1; i < site.Operands.Length; i++)
+                    {
+                        var operand = i < 0 ? site.Receiver : site.Operands[i];
+                        if (operand.Unknown < 0)
+                            continue;
+                        reasons[(int)summary.Unknowns[operand.Unknown].Reason]++;
+                        any = true;
+                    }
+                    if (!any)
+                        known++;
+                }
+                var method = module.Reader.GetMethodDefinition(handle);
+                var text = new System.Text.StringBuilder();
+                summary.Render(text, module.Reader, module.AssemblyName + " "
+                    + RawSignatureProvider.TypeDefinitionName(module.Reader, method.GetDeclaringType()) + "::"
+                    + module.Reader.GetString(method.Name) + " 0x" + token.ToString("x8"));
+                Console.Error.Write(text.ToString());
+            }
+        }
+        var tally = new System.Text.StringBuilder("reflection-summary totals summaries ").Append(summaries)
+            .Append(" interpreted ").Append(interpreted).Append(" sites ").Append(sites)
+            .Append(" all-known ").Append(known).Append(" over-budget ").Append(overBudget)
+            .Append(" stack-shape ").Append(stackShape).Append(" max-terms ").Append(maxTerms)
+            .Append(" unknown-operands");
+        for (int r = 0; r < reasons.Length; r++)
+            if (reasons[r] > 0)
+                tally.Append(' ').Append(((UnknownReason)r).ToString()).Append('=').Append(reasons[r]);
+        Console.Error.WriteLine(tally.ToString());
+    }
+
     /// <summary>Decodes the tokens of a reachable method body: materializes
     /// generic instantiations referenced only in IL and follows call/newobj/
     /// ldftn edges so the reachable set grows transitively.</summary>
@@ -6144,6 +6230,7 @@ internal sealed partial class Compilation
         try
         {
             var insns = ILDecoder.Decode(body.GetILBytes()!.ToImmutableArrayCompat());
+            SummarizeReflection(m, body, insns);
             // Folded-guard dead arms are pruned from reachability: a dead
             // instruction's tokens never become edges. Emission prunes the same
             // offsets (MethodCompiler.Compile reads the identical memoized

@@ -57,6 +57,19 @@ internal static class Timing
         _lastMs = now;
     }
 
+    /// <summary>Reports the reflection summaries computed during the scans: how many
+    /// definitions were summarized, how many held a site and were interpreted, the site
+    /// count, and the time summed over the summaries. Kept separate from
+    /// <see cref="Mark"/> because the work is interleaved with discovery rather than a
+    /// phase of its own.</summary>
+    internal static void ReflectionSummaries(int summaries, int interpreted, int sites, long ms)
+    {
+        if (!Enabled)
+            return;
+        Console.Error.WriteLine(
+            $"dn2cpp-time: reflection-summaries {ms} ms summaries {summaries} interpreted {interpreted} sites {sites}");
+    }
+
     /// <summary>Reports the body scheduler's aggregate fan-out. Kept separate
     /// from <see cref="Mark"/> because the counts describe all planning and
     /// emission passes owned by one emitter rather than one timed phase.</summary>

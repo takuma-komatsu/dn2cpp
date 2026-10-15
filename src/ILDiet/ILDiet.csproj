@@ -20,6 +20,7 @@
     <Compile Include="../Dn2Cpp.Transpiler/EnvKnobs.cs" Link="EnvKnobs.cs" />
     <Compile Include="../Dn2Cpp.Transpiler/ILDecoder.cs" Link="ILDecoder.cs" />
     <Compile Include="../Dn2Cpp.Transpiler/ReflectionApis.cs" Link="ReflectionApis.cs" />
+    <Compile Include="../Dn2Cpp.Transpiler/ReflectionSummary.cs" Link="ReflectionSummary.cs" />
     <Compile Include="../Dn2Cpp.Transpiler/BranchLiveness.cs" Link="BranchLiveness.cs" />
     <Compile Include="../Dn2Cpp.Transpiler/CoreIntrinsics.ConstFoldedGetters.cs" Link="CoreIntrinsics.ConstFoldedGetters.cs" />
     <Compile Include="../Dn2Cpp.Transpiler/CoreIntrinsics.PlatformIsa.Metadata.cs" Link="CoreIntrinsics.PlatformIsa.Metadata.cs" />

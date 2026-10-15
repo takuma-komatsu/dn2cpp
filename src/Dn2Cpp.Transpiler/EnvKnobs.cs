@@ -48,6 +48,11 @@ internal static class EnvKnobs
     /// NotSupportedException CLI failure, ahead of the one-line error.</summary>
     internal const string DebugTrace = "DN2CPP_DEBUG_TRACE";
 
+    /// <summary>=1 prints, after the output is written, every reflection summary that
+    /// holds a site — by module, method token and IL offset — and the unknown-operand
+    /// tallies to stderr; see <c>Compilation.ReportReflectionSummaries</c>.</summary>
+    internal const string DumpReflectionSummary = "DN2CPP_DUMP_REFLECTION_SUMMARY";
+
     /// <summary>Enables per-phase timing/heap instrumentation; see <see cref="Timing"/>.</summary>
     internal const string Time = "DN2CPP_TIME";
 

@@ -280,6 +280,7 @@ public static class TranspileDriver
                 foreach (var grp in result.Gaps.GroupBy(g => Category(g.Message)).OrderByDescending(g => g.Count()).Take(40))
                     Console.WriteLine($"    {grp.Count(),5}  {grp.Key}");
                 WriteBoundedImportReport(compilation, outDir, options.Verbose);
+                compilation.ReportReflectionSummaries();
                 return 0;
             }
 
@@ -349,6 +350,7 @@ public static class TranspileDriver
             // Second census, so the pair brackets emission: whatever grew between
             // the two was pulled in by a body's own tokens, not by discovery.
             ModelCensus.Report("emit", compilation);
+            compilation.ReportReflectionSummaries();
 
             // Straight off the reachable set: walking every class's methods instead would
             // force each specialization to decode members on demand, for a headline number

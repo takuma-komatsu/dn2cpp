@@ -128,7 +128,42 @@ internal static class ILDecoder
         op is ILOpCode.Br or ILOpCode.Br_s or ILOpCode.Ret or ILOpCode.Throw or
         ILOpCode.Leave or ILOpCode.Leave_s or ILOpCode.Rethrow;
 
-    private static OperandKind GetOperandKind(ILOpCode op) => op switch
+    /// <summary>Decodes like <see cref="Decode"/>, or returns null for an opcode the decoder
+    /// does not know or an operand that runs past the end of the body.</summary>
+    public static List<Instruction>? TryDecode(ImmutableArray<byte> il)
+    {
+        int pos = 0;
+        while (pos < il.Length)
+        {
+            int b = il[pos++];
+            if (b == 0xFE && pos >= il.Length)
+                return null;
+            ILOpCode op = b == 0xFE ? (ILOpCode)(0xFE00 | il[pos++]) : (ILOpCode)b;
+            if (TryGetOperandKind(op) is not { } kind)
+                return null;
+            long size = kind switch
+            {
+                OperandKind.None => 0,
+                OperandKind.Int8 or OperandKind.UInt8 or OperandKind.BranchTarget8 => 1,
+                OperandKind.UInt16 => 2,
+                OperandKind.Int64 or OperandKind.Float64 => 8,
+                _ => 4,
+            };
+            if (pos + size > il.Length)
+                return null;
+            if (kind == OperandKind.Switch)
+                size += 4L * (uint)ReadI32(il, pos);
+            if (pos + size > il.Length)
+                return null;
+            pos += (int)size;
+        }
+        return Decode(il);
+    }
+
+    private static OperandKind GetOperandKind(ILOpCode op) =>
+        TryGetOperandKind(op) ?? throw new NotSupportedException($"Unsupported IL opcode: {op} (0x{(int)op:X})");
+
+    private static OperandKind? TryGetOperandKind(ILOpCode op) => op switch
     {
         ILOpCode.Nop or ILOpCode.Ret or ILOpCode.Dup or ILOpCode.Pop or
         ILOpCode.Ldc_i4_m1 or ILOpCode.Ldc_i4_0 or ILOpCode.Ldc_i4_1 or ILOpCode.Ldc_i4_2 or
@@ -230,6 +265,6 @@ internal static class ILDecoder
         ILOpCode.Sizeof
             => OperandKind.Token,
 
-        _ => throw new NotSupportedException($"Unsupported IL opcode: {op} (0x{(int)op:X})"),
+        _ => null,
     };
 }

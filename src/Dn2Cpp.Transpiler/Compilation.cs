@@ -85,6 +85,11 @@ internal sealed class Module
     public TypeDefinitionHandle? ThrowHelperType;
     public Dictionary<(string, int), ThrowHelperResources.Sink>? ThrowHelperSinks;
     public Dictionary<string, Dictionary<int, string>>? ExceptionEnums;
+
+    /// <summary>One reflection summary per scanned method definition; every instantiation
+    /// of the definition shares it, since a summary resolves nothing.</summary>
+    public readonly Dictionary<MethodDefinitionHandle, ReflectionSummary> ReflectionSummaries = new();
+    public ReflectionSummarizer? ReflectionSummarizer;
 }
 
 /// <summary>Where a compilation stands in the emit pipeline. The pipeline's order is a
