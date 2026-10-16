@@ -1,4 +1,6 @@
 #include "dn2cpp_core.h"
+#include "dn2cpp_metadata_native.h"
+#include <iterator>
 
 namespace {
 enum class Encoding : unsigned char { Pointer, Signed32, Unsigned32, Signed64 };
@@ -31,6 +33,7 @@ constexpr Field Dn2CppTypeReflection_fields[] = {
     { offsetof(Dn2CppTypeReflection, genericMetadata), Encoding::Pointer },
     { offsetof(Dn2CppTypeReflection, events), Encoding::Pointer },
     { offsetof(Dn2CppTypeReflection, eventCount), Encoding::Signed32 },
+    { offsetof(Dn2CppTypeReflection, activation), Encoding::Signed32 },
 };
 constexpr Field Dn2CppFieldInfo_fields[] = {
     { offsetof(Dn2CppFieldInfo, name), Encoding::Pointer },
@@ -68,6 +71,7 @@ constexpr Field Dn2CppMethodInfo_fields[] = {
     { offsetof(Dn2CppMethodInfo, genericArgs), Encoding::Pointer },
     { offsetof(Dn2CppMethodInfo, returnRequiredCustomModifiers), Encoding::Pointer },
     { offsetof(Dn2CppMethodInfo, returnRequiredCustomModifierCount), Encoding::Signed32 },
+    { offsetof(Dn2CppMethodInfo, preservable), Encoding::Signed32 },
     { offsetof(Dn2CppMethodInfo, returnOptionalCustomModifiers), Encoding::Pointer },
     { offsetof(Dn2CppMethodInfo, returnOptionalCustomModifierCount), Encoding::Signed32 },
     { offsetof(Dn2CppMethodInfo, returnCustomModifiersKnown), Encoding::Signed32 },
@@ -138,11 +142,17 @@ constexpr Field Dn2CppAttrInfo_fields[] = {
     { offsetof(Dn2CppAttrInfo, attrType), Encoding::Pointer },
     { offsetof(Dn2CppAttrInfo, create), Encoding::Pointer },
     { offsetof(Dn2CppAttrInfo, display), Encoding::Pointer },
+    { offsetof(Dn2CppAttrInfo, unretainedSetterOwner), Encoding::Pointer },
+    { offsetof(Dn2CppAttrInfo, unretainedSetter), Encoding::Pointer },
 };
 constexpr Field Dn2CppEnumMember_fields[] = {
     { offsetof(Dn2CppEnumMember, name), Encoding::Pointer },
     { offsetof(Dn2CppEnumMember, value), Encoding::Signed64 },
 };
+// A schema field the native packer does not write decodes as zero.
+static_assert(dn2cpp_native_metadata::field_count(Dn2CppTypeReflection{}) == std::size(Dn2CppTypeReflection_fields));
+static_assert(dn2cpp_native_metadata::field_count(Dn2CppFieldInfo{}) == std::size(Dn2CppFieldInfo_fields));
+static_assert(dn2cpp_native_metadata::field_count(Dn2CppEventInfo{}) == std::size(Dn2CppEventInfo_fields));
 constexpr Schema schemas[] = {
     { Dn2CppTypeReflection_fields, sizeof(Dn2CppTypeReflection_fields) / sizeof(Field), sizeof(Dn2CppTypeReflection) },
     { Dn2CppFieldInfo_fields, sizeof(Dn2CppFieldInfo_fields) / sizeof(Field), sizeof(Dn2CppFieldInfo) },

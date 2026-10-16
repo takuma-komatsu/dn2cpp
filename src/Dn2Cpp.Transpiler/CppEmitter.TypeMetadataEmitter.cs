@@ -12,6 +12,70 @@ internal sealed partial class CppEmitter
     private readonly HashSet<MethodInfo> _metadataOnlyDefinitions = new();
     private readonly HashSet<MethodInfo> _unsupportedDefinitions = new();
     private readonly HashSet<MethodInfo> _describedDefinitions = new();
+    private readonly HashSet<ClassInfo> _constructorRowOwners = new();
+    private readonly HashSet<ClassInfo> _constructorSignatureDependencies = new();
+    private readonly HashSet<MethodInfo> _activationConstructorRows = new();
+
+    private void NoteConstructorSignatureDependency(TypeDesc type, HashSet<ClassInfo> roots)
+    {
+        if (type.Kind == TypeKind.Class)
+        {
+            if (!roots.Contains(type.Class!))
+                _constructorSignatureDependencies.Add(type.Class!);
+            foreach (var argument in type.Class!.Context.TypeArgs)
+                NoteConstructorSignatureDependency(argument, roots);
+        }
+        if (type.Element is { } element)
+            NoteConstructorSignatureDependency(element, roots);
+    }
+
+    // Parameter types need identities before emission, but are not new constructor
+    // scan roots. A later executable type note promotes an identity-only dependency.
+    private void PrepareActivationConstructorRows(IEnumerable<ClassInfo> roots, Action<TypeDesc> addType)
+    {
+        if (!_c.ReflectionConstructorBindingUsed)
+            return;
+        var snapshot = roots.ToList();
+        var rootSet = new HashSet<ClassInfo>(snapshot);
+        foreach (var cls in snapshot)
+        {
+            if (cls.Module == _c.AppModule || cls.Handle.IsNil || cls.IsInterface || cls.IsAbstract || cls.IsEnum || IsIntrinsicShaped(cls)
+                || IsCanonicalWorld(cls) || Compilation.ContainsGenericVar(cls)
+                || !_constructorRowOwners.Add(cls))
+                continue;
+            _c.EnsureCompleted(cls);
+            foreach (var method in cls.Methods.ToList())
+            {
+                if (method.Name != ".ctor" || method.IsStatic || method.Rva == 0)
+                    continue;
+                method.EnsureSignature();
+                if (method.Signature.ParameterTypes.Length == 0)
+                    continue;
+                _activationConstructorRows.Add(method);
+                void Note(TypeDesc type)
+                {
+                    _c.NoteTypeIdentityClosure(type, keepSeed: false);
+                    void NoteIdentity(TypeDesc dependency)
+                    {
+                        if (dependency.Kind == TypeKind.Class)
+                        {
+                            _c.NoteTypeIdentityClosure(dependency, keepSeed: false);
+                        }
+                        if (dependency.Element is { } element)
+                            NoteIdentity(element);
+                    }
+                    NoteIdentity(type);
+                    NoteConstructorSignatureDependency(type, rootSet);
+                    addType(type);
+                }
+                foreach (var parameter in method.Signature.ParameterTypes)
+                    Note(parameter);
+                if (method.Signature.ParameterTypes.Any(HasSignatureShape) && ReflectionSignature(method) is { } signature)
+                    foreach (var parameter in signature.ParameterTypes)
+                        NoteReflectionSignatureLeaves(parameter.Binding, Note);
+            }
+        }
+    }
 
     // An added definition without a decodable signature contributes no row.
     private bool CanDescribeReflectionDefinition(MethodInfo method)
@@ -633,7 +697,13 @@ internal sealed partial class CppEmitter
         }
         var methods = cls.Methods.Where(m => !(_c.SharedGenericsEnabled
             && m.Context.MethodArgs.Any(Compilation.ContainsCanonPlaceholder))).ToList();
-        var seen = methods.Select(m => m.Handle).ToHashSet();
+        if (definitions.Count == 0)
+            return methods;
+        // A kept closed row stands for its definition; one the trim drops stands for none.
+        var definitionHandles = definitions.Select(d => d.Handle).ToHashSet();
+        var accessors = ReflectionAccessorHandles(cls);
+        var seen = methods.Where(m => definitionHandles.Contains(m.Handle) && KeepsReflectionMethodRow(cls, m, accessors))
+            .Select(m => m.Handle).ToHashSet();
         foreach (var definition in definitions)
             if (seen.Add(definition.Handle))
                 methods.Add(definition);
@@ -651,7 +721,7 @@ internal sealed partial class CppEmitter
             return false;
         if (cls.Module != _c.AppModule && !_hotUpdateBase && method.Rva != 0
             && !_c.Reachable.Contains(method) && !_c.KeepsUnreachedRow(method)
-            && !propertyAccessors.Contains(method.Handle))
+            && !propertyAccessors.Contains(method.Handle) && !_activationConstructorRows.Contains(method))
             return false;
         return CanDescribeReflectionDefinition(method);
     }
@@ -717,6 +787,8 @@ internal sealed partial class CppEmitter
         private readonly Dictionary<ClassInfo, (string Expr, int Count)> _fieldTabs = new();
         private readonly Dictionary<ClassInfo, (string Expr, int Count)> _methodTabs = new();
         private readonly Dictionary<ClassInfo, (string Expr, int Count)> _ctorTabs = new();
+        // The constructor rows each class's table lists, until its type-info states the rest.
+        private readonly Dictionary<ClassInfo, HashSet<MethodDefinitionHandle>> _listedCtors = new();
         private readonly Dictionary<ClassInfo, string> _initializerRows = new();
         private readonly Dictionary<ClassInfo, (string Expr, int Count)> _propTabs = new();
         private readonly Dictionary<ClassInfo, (string Expr, int Count)> _eventTabs = new();
@@ -778,6 +850,7 @@ internal sealed partial class CppEmitter
         private readonly Dictionary<string, string> _slotStubs = new(System.StringComparer.Ordinal);
         private int _slotStubSeq;
         private readonly List<string> _ambiguousBindings = new();
+        private readonly List<string> _virtualMethodTargets = new();
         // Per-row invoker trap stubs (invmiss_), the reflection-invoker sibling of the
         // slotmiss_ map above: a member-table row whose invoker thunk cannot be
         // materialized (InvokerThunkBlocker — its signature names a by-value struct
@@ -1189,13 +1262,18 @@ internal sealed partial class CppEmitter
                     foreach (var a in cls.Context.TypeArgs)
                         NoteReflectedType(a);
                 // RenderMemberTables' guard + BuildMemberTable's row trim.
-                if (_e.IsOpaque(cls) && !_c.RuntimeInterfaceMetadata.Contains(cls) || _e.IsCanonicalWorld(cls))
+                if (_e.IsCanonicalWorld(cls)
+                    || _e.IsOpaque(cls) && !_c.RuntimeInterfaceMetadata.Contains(cls)
+                        && !_e._constructorRowOwners.Contains(cls))
                     continue;
                 bool keepRefl = _c.KeepsReflectionMetadata(cls);
                 var propertyAccessors = ReflectionAccessorHandles(cls);
                 var accessorRows = new HashSet<MethodDefinitionHandle>();
                 foreach (var m in _e.ReflectionMethods(cls))
                 {
+                    if (_e.IsOpaque(cls) && !_c.RuntimeInterfaceMetadata.Contains(cls)
+                        && !_e._activationConstructorRows.Contains(m))
+                        continue;
                     bool methodRow = m.Name != ".ctor" && m.Name != ".cctor"
                         && !(_c.SharedGenericsEnabled
                             && m.Context.MethodArgs.Any(Compilation.ContainsCanonPlaceholder));
@@ -1855,6 +1933,7 @@ internal sealed partial class CppEmitter
             EmitDelegateIdentities();
             EmitDelegateCloneBinding();
             EmitGvmRowDispatch();
+            EmitVirtualMethodTargets();
             EmitAmbiguousBindings();
 
             // Last statement of the emission, and it has to be: this object is unreferenced
@@ -2226,12 +2305,35 @@ internal sealed partial class CppEmitter
                 string name = Compilation.GvmDispatchName(gvm);
                 string targetsExpr = "gvmrow_targets_" + entries.Count;
                 int targetCount = EmitGvmTargets(disp, targetsExpr);
+                string strippedExpr = "gvmrow_stripped_" + entries.Count;
+                var stripped = disp.StrippedTargets
+                    .Where(kv => disp.Stripped.Contains(kv.Key)
+                        && !_e.SkipsCanonicalMetadata(kv.Key)
+                        && !_e.SkipsCanonicalMetadata(kv.Value.Owner)
+                        && _e.TypeInfoSymbolDefined(kv.Key.CppTypeInfoName)
+                        && _e.TypeInfoSymbolDefined(kv.Value.Owner.CppTypeInfoName))
+                    .OrderBy(kv => kv.Key.CppName, System.StringComparer.Ordinal).ToList();
+                if (stripped.Count > 0)
+                {
+                    _sb.AppendLine($"static const Dn2CppGvmMethodTarget {strippedExpr}[] = {{");
+                    foreach (var (receiver, target) in stripped)
+                    {
+                        string rawName = target.Owner.Module.Reader.GetString(
+                            target.Owner.Module.Reader.GetMethodDefinition(target.Method).Name);
+                        _sb.AppendLine($"    {{ {_e.TypeInfoRef(receiver, "stripped GVM receiver")}, {{ "
+                            + $"{_e.TypeInfoRef(target.Owner, "stripped GVM method owner")}, "
+                            + $"{System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(target.Method)}, {{ }}, "
+                            + $"{CppStringLiteral(rawName)}, {_c.GvmTargetPreservability(disp, target.Owner, target.Method)} }} }},");
+                    }
+                    _sb.AppendLine("};");
+                }
                 var gargs = gvm.Context.MethodArgs;
                 int token = System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(gvm.Handle);
                 entries.Add($"    {{ {{ {_e.TypeInfoRef(gvm.DeclaringClass, "generic virtual row dispatch owner")}, "
                     + $"{token}, {gargs.Length}, {TypeArgumentVector(gargs)}, true, "
                     + $"{targetCount}, {(targetCount > 0 ? targetsExpr : "nullptr")} }}, (void*)&{name}, "
-                    + $"{(disp.Strips ? "true" : "false")} }},");
+                    + $"{(disp.Strips ? "true" : "false")}, {stripped.Count}, "
+                    + $"{(stripped.Count > 0 ? strippedExpr : "nullptr")} }},");
                 _e._reflectedGvmDispatchers.Add(name);
             }
             if (entries.Count == 0)
@@ -2359,15 +2461,12 @@ internal sealed partial class CppEmitter
         // slotmiss_ stub this one is ENTERED through its real signature — the interpreter
         // and MethodBase.Invoke both call invokers with the shared (fn, self, args, retType)
         // ABI — so it carries that exact C++ signature and raises the CATCHABLE
-        // NotSupportedException instead of aborting: the caller is a program that asked to
-        // invoke a member, not a corrupted dispatch table, and the diagnosis has to reach
-        // it. Deduplicated per chunk on the descriptor text; the sequence counter stays
+        // PlatformNotSupportedException instead of aborting: the caller is a program that
+        // asked to invoke a member, not a corrupted dispatch table, and the diagnosis has to
+        // reach it. Deduplicated per chunk on the descriptor text; the sequence counter stays
         // monotonic across the emission.
-        private string InvokerMissStub(ClassInfo cls, MethodInfo m, string reason)
+        private string InvokerMissStub(string desc)
         {
-            // ASCII only: the text is a runtime exception message (terminals, logs,
-            // frozen gate transcripts), not a source comment.
-            string desc = $"{cls.FullName}.{m.Name}: no reflection invoker in this image ({reason})";
             if (!_invokerMissStubs.TryGetValue(desc, out var name))
             {
                 name = $"invmiss_{_invokerMissSeq++}";
@@ -2381,19 +2480,97 @@ internal sealed partial class CppEmitter
         }
 
         // A row's invoker: its thunk, or the trapping stub when the thunk would not compile
-        // (a by-value struct the image never laid out) or would box a struct the image
-        // never allocates (InvokerBoxBlocker).
+        // (a by-value struct the image never laid out). A thunk that boxes a struct the
+        // image never allocates stays: a delegate binding's call unboxes its result and
+        // written-back by-refs itself, and Invoke refuses before the target runs
+        // (DN2CPP_TA_UNALLOCATED).
         private string RowInvoker(ClassInfo cls, MethodInfo m, Func<string> thunk)
         {
             if (InvokerThunkBlocker(m, DeclaredStructs) is { } blocked)
-                return InvokerMissStub(cls, m, $"the signature names {blocked}, whose layout was never emitted");
-            if (_e.InvokerBoxBlocker(m) is { } unboxed)
-                return InvokerMissStub(cls, m, $"invoking it boxes {unboxed.FullName}, which this image never boxes");
+                return InvokerMissStub($"{cls.FullName}.{m.Name}: no reflection invoker in this image "
+                    + $"(the signature names {blocked}, whose layout was never emitted)");
             return thunk();
         }
 
-        // Vtable: the class's virtual dispatch table, file-local — referenced only
-        // by the class's own type-info initializer, within the same block.
+        // The refusal of a reflective read that would box a struct no box of which is
+        // allocated. Preserving the struct allocates it, so the remedy is the transpiler's
+        // reflection-warning descriptor for the struct. ASCII only: the text is a runtime
+        // exception message (terminals, logs, frozen gate transcripts).
+        private string UnallocatedBoxRefusal(ClassInfo owner, string member, string verb, ClassInfo boxed)
+        {
+            return $"{RefusalTypeName(owner)}::{member} in {owner.Module.AssemblyName}: "
+                + $"{verb} it boxes {RefusalTypeName(boxed)}, which this image never allocates; fix: "
+                + Compilation.ReflectionFixText(Compilation.ReflectionDiagnosticKind.Execution,
+                    boxed.Module.AssemblyName, Compilation.PreservationTypeName(boxed), null, null);
+        }
+
+        // The constructor rows RenderMemberTables listed for a class.
+        private void NoteListedCtors(ClassInfo cls, List<MethodInfo> ctors)
+        {
+            HashSet<MethodDefinitionHandle>? listed = null;
+            foreach (var m in ctors)
+                if (_memberAddr.ContainsKey(m))
+                    (listed ??= new HashSet<MethodDefinitionHandle>()).Add(m.Handle);
+            if (listed is not null)
+                _listedCtors[cls] = listed;
+        }
+
+        // Parameterless constructors need only visibility to bind. Raw metadata keeps
+        // their exact absence markers without decoding more signatures during emission.
+        private int OmittedCtorBits(ClassInfo cls)
+        {
+            _listedCtors.Remove(cls, out var listed);
+            if (_e._hotUpdateBase || cls.Handle.IsNil || cls.IsInterface || cls.IsAbstract || cls.IsEnum
+                || _e.IsIntrinsicShaped(cls))
+                return 0;
+            var reader = cls.Module.Reader;
+            int bits = 0;
+            foreach (var handle in reader.GetTypeDefinition(cls.Handle).GetMethods())
+            {
+                var md = reader.GetMethodDefinition(handle);
+                if ((md.Attributes & System.Reflection.MethodAttributes.Static) != 0 || md.RelativeVirtualAddress == 0
+                    || listed?.Contains(handle) == true || !reader.StringComparer.Equals(md.Name, ".ctor"))
+                    continue;
+                bool isPublic = (md.Attributes & System.Reflection.MethodAttributes.MemberAccessMask)
+                    == System.Reflection.MethodAttributes.Public;
+                var blob = reader.GetBlobReader(md.Signature);
+                if (blob.ReadSignatureHeader().IsGeneric)
+                    blob.ReadCompressedInteger();
+                int arity = blob.ReadCompressedInteger();
+                if (arity == 0)
+                    bits |= isPublic ? OmittedPublicDefaultCtor : OmittedNonPublicDefaultCtor;
+            }
+            return bits;
+        }
+
+        private const int OmittedPublicDefaultCtor = 0x1, OmittedNonPublicDefaultCtor = 0x2, Unallocated = 0x4;
+
+        // Dn2CppTypeReflection::activation: the constructors without a row, and whether
+        // reflection may make an instance of the type (for a struct, a box of it; for a
+        // class, whether the image allocates it).
+        private int ActivationBits(ClassInfo cls)
+        {
+            int bits = OmittedCtorBits(cls);
+            if (!_e._hotUpdateBase
+                && (cls.IsValueType ? _e.UnallocatedUserStruct(cls) : _e.UnallocatedUserClass(cls)) is not null)
+                bits |= Unallocated;
+            return bits;
+        }
+
+        // Type.ToString's spelling.
+        private string RefusalTypeName(ClassInfo cls)
+        {
+            if (cls.Context.TypeArgs.Length == 0)
+                return Compilation.ReflectionTypeName(cls);
+            return Compilation.PreservationTypeName(cls)
+                + "[" + string.Join(",", cls.Context.TypeArgs.Select(a => _e.ReflectionSignatureType(a, true))) + "]";
+        }
+
+        private static string CppStringLiteral(string text)
+            => "\"" + text.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+
+        // The virtual dispatch table and its diagnostic identities share a block;
+        // other translation units refer only to the exported diagnostic rows.
         private void RenderVtable(ClassInfo cls)
         {
             if (cls.IsValueType || cls.IsEnum || cls.IsInterface || cls.IsDelegate || _e.IsOpaque(cls)
@@ -2410,10 +2587,15 @@ internal sealed partial class CppEmitter
             // virtual instead bakes its descriptor into a per-slot stub — exact even on a
             // metadata-stripped image, where the thunk's scan finds no method rows.
             var owners = cls.SlotOwners;
+            var targets = new List<(int Slot, MethodInfo Method)>();
             var entries = cls.Vtable.Select((m, i) =>
             {
                 if (m is not null && _c.Reachable.Contains(m))
                     return $"(const void*)&{m.Emittable.CppName}";
+                if (_c.ReflectionInvokeUsed && m is not null
+                    && !_e.SkipsCanonicalMetadata(m.DeclaringClass)
+                    && _e.TypeInfoSymbolDefined(m.DeclaringClass.CppTypeInfoName))
+                    targets.Add((i, m));
                 // An abstract slot has a null impl but its OWNER still declares the
                 // signature — the trap must carry it either way.
                 var decl = m ?? (i < owners.Count ? owners[i] : null);
@@ -2426,6 +2608,36 @@ internal sealed partial class CppEmitter
             if (entries.Count == 0)
                 entries.Add("(const void*)&dn2cpp_vcall_unimplemented");
             _sb.AppendLine($"[[maybe_unused]] static const void* {cls.CppVtableName}[] = {{ {string.Join(", ", entries)} }};");
+            if (targets.Count > 0)
+            {
+                string symbol = $"virtualmethods_{cls.CppName}";
+                _o.Header.AppendLine($"extern const Dn2CppVirtualMethodTarget {symbol}[];");
+                _sb.AppendLine($"extern const Dn2CppVirtualMethodTarget {symbol}[] = {{");
+                for (int i = 0; i < targets.Count; i++)
+                {
+                    var (slot, method) = targets[i];
+                    _sb.AppendLine($"    {{ {cls.CppVtableName}, {slot}, {{ "
+                        + $"{_e.TypeInfoRef(method.DeclaringClass, "virtual selected method owner")}, "
+                        + $"{DelegateIdentityToken(method)}, {{ }}, {CppStringLiteral(method.Name)}, "
+                        + $"{(_c.IsPreservableTemplateRow(method) ? 1 : 0)} }} }},");
+                    _virtualMethodTargets.Add($"&{symbol}[{i}]");
+                }
+                _sb.AppendLine("};");
+            }
+        }
+
+        // The selected filler remains identifiable without its body or reflection rows.
+        // Key by the actual table: a runtime type may share it, while a changed table
+        // must not borrow a base table's implementation identity.
+        private void EmitVirtualMethodTargets()
+        {
+            _sb.AppendLine("extern const Dn2CppVirtualMethodTarget* const dn2cpp_virtual_method_targets[] = {");
+            foreach (var target in _virtualMethodTargets)
+                _sb.AppendLine($"    {target},");
+            if (_virtualMethodTargets.Count == 0)
+                _sb.AppendLine("    nullptr,");
+            _sb.AppendLine("};");
+            _sb.AppendLine($"extern const int32_t dn2cpp_virtual_method_target_count = {_virtualMethodTargets.Count};");
         }
 
         // Interface dispatch tables: one per (concrete class, interface),
@@ -2524,10 +2736,11 @@ internal sealed partial class CppEmitter
                     // e.g. a boxed primitive's corlib ClassInfo gets a full interface table
                     // but IntPtr has no concrete IBinaryInteger.DivRem.
                     var impl = _c.ResolveItfImplOrNull(cls, im, out bool ambiguous);
-                    targets.Add(!ambiguous && impl is not null && _c.Reachable.Contains(impl)
+                    targets.Add(!ambiguous && impl is not null
                         && !_e.SkipsCanonicalMetadata(impl.DeclaringClass)
                         && _e.TypeInfoSymbolDefined(impl.DeclaringClass.CppTypeInfoName)
-                        ? $"{{ {_e.TypeInfoRef(impl.DeclaringClass, "interface selected method owner")}, {DelegateIdentityToken(impl)} }}"
+                        ? $"{{ {_e.TypeInfoRef(impl.DeclaringClass, "interface selected method owner")}, {DelegateIdentityToken(impl)}, {{ }}, "
+                            + $"{CppStringLiteral(impl.Name)}, {(_c.IsPreservableTemplateRow(impl) ? 1 : 0)} }}"
                         : "{ nullptr, 0 }");
                     if (recordRenamed && !ambiguous && impl is { IsStatic: false } && !impl.DeclaringClass.IsInterface
                         && im.IsVirtual && im.Signature.GenericParameterCount == 0
@@ -2621,7 +2834,7 @@ internal sealed partial class CppEmitter
                     _itfPools[slotsInit] = tn;
                     slotSyms[itf] = tn;
                 }
-                if ((_c.ReadsDelegateMethod || _c.NeedsReflectionDelegateBind) && targets.Count > 0)
+                if ((_c.ReflectionInvokeUsed || _c.ReadsDelegateMethod || _c.NeedsReflectionDelegateBind) && targets.Count > 0)
                 {
                     string targetSymbol = $"itfmethods_{cls.CppName}_{itf.CppName}";
                     _sb.AppendLine($"static const Dn2CppInterfaceMethodTarget {targetSymbol}[] = {{ {string.Join(", ", targets)} }};");
@@ -3016,11 +3229,23 @@ internal sealed partial class CppEmitter
                     // compiled use site, this thunk has no emitted first-use guard,
                     // and under a deferred startup pass (the Godot mono-module
                     // backend) it can otherwise observe a not-yet-initialized static.
+                    // An initializer whose body was not retained refuses the access
+                    // instead of exposing default storage as initialized.
                     string ensure = "";
+                    string? uninitialized = null;
                     if (f.IsStatic && cls.StaticCctor is { } fldCc)
                     {
-                        _c.NoteCctorEnsure(fldCc);
-                        ensure = $"{fldCc.CppName}__ensure(); ";
+                        if (_c.Reachable.Contains(fldCc) || Compilation.IsFrameworkEventSourceProvider(cls))
+                        {
+                            _c.NoteCctorEnsure(fldCc);
+                            ensure = $"{fldCc.CppName}__ensure(); ";
+                        }
+                        else
+                            uninitialized = CppStringLiteral($"{RefusalTypeName(cls)}::.cctor in {cls.Module.AssemblyName}: "
+                                + "a static field access runs this type initializer, whose body was not retained; fix: "
+                                + Compilation.ReflectionFixText(Compilation.ReflectionDiagnosticKind.Execution,
+                                    cls.Module.AssemblyName, Compilation.PreservationTypeName(cls),
+                                    new List<string> { ".cctor" }, "method"));
                     }
                     // A headerless-typed field (the NFI trio, Assembly/Module — the
                     // headerless intrinsic pointers): a reflected GetValue is an
@@ -3032,11 +3257,12 @@ internal sealed partial class CppEmitter
                     bool isHeaderless = MethodCompiler.IsHeaderlessWrapCpp(memberT);
                     // A struct no box allocated would dispatch into traps once boxed.
                     var unboxed = !isRef && !isPointer && !isHeaderless ? _e.FieldBoxBlocker(cls, f) : null;
+                    // The refusal names the getter so a SetValue that runs the getter only
+                    // to initialize the type can tell it from any other fault.
                     string getBody = unboxed is not null
-                        ? "dn2cpp_throw_not_supported_msg(\""
-                            + $"{cls.FullName}.{f.Name}: reading it boxes {unboxed.FullName}, which this image never boxes"
-                                .Replace("\\", "\\\\").Replace("\"", "\\\"")
-                            + "\");"
+                        ? ensure + "dn2cpp_throw_invoker_missing("
+                            + CppStringLiteral(UnallocatedBoxRefusal(cls, f.Name, "reading", unboxed))
+                            + $", (const void*)&{getName});"
                         : ensure + (isPointer
                         ? $"return dn2cpp_invoke_box_pointer((void*)({access}), {pointee}, {pointerDepth});"
                         : isHeaderless
@@ -3063,6 +3289,13 @@ internal sealed partial class CppEmitter
                         {
                             setBody += " dn2cpp_gc_write_barrier((void*)o);";
                         }
+                    }
+                    // The type stays uninitialized, so this refusal names no call: a
+                    // SetValue that runs the getter to initialize the type reports it.
+                    if (uninitialized is not null)
+                    {
+                        getBody = $"dn2cpp_throw_invoker_missing({uninitialized}, nullptr);";
+                        setBody = $"dn2cpp_throw_invoker_missing({uninitialized}, (const void*)&{setName});";
                     }
                     _sb.AppendLine($"static Dn2CppObject* {getName}([[maybe_unused]] Dn2CppObject* o) {{ {getBody} }}");
                     _sb.AppendLine($"static void {setName}([[maybe_unused]] Dn2CppObject* o, [[maybe_unused]] Dn2CppObject* val) {{ {setBody} }}");
@@ -3137,7 +3370,7 @@ internal sealed partial class CppEmitter
                 // which is never reached (dispatch reaches the impl) yet must stay
                 // visible, or the type's GetMethods() would come back empty.
                 if (trim && m.Rva != 0 && !_c.Reachable.Contains(m) && !_c.KeepsUnreachedRow(m)
-                    && !propertyAccessors.Contains(m.Handle))
+                    && !propertyAccessors.Contains(m.Handle) && !_e._activationConstructorRows.Contains(m))
                     continue;
                 _memberAddr[m] = rows.Count.ToString();
                 if (prefix == "methtab" && !m.Handle.IsNil && CoreIntrinsics.IsObjectMemberRowName(m.Name))
@@ -3284,16 +3517,14 @@ internal sealed partial class CppEmitter
                     // body names the same CppTypes renderings in its own prototype, so they
                     // are declared (see InvokerThunkBlocker) — but the invariant "an
                     // invoker thunk is emitted only when its C++ compiles; otherwise
-                    // the row's invoker traps" is asked at every mouth, not assumed. The
-                    // box blocker can: a body a call reached returns a struct no box or
-                    // selection allocated.
+                    // the row's invoker traps" is asked at every mouth, not assumed.
                     invoker = "(void*)&" + RowInvoker(cls, m, () => _e.EmitInvokerThunk(_sb, m, _invokerThunks, contextArg));
                 }
                 // A bodyless interface or abstract class row needs a signature-only
                 // invoker only when a late-bound consumer resolves the receiver's slot
                 // and calls its concrete body through that ABI. Hot-update base requests
                 // an invoker for every callable interface row because its interpreter walks these tables.
-                else if (!definitionOnly && (cls.IsInterface
+                else if (!symbolic && (cls.IsInterface
                     ? _e._hotUpdateBase || (RowsEnteredLateBound && !m.IsStatic && m.IsVirtual)
                     : m.IsAbstract && RowsEnteredLateBound))
                 {
@@ -3334,6 +3565,7 @@ internal sealed partial class CppEmitter
                         : m.Name == "Equals" ? "dn2cpp_object_equals_virtual" : "dn2cpp_object_gethashcode");
                     invoker = "(void*)&dn2cpp_delegate_object_virtual_invoker";
                 }
+                bool preservable = fnPtr == "nullptr" && !symbolic && _c.IsPreservableTemplateRow(m);
                 // The null-receiver run modes and a template level's
                 // DN2CPP_MTHA_NULLLOOKUP_* masks: only a CreateDelegate binding called
                 // with a null receiver (closed over null, or open over a non-virtual row)
@@ -3397,7 +3629,8 @@ internal sealed partial class CppEmitter
                     MetadataValue.Ref(mca.Expr), MetadataValue.Signed(mca.Count), MetadataValue.Text(_e._hotUpdateBase && !definitionOnly ? AbiContract.ImportShape(m.Signature, m.Context.MethodArgs) : null),
                     MetadataValue.Signed((int)m.Attributes), MetadataValue.Signed((int)m.ImplAttributes), MetadataValue.Signed(mdToken),
                     MetadataValue.Signed(genericCount), MetadataValue.Ref(genArgsExpr),
-                    MetadataValue.Ref(retReq.Expr), MetadataValue.Signed(retReq.Count), MetadataValue.Ref(retOpt.Expr), MetadataValue.Signed(retOpt.Count),
+                    MetadataValue.Ref(retReq.Expr), MetadataValue.Signed(retReq.Count), MetadataValue.Signed(preservable ? 1 : 0),
+                    MetadataValue.Ref(retOpt.Expr), MetadataValue.Signed(retOpt.Count),
                     MetadataValue.Signed(modifiersKnown ? 1 : 0), MetadataValue.Display(_e.ReflectionMethodDisplay(m)), MetadataValue.Display(genericDefinition is { } methodDisplayParts ? methodDisplayParts.Method : null),
                     MetadataValue.Display(_e.ReflectionSignatureType(m.Signature.ReturnType)), MetadataValue.Display(genericDefinition is { } rd ? rd.Return : null),
                     MetadataValue.Text(genericDefinition is { } rk ? rk.ReturnKey : null),
@@ -3526,9 +3759,16 @@ internal sealed partial class CppEmitter
             // chains, so emitting a table here would leak Object.ToString/Equals/etc.
             // into GetMethods, which unlike real .NET lists no Object member; a named
             // lookup answers those from the runtime's rows (dn2cpp_meta_lookup).
-            if (cls.IsEnum || _e.IsOpaque(cls) && !_c.RuntimeInterfaceMetadata.Contains(cls)
-                || _e.IsCanonicalWorld(cls))
+            if (cls.IsEnum || _e.IsCanonicalWorld(cls))
                 return;
+            if (_e.IsOpaque(cls) && !_c.RuntimeInterfaceMetadata.Contains(cls))
+            {
+                var activationCtors = cls.Methods.Where(m => _e._activationConstructorRows.Contains(m)).ToList();
+                if (BuildMemberTable(cls, activationCtors, "ctortab") is { } table)
+                    _ctorTabs[cls] = table;
+                NoteListedCtors(cls, activationCtors);
+                return;
+            }
             // Dedupe by CppName: a class can list the same method twice (e.g. an
             // interface-impl entry shares the method's handle), which would both emit a
             // duplicate GetMethods row and collide the per-method parmtab_ array name.
@@ -3561,6 +3801,7 @@ internal sealed partial class CppEmitter
                 _methodTabs[cls] = mt;
             if (BuildMemberTable(cls, ctors, "ctortab") is { } ct)
                 _ctorTabs[cls] = ct;
+            NoteListedCtors(cls, ctors);
             if (keepRefl && _c.NamedDelegateBindingUsed && cls.StaticCctor is { } initializer
                 && _e.KeepsReflectionMethodRow(cls, initializer, propertyAccessors)
                 && BuildMemberTable(cls, new List<MethodInfo> { initializer }, "initrow") is { } init)
@@ -4006,6 +4247,7 @@ internal sealed partial class CppEmitter
                 AssemblyName = string.IsNullOrEmpty(cls.Module.AssemblyName) ? null : cls.Module.AssemblyName, FinalizeFn = finalize, Rgctx = rgctxExpr, TypeObject = "&ty_" + cls.CppName,
                 IlAttrs = unchecked((uint)tIlAttrs), MetadataToken = tToken, DefaultMemberName = DefaultMemberName(cls), MarshalSize = _c.MarshalStampSize(cls),
                 EventSourceName = EventSourceIdentity(cls)?.Name, EventSourceGuid = EventSourceIdentity(cls)?.Guid,
+                Activation = ActivationBits(cls),
             });
             _sb.AppendLine($"const Dn2CppType ty_{cls.CppName} = {{ {{ &dn2cpp_type_type }}, {_e.TypeInfoRef(cls, "class ty_ companion")} }};");
             // A bind-kind type whose layout/vtable/metadata this emission knows: its handle

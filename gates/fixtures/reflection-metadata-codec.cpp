@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <initializer_list>
 #include <limits>
+#include <string>
 #include <utility>
 
 namespace {
@@ -112,6 +113,14 @@ DN2CPP_NATIVE_METADATA_STORAGE(initializer_type);
 constexpr auto packed_initializer_type = Dn2CppMetadataHandle<Dn2CppTypeReflection>::from_static(initializer_type_storage.records.data());
 DN2CPP_NATIVE_METADATA_STORAGE(local_type);
 constexpr auto packed_local_type = Dn2CppMetadataHandle<Dn2CppTypeReflection>::from_static(local_type_storage.records.data());
+constexpr int32_t packed_activation_bits = static_cast<int32_t>(0x80000000u
+    | DN2CPP_TA_UNALLOCATED | DN2CPP_TA_OMITTED_PUBLIC_DEFAULT_CTOR);
+DN2CPP_NATIVE_TYPE_REFLECTION(activation_type,
+    nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0,
+    nullptr, 0, nullptr, 0, 0, nullptr, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0,
+    packed_activation_bits);
+DN2CPP_NATIVE_METADATA_STORAGE(activation_type);
+constexpr auto packed_activation_type = Dn2CppMetadataHandle<Dn2CppTypeReflection>::from_static(activation_type_storage.records.data());
 
 const Dn2CppTypeInfo invocation_owner_def{ "InvokeDiagnostics.Owner`1" };
 const Dn2CppTypeInfo* const invocation_owner_args[] = { &dn2cpp_int32_type };
@@ -179,7 +188,8 @@ template<class Action> InvocationFault invocation_fault(Action action)
             && reinterpret_cast<Dn2CppExceptionObject*>(ex.obj)->inner == nullptr
             && dn2cpp_str_contains_cmp(message, dn2cpp_type_tostring(&invocation_owner), 4) != 0
             && contains("Diagnostic") && contains("Int64")
-            && contains("the target method's body was not compiled into this image");
+            && contains("reflection found this member but its body was not retained")
+            && contains("<type fullname=\"InvokeDiagnostics.Owner`1\"><method name=\"Diagnostic\" />");
         if (!described)
             std::fprintf(stderr, "metadata invocation refusal: %s/%08X, complete diagnosis=%d\n",
                 ex.obj->type->name, static_cast<uint32_t>(dn2cpp_exception_hresult(ex.obj)), described);
@@ -189,6 +199,338 @@ template<class Action> InvocationFault invocation_fault(Action action)
     return {};
 }
 
+const Dn2CppTypeInfo template_owner_def{ "InvokeDiagnostics.Template`1" };
+const Dn2CppTypeInfo template_owner = [] {
+    Dn2CppTypeInfo type{ "Internal_Mangled_Template_Int32", &dn2cpp_object_type };
+    type.flags = DN2CPP_TF_RUNTIME_TEMPLATE;
+    type.genericDef = &template_owner_def;
+    type.genericArgCount = 1;
+    type.genericArgs = invocation_owner_args;
+    return type;
+}();
+
+// A bodiless template row returning a two-level pointer: its pointer depth bits share
+// no bit with the preserve rule's marker.
+constexpr int32_t template_row_attrs = DN2CPP_MTHA_STATIC | DN2CPP_MTHA_PUBLIC
+    | DN2CPP_MTHA_RETURN_POINTER | (1 << DN2CPP_MTHA_RETURN_POINTER_DEPTH_SHIFT);
+
+Dn2CppMethodInfo template_row(int32_t preservable)
+{
+    Dn2CppMethodInfo row{};
+    row.name = "<Pointer>b__0";
+    row.declaringType = &template_owner;
+    row.returnType = &dn2cpp_intptr_type;
+    row.attrs = template_row_attrs;
+    row.vtableSlot = -1;
+    row.ilAttrs = 0x16;
+    row.preservable = preservable;
+    return row;
+}
+
+// Whether invoking `row` refuses with a PlatformNotSupportedException whose message
+// contains every one of `parts`.
+bool template_refusal_names(const Dn2CppMethodInfo& row, std::initializer_list<const char*> parts)
+{
+    Dn2CppMethodRef method{};
+    method.type = &dn2cpp_methodinfo_type;
+    method.method = &row;
+    method.reflectedType = &template_owner;
+    try { (void)dn2cpp_methodref_invoke(&method, nullptr, nullptr); }
+    catch (Dn2CppException& ex)
+    {
+        bool named = ex.obj->type == &dn2cpp_platform_not_supported_exception_type;
+        Dn2CppString* message = dn2cpp_exception_message(ex.obj);
+        for (const char* part : parts)
+            named &= dn2cpp_str_contains_cmp(message,
+                dn2cpp_string_from_utf8(part, static_cast<int32_t>(std::strlen(part))), 4) != 0;
+        dn2cpp_exc_inflight_pop(ex.obj);
+        return named;
+    }
+    return false;
+}
+
+void check_template_refusal_rows()
+{
+    auto packed = record(0, (1ULL << 5) | (1ULL << 18) | (1ULL << 19)
+        | (1ULL << 20) | (1ULL << 21), { uint64_t(template_row_attrs) * 2, 14, 2, 1, 18 });
+    auto decoded = *Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_static(packed.bytes.data());
+    require(decoded.attrs == template_row_attrs && decoded.preservable == 1
+        && decoded.returnRequiredCustomModifierCount == 7
+        && decoded.returnOptionalCustomModifiers == pointers[0]
+        && decoded.returnOptionalCustomModifierCount == 9,
+        "a packed method row keeps its preserve marker apart from pointer depth and adjacent modifiers");
+    static const Dn2CppMethodInfo closed = template_row(0);
+    static const Dn2CppMethodInfo preservable = template_row(1);
+    require(template_refusal_names(closed, { "this closed generic instantiation has no compiled code; "
+            "fix: name the closed generic instantiation statically" }),
+        "a template row's pointer depth does not read as a preserve rule");
+    require(template_refusal_names(preservable, { "::<Pointer>b__0 in ",
+            "reflection found this member but its body was not retained; "
+            "fix: [Preserve] on the target, or link.xml <assembly fullname=\"",
+            "\"><type fullname=\"InvokeDiagnostics.Template`1\">"
+            "<method name=\"&lt;Pointer&gt;b__0\" /></type></assembly>" }),
+        "a preservable template row's refusal names its member rule as well-formed link.xml");
+}
+
+// Exact metadata-only signatures participate in binding before a missing body
+// refuses; an invokable object overload must not hide a more specific string row.
+int32_t overloaded_constructed = 0;
+
+void overloaded_ctor(Dn2CppObject*, Dn2CppObject*) { overloaded_constructed++; }
+
+Dn2CppObject* overloaded_ctor_thunk(void* fn, Dn2CppObject* self, Dn2CppObject** args, const Dn2CppTypeInfo*)
+{
+    reinterpret_cast<void (*)(Dn2CppObject*, Dn2CppObject*)>(fn)(self, args[0]);
+    return nullptr;
+}
+
+extern const Dn2CppTypeInfo overloaded_type;
+const Dn2CppParamInfo overloaded_params[] = { [] {
+    Dn2CppParamInfo param{};
+    param.paramType = &dn2cpp_object_type;
+    param.name = "value";
+    return param;
+}() };
+const Dn2CppParamInfo string_params[] = { [] {
+    Dn2CppParamInfo param = overloaded_params[0];
+    param.paramType = &dn2cpp_string_type;
+    return param;
+}() };
+const Dn2CppMethodInfo overloaded_ctors[] = { [] {
+    Dn2CppMethodInfo row{};
+    row.name = ".ctor";
+    row.declaringType = &overloaded_type;
+    row.returnType = &dn2cpp_void_type;
+    row.parameters = overloaded_params;
+    row.paramCount = 1;
+    row.attrs = DN2CPP_MTHA_PUBLIC;
+    row.vtableSlot = -1;
+    row.fnPtr = reinterpret_cast<void*>(&overloaded_ctor);
+    row.invoker = reinterpret_cast<void*>(&overloaded_ctor_thunk);
+    row.ilAttrs = 0x1886;
+    row.display = "Void .ctor(System.Object)";
+    return row;
+}(), [] {
+    Dn2CppMethodInfo row = overloaded_ctors[0];
+    row.parameters = string_params;
+    row.fnPtr = nullptr;
+    row.invoker = nullptr;
+    row.display = "Void .ctor(System.String)";
+    return row;
+}() };
+const Dn2CppTypeReflection overloaded_reflection = [] {
+    Dn2CppTypeReflection reflection{};
+    reflection.ctors = overloaded_ctors;
+    reflection.ctorCount = 2;
+    reflection.assemblyName = "BinderFixture";
+    return reflection;
+}();
+const Dn2CppTypeInfo overloaded_type = [] {
+    Dn2CppTypeInfo type{ "BinderFixture.Overloaded", &dn2cpp_object_type };
+    type.instanceSize = static_cast<int32_t>(sizeof(Dn2CppObject));
+    type.reflectionData = &overloaded_reflection;
+    return type;
+}();
+
+// Visibility excludes the bodiless string overload from public-only binding;
+// omitted parameterless constructors need no argument-signature row.
+extern const Dn2CppTypeInfo split_type;
+const Dn2CppMethodInfo split_ctors[] = { [] {
+    Dn2CppMethodInfo row = overloaded_ctors[0];
+    row.declaringType = &split_type;
+    return row;
+}(), [] {
+    Dn2CppMethodInfo row = overloaded_ctors[1];
+    row.declaringType = &split_type;
+    row.attrs = DN2CPP_MTHA_PRIVATE;
+    row.ilAttrs = 0x1881;
+    return row;
+}() };
+const Dn2CppTypeReflection split_reflection = [] {
+    Dn2CppTypeReflection reflection{};
+    reflection.ctors = split_ctors;
+    reflection.ctorCount = 2;
+    reflection.activation = DN2CPP_TA_OMITTED_PUBLIC_DEFAULT_CTOR;
+    reflection.assemblyName = "BinderFixture";
+    return reflection;
+}();
+const Dn2CppTypeInfo split_type = [] {
+    Dn2CppTypeInfo type{ "BinderFixture.Split", &dn2cpp_object_type };
+    type.instanceSize = static_cast<int32_t>(sizeof(Dn2CppObject));
+    type.reflectionData = &split_reflection;
+    return type;
+}();
+
+const Dn2CppTypeReflection private_default_reflection = [] {
+    Dn2CppTypeReflection reflection{};
+    reflection.activation = DN2CPP_TA_OMITTED_NONPUBLIC_DEFAULT_CTOR;
+    reflection.assemblyName = "BinderFixture";
+    return reflection;
+}();
+const Dn2CppTypeInfo private_default_type = [] {
+    Dn2CppTypeInfo type{ "BinderFixture.PrivateDefault", &dn2cpp_object_type };
+    type.instanceSize = static_cast<int32_t>(sizeof(Dn2CppObject));
+    type.reflectionData = &private_default_reflection;
+    return type;
+}();
+
+template<class Action> const Dn2CppTypeInfo* constructor_fault(const Dn2CppTypeInfo* type,
+    const char* signature, Action action)
+{
+    try
+    {
+        action();
+        return nullptr;
+    }
+    catch (Dn2CppException& ex)
+    {
+        const Dn2CppTypeInfo* fault = ex.obj->type;
+        if (fault == &dn2cpp_platform_not_supported_exception_type)
+        {
+            Dn2CppString* message = dn2cpp_exception_message(ex.obj);
+            const std::string owner = type->name;
+            const std::string expected = owner + "::" + signature + " in BinderFixture: "
+                "reflection found this member but its body was not retained; fix: "
+                "[Preserve] on the target, or link.xml <assembly fullname=\"BinderFixture\">"
+                "<type fullname=\"" + owner + "\"><method name=\".ctor\" /></type></assembly>";
+            bool named = dn2cpp_string_equals(message,
+                dn2cpp_string_from_utf8(expected.data(), static_cast<int32_t>(expected.size()))) != 0;
+            if (!named)
+            {
+                std::fprintf(stderr, "constructor refusal expected: %s\nconstructor refusal actual: ", expected.c_str());
+                for (int32_t i = 0; message != nullptr && i < message->length; i++)
+                    std::fputc(message->chars[i] <= 0x7f ? message->chars[i] : '?', stderr);
+                std::fputc('\n', stderr);
+            }
+            require(named, "an unretained constructor's refusal names the constructor rule");
+        }
+        dn2cpp_exc_inflight_pop(ex.obj);
+        return fault;
+    }
+}
+
+const Dn2CppTypeInfo* activator_fault(const Dn2CppTypeInfo* type,
+    Dn2CppArrayRef* args, int32_t flags, const char* signature = "Void .ctor(System.String)")
+{
+    return constructor_fault(type, signature, [&] {
+        Dn2CppObject* made = dn2cpp_activator_create_instance_args(
+            dn2cpp_get_type_from_handle(type), args, flags, nullptr, nullptr);
+        require(made != nullptr && made->type == type, "a bound constructor builds its own type");
+    });
+}
+
+bool activator_refused(const Dn2CppTypeInfo* type, Dn2CppObject* argument, int32_t flags)
+{
+    Dn2CppArrayRef* args = dn2cpp_newarr_ref(1);
+    dn2cpp_gc_store_ref(&args->data[0], argument);
+    const Dn2CppTypeInfo* fault = activator_fault(type, args, flags);
+    require(fault == nullptr || fault == &dn2cpp_platform_not_supported_exception_type,
+        "a compatible constructor either runs or refuses its unretained body");
+    return fault != nullptr;
+}
+
+void check_constructor_binding()
+{
+    auto* exact = static_cast<Dn2CppObject*>(dn2cpp_alloc(sizeof(Dn2CppObject)));
+    exact->type = &dn2cpp_object_type;
+    Dn2CppObject* text = reinterpret_cast<Dn2CppObject*>(dn2cpp_string_from_utf8("s", 1));
+    constexpr int32_t publicInstance = 0x14, createInstanceOnly = 0x200;
+    require(!activator_refused(&overloaded_type, exact, publicInstance) && overloaded_constructed == 1,
+        "an exact object argument selects its kept constructor beside a bodiless string row");
+    require(!activator_refused(&overloaded_type, exact, createInstanceOnly) && overloaded_constructed == 2,
+        "flags without a lookup bit bind public instance constructors");
+    require(activator_refused(&overloaded_type, text, publicInstance)
+        && activator_refused(&overloaded_type, nullptr, publicInstance)
+        && overloaded_constructed == 2,
+        "a more specific bodiless string constructor refuses before the kept object body runs");
+    constexpr int32_t nonPublicInstance = 0x24, anyInstance = 0x34;
+    require(!activator_refused(&split_type, text, publicInstance) && overloaded_constructed == 3,
+        "a bodiless constructor of another visibility does not outrank a kept one");
+    require(activator_refused(&split_type, text, anyInstance)
+        && activator_refused(&split_type, text, nonPublicInstance)
+        && activator_refused(&split_type, nullptr, nonPublicInstance) && overloaded_constructed == 3,
+        "a compatible non-public string row refuses only when the lookup admits it");
+    auto* invalid = dn2cpp_newarr_ref(1);
+    dn2cpp_gc_store_ref(&invalid->data[0], exact);
+    require(activator_fault(&split_type, invalid, nonPublicInstance) == &dn2cpp_missing_method_exception_type,
+        "an incompatible argument does not select a bodiless constructor of the same arity");
+    require(activator_fault(&overloaded_type, dn2cpp_newarr_ref(2), publicInstance)
+            == &dn2cpp_missing_method_exception_type,
+        "a wrong argument count does not select a bodiless constructor");
+    Dn2CppMethodRef missing{};
+    missing.type = &dn2cpp_constructorinfo_type;
+    missing.method = &overloaded_ctors[1];
+    missing.reflectedType = &overloaded_type;
+    require(constructor_fault(&overloaded_type, "Void .ctor(System.String)",
+            [&] { (void)dn2cpp_ctorref_invoke(&missing, invalid); })
+            == &dn2cpp_argument_exception_type,
+        "direct constructor invocation checks an invalid argument before its missing body");
+    require(constructor_fault(&overloaded_type, "Void .ctor(System.String)",
+            [&] { (void)dn2cpp_ctorref_invoke(&missing, nullptr); })
+            == &dn2cpp_target_parameter_count_exception_type,
+        "direct constructor invocation checks its argument count before its missing body");
+    require(activator_fault(&split_type, nullptr, publicInstance, "Void .ctor()")
+            == &dn2cpp_platform_not_supported_exception_type,
+        "an omitted public parameterless constructor still refuses with its remedy");
+    require(activator_fault(&overloaded_type, nullptr, publicInstance, "Void .ctor()")
+            == &dn2cpp_missing_method_exception_type,
+        "a type without a parameterless constructor reports a genuine miss");
+    require(activator_fault(&private_default_type, nullptr, publicInstance, "Void .ctor()")
+            == &dn2cpp_missing_method_exception_type
+        && activator_fault(&private_default_type, nullptr, nonPublicInstance, "Void .ctor()")
+            == &dn2cpp_platform_not_supported_exception_type,
+        "an omitted non-public parameterless constructor refuses only when visible");
+    require(overloaded_constructed == 3, "constructor refusals and validation never run an unrelated retained body");
+}
+
+// A static read-only field whose getter refuses: under the getter's own identity after
+// initializing the type (a box it may not hand out), or under no call because the type
+// initializer was not retained.
+const Dn2CppTypeInfo initonly_owner{ "FieldFixture.Settings", &dn2cpp_object_type };
+Dn2CppObject* initonly_unboxed_getter(Dn2CppObject*);
+Dn2CppObject* initonly_unboxed_getter(Dn2CppObject*)
+{
+    dn2cpp_throw_invoker_missing("FieldFixture.Settings::Default: box refused",
+        reinterpret_cast<const void*>(&initonly_unboxed_getter));
+}
+Dn2CppObject* initonly_uninitialized_getter(Dn2CppObject*)
+{
+    dn2cpp_throw_invoker_missing("FieldFixture.Settings::.cctor: initializer not retained", nullptr);
+}
+
+// The exception type SetValue raises on the static read-only field `getter` reads.
+const Dn2CppTypeInfo* initonly_store_fault(Dn2CppObject* (*getter)(Dn2CppObject*))
+{
+    static Dn2CppFieldInfo rows[2];
+    Dn2CppFieldInfo& row = rows[getter == &initonly_unboxed_getter ? 0 : 1];
+    row.name = "Default";
+    row.declaringType = &initonly_owner;
+    row.fieldType = &dn2cpp_string_type;
+    row.attrs = DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_INITONLY;
+    row.getter = getter;
+    row.ilAttrs = 0x36;
+    Dn2CppFieldRef field{};
+    field.type = &dn2cpp_fieldinfo_type;
+    field.field = &row;
+    field.reflectedType = &initonly_owner;
+    try { dn2cpp_fieldref_set_value(&field, nullptr, nullptr); }
+    catch (Dn2CppException& ex)
+    {
+        const Dn2CppTypeInfo* type = ex.obj->type;
+        dn2cpp_exc_inflight_pop(ex.obj);
+        return type;
+    }
+    return nullptr;
+}
+
+void check_initonly_store_refusals()
+{
+    require(initonly_store_fault(&initonly_unboxed_getter) == &dn2cpp_field_access_exception_type,
+        "a static read-only store refuses as .NET does once the getter initialized the type");
+    require(initonly_store_fault(&initonly_uninitialized_getter) == &dn2cpp_platform_not_supported_exception_type,
+        "a static read-only store reports a type initializer the image did not retain");
+}
+
 void check_invocation_rows()
 {
     std::puts("metadata missing invocation diagnostics begin");
@@ -196,7 +538,7 @@ void check_invocation_rows()
     // Native invocation plans retain row identity; each shape needs an immutable row.
     static const Dn2CppMethodInfo rows[] = { invocation_row(0), invocation_row(1), invocation_row(2) };
     constexpr uint64_t presence = (1ULL << 0) | (1ULL << 1) | (1ULL << 2) | (1ULL << 5)
-        | (1ULL << 6) | (1ULL << 12) | (1ULL << 15) | (1ULL << 16) | (1ULL << 22);
+        | (1ULL << 6) | (1ULL << 12) | (1ULL << 15) | (1ULL << 16) | (1ULL << 23);
     for (bool packed : { false, true })
     {
         // A callable row is the control for both missing-pointer paths.
@@ -435,6 +777,8 @@ const Dn2CppDelegateReflEntry dn2cpp_delegate_refl_registry[] = { {} };
 const int32_t dn2cpp_delegate_refl_registry_count = 0;
 const Dn2CppGvmRowDispatch dn2cpp_gvm_row_dispatch[] = { {} };
 const int32_t dn2cpp_gvm_row_dispatch_count = 0;
+const Dn2CppVirtualMethodTarget* const dn2cpp_virtual_method_targets[] = { nullptr };
+const int32_t dn2cpp_virtual_method_target_count = 0;
 const Dn2CppItfImplSlots dn2cpp_itf_impl_slots[] = { {} };
 const int32_t dn2cpp_itf_impl_slot_count = 0;
 const Dn2CppRenamedSlotBody dn2cpp_renamed_slot_bodies[] = { {} };
@@ -450,7 +794,18 @@ const int32_t dn2cpp_runtime_template_count = 0;
 int main()
 {
     static_assert(sizeof(Dn2CppMetadataHandle<Dn2CppFieldInfo>) == sizeof(void*));
-    static_assert(offsetof(Dn2CppMethodInfo, definitionSignature) + sizeof(void*) == sizeof(Dn2CppMethodInfo));
+    static_assert(offsetof(Dn2CppMethodInfo, preservable)
+        == offsetof(Dn2CppMethodInfo, returnRequiredCustomModifierCount) + sizeof(int32_t));
+    static_assert(offsetof(Dn2CppMethodInfo, returnOptionalCustomModifiers)
+        == offsetof(Dn2CppMethodInfo, preservable) + sizeof(int32_t));
+    static_assert(sizeof(void*) != 8 || (sizeof(Dn2CppMethodInfo) == 240
+        && offsetof(Dn2CppMethodInfo, preservable) % alignof(void*) == sizeof(int32_t)));
+    static_assert(sizeof(Dn2CppMethodInfo)
+        == offsetof(Dn2CppMethodInfo, definitionSignature) + sizeof(void*));
+    static_assert(std::size(Dn2CppMethodInfo_fields) == 36
+        && Dn2CppMethodInfo_fields[19].offset == offsetof(Dn2CppMethodInfo, preservable)
+        && Dn2CppMethodInfo_fields[20].offset == offsetof(Dn2CppMethodInfo, returnOptionalCustomModifiers)
+        && Dn2CppMethodInfo_fields[35].offset == offsetof(Dn2CppMethodInfo, definitionSignature));
     auto event = packed_event.operator->();
     require(event->name == unicode && event->declaringType == &original_type
         && event->handlerType == &substituted_type && event->handlerRecipe == &field_signature
@@ -470,6 +825,9 @@ int main()
         "packed cold rows retain a binding-only initializer handle");
     require(packed_initializer_type->genericMetadata == &generic_type_metadata,
         "native packing and cold decoding preserve the generic descriptor pointer");
+    require(packed_activation_type->activation == packed_activation_bits
+        && packed_initializer_type->activation == 0,
+        "native packing keeps a type's activation bits at full width");
     static const Dn2CppTypeInfo constraint_interface = [] {
         Dn2CppTypeInfo ti{};
         ti.name = "Codec.IConstraint";
@@ -650,13 +1008,13 @@ int main()
     auto pass = *Dn2CppMetadataHandle<Dn2CppParamInfo>::from_static(pass_record.bytes.data());
     require(pass.genericDefinitionKey == unicode && pass.passKind == DN2CPP_PASS_BYREF
         && pass.passType == &original_type, "parameter invocation descriptors preserve their identity");
-    auto dispatch_record = record(0, (1ULL << 26) | (1ULL << 27) | (1ULL << 28) | (1ULL << 29),
+    auto dispatch_record = record(0, (1ULL << 27) | (1ULL << 28) | (1ULL << 29) | (1ULL << 30),
         { 3, 4, 0x06000001 * 2, 1 });
     auto dispatch = *Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_static(dispatch_record.bytes.data());
     require(dispatch.genericDefinitionReturnKey == unicode && dispatch.gvmRootDepth == 2
         && dispatch.gvmRootToken == 0x06000001 && dispatch.returnPassType == &original_type,
         "method invocation descriptors preserve generic roots and return types");
-    auto function_record = record(0, (1ULL << 5) | (1ULL << 31),
+    auto function_record = record(0, (1ULL << 5) | (1ULL << 32),
         { DN2CPP_MTHA_RETURN_POINTER * 2, 1 });
     auto function = *Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_static(function_record.bytes.data());
     require(function.returnSignatureType == &original_type && function.returnPassType == nullptr,
@@ -665,7 +1023,7 @@ int main()
     auto pointer_parameter = *Dn2CppMetadataHandle<Dn2CppParamInfo>::from_static(pointer_parameter_record.bytes.data());
     require(pointer_parameter.passType == &original_type && pointer_parameter.bindingPointeeType == pointers[3],
         "pointer binding identity remains separate from parameter marshalling");
-    auto pointer_return_record = record(0, (1ULL << 29) | (1ULL << 32), { 1, 4 });
+    auto pointer_return_record = record(0, (1ULL << 30) | (1ULL << 33), { 1, 4 });
     auto pointer_return = *Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_static(pointer_return_record.bytes.data());
     require(pointer_return.returnPassType == &original_type && pointer_return.returnBindingPointeeType == pointers[3]
         && pointer_return.returnSignatureType == nullptr,
@@ -674,11 +1032,11 @@ int main()
     auto query_parameter = *Dn2CppMetadataHandle<Dn2CppParamInfo>::from_static(query_parameter_record.bytes.data());
     require(query_parameter.passType == &original_type && query_parameter.reflectionSignature == pointers[3],
         "query parameter AST relocates independently of Invoke pass type");
-    auto query_return_record = record(0, (1ULL << 29) | (1ULL << 33), { 1, 4 });
+    auto query_return_record = record(0, (1ULL << 30) | (1ULL << 34), { 1, 4 });
     auto query_return = *Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_static(query_return_record.bytes.data());
     require(query_return.returnPassType == &original_type && query_return.returnReflectionSignature == pointers[3],
         "query return AST relocates above the high presence-mask bit");
-    auto definition_signature_record = record(0, (1ULL << 29) | (1ULL << 34), { 1, 4 });
+    auto definition_signature_record = record(0, (1ULL << 30) | (1ULL << 35), { 1, 4 });
     auto definition_signature = *Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_static(definition_signature_record.bytes.data());
     require(definition_signature.returnPassType == &original_type && definition_signature.definitionSignature == pointers[3],
         "symbolic MethodDef query recipes relocate independently of Invoke pass types");
@@ -756,6 +1114,7 @@ int main()
     original.returnBindingPointeeType = &substituted_type;
     original.returnReflectionSignature = reinterpret_cast<const Dn2CppBindingSignature*>(&substituted_type);
     original.definitionSignature = reinterpret_cast<const Dn2CppMethodDefinitionSignature*>(&substituted_type);
+    original.preservable = 1;
     Dn2CppMethodDelta deltas[] = { { 1, &original, &substituted_type }, { 1, &original, &original_type } };
     auto delta = Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw(&deltas[0]);
     require(delta.native() == nullptr, "a method delta is decoded instead of treated as a native row");
@@ -763,7 +1122,7 @@ int main()
         && delta->metadataToken == INT32_MAX && original.declaringType == &original_type
         && delta->returnPassType == &original_type && delta->returnBindingPointeeType == &substituted_type
         && delta->returnReflectionSignature == original.returnReflectionSignature
-        && delta->definitionSignature == original.definitionSignature,
+        && delta->definitionSignature == original.definitionSignature && delta->preservable == 1,
         "constructor delta preserves original metadata and changes only declaring type");
     require(dn2cpp_metadata_at(deltas, Dn2CppMetadataKind::Method, sizeof(Dn2CppMethodInfo), 1) == &deltas[1],
         "constructor delta table uses descriptor stride");
@@ -835,17 +1194,20 @@ int main()
             plain_display->length * sizeof(char16_t)) == 0,
         "token display reconstructs exact UTF-16 including surrogate pairs");
     require(plain_bytes == packed_bytes, "token display only allocates the final managed string");
+    check_template_refusal_rows();
+    check_constructor_binding();
+    check_initonly_store_refusals();
     std::puts("metadata codec boundaries OK");
     bool invoker_rejected = false;
     try { dn2cpp_throw_invoker_missing("missing metadata invoker", &invoker_rejected); }
     catch (Dn2CppInvokerMissing& ex)
     {
         invoker_rejected = ex.obj != nullptr && ex.call == &invoker_rejected
-            && ex.obj->type == &dn2cpp_not_supported_exception_type
-            && dn2cpp_exception_hresult(ex.obj) == static_cast<int32_t>(0x80131515u);
+            && ex.obj->type == &dn2cpp_platform_not_supported_exception_type
+            && dn2cpp_exception_hresult(ex.obj) == static_cast<int32_t>(0x80131539u);
         dn2cpp_exc_inflight_pop(ex.obj);
     }
-    require(invoker_rejected, "missing invoker carries the NotSupportedException HResult");
+    require(invoker_rejected, "missing invoker carries the PlatformNotSupportedException HResult");
     std::puts("metadata invoker refusal fields OK");
     check_invocation_rows();
     check_unrecorded_interface_guard();
