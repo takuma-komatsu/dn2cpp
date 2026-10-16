@@ -2430,9 +2430,10 @@ _gate_dotnet_env_term() {
 }
 
 # _gate_surface_lines OUT — the TRANSPILE-SURFACE term of the key: one
-# `shasum -a 256` line per generated* TU/header and per sidecar CMake consumes,
-# named relative to OUT, on stdout. The term the cache rests on — lose it and two
-# runs with different C++ key the same. Three outcomes stay separate:
+# `shasum -a 256` line per generated* TU/header, per sidecar CMake consumes and
+# for the reflection report gates assert on, named relative to OUT, on stdout.
+# The term the cache rests on — lose it and two runs with different C++ key the
+# same. Three outcomes stay separate:
 #
 #   - files matched     → their shasum lines;
 #   - nothing matched   → the marker line `no-generated`, a legitimate state
@@ -2452,7 +2453,7 @@ _gate_surface_lines() {
     st=0
     matched=$(printf '%s\n' "$listing" \
         | LC_ALL=C sort \
-        | grep -E '^(generated|pinvoke-(libs|symbols)\.txt$|base-abi\.json$)') || st=$?
+        | grep -E '^(generated|pinvoke-(libs|symbols)\.txt$|base-abi\.json$|reflection-unrecognized\.tsv$)') || st=$?
     # grep's contract: 1 is "no match", anything else is a real failure.
     [ "$st" -eq 1 ] && { printf 'no-generated\n'; return 0; }
     [ "$st" -eq 0 ] || return 1

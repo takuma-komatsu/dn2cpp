@@ -13,6 +13,7 @@
 # Virtual delegate equality and removal retain the selected method under identical-code folding.
 # Reflected events retain visibility, accessor identity, symbolic owners and guarded subscription.
 # Property accessor arrays retain visibility, order, reflected handle identity and boxed invocation.
+# Named method enumerations retain only their selection; type-name case choices keep each known branch.
 # Delegate method names select strict signatures, inherited private methods and virtual slots.
 # Delegate ABI compatibility retains by-ref, pointer and function-pointer signature identity.
 # Unanchored intrinsic pointer pointees retain binding identity independently of Invoke boxing.
@@ -183,9 +184,11 @@
 # through class inheritance without changing containing types or interface users.
 # NullDelegateTargetSubset checks delegate construction over a nonvirtual
 # instance method: a null receiver faults when bound, before invocation.
-# ReflectRouteClassSubset's attribute-minted section reads the attribute rows of a
-# chain of closed generics that only the row before each one names: every level
-# keeps its row, however deep the chain.
+# ReflectRouteClassSubset: a recognized lookup admits exactly the selected members;
+# what the section needs beyond that is preserved explicitly in link.xml. Its
+# attribute-minted section reads the attribute rows of a chain of closed generics
+# that only the row before each one names: every level keeps its row, however deep
+# the chain.
 # ReflectBoundDelegateSubset's template accessor section binds the property
 # accessors of MakeGenericType instantiations minted at run time, which are their
 # template's rows: static ones open and over their first argument, instance ones
@@ -222,8 +225,30 @@
 # instantiations and through a variant instantiation of the slot's interface.
 # StrippedOverrideRefusals runs the stripped-body refusals in an image of their
 # own, so no other section can compile the CoreLib overrides they need stripped.
+# There a late-bound call through a base override's generic row runs the
+# receiver's override a call site compiled, reached before or after that row's
+# dispatcher.
 # ReflectBindOnly makes CreateDelegate its program's only reflection call: the
 # binding alone reaches each bound body and the types its delegate type names.
+# UnboxedStructBindOnly binds methods returning or writing back a struct the image
+# never boxes, through a delegate type nothing allocates: the bound calls run as
+# .NET's do, and MethodInfo.Invoke of such a method refuses before it runs.
+# AdmissionFiltersOnly admits no body its recorded filters exclude: a named-argument
+# setter under an attribute data read, a same-named field under GetMember's
+# MemberTypes.Method, a non-public accessor under an accessor read without nonPublic.
+# Template signature projections and constructed open methods retain selected
+# attributes without admitting their member bodies or executable closed owners.
+# Template execution preserves delegate arity, property return and field lookup filters.
+# Assembly alternatives keep each known receiver, including array element assemblies.
+# Template lookups select the nearest hidden method through execution and generic projection.
+# Named delegate binding retains private base methods under its name and arity filters.
+# Referenced library bases obey the same selection with and without ILDiet.
+# RecognizedReflectionOnly runs every recognized reflection API family and summary
+# value form with no preserve, over application and ReflectReturnLib targets: no
+# unrecognized-site row names it, an application overload or name no site selects
+# keeps its metadata row but compiles no body, and neither the library overload a
+# typed lookup's default binder passes over nor the static a name-only lookup's
+# nearer one hides compiles a body.
 # ReflectFrameworkBind's last section passes Pointer boxes between methods of the
 # application and ReflectReturnLib whose function pointer types name each one's
 # same-named types: a box over one assembly's type is refused for a parameter over
@@ -243,13 +268,23 @@ export DOTNET_ReadyToRun=0
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|clr-oracle:DOTNET_ReadyToRun=0|reflection-measure:${DN2CPP_REFLECTION_MEASURE:-}|existing-constructor-prefix:${DN2CPP_BEFORE_EXISTING_CONSTRUCTOR:-}|cold-activator-prefix:${DN2CPP_BEFORE_COLD_ACTIVATOR:-}|delegate-method-prefix:${DN2CPP_BEFORE_DELEGATE_METHOD:-}|ldftn-local-prefix:${DN2CPP_BEFORE_LDFTN_LOCAL:-}|invoke-validation-prefix:${DN2CPP_BEFORE_INVOKE_VALIDATION:-}|runtime-handle-relations-prefix:${DN2CPP_BEFORE_RUNTIME_HANDLE_RELATIONS:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|interface-selection-prefix:${DN2CPP_BEFORE_INTERFACE_SELECTION:-}|interface-redeclaration-prefix:${DN2CPP_BEFORE_INTERFACE_REDECLARATION:-}|runtime-level-gvm-prefix:${DN2CPP_BEFORE_RUNTIME_LEVEL_GVM:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|typedef-memberref-prefix:${DN2CPP_BEFORE_TYPEDEF_MEMBERREF:-}|primitive-binder-prefix:${DN2CPP_BEFORE_PRIMITIVE_BINDER:-}|optional-arguments-prefix:${DN2CPP_BEFORE_OPTIONAL_ARGUMENTS:-}"
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_ordinary-reflection.sh samples/dotnet/ReflectInvoke/OrdinaryAmbiguousMatchSubset.cs samples/dotnet/ReflectInvoke/OrdinaryReflectionLeaves.csproj samples/dotnet/ReflectInvoke/OrdinaryReflectionLeavesProgram.cs samples/dotnet/ReflectInvoke/OrdinaryWideLookupSubset.cs samples/dotnet/ReflectInvoke/ReflectBindOnly.csproj samples/dotnet/ReflectInvoke/ReflectBindOnlyProgram.cs samples/dotnet/ReflectInvoke/ReflectFieldValidationSubset.cs samples/dotnet/ReflectInvoke/ReflectInvoke.csproj samples/dotnet/ReflectInvoke/ReflectMetadataMeasureSubset.cs samples/dotnet/ReflectInvoke/ReflectionMethodGroupsOnly.csproj samples/dotnet/ReflectInvoke/ReflectionMethodGroupsOnlyProgram.cs samples/dotnet/ReflectInvoke/StrippedOverrideRefusals.csproj samples/dotnet/ReflectInvoke/StrippedOverrideRefusalsProgram.cs"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_ordinary-reflection.sh gates/reflection-gate-inputs.py samples/dotnet/ReflectFrameworkBind/Program.cs samples/dotnet/ReflectFrameworkBindLib/FrameworkBinder.cs samples/dotnet/ReflectInvoke/OrdinaryAmbiguousMatchSubset.cs samples/dotnet/ReflectInvoke/OrdinaryReflectionLeaves.csproj samples/dotnet/ReflectInvoke/OrdinaryReflectionLeavesProgram.cs samples/dotnet/ReflectInvoke/OrdinaryWideLookupSubset.cs samples/dotnet/ReflectInvoke/ReflectBindOnly.csproj samples/dotnet/ReflectInvoke/ReflectBindOnlyProgram.cs samples/dotnet/ReflectInvoke/ReflectFieldValidationSubset.cs samples/dotnet/ReflectInvoke/ReflectInvoke.csproj samples/dotnet/ReflectInvoke/ReflectMetadataMeasureSubset.cs samples/dotnet/ReflectInvoke/ReflectionMethodGroupsOnly.csproj samples/dotnet/ReflectInvoke/ReflectionMethodGroupsOnlyProgram.cs samples/dotnet/ReflectInvoke/StrippedOverrideRefusals.csproj samples/dotnet/ReflectInvoke/StrippedOverrideRefusalsProgram.cs samples/dotnet/ReflectInvoke/keep-field-initializers.xml samples/dotnet/ReflectInvoke/keep-method-groups.xml samples/dotnet/ReflectInvoke/keep-name-bind-overloads.xml samples/dotnet/ReflectInvoke/keep-event-other-methods.xml"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-reflection-leaves-v1|runtime-member-attributes-prefix:${DN2CPP_BEFORE_RUNTIME_MEMBER_ATTRIBUTES:-}|runtime-return-modifiers-prefix:${DN2CPP_BEFORE_RUNTIME_RETURN_MODIFIERS:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|reflection-dispatch-v1|dispatch-prefix:${DN2CPP_BEFORE_REFLECTION_DISPATCH:-}|attribute-minted-prefix:${DN2CPP_BEFORE_ATTRIBUTE_MINTED:-}|template-accessors-prefix:${DN2CPP_BEFORE_TEMPLATE_ACCESSORS:-}|pointer-returns-prefix:${DN2CPP_BEFORE_POINTER_RETURNS:-}|delegate-invoke-targets-prefix:${DN2CPP_BEFORE_DELEGATE_INVOKE_TARGETS:-}|null-bound-chains-prefix:${DN2CPP_BEFORE_NULL_BOUND_CHAINS:-}|renamed-slot-bindings-prefix:${DN2CPP_BEFORE_RENAMED_SLOT_BINDINGS:-}|settled-object-virtual-prefix:${DN2CPP_BEFORE_SETTLED_OBJECT_VIRTUAL:-}|renamed-slot-fillers-prefix:${DN2CPP_BEFORE_RENAMED_SLOT_FILLERS:-}"
-DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|stripped-overrides:${DN2CPP_STRIPPED_OVERRIDES:-}|library-struct-prefix:${DN2CPP_BEFORE_LIBRARY_STRUCT_RETURN:-}|function-pointer-identity-prefix:${DN2CPP_BEFORE_FUNCTION_POINTER_IDENTITY:-}"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|inherited-gvm-remedy-v1|inherited-gvm-remedy-env:${DN2CPP_INHERITED_GVM_REMEDY:-}|inherited-gvm-remedy-replay:no-ildiet,base-link,actual-xml|stripped-class-remedy-wrapper-v1|stripped-class-remedy-argv:class-remedies|stripped-interface-remedy-wrapper-v1|stripped-interface-remedy-argv:interface-remedies|interface-remedy-prefix-argv:before-interface-remedy-rows|stripped-overrides:${DN2CPP_STRIPPED_OVERRIDES:-}|library-struct-prefix:${DN2CPP_BEFORE_LIBRARY_STRUCT_RETURN:-}|function-pointer-identity-prefix:${DN2CPP_BEFORE_FUNCTION_POINTER_IDENTITY:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|pointer-fields-prefix:${DN2CPP_BEFORE_POINTER_FIELDS:-}|object-methods-prefix-argv:before-object-method-enumeration|property-accessors-prefix-argv:before-property-accessors"
-DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectFrameworkBind/keep-library-override.xml samples/dotnet/ReflectInvoke/keep-object-methods.xml"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/link.xml samples/dotnet/ReflectFrameworkBind/link.xml samples/dotnet/ReflectFrameworkBind/keep-library-override.xml samples/dotnet/ReflectInvoke/keep-object-methods.xml"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/RecognizedReflectionOnly.csproj samples/dotnet/ReflectInvoke/RecognizedReflectionOnlyProgram.cs samples/dotnet/ReflectReturnLib/ReflectReturnLib.csproj samples/dotnet/ReflectReturnLib/RecognizedTargets.cs"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectReturnLib/ConstructorBindingTargets.cs samples/dotnet/ReflectReturnLib/SelectionTargets.cs"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/ReflectPointerFieldsOnly.csproj samples/dotnet/ReflectInvoke/ReflectPointerFieldsPreserved.csproj samples/dotnet/ReflectInvoke/ReflectPointerFieldsOnlyProgram.cs samples/dotnet/ReflectInvoke/keep-pointer-field.xml samples/dotnet/ReflectReturnLib/PointerFields.cs"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/UnboxedStructBindOnly.csproj samples/dotnet/ReflectInvoke/UnboxedStructBindOnlyProgram.cs"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|unboxed-struct-invoke-argv:invoke"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/AdmissionFiltersOnly.csproj samples/dotnet/ReflectInvoke/AdmissionFiltersOnlyProgram.cs"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectReturnLib/NamedBindingTargets.cs"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|library-bindings-prefix-argv:before-library-bindings"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|metadata-projections-prefix-argv:before-metadata-projections"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|selection-filters-prefix-argv:before-selection-filters"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|reflection-alternatives-prefix-argv:before-reflection-alternatives"
 
 py="$(resolve_python)"
 source gates/_reflect-invoke-inputs.sh
@@ -520,7 +555,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|clone-interfaces:isolated,
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|delegate-clone-class:isolated,override-only,reflection-created,field-type-created,native-created,trimmed,unshared,rewritten-slots|delegate-clone-class-prefix:before-delegate-clone-class-groups"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_pointer-array-types.sh samples/dotnet/ReflectInvoke/PointerArrayTypesOnly.csproj samples/dotnet/ReflectInvoke/PointerArrayTypesOnlyProgram.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|pointer-array-layout:packed,native,uncompressed,trimmed,unshared|pointer-array-prefix-argv:before-pointer-array-types"
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_reflection-signature-types.sh gates/_headerless-reference-identity.sh samples/dotnet/ReflectInvoke/ReflectionSignatureTypesOnly.csproj"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_reflection-signature-types.sh gates/_headerless-reference-identity.sh samples/dotnet/ReflectInvoke/ReflectionSignatureTypesOnly.csproj samples/dotnet/ReflectInvoke/keep-signature-shapes.xml"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|signature-type-query:packed,native,uncompressed,trimmed,unshared|signature-prefix-argv:before-reflection-signature-types|generic-signature-prefix-argv:before-generic-signature-arguments"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_delegate-identity.sh gates/fold-delegate-fixture.py samples/dotnet/ReflectInvoke/DelegateVirtualIdentityOnly.csproj samples/dotnet/ReflectInvoke/DelegateVirtualIdentityLibrary.csproj samples/dotnet/ReflectInvoke/DelegateVirtualIdentityOnlyProgram.cs"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/DelegateObjectEqualityOnly.csproj samples/dotnet/ReflectInvoke/DelegateObjectEqualityOnlyProgram.cs"
@@ -539,7 +574,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|attribute-discovery-prefix
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|delegate-name-boundary-argv:delegate-name-boundary-outcomes"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|delegate-signature-prefix-argv:before-delegate-signature-bindings|delegate-signature-boundary-argv:delegate-signature-boundary-outcomes"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|function-pointer-invoke-prefix-argv:before-runtime-function-pointer-invoke"
-DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_runtime-template-bindings.sh gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj samples/dotnet/ReflectInvoke/RuntimeTemplateBindingOnly.csproj samples/dotnet/ReflectInvoke/RuntimeTemplateBindingOnlyProgram.cs"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_runtime-template-bindings.sh gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj samples/dotnet/ReflectInvoke/RuntimeTemplateBindingOnly.csproj samples/dotnet/ReflectInvoke/RuntimeTemplateBindingOnlyProgram.cs samples/dotnet/ReflectInvoke/keep-runtime-templates.xml"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|runtime-template-binding:packed,native,uncompressed,trimmed,ildiet|runtime-template-binding-prefix:before-runtime-template-bindings"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|runtime-base-projections:permuted,dropped,chained,AOT,synthesized,generic-virtual|runtime-base-projection-prefix:before-runtime-base-projections"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|memberwise-clone-collection-prefix:before-memberwise-clone-collection"
@@ -1992,12 +2027,12 @@ reflection_layout_axis=default
 "$py" gates/fixtures/reflection-gate-inputs-test.py
 bash gates/fixtures/reflection-gate-inputs.sh "$py"
 DN2CPP_STRICT_COMPLETION=1 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|strict-completion" \
-    corelib_diff_gate ReflectInvoke --no-ildiet System.ComponentModel.TypeConverter System.Linq System.Threading.Tasks.Parallel
+    corelib_diff_gate ReflectInvoke --no-ildiet --link-xml samples/dotnet/ReflectInvoke/link.xml System.ComponentModel.TypeConverter System.Linq System.Threading.Tasks.Parallel
 typeconverter="$(dirname "$_CG_CORELIB")/System.ComponentModel.TypeConverter.dll"
 
 reflection_layout_axis=overrides
 DN2CPP_OUT_SUFFIX="${DN2CPP_OUT_SUFFIX:-}-metadata-overrides" \
-    corelib_diff_gate ReflectInvoke --no-ildiet System.ComponentModel.TypeConverter System.Linq System.Threading.Tasks.Parallel \
+    corelib_diff_gate ReflectInvoke --no-ildiet --link-xml samples/dotnet/ReflectInvoke/link.xml System.ComponentModel.TypeConverter System.Linq System.Threading.Tasks.Parallel \
         --reflection-metadata 'ReflectInvoke::ReflectMetadataLayoutSubset.NativeBase=packed' \
         --reflection-metadata 'ReflectMetadataLayoutSubset.PackedBase=native' \
         --reflection-metadata 'ReflectMetadataLayoutSubset.Generic`1[System.String]=packed' \
@@ -2009,7 +2044,7 @@ DN2CPP_OUT_SUFFIX="${DN2CPP_OUT_SUFFIX:-}-metadata-overrides" \
 
 reflection_layout_axis=uncompressed
 DN2CPP_OUT_SUFFIX="${DN2CPP_OUT_SUFFIX:-}-metadata-uncompressed" \
-    corelib_diff_gate ReflectInvoke --no-ildiet --no-metadata-compression System.ComponentModel.TypeConverter System.Linq System.Threading.Tasks.Parallel \
+    corelib_diff_gate ReflectInvoke --no-ildiet --no-metadata-compression --link-xml samples/dotnet/ReflectInvoke/link.xml System.ComponentModel.TypeConverter System.Linq System.Threading.Tasks.Parallel \
         --reflection-metadata 'ReflectMetadataLayoutSubset.NativeBase=packed' \
         --reflection-metadata 'ReflectMetadataCompressionSubset.Direct=packed' \
         --reflection-metadata 'System.String=packed'
@@ -2018,6 +2053,7 @@ DN2CPP_OUT_SUFFIX="${DN2CPP_OUT_SUFFIX:-}-metadata-uncompressed" \
 uncompressed_reverse=artifacts/reflection-metadata-uncompressed-reverse
 run_bounded invoke_cli "$_CG_APP" -r "$_CG_CORELIB" -r "$typeconverter" \
         -r "$(dirname "$_CG_CORELIB")/System.Linq.dll" -r "$(dirname "$_CG_CORELIB")/System.Threading.Tasks.Parallel.dll" --no-ildiet \
+    --link-xml samples/dotnet/ReflectInvoke/link.xml \
     --reflection-metadata 'ReflectMetadataLayoutSubset.NativeBase=packed' \
     --reflection-metadata 'ReflectMetadataCompressionSubset.Direct=packed' \
     --reflection-metadata 'System.String=packed' --no-metadata-compression \
@@ -2073,6 +2109,7 @@ for byref_mode in overwrite overwrite-int64 copy; do
     byref_status=0
     run_bounded invoke_cli "$byref_app" -r "$_CG_CORELIB" -r "$typeconverter" \
         -r "$(dirname "$_CG_CORELIB")/System.Linq.dll" -r "$(dirname "$_CG_CORELIB")/System.Threading.Tasks.Parallel.dll" --no-ildiet \
+        --link-xml samples/dotnet/ReflectInvoke/link.xml \
         -o "$byref_dir/out" > "$byref_dir/transpile.log" 2>&1 || byref_status=$?
     if [ "$byref_mode" = copy ]; then
         if [ "$byref_status" -ne 0 ]; then
@@ -2136,6 +2173,7 @@ for origin_mode in argument field array checked-conv arithmetic box call local s
     origin_status=0
     run_bounded invoke_cli "$origin_app" -r "$_CG_CORELIB" -r "$typeconverter" \
         -r "$(dirname "$_CG_CORELIB")/System.Linq.dll" -r "$(dirname "$_CG_CORELIB")/System.Threading.Tasks.Parallel.dll" --no-ildiet \
+        --link-xml samples/dotnet/ReflectInvoke/link.xml \
         -o "$origin_dir/out" > "$origin_dir/transpile.log" 2>&1 || origin_status=$?
     if [ "$origin_mode" = local ] || [ "$origin_mode" = stack-join ]; then
         if [ "$origin_status" -ne 0 ]; then
@@ -2271,6 +2309,50 @@ gate_extra_asserts() {
     before=$(reflection_oracle "$_CG_APP" before-property-accessors) || return $?
     prefix=$(awk '/^== property accessor arrays ==$/ { exit } { print }' <<< "$native")
     assert_output "$prefix" "$(strip_cr_win "$before")"
+    before=$(reflection_oracle "$_CG_APP" before-constructor-signatures) || return $?
+    prefix=$(awk '/^== constructor signature binding ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    reflection_assert_lines - 1 \
+        '== constructor signature binding ==' 'constructor signature binding end' \
+        'unretained wrong type: MissingMethodException/MissingMethodException' \
+        'unretained wrong arity: MissingMethodException/<null>' \
+        'unretained private visibility: MissingMethodException/<null>' \
+        'unretained private wrong type: MissingMethodException/MissingMethodException' \
+        'unretained private default: MissingMethodException/<null>' \
+        'unretained nested signature: MissingMethodException/MissingMethodException' \
+        'constructor field control=True' 'unretained field signature: MissingMethodException/MissingMethodException' \
+        'retained constructor control=string/object/1' 'retained dominant: string' \
+        'retained widened: 9' 'unretained ambiguous: AmbiguousMatchException/<null>' <<< "$native"
+    local constructor
+    for constructor in ConstructorStringOnly ConstructorPrivateOnly ConstructorFifteen ConstructorPrivateDefault ConstructorFieldTarget; do
+        if grep -qwxF "// ReflectReturnLib.$constructor::.ctor" "$out"/generated*.cpp "$out"/generated.h; then
+            echo "FAIL: metadata-only constructor $constructor acquired a body" >&2
+            return 1
+        fi
+    done
+    grep -qwxF '// ReflectReturnLib.ConstructorDominant::.ctor' "$out"/generated*.cpp "$out"/generated.h \
+        || { echo 'FAIL: retained constructor control is absent' >&2; return 1; }
+    local nested_shapes
+    nested_shapes=$(grep -o 't_ReflectReturnLib_ConstructorNested_[A-Za-z0-9_]*' "$out/generated.h" | sort -u | wc -l | tr -d ' ')
+    [ "$nested_shapes" = 2 ] \
+        || { echo "FAIL: constructor signature closure produced $nested_shapes nested shapes" >&2; return 1; }
+    local refusal_actual refusal_expected label owner display
+    refusal_actual=$(run_bounded "$out/OrdinaryReflectionLeaves$EXE_EXT" constructor-refusals) || return $?
+    refusal_expected='== unretained constructor selection =='
+    while IFS='|' read -r label owner display; do
+        refusal_expected="$refusal_expected
+$label: PlatformNotSupportedException 80131539 ReflectReturnLib.$owner::$display in ReflectReturnLib: reflection found this member but its body was not retained; fix: [Preserve] on the target, or link.xml <assembly fullname=\"ReflectReturnLib\"><type fullname=\"ReflectReturnLib.$owner\"><method name=\".ctor\" /></type></assembly>"
+    done <<'CONSTRUCTOR_REFUSALS'
+matching string|ConstructorStringOnly|Void .ctor(System.String)
+matching private|ConstructorPrivateOnly|Void .ctor(System.String)
+matching fifteen|ConstructorFifteen|Void .ctor(Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32, Int32)
+matching default|ConstructorPrivateDefault|Void .ctor()
+omitted dominant|ConstructorOmittedDominant|Void .ctor(System.String)
+matching field signature|ConstructorFieldTarget|Void .ctor(System.String)
+CONSTRUCTOR_REFUSALS
+    refusal_expected="$refusal_expected
+unretained constructor selection end"
+    assert_output "$(strip_cr_win "$refusal_actual")" "$refusal_expected"
     reflection_assert_lines - any \
         '== property accessor arrays ==' \
         'accessors AccessorCell/Value default=get_Value;false=get_Value;true=get_Value,set_Value;identity=True;declared=AccessorCell;reflected=AccessorCell' \
@@ -2327,6 +2409,10 @@ gate_extra_asserts() {
         || { echo "FAIL: pointer fields lack $layout metadata" >&2; return 1; }
     reflection_assert_lines - any \
         '== field validation ==' 'field validation end' \
+        'const Money Decimal literal=False initonly=True: Decimal:1.25' \
+        "decimal const set: FieldAccessException 0x80131507 Cannot set initonly static field 'Money' after type 'ReflectFieldValidationSubset.Constants' is initialized." \
+        "nested readonly set: FieldAccessException 0x80131507 Cannot set initonly static field 'Value' after type 'Nested' is initialized." \
+        "generic readonly set: FieldAccessException 0x80131507 Cannot set initonly static field 'Value' after type 'ReflectFieldValidationSubset.Generic\`1' is initialized." \
         '== ordinary ambiguous messages ==' 'ordinary ambiguous messages end' \
         'sealed direct=CUSTOM-HELLO' 'sealed bound=CUSTOM-HELLO/IGreeting.Shout' \
         'bind ordinary=42' 'bind generic=12' 'bind boxed=7' \
@@ -2353,11 +2439,13 @@ build_gate_proj samples/dotnet/ReflectReturnLib/ReflectReturnLib.csproj
 object_methods_library="$PWD/samples/dotnet/ReflectReturnLib/bin/$CONFIG/$TFM/ReflectReturnLib.dll"
 DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectInvoke OrdinaryReflectionLeaves --no-ildiet \
     -r "$object_methods_library" --link-xml samples/dotnet/ReflectInvoke/keep-object-methods.xml \
+    --link-xml samples/dotnet/ReflectInvoke/keep-field-initializers.xml \
     --reflection-metadata ReflectReturnLib.VirtualFactory=packed \
     --reflection-metadata ReflectFieldValidationSubset.PointerFields=packed
 DN2CPP_OUT_SUFFIX=-native DN2CPP_STRICT_COMPLETION=1 \
     ordinary_fixture_diff_gate ReflectInvoke OrdinaryReflectionLeaves --no-ildiet --no-metadata-compression \
-        -r "$object_methods_library" --link-xml samples/dotnet/ReflectInvoke/keep-object-methods.xml
+        -r "$object_methods_library" --link-xml samples/dotnet/ReflectInvoke/keep-object-methods.xml \
+        --link-xml samples/dotnet/ReflectInvoke/keep-field-initializers.xml
 unset -f gate_extra_asserts
 # These drivers have no application pointer field or pointer-returning method.
 # One reads an allocated library owner's inherited field; the other names only a
@@ -2402,12 +2490,15 @@ gate_extra_asserts() {
     reflection_assert_lines - any \
         'activator: made' 'constructor: built' 'method: hello group' \
         'property get: label' 'property set: glad' 'static create delegate: hello static' \
-        'create delegate: hello bind' 'make generic: box:String' 'attributes: TagAttribute' <<< "$native"
+        'create delegate: hello bind' 'make generic: box:String' 'attributes: TagAttribute' \
+        'preserved initializer: start:1' <<< "$native"
 }
-DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectInvoke ReflectionMethodGroupsOnly --no-ildiet
+DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectInvoke ReflectionMethodGroupsOnly --no-ildiet \
+    --link-xml samples/dotnet/ReflectInvoke/keep-method-groups.xml
 unset -f gate_extra_asserts
 DN2CPP_OUT_SUFFIX=-ildiet DN2CPP_STRICT_COMPLETION=1 \
-    ordinary_fixture_diff_gate ReflectInvoke ReflectionMethodGroupsOnly
+    ordinary_fixture_diff_gate ReflectInvoke ReflectionMethodGroupsOnly \
+        --link-xml samples/dotnet/ReflectInvoke/keep-method-groups.xml
 
 # Other drivers construct reflected application types, which independently roots
 # the attribute constructor this abstract-slot signature must discover.
@@ -2450,6 +2541,623 @@ gate_extra_asserts() {
 }
 ordinary_fixture_diff_gate ReflectInvoke ReflectBindOnly --no-ildiet
 unset -f gate_extra_asserts
+
+# A never-boxed struct crosses a bound call unboxed; only Invoke would box it.
+gate_extra_asserts() {
+    local out="$1" native refusal
+    native=$(run_bounded "$out/UnboxedStructBindOnly$EXE_EXT" invoke) || return $?
+    native=$(strip_cr_win "$native")
+    refusal='in UnboxedStructBindOnly: invoking it boxes UnboxedStructBind.Kept, which this image never allocates; fix: [Preserve] on the target, or link.xml <assembly fullname="UnboxedStructBindOnly"><type fullname="UnboxedStructBind.Kept" preserve="all" /></assembly>'
+    reflection_assert_lines - 1 \
+        '== bound calls over a never-boxed struct ==' 'bound make: 42' 'bound fill: 8' \
+        'bound calls over a never-boxed struct end' 'direct kept: 8' \
+        '== invoke over a never-boxed struct ==' \
+        "invoke keep refused: UnboxedStructBind.Targets::UnboxedStructBind.Kept Keep() $refusal" \
+        "invoke refill refused: UnboxedStructBind.Targets::Void Refill(UnboxedStructBind.Kept ByRef) $refusal" \
+        'invoked targets ran: 0' 'invoke over a never-boxed struct end' <<< "$native"
+}
+ordinary_fixture_diff_gate ReflectInvoke UnboxedStructBindOnly
+unset -f gate_extra_asserts
+
+# Each excluded body touches a type whose static constructor prints, so the .NET diff
+# catches its admission; the body census names which filter was ignored.
+gate_extra_asserts() {
+    local out="$1" body native axis output line
+    for body in TagAttribute::set_P RunBase::.cctor Guarded::set_P Guarded::set_All Guarded::add_Hidden \
+            NamedMethods::Other 'NamedTemplate_$CnAny0::Other' EnumerationProbe::.cctor \
+            CASEBUILT::.ctor CASETYPED::.ctor OpaqueBuilt::.ctor OpaqueTyped::.ctor \
+            ExcludedRowAttribute::.ctor ExcludedRowAttribute::.cctor; do
+        if grep -qwxF "// AdmissionFilters.$body" "$out"/generated*.cpp "$out"/generated.h; then
+            echo "FAIL: AdmissionFilters.$body was admitted although its site's filter excludes it" >&2
+            return 1
+        fi
+    done
+    for body in LabelAttribute::set_P RunDerived::Run SeedBase::.cctor Guarded::get_All Opened::set_P \
+            NamedMethods::Safe 'NamedTemplate_$CnAny0::Safe' \
+            CaseBuilt::.ctor CaseTyped::.ctor MixedBuilt::.ctor MixedTyped::.ctor; do
+        grep -qwxF "// AdmissionFilters.$body" "$out"/generated*.cpp "$out"/generated.h \
+            || { echo "FAIL: the control body AdmissionFilters.$body was not admitted" >&2; return 1; }
+    done
+    for body in SelectedRow OpenRow OpenParameterRow OpenPropertyRow OpenGetterRow \
+            OpenEventRow OpenAdderRow OpenFieldRow OpenEnumerationRow NestedRow TemplateParameterRow \
+            FieldProjection PropertyProjection ReturnProjection ParameterProjection InterfaceRow \
+            TemplateFieldType TemplatePropertyType TemplateReturnType TemplateGetterType TemplateParameterType \
+            ConstructedMethodRow ConstructedParameterRow ConstructedReturnType ConstructedParameterType UnknownConstructedRow; do
+        grep -qwxF "// AdmissionFilters.${body}Attribute::.ctor" "$out"/generated*.cpp "$out"/generated.h \
+            || { echo "FAIL: selected attribute constructor $body was not admitted" >&2; return 1; }
+    done
+    grep -qwxF '// AdmissionFilters.SelectedRowAttribute::set_Marker' "$out"/generated*.cpp "$out"/generated.h \
+        || { echo 'FAIL: selected attribute named setter was not admitted' >&2; return 1; }
+    grep -qwxF '// AdmissionFilters.ConstructedMethodRowAttribute::set_Marker' "$out"/generated*.cpp "$out"/generated.h \
+        || { echo 'FAIL: constructed open method attribute setter was not admitted' >&2; return 1; }
+    if grep -qwE '^// AdmissionFilters\.(AttributeTemplate|AttributeBase|OpenAttributeRows|NestedAttributeRows|SubstitutedAttributeRows|SubstitutedAttributeBase)(_[^:]*)?::(Run|Bound|Signature|SignatureArray|Generic|Hidden|Overridden|Method|Return|Enumerated|get_Property|get_Accessor|add_Event|add_AccessorEvent)$' \
+            "$out"/generated*.cpp "$out"/generated.h; then
+        echo 'FAIL: an attribute metadata read admitted its generic member body' >&2
+        return 1
+    fi
+    grep -qwxF 'struct t_AdmissionFilters_AttributeTemplate__CnAny0;' "$out/generated.h" \
+        || { echo 'FAIL: selected attribute template layout is absent' >&2; return 1; }
+    grep -qwxF 'extern const Dn2CppTypeInfo ti_AdmissionFilters_OpenAttributeRows_Int32;' "$out/generated.h" \
+        || { echo 'FAIL: constructed attribute-owner type control is absent' >&2; return 1; }
+    if grep -qwE '^(struct t_|extern const Dn2CppTypeInfo ti_)AdmissionFilters_NestedAttribute(Rows|Base)_[[:alnum:]_]+' \
+            "$out/generated.h"; then
+        echo 'FAIL: nested signature metadata created an executable generic type' >&2
+        return 1
+    fi
+    grep -qwxF 'struct t_AdmissionFilters_ProjectedTemplate__CnAny0;' "$out/generated.h" \
+        || { echo 'FAIL: projected member template layout is absent' >&2; return 1; }
+    grep -wq 'gendef_AdmissionFilters_ProjectedDefinition_1' "$out"/generated*.cpp "$out"/generated.h \
+        || { echo 'FAIL: detached signature owner definition is absent' >&2; return 1; }
+    if grep -qwE '^// AdmissionFilters\.(ProjectedTemplate|ProjectedDefinition|ConstructedOpenMethods)(_[^:]*)?::(get_Property|get_Accessor|Return|Parameter|NestedArray|Map|Unknown|Unselected)$' \
+            "$out"/generated*.cpp "$out"/generated.h; then
+        echo 'FAIL: a projected metadata read admitted its generic member body' >&2
+        return 1
+    fi
+    if grep -qwE '^(struct t_|extern const Dn2CppTypeInfo ti_)AdmissionFilters_(ProjectedTemplate_Int32|(ProjectedArrayElement|ProjectedDefinition|ConstructedOpenMethods)_[[:alnum:]_]+)' \
+            "$out/generated.h"; then
+        echo 'FAIL: a projected metadata read created an executable closed owner' >&2
+        return 1
+    fi
+    native=$(reflection_native_full "$out" AdmissionFiltersOnly) || return $?
+    reflection_assert_lines - 1 \
+        '== named enumeration admission ==' 'named enumeration admission end' \
+        '== type-name case alternatives ==' 'construct choice: CaseBuilt' 'type choice: CaseTyped' \
+        'construct mixed: MixedBuilt' 'type mixed: MixedTyped' 'type-name case alternatives end' <<< "$native"
+    printf '%s\n' "$native" > "$out/attribute-selection.native.stdout"
+    reflection_oracle "$_CG_APP" > "$out/attribute-selection.dotnet.stdout"
+    run_bounded "$out/AdmissionFiltersOnly$EXE_EXT" before-attribute-selection > "$out/attribute-selection-before.native.stdout"
+    reflection_oracle "$_CG_APP" before-attribute-selection > "$out/attribute-selection-before.dotnet.stdout"
+    run_bounded "$out/AdmissionFiltersOnly$EXE_EXT" before-metadata-projections > "$out/metadata-projections-before.native.stdout"
+    reflection_oracle "$_CG_APP" before-metadata-projections > "$out/metadata-projections-before.dotnet.stdout"
+    run_bounded "$out/AdmissionFiltersOnly$EXE_EXT" before-selection-filters > "$out/selection-filters-before.native.stdout"
+    reflection_oracle "$_CG_APP" before-selection-filters > "$out/selection-filters-before.dotnet.stdout"
+    run_bounded "$out/AdmissionFiltersOnly$EXE_EXT" before-reflection-alternatives > "$out/reflection-alternatives-before.native.stdout"
+    reflection_oracle "$_CG_APP" before-reflection-alternatives > "$out/reflection-alternatives-before.dotnet.stdout"
+    run_bounded "$out/AdmissionFiltersOnly$EXE_EXT" before-template-lookups > "$out/template-lookups-before.native.stdout"
+    reflection_oracle "$_CG_APP" before-template-lookups > "$out/template-lookups-before.dotnet.stdout"
+    run_bounded "$out/AdmissionFiltersOnly$EXE_EXT" before-library-bindings > "$out/library-bindings-before.native.stdout"
+    reflection_oracle "$_CG_APP" before-library-bindings > "$out/library-bindings-before.dotnet.stdout"
+    for axis in native dotnet; do
+        output=$(strip_cr_win_file "$out/attribute-selection.$axis.stdout")
+        sed '/^== selected generic member attributes ==/,$d' "$out/attribute-selection.$axis.stdout" \
+            > "$out/attribute-selection-prefix.$axis.stdout"
+        diff -u <(strip_cr_win_file "$out/attribute-selection-before.$axis.stdout") \
+            <(strip_cr_win_file "$out/attribute-selection-prefix.$axis.stdout")
+        for line in '== selected generic member attributes ==' \
+                'template method=1' 'template typed=1' 'template signature=1' 'template struct array=1' \
+                'template arity=1' 'template override=1' 'template substituted override=1' 'template hidden property=1' 'template hidden event=1' \
+                'template property=1' 'template getter=1' 'template event=1' 'template adder=1' \
+                'template field=1' 'template hidden field=1' 'template field enumeration=3' 'template field members=2' \
+                'template constructor=1' 'template parameter=1' \
+                'definition method=1' 'definition parameter=1' 'definition property=1' \
+                'definition getter=1' 'definition event=1' 'definition adder=1' 'definition field=1' \
+                'definition field type=1' 'definition property type=1' 'definition return type=1' 'definition parameter type=1' \
+                'definition enumeration=2' 'nested definition=1' 'interface definition=1' 'selected generic member attributes end'; do
+            [ "$(grep -Fxc -- "$line" <<< "$output")" = 1 ] \
+                || { echo "FAIL: attribute-selection witness must run once ($axis): $line" >&2; return 1; }
+        done
+        sed '/^== template and constructed method projections ==/,$d' "$out/attribute-selection.$axis.stdout" \
+            > "$out/metadata-projections-prefix.$axis.stdout"
+        diff -u <(strip_cr_win_file "$out/metadata-projections-before.$axis.stdout") \
+            <(strip_cr_win_file "$out/metadata-projections-prefix.$axis.stdout")
+        for line in '== template and constructed method projections ==' \
+                'template field type=1' 'template property type=1' 'template return type=1' \
+                'template getter type=1' 'template parameter type=1' 'constructed method marker=31' \
+                'constructed method open=True:False' 'constructed parameter row=1' \
+                'constructed return type=1' 'constructed parameter type=1' 'unknown constructed row=1' \
+                'template and constructed method projections end'; do
+            [ "$(grep -Fxc -- "$line" <<< "$output")" = 1 ] \
+                || { echo "FAIL: metadata-projection witness must run once ($axis): $line" >&2; return 1; }
+        done
+        sed '/^== template selection filters ==/,$d' "$out/attribute-selection.$axis.stdout" \
+            > "$out/selection-filters-prefix.$axis.stdout"
+        diff -u <(strip_cr_win_file "$out/selection-filters-before.$axis.stdout") \
+            <(strip_cr_win_file "$out/selection-filters-prefix.$axis.stdout")
+        for line in '== template selection filters ==' \
+                'delegate template=Int32' 'delegate eligibility=Int32' 'delegate static=static:Int32' \
+                'property template=13' 'property eligibility=23' 'property static=33' \
+                'field hidden=0' 'field declared Hidden=0' 'field declared Selected=selected' 'field declared Generic=generic:Int32' \
+                'assembly application=application' 'assembly library=library unique' \
+                'construct application=application constructed' 'construct library=library unique constructed' \
+                'assembly mixed=known assembly' 'array sz row=Run' 'array sz=library sz' \
+                'array md row=Run' 'array md=library md' 'template selection filters end'; do
+            [ "$(grep -Fxc -- "$line" <<< "$output")" = 1 ] \
+                || { echo "FAIL: selection-filter witness must run once ($axis): $line" >&2; return 1; }
+        done
+    done
+    for axis in native dotnet; do
+        sed '/^== reflection operand alternatives ==/,$d' "$out/attribute-selection.$axis.stdout" \
+            > "$out/reflection-alternatives-prefix.$axis.stdout"
+        diff -u <(strip_cr_win_file "$out/reflection-alternatives-before.$axis.stdout") \
+            <(strip_cr_win_file "$out/reflection-alternatives-prefix.$axis.stdout")
+        reflection_assert_lines "$out/attribute-selection.$axis.stdout" 1 \
+            '== reflection operand alternatives ==' \
+            'type null array=Int32' 'type null array fault=ArgumentNullException' \
+            'type opaque array=Int32' 'type opaque element=Int32' \
+            'type null element=Int32' 'type null element fault=ArgumentNullException' \
+            'type invalid element=Int32' \
+            'method null array=Int32' 'method null array fault=ArgumentNullException' \
+            'method opaque array=Int32' 'method opaque element=Int32' \
+            'method null element=Int32' 'method null element fault=ArgumentNullException' \
+            'interface open lookup=open lookup' 'interface open enumeration=open enumeration' \
+            'interface open inherited=open inherited' 'interface open fixed generic=open fixed generic:Int32' \
+            'interface case choice=exact case' \
+            'interface case choice fault=AmbiguousMatchException' \
+            'interface definite ambiguity=AmbiguousMatchException' \
+            'interface first choice=first name' 'interface second choice=second name' \
+            'interface unicode=unicode known' 'reflection operand alternatives end'
+        sed '/^== template lookup policies ==/,$d' "$out/attribute-selection.$axis.stdout" \
+            > "$out/template-lookups-prefix.$axis.stdout"
+        diff -u <(strip_cr_win_file "$out/template-lookups-before.$axis.stdout") \
+            <(strip_cr_win_file "$out/template-lookups-prefix.$axis.stdout")
+        reflection_assert_lines "$out/attribute-selection.$axis.stdout" 1 \
+            '== template lookup policies ==' \
+            'hidden template=Int32' 'hidden opaque=Int32' 'hidden static=static:Int32' \
+            'hidden generic=Int32:String' 'hidden ambiguity=AmbiguousMatchException' \
+            'private template=private:Int32' 'private opaque=opaque:Int32' 'private static=static:Int32' \
+            'template lookup policies end'
+        sed '/^== library private named bindings ==/,$d' "$out/attribute-selection.$axis.stdout" \
+            > "$out/library-bindings-prefix.$axis.stdout"
+        diff -u <(strip_cr_win_file "$out/library-bindings-before.$axis.stdout") \
+            <(strip_cr_win_file "$out/library-bindings-prefix.$axis.stdout")
+        reflection_assert_lines "$out/attribute-selection.$axis.stdout" 1 \
+            '== library private named bindings ==' 'library private=library private' \
+            'library template=library template:Int32' 'library opaque=library opaque:Int32' \
+            'library static=library static:Int32' 'library private named bindings end'
+    done
+    local templates
+    templates=$(awk '/^static const Dn2CppRuntimeTemplate dn2cpp_runtime_template_rows\[\]/ { print }' "$out/generated.cpp")
+    grep -qwF 'ti_AdmissionFilters_NamedTemplate__CnAny0' <<< "$templates" \
+        || { echo 'FAIL: the eligible runtime-template table control is absent' >&2; return 1; }
+    for type in MostDerivedTemplate MostDerivedOpaque PrivateBindingTemplate PrivateBindingOpaque; do
+        grep -qwF "ti_AdmissionFilters_${type}__CnAny0" <<< "$templates" \
+            || { echo "FAIL: lookup-selected runtime template $type is absent" >&2; return 1; }
+        if grep -qwE "^(struct t_|extern const Dn2CppTypeInfo ti_)AdmissionFilters_${type}_Int32" "$out/generated.h"; then
+            echo "FAIL: an eligible lookup forced a static $type tuple" >&2; return 1
+        fi
+    done
+    for type in MostDerivedTemplate MostDerivedOpaque MostDerivedStatic MostDerivedGeneric \
+            PrivateBindingTemplateBase PrivateBindingOpaqueBase PrivateBindingStaticBase \
+            AmbiguousTemplate AmbiguousTemplateBase; do
+        case "$type" in Private*) body=Pick ;; *) body=Make ;; esac
+        [ "$(grep -hwE "^// AdmissionFilters\.${type}_[^:]+::$body$" "$out"/generated*.cpp "$out"/generated.h | wc -l | tr -d ' ')" = 1 ] \
+            || { echo "FAIL: lookup policy must retain exactly the selected $type::$body body" >&2; return 1; }
+    done
+    for type in MostDerivedStatic MostDerivedGeneric PrivateBindingStaticBase; do
+        case "$type" in Private*) body=Pick ;; *) body=Make ;; esac
+        grep -qwxF "// AdmissionFilters.${type}_Int32::$body" "$out"/generated*.cpp "$out"/generated.h \
+            || { echo "FAIL: lookup static fallback $type::$body is absent" >&2; return 1; }
+    done
+    if grep -qwE '^// AdmissionFilters\.MostDerived(Template|Opaque|Static|Generic)Base_[^:]+::Make$' \
+            "$out"/generated*.cpp "$out"/generated.h; then
+        echo 'FAIL: a singular template lookup admitted a hidden base body' >&2; return 1
+    fi
+    for body in HiddenLookupProbe::Touch HiddenLookupProbe::.cctor NamedBindingProbe::Touch NamedBindingProbe::.cctor; do
+        if grep -qwxF "// AdmissionFilters.$body" "$out"/generated*.cpp "$out"/generated.h; then
+            echo "FAIL: an excluded lookup body retained AdmissionFilters.$body" >&2; return 1
+        fi
+    done
+    grep -qwxF '// AdmissionFilters.LibraryPrivateBindingBase::Pick' "$out"/generated*.cpp "$out"/generated.h \
+        || { echo 'FAIL: selected private library base body is absent' >&2; return 1; }
+    [ "$(grep -hwxF '// AdmissionFilters.LibraryPrivateBindingBase::Pick' "$out"/generated*.cpp "$out"/generated.h | wc -l | tr -d ' ')" = 1 ] \
+        || { echo 'FAIL: a wrong-arity private library overload was admitted' >&2; return 1; }
+    for type in LibraryPrivateTemplate LibraryPrivateOpaque; do
+        grep -qwF "ti_AdmissionFilters_${type}__CnAny0" <<< "$templates" \
+            || { echo "FAIL: library private-binding runtime template $type is absent" >&2; return 1; }
+        if grep -qwE "^(struct t_|extern const Dn2CppTypeInfo ti_)AdmissionFilters_${type}_Int32" "$out/generated.h"; then
+            echo "FAIL: an eligible library binding forced a static $type tuple" >&2; return 1
+        fi
+    done
+    for type in LibraryPrivateTemplateBase LibraryPrivateOpaqueBase LibraryPrivateStaticBase; do
+        [ "$(grep -hwE "^// AdmissionFilters\.${type}_[^:]+::Pick$" "$out"/generated*.cpp "$out"/generated.h | wc -l | tr -d ' ')" = 1 ] \
+            || { echo "FAIL: library binding must retain exactly the selected $type::Pick body" >&2; return 1; }
+    done
+    grep -qwxF '// AdmissionFilters.LibraryPrivateStaticBase_Int32::Pick' "$out"/generated*.cpp "$out"/generated.h \
+        || { echo 'FAIL: library private-binding static fallback body is absent' >&2; return 1; }
+    if grep -qwE '^// AdmissionFilters\.LibraryPrivate(BindingBase|(Template|Opaque|Static)Base_[^:]+)::Other$' \
+            "$out"/generated*.cpp "$out"/generated.h; then
+        echo 'FAIL: named library binding admitted an unselected name' >&2; return 1
+    fi
+    for body in LibraryNamedBindingProbe::Touch LibraryNamedBindingProbe::.cctor; do
+        if grep -qwxF "// AdmissionFilters.$body" "$out"/generated*.cpp "$out"/generated.h; then
+            echo "FAIL: an excluded library binding retained AdmissionFilters.$body" >&2; return 1
+        fi
+    done
+    for type in NullArrayType OpaqueArrayType OpaqueElementType NullElementType InvalidElementType; do
+        grep -qwxF "// AdmissionFilters.${type}_Int32::Name" "$out"/generated*.cpp "$out"/generated.h \
+            || { echo "FAIL: finite argument alternative lost $type<Int32>::Name" >&2; return 1; }
+        if grep -qwE "^// AdmissionFilters\.${type}_[^:]+::Other$" "$out"/generated*.cpp "$out"/generated.h; then
+            echo "FAIL: argument alternative admitted an unselected $type member" >&2; return 1
+        fi
+        if grep -qwE "^(struct t_|extern const Dn2CppTypeInfo ti_)AdmissionFilters_${type}_(System_)?(Void|TypedReference)" "$out/generated.h"; then
+            echo "FAIL: an invalid argument minted $type" >&2; return 1
+        fi
+        [ "$(grep -hwE "^// AdmissionFilters\.${type}_[^:]+::Name$" "$out"/generated*.cpp "$out"/generated.h | wc -l | tr -d ' ')" = 1 ] \
+            || { echo "FAIL: $type must retain exactly its finite argument body" >&2; return 1; }
+        if grep -qwF "ti_AdmissionFilters_${type}__CnAny0" <<< "$templates"; then
+            echo "FAIL: an initializer-bearing $type received a runtime-instantiation template" >&2; return 1
+        fi
+    done
+    for body in AlternativeMethods::NullArray AlternativeMethods::OpaqueArray AlternativeMethods::OpaqueElement \
+            AlternativeMethods::NullElement IOpenLookupFixed::Run IOpenEnumerationFixed::Run \
+            IOpenInheritedFixed::Run IOpenGenericFixed_Int32::Run ICaseExact::Run \
+            IFirstChoice::Run ISecondChoice::Run IUnicodeChoice::Run IUnicodeRemainder::Run; do
+        grep -qwxF "// AdmissionFilters.$body" "$out"/generated*.cpp "$out"/generated.h \
+            || { echo "FAIL: selected alternative control AdmissionFilters.$body is absent" >&2; return 1; }
+    done
+    for body in AlternativeMethods::Other IOpenLookupFixed::Other IOpenEnumerationFixed::Other \
+            IOpenInheritedFixed::Other IOpenGenericFixed_Int32::Other ICaseExact::Other \
+            ICASEEXACT::Run IAmbiguousName::Run iambiguousname::Run; do
+        if grep -qwxF "// AdmissionFilters.$body" "$out"/generated*.cpp "$out"/generated.h; then
+            echo "FAIL: a throwing or unselected interface alternative retained AdmissionFilters.$body" >&2; return 1
+        fi
+    done
+    grep -wq 'gendef_AdmissionFilters_OpenLookupOwner_1' "$out"/generated*.cpp "$out"/generated.h \
+        || { echo 'FAIL: the open-interface owner metadata control is absent' >&2; return 1; }
+    grep -wq 'gendef_AdmissionFilters_OpenDependentOwner_1' "$out"/generated*.cpp "$out"/generated.h \
+        || { echo 'FAIL: the dependent-interface owner metadata control is absent' >&2; return 1; }
+    if grep -qwE '^// AdmissionFilters\.IOpenDependent_[^:]+::Run$' "$out"/generated*.cpp "$out"/generated.h; then
+        echo 'FAIL: an open dependent interface admitted an executable body' >&2; return 1
+    fi
+    if grep -qwE '^(struct t_|extern const Dn2CppTypeInfo ti_)AdmissionFilters_Open(LookupOwner|EnumerationOwner|InterfaceBase|InheritedOwner|GenericFixedOwner|DependentOwner)_[[:alnum:]_]+' "$out/generated.h"; then
+        echo 'FAIL: an open-definition interface projection minted its executable owner' >&2; return 1
+    fi
+    for body in DelegateArityProbe::.cctor DelegateArityProbe::Touch \
+            PropertyReturnProbe::.cctor PropertyReturnProbe::Touch \
+            StaticPropertyReturnProbe::.cctor StaticPropertyReturnProbe::Touch \
+            HiddenFieldBox::.cctor HiddenFieldBox::ToString InheritedFieldBox::.cctor InheritedFieldBox::ToString \
+            PrivateFieldBox::.cctor PrivateFieldBox::ToString; do
+        if grep -qwxF "// AdmissionFilters.$body" "$out"/generated*.cpp "$out"/generated.h; then
+            echo "FAIL: an excluded template member retained AdmissionFilters.$body" >&2
+            return 1
+        fi
+    done
+    for type in DelegateArityTemplate DelegateArityEligibility; do
+        grep -qwxF "struct t_AdmissionFilters_${type}__CnAny0;" "$out/generated.h" \
+            || { echo "FAIL: arity-selected template $type is absent" >&2; return 1; }
+        if grep -qwE "^(struct t_|extern const Dn2CppTypeInfo ti_)AdmissionFilters_${type}_Int32" "$out/generated.h"; then
+            echo "FAIL: an excluded delegate overload forced a static $type tuple" >&2; return 1
+        fi
+    done
+    for type in PropertyReturnTemplate PropertyReturnEligibility; do
+        grep -qwxF "struct t_AdmissionFilters_${type}__CnAny0;" "$out/generated.h" \
+            || { echo "FAIL: return-selected template $type is absent" >&2; return 1; }
+        if grep -qwE "^(struct t_|extern const Dn2CppTypeInfo ti_)AdmissionFilters_${type}_Int32" "$out/generated.h"; then
+            echo "FAIL: an excluded property return forced a static $type tuple" >&2; return 1
+        fi
+    done
+    for type in DelegateArityTemplate DelegateArityEligibility DelegateArityStatic \
+            PropertyReturnTemplate PropertyReturnEligibility PropertyReturnStatic; do
+        case "$type" in Delegate*) body=Pick ;; *) body=get_Item ;; esac
+        [ "$(grep -hwE "^// AdmissionFilters\.${type}_[^:]+::$body$" "$out"/generated*.cpp "$out"/generated.h | wc -l | tr -d ' ')" = 1 ] \
+            || { echo "FAIL: $type must retain exactly its selected overload" >&2; return 1; }
+    done
+    for body in SelectedFieldBox::ToString MixedAssemblyTarget::Run SelectionSzTarget::Run SelectionMdTarget::Run \
+            LibraryAssemblyChoiceTarget::Run LibraryAssemblyConstructedTarget::.ctor LibraryAssemblyConstructedTarget::ToString; do
+        grep -qwxF "// AdmissionFilters.$body" "$out"/generated*.cpp "$out"/generated.h \
+            || { echo "FAIL: selected control AdmissionFilters.$body is absent" >&2; return 1; }
+    done
+    grep -qwE '^// AdmissionFilters\.GenericFieldBox_[^:]+::ToString$' "$out"/generated*.cpp "$out"/generated.h \
+        || { echo 'FAIL: the selected fixed generic field lost its boxed ToString body' >&2; return 1; }
+    # Both duplicate-name bodies are required even though only the application branch
+    # runs; the distinct library name executes the other receiver alternative.
+    for body in AssemblyChoiceTarget::Run AssemblyConstructedTarget::.ctor AssemblyConstructedTarget::ToString; do
+        [ "$(grep -hwxF "// AdmissionFilters.$body" "$out"/generated*.cpp "$out"/generated.h | wc -l | tr -d ' ')" = 2 ] \
+            || { echo "FAIL: both assembly alternatives must retain $body" >&2; return 1; }
+    done
+    awk -F '\t' '$1 == "Execution" && $2 == "AdmissionFiltersOnly" && \
+        $3 ~ /^AdmissionFilters.Program::(ConstructChoice|TypeChoice|ConstructMixed|TypeMixed|OpaqueChoices)\(/ { count++; next } \
+        $1 == "Execution" && $2 == "AdmissionFiltersOnly" && \
+        $3 ~ /^AdmissionFilters.Program::MixedAssemblyChoice\(/ { mixed++; next } \
+        $1 == "AttributeInstances" && $2 == "AdmissionFiltersOnly" && \
+        $3 == "AdmissionFilters.Program::InspectDetachedProjection()" && \
+        $5 == "System.Reflection.MemberInfo.GetCustomAttributes(Boolean)" && \
+        $6 == "attribute owner comes from a generic member signature without an executable instantiation and the attribute type is not known" \
+            { projection++; next } \
+        $1 == "ClosedGeneric" && $2 == "AdmissionFiltersOnly" && \
+        $3 ~ /^AdmissionFilters.Program::(TypeOpaqueArray|TypeOpaqueElement|MethodOpaqueArray|MethodOpaqueElement)\(/ \
+            { alternatives++; next } \
+        $1 == "Execution" && $2 == "AdmissionFiltersOnly" && \
+        $3 == "AdmissionFilters.Program::InterfaceUnicode(System.String[])" && \
+        $6 ~ /GetInterface.*outside ASCII/ { unicode++; next } \
+        $1 == "Execution" && $2 == "AdmissionFiltersOnly" && \
+        $3 == "AdmissionFilters.Program::InvokeDependentInterface()" && \
+        $6 ~ /interface whose type depends on an open generic parameter/ { dependent++; next } \
+        { bad = 1 } END { exit bad || count != 6 || projection != 1 || mixed != 1 || alternatives != 4 || unicode != 1 || dependent != 1 }' "$out/reflection-unrecognized.tsv" \
+        || { echo "FAIL: admission-filter diagnostics must match the unknown choices and detached signature projection" >&2; return 1; }
+}
+build_gate_proj samples/dotnet/ReflectReturnLib/ReflectReturnLib.csproj
+admission_library="$PWD/samples/dotnet/ReflectReturnLib/bin/$CONFIG/$TFM/ReflectReturnLib.dll"
+DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectInvoke AdmissionFiltersOnly --no-ildiet -r "$admission_library"
+DN2CPP_OUT_SUFFIX=-ildiet DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectInvoke AdmissionFiltersOnly -r "$admission_library"
+unset -f gate_extra_asserts
+
+# Recognized reflection runs with no preserve: an unrecognized site or an
+# unselected sibling body would mean the summary admits other than what runs.
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|recognized-prefix-argv:before-nested-names,before-delegate-attributes,before-sequence-defaults,before-isinst-null"
+recognized_definitions() {
+    local header="// ${3:-RecognizedReflection}.$2"
+    cat "$1"/generated*.cpp "$1"/generated.h | grep -A1 -xF -- "$header" \
+        | grep -vxF -e "$header" -e -- || true
+}
+recognized_body_count() {
+    grep -c . <<< "$(recognized_definitions "$1" "$2" "${3:-}")" || true
+}
+sequence_defaults_body_asserts() {
+    local out="$1" member definitions
+    for member in First Last Single ElementAt Predicate; do
+        [ "$(recognized_body_count "$out" "SequenceDefaultTarget::RecognizedReflection.ISequenceDefaults.$member")" = 1 ] \
+            || { echo "FAIL: implicit sequence default must admit the private interface implementation $member" >&2; return 1; }
+    done
+    for member in SequenceDefaultTarget::Other SequenceReferenceDefault::Other; do
+        [ "$(recognized_body_count "$out" "$member")" = 0 ] \
+            || { echo "FAIL: implicit sequence default admitted an unselected body: $member" >&2; return 1; }
+    done
+    [ "$(recognized_body_count "$out" SequenceReferenceDefault::Run)" = 1 ] \
+        || { echo "FAIL: the implicit reference default must remain null for the default binder" >&2; return 1; }
+    for member in SequenceZeroOptions SequenceThrowingOptions SequenceExplicitOptions; do
+        definitions=$(recognized_definitions "$out" "$member::.ctor")
+        [ "$(recognized_body_count "$out" "$member::.ctor")" = 1 ] \
+            || { echo "FAIL: sequence default precision changed the selected $member constructor" >&2; return 1; }
+        case "$member" in
+            SequenceZeroOptions) grep -qF 'Dn2CppString*' <<< "$definitions" ;;
+            *) grep -qF 'Dn2CppObject*' <<< "$definitions" ;;
+        esac || { echo "FAIL: sequence default admitted the wrong $member constructor" >&2; return 1; }
+    done
+    [ "$(recognized_body_count "$out" SequenceJoinedOptions::.ctor)" = 2 ] \
+        || { echo "FAIL: OrDefault must retain both source flags and their implicit zero alternative" >&2; return 1; }
+}
+nullable_type_test_body_asserts() {
+    local out="$1" member definitions
+    for member in AsFailedOptions AsSuccessfulOptions; do
+        definitions=$(recognized_definitions "$out" "$member::.ctor")
+        [ "$(recognized_body_count "$out" "$member::.ctor")" = 2 ] \
+            && grep -qF 'Dn2CppObject*' <<< "$definitions" \
+            && ! grep -qF 'Dn2CppString*' <<< "$definitions" \
+            || { echo "FAIL: nullable type test must retain both public $member constructors and no private constructor" >&2; return 1; }
+    done
+    definitions=$(recognized_definitions "$out" CastclassOptions::.ctor)
+    [ "$(recognized_body_count "$out" CastclassOptions::.ctor)" = 1 ] \
+        && grep -qF 'Dn2CppObject*' <<< "$definitions" \
+        && ! grep -qF 'Dn2CppString*' <<< "$definitions" \
+        || { echo 'FAIL: castclass must retain only the public one-argument constructor' >&2; return 1; }
+}
+recognized_table_asserts() {
+    local out="$1" native member row axis
+    native=$(reflection_native_full "$out" RecognizedReflectionOnly) || return $?
+    native=$(strip_cr_win "$native")
+    reflection_assert_lines - 1 \
+        '== recognized reflection table ==' 'recognized reflection table end' \
+        'lookup method by types: echo:typed' 'lookup field: 11/revealed/shared' 'lookup property: renamed/12/lookups' \
+        'lookup constructor by flags: built:default' 'lookup event: raised 2' \
+        'enumerate methods: steps 321' 'enumerate runtime methods: runs 54000' 'enumerate constructors: 5,9' \
+        'bind named static: hushed' 'construct nonpublic: secluded' 'construct named type: named' \
+        'instantiate type: box:Int32=42' 'instantiate type array: pair:Int64,String' \
+        'instantiate method: [String:wrapped]' 'attribute instances: lookups#3' 'attribute member: kind#1' \
+        'type array lookup: mix:3x' 'binding flags arithmetic: whisper:arithmetic/hidden' 'joined names: left' \
+        'method type argument: spec class/spec value' 'closure capture: captured' 'nested closure: nested' \
+        'filter assignment: chosen' 'filter declined: sibling' 'converted index: low' \
+        'copied array write: written/original' 'written generic arguments: pair:Int32,Int64' \
+        'binding flags join: inherited' 'inherited indexer: base:k,derived:3' 'interface closure: root' \
+        'interface names: root/generic/root/root' 'default members: 1 picked' 'delegate arity join: one:x' \
+        'run class constructor: ran' 'bound initializer: bound/initialized' 'captured array write: left,wide' \
+        'attribute parameter: parameter' 'attribute generic class: generic class' 'attribute definition: definition' \
+        'attribute unknown owners: scanned generic/scanned parameter' 'made later: load:LaterArgument' \
+        'named generic: named:Int32' 'template fallback: List`1/True' 'listed definition: ListedBox`1:True' \
+        'template projections: argument run/base run/described:ProjectedOther' \
+        'library template: library template:ProjectedArgument' 'library listing: 1/1' \
+        'constant field: 7/not initialized' 'attribute unknown assembly: assembly note' \
+        'unknown flags inherited: created' \
+        'construct default lookup flags: default lookup' \
+        'typed lookup binder choice: derived:s/base not initialized' 'sequence default: first/last/single' \
+        'specialization base: specialized base' \
+        'attribute defined before construction: True/[RecognizedReflection.LateLabelAttribute(Weight = 2)]/0' \
+        'member name prefix: alpha,beta/cased/1:starred' \
+        'inherited private accessor: Id:False:0' 'listed generic definition: Make:True' 'typed indexer: int:3' \
+        'create instance ignoring case: cased' \
+        'forwarded qualifier: List`1:0' 'uninitialized object: derived' 'construct widened argument: long:16' \
+        'wrapped index: wrapped' 'boxed nullable: nullable/argument' 'primitive owner: True/True' \
+        'hidden base method: derived/probe not initialized' 'written accessors: replaced' \
+        'default flag element: default element' \
+        '== nested generic constant names ==' 'nested chained control: chained' \
+        'nested constant: nested' 'nested deep: deep' 'nested qualified: qualified' \
+        'nested constrained: constrained' 'nested generic constant names end' \
+        '== named delegate method attributes ==' \
+        'delegate object attributes: object/object note' \
+        'delegate inherited attributes: inherited/inherited note' \
+        'delegate template attributes: template:Int32/template note' \
+        'named delegate method attributes end' \
+        '== implicit sequence defaults ==' 'implicit first: first' 'implicit last: last' \
+        'implicit single: single' 'implicit element: element' 'implicit predicate: predicate' \
+        'implicit zero: zero' 'implicit joined: source' 'implicit reference: reference' \
+        'throwing sequence: throwing/throwing/throwing/throwing' 'explicit sequence: explicit/explicit/explicit' \
+        'implicit sequence defaults end' \
+        '== nullable type tests ==' 'failed as arguments: default' \
+        'successful as arguments: argument' 'castclass arguments: argument' 'nullable type tests end' \
+        <<< "$native" || return 1
+    if grep -q 'Exception: ' <<< "$native"; then
+        echo "FAIL: a recognized reflection case threw" >&2
+        return 1
+    fi
+    if [ -f "$out/reflection-unrecognized.tsv" ] \
+            && awk -F '\t' '$2 == "RecognizedReflectionOnly" { found = 1 } END { exit !found }' \
+                "$out/reflection-unrecognized.tsv"; then
+        echo "FAIL: a recognized reflection site was reported unrecognized:" >&2
+        awk -F '\t' '$2 == "RecognizedReflectionOnly"' "$out/reflection-unrecognized.tsv" >&2
+        return 1
+    fi
+    run_bounded "$out/RecognizedReflectionOnly$EXE_EXT" before-nested-names \
+        > "$out/nested-names-before.native.stdout"
+    reflection_oracle "$_CG_APP" before-nested-names > "$out/nested-names-before.dotnet.stdout"
+    for axis in native dotnet; do
+        sed '/^== nested generic constant names ==/,$d' "$out/gate.$axis.stdout" \
+            > "$out/nested-names-prefix.$axis.stdout"
+        diff -u <(strip_cr_win_file "$out/nested-names-before.$axis.stdout") \
+            <(strip_cr_win_file "$out/nested-names-prefix.$axis.stdout") || return 1
+    done
+    run_bounded "$out/RecognizedReflectionOnly$EXE_EXT" before-delegate-attributes \
+        > "$out/delegate-attributes-before.native.stdout"
+    reflection_oracle "$_CG_APP" before-delegate-attributes > "$out/delegate-attributes-before.dotnet.stdout"
+    for axis in native dotnet; do
+        sed '/^== named delegate method attributes ==/,$d' "$out/gate.$axis.stdout" \
+            > "$out/delegate-attributes-prefix.$axis.stdout"
+        diff -u <(strip_cr_win_file "$out/delegate-attributes-before.$axis.stdout") \
+            <(strip_cr_win_file "$out/delegate-attributes-prefix.$axis.stdout") || return 1
+    done
+    run_bounded "$out/RecognizedReflectionOnly$EXE_EXT" before-sequence-defaults \
+        > "$out/sequence-defaults-before.native.stdout"
+    reflection_oracle "$_CG_APP" before-sequence-defaults > "$out/sequence-defaults-before.dotnet.stdout"
+    for axis in native dotnet; do
+        sed '/^== implicit sequence defaults ==/,$d' "$out/gate.$axis.stdout" \
+            > "$out/sequence-defaults-prefix.$axis.stdout"
+        diff -u <(strip_cr_win_file "$out/sequence-defaults-before.$axis.stdout") \
+            <(strip_cr_win_file "$out/sequence-defaults-prefix.$axis.stdout") || return 1
+    done
+    sequence_defaults_body_asserts "$out" || return $?
+    run_bounded "$out/RecognizedReflectionOnly$EXE_EXT" before-isinst-null \
+        > "$out/isinst-null-before.native.stdout"
+    reflection_oracle "$_CG_APP" before-isinst-null > "$out/isinst-null-before.dotnet.stdout"
+    for axis in native dotnet; do
+        sed '/^== nullable type tests ==/,$d' "$out/gate.$axis.stdout" \
+            > "$out/isinst-null-prefix.$axis.stdout"
+        diff -u <(strip_cr_win_file "$out/isinst-null-before.$axis.stdout") \
+            <(strip_cr_win_file "$out/isinst-null-prefix.$axis.stdout") || return 1
+    done
+    nullable_type_test_body_asserts "$out" || return $?
+    for member in ObjectBindingNoteAttribute::.ctor InheritedBindingNoteAttribute::.ctor TemplateBindingNoteAttribute::.ctor; do
+        [ "$(recognized_body_count "$out" "$member")" = 1 ] \
+            || { echo "FAIL: named Delegate.Method must admit exactly $member" >&2; return 1; }
+    done
+    for member in ExcludedBindingNoteAttribute::.ctor NamedAttributeProbe::Touch NamedAttributeProbe::.cctor; do
+        [ "$(recognized_body_count "$out" "$member")" = 0 ] \
+            || { echo "FAIL: named Delegate.Method admitted unselected dependency $member" >&2; return 1; }
+    done
+    for member in NamedAttributeObject NamedAttributeBase NamedAttributeTemplateBase; do
+        [ "$(grep -hE "^// RecognizedReflection\\.${member}(_[^:]*)?::Pick$" \
+                "$out"/generated*.cpp "$out/generated.h" | wc -l | tr -d ' ')" = 1 ] \
+            || { echo "FAIL: named Delegate.Method must select one $member.Pick arity" >&2; return 1; }
+        if grep -qE "^// RecognizedReflection\\.${member}(_[^:]*)?::Other$" \
+                "$out"/generated*.cpp "$out/generated.h"; then
+            echo "FAIL: named Delegate.Method admitted unselected $member.Other" >&2
+            return 1
+        fi
+    done
+    for member in NestedNameOuter DeepNameOuter QualifiedNameOuter ConstrainedNameOuter ChainedNameOuter; do
+        [ "$(grep -hE "^// RecognizedReflection\\.${member}(_[^:]*)?::Run$" \
+                "$out"/generated*.cpp "$out/generated.h" | wc -l | tr -d ' ')" = 1 ] \
+            || { echo "FAIL: the nested generic name must admit exactly $member.Run" >&2; return 1; }
+    done
+    if grep -qE '^// RecognizedReflection\.(NestedName(Inner|Outer)|DeepName(Leaf|Middle|Outer)|QualifiedName(Inner|Outer)|ConstrainedName(Inner|Outer)|ChainedName(Inner|Outer))(_[^:]*)?::(Unselected|Rejected|\.ctor|\.cctor)$' \
+            "$out"/generated*.cpp "$out/generated.h"; then
+        echo 'FAIL: a nested generic name admitted an unselected body' >&2
+        return 1
+    fi
+    for member in NestedNameInner_Int32 DeepNameLeaf_Int32 QualifiedNameInner_Int32 ConstrainedNameInner_Int32; do
+        grep -qwF "ti_RecognizedReflection_$member" "$out/generated.h" \
+            || { echo "FAIL: the nested generic argument lacks its exact identity: $member" >&2; return 1; }
+    done
+    grep -qE '^extern const Dn2CppTypeInfo ti_RecognizedReflection_DeepNameMiddle_Ginst[0-9]+_NRecognizedReflectionOnly[0-9]+_XRecognizedReflection_002EDeepNameLeaf_00601_1_6_NInt32End;$' \
+        "$out/generated.h" \
+        || { echo 'FAIL: the deep generic argument lacks its exact nested Int32 identity' >&2; return 1; }
+    if grep -qwF ti_RecognizedReflection_ConstrainedNameInner_String "$out/generated.h"; then
+        echo 'FAIL: a nested generic name minted a constraint-rejected argument' >&2
+        return 1
+    fi
+    for member in Lookups::Echo Mixer::Mix Joins::Left Joins::Right; do
+        [ "$(recognized_body_count "$out" "$member")" = 1 ] \
+            || { echo "FAIL: $member must compile exactly the selected body" >&2; return 1; }
+    done
+    grep -qF 'Dn2CppString* a1)' <<< "$(recognized_definitions "$out" Lookups::Echo)" \
+        || { echo "FAIL: the typed lookup compiled Echo(Int32) instead of Echo(String)" >&2; return 1; }
+    grep -qF '(int32_t a0, Dn2CppString* a1)' <<< "$(recognized_definitions "$out" Mixer::Mix)" \
+        || { echo "FAIL: the Type[] lookup compiled the other Mix overload" >&2; return 1; }
+    for member in Lookups::.ctor Built::.ctor; do
+        [ "$(recognized_body_count "$out" "$member")" = 2 ] \
+            || { echo "FAIL: $member must compile exactly its default and String constructors" >&2; return 1; }
+        if grep -qw int32_t <<< "$(recognized_definitions "$out" "$member")"; then
+            echo "FAIL: no site selects an Int32 overload of $member, yet its body was compiled" >&2
+            return 1
+        fi
+    done
+    [ "$(recognized_body_count "$out" Joins::Unpicked)" = 0 ] \
+        || { echo "FAIL: the joined names admitted Joins.Unpicked" >&2; return 1; }
+    [ "$(recognized_body_count "$out" Defaulted::Pick)" = 1 ] && [ "$(recognized_body_count "$out" Defaulted::Other)" = 0 ] \
+        || { echo "FAIL: GetDefaultMembers must admit exactly the DefaultMember-named method" >&2; return 1; }
+    [ "$(recognized_body_count "$out" Arities::Pick)" = 2 ] \
+        || { echo "FAIL: a name binding must admit the Pick overload of each delegate arity" >&2; return 1; }
+    # The typed lookup admits the overload the default binder returns; the inherited
+    # one it passes over compiles no body and reaches no type initializer.
+    [ "$(recognized_body_count "$out" BinderDerived::Pick ReflectReturnLib)" = 1 ] \
+        && [ "$(recognized_body_count "$out" BinderBase::Pick ReflectReturnLib)" = 0 ] \
+        && [ "$(recognized_body_count "$out" BinderBase::.cctor ReflectReturnLib)" = 0 ] \
+        || { echo "FAIL: the typed lookup admitted an overload the default binder does not return" >&2; return 1; }
+    # A name-only lookup admits only the nearer of two identically signed statics; the
+    # hidden one compiles no body and reaches no initializer.
+    [ "$(recognized_body_count "$out" HidingDerived::Make)" = 1 ] \
+        && [ "$(recognized_body_count "$out" HidingBase::Make)" = 0 ] \
+        && [ "$(recognized_body_count "$out" HiddenProbe::.cctor)" = 0 ] \
+        || { echo "FAIL: the name-only lookup admitted the static its nearer one hides" >&2; return 1; }
+    [ "$(recognized_body_count "$out" Constants::.cctor)" = 0 ] \
+        || { echo "FAIL: reading a constant field compiled its type initializer" >&2; return 1; }
+    for member in Prefixed::RunAlpha Prefixed::RunBeta Prefixed::Cased Starred::Only; do
+        [ "$(recognized_body_count "$out" "$member")" = 1 ] \
+            || { echo "FAIL: the GetMember name prefix did not admit $member" >&2; return 1; }
+    done
+    [ "$(recognized_body_count "$out" Prefixed::Other)" = 0 ] \
+        || { echo "FAIL: the GetMember name prefix admitted Prefixed.Other" >&2; return 1; }
+    # An inherited property associates no private accessor; an indexer lookup by index
+    # type runs only that indexer's getter.
+    [ "$(recognized_body_count "$out" EntityBase::set_Id ReflectReturnLib)" = 0 ] \
+        || { echo "FAIL: the derived type's property lookup admitted the base's private setter" >&2; return 1; }
+    [ "$(recognized_body_count "$out" TwoIndexes::get_Item)" = 1 ] \
+        && grep -qw int32_t <<< "$(recognized_definitions "$out" TwoIndexes::get_Item)" \
+        || { echo "FAIL: the Int32 indexer lookup admitted another indexer's getter" >&2; return 1; }
+    # The unselected siblings keep their metadata rows; only their bodies are absent.
+    for row in 'System.String Echo(Int32)' 'System.String Mix(System.String, Int32)' 'System.String Unpicked()' \
+            'System.String Other()'; do
+        grep -qF "\"$row\\0\"" "$out"/generated*.cpp \
+            || { echo "FAIL: the unselected sibling lost its metadata row: $row" >&2; return 1; }
+    done
+}
+gate_extra_asserts() {
+    recognized_table_asserts "$1"
+}
+recognized_out=artifacts/recognizedreflectiononly
+build_gate_proj samples/dotnet/ReflectReturnLib/ReflectReturnLib.csproj
+recognized_library="$PWD/samples/dotnet/ReflectReturnLib/bin/$CONFIG/$TFM/ReflectReturnLib.dll"
+DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectInvoke RecognizedReflectionOnly --no-ildiet System.Linq \
+    -r "$recognized_library"
+gate_extra_asserts() {
+    local out="$1"
+    recognized_table_asserts "$out" || return $?
+    if [ -f "$recognized_out/reflection-unrecognized.tsv" ] || [ -f "$out/reflection-unrecognized.tsv" ]; then
+        cmp "$recognized_out/reflection-unrecognized.tsv" "$out/reflection-unrecognized.tsv" \
+            || { echo "FAIL: ILDiet changed the unrecognized-site report" >&2; return 1; }
+    fi
+}
+DN2CPP_OUT_SUFFIX=-ildiet DN2CPP_STRICT_COMPLETION=1 \
+    ordinary_fixture_diff_gate ReflectInvoke RecognizedReflectionOnly System.Linq -r "$recognized_library"
+unset -f gate_extra_asserts recognized_table_asserts
 
 gate_extra_asserts() {
     local out="$1" native line axis result boundary
@@ -2594,11 +3302,14 @@ gate_extra_asserts() {
     diff -u <(strip_cr_win_file "$out/intrinsic-boundary.dotnet.stdout") \
         <(strip_cr_win_file "$out/intrinsic-boundary.native.stdout")
 }
-DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectInvoke ReflectNameBindOnly --no-ildiet -r "$pointer_field_library"
+DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectInvoke ReflectNameBindOnly --no-ildiet -r "$pointer_field_library" \
+    --link-xml samples/dotnet/ReflectInvoke/keep-name-bind-overloads.xml
 DN2CPP_OUT_SUFFIX=-ildiet DN2CPP_STRICT_COMPLETION=1 \
-    ordinary_fixture_diff_gate ReflectInvoke ReflectNameBindOnly -r "$pointer_field_library"
+    ordinary_fixture_diff_gate ReflectInvoke ReflectNameBindOnly -r "$pointer_field_library" \
+        --link-xml samples/dotnet/ReflectInvoke/keep-name-bind-overloads.xml
 unset -f gate_extra_asserts
 
+# Stripped interface diagnostics retain exact implementation selectors with stripped metadata.
 # The refusals need their CoreLib overrides stripped, so they run in an image
 # that holds nothing else, over packed and native metadata.
 # The refusal of a reflective call whose receiver's override (type, method, assembly)
@@ -2606,6 +3317,215 @@ unset -f gate_extra_asserts
 override_refusal() {
     printf 'PlatformNotSupportedException 0x80131539 %s::%s in %s: the receiver'"'"'s override was not retained; fix: [Preserve] on the target, or link.xml <assembly fullname="%s"><type fullname="%s"><method name="%s" /></type></assembly>' \
         "$1" "$2" "$3" "$3" "$1" "$2"
+}
+
+
+# A refusal must identify the dispatched MethodImpl, and its printed selector
+# must admit that body without admitting same-named overloads or static decoys.
+interface_remedy_replay() {
+    local out="$1" native replay body binary="${interface_remedy_binary:-StrippedOverrideRefusals}"
+    shift
+    run_bounded "$out/$binary$EXE_EXT" interface-remedies > "$out/interface-remedies.native.stdout"
+    native=$(strip_cr_win_file "$out/interface-remedies.native.stdout")
+    reflection_assert_lines - any '== stripped interface remedies ==' \
+        "interface remedy alpha: $(override_refusal StrippedOverrideRefusals.InterfaceRemedyImplementation StrippedOverrideRefusals.IInterfaceRemedyAlpha.M StrippedOverrideRefusals)" \
+        "interface remedy beta: $(override_refusal StrippedOverrideRefusals.InterfaceRemedyImplementation StrippedOverrideRefusals.IInterfaceRemedyBeta.M StrippedOverrideRefusals)" \
+        'stripped interface remedies end' <<< "$native"
+    for body in M StrippedOverrideRefusals.IInterfaceRemedyAlpha.M StrippedOverrideRefusals.IInterfaceRemedyBeta.M; do
+        if grep -qwxF "// StrippedOverrideRefusals.InterfaceRemedyImplementation::$body" "$out"/generated*.cpp "$out"/generated.h; then
+            echo "FAIL: an opaque interface call admitted $body" >&2
+            return 1
+        fi
+    done
+    grep -qwxF '// StrippedOverrideRefusals.Program::InterfaceRemedy' "$out"/generated*.cpp "$out"/generated.h
+    # Replay the actual diagnostic, including its exact XML escaping and metadata name.
+    { printf '<linker>\n'; sed -n 's/^interface remedy .*; fix: .*link.xml //p' <<< "$native"; printf '</linker>\n'; } \
+        > "$out/interface-remedies.xml"
+    replay="$out-remedy"
+    DN2CPP_STRICT_COMPLETION=1 invoke_cli "$_CG_APP" -r "$_CG_CORELIB" "$@" \
+        --link-xml "$out/interface-remedies.xml" -o "$replay"
+    compile_console "$replay" "$binary"
+    reflection_oracle "$_CG_APP" interface-remedies > "$replay/interface-remedies.dotnet.stdout"
+    run_bounded "$replay/$binary$EXE_EXT" interface-remedies > "$replay/interface-remedies.native.stdout"
+    diff -u <(strip_cr_win_file "$replay/interface-remedies.dotnet.stdout") \
+        <(strip_cr_win_file "$replay/interface-remedies.native.stdout")
+    reflection_assert_lines "$replay/interface-remedies.native.stdout" any \
+        '== stripped interface remedies ==' 'interface remedy alpha: 17' 'interface remedy beta: 29' \
+        'stripped interface remedies end'
+    for body in StrippedOverrideRefusals.IInterfaceRemedyAlpha.M StrippedOverrideRefusals.IInterfaceRemedyBeta.M; do
+        grep -qwxF "// StrippedOverrideRefusals.InterfaceRemedyImplementation::$body" "$replay"/generated*.cpp "$replay"/generated.h
+    done
+    if grep -qwxF '// StrippedOverrideRefusals.InterfaceRemedyImplementation::M' "$replay"/generated*.cpp "$replay"/generated.h; then
+        echo 'FAIL: an exact interface remedy admitted an unrelated method' >&2
+        return 1
+    fi
+}
+
+interface_remedy_image() {
+    local out="$1"
+    shift
+    DN2CPP_STRICT_COMPLETION=1 invoke_cli "$_CG_APP" -r "$_CG_CORELIB" "$@" -o "$out"
+    compile_console "$out" StrippedOverrideRefusals
+    interface_remedy_replay "$out" "$@"
+    class_remedy_replay "$out" "$@"
+}
+
+
+# A referenced receiver keeps dispatch while its reflection rows are absent.
+# This entry has no delegate binding or Delegate.Method read to request the map.
+interface_remedy_metadata_only() {
+    local fixture=artifacts/stripped-interface-remedy-wrapper
+    local out=artifacts/stripped-interface-remedies-metadata
+    mkdir -p "$fixture"
+    cat > "$fixture/InterfaceRemedyMetadataOnly.csproj" <<'PROJECT'
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <ProjectReference Include="../../samples/dotnet/ReflectInvoke/StrippedOverrideRefusals.csproj" />
+  </ItemGroup>
+</Project>
+PROJECT
+    cat > "$fixture/Program.cs" <<'PROGRAM'
+using System.Globalization;
+
+static class Program
+{
+    static void Main()
+    {
+        CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+        CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+        StrippedOverrideRefusals.Program.RunInterfaceRemedies();
+    }
+}
+PROGRAM
+    reflection_build_once "$fixture/InterfaceRemedyMetadataOnly.csproj" "$fixture/app"
+    local _CG_APP="$fixture/app/InterfaceRemedyMetadataOnly.dll"
+    local interface_remedy_binary=InterfaceRemedyMetadataOnly
+    local flags=(--no-ildiet --trim-reflection -r "$fixture/app/StrippedOverrideRefusals.dll")
+    DN2CPP_STRICT_COMPLETION=1 invoke_cli "$_CG_APP" -r "$_CG_CORELIB" "${flags[@]}" -o "$out"
+    grep -Eq '^const Dn2CppTypeInfo ti_StrippedOverrideRefusals_InterfaceRemedyImplementation = .*DN2CPP_TF_METADATA_STRIPPED' "$out"/generated*.cpp \
+        || { echo 'FAIL: the interface implementation still has reflection metadata' >&2; return 1; }
+    if grep -qw 'delegate_method_catalog' "$out"/generated*.cpp "$out/generated.h"; then
+        echo 'FAIL: the isolated interface invocation requested delegate metadata' >&2
+        return 1
+    fi
+    grep -qw 'itfmethods_StrippedOverrideRefusals_InterfaceRemedyImplementation_StrippedOverrideRefusals_IInterfaceRemedyAlpha' "$out"/generated*.cpp
+    compile_console "$out" "$interface_remedy_binary"
+    interface_remedy_replay "$out" "${flags[@]}"
+}
+
+# An inherited receiver has no declaration matching its selected virtual body.
+# Replaying the actual diagnostic must retain the declaring base, not a leaf decoy.
+class_remedy_replay() {
+    local out="$1" native replay body binary="${class_remedy_binary:-StrippedOverrideRefusals}"
+    shift
+    run_bounded "$out/$binary$EXE_EXT" class-remedies > "$out/class-remedies.native.stdout"
+    native=$(strip_cr_win_file "$out/class-remedies.native.stdout")
+    reflection_assert_lines - any '== stripped class remedies ==' \
+        "class remedy inherited: $(override_refusal StrippedOverrideRefusals.ClassRemedyMiddle M StrippedOverrideRefusals)" \
+        "class remedy decoy: $(override_refusal StrippedOverrideRefusals.ClassRemedyMiddle M StrippedOverrideRefusals)" \
+        'stripped class remedies end' <<< "$native"
+    for body in ClassRemedyMiddle::M ClassRemedyMiddle::Unrelated ClassRemedyDecoyLeaf::M; do
+        if grep -qwxF "// StrippedOverrideRefusals.$body" "$out"/generated*.cpp "$out"/generated.h; then
+            echo "FAIL: an opaque class call admitted $body" >&2
+            return 1
+        fi
+    done
+    grep -qwxF '// StrippedOverrideRefusals.Program::ClassRemedy' "$out"/generated*.cpp "$out"/generated.h
+    { printf '<linker>\n'; sed -n 's/^class remedy .*; fix: .*link.xml //p' <<< "$native"; printf '</linker>\n'; } \
+        > "$out/class-remedies.xml"
+    replay="$out-class-remedy"
+    DN2CPP_STRICT_COMPLETION=1 invoke_cli "$_CG_APP" -r "$_CG_CORELIB" "$@" \
+        --link-xml "$out/class-remedies.xml" -o "$replay"
+    compile_console "$replay" "$binary"
+    reflection_oracle "$_CG_APP" class-remedies > "$replay/class-remedies.dotnet.stdout"
+    run_bounded "$replay/$binary$EXE_EXT" class-remedies > "$replay/class-remedies.native.stdout"
+    diff -u <(strip_cr_win_file "$replay/class-remedies.dotnet.stdout") \
+        <(strip_cr_win_file "$replay/class-remedies.native.stdout")
+    reflection_assert_lines "$replay/class-remedies.native.stdout" any \
+        '== stripped class remedies ==' 'class remedy inherited: 7' 'class remedy decoy: 7' \
+        'stripped class remedies end'
+    grep -qwxF '// StrippedOverrideRefusals.ClassRemedyMiddle::M' "$replay"/generated*.cpp "$replay"/generated.h
+    for body in ClassRemedyMiddle::Unrelated ClassRemedyDecoyLeaf::M; do
+        if grep -qwxF "// StrippedOverrideRefusals.$body" "$replay"/generated*.cpp "$replay"/generated.h; then
+            echo "FAIL: an exact class remedy admitted $body" >&2
+            return 1
+        fi
+    done
+    "$py" - "$out" "$replay" <<'PY_BODY_DELTA'
+import pathlib, sys
+
+def bodies(directory):
+    root = pathlib.Path(directory)
+    files = [root / 'generated.h', *root.glob('generated*.cpp')]
+    return {line for path in files for line in path.read_text(encoding='utf-8').splitlines()
+            if line.startswith('// ') and '::' in line}
+
+before, after = map(bodies, sys.argv[1:])
+assert before <= after, sorted(before - after)
+assert after - before == {'// StrippedOverrideRefusals.ClassRemedyMiddle::M'}, sorted(after - before)
+PY_BODY_DELTA
+}
+
+class_remedy_library() {
+    local fixture=artifacts/stripped-class-remedy-wrapper
+    local mode="$1" out="artifacts/stripped-class-remedies-library-$1"
+    mkdir -p "$fixture"
+    cat > "$fixture/ClassRemedyLibrary.csproj" <<'PROJECT'
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <ProjectReference Include="../../samples/dotnet/ReflectInvoke/StrippedOverrideRefusals.csproj" />
+  </ItemGroup>
+</Project>
+PROJECT
+    cat > "$fixture/Program.cs" <<'PROGRAM'
+using System.Globalization;
+
+static class Program
+{
+    static void Main()
+    {
+        CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+        CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+        StrippedOverrideRefusals.Program.RunClassRemedies();
+    }
+}
+PROGRAM
+    reflection_build_once "$fixture/ClassRemedyLibrary.csproj" "$fixture/app"
+    local _CG_APP="$fixture/app/ClassRemedyLibrary.dll"
+    local class_remedy_binary=ClassRemedyLibrary
+    local flags=(--no-ildiet -r "$fixture/app/StrippedOverrideRefusals.dll")
+    if [[ "$mode" == trim ]]; then
+        flags+=(--trim-reflection)
+    fi
+    DN2CPP_STRICT_COMPLETION=1 invoke_cli "$_CG_APP" -r "$_CG_CORELIB" "${flags[@]}" -o "$out"
+    if [[ "$mode" == trim ]]; then
+        grep -Eq '^const Dn2CppTypeInfo ti_StrippedOverrideRefusals_ClassRemedyMiddle = .*DN2CPP_TF_METADATA_STRIPPED' "$out"/generated*.cpp \
+            || { echo 'FAIL: the intermediate override still has reflection metadata' >&2; return 1; }
+    fi
+    if grep -qw 'methtab_StrippedOverrideRefusals_ClassRemedyMiddle' "$out"/generated*.cpp "$out/generated.h"; then
+        echo 'FAIL: the intermediate override still has method rows' >&2
+        return 1
+    fi
+    if grep -qw 'delegate_method_catalog' "$out"/generated*.cpp "$out/generated.h"; then
+        echo 'FAIL: the isolated class invocation requested delegate metadata' >&2
+        return 1
+    fi
+    compile_console "$out" "$class_remedy_binary"
+    class_remedy_replay "$out" "${flags[@]}"
 }
 
 gate_extra_asserts() {
@@ -2619,8 +3539,8 @@ gate_extra_asserts() {
         \
         "stripped struct-returning slot: $calendar_years" \
         "stripped slot: $calendar_days" \
-        "stripped interface struct-returning slot: $(override_refusal System.DBNull ToDateTime System.Private.CoreLib)" \
-        "stripped interface slot: $(override_refusal System.DBNull ToInt32 System.Private.CoreLib)" \
+        "stripped interface struct-returning slot: $(override_refusal System.DBNull System.IConvertible.ToDateTime System.Private.CoreLib)" \
+        "stripped interface slot: $(override_refusal System.DBNull System.IConvertible.ToInt32 System.Private.CoreLib)" \
         "stripped slot, delegate: $calendar_days" \
         'stripped end' \
         "stripped slot, nested invoke: TargetInvocationException 0x80131604 inner $calendar_days" \
@@ -2628,10 +3548,32 @@ gate_extra_asserts() {
         "stripped slot, nested object virtual: TargetInvocationException 0x80131604 inner $calendar_days" \
         "stripped slot, nested constructor: TargetInvocationException 0x80131604 inner $calendar_days" \
         'stripped nested end' <<< "$native"
+    run_bounded "$out/StrippedOverrideRefusals$EXE_EXT" > "$out/retained-overrides.stdout"
+    native=$(strip_cr_win_file "$out/retained-overrides.stdout")
+    reflection_assert_lines - 1 'stripped override rows end' \
+        'retained generic override, base row: leaf Int32' \
+        'retained late generic override, base row: late leaf Int32' \
+        'retained generic overrides end' '== interface remedy rows ==' \
+        'interface remedy control: 41' 'interface remedy rows end' <<< "$native"
+    run_bounded "$out/StrippedOverrideRefusals$EXE_EXT" before-interface-remedy-rows > "$out/interface-remedies-prefix.native.stdout"
+    reflection_oracle "$_CG_APP" before-interface-remedy-rows > "$out/interface-remedies-prefix.dotnet.stdout"
+    sed '/^== interface remedy rows ==/,$d' "$out/retained-overrides.stdout" > "$out/interface-remedies-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/interface-remedies-prefix.native.stdout") \
+        <(strip_cr_win_file "$out/interface-remedies-prefix.stdout")
+    diff -u <(strip_cr_win_file "$out/interface-remedies-prefix.dotnet.stdout") \
+        <(strip_cr_win_file "$out/interface-remedies-prefix.native.stdout")
+    interface_remedy_replay "$out" "${interface_remedy_flags[@]}"
+    class_remedy_replay "$out" "${interface_remedy_flags[@]}"
 }
+interface_remedy_flags=(--no-ildiet)
 DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectInvoke StrippedOverrideRefusals --no-ildiet
+interface_remedy_metadata_only
+class_remedy_library rows
+class_remedy_library trim
+interface_remedy_flags=(--no-ildiet --no-metadata-compression)
 DN2CPP_OUT_SUFFIX=-native DN2CPP_STRICT_COMPLETION=1 \
     ordinary_fixture_diff_gate ReflectInvoke StrippedOverrideRefusals --no-ildiet --no-metadata-compression
+interface_remedy_image artifacts/stripped-interface-remedies-ildiet
 unset -f gate_extra_asserts
 
 gate_extra_asserts() {
@@ -2675,10 +3617,55 @@ gate_extra_asserts() {
     grep -Fxq "framework generic virtual row, library override: $(override_refusal ReflectFrameworkBindLib.LibraryProvider RegisterType System.ReflectFrameworkBind)" <<< "$native"
     grep -Fxq 'framework bind end' <<< "$native"
     grep -Fxq "framework generic virtual row, library receiver allocated late: $(override_refusal ReflectFrameworkBindLib.LateProvider RegisterType System.ReflectFrameworkBind)" <<< "$native"
+    if grep -hEq '(LibraryProvider|LateProvider)_RegisterType_TisTagged_m[0-9]+\(' "$out"/generated*.cpp "$out/generated.h"; then
+        echo 'FAIL: a refused library generic override body was retained' >&2
+        return 1
+    fi
+    DN2CPP_INHERITED_GVM_REMEDY=1 run_bounded "$out/ReflectFrameworkBind$EXE_EXT" > "$out/inherited-gvm.stdout"
+    reflection_assert_lines "$out/inherited-gvm.stdout" any \
+        '== inherited generic virtual remedy ==' \
+        "inherited generic virtual override: $(override_refusal ReflectFrameworkBindLib.LibraryProvider RegisterType System.ReflectFrameworkBind)" \
+        'inherited generic virtual remedy end'
+    { printf '<linker>\n'; sed -n 's/^inherited generic virtual override: .*; fix: .*link.xml //p' "$out/inherited-gvm.stdout"; printf '</linker>\n'; } \
+        > "$out/inherited-gvm.xml"
+    local replay="$out-inherited-remedy"
+    DN2CPP_STRICT_COMPLETION=1 invoke_cli "$_CG_APP" -r "$_CG_CORELIB" --no-ildiet \
+        -r "$(dirname "$_CG_CORELIB")/System.ComponentModel.TypeConverter.dll" \
+        -r "samples/dotnet/ReflectFrameworkBind/bin/$CONFIG/$TFM/System.ReflectFrameworkBind.dll" \
+        -r "samples/dotnet/ReflectFrameworkBind/bin/$CONFIG/$TFM/ReflectReturnLib.dll" \
+        --link-xml samples/dotnet/ReflectFrameworkBind/link.xml --link-xml "$out/inherited-gvm.xml" -o "$replay"
+    compile_console "$replay" ReflectFrameworkBind
+    DN2CPP_INHERITED_GVM_REMEDY=1 reflection_oracle "$_CG_APP" > "$replay/inherited-gvm.dotnet.stdout"
+    DN2CPP_INHERITED_GVM_REMEDY=1 run_bounded "$replay/ReflectFrameworkBind$EXE_EXT" > "$replay/inherited-gvm.stdout"
+    diff -u <(strip_cr_win_file "$replay/inherited-gvm.dotnet.stdout") <(strip_cr_win_file "$replay/inherited-gvm.stdout")
+    reflection_assert_lines "$replay/inherited-gvm.stdout" any \
+        '== inherited generic virtual remedy ==' 'inherited generic virtual override: library:Tagged' \
+        'inherited generic virtual remedy end'
+    if ! grep -hEq 'LibraryProvider_RegisterType_TisTagged_m[0-9]+\(' "$replay"/generated*.cpp "$replay/generated.h"; then
+        echo 'FAIL: the inherited generic virtual remedy did not admit its declaring body' >&2
+        return 1
+    fi
+    if grep -hEq 'LateProvider_RegisterType_TisTagged_m[0-9]+\(' "$replay"/generated*.cpp "$replay/generated.h"; then
+        echo 'FAIL: the inherited generic virtual remedy admitted an unrelated override' >&2
+        return 1
+    fi
+    "$py" - "$out" "$replay" <<'PY_GVM_BODY_DELTA'
+import pathlib, sys
+
+def bodies(directory):
+    root = pathlib.Path(directory)
+    return {line for path in [root / 'generated.h', *root.glob('generated*.cpp')]
+            for line in path.read_text(encoding='utf-8').splitlines() if line.startswith('// ') and '::' in line}
+
+before, after = map(bodies, sys.argv[1:])
+assert before <= after, sorted(before - after)
+assert after - before == {'// ReflectFrameworkBindLib.LibraryProvider::RegisterType'}, sorted(after - before)
+PY_GVM_BODY_DELTA
 }
 corelib_diff_gate ReflectFrameworkBind --no-ildiet System.ComponentModel.TypeConverter \
     -r "samples/dotnet/ReflectFrameworkBind/bin/$CONFIG/$TFM/System.ReflectFrameworkBind.dll" \
-    -r "samples/dotnet/ReflectFrameworkBind/bin/$CONFIG/$TFM/ReflectReturnLib.dll"
+    -r "samples/dotnet/ReflectFrameworkBind/bin/$CONFIG/$TFM/ReflectReturnLib.dll" \
+    --link-xml samples/dotnet/ReflectFrameworkBind/link.xml
 
 gate_extra_asserts() {
     local out="$1" dotnet
@@ -2693,6 +3680,7 @@ gate_extra_asserts() {
 DN2CPP_OUT_SUFFIX=-kept-override corelib_diff_gate ReflectFrameworkBind --no-ildiet System.ComponentModel.TypeConverter \
     -r "samples/dotnet/ReflectFrameworkBind/bin/$CONFIG/$TFM/System.ReflectFrameworkBind.dll" \
     -r "samples/dotnet/ReflectFrameworkBind/bin/$CONFIG/$TFM/ReflectReturnLib.dll" \
+    --link-xml samples/dotnet/ReflectFrameworkBind/link.xml \
     --link-xml samples/dotnet/ReflectFrameworkBind/keep-library-override.xml
 unset -f gate_extra_asserts
 
@@ -3026,7 +4014,7 @@ for mode in default trim; do
     done
 done
 
-# This driver has no GetMethod or typeof(ValueType) seed for the formal's base handle.
+# This driver names the formal's base handle through no GetMethod or typeof(ValueType).
 dotnet build "$unused_fixture/Enumeration/Enumeration.csproj" -c "$CONFIG" --nologo -v q
 formal_enumeration_app="$unused_fixture/Enumeration/bin/$CONFIG/$TFM/FormalMethodEnumeration.dll"
 formal_enumeration_out=artifacts/formal-method-enumeration

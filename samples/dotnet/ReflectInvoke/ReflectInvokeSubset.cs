@@ -4,8 +4,8 @@ using System.Reflection;
 
 namespace ReflectInvokeSubset
 {
-    // An internal class whose methods are reflected + invoked. The reflection-invoke
-    // reachability route must reach these even when not called directly.
+    // An internal class whose methods are reflected + invoked. A recognized lookup
+    // admits each of these even when nothing calls it directly.
     class Calc
     {
         public int Last;
@@ -14,7 +14,7 @@ namespace ReflectInvokeSubset
         public string Concat(string a, string b) => a + b;     // ref args -> ref
         public void Store(int v) => Last = v;                  // void return
         public int Describe() => 99;                           // no args -> value
-        private int Secret(int x) => x * 7;                    // reflection-only (reach route)
+        private int Secret(int x) => x * 7;                    // reflection-only
     }
 
     struct Vec2

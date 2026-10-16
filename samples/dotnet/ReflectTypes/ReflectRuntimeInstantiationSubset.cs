@@ -4,11 +4,11 @@ using System.Reflection;
 
 // The runtime-instantiation template route
 // (Compilation.BuildRuntimeInstantiationTemplates / JudgeRuntimeTemplates on the
-// transpiler side, dn2cpp_try_synthesize_generic on the runtime side): a generic
-// definition the program typeofs whose type parameter only ever reaches typeof
-// positions gets a $CnAny template, so MakeGenericType succeeds at run time for
-// ANY argument — value types included — with no closed instantiation anywhere in
-// source. Asserted: minting over primitives, an enum, a user struct and classes,
+// transpiler side, dn2cpp_try_synthesize_generic on the runtime side): a recognized
+// MakeGenericType site whose arguments no compiled instantiation matches selects the
+// definition's $CnAny template when its shape admits one, so MakeGenericType
+// succeeds at run time — value types included — with no closed instantiation
+// anywhere in source. Asserted: minting over primitives, an enum, a user struct and classes,
 // the virtual body reading typeof(T) through the synthesized rgctx, Activator
 // over the synthesized Type (the clone's ctor rows must allocate the CLONE, not
 // the template), intern identity (same (def,args), same Type object), the
@@ -19,14 +19,12 @@ using System.Reflection;
 // Tag<T>, identity projection), and that chain's AOT seam (the synthesized
 // Twig<int>'s base is an instantiation the image already carries, so it must
 // intern onto the AOT Anchor<int> type-info — BaseType identity,
-// IsAssignableFrom and isinst all compare pointers). The negative stays the AOT
-// boundary: a
-// definition with a T-typed field is shape-ineligible, so real .NET constructs
-// Holder<int> while dn2cpp throws the catchable NotSupportedException naming the
-// missing instantiation — the frozen snapshot asserts that message. So does a
-// definition whose generic virtual override instantiates a generic method over
-// the definition's own type parameter: a clone would need that instantiation
-// minted per type argument. A clone owns its field and property rows: they
+// IsAssignableFrom and isinst all compare pointers). A definition with a T-typed
+// field is shape-ineligible, so Holder<int>, whose argument is known, is
+// instantiated statically instead. A clone cannot run a generic virtual override
+// that instantiates a generic method over the definition's own type parameter, so
+// the known argument instantiates GvmHelperLeaf<int> statically, as real .NET
+// constructs it. A clone owns its field and property rows: they
 // report it as DeclaringType, read and write through it, and a property's
 // accessor is the clone's method row, the handle GetMethod returns.
 
@@ -280,6 +278,35 @@ namespace ReflectRuntimeInstantiationSubset
     {
         public string extra = "extra";
         public string Extra => extra + ":" + typeof(T).Name;
+    }
+
+    // A clone over a known argument is another MakeGenericType's or MakeGenericMethod's
+    // argument. ArgumentOuter<T>'s T-typed field admits no template, so it closes
+    // statically over the argument's exact instantiation, which the argument's own
+    // sites then resolve to; ArgumentPlain<T>'s template clones over it.
+    class ArgumentInner<T>
+    {
+        public override string ToString() => "inner:" + typeof(T).Name;
+    }
+
+    class ArgumentOuter<T>
+    {
+        public T Value;
+    }
+
+    class ArgumentPlain<T>
+    {
+        public override string ToString() => "plain:" + typeof(T).Name;
+    }
+
+    class ArgumentSpoken<T>
+    {
+        public string Say() => "say:" + typeof(T).Name;
+    }
+
+    static class ArgumentNames
+    {
+        public static string Name<T>() => "name:" + typeof(T);
     }
 
     class Program
@@ -708,6 +735,72 @@ namespace ReflectRuntimeInstantiationSubset
                     + " makeList=" + (closed.GetMethod("MakeList") != null));
             }
             Console.WriteLine("reflected template bodies end");
+        }
+
+        // Clones as generic arguments (see ArgumentInner<T>), then a CoreLib closed instance
+        // MakeGenericMethod forms only to read its metadata: it keeps its row, and the
+        // definition stays listed beside it.
+        internal static void RunTemplateArguments()
+        {
+            Console.WriteLine("== template generic arguments ==");
+            Type inner = typeof(ArgumentInner<>).MakeGenericType(typeof(int));
+            try
+            {
+                Type outer = typeof(ArgumentOuter<>).MakeGenericType(inner);
+                object made = Activator.CreateInstance(outer);
+                FieldInfo value = outer.GetField("Value");
+                value.SetValue(made, Activator.CreateInstance(inner));
+                Console.WriteLine("outer " + outer + " field=" + (value.FieldType == inner)
+                    + " value=" + value.GetValue(made));
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("outer fault=" + e.GetType().Name);
+            }
+            try
+            {
+                Type plain = typeof(ArgumentPlain<>).MakeGenericType(inner);
+                Console.WriteLine("plain " + Activator.CreateInstance(plain)
+                    + " argument=" + (plain.GetGenericArguments()[0] == inner));
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("plain fault=" + e.GetType().Name);
+            }
+            try
+            {
+                Console.WriteLine("method " + typeof(ArgumentNames).GetMethod("Name").MakeGenericMethod(inner).Invoke(null, null));
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("method fault=" + e.GetType().Name);
+            }
+            Type spoken = typeof(ArgumentSpoken<>).MakeGenericType(typeof(long));
+            try
+            {
+                string said = (string)spoken.GetMethod("Say").Invoke(Activator.CreateInstance(spoken), null);
+                Type holder = typeof(ArgumentOuter<>).MakeGenericType(spoken);
+                Console.WriteLine("spoken " + said + " holder=" + (holder.GetField("Value").FieldType == spoken));
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("spoken fault=" + e.GetType().Name);
+            }
+            MethodInfo definition = typeof(System.Collections.Generic.KeyValuePair).GetMethod("Create");
+            Console.WriteLine("library definition=" + (definition == null ? "null"
+                : definition.Name + ":" + definition.IsGenericMethodDefinition));
+            try
+            {
+                MethodInfo closed = typeof(System.Collections.Generic.KeyValuePair).GetMethod("Create")
+                    .MakeGenericMethod(typeof(int), typeof(string));
+                Console.WriteLine("library closed=" + closed.Name + ":" + closed.GetGenericArguments()[1].Name
+                    + ":" + (closed.GetGenericMethodDefinition() == definition));
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("library closed fault=" + e.GetType().Name);
+            }
+            Console.WriteLine("template generic arguments end");
         }
 
         internal static void Run()

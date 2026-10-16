@@ -1,0 +1,41 @@
+unknown-target prefix
+== reflection targets from parameters ==
+invoke refused: PlatformNotSupportedException: ILDietUnknownTargetOnly.InvokedTarget::System.String Describe() in UnknownTargetOnly: reflection found this member but its body was not retained; fix: [Preserve] on the target, or link.xml <assembly fullname="UnknownTargetOnly"><type fullname="ILDietUnknownTargetOnly.InvokedTarget"><method name="Describe" /></type></assembly>
+construct refused: PlatformNotSupportedException: ILDietUnknownTargetOnly.ConstructedTarget::Void .ctor() in UnknownTargetOnly: reflection found this member but its body was not retained; fix: [Preserve] on the target, or link.xml <assembly fullname="UnknownTargetOnly"><type fullname="ILDietUnknownTargetOnly.ConstructedTarget"><method name=".ctor" /></type></assembly>
+reflection targets from parameters end
+== reflection targets from collections ==
+element refused: PlatformNotSupportedException: ILDietUnknownTargetOnly.ElementTarget::System.String Run() in UnknownTargetOnly: reflection found this member but its body was not retained; fix: [Preserve] on the target, or link.xml <assembly fullname="UnknownTargetOnly"><type fullname="ILDietUnknownTargetOnly.ElementTarget"><method name="Run" /></type></assembly>
+copy refused: PlatformNotSupportedException: ILDietUnknownTargetOnly.CopiedTarget::System.String Run() in UnknownTargetOnly: reflection found this member but its body was not retained; fix: [Preserve] on the target, or link.xml <assembly fullname="UnknownTargetOnly"><type fullname="ILDietUnknownTargetOnly.CopiedTarget"><method name="Run" /></type></assembly>
+copy refused: PlatformNotSupportedException: ILDietUnknownTargetOnly.AddedTarget::System.String Run() in UnknownTargetOnly: reflection found this member but its body was not retained; fix: [Preserve] on the target, or link.xml <assembly fullname="UnknownTargetOnly"><type fullname="ILDietUnknownTargetOnly.AddedTarget"><method name="Run" /></type></assembly>
+copy=
+reflection targets from collections end
+== construction of omitted and never-boxed types ==
+library class refused: PlatformNotSupportedException: ActivationTargets.LibraryClass::Void .ctor() in ActivationTargets: reflection found this member but its body was not retained; fix: [Preserve] on the target, or link.xml <assembly fullname="ActivationTargets"><type fullname="ActivationTargets.LibraryClass"><method name=".ctor" /></type></assembly>
+arguments only missing: MissingMethodException
+library class with count refused: PlatformNotSupportedException: ActivationTargets.LibraryClass::Void .ctor(Int32) in ActivationTargets: reflection found this member but its body was not retained; fix: [Preserve] on the target, or link.xml <assembly fullname="ActivationTargets"><type fullname="ActivationTargets.LibraryClass"><method name=".ctor" /></type></assembly>
+boxed default=library struct 0
+library struct refused: PlatformNotSupportedException: ActivationTargets.LibraryStruct::Void .ctor() in ActivationTargets: reflection found this member but its body was not retained; fix: [Preserve] on the target, or link.xml <assembly fullname="ActivationTargets"><type fullname="ActivationTargets.LibraryStruct"><method name=".ctor" /></type></assembly>
+unboxed struct refused: PlatformNotSupportedException: ILDietUnknownTargetOnly.UnboxedTarget::Void .ctor() in UnknownTargetOnly: constructing it boxes ILDietUnknownTargetOnly.UnboxedTarget, which this image never allocates; fix: [Preserve] on the target, or link.xml <assembly fullname="UnknownTargetOnly"><type fullname="ILDietUnknownTargetOnly.UnboxedTarget" preserve="all" /></assembly>
+construction of omitted and never-boxed types end
+== reflection targets on runtime-made instantiations ==
+template invoke refused: PlatformNotSupportedException: ILDietUnknownTargetOnly.TemplateTarget`1[System.Guid]::System.String Describe() in UnknownTargetOnly: reflection found this member but its body was not retained; fix: [Preserve] on the target, or link.xml <assembly fullname="UnknownTargetOnly"><type fullname="ILDietUnknownTargetOnly.TemplateTarget`1"><method name="Describe" /></type></assembly>
+reflection targets on runtime-made instantiations end
+== reflection targets written back or boxed from a type argument ==
+written back refused: PlatformNotSupportedException: ILDietUnknownTargetOnly.WrittenTarget::System.String Run() in UnknownTargetOnly: reflection found this member but its body was not retained; fix: [Preserve] on the target, or link.xml <assembly fullname="UnknownTargetOnly"><type fullname="ILDietUnknownTargetOnly.WrittenTarget"><method name="Run" /></type></assembly>
+boxed derived refused: PlatformNotSupportedException: ILDietUnknownTargetOnly.BoxedDerived::System.String Run() in UnknownTargetOnly: reflection found this member but its body was not retained; fix: [Preserve] on the target, or link.xml <assembly fullname="UnknownTargetOnly"><type fullname="ILDietUnknownTargetOnly.BoxedDerived"><method name="Run" /></type></assembly>
+boxed value=value
+reflection targets written back or boxed from a type argument end
+== reflection targets through an array type or a runtime name ==
+array element refused: PlatformNotSupportedException: ILDietUnknownTargetOnly.ArrayElementTarget::System.String Run() in UnknownTargetOnly: reflection found this member but its body was not retained; fix: [Preserve] on the target, or link.xml <assembly fullname="UnknownTargetOnly"><type fullname="ILDietUnknownTargetOnly.ArrayElementTarget"><method name="Run" /></type></assembly>
+generated member refused: PlatformNotSupportedException: <>f__AnonymousType0`1[System.Int32]::Int32 get_Value() in UnknownTargetOnly: reflection found this member but its body was not retained; fix: [Preserve] on the target, or link.xml <assembly fullname="UnknownTargetOnly"><type fullname="&lt;&gt;f__AnonymousType0`1"><method name="get_Value" /></type></assembly>
+reflection targets through an array type or a runtime name end
+== a static readonly field set on a parameter type ==
+initonly field refused: PlatformNotSupportedException: ILDietUnknownTargetOnly.InitOnlyTarget::.cctor in UnknownTargetOnly: a static field access runs this type initializer, whose body was not retained; fix: [Preserve] on the target, or link.xml <assembly fullname="UnknownTargetOnly"><type fullname="ILDietUnknownTargetOnly.InitOnlyTarget"><method name=".cctor" /></type></assembly>
+initonly target initialized=False
+a static readonly field set on a parameter type end
+== a virtual delegate's method, a name bound per instantiation and an uninitialized parameter type ==
+virtual command=derived
+merged a refused: PlatformNotSupportedException: ILDietUnknownTargetOnly.MergedA::System.String Run() in UnknownTargetOnly: reflection found this member but its body was not retained; fix: [Preserve] on the target, or link.xml <assembly fullname="UnknownTargetOnly"><type fullname="ILDietUnknownTargetOnly.MergedA"><method name="Run" /></type></assembly>
+merged b refused: PlatformNotSupportedException: ILDietUnknownTargetOnly.MergedB::System.String Run() in UnknownTargetOnly: reflection found this member but its body was not retained; fix: [Preserve] on the target, or link.xml <assembly fullname="UnknownTargetOnly"><type fullname="ILDietUnknownTargetOnly.MergedB"><method name="Run" /></type></assembly>
+blank refused: PlatformNotSupportedException: ILDietUnknownTargetOnly.BlankTarget in UnknownTargetOnly: GetUninitializedObject makes an instance of ILDietUnknownTargetOnly.BlankTarget, which this image never allocates; fix: [Preserve] on the target, or link.xml <assembly fullname="UnknownTargetOnly"><type fullname="ILDietUnknownTargetOnly.BlankTarget"><method name=".ctor" /></type></assembly>
+a virtual delegate's method, a name bound per instantiation and an uninitialized parameter type end

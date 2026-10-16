@@ -1,0 +1,12 @@
+<linker>
+  <assembly fullname="ReflectionSignatureTypesOnly">
+    <!-- ReflectionSignatureTypesSubset: PointerInvoke receives the method name as a
+         parameter. -->
+    <type fullname="ReflectionSignatureTypesSubset.Shapes">
+      <method name="DeepPointer" />
+      <method name="FunctionPointerPointer" />
+      <method name="Pointer" />
+      <method name="StructurePointer" />
+    </type>
+  </assembly>
+</linker>

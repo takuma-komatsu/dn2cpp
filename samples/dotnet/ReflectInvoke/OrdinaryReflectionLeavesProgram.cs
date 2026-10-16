@@ -212,6 +212,11 @@ static class Program
     {
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+        if (args.Length != 0 && args[0] == "constructor-refusals")
+        {
+            RunConstructorRefusals();
+            return;
+        }
         ReflectFieldValidationSubset.Program.Run();
         OrdinaryAmbiguousMatchSubset.Program.Run();
         Console.WriteLine("== ordinary reflection leaves ==");
@@ -321,5 +326,59 @@ static class Program
         if (args.Length != 0 && args[0] == "before-property-accessors")
             return;
         RunPropertyAccessors();
+        if (args.Length != 0 && args[0] == "before-constructor-signatures")
+            return;
+        RunConstructorSignatures();
+    }
+
+    private static object? BindConstructor(Type type, object?[] arguments,
+        BindingFlags flags = BindingFlags.Public | BindingFlags.Instance) =>
+        Activator.CreateInstance(type, flags, null, arguments, null);
+
+    private static void RunConstructorSignatures()
+    {
+        Console.WriteLine("== constructor signature binding ==");
+        Fault("unretained wrong type", () => BindConstructor(typeof(ReflectReturnLib.ConstructorStringOnly), new object[] { 42 }));
+        Fault("unretained wrong arity", () => BindConstructor(typeof(ReflectReturnLib.ConstructorFifteen), new object[14]));
+        Fault("unretained private visibility", () => BindConstructor(typeof(ReflectReturnLib.ConstructorPrivateOnly), new object[] { "x" }));
+        Fault("unretained private wrong type", () => BindConstructor(typeof(ReflectReturnLib.ConstructorPrivateOnly), new object[] { 42 }, BindingFlags.Instance | BindingFlags.NonPublic));
+        Fault("unretained private default", () => BindConstructor(typeof(ReflectReturnLib.ConstructorPrivateDefault), Array.Empty<object>()));
+        Fault("unretained nested signature", () => BindConstructor(typeof(ReflectReturnLib.ConstructorNested<int>), new object[] { 42 }));
+        var fieldOwner = new ReflectReturnLib.ConstructorFieldOwner();
+        Console.WriteLine("constructor field control=" + (fieldOwner.Value is null));
+        Fault("unretained field signature", () => BindConstructor(typeof(ReflectReturnLib.ConstructorFieldOwner).GetField("Value")!.FieldType, new object[] { 42 }));
+        Console.WriteLine("retained constructor control=" + new ReflectReturnLib.ConstructorDominant("seed").Value
+            + "/" + new ReflectReturnLib.ConstructorOmittedDominant(new object()).Value
+            + "/" + new ReflectReturnLib.ConstructorWidened(1L).Value);
+        _ = new ReflectReturnLib.ConstructorAmbiguous("seed");
+        Fault("retained dominant", () => ((ReflectReturnLib.ConstructorDominant)BindConstructor(typeof(ReflectReturnLib.ConstructorDominant), new object?[] { null })!).Value);
+        Fault("retained widened", () => ((ReflectReturnLib.ConstructorWidened)BindConstructor(typeof(ReflectReturnLib.ConstructorWidened), new object[] { (byte)9 })!).Value);
+        Fault("unretained ambiguous", () => BindConstructor(typeof(ReflectReturnLib.ConstructorAmbiguous), new object?[] { null }));
+        Console.WriteLine("constructor signature binding end");
+    }
+
+    private static void ConstructorRefusal(string label, Type type, object?[] arguments, BindingFlags flags)
+    {
+        try
+        {
+            _ = BindConstructor(type, arguments, flags);
+            Console.WriteLine(label + ": made");
+        }
+        catch (PlatformNotSupportedException error)
+        {
+            Console.WriteLine(label + ": " + error.GetType().Name + " " + error.HResult.ToString("X8") + " " + error.Message);
+        }
+    }
+
+    private static void RunConstructorRefusals()
+    {
+        Console.WriteLine("== unretained constructor selection ==");
+        ConstructorRefusal("matching string", typeof(ReflectReturnLib.ConstructorStringOnly), new object[] { "x" }, BindingFlags.Public | BindingFlags.Instance);
+        ConstructorRefusal("matching private", typeof(ReflectReturnLib.ConstructorPrivateOnly), new object[] { "x" }, BindingFlags.NonPublic | BindingFlags.Instance);
+        ConstructorRefusal("matching fifteen", typeof(ReflectReturnLib.ConstructorFifteen), new object[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 }, BindingFlags.Public | BindingFlags.Instance);
+        ConstructorRefusal("matching default", typeof(ReflectReturnLib.ConstructorPrivateDefault), Array.Empty<object>(), BindingFlags.NonPublic | BindingFlags.Instance);
+        ConstructorRefusal("omitted dominant", typeof(ReflectReturnLib.ConstructorOmittedDominant), new object?[] { null }, BindingFlags.Public | BindingFlags.Instance);
+        ConstructorRefusal("matching field signature", typeof(ReflectReturnLib.ConstructorFieldOwner).GetField("Value")!.FieldType, new object[] { "x" }, BindingFlags.Public | BindingFlags.Instance);
+        Console.WriteLine("unretained constructor selection end");
     }
 }

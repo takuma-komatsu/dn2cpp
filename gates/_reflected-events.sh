@@ -80,6 +80,7 @@ reflected_event_diff_axes() {
         strip_cr_win_file "$out/clr.raw.stdout" > "$out/clr.stdout"
         DN2CPP_STRICT_COMPLETION=1 invoke_cli "$out/app/ReflectedEventsOnly.dll" -r "$corelib" \
             -r "$bcl/System.Linq.dll" -r "$bcl/System.Threading.Tasks.Parallel.dll" -r "$out/app/TrimReflectLib.dll" \
+            --link-xml samples/dotnet/ReflectInvoke/keep-event-other-methods.xml \
             ${diet_flags[@]+"${diet_flags[@]}"} ${flags[@]+"${flags[@]}"} -o "$out" > "$out/emit.log" 2>&1
         case "$axis" in
             packed|native)

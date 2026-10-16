@@ -127,7 +127,8 @@ namespace ReflectGenericSubset
             Type made = def.MakeGenericType(typeof(string));
             Console.WriteLine("made Name=" + made.Name + " ==boxStr=" + (made == boxStr));
 
-            // MakeGenericType over an instantiation AOT never generated -> NotSupportedException.
+            // MakeGenericType over a known argument no instantiation names elsewhere:
+            // the transpiler instantiates it over that argument statically.
             try
             {
                 Type bad = def.MakeGenericType(typeof(double));

@@ -1,0 +1,9 @@
+<linker>
+  <assembly fullname="AbsenceOnly">
+    <!-- An explicit constructor preserve allocates the type without calling any of its
+         interface members. -->
+    <type fullname="ILDietAbsenceOnly.PreservedService" preserve="nothing">
+      <method name=".ctor" />
+    </type>
+  </assembly>
+</linker>

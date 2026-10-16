@@ -1,0 +1,28 @@
+<linker>
+  <assembly fullname="REDoxSample">
+    <!-- RE:Dox serializes and deserializes through object.GetType(): it constructs the
+         type and runs every public property accessor, none of which a site names. -->
+    <type fullname="Dn2Cpp.Program+Player" preserve="nothing">
+      <method name=".ctor" />
+      <property name="Name" />
+      <property name="Level" />
+      <property name="Items" />
+    </type>
+    <!-- Deserialization binds the parameterized constructor and reads the getters back. -->
+    <type fullname="Dn2Cpp.Program+Inventory" preserve="nothing">
+      <method name=".ctor" />
+      <property name="Name" />
+      <property name="Count" />
+    </type>
+  </assembly>
+  <assembly fullname="System.Private.CoreLib">
+    <!-- A collection is created from the requested Type's parameterless constructor;
+         its elements then go through IList and IDictionary. -->
+    <type fullname="System.Collections.Generic.List`1" preserve="nothing">
+      <method signature="System.Void .ctor()" />
+    </type>
+    <type fullname="System.Collections.Generic.Dictionary`2" preserve="nothing">
+      <method signature="System.Void .ctor()" />
+    </type>
+  </assembly>
+</linker>

@@ -167,4 +167,69 @@ static class Program
         MemberFault(label + " null receiver", () => kind.Invoke(null, null)!);
         MemberFault(label + " wrong receiver", () => kind.Invoke(new object(), null)!);
     }
+
+    private sealed class EmptyArrayElement
+    {
+        public string Run() => "empty target";
+        public string Unselected() => "unselected empty target";
+    }
+
+    private class FilledArrayElement
+    {
+        public string Run() => "declared element";
+        public string Unselected() => "unselected filled target";
+    }
+
+    private sealed class ArrayContentsElement : FilledArrayElement
+    {
+        public new string Run() => "array contents";
+    }
+
+    private sealed class EscapedArrayElement
+    {
+        public string Run() => "escaped target";
+        public string Unselected() => "unselected escaped target";
+    }
+
+    internal static void RunArrayObjectTypes()
+    {
+        Console.WriteLine("== allocated array object types ==");
+        try
+        {
+            Console.WriteLine("empty array element=" + new EmptyArrayElement[0].GetType()
+                .GetElementType()!.GetMethod("Run")!.Invoke(new EmptyArrayElement(), null));
+        }
+        catch (NotSupportedException ex)
+        {
+            Console.WriteLine("empty array element=" + ex.GetType().Name);
+        }
+
+        FilledArrayElement[] filled = { new ArrayContentsElement() };
+        object boxed = filled;
+        Type filledType = boxed.GetType();
+        Console.WriteLine("filled array identity=" + (filledType == typeof(FilledArrayElement[])) + ":" +
+            (filledType.GetElementType() == typeof(FilledArrayElement)));
+        try
+        {
+            Console.WriteLine("filled array element=" + filledType.GetElementType()!.GetMethod("Run")!
+                .Invoke(new FilledArrayElement(), null));
+        }
+        catch (NotSupportedException ex)
+        {
+            Console.WriteLine("filled array element=" + ex.GetType().Name);
+        }
+
+        var escaped = new EscapedArrayElement[0];
+        GC.KeepAlive(escaped);
+        try
+        {
+            Console.WriteLine("escaped array element=" + escaped.GetType().GetElementType()!.GetMethod("Run")!
+                .Invoke(new EscapedArrayElement(), null));
+        }
+        catch (NotSupportedException ex)
+        {
+            Console.WriteLine("escaped array element=" + ex.GetType().Name);
+        }
+        Console.WriteLine("allocated array object types end");
+    }
 }

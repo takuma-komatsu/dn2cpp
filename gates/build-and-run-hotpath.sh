@@ -455,7 +455,8 @@ assert_noalloc_reject "$reflection_noalloc_app" "ordinary reflection allocation 
     "ReadField" "dn2cpp_fieldref_get_value(" \
     "WriteField" "dn2cpp_fieldref_set_value(" \
     "WriteProperty" "dn2cpp_propref_set_value" \
-    "InvokeMethod" "dn2cpp_methodref_invoke("
+    "InvokeMethod" "dn2cpp_methodref_invoke(" \
+    "CreateNamed" "dn2cpp_assembly_create_instance("
 
 gate_cache_commit
 echo "OK: NoAlloc verifier rejects direct/deep allocation, dynamic dispatch, and the intrinsic allocation-helper families"

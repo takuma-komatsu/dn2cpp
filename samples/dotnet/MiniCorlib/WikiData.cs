@@ -1,15 +1,12 @@
 namespace MiniBcl
 {
-    // The reflection-ctor route's LIBRARY-target extension (the Thrive GameWiki
-    // shape): types DECLARED in a referenced (non-framework) library and constructed
-    // only late-bound — a JSON deserializer resolves the target off a Type it was
-    // handed, finds a ctor row, invokes it, then populates members via
-    // PropertyInfo.SetValue. Nothing here or in the app constructs these types
-    // statically; that is the point. The route opens on the NAMED user surface (a
-    // generic-method type argument, an opened target's member types) — before the
-    // extension the surface walk skipped non-generic library types entirely, so a
-    // library type's emitted ctor table read (nullptr, 0) and construction failed
-    // ("Unable to find a constructor to use for type GameWiki").
+    // Library reflection targets: types DECLARED in a referenced (non-framework)
+    // library and constructed only late-bound — a JSON deserializer resolves the
+    // target off a Type it was handed, finds a ctor row, invokes it, then populates
+    // members via PropertyInfo.SetValue. Nothing here or in the app constructs these
+    // types statically; that is the point. A recognized reflection target (a method
+    // type argument, a recognized member's declared type) keeps its bodies; one
+    // reached only through a helper's result needs an explicit preserve.
     //
     // The property initializers are deliberate: an initializer stores the BACKING
     // FIELD directly (no set-accessor call), so the accessors stay statically
@@ -21,8 +18,8 @@ namespace MiniBcl
         public string Title { get; set; } = "untitled";
 
         // A library generic specialization named ONLY as a library member type:
-        // the user-surface walk (ReachUserSurfaceNamedSpecializationCtors) is what
-        // opens List<WikiSection>'s parameterless ctor — the List<Page> shape.
+        // activating the recognized property's PropertyType keeps
+        // List<WikiSection>'s parameterless ctor — the List<Page> shape.
         public List<WikiSection> Sections { get; set; } = null;
     }
 
@@ -53,15 +50,13 @@ namespace MiniBcl
         public string Target { get; set; } = "none";
     }
 
-    // The Thrive VersionPatchNotes creator shape: a parameterized ctor whose
-    // collection argument's type is named ONLY as a ctor parameter — the property
-    // deliberately stores a count, not the list, so no field/property names
-    // List<WikiRef>. A deserializer binding this creator deserializes the argument
-    // at the PARAMETER type (Newtonsoft resolves the argument's contract off
-    // ParameterInfo.ParameterType), so the reflection-ctor route must put an
-    // opened target's instance-ctor parameter types on the named surface; the
-    // app's section constructs the parameter type via Activator to assert exactly
-    // that.
+    // A deserializer's creator shape: a parameterized ctor whose collection
+    // argument's type is named ONLY as a ctor parameter — the property deliberately
+    // stores a count, not the list, so no field/property names List<WikiRef>. A
+    // deserializer binding this creator deserializes the argument at the PARAMETER
+    // type (Newtonsoft resolves the argument's contract off
+    // ParameterInfo.ParameterType); the app's section constructs the parameter type
+    // via Activator to assert that.
     public class WikiChangelog
     {
         public WikiChangelog(string version, List<WikiRef> refs)

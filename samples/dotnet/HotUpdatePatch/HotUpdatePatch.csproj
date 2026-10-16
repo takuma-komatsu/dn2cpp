@@ -26,6 +26,8 @@
     <Compile Remove="GvmCallReferenceProbe.cs" />
     <Compile Remove="GvmCallLateLayoutProbe.cs" />
     <Compile Remove="GvmCallLateLayoutSurface.cs" />
+    <Compile Remove="LateLayoutAttributeTargets.cs" />
+    <Compile Remove="LateLayoutAttributeCarrier.cs" />
     <Compile Remove="AggregateCtorBoundaryProbe.cs" />
     <Compile Remove="RenamedSlotProbe.cs" />
   </ItemGroup>

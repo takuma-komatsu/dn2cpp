@@ -15,6 +15,13 @@ internal static class Program
         public GenericFailure(string message) : base(message) { }
     }
 
+    // Nothing reads Message in IL: only the runtime's unhandled-exception report calls
+    // the override, through the slot.
+    private sealed class OverriddenMessage : Exception
+    {
+        public override string Message => "overridden message";
+    }
+
     private static void ThrowPool(object state) => Escape("pool");
     private static void ThrowThread() => Escape("thread");
     private static void ThrowTimer(object state) => Escape("timer");
@@ -72,6 +79,9 @@ internal static class Program
                 case "local continuation": ThreadPool.QueueUserWorkItem(QueueLocal); break;
                 case "nested drain": _ = Task.Factory.StartNew(QueueNested); break;
                 case "generic exception": ThreadPool.QueueUserWorkItem(ThrowGeneric); break;
+                case "message override":
+                    Console.WriteLine("throwing message override");
+                    throw new OverriddenMessage();
                 default: throw new ArgumentException("Unknown worker mode");
             }
             Thread.Sleep(Timeout.Infinite);

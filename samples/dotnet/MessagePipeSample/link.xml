@@ -13,5 +13,25 @@
     <type fullname="MessagePipeFilterSubset.AsyncRequestAuditFilter`2" preserve="nothing">
       <method name=".ctor" />
     </type>
+    <!-- DependencyInjection constructs each registered handler through the constructor
+         its call-site factory selects at run time; no site names the handler type. -->
+    <type fullname="MessagePipeFilterSubset.UpperHandler" preserve="nothing">
+      <method name=".ctor" />
+    </type>
+    <type fullname="MessagePipeFilterSubset.AsyncDoubleHandler" preserve="nothing">
+      <method name=".ctor" />
+    </type>
+    <type fullname="MessagePipeReqRespSubset.PingHandler" preserve="nothing">
+      <method name=".ctor" />
+    </type>
+    <type fullname="MessagePipeReqRespSubset.AsyncMathHandler" preserve="nothing">
+      <method name=".ctor" />
+    </type>
+    <type fullname="MessagePipeReqRespSubset.PrefixHandlerA" preserve="nothing">
+      <method name=".ctor" />
+    </type>
+    <type fullname="MessagePipeReqRespSubset.PrefixHandlerB" preserve="nothing">
+      <method name=".ctor" />
+    </type>
   </assembly>
 </linker>

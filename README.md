@@ -96,12 +96,21 @@ each is settled, and each refuses out loud rather than answering wrong:
 
 - No `System.Reflection.Emit`, `dynamic`/DLR, or expression-tree
   `Compile()`: there is no JIT to emit into.
-- `MakeGenericType`/`MakeGenericMethod` reach only instantiations already
-  in the AOT image; anything else throws. The one carve-in: a generic
-  definition the program typeofs whose bodies only ever `typeof(T)` ships
-  a runtime-instantiation template, and `MakeGenericType` over it succeeds
-  for any argument (asserted by `gates/build-and-run-reflect-types.sh`,
-  section `ReflectRuntimeInstantiationSubset`).
+- `MakeGenericType`/`MakeGenericMethod` reach only instantiations in the
+  AOT image; anything else throws. A recognized call whose type arguments
+  are known, and satisfy the definition's constraints, is served as if the
+  program named that instantiation. The one carve-in for other arguments:
+  a generic definition a recognized `MakeGenericType` call receives, whose
+  bodies only ever `typeof(T)`, ships a runtime-instantiation template, and
+  `MakeGenericType` over it succeeds for any argument (asserted by
+  `gates/build-and-run-reflect-types.sh`, section
+  `ReflectRuntimeInstantiationSubset`). The template runs only the
+  constructors and members that recognized sites select on it or a
+  preservation rule keeps; for known arguments, a selected member it cannot
+  run, such as one whose reflection depends on the type parameters,
+  instantiates the definition when its constraints are proved. A call
+  whose receiver is unknown gives each such definition the program names with
+  `typeof` a template type without constructors or reflected bodies.
 - String comparison and collation are **ordinal only**, and named time
   zones, per-culture *date* formatting and localized display names are
   out (they need ICU + TZif). Culture-aware **numeric** formatting is in.
@@ -133,7 +142,7 @@ to the transpiler.
 
 With `--dotnet-module`, ILDiet also removes unused GodotSharp wrappers and unused
 user types derived from `GodotObject`, including their unused generated helpers.
-Handwritten nested .NET types retain the usual public-member and
+Handwritten nested .NET types retain ILDiet's usual public-member and
 static-constructor roots, even when retaining one also keeps its enclosing script.
 It keeps engine initialization and callback entry points, and keeps the own
 constructors, methods, properties and events of surviving user script types.
@@ -180,16 +189,78 @@ after the preset arguments, so an explicit trim flag there still enables that
 trim when its preset setting is off. Direct CLI defaults are unchanged:
 reflection and Godot-class trimming are opt-in, and shared generics are on.
 
-ILDiet retains declared member metadata on each application type it keeps.
-A constant-name lookup such as `typeof(T).GetMethod("Name")` therefore finds an
-uncalled member without retaining its body dependencies. Reflective invocation,
-property access, event subscription or delegate binding retains application
-method bodies. Reflective construction retains application constructors and the
-declared data surface they can select in user libraries. An armed application
-route also retains ordinary application types selected through runtime names.
-Generic construction still obeys the AOT instantiation boundary. Dynamic
-reflection outside these routes, and library members outside their retained
-surface, need an explicit preservation rule.
+C++ emission compiles a body only when compiled code depends on it statically,
+an explicit entry names it, a recognized reflection site selects it, or a
+preservation rule keeps it. The explicit entries are the entry point, the
+methods a backend's contract calls, `[UnmanagedCallersOnly]` methods and
+non-framework module initializers; a public member is not one by itself. Any
+other static constructor is compiled, and runs, only when a preservation rule
+keeps it or a use of its type requires it: an allocation, a static field access,
+`RuntimeHelpers.RunClassConstructor`, or a reflection site that invokes or
+accesses a static member other than a constant, or constructs the type. A type
+that is not `beforefieldinit` is also initialized by a static call, a pointer to
+a static method, an instance constructor call, a call to a value type's instance
+method, a delegate bound by reflection to a static method of a non-generic type,
+and an explicit entry or a preserved member on the type wherever a call to it
+would. A reached
+static constructor of a non-generic type may run at startup, earlier than .NET
+runs it; a closed generic type's runs at its first use from compiled code. A
+hot-update base build keeps its export contract: every non-private application
+method and every application static constructor.
+
+A reflection site is recognized from the values that reach it within one
+method: constants, `typeof`, locals, captured closure variables, small arrays
+such as `new[] { typeof(int) }`, `BindingFlags` arithmetic, the members a lookup
+or an enumeration in the same method returns, and known generic definitions over
+known type arguments. A recognized lookup or enumeration such as
+`typeof(T).GetMethod("Name")` retains metadata only, and a constant name passed
+to `Type.GetType` or `Assembly.GetType` resolves to the type's identity and
+member metadata without its bodies or static constructor; a constant closed
+generic name forms that instantiation as `MakeGenericType` would. An attribute
+metadata read such as `IsDefined` or `GetCustomAttributesData` compiles no
+attribute constructor or named-argument setter. A recognized invocation, field
+or property access, event subscription, delegate binding, construction or
+attribute instantiation compiles the bodies it can select; a method or
+constructor lookup given parameter types selects the overload the default binder
+returns for each known argument tuple, and every candidate where the binder
+cannot choose one, and a property lookup given index or return types narrows the
+same way.
+
+A site whose target arrives through a parameter, a field, a call result or any
+other value the method cannot follow is not recognized, nor is a
+`MakeGenericType` or `MakeGenericMethod` call whose type arguments' constraints
+cannot be decided ahead of time and that no runtime-instantiation template can
+serve. An operand that may be either a known or an unknown value selects what is
+known and still reports the site; an unknown `BindingFlags` value selects as
+every flag combination would. The transpile prints a warning naming the site,
+the API and the reason, followed by a `fix:` line, and lists every such site in
+`<output-dir>/reflection-unrecognized.tsv`; `--verbose` adds framework and
+backend-covered sites. The `fix:` line is the `[Preserve]` or `link.xml` rule
+for what is known of the target: the member when the lookup names it exactly, the
+whole type (`preserve="all"`) only when the member is unknown, and `ASSEMBLY` and
+`TYPE` placeholders for an owner the method cannot name, with names XML-escaped
+so a compiler-generated name such as `<>c` pastes as written. A closed generic
+instantiation's remedy is to name it statically, since a rule on a generic
+definition never creates a closed instantiation; a rule on a generic definition's
+member keeps that member's shared body on the definition's runtime-instantiation
+template instead. A definition the runtime models as one type for every
+instantiation, such as `BlockingCollection<T>`, has no closed type
+`MakeGenericType` can form, so its remedy is to construct the closed type
+directly. The warning describes the site and does not prove whether a
+rule covers its target: the warning and its row remain after one does. At run
+time, reflection that needs a body the image does not hold — a member it found,
+a receiver's override, a closed generic instantiation — throws a catchable
+`PlatformNotSupportedException` naming the member, its assembly and a remedy in
+the same form. `Activator.CreateInstance` binds against exact constructor
+signatures and refuses when the selected constructor's body is absent.
+`Array.Initialize` refuses the same way when a required parameterless
+constructor is omitted. `Activator`, `ConstructorInfo.Invoke` and
+`RuntimeHelpers.GetUninitializedObject` refuse to make an instance of a user
+type the image never allocates, naming the class's constructor or the whole
+value type as the remedy.
+
+ILDiet keeps declared member metadata on each application type it keeps, and
+every body C++ emission can compile.
 The same Unity-compatible rules apply to ILDiet and C++ emission. Apply
 `[Dn2Cpp.Scripting.Preserve]` to an assembly, type, constructor, method,
 property, field, event, or delegate, or define your own attribute whose type or
@@ -779,8 +850,10 @@ optimization changed no results. All are on by default except
   intrinsics lower per family; see *Transient limitations*.
 - **`--trim-reflection`** drops the member tables of types the program
   cannot plausibly reflect over (the Godot Web export turns it on). The
+  owner of a recognized lookup or enumeration keeps its tables. The
   analysis is unsound by nature, so a stripped type **throws** rather than
-  answering empty, and `--reflection-root` is the escape hatch.
+  answering empty, and `--reflection-root` is the escape hatch; with this
+  flag, an unrecognized lookup is reported with that remedy.
 - **Reflection metadata storage** defaults to packed records. Types marked with
   `[NoCompressMetadata]` (including derived classes), or named by
   a surviving `typeof` in reachable IL, use native rows for their own reflection

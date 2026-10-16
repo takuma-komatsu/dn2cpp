@@ -1,0 +1,24 @@
+<linker>
+  <assembly fullname="ILDietControl">
+    <!-- Program.Construct activates the Type it receives; Holder's attribute
+         arguments carry these types, so no analyzable site names their constructors. -->
+    <type fullname="ILDietControl.ByArgument">
+      <method name=".ctor" />
+    </type>
+    <type fullname="ILDietControl.ByField">
+      <method name=".ctor" />
+    </type>
+    <type fullname="ILDietControl.ByProperty">
+      <method name=".ctor" />
+    </type>
+    <type fullname="ILDietControl.ByArrayFirst">
+      <method name=".ctor" />
+    </type>
+    <type fullname="ILDietControl.ByArraySecond">
+      <method name=".ctor" />
+    </type>
+    <type fullname="ILDietControl.ByObject">
+      <method name=".ctor" />
+    </type>
+  </assembly>
+</linker>

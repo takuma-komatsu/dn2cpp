@@ -1,8 +1,10 @@
 #nullable enable
-// SUBJECT: the reflection routes reach the classes that the bodies they reach mint,
-// and the values reflection boxes dispatch as a box site's do. A closed generic
+// SUBJECT: classes minted by bodies that only reflection runs, and values that only
+// reflection boxes. A recognized lookup admits exactly the selected members; what the
+// section needs beyond that is preserved explicitly in link.xml. A closed generic
 // first constructed by a method only Invoke runs has its methods invocable, and one
 // first named by such a method is constructible through Activator.CreateInstance.
+// Boxed values dispatch as a box site's do.
 // A generic struct that nests itself one level deeper per call stays invocable at
 // the levels the program reaches without the transpile expanding it further. A struct
 // that reflection alone boxes, returned by Invoke (directly or as a Nullable<T>),
@@ -310,8 +312,10 @@ static class Program
         Try("self-nesting generic", () =>
         {
             object first = CallStatic("MakeNest")!;
-            object second = Call(first, "Wrap")!;
-            return Call(first, "Arg") + " " + Call(second, "Arg") + " " + Call(second, "Wrap")!.GetType().Name;
+            object second = typeof(Nest<int>).GetMethod("Wrap")!.Invoke(first, null)!;
+            return typeof(Nest<int>).GetMethod("Arg")!.Invoke(first, null) + " "
+                + typeof(Nest<Nest<int>>).GetMethod("Arg")!.Invoke(second, null) + " "
+                + typeof(Nest<Nest<int>>).GetMethod("Wrap")!.Invoke(second, null)!.GetType().Name;
         });
 
         var carrier = new Carrier();

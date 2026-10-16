@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <StartupObject>Dn2Cpp.ReflectionTemplateDispatchProgram</StartupObject>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
@@ -12,5 +13,6 @@
   <ItemGroup>
     <Compile Include="ReflectionTemplateDispatchProgram.cs" />
     <Compile Include="ReflectRuntimeInstantiationSubset.cs" />
+    <Compile Include="TemplateSignatureAllocationProgram.cs" />
   </ItemGroup>
 </Project>

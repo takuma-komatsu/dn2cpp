@@ -28,6 +28,8 @@
   <ItemGroup>
     <Compile Remove="DataOnlyAttributeRowsOnlyProgram.cs" />
     <Compile Remove="ReflectionTemplateDispatchProgram.cs" />
+    <Compile Remove="TemplateSignatureAllocationProgram.cs" />
+    <Compile Remove="ClosedGenericDiagnosticsOnlyProgram.cs" />
   </ItemGroup>
 
 </Project>

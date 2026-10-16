@@ -1,0 +1,538 @@
+<linker>
+  <assembly fullname="ReflectInvoke">
+    <!-- ReflectVirtualInvokeSubset: Method and Generic receive the owner and name as parameters. -->
+    <type fullname="ReflectVirtualInvokeSubset.Animal">
+      <method name="Speak" />
+    </type>
+    <type fullname="ReflectVirtualInvokeSubset.Base">
+      <method name="Who" />
+    </type>
+    <type fullname="ReflectVirtualInvokeSubset.Car">
+      <method name="Wheels" />
+    </type>
+    <type fullname="ReflectVirtualInvokeSubset.CustomGreeting">
+      <method name="Hello" />
+    </type>
+    <type fullname="ReflectVirtualInvokeSubset.DefLevelRoot`1">
+      <method name="Pick" />
+    </type>
+    <type fullname="ReflectVirtualInvokeSubset.Dog">
+      <method name="Speak" />
+    </type>
+    <type fullname="ReflectVirtualInvokeSubset.ExplicitGreeting">
+      <method name="ReflectVirtualInvokeSubset.IGreeting.Tag" />
+    </type>
+    <type fullname="ReflectVirtualInvokeSubset.Greeter">
+      <method name="Farewell" />
+      <method name="Greet" />
+    </type>
+    <type fullname="ReflectVirtualInvokeSubset.GvmAbstractPick">
+      <method name="Pick" />
+    </type>
+    <type fullname="ReflectVirtualInvokeSubset.GvmBox`1">
+      <method name="Show" />
+    </type>
+    <type fullname="ReflectVirtualInvokeSubset.GvmConcretePick">
+      <method name="Pick" />
+    </type>
+    <type fullname="ReflectVirtualInvokeSubset.GvmCovariantBase">
+      <method name="Make" />
+    </type>
+    <type fullname="ReflectVirtualInvokeSubset.GvmCovariantLeaf">
+      <method name="Make" />
+    </type>
+    <type fullname="ReflectVirtualInvokeSubset.GvmHider">
+      <method name="Tag" />
+    </type>
+    <type fullname="ReflectVirtualInvokeSubset.GvmHiderLeaf">
+      <method name="Tag" />
+    </type>
+    <type fullname="ReflectVirtualInvokeSubset.GvmLeaf">
+      <method name="Tag" />
+    </type>
+    <type fullname="ReflectVirtualInvokeSubset.GvmLoud">
+      <method name="Quiet" />
+    </type>
+    <type fullname="ReflectVirtualInvokeSubset.GvmMid">
+      <method name="Tag" />
+    </type>
+    <type fullname="ReflectVirtualInvokeSubset.GvmProvider">
+      <method name="RegisterType" />
+    </type>
+    <type fullname="ReflectVirtualInvokeSubset.GvmQuiet">
+      <method name="Quiet" />
+    </type>
+    <type fullname="ReflectVirtualInvokeSubset.GvmRoot">
+      <method name="Pair" />
+      <method name="Tag" />
+    </type>
+    <type fullname="ReflectVirtualInvokeSubset.GvmSealed">
+      <method name="Tag" />
+    </type>
+    <type fullname="ReflectVirtualInvokeSubset.GvmShape">
+      <method name="Kind" />
+    </type>
+    <type fullname="ReflectVirtualInvokeSubset.GvmSquare">
+      <method name="Kind" />
+    </type>
+    <type fullname="ReflectVirtualInvokeSubset.IGreeting">
+      <method name="Hello" />
+      <method name="Shout" />
+      <method name="Tag" />
+    </type>
+    <type fullname="ReflectVirtualInvokeSubset.IGvmPick">
+      <method name="Fallback" />
+      <method name="Pick" />
+    </type>
+    <type fullname="ReflectVirtualInvokeSubset.Leaf">
+      <method name="Who" />
+    </type>
+    <type fullname="ReflectVirtualInvokeSubset.Mid">
+      <method name="Who" />
+    </type>
+    <type fullname="ReflectVirtualInvokeSubset.MintedGreeter`1">
+      <method name="Farewell" />
+      <method name="Greet" />
+    </type>
+    <type fullname="ReflectVirtualInvokeSubset.NullHost">
+      <method name="Plain" />
+    </type>
+    <type fullname="ReflectVirtualInvokeSubset.Puppy">
+      <method name="Speak" />
+    </type>
+    <type fullname="ReflectVirtualInvokeSubset.ReflectedOnlyGvm">
+      <method name="Compare" />
+    </type>
+    <type fullname="ReflectVirtualInvokeSubset.ReflectedOnlyGvmBase">
+      <method name="Compare" />
+    </type>
+    <type fullname="ReflectVirtualInvokeSubset.Shape">
+      <method name="Kind" />
+    </type>
+    <type fullname="ReflectVirtualInvokeSubset.Square">
+      <method name="Kind" />
+    </type>
+    <type fullname="ReflectVirtualInvokeSubset.StructGreeting">
+      <method name="Hello" />
+      <method name="Tag" />
+    </type>
+    <type fullname="ReflectVirtualInvokeSubset.Tally">
+      <method name="Get" />
+    </type>
+    <type fullname="ReflectVirtualInvokeSubset.Vehicle">
+      <method name="Wheels" />
+    </type>
+    <!-- RuntimeHandleRelationSubset: the local function Sunk receives the name as a parameter. -->
+    <type fullname="RuntimeHandleRelationSubset.Sink">
+      <method name="Arithmetic" />
+      <method name="Async" />
+      <method name="Attributes" />
+      <method name="Cloneable" />
+      <method name="Critical" />
+      <method name="Disposes" />
+      <method name="Member" />
+      <method name="Provider" />
+      <method name="Reflect" />
+      <method name="Remote" />
+      <method name="Serializable" />
+      <method name="SystemFault" />
+    </type>
+    <!-- ReflectInvokeValidationSubset: PointerMethod, Call, Returned, DeepPointerBox and DeepPointerCall receive the name as a parameter. -->
+    <type fullname="ReflectInvokeValidationSubset.PointerTarget">
+      <method name="Address" />
+      <method name="Cell" />
+      <method name="Entry" />
+      <method name="Int" />
+      <method name="IntTwice" />
+      <method name="Long" />
+      <method name="LongTwice" />
+      <method name="Null" />
+      <method name="Retarget" />
+      <method name="Spot" />
+      <method name="Twice" />
+      <method name="UInt" />
+      <method name="Untyped" />
+      <method name="Virtual" />
+      <method name="Void" />
+    </type>
+    <type fullname="ReflectInvokeValidationSubset.PointerDerived">
+      <method name="Virtual" />
+    </type>
+    <type fullname="ReflectInvokeValidationSubset.DeepPointerTarget">
+      <method name="ByRefEntrySink" />
+      <method name="EntryCell" />
+      <method name="EntryCellSink" />
+      <method name="EntrySink" />
+      <method name="Five" />
+      <method name="FiveCell" />
+      <method name="FiveSink" />
+      <method name="LongEntryCellSink" />
+      <method name="NestedEntrySink" />
+      <method name="Six" />
+      <method name="UIntFiveSink" />
+      <method name="UnmanagedCellSink" />
+      <method name="VoidSink" />
+      <method name="WideEntrySink" />
+    </type>
+    <type fullname="ReflectInvokeValidationSubset.ByRefTarget">
+      <method name="Address" />
+      <method name="Bump" />
+      <method name="Cell" />
+      <method name="Chars" />
+      <method name="Clear" />
+      <method name="Double" />
+      <method name="Entry" />
+      <method name="Flip" />
+      <method name="Frozen" />
+      <method name="Grow" />
+      <method name="Inc" />
+      <method name="Length" />
+      <method name="Maybe" />
+      <method name="Mix" />
+      <method name="Negate" />
+      <method name="Nowhere" />
+      <method name="Paint" />
+      <method name="Produce" />
+      <method name="Read" />
+      <method name="Retarget" />
+      <method name="SetText" />
+      <method name="Shrink" />
+      <method name="Small" />
+      <method name="Swap" />
+      <method name="Text" />
+      <method name="Upper" />
+      <method name="Widen" />
+    </type>
+    <!-- ReflectMetadataLayoutSubset: Members and GenericMembers receive the type as a parameter. -->
+    <type fullname="ReflectMetadataLayoutSubset.NativeBase">
+      <method name=".ctor" />
+      <method name="get_Value" />
+      <method name="set_Value" />
+      <method name="Read" />
+    </type>
+    <type fullname="ReflectMetadataLayoutSubset.PackedBase">
+      <method name=".ctor" />
+      <method name="get_Value" />
+      <method name="set_Value" />
+      <method name="Read" />
+    </type>
+    <type fullname="ReflectMetadataLayoutSubset.PackedDerived">
+      <method name=".ctor" />
+    </type>
+    <type fullname="ReflectMetadataLayoutSubset.NativeDerived">
+      <method name=".ctor" />
+    </type>
+    <type fullname="ReflectMetadataLayoutSubset.Generic`1">
+      <method name="Read" />
+    </type>
+    <!-- ReflectMetadataLayoutSubset: CacheCapacity enumerates and invokes every method of each receiver type through an array. -->
+    <type fullname="ReflectMetadataLayoutSubset.InvokeFamily`1" preserve="all" />
+    <!-- ReflectMetadataCompressionSubset: Label reads the attributes of a member it receives as a parameter. -->
+    <type fullname="ReflectMetadataCompressionSubset.LabelAttribute">
+      <method name=".ctor" />
+    </type>
+    <!-- ReflectMetadataCompressionSubset: GenericMembers receives the type as a parameter. -->
+    <type fullname="ReflectMetadataCompressionSubset.Generic`1">
+      <method name="Read" />
+    </type>
+    <!-- ReflectRouteClassSubset: CallStatic receives the name as a parameter. -->
+    <type fullname="ReflectRouteClassSubset.Program">
+      <method name="MakeDeepMinted" />
+      <method name="MakeDeepShallow" />
+      <method name="MakeMinted" />
+      <method name="MakeMintedShared" />
+      <method name="MakeNest" />
+      <method name="NameNamed" />
+    </type>
+    <!-- ReflectBoundDelegateSubset: Unbound receives the MethodInfo as a parameter. -->
+    <type fullname="ReflectBoundDelegateSubset.LookupCaller`1">
+      <method name="Call" />
+    </type>
+    <!-- ReflectRouteClassSubset: Call receives the receiver and the name as parameters, and Activator a type CallStatic returns. -->
+    <type fullname="ReflectRouteClassSubset.Minted`1">
+      <method name="Run" />
+    </type>
+    <type fullname="ReflectRouteClassSubset.Named`1">
+      <method name=".ctor" />
+      <method name="Show" />
+    </type>
+    <type fullname="ReflectRouteClassSubset.DeepMinted`1">
+      <method name="Run" />
+    </type>
+    <type fullname="ReflectRouteClassSubset.DeepShallow`1">
+      <method name="Run" />
+    </type>
+    <!-- LdftnLocalSubset: Mint receives each definition as a parameter, and the fillers their slot and body. -->
+    <type fullname="LdftnLocalSubset.RenamedFillerBox`1">
+      <method name=".ctor" />
+      <method name="Weigh" />
+    </type>
+    <type fullname="LdftnLocalSubset.RenamedFillerInheritBox`1">
+      <method name=".ctor" />
+    </type>
+    <type fullname="LdftnLocalSubset.RenamedFillerOverrideBox`1">
+      <method name=".ctor" />
+      <method name="Weigh" />
+    </type>
+    <type fullname="LdftnLocalSubset.ObjectMethodImplBox`1">
+      <method name=".ctor" />
+      <method name="Hash" />
+      <method name="Render" />
+    </type>
+    <type fullname="LdftnLocalSubset.ObjectMethodImplPlainBox`1">
+      <method name=".ctor" />
+    </type>
+    <!-- ReflectInvokeValidationSubset: OptionalInvoke receives the MethodInfo as a parameter. -->
+    <type fullname="ReflectInvokeValidationSubset.OptionalArguments">
+      <method name="Boxed" />
+      <method name="ByRef" />
+      <method name="Date" />
+      <method name="Decimal" />
+      <method name="Enums" />
+      <method name="Generic" />
+      <method name="Instance" />
+      <method name="Int" />
+      <method name="Null" />
+      <method name="Nullable" />
+      <method name="NullableEnum" />
+      <method name="OptionalInt" />
+      <method name="OptionalObject" />
+      <method name="Pair" />
+      <method name="Primitives" />
+      <method name="Required" />
+      <method name="Text" />
+      <method name="Throws" />
+    </type>
+    <!-- ReflectDelegateSubset: a case-insensitive named binding knows no name statically. -->
+    <type fullname="ReflectDelegateSubset.NameBase">
+      <method name="Describe" />
+      <method name="Overload" />
+      <method name="Secret" />
+      <method name="SlotCase" />
+      <method name="StaticSecret" />
+    </type>
+    <type fullname="ReflectDelegateSubset.NameTarget">
+      <method name="Choice" />
+      <method name="CHOICE" />
+      <method name="Describe" />
+      <method name="EnumIdentity" />
+      <method name="FunctionReturn" />
+      <method name="Generic" />
+      <method name="NarrowerReturn" />
+      <method name="ObjectValue" />
+      <method name="OutValue" />
+      <method name="Overload" />
+      <method name="Pointer" />
+      <method name="RefReturn" />
+      <method name="RefValue" />
+      <method name="Short" />
+      <method name="SlotCase" />
+      <method name="SLOTCASE" />
+      <method name="Twice" />
+      <method name="TWICE" />
+      <method name="UnsignedPointer" />
+      <method name="Value" />
+      <method name="WiderArgument" />
+      <method name="WiderReturn" />
+      <method name="Écho" />
+      <method name="Σend" />
+    </type>
+    <type fullname="ReflectDelegateSubset.NameCovariantBase">
+      <method name="Kind" />
+    </type>
+    <type fullname="ReflectDelegateSubset.NameCovariantChild">
+      <method name="KIND" />
+      <method name="Kind" />
+    </type>
+    <type fullname="ReflectDelegateSubset.NameCovariantGrandchild">
+      <method name="Kind" />
+    </type>
+    <type fullname="ReflectDelegateSubset.NameVirtualChoices">
+      <method name="PICK" />
+      <method name="Pick" />
+    </type>
+    <type fullname="ReflectDelegateSubset.NameGeneric`1">
+      <method name="Identity" />
+      <method name="StaticIdentity" />
+    </type>
+    <type fullname="ReflectDelegateSubset.NameTemplate`1">
+      <method name="Kind" />
+      <method name="StaticKind" />
+    </type>
+    <type fullname="ReflectDelegateSubset.NameStaticVirtual">
+      <method name="AbstractValue" />
+      <method name="Value" />
+    </type>
+    <!-- ReflectDelegateSubset: the overload helpers receive the owner type as a parameter. -->
+    <type fullname="ReflectDelegateSubset.SignatureOverload`1">
+      <method name="Ref" />
+    </type>
+    <type fullname="ReflectDelegateSubset.SignatureComposedOverload`2">
+      <method name="Ref" />
+    </type>
+    <type fullname="ReflectDelegateSubset.SignatureFunctionOverload`1">
+      <method name="Ref" />
+    </type>
+    <type fullname="ReflectDelegateSubset.SignatureArrayOverload`1">
+      <method name="Ref" />
+    </type>
+    <type fullname="ReflectDelegateSubset.SignatureMatrixOverload`1">
+      <method name="Ref" />
+    </type>
+    <type fullname="ReflectDelegateSubset.SignatureRankOverload`1">
+      <method name="Ref" />
+    </type>
+    <type fullname="ReflectDelegateSubset.SignatureTokenOverload`1">
+      <method name="Ref" />
+    </type>
+    <type fullname="ReflectDelegateSubset.SignatureDirectArrayOverload`1">
+      <method name="Ref" />
+    </type>
+    <type fullname="ReflectDelegateSubset.SignatureValueTaskOverload`1">
+      <method name="Ref" />
+    </type>
+    <type fullname="ReflectDelegateSubset.SignatureRuntimeBoxOverload`1">
+      <method name="Ref" />
+    </type>
+    <type fullname="ReflectDelegateSubset.SignatureValueTaskTypeOverload`1">
+      <method name="Ref" />
+    </type>
+    <type fullname="ReflectDelegateSubset.SignatureDeepOverload`1">
+      <method name="Depth" />
+      <method name="Ref" />
+    </type>
+    <!-- ReflectDelegateEnumSubset: Bind and Probe receive the method name as a parameter. -->
+    <type fullname="ReflectDelegateEnumSubset.EnumTarget">
+      <method name="EnumS16" />
+      <method name="EnumS32" />
+      <method name="EnumS64" />
+      <method name="EnumS8" />
+      <method name="EnumU16" />
+      <method name="EnumU32" />
+      <method name="EnumU64" />
+      <method name="EnumU8" />
+      <method name="Function" />
+      <method name="Instance" />
+      <method name="Pointer" />
+      <method name="PrimitiveS16" />
+      <method name="PrimitiveS32" />
+      <method name="PrimitiveS64" />
+      <method name="PrimitiveS8" />
+      <method name="PrimitiveU16" />
+      <method name="PrimitiveU32" />
+      <method name="PrimitiveU64" />
+      <method name="PrimitiveU8" />
+      <method name="RefEnum" />
+      <method name="RefInt" />
+      <method name="RefReturn" />
+    </type>
+    <!-- ReflectIntrinsicPointerSubset: Bind receives the method name as a parameter. -->
+    <type fullname="ReflectIntrinsicPointerSubset.Target">
+      <method name="Deep" />
+      <method name="Int32" />
+      <method name="Parameter" />
+      <method name="Reference" />
+      <method name="Result" />
+      <method name="Token" />
+    </type>
+    <!-- EventSubset: the summary does not model EventInfo.GetOtherMethods. -->
+    <type fullname="EventSubset.ExoticEventOwner">
+      <method name="OtherPrivate" />
+      <method name="OtherPublic" />
+    </type>
+    <!-- ReflectDelegateSubset: SignaturePair receives the owner and name as parameters. -->
+    <type fullname="ReflectDelegateSubset.SignatureClassRefGeneric`1">
+      <method name="Ref" />
+      <method name="Return" />
+    </type>
+    <type fullname="ReflectDelegateSubset.SignatureGeneric`1">
+      <method name="Function" />
+      <method name="MixedArgument" />
+      <method name="Nested" />
+      <method name="NestedArgument" />
+    </type>
+    <type fullname="ReflectDelegateSubset.SignatureOpaqueTarget">
+      <method name="RegistrationArgument" />
+      <method name="RegistrationReturn" />
+      <method name="TokenArgument" />
+      <method name="TokenReturn" />
+    </type>
+    <type fullname="ReflectDelegateSubset.SignaturePointerGeneric`1">
+      <method name="Pointer" />
+      <method name="Return" />
+    </type>
+    <type fullname="ReflectDelegateSubset.SignatureRefGeneric`1">
+      <method name="Mixed" />
+      <method name="Ref" />
+      <method name="Return" />
+    </type>
+    <type fullname="ReflectDelegateSubset.SignatureTarget">
+      <method name="AssemblyReturn" />
+      <method name="BoolPointer" />
+      <method name="BytePointer" />
+      <method name="Cdecl" />
+      <method name="CdeclArg" />
+      <method name="CharPointer" />
+      <method name="DeepObjectPointerArg" />
+      <method name="DeepPointer" />
+      <method name="FivePointer" />
+      <method name="FunctionArg" />
+      <method name="LongPointer" />
+      <method name="NativePointer" />
+      <method name="ObjectPointerArg" />
+      <method name="ObjectPointerReturn" />
+      <method name="ObjectReturn" />
+      <method name="Output" />
+      <method name="Pointer" />
+      <method name="RefAssemblyReturn" />
+      <method name="RefFunction" />
+      <method name="RefSpanReturn" />
+      <method name="Reference" />
+      <method name="SpanReturn" />
+      <method name="StringPointerArg" />
+      <method name="StringPointerReturn" />
+      <method name="StringReturn" />
+      <method name="Suppress" />
+      <method name="Value" />
+      <method name="VoidPointer" />
+    </type>
+    <type fullname="ReflectDelegateSubset.SignatureUnsafePointer`1">
+      <method name="Clear" />
+      <method name="ClearNested" />
+      <method name="Read" />
+      <method name="ReadNested" />
+    </type>
+    <!-- ReflectionSignatureTypesSubset: PointerInvoke receives the method name as a parameter. -->
+    <type fullname="ReflectionSignatureTypesSubset.Shapes">
+      <method name="DeepPointer" />
+      <method name="FunctionPointerPointer" />
+      <method name="Pointer" />
+      <method name="StructurePointer" />
+    </type>
+    <!-- RuntimeBaseProjectionSubset: the null-receiver bindings read each owner and method name from a tuple array element. -->
+    <type fullname="ReflectDelegateSubset.ProjectionNullSwap`2">
+      <method name="Forward" />
+    </type>
+    <type fullname="ReflectDelegateSubset.ProjectionNullDrop`3">
+      <method name="Again" />
+    </type>
+  </assembly>
+  <assembly fullname="System.ComponentModel.TypeConverter">
+    <!-- ReflectVirtualInvokeSubset: Generic receives the generic virtual row's owner as a parameter. -->
+    <type fullname="System.ComponentModel.TypeDescriptionProvider">
+      <method name="RegisterType" />
+    </type>
+  </assembly>
+  <assembly fullname="System.Private.CoreLib">
+    <!-- ReflectBclCtorSubset: Construct receives each field type as a parameter. -->
+    <type fullname="System.Collections.Generic.Dictionary`2">
+      <method signature="System.Void .ctor()" />
+    </type>
+    <type fullname="System.Collections.Generic.HashSet`1">
+      <method signature="System.Void .ctor()" />
+    </type>
+    <type fullname="System.Collections.Generic.List`1">
+      <method signature="System.Void .ctor()" />
+    </type>
+  </assembly>
+</linker>

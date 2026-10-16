@@ -6,11 +6,14 @@
 # identities and pins the stripped reads and exact/generic-definition roots.
 # Keep original IL metadata while comparing the native reflection policies.
 # ILDiet with --trim-reflection is covered by build-and-run-preserve-control.sh.
+# A recognized lookup keeps its owner's metadata without a root; an unrecognized lookup
+# warns, only under the flag, naming --reflection-root; a root keeps rows, not bodies.
+# A constant Type.GetType or Assembly.GetType name emits its type without bodies.
 source "$(dirname "$0")/_common.sh"
 # Delegate name lookup refuses stripped receiver metadata even for a soft bind failure.
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/TrimReflect/StrippedMembersOnly.csproj samples/dotnet/TrimReflect/StrippedMembersOnlyProgram.cs"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/TrimReflect/StrippedMembersOnly.csproj samples/dotnet/TrimReflect/StrippedMembersOnlyProgram.cs samples/dotnet/TrimReflect/RecognizedLookupOnly.csproj samples/dotnet/TrimReflect/RecognizedLookupOnlyProgram.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|delegate-method-prefix:${DN2CPP_BEFORE_DELEGATE_METHOD:-}|member-enum-prefix:${DN2CPP_BEFORE_MEMBER_ENUM:-}|object-virtual-prefix:${DN2CPP_BEFORE_OBJECT_VIRTUAL:-}|unrecorded-receiver-prefix:${DN2CPP_BEFORE_UNRECORDED_RECEIVER:-}|reflected-unrecorded-receiver-prefix:${DN2CPP_BEFORE_REFLECTED_UNRECORDED_RECEIVER:-}|runtime-template-prefix-argv:before-runtime-template-members|property-accessors-prefix-argv:before-property-accessors"
-DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|delegate-name-bindings-prefix-argv:before-delegate-name-bindings|isolated-stripped-members:plain,trimmed,rooted"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|delegate-name-bindings-prefix-argv:before-delegate-name-bindings|isolated-stripped-members:plain,trimmed,rooted|recognized-lookup-owners:plain,trimmed,rooted|recognized-lookup-prefix:${DN2CPP_BEFORE_RECOGNIZED_LOOKUP:-}"
 
 PROJECT=TrimReflect
 LIBNAME=TrimReflectLib
@@ -26,6 +29,8 @@ APP="samples/dotnet/$PROJECT/bin/$CONFIG/$TFM/$PROJECT.dll"
 LIBDLL="samples/dotnet/$PROJECT/bin/$CONFIG/$TFM/$LIBNAME.dll"
 CORELIB=$(locate_corelib)
 echo "corelib: $CORELIB"
+# TemplateMembers builds its generic types from Type parameters, which no site resolves.
+TEMPLATE_KEEP="samples/dotnet/$PROJECT/keep-template-members.xml"
 
 # Delegate.Method witnesses keep every selected-owner answer observable.
 assert_delegate_method_lines() {
@@ -140,9 +145,9 @@ assert_named_delegate_lines() {
 # ── Arm 1: no flag — live diff against real .NET ──────────────────────────────
 echo "== Arm 1/4: no flag, exact diff vs real .NET =="
 OUT=artifacts/trimreflect
-invoke_cli "$APP" --no-ildiet -r "$CORELIB" -r "$LIBDLL" -o "$OUT"
+invoke_cli "$APP" --no-ildiet -r "$CORELIB" -r "$LIBDLL" --link-xml "$TEMPLATE_KEEP" -o "$OUT"
 if gate_cache_check "$OUT" "trim-reflection-plain|no-ildiet|$CORELIB$(_gate_ctx_extras)" \
-        "$APP" "$LIBDLL" "${APP%.dll}.runtimeconfig.json" "${APP%.dll}.deps.json"; then
+        "$APP" "$LIBDLL" "${APP%.dll}.runtimeconfig.json" "${APP%.dll}.deps.json" "$TEMPLATE_KEEP"; then
     gate_cache_hit_msg
 else
     compile_console "$OUT" "$PROJECT"
@@ -184,10 +189,10 @@ fi
 # ── Arm 2: --trim-reflection — live diff ─────────────────────────────────────────
 echo "== Arm 2/4: --trim-reflection with native metadata, live diff vs real .NET =="
 OUT=artifacts/trimreflect-trim
-invoke_cli "$APP" --no-ildiet -r "$CORELIB" -r "$LIBDLL" --trim-reflection \
+invoke_cli "$APP" --no-ildiet -r "$CORELIB" -r "$LIBDLL" --link-xml "$TEMPLATE_KEEP" --trim-reflection \
     --reflection-metadata "$LIBNAME.LibWidget=native" -o "$OUT"
 if gate_cache_check "$OUT" "trim-reflection-trim|no-ildiet|--reflection-metadata=$LIBNAME.LibWidget=native|$CORELIB$(_gate_ctx_extras)" \
-        "$APP" "$LIBDLL" "${APP%.dll}.runtimeconfig.json" "${APP%.dll}.deps.json"; then
+        "$APP" "$LIBDLL" "${APP%.dll}.runtimeconfig.json" "${APP%.dll}.deps.json" "$TEMPLATE_KEEP"; then
     gate_cache_hit_msg
 else
     grep -qw 'md_native_refl_ti_TrimReflectLib_LibWidget' "$OUT"/generated*.cpp \
@@ -228,10 +233,10 @@ fi
 # ── Arm 3: --trim-reflection with two roots — live diff ──────────────────────────
 echo "== Arm 3/4: --reflection-root (exact + arity-stripped def name), live diff vs real .NET =="
 OUT=artifacts/trimreflect-rooted
-invoke_cli "$APP" --no-ildiet -r "$CORELIB" -r "$LIBDLL" --trim-reflection \
+invoke_cli "$APP" --no-ildiet -r "$CORELIB" -r "$LIBDLL" --link-xml "$TEMPLATE_KEEP" --trim-reflection \
     --reflection-root "$LIBNAME.LibWidget" --reflection-root "$LIBNAME.LibBox" -o "$OUT"
 if gate_cache_check "$OUT" "trim-reflection-rooted|no-ildiet|$CORELIB$(_gate_ctx_extras)" \
-        "$APP" "$LIBDLL" "${APP%.dll}.runtimeconfig.json" "${APP%.dll}.deps.json"; then
+        "$APP" "$LIBDLL" "${APP%.dll}.runtimeconfig.json" "${APP%.dll}.deps.json" "$TEMPLATE_KEEP"; then
     gate_cache_hit_msg
 else
     compile_console "$OUT" "$PROJECT"
@@ -298,6 +303,22 @@ for root in "$LIBNAME.LibBox" "$LIBNAME.LibBox_Int32"; do
         --reflection-root "$root" -o "$OUT"
     [ -f "$OUT/ildiet/$LIBNAME.dll" ] && [ -f "$OUT/generated.h" ] \
         || { echo "FAIL: ILDiet root $root did not reach C++ emission" >&2; exit 1; }
+    # An unknown MakeGenericType receiver gives this library definition a clone
+    # source without selecting any constructor or body on that template.
+    grep -Eq '^const Dn2CppTypeInfo ti_TrimReflectLib_LibTemplateRead__CnAny0 = .*DN2CPP_TF_RUNTIME_TEMPLATE' "$OUT"/generated*.cpp \
+        && grep -Eqw '^static const Dn2CppRuntimeTemplate dn2cpp_runtime_template_rows\[\].*&ti_TrimReflectLib_LibTemplateRead__CnAny0' "$OUT/generated.cpp" \
+        || { echo "FAIL: a bodyless library template has no emitted clone source: $root" >&2; exit 1; }
+    grep -Fxq '// TrimReflectLib.LibWidget::.ctor' "$OUT"/generated*.cpp "$OUT/generated.h" \
+        && grep -Eqw 'LibWidget__ctor_m[0-9]+' "$OUT"/generated*.cpp "$OUT/generated.h" \
+        || { echo "FAIL: the allocated library constructor control is missing: $root" >&2; exit 1; }
+    for member in .ctor Kind GenericKind; do
+        if grep -Fwq -- '// TrimReflectLib.LibTemplateRead_$CnAny0::'"$member" "$OUT"/generated*.cpp "$OUT/generated.h"; then
+            echo "FAIL: a bodyless library template retained $member: $root" >&2; exit 1
+        fi
+    done
+    if grep -Eqw 'LibTemplateRead_[A-Za-z0-9_]+_m[0-9]+' "$OUT"/generated*.cpp "$OUT/generated.h"; then
+        echo "FAIL: a bodyless library template retained a body symbol: $root" >&2; exit 1
+    fi
 done
 OUT=artifacts/trimreflect-ildiet-typo
 rm -rf "$OUT"
@@ -354,5 +375,103 @@ for mode in plain trimmed rooted; do
                 || { echo "FAIL: rooted member read missing: $line" >&2; exit 1; }
         done
     fi
+done
+
+echo "== Recognized lookup owners, unrecognized-lookup warnings and roots without bodies =="
+dotnet build samples/dotnet/TrimReflect/RecognizedLookupOnly.csproj -c "$CONFIG" --nologo -v q -m:1
+lookup_app="samples/dotnet/TrimReflect/bin/$CONFIG/$TFM/RecognizedLookupOnly.dll"
+lookup_clr=$(strip_cr_win "$(run_bounded dotnet "$lookup_app")")
+# The unrecognized site's owner is a factory result: no root or trim policy makes it
+# known, so every trimmed arm reports the same Metadata row.
+lookup_row=$(printf '%s\t' Metadata RecognizedLookupOnly 'TrimReflectLookup.Program::Main()')
+lookup_tail=$(printf '\t%s\t%s\t%s' 'System.Type.GetField(String)' \
+    'the reflected value comes from the result of TrimReflectLib.Factory::Make' '--reflection-root TYPE')
+lookup_bodies() { cat "$1"/generated*.cpp "$1"/generated.h | grep -E '^// ' | LC_ALL=C sort; }
+for mode in plain trimmed rooted; do
+    OUT="artifacts/trimreflect-recognized-lookup-$mode"
+    lookup_flags=()
+    case "$mode" in
+        trimmed) lookup_flags=(--trim-reflection) ;;
+        rooted) lookup_flags=(--trim-reflection --reflection-root "$LIBNAME.LibWidget") ;;
+    esac
+    lookup_err=$(invoke_cli "$lookup_app" --no-ildiet -r "$CORELIB" -r "$LIBDLL" \
+        ${lookup_flags[@]+"${lookup_flags[@]}"} -o "$OUT" 2>&1 >/dev/null) \
+        || { printf '%s\n' "$lookup_err" >&2; exit 1; }
+    lookup_err=$(strip_cr_win "$lookup_err")
+    compile_console "$OUT" RecognizedLookupOnly
+    lookup_native=$(strip_cr_win "$(run_bounded "$OUT/RecognizedLookupOnly$EXE_EXT")")
+    lookup_before=$(strip_cr_win "$(DN2CPP_BEFORE_RECOGNIZED_LOOKUP=1 run_bounded "$OUT/RecognizedLookupOnly$EXE_EXT")")
+    assert_output "$(awk '/^== recognized lookup owners under trim ==$/ { exit } { print }' <<< "$lookup_native")" "$lookup_before"
+    for line in 'field-type owner=Half:Int32' 'named type=TrimReflectLib.LibKept/Int32/Int32' \
+            'assembly-named type=TrimReflectLib.LibBare/Object' 'recognized lookup owners under trim end'; do
+        grep -Fxq -- "$line" <<< "$lookup_native" \
+            || { echo "FAIL: recognized lookup witness missing: $mode/$line" >&2; exit 1; }
+    done
+    # A constant type name hands over its type as a typeof would: identity and the rows
+    # the program reads, no body, initializer or constructor. The factory's allocated
+    # LibWidget shows both body shapes the absence checks look for.
+    grep -Fxq '// TrimReflectLib.LibWidget::.ctor' "$OUT"/generated*.cpp "$OUT"/generated.h \
+        && grep -Eqw 'LibWidget__ctor_m[0-9]+' "$OUT"/generated*.cpp "$OUT"/generated.h \
+        || { echo "FAIL: the allocated LibWidget lost its constructor body: $mode" >&2; exit 1; }
+    for named in LibKept LibBare; do
+        grep -qw "ti_TrimReflectLib_$named" "$OUT"/generated*.cpp \
+            || { echo "FAIL: a named type has no type info: $mode/$named" >&2; exit 1; }
+        if grep -Eq "^// TrimReflectLib\\.$named::" "$OUT"/generated*.cpp "$OUT"/generated.h \
+                || grep -Eqw "${named}_[A-Za-z0-9_]+_m[0-9]+" "$OUT"/generated*.cpp "$OUT"/generated.h; then
+            echo "FAIL: a type named by a constant compiled a body: $mode/$named" >&2; exit 1
+        fi
+    done
+    if grep -Eq "^const Dn2CppTypeInfo ti_TrimReflectLib_LibKept = .*DN2CPP_TF_METADATA_STRIPPED" "$OUT"/generated*.cpp \
+            || ! grep -qw methtab_TrimReflectLib_LibKept "$OUT"/generated* \
+            || ! grep -qw fldtab_TrimReflectLib_LibKept "$OUT"/generated*; then
+        echo "FAIL: a named type lost the rows its lookups read: $mode" >&2; exit 1
+    fi
+    # A recognized lookup's owner keeps its member metadata with no root naming it.
+    if grep -Eq "^const Dn2CppTypeInfo ti_TrimReflectLib_LibGadget = .*DN2CPP_TF_METADATA_STRIPPED" "$OUT"/generated*.cpp; then
+        echo "FAIL: a recognized lookup's owner lost its member metadata: $mode" >&2; exit 1
+    fi
+    # The lookup lists Half's row; nothing calls it, so it has no body.
+    grep -qw methtab_TrimReflectLib_LibGadget "$OUT"/generated* \
+        || { echo "FAIL: a recognized lookup's owner lost its method table: $mode" >&2; exit 1; }
+    if grep -Eq '^// TrimReflectLib\.LibGadget::Half( |$)' "$OUT"/generated*.cpp "$OUT"/generated.h \
+            || grep -Eqw 'LibGadget_Half_m[0-9]+' "$OUT"/generated*.cpp "$OUT"/generated.h; then
+        echo "FAIL: a lookup without invoke compiled its member: $mode" >&2; exit 1
+    fi
+    if [ "$mode" = plain ]; then
+        assert_output "$lookup_native" "$lookup_clr"
+        [ ! -e "$OUT/reflection-unrecognized.tsv" ] \
+            && ! grep -q 'reflection target not recognized' <<< "$lookup_err" \
+            || { echo "FAIL: an unrecognized lookup was reported without --trim-reflection" >&2; exit 1; }
+        continue
+    fi
+    lookup_rows=$(strip_cr_win "$(cat "$OUT/reflection-unrecognized.tsv")")
+    [ "$(wc -l <<< "$lookup_rows" | tr -d ' ')" = 1 ] \
+        && [[ "$lookup_rows" == "$lookup_row"IL_*"$lookup_tail" ]] \
+        || { echo "FAIL: the unrecognized lookup row differs: $mode/$lookup_rows" >&2; exit 1; }
+    grep -Fxq -- "  fix: --reflection-root TYPE" <<< "$lookup_err" \
+        && grep -Eq '^dn2cpp: warning: reflection target not recognized: RecognizedLookupOnly TrimReflectLookup\.Program::Main\(\) IL_[0-9a-f]{4} System\.Type\.GetField\(String\): ' <<< "$lookup_err" \
+        || { echo "FAIL: the unrecognized lookup warning does not name its root remedy: $mode" >&2; exit 1; }
+    if [ "$mode" = trimmed ]; then
+        grep -Eq "^const Dn2CppTypeInfo ti_TrimReflectLib_LibWidget = .*DN2CPP_TF_METADATA_STRIPPED" "$OUT"/generated*.cpp \
+            && grep -Fq "runtime owner refused: Reflection over the members of 'TrimReflectLib.LibWidget'" <<< "$lookup_native" \
+            || { echo "FAIL: the unrecognized lookup's owner was kept without a root" >&2; exit 1; }
+        trimmed_bodies=$(lookup_bodies "$OUT")
+        continue
+    fi
+    # The root keeps LibWidget's rows; its bodies stay those the program calls.
+    assert_output "$lookup_native" "$lookup_clr"
+    if grep -Eq "^const Dn2CppTypeInfo ti_TrimReflectLib_LibWidget = .*DN2CPP_TF_METADATA_STRIPPED" "$OUT"/generated*.cpp \
+            || ! grep -qw fldtab_TrimReflectLib_LibWidget "$OUT"/generated*; then
+        echo "FAIL: --reflection-root did not keep the named owner's metadata" >&2; exit 1
+    fi
+    grep -Fxq '// TrimReflectLib.LibWidget::.ctor' "$OUT"/generated*.cpp "$OUT"/generated.h \
+        || { echo "FAIL: the rooted owner lost its allocated constructor body" >&2; exit 1; }
+    for member in Twice get_Tag; do
+        if grep -Eq "^// TrimReflectLib\\.LibWidget::$member( |\$)" "$OUT"/generated*.cpp "$OUT"/generated.h \
+                || grep -Eqw "LibWidget_${member}_m[0-9]+" "$OUT"/generated*.cpp "$OUT"/generated.h; then
+            echo "FAIL: --reflection-root compiled an uncalled body: LibWidget::$member" >&2; exit 1
+        fi
+    done
+    assert_output "$(lookup_bodies "$OUT")" "$trimmed_bodies"
 done
 echo "OK"

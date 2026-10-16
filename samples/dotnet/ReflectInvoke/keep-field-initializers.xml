@@ -1,0 +1,22 @@
+<linker>
+  <assembly fullname="OrdinaryReflectionLeaves">
+    <!-- ReflectFieldValidationSubset: Field receives the type and name as parameters,
+         and only reflection reads these static fields, so nothing else retains the
+         initializers that a static field access runs. -->
+    <type fullname="ReflectFieldValidationSubset.Constants">
+      <method name=".cctor" />
+    </type>
+    <type fullname="ReflectFieldValidationSubset.Outer+Nested">
+      <method name=".cctor" />
+    </type>
+    <type fullname="ReflectFieldValidationSubset.Generic`1">
+      <method name=".cctor" />
+    </type>
+    <type fullname="ReflectFieldValidationSubset.PointerReadOnly">
+      <method name=".cctor" />
+    </type>
+    <type fullname="ReflectFieldValidationSubset.AccessedReadOnly">
+      <method name=".cctor" />
+    </type>
+  </assembly>
+</linker>

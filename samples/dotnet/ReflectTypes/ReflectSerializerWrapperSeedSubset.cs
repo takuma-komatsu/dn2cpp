@@ -4,39 +4,28 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 
-// The SERIALIZER-wrapper seed (Compilation.CollectSerializerWrapperSeeds): a
-// reflection deserializer that must mutate a collection through a non-IList /
-// non-IDictionary surface wraps it in the serializer's OWN adapter — Newtonsoft's
+// A reflection deserializer that must mutate a collection through a non-IList /
+// non-IDictionary surface wraps it in the serializer's OWN adapter: Newtonsoft's
 // internal Newtonsoft.Json.Utilities.CollectionWrapper<T> / DictionaryWrapper<K,V>,
-// minted with typeof(CollectionWrapper<>).MakeGenericType(itemType)
+// built with typeof(CollectionWrapper<>).MakeGenericType(itemType)
 // (JsonArrayContract.CreateWrapper / JsonDictionaryContract.CreateWrapper) and
-// constructed through GetConstructor over the closed collection interface. Those
-// are LIBRARY types, so the transpiler seeds them by (ns, name) lookup against the
-// loaded modules — a no-op when nothing defines them. This section hosts stand-ins
-// with the REAL adapters' (namespace, name) and ctor shapes in the gate's own
-// assembly, which satisfies exactly the lookup Thrive's Newtonsoft.Json.dll does,
+// constructed through GetConstructor over the closed collection interface. This
+// section hosts stand-ins with the real adapters' (namespace, name) and ctor shapes
 // and replays the two shapes that blocked Thrive's boot:
 //
 //  - an ICollection<string> creator argument (Tutorial.AlreadySeenTutorials'
 //    SerializedData(ICollection<string>)): the contract default-creates List<string>
 //    and wraps it in CollectionWrapper<string>;
 //  - a List<T> creator argument (ThriveScriptsShared.VersionPatchNotes'
-//    [JsonConstructor](string, List<string>, string)): observed wrapping on the
-//    Thrive boot even though Newtonsoft's mirror says an IList-assignable target
-//    never wraps — which is why the seed is deliberately GENEROUS for CREATOR
-//    ARGUMENTS (an IEnumerable<T>-shaped ctor-parameter type seeds
-//    CollectionWrapper<T> even when IList-assignable; the member surface keeps
-//    the precise contract mirror).
+//    [JsonConstructor](string, List<string>, string)), whose element type
+//    List<NoteLine> is named only as a ctor parameter.
 //
-// Both creator arguments are also the CREATOR-ARGUMENT surface itself: List<NoteLine>
-// below is named ONLY as a ctor parameter (no field/property of it exists), so its
-// resolution asserts that an openable class's instance-ctor parameter types join
-// the reflection-ctor route's named surface.
-//
-// The positive paths match real .NET. The final section intentionally diverges:
-// MakeGenericType over an element type no collection surface names stays the AOT
-// boundary — real .NET constructs CollectionWrapper<Unlisted>, dn2cpp throws the
-// (catchable) NotSupportedException naming the missing instantiation.
+// Each item type reaches its MakeGenericType site through recognized reflection
+// (GetConstructors()[k].GetParameters()[k].ParameterType or GetProperty(...)
+// .PropertyType, then GetGenericArguments()), so the site takes an instantiation the
+// image already has, else the definition's runtime template, else a static
+// instantiation when the known arguments meet the constraints. Every line matches
+// real .NET, CollectionWrapper<Unlisted> included.
 
 namespace Newtonsoft.Json.Utilities
 {
@@ -278,8 +267,8 @@ namespace ReflectSerializerWrapperSeedSubset
         public IDictionary<string, int> Counts { get; set; }
     }
 
-    // Never an element of any collection on any surface: CollectionWrapper<Unlisted>
-    // stays unseeded — the AOT boundary the final section asserts.
+    // Never an element of any collection on any surface: only the final section's
+    // typeof constant names CollectionWrapper<Unlisted>.
     class Unlisted
     {
     }
@@ -289,8 +278,8 @@ namespace ReflectSerializerWrapperSeedSubset
         internal static void Run()
         {
             // -- Site 2's shape: ICollection<string> creator argument. The contract
-            // default-creates the materialization (List<string>, the existing BCL
-            // seed) and wraps it: MakeGenericType(CollectionWrapper<>) -> GetConstructor
+            // default-creates the materialization (List<string>) and wraps it:
+            // MakeGenericType(CollectionWrapper<>) -> GetConstructor
             // over the closed ICollection<string> (obtained the way CreateWrapper
             // obtains it, MakeGenericType over the open interface) -> ctor.Invoke. --
             ConstructorInfo tutorialCtor = typeof(TutorialData).GetConstructors()[0];
@@ -315,9 +304,7 @@ namespace ReflectSerializerWrapperSeedSubset
                 + " contains-a=" + seen.Contains("tutorial-a"));
 
             // -- Site 1's shape: a List<T> creator argument, elem named only as a
-            // ctor parameter. The creator-argument arm's generosity seeds
-            // CollectionWrapper<NoteLine> even though List<T> is IList-assignable
-            // (a member-surface List<T> would not seed). --
+            // ctor parameter, wrapped although List<T> is IList-assignable. --
             ConstructorInfo notesCtor = typeof(PatchNotesData).GetConstructors()[0];
             Type notesType = notesCtor.GetParameters()[1].ParameterType;
             Type noteItem = notesType.GetGenericArguments()[0];
@@ -335,7 +322,7 @@ namespace ReflectSerializerWrapperSeedSubset
                 + " wrapped=" + notesWrap.Count
                 + " bound count=" + ((PatchNotesData)patchNotes).NoteCount);
 
-            // -- Dictionary side: a member declared at IDictionary<K,V> seeds
+            // -- Dictionary side: a member declared at IDictionary<K,V> is wrapped in
             // DictionaryWrapper<K,V>; the deserializer populates through the
             // non-generic IDictionary indexer. --
             Type countsType = typeof(CountsData).GetProperty("Counts").PropertyType;
@@ -352,9 +339,8 @@ namespace ReflectSerializerWrapperSeedSubset
                 + " count=" + dictWrap.Count
                 + " a=" + dictWrap["a"] + " contains-b=" + dictWrap.Contains("b"));
 
-            // -- The boundary that stays: an element type no collection surface
-            // names. Real .NET constructs it; dn2cpp throws the catchable
-            // NotSupportedException naming the missing instantiation. --
+            // -- An element type no collection surface names: the known argument
+            // instantiates the wrapper statically. --
             try
             {
                 Type bad = typeof(Newtonsoft.Json.Utilities.CollectionWrapper<>)

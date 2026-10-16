@@ -8,10 +8,11 @@ namespace ReflectBclCtorSubset
     // SUBJECT: a closed BCL generic over an app type that appears ONLY as a
     // late-bound construction target — the deserializer shape, where the member's
     // declared type is read off FieldInfo, GetConstructor(Type.EmptyTypes) asked
-    // for the default ctor, and that Invoked. The reflection-ctor reachability
-    // route must reach the parameterless ctor of every closed BCL specialization
-    // an app-module member names, nested type arguments included, or
-    // GetConstructor answers null where real .NET constructs the object.
+    // for the default ctor, and that Invoked. The field type reaches Construct as a
+    // parameter, so link.xml preserves the parameterless ctors of the BCL generics;
+    // every closed specialization an app-module member names then has one, nested
+    // type arguments included, or GetConstructor answers null where real .NET
+    // constructs the object.
     class CompoundDefinition
     {
         public string Name = "";

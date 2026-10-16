@@ -7,7 +7,9 @@ using System.Collections.Concurrent;
 // intrinsic chain level is shape-ineligible as a runtime template, so the
 // transpile must complete — not emit a template row naming a type-info nothing
 // defines — and minting degrades to the catchable NotSupportedException naming
-// the missing instantiation. Real .NET constructs it; the freeze carries the
+// the instantiation. Every BlockingCollection<T> is one runtime type, so not even
+// an instantiation the program constructs resolves, and the refusal says to
+// construct it directly. Real .NET constructs both; the freeze carries the
 // divergence.
 namespace ReflectIntrinsicTemplateSubset
 {
@@ -26,6 +28,16 @@ namespace ReflectIntrinsicTemplateSubset
             catch (NotSupportedException)
             {
                 Console.WriteLine("closed: NotSupportedException");
+            }
+            var named = new BlockingCollection<long> { 7 };
+            try
+            {
+                Type closed = open.MakeGenericType(typeof(long));
+                Console.WriteLine("named closed: " + closed.Name + " " + named.Count);
+            }
+            catch (NotSupportedException e)
+            {
+                Console.WriteLine("named closed: " + e.GetType().Name + ": " + e.Message);
             }
         }
     }

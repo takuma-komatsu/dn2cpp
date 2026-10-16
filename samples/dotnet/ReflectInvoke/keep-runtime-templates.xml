@@ -1,0 +1,33 @@
+<linker>
+  <assembly fullname="RuntimeTemplateBindingOnly">
+    <!-- ReflectDelegateSubset: SignaturePair receives the runtime-made owner and the
+         method name as parameters. -->
+    <type fullname="ReflectDelegateSubset.SignatureRefGeneric`1">
+      <method name="Ref" />
+      <method name="Return" />
+    </type>
+    <type fullname="ReflectDelegateSubset.SignaturePointerGeneric`1">
+      <method name="Return" />
+    </type>
+    <type fullname="ReflectDelegateSubset.SignatureClassRefGeneric`1">
+      <method name="Ref" />
+      <method name="Return" />
+    </type>
+    <!-- ReflectDelegateSubset: OverloadRefCall and OverloadBoxCall receive the
+         runtime-made owner as a parameter. -->
+    <type fullname="ReflectDelegateSubset.SignatureOverload`1">
+      <method name="Ref" />
+    </type>
+    <type fullname="ReflectDelegateSubset.SignatureComposedOverload`2">
+      <method name="Ref" />
+    </type>
+    <!-- RuntimeBaseProjectionSubset: the null-receiver bindings read each owner and
+         method name from a tuple array element. -->
+    <type fullname="ReflectDelegateSubset.ProjectionNullSwap`2">
+      <method name="Forward" />
+    </type>
+    <type fullname="ReflectDelegateSubset.ProjectionNullDrop`3">
+      <method name="Again" />
+    </type>
+  </assembly>
+</linker>

@@ -168,7 +168,7 @@ listArgs len=1 [0]=Int32
 dictArgs len=2 [0]=String [1]=Int32
 plainArgs len=0
 made Name=Box`1 ==boxStr=True
-Box<double> not generated: NotSupportedException
+made double Name=Box`1
 plain def: InvalidOperationException
 openBox FullName=ReflectGenericSubset.Box`1 IsDef=True IsGeneric=True Contains=True Constructed=False
 openBox == boxInt.GTD: True
@@ -736,7 +736,7 @@ gm-defview-isdef => True
 gm-defview-args => T
 gm-defview-open => True
 gm-remake-eq-lookup => False
-gm-unreached => PlatformNotSupportedException
+gm-unreached => no exception
 member=IReadOnlyList`1 item=Int32
 temp=List`1 count=2
 created=ReadOnlyCollection`1 constructed=True
@@ -746,13 +746,13 @@ sd first=3
 roster=List`1 count=1 [0]=creature
 rod=ReadOnlyDictionary`2 count=2 a=1 b=2
 tags=HashSet`1 count=1
-roc<double>: NotSupportedException: MakeGenericType: the program contains no AOT-generated instantiation System.Collections.ObjectModel.ReadOnlyCollection`1[System.Double]. dn2cpp, like IL2CPP, cannot construct a generic type at run time; the closed instantiation must be visible to the transpiler's static closure (e.g. declare a field, property or local of it).
+roc<double>: created ReadOnlyCollection`1
 seen=ICollection`1 item=String
 wrap=CollectionWrapper`1 ctor(ICollection`1)
 wrapped count=2 seen count=2 contains-a=True
 notes=List`1 item=NoteLine wrapped=3 bound count=3
 dictwrap=DictionaryWrapper`2 ctor(IDictionary`2) count=2 a=1 contains-b=True
-wrap<Unlisted>: NotSupportedException: MakeGenericType: the program contains no AOT-generated instantiation Newtonsoft.Json.Utilities.CollectionWrapper`1[ReflectSerializerWrapperSeedSubset.Unlisted]. dn2cpp, like IL2CPP, cannot construct a generic type at run time; the closed instantiation must be visible to the transpiler's static closure (e.g. declare a field, property or local of it).
+wrap<Unlisted>: created CollectionWrapper`1
 == indexer error edges ==
 set-only get: InvalidOperationException
 get-only set: InvalidOperationException
@@ -1294,7 +1294,7 @@ def Name=List`1 FullName=System.Collections.Generic.List`1 ToString=System.Colle
 boxinstance=GenericTypeNameSubset.Box`1[System.Int32]
 boxedinstance=GenericTypeNameSubset.Box`1[System.String]
 byclrname=True
-bymissingclose=True
+bymissingclose=False
 == bound handle residue: the remaining owned handles' field tables ==
 own string fields=1 [Empty]
   string.Empty type=System.String decl=System.String static=True lit=False ro=True pub=True attrs=0x36 val=''
@@ -1405,9 +1405,17 @@ interned=True defRoundTrip=True arg=Boolean
 resolve=True
 nonpublic: quiet:Int32
 sub: tag:Int32 base=Int32
-holder<int>: NotSupportedException: MakeGenericType: the program contains no AOT-generated instantiation ReflectRuntimeInstantiationSubset.Holder`1[System.Int32]. dn2cpp, like IL2CPP, cannot construct a generic type at run time; the closed instantiation must be visible to the transpiler's static closure (e.g. declare a field, property or local of it).
+holder<int>: created Holder`1
 seam: anchor:Int32 baseIsAot=True assignable=True isinst=True aot=anchor:Int32
-gvm-placeholder-helper<int>: NotSupportedException: MakeGenericType: the program contains no AOT-generated instantiation ReflectRuntimeInstantiationSubset.GvmHelperLeaf`1[System.Int32]. dn2cpp, like IL2CPP, cannot construct a generic type at run time; the closed instantiation must be visible to the transpiler's static closure (e.g. declare a field, property or local of it).
+gvm-placeholder-helper<int>: root/Int32
+== template generic arguments ==
+outer ReflectRuntimeInstantiationSubset.ArgumentOuter`1[ReflectRuntimeInstantiationSubset.ArgumentInner`1[System.Int32]] field=True value=inner:Int32
+plain plain:ArgumentInner`1 argument=True
+method name:ReflectRuntimeInstantiationSubset.ArgumentInner`1[System.Int32]
+spoken say:Int64 holder=True
+library definition=Create:True
+library closed=Create:String:True
+template generic arguments end
 == generic-definition assignability ==
 marker<-box  : True
 ngbase<-der  : True
@@ -1437,6 +1445,7 @@ ngroot<-wide : True
 -- intrinsic open definition as MakeGenericType input --
 open: BlockingCollection`1
 closed: NotSupportedException
+named closed: PlatformNotSupportedException: System.Collections.Concurrent.BlockingCollection`1[System.Int64] in System.Collections.Concurrent: the runtime models every instantiation of this definition as one type, so MakeGenericType cannot form it; fix: construct the closed type directly instead of through MakeGenericType
 == ldtoken member handles ==
 memberref-method=PlatformNotSupportedException
 methoddef=PlatformNotSupportedException

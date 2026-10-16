@@ -45,7 +45,10 @@
 
   <ItemGroup>
     <Compile Remove="ReflectBindOnlyProgram.cs" />
+    <Compile Remove="UnboxedStructBindOnlyProgram.cs" />
     <Compile Remove="ReflectNameBindOnlyProgram.cs" />
+    <Compile Remove="RecognizedReflectionOnlyProgram.cs" />
+    <Compile Remove="AdmissionFiltersOnlyProgram.cs" />
   </ItemGroup>
 
   <ItemGroup>

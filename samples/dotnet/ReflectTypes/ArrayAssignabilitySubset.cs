@@ -57,13 +57,12 @@ namespace ArrayAssignabilitySubset
 
     // An element type this program names ONLY as an array member: no
     // new List<Biome>() exists anywhere in the gate program, so the
-    // List<Biome> the CreateTemporaryCollection transcription below mints with
-    // MakeGenericType is ctor-invokable purely through the transpiler's
-    // SZArray temporary-list seed (Compilation.CollectArrayTemporaryListSeed).
-    // That is the exact Thrive blind spot: the MusicContext flow further down
-    // predates the seed and statically constructs its List ("eseed"), which is
-    // why it kept passing while Thrive — which names no List<MusicContext> —
-    // died on "Unable to find default constructor".
+    // List<Biome> the CreateTemporaryCollection transcription below builds with
+    // MakeGenericType is ctor-invokable only because that site's argument is
+    // recognized (PropertyType.GetElementType()) and List<T> is instantiated over
+    // it. That is the Thrive shape that died on "Unable to find default
+    // constructor"; the MusicContext flow further down constructs its List
+    // statically ("eseed") and never exercised it.
     enum Biome
     {
         Ocean,
@@ -154,11 +153,10 @@ namespace ArrayAssignabilitySubset
             // -- Newtonsoft's post-classification flow, transcribed
             //    (JsonArrayContract ctor + CreateNewList + the IsArray finalization):
             //    CollectionItemType = GetElementType(); a List<elem> temporary via
-            //    MakeGenericType + Activator (the instantiation must be AOT-visible —
-            //    seeded here the way a real program's own use would); populate;
-            //    Array.CreateInstance(elem, n); IList.CopyTo; FieldInfo.SetValue.
-            //    elem is now the REAL String, so the List<string> close is what
-            //    MakeGenericType must find seeded. --
+            //    MakeGenericType + Activator, over the List<string> the program
+            //    also constructs statically; populate; Array.CreateInstance(elem, n);
+            //    IList.CopyTo; FieldInfo.SetValue. elem is now the REAL String, so
+            //    MakeGenericType returns that existing instantiation. --
             var seeded = new List<string>();
             seeded.Add("seed");
             Console.WriteLine("seed = " + seeded.Count);
@@ -209,8 +207,8 @@ namespace ArrayAssignabilitySubset
             Console.WriteLine("exstored = " + tr.ExclusiveToContexts.GetType().FullName);
 
             // -- Newtonsoft's CreateTemporaryCollection, transcribed exactly and
-            //    with NO static List<Biome> anywhere in this program (the Thrive
-            //    blind spot the flows above miss — see the Biome comment):
+            //    with NO static List<Biome> anywhere in this program (see the
+            //    Biome comment):
             //    array PropertyType -> GetElementType ->
             //    typeof(List<>).MakeGenericType(elem) ->
             //    GetConstructors() non-empty

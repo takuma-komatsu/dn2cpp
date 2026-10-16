@@ -81,7 +81,9 @@ runtime_template_binding_diff_axes() {
     corelib=$(locate_corelib)
     bcl=$(dirname "$corelib")
     # Unshared MakeGenericType cannot create these absent AOT bodies; the ordinary
-    # unshared reflection gate covers its closed controls separately.
+    # unshared reflection gate covers its closed controls separately. The helpers that
+    # receive a runtime-made owner as a parameter reach their clone bodies only through
+    # keep-runtime-templates.xml.
     for axis in packed native uncompressed trimmed ildiet; do
         out="artifacts/runtime-template-bindings-$axis"
         mkdir -p "$out"
@@ -99,6 +101,7 @@ runtime_template_binding_diff_axes() {
         DN2CPP_STRICT_COMPLETION=1 invoke_cli "$out/app/RuntimeTemplateBindingOnly.dll" -r "$corelib" \
             -r "$bcl/System.ComponentModel.TypeConverter.dll" -r "$bcl/System.Linq.dll" \
             -r "$bcl/System.Threading.Tasks.Parallel.dll" -r "$out/app/TrimReflectLib.dll" \
+            --link-xml samples/dotnet/ReflectInvoke/keep-runtime-templates.xml \
             ${diet_flags[@]+"${diet_flags[@]}"} ${flags[@]+"${flags[@]}"} -o "$out" > "$out/emit.log" 2>&1
         case "$axis" in
             packed|native)

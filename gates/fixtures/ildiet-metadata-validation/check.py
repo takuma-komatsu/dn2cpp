@@ -15,12 +15,16 @@ if len(sys.argv) == 4 and sys.argv[1] == "--instrument-startup":
     source = output / "generated.cpp"
     text = source.read_text(encoding="utf-8")
     checks = []
+    # A type initializer runs only after a type-use trigger or an explicit
+    # preserve. Nothing uses OrdinaryCell; SuppressedCell is preserved in the
+    # explicit mode and read by Main in the late mode.
     for name in ("OrdinaryCell", "SuppressedCell"):
         done = re.search(r"extern std::atomic<int8_t> (" + name + r"__cctor_\w+__done);", header)
         value = "sf_InitializerFixture_" + name + "_Value"
-        if name == "SuppressedCell" and mode == "signature":
-            assert done is None, "suppressed initializer has a native startup guard"
-            assert not re.search(r"dn2cpp_cctor_run_startup\([^;]*SuppressedCell", text), "suppressed initializer became a startup root"
+        if name == "OrdinaryCell" or mode not in ("explicit", "late"):
+            assert done is None, "untriggered initializer has a native startup guard: " + name
+            assert not re.search(r"dn2cpp_cctor_run_startup\([^;]*" + name, text), \
+                "untriggered initializer became a startup root: " + name
             checks.append(f"{value} == 0")
         else:
             assert done is not None, "rooted initializer has no completion guard: " + name
@@ -106,6 +110,13 @@ for name in ("signature", "explicit", "late", "original"):
     shutil.copyfile(output / original.name, native / original.name)
     for extension in (".runtimeconfig.json", ".deps.json"):
         shutil.copyfile(original.with_suffix(extension), native / original.with_suffix(extension).name)
+    if name == "explicit":
+        # The transpiler runs without ILDiet, so it takes the same explicit root.
+        keep = ET.Element("linker")
+        keep_type = ET.SubElement(ET.SubElement(keep, "assembly", fullname="InitializerFixture"),
+                                  "type", fullname="InitializerFixture.SuppressedCell")
+        ET.SubElement(keep_type, "method", name=".cctor")
+        ET.ElementTree(keep).write(output / "native" / "link.xml", encoding="utf-8", xml_declaration=True)
 print("metadata-validation=suppressed-initializer,explicit-root,late-code-root,ordinary-generic-initializer")
 
 backend_fixtures = directory / "backend-policy-fixtures"

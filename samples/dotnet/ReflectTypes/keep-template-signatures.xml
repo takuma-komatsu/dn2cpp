@@ -1,0 +1,13 @@
+<linker>
+  <assembly fullname="ReflectionTemplateDispatch">
+    <!-- RunTemplateSignaturePlaceholders reads each row name from a tuple array
+         element. -->
+    <type fullname="Dn2Cpp.SignatureReorder`2">
+      <method name="Fixed" />
+    </type>
+    <!-- The remedy the refusal of RemedyImpl's unretained Kept override prints. -->
+    <type fullname="Dn2Cpp.RemedyImpl`1">
+      <method name="Kept" />
+    </type>
+  </assembly>
+</linker>

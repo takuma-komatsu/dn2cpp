@@ -29,8 +29,12 @@ DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $aliaslib"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS $descriptor" \
     xasm_gate MultiAssembly MiniCorlib.dll artifacts/multiasm -r "$aliaslib" --link-xml "$descriptor"
 
-# This lane exercises C++ reflection inference without explicit retention roots.
-xasm_gate MultiAssembly MiniCorlib.dll artifacts/multiasm-inference -r "$aliaslib" --no-ildiet
+# This lane infers every recognized reflection target; it preserves only the members
+# reached through a helper's returned constructor, which no site resolves.
+helper_results=samples/dotnet/MultiAssembly/keep-helper-results.xml
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS $helper_results" \
+    xasm_gate MultiAssembly MiniCorlib.dll artifacts/multiasm-inference -r "$aliaslib" --no-ildiet \
+    --link-xml "$helper_results"
 
 shared_definition_layout() {
     local out="$1" format="$2" other=record
@@ -134,7 +138,7 @@ metadata_emit_layout() {
     local name="$1" format="$2"
     shift 2
     local out="artifacts/multiasm-metadata-$name"
-    invoke_cli "$app" -r "$lib" -r "$aliaslib" --no-ildiet -o "$out" "$@"
+    invoke_cli "$app" -r "$lib" -r "$aliaslib" --no-ildiet --link-xml "$helper_results" -o "$out" "$@"
     shared_definition_layout "$out" "$format"
 }
 metadata_emit_layout first-packed record \

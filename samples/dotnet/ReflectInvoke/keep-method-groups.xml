@@ -1,0 +1,26 @@
+<linker>
+  <assembly fullname="ReflectionMethodGroupsOnly">
+    <!-- A reflection API bound to a delegate is called through the delegate, so the
+         transpile cannot tell which member each call selects. -->
+    <type fullname="ReflectGroupOnly.Made">
+      <method name=".ctor" />
+    </type>
+    <type fullname="ReflectGroupOnly.Built">
+      <method name=".ctor" />
+    </type>
+    <type fullname="ReflectGroupOnly.Box`1">
+      <method name=".ctor" />
+    </type>
+    <type fullname="ReflectGroupOnly.Greeter">
+      <method name="Greet" />
+      <method name="get_Label" />
+      <method name="set_Mood" />
+    </type>
+    <type fullname="ReflectGroupOnly.TagAttribute">
+      <method name=".ctor" />
+    </type>
+    <type fullname="ReflectGroupOnly.Plugin">
+      <method name="Start" />
+    </type>
+  </assembly>
+</linker>

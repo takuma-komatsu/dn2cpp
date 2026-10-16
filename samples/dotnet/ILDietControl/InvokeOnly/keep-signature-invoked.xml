@@ -1,0 +1,9 @@
+<linker>
+  <assembly fullname="InvokeOnly">
+    <!-- Program.Invoke runs Value on the signature type it receives; no site resolves
+         a Type parameter, so the instantiations' method is preserved. -->
+    <type fullname="ILDietInvokeOnly.SignatureTarget`1" preserve="nothing">
+      <method name="Value" />
+    </type>
+  </assembly>
+</linker>

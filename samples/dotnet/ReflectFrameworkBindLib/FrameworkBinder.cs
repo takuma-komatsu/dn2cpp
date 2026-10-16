@@ -23,6 +23,10 @@ public class LibraryProvider : TypeDescriptionProvider
     public override void RegisterType<T>() => Registered = "library:" + typeof(T).Name;
 }
 
+public sealed class InheritedProvider : LibraryProvider
+{
+}
+
 public class LateProvider : TypeDescriptionProvider
 {
     public string Registered = "unregistered";

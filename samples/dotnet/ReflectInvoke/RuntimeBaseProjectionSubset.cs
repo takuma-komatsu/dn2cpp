@@ -157,6 +157,10 @@ internal static class RuntimeBaseProjectionSubset
         Console.WriteLine("runtime generic base projections end");
     }
 
+    // The arguments arrive as another method's result, so the transpile mints no
+    // instantiation for them and these shapes reach the runtime-template refusal.
+    private static Type[] BoundaryArguments() => new[] { typeof(Guid), typeof(string) };
+
     internal static void RunBoundaries()
     {
         foreach (Type definition in new[] { typeof(ProjectionRepeated<,>), typeof(ProjectionConstant<,>), typeof(ProjectionConstructed<,>) })
@@ -164,7 +168,7 @@ internal static class RuntimeBaseProjectionSubset
             string outcome;
             try
             {
-                outcome = definition.MakeGenericType(typeof(Guid), typeof(string)).IsGenericType ? "created" : "missing";
+                outcome = definition.MakeGenericType(BoundaryArguments()).IsGenericType ? "created" : "missing";
             }
             catch (NotSupportedException)
             {

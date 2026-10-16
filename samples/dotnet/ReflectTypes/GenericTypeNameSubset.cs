@@ -15,8 +15,8 @@ using System.Collections.Generic;
 // Losing that round-trip is silent — the suite stays green — so the round-trip lines are
 // the ones worth keeping if anyone ever prunes this section.
 //
-// One line diverges from real .NET and is marked at its site: the ungenerated-close
-// lookup (the AOT boundary).
+// A constant closed name that no code instantiates still resolves: the transpiler
+// forms that instantiation from the name.
 
 namespace GenericTypeNameSubset
 {
@@ -76,10 +76,9 @@ namespace GenericTypeNameSubset
             // The CLR spelling resolves even though nothing ever wrote it out: real .NET
             // accepts it, and no registry key carries it — the structural fallback does.
             Console.WriteLine("byclrname=" + (Type.GetType("System.Collections.Generic.List`1[System.Int32]") == typeof(List<int>)));
-            // A close AOT never generated stays a miss, the same AOT boundary
-            // MakeGenericType reports. Box<T> is closed at int and string here and nowhere
-            // else, which no BCL definition can be relied on for in a bucket this size.
-            // DIVERGES: real .NET constructs the type and answers False.
+            // Only this constant names Box<double>; Box<T> is a user definition so that no
+            // other code closes it there. The name forms the close as MakeGenericType over
+            // System.Double would, so the lookup answers as .NET does.
             Console.WriteLine("bymissingclose=" + (Type.GetType("GenericTypeNameSubset.Box`1[System.Double]") is null));
         }
     }

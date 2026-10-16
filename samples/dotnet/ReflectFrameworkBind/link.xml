@@ -1,0 +1,63 @@
+<linker>
+  <assembly fullname="ReflectFrameworkBind">
+    <!-- FrameworkBinder.Call receives each default body's MethodInfo as a parameter. -->
+    <type fullname="ReflectFrameworkBind.IReflectedOnly">
+      <method name="Compare" />
+      <method name="InvokeHidden" />
+      <method name="ReadTags" />
+      <method name="InvokeWritten" />
+      <method name="InvokeSlotRows" />
+    </type>
+    <!-- FrameworkBinder.Run receives the generic virtual row as a parameter, so no
+         receiver's override is selected from it. -->
+    <type fullname="ReflectFrameworkBind.ApplicationProvider">
+      <method name="RegisterType" />
+    </type>
+    <type fullname="ReflectFrameworkBind.ChainProvider">
+      <method name="RegisterType" />
+    </type>
+    <!-- FunctionPointerIdentity.Pass receives each cell and sink as a parameter. -->
+    <type fullname="ReflectFrameworkBind.FunctionPointerIdentity">
+      <method name="LeafCell" />
+      <method name="NodeCell" />
+      <method name="ListCell" />
+      <method name="NestedCell" />
+      <method name="LeafPointer" />
+      <method name="LeafCellSink" />
+      <method name="NodeCellSink" />
+      <method name="ListCellSink" />
+      <method name="NestedCellSink" />
+      <method name="LeafPointerSink" />
+    </type>
+  </assembly>
+  <assembly fullname="ReflectReturnLib">
+    <!-- Each runtime-name lookup reads its method name from a static field. -->
+    <type fullname="ReflectReturnLib.LibraryFactory">
+      <method name="Make" />
+    </type>
+    <type fullname="ReflectReturnLib.VirtualFactory">
+      <method name="MakeVirtual" />
+    </type>
+    <type fullname="ReflectReturnLib.ValueFactory">
+      <method name="MakeValue" />
+    </type>
+    <type fullname="ReflectReturnLib.LateFactory">
+      <method name="MakeLate" />
+    </type>
+    <!-- FunctionPointerIdentity.Pass receives each peer cell and sink as a parameter. -->
+    <type fullname="FunctionPointerTwin.Peer">
+      <method name="LeafCell" />
+      <method name="LeafCellSink" />
+      <method name="NodeCellSink" />
+      <method name="ListCellSink" />
+      <method name="NestedCellSink" />
+      <method name="LeafPointerSink" />
+    </type>
+  </assembly>
+  <assembly fullname="System.Private.CoreLib">
+    <!-- The framework generic return's lookup reads its method name from a static field. -->
+    <type fullname="System.Collections.Generic.List`1">
+      <method name="Find" />
+    </type>
+  </assembly>
+</linker>

@@ -1,0 +1,21 @@
+<linker>
+  <!-- Each element is a remedy a refusal prints, verbatim, and each printed remedy is
+       an element; the preserve-control gate checks that the two sets are equal. -->
+  <assembly fullname="UnknownTargetOnly"><type fullname="ILDietUnknownTargetOnly.InvokedTarget"><method name="Describe" /></type></assembly>
+  <assembly fullname="UnknownTargetOnly"><type fullname="ILDietUnknownTargetOnly.ConstructedTarget"><method name=".ctor" /></type></assembly>
+  <assembly fullname="UnknownTargetOnly"><type fullname="ILDietUnknownTargetOnly.ElementTarget"><method name="Run" /></type></assembly>
+  <assembly fullname="UnknownTargetOnly"><type fullname="ILDietUnknownTargetOnly.CopiedTarget"><method name="Run" /></type></assembly>
+  <assembly fullname="UnknownTargetOnly"><type fullname="ILDietUnknownTargetOnly.AddedTarget"><method name="Run" /></type></assembly>
+  <assembly fullname="ActivationTargets"><type fullname="ActivationTargets.LibraryClass"><method name=".ctor" /></type></assembly>
+  <assembly fullname="ActivationTargets"><type fullname="ActivationTargets.LibraryStruct"><method name=".ctor" /></type></assembly>
+  <assembly fullname="UnknownTargetOnly"><type fullname="ILDietUnknownTargetOnly.UnboxedTarget" preserve="all" /></assembly>
+  <assembly fullname="UnknownTargetOnly"><type fullname="ILDietUnknownTargetOnly.TemplateTarget`1"><method name="Describe" /></type></assembly>
+  <assembly fullname="UnknownTargetOnly"><type fullname="ILDietUnknownTargetOnly.WrittenTarget"><method name="Run" /></type></assembly>
+  <assembly fullname="UnknownTargetOnly"><type fullname="ILDietUnknownTargetOnly.BoxedDerived"><method name="Run" /></type></assembly>
+  <assembly fullname="UnknownTargetOnly"><type fullname="ILDietUnknownTargetOnly.ArrayElementTarget"><method name="Run" /></type></assembly>
+  <assembly fullname="UnknownTargetOnly"><type fullname="&lt;&gt;f__AnonymousType0`1"><method name="get_Value" /></type></assembly>
+  <assembly fullname="UnknownTargetOnly"><type fullname="ILDietUnknownTargetOnly.InitOnlyTarget"><method name=".cctor" /></type></assembly>
+  <assembly fullname="UnknownTargetOnly"><type fullname="ILDietUnknownTargetOnly.MergedA"><method name="Run" /></type></assembly>
+  <assembly fullname="UnknownTargetOnly"><type fullname="ILDietUnknownTargetOnly.MergedB"><method name="Run" /></type></assembly>
+  <assembly fullname="UnknownTargetOnly"><type fullname="ILDietUnknownTargetOnly.BlankTarget"><method name=".ctor" /></type></assembly>
+</linker>
