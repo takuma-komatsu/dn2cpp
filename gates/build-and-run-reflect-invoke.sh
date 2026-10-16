@@ -2601,23 +2601,32 @@ unset -f gate_extra_asserts
 
 # The refusals need their CoreLib overrides stripped, so they run in an image
 # that holds nothing else, over packed and native metadata.
+# The refusal of a reflective call whose receiver's override (type, method, assembly)
+# the image did not retain.
+override_refusal() {
+    printf 'PlatformNotSupportedException 0x80131539 %s::%s in %s: the receiver'"'"'s override was not retained; fix: [Preserve] on the target, or link.xml <assembly fullname="%s"><type fullname="%s"><method name="%s" /></type></assembly>' \
+        "$1" "$2" "$3" "$3" "$1" "$2"
+}
+
 gate_extra_asserts() {
     local out="$1" line native
-    local refusal="the receiver's body was stripped from this image; preserve it with a link.xml descriptor to reach it through reflection"
+    local calendar_days calendar_years
+    calendar_days=$(override_refusal System.Globalization.GregorianCalendar GetDayOfMonth System.Private.CoreLib)
+    calendar_years=$(override_refusal System.Globalization.GregorianCalendar AddYears System.Private.CoreLib)
     DN2CPP_STRIPPED_OVERRIDES=1 run_bounded "$out/StrippedOverrideRefusals$EXE_EXT" > "$out/stripped-overrides.stdout"
     native=$(strip_cr_win_file "$out/stripped-overrides.stdout")
     reflection_assert_lines - any \
         \
-        "stripped struct-returning slot: NotSupportedException 0x80131515 System.Globalization.GregorianCalendar.AddYears: $refusal" \
-        "stripped slot: NotSupportedException 0x80131515 System.Globalization.GregorianCalendar.GetDayOfMonth: $refusal" \
-        "stripped interface struct-returning slot: NotSupportedException 0x80131515 System.DBNull.ToDateTime: $refusal" \
-        "stripped interface slot: NotSupportedException 0x80131515 System.DBNull.ToInt32: $refusal" \
-        "stripped slot, delegate: NotSupportedException 0x80131515 System.Globalization.GregorianCalendar.GetDayOfMonth: $refusal" \
+        "stripped struct-returning slot: $calendar_years" \
+        "stripped slot: $calendar_days" \
+        "stripped interface struct-returning slot: $(override_refusal System.DBNull ToDateTime System.Private.CoreLib)" \
+        "stripped interface slot: $(override_refusal System.DBNull ToInt32 System.Private.CoreLib)" \
+        "stripped slot, delegate: $calendar_days" \
         'stripped end' \
-        "stripped slot, nested invoke: TargetInvocationException 0x80131604 inner NotSupportedException 0x80131515 System.Globalization.GregorianCalendar.GetDayOfMonth: $refusal" \
-        "stripped slot, nested invoke unwrapped: NotSupportedException 0x80131515 System.Globalization.GregorianCalendar.GetDayOfMonth: $refusal" \
-        "stripped slot, nested object virtual: TargetInvocationException 0x80131604 inner NotSupportedException 0x80131515 System.Globalization.GregorianCalendar.GetDayOfMonth: $refusal" \
-        "stripped slot, nested constructor: TargetInvocationException 0x80131604 inner NotSupportedException 0x80131515 System.Globalization.GregorianCalendar.GetDayOfMonth: $refusal" \
+        "stripped slot, nested invoke: TargetInvocationException 0x80131604 inner $calendar_days" \
+        "stripped slot, nested invoke unwrapped: $calendar_days" \
+        "stripped slot, nested object virtual: TargetInvocationException 0x80131604 inner $calendar_days" \
+        "stripped slot, nested constructor: TargetInvocationException 0x80131604 inner $calendar_days" \
         'stripped nested end' <<< "$native"
 }
 DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectInvoke StrippedOverrideRefusals --no-ildiet
@@ -2663,9 +2672,9 @@ gate_extra_asserts() {
     fi
     DN2CPP_STRIPPED_OVERRIDES=1 run_bounded "$out/ReflectFrameworkBind$EXE_EXT" > "$out/stripped-overrides.stdout"
     native=$(strip_cr_win_file "$out/stripped-overrides.stdout")
-    grep -Fxq "framework generic virtual row, library override: NotSupportedException 0x80131515 ReflectFrameworkBindLib.LibraryProvider.RegisterType: the receiver's body was stripped from this image; preserve it with a link.xml descriptor to reach it through reflection" <<< "$native"
+    grep -Fxq "framework generic virtual row, library override: $(override_refusal ReflectFrameworkBindLib.LibraryProvider RegisterType System.ReflectFrameworkBind)" <<< "$native"
     grep -Fxq 'framework bind end' <<< "$native"
-    grep -Fxq "framework generic virtual row, library receiver allocated late: NotSupportedException 0x80131515 ReflectFrameworkBindLib.LateProvider.RegisterType: the receiver's body was stripped from this image; preserve it with a link.xml descriptor to reach it through reflection" <<< "$native"
+    grep -Fxq "framework generic virtual row, library receiver allocated late: $(override_refusal ReflectFrameworkBindLib.LateProvider RegisterType System.ReflectFrameworkBind)" <<< "$native"
 }
 corelib_diff_gate ReflectFrameworkBind --no-ildiet System.ComponentModel.TypeConverter \
     -r "samples/dotnet/ReflectFrameworkBind/bin/$CONFIG/$TFM/System.ReflectFrameworkBind.dll" \

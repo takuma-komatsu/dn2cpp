@@ -94,7 +94,7 @@ constexpr Value value(const Dn2CppFieldInfo& row, std::size_t field)
     }
     return {};
 }
-constexpr std::size_t field_count(const Dn2CppTypeReflection&) { return 26; }
+constexpr std::size_t field_count(const Dn2CppTypeReflection&) { return 27; }
 constexpr Value value(const Dn2CppTypeReflection& row, std::size_t field)
 {
     switch (field)
@@ -125,6 +125,7 @@ constexpr Value value(const Dn2CppTypeReflection& row, std::size_t field)
         case 23: return pointer(row.genericMetadata);
         case 24: return pointer(row.events.identity());
         case 25: return scalar(row.eventCount);
+        case 26: return scalar(row.activation);
     }
     return {};
 }

@@ -907,8 +907,7 @@ void dn2cpp_throw_format_value(Dn2CppString* value)
 
 // Diagnosable NotSupportedException — the same catchable type as the bare
 // dn2cpp_throw_not_supported, carrying the reason. For AOT-boundary misses
-// whose cause is invisible at the catch site (Type.MakeGenericType over an
-// instantiation the AOT closure never generated names WHICH instantiation).
+// whose cause is invisible at the catch site.
 void dn2cpp_throw_not_supported_msg(const char* message)
 {
     dn2cpp_throw(dn2cpp_exception_new(&dn2cpp_not_supported_exception_type,
@@ -917,9 +916,9 @@ void dn2cpp_throw_not_supported_msg(const char* message)
 
 void dn2cpp_throw_invoker_missing(const char* message, const void* call)
 {
-    Dn2CppObject* obj = dn2cpp_exception_new(&dn2cpp_not_supported_exception_type,
+    Dn2CppObject* obj = dn2cpp_exception_new(&dn2cpp_platform_not_supported_exception_type,
         dn2cpp_string_from_utf8(message, static_cast<int32_t>(std::strlen(message))), nullptr);
-    reinterpret_cast<Dn2CppExceptionObject*>(obj)->hresult = static_cast<int32_t>(0x80131515u);
+    reinterpret_cast<Dn2CppExceptionObject*>(obj)->hresult = static_cast<int32_t>(0x80131539u);
     dn2cpp_exc_stamp_trace(obj);
     dn2cpp_exc_inflight_push(obj);
     throw Dn2CppInvokerMissing{ { obj }, call };

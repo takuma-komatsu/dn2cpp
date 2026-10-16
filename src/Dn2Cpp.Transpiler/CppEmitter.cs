@@ -461,8 +461,8 @@ internal sealed partial class CppEmitter
 
     /// <summary>Computes the set of classes whose struct/vtable/type-info must be
     /// emitted: the app module, every class that declares a reachable method or
-    /// appears in a reachable method's signature, and the transitive closure of
-    /// their base classes, interfaces and field types.</summary>
+    /// appears in a reachable method's signature, runtime template levels, and the
+    /// transitive closure of their base classes, interfaces and field types.</summary>
     private HashSet<ClassInfo> ComputeEmitted()
     {
         // The layout closure runs BEFORE the shareability verdicts (AGENTS.md): a
@@ -476,6 +476,7 @@ internal sealed partial class CppEmitter
                 $"emit protocol: ComputeEmitted in phase {_c.Phase} (legal: LayoutClosure, Emission)");
         var set = new HashSet<ClassInfo>();
         var queue = new Queue<ClassInfo>();
+        var activationDemands = new HashSet<ClassInfo>();
         void Add(ClassInfo? c)
         {
             // Task-family async types are provided by the runtime header, not
@@ -487,11 +488,13 @@ internal sealed partial class CppEmitter
             if (c is not null && set.Add(c))
                 queue.Enqueue(c);
         }
-        void AddType(TypeDesc t, bool signatureRoot = false)
+        void AddType(TypeDesc t, bool signatureRoot = false, bool activationDemand = false)
         {
             switch (t.Kind)
             {
                 case TypeKind.Class:
+                    if (activationDemand && _c.ReflectionConstructorBindingUsed)
+                        activationDemands.Add(t.Class!);
                     if (signatureRoot)
                         _sigClosureRoots.Add(t.Class!);
                     Add(t.Class);
@@ -500,7 +503,7 @@ internal sealed partial class CppEmitter
                 case TypeKind.MDArray:
                 case TypeKind.ByRef:
                 case TypeKind.Pointer:
-                    AddType(t.Element!, signatureRoot);
+                    AddType(t.Element!, signatureRoot, activationDemand);
                     break;
             }
         }
@@ -513,9 +516,11 @@ internal sealed partial class CppEmitter
         foreach (var m in _c.Reachable)
         {
             Add(m.DeclaringClass);
-            AddType(m.Signature.ReturnType);
+            if (_c.ReflectionConstructorBindingUsed)
+                activationDemands.Add(m.DeclaringClass);
+            AddType(m.Signature.ReturnType, activationDemand: true);
             foreach (var p in m.Signature.ParameterTypes)
-                AddType(p);
+                AddType(p, activationDemand: true);
             if ((HasSignatureShape(m.Signature.ReturnType) || m.Signature.ParameterTypes.Any(HasSignatureShape))
                 && ReflectionSignature(m) is { } signature)
             {
@@ -531,6 +536,10 @@ internal sealed partial class CppEmitter
         // fields, so they seed the emit set as normal (non-opaque) classes.
         foreach (var c in _c.ForceEmittedClasses)
             Add(c);
+        // MakeGenericType clones every eligible level's layout and type-info, even
+        // when no allocation or reachable member requires that level's emission.
+        foreach (var c in _c.EligibleRuntimeTemplateLevels)
+            Add(c);
         foreach (var c in _sigClosureRoots)
             Add(c);
         foreach (var signature in _c.ReflectionTypeTokens.Values.ToList())
@@ -539,6 +548,12 @@ internal sealed partial class CppEmitter
             foreach (var field in owner.Fields)
                 if (CppTypes.IsByValArrayField(field) && IsSignatureArray(field.Type))
                     NoteReflectionSignatureLeaves(ReflectionFieldSignature(field).Binding, type => AddType(type));
+
+        var activationRoots = !_c.ReflectionConstructorBindingUsed ? new List<ClassInfo>()
+            : set.Concat(_c.ReferencedTypes).Where(c => !_constructorSignatureDependencies.Contains(c)
+                || activationDemands.Contains(c) || _c.ForceEmittedClasses.Contains(c)
+                || _c.ReferencedTypes.Contains(c) && !_c.IsIdentityOnlyReference(c)).Distinct().ToList();
+        var activationRootSet = new HashSet<ClassInfo>(activationRoots);
 
         // An app-module class's reflection tables list every member it declares — only a
         // reference assembly's unreached members are trimmed (BuildMemberTable) — and every
@@ -578,7 +593,11 @@ internal sealed partial class CppEmitter
                     void AddSignatureType(TypeDesc type)
                     {
                         if (!Compilation.ContainsGenericVar(type) && !Compilation.ContainsCanonPlaceholder(type))
+                        {
+                            if (_c.ReflectionConstructorBindingUsed)
+                                NoteConstructorSignatureDependency(type, activationRootSet);
                             AddType(type, signatureRoot: _metadataOnlyDefinitions.Contains(m));
+                        }
                     }
                     AddSignatureType(m.Signature.ReturnType);
                     foreach (var p in m.Signature.ParameterTypes)
@@ -594,33 +613,64 @@ internal sealed partial class CppEmitter
             }
         }
 
-        while (queue.Count > 0)
+        void DrainLayouts()
         {
-            var c = queue.Dequeue();
-            // Emitting this class means emitting its vtable and its reflection tables, so
-            // its members have to exist. Pull them here, once per emitted class — this and
-            // EmitAdd are the two doors into the emit set, and together they are the whole
-            // of "if we emit it, we decoded it". The seeding loops above must NOT pull:
-            // one of them walks Compilation.Classes, and decoding appends to it.
-            _c.EnsureCompleted(c);
-            Add(c.BaseClass);
-            // A grouped specialization's struct layout is the canonical
-            // owner's (CppStructName redirects), so every emitted alias pulls
-            // its owner's layout in even when no owner method survived sharing.
-            if (c.SharedOwner is { } owner)
-                Add(owner);
-            // An intrinsic reference type (System.Object/Exception) is emitted as
-            // an opaque empty struct — its methods are inlined and its real
-            // fields are never touched. Walking them would drag the BCL's
-            // private exception/serialization plumbing (Exception._data ->
-            // Dictionary -> randomized hashing, …) into the layout closure.
-            if (CoreIntrinsics.IsIntrinsicType(c.FullName))
-                continue;
-            foreach (var itf in c.Interfaces)
-                Add(itf);
-            foreach (var f in c.Fields)
-                AddType(f.Type);
+            while (queue.Count > 0)
+            {
+                var c = queue.Dequeue();
+                // Emitting this class means emitting its vtable and its reflection tables, so
+                // its members have to exist. Pull them here, once per emitted class — this and
+                // EmitAdd are the two doors into the emit set, and together they are the whole
+                // of "if we emit it, we decoded it". The seeding loops above must NOT pull:
+                // one of them walks Compilation.Classes, and decoding appends to it.
+                _c.EnsureCompleted(c);
+                Add(c.BaseClass);
+                // A grouped specialization's struct layout is the canonical
+                // owner's (CppStructName redirects), so every emitted alias pulls
+                // its owner's layout in even when no owner method survived sharing.
+                if (c.SharedOwner is { } owner)
+                    Add(owner);
+                // An intrinsic reference type (System.Object/Exception) is emitted as
+                // an opaque empty struct — its methods are inlined and its real
+                // fields are never touched. Walking them would drag the BCL's
+                // private exception/serialization plumbing (Exception._data ->
+                // Dictionary -> randomized hashing, …) into the layout closure.
+                if (CoreIntrinsics.IsIntrinsicType(c.FullName))
+                    continue;
+                foreach (var itf in c.Interfaces)
+                    Add(itf);
+                foreach (var f in c.Fields)
+                    AddType(f.Type);
+            }
         }
+        DrainLayouts();
+        // Only ordinary layout edges extend constructor roots. Member-signature
+        // additions and the constructor parameters below cannot start another scan.
+        void AddActivationRoot(ClassInfo? cls)
+        {
+            if (cls is not null && activationRootSet.Add(cls))
+                activationRoots.Add(cls);
+        }
+        void AddActivationType(TypeDesc type)
+        {
+            if (type.Kind == TypeKind.Class)
+                AddActivationRoot(type.Class);
+            else if (type.Element is { } element)
+                AddActivationType(element);
+        }
+        for (int i = 0; i < activationRoots.Count; i++)
+        {
+            var cls = activationRoots[i];
+            if (!set.Contains(cls) || IsIntrinsicShaped(cls))
+                continue;
+            AddActivationRoot(cls.BaseClass);
+            foreach (var itf in cls.Interfaces)
+                AddActivationRoot(itf);
+            foreach (var field in cls.Fields)
+                AddActivationType(field.Type);
+        }
+        PrepareActivationConstructorRows(activationRoots, type => AddType(type, signatureRoot: true));
+        DrainLayouts();
         // The reflection binder can construct field-layout and referenced-only
         // delegates, even when no newobj or typeof names their concrete type.
         foreach (var receiver in set.Concat(_c.ReferencedTypes).ToList())
@@ -2366,8 +2416,8 @@ internal sealed partial class CppEmitter
             }
             if (batch.Count == 0 && minted.Count == 0 && !rgctxFilled)
             {
-                // Layout can reveal runtime-created delegate receivers and reflected
-                // field boxes. Close their dispatch before freezing body symbols.
+                // Layout can reveal runtime-created delegate receivers. Close their
+                // dispatch before freezing body symbols.
                 if (!planning
                     && (diagnostics is not null || !_c.SharedGenericsEnabled || _c.HasDelegateCloneBindings
                         || _c.NeedsConservativeArraySearchClosure))
@@ -3105,10 +3155,9 @@ internal sealed partial class CppEmitter
     internal IReadOnlyList<ClassInfo> Classes => _c.Classes;
 
     /// <summary>Whether <paramref name="cls"/> comes from the app module (the
-    /// assembly being transpiled) rather than a reference. The public-surface
-    /// root rule only guarantees emission for the app module's public methods —
-    /// a reference assembly (e.g. the real CoreLib) is tree-shaken, so most of
-    /// its public methods have IL but no emitted body.</summary>
+    /// assembly being transpiled) rather than a reference. Either kind emits only
+    /// the bodies reachability reached, so a public method of either may have IL
+    /// but no emitted body.</summary>
     internal bool IsAppModuleClass(ClassInfo cls) => cls.Module == _c.AppModule;
 
     /// <summary>The compilation's shared signature decoder, exposed for a backend
@@ -4539,8 +4588,6 @@ internal sealed partial class CppEmitter
     private const int ReturnPointerDepthMask = 0x3;
     // DN2CPP_MTHA_CONTEXTARG.
     private const int ContextArgRow = 0x2000;
-    // DN2CPP_MTHA_PRESERVABLE.
-    private const int PreservableTemplateRow = 0x8;
 
     /// <summary>The <c>DN2CPP_MTHA_RETURN_*</c> bits and <c>returnPassType</c> of a row
     /// returning <paramref name="t"/>, from <see cref="ReflectionPass"/>, whose pointer
@@ -4785,21 +4832,27 @@ internal sealed partial class CppEmitter
     /// for a reflected element's custom attributes, returning (tableExpr, count) —
     /// or ("nullptr", 0) when there is no reflectable attribute. `key` is a unique C++ name
     /// fragment. A row whose ctor body is emitted and whose argument shape is renderable
-    /// carries its factory. An attribute whose ctor was not reached keeps its row with a
-    /// null factory, so a metadata read answers from it and an instance read refuses
-    /// instead of answering a set without it (Compilation.ReachAttributesOf notes its type
-    /// for the row). Other rows are dropped (the IL2CPP-stripping bound).</summary>
+    /// carries its factory. An attribute whose ctor or named argument's setter was not
+    /// reached, whichever route reached the ctor first, keeps its row with a null factory,
+    /// so a metadata read answers from it and an instance read refuses, naming the setter
+    /// when that is what is missing, instead of answering a set without it
+    /// (Compilation.ReachAttributesOf notes its type for the row). Other rows are dropped
+    /// (the IL2CPP-stripping bound).</summary>
     private (string Expr, int Count) BuildAttrTable(StringBuilder sb, string key, Module module, CustomAttributeHandleCollection handles)
     {
         var rows = new List<MetadataRow>();
         foreach (var da in _c.DecodeCustomAttributes(module, handles))
         {
-            string? create = RenderAttrCreate(sb, da) is { } createName ? "&" + createName
-                : _c.KeepsUnretainedAttributeRow(da) && TypeInfoSymbolDefined(da.AttrClass.CppTypeInfoName) ? "nullptr"
+            string? create = RenderAttrCreate(sb, da, out var setter) is { } createName ? "&" + createName
+                : (setter is not null ? TypeInfoSymbolDefined(setter.DeclaringClass.CppTypeInfoName)
+                    : _c.KeepsUnretainedAttributeRow(da))
+                    && TypeInfoSymbolDefined(da.AttrClass.CppTypeInfoName) ? "nullptr"
                 : null;
             if (create is not null)
                 rows.Add(new MetadataRow(new[] { MetadataValue.Ref(TypeInfoRef(da.AttrClass, "custom-attribute table row")),
-                    MetadataValue.Ref(create), MetadataValue.Display(RenderAttrDisplay(da)) }));
+                    MetadataValue.Ref(create), MetadataValue.Display(RenderAttrDisplay(da)),
+                    MetadataValue.Ref(setter is null ? null : TypeInfoRef(setter.DeclaringClass, "custom-attribute setter owner")),
+                    MetadataValue.Text(setter?.Name) }));
         }
         if (rows.Count == 0)
             return ("nullptr", 0);
@@ -4973,8 +5026,9 @@ internal sealed partial class CppEmitter
     /// properties, returning a fresh instance like .NET. The body may reference string
     /// literals (a string-valued argument) — safe anywhere in any TU, since every
     /// str_N is declared extern in the header.</summary>
-    private string? RenderAttrCreate(StringBuilder sb, Compilation.DecodedAttribute da)
+    private string? RenderAttrCreate(StringBuilder sb, Compilation.DecodedAttribute da, out MethodInfo? unreachedSetter)
     {
+        unreachedSetter = null;
         var cls = da.AttrClass;
         var ctor = da.Ctor;
         if (!_c.Reachable.Contains(ctor) || _backend.ShouldSkipMethodBody(cls, ctor))
@@ -4999,11 +5053,20 @@ internal sealed partial class CppEmitter
             argExprs.Add(cppT.EndsWith("*") ? $"({cppT})({e})" : e);
         }
         var setLines = new List<string>();
+        MethodInfo? missingSetter = null;
         foreach (var na in da.Named)
         {
-            if (RenderNamedArg(cls, na, pre, ref arrSeq) is not { } line)
+            if (RenderNamedArg(cls, na, pre, ref arrSeq, out var unreached) is { } line)
+                setLines.Add(line);
+            else if (unreached is not null)
+                missingSetter ??= unreached;
+            else
                 return null;
-            setLines.Add(line);
+        }
+        if (missingSetter is not null)
+        {
+            unreachedSetter = missingSetter;
+            return null;
         }
         var body = new StringBuilder();
         body.AppendLine("{");
@@ -5030,10 +5093,12 @@ internal sealed partial class CppEmitter
     /// <summary>A named attribute argument as a C++ statement: a direct field assignment
     /// (kind Field) or a setter call (kind Property, whose accessor must be emitted). The
     /// value renders at the member's declared type. Null when the member or its value
-    /// shape is unsupported.</summary>
+    /// shape is unsupported, or when the setter was not reached, which
+    /// <paramref name="unreached"/> then names.</summary>
     private string? RenderNamedArg(ClassInfo cls, CustomAttributeNamedArgument<TypeDesc> na,
-        List<string> pre, ref int arrSeq)
+        List<string> pre, ref int arrSeq, out MethodInfo? unreached)
     {
+        unreached = null;
         if (na.Name is not { } name)
             return null;
         // The named member may be declared on an attribute BASE class — walk the chain,
@@ -5056,9 +5121,13 @@ internal sealed partial class CppEmitter
                 : store;
         }
         var setter = cls.InstanceMethodOnBaseChain("set_" + name);
-        if (setter is null || !_c.Reachable.Contains(setter)
-            || _backend.ShouldSkipMethodBody(setter.DeclaringClass, setter))
+        if (setter is null)
             return null;
+        if (!_c.Reachable.Contains(setter) || _backend.ShouldSkipMethodBody(setter.DeclaringClass, setter))
+        {
+            unreached = setter;
+            return null;
+        }
         var paramType = setter.Signature.ParameterTypes[0];
         if (RenderNamedArgValue(paramType, na, pre, ref arrSeq) is not { } pval)
             return null;
@@ -5363,28 +5432,11 @@ internal sealed partial class CppEmitter
         return null;
     }
 
-    /// <summary>The user struct a reflective invoke of <paramref name="m"/> would box,
-    /// returned or written back through a by-ref, when the image allocates no box of it,
-    /// or null. Such a box has no slots or interface map wired, so it would dispatch into
-    /// traps; the row gets the trapping stub instead. A hot-update base keeps every
-    /// invoker: its interpreter calls bodies through them.</summary>
-    internal ClassInfo? InvokerBoxBlocker(MethodInfo m)
-    {
-        if (_hotUpdateBase)
-            return null;
-        var sig = m.Signature;
-        if (!sig.ReturnType.IsVoid && UnallocatedUserStruct(sig.ReturnType) is { } returned)
-            return returned;
-        foreach (var p in sig.ParameterTypes)
-            if (p.Kind == TypeKind.ByRef && UnallocatedUserStruct(p) is { } written)
-                return written;
-        return null;
-    }
-
-    /// <summary><see cref="InvokerBoxBlocker"/> for the GetValue thunk of a field a user
-    /// class declares. The runtime reads framework fields through their thunks itself (a
-    /// Nullable's value), and a hot-update interpreter reads every field through
-    /// them.</summary>
+    /// <summary>The user struct the GetValue thunk of a field a user class declares would
+    /// box when the image allocates no box of it, or null. Such a box has no slots or
+    /// interface map wired, so it would dispatch into traps. The runtime reads framework
+    /// fields through their thunks itself (a Nullable's value), and a hot-update
+    /// interpreter reads every field through them.</summary>
     internal ClassInfo? FieldBoxBlocker(ClassInfo owner, FieldInfo f)
         => _hotUpdateBase || !_c.IsUserModule(owner.Module) ? null : UnallocatedUserStruct(f.Type);
 
@@ -5402,6 +5454,18 @@ internal sealed partial class CppEmitter
     internal ClassInfo? UnallocatedUserStruct(ClassInfo c)
         => c.IsValueType && !c.IsEnum && !c.IsByRefLike && _c.IsUserModule(c.Module)
             && !Compilation.ContainsCanonPlaceholder(c) && !Compilation.ContainsGenericVar(c)
+            && !_c.IsAllocated(c)
+            ? c : null;
+
+    /// <summary>A concrete user class no instance of which the image allocates, or null.
+    /// Overrides and interface slots are reached only for allocated types, so an instance
+    /// reflection made of it would run its base's members or traps. A backend's externally
+    /// allocated class is allocated, and a delegate is made only by binding.</summary>
+    internal ClassInfo? UnallocatedUserClass(ClassInfo c)
+        => !c.IsValueType && !c.IsInterface && !c.IsAbstract && !c.IsDelegate && !c.Handle.IsNil
+            && _c.IsUserModule(c.Module) && !IsIntrinsicShaped(c)
+            && (!Compilation.ContainsCanonPlaceholder(c) || _c.EligibleRuntimeTemplateLevels.Contains(c))
+            && !Compilation.ContainsGenericVar(c)
             && !_c.IsAllocated(c)
             ? c : null;
 

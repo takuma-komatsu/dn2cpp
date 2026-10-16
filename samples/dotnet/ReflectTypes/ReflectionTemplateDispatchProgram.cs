@@ -156,7 +156,7 @@ internal static class ReflectionTemplateDispatchProgram
         Console.WriteLine("diag " + arg.Name + " message owner="
             + (invokeFault?.Message.Contains(closed.ToString(), StringComparison.Ordinal) == true)
             + " member=" + (invokeFault?.Message.Contains(call.Name, StringComparison.Ordinal) == true)
-            + " reason=" + (invokeFault?.Message.Contains("the target method's body was not compiled into this image",
+            + " reason=" + (invokeFault?.Message.Contains("this closed generic instantiation has no compiled code",
                 StringComparison.Ordinal) == true) + " unwrapped="
             + (invokeFault is not null && invokeFault.InnerException is null
                 && unwrappedFault is not null && unwrappedFault.InnerException is null));

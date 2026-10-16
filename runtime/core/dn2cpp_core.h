@@ -219,12 +219,27 @@ struct Dn2CppEnumMember { const char* name; int64_t value; };
 
 // One row per implemented interface: pointer to the interface's type
 // metadata plus the method slots implementing it (declaration order).
+inline constexpr uint8_t DN2CPP_METHOD_PRESERVABILITY_UNKNOWN = 2;
+
 struct Dn2CppInterfaceMethodTarget
 {
     const Dn2CppTypeInfo* declaringType;
     int32_t metadataToken;
     Dn2CppMetadataHandle<Dn2CppMethodInfo> method = {};
+    // Refusal remedies remain exact when the implementation's reflection rows are stripped.
+    const char* methodName = nullptr;
+    uint8_t preservable = 0; // 0: not preservable, 1: preservable; raw GVMs may be UNKNOWN
 };
+
+struct Dn2CppVirtualMethodTarget
+{
+    const void* const* vtable;
+    int32_t slot;
+    Dn2CppInterfaceMethodTarget method;
+};
+
+extern const Dn2CppVirtualMethodTarget* const dn2cpp_virtual_method_targets[];
+extern const int32_t dn2cpp_virtual_method_target_count;
 
 struct Dn2CppInterfaceEntry
 {
@@ -276,7 +291,20 @@ struct Dn2CppTypeReflection
     const Dn2CppGenericTypeMetadata* genericMetadata = nullptr;
     Dn2CppMetadataTable<Dn2CppEventInfo> events;
     int32_t eventCount = 0;
+    // DN2CPP_TA_* bits: what reflective construction cannot answer from the rows.
+    int32_t activation = 0;
 };
+
+// Dn2CppTypeReflection::activation. The OMITTED bits state instance constructors the
+// type declares with a body but whose rows the image omits, so a binder that finds no
+// row refuses instead of answering MissingMethodException for a constructor that
+// exists: the parameterless one per visibility. Constructors with arguments keep
+// signature rows so the binder selects them before refusing. UNALLOCATED marks a concrete user type no instance of which
+// (for a value type, no box) the image allocates: its overrides and interface slots are
+// not wired, so reflection makes no instance of it.
+#define DN2CPP_TA_OMITTED_PUBLIC_DEFAULT_CTOR 0x1
+#define DN2CPP_TA_OMITTED_NONPUBLIC_DEFAULT_CTOR 0x2
+#define DN2CPP_TA_UNALLOCATED 0x4
 
 inline constexpr Dn2CppTypeReflection dn2cpp_empty_type_reflection{};
 
@@ -1124,6 +1152,11 @@ struct Dn2CppMethodInfo
     // representation in Dn2CppParamInfo.
     const Dn2CppTypeInfo* const* returnRequiredCustomModifiers;
     int32_t returnRequiredCustomModifierCount;
+    // Nonzero on a runtime template level's bodiless row whose body a clone could
+    // run: a preserve rule on the definition's member admits it, so its refusal
+    // names that rule. Every attrs bit already has a meaning; declared in this
+    // padding slot so the row stays the size the allocation budgets fix.
+    int32_t preservable;
     const Dn2CppTypeInfo* const* returnOptionalCustomModifiers;
     int32_t returnOptionalCustomModifierCount;
     int32_t returnCustomModifiersKnown;
@@ -1436,11 +1469,19 @@ void dn2cpp_set_patch_virtual_method_resolver(Dn2CppPatchVirtualMethodResolver r
 // image; a single null row when there are none, so the symbols link. A stripping
 // dispatcher runs no override the image stripped and reports it to a reflective
 // call; the BPI bind refuses it.
+struct Dn2CppGvmMethodTarget
+{
+    const Dn2CppTypeInfo* receiver;
+    Dn2CppInterfaceMethodTarget method;
+};
+
 struct Dn2CppGvmRowDispatch
 {
     Dn2CppDelegateMethodIdentity identity;
     void* dispatcher;
     bool strips;
+    int32_t strippedTargetCount = 0;
+    const Dn2CppGvmMethodTarget* strippedTargets = nullptr;
 };
 extern const Dn2CppGvmRowDispatch dn2cpp_gvm_row_dispatch[];
 extern const int32_t dn2cpp_gvm_row_dispatch_count;
@@ -2553,6 +2594,11 @@ struct Dn2CppAttrInfo
     // CustomAttributeData.ToString display, rendered from the same decoded
     // fixed/named arguments used by create. No visibility boundary is widened.
     const char* display;
+    // Set on a row whose constructor the image retained but not the setter of a named
+    // argument, `unretainedSetter` declared on `unretainedSetterOwner`: its null `create`
+    // refuses an instance read with that setter's remedy.
+    const Dn2CppTypeInfo* unretainedSetterOwner = nullptr;
+    const char* unretainedSetter = nullptr;
 };
 
 // MemberInfo/ParameterInfo.GetCustomAttributes([attrType,] inherit) and
@@ -2705,6 +2751,12 @@ Dn2CppString* dn2cpp_type_assembly_qualified_name(Dn2CppType* t);
 // throws TypeLoadException when throwOnError.
 Dn2CppType* dn2cpp_assembly_get_type(const char* asmName, Dn2CppString* name,
     int32_t throwOnError, int32_t ignoreCase);
+// Assembly.CreateInstance(name, ignoreCase, flags, binder, args, culture, attributes):
+// Activator.CreateInstance over GetType(name, throwOnError: false, ignoreCase); null
+// when the assembly defines no such type.
+Dn2CppObject* dn2cpp_assembly_create_instance(const char* asmName, Dn2CppString* name,
+    int32_t ignoreCase, int32_t bindingFlags, Dn2CppObject* binder, Dn2CppArrayRef* args,
+    Dn2CppArrayRef* activationAttrs);
 // Assembly.GetModules() — dn2cpp assemblies are single-module, so a one-element
 // Module[] holding the manifest module (the same simple-name handle Assembly is).
 Dn2CppArrayRef* dn2cpp_assembly_get_modules(const char* name);
@@ -3398,9 +3450,9 @@ int64_t dn2cpp_gc_total_allocated_bytes();
 // prologue. For the callers that must recognise a trapped slot WITHOUT calling it
 // (dn2cpp_exception_message's override probe); one image, one registration.
 void dn2cpp_register_vcall_traps(const void* const* fns, int32_t count);
-// A dispatch trap entered as `slotFn` throws the catchable NotSupportedException
-// MethodBase.Invoke and a CreateDelegate binding raise for a receiver whose body the
-// image stripped, when `slotFn` is the slot the innermost such reflective call is
+// A dispatch trap entered as `slotFn` throws the catchable PlatformNotSupportedException
+// MethodBase.Invoke and a CreateDelegate binding raise for a receiver whose override the
+// image did not retain, when `slotFn` is the slot the innermost such reflective call is
 // entering (dn2cpp_invoke_row). A generic virtual dispatcher runs bodies that may
 // re-enter it, so it also passes its receiver's type, which must be that call's.
 // Returns otherwise: a trap reached from compiled code is a reachability defect and
@@ -3510,10 +3562,11 @@ template <typename T>
 [[noreturn]] void dn2cpp_throw_type_load();
 [[noreturn]] void dn2cpp_throw_not_supported();
 // The same catchable NotSupportedException, carrying a diagnosable reason —
-// for AOT-boundary misses (MakeGenericType) where the bare throw names nothing.
+// for AOT-boundary misses where the bare throw names nothing.
 [[noreturn]] void dn2cpp_throw_not_supported_msg(const char* message);
-// The same exception, thrown as Dn2CppInvokerMissing by an invmiss_ stub, which
-// passes its own address as `call`.
+// A PlatformNotSupportedException thrown as Dn2CppInvokerMissing by a reflective entry
+// whose body the image did not retain, which passes its own address as `call`, or null
+// when no reflective call may take the refusal as its own.
 [[noreturn]] void dn2cpp_throw_invoker_missing(const char* message, const void* call);
 // The dynamic-code-generation surface trap (Reflection.Emit, DLR CallSite,
 // Expression.Compile): catchable, message names the cut member.
@@ -4004,7 +4057,7 @@ struct Dn2CppException
     Dn2CppObject* obj;
 };
 
-// A member-table row with no materialized invoker raises its NotSupportedException
+// A member-table row with no materialized invoker raises its PlatformNotSupportedException
 // as this subtype, so reflection invoke can tell the image's refusal from a fault
 // of the target and leave it unwrapped. `call` names the refused reflective call:
 // the invoker stub that raised it, or the slot scope a trap matched. Every other

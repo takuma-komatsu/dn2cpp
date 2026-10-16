@@ -23,6 +23,7 @@ internal sealed partial class CppEmitter
         internal string? GenericParamNames;
         internal string Initializer = "nullptr";
         internal ModeledSize? MarshalSize;
+        internal int Activation;
     }
 
     private void EmitTypeInfo(StringBuilder sb, string symbol, TypeMetadata data)
@@ -30,7 +31,7 @@ internal sealed partial class CppEmitter
         if (data.Flags.Contains("DN2CPP_TF_GENERICDEF", StringComparison.Ordinal)
             && _strippedGenericMetadata.Contains(data.Name))
             data.Flags = "(" + data.Flags + " | DN2CPP_TF_METADATA_STRIPPED)";
-        MetadataValue[] cold = {
+        var coldValues = new List<MetadataValue> {
             MetadataValue.Ref(data.Fields), MetadataValue.Signed(data.FieldCount), MetadataValue.Ref(data.Methods), MetadataValue.Signed(data.MethodCount),
             MetadataValue.Ref(data.Ctors), MetadataValue.Signed(data.CtorCount), MetadataValue.Ref(data.Props), MetadataValue.Signed(data.PropCount),
             MetadataValue.Ref(data.CustomAttrs), MetadataValue.Signed(data.CustomAttrCount), MetadataValue.Ref(data.EnumMembers), MetadataValue.Signed(data.EnumMemberCount),
@@ -42,6 +43,11 @@ internal sealed partial class CppEmitter
                 ? "generic:" + data.Name : "type:" + symbol, out var genericMetadata) ? genericMetadata : "nullptr"),
             MetadataValue.Ref(data.Events), MetadataValue.Signed(data.EventCount),
         };
+        // Trailing and zero for almost every type, so it is spelled only when set and
+        // every other record keeps its bytes.
+        if (data.Activation != 0)
+            coldValues.Add(MetadataValue.Signed(data.Activation));
+        MetadataValue[] cold = coldValues.ToArray();
         bool hasCold = cold.Any(value => value.Pointer is not null || value.StringValue is not null || value.Encoded != 0);
         string coldSymbol = "refl_" + symbol;
         if (hasCold)

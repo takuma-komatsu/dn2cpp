@@ -168,14 +168,14 @@ static const Dn2CppMethodInfo dn2cpp_ownmethods_string_rows[] = {
       DN2CPP_MTHA_PUBLIC | DN2CPP_MTHA_SPECIALNAME, -1,
       reinterpret_cast<void*>(&dn2cpp_ownmeth_string_get_length),
       reinterpret_cast<void*>(&dn2cpp_ownmeth_string_length_invoker), {}, 0,
-      nullptr, 0x0886, 0, 0, 0, nullptr, nullptr, 0, nullptr, 0, 1,
+      nullptr, 0x0886, 0, 0, 0, nullptr, nullptr, 0, 0, nullptr, 0, 1,
       "Int32 get_Length()", nullptr, "Int32" },
     { "get_Chars", &dn2cpp_string_type, &dn2cpp_char_type,
       Dn2CppMetadataTable<Dn2CppParamInfo>{dn2cpp_ownparams_string_chars}, 1,
       DN2CPP_MTHA_PUBLIC | DN2CPP_MTHA_SPECIALNAME, -1,
       reinterpret_cast<void*>(&dn2cpp_ownmeth_string_get_chars),
       reinterpret_cast<void*>(&dn2cpp_ownmeth_string_chars_invoker), {}, 0,
-      nullptr, 0x0886, 0, 0, 0, nullptr, nullptr, 0, nullptr, 0, 1,
+      nullptr, 0x0886, 0, 0, 0, nullptr, nullptr, 0, 0, nullptr, 0, 1,
       "Char get_Chars(Int32)", nullptr, "Char" },
 };
 static constexpr Dn2CppMetadataTable<Dn2CppMethodInfo> dn2cpp_ownmethods_string{

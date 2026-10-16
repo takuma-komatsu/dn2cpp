@@ -551,6 +551,29 @@ internal sealed partial class MethodCompiler
                     $"dn2cpp_assembly_get_type({Cast(asm, "const char*")}, {Cast(n, "Dn2CppString*")}, {throwOnError}, {ignoreCase})");
                 return true;
             }
+            // Assembly.CreateInstance(name[, ignoreCase[, flags, binder, args, culture,
+            // activationAttributes]]): the short forms bind Public | Instance (20) with no
+            // arguments; culture is ignored as for Activator.CreateInstance.
+            case ("System.Reflection.Assembly", "CreateInstance")
+                when sig.ParameterTypes.Length is 1 or 2 or 7 && sig.ParameterTypes[0].IsString:
+            {
+                string flags = "20", binder = "nullptr", args = "nullptr", attrs = "nullptr", ignoreCase = "0";
+                if (sig.ParameterTypes.Length == 7)
+                {
+                    attrs = Cast(Pop(), "Dn2CppArrayRef*");
+                    Pop();
+                    args = Cast(Pop(), "Dn2CppArrayRef*");
+                    binder = Cast(Pop(), "Dn2CppObject*");
+                    flags = Cast(Pop(), "int32_t");
+                }
+                if (sig.ParameterTypes.Length >= 2)
+                    ignoreCase = Cast(Pop(), "int32_t");
+                var n = Pop();
+                var asm = Pop();
+                Push(StackKind.Ref, "Dn2CppObject*",
+                    $"dn2cpp_assembly_create_instance({Cast(asm, "const char*")}, {Cast(n, "Dn2CppString*")}, {ignoreCase}, {flags}, {binder}, {args}, {attrs})");
+                return true;
+            }
             // Assembly.IsDynamic: true only for Reflection.Emit-built assemblies,
             // which the dynamic-codegen cut guarantees never exist here.
             case ("System.Reflection.Assembly", "get_IsDynamic"):
