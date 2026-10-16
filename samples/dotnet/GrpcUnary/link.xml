@@ -1,0 +1,11 @@
+<linker>
+  <assembly fullname="Google.Protobuf">
+    <!-- Descriptor accessors look these members up by names they compute from the
+         descriptor: "Has" or "Clear" plus a field name, oneof name plus "Case". -->
+    <type fullname="Google.Protobuf.WellKnownTypes.Value" preserve="nothing">
+      <method name="Clear*" />
+      <property name="Has*" />
+      <property name="KindCase" />
+    </type>
+  </assembly>
+</linker>

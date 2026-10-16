@@ -38,13 +38,14 @@ gate_extra_asserts() {
             || { echo "FAIL: the emitted tree lacks $symbol" >&2; return 1; }
     done < "$markers"
     local measure="$out-measure"
-    invoke_cli "$_CG_APP" -r "$_CG_CORELIB" -r "$redox" --auto-ref \
+    invoke_cli "$_CG_APP" -r "$_CG_CORELIB" -r "$redox" --auto-ref --link-xml "$descriptor" \
         --measure -o "$measure" > "$measure.log" 2>&1
     [ -f "$measure/s0-gaps.tsv" ] && [ ! -s "$measure/s0-gaps.tsv" ] \
         || { echo "FAIL: RE:Dox must emit an empty gap report: $measure/s0-gaps.tsv" >&2; return 1; }
 }
 
 _CG_CORELIB_IN=$(resolve_net10_corelib)
-DN2CPP_GATE_EXTRA_INPUTS="$pin $markers"
+descriptor="samples/dotnet/$project/link.xml"
+DN2CPP_GATE_EXTRA_INPUTS="$pin $markers $descriptor"
 DN2CPP_GATE_EXTRA_CONTEXT="redox|cli:$(_gate_cli_hash)"
-corelib_diff_split_gate "$project" -r "$redox" --auto-ref
+corelib_diff_split_gate "$project" -r "$redox" --auto-ref --link-xml "$descriptor"

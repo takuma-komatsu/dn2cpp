@@ -3,8 +3,8 @@ using System.Globalization;
 
 // SUBJECT: a reflected abstract slot can first name a closed generic class after
 // the attribute walk, without reaching another body or allocating another owner.
-// Its attributes still need their constructors. This driver never opens the
-// reflection-ctor route, which would reach those constructors independently.
+// Its attributes still need their constructors. This driver constructs nothing
+// through reflection, which would admit those constructors independently.
 namespace ReflectAttributeDiscoveryOnly;
 
 [AttributeUsage(AttributeTargets.Class)]

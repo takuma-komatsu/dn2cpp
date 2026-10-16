@@ -5,13 +5,14 @@ using System.Reflection;
 // SUBJECT: reflection members a program names only as method groups. Nothing here
 // calls Activator.CreateInstance, a ConstructorInfo, MethodInfo.Invoke,
 // PropertyInfo.GetValue/SetValue, CreateDelegate, MakeGenericType or
-// GetCustomAttributes; each is bound to a delegate and run through it, so the
-// binding must open the route a call opens, with ILDiet on or off: the constructors
-// of types only a type token names, and the bodies a reflected member runs. Every
-// reflected method is a virtual member of a constructed type, which ILDiet keeps
-// without a call.
+// GetCustomAttributes; each is bound to a delegate and run through it. The
+// transpile cannot tell what a call through such a delegate selects, so it reports
+// every site, and keep-method-groups.xml preserves the targets; with ILDiet on or
+// off, the delegates then run them as a direct call would.
 // CreateDelegate, MakeGenericType and GetCustomAttributes are virtual, so their
-// groups bind through a reflection object the runtime owns.
+// groups bind through a reflection object the runtime owns. A preserved static method
+// of a type with a static constructor sees that initializer's effect, as .NET runs it
+// before the method.
 namespace ReflectGroupOnly;
 
 sealed class Made
@@ -55,6 +56,18 @@ sealed class TagAttribute : Attribute
 [Tag]
 sealed class Tagged
 {
+}
+
+static class Registry
+{
+    public static int Count;
+}
+
+static class Plugin
+{
+    static Plugin() => Registry.Count++;
+
+    public static string Start() => "start:" + Registry.Count;
 }
 
 static class Program
@@ -109,6 +122,11 @@ static class Program
         {
             Func<bool, object[]> attributes = typeof(Tagged).GetCustomAttributes;
             return attributes(false)[0].GetType().Name;
+        });
+        Run("preserved initializer", () =>
+        {
+            Func<object?, object?[]?, object?> invoke = typeof(Plugin).GetMethod(nameof(Plugin.Start))!.Invoke;
+            return (string)invoke(null, null)!;
         });
     }
 

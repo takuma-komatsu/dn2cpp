@@ -1,0 +1,33 @@
+<linker>
+  <assembly fullname="OrdinaryReflectionTypeLeaves">
+    <!-- Program.Run constructs the Type an attribute's named property carries. -->
+    <type fullname="AttributeTypePropertySubset.LinkTarget">
+      <method name=".ctor" />
+    </type>
+    <!-- ChainedTypes.Next reads the attributes of the Type it receives. -->
+    <type fullname="AttributeTypePropertySubset.ChainAttribute">
+      <method name=".ctor" />
+    </type>
+    <!-- Dump reads the attributes of the holder Type it receives. -->
+    <type fullname="ReflectAttrBoxedSubset.BoxedAttribute">
+      <method name=".ctor" />
+    </type>
+    <type fullname="ReflectAttrBoxedSubset.ListAttribute">
+      <method name=".ctor" />
+    </type>
+    <type fullname="ReflectAttrBoxedSubset.ParamsAttribute">
+      <method name=".ctor" />
+    </type>
+    <type fullname="ReflectAttrBoxedSubset.TonesAttribute">
+      <method name=".ctor" />
+    </type>
+    <type fullname="ReflectAttrBoxedSubset.TypedAttribute">
+      <method name=".ctor" />
+      <method name="set_Mode" />
+    </type>
+    <!-- RunSurrogateDisplays reads the attributes of holders taken from an array. -->
+    <type fullname="ReflectAttrBoxedSubset.CharDisplayAttribute">
+      <method name=".ctor" />
+    </type>
+  </assembly>
+</linker>

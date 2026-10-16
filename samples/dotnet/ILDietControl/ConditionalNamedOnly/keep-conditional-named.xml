@@ -1,0 +1,10 @@
+<linker>
+  <!-- Each type is used only through a constant type name, which activates the
+       conditional rule: every member survives, bodies included. -->
+  <assembly fullname="ConditionalNamedOnly">
+    <type fullname="ILDietConditionalNamedOnly.NamedApplication" required="false" />
+  </assembly>
+  <assembly fullname="ILDietControlLib">
+    <type fullname="ILDietControlLib.ConditionalNamedTarget" required="false" />
+  </assembly>
+</linker>

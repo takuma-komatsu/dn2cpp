@@ -199,3 +199,8 @@ public static class ConstructorFieldBodyOnlyDependency
 {
     public static int Read() => -1;
 }
+
+public enum ArrayBindingFlags
+{
+    Default,
+}

@@ -50,7 +50,8 @@
 #   * The descriptor-reflection section, client-local: message ToString()/
 #     JsonFormatter and descriptor-driven field access (accessor GetValue/SetValue/
 #     Clear, oneof case + Clear) over an app-module message AND a library one
-#     (WellKnownTypes.Value, whose Clear*/Has* members only reflection reaches),
+#     (WellKnownTypes.Value, whose Clear*/Has* members only reflection reaches by
+#     computed names, so samples/dotnet/GrpcUnary/link.xml preserves them),
 #     byte-diffed like everything else — AND the client's startup stderr must be
 #     EMPTY. The wire path never consults the accessors, so a descriptor-.cctor
 #     failure leaves every RPC diffing green while printing failure lines there;
@@ -113,11 +114,13 @@ while read -r want name; do
 done < "$GRPC_SHA_EXPECTED"
 echo "OK: ${#grpc_refs[@]} pinned assemblies verified against $GRPC_SHA_EXPECTED"
 refs=(-r "$corelib" -r "$nethttp" -r "$dnhttp" "${grpc_refs[@]}")
+preservation=samples/dotnet/GrpcUnary/link.xml
 
 echo "== 3/6 Measure: the whole Grpc.Net.Client closure, zero gaps, socket subtree cut =="
 mout="artifacts/grpcunary-measure"
 rm -rf "$mout"; mkdir -p "$mout"
-invoke_cli "$app" "${refs[@]}" --auto-ref --measure -o "$mout" | tee "$mout/measure.log"
+invoke_cli "$app" "${refs[@]}" --auto-ref --link-xml "$preservation" --measure -o "$mout" \
+    | tee "$mout/measure.log"
 gaps="$mout/s0-gaps.tsv"
 [ -f "$gaps" ] || { echo "FAIL: --measure produced no gap report ($gaps)" >&2; exit 1; }
 gapcount="$(grep -c . "$gaps" || true)"
@@ -142,7 +145,7 @@ echo "OK: the gRPC closure measures at zero gaps with the socket subtree cut"
 echo "== 4/6 Transpiling + building GrpcUnary for real =="
 out="artifacts/grpcunary-native"
 rm -rf "$out"; mkdir -p "$out"
-invoke_cli "$app" "${refs[@]}" --auto-ref -o "$out"
+invoke_cli "$app" "${refs[@]}" --auto-ref --link-xml "$preservation" -o "$out"
 # One cached arm over the compile+link and the live round trip, like
 # build-and-run-http2-unary.sh's: the transpile above always runs (it is the surface
 # the key hashes); the pinned NuGet assemblies are cache keys alongside the app and
@@ -150,7 +153,7 @@ invoke_cli "$app" "${refs[@]}" --auto-ref -o "$out"
 hit=0
 if gate_cache_check "$out" "grpc-unary|$corelib" \
         "$app" "$dnhttp" "$appbin/Grpc.Net.Client.dll" "$appbin/Google.Protobuf.dll" \
-        "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json"; then
+        "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json" "$preservation"; then
     gate_cache_hit_msg
     hit=1
 fi

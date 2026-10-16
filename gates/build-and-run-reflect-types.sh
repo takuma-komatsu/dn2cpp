@@ -5,6 +5,7 @@
 # Single-attribute queries construct every match before ambiguity or a later constructor fault.
 # Runtime exception Object-family lookups retain declaring types and callable handles.
 # Nested generic type names agree through typeof, GetType and delegate declaring types.
+# Array Object.GetType keeps its allocation element type across contents and escapes.
 # A template body that calls through a function pointer over its type parameter never
 # returns a wrong result: its .NET-diffed lines print alike for a refusal and a correct
 # result, and its native-only outcome run pins that the clone refuses every such call
@@ -15,6 +16,18 @@
 # Template-built delegates and GetMethod share the closed member's identity.
 # Reflected array templates allocate the runtime argument's array through a closed delegate.
 # Template function pointers with a fixed signature run through Invoke and a closed delegate.
+# Template rows naming reordered, partial or mixed placeholder classes run or refuse catchably.
+# Signature-only template rows retain no override bodies; constructed clones still dispatch.
+# An abstract template level's row dispatches to the clone's override or refuses its argument.
+# A body reflecting through its type parameter, a generic method, and the member and
+# field listings of a MakeGenericType'd clone admit what .NET runs.
+# A clone over a known argument serves as another MakeGenericType's or MakeGenericMethod's
+# argument, and a CoreLib method instance formed only for its metadata keeps its row
+# beside its listed definition.
+# Unknown MakeGenericType/MakeGenericMethod arguments, a clone over unknown arguments
+# included, warn as ClosedGeneric unless a runtime template serves the definition;
+# unnamed instantiations then refuse catchably.
+# Static instantiation requires proved constraints, including template body and generic-method owner fallbacks.
 # Consolidated reflection-introspection gate. Merges the former per-feature
 # reflect-* subset gates (one tiny sample each) into a single multi-section
 # program, transpiled once against the tree-shaken real CoreLib. Each section
@@ -109,8 +122,10 @@
 #
 # Expected is a frozen snapshot (gates/expected/reflect-types.txt) rather than a
 # live `dotnet $app` diff, because a few sections intentionally diverge from
-# real .NET: Type.MakeGenericType/MakeArrayType over an instantiation not
-# statically reached throw NotSupportedException (the AOT boundary), the
+# real .NET: Type.MakeGenericType over a definition that no compiled
+# instantiation, runtime template or static instantiation of known arguments
+# serves, and MakeArrayType over an array type not statically reached, throw
+# NotSupportedException (the AOT boundary), the
 # MakeArrayType(rank) overload always throws it (MD array types — including
 # the rank-1 T[*] — are not modeled),
 # CustomAttributeData's argument views throw PlatformNotSupportedException,
@@ -132,47 +147,26 @@
 # InvalidOperationException (real .NET: ArgumentException). The parity paths
 # live in the reflect-invoke live diff.
 #
-# The generic-method section (ReflectGenericMethodSubset) freezes the AOT
-# boundary: MakeGenericMethod over a never-reached instantiation throws the
-# catchable PlatformNotSupportedException where real .NET JITs it. Definition
-# lookups and formal-parameter identities follow CLR; their live parity paths
-# are covered by build-and-run-reflect-invoke.sh.
+# The generic-method section (ReflectGenericMethodSubset) matches real .NET:
+# MakeGenericMethod over known arguments instantiates the method, one no other
+# body reaches included. Definition lookups and formal-parameter identities follow
+# CLR; their live parity paths are covered by build-and-run-reflect-invoke.sh.
 #
-# The MakeGenericType-seed section (ReflectMakeGenericSeedSubset) covers the
-# canonical-wrapper seed (Compilation.CollectionInterfaceWrapperDefs): a member
-# declared at an abstract BCL collection interface makes the interface's
-# canonical materialization (List<T>, ReadOnlyCollection<T>, HashSet<T>,
-# Dictionary<K,V>, ReadOnlyDictionary<K,V>) MakeGenericType-resolvable and
-# ctor-invokable — the Newtonsoft deserialization shape that blocked Thrive's
-# AchievementsManager.PerformLoad. Its positive lines match real .NET; the one
-# frozen divergence is the unseeded ReadOnlyCollection<double>, where real .NET
-# constructs the type and dn2cpp throws the catchable NotSupportedException
-# whose message names the missing instantiation (the AOT boundary).
-#
-# The serializer-wrapper-seed section (ReflectSerializerWrapperSeedSubset)
-# covers its sibling (Compilation.CollectSerializerWrapperSeeds): a collection
-# shape on the reflection-ctor route's named surface — creator ARGUMENTS
-# included, which List<NoteLine> asserts by being named only as a ctor
-# parameter — makes the serializer's OWN adapters (Newtonsoft.Json.Utilities.
-# CollectionWrapper<T> / DictionaryWrapper<K,V>, resolved by (ns, name) against
-# the loaded modules; the section hosts stand-ins with the real shapes)
-# MakeGenericType-resolvable and ctor-invokable — the JsonArrayContract.
-# CreateWrapper shape that blocked Thrive's boot at SimulationParameters.
-# LoadRegistry (VersionPatchNotes) and Tutorial.AlreadySeenTutorials.Load.
-# Its one frozen divergence is the unseeded CollectionWrapper<Unlisted>, the
-# same AOT boundary as above.
-#
-# The array temporary-list transcription (ArrayAssignabilitySubset's Biome
-# flow) covers the SZArray seed (Compilation.CollectArrayTemporaryListSeed): an
-# ARRAY member's deserialization builds the items into a
-# typeof(List<>).MakeGenericType(elem) temporary (Newtonsoft's
-# JsonArrayContract.CreateTemporaryCollection -> GetConstructors() ->
-# parameterless ConstructorInfo.Invoke) before Array.CreateInstance + CopyTo —
-# and the program names NO static List<Biome> anywhere, the exact Thrive blind
-# spot (SimulationParameters.LoadRegistry, "Unable to find default constructor
-# for ... List_MusicContext"): the earlier MusicContext flow statically
-# constructs its List ("eseed"), which is why it kept passing while Thrive
-# died. All its lines match real .NET.
+# The MakeGenericType sections (ReflectMakeGenericSeedSubset,
+# ReflectSerializerWrapperSeedSubset, ArrayAssignabilitySubset's Biome flow)
+# replay the Newtonsoft deserialization shapes that blocked Thrive: collection
+# materializations (List<T>, ReadOnlyCollection<T>, HashSet<T>, Dictionary<K,V>,
+# ReadOnlyDictionary<K,V>), the serializer's own CollectionWrapper<T> /
+# DictionaryWrapper<K,V> adapters (stand-ins with the real shapes), and an ARRAY
+# member's List<elem> temporary (JsonArrayContract.CreateTemporaryCollection ->
+# GetConstructors() -> parameterless ConstructorInfo.Invoke) for an element the
+# program names in no static List. Each MakeGenericType receives its arguments
+# through recognized reflection (PropertyType, ParameterType, GetElementType,
+# GetGenericArguments, typeof), and a recognized site takes an instantiation the
+# image already has, else the definition's runtime template, else a static
+# instantiation when the known arguments meet the constraints; a site none of
+# those serves is reported as a ClosedGeneric diagnostic. Every line of the three
+# sections matches real .NET.
 #
 # The framework-attribute section (ReflectFrameworkAttrSubset) covers the
 # typeof-named keep rule for FRAMEWORK-declared attributes on app elements
@@ -291,16 +285,13 @@
 # depended on the PROGRAM too (one the emit set carries gets its row from the emitted-class
 # loop), which is why the seed is derived. Every line matches real .NET.
 #
-# ReflectRuntimeInstantiationSubset's gvm-placeholder-helper line freezes a
-# template the verdict rejects: its generic virtual override instantiates a
-# generic method over the definition's own type parameter, which a clone would
-# need minted per argument, so the mint throws the catchable
-# NotSupportedException where real .NET constructs.
-#
 # ReflectIntrinsicTemplateSubset freezes the intrinsic-open-definition negative:
 # typeof(BlockingCollection<>) + MakeGenericType roots no runtime template
-# (intrinsic levels are shape-ineligible), so the transpile completes and the
-# mint throws the catchable NotSupportedException where real .NET constructs.
+# (intrinsic levels are shape-ineligible), so the transpile completes, the site
+# warns as ClosedGeneric, and the mint throws the catchable NotSupportedException
+# where real .NET constructs. Every BlockingCollection<T> is one runtime type, so an
+# instantiation the program constructs does not resolve either: both sites' fix and
+# the refusal construct the closed type directly.
 #
 # ReflectAttrNullTypeSubset verifies that a null Type attribute argument survives
 # decoding in a positional value, a Type[] element, and a named value.
@@ -313,13 +304,22 @@ DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|before-nested-generic-
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/NestedGenericTypeNameSubset.cs samples/dotnet/ReflectTypes/GenericDefinitionSymbolNeighbors.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-type-leaves-v1|before-attribute-display-code-units|exception-object-prefix-argv:before-exception-object-members|assembly-name-prefix-argv:before-assembly-name-validation|attribute-construction-prefix-argv:before-attribute-construction-order"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/AttributeConstructionOrderSubset.cs"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/keep-ordinary-type-leaves.xml samples/dotnet/ReflectTypes/keep-template-signatures.xml"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/ClosedGenericDiagnosticsOnly.csproj samples/dotnet/ReflectTypes/ClosedGenericDiagnosticsUnshared.csproj samples/dotnet/ReflectTypes/ClosedGenericDiagnosticsOnlyProgram.cs gates/expected/reflect-types-closed-generic.txt gates/expected/reflect-types-closed-generic-unshared.txt"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/ReflectionTemplateDispatch.csproj samples/dotnet/ReflectTypes/ReflectionTemplateDispatchProgram.cs samples/dotnet/ReflectTypes/ReflectRuntimeInstantiationSubset.cs"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/TemplateSignatureAllocationOnly.csproj samples/dotnet/ReflectTypes/TemplateSignatureAllocationProgram.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|invoke-diagnostics-prefix-argv:before-invoke-diagnostics|invoke-diagnostics-argv:invoke-diagnostics"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|reflected-delegates-prefix-argv:before-reflected-delegates"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|reflected-arrays-prefix-argv:before-reflected-arrays"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|fixed-function-pointers-prefix-argv:before-fixed-function-pointers"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|template-delegate-method-identity-prefix-argv:before-template-delegate-method-identity"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|template-signature-placeholders-prefix-argv:before-template-signature-placeholders"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|template-signature-placeholder-outcomes-argv:template-signature-placeholder-outcomes"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|template-consumers-prefix-argv:before-template-consumers"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|template-arguments-prefix-argv:before-template-arguments"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|template-signature-allocation-prefix-argv:before-template-signature-allocation|uninitialized-template-outcomes"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|string-clone-copies-native-argv:string-clone-copies"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|template-constraint-fallbacks-prefix-argv:before-template-constraint-fallbacks"
 
 EXPFILE="$(dirname "$0")/expected/reflect-types.txt"
 BCL=(System.Linq.Expressions System.Linq System.Collections \
@@ -334,8 +334,17 @@ gate_string_clone_prefix_asserts() {
     prefix=$(awk '/^== safe string memberwise copies ==$/ { exit } { print }' "$EXPFILE")
     assert_output "$(strip_cr_win "$before")" "$prefix"
 }
+gate_intrinsic_template_row_asserts() {
+    local row=$'\tSystem.Type.MakeGenericType(Type[])\tSystem.Collections.Concurrent.BlockingCollection`1 is modeled by the runtime as one type for every instantiation, so MakeGenericType cannot form it\tconstruct the closed type directly instead of through MakeGenericType'
+    grep -Fxq -- $'ClosedGeneric\tReflectTypes\tReflectIntrinsicTemplateSubset.Program::Run()\tIL_003e'"$row" \
+        "$1/reflection-unrecognized.tsv" \
+        && [ "$(grep -Fc -- "$row" "$1/reflection-unrecognized.tsv")" = 2 ] \
+        && [ "$(awk -F'\t' '$3 == "ReflectIntrinsicTemplateSubset.Program::Run()"' "$1/reflection-unrecognized.tsv" | wc -l | tr -d ' ')" = 2 ] \
+        || { echo "FAIL: the unnamed and the constructed runtime-modeled MakeGenericType sites do not both report" >&2; return 1; }
+}
 gate_extra_asserts() {
     gate_string_clone_prefix_asserts "$1"
+    gate_intrinsic_template_row_asserts "$1"
 }
 DN2CPP_GATE_RUN_ARGS=string-clone-copies \
     corelib_freeze_gate ReflectTypes "$EXPFILE" "${BCL[@]}" --no-ildiet
@@ -757,15 +766,42 @@ gate_extra_asserts() {
                 || { echo "FAIL: constructor-free IsDefined witness missing: $line" >&2; return 1; }
         done
     done
+    before=$(run_bounded dotnet "$_CG_APP" before-array-object-types) || return $?
+    prefix=$(awk '/^== allocated array object types ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    before=$(run_bounded "$out/OrdinaryReflectionTypeLeaves$EXE_EXT" before-array-object-types) || return $?
+    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    for line in '== allocated array object types ==' 'empty array element=empty target' \
+        'filled array identity=True:True' 'filled array element=declared element' \
+        'escaped array element=escaped target' 'allocated array object types end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: allocated array type witness missing: $line" >&2; return 1; }
+    done
+    for subject in EmptyArrayElement FilledArrayElement EscapedArrayElement; do
+        grep -Fwxq -- "// $subject::Run" "$out"/generated*.cpp "$out/generated.h" \
+            || { echo "FAIL: selected array element body absent: $subject.Run" >&2; return 1; }
+        if grep -Fwxq -- "// $subject::Unselected" "$out"/generated*.cpp "$out/generated.h"; then
+            echo "FAIL: unrelated array element body retained: $subject.Unselected" >&2
+            return 1
+        fi
+    done
+    if grep -Fwxq -- '// ArrayContentsElement::Run' "$out"/generated*.cpp "$out/generated.h"; then
+        echo 'FAIL: array contents changed the selected element type' >&2
+        return 1
+    fi
 }
+# Helpers that read a Type parameter's attributes or construct a Type an attribute
+# carries are preserved explicitly; their callers' typeof arguments select nothing.
+ORDINARY_TYPE_LEAVES_KEEP=(--link-xml samples/dotnet/ReflectTypes/keep-ordinary-type-leaves.xml)
 DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectTypes OrdinaryReflectionTypeLeaves \
-    System.Collections System.ComponentModel.Primitives --no-ildiet
+    System.Collections System.ComponentModel.Primitives --no-ildiet "${ORDINARY_TYPE_LEAVES_KEEP[@]}"
 DN2CPP_OUT_SUFFIX=-diet DN2CPP_STRICT_COMPLETION=1 \
     ordinary_fixture_diff_gate ReflectTypes OrdinaryReflectionTypeLeaves \
-    System.Collections System.ComponentModel.Primitives
+    System.Collections System.ComponentModel.Primitives "${ORDINARY_TYPE_LEAVES_KEEP[@]}"
 DN2CPP_OUT_SUFFIX=-native DN2CPP_STRICT_COMPLETION=1 \
     ordinary_fixture_diff_gate ReflectTypes OrdinaryReflectionTypeLeaves \
-    System.Collections System.ComponentModel.Primitives --no-ildiet --no-metadata-compression
+    System.Collections System.ComponentModel.Primitives --no-ildiet --no-metadata-compression \
+    "${ORDINARY_TYPE_LEAVES_KEEP[@]}"
 # With no attribute read, the closed owner's retained row must reach the deepest
 # Type argument. Interning may share that row with its generic definition.
 gate_extra_asserts() {
@@ -814,6 +850,53 @@ gate_extra_asserts() {
     assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
     before=$(run_bounded dotnet "$_CG_APP" before-template-delegate-method-identity) || return $?
     assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    prefix=$(awk '/^== template signature placeholders ==$/ { exit } { print }' <<< "$native")
+    before=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-template-signature-placeholders) || return $?
+    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    before=$(run_bounded dotnet "$_CG_APP" before-template-signature-placeholders) || return $?
+    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    prefix=$(awk '/^== template reflection consumers ==$/ { exit } { print }' <<< "$native")
+    before=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-template-consumers) || return $?
+    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    before=$(run_bounded dotnet "$_CG_APP" before-template-consumers) || return $?
+    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    # Reflection a template's body, generic method, member listing, field listing or
+    # interface found by name runs is admitted for an argument the program names in no
+    # instantiation.
+    for line in '== template reflection consumers ==' 'factory made=product' \
+        'generic method=pair:Int32,String' 'members describe=listed:Int64' 'fields Stamp=stamp:7' \
+        'constrained object=refused' 'interface named=named:Int16' 'template reflection consumers end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: template reflection consumer witness missing: $line" >&2; return 1; }
+    done
+    prefix=$(awk '/^== template generic arguments ==$/ { exit } { print }' <<< "$native")
+    before=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-template-arguments) || return $?
+    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    before=$(run_bounded dotnet "$_CG_APP" before-template-arguments) || return $?
+    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    # A clone over a known argument closes another type or method over its exact
+    # instantiation, and a CoreLib instance formed for its metadata answers from its row.
+    for line in '== template generic arguments ==' \
+        'outer ReflectRuntimeInstantiationSubset.ArgumentOuter`1[ReflectRuntimeInstantiationSubset.ArgumentInner`1[System.Int32]] field=True value=inner:Int32' \
+        'plain plain:ArgumentInner`1 argument=True' \
+        'method name:ReflectRuntimeInstantiationSubset.ArgumentInner`1[System.Int32]' \
+        'spoken say:Int64 holder=True' 'library definition=Create:True' \
+        'library closed=Create:String:True' 'template generic arguments end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: template generic argument witness missing: $line" >&2; return 1; }
+    done
+    prefix=$(awk '/^== template signature allocation ==$/ { exit } { print }' <<< "$native")
+    before=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-template-signature-allocation) || return $?
+    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    before=$(run_bounded dotnet "$_CG_APP" before-template-signature-allocation) || return $?
+    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    for line in '== template signature allocation ==' 'ordinary dispatch=base' \
+        'metadata rows=3' 'signature row=Payload' \
+        'constructed dispatch=constructed:String' 'static call=static:String' \
+        'template signature allocation end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: template signature allocation witness missing: $line" >&2; return 1; }
+    done
     for line in '== reflection template dispatch ==' 'reflection template dispatch end' \
         '== template members ==' \
         'members Int32 get identity: True/True/True/True/True/True' \
@@ -830,7 +913,15 @@ gate_extra_asserts() {
         'fixedfn Int32 row=True' 'fixedfn Int64 row=True' 'fixedfn String row=True' \
         '== template delegate method identity ==' 'template delegate method identity end' \
         'method identity Int32 rows=True' 'method identity Int64 rows=True' \
-        'method identity String rows=True' 'method identity Pair rows=True'; do
+        'method identity String rows=True' 'method identity Pair rows=True' \
+        '== template signature placeholders ==' 'template signature placeholders end' \
+        'sigplace Int32,String Fixed parameter=Dn2Cpp.SignatureSlot`1[System.Int64]' \
+        'sigplace Guid,Boolean Fixed parameter=Dn2Cpp.SignatureSlot`1[System.Int64]' \
+        'sigabstract Int32,String Pair safe=True' 'sigabstract Guid,Boolean Pair safe=True' \
+        'sigabstract Int32,String Plain result:plain:String' 'sigabstract Guid,Boolean Plain result:plain:Boolean' \
+        'sigabstract Int32,String Mixed safe=True' 'sigabstract Guid,Boolean Mixed safe=True' \
+        'sigremedy Int32 Kept result:kept:Int32' 'sigremedy Guid Kept result:kept:Guid' \
+        'sigremedy Int32 Bare safe=True' 'sigremedy Guid Bare safe=True'; do
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: template dispatch witness missing: $line" >&2; return 1; }
     done
@@ -890,6 +981,41 @@ gate_extra_asserts() {
         grep -Fxq -- "$line" <<< "$tail" \
             || { echo "FAIL: fixed function pointer outcome witness missing: $line" >&2; return 1; }
     done
+    # A row whose signature names a placeholder-bearing class no clone respells
+    # refuses; a row over closed arguments runs.
+    native=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" template-signature-placeholder-outcomes) || return $?
+    native=$(strip_cr_win "$native")
+    for line in 'sigplace Int32,String Fixed result:fixed:Int32' 'sigplace Guid,Boolean Fixed result:fixed:Guid'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: template signature placeholder result missing: $line" >&2; return 1; }
+    done
+    for name in 'Int32,String' 'Guid,Boolean'; do
+        for row in Swapped Second Mixed; do
+            grep -Eq "^sigplace $name $row PlatformNotSupportedException\\|80131539\\|.*: this closed generic instantiation has no compiled code; fix: " <<< "$native" \
+                || { echo "FAIL: $name $row placeholder signature row did not refuse" >&2; return 1; }
+        done
+        # The base row of a placeholder-bearing signature refuses as itself, before any
+        # thunk reads the argument, not through the clone's override slot.
+        grep -Fq -- "sigabstract $name Mixed PlatformNotSupportedException|80131539|Dn2Cpp.SignatureAbstract\`2[System.${name/,/,System.}]::System.String Mixed(" <<< "$native" \
+            && grep -Eq "^sigabstract $name Mixed .*: this closed generic instantiation has no compiled code; fix: name the closed generic instantiation statically\$" <<< "$native" \
+            || { echo "FAIL: $name abstract Mixed base row did not refuse" >&2; return 1; }
+    done
+    # A clone's unretained override refuses with the remedy that retains it: Kept, whose
+    # printed preserve rule keep-template-signatures.xml applies, runs; Bare, which no
+    # clone can run, names the closed instantiation.
+    for name in Int32 Guid; do
+        for line in "sigremedy $name Kept result:kept:$name" \
+            "sigremedy $name Bare PlatformNotSupportedException|80131539|Dn2Cpp.RemedyImpl\`1[System.$name]::Bare in ReflectionTemplateDispatch: this closed generic instantiation has no compiled code; fix: name the closed generic instantiation statically"; do
+            grep -Fxq -- "$line" <<< "$native" \
+                || { echo "FAIL: template override remedy outcome missing: $line" >&2; return 1; }
+        done
+    done
+    # An abstract level a deriving template clones serves MakeGenericType, so it reports
+    # no ClosedGeneric row.
+    if grep -E 'SignatureAbstract`2|RemedyBase`1' "$out/reflection-unrecognized.tsv"; then
+        echo "FAIL: a definition a template level serves reports ClosedGeneric" >&2
+        return 1
+    fi
     native=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" invoke-diagnostics) || return $?
     native=$(strip_cr_win "$native")
     for name in Int32 Int64 String; do
@@ -909,7 +1035,163 @@ gate_extra_asserts() {
             || { echo "FAIL: invocation diagnosis block missing: $line" >&2; return 1; }
     done
 }
-DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectTypes ReflectionTemplateDispatch --no-ildiet
+TEMPLATE_SIGNATURES_KEEP=(--link-xml samples/dotnet/ReflectTypes/keep-template-signatures.xml)
+DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectTypes ReflectionTemplateDispatch --no-ildiet \
+    "${TEMPLATE_SIGNATURES_KEEP[@]}"
 DN2CPP_OUT_SUFFIX=-native DN2CPP_STRICT_COMPLETION=1 \
-    ordinary_fixture_diff_gate ReflectTypes ReflectionTemplateDispatch --no-ildiet --no-metadata-compression
+    ordinary_fixture_diff_gate ReflectTypes ReflectionTemplateDispatch --no-ildiet --no-metadata-compression \
+    "${TEMPLATE_SIGNATURES_KEEP[@]}"
 unset -f gate_extra_asserts
+
+# An isolated owner supplies the used base slot, a signature-only derived template,
+# a constructed derived template, and a template entered only through a static row.
+gate_extra_asserts() {
+    local out="$1" native line symbol
+    native=$(run_bounded "$out/TemplateSignatureAllocationOnly$EXE_EXT") || return $?
+    for line in '== template signature allocation ==' 'ordinary dispatch=base' \
+        'metadata rows=3' 'signature row=Payload' \
+        'constructed dispatch=constructed:String' 'static call=static:String' \
+        'template signature allocation end'; do
+        grep -Fxq -- "$line" <<< "$(strip_cr_win "$native")" \
+            || { echo "FAIL: isolated template allocation witness missing: $line" >&2; return 1; }
+    done
+    for symbol in 'Dn2Cpp.SignatureAllocationBase::Describe' \
+        'Dn2Cpp.SignatureConstructedPayload_$CnAny0::Describe' \
+        'Dn2Cpp.SignatureStaticOwner_$CnAny0::Call'; do
+        grep -Fwq -- "// $symbol" "$out"/generated*.cpp "$out/generated.h" \
+            || { echo "FAIL: allocated template body control missing: $symbol" >&2; return 1; }
+    done
+    for symbol in 'Dn2Cpp.SignatureOnlyPayload_$CnAny0::Describe' \
+        'Dn2Cpp.SignatureMetadataOwner_$CnAny0::Describe' \
+        'Dn2Cpp.SignatureStaticOwner_$CnAny0::Describe' \
+        'Dn2Cpp.SignatureOnlyDependency::Marker'; do
+        if grep -Fwq -- "// $symbol" "$out"/generated*.cpp "$out/generated.h"; then
+            echo "FAIL: metadata-only template retained an unused body: $symbol" >&2
+            return 1
+        fi
+    done
+    native=$(run_bounded "$out/TemplateSignatureAllocationOnly$EXE_EXT" uninitialized-template-outcomes) || return $?
+    for line in '== uninitialized template outcomes ==' \
+        'static-only blank=PlatformNotSupportedException' 'static-only remedy=True:True:True' \
+        'constructed blank=constructed:String' 'uninitialized template outcomes end'; do
+        grep -Fxq -- "$line" <<< "$(strip_cr_win "$native")" \
+            || { echo "FAIL: unknown template allocation outcome missing: $line" >&2; return 1; }
+    done
+}
+DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectTypes TemplateSignatureAllocationOnly --no-ildiet
+DN2CPP_OUT_SUFFIX=-diet DN2CPP_STRICT_COMPLETION=1 \
+    ordinary_fixture_diff_gate ReflectTypes TemplateSignatureAllocationOnly
+DN2CPP_OUT_SUFFIX=-native DN2CPP_STRICT_COMPLETION=1 \
+    ordinary_fixture_diff_gate ReflectTypes TemplateSignatureAllocationOnly --no-ildiet --no-metadata-compression
+unset -f gate_extra_asserts
+
+# ClosedGeneric diagnostics: a MakeGenericType or MakeGenericMethod site over type
+# arguments the summary cannot know warns with its fix and writes its report row
+# unless a runtime-instantiation template serves the definition, and its frozen run
+# refuses each instantiation that nothing names and no template clones. A site whose
+# definition or generic method is a parameter warns whatever serves it, and an
+# unknown-argument selection over a self-nesting definition ends; that block matches
+# .NET. An abstract definition a deriving template clones as its base is served,
+# and a reflection site in a body only a template's clones run reports with its fix.
+closed_generic_asserts() {
+    local out="$1" project="$2" report="$1-report" native oracle line kind assembly method offset api reason fix type prefix before
+    native=$(run_bounded "$out/$project$EXE_EXT") || return $?
+    native=$(strip_cr_win "$native")
+    for line in '== closed generic diagnostics ==' 'closed generic diagnostics end' \
+        '== closed generic receivers ==' 'self-nesting named: nest:True' 'closed generic receivers end' \
+        '== closed generic templates ==' 'closed generic templates end' \
+        '== static generic constraint proof ==' 'static generic constraint proof end' \
+        '== template fallback constraint proof ==' 'template fallback constraint proof end'; do
+        [ "$(grep -Fxc -- "$line" <<< "$native")" = 1 ] \
+            || { echo "FAIL: closed generic diagnostics block must run once: $line" >&2; return 1; }
+    done
+    oracle=$(run_bounded dotnet "$_CG_APP") || return $?
+    oracle=$(strip_cr_win "$oracle")
+    for line in 'constraint interface control: dispose:Disposable' 'constraint invariant control: tag:RightTag' \
+        'constraint template body control: List`1' 'constraint template method control: Int32'; do
+        grep -Fxq -- "$line" <<< "$native" && grep -Fxq -- "$line" <<< "$oracle" \
+            || { echo "FAIL: a valid constraint tuple was not instantiated: $line" >&2; return 1; }
+    done
+    for type in NeedsDispose_Int32Arr NeedsTag_ClosedGenericDiagnostics_WrongTag \
+        NeedsTemplateBodyTag_ClosedGenericDiagnostics_WrongTag NeedsTemplateMethodTag_ClosedGenericDiagnostics_WrongTag; do
+        if grep -Eqw "[[:alnum:]_]*ClosedGenericDiagnostics_${type}[[:alnum:]_]*" \
+            "$out"/generated.h "$out"/generated*.cpp; then
+            echo "FAIL: an unproved constraint tuple was instantiated: $type" >&2
+            return 1
+        fi
+    done
+    for type in NeedsDispose_ClosedGenericDiagnostics_Disposable NeedsTag_ClosedGenericDiagnostics_RightTag \
+        NeedsTemplateBodyTag_ClosedGenericDiagnostics_RightTag NeedsTemplateMethodTag_ClosedGenericDiagnostics_RightTag; do
+        grep -qw "ti_ClosedGenericDiagnostics_$type" "$out"/generated.h \
+            || { echo "FAIL: a proved constraint tuple was not instantiated: $type" >&2; return 1; }
+    done
+    for kind in array invariant "template body" "template method"; do
+        grep -q "^constraint $kind rejected: ArgumentException " <<< "$oracle" \
+            || { echo "FAIL: the CLR did not reject the invalid $kind constraint" >&2; return 1; }
+    done
+    before=$(run_bounded "$out/$project$EXE_EXT" before-template-constraint-fallbacks) || return $?
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== template fallback constraint proof ==$/ { exit } { print }' <<< "$native")
+    assert_output "$before" "$prefix" || return $?
+    diff -u <(printf '%s\n' "${closed_generic_rows[@]}") \
+        <(awk -F '\t' -v assembly="$project" '$2 == assembly' "$out/reflection-unrecognized.tsv") \
+        || { echo "FAIL: $project ClosedGeneric report rows changed" >&2; return 1; }
+    rm -rf "$report"
+    invoke_cli "$_CG_APP" -r "$_CG_CORELIB" "${closed_generic_flags[@]}" -o "$report" \
+        > /dev/null 2> "$report.stderr" || { cat "$report.stderr" >&2; return 1; }
+    cmp "$out/reflection-unrecognized.tsv" "$report/reflection-unrecognized.tsv" \
+        || { echo "FAIL: $project report differs between identical transpiles" >&2; return 1; }
+    while IFS=$'\t' read -r kind assembly method offset api reason fix; do
+        grep -Fxq -- "dn2cpp: warning: reflection target not recognized: $assembly $method $offset $api: $reason" \
+            "$report.stderr" && grep -Fxq -- "  fix: $fix" "$report.stderr" \
+            || { echo "FAIL: $project lacks the $kind warning for $method $offset" >&2; return 1; }
+    done < <(printf '%s\n' "${closed_generic_rows[@]}")
+}
+gate_extra_asserts() {
+    closed_generic_asserts "$1" ClosedGenericDiagnosticsOnly
+}
+closed_generic_flags=(--no-ildiet)
+closed_generic_rows=(
+    $'Execution\tClosedGenericDiagnosticsOnly\tClosedGenericDiagnostics.Factory`1::Make()\tIL_000a\tSystem.Activator.CreateInstance(Type)\tType comes from a shared generic instantiation, whose type arguments are known only at run time — no constructor retained\t[Preserve] on the target, or link.xml <assembly fullname="ASSEMBLY"><type fullname="TYPE"><method name=".ctor" /></type></assembly>'
+    $'ClosedGeneric\tClosedGenericDiagnosticsOnly\tClosedGenericDiagnostics.Program::InvalidArray()\tIL_001d\tSystem.Type.MakeGenericType(Type[])\tthe constraints of ClosedGenericDiagnostics.NeedsDispose`1 over these type arguments cannot be decided ahead of time, and it has no runtime-instantiation template; only instantiations the program names resolve\tname the closed generic instantiation statically'
+    $'ClosedGeneric\tClosedGenericDiagnosticsOnly\tClosedGenericDiagnostics.Program::InvalidInvariant()\tIL_001d\tSystem.Type.MakeGenericType(Type[])\tthe constraints of ClosedGenericDiagnostics.NeedsTag`1 over these type arguments cannot be decided ahead of time, and it has no runtime-instantiation template; only instantiations the program names resolve\tname the closed generic instantiation statically'
+    $'ClosedGeneric\tClosedGenericDiagnosticsOnly\tClosedGenericDiagnostics.Program::InvalidTemplateBody()\tIL_002e\tSystem.Reflection.MethodBase.Invoke(Object, Object[])\tthe constraints of ClosedGenericDiagnostics.NeedsTemplateBodyTag`1 over these type arguments cannot be proved, and its runtime-instantiation template cannot serve this member; only instantiations the program names resolve\tname the closed generic instantiation statically'
+    $'ClosedGeneric\tClosedGenericDiagnosticsOnly\tClosedGenericDiagnostics.Program::InvalidTemplateMethod()\tIL_003f\tSystem.Reflection.MethodInfo.MakeGenericMethod(Type[])\tthe generic method comes from a method of a runtime-instantiated generic type whose constraints over these type arguments cannot be proved; only instantiations the program names resolve\tname the closed generic instantiation statically'
+    $'Execution\tClosedGenericDiagnosticsOnly\tClosedGenericDiagnostics.Program::InvalidTemplateMethod()\tIL_0046\tSystem.Reflection.MethodBase.Invoke(Object, Object[])\tMethodInfo comes from a method of a runtime-instantiated generic type whose constraints over these type arguments cannot be proved — no method body retained\t[Preserve] on the target, or link.xml <assembly fullname="ASSEMBLY"><type fullname="TYPE" preserve="all" /></assembly>'
+    $'ClosedGeneric\tClosedGenericDiagnosticsOnly\tClosedGenericDiagnostics.Program::MakeCell(System.Type)\tIL_0014\tSystem.Type.MakeGenericType(Type[])\tthe type arguments come from parameter 1, and ClosedGenericDiagnostics.Cell`1 has no runtime-instantiation template; only instantiations the program names resolve\tname the closed generic instantiation statically'
+    $'ClosedGeneric\tClosedGenericDiagnosticsOnly\tClosedGenericDiagnostics.Program::MakeFromDefinition(System.Type)\tIL_0014\tSystem.Type.MakeGenericType(Type[])\tthe generic definition comes from parameter 1; only instantiations the program names resolve\tname the closed generic instantiation statically'
+    $'ClosedGeneric\tClosedGenericDiagnosticsOnly\tClosedGenericDiagnostics.Program::MakeFromMethod(System.Reflection.MethodInfo)\tIL_0014\tSystem.Reflection.MethodInfo.MakeGenericMethod(Type[])\tthe generic method comes from parameter 1; only instantiations the program names resolve\tname the closed generic instantiation statically'
+    $'ClosedGeneric\tClosedGenericDiagnosticsOnly\tClosedGenericDiagnostics.Program::MakeName(System.Type)\tIL_001e\tSystem.Reflection.MethodInfo.MakeGenericMethod(Type[])\tthe type arguments come from parameter 1; only instantiations of ClosedGenericDiagnostics.Names::Name the program names resolve\tname the closed generic instantiation statically'
+    $'ClosedGeneric\tClosedGenericDiagnosticsOnly\tClosedGenericDiagnostics.Program::MakeWrapped(System.Type)\tIL_002c\tSystem.Type.MakeGenericType(Type[])\tthe type arguments come from a type a runtime-instantiation template mints, and ClosedGenericDiagnostics.Cell`1 has no runtime-instantiation template; only instantiations the program names resolve\tname the closed generic instantiation statically'
+)
+DN2CPP_SAMPLE_PROJECT_DIR=samples/dotnet/ReflectTypes DN2CPP_STRICT_COMPLETION=1 \
+    corelib_freeze_gate ClosedGenericDiagnosticsOnly "$(dirname "$0")/expected/reflect-types-closed-generic.txt" \
+    "${closed_generic_flags[@]}"
+# Without shared generics no template serves Holder<T> either. The same source
+# builds as ClosedGenericDiagnosticsUnshared because corelib_freeze_gate keys
+# its artifacts by project name.
+gate_extra_asserts() {
+    closed_generic_asserts "$1" ClosedGenericDiagnosticsUnshared
+}
+closed_generic_flags=(--no-ildiet --no-shared-generics)
+closed_generic_rows=(
+    $'ClosedGeneric\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::InvalidArray()\tIL_001d\tSystem.Type.MakeGenericType(Type[])\tthe constraints of ClosedGenericDiagnostics.NeedsDispose`1 over these type arguments cannot be decided ahead of time, and it has no runtime-instantiation template; only instantiations the program names resolve\tname the closed generic instantiation statically'
+    $'ClosedGeneric\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::InvalidInvariant()\tIL_001d\tSystem.Type.MakeGenericType(Type[])\tthe constraints of ClosedGenericDiagnostics.NeedsTag`1 over these type arguments cannot be decided ahead of time, and it has no runtime-instantiation template; only instantiations the program names resolve\tname the closed generic instantiation statically'
+    $'ClosedGeneric\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::InvalidTemplateBody()\tIL_001d\tSystem.Type.MakeGenericType(Type[])\tthe constraints of ClosedGenericDiagnostics.NeedsTemplateBodyTag`1 over these type arguments cannot be decided ahead of time, and it has no runtime-instantiation template; only instantiations the program names resolve\tname the closed generic instantiation statically'
+    $'ClosedGeneric\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::InvalidTemplateMethod()\tIL_001d\tSystem.Type.MakeGenericType(Type[])\tthe constraints of ClosedGenericDiagnostics.NeedsTemplateMethodTag`1 over these type arguments cannot be decided ahead of time, and it has no runtime-instantiation template; only instantiations the program names resolve\tname the closed generic instantiation statically'
+    $'ClosedGeneric\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::MakeCell(System.Type)\tIL_0014\tSystem.Type.MakeGenericType(Type[])\tthe type arguments come from parameter 1, and ClosedGenericDiagnostics.Cell`1 has no runtime-instantiation template; only instantiations the program names resolve\tname the closed generic instantiation statically'
+    $'ClosedGeneric\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::MakeFactory(System.Type)\tIL_0014\tSystem.Type.MakeGenericType(Type[])\tthe type arguments come from parameter 1, and ClosedGenericDiagnostics.Factory`1 has no runtime-instantiation template; only instantiations the program names resolve\tname the closed generic instantiation statically'
+    $'ClosedGeneric\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::MakeFromDefinition(System.Type)\tIL_0014\tSystem.Type.MakeGenericType(Type[])\tthe generic definition comes from parameter 1; only instantiations the program names resolve\tname the closed generic instantiation statically'
+    $'ClosedGeneric\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::MakeFromMethod(System.Reflection.MethodInfo)\tIL_0014\tSystem.Reflection.MethodInfo.MakeGenericMethod(Type[])\tthe generic method comes from parameter 1; only instantiations the program names resolve\tname the closed generic instantiation statically'
+    $'ClosedGeneric\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::MakeHolder(System.Type)\tIL_0014\tSystem.Type.MakeGenericType(Type[])\tthe type arguments come from parameter 1, and ClosedGenericDiagnostics.Holder`1 has no runtime-instantiation template; only instantiations the program names resolve\tname the closed generic instantiation statically'
+    $'ClosedGeneric\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::MakeName(System.Type)\tIL_001e\tSystem.Reflection.MethodInfo.MakeGenericMethod(Type[])\tthe type arguments come from parameter 1; only instantiations of ClosedGenericDiagnostics.Names::Name the program names resolve\tname the closed generic instantiation statically'
+    $'ClosedGeneric\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::MakeNest(System.Type)\tIL_0014\tSystem.Type.MakeGenericType(Type[])\tthe type arguments come from parameter 1, and ClosedGenericDiagnostics.Nest`1 has no runtime-instantiation template; only instantiations the program names resolve\tname the closed generic instantiation statically'
+    $'ClosedGeneric\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::MakeShape(System.Type)\tIL_0014\tSystem.Type.MakeGenericType(Type[])\tthe type arguments come from parameter 1, and ClosedGenericDiagnostics.Shape`1 has no runtime-instantiation template; only instantiations the program names resolve\tname the closed generic instantiation statically'
+    $'ClosedGeneric\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::MakeShape(System.Type)\tIL_002e\tSystem.Type.MakeGenericType(Type[])\tthe type arguments come from parameter 1, and ClosedGenericDiagnostics.Square`1 has no runtime-instantiation template; only instantiations the program names resolve\tname the closed generic instantiation statically'
+    $'ClosedGeneric\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::MakeWrapped(System.Type)\tIL_0026\tSystem.Type.MakeGenericType(Type[])\tthe type arguments come from parameter 1, and ClosedGenericDiagnostics.Holder`1 has no runtime-instantiation template; only instantiations the program names resolve\tname the closed generic instantiation statically'
+    $'ClosedGeneric\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::MakeWrapped(System.Type)\tIL_002c\tSystem.Type.MakeGenericType(Type[])\tthe type arguments come from a type a runtime-instantiation template mints, and ClosedGenericDiagnostics.Cell`1 has no runtime-instantiation template; only instantiations the program names resolve\tname the closed generic instantiation statically'
+)
+DN2CPP_SAMPLE_PROJECT_DIR=samples/dotnet/ReflectTypes DN2CPP_STRICT_COMPLETION=1 \
+    corelib_freeze_gate ClosedGenericDiagnosticsUnshared \
+    "$(dirname "$0")/expected/reflect-types-closed-generic-unshared.txt" "${closed_generic_flags[@]}"
+unset -f gate_extra_asserts closed_generic_asserts

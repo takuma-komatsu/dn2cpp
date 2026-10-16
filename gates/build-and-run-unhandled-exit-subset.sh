@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Process termination and managed diagnostics on exceptions escaping Main,
 # pool work, local continuations, nested drains, threads, timers, timed cancellation and async void,
-# including a closed generic nested exception's CLR type display.
+# including a closed generic nested exception's CLR type display and a Message
+# override that only the runtime's report calls.
 # Real .NET reports to
 # stderr and aborts (SIGABRT -> 134), it does not exit(1) — and corelib_diff_gate
 # pins the native exit status to real .NET's. The generated main's catch funnel
@@ -12,7 +13,7 @@
 # A second arm reruns the binary capturing stderr and asserts the report
 # carries the throw-time trace — see its comment below.
 source "$(dirname "$0")/_common.sh"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|worker-modes:pool,thread,timer,cts-timer,async-void,local-continuation,nested-drain,generic-exception"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|worker-modes:pool,thread,timer,cts-timer,async-void,local-continuation,nested-drain,generic-exception,message-override"
 
 corelib_diff_gate UnhandledExitSubset
 
@@ -75,7 +76,8 @@ fi
 echo "OK — the unhandled report names Program.Main in a real '   at ' trace"
 
 echo "== Escaping-worker arms: managed first line and abnormal exit match real .NET =="
-for mode in pool thread timer 'cts timer' 'async void' 'local continuation' 'nested drain' 'generic exception'; do
+for mode in pool thread timer 'cts timer' 'async void' 'local continuation' 'nested drain' 'generic exception' \
+        'message override'; do
     set +e
     native=$(run_bounded "./$out/$project$EXE_EXT" "$mode" 2>"$out/worker.err"); native_code=$?
     expected=$(run_bounded dotnet "$_CG_APP" "$mode" 2>"$out/worker-oracle.err"); expected_code=$?
@@ -95,6 +97,8 @@ throwing $mode"
     assert_output "$first" "$oracle_first"
     if [ "$mode" = 'generic exception' ]; then
         assert_output "$first" 'Unhandled exception. Program+GenericFailure`1[System.Int32]: escaped generic exception'
+    elif [ "$mode" = 'message override' ]; then
+        assert_output "$first" 'Unhandled exception. Program+OverriddenMessage: overridden message'
     elif [ "$mode" = 'cts timer' ]; then
         assert_output "$first" 'Unhandled exception. System.AggregateException: One or more errors occurred. (escaped cts timer)'
     else

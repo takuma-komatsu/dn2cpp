@@ -1,0 +1,16 @@
+<linker>
+  <!-- Program.TemplateMembers activates and invokes the generic type it builds from its
+       Type parameters; no site resolves those, so the instantiated members are preserved. -->
+  <assembly fullname="TrimReflect">
+    <type fullname="TrimReflect.AppTemplateRead`1" preserve="nothing">
+      <method name=".ctor" />
+      <method name="Kind" />
+    </type>
+  </assembly>
+  <assembly fullname="TrimReflectLib">
+    <type fullname="TrimReflectLib.LibTemplateRead`1" preserve="nothing">
+      <method name=".ctor" />
+      <method name="Kind" />
+    </type>
+  </assembly>
+</linker>

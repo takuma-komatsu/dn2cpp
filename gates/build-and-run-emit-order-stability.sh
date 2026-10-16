@@ -49,6 +49,9 @@
 # name and a leaked length (a pooled string's offsets) both show. It is compared first:
 # every corner above writes to a differently named directory, so a leak would otherwise
 # be blamed on the worker count.
+#
+# The unrecognized-reflection report (reflection-unrecognized.tsv) is emitted output
+# as well, compared in every corner; ReflectTypes must write a non-empty one.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # shellcheck source=gates/_common.sh
@@ -66,7 +69,7 @@ mkdir -p "$OUT"
 # project | extra BCL references (the same reference set each project's own gate uses)
 SAMPLES=(
     "SharedGenerics|System.Collections"
-    "ReflectTypes|System.Linq.Expressions System.Linq System.Collections System.Reflection.Emit System.Reflection.Emit.Lightweight System.Reflection.Emit.ILGeneration System.ComponentModel.Primitives"
+    "ReflectTypes|System.Linq.Expressions System.Linq System.Collections System.Reflection.Emit System.Reflection.Emit.Lightweight System.Reflection.Emit.ILGeneration System.ComponentModel.Primitives System.Collections.Concurrent"
     "StringCore|System.Linq"
     "ArrayCore|System.Collections"
     "ArrayDispatch|System.Linq"
@@ -133,6 +136,23 @@ for entry in "${SAMPLES[@]}"; do
         DN2CPP_SPEC_DRAIN=lifo \
             invoke_cli "$app" "${refs[@]}" $share_flag --jobs 2 -o "$lifo" >/dev/null
 
+        # The unrecognized-reflection report is emitted output: its rows follow the
+        # sites, never the context that reached a site first. ReflectTypes keeps
+        # unrecognized sites, so its corners always compare a report.
+        if [ "$proj" = ReflectTypes ] && [ ! -s "$fifo/reflection-unrecognized.tsv" ]; then
+            echo "FAIL: $proj (shared generics $sharing) wrote no unrecognized-reflection report to compare"
+            exit 1
+        fi
+        for corner in "$relocated" "$parallel_fifo" "$lifo"; do
+            if [ -e "$fifo/reflection-unrecognized.tsv" ] || [ -e "$corner/reflection-unrecognized.tsv" ]; then
+                if ! cmp -s "$fifo/reflection-unrecognized.tsv" "$corner/reflection-unrecognized.tsv"; then
+                    echo "FAIL: $proj (shared generics $sharing) — the unrecognized-reflection report"
+                    echo "      of $corner differs from the jobs=1/FIFO run:"
+                    head -20 <<<"$(diff "$fifo/reflection-unrecognized.tsv" "$corner/reflection-unrecognized.tsv" 2>&1)"
+                    exit 1
+                fi
+            fi
+        done
         if ! diff -r "$fifo" "$relocated" >/dev/null 2>&1; then
             echo "FAIL: $proj (shared generics $sharing) — the emitted C++ depends on"
             echo "      the -o directory's name or spelling. The diff says where:"

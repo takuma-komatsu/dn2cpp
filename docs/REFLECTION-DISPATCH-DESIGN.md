@@ -41,11 +41,30 @@ calls have separate capabilities with explicit support boundaries.
   supported queries. A decoded temporary view cannot become a persistent handle.
 - A stripped type or member must reach the existing metadata refusal path.
   A missing invoker cannot masquerade as an empty member set or a successful call.
-- ILDiet arms on the predicates the reflection-invoke route arms on and retains
-  the bodies that route reaches in the retained types, so stripping the managed
-  input keeps every member of a retained type that a reflective invoke can
-  select by name. A type that no retained body names is removed whether or not
-  either arms (`src/ILDiet/README.md`).
+- Executable code is the static dependencies of admitted bodies, the explicit
+  entries (the entry point, backend contract roots, `[UnmanagedCallersOnly]`
+  methods, non-framework module initializers and a hot-update base's export
+  contract), what recognized reflection selects, and explicit preservation. A
+  public member is not an entry, and any other `.cctor` enters only on a use of
+  its type or through explicit preservation. An entry or a preserved member uses
+  its own type as a call to it would.
+- Recognition is method-local and finite: constants, `typeof`, locals, closure
+  captures, arrays the method fills, flags arithmetic, the results of earlier
+  lookups and enumerations, and known generic definitions over known arguments.
+  A lookup or enumeration selects metadata only. An operand selects per known
+  alternative, and an unknown binding-flags alternative as every flag
+  combination would; an unknown alternative yields a deterministic diagnostic
+  with a remedy and never widens to every member of a type or an assembly. A
+  method or constructor lookup given parameter types keeps the overload the
+  default binder returns for each known tuple, and every candidate where the
+  binder is ambiguous or the model cannot decide; a property lookup narrows by
+  its index and return types the same way. The diagnostic describes the
+  site and stays when a preservation rule covers the target.
+- ILDiet's retained set contains every body `Compilation` admits. ILDiet
+  classifies and summarizes reflection calls with the shared `ReflectionApis`
+  and `ReflectionSummary`, derives each site's owners and member names from the
+  same summary terms and over-approximates their selection; admitting a body
+  ILDiet stubbed fails the transpile (`src/ILDiet/README.md`).
 - Signature decoding and type materialization may grow the model. Discovery
   must close those dependencies before emission freezes them; emission streams
   completed translation units and never retains the complete generated program.
@@ -61,7 +80,7 @@ calls have separate capabilities with explicit support boundaries.
 | Contract | Covers | Depends on |
 |----------|--------|------------|
 | Row identity | Method definition keys, signature pass modes, generic-chain roots and selected class/interface row identity, which native and packed readers and the codec fixtures read alike. | The metadata handle API |
-| Discovery closure | Reflection-created boxes, constructors, accessor bodies, delegate invokers and closed generic templates, closed with class routes, attribute routes and used/allocated dispatch in one bounded incremental fixpoint. | Row identity |
+| Discovery closure | Reflection-created boxes, constructors, accessor bodies, delegate invokers and closed generic templates, closed with recognized-site selections, attribute rows and used/allocated dispatch in one bounded incremental fixpoint. | Row identity |
 | Invocation contract | Target and argument validation, by-reference cells, value and pointer returns, copy-back by the declared pass mode and exception wrapping. Immutable plans hold no caller state. | Row identity and discovery closure |
 | Generic virtual dispatch | Generic override and interface chains, and selection of the receiver's row with its closed context. Import identity and runtime dispatch agree across ordinary and hot-update calls. | Row identity and discovery closure |
 | Reflective binding | Virtual methods and delegates bound by selected method identity, verified null-bound receivers and runtime-owned metadata answerers. | Invocation contract and selected dispatch |
@@ -71,18 +90,45 @@ image never emits a placeholder that a runtime operation can bind.
 
 ## Discovery and termination
 
-`Compilation` records triggers while scanning direct calls, method groups,
-method specifications and framework bodies. Invocation, field-read, constructor,
-attribute and delegate-binding triggers remain distinct; observing one must
-not retain every framework body.
+`Compilation` summarizes each reached method definition once and applies the
+summary in every instantiation context reachability reaches, resolving generic
+symbols through that context. Direct calls, method groups and method
+specifications classify alike, in application and framework bodies. Invocation,
+field access, construction, attribute and delegate-binding sites keep distinct
+effects, and each selects only the members its known operands name; observing one
+must not retain every member of a type or every framework body. A known generic
+definition with unknown arguments selects its existing instantiations, and the
+selection re-applies to instantiations created later; one whose arguments nest
+the definition itself is selected only once allocated, so the selection cannot
+mint without bound.
+
+A recognized `MakeGenericType` over a known closed argument tuple uses an existing
+AOT instantiation, then the runtime template when a clone can run every member
+the program's sites select on it, and otherwise instantiates the definition when
+its constraints admit the arguments, as if the program named it;
+`MakeGenericMethod` over known arguments instantiates the method the same way,
+and the formed instance keeps its metadata row; a closed row that is dropped
+never hides the definition row a lookup listed. A clone over a known tuple
+passed as another such site's argument stands for its exact instantiation,
+formed under the same rules, while a clone over unknown arguments is an unknown
+argument. A clone resolves a template body's reflection only in the placeholder context, so
+a body that reflects through the class type parameters is one no clone can run.
+A tuple the constraints definitely reject selects nothing, and one whose
+constraints cannot be decided, with no template to serve it, is a closed-generic
+diagnostic. Forming a type admits no body: a template's constructors enter only
+for a selected construction and its other members only for a selected
+invocation or binding, reached on every placeholder level of the definition
+because a clone may be built from any of them. A generic definition's
+preservation rule applies to the instantiations the program mints, never to one
+minted only by applying the rule, so preservation cannot expand a self-nesting
+generic.
 
 Field reads, constructor results, reflected method returns and delegate invokers
 can introduce boxes. Discovery records those producer edges before applying
 the existing Object equality and interface reach rules. It revisits only
-owners or types introduced since the last stable scan, except when a widened
-attribute or named-type policy requires a controlled rewalk. Classes and methods
-that may grow during signature decoding are walked through snapshots or an
-explicit cursor.
+selections, owners or types introduced since the last stable scan. Classes and
+methods that may grow during signature decoding are walked through snapshots or
+an explicit cursor.
 
 Runtime generic templates need a declared depth and shape boundary. Recursive
 expansion must terminate with a supported template or a diagnostic before the
@@ -90,17 +136,39 @@ metadata and generic-context tables freeze. Strict completion checks must prove
 that row construction, invoker rendering and generic-context emission cannot add
 an undiscovered layout or body.
 
-Structural boundaries leave a reflectable method without a compiled body where
-.NET runs it. `MethodInfo.Invoke` and delegate binding refuse that missing body
-with a shared descriptive `PlatformNotSupportedException`, naming the declaring
-instantiation and member and explaining that the body was not compiled into the
-image. This refusal is not wrapped in `TargetInvocationException`. A runtime
-template method whose body calls through a function pointer over the template's
-type parameter is not shared with a clone, since no clone can respell that
-signature per type argument, so the clone has no body for it. The reflection-invoke
-route walks a bounded number of the instantiations its bodies mint for each generic
-definition, so a minted instantiation past that bound has no body for a method
-that no call site reaches.
+Admission and structural boundaries leave a reflectable member without a
+compiled body where .NET runs it. Invocation, construction, field access,
+attribute instantiation and delegate binding refuse that missing body with one
+shared `PlatformNotSupportedException` of the form
+`<subject> in <assembly>: <reason>; fix: <remedy>`. The reason names what is
+missing: the body of a member reflection found, the receiver's override, or the
+closed generic instantiation's compiled code. An unretained attribute
+constructor or named-argument setter, a static constructor a static field
+access runs, including a static read-only field's `SetValue`, and an instance or
+box of a user type the image never allocates refuse in the same form. Such a box
+refuses only where reflection would hand it out: `Invoke` of a member that
+returns or writes back the value type refuses, while a delegate bound to the same
+member receives the value unboxed and runs. Argument-bearing activation retains
+exact rows for parameterized constructors on ordinary library type and layout
+roots, with null invokers for unretained bodies. The binder preserves ordinary
+selection and binding errors, and refuses only a selected missing body.
+Constructor parameter types extend the signature and layout closure without
+starting further constructor scans. Omission markers describe only parameterless
+constructors, whose visibility determines whether they bind.
+The remedy is a `[Preserve]` or `link.xml` rule in the transpiler's warning form
+for what is missing, or naming the closed instantiation statically, or, over a
+definition the runtime models as one type for every instantiation, constructing
+the closed type directly. A rule on a
+generic definition's member also keeps that member on each placeholder level of
+the definition's runtime-instantiation templates, one shared body per level and
+no closed instantiation, so a bodiless template member or override that a clone
+could run names the rule, and one it could not run names the static
+instantiation. The
+refusal is raised before any target runs, so it is not wrapped in
+`TargetInvocationException`. A runtime template method whose body calls through
+a function pointer over the template's type parameter is not shared with a
+clone, since no clone can respell that signature per type argument, so the clone
+has no body for it.
 
 ## Invocation and binding
 

@@ -33,9 +33,14 @@ and loads only that resolved output set. Reference discovery cannot reintroduce
 original DLLs afterward. ILDiet keeps application member signatures separately
 from executable bodies: metadata-only dependencies retain declarations and
 layouts, and a later executable root promotes them before unreachable bodies
-become throwing stubs. Armed reflection routes retain the same application
-classes and declared constructor data surface that emission walks. Backend
-exclusions and the bounded library surface remain independent.
+become marked throwing stubs. ILDiet's retained bodies must contain every body
+`Compilation` admits; admitting a marked stub is an `InvalidOperationException`
+naming the method, never a run-time throw. ILDiet classifies and summarizes
+reflection calls with the transpiler's `ReflectionApis` and `ReflectionSummary`,
+derives each recognized site's owners and member names from the same summary
+terms, and over-approximates what emission selects: owners keep the bodies an
+admitting site could select, and each site's selected rows survive as marked
+stubs. Backend exclusions remain independent.
 Cecil is confined to ILDiet and never becomes
 transpiler self-host input. Cut selectors that require generic specialization
 retain the original DLLs in the output set and defer validation to `Compilation`;
@@ -65,11 +70,11 @@ escapes or unterminated strings retain scripts associated with the affected
 project with a diagnostic. Missing project information retains all user Godot
 types. Ignored and generated directories cannot contribute roots.
 
-User Godot descendants do not inherit the default public-member or
-static-constructor roots. The backend nominates compiler-generated nested helpers
+User Godot descendants do not inherit ILDiet's default public-member or
+static-constructor seeds. The backend nominates compiler-generated nested helpers
 and the SDK's `MethodName`, `PropertyName` and `SignalName` helpers by their
 metadata and helper-base ancestry. Handwritten nested .NET types retain the usual
-roots; keeping such a type also keeps its enclosing script. A surviving descendant
+seeds; keeping such a type also keeps its enclosing script. A surviving descendant
 retains its own
 engine-callable members. Script-registration type arrays are filtered after
 reachability. The GodotSharp constructor registry defers recognized factory
@@ -86,6 +91,187 @@ retain concrete wrapper factories as well as their requested metadata. ILDiet
 does not enable or suppress this pass;
 hot-update keeps its independent suppression rule. Reflection trimming and shared
 generics likewise depend on their own options, not the ILDiet result.
+
+`Compilation` admits bodies from explicit roots: the entry point, preservation
+rules, non-framework `<Module>` initializers, `[UnmanagedCallersOnly]` methods,
+a hot-update base's export contract, and the backend's `AdditionalRootMethods`,
+`ExternallyAllocatedClasses` and attribute-read owners. From there a body enters
+only through a static edge, the used-slot and allocated-type dispatch closure,
+the bounded runtime-support closures below, or a recognized reflection site. A
+public member is not a root, and any other `.cctor` enters only through
+preservation or through `ReachCctor` on a use of its type. For a precise-init
+(non-`beforefieldinit`) type the uses include every call trigger
+`ResolveInitializerTriggerClass` sorts out of a call token (a static method, an
+instance constructor, a value type's instance method), a constrained call that
+runs a value type's own method, an `Object` override included, or a static
+virtual implementation, a pointer to a static method, and a root or preserved
+member declared on the type (`ReachRootInitializer`). Reached
+non-generic `.cctor`s run in the startup pass, except one only a reflectively
+bound body reaches; that one and closed generic ones run behind the first-use
+`__ensure` guards that call, `ldftn` and static-field sites emit, and a shared
+body that would need a placeholder owner's guard taints. Reflection
+admission lives in `Compilation.ReflectionTargets.cs`: `ScanBodyForGenerics`
+resolves each reached method's `ReflectionSummary` in that method's own
+instantiation, and each live site selects what its known operands name, per
+alternative of a joined operand. A resolved value keeps its alternatives
+distinct, so a chain of lookups grows only with the distinct members it names,
+and a value or an application whose alternatives pass their bound becomes
+unknown with a reason, as any operand admission cannot follow does. Each finite
+argument-array alternative contributes its tuples beside an unknown remainder;
+null arrays and elements contribute no tuple. An unknown binding-flags
+alternative selects under every visibility, storage, `FlattenHierarchy` and
+`IgnoreCase`; a method
+or constructor lookup with a `Type[]` operand keeps, for each known tuple, the
+overload `DefaultBinder.SelectMethod` returns, or every candidate when the
+binder finds the tuple ambiguous or the model cannot rank it; a property lookup
+narrows by its index types and return type to what `GetProperty` returns for
+some alternative (`KeepPropertyChoices`). Those filters also constrain template
+eligibility, executable selection and static fallback. `GetMember`,
+`GetDefaultMembers` and `InvokeMember` read a trailing `*` in a name as a
+prefix, as .NET does, and `GetMember` keeps only the member kinds its
+`MemberTypes` operand names. An accessor read without `nonPublic`, such as
+`GetSetMethod()` or `GetAccessors(false)`, selects only public accessors. Lookups
+and enumerations keep the rows they list, generic method definitions included,
+however their result is consumed, and they, attribute-data reads and type
+identity select metadata and record their owner for the `--trim-reflection`
+keep-set. A property or event found on a base of the reflected type associates
+none of its private accessors, as `RuntimeType` does. A resolved constant
+`Type.GetType` or `Assembly.GetType` name emits the type's identity and
+metadata, never its bodies or initializer, and a closed generic name forms as
+`MakeGenericType` does. A nested generic argument name served by a runtime
+template closes to its exact identity only after its constraints are proved.
+A qualified name searches its assembly by simple name
+and then where that assembly forwards the name, a framework facade the load set
+omits standing for CoreLib, and array modifiers of any rank apply. An
+assembly-scoped `ignoreCase` lookup of an ASCII name without generic arguments
+folds ASCII case; any other `ignoreCase` name, a name matching several types and
+a by-ref or pointer modifier are unknown. Each known assembly receiver is a
+separate search scope, with unknown remainders kept beside known targets.
+Unscoped lookup keeps the ordered caller/CoreLib fallback. An array type
+projects its element type's assembly. An assembly listing hands out each generic
+definition as `typeof(G<>)` does, and a runtime-instantiated type's
+generic arguments, definition, base type and assembly project from its template
+and argument tuple. An attribute read with an unknown owner and a known filter
+lists, and for an instance read constructs, the filter's rows on every user
+assembly, module, type, member and parameter. Only an instance read reaches
+named-argument setters, and only those of rows its filter admits; a data read
+reaches none, even when another route reached the attribute's constructor.
+Named delegate binding and `Delegate.Method` share selection for known
+receivers, including objects and runtime templates. They search the full base
+chain at every visibility, bounded only by name, case and delegate `Invoke`
+arity; attribute reads use the selected member identity.
+Invocation, field and property access, event subscription, delegate binding,
+construction and attribute instantiation reach the selected bodies, boxes and
+type initializers; a constant field's access reaches no initializer, and a
+construction whose flags set no lookup bit (`0xFF`) selects as
+`Public | Instance`, as .NET's `Activator` does.
+`RuntimeHelpers.GetUninitializedObject` allocates a known type and reaches its
+initializer but no constructor, and an unknown operand reports with a
+constructor remedy. Selections over generic
+definitions re-apply as new instantiations appear, inside the discovery fixpoint
+and each compile round. `ReflectionSummary.cs` interprets one method body over
+SRM and `ILDecoder`, and `ReflectionApis.cs` classifies the API and its operand
+slots; both are free of model types and linked into ILDiet, so ILDiet and
+emission classify the same overloads. A `box` whose token may name a reference
+type passes the object through, so its `GetType` is the token's type only when
+no type derives from it, and a box of `Nullable<T>` holds a `T`. An `isinst`
+retains its operand alternatives, including unknown remainders, alongside a
+possible null; `castclass` preserves its operand on normal continuation. An
+invocation, construction or delegate binding lets its instance escape and may
+write any element of its argument array back. `Object.GetType` on a new SZ array
+keeps the allocation's element type independently of stores and escapes.
+`AsEnumerable` and `Cast` return their source; `Delegate.Method` over an
+`ldvirtftn` target a derived type may override is unknown; and folding `int32`
+operands to a result outside the `int32` range is unknown. A summary renders
+each shared term once, so its canonical text grows with its distinct terms.
+Implicit `FirstOrDefault`, `LastOrDefault`, `SingleOrDefault` and
+`ElementAtOrDefault` retain the generic element type's default alongside possible
+elements. Raw signatures prove modeled CLI zero or null defaults; other defaults
+remain unknown. Explicit defaults retain their supplied operand.
+Captured fields retain their raw signature's modeled zero or null alongside
+finite writes, including null array references. A later store does not prove
+the field was initialized before an earlier read; unmodeled defaults remain
+unknown.
+A fresh array's unproven element default remains
+explicitly unknown; an integral or reference element load proves that default
+is zero or null.
+Defaults published through a captured array retain their element tokens so a
+later typed load can make the same proof without changing other alternatives.
+Integral array and captured-field stores truncate to their storage width;
+loads apply the instruction's or field type's sign or zero extension.
+Captured arrays retain their semantic element type, and sequence reads and
+copies observe normalized stored values. Unproved conversions remain unknown.
+An allocation site that may repeat can represent several live arrays. Stores
+at such a site retain possible defaults, including those published through
+fields; a write to one instance cannot initialize another. Sites proved not
+to repeat keep exact values when every path writes the slot before use.
+
+A `MakeGenericType` over a known tuple takes an existing instantiation, else the
+definition's runtime template while `TemplateMayServe` finds that a clone can run
+what the sites select on it, else a static instantiation when the constraints
+admit the tuple, else a ClosedGeneric diagnostic. A body that runs, binds,
+constructs or instantiates through an operand depending on the class type
+parameters cannot serve a clone, which applies the body's sites only in the
+placeholder context, so such a request takes the static instantiation, whose
+exact context resolves them; a template body's sites report from the placeholder
+context while planning retains the body. A clone may be built from any
+placeholder level row of an eligible template, so a base definition with no
+template of its own is served too. Lookups and member enumerations on a clone
+select on every placeholder level, with the selected fields' types and members'
+attribute rows; field type effects obey the metadata selection's visibility,
+`DeclaredOnly` and hiding rules. Template metadata, eligibility, executable
+selection and static fallback share singular lookup hiding rules, including
+after `MakeGenericMethod` projection. Parameter listings follow the selected
+method or constructor.
+Its interfaces, its nested types and a known tuple's arguments list too, and
+any other listing of a clone or of its members is unknown.
+Member type projections retain fixed types through the selected metadata views.
+`GetInterface` and `GetInterfaces` on an open definition project fixed interfaces
+without forming an executable owner; interfaces depending on the definition's
+type parameters remain unknown. Each owner, name and `ignoreCase` alternative
+is a separate interface lookup, and a definitely ambiguous lookup selects no
+interface. An undecidable match remains unknown.
+`MakeGenericMethod` on an open declaring type retains detached method metadata
+for attribute and signature reads without forming an executable owner or body.
+Any projected signature containing a detached generic view remains unknown to
+executable admission.
+Unknown arguments select every instantiation, except that one whose arguments
+nest the definition itself is selected only once allocated, so a self-nesting
+definition mints nothing without bound. A receiver the summary cannot name as a
+definition, or one only the runtime models, reports ClosedGeneric at the site.
+Every eligible template level enters the emitter's identity and layout closure,
+including a metadata-only library level used as a clone source. Registering that
+metadata, including types named only by member signatures, does not allocate a
+receiver or reach its used virtual slots. A selected or preserved instance
+constructor admits that level's allocation and dispatch.
+Forming a type admits no body: a template's constructors are reached only for a
+construction a site selects, and its other members only for a selected
+invocation or binding, on every placeholder level of the definition, a virtual
+row reaching each deriving template's override (`ReachAskedTemplateMembers`). A
+preservation rule on a generic definition's member joins the same reach, one
+shared body per level and no closed instantiation, in a library definition as
+in an application one; a bodiless template row a clone could run sets its
+method row's `preservable` field, so its refusal names that rule, and an
+override row a clone cannot run refuses with the closed-generic remedy.
+
+A live site with an unknown operand selects only what is known, an unknown flags
+value standing for the flags superset above, and records one diagnostic, as does
+a generic instantiation that no template serves and whose constraints cannot be
+decided ahead of time; the driver prints each with its remedy and writes it to
+`reflection-unrecognized.tsv`. A site several instantiation contexts report is
+one row merged from what each asks, with the least kind, the reasons in ordinal
+order and a fix that preserves every owner, and rows sort on every printed
+column, so neither reach order nor the first context decides the report. A
+diagnostic describes the site, so a preservation
+rule that covers its target leaves it in place. `ReflectionFixText` names the
+member when the lookup names it exactly and the whole type only when the member
+is unknown, XML-escaping every name it splices; a closed-generic remedy names
+the instantiation statically, since a definition's preservation rule never mints
+a closed instantiation, and one over a definition the runtime models as one type
+for every instantiation constructs the closed type directly instead. The
+reflection capability bits switch on emission machinery (invoker thunks,
+constructor signature rows, delegate-invoke rows, late-bound dispatchers and
+rgctx prologues) and never admit a member body by themselves.
 
 Core invariants:
 
@@ -146,9 +332,18 @@ Optional, with the invariant each exists for:
 - `ExternallyAllocatedClasses` — types the target instantiates outside the C#
   call graph (Godot's ClassDB create-instance path runs no `newobj`), so their
   dispatch and ToString/Equals/Finalize wiring is not silently unwired.
-- `AdditionalRootMethods` — methods the epilogue calls directly, seeded as
-  reachability roots. Called once, before the first reachability drain and so
-  before `EmitEpilogue`: a backend may resolve and cache what its epilogue names.
+- `AdditionalRootMethods` — methods the epilogue calls directly or the target
+  enters by its own contract (GDExtension exports, script constructors), seeded
+  as reachability roots; nothing else in an application is a root by being
+  public. Called once, before the first reachability drain and so before
+  `EmitEpilogue`: a backend may resolve and cache what its epilogue names, and
+  the epilogue must not export a body this set omits.
+- `AttributeReadClasses` / `AttributeReadAssemblies` — owners whose attribute
+  rows the target's runtime reads in a registration walk no site names; their
+  rows are constructed as a recognized attribute read would construct them.
+- `CoversReflectionSite` — true when the backend's contract already retains what
+  a reflection site in that caller can reach. It only reports an unrecognized
+  site there as backend-covered; it changes no admission.
 - `AdditionalBoundedMethods` — merged with the core BCL set by
   `Compilation.IsBoundedMethod`: subtree cut, call/`ldftn`/`ldvirtftn` sites
   neutralized. The address-of stub's shape is its **consumer's**, never the
@@ -287,12 +482,13 @@ call; a per-instance set (the bounded set unions a backend's
 core half and `Compilation.IsBoundedMethod` / `IsDynamicCodegenMember` stay the
 merge point — *not* the same-named `CoreIntrinsics` predicates); an asymmetric
 set, where a row would assert an agreement that does not hold; and the
-reflection-usage marks (`Invoke`, `GetValue`, `SetValue`, `CreateInstance`,
-`GetCustomAttributes`, `GetCustomAttribute`, `IsDefined`), which neither cut nor
-route but *open* a reachability route so a reflected member stays invokable —
-they ride in `CoreIntrinsics.ScanNeedsParentTypeName` as a hand-written residue
-beside the scan rows' names, and deriving them away leaves a green transpile and
-a shipped game that throws on its first `PropertyInfo.GetValue`.
+`RuntimeHelpers.RunClassConstructor` MemberRef mouth, which neither cuts nor
+routes but reaches the named type's `.cctor` — it rides in
+`CoreIntrinsics.ScanNeedsParentTypeName` as a hand-written residue beside the
+scan rows' names, and deriving it away leaves a green transpile and a shipped
+game that silently skips a class initializer .NET runs. Reflection APIs are not
+intercepts: `ReflectionApis.Classify` names their operand slots, and the
+per-method summary decides what each site selects.
 
 **The backstop.** `CppEmitter.AssertCalledBodiesEmitted` diffs, after the emit
 fixpoint, the symbols emitted bodies **name** against those they **define**
@@ -629,8 +825,9 @@ of other method handles. Event handles intern the row and reflected owner;
 handler recipes substitute the actual declaring context. Inherited lookup drops
 private declarations, then hides exact names before applying binding flags.
 Accessor queries share method handles with ordinary lookup, including runtime
-generic clones. Subscription uses the existing invocation guards and arming;
-metadata lookup alone does not retain accessor bodies. Preservation retains all
+generic clones. Subscription uses the existing invocation guards; a recognized
+subscription reaches the selected accessors, and metadata lookup alone does not
+retain accessor bodies. Preservation retains all
 accessor roles through both attributes and link descriptors.
 
 Generic parameter constraints use immutable cold recipes on method descriptors
@@ -770,11 +967,29 @@ the CLR helper's requested generic arguments even when variance shares an
 execution row. Reflection trimming preserves known selected declaring rows.
 An unknown stripped level still refuses through `dn2cpp_require_metadata`.
 
-Reflection-only framework dispatch reaches application bodies and preserved
-library overrides. A literal member name directly following `typeof` can retain
-the named framework surface. A selected body outside that surface remains a
-catchable stripped-body refusal with a preservation remedy. Ordinary compiled
-dispatch keeps its trap behavior.
+A recognized site that selects a virtual member marks its slot used, so every
+allocated receiver's override is reached as for a call site. Through any other
+reflective entry, a receiver's override runs only when a call site, a recognized
+site or a preservation rule retained it; once reflection can enter rows
+late-bound, each kept closed generic virtual row gets a dispatcher whose missing
+cases refuse. An unretained override or body is a catchable
+`PlatformNotSupportedException` naming the member, its assembly and a
+preservation remedy, or the closed-generic remedy for a runtime instantiation's
+override that no preservation rule can admit. Refusals for class vtable slots,
+interface slots and generic virtual dispatch use the exact selected declaring
+owner and metadata name, even when member metadata is stripped. Recording these
+identities forms no closed methods and admits no member metadata or executable
+bodies. Known preservation capability selects the remedy; unknown capability on
+a runtime template gives both preservation and static-instantiation guidance.
+Without a confirmed implementation identity, refusals give general guidance to
+preserve the receiver's implementation. Reflection makes no instance of a user
+type the image never allocates, whose overrides and interface slots are not
+wired, and refuses the same way. `Invoke` of a member that returns such a value
+type, directly or through a by-ref return, or writes
+one back through a by-ref parameter refuses before the target runs, since it
+would hand out the box; a
+`CreateDelegate` binding of the same member passes the value unboxed and runs.
+Ordinary compiled dispatch keeps its trap behavior.
 
 This is an internal generated-code/runtime ABI: regenerate the C++ and rebuild
 the runtime together. Changes must preserve streaming output, deterministic
@@ -936,7 +1151,7 @@ that answer a fault differently are directly observable by a hot-update program.
 |-----------|---------------|
 | Generics (instantiation discovery / specialization) | `Compilation` (discovery + specialization at the IL-scan fixpoint), `SignatureProvider` (`GenericContext` threading) |
 | Canonical shared generics (default on; `--no-shared-generics` monomorphizes everything) | `CanonicalGenerics` (layout-group canonicalization: enum / sub-8-byte int args → width-preserving placeholders, reference args → `CnRef`), `Compilation.FinalizeSharedGenerics` (owner/user group linkage for classes and generic-method instantiations, instantiation-dependence taint oracle with per-method monomorphic fallback, rgctx slot registries), `CppEmitter` (owner struct/body emission, canonical interface alias rows, per-real forwarders, rgctx tables) |
-| Runtime-instantiation templates (`MakeGenericType` over a typeof-only definition, any argument) | `Compilation.BuildRuntimeInstantiationTemplates` (trigger + `$CnAny` rooting + shape bound), `Compilation.RuntimeTemplateBaseProjection` (injective bare-parameter recipes in each level's local argument order), `Compilation.JudgeRuntimeTemplates` (per-body/per-slot eligibility; a level's generic-method instantiation qualifies only over closed method arguments, `Compilation.IsTemplateLevelMethodInstance`), `Compilation.ReachTemplateLevelGvmImpl` (the generic-virtual dispatcher case of a template whose clones, but not the template, derive from the dispatcher's declaring type), `CppEmitter.EmitRuntimeTemplates` (the `dn2cpp_runtime_templates` rows, rooted definitions preferred over intermediate sources), `runtime/core/intrinsics/dn2cpp_system_reflection.cpp` (`dn2cpp_try_synthesize_generic`: clone, intern by definition and arguments, project bases, source-specific rgctx tables, clone-owned member rows) |
+| Runtime-instantiation templates (`MakeGenericType` over a typeof-only definition, any argument) | `Compilation.BuildRuntimeInstantiationTemplates` (trigger + `$CnAny` metadata registration + shape bound), `Compilation.RuntimeTemplateBaseProjection` (injective bare-parameter recipes in each level's local argument order), `Compilation.JudgeRuntimeTemplates` (per-body/per-slot eligibility; a level's generic-method instantiation qualifies only over closed method arguments, `Compilation.IsTemplateLevelMethodInstance`), `Compilation.ReachTemplateLevelGvmImpl` (the generic-virtual dispatcher case of a template whose clones, but not the template, derive from the dispatcher's declaring type), `CppEmitter.EmitRuntimeTemplates` (the `dn2cpp_runtime_templates` rows, rooted definitions preferred over intermediate sources), `runtime/core/intrinsics/dn2cpp_system_reflection.cpp` (`dn2cpp_try_synthesize_generic`: clone, intern by definition and arguments, project bases, source-specific rgctx tables, clone-owned member rows) |
 | Reachability tree-shake | `Compilation` (walks call/newobj/ldftn from roots). Unreached bodies are never decoded |
 | Const-folded capability getters + dead-arm pruning | `CoreIntrinsics.ConstFoldedGetter` (the oracle: add a `(type, method) → bool` entry), `BranchLiveness` (per-body live-offset walk shared by the reachability scanner and `MethodCompiler`, so a dead arm's icalls/P-Invokes never enter the tree), `Compilation.ResolveCallTarget` (the getter's own body edge is cut) |
 | Platform ISA contract (`X86.*` / `Arm.*` / `Wasm.*` `IsSupported` and instructions) | `src/Dn2Cpp.Transpiler/CoreIntrinsics.PlatformIsa.g.cs` (the generated family table: token, enclosing family, Lowered), the `MdPlatformIsa` intercept row keyed on the `ClassInfo.PlatformIsa` stamp, `runtime/core/dn2cpp_cpu_features.h` + `runtime/core/intrinsics/dn2cpp_cpu_features.cpp` (detection, AVX10.2 opt-in policy, the `DN2CPP_CPU_FEATURES` mask), `runtime/core/isa/` (tokens and per-family helpers, written by `tools/gen-isa-map`) |

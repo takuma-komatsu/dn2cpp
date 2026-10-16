@@ -26,7 +26,7 @@ internal static class Program
     {
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
-        // A deep framework instantiation sets the nesting the reflection route walks within.
+        // A deep framework instantiation sets the nesting an admission of Name's siblings would grow with.
         var deep = new List<List<List<List<List<List<int>>>>>>();
         Console.WriteLine("deep " + deep.Count);
         Console.WriteLine(typeof(Nest<int>).GetMethod("Name")!.Invoke(new Nest<int>(), null));

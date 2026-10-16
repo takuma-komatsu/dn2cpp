@@ -4,8 +4,8 @@ using System.Reflection;
 
 namespace ReflectGenericMethodSubset
 {
-    // Definition queries follow CLR. MakeGenericMethod can resolve only compiled
-    // instantiations; the live parity coverage is in the reflect-invoke bucket.
+    // Definition queries follow CLR. MakeGenericMethod over known arguments
+    // instantiates the method; the live parity coverage is in the reflect-invoke bucket.
     static class GmDiverge
     {
         public static string Pick<T>() => typeof(T).Name;

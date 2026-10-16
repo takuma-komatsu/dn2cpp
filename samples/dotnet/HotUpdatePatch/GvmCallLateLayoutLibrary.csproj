@@ -9,6 +9,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="GvmCallLateLayoutSurface.cs" />
+    <Compile Include="LateLayoutAttributeTargets.cs" />
     <Compile Include="../HotPath/HotPathAttribute.cs" Link="HotPathAttribute.cs" />
   </ItemGroup>
 </Project>

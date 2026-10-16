@@ -60,6 +60,30 @@ if (args.Length == 2 && args[0] == "--state-machine-bodies")
     }
     return;
 }
+// --method-stubs DLL Namespace.Type::Method... prints whether each top-level type's
+// method row is absent, bodyless, or carries the signature-only stub.
+if (args.Length > 2 && args[0] == "--method-stubs")
+{
+    using var input = File.OpenRead(args[1]);
+    using var image = new PEReader(input);
+    var metadata = image.GetMetadataReader();
+    foreach (string selector in args.Skip(2))
+    {
+        string state = "absent";
+        foreach (var handle in metadata.MethodDefinitions)
+        {
+            var method = metadata.GetMethodDefinition(handle);
+            var owner = metadata.GetTypeDefinition(method.GetDeclaringType());
+            string ns = metadata.GetString(owner.Namespace), typeName = metadata.GetString(owner.Name);
+            if ((ns.Length == 0 ? typeName : ns + "." + typeName) + "::" + metadata.GetString(method.Name) != selector)
+                continue;
+            state = method.RelativeVirtualAddress == 0 ? "bodyless"
+                : "stub=" + IsStubIL(image.GetMethodBody(method.RelativeVirtualAddress).GetILBytes()!);
+        }
+        Console.WriteLine(selector + " " + state);
+    }
+    return;
+}
 if (args.Length != 1)
     throw new ArgumentException("expected one managed DLL path");
 using var stream = File.OpenRead(args[0]);
@@ -105,5 +129,7 @@ string FullName(TypeDefinitionHandle handle)
     return ns.Length == 0 ? name : ns + "." + name;
 }
 
-bool IsStub(System.Reflection.MethodInfo method) =>
-    method.GetMethodBody()!.GetILAsByteArray()!.SequenceEqual(new byte[] { 0x14, 0x7a });
+// ILDiet's signature-only body: ldc.i4 0x494C4454; pop; ldnull; throw.
+bool IsStub(System.Reflection.MethodInfo method) => IsStubIL(method.GetMethodBody()!.GetILAsByteArray()!);
+
+bool IsStubIL(byte[] il) => il.SequenceEqual(new byte[] { 0x20, 0x54, 0x44, 0x4C, 0x49, 0x26, 0x14, 0x7a });

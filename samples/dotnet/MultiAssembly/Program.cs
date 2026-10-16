@@ -124,15 +124,13 @@ namespace MultiAssembly
                 + " field " + fta.Name + "/" + fta.Level
                 + " prop " + pta.Name + "/" + pta.Level);
 
-            // Reflection-ctor route, LIBRARY-target extension (the Thrive GameWiki
-            // shape): types DECLARED in the referenced library, never constructed
-            // statically, built late-bound the way a JSON deserializer builds them.
-            // The route is opened by the NAMED user surface — here the generic-method
-            // type argument LoadShaped<WikiPage>() passes, exactly Thrive's
-            // LoadDirectObject<GameWiki>("wiki.json") — not by library membership.
-            // Before the extension the surface walk skipped non-generic library
-            // types entirely, so WikiPage's ctor table read (nullptr, 0). Four
-            // Newtonsoft sub-shapes:
+            // Library reflection targets: types DECLARED in the referenced library,
+            // never constructed statically, built late-bound the way a JSON
+            // deserializer builds them. LoadShaped<WikiPage>() activates its method
+            // type argument and the property lookups name WikiPage, so those targets
+            // are recognized; members reached through a helper's returned
+            // constructor are preserved by the gate's link.xml. Four Newtonsoft
+            // sub-shapes:
             //  (a) parameterless ctor via non-generic Activator.CreateInstance(Type);
             //  (b) population via PropertyInfo.SetValue/GetValue on accessors nothing
             //      calls statically (GameWiki's `{ get; set; } = null!;` members);
@@ -140,7 +138,7 @@ namespace MultiAssembly
             //      (Newtonsoft binds the parameterized ctor — GameWiki.Page);
             //  (d) a library generic specialization named ONLY by a library member
             //      type, constructed off PropertyInfo.PropertyType (the List<Page>
-            //      shape: an OPENED target's member types join the surface).
+            //      shape: a recognized property's declared type is a known target).
             Type wpt = typeof(MiniBcl.WikiPage);
             object page = LoadShaped<MiniBcl.WikiPage>();
             MiniBcl.WikiPage typedPage = page as MiniBcl.WikiPage;
@@ -190,17 +188,14 @@ namespace MultiAssembly
                 + " entry " + entry.Name + "/" + entry.Level
                 + " sections " + typedPage.Sections.Count);
 
-            // Creator-ARGUMENT surface of an opened library target (the Thrive
-            // VersionPatchNotes shape): List<WikiRef> is named ONLY as
-            // WikiChangelog's ctor parameter — no field, property or body names it
-            // — so constructing it off ParameterInfo.ParameterType asserts that an
-            // opened target's instance-ctor parameter types join the
-            // reflection-ctor route's named surface (a deserializer binding a
-            // parameterized creator deserializes each argument at the declared
-            // parameter type before the object exists). WikiRef rides along as the
-            // parameter type's own type argument: its ctor and accessors must be
-            // open too, or the element the "deserializer" builds could not be
-            // populated.
+            // Creator-argument types of a library target: List<WikiRef> is named
+            // ONLY as WikiChangelog's ctor parameter — no field, property or body
+            // names it — and is constructed off ParameterInfo.ParameterType, as a
+            // deserializer binding a parameterized creator deserializes each argument
+            // at the declared parameter type before the object exists. WikiRef is
+            // that type's own type argument; the element the "deserializer" builds
+            // needs its ctor and accessors. The creator comes from a helper's
+            // result, so these members are preserved explicitly.
             ConstructorInfo cci = GetCtorsShaped<MiniBcl.WikiChangelog>()[0];
             if (cci.GetParameters().Length != 2)
             {
@@ -270,12 +265,11 @@ namespace MultiAssembly
             return 0;
         }
 
-        // Mirrors Thrive's LoadDirectObject<T>: the generic-method TYPE ARGUMENT is
-        // what puts T on the reflection-ctor route's named user surface — a bare
-        // typeof(LibType) handed straight to Activator is the documented residue
-        // and stays closed. The construction itself is the non-generic
-        // Activator.CreateInstance(Type) (the generic CreateInstance<T>() lowers
-        // inline to `new T()` and would not exercise the late-bound route at all).
+        // A deserializer's LoadDirectObject<T> shape: typeof(T) of the method type
+        // argument is a recognized target in each instantiation. The construction
+        // itself is the non-generic Activator.CreateInstance(Type) (the generic
+        // CreateInstance<T>() lowers inline to `new T()` and would not exercise
+        // late-bound construction at all).
         private static object LoadShaped<T>()
         {
             return Activator.CreateInstance(typeof(T));

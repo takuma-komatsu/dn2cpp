@@ -4,27 +4,22 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Reflection;
 
-// The canonical-wrapper seed (Compilation.ReachUserSurfaceNamedSpecializationCtors /
-// CollectionInterfaceWrapperDefs): when the app's reflection-visible member surface
-// declares an abstract BCL collection INTERFACE and the program uses late-bound
-// construction (Activator.CreateInstance(Type) / ConstructorInfo.Invoke), the
-// transpiler seeds the interface's canonical BCL materialization — List<T> for
-// IEnumerable<T>/ICollection<T>/IList<T>, List<T> + ReadOnlyCollection<T> for
-// IReadOnlyCollection<T>/IReadOnlyList<T>, HashSet<T> for ISet<T>, Dictionary<K,V>
-// for IDictionary<K,V>, Dictionary<K,V> + ReadOnlyDictionary<K,V> for
-// IReadOnlyDictionary<K,V> — so the typeof(Def<>).MakeGenericType(itemType) a
-// reflection deserializer performs (Newtonsoft's JsonArrayContract /
-// JsonDictionaryContract CreatedType computation) resolves, and the wrapper's
-// ctor is invokable. This section replays the exact shape that blocked Thrive's
+// A recognized MakeGenericType site over arguments the program's own reflection
+// computes: a member declared at an abstract BCL collection interface names its item
+// types through PropertyType.GetGenericArguments(), and typeof(Def<>).MakeGenericType
+// over them takes an instantiation the image already has, else the definition's
+// runtime template, else a static instantiation when the known arguments meet the
+// constraints, so the late-bound construction after it (Activator.CreateInstance(Type),
+// ConstructorInfo.Invoke) runs. List<T>, ReadOnlyCollection<T>, HashSet<T>,
+// Dictionary<K,V> and ReadOnlyDictionary<K,V> are built the way a reflection
+// deserializer (Newtonsoft's JsonArrayContract / JsonDictionaryContract CreatedType
+// computation) builds them, replaying the shape that blocked Thrive's
 // AchievementsManager.PerformLoad: an IReadOnlyList<int> member driven through
 // MakeGenericType(List<>) -> Activator temporary -> MakeGenericType(
 // ReadOnlyCollection<>) -> ctor.Invoke(temporary).
 //
-// The positive paths match real .NET. The final section intentionally diverges:
-// MakeGenericType over an instantiation nothing seeds or names statically stays
-// the AOT boundary — real .NET constructs ReadOnlyCollection<double>, dn2cpp
-// throws the (catchable) NotSupportedException whose message names the missing
-// instantiation; the frozen snapshot asserts that message.
+// Every line matches real .NET, including ReadOnlyCollection<double>, which no
+// member names and whose argument is a typeof constant at the site.
 
 namespace ReflectMakeGenericSeedSubset
 {
@@ -111,9 +106,8 @@ namespace ReflectMakeGenericSeedSubset
             tags.Add("alpha");
             Console.WriteLine("tags=" + setType.Name + " count=" + tags.Count);
 
-            // -- The boundary that stays: an instantiation nothing seeds or names.
-            // Real .NET constructs it; dn2cpp throws the catchable
-            // NotSupportedException whose message names the missing instantiation. --
+            // -- An instantiation nothing else names: its known argument instantiates
+            // it statically. A miss would throw the catchable NotSupportedException. --
             try
             {
                 Type bad = typeof(ReadOnlyCollection<>).MakeGenericType(typeof(double));

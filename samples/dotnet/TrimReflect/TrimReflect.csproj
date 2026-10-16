@@ -15,7 +15,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Remove="StrippedMembersOnlyProgram.cs" />
+    <Compile Remove="StrippedMembersOnlyProgram.cs;RecognizedLookupOnlyProgram.cs" />
     <ProjectReference Include="../TrimReflectLib/TrimReflectLib.csproj" />
   </ItemGroup>
 

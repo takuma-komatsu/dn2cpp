@@ -56,7 +56,38 @@
 # its print_error sink, so this assert covers the funnel both lanes share. It is a
 # deliberate stdout/stderr split — the report is dn2cpp's own diagnostic, real .NET
 # prints nothing there, so it must never leak into the exact stdout diff above.
+#
+# InitializerTriggersOnly pins the triggers of a precise-init (explicit static
+# constructor) type initializer that touch no static field of the type: a run-time root
+# (the entry type's initializer runs before Main), a base-constructor call from a derived
+# constructor, a struct constructor or instance method called on a local, a pointer to a
+# static method, a static call or method pointer inside a shared generic body, and a
+# constrained call binding a generic struct's own method, its own ToString, Equals or
+# GetHashCode override, or a generic class's static abstract implementation.
+# typeof and default(struct) stay non-triggers. Its own driver, so no other section
+# names those types; exact diff vs real .NET, with the generic witnesses telling a
+# first-use guard from a startup run.
 source "$(dirname "$0")/_common.sh"
+
+echo "== Precise type initializers run on every trigger, and only on a trigger =="
+(
+    DN2CPP_SAMPLE_PROJECT_DIR=samples/dotnet/ArgsEntrypointSubset/InitializerTriggersOnly
+    DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|sample-path:$DN2CPP_SAMPLE_PROJECT_DIR"
+    gate_extra_asserts() {
+        local native line
+        native=$(strip_cr_win "$(run_bounded "./$1/InitializerTriggersOnly$EXE_EXT")")
+        for line in 'entry initializer before Main=True' 'base constructor call=True' \
+                'struct instance method=1/True' 'method pointer=42/True' 'default struct=0/False' \
+                'shared method pointer=8/registered' 'shared static call=9/registered' \
+                'constrained struct method=3/registered' 'constrained static method=4/registered' \
+                'constrained struct ToString=text/registered' 'constrained struct Equals=True/registered' \
+                'constrained struct GetHashCode=6/registered' 'initializer triggers end'; do
+            grep -Fxq -- "$line" <<< "$native" \
+                || { echo "FAIL: initializer trigger witness missing: $line" >&2; return 1; }
+        done
+    }
+    corelib_diff_gate InitializerTriggersOnly
+)
 
 project=ArgsEntrypointSubset
 out="artifacts/$(printf '%s' "$project" | tr '[:upper:]' '[:lower:]')"

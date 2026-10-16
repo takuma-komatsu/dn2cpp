@@ -10,6 +10,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="GvmCallLateLayoutProbe.cs" />
+    <Compile Include="LateLayoutAttributeCarrier.cs" />
     <ProjectReference Include="GvmCallLateLayoutLibrary.csproj" />
   </ItemGroup>
 </Project>

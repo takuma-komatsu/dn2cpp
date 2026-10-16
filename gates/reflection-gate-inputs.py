@@ -36,7 +36,7 @@ def oracle_key(app, arguments):
     # Native emission flags do not change the CLR input; compile-time variants do.
     environment = {key: value for key, value in os.environ.items()
                    if key.upper().startswith(("DOTNET_", "COMPLUS_", "DN2CPP_BEFORE_", "LC_"))
-                   or key in ("LANG", "DN2CPP_REFLECTION_MEASURE", "DN2CPP_STRIPPED_OVERRIDES")}
+                   or key in ("LANG", "DN2CPP_REFLECTION_MEASURE", "DN2CPP_STRIPPED_OVERRIDES", "DN2CPP_INHERITED_GVM_REMEDY")}
     digest.update(json.dumps([app.name, arguments, environment], sort_keys=True).encode("utf-8"))
     for path in sorted(app.parent.iterdir(), key=lambda p: p.name):
         if path.is_file() and (path.suffix.lower() == ".dll"

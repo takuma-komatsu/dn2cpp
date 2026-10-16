@@ -5,10 +5,17 @@
       <property name="Title" />
       <property name="Sections" />
     </type>
+    <!-- Program.Main invokes the constructors GetCtorShaped and GetCtorsShaped return;
+         no site resolves a helper's result. -->
     <type fullname="MiniBcl.WikiEntry" preserve="nothing">
       <method name=".ctor" />
     </type>
     <type fullname="MiniBcl.WikiChangelog" preserve="nothing">
+      <method name=".ctor" />
+    </type>
+    <!-- Program.Main activates the creator parameter's type, its type argument, and
+         that argument's Target accessors, all read off a helper's constructor. -->
+    <type fullname="MiniBcl.List`1" preserve="nothing">
       <method name=".ctor" />
     </type>
     <type fullname="MiniBcl.WikiRef" preserve="nothing">

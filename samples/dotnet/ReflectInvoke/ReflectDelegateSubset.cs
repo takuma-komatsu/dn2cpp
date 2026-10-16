@@ -747,20 +747,26 @@ namespace ReflectDelegateSubset
             Console.WriteLine("substituted runtime delegate signatures end");
         }
 
-        internal static void RunUnsafeTemplateBindings()
+        internal static void RunUnsafeTemplateBindings() =>
+            RunUnsafeTemplateBindings(typeof(string), typeof(Guid), typeof(System.Globalization.CultureInfo));
+
+        // The type arguments arrive as parameters, so every owner is a clone and each
+        // binding meets the template's boundary; over arguments the transpiler knows, it
+        // compiles the closed type instead.
+        private static void RunUnsafeTemplateBindings(Type reference, Type value, Type pointee)
         {
-            Type owner = typeof(SignatureUnsafeClass<>).MakeGenericType(typeof(string));
+            Type owner = typeof(SignatureUnsafeClass<>).MakeGenericType(reference);
             int before = SignatureTarget.NestedArgumentCalls;
             Console.WriteLine("signature unsafe indirect method => " + SignatureOutcome(() =>
                 Delegate.CreateDelegate(typeof(SignatureStringRef), owner.GetMethod("Clear")!, false)));
             Console.WriteLine("signature unsafe indirect named => " + SignatureOutcome(() =>
                 Delegate.CreateDelegate(typeof(SignatureStringRef), owner, "Clear", false, false)));
-            Type alias = typeof(SignatureAliasGeneric<>).MakeGenericType(typeof(Guid));
+            Type alias = typeof(SignatureAliasGeneric<>).MakeGenericType(value);
             Console.WriteLine("signature unsafe value copy => " + SignatureOutcome(() =>
                 Delegate.CreateDelegate(typeof(SignatureGuidCopy), alias, "Copy", false, false)));
             Console.WriteLine("signature unsafe byref Invoke => " + OpaqueInvokeOutcome(alias.GetMethod("Alias")!, new object[] { Guid.Empty }));
             Console.WriteLine("signature unsafe return Invoke => " + OpaqueInvokeOutcome(alias.GetMethod("Return")!, null));
-            Type pointer = typeof(SignatureUnsafePointer<>).MakeGenericType(typeof(System.Globalization.CultureInfo));
+            Type pointer = typeof(SignatureUnsafePointer<>).MakeGenericType(pointee);
             SignaturePair("unsafe pointer read", typeof(SignatureCulturePointerRead), pointer, "Read");
             SignaturePair("unsafe pointer clear", typeof(SignatureCulturePointerClear), pointer, "Clear");
             SignaturePair("unsafe nested read", typeof(SignatureCultureNestedRead), pointer, "ReadNested");

@@ -79,12 +79,11 @@
 #      diffed" count must be nonzero, because a silently skipped sweep and a clean
 #      corpus would otherwise print the same zero.
 #
-#   6. The reflection-invoke route walks whole classes, and a walked class's bodies
-#      mint the instantiations they name. A definition whose methods each name a
-#      deeper instantiation of itself would grow a whole walk exponentially in the
-#      program's nesting depth. The route walks a bounded number of each definition's
-#      minted instantiations, so the transpile completes and the definition's
-#      instantiations grow linearly in that bound instead.
+#   6. A recognized reflection target admits only the members it selects. A
+#      definition whose methods each name a deeper instantiation of itself would grow
+#      exponentially in the program's nesting depth if invoking one member admitted
+#      its siblings; only the invoked body and the instantiations the program names
+#      are emitted.
 #
 # A sibling measurement aid, gates/measure-transpile-mem.sh, reports peak RSS and
 # the per-phase heap curve. This gate asserts; that one measures.
@@ -93,11 +92,11 @@
 # Executable ILDiet depth summaries abort on operator budgets, retain deep caller
 # substitutions, and distinguish preserved dispatch/data bodies from execution.
 # Closed copied shapes in unused bodies do not consume the execution budget.
-# Reflection-only whole-class roots keep emission's bounded minted walk.
+# A recognized target on a self-nesting definition admits only its selected member.
 # Attribute rows retain bodies; only live attribute reads promote constructors
 # and named setters, without executing getters or a hidden base setter.
-# Late decoded reflected field boxes retain their Object overrides beyond the
-# whole-class walk bounds, with and without shared generics or managed stripping.
+# Late decoded reflected field boxes retain their Object overrides, with and
+# without shared generics or managed stripping.
 # Branch summaries share boolean getter folds and known loaded type identities;
 # explicit/inherited interface maps, class newslot identities and constrained
 # primitive slots exclude unrelated bodies; ISA guards share the capability verdict.
@@ -105,6 +104,7 @@
 # embedded internal metadata types and ordinary intrinsic-BCL inputs still run.
 # Validated ordinary cuts exclude body depth summaries while preserving signatures.
 # Measure inventories equality first selected by reflected signature layouts.
+# A closure table's convergence check renders each shared summary term once.
 source "$(dirname "$0")/_common.sh"
 
 out="artifacts/transpiler-limits"
@@ -129,6 +129,8 @@ build_gate_proj gates/fixtures/transpiler-limits/CanonicalLink/CanonicalLinkBoun
 build_gate_proj gates/fixtures/transpiler-limits/WrapperExceptions/WrapperExceptions.csproj
 build_gate_proj gates/fixtures/transpiler-limits/ReflectionRouteNesting/ReflectionRouteNesting.csproj
 build_gate_proj gates/fixtures/transpiler-limits/ReflectionDepthSummary/ReflectionDepthSummary.csproj
+build_gate_proj gates/fixtures/transpiler-limits/SharedSummaryTerms/SharedSummaryTerms.csproj
+build_gate_proj gates/fixtures/transpiler-limits/RepeatedAlternatives/RepeatedAlternatives.csproj
 collision_fixture=gates/fixtures/transpiler-limits/CoreLibCollision
 for shape in Object ValueType Unsafe Control; do
     build_gate_proj "$collision_fixture/$shape/Collision$shape.csproj"
@@ -145,6 +147,8 @@ link_app="gates/fixtures/transpiler-limits/CanonicalLink/bin/$CONFIG/$TFM/Canoni
 wrapper_app="gates/fixtures/transpiler-limits/WrapperExceptions/bin/$CONFIG/$TFM/WrapperExceptions.dll"
 nest_app="gates/fixtures/transpiler-limits/ReflectionRouteNesting/bin/$CONFIG/$TFM/ReflectionRouteNesting.dll"
 summary_app="gates/fixtures/transpiler-limits/ReflectionDepthSummary/bin/$CONFIG/$TFM/ReflectionDepthSummary.dll"
+shared_terms_app="gates/fixtures/transpiler-limits/SharedSummaryTerms/bin/$CONFIG/$TFM/SharedSummaryTerms.dll"
+repeated_app="gates/fixtures/transpiler-limits/RepeatedAlternatives/bin/$CONFIG/$TFM/RepeatedAlternatives.dll"
 # The assembly section 8 withholds and then supplies. It sits beside the CoreLib in
 # the shared framework; a requested reference that is absent is a hard failure, not
 # a quietly dropped one — withholding it is the whole point of the section,
@@ -164,7 +168,7 @@ numerics_dll="$(dirname "$corelib")/System.Runtime.Numerics.dll"
 # gate_cache_check answers that with a warning and no key, which would
 # leave this gate uncacheable since it clears the dirs on every run.
 rm -rf "$out" "$sig_out" "$sig_diet_out" "$cut_out" "$mint_out"; mkdir -p "$out"
-if gate_cache_check "$out" "transpiler-limits|recursive-body:ildiet+no-ildiet|canonical-cap:no-ildiet:1,2|canonical-refs:none|wrapper-exceptions|mint-cap:no-ildiet|depth-summary-env:default,depth8,depth64,count128,count2m,depth1-abort,count1-abort,deep64,uncalled-virtual,uncalled-interface,unallocated-receiver,construction-accessor,generic-accessor,generic-ctor,executed-generic-argument,event,late-construction-accessor:depth3-abort,direct-accessor,direct-event-add,invoke-uncalled-virtual,generic-factory:direct,class,method,identity|unused-copied:low2,default32:ildiet+no-ildiet|ordinary-cut:ildiet+no-ildiet|execution-provenance:base-call,base-ctor,object-slot,primitive-dead-branch,abstract-app,abstract-library,nominal-dead-branch,methodimpl,constrained-primitive,const-getter,unused-default-interface,inherited-interface-map,protected-interface-map,class-newslot-map,isa-getter:Sve+Sve2+Arm64:optimize=true|attributes:unread-ctor,unread-getter,read,generic-read:depth3+depth4-abort:field-boxes=ildiet,no-ildiet,no-shared-generics:prefix=before-reflected-field-boxes|late-array-equality:no-ildiet:emit+measure|sig:no-ildiet+ildiet|collision:no-ildiet,corelib+intrinsic|cli:$(_gate_cli_hash)|$corelib" \
+if gate_cache_check "$out" "transpiler-limits|recursive-body:ildiet+no-ildiet|canonical-cap:no-ildiet:1,2|canonical-refs:none|wrapper-exceptions|mint-cap:no-ildiet|depth-summary-env:default,depth8,depth64,count128,count2m,depth1-abort,count1-abort,deep64,uncalled-virtual,uncalled-interface,unallocated-receiver,construction-accessor,generic-accessor,generic-ctor,executed-generic-argument,event,late-construction-accessor:depth3-abort,direct-accessor,direct-event-add,invoke-uncalled-virtual,generic-factory:direct,class,method,identity|unused-copied:low2,default32:ildiet+no-ildiet|ordinary-cut:ildiet+no-ildiet|execution-provenance:base-call,base-ctor,object-slot,primitive-dead-branch,abstract-app,abstract-library,nominal-dead-branch,methodimpl,constrained-primitive,const-getter,unused-default-interface,inherited-interface-map,protected-interface-map,class-newslot-map,isa-getter:Sve+Sve2+Arm64:optimize=true|attributes:unread-ctor,unread-getter,read,generic-read:depth3+depth4-abort:field-boxes=ildiet,no-ildiet,no-shared-generics:prefix=before-reflected-field-boxes|late-array-equality:no-ildiet:emit+measure|sig:no-ildiet+ildiet|collision:no-ildiet,corelib+intrinsic|shared-summary-terms:no-ildiet:dump|repeated-alternatives:no-ildiet|cli:$(_gate_cli_hash)|$corelib" \
         "$rec_app" "$sig_app" "$fld_app" "$afld_app" "$big_app" "$arr_app" "$mint_app" "$tma_app" \
         gates/fixtures/transpiler-limits/CanonicalLink/Program.cs \
         gates/fixtures/transpiler-limits/CanonicalLink/CanonicalLinkBound.csproj \
@@ -172,10 +176,14 @@ if gate_cache_check "$out" "transpiler-limits|recursive-body:ildiet+no-ildiet|ca
         gates/fixtures/transpiler-limits/WrapperExceptions/WrapperExceptions.csproj \
         gates/fixtures/transpiler-limits/ReflectionRouteNesting/Program.cs \
         gates/fixtures/transpiler-limits/ReflectionRouteNesting/ReflectionRouteNesting.csproj \
+        gates/fixtures/transpiler-limits/SharedSummaryTerms/Program.cs \
+        gates/fixtures/transpiler-limits/SharedSummaryTerms/SharedSummaryTerms.csproj \
+        gates/fixtures/transpiler-limits/RepeatedAlternatives/Program.cs \
+        gates/fixtures/transpiler-limits/RepeatedAlternatives/RepeatedAlternatives.csproj \
         gates/fixtures/transpiler-limits/ReflectionDepthSummary \
         gates/fixtures/transpiler-limits/LateArrayEquality \
         "$collision_fixture" \
-        "$link_app" "$wrapper_app" "$nest_app" "$summary_app" \
+        "$link_app" "$wrapper_app" "$nest_app" "$summary_app" "$shared_terms_app" "$repeated_app" \
         "${link_app%.dll}.runtimeconfig.json" "${link_app%.dll}.deps.json" \
         "${wrapper_app%.dll}.runtimeconfig.json" "${wrapper_app%.dll}.deps.json" \
         "${nest_app%.dll}.runtimeconfig.json" "${nest_app%.dll}.deps.json" \
@@ -1139,11 +1147,11 @@ grep -q "ti_System_Numerics_Complex" "$out"/generated*.cpp "$out"/generated.h \
     || { echo "FAIL: with the reference supplied, typeof(Complex) named no type-info" >&2; exit 1; }
 echo "OK (refused without the reference naming both, transpiled with it)"
 
-echo "== 9/9 The reflection-invoke route walks a bounded number of a self-nesting definition's instantiations =="
-# Nest<T>'s methods each name a deeper Nest, and a deep framework instantiation sets the
-# nesting the route walks within, so a whole walk would mint Nest instantiations
-# exponentially in that depth. The ceiling admits the per-definition bound's walks with
-# room to spare and stays a small fraction of a whole walk's count.
+echo "== 9/9 A recognized reflection target admits only the selected member of a self-nesting definition =="
+# Nest<T>'s A-D each name a deeper Nest, so admitting them alongside the invoked Name
+# would mint Nest instantiations exponentially in the deep framework instantiation's
+# nesting. Only Name is selected: A-D stay absent and the instantiations stay those
+# the program names.
 nest_rc=0
 nest_err=$(invoke_cli "$nest_app" -r "$corelib" -o "$out" 2>&1 >/dev/null) || nest_rc=$?
 if [ "$nest_rc" -ne 0 ]; then
@@ -1151,15 +1159,62 @@ if [ "$nest_rc" -ne 0 ]; then
     echo "$nest_err" >&2
     exit 1
 fi
-# The invoked row's body is the walk's own witness: without it the count proves nothing.
+# The invoked row's body is the selection's own witness: without it the absences prove nothing.
 grep -qx '// ReflectionRouteNesting.Nest_Int32::Name' "$out"/generated*.cpp \
-    || { echo "FAIL: the reflection route did not reach Nest<int>.Name" >&2; exit 1; }
-nest_count=$(cat "$out"/generated*.cpp | grep -o -E 'ti_ReflectionRouteNesting_Nest_[A-Za-z0-9_]+ = ' | sort -u | wc -l | tr -d ' ')
-if [ "$nest_count" -gt 2000 ]; then
-    echo "FAIL: the reflection route emitted $nest_count Nest instantiations (ceiling 2000)" >&2
+    || { echo "FAIL: the recognized target did not reach Nest<int>.Name" >&2; exit 1; }
+if grep -qw -E '// ReflectionRouteNesting\.Nest_[A-Za-z0-9_]+::[ABCD]' "$out"/generated*.cpp; then
+    echo "FAIL: a Nest sibling of the selected member was admitted" >&2
     exit 1
 fi
-echo "OK ($nest_count Nest instantiations, Nest<int>.Name reached)"
+nest_count=$(cat "$out"/generated*.cpp | grep -o -E 'ti_ReflectionRouteNesting_Nest_[A-Za-z0-9_]+ = ' | sort -u | wc -l | tr -d ' ')
+if [ "$nest_count" -gt 8 ]; then
+    echo "FAIL: the recognized target emitted $nest_count Nest instantiations (ceiling 8)" >&2
+    exit 1
+fi
+echo "OK ($nest_count Nest instantiations, Nest<int>.Name reached, A-D absent)"
+
+echo "== 9b/9 A closure table renders each shared summary term once =="
+# Building the closure table of the reached lambda's nest interprets the unreached body
+# too, whose stored value shares each level's term across every argument of the next
+# level, so its paths multiply at every level. Rendering it as a tree does not finish;
+# the watchdog bounds a regression.
+shared_terms_out="${out}-shared-terms"
+rm -rf "$shared_terms_out"
+shared_terms_rc=0
+shared_terms_err=$(DN2CPP_DUMP_REFLECTION_SUMMARY=1 run_with_watchdog 120 invoke_cli "$shared_terms_app" \
+    -r "$corelib" --no-ildiet -o "$shared_terms_out" 2>&1 >/dev/null) || shared_terms_rc=$?
+if [ "$shared_terms_rc" -ne 0 ]; then
+    echo "FAIL: the shared-term closure table transpile exited $shared_terms_rc" >&2
+    echo "$shared_terms_err" >&2
+    exit 1
+fi
+# The table supplies Built and the closure field's default null to the lambda.
+grep -Eq '^  IL_[0-9a-f]{4} ActivatorCreate/Construct .* p0=\{(typeof\(SharedSummaryTerms\.Built\) \| null|null \| typeof\(SharedSummaryTerms\.Built\))\}( |$)' <<<"$shared_terms_err" \
+    || { echo "FAIL: the reached lambda did not read its operand from the closure table" >&2; echo "$shared_terms_err" >&2; exit 1; }
+echo "OK (closure table built over the shared-term body)"
+
+echo "== 9c/9 Repeated reflection alternatives collapse to the distinct members they name =="
+# Each step enumerates both fields of every Node the previous step resolved. Admission that
+# repeats an alternative per path doubles it at every step and exhausts memory; one Node
+# per step keeps the final construction precise.
+repeated_out="${out}-repeated-alternatives"
+rm -rf "$repeated_out"
+repeated_rc=0
+repeated_err=$(run_with_watchdog 120 invoke_cli "$repeated_app" -r "$corelib" --no-ildiet -o "$repeated_out" 2>&1 >/dev/null) \
+    || repeated_rc=$?
+if [ "$repeated_rc" -ne 0 ]; then
+    echo "FAIL: the repeated-alternatives transpile exited $repeated_rc" >&2
+    echo "$repeated_err" >&2
+    exit 1
+fi
+grep -qx '// RepeatedAlternatives.Node::.ctor' "$repeated_out"/generated*.cpp "$repeated_out"/generated.h \
+    || { echo "FAIL: the construction at the end of the field chain did not reach Node's constructor" >&2; exit 1; }
+if [ -s "$repeated_out/reflection-unrecognized.tsv" ]; then
+    echo "FAIL: a site of the field chain lost its operand:" >&2
+    cat "$repeated_out/reflection-unrecognized.tsv" >&2
+    exit 1
+fi
+echo "OK (Node's constructor admitted, every site of the chain recognized)"
 
 echo "== CoreLib type identity collisions =="
 for shape in Object ValueType Unsafe; do

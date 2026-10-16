@@ -1,0 +1,12 @@
+<linker>
+  <assembly fullname="ReflectNameBindOnly">
+    <!-- FunctionCall and TokenCall receive the owner of the named binding as a
+         parameter. -->
+    <type fullname="ReflectNameBindOnly.FunctionOverload`1">
+      <method name="Ref" />
+    </type>
+    <type fullname="ReflectNameBindOnly.TokenOverload`1">
+      <method name="Ref" />
+    </type>
+  </assembly>
+</linker>

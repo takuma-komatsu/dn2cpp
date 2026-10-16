@@ -7,10 +7,10 @@ preserved-field=17
 property-set
 property-get
 preserved-property=23
-dropped-method=True
+dropped-method=False
 delegate-invoke=True
 initialized-field=41
-non-derived-dropped=True
+non-derived-dropped=False
 late-bound=base:service
 == preserved reflection boxes ==
 preserved-boxes=point:5,point:6,point:7,made:0

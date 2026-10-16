@@ -8,10 +8,10 @@ using ReflectReturnLib;
 
 // SUBJECT: a framework assembly's CreateDelegate as the only reflection call a
 // program makes outside reflected bodies. The binder library is framework code to
-// dn2cpp, so its binding opens no application reflection route, yet the rows it
+// dn2cpp, so its binding admits no application member by itself, yet the rows it
 // binds run through the receiver's slot. An interface's default body only such a
 // binding enters compares a struct only it boxes by value, and its own Invoke and
-// GetCustomAttributes calls open the routes a called body's would: an uncalled
+// GetCustomAttributes calls admit what a called body's would: an uncalled
 // application method runs, and an attribute nothing else constructs is read. A
 // struct only such an Invoke writes back through an out argument dispatches its
 // interface member through the box and compares by value, and so does one such an
@@ -204,6 +204,21 @@ static class Program
         // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+
+        if (Environment.GetEnvironmentVariable("DN2CPP_INHERITED_GVM_REMEDY") == "1")
+        {
+            Console.WriteLine("== inherited generic virtual remedy ==");
+            MethodInfo inheritedRegister = typeof(TypeDescriptionProvider).GetMethod(s_register)!
+                .MakeGenericMethod(typeof(Tagged));
+            var inherited = new InheritedProvider();
+            Try("inherited generic virtual override", () =>
+            {
+                FrameworkBinder.Run(inheritedRegister, inherited);
+                return inherited.Registered;
+            });
+            Console.WriteLine("inherited generic virtual remedy end");
+            return;
+        }
 
         var reflected = new ReflectedOnly();
         Try("default body, boxed struct equality",

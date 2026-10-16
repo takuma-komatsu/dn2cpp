@@ -21,7 +21,9 @@ for path in sorted(root.glob("generated*.cpp")):
             raise SystemExit("expected one native constructor row: " + owner)
         row = rows[0]
         fields = row.group(1).split(",")
-        if len(fields) != 35 or fields[1].strip() != "&ti_" + owner or fields[30].strip() != "0" or fields[31].strip() != "0" or fields[32].strip() != "0" or fields[33].strip() != "0" or fields[34].strip() != "0":
+        # Dn2CppMethodInfo: field 19 is `preservable`, set only on a bodiless template
+        # row; 31-35 are signature pointers a plain constructor leaves null.
+        if len(fields) != 36 or fields[1].strip() != "&ti_" + owner or fields[19].strip() != "0LL" or any(f.strip() != "0" for f in fields[31:36]):
             raise SystemExit("unavailable constructor row layout changed: " + owner)
         body = fields[7].strip()
         invoker = fields[8].strip()

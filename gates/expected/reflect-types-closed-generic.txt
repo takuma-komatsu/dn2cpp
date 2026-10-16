@@ -1,0 +1,32 @@
+== closed generic diagnostics ==
+named cell:Int32 holder:Int32 name:Int32
+cell named: cell:Int32
+cell unnamed: PlatformNotSupportedException catchable=True ClosedGenericDiagnostics.Cell`1[System.Int64] in ClosedGenericDiagnosticsOnly: this closed generic instantiation has no compiled code; fix: name the closed generic instantiation statically
+holder named: holder:Int32
+holder unnamed: holder:Int64
+method named: name:Int32
+method unnamed: PlatformNotSupportedException catchable=True ClosedGenericDiagnostics.Names::Name[System.Int64] in ClosedGenericDiagnosticsOnly: this closed generic instantiation has no compiled code; fix: name the closed generic instantiation statically
+closed generic diagnostics end
+== closed generic receivers ==
+named nest:Int32
+definition parameter: Holder`1
+method parameter: Name
+self-nesting named: nest:True
+closed generic receivers end
+== closed generic templates ==
+abstract base unnamed: square:Int64
+template body unnamed: PlatformNotSupportedException catchable=True ClosedGenericDiagnostics.Product::Void .ctor() in ClosedGenericDiagnosticsOnly: reflection found this member but its body was not retained; fix: [Preserve] on the target, or link.xml <assembly fullname="ClosedGenericDiagnosticsOnly"><type fullname="ClosedGenericDiagnostics.Product"><method name=".ctor" /></type></assembly>
+clone argument unnamed: PlatformNotSupportedException catchable=True ClosedGenericDiagnostics.Cell`1[ClosedGenericDiagnostics.Holder`1[System.Int64]] in ClosedGenericDiagnosticsOnly: this closed generic instantiation has no compiled code; fix: name the closed generic instantiation statically
+closed generic templates end
+== static generic constraint proof ==
+constraint interface control: dispose:Disposable
+constraint invariant control: tag:RightTag
+constraint array rejected: PlatformNotSupportedException catchable=True ClosedGenericDiagnostics.NeedsDispose`1[System.Int32[]] in ClosedGenericDiagnosticsOnly: this closed generic instantiation has no compiled code; fix: name the closed generic instantiation statically
+constraint invariant rejected: PlatformNotSupportedException catchable=True ClosedGenericDiagnostics.NeedsTag`1[ClosedGenericDiagnostics.WrongTag] in ClosedGenericDiagnosticsOnly: this closed generic instantiation has no compiled code; fix: name the closed generic instantiation statically
+static generic constraint proof end
+== template fallback constraint proof ==
+constraint template body control: List`1
+constraint template method control: Int32
+constraint template body rejected: PlatformNotSupportedException catchable=True ClosedGenericDiagnostics.NeedsTemplateBodyTag`1[ClosedGenericDiagnostics.WrongTag]::System.String Run() in ClosedGenericDiagnosticsOnly: this closed generic instantiation has no compiled code; fix: name the closed generic instantiation statically
+constraint template method rejected: PlatformNotSupportedException catchable=True ClosedGenericDiagnostics.NeedsTemplateMethodTag`1[ClosedGenericDiagnostics.WrongTag]::Run[System.Int32] in ClosedGenericDiagnosticsOnly: this closed generic instantiation has no compiled code; fix: name the closed generic instantiation statically
+template fallback constraint proof end

@@ -315,7 +315,7 @@ grep -q dn2cpp_base_image_abi_hash "$OUT/generated.cpp" \
 # against the REAL net10.0 CoreLib, so which CoreLib that resolves to is an input
 # of this gate the same way it is of net10_bcl_diff_gate — a runtime bump must
 # not be served a green recorded against the previous one.
-if gate_cache_check "$OUT" "hotupdate-subset|cli:$(_gate_cli_hash)|field-metadata:$field_packed/$field_native|corelib:$(resolve_net10_corelib)|before-derived-aggregate|before-aggregate-collection|before-aggregate-message|before-ordinary-exception-message|oracle:--derived-aggregate/--aggregate-collection|unavailable-aggregate-ctor|type-getter-signature:--type-getter-signature/before-type-getter-signature/register/stack/HotUpdateBase.TypeGetterSignatureFixture::EmitSurface|patch-method-identities:private-rows/roundtrip/virtual-override/invoke/refusal-variant/metadata-v4|renamed-slots:--renamed-slot-prefix/before-renamed-slots/register/stack/intrinsic-bcl/corelib|renamed-object:--object/--finalize/--renamed-object-oracle/--renamed-finalize-oracle/corelib-refusal/corelib-loaded|instance-body-calls:call/callvirt/default/dictionary/folded-predicates/same-owner/predicate-nops/null-bound/try/method-context/register/stack/intrinsic-bcl/corelib/--no-shared-generics/--cut-HotUpdateBase.IOverriddenBin::Cold|late-default-layout:object-method-group/noalloc-constant/transitive-helper/normal/--hotupdate-base/--no-shared-generics|signature-generic-imports:packed/native/register/stack/fields/field-address-refusal" \
+if gate_cache_check "$OUT" "hotupdate-subset|cli:$(_gate_cli_hash)|field-metadata:$field_packed/$field_native|corelib:$(resolve_net10_corelib)|before-derived-aggregate|before-aggregate-collection|before-aggregate-message|before-ordinary-exception-message|oracle:--derived-aggregate/--aggregate-collection|unavailable-aggregate-ctor|type-getter-signature:--type-getter-signature/before-type-getter-signature/register/stack/HotUpdateBase.TypeGetterSignatureFixture::EmitSurface|patch-method-identities:private-rows/roundtrip/virtual-override/invoke/refusal-variant/metadata-v4|renamed-slots:--renamed-slot-prefix/before-renamed-slots/register/stack/intrinsic-bcl/corelib|renamed-object:--object/--finalize/--renamed-object-oracle/--renamed-finalize-oracle/corelib-refusal/corelib-loaded|instance-body-calls:call/callvirt/default/dictionary/folded-predicates/same-owner/predicate-nops/null-bound/try/method-context/register/stack/intrinsic-bcl/corelib/--no-shared-generics/--cut-HotUpdateBase.IOverriddenBin::Cold|late-default-layout:object-method-group/noalloc-constant/transitive-helper/normal/--hotupdate-base/--no-shared-generics|signature-generic-imports:packed/native/register/stack/fields/field-address-refusal|carried-attribute-type-infos" \
         "$base_app" "$patch_app" "$bad_app" "$badgvm_app" "$baditf_app" "$baddg_app" \
         "$concat_oracle_app" \
         "$signature_arguments_base" "$signature_arguments_patch" "$signature_arguments_address" gates/_hotupdate-signature-arguments.sh \
@@ -2146,8 +2146,26 @@ for gvmcall_late_layout_mode in normal shared monomorphic; do
     assert_output "${gvmcall_late_layout_native%%$'\n== late NoAlloc closure =='*}" "$gvmcall_late_layout_old"
     gvmcall_late_layout_native_prefix=$(run_bounded "./$gvmcall_late_layout_out/GvmCallLateLayout$EXE_EXT" --prefix)
     assert_output "$(strip_cr_win "$gvmcall_late_layout_native_prefix")" "$gvmcall_late_layout_prefix"
+    # A Type argument of an attribute row gets a type-info only on a carried class: the
+    # application class's row names LateLayoutCarriedTag, while the row of a library
+    # class only a field type names leaves LateLayoutUnusedTag out of the base. ILDiet
+    # drops all of them from the normal image; a hot-update base keeps every class.
+    if [ "$gvmcall_late_layout_mode" != normal ]; then
+        grep -qw ti_HotGvmCall_Library_LateLayoutCarriedTag \
+            "$gvmcall_late_layout_out"/generated*.cpp "$gvmcall_late_layout_out/generated.h" \
+            || { echo "FAIL: a carried class's attribute Type argument has no type-info ($gvmcall_late_layout_mode)" >&2; exit 1; }
+        grep -qw ti_HotGvmCall_Library_LateLayoutUnusedCarrier \
+            "$gvmcall_late_layout_out"/generated*.cpp "$gvmcall_late_layout_out/generated.h" \
+            || { echo "FAIL: the field-named library carrier has no type-info ($gvmcall_late_layout_mode)" >&2; exit 1; }
+        if grep -qw ti_HotGvmCall_Library_LateLayoutUnusedTag \
+                "$gvmcall_late_layout_out"/generated*.cpp "$gvmcall_late_layout_out/generated.h"; then
+            echo "FAIL: an uncarried library class's attribute Type argument minted a type-info ($gvmcall_late_layout_mode)" >&2
+            exit 1
+        fi
+    fi
 done
 echo "OK (late retained generic default layouts and Object method groups, normal and both hotupdate sharing modes)"
+echo "OK (attribute Type arguments mint type-infos only on carried classes, both hotupdate sharing modes)"
 
 # The allocating helper is reached by Main before the late default. A verifier
 # that starts recording at the late root loses both Count's edge and Allocate's facts.

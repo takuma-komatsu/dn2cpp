@@ -103,7 +103,8 @@ reflection_signature_diff_axes() {
         reflection_oracle "$out/app/ReflectionSignatureTypesOnly.dll" > "$out/clr.raw.stdout"
         strip_cr_win_file "$out/clr.raw.stdout" > "$out/clr.stdout"
         DN2CPP_STRICT_COMPLETION=1 invoke_cli "$out/app/ReflectionSignatureTypesOnly.dll" -r "$(locate_corelib)" \
-            --no-ildiet ${emit_flags[@]+"${emit_flags[@]}"} -o "$out" > "$out/emit.log" 2>&1
+            --no-ildiet --link-xml samples/dotnet/ReflectInvoke/keep-signature-shapes.xml \
+            ${emit_flags[@]+"${emit_flags[@]}"} -o "$out" > "$out/emit.log" 2>&1
         compile_console "$out" ReflectionSignatureTypesOnly
         run_bounded "$out/ReflectionSignatureTypesOnly$EXE_EXT" > "$out/native.raw.stdout"
         strip_cr_win_file "$out/native.raw.stdout" > "$out/native.stdout"

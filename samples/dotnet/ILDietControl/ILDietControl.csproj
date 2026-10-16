@@ -9,7 +9,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Remove="LookupOnly/**/*.cs;EventBoundary/**/*.cs;ConstructorOnly/**/*.cs;InvokeOnly/**/*.cs" />
+    <Compile Remove="LookupOnly/**/*.cs;EventBoundary/**/*.cs;ConstructorOnly/**/*.cs;InvokeOnly/**/*.cs;AbsenceOnly/**/*.cs;UnknownTargetOnly/**/*.cs;LibraryOwnerOnly/**/*.cs;InheritedStaticOnly/**/*.cs;ConditionalNamedOnly/**/*.cs" />
     <ProjectReference Include="../ILDietControlLib/ILDietControlLib.csproj" />
   </ItemGroup>
 </Project>

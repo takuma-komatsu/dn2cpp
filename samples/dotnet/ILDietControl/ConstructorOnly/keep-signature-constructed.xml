@@ -1,0 +1,9 @@
+<linker>
+  <assembly fullname="ConstructorOnly">
+    <!-- Program.Construct activates the signature type it receives; no site resolves
+         a Type parameter, so the instantiations' constructors are preserved. -->
+    <type fullname="ILDietConstructorOnly.SignatureTarget`1" preserve="nothing">
+      <method name=".ctor" />
+    </type>
+  </assembly>
+</linker>

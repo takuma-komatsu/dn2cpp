@@ -1,0 +1,10 @@
+<linker>
+  <assembly fullname="ReflectedEventsOnly">
+    <!-- EventInfo.GetOtherMethods is not a recognized lookup, so the transpile
+         cannot tell which accessors the returned methods invoke. -->
+    <type fullname="EventSubset.ExoticEventOwner">
+      <method name="OtherPublic" />
+      <method name="OtherPrivate" />
+    </type>
+  </assembly>
+</linker>
