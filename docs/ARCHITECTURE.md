@@ -26,35 +26,68 @@ input .NET assembly (+ reference assemblies via -r)
 ```
 
 ILDiet runs in a companion process over the original metadata, before
-`Compilation` exists. It shares `PreservationReader` with the transpiler and
-returns rewritten DLL paths plus an effective linker descriptor. The driver
-validates the result, preserves module order and default-reference diagnostics,
-and loads only that resolved output set. Reference discovery cannot reintroduce
-original DLLs afterward. ILDiet keeps application member signatures separately
-from executable bodies: metadata-only dependencies retain declarations and
-layouts, and a later executable root promotes them before unreachable bodies
-become marked throwing stubs. ILDiet's retained bodies must contain every body
-`Compilation` admits; admitting a marked stub is an `InvalidOperationException`
-naming the method, never a run-time throw. ILDiet classifies and summarizes
-reflection calls with the transpiler's `ReflectionApis` and `ReflectionSummary`,
-derives each recognized site's owners and member names from the same summary
-terms, and over-approximates what emission selects: owners keep the bodies an
-admitting site could select, and each site's selected rows survive as marked
-stubs. Backend exclusions remain independent.
-Cecil is confined to ILDiet and never becomes
-transpiler self-host input. Cut selectors that require generic specialization
-retain the original DLLs in the output set and defer validation to `Compilation`;
-a raw metadata match must not turn an invalid selector into a silent no-op.
+`Compilation` exists. Its definition graph distinguishes metadata, runtime,
+member and explicit-root type states from metadata and body method states.
+Signatures and original bodies decode once per definition. A metadata-to-body
+promotion applies only body dependencies and executable state-machine attribute
+arguments; every IL operand participates, including dead branches.
+Generic-parameter demands flow through bindings without
+constructing closed caller-depth contexts. Binding identities preserve declaring
+scopes through nested generic and array shapes. Explicit MethodImpl edges connect
+slot and implementation parameters independently of method names. Runtime and
+boxing demands follow those bindings as well. Structural reflection defers
+finite projections over symbolic types until existing or later bindings supply
+targets. Generic-argument vectors preserve positions and repeated arguments;
+interface enumeration follows the base and inherited-interface closure.
+Symbolic assembly enumeration stays within each bound owner's module. Deferred
+nested and interface lookups conservatively cover the owner's original nested
+or inherited-interface definitions without narrowing by the requested name.
 
-The backend receives the original assembly paths and project options through
+The shared `ReflectionApis` and `ReflectionSummary` select each site's metadata
+rows and bodies. Unknown type selection keeps all stripped types' metadata and
+member rows. Unknown member selection keeps rows on all metadata-reached owners,
+including owners discovered later through signatures. Neither scope adds bodies
+or runtime state. ILDiet's retained bodies must contain every body `Compilation`
+admits. A metadata-only method becomes a marked throwing stub; admitting it is
+an `InvalidOperationException` naming the method. Property rows retain their
+independent accessor selection, including an intentionally accessorless row;
+replayed preservation cannot invent an executable accessor. Explicit static
+initializer selections, including `TypeInitializer` and constructor or member
+queries, retain the owner's original initializer body rather than a stub.
+Ordinary member-row retention leaves unused initializers removed.
+
+Reflection-produced boxes from fields, invocation results and by-reference
+arguments normalize nullable and by-reference payloads before requesting runtime
+dispatch. Summary object types also unwrap nullable boxes before member lookup,
+including generic payloads forwarded through symbolic bindings. Non-generic
+array searches request dispatch for recorded element types.
+Runtime array factories combined with those searches, or runtime-handle boxing,
+also cover metadata-retained value layouts. The conservative closure promotes
+value types without widening reference-script registration.
+
+Analysis is monotone and never mutates Cecil IL. After closure, a frozen plan
+validates retention and registry decisions before applying changes. Writes go to
+an immutable generation; atomic replacement of `ildiet-result.xml` publishes it.
+The versioned protocol carries ordered assembly paths, modes, content hashes,
+contract digest, fallback and deterministic counters. The driver validates
+identities, order, hashes and publication state before loading only that output
+set. Reference discovery cannot reintroduce original DLLs afterward.
+
+ILDiet shares `PreservationReader` with the transpiler. Its effective descriptor
+exports original attribute and linker rules as signatures; backend and reflection
+roots remain contract entries rather than synthetic preservation. Cut selectors
+requiring generic specialization retain original bytes and defer validation to
+`Compilation`. A deterministic graph-budget exhaustion copies the complete
+resolved set byte for byte. Invalid input and broken invariants fail instead of
+publishing a partial analysis. Cecil is confined to the companion.
+
+The backend receives original paths and project options through
 `ConfigureILDiet`. Its policy declares rewritable assemblies, type and method
-roots, conditional member roots for descendants, registration attributes and
-constructor registries. The XML protocol carries these declarations without
-engine names or resource parsing in the transpiler or ILDiet. Registry rewrite
-results remain part of protocol validation; they do not control later
-emission-stage optimization. Effective preservation rules and validated cut
-selectors cross the process boundary. Copy-all output preserves the original
-bytes.
+roots, conditional member roots, suppressed seeds, registration attributes and
+constructor registries. The protocol carries these declarations without engine
+names or resource parsing in the transpiler or ILDiet. Verified per-assembly
+registry modes and fallback enter `TranspileOptions` and backend diagnostics;
+these states never control emission decisions.
 
 For the .NET-module backend, `GodotProjectScripts` matches `ScriptPathAttribute`
 metadata to project resources before stripping. It scans all project scenes and
@@ -77,9 +110,11 @@ metadata and helper-base ancestry. Handwritten nested .NET types retain the usua
 seeds; keeping such a type also keeps its enclosing script. A surviving descendant
 retains its own
 engine-callable members. Script-registration type arrays are filtered after
-reachability. The GodotSharp constructor registry defers recognized factory
-edges until ordinary IL, signatures and inheritance establish the live wrappers,
-then redirects removed wrappers to compatible retained ancestor factories while
+reachability to runtime-used types. Metadata and reflection roots alone do not
+add script registrations. The GodotSharp constructor registry defers recognized
+factory edges until runtime or explicit roots establish retained wrappers. It
+keeps factories without compatible retained ancestors and drains their new
+dependencies to a fixpoint. A frozen plan redirects eligible entries while
 preserving engine class-name keys. Unknown factory shapes remain conservative.
 The backend shares its native bootstrap root declarations between ILDiet and
 emission, including synchronization, exception reporting and interop layouts.
@@ -151,11 +186,12 @@ Unscoped lookup keeps the ordered caller/CoreLib fallback. An array type
 projects its element type's assembly. An assembly listing hands out each generic
 definition as `typeof(G<>)` does, and a runtime-instantiated type's
 generic arguments, definition, base type and assembly project from its template
-and argument tuple. An attribute read with an unknown owner and a known filter
-lists, and for an instance read constructs, the filter's rows on every user
-assembly, module, type, member and parameter. Only an instance read reaches
-named-argument setters, and only those of rows its filter admits; a data read
-reaches none, even when another route reached the attribute's constructor.
+and argument tuple. An attribute instance read reaches constructors and named
+setters only for rows selected on known owners. An unknown owner with a known
+filter reports an unrecognized site and adds no executable targets. Metadata
+and identity retained through ordinary inventory, copied-IL closure or explicit
+preservation remain available. A data read reaches no constructor or setter,
+even when another route reached the attribute's constructor.
 Named delegate binding and `Delegate.Method` share selection for known
 receivers, including objects and runtime templates. They search the full base
 chain at every visibility, bounded only by name, case and delegate `Invoke`
@@ -235,10 +271,12 @@ interface. An undecidable match remains unknown.
 for attribute and signature reads without forming an executable owner or body.
 Any projected signature containing a detached generic view remains unknown to
 executable admission.
-Unknown arguments select every instantiation, except that one whose arguments
-nest the definition itself is selected only once allocated, so a self-nesting
-definition mints nothing without bound. A receiver the summary cannot name as a
-definition, or one only the runtime models, reports ClosedGeneric at the site.
+Finite known argument alternatives keep their ordinary selection even when another
+alternative is unknown. Unknown arguments add no executable candidates from
+existing instantiations or runtime-template members; bodyless template identity
+planning remains available. Independently reached or explicitly preserved bodies
+remain usable. A receiver the summary cannot name as a definition, or one only
+the runtime models, reports ClosedGeneric at the site.
 Every eligible template level enters the emitter's identity and layout closure,
 including a metadata-only library level used as a clone source. Registering that
 metadata, including types named only by member signatures, does not allocate a
@@ -689,7 +727,7 @@ must not fail on a task type the program never touches.
 
 Adoption applies only while every cross-assembly reference stays inside the
 mapped member-name and signature-shape contract: a metadata-only MemberRef pre-scan
-(`Compilation.DeclineOutOfContractAdoptions`) declines the adoption of any
+(`RawAsyncAdoption.DeclineOutOfContractAdoptions`) declines the adoption of any
 assembly whose task/builder/awaiter is referenced outside it (`UniTask.Yield()`'s
 shape), so that library's real IL transpiles through the general pipeline — no
 flag, one stderr notice naming the member.

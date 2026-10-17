@@ -1,6 +1,6 @@
 // dn2cpp_eventsource.cpp — System.Diagnostics.Tracing.EventSource IDENTITY.
 //
-// EventSource is an opaque intrinsic base (CoreIntrinsics.s_intrinsicTypes): a user or
+// EventSource is an opaque intrinsic base (CoreIntrinsicTypeMaps.s_intrinsicTypes): a user or
 // Microsoft.* provider transpiles as ordinary C# over it, and the base's tracing
 // plumbing is lowered inline by MethodCompiler.TryEmitEventSourceIntrinsic. A native
 // build ships no EventPipe, no ETW and no EventListener, so *delivery* is a no-op — and

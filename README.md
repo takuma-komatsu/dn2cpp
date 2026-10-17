@@ -129,12 +129,19 @@ is stop-the-world.
 
 dn2cpp runs the bundled ILDiet CLI before building its transpiler model. ILDiet
 removes unreachable types and methods from application and library DLLs, writes
-the resulting load set to `<output-dir>/ildiet/`, and leaves the inputs untouched.
+the resulting load set to an immutable generation under `<output-dir>/ildiet/`,
+and leaves the inputs untouched. `ildiet-result.xml` atomically selects the current
+generation and records ordered paths, hashes and preservation rules.
 Framework assemblies and dn2cpp support shims remain intact. The source build
 and NuGet tool carry a framework-dependent ILDiet companion; native toolchain
 and editor bundles carry a host-specific self-contained companion. Use
 `--ildiet-output <dir>` to choose another intermediate directory, or
-`--no-ildiet` to transpile the original DLLs. An ILDiet failure stops the build.
+`--no-ildiet` to transpile the original DLLs. Exhausting ILDiet's deterministic
+work budget copies the complete original load set and reports fallback; invalid
+input and broken invariants stop the build. Repeat `--ildiet-skip-assembly <name>`
+to copy selected loaded assemblies unchanged through ILDiet, using exact simple
+assembly names. This does not add transpiler executable roots; `link.xml`
+`preserve="all"` still preserves bodies for the transpiler as well.
 Hot-update base builds retain the entire managed load set so future patches can
 still bind their members. A closed-generic `--cut` selector that requires type
 specialization also keeps the DLLs intact and reports that validation is deferred
@@ -170,7 +177,10 @@ concrete wrapper was removed receives the nearest retained ancestor wrapper;
 `GodotObject` and `RefCounted` always remain. Use the repeatable
 `--godot-class-root Godot.TypeName` to retain a concrete engine wrapper needed by
 dynamic type-name queries. Explicit `--reflection-root` types, `[Preserve]` and
-linker-descriptor keeps also retain their concrete wrapper factories. The
+linker-descriptor keeps also retain their concrete wrapper factories. A
+reflection root keeps member metadata on the selected type and its ancestors,
+without rooting member bodies or adding script registrations. A descriptor or
+`[Preserve]` selects executable members. The
 `--trim-godot-classes` emission-stage option also applies after ILDiet rewrites
 the registry. It follows each factory's actual constructed type and can redirect
 it again to a retained ancestor without changing the registered class name.
@@ -231,7 +241,12 @@ other value the method cannot follow is not recognized, nor is a
 `MakeGenericType` or `MakeGenericMethod` call whose type arguments' constraints
 cannot be decided ahead of time and that no runtime-instantiation template can
 serve. An operand that may be either a known or an unknown value selects what is
-known and still reports the site; an unknown `BindingFlags` value selects as
+known and still reports the site. Unknown generic arguments do not select
+already formed instantiations or executable runtime-template members. A template
+may still supply bodyless type identity. An unknown attribute owner does not
+select constructors or named setters from unrelated providers, even when its
+attribute filter is known. Independently reached or explicitly preserved bodies
+remain available; an unknown `BindingFlags` value selects as
 every flag combination would. The transpile prints a warning naming the site,
 the API and the reason, followed by a `fix:` line, and lists every such site in
 `<output-dir>/reflection-unrecognized.tsv`; `--verbose` adds framework and
@@ -260,7 +275,12 @@ type the image never allocates, naming the class's constructor or the whole
 value type as the remedy.
 
 ILDiet keeps declared member metadata on each application type it keeps, and
-every body C++ emission can compile.
+every body C++ emission can compile. Its definition graph applies each recognized
+reflection site's summary independently. Unknown type selection retains metadata
+and members of stripped types; unknown member selection retains member rows on
+metadata-reached owners. These conservative scopes add no executable bodies.
+Generic-parameter demands propagate through bindings without a caller-depth
+walk. Metadata-only methods become marked stubs that emission refuses to admit.
 The same Unity-compatible rules apply to ILDiet and C++ emission. Apply
 `[Dn2Cpp.Scripting.Preserve]` to an assembly, type, constructor, method,
 property, field, event, or delegate, or define your own attribute whose type or

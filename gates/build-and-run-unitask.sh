@@ -9,7 +9,7 @@
 # library, with NO engine underneath — it runs under SKIP_GODOT=1 and on the
 # hosted CI runners. ZERO CUTS, ZERO FLAGS: the sample's `await UniTask.Yield()`
 # is a cross-assembly MemberRef outside the adoption contract, so the pre-scan
-# (Compilation.DeclineOutOfContractAdoptions) declines UniTask's adoption on its
+# (RawAsyncAdoption.DeclineOutOfContractAdoptions) declines UniTask's adoption on its
 # own and the library's real machinery — AsyncUniTaskMethodBuilder (both
 # arities), UniTaskCompletionSource, the TaskPool object pool, WhenAllPromise,
 # the ThreadPool-backed YieldAwaitable — transpiles through the general pipeline.

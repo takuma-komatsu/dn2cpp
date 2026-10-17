@@ -96,11 +96,14 @@ symbols through that context. Direct calls, method groups and method
 specifications classify alike, in application and framework bodies. Invocation,
 field access, construction, attribute and delegate-binding sites keep distinct
 effects, and each selects only the members its known operands name; observing one
-must not retain every member of a type or every framework body. A known generic
-definition with unknown arguments selects its existing instantiations, and the
-selection re-applies to instantiations created later; one whose arguments nest
-the definition itself is selected only once allocated, so the selection cannot
-mint without bound.
+must not retain every member of a type or every framework body. Unknown generic
+arguments report an unrecognized site without selecting existing instantiations
+or executable template members, including instantiations formed later. A finite
+known alternative still selects its tuple when another alternative is unknown.
+Bodyless runtime-template identity registration remains available; it does not
+authorize executable members. Unknown attribute owners likewise add no
+constructors or named setters from otherwise unrelated providers. Ordinary
+static reachability and explicit preservation retain their existing authority.
 
 A recognized `MakeGenericType` over a known closed argument tuple uses an existing
 AOT instantiation, then the runtime template when a clone can run every member
