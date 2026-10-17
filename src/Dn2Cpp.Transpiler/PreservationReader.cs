@@ -37,6 +37,7 @@ internal sealed class PreservationReader
     private readonly IReadOnlyList<string> _projectRoots;
     private readonly HashSet<string> _linkFeatures;
     private readonly Dictionary<(int Module, TypeDefinitionHandle Type), PreservePolicy> _preservePolicies = new();
+    internal readonly HashSet<int> PreservedAssemblies = new();
     private readonly Dictionary<(int Module, TypeDefinitionHandle Type), bool> _preserveAttributeTypes = new();
 
     private PreservePolicy Policy(PreservationModule module, TypeDefinitionHandle type)
@@ -316,6 +317,7 @@ internal sealed class PreservationReader
                 if (BoolAttr(assembly, path, "ignoreIfUnreferenced", false)
                     && !IsLinkAssemblyReferenced(module))
                     continue;
+                if (assemblyKind == PreserveKind.All) PreservedAssemblies.Add(module.Index);
                 if (assemblyKind != PreserveKind.None)
                     foreach (var tdh in module.Reader.TypeDefinitions)
                         Policy(module, tdh).Kind |= assemblyKind;

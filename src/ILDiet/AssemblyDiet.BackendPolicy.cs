@@ -7,10 +7,22 @@ namespace Dn2Cpp;
 internal sealed partial class AssemblyDiet
 {
     private readonly HashSet<TypeDefinition> _conditionalOwnMembers = new();
+    private readonly HashSet<TypeDefinition> _backendAttributeOwners = new();
     private readonly HashSet<TypeDefinition> _suppressDefaultSeeds = new();
-    private readonly HashSet<CustomAttribute> _registrationAttributes = new();
+    private readonly List<CustomAttribute> _registrationAttributes = new();
+    private readonly HashSet<CustomAttribute> _registrationAttributeSeen = new();
     private readonly Dictionary<CecilInstruction, RegistryFactory> _registryFactories = new();
     private bool _constructorRegistriesRewritten;
+    private readonly List<(string Scope, string Reason)> _registryDiagnostics = new();
+    private long _registryKept, _registryRedirected, _registryUnknown, _registryScriptsKept, _registryScriptsFiltered;
+    private readonly List<RegistryDescription> _registryDescriptions = new();
+    private readonly Dictionary<MethodDefinition, string> _factoryKeepReasons = new();
+
+    private sealed class RegistryDescription
+    {
+        internal required MethodDefinition Registry;
+        internal readonly List<(MethodReference Reference, RegistryFactory? Factory)> Entries = new();
+    }
 
     private sealed class RegistryFactory
     {
@@ -33,11 +45,11 @@ internal sealed partial class AssemblyDiet
         {
             var assembly = _assemblies.FirstOrDefault(a => a.Assembly.Name.Name == rule.Assembly)
                 ?? throw new NotSupportedException("conditional-member assembly was not found: " + rule.Assembly);
-            if (assembly.Copy) continue;
             var bases = _assemblies.SelectMany(a => AllTypes(a.Assembly.MainModule.Types))
                 .Where(t => Name(t) == rule.BaseType).ToList();
             if (bases.Count != 1)
                 throw new NotSupportedException("conditional-member base must identify one loaded type: " + rule.BaseType);
+            if (assembly.Copy) continue;
             foreach (var type in AllTypes(assembly.Assembly.MainModule.Types))
             {
                 var seen = new HashSet<TypeDefinition>();
@@ -55,6 +67,18 @@ internal sealed partial class AssemblyDiet
                 }
             }
         }
+        // Backend script roots read type and declared-method attributes along
+        // their user base chain before managed reflection runs. Record that
+        // contract independently of when Runtime propagates through the graph.
+        foreach (var root in _request.TypeRoots)
+        {
+            var type = FindPolicyType(root.Assembly, root.Type);
+            if (!_conditionalOwnMembers.Contains(type)) continue;
+            var seen = new HashSet<TypeDefinition>();
+            for (var current = type; current is not null && seen.Add(current);
+                 current = current.BaseType is null ? null : Resolve(current.BaseType))
+                if (_conditionalOwnMembers.Contains(current)) _backendAttributeOwners.Add(current);
+        }
         foreach (var rule in _request.SuppressedSeedTypes)
         {
             var type = FindPolicyType(rule.Assembly, rule.Type);
@@ -63,29 +87,24 @@ internal sealed partial class AssemblyDiet
         foreach (var rule in _request.ConstructorRegistries)
         {
             var type = FindPolicyType(rule.Assembly, rule.Type);
-            if (!IsStripped(type)) continue;
             var methods = type.Methods.Where(m => m.Name == rule.Method).ToList();
             if (methods.Count == 0)
                 throw new NotSupportedException("constructor registry was not found: " + rule.Type + "::" + rule.Method);
+            if (!IsStripped(type)) continue;
             foreach (var method in methods)
             {
-                if (!method.HasBody) continue;
-                int recognized = 0, unknown = 0;
+                if (!method.HasBody || _registryDescriptions.Any(d => d.Registry == method)) continue;
+                var description = new RegistryDescription { Registry = method };
+                _registryDescriptions.Add(description);
                 foreach (var instruction in method.Body.Instructions)
                 {
-                    if (instruction.OpCode.Code != Code.Ldftn || instruction.Operand is not MethodReference reference)
-                        continue;
-                    var factory = RecognizeFactory(method, reference);
-                    if (factory is null) unknown++;
-                    else
-                    {
-                        _registryFactories.TryAdd(instruction, factory);
-                        recognized++;
-                    }
+                    if (instruction.OpCode.Code is not (Code.Ldftn or Code.Ldvirtftn)
+                        || instruction.Operand is not MethodReference reference) continue;
+                    var factory = instruction.OpCode.Code == Code.Ldftn ? RecognizeFactory(method, reference) : null;
+                    description.Entries.Add((reference, factory));
+                    if (factory is null) _registryUnknown++;
+                    else _registryFactories.TryAdd(instruction, factory);
                 }
-                if (unknown != 0 || recognized == 0)
-                    Console.WriteLine("ILDiet: constructor registry " + rule.Type + "::" + rule.Method
-                        + " retains unrecognized factory shapes");
             }
         }
     }
@@ -99,9 +118,7 @@ internal sealed partial class AssemblyDiet
 
     private RegistryFactory? RecognizeFactory(MethodDefinition registry, MethodReference reference)
     {
-        MethodDefinition? method;
-        try { method = reference.Resolve(); }
-        catch (AssemblyResolutionException) { return null; }
+        var method = ResolveMember(reference) as MethodDefinition;
         if (method is null || !method.HasBody || method.HasGenericParameters
             || method.Module != registry.Module || method.Body.ExceptionHandlers.Count != 0)
             return null;
@@ -239,7 +256,7 @@ internal sealed partial class AssemblyDiet
         {
             var type = Resolve(parent);
             if (type is null || !seen.Add(type)) return null;
-            if (_runtimeTypes.Contains(type))
+            if (_runtimeTypes.Contains(type) || Node(type) is { } node && (node.State & TypeState.Explicit) != 0)
             {
                 var candidate = factories.FirstOrDefault(f => f.ConstructedType == type
                     && f.Registry == factory.Registry && CompatibleFactories(factory, f));
@@ -250,41 +267,82 @@ internal sealed partial class AssemblyDiet
         return null;
     }
 
-    private void CompleteBackendPolicy()
+    private bool RuntimeOrExplicit(TypeDefinition type) => _runtimeTypes.Contains(type)
+        || Node(type) is { } node && (node.State & TypeState.Explicit) != 0;
+
+    private bool KeepsRegistryFactory(MethodDefinition method) => _methods.Contains(method) || KeepsCutMethod(method);
+
+    private void RegistryRule(TypeDefinition type)
     {
-        // A retained factory can make another wrapper live through constructor IL.
-        // Reach a fixed point before choosing replacements or filtering attributes.
+        if (!RuntimeOrExplicit(type)) return;
+        foreach (var factory in _registryFactories.Values)
+            if (factory.ConstructedType == type && _methods.Contains(factory.Registry))
+            {
+                _factoryKeepReasons.TryAdd(factory.Method, _runtimeTypes.Contains(type) ? "runtime type" : "explicit type root");
+                MarkMethod(factory.Method);
+            }
+    }
+
+    private void CloseRegistries()
+    {
         while (true)
         {
             var factories = _registryFactories.Values.Where(f => _methods.Contains(f.Registry)).ToList();
             foreach (var factory in factories)
             {
-                if (_runtimeTypes.Contains(factory.ConstructedType) || FindAncestorFactory(factory, factories) is null)
+                Spend();
+                if (KeepsCutMethod(factory.Method))
+                {
+                    _factoryKeepReasons[factory.Method] = "cut target";
+                    continue;
+                }
+                if (_methods.Contains(factory.Method)) _factoryKeepReasons.TryAdd(factory.Method, "direct body dependency");
+                if (RuntimeOrExplicit(factory.ConstructedType))
+                {
+                    _factoryKeepReasons.TryAdd(factory.Method, _runtimeTypes.Contains(factory.ConstructedType)
+                        ? "runtime type" : "explicit type root");
                     MarkMethod(factory.Method);
+                }
+                else if (FindAncestorFactory(factory, factories) is null)
+                {
+                    _factoryKeepReasons.TryAdd(factory.Method, "no compatible retained ancestor");
+                    MarkMethod(factory.Method);
+                }
             }
-            if (_pending.Count == 0) break;
-            while (_pending.Count != 0) Scan(_pending.Dequeue());
+            if (_work.Count == 0) break;
+            Drain();
         }
-        var active = _registryFactories.Values.Where(f => _methods.Contains(f.Registry)).ToList();
-        foreach (var pair in _registryFactories)
+    }
+
+    private void PlanRegistryDiagnostics()
+    {
+        foreach (var description in _registryDescriptions)
         {
-            var factory = pair.Value;
-            if (!_methods.Contains(factory.Registry) || _runtimeTypes.Contains(factory.ConstructedType)) continue;
-            var ancestor = FindAncestorFactory(factory, active)
-                ?? throw new InvalidOperationException("constructor registry has no retained compatible ancestor factory");
-            pair.Key.Operand = ancestor.Method;
-            _constructorRegistriesRewritten = true;
+            var registry = description.Registry;
+            var reasons = new List<string>();
+            var examples = new List<string>();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            int kept = 0;
+            if (_methods.Contains(registry))
+                foreach (var entry in description.Entries)
+                {
+                    if (entry.Factory is { } factory && !KeepsRegistryFactory(factory.Method)) continue;
+                    string identity = entry.Reference.FullName;
+                    if (!seen.Add(identity)) continue;
+                    kept++;
+                    string reason = entry.Factory is null ? "unrecognized factory shape"
+                        : _factoryKeepReasons.TryGetValue(entry.Factory.Method, out var value) ? value : "direct body dependency";
+                    if (!reasons.Contains(reason)) reasons.Add(reason);
+                    if (examples.Count < 3) examples.Add(entry.Reference.Name);
+                }
+            if (reasons.Count == 0) reasons.Add(!_methods.Contains(registry) ? "registry body removed"
+                : description.Entries.Count == 0 ? "no factory entries" : "compatible entries redirected");
+            reasons.Sort(StringComparer.Ordinal);
+            string reasonText = string.Join(", ", reasons);
+            if (examples.Count != 0) reasonText += "; examples " + string.Join(", ", examples);
+            _registryDiagnostics.Add((registry.Module.Assembly.Name.Name + ":" + Name(registry.DeclaringType) + "::" + registry.Name,
+                "keeps " + kept + " original factories (" + reasonText + ")"));
         }
-        foreach (var attribute in _registrationAttributes)
-            for (int i = 0; i < attribute.ConstructorArguments.Count; i++)
-            {
-                var argument = attribute.ConstructorArguments[i];
-                if (!IsTypeArray(argument)) continue;
-                var values = (CustomAttributeArgument[])argument.Value;
-                var kept = values.Where(value => value.Value is not TypeReference reference
-                    || Resolve(reference) is not { } type || !IsStripped(type) || _runtimeTypes.Contains(type)).ToArray();
-                attribute.ConstructorArguments[i] = new CustomAttributeArgument(argument.Type, kept);
-            }
     }
 
     private bool IsRegistrationAttribute(CustomAttribute attribute, ICustomAttributeProvider provider)
@@ -296,10 +354,40 @@ internal sealed partial class AssemblyDiet
         if (type is null || !_request.RegistrationAttributes.Any(rule => rule.Assembly == type.Module.Assembly.Name.Name
                 && rule.Type == Name(type)))
             return false;
-        _registrationAttributes.Add(attribute);
+        if (_registrationAttributeSeen.Add(attribute)) _registrationAttributes.Add(attribute);
         return true;
     }
 
     private static bool IsTypeArray(CustomAttributeArgument argument) => argument.Type is ArrayType array
         && array.ElementType.FullName == "System.Type" && argument.Value is CustomAttributeArgument[];
+
+    private CustomAttributeArgument EffectiveAttributeArgument(CustomAttribute attribute, CustomAttributeArgument argument)
+    {
+        if (!_registrationAttributeSeen.Contains(attribute) || !IsTypeArray(argument)) return argument;
+        var values = (CustomAttributeArgument[])argument.Value;
+        var kept = values.Where(value => value.Value is not TypeReference reference
+            || Resolve(reference) is not { } type || !IsStripped(type) || _runtimeTypes.Contains(type)).ToArray();
+        return kept.Length == values.Length ? argument : new CustomAttributeArgument(argument.Type, kept);
+    }
+
+    private IEnumerable<CustomAttributeArgument> EffectiveAttributeArguments(CustomAttribute attribute)
+    {
+        foreach (var argument in attribute.ConstructorArguments)
+            yield return EffectiveAttributeArgument(attribute, argument);
+    }
+
+    private void RegistrationRuntimeChanged()
+    {
+        // Runtime use can admit a previously filtered entry. Replaying the row
+        // never exposes an original entry before that independent use exists.
+        foreach (var attribute in _registrationAttributes)
+        {
+            if (!_selectedAttributeRows.TryGetValue(attribute, out var row)) continue;
+            Spend();
+            row.MetadataKept = row.ArgumentsObserved = row.ArgumentIdentitiesObserved = false;
+            row.Constructed = false;
+            if (row.RetentionRequested) _attributeMetadataPending.Enqueue(row);
+            QueueAttributeIdentity(row);
+        }
+    }
 }

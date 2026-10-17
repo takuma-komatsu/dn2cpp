@@ -131,11 +131,7 @@ internal sealed partial class AssemblyDiet
         {
             var signature = _reader.GetPropertyDefinition(
                 MetadataTokens.PropertyDefinitionHandle((int)property.MetadataToken.RID)).DecodeSignature(this, null);
-            // Cecil derives index parameters from accessors, which Sweep can remove.
-            if (property.GetMethod is null && property.SetMethod is null)
-                signature.ReturnType?.Invoke(property.PropertyType);
-            else
-                Signature(signature, property.PropertyType, property.Parameters);
+            Signature(signature, property.PropertyType, property.Parameters);
         }
 
         internal void Signature(MethodSignature<TypeFix?> signature, TypeReference result,
