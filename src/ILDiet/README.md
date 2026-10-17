@@ -1,260 +1,409 @@
 # ILDiet
 
-ILDiet removes unreachable managed type and method definitions before dn2cpp
-constructs its transpilation model. It uses Mono.Cecil to write new assemblies;
-input files are never modified.
-
-Rewritten signatures retain the distinction between vectors and multidimensional
-arrays, including rank-one arrays without a lower bound inside other signature
-shapes. ILDiet encodes those arrays with an explicit zero lower bound so Cecil keeps
-their `ARRAY` kind without changing their CLR type.
+ILDiet removes unreachable managed definitions before dn2cpp constructs its
+transpiler model. Mono.Cecil writes the retained load set; input files remain
+unchanged. Pass the complete reference set with repeatable `-r` options. ILDiet
+never resolves references from installed frameworks or a NuGet cache. dn2cpp
+resolves that set before invoking the companion.
 
 ```sh
 dotnet run --project src/ILDiet -c Release -- \
     App.dll -r Library.dll -r System.Private.CoreLib.dll \
     --link-xml link.xml -o stripped
-
-dn2cpp stripped/App.dll -r stripped/Library.dll \
-    -r stripped/System.Private.CoreLib.dll \
-    --no-ildiet --link-xml stripped/preservation.xml -o generated
 ```
 
-Pass the complete managed reference set with repeatable `-r` options. ILDiet
-does not resolve assemblies from the machine's installed frameworks or a NuGet
-cache. dn2cpp's automatic preprocessing resolves its reference set before
-invoking ILDiet and passes every output assembly to the transpiler.
+Read `stripped/ildiet-result.xml` for the generated input, reference and
+preservation paths. Assemblies live in the generation named by that manifest;
+there are no flat DLL outputs. A manual transpile must pass those ordered paths,
+`--no-ildiet`, and `--link-xml` with the manifest's preservation path.
 
-`--link-xml` accepts an explicit Unity-format descriptor. Repeatable
-`--project-root` searches for files named exactly `link.xml`, excluding `bin`,
-`obj`, `.godot`, and `.git`. `--link-feature` enables `com`, `sre`, or `remoting`.
-Descriptors and `PreserveAttribute` use dn2cpp's shared preservation reader.
-The generated `preservation.xml` carries applicable descriptor rules into a
-subsequent manual transpile; include it even when the required methods already
-exist in the stripped DLLs.
+`--project-root` discovers files named exactly `link.xml`, excluding `bin`,
+`obj`, `.godot` and `.git`. `--link-feature` enables `com`, `sre` or `remoting`.
+The shared preservation reader resolves descriptors and `PreserveAttribute`
+against original metadata. `preservation.xml` exports those original policies as
+signatures, including conditional rules. Backend and reflection roots belong to
+the request contract and do not become synthetic preservation rules.
 
-Executable assemblies retain their entry point and application static
-initializers. Non-framework module initializers, native exports, managed native
-implementation adapters, and explicit preservation are roots. A library without
-an entry point retains its public application surface. Unreachable executable
-method bodies remain eligible for removal. These roots and the reflection routes
-below decide what the rewritten DLLs contain: a superset of the bodies dn2cpp
-compiles, which start only from its own roots.
+An assembly-wide `preserve="all"` directive copies the original assembly bytes
+without serialization, including when the assembly is otherwise rewritable.
+The empty assembly element's default `all` has the same effect after feature and
+reference conditions are resolved. Exported preservation retains this directive
+for replay. Type-level preservation does not request assembly copying, and
+unsupported IL or metadata does not automatically trigger it.
 
-Every retained application type keeps its declared member metadata. Unreached
-methods retain signatures and a marked throwing stub without retaining their
-original body dependencies. dn2cpp refuses to compile a marked stub, so a body
-emission admits but ILDiet stubbed fails the transpile instead of throwing at run
-time. Compiler state-machine Type arguments retain declarations
-without rooting `MoveNext` or its body dependencies. Other scalar Type attribute
-arguments retain their runtime roots. A later call or reflection-invoke root retains the original
-body before stubs are written. Constant-name `GetMethod`, `GetMethods`,
-`GetProperty` and `GetField` queries therefore match the unstripped application
-without requiring an invoke. Event declarations and accessors also survive in
-the rewritten DLL; native event lookup still requires an event metadata and
-handle representation that dn2cpp does not supply.
+`--ildiet-skip-assembly <name>` copies a loaded assembly unchanged without adding
+transpiler executable roots or exported preservation rules. Repeat it for multiple
+assemblies, using exact simple assembly names; unknown names are errors. Existing
+copied-body dependency closure still protects references into rewritten assemblies.
+Captured requests retain this option; manual re-stripping must pass it again. The
+option is inert when dn2cpp does not run ILDiet. Unlike assembly-wide
+`preserve="all"`, it does not request that the transpiler retain every body.
 
-A retained value type keeps its virtual dispatch bodies even when it was retained
-only through member signatures, including user-library value types: a
-non-generic array search, a runtime handle box, `FieldInfo.GetValue` or
-`Type.InvokeMember` can box any value type whose layout dn2cpp emits without a
-`box` instruction naming it.
-Enums, by-ref-like types and compiler async state machines, which only their
-kickoff body boxes, are excluded. Closed signature owners substitute their field type parameters
-through application base types, reference field owners and array-shaped generic
-arguments. Field type shapes carry closed owner contexts through array elements
-and generic arguments, including arguments of framework containers. Reference
-owners carry metadata context without opening their virtual bodies. Closed
-contexts deduplicate by resolved argument identity, allowing finite cycles while
-the reflection route bounds limit growing contexts. Ordinary type
-instantiations from every module and generic method instantiations seed the
-walk depth; a method adds its own instantiation level. Reached user bodies carry
-closed caller type and method argument depths through their IL operands without
-opening additional bodies. Depth contexts deduplicate within the operator's
-nesting and record budgets. Exhaustion aborts before rewriting rather than
-retaining a partial summary. Fatal diagnostics name the target and its recorded
-executable caller chain. The summary counts depth-context records separately
-from emission's type and method instantiations; changing a budget cannot change
-a successful rewrite. Copied framework bases and interfaces contribute their substituted shape
-depths without opening method bodies. Retained virtual bodies receive closed
-receiver contexts and generic dispatch arguments even when the call names an
-object or interface slot. Inherited bodies receive the substituted base receiver
-context, including receivers allocated by closed caller bodies. Caller type and
-method argument depths propagate as vectors. Symbolic receivers combine their
-vectors with generic slot arguments for retained implementations without becoming
-closed type identities. Depth-only receiver and slot joins settle before the
-application-signature snapshot regardless of their discovery order.
-Receiver propagation enters retained virtual bodies; non-virtual callees receive
-contexts from their ordinary calls. Dispatch signatures substitute the closed receiver and inherited slot
-owner before comparing parameter types. Nullable fields retain
-the underlying value type's dispatch. Closed application member return and
-parameter types are substituted once over the retained owner contexts and their
-closed application shapes, including base types, interfaces and their generic
-arguments, matching emission's shape and signature closure. Newly
-named contexts participate in armed field, constructor and invoke routes without
-recursively opening further member signatures.
-Closed owners admitted by the bounded shape walk also join this snapshot without
-raising the depth seed for subsequent walks or opening their bodies.
+## Retention contract
 
-Once a retained body calls or binds `MethodBase.Invoke`, `PropertyInfo.GetValue`,
-`PropertyInfo.SetValue`, `EventInfo.AddEventHandler`, `EventInfo.RemoveEventHandler`,
-`Type.InvokeMember` or `CreateDelegate`, directly or through a method group, or a
-copied assembly references one of them (framework event handlers and `CreateDelegate` excepted),
-ILDiet retains the ordinary application type definitions and their non-constructor
-bodies, a superset of what a recognized reflection site in dn2cpp can select.
-Generic definitions already
-named by retained signatures keep the same bodies. Retained closed application
-signatures promote their generic arguments as runtime dependencies, preserving
-dispatch when invocation boxes a result. This does not create new closed AOT
-instantiations. Once a retained body reflectively invokes, binds, constructs,
-reads attributes, instantiates a generic definition or runs a type initializer,
-every user-library type such a site can resolve as an owner keeps its type
-initializer and the bodies a recognized site could select: members whose names a
-lookup spells as a constant, or that start the constant's text before a
-trailing `*` as `GetMember` reads it, accessors of properties and events so
-named, and constructors for a construction. Owners are the types a retained body names with
-`typeof` and the types an admitting body names with a type argument, an
-allocation, a member token, a constant type name or an assembly listing, closed
-over element types, generic arguments and interfaces, and over base, member and
-nested types once a site derives them. An assembly listing whose assembly comes
-from a type the summary does not name exactly, such as a type parameter's, a
-base type's or that of a box that may hold a derived type, lists every assembly
-ILDiet rewrites. Owners and names come from the terms of
-the site's `ReflectionSummary`, the summary dn2cpp resolves. A base chain
-contributes the members it passes on, which exclude constructors and private
-members. Named delegate binding also retains matching private base methods
-and their rows, following its full-visibility search. A base that declares a
-non-constant, non-private static field such a site can select also keeps its
-type initializer, which reading or writing that field through a derived
-owner runs. A type parameter an admitting body names
-admits every generic argument the program supplies. A lookup without a name, or an enumeration of methods,
-properties, fields, events or members, keeps every body of every owner. A name
-selects on every owner, over-approximating the owner and member pairs dn2cpp
-resolves; the owners' other members are still removed. A generic definition a `MakeGenericType` names also keeps its instance
-constructors and, once reflection invokes, its other bodies, which its
-runtime-instantiation template can run. An engine binding that a backend rewrites
-is excluded, since generated trampolines invoke it instead. Every recognized site,
-including a lookup, a listing or a type identity that runs nothing, keeps the
-declarations of the owners its own operands resolve, and keeps the member rows
-its lookups and listings select on those owners as signature-only stubs; the site
-itself keeps no body or type initializer. Such an owner counts as used, so a
-conditional (`required="false"`) descriptor rule on it applies as it does to any
-used type. A listing keeps every row of its owners. Library
-types no such site resolves and library members outside those sets still require a
-descriptor or `PreserveAttribute`.
-Backend exclusions from default application roots remain in force.
+The graph has metadata, runtime, members and explicit-root states for each type,
+and metadata and body states for each method. State only grows until the plan
+barrier. A definition's signature and body are each decoded at most once;
+promotion from metadata to body applies only the additional body dependencies.
+Every IL instruction contributes its operands, including instructions in dead
+branches. Body promotion also activates the method's compiler state-machine type
+arguments; lookup-only methods keep those declarations without their executable
+state-machine dependencies. Analysis never edits method bodies.
 
-Depth summaries follow executable calls, dispatch slots and allocation hooks.
-A nonvirtual call keeps its exact target. Virtual call/delegate-slot opcodes
-join allocated receivers. Base constructor calls do not allocate the base type,
-and receiver lookup selects the most derived implementation. Abstract types
-retain their required constructor metadata and bodies without becoming allocated
-receivers. Depth summaries share emission's branch graph and boolean capability
-getters. Loaded exact type identities can prune dead branches; open, unresolved
-and canonical identities keep both branches live. Explicit MethodImpl mappings
-precede implicit interface matches. Only a level that lists an interface maps it
-by a public virtual name match; derived overrides follow the selected class slot.
-Newslot hiders keep separate slot identities. Primitive constrained calls bind directly
-without joining unrelated receivers. Interface instance virtual bodies need a
-receiver slot rather than a whole-class reflection depth root.
-Generic data closures and accessor/event association retain original bodies
-without supplying executable depth roots. A later actual call or reflection
-construction route promotes the already retained surface. Whole-class reflection
-roots use a fixed first-walk depth and bounded minted-context admission;
-the calls inside admitted bodies still obey the fatal operator budgets.
-Conservatively retained virtual and interface bodies keep their original IL
-without contributing caller instantiations until an execution root reaches them.
-Their closed type references remain available without consuming copied-shape
-depth budgets; executable caller contexts record those shapes independently.
-Reflection retention and executable reflection depth roots remain separate.
-Attribute rows retain original constructors and named accessors without making
-those bodies executable. A live attribute-reading descriptor promotes eligible
-user-element and assembly rows' constructors and the first named setter on the
-attribute's base chain; named getters remain conservative. Framework attribute
-rows join only when executable user IL names their type, matching emission.
-Validated ordinary `--cut` targets retain their metadata and body dependencies
-without contributing executable body summaries or arming reflection depth routes.
-Closed generic `Activator.CreateInstance<T>()` calls pass the caller's type
-arguments to the selected public parameterless constructor's depth summary.
-Other retained constructors and accessors do not become execution roots.
+Ordinary metadata retention keeps declaring types, bases, interfaces, generic constraints,
+field layouts, custom modifiers, marshaling and attribute dependencies. A retained
+application type keeps its declared members' metadata. A metadata-only method
+with an original body receives a marked throwing stub. dn2cpp rejects admitting
+that stub with an invariant error naming the method. Property rows and accessor
+selections are independent: selecting a missing setter can retain an accessorless
+scalar property without preserving the getter's executable body. Exported
+preservation keeps that selection for replay. Removing every accessor from an
+indexer fails original-signature validation.
 
-The graph preserves live field layouts, virtual and interface implementations,
-generic signatures and constraints, attributes, delegates, and referenced IL
-operands. Generic arguments retain instance constructors and property accessors,
-including private setters, because generic factories and serializers can select
-them without direct call tokens. Their base types, instance field and property
-types, and constructor parameter types retain the same data surface recursively.
-Once a retained body calls non-generic `Activator.CreateInstance`,
-`Assembly.CreateInstance`, `ConstructorInfo.Invoke`, `Type.InvokeMember` or
-`RuntimeHelpers.GetUninitializedObject`, directly or through a
-method group, or a copied assembly references one of them, ILDiet retains
-ordinary application type definitions and their instance constructors, including
-application generic definitions named only by retained member signatures.
-Retained closed application signatures promote their generic arguments as
-runtime dependencies, so allocated types keep constrained virtual dispatch
-bodies. Constructor discovery carries closed
-application reference-field owners into the member snapshot without boxing the
-field values or opening unused method bodies. This allows selection through runtime type
-names and reflected field or method-signature types as well as `typeof`. Declared field, property and
-constructor-parameter types open the same data surface recursively in user
-libraries: instance constructors, property accessors and parameterless instance
-void methods. Generic arguments and base types participate in that closure.
-Framework assemblies and backend-rewritten protected assemblies keep their
-separate policy. Reflection selected only through runtime strings without an
-armed route requires an explicit type root.
-Once a retained body calls `Array.Initialize()`, directly or through a method
-group, every value type in a stripped assembly retains its parameterless
-constructor, which the call runs over the elements although no IL names it.
-It does not specialize generics or perform dn2cpp intrinsic lowering.
-Framework assemblies and dn2cpp runtime/codec/HTTP shims are copied unchanged.
-They contain runtime dependencies that are introduced during later transpilation.
-GodotSharp is copied unless the .NET-module backend supplies its engine entry
-points and constructor-registry policy. That policy retains factories for live
-wrappers and redirects unused wrappers to compatible retained ancestor factories,
-preserving every engine-name registration key. Unrecognized factory bodies retain
-their original dependencies. dn2cpp also requests copies for hot-update base builds.
-When a `--cut` selector names a closed generic specialization, ILDiet reports
-that it is copying the complete load set and leaves validation to dn2cpp's
-original model. Whether that specialization exists depends on model discovery;
-an invalid selector still fails before C++ emission. Ordinary non-generic cut
-targets are validated on the original metadata and remain eligible for stripping.
+Runtime retention adds type initializers and virtual, override, interface and
+delegate bodies. It follows executable type references and explicit runtime
+roots. A signature alone does not promote a type to runtime. Static initializers
+retain their original bodies or are removed, except that an admitted
+attribute-provider row may retain an otherwise-unused initializer as a metadata
+stub.
 
-Output goes into a dedicated directory. An existing nonempty directory is
-accepted only when it carries ILDiet's ownership marker. A failed write leaves
-the previous output intact. Rewritten assemblies retain their assembly identity
-and resources, have deterministic metadata, and omit PDBs and strong-name
-signatures; they are dn2cpp inputs rather than signed distribution assemblies.
+Executable input roots include the entry point, application static initializers,
+module initializers, native exports and preservation. A library input retains
+its public application surface. Backends can suppress default seeds for selected
+types and supply their own entry contract. Ordinary `--cut` targets keep their
+original metadata, bodies and physical token closure after validation on the
+original load set. A cut alone supplies no runtime or executable attribute
+authority. Later calls, roots and preservation retain their ordinary metadata
+effects, but do not analyze the cut body's executable dependencies or reflection.
 
-The integration protocol is `--request <request.xml> --result <result.xml>`.
-The request contains the resolved input/reference paths, descriptor paths,
-features, optional full-type roots, and an optional copy-all setting. Backends can
-also declare assembly rewrites, type-only and named-method roots, conditional
-member retention for descendants of a loaded base type, individual types excluded
-from default seeds, registration attributes, and constructor registries.
-A conditional descendant retains its own methods,
-constructors, properties and events once reached. Default public-surface and
-application-initializer roots do not seed those descendants. Backends can nominate
-generated helpers with `<suppressDefaultSeeds assembly="..." type="..." />`;
-each row applies only to that type, so ordinary nested types retain the existing
-rules. Signature-only retention omits their unrooted static initializers rather
-than creating stubs that eager startup would execute. Code and explicit roots
-still retain the original initializer bodies. Explicit preservation still applies.
-Assembly-level registration attributes retain their constructor and ordinary
-arguments, while their `Type[]` arguments are filtered to runtime-used types.
-Signature-only declarations do not keep registration entries or select
-constructor factories; runtime roots still retain their original bodies.
+Generic dependencies bind definition parameters to argument shapes and propagate
+finite demands for runtime types, constructors, member rows, executable methods
+or accessors. Binding identities preserve each parameter's declaring scope inside
+nested array and generic shapes. Generic parameters forward demands to their
+bindings without constructing a closed caller-context graph. Explicit MethodImpl declarations
+connect generic slot parameters to implementation parameters even when their
+method names differ. Structural reflection on symbolic types records finite
+projections over existing and later bindings, so base, element and generic
+argument queries can forward their demands without closed caller contexts.
+Generic definitions in copied assemblies retain opaque argument demands: their
+arguments keep the conservative data surface needed by factories and serializers.
+Executable reflection demands follow their generic bindings into copied owners,
+including constructors, methods, accessors and field-read boxing. Metadata-only
+demands do not enumerate copied framework member bodies or construct attributes.
+Ordinary method tokens retain signatures and generic bindings without scanning
+the named body or arming its call capabilities; calls and function pointers
+retain bodies.
+Copied assemblies with a direct reference to a stripped assembly conservatively
+seed metadata for all original types and bodies for all original methods. Copied
+assemblies without such a reference contribute call, initializer, delegate and
+reflection effects through reached method bodies and explicitly preserved
+members; their unreached helpers do not arm capabilities. Runtime type maps are
+shared with admission; intrinsic-only implementation bodies stay opaque while
+managed-body families and interface implementations can contribute dependencies.
+Non-framework copied modules retain their module initializer and unmanaged entry
+points. Copied assemblies remain byte-identical. ILDiet does not use the
+transpiler's generic nesting or instantiation limits.
 
-The result contains the ordered output assembly paths, effective preservation
-file, whether cut selectors were validated before stripping, and whether
-constructor-registry references were rewritten. The backend uses the last state
-to avoid applying a second wrapper-trimming pass. Copy-all paths leave assemblies,
-registration attributes and constructor registries byte-identical to their inputs.
-ILDiet runs as a companion process; its Cecil dependency is never transpiled
-into the native dn2cpp executable.
+Original model observation is separate from these use demands. It can remain
+dormant while the load set has no non-framework generic definitions or generic
+preservation demands, Array.Initialize is unarmed, and ordinary use has not needed
+generic types, methods, parameters or projections. Before such a consumer
+proceeds, the full original model graph is initialized and its model queue is
+drained. Every loaded non-generic definition then contributes its base and
+interface relations, including framework definitions. Formed generic definitions
+recursively contribute those relations and nested arguments through the same
+finite binding graph. Formation bindings form a complete union; ordinary use
+has a separate monotone subset. Only ordinary bindings replay executable demands,
+reflection, projections and runtime-layout consumers. Definition and MemberRef
+parameter aliases preserve that distinction, including a later ordinary use of
+an already observed formation pair. Passive metadata traversal records its own
+pairs so a later independent use can authorize them without rescanning bodies.
+Actual MethodImpl resolution and inherited virtual-slot matching observe their requested
+signatures; ordinary unused fields and nonvirtual method signatures stay lazy.
+Generic intrinsic shells stop their own shape closure, while their argument
+formations remain visible. Element-sensitive vector mappings distinguish
+primitive elements from real managed layouts. Custom async adoption observes
+real shape and possible struct-task backing; an original witness rejected under
+every adoption role excludes backing for its entire task assembly. The primary
+still decides adoption using its original options. Consequential backing retains
+original candidate predicates through shared role rows and task-assembly
+coupling, including candidates enabled only when another assembly opts out.
+Every original cross-module contract MemberRef for those roles survives, even
+when accepted by the default contract. Any passive type or method-owner
+restoration that touches an original role or serialized builder lookup activates
+this protection, including real-shape sources without possible generic backing.
+Earlier passive rows are replayed and incidental rows join this closure;
+serialized builder names retain their original first lookup winner so restoring
+a later definition cannot turn a failed original predicate into a new candidate.
+The finite closure preserves original candidate, role, and method order without
+enumerating option subsets. An IL carrier keeps its original body as passive
+evidence, separately from executable method retention; its tokens close without
+arming calls, reflection or runtime use. The shared body cache records Cecil
+operands, locals and catches once. Only executable body admission classifies
+reflection calls and prepares a summary, including after a passive carrier scan;
+unsupported executable IL retains its ordinary diagnostic. A byte-prefilter hit
+without a matching token operand grants no retention or reflection authority. A required reference with no preservable original carrier is
+rejected instead of synthesizing metadata.
+
+An observed formation that supplies attribute identity, an array initializer,
+or generic preservation retains its original source relations and signature
+triggers. This source retention closes original metadata tokens without promoting
+the source to runtime use, decoding its ordinary field/signature types as model
+formations, or running its initializer. Later independent use follows the normal
+graph. Eligible array initializers, effective generic preservation and admitted
+attribute identity effects authorize their required formal dependencies. This
+promotion follows nested references and later bindings; retaining a provider or
+an async contract alone supplies no ordinary authority. The published primary
+recreates consequential specializations from those
+original rows and the original preservation descriptor; no synthetic roots are
+added.
+
+Attribute reads on known copied owners select original providers and rows. Data
+reads retain metadata; instance reads execute selected constructors and named
+setters. Only type owners inherit rows from their base chain. Framework rows
+require a reached user-module type token naming their attribute class. Naming
+and later generic bindings replay the pending selections without constructing
+data-only rows or executing the owning member. Direct constructor calls retain
+their normal body edges.
+
+An unknown attribute owner with a known filter does not discover unrelated
+providers or execute their constructors and named setters. Ordinary attribute
+inventory, known-owner queries, copied-IL safety and explicit preservation keep
+their metadata and identity effects. A data query on a known owner observes row
+identities and Type-valued arguments without constructing attributes; an instance
+query on that owner can upgrade the selected rows. Unknown generic argument
+vectors similarly select no executable definition or member. Finite known
+alternatives and independently reached bodies keep their ordinary closure.
+Selected metadata rows retain their original constructor, named fields and
+properties, and accessor signatures without requiring executable bodies. Their
+transitive attribute metadata is passive: its discovery does not itself count
+as an attribute query or activate conditional preservation. Original row
+inventories cover non-generic user definitions, observed generic formations, and
+loaded assembly/module providers. A class inventory includes fields, every
+original method and its parameter/return rows, and properties, even when the
+member body is unused. App owners, reached member bodies and actual allocation
+carry unretained rows; an independently reached attribute constructor also admits
+its rows on modeled library owners. Framework attribute eligibility still applies.
+
+Admitted rows separately expose their attribute-class and argument identities.
+Identity-only references can activate explicit conditional preservation without
+an attribute read; a later read upgrades argument observation without selecting
+a factory. The original provider metadata survives so the published input retains
+that conditional evidence. An admitted initializer attribute row can retain its
+MethodDef with a stub; ordinary initializer metadata still requires a body or is
+removed. Identity observation never constructs an attribute or executes its
+accessors. Independently reached bodies and backend attribute reads retain their
+executable dependencies. Backend registration arrays expose only their effective
+entries throughout metadata retention, identity observation and final validation.
+Independent runtime use replays the row when it admits another entry; a filtered
+script cannot retain itself through its original registration array.
+
+Preservation contributes executable dependencies independently of copied payload
+bytes. Conditional rules activate when an owner is otherwise referenced, forced,
+used at runtime or selected by an explicit reflection root. Named and generic type
+formation, listed members and preserved signatures carry these identity demands
+through later bindings. Copying an assembly or discovering its policy does not
+activate the rule.
+
+## Explicit rules
+
+- Allocation, boxing, initialization and static field use retain runtime type
+  dependencies. A method body retains its declaring type at runtime.
+- Delegate binding retains the target body, except for recognized deferred
+  constructor-registry entries. Named binding also selects matching constructors
+  and static initializers along the owner's base chain, including private
+  constructors. Delegate types retain their methods' bodies.
+- Generic construction demands the public parameterless constructor of each
+  bound argument. A generic-parameter argument forwards that demand.
+- Ordinary construction selects only the requested owner's instance constructors.
+  Construction flags normalize to admission's visibility and instance defaults.
+  Selected bodies retain the base constructors their original IL calls.
+- `Array.Initialize`, including a method group, retains the parameterless
+  constructors of user value types the primary can model: non-generic definitions,
+  runtime-used generic definitions, and generic layouts observed in signatures,
+  bindings, original eager relations or reflection formation, including copied user libraries. Later
+  layout and runtime observations replay the same rule.
+  Metadata for a bare generic definition or reference-type field does not open
+  bodies.
+- Constructed attributes keep their constructor and named field or
+  property-setter dependencies along the attribute's base chain. Attribute rows
+  retained only for a selected metadata read do not execute their factories.
+
+Reflection can box a field value, an invocation result or a by-reference argument
+without an explicit IL boxing instruction. These paths retain the payload's
+runtime dispatch after unwrapping nullable and by-reference types and propagating
+through generic bindings. Non-generic array searches retain dispatch for recorded
+array element types. When such a search can receive runtime-constructed arrays,
+or `RuntimeHelpers.Box` can box an emitted layout directly, the closure also
+covers metadata-retained value types, including observed copied user layouts.
+Original base, interface and field layout edges propagate this observation;
+late layouts and late capabilities replay the same finite demand. Unused copied
+definitions do not participate. This fallback promotes value-type dispatch
+without registering reference-type scripts.
+
+Array signatures preserve vector versus multidimensional kinds, including
+rank-one arrays without explicit bounds inside other signatures. An explicit
+zero lower bound preserves Cecil's `ARRAY` encoding without changing CLR type
+identity.
+
+## Recognized and unknown reflection
+
+ILDiet shares `ReflectionApis` and `ReflectionSummary` with dn2cpp. Each site's
+summary selects its own metadata rows or executable dependencies. Identity and
+lookup operations keep metadata. Explicit static-initializer selections,
+including `TypeInitializer` and constructor or member queries, keep the requested
+type's original initializer body. Ordinary member-row retention does not keep it;
+the passive attribute-provider exception preserves only the original row.
+Execution keeps selected bodies; a known owner with an unknown member keeps the corresponding
+member kind conservatively. General and default-member selection covers the
+corresponding member kinds, including fields, events and nested types. Known
+compiler-generated closure objects retain their type identity for named delegate
+binding.
+An assembly enumeration with a known assembly keeps that assembly's type rows.
+`InvokeMember` retention follows possible binding-flag operations, with default
+visibility and storage flags matching admission. A possible construction ignores
+the member name. Symbolic owners forward the corresponding constructor, member
+and boxing demands conservatively. Boxed nullable object types normalize to
+their underlying payload before member lookup, including generic payloads and
+symbolic bindings.
+Generic-parameter targets record demands that flow to their argument bindings.
+Interface enumeration follows base classes and inherited interfaces with their
+generic bindings. Generic-argument arrays preserve ordered positions, including
+repeated and symbolic arguments, when used to construct generic types or methods.
+When a member's owner remains symbolic, execution conservatively propagates
+boxing demands for the bound field, result and by-reference parameter surfaces.
+Assembly enumeration through a symbolic owner covers the type definitions in
+each bound owner's module. Symbolic nested-type lookup covers its immediate
+nested definitions; symbolic interface lookup covers its inherited interface
+closure. Requested names do not narrow these deferred nested and interface
+supersets. Their targets stay within the bound owners' original metadata.
+
+An unknown type selection, such as a runtime string passed to type lookup,
+retains metadata and members of every stripped type. An unknown member selection
+on an unknown owner keeps member rows of all metadata-retained types, including
+new types reached through those signatures. These scopes add neither runtime
+state nor executable bodies. Unknown execution adds no body; dn2cpp's warning
+and preservation remedy still apply.
+
+A reflection root keeps the selected type's members and explicit-root state,
+and member metadata on its ancestors and interfaces. It does not retain member
+bodies. A full `<root assembly="..." type="..." />` retains the entire type
+surface. Explicit roots can retain concrete wrapper factories without adding a
+script registration. Recognized reflection and explicit preservation must have
+the same observable behavior with and without ILDiet; DLL contents need not be
+identical.
+
+## Fallback
+
+Graph transitions, dependency edges, demands and scope expansion consume a
+deterministic work budget derived from the original metadata. Standalone
+`--work-budget <n>` and request `workBudget="n"` set a positive explicit budget.
+A summary's local budget produces an unknown summary; it does not by itself
+trigger whole-load-set fallback.
+
+Exhausting the graph budget copies the entire resolved load set byte for byte.
+Hot-update copy-all requests and generic `--cut` selectors that require model
+specialization also copy the original set. Roots, descriptors and policies are
+validated before these paths publish. Fallback exports original preservation
+only and changes neither registries nor registration attributes. Other input
+errors and broken invariants fail the run. No fallback occurs after plan apply.
+
+## Backend policy and registries
+
+Backends declare rewritable assemblies, type and method roots, conditional
+member retention, suppressed default seeds, registration attributes and
+constructor registries. Engine resource parsing stays in the backend.
+
+A recognized factory's constructed type at runtime or explicitly rooted retains
+that factory. Deferred entries without a compatible retained ancestor factory
+remain original; closure repeats until no new factory body is needed. The plan
+then redirects eligible entries while preserving engine class-name keys.
+Unknown factory shapes retain their original dependencies. Script-registration
+`Type[]` values contain runtime-used types only; metadata and reflection-root
+retention alone do not register scripts. Diagnostics identify conservative
+factory keeps.
+
+The result records whether each assembly's registry changed. The consumer
+validates and passes this state to the backend for contract diagnostics. These
+values never enable or suppress emission-stage trimming.
+
+A cut factory keeps its original registry entry without making its body
+executable. Its retained original method can also serve as a compatible ancestor
+redirect target; arbitrary passive evidence does not make a factory eligible.
+A cut registry body keeps its original tokens without executing registry rules.
+
+## Output generations and publication
+
+A nonempty output directory must carry ILDiet's ownership marker. Outputs are
+published as immutable generations:
+
+```text
+stripped/
+  .ildiet-output
+  ildiet-result.xml
+  g-<hash>/
+    App.dll
+    Library.dll
+    preservation.xml
+```
+
+After the graph freezes, ILDiet builds and validates a complete plan before
+applying changes. It writes a stage directory, rereads assembly identities and
+hashes the staged bytes. The generation hash covers ordered filenames and
+contents, including preservation. Hashing uses portable FNV arithmetic shared
+with the consumer; it requires no cryptography implementation. Existing identical
+generations can be reused; modified contents are rejected.
+
+Renaming the stage publishes the generation. Atomic replacement of
+`ildiet-result.xml` publishes its pointer, so a failure before that replacement
+leaves the preceding pointer and generation intact. `--result` writes an
+additional manifest with an atomic file replacement. Obsolete generations,
+stages, temporary files and legacy flat outputs are cleaned up after publication.
+
+Rewritten assemblies retain identities, public keys and resources, omit PDBs,
+and clear strong-name signatures. ILDiet never signs them; they are dn2cpp
+inputs rather than signed distribution assemblies.
+
+## Protocol v2
+
+`--request <request.xml> --result <result.xml>` accepts a strict request:
+
+```xml
+<ildiet version="2" input="App.dll" output="stripped" workBudget="100000">
+  <reference path="Library.dll" />
+  <reflectionRoot type="App.LookupTarget" />
+  <root assembly="Library" type="Library.Exported" />
+</ildiet>
+```
+
+Full roots require an assembly. Reflection roots have their own element. Unknown
+attributes, elements, versions and invalid budgets fail. The result's
+`version="2"` manifest gives the generation, ordered paths, preservation,
+cut-validation state, fallback reason, contract digest and per-assembly mode,
+content hash and registry-rewrite state. The digest identifies the canonical
+backend/reflection contract independently of output paths and budgets. The
+consumer verifies the generation, hashes, copied bytes, identity, load order and
+registry consistency before loading any output.
+
+## Counters
+
+A deterministic `ILDiet: counters` line follows the removal summary.
+`methods.body` counts executable body retention; `methods.evidence-body` counts
+additional original bodies retained for passive adoption evidence or validated
+cuts. Evidence bodies are neither stubs nor removed methods. Later executable
+promotion of an uncut body moves it into `methods.body` without decoding its
+facts again; a cut continues to exclude executable body analysis. The same
+named counters appear in the result manifest: type and method states, signature
+and body decodes, summary outcomes, reflection and generic demands, conservative
+scopes, work and budget, fallback, and factory and registration decisions.
+`decode.max-per-method` exposes repeated-body-scan violations. Counters contain
+no elapsed timings.
 
 ## Native companion probe
 
-The opt-in probe uses the original ILDiet and Mono.Cecil assemblies and keeps
-build, emission and execution logs in a fresh directory under `artifacts/`:
+The companion uses BCL operations supported by dn2cpp's self-hosted path. Its
+Cecil dependency is confined to the companion, so the native dn2cpp executable
+does not load Cecil.
 
 ```sh
 bash gates/ildiet-native.sh emit
@@ -262,23 +411,10 @@ bash gates/ildiet-native.sh build
 bash gates/ildiet-native.sh verify
 ```
 
-ILDiet never supplies a signing key or re-signs rewritten assemblies. The probe
-cuts Cecil's `CryptoService.GetPublicKey` and `CryptoService.StrongName` branches;
-general Cecil signing is outside its scope. Deterministic MVID hashing remains
-enabled.
-
-The build stage uses the shared CMake/Ninja wrapper and compares native help
-output with the managed CLI. The verify stage also strips `ILDietControl`
-through direct arguments and the XML request protocol. It compares managed and
-native DLL bytes, effective preservation and ordered result paths, normalizing
-the output directories. Repeated runs check deterministic output and removal of
-stale PDBs. Metadata inspection checks that unused code is removed and explicit
-preservation retains the selected method; the stripped assemblies run under .NET
-with the original fixture's output. A signed reference checks that rewriting
-preserves assembly identity and public-key bytes while clearing the strong-name
-signature flag.
-
-`DN2CPP_SKIP_BUILD=1` reuses an already built CLI and ILDiet; `CONFIG=Debug`
-selects their Debug outputs. The probe does not change the distributed companion.
-Native substitution requires a successful verify run; emission and help output
-alone do not establish stripping parity.
+The probe retains build, emission and execution logs under `artifacts/`. It cuts
+Cecil's signing-only `CryptoService.GetPublicKey` and `CryptoService.StrongName`
+branches; deterministic MVID hashing remains enabled. The build stage uses the
+shared CMake/Ninja wrapper and compares managed and native help. Verification
+checks direct and protocol requests, generated DLL bytes, preservation,
+normalized manifest paths, hashes and repeated-run determinism. A signed fixture
+checks identity and public-key retention with the signing flag cleared.

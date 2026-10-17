@@ -1366,7 +1366,7 @@ internal sealed partial class MethodCompiler
         }
 
         // new ResourceManager(baseName, assembly) / new ResourceManager(Type).
-        // ResourceManager is intrinsic (see CoreIntrinsics.s_intrinsicTypes: its real
+        // ResourceManager is intrinsic (see CoreIntrinsicTypeMaps.s_intrinsicTypes: its real
         // lookup walks CultureInfo.Parent chains and probes satellite assemblies, and
         // dn2cpp has neither), so its ctor resolves to no transpilable body; intercept
         // newobj and allocate the runtime (baseName, assembly) pair. Both token kinds,
@@ -1464,7 +1464,7 @@ internal sealed partial class MethodCompiler
         }
 
         // new StackTrace(...) / new StackFrame(...) — the stack-trace model
-        // (see CoreIntrinsics.s_intrinsicTypes and runtime/core/dn2cpp.h). Both
+        // (see CoreIntrinsicTypeMaps.s_intrinsicTypes and runtime/core/dn2cpp.h). Both
         // types are intrinsic, so their real ctors — which bottom out in
         // StackFrameHelper's InternalCall stack walker — never resolve to a
         // transpilable method; intercept newobj and build the runtime object. The

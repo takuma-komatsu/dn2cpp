@@ -7,7 +7,7 @@ internal sealed partial class MethodCompiler
     /// <summary>System.Resources.ResourceManager — the lookup half, served from
     /// the assembly's already-carried <c>&lt;BaseName&gt;.resources</c> blob.
     ///
-    /// <para>The type is intrinsic (see <c>CoreIntrinsics.s_intrinsicTypes</c>), so an
+    /// <para>The type is intrinsic (see <c>CoreIntrinsicTypeMaps.s_intrinsicTypes</c>), so an
     /// unmapped member here does NOT fall through to a transpiled body — there is none —
     /// it reaches the loud intrinsic miss. Every member this arm declines is one whose real
     /// implementation is the groveler/satellite closure the intrinsic mapping deleted, and

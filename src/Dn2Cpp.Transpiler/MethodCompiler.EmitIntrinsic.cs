@@ -522,7 +522,7 @@ internal sealed partial class MethodCompiler
     /// receives nothing is the load-bearing-consumer failure of docs/ARCHITECTURE.md
     /// §4-B.</para>
     /// <para>Observation would be a REIMPLEMENTATION, not a reachability hole: dropping
-    /// EventSource from <c>CoreIntrinsics.s_intrinsicTypes</c> leaves MORE gaps, because the
+    /// EventSource from <c>CoreIntrinsicTypeMaps.s_intrinsicTypes</c> leaves MORE gaps, because the
     /// construct and attach paths bottom out in <c>EventPipeInternal</c> QCalls with no IL
     /// to transpile, and the manifest/descriptor half wants IL BYTES at run time
     /// (<c>MethodBase.GetMethodBody</c>), which a dn2cpp binary does not carry. Delivery has

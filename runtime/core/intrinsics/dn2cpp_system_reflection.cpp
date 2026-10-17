@@ -2608,7 +2608,7 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_resolve_method_candidates(D
 
 // ---- reflection over an intrinsic type's metadata-answerable members ----
 //
-// An intrinsic type (CoreIntrinsics.s_intrinsicTypes) carries NO reflection method
+// An intrinsic type (CoreIntrinsicTypeMaps.s_intrinsicTypes) carries NO reflection method
 // rows: its members are lowered inline at every call site, so no transpiled body
 // exists for a row to point at and its ti_ reads (nullptr, 0). From the tables alone
 // that is indistinguishable from a type that really has no methods — the same hole

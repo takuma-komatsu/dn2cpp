@@ -74,7 +74,7 @@
 # out-of-contract MemberRef would un-adopt the in-contract program's library too.
 #
 #   7. THE ADOPTION AUTO-DECLINES. The cross-assembly MemberRef contract pre-scan
-#      (Compilation.DeclineOutOfContractAdoptions) must decline CustomAsyncTaskLib on its
+#      (RawAsyncAdoption.DeclineOutOfContractAdoptions) must decline CustomAsyncTaskLib on its
 #      own — the stderr notice names the offending member — and the library's real
 #      machinery must be in the tree with nothing on the command line. (--no-adopt-async
 #      stays covered above as the manual override for the pre-scan's blind spot:

@@ -8,7 +8,7 @@
 // (EmitInitCalls), whereas .NET runs each lazily on first use. That breaks exactly
 // one invariant — the *global hash seed*: `System.HashCode.s_seed` (set by
 // `System.HashCode..cctor`, consumed transitively via `HashCode.Combine` by every
-// ValueTuple / record / struct `GetHashCode`). `CoreIntrinsics.s_intrinsicNestedCpp`
+// ValueTuple / record / struct `GetHashCode`). `CoreIntrinsicTypeMaps.s_intrinsicNestedCpp`
 // is a static `Dictionary<(string,string),string>`; populated in a cctor that ran
 // *before* `System.HashCode..cctor`, its entries were bucketed with `s_seed==0`
 // while later lookups recomputed with the real seed and missed. The concrete
@@ -40,7 +40,7 @@ namespace ValueTupleKeyDictSubset
     internal static class Program
     {
         // STATIC-FIELD dict, built in the type's static constructor — exactly like
-        // CoreIntrinsics.s_intrinsicNestedCpp.
+        // CoreIntrinsicTypeMaps.s_intrinsicNestedCpp.
         private static readonly Dictionary<(string Enclosing, string Name), string> s_map = new()
         {
             [("System.Text.StringBuilder", "AppendInterpolatedStringHandler")] = "Dn2CppStringBuilder*",
