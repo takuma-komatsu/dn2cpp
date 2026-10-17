@@ -13,7 +13,7 @@ internal static class Program
         {
             if (args.Length == 0 || args.Contains("--help") || args.Contains("-h"))
             {
-                Console.WriteLine("Usage: ildiet <assembly.dll> [-r <reference.dll>] --link-xml <file> [-o <directory>] [--project-root <directory>] [--link-feature <com|sre|remoting>]");
+                Console.WriteLine("Usage: ildiet <assembly.dll> [-r <reference.dll>] --link-xml <file> [-o <directory>] [--project-root <directory>] [--link-feature <com|sre|remoting>] [--work-budget <n>] [--ildiet-skip-assembly <name>]");
                 Console.WriteLine("       ildiet --request <request.xml> --result <result.xml>");
                 return args.Length == 0 ? 1 : 0;
             }
@@ -36,6 +36,8 @@ internal static class Program
                     case "--link-xml": request.LinkXml.Add(Value()); break;
                     case "--project-root": request.ProjectRoots.Add(Value()); break;
                     case "--link-feature": request.Features.Add(Value()); break;
+                    case "--ildiet-skip-assembly": request.SkipAssemblies.Add(Value()); break;
+                    case "--work-budget": request.WorkBudget = DietRequest.ParseWorkBudget(Value()); break;
                     default:
                         if (args[i].StartsWith('-') || request.Input.Length != 0)
                             throw new NotSupportedException("unknown argument: " + args[i]);
@@ -46,7 +48,8 @@ internal static class Program
             if (requestPath is not null)
             {
                 if (request.Input.Length != 0 || request.References.Count != 0 || request.LinkXml.Count != 0
-                    || request.ProjectRoots.Count != 0 || request.Features.Count != 0 || request.Output != "ildiet-output")
+                    || request.ProjectRoots.Count != 0 || request.Features.Count != 0 || request.WorkBudget is not null
+                    || request.SkipAssemblies.Count != 0 || request.Output != "ildiet-output")
                     throw new NotSupportedException("--request cannot be combined with direct input options");
                 request = DietRequest.Read(requestPath);
                 request.RequestFile = Path.GetFullPath(requestPath);
@@ -70,12 +73,16 @@ internal sealed class DietRequest
     internal string Input = "";
     internal string Output = "ildiet-output";
     internal bool CopyAll;
+    internal long? WorkBudget;
+    internal string Contract = "";
+    internal readonly List<string> ReflectionRoots = new();
     internal readonly List<string> References = new();
     internal readonly List<string> LinkXml = new();
     internal readonly List<string> ProjectRoots = new();
     internal readonly List<string> Features = new();
     internal readonly List<(string Assembly, string Type)> Roots = new();
     internal readonly List<string> RewriteAssemblies = new();
+    internal readonly List<string> SkipAssemblies = new();
     internal readonly List<(string Assembly, string Type)> TypeRoots = new();
     internal readonly List<(string Assembly, string Type, string Method)> MethodRoots = new();
     internal readonly List<(string Assembly, string BaseType)> ConditionalMembers = new();
@@ -87,11 +94,15 @@ internal sealed class DietRequest
     internal static DietRequest Read(string path)
     {
         var root = Dn2Cpp.LinkXml.Parse(path);
-        Check(root, "ildiet", "input", "output", "copyAll");
+        Check(root, "ildiet", "version", "input", "output", "copyAll", "workBudget");
+        if (Required(root, "version") != "2")
+            throw new NotSupportedException("unsupported ILDiet request version");
         var request = new DietRequest
         {
             Input = Required(root, "input"),
             Output = Required(root, "output"),
+            WorkBudget = root.Attr("workBudget") is { } budget ? ParseWorkBudget(budget) : null,
+            Contract = ILDietProtocol.ContractDigest(root),
             CopyAll = root.Attr("copyAll") switch
             {
                 null or "false" => false,
@@ -109,7 +120,15 @@ internal sealed class DietRequest
                 case "feature": Check(child, "feature", "name"); request.Features.Add(Required(child, "name")); break;
                 case "root":
                     Check(child, "root", "assembly", "type");
-                    request.Roots.Add((child.Attr("assembly") ?? "", Required(child, "type")));
+                    request.Roots.Add((Required(child, "assembly"), Required(child, "type")));
+                    break;
+                case "reflectionRoot":
+                    Check(child, "reflectionRoot", "type");
+                    request.ReflectionRoots.Add(Required(child, "type"));
+                    break;
+                case "skipAssembly":
+                    Check(child, "skipAssembly", "name");
+                    request.SkipAssemblies.Add(Required(child, "name"));
                     break;
                 case "rewriteAssembly":
                     Check(child, "rewriteAssembly", "name");
@@ -143,8 +162,15 @@ internal sealed class DietRequest
         return request;
     }
 
-    private static string Required(LinkNode node, string name) => node.Attr(name)
-        ?? throw new NotSupportedException("<" + node.Name + "> requires " + name);
+    internal static long ParseWorkBudget(string value)
+    {
+        if (!long.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out long budget) || budget <= 0)
+            throw new NotSupportedException("work budget must be a positive integer");
+        return budget;
+    }
+
+    private static string Required(LinkNode node, string name) => node.Attr(name) is { Length: > 0 } value
+        ? value : throw new NotSupportedException("<" + node.Name + "> requires " + name);
 
     private static void Check(LinkNode node, string name, params string[] attributes)
     {

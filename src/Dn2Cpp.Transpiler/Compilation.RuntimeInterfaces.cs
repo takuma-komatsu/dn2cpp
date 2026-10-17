@@ -90,17 +90,8 @@ internal sealed partial class Compilation
         return null;
     }
 
-    private static string? RuntimeInterfaceDispatch(MethodInfo target)
-    {
-        string owner = target.DeclaringClass.FullName;
-        if (owner == "System.RuntimeType" || owner == "System.Reflection.TypeInfo")
-            return "System.Type";
-        if (owner == "System.Reflection.RuntimeAssembly")
-            return "System.Reflection.Assembly";
-        if (owner == "System.Reflection.RuntimeModule")
-            return "System.Reflection.Module";
-        return CoreIntrinsics.IsIntrinsicType(owner) ? owner : null;
-    }
+    private static string? RuntimeInterfaceDispatch(MethodInfo target) =>
+        CoreIntrinsicTypeMaps.RuntimeInterfaceDispatch(target.DeclaringClass.FullName);
 
     internal void ReachRuntimeInterfaceBody(MethodInfo target)
     {

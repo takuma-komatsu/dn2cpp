@@ -20,6 +20,7 @@ internal sealed class GodotILDietMetadata
 
     internal readonly Dictionary<(string Assembly, string Type), TypeRow> Types = new();
     internal readonly List<string> Assemblies = new();
+    private readonly HashSet<string> _scriptLookupAssemblies = new(StringComparer.Ordinal);
 
     internal GodotILDietMetadata(IReadOnlyList<string> paths)
     {
@@ -29,6 +30,7 @@ internal sealed class GodotILDietMetadata
             var reader = pe.GetMetadataReader();
             string assembly = reader.GetString(reader.GetAssemblyDefinition().Name);
             Assemblies.Add(assembly);
+            if (GodotScriptRegistration.RequiresLookup(reader)) _scriptLookupAssemblies.Add(assembly);
             foreach (var handle in reader.TypeDefinitions)
             {
                 var type = reader.GetTypeDefinition(handle);
@@ -80,6 +82,15 @@ internal sealed class GodotILDietMetadata
     internal bool IsEngineWrapper(string name)
     {
         return Types.TryGetValue(("GodotSharp", name), out var row) && IsGodotType(row);
+    }
+
+    internal IEnumerable<(string Assembly, string Type)> LookupScriptTypes()
+    {
+        foreach (var row in Types.Values)
+            if (_scriptLookupAssemblies.Contains(row.Identity.Assembly)
+                && string.IsNullOrEmpty(row.Declaring.Type) && row.ScriptPaths.Count != 0
+                && IsGodotType(row))
+                yield return row.Identity;
     }
 
     internal IEnumerable<(string Assembly, string Type)> GeneratedScriptHelpers()

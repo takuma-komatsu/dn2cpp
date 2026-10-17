@@ -49,6 +49,9 @@ internal sealed class DotnetModuleBackend : IEmitBackend
                 policy.ConditionalMembers.Add((assembly, "Godot.GodotObject"));
         policy.SuppressedSeedTypes.AddRange(metadata.GeneratedScriptHelpers());
         policy.RegistrationAttributes.Add(("GodotSharp", "Godot.AssemblyHasScriptsAttribute"));
+        // The parameterless registration contract scans every top-level script;
+        // project discovery cannot narrow the set that the runtime registers.
+        policy.TypeRoots.AddRange(metadata.LookupScriptTypes());
         policy.ConstructorRegistries.Add(("GodotSharp", "Godot.Constructors", ".cctor"));
         foreach (string type in new[] { "Godot.GodotObject", "Godot.RefCounted" }.Concat(_godotClassRoots))
         {
@@ -278,9 +281,11 @@ internal sealed class DotnetModuleBackend : IEmitBackend
         return roots;
     }
 
-    // The script contract. LookupScriptsInAssembly registers the app assembly's
-    // GodotObject-derived classes that carry [ScriptPath], reading every row of the
-    // assembly and of each type. A script instance is allocated with
+    // LookupScriptsInAssembly uses the explicit AssemblyHasScriptsAttribute type
+    // list, or scans top-level ScriptPath classes for its parameterless constructor.
+    // Retained metadata outside that registration contract is not a script root.
+    // The bridge reads every attribute row of the assembly and each registered
+    // type. A script instance is allocated with
     // GetUninitializedObject and constructed by invoking the instance constructor whose
     // arity the engine passes. Class info reads every row of each instance method and
     // invokes the generated static Get*List / GetGodotPropertyDefaultValues members on
@@ -292,14 +297,17 @@ internal sealed class DotnetModuleBackend : IEmitBackend
     // that CSharpInstanceBridge calls, so it is reached as a used slot of the allocated
     // script types.
 
-    /// <summary>The app module's non-generic GodotObject-derived classes carrying
-    /// [ScriptPath].</summary>
+    /// <summary>The app module's non-generic scripts registered by
+    /// LookupScriptsInAssembly.</summary>
     private static List<ClassInfo> ScriptClasses(Compilation c)
     {
+        var registration = GodotScriptRegistration.Read(c.AppModule.Reader, c.AttrProvider);
         var result = new List<ClassInfo>();
         foreach (var cls in c.Classes.ToList())
             if (cls.Module == c.AppModule && cls.GenericArity == 0 && !cls.Handle.IsNil
-                && !cls.IsInterface && !cls.IsValueType && DerivesFromGodotObject(cls) && HasScriptPath(cls))
+                && !cls.IsInterface && !cls.IsValueType && DerivesFromGodotObject(cls) && HasScriptPath(cls)
+                && registration.Includes(!cls.Module.Reader.GetTypeDefinition(cls.Handle).GetDeclaringType().IsNil,
+                    type => type is { Kind: TypeKind.Class } && type.Class == cls))
                 result.Add(cls);
         return result;
     }

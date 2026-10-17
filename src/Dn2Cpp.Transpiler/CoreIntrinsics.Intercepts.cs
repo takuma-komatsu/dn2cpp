@@ -1423,8 +1423,7 @@ internal static partial class CoreIntrinsics
     /// this counterpart. See <see cref="InterceptEmitArm.ConstrainedEnumTryFormat"/>.</summary>
     public static readonly NameKeyedIntercept CvEnumTryFormat = new(
         InterceptCutKind.Cut, InterceptEmitArm.ConstrainedEnumTryFormat,
-        typeGate: "System.Enum",
-        nameGate: "System.ISpanFormattable.TryFormat");
+        extra: static (dt, n) => CoreIntrinsicTypeMaps.IsEnumTryFormatMethod(dt, n));
 
     /// <summary>Every constrained/virtual-arm row. A REGISTRY, not a chain, like the two
     /// tables above — but note what the (declaring type, member name) pair MEANS here:
