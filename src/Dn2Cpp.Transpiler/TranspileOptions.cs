@@ -29,6 +29,9 @@ public sealed record TranspileOptions
     /// <summary>Directory for stripped DLLs; null selects <c>OutDir/ildiet</c>.</summary>
     public string? ILDietOutput { get; init; }
 
+    /// <summary>Loaded assembly names to copy unchanged through ILDiet without adding executable roots.</summary>
+    public IReadOnlyList<string> ILDietSkipAssemblies { get; init; } = Array.Empty<string>();
+
     /// <summary>Explicit linker descriptor files, in addition to project discovery.</summary>
     public IReadOnlyList<string> LinkXmlFiles { get; init; } = Array.Empty<string>();
 
@@ -41,6 +44,11 @@ public sealed record TranspileOptions
 
     /// <summary>ILDiet validated cut selectors against the original metadata.</summary>
     internal bool CutMethodsValidated { get; init; }
+
+    /// <summary>Verified companion publication state, used for contract diagnostics.</summary>
+    internal bool ILDietRegistriesRewritten { get; init; }
+    internal IReadOnlyList<ILDietAssemblyMode> ILDietAssemblyModes { get; init; } = Array.Empty<ILDietAssemblyMode>();
+    internal string ILDietFallback { get; init; } = "none";
 
     /// <summary>Self-hosting feasibility harness (<c>--measure</c>): collect and
     /// report every reachable transpilation gap instead of emitting C++.</summary>

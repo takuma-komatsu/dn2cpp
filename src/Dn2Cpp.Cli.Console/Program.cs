@@ -20,6 +20,7 @@ bool verbose = false;
 bool autoRef = false;
 bool useILDiet = true;
 string? ildietOutput = null;
+var ildietSkipAssemblies = new List<string>();
 var linkXmlFiles = new List<string>();
 bool sharedGenerics = true;
 bool obfuscate = false;
@@ -91,6 +92,10 @@ for (int i = 0; i < args.Length; i++)
     {
         useILDiet = false;
     }
+    else if (args[i] == "--ildiet-skip-assembly" && i + 1 < args.Length)
+    {
+        ildietSkipAssemblies.Add(args[++i]);
+    }
     else if (args[i] == "--ildiet-output" && i + 1 < args.Length)
     {
         ildietOutput = args[++i];
@@ -157,7 +162,7 @@ for (int i = 0; i < args.Length; i++)
 
 if (string.IsNullOrEmpty(input))
 {
-    Console.Error.WriteLine("Usage: dn2cpp-console <assembly.dll> [-o <output-dir>] [-r <ref.dll>] [--no-default-ref <DnZlib|DnBrotli|DnHttp>] [--auto-ref] [--no-ildiet] [--ildiet-output <dir>] [--link-xml <file>] [--project-root <dir>] [--link-feature <com|sre|remoting>] [--jobs <n>] [--no-shared-generics] [--obfuscate] [--shadow-stack] [--no-metadata-compression] [--reflection-metadata <type>=native|packed] [--measure] [--verbose]");
+    Console.Error.WriteLine("Usage: dn2cpp-console <assembly.dll> [-o <output-dir>] [-r <ref.dll>] [--no-default-ref <DnZlib|DnBrotli|DnHttp>] [--auto-ref] [--no-ildiet] [--ildiet-output <dir>] [--ildiet-skip-assembly <name>] [--link-xml <file>] [--project-root <dir>] [--link-feature <com|sre|remoting>] [--jobs <n>] [--no-shared-generics] [--obfuscate] [--shadow-stack] [--no-metadata-compression] [--reflection-metadata <type>=native|packed] [--measure] [--verbose]");
     return 1;
 }
 
@@ -176,6 +181,7 @@ return TranspileDriver.RunConsole(new TranspileOptions
     ShadowStack = shadowStack,
     UseILDiet = useILDiet,
     ILDietOutput = ildietOutput,
+    ILDietSkipAssemblies = ildietSkipAssemblies,
     LinkXmlFiles = linkXmlFiles,
     ProjectRoots = projectRoots,
     LinkFeatures = linkFeatures,

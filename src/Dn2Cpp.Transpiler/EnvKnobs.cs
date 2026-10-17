@@ -74,6 +74,10 @@ internal static class EnvKnobs
 
     // --- caps (may turn a run into an abort or back; never perturb output) ---
 
+    /// <summary>Abort-only publication probe: plan, apply, write or commit fails
+    /// before successful publication; unset leaves the output unchanged.</summary>
+    internal const string ILDietFailPoint = "DN2CPP_ILDIET_FAIL_POINT";
+
     /// <summary>Type-argument nesting ceiling (default 32); see
     /// <c>Compilation.MaxInstantiationDepth</c>.</summary>
     internal const string MaxGenericDepth = "DN2CPP_MAX_GENERIC_DEPTH";

@@ -207,13 +207,17 @@ public static class TranspileDriver
             if (options.UseILDiet && options.IsaSurfaceDump is null)
             {
                 paths = ILDietPreprocessor.Run(paths, options, backend,
-                    out string preservation, out bool cutsValidated);
+                    out string preservation, out bool cutsValidated, out var dietState);
                 options = options with
                 {
                     LinkXmlFiles = new[] { preservation },
                     ProjectRoots = Array.Empty<string>(),
                     CutMethodsValidated = cutsValidated,
+                    ILDietRegistriesRewritten = dietState.RegistriesRewritten,
+                    ILDietAssemblyModes = dietState.Assemblies,
+                    ILDietFallback = dietState.Fallback,
                 };
+                backend.ValidateILDiet(options);
                 Timing.Mark("ildiet");
             }
             var compilation = Compilation.Create(paths, options);

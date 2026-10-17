@@ -18,13 +18,11 @@ internal sealed partial class AssemblyDiet
         var sourceFiles = _assemblies.Select(a => PhysicalPath(a.Path)).ToHashSet(PathComparer);
         foreach (string descriptor in PreservationReader.FindLinkFiles(_request.ProjectRoots).Concat(_request.LinkXml))
             sourceFiles.Add(PhysicalPath(descriptor));
-        if (_request.RequestFile is not null)
-            sourceFiles.Add(PhysicalPath(_request.RequestFile));
+        if (_request.RequestFile is not null) sourceFiles.Add(PhysicalPath(_request.RequestFile));
         foreach (string input in sourceFiles)
             if (PathContains(physicalOutput, input))
                 throw new NotSupportedException("ILDiet output would replace an input: " + input);
-        if (File.Exists(output))
-            throw new NotSupportedException("ILDiet output is a file: " + output);
+        if (File.Exists(output)) throw new NotSupportedException("ILDiet output is a file: " + output);
         if (Directory.Exists(output) && Directory.EnumerateFileSystemEntries(output).Any()
             && (!File.Exists(Path.Combine(output, OutputMarker))
                 || File.ReadAllText(Path.Combine(output, OutputMarker)) != OutputOwnership))
@@ -33,18 +31,17 @@ internal sealed partial class AssemblyDiet
             throw new NotSupportedException("ILDiet output cannot be a symbolic link: " + output);
 
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var outputFiles = new List<string>();
+        var files = new List<string>();
         foreach (var assembly in _assemblies)
         {
             string name = assembly.Assembly.Name.Name + ".dll";
             if (Path.GetFileName(name) != name || name.IndexOfAny(new[] { '/', '\\', ':', '\0' }) >= 0
                 || !names.Add(name))
                 throw new NotSupportedException("Assemblies cannot share or escape an output filename: " + name);
-            outputFiles.Add(Path.Combine(output, name));
+            files.Add(name);
         }
-        string preservation = Path.Combine(output, "preservation.xml");
+        string pointer = Path.Combine(output, "ildiet-result.xml");
         string? result = resultPath is null ? null : Path.GetFullPath(resultPath);
-        string? resultWithinOutput = null;
         if (result is not null)
         {
             string physicalResult = PhysicalPath(result);
@@ -52,39 +49,33 @@ internal sealed partial class AssemblyDiet
                 throw new NotSupportedException("ILDiet result escapes its output through a symbolic link: " + result);
             if (PathContains(physicalOutput, physicalResult))
             {
-                string prefix = Path.TrimEndingDirectorySeparator(physicalOutput) + Path.DirectorySeparatorChar;
-                if (!physicalResult.StartsWith(prefix, StringComparison.Ordinal))
-                    throw new NotSupportedException("ILDiet result must use its output directory's exact path casing: " + result);
-                resultWithinOutput = physicalResult.Substring(prefix.Length);
+                string relative = Path.GetRelativePath(physicalOutput, physicalResult);
+                string[] parts = relative.Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length == 0 || parts.Any(part => part.StartsWith(".", StringComparison.Ordinal)
+                    || part.StartsWith("g-", StringComparison.OrdinalIgnoreCase))
+                    || !relative.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)
+                    || PathComparer.Equals(relative, "preservation.xml"))
+                    throw new NotSupportedException("ILDiet result would replace a reserved output: " + result);
             }
-            if (sourceFiles.Contains(physicalResult)
-                || outputFiles.Any(path => PathComparer.Equals(PhysicalPath(path), physicalResult))
-                || PathComparer.Equals(PhysicalPath(preservation), physicalResult)
-                || PathComparer.Equals(PhysicalPath(Path.Combine(output, OutputMarker)), physicalResult))
-                throw new NotSupportedException("ILDiet result would replace an input or assembly output: " + result);
-            if (Directory.Exists(result))
-                throw new NotSupportedException("ILDiet result path is a directory: " + result);
+            if (sourceFiles.Contains(physicalResult) || Directory.Exists(result))
+                throw new NotSupportedException("ILDiet result would replace an input or directory: " + result);
         }
 
-        // Policy tokens still describe the original metadata until Cecil writes.
-        string descriptorText = EffectivePreservation();
-        string resultText = ResultManifest(outputFiles, preservation);
-        string parent = Path.GetDirectoryName(output)
-            ?? throw new NotSupportedException("ILDiet output must have a parent directory");
-        Directory.CreateDirectory(parent);
-        string stage = Path.Combine(parent, ".ildiet-stage-" + Guid.NewGuid().ToString("N"));
-        string backup = Path.Combine(parent, ".ildiet-backup-" + Guid.NewGuid().ToString("N"));
-        string? stagedResult = null;
-        bool movedOriginal = false, published = false, committed = false;
+        Directory.CreateDirectory(output);
+        if (!File.Exists(Path.Combine(output, OutputMarker)))
+            WriteText(Path.Combine(output, OutputMarker), OutputOwnership);
+        string stage = Path.Combine(output, ".stage-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(stage);
+        string? pointerTemporary = null, resultTemporary = null;
         try
         {
+            var hashes = new List<string>();
+            var generationHash = new StableHash();
             for (int i = 0; i < _assemblies.Count; i++)
             {
                 var assembly = _assemblies[i];
-                string path = Path.Combine(stage, Path.GetFileName(outputFiles[i]));
-                if (assembly.Copy)
-                    File.Copy(assembly.Path, path);
+                string path = Path.Combine(stage, files[i]);
+                if (assembly.Copy) File.Copy(assembly.Path, path);
                 else
                 {
                     PreserveArrayKinds(assembly);
@@ -94,55 +85,99 @@ internal sealed partial class AssemblyDiet
                 using var verified = AssemblyDefinition.ReadAssembly(path);
                 if (verified.Name.FullName != assembly.Assembly.Name.FullName)
                     throw new InvalidOperationException("Writing changed assembly identity: " + assembly.Path);
+                byte[] bytes = File.ReadAllBytes(path);
+                var fileHash = new StableHash();
+                fileHash.AddBytes(bytes);
+                hashes.Add(fileHash.Hex());
+                generationHash.AddText(files[i]);
+                generationHash.AddFrame(bytes);
             }
-            WriteText(Path.Combine(stage, "preservation.xml"), descriptorText);
-            WriteText(Path.Combine(stage, OutputMarker), OutputOwnership);
-            if (result is not null)
+            byte[] descriptor = new UTF8Encoding(false).GetBytes(_originalPreservationText
+                ?? throw new InvalidOperationException("Original preservation was not captured before publication"));
+            File.WriteAllBytes(Path.Combine(stage, "preservation.xml"), descriptor);
+            generationHash.AddText("preservation.xml");
+            generationHash.AddFrame(descriptor);
+            string generation = "g-" + generationHash.Hex();
+            string generationDirectory = Path.Combine(output, generation);
+            FailPublication("write");
+            if (Directory.Exists(generationDirectory))
             {
-                if (resultWithinOutput is not null)
+                if (new DirectoryInfo(generationDirectory).LinkTarget is not null
+                    || Directory.EnumerateFileSystemEntries(generationDirectory).Count() != files.Count + 1)
+                    throw new InvalidOperationException("ILDiet generation is not immutable: " + generation);
+                foreach (string name in files.Concat(new[] { "preservation.xml" }))
                 {
-                    string inside = Path.Combine(stage, resultWithinOutput);
-                    Directory.CreateDirectory(Path.GetDirectoryName(inside)!);
-                    WriteText(inside, resultText);
+                    string existing = Path.Combine(generationDirectory, name);
+                    if (!File.Exists(existing) || new FileInfo(existing).LinkTarget is not null
+                        || !File.ReadAllBytes(existing).SequenceEqual(File.ReadAllBytes(Path.Combine(stage, name))))
+                        throw new InvalidOperationException("ILDiet generation hash collision or modified output: " + generation);
                 }
-                else
-                {
-                    string resultParent = Path.GetDirectoryName(result)!;
-                    Directory.CreateDirectory(resultParent);
-                    stagedResult = Path.Combine(resultParent, ".ildiet-result-" + Guid.NewGuid().ToString("N"));
-                    WriteText(stagedResult, resultText);
-                }
+                CleanupDirectory(stage);
             }
-            if (Directory.Exists(output))
+            else Directory.Move(stage, generationDirectory);
+            string manifest = ResultManifest(files.Select(name => Path.Combine(generationDirectory, name)).ToList(),
+                Path.Combine(generationDirectory, "preservation.xml"), generation, hashes);
+            pointerTemporary = pointer + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            WriteText(pointerTemporary, manifest);
+            // Different spellings may name distinct files on a case-sensitive volume.
+            if (result is not null && !StringComparer.Ordinal.Equals(PhysicalPath(result), PhysicalPath(pointer)))
             {
-                Directory.Move(output, backup);
-                movedOriginal = true;
+                Directory.CreateDirectory(Path.GetDirectoryName(result)!);
+                resultTemporary = result + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                WriteText(resultTemporary, manifest);
             }
-            Directory.Move(stage, output);
-            published = true;
-            if (stagedResult is not null)
-                File.Move(stagedResult, result!, overwrite: true);
-            committed = true;
-        }
-        catch
-        {
-            if (published)
-                Directory.Delete(output, recursive: true);
-            if (movedOriginal)
-                Directory.Move(backup, output);
-            throw;
+            FailPublication("commit");
+            File.Move(pointerTemporary, pointer, overwrite: true);
+            pointerTemporary = null;
+            if (resultTemporary is not null)
+            {
+                File.Move(resultTemporary, result!, overwrite: true);
+                resultTemporary = null;
+            }
+            CleanupOutputs(output, generation, result);
         }
         finally
         {
             CleanupDirectory(stage);
-            if (committed) CleanupDirectory(backup);
-            if (stagedResult is not null && File.Exists(stagedResult))
+            CleanupFile(pointerTemporary);
+            CleanupFile(resultTemporary);
+        }
+    }
+
+    private static void FailPublication(string phase)
+    {
+        if (EnvKnobs.Raw(EnvKnobs.ILDietFailPoint) == phase)
+            throw new InvalidOperationException("ILDiet injected publication failure: " + phase);
+    }
+
+    private static void CleanupFile(string? path)
+    {
+        if (path is null) return;
+        try { if (File.Exists(path)) File.Delete(path); }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+    }
+
+    private static void CleanupOutputs(string output, string generation, string? result)
+    {
+        try
+        {
+            foreach (string path in Directory.EnumerateFileSystemEntries(output))
             {
-                try { File.Delete(stagedResult); }
-                catch (IOException) { }
-                catch (UnauthorizedAccessException) { }
+                string name = Path.GetFileName(path);
+                if (name == generation || name == OutputMarker || name == "ildiet-result.xml"
+                    || result is not null && PathComparer.Equals(PhysicalPath(path), PhysicalPath(result)))
+                    continue;
+                if (Directory.Exists(path) && (name.StartsWith("g-", StringComparison.Ordinal)
+                    || name.StartsWith(".stage-", StringComparison.Ordinal))) CleanupDirectory(path);
+                else if (File.Exists(path) && (name.EndsWith(".tmp", StringComparison.Ordinal)
+                    || name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)
+                    || name.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase) || name == "preservation.xml"))
+                    CleanupFile(path);
             }
         }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
     }
 
     private string EffectivePreservation()
@@ -150,16 +185,23 @@ internal sealed partial class AssemblyDiet
         var text = new StringBuilder("<linker>\n");
         foreach (var assembly in _assemblies)
         {
+            if (assembly.PreserveAll)
+            {
+                text.Append("  <assembly fullname=\"").Append(Xml(assembly.Assembly.Name.Name))
+                    .Append("\" preserve=\"all\" />\n");
+                continue;
+            }
             var types = new StringBuilder();
             foreach (var pair in _exportPolicyTypes.Where(p => p.Key.Module == assembly.Assembly.MainModule)
                          .OrderBy(p => p.Key.MetadataToken.ToInt32()))
             {
                 var type = pair.Key;
-                if (!_types.Contains(type) && !assembly.Copy) continue;
                 var policy = pair.Value;
                 for (int branch = 0; branch < 2; branch++)
                 {
                     bool conditional = branch != 0;
+                    if (conditional && _fallback == "none" && !assembly.Copy && !_types.Contains(type))
+                        continue;
                     var kind = conditional ? policy.ConditionalKind : policy.Kind;
                     var selectedMethods = conditional ? policy.ConditionalMethods : policy.Methods;
                     var selectedFields = conditional ? policy.ConditionalFields : policy.Fields;
@@ -183,8 +225,17 @@ internal sealed partial class AssemblyDiet
                         if (selectedProperties.Contains(SRME.PropertyDefinitionHandle((int)property.MetadataToken.RID)))
                         {
                             bool getter = KeptMethod(property.GetMethod), setter = KeptMethod(property.SetMethod);
-                            Member(members, "property", SignatureType(property.PropertyType) + " " + property.Name,
-                                getter && !setter ? "get" : setter && !getter ? "set" : "all");
+                            string accessors;
+                            if (getter && setter) accessors = "all";
+                            else if (getter) accessors = "get";
+                            else if (setter) accessors = "set";
+                            else if (property.GetMethod is null && property.SetMethod is null) accessors = "all";
+                            else if (property.GetMethod is null) accessors = "get";
+                            else if (property.SetMethod is null) accessors = "set";
+                            else throw new InvalidOperationException("Preserved property selects no accessor: " + property.FullName);
+                            // A missing accessor selector preserves the row without
+                            // inventing executable preservation for the other side.
+                            Member(members, "property", SignatureType(property.PropertyType) + " " + property.Name, accessors);
                         }
                     foreach (var item in type.Events)
                         if (selectedEvents.Contains(SRME.EventDefinitionHandle((int)item.MetadataToken.RID)))
@@ -226,15 +277,51 @@ internal sealed partial class AssemblyDiet
         text.Append(" />\n");
     }
 
-    private string ResultManifest(IReadOnlyList<string> assemblies, string preservation)
+    private string ResultManifest(IReadOnlyList<string> assemblies, string preservation,
+        string generation, IReadOnlyList<string> hashes)
     {
-        var text = new StringBuilder("<ildietResult input=\"").Append(Xml(assemblies[0]))
+        string contract = _request.Contract;
+        if (contract.Length == 0)
+        {
+            var request = new LinkNode { Name = "ildiet" };
+            request.Attributes.Add("copyAll", _request.CopyAll ? "true" : "false");
+            foreach (string feature in _request.Features)
+            {
+                var child = new LinkNode { Name = "feature" };
+                child.Attributes.Add("name", feature);
+                request.Children.Add(child);
+            }
+            foreach (string name in _request.SkipAssemblies)
+            {
+                var child = new LinkNode { Name = "skipAssembly" };
+                child.Attributes.Add("name", name);
+                request.Children.Add(child);
+            }
+            contract = ILDietProtocol.ContractDigest(request);
+        }
+        var text = new StringBuilder("<ildietResult version=\"2\" input=\"").Append(Xml(assemblies[0]))
             .Append("\" preservation=\"").Append(Xml(preservation))
+            .Append("\" generation=\"").Append(generation)
+            .Append("\" contract=\"").Append(contract)
+            .Append("\" fallback=\"").Append(_fallback)
             .Append("\" cutsValidated=\"").Append(_cutsValidated ? "true" : "false")
             .Append("\" constructorRegistriesRewritten=\"").Append(_constructorRegistriesRewritten ? "true" : "false")
             .Append("\">\n");
         for (int i = 1; i < assemblies.Count; i++)
             text.Append("  <reference path=\"").Append(Xml(assemblies[i])).Append("\" />\n");
+        for (int i = 0; i < assemblies.Count; i++)
+            text.Append("  <assembly name=\"").Append(Xml(_assemblies[i].Assembly.Name.Name))
+                .Append("\" mode=\"").Append(_assemblies[i].Copy ? "copied" : "rewritten")
+                .Append("\" hash=\"").Append(hashes[i]).Append("\" registryRewritten=\"")
+                .Append(_assemblies[i].RegistryRewritten ? "true" : "false").Append("\" />\n");
+        text.Append("  <counters");
+        foreach (var counter in GraphCounters())
+            text.Append(' ').Append(counter.Key).Append("=\"").Append(counter.Value).Append('"');
+        text.Append(" />\n");
+        foreach (var diagnostic in _registryDiagnostics.OrderBy(item => item.Scope, StringComparer.Ordinal)
+            .ThenBy(item => item.Reason, StringComparer.Ordinal))
+            text.Append("  <diagnostic kind=\"registry\" scope=\"").Append(Xml(diagnostic.Scope))
+                .Append("\" reason=\"").Append(Xml(diagnostic.Reason)).Append("\" />\n");
         return text.Append("</ildietResult>\n").ToString();
     }
 

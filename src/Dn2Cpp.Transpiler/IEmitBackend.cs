@@ -12,6 +12,24 @@ internal interface IEmitBackend
     /// transpiler model exists.</summary>
     void ConfigureILDiet(ILDietRootPolicy policy, IReadOnlyList<string> paths, TranspileOptions options) { }
 
+    /// <summary>Checks the companion's publication contract without changing emission.</summary>
+    void ValidateILDiet(TranspileOptions options)
+    {
+        bool rewritten = false;
+        foreach (var assembly in options.ILDietAssemblyModes)
+        {
+            if (assembly.RegistryRewritten && assembly.Mode != "rewritten")
+                throw new InvalidOperationException("ILDiet registry rewrite requires a rewritten assembly: " + assembly.Name);
+            rewritten |= assembly.RegistryRewritten;
+            if (options.Verbose)
+                Console.WriteLine("ILDiet: backend assembly " + assembly.Name + " mode=" + assembly.Mode
+                    + " registryRewritten=" + (assembly.RegistryRewritten ? "true" : "false"));
+        }
+        if (rewritten != options.ILDietRegistriesRewritten
+            || options.ILDietFallback != "none" && rewritten)
+            throw new InvalidOperationException("ILDiet backend publication state is inconsistent");
+    }
+
     /// <summary>Runtime header the generated translation unit includes.</summary>
     string RuntimeHeader { get; }
 
