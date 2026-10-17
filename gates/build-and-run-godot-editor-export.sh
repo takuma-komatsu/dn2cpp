@@ -71,6 +71,7 @@
 # and every launch runs under a watchdog because a broken Godot run hangs rather
 # than fails.
 source "$(dirname "$0")/_common.sh"
+source "$(dirname "$0")/_ildiet.sh"
 source "$(dirname "$0")/_godot_fork.sh"
 
 OUT=${DN2CPP_EDITOR_EXPORT_OUT:-gates/out-godot-editor-export}
@@ -647,7 +648,7 @@ assert_il_prestripping() {
     if [ "$expected" = ON ]; then
         grep -qE '^ILDiet: removed [0-9]+ types and [0-9]+ methods -> ' "$snapshot" \
             || { echo "FAIL: enabled IL Pre-stripping did not run ILDiet ($snapshot)" >&2; exit 1; }
-        [ -f "$GEN_DIR/ildiet/$PROJECT_NAME.dll" ] \
+        [ -f "$(ildiet_generation "$GEN_DIR/ildiet")/$PROJECT_NAME.dll" ] \
             || { echo "FAIL: ILDiet did not produce the stripped game assembly" >&2; exit 1; }
         if grep -qF -- '--no-ildiet' "$snapshot"; then
             echo "FAIL: enabled IL Pre-stripping added --no-ildiet" >&2

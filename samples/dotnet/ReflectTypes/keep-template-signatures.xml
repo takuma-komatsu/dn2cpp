@@ -1,12 +1,27 @@
 <linker>
   <assembly fullname="ReflectionTemplateDispatch">
+    <!-- Parameter-supplied type arguments require explicit construction roots. -->
+    <type fullname="Dn2Cpp.FunctionPointerCall`1">
+      <method name=".ctor" />
+    </type>
+    <type fullname="Dn2Cpp.FixedFunctionPointerCall`1">
+      <method name=".ctor" />
+      <method name="Call" />
+    </type>
+    <!-- The receiver type comes from an escaped argument vector. -->
+    <type fullname="Dn2Cpp.SignatureConcrete`2">
+      <method name=".ctor" />
+      <method name="Plain" />
+    </type>
     <!-- RunTemplateSignaturePlaceholders reads each row name from a tuple array
          element. -->
     <type fullname="Dn2Cpp.SignatureReorder`2">
+      <method name=".ctor" />
       <method name="Fixed" />
     </type>
     <!-- The remedy the refusal of RemedyImpl's unretained Kept override prints. -->
     <type fullname="Dn2Cpp.RemedyImpl`1">
+      <method name=".ctor" />
       <method name="Kept" />
     </type>
   </assembly>

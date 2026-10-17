@@ -5,9 +5,47 @@ internal static class GodotValidation
 {
     internal static bool Run(string[] args)
     {
+        if (args.Length == 2 && args[0] == "--check-script-registration")
+        {
+            ScriptRegistrationValidation.Run(args[1]);
+            return true;
+        }
+        if (args.Length == 2 && args[0] == "--godot-script-state")
+        {
+            using var assembly = AssemblyDefinition.ReadAssembly(args[1]);
+            ScriptState(assembly);
+            return true;
+        }
+        if (args.Length == 4 && args[0] == "--write-godot-registration")
+        {
+            using var assembly = AssemblyDefinition.ReadAssembly(args[1]);
+            var attribute = assembly.CustomAttributes.Single(a => a.AttributeType.FullName == "Godot.AssemblyHasScriptsAttribute");
+            assembly.CustomAttributes.Remove(attribute);
+            if (args[3] == "lookup")
+            {
+                var constructor = new MethodReference(".ctor", assembly.MainModule.TypeSystem.Void, attribute.AttributeType) { HasThis = true };
+                assembly.CustomAttributes.Add(new CustomAttribute(constructor));
+            }
+            else if (args[3] is "null" or "empty")
+            {
+                var argument = attribute.ConstructorArguments.Single();
+                attribute.ConstructorArguments[0] = new CustomAttributeArgument(argument.Type,
+                    args[3] == "null" ? null : Array.Empty<CustomAttributeArgument>());
+                assembly.CustomAttributes.Add(attribute);
+            }
+            else Require(args[3] == "absent", "unknown registration fixture mode");
+            assembly.Write(args[2], new WriterParameters { Timestamp = 0, DeterministicMvid = true });
+            Console.WriteLine("godot-registration-fixture=" + args[3]);
+            return true;
+        }
         if (args.Length == 2 && args[0] == "--create-engine-fixtures")
         {
             Create(args[1]);
+            return true;
+        }
+        if (args.Length == 2 && args[0] == "--engine-state")
+        {
+            State(args[1]);
             return true;
         }
         if (args.Length == 3 && args[0] == "--check-engine-fixtures")
@@ -42,6 +80,42 @@ internal static class GodotValidation
         if (!condition) throw new InvalidOperationException(message);
     }
 
+    private static bool Stub(MethodDefinition method) => method.HasBody
+        && method.Body.Instructions.Select(i => i.OpCode.Code)
+            .SequenceEqual(new[] { Code.Ldc_I4, Code.Pop, Code.Ldnull, Code.Throw })
+        && method.Body.Instructions[0].Operand is int marker && marker == 0x494C4454;
+
+    private static IEnumerable<string> Registered(AssemblyDefinition assembly, string attributeName)
+    {
+        foreach (var attribute in assembly.CustomAttributes.Where(a => a.AttributeType.FullName == attributeName))
+            foreach (var argument in attribute.ConstructorArguments)
+                if (argument.Value is CustomAttributeArgument[] array)
+                    foreach (var item in array)
+                        if (item.Value is TypeReference type) yield return type.FullName;
+    }
+
+    private static void ScriptState(AssemblyDefinition assembly)
+    {
+        foreach (string name in Registered(assembly, "Godot.AssemblyHasScriptsAttribute"))
+            Console.WriteLine("script=" + name);
+        foreach (string name in new[] { "HandwrittenContainer", "HandwrittenContainer/OrdinaryNested", "UnusedScript",
+            "UnusedScript/<>c", "UnusedScript/MethodName", "Godot.Sprite2D" })
+        {
+            var type = assembly.MainModule.GetType(name);
+            Console.WriteLine("type=" + name + " present=" + (type is not null));
+            if (type is null) continue;
+            foreach (var method in type.Methods)
+                Console.WriteLine("method=" + name + "::" + method.Name + " stub=" + Stub(method));
+        }
+    }
+
+    private static void MetadataOnly(TypeDefinition type)
+    {
+        Require(type.Methods.Any(m => m.Name == ".ctor") && type.Methods.All(m => !m.HasBody || Stub(m)),
+            "metadata-only script admitted executable bodies: " + type.FullName);
+        Require(!type.Methods.Any(m => m.Name == ".cctor"), "metadata-only script retained its initializer: " + type.FullName);
+    }
+
     private static void CheckSample(string inputApp, string inputEngine, string output)
     {
         using var beforeApp = AssemblyDefinition.ReadAssembly(inputApp);
@@ -51,7 +125,7 @@ internal static class GodotValidation
         foreach (string name in new[] { "UnusedScript", "UnusedScript/<>c", "UnusedScript/MethodName" })
         {
             Require(beforeApp.MainModule.GetType(name) is not null, "missing unused-script witness: " + name);
-            Require(afterApp.MainModule.GetType(name) is null, "unused script or helper survived: " + name);
+            if (afterApp.MainModule.GetType(name) is { } metadata) MetadataOnly(metadata);
         }
         foreach (string name in new[] { "Player", "Probe", "AutoloadProbe", "SceneResource", "GenericBase`1",
             "GenericConcrete", "MyResource", "ExplicitPreservedScript", "FaultProbe" })
@@ -59,12 +133,15 @@ internal static class GodotValidation
         foreach (string name in new[] { "Godot.GodotObject", "Godot.RefCounted", "Godot.Node2D", "Godot.Sprite3D", "Godot.LightmapperRD" })
             Require(afterEngine.MainModule.GetType(name) is not null, "required engine wrapper disappeared: " + name);
         Require(beforeEngine.MainModule.GetType("Godot.Sprite2D") is not null, "missing unused engine witness");
-        Require(afterEngine.MainModule.GetType("Godot.Sprite2D") is null, "unused engine wrapper survived ILDiet");
+        if (afterEngine.MainModule.GetType("Godot.Sprite2D") is { } metadataWrapper) MetadataOnly(metadataWrapper);
         var handwritten = afterApp.MainModule.GetType("HandwrittenContainer/OrdinaryNested");
         Require(handwritten is not null && handwritten.Methods.Any(m => m.Name == ".cctor")
             && handwritten.Methods.Any(m => m.Name == "ReadValue"), "ordinary handwritten nested members disappeared");
         Require(afterApp.MainModule.GetType("HandwrittenContainer") is not null,
             "live ordinary nested type lost its declaring script");
+        MetadataOnly(afterApp.MainModule.GetType("HandwrittenContainer"));
+        Require(!Registered(afterApp, "Godot.AssemblyHasScriptsAttribute").Contains("HandwrittenContainer"),
+            "declaring-script metadata became a script registration");
         CheckRegistration(beforeApp, afterApp, "Godot.AssemblyHasScriptsAttribute", "UnusedScript");
         CheckRegistry(beforeEngine, afterEngine, "Godot.Constructors", "Godot.Sprite2D", "Godot.Node2D");
         Console.WriteLine("godot-ildiet-metadata=unused-engine,unused-script,nested-helper,ordinary-nested,scene,autoload,resource,generic,code-created,explicit,registrations");
@@ -158,6 +235,7 @@ internal static class GodotValidation
             "ordinary handwritten nested members disappeared");
         Require(app.MainModule.GetType("EngineFixture.HandwrittenContainer") is not null,
             "live ordinary nested type lost its declaring script");
+        MetadataOnly(app.MainModule.GetType("EngineFixture.HandwrittenContainer"));
         CheckRegistration(beforeApp, app, "Engine.AssemblyHasScriptsAttribute", "EngineFixture.UnusedScript");
         Require(app.CustomAttributes.Any(a => a.AttributeType.FullName == "Engine.AssemblyHasScriptsAttribute"
             && a.ConstructorArguments.Single().Value is null), "null registration array changed");
@@ -180,6 +258,10 @@ internal static class GodotValidation
         var root = Type("Engine", "Object", module.TypeSystem.Object);
         var live = Type("Engine", "Live", root);
         var unused = Type("Engine", "Unused", live);
+        var dependency = Type("Engine", "FactoryBodyOnlyDependency", root);
+        var leaf = AddMethod(dependency, "Leaf", module.TypeSystem.Void, MethodAttributes.Public | MethodAttributes.Static);
+        var unselected = AddMethod(unused, "Unselected", module.TypeSystem.Void, MethodAttributes.Public | MethodAttributes.Static);
+        unselected.Body.Instructions.Insert(0, Instruction.Create(OpCodes.Call, leaf));
         var unknown = Type("Engine", "UnknownFactoryType", root);
         var registry = Type("Engine", "Constructors", module.TypeSystem.Object);
         var register = AddMethod(registry, "Register", module.TypeSystem.Void, MethodAttributes.Public | MethodAttributes.Static);
@@ -267,6 +349,37 @@ internal static class GodotValidation
         app.CustomAttributes.Add(scalarAttribute);
         app.Write(Path.Combine(directory, "EngineApp.dll"), new WriterParameters { Timestamp = 0, DeterministicMvid = true });
         Console.WriteLine("fixture-created=engine-policy");
+    }
+
+    private static void State(string output)
+    {
+        using var engine = AssemblyDefinition.ReadAssembly(Path.Combine(output, "GodotSharp.dll"));
+        using var app = AssemblyDefinition.ReadAssembly(Path.Combine(output, "EngineApp.dll"));
+        foreach (var assembly in new[] { app, engine })
+            foreach (var type in assembly.MainModule.GetTypes())
+            {
+                Console.WriteLine("type=" + type.FullName);
+                foreach (var method in type.Methods)
+                {
+                    bool stub = method.HasBody && method.Body.Instructions.Select(i => i.OpCode.Code)
+                        .SequenceEqual(new[] { Code.Ldc_I4, Code.Pop, Code.Ldnull, Code.Throw });
+                    Console.WriteLine("method=" + type.FullName + "::" + method.Name + " stub=" + stub);
+                }
+            }
+        var registry = engine.MainModule.GetType("Engine.Constructors");
+        foreach (var method in registry.Methods.Where(m => m.Name == ".cctor" && m.HasBody))
+            foreach (var instruction in method.Body.Instructions.Where(i => i.OpCode.Code == Code.Ldftn))
+            {
+                var factory = ((MethodReference)instruction.Operand).Resolve();
+                string constructed = string.Join(",", factory.Body.Instructions.Where(i => i.OpCode.Code == Code.Newobj)
+                    .Select(i => ((MethodReference)i.Operand).DeclaringType.FullName));
+                Console.WriteLine("factory=" + factory.Name + " constructs=" + constructed);
+            }
+        foreach (var attribute in app.CustomAttributes.Where(a => a.AttributeType.FullName == "Engine.AssemblyHasScriptsAttribute"))
+            foreach (var argument in attribute.ConstructorArguments)
+                if (argument.Value is CustomAttributeArgument[] array)
+                    foreach (var item in array)
+                        if (item.Value is TypeReference type) Console.WriteLine("script=" + type.FullName);
     }
 
     private static MethodDefinition AddMethod(TypeDefinition type, string name, TypeReference result, MethodAttributes attributes)

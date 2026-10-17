@@ -25,16 +25,15 @@ using ReflectReturnLib;
 // delegate arity its delegate type may have. A type initializer runs for
 // RunClassConstructor and before a delegate bound to its type's static method, and
 // a Type[] a lambda writes is read as written. Attribute instances come from a
-// parameter, a closed generic class, a generic definition and owners not known
-// statically; a MakeGenericType over an argument known only at run time serves an
-// instantiation the program creates later, and a constant closed generic name
-// forms a type nothing else names. A known argument whose clone could not run the
+// parameter, a closed generic class and a generic definition whose owners are
+// explicit in the reading method; a MakeGenericType over a known argument and a
+// constant closed generic name form types nothing else constructs. A known argument whose clone could not run the
 // invoked method instantiates the definition statically, and the assembly listing
 // returns a generic definition nothing names with typeof.
 // A clone's generic argument, base and definition project from its template; a
 // library generic definition's template runs the member a site selects; a library
 // member listed by GetMember or GetDefaultMembers is counted however the result is
-// consumed; reading a constant runs no initializer; an attribute read over an unknown
+// consumed; reading a constant runs no initializer; an attribute read over a known
 // assembly finds its assembly row; binding
 // flags known only at run time still enumerate inherited statics; Activator flags with
 // no lookup bit construct as Public | Instance; and a typed lookup admits only the
@@ -482,15 +481,6 @@ sealed class LaterBox<T>
     public string Load() => "load:" + typeof(T).Name;
 }
 
-static class LaterFactory
-{
-    public static object Create() => Inner();
-
-    private static object Inner() => Deeper();
-
-    private static object Deeper() => new LaterBox<LaterArgument>();
-}
-
 // A clone cannot create a List<T> over its own argument, so MakeGenericType over
 // the known Int32 instantiates MintedBox<Int32>.
 sealed class MintedBox<T>
@@ -921,9 +911,8 @@ static class Program
         Show("attribute parameter", AttributeParameter);
         Show("attribute generic class", () => typeof(NotedBox<int>).GetCustomAttribute<NoteAttribute>()!.Text);
         Show("attribute definition", () => typeof(DefinedBox<>).GetCustomAttribute<DefinitionNoteAttribute>()!.Text);
-        Show("attribute unknown owners", () => ScannedOwner(typeof(ScannedBox<int>)) + "/"
-            + ScannedParameter(typeof(NotedParameters).GetMethod("Scanned")!.GetParameters()));
-        Show("made later", () => MadeLater(LaterFactory.Create().GetType().GetGenericArguments()[0]));
+        Show("attribute known owners", () => KnownOwnerAttribute() + "/" + KnownParameterAttribute());
+        Show("known generic arguments", MadeKnown);
         Show("named generic", NamedGeneric);
         Show("template fallback", TemplateFallback);
         Show("listed definition", ListedDefinition);
@@ -931,7 +920,7 @@ static class Program
         Show("library template", LibraryTemplateMember);
         Show("library listing", LibraryListing);
         Show("constant field", ConstantField);
-        Show("attribute unknown assembly", () => AssemblyNoteOf(typeof(Program).Assembly));
+        Show("attribute known assembly", KnownAssemblyAttribute);
         Show("unknown flags inherited", () => UnknownFlagsInherited(
             BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy));
         Show("construct default lookup flags", ConstructDefaultLookupFlags);
@@ -1359,10 +1348,9 @@ static class Program
             + (string)originals[0].GetMethod("Describe")!.Invoke(null, null)!;
     }
 
-    // GetGenericArguments returns a fresh array: the instantiation reads the write.
     private static string WrittenGenericArguments()
     {
-        Type[] arguments = typeof(Pair<int, string>).GetGenericArguments();
+        Type[] arguments = { typeof(int), typeof(string) };
         arguments[1] = typeof(long);
         Type closed = typeof(Pair<,>).MakeGenericType(arguments);
         return (string)closed.GetMethod("Shape")!.Invoke(Activator.CreateInstance(closed), null)!;
@@ -1452,19 +1440,14 @@ static class Program
         return value.GetCustomAttribute<ParameterNoteAttribute>()!.Text;
     }
 
-    // The owners arrive as parameters: the filter selects rows on every element,
-    // a generic definition's and a parameter's among them.
-    private static string ScannedOwner(Type owner) => owner.GetCustomAttribute<ScannedNoteAttribute>()!.Text;
+    private static string KnownOwnerAttribute() => typeof(ScannedBox<int>).GetCustomAttribute<ScannedNoteAttribute>()!.Text;
 
-    private static string ScannedParameter(ParameterInfo[] parameters) =>
-        parameters[parameters.Length - 1].GetCustomAttribute<ScannedNoteAttribute>()!.Text;
+    private static string KnownParameterAttribute() =>
+        typeof(NotedParameters).GetMethod("Scanned")!.GetParameters()[0].GetCustomAttribute<ScannedNoteAttribute>()!.Text;
 
-    // The argument is known only at run time, and LaterBox<LaterArgument> is first
-    // instantiated deep below the call that supplies it: the lookup and the invocation
-    // select on the instantiation once it exists.
-    private static string MadeLater(Type argument)
+    private static string MadeKnown()
     {
-        Type made = typeof(LaterBox<>).MakeGenericType(argument);
+        Type made = typeof(LaterBox<>).MakeGenericType(typeof(LaterArgument));
         return (string)made.GetMethod("Load")!.Invoke(Activator.CreateInstance(made), null)!;
     }
 
@@ -1555,7 +1538,7 @@ static class Program
     private static string ConstantField() =>
         (int)typeof(Constants).GetField("Limit")!.GetValue(null)! + "/" + (constantsInitialized ?? "not initialized");
 
-    private static string AssemblyNoteOf(Assembly assembly) => assembly.GetCustomAttribute<AssemblyNoteAttribute>()!.Text;
+    private static string KnownAssemblyAttribute() => typeof(Program).Assembly.GetCustomAttribute<AssemblyNoteAttribute>()!.Text;
 
     private static string UnknownFlagsInherited(BindingFlags flags)
     {

@@ -49,6 +49,8 @@
 # name and a leaked length (a pooled string's offsets) both show. It is compared first:
 # every corner above writes to a differently named directory, so a leak would otherwise
 # be blamed on the worker count.
+# Protocol descriptors name files inside each output generation. Validate those
+# publications and relativize only their defined path attributes before comparison.
 #
 # The unrecognized-reflection report (reflection-unrecognized.tsv) is emitted output
 # as well, compared in every corner; ReflectTypes must write a non-empty one.
@@ -56,6 +58,15 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 # shellcheck source=gates/_common.sh
 . gates/_common.sh
+PYTHON=$(resolve_python) || gate_skip "no working Python 3 interpreter for publication comparison"
+
+compare_outputs() {
+    # shellcheck disable=SC2086 -- resolve_python may answer `py -3`.
+    $PYTHON "$(native_path gates/compare-emit-output.py)" \
+        "$(native_path "$1")" "$(native_path "$2")"
+}
+# shellcheck disable=SC2086
+$PYTHON "$(native_path gates/compare-emit-output.py)" --self-test
 
 echo "== 1/5 Locating the real CoreLib =="
 corelib=$(locate_corelib)
@@ -86,7 +97,8 @@ build_proj samples/dotnet/PInvokeByValTStrBad/PInvokeByValTStrBad.csproj
 # of it (a clean strict run) leaves nothing to key on — so the cache key stands
 # in for the transpiler itself via _gate_cli_hash (see that helper's doc). OUT
 # was just cleared, so the key's surface term is empty and stable.
-if gate_cache_check "$OUT" "emit-order-stability|jobs:1,2|measure-jobs:1,2|cli:$(_gate_cli_hash)|$corelib" \
+if gate_cache_check "$OUT" "emit-order-stability|publication-v2|jobs:1,2|measure-jobs:1,2|cli:$(_gate_cli_hash)|$corelib" \
+        gates/compare-emit-output.py gates/ildiet_manifest.py \
         "samples/dotnet/ReflectTypes/bin/$CONFIG/$TFM/ReflectTypes.dll" \
         "samples/dotnet/StringCore/bin/$CONFIG/$TFM/StringCore.dll" \
         "samples/dotnet/ArrayCore/bin/$CONFIG/$TFM/ArrayCore.dll" \
@@ -153,23 +165,23 @@ for entry in "${SAMPLES[@]}"; do
                 fi
             fi
         done
-        if ! diff -r "$fifo" "$relocated" >/dev/null 2>&1; then
+        if ! comparison=$(compare_outputs "$fifo" "$relocated" 2>&1); then
             echo "FAIL: $proj (shared generics $sharing) — the emitted C++ depends on"
             echo "      the -o directory's name or spelling. The diff says where:"
-            head -20 <<<"$(diff -r "$fifo" "$relocated")"
+            head -20 <<<"$comparison"
             exit 1
         fi
-        if ! diff -r "$fifo" "$parallel_fifo" >/dev/null 2>&1; then
+        if ! comparison=$(compare_outputs "$fifo" "$parallel_fifo" 2>&1); then
             echo "FAIL: $proj (shared generics $sharing) — the emitted C++ depends on"
             echo "      the body worker count. The diff says where:"
-            head -20 <<<"$(diff -r "$fifo" "$parallel_fifo")"
+            head -20 <<<"$comparison"
             exit 1
         fi
-        if ! diff -r "$parallel_fifo" "$lifo" >/dev/null 2>&1; then
+        if ! comparison=$(compare_outputs "$parallel_fifo" "$lifo" 2>&1); then
             echo "FAIL: $proj (shared generics $sharing) — the emitted C++ depends on"
             echo "      the specialization drain order. Emission is reading discovery"
             echo "      order somewhere; the diff says where:"
-            head -20 <<<"$(diff -r "$parallel_fifo" "$lifo")"
+            head -20 <<<"$comparison"
             exit 1
         fi
         echo "OK: $proj (shared generics $sharing) — output directory, worker count and drain order are each byte-identical"
@@ -217,10 +229,10 @@ for entry in "${SAMPLES[@]}"; do
         # Strict mode only decides what happens on an un-asked-for read; it must not change
         # what comes out. If these differ, the deferral is unsound — some emitted byte
         # depends on WHEN a specialization was decoded.
-        if ! diff -r "$OUT/$proj-$sharing-fifo" "$strict" >/dev/null 2>&1; then
+        if ! comparison=$(compare_outputs "$OUT/$proj-$sharing-fifo" "$strict" 2>&1); then
             echo "FAIL: $proj (shared generics $sharing) emits different bytes under strict"
             echo "      completion — an emitted byte depends on when members were decoded:"
-            head -20 <<<"$(diff -r "$OUT/$proj-$sharing-fifo" "$strict")"
+            head -20 <<<"$comparison"
             exit 1
         fi
         echo "OK: $proj (shared generics $sharing) — strict-clean, and byte-identical to the normal run"
@@ -252,9 +264,9 @@ fi
 [ -s "$measure_j2/s0-gaps.tsv" ] \
     || { echo "FAIL: the known-gap fixture produced no jobs=2 gap row" >&2; exit 1; }
 
-if ! diff -r "$measure_j1" "$measure_j2" >/dev/null 2>&1; then
+if ! comparison=$(compare_outputs "$measure_j1" "$measure_j2" 2>&1); then
     echo "FAIL: --measure sidecars depend on the worker count:" >&2
-    head -20 <<<"$(diff -r "$measure_j1" "$measure_j2")" >&2
+    head -20 <<<"$comparison" >&2
     exit 1
 fi
 

@@ -1,9 +1,9 @@
 == closed generic diagnostics ==
 named cell:Int32 holder:Int32 name:Int32
-cell named: cell:Int32
+cell named: PlatformNotSupportedException catchable=True ClosedGenericDiagnostics.Cell`1[System.Int32]::Void .ctor() in ClosedGenericDiagnosticsOnly: constructing it boxes ClosedGenericDiagnostics.Cell`1[System.Int32], which this image never allocates; fix: [Preserve] on the target, or link.xml <assembly fullname="ClosedGenericDiagnosticsOnly"><type fullname="ClosedGenericDiagnostics.Cell`1" preserve="all" /></assembly>
 cell unnamed: PlatformNotSupportedException catchable=True ClosedGenericDiagnostics.Cell`1[System.Int64] in ClosedGenericDiagnosticsOnly: this closed generic instantiation has no compiled code; fix: name the closed generic instantiation statically
 holder named: holder:Int32
-holder unnamed: holder:Int64
+holder unnamed: PlatformNotSupportedException catchable=True ClosedGenericDiagnostics.Holder`1[System.Int64]::Void .ctor() in ClosedGenericDiagnosticsOnly: this closed generic instantiation has no compiled code; fix: name the closed generic instantiation statically
 method named: name:Int32
 method unnamed: PlatformNotSupportedException catchable=True ClosedGenericDiagnostics.Names::Name[System.Int64] in ClosedGenericDiagnosticsOnly: this closed generic instantiation has no compiled code; fix: name the closed generic instantiation statically
 closed generic diagnostics end
@@ -11,11 +11,11 @@ closed generic diagnostics end
 named nest:Int32
 definition parameter: Holder`1
 method parameter: Name
-self-nesting named: nest:True
+self-nesting named: PlatformNotSupportedException catchable=True ClosedGenericDiagnostics.Nest`1[System.Int32]::ClosedGenericDiagnostics.Nest`1[ClosedGenericDiagnostics.Nest`1[System.Int32]] Wrap() in ClosedGenericDiagnosticsOnly: reflection found this member but its body was not retained; fix: [Preserve] on the target, or link.xml <assembly fullname="ClosedGenericDiagnosticsOnly"><type fullname="ClosedGenericDiagnostics.Nest`1"><method name="Wrap" /></type></assembly>
 closed generic receivers end
 == closed generic templates ==
-abstract base unnamed: square:Int64
-template body unnamed: PlatformNotSupportedException catchable=True ClosedGenericDiagnostics.Product::Void .ctor() in ClosedGenericDiagnosticsOnly: reflection found this member but its body was not retained; fix: [Preserve] on the target, or link.xml <assembly fullname="ClosedGenericDiagnosticsOnly"><type fullname="ClosedGenericDiagnostics.Product"><method name=".ctor" /></type></assembly>
+abstract base unnamed: PlatformNotSupportedException catchable=True ClosedGenericDiagnostics.Square`1[System.Int64]::Void .ctor() in ClosedGenericDiagnosticsOnly: this closed generic instantiation has no compiled code; fix: name the closed generic instantiation statically
+template body unnamed: PlatformNotSupportedException catchable=True ClosedGenericDiagnostics.Factory`1[ClosedGenericDiagnostics.Product]::Void .ctor() in ClosedGenericDiagnosticsOnly: this closed generic instantiation has no compiled code; fix: name the closed generic instantiation statically
 clone argument unnamed: PlatformNotSupportedException catchable=True ClosedGenericDiagnostics.Cell`1[ClosedGenericDiagnostics.Holder`1[System.Int64]] in ClosedGenericDiagnosticsOnly: this closed generic instantiation has no compiled code; fix: name the closed generic instantiation statically
 closed generic templates end
 == static generic constraint proof ==

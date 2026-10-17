@@ -1,0 +1,16 @@
+<linker>
+  <!-- Opaque type arguments require explicit roots for the selected bindings. -->
+  <assembly fullname="AdmissionFiltersOnly">
+    <type fullname="AdmissionFilters.MostDerivedOpaque`1">
+      <method signature="System.String Make()" />
+    </type>
+    <type fullname="AdmissionFilters.PrivateBindingOpaqueBase`1">
+      <method signature="System.String Pick()" />
+    </type>
+  </assembly>
+  <assembly fullname="ReflectReturnLib">
+    <type fullname="AdmissionFilters.LibraryPrivateOpaqueBase`1">
+      <method signature="System.String Pick()" />
+    </type>
+  </assembly>
+</linker>

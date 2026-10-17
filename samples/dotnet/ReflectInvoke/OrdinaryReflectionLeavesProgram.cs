@@ -329,6 +329,11 @@ static class Program
         if (args.Length != 0 && args[0] == "before-constructor-signatures")
             return;
         RunConstructorSignatures();
+        if (args.Length != 0 && args[0] == "before-written-generic-arguments")
+            return;
+        Console.WriteLine("== written generic arguments ==");
+        Console.WriteLine("written generic arguments: " + WrittenGenericArguments());
+        Console.WriteLine("written generic arguments end");
     }
 
     private static object? BindConstructor(Type type, object?[] arguments,
@@ -381,4 +386,18 @@ static class Program
         ConstructorRefusal("matching field signature", typeof(ReflectReturnLib.ConstructorFieldOwner).GetField("Value")!.FieldType, new object[] { "x" }, BindingFlags.Public | BindingFlags.Instance);
         Console.WriteLine("unretained constructor selection end");
     }
+
+    // GetGenericArguments returns a fresh array: the instantiation reads the write.
+    private static string WrittenGenericArguments()
+    {
+        Type[] arguments = typeof(Pair<int, string>).GetGenericArguments();
+        arguments[1] = typeof(long);
+        Type closed = typeof(Pair<,>).MakeGenericType(arguments);
+        return (string)closed.GetMethod("Shape")!.Invoke(Activator.CreateInstance(closed), null)!;
+    }
+}
+
+sealed class Pair<TKey, TValue>
+{
+    public string Shape() => "pair:" + typeof(TKey).Name + "," + typeof(TValue).Name;
 }

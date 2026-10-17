@@ -8,5 +8,11 @@
     <type fullname="ReflectNameBindOnly.TokenOverload`1">
       <method name="Ref" />
     </type>
+    <type fullname="ReflectNameBindOnly.ArrayElementOwner`1">
+      <method signature="System.Threading.Tasks.ValueTask`1&lt;System.Int32&gt;* Pointer(System.Threading.Tasks.ValueTask`1&lt;System.Int32&gt;*)" />
+    </type>
+    <type fullname="ReflectNameBindOnly.ArrayLeafOwner`1">
+      <method signature="System.Threading.Tasks.ValueTask`1&lt;System.Int32[]&gt;* Pointer(System.Threading.Tasks.ValueTask`1&lt;System.Int32[]&gt;*)" />
+    </type>
   </assembly>
 </linker>

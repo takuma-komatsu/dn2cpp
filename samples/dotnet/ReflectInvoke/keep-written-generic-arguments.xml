@@ -1,0 +1,9 @@
+<linker>
+  <assembly fullname="OrdinaryReflectionLeaves">
+    <!-- The summary does not track writes to reflection-produced arrays. -->
+    <type fullname="OrdinaryReflectionLeaves.Pair`2">
+      <method signature="System.Void .ctor()" />
+      <method signature="System.String Shape()" />
+    </type>
+  </assembly>
+</linker>

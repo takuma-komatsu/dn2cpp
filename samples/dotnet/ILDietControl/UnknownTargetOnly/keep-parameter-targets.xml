@@ -18,4 +18,5 @@
   <assembly fullname="UnknownTargetOnly"><type fullname="ILDietUnknownTargetOnly.MergedA"><method name="Run" /></type></assembly>
   <assembly fullname="UnknownTargetOnly"><type fullname="ILDietUnknownTargetOnly.MergedB"><method name="Run" /></type></assembly>
   <assembly fullname="UnknownTargetOnly"><type fullname="ILDietUnknownTargetOnly.BlankTarget"><method name=".ctor" /></type></assembly>
+  <assembly fullname="UnknownTargetOnly"><type fullname="ILDietUnknownTargetOnly.CommandAttribute"><method name=".ctor" /></type></assembly>
 </linker>

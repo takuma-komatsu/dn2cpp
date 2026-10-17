@@ -7,5 +7,9 @@
       <property name="Has*" />
       <property name="KindCase" />
     </type>
+    <!-- JsonFormatter reads enum field attributes through runtime FieldInfo. -->
+    <type fullname="Google.Protobuf.Reflection.OriginalNameAttribute" preserve="nothing">
+      <method signature="System.Void .ctor(System.String)" />
+    </type>
   </assembly>
 </linker>

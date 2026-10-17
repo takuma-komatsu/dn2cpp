@@ -206,8 +206,8 @@ internal static class Program
         Console.WriteLine("a virtual delegate's method, a name bound per instantiation and an uninitialized parameter type end");
     }
 
-    // Delegate.Method answers the override the delegate's target selects, whose attribute
-    // the declared method does not carry.
+    // The virtual delegate's override is unknown to this method's summary. Its
+    // attribute needs an explicit constructor preserve; the provider stays metadata.
     private static string VirtualCommand(CommandBase target)
     {
         Action handle = target.Handle;

@@ -4,7 +4,10 @@ using Mono.Cecil.Cil;
 
 CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
 CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+if (ProtocolMutation.Run(args)) return;
 if (GodotValidation.Run(args)) return;
+if (GraphValidation.Run(args)) return;
+if (PropertySignatureValidation.Run(args)) return;
 if (args.Length == 3 && args[0] == "--create-captured-scalar-defaults-fixture")
 {
     CreateArrayNarrowingFixture(args[1], args[2], scalarDefaults: true);
@@ -91,6 +94,7 @@ if (args.Length == 2 && args[0] == "--create-dead")
 if (args.Length == 2 && args[0] == "--create-resolver-fixtures")
 {
     Directory.CreateDirectory(args[1]);
+    CreateResolverSink(Path.Combine(args[1], "System.ILDietFixtureSink.dll"));
     CreateResolverLibrary(Path.Combine(args[1], "ResolverFirst.dll"), "ResolverFirst", true);
     CreateResolverLibrary(Path.Combine(args[1], "ResolverSecond.dll"), "ResolverSecond", false);
     CreateResolverApp(Path.Combine(args[1], "ResolverApp.dll"));
@@ -105,17 +109,23 @@ if (args.Length == 3 && args[0] == "--check-resolver")
     using var otherAssembly = AssemblyDefinition.ReadAssembly(Path.Combine(args[1], other + ".dll"));
     using var firstAssembly = AssemblyDefinition.ReadAssembly(Path.Combine(args[1], "ResolverFirst.dll"));
     using var resolverApp = AssemblyDefinition.ReadAssembly(Path.Combine(args[1], "ResolverApp.dll"));
-    Require(selectedAssembly.MainModule.GetType("System.ILDietFixture.Collision")?.Methods.Any(m => m.Name == "Selected") == true,
+    using var sinkAssembly = AssemblyDefinition.ReadAssembly(Path.Combine(args[1], "System.ILDietFixtureSink.dll"));
+    Require(!sinkAssembly.MainModule.AssemblyReferences.Any(r => r.Name is "ResolverFirst" or "ResolverSecond" or "ResolverApp"),
+        "the copied opaque sink references a stripped assembly");
+    var selectedCollision = selectedAssembly.MainModule.GetType("System.ILDietFixture.Collision");
+    Require(ResolverBody(selectedCollision?.Methods.SingleOrDefault(m => m.Name == "Selected")),
         "first collision definition was not selected: " + selected);
+    foreach (string name in new[] { "GenericSelected", "EmptySelected" })
+        Require(ResolverBody(selectedCollision?.Methods.SingleOrDefault(m => m.Name == name)), "generic resolver call body was lost: " + name);
     Require(otherAssembly.MainModule.GetType("System.ILDietFixture.Collision")?.Methods.Any(m => m.Name == "Selected") != true,
         "later collision definition was selected: " + other);
-    Require(selectedAssembly.MainModule.GetType("System.ILDietFixture.LateBound")?.Methods.Any(m =>
-            m.IsConstructor && m.Parameters.Count == 1) == true,
+    Require(ResolverBody(selectedAssembly.MainModule.GetType("System.ILDietFixture.LateBound")?.Methods.SingleOrDefault(m =>
+            m.IsConstructor && m.Parameters.Count == 1)),
         "generic argument constructor was removed: " + selected);
     var methodBound = selectedAssembly.MainModule.GetType("System.ILDietFixture.MethodBound");
-    Require(methodBound?.Methods.Any(m => m.IsConstructor && m.IsPrivate && m.Parameters.Count == 1) == true,
+    Require(ResolverBody(methodBound?.Methods.SingleOrDefault(m => m.IsConstructor && m.IsPrivate && m.Parameters.Count == 1)),
         "generic method argument constructor was removed: " + selected);
-    Require(methodBound?.Methods.Any(m => m.Name == "ConstructorLeaf") == true,
+    Require(ResolverBody(methodBound?.Methods.SingleOrDefault(m => m.Name == "ConstructorLeaf")),
         "generic argument constructor body was not scanned: " + selected);
     foreach (var (typeName, propertyName) in new[]
         {
@@ -128,18 +138,24 @@ if (args.Length == 3 && args[0] == "--check-resolver")
         var property = dataType?.Properties.SingleOrDefault(p => p.Name == propertyName);
         Require(property?.GetMethod is not null && property.SetMethod is { IsPrivate: true },
             "generic data property accessor was removed: " + typeName + "." + propertyName);
-        Require(dataType?.Methods.Any(m => m.Name == propertyName + "SetterLeaf") == true,
+        Require(ResolverBody(property!.GetMethod) && ResolverBody(property.SetMethod),
+            "generic data property accessor body was lost: " + typeName + "." + propertyName);
+        Require(ResolverBody(dataType?.Methods.SingleOrDefault(m => m.Name == propertyName + "SetterLeaf")),
             "generic data setter body was not scanned: " + typeName + "." + propertyName);
     }
+    var emptyBound = selectedAssembly.MainModule.GetType("System.ILDietFixture.EmptyBound");
+    Require(emptyBound is not null && !emptyBound.Methods.Any(m => m.IsConstructor || m.Name == "EmptyConstructorLeaf"),
+        "an empty stripped generic body kept its argument's constructor body");
     Require(selectedAssembly.MainModule.GetType("System.ILDietFixture.Collision")?.Properties.Count == 0,
         "unselected ordinary property survived");
     var owner = firstAssembly.MainModule.GetType("System.ILDietFixture.Owner");
-    Require(owner?.NestedTypes.SingleOrDefault(t => t.Name == "Inner")?.Methods.Any(m => m.Name == "NestedSelected") == true,
+    Require(ResolverBody(owner?.NestedTypes.SingleOrDefault(t => t.Name == "Inner")?.Methods.SingleOrDefault(m => m.Name == "NestedSelected")),
         "nested definition was not resolved");
     var main = resolverApp.EntryPoint;
     Require(main is not null && main.Body.Variables.Any(v => v.VariableType.FullName == "System.ILDietFixture.Missing"),
         "unresolved type metadata changed");
     Console.WriteLine("resolver-valid=" + selected);
+    Console.WriteLine("resolver-data-demand=copied-generic-field,copied-generic-method-use,constructor-bodies,accessor-bodies,empty-stripped-generic");
     return;
 }
 if (args.Length < 2) throw new ArgumentException("expected original.dll rewritten.dll [empty|resources|signed]");
@@ -264,6 +280,23 @@ static void Require(bool condition, string message)
     if (!condition) throw new InvalidOperationException(message);
 }
 
+static bool ResolverBody(MethodDefinition? method) => method is { HasBody: true } && method.Body.Instructions.Count != 0
+    && !method.Body.Instructions.Select(i => i.OpCode.Code).SequenceEqual(new[] { Code.Ldc_I4, Code.Pop, Code.Ldnull, Code.Throw });
+
+static void CreateResolverSink(string path)
+{
+    using var sink = AssemblyDefinition.CreateAssembly(new AssemblyNameDefinition("System.ILDietFixtureSink", new Version(1, 0)),
+        "System.ILDietFixtureSink", ModuleKind.Dll);
+    var module = sink.MainModule;
+    var type = new TypeDefinition("System.ILDietFixture", "OpaqueList`1", TypeAttributes.Public | TypeAttributes.Class, module.TypeSystem.Object);
+    type.GenericParameters.Add(new GenericParameter("T", type)); module.Types.Add(type);
+    var ctor = new MethodDefinition(".ctor", MethodAttributes.Public | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName, module.TypeSystem.Void);
+    type.Methods.Add(ctor); ctor.Body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
+    ctor.Body.Instructions.Add(Instruction.Create(OpCodes.Call, new MethodReference(".ctor", module.TypeSystem.Void, module.TypeSystem.Object) { HasThis = true }));
+    ctor.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+    sink.Write(path, new WriterParameters { Timestamp = 0, DeterministicMvid = true });
+}
+
 static void CreateResolverLibrary(string path, string assemblyName, bool nested)
 {
     using var fixture = AssemblyDefinition.CreateAssembly(new AssemblyNameDefinition(assemblyName, new Version(1, 0)),
@@ -285,8 +318,10 @@ static void CreateResolverLibrary(string path, string assemblyName, bool nested)
     var propertyPayload = AddDataType(fixture.MainModule, "PropertyPayload");
     AddDataProperty(propertyPayload, "Value", fixture.MainModule.TypeSystem.Int32);
     AddDataProperty(lateBound, "Child", propertyPayload, stored: false);
-    var generic = new GenericInstanceType(new TypeReference("System.Collections.Generic", "List`1",
-        fixture.MainModule, fixture.MainModule.TypeSystem.CoreLibrary));
+    var sink = new AssemblyNameReference("System.ILDietFixtureSink", new Version(1, 0)); fixture.MainModule.AssemblyReferences.Add(sink);
+    var opaque = new TypeReference("System.ILDietFixture", "OpaqueList`1", fixture.MainModule, sink);
+    opaque.GenericParameters.Add(new GenericParameter("T", opaque));
+    var generic = new GenericInstanceType(opaque);
     generic.GenericArguments.Add(lateBound);
     var constructor = new MethodDefinition(".ctor",
         MethodAttributes.Public | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName,
@@ -311,7 +346,19 @@ static void CreateResolverLibrary(string path, string assemblyName, bool nested)
     methodConstructor.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
     methodBound.Methods.Add(methodConstructor);
     var genericMethod = AddVoidMethod(collision, "GenericSelected");
-    genericMethod.GenericParameters.Add(new GenericParameter("T", genericMethod));
+    var genericParameter = new GenericParameter("T", genericMethod); genericMethod.GenericParameters.Add(genericParameter);
+    var opaqueUse = new GenericInstanceType(opaque); opaqueUse.GenericArguments.Add(genericParameter);
+    genericMethod.Body.Instructions.Clear();
+    genericMethod.Body.Instructions.Add(Instruction.Create(OpCodes.Newobj, new MethodReference(".ctor", fixture.MainModule.TypeSystem.Void, opaqueUse) { HasThis = true }));
+    genericMethod.Body.Instructions.Add(Instruction.Create(OpCodes.Pop)); genericMethod.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+    var emptyMethod = AddVoidMethod(collision, "EmptySelected"); emptyMethod.GenericParameters.Add(new GenericParameter("T", emptyMethod));
+    var emptyBound = AddDataType(fixture.MainModule, "EmptyBound");
+    var emptyLeaf = AddVoidMethod(emptyBound, "EmptyConstructorLeaf"); emptyLeaf.Attributes = MethodAttributes.Private | MethodAttributes.Static;
+    var emptyCtor = new MethodDefinition(".ctor", MethodAttributes.Private | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName, fixture.MainModule.TypeSystem.Void);
+    emptyCtor.Parameters.Add(new ParameterDefinition(fixture.MainModule.TypeSystem.Int32)); emptyBound.Methods.Add(emptyCtor);
+    emptyCtor.Body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
+    emptyCtor.Body.Instructions.Add(Instruction.Create(OpCodes.Call, new MethodReference(".ctor", fixture.MainModule.TypeSystem.Void, fixture.MainModule.TypeSystem.Object) { HasThis = true }));
+    emptyCtor.Body.Instructions.Add(Instruction.Create(OpCodes.Call, emptyLeaf)); emptyCtor.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
     if (nested)
     {
         var owner = new TypeDefinition("System.ILDietFixture", "Owner",
@@ -353,6 +400,11 @@ static void CreateResolverApp(string path)
     var genericCall = new GenericInstanceMethod(genericMethod);
     genericCall.GenericArguments.Add(new TypeReference("System.ILDietFixture", "MethodBound", fixture.MainModule, facade));
     main.Body.Instructions.Add(Instruction.Create(OpCodes.Call, genericCall));
+    var emptyMethod = new MethodReference("EmptySelected", fixture.MainModule.TypeSystem.Void, collision) { HasThis = false };
+    emptyMethod.GenericParameters.Add(new GenericParameter("T", emptyMethod));
+    var emptyCall = new GenericInstanceMethod(emptyMethod);
+    emptyCall.GenericArguments.Add(new TypeReference("System.ILDietFixture", "EmptyBound", fixture.MainModule, facade));
+    main.Body.Instructions.Add(Instruction.Create(OpCodes.Call, emptyCall));
     main.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
     fixture.Write(path, new WriterParameters { Timestamp = 0, DeterministicMvid = true });
 }

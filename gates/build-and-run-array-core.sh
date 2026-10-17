@@ -178,6 +178,7 @@
 # Array copy, clear, resize and slices preserve fault fields and validation precedence.
 # Default comparer concrete families preserve enum widths, boxed order and user comparisons.
 source "$(dirname "$0")/_common.sh"
+source "$(dirname "$0")/_ildiet.sh"
 source gates/_headerless-reference-identity.sh
 source gates/_md-readonly-byrefs.sh
 
@@ -1172,7 +1173,7 @@ static_rank1_native=$(strip_cr_win "$static_rank1_native")
 static_rank1_oracle=$(run_bounded dotnet exec --runtimeconfig "$static_rank1_root/generator/Generate.runtimeconfig.json" "$static_rank1_app")
 assert_output "$(strip_cr_win "$static_rank1_native")" "$(strip_cr_win "$static_rank1_oracle")"
 static_rank1_diet=$(run_bounded dotnet exec --runtimeconfig "$static_rank1_root/generator/Generate.runtimeconfig.json" \
-    "$static_rank1_root/gen/ildiet/ArrayStaticRankOneOnly.dll")
+    "$(ildiet_generation "$static_rank1_root/gen/ildiet")/ArrayStaticRankOneOnly.dll")
 assert_output "$(strip_cr_win "$static_rank1_oracle")" "$(strip_cr_win "$static_rank1_diet")"
 static_rank1_prefix=$(awk '/^== unsized rank1 array signatures ==$/ { exit } { print }' <<< "$static_rank1_native")
 static_rank1_before=$(DN2CPP_BEFORE_UNSIZED_ARRAY=1 run_bounded "./$static_rank1_root/gen/ArrayStaticRankOneOnly$EXE_EXT")
@@ -1255,7 +1256,7 @@ run_bounded dotnet exec "$(dirname "$DN2CPP_CLI_DLL")/ildiet/ILDiet.dll" \
 static_rank1_metadata=$(run_bounded dotnet "$static_rank1_root/generator/Generate.dll" --inspect \
     "$static_rank1_root/metadata/ArrayRankOneLibrary.dll")
 static_rank1_metadata_diet=$(run_bounded dotnet "$static_rank1_root/generator/Generate.dll" --inspect \
-    "$static_rank1_root/metadata-diet/ArrayRankOneLibrary.dll")
+    "$(ildiet_generation "$static_rank1_root/metadata-diet")/ArrayRankOneLibrary.dll")
 static_rank1_metadata=$(strip_cr_win "$static_rank1_metadata")
 static_rank1_metadata_diet=$(strip_cr_win "$static_rank1_metadata_diet")
 assert_output "$static_rank1_metadata" "$static_rank1_metadata_diet"
@@ -1285,10 +1286,10 @@ md_overload_oracle=$(run_bounded dotnet exec \
 run_bounded dotnet exec "$(dirname "$DN2CPP_CLI_DLL")/ildiet/ILDiet.dll" "$md_overload_app" \
     -r "$corelib" -r "$md_overload_root/app/ArrayOverloadLibrary.dll" -o "$md_overload_root/diet"
 md_overload_diet=$(run_bounded dotnet exec \
-    --runtimeconfig "$static_rank1_root/generator/Generate.runtimeconfig.json" "$md_overload_root/diet/ArrayOverloadCalls.dll")
+    --runtimeconfig "$static_rank1_root/generator/Generate.runtimeconfig.json" "$(ildiet_generation "$md_overload_root/diet")/ArrayOverloadCalls.dll")
 assert_output "$(strip_cr_win "$md_overload_oracle")" "$(strip_cr_win "$md_overload_diet")"
-invoke_cli "$md_overload_root/diet/ArrayOverloadCalls.dll" \
-    -r "$corelib" -r "$md_overload_root/diet/ArrayOverloadLibrary.dll" \
+invoke_cli "$(ildiet_generation "$md_overload_root/diet")/ArrayOverloadCalls.dll" \
+    -r "$corelib" -r "$(ildiet_generation "$md_overload_root/diet")/ArrayOverloadLibrary.dll" \
     --no-ildiet -o "$md_overload_root/gen"
 compile_console "$md_overload_root/gen" ArrayOverloadCalls
 md_overload_native=$(run_bounded "./$md_overload_root/gen/ArrayOverloadCalls$EXE_EXT")
