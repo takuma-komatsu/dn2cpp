@@ -24,9 +24,9 @@
 # A clone over a known argument serves as another MakeGenericType's or MakeGenericMethod's
 # argument, and a CoreLib method instance formed only for its metadata keeps its row
 # beside its listed definition.
-# Unknown MakeGenericType/MakeGenericMethod arguments, a clone over unknown arguments
-# included, warn as ClosedGeneric unless a runtime template serves the definition;
-# unnamed instantiations then refuse catchably.
+# Unknown MakeGenericType/MakeGenericMethod arguments retain no executable targets.
+# Bodyless runtime-template identity can suppress ClosedGeneric; downstream execution
+# still warns, and members without independently retained bodies refuse catchably.
 # Static instantiation requires proved constraints, including template body and generic-method owner fallbacks.
 # Consolidated reflection-introspection gate. Merges the former per-feature
 # reflect-* subset gates (one tiny sample each) into a single multi-section
@@ -304,7 +304,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|before-nested-generic-
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/NestedGenericTypeNameSubset.cs samples/dotnet/ReflectTypes/GenericDefinitionSymbolNeighbors.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-type-leaves-v1|before-attribute-display-code-units|exception-object-prefix-argv:before-exception-object-members|assembly-name-prefix-argv:before-assembly-name-validation|attribute-construction-prefix-argv:before-attribute-construction-order"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/AttributeConstructionOrderSubset.cs"
-DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/keep-ordinary-type-leaves.xml samples/dotnet/ReflectTypes/keep-template-signatures.xml"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/keep-ordinary-type-leaves.xml samples/dotnet/ReflectTypes/keep-template-signatures.xml samples/dotnet/ReflectTypes/keep-attribute-enumeration.xml"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/ClosedGenericDiagnosticsOnly.csproj samples/dotnet/ReflectTypes/ClosedGenericDiagnosticsUnshared.csproj samples/dotnet/ReflectTypes/ClosedGenericDiagnosticsOnlyProgram.cs gates/expected/reflect-types-closed-generic.txt gates/expected/reflect-types-closed-generic-unshared.txt"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/ReflectionTemplateDispatch.csproj samples/dotnet/ReflectTypes/ReflectionTemplateDispatchProgram.cs samples/dotnet/ReflectTypes/ReflectRuntimeInstantiationSubset.cs"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/TemplateSignatureAllocationOnly.csproj samples/dotnet/ReflectTypes/TemplateSignatureAllocationProgram.cs"
@@ -322,6 +322,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|string-clone-copies-native
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|template-constraint-fallbacks-prefix-argv:before-template-constraint-fallbacks"
 
 EXPFILE="$(dirname "$0")/expected/reflect-types.txt"
+ATTRIBUTE_ENUMERATION_KEEP=(--link-xml samples/dotnet/ReflectTypes/keep-attribute-enumeration.xml)
 BCL=(System.Linq.Expressions System.Linq System.Collections \
     System.Reflection.Emit System.Reflection.Emit.Lightweight System.Reflection.Emit.ILGeneration \
     System.ComponentModel.Primitives System.Collections.Concurrent)
@@ -347,7 +348,7 @@ gate_extra_asserts() {
     gate_intrinsic_template_row_asserts "$1"
 }
 DN2CPP_GATE_RUN_ARGS=string-clone-copies \
-    corelib_freeze_gate ReflectTypes "$EXPFILE" "${BCL[@]}" --no-ildiet
+    corelib_freeze_gate ReflectTypes "$EXPFILE" "${BCL[@]}" --no-ildiet "${ATTRIBUTE_ENUMERATION_KEEP[@]}"
 unset -f gate_extra_asserts
 
 # --trim-reflection arm. The flag ships ON for the Godot Web export, and its whole promise
@@ -374,9 +375,9 @@ for name in "${BCL[@]}"; do
     refs+=(-r "$bcl/$name.dll")
 done
 out=artifacts/reflecttypes-trim
-invoke_cli "$app" "${refs[@]}" --no-ildiet --trim-reflection -o "$out"
-if gate_cache_check "$out" "reflect-types-trim|no-ildiet|native-argv:string-clone-copies|$corelib" \
-        "$app" "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json" "$EXPFILE"; then
+invoke_cli "$app" "${refs[@]}" --no-ildiet --trim-reflection "${ATTRIBUTE_ENUMERATION_KEEP[@]}" -o "$out"
+if gate_cache_check "$out" "reflect-types-trim|no-ildiet|${ATTRIBUTE_ENUMERATION_KEEP[*]}|native-argv:string-clone-copies|$corelib" \
+        "$app" "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json" "$EXPFILE" "${ATTRIBUTE_ENUMERATION_KEEP[1]}"; then
     gate_cache_hit_msg
 else
     compile_console "$out" ReflectTypes
@@ -1085,26 +1086,27 @@ DN2CPP_OUT_SUFFIX=-native DN2CPP_STRICT_COMPLETION=1 \
     ordinary_fixture_diff_gate ReflectTypes TemplateSignatureAllocationOnly --no-ildiet --no-metadata-compression
 unset -f gate_extra_asserts
 
-# ClosedGeneric diagnostics: a MakeGenericType or MakeGenericMethod site over type
-# arguments the summary cannot know warns with its fix and writes its report row
-# unless a runtime-instantiation template serves the definition, and its frozen run
-# refuses each instantiation that nothing names and no template clones. A site whose
-# definition or generic method is a parameter warns whatever serves it, and an
-# unknown-argument selection over a self-nesting definition ends; that block matches
-# .NET. An abstract definition a deriving template clones as its base is served,
-# and a reflection site in a body only a template's clones run reports with its fix.
+# Unknown generic arguments retain no executable target. Independent static calls,
+# finite constraint proofs and bodyless runtime-template identity remain usable.
+# Freeze catchable refusals and exact site diagnostics in both sharing modes.
 closed_generic_asserts() {
     local out="$1" project="$2" report="$1-report" native oracle line kind assembly method offset api reason fix type prefix before
     native=$(run_bounded "$out/$project$EXE_EXT") || return $?
     native=$(strip_cr_win "$native")
     for line in '== closed generic diagnostics ==' 'closed generic diagnostics end' \
-        '== closed generic receivers ==' 'self-nesting named: nest:True' 'closed generic receivers end' \
+        'named cell:Int32 holder:Int32 name:Int32' 'holder named: holder:Int32' 'method named: name:Int32' \
+        '== closed generic receivers ==' 'named nest:Int32' 'definition parameter: Holder`1' \
+        'method parameter: Name' 'closed generic receivers end' \
         '== closed generic templates ==' 'closed generic templates end' \
         '== static generic constraint proof ==' 'static generic constraint proof end' \
         '== template fallback constraint proof ==' 'template fallback constraint proof end'; do
         [ "$(grep -Fxc -- "$line" <<< "$native")" = 1 ] \
             || { echo "FAIL: closed generic diagnostics block must run once: $line" >&2; return 1; }
     done
+    if grep -Eq '^// ClosedGenericDiagnostics\.(Factory[^:]*::Make|Nest[^:]*::Wrap)$' "$out"/generated*.cpp; then
+        echo 'FAIL: unknown generic arguments retained Factory.Make or Nest.Wrap' >&2
+        return 1
+    fi
     oracle=$(run_bounded dotnet "$_CG_APP") || return $?
     oracle=$(strip_cr_win "$oracle")
     for line in 'constraint interface control: dispose:Disposable' 'constraint invariant control: tag:RightTag' \
@@ -1152,17 +1154,29 @@ gate_extra_asserts() {
 }
 closed_generic_flags=(--no-ildiet)
 closed_generic_rows=(
-    $'Execution\tClosedGenericDiagnosticsOnly\tClosedGenericDiagnostics.Factory`1::Make()\tIL_000a\tSystem.Activator.CreateInstance(Type)\tType comes from a shared generic instantiation, whose type arguments are known only at run time — no constructor retained\t[Preserve] on the target, or link.xml <assembly fullname="ASSEMBLY"><type fullname="TYPE"><method name=".ctor" /></type></assembly>'
     $'ClosedGeneric\tClosedGenericDiagnosticsOnly\tClosedGenericDiagnostics.Program::InvalidArray()\tIL_001d\tSystem.Type.MakeGenericType(Type[])\tthe constraints of ClosedGenericDiagnostics.NeedsDispose`1 over these type arguments cannot be decided ahead of time, and it has no runtime-instantiation template; only instantiations the program names resolve\tname the closed generic instantiation statically'
     $'ClosedGeneric\tClosedGenericDiagnosticsOnly\tClosedGenericDiagnostics.Program::InvalidInvariant()\tIL_001d\tSystem.Type.MakeGenericType(Type[])\tthe constraints of ClosedGenericDiagnostics.NeedsTag`1 over these type arguments cannot be decided ahead of time, and it has no runtime-instantiation template; only instantiations the program names resolve\tname the closed generic instantiation statically'
     $'ClosedGeneric\tClosedGenericDiagnosticsOnly\tClosedGenericDiagnostics.Program::InvalidTemplateBody()\tIL_002e\tSystem.Reflection.MethodBase.Invoke(Object, Object[])\tthe constraints of ClosedGenericDiagnostics.NeedsTemplateBodyTag`1 over these type arguments cannot be proved, and its runtime-instantiation template cannot serve this member; only instantiations the program names resolve\tname the closed generic instantiation statically'
     $'ClosedGeneric\tClosedGenericDiagnosticsOnly\tClosedGenericDiagnostics.Program::InvalidTemplateMethod()\tIL_003f\tSystem.Reflection.MethodInfo.MakeGenericMethod(Type[])\tthe generic method comes from a method of a runtime-instantiated generic type whose constraints over these type arguments cannot be proved; only instantiations the program names resolve\tname the closed generic instantiation statically'
     $'Execution\tClosedGenericDiagnosticsOnly\tClosedGenericDiagnostics.Program::InvalidTemplateMethod()\tIL_0046\tSystem.Reflection.MethodBase.Invoke(Object, Object[])\tMethodInfo comes from a method of a runtime-instantiated generic type whose constraints over these type arguments cannot be proved — no method body retained\t[Preserve] on the target, or link.xml <assembly fullname="ASSEMBLY"><type fullname="TYPE" preserve="all" /></assembly>'
     $'ClosedGeneric\tClosedGenericDiagnosticsOnly\tClosedGenericDiagnostics.Program::MakeCell(System.Type)\tIL_0014\tSystem.Type.MakeGenericType(Type[])\tthe type arguments come from parameter 1, and ClosedGenericDiagnostics.Cell`1 has no runtime-instantiation template; only instantiations the program names resolve\tname the closed generic instantiation statically'
+    $'Execution\tClosedGenericDiagnosticsOnly\tClosedGenericDiagnostics.Program::MakeCell(System.Type)\tIL_0026\tSystem.Activator.CreateInstance(Type)\tType comes from MakeGenericType over parameter 1 — no constructor retained\t[Preserve] on the target, or link.xml <assembly fullname="ASSEMBLY"><type fullname="TYPE"><method name=".ctor" /></type></assembly>'
+    $'Execution\tClosedGenericDiagnosticsOnly\tClosedGenericDiagnostics.Program::MakeCell(System.Type)\tIL_002c\tSystem.Reflection.MethodBase.Invoke(Object, Object[])\tMethodInfo comes from GetMethod("Describe") on a Type that comes from MakeGenericType over parameter 1 — no method body retained\t[Preserve] on the target, or link.xml <assembly fullname="ASSEMBLY"><type fullname="TYPE"><method name="Describe" /></type></assembly>'
+    $'Execution\tClosedGenericDiagnosticsOnly\tClosedGenericDiagnostics.Program::MakeFactory(System.Type)\tIL_002b\tSystem.Activator.CreateInstance(Type)\tType comes from MakeGenericType over parameter 1 — no constructor retained\t[Preserve] on the target, or link.xml <assembly fullname="ASSEMBLY"><type fullname="TYPE"><method name=".ctor" /></type></assembly>'
+    $'Execution\tClosedGenericDiagnosticsOnly\tClosedGenericDiagnostics.Program::MakeFactory(System.Type)\tIL_0031\tSystem.Reflection.MethodBase.Invoke(Object, Object[])\tMethodInfo comes from GetMethod("Make") on a Type that comes from MakeGenericType over parameter 1 — no method body retained\t[Preserve] on the target, or link.xml <assembly fullname="ASSEMBLY"><type fullname="TYPE"><method name="Make" /></type></assembly>'
     $'ClosedGeneric\tClosedGenericDiagnosticsOnly\tClosedGenericDiagnostics.Program::MakeFromDefinition(System.Type)\tIL_0014\tSystem.Type.MakeGenericType(Type[])\tthe generic definition comes from parameter 1; only instantiations the program names resolve\tname the closed generic instantiation statically'
     $'ClosedGeneric\tClosedGenericDiagnosticsOnly\tClosedGenericDiagnostics.Program::MakeFromMethod(System.Reflection.MethodInfo)\tIL_0014\tSystem.Reflection.MethodInfo.MakeGenericMethod(Type[])\tthe generic method comes from parameter 1; only instantiations the program names resolve\tname the closed generic instantiation statically'
+    $'Execution\tClosedGenericDiagnosticsOnly\tClosedGenericDiagnostics.Program::MakeHolder(System.Type)\tIL_0026\tSystem.Activator.CreateInstance(Type)\tType comes from MakeGenericType over parameter 1 — no constructor retained\t[Preserve] on the target, or link.xml <assembly fullname="ASSEMBLY"><type fullname="TYPE"><method name=".ctor" /></type></assembly>'
+    $'Execution\tClosedGenericDiagnosticsOnly\tClosedGenericDiagnostics.Program::MakeHolder(System.Type)\tIL_002c\tSystem.Reflection.MethodBase.Invoke(Object, Object[])\tMethodInfo comes from GetMethod("Describe") on a Type that comes from MakeGenericType over parameter 1 — no method body retained\t[Preserve] on the target, or link.xml <assembly fullname="ASSEMBLY"><type fullname="TYPE"><method name="Describe" /></type></assembly>'
     $'ClosedGeneric\tClosedGenericDiagnosticsOnly\tClosedGenericDiagnostics.Program::MakeName(System.Type)\tIL_001e\tSystem.Reflection.MethodInfo.MakeGenericMethod(Type[])\tthe type arguments come from parameter 1; only instantiations of ClosedGenericDiagnostics.Names::Name the program names resolve\tname the closed generic instantiation statically'
-    $'ClosedGeneric\tClosedGenericDiagnosticsOnly\tClosedGenericDiagnostics.Program::MakeWrapped(System.Type)\tIL_002c\tSystem.Type.MakeGenericType(Type[])\tthe type arguments come from a type a runtime-instantiation template mints, and ClosedGenericDiagnostics.Cell`1 has no runtime-instantiation template; only instantiations the program names resolve\tname the closed generic instantiation statically'
+    $'Execution\tClosedGenericDiagnosticsOnly\tClosedGenericDiagnostics.Program::MakeName(System.Type)\tIL_0025\tSystem.Reflection.MethodBase.Invoke(Object, Object[])\tMethodInfo comes from parameter 1 — no method body retained\t[Preserve] on the target, or link.xml <assembly fullname="ASSEMBLY"><type fullname="TYPE" preserve="all" /></assembly>'
+    $'Execution\tClosedGenericDiagnosticsOnly\tClosedGenericDiagnostics.Program::MakeNest(System.Type)\tIL_002b\tSystem.Activator.CreateInstance(Type)\tType comes from MakeGenericType over parameter 1 — no constructor retained\t[Preserve] on the target, or link.xml <assembly fullname="ASSEMBLY"><type fullname="TYPE"><method name=".ctor" /></type></assembly>'
+    $'Execution\tClosedGenericDiagnosticsOnly\tClosedGenericDiagnostics.Program::MakeNest(System.Type)\tIL_0031\tSystem.Reflection.MethodBase.Invoke(Object, Object[])\tMethodInfo comes from GetMethod("Wrap") on a Type that comes from MakeGenericType over parameter 1 — no method body retained\t[Preserve] on the target, or link.xml <assembly fullname="ASSEMBLY"><type fullname="TYPE"><method name="Wrap" /></type></assembly>'
+    $'Execution\tClosedGenericDiagnosticsOnly\tClosedGenericDiagnostics.Program::MakeShape(System.Type)\tIL_0040\tSystem.Activator.CreateInstance(Type)\tType comes from MakeGenericType over parameter 1 — no constructor retained\t[Preserve] on the target, or link.xml <assembly fullname="ASSEMBLY"><type fullname="TYPE"><method name=".ctor" /></type></assembly>'
+    $'Execution\tClosedGenericDiagnosticsOnly\tClosedGenericDiagnostics.Program::MakeShape(System.Type)\tIL_0046\tSystem.Reflection.MethodBase.Invoke(Object, Object[])\tMethodInfo comes from GetMethod("Describe") on a Type that comes from MakeGenericType over parameter 1 — no method body retained\t[Preserve] on the target, or link.xml <assembly fullname="ASSEMBLY"><type fullname="TYPE"><method name="Describe" /></type></assembly>'
+    $'ClosedGeneric\tClosedGenericDiagnosticsOnly\tClosedGenericDiagnostics.Program::MakeWrapped(System.Type)\tIL_002c\tSystem.Type.MakeGenericType(Type[])\tthe type arguments come from MakeGenericType over parameter 1, and ClosedGenericDiagnostics.Cell`1 has no runtime-instantiation template; only instantiations the program names resolve\tname the closed generic instantiation statically'
+    $'Execution\tClosedGenericDiagnosticsOnly\tClosedGenericDiagnostics.Program::MakeWrapped(System.Type)\tIL_003e\tSystem.Activator.CreateInstance(Type)\tType comes from MakeGenericType over MakeGenericType over parameter 1 — no constructor retained\t[Preserve] on the target, or link.xml <assembly fullname="ASSEMBLY"><type fullname="TYPE"><method name=".ctor" /></type></assembly>'
+    $'Execution\tClosedGenericDiagnosticsOnly\tClosedGenericDiagnostics.Program::MakeWrapped(System.Type)\tIL_0044\tSystem.Reflection.MethodBase.Invoke(Object, Object[])\tMethodInfo comes from GetMethod("Describe") on a Type that comes from MakeGenericType over MakeGenericType over parameter 1 — no method body retained\t[Preserve] on the target, or link.xml <assembly fullname="ASSEMBLY"><type fullname="TYPE"><method name="Describe" /></type></assembly>'
 )
 DN2CPP_SAMPLE_PROJECT_DIR=samples/dotnet/ReflectTypes DN2CPP_STRICT_COMPLETION=1 \
     corelib_freeze_gate ClosedGenericDiagnosticsOnly "$(dirname "$0")/expected/reflect-types-closed-generic.txt" \
@@ -1180,16 +1194,29 @@ closed_generic_rows=(
     $'ClosedGeneric\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::InvalidTemplateBody()\tIL_001d\tSystem.Type.MakeGenericType(Type[])\tthe constraints of ClosedGenericDiagnostics.NeedsTemplateBodyTag`1 over these type arguments cannot be decided ahead of time, and it has no runtime-instantiation template; only instantiations the program names resolve\tname the closed generic instantiation statically'
     $'ClosedGeneric\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::InvalidTemplateMethod()\tIL_001d\tSystem.Type.MakeGenericType(Type[])\tthe constraints of ClosedGenericDiagnostics.NeedsTemplateMethodTag`1 over these type arguments cannot be decided ahead of time, and it has no runtime-instantiation template; only instantiations the program names resolve\tname the closed generic instantiation statically'
     $'ClosedGeneric\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::MakeCell(System.Type)\tIL_0014\tSystem.Type.MakeGenericType(Type[])\tthe type arguments come from parameter 1, and ClosedGenericDiagnostics.Cell`1 has no runtime-instantiation template; only instantiations the program names resolve\tname the closed generic instantiation statically'
+    $'Execution\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::MakeCell(System.Type)\tIL_0026\tSystem.Activator.CreateInstance(Type)\tType comes from MakeGenericType over parameter 1 — no constructor retained\t[Preserve] on the target, or link.xml <assembly fullname="ASSEMBLY"><type fullname="TYPE"><method name=".ctor" /></type></assembly>'
+    $'Execution\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::MakeCell(System.Type)\tIL_002c\tSystem.Reflection.MethodBase.Invoke(Object, Object[])\tMethodInfo comes from GetMethod("Describe") on a Type that comes from MakeGenericType over parameter 1 — no method body retained\t[Preserve] on the target, or link.xml <assembly fullname="ASSEMBLY"><type fullname="TYPE"><method name="Describe" /></type></assembly>'
     $'ClosedGeneric\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::MakeFactory(System.Type)\tIL_0014\tSystem.Type.MakeGenericType(Type[])\tthe type arguments come from parameter 1, and ClosedGenericDiagnostics.Factory`1 has no runtime-instantiation template; only instantiations the program names resolve\tname the closed generic instantiation statically'
+    $'Execution\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::MakeFactory(System.Type)\tIL_002b\tSystem.Activator.CreateInstance(Type)\tType comes from MakeGenericType over parameter 1 — no constructor retained\t[Preserve] on the target, or link.xml <assembly fullname="ASSEMBLY"><type fullname="TYPE"><method name=".ctor" /></type></assembly>'
+    $'Execution\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::MakeFactory(System.Type)\tIL_0031\tSystem.Reflection.MethodBase.Invoke(Object, Object[])\tMethodInfo comes from GetMethod("Make") on a Type that comes from MakeGenericType over parameter 1 — no method body retained\t[Preserve] on the target, or link.xml <assembly fullname="ASSEMBLY"><type fullname="TYPE"><method name="Make" /></type></assembly>'
     $'ClosedGeneric\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::MakeFromDefinition(System.Type)\tIL_0014\tSystem.Type.MakeGenericType(Type[])\tthe generic definition comes from parameter 1; only instantiations the program names resolve\tname the closed generic instantiation statically'
     $'ClosedGeneric\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::MakeFromMethod(System.Reflection.MethodInfo)\tIL_0014\tSystem.Reflection.MethodInfo.MakeGenericMethod(Type[])\tthe generic method comes from parameter 1; only instantiations the program names resolve\tname the closed generic instantiation statically'
     $'ClosedGeneric\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::MakeHolder(System.Type)\tIL_0014\tSystem.Type.MakeGenericType(Type[])\tthe type arguments come from parameter 1, and ClosedGenericDiagnostics.Holder`1 has no runtime-instantiation template; only instantiations the program names resolve\tname the closed generic instantiation statically'
+    $'Execution\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::MakeHolder(System.Type)\tIL_0026\tSystem.Activator.CreateInstance(Type)\tType comes from MakeGenericType over parameter 1 — no constructor retained\t[Preserve] on the target, or link.xml <assembly fullname="ASSEMBLY"><type fullname="TYPE"><method name=".ctor" /></type></assembly>'
+    $'Execution\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::MakeHolder(System.Type)\tIL_002c\tSystem.Reflection.MethodBase.Invoke(Object, Object[])\tMethodInfo comes from GetMethod("Describe") on a Type that comes from MakeGenericType over parameter 1 — no method body retained\t[Preserve] on the target, or link.xml <assembly fullname="ASSEMBLY"><type fullname="TYPE"><method name="Describe" /></type></assembly>'
     $'ClosedGeneric\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::MakeName(System.Type)\tIL_001e\tSystem.Reflection.MethodInfo.MakeGenericMethod(Type[])\tthe type arguments come from parameter 1; only instantiations of ClosedGenericDiagnostics.Names::Name the program names resolve\tname the closed generic instantiation statically'
+    $'Execution\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::MakeName(System.Type)\tIL_0025\tSystem.Reflection.MethodBase.Invoke(Object, Object[])\tMethodInfo comes from parameter 1 — no method body retained\t[Preserve] on the target, or link.xml <assembly fullname="ASSEMBLY"><type fullname="TYPE" preserve="all" /></assembly>'
     $'ClosedGeneric\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::MakeNest(System.Type)\tIL_0014\tSystem.Type.MakeGenericType(Type[])\tthe type arguments come from parameter 1, and ClosedGenericDiagnostics.Nest`1 has no runtime-instantiation template; only instantiations the program names resolve\tname the closed generic instantiation statically'
+    $'Execution\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::MakeNest(System.Type)\tIL_002b\tSystem.Activator.CreateInstance(Type)\tType comes from MakeGenericType over parameter 1 — no constructor retained\t[Preserve] on the target, or link.xml <assembly fullname="ASSEMBLY"><type fullname="TYPE"><method name=".ctor" /></type></assembly>'
+    $'Execution\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::MakeNest(System.Type)\tIL_0031\tSystem.Reflection.MethodBase.Invoke(Object, Object[])\tMethodInfo comes from GetMethod("Wrap") on a Type that comes from MakeGenericType over parameter 1 — no method body retained\t[Preserve] on the target, or link.xml <assembly fullname="ASSEMBLY"><type fullname="TYPE"><method name="Wrap" /></type></assembly>'
     $'ClosedGeneric\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::MakeShape(System.Type)\tIL_0014\tSystem.Type.MakeGenericType(Type[])\tthe type arguments come from parameter 1, and ClosedGenericDiagnostics.Shape`1 has no runtime-instantiation template; only instantiations the program names resolve\tname the closed generic instantiation statically'
     $'ClosedGeneric\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::MakeShape(System.Type)\tIL_002e\tSystem.Type.MakeGenericType(Type[])\tthe type arguments come from parameter 1, and ClosedGenericDiagnostics.Square`1 has no runtime-instantiation template; only instantiations the program names resolve\tname the closed generic instantiation statically'
+    $'Execution\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::MakeShape(System.Type)\tIL_0040\tSystem.Activator.CreateInstance(Type)\tType comes from MakeGenericType over parameter 1 — no constructor retained\t[Preserve] on the target, or link.xml <assembly fullname="ASSEMBLY"><type fullname="TYPE"><method name=".ctor" /></type></assembly>'
+    $'Execution\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::MakeShape(System.Type)\tIL_0046\tSystem.Reflection.MethodBase.Invoke(Object, Object[])\tMethodInfo comes from GetMethod("Describe") on a Type that comes from MakeGenericType over parameter 1 — no method body retained\t[Preserve] on the target, or link.xml <assembly fullname="ASSEMBLY"><type fullname="TYPE"><method name="Describe" /></type></assembly>'
     $'ClosedGeneric\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::MakeWrapped(System.Type)\tIL_0026\tSystem.Type.MakeGenericType(Type[])\tthe type arguments come from parameter 1, and ClosedGenericDiagnostics.Holder`1 has no runtime-instantiation template; only instantiations the program names resolve\tname the closed generic instantiation statically'
-    $'ClosedGeneric\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::MakeWrapped(System.Type)\tIL_002c\tSystem.Type.MakeGenericType(Type[])\tthe type arguments come from a type a runtime-instantiation template mints, and ClosedGenericDiagnostics.Cell`1 has no runtime-instantiation template; only instantiations the program names resolve\tname the closed generic instantiation statically'
+    $'ClosedGeneric\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::MakeWrapped(System.Type)\tIL_002c\tSystem.Type.MakeGenericType(Type[])\tthe type arguments come from MakeGenericType over parameter 1, and ClosedGenericDiagnostics.Cell`1 has no runtime-instantiation template; only instantiations the program names resolve\tname the closed generic instantiation statically'
+    $'Execution\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::MakeWrapped(System.Type)\tIL_003e\tSystem.Activator.CreateInstance(Type)\tType comes from MakeGenericType over MakeGenericType over parameter 1 — no constructor retained\t[Preserve] on the target, or link.xml <assembly fullname="ASSEMBLY"><type fullname="TYPE"><method name=".ctor" /></type></assembly>'
+    $'Execution\tClosedGenericDiagnosticsUnshared\tClosedGenericDiagnostics.Program::MakeWrapped(System.Type)\tIL_0044\tSystem.Reflection.MethodBase.Invoke(Object, Object[])\tMethodInfo comes from GetMethod("Describe") on a Type that comes from MakeGenericType over MakeGenericType over parameter 1 — no method body retained\t[Preserve] on the target, or link.xml <assembly fullname="ASSEMBLY"><type fullname="TYPE"><method name="Describe" /></type></assembly>'
 )
 DN2CPP_SAMPLE_PROJECT_DIR=samples/dotnet/ReflectTypes DN2CPP_STRICT_COMPLETION=1 \
     corelib_freeze_gate ClosedGenericDiagnosticsUnshared \

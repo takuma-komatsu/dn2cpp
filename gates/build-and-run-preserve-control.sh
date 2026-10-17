@@ -2,7 +2,7 @@
 # Preserved reflection-created boxes retain interface dispatch after write-back.
 # Managed DLL stripping and explicit preservation: unreachable metadata is removed,
 # while PreserveAttribute and merged Unity-format link.xml keep selected bodies.
-# A property selected through a nonexistent accessor survives without its getter.
+# An indexer selected through a nonexistent accessor fails signature validation.
 # ILDietControl also checks Array.Initialize constructors reached through method groups
 # and application constructors/types selected at run time. Lookup-only members
 # retain their signatures and compiler state-machine declarations without keeping
@@ -29,6 +29,7 @@
 # Integer array and captured-field stores truncate before signed or unsigned reads.
 # Captured field reads retain zero/null defaults alongside later finite writes.
 source "$(dirname "$0")/_common.sh"
+source "$(dirname "$0")/_ildiet.sh"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/preserve-control/Program.cs gates/fixtures/preserve-control/MetadataProbe.csproj gates/fixtures/preserve-control/accessorless-indexer/AccessorlessIndexer.csproj gates/fixtures/preserve-control/accessorless-indexer/Program.cs gates/fixtures/preserve-control/accessorless-indexer/link.xml gates/fixtures/preserve-control/accessorless-indexer/Targets/IndexerTargets.csproj gates/fixtures/preserve-control/accessorless-indexer/Targets/Indexed.cs gates/fixtures/ildiet-metadata-validation/Program.cs gates/fixtures/ildiet-metadata-validation/check.py samples/dotnet/ILDietControl/keep-attribute-constructed.xml samples/dotnet/ILDietControl/ConstructorOnly/keep-signature-constructed.xml samples/dotnet/ILDietControl/InvokeOnly/keep-signature-invoked.xml samples/dotnet/ILDietControl/AbsenceOnly/keep-preserved-constructor.xml samples/dotnet/ILDietControl/UnknownTargetOnly/keep-parameter-targets.xml samples/dotnet/ILDietControl/ConditionalNamedOnly/keep-conditional-named.xml gates/fixtures/ildiet-attribute-roots/AttributeRoots.csproj gates/fixtures/ildiet-attribute-roots/Program.cs gates/expected/preserve-control-unknown-target.tsv"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|reflected-event-operations:native-ildiet-and-no-ildiet|attribute-object-prefix:${DN2CPP_BEFORE_ATTRIBUTE_OBJECT:-}|named-reflection-prefix:${DN2CPP_BEFORE_NAMED_REFLECTION:-}|runtime-reflection-prefix:${DN2CPP_BEFORE_RUNTIME_REFLECTION:-}|metadata-lookup-prefix:${DN2CPP_BEFORE_METADATA_LOOKUP:-}|signature-construction-prefix:${DN2CPP_BEFORE_SIGNATURE_CONSTRUCTION:-}|signature-invocation-prefix:${DN2CPP_BEFORE_SIGNATURE_INVOCATION:-}|field-boxing-prefix:${DN2CPP_BEFORE_FIELD_BOXING:-}|field-context-prefix:${DN2CPP_BEFORE_FIELD_CONTEXT:-}|field-owner-prefix:${DN2CPP_BEFORE_FIELD_OWNER:-}|field-shape-prefix:${DN2CPP_BEFORE_FIELD_SHAPE:-}|construction-payload-prefix:${DN2CPP_BEFORE_CONSTRUCTION_PAYLOAD:-}|field-cycle-prefix:${DN2CPP_BEFORE_FIELD_CYCLE:-}|member-field-signature-prefix:${DN2CPP_BEFORE_MEMBER_FIELD_SIGNATURE:-}|member-construction-signature-prefix:${DN2CPP_BEFORE_MEMBER_CONSTRUCTION_SIGNATURE:-}|base-field-signature-prefix:${DN2CPP_BEFORE_BASE_FIELD_SIGNATURE:-}|base-construction-signature-prefix:${DN2CPP_BEFORE_BASE_CONSTRUCTION_SIGNATURE:-}|ctor-signature-invocation-prefix:${DN2CPP_BEFORE_CTOR_SIGNATURE_INVOCATION:-}|field-owner-signature-prefix:${DN2CPP_BEFORE_FIELD_OWNER_SIGNATURE:-}|interface-owner-signature-prefix:${DN2CPP_BEFORE_INTERFACE_OWNER_SIGNATURE:-}|ctor-field-owner-signature-prefix:${DN2CPP_BEFORE_CTOR_FIELD_OWNER_SIGNATURE:-}|captured-array-defaults-prefix:${DN2CPP_BEFORE_CAPTURED_ARRAY_DEFAULTS:-}|interface-array-defaults-prefix:${DN2CPP_BEFORE_INTERFACE_ARRAY_DEFAULTS:-}|external-array-defaults-prefix:${DN2CPP_BEFORE_EXTERNAL_ARRAY_DEFAULTS:-}|local-defaults-prefix:${DN2CPP_BEFORE_LOCAL_DEFAULTS:-}|reflection-depth-seeds-prefix:${DN2CPP_BEFORE_REFLECTION_DEPTH_SEEDS:-}|caller-depth-prefix:${DN2CPP_BEFORE_CALLER_DEPTH:-}|extended-depth-prefix:${DN2CPP_BEFORE_EXTENDED_DEPTH:-}|state-machine-signatures-prefix:${DN2CPP_BEFORE_STATE_MACHINE_SIGNATURES:-}|retained-absence-prefix:${DN2CPP_BEFORE_RETAINED_ABSENCE:-}|unknown-target-prefix:${DN2CPP_BEFORE_UNKNOWN_TARGET:-}|initonly-field-prefix:${DN2CPP_BEFORE_INITONLY_FIELD:-}|metadata-owners-prefix:${DN2CPP_BEFORE_METADATA_OWNERS:-}|assembly-construction-prefix:${DN2CPP_BEFORE_ASSEMBLY_CONSTRUCTION:-}|listed-owners-prefix:${DN2CPP_BEFORE_LISTED_OWNERS:-}|dispatched-target-prefix:${DN2CPP_BEFORE_DISPATCHED_TARGET:-}|written-target-prefix:${DN2CPP_BEFORE_WRITTEN_TARGET:-}|absence-values:${DN2CPP_JOINED_TARGET_NAME+set:$DN2CPP_JOINED_TARGET_NAME}:${DN2CPP_FORMED_ONLY+set:$DN2CPP_FORMED_ONLY}:${DN2CPP_CONSTRUCTED_TEMPLATE+set:$DN2CPP_CONSTRUCTED_TEMPLATE}:${DN2CPP_UNUSED_STATICS+set:$DN2CPP_UNUSED_STATICS}:${DN2CPP_USED_STATICS+set:$DN2CPP_USED_STATICS}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|repeated-arrays-prefix:${DN2CPP_BEFORE_REPEATED_ARRAYS:-}|integer-storage-prefix:${DN2CPP_BEFORE_ARRAY_NARROWING:-}|captured-scalar-defaults-prefix:${DN2CPP_BEFORE_CAPTURED_SCALAR_DEFAULTS:-}"
@@ -142,9 +143,9 @@ fi
 
 echo "== DLL metadata is removed before the transpiler model is built =="
 original_lib=$(dotnet exec "$PROBE" "$LIBDLL")
-stripped_lib=$(dotnet exec "$PROBE" "$OUT/ildiet/PreserveControlLib.dll")
+stripped_lib=$(dotnet exec "$PROBE" "$(ildiet_generation "$OUT/ildiet")/PreserveControlLib.dll")
 original_app=$(dotnet exec "$PROBE" "$APP")
-stripped_app=$(dotnet exec "$PROBE" "$OUT/ildiet/$PROJECT.dll")
+stripped_app=$(dotnet exec "$PROBE" "$(ildiet_generation "$OUT/ildiet")/$PROJECT.dll")
 for row in 'method PreserveControlLib.Live::UnusedPublic' \
         'type PreserveControlLib.UnusedType' \
         'type PreserveControlLib.ConditionalUnused'; do
@@ -157,13 +158,14 @@ done
 grep -Fxq 'method PreserveControlLib.AttributeMembers::BuiltInMethod' <<<"$stripped_lib" \
     || { echo "FAIL: ILDiet removed an attributed method" >&2; exit 1; }
 # A constant-name lookup that runs nothing keeps the row it selects without its body.
-looked_up=$(dotnet exec "$PROBE" --method-stubs "$OUT/ildiet/PreserveControlLib.dll" \
+looked_up=$(dotnet exec "$PROBE" --method-stubs "$(ildiet_generation "$OUT/ildiet")/PreserveControlLib.dll" \
     PreserveControlLib.AttributeMembers::DroppedMethod)
 assert_output "$(strip_cr_win "$looked_up")" 'PreserveControlLib.AttributeMembers::DroppedMethod stub=True'
 grep -Fxq 'type PreserveControl.UnusedAppType' <<<"$original_app" \
     || { echo "FAIL: original unused-public application fixture is missing" >&2; exit 1; }
-grep -Fxq 'type PreserveControl.UnusedAppType' <<<"$stripped_app" \
-    || { echo "FAIL: the armed reflection route lost an application type" >&2; exit 1; }
+if grep -Fxq 'type PreserveControl.UnusedAppType' <<<"$stripped_app"; then
+    echo "FAIL: reflection on a known target retained an unrelated application type" >&2; exit 1
+fi
 [ "$(wc -l <<<"$stripped_lib")" -lt "$(wc -l <<<"$original_lib")" ] \
     || { echo "FAIL: ILDiet did not reduce the model input" >&2; exit 1; }
 
@@ -181,25 +183,41 @@ CLI_BIN=$(dirname "$CLI_DLL")
 ILD_DLL="$CLI_BIN/ildiet/ILDiet.dll"
 RUNTIME_DLL="$CLI_BIN/Dn2Cpp.Runtime.dll"
 BCL=$(dirname "$(locate_corelib)")
-echo "== Preserved indexer metadata survives removal of its accessor =="
+echo "== Removing an indexer's only accessor fails signature validation =="
 INDEXER_FIXTURE=gates/fixtures/preserve-control/accessorless-indexer
 INDEXER_APP="$INDEXER_FIXTURE/bin/$CONFIG/$TFM/AccessorlessIndexer.dll"
-dotnet exec "$ILD_DLL" "$INDEXER_APP" -r "$BCL/System.Private.CoreLib.dll" \
-    -r "$BCL/System.Runtime.dll" -r "$INDEXER_FIXTURE/Targets/bin/$CONFIG/$TFM/IndexerTargets.dll" --link-xml "$INDEXER_FIXTURE/link.xml" \
-    -o "$STALE_ROOT/accessorless-indexer"
 indexer_original=$(dotnet exec "$PROBE" "$INDEXER_FIXTURE/Targets/bin/$CONFIG/$TFM/IndexerTargets.dll")
-indexer_diet=$(dotnet exec "$PROBE" "$STALE_ROOT/accessorless-indexer/IndexerTargets.dll")
 indexer_original=$(strip_cr_win "$indexer_original")
-indexer_diet=$(strip_cr_win "$indexer_diet")
 grep -Fxq 'property PreserveFixture.Indexed::Item/accessors=1' <<<"$indexer_original" \
-    && grep -Fxq 'property PreserveFixture.Indexed::Item/accessors=0' <<<"$indexer_diet" \
-    || { echo "FAIL: a preserved property could not lose its unselected accessor" >&2; exit 1; }
-if grep -Fxq 'method PreserveFixture.Indexed::get_Item' <<<"$indexer_diet"; then
-    echo "FAIL: a nonexistent setter preserved the getter" >&2; exit 1
-fi
+    || { echo "FAIL: the original indexer fixture lost its getter" >&2; exit 1; }
+invoke_cli "$INDEXER_APP" -r "$BCL/System.Private.CoreLib.dll" -r "$BCL/System.Runtime.dll" \
+    -r "$INDEXER_FIXTURE/Targets/bin/$CONFIG/$TFM/IndexerTargets.dll" --no-ildiet \
+    --link-xml "$INDEXER_FIXTURE/link.xml" -o "$STALE_ROOT/accessorless-original"
+indexer_output="$STALE_ROOT/accessorless-indexer"
+indexer_auto="$STALE_ROOT/accessorless-auto"
+set +e
+indexer_error=$(dotnet exec "$ILD_DLL" "$INDEXER_APP" -r "$BCL/System.Private.CoreLib.dll" \
+    -r "$BCL/System.Runtime.dll" -r "$INDEXER_FIXTURE/Targets/bin/$CONFIG/$TFM/IndexerTargets.dll" \
+    --link-xml "$INDEXER_FIXTURE/link.xml" -o "$indexer_output" 2>&1)
+indexer_code=$?
+indexer_auto_error=$(invoke_cli "$INDEXER_APP" -r "$BCL/System.Private.CoreLib.dll" -r "$BCL/System.Runtime.dll" \
+    -r "$INDEXER_FIXTURE/Targets/bin/$CONFIG/$TFM/IndexerTargets.dll" \
+    --link-xml "$INDEXER_FIXTURE/link.xml" -o "$indexer_auto" 2>&1)
+indexer_auto_code=$?
+set -e
+indexer_error=$(strip_cr_win "$indexer_error")
+indexer_auto_error=$(strip_cr_win "$indexer_auto_error")
+indexer_expected='ILDiet: error: Original array signature does not match the retained Cecil signature.'
+[ "$indexer_code" -eq 1 ] && grep -Fxq "$indexer_expected" <<<"$indexer_error" \
+    && [ ! -e "$indexer_output/ildiet-result.xml" ] \
+    || { echo "FAIL: standalone ILDiet did not reject the lost indexer signature: $indexer_error" >&2; exit 1; }
+[ "$indexer_auto_code" -eq 2 ] && grep -Fxq "$indexer_expected" <<<"$indexer_auto_error" \
+    && [ ! -e "$indexer_auto/ildiet/ildiet-result.xml" ] \
+    || { echo "FAIL: automatic ILDiet did not reject the lost indexer signature: $indexer_auto_error" >&2; exit 1; }
+echo "accessorless-indexer=original-primary,standalone-and-integrated-refusal"
 STANDALONE="$STALE_ROOT/standalone 日本語 with spaces"
 standalone_refs=(-r "$LIBDLL" -r "$ASSEMBLYDLL" -r "$RUNTIME_DLL")
-for dll in "$OUT/ildiet/"*.dll; do
+for dll in "$(ildiet_generation "$OUT/ildiet")/"*.dll; do
     name=$(basename "$dll")
     case "$name" in
         "$PROJECT.dll"|PreserveControlLib.dll|PreserveAssemblyLib.dll|Dn2Cpp.Runtime.dll) continue ;;
@@ -215,24 +233,63 @@ done
 dotnet exec "$ILD_DLL" "$APP" "${standalone_refs[@]}" \
     --link-xml "$ROOT/link.xml" --link-xml "$ROOT/Nested/link.xml" \
     --link-feature com -o "$STANDALONE"
-compare_dlls "$OUT/ildiet" "$STANDALONE"
+compare_dlls "$(ildiet_generation "$OUT/ildiet")" "$(ildiet_generation "$STANDALONE")"
 
-echo "== Repeated preprocessing is deterministic and validates cuts before deletion =="
+echo "== Repeating the same preprocessing contract is deterministic =="
 invoke_cli "$APP" -r "$LIBDLL" -r "$ASSEMBLYDLL" --auto-ref --trim-reflection \
-    --cut PreserveControlLib.UnusedType::UnusedMethod \
     --link-xml "$ROOT/link.xml" --link-xml "$ROOT/Nested/link.xml" \
     --link-feature com -o "$OUT"
-compare_dlls "$STANDALONE" "$OUT/ildiet"
+compare_dlls "$(ildiet_generation "$STANDALONE")" "$(ildiet_generation "$OUT/ildiet")"
+echo "== Cuts retain original managed bodies and validate before deletion =="
+CUT_OUT="$STALE_ROOT/cut-cpp"
+invoke_cli "$APP" -r "$LIBDLL" -r "$ASSEMBLYDLL" --auto-ref --trim-reflection \
+    --cut PreserveControlLib.UnusedType::UnusedMethod \
+    --link-xml "$ROOT/link.xml" --link-xml "$ROOT/Nested/link.xml" --link-feature com -o "$CUT_OUT"
+cut_generation=$(ildiet_generation "$CUT_OUT/ildiet")
+cut_metadata=$(dotnet exec "$PROBE" "$cut_generation/PreserveControlLib.dll")
+cut_metadata=$(strip_cr_win "$cut_metadata")
+for row in 'type PreserveControlLib.UnusedType' 'method PreserveControlLib.UnusedType::UnusedMethod'; do
+    grep -Fxq "$row" <<< "$cut_metadata" \
+        || { echo "FAIL: managed cut target lost metadata: $row" >&2; exit 1; }
+    if grep -Fxq "$row" <<< "$stripped_lib"; then
+        echo "FAIL: no-cut negative control retained the cut-only target: $row" >&2; exit 1
+    fi
+done
+cut_body=$(dotnet exec "$PROBE" --method-body "$cut_generation/PreserveControlLib.dll" PreserveControlLib.UnusedType::UnusedMethod)
+assert_output "$(strip_cr_win "$cut_body")" 'PreserveControlLib.UnusedType::UnusedMethod stub=False'
+cmp "$(ildiet_generation "$OUT/ildiet")/preservation.xml" "$cut_generation/preservation.xml"
+if grep -Fxq '// PreserveControlLib.UnusedType::UnusedMethod' "$CUT_OUT"/generated*.cpp; then
+    echo "FAIL: native cut target body was admitted" >&2; exit 1
+fi
+cut_baseline="$STALE_ROOT/cut-baseline"
+mkdir -p "$cut_baseline"
+cp "$cut_generation/"*.dll "$cut_baseline/"
+cut_generation_name=$(basename "$cut_generation")
+invoke_cli "$APP" -r "$LIBDLL" -r "$ASSEMBLYDLL" --auto-ref --trim-reflection \
+    --cut PreserveControlLib.UnusedType::UnusedMethod \
+    --link-xml "$ROOT/link.xml" --link-xml "$ROOT/Nested/link.xml" --link-feature com -o "$CUT_OUT"
+cut_repeated=$(ildiet_generation "$CUT_OUT/ildiet")
+[ "$(basename "$cut_repeated")" = "$cut_generation_name" ] \
+    || { echo "FAIL: identical cut contract changed generation" >&2; exit 1; }
+compare_dlls "$cut_baseline" "$cut_repeated"
+invalid_cut_out="$STALE_ROOT/cut-invalid"
+invalid_cut_code=0
+invalid_cut_error=$(invoke_cli "$APP" -r "$LIBDLL" -r "$ASSEMBLYDLL" --auto-ref --trim-reflection \
+    --cut PreserveControlLib.DoesNotExist::UnusedMethod -o "$invalid_cut_out" 2>&1) || invalid_cut_code=$?
+[ "$invalid_cut_code" -ne 0 ] && grep -Fq -- '--cut PreserveControlLib.DoesNotExist::UnusedMethod' <<< "$invalid_cut_error" \
+    && [ ! -e "$invalid_cut_out/ildiet/ildiet-result.xml" ] && [ ! -e "$invalid_cut_out/generated.h" ] \
+    || { echo "FAIL: invalid cut escaped validation before deletion: $invalid_cut_error" >&2; exit 1; }
+echo "cut-contract=kept-original-body,no-cut-absence,repeat-byte-identical,invalid-selector"
 [ "$INPUT_HASHES" = "$(shasum -a 256 "$APP" "$LIBDLL" "$ASSEMBLYDLL")" ] \
     || { echo "FAIL: ILDiet changed an input DLL" >&2; exit 1; }
 
 echo "== Explicit stripped inputs and bypass produce the same C++ =="
 MANUAL="$STALE_ROOT/manual-cpp"
-invoke_cli "$OUT/ildiet/$PROJECT.dll" \
-    -r "$OUT/ildiet/PreserveControlLib.dll" -r "$OUT/ildiet/PreserveAssemblyLib.dll" \
-    -r "$OUT/ildiet/Dn2Cpp.Runtime.dll" -r "$OUT/ildiet/System.Private.CoreLib.dll" \
+invoke_cli "$(ildiet_generation "$OUT/ildiet")/$PROJECT.dll" \
+    -r "$(ildiet_generation "$OUT/ildiet")/PreserveControlLib.dll" -r "$(ildiet_generation "$OUT/ildiet")/PreserveAssemblyLib.dll" \
+    -r "$(ildiet_generation "$OUT/ildiet")/Dn2Cpp.Runtime.dll" -r "$(ildiet_generation "$OUT/ildiet")/System.Private.CoreLib.dll" \
     --auto-ref --no-ildiet --trim-reflection \
-    --link-xml "$OUT/ildiet/preservation.xml" --link-feature com -o "$MANUAL"
+    --link-xml "$(ildiet_generation "$OUT/ildiet")/preservation.xml" --link-feature com -o "$MANUAL"
 for generated in "$OUT"/generated*; do
     cmp "$generated" "$MANUAL/$(basename "$generated")" \
         || { echo "FAIL: manual preprocessing changed emitted C++" >&2; exit 1; }
@@ -247,7 +304,7 @@ invoke_cli "$APP" -r "$LIBDLL" -r "$ASSEMBLYDLL" --auto-ref --project-root "$ROO
 grep -Fq "_DroppedMethod_" "$WHOLE"/generated* \
     || { echo "FAIL: childless assembly descriptor did not preserve all methods" >&2; exit 1; }
 
-if gate_cache_check "$OUT" "preserve-control|ildiet|com|trim-reflection|cut=PreserveControlLib.UnusedType::UnusedMethod|preserved-box-prefix:${DN2CPP_BEFORE_PRESERVED_BOXES:-}" \
+if gate_cache_check "$OUT" "preserve-control|ildiet|com|trim-reflection|cut=none|preserved-box-prefix:${DN2CPP_BEFORE_PRESERVED_BOXES:-}" \
         "$APP" "$LIBDLL" "$ASSEMBLYDLL" "$ROOT/link.xml" "$ROOT/Nested/link.xml" \
         gates/expected/preserve-control.txt; then
     gate_cache_hit_msg
@@ -298,7 +355,7 @@ unset -f gate_extra_asserts
 DIET_OUT="$_CG_OUT"
 DIET_APP="$_CG_APP"
 original_diet_app=$(dotnet exec "$PROBE" "$DIET_APP")
-stripped_diet_app=$(dotnet exec "$PROBE" "$DIET_OUT/ildiet/ILDietControl.dll")
+stripped_diet_app=$(dotnet exec "$PROBE" "$(ildiet_generation "$DIET_OUT/ildiet")/ILDietControl.dll")
 for row in 'method ILDietControl.Loose::.ctor' 'method ILDietControl.Box`1::.ctor' \
         'method ILDietControl.Seeded::.ctor'; do
     kept=$(grep -Fxc "$row" <<<"$stripped_diet_app" || true)
@@ -313,8 +370,10 @@ done
 grep -Fxq 'method ILDietControl.CalledOnly::.ctor' <<<"$original_diet_app" \
     || { echo "FAIL: original fixture is missing CalledOnly's constructor" >&2; exit 1; }
 grep -Fxq 'method ILDietControl.CalledOnly::.ctor' <<<"$stripped_diet_app" \
-    || { echo "FAIL: the armed constructor route lost an application constructor" >&2; exit 1; }
-diet_metadata=$(dotnet exec "$PROBE" "$DIET_OUT/ildiet/ILDietControlLib.dll")
+    || { echo "FAIL: application Members retention lost its constructor row" >&2; exit 1; }
+called_constructor=$(dotnet exec "$PROBE" --method-body "$(ildiet_generation "$DIET_OUT/ildiet")/ILDietControl.dll" ILDietControl.CalledOnly::.ctor)
+assert_output "$(strip_cr_win "$called_constructor")" 'ILDietControl.CalledOnly::.ctor stub=True'
+diet_metadata=$(dotnet exec "$PROBE" "$(ildiet_generation "$DIET_OUT/ildiet")/ILDietControlLib.dll")
 for row in 'method ILDietControlLib.Base::Foo' \
         'method ILDietControlLib.Callbacks::NativeCallback' \
         'method ILDietControlLib.Callbacks::CallbackLeaf' \
@@ -332,7 +391,7 @@ for row in 'method ILDietControlLib.Base::UnusedPrivate' \
         echo "FAIL: unused ordinary library code survived: $row" >&2; exit 1
     fi
 done
-[ -f "${DIET_LIB%.dll}.pdb" ] && [ ! -e "$DIET_OUT/ildiet/ILDietControlLib.pdb" ] \
+[ -f "${DIET_LIB%.dll}.pdb" ] && [ ! -e "$(ildiet_generation "$DIET_OUT/ildiet")/ILDietControlLib.pdb" ] \
     || { echo "FAIL: rewritten DLL retained stale debug symbols" >&2; exit 1; }
 
 echo "== Type attribute arguments retain their types without a descriptor or an armed reflection route =="
@@ -344,7 +403,7 @@ ATTRIBUTE_APP="$ATTRIBUTE_FIXTURE/bin/$CONFIG/$TFM/AttributeRoots.dll"
 dotnet exec "$ILD_DLL" "$ATTRIBUTE_APP" -r "$BCL/System.Private.CoreLib.dll" -r "$BCL/System.Runtime.dll" \
     -o "$STALE_ROOT/attribute-roots"
 attribute_original=$(strip_cr_win "$(dotnet exec "$PROBE" "$ATTRIBUTE_APP")")
-attribute_diet=$(strip_cr_win "$(dotnet exec "$PROBE" "$STALE_ROOT/attribute-roots/AttributeRoots.dll")")
+attribute_diet=$(strip_cr_win "$(dotnet exec "$PROBE" "$(ildiet_generation "$STALE_ROOT/attribute-roots")/AttributeRoots.dll")")
 for row in ByArgument ByField ByProperty ByArrayFirst ByArraySecond ByObject Unnamed; do
     grep -Fxq "type AttributeRoots.$row" <<<"$attribute_original" \
         || { echo "FAIL: the attribute-root fixture is missing $row" >&2; exit 1; }
@@ -458,7 +517,7 @@ echo "== Lookup-only reflection retains declarations without body dependencies =
         done
         original=$(dotnet exec "$PROBE" "$_CG_APP") || return $?
         original=$(strip_cr_win "$original")
-        stripped=$(dotnet exec "$PROBE" "$out/ildiet/LookupOnly.dll") || return $?
+        stripped=$(dotnet exec "$PROBE" "$(ildiet_generation "$out/ildiet")/LookupOnly.dll") || return $?
         stripped=$(strip_cr_win "$stripped")
         local state_original state_stripped state_bodies
         state_original=$(strip_cr_win "$original")
@@ -474,7 +533,7 @@ echo "== Lookup-only reflection retains declarations without body dependencies =
             grep -Fxq "method ILDietLookupOnly.$row::Read" <<< "$state_stripped" \
                 || { echo "FAIL: executable or scalar Type attribute root lost its body: $row" >&2; return 1; }
         done
-        state_bodies=$(dotnet exec "$PROBE" --state-machine-bodies "$out/ildiet/LookupOnly.dll") || return $?
+        state_bodies=$(dotnet exec "$PROBE" --state-machine-bodies "$(ildiet_generation "$out/ildiet")/LookupOnly.dll") || return $?
         assert_output "$(strip_cr_win "$state_bodies")" "state-machine UncalledAsync/method-stub=True/move-next-stub=True
 state-machine UncalledIterator/method-stub=True/move-next-stub=True
 state-machine UncalledAsyncIterator/method-stub=True/move-next-stub=True
@@ -520,17 +579,38 @@ state-machine CalledRegistration/method-stub=False/move-next-stub=False"
         if grep -Fxq 'type ILDietLookupOnly.BodyOnlyDependency' <<< "$stripped"; then
             echo 'FAIL: lookup-only signatures kept an unreachable body dependency' >&2; return 1
         fi
+        local lookup_bodies
+        lookup_bodies=$(dotnet exec "$PROBE" --method-body "$(ildiet_generation "$out/ildiet")/LookupOnly.dll" \
+            ILDietLookupOnly.MetadataOnly::Uncalled ILDietLookupOnly.MetadataOnly::Signature \
+            ILDietLookupOnly.MetadataOnly::add_Tick ILDietLookupOnly.MetadataOnly::remove_Tick \
+            ILDietLookupOnly.SignatureOnlyType::UnusedVirtual \
+            'ILDietLookupOnly.MemberSignatureOwner`1::Return' 'ILDietLookupOnly.MemberSignatureOwner`1::Parameter' \
+            'ILDietLookupOnly.BaseSignatureOwner`1::Return' 'ILDietLookupOnly.BaseSignatureOwner`1::Parameter' \
+            'ILDietLookupOnly.InnerWallet`1::UnusedVirtual' 'ILDietLookupOnly.CyclePair`2::UnusedVirtual' \
+            ILDietLookupOnly.RuntimeFieldOwnerDependency::Run) || return $?
+        assert_output "$(strip_cr_win "$lookup_bodies")" 'ILDietLookupOnly.MetadataOnly::Uncalled stub=True
+ILDietLookupOnly.MetadataOnly::Signature stub=True
+ILDietLookupOnly.MetadataOnly::add_Tick stub=True
+ILDietLookupOnly.MetadataOnly::remove_Tick stub=True
+ILDietLookupOnly.SignatureOnlyType::UnusedVirtual stub=True
+ILDietLookupOnly.MemberSignatureOwner`1::Return stub=True
+ILDietLookupOnly.MemberSignatureOwner`1::Parameter stub=True
+ILDietLookupOnly.BaseSignatureOwner`1::Return stub=True
+ILDietLookupOnly.BaseSignatureOwner`1::Parameter stub=True
+ILDietLookupOnly.InnerWallet`1::UnusedVirtual stub=False
+ILDietLookupOnly.CyclePair`2::UnusedVirtual stub=False
+ILDietLookupOnly.RuntimeFieldOwnerDependency::Run stub=False'
         grep -Fxq 'type ILDietLookupOnly.SignatureOnlyType' <<< "$stripped" \
             || { echo 'FAIL: lookup-only signatures lost their parameter type' >&2; return 1; }
         grep -Fxq 'event ILDietLookupOnly.MetadataOnly::Tick/accessors=2' <<< "$stripped" \
             || { echo 'FAIL: lookup-only event metadata lost an accessor' >&2; return 1; }
         local event_original event_stripped
         event_original=$(dotnet exec "$PROBE" --lookup-event "$_CG_APP" ILDietLookupOnly.MetadataOnly Tick) || return $?
-        event_stripped=$(dotnet exec "$PROBE" --lookup-event "$out/ildiet/LookupOnly.dll" ILDietLookupOnly.MetadataOnly Tick) || return $?
+        event_stripped=$(dotnet exec "$PROBE" --lookup-event "$(ildiet_generation "$out/ildiet")/LookupOnly.dll" ILDietLookupOnly.MetadataOnly Tick) || return $?
         assert_output "$(strip_cr_win "$event_stripped")" "$(strip_cr_win "$event_original")"
         original_library=$(dotnet exec "$PROBE" "$DIET_LIB") || return $?
         original_library=$(strip_cr_win "$original_library")
-        stripped_library=$(dotnet exec "$PROBE" "$out/ildiet/ILDietControlLib.dll") || return $?
+        stripped_library=$(dotnet exec "$PROBE" "$(ildiet_generation "$out/ildiet")/ILDietControlLib.dll") || return $?
         stripped_library=$(strip_cr_win "$stripped_library")
         grep -Fxq 'type ILDietControlLib.UnusedBoxDependency' <<< "$original_library" \
             || { echo 'FAIL: the original box fixture has no unused body dependency' >&2; return 1; }
@@ -695,7 +775,7 @@ echo "== Constructor-only reflection constructs signature-selected types and kee
         [ "$external_array_mode" != no-ildiet ] || return 0
         original=$(dotnet exec "$PROBE" "$DIET_LIB") || return $?
         original=$(strip_cr_win "$original")
-        stripped=$(dotnet exec "$PROBE" "$out/ildiet/ILDietControlLib.dll") || return $?
+        stripped=$(dotnet exec "$PROBE" "$(ildiet_generation "$out/ildiet")/ILDietControlLib.dll") || return $?
         stripped=$(strip_cr_win "$stripped")
         grep -Fxq 'type ILDietControlLib.ConstructorFieldBodyOnlyDependency' <<< "$original" \
             || { echo 'FAIL: the original constructor field owner fixture has no body dependency' >&2; return 1; }
@@ -736,12 +816,12 @@ echo "== Constructor-only reflection constructs signature-selected types and kee
         done
         original_arming=$(dotnet exec "$PROBE" --check-construction-only "$_CG_APP") || return $?
         original_arming=$(strip_cr_win "$original_arming")
-        stripped_arming=$(dotnet exec "$PROBE" --check-construction-only "$out/ildiet/ConstructorOnly.dll") || return $?
+        stripped_arming=$(dotnet exec "$PROBE" --check-construction-only "$(ildiet_generation "$out/ildiet")/ConstructorOnly.dll") || return $?
         stripped_arming=$(strip_cr_win "$stripped_arming")
         assert_output "$stripped_arming" "$original_arming"
         grep -Fxq 'constructor-only descriptors=clean' <<< "$stripped_arming" \
             || { echo 'FAIL: constructor fixture does not isolate its reflection route' >&2; return 1; }
-        app=$(dotnet exec "$PROBE" "$out/ildiet/ConstructorOnly.dll") || return $?
+        app=$(dotnet exec "$PROBE" "$(ildiet_generation "$out/ildiet")/ConstructorOnly.dll") || return $?
         app=$(strip_cr_win "$app")
         grep -Fxq 'property ILDietConstructorOnly.AccessorOwner::Label/accessors=1' <<< "$app" \
             || { echo 'FAIL: the constructor route lost application accessor metadata' >&2; return 1; }
@@ -962,7 +1042,7 @@ echo "== Invoke-only reflection runs methods on signature-selected closed types 
             || { echo 'FAIL: constructor signature invocation section did not run' >&2; return 1; }
         original=$(dotnet exec "$PROBE" "$DIET_LIB") || return $?
         original=$(strip_cr_win "$original")
-        stripped=$(dotnet exec "$PROBE" "$out/ildiet/ILDietControlLib.dll") || return $?
+        stripped=$(dotnet exec "$PROBE" "$(ildiet_generation "$out/ildiet")/ILDietControlLib.dll") || return $?
         stripped=$(strip_cr_win "$stripped")
         for type in InvokeBodyOnlyDependency InvokeConstructorOnlyDependency; do
             grep -Fxq "type ILDietControlLib.$type" <<< "$original" \
@@ -973,7 +1053,7 @@ echo "== Invoke-only reflection runs methods on signature-selected closed types 
         done
         grep -Fxq 'method ILDietControlLib.InvokeSignatureMoney::ToString' <<< "$stripped" \
             || { echo 'FAIL: signature invocation lost user-library dispatch' >&2; return 1; }
-        app=$(dotnet exec "$PROBE" "$out/ildiet/InvokeOnly.dll") || return $?
+        app=$(dotnet exec "$PROBE" "$(ildiet_generation "$out/ildiet")/InvokeOnly.dll") || return $?
         app=$(strip_cr_win "$app")
         grep -Fxq 'method ILDietInvokeOnly.ConstructorSignatureTarget`1::Value' <<< "$app" \
             && grep -Fxq 'method ILDietInvokeOnly.LibrarySignatureTarget`1::Get' <<< "$app" \
@@ -1039,7 +1119,7 @@ echo "== Recognized reflection on user-library base types and constant type name
         done
         # Metadata-only sites keep the rows they select as signature-only stubs and
         # their owners' other members are still removed; an invoked selection keeps its body.
-        stubs=$(dotnet exec "$PROBE" --method-stubs "$out/ildiet/ILDietControlLib.dll" \
+        stubs=$(dotnet exec "$PROBE" --method-stubs "$(ildiet_generation "$out/ildiet")/ILDietControlLib.dll" \
             ILDietControlLib.MetadataNamedTarget::Probe ILDietControlLib.MetadataNamedTarget::get_Label \
             ILDietControlLib.MetadataListedTarget::ListedFirst ILDietControlLib.MetadataListedTarget::ListedSecond \
             ILDietControlLib.MetadataListedTarget::get_ListedLabel ILDietControlLib.MetadataBase::BaseOnly \
@@ -1069,7 +1149,7 @@ ILDietControlLib.MetadataLibraryBase::LibraryBaseUnlooked absent"
             [ "$count" = '0 0' ] \
                 || { echo "FAIL: a metadata-only site compiled $member ($count)" >&2; return 1; }
         done
-        stripped=$(dotnet exec "$PROBE" "$out/ildiet/ILDietControlLib.dll") || return $?
+        stripped=$(dotnet exec "$PROBE" "$(ildiet_generation "$out/ildiet")/ILDietControlLib.dll") || return $?
         stripped=$(strip_cr_win "$stripped")
         for member in AppFacingBase::BaseDescribe AppFacingBase::get_BaseLabel \
             ReflectedOwnerBase::InheritedDescribe NamedOnlyTarget::Run 'NamedOnlyBox`1::Describe'; do
@@ -1104,10 +1184,10 @@ echo "== A static field read through a constant-named derived owner runs its bas
             grep -Fxq -- "$member" <<< "$native" \
                 || { echo "FAIL: the inherited static field section did not run: $member" >&2; return 1; }
         done
-        stubs=$(dotnet exec "$PROBE" --method-stubs "$out/ildiet/ILDietControlLib.dll" \
+        stubs=$(dotnet exec "$PROBE" --method-stubs "$(ildiet_generation "$out/ildiet")/ILDietControlLib.dll" \
             ILDietControlLib.InheritedStaticBase::.cctor) || return $?
         assert_output "$(strip_cr_win "$stubs")" "ILDietControlLib.InheritedStaticBase::.cctor stub=False"
-        stubs=$(dotnet exec "$PROBE" --method-stubs "$out/ildiet/InheritedStaticOnly.dll" \
+        stubs=$(dotnet exec "$PROBE" --method-stubs "$(ildiet_generation "$out/ildiet")/InheritedStaticOnly.dll" \
             ILDietInheritedStaticOnly.AppStaticBase::.cctor) || return $?
         assert_output "$(strip_cr_win "$stubs")" "ILDietInheritedStaticOnly.AppStaticBase::.cctor stub=False"
     }
@@ -1126,12 +1206,12 @@ echo "== A conditional descriptor on an application or library type used only th
             grep -Fxq -- "$member" <<< "$native" \
                 || { echo "FAIL: the conditional constant-named section did not run: $member" >&2; return 1; }
         done
-        stubs=$(dotnet exec "$PROBE" --method-stubs "$out/ildiet/ConditionalNamedOnly.dll" \
+        stubs=$(dotnet exec "$PROBE" --method-stubs "$(ildiet_generation "$out/ildiet")/ConditionalNamedOnly.dll" \
             ILDietConditionalNamedOnly.NamedApplication::Bar ILDietConditionalNamedOnly.NamedApplication::.ctor) \
             || return $?
         assert_output "$(strip_cr_win "$stubs")" "ILDietConditionalNamedOnly.NamedApplication::Bar stub=False
 ILDietConditionalNamedOnly.NamedApplication::.ctor stub=False"
-        stubs=$(dotnet exec "$PROBE" --method-stubs "$out/ildiet/ILDietControlLib.dll" \
+        stubs=$(dotnet exec "$PROBE" --method-stubs "$(ildiet_generation "$out/ildiet")/ILDietControlLib.dll" \
             ILDietControlLib.ConditionalNamedTarget::Run) || return $?
         assert_output "$(strip_cr_win "$stubs")" "ILDietControlLib.ConditionalNamedTarget::Run stub=False"
     }
@@ -1264,7 +1344,7 @@ echo "== Lookups, unselected overloads, unrelated field types, preserved constru
     done
 )
 
-echo "== A reflection target from a parameter, a collection, a written-back argument array, a boxed type argument, an array type over a parameter or a runtime member name, an omitted or never-boxed constructed type, a runtime-made instantiation's member, a parameter type's static read-only field initializer, a name bound per instantiation or an uninitialized parameter type warns and refuses until its printed remedy preserves it; a virtual delegate's method reads its override's attributes =="
+echo "== A reflection target from a parameter, a collection, a written-back argument array, a boxed type argument, an array type over a parameter or a runtime member name, an omitted or never-boxed constructed type, a runtime-made instantiation's member, a parameter type's static read-only field initializer, a name bound per instantiation or an uninitialized parameter type warns and refuses until its printed remedy preserves it; a virtual delegate's unknown method needs its attribute constructor preserved =="
 (
     DN2CPP_SAMPLE_PROJECT_DIR=samples/dotnet/ILDietControl/UnknownTargetOnly
     DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|sample-path:$DN2CPP_SAMPLE_PROJECT_DIR"
@@ -1273,6 +1353,7 @@ echo "== A reflection target from a parameter, a collection, a written-back argu
     unknown_keep="$DN2CPP_SAMPLE_PROJECT_DIR/keep-parameter-targets.xml"
     unknown_library="$DN2CPP_SAMPLE_PROJECT_DIR/bin/$CONFIG/$TFM/ActivationTargets.dll"
     unknown_warnings="$STALE_ROOT/unknown-target.stderr"
+    unknown_attribute_kept=false
     eval "$(declare -f invoke_cli | sed '1s/invoke_cli/invoke_unknown_target_cli/')"
     invoke_cli() {
         local status=0
@@ -1312,9 +1393,14 @@ echo "== A reflection target from a parameter, a collection, a written-back argu
         before=$(DN2CPP_BEFORE_DISPATCHED_TARGET=1 run_bounded "$out/UnknownTargetOnly$EXE_EXT") || return $?
         prefix=$(awk '/^== a virtual delegate.s method, a name bound per instantiation and an uninitialized parameter type ==$/ { exit } { print }' <<< "$native")
         assert_output "$prefix" "$(strip_cr_win "$before")"
-        # A delegate over a virtual method reads the attributes of the override it binds.
-        grep -Fxq 'virtual command=derived' <<< "$native" \
-            && grep -Fxq "a virtual delegate's method, a name bound per instantiation and an uninitialized parameter type end" <<< "$native" \
+        if [ "$unknown_attribute_kept" = true ]; then
+            grep -Fxq 'virtual command=derived' <<< "$native" \
+                || { echo 'FAIL: the preserved attribute constructor did not serve the unknown virtual owner' >&2; return 1; }
+        else
+            grep -q '^virtual command refused: PlatformNotSupportedException: ' <<< "$native" \
+                || { echo 'FAIL: an unknown virtual owner constructed an unpreserved attribute' >&2; return 1; }
+        fi
+        grep -Fxq "a virtual delegate's method, a name bound per instantiation and an uninitialized parameter type end" <<< "$native" \
             || { echo 'FAIL: the virtual-delegate, per-instantiation and uninitialized-type section did not run' >&2; return 1; }
         # A definition's member rule runs on the clone its template makes; it mints no
         # closed instantiation.
@@ -1340,12 +1426,11 @@ echo "== A reflection target from a parameter, a collection, a written-back argu
     }
     corelib_freeze_gate UnknownTargetOnly "$unknown_expected" System.Linq -r "$unknown_library"
     assert_unknown_target_report "$_CG_OUT"
-    # Each refusal's remedy is the preserve the second arm passes, verbatim, and is the
-    # build-time fix with its placeholders filled in: both name the member, not the type.
-    # A never-boxed struct's refusal widens its site's constructor fix to the whole type,
-    # whose preserve allocates it.
+    # Each refusal's remedy is the preserve the second arm passes, verbatim.
+    # Ordinary member fixes fill in their build-time placeholders; the cases below
+    # check where runtime identity makes the remedy more specific or boxing widens it.
     remedies=$(sed -n 's/^.* refused: PlatformNotSupportedException: .*; fix: \[Preserve\] on the target, or link\.xml //p' "$unknown_expected")
-    [ "$(wc -l <<< "$remedies" | tr -d ' ')" = 18 ] \
+    [ "$(wc -l <<< "$remedies" | tr -d ' ')" = 19 ] \
         || { echo "FAIL: the frozen refusals do not print every remedy" >&2; exit 1; }
     diff -u <(sort -u <<< "$remedies") <(grep -o '<assembly .*</assembly>' "$unknown_keep" | sort) \
         || { echo "FAIL: the preserve is not the set of printed remedies" >&2; exit 1; }
@@ -1376,10 +1461,16 @@ echo "== A reflection target from a parameter, a collection, a written-back argu
         && grep -q '^blank refused: PlatformNotSupportedException: ILDietUnknownTargetOnly\.BlankTarget in UnknownTargetOnly: GetUninitializedObject makes an instance of ILDietUnknownTargetOnly\.BlankTarget, which this image never allocates; fix: ' "$unknown_expected" \
         && [ "$(grep -c '^copy refused: ' "$unknown_expected")" = 2 ] \
         || { echo "FAIL: the uninitialized-type refusal or the copied list's refusals changed" >&2; exit 1; }
-    diff -u <(grep -Fv "$generated_owner" "$unknown_rows" | grep -Fv 'Program::BindNamed(' | cut -f7 | sed 's/^\[Preserve\] on the target, or link\.xml //' | sort) \
-        <(grep -Fv "$generated_owner" <<< "$remedies" | grep -Ev 'ILDietUnknownTargetOnly\.(MergedA|MergedB|AddedTarget)"' | sed 's/<assembly fullname="[^"]*">/<assembly fullname="ASSEMBLY">/; s/<type fullname="[^"]*">/<type fullname="TYPE">/; s|<type fullname="[^"]*" preserve="all" />|<type fullname="TYPE"><method name=".ctor" /></type>|' | sort) \
+    # An unknown virtual attribute owner gets a generic build-time fix. The runtime
+    # row identifies its constructor, so preserving only that member is sufficient.
+    [ "$(awk -F'\t' '$1 == "AttributeInstances" && $3 == "ILDietUnknownTargetOnly.Program::VirtualCommand(ILDietUnknownTargetOnly.CommandBase)" && $7 == "[Preserve] on the target, or link.xml <assembly fullname=\"ASSEMBLY\"><type fullname=\"TYPE\" preserve=\"all\" /></assembly>"' "$unknown_rows" | wc -l | tr -d ' ')" = 1 ] \
+        && [ "$(grep -Fxc '<assembly fullname="UnknownTargetOnly"><type fullname="ILDietUnknownTargetOnly.CommandAttribute"><method name=".ctor" /></type></assembly>' <<< "$remedies")" = 1 ] \
+        || { echo 'FAIL: the unknown attribute remedy does not name only its constructor' >&2; exit 1; }
+    diff -u <(grep -Fv "$generated_owner" "$unknown_rows" | grep -Fv 'Program::BindNamed(' | grep -Fv 'Program::VirtualCommand(' | cut -f7 | sed 's/^\[Preserve\] on the target, or link\.xml //' | sort) \
+        <(grep -Fv "$generated_owner" <<< "$remedies" | grep -Ev 'ILDietUnknownTargetOnly\.(MergedA|MergedB|AddedTarget|CommandAttribute)"' | sed 's/<assembly fullname="[^"]*">/<assembly fullname="ASSEMBLY">/; s/<type fullname="[^"]*">/<type fullname="TYPE">/; s|<type fullname="[^"]*" preserve="all" />|<type fullname="TYPE"><method name=".ctor" /></type>|' | sort) \
         || { echo "FAIL: a build-time fix does not name the member its refusal names" >&2; exit 1; }
     DN2CPP_OUT_SUFFIX=-kept
+    unknown_attribute_kept=true
     corelib_diff_gate UnknownTargetOnly --link-xml "$unknown_keep" System.Linq -r "$unknown_library"
     assert_unknown_target_report "$_CG_OUT"
     grep -Fxq '// ILDietUnknownTargetOnly.TemplateTarget_$CnAny0::Describe' "$_CG_OUT"/generated*.cpp \
@@ -1392,7 +1483,7 @@ EVENT_DIET="$STALE_ROOT/event-boundary"
 dotnet exec "$ILD_DLL" "$EVENT_APP" -r "$_CG_CORELIB" -o "$EVENT_DIET"
 event_original=$(run_bounded dotnet "$EVENT_APP")
 event_original=$(strip_cr_win "$event_original")
-event_stripped=$(run_bounded dotnet exec --runtimeconfig "${EVENT_APP%.dll}.runtimeconfig.json" "$EVENT_DIET/EventBoundary.dll")
+event_stripped=$(run_bounded dotnet exec --runtimeconfig "${EVENT_APP%.dll}.runtimeconfig.json" "$(ildiet_generation "$EVENT_DIET")/EventBoundary.dll")
 event_stripped=$(strip_cr_win "$event_stripped")
 assert_output "$(strip_cr_win "$event_stripped")" "$(strip_cr_win "$event_original")"
 grep -Fxq 'event-operations=done' <<< "$event_stripped" \
@@ -1410,24 +1501,26 @@ done
 echo "== Failed stripping preserves the last complete output and unrelated directories =="
 TRANSACTION="$STALE_ROOT/transaction"
 dotnet exec "$ILD_DLL" "$DIET_APP" -r "$_CG_CORELIB" -r "$DIET_LIB" -r "$RUNTIME_DLL" \
-    -o "$TRANSACTION"
-compare_dlls "$DIET_OUT/ildiet" "$TRANSACTION"
-transaction_hashes=$(shasum -a 256 "$TRANSACTION/"*.dll "$TRANSACTION/preservation.xml")
+    --link-xml samples/dotnet/ILDietControl/keep-attribute-constructed.xml -o "$TRANSACTION"
+compare_dlls "$(ildiet_generation "$DIET_OUT/ildiet")" "$(ildiet_generation "$TRANSACTION")"
+transaction_generation=$(ildiet_generation "$TRANSACTION")
+transaction_hashes=$(shasum -a 256 "$TRANSACTION/ildiet-result.xml" "$transaction_generation/"*.dll "$transaction_generation/preservation.xml")
 printf '<linker><assembly' > "$STALE_ROOT/broken.xml"
 OCCUPIED="$STALE_ROOT/occupied"
 mkdir -p "$OCCUPIED"
 printf 'unrelated-user-data' > "$OCCUPIED/keep.txt"
 set +e
 failed_output=$(dotnet exec "$ILD_DLL" "$DIET_APP" -r "$_CG_CORELIB" -r "$DIET_LIB" \
-    -r "$RUNTIME_DLL" --link-xml "$STALE_ROOT/broken.xml" -o "$TRANSACTION" 2>&1)
+    -r "$RUNTIME_DLL" --link-xml samples/dotnet/ILDietControl/keep-attribute-constructed.xml \
+    --link-xml "$STALE_ROOT/broken.xml" -o "$TRANSACTION" 2>&1)
 failed_code=$?
 occupied_output=$(dotnet exec "$ILD_DLL" "$DIET_APP" -r "$_CG_CORELIB" -r "$DIET_LIB" \
-    -r "$RUNTIME_DLL" -o "$OCCUPIED" 2>&1)
+    -r "$RUNTIME_DLL" --link-xml samples/dotnet/ILDietControl/keep-attribute-constructed.xml -o "$OCCUPIED" 2>&1)
 occupied_code=$?
 set -e
 [ "$failed_code" -ne 0 ] && grep -q 'broken.xml' <<<"$failed_output" \
     || { echo "FAIL: malformed XML did not fail before publication" >&2; exit 1; }
-[ "$transaction_hashes" = "$(shasum -a 256 "$TRANSACTION/"*.dll "$TRANSACTION/preservation.xml")" ] \
+[ "$transaction_hashes" = "$(shasum -a 256 "$TRANSACTION/ildiet-result.xml" "$transaction_generation/"*.dll "$transaction_generation/preservation.xml")" ] \
     || { echo "FAIL: a failed strip changed the previous complete generation" >&2; exit 1; }
 [ "$occupied_code" -ne 0 ] && [ "$(cat "$OCCUPIED/keep.txt")" = unrelated-user-data ] \
     && [ ! -e "$OCCUPIED/ILDietControl.dll" ] \
@@ -1467,7 +1560,7 @@ CONSOLE_ILD="$STALE_ROOT/console stripped 日本語"
 dotnet exec "$CONSOLE_CLI" "$APP" -r "$LIBDLL" -r "$ASSEMBLYDLL" --auto-ref \
     --link-xml "$ROOT/link.xml" --link-xml "$ROOT/Nested/link.xml" \
     --link-feature com --ildiet-output "$CONSOLE_ILD" -o "$STALE_ROOT/console-cpp"
-compare_dlls "$OUT/ildiet" "$CONSOLE_ILD"
+compare_dlls "$(ildiet_generation "$OUT/ildiet")" "$(ildiet_generation "$CONSOLE_ILD")"
 
 set +e
 console_err=$(dotnet exec "$CONSOLE_CLI" "$APP" --link-feature typo 2>&1)
@@ -1526,6 +1619,14 @@ build_gate_proj gates/fixtures/ildiet-metadata-validation/MetadataValidation.csp
 $PYTHON gates/fixtures/ildiet-metadata-validation/check.py "$ILD_DLL" \
     "gates/fixtures/ildiet-metadata-validation/bin/$CONFIG/$TFM/MetadataValidation.dll" \
     "$DIET_APP" "$DIET_LIB" "$_CG_CORELIB" "artifacts/ildiet-metadata-tests-$CONFIG"
+
+echo "== Definition graph scans, fallback and immutable publication =="
+GRAPH_OUTPUT="$(mktemp -d "artifacts/ildiet-graph-tests-$CONFIG.XXXXXX")"
+echo "Definition graph evidence: $GRAPH_OUTPUT"
+# shellcheck disable=SC2086 -- resolve_python may answer `py -3`.
+$PYTHON gates/fixtures/ildiet-metadata-validation/check-graph.py "$ILD_DLL" \
+    "gates/fixtures/ildiet-metadata-validation/bin/$CONFIG/$TFM/MetadataValidation.dll" \
+    "$_CG_CORELIB" "$GRAPH_OUTPUT"
 
 echo "== Conditional engine scripts and constructor registries are rewritten in DLLs =="
 # shellcheck disable=SC2086 -- resolve_python may answer `py -3`.

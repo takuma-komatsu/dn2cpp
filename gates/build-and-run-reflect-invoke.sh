@@ -273,16 +273,16 @@ DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-reflection-le
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|reflection-dispatch-v1|dispatch-prefix:${DN2CPP_BEFORE_REFLECTION_DISPATCH:-}|attribute-minted-prefix:${DN2CPP_BEFORE_ATTRIBUTE_MINTED:-}|template-accessors-prefix:${DN2CPP_BEFORE_TEMPLATE_ACCESSORS:-}|pointer-returns-prefix:${DN2CPP_BEFORE_POINTER_RETURNS:-}|delegate-invoke-targets-prefix:${DN2CPP_BEFORE_DELEGATE_INVOKE_TARGETS:-}|null-bound-chains-prefix:${DN2CPP_BEFORE_NULL_BOUND_CHAINS:-}|renamed-slot-bindings-prefix:${DN2CPP_BEFORE_RENAMED_SLOT_BINDINGS:-}|settled-object-virtual-prefix:${DN2CPP_BEFORE_SETTLED_OBJECT_VIRTUAL:-}|renamed-slot-fillers-prefix:${DN2CPP_BEFORE_RENAMED_SLOT_FILLERS:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|inherited-gvm-remedy-v1|inherited-gvm-remedy-env:${DN2CPP_INHERITED_GVM_REMEDY:-}|inherited-gvm-remedy-replay:no-ildiet,base-link,actual-xml|stripped-class-remedy-wrapper-v1|stripped-class-remedy-argv:class-remedies|stripped-interface-remedy-wrapper-v1|stripped-interface-remedy-argv:interface-remedies|interface-remedy-prefix-argv:before-interface-remedy-rows|stripped-overrides:${DN2CPP_STRIPPED_OVERRIDES:-}|library-struct-prefix:${DN2CPP_BEFORE_LIBRARY_STRUCT_RETURN:-}|function-pointer-identity-prefix:${DN2CPP_BEFORE_FUNCTION_POINTER_IDENTITY:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|pointer-fields-prefix:${DN2CPP_BEFORE_POINTER_FIELDS:-}|object-methods-prefix-argv:before-object-method-enumeration|property-accessors-prefix-argv:before-property-accessors"
-DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/link.xml samples/dotnet/ReflectFrameworkBind/link.xml samples/dotnet/ReflectFrameworkBind/keep-library-override.xml samples/dotnet/ReflectInvoke/keep-object-methods.xml"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/keep-written-generic-arguments.xml samples/dotnet/ReflectInvoke/link.xml samples/dotnet/ReflectFrameworkBind/link.xml samples/dotnet/ReflectFrameworkBind/keep-library-override.xml samples/dotnet/ReflectInvoke/keep-object-methods.xml"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/RecognizedReflectionOnly.csproj samples/dotnet/ReflectInvoke/RecognizedReflectionOnlyProgram.cs samples/dotnet/ReflectReturnLib/ReflectReturnLib.csproj samples/dotnet/ReflectReturnLib/RecognizedTargets.cs"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectReturnLib/ConstructorBindingTargets.cs samples/dotnet/ReflectReturnLib/SelectionTargets.cs"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/ReflectPointerFieldsOnly.csproj samples/dotnet/ReflectInvoke/ReflectPointerFieldsPreserved.csproj samples/dotnet/ReflectInvoke/ReflectPointerFieldsOnlyProgram.cs samples/dotnet/ReflectInvoke/keep-pointer-field.xml samples/dotnet/ReflectReturnLib/PointerFields.cs"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/UnboxedStructBindOnly.csproj samples/dotnet/ReflectInvoke/UnboxedStructBindOnlyProgram.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|unboxed-struct-invoke-argv:invoke"
-DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/AdmissionFiltersOnly.csproj samples/dotnet/ReflectInvoke/AdmissionFiltersOnlyProgram.cs"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/AdmissionFiltersOnly.csproj samples/dotnet/ReflectInvoke/AdmissionFiltersOnlyProgram.cs samples/dotnet/ReflectInvoke/keep-admission-bindings.xml"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectReturnLib/NamedBindingTargets.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|library-bindings-prefix-argv:before-library-bindings"
-DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|metadata-projections-prefix-argv:before-metadata-projections"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|metadata-projections-prefix-argv:before-metadata-projections|written-generic-arguments-prefix-argv:before-written-generic-arguments"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|selection-filters-prefix-argv:before-selection-filters"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|reflection-alternatives-prefix-argv:before-reflection-alternatives"
 
@@ -528,6 +528,10 @@ runtime_held_interface_diff_axes() {
             handle-values-trimmed) runtime_held_handle_value_only=true; flags+=(--trim-reflection) ;;
             handle-values-unshared) runtime_held_handle_value_only=true; flags+=(--no-shared-generics) ;;
         esac
+        case "$axis" in
+            default|trimmed|unshared|ildiet)
+                flags+=(--link-xml samples/dotnet/ReflectInvoke/keep-runtime-held-attributes.xml) ;;
+        esac
         DN2CPP_STRICT_COMPLETION=1 DN2CPP_OUT_SUFFIX="-runtime-held-$axis" \
             DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|runtime-held-axis:$axis|strict-completion" \
             corelib_diff_gate "$runtime_held_project" ${flags[@]+"${flags[@]}"}
@@ -539,7 +543,7 @@ runtime_held_interface_diff_axes() {
         unset -f gate_extra_asserts
     fi
 }
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/ReflectInvoke/RuntimeHeldInterfacesSubset.cs samples/dotnet/ReflectInvoke/RuntimeHeldConvertibleProviderSubset.cs samples/dotnet/ReflectInvoke/RuntimeHeldReflectedValueSubset.cs samples/dotnet/ReflectInvoke/RuntimeHeldInterfacesOnly.csproj samples/dotnet/ReflectInvoke/RuntimeHeldInterfacesOnlyProgram.cs"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/ReflectInvoke/RuntimeHeldInterfacesSubset.cs samples/dotnet/ReflectInvoke/RuntimeHeldConvertibleProviderSubset.cs samples/dotnet/ReflectInvoke/RuntimeHeldReflectedValueSubset.cs samples/dotnet/ReflectInvoke/RuntimeHeldInterfacesOnly.csproj samples/dotnet/ReflectInvoke/RuntimeHeldInterfacesOnlyProgram.cs samples/dotnet/ReflectInvoke/keep-runtime-held-attributes.xml"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|runtime-held-interface:default,trimmed,unshared,ildiet,provider-identity,provider-identity-trimmed,convertible,convertible-ildiet,convertible-group,convertible-group-ildiet,convertible-reflected,convertible-reflected-ildiet,convertible-reflected-delegate,convertible-reflected-delegate-ildiet,convertible-to-type,convertible-to-type-ildiet,reflected-values,reflected-values-ildiet|runtime-held-prefix:before-runtime-held-interfaces|provider-identity-build:RuntimeHeldProviderIdentityOnly=true|runtime-held-reflection-build:RuntimeHeldReflectionOnly=false|runtime-held-convertible-build:RuntimeHeldConvertibleProviderOnly=true|runtime-held-convertible-route:direct,group,reflected,reflected-delegate,to-type|runtime-held-reflected-value-build:RuntimeHeldReflectedValueOnly=true|runtime-held-isolated-assembly-attributes:RUNTIME_HELD_ASSEMBLY_ATTRIBUTES|runtime-held-only:${DN2CPP_RUNTIME_HELD_ONLY:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|reflected-datetimeoffset-serialization:0,90,-330|reflected-values-prefix:DateTime,Decimal|handle-datetimeoffset-callback:default,ildiet,trimmed,unshared|handle-value-prefix:before-handle-value|runtime-held-handle-value-build:RuntimeHeldHandleValueOnly=true"
 if [ "${DN2CPP_RUNTIME_HELD_ONLY:-}" = 1 ]; then
@@ -2312,6 +2316,14 @@ gate_extra_asserts() {
     before=$(reflection_oracle "$_CG_APP" before-constructor-signatures) || return $?
     prefix=$(awk '/^== constructor signature binding ==$/ { exit } { print }' <<< "$native")
     assert_output "$prefix" "$(strip_cr_win "$before")"
+    prefix=$(awk '/^== written generic arguments ==$/ { exit } { print }' <<< "$native")
+    before=$(run_bounded "$out/OrdinaryReflectionLeaves$EXE_EXT" before-written-generic-arguments) || return $?
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    before=$(reflection_oracle "$_CG_APP" before-written-generic-arguments) || return $?
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    reflection_assert_lines - 1 \
+        '== written generic arguments ==' 'written generic arguments: pair:Int32,Int64' \
+        'written generic arguments end' <<< "$native"
     reflection_assert_lines - 1 \
         '== constructor signature binding ==' 'constructor signature binding end' \
         'unretained wrong type: MissingMethodException/MissingMethodException' \
@@ -2440,12 +2452,14 @@ object_methods_library="$PWD/samples/dotnet/ReflectReturnLib/bin/$CONFIG/$TFM/Re
 DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectInvoke OrdinaryReflectionLeaves --no-ildiet \
     -r "$object_methods_library" --link-xml samples/dotnet/ReflectInvoke/keep-object-methods.xml \
     --link-xml samples/dotnet/ReflectInvoke/keep-field-initializers.xml \
+    --link-xml samples/dotnet/ReflectInvoke/keep-written-generic-arguments.xml \
     --reflection-metadata ReflectReturnLib.VirtualFactory=packed \
     --reflection-metadata ReflectFieldValidationSubset.PointerFields=packed
 DN2CPP_OUT_SUFFIX=-native DN2CPP_STRICT_COMPLETION=1 \
     ordinary_fixture_diff_gate ReflectInvoke OrdinaryReflectionLeaves --no-ildiet --no-metadata-compression \
         -r "$object_methods_library" --link-xml samples/dotnet/ReflectInvoke/keep-object-methods.xml \
-        --link-xml samples/dotnet/ReflectInvoke/keep-field-initializers.xml
+        --link-xml samples/dotnet/ReflectInvoke/keep-field-initializers.xml \
+        --link-xml samples/dotnet/ReflectInvoke/keep-written-generic-arguments.xml
 unset -f gate_extra_asserts
 # These drivers have no application pointer field or pointer-returning method.
 # One reads an allocated library owner's inherited field; the other names only a
@@ -2872,24 +2886,49 @@ gate_extra_asserts() {
         $1 == "AttributeInstances" && $2 == "AdmissionFiltersOnly" && \
         $3 == "AdmissionFilters.Program::InspectDetachedProjection()" && \
         $5 == "System.Reflection.MemberInfo.GetCustomAttributes(Boolean)" && \
-        $6 == "attribute owner comes from a generic member signature without an executable instantiation and the attribute type is not known" \
+        $6 == "attribute owner comes from a generic member signature without an executable instantiation" \
             { projection++; next } \
         $1 == "ClosedGeneric" && $2 == "AdmissionFiltersOnly" && \
         $3 ~ /^AdmissionFilters.Program::(TypeOpaqueArray|TypeOpaqueElement|MethodOpaqueArray|MethodOpaqueElement)\(/ \
             { alternatives++; next } \
+        $1 == "Execution" && $2 == "AdmissionFiltersOnly" && \
+        $3 ~ /^AdmissionFilters.Program::TypeOpaque(Array|Element)\(System.String\[\]\)$/ && \
+        $4 == "IL_003b" && $5 == "System.Reflection.MethodBase.Invoke(Object, Object[])" && \
+        $6 ~ /^MethodInfo comes from GetMethod\("Name"\) on a Type that comes from MakeGenericType over the result of AdmissionFilters.Program::OpaqueArguments? — no method body retained$/ \
+            { downstream++; next } \
+        $1 == "Execution" && $2 == "AdmissionFiltersOnly" && \
+        $3 ~ /^AdmissionFilters.Program::MethodOpaque(Array|Element)\(System.String\[\]\)$/ && \
+        $4 == "IL_003b" && $5 == "System.Reflection.MethodBase.Invoke(Object, Object[])" && \
+        $6 ~ /^MethodInfo comes from the result of AdmissionFilters.Program::OpaqueArguments? — no method body retained$/ \
+            { downstream++; next } \
+        $1 == "Execution" && $2 == "AdmissionFiltersOnly" && \
+        $3 == "AdmissionFilters.Program::MostDerivedSelections()" && $4 == "IL_00a0" && \
+        $5 == "System.Reflection.MethodBase.Invoke(Object, Object[])" && \
+        $6 == "MethodInfo comes from GetMethod(\"Make\") on a Type that comes from MakeGenericType over the result of AdmissionFilters.Program::OpaqueArgument — no method body retained" \
+            { opaque++; next } \
+        $1 == "Execution" && $2 == "AdmissionFiltersOnly" && \
+        (($3 == "AdmissionFilters.Program::PrivateNamedBindings()" && $4 == "IL_009e") || \
+         ($3 == "AdmissionFilters.Program::LibraryPrivateNamedBindings()" && $4 == "IL_00f7")) && \
+        $5 == "System.Delegate.CreateDelegate(Type, Type, String, Boolean)" && \
+        $6 == "target comes from MakeGenericType over the result of AdmissionFilters.Program::OpaqueArgument — no method body retained" \
+            { opaque++; next } \
+        $1 == "AttributeInstances" && $2 == "AdmissionFiltersOnly" && \
+        $3 == "AdmissionFilters.Program::UnknownConstructedRow(System.Type)" && $4 == "IL_0024" && \
+        $5 == "System.Reflection.MemberInfo.GetCustomAttributes(Boolean)" && \
+        $6 == "attribute owner comes from parameter 1" { unknownRow++; next } \
         $1 == "Execution" && $2 == "AdmissionFiltersOnly" && \
         $3 == "AdmissionFilters.Program::InterfaceUnicode(System.String[])" && \
         $6 ~ /GetInterface.*outside ASCII/ { unicode++; next } \
         $1 == "Execution" && $2 == "AdmissionFiltersOnly" && \
         $3 == "AdmissionFilters.Program::InvokeDependentInterface()" && \
         $6 ~ /interface whose type depends on an open generic parameter/ { dependent++; next } \
-        { bad = 1 } END { exit bad || count != 6 || projection != 1 || mixed != 1 || alternatives != 4 || unicode != 1 || dependent != 1 }' "$out/reflection-unrecognized.tsv" \
+        { bad = 1 } END { exit bad || count != 6 || projection != 1 || mixed != 1 || alternatives != 4 || downstream != 4 || opaque != 3 || unknownRow != 1 || unicode != 1 || dependent != 1 }' "$out/reflection-unrecognized.tsv" \
         || { echo "FAIL: admission-filter diagnostics must match the unknown choices and detached signature projection" >&2; return 1; }
 }
 build_gate_proj samples/dotnet/ReflectReturnLib/ReflectReturnLib.csproj
 admission_library="$PWD/samples/dotnet/ReflectReturnLib/bin/$CONFIG/$TFM/ReflectReturnLib.dll"
-DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectInvoke AdmissionFiltersOnly --no-ildiet -r "$admission_library"
-DN2CPP_OUT_SUFFIX=-ildiet DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectInvoke AdmissionFiltersOnly -r "$admission_library"
+DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectInvoke AdmissionFiltersOnly --no-ildiet -r "$admission_library" --link-xml samples/dotnet/ReflectInvoke/keep-admission-bindings.xml
+DN2CPP_OUT_SUFFIX=-ildiet DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectInvoke AdmissionFiltersOnly -r "$admission_library" --link-xml samples/dotnet/ReflectInvoke/keep-admission-bindings.xml
 unset -f gate_extra_asserts
 
 # Recognized reflection runs with no preserve: an unrecognized site or an
@@ -2962,11 +3001,11 @@ recognized_table_asserts() {
         'interface names: root/generic/root/root' 'default members: 1 picked' 'delegate arity join: one:x' \
         'run class constructor: ran' 'bound initializer: bound/initialized' 'captured array write: left,wide' \
         'attribute parameter: parameter' 'attribute generic class: generic class' 'attribute definition: definition' \
-        'attribute unknown owners: scanned generic/scanned parameter' 'made later: load:LaterArgument' \
+        'attribute known owners: scanned generic/scanned parameter' 'known generic arguments: load:LaterArgument' \
         'named generic: named:Int32' 'template fallback: List`1/True' 'listed definition: ListedBox`1:True' \
         'template projections: argument run/base run/described:ProjectedOther' \
         'library template: library template:ProjectedArgument' 'library listing: 1/1' \
-        'constant field: 7/not initialized' 'attribute unknown assembly: assembly note' \
+        'constant field: 7/not initialized' 'attribute known assembly: assembly note' \
         'unknown flags inherited: created' \
         'construct default lookup flags: default lookup' \
         'typed lookup binder choice: derived:s/base not initialized' 'sequence default: first/last/single' \

@@ -1,5 +1,9 @@
 <linker>
   <assembly fullname="ReflectInvoke">
+    <!-- Attributes receives an opaque ICustomAttributeProvider. -->
+    <type fullname="ReflectInvoke.RuntimeHeldInterfacesSubset+Program+MarkerAttribute">
+      <method name=".ctor" />
+    </type>
     <!-- ReflectVirtualInvokeSubset: Method and Generic receive the owner and name as parameters. -->
     <type fullname="ReflectVirtualInvokeSubset.Animal">
       <method name="Speak" />
@@ -203,7 +207,14 @@
       <method name="Upper" />
       <method name="Widen" />
     </type>
+    <!-- Allocation measurements read attribute owners from static Type fields. -->
+    <type fullname="ReflectMetadataMeasureSubset.ValueAttribute">
+      <method name=".ctor" />
+    </type>
     <!-- ReflectMetadataLayoutSubset: Members and GenericMembers receive the type as a parameter. -->
+    <type fullname="ReflectMetadataLayoutSubset.LabelAttribute">
+      <method name=".ctor" />
+    </type>
     <type fullname="ReflectMetadataLayoutSubset.NativeBase">
       <method name=".ctor" />
       <method name="get_Value" />
@@ -425,6 +436,10 @@
       <method name="RefEnum" />
       <method name="RefInt" />
       <method name="RefReturn" />
+    </type>
+    <!-- RunArrayArguments binds the fixed pointer overload on a runtime array argument. -->
+    <type fullname="ReflectIntrinsicPointerSubset.ArrayArgumentOwner`1">
+      <method signature="System.Threading.CancellationToken* Pointer(System.Threading.CancellationToken*)" />
     </type>
     <!-- ReflectIntrinsicPointerSubset: Bind receives the method name as a parameter. -->
     <type fullname="ReflectIntrinsicPointerSubset.Target">

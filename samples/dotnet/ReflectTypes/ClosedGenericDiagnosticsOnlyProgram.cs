@@ -2,21 +2,13 @@ using System;
 using System.Globalization;
 using System.Reflection;
 
-// SUBJECT: a MakeGenericType or MakeGenericMethod site whose type arguments the
-// method-local summary cannot know is reported as a ClosedGeneric diagnostic unless a
-// runtime-instantiation template serves its definition. At run time such a site
-// serves an instantiation the program names and one a template clones; any other
-// throws the catchable PlatformNotSupportedException whose fix names the static
-// instantiation, where .NET constructs it. Cell<T> is a value type, which no template
-// serves; Holder<T> is a class, which one serves while generics are shared; a generic
-// method never has one. A site whose definition or generic method is itself not known
-// reports as well, and an unknown-argument selection skips the self-nesting
-// instantiations its own admissions mint. An abstract Shape<T> has no template of its
-// own, but Square<T>'s template clones it as its base, so that site reports only
-// without shared generics; a reflection site in a body only a template's clones run
-// reports from the template. A clone over an unknown argument is a closed type, so a
-// site closing a definition no template serves over it reports. A known argument whose
-// interface constraints cannot be proved never mints a static instantiation.
+// SUBJECT: unknown generic arguments retain diagnostics and bodyless template
+// identity, but do not select executable members from existing instantiations or
+// templates. Independently called closed members remain usable. Missing bodies
+// refuse with catchable PlatformNotSupportedException and an explicit remedy.
+// Known finite arguments still form supported instances; an unproved interface
+// constraint does not mint a static instantiation. Unknown definitions and method
+// receivers report separately, and self-nesting formation does not open Wrap.
 namespace ClosedGenericDiagnostics;
 
 struct Cell<T>
@@ -187,8 +179,7 @@ static class Program
 
     private static string MakeFromMethod(MethodInfo method) => method.MakeGenericMethod(typeof(int)).Name;
 
-    // Each Wrap a selection reaches names the next deeper Nest; only an allocated one is
-    // selected, so the transpile ends where .NET runs.
+    // Naming Nest<int> independently does not authorize its uncalled Wrap body.
     private static string MakeNest(Type argument)
     {
         Type closed = typeof(Nest<>).MakeGenericType(argument);

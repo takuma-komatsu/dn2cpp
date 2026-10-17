@@ -10,6 +10,7 @@
 # warns, only under the flag, naming --reflection-root; a root keeps rows, not bodies.
 # A constant Type.GetType or Assembly.GetType name emits its type without bodies.
 source "$(dirname "$0")/_common.sh"
+source "$(dirname "$0")/_ildiet.sh"
 # Delegate name lookup refuses stripped receiver metadata even for a soft bind failure.
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} samples/dotnet/TrimReflect/StrippedMembersOnly.csproj samples/dotnet/TrimReflect/StrippedMembersOnlyProgram.cs samples/dotnet/TrimReflect/RecognizedLookupOnly.csproj samples/dotnet/TrimReflect/RecognizedLookupOnlyProgram.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|delegate-method-prefix:${DN2CPP_BEFORE_DELEGATE_METHOD:-}|member-enum-prefix:${DN2CPP_BEFORE_MEMBER_ENUM:-}|object-virtual-prefix:${DN2CPP_BEFORE_OBJECT_VIRTUAL:-}|unrecorded-receiver-prefix:${DN2CPP_BEFORE_UNRECORDED_RECEIVER:-}|reflected-unrecorded-receiver-prefix:${DN2CPP_BEFORE_REFLECTED_UNRECORDED_RECEIVER:-}|runtime-template-prefix-argv:before-runtime-template-members|property-accessors-prefix-argv:before-property-accessors"
@@ -301,7 +302,7 @@ for root in "$LIBNAME.LibBox" "$LIBNAME.LibBox_Int32"; do
     OUT="artifacts/trimreflect-ildiet-$root"
     invoke_cli "$APP" -r "$CORELIB" -r "$LIBDLL" --trim-reflection \
         --reflection-root "$root" -o "$OUT"
-    [ -f "$OUT/ildiet/$LIBNAME.dll" ] && [ -f "$OUT/generated.h" ] \
+    [ -f "$(ildiet_generation "$OUT/ildiet")/$LIBNAME.dll" ] && [ -f "$OUT/generated.h" ] \
         || { echo "FAIL: ILDiet root $root did not reach C++ emission" >&2; exit 1; }
     # An unknown MakeGenericType receiver gives this library definition a clone
     # source without selecting any constructor or body on that template.

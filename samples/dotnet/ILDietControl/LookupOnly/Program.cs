@@ -270,7 +270,7 @@ internal class InnerWallet<T>
 {
     public static T Zero;
 
-    public virtual string UnusedVirtual() => BodyOnlyDependency.Run();
+    public virtual string UnusedVirtual() => RuntimeFieldOwnerDependency.Run();
 }
 
 internal class CyclePair<T, U>
@@ -278,9 +278,14 @@ internal class CyclePair<T, U>
     public static CyclePair<U, T> Next;
     public static T Zero;
 
-    public virtual string UnusedVirtual() => BodyOnlyDependency.Run();
+    public virtual string UnusedVirtual() => RuntimeFieldOwnerDependency.Run();
 }
 #pragma warning restore CS0649, CS8618
+
+internal static class RuntimeFieldOwnerDependency
+{
+    public static string Run() => "runtime-field-owner";
+}
 
 internal struct GenericMoney
 {

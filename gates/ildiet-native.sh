@@ -49,5 +49,6 @@ $PYTHON gates/fixtures/ildiet-native/check.py "$DIET/ILDiet.dll" "$OUT/ILDiet" \
     "gates/fixtures/preserve-control/bin/$CONFIG/$TFM/MetadataProbe.dll" \
     "$APP/ILDietControl.dll" "$APP/ILDietControlLib.dll" "$APP/Dn2Cpp.Runtime.dll" \
     "$corelib" "$OUT/parity" \
+    --execution-link-xml samples/dotnet/ILDietControl/keep-attribute-constructed.xml \
     --metadata-validation "gates/fixtures/ildiet-metadata-validation/bin/$CONFIG/$TFM/MetadataValidation.dll" \
     2>&1 | tee "$OUT/parity.log"

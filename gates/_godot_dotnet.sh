@@ -9,6 +9,8 @@
 # built there are found with no env var set. (The engine-launch watchdog is
 # run_with_watchdog in gates/_common.sh.)
 
+source "$PWD/gates/_ildiet.sh"
+
 GODOT_DOTNET_SAMPLE_DIR=samples/godot-dotnet/DotnetSample
 GODOT_DOTNET_ROOT="${DN2CPP_GODOT_DOTNET_ROOT:-$HOME/.cache/dn2cpp-godot-dotnet}"
 GODOT_DOTNET_GODOTSHARP="$GODOT_DOTNET_ROOT/GodotSharp/Api/Release/GodotSharp.dll"
@@ -172,7 +174,7 @@ godot_dotnet_check_ildiet() {
         -p:IntermediateOutputPath="$probe/obj/$CONFIG/$TFM/" \
         -p:MSBuildProjectExtensionsPath="$probe/obj/" -p:OutputPath="$probe/bin/"
     dotnet exec "$probe/bin/MetadataValidation.dll" \
-        --check-godot-sample "$app" "$GODOT_DOTNET_GODOTSHARP" "$out/ildiet"
+        --check-godot-sample "$app" "$GODOT_DOTNET_GODOTSHARP" "$(ildiet_generation "$out/ildiet")"
 }
 
 # godot_dotnet_link_lib OUT — the other half: link the mono-module shared library

@@ -62,7 +62,7 @@ if (args.Length == 2 && args[0] == "--state-machine-bodies")
 }
 // --method-stubs DLL Namespace.Type::Method... prints whether each top-level type's
 // method row is absent, bodyless, or carries the signature-only stub.
-if (args.Length > 2 && args[0] == "--method-stubs")
+if (args.Length > 2 && (args[0] == "--method-stubs" || args[0] == "--method-body"))
 {
     using var input = File.OpenRead(args[1]);
     using var image = new PEReader(input);

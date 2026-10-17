@@ -1,0 +1,20 @@
+<linker>
+  <assembly fullname="ReflectTypes">
+    <!-- The input-binding walk reads attributes from an opaque LINQ enumeration.
+         Preserve its concrete constructors and named setters; the derived key
+         constructor reaches RunOnKeyAttribute through its ordinary base call. -->
+    <type fullname="ReflectAttrNamedBaseSubset.RunOnKeyDownAttribute">
+      <method name=".ctor" />
+    </type>
+    <type fullname="ReflectAttrNamedBaseSubset.RunOnAxisAttribute">
+      <method name=".ctor" />
+      <method name="set_Codes" />
+      <method name="set_Kinds" />
+      <method name="set_Weights" />
+    </type>
+    <type fullname="ReflectAttrNamedBaseSubset.InputAttribute">
+      <method name="set_Priority" />
+      <method name="set_OnlyUnhandled" />
+    </type>
+  </assembly>
+</linker>

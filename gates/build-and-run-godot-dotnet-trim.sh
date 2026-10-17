@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Real Godot script registration, callbacks, exported properties and signals under
-# reflection trimming. ILDiet removes unused managed engine/script definitions;
+# reflection trimming. ILDiet retains reflection rows without unused script bodies;
 # the same scene also runs with --no-ildiet. Both paths apply the wrapper trim.
 source "$(dirname "$0")/_common.sh"
+source "$(dirname "$0")/_ildiet.sh"
 source "$(dirname "$0")/_godot_dotnet.sh"
 
 LEGACY_TRIM="${DN2CPP_GODOT_TRIM_NO_ILDIET:-0}"
@@ -62,7 +63,7 @@ godot_dotnet_transpile() {
         # ILDiet keeps this concrete factory; the downstream trim must redirect
         # it again while retaining the registry keys checked by the metadata probe.
         dotnet exec "$out/.metadata-probe/bin/MetadataValidation.dll" \
-            --check-godot-factory "$out/ildiet/GodotSharp.dll" Godot.WeakRef
+            --check-godot-factory "$(ildiet_generation "$out/ildiet")/GodotSharp.dll" Godot.WeakRef
     fi
     if grep -q '^// Godot.WeakRef::\.ctor$' "$out"/generated*.cpp; then
         echo "FAIL: unused WeakRef factory kept its concrete constructor" >&2

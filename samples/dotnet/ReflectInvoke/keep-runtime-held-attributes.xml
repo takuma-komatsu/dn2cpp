@@ -1,0 +1,8 @@
+<linker>
+  <assembly fullname="RuntimeHeldInterfacesOnly">
+    <!-- Attributes receives an opaque ICustomAttributeProvider. -->
+    <type fullname="ReflectInvoke.RuntimeHeldInterfacesSubset+Program+MarkerAttribute">
+      <method name=".ctor" />
+    </type>
+  </assembly>
+</linker>

@@ -1,6 +1,27 @@
 #!/usr/bin/env bash
 # Source after _common.sh. Native dn2cpp launches a self-contained companion,
 # so a relocated toolchain needs no dotnet installation.
+# Resolve only the published generation; flat paths can observe partial output.
+ildiet_generation() {
+    local output="$1" python="${PYTHON:-}"
+    [ -n "$python" ] || python=$(resolve_python) || return $?
+    $python - "$output" <<'PYTHON'
+from pathlib import Path
+import re
+import sys
+import xml.etree.ElementTree as ET
+output = Path(sys.argv[1])
+root = ET.parse(output / "ildiet-result.xml").getroot()
+generation = root.get("generation", "")
+if root.tag != "ildietResult" or root.get("version") != "2" or not re.fullmatch(r"g-[0-9a-f]{16}", generation):
+    raise SystemExit("invalid ILDiet generation manifest: " + str(output))
+path = output / generation
+if not path.is_dir():
+    raise SystemExit("missing ILDiet generation: " + str(path))
+sys.stdout.write(path.as_posix())
+PYTHON
+}
+
 ildiet_stage_native() (
     local destination="$1" rid os arch staging scratch
     case "$DN2CPP_OS" in

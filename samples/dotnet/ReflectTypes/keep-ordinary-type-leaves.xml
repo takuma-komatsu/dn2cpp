@@ -29,5 +29,15 @@
     <type fullname="ReflectAttrBoxedSubset.CharDisplayAttribute">
       <method name=".ctor" />
     </type>
+    <!-- Member, Parameter and Assembly receive opaque attribute owners. -->
+    <type fullname="AttributeConstructionOrderSubset.FirstAttribute">
+      <method name=".ctor" />
+    </type>
+    <type fullname="AttributeConstructionOrderSubset.SecondAttribute">
+      <method name=".ctor" />
+    </type>
+    <type fullname="AttributeConstructionOrderSubset.ThirdAttribute">
+      <method name=".ctor" />
+    </type>
   </assembly>
 </linker>
