@@ -521,8 +521,8 @@ internal sealed partial class Compilation
         return members;
     }
 
-    /// <summary>A site re-applied when a generic definition its operand names with unknown
-    /// type arguments gains an instantiation.</summary>
+    /// <summary>A site re-applied when its finite template alternative gains a static
+    /// instantiation.</summary>
     private readonly record struct PendingSelection(int Module, int Definition, MethodInfo Method, int Site);
 
     private readonly List<PendingSelection> _pendingReflectionSelections = new();
@@ -530,17 +530,9 @@ internal sealed partial class Compilation
     private int _pendingSelectionClassCursor;
 
     /// <summary>Definitions a recognized MakeGenericType receives whose closed type exists
-    /// nowhere, by backtick name; each gets a runtime-instantiation template with bodies,
-    /// built in the typeof'd-definition order the selection also joins.</summary>
+    /// nowhere, by backtick name; each gets a runtime-instantiation template identity,
+    /// built in the typeof'd-definition order. Member selections admit bodies separately.</summary>
     private readonly HashSet<string> _reflectionTemplateSelections = new(StringComparer.Ordinal);
-
-    /// <summary>Attribute types a recognized attribute read filters on when the owner is not
-    /// known; every user-module row assignable to one is listed, and constructed when the
-    /// read creates instances.</summary>
-    private readonly List<(ClassInfo Filter, bool Construct)> _reflectionAttributeFilters = new();
-    private readonly HashSet<(ClassInfo, bool)> _reflectionAttributeFiltersSeen = new();
-    private readonly HashSet<(int, int)> _attributeFilterDefinitionsSeen = new();
-    private int _attributeFilterCursor, _attributeFilterClassCursor;
 
     /// <summary>How many selections the summary applications have made; part of the
     /// discovery fixpoint's measure.</summary>
@@ -1144,8 +1136,8 @@ internal sealed partial class Compilation
     /// <summary>An attribute read on its owners' rows. Every row the read can see is
     /// listed; an instance read also constructs the rows its attribute-type filter
     /// admits, a data read (IsDefined, CustomAttributeData) none: a user attribute's row
-    /// renders without its factory. An unknown owner selects by the filter over every
-    /// user-module element instead, and reports when no filter is known.</summary>
+    /// renders without its factory. An unknown owner reports without selecting
+    /// additional providers or executable attribute bodies.</summary>
     private void ApplyAttributeRead(ReflectionApplication app, RSite site, RResolved owners, bool construct)
     {
         var api = site.Api;
@@ -1163,15 +1155,8 @@ internal sealed partial class Compilation
         string? ownerUnknown = OwnerUnknown(owners);
         if (ownerUnknown is null)
             return;
-        foreach (var cls in classes)
-            if (_reflectionAttributeFiltersSeen.Add((cls, construct)))
-                _reflectionAttributeFilters.Add((cls, construct));
-        if (known is not null)
-            return;
         RecordReflectionDiagnostic(app, site, ReflectionDiagnosticKind.AttributeInstances,
-            construct || api.Op == ReflectionOp.IsDefined
-                ? "attribute owner comes from " + ownerUnknown + " and the attribute type is not known"
-                : "attribute owner comes from " + ownerUnknown + " — no attribute row retained",
+            "attribute owner comes from " + ownerUnknown,
             null, null, null);
     }
 
@@ -1326,47 +1311,12 @@ internal sealed partial class Compilation
         }
     }
 
-    /// <summary>Lists, and for an instance read constructs, the user-module attribute rows
-    /// assignable to a filter an attribute read with an unknown owner names: those of
-    /// every user assembly and module, of every class, a generic definition's once, and of
-    /// its members and parameters. Driven by discovery's fixpoint: a class minted later
-    /// carries rows too.</summary>
-    internal bool ReachSelectedAttributeRows()
-    {
-        NoteAttributeArrayHandle();
-        if (_reflectionAttributeFilters.Count == 0)
-            return false;
-        int reached = Reachable.Count;
-        if (_attributeFilterCursor < _reflectionAttributeFilters.Count)
-        {
-            _attributeFilterCursor = _reflectionAttributeFilters.Count;
-            _attributeFilterClassCursor = 0;
-            _attributeFilterDefinitionsSeen.Clear();
-            for (int i = 0; i < Modules.Count; i++)
-                if (Modules[i] is var module && IsUserModule(module))
-                {
-                    ReachFilteredAttributes(module, module.Reader.GetAssemblyDefinition().GetCustomAttributes());
-                    ReachFilteredAttributes(module, module.Reader.GetModuleDefinition().GetCustomAttributes());
-                }
-        }
-        while (_attributeFilterClassCursor < Classes.Count)
-        {
-            var cls = Classes[_attributeFilterClassCursor++];
-            if (cls.Handle.IsNil || !IsUserModule(cls.Module)
-                || !_attributeFilterDefinitionsSeen.Add((cls.Module.Index, SRME.GetToken(cls.Handle))))
-                continue;
-            ReachFilteredAttributeRows(cls);
-        }
-        DrainReachability();
-        return Reachable.Count != reached;
-    }
-
     private bool _attributeArrayNoted;
 
     /// <summary>Gives System.Attribute, the base filter a GetCustomAttributes(Type) commonly
     /// names beside a concrete attribute type, the array handle the runtime's attrType[]
     /// stamp (dn2cpp_find_array_ti) answers with, once anything reads attributes.</summary>
-    private void NoteAttributeArrayHandle()
+    internal void NoteAttributeArrayHandle()
     {
         if (!_reflectionAttrUsed || _attributeArrayNoted)
             return;
@@ -1374,64 +1324,6 @@ internal sealed partial class Compilation
         if (TypeIndex().TryGetValue(("System", "Attribute"), out var candidates)
             && candidates[0].Item1.ClassMap.TryGetValue(candidates[0].Item2, out var attribute))
             NoteArrayElementType(TypeDesc.MakeClass(attribute));
-    }
-
-    private void ReachFilteredAttributeRows(ClassInfo cls)
-    {
-        var reader = cls.Module.Reader;
-        var td = reader.GetTypeDefinition(cls.Handle);
-        ReachFilteredAttributes(cls.Module, td.GetCustomAttributes());
-        foreach (var fh in td.GetFields())
-            ReachFilteredAttributes(cls.Module, reader.GetFieldDefinition(fh).GetCustomAttributes());
-        foreach (var mh in td.GetMethods())
-        {
-            var md = reader.GetMethodDefinition(mh);
-            ReachFilteredAttributes(cls.Module, md.GetCustomAttributes());
-            foreach (var parameter in md.GetParameters())
-                ReachFilteredAttributes(cls.Module, reader.GetParameter(parameter).GetCustomAttributes());
-        }
-        foreach (var ph in td.GetProperties())
-            ReachFilteredAttributes(cls.Module, reader.GetPropertyDefinition(ph).GetCustomAttributes());
-        foreach (var eh in td.GetEvents())
-            ReachFilteredAttributes(cls.Module, reader.GetEventDefinition(eh).GetCustomAttributes());
-    }
-
-    /// <summary>One element's rows under the unknown-owner filters, constructed as
-    /// <see cref="ReachAttributeRows"/> constructs a known owner's.</summary>
-    private void ReachFilteredAttributes(Module module, CustomAttributeHandleCollection handles)
-    {
-        if (handles.Count == 0)
-            return;
-        List<DecodedAttribute> rows;
-        try
-        {
-            rows = DecodeCustomAttributes(module, handles, reachedCtorsOnly: false);
-        }
-        catch (NotSupportedException e) when (!IsMustEscape(e))
-        {
-            return;
-        }
-        bool listed = false;
-        foreach (var row in rows)
-        {
-            bool construct = false, matched = false;
-            foreach (var (filter, constructs) in _reflectionAttributeFilters)
-                if (DerivesFromOrIs(row.AttrClass, filter))
-                {
-                    matched = true;
-                    construct |= constructs;
-                }
-            if (!matched)
-                continue;
-            _reflectionSelectionCount++;
-            if (!listed)
-            {
-                listed = true;
-                ReachAttributesOf(module, handles, reach: false);
-            }
-            if (construct)
-                ConstructAttributeRow(row);
-        }
     }
 
     // ---- generic instantiation ----
@@ -1443,13 +1335,13 @@ internal sealed partial class Compilation
     /// ask of the clone (<see cref="SelectTemplateMember"/>); a static instantiation when the
     /// arguments meet the constraints, under the normal instantiation bound; else a
     /// ClosedGeneric diagnostic. A tuple the constraints definitely reject yields nothing,
-    /// as .NET throws. Unknown arguments select every instantiation of the definition, now
-    /// and as it gains them, plus its template, and report ClosedGeneric when no template
-    /// survives planning. Forming the type admits no body.</summary>
+    /// as .NET throws. Unknown arguments request only template identity, and report
+    /// ClosedGeneric when no template survives planning. They supply no executable
+    /// selection candidates. Forming the type admits no body.</summary>
     private RResolved MakeGeneric(ReflectionApplication app, int site, RResolved defs, RResolved args, bool report)
     {
         var result = new RResolved();
-        string? receiverUnknown = defs.Unknown, unclosable = null;
+        string? receiverUnknown = defs.Unknown, unclosable = null, argumentsUnknown = null;
         foreach (var e in defs.Items)
         {
             if (e.Kind != REntityKind.Definition || e.Assembly is not { } module)
@@ -1526,10 +1418,7 @@ internal sealed partial class Compilation
                 string? unknown = ArgumentsUnknown(args);
                 SelectTemplate(app, site, module, e.Definition, report && unknown is not null && !oneType,
                     "the type arguments come from " + unknown, null);
-                result.Add(new REntity { Kind = REntityKind.Template, Assembly = module, Definition = e.Definition });
-                foreach (var cls in ExistingInstances(module, e.Definition))
-                    result.Add(TypeEntity(TypeDesc.MakeClass(cls)));
-                templated = true;
+                argumentsUnknown ??= unknown ?? "type arguments with no known closed tuple";
             }
             if (templated)
                 NoteGrowingSelection(app, module.Index, SRME.GetToken(e.Definition));
@@ -1541,6 +1430,8 @@ internal sealed partial class Compilation
         }
         else if (unclosable is not null)
             result.Unknown = "MakeGenericType over " + unclosable + ", which only the runtime models";
+        else if (argumentsUnknown is not null)
+            result.Unknown = "MakeGenericType over " + argumentsUnknown;
         // The site reports even when its result goes unused: no template or body is
         // selected for a definition it cannot name.
         if (report && site >= 0 && receiverUnknown is null && unclosable is not null && RuntimeModelsAsOneType(unclosable))
@@ -1762,26 +1653,10 @@ internal sealed partial class Compilation
         return made;
     }
 
-    /// <summary>The instantiations of <paramref name="generic"/> the image has, each listed
-    /// as <see cref="MakeGenericMethods"/> lists the ones it forms.</summary>
-    private List<MethodInfo> ExistingMethodInstances(MethodInfo generic)
-    {
-        var found = new List<MethodInfo>();
-        foreach (var instance in _methodInstanceOrder.ToList())
-            if (instance.Handle == generic.Handle && instance.Module == generic.Module
-                && instance.DeclaringClass == generic.DeclaringClass && !ContextIsCanonical(instance.Context)
-                && !IsOpenGenericMethod(instance))
-            {
-                _reflectionListedRows.Add(instance);
-                found.Add(instance);
-            }
-        return found;
-    }
-
-    /// <summary>A MakeGenericMethod site: known admitted arguments instantiate the method. No
-    /// runtime template exists for a generic method, so arguments not known ahead of time
-    /// resolve only to instantiations the program names, and the site reports
-    /// ClosedGeneric, as it does for a receiver it cannot name.</summary>
+    /// <summary>A MakeGenericMethod site: known admitted arguments instantiate the method.
+    /// Unknown arguments add no executable candidates and report ClosedGeneric; at run
+    /// time they can still resolve independently retained instantiations. A receiver the
+    /// site cannot name also reports ClosedGeneric.</summary>
     private void ApplyMakeGenericMethod(ReflectionApplication app, int index, RResolved methods, RResolved args)
     {
         var tuples = ArgumentTuples(args, out bool known, closeTemplates: true);
@@ -2603,39 +2478,6 @@ internal sealed partial class Compilation
 
     private static string BacktickFullName(Module module, TypeDefinitionHandle def)
         => RawSignatureProvider.TypeDefinitionName(module.Reader, def);
-
-    /// <summary>The closed instantiations of a definition an unknown-argument
-    /// MakeGenericType selects. One whose arguments nest the definition itself is selected
-    /// only once allocated: a member signature of a selected instance mints such a class,
-    /// and selecting each would mint the next without bound.</summary>
-    private List<ClassInfo> ExistingInstances(Module module, TypeDefinitionHandle def)
-    {
-        var found = new List<ClassInfo>();
-        int count = Classes.Count;
-        for (int i = 0; i < count; i++)
-        {
-            var cls = Classes[i];
-            if (cls.Module == module && cls.Handle == def && cls.GenericArity > 0
-                && !ContainsCanonPlaceholder(cls) && !ContainsGenericVar(cls)
-                && (_allocatedRefTypes.Contains(cls) || !NestsDefinition(cls.Context.TypeArgs, module, def)))
-                found.Add(cls);
-        }
-        return found;
-    }
-
-    private static bool NestsDefinition(TypeDesc[] args, Module module, TypeDefinitionHandle def)
-    {
-        foreach (var arg in args)
-        {
-            var t = arg;
-            while (t.Kind != TypeKind.Class && t.Element is { } element)
-                t = element;
-            if (t is { Kind: TypeKind.Class, Class: { } c }
-                && (c.Module == module && c.Handle == def || NestsDefinition(c.Context.TypeArgs, module, def)))
-                return true;
-        }
-        return false;
-    }
 
     /// <summary>Re-applies the sites whose generic definition gained an instantiation since
     /// the last visit. Driven by discovery's fixpoint.</summary>
@@ -3922,7 +3764,8 @@ internal sealed partial class Compilation
             }
             case TermKind.MadeGenericMethod:
             {
-                var tuples = ArgumentTuples(Child(app, t, 1), out bool known, closeTemplates: true);
+                var arguments = Child(app, t, 1);
+                var tuples = ArgumentTuples(arguments, out bool known, closeTemplates: true);
                 var generics = GenericMethodReceivers(Child(app, t, 0), out string? receiverUnknown);
                 foreach (var generic in generics)
                 {
@@ -3930,15 +3773,16 @@ internal sealed partial class Compilation
                         continue;
                     bool metadata = _reflectionMetadataViews.Contains(generic.DeclaringClass);
                     var made = MakeGenericMethods(generic, tuples, out _);
-                    if (!known)
-                        made.AddRange(metadata ? new List<MethodInfo> { generic } : ExistingMethodInstances(generic));
+                    // Unknown arguments do not change an open owner's original attribute provider.
+                    if (!known && metadata) made.Add(generic);
                     foreach (var instance in made)
                     {
                         var member = new REntity { Kind = REntityKind.Method, Method = instance, Owner = instance.DeclaringClass };
                         result.Add(metadata ? new REntity { Kind = REntityKind.DefinitionMember, Metadata = member } : member);
                     }
                 }
-                result.Unknown = receiverUnknown;
+                result.Unknown = receiverUnknown ?? (known ? null : ArgumentsUnknown(arguments)
+                    ?? "type arguments with no known closed tuple");
                 break;
             }
             case TermKind.Parameter:

@@ -2287,10 +2287,9 @@ internal sealed partial class CppEmitter
             // Reflection support for the delegates the bodies just compiled allocate or
             // bind.
             _c.ReachReflectionRuntimeSupport();
-            // A selected generic definition can gain instantiations, and a minted class
-            // can carry attribute rows a filter selects.
+            // A finite template selection can gain a static instantiation.
             _c.ApplyPendingReflectionSelections();
-            _c.ReachSelectedAttributeRows();
+            _c.NoteAttributeArrayHandle();
             // A generic virtual override's row needs the row of the method that
             // introduces its chain.
             _c.InstantiateGvmChainRoots();

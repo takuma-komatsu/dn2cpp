@@ -934,29 +934,9 @@ internal sealed partial class Compilation
 
     /// <summary>The primitive a well-known corlib type name encodes, or null. Used
     /// to normalize references to corlib's own primitive TypeDefs/TypeRefs.</summary>
-    public static TypeDesc? WellKnownPrimitive(string fullName) => fullName switch
-    {
-        "System.Boolean" => TypeDesc.MakePrimitive(PrimitiveTypeCode.Boolean),
-        "System.Char" => TypeDesc.MakePrimitive(PrimitiveTypeCode.Char),
-        "System.SByte" => TypeDesc.MakePrimitive(PrimitiveTypeCode.SByte),
-        "System.Byte" => TypeDesc.MakePrimitive(PrimitiveTypeCode.Byte),
-        "System.Int16" => TypeDesc.MakePrimitive(PrimitiveTypeCode.Int16),
-        "System.UInt16" => TypeDesc.MakePrimitive(PrimitiveTypeCode.UInt16),
-        "System.Int32" => TypeDesc.MakePrimitive(PrimitiveTypeCode.Int32),
-        "System.UInt32" => TypeDesc.MakePrimitive(PrimitiveTypeCode.UInt32),
-        "System.Int64" => TypeDesc.MakePrimitive(PrimitiveTypeCode.Int64),
-        "System.UInt64" => TypeDesc.MakePrimitive(PrimitiveTypeCode.UInt64),
-        "System.IntPtr" => TypeDesc.MakePrimitive(PrimitiveTypeCode.IntPtr),
-        "System.UIntPtr" => TypeDesc.MakePrimitive(PrimitiveTypeCode.UIntPtr),
-        "System.Single" => TypeDesc.MakePrimitive(PrimitiveTypeCode.Single),
-        "System.Double" => TypeDesc.MakePrimitive(PrimitiveTypeCode.Double),
-        // String/Object have runtime metadata (dn2cpp_string_type/object_type) and
-        // dedicated C++ reps; normalizing corlib's own TypeDefs to the primitive
-        // keeps typeof(string)/isinst string out of the per-class emit path.
-        "System.String" => TypeDesc.MakePrimitive(PrimitiveTypeCode.String),
-        "System.Object" => TypeDesc.MakePrimitive(PrimitiveTypeCode.Object),
-        _ => null,
-    };
+    public static TypeDesc? WellKnownPrimitive(string fullName) =>
+        CoreIntrinsicTypeMaps.WellKnownPrimitiveCode(fullName) is { } code
+            ? TypeDesc.MakePrimitive(code) : null;
 
     /// <summary>Reference types named by an IL type token (castclass/isinst/
     /// ldtoken/…) or a bounded call's receiver, but never allocated or otherwise
@@ -5315,8 +5295,6 @@ internal sealed partial class Compilation
         // structs got boxed and whether anything compares two objects, and the walk it
         // starts can produce more of both (a field's Equals override is a body, and a body
         // can box), exactly as the used×allocated cross product it stands in for does.
-        // A row's signature can mint a class without reaching another body; that
-        // class's attribute rows need the next walk too.
         int admitted, classes, selections;
         do
         {
@@ -5325,7 +5303,7 @@ internal sealed partial class Compilation
             selections = _reflectionSelectionCount;
             ReachReflectionRuntimeSupport();
             ApplyPendingReflectionSelections();
-            ReachSelectedAttributeRows();
+            NoteAttributeArrayHandle();
             InstantiateGvmChainRoots();
             ReachPatchCallableGvms();
             ReachLateBoundGvmRows();
