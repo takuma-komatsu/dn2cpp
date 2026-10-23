@@ -105,6 +105,11 @@ internal interface IEmitBackend
     /// none.</summary>
     IEnumerable<ClassInfo> AttributeReadClasses(Compilation c) => Array.Empty<ClassInfo>();
 
+    /// <summary>Runtime reflection demands introduced by an allocated type. Called once
+    /// per allocation identity during reachability draining, after the initial backend
+    /// seeds. Default: none.</summary>
+    BackendAllocationRoots? AllocatedTypeRoots(Compilation c, ClassInfo allocated) => null;
+
     /// <summary>Assemblies whose assembly-level custom attributes a backend's runtime reads
     /// where no site names the assembly, constructed like
     /// <see cref="AttributeReadClasses"/>. Default: none.</summary>
@@ -153,3 +158,7 @@ internal interface IEmitBackend
 /// trim may touch, and the unconditionally-released floor (see the hook's doc).</summary>
 internal sealed record GodotClassTrimSpec(
     MethodInfo RegistryCctor, ClassInfo WrapperRoot, IReadOnlyList<ClassInfo> Floor);
+
+/// <summary>Methods invoked and attribute owners read by a backend for a new receiver.</summary>
+internal sealed record BackendAllocationRoots(
+    IReadOnlyList<MethodInfo> Methods, IReadOnlyList<ClassInfo> AttributeReadClasses);

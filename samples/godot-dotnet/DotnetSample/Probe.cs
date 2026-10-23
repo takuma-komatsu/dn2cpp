@@ -31,5 +31,26 @@ public partial class Probe : Node
         using var resource = ResourceLoader.Load("res://scene_resource.tres");
         GD.Print($"DN2CPP_DM_SCENE_RESOURCE value={(int)resource.Get("Value")}");
         GD.Print("DN2CPP_DM_LATE_ATTRIBUTE " + typeof(DescriptionAttribute).Name);
+
+        var nested = new AllocatedChild();
+        AddChild(nested);
+        nested.Set("Value", 91);
+        GD.Print($"DN2CPP_DM_ALLOCATED_CHILD value={(int)nested.Get("Value")}");
+    }
+
+    [Description("attributes on a code-created nested node")]
+    public partial class AllocatedChild : Node
+    {
+        [Export] public int Value { get; set; } = 17;
+
+        public override void _Ready()
+        {
+            GD.Print("DN2CPP_DM_ALLOCATED_CHILD_READY");
+        }
+    }
+
+    public partial class UnallocatedChild : Node
+    {
+        [Export] public int Value { get; set; } = 23;
     }
 }

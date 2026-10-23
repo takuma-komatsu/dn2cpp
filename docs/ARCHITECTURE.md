@@ -379,6 +379,11 @@ Optional, with the invariant each exists for:
 - `AttributeReadClasses` / `AttributeReadAssemblies` — owners whose attribute
   rows the target's runtime reads in a registration walk no site names; their
   rows are constructed as a recognized attribute read would construct them.
+- `AllocatedTypeRoots` — methods and attribute owners the target's runtime reads
+  when an allocated receiver enters its bridge. An allocation cursor drains these
+  demands after the initial seeds. The .NET-module backend uses this for
+  code-created Godot objects and their user base classes, including nested types
+  outside assembly script registration; unallocated siblings gain no bodies.
 - `CoversReflectionSite` — true when the backend's contract already retains what
   a reflection site in that caller can reach. It only reports an unrecognized
   site there as backend-covered; it changes no admission.
