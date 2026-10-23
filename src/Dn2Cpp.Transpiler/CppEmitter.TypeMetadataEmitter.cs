@@ -3202,7 +3202,7 @@ internal sealed partial class CppEmitter
                     bool isRef = cppT.EndsWith("*");
                     // The spelling the member is actually declared with: a
                     // shared struct layout carries the canonical owner's erased
-                    // field types, so the setter must cast to that spelling
+                    // field types, so both accessors use that storage spelling
                     // (statics stay per-real and keep the real spelling).
                     string memberT = cppT;
                     if (!f.IsStatic && _c.SharedGenericsEnabled
@@ -3269,7 +3269,7 @@ internal sealed partial class CppEmitter
                         ? $"return {MethodCompiler.HeaderlessWrapExpr(access, memberT, f.Type)};"
                         : isRef
                         ? $"return (Dn2CppObject*)({access});"
-                        : $"{cppT} v = {access}; return dn2cpp_box({ftInfo}, &v, sizeof({cppT}));");
+                        : $"{memberT} v = {access}; return dn2cpp_box({ftInfo}, &v, sizeof({memberT}));");
                     // A null value stores the default. The dispatcher converts null
                     // through the row's field type, which reads Object for a value type
                     // the image emits no type-info for.
@@ -3277,7 +3277,7 @@ internal sealed partial class CppEmitter
                         ? $"{access} = {MethodCompiler.HeaderlessUnwrapExpr("val", memberT)};"
                         : isRef
                         ? $"{access} = ({memberT})val;"
-                        : $"{access} = val == nullptr ? {cppT}{{}} : *({cppT}*)((char*)val + sizeof(Dn2CppObject));");
+                        : $"{access} = val == nullptr ? {memberT}{{}} : *({memberT}*)((char*)val + sizeof(Dn2CppObject));");
                     if (f.Type.ContainsGcReferences())
                     {
                         if (f.IsStatic)
