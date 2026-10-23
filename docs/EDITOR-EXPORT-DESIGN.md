@@ -94,6 +94,21 @@ Dynamic reflection needs `[Preserve]` or a linker descriptor, and dynamic engine
 wrapper lookups need preservation or `--godot-class-root`; see README's
 preservation rules.
 
+To leave a dependency's IL unchanged, append `--ildiet-skip-assembly` and its
+simple assembly name as separate tokens in the existing project setting. For
+example, in `project.godot`:
+
+```ini
+[dotnet]
+dn2cpp/extra_transpile_args=PackedStringArray("--ildiet-skip-assembly", "FSharp.Core")
+```
+
+Keep any existing tokens and add the pair only once. The editor's installed
+toolchain must include a CLI and ILDiet companion that support this option;
+the export log records the final invocation. Skipping rewrite copies that DLL's
+original bytes but still applies normal transpiler reachability and explicit
+preservation. It does not preserve every body in the assembly.
+
 On every Incremental-GC-capable target, selecting `dn2cpp` also reveals the
 boolean `dotnet/dn2cpp/incremental_gc` option, default `true`. Web does not
 publish the option because its collector has no page-protection VDB and forces
