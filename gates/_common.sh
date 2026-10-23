@@ -2240,6 +2240,24 @@ assert_output() {
     echo "OK"
 }
 
+# assert_no_word_match MESSAGE ERE [FILE...] — only a completed search with no
+# whole-word match passes. Do not use -q: every input must be read for errors.
+assert_no_word_match() {
+    local message="$1" status
+    shift
+    if grep -Ew -- "$@" > /dev/null; then
+        echo "FAIL: $message" >&2
+        return 1
+    else
+        status=$?
+    fi
+    if [ "$status" -ne 1 ]; then
+        echo "FAIL: $message (search failed with exit $status)" >&2
+        return 1
+    fi
+    return 0
+}
+
 # assert_exit_code ACTUAL EXPECTED — the native binary's exit status must match.
 # An output diff cannot stand in: macOS's abort() flushes stdio, so a binary that
 # aborts during teardown (a finalizer thread or pool worker touching a lock
