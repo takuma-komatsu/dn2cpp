@@ -575,6 +575,7 @@ internal sealed partial class Compilation
             + $" minst {_methodInstanceCount} sig {ModelCensus.SignaturesDecoded}"
             + $" fld {ModelCensus.FieldTypesDecoded} gdepth {MaxGenericArgDepth}"
             + $" virtual-pairs {_virtualCandidatePairs} boxed-visits {_boxedEqualityVisits}"
+            + $" backend-attr-replays {_backendAttributeReplayCount}"
             + $" virtual-index-fallbacks {_virtualIndexFallbacks}";
         var loadSet = options.ResolvedLoadSet ?? AssemblyLoadSet.Resolve(assemblyPaths, options);
         foreach (var status in loadSet.DefaultRefStatus)
@@ -5278,7 +5279,7 @@ internal sealed partial class Compilation
             foreach (var cls in _backend.AttributeReadClasses(this).ToList())
                 ReachBackendAttributeRows(cls);
             foreach (var module in _backend.AttributeReadAssemblies(this).ToList())
-                ReachAttributesOf(module, module.Reader.GetAssemblyDefinition().GetCustomAttributes(), reach: true);
+                ReachBackendAttributes(module, module.Reader.GetAssemblyDefinition().GetCustomAttributes());
         }
 
         // Hot-update base build: force-emit the extra closed generic
@@ -5672,9 +5673,9 @@ internal sealed partial class Compilation
             return;
         var reader = cls.Module.Reader;
         var td = reader.GetTypeDefinition(cls.Handle);
-        ReachAttributesOf(cls.Module, td.GetCustomAttributes(), reach: true);
+        ReachBackendAttributes(cls.Module, td.GetCustomAttributes());
         foreach (var mh in td.GetMethods())
-            ReachAttributesOf(cls.Module, reader.GetMethodDefinition(mh).GetCustomAttributes(), reach: true);
+            ReachBackendAttributes(cls.Module, reader.GetMethodDefinition(mh).GetCustomAttributes());
     }
 
     /// <summary><see cref="ReachAttributesOf"/> over every loaded module's assembly-level
@@ -5871,6 +5872,8 @@ internal sealed partial class Compilation
             if (ReachReachedStrippedGvmCases())
                 progress = true;
             if (ReachPendingRuntimeRaisedHeirs())
+                progress = true;
+            if (ReachPendingBackendAttributes())
                 progress = true;
             if (ActivateConditionalPreservationPolicies())
                 progress = true;

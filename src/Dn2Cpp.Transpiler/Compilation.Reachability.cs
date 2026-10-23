@@ -4972,32 +4972,35 @@ internal sealed partial class Compilation
         bool reachedCtorsOnly = false)
     {
         var result = new List<DecodedAttribute>();
-        var reader = module.Reader;
         foreach (var cah in handles)
-        {
-            MethodInfo? ctor = null;
-            var ca = reader.GetCustomAttribute(cah);
-            if (ca.Constructor.Kind == HandleKind.MethodDefinition)
-                module.MethodMap.TryGetValue((MethodDefinitionHandle)ca.Constructor, out ctor);
-            else if (ca.Constructor.Kind == HandleKind.MemberReference)
-                ctor = ResolveAttrCtorRef(module, (MemberReferenceHandle)ca.Constructor);
-            if (ctor is null
-                || (IsFrameworkAssemblyName(ctor.DeclaringClass.Module.AssemblyName)
-                    && !IsUserTypeofNamedFrameworkType(ctor.DeclaringClass.FullName))
-                || (reachedCtorsOnly && !Reachable.Contains(ctor)))
-                continue;
-            CustomAttributeValue<TypeDesc> val;
-            try { val = ca.DecodeValue(AttrProvider); }
-            catch (Exception e) when (!IsMustEscape(e)) { continue; }
-            result.Add(new DecodedAttribute
-            {
-                AttrClass = ctor.DeclaringClass,
-                Ctor = ctor,
-                Fixed = val.FixedArguments,
-                Named = val.NamedArguments,
-            });
-        }
+            if (DecodeCustomAttribute(module, cah, reachedCtorsOnly) is { } attribute)
+                result.Add(attribute);
         return result;
+    }
+
+    private DecodedAttribute? DecodeCustomAttribute(Module module, CustomAttributeHandle handle, bool reachedCtorsOnly)
+    {
+        var ca = module.Reader.GetCustomAttribute(handle);
+        MethodInfo? ctor = null;
+        if (ca.Constructor.Kind == HandleKind.MethodDefinition)
+            module.MethodMap.TryGetValue((MethodDefinitionHandle)ca.Constructor, out ctor);
+        else if (ca.Constructor.Kind == HandleKind.MemberReference)
+            ctor = ResolveAttrCtorRef(module, (MemberReferenceHandle)ca.Constructor);
+        if (ctor is null
+            || (IsFrameworkAssemblyName(ctor.DeclaringClass.Module.AssemblyName)
+                && !IsUserTypeofNamedFrameworkType(ctor.DeclaringClass.FullName))
+            || (reachedCtorsOnly && !Reachable.Contains(ctor)))
+            return null;
+        CustomAttributeValue<TypeDesc> val;
+        try { val = ca.DecodeValue(AttrProvider); }
+        catch (Exception e) when (!IsMustEscape(e)) { return null; }
+        return new DecodedAttribute
+        {
+            AttrClass = ctor.DeclaringClass,
+            Ctor = ctor,
+            Fixed = val.FixedArguments,
+            Named = val.NamedArguments,
+        };
     }
 
     /// <summary>Resolves a custom attribute's constructor MemberReference to the loaded
@@ -5935,7 +5938,7 @@ internal sealed partial class Compilation
                             if (IsUserModule(module)
                                 && lastLdtokenType is { Kind: TypeKind.Class, Class: { } ltc }
                                 && IsFrameworkAssemblyName(ltc.Module.AssemblyName))
-                                _userTypeofNamedFrameworkTypes.Add(ltc.FullName);
+                                NoteUserTypeofFrameworkType(ltc.FullName);
                             // --trim-godot-classes release trigger: typeof(Sprite2D)
                             // names the wrapper (and a generic token's arguments).
                             if (trimUserSite)
