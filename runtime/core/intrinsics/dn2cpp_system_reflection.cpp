@@ -8145,14 +8145,15 @@ static Dn2CppPropRef* dn2cpp_make_propref(Dn2CppMetadataHandle<Dn2CppPropInfo> p
     return slot;
 }
 
-// Walk the type + base chain (stopping at DeclaredOnly), collecting matching properties.
-// A derived property hides a base property of the same name (most-derived wins); this
-// matches .NET for an overridden/redeclared property in the non-hiding hierarchies we
-// support (a `new` property that genuinely duplicates a base one is a carve-out).
+static bool dn2cpp_props_sig_equal(Dn2CppMetadataHandle<Dn2CppPropInfo> a, Dn2CppMetadataHandle<Dn2CppPropInfo> b,
+    const Dn2CppTypeInfo* reflected);
+
+// Hide only matching names and signatures, preserving other indexer overloads
+// and same-name properties whose return types differ.
 static int32_t dn2cpp_collect_props(const Dn2CppTypeInfo* type, int32_t flags, Dn2CppObject** out)
 {
     int32_t n = 0;
-    Dn2CppWalkList<const char*, 64> seen;
+    Dn2CppWalkList<Dn2CppMetadataHandle<Dn2CppPropInfo>, 64> seen;
     for (const Dn2CppTypeInfo* ti = type; ti != nullptr; ti = dn2cpp_reflection_base(ti))
     {
         dn2cpp_require_metadata(ti);
@@ -8166,10 +8167,10 @@ static int32_t dn2cpp_collect_props(const Dn2CppTypeInfo* type, int32_t flags, D
                 continue;
             bool hidden = false;
             for (int32_t s = 0; s < seen.size() && !hidden; s++)
-                hidden = std::strcmp(seen[s], row->name) == 0;
+                hidden = std::strcmp(seen[s]->name, row->name) == 0 && dn2cpp_props_sig_equal(seen[s], p, type);
             if (hidden)
                 continue;
-            seen.push_back(row->name);
+            seen.push_back(p);
             if (out != nullptr)
                 dn2cpp_gc_store_ref(&out[n],
                     reinterpret_cast<Dn2CppObject*>(dn2cpp_make_propref(p, type)));

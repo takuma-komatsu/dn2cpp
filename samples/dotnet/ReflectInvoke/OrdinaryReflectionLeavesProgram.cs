@@ -92,8 +92,88 @@ class AccessorCell : AccessorBase
     public int Reverse { set => _number = value; get => _number; }
     public int this[int index] { get => _number + index; set => _number = value - index; }
 }
+class PropertyBase
+{
+    public int this[int index] => index;
+    public int this[string index] => index.Length;
+    public int Changed => 1;
+    public int Same => 2;
+    public static int Shared => 3;
+    protected int Family => 4;
+    protected int FamilyGet { get; private set; }
+    protected int FamilySet { private get; set; }
+    private int PrivateBase => 5;
+    protected static int FamilyShared => 6;
+}
+class PropertyDerived : PropertyBase
+{
+    public new int this[int index] => index + 10;
+    public int this[long index] => (int)index + 20;
+    public new string Changed => "changed";
+    public new int Same => 12;
+    public static int OwnShared => 13;
+    private int PrivateDerived => 14;
+}
+class GenericPropertyBase<T>
+{
+    public T this[int index] => default!;
+    public T this[string index] => default!;
+    protected T FamilyGet { get; private set; } = default!;
+    protected T FamilySet { private get; set; } = default!;
+}
+class GenericPropertyDerived<T> : GenericPropertyBase<T>
+{
+    public new T this[int index] => default!;
+    public T this[long index] => default!;
+}
 static class Program
 {
+    private static string PropertySignature(PropertyInfo property)
+    {
+        string parameters = "";
+        foreach (ParameterInfo parameter in property.GetIndexParameters())
+            parameters += (parameters.Length == 0 ? "" : ",") + parameter.ParameterType.Name;
+        return property.DeclaringType!.Name + "." + property.Name + "(" + parameters + "):" + property.PropertyType.Name;
+    }
+    private static void Properties(string label, Type type, BindingFlags flags)
+    {
+        PropertyInfo[] properties = type.GetProperties(flags);
+        string[] signatures = new string[properties.Length];
+        bool reflected = true;
+        for (int i = 0; i < properties.Length; i++)
+        {
+            signatures[i] = PropertySignature(properties[i]);
+            reflected &= properties[i].ReflectedType == type;
+        }
+        Array.Sort(signatures, StringComparer.Ordinal);
+        Console.WriteLine("properties " + label + "=" + string.Join(";", signatures) + ";reflected=" + reflected);
+    }
+    private static void RunPropertyHiding()
+    {
+        Console.WriteLine("== property signature hiding ==");
+        const BindingFlags instance = BindingFlags.Public | BindingFlags.Instance;
+        const BindingFlags all = instance | BindingFlags.NonPublic | BindingFlags.Static;
+        Type derived = typeof(PropertyDerived);
+        Properties("base", typeof(PropertyBase), instance);
+        Properties("public", derived, instance);
+        Properties("nonpublic", derived, BindingFlags.NonPublic | BindingFlags.Instance);
+        Properties("declared", derived, all | BindingFlags.DeclaredOnly);
+        Properties("static", derived, BindingFlags.Public | BindingFlags.Static);
+        Properties("flatten", derived, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.FlattenHierarchy);
+        Properties("all", derived, all | BindingFlags.FlattenHierarchy);
+        Properties("no-instance", derived, BindingFlags.Public);
+        Properties("no-visibility", derived, BindingFlags.Instance);
+        Properties("generic-closed", typeof(GenericPropertyDerived<string>), instance);
+        Properties("generic-open", typeof(GenericPropertyDerived<>), instance);
+        Properties("generic-closed-nonpublic", typeof(GenericPropertyDerived<string>), BindingFlags.NonPublic | BindingFlags.Instance);
+        Properties("generic-open-nonpublic", typeof(GenericPropertyDerived<>), BindingFlags.NonPublic | BindingFlags.Instance);
+        foreach (Type index in new[] { typeof(int), typeof(string), typeof(long) })
+        {
+            PropertyInfo selected = derived.GetProperty("Item", new[] { index })!;
+            Console.WriteLine("property selected=" + PropertySignature(selected));
+        }
+        Console.WriteLine("property signature hiding end");
+    }
     private static string AccessorNames(MethodInfo[] methods)
     {
         string names = "";
@@ -334,6 +414,9 @@ static class Program
         Console.WriteLine("== written generic arguments ==");
         Console.WriteLine("written generic arguments: " + WrittenGenericArguments());
         Console.WriteLine("written generic arguments end");
+        if (args.Length != 0 && args[0] == "before-property-hiding")
+            return;
+        RunPropertyHiding();
     }
 
     private static object? BindConstructor(Type type, object?[] arguments,

@@ -172,10 +172,7 @@ internal sealed partial class CppEmitter
                     string setter = addresses.TryGetValue(accessors.Setter, out var s) ? s : "nullptr";
                     if (getter == "nullptr" && setter == "nullptr")
                         continue;
-                    var accessor = reader.GetMethodDefinition(!accessors.Getter.IsNil ? accessors.Getter : accessors.Setter);
-                    int attrs = MetadataMemberAttrs((int)accessor.Attributes);
-                    if (!accessors.Setter.IsNil && (reader.GetMethodDefinition(accessors.Setter).Attributes & System.Reflection.MethodAttributes.MemberAccessMask) == System.Reflection.MethodAttributes.Public)
-                        attrs = (attrs & ~4) | 2;
+                    int attrs = PropertyAccessorAttrs(reader, accessors.Getter, accessors.Setter);
                     string name = reader.GetString(property.Name);
                     var propertyAttributes = attributes ? _e.BuildAttrTable(_sb, "definition_" + stem + "_property_" + properties.Count,
                         owner.Module, property.GetCustomAttributes()) : (Expr: "nullptr", Count: 0);
