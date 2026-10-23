@@ -120,19 +120,42 @@ bool dn2cpp_pal_locale_name_supported(const char16_t* name, int32_t length)
     return ::GetLocaleInfoEx(resolved.c_str(), LOCALE_SNAME, locale, LOCALE_NAME_MAX_LENGTH) != 0;
 }
 
-int32_t dn2cpp_pal_locale_number_digits_override(const char16_t* name, int32_t length)
+bool dn2cpp_pal_locale_number_overrides(const char16_t* name, int32_t length,
+    Dn2CppPalLocaleNumberOverrides* values)
 {
     wchar_t userLocale[LOCALE_NAME_MAX_LENGTH];
     if (::GetUserDefaultLocaleName(userLocale, LOCALE_NAME_MAX_LENGTH) == 0)
-        return -1;
+        return false;
     std::wstring resolved(reinterpret_cast<const wchar_t*>(name), static_cast<size_t>(length));
     if (resolved != userLocale)
-        return -1;
-    DWORD digits = 0;
-    if (::GetLocaleInfoEx(resolved.c_str(), LOCALE_IDIGITS | LOCALE_RETURN_NUMBER,
-        reinterpret_cast<wchar_t*>(&digits), sizeof(digits) / sizeof(wchar_t)) == 0)
-        return -1;
-    return static_cast<int32_t>(digits);
+        return false;
+    std::memset(values, 0, sizeof(*values));
+    auto readString = [&](LCTYPE field, char16_t (&buffer)[530]) {
+        if (::GetLocaleInfoEx(resolved.c_str(), field,
+            reinterpret_cast<wchar_t*>(buffer), static_cast<int>(sizeof(buffer) / sizeof(char16_t))) == 0)
+            buffer[0] = u'\0';
+    };
+    auto readNumber = [&](LCTYPE field) {
+        DWORD value = 0;
+        ::GetLocaleInfoEx(resolved.c_str(), field | LOCALE_RETURN_NUMBER,
+            reinterpret_cast<wchar_t*>(&value), sizeof(value) / sizeof(wchar_t));
+        return static_cast<int32_t>(value);
+    };
+    readString(LOCALE_SPOSITIVESIGN, values->positiveSign);
+    readString(LOCALE_SNEGATIVESIGN, values->negativeSign);
+    readString(LOCALE_SDECIMAL, values->numberDecimal);
+    readString(LOCALE_STHOUSAND, values->numberGroup);
+    readString(LOCALE_SGROUPING, values->numberGrouping);
+    readString(LOCALE_SCURRENCY, values->currencySymbol);
+    readString(LOCALE_SMONDECIMALSEP, values->currencyDecimal);
+    readString(LOCALE_SMONTHOUSANDSEP, values->currencyGroup);
+    readString(LOCALE_SMONGROUPING, values->currencyGrouping);
+    values->numberDigits = readNumber(LOCALE_IDIGITS);
+    values->numberNegPattern = readNumber(LOCALE_INEGNUMBER);
+    values->currencyDigits = readNumber(LOCALE_ICURRDIGITS);
+    values->currencyPosPattern = readNumber(LOCALE_ICURRENCY);
+    values->currencyNegPattern = readNumber(LOCALE_INEGCURR);
+    return true;
 }
 
 int32_t dn2cpp_pal_ansi_encode(const char16_t* src, int32_t srcLen, char* buf, int32_t bufSize, int32_t bestFit)

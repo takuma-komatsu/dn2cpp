@@ -113,7 +113,7 @@ static const Dn2CppCultureRow kCultures[] = {
     { u"it-CH", u".", u"'", u"-", u"NaN", u"-\u221e", u"CHF", u"%", 2064, 2, 2, 2, 1, 1, 0, 3, -1 },
     { u"it-IT", u",", u".", u"-", u"NaN", u"-\u221e", u"\u20ac", u"%", 1040, 2, 3, 8, 1, 1, 0, 3, -1 },
     { u"ja", u".", u",", u"-", u"NaN", u"-\u221e", u"\u00a4", u"%", 17, 2, 0, 1, 1, 1, 1, 3, -1 },
-#if defined(__linux__)
+#if defined(__linux__) || defined(_WIN32)
     { u"ja-JP", u".", u",", u"-", u"NaN", u"-\u221e", u"\uffe5", u"%", 1041, 0, 0, 1, 1, 1, 0, 3, -1 },
 #else
     { u"ja-JP", u".", u",", u"-", u"NaN", u"-\u221e", u"\u00a5", u"%", 1041, 0, 0, 1, 1, 1, 0, 3, -1 },
