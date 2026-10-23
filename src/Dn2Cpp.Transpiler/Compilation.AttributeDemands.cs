@@ -8,6 +8,7 @@ internal sealed partial class Compilation
     private readonly HashSet<(int Module, CustomAttributeHandle Handle)> _backendAttributeRows = new();
     private readonly Queue<(Module Module, CustomAttributeHandle Handle)> _pendingBackendAttributes = new();
     private long _backendAttributeReplayCount;
+    private int _backendAllocationCursor;
 
     private void ReachBackendAttributes(Module module, CustomAttributeHandleCollection handles)
     {
@@ -38,9 +39,25 @@ internal sealed partial class Compilation
         }
     }
 
-    private bool ReachPendingBackendAttributes()
+    private bool ReachPendingBackendDemands()
     {
-        bool pending = _pendingBackendAttributes.Count > 0;
+        bool pending = false;
+        if (_backend is not null)
+            while (_backendAllocationCursor < _allocatedTypeOrder.Count)
+            {
+                var allocated = _allocatedTypeOrder[_backendAllocationCursor++];
+                if (_backend.AllocatedTypeRoots(this, allocated) is not { } roots)
+                    continue;
+                pending = true;
+                foreach (var method in roots.Methods)
+                {
+                    Reach(method);
+                    ReachRootInitializer(method);
+                }
+                foreach (var cls in roots.AttributeReadClasses)
+                    ReachBackendAttributeRows(cls);
+            }
+        pending |= _pendingBackendAttributes.Count > 0;
         while (_pendingBackendAttributes.Count > 0)
         {
             var row = _pendingBackendAttributes.Dequeue();

@@ -5882,7 +5882,7 @@ internal sealed partial class Compilation
                 progress = true;
             if (ReachPendingRuntimeRaisedHeirs())
                 progress = true;
-            if (ReachPendingBackendAttributes())
+            if (ReachPendingBackendDemands())
                 progress = true;
             if (ActivateConditionalPreservationPolicies())
                 progress = true;

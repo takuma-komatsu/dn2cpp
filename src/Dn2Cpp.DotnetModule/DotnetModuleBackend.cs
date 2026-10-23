@@ -274,11 +274,41 @@ internal sealed class DotnetModuleBackend : IEmitBackend
                     if (m.Name == ".ctor" && !m.IsStatic && m.Rva != 0)
                         roots.Add(m);
         foreach (var cls in ScriptChains(c))
+        {
+            _scriptBridgeClasses.Add(cls);
             foreach (var m in cls.Methods)
-                if (m.IsStatic && m.Rva != 0 && m.Name is "GetGodotMethodList" or "GetGodotSignalList"
-                        or "GetGodotPropertyList" or "GetGodotPropertyDefaultValues")
+                if (IsScriptMetadataMethod(m))
                     roots.Add(m);
+        }
         return roots;
+    }
+
+    private readonly HashSet<ClassInfo> _scriptBridgeClasses = new();
+
+    private static bool IsScriptMetadataMethod(MethodInfo method) => method.IsStatic && method.Rva != 0
+        && method.Name is "GetGodotMethodList" or "GetGodotSignalList"
+            or "GetGodotPropertyList" or "GetGodotPropertyDefaultValues";
+
+    public BackendAllocationRoots? AllocatedTypeRoots(Compilation c, ClassInfo allocated)
+    {
+        if (allocated.Module.AssemblyName == "GodotSharp" || _scriptBridgeClasses.Contains(allocated)
+            || !DerivesFromGodotObject(allocated))
+            return null;
+        // Code-created objects enter ScriptManagerBridge without assembly script
+        // registration. The bridge reads their generated metadata and user base chain too.
+        var methods = new List<MethodInfo>();
+        var attributes = new List<ClassInfo>();
+        for (var cls = allocated; cls is not null && cls.Module.AssemblyName != "GodotSharp"; cls = cls.BaseClass)
+        {
+            if (!_scriptBridgeClasses.Add(cls))
+                continue;
+            cls.EnsureMembers();
+            attributes.Add(cls);
+            foreach (var method in cls.Methods)
+                if (IsScriptMetadataMethod(method))
+                    methods.Add(method);
+        }
+        return new BackendAllocationRoots(methods, attributes);
     }
 
     // LookupScriptsInAssembly uses the explicit AssemblyHasScriptsAttribute type
