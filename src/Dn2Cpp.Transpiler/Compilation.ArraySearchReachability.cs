@@ -1,3 +1,6 @@
+using System.Reflection.Metadata;
+using SRME = System.Reflection.Metadata.Ecma335.MetadataTokens;
+
 namespace Dn2Cpp;
 
 internal sealed partial class Compilation
@@ -12,8 +15,67 @@ internal sealed partial class Compilation
     private int _arraySearchAllocatedTypesScanned;
     private bool _arraySearchRuntimeFactoryUsed;
     private bool _runtimeHandleBoxUsed;
+    private bool _unknownArraySearchReceiver;
+    private readonly HashSet<TypeDesc> _finiteArraySearchElements = new();
     internal bool NeedsConservativeArraySearchClosure =>
-        _nonGenericArrayEqualityDispatched || _runtimeHandleBoxUsed;
+        _unknownArraySearchReceiver || _runtimeHandleBoxUsed;
+
+    private void NoteNonGenericArraySearch(MethodInfo method, int offset)
+    {
+        _nonGenericArrayEqualityDispatched = true;
+        if (_unknownArraySearchReceiver)
+            return;
+        if (method.Module.ReflectionSummaries.TryGetValue(method.Handle, out var summary))
+            foreach (var site in summary.ArraySearchSites)
+                if (site.Offset == offset && site.Types.IsKnown)
+                {
+                    var elements = new List<TypeDesc>();
+                    foreach (int id in site.Types.Alternatives!)
+                    {
+                        var term = summary.Terms[id];
+                        if (term.Kind != TermKind.ArrayOf || term.Children.Length != 1)
+                            break;
+                        var child = summary.ValueOf(term.Children[0]);
+                        if (!child.IsKnown || child.Count != 1)
+                            break;
+                        var elementTerm = summary.Terms[child.Alternatives![0]];
+                        if (elementTerm.Kind != TermKind.TypeToken)
+                            break;
+                        var element = ResolveTypeTokenForScan(method.Module,
+                            SRME.EntityHandle(elementTerm.Token), method.Context);
+                        if (element is null || ContainsGenericVar(element) || ContainsCanonAny(element)
+                            || ContainsCanonPlaceholder(element))
+                            break;
+                        // Reference arrays may contain boxes whose runtime types the
+                        // local array identity does not constrain.
+                        bool value = element.Kind == TypeKind.Primitive
+                            ? element.Primitive is not (PrimitiveTypeCode.Object or PrimitiveTypeCode.String
+                                or PrimitiveTypeCode.Void)
+                            : element.Kind == TypeKind.Class && EnsureShape(element.Class!).IsValueType;
+                        if (!value)
+                            break;
+                        elements.Add(element);
+                    }
+                    if (elements.Count == site.Types.Count)
+                    {
+                        foreach (var element in elements)
+                            if (element.Kind == TypeKind.Class)
+                                _finiteArraySearchElements.Add(element);
+                        return;
+                    }
+                    break;
+                }
+        _unknownArraySearchReceiver = true;
+    }
+
+    private IReadOnlyList<TypeDesc> ArraySearchEqualityElements()
+    {
+        if (_unknownArraySearchReceiver)
+            return SelectedArraySearchElements();
+        var elements = _finiteArraySearchElements.ToList();
+        elements.Sort((left, right) => ClassInfo.CompareByOrder(left.Class!, right.Class!));
+        return elements;
+    }
 
     internal void AddConservativeArraySearchType(TypeDesc? type)
     {

@@ -130,6 +130,9 @@ namespace ArrayCore
             if (args.Length > 0 && args[0] == "before-md-readonly-aliases")
                 return;
             ArrayCovariantStoreSubset.Program.RunMdReadonlyAliases();
+            if (args.Length > 0 && args[0] == "before-finite-local-searches")
+                return;
+            ArrayFiniteSearchSubset.Program.Run();
 #endif
         }
     }
