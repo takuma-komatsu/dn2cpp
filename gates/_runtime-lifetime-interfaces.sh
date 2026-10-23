@@ -82,11 +82,9 @@ runtime_lifetime_diff_routes() {
         if [ "$route" = array-clone-reflected ]; then
             # SZ generic cursors share IEnumerator.MoveNext; the MD enumeration
             # entry and Current must remain unrooted in this Clone-only image.
-            if rg -qw 't_ArrayCloneInterfaceSubset_Program|MDArrayEnumerable_(GetEnumerator|get_Current)_m[0-9]+' \
-                    "$out"/generated*.cpp "$out/generated.h"; then
-                echo 'FAIL: reflection-only Clone image includes unrelated array methods or MD enumeration' >&2
-                return 1
-            fi
+            assert_no_word_match 'reflection-only Clone image includes unrelated array methods or MD enumeration' \
+                't_ArrayCloneInterfaceSubset_Program|MDArrayEnumerable_(GetEnumerator|get_Current)_m[0-9]+' \
+                "$out"/generated*.cpp "$out/generated.h" || return 1
         fi
         compile_console "$out" RuntimeLifetimeInterfacesOnly
         run_bounded "$out/RuntimeLifetimeInterfacesOnly$EXE_EXT" > "$out/native.raw.stdout"
@@ -106,10 +104,8 @@ runtime_lifetime_diff_routes() {
             array-clone-trimmed|array-clone-unshared|array-clone-all) array_clone_asserts "$out/native.stdout"; continue ;;
             safe)
                 witness='lifetime isolated safe: disposed'
-                if rg -qw 'tibind_System_Runtime_InteropServices_SafeHandle' "$out/generated.h"; then
-                    echo 'FAIL: isolated SafeWaitHandle route emitted SafeHandle metadata' >&2
-                    return 1
-                fi
+                assert_no_word_match 'isolated SafeWaitHandle route emitted SafeHandle metadata' \
+                    'tibind_System_Runtime_InteropServices_SafeHandle' "$out/generated.h" || return 1
                 ;;
             wait) witness='lifetime wait close group: 1/1' ;;
             event) witness='lifetime event group: 1' ;;

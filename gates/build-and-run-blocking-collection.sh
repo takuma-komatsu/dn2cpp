@@ -13,6 +13,8 @@
 # Closed nested generic names and namespaces, including disposal ObjectName.
 # Array assembly lookup and MemberInfo/Type module ownership agree.
 source "$(dirname "$0")/_common.sh"
+source "$PWD/gates/_negative-search-assertions.sh"
+negative_search_assertions
 message_app="gates/fixtures/blocking-disposal-message/bin/$CONFIG/$TFM/BlockingDisposalMessage.dll"
 build_gate_proj gates/fixtures/blocking-disposal-message/BlockingDisposalMessage.csproj
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $message_app ${message_app%.dll}.runtimeconfig.json ${message_app%.dll}.deps.json"
@@ -94,10 +96,8 @@ gate_extra_asserts() {
     actual=$(run_bounded "./$fixture/BlockingDisposalMessage")
     actual=$(strip_cr_win "$actual")
     assert_output "$actual" "$(strip_cr_win "$expected")"
-    if rg -q -w 'tibind_System_ObjectDisposedException' "$fixture" --glob '*.cpp'; then
-        echo "FAIL: message-only fixture bound ObjectDisposedException fields" >&2
-        exit 1
-    fi
+    assert_no_word_match 'message-only fixture bound ObjectDisposedException fields' \
+        'tibind_System_ObjectDisposedException' "$fixture"/generated*.cpp || exit 1
     grep -Fxq -- 'blocking disposal message end' <<< "$actual" \
         || { echo "FAIL: blocking disposal message witness missing" >&2; exit 1; }
 }
