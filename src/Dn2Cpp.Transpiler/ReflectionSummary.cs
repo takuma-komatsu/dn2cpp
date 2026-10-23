@@ -228,6 +228,8 @@ internal sealed class ReflectionSummary
     public RTerm[] Terms = Array.Empty<RTerm>();
     /// <summary>In ascending IL offset.</summary>
     public RSite[] Sites = Array.Empty<RSite>();
+    /// <summary>Runtime array types at non-generic searches, in ascending IL offset.</summary>
+    public (int Offset, RValue Types)[] ArraySearchSites = Array.Empty<(int, RValue)>();
     public RUnknown[] Unknowns = Array.Empty<RUnknown>();
     /// <summary>Whether the body held a site and was interpreted.</summary>
     public bool Interpreted;
@@ -293,6 +295,13 @@ internal sealed class ReflectionSummary
                 text.Append(" T=");
                 renderer.Value(text, site.TypeArgument, 0, false);
             }
+            text.Append('\n');
+        }
+        foreach (var site in ArraySearchSites)
+        {
+            renderer.ResetBudget();
+            text.Append("  IL_").Append(site.Offset.ToString("x4")).Append(" ArraySearch types=");
+            renderer.Value(text, site.Types, 0, false);
             text.Append('\n');
         }
     }
@@ -650,7 +659,8 @@ internal sealed class ReflectionSummarizer
             if (op is not (ILOpCode.Call or ILOpCode.Callvirt or ILOpCode.Newobj or ILOpCode.Ldftn
                 or ILOpCode.Ldvirtftn))
                 continue;
-            if (Call(code[i].Token)?.Api is { Kind: not ReflectionOpKind.Transfer })
+            if (Call(code[i].Token) is { } call
+                && (call.Api is { Kind: not ReflectionOpKind.Transfer } || call.ArraySearch))
                 (sites ??= new List<int>()).Add(i);
         }
         if (sites is null)
@@ -673,6 +683,7 @@ internal sealed class ReflectionSummarizer
         public int DefinitionType;
         public string[]? TypeArguments;
         public ReflectionApi? Api;
+        public bool ArraySearch;
     }
 
     internal CallInfo? Call(int token)
@@ -737,6 +748,9 @@ internal sealed class ReflectionSummarizer
         info.HasThis = signature.Header.IsInstance;
         info.ReturnsVoid = signature.ReturnType == "System.Void";
         info.ReturnsString = signature.ReturnType == "System.String";
+        info.ArraySearch = info.Parent == "System.Array" && info.Name is "IndexOf" or "LastIndexOf"
+            && !info.HasThis && signature.GenericParameterCount == 0
+            && info.Parameters.Length >= 2 && info.Parameters[0] == "System.Array";
         if (ReflectionApis.IsCandidateName(info.Name) || IsTransferName(info.Name))
             info.Api = ReflectionApis.Classify(info.Parent, info.Name, info.Parameters, info.HasThis,
                 signature.GenericParameterCount);
@@ -1387,6 +1401,7 @@ internal sealed class SummaryInterpreter
     private int _low;
     private Dictionary<int, Allocation> _allocations = new();
     private Dictionary<int, RSite> _recorded = new();
+    private Dictionary<int, RValue> _arraySearchTypes = new();
     private Dictionary<string, RValue> _fieldReads = new();
     private bool _budget, _stackShape, _newEscape, _heapChanged;
     private int _visits, _reruns, _null = -1;
@@ -1615,6 +1630,7 @@ internal sealed class SummaryInterpreter
         _low = 0;
         _allocations = new Dictionary<int, Allocation>();
         _recorded = new Dictionary<int, RSite>();
+        _arraySearchTypes = new Dictionary<int, RValue>();
         _fieldReads = new Dictionary<string, RValue>();
         _sink?.Clear();
         _newEscape = false;
@@ -2158,6 +2174,8 @@ internal sealed class SummaryInterpreter
         }
         var args = PopArguments(call.Parameters.Length);
         var receiver = call.HasThis ? Pop() : RValue.None;
+        if (call.ArraySearch)
+            _arraySearchTypes[i] = TypeOfObject(args[0], insn.Token);
         var result = Invoke(i, insn, call, receiver, args);
         if (!call.ReturnsVoid)
             Push(result);
@@ -2575,27 +2593,38 @@ internal sealed class SummaryInterpreter
 
     private ReflectionSummary Build()
     {
-        var sites = new RSite[_siteIndexes.Count];
-        for (int k = 0; k < sites.Length; k++)
+        var sites = new List<RSite>();
+        var arraySites = new List<(int Offset, RValue Types)>();
+        for (int k = 0; k < _siteIndexes.Count; k++)
         {
             int i = _siteIndexes[k];
             var insn = _code[i];
             var call = _s.Call(insn.Token)!;
+            if (call.ArraySearch)
+            {
+                RValue types = _budget ? Unknown(UnknownReason.Budget)
+                    : _stackShape ? Unknown(UnknownReason.StackShape)
+                    : insn.OpCode is ILOpCode.Ldftn or ILOpCode.Ldvirtftn ? Unknown(UnknownReason.MethodGroup)
+                    : _arraySearchTypes.TryGetValue(i, out var known) ? known : Unknown(UnknownReason.Unreached);
+                arraySites.Add((insn.Offset, types));
+                continue;
+            }
             var api = call.Api!.Value;
             if (_budget)
-                sites[k] = Opaque(insn, call, api, UnknownReason.Budget);
+                sites.Add(Opaque(insn, call, api, UnknownReason.Budget));
             else if (_stackShape)
-                sites[k] = Opaque(insn, call, api, UnknownReason.StackShape);
+                sites.Add(Opaque(insn, call, api, UnknownReason.StackShape));
             else if (insn.OpCode is ILOpCode.Ldftn or ILOpCode.Ldvirtftn)
-                sites[k] = Opaque(insn, call, api, UnknownReason.MethodGroup);
+                sites.Add(Opaque(insn, call, api, UnknownReason.MethodGroup));
             else if (_recorded.TryGetValue(i, out var site))
-                sites[k] = site;
+                sites.Add(site);
             else
-                sites[k] = Opaque(insn, call, api, UnknownReason.Unreached);
+                sites.Add(Opaque(insn, call, api, UnknownReason.Unreached));
         }
         return new ReflectionSummary
         {
-            Terms = Terms.ToArray(), Sites = sites, Unknowns = _unknowns.ToArray(), Interpreted = true,
+            Terms = Terms.ToArray(), Sites = sites.ToArray(), ArraySearchSites = arraySites.ToArray(),
+            Unknowns = _unknowns.ToArray(), Interpreted = true,
             OverBudget = _budget, StackShapeMismatch = _stackShape, BlockVisits = _visits, Reruns = _reruns,
         };
     }

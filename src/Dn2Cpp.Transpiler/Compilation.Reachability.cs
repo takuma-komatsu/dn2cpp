@@ -1603,7 +1603,7 @@ internal sealed partial class Compilation
         // The runtime Array operand can select a value array from newarr or a
         // runtime Type factory, or a boxed value stored in an object[] array.
         var candidates = new HashSet<ClassInfo>();
-        foreach (var element in SelectedArraySearchElements().ToList())
+        foreach (var element in ArraySearchEqualityElements().ToList())
         {
             var boxedElement = NullableUnderlying(element) ?? element;
             if (boxedElement is { Kind: TypeKind.Class, Class: { } c }
@@ -5802,7 +5802,7 @@ internal sealed partial class Compilation
             {
                 var handle = (MethodDefinitionHandle)SRME.EntityHandle(token);
                 var summary = module.ReflectionSummaries[handle];
-                if (summary.Sites.Length == 0)
+                if (summary.Sites.Length == 0 && summary.ArraySearchSites.Length == 0)
                     continue;
                 if (summary.OverBudget)
                     overBudget++;
@@ -6343,7 +6343,7 @@ internal sealed partial class Compilation
                                 : module.Reader.GetString(module.Reader.GetMethodDefinition((MethodDefinitionHandle)handle).Name))
                                 is "IndexOf" or "LastIndexOf"
                             && CallTargetTypeName(module, handle) == "System.Array")
-                            _nonGenericArrayEqualityDispatched = true;
+                            NoteNonGenericArraySearch(m, insn.Offset);
                         // A custom (non-Task) awaiter that genuinely suspends —
                         // AwaitOnCompleted/AwaitUnsafeOnCompleted resolves only to
                         // MoveNext above; also reach the awaiter's OnCompleted and the

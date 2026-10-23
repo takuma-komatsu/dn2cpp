@@ -21,6 +21,7 @@
     <Compile Remove="ArrayFutureStoreProgram.cs" />
     <Compile Remove="ArrayObjectFutureStoreProgram.cs" />
     <Compile Remove="ArraySearchLoopProgram.cs" />
+    <Compile Remove="ArrayFiniteSearchProgram.cs" />
   </ItemGroup>
 
 </Project>

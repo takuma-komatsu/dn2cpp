@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Explicit lower bounds preserve array shape, absolute indices, payloads and store fault order.
 # Non-generic sort and search use absolute indices, including negative hits and insertion points.
+# Finite local value-array searches retain only their elements' equality bodies.
 # Wrapped range checks preserve noops and default primitive search slice faults.
 # Sort converts element access faults through the same comparer exception boundary.
 # Type-only comparer references do not register an undeclared Default static field.
@@ -491,10 +492,39 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|writable-md-address-exact-
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|writable-sz-address-exact-element|before-sz-address-identity|vector-address-member-layout|vector-address-prefix:${DN2CPP_BEFORE_VECTOR_ADDRESS:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|readonly-raw-md-live-alias|before-md-readonly-aliases|readonly-owner-axes:unity,nogc,upstream"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/_md-readonly-byrefs.sh gates/fixtures/md-readonly-byrefs/MdReadonlyByrefs.csproj gates/fixtures/md-readonly-byrefs/Program.cs gates/fixtures/md-readonly-byrefs/runtime-checks.cpp"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ArrayCore/ArrayFiniteSearchOnly.csproj samples/dotnet/ArrayCore/ArrayFiniteSearchProgram.cs samples/dotnet/ArrayCore/ArrayFiniteSearchSubset.cs"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|finite-local-searches:ildiet,no-ildiet|before-finite-local-searches"
+(
+    DN2CPP_SAMPLE_PROJECT_DIR=samples/dotnet/ArrayCore
+    gate_extra_asserts() {
+        local out="$1" native name
+        native=$(run_bounded "$out/ArrayFiniteSearchOnly$EXE_EXT") || return $?
+        grep -Fxq 'finite local array searches end' <<< "$native" \
+            || { echo 'FAIL: finite local search block did not run' >&2; return 1; }
+        for name in Selected Alternative GenericOnly; do
+            grep -Eqw "${name}_Equals_m[0-9]+" "$out"/generated*.cpp \
+                || { echo "FAIL: selected array equality missing: $name" >&2; return 1; }
+        done
+        if grep -Eqw 'Unsearched_Equals_m[0-9]+' "$out"/generated*.cpp; then
+            echo 'FAIL: finite local search retained unrelated equality' >&2
+            return 1
+        fi
+    }
+    corelib_diff_gate ArrayFiniteSearchOnly
+    DN2CPP_OUT_SUFFIX=-no-ildiet
+    corelib_diff_gate ArrayFiniteSearchOnly --no-ildiet
+)
 corelib_diff_gate ArrayCore System.Collections
 
 native=$(run_bounded "./$_CG_OUT/ArrayCore$EXE_EXT")
 native=$(strip_cr_win "$native")
+previous=$(run_bounded dotnet "$_CG_APP" before-finite-local-searches)
+prefix=$(awk '/^== finite local array searches ==$/ { exit } { print }' <<< "$native")
+assert_output "$prefix" "$(strip_cr_win "$previous")"
+previous=$(run_bounded "./$_CG_OUT/ArrayCore$EXE_EXT" before-finite-local-searches)
+assert_output "$prefix" "$(strip_cr_win "$previous")"
+grep -Fxq 'finite local array searches end' <<< "$native" \
+    || { echo 'FAIL: finite local search block did not run in ArrayCore' >&2; exit 1; }
 previous=$(run_bounded dotnet "$_CG_APP" before-runtime-box-formatting)
 prefix=$(awk '/^== runtime-handle boxed formatting ==$/ { exit } { print }' <<< "$native")
 assert_output "$prefix" "$(strip_cr_win "$previous")"
