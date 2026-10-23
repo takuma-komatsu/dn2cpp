@@ -3684,6 +3684,15 @@ internal sealed partial class CppEmitter
             return symbol;
         }
 
+        // Public if either accessor is public; private only if every accessor is private.
+        private static int PropertyAccessorAttrs(MetadataReader reader, MethodDefinitionHandle getter,
+            MethodDefinitionHandle setter)
+        {
+            int get = getter.IsNil ? 4 : MetadataMemberAttrs((int)reader.GetMethodDefinition(getter).Attributes);
+            int set = setter.IsNil ? 4 : MetadataMemberAttrs((int)reader.GetMethodDefinition(setter).Attributes);
+            return ((get | set) & 3) | (get & set & 4);
+        }
+
         // Accessors refer to retained method-table descriptions; unreachable
         // bodies remain uncallable. Row conditions mirror NoteReflectedMemberTypes.
         private (string Expr, int Count)? BuildPropTable(ClassInfo cls, List<MethodInfo> methods)
@@ -3712,12 +3721,7 @@ internal sealed partial class CppEmitter
                     string propType = _e.MemberTypeInfoExpr(psig.ReturnType, _emittedEnums);
                     string getterExpr = getter is not null && _memberAddr.TryGetValue(getter, out var ga) ? ga : "nullptr";
                     string setterExpr = setter is not null && _memberAddr.TryGetValue(setter, out var sa) ? sa : "nullptr";
-                    // Accessibility for BindingFlags: public if either accessor is public;
-                    // static if the accessors are static (an instance/static property is
-                    // uniform across its accessors).
-                    var anyAcc = getter ?? setter!;
-                    bool pub = (getter?.IsPublic ?? false) || (setter?.IsPublic ?? false);
-                    int attrs = (anyAcc.IsStatic ? 1 : 0) | (pub ? 2 : 4);
+                    int attrs = PropertyAccessorAttrs(reader, acc.Getter, acc.Setter);
                     // Property custom attributes: user-module (app + referenced library)
                     // non-opaque classes.
                     (string Expr, int Count) pca = ("nullptr", 0);

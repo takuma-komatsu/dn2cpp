@@ -13,6 +13,7 @@
 # Virtual delegate equality and removal retain the selected method under identical-code folding.
 # Reflected events retain visibility, accessor identity, symbolic owners and guarded subscription.
 # Property accessor arrays retain visibility, order, reflected handle identity and boxed invocation.
+# Property enumeration hides by name and signature while preserving indexer overloads and binding flags.
 # Named method enumerations retain only their selection; type-name case choices keep each known branch.
 # Delegate method names select strict signatures, inherited private methods and virtual slots.
 # Delegate ABI compatibility retains by-ref, pointer and function-pointer signature identity.
@@ -272,7 +273,7 @@ DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_ordinary-reflecti
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-reflection-leaves-v1|runtime-member-attributes-prefix:${DN2CPP_BEFORE_RUNTIME_MEMBER_ATTRIBUTES:-}|runtime-return-modifiers-prefix:${DN2CPP_BEFORE_RUNTIME_RETURN_MODIFIERS:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|reflection-dispatch-v1|dispatch-prefix:${DN2CPP_BEFORE_REFLECTION_DISPATCH:-}|attribute-minted-prefix:${DN2CPP_BEFORE_ATTRIBUTE_MINTED:-}|template-accessors-prefix:${DN2CPP_BEFORE_TEMPLATE_ACCESSORS:-}|pointer-returns-prefix:${DN2CPP_BEFORE_POINTER_RETURNS:-}|delegate-invoke-targets-prefix:${DN2CPP_BEFORE_DELEGATE_INVOKE_TARGETS:-}|null-bound-chains-prefix:${DN2CPP_BEFORE_NULL_BOUND_CHAINS:-}|renamed-slot-bindings-prefix:${DN2CPP_BEFORE_RENAMED_SLOT_BINDINGS:-}|settled-object-virtual-prefix:${DN2CPP_BEFORE_SETTLED_OBJECT_VIRTUAL:-}|renamed-slot-fillers-prefix:${DN2CPP_BEFORE_RENAMED_SLOT_FILLERS:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|inherited-gvm-remedy-v1|inherited-gvm-remedy-env:${DN2CPP_INHERITED_GVM_REMEDY:-}|inherited-gvm-remedy-replay:no-ildiet,base-link,actual-xml|stripped-class-remedy-wrapper-v1|stripped-class-remedy-argv:class-remedies|stripped-interface-remedy-wrapper-v1|stripped-interface-remedy-argv:interface-remedies|interface-remedy-prefix-argv:before-interface-remedy-rows|stripped-overrides:${DN2CPP_STRIPPED_OVERRIDES:-}|library-struct-prefix:${DN2CPP_BEFORE_LIBRARY_STRUCT_RETURN:-}|function-pointer-identity-prefix:${DN2CPP_BEFORE_FUNCTION_POINTER_IDENTITY:-}"
-DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|pointer-fields-prefix:${DN2CPP_BEFORE_POINTER_FIELDS:-}|object-methods-prefix-argv:before-object-method-enumeration|property-accessors-prefix-argv:before-property-accessors"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|pointer-fields-prefix:${DN2CPP_BEFORE_POINTER_FIELDS:-}|object-methods-prefix-argv:before-object-method-enumeration|property-accessors-prefix-argv:before-property-accessors|property-hiding-prefix-argv:before-property-hiding"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/keep-written-generic-arguments.xml samples/dotnet/ReflectInvoke/link.xml samples/dotnet/ReflectFrameworkBind/link.xml samples/dotnet/ReflectFrameworkBind/keep-library-override.xml samples/dotnet/ReflectInvoke/keep-object-methods.xml"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/RecognizedReflectionOnly.csproj samples/dotnet/ReflectInvoke/RecognizedReflectionOnlyProgram.cs samples/dotnet/ReflectReturnLib/ReflectReturnLib.csproj samples/dotnet/ReflectReturnLib/RecognizedTargets.cs"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectReturnLib/ConstructorBindingTargets.cs samples/dotnet/ReflectReturnLib/SelectionTargets.cs"
@@ -2321,6 +2322,22 @@ gate_extra_asserts() {
     assert_output "$prefix" "$(strip_cr_win "$before")"
     before=$(reflection_oracle "$_CG_APP" before-written-generic-arguments) || return $?
     assert_output "$prefix" "$(strip_cr_win "$before")"
+    prefix=$(awk '/^== property signature hiding ==$/ { exit } { print }' <<< "$native")
+    before=$(run_bounded "$out/OrdinaryReflectionLeaves$EXE_EXT" before-property-hiding) || return $?
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    before=$(reflection_oracle "$_CG_APP" before-property-hiding) || return $?
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    reflection_assert_lines - 1 \
+        '== property signature hiding ==' 'property signature hiding end' \
+        'properties public=PropertyBase.Changed():Int32;PropertyBase.Item(String):Int32;PropertyDerived.Changed():String;PropertyDerived.Item(Int32):Int32;PropertyDerived.Item(Int64):Int32;PropertyDerived.Same():Int32;reflected=True' \
+        'properties generic-closed=GenericPropertyBase`1.Item(String):String;GenericPropertyDerived`1.Item(Int32):String;GenericPropertyDerived`1.Item(Int64):String;reflected=True' \
+        'properties generic-open=GenericPropertyBase`1.Item(String):T;GenericPropertyDerived`1.Item(Int32):T;GenericPropertyDerived`1.Item(Int64):T;reflected=True' \
+        'properties nonpublic=PropertyBase.Family():Int32;PropertyBase.FamilyGet():Int32;PropertyBase.FamilySet():Int32;PropertyDerived.PrivateDerived():Int32;reflected=True' \
+        'properties generic-closed-nonpublic=GenericPropertyBase`1.FamilyGet():String;GenericPropertyBase`1.FamilySet():String;reflected=True' \
+        'properties generic-open-nonpublic=GenericPropertyBase`1.FamilyGet():T;GenericPropertyBase`1.FamilySet():T;reflected=True' \
+        'property selected=PropertyDerived.Item(Int32):Int32' \
+        'property selected=PropertyBase.Item(String):Int32' \
+        'property selected=PropertyDerived.Item(Int64):Int32' <<< "$native"
     reflection_assert_lines - 1 \
         '== written generic arguments ==' 'written generic arguments: pair:Int32,Int64' \
         'written generic arguments end' <<< "$native"
@@ -2454,7 +2471,13 @@ DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectInvoke OrdinaryRefl
     --link-xml samples/dotnet/ReflectInvoke/keep-field-initializers.xml \
     --link-xml samples/dotnet/ReflectInvoke/keep-written-generic-arguments.xml \
     --reflection-metadata ReflectReturnLib.VirtualFactory=packed \
-    --reflection-metadata ReflectFieldValidationSubset.PointerFields=packed
+    --reflection-metadata ReflectFieldValidationSubset.PointerFields=packed \
+    --reflection-metadata OrdinaryReflectionLeaves.PropertyBase=packed \
+    --reflection-metadata OrdinaryReflectionLeaves.PropertyDerived=packed \
+    --reflection-metadata 'OrdinaryReflectionLeaves.GenericPropertyBase`1=packed' \
+    --reflection-metadata 'OrdinaryReflectionLeaves.GenericPropertyDerived`1=packed' \
+    --reflection-metadata 'OrdinaryReflectionLeaves.GenericPropertyBase`1[System.String]=packed' \
+    --reflection-metadata 'OrdinaryReflectionLeaves.GenericPropertyDerived`1[System.String]=packed'
 DN2CPP_OUT_SUFFIX=-native DN2CPP_STRICT_COMPLETION=1 \
     ordinary_fixture_diff_gate ReflectInvoke OrdinaryReflectionLeaves --no-ildiet --no-metadata-compression \
         -r "$object_methods_library" --link-xml samples/dotnet/ReflectInvoke/keep-object-methods.xml \
