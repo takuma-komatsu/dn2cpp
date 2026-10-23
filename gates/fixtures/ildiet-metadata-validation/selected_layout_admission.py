@@ -100,7 +100,7 @@ def selected_admission(cli, original, corelib, output, mode, arms, references, e
             result = run(command, output, label, extra=extra)
             if not shared:
                 assert b"dn2cpp: shared-generics:" not in result.stdout
-            source = "\n".join((destination / name).read_text() for name in emitted(destination))
+            source = "\n".join((destination / name).read_text(encoding="utf-8") for name in emitted(destination))
 
             def definitions(symbol):
                 return re.findall(r"(?m)^[A-Za-z_][A-Za-z0-9_* ]* " + symbol + r"_m[0-9]+\([^;\n]*\)\s*\{", source)

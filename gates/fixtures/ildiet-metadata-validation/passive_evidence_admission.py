@@ -80,7 +80,7 @@ def primary(cli, env, original, area, options, shared, variant, integrated=False
     result = run(command, area, 'primary', env)
     assert result.returncode == 0, ('Original primary is unsupported; no companion claim', variant, options, shared, area)
     emitted_files = generated(destination)
-    source = '\n'.join((destination / n).read_text() for n in emitted_files)
+    source = '\n'.join((destination / n).read_text(encoding='utf-8') for n in emitted_files)
 
     def definitions(symbol):
         return re.findall(r'(?m)^[A-Za-z_][A-Za-z0-9_* ]* ' + symbol + r'_m[0-9]+\([^;\n]*\)\s*\{', source)

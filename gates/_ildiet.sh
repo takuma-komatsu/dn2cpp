@@ -18,6 +18,7 @@ if root.tag != "ildietResult" or root.get("version") != "2" or not re.fullmatch(
 path = output / generation
 if not path.is_dir():
     raise SystemExit("missing ILDiet generation: " + str(path))
+sys.stdout.reconfigure(encoding="utf-8")
 sys.stdout.write(path.as_posix())
 PYTHON
 }

@@ -4,6 +4,7 @@ using Mono.Cecil.Cil;
 
 CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
 CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+if (CutRequestCapture.Run(args)) return;
 if (ProtocolMutation.Run(args)) return;
 if (GodotValidation.Run(args)) return;
 if (GraphValidation.Run(args)) return;

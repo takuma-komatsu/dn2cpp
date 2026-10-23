@@ -54,7 +54,7 @@ def primary(cli, original, refs, descriptor, feature, preserved, area, integrate
             assert result.returncode != 0 and b"Original array signature does not match the retained Cecil signature." in result.stderr
             continue
         files = emitted(output)
-        source = "\n".join((output / name).read_text() for name in files)
+        source = "\n".join((output / name).read_text(encoding="utf-8") for name in files)
         def count(symbol):
             return len(re.findall(r"(?m)^[A-Za-z_][A-Za-z0-9_* ]* " + symbol + r"_m[0-9]+\([^;\n]*\)\s*\{", source))
         observed = {symbol: count(symbol) for symbol in (

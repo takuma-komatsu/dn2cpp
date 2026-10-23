@@ -92,7 +92,7 @@ def primary(cli, original, refs, area, mode, integrated=False, expected=None, ex
             command.append("--no-ildiet")
         execution = command_run(command, area, label, extra)
         files = emitted(destination)
-        source = "\n".join((destination / name).read_text() for name in files)
+        source = "\n".join((destination / name).read_text(encoding="utf-8") for name in files)
 
         def definitions(symbol):
             return re.findall(r"(?m)^[A-Za-z_][A-Za-z0-9_* ]* " + symbol + r"_m[0-9]+\([^;\n]*\)\s*\{", source)

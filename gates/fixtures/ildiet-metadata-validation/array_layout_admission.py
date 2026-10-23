@@ -51,7 +51,7 @@ def check_array_layout_admission(cli, original, corelib, output, mode):
                 assert b"dn2cpp: shared-generics:" not in stdout, (mode, label)
             files = sorted(destination.glob("generated*.cpp")) + sorted(destination.glob("generated*.h"))
             assert files, (mode, label, "missing generated definitions")
-            source = "\n".join(path.read_text() for path in files)
+            source = "\n".join(path.read_text(encoding="utf-8") for path in files)
 
             def defined(symbol):
                 return bool(re.search(r"(?m)^[A-Za-z_][A-Za-z0-9_* ]* " + symbol + r"_m[0-9]+\([^;\n]*\)\s*\{", source))
