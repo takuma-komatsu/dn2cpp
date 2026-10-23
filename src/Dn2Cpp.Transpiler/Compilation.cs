@@ -576,6 +576,8 @@ internal sealed partial class Compilation
             + $" fld {ModelCensus.FieldTypesDecoded} gdepth {MaxGenericArgDepth}"
             + $" virtual-pairs {_virtualCandidatePairs} boxed-visits {_boxedEqualityVisits}"
             + $" backend-attr-replays {_backendAttributeReplayCount}"
+            + $" preserve-passes {_conditionalPreservePasses} preserve-visits {_conditionalPreserveVisits}"
+            + $" preserve-checks {_conditionalPreserveChecks} preserve-activations {_conditionalPreserveActivations}"
             + $" virtual-index-fallbacks {_virtualIndexFallbacks}";
         var loadSet = options.ResolvedLoadSet ?? AssemblyLoadSet.Resolve(assemblyPaths, options);
         foreach (var status in loadSet.DefaultRefStatus)
@@ -954,7 +956,8 @@ internal sealed partial class Compilation
 
     public void NoteReferencedType(ClassInfo cls)
     {
-        ReferencedTypes.Add(cls);
+        if (ReferencedTypes.Add(cls))
+            NoteConditionalPreservationUse(cls);
         _identityOnlyReferences.Remove(cls);
     }
 
@@ -1002,7 +1005,10 @@ internal sealed partial class Compilation
                 if (keepSeed)
                     NoteReferencedType(type.Class!);
                 else if (ReferencedTypes.Add(type.Class!))
+                {
                     _identityOnlyReferences.Add(type.Class!);
+                    NoteConditionalPreservationUse(type.Class!);
+                }
                 foreach (var arg in type.Class!.Context.TypeArgs)
                     NoteTypeIdentityClosure(arg, keepSeed);
                 break;
@@ -1406,8 +1412,8 @@ internal sealed partial class Compilation
 
     public void NoteForceEmit(ClassInfo? cls)
     {
-        if (cls is not null)
-            ForceEmittedClasses.Add(cls);
+        if (cls is not null && ForceEmittedClasses.Add(cls))
+            NoteConditionalPreservationUse(cls);
     }
 
     /// <summary>Static constructors a method body injected a lazy first-use guard for
@@ -4168,7 +4174,7 @@ internal sealed partial class Compilation
             return;
         }
         if (IntrinsicFtnTargets.Add(m))
-            Reachable.Add(m.EnsureSignature()); // reached => decoded, as in Reach
+            AddReachable(m.EnsureSignature()); // reached => decoded, as in Reach
     }
 
     /// <summary>ldftn/delegate targets whose call sites an intercept descriptor row CUT
@@ -4187,7 +4193,7 @@ internal sealed partial class Compilation
     public void NoteInterceptFtnTarget(MethodInfo m)
     {
         if (InterceptFtnTargets.Add(m))
-            Reachable.Add(m.EnsureSignature()); // reached => decoded, as in Reach
+            AddReachable(m.EnsureSignature()); // reached => decoded, as in Reach
     }
 
     /// <summary>Whether <paramref name="itf"/> is one of the interfaces String
@@ -6492,7 +6498,7 @@ internal sealed partial class Compilation
     public void NotePInvokeFtnTarget(MethodInfo m)
     {
         if (PInvokeFtnTargets.Add(m))
-            Reachable.Add(m.EnsureSignature()); // reached => decoded, as in Reach
+            AddReachable(m.EnsureSignature()); // reached => decoded, as in Reach
     }
 
     /// <summary>True for a <c>[DllImport]</c> module whose symbols the dn2cpp runtime /

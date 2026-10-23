@@ -22,6 +22,7 @@
 # A static field read through a constant-named derived owner keeps its base's
 # initializer, a conditional descriptor applies to a type used only through a
 # constant name, and Type attribute arguments retain their types without a descriptor.
+# Conditional field signatures activate earlier, later and closed generic owners.
 # Local and captured interface arrays supply null defaults without a base type row.
 # Typed loads recover external enum zero defaults; untyped defaults stay unknown.
 # Initialized locals retain typed zero/null alternatives when control flow joins.
@@ -115,7 +116,7 @@ for symbol in BuiltInMethod SameNameMethod DerivedMethod AssemblyAwareDerivedMet
         SignatureEventAddMarker SignatureEventRemoveMarker AssemblyOnlyTarget__ctor AttributeMembers__ctor \
         PreservedField InitializedField dginvoke_PreserveControlLib_PreservedDelegate \
         methtab_PreserveControlLib_PreservedDelegate SelectedChainLeaf FieldsModePayload \
-        ConditionalChainLeaf; do
+        ConditionalChainLeaf ConditionalEarlierMarker ConditionalLaterMarker ConditionalGenericMarker; do
     grep -q "$symbol" "$OUT"/generated* \
         || { echo "FAIL: preserved body $symbol is absent from generated C++" >&2; exit 1; }
 done
@@ -304,7 +305,7 @@ invoke_cli "$APP" -r "$LIBDLL" -r "$ASSEMBLYDLL" --auto-ref --project-root "$ROO
 grep -Fq "_DroppedMethod_" "$WHOLE"/generated* \
     || { echo "FAIL: childless assembly descriptor did not preserve all methods" >&2; exit 1; }
 
-if gate_cache_check "$OUT" "preserve-control|ildiet|com|trim-reflection|cut=none|preserved-box-prefix:${DN2CPP_BEFORE_PRESERVED_BOXES:-}" \
+if gate_cache_check "$OUT" "preserve-control|ildiet|com|trim-reflection|cut=none|preserved-box-prefix:${DN2CPP_BEFORE_PRESERVED_BOXES:-}|conditional-fields-prefix:${DN2CPP_BEFORE_CONDITIONAL_FIELDS:-}" \
         "$APP" "$LIBDLL" "$ASSEMBLYDLL" "$ROOT/link.xml" "$ROOT/Nested/link.xml" \
         gates/expected/preserve-control.txt; then
     gate_cache_hit_msg
@@ -315,6 +316,11 @@ else
     before=$(DN2CPP_BEFORE_PRESERVED_BOXES=1 run_bounded "./$OUT/$PROJECT")
     prefix=$(awk '/^== preserved reflection boxes ==$/ { exit } { print }' <<< "$native")
     assert_output "$(strip_cr_win "$prefix")" "$(strip_cr_win "$before")"
+    before=$(DN2CPP_BEFORE_CONDITIONAL_FIELDS=1 run_bounded "./$OUT/$PROJECT")
+    prefix=$(awk '/^== conditional field chains ==$/ { exit } { print }' <<< "$native")
+    assert_output "$(strip_cr_win "$prefix")" "$(strip_cr_win "$before")"
+    grep -Fxq 'conditional field chains end' <<< "$native" \
+        || { echo 'FAIL: conditional field chains section did not run' >&2; exit 1; }
     gate_cache_commit
 fi
 

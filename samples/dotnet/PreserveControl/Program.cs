@@ -22,6 +22,13 @@ internal static class Program
         PreservedValueBoxes();
         PreservedWrittenBack();
         Console.WriteLine("preserved reflection boxes end");
+        if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_CONDITIONAL_FIELDS") == "1")
+            return;
+        Console.WriteLine("== conditional field chains ==");
+        // Preserving these fields activates conditional owners on both sides of
+        // their metadata row and a generic owner first named by a field signature.
+        Console.WriteLine(typeof(PreserveControlLib.ConditionalFieldRoot).Name);
+        Console.WriteLine("conditional field chains end");
     }
 
     private static void PreservedWrittenBack()
