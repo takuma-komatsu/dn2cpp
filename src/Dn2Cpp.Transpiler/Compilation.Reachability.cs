@@ -5452,6 +5452,7 @@ internal sealed partial class Compilation
         VerifyCanonicalLink(spec);
         if (_preservationSeedingActive)
             ApplyPreservation(spec);
+        NoteSharedClassMembers(spec);
     }
 
     private void BuildVtableForSpecialization(ClassInfo spec)

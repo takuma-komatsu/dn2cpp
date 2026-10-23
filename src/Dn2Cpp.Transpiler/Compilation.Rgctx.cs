@@ -22,7 +22,15 @@ internal sealed partial class Compilation
     // not yet been given their owner counterparts. Only a link made AFTER a method was
     // reached needs that catch-up — Reach reaches the counterpart of every method it
     // admits to an already-grouped class. See SyncSharedGenerics.
-    private readonly List<ClassInfo> _canonCounterpartPending = new();
+    private readonly Dictionary<ClassInfo, int> _canonCounterpartWaiting = new();
+    private readonly SortedSet<int> _canonCounterpartPending = new();
+    private readonly HashSet<int> _canonCounterpartDeferred = new();
+    private int _canonCounterpartPosition = -1;
+    private readonly Dictionary<MethodInfo, int> _sharedMethodOrdinals = new();
+    private readonly SortedSet<int> _sharedMethodPending = new();
+    private readonly HashSet<int> _sharedMethodDeferred = new();
+    private int _sharedMethodPosition = -1;
+    private long _sharedClassDemandVisits, _sharedMethodDemandVisits;
 
     /// <summary>Groups every not-yet-examined closed specialization whose
     /// canonicalized argument vector differs from its real one under the
@@ -68,9 +76,10 @@ internal sealed partial class Compilation
             spec.SharedOwner = owner;
             owner.AddSharedUser(spec);
             newlyLinked.Add(spec);
+            _canonCounterpartWaiting.Add(spec, c);
+            NoteSharedClassMembers(spec);
         }
         _canonLinkCursor = end;
-        _canonCounterpartPending.AddRange(newlyLinked);
         // Freshly instantiated owners are shells; give them at least their shape, as the
         // drain would have.
         CompletePendingSpecializations();
@@ -94,7 +103,38 @@ internal sealed partial class Compilation
     private void LinkCanonicalMethodOwners()
     {
         while (_methodInstanceLinkCursor < _methodInstanceOrder.Count)
-            LinkCanonicalMethodInstance(_methodInstanceOrder[_methodInstanceLinkCursor++]);
+        {
+            int ordinal = _methodInstanceLinkCursor++;
+            var method = _methodInstanceOrder[ordinal];
+            LinkCanonicalMethodInstance(method);
+            if (method.SharedOwner is not null)
+            {
+                _sharedMethodOrdinals.Add(method, ordinal);
+                if (Reachable.Contains(method))
+                    NoteSharedMethodReach(method);
+            }
+        }
+    }
+
+    private void NoteSharedClassMembers(ClassInfo cls)
+    {
+        if (!cls.MembersReady || !_canonCounterpartWaiting.TryGetValue(cls, out int ordinal))
+            return;
+        if (ordinal <= _canonCounterpartPosition)
+            _canonCounterpartDeferred.Add(ordinal);
+        else
+            _canonCounterpartPending.Add(ordinal);
+    }
+
+    private void NoteSharedMethodReach(MethodInfo method)
+    {
+        if (Phase is EmitPhase.Finalized or EmitPhase.Emission
+            || !_sharedMethodOrdinals.TryGetValue(method, out int ordinal))
+            return;
+        if (ordinal <= _sharedMethodPosition)
+            _sharedMethodDeferred.Add(ordinal);
+        else
+            _sharedMethodPending.Add(ordinal);
     }
 
     /// <summary>Links one generic-method instantiation to its canonical
@@ -201,40 +241,43 @@ internal sealed partial class Compilation
             int reachableBefore = Reachable.Count;
             LinkCanonicalOwners();
             LinkCanonicalMethodOwners();
-            // Catch-up for the one case Reach cannot cover: a specialization whose methods
-            // were already reachable when the link was made. Reach reaches the counterpart
-            // of every method it admits, so a class linked before its methods arrive needs
-            // nothing here — which is why the delta is the newly-linked classes and not the
-            // whole of Classes. A grouped specialization whose members were never decoded
-            // has no reachable method to find a counterpart for (reaching a method means
-            // having resolved it, and resolving it is what decodes them), so it is carried
-            // to a later round rather than answered now; reading .Methods to ask anyway
-            // would decode every instantiation in the program.
-            int keep = 0;
-            for (int i = 0; i < _canonCounterpartPending.Count; i++)
+            // Catch up methods reached before their class was linked. Member completion
+            // wakes a waiting shell without decoding unrelated specializations. Creation
+            // ordinals preserve the old walk's order, including work deferred by that walk.
+            while (_canonCounterpartPending.Count > 0)
             {
-                var cls = _canonCounterpartPending[i];
+                int ordinal = _canonCounterpartPending.Min;
+                _canonCounterpartPending.Remove(ordinal);
+                _canonCounterpartPosition = ordinal;
+                _sharedClassDemandVisits++;
+                var cls = Classes[ordinal];
+                _canonCounterpartWaiting.Remove(cls);
                 if (cls.SharedOwner is null)
                     continue;   // link dropped by the vtable-shape check
-                if (!cls.MembersReady)
-                {
-                    _canonCounterpartPending[keep++] = cls;
-                    continue;
-                }
                 foreach (var m in cls.Methods.ToList())
                     if (Reachable.Contains(m))
                         ReachSharedCounterpart(m);
             }
-            _canonCounterpartPending.RemoveRange(keep, _canonCounterpartPending.Count - keep);
-            // Method-dimension counterparts: a reachable linked instantiation's
-            // canonical body is the sharing candidate, exactly like the class
-            // counterparts above (index loop: reaching can grow the list).
-            for (int i = 0; i < _methodInstanceOrder.Count; i++)
+            _canonCounterpartPosition = -1;
+            foreach (int ordinal in _canonCounterpartDeferred)
+                _canonCounterpartPending.Add(ordinal);
+            _canonCounterpartDeferred.Clear();
+            // Linking and first admission both demand the method's canonical body.
+            // Re-admissions are demands too; unchanged reachable instances need no replay.
+            while (_sharedMethodPending.Count > 0)
             {
-                var m = _methodInstanceOrder[i];
+                int ordinal = _sharedMethodPending.Min;
+                _sharedMethodPending.Remove(ordinal);
+                _sharedMethodPosition = ordinal;
+                _sharedMethodDemandVisits++;
+                var m = _methodInstanceOrder[ordinal];
                 if (m.SharedOwner is { } owner && Reachable.Contains(m))
                     Reach(owner);
             }
+            _sharedMethodPosition = -1;
+            foreach (int ordinal in _sharedMethodDeferred)
+                _sharedMethodPending.Add(ordinal);
+            _sharedMethodDeferred.Clear();
             DrainReachability();
             if (Classes.Count == classesBefore && Reachable.Count == reachableBefore)
                 break;
