@@ -1180,8 +1180,8 @@ internal sealed partial class Compilation
     }
 
     /// <summary>The rows of one owner: a type's or a generic definition's own and, with
-    /// <paramref name="inherit"/>, its bases'; a member's, a parameter's or an
-    /// assembly's own, which is all the runtime serves for them.</summary>
+    /// <paramref name="inherit"/>, its bases'; a virtual method's override chain;
+    /// other members, parameters and assemblies serve only their declared rows.</summary>
     private void ReachOwnerAttributes(REntity e, bool inherit, List<ClassInfo>? admitted, bool construct)
     {
         if (e.Kind == REntityKind.DefinitionMember && e.Metadata is { } metadata)
@@ -1192,27 +1192,44 @@ internal sealed partial class Compilation
         switch (e.Kind)
         {
             case REntityKind.Type when e.Type is { Kind: TypeKind.Class, Class: { } cls }:
+            {
+                var seen = new HashSet<ClassInfo>();
                 // A specialization learns its base only with its shape.
                 for (ClassInfo? c = cls; c is not null; c = inherit ? EnsureShape(c).BaseClass : null)
                 {
                     if (c.Handle.IsNil)
                         break;
-                    ReachAttributeRows(c.Module, c.Module.Reader.GetTypeDefinition(c.Handle).GetCustomAttributes(), admitted, construct);
+                    ReachAttributeRows(c.Module, c.Module.Reader.GetTypeDefinition(c.Handle).GetCustomAttributes(),
+                        admitted, construct, c == cls, seen);
                 }
                 break;
+            }
             // A template's clone carries its definition's rows.
             case REntityKind.Definition or REntityKind.Template when e.Assembly is { } module:
+            {
+                var seen = new HashSet<ClassInfo>();
+                bool declared = true;
                 for ((Module, TypeDefinitionHandle)? level = (module, e.Definition); level is ({ } m, var h);)
                 {
                     var td = m.Reader.GetTypeDefinition(h);
-                    ReachAttributeRows(m, td.GetCustomAttributes(), admitted, construct);
+                    ReachAttributeRows(m, td.GetCustomAttributes(), admitted, construct, declared, seen);
+                    declared = false;
                     level = inherit && !td.BaseType.IsNil ? TypeDefinitionOf(m, td.BaseType) : null;
                 }
                 break;
+            }
             case REntityKind.Method when e.Method is { Handle.IsNil: false } method:
-                ReachAttributeRows(method.Module, method.Module.Reader.GetMethodDefinition(method.Handle).GetCustomAttributes(),
-                    admitted, construct);
+            {
+                var seen = new HashSet<ClassInfo>();
+                bool declared = true;
+                for (MethodInfo? level = method; level is not null; level = inherit ? AttributeBaseMethod(level) : null)
+                {
+                    ReachAttributeRows(level.Module, level.Module.Reader.GetMethodDefinition(level.Handle).GetCustomAttributes(),
+                        admitted, construct, declared, seen);
+                    declared = false;
+                }
                 break;
+            }
             case REntityKind.Parameter when e.Method is { Handle.IsNil: false } method:
             {
                 var reader = method.Module.Reader;
@@ -1253,7 +1270,7 @@ internal sealed partial class Compilation
     /// an instance read runs named-argument setters: a row whose constructor another route
     /// reached keeps a factory-less row for a data read, which answers from metadata.</summary>
     private void ReachAttributeRows(Module module, CustomAttributeHandleCollection handles, List<ClassInfo>? admitted,
-        bool construct)
+        bool construct, bool declared = true, HashSet<ClassInfo>? seen = null)
     {
         if (handles.Count == 0)
             return;
@@ -1268,10 +1285,14 @@ internal sealed partial class Compilation
         {
             return;
         }
-        if (construct)
+        foreach (var row in rows)
+            if (construct && Admits(admitted, row.AttrClass)
+                && (declared || (AttributeUsageFlags(row.AttrClass) & 1) == 0
+                    && ((AttributeUsageFlags(row.AttrClass) & 2) != 0 || seen is null || !seen.Contains(row.AttrClass))))
+                ConstructAttributeRow(row);
+        if (seen is not null)
             foreach (var row in rows)
-                if (Admits(admitted, row.AttrClass))
-                    ConstructAttributeRow(row);
+                seen.Add(row.AttrClass);
     }
 
     private static bool Admits(List<ClassInfo>? admitted, ClassInfo attribute)

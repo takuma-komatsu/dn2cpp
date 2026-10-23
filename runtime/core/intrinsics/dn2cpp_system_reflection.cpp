@@ -9127,11 +9127,101 @@ static Dn2CppObject* dn2cpp_attr_table_to_single(Dn2CppMetadataTable<Dn2CppAttrI
     return attributes->length == 0 ? nullptr : attributes->data[0];
 }
 
-Dn2CppArrayRef* dn2cpp_get_custom_attributes(Dn2CppObject* member, Dn2CppType* attrType)
+// Walk one override at a time: an intermediate override may carry attributes
+// absent from both the queried method and GetBaseDefinition's root.
+static Dn2CppMethodRef* dn2cpp_attribute_base_method(Dn2CppMethodRef* method)
+{
+    const auto row = *dn2cpp_methodref_require(method);
+    if ((row.ilAttrs & DN2CPP_MA_VIRTUAL) == 0 || (row.ilAttrs & DN2CPP_MA_NEWSLOT) != 0
+        || (row.declaringType->flags & DN2CPP_TF_INTERFACE) != 0)
+        return nullptr;
+    const auto* declaring = dn2cpp_invoke_declaring(row.declaringType, method->reflectedType);
+    Dn2CppMethodRef* root = nullptr;
+    for (const auto* type = dn2cpp_reflection_base(declaring); type != nullptr;
+         type = dn2cpp_reflection_base(type))
+    {
+        dn2cpp_require_metadata(type);
+        const auto reflection = type->reflection();
+        for (int32_t i = 0; i < reflection.methodCount; i++)
+        {
+            const auto candidate = reflection.methods[i];
+            const auto base = *candidate;
+            if ((base.ilAttrs & DN2CPP_MA_VIRTUAL) == 0 || std::strcmp(base.name, row.name) != 0)
+                continue;
+            if (row.vtableSlot >= 0 && !dn2cpp_symbolic_method(row))
+            {
+                if (base.vtableSlot == row.vtableSlot)
+                    return dn2cpp_make_methodref(candidate, type);
+                continue;
+            }
+            auto* view = base.genericParamCount > 0
+                ? dn2cpp_make_methodref_defview(candidate, type) : dn2cpp_make_methodref(candidate, type);
+            if (root == nullptr)
+                root = dn2cpp_methodref_get_base_definition(method);
+            auto* candidateRoot = dn2cpp_methodref_get_base_definition(view);
+            if (root->method == candidateRoot->method)
+                return view;
+        }
+    }
+    return nullptr;
+}
+
+static std::vector<Dn2CppAttrInfo> dn2cpp_inherited_attributes(Dn2CppObject* member,
+                                                            const Dn2CppTypeInfo* filter,
+                                                            bool firstOnly = false)
+{
+    std::vector<Dn2CppAttrInfo> selected;
+    std::vector<const Dn2CppTypeInfo*> seen;
+    bool declared = true;
+    for (auto* level = member; level != nullptr;)
+    {
+        int32_t count;
+        const auto table = dn2cpp_member_custom_attrs(level, &count);
+        const auto previous = seen.size();
+        for (int32_t i = 0; i < count; i++)
+        {
+            const auto row = *table[i];
+            if (filter != nullptr && !dn2cpp_type_is_a(row.attrType, filter))
+                continue;
+            if (!declared && (row.usageFlags & 1) != 0)
+                continue;
+            bool duplicate = false;
+            if (!declared && (row.usageFlags & 2) == 0)
+                for (std::size_t j = 0; j < previous; j++)
+                    if (seen[j] == row.attrType)
+                        duplicate = true;
+            if (!duplicate)
+            {
+                selected.push_back(row);
+                if (firstOnly)
+                    return selected;
+                seen.push_back(row.attrType);
+            }
+        }
+        declared = false;
+        if (level->type == &dn2cpp_type_type)
+        {
+            const auto* base = dn2cpp_reflection_base(reinterpret_cast<Dn2CppType*>(level)->typeInfo);
+            level = base == nullptr ? nullptr : reinterpret_cast<Dn2CppObject*>(dn2cpp_get_type_from_handle(base));
+        }
+        else if (level->type == &dn2cpp_methodinfo_type)
+            level = reinterpret_cast<Dn2CppObject*>(dn2cpp_attribute_base_method(reinterpret_cast<Dn2CppMethodRef*>(level)));
+        else
+            break;
+    }
+    return selected;
+}
+
+Dn2CppArrayRef* dn2cpp_get_custom_attributes(Dn2CppObject* member, Dn2CppType* attrType, int32_t inherit)
 {
     int32_t count;
     Dn2CppMetadataTable<Dn2CppAttrInfo> tab = dn2cpp_member_custom_attrs(member, &count);
     const Dn2CppTypeInfo* filter = (attrType != nullptr) ? attrType->typeInfo : nullptr;
+    if (inherit != 0)
+    {
+        const auto rows = dn2cpp_inherited_attributes(member, filter);
+        return dn2cpp_attr_table_to_array(rows.data(), static_cast<int32_t>(rows.size()), filter, member, nullptr);
+    }
     return dn2cpp_attr_table_to_array(tab, count, filter, member, nullptr);
 }
 
@@ -9142,28 +9232,35 @@ Dn2CppArrayRef* dn2cpp_get_custom_attributes(Dn2CppObject* member, Dn2CppType* a
 // So a null filter matches *nothing* (not everything): the query is well-formed in .NET,
 // the type simply isn't present on the element. This differs from the no-argument
 // GetCustomAttributes() forms, where a null filter legitimately means "all".
-Dn2CppArrayRef* dn2cpp_get_custom_attributes_typed(Dn2CppObject* member, Dn2CppType* attrType)
+Dn2CppArrayRef* dn2cpp_get_custom_attributes_typed(Dn2CppObject* member, Dn2CppType* attrType, int32_t inherit)
 {
     if (attrType == nullptr)
         return dn2cpp_newarr_ref(0);
-    return dn2cpp_get_custom_attributes(member, attrType);
+    return dn2cpp_get_custom_attributes(member, attrType, inherit);
 }
 
-Dn2CppObject* dn2cpp_get_custom_attribute(Dn2CppObject* member, Dn2CppType* attrType)
+Dn2CppObject* dn2cpp_get_custom_attribute(Dn2CppObject* member, Dn2CppType* attrType, int32_t inherit)
 {
     if (attrType == nullptr)
         return nullptr; // named type absent from the reachable set -> no match
     const Dn2CppTypeInfo* filter = attrType->typeInfo;
     int32_t count;
     Dn2CppMetadataTable<Dn2CppAttrInfo> tab = dn2cpp_member_custom_attrs(member, &count);
+    if (inherit != 0)
+    {
+        const auto rows = dn2cpp_inherited_attributes(member, filter);
+        return dn2cpp_attr_table_to_single(rows.data(), static_cast<int32_t>(rows.size()), filter, member, nullptr);
+    }
     return dn2cpp_attr_table_to_single(tab, count, filter, member, nullptr);
 }
 
-int32_t dn2cpp_is_defined(Dn2CppObject* member, Dn2CppType* attrType)
+int32_t dn2cpp_is_defined(Dn2CppObject* member, Dn2CppType* attrType, int32_t inherit)
 {
     if (attrType == nullptr)
         return 0; // named type absent from the reachable set -> not defined
     const Dn2CppTypeInfo* filter = attrType->typeInfo;
+    if (inherit != 0)
+        return dn2cpp_inherited_attributes(member, filter, true).empty() ? 0 : 1;
     int32_t count;
     Dn2CppMetadataTable<Dn2CppAttrInfo> tab = dn2cpp_member_custom_attrs(member, &count);
     for (int32_t i = 0; i < count; i++)

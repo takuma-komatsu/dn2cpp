@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Method attribute inheritance honors override chains and AttributeUsage without constructing IsDefined results.
 # Nonempty string MemberwiseClone copies preserve UTF-16 contents and collection safety natively.
 # Runtime generic template invocation, member rows, hidden contexts and boxed-value copies.
 # Assembly.Load distinguishes null AssemblyName objects and missing/empty simple names.
@@ -303,7 +304,8 @@ DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_ordinary-reflecti
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|before-nested-generic-names"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/NestedGenericTypeNameSubset.cs samples/dotnet/ReflectTypes/GenericDefinitionSymbolNeighbors.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-type-leaves-v1|before-attribute-display-code-units|exception-object-prefix-argv:before-exception-object-members|assembly-name-prefix-argv:before-assembly-name-validation|attribute-construction-prefix-argv:before-attribute-construction-order"
-DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/AttributeConstructionOrderSubset.cs"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/AttributeConstructionOrderSubset.cs samples/dotnet/ReflectTypes/MethodAttributeInheritanceSubset.cs"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|before-method-attribute-inheritance"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/keep-ordinary-type-leaves.xml samples/dotnet/ReflectTypes/keep-template-signatures.xml samples/dotnet/ReflectTypes/keep-attribute-enumeration.xml"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/ClosedGenericDiagnosticsOnly.csproj samples/dotnet/ReflectTypes/ClosedGenericDiagnosticsUnshared.csproj samples/dotnet/ReflectTypes/ClosedGenericDiagnosticsOnlyProgram.cs gates/expected/reflect-types-closed-generic.txt gates/expected/reflect-types-closed-generic-unshared.txt"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/ReflectionTemplateDispatch.csproj samples/dotnet/ReflectTypes/ReflectionTemplateDispatchProgram.cs samples/dotnet/ReflectTypes/ReflectRuntimeInstantiationSubset.cs"
@@ -767,6 +769,26 @@ gate_extra_asserts() {
                 || { echo "FAIL: constructor-free IsDefined witness missing: $line" >&2; return 1; }
         done
     done
+    before=$(run_bounded dotnet "$_CG_APP" before-method-attribute-inheritance) || return $?
+    prefix=$(awk '/^== inherited method attributes ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    before=$(run_bounded "$out/OrdinaryReflectionTypeLeaves$EXE_EXT" before-method-attribute-inheritance) || return $?
+    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    for line in '== inherited method attributes ==' 'override:defined=True:constructors=0' \
+        'override:inherited=hud-key,hud-multi,middle-multi,middle-single,base-multi' \
+        'other-override:inherited=base-key,base-multi,base-single' 'new-slot:inherited=' \
+        'generic-method:inherited=base-generic' 'declared-data=KeyDownAttribute,KeyAttribute' \
+        'fresh=True' 'selected-base=1' 'non-inherited=0' \
+        'type-inherited=1' 'type-declared=0' 'type-non-inherited=0' 'inherited method attributes end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: inherited attribute witness missing: $line" >&2; return 1; }
+    done
+    grep -Fwxq -- '// SelectedAttribute::.ctor' "$out"/generated*.cpp \
+        || { echo 'FAIL: inherited attribute constructor absent' >&2; return 1; }
+    if grep -Fwxq -- '// NonInheritedAttribute::.ctor' "$out"/generated*.cpp; then
+        echo 'FAIL: non-inherited attribute constructor retained' >&2
+        return 1
+    fi
     before=$(run_bounded dotnet "$_CG_APP" before-array-object-types) || return $?
     prefix=$(awk '/^== allocated array object types ==$/ { exit } { print }' <<< "$native")
     assert_output "$prefix" "$(strip_cr_win "$before")" || return $?

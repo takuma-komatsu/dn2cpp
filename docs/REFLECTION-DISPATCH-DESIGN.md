@@ -106,6 +106,14 @@ authorize executable members. Unknown attribute owners likewise add no
 constructors or named setters from otherwise unrelated providers. Ordinary
 static reachability and explicit preservation retain their existing authority.
 
+Attribute instance queries with `inherit=true` walk type bases and virtual method
+override chains, stopping at a new slot. Rows carry the concrete attribute type's
+declared `AttributeUsage`, or the CLR defaults when absent. Derived rows suppress
+base rows of the same attribute type unless multiple instances are allowed;
+non-inherited rows remain visible only on their declaring element. Selection
+retains constructors and named setters only for admitted rows. `IsDefined` never
+constructs an attribute, and `CustomAttributeData` reads only declared rows.
+
 A recognized `MakeGenericType` over a known closed argument tuple uses an existing
 AOT instantiation, then the runtime template when a clone can run every member
 the program's sites select on it, and otherwise instantiates the definition when

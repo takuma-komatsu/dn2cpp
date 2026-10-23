@@ -12,6 +12,7 @@
   <ItemGroup>
     <Compile Include="AttributeTypePropertySubset.cs" />
     <Compile Include="AttributeConstructionOrderSubset.cs" />
+    <Compile Include="MethodAttributeInheritanceSubset.cs" />
     <Compile Include="ReflectAttrBoxedSubset.cs" />
     <Compile Include="ReflectRuntimeTypeParitySubset.cs" />
     <Compile Include="ReflectAssemblyErrorSubset.cs" />

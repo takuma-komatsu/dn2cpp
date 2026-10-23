@@ -37,5 +37,8 @@ static class Program
         if (args.Length > 0 && args[0] == "before-array-object-types")
             return;
         ReflectRuntimeTypeParitySubset.Program.RunArrayObjectTypes();
+        if (args.Length > 0 && args[0] == "before-method-attribute-inheritance")
+            return;
+        MethodAttributeInheritanceSubset.Program.Run();
     }
 }
