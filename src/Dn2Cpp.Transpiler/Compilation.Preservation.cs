@@ -323,6 +323,7 @@ internal sealed partial class Compilation
         if (!Reachable.Add(method))
             return false;
         NoteConditionalPreservationUse(method.DeclaringClass);
+        NoteSharedMethodReach(method);
         return true;
     }
 

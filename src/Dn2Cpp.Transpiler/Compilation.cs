@@ -580,6 +580,7 @@ internal sealed partial class Compilation
             + $" preserve-checks {_conditionalPreserveChecks} preserve-activations {_conditionalPreserveActivations}"
             + $" array-search-value-types {_finiteArraySearchElements.Count}"
             + $" array-search-unknown {(_unknownArraySearchReceiver ? 1 : 0)}"
+            + $" shared-class-visits {_sharedClassDemandVisits} shared-method-visits {_sharedMethodDemandVisits}"
             + $" virtual-index-fallbacks {_virtualIndexFallbacks}";
         var loadSet = options.ResolvedLoadSet ?? AssemblyLoadSet.Resolve(assemblyPaths, options);
         foreach (var status in loadSet.DefaultRefStatus)
