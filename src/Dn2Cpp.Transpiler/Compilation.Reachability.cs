@@ -287,6 +287,7 @@ internal sealed partial class Compilation
             return;
         if (!_allocatedRefTypes.Add(c))
             return;
+        _allocatedTypeOrder.Add(c);
         if (c.IsDelegate)
             _allocatedDelegates.Add(c);
         // The runtime reads an exception's Message through the get_Message slot with no IL
@@ -295,7 +296,7 @@ internal sealed partial class Compilation
         if (!_runtimeExceptionMessageReached && InheritsFromException(c))
             ReachRuntimeExceptionMessage(c);
         // Reaching an inherited wrapper can introduce the protected slot it dispatches.
-        foreach (var decl in _usedVirtualDecls.ToList())
+        foreach (var decl in ReceiverVirtualDemands(c))
             ReachVirtualImpl(c, decl);
         // A newly-allocated type also contributes its override to every already-used
         // generic virtual method (the GVM half of the used×allocated cross product).
@@ -1566,8 +1567,13 @@ internal sealed partial class Compilation
         if (!_objectEqualityDispatched)
             return false;
         int before = Reachable.Count;
-        foreach (var c in _allocatedRefTypes.Where(c => c.IsValueType).ToList())
+        int end = _allocatedTypeOrder.Count;
+        while (_boxedEqualityCursor < end)
         {
+            var c = _allocatedTypeOrder[_boxedEqualityCursor++];
+            if (!c.IsValueType)
+                continue;
+            _boxedEqualityVisits++;
             // Planning placeholders describe bodies, never the exact type of a box.
             if (ContainsCanonPlaceholder(c) || ContainsGenericVar(c))
                 continue;
@@ -1935,9 +1941,10 @@ internal sealed partial class Compilation
     {
         if (!_usedVirtualDecls.Add(decl))
             return;
+        RegisterVirtualDemand(decl);
         NoteRuntimeRaisedHeirs(decl.DeclaringClass);
         // Slot resolution can allocate types; their allocation path visits the used slots.
-        foreach (var c in _allocatedRefTypes.ToArray())
+        foreach (var c in DispatchReceivers(decl.DeclaringClass))
             ReachVirtualImpl(c, decl);
         // String's interface map (when wired) dispatches like an allocated type,
         // but String never enters _allocatedRefTypes — cross its impls in here.
@@ -3631,6 +3638,7 @@ internal sealed partial class Compilation
     /// interface slot declared by <paramref name="decl"/>, if it provides one.</summary>
     private void ReachVirtualImpl(ClassInfo c, MethodInfo decl)
     {
+        _virtualCandidatePairs++;
         EnsureCompleted(c);   // the override lives in its vtable / interface impls
         if (decl.DeclaringClass.IsInterface)
         {
