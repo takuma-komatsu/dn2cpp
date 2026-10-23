@@ -2,6 +2,7 @@
 from pathlib import Path
 import json
 import re
+import sys
 import xml.etree.ElementTree as ET
 from copied_array_admission import INPUTS, COPIED, digest, emitted, input_hashes, manifest, contract_digest, framed_hash
 from selected_layout_admission import selected_admission, selected_descriptor, selected_policy, expected_effects, EFFECTS
@@ -40,7 +41,7 @@ def primary(cli, original, refs, mode, shared, cuts, area, raw=True, expected=No
         assert b'dn2cpp: shared-generics:' not in result.stdout
     generated = emitted(area / 'cpp')
     assert any(n.endswith('.cpp') for n in generated) and any(n.endswith('.h') for n in generated)
-    source = '\n'.join((area / 'cpp' / name).read_text() for name in generated)
+    source = '\n'.join((area / 'cpp' / name).read_text(encoding='utf-8') for name in generated)
 
     def defined(symbol):
         hits = re.findall(r'(?m)^[A-Za-z_][A-Za-z0-9_* ]* ' + symbol + r'_m[0-9]+\([^;\n]*\)\s*\{', source)
@@ -83,7 +84,8 @@ def primary(cli, original, refs, mode, shared, cuts, area, raw=True, expected=No
 
 def capture(cli, original, refs, mode, shared, cuts, area):
     result = run(command(cli, original, refs, mode, shared, cuts, area / 'cpp'), area, 'driver',
-                 {'CUT_CAPTURE_DIR': str(area / 'actual')})
+                 {'CUT_CAPTURE_DIR': str(area / 'actual'),
+                  'CUT_CAPTURE_PYTHON': str(Path(sys.executable).resolve(strict=True))})
     assert result.returncode != 0 and b'ILDiet failed with exit code 86' in result.stdout + result.stderr
     record = json.loads((area / 'actual/capture.json').read_bytes())
     assert record['companion_started'] is False and record['exit_code'] == 86
@@ -174,7 +176,7 @@ def validate_selected_cuts(companion, probe, cli, corelib, directory):
             area = directory / label / ('sharing-on' if shared else 'sharing-off')
             expected = primary(cli, original, refs, mode, shared, cuts, area / 'raw')
             prepared.append((mode, variant, original, refs, shared, cuts, area, expected))
-    capture_cli = clone_capture_driver(cli, directory / 'capture-cli')
+    capture_cli = clone_capture_driver(cli, probe, directory / 'capture-cli')
     capture_pin = tree_files(capture_cli.parent)
     assert (capture_cli.parent / 'Dn2Cpp.Runtime.dll').read_bytes() == (cli.parent / 'Dn2Cpp.Runtime.dll').read_bytes()
     captures = []

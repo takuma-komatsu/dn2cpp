@@ -100,7 +100,7 @@ def publish(companion, probe, original, refs, area, mode, observed=False, extra=
         assert after and after <= first
     assert hashes_for(original, refs) == hashes
     receipt = {"observation": observation, "files": {p.name: digest(p) for p in published.iterdir() if p.is_file()},
-               "manifest": (area / "publication/ildiet-result.xml").read_text().replace(str(area / "publication"), "<publication>"),
+               "manifest": (area / "publication/ildiet-result.xml").read_text(encoding="utf-8").replace(str(area / "publication"), "<publication>"),
                "stdout": execution.stdout.decode().replace(str(area / "publication"), "<publication>"), "stderr": execution.stderr.decode(),
                "retained_stdout": check.stdout.decode(), "retained_stderr": check.stderr.decode()}
     (area / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
@@ -124,7 +124,7 @@ def admission(cli, original, refs, area, mode, integrated=False, extra=None, exp
         if not shared:
             assert b"dn2cpp: shared-generics:" not in execution.stdout
         files = emitted(destination)
-        source = "\n".join((destination / name).read_text() for name in files)
+        source = "\n".join((destination / name).read_text(encoding="utf-8") for name in files)
         def definition(symbol):
             return re.findall(r"(?m)^[A-Za-z_][A-Za-z0-9_* ]* " + symbol + r"_m[0-9]+\([^;\n]*\)\s*\{", source)
         assert definition("InventoryEntry_Main") and definition("InventoryEntry_Carry") and definition("InventoryEntry_Read")

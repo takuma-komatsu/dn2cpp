@@ -98,7 +98,7 @@ def validate_budget_copy(result, request, publication, original, references, mod
     if probe is not None:
         checked = run(["dotnet", "exec", probe, "--check-token-closure", *sorted(published.glob("*.dll"))], area, "closure", extra=extra)
         assert b"token-closure=valid operands=" in checked.stdout
-    normalized = (Path(publication) / "ildiet-result.xml").read_text().replace(str(publication), "<publication>")
+    normalized = (Path(publication) / "ildiet-result.xml").read_text(encoding="utf-8").replace(str(publication), "<publication>")
     return {"manifest": normalized, "stdout": result.stdout.decode().replace(str(publication), "<publication>"),
             "stderr": result.stderr.decode().replace(str(publication), "<publication>"),
             "generation": root.get("generation"), "counters": dict(counters)}

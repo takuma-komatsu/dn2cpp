@@ -4,6 +4,7 @@ import re
 import json
 import os
 import shutil
+import sys
 import xml.etree.ElementTree as ET
 from passive_evidence_admission import create, executable_control, run, files, generated, COPIED
 from copied_array_admission import digest, manifest, contract_digest, framed_hash
@@ -35,7 +36,7 @@ def primary(cli, env, original, descriptor, cut, area, options, shared, variant,
     result = run(command, area, 'primary', env)
     assert result.returncode == 0, ('Original primary unsupported' if raw else 'Integrated primary failed', variant, options, shared, area)
     emitted_files = generated(destination)
-    source = '\n'.join((destination / n).read_text() for n in emitted_files)
+    source = '\n'.join((destination / n).read_text(encoding='utf-8') for n in emitted_files)
 
     def definitions(symbol):
         return re.findall(r'(?m)^[A-Za-z_][A-Za-z0-9_* ]* ' + symbol + r'_m[0-9]+\([^;\n]*\)\s*\{', source)
@@ -106,17 +107,25 @@ def descriptors(original, area, mode):
     return 'Graph.EagerDeadCross::' + target, {'cut-only': original / 'link.xml', 'cut-and-descriptor': path}
 
 
-def clone_capture_driver(cli, destination):
+def clone_capture_driver(cli, probe, destination):
+    probe = Path(probe).resolve(strict=True)
     before = tree_files(cli.parent)
     assert 'ildiet/ILDiet' not in before and 'ildiet/ILDiet.exe' not in before
     shutil.copytree(cli.parent, destination)
     assert tree_files(destination) == before
-    host = destination / 'ildiet/ILDiet'
-    source = Path(__file__).with_name('cut_request_capture.py')
-    with host.open('xb') as stream:
-        stream.write(source.read_bytes())
-    host.chmod(0o755)
-    assert tree_files(destination) == {**before, 'ildiet/ILDiet': {'sha256': digest(source), 'mode': 0o755}}
+    # The managed companion route works without Unix shebang execution or modes.
+    payload = {path.name: path for path in probe.parent.iterdir()
+               if path.is_file() and path.suffix in ('.dll', '.json')}
+    for extension in ('.dll', '.runtimeconfig.json', '.deps.json'):
+        payload['ILDiet' + extension] = probe.with_suffix(extension)
+    payload['cut_request_capture.py'] = Path(__file__).with_name('cut_request_capture.py').resolve(strict=True)
+    expected = dict(before)
+    for name, source in payload.items():
+        assert source.is_file() and not source.is_symlink(), source
+        expected['ildiet/' + name] = {'sha256': digest(source), 'mode': source.stat().st_mode & 0o777}
+        shutil.copy2(source, destination / 'ildiet' / name)
+    assert tree_files(destination) == expected
+    assert tree_files(cli.parent) == before
     return destination / 'dn2cpp.dll'
 
 
@@ -127,7 +136,8 @@ def semantics(root):
 
 def capture(cli, env, original, descriptor, cut, area, options, shared):
     command = cli_command(cli, original, descriptor, cut, area / 'cpp', options, shared)
-    result = run(command, area, 'capture', {**env, 'CUT_CAPTURE_DIR': str(area / 'capture')})
+    result = run(command, area, 'capture', {**env, 'CUT_CAPTURE_DIR': str(area / 'capture'),
+                 'CUT_CAPTURE_PYTHON': str(Path(sys.executable).resolve(strict=True))})
     assert result.returncode != 0 and b'ILDiet failed with exit code 86' in result.stdout + result.stderr
     record = json.loads((area / 'capture/capture.json').read_bytes())
     assert record['kind'] == 'cut-request-only' and record['companion_started'] is False and record['exit_code'] == 86
@@ -276,7 +286,7 @@ def validate_cut_authority(companion, probe, cli, corelib, directory):
                     raw[(selector, arm, shared)] = primary(cli, {}, original, descriptor, cut,
                         area / selector / arm / str(shared) / 'raw', options, shared, mode)
         prepared.append((mode, area, original, cut, selectors, raw))
-    capture_cli = clone_capture_driver(cli, directory / 'capture-cli')
+    capture_cli = clone_capture_driver(cli, probe, directory / 'capture-cli')
     capture_pin = tree_files(capture_cli.parent)
     captures = {}
     for mode, area, original, cut, selectors, raw in prepared:

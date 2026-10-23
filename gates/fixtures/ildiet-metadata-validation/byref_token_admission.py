@@ -84,7 +84,7 @@ def primary(cli, original, refs, area, mode, integrated=False, expected=None, ex
         if not shared:
             assert b"dn2cpp: shared-generics:" not in execution.stdout
         files = emitted(destination)
-        source = "\n".join((destination / name).read_text() for name in files)
+        source = "\n".join((destination / name).read_text(encoding="utf-8") for name in files)
 
         def definitions(symbol):
             return re.findall(r"(?m)^[A-Za-z_][A-Za-z0-9_* ]* " + symbol + r"_m[0-9]+\([^;\n]*\)\s*\{", source)

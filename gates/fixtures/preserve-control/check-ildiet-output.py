@@ -36,7 +36,7 @@ def digest(path):
 
 
 def snapshot(path):
-    return {str(p.relative_to(path)): digest(p) for p in path.rglob('*') if p.is_file()}
+    return {p.relative_to(path).as_posix(): digest(p) for p in path.rglob('*') if p.is_file()}
 
 
 original = digest(app)

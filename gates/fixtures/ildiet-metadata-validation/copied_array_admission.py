@@ -166,7 +166,7 @@ def check_copied_array_admission(cli, original, corelib, output, mode, arms=("or
             result = run(command, output, label, extra=extra)
             if not shared:
                 assert b"dn2cpp: shared-generics:" not in result.stdout, (mode, label)
-            source = "\n".join((destination / name).read_text() for name in emitted(destination))
+            source = "\n".join((destination / name).read_text(encoding="utf-8") for name in emitted(destination))
 
             def definitions(symbol):
                 return re.findall(r"(?m)^[A-Za-z_][A-Za-z0-9_* ]* " + symbol + r"_m[0-9]+\([^;\n]*\)\s*\{", source)
@@ -382,7 +382,7 @@ def check_copied_late_admission(cli, original, corelib, output, mode, arms, refe
             result = run(command, output, label, extra=extra)
             if not shared:
                 assert b"dn2cpp: shared-generics:" not in result.stdout, (mode, label)
-            source = "\n".join((destination / name).read_text() for name in emitted(destination))
+            source = "\n".join((destination / name).read_text(encoding="utf-8") for name in emitted(destination))
 
             def definitions(symbol):
                 return re.findall(r"(?m)^[A-Za-z_][A-Za-z0-9_* ]* " + symbol + r"_m[0-9]+\([^;\n]*\)\s*\{", source)
