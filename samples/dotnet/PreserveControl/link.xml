@@ -16,6 +16,10 @@
     <type fullname="PreserveControlLib.NoSuch&#84;ype" required="0" />
     <type fullname="PreserveControlLib.ConditionalUsed" preserve="methods" required="0" />
     <type fullname="PreserveControlLib.ConditionalUnused" preserve="methods" required="0" />
+    <type fullname="PreserveControlLib.ConditionalEarlier" preserve="methods" required="0" />
+    <type fullname="PreserveControlLib.ConditionalFieldRoot" preserve="fields" required="0" />
+    <type fullname="PreserveControlLib.ConditionalLater" preserve="methods" required="0" />
+    <type fullname="PreserveControlLib.ConditionalGeneric`1" preserve="methods" required="0" />
     <type fullname="PreserveControlLib.SignatureMembers" preserve="nothing">
       <field signature="PreserveControlLib.FieldSignatureType SignatureField" />
       <property signature="System.Int32 SignatureProperty" accessors="get" />

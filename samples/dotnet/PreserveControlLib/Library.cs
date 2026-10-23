@@ -102,6 +102,28 @@ public sealed class ConditionalUnused
     private static void ConditionalUnusedChainLeaf() => Console.WriteLine("conditional-unused-chain");
 }
 
+public sealed class ConditionalEarlier
+{
+    private static void ConditionalEarlierMarker() => Console.WriteLine("conditional-earlier");
+}
+
+public sealed class ConditionalFieldRoot
+{
+    private ConditionalEarlier earlier;
+    private ConditionalLater later;
+    private ConditionalGeneric<int> generic;
+}
+
+public sealed class ConditionalLater
+{
+    private static void ConditionalLaterMarker() => Console.WriteLine("conditional-later");
+}
+
+public sealed class ConditionalGeneric<T>
+{
+    private static void ConditionalGenericMarker() => Console.WriteLine(typeof(T).Name);
+}
+
 public sealed class WildcardMembers
 {
     private static void WildcardMethod() => SelectedChainLeaf();

@@ -43,7 +43,7 @@ internal sealed partial class Compilation
         // set is the whole of reaching it.
         if (m.IsSynthetic)
         {
-            Reachable.Add(m);
+            AddReachable(m);
             return;
         }
         // A System.Net.Http method whose body dn2cpp replaces: the SocketsHttpHandler transport
@@ -63,7 +63,7 @@ internal sealed partial class Compilation
         // edge is left dangling.
         if (CoreIntrinsics.BrHttpShim.Matches(m.DeclaringClass.FullName, m.Name))
         {
-            if (Reachable.Add(m))
+            if (AddReachable(m))
             {
                 _predTrace.TryAdd(m, _currentScan);
                 m.EnsureSignature();
@@ -88,7 +88,7 @@ internal sealed partial class Compilation
         // unlike BrHttpShim there is no managed edge to reach.
         if (CoreIntrinsics.BrEnumInstanceFormat.Matches(m.DeclaringClass.FullName, m.Name))
         {
-            if (Reachable.Add(m))
+            if (AddReachable(m))
             {
                 _predTrace.TryAdd(m, _currentScan);
                 m.EnsureSignature();
@@ -97,7 +97,7 @@ internal sealed partial class Compilation
         }
         if (CoreIntrinsics.BrDelegateClone.Matches(m.DeclaringClass.FullName, m.Name))
         {
-            if (Reachable.Add(m))
+            if (AddReachable(m))
             {
                 _predTrace.TryAdd(m, _currentScan);
                 m.EnsureSignature();
@@ -112,7 +112,7 @@ internal sealed partial class Compilation
         }
         if (CoreIntrinsics.BrLifetimeDispose.Matches(m.DeclaringClass.FullName, m.Name))
         {
-            if (Reachable.Add(m))
+            if (AddReachable(m))
             {
                 _predTrace.TryAdd(m, _currentScan);
                 m.EnsureSignature();
@@ -128,7 +128,7 @@ internal sealed partial class Compilation
         // helpers, so the real IL's box and the Comparer.Default cctor behind it stay out.
         if (IsUnorderableComparerCompareBody(m))
         {
-            if (Reachable.Add(m))
+            if (AddReachable(m))
             {
                 _predTrace.TryAdd(m, _currentScan);
                 m.EnsureSignature();
@@ -212,7 +212,7 @@ internal sealed partial class Compilation
             || (m.DeclaringClass.FullName == "System.Runtime.Loader.AssemblyLoadContext"
                 && m.Name == "GetLoadedAssemblies"))
             return;
-        if (Reachable.Add(m))
+        if (AddReachable(m))
         {
             _predTrace.TryAdd(m, _currentScan);
             // Reached => decoded. This adds no decode — a reachable method's signature is
@@ -288,6 +288,7 @@ internal sealed partial class Compilation
         if (!_allocatedRefTypes.Add(c))
             return;
         _allocatedTypeOrder.Add(c);
+        NoteConditionalPreservationUse(c);
         if (c.IsDelegate)
             _allocatedDelegates.Add(c);
         // The runtime reads an exception's Message through the get_Message slot with no IL
@@ -1476,7 +1477,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsIntrinsicType(c.FullName) || c.IntrinsicCppName is not null)
             return;
         bool hash = name == "GetHashCode";
-        if (BaseValueBody(c, hash) is { } b && Reachable.Add(b))
+        if (BaseValueBody(c, hash) is { } b && AddReachable(b))
             foreach (var f in StructuralFields(c))
                 ReachStructuralField(f.Type, hash);
     }
@@ -1509,10 +1510,10 @@ internal sealed partial class Compilation
     /// and the generated C++ names a function nothing defines.</summary>
     private void ReachSynthesizedValueEquality(ClassInfo c, bool includeHash, bool includeEquals = true)
     {
-        if (includeEquals && SynthesizedValueEquals(c) is { } eq && Reachable.Add(eq))
+        if (includeEquals && SynthesizedValueEquals(c) is { } eq && AddReachable(eq))
             foreach (var f in StructuralFields(c))
                 ReachStructuralField(f.Type, hash: false);
-        if (includeHash && SynthesizedValueHash(c) is { } gh && Reachable.Add(gh))
+        if (includeHash && SynthesizedValueHash(c) is { } gh && AddReachable(gh))
             foreach (var f in StructuralFields(c))
                 ReachStructuralField(f.Type, hash: true);
     }
@@ -1520,7 +1521,7 @@ internal sealed partial class Compilation
     /// <summary>Reaches what one field of a structural walk calls. Only a struct field is
     /// an edge — a primitive/enum compares inline, a string and a reference go through the
     /// runtime helpers, an intrinsic value type through its payload helper. The recursion
-    /// terminates on the <c>Reachable.Add</c> above (and the CLR forbids a cyclic struct
+    /// terminates on the <c>AddReachable</c> above (and the CLR forbids a cyclic struct
     /// graph anyway).</summary>
     private void ReachStructuralField(TypeDesc t, bool hash)
     {

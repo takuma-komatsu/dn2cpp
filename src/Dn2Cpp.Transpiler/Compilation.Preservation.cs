@@ -13,6 +13,15 @@ internal sealed partial class Compilation
     private readonly HashSet<ClassInfo> _explicitReflectionKeep = new();
     private readonly HashSet<ClassInfo> _activatedConditionalPolicies = new();
     private bool _preservationSeedingActive;
+    private long _conditionalPreservePasses, _conditionalPreserveVisits;
+    private long _conditionalPreserveChecks, _conditionalPreserveActivations;
+    private readonly HashSet<(int Module, TypeDefinitionHandle Type)> _conditionalPreserveDefinitions = new();
+    private readonly List<ClassInfo> _conditionalPreserveClasses = new();
+    private readonly Dictionary<ClassInfo, int> _conditionalPreserveOrdinals = new();
+    private readonly SortedSet<int> _conditionalPreservePending = new();
+    private readonly HashSet<int> _conditionalPreserveDeferred = new();
+    private int _conditionalPreserveClassCursor;
+    private int _conditionalPreservePosition = -1;
 
     // A generic definition's rule applies to the instantiations the program mints, never
     // to one minted only by applying the rule (its signatures, or bodies only it admitted),
@@ -78,6 +87,14 @@ internal sealed partial class Compilation
             modules.Add(new PreservationModule { Index = module.Index, AssemblyName = module.AssemblyName, Reader = module.Reader });
         _preservePolicies = new PreservationReader(modules, _projectRoots, _linkXmlFiles,
             _linkFeatures.ToArray()).Read();
+        foreach (var entry in _preservePolicies)
+        {
+            var policy = entry.Value;
+            if (policy.ConditionalKind != PreserveKind.None
+                || policy.ConditionalFields.Count > 0 || policy.ConditionalMethods.Count > 0
+                || policy.ConditionalProperties.Count > 0 || policy.ConditionalEvents.Count > 0)
+                _conditionalPreserveDefinitions.Add(entry.Key);
+        }
     }
 
     private void SeedPreservedMembers()
@@ -139,8 +156,10 @@ internal sealed partial class Compilation
                 if (policy.Fields.Contains(field.Handle)
                     || conditional && policy.ConditionalFields.Contains(field.Handle)) PreserveField(field);
         bool ctorPreserved = false;
+        bool keepMethods = delegateAll || (kind & (PreserveKind.Methods | PreserveKind.DefaultConstructor)) != 0
+            || policy.Methods.Count > 0 || conditional && policy.ConditionalMethods.Count > 0;
         // By index: preserving a method can instantiate methods on cls.
-        for (int i = 0; i < cls.Methods.Count; i++)
+        for (int i = 0; keepMethods && i < cls.Methods.Count; i++)
         {
             var method = cls.Methods[i];
             if (PolicyKeeps(policy, kind, conditional, delegateAll, method))
@@ -240,24 +259,71 @@ internal sealed partial class Compilation
 
     private bool ActivateConditionalPreservationPolicies()
     {
-        if (!_preservationSeedingActive || _preservePolicies.Count == 0)
+        if (!_preservationSeedingActive || _conditionalPreserveDefinitions.Count == 0)
             return false;
+        _conditionalPreservePasses++;
+        // Snapshot the same class boundary as a full pass. Facts for an earlier
+        // class wait for the next drain; later classes still activate in this one.
+        int end = Classes.Count;
+        while (_conditionalPreserveClassCursor < end)
+        {
+            var cls = Classes[_conditionalPreserveClassCursor++];
+            _conditionalPreserveVisits++;
+            if (!_conditionalPreserveDefinitions.Contains((cls.Module.Index, cls.Handle)))
+                continue;
+            int ordinal = _conditionalPreserveClasses.Count;
+            _conditionalPreserveClasses.Add(cls);
+            _conditionalPreserveOrdinals.Add(cls, ordinal);
+            _conditionalPreservePending.Add(ordinal);
+        }
         bool activated = false;
-        foreach (var cls in Classes.ToList())
-            if (!_activatedConditionalPolicies.Contains(cls)
-                && _preservePolicies.TryGetValue((cls.Module.Index, cls.Handle), out var policy)
-                && (policy.ConditionalKind != PreserveKind.None
-                    || policy.ConditionalFields.Count > 0 || policy.ConditionalMethods.Count > 0
-                    || policy.ConditionalProperties.Count > 0 || policy.ConditionalEvents.Count > 0)
-                && PreservedTypeWasOtherwiseUsed(cls))
+        while (_conditionalPreservePending.Count > 0)
+        {
+            int ordinal = _conditionalPreservePending.Min;
+            _conditionalPreservePending.Remove(ordinal);
+            _conditionalPreservePosition = ordinal;
+            var cls = _conditionalPreserveClasses[ordinal];
+            if (!_activatedConditionalPolicies.Contains(cls) && CheckConditionalPreservationUse(cls))
             {
                 _activatedConditionalPolicies.Add(cls);
+                _conditionalPreserveActivations++;
                 if (cls.ShapeReady) ApplyPreservationAfterShape(cls);
                 activated = true;
             }
+        }
+        _conditionalPreservePosition = -1;
+        foreach (int ordinal in _conditionalPreserveDeferred)
+            _conditionalPreservePending.Add(ordinal);
+        _conditionalPreserveDeferred.Clear();
         if (activated)
             ReachPreservedStrippedGvmCases();
         return activated;
+    }
+
+    private bool CheckConditionalPreservationUse(ClassInfo cls)
+    {
+        _conditionalPreserveChecks++;
+        return PreservedTypeWasOtherwiseUsed(cls);
+    }
+
+    private void NoteConditionalPreservationUse(ClassInfo cls)
+    {
+        if (_conditionalPreserveOrdinals.TryGetValue(cls, out int ordinal)
+            && !_activatedConditionalPolicies.Contains(cls))
+        {
+            if (ordinal <= _conditionalPreservePosition)
+                _conditionalPreserveDeferred.Add(ordinal);
+            else
+                _conditionalPreservePending.Add(ordinal);
+        }
+    }
+
+    private bool AddReachable(MethodInfo method)
+    {
+        if (!Reachable.Add(method))
+            return false;
+        NoteConditionalPreservationUse(method.DeclaringClass);
+        return true;
     }
 
     private void ApplyPreservationToInstantiatedMethod(MethodInfo method)
