@@ -2,7 +2,7 @@
 
 A contributor-facing document showing **where to add what**. For the big picture
 see `README.md`, for working conventions `AGENTS.md`, for the open backlog
-`docs/STATUS.md`.
+[GitHub Issues](https://github.com/takuma-komatsu/dn2cpp/issues?q=is%3Aissue%20is%3Aopen).
 
 ---
 
@@ -1114,8 +1114,7 @@ Four rules the existing knobs were shaped by:
   recording for known NoAlloc roots. Verification runs after the emit fixpoint,
   failing with a `NotSupportedException`.
 
-Auto-`noexcept` is a closed non-goal, not a missing knob; the carve-out is in
-`docs/STATUS.md`.
+Auto-`noexcept` is a closed non-goal, not a missing knob.
 
 ### F. A managed-fault guard on the emitted body — core lane
 

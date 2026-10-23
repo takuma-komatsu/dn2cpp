@@ -109,9 +109,8 @@ md_col() {
 # thing a harness produces; requiring it to exist would fail on every clean
 # checkout, i.e. the check would be red for the one reason that says nothing.
 #
-# One consequence to know rather than to discover, since `docs/STATUS.md` is in
-# scope: a backlog row naming a file the ticket proposes to CREATE fails here.
-# That is the correct trade; spell such a path without the backticked form.
+# A proposed path that does not exist yet also fails here; spell it without
+# the backticked form until the file exists.
 check_paths() {
     local f="$1" p n=0
     for p in $(grep -oE '`(gates|samples|src|runtime|docs|dist|internal|third_party)/[A-Za-z0-9_./+-]*`' "$f" \

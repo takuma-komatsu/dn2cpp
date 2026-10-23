@@ -802,7 +802,8 @@ metadata files and the four-row `SHA256SUMS.txt` to be present locally.
   The only things vouching for identity are `SHA256SUMS.txt` and the
   `RELEASE.txt` inside the package.
 
-Both are current behaviour, each with a row in `docs/STATUS.md`.
+Both are current behaviour; signing work is tracked in
+[GitHub Issues](https://github.com/takuma-komatsu/dn2cpp/issues?q=is%3Aissue%20is%3Aopen).
 
 ---
 
