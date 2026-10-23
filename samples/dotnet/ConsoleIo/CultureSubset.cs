@@ -5,8 +5,8 @@ using System.Globalization;
 // Culture: IFormatProvider / CultureInfo / NumberFormatInfo.
 // Exercises culture-aware number/currency/percent formatting via both the
 // value.ToString(..., provider) overloads and string.Format(provider, ...).
-// Cultures are named explicitly out of the table dn2cpp ships (nothing here
-// reads the host), plus an explicitly-built NumberFormatInfo.
+// Named cultures disable user overrides so fixed numeric text is independent
+// of Windows settings. Custom symbols use an explicitly-built NumberFormatInfo.
 //
 // Its LAST section is about the modeled NumberFormatInfo's SHAPE rather than
 // about culture data: multi-level digit grouping (NumberGroupSizes), the one
@@ -44,13 +44,13 @@ static class Program
     internal static void __GateEntry()
     {
         Show("invariant", CultureInfo.InvariantCulture);
-        Show("en-US", new CultureInfo("en-US"), skipCurrency: true);
-        Show("de-DE", new CultureInfo("de-DE"));
+        Show("en-US", new CultureInfo("en-US", false), skipCurrency: true);
+        Show("de-DE", new CultureInfo("de-DE", false));
         Show("fr-FR", CultureInfo.GetCultureInfo("fr-FR"));
-        Show("ja-JP", new CultureInfo("ja-JP"), skipCurrency: true);
+        Show("ja-JP", new CultureInfo("ja-JP", false), skipCurrency: true);
 
         // The NumberFormat property is itself an IFormatProvider.
-        var de = new CultureInfo("de-DE");
+        var de = new CultureInfo("de-DE", false);
         Console.WriteLine("[via NumberFormat]");
         Console.WriteLine("  N2  = " + (9876.5).ToString("N2", de.NumberFormat));
         Console.WriteLine("  fmt = " + string.Format(de.NumberFormat, "{0:N2}", 9876.5));
@@ -114,15 +114,14 @@ static class Program
         // The SUBJECT is the SHAPE of the modeled NumberFormatInfo, not these cultures: a
         // uniform group size cannot express the thirteen cultures that group 3-then-2, and
         // the failure is silent (they fall back to invariant symbols under their own name).
-        // Naming real cultures stays deterministic because every value below is produced
-        // with an EXPLICIT culture argument, so nothing here reads the host.
+        // User overrides must stay disabled for the fixed grouping inputs below.
         //
         // Name only cultures whose grouping CLDR has not revised: this bucket's oracle is the
         // HOST's real .NET, whose ICU is a different release from the one the table was cut
         // from, so a row CLDR moved reddens it on that host alone. ur-PK is such a row —
         // gates/build-and-run-culture-info-api.sh covers it frozen, in "-- table breadth --".
-        var hiIN = new CultureInfo("hi-IN");
-        var enIN = new CultureInfo("en-IN");
+        var hiIN = new CultureInfo("hi-IN", false);
+        var enIN = new CultureInfo("en-IN", false);
         Console.WriteLine("[group sizes]");
         ShowSizes("inv", inv);
         ShowSizes("de-DE", de);

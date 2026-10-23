@@ -92,7 +92,7 @@ namespace NumberStylesSubset
             Show("int[1, 234]", () => int.Parse("1, 234", thou, Inv)); // FormatException
             Show("int[1,234 no-thousands]", () => int.Parse("1,234", NumberStyles.Integer, Inv)); // FormatException
             Console.WriteLine(int.Parse("1.234", thou, CultureInfo.GetCultureInfo("de-DE")));     // 1234 (de-DE group '.')
-            Console.WriteLine(int.Parse("1.234.567", thou, new CultureInfo("de-DE")));            // 1234567
+            Console.WriteLine(int.Parse("1.234.567", thou, new CultureInfo("de-DE", false)));     // 1234567
             Console.WriteLine(int.Parse("1 234", thou, CultureInfo.GetCultureInfo("fr-FR"))); // 1234 (fr-FR narrow nbsp)
             Console.WriteLine(int.Parse("1 234", thou, CultureInfo.GetCultureInfo("fr-FR")));      // 1234 (plain space substitutes)
             Show("fr[1nbsp234]", () => int.Parse("1 234", thou, CultureInfo.GetCultureInfo("fr-FR"))); // FormatException (nbsp is not the fr separator)
@@ -136,7 +136,7 @@ namespace NumberStylesSubset
             Show("ulong[-0.00]", () => ulong.Parse("-0.00", idp, Inv)); // OverflowException (negative-with-decimal unsigned)
             Console.WriteLine(ulong.Parse("-0", NumberStyles.Integer, Inv)); // 0
             Console.WriteLine(byte.Parse("255.000", idp, Inv));  // 255
-            Console.WriteLine(int.Parse("1.234,00", thou | NumberStyles.AllowDecimalPoint, new CultureInfo("de-DE"))); // 1234
+            Console.WriteLine(int.Parse("1.234,00", thou | NumberStyles.AllowDecimalPoint, new CultureInfo("de-DE", false))); // 1234
 
             Console.WriteLine("-- exponent on integers --");
             var iex = NumberStyles.Integer | NumberStyles.AllowExponent;
@@ -219,7 +219,7 @@ namespace NumberStylesSubset
             Console.WriteLine(decimal.Parse("1.10e1", NumberStyles.Float, Inv));    // 11.0
             Console.WriteLine(decimal.Parse("1.5e-3", NumberStyles.Float, Inv));    // 0.0015
             Console.WriteLine(decimal.Parse("(1.5)", NumberStyles.Number | NumberStyles.AllowParentheses, Inv)); // -1.5
-            Console.WriteLine(decimal.Parse("1.234,56", NumberStyles.Number, new CultureInfo("de-DE"))); // 1234.56
+            Console.WriteLine(decimal.Parse("1.234,56", NumberStyles.Number, new CultureInfo("de-DE", false))); // 1234.56
             Console.WriteLine(decimal.Parse("2.5".AsSpan(), NumberStyles.Number, Inv)); // 2.5
             Console.WriteLine(decimal.Parse("3.25", Inv));                          // 3.25 (provider only)
             Show("dec[1e2 Number]", () => decimal.Parse("1e2", NumberStyles.Number, Inv)); // FormatException

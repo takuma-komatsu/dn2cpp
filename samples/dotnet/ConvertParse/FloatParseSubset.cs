@@ -80,8 +80,8 @@ namespace FloatParseSubset
             Show("dbl[1e+ Float]", () => double.Parse("1e+", NumberStyles.Float, inv)); // FormatException
             Console.WriteLine(double.Parse("1.5e-3", NumberStyles.Float, inv));     // 0.0015
             Console.WriteLine(float.Parse("2.5e2", NumberStyles.Float, inv));       // 250
-            Console.WriteLine(double.Parse("2,5", NumberStyles.Float, new CultureInfo("de-DE")));    // 2.5 (de decimal comma)
-            Console.WriteLine(double.Parse("1.234,5", NumberStyles.Number, new CultureInfo("de-DE"))); // 1234.5
+            Console.WriteLine(double.Parse("2,5", NumberStyles.Float, new CultureInfo("de-DE", false))); // 2.5 (de decimal comma)
+            Console.WriteLine(double.Parse("1.234,5", NumberStyles.Number, new CultureInfo("de-DE", false))); // 1234.5
             Console.WriteLine(double.Parse("3.25".AsSpan(), NumberStyles.Float, inv)); // 3.25 (span input)
             double sd;
             Console.WriteLine(double.TryParse("6.5".AsSpan(), NumberStyles.Float, inv, out sd) + " " + sd); // True 6.5
