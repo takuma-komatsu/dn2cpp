@@ -3,7 +3,8 @@
 This document describes reflection and generic virtual dispatch contracts.
 It records their dependency boundaries and acceptance criteria; the storage
 implementation is documented in [ARCHITECTURE.md](ARCHITECTURE.md#reflection-metadata-representation).
-Open implementation work remains in [STATUS.md](STATUS.md).
+Open implementation work is tracked in
+[GitHub Issues](https://github.com/takuma-komatsu/dn2cpp/issues?q=is%3Aissue%20is%3Aopen).
 
 ## Scope and baseline
 

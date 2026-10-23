@@ -3,8 +3,8 @@
 Design for a **fork of Godot** whose C#-game export lets the user pick the
 backend — the standard .NET host runtime, NativeAOT, or **dn2cpp** — and for
 packaging dn2cpp into the distributable editor. The dn2cpp side consumes the
-shipped mono-module drop-in lane (`--dotnet-module`). Open rows are in
-`docs/STATUS.md`.
+shipped mono-module drop-in lane (`--dotnet-module`). Open work is tracked in
+[GitHub Issues](https://github.com/takuma-komatsu/dn2cpp/issues?q=is%3Aissue%20is%3Aopen).
 
 ## 1. Why the existing engine load path is enough
 
@@ -749,7 +749,7 @@ retention; the macOS, Windows, iOS, Android and Web targets; and the
 distributable build — the editor `.app` and Web-template release assets and the
 release script that publishes them (§11).
 
-Remaining work is tracked in `docs/STATUS.md`, including notarization and the
+Remaining work is tracked in GitHub Issues, including notarization and the
 hardened-runtime entitlements audit for an editor that spawns a host `clang++`
 from outside the `.app` and cmake, ninja and Emscripten's clang from inside it.
 

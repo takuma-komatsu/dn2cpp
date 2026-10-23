@@ -5,7 +5,8 @@
 本書と repository 規約を満たす範囲で、調査・修正・回帰・文書更新・commit・
 push・PR 作成・rebase merge まで進める依頼として扱う。
 
-[STATUS.md](STATUS.md) の高優先度バグを減らす継続作業に適用する。
+[GitHub Issues](https://github.com/takuma-komatsu/dn2cpp/issues?q=is%3Aissue%20is%3Aopen)
+の高優先度バグを減らす継続作業に適用する。
 着手順と PR の粒度は担当者が判断する。小さい複数チケットを同じ PR に
 まとめてよいが、その中でも順次実装・確認する。異なるチケットや PR の
 実装は並行せず、現在の PR が実際に merged になるまで次の PR の対象へ
@@ -17,7 +18,7 @@ merge に必要な検証は [CONTRIBUTING.md](../CONTRIBUTING.md) に従う。
 
 開始時は作業ツリーの状態を確認し、既存の作業を保持して main を最新化する。
 AGENTS.md、CONTRIBUTING.md、[README.md](../README.md)、
-[ARCHITECTURE.md](ARCHITECTURE.md)、STATUS.md を実際に読む。Claude は
+[ARCHITECTURE.md](ARCHITECTURE.md)、対象 Issue とその依存関係を実際に読む。Claude は
 [CLAUDE.md](../CLAUDE.md) の `@AGENTS.md` も読む。対象を選定し、方針の提示だけで
 止まらず修正作業へ進む。
 
@@ -58,10 +59,12 @@ parity、新しい block が実行された証拠、旧全体出力が unchanged
 checkout、commit 整理へ進む。
 
 main の潜在バグを見つけた場合、確実に直せる関連の些末なものは同時に修正
-する。リスクが高いものは再現・原因・必要な対応を STATUS.md に新規起票し、
-次の候補にする。STATUS.md は未完了の作業だけを保持し、修正対象行の削除を
-PR 差分に含め、merge で取り除く。チケット ID は STATUS.md だけに置き、
-コード・gate・文書・commit・PR など他の場所へ引用しない。
+する。リスクが高いものは再現・原因・必要な対応・受け入れ条件・検証方法を
+この repository の GitHub Issues に新規起票し、次の候補にする。必要な host や
+SDK、先行する変更があれば併記する。Issue は実装の merge と必要な検証が
+終わるまで open に保つ。受理や PR 作成だけでは閉じない。残作業を別の Issue に
+分け、コードや設計文書には長期に必要な制約を invariant として残す。廃止した
+STATUS のチケット ID を再利用・引用しない。
 
 ## commit と PR
 
@@ -73,14 +76,16 @@ force-with-lease を使う。PR 本文やコメントにも修正経緯を書か
 PR の title は英語、本文は簡潔な日本語とする。本文には最終的な挙動と、
 変更の評価に必要な回帰範囲・実質的な未検証事項だけを記載する。作業経緯、
 amend 履歴、レビューや gate の実行状況、自明な検証対象外・skip 理由、
-人間専用手順の未実施注記は書かない。
+人間専用手順の未実施注記は書かない。PR は対象 Issue にリンクし、closing keyword
+は merge 時点で完全に解決する対象だけに付ける。
 
 ## merge と次の作業
 
 必要なローカル検証、最終 head の必須 CI 成功、最終差分に対する独立 reviewer
 の指摘ゼロを確認してから rebase merge する。hosted smoke CI だけを merge の
 根拠にしない。skip や中断を pass と扱わない。実際に MERGED になったことを
-確認し、main を更新してから次の対象へ進む。
+確認する。PR が自動 close しない対象も、必要な検証を確認してから解決した
+Issue だけを閉じる。main を更新してから次の対象へ進む。
 
 通常操作ごとの確認を繰り返さず、ユーザーの中断・停止指示か修正可能な対象が
 なくなるまで継続する。ひとつの PR の完了や待ち時間だけでループを終了しない。

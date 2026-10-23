@@ -80,10 +80,12 @@ gate, opt out that way and never with `echo SKIP; exit 0`.
 
 ## What to work on
 
-Open work is `docs/STATUS.md`. A row that names a host prerequisite — a signing
-identity, a Windows host, a device or an SDK the repository cannot carry — is one
-you cannot verify where you are; open an issue before starting, so the
-verification half has an owner.
+Choose open work from [GitHub Issues](https://github.com/takuma-komatsu/dn2cpp/issues?q=is%3Aissue%20is%3Aopen).
+Read the permanent non-goals in `README.md` before proposing work. An issue must
+state the problem, scope, acceptance criteria, verification and dependencies
+well enough to continue on another machine. If verification needs a signing
+identity, a Windows host, a device or an SDK the repository cannot carry, agree
+on its owner before starting.
 
 ## Issues
 
@@ -94,12 +96,15 @@ paste the build's identity as it ships — the unpacked Windows package's
 `RELEASE.txt`, or on macOS the `.app`'s `DN2CPP*` `Info.plist` keys — together
 with the editor's `--version` string.
 
-Issues and `docs/STATUS.md` are separate ledgers, and the reference between them
-is one-directional. A row may cite an issue number: a GitHub number is permanent
-and resolvable. Nothing cites a row — not an issue, not a commit, not code —
-because the row is deleted when the ticket lands. An issue accepted as work
-becomes one row and is closed with a comment saying so; the point is to keep one
-ledger, not two that drift.
+GitHub Issues are the sole backlog; `docs/STATUS.md` only directs readers here.
+Keep an accepted issue open while its implementation or required verification
+is pending. A PR should link the issues it addresses and use closing keywords
+only for issues it fully resolves when merged. Split remaining work into a
+separate issue rather than closing it with an incomplete implementation.
+
+Keep durable constraints in repository code or design docs as invariants. An
+issue records actionable work; it does not replace the product contract or
+authorize an unrelated expansion of scope.
 
 ## Commits and style
 
@@ -107,10 +112,8 @@ ledger, not two that drift.
 contract. In practice: 50-character summary, blank line, 72-column body; small
 and frequent commits; no `TODO` / `FIXME` / `HACK` markers.
 
-Never write a `docs/STATUS.md` ticket id into a commit message, code or a
-comment. Not because it is private — that file is public — but because the id
-dies with its row, leaving a reference that resolves to nothing. Write the
-invariant at the site it constrains instead.
+Do not reuse or cite retired `docs/STATUS.md` ticket ids. Link GitHub Issues
+from PRs; write the invariant at the site it constrains in code and design docs.
 
 Never write a bare number in a doc. Write it so
 `gates/build-and-run-doc-claims.sh` can count it, or leave it out.

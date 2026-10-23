@@ -2,7 +2,8 @@
 
 Rules for contributors and coding agents. The repository is the source of truth.
 Read `README.md` for the product and setup, `docs/ARCHITECTURE.md` for extension
-points, `CONTRIBUTING.md` for the contribution workflow, and `docs/STATUS.md`
+points, `CONTRIBUTING.md` for the contribution workflow, and
+[GitHub Issues](https://github.com/takuma-komatsu/dn2cpp/issues?q=is%3Aissue%20is%3Aopen)
 for open work.
 
 ## Module boundaries
@@ -15,11 +16,14 @@ for open work.
 
 ## Backlog workflow
 
-- `docs/STATUS.md` contains open work only; delete a row when it lands.
-- A ticket id lives only in `docs/STATUS.md`. Never put one in code, comments,
-  gates, samples, other docs, commits, or issues; write the invariant instead.
-- GitHub issues are intake, not a second backlog. A STATUS row may cite an issue,
-  but nothing cites a STATUS row.
+- GitHub Issues in `takuma-komatsu/dn2cpp` are the sole backlog, including
+  editor work. `docs/STATUS.md` is a landing page, not another task list.
+- Keep an issue open until its implementation is merged and the required
+  verification is complete. Acceptance or a linked open PR does not finish it.
+- Describe the problem, scope, acceptance criteria and verification needed to
+  continue on another machine. Record host prerequisites and dependencies.
+- Keep durable constraints in code or design docs as invariants, not issue
+  references. Retired STATUS ticket ids must not be reused or cited.
 
 ## Write like an experienced programmer
 
@@ -116,7 +120,7 @@ symmetric. Put `--no-default-ref` and `--keep-symbols` in gate-cache context.
   or runtime-called methods; cover sibling overloads. See ARCHITECTURE §4-B.
 - Unsupported input throws `NotSupportedException`; broken invariants throw
   `InvalidOperationException`. Broad catches preserve `Compilation.IsMustEscape`.
-- No `TODO`, `FIXME`, or `HACK`. Put open work in `docs/STATUS.md`.
+- No `TODO`, `FIXME`, or `HACK`. Track open work in GitHub Issues.
 - Prefer small commits: 50-character summary, blank line, 72-column body.
   Agent commits end with `Co-Authored-By:` naming the agent, without email.
 

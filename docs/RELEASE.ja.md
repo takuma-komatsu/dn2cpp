@@ -777,7 +777,8 @@ metadata 4 本と 4 行の `SHA256SUMS.txt` が手元に揃っていることが
 - **Windows エディタは未署名。** SmartScreen が発行元不明と報告する。
   身元を保証するのは `SHA256SUMS.txt` とパッケージ内の `RELEASE.txt` だけ。
 
-どちらも現状の仕様で、`docs/STATUS.md` に行がある。
+どちらも現状の仕様で、署名の残作業は
+[GitHub Issues](https://github.com/takuma-komatsu/dn2cpp/issues?q=is%3Aissue%20is%3Aopen) で管理する。
 
 ---
 

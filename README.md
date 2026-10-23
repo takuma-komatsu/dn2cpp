@@ -1002,7 +1002,7 @@ selection never retains a type or member removed by ILDiet or
 | `samples/dotnet/` | Themed feature buckets — one `*.cs` per feature, driven by a themed gate |
 | `samples/godot/`, `samples/godot-dotnet/`, `samples/native/` | GDExtension + Godot.NET.Sdk + hot-update projects; drop-in and editor-export projects; a small C library for P/Invoke testing |
 | `gates/` | The regression suite (`build-and-run-*.sh`), `run-all-gates.sh` (parallel runner), `pre-merge.sh` (the merge gate), `_common.sh` (shared helpers) |
-| `docs/` | `ARCHITECTURE.md` (internals), `STATUS.md` (open backlog), `BPI-FORMAT.md` (hot-update binary spec), `EDITOR-EXPORT-DESIGN.md`, `RELEASE.md` (cutting an editor release; `RELEASE.ja.md` translates it), `EDITOR-GUIDE.ja.md` (Japanese only — what a release's notes link for using the packaged editor), `PORTING.md`, `PINVOKE-MARSHALLING.md` |
+| `docs/` | `ARCHITECTURE.md` (internals), `STATUS.md` (backlog landing page), `BPI-FORMAT.md` (hot-update binary spec), `EDITOR-EXPORT-DESIGN.md`, `RELEASE.md` (cutting an editor release; `RELEASE.ja.md` translates it), `EDITOR-GUIDE.ja.md` (Japanese only — what a release's notes link for using the packaged editor), `PORTING.md`, `PINVOKE-MARSHALLING.md` |
 
 ## Design principles
 
@@ -1129,8 +1129,8 @@ it does not come back as a ticket.
 
 ### Transient limitations
 
-These are open work, not boundaries — **`docs/STATUS.md` is the
-authoritative list**. Representative examples as of now: the forked
+These are open work, not boundaries — **[GitHub Issues](https://github.com/takuma-komatsu/dn2cpp/issues?q=is%3Aissue%20is%3Aopen)
+is the authoritative list**. Representative examples as of now: the forked
 editor's distributable `.app` is ad-hoc signed and not notarized. iOS
 *device* execution is likewise unverified (provisioning required) — the
 simulator lane is E2E-verified and the device build path is exercised
@@ -1147,7 +1147,7 @@ the AVX-512 and AVX10 families, the whole `Arm.*` surface, and
 `Wasm.PackedSimd`; `Arm.Sve` and `Arm.Sve2`, experimental in .NET 10 and
 without a fixed register width, have no feature bits and answer false by
 design. On x86 the AVX, AVX-512 and AVX10 instruction bodies have run on no
-supporting host yet (`docs/STATUS.md`). Like .NET 10, dn2cpp keeps `Avx10v2`
+supporting host yet (see the open issues). Like .NET 10, dn2cpp keeps `Avx10v2`
 and the V512 `AvxVnniInt8` / `AvxVnniInt16` surface disabled until the positive
 run-time opt-in `DN2CPP_ENABLE_AVX10V2=1`. AVX10.2 also uses a compiler-intrinsic
 capability: a compiler without the checked spellings reports those families
@@ -1191,7 +1191,7 @@ once on stderr. Portable SIMD remains available through Highway.
   carried here; the PAL contract and a portable reference implementation
   are in-tree so a port needs no core changes.)
 
-Open tickets: `docs/STATUS.md`.
+Open work: [GitHub Issues](https://github.com/takuma-komatsu/dn2cpp/issues?q=is%3Aissue%20is%3Aopen).
 
 ## Contributing
 
