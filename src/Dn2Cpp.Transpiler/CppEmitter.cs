@@ -4851,7 +4851,7 @@ internal sealed partial class CppEmitter
                 rows.Add(new MetadataRow(new[] { MetadataValue.Ref(TypeInfoRef(da.AttrClass, "custom-attribute table row")),
                     MetadataValue.Ref(create), MetadataValue.Display(RenderAttrDisplay(da)),
                     MetadataValue.Ref(setter is null ? null : TypeInfoRef(setter.DeclaringClass, "custom-attribute setter owner")),
-                    MetadataValue.Text(setter?.Name) }));
+                    MetadataValue.Text(setter?.Name), MetadataValue.Unsigned(_c.AttributeUsageFlags(da.AttrClass)) }));
         }
         if (rows.Count == 0)
             return ("nullptr", 0);

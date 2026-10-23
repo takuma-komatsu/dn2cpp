@@ -501,15 +501,14 @@ internal sealed partial class MethodCompiler
         // array*, so a foreach dispatches on the array itself (no compile-time
         // SZArrayEnumerable<T> wrap, whose intermediate IEnumerable<Attribute> typing lost
         // the covariance and whose runtime type was wrong). Overloads: (element) or
-        // (element, bool inherit); inherit is ignored (matching ).
+        // (element, bool inherit); the omitted flag defaults to true.
         if (declType == "System.Reflection.CustomAttributeExtensions" && name == "GetCustomAttributes")
         {
             var ms = Reader.GetMethodSpecification(msh);
             var msig = Reader.GetMemberReference((MemberReferenceHandle)ms.Method)
                 .DecodeMethodSignature(Comp.SigProvider, new GenericContext(System.Array.Empty<TypeDesc>(), methodArgs));
             var retType = msig.ReturnType; // IEnumerable<T>
-            if (msig.ParameterTypes.Length == 2)
-                Pop(); // bool inherit — ignored
+            string inherit = msig.ParameterTypes.Length == 2 ? Pop().Expr : "1";
             string element = Cast(Pop(), "Dn2CppObject*");
             var t = methodArgs[0];
             // A placeholder T bakes the FILTER's identity: the canonical body would
@@ -520,7 +519,7 @@ internal sealed partial class MethodCompiler
             string tti = TypeInfoExpr(t) ?? "&dn2cpp_object_type";
             Comp.NoteArrayEnumerableElement(t); // wire ti_arr_<T> + its SZArray interface map
             string arrTmp = NewTemp("Dn2CppArrayRef*");
-            Emit($"{arrTmp} = dn2cpp_get_custom_attributes_typed({element}, dn2cpp_get_type_from_handle({tti}));");
+            Emit($"{arrTmp} = dn2cpp_get_custom_attributes_typed({element}, dn2cpp_get_type_from_handle({tti}), {inherit});");
             Emit($"((Dn2CppObject*){arrTmp})->type = {PreciseArrayTypeInfoExpr(t)};");
             string retCpp = CppTypes.Of(retType);
             PushEntry(new StackEntry($"(({retCpp}){arrTmp})", StackKind.Ref, retCpp, StaticType: retType));
