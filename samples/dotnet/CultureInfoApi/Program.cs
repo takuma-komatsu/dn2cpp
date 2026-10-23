@@ -235,11 +235,11 @@ namespace CultureInfoApi
             // A missing entry resolves to invariant SYMBOLS under a correct NAME, which goes
             // red on one developer's machine only. The FORMATTING is asserted, not just the
             // name — a name-only assert passes the whole time it is broken. Every value is
-            // produced with an EXPLICIT culture, so the host cannot move this section.
+            // produced with an explicit culture without user overrides.
             Console.WriteLine("-- table breadth --");
             foreach (string nm in new[] { "en-GB", "pt-BR", "es-ES", "ru-RU", "sv-SE", "de-CH", "pt-br" })
             {
-                CultureInfo c = new CultureInfo(nm);
+                CultureInfo c = new CultureInfo(nm, false);
                 Console.WriteLine("  '" + nm + "' -> '" + c.Name + "' n=" + (-1234.5).ToString("N2", c)
                     + " c=" + (1234.5).ToString("C", c) + " nan=" + double.NaN.ToString(c));
             }
@@ -248,7 +248,7 @@ namespace CultureInfoApi
             // cut from and no live host diff can hold them. A frozen bucket is the only place
             // they can be asserted at all, which is why they live here and not with the rest
             // of the multi-level grouping in ConsoleIo's CultureSubset.
-            CultureInfo urPK = new CultureInfo("ur-PK");
+            CultureInfo urPK = new CultureInfo("ur-PK", false);
             NumberFormatInfo urNfi = urPK.NumberFormat;
             Console.WriteLine("  'ur-PK' N=" + Sizes(urNfi.NumberGroupSizes)
                 + " C=" + Sizes(urNfi.CurrencyGroupSizes) + " P=" + Sizes(urNfi.PercentGroupSizes)
@@ -259,17 +259,13 @@ namespace CultureInfoApi
             // en-US's CurrencyNegativePattern is another such ICU-revised row, moved here out
             // of ConsoleIo's CultureSubset (its Show now takes skipCurrency) for the same
             // reason: only a frozen bucket can assert it.
-            CultureInfo enUS = new CultureInfo("en-US");
-            CultureInfo jaJP = new CultureInfo("ja-JP");
+            CultureInfo enUS = new CultureInfo("en-US", false);
+            CultureInfo jaJP = new CultureInfo("ja-JP", false);
             double money = 1234.5, neg = -1234567.891;
             Console.WriteLine("  'en-US' c-=" + (-money).ToString("C", enUS));
 
-            // ja-JP's currency SYMBOL is the one field dn2cpp itself intentionally varies by
-            // build OS (dn2cpp_culture_table.inc: U+FFE5 on Linux vs U+00A5 elsewhere, matching
-            // glibc's ICU) — a single frozen literal can't hold both right answers, so assert
-            // dn2cpp's own OS split instead of the symbol text: this stays True on every host
-            // as long as the #if here agrees with the C# check.
-            char expectedYen = OperatingSystem.IsLinux() ? '\uffe5' : '\u00a5';
+            // The platform ICU symbol is independent of Windows user overrides.
+            char expectedYen = OperatingSystem.IsLinux() || OperatingSystem.IsWindows() ? '\uffe5' : '\u00a5';
             bool jaJPSymbolMatchesOsSplit = money.ToString("C", jaJP).Contains(expectedYen)
                 && (-money).ToString("C", jaJP).Contains(expectedYen)
                 && string.Format(jaJP, "{0:N2} / {1:C}", neg, money).Contains(expectedYen);
@@ -319,7 +315,7 @@ namespace CultureInfoApi
             // layer). Removing the restore would leave the sections below reading a ja-JP UI
             // culture, which is the failure mode the pin exists to prevent.
             Console.WriteLine("-- CurrentUICulture --");
-            CultureInfo.CurrentCulture = new CultureInfo("de-DE");
+            CultureInfo.CurrentCulture = new CultureInfo("de-DE", false);
             CultureInfo.CurrentUICulture = new CultureInfo("ja-JP");
             // The two axes are independent. A setter that wrote the CurrentCulture slot, or a
             // getter aliased to it, fails right here — and nothing else in the corpus would.

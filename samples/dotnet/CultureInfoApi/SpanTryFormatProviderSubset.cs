@@ -99,8 +99,8 @@ namespace SpanTryFormatProviderSubset
         internal static void Run()
         {
             Console.WriteLine("== span TryFormat provider ==");
-            CultureInfo de = new CultureInfo("de-DE");
-            CultureInfo fr = new CultureInfo("fr-FR");
+            CultureInfo de = new CultureInfo("de-DE", false);
+            CultureInfo fr = new CultureInfo("fr-FR", false);
             CultureInfo inv = CultureInfo.InvariantCulture;
 
             // Ambient de-DE: the explicit INVARIANT provider must win over

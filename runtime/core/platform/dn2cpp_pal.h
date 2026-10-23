@@ -144,11 +144,31 @@ int32_t dn2cpp_pal_numeric_fallback_locale_name(char* buf, size_t size);
 // PAL-CONTRACT: MUST
 bool dn2cpp_pal_locale_name_supported(const char16_t* name, int32_t length);
 
-// User-selected fractional digits for the resolved Windows user-default name.
-// Returns -1 for other names or targets without this override. This entry only
-// supplies fractional digits; it does not model every numeric user preference.
+// Raw NLS values; grouping retains Windows' semicolon-separated representation.
+// The string capacity matches CoreLib's GetLocaleInfoEx query buffer.
+struct Dn2CppPalLocaleNumberOverrides
+{
+    char16_t positiveSign[530];
+    char16_t negativeSign[530];
+    char16_t numberDecimal[530];
+    char16_t numberGroup[530];
+    char16_t numberGrouping[530];
+    char16_t currencySymbol[530];
+    char16_t currencyDecimal[530];
+    char16_t currencyGroup[530];
+    char16_t currencyGrouping[530];
+    int32_t numberDigits;
+    int32_t numberNegPattern;
+    int32_t currencyDigits;
+    int32_t currencyPosPattern;
+    int32_t currencyNegPattern;
+};
+
+// Reads numeric user preferences only for the resolved Windows user-default
+// name. Other names and targets return false without changing the output.
 // PAL-CONTRACT: MUST
-int32_t dn2cpp_pal_locale_number_digits_override(const char16_t* name, int32_t length);
+bool dn2cpp_pal_locale_number_overrides(const char16_t* name, int32_t length,
+    Dn2CppPalLocaleNumberOverrides* values);
 
 // ── Process ──────────────────────────────────────────────────────────────────
 

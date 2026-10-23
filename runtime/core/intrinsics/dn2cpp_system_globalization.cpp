@@ -15,6 +15,7 @@
 #include <cmath>
 #include <string>
 #include <vector>
+#include <memory>
 #include <mutex>   // std::call_once for thread-safe culture-table init
 
 // ===== Culture / NumberFormatInfo ============================================
@@ -1388,19 +1389,73 @@ static const Dn2CppNumberFormatInfo* dn2cpp_culture_named_create(
     return result;
 }
 
-static const Dn2CppNumberFormatInfo* dn2cpp_culture_user_number_digits(
+static Dn2CppCultureNumericGroups dn2cpp_culture_windows_groups(const char16_t* value)
+{
+    Dn2CppCultureNumericGroups result{{3}, 1};
+    size_t length = std::char_traits<char16_t>::length(value);
+    if (length == 0)
+        return result;
+    if (value[0] == u'0')
+    {
+        result.sizes[0] = 0;
+        return result;
+    }
+    // NLS's trailing zero repeats the last group; .NET's trailing zero stops.
+    size_t count = value[length - 1] == u'0' ? length / 2 : length / 2 + 2;
+    for (size_t i = 0, j = 0; i < length && j < count; i += 2, j++)
+        if (value[i] < u'1' || value[i] > u'9')
+            return result;
+    if (count > DN2CPP_MAX_GROUP_SIZES)
+        dn2cpp_throw_platform_not_supported("Windows numeric grouping exceeds the modeled group-size capacity");
+    result = {};
+    result.count = static_cast<int8_t>(count);
+    for (size_t i = 0, j = 0; i < length && j < count; i += 2, j++)
+        result.sizes[j] = static_cast<int8_t>(value[i] - u'0');
+    return result;
+}
+
+static const Dn2CppNumberFormatInfo* dn2cpp_culture_user_number_overrides(
     const Dn2CppNumberFormatInfo* data, bool useUserOverride)
 {
     if (!useUserOverride)
         return data;
     Dn2CppString* name = data->cultureRealName;
-    int32_t digits = dn2cpp_pal_locale_number_digits_override(name->chars, name->length);
-    if (digits < 0)
+    std::unique_ptr<Dn2CppPalLocaleNumberOverrides> storage(new Dn2CppPalLocaleNumberOverrides);
+    Dn2CppPalLocaleNumberOverrides& values = *storage;
+    if (!dn2cpp_pal_locale_number_overrides(name->chars, name->length, &values))
         return data;
     // Override and no-override requests may share an interned profile. Its
-    // number and percent digits must remain immutable for the latter cache.
+    // ICU data must remain immutable for the no-override and LCID caches.
     auto* result = dn2cpp_nfi_copy(data, 0, data->isReadOnly);
-    result->numberDigits = result->percentDigits = digits;
+    auto copyString = [](const char16_t* value) {
+        return dn2cpp_string_from_chars(value, static_cast<int32_t>(std::char_traits<char16_t>::length(value)));
+    };
+    dn2cpp_gc_store_ref(&result->positiveSign, copyString(values.positiveSign[0] == u'\0' ? u"+" : values.positiveSign));
+    dn2cpp_gc_store_ref(&result->negativeSign, copyString(values.negativeSign));
+    dn2cpp_gc_store_ref(&result->numberDecimal, copyString(values.numberDecimal));
+    dn2cpp_gc_store_ref(&result->numberGroup, copyString(values.numberGroup));
+    dn2cpp_gc_store_ref(&result->currencySymbol, copyString(values.currencySymbol));
+    dn2cpp_gc_store_ref(&result->currencyDecimal,
+        copyString(values.currencyDecimal[0] == u'\0' ? values.numberDecimal : values.currencyDecimal));
+    dn2cpp_gc_store_ref(&result->currencyGroup, copyString(values.currencyGroup));
+    Dn2CppCultureNumericGroups numberGroups = dn2cpp_culture_windows_groups(values.numberGrouping);
+    Dn2CppCultureNumericGroups currencyGroups = dn2cpp_culture_windows_groups(values.currencyGrouping);
+    std::memcpy(result->groupSizes, numberGroups.sizes, sizeof(result->groupSizes));
+    result->groupSizeCount = numberGroups.count;
+    std::memcpy(result->currencyGroupSizes, currencyGroups.sizes, sizeof(result->currencyGroupSizes));
+    result->currencyGroupSizeCount = currencyGroups.count;
+    result->numberDigits = values.numberDigits;
+    result->numberNegPattern = values.numberNegPattern;
+    result->currencyDigits = values.currencyDigits;
+    result->currencyPosPattern = values.currencyPosPattern;
+    result->currencyNegPattern = values.currencyNegPattern;
+    // CoreLib derives percent separators, grouping and precision from numbers;
+    // percent patterns/symbols and NaN/infinity remain ICU data.
+    result->percentDigits = result->numberDigits;
+    dn2cpp_gc_store_ref(&result->percentDecimal, result->numberDecimal);
+    dn2cpp_gc_store_ref(&result->percentGroup, result->numberGroup);
+    std::memcpy(result->percentGroupSizes, result->groupSizes, sizeof(result->percentGroupSizes));
+    result->percentGroupSizeCount = result->groupSizeCount;
     return result;
 }
 
@@ -1467,7 +1522,7 @@ const Dn2CppNumberFormatInfo* dn2cpp_culture_by_name(Dn2CppString* name, bool ca
         row, canonical, publicName, lcid, numeric, fallback);
     // ICU keywords distinguish the OS resource name even when the managed
     // culture's displayed identity drops them.
-    result = dn2cpp_culture_user_number_digits(result, useUserOverride && !hasKeywords);
+    result = dn2cpp_culture_user_number_overrides(result, useUserOverride && !hasKeywords);
     result = dn2cpp_culture_request_cache(key, useUserOverride, result);
     return cached ? dn2cpp_culture_named_create(result) : result;
 }
@@ -1486,7 +1541,7 @@ const Dn2CppNumberFormatInfo* dn2cpp_culture_new_lcid(int32_t lcid, bool useUser
     const Dn2CppNumberFormatInfo* data = dn2cpp_culture_by_lcid(lcid);
     if (data == nullptr)
         dn2cpp_throw_culture_not_found(nullptr, lcid);
-    return dn2cpp_nfi_copy(dn2cpp_culture_user_number_digits(data, useUserOverride), 0, 0);
+    return dn2cpp_nfi_copy(dn2cpp_culture_user_number_overrides(data, useUserOverride), 0, 0);
 }
 
 const Dn2CppNumberFormatInfo* dn2cpp_culture_create_specific(Dn2CppString* name)

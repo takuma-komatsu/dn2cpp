@@ -103,11 +103,14 @@ wrongly in a way that compiles:
   locale restriction. Aliases and language-tag extensions must resolve before
   this check, because a refused input spelling can resolve to an accepted name.
 
-- **`dn2cpp_pal_locale_number_digits_override` reads fractional digits only.**
-  Windows reads `LOCALE_IDIGITS` for the resolved user-default name. Other names
-  and other targets return `-1`, leaving the numeric profile unchanged. The
-  caller applies this only to override-enabled requests and copies shared data;
-  it does not implement the remaining numeric user preferences.
+- **`dn2cpp_pal_locale_number_overrides` reads numeric user preferences.**
+  Windows reads NLS signs, separators, grouping, fractional digits and currency
+  patterns only for the resolved user-default name. Other names and targets
+  return `false`. The caller applies them to a copy for override-enabled requests,
+  preserving ICU data in no-override and LCID caches. Percent precision,
+  separators and grouping follow number settings; percent patterns and symbols,
+  NaN and infinity remain ICU data. Native-digit substitution is outside the
+  numeric formatter's modeled surface.
 
 - **`dn2cpp_pal_unlink` must preserve `errno`.** `ENOENT` is how "delete a
   missing file" becomes a no-op. Collapse failure to `-1` and clear `errno` and it

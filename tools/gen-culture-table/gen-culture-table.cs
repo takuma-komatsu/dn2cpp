@@ -40,16 +40,11 @@ if (!File.Exists(candidatesPath))
     return 2;
 }
 
-// The one measured platform split. macOS's ICU spells ja-JP's currency symbol U+00A5 and
-// glibc/Linux ICU spells it U+FFE5 (fullwidth yen); both are that platform's real .NET
-// answer, and the gates diff against whichever one the host runs. A generator run on
-// either host can only observe its own, so the other is carried here rather than lost on
-// the next regeneration. Add a row here only for a difference actually MEASURED on the
-// other platform — and only for a spelling that differs by PLATFORM, never for a value CLDR
-// revised between ICU releases: that axis is the host's ICU version, which no `#if` names.
-var platformSplits = new (string Culture, string Field, string Guard, string Value)[]
+// Frozen platform differences preserve both spellings on regeneration. These are
+// ICU defaults; Windows user preferences are applied separately at runtime.
+var platformSplits = new (string Culture, string Field, string Guard, string Value, string OtherValue)[]
 {
-    ("ja-JP", "currency", "defined(__linux__)", "￥"),
+    ("ja-JP", "currency", "defined(__linux__) || defined(_WIN32)", "￥", "¥"),
 };
 
 var candidates = File.ReadAllLines(candidatesPath)
@@ -65,7 +60,7 @@ foreach (string name in candidates)
     CultureInfo c;
     try
     {
-        c = new CultureInfo(name);
+        c = new CultureInfo(name, false);
     }
     catch (CultureNotFoundException)
     {
@@ -115,7 +110,7 @@ foreach (string name in candidates)
         rows.Add($"#if {split.Guard}");
         rows.Add(Row(split.Value));
         rows.Add("#else");
-        rows.Add(Row(n.CurrencySymbol));
+        rows.Add(Row(split.OtherValue));
         rows.Add("#endif");
     }
     else

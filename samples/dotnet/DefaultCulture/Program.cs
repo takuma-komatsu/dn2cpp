@@ -19,6 +19,20 @@ namespace DefaultCulture
     {
         private static void Main(string[] args)
         {
+            if (args.Length > 0 && args[0] == "culture-user-numbers")
+            {
+                CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+                CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+                WriteUserNumbers(args[1], int.Parse(args[2], CultureInfo.InvariantCulture), args[3]);
+                return;
+            }
+            if (args.Length > 0 && args[0] == "culture-user-lcid")
+            {
+                CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+                CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+                Console.WriteLine(new CultureInfo(args[1], false).LCID);
+                return;
+            }
             if (args.Length > 0 && args[0] == "culture-extension-identities")
             {
                 WriteExtensionIdentities(CultureInfo.CurrentCulture, CultureInfo.CurrentUICulture, CultureInfo.InstalledUICulture);
@@ -65,6 +79,72 @@ namespace DefaultCulture
             WriteVariantIdentities(c, originalUI, originalInstalled);
             WriteExtensionIdentities(c, originalUI, originalInstalled);
             WriteUserNumberDigits(c);
+            if (args.Length > 0 && args[0] == "before-user-numbers")
+                return;
+            if (OperatingSystem.IsWindows())
+                WriteUserNumbers(c.Name, c.LCID, "name-true");
+        }
+
+        private static void WriteUserNumbers(string name, int lcid, string first)
+        {
+            Console.WriteLine("== Windows user numeric settings ==");
+            Console.WriteLine("  name=" + name + " LCID=" + lcid + " first=" + first);
+            WriteUserNumberCase("first", name, lcid, first);
+            foreach (string kind in new[] { "name-true", "name-false", "lcid-true", "lcid-false", "cached-name", "cached-lcid" })
+                WriteUserNumberCase(kind, name, lcid, kind);
+            CultureInfo mutable = new CultureInfo(name, true);
+            mutable.NumberFormat.CurrencySymbol = "changed";
+            mutable.NumberFormat.NumberDecimalSeparator = "!";
+            foreach (string kind in new[] { "name-true", "name-false", "lcid-true", "lcid-false", "cached-name", "cached-lcid" })
+                WriteUserNumberCase("after mutation " + kind, name, lcid, kind);
+            Console.WriteLine("Windows user numeric settings end");
+        }
+
+        private static void WriteUserNumberCase(string label, string name, int lcid, string kind)
+        {
+            try
+            {
+                WriteUserNumberProfile(label, UserNumberCulture(name, lcid, kind));
+            }
+            catch (CultureNotFoundException)
+            {
+                Console.WriteLine("  " + label + "=" + nameof(CultureNotFoundException));
+            }
+        }
+
+        private static CultureInfo UserNumberCulture(string name, int lcid, string kind)
+        {
+            if (kind == "name-true")
+                return new CultureInfo(name, true);
+            if (kind == "name-false")
+                return new CultureInfo(name, false);
+            if (kind == "lcid-true")
+                return new CultureInfo(lcid, true);
+            if (kind == "lcid-false")
+                return new CultureInfo(lcid, false);
+            if (kind == "cached-name")
+                return CultureInfo.GetCultureInfo(name);
+            return CultureInfo.GetCultureInfo(lcid);
+        }
+
+        private static void WriteUserNumberProfile(string label, CultureInfo culture)
+        {
+            NumberFormatInfo n = culture.NumberFormat;
+            Console.WriteLine("  " + label + " name=" + culture.Name + " readonly=" + culture.IsReadOnly);
+            Console.WriteLine("    signs=" + n.PositiveSign + "|" + n.NegativeSign);
+            Console.WriteLine("    number=" + n.NumberDecimalSeparator + "|" + n.NumberGroupSeparator
+                + "|" + n.NumberDecimalDigits + "|" + n.NumberNegativePattern + "|" + Sizes(n.NumberGroupSizes));
+            Console.WriteLine("    currency=" + n.CurrencySymbol + "|" + n.CurrencyDecimalSeparator
+                + "|" + n.CurrencyGroupSeparator + "|" + n.CurrencyDecimalDigits + "|" + n.CurrencyPositivePattern
+                + "|" + n.CurrencyNegativePattern + "|" + Sizes(n.CurrencyGroupSizes));
+            Console.WriteLine("    percent=" + n.PercentSymbol + "|" + n.PerMilleSymbol + "|" + n.PercentDecimalSeparator
+                + "|" + n.PercentGroupSeparator + "|" + n.PercentDecimalDigits + "|" + n.PercentPositivePattern
+                + "|" + n.PercentNegativePattern + "|" + Sizes(n.PercentGroupSizes));
+            Console.WriteLine("    special=" + n.NaNSymbol + "|" + n.PositiveInfinitySymbol + "|" + n.NegativeInfinitySymbol);
+            Console.WriteLine("    formatted=" + (1234567.89).ToString("N", culture)
+                + "|" + (-1234567.89).ToString("N", culture) + "|" + (1234567.89).ToString("C", culture)
+                + "|" + (-1234567.89).ToString("C", culture) + "|" + (12345.6789).ToString("P", culture)
+                + "|" + (-12345.6789).ToString("P", culture));
         }
 
         private static void WriteUserNumberDigits(CultureInfo original)

@@ -32,6 +32,9 @@
 # undefined-language and grandfathered identifiers. Their numeric profiles still
 # depend on ICU's host language and the identifier's region. Each explicit name
 # also runs in a fresh process to keep CultureData cache ordering out of the diff.
+# Windows numeric user settings compare every modeled NumberFormatInfo field,
+# constructor/cache order and mutation isolation against the live CLR. Other
+# locales must retain ICU data even when their constructors enable overrides.
 #
 # It gate_skips only where real .NET itself has no cultures — an ICU-less host
 # in invariant-globalization mode, where the oracle answers "" to every locale
@@ -304,7 +307,7 @@ VARIANT_LOCALES=(
 )
 
 fixture="$(dirname "$0")/fixtures/default-culture-locale"
-if _corelib_gate_check "$out" "default_culture|$PROJECT|$LOCALES|${ENV_VARIANTS[*]}|${POSIX_FALLBACK_VARIANTS[*]}|culture-fallback foo-US|${FALLBACK_CASES[*]}|culture-variant-order ${VARIANT_LOCALES[*]}|culture-extension-identities ${EXTENSION_LOCALES[*]}|user-number-digits|$platform_default|query-and-initialize|$_CG_CORELIB" \
+if _corelib_gate_check "$out" "default_culture|$PROJECT|$LOCALES|${ENV_VARIANTS[*]}|${POSIX_FALLBACK_VARIANTS[*]}|culture-fallback foo-US|${FALLBACK_CASES[*]}|culture-variant-order ${VARIANT_LOCALES[*]}|culture-extension-identities ${EXTENSION_LOCALES[*]}|user-number-digits|user-numeric-settings|$platform_default|query-and-initialize|$_CG_CORELIB" \
         "$fixture/CMakeLists.txt" "$fixture/locale.c"; then
     gate_cache_hit_msg
     exit 0
@@ -338,6 +341,16 @@ for L in $LOCALES; do
         || { echo "FAIL: culture extension identities did not run" >&2; exit 1; }
     grep -Fxq 'default culture user number digits end' <<< "$witness" \
         || { echo "FAIL: user number digits did not run" >&2; exit 1; }
+    if [ "$DN2CPP_OS" = windows ]; then
+        grep -Fxq 'Windows user numeric settings end' <<< "$witness" \
+            || { echo "FAIL: Windows user numeric settings did not run" >&2; exit 1; }
+        before=$(default_culture_run native env LC_ALL="$L" LANG="$L" "./$out/$PROJECT" before-user-numbers)
+        prefix=$(awk '/^== Windows user numeric settings ==$/ { exit } { print }' <<< "$witness")
+        assert_output "$prefix" "$(strip_cr_win "$before")"
+        before=$(default_culture_run oracle env LC_ALL="$L" LANG="$L" dotnet "$_CG_APP" before-user-numbers)
+        prefix=$(awk '/^== Windows user numeric settings ==$/ { exit } { print }' <<< "$(strip_cr_win "$oracle")")
+        assert_output "$prefix" "$(strip_cr_win "$before")"
+    fi
     printf '%s\n' "$native" | LC_ALL=C sed 's/^/   /'
     for name in "${FALLBACK_CASES[@]}"; do
         native="$(default_culture_run native env LC_ALL="$L" LANG="$L" "./$out/$PROJECT" culture-fallback "$name")"
@@ -356,8 +369,22 @@ for V in "${ENV_VARIANTS[@]}"; do
     assert_output "$native" "$oracle"
     ran=$((ran + 1))
 done
-platform_default="${platform_default#Name=}"
+platform_default=$(strip_cr_win "${platform_default#Name=}")
 echo "env variants: $ran of ${#ENV_VARIANTS[@]} match real .NET (platform default: ${platform_default:-invariant})"
+
+if [ "$DN2CPP_OS" = windows ]; then
+    for name in "$platform_default" ja-JP en-US de-DE fr-FR hi-IN ca-AD ""; do
+        lcid=$(default_culture_run oracle dotnet "$_CG_APP" culture-user-lcid "$name")
+        lcid=$(strip_cr_win "$lcid")
+        for first in name-true name-false lcid-true lcid-false cached-name cached-lcid; do
+            native=$(default_culture_run native "./$out/$PROJECT" culture-user-numbers "$name" "$lcid" "$first")
+            oracle=$(default_culture_run oracle dotnet "$_CG_APP" culture-user-numbers "$name" "$lcid" "$first")
+            assert_output "$native" "$oracle"
+            grep -Fxq 'Windows user numeric settings end' <<< "$(strip_cr_win "$native")" \
+                || { echo "FAIL: Windows numeric settings for $name ($first) did not finish" >&2; exit 1; }
+        done
+    done
+fi
 
 # Numeric resource fallback consumes the raw host's variant sequence independently
 # of the managed default culture's variant ordering.

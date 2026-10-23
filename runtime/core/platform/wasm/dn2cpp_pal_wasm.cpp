@@ -71,12 +71,14 @@ bool dn2cpp_pal_locale_name_supported(const char16_t* name, int32_t length)
     return true;
 }
 
-// Wasm has no host user preference for fractional digits.
-int32_t dn2cpp_pal_locale_number_digits_override(const char16_t* name, int32_t length)
+// Wasm has no host numeric user preferences.
+bool dn2cpp_pal_locale_number_overrides(const char16_t* name, int32_t length,
+    Dn2CppPalLocaleNumberOverrides* values)
 {
     (void)name;
     (void)length;
-    return -1;
+    (void)values;
+    return false;
 }
 
 // No host locale to report. The environment block is the synthetic one described

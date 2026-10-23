@@ -33,7 +33,7 @@ namespace CultureEscapeSubset
             Console.WriteLine($"interp:'{o}'");
             Console.WriteLine($"interpT:'{inv}'"); // AppendFormatted<CultureInfo>
 
-            CultureInfo en = new CultureInfo("en-US");
+            CultureInfo en = new CultureInfo("en-US", false);
             object[] arr = { inv, en, NumberFormatInfo.InvariantInfo }; // stelem.ref
             for (int i = 0; i < arr.Length; i++)
                 Console.WriteLine("arr[" + i + "]='" + arr[i].ToString() + "'");
