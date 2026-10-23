@@ -139,7 +139,7 @@ public static class Program
         Console.WriteLine("ChangeType unused parse Char=" + Convert.ChangeType("x", typeof(char), unused) + "/" + Convert.ChangeType("x", TypeCode.Char, unused));
         NumberFormatInfo format = new NumberFormatInfo { NegativeSign = "minus", NumberDecimalSeparator = "," };
         Console.WriteLine("ChangeType NumberFormatInfo=" + Convert.ChangeType(-12, typeof(string), format) + "/" + Convert.ChangeType(-12, TypeCode.String, format));
-        using (CultureScope.Use(new CultureInfo("de-DE")))
+        using (CultureScope.Use(new CultureInfo("de-DE", false)))
         {
             Console.WriteLine("ChangeType null provider=" + Convert.ChangeType(-12.5, typeof(string), null) + "/" + Convert.ChangeType(-12.5, TypeCode.String, null));
             Console.WriteLine("ChangeType omitted provider=" + Convert.ChangeType(-12.5, typeof(string)) + "/" + Convert.ChangeType(-12.5, TypeCode.String));
