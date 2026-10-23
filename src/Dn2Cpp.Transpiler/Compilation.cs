@@ -573,7 +573,9 @@ internal sealed partial class Compilation
         Timing.Populations = () =>
             $"classes {Classes.Count} reach {Reachable.Count} inst {_instanceCount}"
             + $" minst {_methodInstanceCount} sig {ModelCensus.SignaturesDecoded}"
-            + $" fld {ModelCensus.FieldTypesDecoded} gdepth {MaxGenericArgDepth}";
+            + $" fld {ModelCensus.FieldTypesDecoded} gdepth {MaxGenericArgDepth}"
+            + $" virtual-pairs {_virtualCandidatePairs} boxed-visits {_boxedEqualityVisits}"
+            + $" virtual-index-fallbacks {_virtualIndexFallbacks}";
         var loadSet = options.ResolvedLoadSet ?? AssemblyLoadSet.Resolve(assemblyPaths, options);
         foreach (var status in loadSet.DefaultRefStatus)
             _defaultRefStatus.Add(status.Key, status.Value);
@@ -5888,6 +5890,8 @@ internal sealed partial class Compilation
     // in any order, so we keep both sets and take their cross-product to a fixpoint.
     private readonly HashSet<ClassInfo> _allocatedRefTypes = new();
     private readonly HashSet<MethodInfo> _usedVirtualDecls = new();
+    private long _virtualCandidatePairs;
+    private long _boxedEqualityVisits;
 
     /// <summary>True if the type's boxed form is allocated somewhere (a reference
     /// type via newobj, or a value type via box). A boxed value type needs an
