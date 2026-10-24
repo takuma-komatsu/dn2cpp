@@ -11,10 +11,9 @@ The hosted smoke workflows (`.github/workflows/linux-smoke.yml`,
 `.github/workflows/windows-smoke.yml`, `.github/workflows/macos-smoke.yml`) run
 basic regression checks on every pull request and push to `main`.
 `gates/ci-smoke.sh` selects the same fixed, uncached Debug allowlist on Linux,
-Windows/MSVC and macOS. Windows and macOS run `array-core` and `transpiler-limits`
+Windows/MSVC and macOS. Each OS runs `array-core` and `transpiler-limits`
 in separate jobs from the remaining primitive gates, using disjoint partitions
-of the full allowlist.
-Linux runs the allowlist in a single job. The checks cover language,
+of the full allowlist. The checks cover language,
 primitive values, arrays, strings, collections, generics, async, threads and GC
 barriers.
 It also checks OS APIs through filesystem, environment, synchronization,
