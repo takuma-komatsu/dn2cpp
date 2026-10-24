@@ -51,7 +51,9 @@ pointer_array_isolated_routes() {
 pointer_array_diff_axes() {
     pointer_array_isolated_routes
     local axis out
-    for axis in packed native uncompressed trimmed unshared; do
+    local axes=(packed native uncompressed trimmed unshared)
+    if ! reflection_full_profile; then axes=(unshared); fi
+    for axis in "${axes[@]}"; do
         out="artifacts/reflect-invoke-pointer-arrays-$axis"
         mkdir -p "$out"
         local flags=()
@@ -78,16 +80,20 @@ pointer_array_diff_axes() {
 gate_pointer_array_prefix_asserts() {
     local out="$1" axis
     for axis in dotnet native; do
-        if [ "$axis" = dotnet ]; then
-            reflection_oracle "$_CG_APP" before-pointer-array-types > "$out/pointer-array-prefix.$axis.raw.stdout"
-        else
-            run_bounded "$out/ReflectInvoke$EXE_EXT" before-pointer-array-types > "$out/pointer-array-prefix.$axis.raw.stdout"
+        if reflection_full_profile; then
+            if [ "$axis" = dotnet ]; then
+                reflection_oracle "$_CG_APP" before-pointer-array-types > "$out/pointer-array-prefix.$axis.raw.stdout"
+            else
+                run_bounded "$out/ReflectInvoke$EXE_EXT" before-pointer-array-types > "$out/pointer-array-prefix.$axis.raw.stdout"
+            fi
+            strip_cr_win_file "$out/pointer-array-prefix.$axis.raw.stdout" > "$out/pointer-array-prefix.$axis.stdout"
+            awk '/^== pointer array types ==$/ { exit } { print }' \
+                "$out/virtual-delegate-full.$axis.stdout" > "$out/pointer-array-old.$axis.stdout"
+            diff -u "$out/pointer-array-prefix.$axis.stdout" "$out/pointer-array-old.$axis.stdout"
         fi
-        strip_cr_win_file "$out/pointer-array-prefix.$axis.raw.stdout" > "$out/pointer-array-prefix.$axis.stdout"
-        awk '/^== pointer array types ==$/ { exit } { print }' \
-            "$out/virtual-delegate-full.$axis.stdout" > "$out/pointer-array-old.$axis.stdout"
-        diff -u "$out/pointer-array-prefix.$axis.stdout" "$out/pointer-array-old.$axis.stdout"
         pointer_array_asserts "$out/virtual-delegate-full.$axis.stdout"
     done
-    diff -u "$out/pointer-array-prefix.dotnet.stdout" "$out/pointer-array-prefix.native.stdout"
+    if reflection_full_profile; then
+        diff -u "$out/pointer-array-prefix.dotnet.stdout" "$out/pointer-array-prefix.native.stdout"
+    fi
 }

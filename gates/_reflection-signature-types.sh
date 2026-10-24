@@ -62,33 +62,41 @@ reflection_signature_asserts() {
 gate_reflection_signature_prefix_asserts() {
     local out="$1" axis
     for axis in dotnet native; do
-        if [ "$axis" = dotnet ]; then
-            reflection_oracle "$_CG_APP" before-reflection-signature-types > "$out/signature-prefix.$axis.raw.stdout"
-        else
-            run_bounded "$out/ReflectInvoke$EXE_EXT" before-reflection-signature-types > "$out/signature-prefix.$axis.raw.stdout"
+        if reflection_full_profile; then
+            if [ "$axis" = dotnet ]; then
+                reflection_oracle "$_CG_APP" before-reflection-signature-types > "$out/signature-prefix.$axis.raw.stdout"
+            else
+                run_bounded "$out/ReflectInvoke$EXE_EXT" before-reflection-signature-types > "$out/signature-prefix.$axis.raw.stdout"
+            fi
+            strip_cr_win_file "$out/signature-prefix.$axis.raw.stdout" > "$out/signature-prefix.$axis.stdout"
+            awk '/^== reflection signature type handles ==$/ { exit } { print }' \
+                "$out/virtual-delegate-full.$axis.stdout" > "$out/signature-old.$axis.stdout"
+            diff -u "$out/signature-prefix.$axis.stdout" "$out/signature-old.$axis.stdout"
         fi
-        strip_cr_win_file "$out/signature-prefix.$axis.raw.stdout" > "$out/signature-prefix.$axis.stdout"
-        awk '/^== reflection signature type handles ==$/ { exit } { print }' \
-            "$out/virtual-delegate-full.$axis.stdout" > "$out/signature-old.$axis.stdout"
-        diff -u "$out/signature-prefix.$axis.stdout" "$out/signature-old.$axis.stdout"
         reflection_signature_asserts "$out/virtual-delegate-full.$axis.stdout"
-        if [ "$axis" = dotnet ]; then
-            reflection_oracle "$_CG_APP" before-generic-signature-arguments > "$out/generic-signature-before.$axis.raw.stdout"
-        else
-            run_bounded "$out/ReflectInvoke$EXE_EXT" before-generic-signature-arguments > "$out/generic-signature-before.$axis.raw.stdout"
+        if reflection_full_profile; then
+            if [ "$axis" = dotnet ]; then
+                reflection_oracle "$_CG_APP" before-generic-signature-arguments > "$out/generic-signature-before.$axis.raw.stdout"
+            else
+                run_bounded "$out/ReflectInvoke$EXE_EXT" before-generic-signature-arguments > "$out/generic-signature-before.$axis.raw.stdout"
+            fi
+            strip_cr_win_file "$out/generic-signature-before.$axis.raw.stdout" > "$out/generic-signature-before.$axis.stdout"
+            awk '/^== generic function signature arguments ==$/ { exit } { print }' \
+                "$out/virtual-delegate-full.$axis.stdout" > "$out/generic-signature-prefix.$axis.stdout"
+            diff -u "$out/generic-signature-before.$axis.stdout" "$out/generic-signature-prefix.$axis.stdout"
         fi
-        strip_cr_win_file "$out/generic-signature-before.$axis.raw.stdout" > "$out/generic-signature-before.$axis.stdout"
-        awk '/^== generic function signature arguments ==$/ { exit } { print }' \
-            "$out/virtual-delegate-full.$axis.stdout" > "$out/generic-signature-prefix.$axis.stdout"
-        diff -u "$out/generic-signature-before.$axis.stdout" "$out/generic-signature-prefix.$axis.stdout"
         generic_signature_argument_asserts "$out/virtual-delegate-full.$axis.stdout"
     done
-    diff -u "$out/signature-prefix.dotnet.stdout" "$out/signature-prefix.native.stdout"
+    if reflection_full_profile; then
+        diff -u "$out/signature-prefix.dotnet.stdout" "$out/signature-prefix.native.stdout"
+    fi
 }
 
 reflection_signature_diff_axes() {
     local axis out
-    for axis in packed native uncompressed trimmed unshared; do
+    local axes=(packed native uncompressed trimmed unshared)
+    if ! reflection_full_profile; then axes=(uncompressed); fi
+    for axis in "${axes[@]}"; do
         out="artifacts/reflect-invoke-signature-types-$axis"
         mkdir -p "$out"
         local emit_flags=() build_flags=()

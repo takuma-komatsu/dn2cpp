@@ -47,15 +47,17 @@ generic_definition_member_asserts() {
 generic_definition_member_prefix_asserts() {
     local out="$1" axis
     for axis in dotnet native; do
-        if [ "$axis" = dotnet ]; then
-            reflection_oracle "$_CG_APP" before-generic-definition-members > "$out/definitions-before.$axis.raw.stdout"
-        else
-            run_bounded "$out/ReflectInvoke$EXE_EXT" before-generic-definition-members > "$out/definitions-before.$axis.raw.stdout"
+        if reflection_full_profile; then
+            if [ "$axis" = dotnet ]; then
+                reflection_oracle "$_CG_APP" before-generic-definition-members > "$out/definitions-before.$axis.raw.stdout"
+            else
+                run_bounded "$out/ReflectInvoke$EXE_EXT" before-generic-definition-members > "$out/definitions-before.$axis.raw.stdout"
+            fi
+            strip_cr_win_file "$out/definitions-before.$axis.raw.stdout" > "$out/definitions-before.$axis.stdout"
+            awk '/^== generic definition members ==$/ { exit } { print }' \
+                "$out/virtual-delegate-full.$axis.stdout" > "$out/definitions-prefix.$axis.stdout"
+            diff -u "$out/definitions-before.$axis.stdout" "$out/definitions-prefix.$axis.stdout"
         fi
-        strip_cr_win_file "$out/definitions-before.$axis.raw.stdout" > "$out/definitions-before.$axis.stdout"
-        awk '/^== generic definition members ==$/ { exit } { print }' \
-            "$out/virtual-delegate-full.$axis.stdout" > "$out/definitions-prefix.$axis.stdout"
-        diff -u "$out/definitions-before.$axis.stdout" "$out/definitions-prefix.$axis.stdout"
         generic_definition_member_asserts "$out/virtual-delegate-full.$axis.stdout"
     done
 }
@@ -96,15 +98,17 @@ open_signature_asserts() {
 open_signature_prefix_asserts() {
     local out="$1" axis
     for axis in dotnet native; do
-        if [ "$axis" = dotnet ]; then
-            reflection_oracle "$_CG_APP" before-open-generic-signatures > "$out/open-before.$axis.raw.stdout"
-        else
-            run_bounded "$out/ReflectInvoke$EXE_EXT" before-open-generic-signatures > "$out/open-before.$axis.raw.stdout"
+        if reflection_full_profile; then
+            if [ "$axis" = dotnet ]; then
+                reflection_oracle "$_CG_APP" before-open-generic-signatures > "$out/open-before.$axis.raw.stdout"
+            else
+                run_bounded "$out/ReflectInvoke$EXE_EXT" before-open-generic-signatures > "$out/open-before.$axis.raw.stdout"
+            fi
+            strip_cr_win_file "$out/open-before.$axis.raw.stdout" > "$out/open-before.$axis.stdout"
+            awk '/^== open generic signature types ==$/ { exit } { print }' \
+                "$out/virtual-delegate-full.$axis.stdout" > "$out/open-prefix.$axis.stdout"
+            diff -u "$out/open-before.$axis.stdout" "$out/open-prefix.$axis.stdout"
         fi
-        strip_cr_win_file "$out/open-before.$axis.raw.stdout" > "$out/open-before.$axis.stdout"
-        awk '/^== open generic signature types ==$/ { exit } { print }' \
-            "$out/virtual-delegate-full.$axis.stdout" > "$out/open-prefix.$axis.stdout"
-        diff -u "$out/open-before.$axis.stdout" "$out/open-prefix.$axis.stdout"
         open_signature_asserts "$out/virtual-delegate-full.$axis.stdout"
     done
 }
@@ -133,15 +137,17 @@ WITNESSES
 declaring_method_prefix_asserts() {
     local out="$1" axis
     for axis in dotnet native; do
-        if [ "$axis" = dotnet ]; then
-            reflection_oracle "$_CG_APP" before-formal-declaring-methods > "$out/declaring-before.$axis.raw.stdout"
-        else
-            run_bounded "$out/ReflectInvoke$EXE_EXT" before-formal-declaring-methods > "$out/declaring-before.$axis.raw.stdout"
+        if reflection_full_profile; then
+            if [ "$axis" = dotnet ]; then
+                reflection_oracle "$_CG_APP" before-formal-declaring-methods > "$out/declaring-before.$axis.raw.stdout"
+            else
+                run_bounded "$out/ReflectInvoke$EXE_EXT" before-formal-declaring-methods > "$out/declaring-before.$axis.raw.stdout"
+            fi
+            strip_cr_win_file "$out/declaring-before.$axis.raw.stdout" > "$out/declaring-before.$axis.stdout"
+            awk '/^== formal parameter declaring methods ==$/ { exit } { print }' \
+                "$out/virtual-delegate-full.$axis.stdout" > "$out/declaring-prefix.$axis.stdout"
+            diff -u "$out/declaring-before.$axis.stdout" "$out/declaring-prefix.$axis.stdout"
         fi
-        strip_cr_win_file "$out/declaring-before.$axis.raw.stdout" > "$out/declaring-before.$axis.stdout"
-        awk '/^== formal parameter declaring methods ==$/ { exit } { print }' \
-            "$out/virtual-delegate-full.$axis.stdout" > "$out/declaring-prefix.$axis.stdout"
-        diff -u "$out/declaring-before.$axis.stdout" "$out/declaring-prefix.$axis.stdout"
         declaring_method_asserts "$out/virtual-delegate-full.$axis.stdout"
     done
 }
@@ -172,22 +178,26 @@ formal_constraint_asserts() {
 formal_constraint_prefix_asserts() {
     local out="$1" axis
     for axis in dotnet native; do
-        if [ "$axis" = dotnet ]; then
-            reflection_oracle "$_CG_APP" before-formal-constraint-metadata > "$out/constraints-before.$axis.raw.stdout"
-        else
-            run_bounded "$out/ReflectInvoke$EXE_EXT" before-formal-constraint-metadata > "$out/constraints-before.$axis.raw.stdout"
+        if reflection_full_profile; then
+            if [ "$axis" = dotnet ]; then
+                reflection_oracle "$_CG_APP" before-formal-constraint-metadata > "$out/constraints-before.$axis.raw.stdout"
+            else
+                run_bounded "$out/ReflectInvoke$EXE_EXT" before-formal-constraint-metadata > "$out/constraints-before.$axis.raw.stdout"
+            fi
+            strip_cr_win_file "$out/constraints-before.$axis.raw.stdout" > "$out/constraints-before.$axis.stdout"
+            awk '/^== formal constraint metadata ==$/ { exit } { print }' \
+                "$out/virtual-delegate-full.$axis.stdout" > "$out/constraints-prefix.$axis.stdout"
+            diff -u "$out/constraints-before.$axis.stdout" "$out/constraints-prefix.$axis.stdout"
         fi
-        strip_cr_win_file "$out/constraints-before.$axis.raw.stdout" > "$out/constraints-before.$axis.stdout"
-        awk '/^== formal constraint metadata ==$/ { exit } { print }' \
-            "$out/virtual-delegate-full.$axis.stdout" > "$out/constraints-prefix.$axis.stdout"
-        diff -u "$out/constraints-before.$axis.stdout" "$out/constraints-prefix.$axis.stdout"
         formal_constraint_asserts "$out/virtual-delegate-full.$axis.stdout"
     done
 }
 
 formal_constraint_diff_axes() {
     local axis out
-    for axis in packed native uncompressed trimmed unshared; do
+    local axes=(packed native uncompressed trimmed unshared)
+    if ! reflection_full_profile; then axes=(packed); fi
+    for axis in "${axes[@]}"; do
         out="artifacts/formal-constraint-metadata-$axis"
         mkdir -p "$out"
         local flags=() build_flags=() diet_flags=(--no-ildiet)

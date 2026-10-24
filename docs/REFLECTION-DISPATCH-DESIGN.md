@@ -359,6 +359,16 @@ New cases belong in the closest themed bucket, with invariant culture and an
 unchanged old-output prefix. Run the relevant CLI build and individual gates;
 Debug is required for signature contexts, shared generics and emission changes.
 
+The default `build-and-run-reflect-invoke.sh` runs the complete combined driver
+against .NET and samples isolated entry paths and metadata, trimming, ILDiet and
+sharing options. It retains section witnesses, boundary refusals and allocation
+checks, but does not repeat every option for every fixture. Use
+`DN2CPP_REFLECT_INVOKE_FULL=1 ./gates/build-and-run-reflect-invoke.sh` to run the
+complete option matrix and historical prefix replays when extending a section
+or investigating a combination omitted by the default profile. Keeping selected
+entry paths isolated matters: roots from another section can mask a missing
+reachability edge.
+
 | Concern | Individual gates and evidence |
 |---------|-------------------------------|
 | Metadata and invocation | `build-and-run-reflect-invoke.sh`, `build-and-run-reflect-types.sh`; native/packed/explicit-format controls, codec boundaries, full exception fields and strict completion |
