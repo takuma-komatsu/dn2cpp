@@ -1,14 +1,14 @@
-# バグ修正の継続ワークフロー
+# GitHub Issues に基づくバグ修正の継続ワークフロー
 
-本書に従ったチケット消化の開始依頼を受けたときにループを開始する。
+本書に従った Issue 対応の開始依頼を受けたときにループを開始する。
 本書を読む・編集する・レビューする依頼だけでは開始しない。開始依頼は、
 本書と repository 規約を満たす範囲で、調査・修正・回帰・文書更新・commit・
 push・PR 作成・rebase merge まで進める依頼として扱う。
 
 [GitHub Issues](https://github.com/takuma-komatsu/dn2cpp/issues?q=is%3Aissue%20is%3Aopen)
 の高優先度バグを減らす継続作業に適用する。
-着手順と PR の粒度は担当者が判断する。小さい複数チケットを同じ PR に
-まとめてよいが、その中でも順次実装・確認する。異なるチケットや PR の
+着手順と PR の粒度は担当者が判断する。小さい複数 Issue を同じ PR に
+まとめてよいが、その中でも順次実装・確認する。異なる Issue や PR の
 実装は並行せず、現在の PR が実際に merged になるまで次の PR の対象へ
 着手しない。
 
@@ -18,9 +18,12 @@ merge に必要な検証は [CONTRIBUTING.md](../CONTRIBUTING.md) に従う。
 
 開始時は作業ツリーの状態を確認し、既存の作業を保持して main を最新化する。
 AGENTS.md、CONTRIBUTING.md、[README.md](../README.md)、
-[ARCHITECTURE.md](ARCHITECTURE.md)、対象 Issue とその依存関係を実際に読む。Claude は
-[CLAUDE.md](../CLAUDE.md) の `@AGENTS.md` も読む。対象を選定し、方針の提示だけで
-止まらず修正作業へ進む。
+[ARCHITECTURE.md](ARCHITECTURE.md) を実際に読む。Claude は
+[CLAUDE.md](../CLAUDE.md) の `@AGENTS.md` も読む。open Issue を確認して
+優先度、依存関係、再現・検証に必要な環境を踏まえて対象を選ぶ。対象 Issue の
+本文と関連する Issue・PR を読み、問題、範囲、受け入れ条件、検証方法を
+確認する。不足する情報は対象 Issue に追記し、方針の提示だけで止まらず
+修正作業へ進む。
 
 ## 担当と独立レビュー
 
@@ -64,7 +67,7 @@ main の潜在バグを見つけた場合、確実に直せる関連の些末な
 SDK、先行する変更があれば併記する。Issue は実装の merge と必要な検証が
 終わるまで open に保つ。受理や PR 作成だけでは閉じない。残作業を別の Issue に
 分け、コードや設計文書には長期に必要な制約を invariant として残す。廃止した
-STATUS のチケット ID を再利用・引用しない。
+STATUS の旧チケット ID を再利用・引用しない。
 
 ## commit と PR
 
@@ -85,7 +88,7 @@ amend 履歴、レビューや gate の実行状況、自明な検証対象外�
 の指摘ゼロを確認してから rebase merge する。hosted smoke CI だけを merge の
 根拠にしない。skip や中断を pass と扱わない。実際に MERGED になったことを
 確認する。PR が自動 close しない対象も、必要な検証を確認してから解決した
-Issue だけを閉じる。main を更新してから次の対象へ進む。
+Issue だけを閉じる。main を更新し、open Issue を再確認してから次の対象へ進む。
 
 通常操作ごとの確認を繰り返さず、ユーザーの中断・停止指示か修正可能な対象が
 なくなるまで継続する。ひとつの PR の完了や待ち時間だけでループを終了しない。
@@ -95,4 +98,4 @@ Issue だけを閉じる。main を更新してから次の対象へ進む。
 
 開始時の指示例:
 
-> docs/BUGFIX-WORKFLOW.mdに従ってチケット消化を開始してください。
+> docs/BUGFIX-WORKFLOW.md に従って GitHub Issue のバグ修正を開始してください。
