@@ -19,10 +19,10 @@ namespace ReflectActivatorGenericSubset
     }
 
     // SUBJECT: Activator.CreateInstance<T>() and Lazy<T>'s default-ctor path when
-    // T has no public parameterless ctor. The generic factory reflects, so the
-    // miss is a RUN-TIME MissingMethodException, never a compile-time reject;
-    // Lazy<T> catches that type and re-raises MissingMemberException. Exception
-    // types are printed, not messages.
+    // T has no public parameterless ctor. The generic factory raises a runtime
+    // MissingMethodException; Lazy<T> converts it to MissingMemberException.
+    // Run() prints exception types, and RunMissingConstructorMessages() pins
+    // complete messages for closed generic types.
     interface IFace { }
 
     abstract class Abs { }
@@ -42,6 +42,16 @@ namespace ReflectActivatorGenericSubset
         public int V;
         private PrivateCtorOnly() { V = 5; }
         public override string ToString() => $"PrivateCtorOnly({V})";
+    }
+
+    class PrivateGeneric<T>
+    {
+        private PrivateGeneric() { }
+    }
+
+    class MissingGeneric<T>
+    {
+        public MissingGeneric(int value) { }
     }
 
     class Good
@@ -89,6 +99,18 @@ namespace ReflectActivatorGenericSubset
             }
         }
 
+        private static void ShowMissingConstructor<T>(string label)
+        {
+            try
+            {
+                Activator.CreateInstance<T>();
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"{label}: {e.GetType().Name}/{e.Message}");
+            }
+        }
+
         internal static void Run()
         {
             Console.WriteLine("== CreateInstance<T> not-instantiable ==");
@@ -120,6 +142,16 @@ namespace ReflectActivatorGenericSubset
             // A value-factory Lazy<T> never runs the default-ctor path, yet
             // CreateViaDefaultConstructor stays statically reachable.
             ShowLazy("lazy factory", () => new Lazy<NoCtor>(() => new NoCtor(7)));
+        }
+
+        internal static void RunMissingConstructorMessages()
+        {
+            Console.WriteLine("== generic activator constructor messages ==");
+            ShowMissingConstructor<PrivateGeneric<int>>("private generic");
+            ShowMissingConstructor<MissingGeneric<int>>("missing generic");
+            ShowMissingConstructor<Task<int>>("intrinsic generic");
+            ShowMissingConstructor<Task<long>>("isolated intrinsic generic");
+            Console.WriteLine("generic activator constructor messages end");
         }
     }
 }

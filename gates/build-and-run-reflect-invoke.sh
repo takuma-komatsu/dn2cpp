@@ -85,6 +85,8 @@
 # value T) and EventSubset (field-like `event` += / -= / invoke, whose
 # compiler-generated accessors run through Interlocked.CompareExchange, plus the
 # integral Interlocked overloads).
+# ReflectActivatorGenericSubset pins missing-constructor messages for closed
+# generic user and intrinsic types under Activator.CreateInstance<T>().
 # MemberwiseCloneSubset's section 5 is in this bucket for the CoreLib surface
 # it needs, not for its theme: its SUBJECT is the runtime's instance-extent model, and
 # what it asserts is that a clone of an INTRINSIC-represented reference type — a
@@ -288,6 +290,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|reflection-dispatch-v1|dis
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|inherited-gvm-remedy-v1|inherited-gvm-remedy-env:${DN2CPP_INHERITED_GVM_REMEDY:-}|inherited-gvm-remedy-replay:no-ildiet,base-link,actual-xml|stripped-class-remedy-wrapper-v1|stripped-class-remedy-argv:class-remedies|stripped-interface-remedy-wrapper-v1|stripped-interface-remedy-argv:interface-remedies|interface-remedy-prefix-argv:before-interface-remedy-rows|stripped-overrides:${DN2CPP_STRIPPED_OVERRIDES:-}|library-struct-prefix:${DN2CPP_BEFORE_LIBRARY_STRUCT_RETURN:-}|function-pointer-identity-prefix:${DN2CPP_BEFORE_FUNCTION_POINTER_IDENTITY:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|pointer-fields-prefix:${DN2CPP_BEFORE_POINTER_FIELDS:-}|object-methods-prefix-argv:before-object-method-enumeration|property-accessors-prefix-argv:before-property-accessors|property-hiding-prefix-argv:before-property-hiding"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|constructor-messages-prefix-argv:before-constructor-messages"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|generic-activator-messages-prefix-argv:before-generic-activator-messages"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/keep-written-generic-arguments.xml samples/dotnet/ReflectInvoke/link.xml samples/dotnet/ReflectFrameworkBind/link.xml samples/dotnet/ReflectFrameworkBind/keep-library-override.xml samples/dotnet/ReflectInvoke/keep-object-methods.xml"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/RecognizedReflectionOnly.csproj samples/dotnet/ReflectInvoke/RecognizedReflectionOnlyProgram.cs samples/dotnet/ReflectReturnLib/ReflectReturnLib.csproj samples/dotnet/ReflectReturnLib/RecognizedTargets.cs"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectReturnLib/ConstructorBindingTargets.cs samples/dotnet/ReflectReturnLib/SelectionTargets.cs"
@@ -881,6 +884,19 @@ gate_extra_asserts() {
     esac
     reflection_native_full "$out" ReflectInvoke > "$out/metadata-layout.stdout"
     native=$(strip_cr_win_file "$out/metadata-layout.stdout")
+    if reflection_full_profile; then
+        local generic_activator_before generic_activator_prefix
+        generic_activator_before=$(reflection_oracle "$_CG_APP" before-generic-activator-messages)
+        generic_activator_prefix=$(awk '/^== generic activator constructor messages ==$/ { exit } { print }' <<< "$native")
+        assert_output "$generic_activator_prefix" "$(strip_cr_win "$generic_activator_before")"
+    fi
+    reflection_assert_lines - 1 \
+        '== generic activator constructor messages ==' \
+        "private generic: MissingMethodException/No parameterless constructor defined for type 'ReflectActivatorGenericSubset.PrivateGeneric\`1[System.Int32]'." \
+        "missing generic: MissingMethodException/Cannot dynamically create an instance of type 'ReflectActivatorGenericSubset.MissingGeneric\`1[System.Int32]'. Reason: No parameterless constructor defined." \
+        "intrinsic generic: MissingMethodException/No parameterless constructor defined for type 'System.Threading.Tasks.Task\`1[System.Int32]'." \
+        "isolated intrinsic generic: MissingMethodException/No parameterless constructor defined for type 'System.Threading.Tasks.Task\`1[System.Int64]'." \
+        'generic activator constructor messages end' <<< "$native"
     gate_optional_argument_asserts "$out"
     local primitive_before primitive_prefix
     if reflection_full_profile; then

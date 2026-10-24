@@ -3598,6 +3598,8 @@ void dn2cpp_require_layout(const Dn2CppTypeInfo* ti);
 // friends), matching .NET's MissingMethodException; the message carries the
 // diagnosable reason (like the dynamic-codegen PNSE trap).
 [[noreturn]] void dn2cpp_throw_missing_method(const char* message);
+[[noreturn]] void dn2cpp_throw_missing_default_constructor(const Dn2CppTypeInfo* ti,
+    bool hasDefaultConstructor);
 [[noreturn]] void dn2cpp_throw_member_access(const char* message);
 // An invoked interface slot or generic-virtual case with no most specific
 // default body. The emitter bakes .NET's message into the call; the exception

@@ -393,6 +393,9 @@ namespace ReflectInvoke
         if (args.Length > 0 && args[0] == "before-memberwise-clone-collection")
             return;
         MemberwiseCloneSubset.Program.RunAfterCollection();
+        if (args.Length > 0 && args[0] == "before-generic-activator-messages")
+            return;
+        ReflectActivatorGenericSubset.Program.RunMissingConstructorMessages();
         }
     }
 }
