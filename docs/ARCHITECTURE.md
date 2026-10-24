@@ -605,6 +605,12 @@ other results fall back to the current culture. Allocation, identity conversion,
 and unrelated known-provider formatting do not retain unused provider bodies.
 
 Numeric culture data are frozen CLR/ICU snapshots in `runtime/core/intrinsics/`.
+Native binaries never discover or load the deployment host's ICU. Reference
+versions are explicit and checked by `gates/check-culture-reference.sh` in CI.
+The Linux numbering-extension snapshot is selected separately from Windows and
+Apple, without changing the shared named-culture and fallback tables. Android
+and Web retain the existing standard numbering snapshot; the Linux selection
+excludes Android even though its compiler defines `__linux__`.
 A separate PAL locale name selects undefined-language fallback profiles: managed
 current cultures do not change ICU resource fallback. The selector keeps only a
 frozen host index and never constructs a culture, preventing recursive default
@@ -617,7 +623,7 @@ Internal format-spec callbacks retain their raw number-format payload ABI.
 Named and managed-default culture identities sort accepted BCP47 variants before
 discarding an invalid tail. Accepted ICU keywords enable the original managed
 u/t suffix; collation and private-use legacy variants retain their identity.
-Undefined-language spelling follows the ICU platform; an empty custom name
+Undefined-language spelling follows the fixed target reference; an empty custom name
 retains its LCID, neutral state and missing numeric data independently of the
 invariant culture and participates in the resolved-name wrapper cache.
 An empty BCP47 locale conversion retries the original legacy name before

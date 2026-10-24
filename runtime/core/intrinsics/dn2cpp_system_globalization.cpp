@@ -267,6 +267,8 @@ struct Dn2CppCultureNumericData
 
 #if defined(_WIN32)
 #include "dn2cpp_culture_numbering_windows.inc"
+#elif defined(__linux__) && !defined(__ANDROID__)
+#include "dn2cpp_culture_numbering_linux.inc"
 #else
 #include "dn2cpp_culture_numbering.inc"
 #endif
@@ -387,30 +389,65 @@ static void dn2cpp_culture_recase_script(std::u16string& name)
 }
 
 static void dn2cpp_culture_sort_variants(std::u16string& name,
-    Dn2CppLocaleExtensionState<char16_t>& extensions)
+    Dn2CppLocaleExtensionState<char16_t>& extensions, const std::u16string* privateUseTail)
 {
     Dn2CppLocaleVariantState parsed = dn2cpp_locale_sort_variants(name.data(), name.size());
     name.resize(parsed.length);
+#if defined(__linux__) && !defined(__ANDROID__)
+    // Restore private-use casing only after a valid BCP47 prefix was parsed;
+    // legacy identifiers and sort suffixes retain their normalized casing.
+    if (privateUseTail != nullptr && parsed.baseEnd != 0)
+        for (size_t i = parsed.baseEnd; i + 2 < name.size(); i++)
+            if (name[i] == u'-' && name[i + 2] == u'-'
+                && (name[i + 1] == u'x' || name[i + 1] == u'X')
+                && name.size() - i - 3 == privateUseTail->size())
+            {
+                name.replace(i + 3, privateUseTail->size(), *privateUseTail);
+                break;
+            }
+    extensions = dn2cpp_locale_identity_extensions(name.data(), name.size(), parsed, true);
+#else
+    (void)privateUseTail;
     extensions = dn2cpp_locale_identity_extensions(name.data(), name.size(), parsed);
+#endif
     name.resize(extensions.baseEnd);
 }
 
 static std::u16string dn2cpp_culture_legacy_base(std::u16string name)
 {
     for (size_t i = 0; i + 2 < name.size(); i++)
-        if (name[i] == u'-' && name[i + 2] == u'-'
-            && (name[i + 1] == u'u' || name[i + 1] == u'U'
-                || name[i + 1] == u't' || name[i + 1] == u'T'
-                || name[i + 1] == u'x' || name[i + 1] == u'X'))
+        if (name[i] == u'-' && name[i + 2] == u'-')
         {
-            name.resize(i);
+#if defined(__linux__) && !defined(__ANDROID__)
+            // The Linux reference retries the complete legacy identifier.
+            for (size_t j = i + 1; j < name.size(); j++)
+                if (name[j] >= u'a' && name[j] <= u'z')
+                    name[j] = static_cast<char16_t>(name[j] - u'a' + u'A');
+#else
+            if (name[i + 1] == u'u' || name[i + 1] == u'U'
+                || name[i + 1] == u't' || name[i + 1] == u'T'
+                || name[i + 1] == u'x' || name[i + 1] == u'X')
+                name.resize(i);
+#if defined(__APPLE__)
+            // Apple ICU still removes a later u/t/x suffix on the legacy path.
+            else
+                continue;
+#else
+            else
+                // Standard ICU keeps later u/t/x subtags in a rejected
+                // non-keyword singleton's legacy variant.
+                for (size_t j = i + 1; j < name.size(); j++)
+                    if (name[j] >= u'a' && name[j] <= u'z')
+                        name[j] = static_cast<char16_t>(name[j] - u'a' + u'A');
+#endif
+#endif
             break;
         }
     return name;
 }
 
 static bool dn2cpp_culture_canonicalize_language_tag(std::u16string& name,
-    Dn2CppLocaleExtensionState<char16_t>& extensions)
+    Dn2CppLocaleExtensionState<char16_t>& extensions, const std::u16string* privateUseTail = nullptr)
 {
     if (name.find(u'_') != std::u16string::npos)
         return false;
@@ -468,7 +505,7 @@ static bool dn2cpp_culture_canonicalize_language_tag(std::u16string& name,
                 base[i] = static_cast<char16_t>(base[i] - u'a' + u'A');
         name.replace(0, legacyLength, base);
         dn2cpp_culture_recase_script(name);
-        dn2cpp_culture_sort_variants(name, extensions);
+        dn2cpp_culture_sort_variants(name, extensions, privateUseTail);
         return true;
     }
     // BCP47's first extlang becomes ICU's language; the legacy locale path
@@ -520,7 +557,7 @@ static bool dn2cpp_culture_canonicalize_language_tag(std::u16string& name,
             }
         }
     }
-    dn2cpp_culture_sort_variants(name, extensions);
+    dn2cpp_culture_sort_variants(name, extensions, privateUseTail);
     if (undefinedExtlang)
     {
         // An empty converted locale retries the original legacy name.
@@ -562,6 +599,14 @@ static bool dn2cpp_culture_private_use_only(const std::u16string& name)
     return true;
 }
 
+static bool dn2cpp_culture_managed_extension_at(const char16_t* name, int32_t length, int32_t index)
+{
+    return index + 2 < length && name[index] == u'-' && name[index + 2] == u'-'
+        && (name[index + 1] == u'u' || name[index + 1] == u't')
+        && (name[index + 1] == u't' || index + 5 >= length
+            || name[index + 3] != u'c' || name[index + 4] != u'o' || name[index + 5] != u'-');
+}
+
 static Dn2CppString* dn2cpp_culture_normalize_name(Dn2CppString* name,
     bool* customUndefined = nullptr, bool* hasKeywords = nullptr)
 {
@@ -596,15 +641,8 @@ static Dn2CppString* dn2cpp_culture_normalize_name(Dn2CppString* name,
                 return nullptr;
             underscore = true;
         }
-        else if (extension < 0 && i + 2 < name->length
-            && (name->chars[i + 1] == u'u' || name->chars[i + 1] == u't')
-            && name->chars[i + 2] == u'-')
-        {
-            if (name->chars[i + 1] == u't' || i + 5 >= name->length
-                || name->chars[i + 3] != u'c' || name->chars[i + 4] != u'o'
-                || name->chars[i + 5] != u'-')
-                extension = i;
-        }
+        else if (extension < 0 && dn2cpp_culture_managed_extension_at(name->chars, name->length, i))
+            extension = i;
     }
     char16_t normalized[86];
     int32_t start = 0;
@@ -637,7 +675,7 @@ static Dn2CppString* dn2cpp_culture_normalize_name(Dn2CppString* name,
         start = end + 1;
         part++;
     }
-#if defined(_WIN32)
+#if defined(_WIN32) || (defined(__linux__) && !defined(__ANDROID__))
     std::u16string legacy(normalized, static_cast<size_t>(length));
 #endif
     if (extension >= 0 && extension < length)
@@ -658,13 +696,64 @@ static Dn2CppString* dn2cpp_culture_normalize_name(Dn2CppString* name,
                     normalized[j] = static_cast<char16_t>(normalized[j] - u'A' + u'a');
             break;
         }
+    std::u16string privateUseTail;
+#if defined(__linux__) && !defined(__ANDROID__)
+    for (int32_t i = 0; i + 2 < length; i++)
+        if (name->chars[i] == u'-' && name->chars[i + 2] == u'-'
+            && (name->chars[i + 1] == u'x' || name->chars[i + 1] == u'X'))
+        {
+            privateUseTail.assign(name->chars + i + 3, static_cast<size_t>(length - i - 3));
+            break;
+        }
+#endif
     std::u16string canonical(normalized, static_cast<size_t>(length));
+#if defined(_WIN32) || (defined(__linux__) && !defined(__ANDROID__))
+    if (privateUse && underscore)
+        canonical = legacy;
+#endif
     std::u16string undefinedLegacy;
     if (canonical.compare(0, 4, u"und-") == 0)
         undefinedLegacy = dn2cpp_culture_legacy_base(canonical);
     Dn2CppLocaleExtensionState<char16_t> extensions{};
-    bool languageTag = dn2cpp_culture_canonicalize_language_tag(canonical, extensions);
-    bool privateUseOnly = languageTag && !underscore && dn2cpp_culture_private_use_only(canonical);
+    bool leadingPrivateTag = false;
+#if defined(_WIN32)
+    if (privateUse && !underscore)
+    {
+        // The BCP47 parser requires a language prefix. Supply an undefined one
+        // for a valid leading private-use tag, then remove it before NLS checks
+        // the resolved name. Retain raw casing for ICU's case-sensitive lvariant.
+        leadingPrivateTag = length > 2;
+        for (int32_t start = 2; leadingPrivateTag && start < length;)
+        {
+            int32_t end = start;
+            while (end < length && name->chars[end] != u'-')
+                end++;
+            leadingPrivateTag = end - start >= 1 && end - start <= 8;
+            start = end + 1;
+        }
+        if (leadingPrivateTag)
+        {
+            canonical = u"und-";
+            canonical.append(name->chars, static_cast<size_t>(length));
+            Dn2CppLocaleVariantState parsed = dn2cpp_locale_sort_variants(canonical.data(), canonical.size());
+            extensions = dn2cpp_locale_identity_extensions(canonical.data(), canonical.size(), parsed, true);
+            canonical.resize(extensions.baseEnd);
+            if (canonical == u"und" && !extensions.keywords)
+            {
+                // A valueless lvariant produces an empty ICU locale, which
+                // retries the original legacy identifier rather than root.
+                canonical.assign(normalized, static_cast<size_t>(length));
+                leadingPrivateTag = false;
+            }
+            else
+                canonical.erase(0, 3);
+        }
+    }
+#endif
+    bool languageTag = leadingPrivateTag
+        || dn2cpp_culture_canonicalize_language_tag(canonical, extensions, &privateUseTail);
+    bool privateUseOnly = (leadingPrivateTag && canonical.empty())
+        || (languageTag && !underscore && dn2cpp_culture_private_use_only(canonical));
     if (privateUseOnly)
         canonical.clear();
     if (hasKeywords != nullptr)
@@ -814,10 +903,32 @@ static Dn2CppString* dn2cpp_culture_public_name(Dn2CppString* input, Dn2CppStrin
             // legacy sort in Name even when that base has a region.
             if (canonical->length > 2 && canonical->chars[0] == u'x'
                 && canonical->chars[1] == u'-')
+            {
+#if defined(_WIN32) || (defined(__linux__) && !defined(__ANDROID__))
+                // A sort keeps the legacy base; CultureData appends the raw
+                // managed suffix separately, including its original sort.
+                for (int32_t j = 2; j + 2 < input->length; j++)
+                    if (dn2cpp_culture_managed_extension_at(input->chars, input->length, j))
+                    {
+                        // CLR copies the whole raw span, including embedded NULs,
+                        // only when it fits its fixed UTF-16 normalization buffer.
+                        constexpr size_t capacity = 157;
+                        if (static_cast<size_t>(i + input->length - j) > capacity)
+                            break;
+                        std::u16string publicName(canonical->chars, static_cast<size_t>(i));
+                        publicName.append(input->chars + j, static_cast<size_t>(input->length - j));
+                        if (dn2cpp_culture_region_end(canonical) == 0
+                            && publicName.size() + static_cast<size_t>(canonical->length - i) <= capacity)
+                            publicName.append(canonical->chars + i, static_cast<size_t>(canonical->length - i));
+                        return dn2cpp_string_from_chars(publicName.data(), static_cast<int32_t>(publicName.size()));
+                    }
+#else
                 for (int32_t j = 2; j + 2 < i; j++)
                     if (canonical->chars[j] == u'-' && canonical->chars[j + 2] == u'-'
                         && (canonical->chars[j + 1] == u'u' || canonical->chars[j + 1] == u't'))
                         return canonical;
+#endif
+            }
             if (dn2cpp_culture_region_end(canonical) == 0)
                 return canonical;
             for (int32_t j = 0; j + 5 < input->length; j++)
@@ -1349,10 +1460,19 @@ static const Dn2CppNumberFormatInfo* dn2cpp_culture_intern(const Dn2CppCultureRo
             sorted = true;
             if (dn2cpp_string_equals(name, identity))
                 realName = identity;
+#if defined(_WIN32) || (defined(__linux__) && !defined(__ANDROID__))
+            else if (name->length > 2 && name->chars[0] == u'x' && name->chars[1] == u'-'
+                && dn2cpp_culture_region_end(name, true) == 0)
+                realName = name;
+#endif
             else
             {
                 std::u16string resolved(name->chars, static_cast<size_t>(name->length));
-                resolved.append(identity->chars + i, static_cast<size_t>(identity->length - i));
+#if defined(_WIN32) || (defined(__linux__) && !defined(__ANDROID__))
+                bool privateUse = name->length > 2 && name->chars[0] == u'x' && name->chars[1] == u'-';
+                if (!privateUse || resolved.size() + static_cast<size_t>(identity->length - i) <= 157)
+#endif
+                    resolved.append(identity->chars + i, static_cast<size_t>(identity->length - i));
                 realName = dn2cpp_string_from_chars(resolved.data(), static_cast<int32_t>(resolved.size()));
             }
             break;
@@ -1360,6 +1480,19 @@ static const Dn2CppNumberFormatInfo* dn2cpp_culture_intern(const Dn2CppCultureRo
     dn2cpp_gc_store_ref(&node->nfi.cultureRealName, realName);
     node->nfi.lcid = lcid >= 0 ? lcid : 4096;
     node->nfi.isNeutralCulture = dn2cpp_culture_region_end(name, sorted) == 0 ? 1 : 0;
+#if defined(__linux__) && !defined(__ANDROID__)
+    // ICU re-parses the resolved public name for resource metadata. Uppercase
+    // private-use LVARIANT can resolve to root while the legacy name stays visible.
+    if (node->nfi.isNeutralCulture == 0)
+    {
+        std::u16string resource(name->chars, static_cast<size_t>(name->length));
+        Dn2CppLocaleExtensionState<char16_t> extensions{};
+        if (resource.find(u"-X-") != std::u16string::npos
+            && dn2cpp_culture_canonicalize_language_tag(resource, extensions)
+            && resource == u"und")
+            node->nfi.isNeutralCulture = 1;
+    }
+#endif
     node->nfi.missingNumberFormat = node->nfi.lcid == 4096 && name->length == 0 ? 1 : 0;
     if (row == nullptr)
     {

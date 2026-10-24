@@ -194,7 +194,8 @@ struct Dn2CppLocaleExtensionState
 // extension can supply a keyword, even when a later u/t extension is invalid.
 template<typename Char>
 static Dn2CppLocaleExtensionState<Char> dn2cpp_locale_identity_extensions(
-    Char* name, size_t length, const Dn2CppLocaleVariantState& prefix)
+    Char* name, size_t length, const Dn2CppLocaleVariantState& prefix,
+    bool caseSensitiveLegacyVariant = false)
 {
     Dn2CppLocaleExtensionState<Char> state{prefix.baseEnd != 0 ? prefix.baseEnd : length,
         false, false, {}, 0, false, false};
@@ -296,7 +297,8 @@ static Dn2CppLocaleExtensionState<Char> dn2cpp_locale_identity_extensions(
                 size_t itemEnd = endOf(item);
                 const char* legacy = "lvariant";
                 bool match = itemEnd - item == 8;
-                for (size_t i = 0; match && i < 8; i++) match = lower(name[item + i]) == legacy[i];
+                for (size_t i = 0; match && i < 8; i++)
+                    match = (caseSensitiveLegacyVariant ? name[item + i] : lower(name[item + i])) == legacy[i];
                 if (match && itemEnd == valueEnd)
                 {
                     // A valueless lvariant consumes the private-use keyword.
