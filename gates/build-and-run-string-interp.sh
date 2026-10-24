@@ -20,8 +20,11 @@
 # value that is still negative after rounding.
 # Custom sections are selected after rounding; placeholders, interleaved literals,
 # and repeated decimal points follow the CLR's digit stream.
+# Standard numeric formats terminate at NUL; raw output comparisons retain the
+# byte that shell command substitution would discard.
 source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|comma-scaling-prefix:before-comma-scaling|custom-matrix-prefix:before-custom-matrix"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|standard-nul-prefix:before-standard-nul"
 
 gate_extra_asserts() {
     local out="$1" native before prefix line
@@ -80,6 +83,37 @@ gate_extra_asserts() {
         [ "$(grep -Fxc "$line" <<< "$native")" = 1 ] \
             || { echo "FAIL: custom numeric matrix witness missing: $line" >&2; exit 1; }
     done
+    before=$(run_bounded dotnet "$_CG_APP" before-standard-nul)
+    prefix=$(awk '/^== Standard numeric NUL termination ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    before=$(run_bounded "./$out/StringInterp" before-standard-nul)
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    for line in '== Standard numeric NUL termination ==' \
+        'matrix 2/decimal=[1,235]' 'matrix 4/int=[1,234.00]' \
+        'matrix 5/double=[1,234.60]' 'matrix 5/float=[1,234.60]' \
+        'matrix 8/int=[1234]' 'matrix 9/double=[1235x]' \
+        'significant=[1.23E+03]' 'hex=[FF]' 'padded=[005]' \
+        'decimal exact=[1234567890123456789012345678]' \
+        'negative decimal=[0.00]' \
+        'float G0=[0.1]' 'float G NUL=[0.1]' \
+        'hex X0=[0]' 'hex X NUL=[0]' \
+        'float g0 NaN=[NAN-E]' 'float g NUL NaN=[NAN-E]' \
+        'float g0 negative=[NEG1]' 'float g NUL negative=[NEG1]' \
+        'float g0 exponent=[1e+20]' 'float g NUL exponent=[1e+20]' \
+        'float r NaN=[NAN-E]' 'double r NaN=[NAN-E]' \
+        'float r negative=[NEG1]' 'double r negative=[NEG1]' \
+        'Standard numeric NUL termination end'; do
+        [ "$(grep -Fxc "$line" <<< "$native")" = 1 ] \
+            || { echo "FAIL: standard numeric NUL witness missing: $line" >&2; exit 1; }
+    done
+    run_bounded "./$out/StringInterp" > "$out/standard-nul-native.out"
+    run_bounded dotnet "$_CG_APP" > "$out/standard-nul-dotnet.out"
+    tr -d '\r' < "$out/standard-nul-native.out" > "$out/standard-nul-native-lf.out"
+    tr -d '\r' < "$out/standard-nul-dotnet.out" > "$out/standard-nul-dotnet-lf.out"
+    cmp "$out/standard-nul-dotnet-lf.out" "$out/standard-nul-native-lf.out" || {
+        echo "FAIL: standard numeric NUL raw bytes differ from real .NET" >&2; exit 1; }
+    tail -c 15 "$out/standard-nul-dotnet-lf.out" | cmp - <(printf 'raw=[5.00]\000END\n') || {
+        echo "FAIL: standard numeric NUL raw-byte witness missing" >&2; exit 1; }
 }
 
 corelib_diff_gate StringInterp

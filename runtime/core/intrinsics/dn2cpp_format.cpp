@@ -94,13 +94,14 @@ void dn2cpp_isb_append_aligned(Dn2CppISB* h, Dn2CppString* s, int32_t alignment)
 }
 
 // Parse a standard numeric format string (e.g. "X4", "N2") into its specifier
-// letter and optional precision. An empty/null string or a specifier with any
-// non-digit trailing char yields letter 0 (default formatting).
+// letter and optional precision. NUL terminates the specifier; if it follows
+// the letter directly, CLR uses precision zero rather than the usual default.
+// Other non-digit trailing chars yield letter 0 (default formatting).
 static void dn2cpp_parse_fmt(Dn2CppString* fmt, char* letter, int* prec)
 {
     *letter = 0;
     *prec = -1;
-    if (fmt == nullptr || fmt->length == 0)
+    if (fmt == nullptr || fmt->length == 0 || fmt->chars[0] == u'\0')
         return;
     *letter = static_cast<char>(fmt->chars[0]);
     int p = 0;
@@ -108,6 +109,11 @@ static void dn2cpp_parse_fmt(Dn2CppString* fmt, char* letter, int* prec)
     for (int32_t i = 1; i < fmt->length; i++)
     {
         char16_t c = fmt->chars[i];
+        if (c == u'\0')
+        {
+            *prec = p;
+            return;
+        }
         if (c >= u'0' && c <= u'9')
         {
             p = p * 10 + static_cast<int>(c - u'0');
@@ -158,7 +164,7 @@ static Dn2CppString* dn2cpp_hex(uint64_t v, int32_t byteWidth, bool upper, int p
     char buf[20];
     const char* spec = upper ? "%.*llX" : "%.*llx";
     int len = std::snprintf(buf, sizeof(buf), spec,
-        prec < 0 ? 1 : prec, static_cast<unsigned long long>(v & mask));
+        prec <= 0 ? 1 : prec, static_cast<unsigned long long>(v & mask));
     return dn2cpp_string_from_ascii(buf, len);
 }
 
@@ -187,20 +193,26 @@ static Dn2CppString* dn2cpp_binary(uint64_t v, int32_t byteWidth, int prec)
     return s;
 }
 
-// A format string is "standard" iff it is a single ASCII letter optionally
-// followed by digits (e.g. "X", "D5", "N2"). Anything else non-empty (e.g. "000",
-// "#,##0.00") is a custom numeric pattern.
+// A format string is "standard" iff it starts with NUL or an ASCII letter
+// optionally followed by digits, ending at the first NUL if present. Anything
+// else non-empty (e.g. "000", "#,##0.00") is a custom numeric pattern.
 static bool dn2cpp_is_standard_fmt(Dn2CppString* fmt)
 {
     if (fmt == nullptr || fmt->length == 0)
         return true; // empty -> default standard formatting
     char16_t c0 = fmt->chars[0];
+    if (c0 == u'\0')
+        return true;
     bool alpha = (c0 >= u'A' && c0 <= u'Z') || (c0 >= u'a' && c0 <= u'z');
     if (!alpha)
         return false;
     for (int32_t i = 1; i < fmt->length; i++)
+    {
+        if (fmt->chars[i] == u'\0')
+            return true;
         if (fmt->chars[i] < u'0' || fmt->chars[i] > u'9')
             return false;
+    }
     return true;
 }
 
@@ -1076,27 +1088,6 @@ static Dn2CppString* dn2cpp_format_g(double v, int prec, bool upper, const Dn2Cp
     return dn2cpp_localize_ascii(out, o, nfi);
 }
 
-// Lowercase-exponent twin for the shortest-round-trip renderer ("r"/"g" emit 'e'
-// where "R"/"G" emit 'E'). That renderer's only alphabetic ASCII is the exponent
-// marker, so a targeted 'E'->'e' rewrite is exact; the input is left untouched
-// (copy-on-write) so shared culture symbols (NaN/Infinity) are never mutated —
-// none of them contains an 'E', so they pass through unchanged.
-static Dn2CppString* dn2cpp_lower_exp(Dn2CppString* s)
-{
-    if (s == nullptr)
-        return s;
-    for (int32_t i = 0; i < s->length; i++)
-        if (s->chars[i] == u'E')
-        {
-            char16_t* dst;
-            Dn2CppString* r = dn2cpp_string_alloc(&dst, s->length);
-            for (int32_t k = 0; k < s->length; k++)
-                dst[k] = s->chars[k] == u'E' ? u'e' : s->chars[k];
-            return r;
-        }
-    return s;
-}
-
 Dn2CppString* dn2cpp_format_r8_c(double v, Dn2CppString* fmt, const Dn2CppNumberFormatInfo* nfi)
 {
     nfi = dn2cpp_nfi_or_current(nfi);
@@ -1150,8 +1141,8 @@ Dn2CppString* dn2cpp_format_r8_c(double v, Dn2CppString* fmt, const Dn2CppNumber
             // IGNORES any precision digits ("R7" == "R"). Lowercase "r" renders
             // a lowercase exponent marker, like "g".
         {
-            Dn2CppString* s = dn2cpp_double_to_string_c(v, nfi);
-            return letter == 'r' ? dn2cpp_lower_exp(s) : s;
+            return letter == 'r' ? dn2cpp_double_to_string_lower_c(v, nfi)
+                                 : dn2cpp_double_to_string_c(v, nfi);
         }
         case 'p':
         case 'P':
@@ -1198,15 +1189,15 @@ Dn2CppString* dn2cpp_format_r4_c(float v, Dn2CppString* fmt, const Dn2CppNumberF
     char letter; int prec;
     dn2cpp_parse_fmt(fmt, &letter, &prec);
     // "R"/"r" accept and IGNORE a precision ("R7" == "R"), so they stay on the
-    // float shortest-round-trip path regardless of digits; "G"/default only
-    // when no precision is given (an explicit G-precision rounds identically
-    // from the exact double widening). The lowercase specifiers render a
-    // lowercase exponent marker.
+    // float shortest-round-trip path regardless of digits; "G0" is also the
+    // default precision. Positive G-precision rounds identically from the
+    // exact double widening. Lowercase specifiers use a lowercase exponent.
     if (letter == 'R' || letter == 'r'
-        || (prec < 0 && (letter == 'G' || letter == 'g' || letter == 0)))
+        || (prec <= 0 && (letter == 'G' || letter == 'g'))
+        || (prec < 0 && letter == 0))
     {
-        Dn2CppString* s = dn2cpp_float_to_string_c(v, n);
-        return (letter == 'r' || letter == 'g') ? dn2cpp_lower_exp(s) : s;
+        return (letter == 'r' || letter == 'g') ? dn2cpp_float_to_string_lower_c(v, n)
+                                               : dn2cpp_float_to_string_c(v, n);
     }
     return dn2cpp_format_r8_c(static_cast<double>(v), fmt, n);
 }
