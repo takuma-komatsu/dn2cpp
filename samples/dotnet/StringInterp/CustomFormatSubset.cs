@@ -122,4 +122,32 @@ static class Program
         Console.WriteLine("decimal exponent=" + 1234567890123456789012345678m.ToString("0.00E+00"));
         Console.WriteLine("Custom numeric comma scaling end");
     }
+
+    internal static void __SectionMatrixGate()
+    {
+        Console.WriteLine("== Custom numeric sections and placeholders ==");
+        Console.WriteLine("rounded section=" + (-4).ToString("0,;(0,)"));
+        Console.WriteLine("empty negative=" + (-5).ToString("#;;z"));
+        Console.WriteLine("fraction exponent=" + 0.5.ToString(".0E+0"));
+        Console.WriteLine("mixed zero=" + 5.ToString("0#"));
+        Console.WriteLine("integer literal=" + 1234.ToString("0x0"));
+        Console.WriteLine("repeated point=" + 1.5.ToString("0..0"));
+        Console.WriteLine("exponent width=" + 1234.ToString("0E+00000000000"));
+        Console.WriteLine("embedded nul=[" + 5.ToString("0\u0000x") + "]");
+        Console.WriteLine("nul negative section=[" + (-5).ToString("0;\u0000(0)") + "]");
+
+        double[] values = { -1234.5, -5, -0.5, 0, 0.5, 5, 1234.5 };
+        string[] formats = {
+            "0,;(0,)", "#;;z", ".0E+0", "0#", "0x0", "0..0",
+            "#0", "#0#", "00#", "0#0", "0'X'0", "#'X'#",
+            ".#E+0", ".00E+00", "0.0.0", "0..#", "0.##;[0.##];'zero'",
+            "0,000", "000,000.0", "#,##0.0E+0", "#,##0'x'0"
+        };
+        for (int f = 0; f < formats.Length; f++)
+        {
+            for (int v = 0; v < values.Length; v++)
+                Console.WriteLine("matrix " + f + "/" + v + "=[" + values[v].ToString(formats[f]) + "]");
+        }
+        Console.WriteLine("Custom numeric sections and placeholders end");
+    }
 }

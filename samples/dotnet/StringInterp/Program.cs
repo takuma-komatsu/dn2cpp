@@ -28,6 +28,9 @@ namespace StringInterp
             if (args.Length > 0 && args[0] == "before-comma-scaling")
                 return;
             CustomFormatSubset.Program.__CommaScalingGate();
+            if (args.Length > 0 && args[0] == "before-custom-matrix")
+                return;
+            CustomFormatSubset.Program.__SectionMatrixGate();
         }
     }
 }

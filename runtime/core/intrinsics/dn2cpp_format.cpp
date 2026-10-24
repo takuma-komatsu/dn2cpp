@@ -288,171 +288,218 @@ static void dn2cpp_custom_digits_round(Dn2CppCustomDigits& x, int pos)
     dn2cpp_custom_digits_trim(x);
 }
 
-// Render `mag` (a non-negative magnitude) under one custom-numeric-format section
-// `p[0..L)`. Handles digit placeholders `0`/`#`, `.`, `,` grouping/scaling,
-// `%`(×100)/`‰`(×1000) scaling with the symbol emitted in place, `\` escapes,
-// `'…'`/`"…"` quoted literals and bare literal characters emitted in position, and
-// custom exponential (`E`/`e` `[+/-]` `0+`). `emitSign` (a single-section
-// negative) prefixes `-` when the rounded digits have a nonzero scale or the
-// section printed something; integers and decimal drop it once rounding leaves
-// zero, having no negative zero. One integer placeholder is the common
-// exponential form (`0.00E+00`); engineering grouping for >1 integer
-// placeholders is not modeled.
-static Dn2CppString* dn2cpp_format_section(const char16_t* p, int L, Dn2CppCustomDigits mag, bool emitSign,
-                                          bool floating, const Dn2CppNumberFormatInfo* nfi)
+// Sections are selected before formatting, then selected again if rounding turns
+// the value into zero. Empty sections fall back to the first section.
+static int dn2cpp_custom_section(const char16_t* fmt, int length, int section)
 {
-    // ---- pass 1: analyze placeholders, scale, and any exponential spec ----
-    int intPlace = 0, intZeros = 0, fracMax = 0, fracMin = 0;
-    int commaPlace = -1, commaCount = 0;
-    bool group = false, seenDot = false, inFrac = false;
-    int scaleExp = 0;
-    // expForceSign / expDigits are re-parsed from the format by pass 2's exponent
-    // emitter, so these copies are only pass-1 bookkeeping.
-    bool expMode = false, expUpper = false;
-    [[maybe_unused]] bool expForceSign = false;
-    [[maybe_unused]] int expDigits = 0;
+    if (section == 0)
+        return 0;
+    for (int i = 0; i < length; i++)
     {
-        bool inq = false; char16_t q = 0;
-        for (int i = 0; i < L; i++)
+        char16_t c = fmt[i];
+        if (c == u'\\') { i++; continue; }
+        if (c == u'\'' || c == u'"')
         {
-            char16_t c = p[i];
-            if (inq) { if (c == q) inq = false; continue; }
+            while (++i < length && fmt[i] != c) {}
+            continue;
+        }
+        if (c == u';' && --section == 0)
+            return i + 1 < length && fmt[i + 1] != u';' ? i + 1 : 0;
+    }
+    return 0;
+}
+
+// Render custom numeric digits in placeholder order. This preserves literals
+// between integer digits and lets the first decimal point own the separator.
+static Dn2CppString* dn2cpp_format_section(const char16_t* fmt, int length, Dn2CppCustomDigits mag,
+                                          bool negative, bool floating, const Dn2CppNumberFormatInfo* nfi)
+{
+    int section = dn2cpp_custom_section(fmt, length, mag.n == 0 ? 2 : negative ? 1 : 0);
+    int digitCount, decimalPos, firstDigit, lastDigit;
+    bool scientific, group;
+    while (true)
+    {
+        digitCount = 0;
+        decimalPos = -1;
+        firstDigit = INT32_MAX;
+        lastDigit = 0;
+        scientific = false;
+        group = false;
+        int commaPos = -1, commaCount = 0, scaleAdjust = 0;
+        for (int i = section; i < length && fmt[i] != u';'; i++)
+        {
+            char16_t c = fmt[i];
             if (c == u'\\') { i++; continue; }
-            if (c == u'\'' || c == u'"') { inq = true; q = c; continue; }
-            if (c == u'0' || c == u'#')
+            if (c == u'\'' || c == u'"')
             {
-                if (inFrac) { fracMax++; if (c == u'0') fracMin = fracMax; }
-                else { intPlace++; if (c == u'0') intZeros++; }
+                while (++i < length && fmt[i] != c) {}
+                continue;
             }
-            else if (c == u'.') { if (!seenDot) { seenDot = true; inFrac = true; } }
-            else if (c == u',' && !inFrac && intPlace > 0)
+            if (c == u'#' || c == u'0')
             {
-                if (commaPlace == intPlace) commaCount++;
+                if (c == u'0')
+                {
+                    if (firstDigit == INT32_MAX) firstDigit = digitCount;
+                    lastDigit = digitCount + 1;
+                }
+                digitCount++;
+            }
+            else if (c == u'.')
+            {
+                if (decimalPos < 0) decimalPos = digitCount;
+            }
+            else if (c == u',' && digitCount > 0 && decimalPos < 0)
+            {
+                if (commaPos == digitCount) commaCount++;
                 else
                 {
-                    if (commaPlace >= 0) group = true;
-                    commaPlace = intPlace;
+                    if (commaPos >= 0) group = true;
+                    commaPos = digitCount;
                     commaCount = 1;
                 }
             }
-            else if (c == u'%') { scaleExp += 2; }
-            else if (c == u'‰') { scaleExp += 3; }
+            else if (c == u'%') scaleAdjust += 2;
+            else if (c == u'‰') scaleAdjust += 3;
             else if (c == u'E' || c == u'e')
             {
-                int j = i + 1; bool fs = false;
-                if (j < L && (p[j] == u'+' || p[j] == u'-')) { fs = (p[j] == u'+'); j++; }
-                int z = 0; while (j < L && p[j] == u'0') { z++; j++; }
-                if (z > 0) { expMode = true; expUpper = (c == u'E'); expForceSign = fs; expDigits = z; i = j - 1; }
+                int j = i + 1;
+                if (j < length && (fmt[j] == u'+' || fmt[j] == u'-')) j++;
+                if (j < length && fmt[j] == u'0')
+                {
+                    while (j < length && fmt[j] == u'0') j++;
+                    scientific = true;
+                    i = j - 1;
+                }
             }
         }
-    }
-    // Commas after the final integer placeholder scale; earlier ones group.
-    if (commaPlace == intPlace)
-        scaleExp -= 3 * commaCount;
-    else if (commaPlace >= 0)
-        group = true;
-    if (mag.n > 0)
-        mag.scale += scaleExp;
-    auto digitAt = [&mag](int i) { return i >= 0 && i < mag.n ? mag.d[i] : '0'; };
-
-    // ---- compute the integer/fraction digit streams ----
-    std::string idig, fdig;
-    int expVal = 0;
-    if (expMode)
-    {
-        // Engineering exponential: the mantissa carries `intPlace` integer digits
-        // (the common intPlace==1 case is plain scientific), with the exponent
-        // shifted so it is a multiple of that count. .NET: `##0.0E+0` of 1234.5 is
-        // "123.5E+1" (3 integer digits), `0.0E+0` is "1.2E+3".
-        int wantInt = intPlace < 1 ? 1 : intPlace;
-        dn2cpp_custom_digits_round(mag, wantInt + fracMax);
-        for (int i = 0; i < wantInt; i++) idig.push_back(digitAt(i));
-        for (int i = 0; i < fracMax; i++) fdig.push_back(digitAt(wantInt + i));
-        expVal = mag.n > 0 ? mag.scale - wantInt : 0;
-    }
-    else
-    {
-        dn2cpp_custom_digits_round(mag, mag.scale + fracMax);
-        for (int i = 0; i < mag.scale; i++) idig.push_back(digitAt(i)); // < 1 has no int digits
-        for (int i = 0; i < fracMax; i++) fdig.push_back(digitAt(mag.scale + i));
-    }
-    if (mag.n == 0 && !floating)
-        emitSign = false;
-    int iLen = static_cast<int>(idig.size());
-    int fLen = static_cast<int>(fdig.size());
-    while (fLen > fracMin && fdig[fLen - 1] == '0') fLen--; // trim '#' frac zeros
-
-    // Integer block: left-pad to the '0' count, then group. Emitted whole at the
-    // first integer placeholder (interleaving literals between integer digits is not
-    // modeled — vanishingly rare).
-    std::u16string intOut;
-    {
-        int pad = intZeros > iLen ? intZeros - iLen : 0;
-        std::string dg(static_cast<size_t>(pad), '0');
-        dg += idig;
-        int dn = static_cast<int>(dg.size());
-        std::string sepAfter(static_cast<size_t>(dn), '\0');
-        // Custom formats skip grouping altogether when its symbol is empty.
-        if (group && nfi->numberGroup != nullptr && nfi->numberGroup->length > 0)
-            dn2cpp_group_marks(dn, nfi->groupSizes, nfi->groupSizeCount,
-                reinterpret_cast<unsigned char*>(&sepAfter[0]));
-        for (int i = 0; i < dn; i++)
+        if (decimalPos < 0) decimalPos = digitCount;
+        if (commaPos == decimalPos) scaleAdjust -= 3 * commaCount;
+        else if (commaPos >= 0) group = true;
+        if (mag.n > 0)
         {
-            intOut.push_back(static_cast<char16_t>(dg[i]));
-            if (sepAfter[i]) intOut.append(nfi->numberGroup->chars, static_cast<size_t>(nfi->numberGroup->length));
+            mag.scale += scaleAdjust;
+            dn2cpp_custom_digits_round(mag, scientific ? digitCount : mag.scale + digitCount - decimalPos);
+            if (mag.n == 0)
+            {
+                if (!floating) negative = false;
+                int zeroSection = dn2cpp_custom_section(fmt, length, 2);
+                if (zeroSection != section) { section = zeroSection; continue; }
+            }
         }
+        else
+        {
+            if (!floating) negative = false;
+            mag.scale = 0;
+        }
+        break;
     }
 
-    // ---- weave the output: digits into placeholders, everything else literal ----
+    firstDigit = firstDigit < decimalPos ? decimalPos - firstDigit : 0;
+    lastDigit = lastDigit > decimalPos ? decimalPos - lastDigit : 0;
+    int digPos = scientific ? decimalPos : (mag.scale > decimalPos ? mag.scale : decimalPos);
+    int adjust = scientific ? 0 : mag.scale - decimalPos;
+    int totalDigits = digPos + (adjust < 0 ? adjust : 0);
+    int groupedDigits = firstDigit > totalDigits ? firstDigit : totalDigits;
+    std::string sepAfter(static_cast<size_t>(groupedDigits), '\0');
+    if (group && groupedDigits > 0 && nfi->numberGroup != nullptr && nfi->numberGroup->length > 0)
+        dn2cpp_group_marks(groupedDigits, nfi->groupSizes, nfi->groupSizeCount,
+            reinterpret_cast<unsigned char*>(&sepAfter[0]));
+
     std::u16string out;
     auto put = [&out](Dn2CppString* value) {
         if (value != nullptr) out.append(value->chars, static_cast<size_t>(value->length));
     };
-    bool intDone = false, fracDone = false;
-    bool inq = false; char16_t q = 0;
-    for (int i = 0; i < L; i++)
+    auto putDigit = [&](char c) {
+        out.push_back(static_cast<char16_t>(c));
+        int index = groupedDigits - digPos;
+        if (group && digPos > 1 && index >= 0 && index < groupedDigits && sepAfter[index])
+            put(nfi->numberGroup);
+    };
+    if (negative && section == 0 && mag.scale != 0) put(nfi->negativeSign);
+    int curIndex = 0;
+    bool decimalWritten = false;
+    for (int i = section; i < length && fmt[i] != u';'; i++)
     {
-        char16_t c = p[i];
-        if (inq) { if (c == q) inq = false; else out.push_back(c); continue; }
-        if (c == u'\\') { if (i + 1 < L) out.push_back(p[++i]); continue; }
-        if (c == u'\'' || c == u'"') { inq = true; q = c; continue; }
-        // A digit placeholder is integer or fraction depending on whether a '.'
-        // precedes it; the whole integer/fraction block lands at its first placeholder.
-        if (c == u'0' || c == u'#')
+        char16_t c = fmt[i];
+        if (adjust > 0 && (c == u'#' || c == u'0' || c == u'.'))
         {
-            bool beforeDot = true;
-            for (int k = 0; k < i; k++) { char16_t d = p[k]; if (d == u'.') { beforeDot = false; break; } }
-            if (beforeDot) { if (!intDone) { out.append(intOut); intDone = true; } }
-            else { if (!fracDone) { for (int k = 0; k < fLen; k++) out.push_back(static_cast<char16_t>(fdig[k])); fracDone = true; } }
+            while (adjust > 0)
+            {
+                putDigit(curIndex < mag.n ? mag.d[curIndex++] : '0');
+                digPos--;
+                adjust--;
+            }
+        }
+        if (c == u'#' || c == u'0')
+        {
+            char digit = 0;
+            if (adjust < 0) { adjust++; if (digPos <= firstDigit) digit = '0'; }
+            else if (curIndex < mag.n) digit = mag.d[curIndex++];
+            else if (digPos > lastDigit) digit = '0';
+            if (digit != 0) putDigit(digit);
+            digPos--;
             continue;
         }
-        if (c == u'.') { if (fLen > 0) put(nfi->numberDecimal); continue; }
-        if (c == u',') continue;                 // grouping marker, not a literal
+        if (c == u'.')
+        {
+            if (digPos == 0 && !decimalWritten &&
+                (lastDigit < 0 || (decimalPos < digitCount && curIndex < mag.n)))
+            {
+                put(nfi->numberDecimal);
+                decimalWritten = true;
+            }
+            continue;
+        }
+        if (c == u',') continue;
         if (c == u'%') { put(nfi->percentSymbol); continue; }
         if (c == u'‰') { put(nfi->perMilleSymbol); continue; }
+        if (c == u'\\') { if (i + 1 < length) out.push_back(fmt[++i]); continue; }
+        if (c == u'\'' || c == u'"')
+        {
+            while (i + 1 < length && fmt[i + 1] != c) out.push_back(fmt[++i]);
+            if (i + 1 < length) i++;
+            continue;
+        }
         if (c == u'E' || c == u'e')
         {
-            int j = i + 1; bool fs = false;
-            if (j < L && (p[j] == u'+' || p[j] == u'-')) { fs = (p[j] == u'+'); j++; }
-            int z = 0; while (j < L && p[j] == u'0') { z++; j++; }
-            if (z > 0)
+            int j = i + 1;
+            bool positiveSign = false;
+            if (j < length && (fmt[j] == u'+' || fmt[j] == u'-'))
             {
-                out.push_back(expUpper ? u'E' : u'e');
-                if (expVal < 0) put(nfi->negativeSign);
-                else if (fs) put(nfi->positiveSign);
-                char eb[16]; int el = std::snprintf(eb, sizeof(eb), "%d", expVal < 0 ? -expVal : expVal);
-                for (int z2 = el; z2 < z; z2++) out.push_back(u'0');
-                for (int k = 0; k < el; k++) out.push_back(static_cast<char16_t>(eb[k]));
+                positiveSign = fmt[j] == u'+';
+                j++;
+            }
+            if (scientific && j < length && fmt[j] == u'0')
+            {
+                int minDigits = 0;
+                while (j < length && fmt[j] == u'0') { minDigits++; j++; }
+                if (minDigits > 10) minDigits = 10;
+                out.push_back(c);
+                int exponent = mag.n == 0 ? 0 : mag.scale - decimalPos;
+                if (exponent < 0) put(nfi->negativeSign);
+                else if (positiveSign) put(nfi->positiveSign);
+                char eb[16];
+                int el = std::snprintf(eb, sizeof(eb), "%d", exponent < 0 ? -exponent : exponent);
+                for (int z = el; z < minDigits; z++) out.push_back(u'0');
+                for (int z = 0; z < el; z++) out.push_back(static_cast<char16_t>(eb[z]));
                 i = j - 1;
+                scientific = false;
+                continue;
+            }
+            if (!scientific)
+            {
+                out.push_back(c);
+                if (i + 1 < length && (fmt[i + 1] == u'+' || fmt[i + 1] == u'-'))
+                    out.push_back(fmt[++i]);
+                while (i + 1 < length && fmt[i + 1] == u'0') out.push_back(fmt[++i]);
                 continue;
             }
         }
-        out.push_back(c); // any other character is a literal emitted in place
+        out.push_back(c);
     }
-    if (emitSign && ((mag.n > 0 && mag.scale != 0) || !out.empty()) && nfi->negativeSign != nullptr)
+    if (negative && section == 0 && mag.scale == 0 && !out.empty() && nfi->negativeSign != nullptr)
         out.insert(0, nfi->negativeSign->chars, static_cast<size_t>(nfi->negativeSign->length));
-    if (out.size() > INT32_MAX)
-        dn2cpp_throw_out_of_memory();
+    if (out.size() > INT32_MAX) dn2cpp_throw_out_of_memory();
     return dn2cpp_string_from_chars(out.data(), static_cast<int32_t>(out.size()));
 }
 
@@ -460,31 +507,9 @@ static Dn2CppString* dn2cpp_format_custom_c(const Dn2CppCustomDigits& mag, bool 
                                            Dn2CppString* fmt, const Dn2CppNumberFormatInfo* nfi)
 {
     nfi = dn2cpp_nfi_or_current(nfi);
-    // Split into up to 3 sections on a top-level ';' (quotes/escapes shield it):
-    // positive ; negative ; zero. Fewer sections reuse section 0 (negatives then
-    // carry an explicit '-').
-    int secStart[3] = {0, 0, 0}, secLen[3] = {0, 0, 0}, nsec = 0;
-    {
-        int start = 0; bool inq = false; char16_t q = 0;
-        for (int i = 0; i < fmt->length; i++)
-        {
-            char16_t c = fmt->chars[i];
-            if (inq) { if (c == q) inq = false; continue; }
-            if (c == u'\\') { i++; continue; }
-            if (c == u'\'' || c == u'"') { inq = true; q = c; continue; }
-            if (c == u';' && nsec < 2) { secStart[nsec] = start; secLen[nsec] = i - start; nsec++; start = i + 1; }
-        }
-        secStart[nsec] = start; secLen[nsec] = fmt->length - start; nsec++;
-    }
-    const char16_t* base = fmt->chars;
-    // A negative section provides its own form; section 0 carries an explicit
-    // sign, which a floating negative zero keeps.
-    int sel;
-    if (mag.n == 0) sel = (nsec >= 3) ? 2 : 0;
-    else if (negative) sel = (nsec >= 2) ? 1 : 0;
-    else sel = 0;
-    bool emitSign = negative && sel == 0;
-    return dn2cpp_format_section(base + secStart[sel], secLen[sel], mag, emitSign, floating, nfi);
+    int length = 0;
+    while (length < fmt->length && fmt->chars[length] != u'\0') length++;
+    return dn2cpp_format_section(fmt->chars, length, mag, negative, floating, nfi);
 }
 
 static Dn2CppString* dn2cpp_format_custom_int(bool negative, unsigned long long mag, Dn2CppString* fmt,

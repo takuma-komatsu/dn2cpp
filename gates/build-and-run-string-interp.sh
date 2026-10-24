@@ -18,8 +18,10 @@
 # quoted and escaped commas remain literals. Custom formats round decimal digit
 # midpoints away from zero, keep integers and decimals exact, and sign only a
 # value that is still negative after rounding.
+# Custom sections are selected after rounding; placeholders, interleaved literals,
+# and repeated decimal points follow the CLR's digit stream.
 source "$(dirname "$0")/_common.sh"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|comma-scaling-prefix:before-comma-scaling"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|comma-scaling-prefix:before-comma-scaling|custom-matrix-prefix:before-custom-matrix"
 
 gate_extra_asserts() {
     local out="$1" native before prefix line
@@ -62,6 +64,21 @@ gate_extra_asserts() {
         'Custom numeric comma scaling end'; do
         [ "$(grep -Fxc "$line" <<< "$native")" = 1 ] \
             || { echo "FAIL: numeric comma scaling witness missing: $line" >&2; exit 1; }
+    done
+    before=$(run_bounded dotnet "$_CG_APP" before-custom-matrix)
+    prefix=$(awk '/^== Custom numeric sections and placeholders ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    before=$(run_bounded "./$out/StringInterp" before-custom-matrix)
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    for line in '== Custom numeric sections and placeholders ==' \
+        'rounded section=0' 'empty negative=-5' 'fraction exponent=.5E+0' \
+        'mixed zero=05' 'integer literal=123x4' 'repeated point=1.5' \
+        'exponent width=1E+0000000003' 'embedded nul=[5]' \
+        'nul negative section=[-5]' \
+        'matrix 0/0=[(1)]' 'matrix 1/1=[-5]' 'matrix 17/5=[0,005]' \
+        'Custom numeric sections and placeholders end'; do
+        [ "$(grep -Fxc "$line" <<< "$native")" = 1 ] \
+            || { echo "FAIL: custom numeric matrix witness missing: $line" >&2; exit 1; }
     done
 }
 
