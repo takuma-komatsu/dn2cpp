@@ -186,6 +186,12 @@ internal static class ReflectionTemplateDispatchProgram
         if (args.Length > 0 && args[0] == "before-template-signature-allocation")
             return;
         TemplateSignatureAllocationProgram.Run();
+        if (args.Length > 0 && args[0] == "before-forbidden-generic-arguments")
+            return;
+        unsafe
+        {
+            ReflectRuntimeInstantiationSubset.Program.RunForbiddenArguments(args, typeof(delegate*<int>));
+        }
     }
 
     private static void RunTemplateConsumers()

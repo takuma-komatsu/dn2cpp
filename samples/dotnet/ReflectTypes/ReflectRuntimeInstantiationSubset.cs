@@ -44,6 +44,11 @@ namespace ReflectRuntimeInstantiationSubset
         public override string Who() => prefix + ":" + typeof(T).Name;
     }
 
+    class ArgumentTuple<T, U>
+    {
+        public string Names() => typeof(T).Name + "," + typeof(U).Name;
+    }
+
     class Sub<T> : Tag<T>
     {
     }
@@ -801,6 +806,83 @@ namespace ReflectRuntimeInstantiationSubset
                 Console.WriteLine("library closed fault=" + e.GetType().Name);
             }
             Console.WriteLine("template generic arguments end");
+        }
+
+        internal static void RunForbiddenArguments(string[] args, Type functionPointer)
+        {
+            Console.WriteLine("== forbidden generic arguments ==");
+            Console.WriteLine("valid=" + TagArgumentResult(typeof(int)));
+            try
+            {
+                Type closed = typeof(Tag<>).MakeGenericType(typeof(void));
+                Console.WriteLine("void known=" + closed.GetGenericArguments()[0].Name + ":" + closed.ContainsGenericParameters);
+            }
+            catch (Exception error)
+            {
+                Console.WriteLine("void known=" + error.GetType().Name + ": " + error.Message);
+            }
+            Type opaque = Type.GetType("System." + (args.Length > 1 ? args[1] : "Void"), true);
+            Console.WriteLine("void opaque=" + TagArgumentResult(opaque));
+            Console.WriteLine("pointer=" + TagArgumentResult(typeof(int).MakePointerType()));
+            Console.WriteLine("byref=" + TagArgumentResult(typeof(int).MakeByRefType()));
+            Console.WriteLine("function pointer=" + TagArgumentResult(functionPointer));
+            Console.WriteLine("open=" + TagArgumentResult(typeof(Tag<>).GetGenericArguments()[0]));
+            Type parameter = typeof(ArgumentTuple<,>).GetGenericArguments()[0];
+            Console.WriteLine("valid tuple=" + TupleArgumentResult(typeof(int), typeof(string)));
+            Console.WriteLine("open tuple=" + TupleArgumentResult(parameter, typeof(string)));
+            Console.WriteLine("void,null=" + TupleArgumentResult(typeof(void), null));
+            Console.WriteLine("null,void=" + TupleArgumentResult(null, typeof(void)));
+            Console.WriteLine("void,parameter=" + TupleArgumentResult(typeof(void), parameter));
+            Console.WriteLine("parameter,void=" + TupleArgumentResult(parameter, typeof(void)));
+            Console.WriteLine("int,void=" + TupleArgumentResult(typeof(int), typeof(void)));
+            Console.WriteLine("void,extra=" + TagArityResult(typeof(void), typeof(int)));
+            Console.WriteLine("null,extra=" + TagArityResult(null, typeof(int)));
+            Console.WriteLine("forbidden generic arguments end");
+        }
+
+        private static string TagArgumentResult(Type argument)
+        {
+            try
+            {
+                return ClosedArgumentNames(typeof(Tag<>).MakeGenericType(argument));
+            }
+            catch (Exception error)
+            {
+                return error.GetType().Name + ": " + error.Message;
+            }
+        }
+
+        private static string TupleArgumentResult(Type first, Type second)
+        {
+            try
+            {
+                return ClosedArgumentNames(typeof(ArgumentTuple<,>).MakeGenericType(first, second));
+            }
+            catch (Exception error)
+            {
+                return error.GetType().Name + ": " + error.Message;
+            }
+        }
+
+        private static string TagArityResult(Type first, Type second)
+        {
+            try
+            {
+                return ClosedArgumentNames(typeof(Tag<>).MakeGenericType(first, second));
+            }
+            catch (Exception error)
+            {
+                return error.GetType().Name + ": " + error.Message;
+            }
+        }
+
+        private static string ClosedArgumentNames(Type closed)
+        {
+            Type[] closedArguments = closed.GetGenericArguments();
+            string names = closedArguments[0].Name;
+            for (int i = 1; i < closedArguments.Length; i++)
+                names += "," + closedArguments[i].Name;
+            return names + ":" + closed.ContainsGenericParameters;
         }
 
         internal static void Run()

@@ -320,6 +320,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|template-signature-placeho
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|template-consumers-prefix-argv:before-template-consumers"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|template-arguments-prefix-argv:before-template-arguments"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|template-signature-allocation-prefix-argv:before-template-signature-allocation|uninitialized-template-outcomes"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|forbidden-generic-arguments-prefix-argv:before-forbidden-generic-arguments"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|string-clone-copies-native-argv:string-clone-copies"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|template-constraint-fallbacks-prefix-argv:before-template-constraint-fallbacks"
 
@@ -919,6 +920,29 @@ gate_extra_asserts() {
         'template signature allocation end'; do
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: template signature allocation witness missing: $line" >&2; return 1; }
+    done
+    prefix=$(awk '/^== forbidden generic arguments ==$/ { exit } { print }' <<< "$native")
+    before=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-forbidden-generic-arguments) || return $?
+    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    before=$(run_bounded dotnet "$_CG_APP" before-forbidden-generic-arguments) || return $?
+    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    for line in '== forbidden generic arguments ==' 'valid=Int32:False' \
+        "void known=ArgumentException: The type 'System.Void' may not be used as a type argument." \
+        "void opaque=ArgumentException: The type 'System.Void' may not be used as a type argument." \
+        "pointer=ArgumentException: The type 'System.Int32*' may not be used as a type argument." \
+        "byref=ArgumentException: The type 'System.Int32&' may not be used as a type argument." \
+        "function pointer=ArgumentException: The type 'System.Int32()' may not be used as a type argument." \
+        'open=T:True' 'valid tuple=Int32,String:False' 'open tuple=T,String:True' \
+        'void,null=ArgumentNullException: Value cannot be null.' \
+        'null,void=ArgumentNullException: Value cannot be null.' \
+        "void,parameter=ArgumentException: The type 'System.Void' may not be used as a type argument." \
+        "parameter,void=ArgumentException: The type 'System.Void' may not be used as a type argument." \
+        "int,void=ArgumentException: The type 'System.Void' may not be used as a type argument." \
+        "void,extra=ArgumentException: The number of generic arguments provided doesn't equal the arity of the generic type definition. (Parameter 'typeArguments')" \
+        "null,extra=ArgumentException: The number of generic arguments provided doesn't equal the arity of the generic type definition. (Parameter 'typeArguments')" \
+        'forbidden generic arguments end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: forbidden generic argument witness missing: $line" >&2; return 1; }
     done
     for line in '== reflection template dispatch ==' 'reflection template dispatch end' \
         '== template members ==' \
