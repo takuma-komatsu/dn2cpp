@@ -688,6 +688,7 @@ static bool dec_fixed_rounds_to_zero(Dn2CppDecimal a, Dn2CppString* fmt,
         for (int32_t i = 1; i < fmt->length; i++)
         {
             char16_t digit = fmt->chars[i];
+            if (digit == u'\0') break;
             if (digit < u'0' || digit > u'9') return false;
             precision = precision * 10 + digit - u'0';
             if (precision > 28) return false;
@@ -707,7 +708,8 @@ static bool dec_fixed_rounds_to_zero(Dn2CppDecimal a, Dn2CppString* fmt,
 Dn2CppString* dn2cpp_decimal_format_c(Dn2CppDecimal a, Dn2CppString* fmt, const Dn2CppNumberFormatInfo* nfi)
 {
     nfi = dn2cpp_nfi_or_current(nfi);
-    if (fmt == nullptr || fmt->length == 0)
+    // A leading NUL is the default format and must keep decimal's exact digits.
+    if (fmt == nullptr || fmt->length == 0 || fmt->chars[0] == u'\0')
     {
         char out[80]; int o = dec_layout(a, out);
         return dn2cpp_localize_ascii(out, o, nfi);

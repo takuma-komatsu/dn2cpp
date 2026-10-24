@@ -2108,7 +2108,7 @@ Dn2CppString* dn2cpp_localize_ascii(const char* buf, int len, const Dn2CppNumber
 }
 
 static Dn2CppString* dn2cpp_float_format(double v, int maxSig, int sciThreshold, bool roundTripFloat,
-                                         const Dn2CppNumberFormatInfo* nfi)
+                                         bool lowerExponent, const Dn2CppNumberFormatInfo* nfi)
 {
     nfi = dn2cpp_nfi_or_current(nfi);
     if (std::isnan(v)) return nfi->nan;
@@ -2148,7 +2148,7 @@ static Dn2CppString* dn2cpp_float_format(double v, int maxSig, int sciThreshold,
     {
         out[pos++] = dig[0];
         if (L > 1) { out[pos++] = '.'; for (int i = 1; i < L; i++) out[pos++] = dig[i]; }
-        out[pos++] = 'E';
+        out[pos++] = lowerExponent ? 'e' : 'E';
         out[pos++] = E < 0 ? '-' : '+';
         char eb[8];
         int el = std::snprintf(eb, sizeof(eb), "%d", E < 0 ? -E : E);
@@ -2178,22 +2178,32 @@ static Dn2CppString* dn2cpp_float_format(double v, int maxSig, int sciThreshold,
 
 Dn2CppString* dn2cpp_double_to_string(double v)
 {
-    return dn2cpp_float_format(v, 17, 17, false, nullptr);
+    return dn2cpp_float_format(v, 17, 17, false, false, nullptr);
 }
 
 Dn2CppString* dn2cpp_float_to_string(float v)
 {
-    return dn2cpp_float_format(static_cast<double>(v), 9, 9, true, nullptr);
+    return dn2cpp_float_format(static_cast<double>(v), 9, 9, true, false, nullptr);
 }
 
 Dn2CppString* dn2cpp_double_to_string_c(double v, const Dn2CppNumberFormatInfo* n)
 {
-    return dn2cpp_float_format(v, 17, 17, false, n);
+    return dn2cpp_float_format(v, 17, 17, false, false, n);
 }
 
 Dn2CppString* dn2cpp_float_to_string_c(float v, const Dn2CppNumberFormatInfo* n)
 {
-    return dn2cpp_float_format(static_cast<double>(v), 9, 9, true, n);
+    return dn2cpp_float_format(static_cast<double>(v), 9, 9, true, false, n);
+}
+
+Dn2CppString* dn2cpp_double_to_string_lower_c(double v, const Dn2CppNumberFormatInfo* n)
+{
+    return dn2cpp_float_format(v, 17, 17, false, true, n);
+}
+
+Dn2CppString* dn2cpp_float_to_string_lower_c(float v, const Dn2CppNumberFormatInfo* n)
+{
+    return dn2cpp_float_format(static_cast<double>(v), 9, 9, true, true, n);
 }
 
 Dn2CppString* dn2cpp_bool_to_string(int32_t v)

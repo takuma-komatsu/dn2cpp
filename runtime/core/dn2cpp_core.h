@@ -8081,6 +8081,8 @@ Dn2CppString* dn2cpp_localize_ascii(const char* buf, int len, const Dn2CppNumber
 // overloads they serve do. Pass dn2cpp_nfi_invariant() to mean invariant.
 Dn2CppString* dn2cpp_double_to_string_c(double v, const Dn2CppNumberFormatInfo* n);
 Dn2CppString* dn2cpp_float_to_string_c(float v, const Dn2CppNumberFormatInfo* n);
+Dn2CppString* dn2cpp_double_to_string_lower_c(double v, const Dn2CppNumberFormatInfo* n);
+Dn2CppString* dn2cpp_float_to_string_lower_c(float v, const Dn2CppNumberFormatInfo* n);
 Dn2CppString* dn2cpp_format_int_c(int64_t v, int32_t byteWidth, Dn2CppString* fmt, const Dn2CppNumberFormatInfo* n);
 Dn2CppString* dn2cpp_format_uint_c(uint64_t v, int32_t byteWidth, Dn2CppString* fmt, const Dn2CppNumberFormatInfo* n);
 Dn2CppString* dn2cpp_format_r8_c(double v, Dn2CppString* fmt, const Dn2CppNumberFormatInfo* n);

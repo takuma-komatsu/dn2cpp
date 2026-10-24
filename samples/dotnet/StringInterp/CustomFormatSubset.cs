@@ -2,10 +2,11 @@
 // Custom numeric format strings — "pos;neg;zero" sections, "%"/permille scaling,
 // escapes and quoted literals, custom E/e exponentials — plus the ToString(string)
 // overload, which routes through the same runtime formatters as a "{0:fmt}" hole.
-// Everything is InvariantCulture; an IFormatProvider would pull unsupported culture IL.
+// The driver pins InvariantCulture; targeted NumberFormatInfo cases exercise symbols.
 // Both entry points are exercised; output is bracketed so trailing spaces stay visible.
 
 using System;
+using System.Globalization;
 namespace CustomFormatSubset;
 
 
@@ -149,5 +150,44 @@ static class Program
                 Console.WriteLine("matrix " + f + "/" + v + "=[" + values[v].ToString(formats[f]) + "]");
         }
         Console.WriteLine("Custom numeric sections and placeholders end");
+    }
+
+    internal static void __StandardNulGate()
+    {
+        Console.WriteLine("== Standard numeric NUL termination ==");
+        string[] formats = {
+            "\0", "\0x", "N\0", "N\02", "N2\0", "N2\0x",
+            "F\0", "F1\0x", "0\0x", "0x\0", "N2x\0"
+        };
+        for (int f = 0; f < formats.Length; f++)
+        {
+            string format = formats[f];
+            Console.WriteLine("matrix " + f + "/int=[" + 1234.ToString(format) + "]");
+            Console.WriteLine("matrix " + f + "/double=[" + 1234.6.ToString(format) + "]");
+            Console.WriteLine("matrix " + f + "/float=[" + 1234.6f.ToString(format) + "]");
+            Console.WriteLine("matrix " + f + "/decimal=[" + 1234.6m.ToString(format) + "]");
+        }
+        Console.WriteLine("significant=[" + 1234.5.ToString("G3\0tail") + "]");
+        Console.WriteLine("hex=[" + 255.ToString("X\0tail") + "]");
+        Console.WriteLine("padded=[" + 5.ToString("D3\0tail") + "]");
+        Console.WriteLine("decimal exact=[" + 1234567890123456789012345678m.ToString("\0tail") + "]");
+        Console.WriteLine("negative decimal=[" + (-0.001m).ToString("F2\0tail") + "]");
+        Console.WriteLine("float G0=[" + 0.1f.ToString("G0") + "]");
+        Console.WriteLine("float G NUL=[" + 0.1f.ToString("G\0tail") + "]");
+        Console.WriteLine("hex X0=[" + 0.ToString("X0") + "]");
+        Console.WriteLine("hex X NUL=[" + 0.ToString("X\0tail") + "]");
+        NumberFormatInfo symbols = new NumberFormatInfo { NaNSymbol = "NAN-E", NegativeSign = "NEG" };
+        Console.WriteLine("float g0 NaN=[" + float.NaN.ToString("g0", symbols) + "]");
+        Console.WriteLine("float g NUL NaN=[" + float.NaN.ToString("g\0tail", symbols) + "]");
+        Console.WriteLine("float g0 negative=[" + (-1f).ToString("g0", symbols) + "]");
+        Console.WriteLine("float g NUL negative=[" + (-1f).ToString("g\0tail", symbols) + "]");
+        Console.WriteLine("float g0 exponent=[" + 1e20f.ToString("g0", symbols) + "]");
+        Console.WriteLine("float g NUL exponent=[" + 1e20f.ToString("g\0tail", symbols) + "]");
+        Console.WriteLine("float r NaN=[" + float.NaN.ToString("r", symbols) + "]");
+        Console.WriteLine("double r NaN=[" + double.NaN.ToString("r", symbols) + "]");
+        Console.WriteLine("float r negative=[" + (-1f).ToString("r", symbols) + "]");
+        Console.WriteLine("double r negative=[" + (-1d).ToString("r", symbols) + "]");
+        Console.WriteLine("Standard numeric NUL termination end");
+        Console.Write("raw=[" + 5.ToString("N2\0tail") + "]\0END\n");
     }
 }

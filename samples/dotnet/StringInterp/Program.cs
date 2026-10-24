@@ -31,6 +31,9 @@ namespace StringInterp
             if (args.Length > 0 && args[0] == "before-custom-matrix")
                 return;
             CustomFormatSubset.Program.__SectionMatrixGate();
+            if (args.Length > 0 && args[0] == "before-standard-nul")
+                return;
+            CustomFormatSubset.Program.__StandardNulGate();
         }
     }
 }
