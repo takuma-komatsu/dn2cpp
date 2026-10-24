@@ -1,4 +1,5 @@
 """Original attribute inventories preserve identity effects without factory execution."""
+from preserve_profile import FULL, select_cases, sharing_modes, full_witness
 from pathlib import Path
 import json
 import re
@@ -111,7 +112,7 @@ def admission(cli, original, refs, area, mode, integrated=False, extra=None, exp
     area.mkdir(parents=True)
     hashes = hashes_for(original, refs)
     receipts = []
-    for shared in (True, False):
+    for shared in sharing_modes():
         label = "sharing-on" if shared else "sharing-off"
         destination = area / label
         command = ["dotnet", "exec", cli, original / "GraphApp.dll"]
@@ -164,14 +165,17 @@ def admission(cli, original, refs, area, mode, integrated=False, extra=None, exp
 def validate_attribute_inventory(companion, probe, cli, corelib, directory):
     directory = Path(directory)
     directory.mkdir(parents=True)
-    for mode in INVENTORY_MODES:
+    for mode in select_cases("attribute-inventory", INVENTORY_MODES, (
+            "inventory-copied-type-early", "inventory-copied-type-no-carrier",
+            "inventory-class-carried-late", "inventory-class-no-carrier")):
         area = directory / mode
         original = create(probe, corelib, area, mode)
         refs = [*(original / name for name in INPUTS[1:]), Path(corelib)]
         raw = admission(cli, original, refs, area / "original-primary", mode)
         first = publish(companion, probe, original, refs, area / "first", mode)
-        repeat = publish(companion, probe, original, refs, area / "repeat", mode)
-        assert first == repeat
+        if FULL:
+            repeat = publish(companion, probe, original, refs, area / "repeat", mode)
+            assert first == repeat
         admission(cli, original, refs, area / "integrated-primary", mode, integrated=True,
                   expected={str(row["shared"]): row["admission"] for row in raw})
-    print("graph-validation=original-attribute-inventory,carried-and-untouched-owners,assembly-module-rows,removed-member-evidence,argument-and-zero-argument-class-identities,no-read-identity,conditional-contract,nonconstructing-provider-closure", flush=True)
+    full_witness("graph-validation=original-attribute-inventory,carried-and-untouched-owners,assembly-module-rows,removed-member-evidence,argument-and-zero-argument-class-identities,no-read-identity,conditional-contract,nonconstructing-provider-closure", flush=True)

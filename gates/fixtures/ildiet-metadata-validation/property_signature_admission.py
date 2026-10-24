@@ -1,4 +1,5 @@
 """Explicit assembly copying preserves bytes without inventing executable roots."""
+from preserve_profile import select_cases, sharing_modes
 from pathlib import Path
 import argparse
 import json
@@ -35,7 +36,7 @@ def call(command, area, label, expected=0):
 def primary(cli, original, refs, descriptor, feature, preserved, area, integrated=False, failure=False, skips=()):
     area.mkdir()
     observations = {}
-    for shared in (True, False):
+    for shared in sharing_modes():
         label = "sharing-on" if shared else "sharing-off"
         output = area / label
         command = ["dotnet", "exec", cli, original / FILES[0]]
@@ -73,7 +74,7 @@ def validate_property_signatures(companion, probe, cli, corelib, directory):
     assert not directory.exists()
     directory.mkdir(parents=True)
     prepared = []
-    for label, mode, policy, feature in CASES:
+    for label, mode, policy, feature in select_cases("property-signature", CASES, ("matching", "mismatch", "skip")):
         area = directory / label
         area.mkdir()
         original = area / "input"

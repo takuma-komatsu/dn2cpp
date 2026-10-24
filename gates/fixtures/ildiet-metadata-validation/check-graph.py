@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Pin definition scans, bounded fallback and atomic immutable publications."""
+from preserve_profile import FULL, select_cases, full_witness
 from pathlib import Path
 import os
 import subprocess
@@ -11,6 +12,7 @@ from ildiet_manifest import contract_digest, framed_hash, manifest
 
 companion, probe, corelib, directory = (Path(value).resolve() for value in sys.argv[1:])
 directory.mkdir(parents=True, exist_ok=True)
+print("graph-profile=" + ("full" if FULL else "representative"), flush=True)
 
 
 def run(*arguments, success=True, env=None):
@@ -214,8 +216,8 @@ subprocess.run([sys.executable, str(Path(__file__).with_name("check-protocol-con
 
 # Unknown reflection receivers widen member metadata, so capability witnesses use
 # independent inputs and cannot mask the graph's existing absence controls.
-for arm in ("dynamic-return", "dynamic-ref", "reflection-return", "reflection-ref",
-            "bind-return", "bind-ref", "none-return", "none-ref"):
+for arm in select_cases("delegate-box", ("dynamic-return", "dynamic-ref", "reflection-return", "reflection-ref",
+            "bind-return", "bind-ref", "none-return", "none-ref"), ("dynamic-ref", "none-ref")):
     original = directory / ("delegate-input-" + arm)
     created = run(probe, "--create-delegate-box-fixtures", original, corelib, arm)
     assert ("fixture-created=delegate-boxes arm=" + arm).encode() in created.stdout, "delegate capability fixture creation did not run"
@@ -238,7 +240,7 @@ for arm in ("dynamic-return", "dynamic-ref", "reflection-return", "reflection-re
         before = set(run(probe, "--relations", original / filename).stdout.splitlines())
         after = set(run(probe, "--relations", published / filename).stdout.splitlines())
         assert after and after <= before, "delegate capability changed an original relation"
-print("graph-validation=delegate-invoke-boxes,dynamic,reflection,user-bind,return,ref,first-and-late,unallocated,unarmed", flush=True)
+full_witness("graph-validation=delegate-invoke-boxes,dynamic,reflection,user-bind,return,ref,first-and-late,unallocated,unarmed", flush=True)
 
 original = directory / "nominal-input"
 created = run(probe, "--create-nominal-fixtures", original, corelib)
@@ -274,8 +276,8 @@ from canonical_admission import OWNER_MODES as owner_modes, check_primary_admiss
 
 # Each incomplete owner and its complete control have independent load sets: an
 # unknown lookup's global member metadata cannot arm another filter's bodies.
-for family in ("lookup-name", "lookup-flags", "base", "generic-definition", "array",
-               "element", "accessor", "array-rank", "object", "type-name", "interface"):
+for family in select_cases("owner-uncertainty", ("lookup-name", "lookup-flags", "base", "generic-definition", "array",
+               "element", "accessor", "array-rank", "object", "type-name", "interface"), ("lookup-name", "accessor")):
     for variant in ("unknown", "complete"):
         mode = family + "-" + variant
         print("graph-uncertainty-mode=" + mode, flush=True)
@@ -305,7 +307,7 @@ for family in ("lookup-name", "lookup-flags", "base", "generic-definition", "arr
             assert after and after <= before, "uncertainty fixture changed an original relation: " + mode
         if mode in owner_modes:
             check_primary_admission(cli, published, corelib, directory / ("owner-published-primary-" + mode), mode)
-print("graph-validation=reflection-owner-uncertainty,lookup-names,lookup-flags,base,generic-definition,array,element,accessor,unknown-rank,object-owner,type-name,non-ascii-interface,isolated-complete-controls,annotated-body-negative", flush=True)
+full_witness("graph-validation=reflection-owner-uncertainty,lookup-names,lookup-flags,base,generic-definition,array,element,accessor,unknown-rank,object-owner,type-name,non-ascii-interface,isolated-complete-controls,annotated-body-negative", flush=True)
 
 
 def check_composed_uncertainty(mode):
@@ -337,12 +339,13 @@ def check_composed_uncertainty(mode):
     if mode in owner_modes:
         check_primary_admission(cli, published, corelib, directory / ("owner-published-primary-" + mode), mode)
 
-for mode in ("object-generic-unknown", "object-generic-complete", "box-class-unknown",
+for mode in select_cases("composed-uncertainty", ("object-generic-unknown", "object-generic-complete", "box-class-unknown",
              "box-class-complete", "box-value-complete", "field-array-unknown",
-             "field-array-complete", "field-nested-unknown", "field-nested-complete"):
+             "field-array-complete", "field-nested-unknown", "field-nested-complete"),
+             ("object-generic-unknown", "object-generic-complete", "box-class-unknown", "box-class-complete")):
     check_composed_uncertainty(mode)
 
-print("graph-validation=composed-owner-uncertainty,object-generic-definition,inexact-reference-box,sealed-and-value-controls,open-field-arrays,nested-wrapper-signatures,closed-field-controls,annotated-body-negative", flush=True)
+full_witness("graph-validation=composed-owner-uncertainty,object-generic-definition,inexact-reference-box,sealed-and-value-controls,open-field-arrays,nested-wrapper-signatures,closed-field-controls,annotated-body-negative", flush=True)
 
 for mode in ("field-bound-array-complete", "field-bound-nested-complete"):
     check_composed_uncertainty(mode)
@@ -354,35 +357,35 @@ print("graph-validation=method-token-origins,open-method-array-signature,closed-
 
 from canonical_admission import MODES as canonical_modes
 
-for mode in canonical_modes:
+for mode in select_cases('canonical', canonical_modes, ('canonical-array-unknown', 'canonical-array-complete')):
     check_composed_uncertainty(mode)
     check_primary_admission(cli, directory / ("uncertainty-input-" + mode), corelib,
                             directory / ("canonical-primary-" + mode), mode)
-print("graph-validation=canonical-body-owner-uncertainty,array-tokens,made-arrays,generic-tokens,generic-definitions,actual-primary-sharing-admission,isolated-complete-controls,provider-nonexecution", flush=True)
+full_witness("graph-validation=canonical-body-owner-uncertainty,array-tokens,made-arrays,generic-tokens,generic-definitions,actual-primary-sharing-admission,isolated-complete-controls,provider-nonexecution", flush=True)
 
 from canonical_admission import CONTEXT_MODES as contextual_modes
 
-for mode in contextual_modes:
+for mode in select_cases('contextual', contextual_modes, ('contextual-method-array-unknown', 'contextual-method-array-complete', 'template-base-unknown', 'template-base-complete')):
     check_composed_uncertainty(mode)
     check_primary_admission(cli, directory / ("uncertainty-input-" + mode), corelib,
                             directory / ("contextual-primary-" + mode), mode)
-print("graph-validation=contextual-member-signatures,caller-methodspec,field-memberref,own-methoddef,runtime-template-arrays,named-templates,projected-template-base,template-default-members,direct-closed-controls,actual-primary-sharing-admission,provider-nonexecution", flush=True)
+full_witness("graph-validation=contextual-member-signatures,caller-methodspec,field-memberref,own-methoddef,runtime-template-arrays,named-templates,projected-template-base,template-default-members,direct-closed-controls,actual-primary-sharing-admission,provider-nonexecution", flush=True)
 
 from canonical_admission import VIEW_MODES as view_modes
 
-for mode in view_modes:
+for mode in select_cases('view', view_modes, ('tuple-index-unknown', 'tuple-index-complete', 'view-property-unknown', 'view-property-complete')):
     check_composed_uncertainty(mode)
     check_primary_admission(cli, directory / ("uncertainty-input-" + mode), corelib,
                             directory / ("metadata-primary-" + mode), mode)
-print("graph-validation=template-tuple-arguments,fixed-and-unknown-indices,direct-template-owner-control,detached-field-property-parameter-accessor-signatures,nested-template-signatures,compiled-tuple-plain-array-substitution,open-dependent-interfaces,named-and-enumerated,closed-and-fixed-controls,actual-primary-admission,provider-nonexecution", flush=True)
+full_witness("graph-validation=template-tuple-arguments,fixed-and-unknown-indices,direct-template-owner-control,detached-field-property-parameter-accessor-signatures,nested-template-signatures,compiled-tuple-plain-array-substitution,open-dependent-interfaces,named-and-enumerated,closed-and-fixed-controls,actual-primary-admission,provider-nonexecution", flush=True)
 
 from canonical_admission import BOUND_MODES as bound_modes
 
-for mode in bound_modes:
+for mode in select_cases('bound', bound_modes, ('tuple-method-closure-unknown', 'tuple-method-closure-complete')):
     check_composed_uncertainty(mode)
     check_primary_admission(cli, directory / ("uncertainty-input-" + mode), corelib,
                             directory / ("bounded-primary-" + mode), mode)
-print("graph-validation=object-tuple-knownness,uncertain-template-generic-method-closure,direct-member-control,metadata-only-formations,actual-primary-admission,provider-nonexecution", flush=True)
+full_witness("graph-validation=object-tuple-knownness,uncertain-template-generic-method-closure,direct-member-control,metadata-only-formations,actual-primary-admission,provider-nonexecution", flush=True)
 
 from canonical_admission import ORIGIN_MODES as origin_modes
 
@@ -394,7 +397,7 @@ print("graph-validation=whole-array-object-knownness,direct-vector-control,null-
 
 from selector_admission import MODES as selector_modes, check_selector_admission
 
-for mode in selector_modes:
+for mode in select_cases('selector', selector_modes, ('symbolic-late', 'literal-complete')):
     print("graph-selector-mode=" + mode, flush=True)
     original = directory / ("selector-input-" + mode)
     created = run(probe, "--create-selector-fixtures", original, corelib, mode)
@@ -418,7 +421,7 @@ for mode in selector_modes:
         after = set(run(probe, "--relations", published / filename).stdout.splitlines())
         assert after and after <= before, "selector fixture changed an original relation: " + mode
     check_selector_admission(cli, original, corelib, directory / ("selector-primary-" + mode), mode)
-print("graph-validation=selector-sequence-alternatives,first-and-later-bindings,literal-vector-narrowing,null-vector-single-candidate,closed-primary-admission,selected-bodies,unselected-negative", flush=True)
+full_witness("graph-validation=selector-sequence-alternatives,first-and-later-bindings,literal-vector-narrowing,null-vector-single-candidate,closed-primary-admission,selected-bodies,unselected-negative", flush=True)
 
 from canonical_admission import DEFINITION_MODES as definition_modes
 
@@ -532,7 +535,7 @@ for filename in ("GraphApp.dll", "GraphLib.dll"):
     after = set(run(probe, "--relations", published / filename).stdout.splitlines())
     assert after and after <= before, "scope method resolution changed an original relation"
 check_scope_admission(cli, original, corelib, directory / "scope-method-primary")
-print("graph-validation=scope-method-overloads,memberref,methodspec,closed-owner,defining-assemblies,unique-external-dependencies,actual-primary-sharing-on-and-off,unselected-controls,token-closure", flush=True)
+full_witness("graph-validation=scope-method-overloads,memberref,methodspec,closed-owner,defining-assemblies,unique-external-dependencies,actual-primary-sharing-on-and-off,unselected-controls,token-closure", flush=True)
 
 from array_layout_admission import validate_array_layout
 
@@ -540,7 +543,7 @@ validate_array_layout(companion, probe, cli, corelib, directory / "array-layout"
 
 from instantiation_admission import MODES as instantiation_modes, check_instantiation_admission
 
-for mode in instantiation_modes:
+for mode in select_cases('instantiation', instantiation_modes, ('method-only', 'method-known')):
     original = directory / ("instantiation-input-" + mode)
     created = run(probe, "--create-instantiation-fixtures", original, corelib, mode)
     assert created.stdout.splitlines() == [("fixture-created=discarded-instantiation mode=" + mode).encode()], "instantiation fixture creation did not run: " + mode
@@ -565,7 +568,7 @@ for mode in instantiation_modes:
         assert after and after <= before, "instantiation changed an original relation: " + mode
     check_instantiation_admission(cli, original, corelib, directory / ("instantiation-primary-" + mode), mode)
     assert all((original / name).read_bytes() == content for name, content in original_hashes.items()), "instantiation proof changed an original input: " + mode
-print("graph-validation=discarded-method-and-type-instantiation,late-type-binding,unknown-vector-no-body,finite-known-and-mixed-vectors,independent-static-execution,runtime-template-sharing-control,formation-only,dormant-body-and-constructor-negative,unique-external-dependencies,actual-primary-sharing-on-and-off,token-closure", flush=True)
+full_witness("graph-validation=discarded-method-and-type-instantiation,late-type-binding,unknown-vector-no-body,finite-known-and-mixed-vectors,independent-static-execution,runtime-template-sharing-control,formation-only,dormant-body-and-constructor-negative,unique-external-dependencies,actual-primary-sharing-on-and-off,token-closure", flush=True)
 
 from copied_array_admission import validate_copied_array
 
@@ -597,3 +600,5 @@ validate_selected_cuts(companion, probe, cli, corelib, directory / "selected-cut
 
 from property_signature_admission import validate_property_signatures
 validate_property_signatures(companion, probe, cli, corelib, directory / "property-signature")
+
+print("graph-validation=" + ("full" if FULL else "representative") + "-profile-complete", flush=True)

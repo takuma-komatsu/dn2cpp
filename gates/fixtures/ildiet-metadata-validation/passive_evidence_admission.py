@@ -1,4 +1,5 @@
 """Passive evidence preserves original IL without executing reflection-body analysis."""
+from preserve_profile import sharing_modes, full_witness
 from pathlib import Path
 import json
 import os
@@ -201,7 +202,7 @@ def executable_control(drivers, companions, original, area, mode):
     ET.ElementTree(descriptor).write(path, encoding='utf-8', xml_declaration=True)
     records = []
     for label, cli, env in drivers:
-        for shared in (True, False):
+        for shared in sharing_modes():
             destination = area / label / ('sharing-on' if shared else 'sharing-off')
             command = ['dotnet', 'exec', cli, original / INPUT_NAMES[0]]
             for name in INPUT_NAMES[1:]:
@@ -230,7 +231,7 @@ def validate_passive_evidence(companion, probe, cli, corelib, directory):
         original = create(probe, corelib, area, mode)
         raw = {}
         for arm, options in ARMS:
-            for shared in (True, False):
+            for shared in sharing_modes():
                 raw[(arm, shared)] = primary(cli, {}, original, area / ('original-' + arm + '-' + str(shared)), options, shared, mode)
         prepared.append((mode, area, original, raw))
     for mode, area, original, raw in prepared:
@@ -238,9 +239,9 @@ def validate_passive_evidence(companion, probe, cli, corelib, directory):
         repeat = publish(companion, probe, original, area / 'standalone-repeat', mode)
         assert first == repeat
         for arm, options in ARMS:
-            for shared in (True, False):
+            for shared in sharing_modes():
                 primary(cli, {}, original, area / ('integrated-' + arm + '-' + str(shared)), options, shared, mode,
                         integrated=True, expected=raw[(arm, shared)])
         executable_control((('current', cli, {}),), (('current', companion, {}),), original, area / 'executable-control', mode)
-        print('graph-passive-evidence=' + mode + ':original-first,physical-IL,normal-body-rejects,both-sharing-and-options', flush=True)
-    print('graph-validation=passive-evidence-body-phase,true-memberref,scalar-prefilter-negative,executable-unsupported-control', flush=True)
+        print('graph-passive-evidence=' + mode + ':original-first,physical-IL,normal-body-rejects,selected-sharing-and-options', flush=True)
+    full_witness('graph-validation=passive-evidence-body-phase,true-memberref,scalar-prefilter-negative,executable-unsupported-control', flush=True)

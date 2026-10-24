@@ -1,4 +1,5 @@
 """Original eager model formations retain their causal metadata without executing it."""
+from preserve_profile import FULL, select_cases, sharing_modes, full_witness
 from pathlib import Path
 import json
 import re
@@ -229,7 +230,7 @@ def admission(cli, original, refs, area, mode, integrated=False, extra=None, exp
     area.mkdir(parents=True)
     hashes = hashes_for(original, refs)
     receipts = []
-    for shared in (True, False):
+    for shared in sharing_modes():
         label = "sharing-on" if shared else "sharing-off"
         destination = area / label
         command = ["dotnet", "exec", cli, original / "GraphApp.dll"]
@@ -333,7 +334,10 @@ def admission(cli, original, refs, area, mode, integrated=False, extra=None, exp
 def validate_eager_model(companion, probe, cli, corelib, directory):
     directory = Path(directory)
     directory.mkdir(parents=True)
-    for mode in EAGER_MODES:
+    for mode in select_cases("eager-model", EAGER_MODES, (
+            "eager-attribute-stripped", "eager-attribute-no-ctor",
+            "eager-array-direct", "eager-array-unarmed",
+            "eager-array-methodimpl", "eager-array-methodimpl-absent")):
         area = directory / mode
         original = create(probe, corelib, area, mode)
         refs = references_for(original, corelib, mode)
@@ -342,10 +346,11 @@ def validate_eager_model(companion, probe, cli, corelib, directory):
                for label, options in arms} if mode == OPTION_SENSITIVE_MODE else {
                    "default": admission(cli, original, refs, area / "original-primary", mode)}
         first = publish(companion, probe, original, refs, area / "first", mode)
-        repeat = publish(companion, probe, original, refs, area / "repeat", mode)
-        assert first == repeat
+        if FULL:
+            repeat = publish(companion, probe, original, refs, area / "repeat", mode)
+            assert first == repeat
         for label, options in arms:
             admission(cli, original, refs, area / ("integrated-primary-" + label if mode == OPTION_SENSITIVE_MODE else "integrated-primary"),
                       mode, integrated=True, no_adopt=options,
                       expected={str(row["shared"]): row["admission"] for row in raw[label]})
-    print("graph-validation=eager-original-model,recursive-relations,nested-arguments,methodimpl-memberref,virtual-slot-signatures,passive-formation-sources,lazy-retained-anchor-controls,conditional-and-generic-policy,sharing-on-off", flush=True)
+    full_witness("graph-validation=eager-original-model,recursive-relations,nested-arguments,methodimpl-memberref,virtual-slot-signatures,passive-formation-sources,lazy-retained-anchor-controls,conditional-and-generic-policy,sharing-on-off", flush=True)

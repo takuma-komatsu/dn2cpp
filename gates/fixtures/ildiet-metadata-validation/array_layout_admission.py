@@ -1,4 +1,5 @@
 """Array.Initialize admission from original value layouts and discarded formation."""
+from preserve_profile import select_cases, sharing_modes, full_witness
 from pathlib import Path
 import hashlib
 import json
@@ -39,7 +40,7 @@ def check_array_layout_admission(cli, original, corelib, output, mode):
     hashes = input_hashes(original, corelib)
     receipts = []
     for integrated in (False, True):
-        for shared in (True, False):
+        for shared in sharing_modes():
             label = ("integrated" if integrated else "original") + ("-sharing-on" if shared else "-sharing-off")
             destination = output / label
             command = ["dotnet", "exec", str(cli), str(original / "GraphApp.dll"), "-r", str(original / "GraphLib.dll"),
@@ -90,7 +91,7 @@ def check_array_layout_admission(cli, original, corelib, output, mode):
 def validate_array_layout(companion, probe, cli, corelib, directory):
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
-    for mode in MODES:
+    for mode in select_cases('array_layout', MODES, ('initialize-first', 'unarmed')):
         original = directory / (mode + "-input")
         created = run(["dotnet", "exec", probe, "--create-array-layout-fixtures", original, corelib, mode], directory, mode + "-create")
         assert created.splitlines() == [("fixture-created=array-layout mode=" + mode).encode()]
@@ -124,7 +125,7 @@ def validate_array_layout(companion, probe, cli, corelib, directory):
         assert generations[0] == generations[1], "array layout publication/counters are nondeterministic"
         check_array_layout_admission(cli, original, corelib, directory / (mode + "-primary"), mode)
         assert input_hashes(original, corelib) == hashes, "array layout changed original input bytes"
-    print("graph-validation=array-initialize-model-layouts,nongeneric-shells,symbolic-outer-fields,nested-values,discarded-generic-formation,late-replay,unarmed-control,unique-external-dependencies,metadata-negatives,actual-primary-sharing-on-and-off,determinism,token-closure", flush=True)
+    full_witness("graph-validation=array-initialize-model-layouts,nongeneric-shells,symbolic-outer-fields,nested-values,discarded-generic-formation,late-replay,unarmed-control,unique-external-dependencies,metadata-negatives,actual-primary-sharing-on-and-off,determinism,token-closure", flush=True)
 
 
 if __name__ == "__main__":

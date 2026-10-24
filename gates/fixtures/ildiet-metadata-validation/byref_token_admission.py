@@ -1,4 +1,5 @@
 """Named byref-like tokens preserve metadata without inventing virtual execution."""
+from preserve_profile import FULL, select_cases, sharing_modes, full_witness
 from pathlib import Path
 import json
 import re
@@ -71,7 +72,7 @@ def primary(cli, original, refs, area, mode, integrated=False, expected=None, ex
     area.mkdir(parents=True)
     before = inputs(original, refs)
     observations, records = {}, []
-    for shared in (True, False):
+    for shared in sharing_modes():
         label = "sharing-on" if shared else "sharing-off"
         destination = area / label
         command = ["dotnet", "exec", cli, original / "GraphApp.dll"]
@@ -106,7 +107,7 @@ def primary(cli, original, refs, area, mode, integrated=False, expected=None, ex
         if expected is not None:
             assert counts == expected[str(shared)], (mode, label, "Primary admission changed")
         if integrated:
-            assert expected is not None and set(expected) == {"True", "False"}, "Originals must be measured first"
+            assert expected is not None and set(expected) == set(map(str, sharing_modes())), "Originals must be measured first"
             root, published = manifest(destination / "ildiet")
             assert root.get("fallback") == "none" and root.find("counters").get("decode.max-per-method") == "1"
             policy(published / "preservation.xml", mode, published=True)
@@ -192,7 +193,7 @@ def validate_byref_tokens(companion, probe, cli, corelib, directory):
     assert not directory.exists()
     directory.mkdir(parents=True)
     prepared = []
-    for mode in MODES:
+    for mode in select_cases('byref_token', MODES, ('byref-token-copied', 'byref-token-boxable')):
         area = directory / mode
         original = create(probe, corelib, area, mode)
         refs = references(original, corelib, Path(cli).parent / "Dn2Cpp.Runtime.dll")
@@ -200,8 +201,9 @@ def validate_byref_tokens(companion, probe, cli, corelib, directory):
         prepared.append((mode, area, original, refs, raw))
     for mode, area, original, refs, raw in prepared:
         first = publish(companion, probe, original, refs, area / "standalone-first", mode)
-        repeat = publish(companion, probe, original, refs, area / "standalone-repeat", mode)
-        assert first == repeat, (mode, "Nondeterministic standalone publication")
+        if FULL:
+            repeat = publish(companion, probe, original, refs, area / "standalone-repeat", mode)
+            assert first == repeat, (mode, "Nondeterministic standalone publication")
         primary(cli, original, refs, area / "integrated-primary", mode, integrated=True, expected=raw["observations"])
-        print("graph-byref-token=" + mode + ":original-sharing-on-off,metadata-and-execution,copy-identity,token-closure", flush=True)
-    print("graph-validation=named-byref-tokens,core-typedreference-void,copied-and-rewritten,direct-constrained-interface,boxable-control,conditional-preservation-use", flush=True)
+        print("graph-byref-token=" + mode + ":original-selected-sharing,metadata-and-execution,copy-identity,token-closure", flush=True)
+    full_witness("graph-validation=named-byref-tokens,core-typedreference-void,copied-and-rewritten,direct-constrained-interface,boxable-control,conditional-preservation-use", flush=True)
