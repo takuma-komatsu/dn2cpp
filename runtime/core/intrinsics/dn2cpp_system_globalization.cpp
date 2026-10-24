@@ -535,6 +535,33 @@ static bool dn2cpp_culture_canonicalize_language_tag(std::u16string& name,
     return true;
 }
 
+static bool dn2cpp_culture_private_use_only(const std::u16string& name)
+{
+    if (name.size() < 3 || name[0] != u'x' || name[1] != u'-')
+        return false;
+    for (size_t start = 2; start < name.size();)
+    {
+        size_t end = name.find(u'-', start);
+        if (end == std::u16string::npos)
+            end = name.size();
+        size_t count = end - start;
+        if (count == 0 || count > 8)
+            return false;
+        for (size_t i = start; i < end; i++)
+            if (!dn2cpp_culture_ascii_alnum(name[i]))
+                return false;
+        // Managed u/t suffixes and legacy lvariant spelling retain an identity.
+        char16_t marker = name[start];
+        if (marker >= u'A' && marker <= u'Z')
+            marker = static_cast<char16_t>(marker - u'A' + u'a');
+        if ((count == 1 && end < name.size() && (marker == u'u' || marker == u't'))
+            || (count == 8 && dn2cpp_culture_lower(name.substr(start, count)) == u"lvariant"))
+            return false;
+        start = end + 1;
+    }
+    return true;
+}
+
 static Dn2CppString* dn2cpp_culture_normalize_name(Dn2CppString* name,
     bool* customUndefined = nullptr, bool* hasKeywords = nullptr)
 {
@@ -582,6 +609,8 @@ static Dn2CppString* dn2cpp_culture_normalize_name(Dn2CppString* name,
     char16_t normalized[86];
     int32_t start = 0;
     int32_t part = 0;
+    bool privateUse = name->length > 1 && name->chars[1] == u'-'
+        && (name->chars[0] == u'x' || name->chars[0] == u'X');
     while (start < length)
     {
         int32_t end = start;
@@ -591,11 +620,12 @@ static Dn2CppString* dn2cpp_culture_normalize_name(Dn2CppString* name,
         // ICU's language buffer includes its terminator.
         if (part == 0 && count >= 12)
             return nullptr;
-        bool script = part == 1 && dn2cpp_culture_is_script(name->chars + start, count);
+        bool script = part == (privateUse ? 2 : 1)
+            && dn2cpp_culture_is_script(name->chars + start, count);
         for (int32_t i = start; i < end; i++)
         {
             char16_t c = name->chars[i];
-            bool lower = part == 0 || (script && i != start);
+            bool lower = part == 0 || (privateUse && part == 1) || (script && i != start);
             if (lower && c >= u'A' && c <= u'Z')
                 c = static_cast<char16_t>(c - u'A' + u'a');
             else if (!lower && c >= u'a' && c <= u'z')
@@ -634,10 +664,13 @@ static Dn2CppString* dn2cpp_culture_normalize_name(Dn2CppString* name,
         undefinedLegacy = dn2cpp_culture_legacy_base(canonical);
     Dn2CppLocaleExtensionState<char16_t> extensions{};
     bool languageTag = dn2cpp_culture_canonicalize_language_tag(canonical, extensions);
+    bool privateUseOnly = languageTag && !underscore && dn2cpp_culture_private_use_only(canonical);
+    if (privateUseOnly)
+        canonical.clear();
     if (hasKeywords != nullptr)
         *hasKeywords = extensions.keywords;
     if (customUndefined != nullptr)
-        *customUndefined = languageTag && canonical == u"und";
+        *customUndefined = privateUseOnly || (languageTag && canonical == u"und");
     // Without keywords, undefined-language names keep their legacy base.
     // Custom identity is independent of the platform's visible und spelling.
     if (canonical == u"und" && !extensions.keywords && !undefinedLegacy.empty())
@@ -713,10 +746,24 @@ static Dn2CppString* dn2cpp_culture_normalize_name(Dn2CppString* name,
 }
 
 // Never remove a requested country to find numeric data for another country.
-static int32_t dn2cpp_culture_region_end(Dn2CppString* name)
+static int32_t dn2cpp_culture_region_end(Dn2CppString* name, bool privateUseSort = false)
 {
     int32_t start = 0;
     int32_t part = 0;
+    bool privateUse = name->length > 2 && name->chars[0] == u'x' && name->chars[1] == u'-';
+    if (privateUse)
+    {
+        int32_t firstEnd = 2;
+        while (firstEnd < name->length && name->chars[firstEnd] != u'-'
+            && name->chars[firstEnd] != u'_')
+            firstEnd++;
+        for (int32_t i = firstEnd; i < name->length; i++)
+            privateUseSort = privateUseSort || name->chars[i] == u'_';
+        // Valid private-use bases without a sort carry no country; an overlong
+        // first subtag instead takes ICU's legacy locale path.
+        if (!privateUseSort && firstEnd - 2 <= 8)
+            return 0;
+    }
     while (start < name->length)
     {
         int32_t end = start;
@@ -727,7 +774,14 @@ static int32_t dn2cpp_culture_region_end(Dn2CppString* name)
         {
             if (name->chars[start - 1] == u'_')
                 return 0;
-            if (part == 1 && dn2cpp_culture_is_script(name->chars + start, count))
+            if (privateUse && part == 1)
+            {
+                start = end + 1;
+                part++;
+                continue;
+            }
+            if (part == (privateUse ? 2 : 1)
+                && dn2cpp_culture_is_script(name->chars + start, count))
             {
                 start = end + 1;
                 part++;
@@ -756,6 +810,14 @@ static Dn2CppString* dn2cpp_culture_public_name(Dn2CppString* input, Dn2CppStrin
     for (int32_t i = 0; i < canonical->length; i++)
         if (canonical->chars[i] == u'_')
         {
+            // A managed extension retained after a private-use base keeps its
+            // legacy sort in Name even when that base has a region.
+            if (canonical->length > 2 && canonical->chars[0] == u'x'
+                && canonical->chars[1] == u'-')
+                for (int32_t j = 2; j + 2 < i; j++)
+                    if (canonical->chars[j] == u'-' && canonical->chars[j + 2] == u'-'
+                        && (canonical->chars[j + 1] == u'u' || canonical->chars[j + 1] == u't'))
+                        return canonical;
             if (dn2cpp_culture_region_end(canonical) == 0)
                 return canonical;
             for (int32_t j = 0; j + 5 < input->length; j++)
@@ -1280,9 +1342,11 @@ static const Dn2CppNumberFormatInfo* dn2cpp_culture_intern(const Dn2CppCultureRo
     dn2cpp_gc_store_ref(&node->identity, identity);
     dn2cpp_gc_store_ref(&node->nfi.cultureName, name);
     Dn2CppString* realName = name;
+    bool sorted = false;
     for (int32_t i = 0; i < identity->length; i++)
         if (identity->chars[i] == u'_')
         {
+            sorted = true;
             if (dn2cpp_string_equals(name, identity))
                 realName = identity;
             else
@@ -1295,7 +1359,7 @@ static const Dn2CppNumberFormatInfo* dn2cpp_culture_intern(const Dn2CppCultureRo
         }
     dn2cpp_gc_store_ref(&node->nfi.cultureRealName, realName);
     node->nfi.lcid = lcid >= 0 ? lcid : 4096;
-    node->nfi.isNeutralCulture = dn2cpp_culture_region_end(name) == 0 ? 1 : 0;
+    node->nfi.isNeutralCulture = dn2cpp_culture_region_end(name, sorted) == 0 ? 1 : 0;
     node->nfi.missingNumberFormat = node->nfi.lcid == 4096 && name->length == 0 ? 1 : 0;
     if (row == nullptr)
     {

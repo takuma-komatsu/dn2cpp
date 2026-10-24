@@ -399,8 +399,36 @@ gate_extra_asserts() {
     before=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" before-legacy-chinese)
     prefix=$(awk '/^== legacy Chinese cultures ==$/ { exit } { print }' <<< "$native")
     assert_output "$prefix" "$(strip_cr_win "$before")"
+    before=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" before-private-use-names)
+    prefix=$(awk '/^== private-use culture names ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    before=$(culture_info_run oracle dotnet "$_CG_APP" before-private-use-names)
+    prefix=$(awk '/^== private-use culture names ==$/ { exit } { print }' <<< "$(strip_cr_win "$expected")")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    grep -Fxq 'private-use culture names end' <<< "$native" \
+        || { echo "FAIL: private-use names section did not finish" >&2; return 1; }
     grep -Fxq '== ISO language names ==' <<< "$(strip_cr_win "$expected")" \
         || { echo "FAIL: .NET ISO language section did not run" >&2; return 1; }
+    native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-private-use-names)
+    expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-private-use-names)
+    assert_output "$native" "$expected"
+    for marker in '== private-use culture names ==' \
+        "  'en-US' name='en-US' value='en-US' iso='en' lcid=1033 neutral=False specific='en-US' cached='en-US' cached iso='en'" \
+        "  'x-foo' name='' value='' iso='' lcid=4096 neutral=True specific='' cached='' cached iso=''" \
+        "  'x-u' name='' value='' iso='' lcid=4096 neutral=True specific='' cached='' cached iso=''" \
+        "  'x-t' name='' value='' iso='' lcid=4096 neutral=True specific='' cached='' cached iso=''" \
+        "  'x-foo_phoneb' name='x-foo_phoneb' value='x-foo_phoneb' iso='x-foo' lcid=4096 neutral=True specific='' cached='x-foo_phoneb' cached iso='x-foo'" \
+        "  'x-foo-Latn-US_phoneb' name='x-foo-Latn-US' value='x-foo-Latn-US_phoneb' iso='x-foo' lcid=4096 neutral=False specific='x-foo-Latn-US' cached='x-foo-Latn-US' cached iso='x-foo'" \
+        "  'x-lvariant-foo' neutral=True specific lcid=127" \
+        "  'x-lvariant-US' neutral=True specific lcid=127" \
+        "  'x-a-US-u-nu-latn' neutral=True specific lcid=127" \
+        "  'x-foo-US-u-nu-latn' neutral=True specific lcid=127" \
+        "  'x-1-US-u-nu-latn_phoneb' name='x-1-US-u-nu-latn_phoneb' cached='x-1-US-u-nu-latn_phoneb' specific='x-1-US-u-nu-latn_phoneb' neutral=False" \
+        "  'x-1-US-t-de-de_phoneb' name='x-1-US-t-de-de_phoneb' cached='x-1-US-t-de-de_phoneb' specific='x-1-US-t-de-de_phoneb' neutral=False" \
+        'private-use culture names end'; do
+        grep -Fxq "$marker" <<< "$(strip_cr_win "$native")" \
+            || { echo "FAIL: private-use name witness missing: $marker" >&2; return 1; }
+    done
     native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-iso-language)
     expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-iso-language)
     assert_output "$native" "$expected"
@@ -608,7 +636,7 @@ ISO undefined language names end"
     done
 }
 DN2CPP_GATE_RUN_ARGS=culture-names
-DN2CPP_GATE_EXTRA_CONTEXT="culture-platform-name-validation culture-iso-language culture-iso-language-undefined before-iso-language culture-legacy-chinese before-legacy-chinese constructor-first cached-first lcid-first"
+DN2CPP_GATE_EXTRA_CONTEXT="culture-platform-name-validation culture-iso-language culture-iso-language-undefined culture-private-use-names before-private-use-names before-iso-language culture-legacy-chinese before-legacy-chinese constructor-first cached-first lcid-first"
 DN2CPP_GATE_EXTRA_CONTEXT+=" ${LOCALE_CASES[*]} ${NUMBERING_CASES[*]} ${FALLBACK_CASES[*]} culture-missing-number-format ${MISSING_NUMBER_CASES[*]} culture-variant-order ${VARIANT_CASES[*]} culture-invariant-lcid-cache ${INVARIANT_CACHE_ORDERS[*]} culture-instance-number-format [${INSTANCE_CULTURES[*]}] culture-integer-constructors culture-instance-equality ${EQUALITY_PAIRS[*]} culture-extension-identities ${EXTENSION_CASES[*]} culture-undefined-extension-metadata ${UNDEFINED_EXTENSION_CASES[*]} culture-extension-order ${EXTENSION_ORDER_PAIRS[*]} constructor-first cached-first culture-undefined-platform-identities [${UNDEFINED_PLATFORM_CASES[*]}] culture-undefined-platform-cache ${UNDEFINED_PLATFORM_CACHE_ORDERS[*]} culture-rejected-extension-identities ${REJECTED_EXTENSION_CASES[*]}"
 DN2CPP_OUT_SUFFIX=-names
 corelib_diff_gate CultureInfoApi --link-xml samples/dotnet/CultureInfoApi/link.xml
