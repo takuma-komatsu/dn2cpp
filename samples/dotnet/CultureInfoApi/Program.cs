@@ -37,6 +37,12 @@ namespace CultureInfoApi
                 return;
             }
 
+            if (args.Length > 0 && args[0] == "culture-private-use-names")
+            {
+                RunPrivateUseNames();
+                return;
+            }
+
             if (args.Length > 0 && args[0] == "culture-legacy-chinese")
             {
                 RunLegacyChineseCultures(args.Length > 1 ? args[1] : "constructor-first");
@@ -376,6 +382,53 @@ namespace CultureInfoApi
             if (args.Length > 0 && args[0] == "before-legacy-chinese")
                 return;
             RunLegacyChineseCultures("constructor-first");
+            if (args.Length > 0 && args[0] == "before-private-use-names")
+                return;
+            RunPrivateUseNames();
+        }
+
+        private static void RunPrivateUseNames()
+        {
+            Console.WriteLine("== private-use culture names ==");
+            foreach (string name in new[]
+            {
+                "en-US", "x-foo", "X-FOO", "x-a", "x-u", "x-t", "x-foo-US",
+                "x-foo_phoneb", "x-foo-US_phoneb", "x-foo-Latn_phoneb",
+                "x-foo-Latn-US_phoneb", "x-foobarbaz"
+            })
+            {
+                CultureInfo culture = new CultureInfo(name);
+                CultureInfo cached = CultureInfo.GetCultureInfo(name);
+                Console.WriteLine("  '" + name + "' name='" + culture.Name
+                    + "' value='" + culture.ToString()
+                    + "' iso='" + culture.TwoLetterISOLanguageName
+                    + "' lcid=" + culture.LCID + " neutral=" + culture.IsNeutralCulture
+                    + " specific='" + CultureInfo.CreateSpecificCulture(name).Name
+                    + "' cached='" + cached.Name
+                    + "' cached iso='" + cached.TwoLetterISOLanguageName + "'");
+            }
+            foreach (string name in new[]
+            {
+                "x-lvariant-foo", "x-lvariant-US", "x-a-US-u-nu-latn", "x-foo-US-u-nu-latn"
+            })
+            {
+                CultureInfo culture = new CultureInfo(name);
+                CultureInfo specific = CultureInfo.CreateSpecificCulture(name);
+                Console.WriteLine("  '" + name + "' neutral=" + culture.IsNeutralCulture
+                    + " specific lcid=" + specific.LCID);
+            }
+            foreach (string name in new[]
+            {
+                "x-1-US-u-nu-latn_phoneb", "x-1-US-t-de-de_phoneb"
+            })
+            {
+                CultureInfo culture = new CultureInfo(name);
+                Console.WriteLine("  '" + name + "' name='" + culture.Name
+                    + "' cached='" + CultureInfo.GetCultureInfo(name).Name
+                    + "' specific='" + CultureInfo.CreateSpecificCulture(name).Name
+                    + "' neutral=" + culture.IsNeutralCulture);
+            }
+            Console.WriteLine("private-use culture names end");
         }
 
         private static void RunIsoLanguage()
