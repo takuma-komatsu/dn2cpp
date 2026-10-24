@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from tempfile import TemporaryDirectory
 
 root = Path(sys.argv[1]).resolve()
 compiler = Path(sys.argv[2]).resolve()
@@ -25,6 +26,60 @@ def run(*args):
     if result.returncode:
         raise AssertionError(f"Command failed: {args}\n{result.stdout}")
     return result.stdout
+
+
+def cmake_compiler_directory(build, cmake_version):
+    cache = (build / "CMakeCache.txt").read_text(encoding="utf-8")
+    for component in ("MAJOR", "MINOR", "PATCH"):
+        match = re.search(rf"^CMAKE_CACHE_{component}_VERSION:INTERNAL=([0-9]+)$", cache, re.M)
+        assert match, f"CMake cache lacks its {component.lower()} version: {build}"
+        assert int(match.group(1)) == cmake_version[component.lower()], build
+    return build / "CMakeFiles" / cmake_version["string"]
+
+
+def assert_compiler_identity(build, language, actual_version, cmake_version):
+    identity = cmake_compiler_directory(build, cmake_version) / f"CMake{language}Compiler.cmake"
+    assert identity.is_file(), f"Current CMake compiler metadata is missing: {identity}"
+    identity_text = identity.read_text(encoding="utf-8")
+    expected_compiler = f'set(CMAKE_{language}_COMPILER "{compiler.as_posix()}")'
+    assert expected_compiler in identity_text, f"Current CMAKE_{language}_COMPILER is not DeClang: {identity}"
+    assert f'set(CMAKE_{language}_COMPILER_VERSION "{actual_version}")' in identity_text, identity
+
+
+def verify_compiler_identity_selection(build, actual_version, cmake_version):
+    # Old CMake metadata may survive a successful reconfigure in the same build dir.
+    numeric_version = ".".join(str(cmake_version[part]) for part in ("major", "minor", "patch"))
+    prerelease_version = numeric_version + "-rc1"
+    if prerelease_version == cmake_version["string"]:
+        prerelease_version = numeric_version + "-rc2"
+    cases = ((cmake_version, "0.0.0"),
+             ({**cmake_version, "string": prerelease_version}, numeric_version))
+    for version, stale_version in cases:
+        with TemporaryDirectory(dir=work) as temporary:
+            fixture = Path(temporary)
+            (fixture / "CMakeCache.txt").write_bytes((build / "CMakeCache.txt").read_bytes())
+            active = fixture / "CMakeFiles" / version["string"]
+            stale = fixture / "CMakeFiles" / stale_version
+            assert active != stale
+            active.mkdir(parents=True)
+            stale.mkdir(parents=True)
+            for language in ("C", "CXX"):
+                name = f"CMake{language}Compiler.cmake"
+                identity_text = (cmake_compiler_directory(build, cmake_version) / name).read_text(encoding="utf-8")
+                expected = f'set(CMAKE_{language}_COMPILER "{compiler.as_posix()}")'
+                assert expected in identity_text
+                wrong = identity_text.replace(expected, f'set(CMAKE_{language}_COMPILER "/unexpected/clang")')
+                (active / name).write_text(identity_text, encoding="utf-8")
+                (stale / name).write_text(wrong, encoding="utf-8")
+                assert_compiler_identity(fixture, language, actual_version, version)
+                (active / name).write_text(wrong, encoding="utf-8")
+                try:
+                    assert_compiler_identity(fixture, language, actual_version, version)
+                except AssertionError as error:
+                    assert f"CMAKE_{language}_COMPILER" in str(error), error
+                else:
+                    raise AssertionError(f"Non-DeClang CMAKE_{language}_COMPILER passed identity validation")
+    print("DeClang compiler identity fixture passed: stale metadata and prerelease versions selected correctly", flush=True)
 
 
 configuration = os.environ.get("CONFIG", "Release")
@@ -150,13 +205,12 @@ for mode in ("off", "on"):
         assert "elf64-littleaarch64" in description, description
         # Reconfigure without compiler overrides to catch the NDK resetting its driver.
         run("cmake", "-S", root / "runtime", "-B", build)
+        cmake_version = json.loads(run("cmake", "-E", "capabilities"))["version"]
+        actual_version = re.search(r"clang version ([0-9.]+)", run(compiler, "--version")).group(1)
         for language in ("C", "CXX"):
-            identity = list((build / "CMakeFiles").glob(f"*/CMake{language}Compiler.cmake"))
-            assert len(identity) == 1
-            identity_text = identity[0].read_text(encoding="utf-8")
-            assert f'set(CMAKE_{language}_COMPILER "{compiler.as_posix()}")' in identity_text
-            actual_version = re.search(r"clang version ([0-9.]+)", run(compiler, "--version")).group(1)
-            assert f'set(CMAKE_{language}_COMPILER_VERSION "{actual_version}")' in identity_text
+            assert_compiler_identity(build, language, actual_version, cmake_version)
+        if mode == "off":
+            verify_compiler_identity_selection(build, actual_version, cmake_version)
         commands = run("ninja", "-C", build, "-t", "commands")
         pch = [line for line in commands.splitlines() if "cmake_pch" in line and " -c " in line]
         assert pch and all(compiler.as_posix() in line.replace("\\", "/") for line in pch), "PCH did not use DeClang"
