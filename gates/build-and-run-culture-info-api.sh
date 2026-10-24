@@ -67,6 +67,8 @@
 # spellings. Fresh constructor/cache orders pin which casing owns culture data.
 # Undefined-language identities use the target ICU platform, including private-use
 # acceptance and empty-name cache ownership independently of invariant data.
+# Legacy fallback follows the target reference: Linux retains complete rejected
+# tails, Apple removes later u/t/x subtags, and other targets keep their profile.
 # Rejected first keywords preserve the legacy base when extlang promotion would
 # erase it; accepted keywords and nonempty promoted bases take the ICU path.
 # TwoLetterISOLanguageName diffs against live .NET; und names, where Apple's ICU
@@ -283,12 +285,38 @@ UNDEFINED_PLATFORM_CASES=(
     und-x-foo und-x-a und-x-foo-u-nu-latn und-x-lvariant und-x-foo-lvariant
     und-x-123456789 und-a-foo-x-foo und-x-lvariant-FOOBAR en-und-a-foo
 )
+if [ "$DN2CPP_OS" = linux ]; then
+    UNDEFINED_PLATFORM_CASES+=(
+        en-und-x-lvariant en-und-x-foo-lvariant en-und-x-LVARIANT
+        en-und-a-a-x-lvariant en-und-Latn-x-lvariant en-und-US-x-lvariant
+        x-1-US-u-nu-latn_phoneb x-foo-US-t-de-DE_phoneb
+        x-foo-u-nu-latn_phoneb x-1-US-U-NU-LATN_phoneb
+        en-US-x-foo_phoneb abcdefghij-x-foo abcd1-x-foo e1-x-foo
+        i-klingon-x-lvariant-fooba
+        x-a-US-u-co-phonebk_phoneb x-a-US-u-Co-phonebk_phoneb
+        x-a-US-u-co-phonebk-t-de-DE_phoneb x-a-US-u-co-phonebk-u-nu-latn_phoneb
+    )
+fi
 UNDEFINED_PLATFORM_CACHE_ORDERS=(
     'und-x-foo||cached-first' '|und-x-foo|cached-first'
     'und-a-foo||cached-first' '|und-a-foo|cached-first'
     'und-U-nu-latn|und-u-nu-latn|constructor-first'
     'und-U-nu-latn|und-u-nu-latn|cached-first'
 )
+if [ "$DN2CPP_OS" = windows ]; then
+    UNDEFINED_PLATFORM_CASES+=(
+        x-foo X-FOO x-lvariant x-LVARIANT-foo x-lvariant-foo x-lvariant-US
+        x-a-US-u-nu-latn x-foo-US-u-nu-latn x-foo-US-U-NU-LATN
+        x-1-US-u-nu-latn_phoneb x-1-US-t-de-de_phoneb
+        x-foo-u-nu-latn_phoneb x-1-US-U-NU-LATN_phoneb
+    )
+    for private_name in x-lvariant-foo x-lvariant-US x-a-US-u-nu-latn x-foo-US-u-nu-latn; do
+        UNDEFINED_PLATFORM_CACHE_ORDERS+=(
+            "$private_name|x-foo|constructor-first" "$private_name|x-foo|cached-first"
+            "x-foo|$private_name|cached-first"
+        )
+    done
+fi
 EXTENSION_CASES=(
     en-US-a-foo en-US-x-foo en-US-b-foo en-US-0-foo en-US-a-foo-b-bar
     en-US-u-nu-latn en-US-u-ca-gregory en-US-u-foo en-US-u-ca
@@ -315,6 +343,9 @@ EXTENSION_ORDER_PAIRS=(
     'en-US-A-FOO|en-US-a-foo' 'en-US-U-NU-ARAB|en-US-u-nu-arab'
     'en-US-U-CA-GREGORY|en-US-u-ca-gregory' 'en-US-T-de-DE|en-US-t-de-DE'
     'en-US-a-foo|en-US' 'en-US|en-US-a-foo'
+    'und-a-a-u-nu-latn|und-A-A-U-NU-LATN'
+    'und-A-A-U-NU-LATN|und-a-a-u-nu-latn'
+    'en-und-a-a-u-nu-latn|en-UND-A-A-U-NU-LATN'
 )
 EQUALITY_PAIRS=(
     'en-US|en-US' 'en-US|EN-us' 'de-DE|de-DE_phoneb' 'de-DE_phoneb|DE-de_PHONEB'
@@ -390,6 +421,18 @@ gate_extra_asserts() {
     # The frozen divergences also change later CultureData cache identities in a
     # single process, so .NET proves its own full-run prefix unchanged.
     expected=$(culture_info_run oracle dotnet "$_CG_APP")
+    for mode in native oracle; do
+        if [ "$mode" = native ]; then
+            before=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" before-rejected-undefined-tails)
+            prefix=$(awk '/^== rejected undefined culture tails ==$/ { exit } { print }' <<< "$native")
+        else
+            before=$(culture_info_run oracle dotnet "$_CG_APP" before-rejected-undefined-tails)
+            prefix=$(awk '/^== rejected undefined culture tails ==$/ { exit } { print }' <<< "$(strip_cr_win "$expected")")
+        fi
+        assert_output "$prefix" "$(strip_cr_win "$before")"
+    done
+    grep -Fxq 'rejected undefined culture tails end' <<< "$native" \
+        || { echo 'FAIL: rejected undefined tails did not finish' >&2; return 1; }
     prefix=$(awk '/^== ISO language names ==$/ { exit } { print }' <<< "$(strip_cr_win "$expected")")
     before=$(culture_info_run oracle dotnet "$_CG_APP" before-iso-language)
     assert_output "$prefix" "$(strip_cr_win "$before")"
@@ -409,9 +452,28 @@ gate_extra_asserts() {
         || { echo "FAIL: private-use names section did not finish" >&2; return 1; }
     grep -Fxq '== ISO language names ==' <<< "$(strip_cr_win "$expected")" \
         || { echo "FAIL: .NET ISO language section did not run" >&2; return 1; }
+    native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-rejected-undefined-tails)
+    expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-rejected-undefined-tails)
+    assert_output "$native" "$expected"
+    for marker in '== rejected undefined culture tails ==' \
+        "  input='und-a-a-u-nu-latn'" "  input='en-und-a-a-u-nu-latn'" \
+        'rejected undefined culture tails end'; do
+        # Require this exact input to execute, whether the target oracle accepts
+        # it or reports a typed refusal. The full diff above checks its details.
+        if [[ "$marker" == "  input='"* ]] && grep -Fxq "$marker: CultureNotFoundException" <<< "$(strip_cr_win "$expected")"; then
+            marker="$marker: CultureNotFoundException"
+        fi
+        grep -Fxq "$marker" <<< "$(strip_cr_win "$native")" \
+            || { echo "FAIL: rejected undefined tail witness missing: $marker" >&2; return 1; }
+    done
     native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-private-use-names)
     expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-private-use-names)
     assert_output "$native" "$expected"
+    local private_u=x-1-US-u-nu-latn_phoneb private_t=x-1-US-t-de-de_phoneb
+    if [ "$DN2CPP_OS" = linux ] || [ "$DN2CPP_OS" = windows ]; then
+        private_u=x-1-US-U-NU-LATN-u-nu-latn_phoneb
+        private_t=x-1-US-T-DE-DE-t-de-de_phoneb
+    fi
     for marker in '== private-use culture names ==' \
         "  'en-US' name='en-US' value='en-US' iso='en' lcid=1033 neutral=False specific='en-US' cached='en-US' cached iso='en'" \
         "  'x-foo' name='' value='' iso='' lcid=4096 neutral=True specific='' cached='' cached iso=''" \
@@ -423,9 +485,16 @@ gate_extra_asserts() {
         "  'x-lvariant-US' neutral=True specific lcid=127" \
         "  'x-a-US-u-nu-latn' neutral=True specific lcid=127" \
         "  'x-foo-US-u-nu-latn' neutral=True specific lcid=127" \
-        "  'x-1-US-u-nu-latn_phoneb' name='x-1-US-u-nu-latn_phoneb' cached='x-1-US-u-nu-latn_phoneb' specific='x-1-US-u-nu-latn_phoneb' neutral=False" \
-        "  'x-1-US-t-de-de_phoneb' name='x-1-US-t-de-de_phoneb' cached='x-1-US-t-de-de_phoneb' specific='x-1-US-t-de-de_phoneb' neutral=False" \
+        "  'x-1-US-u-nu-latn_phoneb' name='$private_u' cached='$private_u' specific='$private_u' neutral=False" \
+        "  'x-1-US-t-de-de_phoneb' name='$private_t' cached='$private_t' specific='$private_t' neutral=False" \
         'private-use culture names end'; do
+        # Some target references reject private-use names accepted by other ICUs.
+        # Keep each accepted witness, or require its explicit typed rejection on
+        # BOTH sides. The full diff above also compares fault/cache/specific data.
+        local rejected="${marker%%\' *}' constructor=CultureNotFoundException"
+        if [[ "$marker" == "  '"* ]] && grep -Fxq "$rejected" <<< "$(strip_cr_win "$expected")"; then
+            marker="$rejected"
+        fi
         grep -Fxq "$marker" <<< "$(strip_cr_win "$native")" \
             || { echo "FAIL: private-use name witness missing: $marker" >&2; return 1; }
     done
@@ -636,7 +705,7 @@ ISO undefined language names end"
     done
 }
 DN2CPP_GATE_RUN_ARGS=culture-names
-DN2CPP_GATE_EXTRA_CONTEXT="culture-platform-name-validation culture-iso-language culture-iso-language-undefined culture-private-use-names before-private-use-names before-iso-language culture-legacy-chinese before-legacy-chinese constructor-first cached-first lcid-first"
+DN2CPP_GATE_EXTRA_CONTEXT="culture-rejected-undefined-tails before-rejected-undefined-tails culture-platform-name-validation culture-iso-language culture-iso-language-undefined culture-private-use-names before-private-use-names before-iso-language culture-legacy-chinese before-legacy-chinese constructor-first cached-first lcid-first"
 DN2CPP_GATE_EXTRA_CONTEXT+=" ${LOCALE_CASES[*]} ${NUMBERING_CASES[*]} ${FALLBACK_CASES[*]} culture-missing-number-format ${MISSING_NUMBER_CASES[*]} culture-variant-order ${VARIANT_CASES[*]} culture-invariant-lcid-cache ${INVARIANT_CACHE_ORDERS[*]} culture-instance-number-format [${INSTANCE_CULTURES[*]}] culture-integer-constructors culture-instance-equality ${EQUALITY_PAIRS[*]} culture-extension-identities ${EXTENSION_CASES[*]} culture-undefined-extension-metadata ${UNDEFINED_EXTENSION_CASES[*]} culture-extension-order ${EXTENSION_ORDER_PAIRS[*]} constructor-first cached-first culture-undefined-platform-identities [${UNDEFINED_PLATFORM_CASES[*]}] culture-undefined-platform-cache ${UNDEFINED_PLATFORM_CACHE_ORDERS[*]} culture-rejected-extension-identities ${REJECTED_EXTENSION_CASES[*]}"
 DN2CPP_OUT_SUFFIX=-names
 corelib_diff_gate CultureInfoApi --link-xml samples/dotnet/CultureInfoApi/link.xml
