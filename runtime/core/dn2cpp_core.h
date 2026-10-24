@@ -2599,6 +2599,8 @@ struct Dn2CppAttrInfo
     // refuses an instance read with that setter's remedy.
     const Dn2CppTypeInfo* unretainedSetterOwner = nullptr;
     const char* unretainedSetter = nullptr;
+    // Bit 0: not inherited; bit 1: allow multiple. Zero is the CLR default.
+    uint32_t usageFlags = 0;
 };
 
 // MemberInfo/ParameterInfo.GetCustomAttributes([attrType,] inherit) and
@@ -2606,19 +2608,18 @@ struct Dn2CppAttrInfo
 // Dn2CppFieldRef, Dn2CppMethodRef, Dn2CppPropRef or Dn2CppParamRef — dispatched on its
 // object header). A null attrType returns all attributes; otherwise the result is
 // filtered to attributes assignable to attrType (its instance is-a attrType). The
-// `inherit` flag is ignored (attributes are reported on the declaring element only —
-// AttributeUsage inheritance is a carve-out).
-Dn2CppArrayRef* dn2cpp_get_custom_attributes(Dn2CppObject* member, Dn2CppType* attrType);
+// `inherit` flag walks type bases and virtual method overrides, respecting AttributeUsage.
+Dn2CppArrayRef* dn2cpp_get_custom_attributes(Dn2CppObject* member, Dn2CppType* attrType, int32_t inherit = 0);
 // Typed-filter array form (GetCustomAttributes(Type) / GetCustomAttributes<T>()): a null
 // attrType means the named type isn't in the reachable set, so it matches nothing and the
 // result is empty — unlike the no-argument form above, where null means "all".
-Dn2CppArrayRef* dn2cpp_get_custom_attributes_typed(Dn2CppObject* member, Dn2CppType* attrType);
+Dn2CppArrayRef* dn2cpp_get_custom_attributes_typed(Dn2CppObject* member, Dn2CppType* attrType, int32_t inherit = 0);
 // Single-attribute form (Attribute.GetCustomAttribute / CustomAttributeExtensions
 // .GetCustomAttribute<T>): returns the lone matching attribute instance, nullptr when
 // none match, and throws AmbiguousMatchException when more than one matches —
 // matching .NET's single-attribute contract.
-Dn2CppObject* dn2cpp_get_custom_attribute(Dn2CppObject* member, Dn2CppType* attrType);
-int32_t dn2cpp_is_defined(Dn2CppObject* member, Dn2CppType* attrType);
+Dn2CppObject* dn2cpp_get_custom_attribute(Dn2CppObject* member, Dn2CppType* attrType, int32_t inherit = 0);
+int32_t dn2cpp_is_defined(Dn2CppObject* member, Dn2CppType* attrType, int32_t inherit = 0);
 
 // One embedded manifest resource of an assembly: its manifest name (UTF-8, exactly the
 // string the ManifestResource metadata row carries) and the raw payload bytes, emitted

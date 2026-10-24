@@ -2743,30 +2743,29 @@ internal sealed partial class MethodCompiler
 
     /// <summary>Emits GetCustomAttributes / IsDefined. GetCustomAttributes(bool)
     /// returns all attributes; GetCustomAttributes(Type, bool) and IsDefined(Type, bool)
-    /// filter to the given attribute type. The trailing <c>inherit</c> flag is popped and
-    /// ignored (AttributeUsage inheritance is a carve-out).</summary>
+    /// filter to the given attribute type and honor method/type inheritance.</summary>
     private bool TryEmitCustomAttributeIntrinsic(string declType, string name, MethodSignature<TypeDesc> sig)
     {
         TaintPlaceholderAttrFilter(declType, name, sig);
         bool hasType = sig.ParameterTypes.Length == 2; // (Type, bool) vs (bool)
         if (name == "GetCustomAttributes")
         {
-            Pop(); // inherit
+            string inherit = Pop().Expr;
             string filter = hasType ? Cast(Pop(), "Dn2CppType*") : "nullptr";
             var member = Pop();
             // A typed filter that folded to a null token means an absent (unreachable)
             // type -> no match; the no-type form keeps "all" semantics.
             string fn = hasType ? "dn2cpp_get_custom_attributes_typed" : "dn2cpp_get_custom_attributes";
-            PushAttributeArray($"{fn}({Cast(member, "Dn2CppObject*")}, {filter})", sig.ReturnType);
+            PushAttributeArray($"{fn}({Cast(member, "Dn2CppObject*")}, {filter}, {inherit})", sig.ReturnType);
             return true;
         }
         if (name == "IsDefined" && hasType)
         {
-            Pop(); // inherit
+            string inherit = Pop().Expr;
             string filter = Cast(Pop(), "Dn2CppType*");
             var member = Pop();
             Push(StackKind.I4, "int32_t",
-                $"dn2cpp_is_defined({Cast(member, "Dn2CppObject*")}, {filter})");
+                $"dn2cpp_is_defined({Cast(member, "Dn2CppObject*")}, {filter}, {inherit})");
             return true;
         }
         return false;
@@ -2777,13 +2776,14 @@ internal sealed partial class MethodCompiler
     /// <c>CustomAttributeExtensions</c>' <c>GetCustomAttribute</c>/<c>GetCustomAttributes</c>/
     /// <c>IsDefined</c> — the BCL targets the generic <c>GetCustomAttribute&lt;T&gt;</c> /
     /// <c>GetCustomAttributes&lt;T&gt;</c> extension methods lower to. Args are pushed
-    /// element, [Type], [bool inherit]; <c>inherit</c> is popped and ignored.</summary>
+    /// element, [Type], [bool inherit]; omitted inheritance defaults to true.</summary>
     private bool TryEmitStaticAttributeIntrinsic(string declType, string name, MethodSignature<TypeDesc> sig)
     {
         TaintPlaceholderAttrFilter(declType, name, sig);
         var ps = sig.ParameterTypes;
+        string inherit = "1";
         if (ps.Length > 0 && ps[^1] is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean })
-            Pop(); // inherit
+            inherit = Pop().Expr;
         bool hasType = false;
         foreach (var p in ps)
             if (p.ToString() == "System.Type") { hasType = true; break; }
@@ -2813,15 +2813,15 @@ internal sealed partial class MethodCompiler
         switch (name)
         {
             case "GetCustomAttribute":
-                Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_get_custom_attribute({elem}, {filter})");
+                Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_get_custom_attribute({elem}, {filter}, {inherit})");
                 return true;
             case "GetCustomAttributes":
                 PushAttributeArray(hasType
-                    ? $"dn2cpp_get_custom_attributes_typed({elem}, {filter})"
-                    : $"dn2cpp_get_custom_attributes({elem}, {filter})", sig.ReturnType);
+                    ? $"dn2cpp_get_custom_attributes_typed({elem}, {filter}, {inherit})"
+                    : $"dn2cpp_get_custom_attributes({elem}, {filter}, {inherit})", sig.ReturnType);
                 return true;
             case "IsDefined":
-                Push(StackKind.I4, "int32_t", $"dn2cpp_is_defined({elem}, {filter})");
+                Push(StackKind.I4, "int32_t", $"dn2cpp_is_defined({elem}, {filter}, {inherit})");
                 return true;
         }
         return false;

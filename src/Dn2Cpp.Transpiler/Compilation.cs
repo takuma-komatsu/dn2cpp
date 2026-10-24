@@ -573,7 +573,8 @@ internal sealed partial class Compilation
         Timing.Populations = () =>
             $"classes {Classes.Count} reach {Reachable.Count} inst {_instanceCount}"
             + $" minst {_methodInstanceCount} sig {ModelCensus.SignaturesDecoded}"
-            + $" fld {ModelCensus.FieldTypesDecoded} gdepth {MaxGenericArgDepth}";
+            + $" fld {ModelCensus.FieldTypesDecoded} gdepth {MaxGenericArgDepth}"
+            + $" backend-attr-replays {_backendAttributeReplayCount}";
         var loadSet = options.ResolvedLoadSet ?? AssemblyLoadSet.Resolve(assemblyPaths, options);
         foreach (var status in loadSet.DefaultRefStatus)
             _defaultRefStatus.Add(status.Key, status.Value);
@@ -5276,7 +5277,7 @@ internal sealed partial class Compilation
             foreach (var cls in _backend.AttributeReadClasses(this).ToList())
                 ReachBackendAttributeRows(cls);
             foreach (var module in _backend.AttributeReadAssemblies(this).ToList())
-                ReachAttributesOf(module, module.Reader.GetAssemblyDefinition().GetCustomAttributes(), reach: true);
+                ReachBackendAttributes(module, module.Reader.GetAssemblyDefinition().GetCustomAttributes());
         }
 
         // Hot-update base build: force-emit the extra closed generic
@@ -5670,9 +5671,9 @@ internal sealed partial class Compilation
             return;
         var reader = cls.Module.Reader;
         var td = reader.GetTypeDefinition(cls.Handle);
-        ReachAttributesOf(cls.Module, td.GetCustomAttributes(), reach: true);
+        ReachBackendAttributes(cls.Module, td.GetCustomAttributes());
         foreach (var mh in td.GetMethods())
-            ReachAttributesOf(cls.Module, reader.GetMethodDefinition(mh).GetCustomAttributes(), reach: true);
+            ReachBackendAttributes(cls.Module, reader.GetMethodDefinition(mh).GetCustomAttributes());
     }
 
     /// <summary><see cref="ReachAttributesOf"/> over every loaded module's assembly-level
@@ -5869,6 +5870,8 @@ internal sealed partial class Compilation
             if (ReachReachedStrippedGvmCases())
                 progress = true;
             if (ReachPendingRuntimeRaisedHeirs())
+                progress = true;
+            if (ReachPendingBackendDemands())
                 progress = true;
             if (ActivateConditionalPreservationPolicies())
                 progress = true;
