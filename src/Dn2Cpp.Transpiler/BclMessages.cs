@@ -99,6 +99,8 @@ internal static class BclMessages
         "Argument_NotEnoughGenArguments",
         "Arg_MemberInfoNotFound",
         "Arg_NotGenericTypeDefinition",
+        "Argument_GenericArgsCount",
+        "Argument_NeverValidGenericArgument",
         "ObjectDisposed_Generic",
         "ObjectDisposed_ViewAccessorClosed",
         "ObjectDisposed_ObjectName_Name",

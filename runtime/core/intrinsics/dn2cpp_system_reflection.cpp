@@ -589,6 +589,12 @@ Dn2CppType* dn2cpp_type_make_generic(Dn2CppType* def, Dn2CppArrayRef* args)
         dn2cpp_throw_sr1(&dn2cpp_invalid_operation_exception_type,
             DN2CPP_SR_NOT_GENERIC_TYPE_DEFINITION, dn2cpp_type_tostring(defTi));
     int32_t argc = args->length;
+    const auto* genericMetadata = defTi->reflection().genericMetadata;
+    if (genericMetadata != nullptr && argc != genericMetadata->parameterCount)
+        dn2cpp_throw_argument_param(DN2CPP_SR_GENERIC_ARGS_COUNT, "typeArguments");
+    for (int32_t i = 0; i < argc; i++)
+        if (args->data[i] == nullptr)
+            dn2cpp_throw_argument_null();
     // Keep symbolic arguments out of the executable AOT/template lookup.
     std::vector<const Dn2CppTypeInfo*> argv(static_cast<size_t>(argc), nullptr);
     bool haveArgs = true;
@@ -597,11 +603,10 @@ Dn2CppType* dn2cpp_type_make_generic(Dn2CppType* def, Dn2CppArrayRef* args)
     for (int32_t i = 0; i < argc; i++)
     {
         auto* a = reinterpret_cast<Dn2CppType*>(args->data[i]);
-        if (a == nullptr)
-            dn2cpp_throw_argument_null();
         if (a->typeInfo == nullptr) { haveArgs = false; continue; }
-        if (dn2cpp_signature_kind(a->typeInfo) != 0)
-            dn2cpp_throw_argument_msg("A pointer, by-reference or function-pointer type cannot be a generic argument.");
+        if (a->typeInfo == &dn2cpp_void_type || dn2cpp_signature_kind(a->typeInfo) != 0)
+            dn2cpp_throw_sr1(&dn2cpp_argument_exception_type,
+                DN2CPP_SR_NEVER_VALID_GENERIC_ARGUMENT, dn2cpp_type_tostring(a->typeInfo));
         open |= dn2cpp_type_contains_generic_parameters(a->typeInfo);
         metadataOnly |= dn2cpp_type_metadata_only(a->typeInfo);
         argv[i] = a->typeInfo;
@@ -3091,7 +3096,7 @@ static const Dn2CppTypeInfo* dn2cpp_open_generic_type(const Dn2CppTypeInfo* defi
     if (metadata == nullptr)
         dn2cpp_throw_platform_not_supported("Reflection: generic definition metadata is not retained");
     if (static_cast<int32_t>(arguments.size()) != metadata->parameterCount)
-        dn2cpp_throw_argument();
+        dn2cpp_throw_argument_param(DN2CPP_SR_GENERIC_ARGS_COUNT, "typeArguments");
     dn2cpp_validate_open_arguments(metadata->parameters, arguments, arguments, {});
     return dn2cpp_constraint_instantiation(definition, arguments);
 }
