@@ -24,6 +24,15 @@ for open work.
   continue on another machine. Record host prerequisites and dependencies.
 - Keep durable constraints in code or design docs as invariants, not issue
   references. Retired STATUS ticket ids must not be reused or cited.
+- Label demonstrated incorrect behavior, crashes, leaks, and broken CI as `bug`.
+  Use `enhancement` for new support, performance improvements, or distribution
+  capabilities, and `verification` for work primarily checking existing behavior
+  on target hosts or exports. Leave the category unset when none fits.
+- Give each open issue exactly one of `priority:high`, `priority:medium`, or
+  `priority:low` based on impact and urgency: high for active verification
+  blockers or severe runtime failures; medium for material gaps and
+  improvements; low for narrow differences or deferred work. Reassess as
+  evidence changes and preserve unrelated labels.
 
 ## Write like an experienced programmer
 
