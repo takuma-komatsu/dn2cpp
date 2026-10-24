@@ -25,7 +25,11 @@ env:
 
 jobs:
   smoke:
-    name: ${{ (github.event_name == 'pull_request' || github.event_name == 'push') && 'linux-primitives' || 'linux-suite' }}
+    name: ${{ matrix.partition == 'suite' && 'linux-suite' || matrix.partition == 'limits' && 'linux-transpiler-limits' || matrix.partition == 'arrays' && 'linux-arrays' || 'linux-primitives' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        partition: ${{ fromJSON((github.event_name == 'pull_request' || github.event_name == 'push') && '["core","arrays","limits"]' || '["suite"]') }}
     runs-on: ubuntu-latest
     timeout-minutes: ${{ (github.event_name == 'pull_request' || github.event_name == 'push') && 30 || 180 }}
     env:
@@ -70,7 +74,14 @@ jobs:
         run: ./gates/ci-smoke.sh --self-test
 
       - name: Run selected smoke profile
-        run: ./gates/ci-smoke.sh --profile "$SMOKE_PROFILE"
+        env:
+          DN2CPP_GATE_WATCHDOG_SECS: ${{ matrix.partition == 'limits' && 1200 || '' }}
+        run: |
+          smoke_args=(--profile "$SMOKE_PROFILE")
+          if [ "$SMOKE_PROFILE" = primitives ]; then
+            smoke_args+=(--partition "${{ matrix.partition }}")
+          fi
+          ./gates/ci-smoke.sh "${smoke_args[@]}"
 
       - name: Publish gate results and timings
         if: always()
@@ -83,7 +94,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: gate-logs-linux
+          name: ${{ matrix.partition == 'suite' && 'gate-logs-linux' || format('gate-logs-linux-{0}', matrix.partition) }}
           path: ${{ env.LOGDIR }}
           retention-days: 7
           if-no-files-found: warn
