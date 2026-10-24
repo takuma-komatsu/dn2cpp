@@ -65,13 +65,17 @@ def load(path, allow_bare_rejection=False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--windows", action="store_true",
-                        help="generate Windows data from one snapshot and an output path")
+    platform = parser.add_mutually_exclusive_group()
+    platform.add_argument("--windows", action="store_true",
+                          help="generate Windows data from one snapshot and an output path")
+    platform.add_argument("--linux", action="store_true",
+                          help="generate Linux data from one snapshot and an output path")
     parser.add_argument("paths", nargs="+", metavar="PATH")
     args = parser.parse_args()
-    if len(args.paths) != (2 if args.windows else 3):
-        parser.error("expected Windows snapshot/output or Apple/standard snapshots/output")
-    paths = [args.paths[0], args.paths[0]] if args.windows else args.paths[:2]
+    single_platform = args.windows or args.linux
+    if len(args.paths) != (2 if single_platform else 3):
+        parser.error("expected platform snapshot/output or Apple/standard snapshots/output")
+    paths = [args.paths[0], args.paths[0]] if single_platform else args.paths[:2]
     root = Path(__file__).resolve().parent
     kinds = [line for line in (root / "numbering-systems.txt").read_text().splitlines()
              if line and not line.startswith("#")] + ALIASES + [UNKNOWN]
@@ -132,10 +136,12 @@ def main():
         "// GENERATED FILE — do not edit by hand.",
         "// Numeric symbols and patterns are a frozen CLR/ICU snapshot.",
     ]
-    if args.windows:
-        out += ["// Windows oracle: " + provenance[0],
-                "// Regenerate with collect-numbering-data.cs on Windows, then",
-                "// gen-numbering-table.py --windows snapshot.jsonl output.inc."]
+    if single_platform:
+        target = "Windows" if args.windows else "Linux"
+        option = "--windows" if args.windows else "--linux"
+        out += ["// " + target + " oracle: " + provenance[0],
+                "// Regenerate with collect-numbering-data.cs on " + target + ", then",
+                "// gen-numbering-table.py " + option + " snapshot.jsonl output.inc."]
     else:
         out += ["// Apple oracle: " + provenance[0],
                 "// Standard oracle: " + provenance[1],

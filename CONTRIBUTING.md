@@ -17,8 +17,25 @@ of the full allowlist. The checks cover language,
 primitive values, arrays, strings, collections, generics, async, threads and GC
 barriers.
 It also checks OS APIs through filesystem, environment, synchronization,
-memory-mapped file and native interop tests. Every selected gate must run. Gate
-logs are uploaded, and the basic profile publishes timings in the job summary.
+memory-mapped file and native interop tests. The `culture-info-api` gate checks
+culture names, metadata and cache identity against the host CLR, retaining the
+intentional frozen divergences. Every selected gate must run. Gate logs are
+uploaded, and the basic profile publishes timings in the job summary.
+
+Culture parity uses explicit per-target references, not whichever ICU a
+`*-latest` runner acquires. The workflow runner labels and SDK are pinned;
+`gates/check-culture-reference.sh` checks the selected SDK, CoreLib runtime and
+the ICU actually loaded by that CLR before running gates. The host-only probe in
+`tools/check-culture-reference/` holds the expected runtime and ICU versions.
+Unexpected versions, invariant globalization and Windows NLS fail rather than
+silently changing the oracle. Updating a reference requires reviewing CLR output
+and the corresponding frozen runtime profile together. Native programs do not
+load ICU. The Linux numbering-extension profile is separate from the existing
+Android/Web baseline; this does not recut the shared named-culture or fallback
+tables. For local Linux parity, provide the reference ICU libraries through the
+loader path and `DOTNET_ICU_VERSION_OVERRIDE`, then run the same preflight and
+individual culture gates. A different installed ICU is not another native
+compatibility profile.
 
 Each OS runs the wider non-Godot suite in a single job daily and through
 `workflow_dispatch`. That profile retains the OSS integration gates and other

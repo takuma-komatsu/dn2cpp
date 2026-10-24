@@ -35,7 +35,7 @@ PRIMITIVES=(
     gc-write-barrier external-ref-barrier
     file-real filesystem-enum env-subset threading-primitives sync-primitives
     thread-local timer mmap-file pinvoke-native
-    console-io datetime threadpool transpiler-limits
+    console-io datetime culture-info-api threadpool transpiler-limits
 )
 
 self_test() (

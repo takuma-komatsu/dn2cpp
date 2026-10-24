@@ -685,7 +685,7 @@ tree-shaken to reachable methods, with real BCL IL bodies transpiled;
 | JSON | Real `System.Text.Json` through the source-gen path (`[JsonSerializable]` + `JsonSerializerContext`); the generated `JsonTypeInfo<T>` and converters are real STJ IL |
 | Iterators & async | Real CoreLib state machines; cooperative scheduler with real suspension, `Task.Yield`/`WhenAll`, the `ConfiguredValueTaskAwaitable(<T>)` awaiter family, `async IAsyncEnumerable<T>` |
 | `decimal` | Intrinsic 96-bit value type — exact base-10 arithmetic (round-half-away), comparisons, conversions, `ToString`, the statics (`Round`/`Truncate`/`Floor`/`Ceiling`/`Parse`, …), LINQ `Sum`/`Average`, boxed virtuals |
-| Culture & formatting | Culture-aware numeric/currency/percent/exponent formatting and `Parse`/`TryParse`, float shortest-round-trip, custom numeric formats; `CurrentCulture` and undefined-language fallback use host locale PAL seams and frozen numeric data, with no ICU dependency |
+| Culture & formatting | Culture-aware numeric/currency/percent/exponent formatting and `Parse`/`TryParse`, float shortest-round-trip, custom numeric formats; `CurrentCulture` and undefined-language fallback use host locale PAL seams and frozen per-target numeric profiles, with no ICU dependency |
 | Regex | Real `System.Text.RegularExpressions.dll`, both engines (backtracking interpreter and `NonBacktracking` symbolic DFA) |
 | Compression | Full `System.IO.Compression` public surface — `DeflateStream`/`GZipStream`/`ZLibStream`, `BrotliStream`/`BrotliEncoder`/`BrotliDecoder`, `ZipArchive`/`ZipArchiveEntry`, `ZipFile`, and the net10 Zip async APIs |
 | HTTP / HTTPS | `new HttpClient()` runs natively over vendored libcurl on vendored Mbed TLS, on by default; `https://` verifies against an embedded Mozilla CA bundle and nothing disables verification. HTTP/2 rides the same transport, and the real `Grpc.Net.Client` runs on top of it (unary and all three streaming shapes) |
@@ -1073,8 +1073,10 @@ it does not come back as a ticket.
   localized culture/time-zone names.** The real IL depends on ICU + TZif,
   and faithful name data is not one table but cultures × UI languages — a
   partial one would answer right in English and silently wrong in German.
-  Culture-aware **numeric** formatting is fully supported and follows the
-  host locale.
+  Culture-aware **numeric** formatting uses the host locale to select frozen
+  per-target data. Its CLR/ICU reference contract is explicit (see
+  [CONTRIBUTING.md](CONTRIBUTING.md)); deployment ICU versions do not change
+  native behavior.
 - **String comparison / collation is ordinal only.** No culture-sensitive
   comparison; `RegexOptions.Compiled` likewise degrades to the interpreter
   by design (same results, NativeAOT posture).

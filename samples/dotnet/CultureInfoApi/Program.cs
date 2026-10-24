@@ -37,6 +37,12 @@ namespace CultureInfoApi
                 return;
             }
 
+            if (args.Length > 0 && args[0] == "culture-rejected-undefined-tails")
+            {
+                RunRejectedUndefinedTails();
+                return;
+            }
+
             if (args.Length > 0 && args[0] == "culture-private-use-names")
             {
                 RunPrivateUseNames();
@@ -385,6 +391,41 @@ namespace CultureInfoApi
             if (args.Length > 0 && args[0] == "before-private-use-names")
                 return;
             RunPrivateUseNames();
+            if (args.Length > 0 && args[0] == "before-rejected-undefined-tails")
+                return;
+            RunRejectedUndefinedTails();
+        }
+
+        private static void RunRejectedUndefinedTails()
+        {
+            Console.WriteLine("== rejected undefined culture tails ==");
+            foreach (string name in new[]
+            {
+                "und-a-a-u-nu-latn", "und-A-A-U-NU-LATN", "und-a-a-t-de-DE", "und-a-a-x-foo",
+                "und-b-b-u-nu-latn", "und-a-123456789-u-nu-latn", "und-a-a-u-co-phonebk",
+                "en-und-a-a-u-nu-latn", "en-und-a-a-t-de-DE", "en-und-a-a-x-foo",
+                "und-a-a", "und-u-a-u-nu-latn", "und-x-123456789-u-nu-latn",
+                "und-u-nu-latn", "und-Latn-u-nu-latn", "und-US-u-nu-latn"
+            })
+                RunUndefinedPlatformIdentities(name);
+            if (OperatingSystem.IsLinux())
+                foreach (string name in new[]
+                {
+                    "en-und-x-lvariant", "en-und-x-foo-lvariant", "en-und-x-LVARIANT",
+                    "en-und-a-a-x-lvariant", "en-und-Latn-x-lvariant", "en-und-US-x-lvariant",
+                    "x-1-US-u-nu-latn_phoneb", "x-foo-US-t-de-DE_phoneb",
+                    "x-foo-u-nu-latn_phoneb", "x-1-US-U-NU-LATN_phoneb",
+                    "en-US-x-foo_phoneb", "abcdefghij-x-foo", "abcd1-x-foo", "e1-x-foo",
+                    "i-klingon-x-lvariant-fooba", "x-1-US-u-nu-latn_phoneb\0ignored",
+                    "x-a-US-u-" + new string('a', 74) + "_p",
+                    "x-a-US-u-" + new string('a', 71) + "_p",
+                    "x-a-US-u-" + new string('a', 71) + "_pq",
+                    "x-a-US-u-" + new string('a', 72) + "_p",
+                    "x-a-US-u-co-phonebk_phoneb", "x-a-US-u-Co-phonebk_phoneb",
+                    "x-a-US-u-co-phonebk-t-de-DE_phoneb", "x-a-US-u-co-phonebk-u-nu-latn_phoneb"
+                })
+                    RunUndefinedPlatformIdentities(name);
+            Console.WriteLine("rejected undefined culture tails end");
         }
 
         private static void RunPrivateUseNames()
@@ -397,7 +438,8 @@ namespace CultureInfoApi
                 "x-foo-Latn-US_phoneb", "x-foobarbaz"
             })
             {
-                CultureInfo culture = new CultureInfo(name);
+                if (!TryCreatePrivateUseCulture(name, out CultureInfo culture))
+                    continue;
                 CultureInfo cached = CultureInfo.GetCultureInfo(name);
                 Console.WriteLine("  '" + name + "' name='" + culture.Name
                     + "' value='" + culture.ToString()
@@ -412,7 +454,8 @@ namespace CultureInfoApi
                 "x-lvariant-foo", "x-lvariant-US", "x-a-US-u-nu-latn", "x-foo-US-u-nu-latn"
             })
             {
-                CultureInfo culture = new CultureInfo(name);
+                if (!TryCreatePrivateUseCulture(name, out CultureInfo culture))
+                    continue;
                 CultureInfo specific = CultureInfo.CreateSpecificCulture(name);
                 Console.WriteLine("  '" + name + "' neutral=" + culture.IsNeutralCulture
                     + " specific lcid=" + specific.LCID);
@@ -422,13 +465,33 @@ namespace CultureInfoApi
                 "x-1-US-u-nu-latn_phoneb", "x-1-US-t-de-de_phoneb"
             })
             {
-                CultureInfo culture = new CultureInfo(name);
+                if (!TryCreatePrivateUseCulture(name, out CultureInfo culture))
+                    continue;
                 Console.WriteLine("  '" + name + "' name='" + culture.Name
                     + "' cached='" + CultureInfo.GetCultureInfo(name).Name
                     + "' specific='" + CultureInfo.CreateSpecificCulture(name).Name
                     + "' neutral=" + culture.IsNeutralCulture);
             }
             Console.WriteLine("private-use culture names end");
+        }
+
+        private static bool TryCreatePrivateUseCulture(string name, out CultureInfo culture)
+        {
+            try
+            {
+                culture = new CultureInfo(name);
+                return true;
+            }
+            catch (CultureNotFoundException exception)
+            {
+                culture = null;
+                Console.WriteLine("  '" + name + "' constructor=" + nameof(CultureNotFoundException));
+                WriteCultureFault(exception);
+                // Rejection by one factory must not skip the other public entry points.
+                CaptureCultureCreation("cached", () => CultureInfo.GetCultureInfo(name));
+                CaptureCultureCreation("specific", () => CultureInfo.CreateSpecificCulture(name));
+                return false;
+            }
         }
 
         private static void RunIsoLanguage()
@@ -825,7 +888,7 @@ namespace CultureInfoApi
                     CultureInfo withoutOverride = new CultureInfo(input, false);
                     CultureInfo cached = CultureInfo.GetCultureInfo(input);
                     CultureInfo specific = CultureInfo.CreateSpecificCulture(input);
-                    Console.WriteLine("  input='" + input + "'");
+                    Console.WriteLine("  input='" + input.Replace("\0", "<NUL>") + "'");
                     Console.WriteLine("    constructor=" + UndefinedPlatformIdentity(constructor));
                     Console.WriteLine("    without override=" + UndefinedPlatformIdentity(withoutOverride));
                     Console.WriteLine("    cached=" + UndefinedPlatformIdentity(cached));
@@ -843,7 +906,7 @@ namespace CultureInfoApi
             Console.WriteLine("culture undefined platform identities end");
         }
 
-        private static string UndefinedPlatformIdentity(CultureInfo culture) => VariantCultureIdentity(culture)
+        private static string UndefinedPlatformIdentity(CultureInfo culture) => VariantCultureIdentity(culture).Replace("\0", "<NUL>")
             + " invariant=" + ReferenceEquals(culture, CultureInfo.InvariantCulture);
 
         private static void RunUndefinedPlatformCache(string firstName, string secondName, bool constructorFirst)
