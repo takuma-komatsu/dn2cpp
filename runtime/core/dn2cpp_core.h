@@ -8057,6 +8057,7 @@ int32_t dn2cpp_culture_is_neutral(const Dn2CppNumberFormatInfo* c);
 void dn2cpp_nfi_set_number_decimal(Dn2CppNumberFormatInfo* n, Dn2CppString* v);
 void dn2cpp_nfi_set_number_group(Dn2CppNumberFormatInfo* n, Dn2CppString* v);
 void dn2cpp_nfi_set_negative_sign(Dn2CppNumberFormatInfo* n, Dn2CppString* v);
+void dn2cpp_nfi_set_positive_sign(Dn2CppNumberFormatInfo* n, Dn2CppString* v);
 void dn2cpp_nfi_set_nan(Dn2CppNumberFormatInfo* n, Dn2CppString* v);
 void dn2cpp_nfi_set_pos_inf(Dn2CppNumberFormatInfo* n, Dn2CppString* v);
 void dn2cpp_nfi_set_neg_inf(Dn2CppNumberFormatInfo* n, Dn2CppString* v);
@@ -8094,6 +8095,9 @@ Dn2CppString* dn2cpp_format_r4_c(float v, Dn2CppString* fmt, const Dn2CppNumberF
 Dn2CppString* dn2cpp_format_decimal_custom_c(const char* digits, int32_t count, int32_t scale,
                                              int32_t negative, Dn2CppString* fmt,
                                              const Dn2CppNumberFormatInfo* n);
+Dn2CppString* dn2cpp_format_decimal_standard_c(const char* digits, int32_t count, int32_t scale,
+                                               int32_t negative, Dn2CppString* fmt,
+                                               const Dn2CppNumberFormatInfo* n);
 int32_t dn2cpp_integral_format_uses_provider(Dn2CppString* fmt, int32_t negative);
 // Returns nullptr for a nonnumeric box; numeric default and explicit formats
 // use the same provider consumption rules as direct numeric calls.

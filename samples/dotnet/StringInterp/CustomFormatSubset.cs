@@ -190,4 +190,30 @@ static class Program
         Console.WriteLine("Standard numeric NUL termination end");
         Console.Write("raw=[" + 5.ToString("N2\0tail") + "]\0END\n");
     }
+
+    internal static void __StandardDecimalGate()
+    {
+        Console.WriteLine("== Decimal standard rounding and precision ==");
+        decimal[] values = {
+            1234.5m, -1234.5m, 1234.4m, 1234.6m,
+            12.345m, 0.005m, -0.005m, 1.200m, 9.995m, 0.00001m, 1.245m,
+            79228162514264337593543950335m
+        };
+        string[] formats = { "F0", "N0", "C0", "P0", "F2", "N2", "G3", "g3", "G", "G0", "G29" };
+        for (int f = 0; f < formats.Length; f++)
+            for (int v = 0; v < values.Length; v++)
+                Console.WriteLine("decimal " + f + "/" + v + "=[" + values[v].ToString(formats[f]) + "]");
+        Console.WriteLine("defaults=[" + 12.345m.ToString("F") + "|" + 12.345m.ToString("N")
+            + "|" + 12.345m.ToString("C") + "|" + 12.345m.ToString("P") + "]");
+        NumberFormatInfo symbols = new NumberFormatInfo {
+            NegativeSign = "NEG",
+            NumberDecimalSeparator = ",", NumberGroupSeparator = "."
+        };
+        Console.WriteLine("provider N0=[" + (-1234.5m).ToString("N0", symbols) + "]");
+        Console.WriteLine("provider G3=[" + (-1234.5m).ToString("G3", symbols) + "]");
+        NumberFormatInfo longSign = new NumberFormatInfo { PositiveSign = new string('+', 200) };
+        string longExponent = 1234m.ToString("G3", longSign);
+        Console.WriteLine("long exponent sign=[" + longExponent + "]");
+        Console.WriteLine("Decimal standard rounding and precision end");
+    }
 }

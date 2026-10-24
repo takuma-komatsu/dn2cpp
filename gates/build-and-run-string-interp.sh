@@ -22,12 +22,15 @@
 # and repeated decimal points follow the CLR's digit stream.
 # Standard numeric formats terminate at NUL; raw output comparisons retain the
 # byte that shell command substitution would discard.
+# Decimal standard fixed formats round exact digits; explicit G precision rounds
+# significant digits without changing the unqualified exact layout.
 source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|comma-scaling-prefix:before-comma-scaling|custom-matrix-prefix:before-custom-matrix"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|standard-nul-prefix:before-standard-nul"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|standard-decimal-prefix:before-standard-decimal"
 
 gate_extra_asserts() {
-    local out="$1" native before prefix line
+    local out="$1" native before prefix line long_sign
     native=$(run_bounded "./$out/StringInterp")
     native=$(strip_cr_win "$native")
     before=$(dotnet "$_CG_APP" before-concat-sequences)
@@ -112,8 +115,35 @@ gate_extra_asserts() {
     tr -d '\r' < "$out/standard-nul-dotnet.out" > "$out/standard-nul-dotnet-lf.out"
     cmp "$out/standard-nul-dotnet-lf.out" "$out/standard-nul-native-lf.out" || {
         echo "FAIL: standard numeric NUL raw bytes differ from real .NET" >&2; exit 1; }
-    tail -c 15 "$out/standard-nul-dotnet-lf.out" | cmp - <(printf 'raw=[5.00]\000END\n') || {
+    run_bounded dotnet "$_CG_APP" before-standard-decimal > "$out/standard-decimal-before-dotnet.out"
+    run_bounded "./$out/StringInterp" before-standard-decimal > "$out/standard-decimal-before-native.out"
+    tr -d '\r' < "$out/standard-decimal-before-dotnet.out" > "$out/standard-decimal-before-dotnet-lf.out"
+    tr -d '\r' < "$out/standard-decimal-before-native.out" > "$out/standard-decimal-before-native-lf.out"
+    head -c "$(wc -c < "$out/standard-decimal-before-dotnet-lf.out")" \
+        "$out/standard-nul-dotnet-lf.out" | cmp - "$out/standard-decimal-before-dotnet-lf.out" || {
+        echo "FAIL: old .NET output is not an unchanged prefix" >&2; exit 1; }
+    head -c "$(wc -c < "$out/standard-decimal-before-native-lf.out")" \
+        "$out/standard-nul-native-lf.out" | cmp - "$out/standard-decimal-before-native-lf.out" || {
+        echo "FAIL: old native output is not an unchanged prefix" >&2; exit 1; }
+    tail -c 15 "$out/standard-decimal-before-dotnet-lf.out" | cmp - <(printf 'raw=[5.00]\000END\n') || {
         echo "FAIL: standard numeric NUL raw-byte witness missing" >&2; exit 1; }
+    native=$(run_bounded "./$out/StringInterp" standard-decimal)
+    expected=$(run_bounded dotnet "$_CG_APP" standard-decimal)
+    assert_output "$(strip_cr_win "$native")" "$(strip_cr_win "$expected")"
+    for line in '== Decimal standard rounding and precision ==' \
+        'decimal 1/0=[1,235]' 'decimal 6/0=[1.23E+03]' \
+        'decimal 8/0=[1234.5]' 'decimal 7/0=[1.23e+03]' \
+        'decimal 6/10=[1.25]' \
+        'defaults=[12.35|12.35|¤12.35|1,234.50 %]' \
+        'provider N0=[NEG1.235]' 'provider G3=[NEG1,23E+03]' \
+        'Decimal standard rounding and precision end'; do
+        grep -Fqx "$line" <<< "$(strip_cr_win "$native")" || {
+            echo "FAIL: decimal standard witness missing: $line" >&2; exit 1; }
+    done
+    printf -v long_sign '%200s' ''
+    long_sign=${long_sign// /+}
+    grep -Fxq "long exponent sign=[1.23E${long_sign}03]" <<< "$(strip_cr_win "$native")" || {
+        echo "FAIL: long decimal exponent sign witness missing" >&2; exit 1; }
 }
 
 corelib_diff_gate StringInterp
