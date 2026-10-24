@@ -1,4 +1,5 @@
 """Reached copied bodies arm Array.Initialize without application references."""
+from preserve_profile import FULL, select_cases, sharing_modes, full_witness
 from pathlib import Path
 import hashlib
 import json
@@ -152,7 +153,7 @@ def check_copied_array_admission(cli, original, corelib, output, mode, arms=("or
     receipts = []
     for arm in arms:
         assert arm in ("original", "integrated")
-        for shared in (True, False):
+        for shared in sharing_modes():
             label = arm + ("-sharing-on" if shared else "-sharing-off")
             destination = output / label
             command = ["dotnet", "exec", str(cli), str(original / "GraphApp.dll")]
@@ -177,7 +178,7 @@ def check_copied_array_admission(cli, original, corelib, output, mode, arms=("or
             demand_admission = None
             if mode in DEMAND_MODES:
                 if arm == "integrated":
-                    assert expected_demand_admission is not None and set(expected_demand_admission) == {"True", "False"}, "Observe both original sharing modes before integrated demand checks"
+                    assert expected_demand_admission is not None and set(expected_demand_admission) == set(map(str, sharing_modes())), "Observe the selected original sharing modes before integrated demand checks"
                 constructor_count = len(definitions("CopiedArrayValue__ctor"))
                 assert constructor_count <= 1, (mode, label, "multiple original default constructors")
                 armed = constructor_count == 1
@@ -308,7 +309,12 @@ def publish_copied(companion, probe, original, corelib, output, mode, state="pub
 def validate_copied_array(companion, probe, cli, corelib, directory):
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
-    for mode in MODES:
+    for mode in select_cases("copied-array", MODES, (
+            "direct", "unarmed", "copied-demand-method", "copied-demand-method-lookup",
+            "copied-preserve-conditional", "copied-preserve-inactive",
+            "copied-late-layout", "copied-layout-unarmed",
+            "copied-type-attribute", "copied-type-attribute-data",
+            "selected-ss-data", "selected-named-direct-nested")):
         original = directory / (mode + "-input")
         created = run(["dotnet", "exec", probe, "--create-copied-array-fixtures", original, corelib, mode], directory, mode + "-create")
         assert created.stdout.splitlines() == [("fixture-created=copied-array mode=" + mode).encode()]
@@ -316,21 +322,22 @@ def validate_copied_array(companion, probe, cli, corelib, directory):
         assert checked.stdout.startswith(("graph-copied-array=original:" + mode + ":").encode())
         hashes = input_hashes(original, corelib)
         first = publish_copied(companion, probe, original, corelib, directory / (mode + "-first"), mode)
-        repeat = publish_copied(companion, probe, original, corelib, directory / (mode + "-repeat"), mode)
-        assert first == repeat, "copied array publication/counters are nondeterministic"
+        if FULL or mode == "direct":
+            repeat = publish_copied(companion, probe, original, corelib, directory / (mode + "-repeat"), mode)
+            assert first == repeat, "copied array publication/counters are nondeterministic"
         check_copied_array_admission(cli, original, corelib, directory / (mode + "-primary"), mode)
         assert input_hashes(original, corelib) == hashes, "copied fixture changed original inputs"
-    print("graph-validation=copied-array-direct,copied-to-copied,copied-cctor,copied-ldftn-delegate,unarmed-control,unique-external-dependency,metadata-negatives,unused-construct-negative,copied-bytes-identical,actual-primary-sharing-on-and-off,determinism,token-closure", flush=True)
-    print("graph-validation=copied-nonframework-module-initializer,framework-module-unarmed,copied-bytes-identical,actual-primary-sharing-on-and-off", flush=True)
-    print("graph-validation=copied-framework-attribute-named,copied-framework-attribute-unarmed,exact-type-token,actual-primary-sharing-on-and-off", flush=True)
-    print("graph-validation=copied-framework-attribute-same-name,attribute-and-token-distinct-scopes,first-module-constructor,actual-primary-sharing-on-and-off", flush=True)
-    print("graph-validation=copied-type-member-assembly-attributes,known-uncalled-member,setter-only,unnamed-noquery-data-controls,copied-preserved-method,conditional-active-inactive,original-descriptor-contract,actual-primary-sharing-on-and-off", flush=True)
-    print("graph-validation=copied-conditional-preserved-signature,uncalled-null-returning-helper,no-facade-call-or-token,actual-primary-sharing-on-and-off", flush=True)
-    print("graph-validation=copied-conditional-named-type,discarded-literal-name-lookup,no-facade-call-or-token,actual-primary-sharing-on-and-off", flush=True)
-    print("graph-validation=copied-parameter-attribute-row,copied-property-event-attribute-data,uncalled-owner-and-accessors,actual-primary-sharing-on-and-off", flush=True)
-    print("graph-validation=copied-symbolic-constructor-method-accessor-field-demands,formed-uncalled-binding,lookup-controls,event-attribute-nonexecution,actual-primary-per-sharing-admission", flush=True)
-    print("graph-validation=copied-late-user-layout-replay,unknown-owner-user-attribute-filters,metadata-filter-conditional-identity,nonexecuting-attribute-bodies,actual-primary-per-sharing-admission", flush=True)
-    print("graph-validation=selected-stripped-attribute-metadata,named-member-identity,passive-accessor-attributes,field-only-copied-dispatch,actual-primary-per-sharing-admission", flush=True)
+    full_witness("graph-validation=copied-array-direct,copied-to-copied,copied-cctor,copied-ldftn-delegate,unarmed-control,unique-external-dependency,metadata-negatives,unused-construct-negative,copied-bytes-identical,actual-primary-sharing-on-and-off,determinism,token-closure", flush=True)
+    full_witness("graph-validation=copied-nonframework-module-initializer,framework-module-unarmed,copied-bytes-identical,actual-primary-sharing-on-and-off", flush=True)
+    full_witness("graph-validation=copied-framework-attribute-named,copied-framework-attribute-unarmed,exact-type-token,actual-primary-sharing-on-and-off", flush=True)
+    full_witness("graph-validation=copied-framework-attribute-same-name,attribute-and-token-distinct-scopes,first-module-constructor,actual-primary-sharing-on-and-off", flush=True)
+    full_witness("graph-validation=copied-type-member-assembly-attributes,known-uncalled-member,setter-only,unnamed-noquery-data-controls,copied-preserved-method,conditional-active-inactive,original-descriptor-contract,actual-primary-sharing-on-and-off", flush=True)
+    full_witness("graph-validation=copied-conditional-preserved-signature,uncalled-null-returning-helper,no-facade-call-or-token,actual-primary-sharing-on-and-off", flush=True)
+    full_witness("graph-validation=copied-conditional-named-type,discarded-literal-name-lookup,no-facade-call-or-token,actual-primary-sharing-on-and-off", flush=True)
+    full_witness("graph-validation=copied-parameter-attribute-row,copied-property-event-attribute-data,uncalled-owner-and-accessors,actual-primary-sharing-on-and-off", flush=True)
+    full_witness("graph-validation=copied-symbolic-constructor-method-accessor-field-demands,formed-uncalled-binding,lookup-controls,event-attribute-nonexecution,actual-primary-per-sharing-admission", flush=True)
+    full_witness("graph-validation=copied-late-user-layout-replay,unknown-owner-user-attribute-filters,metadata-filter-conditional-identity,nonexecuting-attribute-bodies,actual-primary-per-sharing-admission", flush=True)
+    full_witness("graph-validation=selected-stripped-attribute-metadata,named-member-identity,passive-accessor-attributes,field-only-copied-dispatch,actual-primary-per-sharing-admission", flush=True)
 
 
 def check_late_preservation(path, mode, published=False):
@@ -368,7 +375,7 @@ def check_copied_late_admission(cli, original, corelib, output, mode, arms, refe
     receipts = []
     for arm in arms:
         assert arm in ("original", "integrated")
-        for shared in (True, False):
+        for shared in sharing_modes():
             label = arm + ("-sharing-on" if shared else "-sharing-off")
             destination = output / label
             command = ["dotnet", "exec", str(cli), str(original / "GraphApp.dll")]
@@ -422,7 +429,7 @@ def check_copied_late_admission(cli, original, corelib, output, mode, arms, refe
             observation = {"armed": armed, "helpers": helpers, "cell_ctor": cell, "attribute_ctor": attr_ctor,
                            "attribute_setter": attr_setter, "conditional_method": policy_body, "attribute_targets": forbidden}
             if arm == "integrated":
-                assert expected_admission is not None and set(expected_admission) == {"True", "False"}, "Observe both original sharing modes first"
+                assert expected_admission is not None and set(expected_admission) == set(map(str, sharing_modes())), "Observe the selected original sharing modes first"
             if expected_admission is not None and str(shared) in expected_admission:
                 assert observation == expected_admission[str(shared)], (mode, label, "changed original admission")
             if arm == "integrated":

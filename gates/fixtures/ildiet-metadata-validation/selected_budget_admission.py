@@ -1,4 +1,5 @@
-"""Every public work-budget cut must publish a complete copy fallback."""
+"""Work-budget boundaries publish copy fallbacks or complete rewritten outputs."""
+from preserve_profile import FULL, budget_cuts, full_witness
 from pathlib import Path
 import json
 import xml.etree.ElementTree as ET
@@ -120,9 +121,23 @@ def validate_selected_budgets(companion, probe, corelib, directory):
         area = directory / mode
         original, refs, hashes = prepare_budget_fixture(probe, corelib, area, mode)
         work, preservation = normal_budget_control(companion, probe, original, corelib, refs, mode, area / "normal")
+        normal_root, normal_output = manifest(area / "normal" / "publication")
+        normal_files = {p.name: digest(p) for p in normal_output.iterdir() if p.is_file()}
+        for budget in (work, work + 1):
+            result, request, publication = budget_attempt(companion, original, refs, mode,
+                                                          area / ("success-" + str(budget)), budget)
+            assert result.returncode == 0, (result.returncode, result.stderr)
+            root, published = manifest(publication)
+            assert root.get("fallback") == "none" and root.get("contract") == contract_digest(request)
+            assert root.get("generation") == normal_root.get("generation")
+            assert int(root.find("counters").get("work")) == work
+            assert int(root.find("counters").get("work.budget")) == budget
+            assert {p.name: digest(p) for p in published.iterdir() if p.is_file()} == normal_files
+            assert {path: digest(path) for path in hashes} == hashes
         generation = None
         cache = {}
-        for budget in range(1, work):
+        cuts = budget_cuts(work)
+        for budget in cuts:
             attempt = area / ("cut-" + str(budget))
             # Generations depend on payload, not counters. Reusing this directory
             # avoids a full corelib copy for every cut while saving each receipt.
@@ -142,8 +157,9 @@ def validate_selected_budgets(companion, probe, corelib, directory):
             repeated.append(validate_budget_copy(result, request, publication, original, refs, mode, hashes, probe, attempt))
         assert repeated[0] == repeated[1]
         assert repeated[0]["generation"] == generation
-        receipts.append({"mode": mode, "first_budget": 1, "last_budget": work - 1,
-                         "every_integer_budget_checked": True, "copy_generation": generation})
-        print("graph-selected-budget=" + mode + ":dense-cuts=1.." + str(work - 1) + ":copy-identical,contract,generation,closure,repeat", flush=True)
+        receipts.append({"mode": mode, "first_budget": cuts[0], "last_budget": cuts[-1],
+                         "budgets_checked": list(cuts), "success_budgets_checked": [work, work + 1],
+                         "every_integer_budget_checked": FULL, "copy_generation": generation})
+        print("graph-selected-budget=" + mode + (":dense-cuts=1.." + str(work - 1) if FULL else ":sampled-cuts=" + ",".join(map(str, cuts))) + ":success-cuts=" + str(work) + "," + str(work + 1) + ":copy-identical,contract,generation,closure,repeat", flush=True)
     (directory / "success.json").write_text(json.dumps(receipts, indent=2) + "\n")
-    print("graph-validation=selected-row-budget-interruption,passive-row-budget-interruption,exhaustive-public-cuts,byte-identical-copy-fallback,normal-validator-controls", flush=True)
+    full_witness("graph-validation=selected-row-budget-interruption,passive-row-budget-interruption,exhaustive-public-cuts,byte-identical-copy-fallback,normal-validator-controls", flush=True)

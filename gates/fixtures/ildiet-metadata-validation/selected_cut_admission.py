@@ -1,4 +1,5 @@
 """Selected attribute cuts retain physical IL without executing the cut bodies."""
+from preserve_profile import FULL, select_cases, sharing_modes, full_witness
 from pathlib import Path
 import json
 import re
@@ -163,16 +164,18 @@ def publish(companion, probe, original, captured, area, mode, variant, expected)
 def validate_selected_cuts(companion, probe, cli, corelib, directory):
     directory = Path(directory).resolve()
     directory.mkdir(parents=True, exist_ok=False)
+    cases = select_cases("selected-cut", CASES, ("ctor", "inherited-setter"))
+    repetitions = (1, 2) if FULL else (1,)
     inputs, controls, prepared = {}, [], []
-    for mode in dict.fromkeys(case[1] for case in CASES):
+    for mode in dict.fromkeys(case[1] for case in cases):
         area = directory / mode
         original, refs, hashes = prepare_budget_fixture(probe, corelib, area, mode)
         baseline = selected_admission(cli, original, corelib, area / 'uncut-original', mode, ('original',), refs, None, None)
         controls.append((original, refs, mode, area, {str(r['shared']): r['selected_admission'] for r in baseline}))
         inputs[mode] = (original, refs, hashes)
-    for label, mode, cuts, variant in CASES:
+    for label, mode, cuts, variant in cases:
         original, refs, hashes = inputs[mode]
-        for shared in (True, False):
+        for shared in sharing_modes():
             area = directory / label / ('sharing-on' if shared else 'sharing-off')
             expected = primary(cli, original, refs, mode, shared, cuts, area / 'raw')
             prepared.append((mode, variant, original, refs, shared, cuts, area, expected))
@@ -187,17 +190,18 @@ def validate_selected_cuts(companion, probe, cli, corelib, directory):
         selected_admission(cli, original, corelib, area / 'uncut-integrated', mode, ('integrated',), refs, None, baseline)
     receipts = []
     for mode, variant, original, refs, shared, cuts, area, expected, captured in captures:
-        standalone = [publish(companion, probe, original, captured, area / ('standalone-' + str(i)), mode, variant, expected) for i in (1, 2)]
-        assert standalone[0] == standalone[1]
+        standalone = [publish(companion, probe, original, captured, area / ('standalone-' + str(i)), mode, variant, expected) for i in repetitions]
+        if FULL:
+            assert standalone[0] == standalone[1]
         integrated = area / 'integrated'
         primary(cli, original, refs, mode, shared, cuts, integrated, raw=False, expected=expected)
         published = publication(probe, original, integrated / 'cpp/ildiet', mode, variant, ET.parse(captured).getroot(), expected)
         assert published == standalone[0], 'standalone and integrated selected-cut publication changed'
         receipts.append({'case': area.relative_to(directory).as_posix(), 'admission': expected, 'publication': published})
-        print('graph-selected-cut=' + mode + ':' + variant + ':sharing-' + str(shared) + ':original-first,actual-xml,physical-il,nonexecution,standalone-integrated', flush=True)
+        print('graph-selected-cut=' + mode + ':' + variant + ':sharing-' + str(shared) + ':original-first,actual-xml,physical-il,nonexecution,standalone-integrated:standalone-runs=' + str(len(repetitions)), flush=True)
     for original, refs, hashes in inputs.values():
         assert input_hashes(original, corelib) == hashes
     assert tree_files(capture_cli.parent) == capture_pin
     save(directory / 'receipt.json', receipts)
-    print('graph-validation=selected-attribute-constructor-and-own-inherited-setter-cuts,unchanged-inputs,physical-token-closure,bounded-factory,uncut-positive-controls', flush=True)
+    full_witness('graph-validation=selected-attribute-constructor-and-own-inherited-setter-cuts,unchanged-inputs,physical-token-closure,bounded-factory,uncut-positive-controls', flush=True)
     return receipts

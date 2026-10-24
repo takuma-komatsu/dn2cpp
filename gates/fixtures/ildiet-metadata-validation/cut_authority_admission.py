@@ -1,4 +1,5 @@
 """Raw-primary observations derived from the unchanged passive-evidence helper."""
+from preserve_profile import FULL, select_cases, sharing_modes, full_witness
 from pathlib import Path
 import re
 import json
@@ -274,6 +275,8 @@ def validate_cut_authority(companion, probe, cli, corelib, directory):
     directory = Path(directory).resolve()
     assert not directory.exists()
     directory.mkdir(parents=True)
+    arms = select_cases("cut-authority-options", ARMS, ("default",))
+    repetitions = (1, 2) if FULL else (1,)
     prepared = []
     for mode in MODES:
         area = directory / mode
@@ -281,8 +284,8 @@ def validate_cut_authority(companion, probe, cli, corelib, directory):
         cut, selectors = descriptors(original, area, mode)
         raw = {}
         for selector, descriptor in selectors.items():
-            for arm, options in ARMS:
-                for shared in (True, False):
+            for arm, options in arms:
+                for shared in sharing_modes():
                     raw[(selector, arm, shared)] = primary(cli, {}, original, descriptor, cut,
                         area / selector / arm / str(shared) / 'raw', options, shared, mode)
         prepared.append((mode, area, original, cut, selectors, raw))
@@ -292,8 +295,8 @@ def validate_cut_authority(companion, probe, cli, corelib, directory):
     for mode, area, original, cut, selectors, raw in prepared:
         for selector, descriptor in selectors.items():
             previous = None
-            for arm, options in ARMS:
-                for shared in (True, False):
+            for arm, options in arms:
+                for shared in sharing_modes():
                     path = capture(capture_cli, {}, original, descriptor, cut,
                                    area / selector / arm / str(shared) / 'capture', options, shared)
                     value = semantics(ET.parse(path).getroot())
@@ -304,20 +307,22 @@ def validate_cut_authority(companion, probe, cli, corelib, directory):
         before = tree_files(original)
         for selector, descriptor in selectors.items():
             records = [publish(companion, probe, original, captures[(mode, selector)],
-                       area / selector / ('standalone-' + str(i)), mode) for i in (1, 2)]
-            assert records[0] == records[1]
-            for arm, options in ARMS:
-                for shared in (True, False):
+                       area / selector / ('standalone-' + str(i)), mode) for i in repetitions]
+            if FULL:
+                assert records[0] == records[1]
+            for arm, options in arms:
+                for shared in sharing_modes():
                     runs = []
-                    for repetition in (1, 2):
+                    for repetition in repetitions:
                         dest = area / selector / arm / str(shared) / ('integrated-' + str(repetition))
                         runs.append(primary(cli, {}, original, descriptor, cut, dest, options, shared, mode,
                                             raw=False, expected=raw[(selector, arm, shared)]))
                         checked = publication(probe, original, dest / 'cpp/ildiet', mode)
                         assert checked['files'] == records[0]['files'] and checked['observation'] == records[0]['observation']
-                    assert runs[0]['generated_sha256'] == runs[1]['generated_sha256']
+                    if FULL:
+                        assert runs[0]['generated_sha256'] == runs[1]['generated_sha256']
         assert tree_files(original) == before
-        print('graph-cut-authority=' + mode + ':cut-only,and-descriptor,both-sharing-and-options,physical-only', flush=True)
+        print('graph-cut-authority=' + mode + ':cut-only,and-descriptor,selected-sharing-and-options,physical-only:publication-runs=' + str(len(repetitions)), flush=True)
     assert tree_files(capture_cli.parent) == capture_pin
     backend(companion, probe, corelib, directory / 'backend-registry')
-    print('graph-validation=cut-authority,originals-first,cli-xml,physical-il,scalar-token-negative,backend-factory-contract', flush=True)
+    full_witness('graph-validation=cut-authority,originals-first,cli-xml,physical-il,scalar-token-negative,backend-factory-contract', flush=True)

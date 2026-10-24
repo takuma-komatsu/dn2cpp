@@ -1,4 +1,5 @@
 """Pin original-primary admission for same-name parameter types in distinct assemblies."""
+from preserve_profile import sharing_modes
 from pathlib import Path
 import os
 import re
@@ -6,7 +7,7 @@ import subprocess
 
 
 def check_scope_admission(cli, original, corelib, output):
-    for shared in (True, False):
+    for shared in sharing_modes():
         arm = "sharing-on" if shared else "sharing-off"
         destination = Path(output) / arm
         destination.mkdir(parents=True, exist_ok=True)

@@ -1,4 +1,5 @@
 """Selected metadata rows and field-only copied layouts retain distinct demands."""
+from preserve_profile import sharing_modes
 from pathlib import Path
 import json
 import re
@@ -86,7 +87,7 @@ def selected_admission(cli, original, corelib, output, mode, arms, references, e
     receipts = []
     for arm in arms:
         assert arm in ("original", "integrated")
-        for shared in (True, False):
+        for shared in sharing_modes():
             label = arm + ("-sharing-on" if shared else "-sharing-off")
             destination = output / label
             command = ["dotnet", "exec", cli, original / "GraphApp.dll"]
@@ -138,7 +139,7 @@ def selected_admission(cli, original, corelib, output, mode, arms, references, e
             provider_emitted = bool(re.search(r"(?m)^const Dn2CppTypeInfo ti_Graph_SelectedProvider =", source))
             observation = {"effects": effects, "provider_typeinfo_emitted": provider_emitted}
             if arm == "integrated":
-                assert set(observations) == {"True", "False"}, "Observe both original sharing modes first"
+                assert set(observations) == set(map(str, sharing_modes())), "Observe the selected original sharing modes first"
             if str(shared) in observations:
                 assert observation == observations[str(shared)], (mode, label, "changed original primary admission")
             if arm == "original":

@@ -1,4 +1,5 @@
 """Compare reflection admission with and without canonical method discovery."""
+from preserve_profile import sharing_modes
 from pathlib import Path
 import os
 import re
@@ -63,7 +64,7 @@ def check_loadset_closure_marker(output, mode):
 def check_primary_admission(cli, original, corelib, output, mode):
     assert mode in MODES + OWNER_MODES + CONTEXT_MODES + VIEW_MODES + BOUND_MODES + ORIGIN_MODES + DEFINITION_MODES + ALL_LOADSET_MODES, "unknown canonical admission mode: " + mode
     delegator = mode in ("object-unknown", "object-generic-unknown")
-    for shared in (True, False):
+    for shared in sharing_modes(mode in ("canonical-array-unknown", "canonical-array-complete")):
         arm = "sharing-on" if shared else "sharing-off"
         destination = Path(output) / arm
         destination.mkdir(parents=True, exist_ok=True)

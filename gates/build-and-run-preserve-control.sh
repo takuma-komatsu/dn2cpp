@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Preserved reflection-created boxes retain interface dispatch after write-back.
+# Full mode also exercises the isolated routing and preprocessing variants below.
 # Managed DLL stripping and explicit preservation: unreachable metadata is removed,
 # while PreserveAttribute and merged Unity-format link.xml keep selected bodies.
 # An indexer selected through a nonexistent accessor fails signature validation.
@@ -31,6 +32,17 @@
 # Captured field reads retain zero/null defaults alongside later finite writes.
 source "$(dirname "$0")/_common.sh"
 source "$(dirname "$0")/_ildiet.sh"
+# The default profile keeps independent positive/negative witnesses. Full mode
+# restores the cross-product for focused preservation and reachability changes.
+case "${DN2CPP_PRESERVE_CONTROL_FULL:-0}" in
+    0|1) ;;
+    *) echo 'DN2CPP_PRESERVE_CONTROL_FULL must be 0 or 1' >&2; exit 1 ;;
+esac
+export DN2CPP_PRESERVE_CONTROL_FULL="${DN2CPP_PRESERVE_CONTROL_FULL:-0}"
+preserve_full() { [ "$DN2CPP_PRESERVE_CONTROL_FULL" = 1 ]; }
+echo "preserve-control-profile=$([ "$DN2CPP_PRESERVE_CONTROL_FULL" = 1 ] && echo full || echo representative)"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|preserve-control-full:$DN2CPP_PRESERVE_CONTROL_FULL"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $(printf '%s ' gates/fixtures/ildiet-metadata-validation/*.py)"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/preserve-control/Program.cs gates/fixtures/preserve-control/MetadataProbe.csproj gates/fixtures/preserve-control/accessorless-indexer/AccessorlessIndexer.csproj gates/fixtures/preserve-control/accessorless-indexer/Program.cs gates/fixtures/preserve-control/accessorless-indexer/link.xml gates/fixtures/preserve-control/accessorless-indexer/Targets/IndexerTargets.csproj gates/fixtures/preserve-control/accessorless-indexer/Targets/Indexed.cs gates/fixtures/ildiet-metadata-validation/Program.cs gates/fixtures/ildiet-metadata-validation/check.py samples/dotnet/ILDietControl/keep-attribute-constructed.xml samples/dotnet/ILDietControl/ConstructorOnly/keep-signature-constructed.xml samples/dotnet/ILDietControl/InvokeOnly/keep-signature-invoked.xml samples/dotnet/ILDietControl/AbsenceOnly/keep-preserved-constructor.xml samples/dotnet/ILDietControl/UnknownTargetOnly/keep-parameter-targets.xml samples/dotnet/ILDietControl/ConditionalNamedOnly/keep-conditional-named.xml gates/fixtures/ildiet-attribute-roots/AttributeRoots.csproj gates/fixtures/ildiet-attribute-roots/Program.cs gates/expected/preserve-control-unknown-target.tsv"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|reflected-event-operations:native-ildiet-and-no-ildiet|attribute-object-prefix:${DN2CPP_BEFORE_ATTRIBUTE_OBJECT:-}|named-reflection-prefix:${DN2CPP_BEFORE_NAMED_REFLECTION:-}|runtime-reflection-prefix:${DN2CPP_BEFORE_RUNTIME_REFLECTION:-}|metadata-lookup-prefix:${DN2CPP_BEFORE_METADATA_LOOKUP:-}|signature-construction-prefix:${DN2CPP_BEFORE_SIGNATURE_CONSTRUCTION:-}|signature-invocation-prefix:${DN2CPP_BEFORE_SIGNATURE_INVOCATION:-}|field-boxing-prefix:${DN2CPP_BEFORE_FIELD_BOXING:-}|field-context-prefix:${DN2CPP_BEFORE_FIELD_CONTEXT:-}|field-owner-prefix:${DN2CPP_BEFORE_FIELD_OWNER:-}|field-shape-prefix:${DN2CPP_BEFORE_FIELD_SHAPE:-}|construction-payload-prefix:${DN2CPP_BEFORE_CONSTRUCTION_PAYLOAD:-}|field-cycle-prefix:${DN2CPP_BEFORE_FIELD_CYCLE:-}|member-field-signature-prefix:${DN2CPP_BEFORE_MEMBER_FIELD_SIGNATURE:-}|member-construction-signature-prefix:${DN2CPP_BEFORE_MEMBER_CONSTRUCTION_SIGNATURE:-}|base-field-signature-prefix:${DN2CPP_BEFORE_BASE_FIELD_SIGNATURE:-}|base-construction-signature-prefix:${DN2CPP_BEFORE_BASE_CONSTRUCTION_SIGNATURE:-}|ctor-signature-invocation-prefix:${DN2CPP_BEFORE_CTOR_SIGNATURE_INVOCATION:-}|field-owner-signature-prefix:${DN2CPP_BEFORE_FIELD_OWNER_SIGNATURE:-}|interface-owner-signature-prefix:${DN2CPP_BEFORE_INTERFACE_OWNER_SIGNATURE:-}|ctor-field-owner-signature-prefix:${DN2CPP_BEFORE_CTOR_FIELD_OWNER_SIGNATURE:-}|captured-array-defaults-prefix:${DN2CPP_BEFORE_CAPTURED_ARRAY_DEFAULTS:-}|interface-array-defaults-prefix:${DN2CPP_BEFORE_INTERFACE_ARRAY_DEFAULTS:-}|external-array-defaults-prefix:${DN2CPP_BEFORE_EXTERNAL_ARRAY_DEFAULTS:-}|local-defaults-prefix:${DN2CPP_BEFORE_LOCAL_DEFAULTS:-}|reflection-depth-seeds-prefix:${DN2CPP_BEFORE_REFLECTION_DEPTH_SEEDS:-}|caller-depth-prefix:${DN2CPP_BEFORE_CALLER_DEPTH:-}|extended-depth-prefix:${DN2CPP_BEFORE_EXTENDED_DEPTH:-}|state-machine-signatures-prefix:${DN2CPP_BEFORE_STATE_MACHINE_SIGNATURES:-}|retained-absence-prefix:${DN2CPP_BEFORE_RETAINED_ABSENCE:-}|unknown-target-prefix:${DN2CPP_BEFORE_UNKNOWN_TARGET:-}|initonly-field-prefix:${DN2CPP_BEFORE_INITONLY_FIELD:-}|metadata-owners-prefix:${DN2CPP_BEFORE_METADATA_OWNERS:-}|assembly-construction-prefix:${DN2CPP_BEFORE_ASSEMBLY_CONSTRUCTION:-}|listed-owners-prefix:${DN2CPP_BEFORE_LISTED_OWNERS:-}|dispatched-target-prefix:${DN2CPP_BEFORE_DISPATCHED_TARGET:-}|written-target-prefix:${DN2CPP_BEFORE_WRITTEN_TARGET:-}|absence-values:${DN2CPP_JOINED_TARGET_NAME+set:$DN2CPP_JOINED_TARGET_NAME}:${DN2CPP_FORMED_ONLY+set:$DN2CPP_FORMED_ONLY}:${DN2CPP_CONSTRUCTED_TEMPLATE+set:$DN2CPP_CONSTRUCTED_TEMPLATE}:${DN2CPP_UNUSED_STATICS+set:$DN2CPP_UNUSED_STATICS}:${DN2CPP_USED_STATICS+set:$DN2CPP_USED_STATICS}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|repeated-arrays-prefix:${DN2CPP_BEFORE_REPEATED_ARRAYS:-}|integer-storage-prefix:${DN2CPP_BEFORE_ARRAY_NARROWING:-}|captured-scalar-defaults-prefix:${DN2CPP_BEFORE_CAPTURED_SCALAR_DEFAULTS:-}"
@@ -306,7 +318,7 @@ invoke_cli "$APP" -r "$LIBDLL" -r "$ASSEMBLYDLL" --auto-ref --project-root "$ROO
 grep -Fq "_DroppedMethod_" "$WHOLE"/generated* \
     || { echo "FAIL: childless assembly descriptor did not preserve all methods" >&2; exit 1; }
 
-if gate_cache_check "$OUT" "preserve-control|ildiet|com|trim-reflection|cut=none|preserved-box-prefix:${DN2CPP_BEFORE_PRESERVED_BOXES:-}|conditional-fields-prefix:${DN2CPP_BEFORE_CONDITIONAL_FIELDS:-}" \
+if gate_cache_check "$OUT" "preserve-control|full:$DN2CPP_PRESERVE_CONTROL_FULL|ildiet|com|trim-reflection|cut=none|preserved-box-prefix:${DN2CPP_BEFORE_PRESERVED_BOXES:-}|conditional-fields-prefix:${DN2CPP_BEFORE_CONDITIONAL_FIELDS:-}" \
         "$APP" "$LIBDLL" "$ASSEMBLYDLL" "$ROOT/link.xml" "$ROOT/Nested/link.xml" \
         gates/expected/preserve-control.txt; then
     gate_cache_hit_msg
@@ -633,37 +645,39 @@ ILDietLookupOnly.RuntimeFieldOwnerDependency::Run stub=False'
     caller_depth_case=class
     DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|caller-depth-case:$caller_depth_case"
     corelib_diff_gate LookupOnly -r "$DIET_LIB"
-    (
-        echo "== Copied framework event wrappers keep lookup-only bodies stripped =="
-        DN2CPP_OUT_SUFFIX="${DN2CPP_OUT_SUFFIX:-}-framework-events"
-        corelib_diff_gate LookupOnly -r "$DIET_LIB" -r "$(dirname "$_CG_CORELIB")/System.Runtime.InteropServices.dll"
-    )
-    # Separate DLLs prevent either caller's depth from covering the other route.
-    dotnet build "$DN2CPP_SAMPLE_PROJECT_DIR/LookupOnly.csproj" -c "$CONFIG" \
-        -p:DefineConstants=METHOD_DEPTH_CALLER -p:BuildProjectReferences=false
-    caller_depth_case=method
-    DN2CPP_OUT_SUFFIX="${DN2CPP_OUT_SUFFIX:-}-method-caller"
-    DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|caller-depth-case:$caller_depth_case"
-    DN2CPP_SKIP_BUILD=1
-    corelib_diff_gate LookupOnly -r "$DIET_LIB"
-    for extended_depth_case in virtual framework gvm gvm-owner inherited-virtual factory-virtual symbolic-gvm late-symbolic-gvm; do
-        case "$extended_depth_case" in
-            virtual) depth_constants=EXTENDED_VIRTUAL_DEPTH ;;
-            inherited-virtual) depth_constants=EXTENDED_INHERITED_VIRTUAL_DEPTH ;;
-            factory-virtual) depth_constants=EXTENDED_FACTORY_VIRTUAL_DEPTH ;;
-            symbolic-gvm) depth_constants=EXTENDED_SYMBOLIC_GVM_DEPTH ;;
-            late-symbolic-gvm) depth_constants=EXTENDED_LATE_SYMBOLIC_GVM_DEPTH ;;
-            framework) depth_constants=EXTENDED_FRAMEWORK_DEPTH ;;
-            gvm) depth_constants=EXTENDED_GVM_DEPTH ;;
-            gvm-owner) depth_constants=EXTENDED_GVM_OWNER_DEPTH ;;
-        esac
+    if preserve_full; then
+        (
+            echo "== Copied framework event wrappers keep lookup-only bodies stripped =="
+            DN2CPP_OUT_SUFFIX="${DN2CPP_OUT_SUFFIX:-}-framework-events"
+            corelib_diff_gate LookupOnly -r "$DIET_LIB" -r "$(dirname "$_CG_CORELIB")/System.Runtime.InteropServices.dll"
+        )
+        # Separate DLLs prevent either caller's depth from covering the other route.
         dotnet build "$DN2CPP_SAMPLE_PROJECT_DIR/LookupOnly.csproj" -c "$CONFIG" \
-            -p:DefineConstants="$depth_constants" -p:BuildProjectReferences=false
-        caller_depth_case=class
-        DN2CPP_OUT_SUFFIX="-$extended_depth_case-depth"
-        DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|extended-depth-case:$extended_depth_case"
+            -p:DefineConstants=METHOD_DEPTH_CALLER -p:BuildProjectReferences=false
+        caller_depth_case=method
+        DN2CPP_OUT_SUFFIX="${DN2CPP_OUT_SUFFIX:-}-method-caller"
+        DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|caller-depth-case:$caller_depth_case"
+        DN2CPP_SKIP_BUILD=1
         corelib_diff_gate LookupOnly -r "$DIET_LIB"
-    done
+        for extended_depth_case in virtual framework gvm gvm-owner inherited-virtual factory-virtual symbolic-gvm late-symbolic-gvm; do
+            case "$extended_depth_case" in
+                virtual) depth_constants=EXTENDED_VIRTUAL_DEPTH ;;
+                inherited-virtual) depth_constants=EXTENDED_INHERITED_VIRTUAL_DEPTH ;;
+                factory-virtual) depth_constants=EXTENDED_FACTORY_VIRTUAL_DEPTH ;;
+                symbolic-gvm) depth_constants=EXTENDED_SYMBOLIC_GVM_DEPTH ;;
+                late-symbolic-gvm) depth_constants=EXTENDED_LATE_SYMBOLIC_GVM_DEPTH ;;
+                framework) depth_constants=EXTENDED_FRAMEWORK_DEPTH ;;
+                gvm) depth_constants=EXTENDED_GVM_DEPTH ;;
+                gvm-owner) depth_constants=EXTENDED_GVM_OWNER_DEPTH ;;
+            esac
+            dotnet build "$DN2CPP_SAMPLE_PROJECT_DIR/LookupOnly.csproj" -c "$CONFIG" \
+                -p:DefineConstants="$depth_constants" -p:BuildProjectReferences=false
+            caller_depth_case=class
+            DN2CPP_OUT_SUFFIX="-$extended_depth_case-depth"
+            DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|extended-depth-case:$extended_depth_case"
+            corelib_diff_gate LookupOnly -r "$DIET_LIB"
+        done
+    fi
 )
 
 echo "== Constructor-only reflection constructs signature-selected types and keeps unwritten defaults on captured and repeated arrays without opening application accessor bodies =="
@@ -836,6 +850,7 @@ echo "== Constructor-only reflection constructs signature-selected types and kee
     # Construct(string, Type) activates signature-selected types no analyzable site names.
     external_array_context="$DN2CPP_GATE_EXTRA_CONTEXT"
     for external_array_mode in ildiet no-ildiet; do
+        [ "$external_array_mode" = ildiet ] || preserve_full || continue
         DN2CPP_GATE_EXTRA_CONTEXT="$external_array_context|external-array-defaults:$external_array_mode|reflection-summary:1"
         external_array_summary="artifacts/constructor-external-array-$CONFIG-$external_array_mode-summary.txt"
         mkdir -p artifacts
@@ -850,6 +865,7 @@ echo "== Constructor-only reflection constructs signature-selected types and kee
     done
 )
 
+if preserve_full; then
 echo "== Initialized local reflection operands retain zero and null across control-flow joins =="
 build_gate_proj gates/fixtures/ildiet-metadata-validation/MetadataValidation.csproj
 (
@@ -1226,6 +1242,8 @@ ILDietConditionalNamedOnly.NamedApplication::.ctor stub=False"
         --link-xml "$DN2CPP_SAMPLE_PROJECT_DIR/keep-conditional-named.xml"
 )
 
+fi
+
 echo "== Lookups, unselected overloads, unrelated field types, preserved constructors, untouched types, joined names' unresolved alternatives, formed generic types and attribute metadata reads compile no bodies =="
 (
     DN2CPP_SAMPLE_PROJECT_DIR=samples/dotnet/ILDietControl/AbsenceOnly
@@ -1281,6 +1299,7 @@ echo "== Lookups, unselected overloads, unrelated field types, preserved constru
     }
     absence_keep="$DN2CPP_SAMPLE_PROJECT_DIR/keep-preserved-constructor.xml"
     for preprocessing in enabled disabled; do
+        [ "$preprocessing" = enabled ] || preserve_full || continue
         absence_flags=()
         DN2CPP_OUT_SUFFIX=
         if [ "$preprocessing" = disabled ]; then
@@ -1496,6 +1515,7 @@ assert_output "$(strip_cr_win "$event_stripped")" "$(strip_cr_win "$event_origin
 grep -Fxq 'event-operations=done' <<< "$event_stripped" \
     || { echo 'FAIL: reflected event subscription section did not run' >&2; exit 1; }
 for preprocessing in enabled disabled; do
+    [ "$preprocessing" = enabled ] || preserve_full || continue
     event_flags=()
     [ "$preprocessing" = disabled ] && event_flags=(--no-ildiet)
     event_out="${STALE_ROOT#"$PWD/"}/event-native-$preprocessing"
@@ -1661,6 +1681,7 @@ echo "== A type initializer runs only after a type-use trigger or an explicit pr
         echo "native-initializer-policy=$initializer_case"
     }
     for initializer_case in signature explicit late original; do
+        case "$initializer_case" in signature|explicit) ;; *) preserve_full || continue ;; esac
         DN2CPP_SAMPLE_PROJECT_DIR="artifacts/ildiet-metadata-tests-$CONFIG/initializer-fixtures/$initializer_case/native"
         DN2CPP_OUT_SUFFIX="-initializer-$initializer_case"
         initializer_keep=()

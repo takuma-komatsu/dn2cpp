@@ -1,4 +1,5 @@
 """Finite generic formations do not authorize an unknown argument vector."""
+from preserve_profile import sharing_modes
 from pathlib import Path
 import hashlib
 import os
@@ -16,7 +17,7 @@ def check_instantiation_admission(cli, original, corelib, output, mode):
                        for name in ("GraphApp.dll", "GraphLib.dll")}
     executes = not mode.endswith("-only")
     type_case = mode.startswith("type-")
-    for shared in (True, False):
+    for shared in sharing_modes():
         arm = "sharing-on" if shared else "sharing-off"
         destination = Path(output) / arm
         destination.mkdir(parents=True, exist_ok=True)

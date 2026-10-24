@@ -1,4 +1,5 @@
 """Model formations do not satisfy normal demands; admitted effects keep their arguments."""
+from preserve_profile import FULL, select_cases, sharing_modes, full_witness
 from pathlib import Path
 import json
 import os
@@ -81,7 +82,7 @@ def primary(cli, original, refs, area, mode, integrated=False, expected=None, ex
     area.mkdir(parents=True)
     before = inputs(original, refs)
     observations, records = {}, []
-    for shared in (True, False):
+    for shared in sharing_modes():
         label = "sharing-on" if shared else "sharing-off"
         destination = area / label
         command = ["dotnet", "exec", cli, original / "GraphApp.dll"]
@@ -191,7 +192,7 @@ def validate_model_authority(companion, probe, cli, corelib, directory):
     assert not directory.exists()
     directory.mkdir(parents=True)
     prepared = []
-    for mode in MODES:
+    for mode in select_cases('model_authority', MODES, ('authority-model-only', 'authority-array')):
         area = directory / mode
         original = create(probe, corelib, area, mode)
         refs = references(original, corelib, Path(cli).parent / "Dn2Cpp.Runtime.dll")
@@ -199,8 +200,9 @@ def validate_model_authority(companion, probe, cli, corelib, directory):
         prepared.append((mode, area, original, refs, raw))
     for mode, area, original, refs, raw in prepared:
         first = publish(companion, probe, original, refs, area / "standalone-first", mode)
-        repeat = publish(companion, probe, original, refs, area / "standalone-repeat", mode)
-        assert first == repeat, (mode, "nondeterministic authority publication")
+        if FULL:
+            repeat = publish(companion, probe, original, refs, area / "standalone-repeat", mode)
+            assert first == repeat, (mode, "nondeterministic authority publication")
         primary(cli, original, refs, area / "integrated-primary", mode, integrated=True, expected=raw["observations"])
-        print("graph-model-authority=" + mode + ":original-sharing-on-off,normal-binding-authority,argument-consequences,copy-token-closure", flush=True)
-    print("graph-validation=model-binding-authority,model-only-negative,late-ordinary-alias-replay,array-policy-generic-dependencies,formed-attribute-effects,passive-negatives", flush=True)
+        print("graph-model-authority=" + mode + ":original-selected-sharing,normal-binding-authority,argument-consequences,copy-token-closure", flush=True)
+    full_witness("graph-validation=model-binding-authority,model-only-negative,late-ordinary-alias-replay,array-policy-generic-dependencies,formed-attribute-effects,passive-negatives", flush=True)
