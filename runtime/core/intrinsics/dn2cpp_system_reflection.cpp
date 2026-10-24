@@ -8064,6 +8064,8 @@ Dn2CppObject* dn2cpp_ctorref_invoke(Dn2CppMethodRef* c, Dn2CppArrayRef* args, bo
         args == nullptr ? 0 : args->length, wrapExceptions);
 }
 
+[[noreturn]] static void dn2cpp_throw_missing_constructor(const Dn2CppTypeInfo* ti, bool bound);
+
 // Activator.CreateInstance(Type[, bool nonPublic]): the parameterless form.
 // Matches real .NET's exceptions: an abstract class or interface throws
 // MissingMethodException, and so does a type whose only
@@ -8071,7 +8073,7 @@ Dn2CppObject* dn2cpp_ctorref_invoke(Dn2CppMethodRef* c, Dn2CppArrayRef* args, bo
 // parameterless CreateInstance(Type) binds PUBLIC ctors only. A value type
 // with no explicit parameterless ctor yields the zero-initialized boxed value.
 static Dn2CppObject* dn2cpp_activator_create_default(Dn2CppType* t, int32_t nonPublic,
-    bool wrapExceptions)
+    bool wrapExceptions, bool binderMessage)
 {
     if (t == nullptr)
         dn2cpp_throw_argument_null_param("type");
@@ -8086,10 +8088,13 @@ static Dn2CppObject* dn2cpp_activator_create_default(Dn2CppType* t, int32_t nonP
     if ((ti->flags & DN2CPP_TF_BYREFLIKE) != 0)
         dn2cpp_throw_invoke_not_supported("Cannot create boxed ByRef-like values.");
     const auto reflection = ti->reflection();
+    bool hasDefaultConstructor = (reflection.activation &
+        (DN2CPP_TA_OMITTED_PUBLIC_DEFAULT_CTOR | DN2CPP_TA_OMITTED_NONPUBLIC_DEFAULT_CTOR)) != 0;
     for (int32_t i = 0; i < reflection.ctorCount; i++)
     {
         const auto ci = reflection.ctors[i];
         const auto row = ci.operator->();
+        hasDefaultConstructor |= row->paramCount == 0;
         if (row->paramCount == 0
             && (nonPublic != 0 || (row->attrs & DN2CPP_MTHA_PUBLIC) != 0))
             return dn2cpp_ctor_invoke_argv(ci, nullptr, 0, wrapExceptions);
@@ -8110,16 +8115,19 @@ static Dn2CppObject* dn2cpp_activator_create_default(Dn2CppType* t, int32_t nonP
         obj->type = ti;
         return obj;
     }
-    // The type declares no visible parameterless ctor — real .NET's MissingMethodException.
-    char buf[512];
-    std::snprintf(buf, sizeof(buf), "No parameterless constructor defined for type '%s'.",
-                  ti->name != nullptr ? ti->name : "?");
-    dn2cpp_throw_missing_method(buf);
+    if (binderMessage)
+        dn2cpp_throw_missing_constructor(ti, false);
+    Dn2CppString* typeName = ti->name != nullptr ? dn2cpp_type_tostring(ti) : nullptr;
+    std::string name = typeName != nullptr ? dn2cpp_utf8_of(typeName) : "?";
+    if (hasDefaultConstructor)
+        dn2cpp_throw_missing_method(("No parameterless constructor defined for type '" + name + "'.").c_str());
+    dn2cpp_throw_missing_method(("Cannot dynamically create an instance of type '" + name
+        + "'. Reason: No parameterless constructor defined.").c_str());
 }
 
 Dn2CppObject* dn2cpp_activator_create_instance_nonpublic(Dn2CppType* t, int32_t nonPublic)
 {
-    return dn2cpp_activator_create_default(t, nonPublic, true);
+    return dn2cpp_activator_create_default(t, nonPublic, true, false);
 }
 
 Dn2CppObject* dn2cpp_activator_create_instance(Dn2CppType* t)
@@ -11750,10 +11758,15 @@ static Dn2CppObject* dn2cpp_binder_adapt_arg(Dn2CppObject* a, const Dn2CppTypeIn
     }
     static constexpr char prefix[] = "Constructor on type '";
     static constexpr char suffix[] = "' not found.";
-    const char* name = ti->name != nullptr ? ti->name : "?";
+    Dn2CppString* name = dn2cpp_type_fullname(ti);
+    if (name == nullptr)
+    {
+        const char* fallback = ti->name != nullptr ? ti->name : "?";
+        name = dn2cpp_string_from_utf8(fallback, static_cast<int32_t>(std::strlen(fallback)));
+    }
     Dn2CppString* message = dn2cpp_string_concat3(
         dn2cpp_string_from_utf8(prefix, static_cast<int32_t>(sizeof prefix - 1)),
-        dn2cpp_string_from_utf8(name, static_cast<int32_t>(std::strlen(name))),
+        name,
         dn2cpp_string_from_utf8(suffix, static_cast<int32_t>(sizeof suffix - 1)));
     Dn2CppObject* e = dn2cpp_exception_new(&dn2cpp_missing_method_exception_type, message, inner);
     reinterpret_cast<Dn2CppExceptionObject*>(e)->hresult = static_cast<int32_t>(0x80131513u);
@@ -11789,7 +11802,7 @@ Dn2CppObject* dn2cpp_activator_create_instance_args(Dn2CppType* t, Dn2CppArrayRe
     const bool wrapExceptions = (bindingFlags & DN2CPP_BF_DO_NOT_WRAP_EXCEPTIONS) == 0;
     if (argc == 0)
         return dn2cpp_activator_create_default(
-            t, (bindingFlags & DN2CPP_BF_NONPUBLIC) != 0 ? 1 : 0, wrapExceptions);
+            t, (bindingFlags & DN2CPP_BF_NONPUBLIC) != 0 ? 1 : 0, wrapExceptions, true);
     if ((ti->flags & (DN2CPP_TF_ABSTRACT | DN2CPP_TF_INTERFACE)) != 0)
         dn2cpp_throw_missing_method("Cannot create an instance of an abstract class or interface");
     if (argc > 30)
