@@ -1,0 +1,4 @@
+== frozen unknown-region currency ==
+foo-ZZ=XAD
+zz-ZZ=XAD
+frozen unknown-region currency end
