@@ -90,6 +90,45 @@ void RewriteReflectedEvents(ModuleDefinition module, bool required = false)
     }
 }
 
+void RewriteSingularPropertyAlias(ModuleDefinition module)
+{
+    if (module.GetType("SingularMemberLookupSubset.VirtualDerived") is null)
+        return;
+    foreach (string name in new[] { "VirtualDerived", "SlotOverride", "ProtectedOverride", "AccessorOverride" })
+    {
+        var owner = module.GetType("SingularMemberLookupSubset." + name)
+            ?? throw new InvalidOperationException("missing virtual property alias owner " + name);
+        var property = owner.Properties.Single(p => p.Name is "Tone" or "tone");
+        if (name == "AccessorOverride")
+        {
+            if (property.SetMethod?.Name != "set_Tone" || !property.SetMethod.IsVirtual)
+                throw new InvalidOperationException("missing setter-only property alias fixture");
+            property.GetMethod = null;
+        }
+        else if (property.GetMethod?.Name != "get_Tone" || !property.GetMethod.IsVirtual)
+            throw new InvalidOperationException("missing virtual property alias fixture");
+        // The public property name need not match the overridden accessor's slot name.
+        property.Name = "tone";
+    }
+    foreach (string name in new[] { "DuplicateAccessor", "ISharedAccessor" })
+    {
+        var duplicate = module.GetType("SingularMemberLookupSubset." + name)
+            ?? throw new InvalidOperationException("missing shared accessor fixture owner " + name);
+        var original = duplicate.Properties.Single(p => p.Name == "Tone");
+        var sharedGetter = duplicate.Methods.Single(m => m.Name == "get_Tone");
+        if (!sharedGetter.IsVirtual)
+            throw new InvalidOperationException("missing shared accessor fixture getter");
+        original.GetMethod = sharedGetter;
+        var alias = duplicate.Properties.SingleOrDefault(p => p.Name == "tone");
+        if (alias is null)
+        {
+            alias = new PropertyDefinition("tone", PropertyAttributes.None, module.TypeSystem.Int32);
+            duplicate.Properties.Add(alias);
+        }
+        alias.GetMethod = sharedGetter;
+    }
+}
+
 // A different IL producer may use tokenless reference-slot operations for T*.
 void RewriteTemplatePointerSlots(ModuleDefinition module, bool required = false)
 {
@@ -170,6 +209,7 @@ using var assembly = AssemblyDefinition.ReadAssembly(path, new ReaderParameters 
 var module = assembly.MainModule;
 RewriteDelegateCloneSlots(module);
 RewriteReflectedEvents(module);
+RewriteSingularPropertyAlias(module);
 RewriteTemplatePointerSlots(module);
 var owner = module.GetType("LdftnLocalSubset.Program")
     ?? throw new InvalidOperationException("missing IL fixture owner");

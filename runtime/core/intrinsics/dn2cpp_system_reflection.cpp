@@ -1593,6 +1593,8 @@ static bool dn2cpp_ascii_str_eq(const char* c, const Dn2CppString* s)
     return c[i] == '\0';
 }
 
+static bool dn2cpp_member_name_matches(const char* candidate, Dn2CppString* name, int32_t flags, bool pattern);
+
 // A method-flavored reflected handle header: MethodInfo or ConstructorInfo
 // (both wrap a Dn2CppMethodRef; the distinct headers discriminate casts/`is`
 // like real .NET's MethodBase split).
@@ -1807,14 +1809,22 @@ Dn2CppFieldRef* dn2cpp_type_get_field(Dn2CppType* t, Dn2CppString* name, int32_t
         dn2cpp_require_metadata(ti);
         const auto reflection = ti->reflection();
         bool inherited = (ti != t->typeInfo);
+        Dn2CppMetadataHandle<Dn2CppFieldInfo> hit;
         for (int32_t i = 0; i < reflection.fieldCount; i++)
         {
             const auto field = reflection.fields[i];
             const auto row = field.operator->();
             if (dn2cpp_field_matches(row.operator->(), bindingFlags, inherited) &&
-                dn2cpp_ascii_str_eq(row->name, name))
-                return dn2cpp_make_fieldref(field, t->typeInfo);
+                dn2cpp_member_name_matches(row->name, name, bindingFlags, false))
+            {
+                if (hit != nullptr)
+                    dn2cpp_throw_ambiguous_member(reinterpret_cast<Dn2CppObject*>(
+                        dn2cpp_make_fieldref(hit, t->typeInfo)));
+                hit = field;
+            }
         }
+        if (hit != nullptr)
+            return dn2cpp_make_fieldref(hit, t->typeInfo);
         if (bindingFlags & DN2CPP_BF_DECLAREDONLY)
             break;
     }
@@ -3957,7 +3967,7 @@ static void dn2cpp_meta_lookup(const Dn2CppTypeInfo* queried, Dn2CppString* name
 {
     bool named = false;
     for (int32_t k = 0; k < g_meta_member_count && !named; k++)
-        named = dn2cpp_ascii_str_eq(g_meta_members[k].methodName, name);
+        named = dn2cpp_member_name_matches(g_meta_members[k].methodName, name, bindingFlags, false);
     if (!named)
         return;
     bool gatedOpen = true;
@@ -3967,7 +3977,7 @@ static void dn2cpp_meta_lookup(const Dn2CppTypeInfo* queried, Dn2CppString* name
         for (int32_t k = 0; k < g_meta_member_count; k++)
         {
             const Dn2CppMetaMember* d = &g_meta_members[k];
-            if ((d->gated && !gatedOpen) || !dn2cpp_ascii_str_eq(d->methodName, name)
+            if ((d->gated && !gatedOpen) || !dn2cpp_member_name_matches(d->methodName, name, bindingFlags, false)
                 || !dn2cpp_meta_declares(ti, d))
                 continue;
             if (genericParamCount >= 0 && genericParamCount != d->genericArity)
@@ -4027,7 +4037,7 @@ Dn2CppMethodRef* dn2cpp_type_get_method_full(Dn2CppType* t, Dn2CppString* name,
             if (!dn2cpp_member_matches(row->attrs, bindingFlags, inherited))
                 continue;
             bool hidden = row->vtableSlot >= 0 && seen.seen(row->vtableSlot);
-            if (hidden || !dn2cpp_ascii_str_eq(row->name, name))
+            if (hidden || !dn2cpp_member_name_matches(row->name, name, bindingFlags, false))
                 continue;
             if (gvm.hides(mi, *row.operator->()))
                 continue;
@@ -8261,6 +8271,30 @@ static bool dn2cpp_props_sig_equal(Dn2CppMetadataHandle<Dn2CppPropInfo> a, Dn2Cp
     return true;
 }
 
+static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_prop_public_accessor(
+    Dn2CppMetadataHandle<Dn2CppPropInfo> property)
+{
+    const auto getter = property->getter;
+    if (getter != nullptr && (getter->attrs & DN2CPP_MTHA_PUBLIC) != 0)
+        return getter;
+    const auto setter = property->setter;
+    if (setter != nullptr && (setter->attrs & DN2CPP_MTHA_PUBLIC) != 0)
+        return setter;
+    return {};
+}
+
+static bool dn2cpp_props_share_override_slot(Dn2CppMetadataHandle<Dn2CppPropInfo> first,
+    Dn2CppMetadataHandle<Dn2CppPropInfo> second)
+{
+    if ((first->declaringType->flags & DN2CPP_TF_INTERFACE) != 0
+        || (second->declaringType->flags & DN2CPP_TF_INTERFACE) != 0)
+        return false;
+    const auto a = dn2cpp_prop_public_accessor(first);
+    const auto b = dn2cpp_prop_public_accessor(second);
+    return a != nullptr && b != nullptr && a->vtableSlot >= 0
+        && a->vtableSlot == b->vtableSlot;
+}
+
 Dn2CppPropRef* dn2cpp_type_get_property_full(Dn2CppType* t, Dn2CppString* name, int32_t bindingFlags,
                                              Dn2CppType* returnType, Dn2CppArrayRef* indexTypes,
                                              Dn2CppObject* binder, int32_t declared)
@@ -8287,7 +8321,7 @@ Dn2CppPropRef* dn2cpp_type_get_property_full(Dn2CppType* t, Dn2CppString* name, 
             const auto p = reflection.props[i];
             const auto row = p.operator->();
             if (!dn2cpp_member_matches(row->attrs, bindingFlags, inherited)
-                || !dn2cpp_ascii_str_eq(row->name, name))
+                || !dn2cpp_member_name_matches(row->name, name, bindingFlags, false))
                 continue;
             // The default binder rejects a null index type of any candidate of the
             // requested index count, before filtering on the property type.
@@ -8318,10 +8352,27 @@ Dn2CppPropRef* dn2cpp_type_get_property_full(Dn2CppType* t, Dn2CppString* name, 
     }
     if (cands.size() == 0)
         return nullptr;
-    for (int32_t i = 1; i < cands.size(); i++)
-        if (!dn2cpp_props_sig_equal(cands[0], cands[i], t->typeInfo))
-            dn2cpp_throw_ambiguous_member(reinterpret_cast<Dn2CppObject*>(dn2cpp_make_propref(cands[0], t->typeInfo)));
-    return dn2cpp_make_propref(cands[0], t->typeInfo);
+    Dn2CppWalkList<Dn2CppMetadataHandle<Dn2CppPropInfo>, 16> visible;
+    for (int32_t i = 0; i < cands.size(); i++)
+    {
+        bool slotHidden = false;
+        // A name-hidden row still carries the slot that hides a deeper override.
+        for (int32_t j = 0; j < i && !slotHidden; j++)
+            slotHidden = dn2cpp_props_share_override_slot(cands[j], cands[i]);
+        if (slotHidden)
+            continue;
+        bool nameHidden = false;
+        for (int32_t j = 0; j < visible.size() && !nameHidden; j++)
+            if (visible[j]->declaringType != cands[i]->declaringType)
+                nameHidden = std::strcmp(visible[j]->name, cands[i]->name) == 0
+                    && dn2cpp_props_sig_equal(visible[j], cands[i], t->typeInfo);
+        if (!nameHidden)
+            visible.push_back(cands[i]);
+    }
+    if (visible.size() > 1)
+        dn2cpp_throw_ambiguous_member(reinterpret_cast<Dn2CppObject*>(
+            dn2cpp_make_propref(visible[0], t->typeInfo)));
+    return dn2cpp_make_propref(visible[0], t->typeInfo);
 }
 
 Dn2CppPropRef* dn2cpp_type_get_property(Dn2CppType* t, Dn2CppString* name, int32_t bindingFlags)
