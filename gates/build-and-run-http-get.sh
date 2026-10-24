@@ -779,6 +779,8 @@ CN = dn2cpp-gate-tls-ca
 [v3_ca]
 basicConstraints = critical,CA:TRUE
 keyUsage         = critical,keyCertSign,cRLSign
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always
 CAEOF
 cat > "$tlsdir/srv.cnf" <<'SRVEOF'
 [req]
@@ -791,6 +793,8 @@ basicConstraints = critical,CA:FALSE
 keyUsage         = critical,digitalSignature,keyEncipherment
 extendedKeyUsage = serverAuth
 subjectAltName   = IP:127.0.0.1,DNS:localhost
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always
 SRVEOF
 # -days 2, not 1: a run that straddles midnight UTC must not be the thing that fails.
 openssl req -x509 -newkey rsa:2048 -nodes -days 2 \
@@ -803,6 +807,14 @@ openssl x509 -req -in "$tlsdir/srv.csr" -CA "$tlsdir/ca.pem" -CAkey "$tlsdir/ca.
     -set_serial 1 -days 2 -extfile "$tlsdir/srv.cnf" -extensions v3_srv \
     -out "$tlsdir/srv.pem" >>"$tlsdir/openssl.log" 2>&1 || {
     echo "FAIL: could not generate the throwaway TLS certificate:" >&2; cat "$tlsdir/openssl.log" >&2; exit 1; }
+# Newer TLS verifiers require the issuer key identifier even on this short chain.
+for cert in "$tlsdir/ca.pem" "$tlsdir/srv.pem"; do
+    cert_extensions="$(openssl x509 -in "$cert" -noout -text)" || {
+        echo "FAIL: could not inspect the throwaway TLS certificate: $cert" >&2; exit 1; }
+    grep -q 'Subject Key Identifier' <<<"$cert_extensions" &&
+        grep -q 'Authority Key Identifier' <<<"$cert_extensions" || {
+        echo "FAIL: the throwaway TLS certificate lacks key identifiers: $cert" >&2; exit 1; }
+done
 cat "$tlsdir/srv.pem" "$tlsdir/srv.key" > "$tlsdir/srv-chain.pem"
 # The CA as its two NATIVE readers need it. MSYS rewrites a path that is a whole
 # argument and nothing else, so mktemp's /tmp/... reaches a `python -c` string and
@@ -888,13 +900,14 @@ fi
 # masquerading as a dn2cpp verification failure in section 15.
 tlsready=
 for _ in $(seq 1 100); do
-    if $py -c "import ssl, urllib.request; ctx = ssl.create_default_context(cafile='$tlsca'); urllib.request.urlopen('https://127.0.0.1:$tlsport/hello.txt', context=ctx, timeout=1)" 2>/dev/null; then
+    if $py -c "import ssl, urllib.request; ctx = ssl.create_default_context(cafile='$tlsca'); urllib.request.urlopen('https://127.0.0.1:$tlsport/hello.txt', context=ctx, timeout=1)" 2>"$tlsdir/readiness.err"; then
         tlsready=1; break
     fi
     sleep 0.1
 done
 [ -n "$tlsready" ] || {
     echo "FAIL: the local TLS server never completed a handshake on port $tlsport" >&2
+    cat "$tlsdir/readiness.err" >&2
     cat "$tlsdir/server.err" >&2; exit 1; }
 # Drop the readiness probe's own log line: from here on every line in tls.log was caused by
 # the binary under test, so the counts below mean what they say.
