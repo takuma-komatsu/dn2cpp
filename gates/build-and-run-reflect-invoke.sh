@@ -274,6 +274,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-reflection-le
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|reflection-dispatch-v1|dispatch-prefix:${DN2CPP_BEFORE_REFLECTION_DISPATCH:-}|attribute-minted-prefix:${DN2CPP_BEFORE_ATTRIBUTE_MINTED:-}|template-accessors-prefix:${DN2CPP_BEFORE_TEMPLATE_ACCESSORS:-}|pointer-returns-prefix:${DN2CPP_BEFORE_POINTER_RETURNS:-}|delegate-invoke-targets-prefix:${DN2CPP_BEFORE_DELEGATE_INVOKE_TARGETS:-}|null-bound-chains-prefix:${DN2CPP_BEFORE_NULL_BOUND_CHAINS:-}|renamed-slot-bindings-prefix:${DN2CPP_BEFORE_RENAMED_SLOT_BINDINGS:-}|settled-object-virtual-prefix:${DN2CPP_BEFORE_SETTLED_OBJECT_VIRTUAL:-}|renamed-slot-fillers-prefix:${DN2CPP_BEFORE_RENAMED_SLOT_FILLERS:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|inherited-gvm-remedy-v1|inherited-gvm-remedy-env:${DN2CPP_INHERITED_GVM_REMEDY:-}|inherited-gvm-remedy-replay:no-ildiet,base-link,actual-xml|stripped-class-remedy-wrapper-v1|stripped-class-remedy-argv:class-remedies|stripped-interface-remedy-wrapper-v1|stripped-interface-remedy-argv:interface-remedies|interface-remedy-prefix-argv:before-interface-remedy-rows|stripped-overrides:${DN2CPP_STRIPPED_OVERRIDES:-}|library-struct-prefix:${DN2CPP_BEFORE_LIBRARY_STRUCT_RETURN:-}|function-pointer-identity-prefix:${DN2CPP_BEFORE_FUNCTION_POINTER_IDENTITY:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|pointer-fields-prefix:${DN2CPP_BEFORE_POINTER_FIELDS:-}|object-methods-prefix-argv:before-object-method-enumeration|property-accessors-prefix-argv:before-property-accessors|property-hiding-prefix-argv:before-property-hiding"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|constructor-messages-prefix-argv:before-constructor-messages"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/keep-written-generic-arguments.xml samples/dotnet/ReflectInvoke/link.xml samples/dotnet/ReflectFrameworkBind/link.xml samples/dotnet/ReflectFrameworkBind/keep-library-override.xml samples/dotnet/ReflectInvoke/keep-object-methods.xml"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/RecognizedReflectionOnly.csproj samples/dotnet/ReflectInvoke/RecognizedReflectionOnlyProgram.cs samples/dotnet/ReflectReturnLib/ReflectReturnLib.csproj samples/dotnet/ReflectReturnLib/RecognizedTargets.cs"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectReturnLib/ConstructorBindingTargets.cs samples/dotnet/ReflectReturnLib/SelectionTargets.cs"
@@ -2292,7 +2293,7 @@ done
 unset -f gate_extra_asserts
 source gates/_ordinary-reflection.sh
 gate_extra_asserts() {
-    local out="$1" native line before prefix modifiers_before modifiers_prefix
+    local out="$1" native line before prefix modifiers_before modifiers_prefix constructor_messages activation
     native=$(run_bounded "$out/OrdinaryReflectionLeaves$EXE_EXT") || return $?
     native=$(strip_cr_win "$native")
     before=$(DN2CPP_BEFORE_RUNTIME_MEMBER_ATTRIBUTES=1 reflection_oracle "$_CG_APP") || return $?
@@ -2327,6 +2328,32 @@ gate_extra_asserts() {
     assert_output "$prefix" "$(strip_cr_win "$before")"
     before=$(reflection_oracle "$_CG_APP" before-property-hiding) || return $?
     assert_output "$prefix" "$(strip_cr_win "$before")"
+    prefix=$(awk '/^== activator constructor messages ==$/ { exit } { print }' <<< "$native")
+    before=$(run_bounded "$out/OrdinaryReflectionLeaves$EXE_EXT" before-constructor-messages) || return $?
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    before=$(reflection_oracle "$_CG_APP" before-constructor-messages) || return $?
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    constructor_messages=$(cat <<'CONSTRUCTOR_MESSAGES'
+== activator constructor messages ==
+private default type: MissingMethodException/No parameterless constructor defined for type 'ReflectReturnLib.ConstructorPrivateDefault'.
+private default false: MissingMethodException/No parameterless constructor defined for type 'ReflectReturnLib.ConstructorPrivateDefault'.
+private default empty: MissingMethodException/Constructor on type 'ReflectReturnLib.ConstructorPrivateDefault' not found.
+private default null: MissingMethodException/Constructor on type 'ReflectReturnLib.ConstructorPrivateDefault' not found.
+string only type: MissingMethodException/Cannot dynamically create an instance of type 'ReflectReturnLib.ConstructorStringOnly'. Reason: No parameterless constructor defined.
+string only empty: MissingMethodException/Constructor on type 'ReflectReturnLib.ConstructorStringOnly' not found.
+private string public: MissingMethodException/Constructor on type 'ReflectReturnLib.ConstructorPrivateOnly' not found.
+public default type: made
+public default empty: made
+public default null: made
+closed generic wrong: MissingMethodException/Constructor on type 'ReflectReturnLib.ConstructorNested`1[[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]' not found.
+private generic type: MissingMethodException/No parameterless constructor defined for type 'ReflectReturnLib.ConstructorPrivateGenericDefault`1[System.Int32]'.
+private generic false: MissingMethodException/No parameterless constructor defined for type 'ReflectReturnLib.ConstructorPrivateGenericDefault`1[System.Int32]'.
+missing generic type: MissingMethodException/Cannot dynamically create an instance of type 'ReflectReturnLib.ConstructorNested`1[System.Int32]'. Reason: No parameterless constructor defined.
+missing generic false: MissingMethodException/Cannot dynamically create an instance of type 'ReflectReturnLib.ConstructorNested`1[System.Int32]'. Reason: No parameterless constructor defined.
+activator constructor messages end
+CONSTRUCTOR_MESSAGES
+)
+    assert_output "$(awk '/^== activator constructor messages ==$/ { found=1 } found' <<< "$native")" "$constructor_messages"
     reflection_assert_lines - 1 \
         '== property signature hiding ==' 'property signature hiding end' \
         'properties public=PropertyBase.Changed():Int32;PropertyBase.Item(String):Int32;PropertyDerived.Changed():String;PropertyDerived.Item(Int32):Int32;PropertyDerived.Item(Int64):Int32;PropertyDerived.Same():Int32;reflected=True' \
@@ -2354,11 +2381,19 @@ gate_extra_asserts() {
         'retained widened: 9' 'unretained ambiguous: AmbiguousMatchException/<null>' <<< "$native"
     local constructor
     for constructor in ConstructorStringOnly ConstructorPrivateOnly ConstructorFifteen ConstructorPrivateDefault ConstructorFieldTarget; do
-        if grep -qwxF "// ReflectReturnLib.$constructor::.ctor" "$out"/generated*.cpp "$out"/generated.h; then
-            echo "FAIL: metadata-only constructor $constructor acquired a body" >&2
+        assert_no_word_match "metadata-only constructor $constructor acquired a body" \
+            "ReflectReturnLib\\.$constructor::\\.ctor" "$out"/generated*.cpp "$out"/generated.h || return $?
+    done
+    if [[ "$out" == *-native ]]; then
+        assert_no_word_match 'private default constructor row was retained' \
+            'ctortab_ReflectReturnLib_ConstructorPrivateDefault' "$out"/generated*.cpp || return $?
+        activation=$(awk '/^static const Dn2CppTypeReflection md_native_refl_ti_ReflectReturnLib_ConstructorPrivateDefault\[\] = \{$/ { getline; print }' \
+            "$out"/generated*.cpp | sed -nE 's/.*,[[:space:]]*([0-9]+)LL[[:space:]]*\},/\1/p')
+        if [[ ! "$activation" =~ ^[0-9]+$ ]] || (( (activation & 2) == 0 )); then
+            echo 'FAIL: omitted private default constructor has no activation bit' >&2
             return 1
         fi
-    done
+    fi
     grep -qwxF '// ReflectReturnLib.ConstructorDominant::.ctor' "$out"/generated*.cpp "$out"/generated.h \
         || { echo 'FAIL: retained constructor control is absent' >&2; return 1; }
     local nested_shapes

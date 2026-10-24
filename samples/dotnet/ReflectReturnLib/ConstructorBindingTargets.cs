@@ -55,6 +55,11 @@ public sealed class ConstructorPrivateDefault
     private ConstructorPrivateDefault() { }
 }
 
+public sealed class ConstructorPrivateGenericDefault<T>
+{
+    private ConstructorPrivateGenericDefault() { }
+}
+
 public sealed class ConstructorFieldOwner
 {
     public ConstructorFieldTarget? Value;

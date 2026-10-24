@@ -417,6 +417,9 @@ static class Program
         if (args.Length != 0 && args[0] == "before-property-hiding")
             return;
         RunPropertyHiding();
+        if (args.Length != 0 && args[0] == "before-constructor-messages")
+            return;
+        RunConstructorMessages();
     }
 
     private static object? BindConstructor(Type type, object?[] arguments,
@@ -468,6 +471,48 @@ static class Program
         ConstructorRefusal("omitted dominant", typeof(ReflectReturnLib.ConstructorOmittedDominant), new object?[] { null }, BindingFlags.Public | BindingFlags.Instance);
         ConstructorRefusal("matching field signature", typeof(ReflectReturnLib.ConstructorFieldOwner).GetField("Value")!.FieldType, new object[] { "x" }, BindingFlags.Public | BindingFlags.Instance);
         Console.WriteLine("unretained constructor selection end");
+    }
+
+    private static void ConstructorMessage(string label, Func<object?> call)
+    {
+        try
+        {
+            Console.WriteLine(label + ": " + (call() is null ? "null" : "made"));
+        }
+        catch (MissingMethodException error)
+        {
+            Console.WriteLine(label + ": " + error.GetType().Name + "/" + error.Message);
+        }
+    }
+
+    private static void RunConstructorMessages()
+    {
+        Console.WriteLine("== activator constructor messages ==");
+        Type privateDefault = typeof(ReflectReturnLib.ConstructorPrivateDefault);
+        ConstructorMessage("private default type", () => Activator.CreateInstance(privateDefault));
+        ConstructorMessage("private default false", () => Activator.CreateInstance(privateDefault, false));
+        ConstructorMessage("private default empty", () => BindConstructor(privateDefault, Array.Empty<object>()));
+        ConstructorMessage("private default null", () => Activator.CreateInstance(privateDefault,
+            BindingFlags.Public | BindingFlags.Instance, null, null, null));
+        Type stringOnly = typeof(ReflectReturnLib.ConstructorStringOnly);
+        ConstructorMessage("string only type", () => Activator.CreateInstance(stringOnly));
+        ConstructorMessage("string only empty", () => BindConstructor(stringOnly, Array.Empty<object>()));
+        ConstructorMessage("private string public", () => BindConstructor(
+            typeof(ReflectReturnLib.ConstructorPrivateOnly), new object[] { "x" }));
+        Type publicDefault = typeof(ReflectReturnLib.ConstructorFieldOwner);
+        ConstructorMessage("public default type", () => Activator.CreateInstance(publicDefault));
+        ConstructorMessage("public default empty", () => BindConstructor(publicDefault, Array.Empty<object>()));
+        ConstructorMessage("public default null", () => Activator.CreateInstance(publicDefault,
+            BindingFlags.Public | BindingFlags.Instance, null, null, null));
+        ConstructorMessage("closed generic wrong", () => BindConstructor(
+            typeof(ReflectReturnLib.ConstructorNested<int>), new object[] { 42 }));
+        Type privateGeneric = typeof(ReflectReturnLib.ConstructorPrivateGenericDefault<int>);
+        ConstructorMessage("private generic type", () => Activator.CreateInstance(privateGeneric));
+        ConstructorMessage("private generic false", () => Activator.CreateInstance(privateGeneric, false));
+        Type missingGeneric = typeof(ReflectReturnLib.ConstructorNested<int>);
+        ConstructorMessage("missing generic type", () => Activator.CreateInstance(missingGeneric));
+        ConstructorMessage("missing generic false", () => Activator.CreateInstance(missingGeneric, false));
+        Console.WriteLine("activator constructor messages end");
     }
 
     // GetGenericArguments returns a fresh array: the instantiation reads the write.
