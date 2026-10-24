@@ -20,6 +20,8 @@
 # sweep collapses to four runs of the user's locale — still a real subject-vs-
 # oracle diff, just one locale's worth. That is why the gate never asserts that
 # the locales DIFFER: it would be asserting a property of the host.
+# The unknown-region ZZ currency is frozen ICU data. Its symbol is checked by
+# corelib_freeze_gate; the other foo-ZZ and zz-ZZ fields use the live CLR oracle.
 #
 # WHAT IT DOES NOT COVER. Per-culture DATE formatting is a standing carve-out
 # (docs/STATUS.md): dn2cpp's date formatters take no NumberFormatInfo and render
@@ -138,6 +140,58 @@ default_culture_diagnostics_self_test
 if [ "${1:-}" = --self-test ]; then
     exit 0
 fi
+
+default_culture_zz_symbol() {
+    LC_ALL=C awk -F'|' '/^    symbols=/ { print $6 }' <<< "$1"
+}
+
+default_culture_mask_zz_currency() {
+    local symbol="$1" value="$2"
+    LC_ALL=C awk -v symbol="$symbol" '
+        /^    symbols=/ || /^    C2? double=/ { gsub(symbol, "<currency>") }
+        { print }
+    ' <<< "$value"
+}
+
+default_culture_assert_zz_fallback() {
+    local native="$1" oracle="$2" frozen="$3" native_symbol oracle_symbol
+    native_symbol=$(default_culture_zz_symbol "$native")
+    oracle_symbol=$(default_culture_zz_symbol "$oracle")
+    [ "$native_symbol" = "$frozen" ] \
+        || { echo "FAIL: foo-ZZ frozen currency is '$native_symbol', expected '$frozen'" >&2; return 1; }
+    [[ "$oracle_symbol" =~ ^[A-Z]{3}$ ]] \
+        || { echo "FAIL: foo-ZZ CLR currency is not an ISO code: '$oracle_symbol'" >&2; return 1; }
+    assert_output "$(default_culture_mask_zz_currency "$native_symbol" "$native")" \
+        "$(default_culture_mask_zz_currency "$oracle_symbol" "$oracle")"
+}
+
+default_culture_zz_default_symbol() {
+    LC_ALL=C awk -F= '/^cur=/ { sub(/\r$/, "", $2); print $2 }' <<< "$1"
+}
+
+default_culture_mask_zz_default_currency() {
+    local symbol="$1" value="$2"
+    LC_ALL=C awk -v symbol="$symbol" '
+        /^cur=/ { sub("^cur=" symbol, "cur=<currency>") }
+        /^c=/ { gsub(symbol, "<currency>") }
+        { print }
+    ' <<< "$value"
+}
+
+default_culture_assert_zz_default() {
+    local native="$1" oracle="$2" frozen="$3" native_symbol oracle_symbol
+    native_symbol=$(default_culture_zz_default_symbol "$native")
+    oracle_symbol=$(default_culture_zz_default_symbol "$oracle")
+    [ "$native_symbol" = "$frozen" ] \
+        || { echo "FAIL: default zz-ZZ frozen currency is '$native_symbol', expected '$frozen'" >&2; return 1; }
+    [[ "$oracle_symbol" =~ ^[A-Z]{3}$ ]] \
+        || { echo "FAIL: default zz-ZZ CLR currency is not an ISO code: '$oracle_symbol'" >&2; return 1; }
+    LC_ALL=C grep -Fxq 'Name=zz-ZZ' <<< "$native" \
+        && LC_ALL=C grep -Fxq 'Name=zz-ZZ' <<< "$oracle" \
+        || { echo 'FAIL: LANG=zz_ZZ.UTF-8 did not select zz-ZZ on both sides' >&2; return 1; }
+    assert_output "$(default_culture_mask_zz_default_currency "$native_symbol" "$native")" \
+        "$(default_culture_mask_zz_default_currency "$oracle_symbol" "$oracle")"
+}
 
 PROJECT=DefaultCulture
 out="$(_corelib_gate_out "$PROJECT")"
@@ -307,8 +361,14 @@ VARIANT_LOCALES=(
 )
 
 fixture="$(dirname "$0")/fixtures/default-culture-locale"
-if _corelib_gate_check "$out" "default_culture|$PROJECT|$LOCALES|${ENV_VARIANTS[*]}|${POSIX_FALLBACK_VARIANTS[*]}|culture-fallback foo-US|${FALLBACK_CASES[*]}|culture-variant-order ${VARIANT_LOCALES[*]}|culture-extension-identities ${EXTENSION_LOCALES[*]}|user-number-digits|user-numeric-settings|$platform_default|query-and-initialize|$_CG_CORELIB" \
-        "$fixture/CMakeLists.txt" "$fixture/locale.c"; then
+zz_symbol=XAD
+zz_snapshot="$(dirname "$0")/expected/default-culture-zz-posix.txt"
+if [ "$DN2CPP_OS" = windows ]; then
+    zz_symbol=XAG
+    zz_snapshot="$(dirname "$0")/expected/default-culture-zz-windows.txt"
+fi
+if _corelib_gate_check "$out" "default_culture|$PROJECT|$LOCALES|${ENV_VARIANTS[*]}|${POSIX_FALLBACK_VARIANTS[*]}|culture-fallback foo-US|${FALLBACK_CASES[*]}|culture-variant-order ${VARIANT_LOCALES[*]}|culture-extension-identities ${EXTENSION_LOCALES[*]}|user-number-digits|user-numeric-settings|zz-frozen:$zz_symbol|$platform_default|query-and-initialize|$_CG_CORELIB" \
+        "$fixture/CMakeLists.txt" "$fixture/locale.c" "$zz_snapshot"; then
     gate_cache_hit_msg
     exit 0
 fi
@@ -355,22 +415,37 @@ for L in $LOCALES; do
     for name in "${FALLBACK_CASES[@]}"; do
         native="$(default_culture_run native env LC_ALL="$L" LANG="$L" "./$out/$PROJECT" culture-fallback "$name")"
         oracle="$(default_culture_run oracle env LC_ALL="$L" LANG="$L" dotnet "$_CG_APP" culture-fallback "$name")"
-        assert_output "$native" "$oracle"
+        if [ "$name" = foo-ZZ ]; then
+            default_culture_assert_zz_fallback "$native" "$oracle" "$zz_symbol"
+        else
+            assert_output "$native" "$oracle"
+        fi
         grep -Fxq 'culture host fallback data end' <<< "$(strip_cr_win "$native")" \
             || { echo "FAIL: fallback data for $name under $L did not run" >&2; exit 1; }
     done
 done
 
 ran=0
+zz_env_checked=0
 for V in "${ENV_VARIANTS[@]}"; do
     echo "-- env: ${V:-none of LC_ALL LC_MESSAGES LANG}"
     native="$(run_locale_env native "$V" "./$out/$PROJECT")"
     oracle="$(run_locale_env oracle "$V" dotnet "$_CG_APP")"
-    assert_output "$native" "$oracle"
+    if [ "$V" = LANG=zz_ZZ.UTF-8 ]; then
+        zz_env_checked=1
+    fi
+    if [ "$V" = LANG=zz_ZZ.UTF-8 ] && [ "$DN2CPP_OS" != windows ]; then
+        default_culture_assert_zz_default "$native" "$oracle" "$zz_symbol"
+    else
+        assert_output "$native" "$oracle"
+    fi
     ran=$((ran + 1))
 done
+[ "$zz_env_checked" -eq 1 ] \
+    || { echo 'FAIL: the zz-ZZ default-culture env row did not run' >&2; exit 1; }
+echo 'OK: zz-ZZ default-culture env row'
 platform_default=$(strip_cr_win "${platform_default#Name=}")
-echo "env variants: $ran of ${#ENV_VARIANTS[@]} match real .NET (platform default: ${platform_default:-invariant})"
+echo "env variants: $ran of ${#ENV_VARIANTS[@]} match real .NET except frozen ZZ currency (platform default: ${platform_default:-invariant})"
 
 if [ "$DN2CPP_OS" = windows ]; then
     for name in "$platform_default" ja-JP en-US de-DE fr-FR hi-IN ca-AD ""; do
@@ -444,5 +519,12 @@ if [ "$DN2CPP_OS" != windows ]; then
         assert_output "${oracle%%$'\n'*}" "Name=${expected_name/_/-}"
     fi
 fi
+
+echo "-- frozen unknown-region currency: foo-ZZ and zz-ZZ"
+(
+    LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 \
+        DN2CPP_OUT_SUFFIX=-zz-frozen DN2CPP_GATE_RUN_ARGS=culture-zz-currency \
+        corelib_freeze_gate "$PROJECT" "$zz_snapshot"
+)
 
 gate_cache_commit

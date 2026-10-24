@@ -9,10 +9,9 @@ namespace DefaultCulture
     // verdict off the developer's locale, and this is the one program whose
     // subject matter IS the developer's locale.
     //
-    // It is asserted as a subject-vs-oracle DIFF under a forced locale, never
-    // against a snapshot: a snapshot would freeze one host's answer, and the claim
-    // under test is not "the default is ja-JP", it is "the default is whatever real
-    // .NET says it is". Only the numeric half is printed — per-culture DATE
+    // The default-culture run is asserted against real .NET under a forced locale;
+    // the unknown-region currency has its own frozen mode because ICU revises
+    // that symbol. Only the numeric half is printed — per-culture DATE
     // formatting is a standing carve-out (docs/STATUS.md), so a date here would
     // assert a divergence dn2cpp does not claim to have closed.
     internal static class Program
@@ -31,6 +30,16 @@ namespace DefaultCulture
                 CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
                 CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
                 Console.WriteLine(new CultureInfo(args[1], false).LCID);
+                return;
+            }
+            if (args.Length > 0 && args[0] == "culture-zz-currency")
+            {
+                CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+                CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+                Console.WriteLine("== frozen unknown-region currency ==");
+                Console.WriteLine("foo-ZZ=" + new CultureInfo("foo-ZZ", false).NumberFormat.CurrencySymbol);
+                Console.WriteLine("zz-ZZ=" + new CultureInfo("zz-ZZ", false).NumberFormat.CurrencySymbol);
+                Console.WriteLine("frozen unknown-region currency end");
                 return;
             }
             if (args.Length > 0 && args[0] == "culture-extension-identities")

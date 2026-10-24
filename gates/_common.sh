@@ -3158,6 +3158,7 @@ corelib_freeze_gate() {
     out="$(_corelib_gate_out "$project")"
     [ -n "${HIGHWAY:-}" ] && out="$out-hwy"
     [ -n "${SCALAR:-}" ] && out="$out-scalar"
+    [ -n "${DN2CPP_OUT_SUFFIX:-}" ] && out="$out$DN2CPP_OUT_SUFFIX"
 
     _corelib_gate_core "$project" "$out" "$@"
     if _corelib_gate_check "$out" "corelib_freeze_gate|$project|$*|$_CG_CORELIB$(_gate_ctx_extras)" \
