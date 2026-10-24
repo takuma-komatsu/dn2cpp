@@ -9,6 +9,10 @@ _reflection_build_count=0
 _reflection_full_out=
 _reflection_full_project=
 
+reflection_full_profile() {
+    [ "${DN2CPP_REFLECT_INVOKE_FULL:-0}" = 1 ]
+}
+
 reflection_assert_lines() {
     "$py" gates/reflection-gate-inputs.py lines "$@"
 }

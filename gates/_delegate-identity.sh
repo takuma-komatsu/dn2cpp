@@ -3,37 +3,49 @@
 gate_virtual_delegate_prefix_asserts() {
     local out="$1" axis line
     reflection_oracle "$_CG_APP" > "$out/virtual-delegate-full.dotnet.raw.stdout"
-    reflection_oracle "$_CG_APP" before-virtual-delegate-identity > "$out/virtual-delegate-prefix.dotnet.raw.stdout"
+    if reflection_full_profile; then
+        reflection_oracle "$_CG_APP" before-virtual-delegate-identity > "$out/virtual-delegate-prefix.dotnet.raw.stdout"
+    fi
     reflection_native_full "$out" ReflectInvoke > "$out/virtual-delegate-full.native.raw.stdout"
-    run_bounded "$out/ReflectInvoke$EXE_EXT" before-virtual-delegate-identity > "$out/virtual-delegate-prefix.native.raw.stdout"
+    if reflection_full_profile; then
+        run_bounded "$out/ReflectInvoke$EXE_EXT" before-virtual-delegate-identity > "$out/virtual-delegate-prefix.native.raw.stdout"
+    fi
     for axis in dotnet native; do
         strip_cr_win_file "$out/virtual-delegate-full.$axis.raw.stdout" > "$out/virtual-delegate-full.$axis.stdout"
-        strip_cr_win_file "$out/virtual-delegate-prefix.$axis.raw.stdout" > "$out/virtual-delegate-prefix.$axis.stdout"
-        awk '/^== virtual delegate selected methods ==$/ { exit } { print }' \
-            "$out/virtual-delegate-full.$axis.stdout" > "$out/virtual-delegate-old.$axis.stdout"
-        diff -u "$out/virtual-delegate-prefix.$axis.stdout" "$out/virtual-delegate-old.$axis.stdout"
+        if reflection_full_profile; then
+            strip_cr_win_file "$out/virtual-delegate-prefix.$axis.raw.stdout" > "$out/virtual-delegate-prefix.$axis.stdout"
+            awk '/^== virtual delegate selected methods ==$/ { exit } { print }' \
+                "$out/virtual-delegate-full.$axis.stdout" > "$out/virtual-delegate-old.$axis.stdout"
+            diff -u "$out/virtual-delegate-prefix.$axis.stdout" "$out/virtual-delegate-old.$axis.stdout"
+        fi
         reflection_assert_lines "$out/virtual-delegate-full.$axis.stdout" 1 \
             '== virtual delegate selected methods ==' 'virtual delegate selected methods end' \
             '== runtime delegate selected methods ==' 'runtime delegate selected methods end'
     done
-    diff -u "$out/virtual-delegate-prefix.dotnet.stdout" "$out/virtual-delegate-prefix.native.stdout"
+    if reflection_full_profile; then
+        diff -u "$out/virtual-delegate-prefix.dotnet.stdout" "$out/virtual-delegate-prefix.native.stdout"
+    fi
 }
 
 gate_runtime_owned_delegate_prefix_asserts() {
     local out="$1" axis
     for axis in dotnet native; do
-        if [ "$axis" = dotnet ]; then
-            reflection_oracle "$_CG_APP" before-runtime-owned-method-groups > "$out/runtime-owned-prefix.$axis.raw.stdout"
-        else
-            run_bounded "$out/ReflectInvoke$EXE_EXT" before-runtime-owned-method-groups > "$out/runtime-owned-prefix.$axis.raw.stdout"
+        if reflection_full_profile; then
+            if [ "$axis" = dotnet ]; then
+                reflection_oracle "$_CG_APP" before-runtime-owned-method-groups > "$out/runtime-owned-prefix.$axis.raw.stdout"
+            else
+                run_bounded "$out/ReflectInvoke$EXE_EXT" before-runtime-owned-method-groups > "$out/runtime-owned-prefix.$axis.raw.stdout"
+            fi
+            strip_cr_win_file "$out/runtime-owned-prefix.$axis.raw.stdout" > "$out/runtime-owned-prefix.$axis.stdout"
+            awk '/^== runtime-owned class method groups ==$/ { exit } { print }' \
+                "$out/virtual-delegate-full.$axis.stdout" > "$out/runtime-owned-old.$axis.stdout"
+            diff -u "$out/runtime-owned-prefix.$axis.stdout" "$out/runtime-owned-old.$axis.stdout"
         fi
-        strip_cr_win_file "$out/runtime-owned-prefix.$axis.raw.stdout" > "$out/runtime-owned-prefix.$axis.stdout"
-        awk '/^== runtime-owned class method groups ==$/ { exit } { print }' \
-            "$out/virtual-delegate-full.$axis.stdout" > "$out/runtime-owned-old.$axis.stdout"
-        diff -u "$out/runtime-owned-prefix.$axis.stdout" "$out/runtime-owned-old.$axis.stdout"
         runtime_owned_delegate_asserts "$out/virtual-delegate-full.$axis.stdout"
     done
-    diff -u "$out/runtime-owned-prefix.dotnet.stdout" "$out/runtime-owned-prefix.native.stdout"
+    if reflection_full_profile; then
+        diff -u "$out/runtime-owned-prefix.dotnet.stdout" "$out/runtime-owned-prefix.native.stdout"
+    fi
 }
 
 runtime_owned_delegate_asserts() {
@@ -62,7 +74,9 @@ runtime_owned_delegate_asserts() {
 
 delegate_object_equality_only() {
     local axis out catalog
-    for axis in default trimmed; do
+    local axes=(default trimmed)
+    if ! reflection_full_profile; then axes=(default); fi
+    for axis in "${axes[@]}"; do
         out="artifacts/reflect-invoke-object-equality-only-$axis"
         local emit_flags=()
         [ "$axis" != trimmed ] || emit_flags=(--trim-reflection)
@@ -96,7 +110,9 @@ delegate_object_equality_only() {
 
 delegate_identity_diff_axes() {
     local axis out native line
-    for axis in default opaque trimmed unshared; do
+    local axes=(default opaque trimmed unshared)
+    if ! reflection_full_profile; then axes=(trimmed); fi
+    for axis in "${axes[@]}"; do
         out="artifacts/reflect-invoke-delegate-identity-$axis"
         local build_flags=() emit_flags=()
         case "$axis" in

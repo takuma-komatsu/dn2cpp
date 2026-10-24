@@ -47,15 +47,17 @@ WITNESSES
 reflected_event_prefix_asserts() {
     local out="$1" axis
     for axis in dotnet native; do
-        if [ "$axis" = dotnet ]; then
-            reflection_oracle "$_CG_APP" before-reflected-events > "$out/events-before.$axis.raw.stdout"
-        else
-            run_bounded "$out/ReflectInvoke$EXE_EXT" before-reflected-events > "$out/events-before.$axis.raw.stdout"
+        if reflection_full_profile; then
+            if [ "$axis" = dotnet ]; then
+                reflection_oracle "$_CG_APP" before-reflected-events > "$out/events-before.$axis.raw.stdout"
+            else
+                run_bounded "$out/ReflectInvoke$EXE_EXT" before-reflected-events > "$out/events-before.$axis.raw.stdout"
+            fi
+            strip_cr_win_file "$out/events-before.$axis.raw.stdout" > "$out/events-before.$axis.stdout"
+            awk '/^== reflected events ==$/ { exit } { print }' \
+                "$out/virtual-delegate-full.$axis.stdout" > "$out/events-prefix.$axis.stdout"
+            diff -u "$out/events-before.$axis.stdout" "$out/events-prefix.$axis.stdout"
         fi
-        strip_cr_win_file "$out/events-before.$axis.raw.stdout" > "$out/events-before.$axis.stdout"
-        awk '/^== reflected events ==$/ { exit } { print }' \
-            "$out/virtual-delegate-full.$axis.stdout" > "$out/events-prefix.$axis.stdout"
-        diff -u "$out/events-before.$axis.stdout" "$out/events-prefix.$axis.stdout"
         reflected_event_asserts "$out/virtual-delegate-full.$axis.stdout"
     done
 }
@@ -64,7 +66,9 @@ reflected_event_diff_axes() {
     local axis out corelib bcl representation
     corelib=$(locate_corelib)
     bcl=$(dirname "$corelib")
-    for axis in packed native uncompressed trimmed unshared; do
+    local axes=(packed native uncompressed trimmed unshared)
+    if ! reflection_full_profile; then axes=(trimmed); fi
+    for axis in "${axes[@]}"; do
         out="artifacts/reflected-events-$axis"
         mkdir -p "$out"
         local flags=() build_flags=() diet_flags=(--no-ildiet)

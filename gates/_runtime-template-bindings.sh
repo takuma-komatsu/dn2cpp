@@ -27,25 +27,29 @@ WITNESSES
 runtime_template_binding_prefix_asserts() {
     local out="$1" axis
     for axis in dotnet native; do
-        if [ "$axis" = dotnet ]; then
-            reflection_oracle "$_CG_APP" before-runtime-template-bindings > "$out/template-before.$axis.raw.stdout"
-        else
-            run_bounded "$out/ReflectInvoke$EXE_EXT" before-runtime-template-bindings > "$out/template-before.$axis.raw.stdout"
+        if reflection_full_profile; then
+            if [ "$axis" = dotnet ]; then
+                reflection_oracle "$_CG_APP" before-runtime-template-bindings > "$out/template-before.$axis.raw.stdout"
+            else
+                run_bounded "$out/ReflectInvoke$EXE_EXT" before-runtime-template-bindings > "$out/template-before.$axis.raw.stdout"
+            fi
+            strip_cr_win_file "$out/template-before.$axis.raw.stdout" > "$out/template-before.$axis.stdout"
+            awk '/^== substituted runtime delegate signatures ==$/ { exit } { print }' \
+                "$out/virtual-delegate-full.$axis.stdout" > "$out/template-prefix.$axis.stdout"
+            diff -u "$out/template-before.$axis.stdout" "$out/template-prefix.$axis.stdout"
         fi
-        strip_cr_win_file "$out/template-before.$axis.raw.stdout" > "$out/template-before.$axis.stdout"
-        awk '/^== substituted runtime delegate signatures ==$/ { exit } { print }' \
-            "$out/virtual-delegate-full.$axis.stdout" > "$out/template-prefix.$axis.stdout"
-        diff -u "$out/template-before.$axis.stdout" "$out/template-prefix.$axis.stdout"
         runtime_template_binding_asserts "$out/virtual-delegate-full.$axis.stdout"
-        if [ "$axis" = dotnet ]; then
-            reflection_oracle "$_CG_APP" before-runtime-base-projections > "$out/base-before.$axis.raw.stdout"
-        else
-            run_bounded "$out/ReflectInvoke$EXE_EXT" before-runtime-base-projections > "$out/base-before.$axis.raw.stdout"
+        if reflection_full_profile; then
+            if [ "$axis" = dotnet ]; then
+                reflection_oracle "$_CG_APP" before-runtime-base-projections > "$out/base-before.$axis.raw.stdout"
+            else
+                run_bounded "$out/ReflectInvoke$EXE_EXT" before-runtime-base-projections > "$out/base-before.$axis.raw.stdout"
+            fi
+            strip_cr_win_file "$out/base-before.$axis.raw.stdout" > "$out/base-before.$axis.stdout"
+            awk '/^== runtime generic base projections ==$/ { exit } { print }' \
+                "$out/virtual-delegate-full.$axis.stdout" > "$out/base-prefix.$axis.stdout"
+            diff -u "$out/base-before.$axis.stdout" "$out/base-prefix.$axis.stdout"
         fi
-        strip_cr_win_file "$out/base-before.$axis.raw.stdout" > "$out/base-before.$axis.stdout"
-        awk '/^== runtime generic base projections ==$/ { exit } { print }' \
-            "$out/virtual-delegate-full.$axis.stdout" > "$out/base-prefix.$axis.stdout"
-        diff -u "$out/base-before.$axis.stdout" "$out/base-prefix.$axis.stdout"
         runtime_base_projection_asserts "$out/virtual-delegate-full.$axis.stdout"
     done
 }
@@ -84,7 +88,9 @@ runtime_template_binding_diff_axes() {
     # unshared reflection gate covers its closed controls separately. The helpers that
     # receive a runtime-made owner as a parameter reach their clone bodies only through
     # keep-runtime-templates.xml.
-    for axis in packed native uncompressed trimmed ildiet; do
+    local axes=(packed native uncompressed trimmed ildiet)
+    if ! reflection_full_profile; then axes=(ildiet); fi
+    for axis in "${axes[@]}"; do
         out="artifacts/runtime-template-bindings-$axis"
         mkdir -p "$out"
         local flags=() diet_flags=(--no-ildiet)
