@@ -989,6 +989,116 @@ static Dn2CppString* dn2cpp_format_int_exact(unsigned long long mag, bool neg, c
     }
 }
 
+static Dn2CppString* dn2cpp_localize_decimal_fixed(const Dn2CppCustomDigits& mag, int fracDigits,
+    Dn2CppString* grp, Dn2CppString* dec, const int8_t* sizes, int sizeCount, bool doGroup)
+{
+    int intDigits = mag.scale > 0 ? mag.scale : 1;
+    unsigned char sepAfter[40];
+    if (doGroup && mag.n != 0 && mag.scale > 0)
+        dn2cpp_group_marks(intDigits, sizes, sizeCount, sepAfter);
+    else
+        for (int i = 0; i < intDigits; i++) sepAfter[i] = 0;
+    int total = dn2cpp_group_width(intDigits, sepAfter, grp);
+    if (fracDigits > 0)
+        total += (dec != nullptr ? dec->length : 0) + fracDigits;
+    char16_t* dst;
+    Dn2CppString* result = dn2cpp_string_alloc(&dst, total);
+    int out = 0;
+    for (int i = 0; i < intDigits; i++)
+    {
+        dst[out++] = static_cast<char16_t>(mag.scale > 0 && i < mag.n ? mag.d[i] : '0');
+        if (sepAfter[i]) dn2cpp_put(dst, out, grp);
+    }
+    if (fracDigits > 0)
+    {
+        dn2cpp_put(dst, out, dec);
+        for (int i = 0; i < fracDigits; i++)
+        {
+            int digit = mag.scale + i;
+            dst[out++] = static_cast<char16_t>(digit >= 0 && digit < mag.n ? mag.d[digit] : '0');
+        }
+    }
+    return result;
+}
+
+Dn2CppString* dn2cpp_format_decimal_standard_c(const char* digits, int32_t count, int32_t scale,
+    int32_t negative, Dn2CppString* fmt, const Dn2CppNumberFormatInfo* nfi)
+{
+    char letter;
+    int precision;
+    dn2cpp_parse_fmt(fmt, &letter, &precision);
+    bool fixed = letter == 'F' || letter == 'f' || letter == 'N' || letter == 'n'
+        || letter == 'C' || letter == 'c' || letter == 'P' || letter == 'p';
+    bool general = (letter == 'G' || letter == 'g') && precision >= 0;
+    if (!fixed && !general)
+        return nullptr;
+    Dn2CppCustomDigits mag;
+    std::memcpy(mag.d, digits, static_cast<size_t>(count));
+    mag.n = count;
+    mag.scale = count - scale;
+    dn2cpp_custom_digits_trim(mag);
+    if (general)
+    {
+        if (precision == 0) precision = 29;
+        dn2cpp_custom_digits_round(mag, precision);
+        if (mag.n == 0)
+            return dn2cpp_string_from_ascii("0", 1);
+        int exponent = mag.scale - 1;
+        if (exponent >= -4 && exponent < precision)
+        {
+            int fracDigits = mag.n > mag.scale ? mag.n - mag.scale : 0;
+            Dn2CppString* result = dn2cpp_localize_decimal_fixed(mag, fracDigits,
+                nfi->numberGroup, nfi->numberDecimal, nfi->groupSizes, nfi->groupSizeCount, false);
+            return negative ? dn2cpp_string_concat2(nfi->negativeSign, result) : result;
+        }
+        char ascii[40];
+        int out = 0;
+        if (negative) ascii[out++] = '-';
+        ascii[out++] = mag.d[0];
+        if (mag.n > 1)
+        {
+            ascii[out++] = '.';
+            for (int i = 1; i < mag.n; i++) ascii[out++] = mag.d[i];
+        }
+        ascii[out++] = letter == 'G' ? 'E' : 'e';
+        ascii[out++] = exponent < 0 ? '-' : '+';
+        int magnitude = exponent < 0 ? -exponent : exponent;
+        if (magnitude < 10) ascii[out++] = '0';
+        out += std::snprintf(ascii + out, sizeof(ascii) - out, "%d", magnitude);
+        return dn2cpp_localize_ascii(ascii, out, nfi);
+    }
+    bool percent = letter == 'P' || letter == 'p';
+    bool currency = letter == 'C' || letter == 'c';
+    bool grouped = letter != 'F' && letter != 'f';
+    if (precision < 0)
+        precision = currency ? nfi->currencyDigits : percent ? nfi->percentDigits : nfi->numberDigits;
+    if (percent && mag.n != 0) mag.scale += 2;
+    dn2cpp_custom_digits_round(mag, mag.scale + precision);
+    bool neg = negative != 0 && mag.n != 0;
+    Dn2CppString* result = dn2cpp_localize_decimal_fixed(mag, precision,
+        currency ? nfi->currencyGroup : percent ? nfi->percentGroup : nfi->numberGroup,
+        currency ? nfi->currencyDecimal : percent ? nfi->percentDecimal : nfi->numberDecimal,
+        currency ? nfi->currencyGroupSizes : percent ? nfi->percentGroupSizes : nfi->groupSizes,
+        currency ? nfi->currencyGroupSizeCount : percent ? nfi->percentGroupSizeCount : nfi->groupSizeCount,
+        grouped);
+    if (currency)
+    {
+        const char16_t* pattern = neg ? s_currencyNeg[nfi->currencyNegPattern % 16]
+                                      : s_currencyPos[nfi->currencyPosPattern % 4];
+        return dn2cpp_lay_pattern(pattern, u'$', nfi->currencySymbol, result, nfi->negativeSign);
+    }
+    if (percent)
+    {
+        const char16_t* pattern = neg ? s_percentNeg[nfi->percentNegPattern % 12]
+                                      : s_percentPos[nfi->percentPosPattern % 4];
+        return dn2cpp_lay_pattern(pattern, u'%', nfi->percentSymbol, result, nfi->negativeSign);
+    }
+    if (letter == 'N' || letter == 'n')
+        return neg ? dn2cpp_lay_pattern(s_numberNeg[nfi->numberNegPattern % 5],
+            0, nullptr, result, nfi->negativeSign) : result;
+    return neg ? dn2cpp_string_concat2(nfi->negativeSign, result) : result;
+}
+
 // General format ("G"/"g"). Renders the value with `prec` significant digits (or,
 // when `prec < 0`, the shortest representation that round-trips), choosing fixed or
 // scientific notation by .NET's rule: scientific when the decimal exponent is < -4

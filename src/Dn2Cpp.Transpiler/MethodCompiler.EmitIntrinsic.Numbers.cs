@@ -1472,6 +1472,8 @@ internal sealed partial class MethodCompiler
                 EmitNfiSet("dn2cpp_nfi_set_number_group"); return true;
             case ("System.Globalization.NumberFormatInfo", "set_NegativeSign"):
                 EmitNfiSet("dn2cpp_nfi_set_negative_sign"); return true;
+            case ("System.Globalization.NumberFormatInfo", "set_PositiveSign"):
+                EmitNfiSet("dn2cpp_nfi_set_positive_sign"); return true;
             case ("System.Globalization.NumberFormatInfo", "set_NaNSymbol"):
                 EmitNfiSet("dn2cpp_nfi_set_nan"); return true;
             case ("System.Globalization.NumberFormatInfo", "set_PositiveInfinitySymbol"):

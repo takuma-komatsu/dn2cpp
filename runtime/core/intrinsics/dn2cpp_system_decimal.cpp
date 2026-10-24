@@ -671,40 +671,6 @@ Dn2CppString* dn2cpp_decimal_to_string(Dn2CppDecimal a)
     return dn2cpp_localize_ascii(out, o, dn2cpp_nfi_or_current(nullptr));
 }
 
-// Decimal clears the sign after fixed-format rounding to zero; floating point
-// preserves it. Decide from the exact mantissa before using the shared renderer.
-static bool dec_fixed_rounds_to_zero(Dn2CppDecimal a, Dn2CppString* fmt,
-    const Dn2CppNumberFormatInfo* nfi)
-{
-    char16_t letter = fmt->chars[0];
-    if (letter >= u'a' && letter <= u'z') letter -= u'a' - u'A';
-    if (letter != u'F' && letter != u'N' && letter != u'C' && letter != u'P')
-        return false;
-    int precision = letter == u'C' ? nfi->currencyDigits
-        : letter == u'P' ? nfi->percentDigits : nfi->numberDigits;
-    if (fmt->length > 1)
-    {
-        precision = 0;
-        for (int32_t i = 1; i < fmt->length; i++)
-        {
-            char16_t digit = fmt->chars[i];
-            if (digit == u'\0') break;
-            if (digit < u'0' || digit > u'9') return false;
-            precision = precision * 10 + digit - u'0';
-            if (precision > 28) return false;
-        }
-    }
-    dec_u128 mantissa = dec_mant(a);
-    if (mantissa == 0)
-        return true;
-    int drop = a.scale() - precision - (letter == u'P' ? 2 : 0);
-    if (drop <= 0)
-        return false;
-    dec_u128 half = 5;
-    for (int i = 1; i < drop; i++) half *= 10;
-    return mantissa < half;
-}
-
 Dn2CppString* dn2cpp_decimal_format_c(Dn2CppDecimal a, Dn2CppString* fmt, const Dn2CppNumberFormatInfo* nfi)
 {
     nfi = dn2cpp_nfi_or_current(nfi);
@@ -719,19 +685,17 @@ Dn2CppString* dn2cpp_decimal_format_c(Dn2CppDecimal a, Dn2CppString* fmt, const 
         int count = dec_digits(dec_mant(a), digits);
         if (Dn2CppString* r = dn2cpp_format_decimal_custom_c(digits, count, a.scale(), a.sign(), fmt, nfi))
             return r;
+        if (Dn2CppString* r = dn2cpp_format_decimal_standard_c(digits, count, a.scale(), a.sign(), fmt, nfi))
+            return r;
     }
-    // Standard specifiers route through the double number path for grouping/fixed
-    // width (F/N/C/P/E and G with precision). The decimal's exact integer value is
-    // preserved for default ToString; spec'd output matches .NET for the practical
-    // magnitudes that fit a double's 15-17 digits.
+    // G without precision preserves decimal's stored scale, unlike G with
+    // precision, which rounds significant digits and trims trailing zeros.
     char letter = (char)fmt->chars[0];
     if (letter == 'G' || letter == 'g')
     {
         char out[80]; int o = dec_layout(a, out);
         return dn2cpp_localize_ascii(out, o, nfi);
     }
-    if (a.sign() && dec_fixed_rounds_to_zero(a, fmt, nfi))
-        a._flags = dn2cpp_dec_flags(a.scale(), 0);
     return dn2cpp_format_r8_c(dn2cpp_decimal_to_double(a), fmt, nfi);
 }
 Dn2CppString* dn2cpp_decimal_format(Dn2CppDecimal a, Dn2CppString* fmt)

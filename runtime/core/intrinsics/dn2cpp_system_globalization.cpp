@@ -2067,6 +2067,10 @@ void dn2cpp_nfi_set_negative_sign(Dn2CppNumberFormatInfo* n, Dn2CppString* v)
 {
     dn2cpp_nfi_set_string(n, n != nullptr ? &n->negativeSign : nullptr, v, false, false);
 }
+void dn2cpp_nfi_set_positive_sign(Dn2CppNumberFormatInfo* n, Dn2CppString* v)
+{
+    dn2cpp_nfi_set_string(n, n != nullptr ? &n->positiveSign : nullptr, v, false, false);
+}
 void dn2cpp_nfi_set_nan(Dn2CppNumberFormatInfo* n, Dn2CppString* v)
 {
     dn2cpp_nfi_set_string(n, n != nullptr ? &n->nan : nullptr, v, false, false);
@@ -2151,7 +2155,20 @@ void dn2cpp_nfi_set_group_sizes(const Dn2CppNumberFormatInfo* n, Dn2CppArrayI4* 
 // widening the rest to UTF-16. Grouping is applied separately upstream.
 Dn2CppString* dn2cpp_localize_ascii(const char* buf, int len, const Dn2CppNumberFormatInfo* n)
 {
-    char16_t out[160];
+    int64_t total = 0;
+    for (int i = 0; i < len; i++)
+    {
+        char c = buf[i];
+        Dn2CppString* rep = (c == '-') ? n->negativeSign
+                          : (c == '+') ? n->positiveSign
+                          : (c == '.') ? n->numberDecimal
+                                       : nullptr;
+        total += rep != nullptr ? rep->length : 1;
+    }
+    if (total > INT32_MAX)
+        dn2cpp_throw_out_of_memory();
+    char16_t* out;
+    Dn2CppString* result = dn2cpp_string_alloc(&out, static_cast<int32_t>(total));
     int o = 0;
     for (int i = 0; i < len; i++)
     {
@@ -2165,10 +2182,7 @@ Dn2CppString* dn2cpp_localize_ascii(const char* buf, int len, const Dn2CppNumber
         else
             out[o++] = static_cast<char16_t>(static_cast<unsigned char>(c));
     }
-    char16_t* dst;
-    Dn2CppString* s = dn2cpp_string_alloc(&dst, o);
-    for (int i = 0; i < o; i++) dst[i] = out[i];
-    return s;
+    return result;
 }
 
 static Dn2CppString* dn2cpp_float_format(double v, int maxSig, int sciThreshold, bool roundTripFloat,
