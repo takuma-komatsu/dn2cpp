@@ -13,6 +13,12 @@ namespace ReflectInvoke
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
             CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
 
+            if (args.Length > 0 && args[0] == "singular-member-lookups")
+            {
+                SingularMemberLookupSubset.Program.Run();
+                return;
+            }
+
             if (args.Length > 0 && args[0] == "delegate-name-boundary-outcomes")
             {
                 ReflectDelegateSubset.Program.RunNamedBoundaries();
@@ -396,6 +402,9 @@ namespace ReflectInvoke
         if (args.Length > 0 && args[0] == "before-generic-activator-messages")
             return;
         ReflectActivatorGenericSubset.Program.RunMissingConstructorMessages();
+        if (args.Length > 0 && args[0] == "before-singular-member-lookups")
+            return;
+        SingularMemberLookupSubset.Program.Run();
         }
     }
 }

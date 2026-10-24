@@ -261,6 +261,9 @@
 # the other's with .NET's ArgumentException.
 # Same-module TypeDef-parent MemberRefs bind overloads, instance and generic
 # methods; closed generic owners retain their TypeSpec identity.
+# Singular field, method and property lookups fold case only under IgnoreCase;
+# case collisions remain ambiguous after the requested signature filters,
+# except that a shared class public accessor slot hides the later property row.
 # Object-family enumeration includes inherited metadata answers under binding flags.
 # Pointer field accessors box and validate unmanaged/function addresses with
 # packed and native metadata, preserving static-readonly accessor refusal order.
@@ -287,6 +290,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|typedef-memberref-pref
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_ordinary-reflection.sh gates/reflection-gate-inputs.py samples/dotnet/ReflectFrameworkBind/Program.cs samples/dotnet/ReflectFrameworkBindLib/FrameworkBinder.cs samples/dotnet/ReflectInvoke/OrdinaryAmbiguousMatchSubset.cs samples/dotnet/ReflectInvoke/OrdinaryReflectionLeaves.csproj samples/dotnet/ReflectInvoke/OrdinaryReflectionLeavesProgram.cs samples/dotnet/ReflectInvoke/OrdinaryWideLookupSubset.cs samples/dotnet/ReflectInvoke/ReflectBindOnly.csproj samples/dotnet/ReflectInvoke/ReflectBindOnlyProgram.cs samples/dotnet/ReflectInvoke/ReflectFieldValidationSubset.cs samples/dotnet/ReflectInvoke/ReflectInvoke.csproj samples/dotnet/ReflectInvoke/ReflectMetadataMeasureSubset.cs samples/dotnet/ReflectInvoke/ReflectionMethodGroupsOnly.csproj samples/dotnet/ReflectInvoke/ReflectionMethodGroupsOnlyProgram.cs samples/dotnet/ReflectInvoke/StrippedOverrideRefusals.csproj samples/dotnet/ReflectInvoke/StrippedOverrideRefusalsProgram.cs samples/dotnet/ReflectInvoke/keep-field-initializers.xml samples/dotnet/ReflectInvoke/keep-method-groups.xml samples/dotnet/ReflectInvoke/keep-name-bind-overloads.xml samples/dotnet/ReflectInvoke/keep-event-other-methods.xml"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-reflection-leaves-v1|runtime-member-attributes-prefix:${DN2CPP_BEFORE_RUNTIME_MEMBER_ATTRIBUTES:-}|runtime-return-modifiers-prefix:${DN2CPP_BEFORE_RUNTIME_RETURN_MODIFIERS:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|reflection-dispatch-v1|dispatch-prefix:${DN2CPP_BEFORE_REFLECTION_DISPATCH:-}|attribute-minted-prefix:${DN2CPP_BEFORE_ATTRIBUTE_MINTED:-}|template-accessors-prefix:${DN2CPP_BEFORE_TEMPLATE_ACCESSORS:-}|pointer-returns-prefix:${DN2CPP_BEFORE_POINTER_RETURNS:-}|delegate-invoke-targets-prefix:${DN2CPP_BEFORE_DELEGATE_INVOKE_TARGETS:-}|null-bound-chains-prefix:${DN2CPP_BEFORE_NULL_BOUND_CHAINS:-}|renamed-slot-bindings-prefix:${DN2CPP_BEFORE_RENAMED_SLOT_BINDINGS:-}|settled-object-virtual-prefix:${DN2CPP_BEFORE_SETTLED_OBJECT_VIRTUAL:-}|renamed-slot-fillers-prefix:${DN2CPP_BEFORE_RENAMED_SLOT_FILLERS:-}"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|singular-member-lookups:folding,ambiguity,typed,inheritance|singular-member-prefix:before-singular-member-lookups"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|inherited-gvm-remedy-v1|inherited-gvm-remedy-env:${DN2CPP_INHERITED_GVM_REMEDY:-}|inherited-gvm-remedy-replay:no-ildiet,base-link,actual-xml|stripped-class-remedy-wrapper-v1|stripped-class-remedy-argv:class-remedies|stripped-interface-remedy-wrapper-v1|stripped-interface-remedy-argv:interface-remedies|interface-remedy-prefix-argv:before-interface-remedy-rows|stripped-overrides:${DN2CPP_STRIPPED_OVERRIDES:-}|library-struct-prefix:${DN2CPP_BEFORE_LIBRARY_STRUCT_RETURN:-}|function-pointer-identity-prefix:${DN2CPP_BEFORE_FUNCTION_POINTER_IDENTITY:-}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|pointer-fields-prefix:${DN2CPP_BEFORE_POINTER_FIELDS:-}|object-methods-prefix-argv:before-object-method-enumeration|property-accessors-prefix-argv:before-property-accessors|property-hiding-prefix-argv:before-property-hiding"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|constructor-messages-prefix-argv:before-constructor-messages"
@@ -897,6 +901,29 @@ gate_extra_asserts() {
         "intrinsic generic: MissingMethodException/No parameterless constructor defined for type 'System.Threading.Tasks.Task\`1[System.Int32]'." \
         "isolated intrinsic generic: MissingMethodException/No parameterless constructor defined for type 'System.Threading.Tasks.Task\`1[System.Int64]'." \
         'generic activator constructor messages end' <<< "$native"
+    local singular_before singular_prefix singular_native singular_expected
+    singular_before=$(run_bounded "$out/ReflectInvoke$EXE_EXT" before-singular-member-lookups)
+    singular_prefix=$(awk '/^== singular member IgnoreCase ==$/ { exit } { print }' <<< "$native")
+    assert_output "$singular_prefix" "$(strip_cr_win "$singular_before")"
+    singular_native=$(run_bounded "$out/ReflectInvoke$EXE_EXT" singular-member-lookups)
+    singular_expected=$(reflection_oracle "$_CG_APP" singular-member-lookups)
+    assert_output "$singular_native" "$(strip_cr_win "$singular_expected")"
+    reflection_assert_lines - 1 \
+        '== singular member IgnoreCase ==' \
+        'field folded collision=AmbiguousMatchException' \
+        'method overload int=Overload.Echo' \
+        'property folded collision=AmbiguousMatchException' \
+        'property overridden alias=VirtualDerived.tone' \
+        'property overridden exact base=VirtualBase.Tone' \
+        'property three-level folded=VirtualLeaf.tone' \
+        'property three-level exact base=VirtualBase.Tone' \
+        'property new-slot folded=AmbiguousMatchException' \
+        'property new-slot exact=SlotNew.Tone' \
+        'property shared accessor=DuplicateAccessor.Tone' \
+        'property interface shared accessor=AmbiguousMatchException' \
+        'property protected override=AmbiguousMatchException' \
+        'property setter-only override=AmbiguousMatchException' \
+        'singular member IgnoreCase end' <<< "$singular_native"
     gate_optional_argument_asserts "$out"
     local primitive_before primitive_prefix
     if reflection_full_profile; then
