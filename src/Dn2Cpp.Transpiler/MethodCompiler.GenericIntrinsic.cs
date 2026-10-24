@@ -566,12 +566,26 @@ internal sealed partial class MethodCompiler
                 // intrinsic arm reserves for a constructible-but-unmodeled intrinsic.
                 if (cls.IsAbstract || Compilation.PublicParameterlessCtor(cls) is not { } ctor)
                 {
-                    string reason = cls.IsInterface
-                        ? "Cannot create an instance of an interface."
-                        : cls.IsAbstract
-                            ? "Cannot create an instance of an abstract class."
-                            : $"No parameterless constructor defined for type '{cls.FullName}'.";
-                    Emit($"dn2cpp_throw_missing_method(\"{reason}\");");
+                    if (cls.IsInterface || cls.IsAbstract)
+                    {
+                        string reason = cls.IsInterface
+                            ? "Cannot create an instance of an interface."
+                            : "Cannot create an instance of an abstract class.";
+                        Emit($"dn2cpp_throw_missing_method(\"{reason}\");");
+                    }
+                    else
+                    {
+                        // Generic intrinsic shells omit members, but their constructor
+                        // rows still determine the CLR's missing-constructor wording.
+                        bool hasDefault = cls.IntrinsicCppName is not null && cls.GenericArity > 0
+                            ? Compilation.HasParameterlessCtorDefinition(cls)
+                            : Compilation.ParameterlessCtor(cls) is not null;
+                        string hasDefaultConstructor = hasDefault
+                            ? "true" : "false";
+                        string typeInfo = TypeInfoExpr(t) ?? throw new InvalidOperationException(
+                            $"{cls.FullName} has no runtime type-info");
+                        Emit($"dn2cpp_throw_missing_default_constructor({typeInfo}, {hasDefaultConstructor});");
+                    }
                     // [[noreturn]]; the push only keeps the eval stack typed. Use the
                     // slot's own zero (a reference type's ct is a pointer, so this is
                     // nullptr) rather than a bare "nullptr" that would not type-check

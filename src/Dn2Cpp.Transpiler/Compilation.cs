@@ -4730,6 +4730,26 @@ internal sealed partial class Compilation
         return default;
     }
 
+    internal static bool HasParameterlessCtorDefinition(ClassInfo cls)
+    {
+        if (cls.Handle.IsNil)
+            return false;
+        var reader = cls.Module.Reader;
+        foreach (var handle in reader.GetTypeDefinition(cls.Handle).GetMethods())
+        {
+            var md = reader.GetMethodDefinition(handle);
+            if ((md.Attributes & MethodAttributes.Static) != 0
+                || !reader.StringComparer.Equals(md.Name, ".ctor"))
+                continue;
+            var blob = reader.GetBlobReader(md.Signature);
+            if (blob.ReadSignatureHeader().IsGeneric)
+                blob.ReadCompressedInteger();
+            if (blob.ReadCompressedInteger() == 0)
+                return true;
+        }
+        return false;
+    }
+
     private bool ClassSlotUsedAtOrAbove(MethodInfo m)
     {
         int slot = m.VtableSlot;

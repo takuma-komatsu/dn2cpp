@@ -8117,6 +8117,12 @@ static Dn2CppObject* dn2cpp_activator_create_default(Dn2CppType* t, int32_t nonP
     }
     if (binderMessage)
         dn2cpp_throw_missing_constructor(ti, false);
+    dn2cpp_throw_missing_default_constructor(ti, hasDefaultConstructor);
+}
+
+[[noreturn]] void dn2cpp_throw_missing_default_constructor(const Dn2CppTypeInfo* ti,
+    bool hasDefaultConstructor)
+{
     Dn2CppString* typeName = ti->name != nullptr ? dn2cpp_type_tostring(ti) : nullptr;
     std::string name = typeName != nullptr ? dn2cpp_utf8_of(typeName) : "?";
     if (hasDefaultConstructor)
