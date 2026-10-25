@@ -59,3 +59,12 @@ GODOT_GATES=(
     "${CHAIN_A[@]}" "${CHAIN_B[@]}" "${CHAIN_C[@]}" "${CHAIN_D[@]}" "${CHAIN_E[@]}"
     "${CHAIN_F[@]}"
 )
+
+# The iOS simulator and export gates require the Xcode toolchain. Keep this
+# selection shared with pre-merge so its expected count matches the runner.
+XCODE_GATES=(
+    "gates/build-and-run-ios-sim-console.sh"
+    "gates/build-and-run-godot-ios-export.sh"
+    "gates/build-and-run-godot-ios-sim.sh"
+    "gates/build-and-run-godot-editor-export-ios.sh"
+)

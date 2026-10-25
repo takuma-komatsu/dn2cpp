@@ -7,6 +7,8 @@
 #     CONFIG=Release ./gates/pre-merge.sh  # Release suite only
 #     ./gates/pre-merge.sh --both-configs  # Release, then Debug
 #     ./gates/pre-merge.sh --skip-godot   # merge check for non-Godot changes
+#     ./gates/pre-merge.sh --skip-xcode   # omit the Xcode-only gates
+#     ./gates/pre-merge.sh --require-xcode # include them even without Xcode
 #     ./gates/pre-merge.sh --dry-run      # print the exact runs, execute nothing
 #     ./gates/pre-merge.sh --keep-going   # run selected suites after an earlier failure
 #     DN2CPP_PREMERGE_SELFTEST=1 ./gates/pre-merge.sh   # self-test, no suite run
@@ -27,10 +29,11 @@
 #   2. gates/setup-godot-fork.sh (+ gates/setup-godot-fork-web.sh per flavor) —
 #      only when the fork cache no longer describes ../godot-dn2cpp
 #   3. CONFIG=Debug (default) or CONFIG=Release, with DN2CPP_REQUIRE_ALL=1
-#      DN2CPP_GATE_CACHE=0; --both-configs runs Release, then Debug.
+#      DN2CPP_GATE_CACHE=0; --both-configs runs Release, then Debug. Xcode-only
+#      gates are selected when xcodebuild works, unless --skip-xcode is given.
 #
-#   - REQUIRE_ALL, because "all N gates passed" must mean all N *ran*. CRI SDK
-#     absence alone is optional: those gates skip and are counted separately.
+#   - REQUIRE_ALL, because "all selected gates passed" must mean they *ran*.
+#     CRI SDK absence alone permits a selected gate skip, counted separately.
 #     With an installed SDK, CRI failures and missing prerequisites stay red.
 #     Without REQUIRE_ALL a missing prerequisite reports green over a hole, which is
 #     the shape that let the mono-module lane ship red on `main` for a week.
@@ -76,11 +79,12 @@
 #     absence a failure rather than a skip, and the Emscripten SDK they need is
 #     unpacked here (gates/setup-emsdk.sh) when no mutable one resolves. The iOS
 #     template stays manual because its repair consumes Xcode and an official
-#     templates archive; its presence, provenance and host prerequisites are
-#     checked up front, so REQUIRE_ALL does not discover the manual work inside
-#     the suite. A HOST prerequisite this box lacks (no Xcode, no emcc even after
-#     the unpack) is not a refusal: the suites still run, the affected gates are
-#     red under REQUIRE_ALL, and the verdict lists the gaps. A suite red ONLY
+#     templates archive; its presence and provenance are checked up front when
+#     the Xcode gates are selected. Without Xcode those gates are excluded from
+#     the suite and listed in the receipt. Another HOST prerequisite this box
+#     lacks (such as emcc even after the unpack) is not a refusal: the suites
+#     still run, the affected gates are red under REQUIRE_ALL, and the verdict
+#     lists the gaps. A suite red ONLY
 #     for such gates does not withhold later selected suites either; a suite
 #     with any other failure does. Only a repairable ARTIFACT — a stale or
 #     missing zip on a host that could build it — refuses.
@@ -310,12 +314,15 @@ KEEP_GOING=0
 BOTH_CONFIGS=0
 CONFIG=${CONFIG:-Debug}
 SKIP_GODOT=${SKIP_GODOT:-0}
+XCODE_SELECTION=auto
 for arg in "$@"; do
     case "$arg" in
         --dry-run)    DRY_RUN=1 ;;
         --keep-going) KEEP_GOING=1 ;;
         --both-configs) BOTH_CONFIGS=1 ;;
         --skip-godot) SKIP_GODOT=1 ;;
+        --skip-xcode) XCODE_SELECTION=skip ;;
+        --require-xcode) XCODE_SELECTION=require ;;
         -h|--help)
             sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
             exit 0
@@ -326,6 +333,17 @@ for arg in "$@"; do
             ;;
     esac
 done
+if [ "$XCODE_SELECTION" = auto ]; then
+    if command -v xcodebuild >/dev/null 2>&1 && xcodebuild -version >/dev/null 2>&1; then
+        SKIP_XCODE=0
+    else
+        SKIP_XCODE=1
+    fi
+elif [ "$XCODE_SELECTION" = skip ]; then
+    SKIP_XCODE=1
+else
+    SKIP_XCODE=0
+fi
 case "$CONFIG" in
     Debug|Release) ;;
     *)
@@ -363,11 +381,23 @@ fi
 source "$REPO/gates/_godot_gate_chains.sh"
 ALL_GATES=$(ls "$REPO"/gates/build-and-run-*.sh 2>/dev/null | wc -l | tr -d ' ')
 EXCLUDED_GATES=0
+GODOT_EXCLUDED=0
 if [ "$SKIP_GODOT" = "1" ]; then
     for gate in "${GODOT_GATES[@]}"; do
-        [ ! -f "$REPO/$gate" ] || EXCLUDED_GATES=$((EXCLUDED_GATES + 1))
+        [ ! -f "$REPO/$gate" ] || GODOT_EXCLUDED=$((GODOT_EXCLUDED + 1))
     done
 fi
+XCODE_EXCLUDED=0
+if [ "$SKIP_XCODE" = "1" ]; then
+    for gate in "${XCODE_GATES[@]}"; do
+        [ -f "$REPO/$gate" ] || continue
+        if [ "$SKIP_GODOT" = "1" ]; then
+            case " ${GODOT_GATES[*]} " in *" $gate "*) continue ;; esac
+        fi
+        XCODE_EXCLUDED=$((XCODE_EXCLUDED + 1))
+    done
+fi
+EXCLUDED_GATES=$((GODOT_EXCLUDED + XCODE_EXCLUDED))
 EXPECTED_GATES=$((ALL_GATES - EXCLUDED_GATES))
 
 say()  { printf '\n\033[1;36m══ %s\033[0m\n' "$*"; }
@@ -606,7 +636,8 @@ premerge_argv() {
         "DN2CPP_ALLOW_MISSING_CRI_SDK=1"
         "DN2CPP_GATE_CACHE=0"
         "SKIP_GODOT=$SKIP_GODOT"
-        "DN2CPP_REQUIRE_SCOPE=$([ "$SKIP_GODOT" = 1 ] && printf non-godot || printf all)"
+        "SKIP_XCODE=$SKIP_XCODE"
+        "DN2CPP_REQUIRE_SCOPE=$([ "$SKIP_GODOT" = 1 ] && printf non-godot || printf all)$([ "$SKIP_XCODE" = 1 ] && printf -- -except-xcode)"
         bash "$REPO/gates/run-all-gates.sh"
     )
 }
@@ -889,6 +920,7 @@ premerge_verdict() {
 if [ "${DN2CPP_PREMERGE_SELFTEST:-0}" = "1" ]; then
     unset CONFIG
     SKIP_GODOT=0
+    SKIP_XCODE=0
     ST_PASS=0
     ST_FAIL=0
     st_ok()  { printf '  \033[32mPASS\033[0m %s\n' "$*"; ST_PASS=$((ST_PASS + 1)); }
@@ -1104,6 +1136,11 @@ if [ "${DN2CPP_STUB_CRI_RUNNER:-0}" = 1 ]; then
         fi
     done
 fi
+if [ "${DN2CPP_STUB_XCODE_RUNNER:-0}" = 1 ] && [ "${SKIP_XCODE:-0}" != 1 ]; then
+    for name in ios-sim-console godot-ios-export godot-ios-sim godot-editor-export-ios; do
+        printf '%s 1 ran\n' "$name" >> "$LOGDIR/_timings.txt"
+    done
+fi
 printf '%s\n' "$CONFIG" >> "$(dirname "$LOGDIR")/_stub_calls.txt"
 eval "exit \${DN2CPP_STUB_RC_$CONFIG:-0}"
 STUB
@@ -1267,7 +1304,8 @@ GFSTUB
     # e2e NAME EXPECT_RC RELEASE_RC DEBUG_RC EXPECT_CALLS [EXTRA_ARG] [CULTURE_RC] [SELFHOST_RC]
     e2e() {
         local name="$1" want_rc="$2" rel_rc="$3" dbg_rc="$4" want_calls="$5" extra="${6:-}" cult="${7:-0}" sh_rc="${8:-0}"
-        local root="$ST_TMP/e2e-$name" rc=0 calls
+        local root="$ST_TMP/e2e-$name" rc=0 calls xcode_base=--require-xcode
+        [ "${DN2CPP_STUB_XCODE_AUTO:-0}" != 1 ] || xcode_base=""
         mkdir -p "$root"
         rm -f "${DN2CPP_STUB_FORKROOT:-$ST_FORKROOT}/.stub-fork-fresh"
         DN2CPP_PREMERGE_SELFTEST=0 \
@@ -1282,7 +1320,7 @@ GFSTUB
         DN2CPP_STUB_EMSDK_READY="$root/_emsdk_ready" \
         DN2CPP_STUB_RC_Release="$rel_rc" \
         DN2CPP_STUB_RC_Debug="$dbg_rc" \
-            bash "$FAKE/gates/pre-merge.sh" $extra >"$root/_out.txt" 2>&1 || rc=$?
+            bash "$FAKE/gates/pre-merge.sh" $xcode_base $extra >"$root/_out.txt" 2>&1 || rc=$?
         # cat|tr, not `tr < file`: the culture-red case never reaches the runner,
         # so the file legitimately does not exist and a `<` redirection failure is
         # reported by the SHELL, where `2>/dev/null` on tr cannot reach it.
@@ -1538,6 +1576,48 @@ GFSTUB
     else
         st_bad "forkios-stale-artifact: refused without naming gates/setup-godot-fork-ios.sh"
     fi
+
+    say "Xcode gate selection"
+    for gate in "${XCODE_GATES[@]}"; do : > "$FAKE/$gate"; done
+    DN2CPP_STUB_IOS_KIND=artifact e2e xcode-skip 0 0 0 "Debug," --skip-xcode
+    if grep -q '^gates:   2 per config$' "$ST_TMP/e2e-xcode-skip/_receipt.txt" \
+        && [ "$(grep -c '^excluded: gates/build-and-run-.*\.sh$' "$ST_TMP/e2e-xcode-skip/_receipt.txt")" = 4 ] \
+        && ! grep -q 'forkios=RED' "$ST_TMP/e2e-xcode-skip/_out.txt"; then
+        st_ok "--skip-xcode excludes four named gates and their template preflight"
+    else
+        st_bad "--skip-xcode count, receipt, or template preflight is wrong"
+    fi
+    DN2CPP_STUB_IOS_KIND=artifact e2e xcode-skip-nongodot 0 0 0 "Debug," \
+        "--skip-xcode --skip-godot"
+    if grep -q '^scope:   non-Godot; 3 Godot gates excluded$' \
+        "$ST_TMP/e2e-xcode-skip-nongodot/_receipt.txt" \
+        && grep -q '^Xcode:   1 gate(s) excluded (skip selection)$' \
+            "$ST_TMP/e2e-xcode-skip-nongodot/_receipt.txt" \
+        && grep -q '^excluded: gates/build-and-run-ios-sim-console.sh$' \
+            "$ST_TMP/e2e-xcode-skip-nongodot/_receipt.txt"; then
+        st_ok "combined scope counts the iOS console gate once"
+    else
+        st_bad "combined Godot/Xcode scope double-counted or omitted a gate"
+    fi
+    DN2CPP_STUB_XCODE_RUNNER=1 e2e xcode-include 0 0 0 "Debug," --require-xcode
+    if grep -q '^gates:   6 per config$' "$ST_TMP/e2e-xcode-include/_receipt.txt" \
+        && grep -q '^Xcode:   selected (require selection)$' "$ST_TMP/e2e-xcode-include/_receipt.txt"; then
+        st_ok "--require-xcode selects all four gates"
+    else
+        st_bad "--require-xcode did not select all four gates"
+    fi
+    mkdir -p "$ST_TMP/no-xcode"
+    printf '#!/usr/bin/env bash\nexit 1\n' > "$ST_TMP/no-xcode/xcodebuild"
+    chmod +x "$ST_TMP/no-xcode/xcodebuild"
+    PATH="$ST_TMP/no-xcode:$PATH" DN2CPP_STUB_XCODE_AUTO=1 \
+        DN2CPP_STUB_IOS_KIND=artifact e2e xcode-auto-absent 0 0 0 "Debug,"
+    if grep -q '^Xcode:   4 gate(s) excluded (auto selection)$' \
+        "$ST_TMP/e2e-xcode-auto-absent/_receipt.txt"; then
+        st_ok "auto selection excludes Xcode gates when xcodebuild is unusable"
+    else
+        st_bad "auto selection did not exclude Xcode gates without Xcode"
+    fi
+    for gate in "${XCODE_GATES[@]}"; do rm "$FAKE/$gate"; done
 
     # The Web templates, on a box with no mutable Emscripten SDK. The SDK is
     # provisioned, not refused: the phase runs gates/setup-emsdk.sh once, re-probes,
@@ -2405,8 +2485,13 @@ note "repo:   $REPO"
 note "commit: $HEAD_BRANCH @ $HEAD_SHA$DIRTY"
 note "gates:  $EXPECTED_GATES"
 note "configs: $CONFIGS"
+if [ "$SKIP_XCODE" = 1 ]; then
+    note "Xcode:  $XCODE_EXCLUDED gate(s) excluded ($XCODE_SELECTION selection)."
+else
+    note "Xcode:  Xcode gates selected ($XCODE_SELECTION selection)."
+fi
 if [ "$SKIP_GODOT" = 1 ]; then
-    note "scope:  non-Godot; $EXCLUDED_GATES Godot gates excluded."
+    note "scope:  non-Godot; $GODOT_EXCLUDED Godot gates excluded."
     note "merge scope: PRs without Godot-specific changes."
 fi
 note "logs:   $LOGROOT"
@@ -2454,13 +2539,17 @@ if [ "$DRY_RUN" = "1" ]; then
             ;;
     esac
     if [ "$FORK_STATE" != "3" ]; then
-        printf '\n  godot fork iOS template (manual prerequisite):\n'
-        if premerge_fork_ios_state; then
-            printf '    current and host prerequisites are available\n'
-        elif [ "$FORK_IOS_KIND" = prerequisite ]; then
-            printf '    %s — a host prerequisite; this run would continue, and the iOS gates go red at the verdict\n' "$FORK_IOS_WHY"
+        if [ "$SKIP_XCODE" != 1 ]; then
+            printf '\n  godot fork iOS template (manual prerequisite):\n'
+            if premerge_fork_ios_state; then
+                printf '    current and host prerequisites are available\n'
+            elif [ "$FORK_IOS_KIND" = prerequisite ]; then
+                printf '    %s — a host prerequisite; this run would continue, and the iOS gates go red at the verdict\n' "$FORK_IOS_WHY"
+            else
+                printf '    %s — this pre-merge run would refuse before its suites\n' "$FORK_IOS_WHY"
+            fi
         else
-            printf '    %s — this pre-merge run would refuse before its suites\n' "$FORK_IOS_WHY"
+            printf '\n  godot fork iOS template: excluded with Xcode gates\n'
         fi
         premerge_fork_web_state
         printf '\n  godot fork web templates:\n'
@@ -2675,10 +2764,10 @@ fi
 # missing zip on a host with Xcode) refuses before the suites, rather than
 # converting the iOS gate's late REQUIRE_ALL skip into an hour-delayed surprise
 # over minutes of manual work. A missing HOST prerequisite cannot be repaired
-# here, so refusing would withhold every other gate for nothing: the run
-# continues, the iOS gates go red under REQUIRE_ALL, and the verdict names the
-# gap. Red, never skipped — the merge still needs a host that can run them.
-if [ "$INPUTS_RED" -eq 0 ] && ! premerge_fork_ios_state; then
+# here, so refusing would withhold every other selected gate for nothing: the
+# run continues, the iOS gates go red under REQUIRE_ALL, and the verdict names
+# the gap. This check runs only when the Xcode gates are selected.
+if [ "$INPUTS_RED" -eq 0 ] && [ "$SKIP_XCODE" != 1 ] && ! premerge_fork_ios_state; then
     if [ "$FORK_IOS_KIND" = prerequisite ]; then
         bad "fork iOS template: $FORK_IOS_WHY"
         note "A host prerequisite, not a repairable artifact: the suites still run,"
@@ -2809,6 +2898,9 @@ say "pre-merge verdict"
 note "commit:  $HEAD_BRANCH @ $HEAD_SHA$DIRTY"
 note "configs: $CONFIGS"
 note "results: $RESULTS"
+if [ "$SKIP_XCODE" = 1 ]; then
+    note "Xcode:   $XCODE_EXCLUDED gate(s) excluded; not counted as passed."
+fi
 [ "$OPTIONAL_CRI_SKIP_COUNT" -eq 0 ] || printf '%s' "$OPTIONAL_CRI_SKIPS"
 note "elapsed: ${ELAPSED}s"
 
@@ -2819,7 +2911,7 @@ if [ "$OVERALL" -eq 0 ]; then
     {
         if [ "$SKIP_GODOT" = 1 ]; then
             printf 'dn2cpp NON-GODOT PRE-MERGE PASSED\n'
-            printf 'scope:   non-Godot; %s Godot gates excluded\n' "$EXCLUDED_GATES"
+            printf 'scope:   non-Godot; %s Godot gates excluded\n' "$GODOT_EXCLUDED"
             printf 'merge scope: PRs without Godot-specific changes\n'
         else
             printf 'dn2cpp pre-merge PASSED\n'
@@ -2829,6 +2921,18 @@ if [ "$OVERALL" -eq 0 ]; then
         printf 'repo:    %s\n' "$REPO"
         printf 'commit:  %s @ %s%s\n' "$HEAD_BRANCH" "$HEAD_SHA" "$DIRTY"
         printf 'gates:   %s per config\n' "$EXPECTED_GATES"
+        if [ "$SKIP_XCODE" = 1 ]; then
+            printf 'Xcode:   %s gate(s) excluded (%s selection)\n' "$XCODE_EXCLUDED" "$XCODE_SELECTION"
+            for gate in "${XCODE_GATES[@]}"; do
+                [ -f "$REPO/$gate" ] || continue
+                if [ "$SKIP_GODOT" = 1 ]; then
+                    case " ${GODOT_GATES[*]} " in *" $gate "*) continue ;; esac
+                fi
+                printf 'excluded: %s\n' "$gate"
+            done
+        else
+            printf 'Xcode:   selected (%s selection)\n' "$XCODE_SELECTION"
+        fi
         printf 'configs: %s\n' "$CONFIGS"
         printf 'culture: %s\n' "$CULTURE_NOTE"
         # Which sources the binary the fork lane ran on was built from: a green
@@ -2853,7 +2957,7 @@ if [ "$OVERALL" -eq 0 ]; then
         good "NON-GODOT PRE-MERGE PASSED — $CONFIGS, $EXPECTED_GATES gates per config; merge scope: PRs without Godot-specific changes."
     else
         if [ "$OPTIONAL_CRI_SKIP_COUNT" -eq 0 ]; then
-            good "PRE-MERGE PASSED — $CONFIGS, $EXPECTED_GATES gates per config, every gate ran."
+            good "PRE-MERGE PASSED — $CONFIGS, $EXPECTED_GATES selected gates per config ran."
         else
             good "PRE-MERGE PASSED — $CONFIGS, $EXPECTED_GATES gates per config, $OPTIONAL_CRI_SKIP_COUNT CRI skips (SDK not installed)."
         fi

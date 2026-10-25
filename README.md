@@ -1205,7 +1205,10 @@ The merge gate runs Debug by default. For PRs that change no Godot-specific
 files, a passing `./gates/pre-merge.sh --skip-godot` is sufficient to merge;
 coding agents may run this strict non-Godot check autonomously for any change.
 Godot-specific changes require a human-run `./gates/pre-merge.sh` on a machine
-with the Godot toolchains. `AGENTS.md` defines the file scope, and hosted smoke
+with the Godot toolchains. Xcode-only gates are excluded when Xcode is absent;
+the receipt names them, and Windows/Linux can satisfy the Godot-inclusive
+check. `--skip-xcode` excludes them explicitly and `--require-xcode` selects
+them even without Xcode. `AGENTS.md` defines the file scope, and hosted smoke
 CI does not replace either merge check. For local verification:
 
 ```bash

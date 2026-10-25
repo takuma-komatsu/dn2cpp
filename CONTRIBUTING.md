@@ -43,20 +43,21 @@ checks outside the basic allowlist. Missing optional prerequisites remain
 reported as skips in its summary and logs. Scheduled and manual runs use a
 separate concurrency group, so a new push cannot cancel them.
 
-The Godot-inclusive merge gate — `./gates/pre-merge.sh` — does not run there and
-cannot. Its header states each structural reason (a scons-built dn2cpp fork of
-the Godot editor, Xcode plus an iOS simulator, an Android NDK);
-read it there rather than trusting a summary. A human runs it on a
-provisioned machine. The Emscripten SDK is the one prerequisite pre-merge
-provisions itself (`gates/setup-emsdk.sh`); a host missing any other one still
-runs to completion, and the surfaces it cannot cover are reported red at the
-verdict. The proprietary CRI SDK is optional: when absent, CRI gates are
+The Godot-inclusive merge gate — `./gates/pre-merge.sh` — does not run in
+hosted smoke CI. A human runs it on a provisioned desktop host. Xcode-dependent
+gates are excluded automatically when Xcode is unavailable, allowing Windows
+and Linux hosts to complete the merge check. On a host with Xcode they remain
+strict. Use `--skip-xcode` to exclude them explicitly, or `--require-xcode` to
+include them even when Xcode is unavailable. The receipt lists each excluded
+gate, and excluded gates are not counted as passed. Pre-merge provisions the
+Emscripten SDK itself (`gates/setup-emsdk.sh`); a host missing another required
+prerequisite still runs to completion, and uncovered surfaces are reported
+red at the verdict. The proprietary CRI SDK is optional: when absent, CRI gates are
 reported as skips and their Web templates are not prepared. With the SDK
 installed, CRI gates run under the same strict checks as the rest of the suite;
 failures, missing other prerequisites and incomplete coverage remain red.
 
-So a green pull request is not permission to merge — and equally, a pull request
-never goes red over a toolchain you cannot install.
+Hosted smoke CI alone is not permission to merge.
 
 Running this much locally is enough:
 
@@ -70,7 +71,8 @@ The merge gate runs Debug by default, enabling the shared-generics assertions
 while running the suite once. Use `CONFIG=Release ./gates/pre-merge.sh` for
 Release only, or `./gates/pre-merge.sh --both-configs` for Release followed by
 Debug. All selections disable caching and require every selected gate to run,
-except for the reported CRI skips when its SDK is absent.
+except for the reported CRI skips when its SDK is absent. Xcode gates omitted
+by host selection or `--skip-xcode` are outside the selected suite.
 
 For a PR that changes no Godot-specific files, a passing default Debug
 `./gates/pre-merge.sh --skip-godot` is sufficient to merge. Coding agents may

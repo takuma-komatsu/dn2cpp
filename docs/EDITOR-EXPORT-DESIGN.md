@@ -829,12 +829,13 @@ same base with unchanged engine sources, needs no separate cache procedure:
 before its suites and refreshes the desktop cache and stock Web pair
 when a stamp disagrees. It also refreshes the CRI Web pair when the proprietary
 CRI SDK is installed; absent SDKs leave CRI gates as reported skips.
-An engine edit also makes the iOS template stale. That repair
-stays manual because it consumes Xcode and an official templates archive. On a
-host with Xcode, pre-merge refuses before its suites and names
+An engine edit also makes the iOS template stale. That repair stays manual
+because it consumes Xcode and an official templates archive. When Xcode gates
+are selected, pre-merge refuses before its suites and names
 `gates/setup-godot-fork-ios.sh` rather than discovering the stale template
-inside the iOS gate; on a host without Xcode nothing can be repaired, so the
-suites run to completion and the iOS gates are reported red at the verdict.
+inside an iOS gate. Without Xcode, pre-merge excludes those gates and records
+the exclusion in its receipt. `--require-xcode` selects them even on a host
+without Xcode, where missing prerequisites remain red at the verdict.
 
 That predicate is also what makes forgetting *impossible* rather than merely
 unnecessary. `godot_fork_preflight` runs it inside every export gate, live and
