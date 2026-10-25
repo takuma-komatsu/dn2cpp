@@ -8612,16 +8612,39 @@ Dn2CppType* dn2cpp_propref_property_type(Dn2CppPropRef* p)
     return dn2cpp_get_type_from_handle(dn2cpp_property_signature_type(dn2cpp_propref_require(p), p->reflectedType));
 }
 
+static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_propref_visible_accessor(
+    Dn2CppPropRef* p, bool setter)
+{
+    const auto property = dn2cpp_propref_require(p);
+    const auto method = setter ? p->setter : p->getter;
+    if (method != nullptr
+        && p->reflectedType != dn2cpp_invoke_declaring(property->declaringType, p->reflectedType)
+        && (method->attrs & DN2CPP_MTHA_PRIVATE) != 0)
+        return {};
+    return method;
+}
+
+static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_propref_required_accessor(
+    Dn2CppPropRef* p, bool setter)
+{
+    const auto method = dn2cpp_propref_visible_accessor(p, setter);
+    if (method == nullptr)
+    {
+        if ((setter ? p->setter : p->getter) == nullptr)
+            dn2cpp_throw_invalid_operation();
+        dn2cpp_throw_argument();
+    }
+    return method;
+}
+
 int32_t dn2cpp_propref_can_read(Dn2CppPropRef* p)
 {
-    dn2cpp_propref_require(p);
-    return p->getter != nullptr ? 1 : 0;
+    return dn2cpp_propref_visible_accessor(p, false) != nullptr ? 1 : 0;
 }
 
 int32_t dn2cpp_propref_can_write(Dn2CppPropRef* p)
 {
-    dn2cpp_propref_require(p);
-    return p->setter != nullptr ? 1 : 0;
+    return dn2cpp_propref_visible_accessor(p, true) != nullptr ? 1 : 0;
 }
 
 // PropertyInfo.GetGetMethod/GetSetMethod: wrap the accessor's method-table entry
@@ -8631,14 +8654,10 @@ Dn2CppMethodRef* dn2cpp_propref_accessor(Dn2CppPropRef* p, int32_t setter, int32
 {
     const auto property = dn2cpp_propref_require(p);
     dn2cpp_require_metadata(property->declaringType);
-    Dn2CppMetadataHandle<Dn2CppMethodInfo> m = setter != 0 ? p->setter : p->getter;
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> m = dn2cpp_propref_visible_accessor(p, setter != 0);
     if (m == nullptr)
         return nullptr;
     if (nonPublic == 0 && (m->attrs & DN2CPP_MTHA_PUBLIC) == 0)
-        return nullptr;
-    // Private accessors are not inherited, even when non-public methods are requested.
-    if (p->reflectedType != dn2cpp_invoke_declaring(property->declaringType, p->reflectedType)
-        && (m->attrs & DN2CPP_MTHA_PRIVATE) != 0)
         return nullptr;
     // The accessor inherits the PROPERTY handle's reflected type, so
     // typeof(D).GetProperty("P").GetGetMethod() is the same instance as
@@ -8662,15 +8681,15 @@ Dn2CppArrayRef* dn2cpp_propref_get_accessors(Dn2CppPropRef* p, int32_t nonPublic
 
 Dn2CppObject* dn2cpp_propref_get_value(Dn2CppPropRef* p, Dn2CppObject* obj)
 {
-    dn2cpp_propref_require(p);
-    return dn2cpp_invoke_mi(p->getter, obj, nullptr, 0, true, p->reflectedType);
+    const auto getter = dn2cpp_propref_required_accessor(p, false);
+    return dn2cpp_invoke_mi(getter, obj, nullptr, 0, true, p->reflectedType);
 }
 
 void dn2cpp_propref_set_value(Dn2CppPropRef* p, Dn2CppObject* obj, Dn2CppObject* value)
 {
-    dn2cpp_propref_require(p);
+    const auto setter = dn2cpp_propref_required_accessor(p, true);
     Dn2CppObject* args[1] = { value };
-    dn2cpp_invoke_mi(p->setter, obj, args, 1, true, p->reflectedType);
+    dn2cpp_invoke_mi(setter, obj, args, 1, true, p->reflectedType);
 }
 
 // PropertyInfo.GetIndexParameters(): the indexer parameters, read off the
@@ -8711,8 +8730,8 @@ Dn2CppObject* dn2cpp_propref_get_value_indexed(Dn2CppPropRef* p, Dn2CppObject* o
                                                bool wrapExceptions)
 {
     dn2cpp_reflection_check_binder(binder);
-    dn2cpp_propref_require(p);
-    return dn2cpp_invoke_mi(p->getter, obj,
+    const auto getter = dn2cpp_propref_required_accessor(p, false);
+    return dn2cpp_invoke_mi(getter, obj,
                             (index == nullptr) ? nullptr : index->data,
                             (index == nullptr) ? 0 : index->length, wrapExceptions, p->reflectedType);
 }
@@ -8722,6 +8741,7 @@ void dn2cpp_propref_set_value_indexed(Dn2CppPropRef* p, Dn2CppObject* obj, Dn2Cp
                                       bool wrapExceptions)
 {
     dn2cpp_reflection_check_binder(binder);
+    const auto setter = dn2cpp_propref_required_accessor(p, true);
     int32_t n = (index == nullptr) ? 0 : index->length;
     // The setter's signature is (indices..., value): cap indexer arity at a
     // generous fixed bound rather than allocating (real indexers are tiny).
@@ -8731,8 +8751,7 @@ void dn2cpp_propref_set_value_indexed(Dn2CppPropRef* p, Dn2CppObject* obj, Dn2Cp
     for (int32_t i = 0; i < n; i++)
         args[i] = index->data[i];
     args[n] = value;
-    dn2cpp_propref_require(p);
-    dn2cpp_invoke_mi(p->setter, obj, args, n + 1, wrapExceptions, p->reflectedType);
+    dn2cpp_invoke_mi(setter, obj, args, n + 1, wrapExceptions, p->reflectedType);
 }
 
 // ---- reflection: events ----

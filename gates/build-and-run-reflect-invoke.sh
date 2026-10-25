@@ -16,6 +16,7 @@
 # Virtual delegate equality and removal retain the selected method under identical-code folding.
 # Reflected events retain visibility, accessor identity, symbolic owners and guarded subscription.
 # Property accessor arrays retain visibility, order, reflected handle identity and boxed invocation.
+# Inherited private property accessors agree across capability, method and value queries.
 # Property enumeration hides by name and signature while preserving indexer overloads and binding flags.
 # Named method enumerations retain only their selection; type-name case choices keep each known branch.
 # Delegate method names select strict signatures, inherited private methods and virtual slots.
@@ -2304,6 +2305,28 @@ reflection_layout_axis=default
 bash gates/fixtures/reflection-gate-inputs.sh "$py"
 DN2CPP_STRICT_COMPLETION=1 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|strict-completion" \
     corelib_diff_gate ReflectInvoke --no-ildiet --link-xml samples/dotnet/ReflectInvoke/link.xml System.ComponentModel.TypeConverter System.Linq System.Threading.Tasks.Parallel
+for axis in native dotnet; do
+    if [ "$axis" = native ]; then
+        run_bounded "$_CG_OUT/ReflectInvoke$EXE_EXT" before-inherited-private-accessors \
+            > "$_CG_OUT/private-accessors-before.$axis.stdout"
+    else
+        reflection_oracle "$_CG_APP" before-inherited-private-accessors \
+            > "$_CG_OUT/private-accessors-before.$axis.stdout"
+    fi
+    sed '/^== inherited private property accessors ==$/,$d' "$_CG_OUT/gate.$axis.stdout" \
+        > "$_CG_OUT/private-accessors-prefix.$axis.stdout"
+    diff -u <(strip_cr_win_file "$_CG_OUT/private-accessors-before.$axis.stdout") \
+        <(strip_cr_win_file "$_CG_OUT/private-accessors-prefix.$axis.stdout")
+    reflection_assert_lines "$_CG_OUT/gate.$axis.stdout" 1 \
+        '== inherited private property accessors ==' \
+        'inherited setter capabilities=True/False methods=True/False' \
+        'inherited getter capabilities=False/True methods=False/True' \
+        'inherited index setter capabilities=True/False methods=True/False' \
+        'inherited index getter capabilities=False/True methods=False/True' \
+        'cold inherited setter capabilities=True/False methods=True/False' \
+        'cold inherited getter capabilities=False/True methods=False/True' \
+        'inherited private property accessors end'
+done
 typeconverter="$(dirname "$_CG_CORELIB")/System.ComponentModel.TypeConverter.dll"
 
 if reflection_full_profile; then
