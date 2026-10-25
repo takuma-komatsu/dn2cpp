@@ -147,7 +147,8 @@ grep -q "error: .*PtrOverExplicit: explicit Size=4 over fields ending at byte 9 
 echo "fields-past-Size refusal OK: exit 2, named type, Size, field end, total and alignment"
 
 gate_capture_diff_output() {
-    local native="$3"
+    local native
+    native=$(strip_cr_win "$3")
     [[ "$native" == *$'known=31\nretained=1\nretained=47' ]] \
         || { echo "FAIL: Type-based PtrToStructure box dispatch block did not run" >&2; exit 1; }
 }
