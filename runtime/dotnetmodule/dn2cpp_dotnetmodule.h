@@ -3,9 +3,9 @@
 // backend emits a godotsharp_game_main_init export into generated.cpp — the
 // entry the engine's mono module calls on the library it loads in place of the
 // hostfxr-managed game assembly (NativeAOT drop-in style). This unit provides
-// the small host-side pieces that entry and the per-frame callback need: GC
-// thread registration for engine threads and the wrapped frame callback that
-// drains managed finalizers on the engine's main thread.
+// the small host-side pieces that entry needs: GC thread registration for engine
+// threads and wrapped frame/shutdown callbacks that drain managed finalizers on
+// the engine's main thread.
 
 #pragma once
 
@@ -29,6 +29,12 @@ void dn2cpp_dotnetmodule_thread_guard();
 // main-thread-affine) and then tail-calls the original managed callback.
 void dn2cpp_dm_set_managed_frame_callback(void (*callback)());
 void dn2cpp_dm_frame_callback();
+
+// CSharpLanguage::finalize calls this on the main thread after scene teardown,
+// before releasing script bindings and rendering servers. Drain pending managed
+// finalizers before the tracker disposes StringName and other interop helpers.
+void dn2cpp_dm_set_managed_shutdown_callback(void (*callback)());
+void dn2cpp_dm_shutdown_callback();
 
 // The main-thread SynchronizationContext bootstrap + drain. The managed
 // GodotTaskScheduler install stays cut (its TaskScheduler base is an intrinsic

@@ -1,4 +1,6 @@
 using System;
+using System.Globalization;
+using System.Threading;
 using Godot;
 
 // Drives the RefCounted lifetime battery synchronously in _Ready, printing one
@@ -35,8 +37,24 @@ public partial class LifetimeProbe : Node
     // conservative collector does not guarantee.
     private static MyResource[] _stress;
 
+    private const int ShutdownCount = 48;
+    private static Texture2D[] _shutdownTextures;
+    private static ShutdownWitness[] _shutdownWitnesses;
+    private static WeakReference<Texture2D>[] _shutdownWeak;
+    private static WeakReference<ShutdownWitness>[] _shutdownWitnessWeak;
+    private static int[] _shutdownFinalized;
+    private static int _shutdownMainThread;
+    private string _shutdownMode;
+    private int _shutdownFrames;
+
     public override void _Ready()
     {
+        _shutdownMode = System.Environment.GetEnvironmentVariable("DN2CPP_DM_SHUTDOWN_MODE");
+        if (!string.IsNullOrEmpty(_shutdownMode))
+        {
+            ShutdownReady();
+            return;
+        }
         MyResource.Ran = new bool[LedgerSize];
         SwapIdentity();
         SwapReleasePopulation();
@@ -45,6 +63,110 @@ public partial class LifetimeProbe : Node
         DisposeFlows();
         StressLoop();
         GD.Print("DN2CPP_DM_RC_DONE");
+    }
+
+    private void ShutdownReady()
+    {
+        CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+        CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+        _shutdownMainThread = System.Environment.CurrentManagedThreadId;
+        _shutdownTextures = new Texture2D[ShutdownCount];
+        _shutdownWitnesses = new ShutdownWitness[ShutdownCount];
+        _shutdownWeak = new WeakReference<Texture2D>[ShutdownCount];
+        _shutdownWitnessWeak = new WeakReference<ShutdownWitness>[ShutdownCount];
+        _shutdownFinalized = new int[ShutdownCount];
+        for (int i = 0; i < ShutdownCount; i++)
+        {
+            using var image = Image.CreateEmpty(8, 8, false, Image.Format.Rgba8);
+            _shutdownTextures[i] = ImageTexture.CreateFromImage(image);
+            _shutdownWitnesses[i] = new ShutdownWitness(i);
+            _shutdownWeak[i] = new WeakReference<Texture2D>(_shutdownTextures[i]);
+            _shutdownWitnessWeak[i] = new WeakReference<ShutdownWitness>(_shutdownWitnesses[i]);
+        }
+        GD.Print($"DN2CPP_DM_SHUTDOWN_ALLOCATED mode={_shutdownMode} count={ShutdownCount}");
+    }
+
+    public override void _Process(double delta)
+    {
+        if (string.IsNullOrEmpty(_shutdownMode))
+            return;
+        _shutdownFrames++;
+        if (_shutdownFrames == 3)
+        {
+            if (_shutdownMode == "dispose")
+                for (int i = 0; i < ShutdownCount; i++)
+                {
+                    _shutdownTextures[i].Dispose();
+                    _shutdownTextures[i].Dispose();
+                    GC.SuppressFinalize(_shutdownWitnesses[i]);
+                }
+            if (_shutdownMode is "drop" or "collect" or "drain" or "dispose")
+            {
+                _shutdownTextures = null;
+                _shutdownWitnesses = null;
+            }
+            if (_shutdownMode is "collect" or "drain")
+                ShutdownCollect();
+            if (_shutdownMode == "drain")
+                GC.WaitForPendingFinalizers();
+        }
+        if (_shutdownFrames == 5)
+        {
+            GD.Print($"DN2CPP_DM_SHUTDOWN_QUIT mode={_shutdownMode}");
+            GetTree().Quit();
+        }
+    }
+
+    public override void _ExitTree()
+    {
+        if (string.IsNullOrEmpty(_shutdownMode))
+            return;
+        if (_shutdownMode is "exitcollect" or "exitdrain")
+        {
+            _shutdownTextures = null;
+            _shutdownWitnesses = null;
+            ShutdownCollect();
+            if (_shutdownMode == "exitdrain")
+                GC.WaitForPendingFinalizers();
+        }
+        GD.Print($"DN2CPP_DM_SHUTDOWN_EXIT mode={_shutdownMode}");
+    }
+
+    private static bool ShutdownWeakEmpty()
+    {
+        for (int i = 0; i < ShutdownCount; i++)
+            if (_shutdownWeak[i].TryGetTarget(out _) || _shutdownWitnessWeak[i].TryGetTarget(out _))
+                return false;
+        return true;
+    }
+
+    private void ShutdownCollect()
+    {
+        for (int i = 0; i < 8; i++)
+        {
+            Stomp(128);
+            GC.Collect();
+            if (ShutdownWeakEmpty())
+                break;
+        }
+        GD.Print($"DN2CPP_DM_SHUTDOWN_COLLECT mode={_shutdownMode} weakEmpty={ShutdownWeakEmpty()}");
+    }
+
+    private sealed class ShutdownWitness
+    {
+        private readonly int _id;
+
+        public ShutdownWitness(int id)
+        {
+            _id = id;
+        }
+
+        ~ShutdownWitness()
+        {
+            int count = Interlocked.Increment(ref _shutdownFinalized[_id]);
+            // Share the tracker's logger so buffering cannot reorder the observed shutdown.
+            GD.Print($"DN2CPP_DM_SHUTDOWN_FINALIZER id={_id} once={count == 1} main={System.Environment.CurrentManagedThreadId == _shutdownMainThread}");
+        }
     }
 
     // Counts the ids of one population whose finalizer ran, out of the ledger

@@ -181,6 +181,7 @@ internal sealed class DotnetModuleBackend : IEmitBackend
     private MethodInfo? _pushError;
     private string? _nativeCtorNotFound;
     private int? _frameCallbackSlot;
+    private int? _shutdownCallbackSlot;
     private string _appAssemblyName = "";
 
     /// <summary>The source-generated <c>GodotPlugins.Game.Main</c> class carries the
@@ -245,6 +246,8 @@ internal sealed class DotnetModuleBackend : IEmitBackend
         // wrapping whatever callback now sits at the old index.
         _frameCallbackSlot = ResolveInstanceFieldOrdinal(
             _managedCallbacksCreate.DeclaringClass, "ScriptManagerBridge_FrameCallback");
+        _shutdownCallbackSlot = ResolveInstanceFieldOrdinal(
+            _managedCallbacksCreate.DeclaringClass, "DisposablesTracker_OnGodotShuttingDown");
         // The host-boundary error sink (dn2cpp_core.h). GodotSharp's own bridge
         // callbacks end in `catch (Exception e) { ExceptionUtils.LogException(e); }`,
         // so dn2cpp's own boundaries route through the same pair: script-debugger
@@ -893,6 +896,12 @@ internal sealed class DotnetModuleBackend : IEmitBackend
         sb.AppendLine("        dn2cpp_dm_set_managed_frame_callback(");
         sb.AppendLine($"            reinterpret_cast<void (*)()>((uintptr_t)((const void**)out_managed_callbacks)[{frameSlot}]));");
         sb.AppendLine($"        ((const void**)out_managed_callbacks)[{frameSlot}] = (const void*)&dn2cpp_dm_frame_callback;");
+        int shutdownSlot = _shutdownCallbackSlot
+            ?? throw new InvalidOperationException("AdditionalRootMethods did not run before EmitEpilogue");
+        sb.AppendLine("        // Finish pending finalizers before the tracker disposes interop helpers.");
+        sb.AppendLine("        dn2cpp_dm_set_managed_shutdown_callback(");
+        sb.AppendLine($"            reinterpret_cast<void (*)()>((uintptr_t)((const void**)out_managed_callbacks)[{shutdownSlot}]));");
+        sb.AppendLine($"        ((const void**)out_managed_callbacks)[{shutdownSlot}] = (const void*)&dn2cpp_dm_shutdown_callback;");
         sb.AppendLine("        dn2cpp_dm_trace(\"managed callbacks written\");");
         sb.AppendLine("        // Register the game assembly's script classes. An Assembly is modeled");
         sb.AppendLine("        // as its simple-name handle (see CppTypes: System.Reflection.Assembly).");

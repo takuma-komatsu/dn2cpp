@@ -62,6 +62,23 @@ void dn2cpp_dm_set_managed_frame_callback(void (*callback)())
     g_managed_frame_callback = callback;
 }
 
+static void (*g_managed_shutdown_callback)() = nullptr;
+
+void dn2cpp_dm_set_managed_shutdown_callback(void (*callback)())
+{
+    g_managed_shutdown_callback = callback;
+}
+
+void dn2cpp_dm_shutdown_callback()
+{
+    dn2cpp_dotnetmodule_thread_guard();
+    // Organic collections may still have Boehm callbacks awaiting invocation;
+    // Wait transfers them to the manual queue before draining its snapshot.
+    dn2cpp_gc_wait_for_pending_finalizers();
+    if (g_managed_shutdown_callback != nullptr)
+        g_managed_shutdown_callback();
+}
+
 // The generated SynchronizationContext pump — see the header. Written once
 // during init, called once per frame on the engine main thread.
 static void (*g_sync_ctx_pump)() = nullptr;

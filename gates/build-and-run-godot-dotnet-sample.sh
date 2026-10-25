@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Script registration constructs framework attributes named by later body scans.
 # Code-created nested nodes retain bridge metadata methods on allocation.
+# ExitTree collections drain before shutdown disposes Godot's tracked helpers.
 # Godot .NET-module (mono module) scripted-node E2E gate: a real engine binary
 # built from the pinned godotengine/godot clone loads the dn2cpp-produced
 # mono-module library, and a scene whose nodes carry real C# scripts
@@ -562,6 +563,10 @@ if grep -qE "Can't open|dynamic library not found" "$STAGED_LOG"; then
     cat "$STAGED_LOG" >&2; exit 1
 fi
 echo "   the game's own GDExtension loads from the drop-in run dir after staging"
+
+echo "== Shutdown finalizers (native / CLR, same release template and pack) =="
+source "$(dirname "$0")/_godot_dotnet_shutdown.sh"
+godot_dotnet_shutdown_gate "$OUT" "$ARCH" "$DYLIB"
 
 gate_cache_commit
 echo "OK"
