@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Method attribute inheritance honors override chains and AttributeUsage without constructing IsDefined results.
+# Type.GetType(name, throwOnError, ignoreCase) keeps caller/CoreLib lookup and case-collision order.
+# Forwarded names resolve in the target assembly again after the source finds a match.
 # Nonempty string MemberwiseClone copies preserve UTF-16 contents and collection safety natively.
 # Runtime generic template invocation, member rows, hidden contexts and boxed-value copies.
 # Assembly.Load distinguishes null AssemblyName objects and missing/empty simple names.
@@ -322,6 +324,8 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|template-arguments-prefix-
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|template-signature-allocation-prefix-argv:before-template-signature-allocation|uninitialized-template-outcomes"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|forbidden-generic-arguments-prefix-argv:before-forbidden-generic-arguments"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|string-clone-copies-native-argv:string-clone-copies"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|type-gettype-ignorecase|before-type-gettype-ignorecase"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/TypeGetTypeIgnoreCase/TypeGetTypeIgnoreCase.csproj samples/dotnet/TypeGetTypeIgnoreCase/Program.cs samples/dotnet/TypeGetTypeIgnoreCase/ShadowCoreType.cs samples/dotnet/TypeGetTypeIgnoreCase/PaddingTypes.cs samples/dotnet/TypeGetTypeIgnoreCase/ForwardedNestedTypes.cs samples/dotnet/TypeGetTypeIgnoreCaseForwarder/TypeGetTypeIgnoreCaseForwarder.csproj samples/dotnet/TypeGetTypeIgnoreCaseForwarder/Forwarder.cs samples/dotnet/TypeGetTypeIgnoreCaseForwarded/TypeGetTypeIgnoreCaseForwarded.csproj samples/dotnet/TypeGetTypeIgnoreCaseForwarded/Program.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|template-constraint-fallbacks-prefix-argv:before-template-constraint-fallbacks"
 
 EXPFILE="$(dirname "$0")/expected/reflect-types.txt"
@@ -335,8 +339,37 @@ BCL=(System.Linq.Expressions System.Linq System.Collections \
 gate_string_clone_prefix_asserts() {
     local out="$1" before prefix
     before=$(run_bounded "$out/ReflectTypes$EXE_EXT")
+    before=$(awk '/^== Type.GetType throwOnError and ignoreCase ==$/ { exit } { print }' <<< "$before")
     prefix=$(awk '/^== safe string memberwise copies ==$/ { exit } { print }' "$EXPFILE")
     assert_output "$(strip_cr_win "$before")" "$prefix"
+}
+gate_type_gettype_ignorecase_asserts() {
+    local out="$1" native before prefix expected
+    native=$(run_bounded "$out/ReflectTypes$EXE_EXT" string-clone-copies) || return $?
+    prefix=$(awk '/^== Type.GetType throwOnError and ignoreCase ==$/ { exit } { print }' <<< "$(strip_cr_win "$native")")
+    before=$(awk '/^== Type.GetType throwOnError and ignoreCase ==$/ { exit } { print }' "$EXPFILE")
+    assert_output "$prefix" "$before" || return $?
+    native=$(run_bounded "$out/ReflectTypes$EXE_EXT" type-gettype-ignorecase) || return $?
+    expected=$(run_bounded dotnet "samples/dotnet/ReflectTypes/bin/$CONFIG/$TFM/ReflectTypes.dll" type-gettype-ignorecase) || return $?
+    assert_output "$(strip_cr_win "$native")" "$(strip_cr_win "$expected")" || return $?
+    grep -Fxq 'Type.GetType throwOnError and ignoreCase end' <<< "$(strip_cr_win "$native")" \
+        || { echo 'FAIL: Type.GetType ignoreCase section did not run' >&2; return 1; }
+    grep -Fq '{ "DelegateBaseTypeSubset.GenericOwner`1+Handler`1",' "$out/generated.cpp" \
+        || { echo 'FAIL: nested definition registry row missing' >&2; return 1; }
+    if grep -Fq '{ "DelegateBaseTypeSubset.GenericOwner`1",' "$out/generated.cpp"; then
+        echo 'FAIL: nested-name direct lookup no longer needs its missing-outer regression' >&2
+        return 1
+    fi
+    for name in 'Q.Alpha`1+Mid`1+Leaf`1' 'Q.aLpha`1+Mid`1+Leaf`1'; do
+        grep -Fq "{ \"$name\"," "$out/generated.cpp" \
+            || { echo "FAIL: nested collision leaf row missing: $name" >&2; return 1; }
+    done
+    for name in 'Q.Alpha`1' 'Q.Alpha`1+Mid`1' 'Q.aLpha`1' 'Q.aLpha`1+Mid`1'; do
+        if grep -Fq "{ \"$name\"," "$out/generated.cpp"; then
+            echo "FAIL: nested collision enclosing row unexpectedly retained: $name" >&2
+            return 1
+        fi
+    done
 }
 gate_intrinsic_template_row_asserts() {
     local row=$'\tSystem.Type.MakeGenericType(Type[])\tSystem.Collections.Concurrent.BlockingCollection`1 is modeled by the runtime as one type for every instantiation, so MakeGenericType cannot form it\tconstruct the closed type directly instead of through MakeGenericType'
@@ -348,10 +381,53 @@ gate_intrinsic_template_row_asserts() {
 }
 gate_extra_asserts() {
     gate_string_clone_prefix_asserts "$1"
+    gate_type_gettype_ignorecase_asserts "$1"
     gate_intrinsic_template_row_asserts "$1"
 }
 DN2CPP_GATE_RUN_ARGS=string-clone-copies \
     corelib_freeze_gate ReflectTypes "$EXPFILE" "${BCL[@]}" --no-ildiet "${ATTRIBUTE_ENUMERATION_KEEP[@]}"
+unset -f gate_extra_asserts
+
+gate_extra_asserts() {
+    local native
+    native=$(run_bounded "$1/TypeGetTypeIgnoreCase$EXE_EXT") || return $?
+    grep -Fxq 'grown bucket=TypeCaseCollision.gROWTH' <<< "$(strip_cr_win "$native")" \
+        || { echo 'FAIL: grown case-collision section did not run' >&2; return 1; }
+    grep -Fxq 'Type.GetType case collisions end' <<< "$(strip_cr_win "$native")" \
+        || { echo 'FAIL: Type.GetType case-collision section did not run' >&2; return 1; }
+}
+corelib_diff_gate TypeGetTypeIgnoreCase --no-ildiet
+DN2CPP_OUT_SUFFIX=-diet corelib_diff_gate TypeGetTypeIgnoreCase
+unset -f gate_extra_asserts
+
+gate_extra_asserts() {
+    local native
+    native=$(run_bounded "$1/TypeGetTypeIgnoreCaseForwarded$EXE_EXT") || return $?
+    grep -Fxq 'forwarded folded target=True' <<< "$(strip_cr_win "$native")" \
+        || { echo 'FAIL: staged folded forwarder did not run' >&2; return 1; }
+    grep -Fxq 'forwarded folded source=False' <<< "$(strip_cr_win "$native")" \
+        || { echo 'FAIL: source definition displaced its forwarder' >&2; return 1; }
+    grep -Fxq 'nested folded local=True' <<< "$(strip_cr_win "$native")" \
+        || { echo 'FAIL: losing nested forwarder displaced the source leaf' >&2; return 1; }
+    grep -Fxq 'nested folded forwarded=False' <<< "$(strip_cr_win "$native")" \
+        || { echo 'FAIL: losing nested forwarder was selected' >&2; return 1; }
+    for name in 'Q.Alpha`1+Mid`1+Leaf`1' 'Q.aLpha`1+Mid`1+Leaf`1'; do
+        grep -Fq "{ \"$name\"," "$1/generated.cpp" \
+            || { echo "FAIL: staged nested leaf row missing: $name" >&2; return 1; }
+    done
+    for name in 'Q.Alpha`1' 'Q.Alpha`1+Mid`1' 'Q.aLpha`1' 'Q.aLpha`1+Mid`1'; do
+        if grep -Fq "{ \"$name\"," "$1/generated.cpp"; then
+            echo "FAIL: staged nested enclosing row unexpectedly retained: $name" >&2
+            return 1
+        fi
+    done
+    grep -Fxq 'Type.GetType staged forwarding end' <<< "$(strip_cr_win "$native")" \
+        || { echo 'FAIL: staged forwarder section did not finish' >&2; return 1; }
+}
+corelib_diff_gate TypeGetTypeIgnoreCaseForwarded \
+    -r "samples/dotnet/TypeGetTypeIgnoreCase/bin/$CONFIG/$TFM/TypeGetTypeIgnoreCase.dll" \
+    -r "samples/dotnet/TypeGetTypeIgnoreCaseForwarder/bin/$CONFIG/$TFM/TypeGetTypeIgnoreCaseForwarder.dll" \
+    --no-ildiet
 unset -f gate_extra_asserts
 
 # --trim-reflection arm. The flag ships ON for the Godot Web export, and its whole promise

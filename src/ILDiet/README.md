@@ -347,6 +347,11 @@ stripped/
     preservation.xml
 ```
 
+`preservation.xml` also carries an XML comment with the original type-name
+order and forwarding metadata. The transpiler reads it when consuming a
+stripped publication, so standalone and integrated preprocessing resolve
+folded type names from the same original metadata.
+
 After the graph freezes, ILDiet builds and validates a complete plan before
 applying changes. It writes a stage directory, rereads assembly identities and
 hashes the staged bytes. The generation hash covers ordered filenames and

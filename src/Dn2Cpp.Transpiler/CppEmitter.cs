@@ -5865,12 +5865,49 @@ internal sealed partial class CppEmitter
     private void EmitTypeRegistry(StringBuilder sb)
     {
         sb.AppendLine("// ---- type name registry (Type.GetType) ----");
-        var seen = new HashSet<string>(System.StringComparer.Ordinal);
-        var rows = new List<string>();
-        void Add(string name, string handle)
+        var seen = new HashSet<(string Name, string? Assembly)>();
+        var rows = new List<(string Name, string Handle, int Rank, bool ParentWinner)>();
+        var caseRanks = BuildTypeNameCaseRanks();
+        // Nested folded lookup compares siblings only after its exact parent is chosen.
+        var maxSiblingRanks = new Dictionary<(string Assembly, string Parent), Dictionary<string, int>>();
+        foreach (var entry in caseRanks)
         {
-            if (seen.Add(name))
-                rows.Add($"{{ \"{name}\", {handle} }}");
+            int plus = entry.Key.Name.LastIndexOf('+');
+            string parent = plus < 0 ? "" : entry.Key.Name.Substring(0, plus);
+            string simple = plus < 0 ? entry.Key.Name : entry.Key.Name.Substring(plus + 1);
+            var group = (entry.Key.Assembly, parent);
+            if (!maxSiblingRanks.TryGetValue(group, out var folded))
+            {
+                folded = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                maxSiblingRanks.Add(group, folded);
+            }
+            if (!folded.TryGetValue(simple, out int best) || entry.Value > best)
+                folded[simple] = entry.Value;
+        }
+        bool ParentWinner(string name, string? assembly)
+        {
+            if (assembly is null)
+                return true;
+            for (int plus = name.IndexOf('+'); plus >= 0; plus = name.IndexOf('+', plus + 1))
+            {
+                string ancestor = name.Substring(0, plus);
+                int parentCut = ancestor.LastIndexOf('+');
+                string parent = parentCut < 0 ? "" : ancestor.Substring(0, parentCut);
+                string simple = parentCut < 0 ? ancestor : ancestor.Substring(parentCut + 1);
+                if (caseRanks.TryGetValue((assembly, ancestor), out int parentRank)
+                    && maxSiblingRanks.TryGetValue((assembly, parent), out var folded)
+                    && folded.TryGetValue(simple, out int best) && parentRank < best)
+                    return false;
+            }
+            return true;
+        }
+        void Add(string name, string handle, string? assembly = null)
+        {
+            if (!seen.Add((name, assembly)))
+                return;
+            int rank = assembly is not null && caseRanks.TryGetValue((assembly, name), out int known)
+                ? known : 0;
+            rows.Add((name, handle, rank, ParentWinner(name, assembly)));
         }
         // The seed is DERIVED from the three runtime type-info tables, never listed here:
         // typeof asks them through ClassInfo.CppTypeInfoName, so a second list is a second
@@ -5880,15 +5917,15 @@ internal sealed partial class CppEmitter
         // resolved through this table, an unresolved one binds to null WITHOUT failing the
         // load, and eh_catch_matches aborts the process the first time it is tested.
         foreach (var (n, h) in CoreIntrinsics.RuntimeTypeInfoRows())
-            Add(n, h);
+            Add(n, h, "System.Private.CoreLib");
         // A runtime-template level's ti_ exists but is NOT a CLR type — the
         // synthesized clones register their closed names on the dynamic
         // side-chain at MakeGenericType time.
         foreach (var cls in EmittedClasses.Where(c => !c.IsEnum && !IsCanonicalWorld(c)
                      && !IsRuntimeTemplateLevel(c)))
-            Add(Compilation.ReflectionTypeName(cls), TypeInfoRef(cls, "type-name registry row"));
+            Add(Compilation.ReflectionTypeName(cls), TypeInfoRef(cls, "type-name registry row"), cls.Module.AssemblyName);
         foreach (var en in _c.ReferencedTypes.Where(c => c.IsEnum))
-            Add(Compilation.ReflectionTypeName(en), TypeInfoRef(en, "type-name registry row (enum)"));
+            Add(Compilation.ReflectionTypeName(en), TypeInfoRef(en, "type-name registry row (enum)"), en.Module.AssemblyName);
         // The minimal type-infos of the referenced intrinsics (StringBuilder, CultureInfo,
         // the SIMD vectors, …): a lowering already names each handle, so leaving them out
         // made Type.GetType answer null about a type typeof answers about — and, for a
@@ -5898,19 +5935,36 @@ internal sealed partial class CppEmitter
         // selects exactly the classes whose body-path type-info expression IS their own ti_.
         // Placed after the well-known and emitted rows, so this loop can only fill a gap.
         foreach (var c in _referencedIntrinsicTis)
-            Add(Compilation.ReflectionTypeName(c), TypeInfoRef(c, "type-name registry row (referenced intrinsic)"));
+            Add(Compilation.ReflectionTypeName(c), TypeInfoRef(c, "type-name registry row (referenced intrinsic)"), c.Module.AssemblyName);
         // Generic open-definition handles, keyed by the backtick CLR name so the
         // registry covers every closed instantiation's genericDef. Lets MakeGenericType
         // scan them and (parity with .NET) GetType("Namespace.Type`N") resolve the
         // definition. Populated by EmitTypeInfos, which runs before this method.
         foreach (var (defName, sym) in _genericDefSyms)
-            Add(defName, "&" + sym);
+            Add(defName, "&" + sym, _c.OpenGenericDefHandleByName(defName)?.Module.AssemblyName);
         // Per-element array type names: Type.GetType("System.Int32[]") etc.
         // resolve to the emitted ti_arr_ handle. Populated by EmitArrayTypeInfos (run by
         // EmitTypeInfos, which precedes this method).
         foreach (var (name, handle) in _arrayTypeSyms)
             Add(name, handle);
-        sb.AppendLine($"const Dn2CppTypeRegEntry dn2cpp_type_registry[] = {{ {string.Join(", ", rows)} }};");
+        var forwarders = BuildTypeForwarders(caseRanks,
+                new HashSet<string>(seen.Select(entry => entry.Name), StringComparer.OrdinalIgnoreCase))
+            .Select(row => $"{{ {CppUtf8Literal(row.Name)}, {CppUtf8Literal(row.Source)}, "
+                + $"{CppUtf8Literal(row.Target)}, {row.Rank}, "
+                + (ParentWinner(row.Name, row.Source) ? "true" : "false") + " }")
+            .ToArray();
+        if (forwarders.Length != 0)
+            sb.AppendLine($"static const Dn2CppTypeForwarder dn2cpp_type_forwarders[] = {{ {string.Join(", ", forwarders)} }};");
+        var registryRows = new List<string>(rows.Count);
+        for (int i = 0; i < rows.Count; i++)
+        {
+            var row = rows[i];
+            string forwarding = i == 0 && forwarders.Length != 0
+                ? $", dn2cpp_type_forwarders, {forwarders.Length}" : "";
+            registryRows.Add($"{{ \"{row.Name}\", {row.Handle}, {row.Rank}, "
+                + (row.ParentWinner ? "true" : "false") + forwarding + " }");
+        }
+        sb.AppendLine($"const Dn2CppTypeRegEntry dn2cpp_type_registry[] = {{ {string.Join(", ", registryRows)} }};");
         sb.AppendLine($"const int32_t dn2cpp_type_registry_count = {rows.Count};");
         sb.AppendLine();
         EmitBindingStandIns(sb);

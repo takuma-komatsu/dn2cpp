@@ -21,6 +21,7 @@
     <Compile Include="../Dn2Cpp.Transpiler/EnvKnobs.cs" Link="EnvKnobs.cs" />
     <Compile Include="../Dn2Cpp.Transpiler/StableHash.cs" Link="StableHash.cs" />
     <Compile Include="../Dn2Cpp.Transpiler/ILDietProtocol.cs" Link="ILDietProtocol.cs" />
+    <Compile Include="../Dn2Cpp.Transpiler/TypeNameSnapshot.cs" Link="TypeNameSnapshot.cs" />
     <Compile Include="../Dn2Cpp.Transpiler/ILDecoder.cs" Link="ILDecoder.cs" />
     <Compile Include="../Dn2Cpp.Transpiler/ReflectionApis.cs" Link="ReflectionApis.cs" />
     <Compile Include="../Dn2Cpp.Transpiler/ReflectionSummary.cs" Link="ReflectionSummary.cs" />

@@ -60,6 +60,7 @@ internal sealed class Module
     public required PEReader PE;
     public required MetadataReader Reader;
     public required string AssemblyName;
+    public required string Path;
     /// <summary>The compilation this module belongs to; a <see cref="ClassInfo"/> reaches it
     /// through here to decode its own members on demand. A field rather than a static for the
     /// same reason <see cref="TemplateDescs"/> is: the transpiler builds more than one
@@ -198,6 +199,7 @@ internal readonly record struct DelegateAdapter(MethodInfo Method, bool Closed, 
 internal sealed partial class Compilation
 {
     public List<Module> Modules { get; } = new();
+    public IReadOnlyList<string> OriginalAssemblyPaths { get; private set; } = Array.Empty<string>();
     public Module AppModule => Modules[0];
     public PEReader PE => AppModule.PE;
     public MetadataReader Reader => AppModule.Reader;
@@ -583,6 +585,7 @@ internal sealed partial class Compilation
             + $" shared-class-visits {_sharedClassDemandVisits} shared-method-visits {_sharedMethodDemandVisits}"
             + $" virtual-index-fallbacks {_virtualIndexFallbacks}";
         var loadSet = options.ResolvedLoadSet ?? AssemblyLoadSet.Resolve(assemblyPaths, options);
+        OriginalAssemblyPaths = loadSet.Paths.ToArray();
         foreach (var status in loadSet.DefaultRefStatus)
             _defaultRefStatus.Add(status.Key, status.Value);
         foreach (string path in options.ResolvedLoadSet is not null
@@ -842,6 +845,7 @@ internal sealed partial class Compilation
             PE = pe,
             Reader = reader,
             AssemblyName = reader.GetString(reader.GetAssemblyDefinition().Name),
+            Path = path,
             Owner = this,
         };
         Modules.Add(module);
