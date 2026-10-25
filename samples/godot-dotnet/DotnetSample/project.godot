@@ -9,6 +9,7 @@ run/main_scene="res://main.tscn"
 ; rejects every path/scene CLI override, so the packed main scene itself must be
 ; the scriptless handshake scene; its preset carries the "handshake" feature.
 run/main_scene.handshake="res://handshake.tscn"
+run/main_scene.lifetime_shutdown="res://lifetime-shutdown.tscn"
 config/features=PackedStringArray("4.7", "C#")
 
 [autoload]
