@@ -1378,6 +1378,8 @@ internal sealed class SummaryInterpreter
     private readonly bool[] _receiverOnly;
     private readonly byte[] _localPin;
     private readonly ImmutableArray<CliDefault> _localDefaults;
+    private readonly ImmutableArray<string> _localTypes;
+    private readonly ImmutableArray<string> _parameterTypes;
     private readonly bool _initLocals;
     private readonly byte[] _argPin;
     private readonly int _method;
@@ -1432,12 +1434,15 @@ internal sealed class SummaryInterpreter
         var definition = _r.GetMethodDefinition(method);
         var signature = definition.DecodeSignature(RawSignatureProvider.Instance, null);
         _hasThis = signature.Header.IsInstance;
+        _parameterTypes = signature.ParameterTypes;
         int declaring = SRME.GetToken(definition.GetDeclaringType());
         _thisClosure = _hasThis && _s.IsDisplayClass(declaring) ? declaring : 0;
         int argCount = signature.ParameterTypes.Length + (_hasThis ? 1 : 0);
         _initLocals = body.LocalVariablesInitialized;
         _localDefaults = body.LocalSignature.IsNil ? ImmutableArray<CliDefault>.Empty
             : _r.GetStandaloneSignature(body.LocalSignature).DecodeLocalSignature(CliDefaultProvider.Instance, null);
+        _localTypes = body.LocalSignature.IsNil ? ImmutableArray<string>.Empty
+            : _r.GetStandaloneSignature(body.LocalSignature).DecodeLocalSignature(RawSignatureProvider.Instance, null);
         int localCount = _localDefaults.Length;
         foreach (var insn in code)
             if (LocalIndex(insn) is int local && local >= localCount)
@@ -1830,7 +1835,10 @@ internal sealed class SummaryInterpreter
                 int arg = (int)insn.Operand;
                 var value = Pop();
                 if (arg < _args.Length && _argPin[arg] == 0)
-                    _args[arg] = value;
+                {
+                    int parameter = arg - (_hasThis ? 1 : 0);
+                    _args[arg] = parameter < 0 ? value : SlotStorageValue(value, _parameterTypes[parameter], op);
+                }
                 else
                     Escape(value);
                 if (_inTry[i])
@@ -1855,7 +1863,7 @@ internal sealed class SummaryInterpreter
                 int local = LocalIndex(insn)!.Value;
                 var value = Pop();
                 if (_localPin[local] == 0)
-                    _locals[local] = value;
+                    _locals[local] = local < _localTypes.Length ? SlotStorageValue(value, _localTypes[local], op) : value;
                 else
                     Escape(value);
                 if (_inTry[i])
@@ -3127,6 +3135,10 @@ internal sealed class SummaryInterpreter
         }
         return result;
     }
+
+    private RValue SlotStorageValue(RValue value, string type, ILOpCode op) => type is
+        "System.Byte" or "System.SByte" or "System.UInt16" or "System.Int16" or "System.Char"
+            ? StorageValue(value, type, op) : value;
 
     private RValue StorageValue(RValue value, string type, ILOpCode op)
     {

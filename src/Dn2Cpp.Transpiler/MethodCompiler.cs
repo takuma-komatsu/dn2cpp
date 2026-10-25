@@ -1677,7 +1677,7 @@ internal sealed partial class MethodCompiler : IEvalStack
     {
         var local = _locals[index];
         var value = Pop();
-        Emit($"{local.Name} = {CoerceTo(value, local.Type, local.CppType)};");
+        Emit($"{local.Name} = {CoerceToSlot(value, local.Type, local.CppType)};");
         if (_ftnOrigins.Count > 0 && CanHoldMethodAddress(local.Kind) && !_addressTakenLocals.Contains(index))
             Emit($"{local.Name}_delegate_tag = {value.DelegateTag ?? "0"};");
     }
@@ -2137,6 +2137,15 @@ internal sealed partial class MethodCompiler : IEvalStack
             _c.NoteStringInterfaces();
     }
 
+    // Promoted locals and arguments still truncate at their declared CLI storage width.
+    private string CoerceToSlot(StackEntry value, TypeDesc? type, string cppType)
+    {
+        if (type is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Byte or PrimitiveTypeCode.SByte
+            or PrimitiveTypeCode.UInt16 or PrimitiveTypeCode.Int16 or PrimitiveTypeCode.Char })
+            return CoerceTo(value, type, CppTypes.StorageOf(type));
+        return CoerceTo(value, type, cppType);
+    }
+
     private string CoerceTo(StackEntry e, TypeDesc? targetType, string targetCppType)
     {
         TaintPoisonedTypeEscape(e);
@@ -2257,7 +2266,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 int index = (int)insn.Operand;
                 var dst = _args[index];
                 var value = Pop();
-                Emit($"{dst.Name} = {CoerceTo(value, dst.Type, dst.CppType)};");
+                Emit($"{dst.Name} = {CoerceToSlot(value, dst.Type, dst.CppType)};");
                 break;
             }
             case ILOpCode.Ldloc_0: case ILOpCode.Ldloc_1: case ILOpCode.Ldloc_2: case ILOpCode.Ldloc_3:

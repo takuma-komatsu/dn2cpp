@@ -45,7 +45,7 @@ DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|preserve-control-full:
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $(printf '%s ' gates/fixtures/ildiet-metadata-validation/*.py)"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/preserve-control/Program.cs gates/fixtures/preserve-control/MetadataProbe.csproj gates/fixtures/preserve-control/accessorless-indexer/AccessorlessIndexer.csproj gates/fixtures/preserve-control/accessorless-indexer/Program.cs gates/fixtures/preserve-control/accessorless-indexer/link.xml gates/fixtures/preserve-control/accessorless-indexer/Targets/IndexerTargets.csproj gates/fixtures/preserve-control/accessorless-indexer/Targets/Indexed.cs gates/fixtures/ildiet-metadata-validation/Program.cs gates/fixtures/ildiet-metadata-validation/check.py samples/dotnet/ILDietControl/keep-attribute-constructed.xml samples/dotnet/ILDietControl/ConstructorOnly/keep-signature-constructed.xml samples/dotnet/ILDietControl/InvokeOnly/keep-signature-invoked.xml samples/dotnet/ILDietControl/AbsenceOnly/keep-preserved-constructor.xml samples/dotnet/ILDietControl/UnknownTargetOnly/keep-parameter-targets.xml samples/dotnet/ILDietControl/ConditionalNamedOnly/keep-conditional-named.xml gates/fixtures/ildiet-attribute-roots/AttributeRoots.csproj gates/fixtures/ildiet-attribute-roots/Program.cs gates/expected/preserve-control-unknown-target.tsv"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|reflected-event-operations:native-ildiet-and-no-ildiet|attribute-object-prefix:${DN2CPP_BEFORE_ATTRIBUTE_OBJECT:-}|named-reflection-prefix:${DN2CPP_BEFORE_NAMED_REFLECTION:-}|runtime-reflection-prefix:${DN2CPP_BEFORE_RUNTIME_REFLECTION:-}|metadata-lookup-prefix:${DN2CPP_BEFORE_METADATA_LOOKUP:-}|signature-construction-prefix:${DN2CPP_BEFORE_SIGNATURE_CONSTRUCTION:-}|signature-invocation-prefix:${DN2CPP_BEFORE_SIGNATURE_INVOCATION:-}|field-boxing-prefix:${DN2CPP_BEFORE_FIELD_BOXING:-}|field-context-prefix:${DN2CPP_BEFORE_FIELD_CONTEXT:-}|field-owner-prefix:${DN2CPP_BEFORE_FIELD_OWNER:-}|field-shape-prefix:${DN2CPP_BEFORE_FIELD_SHAPE:-}|construction-payload-prefix:${DN2CPP_BEFORE_CONSTRUCTION_PAYLOAD:-}|field-cycle-prefix:${DN2CPP_BEFORE_FIELD_CYCLE:-}|member-field-signature-prefix:${DN2CPP_BEFORE_MEMBER_FIELD_SIGNATURE:-}|member-construction-signature-prefix:${DN2CPP_BEFORE_MEMBER_CONSTRUCTION_SIGNATURE:-}|base-field-signature-prefix:${DN2CPP_BEFORE_BASE_FIELD_SIGNATURE:-}|base-construction-signature-prefix:${DN2CPP_BEFORE_BASE_CONSTRUCTION_SIGNATURE:-}|ctor-signature-invocation-prefix:${DN2CPP_BEFORE_CTOR_SIGNATURE_INVOCATION:-}|field-owner-signature-prefix:${DN2CPP_BEFORE_FIELD_OWNER_SIGNATURE:-}|interface-owner-signature-prefix:${DN2CPP_BEFORE_INTERFACE_OWNER_SIGNATURE:-}|ctor-field-owner-signature-prefix:${DN2CPP_BEFORE_CTOR_FIELD_OWNER_SIGNATURE:-}|captured-array-defaults-prefix:${DN2CPP_BEFORE_CAPTURED_ARRAY_DEFAULTS:-}|interface-array-defaults-prefix:${DN2CPP_BEFORE_INTERFACE_ARRAY_DEFAULTS:-}|external-array-defaults-prefix:${DN2CPP_BEFORE_EXTERNAL_ARRAY_DEFAULTS:-}|local-defaults-prefix:${DN2CPP_BEFORE_LOCAL_DEFAULTS:-}|reflection-depth-seeds-prefix:${DN2CPP_BEFORE_REFLECTION_DEPTH_SEEDS:-}|caller-depth-prefix:${DN2CPP_BEFORE_CALLER_DEPTH:-}|extended-depth-prefix:${DN2CPP_BEFORE_EXTENDED_DEPTH:-}|state-machine-signatures-prefix:${DN2CPP_BEFORE_STATE_MACHINE_SIGNATURES:-}|retained-absence-prefix:${DN2CPP_BEFORE_RETAINED_ABSENCE:-}|unknown-target-prefix:${DN2CPP_BEFORE_UNKNOWN_TARGET:-}|initonly-field-prefix:${DN2CPP_BEFORE_INITONLY_FIELD:-}|metadata-owners-prefix:${DN2CPP_BEFORE_METADATA_OWNERS:-}|assembly-construction-prefix:${DN2CPP_BEFORE_ASSEMBLY_CONSTRUCTION:-}|listed-owners-prefix:${DN2CPP_BEFORE_LISTED_OWNERS:-}|dispatched-target-prefix:${DN2CPP_BEFORE_DISPATCHED_TARGET:-}|written-target-prefix:${DN2CPP_BEFORE_WRITTEN_TARGET:-}|absence-values:${DN2CPP_JOINED_TARGET_NAME+set:$DN2CPP_JOINED_TARGET_NAME}:${DN2CPP_FORMED_ONLY+set:$DN2CPP_FORMED_ONLY}:${DN2CPP_CONSTRUCTED_TEMPLATE+set:$DN2CPP_CONSTRUCTED_TEMPLATE}:${DN2CPP_UNUSED_STATICS+set:$DN2CPP_UNUSED_STATICS}:${DN2CPP_USED_STATICS+set:$DN2CPP_USED_STATICS}"
-DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|repeated-arrays-prefix:${DN2CPP_BEFORE_REPEATED_ARRAYS:-}|integer-storage-prefix:${DN2CPP_BEFORE_ARRAY_NARROWING:-}|captured-scalar-defaults-prefix:${DN2CPP_BEFORE_CAPTURED_SCALAR_DEFAULTS:-}"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|repeated-arrays-prefix:${DN2CPP_BEFORE_REPEATED_ARRAYS:-}|integer-storage-prefix:${DN2CPP_BEFORE_ARRAY_NARROWING:-}|captured-scalar-defaults-prefix:${DN2CPP_BEFORE_CAPTURED_SCALAR_DEFAULTS:-}|slot-storage-prefix:${DN2CPP_BEFORE_SLOT_STORAGE:-}"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ildiet-metadata-validation/CutRequestCapture.cs gates/fixtures/ildiet-metadata-validation/cut_authority_admission.py gates/fixtures/ildiet-metadata-validation/selected_cut_admission.py gates/fixtures/ildiet-metadata-validation/cut_request_capture.py"
 PYTHON=$(resolve_python) || gate_skip "no working Python 3 interpreter for ILDiet validation"
 
@@ -955,6 +955,11 @@ build_gate_proj gates/fixtures/ildiet-metadata-validation/MetadataValidation.csp
         --create-captured-scalar-defaults-fixture "$narrowing_original" "$narrowing_bin/ConstructorOnly.dll")
     assert_output "$(strip_cr_win "$narrowing_fixture")" \
         'captured-scalar-defaults-fixture=byte,int,array-reference,object-reference,generic-reference'
+    slot_storage_prefix=$(run_bounded dotnet "$narrowing_bin/ConstructorOnly.dll")
+    narrowing_fixture=$(dotnet exec "gates/fixtures/ildiet-metadata-validation/bin/$CONFIG/$TFM/MetadataValidation.dll" \
+        --create-slot-storage-fixture "$narrowing_original" "$narrowing_bin/ConstructorOnly.dll")
+    assert_output "$(strip_cr_win "$narrowing_fixture")" \
+        'slot-storage-fixture=locals,arguments,instance-arguments,wrap,signed,in-range'
     narrowing_prefix=$(run_bounded dotnet "$narrowing_original")
     narrowing_before=$(DN2CPP_BEFORE_ARRAY_NARROWING=1 run_bounded dotnet "$narrowing_bin/ConstructorOnly.dll")
     assert_output "$(strip_cr_win "$narrowing_before")" "$(strip_cr_win "$narrowing_prefix")"
@@ -968,7 +973,7 @@ build_gate_proj gates/fixtures/ildiet-metadata-validation/MetadataValidation.csp
         return "$rc"
     }
     gate_extra_asserts() {
-        local out="$1" native prefix before name section
+        local out="$1" native prefix before name section storage type value
         native=$(run_bounded "$out/ConstructorOnly$EXE_EXT") || return $?
         native=$(strip_cr_win "$native")
         prefix=$(awk '/^== integer storage operands ==$/ { exit } { print }' <<< "$native")
@@ -989,7 +994,7 @@ build_gate_proj gates/fixtures/ildiet-metadata-validation/MetadataValidation.csp
         done
         grep -Fxq 'integer storage operands end' <<< "$native" \
             || { echo 'FAIL: integer storage section did not finish' >&2; return 1; }
-        if grep -Eqw 'Narrowing[A-Za-z]+Target_UnselectedBody_m[0-9]+' "$out"/generated*.cpp "$out"/generated.h; then
+        if grep -Eqw 'Narrowing[A-Za-z0-9]+Target_UnselectedBody_m[0-9]+' "$out"/generated*.cpp "$out"/generated.h; then
             echo 'FAIL: integer storage retained an unselected generic body' >&2; return 1
         fi
         prefix=$(awk '/^== captured scalar defaults ==$/ { exit } { print }' <<< "$native")
@@ -1013,6 +1018,27 @@ build_gate_proj gates/fixtures/ildiet-metadata-validation/MetadataValidation.csp
             grep -Fxq "$marker" <<< "$native" \
                 || { echo "FAIL: captured scalar default section did not finish: $marker" >&2; return 1; }
         done
+        prefix=$(awk '/^== local and argument integer storage ==$/ { exit } { print }' <<< "$native")
+        assert_output "$prefix" "$(strip_cr_win "$slot_storage_prefix")"
+        before=$(DN2CPP_BEFORE_SLOT_STORAGE=1 run_bounded "$out/ConstructorOnly$EXE_EXT") || return $?
+        assert_output "$prefix" "$(strip_cr_win "$before")"
+        for storage in Local Argument InstanceArgument; do
+            for type in Byte SByte UInt16 Int16 Char; do
+                for value in Wrap Reload InRange; do
+                    name="$storage$type$value"
+                    grep -Fxq "integer-storage=$name" <<< "$native" \
+                        || { echo "FAIL: local/argument storage witness did not run: $name" >&2; return 1; }
+                    grep -Eqw "Narrowing${name}Target_SelectedBody_m[0-9]+" "$out"/generated*.cpp "$out"/generated.h \
+                        || { echo "FAIL: local/argument storage lost selected body $name" >&2; return 1; }
+                    section=$(awk -v name="::Narrowing$name " \
+                        '/^reflection-summary / { on = index($0, name) != 0; next } on' "$narrowing_summary")
+                    grep -Eq 'GetMethod/[^ ]+ .* p0="Pick" p1=0 p2=\[\]$' <<< "$section" \
+                        || { echo "FAIL: local/argument storage arity is not zero: $name" >&2; echo "$section" >&2; return 1; }
+                done
+            done
+        done
+        grep -Fxq 'local and argument integer storage end' <<< "$native" \
+            || { echo 'FAIL: local/argument storage section did not finish' >&2; return 1; }
         for name in Byte Int; do
             section=$(awk -v name="ScalarDefault$name" \
                 '/^reflection-summary / { on = index($0, "ILDietConstructorOnly.Program::" name " ") != 0; next } on' \
