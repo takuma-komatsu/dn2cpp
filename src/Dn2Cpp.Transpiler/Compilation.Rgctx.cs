@@ -719,6 +719,7 @@ internal sealed partial class Compilation
         "dn2cpp_type_get_events(",
         "dn2cpp_eventref_other_methods(",
         "dn2cpp_type_get_methods(",
+        "dn2cpp_type_get_declared_methods(",
         "dn2cpp_type_get_constructors(",
         "dn2cpp_type_get_members(",
         "dn2cpp_type_get_member(",  // GetMember answers an array

@@ -137,6 +137,25 @@ sealed class NamedTemplate<T>
     public static string Other() => EnumerationProbe.Touch();
 }
 
+class DeclaredMethodBase
+{
+    public string Safe(string first, string second) => EnumerationProbe.Touch();
+}
+
+sealed class DeclaredMethodOwner : DeclaredMethodBase
+{
+    public static new string Safe() => EnumerationProbe.Touch();
+    public static string Safe(int value) => EnumerationProbe.Touch();
+    public static string SafeExtra() => EnumerationProbe.Touch();
+}
+
+sealed class DeclaredMethodTemplate<T> : DeclaredMethodBase
+{
+    public static new string Safe() => EnumerationProbe.Touch();
+    public static string Safe(T value) => EnumerationProbe.Touch();
+    public static string SafeExtra() => EnumerationProbe.Touch();
+}
+
 sealed class CaseBuilt { }
 sealed class CASEBUILT { }
 sealed class CaseTyped { }
@@ -755,8 +774,9 @@ static class Program
         bool beforeAlternatives = args.Length > 0 && args[0] == "before-reflection-alternatives";
         bool beforeTemplateLookups = args.Length > 0 && args[0] == "before-template-lookups";
         bool beforeLibraryBindings = args.Length > 0 && args[0] == "before-library-bindings";
+        bool beforeDeclaredMethods = args.Length > 0 && args[0] == "before-typeinfo-declared-methods";
         if (beforeAttributeSelection || beforeMetadataProjections || beforeSelectionFilters || beforeAlternatives
-            || beforeTemplateLookups || beforeLibraryBindings)
+            || beforeTemplateLookups || beforeLibraryBindings || beforeDeclaredMethods)
             args = Array.Empty<string>();
 
         Console.WriteLine("== attribute metadata over a directly constructed attribute ==");
@@ -977,6 +997,54 @@ static class Program
         Console.WriteLine("== library private named bindings ==");
         LibraryPrivateNamedBindings();
         Console.WriteLine("library private named bindings end");
+        if (beforeDeclaredMethods)
+            return;
+
+        Console.WriteLine("== TypeInfo declared methods ==");
+        int ordinary = 0;
+        foreach (MethodInfo method in typeof(DeclaredMethodOwner).GetTypeInfo().GetDeclaredMethods("Safe"))
+        {
+            Console.WriteLine("ordinary " + method.Name + "/" + method.GetParameters().Length);
+            ordinary++;
+        }
+        Console.WriteLine("ordinary count=" + ordinary);
+        int ordinaryNull = 0;
+        foreach (MethodInfo method in typeof(DeclaredMethodOwner).GetTypeInfo().GetDeclaredMethods(null!))
+            ordinaryNull++;
+        Console.WriteLine("ordinary null=" + ordinaryNull);
+        int ordinaryWildcard = 0;
+        foreach (MethodInfo method in typeof(DeclaredMethodOwner).GetTypeInfo().GetDeclaredMethods("Safe*"))
+            ordinaryWildcard++;
+        Console.WriteLine("ordinary wildcard=" + ordinaryWildcard);
+        int declaredTemplateCount = 0;
+        foreach (MethodInfo method in typeof(DeclaredMethodTemplate<>).MakeGenericType(typeof(int))
+            .GetTypeInfo().GetDeclaredMethods("Safe"))
+        {
+            Console.WriteLine("template " + method.Name + "/" + method.GetParameters().Length);
+            declaredTemplateCount++;
+        }
+        Console.WriteLine("template count=" + declaredTemplateCount);
+        int templateNull = 0;
+        foreach (MethodInfo method in typeof(DeclaredMethodTemplate<>).MakeGenericType(typeof(int))
+            .GetTypeInfo().GetDeclaredMethods(null!))
+            templateNull++;
+        Console.WriteLine("template null=" + templateNull);
+        int templateWildcard = 0;
+        foreach (MethodInfo method in typeof(DeclaredMethodTemplate<>).MakeGenericType(typeof(int))
+            .GetTypeInfo().GetDeclaredMethods("Safe*"))
+            templateWildcard++;
+        Console.WriteLine("template wildcard=" + templateWildcard);
+        int objectOne = 0;
+        int objectTwo = 0;
+        foreach (MethodInfo method in typeof(object).GetTypeInfo().GetDeclaredMethods("Equals"))
+        {
+            if (method.GetParameters().Length == 1)
+                objectOne++;
+            else if (method.GetParameters().Length == 2)
+                objectTwo++;
+        }
+        Console.WriteLine("object Equals=" + objectOne + "/" + objectTwo);
+        Console.WriteLine("TypeInfo declared methods end");
     }
 
     private static void LibraryPrivateNamedBindings()

@@ -2493,6 +2493,10 @@ Dn2CppPropRef* dn2cpp_type_get_property_full(Dn2CppType* t, Dn2CppString* name, 
 // System.Reflection.MemberTypes bit set (0xBF = All).
 Dn2CppArrayRef* dn2cpp_type_get_member(Dn2CppType* t, Dn2CppString* name,
                                        int32_t memberTypes, int32_t bindingFlags);
+// TypeInfo.GetDeclaredMethods(name) uses an exact name and returns MethodInfo[]
+// with both public and non-public rows from the receiver only. A null name
+// produces an empty enumeration.
+Dn2CppArrayRef* dn2cpp_type_get_declared_methods(Dn2CppType* t, Dn2CppString* name);
 Dn2CppArrayRef* dn2cpp_type_get_members(Dn2CppType* t, int32_t bindingFlags);
 Dn2CppArrayRef* dn2cpp_type_get_default_members(Dn2CppType* t);
 // Type.GetMemberWithSameMetadataDefinitionAs(MemberInfo): the member of `t`
