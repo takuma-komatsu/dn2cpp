@@ -9,6 +9,11 @@ if (ProtocolMutation.Run(args)) return;
 if (GodotValidation.Run(args)) return;
 if (GraphValidation.Run(args)) return;
 if (PropertySignatureValidation.Run(args)) return;
+if (args.Length == 3 && args[0] == "--create-slot-storage-fixture")
+{
+    CreateArrayNarrowingFixture(args[1], args[2], scalarDefaults: true, slotStorage: true);
+    return;
+}
 if (args.Length == 3 && args[0] == "--create-captured-scalar-defaults-fixture")
 {
     CreateArrayNarrowingFixture(args[1], args[2], scalarDefaults: true);
@@ -853,7 +858,7 @@ static void CreateLocalDefaultsFixture(string input, string output)
     }
 }
 
-static void CreateArrayNarrowingFixture(string input, string output, bool scalarDefaults = false)
+static void CreateArrayNarrowingFixture(string input, string output, bool scalarDefaults = false, bool slotStorage = false)
 {
     using var fixture = AssemblyDefinition.ReadAssembly(input);
     var module = fixture.MainModule;
@@ -926,9 +931,97 @@ static void CreateArrayNarrowingFixture(string input, string output, bool scalar
     il.Append(done);
     if (scalarDefaults)
         AddScalarDefaults();
+    if (slotStorage)
+        AddSlotStorage();
     fixture.Write(output, new WriterParameters { Timestamp = 0, DeterministicMvid = true });
-    Console.WriteLine(scalarDefaults ? "captured-scalar-defaults-fixture=byte,int,array-reference,object-reference,generic-reference"
+    Console.WriteLine(slotStorage ? "slot-storage-fixture=locals,arguments,instance-arguments,wrap,signed,in-range" : scalarDefaults ? "captured-scalar-defaults-fixture=byte,int,array-reference,object-reference,generic-reference"
         : "array-narrowing-fixture=wrap,sign-extension,zero-extension,generic,sequence,copy,captured-array,captured-scalar");
+
+    void AddSlotStorage()
+    {
+        var previousMain = module.EntryPoint;
+        var slotMain = AddMethod(owner, "RunWithSlotStorage", module.TypeSystem.Void);
+        module.EntryPoint = slotMain;
+        var body = slotMain.Body.GetILProcessor();
+        body.Emit(OpCodes.Call, previousMain);
+        var end = Instruction.Create(OpCodes.Ret);
+        foreach (string flag in new[] { "DN2CPP_BEFORE_SLOT_STORAGE", "DN2CPP_BEFORE_ARRAY_NARROWING", "DN2CPP_BEFORE_CAPTURED_SCALAR_DEFAULTS" })
+        {
+            body.Emit(OpCodes.Ldstr, flag);
+            body.Emit(OpCodes.Call, module.ImportReference(typeof(Environment).GetMethod(nameof(Environment.GetEnvironmentVariable),
+                new[] { typeof(string) })!));
+            body.Emit(OpCodes.Ldstr, "1");
+            body.Emit(OpCodes.Call, module.ImportReference(typeof(string).GetMethod("op_Equality", new[] { typeof(string), typeof(string) })!));
+            body.Emit(OpCodes.Brtrue, end);
+        }
+        Print(body, "== local and argument integer storage ==");
+        foreach (var type in new[] { module.TypeSystem.Byte, module.TypeSystem.SByte, module.TypeSystem.UInt16,
+                module.TypeSystem.Int16, module.TypeSystem.Char })
+        {
+            bool signed = type == module.TypeSystem.SByte || type == module.TypeSystem.Int16;
+            int width = type == module.TypeSystem.Byte || type == module.TypeSystem.SByte ? 256 : 65536;
+            foreach (string storage in new[] { "Local", "Argument", "InstanceArgument" })
+            {
+                SlotCase(storage + type.Name + "Wrap", type, storage, width, 0);
+                SlotCase(storage + type.Name + "Reload", type, storage, signed ? width - 1 : -1, signed ? -1 : width - 1);
+                SlotCase(storage + type.Name + "InRange", type, storage, 7, 7);
+            }
+        }
+        Print(body, "local and argument integer storage end");
+        body.Append(end);
+
+        void SlotCase(string name, TypeReference type, string storage, int stored, int expected)
+        {
+            bool instance = storage == "InstanceArgument";
+            var method = AddMethod(instance ? closure : owner, "Narrowing" + name, module.TypeSystem.Void);
+            if (instance)
+            {
+                method.Attributes = MethodAttributes.Public;
+                method.HasThis = true;
+            }
+            var code = method.Body.GetILProcessor();
+            if (storage == "Local")
+            {
+                var slot = new VariableDefinition(type);
+                method.Body.Variables.Add(slot);
+                code.Emit(OpCodes.Ldc_I4, stored);
+                if (expected == 0) code.Emit(OpCodes.Stloc_0);
+                else code.Emit(expected == 7 ? OpCodes.Stloc : OpCodes.Stloc_S, slot);
+                code.Emit(OpCodes.Ldloc_0);
+            }
+            else
+            {
+                var slot = new ParameterDefinition(type);
+                method.Parameters.Add(slot);
+                code.Emit(OpCodes.Ldc_I4, stored);
+                code.Emit(expected == 7 ? OpCodes.Starg : OpCodes.Starg_S, slot);
+                code.Emit(instance ? OpCodes.Ldarg_1 : OpCodes.Ldarg_0);
+            }
+            code.Emit(OpCodes.Dup);
+            Print(code, "slot-value=" + name);
+            code.Emit(OpCodes.Call, module.ImportReference(typeof(Console).GetMethod(nameof(Console.WriteLine), new[] { typeof(int) })!));
+            code.Emit(OpCodes.Ldc_I4, expected);
+            code.Emit(OpCodes.Sub);
+            Select(method, name);
+            var start = Instruction.Create(OpCodes.Nop);
+            var handler = Instruction.Create(OpCodes.Pop);
+            var next = Instruction.Create(OpCodes.Nop);
+            body.Append(start);
+            if (instance) body.Emit(OpCodes.Newobj, closureCtor);
+            if (storage != "Local") body.Emit(OpCodes.Ldc_I4_0);
+            body.Emit(OpCodes.Call, method);
+            body.Emit(OpCodes.Leave, next);
+            body.Append(handler);
+            Print(body, "slot-storage-error=" + name);
+            body.Emit(OpCodes.Leave, next);
+            body.Append(next);
+            slotMain.Body.ExceptionHandlers.Add(new ExceptionHandler(ExceptionHandlerType.Catch)
+            {
+                CatchType = module.ImportReference(typeof(Exception)), TryStart = start,
+                TryEnd = handler, HandlerStart = handler, HandlerEnd = next,
+            });
+        }
+    }
 
     void AddScalarDefaults()
     {
