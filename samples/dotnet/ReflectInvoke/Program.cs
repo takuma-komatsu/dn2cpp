@@ -405,6 +405,9 @@ namespace ReflectInvoke
         if (args.Length > 0 && args[0] == "before-singular-member-lookups")
             return;
         SingularMemberLookupSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-inherited-private-accessors")
+            return;
+        InheritedPrivateAccessorSubset.Program.Run();
         }
     }
 }
