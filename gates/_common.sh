@@ -2911,13 +2911,18 @@ corelib_diff_gate() {
     # Real .NET is the oracle for the exit status too (Finalizers' last section
     # aborts deliberately). DN2CPP_GATE_RUN_ARGS: fresh @SCRATCH@ per side.
     local native native_code expected expected_code
+    local native_run=(run_bounded)
     local oracle=(run_bounded dotnet)
+    if [ "${DN2CPP_RETRY_STATUS4:-0}" = 1 ]; then
+        native_run=(run_bounded_retry_status4 "$out" "$project native")
+        oracle=(run_bounded_retry_status4 "$out" "$project oracle" dotnet)
+    fi
     if declare -F gate_run_oracle >/dev/null; then
         oracle=(gate_run_oracle)
     fi
     set +e
     _gate_run_argv
-    native=$(run_bounded "./$out/$project$EXE_EXT" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}); native_code=$?
+    native=$("${native_run[@]}" "./$out/$project$EXE_EXT" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}); native_code=$?
     _gate_run_argv
     if [ -n "${DN2CPP_ORACLE_DOTNET_ENABLE_AVX:-}" ]; then
         expected=$(DOTNET_EnableAVX="$DN2CPP_ORACLE_DOTNET_ENABLE_AVX" \
@@ -2927,6 +2932,11 @@ corelib_diff_gate() {
     fi
     set -e
     _gate_scratch_cleanup
+    if [ "${DN2CPP_RETRY_STATUS4:-0}" = 1 ] && [ "$DN2CPP_OS" = windows ] \
+            && { [ "$native_code" -eq 4 ] || [ "$expected_code" -eq 4 ]; }; then
+        echo "FAIL: $project still returned status 4 after one retry" >&2
+        return 1
+    fi
     assert_output "$native" "$expected"
     assert_exit_code "$native_code" "$expected_code"
     if declare -F gate_capture_diff_output >/dev/null; then
@@ -3349,6 +3359,46 @@ run_with_watchdog() {
 # can only turn a run into an abort or back.
 run_bounded() {
     run_with_watchdog "${DN2CPP_RUN_WATCHDOG_SECS:-600}" "$@"
+}
+
+# Workaround for an unresolved Windows/MSYS status-4 anomaly under parallel gate
+# load. Opt in only for repeatable runs; retain the first result, and use the
+# second result as the verdict. A repeated 4 must still fail at the call site.
+run_bounded_retry_status4() {
+    local evidence_root="$1" label="$2" evidence code
+    shift 2
+    if [ "$DN2CPP_OS" != windows ]; then
+        run_bounded "$@"
+        return $?
+    fi
+    evidence=$(mktemp -d "$evidence_root/retry4.XXXXXX")
+    if run_bounded "$@" >"$evidence/first.stdout" 2>"$evidence/first.stderr"; then
+        code=0
+    else
+        code=$?
+    fi
+    if [ "$code" -ne 4 ]; then
+        cat "$evidence/first.stdout"
+        cat "$evidence/first.stderr" >&2
+        rm -f "$evidence/first.stdout" "$evidence/first.stderr"
+        rmdir "$evidence"
+        return "$code"
+    fi
+
+    printf '4\n' >"$evidence/first.status"
+    printf '%s\n' "$label" >"$evidence/label"
+    printf '%q ' "$@" >"$evidence/command"
+    printf '\n' >>"$evidence/command"
+    if run_bounded "$@" >"$evidence/second.stdout" 2>"$evidence/second.stderr"; then
+        code=0
+    else
+        code=$?
+    fi
+    printf '%s\n' "$code" >"$evidence/second.status"
+    cat "$evidence/second.stdout"
+    cat "$evidence/second.stderr" >&2
+    echo "note: $label first run returned 4; retried once (second status $code; first output: $evidence)" >&2
+    return "$code"
 }
 
 # ── Run diagnostics ───────────────────────────────────────────────────────────
