@@ -74,6 +74,7 @@
 #   JOBS=4 ./gates/run-all-gates.sh          # cap parallelism
 #   CONFIG=Debug ./gates/run-all-gates.sh    # Debug build
 #   SKIP_GODOT=1 ./gates/run-all-gates.sh    # skip the Godot gates
+#   SKIP_XCODE=1 ./gates/run-all-gates.sh    # omit the four Xcode gates
 #   DN2CPP_REQUIRE_ALL=1 ./gates/run-all-gates.sh  # every gate must RUN: a gate
 #                                            # that opts out for a missing
 #                                            # prerequisite fails instead, and
@@ -162,16 +163,19 @@ CONFIG=${CONFIG:-Release}
 TFM=${TFM:-net10.0}
 GODOT=${GODOT:-godot}
 SKIP_GODOT=${SKIP_GODOT:-0}
+SKIP_XCODE=${SKIP_XCODE:-0}
 REQUIRE_ALL=${DN2CPP_REQUIRE_ALL:-0}
 export DN2CPP_REQUIRE_ALL="$REQUIRE_ALL"   # read by gate_skip/gate_partial in _common.sh
 
-# A restricted pre-merge scope remains strict for every selected gate.
-# Require an explicit scope before combining strict prerequisites with exclusion.
-if [ "$REQUIRE_ALL" = "1" ] && [ "$SKIP_GODOT" = "1" ] \
-        && [ "${DN2CPP_REQUIRE_SCOPE:-all}" != "non-godot" ]; then
-    echo "error: DN2CPP_REQUIRE_ALL=1 demands every gate run, but SKIP_GODOT=1 skips the Godot gates." >&2
-    echo "       Drop one of them." >&2
-    exit 2
+# A restricted strict run must declare exactly which gates it excludes.
+if [ "$REQUIRE_ALL" = "1" ]; then
+    scope=all
+    [ "$SKIP_GODOT" != "1" ] || scope=non-godot
+    [ "$SKIP_XCODE" != "1" ] || scope="$scope-except-xcode"
+    if [ "${DN2CPP_REQUIRE_SCOPE:-all}" != "$scope" ]; then
+        echo "error: DN2CPP_REQUIRE_ALL=1 with SKIP_GODOT=$SKIP_GODOT and SKIP_XCODE=$SKIP_XCODE requires DN2CPP_REQUIRE_SCOPE=$scope." >&2
+        exit 2
+    fi
 fi
 
 JOBS=${JOBS:-$(sysctl -n hw.logicalcpu 2>/dev/null || nproc 2>/dev/null || echo 4)}
@@ -636,6 +640,28 @@ if [ "$_chain_names" != "$_table_names" ]; then
 fi
 unset _chain_names _table_names
 
+# Preserve the full chain membership for the parity check above, then remove
+# Xcode gates only from the selected run. The excluded gates produce no timing
+# record and are reported separately below.
+SELECTED_GODOT_GATES=("${GODOT_GATES[@]}")
+if [ "$SKIP_XCODE" = "1" ]; then
+    selected=()
+    for g in "${CHAIN_A[@]}"; do
+        in_list "$g" "${XCODE_GATES[@]}" || selected+=("$g")
+    done
+    CHAIN_A=("${selected[@]}")
+    selected=()
+    for g in "${CHAIN_E[@]}"; do
+        in_list "$g" "${XCODE_GATES[@]}" || selected+=("$g")
+    done
+    CHAIN_E=("${selected[@]}")
+    selected=()
+    for g in "${GODOT_GATES[@]}"; do
+        in_list "$g" "${XCODE_GATES[@]}" || selected+=("$g")
+    done
+    SELECTED_GODOT_GATES=("${selected[@]}")
+fi
+
 # These package-native gates own projects under gates/fixtures (outside the
 # Phase-3 samples scan) and use disjoint artifact/feed/source-cache directories.
 # Keep them explicit while still running as independent Phase-4 workers: the
@@ -660,6 +686,7 @@ ISOLATED_NON_GODOT_GATES=()
 while IFS= read -r g; do
     in_list "$g" "${GODOT_GATES[@]}" && continue
     in_list "$g" "${PACKAGE_NATIVE_GATES[@]}" && continue
+    if [ "$SKIP_XCODE" = "1" ] && in_list "$g" "${XCODE_GATES[@]}"; then continue; fi
     # Kestrel can be ready while a first loopback TLS handshake is still
     # sensitive to runner load. Run this gate after all Phase-4 workers have
     # exited. It still travels through run_gate, preserving the cache, watchdog,
@@ -906,7 +933,7 @@ fi
 header "Summary"
 
 TOTAL=$(( ${#NON_GODOT_GATES[@]} + ${#ISOLATED_NON_GODOT_GATES[@]} ))
-[ "$SKIP_GODOT" = "0" ] && TOTAL=$((TOTAL + ${#GODOT_GATES[@]}))
+[ "$SKIP_GODOT" = "0" ] && TOTAL=$((TOTAL + ${#SELECTED_GODOT_GATES[@]}))
 
 FAILED=()
 if [ -s "$FAILFILE" ]; then
@@ -992,7 +1019,7 @@ fi
 if [ "$SKIP_GODOT" = "1" ]; then
     echo ""
     if [ "$REQUIRE_ALL" = "1" ] && [ "${DN2CPP_GATE_CACHE:-1}" = "0" ] \
-        && [ "${DN2CPP_REQUIRE_SCOPE:-all}" = non-godot ]; then
+        && [ "${DN2CPP_REQUIRE_SCOPE:-all}" = "$scope" ]; then
         printf '\033[1;33m⊘ %d Godot gate(s) NOT RUN (SKIP_GODOT=1) — strict non-Godot merge scope.\033[0m\n' \
             "${#GODOT_GATES[@]}"
         echo "  A passing pre-merge check is sufficient for PRs without Godot-specific changes."
@@ -1001,10 +1028,18 @@ if [ "$SKIP_GODOT" = "1" ]; then
             "${#GODOT_GATES[@]}"
     fi
 fi
+if [ "$SKIP_XCODE" = "1" ]; then
+    echo ""
+    printf '\033[1;33m⊘ Xcode gates NOT RUN (SKIP_XCODE=1):\033[0m\n'
+    for g in "${XCODE_GATES[@]}"; do
+        if [ "$SKIP_GODOT" = "1" ] && in_list "$g" "${GODOT_GATES[@]}"; then continue; fi
+        echo "    $(gate_name "$g")"
+    done
+fi
 
 echo ""
 if [ ${#FAILED[@]} -eq 0 ]; then
-    if [ "$N_SKIPPED" -eq 0 ] && [ "$SKIP_GODOT" = "0" ]; then
+    if [ "$N_SKIPPED" -eq 0 ] && [ "$SKIP_GODOT" = "0" ] && [ "$SKIP_XCODE" = "0" ]; then
         if [ "$N_EXPECTED" -gt 0 ]; then
             printf '\033[1;32m✔ All %d gates passed\033[0m\033[1;36m — %d with a declared expected-partial section (listed above).\033[0m\n' \
                 "$TOTAL" "$N_EXPECTED"
@@ -1013,7 +1048,7 @@ if [ ${#FAILED[@]} -eq 0 ]; then
         fi
     else
         # Never "all N passed" when some of the N never ran.
-        printf '\033[1;32m✔ %d of %d gates passed\033[0m\033[1;33m — %d skipped (see above), 0 failed.\033[0m\n' \
+        printf '\033[1;32m✔ %d of %d selected gates passed\033[0m\033[1;33m — %d skipped (see above), 0 failed.\033[0m\n' \
             "$N_PASSED" "$TOTAL" "$N_SKIPPED"
     fi
     exit 0

@@ -64,6 +64,10 @@ dotnet run --project src/Dn2Cpp.Cli -- <assembly.dll> [-r <ref.dll>] [-o <dir>] 
   `gate_expected_partial` is only for a permanent structural limit and must name
   the gate that covers the omitted surface. See `gates/_common.sh`.
 - Run Debug gates when changing shared generics, canonicalization, or emission.
+- Pre-merge excludes the four Xcode gates when Xcode is unavailable. On a host
+  with Xcode they remain strict; `--skip-xcode` explicitly omits them and
+  `--require-xcode` includes them on any host. A passing Godot-inclusive run
+  without Xcode satisfies the merge check for Windows and Linux changes.
 - Never trust hosted smoke CI as the merge verdict; see `CONTRIBUTING.md`.
 
 ## Adding regression coverage

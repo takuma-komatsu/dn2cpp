@@ -1226,10 +1226,12 @@ parallel runner provides smoke checks separately:
 ```bash
 ./gates/run-all-gates.sh               # all gates (pre-build once → parallel; Godot chained)
 SKIP_GODOT=1 ./gates/run-all-gates.sh  # skip Godot for a faster smoke check
-./gates/pre-merge.sh                   # the merge gate: Debug, no cache, no skips
+./gates/pre-merge.sh                   # the merge gate: Debug, no cache, Xcode gates host-selected
 ./gates/pre-merge.sh --skip-godot      # sufficient when no Godot-specific files change
+./gates/pre-merge.sh --skip-xcode      # explicitly exclude Xcode-only gates
+./gates/pre-merge.sh --require-xcode   # include Xcode gates on any host
 CONFIG=Release ./gates/pre-merge.sh    # Release only
-./gates/pre-merge.sh --both-configs    # Release then Debug, no cache, no skips
+./gates/pre-merge.sh --both-configs    # Release then Debug, no cache
 
 # the representative trio per lane (manual smoke check)
 ./gates/build-and-run-sample.sh        # console
