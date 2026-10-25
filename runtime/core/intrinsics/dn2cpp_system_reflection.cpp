@@ -2583,7 +2583,7 @@ using Dn2CppMethodCandidates = Dn2CppWalkList<Dn2CppMetadataHandle<Dn2CppMethodI
 
 static bool dn2cpp_meta_family_name(const Dn2CppMethodInfo& row);
 static int32_t dn2cpp_meta_collect_family(const Dn2CppTypeInfo* type, int32_t flags,
-    Dn2CppMethodCandidates& emitted, Dn2CppObject** out);
+    Dn2CppMethodCandidates& emitted, Dn2CppObject** out, Dn2CppString* name);
 static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_meta_object_base(
     Dn2CppMetadataHandle<Dn2CppMethodInfo> mi, const Dn2CppMethodInfo& row);
 
@@ -2594,7 +2594,8 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_meta_object_base(
 // same slot is skipped, and a generic virtual row is hidden by Dn2CppGvmHiding.
 // Non-virtual methods (slot -1, includes `new` hiding and overloads) are all kept.
 // With out==nullptr only counts; otherwise fills out[].
-static int32_t dn2cpp_collect_methods(const Dn2CppTypeInfo* type, int32_t flags, Dn2CppObject** out)
+static int32_t dn2cpp_collect_methods(const Dn2CppTypeInfo* type, int32_t flags,
+    Dn2CppObject** out, Dn2CppString* name = nullptr)
 {
     int32_t n = 0;
     Dn2CppSeenSlots seen;
@@ -2626,6 +2627,8 @@ static int32_t dn2cpp_collect_methods(const Dn2CppTypeInfo* type, int32_t flags,
                 continue;
             if (dn2cpp_meta_family_name(*row.operator->()))
                 family.push_back(mi);
+            if (name != nullptr && !dn2cpp_member_name_matches(row->name, name, flags, false))
+                continue;
             if (out != nullptr)
                 dn2cpp_gc_store_ref(&out[n],
                     reinterpret_cast<Dn2CppObject*>(row->genericParamCount > 0
@@ -2636,7 +2639,7 @@ static int32_t dn2cpp_collect_methods(const Dn2CppTypeInfo* type, int32_t flags,
             break;
         gvm.next_type();
     }
-    return n + dn2cpp_meta_collect_family(type, flags, family, out != nullptr ? out + n : nullptr);
+    return n + dn2cpp_meta_collect_family(type, flags, family, out != nullptr ? out + n : nullptr, name);
 }
 
 Dn2CppArrayRef* dn2cpp_type_get_methods(Dn2CppType* t, int32_t bindingFlags)
@@ -2645,6 +2648,20 @@ Dn2CppArrayRef* dn2cpp_type_get_methods(Dn2CppType* t, int32_t bindingFlags)
     int32_t n = dn2cpp_collect_methods(t->typeInfo, bindingFlags, nullptr);
     Dn2CppArrayRef* arr = dn2cpp_newarr_ref(n);
     dn2cpp_collect_methods(t->typeInfo, bindingFlags, arr->data);
+    return arr;
+}
+
+Dn2CppArrayRef* dn2cpp_type_get_declared_methods(Dn2CppType* t, Dn2CppString* name)
+{
+    dn2cpp_type_require(t);
+    dn2cpp_require_metadata(t->typeInfo);
+    if (name == nullptr)
+        return dn2cpp_newarr_ref(0);
+    constexpr int32_t flags = DN2CPP_BF_DECLAREDONLY | DN2CPP_BF_INSTANCE | DN2CPP_BF_STATIC
+        | DN2CPP_BF_PUBLIC | DN2CPP_BF_NONPUBLIC;
+    int32_t n = dn2cpp_collect_methods(t->typeInfo, flags, nullptr, name);
+    Dn2CppArrayRef* arr = dn2cpp_newarr_ref(n);
+    dn2cpp_collect_methods(t->typeInfo, flags, arr->data, name);
     return arr;
 }
 
@@ -4115,7 +4132,7 @@ static bool dn2cpp_meta_family_name(const Dn2CppMethodInfo& row)
 
 // Overrides replace their Object slot; new slots and nonvirtual names keep both rows.
 static int32_t dn2cpp_meta_collect_family(const Dn2CppTypeInfo* type, int32_t flags,
-    Dn2CppMethodCandidates& emitted, Dn2CppObject** out)
+    Dn2CppMethodCandidates& emitted, Dn2CppObject** out, Dn2CppString* name)
 {
     int32_t n = 0;
     bool gatedOpen = true;
@@ -4126,7 +4143,8 @@ static int32_t dn2cpp_meta_collect_family(const Dn2CppTypeInfo* type, int32_t fl
         {
             const Dn2CppMetaMember* d = &g_meta_members[k];
             if (!dn2cpp_meta_family(d) || (d->gated && !gatedOpen) || !dn2cpp_meta_declares(ti, d)
-                || !dn2cpp_member_matches(d->attrs, flags, ti != type))
+                || !dn2cpp_member_matches(d->attrs, flags, ti != type)
+                || (name != nullptr && !dn2cpp_member_name_matches(d->methodName, name, flags, false)))
                 continue;
             bool present = false;
             const Dn2CppMetaMember* root = (d->ilAttrs & DN2CPP_MA_VIRTUAL) != 0

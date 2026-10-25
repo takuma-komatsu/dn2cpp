@@ -992,6 +992,20 @@ internal sealed partial class MethodCompiler
                 PushReflectionMemberArray($"dn2cpp_type_get_methods({Cast(t, "Dn2CppType*")}, {Cast(flags, "int32_t")})", sig.ReturnType);
                 return true;
             }
+            case ("System.Reflection.TypeInfo", "GetDeclaredMethods")
+                when sig.ParameterTypes.Length == 1 && sig.ParameterTypes[0].IsString:
+            {
+                NoteValueTypeRows();
+                var methodName = Pop();
+                var t = Pop();
+                TypeDesc methodInfo = sig.ReturnType is
+                    { Kind: TypeKind.Class, Class.Context.TypeArgs: [{ } element] }
+                    ? element : TypeDesc.MakeExternal("System.Reflection.MethodInfo");
+                PushReflectionMemberArray(
+                    $"dn2cpp_type_get_declared_methods({Cast(t, "Dn2CppType*")}, {Cast(methodName, "Dn2CppString*")})",
+                    TypeDesc.MakeSZArray(methodInfo));
+                return true;
+            }
             // Type.GetMethod — the ENTIRE public overload surface. Every overload
             // is "name plus a subset of {int genericParameterCount, BindingFlags,
             // Binder, CallingConventions, Type[] types, ParameterModifier[]}", so

@@ -857,8 +857,12 @@ internal static partial class CoreIntrinsics
     public static readonly MemberRefIntercept MrTypeInfoDeclaredMembers = new(
         InterceptCutKind.None, InterceptEmitArm.IntrinsicUnderDeclType,
         typeGate: "System.Reflection.TypeInfo",
-        extra: static (_, n, sig) => (n is "get_DeclaredFields" or "get_DeclaredConstructors")
-            && sig().Header.IsInstance && sig().ParameterTypes.Length == 0);
+        extra: static (_, n, sig) => sig().Header.IsInstance && (n switch
+        {
+            "get_DeclaredFields" or "get_DeclaredConstructors" => sig().ParameterTypes.Length == 0,
+            "GetDeclaredMethods" => sig().ParameterTypes is [{ IsString: true }],
+            _ => false,
+        }));
 
     /// <summary>MemoryExtensions.ToUpperInvariant/ToLowerInvariant over char
     /// spans (<see cref="LoweredSpanCaseFold"/> — shape-keyed; any other overload

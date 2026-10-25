@@ -303,7 +303,7 @@ DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|unboxed-struct-invoke-argv:invoke"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectInvoke/AdmissionFiltersOnly.csproj samples/dotnet/ReflectInvoke/AdmissionFiltersOnlyProgram.cs samples/dotnet/ReflectInvoke/keep-admission-bindings.xml"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectReturnLib/NamedBindingTargets.cs"
-DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|library-bindings-prefix-argv:before-library-bindings"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|library-bindings-prefix-argv:before-library-bindings|typeinfo-declared-methods-prefix-argv:before-typeinfo-declared-methods"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|metadata-projections-prefix-argv:before-metadata-projections|written-generic-arguments-prefix-argv:before-written-generic-arguments"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|selection-filters-prefix-argv:before-selection-filters"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|reflection-alternatives-prefix-argv:before-reflection-alternatives"
@@ -2933,6 +2933,11 @@ gate_extra_asserts() {
         grep -qwxF "// AdmissionFilters.$body" "$out"/generated*.cpp "$out"/generated.h \
             || { echo "FAIL: the control body AdmissionFilters.$body was not admitted" >&2; return 1; }
     done
+    if grep -qE '^// AdmissionFilters\.DeclaredMethod(Base|Owner|Template(_[^:]+)?)::(Safe|SafeExtra)$' \
+            "$out"/generated*.cpp "$out"/generated.h; then
+        echo 'FAIL: a TypeInfo method enumeration admitted a method body' >&2
+        return 1
+    fi
     for body in SelectedRow OpenRow OpenParameterRow OpenPropertyRow OpenGetterRow \
             OpenEventRow OpenAdderRow OpenFieldRow OpenEnumerationRow NestedRow TemplateParameterRow \
             FieldProjection PropertyProjection ReturnProjection ParameterProjection InterfaceRow \
@@ -2992,8 +2997,20 @@ gate_extra_asserts() {
     reflection_oracle "$_CG_APP" before-template-lookups > "$out/template-lookups-before.dotnet.stdout"
     run_bounded "$out/AdmissionFiltersOnly$EXE_EXT" before-library-bindings > "$out/library-bindings-before.native.stdout"
     reflection_oracle "$_CG_APP" before-library-bindings > "$out/library-bindings-before.dotnet.stdout"
+    run_bounded "$out/AdmissionFiltersOnly$EXE_EXT" before-typeinfo-declared-methods > "$out/typeinfo-declared-methods-before.native.stdout"
+    reflection_oracle "$_CG_APP" before-typeinfo-declared-methods > "$out/typeinfo-declared-methods-before.dotnet.stdout"
     for axis in native dotnet; do
         output=$(strip_cr_win_file "$out/attribute-selection.$axis.stdout")
+        sed '/^== TypeInfo declared methods ==/,$d' "$out/attribute-selection.$axis.stdout" \
+            > "$out/typeinfo-declared-methods-prefix.$axis.stdout"
+        diff -u <(strip_cr_win_file "$out/typeinfo-declared-methods-before.$axis.stdout") \
+            <(strip_cr_win_file "$out/typeinfo-declared-methods-prefix.$axis.stdout")
+        reflection_assert_lines "$out/attribute-selection.$axis.stdout" 1 \
+            '== TypeInfo declared methods ==' 'ordinary Safe/0' 'ordinary Safe/1' \
+            'ordinary count=2' 'ordinary null=0' 'ordinary wildcard=0' \
+            'template Safe/0' 'template Safe/1' 'template count=2' \
+            'template null=0' 'template wildcard=0' 'object Equals=1/1' \
+            'TypeInfo declared methods end'
         sed '/^== selected generic member attributes ==/,$d' "$out/attribute-selection.$axis.stdout" \
             > "$out/attribute-selection-prefix.$axis.stdout"
         diff -u <(strip_cr_win_file "$out/attribute-selection-before.$axis.stdout") \
