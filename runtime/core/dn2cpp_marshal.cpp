@@ -221,6 +221,14 @@ Dn2CppObject* dn2cpp_marshal_ptr_to_structure(const void* ptr, const Dn2CppType*
     // two layouts agree for every type that reaches here, and the box has to be the
     // representation because emitted code reads the boxed payload as one.
     dn2cpp_marshal_require_copyable(t->typeInfo);
+    if ((t->typeInfo->reflection().activation & DN2CPP_TA_UNALLOCATED) != 0)
+    {
+        const std::string message = std::string("Marshal.PtrToStructure(IntPtr, Type) boxes '")
+            + (t->typeInfo->name != nullptr ? t->typeInfo->name : "<unnamed type>")
+            + "', whose box is not prepared; pass a statically known typeof(T) at the call "
+              "site or preserve the whole struct type with [Preserve] or link.xml.";
+        dn2cpp_throw_platform_not_supported(message.c_str());
+    }
     return dn2cpp_box(t->typeInfo, ptr, static_cast<size_t>(t->typeInfo->instanceSize));
 }
 

@@ -42,16 +42,9 @@
 # only retention, the measured exception behaviors, the Target setter,
 # GetHashCode).
 #
-# GC-TIMING NOTE. gchandle-pin-subset's sections 13 and 17 read process-wide
-# heap state (an aggregate weakness check behind GC.GetTotalMemory(true), and an
-# allocation storm forcing block reuse), which makes this fold a hazard.
-# It is sound because the section is driven LAST: nothing
-# inherits its ~200 MB of churn, and no earlier section leaves a live set within
-# an order of magnitude of its 51.2 MB threshold. Measured on the folded bucket
-# (instrumented run, then reverted): the native side's post-collection heap is
-# 2,854,912 bytes against that 51,200,000-byte threshold — an 18x margin, of
-# which the whole bucket prefix is a few MB — and real .NET's is 527,632. Three
-# consecutive DN2CPP_GATE_CACHE=0 runs are byte-identical. Keep it last.
+# GCHandle sections 13 and 17 read process-wide heap state. Run them after
+# every heap-sensitive section; any later section must be independent of prior
+# allocator and heap state.
 source "$(dirname "$0")/_common.sh"
 
 echo "== Asserting [StructLayout(Size=N)] with N not a multiple of the alignment refuses =="
@@ -153,4 +146,22 @@ grep -q "error: .*PtrOverExplicit: explicit Size=4 over fields ending at byte 9 
     || { echo "FAIL: the refusal did not name the type, Size, field end, total and alignment" >&2; printf '%s\n' "$_xover_err" | tail -3 >&2; exit 1; }
 echo "fields-past-Size refusal OK: exit 2, named type, Size, field end, total and alignment"
 
+gate_capture_diff_output() {
+    local native="$3"
+    [[ "$native" == *$'known=31\nretained=1\nretained=47' ]] \
+        || { echo "FAIL: Type-based PtrToStructure box dispatch block did not run" >&2; exit 1; }
+}
+
 corelib_diff_gate MarshalPinning
+
+echo "== Asserting an unknown Type cannot create an unprepared box =="
+_oracle_box=$(run_bounded dotnet "$_CG_APP" --unprepared-box)
+[ "$_oracle_box" = 'unprepared=59' ] \
+    || { echo "FAIL: real .NET did not box the unknown operand" >&2; exit 1; }
+_native_box=$(run_bounded "./$_CG_OUT/MarshalPinning$EXE_EXT" --unprepared-box)
+grep -Fxq 'PlatformNotSupportedException' <<<"$_native_box" \
+    || { echo "FAIL: unprepared box did not throw catchably" >&2; exit 1; }
+grep -Fq "StructMarshalRoundtripSubset.UnpreparedBox" <<<"$_native_box" \
+    || { echo "FAIL: unprepared box refusal omitted the target" >&2; exit 1; }
+grep -Fq 'statically known typeof(T)' <<<"$_native_box" \
+    || { echo "FAIL: unprepared box refusal omitted the remedy" >&2; exit 1; }
