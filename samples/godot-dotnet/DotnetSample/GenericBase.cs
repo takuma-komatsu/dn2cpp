@@ -10,6 +10,8 @@ public abstract partial class GenericBase<T> : Node
 {
     protected abstract T Make();
 
+    public static int StaticBase(int value, int offset) => value + offset;
+
     public override void _Ready()
     {
         T value = Make();

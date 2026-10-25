@@ -6,4 +6,6 @@ using Godot;
 public partial class GenericConcrete : GenericBase<int>
 {
     protected override int Make() => 42;
+
+    public static string StaticFormat(int value, string label) => label + ":" + value;
 }

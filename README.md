@@ -466,7 +466,8 @@ template; the fork changes editor tooling only.**
   `-- --dn2cpp-gc-incremental=0|1` overrides both. Web has no page-protection
   VDB, does not show the option, and always uses stop-the-world collection.
 - **Verified.** In the real engine, end to end: all virtuals, input,
-  `[Export]`, `[Signal]`, `ToSignal`, `RefCounted` lifetime stress, and
+  `[Export]`, `[Signal]`, `ToSignal`, GDScript calls to C# static methods
+  (including user base classes), `RefCounted` lifetime stress, and
   **async interop** (`Task` continuations marshal back to the main thread
   via a non-blocking run-queue pump driven by the host frame callback). One
   headless export drives the fork pipeline to a playable macOS `.app`, an
@@ -476,7 +477,7 @@ template; the fork changes editor tooling only.**
 - **Carve-outs.** Editor F5 (export-run only; TOOLS builds use the hostfxr
   6-argument path), editor hot-reload state (`Callable` / delegate
   serialization reports "unserializable", which the engine already
-  handles), GDScript→C# `CallStatic`, `Delegate.Method` for delegates the runtime or
+  handles), `Delegate.Method` for delegates the runtime or
   hot-update interpreter builds without a recorded method identity (returns null), async void signal
   handlers, managed stack traces (an exception's `GD.PushError` text is
   real, but its file is null and line 0), and `Variant` → `GodotObject[]`

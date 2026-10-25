@@ -2,6 +2,7 @@
 # Script registration constructs framework attributes named by later body scans.
 # Code-created nested nodes retain bridge metadata methods on allocation.
 # ExitTree collections drain before shutdown disposes Godot's tracked helpers.
+# GDScript calls script statics and user-base statics through reflected delegates.
 # Godot .NET-module (mono module) scripted-node E2E gate: a real engine binary
 # built from the pinned godotengine/godot clone loads the dn2cpp-produced
 # mono-module library, and a scene whose nodes carry real C# scripts
@@ -103,11 +104,11 @@ godot_dotnet_pin_abi_check "$PINNED_COMMIT" "$ABI_EXPECTED"
 
 echo "== 2/7 Building the mono-module shared library =="
 godot_dotnet_transpile "$OUT"
-for metadata_method in GetGodotMethodList GetGodotPropertyList; do
-    grep -qE " AllocatedChild_${metadata_method}_m[0-9]+\\(" "$OUT/generated.h" \
-        || { echo "FAIL: allocated nested node lacks $metadata_method" >&2; exit 1; }
-    if grep -qE " UnallocatedChild_${metadata_method}_m[0-9]+\\(" "$OUT/generated.h"; then
-        echo "FAIL: unallocated nested node retained $metadata_method" >&2
+for bridge_method in GetGodotMethodList GetGodotPropertyList InvokeGodotClassStaticMethod; do
+    grep -qE " AllocatedChild_${bridge_method}_m[0-9]+\\(" "$OUT/generated.h" \
+        || { echo "FAIL: allocated nested node lacks $bridge_method" >&2; exit 1; }
+    if grep -qE " UnallocatedChild_${bridge_method}_m[0-9]+\\(" "$OUT/generated.h"; then
+        echo "FAIL: unallocated nested node retained $bridge_method" >&2
         exit 1
     fi
 done
@@ -223,6 +224,7 @@ for marker in \
     "DN2CPP_DM_ASYNC resumeOnMain=True workerDiffers=True delayOnMain=True delayElapsedOk=True" \
     "DN2CPP_DM_SYNCCTX mainHasCtx=True workerCtxNull=True postedOnMain=True" \
     "DN2CPP_DM_GENERIC value=42" \
+    "DN2CPP_DM_STATIC own=alpha:23 base=47 repeat=beta:91" \
     "DN2CPP_DM_PROCESS"; do
     grep -qF "$marker" "$LOG" \
         || { echo "FAIL: missing marker: $marker" >&2; exit 1; }
@@ -355,6 +357,7 @@ grep -q "^dn2cpp-dm: [1-9][0-9]* type(s) unusable - class absent from this engin
 # double-resumed awaiter shows up as a count != 1.
 for once in "DN2CPP_DM_CTOR" "DN2CPP_DM_READY" "DN2CPP_DM_PROCESS" \
     "DN2CPP_DM_GENERIC value=42" \
+    "DN2CPP_DM_STATIC " \
     "DN2CPP_DM_AUTOLOAD" "DN2CPP_DM_SCENE_RESOURCE" \
     "DN2CPP_DM_LATE_ATTRIBUTE" \
     "DN2CPP_DM_ALLOCATED_CHILD value=" "DN2CPP_DM_ALLOCATED_CHILD_READY" \
@@ -567,6 +570,37 @@ echo "   the game's own GDExtension loads from the drop-in run dir after staging
 echo "== Shutdown finalizers (native / CLR, same release template and pack) =="
 source "$(dirname "$0")/_godot_dotnet_shutdown.sh"
 godot_dotnet_shutdown_gate "$OUT" "$ARCH" "$DYLIB"
+
+echo "== Static calls (native / CLR, same assembly and normal-scene pack) =="
+# The shutdown check already published a CLR host with the exact transpiled IL.
+# A separate executable name keeps its shutdown pack intact.
+STATIC_CLR="$OUT/shutdown/clr"
+cp -L "$GODOT_DOTNET_TEMPLATE" "$STATIC_CLR/godot-static$EXE_EXT"
+chmod +x "$STATIC_CLR/godot-static$EXE_EXT"
+cp "$RUN/godot.pck" "$STATIC_CLR/godot-static.pck"
+STATIC_CLR_LOG="$STATIC_CLR/static.log"
+rc=0
+run_with_watchdog 120 "$PWD/$STATIC_CLR/godot-static$EXE_EXT" --headless --verbose \
+    --quit-after 900 >"$STATIC_CLR_LOG" 2>&1 || rc=$?
+if [ "$rc" -ne 0 ]; then
+    echo "FAIL: CLR static-call scene exited $rc" >&2
+    cat "$STATIC_CLR_LOG" >&2
+    exit 1
+fi
+if ! grep -qF '.NET: hostfxr initialized' "$STATIC_CLR_LOG" \
+    || grep -qE 'dn2cpp-dm: init ok|SCRIPT ERROR' "$STATIC_CLR_LOG"; then
+    echo "FAIL: CLR static-call scene did not run through the CLR script bridge" >&2
+    cat "$STATIC_CLR_LOG" >&2
+    exit 1
+fi
+if [ "$(grep -c '^DN2CPP_DM_STATIC ' "$STATIC_CLR_LOG" || true)" -ne 1 ]; then
+    echo "FAIL: CLR static-call marker missing or repeated" >&2
+    cat "$STATIC_CLR_LOG" >&2
+    exit 1
+fi
+grep '^DN2CPP_DM_STATIC ' "$LOG" >"$RUN/static.markers"
+grep '^DN2CPP_DM_STATIC ' "$STATIC_CLR_LOG" >"$STATIC_CLR/static.markers"
+diff -u "$STATIC_CLR/static.markers" "$RUN/static.markers"
 
 gate_cache_commit
 echo "OK"

@@ -384,6 +384,8 @@ Optional, with the invariant each exists for:
   demands after the initial seeds. The .NET-module backend uses this for
   code-created Godot objects and their user base classes, including nested types
   outside assembly script registration; unallocated siblings gain no bodies.
+  Its bridge roots include the generated static-method dispatcher on each user
+  level, which `ScriptManagerBridge.CallStatic` binds through `CreateDelegate`.
 - `CoversReflectionSite` — true when the backend's contract already retains what
   a reflection site in that caller can reach. It only reports an unrecognized
   site there as backend-covered; it changes no admission.

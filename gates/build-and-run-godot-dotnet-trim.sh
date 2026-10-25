@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Real Godot script registration, callbacks, exported properties and signals under
+# Real Godot script registration, callbacks, static calls, properties and signals under
 # reflection trimming. ILDiet retains reflection rows without unused script bodies;
 # the same scene also runs with --no-ildiet. Both paths apply the wrapper trim.
 source "$(dirname "$0")/_common.sh"
@@ -206,6 +206,7 @@ for marker in \
     "DN2CPP_DM_TOSIGNAL" \
     "DN2CPP_DM_ASYNC resumeOnMain=True workerDiffers=True delayOnMain=True delayElapsedOk=True" \
     "DN2CPP_DM_SYNCCTX mainHasCtx=True workerCtxNull=True postedOnMain=True" \
+    "DN2CPP_DM_STATIC own=alpha:23 base=47 repeat=beta:91" \
     "DN2CPP_DM_PROCESS"; do
     grep -qF "$marker" "$LOG" \
         || { echo "FAIL: missing marker: $marker" >&2; exit 1; }
@@ -282,6 +283,7 @@ grep -qF "DN2CPP_DM_FAULTPROBE posted=True method=True" "$LOG" \
 # in-place), a broken _Process latch, a double-dispatched signal handler or a
 # double-resumed awaiter shows up as a count != 1.
 for once in "DN2CPP_DM_CTOR" "DN2CPP_DM_READY" "DN2CPP_DM_PROCESS" \
+    "DN2CPP_DM_STATIC " \
     "DN2CPP_DM_AUTOLOAD" "DN2CPP_DM_SCENE_RESOURCE" \
     "DN2CPP_DM_EXPORT" "DN2CPP_DM_GET" "DN2CPP_DM_TRIMFALLBACK" "DN2CPP_DM_CONNECTED" \
     "DN2CPP_DM_SIGNAL" "DN2CPP_DM_TIMEOUT" "DN2CPP_DM_TOSIGNAL" \
