@@ -1,4 +1,4 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" language="C#" path="res://Player.cs" id="1_player"]
 [ext_resource type="Script" language="C#" path="res://Probe.cs" id="2_probe"]
@@ -6,8 +6,10 @@
 [ext_resource type="Script" language="C#" path="res://ParityNode.cs" id="4_parity"]
 [ext_resource type="Script" language="C#" path="res://GenericConcrete.cs" id="5_generic"]
 [ext_resource type="Script" language="C#" path="res://FaultProbe.cs" id="6_fault"]
+[ext_resource type="Script" path="res://static_call_probe.gd" id="7_static"]
 
 [node name="Main" type="Node"]
+script = ExtResource("7_static")
 
 [node name="Player" type="Node" parent="."]
 script = ExtResource("1_player")

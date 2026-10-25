@@ -147,11 +147,6 @@ internal sealed class DotnetModuleBackend : IEmitBackend
         // reflection). An AOT image has no collectible AssemblyLoadContext, so
         // "not collectible" is the permanently-correct answer, not a degrade.
         ("Godot.DelegateUtils", "IsDelegateCollectible"),
-        // GDScript-facing static-method dispatch on a C# script class: invokes the
-        // reflected method through MethodInfo.CreateDelegate<T>, a
-        // reflection-to-delegate bridge dn2cpp does not model. The stubbed callback
-        // reports "no such method" (false).
-        ("Godot.Bridge.ScriptManagerBridge", "CallStatic"),
     };
 
     /// <summary>The cuts above, plus the CustomGCHandle wrappers — bounded for the
@@ -280,7 +275,7 @@ internal sealed class DotnetModuleBackend : IEmitBackend
         {
             _scriptBridgeClasses.Add(cls);
             foreach (var m in cls.Methods)
-                if (IsScriptMetadataMethod(m))
+                if (IsScriptBridgeMethod(m))
                     roots.Add(m);
         }
         return roots;
@@ -288,9 +283,10 @@ internal sealed class DotnetModuleBackend : IEmitBackend
 
     private readonly HashSet<ClassInfo> _scriptBridgeClasses = new();
 
-    private static bool IsScriptMetadataMethod(MethodInfo method) => method.IsStatic && method.Rva != 0
+    private static bool IsScriptBridgeMethod(MethodInfo method) => method.IsStatic && method.Rva != 0
         && method.Name is "GetGodotMethodList" or "GetGodotSignalList"
-            or "GetGodotPropertyList" or "GetGodotPropertyDefaultValues";
+            or "GetGodotPropertyList" or "GetGodotPropertyDefaultValues"
+            or "InvokeGodotClassStaticMethod";
 
     public BackendAllocationRoots? AllocatedTypeRoots(Compilation c, ClassInfo allocated)
     {
@@ -298,7 +294,8 @@ internal sealed class DotnetModuleBackend : IEmitBackend
             || !DerivesFromGodotObject(allocated))
             return null;
         // Code-created objects enter ScriptManagerBridge without assembly script
-        // registration. The bridge reads their generated metadata and user base chain too.
+        // registration. Their generated metadata and static dispatchers use the same
+        // bridge contract, including the user base chain.
         var methods = new List<MethodInfo>();
         var attributes = new List<ClassInfo>();
         for (var cls = allocated; cls is not null && cls.Module.AssemblyName != "GodotSharp"; cls = cls.BaseClass)
@@ -308,7 +305,7 @@ internal sealed class DotnetModuleBackend : IEmitBackend
             cls.EnsureMembers();
             attributes.Add(cls);
             foreach (var method in cls.Methods)
-                if (IsScriptMetadataMethod(method))
+                if (IsScriptBridgeMethod(method))
                     methods.Add(method);
         }
         return new BackendAllocationRoots(methods, attributes);
@@ -322,9 +319,10 @@ internal sealed class DotnetModuleBackend : IEmitBackend
     // GetUninitializedObject and constructed by invoking the instance constructor whose
     // arity the engine passes. Class info reads every row of each instance method and
     // invokes the generated static Get*List / GetGodotPropertyDefaultValues members on
-    // the script type and its user bases. A static method call on a script enters
-    // ScriptManagerBridge.CallStatic, which s_boundedMethods cuts, so the generated
-    // static InvokeGodotClassStaticMethod is never bound. Everything else the engine
+    // the script type and its user bases. ScriptManagerBridge.CallStatic binds each
+    // level's generated InvokeGodotClassStaticMethod through CreateDelegate; those
+    // bodies are explicit bridge roots even when the runtime Type is unknown.
+    // Everything else the engine
     // calls on a script (InvokeGodotClassMethod, Set/GetGodotClassPropertyValue,
     // Save/RestoreGodotObjectData and their siblings) overrides a GodotObject virtual
     // that CSharpInstanceBridge calls, so it is reached as a used slot of the allocated

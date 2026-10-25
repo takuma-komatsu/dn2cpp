@@ -43,6 +43,8 @@ public partial class Probe : Node
     {
         [Export] public int Value { get; set; } = 17;
 
+        public static int StaticValue(int value) => value + 7;
+
         public override void _Ready()
         {
             GD.Print("DN2CPP_DM_ALLOCATED_CHILD_READY");
@@ -52,5 +54,7 @@ public partial class Probe : Node
     public partial class UnallocatedChild : Node
     {
         [Export] public int Value { get; set; } = 23;
+
+        public static int StaticValue(int value) => value + 7;
     }
 }
