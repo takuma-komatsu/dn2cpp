@@ -14,6 +14,8 @@
 # carries the throw-time trace — see its comment below.
 source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|worker-modes:pool,thread,timer,cts-timer,async-void,local-continuation,nested-drain,generic-exception,message-override"
+# The Windows/MSYS status-4 workaround also covers the initial Main comparison.
+DN2CPP_RETRY_STATUS4=1
 
 corelib_diff_gate UnhandledExitSubset
 
@@ -79,8 +81,10 @@ echo "== Escaping-worker arms: managed first line and abnormal exit match real .
 for mode in pool thread timer 'cts timer' 'async void' 'local continuation' 'nested drain' 'generic exception' \
         'message override'; do
     set +e
-    native=$(run_bounded "./$out/$project$EXE_EXT" "$mode" 2>"$out/worker.err"); native_code=$?
-    expected=$(run_bounded dotnet "$_CG_APP" "$mode" 2>"$out/worker-oracle.err"); expected_code=$?
+    native=$(run_bounded_retry_status4 "$out" "worker $mode native" \
+        "./$out/$project$EXE_EXT" "$mode" 2>"$out/worker.err"); native_code=$?
+    expected=$(run_bounded_retry_status4 "$out" "worker $mode oracle" \
+        dotnet "$_CG_APP" "$mode" 2>"$out/worker-oracle.err"); expected_code=$?
     set -e
     native=$(strip_cr_win "$native")
     expected=$(strip_cr_win "$expected")
@@ -91,6 +95,10 @@ throwing $mode"
     case "$expected_code" in
         0|1) echo "FAIL: real .NET did not terminate abnormally for $mode" >&2; exit 1 ;;
     esac
+    if [ "$DN2CPP_OS" = windows ] && { [ "$native_code" -eq 4 ] || [ "$expected_code" -eq 4 ]; }; then
+        echo "FAIL: worker $mode still returned status 4 after one retry" >&2
+        exit 1
+    fi
     assert_exit_code "$native_code" "$expected_code"
     first=$(strip_cr_win "$(head -n 1 "$out/worker.err")")
     oracle_first=$(strip_cr_win "$(head -n 1 "$out/worker-oracle.err")")

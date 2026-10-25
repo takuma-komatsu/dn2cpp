@@ -53,7 +53,8 @@ default_culture_run() {
     shift
     stderr_file="$_GATE_RUN_LOG_DIR/$side.stderr"
     printf -v command_line '%q ' "$@"
-    if output=$(run_bounded "$@" 2>"$stderr_file"); then
+    if output=$(run_bounded_retry_status4 "${out:-$_GATE_RUN_LOG_DIR}" \
+            "DefaultCulture $side: $command_line" "$@" 2>"$stderr_file"); then
         code=0
     else
         code=$?
@@ -78,7 +79,7 @@ run_locale_env() {
 }
 
 default_culture_diagnostics_self_test() {
-    local side code actual actual_code diagnostics child quoted_args
+    local side code actual actual_code diagnostics child quoted_args retry_counter retry_evidence
     child='
         [ "$#" -eq 5 ] && [ "$2" = "culture-fallback" ] \
             && [ "$3" = "foo QQ" ] && [ "$4" = "" ] \
@@ -132,6 +133,38 @@ default_culture_diagnostics_self_test() {
             && grep -Fxq 'stderr: <empty>' "$diagnostics" \
             || { echo "FAIL: $side empty failed-run diagnostics are incomplete" >&2; cat "$diagnostics" >&2; return 1; }
     done
+    if [ "$DN2CPP_OS" = windows ]; then
+        retry_counter="$_GATE_RUN_LOG_DIR/retry-counter"
+        diagnostics="$_GATE_RUN_LOG_DIR/self-test-retry.stderr"
+        child='
+            if [ ! -e "$1" ]; then
+                printf "1\n" >"$1"
+                printf "first attempt\n"
+                printf "first error\n" >&2
+                exit 4
+            fi
+            printf "second attempt\n"
+        '
+        actual=$(default_culture_run native bash -c "$child" _ "$retry_counter" 2>"$diagnostics")
+        retry_evidence=("$_GATE_RUN_LOG_DIR"/retry4.*)
+        [ "$actual" = 'second attempt' ] && [ "$(cat "$retry_counter")" = 1 ] \
+            && [ "${#retry_evidence[@]}" -eq 1 ] \
+            && grep -Fxq 'first attempt' "${retry_evidence[0]}/first.stdout" \
+            && grep -Fxq 'first error' "${retry_evidence[0]}/first.stderr" \
+            && grep -Fxq '4' "${retry_evidence[0]}/first.status" \
+            && grep -Fq 'first run returned 4; retried once (second status 0' "$diagnostics" \
+            || { echo 'FAIL: status-4 retry lost the first result or changed the second' >&2; return 1; }
+        if actual=$(default_culture_run native bash -c 'exit 4' 2>"$diagnostics"); then
+            echo 'FAIL: a second status 4 passed' >&2
+            return 1
+        else
+            actual_code=$?
+        fi
+        [ "$actual_code" -eq 4 ] \
+            && grep -Fxq 'exit code: 4' "$diagnostics" \
+            && grep -Fq 'first run returned 4; retried once (second status 4' "$diagnostics" \
+            || { echo 'FAIL: a second status 4 was not reported' >&2; return 1; }
+    fi
     echo "OK: DefaultCulture run diagnostics"
     return 0
 }
