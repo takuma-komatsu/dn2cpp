@@ -23,15 +23,9 @@
 // address — it verifies the CONTENT read/written through the pin (and the pin's
 // stability across reads), which is a deterministic exact diff vs real .NET.
 //
-// GC TIMING, and why this section is LAST in the driver. Section 13 asserts an
-// aggregate fact about the heap (50,000 weak-handle payloads must not all
-// survive a forced collection) and section 17 storms the allocator to force
-// reuse of any wrongly-freed block, so both read process-wide state rather than
-// their own. Running last means no later section inherits the ~200 MB of churn
-// or the retained Blob chain; running after the Marshal sections is safe in the
-// other direction because none of them leaves a live set anywhere near section
-// 13's 51.2 MB threshold (50,000 x 4096 / 4). Do not move it up the driver, and
-// do not append a heap-holding section after it.
+// Sections 13 and 17 read process-wide heap state. Run them after every
+// heap-sensitive section; any later section must be independent of prior
+// allocator and heap state.
 using System;
 using System.Runtime.InteropServices;
 

@@ -1034,6 +1034,10 @@ would hand out the box; a
 `CreateDelegate` binding of the same member passes the value unboxed and runs.
 Ordinary compiled dispatch keeps its trap behavior.
 
+`Marshal.PtrToStructure(IntPtr, Type)` admits boxed dispatch for finite known
+value types. A runtime Type may use an already prepared box; creating an
+unprepared box refuses before reading native memory into it.
+
 This is an internal generated-code/runtime ABI: regenerate the C++ and rebuild
 the runtime together. Changes must preserve streaming output, deterministic
 pool indices, trim refusals and the direct type-test/dispatch paths.

@@ -7,11 +7,17 @@ namespace MarshalPinning
     // order. Each section keeps its own namespace.
     internal static class Program
     {
-        private static void Main()
+        private static void Main(string[] args)
         {
             // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
             CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+
+            if (args.Length == 1 && args[0] == "--unprepared-box")
+            {
+                StructMarshalRoundtripSubset.Program.UnpreparedBox();
+                return;
+            }
 
             PinnedArraySubset.Program.__GateEntry();
             StructMarshalRoundtripSubset.Program.__GateEntry();
@@ -28,10 +34,10 @@ namespace MarshalPinning
             MarshalNullFaultSubset.Program.__GateEntry();
             MarshalHResultSubset.Program.__GateEntry();
             NativeMemoryOverflowSubset.Program.__GateEntry();
-            // GCHandlePinSubset stays LAST: its sections 13 and 17 assert
-            // aggregate heap facts and storm the allocator, so nothing may
-            // inherit their churn. See the header of GCHandlePinSubset.cs.
+            // GCHandlePinSubset runs after every heap-sensitive section. The
+            // following marshalling reads only its own native buffer.
             GCHandlePinSubset.Program.__GateEntry();    // was gchandle-pin-subset
+            StructMarshalRoundtripSubset.Program.TypeBoxing();
         }
     }
 }

@@ -968,6 +968,28 @@ internal sealed partial class Compilation
                         "Type comes from " + unknown + " — no type allocated", null, null, ".ctor");
                 return;
             }
+            case ReflectionOp.MarshalPtrToStructure:
+            {
+                var boxed = Operand(app, site, api.Target);
+                string? unknown = boxed.Unknown;
+                foreach (var e in boxed.Items)
+                    if (e.Kind == REntityKind.Template)
+                        unknown ??= "a runtime-instantiated generic type";
+                foreach (var cls in ClassesOf(boxed))
+                {
+                    if (ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls))
+                        continue;
+                    if (EnsureShape(cls).IsValueType)
+                    {
+                        _reflectionSelectionCount++;
+                        NoteReflectionBoxed(TypeDesc.MakeClass(cls));
+                    }
+                }
+                if (unknown is not null)
+                    RecordReflectionDiagnostic(app, site, ReflectionDiagnosticKind.Execution,
+                        "Type comes from " + unknown + " — no box allocated", null, null, null);
+                return;
+            }
             case ReflectionOp.ActivatorCreateGeneric:
                 types = site.TypeArgument.IsEmpty ? Operand(app, site, api.Target) : Resolve(app, site.TypeArgument);
                 break;

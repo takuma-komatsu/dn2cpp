@@ -51,6 +51,7 @@ internal enum ReflectionOp : byte
     CreateDelegate, CreateDelegateNamed, DynamicInvoke, DelegateMethod,
     GetCustomAttributes, IsDefined, GetCustomAttributesData,
     RunClassConstructor, TypeInfoView, SequenceElement, TypeHandle, GetUninitializedObject,
+    MarshalPtrToStructure,
 }
 
 /// <summary>Which accessor an <see cref="ReflectionOp.Accessor"/> call selects.</summary>
@@ -187,7 +188,8 @@ internal static class ReflectionApis
         or "Invoke" or "GetValue" or "SetValue" or "AddEventHandler" or "RemoveEventHandler" or "InvokeMember"
         or "CreateInstance" or "CreateDelegate" or "DynamicInvoke" or "get_Method"
         or "GetCustomAttributes" or "GetCustomAttribute" or "IsDefined" or "GetCustomAttributesData"
-        or "get_CustomAttributes" or "RunClassConstructor" or "GetUninitializedObject";
+        or "get_CustomAttributes" or "RunClassConstructor" or "GetUninitializedObject"
+        or "PtrToStructure";
 
     /// <summary>Classifies a call to <paramref name="parent"/>::<paramref name="name"/>, or
     /// null when it is no reflection API. A member of a known family whose parameter list
@@ -226,6 +228,9 @@ internal static class ReflectionApis
             // Allocates the operand type and runs its initializer, but no constructor.
             "System.Runtime.CompilerServices.RuntimeHelpers" when name == "GetUninitializedObject" =>
                 Shape(OnOperand(ReflectionOp.GetUninitializedObject, ReflectionOpKind.Construct, 0), onStatic && Sig(ps, TType)),
+            "System.Runtime.InteropServices.Marshal" when name == "PtrToStructure"
+                && onStatic && Sig(ps, "System.IntPtr", TType) =>
+                OnOperand(ReflectionOp.MarshalPtrToStructure, ReflectionOpKind.Construct, 1),
             TObject when name == "GetType" => OnReceiver(ReflectionOp.ObjectGetType, ReflectionOpKind.TypeIdentity, ps, plain),
             "System.Linq.Enumerable" => Enumerable(name, ps, hasThis, methodArity),
             "System.Collections.Generic.IEnumerable`1" or "System.Collections.IEnumerable"

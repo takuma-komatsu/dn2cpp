@@ -13,8 +13,71 @@ namespace StructMarshalRoundtripSubset;
 
 struct Rec { public int A; public long B; public double C; public IntPtr D; }   // 32 bytes
 
+struct KnownBox
+{
+    public int Value;
+    public override string ToString() => "known=" + Value;
+}
+
+struct RetainedBox
+{
+    public int Value;
+    public override string ToString() => "retained=" + Value;
+}
+
+struct UnpreparedBox
+{
+    public int Value;
+    public override string ToString() => "unprepared=" + Value;
+}
+
 unsafe class Program
 {
+    private static object ReadByType(IntPtr ptr, Type type) => Marshal.PtrToStructure(ptr, type)!;
+
+    internal static void TypeBoxing()
+    {
+        IntPtr ptr = Marshal.AllocHGlobal(sizeof(int));
+        try
+        {
+            Marshal.WriteInt32(ptr, 31);
+            Type known = typeof(KnownBox);
+            object boxed = Marshal.PtrToStructure(ptr, known)!;
+            Console.WriteLine(boxed.ToString());
+
+            object retained = new RetainedBox { Value = 1 };
+            Console.WriteLine(retained.ToString());
+            Marshal.WriteInt32(ptr, 47);
+            Console.WriteLine(ReadByType(ptr, typeof(RetainedBox)).ToString());
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(ptr);
+        }
+    }
+
+    internal static void UnpreparedBox()
+    {
+        IntPtr ptr = Marshal.AllocHGlobal(sizeof(int));
+        try
+        {
+            Marshal.WriteInt32(ptr, 59);
+            try
+            {
+                Console.WriteLine(ReadByType(ptr, typeof(UnpreparedBox)).ToString());
+            }
+            catch (PlatformNotSupportedException e)
+            {
+                Console.WriteLine(e.GetType().Name);
+                Console.WriteLine(e.Message);
+            }
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(ptr);
+        }
+    }
+
     internal static void __GateEntry()
     {
         // --- generic StructureToPtr<T> / PtrToStructure<T> round-trip ---
