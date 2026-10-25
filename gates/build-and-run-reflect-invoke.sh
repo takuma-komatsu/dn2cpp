@@ -908,7 +908,7 @@ gate_extra_asserts() {
     assert_output "$singular_prefix" "$(strip_cr_win "$singular_before")"
     singular_native=$(run_bounded "$out/ReflectInvoke$EXE_EXT" singular-member-lookups)
     singular_expected=$(reflection_oracle "$_CG_APP" singular-member-lookups)
-    assert_output "$singular_native" "$(strip_cr_win "$singular_expected")"
+    assert_output "$singular_native" "$singular_expected"
     reflection_assert_lines - 1 \
         '== singular member IgnoreCase ==' \
         'field folded collision=AmbiguousMatchException' \
