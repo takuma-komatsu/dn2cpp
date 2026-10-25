@@ -22,6 +22,12 @@ namespace ReflectTypes
             // line pins only the oracle.
             CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
 
+            if (args.Length > 0 && args[0] == "type-gettype-ignorecase")
+            {
+                TypeNameRegistrySubset.Program.RunIgnoreCase();
+                return;
+            }
+
             ReflectTypeSubset.Program.Run();
             ReflectArrayTypeSubset.Program.Run();
             ArrayAssignabilitySubset.Program.Run();
@@ -88,6 +94,9 @@ namespace ReflectTypes
             // Culture verification also runs this driver on CLR; string copies are native-only.
             if (args.Length > 0 && args[0] == "string-clone-copies")
                 ReflectShallowCloneRefusalSubset.Program.RunStringCopies();
+            if (args.Length > 0 && args[0] == "before-type-gettype-ignorecase")
+                return;
+            TypeNameRegistrySubset.Program.RunIgnoreCase();
         }
     }
 }

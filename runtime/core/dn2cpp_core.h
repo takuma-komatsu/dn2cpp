@@ -1905,17 +1905,31 @@ int32_t dn2cpp_enum_box_try_format(Dn2CppObject* box, Dn2CppItfCharSpan dest, in
 Dn2CppArrayRef* dn2cpp_type_get_nested_types(Dn2CppType* t);
 Dn2CppType* dn2cpp_type_get_nested_type(Dn2CppType* t, Dn2CppString* name);
 
-// Type name registry: CLR FullName -> Dn2CppTypeInfo*. CppEmitter emits the
-// table (`dn2cpp_type_registry` / `_count` in generated.cpp) covering every reachable
-// user type/enum plus the well-known primitive/BCL handles; dn2cpp_type_get_by_name
-// backs Type.GetType(string). Like IL2CPP's metadata, only types built into the
-// program resolve; nested/generic/array names are out of scope (their FullName isn't
-// the reflection name). A trailing assembly-qualified suffix (after the first ',') is
-// ignored. throwOnError != 0 raises TypeLoadException instead of returning null.
-struct Dn2CppTypeRegEntry { const char* name; const Dn2CppTypeInfo* type; };
+// Type.GetType resolves names through reachable type handles and forwarded-name
+// metadata. The folded rank and parent flag preserve CoreCLR's collision order
+// when a name is searched within an assembly or nested type.
+struct Dn2CppTypeForwarder;
+struct Dn2CppTypeRegEntry
+{
+    const char* name;
+    const Dn2CppTypeInfo* type;
+    int32_t caseFoldRank;
+    bool caseFoldPathWinner = true;
+    const Dn2CppTypeForwarder* forwarders = nullptr;
+    int32_t forwarderCount = 0;
+};
 extern const Dn2CppTypeRegEntry dn2cpp_type_registry[];
 extern const int32_t dn2cpp_type_registry_count;
-Dn2CppType* dn2cpp_type_get_by_name(Dn2CppString* name, int32_t throwOnError);
+struct Dn2CppTypeForwarder
+{
+    const char* name;
+    const char* sourceAssembly;
+    const char* targetAssembly;
+    int32_t caseFoldRank;
+    bool caseFoldPathWinner = true;
+};
+Dn2CppType* dn2cpp_type_get_by_name(Dn2CppString* name, int32_t throwOnError,
+    int32_t ignoreCase = 0, const char* callerAssembly = nullptr);
 
 // Runtime-instantiation templates: the clone sources dn2cpp_type_make_generic
 // falls back to when the registry scan finds no AOT-generated instantiation of

@@ -4062,7 +4062,19 @@ internal sealed partial class Compilation
         {
             NoteTypeIdentityClosure(type);
             if (type is { Kind: TypeKind.Class, Class: { } named })
+            {
                 NoteForceEmit(named);
+                for (var parent = named.Module.Reader.GetTypeDefinition(named.Handle).GetDeclaringType();
+                     !parent.IsNil;
+                     parent = named.Module.Reader.GetTypeDefinition(parent).GetDeclaringType())
+                {
+                    if (GetTypeDescForDefinition(named.Module, parent) is { Kind: TypeKind.Class, Class: { } outer })
+                    {
+                        NoteTypeIdentityClosure(TypeDesc.MakeClass(outer), keepSeed: false);
+                        NoteForceEmit(outer);
+                    }
+                }
+            }
         }
         return type;
     }

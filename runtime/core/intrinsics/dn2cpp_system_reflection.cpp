@@ -1460,27 +1460,232 @@ static size_t dn2cpp_name_top_comma(const char* s, size_t len)
     return len;
 }
 
+static char dn2cpp_type_name_fold(char c)
+{
+    return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c;
+}
+
+static bool dn2cpp_type_name_eq(const char* left, const char* right, size_t len, bool ignoreCase)
+{
+    for (size_t i = 0; i < len; i++)
+    {
+        if (left[i] == '\0')
+            return false;
+        if ((ignoreCase ? dn2cpp_type_name_fold(left[i]) : left[i])
+            != (ignoreCase ? dn2cpp_type_name_fold(right[i]) : right[i]))
+            return false;
+    }
+    return left[len] == '\0';
+}
+
+static bool dn2cpp_type_assembly_eq(const char* left, const char* right)
+{
+    for (; *left != '\0' && *right != '\0'; left++, right++)
+        if (dn2cpp_type_name_fold(*left) != dn2cpp_type_name_fold(*right))
+            return false;
+    return *left == '\0' && *right == '\0';
+}
+
+static bool dn2cpp_type_parent_eq(const char* candidate, const char* parentName, size_t parentLen)
+{
+    return parentName == nullptr
+        || (std::strncmp(candidate, parentName, parentLen) == 0 && candidate[parentLen] == '+');
+}
+
+static const Dn2CppTypeInfo* dn2cpp_type_registry_find_in_assembly(const char* name, size_t len,
+    int32_t ignoreCase, const char* assembly, const char* parentName,
+    const char* parentAssembly, int32_t depth, bool canonicalParentsOnly)
+{
+    if (depth > 16)
+        return nullptr;
+    size_t parentLen = parentName == nullptr ? 0 : std::strlen(parentName);
+    const Dn2CppTypeInfo* found = nullptr;
+    int32_t firstToken = INT32_MAX;
+    int32_t lastRank = -1;
+    for (int32_t i = 0; i < dn2cpp_type_registry_count; i++)
+    {
+        const Dn2CppTypeRegEntry& row = dn2cpp_type_registry[i];
+        if (!dn2cpp_type_assembly_eq(dn2cpp_ti_assembly_name(row.type), assembly)
+            || (parentAssembly != nullptr
+                && !dn2cpp_type_assembly_eq(dn2cpp_ti_assembly_name(row.type), parentAssembly))
+            || (canonicalParentsOnly && ignoreCase != 0 && !row.caseFoldPathWinner)
+            || !dn2cpp_type_parent_eq(row.name, parentName, parentLen)
+            || !dn2cpp_type_name_eq(row.name, name, len, ignoreCase != 0))
+            continue;
+        int32_t token = row.type->reflection().metadataToken;
+        if (found == nullptr || row.caseFoldRank > lastRank
+            || (row.caseFoldRank == lastRank && token > 0 && token < firstToken))
+        {
+            found = row.type;
+            firstToken = token > 0 ? token : INT32_MAX;
+            lastRank = row.caseFoldRank;
+        }
+    }
+    if (found == nullptr)
+        for (const Dn2CppDynTypeReg* e = dn2cpp_type_registry_dynamic_head(); e != nullptr; e = e->next)
+            if (dn2cpp_type_assembly_eq(dn2cpp_ti_assembly_name(e->type), assembly)
+                && (parentAssembly == nullptr
+                    || dn2cpp_type_assembly_eq(dn2cpp_ti_assembly_name(e->type), parentAssembly))
+                && dn2cpp_type_parent_eq(e->name, parentName, parentLen)
+                && dn2cpp_type_name_eq(e->name, name, len, ignoreCase != 0))
+                return e->type;
+    const Dn2CppTypeForwarder* forward = nullptr;
+    int32_t forwardRank = -1;
+    const Dn2CppTypeForwarder* forwarders = dn2cpp_type_registry_count == 0
+        ? nullptr : dn2cpp_type_registry[0].forwarders;
+    int32_t forwarderCount = dn2cpp_type_registry_count == 0
+        ? 0 : dn2cpp_type_registry[0].forwarderCount;
+    for (int32_t i = 0; i < forwarderCount; i++)
+    {
+        const Dn2CppTypeForwarder& row = forwarders[i];
+        if (!dn2cpp_type_assembly_eq(row.sourceAssembly, assembly)
+            || (parentAssembly != nullptr
+                && !dn2cpp_type_assembly_eq(row.sourceAssembly, parentAssembly))
+            || (canonicalParentsOnly && ignoreCase != 0 && !row.caseFoldPathWinner)
+            || !dn2cpp_type_parent_eq(row.name, parentName, parentLen)
+            || !dn2cpp_type_name_eq(row.name, name, len, ignoreCase != 0))
+            continue;
+        if (forward == nullptr || row.caseFoldRank > forwardRank)
+        {
+            forward = &row;
+            forwardRank = row.caseFoldRank;
+        }
+    }
+    if (forward == nullptr || forwardRank <= lastRank
+        || dn2cpp_type_assembly_eq(forward->targetAssembly, assembly))
+        return found;
+    return dn2cpp_type_registry_find_in_assembly(name, len, ignoreCase,
+        forward->targetAssembly, parentName, parentAssembly, depth + 1, canonicalParentsOnly);
+}
+
+static const Dn2CppTypeInfo* dn2cpp_type_registry_find_scoped(const char* name, size_t len,
+    int32_t ignoreCase, const char* callerAssembly, const char* requestedAssembly,
+    const char* parentName = nullptr, const char* parentAssembly = nullptr,
+    bool canonicalParentsOnly = false)
+{
+    if (std::memchr(name, '\0', len) != nullptr)
+        return nullptr;
+    if (callerAssembly == nullptr)
+        return dn2cpp_type_registry_find(name, static_cast<int32_t>(len));
+    if (requestedAssembly != nullptr)
+        return dn2cpp_type_registry_find_in_assembly(name, len, ignoreCase,
+            requestedAssembly, parentName, parentAssembly, 0, canonicalParentsOnly);
+    if (const Dn2CppTypeInfo* local = dn2cpp_type_registry_find_in_assembly(name, len,
+            ignoreCase, callerAssembly, parentName, parentAssembly, 0, canonicalParentsOnly))
+        return local;
+    return dn2cpp_type_assembly_eq(callerAssembly, "System.Private.CoreLib")
+        ? nullptr : dn2cpp_type_registry_find_in_assembly(name, len, ignoreCase,
+            "System.Private.CoreLib", parentName, parentAssembly, 0, canonicalParentsOnly);
+}
+
+static const Dn2CppTypeInfo* dn2cpp_type_registry_find_nested(const char* name, size_t len,
+    int32_t ignoreCase, const char* callerAssembly, const char* requestedAssembly)
+{
+    if (callerAssembly == nullptr || std::memchr(name, '[', len) != nullptr)
+        return dn2cpp_type_registry_find_scoped(name, len, ignoreCase, callerAssembly, requestedAssembly);
+    const char* plus = static_cast<const char*>(std::memchr(name, '+', len));
+    if (plus == nullptr)
+        return dn2cpp_type_registry_find_scoped(name, len, ignoreCase, callerAssembly, requestedAssembly);
+    size_t cut = static_cast<size_t>(plus - name);
+    const Dn2CppTypeInfo* chosen = dn2cpp_type_registry_find_scoped(
+        name, cut, ignoreCase, callerAssembly, requestedAssembly);
+    while (chosen != nullptr && cut < len)
+    {
+        const char* parentName = nullptr;
+        for (int32_t i = 0; i < dn2cpp_type_registry_count; i++)
+            if (dn2cpp_type_registry[i].type == chosen)
+            {
+                parentName = dn2cpp_type_registry[i].name;
+                break;
+            }
+        if (parentName == nullptr)
+            return nullptr;
+        const char* next = static_cast<const char*>(std::memchr(name + cut + 1, '+', len - cut - 1));
+        cut = next == nullptr ? len : static_cast<size_t>(next - name);
+        const char* definingAssembly = dn2cpp_ti_assembly_name(chosen);
+        chosen = dn2cpp_type_registry_find_scoped(name, cut, ignoreCase,
+            callerAssembly, definingAssembly, parentName, definingAssembly);
+    }
+    if (chosen != nullptr)
+        return chosen;
+    return dn2cpp_type_registry_find_scoped(name, len, ignoreCase,
+        callerAssembly, requestedAssembly, nullptr, nullptr, ignoreCase != 0);
+}
+
 // Resolves a CLR type name, accepting a plain registry name and the composed
 // closed-generic spellings dn2cpp_type_tostring/dn2cpp_type_fullname produce.
 // NO registry entry carries the composed form — a closed instantiation is keyed by
 // its dn2cpp-mangled name — so it resolves structurally instead, on the
 // MakeGenericType relation. That is what keeps Type.GetType(t.FullName) and the
 // AssemblyQualifiedName round-trip (a serializer's `$type`) working.
-static const Dn2CppTypeInfo* dn2cpp_resolve_type_name(const char* s, size_t len, int depth = 0)
+static const Dn2CppTypeInfo* dn2cpp_resolve_type_name(const char* s, size_t len, int depth = 0,
+    int32_t ignoreCase = 0, const char* callerAssembly = nullptr,
+    const char* forcedAssembly = nullptr)
 {
     // The nesting a REAL name can carry is the type graph's, which is shallow; the
     // string is caller-supplied, so cap the recursion rather than the input.
     if (depth > 16)
         return nullptr;
     while (len > 0 && s[0] == ' ') { s++; len--; }
-    len = dn2cpp_name_top_comma(s, len);
+    size_t comma = dn2cpp_name_top_comma(s, len);
+    std::string requestedAssembly;
+    const char* requested = forcedAssembly;
+    if (callerAssembly != nullptr && comma < len)
+    {
+        size_t begin = comma + 1;
+        while (begin < len && s[begin] == ' ') begin++;
+        size_t end = begin;
+        while (end < len && s[end] != ',') end++;
+        while (end > begin && s[end - 1] == ' ') end--;
+        requestedAssembly.assign(s + begin, end - begin);
+        if (requestedAssembly.empty())
+            return nullptr;
+        requested = requestedAssembly.c_str();
+    }
+    len = comma;
     while (len > 0 && s[len - 1] == ' ') len--;
     if (len == 0)
         return nullptr;
+    if (callerAssembly != nullptr && s[len - 1] == ']')
+    {
+        size_t openArray = len;
+        while (openArray > 0 && s[openArray - 1] != '[')
+            openArray--;
+        if (openArray > 0 && openArray < len)
+        {
+            size_t bracket = openArray - 1;
+            int32_t rank = 1;
+            bool arraySuffix = true;
+            bool nonSz = false;
+            for (size_t i = openArray; i + 1 < len; i++)
+            {
+                if (s[i] == ',') rank++;
+                else if (s[i] == '*' && i + 2 == len) nonSz = true;
+                else { arraySuffix = false; break; }
+            }
+            if (arraySuffix)
+            {
+                const Dn2CppTypeInfo* element = dn2cpp_resolve_type_name(
+                    s, bracket, depth + 1, ignoreCase, callerAssembly, requested);
+                if (element == nullptr)
+                    return nullptr;
+                for (int32_t i = 0; i < dn2cpp_type_registry_count; i++)
+                {
+                    const Dn2CppTypeInfo* candidate = dn2cpp_type_registry[i].type;
+                    if ((candidate->flags & DN2CPP_TF_ARRAY) != 0
+                        && candidate->elementType == element && candidate->arrayRank == rank
+                        && ((candidate->flags & DN2CPP_TF_NON_SZ_ARRAY) != 0) == nonSz)
+                        return candidate;
+                }
+                return nullptr;
+            }
+        }
+    }
     // A registry name wins outright: every non-generic type, every array and every
     // closed instantiation is registered under one, so nothing below can perturb a
     // lookup that already resolved.
-    if (const Dn2CppTypeInfo* direct = dn2cpp_type_registry_find(s, static_cast<int32_t>(len)))
+    if (const Dn2CppTypeInfo* direct = dn2cpp_type_registry_find_nested(
+            s, len, ignoreCase, callerAssembly, requested))
         return direct;
     const char* open = static_cast<const char*>(std::memchr(s, '[', len));
     // "[]" is an array suffix, not an argument list.
@@ -1490,7 +1695,8 @@ static const Dn2CppTypeInfo* dn2cpp_resolve_type_name(const char* s, size_t len,
     size_t close = dn2cpp_name_bracket_end(s, len, p);
     if (close >= len)
         return nullptr;
-    const Dn2CppTypeInfo* def = dn2cpp_type_registry_find(s, static_cast<int32_t>(p));
+    const Dn2CppTypeInfo* def = dn2cpp_type_registry_find_nested(
+        s, p, ignoreCase, callerAssembly, requested);
     if (def == nullptr || (def->flags & DN2CPP_TF_GENERICDEF) == 0)
         return nullptr;
     const Dn2CppTypeInfo* args[32];
@@ -1508,7 +1714,7 @@ static const Dn2CppTypeInfo* dn2cpp_resolve_type_name(const char* s, size_t len,
         // The FullName spelling wraps each argument in its own brackets, with that
         // argument's assembly display name inside them.
         if (alen >= 2 && a[0] == '[' && a[alen - 1] == ']') { a++; alen -= 2; }
-        const Dn2CppTypeInfo* at = dn2cpp_resolve_type_name(a, alen, depth + 1);
+        const Dn2CppTypeInfo* at = dn2cpp_resolve_type_name(a, alen, depth + 1, ignoreCase, callerAssembly);
         if (at == nullptr)
             return nullptr;
         args[argc++] = at;
@@ -1537,7 +1743,8 @@ static const Dn2CppTypeInfo* dn2cpp_resolve_type_name(const char* s, size_t len,
 // Narrows a managed name to ASCII bytes and resolves it. Candidate names are ASCII
 // (CLR identifiers/namespaces), so byte equality against the narrowed unit is
 // equivalent for units <= 0xFF, and any unit above 0xFF is a definite miss.
-static const Dn2CppTypeInfo* dn2cpp_resolve_managed_type_name(const Dn2CppString* name)
+static const Dn2CppTypeInfo* dn2cpp_resolve_managed_type_name(const Dn2CppString* name,
+    int32_t ignoreCase = 0, const char* callerAssembly = nullptr)
 {
     int32_t len = name->length;
     char stackBuf[256];
@@ -1550,7 +1757,8 @@ static const Dn2CppTypeInfo* dn2cpp_resolve_managed_type_name(const Dn2CppString
         buf[i] = static_cast<char>(static_cast<unsigned char>(c));
     }
     const Dn2CppTypeInfo* ti =
-        representable ? dn2cpp_resolve_type_name(buf, static_cast<size_t>(len)) : nullptr;
+        representable ? dn2cpp_resolve_type_name(buf, static_cast<size_t>(len), 0,
+            ignoreCase, callerAssembly) : nullptr;
     if (buf != stackBuf)
         delete[] buf;
     return ti;
@@ -1561,10 +1769,11 @@ static const Dn2CppTypeInfo* dn2cpp_resolve_managed_type_name(const Dn2CppString
 // ignored, matching the common "Namespace.Type[, Assembly]" usage. Returns the
 // same type handle as typeof on that type (registry entries point at the shared
 // Dn2CppTypeInfo), so Type.GetType("System.Int32") == typeof(int).
-Dn2CppType* dn2cpp_type_get_by_name(Dn2CppString* name, int32_t throwOnError)
+Dn2CppType* dn2cpp_type_get_by_name(Dn2CppString* name, int32_t throwOnError,
+    int32_t ignoreCase, const char* callerAssembly)
 {
     if (name != nullptr)
-        if (const Dn2CppTypeInfo* ti = dn2cpp_resolve_managed_type_name(name))
+        if (const Dn2CppTypeInfo* ti = dn2cpp_resolve_managed_type_name(name, ignoreCase, callerAssembly))
             return dn2cpp_get_type_from_handle(ti);
     if (throwOnError)
         dn2cpp_throw_type_load();

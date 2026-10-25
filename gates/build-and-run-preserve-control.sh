@@ -298,6 +298,8 @@ echo "cut-contract=kept-original-body,no-cut-absence,repeat-byte-identical,inval
     || { echo "FAIL: ILDiet changed an input DLL" >&2; exit 1; }
 
 echo "== Explicit stripped inputs and bypass produce the same C++ =="
+grep -Fq '<!--dn2cpp-type-names-v1:' "$(ildiet_generation "$OUT/ildiet")/preservation.xml" \
+    || { echo "FAIL: ILDiet did not publish original type-name resolution metadata" >&2; exit 1; }
 MANUAL="$STALE_ROOT/manual-cpp"
 invoke_cli "$(ildiet_generation "$OUT/ildiet")/$PROJECT.dll" \
     -r "$(ildiet_generation "$OUT/ildiet")/PreserveControlLib.dll" -r "$(ildiet_generation "$OUT/ildiet")/PreserveAssemblyLib.dll" \

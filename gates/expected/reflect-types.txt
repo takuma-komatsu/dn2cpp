@@ -1509,3 +1509,37 @@ string copy GC 0=True:True:11
 string copy GC 1=True:True:6
 string copy GC 2=True:True:257
 safe string memberwise copies end
+== Type.GetType throwOnError and ignoreCase ==
+nested dynamic one=True
+nested dynamic two=True
+nested dynamic three exact=True
+nested dynamic three folded=True
+nested deep exact alpha=True
+nested deep exact other=True
+nested deep folded alpha=True
+nested deep folded other=False
+app exact=Widget
+app folded=Widget
+app one=Widget
+app two=Widget
+bcl exact=Int32
+bcl folded=Int32
+bcl qualified=Int32
+mscorlib exact=Int32
+mscorlib folded=Int32
+facade exact=Int32
+facade folded=Int32
+facade array=Int32[]
+facade private miss=null
+facade private array miss=null
+netstandard private miss=null
+mscorlib private miss=null
+linq control=Enumerable
+netstandard linq exact=Enumerable
+netstandard linq folded=Enumerable
+netstandard linq throw exact=Enumerable
+netstandard linq throw folded=Enumerable
+runtime linq miss=null
+miss false=null
+miss true=TypeLoadException
+Type.GetType throwOnError and ignoreCase end

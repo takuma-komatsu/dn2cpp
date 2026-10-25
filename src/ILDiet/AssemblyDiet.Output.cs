@@ -92,8 +92,11 @@ internal sealed partial class AssemblyDiet
                 generationHash.AddText(files[i]);
                 generationHash.AddFrame(bytes);
             }
-            byte[] descriptor = new UTF8Encoding(false).GetBytes(_originalPreservationText
-                ?? throw new InvalidOperationException("Original preservation was not captured before publication"));
+            var typeNames = TypeNameSnapshot.Capture(_assemblies.Select(assembly =>
+                (assembly.Assembly.Name.Name, assembly.Path)).ToArray());
+            byte[] descriptor = new UTF8Encoding(false).GetBytes((_originalPreservationText
+                ?? throw new InvalidOperationException("Original preservation was not captured before publication"))
+                + typeNames.Comment());
             File.WriteAllBytes(Path.Combine(stage, "preservation.xml"), descriptor);
             generationHash.AddText("preservation.xml");
             generationHash.AddFrame(descriptor);

@@ -205,19 +205,33 @@ internal sealed partial class MethodCompiler
             }
             // Type.GetType(string): resolve a CLR FullName against the embedded type
             // name registry. The 1-arg form returns null when missing; the
-            // (string, bool throwOnError) form raises TypeLoadException instead. The
-            // 3-arg ignoreCase overload is not modeled (registry match is exact).
+            // (string, bool throwOnError) form raises TypeLoadException instead.
+            // The 3-arg form passes the caller assembly so folded matches keep
+            // the CLR's caller-before-CoreLib lookup order.
             case ("System.Type", "GetType") when sig.ParameterTypes is [{ } p0] && p0.IsString:
             {
                 var n = Pop();
                 Push(StackKind.Ref, "Dn2CppType*", $"dn2cpp_type_get_by_name({Cast(n, "Dn2CppString*")}, 0)");
                 return true;
             }
-            case ("System.Type", "GetType") when sig.ParameterTypes is [{ } q0, _] && q0.IsString:
+            case ("System.Type", "GetType") when sig.ParameterTypes is [{ IsString: true },
+                { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }]:
             {
                 var throwOnError = Pop();
                 var n = Pop();
                 Push(StackKind.Ref, "Dn2CppType*", $"dn2cpp_type_get_by_name({Cast(n, "Dn2CppString*")}, {Cast(throwOnError, "int32_t")})");
+                return true;
+            }
+            case ("System.Type", "GetType") when sig.ParameterTypes is [{ IsString: true },
+                { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean },
+                { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }]:
+            {
+                var ignoreCase = Pop();
+                var throwOnError = Pop();
+                var n = Pop();
+                Push(StackKind.Ref, "Dn2CppType*",
+                    $"dn2cpp_type_get_by_name({Cast(n, "Dn2CppString*")}, {Cast(throwOnError, "int32_t")}, "
+                    + $"{Cast(ignoreCase, "int32_t")}, \"{CppString(Module.AssemblyName)}\")");
                 return true;
             }
             // obj.GetType: the runtime Type from the object header. A boxed value
