@@ -163,6 +163,8 @@ internal static class BclMessages
         "RFLCT_Targ_ITargMismatch_WithType",
         "Arg_ObjObjEx",
         "Arg_EnumAndObjectMustBeSameType",
+        "Arg_EnumUnderlyingTypeAndObjectMustBeSameType",
+        "InvalidOperation_UnknownEnumType",
         "Argument_MinMaxValue",
         "Format_InvalidStringWithValue",
         "Format_BadDateTime",

@@ -1851,6 +1851,15 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.Ref, "Dn2CppType*", $"dn2cpp_type_get_enum_underlying({Cast(a, "Dn2CppType*")})");
                 return true;
             }
+            case ("System.Type", "IsEnumDefined") when sig.Header.IsInstance
+                && sig.ParameterTypes is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object }]:
+            {
+                var value = Pop();
+                var type = Pop();
+                Push(StackKind.I4, "int32_t",
+                    $"dn2cpp_type_is_enum_defined({Cast(type, "Dn2CppType*")}, {Cast(value, "Dn2CppObject*")})");
+                return true;
+            }
             case ("System.Type", "GetEnumName") when sig.Header.IsInstance
                 && sig.ParameterTypes is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object }]:
             {

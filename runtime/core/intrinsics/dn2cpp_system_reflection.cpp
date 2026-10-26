@@ -980,16 +980,6 @@ static void enum_underlying_shape(const Dn2CppTypeInfo* ti, int32_t* byteWidth, 
     else                               { *byteWidth = 4; *isUnsigned = false; } // Int32 (default)
 }
 
-// A boxed enum's payload at the enum's MODEL width. The sign/zero extension is
-// already baked in by whoever boxed it, so this is the whole value.
-static int64_t dn2cpp_enum_box_value(const Dn2CppTypeInfo* ti, Dn2CppObject* box)
-{
-    const void* p = box + 1;
-    return dn2cpp_enum_is_wide(ti) ? *reinterpret_cast<const int64_t*>(p)
-                                   : *reinterpret_cast<const int32_t*>(p);
-}
-
-// Box `v` under the enum's type-info at that same model width.
 static Dn2CppObject* dn2cpp_enum_box(const Dn2CppTypeInfo* ti, int64_t v)
 {
     if (dn2cpp_enum_is_wide(ti))
@@ -1175,23 +1165,6 @@ Dn2CppString* dn2cpp_enum_get_name_u64(Dn2CppType* t, uint64_t value)
                 static_cast<int32_t>(std::strlen(member->name)));
     }
     return nullptr;
-}
-
-// Enum.IsDefined(Type, value): whether the value names a declared member (value form;
-// the string-name form is a carve-out). Boxed for the reason GetName's is.
-int32_t dn2cpp_enum_is_defined(Dn2CppType* t, Dn2CppObject* value)
-{
-    if (t == nullptr)
-        dn2cpp_throw_argument_null_param("enumType");
-    if (value == nullptr)
-        dn2cpp_throw_argument_null_param("value");
-    const Dn2CppTypeInfo* ti = dn2cpp_enum_type_require(t);
-    int64_t v = dn2cpp_enum_box_value(ti, value);
-    const auto reflection = ti->reflection();
-    for (int32_t i = 0; i < reflection.enumMemberCount; i++)
-        if (reflection.enumMembers[i]->value == v)
-            return 1;
-    return 0;
 }
 
 // Shared core for the non-generic Enum.Parse/TryParse(Type, …) over a non-null string.
@@ -11329,6 +11302,73 @@ Dn2CppString* dn2cpp_type_get_enum_name(Dn2CppType* t, Dn2CppObject* value)
 {
     dn2cpp_type_require(t);
     return enum_get_name_boxed(t, value);
+}
+
+// IsEnumDefined accepts a name, the exact underlying primitive, or the same enum.
+// Validate before reading a payload; unlike GetEnumName, integer widths do not coerce.
+static int32_t enum_is_defined_boxed(Dn2CppType* t, Dn2CppObject* value)
+{
+    if (value == nullptr)
+        dn2cpp_throw_argument_null_param("value");
+    const Dn2CppTypeInfo* ti = dn2cpp_enum_type_require(t);
+    const Dn2CppTypeInfo* source = value->type;
+    const auto reflection = ti->reflection();
+    if (source == &dn2cpp_string_type)
+    {
+        auto* text = reinterpret_cast<Dn2CppString*>(value);
+        int32_t size = dn2cpp_string_to_utf8(text, nullptr, 0);
+        std::string name(static_cast<size_t>(size), '\0');
+        dn2cpp_string_to_utf8(text, name.data(), size);
+        // Literal field rows retain aliases, unlike the deduplicated value/name table.
+        for (int32_t n = 0; n < reflection.fieldCount; n++)
+        {
+            const auto field = reflection.fields[n].operator->();
+            if ((field->attrs & DN2CPP_FLDA_LITERAL) != 0 && name == field->name)
+                return 1;
+        }
+        return 0;
+    }
+    if ((source->flags & DN2CPP_TF_ENUM) != 0)
+    {
+        if (source != ti)
+            dn2cpp_throw_sr2(&dn2cpp_argument_exception_type, DN2CPP_SR_ENUM_AND_OBJECT_MUST_BE_SAME_TYPE,
+                dn2cpp_type_tostring(source), dn2cpp_type_tostring(ti));
+        source = source->enumUnderlying != nullptr ? source->enumUnderlying : &dn2cpp_int32_type;
+    }
+    int32_t code = dn2cpp_prim_code(source);
+    if (code < DN2CPP_PC_CHAR || code > DN2CPP_PC_U8)
+        dn2cpp_throw_sr0(&dn2cpp_invalid_operation_exception_type, DN2CPP_SR_UNKNOWN_ENUM_TYPE);
+    const Dn2CppTypeInfo* underlying = ti->enumUnderlying != nullptr ? ti->enumUnderlying : &dn2cpp_int32_type;
+    if (source != underlying)
+        dn2cpp_throw_sr2(&dn2cpp_argument_exception_type, DN2CPP_SR_ENUM_UNDERLYING_AND_OBJECT_MUST_BE_SAME_TYPE,
+            dn2cpp_type_tostring(source), dn2cpp_type_tostring(underlying));
+    int64_t bits;
+    double unused;
+    dn2cpp_read_boxed_num(value, &code, &bits, &unused);
+    int32_t width = dn2cpp_prim_storage_width(code);
+    uint64_t mask = width == 8 ? UINT64_MAX : (uint64_t{1} << (width * 8)) - 1;
+    uint64_t target = static_cast<uint64_t>(bits) & mask;
+    for (int32_t n = 0; n < reflection.fieldCount; n++)
+    {
+        const auto field = reflection.fields[n].operator->();
+        if ((field->attrs & DN2CPP_FLDA_LITERAL) != 0
+            && (static_cast<uint64_t>(field->literalValue) & mask) == target)
+            return 1;
+    }
+    return 0;
+}
+
+int32_t dn2cpp_enum_is_defined(Dn2CppType* t, Dn2CppObject* value)
+{
+    if (t == nullptr)
+        dn2cpp_throw_argument_null_param("enumType");
+    return enum_is_defined_boxed(t, value);
+}
+
+int32_t dn2cpp_type_is_enum_defined(Dn2CppType* t, Dn2CppObject* value)
+{
+    dn2cpp_type_require(t);
+    return enum_is_defined_boxed(t, value);
 }
 
 // Enum.ToObject(Type, object): the boxed-value form. .NET dispatches on

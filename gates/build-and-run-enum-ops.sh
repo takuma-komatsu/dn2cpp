@@ -160,6 +160,23 @@ gate_extra_asserts() {
         gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
     done
 
+
+    gate_capture_ok "$out/assert-before-defined-lookup" run_bounded dotnet "$_CG_APP" before-enum-defined-lookup || return 1
+    gate_output select "$native" "$out/assert-prefix-defined-lookup.stdout" --before '== enum defined lookup ==' --policy crlf || return 1
+    gate_output compare "$out/assert-prefix-defined-lookup.stdout" "$out/assert-before-defined-lookup.stdout" || return 1
+    for line in '== enum defined lookup ==' \
+        'defined:U8:max:True:True:True' 'defined:I1:unknown:False:False:False' \
+        'defined:I4:alias:True:True:True' 'defined:I4:unicode:True:True:True' \
+        'defined:I4:nul:False:False:False' \
+        'defined:I4:input-1:ArgumentException/:ArgumentException/:ArgumentException/' \
+        'defined:I4:input-21:InvalidOperationException/:InvalidOperationException/:InvalidOperationException/' \
+        'defined:Int32:null:ArgumentNullException/value:ArgumentNullException/value:ArgumentNullException/value' \
+        'defined:null:null:NullReferenceException/:ArgumentNullException/enumType:NullReferenceException/' \
+        'defined:message-unknown:Unknown enum type.' \
+        'enum defined lookup end'; do
+        gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
+    done
+
 }
 
 corelib_diff_gate EnumOps --link-xml samples/dotnet/EnumOps/keep-element-type.xml
