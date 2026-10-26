@@ -1180,7 +1180,8 @@ internal sealed partial class MethodCompiler : IEvalStack
     {
         string dispatch = _c.RuntimeInterfaceLowerings.TryGetValue(_method, out var runtimeDispatch)
             ? runtimeDispatch
-            : CoreIntrinsics.IsIntrinsicType(_method.DeclaringClass.FullName)
+            : CoreIntrinsics.BrMulticastFactory.Matches(_method)
+                || CoreIntrinsics.IsIntrinsicType(_method.DeclaringClass.FullName)
             ? _method.DeclaringClass.FullName
             : IntrinsicDispatchName(_method.DeclaringClass);
         string name = _method.Name;

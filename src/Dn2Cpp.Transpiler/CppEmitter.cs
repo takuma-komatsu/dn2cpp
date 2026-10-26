@@ -2130,6 +2130,7 @@ internal sealed partial class CppEmitter
         || CoreIntrinsics.BrLifetimeDispose.Matches(cls.FullName, m.Name)
         || CoreIntrinsics.BrDelegateClone.Matches(cls.FullName, m.Name)
         || CoreIntrinsics.BrDelegateValue.Matches(m)
+        || CoreIntrinsics.BrMulticastFactory.Matches(m)
         || _c.PInvokeFtnTargets.Contains(m) || _c.IntrinsicFtnTargets.Contains(m)
         || _c.InterceptFtnTargets.Contains(m) || CoreIntrinsics.MdComparerCompare.Matches(m)
         || _c.IsUnorderableComparerCompareBody(m)
@@ -2577,7 +2578,8 @@ internal sealed partial class CppEmitter
                         }
                         if (CoreIntrinsics.BrLifetimeDispose.Matches(cls.FullName, m.Name)
                             || CoreIntrinsics.BrDelegateClone.Matches(cls.FullName, m.Name)
-                            || CoreIntrinsics.BrDelegateValue.Matches(m))
+                            || CoreIntrinsics.BrDelegateValue.Matches(m)
+                            || CoreIntrinsics.BrMulticastFactory.Matches(m))
                         {
                             var wrapper = new MethodCompiler(_c, m, literals, _backend)
                                 .CompileCoreIntrinsicWrapper()

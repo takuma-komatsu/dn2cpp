@@ -156,6 +156,16 @@ gate_extra_asserts() {
         'delegate-bound-equals:True' 'delegate-bound-hash:True' 'Retained delegate value members end'; do
         gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
     done
+    gate_capture_ok "$out/assert-before-multicast-factory" run_bounded dotnet "$_CG_APP" before-multicast-factory || return 1
+    gate_output prefix "$native" "$out/assert-before-multicast-factory.stdout" --before '== Retained multicast construction ==' --policy crlf || return 1
+    for line in '== Retained multicast construction =='         'factory-order-0:True' 'factory-identity-0:True' 'factory-entries-0:True' 'factory-prefix-0:True'         'factory-order-1:True' 'factory-identity-1:True' 'factory-entries-1:True' 'factory-prefix-1:True'         'factory-order-2:True' 'factory-identity-2:True' 'factory-entries-2:True' 'factory-prefix-2:True'         'factory-closed-type:True' 'factory-public-transitions:True' 'Retained multicast construction end'; do
+        gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
+    done
+    gate_capture_ok "$out/factory-boundary" run_bounded "./$out/SelfHostPrimSubset$EXE_EXT" native-multicast-factory-boundary || return 1
+    for line in 'factory-boundary-0:True' 'factory-boundary-1:True'; do
+        gate_output byte-witness "$out/factory-boundary.stdout" "$line" --count 1 --policy crlf || return 1
+    done
+
 }
 
 corelib_diff_gate SelfHostPrimSubset System.Linq System.Diagnostics.TraceSource \

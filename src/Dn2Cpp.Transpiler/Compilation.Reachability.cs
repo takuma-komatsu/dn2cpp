@@ -100,7 +100,8 @@ internal sealed partial class Compilation
             return; // no _toScan.Enqueue -> the replaced IL is never scanned
         }
         if (CoreIntrinsics.BrDelegateClone.Matches(m.DeclaringClass.FullName, m.Name)
-            || CoreIntrinsics.BrDelegateValue.Matches(m))
+            || CoreIntrinsics.BrDelegateValue.Matches(m)
+            || CoreIntrinsics.BrMulticastFactory.Matches(m))
         {
             if (AddReachable(m))
             {

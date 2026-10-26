@@ -1735,6 +1735,30 @@ Dn2CppObject* dn2cpp_delegate_combine_n(Dn2CppObject* const* items, int32_t coun
     return d;
 }
 
+// Public Combine/Remove call this private factory only for flattened prefixes of
+// at least two entries. Empty/single-entry private multicast states have different
+// CLR equality semantics and cannot be represented by the uniform native chain.
+Dn2CppObject* dn2cpp_delegate_from_invocation_prefix(Dn2CppObject* receiver, Dn2CppArrayRef* items, int32_t count)
+{
+    if (receiver == nullptr)
+        dn2cpp_throw_null_reference();
+    if (count < 2)
+        dn2cpp_throw_platform_not_supported("Empty or single-entry private multicast state is not represented by dn2cpp.");
+    if (items == nullptr || count > items->length)
+        dn2cpp_throw_platform_not_supported("Multicast construction requires an in-bounds invocation prefix.");
+    for (int32_t i = 0; i < count; ++i)
+    {
+        Dn2CppObject* item = items->data[i];
+        if (item == nullptr || item->type != receiver->type
+            || (item->type->flags & DN2CPP_TF_DELEGATE) == 0
+            || reinterpret_cast<Dn2CppDelegate*>(item)->prev != nullptr)
+            dn2cpp_throw_platform_not_supported("Multicast construction requires flattened entries of the receiver's exact delegate type.");
+    }
+    // At least two non-null single entries ensure a fresh result. Capacity beyond
+    // count is ignored, and the mutable source array is never retained.
+    return dn2cpp_delegate_combine_n(items->data, count);
+}
+
 Dn2CppObject* dn2cpp_delegate_combine_array(Dn2CppArrayRef* items)
 {
     return items != nullptr ? dn2cpp_delegate_combine_n(items->data, items->length) : nullptr;

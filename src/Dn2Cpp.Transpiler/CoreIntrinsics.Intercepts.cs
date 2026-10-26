@@ -330,6 +330,7 @@ internal enum InterceptEmitArm
     DelegateCloneBody,
     /// <summary>Delegate value overrides retain callable bodies over the uniform invocation chain.</summary>
     DelegateValueBody,
+    MulticastFactoryBody,
     DelegateCloneBinding,
     ArrayCloneBinding,
     /// <summary>SafeHandle lifetime calls and bindings recognize the runtime SafeWaitHandle layout.
@@ -1738,6 +1739,23 @@ internal static partial class CoreIntrinsics
         InterceptCutKind.BodyReplace, InterceptEmitArm.DelegateCloneBody,
         typeGate: "System.Delegate", nameGate: "Clone");
 
+    internal static bool IsMulticastFactorySignature(string owner, string name, MethodSignature<TypeDesc> sig) =>
+        CoreIntrinsicTypeMaps.IsMulticastFactoryMethod(owner, name, !sig.Header.IsInstance,
+            sig.GenericParameterCount, sig.ParameterTypes.Length, sig.ReturnType.Class?.FullName,
+            sig.ParameterTypes.Length >= 1 && sig.ParameterTypes[0] is { Kind: TypeKind.SZArray, Element: { IsObject: true } }
+                ? "System.Object[]" : null,
+            sig.ParameterTypes.Length >= 2 && sig.ParameterTypes[1].Primitive == PrimitiveTypeCode.Int32
+                ? "System.Int32" : null,
+            sig.ParameterTypes.Length == 3 && sig.ParameterTypes[2].Primitive == PrimitiveTypeCode.Boolean
+                ? "System.Boolean" : null);
+
+    // The CoreCLR factory initializes MethodTable/stub fields. The native body
+    // snapshots its valid flattened prefix into the immutable invocation chain.
+    public static readonly MethodDefIntercept BrMulticastFactory = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.MulticastFactoryBody,
+        typeGate: "System.MulticastDelegate", nameGate: "NewMulticastDelegate",
+        extra: static m => IsMulticastFactorySignature(m.DeclaringClass.FullName, m.Name, m.Signature));
+
     internal static bool IsDelegateValueSignature(string owner, string name, MethodSignature<TypeDesc> sig) =>
         CoreIntrinsicTypeMaps.IsDelegateValueMethod(owner, name, !sig.Header.IsInstance,
             sig.GenericParameterCount, sig.ParameterTypes.Length,
@@ -1922,6 +1940,11 @@ internal static partial class CoreIntrinsics
     {
         if (!RegistrySelfCheckEnabled)
             return;
+
+        CheckRow(nameof(BrMulticastFactory), 0, BrMulticastFactory.EmitArm,
+            BrMulticastFactory.TypeGate, BrMulticastFactory.NameGate);
+        if (BrMulticastFactory.CutKind != InterceptCutKind.BodyReplace)
+            throw new InvalidOperationException("Multicast factory must remain callable");
 
         CheckRow(nameof(BrDelegateValue), 0, BrDelegateValue.EmitArm,
             BrDelegateValue.TypeGate, BrDelegateValue.NameGate);

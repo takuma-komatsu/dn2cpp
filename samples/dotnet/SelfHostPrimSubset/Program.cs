@@ -9,6 +9,16 @@ internal static class Program
 {
     private static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "multicast-factory-only")
+        {
+            MulticastFactorySubset.Program.Run();
+            return;
+        }
+        if (args.Length > 0 && args[0] == "native-multicast-factory-boundary")
+        {
+            MulticastFactorySubset.Program.RunNativeBoundary();
+            return;
+        }
         if (args.Length > 0 && args[0] == "delegate-values-only")
         {
             DelegateValueSubset.Program.Run();
@@ -106,5 +116,7 @@ internal static class Program
         GcPauseSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-delegate-values") return;
         DelegateValueSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-multicast-factory") return;
+        MulticastFactorySubset.Program.Run();
     }
 }
