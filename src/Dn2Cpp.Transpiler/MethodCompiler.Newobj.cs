@@ -830,6 +830,19 @@ internal sealed partial class MethodCompiler
             }
         }
 
+        if (handle.Kind == HandleKind.MemberReference
+            && _reader.GetMemberReference((MemberReferenceHandle)handle) is var typedHandleCtor
+            && typedHandleCtor.Parent.Kind == HandleKind.TypeSpecification
+            && _reader.GetTypeSpecification((TypeSpecificationHandle)typedHandleCtor.Parent)
+                .DecodeSignature(_c.SigProvider, _method.Context)
+                is { Kind: TypeKind.Class, Class: { } typedHandleOwner }
+            && IsTypedGCHandle(typedHandleOwner))
+        {
+            var sig = typedHandleCtor.DecodeMethodSignature(_c.SigProvider, typedHandleOwner.Context);
+            Push(StackKind.Struct, "Dn2CppGCHandle", TypedGCHandleCtor(typedHandleOwner, sig));
+            return;
+        }
+
         // new Vector64/128/256/512<T>(...) / new Vector<T>(...) — intrinsic value types,
         // so the ctor doesn't resolve to a transpilable method. The ctor shapes (broadcast
         // scalar / array / span) are a subset of the Create static-helper shapes, so route

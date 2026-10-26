@@ -149,7 +149,16 @@ echo "fields-past-Size refusal OK: exit 2, named type, Size, field end, total an
 gate_capture_diff_files() {
     local out="$1" native="$3"
     printf 'known=31\nretained=1\nretained=47\n' > "$out/box-dispatch.expected"
-    gate_output suffix "$native" "$out/box-dispatch.expected" --policy crlf
+    gate_capture_ok "$out/before-typed" run_bounded "./$out/MarshalPinning$EXE_EXT" before-typed-handles
+    gate_output suffix "$out/before-typed.stdout" "$out/box-dispatch.expected" --policy crlf
+    gate_output prefix "$native" "$out/before-typed.stdout" --before '== Typed GC handles ==' --policy crlf
+    gate_output witness "$native" 'typed-action:1' --policy crlf
+    gate_output witness "$native" 'typed-boxed:True' --policy crlf
+    gate_output witness "$native" 'typed-array-enumeration:13' --policy crlf
+    gate_output witness "$native" 'typed-text-object:True' --policy crlf
+    gate_output witness "$native" 'typed-module-object:True' --policy crlf
+    gate_output witness "$native" 'typed-token-root:37' --policy crlf
+    gate_output witness "$native" 'Typed GC handles end' --policy crlf
 }
 
 corelib_diff_gate MarshalPinning
