@@ -1821,6 +1821,29 @@ for mode in raw full; do
     stripping_assert_empty_output "$globalization_out" GlobalizationRetention
     echo "high-globalization=managed:$mode:address-only-override"
 done
+# CoreCLR QCall imports stay retained and fail only when invoked.
+for fixture in retained called managed other-owner; do
+    for mode in raw full; do
+        kernel32_out="artifacts/stripping-level-tests-$CONFIG/emission-kernel32-$fixture-$mode"
+        compile_console "$kernel32_out" Kernel32Retention
+        stripping_assert_empty_output "$kernel32_out" Kernel32Retention
+        echo "medium-kernel32=$fixture:$mode:retained-and-callable"
+    done
+done
+for mode in raw full; do
+    kernel32_out="artifacts/stripping-level-tests-$CONFIG/emission-kernel32-managed-$mode-high"
+    compile_console "$kernel32_out" Kernel32Retention
+    stripping_assert_empty_output "$kernel32_out" Kernel32Retention
+    echo "high-kernel32=managed:$mode:address-only-override"
+done
+for level in high medium; do
+    for mode in raw full; do
+        kernel32_out="artifacts/stripping-level-tests-$CONFIG/emission-kernel32-primitive-$mode-$level"
+        compile_console "$kernel32_out" Kernel32Retention
+        stripping_assert_empty_output "$kernel32_out" Kernel32Retention
+        echo "$level-qcall-primitive=$mode:direct-and-address-zeroing"
+    done
+done
 # shellcheck disable=SC2086 -- resolve_python may answer `py -3`.
 $PYTHON gates/fixtures/ildiet-metadata-validation/check.py "$ILD_DLL" \
     "gates/fixtures/ildiet-metadata-validation/bin/$CONFIG/$TFM/MetadataValidation.dll" \

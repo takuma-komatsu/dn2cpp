@@ -84,18 +84,21 @@ internal sealed partial class MethodCompiler
     {
         // Address-taken imports use the same managed override as direct calls.
         // The direct-call mouth has already checked this before entering here.
-        if (ftnWrapper && CoreIntrinsics.PiAbsentGlobalizationNative.Matches(callee)
+        if (ftnWrapper && (CoreIntrinsics.PiAbsentGlobalizationNative.Matches(callee)
+                || CoreIntrinsics.PiAbsentCoreClrQCall.Matches(callee))
             && _c.NativeImplFor(pinv) is { } implementation
             && !ReferenceEquals(implementation, _method))
         {
             EmitNativeImplCall(callee, implementation);
             return;
         }
-        if (_c.IsAbsentGlobalizationImport(callee))
+        string? refusal = _c.IsAbsentGlobalizationImport(callee)
+            ? Compilation.AbsentGlobalizationImportMessage(pinv)
+            : _c.IsAbsentCoreClrQCall(callee) ? Compilation.AbsentCoreClrQCallMessage(pinv) : null;
+        if (refusal is not null)
         {
             PopArgs(callee, hasThis: !callee.IsStatic);
-            Emit("dn2cpp_throw_platform_not_supported(\""
-                + Compilation.AbsentGlobalizationImportMessage(pinv) + "\");");
+            Emit("dn2cpp_throw_platform_not_supported(\"" + refusal + "\");");
             var returnType = callee.Signature.ReturnType;
             if (!returnType.IsVoid)
             {

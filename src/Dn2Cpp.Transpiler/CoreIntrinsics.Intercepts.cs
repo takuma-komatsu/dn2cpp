@@ -118,6 +118,9 @@ internal enum InterceptEmitArm
     /// <summary><c>MethodCompiler.EmitPInvokeCall</c> refuses the absent ICU PAL
     /// unless an explicit native binding or managed implementation supplies it.</summary>
     AbsentGlobalizationNativeThrow,
+    /// <summary><c>MethodCompiler.EmitPInvokeCall</c> refuses CoreLib's CoreCLR
+    /// entry points unless an explicit binding or managed implementation supplies them.</summary>
+    AbsentCoreClrQCallThrow,
     /// <summary><c>MethodCompiler.EmitRuntimePrimitive</c> — total over
     /// <see cref="CoreIntrinsics.LoweredRuntimePrimitive"/>: an unmodeled shape
     /// leaves through its throw, never through <c>EmitManagedCall</c>.</summary>
@@ -1804,6 +1807,15 @@ internal static partial class CoreIntrinsics
         InterceptCutKind.None, InterceptEmitArm.AbsentGlobalizationNativeThrow,
         typeGate: "Globalization", extra: static m => IsCoreLibGlobalizationImport(m));
 
+    /// <summary>QCall is CoreCLR's private runtime module, not an OS library.
+    /// Its CoreLib declarations retain their bodies and metadata, but native calls
+    /// need a supplied implementation. Actual OS imports use their ordinary route.</summary>
+    public static readonly MethodDefIntercept PiAbsentCoreClrQCall = new(
+        InterceptCutKind.None, InterceptEmitArm.AbsentCoreClrQCallThrow,
+        extra: static m => m.Rva == 0
+            && m.DeclaringClass.Module.AssemblyName == "System.Private.CoreLib"
+            && m.PInvoke is { ModuleName: "QCall" });
+
     private static bool IsCoreLibGlobalizationImport(MethodInfo method)
     {
         if (method.Rva != 0 || method.PInvoke is not { } import
@@ -1840,6 +1852,9 @@ internal static partial class CoreIntrinsics
         CheckRow(nameof(PiAbsentGlobalizationNative), 0, PiAbsentGlobalizationNative.EmitArm,
             PiAbsentGlobalizationNative.TypeGate, PiAbsentGlobalizationNative.NameGate);
         CheckCallSiteCutKind(nameof(PiAbsentGlobalizationNative), 0, PiAbsentGlobalizationNative.CutKind);
+        CheckRow(nameof(PiAbsentCoreClrQCall), 0, PiAbsentCoreClrQCall.EmitArm,
+            PiAbsentCoreClrQCall.TypeGate, PiAbsentCoreClrQCall.NameGate);
+        CheckCallSiteCutKind(nameof(PiAbsentCoreClrQCall), 0, PiAbsentCoreClrQCall.CutKind);
 
         for (int i = 0; i < MethodDefIntercepts.Length; i++)
         {

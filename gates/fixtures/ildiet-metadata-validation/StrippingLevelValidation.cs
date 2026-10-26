@@ -46,8 +46,14 @@ static partial class StrippingLevelValidation
         }
         if (args.Length == 4 && args[0] == "--create-stripping-globalization-fixture")
         {
-            CreateGlobalization(args[1], args[2], args[3]);
+            CreateUnavailablePal(args[1], args[2], args[3], kernel32: false);
             Console.WriteLine("stripping-fixture=globalization:" + args[3]);
+            return true;
+        }
+        if (args.Length == 4 && args[0] == "--create-stripping-kernel32-fixture")
+        {
+            CreateUnavailablePal(args[1], args[2], args[3], kernel32: true);
+            Console.WriteLine("stripping-fixture=kernel32:" + args[3]);
             return true;
         }
         return false;

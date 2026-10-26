@@ -3,10 +3,15 @@ using Mono.Cecil.Cil;
 
 static partial class StrippingLevelValidation
 {
-    static void CreateGlobalization(string original, string directory, string mode)
+    static void CreateUnavailablePal(string original, string directory, string mode, bool kernel32)
     {
-        if (mode is not ("retained" or "called" or "managed" or "application" or "unrelated" or "alias"))
-            throw new ArgumentException("Unknown globalization fixture mode", nameof(mode));
+        if (mode is not ("retained" or "called" or "managed" or "application" or "unrelated" or "alias" or "native" or "other-owner" or "primitive"))
+            throw new ArgumentException("Unknown unavailable-PAL fixture mode", nameof(mode));
+        string owner = kernel32 ? mode == "other-owner" ? "QCallCarrier" : "Kernel32" : "Globalization";
+        string firstEntry = kernel32 ? mode == "other-owner" ? "ArrayInitializeCache" : "CloseHandle" : "GetCalendars";
+        string addressEntry = kernel32 ? "SetEvent" : "AddressOnly";
+        string bufferEntry = kernel32 ? "GetEnvironmentVariableW" : "GetSortKey";
+        string prefix = kernel32 ? "" : mode == "unrelated" ? "Unrelated_" : "GlobalizationNative_";
         Directory.CreateDirectory(directory);
         var resolver = new DefaultAssemblyResolver();
         resolver.AddSearchDirectory(original);
@@ -48,47 +53,64 @@ static partial class StrippingLevelValidation
         var module = mode == "application" ? am : cm;
         var interop = new TypeDefinition("", "Interop", TypeAttributes.Public | TypeAttributes.Abstract | TypeAttributes.Sealed,
             module.ImportReference(obj));
-        var globalization = new TypeDefinition("", "Globalization", TypeAttributes.NestedPublic | TypeAttributes.Abstract
+        var importOwner = new TypeDefinition("", owner, TypeAttributes.NestedPublic | TypeAttributes.Abstract
             | TypeAttributes.Sealed, module.ImportReference(obj));
-        module.Types.Add(interop);
-        interop.NestedTypes.Add(globalization);
-        globalization.Fields.Add(new FieldDefinition("RetainedField", FieldAttributes.Private | FieldAttributes.Static,
+        if (mode == "other-owner")
+        {
+            importOwner.Namespace = "System.Runtime.CompilerServices";
+            importOwner.Attributes = TypeAttributes.Public | TypeAttributes.Abstract | TypeAttributes.Sealed;
+            module.Types.Add(importOwner);
+        }
+        else
+        {
+            module.Types.Add(interop);
+            interop.NestedTypes.Add(importOwner);
+        }
+        importOwner.Fields.Add(new FieldDefinition("RetainedField", FieldAttributes.Private | FieldAttributes.Static,
             am.TypeSystem.Int32));
-        var touch = Method(globalization, "Touch", am.TypeSystem.Void);
+        var touch = Method(importOwner, "Touch", am.TypeSystem.Void);
         touch.Attributes = MethodAttributes.Public | MethodAttributes.Static;
-        string nativeModule = mode == "alias" ? "System.Globalization.Native" : "libSystem.Globalization.Native";
+        string nativeModule = kernel32
+            ? mode == "native" ? "kernel32.dll" : mode == "unrelated" ? "OtherPal" : "QCall"
+            : mode == "alias" ? "System.Globalization.Native" : "libSystem.Globalization.Native";
         var native = new ModuleReference(nativeModule);
         module.ModuleReferences.Add(native);
         var pointer = new PointerType(am.TypeSystem.UInt16);
-        MethodDefinition Import(string name, TypeReference buffer)
+        MethodDefinition Import(string name, params TypeReference[] parameters)
         {
             var method = new MethodDefinition(name, MethodAttributes.Public | MethodAttributes.Static | MethodAttributes.PInvokeImpl,
                 am.TypeSystem.Int32)
             {
                 ImplAttributes = MethodImplAttributes.PreserveSig,
                 PInvokeInfo = new PInvokeInfo(PInvokeAttributes.CallConvCdecl | PInvokeAttributes.CharSetUnicode,
-                    (mode == "unrelated" ? "Unrelated_" : "GlobalizationNative_") + name, native),
+                    prefix + name, native),
             };
-            method.Parameters.Add(new ParameterDefinition(new PointerType(am.TypeSystem.UInt16)));
-            method.Parameters.Add(new ParameterDefinition(buffer));
-            method.Parameters.Add(new ParameterDefinition(am.TypeSystem.Int32));
-            globalization.Methods.Add(method);
+            foreach (var parameter in parameters)
+                method.Parameters.Add(new ParameterDefinition(parameter));
+            importOwner.Methods.Add(method);
             return method;
         }
-        var calendars = Import("GetCalendars", pointer);
-        var addressOnly = Import("AddressOnly", pointer);
-        var bytes = Import("GetSortKey", new ArrayType(am.TypeSystem.Byte));
+        var scalarParameters = kernel32 ? new TypeReference[] { pointer }
+            : new TypeReference[] { pointer, pointer, am.TypeSystem.Int32 };
+        var firstImport = Import(firstEntry, scalarParameters);
+        var addressOnly = Import(addressEntry, scalarParameters);
+        var bufferImport = Import(bufferEntry, pointer,
+            new ArrayType(kernel32 ? am.TypeSystem.UInt16 : am.TypeSystem.Byte), am.TypeSystem.Int32);
         MethodDefinition Wrapper(string name, MethodDefinition target, bool address)
         {
-            var method = Method(globalization, name, am.TypeSystem.Int32);
+            var method = Method(importOwner, name, am.TypeSystem.Int32);
             method.Attributes = MethodAttributes.Public | MethodAttributes.Static;
             var il = method.Body.GetILProcessor();
             method.Body.Instructions.Clear();
-            il.Emit(OpCodes.Ldc_I4_0);
-            il.Emit(OpCodes.Conv_U);
-            if (target.Parameters[1].ParameterType is PointerType) { il.Emit(OpCodes.Ldc_I4_0); il.Emit(OpCodes.Conv_U); }
-            else il.Emit(OpCodes.Ldnull);
-            il.Emit(OpCodes.Ldc_I4_0);
+            foreach (var parameter in target.Parameters)
+            {
+                if (parameter.ParameterType is ArrayType) il.Emit(OpCodes.Ldnull);
+                else
+                {
+                    il.Emit(OpCodes.Ldc_I4_0);
+                    if (parameter.ParameterType is PointerType) il.Emit(OpCodes.Conv_U);
+                }
+            }
             if (address)
             {
                 il.Emit(OpCodes.Ldftn, target);
@@ -101,9 +123,9 @@ static partial class StrippingLevelValidation
             il.Emit(OpCodes.Ret);
             return method;
         }
-        var call = Wrapper("CallCalendars", calendars, false);
-        var address = Wrapper("AddressCalendars", addressOnly, true);
-        var byteCall = Wrapper("CallSortKey", bytes, false);
+        var call = Wrapper("CallImport", firstImport, false);
+        var address = Wrapper("AddressImport", addressOnly, true);
+        var bufferCall = Wrapper("CallBuffer", bufferImport, false);
 
         if (mode == "managed")
         {
@@ -114,7 +136,7 @@ static partial class StrippingLevelValidation
             constructor.Attributes = MethodAttributes.Public | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName;
             constructor.Parameters.Add(new ParameterDefinition(am.TypeSystem.String));
             constructor.Parameters.Add(new ParameterDefinition(am.TypeSystem.String));
-            foreach (var import in new[] { calendars, addressOnly })
+            foreach (var import in new[] { firstImport, addressOnly })
             {
                 var implementation = Method(am.EntryPoint.DeclaringType, "Managed" + import.Name, am.TypeSystem.Int32);
                 foreach (var parameter in import.Parameters)
@@ -169,6 +191,24 @@ static partial class StrippingLevelValidation
             return method;
         }
 
+        MethodDefinition? zeroMemory = null;
+        if (mode == "primitive")
+        {
+            cm.Types.Add(new TypeDefinition("System", "UIntPtr", TypeAttributes.Public | TypeAttributes.Sealed, value));
+            var buffer = new TypeDefinition("System", "Buffer", TypeAttributes.Public | TypeAttributes.Abstract
+                | TypeAttributes.Sealed, obj);
+            cm.Types.Add(buffer);
+            zeroMemory = new MethodDefinition("ZeroMemoryInternal", MethodAttributes.Public | MethodAttributes.Static
+                | MethodAttributes.PInvokeImpl, am.TypeSystem.Void)
+            {
+                ImplAttributes = MethodImplAttributes.PreserveSig,
+                PInvokeInfo = new PInvokeInfo(PInvokeAttributes.CallConvCdecl, "Buffer_ZeroMemory", native),
+            };
+            zeroMemory.Parameters.Add(new ParameterDefinition(new PointerType(am.TypeSystem.Void)));
+            zeroMemory.Parameters.Add(new ParameterDefinition(am.TypeSystem.UIntPtr));
+            buffer.Methods.Add(zeroMemory);
+        }
+
         var main = am.EntryPoint;
         main.ReturnType = am.TypeSystem.Int32;
         main.Body = new MethodBody(main);
@@ -179,11 +219,41 @@ static partial class StrippingLevelValidation
             entryIl.Emit(OpCodes.Call, am.ImportReference(setter));
         }
         entryIl.Emit(OpCodes.Call, am.ImportReference(touch));
-        if (mode is "called" or "alias")
+        if (zeroMemory is not null)
         {
-            var checks = new[] { Check("CheckCall", call, "GlobalizationNative_GetCalendars"),
-                Check("CheckAddress", address, "GlobalizationNative_AddressOnly"),
-                Check("CheckBytes", byteCall, "GlobalizationNative_GetSortKey") };
+            main.Body.InitLocals = true;
+            for (int i = 0; i < 2; i++)
+            {
+                var local = new VariableDefinition(am.TypeSystem.Int32);
+                main.Body.Variables.Add(local);
+                entryIl.Emit(OpCodes.Ldc_I4, i == 0 ? 1234 : 5678);
+                entryIl.Emit(OpCodes.Stloc, local);
+                entryIl.Emit(OpCodes.Ldloca, local);
+                entryIl.Emit(OpCodes.Conv_U);
+                entryIl.Emit(OpCodes.Ldc_I4_4);
+                entryIl.Emit(OpCodes.Conv_U);
+                if (i == 0) entryIl.Emit(OpCodes.Call, am.ImportReference(zeroMemory));
+                else
+                {
+                    entryIl.Emit(OpCodes.Ldftn, am.ImportReference(zeroMemory));
+                    var site = new CallSite(am.TypeSystem.Void);
+                    foreach (var parameter in zeroMemory.Parameters)
+                        site.Parameters.Add(new ParameterDefinition(am.ImportReference(parameter.ParameterType)));
+                    entryIl.Emit(OpCodes.Calli, site);
+                }
+            }
+            entryIl.Emit(OpCodes.Ldloc_0);
+            entryIl.Emit(OpCodes.Ldloc_1);
+            // Normalize failure so process exit-code truncation cannot hide unchanged locals.
+            entryIl.Emit(OpCodes.Or);
+            entryIl.Emit(OpCodes.Ldc_I4_0);
+            entryIl.Emit(OpCodes.Cgt_Un);
+        }
+        else if (mode is "called" or "alias" or "other-owner")
+        {
+            var checks = new[] { Check("CheckCall", call, prefix + firstEntry),
+                Check("CheckAddress", address, prefix + addressEntry),
+                Check("CheckBytes", bufferCall, prefix + bufferEntry) };
             entryIl.Emit(OpCodes.Ldc_I4_0);
             foreach (var check in checks) { entryIl.Emit(OpCodes.Call, check); entryIl.Emit(OpCodes.Add); }
         }

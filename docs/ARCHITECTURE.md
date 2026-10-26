@@ -539,6 +539,13 @@ same P/Invoke mouth used by direct calls and address-taken wrappers. A registere
 `NativeImplementation` or explicit `--direct-pinvoke` binding supplies the import
 instead; application imports are unaffected.
 
+CoreLib imports of the private `QCall` module follow the same refusal rule:
+the standalone runtime has no CoreCLR entry points. Existing member-specific
+lowerings retain ownership of direct calls and address-taken wrappers. This is
+selected from the input declaration, never the transpiler host. In particular,
+a CoreLib import of `kernel32.dll` keeps its normal native binding even when a corresponding
+CoreLib flavour declares a `QCall` import with the same entry-point name.
+
 - **Predicate**: the member set only — names, and behind a name gate a thunked
   signature. Never Compilation state.
 - **Table**, by what the (type, member) pair *means*: `MethodDefIntercepts`

@@ -6529,10 +6529,17 @@ internal sealed partial class Compilation
             return false;
 
         // User/library imports are the dynamic-loading surface. Framework imports
-        // remain behind their intrinsic/refusal boundary; the absent ICU PAL
-        // uses a callable refusal through this same route.
-        return !IsFrameworkAssemblyName(m.DeclaringClass.Module.AssemblyName)
-            || IsDirectPInvoke(m) || IsAbsentGlobalizationImport(m);
+        // remain behind their intrinsic/refusal boundary; absent runtime modules
+        // use a callable refusal through this same route.
+        if (!IsFrameworkAssemblyName(m.DeclaringClass.Module.AssemblyName)
+            || IsDirectPInvoke(m) || IsAbsentGlobalizationImport(m))
+            return true;
+
+        // A concrete cut lowering owns both calls and addresses. The intrinsic-type
+        // umbrella alone does not promise a lowering for every private QCall member.
+        return IsAbsentCoreClrQCall(m)
+            && (!CoreIntrinsics.TryFindCutRow(m, out var row)
+                || row.EmitArm == InterceptEmitArm.IntrinsicDispatch);
     }
 
     // Invariant globalization has no ICU PAL. Keep retained imports callable,
@@ -6540,10 +6547,19 @@ internal sealed partial class Compilation
     internal bool IsAbsentGlobalizationImport(MethodInfo method) =>
         CoreIntrinsics.PiAbsentGlobalizationNative.Matches(method) && !IsDirectPInvoke(method);
 
+    internal bool IsAbsentCoreClrQCall(MethodInfo method) =>
+        CoreIntrinsics.PiAbsentCoreClrQCall.Matches(method) && !IsDirectPInvoke(method);
+
     internal static string AbsentGlobalizationImportMessage(PInvokeInfo import) =>
         ("the native import " + import.ModuleName + "!" + import.RawEntryPoint
         + " requires the ICU globalization PAL, which a dn2cpp-transpiled binary does not provide. "
         + "Use the supported globalization APIs, a NativeImplementation shim, or an explicit --direct-pinvoke binding.")
+        .Replace("\\", "\\\\").Replace("\"", "\\\"");
+
+    internal static string AbsentCoreClrQCallMessage(PInvokeInfo import) =>
+        ("the native import " + import.ModuleName + "!" + import.RawEntryPoint
+        + " requires the CoreCLR runtime, which a dn2cpp-transpiled binary does not provide. "
+        + "Use a supported managed API, a NativeImplementation shim, or an explicit --direct-pinvoke binding.")
         .Replace("\\", "\\\\").Replace("\"", "\\\"");
 
     /// <summary>ldftn/delegate targets that are bodyless P/Invokes whose call sites

@@ -187,5 +187,6 @@ print("stripping-levels=high-compatible,medium-static-closure,raw-rewritten,meta
 from intercept_retention import validate_intercept_retention
 validate_intercept_retention(probe, cli, original, directory)
 
-from globalization_retention import validate_globalization
+from globalization_retention import validate_globalization, validate_kernel32
 validate_globalization(probe, cli, original, directory)
+validate_kernel32(probe, cli, original, directory)
