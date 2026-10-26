@@ -656,6 +656,8 @@ internal static partial class CoreIntrinsics
             or "WaitForPendingFinalizers" or "GetTotalMemory" or "KeepAlive"
             or "_CollectionCount" or "GetMemoryInfo"
             or "GetGenerationInternal" or "GetMaxGeneration"
+            or "_RegisterForFullGCNotification" or "_CancelFullGCNotification"
+            or "_WaitForFullGCApproach" or "_WaitForFullGCComplete"
             or "GetAllocatedBytesForCurrentThread" or "GetTotalAllocatedBytes",
         // SpanHelpers.Memmove -> std::memmove. Cutting the managed entry makes both its
         // hand-unrolled Unsafe.* loop and the SpanHelpers::memmove InternalCall fallback

@@ -10,6 +10,14 @@ internal sealed partial class MethodCompiler
     {
         switch (declType, name)
         {
+            // CoreLib's public GC TimeSpan overloads share WaitHandle's timeout
+            // conversion. Reuse the established truncation and bounds contract.
+            case ("System.Threading.WaitHandle", "ToTimeoutMilliseconds")
+                when !sig.Header.IsInstance && sig.GenericParameterCount == 0
+                    && sig.ParameterTypes is [{ } timeoutType] && IsTimeSpan(timeoutType)
+                    && sig.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }:
+                Push(StackKind.I4, "int32_t", TimeoutMs(Pop(), timeoutType));
+                return true;
             // lock(object) / Monitor — real per-object recursive lock (the multithread
             // model). The lock(obj){…} lowering is Monitor.Enter(obj, ref taken); try {…}
             // finally { if (taken) Monitor.Exit(obj); }; Enter blocks until acquired then

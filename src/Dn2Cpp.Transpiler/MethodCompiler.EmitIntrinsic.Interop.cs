@@ -738,6 +738,32 @@ internal sealed partial class MethodCompiler
                 Emit($"dn2cpp_keep_alive({Cast(o, "Dn2CppObject*")});");
                 return true;
             }
+            // This runtime has no full-GC notification capability. Preserve public
+            // validation and its existing failure contract; never register fake events.
+            case ("System.GC", "_RegisterForFullGCNotification")
+                when callee.IsStatic && callee.Signature.GenericParameterCount == 0
+                    && callee.Signature.ParameterTypes is [
+                        { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 },
+                        { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }]
+                    && callee.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }:
+                Pop();
+                Pop();
+                Push(StackKind.I4, "int32_t", "0");
+                return true;
+            case ("System.GC", "_CancelFullGCNotification")
+                when callee.IsStatic && callee.Signature.GenericParameterCount == 0
+                    && callee.Signature.ParameterTypes.Length == 0
+                    && callee.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }:
+                Push(StackKind.I4, "int32_t", "0");
+                return true;
+            case ("System.GC", "_WaitForFullGCApproach" or "_WaitForFullGCComplete")
+                when callee.IsStatic && callee.Signature.GenericParameterCount == 0
+                    && callee.Signature.ParameterTypes is [
+                        { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }]
+                    && callee.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }:
+                Pop();
+                Push(StackKind.I4, "int32_t", "4"); // GCNotificationStatus.NotApplicable: never registered
+                return true;
             // Boehm and the calloc fallback have one logical generation. Keep the
             // public overloads as IL so their object/WeakReference validation survives.
             case ("System.GC", "GetGenerationInternal")

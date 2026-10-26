@@ -119,6 +119,11 @@ each is settled, and each refuses out loud rather than answering wrong:
   Boehm is non-generational; objects do not undergo CLR-style promotion.
   Validated `GC.Collect` requests use a whole-heap collection; scheduling and
   compaction hints do not change the collector into a generational or moving GC.
+- Full-GC notifications are unavailable: registration and cancellation use the
+  input CoreLib's `InvalidOperationException` failure path; waits immediately
+  return `GCNotificationStatus.NotApplicable`. Public argument validation stays
+  intact. This is a dn2cpp capability limit, not a claim about CLR notification
+  support or the host's concurrent-GC setting.
 - `FileStream.IsAsync` answers `false` — async file I/O runs the
   deterministic sync-over-async route.
 - An unsupported IL or BCL shape is a transpile-time error or a catchable

@@ -121,6 +121,24 @@ gate_extra_asserts() {
         'gc-worker-zero:True' 'GC finalizer worker contract end'; do
         gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
     done
+    gate_capture_ok "$out/assert-before-gc-notifications" run_bounded dotnet "$_CG_APP" before-gc-notifications || return 1
+    gate_output select "$native" "$out/assert-prefix-gc-notifications.stdout" --before '== GC notification validation ==' --policy crlf || return 1
+    gate_output compare "$out/assert-prefix-gc-notifications.stdout" "$out/assert-before-gc-notifications.stdout" || return 1
+    for line in '== GC notification validation ==' \
+        'fullgc-max-zero:ArgumentOutOfRangeException:maxGenerationThreshold:Argument must be between 1 and 99. (Parameter '"'"'maxGenerationThreshold'"'"')' \
+        'fullgc-max-hundred:ArgumentOutOfRangeException:maxGenerationThreshold:Argument must be between 1 and 99. (Parameter '"'"'maxGenerationThreshold'"'"')' \
+        'fullgc-loh-zero:ArgumentOutOfRangeException:largeObjectHeapThreshold:Argument must be between 1 and 99. (Parameter '"'"'largeObjectHeapThreshold'"'"')' \
+        'fullgc-loh-hundred:ArgumentOutOfRangeException:largeObjectHeapThreshold:Argument must be between 1 and 99. (Parameter '"'"'largeObjectHeapThreshold'"'"')' \
+        'fullgc-max-first:ArgumentOutOfRangeException:maxGenerationThreshold:Argument must be between 1 and 99. (Parameter '"'"'maxGenerationThreshold'"'"')' \
+        'fullgc-approach-negative:ArgumentOutOfRangeException:millisecondsTimeout:millisecondsTimeout ('"'"'-2'"'"') must be greater than or equal to '"'"'-1'"'"'. (Parameter '"'"'millisecondsTimeout'"'"')' \
+        'fullgc-complete-negative:ArgumentOutOfRangeException:millisecondsTimeout:millisecondsTimeout ('"'"'-2'"'"') must be greater than or equal to '"'"'-1'"'"'. (Parameter '"'"'millisecondsTimeout'"'"')' \
+        'fullgc-approach-timespan:ArgumentOutOfRangeException:timeout:timeout ('"'"'-2'"'"') must be greater than or equal to '"'"'-1'"'"'. (Parameter '"'"'timeout'"'"')' \
+        'fullgc-complete-timespan:ArgumentOutOfRangeException:timeout:timeout ('"'"'-2'"'"') must be greater than or equal to '"'"'-1'"'"'. (Parameter '"'"'timeout'"'"')' \
+        'fullgc-approach-overflow:ArgumentOutOfRangeException:timeout:timeout ('"'"'2147483648'"'"') must be less than or equal to '"'"'2147483647'"'"'. (Parameter '"'"'timeout'"'"')' \
+        'fullgc-complete-overflow:ArgumentOutOfRangeException:timeout:timeout ('"'"'2147483648'"'"') must be less than or equal to '"'"'2147483647'"'"'. (Parameter '"'"'timeout'"'"')' \
+        'GC notification validation end'; do
+        gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
+    done
 }
 
 corelib_diff_gate SelfHostPrimSubset System.Linq System.Diagnostics.TraceSource \
@@ -189,3 +207,18 @@ invoke_cli "$worker_input/SelfHostPrimSubset.dll" -r "$_CG_CORELIB" \
 compile_console "$worker_out" GcWorkerBoundary
 gate_capture_ok "$worker_out/native" run_bounded "./$worker_out/GcWorkerBoundary$EXE_EXT" native-finalizer-boundary
 gc_worker_boundary_asserts "$worker_out/native.stdout"
+
+# Intentional native capability boundary, separate from CLR validation parity.
+# CoreCLR may register successfully; never execute this mode as a CLR oracle.
+gc_notification_unavailable_asserts() {
+    local output="$1" label
+    for label in fullgc-register-direct fullgc-register-delegate fullgc-register-pointer fullgc-cancel-direct fullgc-cancel-delegate; do
+        gate_output byte-witness "$output" "$label:InvalidOperationException::This API is not available when the concurrent GC is enabled." --count 1 --policy crlf || return 1
+    done
+    for label in fullgc-approach-default fullgc-complete-default fullgc-approach-zero fullgc-complete-positive fullgc-approach-pointer fullgc-approach-time fullgc-complete-time fullgc-approach-fraction fullgc-complete-upper; do
+        gate_output byte-witness "$output" "$label:NotApplicable" --count 1 --policy crlf || return 1
+    done
+    gate_output byte-witness "$output" 'GC notification unavailable end' --count 1 --policy crlf || return 1
+}
+gate_capture_ok "$_CG_OUT/notifications" run_bounded "./$_CG_OUT/SelfHostPrimSubset$EXE_EXT" native-gc-notification-unavailable
+gc_notification_unavailable_asserts "$_CG_OUT/notifications.stdout"
