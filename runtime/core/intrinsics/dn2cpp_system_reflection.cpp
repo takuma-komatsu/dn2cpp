@@ -1110,23 +1110,36 @@ Dn2CppType* dn2cpp_nullable_get_underlying(Dn2CppType* t)
     return nullptr;
 }
 
-// Enum.GetName(Type, value): the member name for the value, or null if undefined.
-// The value arrives BOXED rather than pre-narrowed at the call site: the enum type is
-// chosen at run time there, so only this side knows the payload's width.
-Dn2CppString* dn2cpp_enum_get_name(Dn2CppType* t, Dn2CppObject* value)
+// The private RuntimeType/UInt64 overload consumes the source bits before narrowing.
+Dn2CppString* dn2cpp_enum_get_name_u64(Dn2CppType* t, uint64_t value)
 {
-    // .NET checks the value for null between the type's null and enum checks.
-    if (t == nullptr)
-        dn2cpp_throw_argument_null_param("enumType");
-    if (value == nullptr)
-        dn2cpp_throw_argument_null_param("value");
+    dn2cpp_type_require(t);
     const Dn2CppTypeInfo* ti = dn2cpp_enum_type_require(t);
-    int64_t v = dn2cpp_enum_box_value(ti, value);
+    int32_t width;
+    bool isUnsigned;
+    enum_underlying_shape(ti, &width, &isUnsigned);
+    if (width < 8)
+    {
+        if (isUnsigned)
+        {
+            if (value > ((uint64_t{1} << (width * 8)) - 1)) return nullptr;
+        }
+        else
+        {
+            int64_t signedValue;
+            std::memcpy(&signedValue, &value, sizeof(signedValue));
+            int64_t limit = int64_t{1} << (width * 8 - 1);
+            if (signedValue < -limit || signedValue >= limit) return nullptr;
+        }
+    }
     const auto reflection = ti->reflection();
     for (int32_t i = 0; i < reflection.enumMemberCount; i++)
     {
         const auto member = reflection.enumMembers[i].operator->();
-        if (member->value == v)
+        // Sub-64-bit enum metadata stores an int32 model value, including UInt32.
+        uint64_t memberValue = static_cast<uint64_t>(member->value);
+        if (isUnsigned && width < 8) memberValue &= (uint64_t{1} << (width * 8)) - 1;
+        if (memberValue == value)
             return dn2cpp_string_from_utf8(member->name,
                 static_cast<int32_t>(std::strlen(member->name)));
     }
@@ -11258,6 +11271,33 @@ static bool dn2cpp_read_boxed_num(Dn2CppObject* v, int32_t* code, int64_t* i, do
             break;
     }
     return true;
+}
+
+// Read the source box at its own width; target enum validation follows value validation.
+static Dn2CppString* enum_get_name_boxed(Dn2CppType* t, Dn2CppObject* value)
+{
+    if (value == nullptr)
+        dn2cpp_throw_argument_null_param("value");
+    int32_t code;
+    int64_t i;
+    double r;
+    if (!dn2cpp_read_boxed_num(value, &code, &i, &r)
+        || code == DN2CPP_PC_BOOL || code == DN2CPP_PC_R4 || code == DN2CPP_PC_R8)
+        dn2cpp_throw_argument_param(DN2CPP_SR_MUST_BE_ENUM_BASE_TYPE_OR_ENUM, "value");
+    return dn2cpp_enum_get_name_u64(t, static_cast<uint64_t>(i));
+}
+
+Dn2CppString* dn2cpp_enum_get_name(Dn2CppType* t, Dn2CppObject* value)
+{
+    if (t == nullptr)
+        dn2cpp_throw_argument_null_param("enumType");
+    return enum_get_name_boxed(t, value);
+}
+
+Dn2CppString* dn2cpp_type_get_enum_name(Dn2CppType* t, Dn2CppObject* value)
+{
+    dn2cpp_type_require(t);
+    return enum_get_name_boxed(t, value);
 }
 
 // Enum.ToObject(Type, object): the boxed-value form. .NET dispatches on

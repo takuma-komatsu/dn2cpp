@@ -1874,6 +1874,8 @@ Dn2CppType* dn2cpp_nullable_get_underlying(Dn2CppType* t);
 // The value arrives BOXED: the enum type is chosen at run time at these call sites, so
 // only this side can read the payload at the enum's own model width.
 Dn2CppString* dn2cpp_enum_get_name(Dn2CppType* t, Dn2CppObject* value);
+Dn2CppString* dn2cpp_type_get_enum_name(Dn2CppType* t, Dn2CppObject* value);
+Dn2CppString* dn2cpp_enum_get_name_u64(Dn2CppType* t, uint64_t value);
 int32_t dn2cpp_enum_is_defined(Dn2CppType* t, Dn2CppObject* value);
 Dn2CppObject* dn2cpp_enum_parse_type(Dn2CppType* t, Dn2CppString* s, int32_t ignoreCase);
 // Enum.TryParse(Type, string[, ignoreCase], out object): returns 1 + *out=boxed enum on

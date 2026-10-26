@@ -3,6 +3,7 @@
     <type fullname="System.Enum" preserve="nothing">
       <method name="InternalGetCorElementType" />
       <method name="InternalGetUnderlyingType" />
+      <method signature="System.String GetName(System.RuntimeType,System.UInt64)" />
     </type>
   </assembly>
 </linker>

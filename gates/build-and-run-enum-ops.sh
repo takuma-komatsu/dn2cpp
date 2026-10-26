@@ -130,6 +130,20 @@ gate_extra_asserts() {
         'enum internal underlying type end'; do
         gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
     done
+
+    gate_capture_ok "$out/assert-before-name-lookup" run_bounded dotnet "$_CG_APP" before-enum-name-lookup || return 1
+    gate_output select "$native" "$out/assert-prefix-name-lookup.stdout" --before '== enum name lookup ==' --policy crlf || return 1
+    gate_output compare "$out/assert-prefix-name-lookup.stdout" "$out/assert-before-name-lookup.stdout" || return 1
+    for line in '== enum name lookup ==' \
+        'name:I4:7:Neg:Neg:Neg' 'name:U1:10:null:null:null' \
+        'name:U8:7:Max:Max:Max' \
+        'name:Int32:24:ArgumentException/value:ArgumentException/value:ArgumentException/value' \
+        'name:null:NullReferenceException/:ArgumentNullException/enumType' \
+        'scalar:I4:16:Neg' 'scalar:U1:5:null' \
+        'scalar:null:NullReferenceException/' 'enum name lookup end'; do
+        gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
+    done
+
 }
 
 corelib_diff_gate EnumOps --link-xml samples/dotnet/EnumOps/keep-element-type.xml

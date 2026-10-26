@@ -107,6 +107,9 @@ internal sealed partial class MethodCompiler
                 && rt is { Kind: TypeKind.Class, Class.FullName: "System.RuntimeType" }:
                 Emit($"return ({CppTypes.Of(rt)})dn2cpp_enum_internal_get_underlying_type((Dn2CppType*)a0);");
                 break;
+            case ("GetName", 2) when CoreIntrinsics.BrEnumScalarGetName.Matches(_method):
+                Emit($"return ({CppTypes.Of(rt)})dn2cpp_enum_get_name_u64((Dn2CppType*)a0, (uint64_t)a1);");
+                break;
             case ("GetValue", 0):
                 // GetValue() — the private boxer every IConvertible.To* override calls
                 // (Convert.ToXxx(GetValue(), …)). dn2cpp_enum_get_value re-boxes the payload

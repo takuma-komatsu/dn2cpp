@@ -51,6 +51,10 @@ internal sealed partial class AssemblyDiet
                 && !CoreIntrinsicTypeMaps.IsEnumUnderlyingTypeMethod(owner, method.Name,
                     method.IsStatic, method.Parameters.Count, method.ReturnType.FullName,
                     method.Parameters.Count == 1 ? method.Parameters[0].ParameterType.FullName : null)
+                && !CoreIntrinsicTypeMaps.IsEnumScalarGetNameMethod(owner, method.Name,
+                    method.IsStatic, method.Parameters.Count, method.ReturnType.FullName,
+                    method.Parameters.Count == 2 ? method.Parameters[0].ParameterType.FullName : null,
+                    method.Parameters.Count == 2 ? method.Parameters[1].ParameterType.FullName : null)
                 && !CoreIntrinsicTypeMaps.IsEnumTryFormatMethod(owner, method.Name)
                 && (!CopiedIntrinsicType(method.DeclaringType)
                     || CoreIntrinsicTypeMaps.IntrinsicManagedBodyFamily(owner)

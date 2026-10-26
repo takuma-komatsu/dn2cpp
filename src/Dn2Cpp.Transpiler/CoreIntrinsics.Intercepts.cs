@@ -1690,6 +1690,17 @@ internal static partial class CoreIntrinsics
             m.Signature.ReturnType.Class?.FullName,
             m.Signature.ParameterTypes.Length == 1 ? m.Signature.ParameterTypes[0].Class?.FullName : null));
 
+    /// <summary>The scalar enum-name lookup uses native enum metadata rather than RuntimeType caches.</summary>
+    public static readonly MethodDefIntercept BrEnumScalarGetName = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.EnumInstanceFormatBody,
+        typeGate: "System.Enum", nameGate: "GetName",
+        extra: static m => CoreIntrinsicTypeMaps.IsEnumScalarGetNameMethod(
+            m.DeclaringClass.FullName, m.Name, m.IsStatic, m.Signature.ParameterTypes.Length,
+            m.Signature.ReturnType.IsString ? "System.String" : null,
+            m.Signature.ParameterTypes.Length == 2 ? m.Signature.ParameterTypes[0].Class?.FullName : null,
+            m.Signature.ParameterTypes.Length == 2 && m.Signature.ParameterTypes[1] is
+                { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.UInt64 } ? "System.UInt64" : null));
+
     /// <summary>Retains callable inherited disposal slots while replacing the runtime-only
     /// cleanup. Public wrappers dispatch Dispose(bool); a base bool call never redispatches.</summary>
     public static readonly NameKeyedIntercept BrLifetimeDispose = new(
@@ -1876,6 +1887,11 @@ internal static partial class CoreIntrinsics
             BrEnumElementType.TypeGate, BrEnumElementType.NameGate);
         if (BrEnumElementType.CutKind != InterceptCutKind.BodyReplace)
             throw new InvalidOperationException("Enum element-type body must remain callable");
+
+        CheckRow(nameof(BrEnumScalarGetName), 0, BrEnumScalarGetName.EmitArm,
+            BrEnumScalarGetName.TypeGate, BrEnumScalarGetName.NameGate);
+        if (BrEnumScalarGetName.CutKind != InterceptCutKind.BodyReplace)
+            throw new InvalidOperationException("Enum scalar name body must remain callable");
 
         CheckRow(nameof(BrEnumUnderlyingType), 0, BrEnumUnderlyingType.EmitArm,
             BrEnumUnderlyingType.TypeGate, BrEnumUnderlyingType.NameGate);

@@ -109,14 +109,24 @@ internal sealed partial class MethodCompiler
                     $"(({fnPtr})(dn2cpp_resolve_interface({recv}->type, &{itf.CppTypeInfoName})[{ge.VtableSlot}]))(({itf.CppStructName}*){recv})");
                 return true;
             }
-            case ("System.Enum", "GetName") when sig.ParameterTypes.Length == 2:
+            case ("System.Enum", "GetName") when !sig.Header.IsInstance
+                && sig.ParameterTypes is [{ Class.FullName: "System.RuntimeType" },
+                    { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.UInt64 }]:
             {
-                var v = Pop();
-                var t = Pop();
-                // The box goes over whole: its payload is 8 bytes for a long/ulong-underlying
-                // enum and 4 for every narrower one, and the Type here is a run-time value,
-                // so narrowing at the call site would truncate the wide members.
-                Push(StackKind.Ref, "Dn2CppString*", $"dn2cpp_enum_get_name({Cast(t, "Dn2CppType*")}, {Cast(v, "Dn2CppObject*")})");
+                var value = Pop();
+                var type = Pop();
+                Push(StackKind.Ref, "Dn2CppString*",
+                    $"dn2cpp_enum_get_name_u64({Cast(type, "Dn2CppType*")}, {Cast(value, "uint64_t")})");
+                return true;
+            }
+            case ("System.Enum", "GetName") when !sig.Header.IsInstance
+                && sig.ParameterTypes is [{ Class.FullName: "System.Type" },
+                    { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object }]:
+            {
+                var value = Pop();
+                var type = Pop();
+                Push(StackKind.Ref, "Dn2CppString*",
+                    $"dn2cpp_enum_get_name({Cast(type, "Dn2CppType*")}, {Cast(value, "Dn2CppObject*")})");
                 return true;
             }
             case ("System.Enum", "IsDefined") when sig.ParameterTypes.Length == 2:

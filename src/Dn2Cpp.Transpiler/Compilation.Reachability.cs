@@ -89,6 +89,7 @@ internal sealed partial class Compilation
         // unlike BrHttpShim there is no managed edge to reach.
         if (CoreIntrinsics.BrEnumInstanceFormat.Matches(m.DeclaringClass.FullName, m.Name)
             || CoreIntrinsics.BrEnumElementType.Matches(m)
+            || CoreIntrinsics.BrEnumScalarGetName.Matches(m)
             || CoreIntrinsics.BrEnumUnderlyingType.Matches(m))
         {
             if (AddReachable(m))
