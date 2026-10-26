@@ -984,6 +984,8 @@ internal sealed partial class MethodCompiler
             case ("System.Array", "BinarySearch"):
                 return TryEmitNonGenericArrayBinarySearch(sig);
 
+            case ("System.ValueType", ".ctor") when sig.Header.IsInstance
+                && sig.ParameterTypes.Length == 0 && sig.ReturnType.IsVoid:
             case ("System.Object", ".ctor"):
             case ("System.Attribute", ".ctor"):
                 Pop(); // this — base ctor is a no-op

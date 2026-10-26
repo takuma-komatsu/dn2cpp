@@ -1,6 +1,7 @@
 <linker>
   <assembly fullname="System.Private.CoreLib">
     <type fullname="System.Enum" preserve="nothing">
+      <method signature="System.Void .ctor()" />
       <method name="InternalGetCorElementType" />
       <method name="InternalGetUnderlyingType" />
       <method signature="System.String GetName(System.RuntimeType,System.UInt64)" />

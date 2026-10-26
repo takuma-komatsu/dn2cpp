@@ -177,6 +177,19 @@ gate_extra_asserts() {
         gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
     done
 
+
+    gate_capture_ok "$out/assert-before-base-constructors" run_bounded dotnet "$_CG_APP" before-enum-base-constructors || return 1
+    gate_output select "$native" "$out/assert-prefix-base-constructors.stdout" --before '== enum base constructors ==' --policy crlf || return 1
+    gate_output compare "$out/assert-prefix-base-constructors.stdout" "$out/assert-before-base-constructors.stdout" || return 1
+    for line in '== enum base constructors ==' \
+        'ctor:enum-enum:True' 'enum-enum-payload:1234567890123' \
+        'ctor:enum-tiny:True' 'enum-tiny-payload:-128' \
+        'ctor:enum-null:TargetException' 'ctor:enum-object:TargetException' \
+        'ctor:enum-struct:TargetException' 'enum-struct-payload:-7:1234567890123' \
+        'enum base constructors end'; do
+        gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
+    done
+
 }
 
 corelib_diff_gate EnumOps --link-xml samples/dotnet/EnumOps/keep-element-type.xml
