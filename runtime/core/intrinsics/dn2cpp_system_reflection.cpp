@@ -11063,6 +11063,21 @@ int32_t dn2cpp_enum_type_cor_element_type(Dn2CppType* type)
     return enum_cor_element_type(type->typeInfo);
 }
 
+// Enum's private primitive-type table has null holes and no SZARRAY entry.
+// Unlike its public counterpart, this query does not validate an enum argument.
+Dn2CppType* dn2cpp_enum_internal_get_underlying_type(Dn2CppType* type)
+{
+    int32_t code = dn2cpp_enum_type_cor_element_type(type);
+    if (static_cast<uint32_t>(code) >= 26)
+        dn2cpp_throw_index_out_of_range();
+    if (!((code >= 2 && code <= 13) || code == 0x18 || code == 0x19))
+        return nullptr;
+    const Dn2CppTypeInfo* underlying = type->typeInfo;
+    if ((underlying->flags & DN2CPP_TF_ENUM) != 0)
+        underlying = underlying->enumUnderlying != nullptr ? underlying->enumUnderlying : &dn2cpp_int32_type;
+    return dn2cpp_get_type_from_handle(underlying);
+}
+
 // Enum.GetValue(): boxes the enum's underlying primitive value. The result box's
 // type-info is the UNDERLYING primitive's, not the enum's, matching real .NET — that is
 // what Convert.ToXxx and the IConvertible.To* overrides read. The enum's own box carries

@@ -88,7 +88,8 @@ internal sealed partial class Compilation
         // Convert.ToXxx(GetValue(), …) body). The synthesized body names only runtime helpers, so
         // unlike BrHttpShim there is no managed edge to reach.
         if (CoreIntrinsics.BrEnumInstanceFormat.Matches(m.DeclaringClass.FullName, m.Name)
-            || CoreIntrinsics.BrEnumElementType.Matches(m))
+            || CoreIntrinsics.BrEnumElementType.Matches(m)
+            || CoreIntrinsics.BrEnumUnderlyingType.Matches(m))
         {
             if (AddReachable(m))
             {

@@ -102,6 +102,11 @@ internal sealed partial class MethodCompiler
                 && rt is { Kind: TypeKind.Class, Class.FullName: "System.Reflection.CorElementType" }:
                 Emit($"return ({CppTypes.Of(rt)})dn2cpp_enum_type_cor_element_type((Dn2CppType*)a0);");
                 break;
+            case ("InternalGetUnderlyingType", 1) when _method.IsStatic
+                && ps[0] is { Kind: TypeKind.Class, Class.FullName: "System.RuntimeType" }
+                && rt is { Kind: TypeKind.Class, Class.FullName: "System.RuntimeType" }:
+                Emit($"return ({CppTypes.Of(rt)})dn2cpp_enum_internal_get_underlying_type((Dn2CppType*)a0);");
+                break;
             case ("GetValue", 0):
                 // GetValue() — the private boxer every IConvertible.To* override calls
                 // (Convert.ToXxx(GetValue(), …)). dn2cpp_enum_get_value re-boxes the payload
@@ -115,7 +120,7 @@ internal sealed partial class MethodCompiler
                 // nothing defines.
                 throw new NotSupportedException(
                     $"{_method.DeclaringClass.FullName}.{_method.Name}: unmodeled System.Enum "
-                    + $"instance ToString/GetTypeCode/Equals/GetHashCode/CompareTo/GetValue/InternalGetCorElementType overload "
+                    + $"instance ToString/GetTypeCode/Equals/GetHashCode/CompareTo/GetValue/InternalGetCorElementType/InternalGetUnderlyingType overload "
                     + $"({ps.Length} parameter(s)). The reach cut (CoreIntrinsics.BrEnumInstanceFormat) "
                     + "deletes its real IL, so this shape must be modeled here or removed from "
                     + "IsEnumInstanceFormatMethod.");

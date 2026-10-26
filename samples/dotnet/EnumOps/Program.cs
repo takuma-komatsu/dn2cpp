@@ -39,6 +39,9 @@ namespace EnumOps
             if (args.Length > 0 && args[0] == "before-enum-element-type")
                 return;
             EnumElementTypeSubset.Program.Run();
+            if (args.Length > 0 && args[0] == "before-enum-underlying-type")
+                return;
+            EnumUnderlyingTypeSubset.Program.Run();
         }
     }
 }

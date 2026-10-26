@@ -31,6 +31,8 @@
 # builder when Current or Dispose throws, including Dispose replacing Current's fault.
 # Retained Enum.InternalGetCorElementType is invoked through reflection for every
 # integral underlying width; the callable body must use native enum type-info.
+# InternalGetUnderlyingType retains its primitive table semantics, including null
+# holes and the bounds failure for a vector type.
 # Former gates: enum-flags, enum-interp, enum-tostring, enum-value-tostring,
 # external-enum.
 source "$(dirname "$0")/_common.sh"
@@ -106,6 +108,26 @@ gate_extra_asserts() {
         'type:void:1' 'type:decimal:17' 'type:object:18' 'type:string:18' \
         'type:vector:29' 'type:matrix:20' 'type:typedref:22' \
         'enum primitive element type end'; do
+        gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
+    done
+
+    gate_capture_ok "$out/assert-before-underlying-type" run_bounded dotnet "$_CG_APP" before-enum-underlying-type || return 1
+    before="$out/assert-before-underlying-type.stdout"
+    prefix="$out/assert-prefix-underlying-type.stdout"
+    gate_output select "$native" "$prefix" --before '== enum internal underlying type ==' --policy crlf || return 1
+    gate_output compare "$prefix" "$before" || return 1
+    for line in '== enum internal underlying type ==' \
+        'underlying:i1:System.SByte' 'underlying:u1:System.Byte' \
+        'underlying:i2:System.Int16' 'underlying:u2:System.UInt16' \
+        'underlying:i4:System.Int32' 'underlying:u4:System.UInt32' \
+        'underlying:i8:System.Int64' 'underlying:u8:System.UInt64' \
+        'underlying:bool:System.Boolean' 'underlying:char:System.Char' \
+        'underlying:float:System.Single' 'underlying:double:System.Double' \
+        'underlying:nint:System.IntPtr' 'underlying:nuint:System.UIntPtr' \
+        'underlying:void:null' 'underlying:decimal:null' 'underlying:object:null' \
+        'underlying:string:null' 'underlying:matrix:null' 'underlying:typedref:null' \
+        'underlying:vector:IndexOutOfRangeException' 'underlying:null:NullReferenceException' \
+        'enum internal underlying type end'; do
         gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
     done
 }

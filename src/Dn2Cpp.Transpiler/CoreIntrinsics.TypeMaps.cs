@@ -741,6 +741,12 @@ internal static class CoreIntrinsicTypeMaps
         && (!isStatic && parameterCount == 0
             || isStatic && parameterCount == 1 && parameterType == "System.RuntimeType");
 
+    public static bool IsEnumUnderlyingTypeMethod(string? declType, string name,
+        bool isStatic, int parameterCount, string? returnType, string? parameterType) =>
+        declType == "System.Enum" && name == "InternalGetUnderlyingType"
+        && isStatic && parameterCount == 1 && returnType == "System.RuntimeType"
+        && parameterType == "System.RuntimeType";
+
     public static bool IsEnumTryFormatMethod(string? declType, string name) =>
         declType == "System.Enum" && name == "System.ISpanFormattable.TryFormat";
 

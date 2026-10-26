@@ -1680,6 +1680,16 @@ internal static partial class CoreIntrinsics
             m.Signature.ReturnType.Class?.FullName,
             m.Signature.ParameterTypes.Length == 1 ? m.Signature.ParameterTypes[0].Class?.FullName : null));
 
+    /// <summary>The internal underlying-type query projects the runtime primitive
+    /// element code, without CoreCLR MethodTable access.</summary>
+    public static readonly MethodDefIntercept BrEnumUnderlyingType = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.EnumInstanceFormatBody,
+        typeGate: "System.Enum", nameGate: "InternalGetUnderlyingType",
+        extra: static m => CoreIntrinsicTypeMaps.IsEnumUnderlyingTypeMethod(
+            m.DeclaringClass.FullName, m.Name, m.IsStatic, m.Signature.ParameterTypes.Length,
+            m.Signature.ReturnType.Class?.FullName,
+            m.Signature.ParameterTypes.Length == 1 ? m.Signature.ParameterTypes[0].Class?.FullName : null));
+
     /// <summary>Retains callable inherited disposal slots while replacing the runtime-only
     /// cleanup. Public wrappers dispatch Dispose(bool); a base bool call never redispatches.</summary>
     public static readonly NameKeyedIntercept BrLifetimeDispose = new(
@@ -1866,6 +1876,11 @@ internal static partial class CoreIntrinsics
             BrEnumElementType.TypeGate, BrEnumElementType.NameGate);
         if (BrEnumElementType.CutKind != InterceptCutKind.BodyReplace)
             throw new InvalidOperationException("Enum element-type body must remain callable");
+
+        CheckRow(nameof(BrEnumUnderlyingType), 0, BrEnumUnderlyingType.EmitArm,
+            BrEnumUnderlyingType.TypeGate, BrEnumUnderlyingType.NameGate);
+        if (BrEnumUnderlyingType.CutKind != InterceptCutKind.BodyReplace)
+            throw new InvalidOperationException("Enum underlying-type body must remain callable");
 
         CheckRow(nameof(PiAbsentGlobalizationNative), 0, PiAbsentGlobalizationNative.EmitArm,
             PiAbsentGlobalizationNative.TypeGate, PiAbsentGlobalizationNative.NameGate);

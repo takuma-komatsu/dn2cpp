@@ -2,6 +2,7 @@
   <assembly fullname="System.Private.CoreLib">
     <type fullname="System.Enum" preserve="nothing">
       <method name="InternalGetCorElementType" />
+      <method name="InternalGetUnderlyingType" />
     </type>
   </assembly>
 </linker>
