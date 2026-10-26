@@ -332,6 +332,7 @@ internal enum InterceptEmitArm
     DelegateValueBody,
     MulticastFactoryBody,
     MulticastOperationBody,
+    MulticastAccessorBody,
     DelegateCloneBinding,
     ArrayCloneBinding,
     /// <summary>SafeHandle lifetime calls and bindings recognize the runtime SafeWaitHandle layout.
@@ -1740,6 +1741,23 @@ internal static partial class CoreIntrinsics
         InterceptCutKind.BodyReplace, InterceptEmitArm.DelegateCloneBody,
         typeGate: "System.Delegate", nameGate: "Clone");
 
+    internal static bool IsMulticastAccessorSignature(string owner, string name, MethodSignature<TypeDesc> sig) =>
+        CoreIntrinsicTypeMaps.IsMulticastAccessorMethod(owner, name, !sig.Header.IsInstance,
+            sig.GenericParameterCount, sig.ParameterTypes.Length,
+            sig.ReturnType.IsObject ? "System.Object"
+                : sig.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean } ? "System.Boolean"
+                : sig.ReturnType is { Kind: TypeKind.SZArray, Element: { Class.FullName: "System.Delegate" } } ? "System.Delegate[]"
+                : sig.ReturnType.Class?.FullName,
+            sig.ParameterTypes.Length == 1 && sig.ParameterTypes[0] is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }
+                ? "System.Int32" : null);
+
+    // Accessors project the uniform invocation chain, not CoreCLR fields/stubs.
+    public static readonly MethodDefIntercept BrMulticastAccessor = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.MulticastAccessorBody,
+        typeGate: "System.MulticastDelegate",
+        extra: static m => CoreIntrinsicTypeMaps.IsMulticastAccessorMember(m.DeclaringClass.FullName, m.Name)
+            && IsMulticastAccessorSignature(m.DeclaringClass.FullName, m.Name, m.Signature));
+
     internal static bool IsMulticastOperationSignature(string owner, string name, MethodSignature<TypeDesc> sig) =>
         CoreIntrinsicTypeMaps.IsMulticastOperationMethod(owner, name, !sig.Header.IsInstance,
             sig.GenericParameterCount, sig.ParameterTypes.Length, sig.ReturnType.Class?.FullName,
@@ -1954,6 +1972,11 @@ internal static partial class CoreIntrinsics
     {
         if (!RegistrySelfCheckEnabled)
             return;
+
+        CheckRow(nameof(BrMulticastAccessor), 0, BrMulticastAccessor.EmitArm,
+            BrMulticastAccessor.TypeGate, BrMulticastAccessor.NameGate);
+        if (BrMulticastAccessor.CutKind != InterceptCutKind.BodyReplace)
+            throw new InvalidOperationException("Multicast accessors must remain callable");
 
         CheckRow(nameof(BrMulticastOperation), 0, BrMulticastOperation.EmitArm,
             BrMulticastOperation.TypeGate, BrMulticastOperation.NameGate);

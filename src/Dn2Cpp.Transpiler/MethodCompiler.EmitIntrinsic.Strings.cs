@@ -35,6 +35,31 @@ internal sealed partial class MethodCompiler
 
     private bool TryEmitStringsIntrinsic(string declType, string name, MethodSignature<TypeDesc> sig)
     {
+        if (CoreIntrinsics.IsMulticastAccessorSignature(declType, name, sig))
+        {
+            if (name == "TryGetAt")
+            {
+                var index = Pop();
+                var receiver = Pop();
+                Push(StackKind.Ref, "Dn2CppObject*",
+                    $"dn2cpp_delegate_try_get_at({DelegateReceiver(receiver)}, {Cast(index, "int32_t")})");
+            }
+            else
+            {
+                // Replay the existing public projection, including Method's selected
+                // declaration-row retention and the invocation array's exact type.
+                string projection = name switch
+                {
+                    "GetTarget" => "get_Target",
+                    "GetMethodImpl" => "get_Method",
+                    _ => name,
+                };
+                if (!TryEmitStringsIntrinsic("System.Delegate", projection, sig))
+                    return false;
+            }
+            Top = Top with { StaticType = sig.ReturnType };
+            return true;
+        }
         if (CoreIntrinsics.IsMulticastOperationSignature(declType, name, sig))
         {
             var value = Pop();

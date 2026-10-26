@@ -177,6 +177,15 @@ gate_extra_asserts() {
         gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
     done
 
+    gate_capture_ok "$out/assert-before-multicast-accessors" run_bounded dotnet "$_CG_APP" before-multicast-accessors || return 1
+    gate_output prefix "$native" "$out/assert-before-multicast-accessors.stdout" --before '== Retained multicast accessors ==' --policy crlf || return 1
+    for line in '== Retained multicast accessors ==' \
+        'accessor-target:True' 'accessor-method:True' 'accessor-bound:True' 'accessor-list:True' \
+        'accessor-list-isolated:True' 'accessor-single:True' 'accessor-index:True' \
+        'accessor-closed-method:True' 'accessor-public-enumerator:True' 'Retained multicast accessors end'; do
+        gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
+    done
+
 }
 
 corelib_diff_gate SelfHostPrimSubset System.Linq System.Diagnostics.TraceSource \

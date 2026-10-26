@@ -762,11 +762,6 @@ internal static partial class CoreIntrinsics
             or "System.Text.RegularExpressions.RegexLWCGCompiler"
             or "System.Text.RegularExpressions.CompiledRegexRunner"
             or "System.Text.RegularExpressions.CompiledRegexRunnerFactory" => true,
-        // MulticastDelegate.TryGetAt -> dn2cpp_delegate_try_get_at. Its real body reads
-        // _invocationList and _invocationCount, which the uniform delegate layout replaces
-        // with the chain the helper walks; Delegate.InvocationListEnumerator's MoveNext
-        // calls it.
-        "System.MulticastDelegate" => name == "TryGetAt",
         _ => false,
     };
 

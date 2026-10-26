@@ -57,6 +57,22 @@ internal static class CoreIntrinsicTypeMaps
     public static bool IsDelegateBaseType(string? fullName) =>
         fullName is "System.Delegate" or "System.MulticastDelegate";
 
+    public static bool IsMulticastAccessorMember(string? owner, string name) =>
+        owner == "System.MulticastDelegate"
+        && name is "GetTarget" or "GetMethodImpl" or "GetInvocationList" or "get_HasSingleTarget" or "TryGetAt";
+
+    public static bool IsMulticastAccessorMethod(string? owner, string name, bool isStatic,
+        int genericParameterCount, int parameterCount, string? returnType, string? parameterType) =>
+        IsMulticastAccessorMember(owner, name) && !isStatic && genericParameterCount == 0 && (name switch
+        {
+            "GetTarget" => parameterCount == 0 && returnType == "System.Object",
+            "GetMethodImpl" => parameterCount == 0 && returnType == "System.Reflection.MethodInfo",
+            "GetInvocationList" => parameterCount == 0 && returnType == "System.Delegate[]",
+            "get_HasSingleTarget" => parameterCount == 0 && returnType == "System.Boolean",
+            "TryGetAt" => parameterCount == 1 && parameterType == "System.Int32" && returnType == "System.Object",
+            _ => false,
+        });
+
     public static bool IsMulticastOperationMethod(string? owner, string name, bool isStatic,
         int genericParameterCount, int parameterCount, string? returnType, string? valueType) =>
         owner == "System.MulticastDelegate" && name is "CombineImpl" or "RemoveImpl"
@@ -551,7 +567,7 @@ internal static class CoreIntrinsicTypeMaps
     /// delegate invoke, a List&lt;T&gt; or ReadOnlyCollection&lt;T&gt;, and calls to each
     /// other. System.Delegate's EnumerateInvocationList: the InvocationListEnumerator
     /// construction, whose MoveNext reaches the chain through
-    /// <c>MulticastDelegate.TryGetAt</c> (<see cref="LoweredRuntimePrimitive"/>). Their call
+    /// <c>MulticastDelegate.TryGetAt</c>, a retained native-chain body. Their call
     /// sites stay intercepted with the rest of the intrinsic type, but the lowering and an
     /// address-taken use both name the real transpiled body, so .NET's argument order and
     /// messages hold by construction.</summary>

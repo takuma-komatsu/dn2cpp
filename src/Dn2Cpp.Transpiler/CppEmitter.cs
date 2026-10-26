@@ -2130,6 +2130,7 @@ internal sealed partial class CppEmitter
         || CoreIntrinsics.BrLifetimeDispose.Matches(cls.FullName, m.Name)
         || CoreIntrinsics.BrDelegateClone.Matches(cls.FullName, m.Name)
         || CoreIntrinsics.BrDelegateValue.Matches(m)
+        || CoreIntrinsics.BrMulticastAccessor.Matches(m)
         || CoreIntrinsics.BrMulticastOperation.Matches(m)
         || CoreIntrinsics.BrMulticastFactory.Matches(m)
         || _c.PInvokeFtnTargets.Contains(m) || _c.IntrinsicFtnTargets.Contains(m)
@@ -2580,6 +2581,7 @@ internal sealed partial class CppEmitter
                         if (CoreIntrinsics.BrLifetimeDispose.Matches(cls.FullName, m.Name)
                             || CoreIntrinsics.BrDelegateClone.Matches(cls.FullName, m.Name)
                             || CoreIntrinsics.BrDelegateValue.Matches(m)
+                            || CoreIntrinsics.BrMulticastAccessor.Matches(m)
                             || CoreIntrinsics.BrMulticastOperation.Matches(m)
                             || CoreIntrinsics.BrMulticastFactory.Matches(m))
                         {
