@@ -15,6 +15,12 @@ namespace MathSubset
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
             CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
 
+            if (args.Length > 0 && args[0] == "mixed-bigmul-only")
+            {
+                Dn2Cpp.MathMixedBigMulSubset.Run();
+                return;
+            }
+
             MathIntMinMaxClamp.Program.__GateEntry();
             MathTrigSubset.Program.__GateEntry();
             MathRoundSubset.Program.__GateEntry();
@@ -46,6 +52,9 @@ namespace MathSubset
             if (args.Length > 0 && args[0] == "before-integer-hash-wrapping")
                 return;
             IntegerHashWrapping.Program.__GateEntry();
+            if (args.Length > 0 && args[0] == "before-mixed-bigmul")
+                return;
+            Dn2Cpp.MathMixedBigMulSubset.Run();
         }
     }
 }

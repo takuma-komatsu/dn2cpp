@@ -53,6 +53,13 @@
 # resolve + tree-shake -> native binary -> run, diffed exactly against real
 # .NET (the program is deterministic, so `dotnet $app` is its own oracle).
 source "$(dirname "$0")/_common.sh"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/math-bigmul/MathBigMulFixture.csproj gates/fixtures/math-bigmul/Program.cs"
+if [ "${WASM:-}" = 1 ]; then
+    dn2cpp_emsdk_resolve --no-bundled
+    for tool in em++ emcmake node; do
+        command -v "$tool" >/dev/null 2>&1 || gate_skip "$tool not found — no Emscripten toolchain to build wasm with"
+    done
+fi
 
 # Default order and equality preserve the earlier bucket and run the appended cases.
 # Direct integer DivRem calls cover every scalar width, zero divisors and signed minima.
@@ -119,6 +126,62 @@ gate_extra_asserts() {
             || { echo "FAIL: integer hash wrapping coverage missing: $line" >&2; exit 1; }
     done
 
+    gate_capture_ok "$out/assert-before-mixed-bigmul" run_bounded dotnet "$_CG_APP" before-mixed-bigmul
+    before="$out/assert-before-mixed-bigmul.stdout"
+    prefix="$out/assert-mixed-bigmul-prefix.stdout"
+    gate_output select "$native" "$prefix" --before '== mixed-width BigMul ==' --policy crlf
+    gate_output compare "$prefix" "$before"
+    for line in '== mixed-width BigMul ==' 'direct32-max=4294967294:18446744069414584321' \
+        'direct64-carry=1:0' 'mixed-width BigMul end'; do
+        gate_output byte-witness "$native" "$line" --count any --policy crlf \
+            || { echo "FAIL: mixed-width BigMul coverage missing: $line" >&2; exit 1; }
+    done
 }
 
-corelib_diff_gate MathSubset
+mixed_width_bigmul_gate() {
+    build_proj samples/dotnet/MathSubset/MathSubset.csproj
+    build_gate_proj gates/fixtures/math-bigmul/MathBigMulFixture.csproj
+    local app="samples/dotnet/MathSubset/bin/$CONFIG/$TFM/MathSubset.dll"
+    local fixture="gates/fixtures/math-bigmul/bin/$CONFIG/$TFM/MathBigMulFixture.dll"
+    local root="artifacts/math-mixed-bigmul-$CONFIG" core expected mode out diagnostic
+    if [ "${WASM:-}" = 1 ]; then
+        root="$root-wasm"
+        core=$(locate_corelib_cross_posix net10)
+    else
+        core=$(locate_corelib)
+    fi
+    mkdir -p "$root"
+    gate_capture_ok "$root/expected" run_bounded dotnet "$app" mixed-bigmul-only
+    expected="$root/expected.stdout"
+    gate_capture_ok "$root/oracle" run_bounded dotnet "$fixture" --oracle
+    gate_output compare "$root/oracle.stdout" "$expected"
+    gate_capture_ok "$root/create-mixed" run_bounded dotnet "$fixture" "$app" "$core" "$root/mixed/MathSubset.dll" mixed
+    for mode in raw full; do
+        out="$root/$mode"
+        local flags=()
+        [ "$mode" != raw ] || flags+=(--no-ildiet)
+        gate_capture_ok "$root/transpile-$mode" invoke_cli "$root/mixed/MathSubset.dll" -r "$core" --auto-ref --stripping-level high \
+            --no-metadata-compression --no-shared-generics ${flags[@]+"${flags[@]}"} -o "$out"
+        if [ "${WASM:-}" = 1 ]; then
+            compile_console_wasm "$out" MixedBigMul
+            gate_capture_ok "$out/native" run_bounded node "$out/MixedBigMul.js"
+            gate_output compare "$out/native.stdout" "$expected" --policy crlf
+        else
+            compile_console "$out" MixedBigMul
+            gate_capture_ok "$out/native" run_bounded "$out/MixedBigMul$EXE_EXT"
+            gate_output compare "$out/native.stdout" "$expected"
+        fi
+        echo "mixed-width-bigmul=$mode:direct-and-address"
+    done
+    for mode in bad-signed bad-value; do
+        gate_capture_ok "$root/create-$mode" run_bounded dotnet "$fixture" "$app" "$core" "$root/$mode/MathSubset.dll" "$mode"
+        diagnostic="$root/rejected-$mode"
+        gate_capture "$diagnostic" invoke_cli "$root/$mode/MathSubset.dll" -r "$core" --auto-ref --no-ildiet -o "$root/rejected-$mode-output" || return 1
+        gate_output status "$(cat "$diagnostic.status")" 2
+        gate_output match-record "$diagnostic.stderr" '.*BigMul.*' --count any --policy crlf
+    done
+}
+
+# The wasm axis exercises the mixed-width fixture against the portable wide product.
+if [ "${WASM:-}" != 1 ]; then corelib_diff_gate MathSubset; fi
+mixed_width_bigmul_gate

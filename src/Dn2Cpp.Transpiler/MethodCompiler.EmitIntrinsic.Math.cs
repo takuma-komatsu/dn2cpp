@@ -208,6 +208,33 @@ internal sealed partial class MethodCompiler
         // integral return type would otherwise route the name there and miss.
         if (name == "BigMul" && sig.ParameterTypes is [{ Kind: TypeKind.Primitive } m0, ..])
         {
+            if (sig.ParameterTypes is [_, { Kind: TypeKind.Primitive } m1, ..]
+                && ((m0.Primitive == PrimitiveTypeCode.UInt32 && m1.Primitive == PrimitiveTypeCode.UInt64)
+                    || (m0.Primitive == PrimitiveTypeCode.UInt64 && m1.Primitive == PrimitiveTypeCode.UInt32)))
+            {
+                if (declType != "System.Math" || sig.Header.IsInstance || sig.GenericParameterCount != 0
+                    || ret is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.UInt64 }
+                    || sig.ParameterTypes is not
+                    [
+                        _, _,
+                        { Kind: TypeKind.ByRef, Element: { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.UInt64 } },
+                    ])
+                    return false;
+
+                var lowPtr = Pop();
+                var b = Pop();
+                var a = Pop();
+                // The uint operand may occupy a signed I4 stack slot. Narrow before
+                // widening so its high bit cannot sign-extend into the 96-bit product.
+                string a64 = m0.Primitive == PrimitiveTypeCode.UInt32
+                    ? $"(uint64_t)(uint32_t)({a.Expr})" : Cast(a, "uint64_t");
+                string b64 = m1.Primitive == PrimitiveTypeCode.UInt32
+                    ? $"(uint64_t)(uint32_t)({b.Expr})" : Cast(b, "uint64_t");
+                string hi = NewTemp("uint64_t");
+                Emit($"{hi} = dn2cpp_math_bigmul_u64({a64}, {b64}, (uint64_t*)({lowPtr.Expr}));");
+                Push(StackKind.I8, "uint64_t", hi);
+                return true;
+            }
             if (sig.ParameterTypes.Length == 2
                 && m0.Primitive is PrimitiveTypeCode.Int32 or PrimitiveTypeCode.UInt32)
             {
