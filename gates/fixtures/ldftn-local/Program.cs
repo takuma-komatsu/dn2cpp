@@ -2,6 +2,7 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (RuntimeMethodEnumerationFixture.Run(args)) return;
 if (GcFinalizerWorkerFixture.Run(args)) return;
 if (DelegateVmConstructorFixture.Run(args)) return;
 if (DelegateNamedConstructorFixture.Run(args)) return;

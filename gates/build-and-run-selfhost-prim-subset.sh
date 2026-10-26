@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Companion process argument/stream/exit preservation and the console-self-host
+# CoreCLR method-enumeration boundary, public reflection, and companion process
+# argument/stream/exit preservation and the console-self-host
 # runtime primitives whose behaviour can be exercised exactly.
 #
 #  #3 Interop.GetRandomBytes -> the non-cryptographic random source behind
@@ -71,7 +72,7 @@
 #     driver, so no wasm axis reaches the section.
 # Driven by the real System.Private.CoreLib (passed with -r) -> cross-assembly resolve
 # + tree-shake -> native binary -> run, asserting the output diffs exact vs real .NET.
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/GcFinalizerWorkerFixture.cs gates/fixtures/ldftn-local/DelegateVmConstructorFixture.cs gates/fixtures/ldftn-local/DelegateNamedConstructorFixture.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/RuntimeMethodEnumerationFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/GcFinalizerWorkerFixture.cs gates/fixtures/ldftn-local/DelegateVmConstructorFixture.cs gates/fixtures/ldftn-local/DelegateNamedConstructorFixture.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
 source "$(dirname "$0")/_common.sh"
 
 named_ctor_asserts() {
@@ -223,6 +224,13 @@ gate_extra_asserts() {
     done
     gate_output byte-witness "$native" 'Named delegate construction public paths end' --count 1 --policy crlf || return 1
 
+    gate_capture_ok "$out/assert-before-method-enum" run_bounded dotnet "$_CG_APP" before-runtime-method-enumeration || return 1
+    gate_output prefix "$native" "$out/assert-before-method-enum.stdout" --before '== Runtime method enumeration contract ==' --policy crlf || return 1
+    for label in first-shape next-shape public-methods public-ctors public-invoke public-delegate; do
+        gate_output byte-witness "$native" "method-enum-$label:True" --count 1 --policy crlf || return 1
+    done
+    gate_output byte-witness "$native" 'Runtime method enumeration contract end' --count 1 --policy crlf || return 1
+
 }
 
 corelib_diff_gate SelfHostPrimSubset System.Linq System.Diagnostics.TraceSource \
@@ -364,3 +372,25 @@ gate_capture_ok "$named_out/reflection" run_bounded "./$named_out/DelegateNamed$
 named_ctor_asserts "$named_out/reflection.stdout"
 gate_capture_ok "$named_out/oracle" run_bounded dotnet "$_CG_APP" named-contracts-only
 gate_output compare "$named_out/reflection.stdout" "$named_out/oracle.stdout" --policy crlf
+
+# The private VM leaves are never invoked by the CLR oracle. Generated artifact
+# calls and calli sites use their actual CoreLib value/byref signatures.
+enum_input="artifacts/runtime-method-enum-input-$CONFIG"
+mkdir -p "$enum_input"
+cp samples/dotnet/SelfHostPrimSubset/bin/$CONFIG/$TFM/* "$enum_input/"
+dotnet "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
+    --runtime-method-enumeration "$enum_input/SelfHostPrimSubset.dll" "$_CG_CORELIB"
+enum_out="artifacts/runtime-method-enum-$CONFIG"
+invoke_cli "$enum_input/SelfHostPrimSubset.dll" --auto-ref -o "$enum_out"
+compile_console "$enum_out" RuntimeMethodEnum
+gate_capture_ok "$enum_out/native" run_bounded "./$enum_out/RuntimeMethodEnum$EXE_EXT"
+for leaf in first next; do
+    member=GetFirstIntroducedMethod
+    [ "$leaf" != next ] || member=GetNextIntroducedMethod
+    for route in direct pointer reflection; do
+        gate_output byte-witness "$enum_out/native.stdout" "method-enum-$leaf-$route:PlatformNotSupportedException:System.RuntimeTypeHandle.$member requires CoreCLR method descriptors. Use Type.GetMethods or Type.GetConstructors instead." --count 1 --policy crlf
+    done
+done
+gate_output byte-witness "$enum_out/native.stdout" 'method-enum-constructor:PlatformNotSupportedException:System.RuntimeTypeHandle.GetFirstIntroducedMethod requires CoreCLR method descriptors. Use Type.GetMethods or Type.GetConstructors instead.' --count 1 --policy crlf
+gate_output byte-witness "$enum_out/native.stdout" 'method-enum-default-empty:True' --count 1 --policy crlf
+gate_output byte-witness "$enum_out/native.stdout" 'Runtime method enumeration boundary end' --count 1 --policy crlf

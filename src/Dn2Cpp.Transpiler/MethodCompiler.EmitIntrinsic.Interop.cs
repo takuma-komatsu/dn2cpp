@@ -398,6 +398,19 @@ internal sealed partial class MethodCompiler
     /// runtime plumbing, so there is nothing worth falling through to.</para></summary>
     private void EmitRuntimePrimitive(MethodInfo callee)
     {
+        if (CoreIntrinsics.IsCoreClrIntroducedMethodEnumeration(callee))
+        {
+            Pop();
+            Emit($"dn2cpp_throw_platform_not_supported(\"System.RuntimeTypeHandle.{callee.Name} requires CoreCLR method descriptors. Use Type.GetMethods or Type.GetConstructors instead.\");");
+            if (!callee.Signature.ReturnType.IsVoid)
+            {
+                var result = callee.Signature.ReturnType;
+                if (result.Class is { } handle) Comp.NoteForceEmit(handle);
+                string type = CppTypes.Of(result);
+                Push(CppTypes.KindOf(result), type, $"{type}{{}}"); // unreachable stack shape
+            }
+            return;
+        }
         if (TryEmitGcMemmoveMarshalPrimitive(callee))
             return;
         if (TryEmitRandomBytesEntryAssemblyPrimitive(callee))

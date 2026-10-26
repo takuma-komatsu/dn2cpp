@@ -616,7 +616,31 @@ internal static partial class CoreIntrinsics
         extra: static mi => LoweredRuntimePrimitive(mi.DeclaringClass.FullName, mi.Name)
             || mi.DeclaringClass.FullName == "System.GC" && mi.Name == "Collect"
                 && IsGcCollectZeroSignature(mi.Signature)
-            || IsCoreClrFinalizerWorker(mi));
+            || IsCoreClrFinalizerWorker(mi)
+            || IsCoreClrIntroducedMethodEnumeration(mi));
+
+    // These leaves enumerate CoreCLR MethodDesc handles, not native reflection rows.
+    internal static bool IsCoreClrIntroducedMethodEnumeration(MethodInfo method)
+    {
+        if (method.DeclaringClass.FullName != "System.RuntimeTypeHandle"
+            || method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || method.Name is not ("GetFirstIntroducedMethod" or "GetNextIntroducedMethod")
+            || !method.IsPrivate || !method.IsStatic || method.Rva != 0
+            || (method.ImplAttributes & System.Reflection.MethodImplAttributes.InternalCall) == 0)
+            return false;
+        var signature = method.Signature;
+        if (signature.GenericParameterCount != 0 || signature.ParameterTypes.Length != 1)
+            return false;
+        if (method.Name == "GetFirstIntroducedMethod")
+            return signature.ReturnType is { Kind: TypeKind.Class, Class: {
+                    FullName: "System.RuntimeMethodHandleInternal", Module.AssemblyName: "System.Private.CoreLib" } }
+                && signature.ParameterTypes[0] is { Kind: TypeKind.Class, Class: {
+                    FullName: "System.RuntimeType", Module.AssemblyName: "System.Private.CoreLib" } };
+        return signature.ReturnType.IsVoid
+            && signature.ParameterTypes[0] is { Kind: TypeKind.ByRef, Element: {
+                Kind: TypeKind.Class, Class: { FullName: "System.RuntimeMethodHandleInternal",
+                    Module.AssemblyName: "System.Private.CoreLib" } } };
+    }
 
     // This is CoreCLR's native-worker callback, not a managed finalizer API.
     // Match only its input declaration; neighboring GC methods keep their own routes.

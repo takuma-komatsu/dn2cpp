@@ -1366,6 +1366,18 @@ internal sealed partial class Compilation
             }
             catch (NotSupportedException e) when (!IsMustEscape(e)) { }
         }
+        if (full == "System.RuntimeTypeHandle"
+            && (reader.StringComparer.Equals(mr.Name, "GetFirstIntroducedMethod")
+                || reader.StringComparer.Equals(mr.Name, "GetNextIntroducedMethod")))
+        {
+            try
+            {
+                var enumeration = ResolveMemberRefMethod(module, handle, callerCtx);
+                if (CoreIntrinsics.IsCoreClrIntroducedMethodEnumeration(enumeration))
+                    return enumeration;
+            }
+            catch (NotSupportedException e) when (!IsMustEscape(e)) { }
+        }
         if (full is not null && CoreIntrinsics.IsIntrinsicType(full))
             return null;
         ClassInfo? parentCls = mr.Parent.Kind == HandleKind.TypeDefinition

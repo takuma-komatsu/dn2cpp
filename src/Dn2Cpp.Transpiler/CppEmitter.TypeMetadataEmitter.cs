@@ -1265,7 +1265,7 @@ internal sealed partial class CppEmitter
                 if (_e.IsCanonicalWorld(cls)
                     || _e.IsOpaque(cls) && !_c.RuntimeInterfaceMetadata.Contains(cls)
                         && !_e._constructorRowOwners.Contains(cls)
-                        && !cls.Methods.Any(IsRetainedDelegateValueRow))
+                        && !cls.Methods.Any(IsRetainedOpaqueMethodRow))
                     continue;
                 bool keepRefl = _c.KeepsReflectionMetadata(cls);
                 var propertyAccessors = ReflectionAccessorHandles(cls);
@@ -1274,7 +1274,7 @@ internal sealed partial class CppEmitter
                 {
                     if (_e.IsOpaque(cls) && !_c.RuntimeInterfaceMetadata.Contains(cls)
                         && !_e._activationConstructorRows.Contains(m)
-                        && !IsRetainedDelegateValueRow(m))
+                        && !IsRetainedOpaqueMethodRow(m))
                         continue;
                     bool methodRow = m.Name != ".ctor" && m.Name != ".cctor"
                         && !(_c.SharedGenericsEnabled
@@ -3755,11 +3755,13 @@ internal sealed partial class CppEmitter
         // thunk per distinct C++ ABI shape. Emitted before the type-info
         // definition so the initializer can name them. GetMethods excludes ctors and
         // GetConstructors excludes methods, matching .NET's split.
-        // Only these replaced, actually retained bodies opt into the opaque
-        // Delegate catalog. The signature-note pass uses the same row predicate.
-        private bool IsRetainedDelegateValueRow(MethodInfo method) =>
-            _c.KeepsReflectionMetadata(method.DeclaringClass) && _c.Reachable.Contains(method)
-            && CoreIntrinsics.BrDelegateValue.Matches(method);
+        // Opaque owners expose only explicitly modeled member rows. Signature
+        // discovery and table rendering must select the same catalog.
+        private bool IsRetainedOpaqueMethodRow(MethodInfo method) =>
+            _c.KeepsReflectionMetadata(method.DeclaringClass)
+            && (_c.Reachable.Contains(method) && CoreIntrinsics.BrDelegateValue.Matches(method)
+                || (_c.Reachable.Contains(method) || _c.KeepsUnreachedRow(method))
+                    && CoreIntrinsics.IsCoreClrIntroducedMethodEnumeration(method));
 
         private void RenderMemberTables(ClassInfo cls)
         {
@@ -3776,7 +3778,7 @@ internal sealed partial class CppEmitter
                 if (BuildMemberTable(cls, activationCtors, "ctortab") is { } table)
                     _ctorTabs[cls] = table;
                 NoteListedCtors(cls, activationCtors);
-                var valueMethods = cls.Methods.Where(IsRetainedDelegateValueRow).ToList();
+                var valueMethods = cls.Methods.Where(IsRetainedOpaqueMethodRow).ToList();
                 if (BuildMemberTable(cls, valueMethods, "methtab") is { } values)
                     _methodTabs[cls] = values;
                 return;

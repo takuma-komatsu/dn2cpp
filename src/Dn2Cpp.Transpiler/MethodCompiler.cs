@@ -1178,6 +1178,9 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// Null when the method has no intrinsic lowering to synthesize from.</summary>
     internal string? CompileCoreIntrinsicWrapper()
     {
+        // Intrinsic-owner address targets still replay the exact declaration guard.
+        if (CoreIntrinsics.IsCoreClrIntroducedMethodEnumeration(_method))
+            return CompileInterceptWrapper();
         if (CoreIntrinsics.BrDelegateNamedConstructor.Matches(_method))
             return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
             {

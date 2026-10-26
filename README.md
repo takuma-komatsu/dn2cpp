@@ -847,6 +847,10 @@ expression trees at runtime.
   boundary list above). `Type` objects are interned one per type-info handle, so
   `typeof(X)` and `GetType()` are reference-identical; retrieval is
   lock-free for statically-emitted types.
+  CoreCLR's private `RuntimeTypeHandle.GetFirstIntroducedMethod` and
+  `GetNextIntroducedMethod` enumerate VM method descriptors, not these metadata
+  rows, and throw `PlatformNotSupportedException`. Use `Type.GetMethods` or
+  `Type.GetConstructors`; ordinary reflection does not depend on those leaves.
 - **P/Invoke** — `DllImport` end to end: `string[]` write-back, delegates
   as native function pointers, non-blittable structs, blittable
   `[MarshalAs(ByValArray)]`. User imports bind lazily through

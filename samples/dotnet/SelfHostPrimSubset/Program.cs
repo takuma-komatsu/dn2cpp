@@ -156,5 +156,7 @@ internal static class Program
         MulticastVmConstructorSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-named-constructors") return;
         MulticastNamedConstructorSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-runtime-method-enumeration") return;
+        RuntimeMethodEnumerationSubset.Program.Run();
     }
 }
