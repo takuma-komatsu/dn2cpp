@@ -9,6 +9,11 @@ internal static class Program
 {
     private static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "native-finalizer-boundary")
+        {
+            GcFinalizerWorkerSubset.Program.RunNativeBoundary();
+            return;
+        }
         if (args.Length > 0 && args[0] == "gc-collection-only")
         {
             GcCollectionSubset.Program.Run();
@@ -78,5 +83,7 @@ internal static class Program
         GcGenerationSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-gc-collections") return;
         GcCollectionSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-gc-worker-contract") return;
+        GcFinalizerWorkerSubset.Program.Run();
     }
 }

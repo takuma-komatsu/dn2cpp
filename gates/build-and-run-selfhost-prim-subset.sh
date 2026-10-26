@@ -71,6 +71,7 @@
 #     driver, so no wasm axis reaches the section.
 # Driven by the real System.Private.CoreLib (passed with -r) -> cross-assembly resolve
 # + tree-shake -> native binary -> run, asserting the output diffs exact vs real .NET.
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/GcFinalizerWorkerFixture.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
 source "$(dirname "$0")/_common.sh"
 
 # Heap accounting differs by runtime; assert the public query contracts.
@@ -110,6 +111,14 @@ gate_extra_asserts() {
         'gc-collect-aggressive-generation:ArgumentException:generation' \
         'gc-collect-aggressive-blocking:ArgumentException:blocking' \
         'gc-collect-aggressive-compacting:ArgumentException:compacting' 'GC collection overloads end'; do
+        gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
+    done
+    gate_capture_ok "$out/assert-before-gc-worker" run_bounded dotnet "$_CG_APP" before-gc-worker-contract || return 1
+    gate_output select "$native" "$out/assert-prefix-gc-worker.stdout" --before '== GC finalizer worker contract ==' --policy crlf || return 1
+    gate_output compare "$out/assert-prefix-gc-worker.stdout" "$out/assert-before-gc-worker.stdout" || return 1
+    for line in '== GC finalizer worker contract ==' 'gc-worker-private:True' \
+        'gc-worker-static:True' 'gc-worker-nongeneric:True' 'gc-worker-uint32:True' \
+        'gc-worker-zero:True' 'GC finalizer worker contract end'; do
         gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
     done
 }
@@ -156,3 +165,27 @@ PATH="$PWD/$probe_out/child path 日本語:$PATH" \
     > "$probe_out/path-native.out" 2> "$probe_out/path-native.err"
 diff -u "$probe_out/managed.out" "$probe_out/path-native.out"
 diff -u "$probe_out/managed.err" "$probe_out/path-native.err"
+
+# Never execute the private CLR worker as an oracle. Verify its declaration/IL,
+# then patch only an artifact copy for explicit native-only refusal checks.
+gc_worker_boundary_asserts() {
+    local output="$1" label
+    for label in worker-direct worker-delegate worker-pointer worker-reflected-delegate worker-reflection; do
+        gate_output byte-witness "$output" "$label:PlatformNotSupportedException:System.GC.RunFinalizers is a CoreCLR-owned worker entry point; dn2cpp owns finalization. Use GC.WaitForPendingFinalizers instead." --count 1 --policy crlf || return 1
+    done
+    gate_output byte-witness "$output" 'GC finalizer worker boundary end' --count 1 --policy crlf || return 1
+}
+build_gate_proj gates/fixtures/ldftn-local/LdftnLocalFixture.csproj
+worker_input="artifacts/gc-worker-input-$CONFIG"
+mkdir -p "$worker_input"
+cp samples/dotnet/SelfHostPrimSubset/bin/$CONFIG/$TFM/* "$worker_input/"
+dotnet "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
+    --gc-finalizer-worker "$worker_input/SelfHostPrimSubset.dll" "$_CG_CORELIB"
+worker_out="artifacts/gc-worker-boundary-$CONFIG"
+invoke_cli "$worker_input/SelfHostPrimSubset.dll" -r "$_CG_CORELIB" \
+    -r "$(dirname "$_CG_CORELIB")/System.Linq.dll" \
+    -r "$(dirname "$_CG_CORELIB")/System.Diagnostics.TraceSource.dll" \
+    -r "$(dirname "$_CG_CORELIB")/System.Collections.Specialized.dll" -o "$worker_out"
+compile_console "$worker_out" GcWorkerBoundary
+gate_capture_ok "$worker_out/native" run_bounded "./$worker_out/GcWorkerBoundary$EXE_EXT" native-finalizer-boundary
+gc_worker_boundary_asserts "$worker_out/native.stdout"

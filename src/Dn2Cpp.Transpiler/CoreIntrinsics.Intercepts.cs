@@ -608,7 +608,21 @@ internal static partial class CoreIntrinsics
         InterceptCutKind.Cut, InterceptEmitArm.RuntimePrimitive,
         extra: static mi => LoweredRuntimePrimitive(mi.DeclaringClass.FullName, mi.Name)
             || mi.DeclaringClass.FullName == "System.GC" && mi.Name == "Collect"
-                && IsGcCollectZeroSignature(mi.Signature));
+                && IsGcCollectZeroSignature(mi.Signature)
+            || IsCoreClrFinalizerWorker(mi));
+
+    // This is CoreCLR's native-worker callback, not a managed finalizer API.
+    // Match only its input declaration; neighboring GC methods keep their own routes.
+    internal static bool IsCoreClrFinalizerWorker(MethodInfo method)
+    {
+        if (method.DeclaringClass.FullName != "System.GC" || method.Name != "RunFinalizers"
+            || method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || !method.IsPrivate || !method.IsStatic)
+            return false;
+        var signature = method.Signature;
+        return signature.GenericParameterCount == 0 && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.UInt32 };
+    }
 
     private static bool IsGcCollectZeroSignature(MethodSignature<TypeDesc> signature) =>
         !signature.Header.IsInstance && signature.GenericParameterCount == 0

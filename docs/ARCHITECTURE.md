@@ -546,6 +546,17 @@ selected from the input declaration, never the transpiler host. In particular,
 a CoreLib import of `kernel32.dll` keeps its normal native binding even when a corresponding
 CoreLib flavour declares a `QCall` import with the same entry-point name.
 
+The private CoreLib `GC.RunFinalizers(): UInt32` callback belongs to CoreCLR's
+native finalizer worker, including its thread reset and queue ownership. dn2cpp
+owns finalization through its dedicated consumer or manual-drain mode. The exact
+private, static, nongeneric, zero-argument callback retains a callable signature
+but throws `PlatformNotSupportedException` when invoked, including by reflection
+or an address-taken wrapper. It does not return a fabricated count, reset caller
+threads, or introduce a second queue consumer. Public `GC.Collect`,
+`GC.WaitForPendingFinalizers`, suppression and re-registration keep their runtime
+implementations. This is a private runtime boundary, not CLR callback parity or a
+general fallback for retained methods.
+
 - **Predicate**: the member set only — names, and behind a name gate a thunked
   signature. Never Compilation state.
 - **Table**, by what the (type, member) pair *means*: `MethodDefIntercepts`

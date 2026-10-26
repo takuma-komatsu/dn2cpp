@@ -658,6 +658,12 @@ internal sealed partial class MethodCompiler
     {
         switch (callee.DeclaringClass.FullName, callee.Name)
         {
+            case ("System.GC", "RunFinalizers") when CoreIntrinsics.IsCoreClrFinalizerWorker(callee):
+                // dn2cpp owns the finalizer consumer. Never pump a second queue or
+                // fabricate the CoreCLR callback's finalized-object count.
+                Emit("dn2cpp_throw_platform_not_supported(\"System.GC.RunFinalizers is a CoreCLR-owned worker entry point; dn2cpp owns finalization. Use GC.WaitForPendingFinalizers instead.\");");
+                Push(StackKind.I4, "uint32_t", "0"); // stack shape only; the throw is noreturn
+                return true;
             case ("System.GC", "SuppressFinalize")
                 when callee.Signature.ParameterTypes.Length == 1 && callee.IsStatic:
             {
