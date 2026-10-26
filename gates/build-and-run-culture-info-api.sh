@@ -97,26 +97,34 @@ source "$(dirname "$0")/_common.sh"
 
 gate_run_logs_init culture_info_api "CultureInfoApi runs"
 
-# Command substitutions must retain a failed child's output before set -e exits.
+# Assign the raw stdout path; failed runs retain their bytes and command context.
 culture_info_run() {
-    local side="$1" output code command_line stderr_file
-    shift
-    stderr_file="$_GATE_RUN_LOG_DIR/$side.stderr"
-    printf -v command_line '%q ' "$@"
-    if output=$(run_bounded "$@" 2>"$stderr_file"); then
-        code=0
-    else
-        code=$?
+    local _culture_result="$1" _culture_side="$2" _culture_prefix _culture_code _culture_command
+    shift 2
+    _CULTURE_RUN_SEQUENCE=$((${_CULTURE_RUN_SEQUENCE:-0} + 1))
+    _culture_prefix="$_GATE_RUN_LOG_DIR/${_CULTURE_RUN_SEQUENCE}-$_culture_side"
+    printf -v "$_culture_result" '%s' "$_culture_prefix.stdout"
+    printf -v _culture_command '%q ' "$@"
+    gate_capture "$_culture_prefix" run_bounded "$@" || return 1
+    printf '%s\n' "$_culture_command" > "$_culture_prefix.command"
+    _culture_code=$(cat "$_culture_prefix.status")
+    if [ "$_culture_code" -ne 0 ]; then
+        echo "---- CultureInfoApi $_culture_side: $_culture_command diagnostics ----" >&2
+        echo "exit code: $_culture_code" >&2
+        _gate_run_termination "$_culture_code" "$_culture_prefix.stderr"
+        if [ -s "$_culture_prefix.stdout" ]; then
+            echo 'stdout:' >&2; cat "$_culture_prefix.stdout" >&2
+        else
+            echo 'stdout: <empty>' >&2
+        fi
+        if [ -s "$_culture_prefix.stderr" ]; then
+            echo 'stderr:' >&2; cat "$_culture_prefix.stderr" >&2
+        else
+            echo 'stderr: <empty>' >&2
+        fi
+        return "$_culture_code"
     fi
-    if [ "$code" -ne 0 ]; then
-        gate_run_diag "CultureInfoApi $side: $command_line" "$code" "$output" "$stderr_file" >&2
-        return "$code"
-    fi
-    if [ -s "$stderr_file" ]; then
-        cat "$stderr_file" >&2
-    fi
-    printf '%s' "$output"
-    return 0
+    cat "$_culture_prefix.stderr" >&2
 }
 
 culture_info_diagnostics_self_test() {
@@ -132,16 +140,19 @@ culture_info_diagnostics_self_test() {
     printf -v quoted_args '%q ' culture-fallback-identities "foo QQ" "" "foo'QQ"
     for side in native oracle; do
         diagnostics="$_GATE_RUN_LOG_DIR/self-test-$side.stderr"
-        actual=$(culture_info_run "$side" bash -c "$child" _ 0 \
-            culture-fallback-identities "foo QQ" "" "foo'QQ" 2>"$diagnostics")
-        [ "$actual" = "same output" ] \
+        culture_info_run actual "$side" bash -c "$child" _ 0 \
+            culture-fallback-identities "foo QQ" "" "foo'QQ" 2>"$diagnostics"
+        gate_assert_text "$actual" "same output" \
             || { echo "FAIL: $side successful stdout or quoted arguments changed" >&2; return 1; }
         grep -Fxq 'injected stderr' "$diagnostics" \
             || { echo "FAIL: $side successful stderr disappeared" >&2; return 1; }
+        printf 'line\r\n\n\000tail\r' > "$_GATE_RUN_LOG_DIR/self-test.raw"
+        culture_info_run actual "$side" bash -c 'printf "line\r\n\n\000tail\r"' 2>"$diagnostics"
+        gate_output compare "$actual" "$_GATE_RUN_LOG_DIR/self-test.raw"
         code=23
         [ "$side" = native ] || code=29
-        if actual=$(culture_info_run "$side" bash -c "$child" _ "$code" \
-            culture-fallback-identities "foo QQ" "" "foo'QQ" 2>"$diagnostics"); then
+        if culture_info_run actual "$side" bash -c "$child" _ "$code" \
+            culture-fallback-identities "foo QQ" "" "foo'QQ" 2>"$diagnostics"; then
             echo "FAIL: $side nonzero exit with matching stdout passed" >&2
             return 1
         else
@@ -203,8 +214,8 @@ culture_info_executable_self_test() (
     gate_run_oracle() { cat expected.txt; }
     corelib_freeze_gate CultureInfoApi expected.txt
     corelib_diff_gate CultureInfoApi
-    actual=$(culture_info_run native "./native/CultureInfoApi$EXE_EXT" host-executable)
-    assert_output "$actual" host-executable
+    culture_info_run actual native "./native/CultureInfoApi$EXE_EXT" host-executable
+    gate_assert_text "$actual" host-executable
     echo 'OK: CultureInfoApi host executable wins over foreign-host sibling'
 
     mkdir cross
@@ -228,15 +239,22 @@ if [ "${1:-}" = --self-test ]; then
     exit 0
 fi
 
+# Manual/opt-in parity requires the exact reference; normal suites exclude it.
+bash "$_DN2CPP_GATE_ROOT/gates/check-culture-reference.sh"
+
 # The appended section has parity semantics; the existing prefix retains its
 # deliberate divergences and is still compared to the unchanged snapshot.
+# Full/mode outputs are byte containers: platform exception text may contain NUL.
+# Completion records are text-only; this does not assert full-run CLR parity.
+# culture_info_run still requires status 0, and all prefix/snapshot checks remain.
 gate_extra_asserts() {
     local out="$1" native prefix
-    native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT")
-    native=$(strip_cr_win "$native")
-    prefix=$(awk '/^== culture name resolution ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(cat "$(dirname "$0")/expected/culture-info-api.txt")"
-    grep -Fxq 'culture name resolution end' <<< "$native" \
+    culture_info_run native native "./$out/CultureInfoApi$EXE_EXT"
+
+    prefix="$native.prefix"
+    gate_output select "$native" "$prefix" --before '== culture name resolution ==' --policy crlf
+    gate_output compare "$prefix" "$(dirname "$0")/expected/culture-info-api.txt" --policy crlf
+    gate_output byte-witness "$native" 'culture name resolution end' --count any --policy crlf \
         || { echo "FAIL: culture names section did not finish" >&2; return 1; }
 }
 DN2CPP_GATE_RUN_ARGS=before-culture-names
@@ -411,64 +429,91 @@ FALLBACK_CASES=(
     i-default-abcde-u-nu-arab i-enochian-US-U-NU-ARAB
     i-klingon-Latn-US i-klingon-Latn-US-u-nu-latn zh-min-nan-Latn-US-u-nu-latn
 )
+# The locale family compares complete raw streams before checking completion.
+# Malformed locale names can emit NUL without changing the text-only marker.
+culture_info_assert_locale_completion() {
+    local actual="$1" mode="$2" marker
+    case "$mode" in
+        culture-locale-upper) marker='culture uppercase extensions end' ;;
+        culture-locale-cache-*) marker='culture data cache end' ;;
+        culture-sort-strings|culture-sort-upper-key) marker='culture sort strings end' ;;
+        culture-numbering-boundaries) marker='culture numbering boundaries end' ;;
+        culture-wrapper-*) marker='culture wrapper cache end' ;;
+        culture-primary-currency) marker='culture primary currency end' ;;
+        culture-missing-cache-*) marker='culture missing number format cache end' ;;
+        culture-missing-upper-*) marker='culture missing number format uppercase cache end' ;;
+        *) echo "FAIL: unknown culture locale mode: $mode" >&2; return 1 ;;
+    esac
+    gate_output byte-witness "$actual" "$marker" --count any --policy crlf \
+        || { echo "FAIL: $mode did not finish" >&2; return 1; }
+}
+
 gate_extra_asserts() {
     local out="$1" native expected mode marker before prefix
-    native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT")
-    native=$(strip_cr_win "$native")
-    before=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" before-iso-language)
-    prefix=$(awk '/^== ISO language names ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
+    culture_info_run native native "./$out/CultureInfoApi$EXE_EXT"
+
+    culture_info_run before native "./$out/CultureInfoApi$EXE_EXT" before-iso-language
+    prefix="$native.prefix"
+    gate_output select "$native" "$prefix" --before '== ISO language names ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     # The frozen divergences also change later CultureData cache identities in a
     # single process, so .NET proves its own full-run prefix unchanged.
-    expected=$(culture_info_run oracle dotnet "$_CG_APP")
+    culture_info_run expected oracle dotnet "$_CG_APP"
     for mode in native oracle; do
         if [ "$mode" = native ]; then
-            before=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" before-rejected-undefined-tails)
-            prefix=$(awk '/^== rejected undefined culture tails ==$/ { exit } { print }' <<< "$native")
+            culture_info_run before native "./$out/CultureInfoApi$EXE_EXT" before-rejected-undefined-tails
+            prefix="$native.prefix"
+            gate_output select "$native" "$prefix" --before '== rejected undefined culture tails ==' --policy crlf
         else
-            before=$(culture_info_run oracle dotnet "$_CG_APP" before-rejected-undefined-tails)
-            prefix=$(awk '/^== rejected undefined culture tails ==$/ { exit } { print }' <<< "$(strip_cr_win "$expected")")
+            culture_info_run before oracle dotnet "$_CG_APP" before-rejected-undefined-tails
+            prefix="$expected.prefix"
+            gate_output select "$expected" "$prefix" --before '== rejected undefined culture tails ==' --policy crlf
         fi
-        assert_output "$prefix" "$(strip_cr_win "$before")"
+        gate_output compare "$prefix" "$before"
     done
-    grep -Fxq 'rejected undefined culture tails end' <<< "$native" \
+    gate_output byte-witness "$native" 'rejected undefined culture tails end' --count any --policy crlf \
         || { echo 'FAIL: rejected undefined tails did not finish' >&2; return 1; }
-    prefix=$(awk '/^== ISO language names ==$/ { exit } { print }' <<< "$(strip_cr_win "$expected")")
-    before=$(culture_info_run oracle dotnet "$_CG_APP" before-iso-language)
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    before=$(culture_info_run oracle dotnet "$_CG_APP" before-legacy-chinese)
-    prefix=$(awk '/^== legacy Chinese cultures ==$/ { exit } { print }' <<< "$(strip_cr_win "$expected")")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    before=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" before-legacy-chinese)
-    prefix=$(awk '/^== legacy Chinese cultures ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    before=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" before-private-use-names)
-    prefix=$(awk '/^== private-use culture names ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    before=$(culture_info_run oracle dotnet "$_CG_APP" before-private-use-names)
-    prefix=$(awk '/^== private-use culture names ==$/ { exit } { print }' <<< "$(strip_cr_win "$expected")")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    grep -Fxq 'private-use culture names end' <<< "$native" \
+    prefix="$expected.prefix"
+    gate_output select "$expected" "$prefix" --before '== ISO language names ==' --policy crlf
+    culture_info_run before oracle dotnet "$_CG_APP" before-iso-language
+    gate_output compare "$prefix" "$before"
+    culture_info_run before oracle dotnet "$_CG_APP" before-legacy-chinese
+    prefix="$expected.prefix"
+    gate_output select "$expected" "$prefix" --before '== legacy Chinese cultures ==' --policy crlf
+    gate_output compare "$prefix" "$before"
+    culture_info_run before native "./$out/CultureInfoApi$EXE_EXT" before-legacy-chinese
+    prefix="$native.prefix"
+    gate_output select "$native" "$prefix" --before '== legacy Chinese cultures ==' --policy crlf
+    gate_output compare "$prefix" "$before"
+    culture_info_run before native "./$out/CultureInfoApi$EXE_EXT" before-private-use-names
+    prefix="$native.prefix"
+    gate_output select "$native" "$prefix" --before '== private-use culture names ==' --policy crlf
+    gate_output compare "$prefix" "$before"
+    culture_info_run before oracle dotnet "$_CG_APP" before-private-use-names
+    prefix="$expected.prefix"
+    gate_output select "$expected" "$prefix" --before '== private-use culture names ==' --policy crlf
+    gate_output compare "$prefix" "$before"
+    gate_output byte-witness "$native" 'private-use culture names end' --count any --policy crlf \
         || { echo "FAIL: private-use names section did not finish" >&2; return 1; }
-    grep -Fxq '== ISO language names ==' <<< "$(strip_cr_win "$expected")" \
+    gate_output byte-witness "$expected" '== ISO language names ==' --count any --policy crlf \
         || { echo "FAIL: .NET ISO language section did not run" >&2; return 1; }
-    native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-rejected-undefined-tails)
-    expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-rejected-undefined-tails)
-    assert_output "$native" "$expected"
+    culture_info_run native native "./$out/CultureInfoApi$EXE_EXT" culture-rejected-undefined-tails
+    culture_info_run expected oracle dotnet "$_CG_APP" culture-rejected-undefined-tails
+    gate_output compare "$native" "$expected"
     for marker in '== rejected undefined culture tails ==' \
         "  input='und-a-a-u-nu-latn'" "  input='en-und-a-a-u-nu-latn'" \
         'rejected undefined culture tails end'; do
         # Require this exact input to execute, whether the target oracle accepts
         # it or reports a typed refusal. The full diff above checks its details.
-        if [[ "$marker" == "  input='"* ]] && grep -Fxq "$marker: CultureNotFoundException" <<< "$(strip_cr_win "$expected")"; then
+        if [[ "$marker" == "  input='"* ]] && gate_output byte-witness "$expected" "$marker: CultureNotFoundException" --count any --policy crlf 2>/dev/null; then
             marker="$marker: CultureNotFoundException"
         fi
-        grep -Fxq "$marker" <<< "$(strip_cr_win "$native")" \
+        gate_output byte-witness "$native" "$marker" --count any --policy crlf \
             || { echo "FAIL: rejected undefined tail witness missing: $marker" >&2; return 1; }
     done
-    native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-private-use-names)
-    expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-private-use-names)
-    assert_output "$native" "$expected"
+    culture_info_run native native "./$out/CultureInfoApi$EXE_EXT" culture-private-use-names
+    culture_info_run expected oracle dotnet "$_CG_APP" culture-private-use-names
+    gate_output compare "$native" "$expected"
     local private_u=x-1-US-u-nu-latn_phoneb private_t=x-1-US-t-de-de_phoneb
     if [ "$DN2CPP_OS" = linux ] || [ "$DN2CPP_OS" = windows ]; then
         private_u=x-1-US-U-NU-LATN-u-nu-latn_phoneb
@@ -492,214 +537,204 @@ gate_extra_asserts() {
         # Keep each accepted witness, or require its explicit typed rejection on
         # BOTH sides. The full diff above also compares fault/cache/specific data.
         local rejected="${marker%%\' *}' constructor=CultureNotFoundException"
-        if [[ "$marker" == "  '"* ]] && grep -Fxq "$rejected" <<< "$(strip_cr_win "$expected")"; then
+        if [[ "$marker" == "  '"* ]] && gate_output byte-witness "$expected" "$rejected" --count any --policy crlf 2>/dev/null; then
             marker="$rejected"
         fi
-        grep -Fxq "$marker" <<< "$(strip_cr_win "$native")" \
+        gate_output byte-witness "$native" "$marker" --count any --policy crlf \
             || { echo "FAIL: private-use name witness missing: $marker" >&2; return 1; }
     done
-    native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-iso-language)
-    expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-iso-language)
-    assert_output "$native" "$expected"
-    native=$(strip_cr_win "$native")
+    culture_info_run native native "./$out/CultureInfoApi$EXE_EXT" culture-iso-language
+    culture_info_run expected oracle dotnet "$_CG_APP" culture-iso-language
+    gate_output compare "$native" "$expected"
+
     for marker in '== ISO language names ==' "iso ''=iv:iv" "iso 'zul'=zu:zu" \
         "iso 'i-enochian'=:" "iso 'x-foo'=:" "iso 'i-foo'=i-foo:i-foo" \
         "iso 'x-foo_phoneb'=x-foo:x-foo" "iso 'zh-CHS'=zh:zh" \
         "iso 'x-foo-US_phoneb'=x-foo:x-foo" \
         'iso null=NullReferenceException' 'ISO language names end'; do
-        grep -Fxq "$marker" <<< "$native" \
+        gate_output byte-witness "$native" "$marker" --count any --policy crlf \
             || { echo "FAIL: ISO language witness missing: $marker" >&2; return 1; }
     done
     for mode in no-bok x-foobarbaz x-123456789; do
         if [ "$DN2CPP_OS" = windows ]; then
-            marker=$(grep -F "iso '$mode'=" <<< "$(strip_cr_win "$expected")")
+            gate_output view "$expected" "$expected.records" --policy crlf
+            marker=$(grep -F "iso '$mode'=" "$expected.records")
         else
             case "$mode" in
                 no-bok) marker="iso '$mode'=no:no" ;;
                 *) marker="iso '$mode'=$mode:$mode" ;;
             esac
         fi
-        [ -n "$marker" ] && grep -Fxq "$marker" <<< "$native" \
+        [ -n "$marker" ] && gate_output byte-witness "$native" "$marker" --count any --policy crlf \
             || { echo "FAIL: ISO platform witness missing: $marker" >&2; return 1; }
     done
     # Apple's .NET keeps und for some of these names, so the standard ICU
     # answer is pinned without a host oracle.
-    native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-iso-language-undefined)
+    culture_info_run native native "./$out/CultureInfoApi$EXE_EXT" culture-iso-language-undefined
     if [ "$DN2CPP_OS" = windows ]; then
-        expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-iso-language-undefined)
-        assert_output "$native" "$expected"
-        grep -Fxq 'ISO undefined language names end' <<< "$(strip_cr_win "$native")" \
+        culture_info_run expected oracle dotnet "$_CG_APP" culture-iso-language-undefined
+        gate_output compare "$native" "$expected"
+        gate_output byte-witness "$native" 'ISO undefined language names end' --count any --policy crlf \
             || { echo "FAIL: ISO undefined language section did not finish" >&2; return 1; }
     else
-        assert_output "$(strip_cr_win "$native")" "iso 'und-US'=:
+        gate_assert_text "$native" "iso 'und-US'=:
 iso 'und-u-nu-arab'=:
 ISO undefined language names end"
     fi
     for mode in constructor-first cached-first lcid-first; do
-        native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-legacy-chinese "$mode")
-        expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-legacy-chinese "$mode")
-        assert_output "$native" "$expected"
+        culture_info_run native native "./$out/CultureInfoApi$EXE_EXT" culture-legacy-chinese "$mode"
+        culture_info_run expected oracle dotnet "$_CG_APP" culture-legacy-chinese "$mode"
+        gate_output compare "$native" "$expected"
         for marker in '== legacy Chinese cultures ==' "legacy 'zh-CHS'" "legacy 'zh-CHT'" \
             "legacy 'zh-CHS<NUL>ignored'" "legacy 'zh-CHT<NUL>ignored'" 'legacy Chinese cultures end'; do
-            grep -Fxq "$marker" <<< "$(strip_cr_win "$native")" \
+            gate_output byte-witness "$native" "$marker" --count any --policy crlf \
                 || { echo "FAIL: legacy Chinese witness missing: $marker" >&2; return 1; }
         done
     done
-    native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-names)
-    grep -Fxq 'culture locale data end' <<< "$(strip_cr_win "$native")" \
+    culture_info_run native native "./$out/CultureInfoApi$EXE_EXT" culture-names
+    gate_output byte-witness "$native" 'culture locale data end' --count any --policy crlf \
         || { echo "FAIL: culture locale data section did not finish" >&2; return 1; }
-    grep -Fxq 'culture numbering data end' <<< "$(strip_cr_win "$native")" \
+    gate_output byte-witness "$native" 'culture numbering data end' --count any --policy crlf \
         || { echo "FAIL: culture numbering data section did not finish" >&2; return 1; }
-    grep -Fxq 'culture fallback identities end' <<< "$(strip_cr_win "$native")" \
+    gate_output byte-witness "$native" 'culture fallback identities end' --count any --policy crlf \
         || { echo "FAIL: culture fallback identities section did not finish" >&2; return 1; }
-    grep -Fxq 'culture primary currency end' <<< "$(strip_cr_win "$native")" \
+    gate_output byte-witness "$native" 'culture primary currency end' --count any --policy crlf \
         || { echo "FAIL: culture primary currency section did not finish" >&2; return 1; }
-    grep -Fxq 'culture missing number format end' <<< "$(strip_cr_win "$native")" \
+    gate_output byte-witness "$native" 'culture missing number format end' --count any --policy crlf \
         || { echo "FAIL: culture missing number format section did not finish" >&2; return 1; }
-    grep -Fxq 'culture variant order end' <<< "$(strip_cr_win "$native")" \
+    gate_output byte-witness "$native" 'culture variant order end' --count any --policy crlf \
         || { echo "FAIL: culture variant order section did not finish" >&2; return 1; }
-    grep -Fxq 'culture invariant lcid cache end' <<< "$(strip_cr_win "$native")" \
+    gate_output byte-witness "$native" 'culture invariant lcid cache end' --count any --policy crlf \
         || { echo "FAIL: culture invariant LCID cache section did not finish" >&2; return 1; }
-    grep -Fxq 'culture instance number format end' <<< "$(strip_cr_win "$native")" \
+    gate_output byte-witness "$native" 'culture instance number format end' --count any --policy crlf \
         || { echo "FAIL: culture instance number format section did not finish" >&2; return 1; }
-    grep -Fxq 'culture integer constructors end' <<< "$(strip_cr_win "$native")" \
+    gate_output byte-witness "$native" 'culture integer constructors end' --count any --policy crlf \
         || { echo "FAIL: culture integer constructor section did not finish" >&2; return 1; }
-    grep -Fxq 'culture instance equality end' <<< "$(strip_cr_win "$native")" \
+    gate_output byte-witness "$native" 'culture instance equality end' --count any --policy crlf \
         || { echo "FAIL: culture instance equality section did not finish" >&2; return 1; }
-    grep -Fxq 'culture specific instances end' <<< "$(strip_cr_win "$native")" \
+    gate_output byte-witness "$native" 'culture specific instances end' --count any --policy crlf \
         || { echo "FAIL: culture specific instances section did not finish" >&2; return 1; }
-    grep -Fxq 'culture extension identities end' <<< "$(strip_cr_win "$native")" \
+    gate_output byte-witness "$native" 'culture extension identities end' --count any --policy crlf \
         || { echo "FAIL: culture extension identities section did not finish" >&2; return 1; }
-    grep -Fxq 'culture undefined extension metadata end' <<< "$(strip_cr_win "$native")" \
+    gate_output byte-witness "$native" 'culture undefined extension metadata end' --count any --policy crlf \
         || { echo "FAIL: culture undefined extension metadata section did not finish" >&2; return 1; }
-    grep -Fxq 'culture undefined platform identities end' <<< "$(strip_cr_win "$native")" \
+    gate_output byte-witness "$native" 'culture undefined platform identities end' --count any --policy crlf \
         || { echo "FAIL: undefined platform identities section did not finish" >&2; return 1; }
-    grep -Fxq 'culture rejected extension identities end' <<< "$(strip_cr_win "$native")" \
+    gate_output byte-witness "$native" 'culture rejected extension identities end' --count any --policy crlf \
         || { echo "FAIL: rejected extension identities section did not finish" >&2; return 1; }
-    grep -Fxq 'culture platform name validation end' <<< "$(strip_cr_win "$native")" \
+    gate_output byte-witness "$native" 'culture platform name validation end' --count any --policy crlf \
         || { echo "FAIL: platform name validation section did not finish" >&2; return 1; }
-    native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-platform-name-validation)
-    expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-platform-name-validation)
-    assert_output "$native" "$expected"
-    grep -Fxq 'culture platform name validation end' <<< "$(strip_cr_win "$native")" \
+    culture_info_run native native "./$out/CultureInfoApi$EXE_EXT" culture-platform-name-validation
+    culture_info_run expected oracle dotnet "$_CG_APP" culture-platform-name-validation
+    gate_output compare "$native" "$expected"
+    gate_output byte-witness "$native" 'culture platform name validation end' --count any --policy crlf \
         || { echo "FAIL: platform name validation mode did not finish" >&2; return 1; }
     for mode in "${LOCALE_CASES[@]}"; do
-        native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" "$mode")
-        expected=$(culture_info_run oracle dotnet "$_CG_APP" "$mode")
-        assert_output "$native" "$expected"
-        case "$mode" in
-            culture-locale-upper) marker='culture uppercase extensions end' ;;
-            culture-locale-cache-*) marker='culture data cache end' ;;
-            culture-sort-strings|culture-sort-upper-key) marker='culture sort strings end' ;;
-            culture-numbering-boundaries) marker='culture numbering boundaries end' ;;
-            culture-wrapper-*) marker='culture wrapper cache end' ;;
-            culture-primary-currency) marker='culture primary currency end' ;;
-            culture-missing-cache-*) marker='culture missing number format cache end' ;;
-            culture-missing-upper-*) marker='culture missing number format uppercase cache end' ;;
-        esac
-        grep -Fxq "$marker" <<< "$(strip_cr_win "$native")" \
-            || { echo "FAIL: $mode did not finish" >&2; return 1; }
+        culture_info_run native native "./$out/CultureInfoApi$EXE_EXT" "$mode"
+        culture_info_run expected oracle dotnet "$_CG_APP" "$mode"
+        gate_output compare "$native" "$expected"
+        culture_info_assert_locale_completion "$native" "$mode"
     done
     for mode in "${NUMBERING_CASES[@]}"; do
-        native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-numbering-data "$mode")
-        expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-numbering-data "$mode")
-        assert_output "$native" "$expected"
-        grep -Fxq 'culture numbering data end' <<< "$(strip_cr_win "$native")" \
+        culture_info_run native native "./$out/CultureInfoApi$EXE_EXT" culture-numbering-data "$mode"
+        culture_info_run expected oracle dotnet "$_CG_APP" culture-numbering-data "$mode"
+        gate_output compare "$native" "$expected"
+        gate_output byte-witness "$native" 'culture numbering data end' --count any --policy crlf \
             || { echo "FAIL: numbering data for $mode did not finish" >&2; return 1; }
     done
     for mode in "${FALLBACK_CASES[@]}"; do
-        native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-fallback-identities "$mode")
-        expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-fallback-identities "$mode")
-        assert_output "$native" "$expected"
-        grep -Fxq 'culture fallback identities end' <<< "$(strip_cr_win "$native")" \
+        culture_info_run native native "./$out/CultureInfoApi$EXE_EXT" culture-fallback-identities "$mode"
+        culture_info_run expected oracle dotnet "$_CG_APP" culture-fallback-identities "$mode"
+        gate_output compare "$native" "$expected"
+        gate_output byte-witness "$native" 'culture fallback identities end' --count any --policy crlf \
             || { echo "FAIL: fallback identities for $mode did not finish" >&2; return 1; }
     done
     for mode in "${MISSING_NUMBER_CASES[@]}"; do
-        native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-missing-number-format "$mode")
-        expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-missing-number-format "$mode")
-        assert_output "$native" "$expected"
-        grep -Fxq 'culture missing number format end' <<< "$(strip_cr_win "$native")" \
+        culture_info_run native native "./$out/CultureInfoApi$EXE_EXT" culture-missing-number-format "$mode"
+        culture_info_run expected oracle dotnet "$_CG_APP" culture-missing-number-format "$mode"
+        gate_output compare "$native" "$expected"
+        gate_output byte-witness "$native" 'culture missing number format end' --count any --policy crlf \
             || { echo "FAIL: missing number format for $mode did not finish" >&2; return 1; }
     done
     for mode in "${VARIANT_CASES[@]}"; do
-        native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-variant-order "$mode")
-        expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-variant-order "$mode")
-        assert_output "$native" "$expected"
-        grep -Fxq 'culture variant order end' <<< "$(strip_cr_win "$native")" \
+        culture_info_run native native "./$out/CultureInfoApi$EXE_EXT" culture-variant-order "$mode"
+        culture_info_run expected oracle dotnet "$_CG_APP" culture-variant-order "$mode"
+        gate_output compare "$native" "$expected"
+        gate_output byte-witness "$native" 'culture variant order end' --count any --policy crlf \
             || { echo "FAIL: variant order for $mode did not finish" >&2; return 1; }
     done
     for mode in "${INVARIANT_CACHE_ORDERS[@]}"; do
-        native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-invariant-lcid-cache "$mode")
-        expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-invariant-lcid-cache "$mode")
-        assert_output "$native" "$expected"
-        grep -Fxq 'culture invariant lcid cache end' <<< "$(strip_cr_win "$native")" \
+        culture_info_run native native "./$out/CultureInfoApi$EXE_EXT" culture-invariant-lcid-cache "$mode"
+        culture_info_run expected oracle dotnet "$_CG_APP" culture-invariant-lcid-cache "$mode"
+        gate_output compare "$native" "$expected"
+        gate_output byte-witness "$native" 'culture invariant lcid cache end' --count any --policy crlf \
             || { echo "FAIL: invariant LCID cache order $mode did not finish" >&2; return 1; }
     done
     for mode in "${INSTANCE_CULTURES[@]}"; do
-        native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-instance-number-format "$mode")
-        expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-instance-number-format "$mode")
-        assert_output "$native" "$expected"
-        grep -Fxq 'culture instance number format end' <<< "$(strip_cr_win "$native")" \
+        culture_info_run native native "./$out/CultureInfoApi$EXE_EXT" culture-instance-number-format "$mode"
+        culture_info_run expected oracle dotnet "$_CG_APP" culture-instance-number-format "$mode"
+        gate_output compare "$native" "$expected"
+        gate_output byte-witness "$native" 'culture instance number format end' --count any --policy crlf \
             || { echo "FAIL: culture instance number format for '$mode' did not finish" >&2; return 1; }
     done
-    native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-integer-constructors)
-    expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-integer-constructors)
-    assert_output "$native" "$expected"
-    grep -Fxq 'culture integer constructors end' <<< "$(strip_cr_win "$native")" \
+    culture_info_run native native "./$out/CultureInfoApi$EXE_EXT" culture-integer-constructors
+    culture_info_run expected oracle dotnet "$_CG_APP" culture-integer-constructors
+    gate_output compare "$native" "$expected"
+    gate_output byte-witness "$native" 'culture integer constructors end' --count any --policy crlf \
         || { echo "FAIL: culture integer constructor mode did not finish" >&2; return 1; }
     for mode in "${EQUALITY_PAIRS[@]}"; do
-        native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-instance-equality "${mode%%|*}" "${mode#*|}")
-        expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-instance-equality "${mode%%|*}" "${mode#*|}")
-        assert_output "$native" "$expected"
-        grep -Fxq 'culture instance equality end' <<< "$(strip_cr_win "$native")" \
+        culture_info_run native native "./$out/CultureInfoApi$EXE_EXT" culture-instance-equality "${mode%%|*}" "${mode#*|}"
+        culture_info_run expected oracle dotnet "$_CG_APP" culture-instance-equality "${mode%%|*}" "${mode#*|}"
+        gate_output compare "$native" "$expected"
+        gate_output byte-witness "$native" 'culture instance equality end' --count any --policy crlf \
             || { echo "FAIL: culture equality pair '$mode' did not finish" >&2; return 1; }
-        grep -Fxq 'culture specific instances end' <<< "$(strip_cr_win "$native")" \
+        gate_output byte-witness "$native" 'culture specific instances end' --count any --policy crlf \
             || { echo "FAIL: culture specific instances for '$mode' did not finish" >&2; return 1; }
     done
     for mode in "${EXTENSION_CASES[@]}"; do
-        native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-extension-identities "$mode")
-        expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-extension-identities "$mode")
-        assert_output "$native" "$expected"
-        grep -Fxq 'culture extension identities end' <<< "$(strip_cr_win "$native")" \
+        culture_info_run native native "./$out/CultureInfoApi$EXE_EXT" culture-extension-identities "$mode"
+        culture_info_run expected oracle dotnet "$_CG_APP" culture-extension-identities "$mode"
+        gate_output compare "$native" "$expected"
+        gate_output byte-witness "$native" 'culture extension identities end' --count any --policy crlf \
             || { echo "FAIL: extension identity '$mode' did not finish" >&2; return 1; }
     done
     for mode in "${UNDEFINED_EXTENSION_CASES[@]}"; do
-        native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-undefined-extension-metadata "$mode")
-        expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-undefined-extension-metadata "$mode")
-        assert_output "$native" "$expected"
-        grep -Fxq 'culture undefined extension metadata end' <<< "$(strip_cr_win "$native")" \
+        culture_info_run native native "./$out/CultureInfoApi$EXE_EXT" culture-undefined-extension-metadata "$mode"
+        culture_info_run expected oracle dotnet "$_CG_APP" culture-undefined-extension-metadata "$mode"
+        gate_output compare "$native" "$expected"
+        gate_output byte-witness "$native" 'culture undefined extension metadata end' --count any --policy crlf \
             || { echo "FAIL: undefined extension metadata '$mode' did not finish" >&2; return 1; }
     done
     for mode in "${UNDEFINED_PLATFORM_CASES[@]}"; do
-        native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-undefined-platform-identities "$mode")
-        expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-undefined-platform-identities "$mode")
-        assert_output "$native" "$expected"
-        grep -Fxq 'culture undefined platform identities end' <<< "$(strip_cr_win "$native")" \
+        culture_info_run native native "./$out/CultureInfoApi$EXE_EXT" culture-undefined-platform-identities "$mode"
+        culture_info_run expected oracle dotnet "$_CG_APP" culture-undefined-platform-identities "$mode"
+        gate_output compare "$native" "$expected"
+        gate_output byte-witness "$native" 'culture undefined platform identities end' --count any --policy crlf \
             || { echo "FAIL: undefined platform identity '$mode' did not finish" >&2; return 1; }
     done
     local first second cache_order
     for mode in "${UNDEFINED_PLATFORM_CACHE_ORDERS[@]}"; do
         IFS='|' read -r first second cache_order <<< "$mode"
-        native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-undefined-platform-cache "$first" "$second" "$cache_order")
-        expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-undefined-platform-cache "$first" "$second" "$cache_order")
-        assert_output "$native" "$expected"
-        grep -Fxq 'culture undefined platform cache end' <<< "$(strip_cr_win "$native")" \
+        culture_info_run native native "./$out/CultureInfoApi$EXE_EXT" culture-undefined-platform-cache "$first" "$second" "$cache_order"
+        culture_info_run expected oracle dotnet "$_CG_APP" culture-undefined-platform-cache "$first" "$second" "$cache_order"
+        gate_output compare "$native" "$expected"
+        gate_output byte-witness "$native" 'culture undefined platform cache end' --count any --policy crlf \
             || { echo "FAIL: undefined platform cache order '$mode' did not finish" >&2; return 1; }
     done
     for mode in "${REJECTED_EXTENSION_CASES[@]}"; do
-        native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-rejected-extension-identities "$mode")
-        expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-rejected-extension-identities "$mode")
-        assert_output "$native" "$expected"
-        grep -Fxq 'culture rejected extension identities end' <<< "$(strip_cr_win "$native")" \
+        culture_info_run native native "./$out/CultureInfoApi$EXE_EXT" culture-rejected-extension-identities "$mode"
+        culture_info_run expected oracle dotnet "$_CG_APP" culture-rejected-extension-identities "$mode"
+        gate_output compare "$native" "$expected"
+        gate_output byte-witness "$native" 'culture rejected extension identities end' --count any --policy crlf \
             || { echo "FAIL: rejected extension identity '$mode' did not finish" >&2; return 1; }
     done
     local pair order
     for pair in "${EXTENSION_ORDER_PAIRS[@]}"; do
         for order in constructor-first cached-first; do
-            native=$(culture_info_run native "./$out/CultureInfoApi$EXE_EXT" culture-extension-order "${pair%%|*}" "${pair#*|}" "$order")
-            expected=$(culture_info_run oracle dotnet "$_CG_APP" culture-extension-order "${pair%%|*}" "${pair#*|}" "$order")
-            assert_output "$native" "$expected"
-            grep -Fxq 'culture extension cache order end' <<< "$(strip_cr_win "$native")" \
+            culture_info_run native native "./$out/CultureInfoApi$EXE_EXT" culture-extension-order "${pair%%|*}" "${pair#*|}" "$order"
+            culture_info_run expected oracle dotnet "$_CG_APP" culture-extension-order "${pair%%|*}" "${pair#*|}" "$order"
+            gate_output compare "$native" "$expected"
+            gate_output byte-witness "$native" 'culture extension cache order end' --count any --policy crlf \
                 || { echo "FAIL: extension cache order '$pair' '$order' did not finish" >&2; return 1; }
         done
     done

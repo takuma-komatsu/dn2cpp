@@ -40,6 +40,12 @@ namespace MathSubset
             if (args.Length > 0 && args[0] == "before-scalar-divrem")
                 return;
             Dn2Cpp.ScalarDivRemSubset.Run();
+            if (args.Length > 0 && args[0] == "before-unchecked-arithmetic")
+                return;
+            UncheckedIntegerArithmetic.Program.__GateEntry();
+            if (args.Length > 0 && args[0] == "before-integer-hash-wrapping")
+                return;
+            IntegerHashWrapping.Program.__GateEntry();
         }
     }
 }

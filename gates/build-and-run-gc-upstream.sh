@@ -37,31 +37,35 @@ incremental=
 incremental_code=
 
 gate_run_diagnostics() {
-    gate_run_diag "GC-upstream STW" "$stw_code" "$stw" "$log_dir/stw.log"
-    gate_run_diag "GC-upstream incremental" "$incremental_code" "$incremental" \
+    gate_run_diag_files "GC-upstream STW" "$stw_code" "$log_dir/stw.stdout" "$log_dir/stw.log"
+    gate_run_diag_files "GC-upstream incremental" "$incremental_code" "$log_dir/incremental.stdout" \
         "$log_dir/incremental.log"
 }
 
-set +e
 _gate_run_argv
-expected=$(run_bounded dotnet "$_CG_APP" \
-    ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}); expected_code=$?
+gate_capture "$log_dir/expected" run_bounded dotnet "$_CG_APP" \
+    ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}
+expected="$log_dir/expected.stdout"
+expected_code=$(cat "$log_dir/expected.status")
 _gate_run_argv
-stw=$(DN2CPP_GC_INCREMENTAL=0 DN2CPP_GC_STATS=1 \
-    run_bounded "./$out/$project" \
-    ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"} 2>"$log_dir/stw.log"); stw_code=$?
+DN2CPP_GC_INCREMENTAL=0 DN2CPP_GC_STATS=1 gate_capture "$log_dir/stw" run_bounded "./$out/$project" \
+    ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}
+stw="$log_dir/stw.stdout"
+stw_code=$(cat "$log_dir/stw.status")
+cp "$log_dir/stw.stderr" "$log_dir/stw.log"
 _gate_run_argv
-incremental=$(DN2CPP_GC_INCREMENTAL=1 DN2CPP_GC_STATS=1 \
-    run_bounded "./$out/$project" \
-    ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"} 2>"$log_dir/incremental.log"); incremental_code=$?
-set -e
+DN2CPP_GC_INCREMENTAL=1 DN2CPP_GC_STATS=1 gate_capture "$log_dir/incremental" run_bounded "./$out/$project" \
+    ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}
+incremental="$log_dir/incremental.stdout"
+incremental_code=$(cat "$log_dir/incremental.status")
+cp "$log_dir/incremental.stderr" "$log_dir/incremental.log"
 _gate_scratch_cleanup
 
 assertions_failed=0
-assert_output "$stw" "$expected" || assertions_failed=1
-assert_exit_code "$stw_code" "$expected_code" || assertions_failed=1
-assert_output "$incremental" "$expected" || assertions_failed=1
-assert_exit_code "$incremental_code" "$expected_code" || assertions_failed=1
+gate_output compare "$stw" "$expected" || assertions_failed=1
+gate_output status "$stw_code" "$expected_code" || assertions_failed=1
+gate_output compare "$incremental" "$expected" || assertions_failed=1
+gate_output status "$incremental_code" "$expected_code" || assertions_failed=1
 if [ "$assertions_failed" -ne 0 ]; then
     gate_run_diag_once
     exit 1

@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 # Imports preserve generic storage and managed provider parameter/return/field identity.
 hotupdate_signature_argument_roundtrip() {
-    local base="$1" patch="$2" out="$3" address="$4" encoding metadata actual expected previous arm line owner
+    local base="$1" patch="$2" out="$3" address="$4" encoding metadata expected previous arm owner
     local int_owner='SignatureArgumentImports.Cell`1[System.Int32]'
     local string_owner='SignatureArgumentImports.Cell`1[System.String]'
     mkdir -p "$out"
-    run_bounded dotnet "$patch" > "$out/clr.raw.stdout"
-    strip_cr_win_file "$out/clr.raw.stdout" > "$out/clr.stdout"
+    gate_capture_ok "$out/clr.raw" run_bounded dotnet "$patch"
     expected='== imported generic signature arguments ==
 signature method imports
 11
@@ -70,18 +69,18 @@ True
 True
 True
 imported managed providers end'
-    assert_output "$(cat "$out/clr.stdout")" "$expected"
-    actual=$(cat "$out/clr.stdout")
-    assert_output "${actual%%$'\n== imported managed providers =='*}" "$previous"
+    gate_assert_text "$out/clr.raw.stdout" "$expected"
+    printf '%s' "$previous" > "$out/providers-before.expected"
+    gate_output prefix "$out/clr.raw.stdout" "$out/providers-before.expected" \
+        --before '== imported managed providers ==' --policy crlf
     previous="${previous%%$'\n== imported generic fields =='*}"
-    actual=$(cat "$out/clr.stdout")
-    assert_output "${actual%%$'\n== imported generic fields =='*}" "$previous"
-    for line in '== imported generic fields ==' 'imported generic fields end'; do
-        [ "$(grep -Fxc -- "$line" "$out/clr.stdout")" = 1 ] \
-            || { echo "FAIL: generic field block did not complete exactly once: $line" >&2; return 1; }
-    done
-    actual=$(run_bounded dotnet "$address")
-    assert_output "$(strip_cr_win "$actual")" '1'
+    printf '%s' "$previous" > "$out/fields-before.expected"
+    gate_output prefix "$out/clr.raw.stdout" "$out/fields-before.expected" \
+        --before '== imported generic fields ==' --policy crlf
+    gate_output witness "$out/clr.raw.stdout" '== imported generic fields ==' \
+        'imported generic fields end' --count 1 --policy crlf
+    gate_capture_ok "$out/address" run_bounded dotnet "$address"
+    gate_assert_text "$out/address.stdout" '1'
     for metadata in packed native; do
         arm="$out/$metadata"
         invoke_cli "$base" -r "$(locate_corelib)" --hotupdate-base --reflection-metadata "$int_owner=$metadata" \
@@ -98,17 +97,18 @@ imported managed providers end'
             [ "$encoding" != stack ] || flags=(--patch-stackcode)
             invoke_cli --emit-patch "$patch" --base-abi "$arm/base-abi.json" \
                 ${flags[@]+"${flags[@]}"} -o "$arm/$encoding"
-            run_bounded "$arm/SignatureArgumentBase$EXE_EXT" \
-                "$arm/$encoding/SignatureArgumentPatch.bpi" > "$arm/$encoding.raw.stdout"
-            strip_cr_win_file "$arm/$encoding.raw.stdout" > "$arm/$encoding.stdout"
-            actual=$(head -n 1 "$arm/$encoding.stdout")
-            assert_output "$actual" 'signature argument base ready'
-            sed '1d' "$arm/$encoding.stdout" > "$arm/$encoding.patch.stdout"
-            diff -u "$out/clr.stdout" "$arm/$encoding.patch.stdout"
+            gate_capture_ok "$arm/$encoding.raw" run_bounded "$arm/SignatureArgumentBase$EXE_EXT" \
+                "$arm/$encoding/SignatureArgumentPatch.bpi"
+            printf 'signature argument base ready\n' > "$arm/base-ready.expected"
+            gate_output prefix "$arm/$encoding.raw.stdout" "$arm/base-ready.expected" \
+                --before '== imported generic signature arguments ==' --policy crlf
+            gate_output select "$arm/$encoding.raw.stdout" "$arm/$encoding.patch.stdout" \
+                --from '== imported generic signature arguments ==' --policy crlf
+            gate_output compare "$out/clr.raw.stdout" "$arm/$encoding.patch.stdout"
             "$(resolve_python)" gates/fixtures/hotupdate-import-identity/set-bpi-version.py \
                 "$arm/$encoding/SignatureArgumentPatch.bpi" "$arm/$encoding/legacy.bpi" 2
-            actual=$(run_bounded "$arm/SignatureArgumentBase$EXE_EXT" "$arm/$encoding/legacy.bpi")
-            assert_output "$(strip_cr_win "$actual")" 'signature argument base ready
+            gate_capture_ok "$arm/$encoding.legacy" run_bounded "$arm/SignatureArgumentBase$EXE_EXT" "$arm/$encoding/legacy.bpi"
+            gate_assert_text "$arm/$encoding.legacy.stdout" 'signature argument base ready
 signature update rejected: BPI: unsupported format version'
             if invoke_cli --emit-patch "$address" --base-abi "$arm/base-abi.json" \
                 ${flags[@]+"${flags[@]}"} -o "$arm/$encoding/address" > "$arm/$encoding.address.log" 2>&1; then

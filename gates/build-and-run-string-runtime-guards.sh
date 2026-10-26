@@ -45,30 +45,29 @@ assert_log_contains() {
         return 1
     fi
 }
-normal=$(run_bounded "./$out/stringguards" normal 2>"$log_dir/normal.log")
-overflow=$(run_bounded "./$out/stringguards" overflow 2>"$log_dir/overflow.log")
-boundary=$(run_bounded "./$out/stringguards" boundary 2>"$log_dir/boundary.log")
+gate_capture_ok "$log_dir/normal" run_bounded "./$out/stringguards" normal
+gate_capture_ok "$log_dir/overflow" run_bounded "./$out/stringguards" overflow
+gate_capture_ok "$log_dir/boundary" run_bounded "./$out/stringguards" boundary
 
-assert_output "$(strip_cr_win "$normal")" \
+gate_assert_text "$log_dir/normal.stdout" \
     "normal strings: ascii+japanese+surrogate+null-concat ok"
-assert_output "$(strip_cr_win "$overflow")" \
+gate_assert_text "$log_dir/overflow.stdout" \
     "overflow guards: concat=oom utf8-byte-count=oom"
-assert_output "$(strip_cr_win "$boundary")" "boundary fallback: one ToString call"
-assert_log_contains "$log_dir/boundary.log" \
+gate_assert_text "$log_dir/boundary.stdout" "boundary fallback: one ToString call"
+assert_log_contains "$log_dir/boundary.stderr" \
     "[dn2cpp] unhandled managed exception in string guard probe: Probe.BrokenException (its ToString threw)"
 
 run_fatal_arm() {
     local mode="$1" expected="$2" code
-    set +e
-    run_bounded "./$out/stringguards" "$mode" \
-        >"$log_dir/$mode.out" 2>"$log_dir/$mode.log"
-    code=$?
-    set -e
+    gate_capture "$log_dir/$mode" run_bounded "./$out/stringguards" "$mode"
+    code=$(cat "$log_dir/$mode.status")
+    gate_output native-abort "$log_dir/$mode" --host "$DN2CPP_OS" --empty-stdout \
+        --diagnostic "dn2cpp fatal: $expected"
     if [ "$code" -eq 0 ]; then
         echo "FAIL: string guard arm $mode returned success" >&2
         return 1
     fi
-    assert_log_contains "$log_dir/$mode.log" "dn2cpp fatal: $expected"
+    assert_log_contains "$log_dir/$mode.stderr" "dn2cpp fatal: $expected"
 }
 
 run_fatal_arm bad-type "managed string has a non-string type"

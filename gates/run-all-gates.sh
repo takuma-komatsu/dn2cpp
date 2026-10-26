@@ -164,6 +164,7 @@ TFM=${TFM:-net10.0}
 GODOT=${GODOT:-godot}
 SKIP_GODOT=${SKIP_GODOT:-0}
 SKIP_XCODE=${SKIP_XCODE:-0}
+source gates/_culture_gate_scope.sh || exit 2
 REQUIRE_ALL=${DN2CPP_REQUIRE_ALL:-0}
 export DN2CPP_REQUIRE_ALL="$REQUIRE_ALL"   # read by gate_skip/gate_partial in _common.sh
 
@@ -172,6 +173,7 @@ if [ "$REQUIRE_ALL" = "1" ]; then
     scope=all
     [ "$SKIP_GODOT" != "1" ] || scope=non-godot
     [ "$SKIP_XCODE" != "1" ] || scope="$scope-except-xcode"
+    [ "$DN2CPP_INCLUDE_CULTURE" = 1 ] || scope="$scope-except-culture"
     if [ "${DN2CPP_REQUIRE_SCOPE:-all}" != "$scope" ]; then
         echo "error: DN2CPP_REQUIRE_ALL=1 with SKIP_GODOT=$SKIP_GODOT and SKIP_XCODE=$SKIP_XCODE requires DN2CPP_REQUIRE_SCOPE=$scope." >&2
         exit 2
@@ -543,6 +545,7 @@ T_PHASE=$(now)
 # the note below.)
 MISSING_ORDERED=""
 while IFS= read -r csproj; do
+    culture_project_selected "$(basename "$(dirname "$csproj")")" || continue
     in_list "$csproj" "${ORDERED_PROJECTS[@]}" && continue
     in_list "$csproj" "${GATE_OWNED_PROJECTS[@]}" && continue
     case "$csproj" in samples/godot-dotnet/*) continue ;; esac
@@ -562,6 +565,7 @@ fi
 # Every sample .csproj except the dependency-ordered ones already built above.
 PARALLEL_CSPROJS=()
 while IFS= read -r csproj; do
+    culture_project_selected "$(basename "$(dirname "$csproj")")" || continue
     in_list "$csproj" "${ORDERED_PROJECTS[@]}" && continue
     in_list "$csproj" "${GATE_OWNED_PROJECTS[@]}" && continue
     # samples/godot-dotnet/ is never pre-built here. Those projects resolve
@@ -684,6 +688,7 @@ done
 NON_GODOT_GATES=("${PACKAGE_NATIVE_GATES[@]}")
 ISOLATED_NON_GODOT_GATES=()
 while IFS= read -r g; do
+    culture_gate_selected "$g" || continue
     in_list "$g" "${GODOT_GATES[@]}" && continue
     in_list "$g" "${PACKAGE_NATIVE_GATES[@]}" && continue
     if [ "$SKIP_XCODE" = "1" ] && in_list "$g" "${XCODE_GATES[@]}"; then continue; fi
@@ -1038,8 +1043,11 @@ if [ "$SKIP_XCODE" = "1" ]; then
 fi
 
 echo ""
+if [ "$DN2CPP_INCLUDE_CULTURE" != 1 ]; then
+    printf '⊘ CultureInfoAPI NOT RUN (optional strict culture parity): %s\n' "$CULTURE_GATE"
+fi
 if [ ${#FAILED[@]} -eq 0 ]; then
-    if [ "$N_SKIPPED" -eq 0 ] && [ "$SKIP_GODOT" = "0" ] && [ "$SKIP_XCODE" = "0" ]; then
+    if [ "$N_SKIPPED" -eq 0 ] && [ "$SKIP_GODOT" = "0" ] && [ "$SKIP_XCODE" = "0" ] && [ "$DN2CPP_INCLUDE_CULTURE" = 1 ]; then
         if [ "$N_EXPECTED" -gt 0 ]; then
             printf '\033[1;32m✔ All %d gates passed\033[0m\033[1;36m — %d with a declared expected-partial section (listed above).\033[0m\n' \
                 "$TOTAL" "$N_EXPECTED"

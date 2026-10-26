@@ -64,31 +64,25 @@ gate_reflection_signature_prefix_asserts() {
     for axis in dotnet native; do
         if reflection_full_profile; then
             if [ "$axis" = dotnet ]; then
-                reflection_oracle "$_CG_APP" before-reflection-signature-types > "$out/signature-prefix.$axis.raw.stdout"
+                gate_capture_ok "$out/signature-prefix.$axis.raw" reflection_oracle "$_CG_APP" before-reflection-signature-types
             else
-                run_bounded "$out/ReflectInvoke$EXE_EXT" before-reflection-signature-types > "$out/signature-prefix.$axis.raw.stdout"
+                gate_capture_ok "$out/signature-prefix.$axis.raw" run_bounded "$out/ReflectInvoke$EXE_EXT" before-reflection-signature-types
             fi
-            strip_cr_win_file "$out/signature-prefix.$axis.raw.stdout" > "$out/signature-prefix.$axis.stdout"
-            awk '/^== reflection signature type handles ==$/ { exit } { print }' \
-                "$out/virtual-delegate-full.$axis.stdout" > "$out/signature-old.$axis.stdout"
-            diff -u "$out/signature-prefix.$axis.stdout" "$out/signature-old.$axis.stdout"
+            gate_output prefix "$out/virtual-delegate-full.$axis.raw.stdout" "$out/signature-prefix.$axis.raw.stdout" --before '== reflection signature type handles ==' --policy crlf
         fi
-        reflection_signature_asserts "$out/virtual-delegate-full.$axis.stdout"
+        reflection_signature_asserts "$out/virtual-delegate-full.$axis.raw.stdout"
         if reflection_full_profile; then
             if [ "$axis" = dotnet ]; then
-                reflection_oracle "$_CG_APP" before-generic-signature-arguments > "$out/generic-signature-before.$axis.raw.stdout"
+                gate_capture_ok "$out/generic-signature-before.$axis.raw" reflection_oracle "$_CG_APP" before-generic-signature-arguments
             else
-                run_bounded "$out/ReflectInvoke$EXE_EXT" before-generic-signature-arguments > "$out/generic-signature-before.$axis.raw.stdout"
+                gate_capture_ok "$out/generic-signature-before.$axis.raw" run_bounded "$out/ReflectInvoke$EXE_EXT" before-generic-signature-arguments
             fi
-            strip_cr_win_file "$out/generic-signature-before.$axis.raw.stdout" > "$out/generic-signature-before.$axis.stdout"
-            awk '/^== generic function signature arguments ==$/ { exit } { print }' \
-                "$out/virtual-delegate-full.$axis.stdout" > "$out/generic-signature-prefix.$axis.stdout"
-            diff -u "$out/generic-signature-before.$axis.stdout" "$out/generic-signature-prefix.$axis.stdout"
+            gate_output prefix "$out/virtual-delegate-full.$axis.raw.stdout" "$out/generic-signature-before.$axis.raw.stdout" --before '== generic function signature arguments ==' --policy crlf
         fi
-        generic_signature_argument_asserts "$out/virtual-delegate-full.$axis.stdout"
+        generic_signature_argument_asserts "$out/virtual-delegate-full.$axis.raw.stdout"
     done
     if reflection_full_profile; then
-        diff -u "$out/signature-prefix.dotnet.stdout" "$out/signature-prefix.native.stdout"
+        gate_output compare "$out/signature-prefix.dotnet.raw.stdout" "$out/signature-prefix.native.raw.stdout"
     fi
 }
 
@@ -108,28 +102,24 @@ reflection_signature_diff_axes() {
             unshared) emit_flags=(--no-shared-generics); build_flags=(-p:SignatureTypesUnshared=true) ;;
         esac
         reflection_build_once samples/dotnet/ReflectInvoke/ReflectionSignatureTypesOnly.csproj "$out/app" ${build_flags[@]+"${build_flags[@]}"}
-        reflection_oracle "$out/app/ReflectionSignatureTypesOnly.dll" > "$out/clr.raw.stdout"
-        strip_cr_win_file "$out/clr.raw.stdout" > "$out/clr.stdout"
+        gate_capture_ok "$out/clr.raw" reflection_oracle "$out/app/ReflectionSignatureTypesOnly.dll"
         DN2CPP_STRICT_COMPLETION=1 invoke_cli "$out/app/ReflectionSignatureTypesOnly.dll" -r "$(locate_corelib)" \
             --no-ildiet --link-xml samples/dotnet/ReflectInvoke/keep-signature-shapes.xml \
             ${emit_flags[@]+"${emit_flags[@]}"} -o "$out" > "$out/emit.log" 2>&1
         compile_console "$out" ReflectionSignatureTypesOnly
-        run_bounded "$out/ReflectionSignatureTypesOnly$EXE_EXT" > "$out/native.raw.stdout"
-        strip_cr_win_file "$out/native.raw.stdout" > "$out/native.stdout"
-        diff -u "$out/clr.stdout" "$out/native.stdout"
-        reflection_signature_asserts "$out/native.stdout"
-        generic_signature_argument_asserts "$out/native.stdout"
-        reflection_oracle "$out/app/ReflectionSignatureTypesOnly.dll" before-generic-signature-arguments > "$out/generic-signature-before.clr.raw.stdout"
-        run_bounded "$out/ReflectionSignatureTypesOnly$EXE_EXT" before-generic-signature-arguments > "$out/generic-signature-before.native.raw.stdout"
-        awk '/^== generic function signature arguments ==$/ { exit } { print }' "$out/native.stdout" > "$out/generic-signature-prefix.stdout"
-        diff -u <(strip_cr_win_file "$out/generic-signature-before.clr.raw.stdout") "$out/generic-signature-prefix.stdout"
-        diff -u <(strip_cr_win_file "$out/generic-signature-before.native.raw.stdout") "$out/generic-signature-prefix.stdout"
-        run_bounded "$out/ReflectionSignatureTypesOnly$EXE_EXT" signature-layout-boundaries > "$out/layout-boundaries.raw.stdout"
-        strip_cr_win_file "$out/layout-boundaries.raw.stdout" > "$out/layout-boundaries.stdout"
-        reflection_oracle "$out/app/ReflectionSignatureTypesOnly.dll" signature-layout-boundaries > "$out/layout-boundaries.clr.raw.stdout"
-        diff -u <(strip_cr_win_file "$out/layout-boundaries.clr.raw.stdout") "$out/layout-boundaries.stdout"
+        gate_capture_ok "$out/native.raw" run_bounded "$out/ReflectionSignatureTypesOnly$EXE_EXT"
+        gate_output compare "$out/clr.raw.stdout" "$out/native.raw.stdout"
+        reflection_signature_asserts "$out/native.raw.stdout"
+        generic_signature_argument_asserts "$out/native.raw.stdout"
+        gate_capture_ok "$out/generic-signature-before.clr.raw" reflection_oracle "$out/app/ReflectionSignatureTypesOnly.dll" before-generic-signature-arguments
+        gate_capture_ok "$out/generic-signature-before.native.raw" run_bounded "$out/ReflectionSignatureTypesOnly$EXE_EXT" before-generic-signature-arguments
+        gate_output prefix "$out/native.raw.stdout" "$out/generic-signature-before.clr.raw.stdout" --before '== generic function signature arguments ==' --policy crlf
+        gate_output prefix "$out/native.raw.stdout" "$out/generic-signature-before.native.raw.stdout" --before '== generic function signature arguments ==' --policy crlf
+        gate_capture_ok "$out/layout-boundaries.raw" run_bounded "$out/ReflectionSignatureTypesOnly$EXE_EXT" signature-layout-boundaries
+        gate_capture_ok "$out/layout-boundaries.clr.raw" reflection_oracle "$out/app/ReflectionSignatureTypesOnly.dll" signature-layout-boundaries
+        gate_output compare "$out/layout-boundaries.raw.stdout" "$out/layout-boundaries.clr.raw.stdout"
         for shape in pointer function; do
-            grep -Fxq "signature $shape array allocation: none" "$out/layout-boundaries.stdout"
+            gate_output witness "$out/layout-boundaries.raw.stdout" "signature $shape array allocation: none" --count any --policy crlf
         done
     done
 }

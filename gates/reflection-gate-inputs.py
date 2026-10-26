@@ -3,20 +3,25 @@
 
 from collections import Counter
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
 import sys
 
 
+_spec = importlib.util.spec_from_file_location("gate_output", Path(__file__).with_name("gate-output.py"))
+_output = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_output)
+
+
 def check_lines(source, count, expected, prefixes=False):
     data = sys.stdin.buffer.read() if source == "-" else Path(source).read_bytes()
-    # MSYS grep reads Windows text output with CRLF translated to LF.
-    if os.name == "nt":
-        data = data.replace(b"\r\n", b"\n")
-    lines = data.split(b"\n") if data else []
-    if data.endswith(b"\n"):
-        lines.pop()
+    try:
+        lines = _output.records(data, policy="crlf")
+    except ValueError as error:
+        print(f"FAIL: {source}: {error}", file=sys.stderr)
+        return 1
     counts = Counter(lines)
     failed = False
     for line in expected:
@@ -54,7 +59,8 @@ def main():
         return check_lines(source, count, expected, prefixes=mode == "prefixes")
     if mode == "witnesses":
         source, count = arguments
-        expected = sys.stdin.buffer.read().decode("utf-8").splitlines()
+        expected = [record.decode("utf-8") for record in
+                    _output.records(sys.stdin.buffer.read(), policy="crlf")]
         return check_lines(source, count, expected)
     if mode == "oracle-key":
         app, *args = arguments

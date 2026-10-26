@@ -422,96 +422,106 @@ compile_console "$out" "$project"
 echo "== 7/7 Running (exact diff vs real .NET) =="
 # Exit statuses captured explicitly (`$(...)` inline would swallow them) and
 # compared: a binary aborting after printing everything must not pass.
-set +e
-native=$("./$out/$project"); native_code=$?
-expected=$(dotnet "$app"); expected_code=$?
-set -e
-assert_output "$native" "$expected"
-assert_exit_code "$native_code" "$expected_code"
-legacy=$(dotnet "$app" legacy)
-native=$(strip_cr_win "$native")
-legacy=$(strip_cr_win "$legacy")
-prefix=$(awk '/^mixed statics first=/ { exit } { print }' <<< "$native")
-assert_output "$prefix" "$legacy"
+native="$out/shared-native.stdout"
+expected="$out/shared-oracle.stdout"
+gate_capture_ok "${native%.stdout}" run_bounded "./$out/$project$EXE_EXT"
+gate_capture_ok "${expected%.stdout}" run_bounded dotnet "$app"
+gate_output compare "$native" "$expected"
+gate_output view "$native" "$native.records" --policy crlf
+legacy="$out/shared-legacy-1.stdout"
+gate_capture_ok "${legacy%.stdout}" run_bounded dotnet "$app" legacy
+prefix="$native.prefix"
+gate_output select "$native" "$prefix" --before 'mixed statics first=1132' --policy crlf
+gate_output compare "$prefix" "$legacy" --policy crlf
 for line in 'mixed statics first=1132' 'mixed statics second=1363' \
     'mixed statics repeated=1706' 'mixed statics cells=19,100,16,13' 'mixed statics complete'; do
-    grep -Fxq "$line" <<< "$native" \
+    gate_output byte-witness "$native" "$line" --count any --policy crlf \
         || { echo "FAIL: mixed static storage witness missing: $line" >&2; exit 1; }
 done
 for line in \
     'sync static string own=False' 'sync static object own=False' 'sync static other=True' \
     'sync instance string own=False' 'sync instance object own=False' 'sync instance other=True'; do
-    grep -Fxq "$line" <<<"$native" \
+    gate_output byte-witness "$native" "$line" --count any --policy crlf \
         || { echo "FAIL: synchronized prologue witness missing: $line" >&2; exit 1; }
 done
-before_forwarding=$(strip_cr_win "$(dotnet "$app" before-forwarding)")
-prefix=$(awk '/^rgctx cold forwarding=/ { exit } { print }' <<< "$native")
-assert_output "$prefix" "$before_forwarding"
+before_forwarding="$out/shared-before_forwarding-2.stdout"
+gate_capture_ok "${before_forwarding%.stdout}" run_bounded dotnet "$app" before-forwarding
+prefix="$native.prefix"
+gate_output select "$native" "$prefix" --before 'rgctx cold forwarding=1' --policy crlf
+gate_output compare "$prefix" "$before_forwarding" --policy crlf
 for line in 'rgctx cold forwarding=1' 'rgctx cold method forwarding=1' 'rgctx cold identity=Cold'; do
-    grep -Fxq "$line" <<< "$native" \
+    gate_output byte-witness "$native" "$line" --count any --policy crlf \
         || { echo "FAIL: cold generic-context forwarding witness missing: $line" >&2; exit 1; }
 done
-before_gvm_hider=$(strip_cr_win "$(dotnet "$app" before-gvm-hider)")
-prefix=$(awk '/^gvm hider base=/ { exit } { print }' <<< "$native")
-assert_output "$prefix" "$before_gvm_hider"
+before_gvm_hider="$out/shared-before_gvm_hider-3.stdout"
+gate_capture_ok "${before_gvm_hider%.stdout}" run_bounded dotnet "$app" before-gvm-hider
+prefix="$native.prefix"
+gate_output select "$native" "$prefix" --before 'gvm hider base=base:Int32' --policy crlf
+gate_output compare "$prefix" "$before_gvm_hider" --policy crlf
 for line in 'gvm hider base=base:Int32' 'gvm hider hider=leaf:Int32' \
     'gvm hider mid=mid:String' 'gvm hider midhider=midleaf:String' \
     'gvm hider plain=base:Int32' 'gvm hider plain direct=plain:Int32' \
     'gvm hider overload generic=generic' 'gvm hider overload object=derived object' \
     'gvm hider covariant=True'; do
-    grep -Fxq "$line" <<< "$native" \
+    gate_output byte-witness "$native" "$line" --count any --policy crlf \
         || { echo "FAIL: generic-virtual hider dispatch witness missing: $line" >&2; exit 1; }
 done
-before_width_join=$(strip_cr_win "$(dotnet "$app" before-width-join)")
-prefix=$(awk '/^width join array=/ { exit } { print }' <<< "$native")
-assert_output "$prefix" "$before_width_join"
+before_width_join="$out/shared-before_width_join-4.stdout"
+gate_capture_ok "${before_width_join%.stdout}" run_bounded dotnet "$app" before-width-join
+prefix="$native.prefix"
+gate_output select "$native" "$prefix" --before 'width join array=1,2/Red,Green,7' --policy crlf
+gate_output compare "$prefix" "$before_width_join" --policy crlf
 for line in 'width join array=1,2/Red,Green,7' 'width join uint=3,4000000000/On,Off' \
     'width join list=5|6/Blue|Red' 'width concat=78/GreenBlue' 'width append=[9]/[Red;Blue]' \
     'reference nested join=tag+tag/tag' 'reference join views=string/object' \
     'reference concat views=string/object' 'reference append views=[string]/[object]'; do
-    grep -Fxq "$line" <<< "$native" \
+    gate_output byte-witness "$native" "$line" --count any --policy crlf \
         || { echo "FAIL: width-placeholder join witness missing: $line" >&2; exit 1; }
 done
 # Constrained interface owners preserve the earlier shared-generic output.
-before_default_comparison=$(dotnet "$app" before-default-comparison)
-before_default_comparison=$(strip_cr_win "$before_default_comparison")
-prefix=$(awk '/^== default comparison validation ==$/ { exit } { print }' <<< "$native")
-assert_output "$prefix" "$before_default_comparison"
+before_default_comparison="$out/shared-before_default_comparison-5.stdout"
+gate_capture_ok "${before_default_comparison%.stdout}" run_bounded dotnet "$app" before-default-comparison
+prefix="$native.prefix"
+gate_output select "$native" "$prefix" --before '== default comparison validation ==' --policy crlf
+gate_output compare "$prefix" "$before_default_comparison" --policy crlf
 for line in '== default comparison validation ==' 'constrained interface=23/interface/True' \
     'constrained bare=31/bare interface/True/1' 'constrained object=11/object/False' \
     'constrained boxed primitive=42' 'constrained boxed enum=7' 'default comparison validation end'; do
-    grep -Fxq "$line" <<< "$native" \
+    gate_output byte-witness "$native" "$line" --count any --policy crlf \
         || { echo "FAIL: constrained interface coverage missing: $line" >&2; exit 1; }
 done
-before_ordinary_interface=$(dotnet "$app" before-ordinary-interface-leaves)
-before_ordinary_interface=$(strip_cr_win "$before_ordinary_interface")
-prefix=$(awk '/^== ordinary interface and virtual definitions ==$/ { exit } { print }' <<< "$native")
-assert_output "$prefix" "$before_ordinary_interface"
+before_ordinary_interface="$out/shared-before_ordinary_interface-6.stdout"
+gate_capture_ok "${before_ordinary_interface%.stdout}" run_bounded dotnet "$app" before-ordinary-interface-leaves
+prefix="$native.prefix"
+gate_output select "$native" "$prefix" --before '== ordinary interface and virtual definitions ==' --policy crlf
+gate_output compare "$prefix" "$before_ordinary_interface" --policy crlf
 for line in '== ordinary interface and virtual definitions ==' \
     'ordinary interface and virtual definitions end'; do
-    grep -Fxq "$line" <<< "$native" \
+    gate_output byte-witness "$native" "$line" --count any --policy crlf \
         || { echo "FAIL: ordinary interface section witness missing: $line" >&2; exit 1; }
 done
 for label in 'virtual hider base=' 'virtual collision base=' \
     'virtual collision interface=' 'virtual cross level class=' \
     'virtual cross level mirrored=' 'virtual constrained equals=' \
     'shared foreach any=' 'shared foreach all=' 'shared foreach views='; do
-    grep -Fq "$label" <<< "$native" \
+    grep -Fq "$label" "$native.records" \
         || { echo "FAIL: ordinary definition dispatch witness missing: $label" >&2; exit 1; }
 done
-before_self_nesting=$(dotnet "$app" before-self-nesting) || exit $?
-before_self_nesting=$(strip_cr_win "$before_self_nesting")
-prefix=$(awk '/^self nesting instance=/ { exit } { print }' <<< "$native")
-assert_output "$prefix" "$before_self_nesting"
+before_self_nesting="$out/shared-before_self_nesting.stdout"
+gate_capture_ok "${before_self_nesting%.stdout}" run_bounded dotnet "$app" before-self-nesting || exit $?
+prefix="$native.prefix"
+gate_output select "$native" "$prefix" --before 'self nesting instance=Nester`1<String> Nester`1<Nester`1>' --policy crlf
+gate_output compare "$prefix" "$before_self_nesting" --policy crlf
 for line in 'self nesting instance=Nester`1<String> Nester`1<Nester`1>' \
     'self nesting static=Nester`1<String>'; do
-    grep -Fxq "$line" <<<"$native" \
+    gate_output byte-witness "$native" "$line" --count any --policy crlf \
         || { echo "FAIL: self nesting witness missing: $line" >&2; exit 1; }
 done
-before_boolean=$(dotnet "$app" before-boolean-receivers) || exit $?
-before_boolean=$(strip_cr_win "$before_boolean")
-prefix=$(awk '/^== constrained Boolean conversion ==$/ { exit } { print }' <<< "$native")
-assert_output "$prefix" "$before_boolean"
+before_boolean="$out/shared-before_boolean.stdout"
+gate_capture_ok "${before_boolean%.stdout}" run_bounded dotnet "$app" before-boolean-receivers || exit $?
+prefix="$native.prefix"
+gate_output select "$native" "$prefix" --before '== constrained Boolean conversion ==' --policy crlf
+gate_output compare "$prefix" "$before_boolean" --policy crlf
 for line in '== constrained Boolean conversion ==' \
     'constrained boolean=False/True' \
     'constrained boolean siblings=False/True/False/True' \
@@ -519,32 +529,36 @@ for line in '== constrained Boolean conversion ==' \
     'constrained boolean scalar-context=Int32/False/Int32/True/Shade/False/Shade/True' \
     'constrained boolean reference-context=String/False/String/True/Object/False/Object/True' \
     'constrained Boolean conversion end'; do
-    grep -Fxq -- "$line" <<< "$native" \
+    gate_output byte-witness "$native" "$line" --count any --policy crlf \
         || { echo "FAIL: constrained Boolean witness missing: $line" >&2; exit 1; }
 done
 
-before_width_typed=$(dotnet "$app" before-width-typed-slots) || exit $?
-before_width_typed=$(strip_cr_win "$before_width_typed")
-prefix=$(awk '/^== same-width constrained interface slots ==$/ { exit } { print }' <<< "$native")
-assert_output "$prefix" "$before_width_typed"
+before_width_typed="$out/shared-before_width_typed.stdout"
+gate_capture_ok "${before_width_typed%.stdout}" run_bounded dotnet "$app" before-width-typed-slots || exit $?
+prefix="$native.prefix"
+gate_output select "$native" "$prefix" --before '== same-width constrained interface slots ==' --policy crlf
+gate_output compare "$prefix" "$before_width_typed" --policy crlf
 for line in '== same-width constrained interface slots ==' \
     'width typed slots=True,True,False/1,-1' \
     'width typed comparer=True:3/True:40' \
     'same-width constrained interface slots end'; do
-    grep -Fxq -- "$line" <<< "$native" \
+    gate_output byte-witness "$native" "$line" --count any --policy crlf \
         || { echo "FAIL: same-width interface witness missing: $line" >&2; exit 1; }
 done
 
-before_collisions=$(dotnet "$app" before-substitution-collisions) || exit $?
-prefix=$(awk '/^== generic virtual substitution collisions ==$/ { exit } { print }' <<< "$native")
-assert_output "$prefix" "$(strip_cr_win "$before_collisions")"
-grep -Fxq 'generic virtual substitution collisions end' <<< "$native" \
+before_collisions="$out/shared-before_collisions.stdout"
+gate_capture_ok "${before_collisions%.stdout}" run_bounded dotnet "$app" before-substitution-collisions || exit $?
+prefix="$native.prefix"
+gate_output select "$native" "$prefix" --before '== generic virtual substitution collisions ==' --policy crlf
+gate_output compare "$prefix" "$before_collisions" --policy crlf
+gate_output byte-witness "$native" 'generic virtual substitution collisions end' --count any --policy crlf \
     || { echo "FAIL: generic virtual substitution collisions did not finish" >&2; exit 1; }
 
-before_variant_dispatch=$(dotnet "$app" before-variant-dispatch) || exit $?
-before_variant_dispatch=$(strip_cr_win "$before_variant_dispatch")
-prefix=$(awk '/^== variant interface dispatch ==$/ { exit } { print }' <<< "$native")
-assert_output "$prefix" "$before_variant_dispatch"
+before_variant_dispatch="$out/shared-before_variant_dispatch.stdout"
+gate_capture_ok "${before_variant_dispatch%.stdout}" run_bounded dotnet "$app" before-variant-dispatch || exit $?
+prefix="$native.prefix"
+gate_output select "$native" "$prefix" --before '== variant interface dispatch ==' --policy crlf
+gate_output compare "$prefix" "$before_variant_dispatch" --policy crlf
 for line in '== variant interface dispatch ==' \
     'gvm variant constrained struct in=struct4:Int32:x' \
     'gvm variant constrained class in=class:Int32:x' \
@@ -559,14 +573,17 @@ for line in '== variant interface dispatch ==' \
     'plain variant constrained first of two=pair string' \
     'plain variant constrained struct default=plain default:Object:d' \
     'variant interface dispatch end'; do
-    grep -Fxq -- "$line" <<< "$native" \
+    gate_output byte-witness "$native" "$line" --count any --policy crlf \
         || { echo "FAIL: variant interface dispatch witness missing: $line" >&2; exit 1; }
 done
-before_trial=$(run_bounded dotnet "$app" before-trial-dispatch)
-prefix=$(awk '/^== shared trial generic virtual dispatch ==$/ { exit } { print }' <<< "$native")
-assert_output "$prefix" "$(strip_cr_win "$before_trial")"
-before_trial=$(run_bounded "./$out/$project$EXE_EXT" before-trial-dispatch)
-assert_output "$prefix" "$(strip_cr_win "$before_trial")"
+before_trial="$out/shared-before_trial-7.stdout"
+gate_capture_ok "${before_trial%.stdout}" run_bounded dotnet "$app" before-trial-dispatch
+prefix="$native.prefix"
+gate_output select "$native" "$prefix" --before '== shared trial generic virtual dispatch ==' --policy crlf
+gate_output compare "$prefix" "$before_trial" --policy crlf
+before_trial="$out/shared-before_trial-8.stdout"
+gate_capture_ok "${before_trial%.stdout}" run_bounded "./$out/$project$EXE_EXT" before-trial-dispatch
+gate_output compare "$prefix" "$before_trial" --policy crlf
 for line in '== shared trial generic virtual dispatch ==' \
     'trial interface reference=interface:String/interface:Object' \
     'trial interface width=interface:Int32/interface:TrialWidth/interface:Int64' \
@@ -577,7 +594,7 @@ for line in '== shared trial generic virtual dispatch ==' \
     'trial nested=interface:String[]/interface:Int32[]' \
     'trial concrete method args=owned:String/Int32/owned:Object/Int32' \
     'shared trial generic virtual dispatch end'; do
-    grep -Fxq -- "$line" <<< "$native" \
+    gate_output byte-witness "$native" "$line" --count any --policy crlf \
         || { echo "FAIL: shared trial dispatch witness missing: $line" >&2; exit 1; }
 done
 
@@ -681,15 +698,18 @@ if unreferenced_shared:
 print("shared-trial GVM dispatcher references: OK")
 PY
 
-before_interface_rows=$(run_bounded dotnet "$app" before-interface-rows)
-prefix=$(awk '/^== signature-only interface rows ==$/ { exit } { print }' <<< "$native")
-assert_output "$prefix" "$(strip_cr_win "$before_interface_rows")"
-before_interface_rows=$(run_bounded "./$out/$project$EXE_EXT" before-interface-rows)
-assert_output "$prefix" "$(strip_cr_win "$before_interface_rows")"
+before_interface_rows="$out/shared-before_interface_rows-9.stdout"
+gate_capture_ok "${before_interface_rows%.stdout}" run_bounded dotnet "$app" before-interface-rows
+prefix="$native.prefix"
+gate_output select "$native" "$prefix" --before '== signature-only interface rows ==' --policy crlf
+gate_output compare "$prefix" "$before_interface_rows" --policy crlf
+before_interface_rows="$out/shared-before_interface_rows-10.stdout"
+gate_capture_ok "${before_interface_rows%.stdout}" run_bounded "./$out/$project$EXE_EXT" before-interface-rows
+gate_output compare "$prefix" "$before_interface_rows" --policy crlf
 for line in '== signature-only interface rows ==' \
     'interface row name=Render' 'interface row abstract=True' \
     'interface row owner=True' 'signature-only interface rows end'; do
-    grep -Fxq -- "$line" <<< "$native" \
+    gate_output byte-witness "$native" "$line" --count any --policy crlf \
         || { echo "FAIL: signature-only interface row witness missing: $line" >&2; exit 1; }
 done
 echo "== Signature-only interface row invokers =="

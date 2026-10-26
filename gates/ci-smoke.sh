@@ -35,7 +35,7 @@ PRIMITIVES=(
     gc-write-barrier external-ref-barrier
     file-real filesystem-enum env-subset threading-primitives sync-primitives
     thread-local timer mmap-file pinvoke-native
-    console-io datetime culture-info-api threadpool transpiler-limits
+    console-io datetime threadpool transpiler-limits
 )
 
 self_test() (
@@ -45,7 +45,7 @@ self_test() (
     fixture=$(mktemp -d "${TMPDIR:-/tmp}/dn2cpp-ci-smoke-test.XXXXXX")
     trap 'rm -rf "$fixture"' EXIT
     mkdir -p "$fixture/gates" "$fixture/bin" "$fixture/runtime/10.0.0"
-    cp "$SCRIPT_DIR/ci-smoke.sh" "$fixture/gates/"
+    cp "$SCRIPT_DIR/ci-smoke.sh" "$SCRIPT_DIR/gate-output.py" "$fixture/gates/"
     sed 's/^run_with_watchdog() {/ci_test_run_with_watchdog() {/' \
         "$SCRIPT_DIR/_common.sh" > "$fixture/gates/_common.sh"
     # The short fixture budget targets the selected gate after slow setup.
@@ -92,7 +92,7 @@ case "$1" in
         printf 'Microsoft.NETCore.App 10.0.0 [%s/runtime]\n' "$PWD"
         ;;
     */HelloWorld.dll)
-        if [ "$CI_TEST_CASE" = sample-crlf ]; then
+        if [ "$CI_TEST_CASE" = sample-crlf ] || [ "$CI_TEST_CASE" = sample-eol-mismatch ]; then
             printf 'sample output: 日本語\r\n'
         else
             printf 'sample output: 日本語\n'
@@ -132,6 +132,8 @@ if [ "$name" = sample ]; then
 #!/usr/bin/env bash
 if [ "$CI_TEST_CASE" = sample-output ]; then
     printf 'different output\n'
+elif [ "$CI_TEST_CASE" = sample-crlf ]; then
+    printf 'sample output: 日本語\r\n'
 else
     printf 'sample output: 日本語\n'
 fi
@@ -200,7 +202,7 @@ SUITE
                 [ -s "$logdir/sample-dotnet.stdout" ]
                 [ -s "$logdir/sample-native.stdout" ]
                 if [ "$test_os" = windows ]; then
-                    ! cmp -s "$logdir/sample-dotnet.raw.stdout" "$logdir/sample-native.raw.stdout"
+                    cmp -s "$logdir/sample-dotnet.raw.stdout" "$logdir/sample-native.raw.stdout"
                 fi
             else
                 [ ! -e "$logdir/sample.log" ]
@@ -216,9 +218,9 @@ SUITE
             *) failure_gate=multiassembly ;;
         esac
         for case_name in fail exit77 skip partial expected-partial cached cached-partial \
-                sample-output sample-status build-fail windows-build-fail missing-cli missing-corelib watchdog missing-gate; do
+                sample-output sample-status sample-eol-mismatch build-fail windows-build-fail missing-cli missing-corelib watchdog missing-gate; do
             case "$partition:$case_name" in
-                arrays:sample-output|arrays:sample-status|limits:sample-output|limits:sample-status) continue ;;
+                arrays:sample-output|arrays:sample-status|arrays:sample-eol-mismatch|limits:sample-output|limits:sample-status|limits:sample-eol-mismatch) continue ;;
             esac
             rm -f "$fixture/order" "$fixture/budgets"
             test_os=linux
@@ -241,7 +243,7 @@ SUITE
                 build-fail|windows-build-fail|missing-cli|missing-corelib|missing-gate)
                     [ -s "$logdir/bootstrap.log" ]
                     [ ! -e "$logdir/$failure_gate.log" ] ;;
-                sample-output|sample-status)
+                sample-output|sample-status|sample-eol-mismatch)
                     [ -s "$logdir/sample.log" ]
                     [ ! -e "$logdir/multiassembly.log" ] ;;
                 *)
@@ -301,6 +303,7 @@ case "$PROFILE" in
     suite)
         [ "$LIST" -eq 0 ] && [ -z "$PARTITION" ] || usage
         export SKIP_GODOT=1
+        export DN2CPP_INCLUDE_CULTURE=0
         exec bash "$SCRIPT_DIR/run-all-gates.sh" ;;
     *) usage ;;
 esac
@@ -399,10 +402,9 @@ sample_parity() {
         echo "FAIL: sample exit status: .NET=$dotnet_rc native=$native_rc" >&2
         return 1
     fi
-    strip_cr_win_file "$LOGDIR/sample-dotnet.raw.stdout" > "$LOGDIR/sample-dotnet.stdout" || return $?
-    strip_cr_win_file "$LOGDIR/sample-native.raw.stdout" > "$LOGDIR/sample-native.stdout" || return $?
-    if ! cmp -s "$LOGDIR/sample-dotnet.stdout" "$LOGDIR/sample-native.stdout"; then
-        diff -u "$LOGDIR/sample-dotnet.stdout" "$LOGDIR/sample-native.stdout" >&2 || true
+    cp "$LOGDIR/sample-dotnet.raw.stdout" "$LOGDIR/sample-dotnet.stdout" || return $?
+    cp "$LOGDIR/sample-native.raw.stdout" "$LOGDIR/sample-native.stdout" || return $?
+    if ! gate_output compare "$LOGDIR/sample-native.raw.stdout" "$LOGDIR/sample-dotnet.raw.stdout"; then
         echo 'FAIL: sample stdout differs from .NET' >&2
         return 1
     fi

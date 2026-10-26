@@ -19,6 +19,14 @@ internal sealed partial class MethodCompiler
             return;
         }
         var (kind, type) = Promote(a, b);
+        if (kind != StackKind.R8 && op is ("+" or "-" or "*"))
+        {
+            // Unchecked IL arithmetic wraps; signed C++ overflow is undefined.
+            string unsignedType = type == "uintptr_t" ? type
+                : kind == StackKind.I8 ? "uint64_t" : "uint32_t";
+            Push(kind, type, $"({type})({Cast(a, unsignedType)} {op} {Cast(b, unsignedType)})");
+            return;
+        }
         Push(kind, type, $"{Cast(a, type)} {op} {Cast(b, type)}");
     }
 

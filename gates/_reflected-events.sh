@@ -49,16 +49,13 @@ reflected_event_prefix_asserts() {
     for axis in dotnet native; do
         if reflection_full_profile; then
             if [ "$axis" = dotnet ]; then
-                reflection_oracle "$_CG_APP" before-reflected-events > "$out/events-before.$axis.raw.stdout"
+                gate_capture_ok "$out/events-before.$axis.raw" reflection_oracle "$_CG_APP" before-reflected-events
             else
-                run_bounded "$out/ReflectInvoke$EXE_EXT" before-reflected-events > "$out/events-before.$axis.raw.stdout"
+                gate_capture_ok "$out/events-before.$axis.raw" run_bounded "$out/ReflectInvoke$EXE_EXT" before-reflected-events
             fi
-            strip_cr_win_file "$out/events-before.$axis.raw.stdout" > "$out/events-before.$axis.stdout"
-            awk '/^== reflected events ==$/ { exit } { print }' \
-                "$out/virtual-delegate-full.$axis.stdout" > "$out/events-prefix.$axis.stdout"
-            diff -u "$out/events-before.$axis.stdout" "$out/events-prefix.$axis.stdout"
+            gate_output prefix "$out/virtual-delegate-full.$axis.raw.stdout" "$out/events-before.$axis.raw.stdout" --before '== reflected events ==' --policy crlf
         fi
-        reflected_event_asserts "$out/virtual-delegate-full.$axis.stdout"
+        reflected_event_asserts "$out/virtual-delegate-full.$axis.raw.stdout"
     done
 }
 
@@ -80,8 +77,8 @@ reflected_event_diff_axes() {
             unshared) flags=(--no-shared-generics); build_flags=(-p:ReflectedEventsUnshared=true) ;;
         esac
         reflection_build_once samples/dotnet/ReflectInvoke/ReflectedEventsOnly.csproj "$out/app" ${build_flags[@]+"${build_flags[@]}"}
-        reflection_oracle "$out/app/ReflectedEventsOnly.dll" > "$out/clr.raw.stdout"
-        strip_cr_win_file "$out/clr.raw.stdout" > "$out/clr.stdout"
+        gate_capture_ok "$out/clr.raw" reflection_oracle "$out/app/ReflectedEventsOnly.dll"
+
         DN2CPP_STRICT_COMPLETION=1 invoke_cli "$out/app/ReflectedEventsOnly.dll" -r "$corelib" \
             -r "$bcl/System.Linq.dll" -r "$bcl/System.Threading.Tasks.Parallel.dll" -r "$out/app/TrimReflectLib.dll" \
             --link-xml samples/dotnet/ReflectInvoke/keep-event-other-methods.xml \
@@ -99,19 +96,19 @@ reflected_event_diff_axes() {
             return 1
         fi
         compile_console "$out" ReflectedEventsOnly
-        run_bounded "$out/ReflectedEventsOnly$EXE_EXT" > "$out/native.raw.stdout"
-        strip_cr_win_file "$out/native.raw.stdout" > "$out/native.stdout"
-        diff -u "$out/clr.stdout" "$out/native.stdout"
-        reflected_event_asserts "$out/native.stdout"
-        run_bounded "$out/ReflectedEventsOnly$EXE_EXT" stripped-events > "$out/stripped.native.raw.stdout"
-        strip_cr_win_file "$out/stripped.native.raw.stdout" > "$out/stripped.native.stdout"
+        gate_capture_ok "$out/native.raw" run_bounded "$out/ReflectedEventsOnly$EXE_EXT"
+
+        gate_output compare "$out/native.raw.stdout" "$out/clr.raw.stdout"
+        reflected_event_asserts "$out/native.raw.stdout"
+        gate_capture_ok "$out/stripped.native.raw" run_bounded "$out/ReflectedEventsOnly$EXE_EXT" stripped-events
+
         if [ "$axis" = trimmed ]; then
-            test "$(grep -Fxc 'stripped event query: PlatformNotSupportedException' "$out/stripped.native.stdout")" = 2
-            test "$(grep -Fxc 'stripped events query: PlatformNotSupportedException' "$out/stripped.native.stdout")" = 2
+            gate_output witness "$out/stripped.native.raw.stdout" 'stripped event query: PlatformNotSupportedException' --count 2 --policy crlf
+            gate_output witness "$out/stripped.native.raw.stdout" 'stripped events query: PlatformNotSupportedException' --count 2 --policy crlf
         else
-            reflection_oracle "$out/app/ReflectedEventsOnly.dll" stripped-events > "$out/stripped.clr.raw.stdout"
-            strip_cr_win_file "$out/stripped.clr.raw.stdout" > "$out/stripped.clr.stdout"
-            diff -u "$out/stripped.clr.stdout" "$out/stripped.native.stdout"
+            gate_capture_ok "$out/stripped.clr.raw" reflection_oracle "$out/app/ReflectedEventsOnly.dll" stripped-events
+
+            gate_output compare "$out/stripped.native.raw.stdout" "$out/stripped.clr.raw.stdout"
         fi
         echo "reflected events $axis OK"
     done
@@ -133,7 +130,8 @@ reflected_event_preservation() {
         return 1
     fi
     compile_console "$out" ReflectedEventsOnly
-    assert_output "$(strip_cr_win "$(run_bounded "$out/ReflectedEventsOnly$EXE_EXT")")" \
-        "$(strip_cr_win "$(reflection_oracle "$out/app/ReflectedEventsOnly.dll")")"
+    gate_capture_ok "$out/native.raw" run_bounded "$out/ReflectedEventsOnly$EXE_EXT"
+    gate_capture_ok "$out/clr.raw" reflection_oracle "$out/app/ReflectedEventsOnly.dll"
+    gate_output compare "$out/native.raw.stdout" "$out/clr.raw.stdout"
     echo 'reflected event attribute/link.xml preservation OK'
 }

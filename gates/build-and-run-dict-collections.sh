@@ -43,16 +43,23 @@ source "$(dirname "$0")/_common.sh"
 # Default order and equality preserve the earlier bucket and run the appended cases.
 gate_extra_asserts() {
     local out="$1" native before prefix line
-    native=$(run_bounded "./$out/DictCollections")
-    native=$(strip_cr_win "$native")
-    before=$(dotnet "$_CG_APP" before-default-comparison)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== default comparison validation ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
-    before=$(dotnet "$_CG_APP" before-nullable-equality)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== nullable default equality ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-native-1" run_bounded "./$out/DictCollections"
+    native="$out/assert-native-1.stdout"
+
+    gate_capture_ok "$out/assert-before-2" run_bounded dotnet "$_CG_APP" before-default-comparison
+    before="$out/assert-before-2.stdout"
+
+    prefix="$out/assert-prefix-4.stdout"
+
+    gate_output select "$native" "$prefix" --before '== default comparison validation ==' --policy crlf
+    gate_output compare "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-3" run_bounded dotnet "$_CG_APP" before-nullable-equality
+    before="$out/assert-before-3.stdout"
+
+    prefix="$out/assert-prefix-5.stdout"
+
+    gate_output select "$native" "$prefix" --before '== nullable default equality ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== default comparison validation ==' \
         '== default equality mouths ==' \
         'default equality mouths end' \
@@ -63,7 +70,7 @@ gate_extra_asserts() {
         'typed equatable: True False False True False 2' \
         'generic equatable calls: 2' \
         'nullable default equality end'; do
-        grep -Fxq "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: DictCollections comparison coverage missing: $line" >&2; exit 1; }
     done
 }

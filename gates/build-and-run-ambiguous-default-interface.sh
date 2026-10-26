@@ -22,68 +22,69 @@ APP_DIR="samples/dotnet/AmbiguousDefault/bin/$CONFIG/$TFM"
 # unused ambiguous slot, so conversion completed with the slot modelled.
 gate_extra_asserts() {
     local out="$1" output label thrown find_stub before prefix
-    output="$(strip_cr_win "$native")"
-    grep -Fxq 'plain: left' <<<"$output" \
+    output="$out/program-witnesses.lf"
+    gate_output view "$out/native.stdout" "$output" --policy crlf
+    grep -Fxq 'plain: left' "$output" \
         || { echo "FAIL: the unambiguous default body did not run" >&2; exit 1; }
-    grep -Fxq 'made plain: left' <<<"$output" \
+    grep -Fxq 'made plain: left' "$output" \
         || { echo "FAIL: the MakeGenericType receiver's unambiguous default body did not run" >&2; exit 1; }
     for label in 'pick' 'pick-generic<int>' 'pick-generic<string>' 'take<string>' \
         'find(First.Key)' 'find(Second.Key)' 'made pick' 'made pick-generic<int>' 'constrained pick'; do
         thrown="$label: System.Runtime.AmbiguousImplementationException: Could not call method "
-        grep -Fq -- "$thrown" <<<"$output" \
+        grep -Fq -- "$thrown" "$output" \
             || { echo "FAIL: $label did not throw AmbiguousImplementationException" >&2; exit 1; }
-        grep -Fxq -- "$label hresult: 0x8013106A" <<<"$output" \
+        grep -Fxq -- "$label hresult: 0x8013106A" "$output" \
             || { echo "FAIL: $label lost the AmbiguousImplementationException HResult" >&2; exit 1; }
     done
-    grep -Fxq 'after: left' <<<"$output" && grep -Fxq 'made after: left' <<<"$output" \
-        && grep -Fxq 'constrained after: left' <<<"$output" \
+    grep -Fxq 'after: left' "$output" && grep -Fxq 'made after: left' "$output" \
+        && grep -Fxq 'constrained after: left' "$output" \
         || { echo "FAIL: the program did not continue after the caught exceptions" >&2; exit 1; }
-    before=$(DN2CPP_BEFORE_ORDINARY_CONSTRAINED_DEFAULT=1 dotnet "$_CG_APP")
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== a constrained call on a struct ==$/ { exit } { print }' <<< "$output")
-    assert_output "$prefix" "$before"
-    grep -Fxq 'constrained plain: left' <<< "$output" \
+    DN2CPP_BEFORE_ORDINARY_CONSTRAINED_DEFAULT=1 gate_capture_ok "$out/before" run_bounded dotnet "$_CG_APP"
+    before="$out/before.stdout"
+    gate_output select "$out/native.stdout" "$out/prefix.stdout" --before '== a constrained call on a struct ==' --policy crlf
+    gate_output compare "$out/prefix.stdout" "$before"
+    grep -Fxq 'constrained plain: left' "$output" \
         || { echo "FAIL: the constrained unambiguous default body did not run" >&2; exit 1; }
-    grep -Fxq '== virtual delegate creation ==' <<< "$output" \
+    grep -Fxq '== virtual delegate creation ==' "$output" \
         || { echo "FAIL: the delegate binding block did not run" >&2; exit 1; }
     for label in 'unused group' 'generic<int> group' 'generic<string> group' \
         'generic receiver group' 'made unused group' 'made generic group'; do
-        grep -Fxq "$label created: False" <<< "$output" \
-            && grep -Fxq "$label hresult: 0x8013106A" <<< "$output" \
+        grep -Fxq "$label created: False" "$output" \
+            && grep -Fxq "$label hresult: 0x8013106A" "$output" \
             || { echo "FAIL: $label did not throw before creation completed" >&2; exit 1; }
     done
     for label in 'null interface group' 'null generic interface group' 'null generic class group'; do
-        grep -Fxq "$label created: False" <<< "$output" \
-            && grep -Fxq "$label hresult: 0x80004003" <<< "$output" \
+        grep -Fxq "$label created: False" "$output" \
+            && grep -Fxq "$label hresult: 0x80004003" "$output" \
             || { echo "FAIL: $label did not reject its null receiver at binding" >&2; exit 1; }
     done
-    grep -Fxq 'callable groups: left,left,Int32' <<< "$output" \
+    grep -Fxq 'callable groups: left,left,Int32' "$output" \
         || { echo "FAIL: unambiguous delegates did not remain callable" >&2; exit 1; }
-    before=$(dotnet "$_CG_APP" before-binding)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== virtual delegate creation ==$/ { exit } { print }' <<< "$output")
-    assert_output "$prefix" "$before"
-    grep -Fxq '== generic interface ambiguity messages ==' <<< "$output" \
+    gate_capture_ok "$out/before-binding" run_bounded dotnet "$_CG_APP" before-binding
+    before="$out/before-binding.stdout"
+    gate_output select "$out/native.stdout" "$out/prefix.stdout" --before '== virtual delegate creation ==' --policy crlf
+    gate_output compare "$out/prefix.stdout" "$before"
+    grep -Fxq '== generic interface ambiguity messages ==' "$output" \
         || { echo "FAIL: the generic interface message block did not run" >&2; exit 1; }
     for label in 'box ref/value' 'box value/ref' 'box pair' 'duo mixed single' \
         'duo values single' 'duo pair' 'duo triple' 'box pair group' 'duo single group'; do
-        grep -Fxq "$label hresult: 0x8013106A" <<< "$output" \
+        grep -Fxq "$label hresult: 0x8013106A" "$output" \
             || { echo "FAIL: $label did not report its ambiguity" >&2; exit 1; }
     done
     for method in 'IBox`1[U].Select' 'IBox`1[X,Y].Pair' \
         'IDuo`2[V].Single' 'IDuo`2[X,Y].Pair' 'IDuo`2[X,Y,Z].Triple'; do
-        grep -Fq "$method" <<< "$output" \
+        grep -Fq "$method" "$output" \
             || { echo "FAIL: $method lost the method definition's parameter names" >&2; exit 1; }
     done
-    grep -Fxq 'box pair group created: False' <<< "$output" \
-        && grep -Fxq 'duo single group created: False' <<< "$output" \
+    grep -Fxq 'box pair group created: False' "$output" \
+        && grep -Fxq 'duo single group created: False' "$output" \
         || { echo "FAIL: generic interface ambiguity was delayed until delegate invocation" >&2; exit 1; }
-    before=$(dotnet "$_CG_APP" before-generic-messages)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== generic interface ambiguity messages ==$/ { exit } { print }' <<< "$output")
-    assert_output "$prefix" "$before"
-    grep -Fxq '== constrained static interface calls ==' <<< "$output" \
-        && grep -Fxq 'static interface calls end' <<< "$output" \
+    gate_capture_ok "$out/before-generic-messages" run_bounded dotnet "$_CG_APP" before-generic-messages
+    before="$out/before-generic-messages.stdout"
+    gate_output select "$out/native.stdout" "$out/prefix.stdout" --before '== generic interface ambiguity messages ==' --policy crlf
+    gate_output compare "$out/prefix.stdout" "$before"
+    grep -Fxq '== constrained static interface calls ==' "$output" \
+        && grep -Fxq 'static interface calls end' "$output" \
         || { echo "FAIL: the constrained static call block did not complete" >&2; exit 1; }
     for label in 'static default' 'static generic' 'static abstract' 'static generic abstract' \
         'static generic ref' 'static generic receiver' 'static generic owner ref' 'static generic owner value' \
@@ -92,29 +93,29 @@ gate_extra_asserts() {
         'concrete abstract' 'concrete generic abstract' 'concrete value default' \
         'concrete value generic' 'concrete value abstract' 'concrete value generic abstract' \
         'static group invoked'; do
-        grep -Fq "$label: System.Runtime.AmbiguousImplementationException: Could not call method " <<< "$output" \
-            && grep -Fxq "$label hresult: 0x8013106A" <<< "$output" \
-            && grep -Fxq "$label entries: 1" <<< "$output" \
+        grep -Fq "$label: System.Runtime.AmbiguousImplementationException: Could not call method " "$output" \
+            && grep -Fxq "$label hresult: 0x8013106A" "$output" \
+            && grep -Fxq "$label entries: 1" "$output" \
             || { echo "FAIL: $label did not reject ambiguity at the call instruction" >&2; exit 1; }
     done
     for label in 'static default skipped' 'static generic skipped' 'static abstract skipped' \
         'value default skipped' 'value generic skipped' 'value abstract skipped' \
         'concrete default skipped' 'concrete generic skipped' 'concrete abstract skipped' \
         'concrete value default skipped' 'concrete value generic skipped' 'concrete value abstract skipped'; do
-        grep -Fxq "$label returned: skipped" <<< "$output" \
-            && grep -Fxq "$label entries: 1" <<< "$output" \
+        grep -Fxq "$label returned: skipped" "$output" \
+            && grep -Fxq "$label entries: 1" "$output" \
             || { echo "FAIL: $label rejected a call that never ran" >&2; exit 1; }
     done
     for row in 'static group created entries: 0' 'static left bodies: left,left,left,left' \
         'static specific bodies: specific,specific,specific,specific' \
         'static class bodies: class,class,class,class' 'static fallback bodies: base,base,class,class'; do
-        grep -Fxq "$row" <<< "$output" \
+        grep -Fxq "$row" "$output" \
             || { echo "FAIL: missing static call witness: $row" >&2; exit 1; }
     done
-    before=$(run_bounded dotnet "$_CG_APP" before-static-calls)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== constrained static interface calls ==$/ { exit } { print }' <<< "$output")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/before-static-calls" run_bounded dotnet "$_CG_APP" before-static-calls
+    before="$out/before-static-calls.stdout"
+    gate_output select "$out/native.stdout" "$out/prefix.stdout" --before '== constrained static interface calls ==' --policy crlf
+    gate_output compare "$out/prefix.stdout" "$before"
     grep -Fq "'AmbiguousDefaultLib.IBase.Unused()' on interface 'AmbiguousDefaultLib.IBase' with type 'AmbiguousDefault.Both'" \
         "$out"/generated*.cpp \
         || { echo "FAIL: the unused ambiguous slot was not modelled" >&2; exit 1; }

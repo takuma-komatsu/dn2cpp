@@ -37,15 +37,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-dotnet@v4
-        env:
-          DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet-culture-reference
-        with:
-          dotnet-version: "10.0.402"
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      # setup-dotnet also installs latest LTS runtime, defeating the oracle pin.
+      - name: Install isolated exact culture reference SDK
+        run: python gates/setup-culture-reference.py
 
       - name: Install native toolchain
         run: |
@@ -54,12 +52,6 @@ jobs:
           if [ "$SMOKE_PROFILE" = suite ]; then
             sudo apt-get install -y --no-install-recommends ccache unzip
           fi
-
-      - name: Verify CLR and ICU reference versions
-        run: |
-          mkdir -p "$LOGDIR"
-          set -o pipefail
-          bash gates/check-culture-reference.sh 2>&1 | tee "$LOGDIR/culture-reference.log"
 
       # GodotSharpShim needs extension_api.json even when Godot gates are omitted.
       - name: Provision Godot ${{ env.GODOT_VERSION }}
@@ -85,6 +77,8 @@ jobs:
         env:
           DN2CPP_GATE_WATCHDOG_SECS: ${{ matrix.partition == 'limits' && 1200 || '' }}
         run: |
+          export TMPDIR="$RUNNER_TEMP/dn2cpp-gate-output"
+          mkdir -p "$TMPDIR"
           smoke_args=(--profile "$SMOKE_PROFILE")
           if [ "$SMOKE_PROFILE" = primitives ]; then
             smoke_args+=(--partition "${{ matrix.partition }}")
@@ -104,5 +98,41 @@ jobs:
         with:
           name: ${{ matrix.partition == 'suite' && 'gate-logs-linux' || format('gate-logs-linux-{0}', matrix.partition) }}
           path: ${{ env.LOGDIR }}
+          retention-days: 7
+          if-no-files-found: warn
+
+      # Keep byte evidence, not generated sources, build trees or executables.
+      - name: Upload failed gate output evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-output-linux-${{ matrix.partition }}
+          path: |
+            artifacts/**/*.stdout
+            artifacts/**/*.stderr
+            artifacts/**/*.status
+            artifacts/**/*.exit
+            artifacts/**/*.command
+            artifacts/**/native.out
+            artifacts/**/oracle.out
+            artifacts/**/expected.out
+            artifacts/**/dotnet.out
+            artifacts/**/*-native.out
+            artifacts/**/*-dotnet.out
+            artifacts/**/*.raw.out
+            artifacts/**/*.err
+            ${{ runner.temp }}/dn2cpp-gate-output/**/*.stdout
+            ${{ runner.temp }}/dn2cpp-gate-output/**/*.stderr
+            ${{ runner.temp }}/dn2cpp-gate-output/**/*.status
+            ${{ runner.temp }}/dn2cpp-gate-output/**/*.exit
+            ${{ runner.temp }}/dn2cpp-gate-output/**/*.command
+            ${{ runner.temp }}/dn2cpp-gate-output/**/native.out
+            ${{ runner.temp }}/dn2cpp-gate-output/**/oracle.out
+            ${{ runner.temp }}/dn2cpp-gate-output/**/expected.out
+            ${{ runner.temp }}/dn2cpp-gate-output/**/dotnet.out
+            ${{ runner.temp }}/dn2cpp-gate-output/**/*-native.out
+            ${{ runner.temp }}/dn2cpp-gate-output/**/*-dotnet.out
+            ${{ runner.temp }}/dn2cpp-gate-output/**/*.raw.out
+            ${{ runner.temp }}/dn2cpp-gate-output/**/*.err
           retention-days: 7
           if-no-files-found: warn

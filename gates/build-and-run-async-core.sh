@@ -31,7 +31,7 @@ source "$(dirname "$0")/_common.sh"
 
 DN2CPP_GATE_EXTRA_CONTEXT="runs:default+incremental-ref-struct"
 gate_extra_asserts() {
-    local out="$1" incremental incremental_code log="$1/incremental.log"
+    local out="$1" log="$1/incremental.stderr"
     local generated=("$1"/generated*.cpp)
     if ! grep -qF \
             'reinterpret_cast<t_ValueTaskSourceStructSubset_Pair (*)(Dn2CppObject*, int32_t)>' \
@@ -39,12 +39,9 @@ gate_extra_asserts() {
         echo "FAIL: IValueTaskSource<TStruct>.GetResult token is not managed int32 ABI" >&2
         return 1
     fi
-    set +e
-    incremental=$(DN2CPP_GC_INCREMENTAL=1 DN2CPP_GC_STATS=1 \
-        run_bounded "./$out/AsyncCore" 2>"$log"); incremental_code=$?
-    set -e
-    assert_output "$(strip_cr_win "$incremental")" "$(cat gates/expected/async-core.txt)"
-    assert_exit_code "$incremental_code" 0
+    DN2CPP_GC_INCREMENTAL=1 DN2CPP_GC_STATS=1 \
+        gate_capture_ok "$out/incremental" run_bounded "./$out/AsyncCore$EXE_EXT"
+    gate_output compare "$out/incremental.stdout" gates/expected/async-core.txt --policy crlf
     if ! grep -qF '[dn2cpp] GC mode: incremental' "$log"; then
         echo "FAIL: AsyncCore incremental arm did not enter incremental GC mode" >&2
         sed -n '1,40p' "$log" >&2

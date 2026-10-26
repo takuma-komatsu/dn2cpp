@@ -86,21 +86,21 @@ url="http://127.0.0.1:$(cat "$port_file")/probe"
 
 echo "== 7/8 Running the real-.NET oracle and foreign callback path =="
 if [ "$DN2CPP_OS" = windows ]; then
-    oracle=$(run_bounded dotnet "$app" "$url" 2>"$log_dir/oracle.err")
+    gate_capture_ok "$log_dir/oracle" run_bounded dotnet "$app" "$url"
 else
-    oracle=$(run_bounded env "$LIB_PATH_ENV=$app_dir" dotnet "$app" "$url" 2>"$log_dir/oracle.err")
+    gate_capture_ok "$log_dir/oracle" run_bounded env "$LIB_PATH_ENV=$app_dir" dotnet "$app" "$url"
 fi
 
 echo "== 8/8 Running native under incremental GC =="
-native_output=$(run_bounded env DN2CPP_GC_INCREMENTAL=1 DN2CPP_GC_STATS=1 \
-    "$OUT/$PROJECT" "$url" 2>"$log_dir/native.err")
+gate_capture_ok "$log_dir/native" run_bounded env DN2CPP_GC_INCREMENTAL=1 DN2CPP_GC_STATS=1 \
+    "$OUT/$PROJECT$EXE_EXT" "$url"
 wait "$server_pid"
 server_pid=
-expected=$(cat "$EXPECTED")
-assert_output "$(strip_cr_win "$oracle")" "$expected"
-assert_output "$(strip_cr_win "$native_output")" "$expected"
-[ ! -s "$log_dir/oracle.err" ] || { echo "FAIL: oracle wrote to stderr" >&2; cat "$log_dir/oracle.err" >&2; exit 1; }
-grep -qF '[dn2cpp] GC mode: incremental' "$log_dir/native.err" \
-    || { echo "FAIL: runtime stats did not report incremental GC" >&2; cat "$log_dir/native.err" >&2; exit 1; }
+gate_output compare "$log_dir/native.stdout" "$log_dir/oracle.stdout"
+gate_output compare "$log_dir/oracle.stdout" "$EXPECTED" --policy crlf
+gate_output compare "$log_dir/native.stdout" "$EXPECTED" --policy crlf
+[ ! -s "$log_dir/oracle.stderr" ] || { echo "FAIL: oracle wrote to stderr" >&2; cat "$log_dir/oracle.stderr" >&2; exit 1; }
+grep -qF '[dn2cpp] GC mode: incremental' "$log_dir/native.stderr" \
+    || { echo "FAIL: runtime stats did not report incremental GC" >&2; cat "$log_dir/native.stderr" >&2; exit 1; }
 [ ! -s "$log_dir/server.err" ] || { echo "FAIL: server wrote to stderr" >&2; cat "$log_dir/server.err" >&2; exit 1; }
 echo "OK — YetAnotherHttpHandler $YAHA_VERSION linked and delivered its async response under incremental GC."

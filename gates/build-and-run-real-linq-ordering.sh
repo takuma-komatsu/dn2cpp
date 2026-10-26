@@ -56,16 +56,15 @@ gate_extra_asserts() {
     echo "gvm dispatcher type-info names all declared: OK"
 
     local native before prefix
-    native=$(run_bounded "./$out/LinqOrdering$EXE_EXT") || return $?
-    native=$(strip_cr_win "$native")
-    before=$(run_bounded dotnet "$_CG_APP" before-tuple-ordering) || return $?
-    prefix=$(awk '/^== tuple ordering generic boundaries ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    native="$out/native.stdout"
+    before="$out/before-tuple-ordering.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-tuple-ordering || return $?
+    gate_output prefix "$native" "$before" --before '== tuple ordering generic boundaries ==' --policy crlf || return $?
     for line in '== tuple ordering generic boundaries ==' 'pair a/y' 'pair a/z' 'pair b/x' \
             'triple a/z/1' 'triple a/y/3' 'triple b/x/2' \
             'left a/y/1' 'left b/x/2' 'right a/y/1' 'right b/x/2' \
             'tuple ordering generic boundaries end'; do
-        grep -Fxq "$line" <<< "$native" \
+        gate_output byte-witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: tuple ordering witness missing: $line" >&2; return 1; }
     done
     echo "tuple ordering witnesses and unchanged prefix: OK"

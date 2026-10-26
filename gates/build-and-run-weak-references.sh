@@ -121,37 +121,45 @@ incremental=
 incremental_code=
 
 gate_run_diagnostics() {
-    gate_run_diag "WeakReferences STW" "$stw_code" "$stw" "$log_dir/stw.log"
-    gate_run_diag "WeakReferences incremental" "$incremental_code" "$incremental" \
+    gate_run_diag_files "WeakReferences STW" "$stw_code" "$log_dir/stw.stdout" "$log_dir/stw.log"
+    gate_run_diag_files "WeakReferences incremental" "$incremental_code" "$log_dir/incremental.stdout" \
         "$log_dir/incremental.log"
 }
 
-set +e
 _gate_run_argv
-expected=$(run_bounded dotnet "$_CG_APP" \
-    ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}); expected_code=$?
-before=$(DN2CPP_BEFORE_IMMORTAL_WEAK=1 run_bounded dotnet "$_CG_APP" \
-    ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}); before_code=$?
+gate_capture "$log_dir/expected" run_bounded dotnet "$_CG_APP" \
+    ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}
+expected="$log_dir/expected.stdout"
+expected_code=$(cat "$log_dir/expected.status")
+DN2CPP_BEFORE_IMMORTAL_WEAK=1 gate_capture "$log_dir/before" run_bounded dotnet "$_CG_APP" \
+    ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}
+before="$log_dir/before.stdout"
+before_code=$(cat "$log_dir/before.status")
+cp "$log_dir/before.stderr" "$log_dir/before.log"
 _gate_run_argv
-stw=$(DN2CPP_GC_INCREMENTAL=0 DN2CPP_GC_STATS=1 \
-    run_bounded "./$out/$project" \
-    ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"} 2>"$log_dir/stw.log"); stw_code=$?
+DN2CPP_GC_INCREMENTAL=0 DN2CPP_GC_STATS=1 gate_capture "$log_dir/stw" run_bounded "./$out/$project" \
+    ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}
+stw="$log_dir/stw.stdout"
+stw_code=$(cat "$log_dir/stw.status")
+cp "$log_dir/stw.stderr" "$log_dir/stw.log"
 _gate_run_argv
-incremental=$(DN2CPP_GC_INCREMENTAL=1 DN2CPP_GC_STATS=1 \
-    run_bounded "./$out/$project" \
-    ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"} 2>"$log_dir/incremental.log"); incremental_code=$?
-set -e
+DN2CPP_GC_INCREMENTAL=1 DN2CPP_GC_STATS=1 gate_capture "$log_dir/incremental" run_bounded "./$out/$project" \
+    ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}
+incremental="$log_dir/incremental.stdout"
+incremental_code=$(cat "$log_dir/incremental.status")
+cp "$log_dir/incremental.stderr" "$log_dir/incremental.log"
 _gate_scratch_cleanup
 
 assertions_failed=0
-assert_exit_code "$before_code" "$expected_code" || assertions_failed=1
-expected_prefix=$(strip_cr_win "$expected")
-before_prefix=$(strip_cr_win "$before")
-assert_output "${expected_prefix%$'\n'immortal weak targets: True}" "$before_prefix" || assertions_failed=1
-assert_output "$stw" "$expected" || assertions_failed=1
-assert_exit_code "$stw_code" "$expected_code" || assertions_failed=1
-assert_output "$incremental" "$expected" || assertions_failed=1
-assert_exit_code "$incremental_code" "$expected_code" || assertions_failed=1
+gate_output status "$before_code" "$expected_code" || assertions_failed=1
+printf '%s\n' 'immortal weak targets: True' > "$log_dir/immortal-final.expected"
+gate_output suffix "$expected" "$log_dir/immortal-final.expected" --policy crlf || assertions_failed=1
+gate_output select "$expected" "$log_dir/prefix.stdout" --before 'immortal weak targets: True' --policy crlf || assertions_failed=1
+gate_output compare "$log_dir/prefix.stdout" "$before" || assertions_failed=1
+gate_output compare "$stw" "$expected" || assertions_failed=1
+gate_output status "$stw_code" "$expected_code" || assertions_failed=1
+gate_output compare "$incremental" "$expected" || assertions_failed=1
+gate_output status "$incremental_code" "$expected_code" || assertions_failed=1
 if [ "$assertions_failed" -ne 0 ]; then
     gate_run_diag_once
     exit 1
@@ -167,20 +175,20 @@ if ! grep -qF '[dn2cpp] GC mode: incremental' "$log_dir/incremental.log"; then
     sed -n '1,40p' "$log_dir/incremental.log" >&2
     exit 1
 fi
-if [ "$(grep -cF 'incremental write barriers:' <<<"$incremental")" -ne 1 ]; then
+if [ "$(grep -cF 'incremental write barriers:' "$incremental")" -ne 1 ]; then
     echo "FAIL: incremental write-barrier section did not run exactly once" >&2
     exit 1
 fi
-if [ "$(grep -cF 'Array.Resize field stress:' <<<"$incremental")" -ne 1 ]; then
+if [ "$(grep -cF 'Array.Resize field stress:' "$incremental")" -ne 1 ]; then
     echo "FAIL: Array.Resize field-stress section did not run exactly once" >&2
     exit 1
 fi
 for run in "$stw" "$incremental"; do
-    if [ "$(grep -cFx 'immortal weak targets: True' <<<"$(strip_cr_win "$run")")" -ne 1 ]; then
+    if ! gate_output byte-witness "$run" 'immortal weak targets: True' --count 1 --policy crlf; then
         echo "FAIL: immortal weak-target section did not run exactly once" >&2
         exit 1
     fi
-    if [ "$(grep -cF 'conditional weak table after collection:' <<<"$run")" -ne 1 ]; then
+    if [ "$(grep -cF 'conditional weak table after collection:' "$run")" -ne 1 ]; then
         echo "FAIL: ConditionalWeakTable section did not run exactly once" >&2
         exit 1
     fi

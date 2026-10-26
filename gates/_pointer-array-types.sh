@@ -29,14 +29,12 @@ pointer_array_isolated_routes() {
         out="artifacts/reflect-invoke-pointer-array-route-$route"
         mkdir -p "$out"
         reflection_build_once samples/dotnet/ReflectInvoke/PointerArrayTypesOnly.csproj "$out/app" -p:PointerArrayRoute="$route"
-        reflection_oracle "$out/app/PointerArrayTypesOnly.dll" > "$out/clr.raw.stdout"
-        strip_cr_win_file "$out/clr.raw.stdout" > "$out/clr.stdout"
+        gate_capture_ok "$out/clr.raw" reflection_oracle "$out/app/PointerArrayTypesOnly.dll"
         DN2CPP_STRICT_COMPLETION=1 invoke_cli "$out/app/PointerArrayTypesOnly.dll" -r "$(locate_corelib)" \
             --no-ildiet -o "$out" > "$out/emit.log" 2>&1
         compile_console "$out" PointerArrayTypesOnly
-        run_bounded "$out/PointerArrayTypesOnly$EXE_EXT" > "$out/native.raw.stdout"
-        strip_cr_win_file "$out/native.raw.stdout" > "$out/native.stdout"
-        diff -u "$out/clr.stdout" "$out/native.stdout"
+        gate_capture_ok "$out/native.raw" run_bounded "$out/PointerArrayTypesOnly$EXE_EXT"
+        gate_output compare "$out/clr.raw.stdout" "$out/native.raw.stdout"
         if [ "$route" = from ]; then
             witness='signature array composed FromArrayType: True/True'
         elif [ "$route" = create ]; then
@@ -44,7 +42,7 @@ pointer_array_isolated_routes() {
         else
             witness='signature array isolated function jagged: True/True'
         fi
-        test "$(grep -Fxc -- "$witness" "$out/native.stdout")" = 1
+        gate_output witness "$out/native.raw.stdout" "$witness" --count 1 --policy crlf
     done
 }
 
@@ -65,15 +63,13 @@ pointer_array_diff_axes() {
             unshared) flags=(--no-shared-generics) ;;
         esac
         reflection_build_once samples/dotnet/ReflectInvoke/PointerArrayTypesOnly.csproj "$out/app"
-        reflection_oracle "$out/app/PointerArrayTypesOnly.dll" > "$out/clr.raw.stdout"
-        strip_cr_win_file "$out/clr.raw.stdout" > "$out/clr.stdout"
+        gate_capture_ok "$out/clr.raw" reflection_oracle "$out/app/PointerArrayTypesOnly.dll"
         DN2CPP_STRICT_COMPLETION=1 invoke_cli "$out/app/PointerArrayTypesOnly.dll" -r "$(locate_corelib)" \
             --no-ildiet ${flags[@]+"${flags[@]}"} -o "$out" > "$out/emit.log" 2>&1
         compile_console "$out" PointerArrayTypesOnly
-        run_bounded "$out/PointerArrayTypesOnly$EXE_EXT" > "$out/native.raw.stdout"
-        strip_cr_win_file "$out/native.raw.stdout" > "$out/native.stdout"
-        diff -u "$out/clr.stdout" "$out/native.stdout"
-        pointer_array_asserts "$out/native.stdout"
+        gate_capture_ok "$out/native.raw" run_bounded "$out/PointerArrayTypesOnly$EXE_EXT"
+        gate_output compare "$out/clr.raw.stdout" "$out/native.raw.stdout"
+        pointer_array_asserts "$out/native.raw.stdout"
     done
 }
 
@@ -82,18 +78,15 @@ gate_pointer_array_prefix_asserts() {
     for axis in dotnet native; do
         if reflection_full_profile; then
             if [ "$axis" = dotnet ]; then
-                reflection_oracle "$_CG_APP" before-pointer-array-types > "$out/pointer-array-prefix.$axis.raw.stdout"
+                gate_capture_ok "$out/pointer-array-prefix.$axis.raw" reflection_oracle "$_CG_APP" before-pointer-array-types
             else
-                run_bounded "$out/ReflectInvoke$EXE_EXT" before-pointer-array-types > "$out/pointer-array-prefix.$axis.raw.stdout"
+                gate_capture_ok "$out/pointer-array-prefix.$axis.raw" run_bounded "$out/ReflectInvoke$EXE_EXT" before-pointer-array-types
             fi
-            strip_cr_win_file "$out/pointer-array-prefix.$axis.raw.stdout" > "$out/pointer-array-prefix.$axis.stdout"
-            awk '/^== pointer array types ==$/ { exit } { print }' \
-                "$out/virtual-delegate-full.$axis.stdout" > "$out/pointer-array-old.$axis.stdout"
-            diff -u "$out/pointer-array-prefix.$axis.stdout" "$out/pointer-array-old.$axis.stdout"
+            gate_output prefix "$out/virtual-delegate-full.$axis.raw.stdout" "$out/pointer-array-prefix.$axis.raw.stdout" --before '== pointer array types ==' --policy crlf
         fi
-        pointer_array_asserts "$out/virtual-delegate-full.$axis.stdout"
+        pointer_array_asserts "$out/virtual-delegate-full.$axis.raw.stdout"
     done
     if reflection_full_profile; then
-        diff -u "$out/pointer-array-prefix.dotnet.stdout" "$out/pointer-array-prefix.native.stdout"
+        gate_output compare "$out/pointer-array-prefix.dotnet.raw.stdout" "$out/pointer-array-prefix.native.raw.stdout"
     fi
 }

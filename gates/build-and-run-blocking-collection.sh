@@ -22,32 +22,43 @@ DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|blocking-disposal-mess
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|closed-nested-names-prefix-argv:before-closed-nested-names"
 gate_extra_asserts() {
     local out="$1" native before prefix line
-    native=$(run_bounded "./$out/BlockingCollectionSubset")
-    native=$(strip_cr_win "$native")
-    before=$(run_bounded dotnet "$_CG_APP" before-collection-disposal)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== dispose checks ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-native-1" run_bounded "./$out/BlockingCollectionSubset"
+    native="$out/assert-native-1.stdout"
+
+    gate_capture_ok "$out/assert-before-2" run_bounded dotnet "$_CG_APP" before-collection-disposal
+    before="$out/assert-before-2.stdout"
+
+    prefix="$out/assert-prefix-8.stdout"
+
+    gate_output select "$native" "$prefix" --before '== dispose checks ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== dispose checks ==' \
         'dispose checks end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: BlockingCollectionSubset lifecycle witness missing: $line" >&2; exit 1; }
     done
-    before=$(dotnet "$_CG_APP" before-collection-validation)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== argument checks ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-3" run_bounded dotnet "$_CG_APP" before-collection-validation
+    before="$out/assert-before-3.stdout"
+
+    prefix="$out/assert-prefix-9.stdout"
+
+    gate_output select "$native" "$prefix" --before '== argument checks ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== argument checks ==' \
         'argument checks end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: BlockingCollectionSubset validation witness missing: $line" >&2; exit 1; }
     done
-    before=$(run_bounded dotnet "$_CG_APP" before-closed-nested-names)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== closed nested reflection names ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
-    before=$(run_bounded "./$out/BlockingCollectionSubset" before-closed-nested-names)
-    assert_output "$prefix" "$(strip_cr_win "$before")"
+    gate_capture_ok "$out/assert-before-4" run_bounded dotnet "$_CG_APP" before-closed-nested-names
+    before="$out/assert-before-4.stdout"
+
+    prefix="$out/assert-prefix-10.stdout"
+
+    gate_output select "$native" "$prefix" --before '== closed nested reflection names ==' --policy crlf
+    gate_output compare "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-5" run_bounded "./$out/BlockingCollectionSubset" before-closed-nested-names
+    before="$out/assert-before-5.stdout"
+    gate_output compare "$prefix" "$before"
     for line in '== closed nested reflection names ==' \
         'global Name=Program' 'global Namespace=<null>' \
         'plain Namespace=NestedTypeNameProbe' \
@@ -86,19 +97,21 @@ gate_extra_asserts() {
         'plain-rank2-array member module=True' \
         'closed-generic assembly roundtrip=True' 'closed-generic assembly explicit=True' \
         'closed-generic assembly throwing=True' 'closed-generic member module=True'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: closed nested reflection name witness missing: $line" >&2; exit 1; }
     done
     local fixture="$out/message-only" expected actual
     invoke_cli "$message_app" -r "$_CG_CORELIB" -r "$(dirname "$_CG_CORELIB")/System.Collections.Concurrent.dll" -o "$fixture"
     compile_console "$fixture" BlockingDisposalMessage
-    expected=$(run_bounded dotnet "$message_app")
-    actual=$(run_bounded "./$fixture/BlockingDisposalMessage")
-    actual=$(strip_cr_win "$actual")
-    assert_output "$actual" "$(strip_cr_win "$expected")"
+    gate_capture_ok "$out/assert-expected-6" run_bounded dotnet "$message_app"
+    expected="$out/assert-expected-6.stdout"
+    gate_capture_ok "$out/assert-actual-7" run_bounded "./$fixture/BlockingDisposalMessage"
+    actual="$out/assert-actual-7.stdout"
+
+    gate_output compare "$actual" "$expected"
     assert_no_word_match 'message-only fixture bound ObjectDisposedException fields' \
         'tibind_System_ObjectDisposedException' "$fixture"/generated*.cpp || exit 1
-    grep -Fxq -- 'blocking disposal message end' <<< "$actual" \
+    gate_output byte-witness "$actual" 'blocking disposal message end' --count any --policy crlf \
         || { echo "FAIL: blocking disposal message witness missing" >&2; exit 1; }
 }
 

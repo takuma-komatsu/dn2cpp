@@ -118,14 +118,14 @@ source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|resource-receivers-prefix:${DN2CPP_BEFORE_RM_RECEIVERS:-}"
 
 gate_extra_asserts() {
-    local out="$1" before prefix
-    grep -Fxq 'resource manager receivers end' <<< "$(strip_cr_win "$native")" \
-        || { echo 'FAIL: resource manager receiver block did not run' >&2; exit 1; }
-    before=$(export DN2CPP_BEFORE_RM_RECEIVERS=1
-        strip_cr_win "$(run_bounded "$out/ManifestResources$EXE_EXT")")
-    prefix=$(awk '/^== resource manager receivers ==$/ { exit } { print }' \
-        <<< "$(strip_cr_win "$native")")
-    assert_output "$prefix" "$before"
+    local out="$1"
+    gate_output byte-witness "$out/native.stdout" 'resource manager receivers end' --count any --policy crlf
+    DN2CPP_BEFORE_RM_RECEIVERS=1 gate_capture_ok "$out/before-resource-receivers" \
+        run_bounded "$out/ManifestResources$EXE_EXT"
+    gate_output select "$out/native.stdout" "$out/resource-receivers-prefix.stdout" \
+        --before '== resource manager receivers ==' --policy crlf
+    gate_output compare "$out/resource-receivers-prefix.stdout" "$out/before-resource-receivers.stdout"
+
 }
 
 PROJECT=ManifestResources
@@ -153,11 +153,8 @@ if gate_cache_check "$OUT" "manifest-resources|cliargs:${DROP_FLAGS[*]}|$CORELIB
     gate_cache_hit_msg
 else
     compile_console "$OUT" "$PROJECT"
-    set +e
-    native=$("./$OUT/$PROJECT"); native_code=$?
-    set -e
-    assert_output "$(strip_cr_win "$native")" "$(cat "$EXPDIR/manifest-resources-dropped.txt")"
-    assert_exit_code "$native_code" 0
+    gate_capture_ok "$OUT/native" run_bounded "./$OUT/$PROJECT"
+    gate_output compare "$OUT/native.stdout" "$EXPDIR/manifest-resources-dropped.txt" --policy crlf
     gate_cache_commit
 fi
 
@@ -171,11 +168,8 @@ if gate_cache_check "$OUT" "manifest-resources|cliargs:${ROOT_FLAGS[*]}|$CORELIB
     gate_cache_hit_msg
 else
     compile_console "$OUT" "$PROJECT"
-    set +e
-    native=$("./$OUT/$PROJECT"); native_code=$?
-    set -e
-    assert_output "$(strip_cr_win "$native")" "$(cat "$EXPDIR/manifest-resources-rooted.txt")"
-    assert_exit_code "$native_code" 0
+    gate_capture_ok "$OUT/native" run_bounded "./$OUT/$PROJECT"
+    gate_output compare "$OUT/native.stdout" "$EXPDIR/manifest-resources-rooted.txt" --policy crlf
     gate_cache_commit
 fi
 
@@ -209,11 +203,8 @@ else
     fi
     echo "registry OK: the resource-less second drop set no bit"
     compile_console "$OUT" "$PROJECT"
-    set +e
-    native=$("./$OUT/$PROJECT"); native_code=$?
-    set -e
-    assert_output "$(strip_cr_win "$native")" "$(cat "$EXPDIR/manifest-resources-repeat.txt")"
-    assert_exit_code "$native_code" 0
+    gate_capture_ok "$OUT/native" run_bounded "./$OUT/$PROJECT"
+    gate_output compare "$OUT/native.stdout" "$EXPDIR/manifest-resources-repeat.txt" --policy crlf
     gate_cache_commit
 fi
 
@@ -305,11 +296,8 @@ if gate_cache_check "$OUT" "manifest-resources|argv:limits|$CORELIB" \
     gate_cache_hit_msg
 else
     compile_console "$OUT" "$PROJECT"
-    set +e
-    native=$("./$OUT/$PROJECT" limits); native_code=$?
-    set -e
-    assert_output "$(strip_cr_win "$native")" "$(cat "$EXPDIR/manifest-resources-limits.txt")"
-    assert_exit_code "$native_code" 0
+    gate_capture_ok "$OUT/native" run_bounded "./$OUT/$PROJECT" limits
+    gate_output compare "$OUT/native.stdout" "$EXPDIR/manifest-resources-limits.txt" --policy crlf
     gate_cache_commit
 fi
 
@@ -345,12 +333,8 @@ if gate_cache_check "$OUT" "manifest-resources|argv:limits|cliargs:${DROP_APP_FL
     gate_cache_hit_msg
 else
     compile_console "$OUT" "$PROJECT"
-    set +e
-    native=$("./$OUT/$PROJECT" limits); native_code=$?
-    set -e
-    assert_output "$(strip_cr_win "$native")" \
-        "$(cat "$EXPDIR/manifest-resources-limits-dropped.txt")"
-    assert_exit_code "$native_code" 0
+    gate_capture_ok "$OUT/native" run_bounded "./$OUT/$PROJECT" limits
+    gate_output compare "$OUT/native.stdout" "$EXPDIR/manifest-resources-limits-dropped.txt" --policy crlf
     gate_cache_commit
 fi
 
@@ -384,12 +368,8 @@ if gate_cache_check "$OUT" "manifest-resources|project:$PROJECT2|$CORELIB" \
     gate_cache_hit_msg
 else
     compile_console "$OUT" "$PROJECT2"
-    set +e
-    native=$("./$OUT/$PROJECT2"); native_code=$?
-    set -e
-    assert_output "$(strip_cr_win "$native")" \
-        "$(cat "$EXPDIR/manifest-resources-satellite.txt")"
-    assert_exit_code "$native_code" 0
+    gate_capture_ok "$OUT/native" run_bounded "./$OUT/$PROJECT2"
+    gate_output compare "$OUT/native.stdout" "$EXPDIR/manifest-resources-satellite.txt" --policy crlf
     gate_cache_commit
 fi
 
@@ -406,13 +386,10 @@ if gate_cache_check "$kind_out" "resource-kind3|$CORELIB|cli:$(_gate_cli_hash)" 
     gate_cache_hit_msg
 else
     compile_console "$kind_out" RuntimeResourceKind
-    expected=$(run_bounded dotnet "$kind_app")
-    native=$(run_bounded "./$kind_out/RuntimeResourceKind$EXE_EXT")
-    native=$(strip_cr_win "$native")
-    assert_output "$native" "$(strip_cr_win "$expected")"
-    for line in 'resource local kind=Local' 'resource local kind end'; do
-        grep -Fxq -- "$line" <<< "$native" \
-            || { echo "FAIL: resource Local-kind witness missing: $line" >&2; exit 1; }
-    done
+    gate_capture_ok "$kind_out/oracle" run_bounded dotnet "$kind_app"
+    gate_capture_ok "$kind_out/native" run_bounded "./$kind_out/RuntimeResourceKind$EXE_EXT"
+    gate_output compare "$kind_out/native.stdout" "$kind_out/oracle.stdout"
+    gate_output byte-witness "$kind_out/native.stdout" --policy crlf --count any \
+        'resource local kind=Local' 'resource local kind end'
     gate_cache_commit
 fi

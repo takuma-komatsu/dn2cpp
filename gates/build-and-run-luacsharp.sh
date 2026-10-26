@@ -31,19 +31,19 @@ while read -r want name; do
 done < "$pin"
 
 gate_extra_asserts() {
-    local out="$1" symbol line before prefix
+    local out="$1" symbol line
     assert_exit_code "$2" 0
     assert_exit_code "$3" 0
     [ ! -s "$out/expected.err" ] && [ ! -s "$out/native.err" ] \
         || { echo "FAIL: Lua-CSharp must run with empty stderr on both sides" >&2; return 1; }
     for line in 'language end' 'tables and libraries end' 'interop end' \
         'coroutines end' 'modules end' 'errors end' 'LuaCSharp end' 'Lua standard libraries end'; do
-        grep -Fxq -- "$line" "$out/native.out" \
+        gate_output byte-witness "$out/native.out" "$line" --count any --policy crlf \
             || { echo "FAIL: missing Lua-CSharp section witness: $line" >&2; return 1; }
     done
-    before=$(run_bounded dotnet "$_CG_APP" before-standard-libraries)
-    prefix=$(awk '/^== Lua standard libraries ==$/ { exit } { print }' "$out/native.out")
-    assert_output "$(strip_cr_win "$prefix")" "$(strip_cr_win "$before")"
+    gate_capture_ok "$out/before-standard-libraries.dotnet" run_bounded dotnet "$_CG_APP" before-standard-libraries
+    gate_output select "$out/native.out" "$out/standard-libraries-prefix.stdout" --before '== Lua standard libraries ==' --policy crlf
+    gate_output compare "$out/standard-libraries-prefix.stdout" "$out/before-standard-libraries.dotnet.stdout"
     while IFS= read -r symbol; do
         [ -n "$symbol" ] || continue
         grep -qw -- "$symbol" "$out/generated.h" \

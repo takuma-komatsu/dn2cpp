@@ -121,47 +121,32 @@ url="http://127.0.0.1:$port"
 
 echo "== 7/7 Running MagicOnion through YetAnotherHttpHandler under incremental GC =="
 if [ "$DN2CPP_OS" = windows ]; then
-    set +e
-    oracle=$(run_bounded dotnet "$app" "$url" 2>"$log_dir/oracle.err")
-    oracle_code=$?
-    set -e
+    gate_capture "$log_dir/oracle" run_bounded dotnet "$app" "$url"
 else
-    set +e
-    oracle=$(run_bounded env "$LIB_PATH_ENV=$app_dir" dotnet "$app" "$url" \
-        2>"$log_dir/oracle.err")
-    oracle_code=$?
-    set -e
+    gate_capture "$log_dir/oracle" run_bounded env "$LIB_PATH_ENV=$app_dir" dotnet "$app" "$url"
 fi
-set +e
-native=$(run_bounded env DN2CPP_GC_INCREMENTAL=1 DN2CPP_GC_STATS=1 \
-    "$OUT/MagicOnionYahaGate" "$url" 2>"$log_dir/native.err")
-native_code=$?
-set -e
+gate_capture "$log_dir/native" run_bounded env DN2CPP_GC_INCREMENTAL=1 DN2CPP_GC_STATS=1 \
+    "$OUT/MagicOnionYahaGate$EXE_EXT" "$url"
+oracle_code=$(cat "$log_dir/oracle.status")
+native_code=$(cat "$log_dir/native.status")
 if [ "$oracle_code" -ne 0 ] || [ "$native_code" -ne 0 ]; then
-    echo "FAIL: MagicOnion/YAHH oracle=$oracle_code native=$native_code" >&2
-    printf '%s\n' "$oracle" | sed 's/^/oracle stdout: /' >&2
-    printf '%s\n' "$native" | sed 's/^/native stdout: /' >&2
-    sed 's/^/oracle stderr: /' "$log_dir/oracle.err" >&2
-    sed 's/^/native stderr: /' "$log_dir/native.err" >&2
+    gate_run_diag_files 'MagicOnion/YAHH oracle' "$oracle_code" "$log_dir/oracle.stdout" "$log_dir/oracle.stderr"
+    gate_run_diag_files 'MagicOnion/YAHH native' "$native_code" "$log_dir/native.stdout" "$log_dir/native.stderr"
     sed 's/^/server stdout: /' "$log_dir/server.out" >&2
     sed 's/^/server stderr: /' "$log_dir/server.err" >&2
     exit 1
 fi
-expected=$(cat "$EXPECTED")
-assert_output "$(strip_cr_win "$native")" "$(strip_cr_win "$oracle")"
-assert_output "$(strip_cr_win "$native")" "$expected"
-grep -qF 'magiconion first=67890' <<<"$native" \
-    || { echo "FAIL: MagicOnion response did not cross the YAHH HTTP/2 transport" >&2; exit 1; }
-grep -qF 'trailers=67890,2468' <<<"$native" \
-    || { echo "FAIL: gRPC trailers were not consumed through the YAHH response" >&2; exit 1; }
+gate_output compare "$log_dir/native.stdout" "$log_dir/oracle.stdout"
+gate_output compare "$log_dir/native.stdout" "$EXPECTED" --policy crlf
+gate_output byte-witness "$log_dir/native.stdout" 'magiconion first=67890' 'trailers=67890,2468' --policy crlf
 [ "$(grep -c '^REQUEST ' "$log_dir/server.out")" -eq 4 ] \
     || { echo "FAIL: the h2c server did not receive all four requests" >&2; cat "$log_dir/server.out" >&2; exit 1; }
 grep -qF 'REQUEST 4' "$log_dir/server.out" \
     || { echo "FAIL: the final native request did not enter the h2c route" >&2; cat "$log_dir/server.out" >&2; exit 1; }
-[ ! -s "$log_dir/oracle.err" ] \
-    || { echo "FAIL: MagicOnion/YAHH oracle wrote to stderr" >&2; cat "$log_dir/oracle.err" >&2; exit 1; }
-grep -qF '[dn2cpp] GC mode: incremental' "$log_dir/native.err" \
-    || { echo "FAIL: combined native client did not report incremental GC" >&2; cat "$log_dir/native.err" >&2; exit 1; }
+[ ! -s "$log_dir/oracle.stderr" ] \
+    || { echo "FAIL: MagicOnion/YAHH oracle wrote to stderr" >&2; cat "$log_dir/oracle.stderr" >&2; exit 1; }
+grep -qF '[dn2cpp] GC mode: incremental' "$log_dir/native.stderr" \
+    || { echo "FAIL: combined native client did not report incremental GC" >&2; cat "$log_dir/native.stderr" >&2; exit 1; }
 [ ! -s "$log_dir/server.err" ] \
     || { echo "FAIL: MagicOnion/YAHH server wrote to stderr" >&2; cat "$log_dir/server.err" >&2; exit 1; }
 kill "$server_pid" >/dev/null 2>&1 || true

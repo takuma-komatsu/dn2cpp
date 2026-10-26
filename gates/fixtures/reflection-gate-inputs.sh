@@ -2,8 +2,11 @@
 # Reuse preserves compile-time variants, rewritten copies and failing CLR exits.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
+_DN2CPP_GATE_ROOT="$PWD"
 py="$1"
 CONFIG=Fixture
+# This SDK-free adapter fixture explicitly selects the ordinary Linux policy.
+DN2CPP_OS=linux
 TFM=net10.0
 EXE_EXT=.exe
 _gate_exit_hooks=()
@@ -22,8 +25,7 @@ mkdir -p "$fixture"
 : > "$fixture/builds"
 : > "$fixture/oracles"
 printf 'row\r\nrow\r\n' > "$fixture/crlf.stdout"
-count=$(grep -Fxc row "$fixture/crlf.stdout") || test "$count" = 0
-reflection_assert_lines "$fixture/crlf.stdout" "$count" row
+reflection_assert_lines "$fixture/crlf.stdout" 2 row
 dotnet() {
     if [ "$1" = build ]; then
         local destination= arg project="$2"
@@ -84,15 +86,18 @@ if reflection_oracle "$fixture/third/Driver.dll" > /dev/null; then
     exit 1
 fi
 unset -f cat
-gate_capture_diff_output "$fixture" Driver 'native observation' 'CLR observation'
+printf 'native observation\r\n\n\0' > "$fixture/native.raw"
+printf 'CLR observation\r\n\n\0' > "$fixture/oracle.raw"
+gate_capture_diff_files "$fixture" Driver "$fixture/native.raw" "$fixture/oracle.raw"
 reflection_native_full "$fixture" Driver > "$fixture/full.stdout"
-grep -Fxq 'native observation' "$fixture/full.stdout"
+cmp "$fixture/native.raw" "$fixture/full.stdout"
 reflection_native_full "$fixture" Other > "$fixture/other.stdout"
 grep -Fxq 'fixture native fallback' "$fixture/other.stdout"
-gate_capture_diff_output "$fixture" Driver 'selected native' 'selected CLR' before-fixture
+gate_capture_diff_files "$fixture" Driver "$fixture/native.raw" "$fixture/oracle.raw" before-fixture
 reflection_native_full "$fixture" Driver > "$fixture/argument-run.stdout"
 grep -Fxq 'fixture native fallback' "$fixture/argument-run.stdout"
-eval "$(sed -n '/^corelib_diff_gate() {/,/^}/p' gates/_common.sh)"
+eval "$(sed -n '/^corelib_diff_gate() {/,/^}/p; /^_corelib_diff_gate() {/,/^}/p; /^gate_capture() {/,/^}/p; /^gate_output() {/,/^}/p' gates/_common.sh)"
+resolve_python() { printf '%s\n' "$py"; }
 _corelib_gate_out() { printf '%s\n' "$fixture/corelib"; }
 _corelib_gate_core() { mkdir -p "$2"; _CG_APP="$fixture/third/Driver.dll"; _CG_CORELIB=Fixture; }
 _corelib_gate_check() { return 1; }
@@ -112,7 +117,7 @@ grep -Fxq 'fixture oracle full' "$fixture/corelib/gate.native.stdout"
 grep -Fxq 'fixture oracle full' "$fixture/corelib/gate.dotnet.stdout"
 DN2CPP_ORACLE_DOTNET_ENABLE_AVX=0 corelib_diff_gate Driver > /dev/null
 test "$(wc -l < "$fixture/oracles" | tr -d ' ')" = 4
-unset -f gate_run_oracle gate_capture_diff_output
+unset -f gate_run_oracle gate_capture_diff_files
 corelib_diff_gate Driver > /dev/null
 test "$(wc -l < "$fixture/oracles" | tr -d ' ')" = 5
 echo 'reflection input reuse OK'

@@ -73,12 +73,16 @@ source "$(dirname "$0")/_common.sh"
 export DN2CPP_RUN_WATCHDOG_SECS=60
 gate_extra_asserts() {
     local out="$1" native before prefix line
-    native=$(run_bounded "./$out/ThreadPoolQueue")
-    native=$(strip_cr_win "$native")
-    before=$(dotnet "$_CG_APP" before-argument-fields)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== ThreadPool callback fields ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-native-1" run_bounded "./$out/ThreadPoolQueue"
+    native="$out/assert-native-1.stdout"
+
+    gate_capture_ok "$out/assert-before-2" run_bounded dotnet "$_CG_APP" before-argument-fields
+    before="$out/assert-before-2.stdout"
+
+    prefix="$out/assert-prefix-3.stdout"
+
+    gate_output select "$native" "$prefix" --before '== ThreadPool callback fields ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== ThreadPool callback fields ==' \
         'pool plain param=callBack' \
         'pool generic param=callBack' \
@@ -86,7 +90,7 @@ gate_extra_asserts() {
         'pool item param=callBack' \
         'pool fields GC type=ArgumentNullException' \
         'ThreadPool callback fields end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: ThreadPoolQueue validation witness missing: $line" >&2; exit 1; }
     done
 }

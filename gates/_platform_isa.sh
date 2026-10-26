@@ -116,9 +116,14 @@ platform_isa_exercise_body_markers() {
     fi
 }
 
-# platform_isa_contract_block TEXT — the `== contract ==` lines of a probe run.
+# ISA parsers consume once-normalized FILES, never shell text or text-mode tools.
+platform_isa_output() {
+    local python
+    python=$(resolve_python) || return 1
+    $python "$_DN2CPP_GATE_ROOT/gates/platform-isa-output.py" "$@"
+}
 platform_isa_contract_block() {
-    awk '/^== contract ==$/ { c = 1; next } /^== / { c = 0 } c' <<<"$1"
+    platform_isa_output contract "$1"
 }
 
 # platform_isa_invalid_immediate_rows ARCH — family rows with a generated
@@ -143,49 +148,18 @@ platform_isa_invalid_immediate_registry() {
         | sed -nE 's/^[[:space:]]*exercises\.Add\("((X86|Arm|Wasm)\.[^"]+)", \(\) =>$/\1/p'
 }
 
-# platform_isa_invalid_immediate_violations TEXT — one diagnostic per boundary
-# result that disagrees with its token. Helpers require the token before their
-# immediate dispatch: true therefore throws AOOE, false PNSE.
+# One diagnostic per invalid boundary; empty output means the file is valid.
 platform_isa_invalid_immediate_violations() {
-    awk '
-        /^== contract ==$/ { contract = 1; next }
-        /^== / { contract = 0 }
-        contract && /^[A-Za-z0-9.]+=(True|False)$/ {
-            row = $0; sub(/=.*/, "", row)
-            value = $0; sub(/.*=/, "", value)
-            supported[row] = value
-            next
-        }
-        /^== invalid [A-Za-z0-9.]+ ==$/ {
-            row = $0; sub(/^== invalid /, "", row); sub(/ ==$/, "", row)
-            sections++
-            if (++seen[row] != 1) print "duplicate invalid-immediate section: " row
-            if (!(row in supported)) print "invalid-immediate section has no contract row: " row
-            if ((getline result) <= 0) {
-                print "invalid-immediate section has no result: " row
-                next
-            }
-            got = result; sub(/^.*=/, "", got)
-            want = supported[row] == "True" \
-                ? "ArgumentOutOfRangeException" : "PlatformNotSupportedException"
-            if (got != want) print row ": expected " want ", got " got
-        }
-        END { if (sections == 0) print "no invalid-immediate sections" }
-    ' <<<"$1"
+    platform_isa_output violations "$1"
 }
 
 _platform_isa_witness_signature() {
-    local text="$1" block true_count false_count nested_count
-    block=$(platform_isa_contract_block "$text")
+    local file="$1" block true_count false_count nested_count
+    block=$(platform_isa_contract_block "$file") || return 1
     true_count=$(grep -c '^X86.X86Base=True$' <<<"$block" || true)
     false_count=$(grep -c '^X86.Avx=False$' <<<"$block" || true)
-    nested_count=$(awk '
-        $0 == "== X86.Avx10v2.V512 ==" {
-            getline
-            if ($0 == "probe=PlatformNotSupportedException") found++
-        }
-        END { print found + 0 }
-    ' <<<"$text")
+    nested_count=$(platform_isa_output adjacent-count "$file" \
+        '== X86.Avx10v2.V512 ==' 'probe=PlatformNotSupportedException') || return 1
     printf '%s\ntrue=%s\nfalse=%s\nnested=%s\n' \
         "$block" "$true_count" "$false_count" "$nested_count"
 }
@@ -194,10 +168,15 @@ _platform_isa_witness_normalization_self_check() {
     local lf crlf lf_normalized crlf_normalized lf_signature crlf_signature
     lf=$'prefix\n== contract ==\nX86.X86Base=True\nX86.Avx=False\n== X86.Avx10v2.V512 ==\nprobe=PlatformNotSupportedException\n'
     crlf=${lf//$'\n'/$'\r\n'}
-    lf_normalized=$(tr -d '\r' <<<"$lf")
-    crlf_normalized=$(tr -d '\r' <<<"$crlf")
-    lf_signature=$(_platform_isa_witness_signature "$lf_normalized")
-    crlf_signature=$(_platform_isa_witness_signature "$crlf_normalized")
+    local directory
+    directory=$(mktemp -d "${TMPDIR:-/tmp}/dn2cpp-isa-witness.XXXXXX") || return 1
+    printf '%s' "$lf" > "$directory/lf.raw"
+    printf '%s' "$crlf" > "$directory/crlf.raw"
+    gate_output view "$directory/lf.raw" "$directory/lf.view" --policy crlf || { rm -rf "$directory"; return 1; }
+    gate_output view "$directory/crlf.raw" "$directory/crlf.view" --policy crlf || { rm -rf "$directory"; return 1; }
+    lf_signature=$(_platform_isa_witness_signature "$directory/lf.view") || { rm -rf "$directory"; return 1; }
+    crlf_signature=$(_platform_isa_witness_signature "$directory/crlf.view") || { rm -rf "$directory"; return 1; }
+    rm -rf "$directory"
     if [ "$lf_signature" != "$crlf_signature" ] \
             || [ "$(grep -c '^true=1$' <<<"$lf_signature" || true)" -ne 1 ] \
             || [ "$(grep -c '^false=1$' <<<"$lf_signature" || true)" -ne 1 ] \
@@ -383,6 +362,14 @@ _platform_isa_native_plan_self_check() {
 # _platform_isa_run_native_shard LABEL SHARD ENV ATTEMPT_PREFIX OUT ERR CMD...
 # runs one generated native shard and sets _PI_SHARD_CODE. Each attempt keeps
 # its own account; only the accepted attempt reaches the aggregate OUT and ERR.
+_platform_isa_run_with_env() {
+    local environment="$1"; shift
+    # These callers supply a whitespace-separated list of environment bindings.
+    # shellcheck disable=SC2086
+    [ -z "$environment" ] || export $environment
+    run_bounded "$@"
+}
+
 _platform_isa_run_native_shard() {
     local label="$1" shard="$2" ours_env="$3" attempt_prefix="$4"
     local accepted_stdout="$5" accepted_stderr="$6"
@@ -392,13 +379,10 @@ _platform_isa_run_native_shard() {
     for attempt in 1 2 3; do
         attempt_stdout="$attempt_prefix.attempt$attempt.out"
         attempt_stderr="$attempt_prefix.attempt$attempt.log"
-        # shellcheck disable=SC2086
-        if (if [ -n "$ours_env" ]; then export $ours_env; fi
-            run_bounded "$@") >"$attempt_stdout" 2>"$attempt_stderr"; then
-            _PI_SHARD_CODE=0
-        else
-            _PI_SHARD_CODE=$?
-        fi
+        gate_capture "$attempt_prefix.attempt$attempt" _platform_isa_run_with_env "$ours_env" "$@" || return 1
+        _PI_SHARD_CODE=$(cat "$attempt_prefix.attempt$attempt.status")
+        cp "$attempt_prefix.attempt$attempt.stdout" "$attempt_stdout"
+        cp "$attempt_prefix.attempt$attempt.stderr" "$attempt_stderr"
 
         # Windows can sporadically fail to create the process without reaching
         # the binary. Keep every attempt account, but accept only one stdout.
@@ -564,7 +548,10 @@ _platform_isa_run_arch() {
 
     local p_shard="" p_plan p_true_here p_false_here
     for ((i = 0; i < ${#shard_names[@]}; i++)); do
-        p_plan=$(dotnet "${shard_apps[$i]}" --dump-plan) || exit 1
+        gate_capture_ok "${shard_outs[$i]}/partial-plan" run_bounded dotnet "${shard_apps[$i]}" --dump-plan || exit 1
+        gate_output view "${shard_outs[$i]}/partial-plan.stdout" "${shard_outs[$i]}/partial-plan.lf" --policy crlf || exit 1
+        platform_isa_output validate "${shard_outs[$i]}/partial-plan.lf" || exit 1
+        p_plan=$(cat "${shard_outs[$i]}/partial-plan.lf")
         p_true_here=$(grep -Fxc "row=$PLATFORM_ISA_P_TRUE" <<<"$p_plan" || true)
         p_false_here=$(grep -Fxc "row=$PLATFORM_ISA_P_FALSE" <<<"$p_plan" || true)
         if [ "$p_true_here" -ne 0 ] || [ "$p_false_here" -ne 0 ]; then
@@ -663,12 +650,11 @@ _platform_isa_run_arch() {
                 "$log_dir/$label.$shard" "$ours_out" "$_PI_LOG" \
                 "./$out/$PLATFORM_ISA_PROJECT" "${run_args[@]}"
             chunk_code=$_PI_SHARD_CODE
-            set +e
-            # shellcheck disable=SC2086
-            (if [ -n "$oracle_env" ]; then export $oracle_env; fi
-             run_bounded dotnet "$app" "${run_args[@]}") \
-                >>"$expected_out" 2>>"$oracle_log"; expected_chunk_code=$?
-            set -e
+            gate_capture "$log_dir/$label.$shard.oracle" _platform_isa_run_with_env "$oracle_env" \
+                dotnet "$app" "${run_args[@]}" || return 1
+            expected_chunk_code=$(cat "$log_dir/$label.$shard.oracle.status")
+            cat "$log_dir/$label.$shard.oracle.stdout" >> "$expected_out"
+            cat "$log_dir/$label.$shard.oracle.stderr" >> "$oracle_log"
             [ "$ours_code" -ne 0 ] || ours_code=$chunk_code
             [ "$expected_code" -ne 0 ] || expected_code=$expected_chunk_code
             if [ "$chunk_code" -ne 0 ] || [ "$expected_chunk_code" -ne 0 ]; then
@@ -692,15 +678,19 @@ _platform_isa_run_arch() {
             diff -u "$expected_out" "$ours_out" >&2 || true
             failed=1
         fi
-        assert_exit_code "$ours_code" "$expected_code" || failed=1
+        printf '%s\n' "$ours_code" > "$ours_out.status"
+        printf '%s\n' "$expected_code" > "$expected_out.status"
+        gate_output status "$ours_code" "$expected_code" || failed=1
         if [ "$failed" -ne 0 ]; then
             echo "FAIL: run $label of the $isa contract diverged from real .NET" >&2
             gate_run_diag_once
             exit 1
         fi
-        # The raw files above enforce byte parity. This copy is text-only witness
-        # input, so remove Windows CR without weakening that exact comparison.
-        _PI_OURS=$(tr -d '\r' < "$ours_out")
+        # Legacy witness parsers consume a single explicit semantic view.
+        gate_output view "$ours_out" "$ours_out.lf" --policy crlf
+        _PI_OURS_FILE="$ours_out.lf"
+        platform_isa_output validate "$_PI_OURS_FILE" || return 1
+        _PI_OURS=$(cat "$_PI_OURS_FILE")
     }
 
     # _pi_run_native LABEL ARGV ENV — dn2cpp-only boundary mode. Managed JITs
@@ -731,13 +721,17 @@ _platform_isa_run_arch() {
         _PI_RUN_LOGS+=("$_PI_LOG")
         _PI_RUN_ORACLE_LOGS+=("")
         echo "-- run $label: argv=$argv shards=${#shard_names[@]} --invalid-immediates ours=[${ours_env:-<no ISA env>}]"
-        if [ "$ours_code" -ne 0 ]; then
+        printf '%s\n' "$ours_code" > "$ours_out.status"
+        if ! gate_output status "$ours_code" 0; then
             echo "FAIL: run $label of the $isa invalid-immediate contract exited $ours_code" >&2
             gate_run_diag_once
             exit 1
         fi
         cat "$ours_out"
-        _PI_OURS=$(tr -d '\r' < "$ours_out")
+        gate_output view "$ours_out" "$ours_out.lf" --policy crlf
+        _PI_OURS_FILE="$ours_out.lf"
+        platform_isa_output validate "$_PI_OURS_FILE" || return 1
+        _PI_OURS=$(cat "$_PI_OURS_FILE")
     }
 
     # _pi_require_count LABEL WANT ACTUAL WHAT
@@ -752,7 +746,7 @@ _platform_isa_run_arch() {
     local block n
     if [ "$native_host" -eq 0 ]; then
         _pi_run F "$all_csv" "" ""
-        block=$(platform_isa_contract_block "$_PI_OURS")
+        block=$(platform_isa_contract_block "$_PI_OURS_FILE") || exit 1
         n=$(grep -c '=True$' <<<"$block" || true)
         _pi_require_count F 0 "$n" "'=True' rows on a non-$isa host"
     fi
@@ -766,7 +760,7 @@ _platform_isa_run_arch() {
                 ;;
         esac
         if [ "$arch" = x86 ]; then
-            block=$(platform_isa_contract_block "$_PI_OURS")
+            block=$(platform_isa_contract_block "$_PI_OURS_FILE") || exit 1
             n=$(grep -Ec '^X86\.(Avx10v2(\.(V512(\.X64)?|X64))?|AvxVnniInt(8|16)\.V512)=False$' <<<"$block" || true)
             _pi_require_count S 6 "$n" "AVX10.2 policy rows reported False without DN2CPP_ENABLE_AVX10V2=1"
         fi
@@ -775,7 +769,7 @@ _platform_isa_run_arch() {
         # trigger that enablement. Keep every family that needs that state false,
         # even on an Intel Mac whose CPUID advertises it.
         if [ "$arch" = x86 ] && [ "$(uname -s)" = Darwin ]; then
-            block=$(platform_isa_contract_block "$_PI_OURS")
+            block=$(platform_isa_contract_block "$_PI_OURS_FILE") || exit 1
             n=$(grep -Ec '^X86\.(Avx512.*|Avx10.*|Pclmulqdq\.V512|Gfni\.V512|AvxVnniInt(8|16)\.V512)=True$' <<<"$block" || true)
             _pi_require_count S 0 "$n" "AVX-512-state rows reported True on macOS"
         fi
@@ -788,21 +782,19 @@ _platform_isa_run_arch() {
         [ "$avx10v2_compiler" -eq 1 ] && oracle_optin="DOTNET_EnableAVX10v2=1"
         _pi_run O "$optin_rows" "DN2CPP_ENABLE_AVX10V2=1" "$oracle_optin"
         if [ "$avx10v2_compiler" -eq 0 ]; then
-            block=$(platform_isa_contract_block "$_PI_OURS")
+            block=$(platform_isa_contract_block "$_PI_OURS_FILE") || exit 1
             n=$(grep -Ec '^X86\.(Avx10v2(\.(V512(\.X64)?|X64))?|AvxVnniInt(8|16)\.V512)=False$' <<<"$block" || true)
             _pi_require_count O 6 "$n" "AVX10.2 rows kept False by the compiler capability"
             for nested in X86.Avx10v2.V512 X86.AvxVnniInt8.V512 X86.AvxVnniInt16.V512; do
-                n=$(awk -v header="== $nested ==" '
-                    $0 == header { getline; if ($0 == "probe=PlatformNotSupportedException") found++ }
-                    END { print found + 0 }
-                ' <<<"$_PI_OURS")
+                n=$(platform_isa_output adjacent-count "$_PI_OURS_FILE" \
+                    "== $nested ==" 'probe=PlatformNotSupportedException') || exit 1
                 _pi_require_count O 1 "$n" "'$nested' compiler-unavailable stub reached PlatformNotSupportedException"
             done
         fi
     fi
 
     _pi_run M "$all_csv" "DN2CPP_CPU_FEATURES=none DN2CPP_CPU_FEATURES_DIAG=1" "DOTNET_EnableHWIntrinsic=0"
-    block=$(platform_isa_contract_block "$_PI_OURS")
+    block=$(platform_isa_contract_block "$_PI_OURS_FILE") || exit 1
     n=$(grep -c '=True$' <<<"$block" || true)
     _pi_require_count M 0 "$n" "'=True' rows under DN2CPP_CPU_FEATURES=none"
     n=$(grep -c 'effective=(none)' "$_PI_LOG" || true)
@@ -831,7 +823,7 @@ _platform_isa_run_arch() {
     _pi_run_native N "$all_csv" ""
     n=$(grep -c '^== invalid [A-Za-z0-9.]* ==$' <<<"$_PI_OURS" || true)
     _pi_require_count N "$invalid_count" "$n" "generated invalid-immediate sections"
-    violations=$(platform_isa_invalid_immediate_violations "$_PI_OURS")
+    violations=$(platform_isa_invalid_immediate_violations "$_PI_OURS_FILE") || exit 1
     if [ -n "$violations" ]; then
         echo "FAIL: run N invalid-immediate token/exception contract:" >&2
         printf '%s\n' "$violations" >&2
@@ -842,14 +834,14 @@ _platform_isa_run_arch() {
     _pi_run_native NM "$all_csv" "DN2CPP_CPU_FEATURES=none"
     n=$(grep -c '^== invalid [A-Za-z0-9.]* ==$' <<<"$_PI_OURS" || true)
     _pi_require_count NM "$invalid_count" "$n" "generated invalid-immediate sections"
-    block=$(platform_isa_contract_block "$_PI_OURS")
+    block=$(platform_isa_contract_block "$_PI_OURS_FILE") || exit 1
     n=$(grep -c '=True$' <<<"$block" || true)
     _pi_require_count NM 0 "$n" "'=True' rows under DN2CPP_CPU_FEATURES=none"
     n=$(grep -c '=ArgumentOutOfRangeException$' <<<"$_PI_OURS" || true)
     _pi_require_count NM 0 "$n" "AOOE results while every token is false"
     n=$(grep -c '=PlatformNotSupportedException$' <<<"$_PI_OURS" || true)
     _pi_require_count NM "$invalid_count" "$n" "PNSE results before immediate dispatch"
-    violations=$(platform_isa_invalid_immediate_violations "$_PI_OURS")
+    violations=$(platform_isa_invalid_immediate_violations "$_PI_OURS_FILE") || exit 1
     if [ -n "$violations" ]; then
         echo "FAIL: run NM invalid-immediate token/exception contract:" >&2
         printf '%s\n' "$violations" >&2
@@ -938,10 +930,11 @@ platform_isa_native_gate() {
         surface=$(_gate_surface_lines "$out") || return 1
         shard_surfaces="$shard_surfaces$shard:$(printf '%s\n' "$surface" | shasum -a 256 | awk '{print $1}')|"
         [ -n "$first_out" ] || first_out="$out"
-        plan=$(dotnet "$app" --dump-plan) || return 1
-        plan_rows=$(sed -n 's/^row=//p' <<<"$plan" | LC_ALL=C sort)
-        plan_exercises=$(sed -n 's/^exercise=//p' <<<"$plan" | LC_ALL=C sort)
-        plan_invalid=$(sed -n 's/^invalid=//p' <<<"$plan" | LC_ALL=C sort)
+        gate_capture_ok "$out/coverage-plan" run_bounded dotnet "$app" --dump-plan || return 1
+        gate_output view "$out/coverage-plan.stdout" "$out/coverage-plan.lf" --policy crlf || return 1
+        plan_rows=$(platform_isa_output plan-values "$out/coverage-plan.lf" row) || return 1
+        plan_exercises=$(platform_isa_output plan-values "$out/coverage-plan.lf" exercise) || return 1
+        plan_invalid=$(platform_isa_output plan-values "$out/coverage-plan.lf" invalid) || return 1
         misplaced=$(comm -23 <(printf '%s\n' "$plan_exercises") <(printf '%s\n' "$plan_rows"))
         [ -z "$misplaced" ] \
             || { echo "FAIL: $shard registers exercises outside its table: $misplaced" >&2; return 1; }

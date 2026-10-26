@@ -70,22 +70,14 @@ quiesce OK
 dlclose OK
 driver OK
 delegate_latch=1'
-# Capture the exit status explicitly: `$(...)` inline would swallow it, and a
-# driver that aborts in dlclose teardown AFTER printing everything (the exact
-# failure mode this gate exists to catch) would pass the diff silently.
-set +e
-driver_out=$("$OUT/driver" "$DYLIB"); driver_code=$?
-set -e
-assert_output "$driver_out" "$EXPECTED"
-assert_exit_code "$driver_code" 0
+# Teardown aborts after the complete output must not pass the fixture comparison.
+gate_capture_ok "$OUT/driver-run" run_bounded "$OUT/driver$EXE_EXT" "$DYLIB"
+gate_assert_text "$OUT/driver-run.stdout" "$EXPECTED"
 
 EXIT_EXPECTED='init=0
 waitany_worker=1
 exit_worker_live OK'
-set +e
 # Bounded: a teardown that deadlocks instead of aborting must fail, not hang.
-exit_out=$(run_bounded "$OUT/driver" "$DYLIB" --exit-with-waitany); exit_code=$?
-set -e
-assert_output "$exit_out" "$EXIT_EXPECTED"
-assert_exit_code "$exit_code" 0
+gate_capture_ok "$OUT/driver-exit" run_bounded "$OUT/driver$EXE_EXT" "$DYLIB" --exit-with-waitany
+gate_assert_text "$OUT/driver-exit.stdout" "$EXIT_EXPECTED"
 gate_cache_commit

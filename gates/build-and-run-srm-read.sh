@@ -42,7 +42,8 @@ export DN2CPP_GATE_EXTRA_INPUTS="$fixture $mapped_fixture"
 
 gate_extra_asserts() {
     local output
-    output="$(strip_cr_win "$native")"
+    gate_output view "$1/native.stdout" "$1/srm-witnesses.lf" --policy crlf
+    output="$(cat "$1/srm-witnesses.lf")"
     case "$output" in
         *$'\nC(filestream) typeDefs='*$'\n  streamClosed=True\nD(mapped-filestream) typeDefs='*$'\n  streamClosed=True\nfile stream readers complete') ;;
         *) echo "FAIL: SRM FileStream read, mapping, and disposal blocks did not complete" >&2; return 1 ;;

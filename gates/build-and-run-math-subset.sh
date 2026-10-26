@@ -45,7 +45,8 @@
 # in the BCL, asserted bit-exactly; the platform-defined estimates and *Native
 # variants keep tolerance/special-case anchors — and constrained-generic
 # T.Abs/T.Sin/... dispatch with T = Half through the static-abstract
-# interfaces).
+# interfaces), plus unchecked integer/FNV wrapping through narrowed char and byte
+# inputs, native-width multiplication, checked overflow and floating-point isolation.
 # One section file per area in samples/dotnet/MathSubset, driven in order by
 # Program.cs.
 # Driven by the real System.Private.CoreLib (passed with -r) -> cross-assembly
@@ -57,28 +58,67 @@ source "$(dirname "$0")/_common.sh"
 # Direct integer DivRem calls cover every scalar width, zero divisors and signed minima.
 gate_extra_asserts() {
     local out="$1" native before prefix line
-    native=$(run_bounded "./$out/MathSubset")
-    native=$(strip_cr_win "$native")
-    before=$(dotnet "$_CG_APP" before-default-comparison)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== default comparison validation ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-native-1" run_bounded "./$out/MathSubset"
+    native="$out/assert-native-1.stdout"
+
+    gate_capture_ok "$out/assert-before-2" run_bounded dotnet "$_CG_APP" before-default-comparison
+    before="$out/assert-before-2.stdout"
+
+    prefix="$out/assert-prefix-4.stdout"
+
+    gate_output select "$native" "$prefix" --before '== default comparison validation ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== default comparison validation ==' \
         '== generic clamp bounds ==' \
         'Int128='"'"'5'"'"' cannot be greater than 2.' \
         'default comparison validation end'; do
-        grep -Fxq "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: MathSubset comparison coverage missing: $line" >&2; exit 1; }
     done
-    before=$(dotnet "$_CG_APP" before-scalar-divrem)
-    prefix=$(awk '/^== scalar DivRem ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
+    gate_capture_ok "$out/assert-before-3" run_bounded dotnet "$_CG_APP" before-scalar-divrem
+    before="$out/assert-before-3.stdout"
+    prefix="$out/assert-prefix-5.stdout"
+    gate_output select "$native" "$prefix" --before '== scalar DivRem ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== scalar DivRem ==' 'int:17:5=3:2' \
         'long:-9223372036854775808:-1=OverflowException' \
         'nuint:17:0=DivideByZeroException' 'scalar DivRem end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: scalar DivRem coverage missing: $line" >&2; exit 1; }
     done
+    gate_capture_ok "$out/assert-before-unchecked" run_bounded dotnet "$_CG_APP" before-unchecked-arithmetic
+    before="$out/assert-before-unchecked.stdout"
+    prefix="$out/assert-unchecked-prefix.stdout"
+    gate_output select "$native" "$prefix" --before '== unchecked integer arithmetic ==' --policy crlf
+    gate_output compare "$prefix" "$before"
+    for line in '== unchecked integer arithmetic ==' \
+        'i4 add=-2147483648' 'i4 sub=2147483647' 'i4 mul=2147483645' \
+        'u4 hash mul=84696351' 'i8 add=-9223372036854775808' \
+        'i8 sub=9223372036854775807' 'i8 mul=9223372036854775805' \
+        'u8 mul=18446744073709551613' 'unchecked integer arithmetic end'; do
+        gate_output witness "$native" "$line" --count any --policy crlf \
+            || { echo "FAIL: unchecked arithmetic coverage missing: $line" >&2; exit 1; }
+    done
+    gate_capture_ok "$out/assert-before-hash" run_bounded dotnet "$_CG_APP" before-integer-hash-wrapping
+    before="$out/assert-before-hash.stdout"
+    prefix="$out/assert-hash-prefix.stdout"
+    gate_output select "$native" "$prefix" --before '== integer hash wrapping ==' --policy crlf
+    gate_output compare "$prefix" "$before"
+    for line in '== integer hash wrapping ==' \
+        'char hash empty=811c9dc5' 'char hash shape=5174e87e' 'char hash nul=b909fe5a' \
+        'char hash wide=f9f5964d' 'byte hash=84657fcd' \
+        'i4 min neg=-2147483648' 'i8 min neg=-9223372036854775808' \
+        'u4 max squared=1' 'u8 max squared=1' \
+        'native min neg=True' 'native mixed wrap=True' 'unative wrap=True' \
+        'r4 multiply=True' 'r8 multiply=True' 'r4 infinity=True' 'r8 nan=True' \
+        'checked i4=OverflowException' 'checked u4=OverflowException' \
+        'checked i8=OverflowException' 'checked u8=OverflowException' \
+        'checked native=OverflowException' 'checked unative=OverflowException' \
+        'checked nonoverflow=True' 'integer hash wrapping end'; do
+        gate_output witness "$native" "$line" --count any --policy crlf \
+            || { echo "FAIL: integer hash wrapping coverage missing: $line" >&2; exit 1; }
+    done
+
 }
 
 corelib_diff_gate MathSubset

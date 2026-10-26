@@ -56,17 +56,19 @@ incremental=
 incremental_code=
 
 gate_run_diagnostics() {
-    gate_run_diag "write-barrier probe STW" "$stw_code" "$stw" "$log_dir/stw.log"
+    gate_run_diag_files "write-barrier probe STW" "$stw_code" "$log_dir/stw.stdout" "$log_dir/stw.log"
     gate_run_diag "write-barrier probe incremental" "$incremental_code" \
-        "$incremental" "$log_dir/incremental.log"
+        "$(cat "$log_dir/incremental.stdout" 2>/dev/null)" "$log_dir/incremental.log"
 }
 
-set +e
-stw=$(DN2CPP_GC_INCREMENTAL=0 DN2CPP_GC_STATS=1 \
-    run_bounded "./$out/gcbarrier" 2>"$log_dir/stw.log"); stw_code=$?
-incremental=$(DN2CPP_GC_INCREMENTAL=1 DN2CPP_GC_STATS=1 \
-    run_bounded "./$out/gcbarrier" 2>"$log_dir/incremental.log"); incremental_code=$?
-set -e
+DN2CPP_GC_INCREMENTAL=0 DN2CPP_GC_STATS=1 gate_capture "$log_dir/stw" run_bounded "./$out/gcbarrier"
+stw="$log_dir/stw.stdout"
+stw_code=$(cat "$log_dir/stw.status")
+cp "$log_dir/stw.stderr" "$log_dir/stw.log"
+DN2CPP_GC_INCREMENTAL=1 DN2CPP_GC_STATS=1 gate_capture "$log_dir/incremental" run_bounded "./$out/gcbarrier"
+incremental="$log_dir/incremental.stdout"
+incremental_code=$(cat "$log_dir/incremental.status")
+cp "$log_dir/incremental.stderr" "$log_dir/incremental.log"
 
 # Ahead of the diffs, not after them: an arm that came up in the wrong mode
 # otherwise reports as four wrong counts with its cause buried.
@@ -85,13 +87,13 @@ fi
 # unbarriered ones, which is the control on the incremental arm below. No window
 # to report either, which is why the arms differ by that line.
 assertions_failed=0
-assert_output "$(strip_cr_win "$stw")" "incremental mode: off
+gate_assert_text "$stw" "incremental mode: off
 plain store: lost 0 of 64
 barriered store: lost 0 of 64
 plain memmove: lost 0 of 64
 dn2cpp_gc_memmove_refs: lost 0 of 64
 unpublished control: lost 0 of 64" || assertions_failed=1
-assert_exit_code "$stw_code" 0 || assertions_failed=1
+gate_output status "$stw_code" 0 || assertions_failed=1
 
 # Incremental: an unbarriered store is lost at every increment count (the payload
 # is allocated white inside the cycle and the block stored into is clean-marked,
@@ -100,14 +102,14 @@ assert_exit_code "$stw_code" 0 || assertions_failed=1
 # "the barrier saved it" from "this host was never going to reclaim it". The probe
 # exits non-zero naming the cause if the window ever shut early, so the `64 of 64`
 # below is a claim about the barrier and not about luck.
-assert_output "$(strip_cr_win "$incremental")" "incremental mode: on
+gate_assert_text "$incremental" "incremental mode: on
 plain store: lost 64 of 64
 barriered store: lost 0 of 64
 plain memmove: lost 64 of 64
 dn2cpp_gc_memmove_refs: lost 0 of 64
 unpublished control: lost 64 of 64
 window held: 64 of 64" || assertions_failed=1
-assert_exit_code "$incremental_code" 0 || assertions_failed=1
+gate_output status "$incremental_code" 0 || assertions_failed=1
 if [ "$assertions_failed" -ne 0 ]; then
     gate_run_diag_once
     exit 1

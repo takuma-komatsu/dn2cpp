@@ -18,12 +18,16 @@ DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $call_app ${call_app%.dl
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|threading-delay-call|cli:$(_gate_cli_hash)"
 gate_extra_asserts() {
     local out="$1" native before prefix line
-    native=$(run_bounded "./$out/TimerSample")
-    native=$(strip_cr_win "$native")
-    before=$(dotnet "$_CG_APP" before-argument-fields)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== Timer validation fields ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-native-1" run_bounded "./$out/TimerSample"
+    native="$out/assert-native-1.stdout"
+
+    gate_capture_ok "$out/assert-before-2" run_bounded dotnet "$_CG_APP" before-argument-fields
+    before="$out/assert-before-2.stdout"
+
+    prefix="$out/assert-prefix-5.stdout"
+
+    gate_output select "$native" "$prefix" --before '== Timer validation fields ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== Timer validation fields ==' \
         'timer int:0:-2:-2 param=dueTime' \
         'timer long:1:4294967295:-2 param=period' \
@@ -33,7 +37,7 @@ gate_extra_asserts() {
         'timer racing dispose:7 success=True' \
         'timer self dispose success=True' \
         'Timer validation fields end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: TimerSample validation witness missing: $line" >&2; exit 1; }
     done
     local oracle="$out/direct-call-oracle" fixture="$out/direct-call" expected actual
@@ -43,9 +47,11 @@ gate_extra_asserts() {
     $timer_python gates/fixtures/threading-delay-call/patch-call.py "$oracle/ThreadingDelayCall.dll"
     invoke_cli "$oracle/ThreadingDelayCall.dll" -r "$_CG_CORELIB" --auto-ref -o "$fixture"
     compile_console "$fixture" ThreadingDelayCall
-    expected=$(run_bounded dotnet "$oracle/ThreadingDelayCall.dll")
-    actual=$(run_bounded "./$fixture/ThreadingDelayCall")
-    assert_output "$(strip_cr_win "$actual")" "$(strip_cr_win "$expected")"
+    gate_capture_ok "$out/assert-expected-3" run_bounded dotnet "$oracle/ThreadingDelayCall.dll"
+    expected="$out/assert-expected-3.stdout"
+    gate_capture_ok "$out/assert-actual-4" run_bounded "./$fixture/ThreadingDelayCall"
+    actual="$out/assert-actual-4.stdout"
+    gate_output compare "$actual" "$expected"
     for line in 'timer direct int:-2:-1 param=dueTime' \
         'timer virtual int:-2:-1 type=NullReferenceException' \
         'timer direct span:-9223372036854775808:-10000 type=NullReferenceException' \
@@ -54,7 +60,7 @@ gate_extra_asserts() {
         'parallel direct:0 param=MaxDegreeOfParallelism' \
         'parallel virtual:0 type=NullReferenceException' \
         'Threading delay call faults end'; do
-        grep -Fxq -- "$line" <<< "$(strip_cr_win "$actual")" \
+        gate_output byte-witness "$actual" "$line" --count any --policy crlf \
             || { echo "FAIL: threading direct-call witness missing: $line" >&2; exit 1; }
     done
 

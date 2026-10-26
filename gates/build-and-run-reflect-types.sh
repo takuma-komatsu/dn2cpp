@@ -337,22 +337,27 @@ BCL=(System.Linq.Expressions System.Linq System.Collections \
 # These comparisons inspect the original metadata through C++ reflection policies.
 # Managed preservation is covered by build-and-run-preserve-control.sh.
 gate_string_clone_prefix_asserts() {
-    local out="$1" before prefix
-    before=$(run_bounded "$out/ReflectTypes$EXE_EXT")
-    before=$(awk '/^== Type.GetType throwOnError and ignoreCase ==$/ { exit } { print }' <<< "$before")
-    prefix=$(awk '/^== safe string memberwise copies ==$/ { exit } { print }' "$EXPFILE")
-    assert_output "$(strip_cr_win "$before")" "$prefix"
+    local out="$1"
+    gate_capture_ok "$out/string-clone-before" run_bounded "$out/ReflectTypes$EXE_EXT"
+    gate_output select "$out/string-clone-before.stdout" "$out/string-clone-prefix.stdout" --before '== Type.GetType throwOnError and ignoreCase ==' --policy crlf
+    gate_output select "$EXPFILE" "$out/string-clone-expected.stdout" --before '== safe string memberwise copies ==' --policy crlf
+    gate_output compare "$out/string-clone-prefix.stdout" "$out/string-clone-expected.stdout" --policy crlf
 }
 gate_type_gettype_ignorecase_asserts() {
     local out="$1" native before prefix expected
-    native=$(run_bounded "$out/ReflectTypes$EXE_EXT" string-clone-copies) || return $?
-    prefix=$(awk '/^== Type.GetType throwOnError and ignoreCase ==$/ { exit } { print }' <<< "$(strip_cr_win "$native")")
-    before=$(awk '/^== Type.GetType throwOnError and ignoreCase ==$/ { exit } { print }' "$EXPFILE")
-    assert_output "$prefix" "$before" || return $?
-    native=$(run_bounded "$out/ReflectTypes$EXE_EXT" type-gettype-ignorecase) || return $?
-    expected=$(run_bounded dotnet "samples/dotnet/ReflectTypes/bin/$CONFIG/$TFM/ReflectTypes.dll" type-gettype-ignorecase) || return $?
-    assert_output "$(strip_cr_win "$native")" "$(strip_cr_win "$expected")" || return $?
-    grep -Fxq 'Type.GetType throwOnError and ignoreCase end' <<< "$(strip_cr_win "$native")" \
+    native="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-native-2.stdout"
+    gate_capture_ok "${native%.stdout}" run_bounded "$out/ReflectTypes$EXE_EXT" string-clone-copies || return $?
+    prefix="$native.before"
+    gate_output select "$native" "$prefix" --before '== Type.GetType throwOnError and ignoreCase ==' --policy crlf
+    before="$out/type-gettype-expected.stdout"
+    gate_output select "$EXPFILE" "$before" --before '== Type.GetType throwOnError and ignoreCase ==' --policy crlf
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
+    native="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-native-3.stdout"
+    gate_capture_ok "${native%.stdout}" run_bounded "$out/ReflectTypes$EXE_EXT" type-gettype-ignorecase || return $?
+    expected="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-expected-4.stdout"
+    gate_capture_ok "${expected%.stdout}" run_bounded dotnet "samples/dotnet/ReflectTypes/bin/$CONFIG/$TFM/ReflectTypes.dll" type-gettype-ignorecase || return $?
+    gate_output compare "$native" "$expected" || return $?
+    gate_output witness "$native" 'Type.GetType throwOnError and ignoreCase end' --count any --policy crlf \
         || { echo 'FAIL: Type.GetType ignoreCase section did not run' >&2; return 1; }
     grep -Fq '{ "DelegateBaseTypeSubset.GenericOwner`1+Handler`1",' "$out/generated.cpp" \
         || { echo 'FAIL: nested definition registry row missing' >&2; return 1; }
@@ -390,10 +395,11 @@ unset -f gate_extra_asserts
 
 gate_extra_asserts() {
     local native
-    native=$(run_bounded "$1/TypeGetTypeIgnoreCase$EXE_EXT") || return $?
-    grep -Fxq 'grown bucket=TypeCaseCollision.gROWTH' <<< "$(strip_cr_win "$native")" \
+    native="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-native-5.stdout"
+    gate_capture_ok "${native%.stdout}" run_bounded "$1/TypeGetTypeIgnoreCase$EXE_EXT" || return $?
+    gate_output witness "$native" 'grown bucket=TypeCaseCollision.gROWTH' --count any --policy crlf \
         || { echo 'FAIL: grown case-collision section did not run' >&2; return 1; }
-    grep -Fxq 'Type.GetType case collisions end' <<< "$(strip_cr_win "$native")" \
+    gate_output witness "$native" 'Type.GetType case collisions end' --count any --policy crlf \
         || { echo 'FAIL: Type.GetType case-collision section did not run' >&2; return 1; }
 }
 corelib_diff_gate TypeGetTypeIgnoreCase --no-ildiet
@@ -402,14 +408,15 @@ unset -f gate_extra_asserts
 
 gate_extra_asserts() {
     local native
-    native=$(run_bounded "$1/TypeGetTypeIgnoreCaseForwarded$EXE_EXT") || return $?
-    grep -Fxq 'forwarded folded target=True' <<< "$(strip_cr_win "$native")" \
+    native="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-native-6.stdout"
+    gate_capture_ok "${native%.stdout}" run_bounded "$1/TypeGetTypeIgnoreCaseForwarded$EXE_EXT" || return $?
+    gate_output witness "$native" 'forwarded folded target=True' --count any --policy crlf \
         || { echo 'FAIL: staged folded forwarder did not run' >&2; return 1; }
-    grep -Fxq 'forwarded folded source=False' <<< "$(strip_cr_win "$native")" \
+    gate_output witness "$native" 'forwarded folded source=False' --count any --policy crlf \
         || { echo 'FAIL: source definition displaced its forwarder' >&2; return 1; }
-    grep -Fxq 'nested folded local=True' <<< "$(strip_cr_win "$native")" \
+    gate_output witness "$native" 'nested folded local=True' --count any --policy crlf \
         || { echo 'FAIL: losing nested forwarder displaced the source leaf' >&2; return 1; }
-    grep -Fxq 'nested folded forwarded=False' <<< "$(strip_cr_win "$native")" \
+    gate_output witness "$native" 'nested folded forwarded=False' --count any --policy crlf \
         || { echo 'FAIL: losing nested forwarder was selected' >&2; return 1; }
     for name in 'Q.Alpha`1+Mid`1+Leaf`1' 'Q.aLpha`1+Mid`1+Leaf`1'; do
         grep -Fq "{ \"$name\"," "$1/generated.cpp" \
@@ -421,7 +428,7 @@ gate_extra_asserts() {
             return 1
         fi
     done
-    grep -Fxq 'Type.GetType staged forwarding end' <<< "$(strip_cr_win "$native")" \
+    gate_output witness "$native" 'Type.GetType staged forwarding end' --count any --policy crlf \
         || { echo 'FAIL: staged forwarder section did not finish' >&2; return 1; }
 }
 corelib_diff_gate TypeGetTypeIgnoreCaseForwarded \
@@ -460,11 +467,8 @@ if gate_cache_check "$out" "reflect-types-trim|no-ildiet|${ATTRIBUTE_ENUMERATION
     gate_cache_hit_msg
 else
     compile_console "$out" ReflectTypes
-    set +e
-    native=$("./$out/ReflectTypes" string-clone-copies); native_code=$?
-    set -e
-    assert_output "$(strip_cr_win "$native")" "$(cat "$EXPFILE")"
-    assert_exit_code "$native_code" 0
+    gate_capture_ok "$out/trim-check" run_bounded "./$out/ReflectTypes$EXE_EXT" string-clone-copies
+    gate_output compare "$out/trim-check.stdout" "$EXPFILE" --policy crlf
     gate_string_clone_prefix_asserts "$out"
     gate_cache_commit
 fi
@@ -692,11 +696,14 @@ unset -f gate_extra_asserts
 source gates/_ordinary-reflection.sh
 gate_extra_asserts() {
     local out="$1" native line before prefix witness label simple mouth display
-    native=$(run_bounded "$out/OrdinaryReflectionTypeLeaves$EXE_EXT") || return $?
-    native=$(strip_cr_win "$native")
-    before=$(run_bounded "$out/OrdinaryReflectionTypeLeaves$EXE_EXT" before-attribute-chain) || return $?
-    prefix=$(awk '/^== chained attribute Type roots ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    native="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-native-7.stdout"
+    gate_capture_ok "${native%.stdout}" run_bounded "$out/OrdinaryReflectionTypeLeaves$EXE_EXT" || return $?
+    gate_output view "$native" "$native.records" --policy crlf
+    before="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-before-8.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded "$out/OrdinaryReflectionTypeLeaves$EXE_EXT" before-attribute-chain || return $?
+    prefix="$native.before"
+    gate_output select "$native" "$prefix" --before '== chained attribute Type roots ==' --policy crlf
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
     for line in '== ordinary reflection type leaves ==' \
         'attribute Type property: LinkTarget' 'attribute construction: constructed from attribute' \
         '== boxed attribute arguments ==' \
@@ -706,18 +713,20 @@ gate_extra_asserts() {
         '== chained attribute Type roots ==' 'chain holder=1' 'chain first=1' \
         'chain second=1' 'chain third=1' 'chain last=ChainFourth`1' \
         'chained attribute Type roots end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: ordinary type witness missing: $line" >&2; return 1; }
     done
-    before=$(run_bounded dotnet "$_CG_APP" before-nested-generic-names) || return $?
-    prefix=$(awk '/^== nested generic type names ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    before="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-before-9.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-nested-generic-names || return $?
+    prefix="$native.before"
+    gate_output select "$native" "$prefix" --before '== nested generic type names ==' --policy crlf
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
     for line in '== nested generic type names ==' 'nested generic type names end' \
         'neighbor nested definition=NestedGenericTypeNameSubset.Outer+Box`1' \
         'neighbor flat definition=NestedGenericTypeNameSubset.Outer_Box`1' \
         'neighbor definitions distinct=True' 'reserved shared=String[]/Object[]' \
         'reserved closed definition=True' 'reserved open-only=dn2cpp_nested_neighbors.Open`1'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: nested generic type-name block missing: $line" >&2; return 1; }
     done
     for witness in 'top|Box`1' 'one class|Box`1' 'one struct|Point`1' \
@@ -729,7 +738,7 @@ gate_extra_asserts() {
         simple=${witness#*|}
         for mouth in typeof instance delegate; do
             line="$label $mouth Name=$simple"
-            grep -Fxq -- "$line" <<< "$native" \
+            gate_output witness "$native" "$line" --count any --policy crlf \
                 || { echo "FAIL: nested generic type-name witness missing: $line" >&2; return 1; }
         done
     done
@@ -744,9 +753,11 @@ gate_extra_asserts() {
         echo 'FAIL: reserved definition symbol was not used by its shared receiver anchor' >&2
         return 1
     fi
-    before=$(run_bounded "$out/OrdinaryReflectionTypeLeaves$EXE_EXT" before-property-accessors) || return $?
-    prefix=$(awk '/^== retained property accessor rows ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    before="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-before-10.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded "$out/OrdinaryReflectionTypeLeaves$EXE_EXT" before-property-accessors || return $?
+    prefix="$native.before"
+    gate_output select "$native" "$prefix" --before '== retained property accessor rows ==' --policy crlf
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
     for line in '== retained property accessor rows ==' \
         'Capacity=True:True:get_Capacity:set_Capacity' \
         'Count=True:False:get_Count:<null>' \
@@ -754,21 +765,23 @@ gate_extra_asserts() {
         'retained property accessor rows end' '== nested open definition identity ==' \
         'definitions=True:True:True' 'direct nested flags=True:True:True:False:True' \
         'nested open definition identity end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: property accessor witness missing: $line" >&2; return 1; }
     done
-    before=$(run_bounded dotnet "$_CG_APP" before-attribute-display-code-units) || return $?
-    prefix=$(awk '/^== attribute display code units ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    before="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-before-11.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-attribute-display-code-units || return $?
+    prefix="$native.before"
+    gate_output select "$native" "$prefix" --before '== attribute display code units ==' --policy crlf
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
     for line in '== attribute display code units ==' 'scalar high value=D800' \
         'scalar low value=DFFF' 'scalar nul value=0000' \
         'boxed array values=D800 DFFF 0000 03A9 empty=0 pair=D83D DE42' \
         'attribute display code units end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: attribute code-unit witness missing: $line" >&2; return 1; }
     done
     for label in 'scalar high' 'scalar low' 'scalar nul' 'boxed array' unicode empty; do
-        grep -Eq "^$label display=" <<< "$native" \
+        grep -Eq "^$label display=" "$native.records" \
             || { echo "FAIL: attribute display not read: $label" >&2; return 1; }
     done
     for witness in 'scalar high|0027 D800 0027' 'scalar low|0027 DFFF 0027' \
@@ -777,16 +790,17 @@ gate_extra_asserts() {
         'unicode|0022 03A9 D83D DE42 0022' 'empty|0022 0022'; do
         label=${witness%%|*}
         line=${witness#*|}
-        display=$(grep -E "^$label display=" <<< "$native") || return $?
+        display=$(grep -E "^$label display=" "$native.records") || return $?
         grep -Fq -- "$line" <<< "$display" \
             || { echo "FAIL: attribute display changed code units: $witness" >&2; return 1; }
     done
     grep -Eq '^extern const char md_display_[0-9]+\[\] = \{ \(char\)254,' "$out"/generated*.cpp \
         || { echo 'FAIL: lossless attribute display stream was not emitted' >&2; return 1; }
-    before=$(run_bounded dotnet "$_CG_APP" before-exception-object-members) || return $?
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== exception Object member lookup ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    before="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-before-12.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-exception-object-members || return $?
+    prefix="$native.before"
+    gate_output select "$native" "$prefix" --before '== exception Object member lookup ==' --policy crlf
+    gate_output compare "$prefix" "$before" --policy crlf
     for line in '== exception Object member lookup ==' \
         'Exception.GetHashCode=Object:Exception:True:False:454:base=Object:same=True' \
         'Exception.ToString=Exception:Exception:True:False:198:base=Object:same=True' \
@@ -794,33 +808,38 @@ gate_extra_asserts() {
         'DescribedFault.ToString=DescribedFault:DescribedFault:True:False:198:base=Object:same=True' \
         'IndexOutOfRangeException.Equals=Object:IndexOutOfRangeException:True:False:454:base=Object:same=True' \
         'exception Object member lookup end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: exception member witness missing: $line" >&2; return 1; }
     done
     for label in base allocated override raised 'unbound raised'; do
-        grep -Fxq "$label invoke=True:True:True:True" <<< "$native" \
-            && grep -Fxq "$label null receiver=TargetException:null" <<< "$native" \
-            && grep -Fxq "$label wrong receiver=TargetException:null" <<< "$native" \
+        gate_output witness "$native" "$label invoke=True:True:True:True" --count any --policy crlf \
+            && gate_output witness "$native" "$label null receiver=TargetException:null" --count any --policy crlf \
+            && gate_output witness "$native" "$label wrong receiver=TargetException:null" --count any --policy crlf \
             || { echo "FAIL: exception invocation or receiver validation changed: $label" >&2; return 1; }
     done
-    before=$(run_bounded dotnet "$_CG_APP" before-assembly-name-validation) || return $?
-    prefix=$(awk '/^== assembly name load validation ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    before="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-before-13.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-assembly-name-validation || return $?
+    prefix="$native.before"
+    gate_output select "$native" "$prefix" --before '== assembly name load validation ==' --policy crlf
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
     for line in '== assembly name load validation ==' 'load null object param=assemblyRef' \
         'load null name param=<null>' 'load empty name file=[<Unknown>]' \
         'load blank name file=[" ", Culture=neutral, PublicKeyToken=null]' \
         'load string null param=assemblyName' 'load string empty param=assemblyName' \
         'load object identity=True' 'load string identity=True' 'assembly name load validation end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: assembly name validation witness missing: $line" >&2; return 1; }
     done
-    before=$(run_bounded dotnet "$_CG_APP" before-attribute-construction-order) || return $?
-    prefix=$(awk '/^== single attribute construction order ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
-    before=$(run_bounded "$out/OrdinaryReflectionTypeLeaves$EXE_EXT" before-attribute-construction-order) || return $?
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    before="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-before-14.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-attribute-construction-order || return $?
+    prefix="$native.before"
+    gate_output select "$native" "$prefix" --before '== single attribute construction order ==' --policy crlf
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
+    before="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-before-15.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded "$out/OrdinaryReflectionTypeLeaves$EXE_EXT" before-attribute-construction-order || return $?
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
     for line in '== single attribute construction order ==' 'single attribute construction order end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: attribute construction block missing: $line" >&2; return 1; }
     done
     local subject query ambiguity
@@ -830,34 +849,37 @@ gate_extra_asserts() {
             for line in "$subject $query/no-fault=$ambiguity" \
                 "$subject $query/second-fault=InvalidOperationException|80131509|attribute fault 2 trace=ctor:1,ctor:2" \
                 "$subject $query/third-fault=InvalidOperationException|80131509|attribute fault 3 trace=ctor:1,ctor:2,ctor:3"; do
-                grep -Fxq -- "$line" <<< "$native" \
+                gate_output witness "$native" "$line" --count any --policy crlf \
                     || { echo "FAIL: single attribute order witness missing: $line" >&2; return 1; }
             done
         done
         for query in static generic; do
             for line in "$subject single-$query=value:1 trace=ctor:1" "$subject absent-$query=null trace="; do
-                grep -Fxq -- "$line" <<< "$native" \
+                gate_output witness "$native" "$line" --count any --policy crlf \
                     || { echo "FAIL: single attribute filter witness missing: $line" >&2; return 1; }
             done
         done
         for line in "$subject defined-static=True trace=" "$subject defined-instance=True trace=" \
             "$subject absent-defined=False trace="; do
-            grep -Fxq -- "$line" <<< "$native" \
+            gate_output witness "$native" "$line" --count any --policy crlf \
                 || { echo "FAIL: constructor-free IsDefined witness missing: $line" >&2; return 1; }
         done
     done
-    before=$(run_bounded dotnet "$_CG_APP" before-method-attribute-inheritance) || return $?
-    prefix=$(awk '/^== inherited method attributes ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
-    before=$(run_bounded "$out/OrdinaryReflectionTypeLeaves$EXE_EXT" before-method-attribute-inheritance) || return $?
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    before="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-before-16.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-method-attribute-inheritance || return $?
+    prefix="$native.before"
+    gate_output select "$native" "$prefix" --before '== inherited method attributes ==' --policy crlf
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
+    before="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-before-17.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded "$out/OrdinaryReflectionTypeLeaves$EXE_EXT" before-method-attribute-inheritance || return $?
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
     for line in '== inherited method attributes ==' 'override:defined=True:constructors=0' \
         'override:inherited=hud-key,hud-multi,middle-multi,middle-single,base-multi' \
         'other-override:inherited=base-key,base-multi,base-single' 'new-slot:inherited=' \
         'generic-method:inherited=base-generic' 'declared-data=KeyDownAttribute,KeyAttribute' \
         'fresh=True' 'selected-base=1' 'non-inherited=0' \
         'type-inherited=1' 'type-declared=0' 'type-non-inherited=0' 'inherited method attributes end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: inherited attribute witness missing: $line" >&2; return 1; }
     done
     grep -Fwxq -- '// SelectedAttribute::.ctor' "$out"/generated*.cpp \
@@ -866,15 +888,18 @@ gate_extra_asserts() {
         echo 'FAIL: non-inherited attribute constructor retained' >&2
         return 1
     fi
-    before=$(run_bounded dotnet "$_CG_APP" before-array-object-types) || return $?
-    prefix=$(awk '/^== allocated array object types ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
-    before=$(run_bounded "$out/OrdinaryReflectionTypeLeaves$EXE_EXT" before-array-object-types) || return $?
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    before="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-before-18.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-array-object-types || return $?
+    prefix="$native.before"
+    gate_output select "$native" "$prefix" --before '== allocated array object types ==' --policy crlf
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
+    before="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-before-19.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded "$out/OrdinaryReflectionTypeLeaves$EXE_EXT" before-array-object-types || return $?
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
     for line in '== allocated array object types ==' 'empty array element=empty target' \
         'filled array identity=True:True' 'filled array element=declared element' \
         'escaped array element=escaped target' 'allocated array object types end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: allocated array type witness missing: $line" >&2; return 1; }
     done
     for subject in EmptyArrayElement FilledArrayElement EscapedArrayElement; do
@@ -907,73 +932,106 @@ DN2CPP_OUT_SUFFIX=-native DN2CPP_STRICT_COMPLETION=1 \
 gate_extra_asserts() {
     local out="$1" native
     $py gates/fixtures/unread-attribute-rows/check-chain.py "$out" || return $?
-    native=$(run_bounded "$out/UnreadAttributeRowsOnly$EXE_EXT") || return $?
-    grep -Fxq 'chain holder: ChainHolder' <<< "$(strip_cr_win "$native")" \
+    native="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-native-20.stdout"
+    gate_capture_ok "${native%.stdout}" run_bounded "$out/UnreadAttributeRowsOnly$EXE_EXT" || return $?
+    gate_output witness "$native" 'chain holder: ChainHolder' --count any --policy crlf \
         || { echo "FAIL: attribute chain block did not run" >&2; return 1; }
 }
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/unread-attribute-rows/check-chain.py" \
 DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectTypes UnreadAttributeRowsOnly --no-ildiet
 unset -f gate_extra_asserts
 DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectTypes DataOnlyAttributeRowsOnly --no-ildiet
+signature_abstract_refusal() {
+    local file="$1" name="$2"
+    gate_output match-record "$file" "^sigabstract $name Mixed .*: this closed generic instantiation has no compiled code; fix: name the closed generic instantiation statically\$" --count any --policy crlf
+}
 gate_extra_asserts() {
     local out="$1" native line before prefix name path tail expected_tail
-    native=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT") || return $?
-    native=$(strip_cr_win "$native")
-    before=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-template-members) || return $?
-    prefix=$(awk '/^== template members ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
-    before=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-template-function-pointers) || return $?
-    prefix=$(awk '/^== template function pointers ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
-    prefix=$(awk '/^== missing reflection invocation diagnostics ==$/ { exit } { print }' <<< "$native")
-    before=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-invoke-diagnostics) || return $?
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
-    before=$(run_bounded dotnet "$_CG_APP" before-invoke-diagnostics) || return $?
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
-    prefix=$(awk '/^== reflected template delegates ==$/ { exit } { print }' <<< "$native")
-    before=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-reflected-delegates) || return $?
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
-    before=$(run_bounded dotnet "$_CG_APP" before-reflected-delegates) || return $?
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
-    prefix=$(awk '/^== reflected template arrays ==$/ { exit } { print }' <<< "$native")
-    before=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-reflected-arrays) || return $?
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
-    before=$(run_bounded dotnet "$_CG_APP" before-reflected-arrays) || return $?
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
-    prefix=$(awk '/^== fixed template function pointers ==$/ { exit } { print }' <<< "$native")
-    before=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-fixed-function-pointers) || return $?
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
-    before=$(run_bounded dotnet "$_CG_APP" before-fixed-function-pointers) || return $?
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
-    prefix=$(awk '/^== template delegate method identity ==$/ { exit } { print }' <<< "$native")
-    before=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-template-delegate-method-identity) || return $?
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
-    before=$(run_bounded dotnet "$_CG_APP" before-template-delegate-method-identity) || return $?
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
-    prefix=$(awk '/^== template signature placeholders ==$/ { exit } { print }' <<< "$native")
-    before=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-template-signature-placeholders) || return $?
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
-    before=$(run_bounded dotnet "$_CG_APP" before-template-signature-placeholders) || return $?
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
-    prefix=$(awk '/^== template reflection consumers ==$/ { exit } { print }' <<< "$native")
-    before=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-template-consumers) || return $?
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
-    before=$(run_bounded dotnet "$_CG_APP" before-template-consumers) || return $?
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    native="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-native-21.stdout"
+    gate_capture_ok "${native%.stdout}" run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" || return $?
+    before="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-before-22.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-template-members || return $?
+    prefix="$native.before"
+    gate_output select "$native" "$prefix" --before '== template members ==' --policy crlf
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
+    before="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-before-23.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-template-function-pointers || return $?
+    prefix="$native.before"
+    gate_output select "$native" "$prefix" --before '== template function pointers ==' --policy crlf
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
+    prefix="$native.before"
+    gate_output select "$native" "$prefix" --before '== missing reflection invocation diagnostics ==' --policy crlf
+    before="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-before-24.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-invoke-diagnostics || return $?
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
+    before="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-before-25.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-invoke-diagnostics || return $?
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
+    prefix="$native.before"
+    gate_output select "$native" "$prefix" --before '== reflected template delegates ==' --policy crlf
+    before="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-before-26.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-reflected-delegates || return $?
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
+    before="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-before-27.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-reflected-delegates || return $?
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
+    prefix="$native.before"
+    gate_output select "$native" "$prefix" --before '== reflected template arrays ==' --policy crlf
+    before="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-before-28.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-reflected-arrays || return $?
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
+    before="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-before-29.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-reflected-arrays || return $?
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
+    prefix="$native.before"
+    gate_output select "$native" "$prefix" --before '== fixed template function pointers ==' --policy crlf
+    before="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-before-30.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-fixed-function-pointers || return $?
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
+    before="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-before-31.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-fixed-function-pointers || return $?
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
+    prefix="$native.before"
+    gate_output select "$native" "$prefix" --before '== template delegate method identity ==' --policy crlf
+    before="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-before-32.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-template-delegate-method-identity || return $?
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
+    before="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-before-33.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-template-delegate-method-identity || return $?
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
+    prefix="$native.before"
+    gate_output select "$native" "$prefix" --before '== template signature placeholders ==' --policy crlf
+    before="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-before-34.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-template-signature-placeholders || return $?
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
+    before="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-before-35.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-template-signature-placeholders || return $?
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
+    prefix="$native.before"
+    gate_output select "$native" "$prefix" --before '== template reflection consumers ==' --policy crlf
+    before="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-before-36.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-template-consumers || return $?
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
+    before="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-before-37.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-template-consumers || return $?
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
     # Reflection a template's body, generic method, member listing, field listing or
     # interface found by name runs is admitted for an argument the program names in no
     # instantiation.
     for line in '== template reflection consumers ==' 'factory made=product' \
         'generic method=pair:Int32,String' 'members describe=listed:Int64' 'fields Stamp=stamp:7' \
         'constrained object=refused' 'interface named=named:Int16' 'template reflection consumers end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: template reflection consumer witness missing: $line" >&2; return 1; }
     done
-    prefix=$(awk '/^== template generic arguments ==$/ { exit } { print }' <<< "$native")
-    before=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-template-arguments) || return $?
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
-    before=$(run_bounded dotnet "$_CG_APP" before-template-arguments) || return $?
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    prefix="$native.before"
+    gate_output select "$native" "$prefix" --before '== template generic arguments ==' --policy crlf
+    before="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-before-38.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-template-arguments || return $?
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
+    before="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-before-39.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-template-arguments || return $?
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
     # A clone over a known argument closes another type or method over its exact
     # instantiation, and a CoreLib instance formed for its metadata answers from its row.
     for line in '== template generic arguments ==' \
@@ -982,26 +1040,32 @@ gate_extra_asserts() {
         'method name:ReflectRuntimeInstantiationSubset.ArgumentInner`1[System.Int32]' \
         'spoken say:Int64 holder=True' 'library definition=Create:True' \
         'library closed=Create:String:True' 'template generic arguments end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: template generic argument witness missing: $line" >&2; return 1; }
     done
-    prefix=$(awk '/^== template signature allocation ==$/ { exit } { print }' <<< "$native")
-    before=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-template-signature-allocation) || return $?
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
-    before=$(run_bounded dotnet "$_CG_APP" before-template-signature-allocation) || return $?
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    prefix="$native.before"
+    gate_output select "$native" "$prefix" --before '== template signature allocation ==' --policy crlf
+    before="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-before-40.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-template-signature-allocation || return $?
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
+    before="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-before-41.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-template-signature-allocation || return $?
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
     for line in '== template signature allocation ==' 'ordinary dispatch=base' \
         'metadata rows=3' 'signature row=Payload' \
         'constructed dispatch=constructed:String' 'static call=static:String' \
         'template signature allocation end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: template signature allocation witness missing: $line" >&2; return 1; }
     done
-    prefix=$(awk '/^== forbidden generic arguments ==$/ { exit } { print }' <<< "$native")
-    before=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-forbidden-generic-arguments) || return $?
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
-    before=$(run_bounded dotnet "$_CG_APP" before-forbidden-generic-arguments) || return $?
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    prefix="$native.before"
+    gate_output select "$native" "$prefix" --before '== forbidden generic arguments ==' --policy crlf
+    before="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-before-42.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" before-forbidden-generic-arguments || return $?
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
+    before="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-before-43.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-forbidden-generic-arguments || return $?
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
     for line in '== forbidden generic arguments ==' 'valid=Int32:False' \
         "void known=ArgumentException: The type 'System.Void' may not be used as a type argument." \
         "void opaque=ArgumentException: The type 'System.Void' may not be used as a type argument." \
@@ -1017,7 +1081,7 @@ gate_extra_asserts() {
         "void,extra=ArgumentException: The number of generic arguments provided doesn't equal the arity of the generic type definition. (Parameter 'typeArguments')" \
         "null,extra=ArgumentException: The number of generic arguments provided doesn't equal the arity of the generic type definition. (Parameter 'typeArguments')" \
         'forbidden generic arguments end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: forbidden generic argument witness missing: $line" >&2; return 1; }
     done
     for line in '== reflection template dispatch ==' 'reflection template dispatch end' \
@@ -1045,26 +1109,26 @@ gate_extra_asserts() {
         'sigabstract Int32,String Mixed safe=True' 'sigabstract Guid,Boolean Mixed safe=True' \
         'sigremedy Int32 Kept result:kept:Int32' 'sigremedy Guid Kept result:kept:Guid' \
         'sigremedy Int32 Bare safe=True' 'sigremedy Guid Bare safe=True'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: template dispatch witness missing: $line" >&2; return 1; }
     done
     for name in Int32 Int64 String; do
         for line in "diag $name summary: row=True mismatched=False" \
             "diag $name validation=TargetException/TargetParameterCountException/ArgumentException/ArgumentException"; do
-            grep -Fxq -- "$line" <<< "$native" \
+            gate_output witness "$native" "$line" --count any --policy crlf \
                 || { echo "FAIL: missing-body invocation control missing: $line" >&2; return 1; }
         done
     done
     for name in Int32 Int64 String Pair; do
         for line in "bound $name invoke=$name" \
             "bound $name identity: target=True method=Kind declaring=True"; do
-            grep -Fxq -- "$line" <<< "$native" \
+            gate_output witness "$native" "$line" --count any --policy crlf \
                 || { echo "FAIL: reflected template delegate witness missing: $line" >&2; return 1; }
         done
         for line in "method identity $name bound: operator=True equals=True reference=True reflected=True" \
             "method identity $name invoke=$name" \
             "method identity $name created: operator=True equals=True reference=True reflected=True"; do
-            grep -Fxq -- "$line" <<< "$native" \
+            gate_output witness "$native" "$line" --count any --policy crlf \
                 || { echo "FAIL: template delegate method identity missing: $line" >&2; return 1; }
         done
     done
@@ -1073,54 +1137,58 @@ gate_extra_asserts() {
             "array $name identity: target=True method=ArrayName declaring=True" \
             "array $name storage: length=2 element=True stored=True" \
             "array $name negative=OverflowException"; do
-            grep -Fxq -- "$line" <<< "$native" \
+            gate_output witness "$native" "$line" --count any --policy crlf \
                 || { echo "FAIL: reflected array template witness missing: $line" >&2; return 1; }
         done
     done
     for path in Invoke CreateDelegate; do
         for line in "fixedfn Int32 $path=result:int:42" "fixedfn Int64 $path=result:int:-7" \
             "fixedfn String $path=result:int:0"; do
-            grep -Fxq -- "$line" <<< "$native" \
+            gate_output witness "$native" "$line" --count any --policy crlf \
                 || { echo "FAIL: fixed function pointer result missing: $line" >&2; return 1; }
         done
     done
     # No clone shares a body that calls through a function pointer over its type
     # parameter. Exact, so a call that runs or refuses differently shows.
-    native=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" template-function-pointer-outcomes) || return $?
-    native=$(strip_cr_win "$native")
-    prefix=$(awk '/^== fixed template function pointers ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(printf '%s\n' '== template function pointers ==' \
+    native="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-native-44.stdout"
+    gate_capture_ok "${native%.stdout}" run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" template-function-pointer-outcomes || return $?
+    prefix="$native.before"
+    gate_output select "$native" "$prefix" --before '== fixed template function pointers ==' --policy crlf
+    gate_assert_text "$prefix" "$(printf '%s\n' '== template function pointers ==' \
         'fnptr Int32 outcome: refused PlatformNotSupportedException' \
         'fnptr Int64 outcome: refused PlatformNotSupportedException' \
         'fnptr String outcome: refused PlatformNotSupportedException' \
         'template function pointers end')" || return $?
-    before=$(run_bounded dotnet "$_CG_APP" template-function-pointer-outcomes) || return $?
-    before=$(strip_cr_win "$before")
-    tail=$(awk '/^== fixed template function pointers ==$/ { found=1 } found' <<< "$native")
-    expected_tail=$(awk '/^== fixed template function pointers ==$/ { found=1 } found' <<< "$before")
-    assert_output "$tail" "$expected_tail" || return $?
+    before="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-before-45.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" template-function-pointer-outcomes || return $?
+    tail="$native.fixed-tail"
+    expected_tail="$before.fixed-tail"
+    gate_output select "$native" "$tail" --from '== fixed template function pointers ==' --policy crlf
+    gate_output select "$before" "$expected_tail" --from '== fixed template function pointers ==' --policy crlf
+    gate_output compare "$tail" "$expected_tail" || return $?
     for line in '== fixed template function pointers ==' 'fixed template function pointers end' \
         'fixedfn Int32 row=True' 'fixedfn Int64 row=True' 'fixedfn String row=True'; do
-        grep -Fxq -- "$line" <<< "$tail" \
+        gate_output witness "$tail" "$line" --count any --policy crlf \
             || { echo "FAIL: fixed function pointer outcome witness missing: $line" >&2; return 1; }
     done
     # A row whose signature names a placeholder-bearing class no clone respells
     # refuses; a row over closed arguments runs.
-    native=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" template-signature-placeholder-outcomes) || return $?
-    native=$(strip_cr_win "$native")
+    native="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-native-46.stdout"
+    gate_capture_ok "${native%.stdout}" run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" template-signature-placeholder-outcomes || return $?
+    gate_output view "$native" "$native.records" --policy crlf
     for line in 'sigplace Int32,String Fixed result:fixed:Int32' 'sigplace Guid,Boolean Fixed result:fixed:Guid'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: template signature placeholder result missing: $line" >&2; return 1; }
     done
     for name in 'Int32,String' 'Guid,Boolean'; do
         for row in Swapped Second Mixed; do
-            grep -Eq "^sigplace $name $row PlatformNotSupportedException\\|80131539\\|.*: this closed generic instantiation has no compiled code; fix: " <<< "$native" \
+            grep -Eq "^sigplace $name $row PlatformNotSupportedException\\|80131539\\|.*: this closed generic instantiation has no compiled code; fix: " "$native.records" \
                 || { echo "FAIL: $name $row placeholder signature row did not refuse" >&2; return 1; }
         done
         # The base row of a placeholder-bearing signature refuses as itself, before any
         # thunk reads the argument, not through the clone's override slot.
-        grep -Fq -- "sigabstract $name Mixed PlatformNotSupportedException|80131539|Dn2Cpp.SignatureAbstract\`2[System.${name/,/,System.}]::System.String Mixed(" <<< "$native" \
-            && grep -Eq "^sigabstract $name Mixed .*: this closed generic instantiation has no compiled code; fix: name the closed generic instantiation statically\$" <<< "$native" \
+        grep -Fq -- "sigabstract $name Mixed PlatformNotSupportedException|80131539|Dn2Cpp.SignatureAbstract\`2[System.${name/,/,System.}]::System.String Mixed(" "$native.records" \
+            && signature_abstract_refusal "$native" "$name" \
             || { echo "FAIL: $name abstract Mixed base row did not refuse" >&2; return 1; }
     done
     # A clone's unretained override refuses with the remedy that retains it: Kept, whose
@@ -1129,7 +1197,7 @@ gate_extra_asserts() {
     for name in Int32 Guid; do
         for line in "sigremedy $name Kept result:kept:$name" \
             "sigremedy $name Bare PlatformNotSupportedException|80131539|Dn2Cpp.RemedyImpl\`1[System.$name]::Bare in ReflectionTemplateDispatch: this closed generic instantiation has no compiled code; fix: name the closed generic instantiation statically"; do
-            grep -Fxq -- "$line" <<< "$native" \
+            gate_output witness "$native" "$line" --count any --policy crlf \
                 || { echo "FAIL: template override remedy outcome missing: $line" >&2; return 1; }
         done
     done
@@ -1139,22 +1207,23 @@ gate_extra_asserts() {
         echo "FAIL: a definition a template level serves reports ClosedGeneric" >&2
         return 1
     fi
-    native=$(run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" invoke-diagnostics) || return $?
-    native=$(strip_cr_win "$native")
+    native="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-native-47.stdout"
+    gate_capture_ok "${native%.stdout}" run_bounded "$out/ReflectionTemplateDispatch$EXE_EXT" invoke-diagnostics || return $?
+    gate_output view "$native" "$native.records" --policy crlf
     for name in Int32 Int64 String; do
         for path in Invoke DoNotWrap CreateDelegate CreateDelegateFalse; do
-            grep -Eq "^diag $name $path=PlatformNotSupportedException\\|80131539\\|" <<< "$native" \
+            grep -Eq "^diag $name $path=PlatformNotSupportedException\\|80131539\\|" "$native.records" \
                 || { echo "FAIL: $name $path missing-body refusal is not a platform exception" >&2; return 1; }
         done
         for line in "diag $name same refusal=True" \
             "diag $name message owner=True member=True reason=True unwrapped=True"; do
-            grep -Fxq -- "$line" <<< "$native" \
+            gate_output witness "$native" "$line" --count any --policy crlf \
                 || { echo "FAIL: incomplete shared invocation diagnosis: $line" >&2; return 1; }
         done
     done
     for line in '== missing reflection invocation diagnostics ==' 'diag control=True' \
         'missing reflection invocation diagnostics end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: invocation diagnosis block missing: $line" >&2; return 1; }
     done
 }
@@ -1170,12 +1239,13 @@ unset -f gate_extra_asserts
 # a constructed derived template, and a template entered only through a static row.
 gate_extra_asserts() {
     local out="$1" native line symbol
-    native=$(run_bounded "$out/TemplateSignatureAllocationOnly$EXE_EXT") || return $?
+    native="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-native-48.stdout"
+    gate_capture_ok "${native%.stdout}" run_bounded "$out/TemplateSignatureAllocationOnly$EXE_EXT" || return $?
     for line in '== template signature allocation ==' 'ordinary dispatch=base' \
         'metadata rows=3' 'signature row=Payload' \
         'constructed dispatch=constructed:String' 'static call=static:String' \
         'template signature allocation end'; do
-        grep -Fxq -- "$line" <<< "$(strip_cr_win "$native")" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: isolated template allocation witness missing: $line" >&2; return 1; }
     done
     for symbol in 'Dn2Cpp.SignatureAllocationBase::Describe' \
@@ -1193,11 +1263,12 @@ gate_extra_asserts() {
             return 1
         fi
     done
-    native=$(run_bounded "$out/TemplateSignatureAllocationOnly$EXE_EXT" uninitialized-template-outcomes) || return $?
+    native="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-native-49.stdout"
+    gate_capture_ok "${native%.stdout}" run_bounded "$out/TemplateSignatureAllocationOnly$EXE_EXT" uninitialized-template-outcomes || return $?
     for line in '== uninitialized template outcomes ==' \
         'static-only blank=PlatformNotSupportedException' 'static-only remedy=True:True:True' \
         'constructed blank=constructed:String' 'uninitialized template outcomes end'; do
-        grep -Fxq -- "$line" <<< "$(strip_cr_win "$native")" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: unknown template allocation outcome missing: $line" >&2; return 1; }
     done
 }
@@ -1213,8 +1284,8 @@ unset -f gate_extra_asserts
 # Freeze catchable refusals and exact site diagnostics in both sharing modes.
 closed_generic_asserts() {
     local out="$1" project="$2" report="$1-report" native oracle line kind assembly method offset api reason fix type prefix before
-    native=$(run_bounded "$out/$project$EXE_EXT") || return $?
-    native=$(strip_cr_win "$native")
+    native="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-native-50.stdout"
+    gate_capture_ok "${native%.stdout}" run_bounded "$out/$project$EXE_EXT" || return $?
     for line in '== closed generic diagnostics ==' 'closed generic diagnostics end' \
         'named cell:Int32 holder:Int32 name:Int32' 'holder named: holder:Int32' 'method named: name:Int32' \
         '== closed generic receivers ==' 'named nest:Int32' 'definition parameter: Holder`1' \
@@ -1222,18 +1293,19 @@ closed_generic_asserts() {
         '== closed generic templates ==' 'closed generic templates end' \
         '== static generic constraint proof ==' 'static generic constraint proof end' \
         '== template fallback constraint proof ==' 'template fallback constraint proof end'; do
-        [ "$(grep -Fxc -- "$line" <<< "$native")" = 1 ] \
+        gate_output witness "$native" "$line" --count 1 --policy crlf \
             || { echo "FAIL: closed generic diagnostics block must run once: $line" >&2; return 1; }
     done
     if grep -Eq '^// ClosedGenericDiagnostics\.(Factory[^:]*::Make|Nest[^:]*::Wrap)$' "$out"/generated*.cpp; then
         echo 'FAIL: unknown generic arguments retained Factory.Make or Nest.Wrap' >&2
         return 1
     fi
-    oracle=$(run_bounded dotnet "$_CG_APP") || return $?
-    oracle=$(strip_cr_win "$oracle")
+    oracle="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-oracle-51.stdout"
+    gate_capture_ok "${oracle%.stdout}" run_bounded dotnet "$_CG_APP" || return $?
+    gate_output view "$oracle" "$oracle.records" --policy crlf
     for line in 'constraint interface control: dispose:Disposable' 'constraint invariant control: tag:RightTag' \
         'constraint template body control: List`1' 'constraint template method control: Int32'; do
-        grep -Fxq -- "$line" <<< "$native" && grep -Fxq -- "$line" <<< "$oracle" \
+        gate_output witness "$native" "$line" --count any --policy crlf && gate_output witness "$oracle" "$line" --count any --policy crlf \
             || { echo "FAIL: a valid constraint tuple was not instantiated: $line" >&2; return 1; }
     done
     for type in NeedsDispose_Int32Arr NeedsTag_ClosedGenericDiagnostics_WrongTag \
@@ -1250,13 +1322,14 @@ closed_generic_asserts() {
             || { echo "FAIL: a proved constraint tuple was not instantiated: $type" >&2; return 1; }
     done
     for kind in array invariant "template body" "template method"; do
-        grep -q "^constraint $kind rejected: ArgumentException " <<< "$oracle" \
+        grep -q "^constraint $kind rejected: ArgumentException " "$oracle.records" \
             || { echo "FAIL: the CLR did not reject the invalid $kind constraint" >&2; return 1; }
     done
-    before=$(run_bounded "$out/$project$EXE_EXT" before-template-constraint-fallbacks) || return $?
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== template fallback constraint proof ==$/ { exit } { print }' <<< "$native")
-    assert_output "$before" "$prefix" || return $?
+    before="${out:-${_CG_OUT:-artifacts/reflect-types-observations}}/check-before-52.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded "$out/$project$EXE_EXT" before-template-constraint-fallbacks || return $?
+    prefix="$native.before"
+    gate_output select "$native" "$prefix" --before '== template fallback constraint proof ==' --policy crlf
+    gate_output compare "$before" "$prefix" --policy crlf || return $?
     diff -u <(printf '%s\n' "${closed_generic_rows[@]}") \
         <(awk -F '\t' -v assembly="$project" '$2 == assembly' "$out/reflection-unrecognized.tsv") \
         || { echo "FAIL: $project ClosedGeneric report rows changed" >&2; return 1; }

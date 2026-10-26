@@ -47,20 +47,19 @@ source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_RUN_ARGS='--require-finalizer-windows'
 
 gate_extra_asserts() {
-    local output line
-    set +e
-    output=$(run_bounded "./$1/Finalizers" --require-finalizer-windows 2>/dev/null)
-    set -e
-    output=$(strip_cr_win "$output")
+    local output="$1/native.stdout" line
     for line in 'suppress window opened=True' \
                 're-register window opened=True' \
                 're-then-suppress window opened=True'; do
-        if ! LC_ALL=C grep -Fxq "$line" <<<"$output"; then
+        if ! gate_output byte-witness "$output" "$line" --count any --policy crlf; then
             echo "FAIL: native queued-finalizer window did not open: '$line'" >&2
-            LC_ALL=C grep -F 'window' <<<"$output" >&2 || true
+            LC_ALL=C grep -F 'window' "$output" >&2 || true
             return 1
         fi
     done
 }
 
-corelib_diff_gate Finalizers --link-xml samples/dotnet/Finalizers/link.xml
+corelib_diff_abort_gate Finalizers 'about to throw from finalizer' \
+    'dn2cpp fatal: unhandled exception in finalizer: System.InvalidOperationException' \
+    --oracle-diagnostic 'Unhandled exception. System.InvalidOperationException: boom' \
+    --link-xml samples/dotnet/Finalizers/link.xml

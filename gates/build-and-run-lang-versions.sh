@@ -37,16 +37,17 @@ DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-sealed-prefix
 
 gate_extra_asserts() {
     local out="$1" output before prefix label
-    output=$(strip_cr_win "$native")
-    before=$(DN2CPP_BEFORE_ORDINARY_SEALED_INTERFACE=1 dotnet "$_CG_APP")
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== sealed interface members ==$/ { exit } { print }' <<< "$output")
-    assert_output "$prefix" "$before"
+    output="$out/program-witnesses.lf"
+    gate_output view "$out/native.stdout" "$output" --policy crlf
+    DN2CPP_BEFORE_ORDINARY_SEALED_INTERFACE=1 gate_capture_ok "$out/before" run_bounded dotnet "$_CG_APP"
+    before="$out/before.stdout"
+    gate_output select "$out/native.stdout" "$out/prefix.stdout" --before '== sealed interface members ==' --policy crlf
+    gate_output compare "$out/prefix.stdout" "$before"
     for label in '== sealed interface members ==' 'class: shout:' 'generic: twice:' \
         'boxed struct: shout:' 'null: NullReferenceException / NullReferenceException' \
         'delegate: shout:' 'constrained class: shout:' 'constrained struct: shout:' \
         'constrained default: shout:' 'generic interface: show:' 'sealed interface members end'; do
-        grep -Fq "$label" <<< "$output" \
+        grep -Fq "$label" "$output" \
             || { echo "FAIL: sealed interface own-body witness missing: $label" >&2; exit 1; }
     done
 }

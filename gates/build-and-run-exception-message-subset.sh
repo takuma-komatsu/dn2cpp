@@ -76,38 +76,49 @@ DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|runtime-argument-fixtu
 
 gate_extra_asserts() {
     local out="$1" native before prefix line app name fixture expected actual
-    native=$(run_bounded "./$out/ExceptionMessageSubset")
-    native=$(strip_cr_win "$native")
-    prefix=$(awk '/^== member access exception constructors ==$/ { exit } { print }' <<< "$native")
-    before=$(run_bounded dotnet "$_CG_APP" before-member-access-constructors)
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    before=$(run_bounded "./$out/ExceptionMessageSubset$EXE_EXT" before-member-access-constructors)
-    assert_output "$prefix" "$(strip_cr_win "$before")"
+    gate_capture_ok "$out/assert-native-1" run_bounded "./$out/ExceptionMessageSubset"
+    native="$out/assert-native-1.stdout"
+
+    prefix="$out/assert-prefix-22.stdout"
+
+    gate_output select "$native" "$prefix" --before '== member access exception constructors ==' --policy crlf
+    gate_capture_ok "$out/assert-before-2" run_bounded dotnet "$_CG_APP" before-member-access-constructors
+    before="$out/assert-before-2.stdout"
+    gate_output compare "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-3" run_bounded "./$out/ExceptionMessageSubset$EXE_EXT" before-member-access-constructors
+    before="$out/assert-before-3.stdout"
+    gate_output compare "$prefix" "$before"
     for line in '== member access exception constructors ==' \
         'member access ctor: MemberAccessException/Cannot access member./8013151A/True' \
         'member access ctor: MemberAccessException/member/8013151A/True' \
         'member access ctor: MemberAccessException/nested/8013151A/True' \
         'member access inner: True' 'member access exception constructors end'; do
-        assert_output "$(grep -Fxc -- "$line" <<< "$native")" '1'
+        gate_output witness "$native" "$line" --count 1 --policy crlf
     done
-    prefix=$(awk '/^== aggregate legacy serialization reachability ==$/ { exit } { print }' <<< "$native")
-    before=$(run_bounded dotnet "$_CG_APP" before-aggregate-serialization)
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    before=$(run_bounded "./$out/ExceptionMessageSubset$EXE_EXT" before-aggregate-serialization)
-    assert_output "$prefix" "$(strip_cr_win "$before")"
+    prefix="$out/assert-prefix-23.stdout"
+    gate_output select "$native" "$prefix" --before '== aggregate legacy serialization reachability ==' --policy crlf
+    gate_capture_ok "$out/assert-before-4" run_bounded dotnet "$_CG_APP" before-aggregate-serialization
+    before="$out/assert-before-4.stdout"
+    gate_output compare "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-5" run_bounded "./$out/ExceptionMessageSubset$EXE_EXT" before-aggregate-serialization
+    before="$out/assert-before-5.stdout"
+    gate_output compare "$prefix" "$before"
     for line in '== aggregate legacy serialization reachability ==' \
         'legacy aggregate message=legacy (inner)' \
         'legacy aggregate inner=True/fields=53/normal' \
         'legacy serialization calls=0' \
         'aggregate legacy serialization reachability end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: aggregate serialization reachability witness missing: $line" >&2; return 1; }
     done
-    prefix=$(awk '/^== derived aggregate constructors and getters ==$/ { exit } { print }' <<< "$native")
-    before=$(run_bounded dotnet "$_CG_APP" before-derived-aggregate)
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    before=$(run_bounded "./$out/ExceptionMessageSubset$EXE_EXT" before-derived-aggregate)
-    assert_output "$prefix" "$(strip_cr_win "$before")"
+    prefix="$out/assert-prefix-24.stdout"
+    gate_output select "$native" "$prefix" --before '== derived aggregate constructors and getters ==' --policy crlf
+    gate_capture_ok "$out/assert-before-6" run_bounded dotnet "$_CG_APP" before-derived-aggregate
+    before="$out/assert-before-6.stdout"
+    gate_output compare "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-7" run_bounded "./$out/ExceptionMessageSubset$EXE_EXT" before-derived-aggregate
+    before="$out/assert-before-7.stdout"
+    gate_output compare "$prefix" "$before"
     for line in '== derived aggregate constructors and getters ==' \
         'derived ctor default fields=37/ctor' \
         'derived ctor message array count=2 first=True order=True cached=True' \
@@ -129,12 +140,14 @@ gate_extra_asserts() {
         'derived inner fault reads=1/0' 'derived base inner fault reads=2/0' \
         'derived caught identity=True first=True' \
         'derived aggregate constructors and getters end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: derived aggregate witness missing: $line" >&2; return 1; }
     done
-    before=$(run_bounded dotnet "$_CG_APP" before-aggregate-enumerable)
-    prefix=$(awk '/^== aggregate enumerable constructors ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
+    gate_capture_ok "$out/assert-before-8" run_bounded dotnet "$_CG_APP" before-aggregate-enumerable
+    before="$out/assert-before-8.stdout"
+    prefix="$out/assert-prefix-25.stdout"
+    gate_output select "$native" "$prefix" --before '== aggregate enumerable constructors ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== aggregate enumerable constructors ==' \
         'enumerable constructed reads=0/0' \
         'custom sequence trace=Get/Move/Current/Move/Current/Move/Dispose/' \
@@ -159,13 +172,16 @@ gate_extra_asserts() {
         'sequence Current+Dispose fault=dispose fault original=False dispose=True' \
         'sequence Current+Dispose trace=Get/Move/Current/Dispose/' \
         'aggregate enumerable constructors end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: aggregate enumerable witness missing: $line" >&2; return 1; }
     done
-    assert_output "$(grep -Fc 'enumerable snapshot count=2 first=True order=True' <<< "$native")" '5'
-    before=$(run_bounded dotnet "$_CG_APP" before-lazy-aggregate-message)
-    prefix=$(awk '/^== lazy aggregate Message ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
+    gate_output view "$native" "$out/enumerable-witnesses.lf" --policy crlf
+    test "$(grep -Fc 'enumerable snapshot count=2 first=True order=True' "$out/enumerable-witnesses.lf")" = 5
+    gate_capture_ok "$out/assert-before-9" run_bounded dotnet "$_CG_APP" before-lazy-aggregate-message
+    before="$out/assert-before-9.stdout"
+    prefix="$out/assert-prefix-26.stdout"
+    gate_output select "$native" "$prefix" --before '== lazy aggregate Message ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== lazy aggregate Message ==' \
         'pair constructed reads=0/0 first=True order=True' \
         'pair first message=One or more errors occurred. (left:1) (right:1)' \
@@ -183,25 +199,29 @@ gate_extra_asserts() {
         'aggregate UTF16=0062 0061 0073 0065 DFFF 0020 0028 0078 0000 D800 0079 0029' \
         'derived Message=derived/derived base base=derived base' \
         'lazy aggregate Message end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: lazy aggregate Message witness missing: $line" >&2; return 1; }
     done
     grep -Eq '^.*vt_ExceptionMessageSubset_ExceptionVirtualMembers_ChangingMessage\[\].*ChangingMessage_get_Message_m[0-9]+' "$out"/generated*.cpp \
         || { echo 'FAIL: the side-effecting Message override was not installed' >&2; return 1; }
-    before=$(DN2CPP_BEFORE_ORDINARY_REFLECTION_ARGUMENTS=1 run_bounded "./$out/ExceptionMessageSubset$EXE_EXT")
-    prefix=$(awk '/^-- ordinary reflection argument fields --$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
+    DN2CPP_BEFORE_ORDINARY_REFLECTION_ARGUMENTS=1 gate_capture_ok "$out/assert-before-10" run_bounded "./$out/ExceptionMessageSubset$EXE_EXT"
+    before="$out/assert-before-10.stdout"
+    prefix="$out/assert-prefix-27.stdout"
+    gate_output select "$native" "$prefix" --before '-- ordinary reflection argument fields --' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '-- ordinary reflection argument fields --' \
         'Type.GetEnumUnderlyingType null receiver: NullReferenceException' \
         'Type.GetEnumNames null receiver: NullReferenceException' \
         'Type.GetEnumValuesAsUnderlyingType null receiver: NullReferenceException' \
         'ordinary reflection argument fields end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: ordinary reflection argument witness missing: $line" >&2; return 1; }
     done
-    before=$(run_bounded dotnet "$_CG_APP" before-runtime-hresult)
-    prefix=$(awk '/^== runtime exception HResult ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
+    gate_capture_ok "$out/assert-before-11" run_bounded dotnet "$_CG_APP" before-runtime-hresult
+    before="$out/assert-before-11.stdout"
+    prefix="$out/assert-prefix-28.stdout"
+    gate_output select "$native" "$prefix" --before '== runtime exception HResult ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== runtime exception HResult ==' \
         'null receiver: NullReferenceException/80004003' 'throw null: NullReferenceException/80004003' \
         'array index: IndexOutOfRangeException/80131508' 'cast: InvalidCastException/80004002' \
@@ -220,40 +240,49 @@ gate_extra_asserts() {
         'custom argument: CustomArgument/80070057' 'aggregate default: AggregateException/80131500' \
         'assigned thrown code: Exception/0000007B' 'explicit HRESULT: COMException/81234567' \
         'runtime exception HResult end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: runtime HResult witness missing: $line" >&2; return 1; }
     done
-    before=$(run_bounded "./$out/ExceptionMessageSubset" before-runtime-exception-chains)
-    prefix=$(awk '/^== runtime exception ancestry ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    grep -Fxq 'runtime exception ancestry end' <<< "$native" \
+    gate_capture_ok "$out/assert-before-12" run_bounded "./$out/ExceptionMessageSubset" before-runtime-exception-chains
+    before="$out/assert-before-12.stdout"
+    prefix="$out/assert-prefix-29.stdout"
+    gate_output select "$native" "$prefix" --before '== runtime exception ancestry ==' --policy crlf
+    gate_output compare "$prefix" "$before"
+    gate_output witness "$native" 'runtime exception ancestry end' --count any --policy crlf \
         || { echo 'FAIL: runtime exception ancestry section did not run' >&2; exit 1; }
     fixture="$out/RuntimeExceptionAncestry"
     DN2CPP_STRICT_COMPLETION=1 invoke_cli "$ancestry_app" -r "$_CG_CORELIB" -o "$fixture"
     compile_console "$fixture" RuntimeExceptionAncestry
-    expected=$(run_bounded dotnet "$ancestry_app")
-    actual=$(run_bounded "./$fixture/RuntimeExceptionAncestry")
-    actual=$(strip_cr_win "$actual")
-    assert_output "$actual" "$(strip_cr_win "$expected")"
+    gate_capture_ok "$out/assert-expected-13" run_bounded dotnet "$ancestry_app"
+    expected="$out/assert-expected-13.stdout"
+    gate_capture_ok "$out/assert-actual-14" run_bounded "./$fixture/RuntimeExceptionAncestry"
+    actual="$out/assert-actual-14.stdout"
+
+    gate_output compare "$actual" "$expected"
     for line in 'array index: IndexOutOfRangeException > SystemException > Exception > Object' \
         'no parameterless ctor: MissingMethodException > MissingMemberException > MemberAccessException > SystemException > Exception > Object' \
         'HRESULT E_FAIL: COMException > ExternalException > SystemException > Exception > Object'; do
-        grep -Fxq -- "$line" <<< "$actual" \
+        gate_output byte-witness "$actual" "$line" --count any --policy crlf \
             || { echo "FAIL: runtime exception chain missing: $line" >&2; exit 1; }
     done
-    before=$(run_bounded dotnet "$_CG_APP" before-general-argument-fields)
-    prefix=$(awk '/^-- general BCL argument fields --$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
+    gate_capture_ok "$out/assert-before-15" run_bounded dotnet "$_CG_APP" before-general-argument-fields
+    before="$out/assert-before-15.stdout"
+    prefix="$out/assert-prefix-30.stdout"
+    gate_output select "$native" "$prefix" --before '-- general BCL argument fields --' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '-- general BCL argument fields --' \
         'console null array pair=[<><>]' \
         'general BCL argument fields end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: general BCL argument witness missing: $line" >&2; exit 1; }
     done
-    before=$(dotnet "$_CG_APP" before-runtime-fields)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^-- runtime-raised argument fields --$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-16" run_bounded dotnet "$_CG_APP" before-runtime-fields
+    before="$out/assert-before-16.stdout"
+
+    prefix="$out/assert-prefix-31.stdout"
+
+    gate_output select "$native" "$prefix" --before '-- runtime-raised argument fields --' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '-- runtime-raised argument fields --' \
         'dictionary null key: ArgumentNullException param=key' \
         'builder repeat: ArgumentOutOfRangeException param=repeatCount actual=-1 actual-type=Int32' \
@@ -261,18 +290,20 @@ gate_extra_asserts() {
         '-- runtime-raised parameter names --' \
         'polyfill blank NUL message: ArgumentException param=Argument is whitespace' \
         'polyfill blank surrogate message: ArgumentException param=Argument is whitespace'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: runtime argument witness missing: $line" >&2; exit 1; }
     done
     local array_before array_prefix
-    array_before=$(run_bounded "$out/ExceptionMessageSubset$EXE_EXT" before-array-shape-fields)
-    array_prefix=$(awk '/^-- runtime Array argument fields --$/ { exit } { print }' <<< "$native")
-    assert_output "$array_prefix" "$(strip_cr_win "$array_before")"
+    gate_capture_ok "$out/assert-array_before-17" run_bounded "$out/ExceptionMessageSubset$EXE_EXT" before-array-shape-fields
+    array_before="$out/assert-array_before-17.stdout"
+    array_prefix="$out/assert-prefix-32.stdout"
+    gate_output select "$native" "$array_prefix" --before '-- runtime Array argument fields --' --policy crlf
+    gate_output compare "$array_prefix" "$array_before"
     for line in '-- runtime Array argument fields --' \
             'array-createinstance-length2: ArgumentOutOfRangeException param=length2 actual=-1 actual-type=Int32' \
             'array-getvalue-null-indices: ArgumentNullException param=indices' \
             'runtime Array argument fields end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: runtime Array fields witness missing: $line" >&2; exit 1; }
     done
     for app in "$fields_app" "$fallback_app" "$general_app"; do
@@ -284,10 +315,12 @@ gate_extra_asserts() {
             invoke_cli "$app" -r "$_CG_CORELIB" -o "$fixture"
         fi
         compile_console "$fixture" "$name"
-        expected=$(run_bounded dotnet "$app")
-        actual=$(run_bounded "./$fixture/$name")
-        actual=$(strip_cr_win "$actual")
-        assert_output "$actual" "$(strip_cr_win "$expected")"
+        gate_capture_ok "$fixture/assert-expected-18" run_bounded dotnet "$app"
+        expected="$fixture/assert-expected-18.stdout"
+        gate_capture_ok "$fixture/assert-actual-19" run_bounded "./$fixture/$name"
+        actual="$fixture/assert-actual-19.stdout"
+
+        gate_output compare "$actual" "$expected"
         if [ "$app" = "$fields_app" ]; then
             for line in '-- argument fields without constructors --' \
                 'substring negative start: ArgumentOutOfRangeException:startIndex' \
@@ -296,7 +329,7 @@ gate_extra_asserts() {
                 'join null: ArgumentNullException:value' \
                 'dictionary null: ArgumentNullException:key' \
                 'ilist null: ArgumentNullException:item'; do
-                grep -Fxq -- "$line" <<< "$actual" \
+                gate_output byte-witness "$actual" "$line" --count any --policy crlf \
                     || { echo "FAIL: constructor-free argument witness missing: $line" >&2; exit 1; }
             done
         elif [ "$name" = GeneralArgumentFallback ]; then
@@ -309,19 +342,23 @@ gate_extra_asserts() {
                 echo 'FAIL: general Message-only fixture bound an argument exception layout' >&2
                 exit 1
             fi
-            grep -Fxq 'general BCL Message fallback end' <<< "$actual" \
+            gate_output byte-witness "$actual" 'general BCL Message fallback end' --count any --policy crlf \
                 || { echo 'FAIL: general Message-only fixture did not run' >&2; exit 1; }
             local decimal_prefix decimal_before
-            decimal_prefix=$(awk '/^-- decimal parse Message fallback --$/ { exit } { print }' <<< "$actual")
-            decimal_before=$(run_bounded dotnet "$app" before-decimal-fault-text)
-            assert_output "$decimal_prefix" "$(strip_cr_win "$decimal_before")"
-            grep -Fxq 'decimal parse Message fallback end' <<< "$actual" \
+            decimal_prefix="$out/assert-prefix-33.stdout"
+            gate_output select "$actual" "$decimal_prefix" --before '-- decimal parse Message fallback --' --policy crlf
+            gate_capture_ok "$out/assert-decimal_before-20" run_bounded dotnet "$app" before-decimal-fault-text
+            decimal_before="$out/assert-decimal_before-20.stdout"
+            gate_output compare "$decimal_prefix" "$decimal_before"
+            gate_output byte-witness "$actual" 'decimal parse Message fallback end' --count any --policy crlf \
                 || { echo 'FAIL: decimal Message-only faults did not run' >&2; exit 1; }
             local culture_prefix culture_before
-            culture_prefix=$(awk '/^-- culture Message fallback --$/ { exit } { print }' <<< "$actual")
-            culture_before=$(run_bounded dotnet "$app" before-culture-fault-text)
-            assert_output "$culture_prefix" "$(strip_cr_win "$culture_before")"
-            grep -Fxq 'culture Message fallback end' <<< "$actual" \
+            culture_prefix="$out/assert-prefix-34.stdout"
+            gate_output select "$actual" "$culture_prefix" --before '-- culture Message fallback --' --policy crlf
+            gate_capture_ok "$out/assert-culture_before-21" run_bounded dotnet "$app" before-culture-fault-text
+            culture_before="$out/assert-culture_before-21.stdout"
+            gate_output compare "$culture_prefix" "$culture_before"
+            gate_output byte-witness "$actual" 'culture Message fallback end' --count any --policy crlf \
                 || { echo 'FAIL: culture Message-only faults did not run' >&2; exit 1; }
         else
             grep -Fxq 'const int32_t dn2cpp_type_bind_count = 0;' "$fixture/generated.cpp" \
@@ -334,7 +371,7 @@ gate_extra_asserts() {
                 '-- bound Message fallback --' 'bound Message fallback end' \
                 "insert unsigned: startIndex ('4294967295') must be less than or equal to '3'. (Parameter 'startIndex')|Actual value was 4294967295." \
                 "array wrapped room: startIndex ('0') must be less than or equal to '-2147483645'. (Parameter 'startIndex')|Actual value was 0."; do
-                grep -Fxq -- "$line" <<< "$actual" \
+                gate_output byte-witness "$actual" "$line" --count any --policy crlf \
                     || { echo "FAIL: fallback argument witness missing: $line" >&2; exit 1; }
             done
         fi

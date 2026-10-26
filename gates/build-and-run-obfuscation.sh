@@ -49,7 +49,9 @@ PY
             --obfuscate ${flags[@]+"${flags[@]}"} -o "$out"
         cmp "$out/targets-first.json" "$out/obfuscation-targets.json"
         compile_console "$out" Obfuscation
-        assert_output "$(run_bounded "./$out/Obfuscation")" "$(run_bounded dotnet "$_CG_APP")"
+        gate_capture_ok "$out/obfuscated.native" run_bounded "./$out/Obfuscation$EXE_EXT"
+        gate_capture_ok "$out/obfuscated.dotnet" run_bounded dotnet "$_CG_APP"
+        gate_output compare "$out/obfuscated.native.stdout" "$out/obfuscated.dotnet.stdout"
     done
 
     local negative="$baseline-negative"
@@ -205,7 +207,9 @@ PY
             || { echo "FAIL: refused empty under --no-shared-generics ($mode) left C++: $(ls -1 "$unplanned-$mode" | tr '\n' ' ')" >&2; return 1; }
     done
     compile_console "$late/stripped" Probe
-    assert_output "$(run_bounded "./$late/stripped/Probe")" "$(run_bounded dotnet "$late/bin/$CONFIG/$TFM/Probe.dll")"
+    gate_capture_ok "$late/stripped/probe.native" run_bounded "./$late/stripped/Probe$EXE_EXT"
+    gate_capture_ok "$late/stripped/probe.dotnet" run_bounded dotnet "$late/bin/$CONFIG/$TFM/Probe.dll"
+    gate_output compare "$late/stripped/probe.native.stdout" "$late/stripped/probe.dotnet.stdout"
     echo "compile-round target OK: under --no-shared-generics a target a compile round reaches first keeps its row, and an empty target set leaves no generated sources"
 }
 corelib_diff_gate Obfuscation

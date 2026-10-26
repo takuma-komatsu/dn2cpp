@@ -18,12 +18,13 @@ _corelib_gate_core() {
 }
 gate_extra_asserts() {
     local out="$1" native line
-    native=$(run_bounded "$out/KnownNullJoinsOnly$EXE_EXT")
-    native=$(strip_cr_win "$native")
+    gate_capture_ok "$out/assert-native-1" run_bounded "$out/KnownNullJoinsOnly$EXE_EXT"
+    native="$out/assert-native-1.stdout"
+
     for line in '== known null stack joins ==' 'join-null-forward=values/values' \
         'mixed-comparer=False/True' 'backedge-comparer=False/True' \
         'known null stack joins end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: null stack-join witness missing: $line" >&2; exit 1; }
     done
 }
@@ -36,8 +37,8 @@ build_proj samples/dotnet/SharedGenerics/SharedGenerics.csproj
 bucket="samples/dotnet/SharedGenerics/bin/$CONFIG/$TFM/SharedGenerics.dll"
 prefix_out="artifacts/null-stack-join-prefix-$CONFIG"
 mkdir -p "$prefix_out"
-run_bounded dotnet "$bucket" before-null-stack-joins > "$prefix_out/before.stdout"
-run_bounded dotnet "$bucket" > "$prefix_out/full.stdout"
-sed '/^== known null stack joins ==/,$d' "$prefix_out/full.stdout" > "$prefix_out/prefix.stdout"
-diff -u <(strip_cr_win_file "$prefix_out/before.stdout") <(strip_cr_win_file "$prefix_out/prefix.stdout")
+gate_capture_ok "$prefix_out/before" run_bounded dotnet "$bucket" before-null-stack-joins
+gate_capture_ok "$prefix_out/full" run_bounded dotnet "$bucket"
+gate_output select "$prefix_out/full.stdout" "$prefix_out/prefix.stdout" --before '== known null stack joins ==' --policy crlf
+gate_output compare "$prefix_out/before.stdout" "$prefix_out/prefix.stdout"
 echo 'PASS: known null stack joins'

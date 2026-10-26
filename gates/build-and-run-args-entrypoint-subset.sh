@@ -75,14 +75,14 @@ echo "== Precise type initializers run on every trigger, and only on a trigger =
     DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|sample-path:$DN2CPP_SAMPLE_PROJECT_DIR"
     gate_extra_asserts() {
         local native line
-        native=$(strip_cr_win "$(run_bounded "./$1/InitializerTriggersOnly$EXE_EXT")")
+        native="$1/native.stdout"
         for line in 'entry initializer before Main=True' 'base constructor call=True' \
                 'struct instance method=1/True' 'method pointer=42/True' 'default struct=0/False' \
                 'shared method pointer=8/registered' 'shared static call=9/registered' \
                 'constrained struct method=3/registered' 'constrained static method=4/registered' \
                 'constrained struct ToString=text/registered' 'constrained struct Equals=True/registered' \
                 'constrained struct GetHashCode=6/registered' 'initializer triggers end'; do
-            grep -Fxq -- "$line" <<< "$native" \
+            gate_output byte-witness "$native" "$line" --count any --policy crlf \
                 || { echo "FAIL: initializer trigger witness missing: $line" >&2; return 1; }
         done
     }
@@ -116,12 +116,11 @@ compile_console "$out" "$project"
 # a binary aborting AFTER printing the full expected output would pass silently)
 # and must match real .NET's.
 echo "-- multi-arg run --"
-set +e
-native=$("./$out/$project" alpha "beta gamma" 42 2>"$out/native.err"); native_code=$?
-expected=$(dotnet "$app" alpha "beta gamma" 42); expected_code=$?
-set -e
-assert_output "$native" "$expected"
-assert_exit_code "$native_code" "$expected_code"
+gate_capture "$out/native-1" run_bounded "./$out/$project" alpha "beta gamma" 42
+gate_capture "$out/oracle-1" run_bounded dotnet "$app" alpha "beta gamma" 42
+gate_output compare "$out/native-1.stdout" "$out/oracle-1.stdout"
+gate_output status "$(cat "$out/native-1.status")" "$(cat "$out/oracle-1.status")"
+cp "$out/native-1.stderr" "$out/native.err"
 echo "-- startup-cctor failure report (stderr) --"
 # grep on the captured FILE, never `| grep -q` (SIGPIPE under pipefail makes the
 # matched case the failing one). The phrase pins the whole contract: the boundary
@@ -135,20 +134,17 @@ if ! grep -F "unhandled managed exception in the startup static constructor of F
     exit 1
 fi
 echo "-- no-arg run --"
-set +e
-native=$("./$out/$project"); native_code=$?
-expected=$(dotnet "$app"); expected_code=$?
-set -e
-assert_output "$native" "$expected"
-assert_exit_code "$native_code" "$expected_code"
+gate_capture "$out/native-2" run_bounded "./$out/$project"
+gate_capture "$out/oracle-2" run_bounded dotnet "$app"
+gate_output compare "$out/native-2.stdout" "$out/oracle-2.stdout"
+gate_output status "$(cat "$out/native-2.status")" "$(cat "$out/oracle-2.status")"
 
 echo "-- Unicode and quoted arguments --"
 argv=("日本語" "😀" "" "two words" 'a"b' 'end\')
-set +e
-native=$("./$out/$project" "${argv[@]}" 2>"$out/unicode.err"); native_code=$?
-expected=$(dotnet "$app" "${argv[@]}"); expected_code=$?
-set -e
-assert_output "$native" "$expected"
-assert_exit_code "$native_code" "$expected_code"
+gate_capture "$out/native-3" run_bounded "./$out/$project" "${argv[@]}"
+gate_capture "$out/oracle-3" run_bounded dotnet "$app" "${argv[@]}"
+gate_output compare "$out/native-3.stdout" "$out/oracle-3.stdout"
+gate_output status "$(cat "$out/native-3.status")" "$(cat "$out/oracle-3.status")"
+cp "$out/native-3.stderr" "$out/unicode.err"
 
 gate_cache_commit

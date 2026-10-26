@@ -70,6 +70,7 @@
 set -u
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
+source "$REPO/gates/_culture_gate_scope.sh" || exit 2
 CONFIG="${CONFIG:-Release}"
 LOCALES="${DN2CPP_CULTURE_LOCALES:-en_US.UTF-8 de_DE.UTF-8 fr_FR.UTF-8 ja_JP.UTF-8}"
 # Lowering the cap is the fail-OPEN direction — a subject that times out is
@@ -162,7 +163,9 @@ projects_under_gates() {
                 [ -d "$REPO/samples/dotnet/$tok" ] && echo "$tok"
             done
         done
-    } | sort -u | grep -vxF "$CULTURE_SUBJECT_BY_DESIGN"
+    } | sort -u | grep -vxF "$CULTURE_SUBJECT_BY_DESIGN" | while read -r subject; do
+        if culture_project_selected "$subject"; then printf '%s\n' "$subject"; fi
+    done
 }
 
 # .NET has no timeout(1) dependency to lean on here and macOS ships none; a
@@ -251,6 +254,11 @@ if [ $# -gt 0 ]; then
     SUBJECTS="$*"
 else
     SUBJECTS="$(projects_under_gates)"
+fi
+
+if [ -z "$SUBJECTS" ]; then
+    echo "verify-culture-invariance: no selected subjects; refusing vacuous success" >&2
+    exit 1
 fi
 
 echo "locales: $LOCALES"

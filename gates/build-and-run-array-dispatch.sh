@@ -57,7 +57,7 @@ _cleanup_shimless() {
 trap _cleanup_shimless EXIT
 
 gate_extra_asserts() {
-    local closure_tail string_variance_tail output
+    local out="$1" closure_tail string_variance_tail output
     closure_tail='-- interface closure dispatch --
 diamond exact: cat/cat
 diamond variant: cat/cat
@@ -77,11 +77,8 @@ cat
 string direct: 0
 string pair: 0/0
 string contravariant: compare:0'
-    output="$(strip_cr_win "$native")"
-    case "$output" in
-        *"$closure_tail"$'\n'"$string_variance_tail") ;;
-        *) echo "FAIL: interface closure dispatch and string variance sections did not run completely in order" >&2; exit 1 ;;
-    esac
+    printf '%s\n%s\n' "$closure_tail" "$string_variance_tail" > "$out/dispatch-tail.expected"
+    gate_output suffix "$out/native.stdout" "$out/dispatch-tail.expected" --policy crlf
 
     echo "-- negative: transpiling without the support shim must be rejected --"
     local corelib app linq noshim_rc=0 noshim_err
@@ -132,12 +129,12 @@ string contravariant: compare:0'
     invoke_cli "$variance_only/app/ArrayDispatch.dll" -r "$corelib" -r "$linq" \
         -o "$variance_only/gen"
     compile_console "$variance_only/gen" ArrayDispatch
-    local variance_native variance_expected
-    variance_native=$(run_bounded "$variance_only/gen/ArrayDispatch")
-    variance_expected=$(run_bounded dotnet "$variance_only/app/ArrayDispatch.dll")
-    assert_output "$variance_native" "$variance_expected"
-    grep -qx 'string pair: 0/0' <<<"$variance_native"
-    grep -qx 'string contravariant: compare:0' <<<"$variance_native"
+    gate_capture_ok "$variance_only/native" run_bounded "$variance_only/gen/ArrayDispatch"
+    gate_capture_ok "$variance_only/oracle" run_bounded dotnet "$variance_only/app/ArrayDispatch.dll"
+    gate_output compare "$variance_only/native.stdout" "$variance_only/oracle.stdout"
+    gate_output byte-witness "$variance_only/native.stdout" --policy crlf --count any \
+        'string pair: 0/0' 'string contravariant: compare:0'
+
 }
 
 # What the section asserts is the TRANSPILER's conduct with a member of its own bundle

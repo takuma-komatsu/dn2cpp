@@ -57,12 +57,23 @@ class ReflectionInputsTests(unittest.TestCase):
         self.assertEqual(1, self.check(b"other name=first\n", "1", ["name="], prefixes=True))
         self.assertEqual(1, self.check(b"name=first\nname=second\n", "1", ["name="], prefixes=True))
 
-    def test_utf8_and_line_endings_match_grep(self):
+    def test_utf8_and_line_endings_are_host_independent(self):
         self.assertEqual(0, self.check("反射\n".encode("utf-8"), "1", ["反射"]))
-        self.assertEqual(0 if os.name == "nt" else 1,
-                         self.check(b"needle\r\n", "1", ["needle"]))
-        self.assertEqual(1 if os.name == "nt" else 0,
-                         self.check(b"needle\r\n", "1", ["needle\r"]))
+        for data in (b"needle\n", b"needle\r\n", b"needle"):
+            self.assertEqual(0, self.check(data, "1", ["needle"]))
+        self.assertEqual(0, self.check(b"needle\r\nneedle\n", "2", ["needle"]))
+        self.assertEqual(1, self.check(b"needle\r\n", "1", ["needle\r"]))
+
+    def test_lone_cr_whitespace_blank_records_and_nul(self):
+        self.assertEqual(1, self.check(b"needle\r", "1", ["needle"]))
+        self.assertEqual(0, self.check(b"needle\r", "1", ["needle\r"]))
+        self.assertEqual(1, self.check(b"needle \n", "1", ["needle"]))
+        self.assertEqual(0, self.check(b"needle\r\n\r\n", "1", [""]))
+        self.assertEqual(1, self.check(b"needle\0\n", "1", ["needle"]))
+
+    def test_crcrlf_preserves_payload_carriage_return(self):
+        self.assertEqual(1, self.check(b"needle\r\r\n", "1", ["needle"]))
+        self.assertEqual(0, self.check(b"needle\r\r\n", "1", ["needle\r"]))
 
     def test_payload_and_runtime_configuration_invalidate_oracle(self):
         original = self.key()

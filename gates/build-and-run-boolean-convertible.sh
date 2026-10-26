@@ -16,8 +16,9 @@ _corelib_gate_core() {
 }
 gate_extra_asserts() {
     local out="$1" native prefix before line canonical body
-    native=$(run_bounded "$out/BooleanConvertibleOnly$EXE_EXT")
-    native=$(strip_cr_win "$native")
+    gate_capture_ok "$out/assert-native-1" run_bounded "$out/BooleanConvertibleOnly$EXE_EXT"
+    native="$out/assert-native-1.stdout"
+
     for line in '== constrained Boolean conversion ==' \
         'constrained boolean=False/True' \
         'constrained boolean siblings=False/True/False/True' \
@@ -25,13 +26,15 @@ gate_extra_asserts() {
         'constrained boolean scalar-context=Int32/False/Int32/True/Shade/False/Shade/True' \
         'constrained boolean reference-context=String/False/String/True/Object/False/Object/True' \
         'constrained Boolean conversion end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: constrained Boolean witness missing: $line" >&2; exit 1; }
     done
-    before=$(run_bounded dotnet "$_CG_APP" before-boolean-receivers)
-    before=$(strip_cr_win "$before")
-    prefix=$(sed '/^== constrained Boolean conversion ==/,$d' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-2" run_bounded dotnet "$_CG_APP" before-boolean-receivers
+    before="$out/assert-before-2.stdout"
+
+    prefix="$out/boolean-prefix.stdout"
+    gate_output select "$native" "$prefix" --before '== constrained Boolean conversion ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     if [ "$boolean_sharing" = --shared-generics ]; then
         for canonical in CnInt32 CnRef; do
             body=$(awk -v owner="// ConstrainedObjectInterfaceSubset.BooleanReceiverContext_\$$canonical::Convert" \
@@ -56,9 +59,10 @@ build_proj samples/dotnet/SharedGenerics/SharedGenerics.csproj
 bucket="samples/dotnet/SharedGenerics/bin/$CONFIG/$TFM/SharedGenerics.dll"
 prefix_out="artifacts/boolean-convertible-prefix-$CONFIG"
 mkdir -p "$prefix_out"
-run_bounded dotnet "$bucket" before-boolean-receivers > "$prefix_out/before.stdout"
-run_bounded dotnet "$bucket" > "$prefix_out/full.stdout"
-sed '/^== constrained Boolean conversion ==/,$d' "$prefix_out/full.stdout" > "$prefix_out/prefix.stdout"
-diff -u <(strip_cr_win_file "$prefix_out/before.stdout") <(strip_cr_win_file "$prefix_out/prefix.stdout")
+gate_capture_ok "$prefix_out/before" run_bounded dotnet "$bucket" before-boolean-receivers
+gate_capture_ok "$prefix_out/full" run_bounded dotnet "$bucket"
+gate_output select "$prefix_out/full.stdout" "$prefix_out/prefix.stdout" \
+    --before '== constrained Boolean conversion ==' --policy crlf
+gate_output compare "$prefix_out/before.stdout" "$prefix_out/prefix.stdout"
 
 echo 'PASS: constrained Boolean conversion'

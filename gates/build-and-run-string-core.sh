@@ -57,12 +57,16 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|format-diagnostics-prefix-
 
 gate_extra_asserts() {
     local out="$1" native before prefix line oracle fixture expected actual
-    native=$(run_bounded "./$out/StringCore")
-    native=$(strip_cr_win "$native")
-    before=$(dotnet "$_CG_APP" before-join-sequences)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== string sequences ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-native-1" run_bounded "./$out/StringCore"
+    native="$out/assert-native-1.stdout"
+
+    gate_capture_ok "$out/assert-before-2" run_bounded dotnet "$_CG_APP" before-join-sequences
+    before="$out/assert-before-2.stdout"
+
+    prefix="$out/assert-prefix-21.stdout"
+
+    gate_output select "$native" "$prefix" --before '== string sequences ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== string sequences ==' \
         '== string sequence operands ==' \
         'disposed: w1++w3 w1w3 2' \
@@ -75,24 +79,30 @@ gate_extra_asserts() {
         'changed list: InvalidOperationException prefix:first' \
         'null receiver strings: NullReferenceException' \
         'null receiver empty span: NullReferenceException'; do
-        grep -Fxq "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: sequence witness missing: $line" >&2; exit 1; }
     done
-    before=$(dotnet "$_CG_APP" before-indexed-compare)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== indexed culture compare ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-3" run_bounded dotnet "$_CG_APP" before-indexed-compare
+    before="$out/assert-before-3.stdout"
+
+    prefix="$out/assert-prefix-22.stdout"
+
+    gate_output select "$native" "$prefix" --before '== indexed culture compare ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== indexed culture compare ==' 'bool fold=0' 'bool clamp=-1' \
         'options ordinal=-32' 'options ordinal-ci=0' \
         'bool evaluation=AIBJLFC' 'options evaluation=AIBJLCO' \
         'throwing culture evaluation=AIBJLC' 'indexed culture compare end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: indexed compare witness missing: $line" >&2; exit 1; }
     done
-    before=$(dotnet "$_CG_APP" before-copyto-faults)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== string array copy faults ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-4" run_bounded dotnet "$_CG_APP" before-copyto-faults
+    before="$out/assert-before-4.stdout"
+
+    prefix="$out/assert-prefix-23.stdout"
+
+    gate_output select "$native" "$prefix" --before '== string array copy faults ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== string array copy faults ==' 'source-window actual=Int32:4' \
         'source-past-end actual=Int32:0' 'destination-window actual=Int32:1' \
         'destination-room-before-sign actual=Int32:-1' \
@@ -100,13 +110,16 @@ gate_extra_asserts() {
         'source-window destination=....' 'copy-window destination=.bcd.' \
         'empty-at-end copied' 'null receiver evaluation=SIDJC' \
         'throwing count evaluation=SIDJC' 'string array copy faults end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: array CopyTo witness missing: $line" >&2; exit 1; }
     done
-    before=$(dotnet "$_CG_APP" before-window-faults)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== string window faults ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-5" run_bounded dotnet "$_CG_APP" before-window-faults
+    before="$out/assert-before-5.stdout"
+
+    prefix="$out/assert-prefix-24.stdout"
+
+    gate_output select "$native" "$prefix" --before '== string window faults ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== string window faults ==' 'insert-negative actual=UInt32:4294967295' \
         'insert-minimum actual=UInt32:2147483648' 'insert-null-before-index param=value' \
         'array-negative-start actual=UInt32:4294967295' 'array-window actual=Int32:1' \
@@ -117,13 +130,16 @@ gate_extra_asserts() {
         'insert null evaluation=SIV' 'insert throwing value evaluation=SIV' \
         'array null evaluation=SIL' 'array throwing length evaluation=SIL' \
         'string window faults end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: string window witness missing: $line" >&2; exit 1; }
     done
-    before=$(dotnet "$_CG_APP" before-array-ctors)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== string array constructors ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-6" run_bounded dotnet "$_CG_APP" before-array-ctors
+    before="$out/assert-before-6.stdout"
+
+    prefix="$out/assert-prefix-25.stdout"
+
+    gate_output select "$native" "$prefix" --before '== string array constructors ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== string array constructors ==' \
         'whole-utf16 result=0041 0000 D800 DC00 005A ' \
         'slice-utf16 result=0000 D800 DC00 ' \
@@ -137,13 +153,16 @@ gate_extra_asserts() {
         'whole null evaluation=A' 'slice null evaluation=AIL' \
         'slice copy evaluation=AIL' 'slice throwing length evaluation=AIL' \
         'slice throwing array evaluation=A' 'string array constructors end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: string array constructor witness missing: $line" >&2; exit 1; }
     done
-    before=$(dotnet "$_CG_APP" before-remove-padding)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== string remove and padding faults ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-7" run_bounded dotnet "$_CG_APP" before-remove-padding
+    before="$out/assert-before-7.stdout"
+
+    prefix="$out/assert-prefix-26.stdout"
+
+    gate_output select "$native" "$prefix" --before '== string remove and padding faults ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== string remove and padding faults ==' \
         'remove-tail-negative actual=null' 'remove-tail-past-end param=startIndex' \
         'remove-start-before-count actual=Int32:-1' \
@@ -160,13 +179,16 @@ gate_extra_asserts() {
         'remove copy evaluation=SIC' 'remove throwing count evaluation=SIC' \
         'pad null evaluation=SWP' 'pad throwing padding evaluation=SWP' \
         'string remove and padding faults end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: string remove/padding witness missing: $line" >&2; exit 1; }
     done
-    before=$(dotnet "$_CG_APP" before-empty-char-sources)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== empty string char sources ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-8" run_bounded dotnet "$_CG_APP" before-empty-char-sources
+    before="$out/assert-before-8.stdout"
+
+    prefix="$out/assert-prefix-27.stdout"
+
+    gate_output select "$native" "$prefix" --before '== empty string char sources ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== empty string char sources ==' \
         'repeat empties=True:True:True:True' \
         'span ctor empties=True:True:True:True:True:True:True' \
@@ -180,13 +202,16 @@ gate_extra_asserts() {
         'repeat empty evaluation=CN' 'repeat negative evaluation=CN' \
         'repeat throwing count evaluation=CN' 'repeat throwing char evaluation=C' \
         'span empty evaluation=S' 'empty string char sources end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: empty char source witness missing: $line" >&2; exit 1; }
     done
-    before=$(dotnet "$_CG_APP" before-comparison-faults)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== string comparison faults ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-9" run_bounded dotnet "$_CG_APP" before-comparison-faults
+    before="$out/assert-before-9.stdout"
+
+    prefix="$out/assert-prefix-28.stdout"
+
+    gate_output select "$native" "$prefix" --before '== string comparison faults ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== string comparison faults ==' \
         'starts -1 param=comparisonType' 'char index 6 param=comparisonType' \
         'index start -2147483648 param=comparisonType' \
@@ -204,13 +229,16 @@ gate_extra_asserts() {
         'null evaluation=SVC' 'throwing comparison evaluation=SVC' \
         'equals evaluation=SVC' 'equals throwing comparison evaluation=SVC' \
         'string comparison faults end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: string comparison fault witness missing: $line" >&2; exit 1; }
     done
-    before=$(dotnet "$_CG_APP" before-search-range-faults)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== string search range faults ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-10" run_bounded dotnet "$_CG_APP" before-search-range-faults
+    before="$out/assert-before-10.stdout"
+
+    prefix="$out/assert-prefix-29.stdout"
+
+    gate_output select "$native" "$prefix" --before '== string search range faults ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== string search range faults ==' \
         'index char start 0:-2147483648 param=startIndex' \
         'last char start 0:2147483647 param=startIndex' \
@@ -227,7 +255,7 @@ gate_extra_asserts() {
         'index null value param=value' 'last null value param=value' \
         'range utf16=2:1' 'range null evaluation=SAIC' \
         'range throwing count evaluation=SAIC' 'string search range faults end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: string search range fault witness missing: $line" >&2; exit 1; }
     done
     oracle="$out/direct-call-oracle"
@@ -238,36 +266,46 @@ gate_extra_asserts() {
     $string_python gates/fixtures/string-comparison-call/patch-call.py "$oracle/StringComparisonCall.dll"
     invoke_cli "$oracle/StringComparisonCall.dll" -r "$_CG_CORELIB" -o "$fixture"
     compile_console "$fixture" StringComparisonCall
-    expected=$(run_bounded dotnet "$oracle/StringComparisonCall.dll")
-    actual=$(run_bounded "./$fixture/StringComparisonCall")
-    actual=$(strip_cr_win "$actual")
-    assert_output "$actual" "$(strip_cr_win "$expected")"
+    gate_capture_ok "$out/assert-expected-11" run_bounded dotnet "$oracle/StringComparisonCall.dll"
+    expected="$out/assert-expected-11.stdout"
+    gate_capture_ok "$out/assert-actual-12" run_bounded "./$fixture/StringComparisonCall"
+    actual="$out/assert-actual-12.stdout"
+
+    gate_output compare "$actual" "$expected"
     for line in 'direct both null valid=True' 'direct ignore case=True' \
         "direct both null invalid=ArgumentException:The string comparison type passed in is currently not supported. (Parameter 'comparisonType')" \
         "direct same invalid=ArgumentException:The string comparison type passed in is currently not supported. (Parameter 'comparisonType')" \
         'virtual both null valid=NullReferenceException:Object reference not set to an instance of an object.' \
         'virtual both null invalid=NullReferenceException:Object reference not set to an instance of an object.'; do
-        grep -Fxq -- "$line" <<< "$actual" \
+        gate_output byte-witness "$actual" "$line" --count any --policy crlf \
             || { echo "FAIL: direct comparison call witness missing: $line" >&2; exit 1; }
     done
-    native=$(run_bounded "./$out/StringCore")
-    native=$(strip_cr_win "$native")
-    before=$(dotnet "$_CG_APP" before-span-flag-faults) || return $?
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== String span and flag faults ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-native-13" run_bounded "./$out/StringCore"
+    native="$out/assert-native-13.stdout"
+
+    gate_capture_ok "$out/assert-before-14" run_bounded dotnet "$_CG_APP" before-span-flag-faults
+    before="$out/assert-before-14.stdout"
+
+    prefix="$out/assert-prefix-30.stdout"
+
+    gate_output select "$native" "$prefix" --before '== String span and flag faults ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== String span and flag faults ==' \
         'span copy:0 param=destination' 'span copy:2 param=destination' \
         'empty span copy success' 'split char flag:4 param=options' \
         'split string flag:4 param=options' 'String span and flag faults end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: span and flag fault witness missing: $line" >&2; exit 1; }
     done
 
-    before=$(dotnet "$_CG_APP" before-argument-fields)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== String argument fields ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-15" run_bounded dotnet "$_CG_APP" before-argument-fields
+
+    before="$out/assert-before-15.stdout"
+
+    prefix="$out/assert-prefix-31.stdout"
+
+    gate_output select "$native" "$prefix" --before '== String argument fields ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== String argument fields ==' \
         'replace:0:0:0 param=oldValue' \
         'replace:0:1:0 param=oldValue' \
@@ -283,26 +321,33 @@ gate_extra_asserts() {
         'is interned null param=str' \
         'fault after GC:1 actual=Int32:-7' \
         'String argument fields end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: String argument field witness missing: $line" >&2; exit 1; }
     done
 
-    before=$(dotnet "$_CG_APP" before-boolean-compare)
-    prefix=$(awk '/^== Boolean string comparison equality ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
+    gate_capture_ok "$out/assert-before-16" run_bounded dotnet "$_CG_APP" before-boolean-compare
+
+    before="$out/assert-before-16.stdout"
+    prefix="$out/assert-prefix-32.stdout"
+    gate_output select "$native" "$prefix" --before '== Boolean string comparison equality ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== Boolean string comparison equality ==' \
         'Name:name:True=True:True' 'Name:name:False=False:False' \
         '<null>::True=False:False' '名前:名前:False=True:True' \
         'Boolean string comparison equality end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: Boolean comparison witness missing: $line" >&2; exit 1; }
     done
 
-    before=$(run_bounded dotnet "$_CG_APP" before-format-diagnostics)
-    prefix=$(awk '/^== String composite format diagnostics ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    before=$(run_bounded "./$out/StringCore$EXE_EXT" before-format-diagnostics)
-    assert_output "$prefix" "$(strip_cr_win "$before")"
+    gate_capture_ok "$out/assert-before-17" run_bounded dotnet "$_CG_APP" before-format-diagnostics
+
+    before="$out/assert-before-17.stdout"
+    prefix="$out/assert-prefix-33.stdout"
+    gate_output select "$native" "$prefix" --before '== String composite format diagnostics ==' --policy crlf
+    gate_output compare "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-18" run_bounded "./$out/StringCore$EXE_EXT" before-format-diagnostics
+    before="$out/assert-before-18.stdout"
+    gate_output compare "$prefix" "$before"
     for line in '== String composite format diagnostics ==' \
         'valid-one result=[7] trace= calls=0' \
         'valid-null-spec result=[[]] trace= calls=0' \
@@ -319,21 +364,25 @@ gate_extra_asserts() {
         'array-evaluation result=[value1] trace=FAT1 calls=1' \
         'provider-evaluation result=[value1] trace=PF1T1 calls=1' \
         'String composite format diagnostics end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: composite format witness missing: $line" >&2; exit 1; }
     done
-    before=$(run_bounded dotnet "$_CG_APP" before-argument-roots)
-    prefix=$(awk '/^== Collected runtime argument operands ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    before=$(run_bounded "./$out/StringCore$EXE_EXT" before-argument-roots)
-    assert_output "$prefix" "$(strip_cr_win "$before")"
+    gate_capture_ok "$out/assert-before-19" run_bounded dotnet "$_CG_APP" before-argument-roots
+    before="$out/assert-before-19.stdout"
+    prefix="$out/assert-prefix-34.stdout"
+    gate_output select "$native" "$prefix" --before '== Collected runtime argument operands ==' --policy crlf
+    gate_output compare "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-20" run_bounded "./$out/StringCore$EXE_EXT" before-argument-roots
+    before="$out/assert-before-20.stdout"
+    gate_output compare "$prefix" "$before"
     for line in '== Collected runtime argument operands ==' 'Collected runtime argument operands end'; do
-        [ "$(grep -Fxc -- "$line" <<< "$native")" = 1 ] \
+        gate_output witness "$native" "$line" --count 1 --policy crlf \
             || { echo "FAIL: runtime argument root block missing or repeated: $line" >&2; exit 1; }
     done
+    gate_output view "$native" "$out/argument-roots.lf" --policy crlf
     for line in 'roots signed' 'roots unsigned' 'roots float' 'roots double' \
         'roots managed message' 'roots monitor message' 'roots boxed actual'; do
-        [ "$(grep -Ec "^$line=Argument(OutOfRange)?Exception:" <<< "$native")" = 1 ] \
+        [ "$(grep -Ec "^$line=Argument(OutOfRange)?Exception:" "$out/argument-roots.lf")" = 1 ] \
             || { echo "FAIL: collected runtime argument witness missing or repeated: $line" >&2; exit 1; }
     done
 }

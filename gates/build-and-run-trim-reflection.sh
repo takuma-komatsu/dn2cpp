@@ -36,17 +36,20 @@ TEMPLATE_KEEP="samples/dotnet/$PROJECT/keep-template-members.xml"
 # Delegate.Method witnesses keep every selected-owner answer observable.
 assert_delegate_method_lines() {
     local out="$1" line
+    gate_output view "$out" "$out.records" --policy crlf
     shift
-    grep -Fxq '== Delegate.Method over stripped receivers ==' <<<"$(strip_cr_win "$out")" \
+    gate_output witness "$out" '== Delegate.Method over stripped receivers ==' --count any --policy crlf \
         || { echo "FAIL: the Delegate.Method section did not run" >&2; exit 1; }
     local enum_before enum_prefix
-    enum_before=$(DN2CPP_BEFORE_MEMBER_ENUM=1 run_bounded "$OUT/$PROJECT$EXE_EXT")
-    enum_prefix=$(awk '/^== enum named by a reflected field ==$/ { exit } { print }' <<< "$(strip_cr_win "$out")")
-    assert_output "$enum_prefix" "$(strip_cr_win "$enum_before")"
-    grep -Fxq '  GetFields -> LibShade fields=3' <<< "$(strip_cr_win "$out")" \
+    enum_before="$OUT/check-enum_before-1.stdout"
+    DN2CPP_BEFORE_MEMBER_ENUM=1 gate_capture_ok "${enum_before%.stdout}" run_bounded "$OUT/$PROJECT$EXE_EXT"
+    enum_prefix="$out.prefix"
+    gate_output select "$out" "$enum_prefix" --before '== enum named by a reflected field ==' --policy crlf
+    gate_output compare "$enum_prefix" "$enum_before" --policy crlf
+    gate_output witness "$out" '  GetFields -> LibShade fields=3' --count any --policy crlf \
         || { echo 'FAIL: member-only enum section did not run' >&2; exit 1; }
     for line in "$@"; do
-        grep -Fq -- "$line" <<<"$(strip_cr_win "$out")" \
+        grep -Fq -- "$line" "$out.records" \
             || { echo "FAIL: Delegate.Method witness missing: $line" >&2; exit 1; }
     done
 }
@@ -55,15 +58,17 @@ assert_delegate_method_lines() {
 # header must equal a run that stops before it.
 assert_object_virtual_lines() {
     local out="$1" line before prefix
+    gate_output view "$out" "$out.records" --policy crlf
     shift
-    out=$(strip_cr_win "$out")
-    grep -Fxq '== Delegate.Method of Object virtuals over stripped receivers ==' <<<"$out" \
+    gate_output witness "$out" '== Delegate.Method of Object virtuals over stripped receivers ==' --count any --policy crlf \
         || { echo "FAIL: the Object-virtual Delegate.Method section did not run" >&2; exit 1; }
-    before=$(strip_cr_win "$(DN2CPP_BEFORE_OBJECT_VIRTUAL=1 run_bounded "$OUT/$PROJECT$EXE_EXT")")
-    prefix=$(awk '/^== Delegate.Method of Object virtuals over stripped receivers ==$/ { exit } { print }' <<<"$out")
-    assert_output "$prefix" "$before"
+    before="$OUT/check-before-2.stdout"
+    DN2CPP_BEFORE_OBJECT_VIRTUAL=1 gate_capture_ok "${before%.stdout}" run_bounded "$OUT/$PROJECT$EXE_EXT"
+    prefix="$out.prefix"
+    gate_output select "$out" "$prefix" --before '== Delegate.Method of Object virtuals over stripped receivers ==' --policy crlf
+    gate_output compare "$prefix" "$before" --policy crlf
     for line in "$@"; do
-        grep -Fq -- "$line" <<<"$out" \
+        grep -Fq -- "$line" "$out.records" \
             || { echo "FAIL: Object-virtual Delegate.Method witness missing: $line" >&2; exit 1; }
     done
 }
@@ -72,13 +77,16 @@ assert_object_virtual_lines() {
 # must equal a run that stops before it, and every arm names the row.
 assert_reflected_unrecorded_lines() {
     local out before prefix
-    out=$(strip_cr_win "$1")
-    grep -Fxq '== reflection-bound Delegate.Method over a receiver without a recorded case ==' <<<"$out" \
+    out="$1"
+    gate_output view "$out" "$out.records" --policy crlf
+    gate_output witness "$out" '== reflection-bound Delegate.Method over a receiver without a recorded case ==' --count any --policy crlf \
         || { echo "FAIL: the reflection-bound unrecorded-receiver section did not run" >&2; exit 1; }
-    before=$(strip_cr_win "$(DN2CPP_BEFORE_REFLECTED_UNRECORDED_RECEIVER=1 run_bounded "$OUT/$PROJECT$EXE_EXT")")
-    prefix=$(awk '/^== reflection-bound Delegate.Method over a receiver without a recorded case ==$/ { exit } { print }' <<<"$out")
-    assert_output "$prefix" "$before"
-    grep -Fxq '  reflected unrecorded generic virtual -> LibGvmShape/gvm-base' <<<"$out" \
+    before="$OUT/check-before-3.stdout"
+    DN2CPP_BEFORE_REFLECTED_UNRECORDED_RECEIVER=1 gate_capture_ok "${before%.stdout}" run_bounded "$OUT/$PROJECT$EXE_EXT"
+    prefix="$out.prefix"
+    gate_output select "$out" "$prefix" --before '== reflection-bound Delegate.Method over a receiver without a recorded case ==' --policy crlf
+    gate_output compare "$prefix" "$before" --policy crlf
+    gate_output witness "$out" '  reflected unrecorded generic virtual -> LibGvmShape/gvm-base' --count any --policy crlf \
         || { echo "FAIL: reflection-bound unrecorded-receiver witness missing" >&2; exit 1; }
 }
 
@@ -86,15 +94,17 @@ assert_reflected_unrecorded_lines() {
 # must equal a run that stops before it.
 assert_unrecorded_receiver_lines() {
     local out="$1" line before prefix
+    gate_output view "$out" "$out.records" --policy crlf
     shift
-    out=$(strip_cr_win "$out")
-    grep -Fxq '== Delegate.Method over receivers without a recorded case ==' <<<"$out" \
+    gate_output witness "$out" '== Delegate.Method over receivers without a recorded case ==' --count any --policy crlf \
         || { echo "FAIL: the unrecorded-receiver Delegate.Method section did not run" >&2; exit 1; }
-    before=$(strip_cr_win "$(DN2CPP_BEFORE_UNRECORDED_RECEIVER=1 run_bounded "$OUT/$PROJECT$EXE_EXT")")
-    prefix=$(awk '/^== Delegate.Method over receivers without a recorded case ==$/ { exit } { print }' <<<"$out")
-    assert_output "$prefix" "$before"
+    before="$OUT/check-before-4.stdout"
+    DN2CPP_BEFORE_UNRECORDED_RECEIVER=1 gate_capture_ok "${before%.stdout}" run_bounded "$OUT/$PROJECT$EXE_EXT"
+    prefix="$out.prefix"
+    gate_output select "$out" "$prefix" --before '== Delegate.Method over receivers without a recorded case ==' --policy crlf
+    gate_output compare "$prefix" "$before" --policy crlf
     for line in "$@"; do
-        grep -Fq -- "$line" <<<"$out" \
+        grep -Fq -- "$line" "$out.records" \
             || { echo "FAIL: unrecorded-receiver Delegate.Method witness missing: $line" >&2; exit 1; }
     done
 }
@@ -102,17 +112,24 @@ assert_unrecorded_receiver_lines() {
 # The template section matches CLR under each trim policy; stripped reads remain frozen.
 assert_runtime_template_members() {
     local actual="$1" before prefix expected_section actual_section line
-    actual=$(strip_cr_win "$actual")
-    before=$(run_bounded "$OUT/$PROJECT$EXE_EXT" before-property-accessors) || return $?
-    prefix=$(awk '/^== property accessors under trim ==$/ { exit } { print }' <<< "$actual")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    before=$(run_bounded "$OUT/$PROJECT$EXE_EXT" before-runtime-template-members) || return $?
-    prefix=$(awk '/^== typeof-kept runtime template members ==$/ { exit } { print }' <<< "$actual")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    expected_section=$(run_bounded dotnet "$APP") || return $?
-    expected_section=$(awk '/^== typeof-kept runtime template members ==$/ { found=1 } found { print } /^typeof-kept runtime template members end$/ { found=0 }' <<< "$(strip_cr_win "$expected_section")")
-    actual_section=$(awk '/^== typeof-kept runtime template members ==$/ { found=1 } found { print } /^typeof-kept runtime template members end$/ { found=0 }' <<< "$actual")
-    assert_output "$actual_section" "$expected_section"
+    before="$OUT/check-before-5.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded "$OUT/$PROJECT$EXE_EXT" before-property-accessors || return $?
+    prefix="$actual.prefix"
+    gate_output select "$actual" "$prefix" --before '== property accessors under trim ==' --policy crlf
+    gate_output compare "$prefix" "$before" --policy crlf
+    before="$OUT/check-before-6.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded "$OUT/$PROJECT$EXE_EXT" before-runtime-template-members || return $?
+    prefix="$actual.prefix"
+    gate_output select "$actual" "$prefix" --before '== typeof-kept runtime template members ==' --policy crlf
+    gate_output compare "$prefix" "$before" --policy crlf
+    expected_section="$OUT/check-expected_section-7.stdout"
+    gate_capture_ok "${expected_section%.stdout}" run_bounded dotnet "$APP" || return $?
+    actual_section="$actual.template-section"
+    gate_output select "$actual" "$actual_section.from" --from '== typeof-kept runtime template members ==' --policy crlf
+    gate_output select "$actual_section.from" "$actual_section" --before 'typeof-kept runtime template members end' --policy crlf
+    gate_output select "$expected_section" "$expected_section.from" --from '== typeof-kept runtime template members ==' --policy crlf
+    gate_output select "$expected_section.from" "$expected_section.selected" --before 'typeof-kept runtime template members end' --policy crlf
+    gate_output compare "$actual_section" "$expected_section.selected"
     for line in '== typeof-kept runtime template members ==' \
         '  application Widget GetMethod/Invoke -> AppTemplateRead`1/application:Widget/same=True' \
         '  library Widget GetMethod/Invoke -> LibTemplateRead`1/library:Widget/same=True' \
@@ -124,21 +141,23 @@ assert_runtime_template_members() {
         'typeof-kept runtime template members end' \
         '== property accessors under trim ==' '  app accessor=get_Name/same=True' \
         'property accessors under trim end'; do
-        grep -Fxq -- "$line" <<< "$actual" \
+        gate_output witness "$actual" "$line" --count any --policy crlf \
             || { echo "FAIL: runtime template metadata witness missing: $line" >&2; return 1; }
     done
 }
 
 assert_named_delegate_lines() {
     local out="$1" before prefix line
+    gate_output view "$out" "$out.records" --policy crlf
     shift
-    out=$(strip_cr_win "$out")
-    before=$(run_bounded "$OUT/$PROJECT$EXE_EXT" before-delegate-name-bindings)
-    prefix=$(awk '/^== delegate method names under trim ==$/ { exit } { print }' <<< "$out")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
+    before="$OUT/check-before-8.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded "$OUT/$PROJECT$EXE_EXT" before-delegate-name-bindings
+    prefix="$out.prefix"
+    gate_output select "$out" "$prefix" --before '== delegate method names under trim ==' --policy crlf
+    gate_output compare "$prefix" "$before" --policy crlf
     for line in '== delegate method names under trim ==' '  app name=42' \
         '  inherited name=1' 'delegate method names under trim end' "$@"; do
-        grep -Fq -- "$line" <<< "$out" \
+        grep -Fq -- "$line" "$out.records" \
             || { echo "FAIL: delegate name trim witness missing: $line" >&2; return 1; }
     done
 }
@@ -152,12 +171,14 @@ if gate_cache_check "$OUT" "trim-reflection-plain|no-ildiet|$CORELIB$(_gate_ctx_
     gate_cache_hit_msg
 else
     compile_console "$OUT" "$PROJECT"
-    set +e
-    native=$("./$OUT/$PROJECT"); native_code=$?
-    expected=$(dotnet "$APP"); expected_code=$?
-    set -e
-    assert_output "$native" "$expected"
-    assert_exit_code "$native_code" "$expected_code"
+    native="$OUT/check-native-9.stdout"
+    gate_capture "${native%.stdout}" run_bounded "./$OUT/$PROJECT" || exit 1
+    native_code=$(cat "${native%.stdout}.status")
+    expected="$OUT/check-expected-10.stdout"
+    gate_capture "${expected%.stdout}" run_bounded dotnet "$APP" || exit 1
+    expected_code=$(cat "${expected%.stdout}.status")
+    gate_output compare "$native" "$expected"
+    gate_output status "$native_code" "$expected_code"
     assert_delegate_method_lines "$native" \
         '  inherited slot -> LibShape/shape' \
         '  overriding level -> LibCircle/circle' \
@@ -180,10 +201,11 @@ else
     assert_runtime_template_members "$native"
     assert_named_delegate_lines "$native" '  library name -> 42' \
         '  library missing soft name -> null' '  library static soft name -> null'
-    before=$(strip_cr_win "$(DN2CPP_BEFORE_DELEGATE_METHOD=1 "./$OUT/$PROJECT")")
-    prefix=$(awk '/^== Delegate.Method over stripped receivers ==$/ { exit } { print }' \
-        <<<"$(strip_cr_win "$native")")
-    assert_output "$prefix" "$before"
+    before="$OUT/check-before-11.stdout"
+    DN2CPP_BEFORE_DELEGATE_METHOD=1 gate_capture_ok "${before%.stdout}" run_bounded "./$OUT/$PROJECT"
+    prefix="$native.prefix"
+    gate_output select "$native" "$prefix" --before '== Delegate.Method over stripped receivers ==' --policy crlf
+    gate_output compare "$prefix" "$before" --policy crlf
     gate_cache_commit
 fi
 
@@ -199,12 +221,13 @@ else
     grep -qw 'md_native_refl_ti_TrimReflectLib_LibWidget' "$OUT"/generated*.cpp \
         || { echo "FAIL: the selected LibWidget owner did not retain its selected native metadata layout" >&2; exit 1; }
     compile_console "$OUT" "$PROJECT"
-    set +e
-    native=$("./$OUT/$PROJECT"); native_code=$?
-    set -e
-    expected=$(run_bounded dotnet "$APP")
-    assert_output "$(strip_cr_win "$native")" "$(strip_cr_win "$expected")"
-    assert_exit_code "$native_code" 0
+    native="$OUT/check-native-12.stdout"
+    gate_capture "${native%.stdout}" run_bounded "./$OUT/$PROJECT" || exit 1
+    native_code=$(cat "${native%.stdout}.status")
+    expected="$OUT/check-expected-13.stdout"
+    gate_capture_ok "${expected%.stdout}" run_bounded dotnet "$APP"
+    gate_output compare "$native" "$expected"
+    gate_output status "$native_code" 0
     assert_delegate_method_lines "$native" \
         '  inherited slot -> LibShape/shape' \
         '  overriding level -> LibCircle/circle' \
@@ -241,12 +264,13 @@ if gate_cache_check "$OUT" "trim-reflection-rooted|no-ildiet|$CORELIB$(_gate_ctx
     gate_cache_hit_msg
 else
     compile_console "$OUT" "$PROJECT"
-    set +e
-    native=$("./$OUT/$PROJECT"); native_code=$?
-    set -e
-    expected=$(run_bounded dotnet "$APP")
-    assert_output "$(strip_cr_win "$native")" "$(strip_cr_win "$expected")"
-    assert_exit_code "$native_code" 0
+    native="$OUT/check-native-14.stdout"
+    gate_capture "${native%.stdout}" run_bounded "./$OUT/$PROJECT" || exit 1
+    native_code=$(cat "${native%.stdout}.status")
+    expected="$OUT/check-expected-15.stdout"
+    gate_capture_ok "${expected%.stdout}" run_bounded dotnet "$APP"
+    gate_output compare "$native" "$expected"
+    gate_output status "$native_code" 0
     assert_delegate_method_lines "$native" \
         '  inherited slot -> LibShape/shape' \
         '  overriding level -> LibCircle/circle' \
@@ -335,7 +359,8 @@ set -e
 echo "== Isolated member reads without selected delegate identities =="
 dotnet build samples/dotnet/TrimReflect/StrippedMembersOnly.csproj -c "$CONFIG" --nologo -v q -m:1
 strip_app="samples/dotnet/TrimReflect/bin/$CONFIG/$TFM/StrippedMembersOnly.dll"
-strip_clr=$(run_bounded dotnet "$strip_app")
+strip_clr="$OUT/check-strip_clr-16.stdout"
+gate_capture_ok "${strip_clr%.stdout}" run_bounded dotnet "$strip_app"
 for mode in plain trimmed rooted; do
     OUT="artifacts/trimreflect-stripped-members-$mode"
     strip_flags=()
@@ -345,14 +370,16 @@ for mode in plain trimmed rooted; do
     esac
     invoke_cli "$strip_app" --no-ildiet -r "$CORELIB" -r "$LIBDLL" ${strip_flags[@]+"${strip_flags[@]}"} -o "$OUT"
     compile_console "$OUT" StrippedMembersOnly
-    strip_native=$(strip_cr_win "$(run_bounded "$OUT/StrippedMembersOnly$EXE_EXT")")
+    strip_native="$OUT/check-strip_native-17.stdout"
+    gate_capture_ok "${strip_native%.stdout}" run_bounded "$OUT/StrippedMembersOnly$EXE_EXT"
+    gate_output view "$strip_native" "$strip_native.records" --policy crlf
     for line in '== isolated stripped member metadata ==' 'direct interface=42/lib' \
         'isolated stripped member metadata end'; do
-        test "$(grep -Fxc -- "$line" <<< "$strip_native")" = 1 \
+        gate_output witness "$strip_native" "$line" --count 1 --policy crlf \
             || { echo "FAIL: isolated member metadata witness: $mode/$line" >&2; exit 1; }
     done
     if [ "$mode" = plain ]; then
-        assert_output "$strip_native" "$(strip_cr_win "$strip_clr")"
+        gate_output compare "$strip_native" "$strip_clr"
         continue
     fi
     for owner in LibWidget LibGadget LibBox_Int32; do
@@ -361,18 +388,18 @@ for mode in plain trimmed rooted; do
         fi
         grep -Eq "^const Dn2CppTypeInfo ti_TrimReflectLib_$owner = .*DN2CPP_TF_METADATA_STRIPPED" "$OUT"/generated*.cpp \
             || { echo "FAIL: unrelated member owner was kept: $mode/$owner" >&2; exit 1; }
-        grep -Fq "PNSE: Reflection over the members of 'TrimReflectLib.$owner'" <<< "$strip_native" \
+        grep -Fq "PNSE: Reflection over the members of 'TrimReflectLib.$owner'" "$strip_native.records" \
             || { echo "FAIL: stripped member read did not name its owner: $mode/$owner" >&2; exit 1; }
     done
     if [ "$mode" = trimmed ]; then
-        test "$(grep -Fc -- ' -> PNSE:' <<< "$strip_native")" = 8
+        test "$(grep -Fc -- ' -> PNSE:' "$strip_native.records")" = 8
         grep -qw 'md_native_refl_ti_TrimReflectLib_LibWidget' "$OUT"/generated*.cpp
     else
-        test "$(grep -Fc -- ' -> PNSE:' <<< "$strip_native")" = 2
+        test "$(grep -Fc -- ' -> PNSE:' "$strip_native.records")" = 2
         for line in 'widget methods -> any=True' 'widget field -> found=True' \
             'widget property -> found=True' 'widget name bind -> 42' \
             'box methods -> any=True' 'box field -> found=True'; do
-            grep -Fxq -- "$line" <<< "$strip_native" \
+            gate_output witness "$strip_native" "$line" --count any --policy crlf \
                 || { echo "FAIL: rooted member read missing: $line" >&2; exit 1; }
         done
     fi
@@ -381,7 +408,8 @@ done
 echo "== Recognized lookup owners, unrecognized-lookup warnings and roots without bodies =="
 dotnet build samples/dotnet/TrimReflect/RecognizedLookupOnly.csproj -c "$CONFIG" --nologo -v q -m:1
 lookup_app="samples/dotnet/TrimReflect/bin/$CONFIG/$TFM/RecognizedLookupOnly.dll"
-lookup_clr=$(strip_cr_win "$(run_bounded dotnet "$lookup_app")")
+lookup_clr="$OUT/check-lookup_clr-18.stdout"
+gate_capture_ok "${lookup_clr%.stdout}" run_bounded dotnet "$lookup_app"
 # The unrecognized site's owner is a factory result: no root or trim policy makes it
 # known, so every trimmed arm reports the same Metadata row.
 lookup_row=$(printf '%s\t' Metadata RecognizedLookupOnly 'TrimReflectLookup.Program::Main()')
@@ -400,12 +428,15 @@ for mode in plain trimmed rooted; do
         || { printf '%s\n' "$lookup_err" >&2; exit 1; }
     lookup_err=$(strip_cr_win "$lookup_err")
     compile_console "$OUT" RecognizedLookupOnly
-    lookup_native=$(strip_cr_win "$(run_bounded "$OUT/RecognizedLookupOnly$EXE_EXT")")
-    lookup_before=$(strip_cr_win "$(DN2CPP_BEFORE_RECOGNIZED_LOOKUP=1 run_bounded "$OUT/RecognizedLookupOnly$EXE_EXT")")
-    assert_output "$(awk '/^== recognized lookup owners under trim ==$/ { exit } { print }' <<< "$lookup_native")" "$lookup_before"
+    lookup_native="$OUT/check-lookup_native-19.stdout"
+    gate_capture_ok "${lookup_native%.stdout}" run_bounded "$OUT/RecognizedLookupOnly$EXE_EXT"
+    gate_output view "$lookup_native" "$lookup_native.records" --policy crlf
+    lookup_before="$OUT/check-lookup_before-20.stdout"
+    DN2CPP_BEFORE_RECOGNIZED_LOOKUP=1 gate_capture_ok "${lookup_before%.stdout}" run_bounded "$OUT/RecognizedLookupOnly$EXE_EXT"
+    gate_output prefix "$lookup_native" "$lookup_before" --before '== recognized lookup owners under trim ==' --policy crlf
     for line in 'field-type owner=Half:Int32' 'named type=TrimReflectLib.LibKept/Int32/Int32' \
             'assembly-named type=TrimReflectLib.LibBare/Object' 'recognized lookup owners under trim end'; do
-        grep -Fxq -- "$line" <<< "$lookup_native" \
+        gate_output witness "$lookup_native" "$line" --count any --policy crlf \
             || { echo "FAIL: recognized lookup witness missing: $mode/$line" >&2; exit 1; }
     done
     # A constant type name hands over its type as a typeof would: identity and the rows
@@ -439,7 +470,7 @@ for mode in plain trimmed rooted; do
         echo "FAIL: a lookup without invoke compiled its member: $mode" >&2; exit 1
     fi
     if [ "$mode" = plain ]; then
-        assert_output "$lookup_native" "$lookup_clr"
+        gate_output compare "$lookup_native" "$lookup_clr"
         [ ! -e "$OUT/reflection-unrecognized.tsv" ] \
             && ! grep -q 'reflection target not recognized' <<< "$lookup_err" \
             || { echo "FAIL: an unrecognized lookup was reported without --trim-reflection" >&2; exit 1; }
@@ -454,13 +485,13 @@ for mode in plain trimmed rooted; do
         || { echo "FAIL: the unrecognized lookup warning does not name its root remedy: $mode" >&2; exit 1; }
     if [ "$mode" = trimmed ]; then
         grep -Eq "^const Dn2CppTypeInfo ti_TrimReflectLib_LibWidget = .*DN2CPP_TF_METADATA_STRIPPED" "$OUT"/generated*.cpp \
-            && grep -Fq "runtime owner refused: Reflection over the members of 'TrimReflectLib.LibWidget'" <<< "$lookup_native" \
+            && grep -Fq "runtime owner refused: Reflection over the members of 'TrimReflectLib.LibWidget'" "$lookup_native.records" \
             || { echo "FAIL: the unrecognized lookup's owner was kept without a root" >&2; exit 1; }
         trimmed_bodies=$(lookup_bodies "$OUT")
         continue
     fi
     # The root keeps LibWidget's rows; its bodies stay those the program calls.
-    assert_output "$lookup_native" "$lookup_clr"
+    gate_output compare "$lookup_native" "$lookup_clr"
     if grep -Eq "^const Dn2CppTypeInfo ti_TrimReflectLib_LibWidget = .*DN2CPP_TF_METADATA_STRIPPED" "$OUT"/generated*.cpp \
             || ! grep -qw fldtab_TrimReflectLib_LibWidget "$OUT"/generated*; then
         echo "FAIL: --reflection-root did not keep the named owner's metadata" >&2; exit 1

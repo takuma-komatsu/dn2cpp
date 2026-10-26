@@ -114,25 +114,25 @@ compile_console "$out" "$project"
 echo "== 7/7 Running (exact diff vs real .NET) =="
 gate_run_logs_init magiconion-client MagicOnion.Client
 log_dir="$_GATE_RUN_LOG_DIR"
-native_stderr="$log_dir/native.log"
-oracle_stderr="$log_dir/oracle.log"
-expected=
+native_stderr="$log_dir/native.stderr"
+oracle_stderr="$log_dir/oracle.stderr"
+expected="$log_dir/oracle.stdout"
 expected_code=
-native=
+native="$log_dir/native.stdout"
 native_code=
 
 gate_run_diagnostics() {
-    gate_run_diag "MagicOnion.Client native" "$native_code" "$native" "$native_stderr"
-    gate_run_diag "MagicOnion.Client oracle" "$expected_code" "$expected" "$oracle_stderr"
+    gate_run_diag_files "MagicOnion.Client native" "$native_code" "$native" "$native_stderr"
+    gate_run_diag_files "MagicOnion.Client oracle" "$expected_code" "$expected" "$oracle_stderr"
 }
-
-set +e
-expected=$(run_bounded dotnet "$app" 2>"$oracle_stderr"); expected_code=$?
-native=$(run_bounded "./$out/$project" 2>"$native_stderr"); native_code=$?
-set -e
+gate_capture "$log_dir/oracle" run_bounded dotnet "$app"
+expected_code=$(cat "$log_dir/oracle.status")
+gate_capture "$log_dir/native" run_bounded "./$out/$project$EXE_EXT"
+native_code=$(cat "$log_dir/native.status")
 assertions_failed=0
-assert_output "$native" "$expected" || assertions_failed=1
-assert_exit_code "$native_code" "$expected_code" || assertions_failed=1
+gate_output compare "$native" "$expected" || assertions_failed=1
+gate_output status "$native_code" 0 || assertions_failed=1
+gate_output status "$expected_code" 0 || assertions_failed=1
 if [ -s "$oracle_stderr" ]; then
     echo "FAIL: real .NET wrote to stderr; the diff only covers stdout:" >&2
     cat "$oracle_stderr" >&2

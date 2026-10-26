@@ -90,12 +90,9 @@ if gate_cache_check "$OUT" "shadow-stack-plain|$CORELIB" \
     gate_cache_hit_msg
 else
     compile_console "$OUT" "$PROJECT"
-    set +e
-    native=$("./$OUT/$PROJECT" smoke); native_code=$?
-    expected=$(dotnet "$APP" smoke); expected_code=$?
-    set -e
-    assert_output "$native" "$expected"
-    assert_exit_code "$native_code" "$expected_code"
+    gate_capture_ok "$OUT/native" run_bounded "./$OUT/$PROJECT$EXE_EXT" smoke
+    gate_capture_ok "$OUT/oracle" run_bounded dotnet "$APP" smoke
+    gate_output compare "$OUT/native.stdout" "$OUT/oracle.stdout"
     gate_cache_commit
 fi
 
@@ -113,33 +110,31 @@ if gate_cache_check "$OUT" "shadow-stack-on|$CORELIB" \
     gate_cache_hit_msg
 else
     compile_console "$OUT" "$PROJECT"
-    set +e
-    native=$("./$OUT/$PROJECT" full); native_code=$?
-    set -e
-    assert_output "$(strip_cr_win "$native")" "$(cat "$EXPECTED")"
-    assert_exit_code "$native_code" 0
+    gate_capture_ok "$OUT/native" run_bounded "./$OUT/$PROJECT$EXE_EXT" full
+    gate_output compare "$OUT/native.stdout" "$EXPECTED" --policy crlf
 
     # Unhandled tail (same binary, argv-switched): an exception escaping Main
     # must abort, and the stderr report must carry the shadow frames — grep
     # shape as in build-and-run-unhandled-exit-subset.sh's kind-0 arm, but the
     # deepest frame is exact-matched: under the shadow stack the whole chain is
     # guaranteed, NoInlining or not.
-    set +e
-    err=$("./$OUT/$PROJECT" unhandled 2>&1 >/dev/null); code=$?
-    set -e
+    gate_capture "$OUT/unhandled" run_bounded "./$OUT/$PROJECT$EXE_EXT" unhandled
+    code=$(cat "$OUT/unhandled.status")
+    gate_output native-abort "$OUT/unhandled" --host "$DN2CPP_OS" --empty-stdout \
+        --diagnostic 'Unhandled exception. System.InvalidOperationException: thrown in Depth5'
     if [ "$code" -eq 0 ]; then
         echo "FAIL: unhandled mode exited 0 — an escaped exception must abort" >&2
         exit 1
     fi
-    err=$(strip_cr_win "$err")
-    if ! grep -q '^   at ' <<<"$err"; then
+    gate_output view "$OUT/unhandled.stderr" "$OUT/unhandled.records" --policy crlf
+    if ! grep -q '^   at ' "$OUT/unhandled.records"; then
         echo "FAIL: unhandled-exception stderr carries no '   at ' trace line" >&2
-        printf '%s\n' "$err" >&2
+        cat "$OUT/unhandled.stderr" >&2
         exit 1
     fi
-    if ! grep -q '^   at DeepChainSubset\.Program\.Depth5()$' <<<"$err"; then
+    if ! gate_output witness "$OUT/unhandled.stderr" '   at DeepChainSubset.Program.Depth5()' --count any --policy crlf; then
         echo "FAIL: unhandled stderr does not name the deepest shadow frame (DeepChainSubset.Program.Depth5)" >&2
-        printf '%s\n' "$err" >&2
+        cat "$OUT/unhandled.stderr" >&2
         exit 1
     fi
     echo "unhandled report OK: exit $code, names DeepChainSubset.Program.Depth5"
@@ -186,11 +181,8 @@ if gate_cache_check "$OUT" "shadow-stack-hotupdate" \
     gate_cache_hit_msg
 else
     compile_console "$OUT" HotUpdateBase
-    set +e
-    native=$("./$OUT/HotUpdateBase" --shadow-trace "$OUT/HotUpdatePatch.bpi"); native_code=$?
-    set -e
-    assert_output "$(strip_cr_win "$native")" "$(cat "$HU_EXPECTED")"
-    assert_exit_code "$native_code" 0
+    gate_capture_ok "$OUT/native" run_bounded "./$OUT/HotUpdateBase$EXE_EXT" --shadow-trace "$OUT/HotUpdatePatch.bpi"
+    gate_output compare "$OUT/native.stdout" "$HU_EXPECTED" --policy crlf
     gate_cache_commit
 fi
 
@@ -219,11 +211,8 @@ done
     # the module (the launcher forwards process.argv[2..]). The exit status is
     # captured explicitly (`$(...)` inline would swallow it): the `full` arm is
     # a CAUGHT throw, so the module must exit 0 after printing the trace.
-    set +e
-    wasm_out=$(node "./$OUT/$PROJECT.js" full); wasm_rc=$?
-    set -e
-    assert_output "$wasm_out" "$(cat "$EXPECTED")"
-    assert_exit_code "$wasm_rc" 0
+    gate_capture_ok "$OUT/native" run_bounded node "./$OUT/$PROJECT.js" full
+    gate_output compare "$OUT/native.stdout" "$EXPECTED" --policy crlf
     gate_cache_commit
 )
 

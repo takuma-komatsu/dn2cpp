@@ -48,54 +48,49 @@ shared_definition_layout() {
     fi
 }
 
-metadata_section='metadata-assembly-begin'
-expected_output=$(run_bounded dotnet "$app") || exit $?
-expected_output=$(strip_cr_win "$expected_output")
-expected_scope_prefix=$(run_bounded dotnet "$app" before-type-scope)
-expected_scope_prefix=$(strip_cr_win "$expected_scope_prefix")
-expected_closed_prefix=$(run_bounded dotnet "$app" before-closed-types)
-expected_closed_prefix=$(strip_cr_win "$expected_closed_prefix")
+oracle_out=artifacts/multiasm-oracle
+gate_capture_ok "$oracle_out/full" run_bounded dotnet "$app"
+gate_capture_ok "$oracle_out/before-type-scope" run_bounded dotnet "$app" before-type-scope
+gate_capture_ok "$oracle_out/before-closed-types" run_bounded dotnet "$app" before-closed-types
 for scope_line in 'assembly-type-scope-begin' 'bodies=application/library' \
     'layouts=17/29/9000000000' 'tests=True/False/False/True/True/False' \
     'signature=True/True/True/True' 'scope-overloads=18/31/20/33' \
     'invoke-wrong=ArgumentException' 'assembly-type-scope-end'; do
-    grep -Fxq "$scope_line" <<< "$expected_output" \
+    gate_output witness "$oracle_out/full.stdout" "$scope_line" --count any --policy crlf \
         || { echo "FAIL: assembly scope witness missing: $scope_line" >&2; exit 1; }
 done
 for closed_line in 'assembly-closed-types-begin' 'generic-bodies=application/library' \
     'generic-distinct=True/True/True' 'generic-owners=True/True' \
     'generic-tests=True/False' 'generic-statics=1/2/67' \
     'generic-attribute=True/True/True' 'assembly-closed-types-end'; do
-    grep -Fxq "$closed_line" <<< "$expected_output" \
+    gate_output witness "$oracle_out/full.stdout" "$closed_line" --count any --policy crlf \
         || { echo "FAIL: closed type identity witness missing: $closed_line" >&2; exit 1; }
 done
-assert_output "$(sed '/^metadata-policy-assembly-begin$/,$d' <<<"$expected_output")" \
-    "$(cat gates/expected/multiassembly-prefix.txt)"
-expected_metadata=$(sed -n '/^metadata-assembly-begin$/,/^metadata-assembly-end$/p' <<<"$expected_output")
-grep -Fxq "$metadata_section" <<<"$expected_metadata"
+gate_output select "$oracle_out/full.stdout" "$oracle_out/frozen-prefix.stdout" --before 'metadata-policy-assembly-begin' --policy crlf
+gate_output compare "$oracle_out/frozen-prefix.stdout" gates/expected/multiassembly-prefix.txt --policy crlf
+gate_output select "$oracle_out/full.stdout" "$oracle_out/metadata.stdout" --from 'metadata-assembly-begin' --through 'metadata-assembly-end' --policy crlf
 for qualified_line in 'qualified attribute assembly: True' \
     'qualified attribute argument: True' 'qualified attribute end'; do
-    grep -Fxq "$qualified_line" <<< "$expected_output" \
+    gate_output witness "$oracle_out/full.stdout" "$qualified_line" --count any --policy crlf \
         || { echo "FAIL: qualified attribute witness missing: $qualified_line" >&2; exit 1; }
 done
-expected_policy=$(sed -n '/^metadata-policy-assembly-begin$/,/^metadata-policy-assembly-end$/p' <<<"$expected_output")
-grep -Fxq metadata-policy-assembly-begin <<<"$expected_policy"
-grep -Fxq metadata-policy-assembly-end <<<"$expected_policy"
+gate_output select "$oracle_out/full.stdout" "$oracle_out/policy.stdout" --from 'metadata-policy-assembly-begin' --through 'metadata-policy-assembly-end' --policy crlf
 metadata_section_parity() {
-    local out="$1" actual
-    run_bounded "$out/MultiAssembly$EXE_EXT" > "$out/metadata-assembly.raw.stdout"
-    strip_cr_win_file "$out/metadata-assembly.raw.stdout" > "$out/metadata-assembly.stdout"
-    actual=$(sed -n '/^metadata-assembly-begin$/,/^metadata-assembly-end$/p' "$out/metadata-assembly.stdout")
-    assert_output "$actual" "$expected_metadata"
-    actual=$(sed -n '/^metadata-policy-assembly-begin$/,/^metadata-policy-assembly-end$/p' "$out/metadata-assembly.stdout")
-    assert_output "$actual" "$expected_policy"
-    assert_output "$(cat "$out/metadata-assembly.stdout")" "$expected_output"
-    actual=$(run_bounded "$out/MultiAssembly$EXE_EXT" before-type-scope)
-    assert_output "$(strip_cr_win "$actual")" "$expected_scope_prefix"
-    assert_output "$(sed '/^assembly-type-scope-begin$/,$d' "$out/metadata-assembly.stdout")" "$expected_scope_prefix"
-    actual=$(run_bounded "$out/MultiAssembly$EXE_EXT" before-closed-types)
-    assert_output "$(strip_cr_win "$actual")" "$expected_closed_prefix"
-    assert_output "$(sed '/^assembly-closed-types-begin$/,$d' "$out/metadata-assembly.stdout")" "$expected_closed_prefix"
+    local out="$1"
+    gate_capture_ok "$out/metadata-assembly.raw" run_bounded "$out/MultiAssembly$EXE_EXT"
+    gate_output compare "$out/metadata-assembly.raw.stdout" "$oracle_out/full.stdout"
+    gate_output select "$out/metadata-assembly.raw.stdout" "$out/metadata-section.stdout" --from 'metadata-assembly-begin' --through 'metadata-assembly-end' --policy crlf
+    gate_output compare "$out/metadata-section.stdout" "$oracle_out/metadata.stdout"
+    gate_output select "$out/metadata-assembly.raw.stdout" "$out/policy-section.stdout" --from 'metadata-policy-assembly-begin' --through 'metadata-policy-assembly-end' --policy crlf
+    gate_output compare "$out/policy-section.stdout" "$oracle_out/policy.stdout"
+    gate_capture_ok "$out/before-type-scope.native" run_bounded "$out/MultiAssembly$EXE_EXT" before-type-scope
+    gate_output compare "$out/before-type-scope.native.stdout" "$oracle_out/before-type-scope.stdout"
+    gate_output select "$out/metadata-assembly.raw.stdout" "$out/type-scope-prefix.stdout" --before 'assembly-type-scope-begin' --policy crlf
+    gate_output compare "$out/type-scope-prefix.stdout" "$oracle_out/before-type-scope.stdout"
+    gate_capture_ok "$out/before-closed-types.native" run_bounded "$out/MultiAssembly$EXE_EXT" before-closed-types
+    gate_output compare "$out/before-closed-types.native.stdout" "$oracle_out/before-closed-types.stdout"
+    gate_output select "$out/metadata-assembly.raw.stdout" "$out/closed-types-prefix.stdout" --before 'assembly-closed-types-begin' --policy crlf
+    gate_output compare "$out/closed-types-prefix.stdout" "$oracle_out/before-closed-types.stdout"
     for module in 0 2; do
         for argument in Int32 String; do
             grep -qw "ti_m${module}_AssemblyScopeCollision_Generic_$argument" "$out/generated.h" \
@@ -224,13 +219,12 @@ if ! grep -q "^dn2cpp: 4 assemblies," <<<"$dedupe_out"; then
 fi
 
 for enum_out in artifacts/multiasm artifacts/multiasm-inference; do
-    enum_all=$(run_bounded "$enum_out/MultiAssembly$EXE_EXT") || exit $?
-    enum_all=$(strip_cr_win "$enum_all")
-    enum_before=$(DN2CPP_BEFORE_LIBRARY_ENUM_ATTRIBUTE=1 run_bounded "$enum_out/MultiAssembly$EXE_EXT") || exit $?
-    enum_prefix=$(awk '/^lib enum attribute:/ { exit } { print }' <<< "$enum_all")
-    assert_output "$enum_prefix" "$(strip_cr_win "$enum_before")"
-    grep -Fxq 'lib enum attribute: 1 MiniBcl.TagShade enum=True underlying=Byte' <<< "$enum_all" \
+    gate_capture_ok "$enum_out/enum-full" run_bounded "$enum_out/MultiAssembly$EXE_EXT"
+    DN2CPP_BEFORE_LIBRARY_ENUM_ATTRIBUTE=1 gate_capture_ok "$enum_out/enum-before" run_bounded "$enum_out/MultiAssembly$EXE_EXT"
+    gate_output select "$enum_out/enum-full.stdout" "$enum_out/enum-prefix.stdout" --before 'lib enum attribute: 1 MiniBcl.TagShade enum=True underlying=Byte' --policy crlf
+    gate_output compare "$enum_out/enum-prefix.stdout" "$enum_out/enum-before.stdout"
+    gate_output witness "$enum_out/enum-full.stdout" 'lib enum attribute: 1 MiniBcl.TagShade enum=True underlying=Byte' --count any --policy crlf \
         || { echo 'FAIL: library-only enum attribute identity was not emitted' >&2; exit 1; }
-    grep -Fxq 'library enum attribute end' <<< "$enum_all" \
+    gate_output witness "$enum_out/enum-full.stdout" 'library enum attribute end' --count any --policy crlf \
         || { echo 'FAIL: library enum attribute section did not run' >&2; exit 1; }
 done

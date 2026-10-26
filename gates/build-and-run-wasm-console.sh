@@ -24,8 +24,8 @@
 # reaches `UNREACHABLE: process should have aborted`, an exact-diff FAIL vs .NET.
 # The diff is stdout-only by design: the Finalizers program's last section
 # deliberately aborts in a finalizer, and that abort's exit code under node can
-# never match dotnet's SIGABRT — only the stdout is the oracle (assert_output
-# compares command-substituted stdout).
+# never match dotnet's SIGABRT. Raw stdout uses explicit CRLF equivalence;
+# exit statuses must agree on success or failure and reject infrastructure faults.
 #
 # WeakReferences rides along as weak-ref-machinery coverage under the real GC
 # (WeakReference<T>/TryGetTarget, GC.GetTotalMemory(true), the sweep + heap
@@ -76,15 +76,12 @@ export WASM=1
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|readonly-raw-md-live-alias-wasm32"
 DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_md-readonly-byrefs.sh gates/fixtures/md-readonly-byrefs/MdReadonlyByrefs.csproj gates/fixtures/md-readonly-byrefs/Program.cs gates/fixtures/md-readonly-byrefs/runtime-checks.cpp samples/dotnet/ArrayCore/ArrayCovariantStoreSubset.cs"
 wasm_corelib_diff_gate StringCore System.Linq
-argument_roots=$(run_bounded node "$_CG_OUT/StringCore.js")
-argument_roots=$(strip_cr_win "$argument_roots")
-argument_prefix=$(awk '/^== Collected runtime argument operands ==$/ { exit } { print }' <<< "$argument_roots")
-argument_before=$(run_bounded dotnet "$_CG_APP" before-argument-roots)
-assert_output "$argument_prefix" "$(strip_cr_win "$argument_before")"
-for line in '== Collected runtime argument operands ==' 'Collected runtime argument operands end'; do
-    [ "$(grep -Fxc -- "$line" <<< "$argument_roots")" = 1 ] \
-        || { echo "FAIL: wasm runtime argument root block missing or repeated: $line" >&2; exit 1; }
-done
+gate_capture_ok "$_CG_OUT/argument-roots" run_bounded node "$_CG_OUT/StringCore.js"
+gate_capture_ok "$_CG_OUT/argument-before" run_bounded dotnet "$_CG_APP" before-argument-roots
+gate_output prefix "$_CG_OUT/argument-roots.stdout" "$_CG_OUT/argument-before.stdout" \
+    --before '== Collected runtime argument operands ==' --policy crlf
+gate_output witness "$_CG_OUT/argument-roots.stdout" '== Collected runtime argument operands ==' \
+    'Collected runtime argument operands end' --count 1 --policy crlf
 wasm_corelib_diff_gate NestedFinallySubset
 wasm_corelib_diff_gate Finalizers --link-xml samples/dotnet/Finalizers/link.xml
 gate_expected_partial "FinalizerSuppressQueuedSubset's post-enqueue window never opens here: this build never collects an object first named inside a finalizer body while that frame is live, so nothing is observed queued and no setting on either side changes it — the section runs and folds the window into its booleans, and gates/build-and-run-finalizers.sh asserts that surface for real."
@@ -124,12 +121,11 @@ echo "PAL reach OK: MonotonicClock still lowers both clocks to libSystem.Native"
 
 wasm_corelib_diff_gate PalSurface System.Net.Primitives
 
-before=$(run_bounded dotnet "$_CG_APP" before-temp-file)
-native=$(run_bounded node "$_CG_OUT/PalSurface.js")
-prefix=$(awk '/^== temporary file PAL ==$/ { exit } { print }' <<< "$native")
-assert_output "$(strip_cr_win "$prefix")" "$(strip_cr_win "$before")"
-grep -Fxq 'temporary file PAL end' <<< "$native" \
-    || { echo 'FAIL: temporary file PAL section did not run' >&2; exit 1; }
+gate_capture_ok "$_CG_OUT/temp-before" run_bounded dotnet "$_CG_APP" before-temp-file
+gate_capture_ok "$_CG_OUT/temp-native" run_bounded node "$_CG_OUT/PalSurface.js"
+gate_output prefix "$_CG_OUT/temp-native.stdout" "$_CG_OUT/temp-before.stdout" \
+    --before '== temporary file PAL ==' --policy crlf
+gate_output witness "$_CG_OUT/temp-native.stdout" 'temporary file PAL end' --count any --policy crlf
 
 # Same reason as the clock assert above: the section's output is identical whether or
 # not it still reaches these, so only the emitted call set can say it does. The
@@ -234,8 +230,8 @@ if gate_cache_check "$_wh_out" "wasm-http-carveout|$_wh_corelib|$_wh_nethttp|$_w
     gate_cache_hit_msg
 else
     compile_console_wasm "$_wh_out" WasmHttpProbe
-    _wh_actual=$(run_bounded node "./$_wh_out/WasmHttpProbe.js")
-    assert_output "$_wh_actual" "$_wh_expected"
+    gate_capture_ok "$_wh_out/native" run_bounded node "./$_wh_out/WasmHttpProbe.js"
+    gate_assert_text "$_wh_out/native.stdout" "$_wh_expected"
     gate_cache_commit
 fi
 

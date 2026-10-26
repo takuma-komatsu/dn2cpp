@@ -3,7 +3,7 @@
 runtime_template_binding_asserts() {
     local output="$1" line
     while IFS= read -r line; do
-        test "$(grep -Fxc -- "$line" "$output")" = 1 \
+        gate_output witness "$output" "$line" --count 1 --policy crlf \
             || { echo "FAIL: substituted delegate witness missing or repeated: $line" >&2; return 1; }
     done <<'WITNESSES'
 == substituted runtime delegate signatures ==
@@ -29,35 +29,29 @@ runtime_template_binding_prefix_asserts() {
     for axis in dotnet native; do
         if reflection_full_profile; then
             if [ "$axis" = dotnet ]; then
-                reflection_oracle "$_CG_APP" before-runtime-template-bindings > "$out/template-before.$axis.raw.stdout"
+                gate_capture_ok "$out/template-before.$axis.raw" reflection_oracle "$_CG_APP" before-runtime-template-bindings
             else
-                run_bounded "$out/ReflectInvoke$EXE_EXT" before-runtime-template-bindings > "$out/template-before.$axis.raw.stdout"
+                gate_capture_ok "$out/template-before.$axis.raw" run_bounded "$out/ReflectInvoke$EXE_EXT" before-runtime-template-bindings
             fi
-            strip_cr_win_file "$out/template-before.$axis.raw.stdout" > "$out/template-before.$axis.stdout"
-            awk '/^== substituted runtime delegate signatures ==$/ { exit } { print }' \
-                "$out/virtual-delegate-full.$axis.stdout" > "$out/template-prefix.$axis.stdout"
-            diff -u "$out/template-before.$axis.stdout" "$out/template-prefix.$axis.stdout"
+            gate_output prefix "$out/virtual-delegate-full.$axis.raw.stdout" "$out/template-before.$axis.raw.stdout" --before '== substituted runtime delegate signatures ==' --policy crlf
         fi
-        runtime_template_binding_asserts "$out/virtual-delegate-full.$axis.stdout"
+        runtime_template_binding_asserts "$out/virtual-delegate-full.$axis.raw.stdout"
         if reflection_full_profile; then
             if [ "$axis" = dotnet ]; then
-                reflection_oracle "$_CG_APP" before-runtime-base-projections > "$out/base-before.$axis.raw.stdout"
+                gate_capture_ok "$out/base-before.$axis.raw" reflection_oracle "$_CG_APP" before-runtime-base-projections
             else
-                run_bounded "$out/ReflectInvoke$EXE_EXT" before-runtime-base-projections > "$out/base-before.$axis.raw.stdout"
+                gate_capture_ok "$out/base-before.$axis.raw" run_bounded "$out/ReflectInvoke$EXE_EXT" before-runtime-base-projections
             fi
-            strip_cr_win_file "$out/base-before.$axis.raw.stdout" > "$out/base-before.$axis.stdout"
-            awk '/^== runtime generic base projections ==$/ { exit } { print }' \
-                "$out/virtual-delegate-full.$axis.stdout" > "$out/base-prefix.$axis.stdout"
-            diff -u "$out/base-before.$axis.stdout" "$out/base-prefix.$axis.stdout"
+            gate_output prefix "$out/virtual-delegate-full.$axis.raw.stdout" "$out/base-before.$axis.raw.stdout" --before '== runtime generic base projections ==' --policy crlf
         fi
-        runtime_base_projection_asserts "$out/virtual-delegate-full.$axis.stdout"
+        runtime_base_projection_asserts "$out/virtual-delegate-full.$axis.raw.stdout"
     done
 }
 
 runtime_base_projection_asserts() {
     local output="$1" line
     while IFS= read -r line; do
-        test "$(grep -Fxc -- "$line" "$output")" = 1 \
+        gate_output witness "$output" "$line" --count 1 --policy crlf \
             || { echo "FAIL: runtime base projection witness missing or repeated: $line" >&2; return 1; }
     done <<'WITNESSES'
 == runtime generic base projections ==
@@ -124,48 +118,46 @@ runtime_template_binding_diff_axes() {
         for mode in default boundary invoke stripped; do
             local args=()
             [ "$mode" = default ] || args=("$mode")
-            reflection_oracle "$out/app/RuntimeTemplateBindingOnly.dll" ${args[@]+"${args[@]}"} > "$out/$mode.clr.raw.stdout"
-            run_bounded "$out/RuntimeTemplateBindingOnly$EXE_EXT" ${args[@]+"${args[@]}"} > "$out/$mode.native.raw.stdout"
-            strip_cr_win_file "$out/$mode.clr.raw.stdout" > "$out/$mode.clr.stdout"
-            strip_cr_win_file "$out/$mode.native.raw.stdout" > "$out/$mode.native.stdout"
+            gate_capture_ok "$out/$mode.clr.raw" reflection_oracle "$out/app/RuntimeTemplateBindingOnly.dll" ${args[@]+"${args[@]}"}
+            gate_capture_ok "$out/$mode.native.raw" run_bounded "$out/RuntimeTemplateBindingOnly$EXE_EXT" ${args[@]+"${args[@]}"}
             if [ "$mode" = boundary ]; then
                 # Invoke marshalling retains independent refusals.
                 local runtime
                 for runtime in clr native; do
-                    sed -E '/^signature (opaque (return|argument) invoke|ordinary (ref|pointer) invoke) =>/d' \
-                        "$out/$mode.$runtime.stdout" > "$out/$mode.$runtime.parity.stdout"
+                    gate_output omit-prefix "$out/$mode.$runtime.raw.stdout" "$out/$mode.$runtime.parity.stdout" \
+                        --prefix 'signature opaque return invoke =>' --prefix 'signature opaque argument invoke =>' \
+                        --prefix 'signature ordinary ref invoke =>' --prefix 'signature ordinary pointer invoke =>' \
+                        --count 1 --policy crlf
                 done
-                diff -u "$out/$mode.clr.parity.stdout" "$out/$mode.native.parity.stdout"
-                reflection_assert_lines "$out/$mode.native.stdout" any \
+                gate_output compare "$out/$mode.clr.parity.stdout" "$out/$mode.native.parity.stdout"
+                reflection_assert_lines "$out/$mode.native.raw.stdout" any \
                     'signature opaque return invoke => NotSupportedException' \
                     'signature opaque argument invoke => NotSupportedException' \
                     'signature ordinary ref invoke => NotSupportedException' \
                     'signature ordinary pointer invoke => NotSupportedException' \
                     'signature overload reordered base => bound'
             elif [ "$mode/$axis" = stripped/trimmed ]; then
-                test "$(grep -Fxc 'template stripped binding => PlatformNotSupportedException' "$out/$mode.native.stdout")" = 2
-                test "$(grep -Fxc 'template stripped binding => True' "$out/$mode.clr.stdout")" = 2
+                gate_output witness "$out/$mode.native.raw.stdout" 'template stripped binding => PlatformNotSupportedException' --count 2 --policy crlf
+                gate_output witness "$out/$mode.clr.raw.stdout" 'template stripped binding => True' --count 2 --policy crlf
             else
-                diff -u "$out/$mode.clr.stdout" "$out/$mode.native.stdout"
+                gate_output compare "$out/$mode.clr.raw.stdout" "$out/$mode.native.raw.stdout"
             fi
         done
-        runtime_template_binding_asserts "$out/default.native.stdout"
-        runtime_base_projection_asserts "$out/default.native.stdout"
-        test "$(tail -n 1 "$out/default.native.stdout")" = 'runtime generic base projections end'
+        runtime_template_binding_asserts "$out/default.native.raw.stdout"
+        runtime_base_projection_asserts "$out/default.native.raw.stdout"
+        printf 'runtime generic base projections end\n' > "$out/end.expected"
+        gate_output suffix "$out/default.native.raw.stdout" "$out/end.expected" --policy crlf
         for mode in clr native; do
             if [ "$mode" = clr ]; then
-                reflection_oracle "$out/app/RuntimeTemplateBindingOnly.dll" before-base-projections > "$out/base-before.$mode.raw.stdout"
+                gate_capture_ok "$out/base-before.$mode.raw" reflection_oracle "$out/app/RuntimeTemplateBindingOnly.dll" before-base-projections
             else
-                run_bounded "$out/RuntimeTemplateBindingOnly$EXE_EXT" before-base-projections > "$out/base-before.$mode.raw.stdout"
+                gate_capture_ok "$out/base-before.$mode.raw" run_bounded "$out/RuntimeTemplateBindingOnly$EXE_EXT" before-base-projections
             fi
-            strip_cr_win_file "$out/base-before.$mode.raw.stdout" > "$out/base-before.$mode.stdout"
-            awk '/^== runtime generic base projections ==$/ { exit } { print }' "$out/default.$mode.stdout" > "$out/base-prefix.$mode.stdout"
-            diff -u "$out/base-before.$mode.stdout" "$out/base-prefix.$mode.stdout"
+            gate_output prefix "$out/default.$mode.raw.stdout" "$out/base-before.$mode.raw.stdout" --before '== runtime generic base projections ==' --policy crlf
         done
-        run_bounded "$out/RuntimeTemplateBindingOnly$EXE_EXT" unsafe > "$out/unsafe.raw.stdout"
-        strip_cr_win_file "$out/unsafe.raw.stdout" > "$out/unsafe.stdout"
+        gate_capture_ok "$out/unsafe.raw" run_bounded "$out/RuntimeTemplateBindingOnly$EXE_EXT" unsafe
         local line
-        reflection_assert_lines "$out/unsafe.stdout" any \
+        reflection_assert_lines "$out/unsafe.raw.stdout" any \
             'signature unsafe indirect method => unsupported' \
             'signature unsafe indirect named => unsupported' \
             'signature unsafe value copy => unsupported' \
@@ -180,9 +172,8 @@ runtime_template_binding_diff_axes() {
             echo 'FAIL: canonical pointer reference-slot body was emitted' >&2
             return 1
         fi
-        reflection_oracle "$out/app/RuntimeTemplateBindingOnly.dll" unsafe > "$out/unsafe.clr.raw.stdout"
-        strip_cr_win_file "$out/unsafe.clr.raw.stdout" > "$out/unsafe.clr.stdout"
-        reflection_assert_lines "$out/unsafe.clr.stdout" any \
+        gate_capture_ok "$out/unsafe.clr.raw" reflection_oracle "$out/app/RuntimeTemplateBindingOnly.dll" unsafe
+        reflection_assert_lines "$out/unsafe.clr.raw.stdout" any \
             'signature unsafe pointer read => bound/bound' \
             'signature unsafe pointer clear => bound/bound' \
             'signature unsafe nested read => bound/bound' \
@@ -191,12 +182,12 @@ runtime_template_binding_diff_axes() {
         for line in 'ProjectionRepeated`2' 'ProjectionConstant`2' 'ProjectionConstructed`2'; do
             reflection_expected_lines+=("projection unsupported $line => unsupported")
         done
-        reflection_assert_lines "$out/unsafe.stdout" any "${reflection_expected_lines[@]}"
+        reflection_assert_lines "$out/unsafe.raw.stdout" any "${reflection_expected_lines[@]}"
         reflection_expected_lines=()
         for line in 'ProjectionRepeated`2' 'ProjectionConstant`2' 'ProjectionConstructed`2'; do
             reflection_expected_lines+=("projection unsupported $line => created")
         done
-        reflection_assert_lines "$out/unsafe.clr.stdout" any "${reflection_expected_lines[@]}"
+        reflection_assert_lines "$out/unsafe.clr.raw.stdout" any "${reflection_expected_lines[@]}"
         echo "runtime-template binding $axis OK"
     done
 }

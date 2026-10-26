@@ -9,12 +9,16 @@
 source "$(dirname "$0")/_common.sh"
 gate_extra_asserts() {
     local out="$1" native before prefix line
-    native=$(run_bounded "./$out/ParallelLoops")
-    native=$(strip_cr_win "$native")
-    before=$(dotnet "$_CG_APP" before-argument-fields)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== ParallelOptions fields ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-native-1" run_bounded "./$out/ParallelLoops"
+    native="$out/assert-native-1.stdout"
+
+    gate_capture_ok "$out/assert-before-2" run_bounded dotnet "$_CG_APP" before-argument-fields
+    before="$out/assert-before-2.stdout"
+
+    prefix="$out/assert-prefix-4.stdout"
+
+    gate_output select "$native" "$prefix" --before '== ParallelOptions fields ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== ParallelOptions fields ==' \
         'dop:0 actual=Int32:0' \
         'dop:-2 actual=Int32:-2' \
@@ -22,15 +26,18 @@ gate_extra_asserts() {
         'dop receiver:0:0 type=NullReferenceException' \
         'parallel options fields GC param=MaxDegreeOfParallelism' \
         'ParallelOptions fields end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: ParallelLoops validation witness missing: $line" >&2; exit 1; }
     done
-    before=$(dotnet "$_CG_APP" before-callback-validation)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== argument checks ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-3" run_bounded dotnet "$_CG_APP" before-callback-validation
+    before="$out/assert-before-3.stdout"
+
+    prefix="$out/assert-prefix-5.stdout"
+
+    gate_output select "$native" "$prefix" --before '== argument checks ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== argument checks ==' 'actions run: 0' 'argument checks end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: Parallel callback validation witness missing: $line" >&2; exit 1; }
     done
 }

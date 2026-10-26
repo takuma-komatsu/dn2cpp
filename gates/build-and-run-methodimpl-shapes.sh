@@ -16,8 +16,9 @@ _corelib_gate_core() {
 }
 gate_extra_asserts() {
     local out="$1" native line
-    native=$(run_bounded "$out/MethodImplShapesOnly$EXE_EXT")
-    native=$(strip_cr_win "$native")
+    gate_capture_ok "$out/assert-native-1" run_bounded "$out/MethodImplShapesOnly$EXE_EXT"
+    native="$out/assert-native-1.stdout"
+
     for line in '== ordinary MethodImpl definition shapes ==' \
         'methodimpl-interface-object=X/object/X/object' \
         'methodimpl-interface-string=X/object' \
@@ -29,7 +30,7 @@ gate_extra_asserts() {
         'methodimpl-static-object=static-X/static-object/static-X' \
         'methodimpl-static-string=static-X/static-object' \
         'ordinary MethodImpl definition shapes end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: MethodImpl definition witness missing: $line" >&2; exit 1; }
     done
 }
@@ -44,8 +45,8 @@ build_proj samples/dotnet/SharedGenerics/SharedGenerics.csproj
 bucket="samples/dotnet/SharedGenerics/bin/$CONFIG/$TFM/SharedGenerics.dll"
 prefix_out="artifacts/methodimpl-prefix-$CONFIG"
 mkdir -p "$prefix_out"
-run_bounded dotnet "$bucket" before-methodimpl-shapes > "$prefix_out/before.stdout"
-run_bounded dotnet "$bucket" > "$prefix_out/full.stdout"
-sed '/^== ordinary MethodImpl definition shapes ==/,$d' "$prefix_out/full.stdout" > "$prefix_out/prefix.stdout"
-diff -u <(strip_cr_win_file "$prefix_out/before.stdout") <(strip_cr_win_file "$prefix_out/prefix.stdout")
+gate_capture_ok "$prefix_out/before" run_bounded dotnet "$bucket" before-methodimpl-shapes
+gate_capture_ok "$prefix_out/full" run_bounded dotnet "$bucket"
+gate_output select "$prefix_out/full.stdout" "$prefix_out/prefix.stdout" --before '== ordinary MethodImpl definition shapes ==' --policy crlf
+gate_output compare "$prefix_out/before.stdout" "$prefix_out/prefix.stdout"
 echo 'PASS: ordinary MethodImpl definition shapes'

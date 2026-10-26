@@ -79,21 +79,9 @@ dnzlib_diff_gate() {
     # *absence* step 5 asserts, turning a real regression into a silent pass.
     ( export DN2CPP_EXTRA_CMAKE_ARGS="-DDN2CPP_STRIP=OFF -DDN2CPP_DEAD_STRIP=OFF"
       compile_console "$out" "$project" )
-    # Both statuses captured, not just the native one: an oracle invoked inline
-    # as `$(dotnet "$app")` contributes only its stdout, so an oracle that died
-    # feeds the diff a truncated string — and the native side, which exited 0
-    # and printed the same prefix (in the limit, nothing at all), agrees with
-    # it.
-    local native_out native_code oracle_out oracle_code
-    set +e
-    native_out="$("./$out/$project")"; native_code=$?
-    oracle_out="$(dotnet "$app")"; oracle_code=$?
-    set -e
-    [ "$native_code" -eq 0 ] \
-        || { echo "FAIL: native binary exited $native_code, expected 0" >&2; return 1; }
-    [ "$oracle_code" -eq 0 ] \
-        || { echo "FAIL: real-.NET oracle \`dotnet $app\` exited $oracle_code, expected 0" >&2; return 1; }
-    assert_output "$native_out" "$oracle_out"
+    gate_capture_ok "$out/native" run_bounded "./$out/$project$EXE_EXT"
+    gate_capture_ok "$out/oracle" run_bounded dotnet "$app"
+    gate_output compare "$out/native.stdout" "$out/oracle.stdout"
 
     echo "== 5/5 Asserting the zlib backend really swapped (nm) =="
     # Snapshot the symbol table once and grep the string (here-strings, no pipe):

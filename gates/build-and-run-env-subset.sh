@@ -45,13 +45,9 @@ trap 'rm -rf "$native_dir" "$dotnet_dir"' EXIT
 # The program ends in Environment.Exit(3), so the exit status is part of the
 # contract: it proves the funnel carries the code through and flushes stdout, which
 # `_Exit` does not do on its own.
-set +e
-native=$(env DN2CPP_PROBE='dn2cpp-value-42' DN2CPP_EMPTY= "./$out/$project" "$native_dir")
-native_code=$?
-expected=$(env DN2CPP_PROBE='dn2cpp-value-42' DN2CPP_EMPTY= dotnet "$app" "$dotnet_dir")
-expected_code=$?
-set -e
-assert_output "$native" "$expected"
-assert_exit_code "$native_code" "$expected_code"
-assert_exit_code "$native_code" 3
+gate_capture "$out/native" run_bounded env DN2CPP_PROBE='dn2cpp-value-42' DN2CPP_EMPTY= "./$out/$project" "$native_dir"
+gate_capture "$out/oracle" run_bounded env DN2CPP_PROBE='dn2cpp-value-42' DN2CPP_EMPTY= dotnet "$app" "$dotnet_dir"
+gate_output compare "$out/native.stdout" "$out/oracle.stdout"
+gate_output status "$(cat "$out/native.status")" "$(cat "$out/oracle.status")"
+gate_output status "$(cat "$out/native.status")" 3
 gate_cache_commit

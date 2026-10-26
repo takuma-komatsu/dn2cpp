@@ -167,11 +167,11 @@ if [ "$DN2CPP_OS" = windows ]; then
     # The oracle's DLL lookup uses PATH — prepended in POSIX form (a C:-style
     # drive colon would split the list); node needs no library path at all.
     hostlibdir_posix=$(cygpath -u "$HOSTLIBDIR")
-    native_out=$(node "./$OUT/$PROJECT.js")
-    dotnet_out=$(env "PATH=$hostlibdir_posix:$PATH" "$oracle_dir/$PROJECT.exe")
+    gate_capture_ok "$OUT/native" run_bounded node "./$OUT/$PROJECT.js"
+    gate_capture_ok "$OUT/oracle" run_bounded env "PATH=$hostlibdir_posix:$PATH" "$oracle_dir/$PROJECT.exe"
 else
-    native_out=$(node "./$OUT/$PROJECT.js")
-    dotnet_out=$(env "$LIB_PATH_ENV=$HOSTLIBDIR" dotnet "$app")
+    gate_capture_ok "$OUT/native" run_bounded node "./$OUT/$PROJECT.js"
+    gate_capture_ok "$OUT/oracle" run_bounded env "$LIB_PATH_ENV=$HOSTLIBDIR" dotnet "$app"
 fi
-assert_output "$native_out" "$(strip_cr_win "$dotnet_out")"
+gate_output compare "$OUT/native.stdout" "$OUT/oracle.stdout" --policy crlf
 gate_cache_commit

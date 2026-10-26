@@ -128,10 +128,10 @@ if [ "$DN2CPP_OS" = macos ]; then
     [ ! -e "$framework_out/pinvoke-libs.txt" ] && [ ! -e "$framework_out/pinvoke-symbols.txt" ] \
         || { echo "FAIL: the always-linked framework emitted a library token" >&2; exit 1; }
     compile_console "$framework_out" FrameworkProbe
-    framework_native=$("$framework_out/FrameworkProbe")
-    framework_managed=$(dotnet exec "$framework_app")
-    assert_output "$framework_native" "$framework_managed"
-    assert_output "$framework_native" 'core-foundation=True'
+    gate_capture_ok "$framework_out/native" run_bounded "$framework_out/FrameworkProbe$EXE_EXT"
+    gate_capture_ok "$framework_out/oracle" run_bounded dotnet exec "$framework_app"
+    gate_output compare "$framework_out/native.stdout" "$framework_out/oracle.stdout"
+    gate_assert_text "$framework_out/native.stdout" 'core-foundation=True'
 fi
 
 echo "== 6/11 Asserting the ByValTStr struct-field crossing refuses at transpile =="
@@ -239,11 +239,12 @@ sd_app="samples/dotnet/PInvokeStructDescriptorBad/bin/$CONFIG/$TFM/PInvokeStruct
 # up; the Ok control gets past the marshaller and dies at the lookup instead (no such symbol
 # on POSIX, no such library on Windows, where libc is not a module name). Drop the control and
 # the arm passes on any exception at all, saying nothing about the descriptor.
-sd_oracle=$(dotnet "$sd_app" 2>&1) || true
-grep -q "^struct-on-enum=TypeLoadException" <<<"$sd_oracle" \
-    || { echo "FAIL: real .NET did not refuse [MarshalAs(Struct)] on an enum field" >&2; printf '%s\n' "$sd_oracle" | tail -3 >&2; exit 1; }
-grep -qE "^struct-on-value=(EntryPointNotFoundException|DllNotFoundException)" <<<"$sd_oracle" \
-    || { echo "FAIL: the control did not get past the marshaller, so TypeLoadException proves nothing" >&2; printf '%s\n' "$sd_oracle" | tail -3 >&2; exit 1; }
+gate_capture_ok "$OUT/struct-descriptor-oracle" run_bounded dotnet "$sd_app"
+sd_oracle="$OUT/struct-descriptor-oracle.stdout"
+grep -q "^struct-on-enum=TypeLoadException" "$sd_oracle" \
+    || { echo "FAIL: real .NET did not refuse [MarshalAs(Struct)] on an enum field" >&2; tail -3 "$sd_oracle" >&2; exit 1; }
+grep -qE "^struct-on-value=(EntryPointNotFoundException|DllNotFoundException)" "$sd_oracle" \
+    || { echo "FAIL: the control did not get past the marshaller, so TypeLoadException proves nothing" >&2; tail -3 "$sd_oracle" >&2; exit 1; }
 echo "oracle OK: real .NET raises TypeLoadException on the enum arm, gets past the marshaller on the control"
 SD_OUT="artifacts/pinvokenative-structdescriptor-neg"
 rm -rf "$SD_OUT"
@@ -308,13 +309,13 @@ cp -f "$libtest" "$dynamic_managed_dir/$assembly_lib_name"
 if [ "$DN2CPP_OS" = windows ]; then
     libdir_posix=$(cygpath -u "$LIBDIR")
     libtest_native=$(native_path "$libtest")
-    dynamic_native=$(env "PATH=$libdir_posix:$PATH" DN2CPP_PINVOKE_TEST_LIBRARY="$libtest_native" "./$dynamic_out/PInvokeDynamic")
-    dynamic_dotnet=$(env "PATH=$libdir_posix:$PATH" DN2CPP_PINVOKE_TEST_LIBRARY="$libtest_native" dotnet "$dynamic_app")
+    gate_capture_ok "$dynamic_out/native" run_bounded env "PATH=$libdir_posix:$PATH" DN2CPP_PINVOKE_TEST_LIBRARY="$libtest_native" "./$dynamic_out/PInvokeDynamic"
+    gate_capture_ok "$dynamic_out/oracle" run_bounded env "PATH=$libdir_posix:$PATH" DN2CPP_PINVOKE_TEST_LIBRARY="$libtest_native" dotnet "$dynamic_app"
 else
-    dynamic_native=$(env "$LIB_PATH_ENV=$LIBDIR" DN2CPP_PINVOKE_TEST_LIBRARY="$libtest" "./$dynamic_out/PInvokeDynamic")
-    dynamic_dotnet=$(env "$LIB_PATH_ENV=$LIBDIR" DN2CPP_PINVOKE_TEST_LIBRARY="$libtest" dotnet "$dynamic_app")
+    gate_capture_ok "$dynamic_out/native" run_bounded env "$LIB_PATH_ENV=$LIBDIR" DN2CPP_PINVOKE_TEST_LIBRARY="$libtest" "./$dynamic_out/PInvokeDynamic"
+    gate_capture_ok "$dynamic_out/oracle" run_bounded env "$LIB_PATH_ENV=$LIBDIR" DN2CPP_PINVOKE_TEST_LIBRARY="$libtest" dotnet "$dynamic_app"
 fi
-assert_output "$dynamic_native" "$dynamic_dotnet"
+gate_output compare "$dynamic_out/native.stdout" "$dynamic_out/oracle.stdout"
 
 # The native test library's source dir is a key input beyond the transpile
 # surface: the run dlopens what step 1 built from it.
@@ -337,11 +338,11 @@ compile_console "$OUT" "$PROJECT"
 if [ "$DN2CPP_OS" = windows ]; then
     # POSIX form, or a C:-style $PWD's drive colon splits the PATH list.
     libdir_posix=$(cygpath -u "$LIBDIR")
-    native_out=$(env "PATH=$libdir_posix:$PATH" "./$OUT/$PROJECT")
-    dotnet_out=$(env "PATH=$libdir_posix:$PATH" dotnet "$app")
+    gate_capture_ok "$OUT/native" run_bounded env "PATH=$libdir_posix:$PATH" "./$OUT/$PROJECT"
+    gate_capture_ok "$OUT/oracle" run_bounded env "PATH=$libdir_posix:$PATH" dotnet "$app"
 else
-    native_out=$(env "$LIB_PATH_ENV=$LIBDIR" "./$OUT/$PROJECT")
-    dotnet_out=$(env "$LIB_PATH_ENV=$LIBDIR" dotnet "$app")
+    gate_capture_ok "$OUT/native" run_bounded env "$LIB_PATH_ENV=$LIBDIR" "./$OUT/$PROJECT"
+    gate_capture_ok "$OUT/oracle" run_bounded env "$LIB_PATH_ENV=$LIBDIR" dotnet "$app"
 fi
-assert_output "$native_out" "$dotnet_out"
+gate_output compare "$OUT/native.stdout" "$OUT/oracle.stdout"
 gate_cache_commit
