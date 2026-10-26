@@ -40,7 +40,12 @@ internal sealed partial class AssemblyDiet
         Spend();
         string owner = Name(method.DeclaringType);
         bool traverse;
-        if (owner is "System.Array" or "System.Delegate")
+        if (CoreIntrinsicTypeMaps.IsDelegateValueMember(owner, method.Name)
+            && CoreIntrinsicTypeMaps.IsDelegateValueMethod(owner, method.Name, method.IsStatic,
+                method.GenericParameters.Count, method.Parameters.Count, method.ReturnType.FullName,
+                method.Parameters.Count == 1 ? method.Parameters[0].ParameterType.FullName : null))
+            traverse = false;
+        else if (owner is "System.Array" or "System.Delegate")
             traverse = CoreIntrinsicTypeMaps.IsRealBodyGeneric(owner, method.Name) || CopiedArrayRealBodyMember(method);
         else
             traverse = !CoreIntrinsicTypeMaps.IsInlineLoweredPrimitiveMember(owner, method.Name)

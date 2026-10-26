@@ -57,6 +57,18 @@ internal static class CoreIntrinsicTypeMaps
     public static bool IsDelegateBaseType(string? fullName) =>
         fullName is "System.Delegate" or "System.MulticastDelegate";
 
+    public static bool IsDelegateValueMember(string? owner, string name) =>
+        IsDelegateBaseType(owner) && name is "Equals" or "GetHashCode";
+
+    public static bool IsDelegateValueMethod(string? owner, string name, bool isStatic,
+        int genericParameterCount, int parameterCount, string? returnType, string? parameterType) =>
+        IsDelegateValueMember(owner, name) && !isStatic && genericParameterCount == 0 && (name switch
+        {
+            "Equals" => parameterCount == 1 && parameterType == "System.Object" && returnType == "System.Boolean",
+            "GetHashCode" => parameterCount == 0 && returnType == "System.Int32",
+            _ => false,
+        });
+
     private static readonly HashSet<string> s_intrinsicTypes = new()
     {
         "System.Object",

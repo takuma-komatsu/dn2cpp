@@ -328,6 +328,8 @@ internal enum InterceptEmitArm
     LifetimeDisposeBody,
     /// <summary>Delegate.Clone's callable slot uses the same shallow-copy helper as a direct call.</summary>
     DelegateCloneBody,
+    /// <summary>Delegate value overrides retain callable bodies over the uniform invocation chain.</summary>
+    DelegateValueBody,
     DelegateCloneBinding,
     ArrayCloneBinding,
     /// <summary>SafeHandle lifetime calls and bindings recognize the runtime SafeWaitHandle layout.
@@ -1736,6 +1738,22 @@ internal static partial class CoreIntrinsics
         InterceptCutKind.BodyReplace, InterceptEmitArm.DelegateCloneBody,
         typeGate: "System.Delegate", nameGate: "Clone");
 
+    internal static bool IsDelegateValueSignature(string owner, string name, MethodSignature<TypeDesc> sig) =>
+        CoreIntrinsicTypeMaps.IsDelegateValueMethod(owner, name, !sig.Header.IsInstance,
+            sig.GenericParameterCount, sig.ParameterTypes.Length,
+            sig.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean } ? "System.Boolean"
+                : sig.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 } ? "System.Int32" : null,
+            sig.ParameterTypes.Length == 1 && sig.ParameterTypes[0].IsObject ? "System.Object" : null);
+
+    /// <summary>Reflection and Medium retention need callable value overrides, but
+    /// their CoreCLR field-walking IL is incompatible with the uniform delegate layout.
+    /// Reach keeps the declared method without scanning it; CppEmitter replays the
+    /// same exact call lowering under that method's own symbol.</summary>
+    public static readonly MethodDefIntercept BrDelegateValue = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.DelegateValueBody,
+        extra: static m => CoreIntrinsicTypeMaps.IsDelegateValueMember(m.DeclaringClass.FullName, m.Name)
+            && IsDelegateValueSignature(m.DeclaringClass.FullName, m.Name, m.Signature));
+
     /// <summary>CompareInfo instances use the synthetic invariant representation from
     /// CultureInfo.CompareInfo; deserialization preserves it without creating ICU state.</summary>
     public static readonly NameKeyedIntercept BrInvariantCompareInfoCallback = new(
@@ -1904,6 +1922,11 @@ internal static partial class CoreIntrinsics
     {
         if (!RegistrySelfCheckEnabled)
             return;
+
+        CheckRow(nameof(BrDelegateValue), 0, BrDelegateValue.EmitArm,
+            BrDelegateValue.TypeGate, BrDelegateValue.NameGate);
+        if (BrDelegateValue.CutKind != InterceptCutKind.BodyReplace)
+            throw new InvalidOperationException("Delegate value members must remain callable");
 
         CheckRow(nameof(BrEnumElementType), 0, BrEnumElementType.EmitArm,
             BrEnumElementType.TypeGate, BrEnumElementType.NameGate);

@@ -145,6 +145,17 @@ gate_extra_asserts() {
         'pause-advanced:True' 'pause-delegate:True' 'pause-pointer:True' 'GC pause duration end'; do
         gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
     done
+    gate_capture_ok "$out/assert-before-delegate-values" run_bounded dotnet "$_CG_APP" before-delegate-values || return 1
+    gate_output prefix "$native" "$out/assert-before-delegate-values.stdout" --before '== Retained delegate value members ==' --policy crlf || return 1
+    for line in '== Retained delegate value members ==' 'delegate-same:True' 'delegate-same-hash:True' \
+        'delegate-closed-type:True' 'delegate-declaration:True' 'delegate-null:True' \
+        'delegate-target-same:True' 'delegate-target-same-hash:True' 'delegate-target-other:True' \
+        'delegate-chain:True' 'delegate-chain-hash:True' 'delegate-order:True' 'delegate-length:True' \
+        'delegate-reflected-equals:True' 'delegate-reflected-hash:True' \
+        'delegate-base-equals:True' 'delegate-base-hash:True' \
+        'delegate-bound-equals:True' 'delegate-bound-hash:True' 'Retained delegate value members end'; do
+        gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
+    done
 }
 
 corelib_diff_gate SelfHostPrimSubset System.Linq System.Diagnostics.TraceSource \

@@ -12,8 +12,31 @@ internal sealed partial class MethodCompiler
             ? $"dn2cpp_null_check({Cast(receiver, "Dn2CppObject*")})"
             : Cast(receiver, "Dn2CppObject*");
 
+    private bool TryEmitDelegateValueIntrinsic(string owner, string name, MethodSignature<TypeDesc> sig)
+    {
+        if (!CoreIntrinsicTypeMaps.IsDelegateValueMember(owner, name)
+            || !CoreIntrinsics.IsDelegateValueSignature(owner, name, sig))
+            return false;
+        if (name == "Equals")
+        {
+            var other = Pop();
+            var self = Pop();
+            Push(StackKind.I4, "int32_t", $"dn2cpp_delegate_equal({DelegateReceiver(self)}, {Cast(other, "Dn2CppObject*")})");
+            return true;
+        }
+        if (name == "GetHashCode")
+        {
+            var self = Pop();
+            Push(StackKind.I4, "int32_t", $"dn2cpp_delegate_hash({DelegateReceiver(self)})");
+            return true;
+        }
+        return false;
+    }
+
     private bool TryEmitStringsIntrinsic(string declType, string name, MethodSignature<TypeDesc> sig)
     {
+        if (TryEmitDelegateValueIntrinsic(declType, name, sig))
+            return true;
         // Numeric Parse/TryParse (all integer widths + Double/Single, every
         // NumberStyles/provider/span shape) — consolidated below the switch.
         if (TryEmitParseIntrinsic(declType, name, sig))
@@ -399,20 +422,6 @@ internal sealed partial class MethodCompiler
                 var a = Pop();
                 string eq = $"dn2cpp_delegate_equal({Cast(a, "Dn2CppObject*")}, {Cast(b, "Dn2CppObject*")})";
                 Push(StackKind.I4, "int32_t", name == "op_Equality" ? eq : $"({eq} == 0 ? 1 : 0)");
-                return true;
-            }
-            case ("System.Delegate", "Equals") when sig.ParameterTypes.Length == 1:
-            {
-                var b = Pop();
-                var a = Pop();
-                Push(StackKind.I4, "int32_t",
-                    $"dn2cpp_delegate_equal({DelegateReceiver(a)}, {Cast(b, "Dn2CppObject*")})");
-                return true;
-            }
-            case ("System.Delegate", "GetHashCode") when sig.ParameterTypes.Length == 0:
-            {
-                var d = Pop();
-                Push(StackKind.I4, "int32_t", $"dn2cpp_delegate_hash({DelegateReceiver(d)})");
                 return true;
             }
             // Delegate.HasSingleTarget: a single-entry invocation chain (the

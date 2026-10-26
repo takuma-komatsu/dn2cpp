@@ -1264,7 +1264,8 @@ internal sealed partial class CppEmitter
                 // RenderMemberTables' guard + BuildMemberTable's row trim.
                 if (_e.IsCanonicalWorld(cls)
                     || _e.IsOpaque(cls) && !_c.RuntimeInterfaceMetadata.Contains(cls)
-                        && !_e._constructorRowOwners.Contains(cls))
+                        && !_e._constructorRowOwners.Contains(cls)
+                        && !cls.Methods.Any(IsRetainedDelegateValueRow))
                     continue;
                 bool keepRefl = _c.KeepsReflectionMetadata(cls);
                 var propertyAccessors = ReflectionAccessorHandles(cls);
@@ -1272,7 +1273,8 @@ internal sealed partial class CppEmitter
                 foreach (var m in _e.ReflectionMethods(cls))
                 {
                     if (_e.IsOpaque(cls) && !_c.RuntimeInterfaceMetadata.Contains(cls)
-                        && !_e._activationConstructorRows.Contains(m))
+                        && !_e._activationConstructorRows.Contains(m)
+                        && !IsRetainedDelegateValueRow(m))
                         continue;
                     bool methodRow = m.Name != ".ctor" && m.Name != ".cctor"
                         && !(_c.SharedGenericsEnabled
@@ -3753,6 +3755,12 @@ internal sealed partial class CppEmitter
         // thunk per distinct C++ ABI shape. Emitted before the type-info
         // definition so the initializer can name them. GetMethods excludes ctors and
         // GetConstructors excludes methods, matching .NET's split.
+        // Only these replaced, actually retained bodies opt into the opaque
+        // Delegate catalog. The signature-note pass uses the same row predicate.
+        private bool IsRetainedDelegateValueRow(MethodInfo method) =>
+            _c.KeepsReflectionMetadata(method.DeclaringClass) && _c.Reachable.Contains(method)
+            && CoreIntrinsics.BrDelegateValue.Matches(method);
+
         private void RenderMemberTables(ClassInfo cls)
         {
             // Skip opaque/intrinsic types (System.Object/ValueType/Exception/…): their
@@ -3768,6 +3776,9 @@ internal sealed partial class CppEmitter
                 if (BuildMemberTable(cls, activationCtors, "ctortab") is { } table)
                     _ctorTabs[cls] = table;
                 NoteListedCtors(cls, activationCtors);
+                var valueMethods = cls.Methods.Where(IsRetainedDelegateValueRow).ToList();
+                if (BuildMemberTable(cls, valueMethods, "methtab") is { } values)
+                    _methodTabs[cls] = values;
                 return;
             }
             // Dedupe by CppName: a class can list the same method twice (e.g. an
