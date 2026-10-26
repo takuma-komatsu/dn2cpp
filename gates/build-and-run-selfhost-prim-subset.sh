@@ -73,6 +73,20 @@
 # + tree-shake -> native binary -> run, asserting the output diffs exact vs real .NET.
 source "$(dirname "$0")/_common.sh"
 
+# Heap accounting differs by runtime; assert the public query contracts.
+gate_extra_asserts() {
+    local out="$1" native="$1/native.stdout" line
+    gate_capture_ok "$out/assert-before-gc-memory" run_bounded dotnet "$_CG_APP" before-gc-memory-queries || return 1
+    gate_output select "$native" "$out/assert-prefix-gc-memory.stdout" --before '== GC memory query entry points ==' --policy crlf || return 1
+    gate_output compare "$out/assert-prefix-gc-memory.stdout" "$out/assert-before-gc-memory.stdout" || return 1
+    for line in '== GC memory query entry points ==' \
+        'gc-public-direct-nonnegative:True' 'gc-public-delegate-nonnegative:True' \
+        'gc-public-pointer-nonnegative:True' 'gc-public-collect-nonnegative:True' \
+        'gc-live-payload:True' 'GC memory query entry points end'; do
+        gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
+    done
+}
+
 corelib_diff_gate SelfHostPrimSubset System.Linq System.Diagnostics.TraceSource \
     System.Collections.Specialized
 

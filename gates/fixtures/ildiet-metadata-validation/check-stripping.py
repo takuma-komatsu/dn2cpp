@@ -193,3 +193,6 @@ validate_buffer_moves(probe, cli, original, directory)
 from globalization_retention import validate_globalization, validate_kernel32
 validate_globalization(probe, cli, original, directory)
 validate_kernel32(probe, cli, original, directory)
+
+from gc_memory import validate_gc_memory
+validate_gc_memory(probe, cli, original, directory)

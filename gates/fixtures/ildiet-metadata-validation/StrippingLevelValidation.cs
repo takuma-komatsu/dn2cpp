@@ -14,6 +14,17 @@ static partial class StrippingLevelValidation
 
     public static bool Run(string[] args)
     {
+        if (args.Length == 1 && args[0] == "--check-gc-memory-clr")
+        {
+            CheckGcMemoryClr();
+            return true;
+        }
+        if (args.Length == 4 && args[0] == "--create-stripping-gc-memory-fixture")
+        {
+            CreateGcMemory(args[1], args[2], args[3]);
+            Console.WriteLine("stripping-fixture=gc-memory:" + args[3]);
+            return true;
+        }
         if (args.Length == 1 && args[0] == "--check-buffer-moves-clr")
         {
             CheckBufferMovesClr();

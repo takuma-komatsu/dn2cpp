@@ -684,6 +684,13 @@ internal sealed partial class MethodCompiler
                 when callee.Signature.ParameterTypes.Length == 0 && callee.IsStatic:
                 Emit("dn2cpp_gc_wait_for_pending_finalizers();");
                 return true;
+            // CoreLib's private QCall sibling is the non-collecting query. Retained
+            // MethodDef bodies must replay it through the same runtime accounting.
+            case ("System.GC", "GetTotalMemory")
+                when callee.IsStatic && callee.Signature.ParameterTypes.Length == 0
+                    && callee.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int64 }:
+                Push(StackKind.I8, "int64_t", "dn2cpp_gc_get_total_memory(0)");
+                return true;
             case ("System.GC", "GetTotalMemory")
                 when callee.Signature.ParameterTypes.Length == 1 && callee.IsStatic:
             {
