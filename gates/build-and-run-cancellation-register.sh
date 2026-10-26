@@ -30,12 +30,16 @@ source "$(dirname "$0")/_common.sh"
 
 gate_extra_asserts() {
     local out="$1" native before prefix line
-    native=$(run_bounded "./$out/CancellationRegister")
-    native=$(strip_cr_win "$native")
-    before=$(dotnet "$_CG_APP" before-argument-fields)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== Cancellation delay fields ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-native-1" run_bounded "./$out/CancellationRegister"
+    native="$out/assert-native-1.stdout"
+
+    gate_capture_ok "$out/assert-before-2" run_bounded dotnet "$_CG_APP" before-argument-fields
+    before="$out/assert-before-2.stdout"
+
+    prefix="$out/assert-prefix-3.stdout"
+
+    gate_output select "$native" "$prefix" --before '== Cancellation delay fields ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== Cancellation delay fields ==' \
         'cts int:-2 param=millisecondsDelay' \
         'cts span:9223372036854775807 param=delay' \
@@ -45,7 +49,7 @@ gate_extra_asserts() {
         'cts state int:1:-1 success=armed' \
         'cancellation delay fields GC actual=null' \
         'Cancellation delay fields end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: CancellationRegister validation witness missing: $line" >&2; exit 1; }
     done
 }

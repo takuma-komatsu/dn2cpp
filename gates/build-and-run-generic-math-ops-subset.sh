@@ -45,19 +45,22 @@ DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|static-impl-selection-
 
 gate_extra_asserts() {
     local out="$1"
-    run_bounded "$out/GenericMathOpsSubset$EXE_EXT" > "$out/static-selection.stdout"
-    grep -Fxq '== Static interface implementation selection ==' "$out/static-selection.stdout"
-    grep -Fxq 'static explicit explicit' "$out/static-selection.stdout"
-    grep -Fxq 'static class class' "$out/static-selection.stdout"
-    grep -Fxq 'static overload plain/explicit-int' "$out/static-selection.stdout"
-    grep -Fxq 'static inherited class derived:Int32/derived:String/derived/derived/derived' "$out/static-selection.stdout"
-    grep -Fxq 'static inherited struct derived:Int32/derived:String/derived/derived/derived' "$out/static-selection.stdout"
-    grep -Fxq 'static inherited generic derived:Int32/derived:String/derived/derived/derived' "$out/static-selection.stdout"
-    grep -Fxq 'static inherited most most:Int32/most:String/derived/derived/most' "$out/static-selection.stdout"
-    DN2CPP_BEFORE_STATIC_IMPL_SELECTION=1 run_bounded "$out/GenericMathOpsSubset$EXE_EXT" > "$out/static-selection-prefix.stdout"
-    # Native stdout uses CRLF on Windows; normalize both sides before diffing.
-    diff -u <(tr -d '\r' < "$out/static-selection-prefix.stdout") \
-        <(sed '/^== Static interface implementation selection ==/,$d' "$out/static-selection.stdout" | tr -d '\r')
+    gate_capture_ok "$out/static-selection" run_bounded "$out/GenericMathOpsSubset$EXE_EXT"
+    gate_output witness "$out/static-selection.stdout" --count any --policy crlf \
+        '== Static interface implementation selection ==' \
+        'static explicit explicit' \
+        'static class class' \
+        'static overload plain/explicit-int' \
+        'static inherited class derived:Int32/derived:String/derived/derived/derived' \
+        'static inherited struct derived:Int32/derived:String/derived/derived/derived' \
+        'static inherited generic derived:Int32/derived:String/derived/derived/derived' \
+        'static inherited most most:Int32/most:String/derived/derived/most'
+    DN2CPP_BEFORE_STATIC_IMPL_SELECTION=1 gate_capture_ok "$out/static-selection-before" \
+        run_bounded "$out/GenericMathOpsSubset$EXE_EXT"
+    gate_output select "$out/static-selection.stdout" "$out/static-selection-prefix.stdout" \
+        --before '== Static interface implementation selection ==' --policy crlf
+    gate_output compare "$out/static-selection-prefix.stdout" "$out/static-selection-before.stdout"
+
 }
 
 corelib_diff_gate GenericMathOpsSubset System.Runtime

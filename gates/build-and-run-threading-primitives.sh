@@ -34,37 +34,47 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-cancellation
 gate_extra_asserts() {
     local out="$1" native before prefix line
     [[ "$_CG_APP" == */ThreadingPrimitives.dll ]] || return 0
-    native=$(run_bounded "./$out/ThreadingPrimitives")
-    native=$(strip_cr_win "$native")
-    before=$(run_bounded dotnet "$_CG_APP" before-cancellation-thread-faults)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== cancellation thread faults ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-native-1" run_bounded "./$out/ThreadingPrimitives"
+    native="$out/assert-native-1.stdout"
+
+    gate_capture_ok "$out/assert-before-2" run_bounded dotnet "$_CG_APP" before-cancellation-thread-faults
+    before="$out/assert-before-2.stdout"
+
+    prefix="$out/assert-prefix-8.stdout"
+
+    gate_output select "$native" "$prefix" --before '== cancellation thread faults ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== cancellation thread faults ==' \
         'cancel worker False: newer;older;remaining;|AggregateException|identity=True|requested=True' \
         'cancel worker True: newer;|InvalidOperationException|identity=True|requested=True' \
         'cancel handled timer: True|newer;older;remaining;|2|timer newer,timer older|requested=True' \
         'cancellation thread faults end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: cancellation thread fault witness missing: $line" >&2; exit 1; }
     done
-    before=$(dotnet "$_CG_APP" before-argument-fields)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== WaitHandle array fields ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-3" run_bounded dotnet "$_CG_APP" before-argument-fields
+    before="$out/assert-before-3.stdout"
+
+    prefix="$out/assert-prefix-9.stdout"
+
+    gate_output select "$native" "$prefix" --before '== WaitHandle array fields ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== WaitHandle array fields ==' \
         'wait null param=waitHandles' \
         'wait empty param=waitHandles' \
         'wait element param=waitHandles[1]' \
         'wait fields GC type=ArgumentException' \
         'WaitHandle array fields end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: ThreadingPrimitives validation witness missing: $line" >&2; exit 1; }
     done
-    before=$(dotnet "$_CG_APP" before-ownership)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== monitor ownership ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-4" run_bounded dotnet "$_CG_APP" before-ownership
+    before="$out/assert-before-4.stdout"
+
+    prefix="$out/assert-prefix-10.stdout"
+
+    gate_output select "$native" "$prefix" --before '== monitor ownership ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== monitor ownership ==' \
         'monitor ownership end' \
         'lock ownership end' \
@@ -74,20 +84,23 @@ gate_extra_asserts() {
         'independent ownership end' \
         'synchronized released=False' \
         'ownership fields end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: ThreadingPrimitives ownership witness missing: $line" >&2; exit 1; }
     done
-    before=$(dotnet "$_CG_APP" before-lock-identity)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== Lock runtime identity ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-5" run_bounded dotnet "$_CG_APP" before-lock-identity
+    before="$out/assert-before-5.stdout"
+
+    prefix="$out/assert-prefix-11.stdout"
+
+    gate_output select "$native" "$prefix" --before '== Lock runtime identity ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== Lock runtime identity ==' \
         'Lock type: Lock System.Threading.Lock System.Threading.Lock' \
         'Lock reflection: True True True True System.Object' \
         'Lock typed round trip: True True InvalidCastException' \
         'Lock shared round trip: True True InvalidCastException' \
         'Lock runtime identity end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: Lock runtime identity witness missing: $line" >&2; exit 1; }
     done
     if ! awk '
@@ -109,14 +122,16 @@ gate_extra_asserts() {
     local fixture="$out/registration-object" expected actual
     invoke_cli "$registration_app" -r "$_CG_CORELIB" -o "$fixture"
     compile_console "$fixture" RegistrationObjectEquality
-    expected=$(run_bounded dotnet "$registration_app")
-    actual=$(run_bounded "./$fixture/RegistrationObjectEquality")
-    actual=$(strip_cr_win "$actual")
-    assert_output "$actual" "$(strip_cr_win "$expected")"
+    gate_capture_ok "$out/assert-expected-6" run_bounded dotnet "$registration_app"
+    expected="$out/assert-expected-6.stdout"
+    gate_capture_ok "$out/assert-actual-7" run_bounded "./$fixture/RegistrationObjectEquality"
+    actual="$out/assert-actual-7.stdout"
+
+    gate_output compare "$actual" "$expected"
     for line in 'null: False' 'wrong: False' \
         'registered null: False' 'registered wrong: False' \
         'registration object equality end'; do
-        grep -Fxq -- "$line" <<< "$actual" \
+        gate_output byte-witness "$actual" "$line" --count any --policy crlf \
             || { echo "FAIL: registration object equality witness missing: $line" >&2; exit 1; }
     done
 }

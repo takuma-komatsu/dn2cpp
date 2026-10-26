@@ -31,22 +31,31 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|standard-decimal-prefix:be
 
 gate_extra_asserts() {
     local out="$1" native before prefix line long_sign
-    native=$(run_bounded "./$out/StringInterp")
-    native=$(strip_cr_win "$native")
-    before=$(dotnet "$_CG_APP" before-concat-sequences)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== Concat<T> and Join<T> sequence shapes ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-native-1" run_bounded "./$out/StringInterp"
+    gate_output select "$out/assert-native-1.stdout" "$out/text-witnesses.stdout" \
+        --through 'Standard numeric NUL termination end' --policy crlf
+    native="$out/text-witnesses.stdout"
+
+    gate_capture_ok "$out/assert-before-2" run_bounded dotnet "$_CG_APP" before-concat-sequences
+    before="$out/assert-before-2.stdout"
+
+    prefix="$out/assert-prefix-11.stdout"
+
+    gate_output select "$native" "$prefix" --before '== Concat<T> and Join<T> sequence shapes ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== Concat<T> and Join<T> sequence shapes ==' \
         'bare ulong[]: 18446744073709551615,2 | 184467440737095516152'; do
-        grep -Fxq "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: sequence witness missing: $line" >&2; exit 1; }
     done
-    before=$(run_bounded dotnet "$_CG_APP" before-comma-scaling)
-    prefix=$(awk '/^== Custom numeric comma scaling ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    before=$(run_bounded "./$out/StringInterp" before-comma-scaling)
-    assert_output "$prefix" "$(strip_cr_win "$before")"
+    gate_capture_ok "$out/assert-before-3" run_bounded dotnet "$_CG_APP" before-comma-scaling
+    before="$out/assert-before-3.stdout"
+    prefix="$out/assert-prefix-12.stdout"
+    gate_output select "$native" "$prefix" --before '== Custom numeric comma scaling ==' --policy crlf
+    gate_output compare "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-4" run_bounded "./$out/StringInterp" before-comma-scaling
+    before="$out/assert-before-4.stdout"
+    gate_output compare "$prefix" "$before"
     for line in '== Custom numeric comma scaling ==' 'trillion=100' \
         'fraction=123.457' 'integer=1235' 'grouped=1,235' \
         'grouped fraction=1,234,567.89' 'negative=(1.23)' 'zero=zero' \
@@ -68,14 +77,17 @@ gate_extra_asserts() {
         'decimal midpoint=-1234567890123456790' 'decimal optional=1.5' \
         'decimal exponent=1.23E+27' \
         'Custom numeric comma scaling end'; do
-        [ "$(grep -Fxc "$line" <<< "$native")" = 1 ] \
+        gate_output witness "$native" "$line" --count 1 --policy crlf \
             || { echo "FAIL: numeric comma scaling witness missing: $line" >&2; exit 1; }
     done
-    before=$(run_bounded dotnet "$_CG_APP" before-custom-matrix)
-    prefix=$(awk '/^== Custom numeric sections and placeholders ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    before=$(run_bounded "./$out/StringInterp" before-custom-matrix)
-    assert_output "$prefix" "$(strip_cr_win "$before")"
+    gate_capture_ok "$out/assert-before-5" run_bounded dotnet "$_CG_APP" before-custom-matrix
+    before="$out/assert-before-5.stdout"
+    prefix="$out/assert-prefix-13.stdout"
+    gate_output select "$native" "$prefix" --before '== Custom numeric sections and placeholders ==' --policy crlf
+    gate_output compare "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-6" run_bounded "./$out/StringInterp" before-custom-matrix
+    before="$out/assert-before-6.stdout"
+    gate_output compare "$prefix" "$before"
     for line in '== Custom numeric sections and placeholders ==' \
         'rounded section=0' 'empty negative=-5' 'fraction exponent=.5E+0' \
         'mixed zero=05' 'integer literal=123x4' 'repeated point=1.5' \
@@ -83,14 +95,17 @@ gate_extra_asserts() {
         'nul negative section=[-5]' \
         'matrix 0/0=[(1)]' 'matrix 1/1=[-5]' 'matrix 17/5=[0,005]' \
         'Custom numeric sections and placeholders end'; do
-        [ "$(grep -Fxc "$line" <<< "$native")" = 1 ] \
+        gate_output witness "$native" "$line" --count 1 --policy crlf \
             || { echo "FAIL: custom numeric matrix witness missing: $line" >&2; exit 1; }
     done
-    before=$(run_bounded dotnet "$_CG_APP" before-standard-nul)
-    prefix=$(awk '/^== Standard numeric NUL termination ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    before=$(run_bounded "./$out/StringInterp" before-standard-nul)
-    assert_output "$prefix" "$(strip_cr_win "$before")"
+    gate_capture_ok "$out/assert-before-7" run_bounded dotnet "$_CG_APP" before-standard-nul
+    before="$out/assert-before-7.stdout"
+    prefix="$out/assert-prefix-14.stdout"
+    gate_output select "$native" "$prefix" --before '== Standard numeric NUL termination ==' --policy crlf
+    gate_output compare "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-8" run_bounded "./$out/StringInterp" before-standard-nul
+    before="$out/assert-before-8.stdout"
+    gate_output compare "$prefix" "$before"
     for line in '== Standard numeric NUL termination ==' \
         'matrix 2/decimal=[1,235]' 'matrix 4/int=[1,234.00]' \
         'matrix 5/double=[1,234.60]' 'matrix 5/float=[1,234.60]' \
@@ -106,30 +121,21 @@ gate_extra_asserts() {
         'float r NaN=[NAN-E]' 'double r NaN=[NAN-E]' \
         'float r negative=[NEG1]' 'double r negative=[NEG1]' \
         'Standard numeric NUL termination end'; do
-        [ "$(grep -Fxc "$line" <<< "$native")" = 1 ] \
+        gate_output witness "$native" "$line" --count 1 --policy crlf \
             || { echo "FAIL: standard numeric NUL witness missing: $line" >&2; exit 1; }
     done
-    run_bounded "./$out/StringInterp" > "$out/standard-nul-native.out"
-    run_bounded dotnet "$_CG_APP" > "$out/standard-nul-dotnet.out"
-    tr -d '\r' < "$out/standard-nul-native.out" > "$out/standard-nul-native-lf.out"
-    tr -d '\r' < "$out/standard-nul-dotnet.out" > "$out/standard-nul-dotnet-lf.out"
-    cmp "$out/standard-nul-dotnet-lf.out" "$out/standard-nul-native-lf.out" || {
-        echo "FAIL: standard numeric NUL raw bytes differ from real .NET" >&2; exit 1; }
-    run_bounded dotnet "$_CG_APP" before-standard-decimal > "$out/standard-decimal-before-dotnet.out"
-    run_bounded "./$out/StringInterp" before-standard-decimal > "$out/standard-decimal-before-native.out"
-    tr -d '\r' < "$out/standard-decimal-before-dotnet.out" > "$out/standard-decimal-before-dotnet-lf.out"
-    tr -d '\r' < "$out/standard-decimal-before-native.out" > "$out/standard-decimal-before-native-lf.out"
-    head -c "$(wc -c < "$out/standard-decimal-before-dotnet-lf.out")" \
-        "$out/standard-nul-dotnet-lf.out" | cmp - "$out/standard-decimal-before-dotnet-lf.out" || {
-        echo "FAIL: old .NET output is not an unchanged prefix" >&2; exit 1; }
-    head -c "$(wc -c < "$out/standard-decimal-before-native-lf.out")" \
-        "$out/standard-nul-native-lf.out" | cmp - "$out/standard-decimal-before-native-lf.out" || {
-        echo "FAIL: old native output is not an unchanged prefix" >&2; exit 1; }
-    tail -c 15 "$out/standard-decimal-before-dotnet-lf.out" | cmp - <(printf 'raw=[5.00]\000END\n') || {
-        echo "FAIL: standard numeric NUL raw-byte witness missing" >&2; exit 1; }
-    native=$(run_bounded "./$out/StringInterp" standard-decimal)
-    expected=$(run_bounded dotnet "$_CG_APP" standard-decimal)
-    assert_output "$(strip_cr_win "$native")" "$(strip_cr_win "$expected")"
+    gate_capture_ok "$out/standard-nul-oracle" run_bounded dotnet "$_CG_APP"
+    gate_output compare "$out/assert-native-1.stdout" "$out/standard-nul-oracle.stdout"
+    gate_capture_ok "$out/standard-decimal-before-oracle" run_bounded dotnet "$_CG_APP" before-standard-decimal
+    gate_capture_ok "$out/standard-decimal-before-native" run_bounded "./$out/StringInterp" before-standard-decimal
+    gate_output byte-prefix "$out/standard-nul-oracle.stdout" "$out/standard-decimal-before-oracle.stdout"
+    gate_output byte-prefix "$out/assert-native-1.stdout" "$out/standard-decimal-before-native.stdout"
+    printf 'raw=[5.00]\000END\n' > "$out/standard-nul-witness.bin"
+    gate_output byte-suffix "$out/standard-decimal-before-oracle.stdout" "$out/standard-nul-witness.bin"
+    gate_output byte-suffix "$out/standard-decimal-before-native.stdout" "$out/standard-nul-witness.bin"
+    gate_output select "$out/assert-native-1.stdout" "$out/decimal-witnesses.stdout" \
+        --from '== Decimal standard rounding and precision ==' --policy crlf
+    native="$out/decimal-witnesses.stdout"
     for line in '== Decimal standard rounding and precision ==' \
         'decimal 1/0=[1,235]' 'decimal 6/0=[1.23E+03]' \
         'decimal 8/0=[1234.5]' 'decimal 7/0=[1.23e+03]' \
@@ -137,12 +143,12 @@ gate_extra_asserts() {
         'defaults=[12.35|12.35|¤12.35|1,234.50 %]' \
         'provider N0=[NEG1.235]' 'provider G3=[NEG1,23E+03]' \
         'Decimal standard rounding and precision end'; do
-        grep -Fqx "$line" <<< "$(strip_cr_win "$native")" || {
+        gate_output witness "$native" "$line" --count any --policy crlf || {
             echo "FAIL: decimal standard witness missing: $line" >&2; exit 1; }
     done
     printf -v long_sign '%200s' ''
     long_sign=${long_sign// /+}
-    grep -Fxq "long exponent sign=[1.23E${long_sign}03]" <<< "$(strip_cr_win "$native")" || {
+    gate_output witness "$native" "long exponent sign=[1.23E${long_sign}03]" --count any --policy crlf || {
         echo "FAIL: long decimal exponent sign witness missing" >&2; exit 1; }
 }
 

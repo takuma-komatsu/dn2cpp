@@ -28,38 +28,48 @@ DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|before-managed-path|be
 # its own fresh mktemp dir (see the wrapper feature block in _common.sh).
 export DN2CPP_GATE_RUN_ARGS='@SCRATCH@'
 gate_extra_asserts() {
+    local out="$1"
     local output before_scratch before prefix line trailing_error
-    output=$(strip_cr_win "$native")
-    grep -qxF -- '-- System.IO path arguments --' <<< "$output" || { echo "FAIL: IO validation witness missing" >&2; return 1; }
-    grep -qxF 'nullBytesCreated=False' <<< "$output" || { echo "FAIL: IO validation witness missing" >&2; return 1; }
-    grep -qxF 'nulTarget=3' <<< "$output" || { echo "FAIL: IO validation witness missing" >&2; return 1; }
-    grep -qxF 'cwdMoved=False' <<< "$output" || { echo "FAIL: IO validation witness missing" >&2; return 1; }
-    grep -qxF 'cwdNulTruncated=True' <<< "$output" || { echo "FAIL: IO validation witness missing" >&2; return 1; }
-    grep -qxF 'cwdRestored=True' <<< "$output" || { echo "FAIL: IO validation witness missing" >&2; return 1; }
-    grep -qxF -- '-- System.IO path arguments end --' <<< "$output" || { echo "FAIL: IO validation witness missing" >&2; return 1; }
-    grep -qxF 'cwd failure relative=DirectoryNotFoundException original=True' <<< "$output" || return 1
-    grep -qxF 'cwd failure nul=DirectoryNotFoundException original=True' <<< "$output" || return 1
+    output="$out/native.stdout"
+    gate_output byte-witness "$output" '-- System.IO path arguments --' --count any --policy crlf || { echo "FAIL: IO validation witness missing" >&2; return 1; }
+    gate_output byte-witness "$output" 'nullBytesCreated=False' --count any --policy crlf || { echo "FAIL: IO validation witness missing" >&2; return 1; }
+    gate_output byte-witness "$output" 'nulTarget=3' --count any --policy crlf || { echo "FAIL: IO validation witness missing" >&2; return 1; }
+    gate_output byte-witness "$output" 'cwdMoved=False' --count any --policy crlf || { echo "FAIL: IO validation witness missing" >&2; return 1; }
+    gate_output byte-witness "$output" 'cwdNulTruncated=True' --count any --policy crlf || { echo "FAIL: IO validation witness missing" >&2; return 1; }
+    gate_output byte-witness "$output" 'cwdRestored=True' --count any --policy crlf || { echo "FAIL: IO validation witness missing" >&2; return 1; }
+    gate_output byte-witness "$output" '-- System.IO path arguments end --' --count any --policy crlf || { echo "FAIL: IO validation witness missing" >&2; return 1; }
+    gate_output byte-witness "$output" 'cwd failure relative=DirectoryNotFoundException original=True' --count any --policy crlf || return 1
+    gate_output byte-witness "$output" 'cwd failure nul=DirectoryNotFoundException original=True' --count any --policy crlf || return 1
     before_scratch=$(mktemp -d artifacts/io-before.XXXXXX)
-    before=$(DN2CPP_BEFORE_IO_VALIDATION=1 run_bounded dotnet "samples/dotnet/FileSystemEnumCore/bin/$CONFIG/$TFM/FileSystemEnumCore.dll" "$before_scratch") || return $?
+    DN2CPP_BEFORE_IO_VALIDATION=1 gate_capture_ok "$out/assert-before-1" run_bounded dotnet "samples/dotnet/FileSystemEnumCore/bin/$CONFIG/$TFM/FileSystemEnumCore.dll" "$before_scratch"
+    before="$out/assert-before-1.stdout"
     rm -rf "$before_scratch"
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '$0 == "-- System.IO path arguments --" { exit } { print }' <<< "$output")
-    assert_output "$prefix" "$before"
+
+    prefix="$out/prefix-System.IO-path-arguments.stdout"
+
+    gate_output select "$output" "$prefix" --before '-- System.IO path arguments --' --policy crlf
+    gate_output compare "$prefix" "$before"
     before_scratch=$(mktemp -d artifacts/path-before.XXXXXX)
-    before=$(run_bounded dotnet "$_CG_APP" "$before_scratch" before-managed-path) || return $?
+    gate_capture_ok "$out/assert-before-2" run_bounded dotnet "$_CG_APP" "$before_scratch" before-managed-path
+    before="$out/assert-before-2.stdout"
     rm -rf "$before_scratch"
-    prefix=$(awk '$0 == "-- managed UTF16 full paths --" { exit } { print }' <<< "$output")
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    prefix="$out/prefix-managed-UTF16-full-paths.stdout"
+    gate_output select "$output" "$prefix" --before '-- managed UTF16 full paths --' --policy crlf
+    gate_output compare "$prefix" "$before" || return $?
     before_scratch=$(mktemp -d artifacts/path-before.XXXXXX)
-    before=$(run_bounded dotnet "$_CG_APP" "$before_scratch" before-file-dot-components) || return $?
+    gate_capture_ok "$out/assert-before-3" run_bounded dotnet "$_CG_APP" "$before_scratch" before-file-dot-components
+    before="$out/assert-before-3.stdout"
     rm -rf "$before_scratch"
-    prefix=$(awk '$0 == "-- lexical file operation paths --" { exit } { print }' <<< "$output")
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    prefix="$out/prefix-lexical-file-operation-paths.stdout"
+    gate_output select "$output" "$prefix" --before '-- lexical file operation paths --' --policy crlf
+    gate_output compare "$prefix" "$before" || return $?
     before_scratch=$(mktemp -d artifacts/path-before.XXXXXX)
-    before=$(run_bounded dotnet "$_CG_APP" "$before_scratch" before-unicode-file-names) || return $?
+    gate_capture_ok "$out/assert-before-4" run_bounded dotnet "$_CG_APP" "$before_scratch" before-unicode-file-names
+    before="$out/assert-before-4.stdout"
     rm -rf "$before_scratch"
-    prefix=$(awk '$0 == "-- Unicode file names --" { exit } { print }' <<< "$output")
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
+    prefix="$out/prefix-Unicode-file-names.stdout"
+    gate_output select "$output" "$prefix" --before '-- Unicode file names --' --policy crlf
+    gate_output compare "$prefix" "$before" || return $?
     trailing_error=DirectoryNotFoundException
     if [ "$DN2CPP_OS" = windows ]; then
         trailing_error=IOException
@@ -76,18 +86,19 @@ gate_extra_asserts() {
         "dot read trailing=$trailing_error" 'dot deleted=True' \
         'dot directory exists=True' 'dot info=7' 'dot stream=119' \
         '-- lexical file operation paths end --'; do
-        grep -Fxq -- "$line" <<< "$output" \
+        gate_output byte-witness "$output" "$line" --count any --policy crlf \
             || { echo "FAIL: managed path witness missing: $line" >&2; return 1; }
     done
-    grep -Eq '^missing high=FileNotFoundException units=.* D800 0027 002E$' <<< "$output" || return 1
-    grep -Eq '^missing low=FileNotFoundException units=.* DFFF 0027 002E$' <<< "$output" || return 1
+    gate_output view "$output" "$out/path-witnesses.lf" --policy crlf
+    grep -Eq '^missing high=FileNotFoundException units=.* D800 0027 002E$' "$out/path-witnesses.lf" || return 1
+    grep -Eq '^missing low=FileNotFoundException units=.* DFFF 0027 002E$' "$out/path-witnesses.lf" || return 1
     for line in '-- Unicode file names --' 'text=text exists=True' 'bytes=2/7' \
         'directory exists=True' 'deleted=True/True' '-- Unicode file names end --'; do
-        grep -Fxq -- "$line" <<< "$output" \
+        gate_output byte-witness "$output" "$line" --count any --policy crlf \
             || { echo "FAIL: Unicode file witness missing: $line" >&2; return 1; }
     done
     if [ "$DN2CPP_OS" != windows ]; then
-        grep -Fxq 'deleted cwd file exists=False directory exists=False' <<< "$output" || return 1
+        gate_output byte-witness "$output" 'deleted cwd file exists=False directory exists=False' --count any --policy crlf || return 1
     fi
 }
 corelib_diff_gate FileSystemEnumCore

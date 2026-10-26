@@ -1,0 +1,82 @@
+name: gate-output-contract
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  output-contract:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025-vs2026]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Ensure shasum is on PATH
+        if: runner.os == 'Windows'
+        run: |
+          if command -v shasum >/dev/null 2>&1; then
+            exit 0
+          fi
+          # Git for Windows can omit core_perl from PATH; gates use -a 256.
+          shim_dir="$RUNNER_TEMP/shasum-shim"
+          mkdir -p "$shim_dir"
+          printf '%s\n' \
+            '#!/usr/bin/env bash' \
+            'if [ "$1" = "-a" ] && [ "$2" = "256" ]; then shift 2; fi' \
+            'exec sha256sum "$@"' \
+            > "$shim_dir/shasum"
+          chmod +x "$shim_dir/shasum"
+          echo "$shim_dir" >> "$GITHUB_PATH"
+
+      - name: Check byte and record policies
+        run: python gates/test-gate-output.py
+      - name: Check Bash capture and common gate contracts
+        run: bash gates/test-gate-output-shell.sh python
+      - name: Check reflection output consumers
+        run: |
+          # Native Windows Python must use this Git Bash, not System32/WSL bash.
+          if command -v cygpath >/dev/null 2>&1; then
+            export DN2CPP_TEST_BASH="$(cygpath -w "$BASH")"
+          else
+            export DN2CPP_TEST_BASH="$BASH"
+          fi
+          python gates/fixtures/setup-culture-reference-test.py
+          python gates/fixtures/bash-fixture-test.py
+          python gates/fixtures/culture-gate-scope-test.py
+          python gates/fixtures/reflection-gate-inputs-test.py
+          bash gates/fixtures/reflection-gate-inputs.sh python
+          bash gates/fixtures/hotupdate-output.sh python
+          bash gates/fixtures/async-lifecycle-prefix.sh python
+          bash gates/fixtures/pal-output-filter.sh python
+          bash gates/fixtures/platform-isa-output.sh python
+          bash gates/fixtures/diagnostic-record-matches.sh python
+          bash gates/fixtures/numeric-tls-records.sh python
+          python -X warn_default_encoding -W error::EncodingWarning gates/fixtures/culture-output-family.py
+          python -X warn_default_encoding -W error::EncodingWarning gates/fixtures/declared-abort-callers.py
+      - name: Check incremental policy enforcement
+        run: python gates/test-lint-gate-output.py
+      - name: Reject new legacy newline filters
+        env:
+          EVENT_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          base="$EVENT_BASE"
+          if [ -z "$base" ] || [[ "$base" =~ ^0+$ ]]; then
+            base=$(git rev-parse HEAD^)
+          fi
+          python gates/lint-gate-output.py --base "$base" --head HEAD

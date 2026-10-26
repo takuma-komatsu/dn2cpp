@@ -86,14 +86,14 @@ gate_run_oracle() {
     reflection_oracle "$@"
 }
 
-gate_capture_diff_output() {
-    local out="$1" project="$2" native="$3" oracle="$4"
+gate_capture_diff_files() {
+    local out="$1" project="$2" native_file="$3" oracle_file="$4"
     _reflection_full_out=
     _reflection_full_project=
     # Extra assertions request the argument-free image, even after a selected run.
     [ "$#" -eq 4 ] || return 0
-    printf '%s\n' "$native" > "$out/gate.native.stdout" || return 1
-    printf '%s\n' "$oracle" > "$out/gate.dotnet.stdout" || return 1
+    cp "$native_file" "$out/gate.native.stdout" || return 1
+    cp "$oracle_file" "$out/gate.dotnet.stdout" || return 1
     _reflection_full_out="$out"
     _reflection_full_project="$project"
 }

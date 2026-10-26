@@ -148,31 +148,35 @@ incremental=
 incremental_code=
 
 gate_run_diagnostics() {
-    gate_run_diag "$project STW" "$stw_code" "$stw" "$log_dir/stw.log"
-    gate_run_diag "$project incremental" "$incremental_code" "$incremental" \
+    gate_run_diag_files "$project STW" "$stw_code" "$log_dir/stw.stdout" "$log_dir/stw.log"
+    gate_run_diag_files "$project incremental" "$incremental_code" "$log_dir/incremental.stdout" \
         "$log_dir/incremental.log"
 }
 
-set +e
-expected=$(run_bounded dotnet "$app"); expected_code=$?
-stw=$(DN2CPP_GC_INCREMENTAL=0 DN2CPP_GC_STATS=1 \
-    run_bounded "./$OUT/$project" 2>"$log_dir/stw.log"); stw_code=$?
-incremental=$(DN2CPP_GC_INCREMENTAL=1 DN2CPP_GC_STATS=1 \
-    run_bounded "./$OUT/$project" 2>"$log_dir/incremental.log"); incremental_code=$?
-set -e
+gate_capture "$log_dir/expected" run_bounded dotnet "$app"
+expected="$log_dir/expected.stdout"
+expected_code=$(cat "$log_dir/expected.status")
+DN2CPP_GC_INCREMENTAL=0 DN2CPP_GC_STATS=1 gate_capture "$log_dir/stw" run_bounded "./$OUT/$project"
+stw="$log_dir/stw.stdout"
+stw_code=$(cat "$log_dir/stw.status")
+cp "$log_dir/stw.stderr" "$log_dir/stw.log"
+DN2CPP_GC_INCREMENTAL=1 DN2CPP_GC_STATS=1 gate_capture "$log_dir/incremental" run_bounded "./$OUT/$project"
+incremental="$log_dir/incremental.stdout"
+incremental_code=$(cat "$log_dir/incremental.status")
+cp "$log_dir/incremental.stderr" "$log_dir/incremental.log"
 _gate_scratch_cleanup
 
 assertions_failed=0
-assert_output "$stw" "$expected" || assertions_failed=1
-assert_exit_code "$stw_code" "$expected_code" || assertions_failed=1
-assert_output "$incremental" "$expected" || assertions_failed=1
-assert_exit_code "$incremental_code" "$expected_code" || assertions_failed=1
+gate_output compare "$stw" "$expected" || assertions_failed=1
+gate_output status "$stw_code" "$expected_code" || assertions_failed=1
+gate_output compare "$incremental" "$expected" || assertions_failed=1
+gate_output status "$incremental_code" "$expected_code" || assertions_failed=1
 if [ "$assertions_failed" -ne 0 ]; then
     gate_run_diag_once
     exit 1
 fi
 
-if [ "$(grep -cF 'external reference stores:' <<<"$incremental")" -ne 1 ]; then
+if [ "$(grep -cF 'external reference stores:' "$incremental")" -ne 1 ]; then
     echo "FAIL: the external-reference section did not run exactly once" >&2
     exit 1
 fi

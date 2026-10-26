@@ -59,15 +59,14 @@ _corelib_gate_core "$project" "$out"
 
 # Run A's oracle is also Run B-masked's expectation, so it is computed once, here,
 # outside the cache decision: a cached Run A still has to hand it over.
-set +e
-oracle=$(DOTNET_EnableHWIntrinsic=0 run_bounded dotnet "$_CG_APP" all); oracle_code=$?
-set -e
-oracle=$(strip_cr_win "$oracle")
-# CpuId is an x86 target-capability exception to the disabled-intrinsics mask.
-# An x64 host therefore prints its target witness before Pause throws, while the
-# wasm subject throws from CpuId itself.  That host-only witness has no wasm
-# oracle; the contract row still proves the family's false token.
-oracle=$(sed '/^CpuId(0,0)\.target=/d' <<<"$oracle")
+DOTNET_EnableHWIntrinsic=0 gate_capture "$out/oracle" run_bounded dotnet "$_CG_APP" all
+oracle_code=$(cat "$out/oracle.status")
+gate_output view "$out/oracle.stdout" "$out/oracle.lf" --policy crlf
+platform_isa_output validate "$out/oracle.lf" || exit 1
+# CpuId is a host-only target witness, not a wasm capability observation.
+gate_output omit-prefix "$out/oracle.lf" "$out/oracle-filtered.lf" \
+    --prefix 'CpuId(0,0).target=' --count all --policy exact
+oracle="$out/oracle-filtered.lf"
 
 if gate_cache_check "$out" "platform_isa_wasm|default|$_CG_CORELIB|argv:all|oracle:DOTNET_EnableHWIntrinsic=0+foreign-target-cpuid-elided" \
         "$_CG_APP" "${_CG_APP%.dll}.runtimeconfig.json" "${_CG_APP%.dll}.deps.json"; then
@@ -78,18 +77,17 @@ else
 
     # Exact code equality cannot hold across runtimes (node reports an abort as 1,
     # .NET as 134): the sides must only FAIL ALIKE, both 0 or both nonzero.
-    set +e
-    native=$(run_bounded node "./$out/$project.js" all); native_code=$?
-    set -e
-    # strip_cr_win on the ORACLE side: node never emits \r\n, the oracle does.
-    assert_output "$native" "$oracle"
-    if [ "$native_code" -eq 0 ] || [ "$oracle_code" -eq 0 ]; then
-        assert_exit_code "$native_code" "$oracle_code"
-    fi
+    gate_capture "$out/native" run_bounded node "./$out/$project.js" all
+    native_code=$(cat "$out/native.status")
+    gate_output status "$native_code" "$oracle_code" --policy success-class
+    gate_output view "$out/native.stdout" "$out/native.lf" --policy crlf
+    platform_isa_output validate "$out/native.lf" || exit 1
+    native="$out/native.lf"
+    gate_output compare "$native" "$oracle"
 
     # The diff above would also pass if both sides printed nothing useful; these
     # say the contract block was there and answered false throughout.
-    block=$(platform_isa_contract_block "$native")
+    block=$(platform_isa_contract_block "$native") || exit 1
     n_true=$(grep -c '=True$' <<<"$block" || true)
     if [ "$n_true" -ne 0 ]; then
         echo "FAIL: the default wasm build answered true for $n_true row(s); SIMD is a separate build (run B)" >&2
@@ -138,17 +136,20 @@ fi
     _B_OUT=""; _B_CODE=""; _M_OUT=""; _M_CODE=""
     _N_OUT=""; _N_CODE=""; _NM_OUT=""; _NM_CODE=""
     gate_run_diagnostics() {
-        gate_run_diag B "$_B_CODE" "$_B_OUT" "$log_dir/B.log"
-        gate_run_diag B-masked "$_M_CODE" "$_M_OUT" "$log_dir/B-masked.log"
-        gate_run_diag N "$_N_CODE" "$_N_OUT" "$log_dir/N.log"
-        gate_run_diag NM "$_NM_CODE" "$_NM_OUT" "$log_dir/NM.log"
+        gate_run_diag_files B "$_B_CODE" "$log_dir/B.stdout" "$log_dir/B.log"
+        gate_run_diag_files B-masked "$_M_CODE" "$log_dir/B-masked.stdout" "$log_dir/B-masked.log"
+        gate_run_diag_files N "$_N_CODE" "$log_dir/N.stdout" "$log_dir/N.log"
+        gate_run_diag_files NM "$_NM_CODE" "$log_dir/NM.stdout" "$log_dir/NM.log"
     }
 
-    set +e
-    _B_OUT=$(run_bounded node "./$out_simd/$project.js" Wasm.PackedSimd 2>"$log_dir/B.log"); _B_CODE=$?
-    set -e
+    gate_capture "$log_dir/B" run_bounded node "./$out_simd/$project.js" Wasm.PackedSimd
+    _B_CODE=$(cat "$log_dir/B.status")
+    cp "$log_dir/B.stderr" "$log_dir/B.log"
+    gate_output view "$log_dir/B.stdout" "$log_dir/B.lf" --policy crlf
+    platform_isa_output validate "$log_dir/B.lf" || exit 1
+    _B_OUT="$log_dir/B.lf"
     echo "-- run B: argv=Wasm.PackedSimd (frozen snapshot)"
-    if ! assert_output "$_B_OUT" "$(cat "$expected_simd")" || ! assert_exit_code "$_B_CODE" 0; then
+    if ! gate_output compare "$_B_OUT" "$expected_simd" || ! gate_output status "$_B_CODE" 0; then
         gate_run_diag_once
         exit 1
     fi
@@ -159,14 +160,14 @@ fi
             exit 1
         fi
     }
-    n=$(grep -c '^Wasm\.PackedSimd=True$' <<<"$_B_OUT" || true)
+    n=$(grep -c '^Wasm\.PackedSimd=True$' "$_B_OUT" || true)
     require_count B 1 "$n" "'Wasm.PackedSimd=True' line (the SIMD build detects the instruction set)"
-    n=$(grep -c '=ArgumentOutOfRangeException$' <<<"$_B_OUT" || true)
+    n=$(grep -c '=ArgumentOutOfRangeException$' "$_B_OUT" || true)
     require_count B 0 "$n" "out-of-contract immediate results in oracle-parity output"
-    n=$(grep -c 'ref=MISMATCH' <<<"$_B_OUT" || true)
+    n=$(grep -c 'ref=MISMATCH' "$_B_OUT" || true)
     require_count B 0 "$n" "'ref=MISMATCH' lines (a helper disagreeing with the portable Vector128 computation)"
-    n_ref=$(grep -c ' ref=OK$' <<<"$_B_OUT" || true)
-    n_rows=$(grep -c '^[A-Za-z0-9]*([^)]*)=' <<<"$_B_OUT" || true)
+    n_ref=$(grep -c ' ref=OK$' "$_B_OUT" || true)
+    n_rows=$(grep -c '^[A-Za-z0-9]*([^)]*)=' "$_B_OUT" || true)
     if [ "$n_ref" -eq 0 ] || [ "$n_ref" -gt "$n_rows" ]; then
         echo "FAIL: run B: $n_ref 'ref=OK' lines over $n_rows exercise lines" >&2
         gate_run_diag_once
@@ -176,18 +177,18 @@ fi
 
     # B-masked. The masked SIMD module must be indistinguishable from the default
     # build on stdout; the diag line is the only trace of the mask.
-    set +e
-    _M_OUT=$(export DN2CPP_CPU_FEATURES=none DN2CPP_CPU_FEATURES_DIAG=1
-             run_bounded node "./$out_simd/$project.js" all 2>"$log_dir/B-masked.log"); _M_CODE=$?
-    set -e
+    DN2CPP_CPU_FEATURES=none DN2CPP_CPU_FEATURES_DIAG=1 gate_capture "$log_dir/B-masked" run_bounded node "./$out_simd/$project.js" all
+    _M_CODE=$(cat "$log_dir/B-masked.status")
+    cp "$log_dir/B-masked.stderr" "$log_dir/B-masked.log"
+    gate_output view "$log_dir/B-masked.stdout" "$log_dir/B-masked.lf" --policy crlf
+    platform_isa_output validate "$log_dir/B-masked.lf" || exit 1
+    _M_OUT="$log_dir/B-masked.lf"
     echo "-- run B-masked: argv=all ours=[DN2CPP_CPU_FEATURES=none DN2CPP_CPU_FEATURES_DIAG=1] oracle=[DOTNET_EnableHWIntrinsic=0]"
-    if ! assert_output "$_M_OUT" "$oracle"; then
+    if ! gate_output compare "$_M_OUT" "$oracle"; then
         gate_run_diag_once
         exit 1
     fi
-    if [ "$_M_CODE" -eq 0 ] || [ "$oracle_code" -eq 0 ]; then
-        assert_exit_code "$_M_CODE" "$oracle_code" || { gate_run_diag_once; exit 1; }
-    fi
+    gate_output status "$_M_CODE" "$oracle_code" --policy success-class || { gate_run_diag_once; exit 1; }
     n=$(grep -c 'effective=(none)' "$log_dir/B-masked.log" || true)
     require_count B-masked 1 "$n" "'effective=(none)' diag line on stderr (the pre-js forwarded both variables; DN2CPP_CPU_FEATURES_DIAG=1 prints exactly one)"
     echo "OK: the masked SIMD module answers as the default build does, with one diag line"
@@ -195,15 +196,18 @@ fi
     # The out-of-contract immediate is executed only by dn2cpp. With the SIMD
     # token true it reaches the range check; with the token masked false it must
     # fail the capability requirement first.
-    set +e
-    _N_OUT=$(run_bounded node "./$out_simd/$project.js" Wasm.PackedSimd \
-        --invalid-immediates 2>"$log_dir/N.log"); _N_CODE=$?
-    set -e
+    gate_capture "$log_dir/N" run_bounded node "./$out_simd/$project.js" Wasm.PackedSimd \
+        --invalid-immediates
+    _N_CODE=$(cat "$log_dir/N.status")
+    cp "$log_dir/N.stderr" "$log_dir/N.log"
+    gate_output view "$log_dir/N.stdout" "$log_dir/N.lf" --policy crlf
+    platform_isa_output validate "$log_dir/N.lf" || exit 1
+    _N_OUT="$log_dir/N.lf"
     echo "-- run N: argv=Wasm.PackedSimd --invalid-immediates ours=[<no ISA env>]"
-    assert_exit_code "$_N_CODE" 0 || { gate_run_diag_once; exit 1; }
-    n=$(grep -c '^== invalid [A-Za-z0-9.]* ==$' <<<"$_N_OUT" || true)
+    gate_output status "$_N_CODE" 0 || { gate_run_diag_once; exit 1; }
+    n=$(grep -c '^== invalid [A-Za-z0-9.]* ==$' "$_N_OUT" || true)
     require_count N "$invalid_count" "$n" "generated invalid-immediate sections"
-    violations=$(platform_isa_invalid_immediate_violations "$_N_OUT")
+    violations=$(platform_isa_invalid_immediate_violations "$_N_OUT") || exit 1
     if [ -n "$violations" ]; then
         echo "FAIL: run N invalid-immediate token/exception contract:" >&2
         printf '%s\n' "$violations" >&2
@@ -211,20 +215,22 @@ fi
         exit 1
     fi
 
-    set +e
-    _NM_OUT=$(export DN2CPP_CPU_FEATURES=none
-              run_bounded node "./$out_simd/$project.js" Wasm.PackedSimd \
-                  --invalid-immediates 2>"$log_dir/NM.log"); _NM_CODE=$?
-    set -e
+    DN2CPP_CPU_FEATURES=none gate_capture "$log_dir/NM" run_bounded node "./$out_simd/$project.js" Wasm.PackedSimd \
+                  --invalid-immediates
+    _NM_CODE=$(cat "$log_dir/NM.status")
+    cp "$log_dir/NM.stderr" "$log_dir/NM.log"
+    gate_output view "$log_dir/NM.stdout" "$log_dir/NM.lf" --policy crlf
+    platform_isa_output validate "$log_dir/NM.lf" || exit 1
+    _NM_OUT="$log_dir/NM.lf"
     echo "-- run NM: argv=Wasm.PackedSimd --invalid-immediates ours=[DN2CPP_CPU_FEATURES=none]"
-    assert_exit_code "$_NM_CODE" 0 || { gate_run_diag_once; exit 1; }
-    n=$(grep -c '^== invalid [A-Za-z0-9.]* ==$' <<<"$_NM_OUT" || true)
+    gate_output status "$_NM_CODE" 0 || { gate_run_diag_once; exit 1; }
+    n=$(grep -c '^== invalid [A-Za-z0-9.]* ==$' "$_NM_OUT" || true)
     require_count NM "$invalid_count" "$n" "generated invalid-immediate sections"
-    n=$(grep -c '=ArgumentOutOfRangeException$' <<<"$_NM_OUT" || true)
+    n=$(grep -c '=ArgumentOutOfRangeException$' "$_NM_OUT" || true)
     require_count NM 0 "$n" "AOOE results while the PackedSimd token is false"
-    n=$(grep -c '=PlatformNotSupportedException$' <<<"$_NM_OUT" || true)
+    n=$(grep -c '=PlatformNotSupportedException$' "$_NM_OUT" || true)
     require_count NM "$invalid_count" "$n" "PNSE results before immediate dispatch"
-    violations=$(platform_isa_invalid_immediate_violations "$_NM_OUT")
+    violations=$(platform_isa_invalid_immediate_violations "$_NM_OUT") || exit 1
     if [ -n "$violations" ]; then
         echo "FAIL: run NM invalid-immediate token/exception contract:" >&2
         printf '%s\n' "$violations" >&2

@@ -291,11 +291,8 @@ default HttpClient built
 Automatic = refused (names the remedy)
 after Automatic = Manual
 CERTEOF
-"$certout/httpclientcert" > "$certout/run.out"
-# strip_cr_win_file on the SUBJECT: the block above is an LF literal and a Windows
-# console writes CRLF, so without it every line differs and none of them by content.
-# Never on the oracle-diffed outputs below — there both sides are the same host's.
-if ! diff -u "$certout/run.expected" <(strip_cr_win_file "$certout/run.out"); then
+gate_capture_ok "$certout/run" run_bounded "$certout/httpclientcert$EXE_EXT"
+if ! gate_output compare "$certout/run.stdout" "$certout/run.expected" --policy crlf; then
     echo "FAIL: HttpClientCert output diverged from the frozen block — the ClientCertificateOptions round-trip or the Automatic refusal regressed" >&2
     exit 1
 fi
@@ -418,7 +415,7 @@ disown "$httppid" 2>/dev/null || true  # keep bash from printing a "Terminated" 
 # `|| true` on every one of this gate's cleanup traps: under `set -e` a failing
 # command inside an EXIT trap exits the shell with ITS status, so a scratch dir
 # the killed server has not let go of yet would report a fully green run as red.
-trap 'kill "$httppid" 2>/dev/null; rm -rf "$webroot" || true' EXIT
+trap 'rc=$?; kill "$httppid" 2>/dev/null || true; if [ "$rc" -eq 0 ]; then rm -rf "$webroot" || true; else printf "HTTP evidence retained: %s\n" "$webroot" >&2; fi' EXIT
 # Deterministic readiness wait (no fixed sleep): poll until the server accepts a request.
 httpready=
 for _ in $(seq 1 100); do
@@ -429,19 +426,19 @@ for _ in $(seq 1 100); do
 done
 [ -n "$httpready" ] || { echo "FAIL: local http.server never came up on port $httpport" >&2; exit 1; }
 base="http://127.0.0.1:$httpport"
-"$realout/httpreal" "$base" > "$realout/native.out" 2> "$realout/native.err" || {
-    echo "FAIL: native HttpReal exited non-zero:" >&2; cat "$realout/native.err" >&2; exit 1; }
-dotnet "$app" "$base" > "$realout/dotnet.out" 2>/dev/null || {
+gate_capture_ok "$realout/native" run_bounded "$realout/httpreal$EXE_EXT" "$base" || {
+    echo "FAIL: native HttpReal exited non-zero:" >&2; cat "$realout/native.stderr" >&2; exit 1; }
+gate_capture_ok "$realout/oracle" run_bounded dotnet "$app" "$base" || {
     echo "FAIL: real .NET HttpReal exited non-zero" >&2; exit 1; }
 # Non-vacuity floor: the native run really performed the GET (a 200 carrying the body), so the
 # diff below is comparing real output, not two empty streams.
-grep -q 'default status=200' "$realout/native.out" || {
+gate_output byte-witness "$realout/native.stdout" 'default status=200' --policy crlf || {
     echo "FAIL: native output is missing the GET result — the request did not go through" >&2
-    cat "$realout/native.out" >&2; exit 1; }
-if ! diff -u "$realout/dotnet.out" "$realout/native.out"; then
+    cat "$realout/native.stdout" >&2; exit 1; }
+if ! gate_output compare "$realout/native.stdout" "$realout/oracle.stdout"; then
     echo "FAIL: native libcurl GET output differs from real .NET" >&2; exit 1
 fi
-echo "OK: native libcurl GET is byte-identical to real .NET ($(grep -c . "$realout/native.out") lines)"
+echo "OK: native libcurl GET is byte-identical to real .NET ($(grep -c . "$realout/native.stdout") lines)"
 
 echo "== 10/17 object symbols: the libcurl transport is live, the .NET socket/DNS/TLS path is gone =="
 # The stripped executable shows only undefined imports, so read the OBJECT files (as section 7
@@ -632,7 +629,7 @@ echopid=$!
 disown "$echopid" 2>/dev/null || true
 # A second `trap ... EXIT` REPLACES section 9's — fold that cleanup in rather than
 # losing it (section 9's file server is still running; both die here).
-trap 'kill "$httppid" "$echopid" 2>/dev/null; rm -rf "$webroot" "$echodir" || true' EXIT
+trap 'rc=$?; kill "$httppid" "$echopid" 2>/dev/null || true; if [ "$rc" -eq 0 ]; then rm -rf "$webroot" "$echodir" || true; else printf "HTTP evidence retained: %s\n" "$webroot" "$echodir" >&2; fi' EXIT
 echoport=
 for _ in $(seq 1 300); do
     [ -s "$echodir/port.txt" ] && { echoport="$(cat "$echodir/port.txt")"; break; }
@@ -653,50 +650,50 @@ for _ in $(seq 1 100); do
 done
 [ -n "$echoready" ] || { echo "FAIL: the echo server never answered on port $echoport" >&2; exit 1; }
 ebase="http://127.0.0.1:$echoport"
-"$beyondout/httpbeyondget" "$ebase" > "$beyondout/native.out" 2> "$beyondout/native.err" || {
-    echo "FAIL: native HttpBeyondGet exited non-zero:" >&2; cat "$beyondout/native.err" >&2; exit 1; }
-dotnet "$beyondapp" "$ebase" > "$beyondout/dotnet.out" 2>/dev/null || {
+gate_capture_ok "$beyondout/native" run_bounded "$beyondout/httpbeyondget$EXE_EXT" "$ebase" || {
+    echo "FAIL: native HttpBeyondGet exited non-zero:" >&2; cat "$beyondout/native.stderr" >&2; exit 1; }
+gate_capture_ok "$beyondout/oracle" run_bounded dotnet "$beyondapp" "$ebase" || {
     echo "FAIL: real .NET HttpBeyondGet exited non-zero" >&2; exit 1; }
 # Non-vacuity floors before the diff: the 2 KiB POST body really crossed the wire,
 # and the multi-valued response header really read back as two values — so the diff
 # below compares real traffic, not two empty streams.
-grep -qF 'post-binary | hdr content-length: 2000' "$beyondout/native.out" || {
+gate_output byte-witness "$beyondout/native.stdout" 'post-binary | hdr content-length: 2000' --count any --policy crlf || {
     echo "FAIL: native output is missing the POST echo — the request did not go through" >&2
-    cat "$beyondout/native.out" >&2; exit 1; }
-grep -qF 'resphdr msg-header X-Resp-Multi=m1|m2' "$beyondout/native.out" || {
+    cat "$beyondout/native.stdout" >&2; exit 1; }
+gate_output byte-witness "$beyondout/native.stdout" 'resphdr msg-header X-Resp-Multi=m1|m2' --count any --policy crlf || {
     echo "FAIL: native output is missing the multi-value response-header readback" >&2
-    cat "$beyondout/native.out" >&2; exit 1; }
+    cat "$beyondout/native.stdout" >&2; exit 1; }
 # The unknown-length body really went out CHUNKED and really arrived whole. Named
 # separately from the diff because both halves are load-bearing and neither is obvious
 # from a matching pair of outputs: this is the suite's only SYNCHRONOUS unknown-length
 # send, and a transport that closed the upload's send side late would not diff — it
 # would hang until the gate's watchdog.
-grep -qF 'post-chunked | hdr transfer-encoding: chunked' "$beyondout/native.out" || {
+gate_output byte-witness "$beyondout/native.stdout" 'post-chunked | hdr transfer-encoding: chunked' --count any --policy crlf || {
     echo "FAIL: the unknown-length POST did not go out with a chunked framing" >&2
-    cat "$beyondout/native.out" >&2; exit 1; }
+    cat "$beyondout/native.stdout" >&2; exit 1; }
 # awk, not `grep -E '…{600}'`: POSIX caps an interval at RE_DUP_MAX (255), so the
 # bounded-repetition form is not portable at this size and fails on a correct body.
-# A length compared against a literal counts the line terminator too, so the
-# subject is CR-stripped for the same reason a literal-block diff is.
+# The regex view is separate from the raw native/oracle byte comparison.
+gate_output view "$beyondout/native.stdout" "$beyondout/native.records" --policy crlf
 awk -F'body-hex=' '/^post-chunked \| body-hex=/ { if (length($2) == 600) ok = 1 }
-                   END { exit !ok }' <(strip_cr_win_file "$beyondout/native.out") || {
+                   END { exit !ok }' "$beyondout/native.records" || {
     echo "FAIL: the chunked POST body did not arrive whole (300 bytes = 600 hex chars)" >&2
-    cat "$beyondout/native.out" >&2; exit 1; }
+    cat "$beyondout/native.stdout" >&2; exit 1; }
 # HEAD/zero-length floors. The zero-length POST really carried its framing (the echoed
 # content-length: 0 is the SERVER's reading of the wire), and the HEAD really
 # completed with an empty body — the pre-fix transport did not misframe a HEAD,
 # it STALLED on one (waiting out the advertised Content-Length on a keep-alive
 # connection), so this line existing at all is the regression's tripwire.
-grep -qF 'post-zerolen | hdr content-length: 0' "$beyondout/native.out" || {
+gate_output byte-witness "$beyondout/native.stdout" 'post-zerolen | hdr content-length: 0' --count any --policy crlf || {
     echo "FAIL: the zero-length POST went out without Content-Length: 0" >&2
-    cat "$beyondout/native.out" >&2; exit 1; }
-grep -qF 'head len=0' "$beyondout/native.out" || {
+    cat "$beyondout/native.stdout" >&2; exit 1; }
+gate_output byte-witness "$beyondout/native.stdout" 'head len=0' --count any --policy crlf || {
     echo "FAIL: the HEAD did not complete with an empty body" >&2
-    cat "$beyondout/native.out" >&2; exit 1; }
-if ! diff -u "$beyondout/dotnet.out" "$beyondout/native.out"; then
+    cat "$beyondout/native.stdout" >&2; exit 1; }
+if ! gate_output compare "$beyondout/native.stdout" "$beyondout/oracle.stdout"; then
     echo "FAIL: native libcurl beyond-GET output differs from real .NET" >&2; exit 1
 fi
-echo "OK: POST/PUT/DELETE bodies, request headers, response headers and non-2xx statuses are byte-identical to real .NET ($(grep -c . "$beyondout/native.out") lines)"
+echo "OK: POST/PUT/DELETE bodies, request headers, response headers and non-2xx statuses are byte-identical to real .NET ($(grep -c . "$beyondout/native.stdout") lines)"
 gate_cache_commit
 fi   # beyond arm
 
@@ -767,7 +764,7 @@ tlsdir="$(mktemp -d)"
 # A third `trap ... EXIT`, and like section 12's it REPLACES the previous one — so it carries
 # sections 9 and 12's servers and scratch dirs too. Both may be empty here (their arms can be
 # cache hits), which the shared declarations above make safe.
-trap 'kill "$httppid" "$echopid" "$tlspid" 2>/dev/null; rm -rf "$webroot" "$echodir" "$tlsdir" || true' EXIT
+trap 'rc=$?; kill "$httppid" "$echopid" "$tlspid" 2>/dev/null || true; if [ "$rc" -eq 0 ]; then rm -rf "$webroot" "$echodir" "$tlsdir" || true; else printf "HTTP evidence retained: %s\n" "$webroot" "$echodir" "$tlsdir" >&2; fi' EXIT
 
 cat > "$tlsdir/ca.cnf" <<'CAEOF'
 [req]
@@ -914,10 +911,10 @@ done
 : > "$tlsdir/tls.log"
 tbase="https://127.0.0.1:$tlsport"
 
-DN2CPP_HTTP_CAINFO="$tlsca" "$tlsout/httpstls" "$tbase" \
-    > "$tlsdir/trusted.out" 2> "$tlsdir/trusted.err" || {
+gate_capture_ok "$tlsdir/trusted" run_bounded env DN2CPP_HTTP_CAINFO="$tlsca" \
+    "$tlsout/httpstls$EXE_EXT" "$tbase" || {
     echo "FAIL: native HttpsTls exited non-zero on the trusted run:" >&2
-    cat "$tlsdir/trusted.err" >&2; exit 1; }
+    cat "$tlsdir/trusted.stderr" >&2; exit 1; }
 # The server is the gate's own and its reply is fixed, so the expected stdout is known
 # exactly — a literal block, not an oracle (see the head comment on why real .NET cannot be
 # one here). Every line is response-derived: status, byte count, body, media type.
@@ -931,9 +928,9 @@ second line
 tls ctype=text/plain
 tls alive=1
 EXPEOF
-if ! diff -u "$tlsdir/trusted.expected" <(strip_cr_win_file "$tlsdir/trusted.out"); then
+if ! gate_output compare "$tlsdir/trusted.stdout" "$tlsdir/trusted.expected" --policy crlf; then
     echo "FAIL: the trusted-anchor HTTPS GET did not produce the expected response" >&2
-    cat "$tlsdir/trusted.err" >&2; exit 1
+    cat "$tlsdir/trusted.stderr" >&2; exit 1
 fi
 # The handshake itself, from the server's end. A check that only read the client's output
 # would pass on a transport that never negotiated anything — which is precisely the shape a
@@ -942,10 +939,11 @@ served="$(grep -c '^served ' "$tlsdir/tls.log" || true)"
 [ "${served:-0}" = 1 ] || {
     echo "FAIL: the TLS server served ${served:-0} requests during the trusted run, expected exactly 1" >&2
     cat "$tlsdir/tls.log" >&2; exit 1; }
-# The server's log is python text mode, so CRLF on a Windows host: an
-# end-anchored pattern needs the CR-stripped read (the count above does not).
-grep -qE '^served path=/hello\.txt tls=TLSv1\.[23] cipher=[A-Z0-9_-]+$' \
-        <<<"$(strip_cr_win_file "$tlsdir/tls.log")" || {
+# Match raw server records with exactly one explicit CRLF policy application.
+http_tls_served_record() {
+    gate_output match-record "$1" '^served path=/hello\.txt tls=TLSv1\.[23] cipher=[A-Z0-9_-]+$' --count 1 --policy crlf
+}
+http_tls_served_record "$tlsdir/tls.log" || {
     echo "FAIL: the served request did not arrive over a negotiated TLS 1.2/1.3 connection" >&2
     cat "$tlsdir/tls.log" >&2; exit 1; }
 echo "OK: trusted-anchor HTTPS GET succeeded over $(sed -n 's/^served .*tls=\([^ ]*\) cipher=\(.*\)$/\1 \2/p' "$tlsdir/tls.log")"
@@ -957,29 +955,26 @@ echo "== 15/17 Untrusted certificate: a catchable exception that names the cause
 # unverifiable certificate would pass every other section of this gate and every other gate in
 # the suite: nothing else here ever presents one.
 servedbefore="$(grep -c '^served ' "$tlsdir/tls.log" || true)"
-"$tlsout/httpstls" "$tbase" > "$tlsdir/untrusted.out" 2> "$tlsdir/untrusted.err" || {
+gate_capture_ok "$tlsdir/untrusted" run_bounded "$tlsout/httpstls$EXE_EXT" "$tbase" || {
     echo "FAIL: native HttpsTls exited non-zero on the untrusted run — a rejected certificate must be" >&2
     echo "      a catchable HttpRequestException, not a dead process:" >&2
-    cat "$tlsdir/untrusted.err" >&2; exit 1; }
-# End-anchored against a Windows console's CRLF, so read the run CR-stripped —
-# the file itself stays untouched for the oracle diff at the end of this section.
-untrusted_lines="$(strip_cr_win_file "$tlsdir/untrusted.out")"
-grep -q '^tls outcome=rejected$' <<<"$untrusted_lines" || {
+    cat "$tlsdir/untrusted.stderr" >&2; exit 1; }
+gate_output witness "$tlsdir/untrusted.stdout" 'tls outcome=rejected' --policy crlf || {
     echo "FAIL: the GET against an untrusted certificate SUCCEEDED — verification is off" >&2
-    cat "$tlsdir/untrusted.out" >&2; exit 1; }
+    cat "$tlsdir/untrusted.stdout" >&2; exit 1; }
 # "The process is still alive" is not an inference from the exit code: the sample prints this
 # line after the catch block, so it exists only if the throw was catchable at all.
-grep -q '^tls alive=1$' <<<"$untrusted_lines" || {
+gate_output witness "$tlsdir/untrusted.stdout" 'tls alive=1' --policy crlf || {
     echo "FAIL: the untrusted run did not reach the line after the catch — the failure was not catchable" >&2
-    cat "$tlsdir/untrusted.out" >&2; exit 1; }
+    cat "$tlsdir/untrusted.stdout" >&2; exit 1; }
 # The diagnosis. A bare "the request failed" would satisfy everything above and leave whoever
 # hits this in a shipped game with nothing to go on, so the message must name the certificate
 # AND say what is wrong with it. This is dn2cpp's own wording (Mbed TLS's, relayed by curl's
 # error buffer — see dn2cpp_http2_stream.cpp on why the buffer and not curl_easy_strerror), which
 # is why it is asserted on stderr and kept out of the diffed stdout.
-grep -qi 'certificate' "$tlsdir/untrusted.err" && grep -qi 'trusted CA' "$tlsdir/untrusted.err" || {
+grep -qi 'certificate' "$tlsdir/untrusted.stderr" && grep -qi 'trusted CA' "$tlsdir/untrusted.stderr" || {
     echo "FAIL: the transport's error does not name the certificate and the trust anchors:" >&2
-    cat "$tlsdir/untrusted.err" >&2; exit 1; }
+    cat "$tlsdir/untrusted.stderr" >&2; exit 1; }
 # Corroboration from the other end of the wire, and the tightest form of "verification ran":
 # the server recorded a FAILED handshake and served nothing. The client can finish handling
 # its alert before the server's accept thread catches and logs the peer's alert, so wait for
@@ -1004,12 +999,12 @@ servedafter="$(grep -c '^served ' "$tlsdir/tls.log" || true)"
 # either, so the two transports must agree line for line on the shape of the refusal — a
 # catchable HttpRequestException whose flattened cause names the certificate, and a live
 # process after it. The wording differs and is deliberately not on stdout.
-dotnet "$tlsapp" "$tbase" > "$tlsdir/untrusted.dotnet.out" 2>/dev/null || {
+gate_capture_ok "$tlsdir/untrusted-oracle" run_bounded dotnet "$tlsapp" "$tbase" || {
     echo "FAIL: real .NET HttpsTls exited non-zero" >&2; exit 1; }
-if ! diff -u "$tlsdir/untrusted.dotnet.out" "$tlsdir/untrusted.out"; then
+if ! gate_output compare "$tlsdir/untrusted.stdout" "$tlsdir/untrusted-oracle.stdout"; then
     echo "FAIL: the native refusal differs in shape from real .NET's" >&2; exit 1
 fi
-echo "OK: an untrusted certificate is a catchable HttpRequestException naming the cause, in the same shape real .NET reports ($(sed -n 's/^tls-cause: //p' "$tlsdir/untrusted.err"))"
+echo "OK: an untrusted certificate is a catchable HttpRequestException naming the cause, in the same shape real .NET reports ($(sed -n 's/^tls-cause: //p' "$tlsdir/untrusted.stderr"))"
 gate_cache_commit
 fi   # tls arm
 
@@ -1155,7 +1150,7 @@ defport="$($py -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); pr
 $py -m http.server "$defport" --bind 127.0.0.1 --directory "$defwebroot" >/dev/null 2>&1 &
 defpid=$!
 disown "$defpid" 2>/dev/null || true
-trap 'kill "$httppid" "$echopid" "$tlspid" "$defpid" 2>/dev/null; rm -rf "$webroot" "$echodir" "$tlsdir" "$defwebroot" || true' EXIT
+trap 'rc=$?; kill "$httppid" "$echopid" "$tlspid" "$defpid" 2>/dev/null || true; if [ "$rc" -eq 0 ]; then rm -rf "$webroot" "$echodir" "$tlsdir" "$defwebroot" || true; else printf "HTTP evidence retained: %s\n" "$webroot" "$echodir" "$tlsdir" "$defwebroot" >&2; fi' EXIT
 defready=
 for _ in $(seq 1 100); do
     if $py -c "import urllib.request,sys; urllib.request.urlopen('http://127.0.0.1:$defport/hello.txt',timeout=1)" 2>/dev/null; then
@@ -1165,18 +1160,18 @@ for _ in $(seq 1 100); do
 done
 [ -n "$defready" ] || { echo "FAIL: local http.server never came up on port $defport" >&2; exit 1; }
 defbase="http://127.0.0.1:$defport"
-"$defout/httpreal" "$defbase" > "$defout/native.out" 2> "$defout/native.err" || {
-    echo "FAIL: the default-reference HttpReal exited non-zero:" >&2; cat "$defout/native.err" >&2; exit 1; }
-dotnet "$app" "$defbase" > "$defout/dotnet.out" 2>/dev/null || {
+gate_capture_ok "$defout/native" run_bounded "$defout/httpreal$EXE_EXT" "$defbase" || {
+    echo "FAIL: the default-reference HttpReal exited non-zero:" >&2; cat "$defout/native.stderr" >&2; exit 1; }
+gate_capture_ok "$defout/oracle" run_bounded dotnet "$app" "$defbase" || {
     echo "FAIL: real .NET HttpReal exited non-zero" >&2; exit 1; }
 # Non-vacuity floor, as in section 9: the run really performed the GET.
-grep -q 'default status=200' "$defout/native.out" || {
+gate_output byte-witness "$defout/native.stdout" 'default status=200' --policy crlf || {
     echo "FAIL: the default-reference binary printed no GET result — the request did not go through" >&2
-    cat "$defout/native.out" >&2; exit 1; }
-if ! diff -u "$defout/dotnet.out" "$defout/native.out"; then
+    cat "$defout/native.stdout" >&2; exit 1; }
+if ! gate_output compare "$defout/native.stdout" "$defout/oracle.stdout"; then
     echo "FAIL: the injected-DnHttp GET differs from real .NET" >&2; exit 1
 fi
-echo "OK: with no -r DnHttp at all, the GET is byte-identical to real .NET ($(grep -c . "$defout/native.out") lines)"
+echo "OK: with no -r DnHttp at all, the GET is byte-identical to real .NET ($(grep -c . "$defout/native.stdout") lines)"
 gate_cache_commit
 fi   # default-ref arm
 

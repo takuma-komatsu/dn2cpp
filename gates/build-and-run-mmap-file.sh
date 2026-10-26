@@ -30,26 +30,29 @@ unset DN2CPP_BEFORE_IO_VALIDATION DN2CPP_BEFORE_MMAP_IO_PARITY
 # its own fresh mktemp dir (see the wrapper feature block in _common.sh).
 export DN2CPP_GATE_RUN_ARGS='@SCRATCH@'
 mmap_existing_asserts() {
+    local out="$1"
     local output
-    output="$(strip_cr_win "$native")"
-    if ! grep -qxF 'mmap reference exchange complete' <<< "$output"; then
+    output="$out/native.stdout"
+    if ! gate_output byte-witness "$output" 'mmap reference exchange complete' --count any --policy crlf; then
         echo "FAIL: MemoryMappedFile reference exchange block did not complete" >&2
         return 1
     fi
-    if ! grep -qxF 'mmap uninitialized complete' <<< "$output"; then
+    if ! gate_output byte-witness "$output" 'mmap uninitialized complete' --count any --policy crlf; then
         echo "FAIL: MemoryMappedFile uninitialized block did not complete" >&2
         return 1
     fi
-    if ! grep -qxF 'mmap stream factories complete' <<< "$output"; then
+    if ! gate_output byte-witness "$output" 'mmap stream factories complete' --count any --policy crlf; then
         echo "FAIL: MemoryMappedFile stream factory block did not complete" >&2
         return 1
     fi
     local legacy_scratch legacy_output prefix
     legacy_scratch=$(mktemp -d artifacts/mmap-legacy.XXXXXX)
-    legacy_output=$(run_bounded dotnet "samples/dotnet/MmapFile/bin/$CONFIG/$TFM/MmapFile.dll" "$legacy_scratch" legacy) || return $?
+    gate_capture_ok "$out/assert-legacy_output-1" run_bounded dotnet "samples/dotnet/MmapFile/bin/$CONFIG/$TFM/MmapFile.dll" "$legacy_scratch" legacy
+    legacy_output="$out/assert-legacy_output-1.stdout"
     rm -rf "$legacy_scratch"
-    prefix=$(awk '{ print } /^mmap uninitialized complete$/ { exit }' <<< "$output")
-    assert_output "$prefix" "$(strip_cr_win "$legacy_output")" || return $?
+    prefix="$out/legacy-prefix.stdout"
+    gate_output select "$output" "$prefix" --through 'mmap uninitialized complete' --policy crlf
+    gate_output compare "$prefix" "$legacy_output" || return $?
 
     # A factory elsewhere in the image must not supply reflection's interface map.
     local uninitialized corelib bcl uninitialized_native uninitialized_expected
@@ -65,51 +68,60 @@ mmap_existing_asserts() {
         return 1
     fi
     compile_console "$uninitialized/gen" MmapFile || return $?
-    uninitialized_native=$(run_bounded "$uninitialized/gen/MmapFile") || return $?
-    uninitialized_expected=$(run_bounded dotnet "$uninitialized/app/MmapFile.dll") || return $?
-    uninitialized_native=$(strip_cr_win "$uninitialized_native")
-    uninitialized_expected=$(strip_cr_win "$uninitialized_expected")
-    assert_output "$uninitialized_native" "$uninitialized_expected" || return $?
-    grep -qxF 'mmap uninitialized complete' <<< "$uninitialized_native"
+    gate_capture_ok "$out/assert-uninitialized_native-2" run_bounded "$uninitialized/gen/MmapFile"
+    uninitialized_native="$out/assert-uninitialized_native-2.stdout"
+    gate_capture_ok "$out/assert-uninitialized_expected-3" run_bounded dotnet "$uninitialized/app/MmapFile.dll"
+    uninitialized_expected="$out/assert-uninitialized_expected-3.stdout"
+
+    gate_output compare "$uninitialized_native" "$uninitialized_expected" || return $?
+    gate_output byte-witness "$uninitialized_native" 'mmap uninitialized complete' --count any --policy crlf
 }
 gate_extra_asserts() {
+    local out="$1"
     mmap_existing_asserts "$@"
     local output before_scratch before prefix
-    output=$(strip_cr_win "$native")
-    grep -qxF '== mmap validation ==' <<< "$output" || { echo "FAIL: IO validation witness missing" >&2; return 1; }
-    grep -qxF 'mmap args complete' <<< "$output" || { echo "FAIL: IO validation witness missing" >&2; return 1; }
-    grep -qxF 'mmap argument messages complete' <<< "$output" || { echo "FAIL: IO validation witness missing" >&2; return 1; }
-    grep -qxF 'mmap message created file kept=False' <<< "$output" || { echo "FAIL: IO validation witness missing" >&2; return 1; }
-    grep -qxF 'mmap view ranges complete' <<< "$output" || { echo "FAIL: IO validation witness missing" >&2; return 1; }
-    grep -qxF 'mmap missing paths complete' <<< "$output" || { echo "FAIL: IO validation witness missing" >&2; return 1; }
-    grep -qxF 'mmap position messages end' <<< "$output" || return 1
-    grep -qxF 'mmap validation complete' <<< "$output" || { echo "FAIL: IO validation witness missing" >&2; return 1; }
+    output="$out/native.stdout"
+    gate_output byte-witness "$output" '== mmap validation ==' --count any --policy crlf || { echo "FAIL: IO validation witness missing" >&2; return 1; }
+    gate_output byte-witness "$output" 'mmap args complete' --count any --policy crlf || { echo "FAIL: IO validation witness missing" >&2; return 1; }
+    gate_output byte-witness "$output" 'mmap argument messages complete' --count any --policy crlf || { echo "FAIL: IO validation witness missing" >&2; return 1; }
+    gate_output byte-witness "$output" 'mmap message created file kept=False' --count any --policy crlf || { echo "FAIL: IO validation witness missing" >&2; return 1; }
+    gate_output byte-witness "$output" 'mmap view ranges complete' --count any --policy crlf || { echo "FAIL: IO validation witness missing" >&2; return 1; }
+    gate_output byte-witness "$output" 'mmap missing paths complete' --count any --policy crlf || { echo "FAIL: IO validation witness missing" >&2; return 1; }
+    gate_output byte-witness "$output" 'mmap position messages end' --count any --policy crlf || return 1
+    gate_output byte-witness "$output" 'mmap validation complete' --count any --policy crlf || { echo "FAIL: IO validation witness missing" >&2; return 1; }
     before_scratch=$(mktemp -d artifacts/io-before.XXXXXX)
-    before=$(DN2CPP_BEFORE_IO_VALIDATION=1 run_bounded dotnet "samples/dotnet/MmapFile/bin/$CONFIG/$TFM/MmapFile.dll" "$before_scratch") || return $?
+    DN2CPP_BEFORE_IO_VALIDATION=1 gate_capture_ok "$out/assert-before-4" run_bounded dotnet "samples/dotnet/MmapFile/bin/$CONFIG/$TFM/MmapFile.dll" "$before_scratch"
+    before="$out/assert-before-4.stdout"
     rm -rf "$before_scratch"
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '$0 == "== mmap validation ==" { exit } { print }' <<< "$output")
-    assert_output "$prefix" "$before"
+
+    prefix="$out/prefix-mmap-validation.stdout"
+
+    gate_output select "$output" "$prefix" --before '== mmap validation ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     before_scratch=$(mktemp -d artifacts/mmap-path-before.XXXXXX)
-    before=$(run_bounded dotnet "$_CG_APP" "$before_scratch" before-mmap-full-path) || return $?
+    gate_capture_ok "$out/assert-before-5" run_bounded dotnet "$_CG_APP" "$before_scratch" before-mmap-full-path
+    before="$out/assert-before-5.stdout"
     rm -rf "$before_scratch"
-    prefix=$(awk '$0 == "-- lexical mapped file paths --" { exit } { print }' <<< "$output")
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
-    grep -Fxq -- '-- lexical mapped file paths --' <<< "$output" || return 1
-    grep -Fxq 'mapped lexical byte=51' <<< "$output" || return 1
-    grep -Fxq -- '-- lexical mapped file paths end --' <<< "$output" || return 1
+    prefix="$out/prefix-lexical-mapped-file-paths.stdout"
+    gate_output select "$output" "$prefix" --before '-- lexical mapped file paths --' --policy crlf
+    gate_output compare "$prefix" "$before" || return $?
+    gate_output byte-witness "$output" '-- lexical mapped file paths --' --count any --policy crlf || return 1
+    gate_output byte-witness "$output" 'mapped lexical byte=51' --count any --policy crlf || return 1
+    gate_output byte-witness "$output" '-- lexical mapped file paths end --' --count any --policy crlf || return 1
     before_scratch=$(mktemp -d artifacts/mmap-disposal-before.XXXXXX)
-    before=$(run_bounded dotnet "$_CG_APP" "$before_scratch" before-mmap-disposal-fields) || return $?
+    gate_capture_ok "$out/assert-before-6" run_bounded dotnet "$_CG_APP" "$before_scratch" before-mmap-disposal-fields
+    before="$out/assert-before-6.stdout"
     rm -rf "$before_scratch"
-    prefix=$(awk '$0 == "-- mapped accessor disposal fields --" { exit } { print }' <<< "$output")
-    assert_output "$prefix" "$(strip_cr_win "$before")" || return $?
-    grep -Fxq -- '-- mapped accessor disposal fields --' <<< "$output" || return 1
-    grep -Fxq 'mapped accessor disposal fields end' <<< "$output" || return 1
+    prefix="$out/prefix-mapped-accessor-disposal-fields.stdout"
+    gate_output select "$output" "$prefix" --before '-- mapped accessor disposal fields --' --policy crlf
+    gate_output compare "$prefix" "$before" || return $?
+    gate_output byte-witness "$output" '-- mapped accessor disposal fields --' --count any --policy crlf || return 1
+    gate_output byte-witness "$output" 'mapped accessor disposal fields end' --count any --policy crlf || return 1
     for label in 'typed read' 'generic read' 'array read'; do
-        grep -Fxq "closed $label object=UnmanagedMemoryAccessor" <<< "$output" || return 1
+        gate_output byte-witness "$output" "closed $label object=UnmanagedMemoryAccessor" --count any --policy crlf || return 1
     done
-    grep -Fxq 'closed flush object=MemoryMappedViewAccessor' <<< "$output" || return 1
-    grep -Fxq 'closed handle read object=Microsoft.Win32.SafeHandles.SafeMemoryMappedViewHandle' <<< "$output" || return 1
+    gate_output byte-witness "$output" 'closed flush object=MemoryMappedViewAccessor' --count any --policy crlf || return 1
+    gate_output byte-witness "$output" 'closed handle read object=Microsoft.Win32.SafeHandles.SafeMemoryMappedViewHandle' --count any --policy crlf || return 1
 }
 export DN2CPP_GATE_EXTRA_CONTEXT="uninitialized:MMAP_UNINITIALIZED_ONLY|before-mmap-full-path|before-mmap-disposal-fields|cli:$(_gate_cli_hash)"
 corelib_diff_gate MmapFile System.IO.MemoryMappedFiles

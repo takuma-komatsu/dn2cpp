@@ -175,13 +175,10 @@ if gate_cache_check "$OUT" "pal-reference|palref+nogc" \
 fi
 ( export PAL_REFERENCE=1; compile_console "$OUT" HelloWorld ) || \
     fail "linking a program against the reference-PAL runtime failed"
-refout="$("./$OUT/HelloWorld")" || fail "the program built on the reference PAL did not run"
-oracle="$(dotnet "$app")" || fail "the real-.NET oracle did not run"
-[ "$refout" = "$oracle" ] || {
-    echo "   reference PAL: $refout" >&2
-    echo "   real .NET    : $oracle" >&2
+gate_capture_ok "$OUT/reference" run_bounded "./$OUT/HelloWorld" || fail "the reference-PAL program did not run"
+gate_capture_ok "$OUT/oracle" run_bounded dotnet "$app" || fail "the real-.NET oracle did not run"
+gate_output compare "$OUT/reference.stdout" "$OUT/oracle.stdout" || \
     fail "a program on the reference PAL does not produce real .NET's output"
-}
 echo "   OK output matches real .NET"
 
 # ── 5/6 The console seam is a seam ────────────────────────────────────────────
@@ -267,7 +264,9 @@ mv "$sinkout/generated.tmp" "$sinkout/generated.cpp"
     fail "the sink-probe build failed"
 sinkstdout="$sinkout/stdout.txt"
 sinkstderr="$sinkout/stderr.txt"
-"./$sinkout/HelloWorld" > "$sinkstdout" 2> "$sinkstderr" || fail "the sink-probe binary did not run"
+gate_capture_ok "$sinkout/sink" run_bounded "./$sinkout/HelloWorld" || fail "the sink-probe binary did not run"
+cp "$sinkout/sink.stdout" "$sinkstdout"
+cp "$sinkout/sink.stderr" "$sinkstderr"
 if [ -s "$sinkstdout" ]; then
     head -5 "$sinkstdout" >&2
     fail "stdout is NOT empty with the console sink installed — some console output
@@ -275,16 +274,25 @@ if [ -s "$sinkstdout" ]; then
       find: on every shipped target the seam and stdout are the same destination, so
       a direct write is invisible there and only shows up here."
 fi
-# CR-insensitive on BOTH sides, unlike the direct comparison in section 4: the
-# tag strip runs through sed, which reads in text mode on Windows and hands back
-# LF where the oracle still carries the host's CRLF.
-sink_expected="$(printf 'raw output\nraw error\n%s' "$oracle")"
-captured=$(strip_cr_win "$(LC_ALL=C sed 's/\[[OE]\]//g' "$sinkstderr")")
-[ "$captured" = "$(strip_cr_win "$sink_expected")" ] || {
-    echo "   captured (tags stripped): $captured" >&2
-    echo "   expected                : $sink_expected" >&2
-    fail "the sink did not receive the bytes the program prints"
+# Tagged sink transport is text; normalize each observation once, separately.
+{ printf 'raw output\nraw error\n'; cat "$OUT/oracle.stdout"; } > "$sinkout/expected.raw"
+gate_output view "$sinkstderr" "$sinkout/tagged.lf" --policy crlf
+pal_remove_sink_tags() {
+    local python
+    python=$(resolve_python) || return 1
+    # The view is already normalized; binary I/O preserves residual payload CR.
+    $python - "$1" "$2" <<'PYTHON'
+from pathlib import Path
+import re
+import sys
+source, destination = map(Path, sys.argv[1:])
+destination.write_bytes(re.sub(rb'\[[OE]\]', b'', source.read_bytes()))
+PYTHON
 }
+pal_remove_sink_tags "$sinkout/tagged.lf" "$sinkout/untagged.lf"
+gate_output view "$sinkout/expected.raw" "$sinkout/expected.lf" --policy crlf
+gate_output compare "$sinkout/untagged.lf" "$sinkout/expected.lf" || \
+    fail "the sink did not receive the bytes the program prints"
 # The stream tags are asserted too, not merely stripped: a seam that routed
 # Console.Error to the stdout stream id would produce identical text and the wrong
 # destination on a target where the two are different devices.
@@ -314,12 +322,9 @@ gcarchives=$(find "$nogcdir" -name 'libdn2cpp_gc*.a' -o -name 'dn2cpp_gc*.lib')
 }
 ( export DN2CPP_NO_GC=1; compile_console "$OUT" HelloWorld ) || \
     fail "linking a program against the GC-less runtime failed"
-nogcout="$("./$OUT/HelloWorld")" || fail "the calloc-fallback binary did not run"
-[ "$nogcout" = "$oracle" ] || {
-    echo "   calloc build: $nogcout" >&2
-    echo "   real .NET   : $oracle" >&2
-    fail "the calloc-fallback binary does not produce real .NET's output"
-}
+gate_capture_ok "$OUT/nogc" run_bounded "./$OUT/HelloWorld" || fail "the no-GC program did not run"
+gate_output compare "$OUT/nogc.stdout" "$OUT/oracle.stdout" || fail "the calloc fallback changed program output"
+
 echo "   OK the calloc fallback builds, links and matches real .NET"
 
 gate_cache_commit

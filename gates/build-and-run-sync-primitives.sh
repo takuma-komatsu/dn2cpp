@@ -27,32 +27,41 @@ DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $call_app ${call_app%.dl
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|blocking-timeout-call|cli:$(_gate_cli_hash)"
 gate_extra_asserts() {
     local out="$1" native before prefix line
-    native=$(run_bounded "./$out/SyncPrimitives")
-    native=$(strip_cr_win "$native")
-    before=$(run_bounded dotnet "$_CG_APP" before-null-receivers)
-    prefix=$(awk '/^== null receivers ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    grep -Fxq 'null receivers end' <<< "$native" \
+    gate_capture_ok "$out/assert-native-1" run_bounded "./$out/SyncPrimitives"
+    native="$out/assert-native-1.stdout"
+
+    gate_capture_ok "$out/assert-before-2" run_bounded dotnet "$_CG_APP" before-null-receivers
+    before="$out/assert-before-2.stdout"
+    prefix="$out/assert-prefix-7.stdout"
+    gate_output select "$native" "$prefix" --before '== null receivers ==' --policy crlf
+    gate_output compare "$prefix" "$before"
+    gate_output witness "$native" 'null receivers end' --count any --policy crlf \
         || { echo "FAIL: primitive receiver section did not run" >&2; exit 1; }
-    before=$(run_bounded dotnet "$_CG_APP" before-thread-lifecycle)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== thread states ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-3" run_bounded dotnet "$_CG_APP" before-thread-lifecycle
+    before="$out/assert-before-3.stdout"
+
+    prefix="$out/assert-prefix-8.stdout"
+
+    gate_output select "$native" "$prefix" --before '== thread states ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== thread states ==' \
         'thread states end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: SyncPrimitives lifecycle witness missing: $line" >&2; exit 1; }
     done
-    before=$(dotnet "$_CG_APP" before-timeout-fields)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== wait timeouts ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-4" run_bounded dotnet "$_CG_APP" before-timeout-fields
+    before="$out/assert-before-4.stdout"
+
+    prefix="$out/assert-prefix-9.stdout"
+
+    gate_output select "$native" "$prefix" --before '== wait timeouts ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== wait timeouts ==' \
         'Barrier phase=0 remaining=1' \
         'held: False False False' \
         'wait timeouts end' \
         'blocking timeout fields end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: SyncPrimitives timeout witness missing: $line" >&2; exit 1; }
     done
     local oracle="$out/direct-call-oracle" fixture="$out/direct-call" expected actual
@@ -62,10 +71,12 @@ gate_extra_asserts() {
     $sync_python gates/fixtures/blocking-timeout-call/patch-call.py "$oracle/BlockingTimeoutCall.dll"
     invoke_cli "$oracle/BlockingTimeoutCall.dll" -r "$_CG_CORELIB" --auto-ref -o "$fixture"
     compile_console "$fixture" BlockingTimeoutCall
-    expected=$(run_bounded dotnet "$oracle/BlockingTimeoutCall.dll")
-    actual=$(run_bounded "./$fixture/BlockingTimeoutCall")
-    actual=$(strip_cr_win "$actual")
-    assert_output "$actual" "$(strip_cr_win "$expected")"
+    gate_capture_ok "$out/assert-expected-5" run_bounded dotnet "$oracle/BlockingTimeoutCall.dll"
+    expected="$out/assert-expected-5.stdout"
+    gate_capture_ok "$out/assert-actual-6" run_bounded "./$fixture/BlockingTimeoutCall"
+    actual="$out/assert-actual-6.stdout"
+
+    gate_output compare "$actual" "$expected"
     for line in 'Sem null int bad type=NullReferenceException' \
         'Sem null span bad actual=TimeSpan:-00:00:00.0020000' \
         'Mre null int bad type=NullReferenceException' \
@@ -73,7 +84,7 @@ gate_extra_asserts() {
         'Barrier null int bad type=NullReferenceException' \
         'Lock null int bad actual=Int32:-2' \
         'Blocking timeout call faults end'; do
-        grep -Fxq -- "$line" <<< "$actual" \
+        gate_output byte-witness "$actual" "$line" --count any --policy crlf \
             || { echo "FAIL: blocking direct-call witness missing: $line" >&2; exit 1; }
     done
 }

@@ -326,15 +326,20 @@ if gate_cache_check "$OUT" "preserve-control|full:$DN2CPP_PRESERVE_CONTROL_FULL|
     gate_cache_hit_msg
 else
     compile_console "$OUT" "$PROJECT"
-    native=$("./$OUT/$PROJECT")
-    assert_output "$(strip_cr_win "$native")" "$(cat gates/expected/preserve-control.txt)"
-    before=$(DN2CPP_BEFORE_PRESERVED_BOXES=1 run_bounded "./$OUT/$PROJECT")
-    prefix=$(awk '/^== preserved reflection boxes ==$/ { exit } { print }' <<< "$native")
-    assert_output "$(strip_cr_win "$prefix")" "$(strip_cr_win "$before")"
-    before=$(DN2CPP_BEFORE_CONDITIONAL_FIELDS=1 run_bounded "./$OUT/$PROJECT")
-    prefix=$(awk '/^== conditional field chains ==$/ { exit } { print }' <<< "$native")
-    assert_output "$(strip_cr_win "$prefix")" "$(strip_cr_win "$before")"
-    grep -Fxq 'conditional field chains end' <<< "$native" \
+    native="$OUT/preserve-check.stdout"
+    gate_capture_ok "${native%.stdout}" run_bounded "./$OUT/$PROJECT$EXE_EXT"
+    gate_output compare "$native" gates/expected/preserve-control.txt --policy crlf
+    before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-1.stdout"
+    DN2CPP_BEFORE_PRESERVED_BOXES=1 gate_capture_ok "${before%.stdout}" run_bounded "./$OUT/$PROJECT"
+    prefix="$native.before"
+    gate_output select "$native" "$prefix" --before '== preserved reflection boxes ==' --policy crlf
+    gate_output compare "$prefix" "$before" --policy crlf
+    before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-2.stdout"
+    DN2CPP_BEFORE_CONDITIONAL_FIELDS=1 gate_capture_ok "${before%.stdout}" run_bounded "./$OUT/$PROJECT"
+    prefix="$native.before"
+    gate_output select "$native" "$prefix" --before '== conditional field chains ==' --policy crlf
+    gate_output compare "$prefix" "$before" --policy crlf
+    gate_output witness "$native" 'conditional field chains end' --count any --policy crlf \
         || { echo 'FAIL: conditional field chains section did not run' >&2; exit 1; }
     gate_cache_commit
 fi
@@ -343,30 +348,36 @@ echo "== IL dispatch, initialization, layout and type-token reflection construct
 DIET_LIB="samples/dotnet/ILDietControlLib/bin/$CONFIG/$TFM/ILDietControlLib.dll"
 gate_extra_asserts() {
     local out="$1" native before prefix
-    native=$(run_bounded "$out/ILDietControl$EXE_EXT") || return $?
-    native=$(strip_cr_win "$native")
-    before=$(DN2CPP_BEFORE_ATTRIBUTE_OBJECT=1 run_bounded "$out/ILDietControl$EXE_EXT") || return $?
-    prefix=$(awk '/^== attribute construction roots ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    grep -Fxq 'attribute-object=by-object' <<< "$native" \
+    native="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-native-3.stdout"
+    gate_capture_ok "${native%.stdout}" run_bounded "$out/ILDietControl$EXE_EXT" || return $?
+    before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-4.stdout"
+    DN2CPP_BEFORE_ATTRIBUTE_OBJECT=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/ILDietControl$EXE_EXT" || return $?
+    prefix="$native.before"
+    gate_output select "$native" "$prefix" --before '== attribute construction roots ==' --policy crlf
+    gate_output compare "$prefix" "$before" --policy crlf
+    gate_output witness "$native" 'attribute-object=by-object' --count any --policy crlf \
         || { echo 'FAIL: boxed Type attribute constructor did not run' >&2; return 1; }
-    grep -Fxq 'attribute construction roots end' <<< "$native" \
+    gate_output witness "$native" 'attribute construction roots end' --count any --policy crlf \
         || { echo 'FAIL: Type attribute construction section did not run' >&2; return 1; }
-    before=$(DN2CPP_BEFORE_NAMED_REFLECTION=1 run_bounded "$out/ILDietControl$EXE_EXT") || return $?
-    prefix=$(awk '/^== constant-name reflection ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    grep -Fxq 'method-static=42' <<< "$native" \
+    before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-5.stdout"
+    DN2CPP_BEFORE_NAMED_REFLECTION=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/ILDietControl$EXE_EXT" || return $?
+    prefix="$native.before"
+    gate_output select "$native" "$prefix" --before '== constant-name reflection ==' --policy crlf
+    gate_output compare "$prefix" "$before" --policy crlf
+    gate_output witness "$native" 'method-static=42' --count any --policy crlf \
         || { echo 'FAIL: a method selected only by its constant name did not run' >&2; return 1; }
-    grep -Fxq 'constant-name reflection end' <<< "$native" \
+    gate_output witness "$native" 'constant-name reflection end' --count any --policy crlf \
         || { echo 'FAIL: constant-name reflection section did not run' >&2; return 1; }
-    before=$(DN2CPP_BEFORE_RUNTIME_REFLECTION=1 run_bounded "$out/ILDietControl$EXE_EXT") || return $?
-    prefix=$(awk '/^== runtime reflection preservation ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    grep -Fxq 'field-type-construction=field-payload' <<< "$native" \
+    before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-6.stdout"
+    DN2CPP_BEFORE_RUNTIME_REFLECTION=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/ILDietControl$EXE_EXT" || return $?
+    prefix="$native.before"
+    gate_output select "$native" "$prefix" --before '== runtime reflection preservation ==' --policy crlf
+    gate_output compare "$prefix" "$before" --policy crlf
+    gate_output witness "$native" 'field-type-construction=field-payload' --count any --policy crlf \
         || { echo 'FAIL: construction through a reflected field type did not run' >&2; return 1; }
-    grep -Fxq 'assembly-types=True:True' <<< "$native" \
+    gate_output witness "$native" 'assembly-types=True:True' --count any --policy crlf \
         || { echo 'FAIL: application types selected only by name were not listed' >&2; return 1; }
-    grep -Fxq 'runtime reflection preservation end' <<< "$native" \
+    gate_output witness "$native" 'runtime reflection preservation end' --count any --policy crlf \
         || { echo 'FAIL: runtime reflection preservation section did not run' >&2; return 1; }
 }
 # Construct(Type) activates attribute-carried types no analyzable site names; their
@@ -443,97 +454,125 @@ echo "== Lookup-only reflection retains declarations without body dependencies =
     DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|sample-path:$DN2CPP_SAMPLE_PROJECT_DIR"
     gate_extra_asserts() {
         local out="$1" native before prefix original stripped original_library stripped_library row
-        native=$(run_bounded "$out/LookupOnly$EXE_EXT") || return $?
-        native=$(strip_cr_win "$native")
-        before=$(DN2CPP_BEFORE_METADATA_LOOKUP=1 run_bounded "$out/LookupOnly$EXE_EXT") || return $?
-        prefix=$(awk '/^== metadata-only reflection ==$/ { exit } { print }' <<< "$native")
-        assert_output "$(strip_cr_win "$prefix")" "$(strip_cr_win "$before")"
-        grep -Fxq 'event-accessors=True:True' <<< "$native" \
+        native="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-native-7.stdout"
+        gate_capture_ok "${native%.stdout}" run_bounded "$out/LookupOnly$EXE_EXT" || return $?
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-8.stdout"
+        DN2CPP_BEFORE_METADATA_LOOKUP=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/LookupOnly$EXE_EXT" || return $?
+        prefix="$native.before"
+        gate_output select "$native" "$prefix" --before '== metadata-only reflection ==' --policy crlf
+        gate_output compare "$prefix" "$before" --policy crlf
+        gate_output witness "$native" 'event-accessors=True:True' --count any --policy crlf \
             || { echo 'FAIL: lookup-only event accessor declarations are absent' >&2; return 1; }
-        grep -Fxq 'metadata-only reflection end' <<< "$native" \
+        gate_output witness "$native" 'metadata-only reflection end' --count any --policy crlf \
             || { echo 'FAIL: metadata-only reflection section did not run' >&2; return 1; }
-        before=$(DN2CPP_BEFORE_FIELD_BOXING=1 run_bounded "$out/LookupOnly$EXE_EXT") || return $?
-        prefix=$(awk '/^== reflected field boxing ==$/ { exit } { print }' <<< "$native")
-        assert_output "$(strip_cr_win "$prefix")" "$(strip_cr_win "$before")"
-        grep -Fxq '0 JPY' <<< "$native" && grep -Fxq '0 USD' <<< "$native" \
-            && grep -Fxq '0 EUR' <<< "$native" \
-            && grep -Fxq 'reflected field boxing end' <<< "$native" \
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-9.stdout"
+        DN2CPP_BEFORE_FIELD_BOXING=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/LookupOnly$EXE_EXT" || return $?
+        prefix="$native.before"
+        gate_output select "$native" "$prefix" --before '== reflected field boxing ==' --policy crlf
+        gate_output compare "$prefix" "$before" --policy crlf
+        gate_output witness "$native" '0 JPY' --count any --policy crlf && gate_output witness "$native" '0 USD' --count any --policy crlf \
+            && gate_output witness "$native" '0 EUR' --count any --policy crlf \
+            && gate_output witness "$native" 'reflected field boxing end' --count any --policy crlf \
             || { echo 'FAIL: reflected field boxing section did not run' >&2; return 1; }
-        before=$(DN2CPP_BEFORE_FIELD_CONTEXT=1 run_bounded "$out/LookupOnly$EXE_EXT") || return $?
-        prefix=$(awk '/^== closed field contexts ==$/ { exit } { print }' <<< "$native")
-        assert_output "$(strip_cr_win "$prefix")" "$(strip_cr_win "$before")"
-        grep -Fxq '0 GBP' <<< "$native" && grep -Fxq 'boxed-array-argument' <<< "$native" \
-            && grep -Fxq 'closed field contexts end' <<< "$native" \
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-10.stdout"
+        DN2CPP_BEFORE_FIELD_CONTEXT=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/LookupOnly$EXE_EXT" || return $?
+        prefix="$native.before"
+        gate_output select "$native" "$prefix" --before '== closed field contexts ==' --policy crlf
+        gate_output compare "$prefix" "$before" --policy crlf
+        gate_output witness "$native" '0 GBP' --count any --policy crlf && gate_output witness "$native" 'boxed-array-argument' --count any --policy crlf \
+            && gate_output witness "$native" 'closed field contexts end' --count any --policy crlf \
             || { echo 'FAIL: closed field context section did not run' >&2; return 1; }
-        before=$(DN2CPP_BEFORE_FIELD_OWNER=1 run_bounded "$out/LookupOnly$EXE_EXT") || return $?
-        prefix=$(awk '/^== reference field owners ==$/ { exit } { print }' <<< "$native")
-        assert_output "$(strip_cr_win "$prefix")" "$(strip_cr_win "$before")"
-        grep -Fxq '0 CHF' <<< "$native" && grep -Fxq '0 CAD' <<< "$native" \
-            && grep -Fxq 'reference field owners end' <<< "$native" \
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-11.stdout"
+        DN2CPP_BEFORE_FIELD_OWNER=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/LookupOnly$EXE_EXT" || return $?
+        prefix="$native.before"
+        gate_output select "$native" "$prefix" --before '== reference field owners ==' --policy crlf
+        gate_output compare "$prefix" "$before" --policy crlf
+        gate_output witness "$native" '0 CHF' --count any --policy crlf && gate_output witness "$native" '0 CAD' --count any --policy crlf \
+            && gate_output witness "$native" 'reference field owners end' --count any --policy crlf \
             || { echo 'FAIL: reference field owner section did not run' >&2; return 1; }
-        before=$(DN2CPP_BEFORE_FIELD_SHAPE=1 run_bounded "$out/LookupOnly$EXE_EXT") || return $?
-        prefix=$(awk '/^== field type shapes ==$/ { exit } { print }' <<< "$native")
-        assert_output "$(strip_cr_win "$prefix")" "$(strip_cr_win "$before")"
-        grep -Fxq 'array-owner-box' <<< "$native" && grep -Fxq 'generic-argument-owner-box' <<< "$native" \
-            && grep -Fxq 'field type shapes end' <<< "$native" \
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-12.stdout"
+        DN2CPP_BEFORE_FIELD_SHAPE=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/LookupOnly$EXE_EXT" || return $?
+        prefix="$native.before"
+        gate_output select "$native" "$prefix" --before '== field type shapes ==' --policy crlf
+        gate_output compare "$prefix" "$before" --policy crlf
+        gate_output witness "$native" 'array-owner-box' --count any --policy crlf && gate_output witness "$native" 'generic-argument-owner-box' --count any --policy crlf \
+            && gate_output witness "$native" 'field type shapes end' --count any --policy crlf \
             || { echo 'FAIL: field type shape section did not run' >&2; return 1; }
-        before=$(DN2CPP_BEFORE_FIELD_CYCLE=1 run_bounded "$out/LookupOnly$EXE_EXT") || return $?
-        prefix=$(awk '/^== finite field contexts ==$/ { exit } { print }' <<< "$native")
-        assert_output "$(strip_cr_win "$prefix")" "$(strip_cr_win "$before")"
-        grep -Fxq 'boxed-cycle-a' <<< "$native" && grep -Fxq 'boxed-cycle-b' <<< "$native" \
-            && grep -Fxq 'finite field contexts end' <<< "$native" \
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-13.stdout"
+        DN2CPP_BEFORE_FIELD_CYCLE=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/LookupOnly$EXE_EXT" || return $?
+        prefix="$native.before"
+        gate_output select "$native" "$prefix" --before '== finite field contexts ==' --policy crlf
+        gate_output compare "$prefix" "$before" --policy crlf
+        gate_output witness "$native" 'boxed-cycle-a' --count any --policy crlf && gate_output witness "$native" 'boxed-cycle-b' --count any --policy crlf \
+            && gate_output witness "$native" 'finite field contexts end' --count any --policy crlf \
             || { echo 'FAIL: finite field context section did not run' >&2; return 1; }
-        before=$(DN2CPP_BEFORE_MEMBER_FIELD_SIGNATURE=1 run_bounded "$out/LookupOnly$EXE_EXT") || return $?
-        prefix=$(awk '/^== closed member field signatures ==$/ { exit } { print }' <<< "$native")
-        assert_output "$prefix" "$(strip_cr_win "$before")"
-        grep -Fxq '0 NZD' <<< "$native" && grep -Fxq '0 SGD' <<< "$native" \
-            && grep -Fxq 'closed member field signatures end' <<< "$native" \
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-14.stdout"
+        DN2CPP_BEFORE_MEMBER_FIELD_SIGNATURE=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/LookupOnly$EXE_EXT" || return $?
+        prefix="$native.before"
+        gate_output select "$native" "$prefix" --before '== closed member field signatures ==' --policy crlf
+        gate_output compare "$prefix" "$before" --policy crlf
+        gate_output witness "$native" '0 NZD' --count any --policy crlf && gate_output witness "$native" '0 SGD' --count any --policy crlf \
+            && gate_output witness "$native" 'closed member field signatures end' --count any --policy crlf \
             || { echo 'FAIL: closed member field signature section did not run' >&2; return 1; }
-        before=$(DN2CPP_BEFORE_BASE_FIELD_SIGNATURE=1 run_bounded "$out/LookupOnly$EXE_EXT") || return $?
-        prefix=$(awk '/^== closed base field signatures ==$/ { exit } { print }' <<< "$native")
-        assert_output "$prefix" "$(strip_cr_win "$before")"
-        grep -Fxq 'base-return-money' <<< "$native" && grep -Fxq 'base-parameter-money' <<< "$native" \
-            && grep -Fxq 'closed base field signatures end' <<< "$native" \
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-15.stdout"
+        DN2CPP_BEFORE_BASE_FIELD_SIGNATURE=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/LookupOnly$EXE_EXT" || return $?
+        prefix="$native.before"
+        gate_output select "$native" "$prefix" --before '== closed base field signatures ==' --policy crlf
+        gate_output compare "$prefix" "$before" --policy crlf
+        gate_output witness "$native" 'base-return-money' --count any --policy crlf && gate_output witness "$native" 'base-parameter-money' --count any --policy crlf \
+            && gate_output witness "$native" 'closed base field signatures end' --count any --policy crlf \
             || { echo 'FAIL: closed base field signature section did not run' >&2; return 1; }
-        before=$(DN2CPP_BEFORE_FIELD_OWNER_SIGNATURE=1 run_bounded "$out/LookupOnly$EXE_EXT") || return $?
-        prefix=$(awk '/^== field owner member signatures ==$/ { exit } { print }' <<< "$native")
-        assert_output "$prefix" "$(strip_cr_win "$before")"
-        grep -Fxq 'field-owner-money' <<< "$native" \
-            && grep -Fxq 'field owner member signatures end' <<< "$native" \
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-16.stdout"
+        DN2CPP_BEFORE_FIELD_OWNER_SIGNATURE=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/LookupOnly$EXE_EXT" || return $?
+        prefix="$native.before"
+        gate_output select "$native" "$prefix" --before '== field owner member signatures ==' --policy crlf
+        gate_output compare "$prefix" "$before" --policy crlf
+        gate_output witness "$native" 'field-owner-money' --count any --policy crlf \
+            && gate_output witness "$native" 'field owner member signatures end' --count any --policy crlf \
             || { echo 'FAIL: field owner member signature section did not run' >&2; return 1; }
-        before=$(DN2CPP_BEFORE_INTERFACE_OWNER_SIGNATURE=1 run_bounded "$out/LookupOnly$EXE_EXT") || return $?
-        prefix=$(awk '/^== interface owner member signatures ==$/ { exit } { print }' <<< "$native")
-        assert_output "$prefix" "$(strip_cr_win "$before")"
-        grep -Fxq 'interface-owner-money' <<< "$native" \
-            && grep -Fxq 'interface owner member signatures end' <<< "$native" \
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-17.stdout"
+        DN2CPP_BEFORE_INTERFACE_OWNER_SIGNATURE=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/LookupOnly$EXE_EXT" || return $?
+        prefix="$native.before"
+        gate_output select "$native" "$prefix" --before '== interface owner member signatures ==' --policy crlf
+        gate_output compare "$prefix" "$before" --policy crlf
+        gate_output witness "$native" 'interface-owner-money' --count any --policy crlf \
+            && gate_output witness "$native" 'interface owner member signatures end' --count any --policy crlf \
             || { echo 'FAIL: interface owner member signature section did not run' >&2; return 1; }
-        before=$(DN2CPP_BEFORE_REFLECTION_DEPTH_SEEDS=1 run_bounded "$out/LookupOnly$EXE_EXT") || return $?
-        prefix=$(awk '/^== reflection depth seeds ==$/ { exit } { print }' <<< "$native")
-        assert_output "$prefix" "$(strip_cr_win "$before")"
-        grep -Fxq 'library-depth-second' <<< "$native" && grep -Fxq 'method-depth-second' <<< "$native" \
-            && grep -Fxq 'reflection depth seeds end' <<< "$native" \
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-18.stdout"
+        DN2CPP_BEFORE_REFLECTION_DEPTH_SEEDS=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/LookupOnly$EXE_EXT" || return $?
+        prefix="$native.before"
+        gate_output select "$native" "$prefix" --before '== reflection depth seeds ==' --policy crlf
+        gate_output compare "$prefix" "$before" --policy crlf
+        gate_output witness "$native" 'library-depth-second' --count any --policy crlf && gate_output witness "$native" 'method-depth-second' --count any --policy crlf \
+            && gate_output witness "$native" 'reflection depth seeds end' --count any --policy crlf \
             || { echo 'FAIL: reflection depth seed section did not run' >&2; return 1; }
-        before=$(DN2CPP_BEFORE_CALLER_DEPTH=1 run_bounded "$out/LookupOnly$EXE_EXT") || return $?
-        prefix=$(awk '/^== caller reflection depth ==$/ { exit } { print }' <<< "$native")
-        assert_output "$prefix" "$(strip_cr_win "$before")"
-        grep -Fxq "$caller_depth_case-caller-depth-second" <<< "$native" \
-            && grep -Fxq 'caller reflection depth end' <<< "$native" \
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-19.stdout"
+        DN2CPP_BEFORE_CALLER_DEPTH=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/LookupOnly$EXE_EXT" || return $?
+        prefix="$native.before"
+        gate_output select "$native" "$prefix" --before '== caller reflection depth ==' --policy crlf
+        gate_output compare "$prefix" "$before" --policy crlf
+        gate_output witness "$native" "$caller_depth_case-caller-depth-second" --count any --policy crlf \
+            && gate_output witness "$native" 'caller reflection depth end' --count any --policy crlf \
             || { echo 'FAIL: the independent caller depth section did not run' >&2; return 1; }
         if [ "$extended_depth_case" != none ]; then
-            before=$(DN2CPP_BEFORE_EXTENDED_DEPTH=1 run_bounded "$out/LookupOnly$EXE_EXT") || return $?
-            prefix=$(awk '/^== extended reflection depth ==$/ { exit } { print }' <<< "$native")
-            assert_output "$prefix" "$(strip_cr_win "$before")"
-            grep -Fxq "$extended_depth_case-depth-second" <<< "$native" \
-                && grep -Fxq 'extended reflection depth end' <<< "$native" \
+            before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-20.stdout"
+            DN2CPP_BEFORE_EXTENDED_DEPTH=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/LookupOnly$EXE_EXT" || return $?
+            prefix="$native.before"
+            gate_output select "$native" "$prefix" --before '== extended reflection depth ==' --policy crlf
+            gate_output compare "$prefix" "$before" --policy crlf
+            gate_output witness "$native" "$extended_depth_case-depth-second" --count any --policy crlf \
+                && gate_output witness "$native" 'extended reflection depth end' --count any --policy crlf \
                 || { echo 'FAIL: the independent extended depth section did not run' >&2; return 1; }
         fi
-        before=$(DN2CPP_BEFORE_STATE_MACHINE_SIGNATURES=1 run_bounded "$out/LookupOnly$EXE_EXT") || return $?
-        prefix=$(awk '/^== signature-only state machines ==$/ { exit } { print }' <<< "$native")
-        assert_output "$prefix" "$(strip_cr_win "$before")"
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-21.stdout"
+        DN2CPP_BEFORE_STATE_MACHINE_SIGNATURES=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/LookupOnly$EXE_EXT" || return $?
+        prefix="$native.before"
+        gate_output select "$native" "$prefix" --before '== signature-only state machines ==' --policy crlf
+        gate_output compare "$prefix" "$before" --policy crlf
         for row in '== signature-only state machines ==' 'async metadata=True' \
             'iterator metadata=True' 'async iterator metadata=True' 'async called=7' \
             'iterator called=8' 'promoted machine=9' 'signature-only state machines end'; do
-            [ "$(grep -Fxc -- "$row" <<< "$native")" = 1 ] \
+            gate_output witness "$native" "$row" --count 1 --policy crlf \
                 || { echo "FAIL: state-machine signature block did not run once: $row" >&2; return 1; }
         done
         original=$(dotnet exec "$PROBE" "$_CG_APP") || return $?
@@ -696,53 +735,68 @@ echo "== Constructor-only reflection constructs signature-selected types and kee
     }
     gate_extra_asserts() {
         local out="$1" native before prefix original stripped app original_arming stripped_arming type section
-        native=$(run_bounded "$out/ConstructorOnly$EXE_EXT") || return $?
-        native=$(strip_cr_win "$native")
-        before=$(DN2CPP_BEFORE_SIGNATURE_CONSTRUCTION=1 run_bounded "$out/ConstructorOnly$EXE_EXT") || return $?
-        prefix=$(awk '/^== signature construction ==$/ { exit } { print }' <<< "$native")
-        assert_output "$(strip_cr_win "$prefix")" "$(strip_cr_win "$before")"
-        grep -Fxq 'accessor-metadata=True' <<< "$native" \
-            && grep -Fxq 'signature construction end' <<< "$native" \
+        native="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-native-22.stdout"
+        gate_capture_ok "${native%.stdout}" run_bounded "$out/ConstructorOnly$EXE_EXT" || return $?
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-23.stdout"
+        DN2CPP_BEFORE_SIGNATURE_CONSTRUCTION=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/ConstructorOnly$EXE_EXT" || return $?
+        prefix="$native.before"
+        gate_output select "$native" "$prefix" --before '== signature construction ==' --policy crlf
+        gate_output compare "$prefix" "$before" --policy crlf
+        gate_output witness "$native" 'accessor-metadata=True' --count any --policy crlf \
+            && gate_output witness "$native" 'signature construction end' --count any --policy crlf \
             || { echo 'FAIL: signature construction section did not run' >&2; return 1; }
-        before=$(DN2CPP_BEFORE_CONSTRUCTION_PAYLOAD=1 run_bounded "$out/ConstructorOnly$EXE_EXT") || return $?
-        prefix=$(awk '/^== generic construction dispatch ==$/ { exit } { print }' <<< "$native")
-        assert_output "$(strip_cr_win "$prefix")" "$(strip_cr_win "$before")"
-        grep -Fxq '0 CHF' <<< "$native" \
-            && grep -Fxq 'generic construction dispatch end' <<< "$native" \
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-24.stdout"
+        DN2CPP_BEFORE_CONSTRUCTION_PAYLOAD=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/ConstructorOnly$EXE_EXT" || return $?
+        prefix="$native.before"
+        gate_output select "$native" "$prefix" --before '== generic construction dispatch ==' --policy crlf
+        gate_output compare "$prefix" "$before" --policy crlf
+        gate_output witness "$native" '0 CHF' --count any --policy crlf \
+            && gate_output witness "$native" 'generic construction dispatch end' --count any --policy crlf \
             || { echo 'FAIL: generic construction dispatch section did not run' >&2; return 1; }
-        before=$(DN2CPP_BEFORE_MEMBER_CONSTRUCTION_SIGNATURE=1 run_bounded "$out/ConstructorOnly$EXE_EXT") || return $?
-        prefix=$(awk '/^== closed member construction signatures ==$/ { exit } { print }' <<< "$native")
-        assert_output "$prefix" "$(strip_cr_win "$before")"
-        grep -Fxq '0 HKD' <<< "$native" && grep -Fxq '0 CNY' <<< "$native" \
-            && grep -Fxq 'closed member construction signatures end' <<< "$native" \
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-25.stdout"
+        DN2CPP_BEFORE_MEMBER_CONSTRUCTION_SIGNATURE=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/ConstructorOnly$EXE_EXT" || return $?
+        prefix="$native.before"
+        gate_output select "$native" "$prefix" --before '== closed member construction signatures ==' --policy crlf
+        gate_output compare "$prefix" "$before" --policy crlf
+        gate_output witness "$native" '0 HKD' --count any --policy crlf && gate_output witness "$native" '0 CNY' --count any --policy crlf \
+            && gate_output witness "$native" 'closed member construction signatures end' --count any --policy crlf \
             || { echo 'FAIL: closed member construction signature section did not run' >&2; return 1; }
-        before=$(DN2CPP_BEFORE_BASE_CONSTRUCTION_SIGNATURE=1 run_bounded "$out/ConstructorOnly$EXE_EXT") || return $?
-        prefix=$(awk '/^== closed base construction signatures ==$/ { exit } { print }' <<< "$native")
-        assert_output "$prefix" "$(strip_cr_win "$before")"
-        grep -Fxq 'base-library-return' <<< "$native" && grep -Fxq 'base-library-parameter' <<< "$native" \
-            && grep -Fxq 'closed base construction signatures end' <<< "$native" \
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-26.stdout"
+        DN2CPP_BEFORE_BASE_CONSTRUCTION_SIGNATURE=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/ConstructorOnly$EXE_EXT" || return $?
+        prefix="$native.before"
+        gate_output select "$native" "$prefix" --before '== closed base construction signatures ==' --policy crlf
+        gate_output compare "$prefix" "$before" --policy crlf
+        gate_output witness "$native" 'base-library-return' --count any --policy crlf && gate_output witness "$native" 'base-library-parameter' --count any --policy crlf \
+            && gate_output witness "$native" 'closed base construction signatures end' --count any --policy crlf \
             || { echo 'FAIL: closed base construction signature section did not run' >&2; return 1; }
-        before=$(DN2CPP_BEFORE_CTOR_FIELD_OWNER_SIGNATURE=1 run_bounded "$out/ConstructorOnly$EXE_EXT") || return $?
-        prefix=$(awk '/^== constructor field owner signatures ==$/ { exit } { print }' <<< "$native")
-        assert_output "$prefix" "$(strip_cr_win "$before")"
-        grep -Fxq 'ctor-field-owner-money' <<< "$native" \
-            && grep -Fxq 'constructor field owner signatures end' <<< "$native" \
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-27.stdout"
+        DN2CPP_BEFORE_CTOR_FIELD_OWNER_SIGNATURE=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/ConstructorOnly$EXE_EXT" || return $?
+        prefix="$native.before"
+        gate_output select "$native" "$prefix" --before '== constructor field owner signatures ==' --policy crlf
+        gate_output compare "$prefix" "$before" --policy crlf
+        gate_output witness "$native" 'ctor-field-owner-money' --count any --policy crlf \
+            && gate_output witness "$native" 'constructor field owner signatures end' --count any --policy crlf \
             || { echo 'FAIL: constructor field owner signature section did not run' >&2; return 1; }
-        before=$(DN2CPP_BEFORE_CAPTURED_ARRAY_DEFAULTS=1 run_bounded "$out/ConstructorOnly$EXE_EXT") || return $?
-        prefix=$(awk '/^== captured array defaults ==$/ { exit } { print }' <<< "$native")
-        assert_output "$prefix" "$(strip_cr_win "$before")"
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-28.stdout"
+        DN2CPP_BEFORE_CAPTURED_ARRAY_DEFAULTS=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/ConstructorOnly$EXE_EXT" || return $?
+        prefix="$native.before"
+        gate_output select "$native" "$prefix" --before '== captured array defaults ==' --policy crlf
+        gate_output compare "$prefix" "$before" --policy crlf
         for row in 'conditional=default' 'unwritten=default' 'copied=default' 'published=default' \
             'initialized=exact' 'captured array defaults end'; do
-            grep -Fxq -- "$row" <<< "$native" \
+            gate_output witness "$native" "$row" --count any --policy crlf \
                 || { echo "FAIL: captured array default section did not run: $row" >&2; return 1; }
         done
-        before=$(DN2CPP_BEFORE_INTERFACE_ARRAY_DEFAULTS=1 run_bounded "$out/ConstructorOnly$EXE_EXT") || return $?
-        prefix=$(awk '/^== interface array defaults ==$/ { exit } { print }' <<< "$native")
-        assert_output "$prefix" "$(strip_cr_win "$before")"
-        before=$(DN2CPP_BEFORE_INTERFACE_ARRAY_DEFAULTS=1 run_bounded dotnet "$_CG_APP") || return $?
-        assert_output "$prefix" "$(strip_cr_win "$before")"
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-29.stdout"
+        DN2CPP_BEFORE_INTERFACE_ARRAY_DEFAULTS=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/ConstructorOnly$EXE_EXT" || return $?
+        prefix="$native.before"
+        gate_output select "$native" "$prefix" --before '== interface array defaults ==' --policy crlf
+        gate_output compare "$prefix" "$before" --policy crlf
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-30.stdout"
+        DN2CPP_BEFORE_INTERFACE_ARRAY_DEFAULTS=1 gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" || return $?
+        gate_output compare "$prefix" "$before" --policy crlf
         for row in 'local=null' 'captured=null' 'interface array defaults end'; do
-            grep -Fxq -- "$row" <<< "$native" \
+            gate_output witness "$native" "$row" --count any --policy crlf \
                 || { echo "FAIL: interface array default section did not run: $row" >&2; return 1; }
         done
         grep -Eqw 'CapturedInitializedTarget__ctor_m[0-9]+' "$out"/generated*.cpp "$out"/generated.h \
@@ -751,14 +805,17 @@ echo "== Constructor-only reflection constructs signature-selected types and kee
             "$out"/generated*.cpp "$out"/generated.h; then
             echo 'FAIL: an initialized captured array retained an unselected constructor dependency' >&2; return 1
         fi
-        before=$(DN2CPP_BEFORE_EXTERNAL_ARRAY_DEFAULTS=1 run_bounded "$out/ConstructorOnly$EXE_EXT") || return $?
-        prefix=$(awk '/^== external array defaults ==$/ { exit } { print }' <<< "$native")
-        assert_output "$prefix" "$(strip_cr_win "$before")"
-        before=$(DN2CPP_BEFORE_EXTERNAL_ARRAY_DEFAULTS=1 run_bounded dotnet "$_CG_APP") || return $?
-        assert_output "$prefix" "$(strip_cr_win "$before")"
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-31.stdout"
+        DN2CPP_BEFORE_EXTERNAL_ARRAY_DEFAULTS=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/ConstructorOnly$EXE_EXT" || return $?
+        prefix="$native.before"
+        gate_output select "$native" "$prefix" --before '== external array defaults ==' --policy crlf
+        gate_output compare "$prefix" "$before" --policy crlf
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-32.stdout"
+        DN2CPP_BEFORE_EXTERNAL_ARRAY_DEFAULTS=1 gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" || return $?
+        gate_output compare "$prefix" "$before" --policy crlf
         for row in external-local=default external-captured=default external-conditional=default \
                 external-copied=default external-initialized=exact external-untyped=default 'external array defaults end'; do
-            grep -Fxq -- "$row" <<< "$native" \
+            gate_output witness "$native" "$row" --count any --policy crlf \
                 || { echo "FAIL: external array default section did not run: $row" >&2; return 1; }
         done
         for type in ExternalLocalTarget ExternalCapturedTarget ExternalConditionalTarget ExternalCopiedTarget ExternalUntypedTarget; do
@@ -775,14 +832,17 @@ echo "== Constructor-only reflection constructs signature-selected types and kee
             /^reflection-summary / { on = 0 } on' "$external_array_summary")
         grep -Fq 'p1=?ArrayDefault(ILDietControlLib.ArrayBindingFlags)' <<< "$section" \
             || { echo 'FAIL: an untyped external array default became a concrete flag' >&2; echo "$section" >&2; return 1; }
-        before=$(DN2CPP_BEFORE_REPEATED_ARRAYS=1 run_bounded "$out/ConstructorOnly$EXE_EXT") || return $?
-        prefix=$(awk '/^== repeated array allocations ==$/ { exit } { print }' <<< "$native")
-        assert_output "$prefix" "$(strip_cr_win "$before")"
-        before=$(DN2CPP_BEFORE_REPEATED_ARRAYS=1 run_bounded dotnet "$_CG_APP") || return $?
-        assert_output "$prefix" "$(strip_cr_win "$before")"
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-33.stdout"
+        DN2CPP_BEFORE_REPEATED_ARRAYS=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/ConstructorOnly$EXE_EXT" || return $?
+        prefix="$native.before"
+        gate_output select "$native" "$prefix" --before '== repeated array allocations ==' --policy crlf
+        gate_output compare "$prefix" "$before" --policy crlf
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-34.stdout"
+        DN2CPP_BEFORE_REPEATED_ARRAYS=1 gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" || return $?
+        gate_output compare "$prefix" "$before" --policy crlf
         for row in repeated-local=default repeated-published=default repeated-copy=default \
                 repeated-type=identity acyclic-initialized=exact 'repeated array allocations end'; do
-            grep -Fxq -- "$row" <<< "$native" \
+            gate_output witness "$native" "$row" --count any --policy crlf \
                 || { echo "FAIL: repeated array section did not run: $row" >&2; return 1; }
         done
         for type in RepeatedLocalTarget RepeatedPublishedTarget RepeatedCopiedTarget RepeatedIdentityTarget; do
@@ -880,9 +940,11 @@ build_gate_proj gates/fixtures/ildiet-metadata-validation/MetadataValidation.csp
         --create-local-defaults-fixture "$local_defaults_original" "$local_defaults_bin/ConstructorOnly.dll")
     assert_output "$(strip_cr_win "$local_defaults_fixture")" \
         'local-defaults-fixture=initialized-bool,joined-null-array,uninitialized-bool'
-    local_defaults_prefix=$(run_bounded dotnet "$local_defaults_original")
-    local_defaults_before=$(DN2CPP_BEFORE_LOCAL_DEFAULTS=1 run_bounded dotnet "$local_defaults_bin/ConstructorOnly.dll")
-    assert_output "$(strip_cr_win "$local_defaults_before")" "$(strip_cr_win "$local_defaults_prefix")"
+    local_defaults_prefix="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-local_defaults_prefix-35.stdout"
+    gate_capture_ok "${local_defaults_prefix%.stdout}" run_bounded dotnet "$local_defaults_original"
+    local_defaults_before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-local_defaults_before-36.stdout"
+    DN2CPP_BEFORE_LOCAL_DEFAULTS=1 gate_capture_ok "${local_defaults_before%.stdout}" run_bounded dotnet "$local_defaults_bin/ConstructorOnly.dll"
+    gate_output compare "$local_defaults_before" "$local_defaults_prefix" --policy crlf
     DN2CPP_SKIP_BUILD=1
     export DN2CPP_DUMP_REFLECTION_SUMMARY=1
     eval "$(declare -f invoke_cli | sed '1s/invoke_cli/invoke_local_defaults_cli/')"
@@ -894,15 +956,17 @@ build_gate_proj gates/fixtures/ildiet-metadata-validation/MetadataValidation.csp
     }
     gate_extra_asserts() {
         local out="$1" native prefix before marker section
-        native=$(run_bounded "$out/ConstructorOnly$EXE_EXT") || return $?
-        native=$(strip_cr_win "$native")
-        prefix=$(awk '/^== initialized local operands ==$/ { exit } { print }' <<< "$native")
-        assert_output "$prefix" "$(strip_cr_win "$local_defaults_prefix")"
-        before=$(DN2CPP_BEFORE_LOCAL_DEFAULTS=1 run_bounded "$out/ConstructorOnly$EXE_EXT") || return $?
-        assert_output "$prefix" "$(strip_cr_win "$before")"
+        native="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-native-37.stdout"
+        gate_capture_ok "${native%.stdout}" run_bounded "$out/ConstructorOnly$EXE_EXT" || return $?
+        prefix="$native.before"
+        gate_output select "$native" "$prefix" --before '== initialized local operands ==' --policy crlf
+        gate_output compare "$prefix" "$local_defaults_prefix" --policy crlf
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-38.stdout"
+        DN2CPP_BEFORE_LOCAL_DEFAULTS=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/ConstructorOnly$EXE_EXT" || return $?
+        gate_output compare "$prefix" "$before" --policy crlf
         for marker in case-local=default args-local=default args-local=one uninitialized-local=skipped \
                 'initialized local operands end'; do
-            grep -Fxq "$marker" <<< "$native" \
+            gate_output witness "$native" "$marker" --count any --policy crlf \
                 || { echo "FAIL: local default witness did not run: $marker" >&2; return 1; }
         done
         for marker in InitializedCaseTarget_SelectedDefault InitializedArgumentsTarget_SelectedDefault \
@@ -950,19 +1014,23 @@ build_gate_proj gates/fixtures/ildiet-metadata-validation/MetadataValidation.csp
         --create-array-narrowing-fixture "$narrowing_original" "$narrowing_bin/ConstructorOnly.dll")
     assert_output "$(strip_cr_win "$narrowing_fixture")" \
         'array-narrowing-fixture=wrap,sign-extension,zero-extension,generic,sequence,copy,captured-array,captured-scalar'
-    narrowing_complete_prefix=$(run_bounded dotnet "$narrowing_bin/ConstructorOnly.dll")
+    narrowing_complete_prefix="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-narrowing_complete_prefix-39.stdout"
+    gate_capture_ok "${narrowing_complete_prefix%.stdout}" run_bounded dotnet "$narrowing_bin/ConstructorOnly.dll"
     narrowing_fixture=$(dotnet exec "gates/fixtures/ildiet-metadata-validation/bin/$CONFIG/$TFM/MetadataValidation.dll" \
         --create-captured-scalar-defaults-fixture "$narrowing_original" "$narrowing_bin/ConstructorOnly.dll")
     assert_output "$(strip_cr_win "$narrowing_fixture")" \
         'captured-scalar-defaults-fixture=byte,int,array-reference,object-reference,generic-reference'
-    slot_storage_prefix=$(run_bounded dotnet "$narrowing_bin/ConstructorOnly.dll")
+    slot_storage_prefix="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-slot_storage_prefix-40.stdout"
+    gate_capture_ok "${slot_storage_prefix%.stdout}" run_bounded dotnet "$narrowing_bin/ConstructorOnly.dll"
     narrowing_fixture=$(dotnet exec "gates/fixtures/ildiet-metadata-validation/bin/$CONFIG/$TFM/MetadataValidation.dll" \
         --create-slot-storage-fixture "$narrowing_original" "$narrowing_bin/ConstructorOnly.dll")
     assert_output "$(strip_cr_win "$narrowing_fixture")" \
         'slot-storage-fixture=locals,arguments,instance-arguments,wrap,signed,in-range'
-    narrowing_prefix=$(run_bounded dotnet "$narrowing_original")
-    narrowing_before=$(DN2CPP_BEFORE_ARRAY_NARROWING=1 run_bounded dotnet "$narrowing_bin/ConstructorOnly.dll")
-    assert_output "$(strip_cr_win "$narrowing_before")" "$(strip_cr_win "$narrowing_prefix")"
+    narrowing_prefix="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-narrowing_prefix-41.stdout"
+    gate_capture_ok "${narrowing_prefix%.stdout}" run_bounded dotnet "$narrowing_original"
+    narrowing_before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-narrowing_before-42.stdout"
+    DN2CPP_BEFORE_ARRAY_NARROWING=1 gate_capture_ok "${narrowing_before%.stdout}" run_bounded dotnet "$narrowing_bin/ConstructorOnly.dll"
+    gate_output compare "$narrowing_before" "$narrowing_prefix" --policy crlf
     DN2CPP_SKIP_BUILD=1
     export DN2CPP_DUMP_REFLECTION_SUMMARY=1
     eval "$(declare -f invoke_cli | sed '1s/invoke_cli/invoke_narrowing_cli/')"
@@ -974,15 +1042,17 @@ build_gate_proj gates/fixtures/ildiet-metadata-validation/MetadataValidation.csp
     }
     gate_extra_asserts() {
         local out="$1" native prefix before name section storage type value
-        native=$(run_bounded "$out/ConstructorOnly$EXE_EXT") || return $?
-        native=$(strip_cr_win "$native")
-        prefix=$(awk '/^== integer storage operands ==$/ { exit } { print }' <<< "$native")
-        assert_output "$prefix" "$(strip_cr_win "$narrowing_prefix")"
-        before=$(DN2CPP_BEFORE_ARRAY_NARROWING=1 run_bounded "$out/ConstructorOnly$EXE_EXT") || return $?
-        assert_output "$prefix" "$(strip_cr_win "$before")"
+        native="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-native-43.stdout"
+        gate_capture_ok "${native%.stdout}" run_bounded "$out/ConstructorOnly$EXE_EXT" || return $?
+        prefix="$native.before"
+        gate_output select "$native" "$prefix" --before '== integer storage operands ==' --policy crlf
+        gate_output compare "$prefix" "$narrowing_prefix" --policy crlf
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-44.stdout"
+        DN2CPP_BEFORE_ARRAY_NARROWING=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/ConstructorOnly$EXE_EXT" || return $?
+        gate_output compare "$prefix" "$before" --policy crlf
         for name in ByteWrap WordWrap ByteSigned ByteUnsigned WordSigned WordUnsigned GenericByte \
                 ByteSequence ByteCopy CapturedArray CapturedScalar; do
-            grep -Fxq "integer-storage=$name" <<< "$native" \
+            gate_output witness "$native" "integer-storage=$name" --count any --policy crlf \
                 || { echo "FAIL: integer storage witness did not run: $name" >&2; return 1; }
             grep -Eqw "Narrowing${name}Target_SelectedBody_m[0-9]+" "$out"/generated*.cpp "$out"/generated.h \
                 || { echo "FAIL: integer storage lost selected body $name" >&2; return 1; }
@@ -992,17 +1062,19 @@ build_gate_proj gates/fixtures/ildiet-metadata-validation/MetadataValidation.csp
             grep -Eq 'GetMethod/[^ ]+ .* p0="Pick" p1=0 p2=\[\]$' <<< "$section" \
                 || { echo "FAIL: integer storage arity is not exactly zero: $name" >&2; echo "$section" >&2; return 1; }
         done
-        grep -Fxq 'integer storage operands end' <<< "$native" \
+        gate_output witness "$native" 'integer storage operands end' --count any --policy crlf \
             || { echo 'FAIL: integer storage section did not finish' >&2; return 1; }
         if grep -Eqw 'Narrowing[A-Za-z0-9]+Target_UnselectedBody_m[0-9]+' "$out"/generated*.cpp "$out"/generated.h; then
             echo 'FAIL: integer storage retained an unselected generic body' >&2; return 1
         fi
-        prefix=$(awk '/^== captured scalar defaults ==$/ { exit } { print }' <<< "$native")
-        assert_output "$prefix" "$(strip_cr_win "$narrowing_complete_prefix")"
-        before=$(DN2CPP_BEFORE_CAPTURED_SCALAR_DEFAULTS=1 run_bounded "$out/ConstructorOnly$EXE_EXT") || return $?
-        assert_output "$prefix" "$(strip_cr_win "$before")"
+        prefix="$native.before"
+        gate_output select "$native" "$prefix" --before '== captured scalar defaults ==' --policy crlf
+        gate_output compare "$prefix" "$narrowing_complete_prefix" --policy crlf
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-45.stdout"
+        DN2CPP_BEFORE_CAPTURED_SCALAR_DEFAULTS=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/ConstructorOnly$EXE_EXT" || return $?
+        gate_output compare "$prefix" "$before" --policy crlf
         for name in Byte Int ObjectReceiver GenericReceiver; do
-            grep -Fxq "integer-storage=Default$name" <<< "$native" \
+            gate_output witness "$native" "integer-storage=Default$name" --count any --policy crlf \
                 || { echo "FAIL: captured scalar default witness did not run: $name" >&2; return 1; }
             grep -Eqw "NarrowingDefault${name}Target_SelectedBody_m[0-9]+" "$out"/generated*.cpp "$out"/generated.h \
                 || { echo "FAIL: captured scalar default lost selected body $name" >&2; return 1; }
@@ -1015,18 +1087,20 @@ build_gate_proj gates/fixtures/ildiet-metadata-validation/MetadataValidation.csp
             echo 'FAIL: captured null arguments retained an unselected constructor body' >&2; return 1
         fi
         for marker in scalar-arguments=0 scalar-arguments=1 'captured scalar defaults end'; do
-            grep -Fxq "$marker" <<< "$native" \
+            gate_output witness "$native" "$marker" --count any --policy crlf \
                 || { echo "FAIL: captured scalar default section did not finish: $marker" >&2; return 1; }
         done
-        prefix=$(awk '/^== local and argument integer storage ==$/ { exit } { print }' <<< "$native")
-        assert_output "$prefix" "$(strip_cr_win "$slot_storage_prefix")"
-        before=$(DN2CPP_BEFORE_SLOT_STORAGE=1 run_bounded "$out/ConstructorOnly$EXE_EXT") || return $?
-        assert_output "$prefix" "$(strip_cr_win "$before")"
+        prefix="$native.before"
+        gate_output select "$native" "$prefix" --before '== local and argument integer storage ==' --policy crlf
+        gate_output compare "$prefix" "$slot_storage_prefix" --policy crlf
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-46.stdout"
+        DN2CPP_BEFORE_SLOT_STORAGE=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/ConstructorOnly$EXE_EXT" || return $?
+        gate_output compare "$prefix" "$before" --policy crlf
         for storage in Local Argument InstanceArgument; do
             for type in Byte SByte UInt16 Int16 Char; do
                 for value in Wrap Reload InRange; do
                     name="$storage$type$value"
-                    grep -Fxq "integer-storage=$name" <<< "$native" \
+                    gate_output witness "$native" "integer-storage=$name" --count any --policy crlf \
                         || { echo "FAIL: local/argument storage witness did not run: $name" >&2; return 1; }
                     grep -Eqw "Narrowing${name}Target_SelectedBody_m[0-9]+" "$out"/generated*.cpp "$out"/generated.h \
                         || { echo "FAIL: local/argument storage lost selected body $name" >&2; return 1; }
@@ -1037,7 +1111,7 @@ build_gate_proj gates/fixtures/ildiet-metadata-validation/MetadataValidation.csp
                 done
             done
         done
-        grep -Fxq 'local and argument integer storage end' <<< "$native" \
+        gate_output witness "$native" 'local and argument integer storage end' --count any --policy crlf \
             || { echo 'FAIL: local/argument storage section did not finish' >&2; return 1; }
         for name in Byte Int; do
             section=$(awk -v name="ScalarDefault$name" \
@@ -1078,18 +1152,22 @@ echo "== Invoke-only reflection runs methods on signature-selected closed types 
     DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|sample-path:$DN2CPP_SAMPLE_PROJECT_DIR"
     gate_extra_asserts() {
         local out="$1" native before prefix original stripped app
-        native=$(run_bounded "$out/InvokeOnly$EXE_EXT") || return $?
-        native=$(strip_cr_win "$native")
-        before=$(DN2CPP_BEFORE_SIGNATURE_INVOCATION=1 run_bounded "$out/InvokeOnly$EXE_EXT") || return $?
-        prefix=$(awk '/^== signature invocation ==$/ { exit } { print }' <<< "$native")
-        assert_output "$(strip_cr_win "$prefix")" "$(strip_cr_win "$before")"
-        grep -Fxq 'signature invocation end' <<< "$native" \
+        native="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-native-47.stdout"
+        gate_capture_ok "${native%.stdout}" run_bounded "$out/InvokeOnly$EXE_EXT" || return $?
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-48.stdout"
+        DN2CPP_BEFORE_SIGNATURE_INVOCATION=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/InvokeOnly$EXE_EXT" || return $?
+        prefix="$native.before"
+        gate_output select "$native" "$prefix" --before '== signature invocation ==' --policy crlf
+        gate_output compare "$prefix" "$before" --policy crlf
+        gate_output witness "$native" 'signature invocation end' --count any --policy crlf \
             || { echo 'FAIL: signature invocation section did not run' >&2; return 1; }
-        before=$(DN2CPP_BEFORE_CTOR_SIGNATURE_INVOCATION=1 run_bounded "$out/InvokeOnly$EXE_EXT") || return $?
-        prefix=$(awk '/^== constructor signature invocation ==$/ { exit } { print }' <<< "$native")
-        assert_output "$prefix" "$(strip_cr_win "$before")"
-        grep -Fxq 'Int32' <<< "$native" && grep -Fxq 'invoke-library-money' <<< "$native" \
-            && grep -Fxq 'constructor signature invocation end' <<< "$native" \
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-49.stdout"
+        DN2CPP_BEFORE_CTOR_SIGNATURE_INVOCATION=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/InvokeOnly$EXE_EXT" || return $?
+        prefix="$native.before"
+        gate_output select "$native" "$prefix" --before '== constructor signature invocation ==' --policy crlf
+        gate_output compare "$prefix" "$before" --policy crlf
+        gate_output witness "$native" 'Int32' --count any --policy crlf && gate_output witness "$native" 'invoke-library-money' --count any --policy crlf \
+            && gate_output witness "$native" 'constructor signature invocation end' --count any --policy crlf \
             || { echo 'FAIL: constructor signature invocation section did not run' >&2; return 1; }
         original=$(dotnet exec "$PROBE" "$DIET_LIB") || return $?
         original=$(strip_cr_win "$original")
@@ -1139,33 +1217,39 @@ echo "== Recognized reflection on user-library base types and constant type name
     }
     gate_extra_asserts() {
         local out="$1" native stripped member before prefix stubs count
-        native=$(run_bounded "$out/LibraryOwnerOnly$EXE_EXT") || return $?
-        native=$(strip_cr_win "$native")
-        grep -Fxq 'library base members end' <<< "$native" \
-            && grep -Fxq 'constant type names end' <<< "$native" \
+        native="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-native-50.stdout"
+        gate_capture_ok "${native%.stdout}" run_bounded "$out/LibraryOwnerOnly$EXE_EXT" || return $?
+        gate_output witness "$native" 'library base members end' --count any --policy crlf \
+            && gate_output witness "$native" 'constant type names end' --count any --policy crlf \
             || { echo 'FAIL: the library owner sections did not run' >&2; return 1; }
-        before=$(DN2CPP_BEFORE_METADATA_OWNERS=1 run_bounded "$out/LibraryOwnerOnly$EXE_EXT") || return $?
-        prefix=$(awk '/^== metadata-only library owners ==$/ { exit } { print }' <<< "$native")
-        assert_output "$prefix" "$(strip_cr_win "$before")"
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-51.stdout"
+        DN2CPP_BEFORE_METADATA_OWNERS=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/LibraryOwnerOnly$EXE_EXT" || return $?
+        prefix="$native.before"
+        gate_output select "$native" "$prefix" --before '== metadata-only library owners ==' --policy crlf
+        gate_output compare "$prefix" "$before" --policy crlf
         for member in 'identity=ILDietControlLib.MetadataIdentityOnly' 'named-method=True' 'named-property=True' \
             'listed=ListedFirst,ListedSecond,get_ListedLabel' 'base-method=True' 'library-base-method=True' \
             'metadata-only owners end'; do
-            grep -Fxq -- "$member" <<< "$native" \
+            gate_output witness "$native" "$member" --count any --policy crlf \
                 || { echo "FAIL: the metadata-only owner section did not run: $member" >&2; return 1; }
         done
-        before=$(DN2CPP_BEFORE_ASSEMBLY_CONSTRUCTION=1 run_bounded "$out/LibraryOwnerOnly$EXE_EXT") || return $?
-        prefix=$(awk '/^== assembly-named construction ==$/ { exit } { print }' <<< "$native")
-        assert_output "$prefix" "$(strip_cr_win "$before")"
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-52.stdout"
+        DN2CPP_BEFORE_ASSEMBLY_CONSTRUCTION=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/LibraryOwnerOnly$EXE_EXT" || return $?
+        prefix="$native.before"
+        gate_output select "$native" "$prefix" --before '== assembly-named construction ==' --policy crlf
+        gate_output compare "$prefix" "$before" --policy crlf
         for member in 'application=assembly-named-application' 'library=assembly-named-library' \
             'assembly-named construction end'; do
-            grep -Fxq -- "$member" <<< "$native" \
+            gate_output witness "$native" "$member" --count any --policy crlf \
                 || { echo "FAIL: the assembly-named construction section did not run: $member" >&2; return 1; }
         done
-        before=$(DN2CPP_BEFORE_LISTED_OWNERS=1 run_bounded "$out/LibraryOwnerOnly$EXE_EXT") || return $?
-        prefix=$(awk '/^== listed library owners ==$/ { exit } { print }' <<< "$native")
-        assert_output "$prefix" "$(strip_cr_win "$before")"
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-53.stdout"
+        DN2CPP_BEFORE_LISTED_OWNERS=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/LibraryOwnerOnly$EXE_EXT" || return $?
+        prefix="$native.before"
+        gate_output select "$native" "$prefix" --before '== listed library owners ==' --policy crlf
+        gate_output compare "$prefix" "$before" --policy crlf
         for member in 'listed types=AssemblyListedAlpha`1,AssemblyListedBeta`2' 'listed owners end'; do
-            grep -Fxq -- "$member" <<< "$native" \
+            gate_output witness "$native" "$member" --count any --policy crlf \
                 || { echo "FAIL: the listed owner section did not run: $member" >&2; return 1; }
         done
         # Metadata-only sites keep the rows they select as signature-only stubs and
@@ -1229,10 +1313,10 @@ echo "== A static field read through a constant-named derived owner runs its bas
     DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|sample-path:$DN2CPP_SAMPLE_PROJECT_DIR"
     gate_extra_asserts() {
         local out="$1" native member stubs
-        native=$(run_bounded "$out/InheritedStaticOnly$EXE_EXT") || return $?
-        native=$(strip_cr_win "$native")
+        native="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-native-54.stdout"
+        gate_capture_ok "${native%.stdout}" run_bounded "$out/InheritedStaticOnly$EXE_EXT" || return $?
         for member in 'library=42' 'application=41' 'inherited static fields end'; do
-            grep -Fxq -- "$member" <<< "$native" \
+            gate_output witness "$native" "$member" --count any --policy crlf \
                 || { echo "FAIL: the inherited static field section did not run: $member" >&2; return 1; }
         done
         stubs=$(dotnet exec "$PROBE" --method-stubs "$(ildiet_generation "$out/ildiet")/ILDietControlLib.dll" \
@@ -1251,10 +1335,10 @@ echo "== A conditional descriptor on an application or library type used only th
     DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|sample-path:$DN2CPP_SAMPLE_PROJECT_DIR"
     gate_extra_asserts() {
         local out="$1" native member stubs
-        native=$(run_bounded "$out/ConditionalNamedOnly$EXE_EXT") || return $?
-        native=$(strip_cr_win "$native")
+        native="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-native-55.stdout"
+        gate_capture_ok "${native%.stdout}" run_bounded "$out/ConditionalNamedOnly$EXE_EXT" || return $?
         for member in 'application=Bar' 'library=Run' 'conditional constant-named owners end'; do
-            grep -Fxq -- "$member" <<< "$native" \
+            gate_output witness "$native" "$member" --count any --policy crlf \
                 || { echo "FAIL: the conditional constant-named section did not run: $member" >&2; return 1; }
         done
         stubs=$(dotnet exec "$PROBE" --method-stubs "$(ildiet_generation "$out/ildiet")/ConditionalNamedOnly.dll" \
@@ -1278,18 +1362,20 @@ echo "== Lookups, unselected overloads, unrelated field types, preserved constru
     DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|sample-path:$DN2CPP_SAMPLE_PROJECT_DIR"
     gate_extra_asserts() {
         local out="$1" native before prefix
-        native=$(run_bounded "$out/AbsenceOnly$EXE_EXT") || return $?
-        native=$(strip_cr_win "$native")
-        before=$(DN2CPP_BEFORE_RETAINED_ABSENCE=1 run_bounded "$out/AbsenceOnly$EXE_EXT") || return $?
-        prefix=$(awk '/^== unrequested bodies stay absent ==$/ { exit } { print }' <<< "$native")
-        assert_output "$prefix" "$(strip_cr_win "$before")"
+        native="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-native-56.stdout"
+        gate_capture_ok "${native%.stdout}" run_bounded "$out/AbsenceOnly$EXE_EXT" || return $?
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-57.stdout"
+        DN2CPP_BEFORE_RETAINED_ABSENCE=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/AbsenceOnly$EXE_EXT" || return $?
+        prefix="$native.before"
+        gate_output select "$native" "$prefix" --before '== unrequested bodies stay absent ==' --policy crlf
+        gate_output compare "$prefix" "$before" --policy crlf
         for row in 'lookup=LookedUp:String/LookedUpField:LookupFieldValue' 'overload=int:7' \
             'unused-type=UnusedStatics' 'unrequested bodies stay absent end' 'joined=known' 'joined names end' \
             'defined=True' 'data=[ILDietAbsenceOnly.DataOnlyAttribute("data")]' 'filtered=requested' \
             'attribute metadata reads end' 'formed=FormedOnly`1' 'constructed=constructed:Int32' 'formed generic types end' \
             'framework-defined=True' 'framework-data=[System.Diagnostics.DebuggerDisplayAttribute("metadata-only")]' \
             'framework-instance=Selected' 'framework attribute metadata reads end'; do
-            grep -Fxq -- "$row" <<< "$native" \
+            gate_output witness "$native" "$row" --count any --policy crlf \
                 || { echo "FAIL: unrequested body absence section did not run: $row" >&2; return 1; }
         done
     }
@@ -1417,44 +1503,53 @@ echo "== A reflection target from a parameter, a collection, a written-back argu
     }
     gate_extra_asserts() {
         local out="$1" native before prefix
-        native=$(run_bounded "$out/UnknownTargetOnly$EXE_EXT") || return $?
-        native=$(strip_cr_win "$native")
-        before=$(DN2CPP_BEFORE_UNKNOWN_TARGET=1 run_bounded "$out/UnknownTargetOnly$EXE_EXT") || return $?
-        prefix=$(awk '/^== reflection targets from parameters ==$/ { exit } { print }' <<< "$native")
-        assert_output "$prefix" "$(strip_cr_win "$before")"
-        grep -Fxq 'reflection targets from parameters end' <<< "$native" \
+        native="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-native-58.stdout"
+        gate_capture_ok "${native%.stdout}" run_bounded "$out/UnknownTargetOnly$EXE_EXT" || return $?
+        gate_output view "$native" "$native.records" --policy crlf
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-59.stdout"
+        DN2CPP_BEFORE_UNKNOWN_TARGET=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/UnknownTargetOnly$EXE_EXT" || return $?
+        prefix="$native.before"
+        gate_output select "$native" "$prefix" --before '== reflection targets from parameters ==' --policy crlf
+        gate_output compare "$prefix" "$before" --policy crlf
+        gate_output witness "$native" 'reflection targets from parameters end' --count any --policy crlf \
             || { echo 'FAIL: the parameter-target section did not run' >&2; return 1; }
-        grep -Fxq 'reflection targets from collections end' <<< "$native" \
+        gate_output witness "$native" 'reflection targets from collections end' --count any --policy crlf \
             || { echo 'FAIL: the collection-target section did not run' >&2; return 1; }
-        grep -Fxq 'construction of omitted and never-boxed types end' <<< "$native" \
+        gate_output witness "$native" 'construction of omitted and never-boxed types end' --count any --policy crlf \
             || { echo 'FAIL: the construction section did not run' >&2; return 1; }
-        grep -Fxq 'reflection targets on runtime-made instantiations end' <<< "$native" \
+        gate_output witness "$native" 'reflection targets on runtime-made instantiations end' --count any --policy crlf \
             || { echo 'FAIL: the runtime-made instantiation section did not run' >&2; return 1; }
-        before=$(DN2CPP_BEFORE_WRITTEN_TARGET=1 run_bounded "$out/UnknownTargetOnly$EXE_EXT") || return $?
-        prefix=$(awk '/^== reflection targets written back or boxed from a type argument ==$/ { exit } { print }' <<< "$native")
-        assert_output "$prefix" "$(strip_cr_win "$before")"
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-60.stdout"
+        DN2CPP_BEFORE_WRITTEN_TARGET=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/UnknownTargetOnly$EXE_EXT" || return $?
+        prefix="$native.before"
+        gate_output select "$native" "$prefix" --before '== reflection targets written back or boxed from a type argument ==' --policy crlf
+        gate_output compare "$prefix" "$before" --policy crlf
         # A value-type argument's box keeps its exact type, so its target is recognized.
-        grep -Fxq 'boxed value=value' <<< "$native" \
-            && grep -Fxq 'reflection targets written back or boxed from a type argument end' <<< "$native" \
+        gate_output witness "$native" 'boxed value=value' --count any --policy crlf \
+            && gate_output witness "$native" 'reflection targets written back or boxed from a type argument end' --count any --policy crlf \
             || { echo 'FAIL: the written-back and boxed-argument section did not run' >&2; return 1; }
-        grep -Fxq 'reflection targets through an array type or a runtime name end' <<< "$native" \
+        gate_output witness "$native" 'reflection targets through an array type or a runtime name end' --count any --policy crlf \
             || { echo 'FAIL: the array-type and runtime-name section did not run' >&2; return 1; }
-        before=$(DN2CPP_BEFORE_INITONLY_FIELD=1 run_bounded "$out/UnknownTargetOnly$EXE_EXT") || return $?
-        prefix=$(awk '/^== a static readonly field set on a parameter type ==$/ { exit } { print }' <<< "$native")
-        assert_output "$prefix" "$(strip_cr_win "$before")"
-        grep -Fxq 'a static readonly field set on a parameter type end' <<< "$native" \
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-61.stdout"
+        DN2CPP_BEFORE_INITONLY_FIELD=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/UnknownTargetOnly$EXE_EXT" || return $?
+        prefix="$native.before"
+        gate_output select "$native" "$prefix" --before '== a static readonly field set on a parameter type ==' --policy crlf
+        gate_output compare "$prefix" "$before" --policy crlf
+        gate_output witness "$native" 'a static readonly field set on a parameter type end' --count any --policy crlf \
             || { echo 'FAIL: the static read-only field section did not run' >&2; return 1; }
-        before=$(DN2CPP_BEFORE_DISPATCHED_TARGET=1 run_bounded "$out/UnknownTargetOnly$EXE_EXT") || return $?
-        prefix=$(awk '/^== a virtual delegate.s method, a name bound per instantiation and an uninitialized parameter type ==$/ { exit } { print }' <<< "$native")
-        assert_output "$prefix" "$(strip_cr_win "$before")"
+        before="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-before-62.stdout"
+        DN2CPP_BEFORE_DISPATCHED_TARGET=1 gate_capture_ok "${before%.stdout}" run_bounded "$out/UnknownTargetOnly$EXE_EXT" || return $?
+        prefix="$native.before"
+        gate_output select "$native" "$prefix" --before "== a virtual delegate's method, a name bound per instantiation and an uninitialized parameter type ==" --policy crlf
+        gate_output compare "$prefix" "$before" --policy crlf
         if [ "$unknown_attribute_kept" = true ]; then
-            grep -Fxq 'virtual command=derived' <<< "$native" \
+            gate_output witness "$native" 'virtual command=derived' --count any --policy crlf \
                 || { echo 'FAIL: the preserved attribute constructor did not serve the unknown virtual owner' >&2; return 1; }
         else
-            grep -q '^virtual command refused: PlatformNotSupportedException: ' <<< "$native" \
+            grep -q '^virtual command refused: PlatformNotSupportedException: ' "$native.records" \
                 || { echo 'FAIL: an unknown virtual owner constructed an unpreserved attribute' >&2; return 1; }
         fi
-        grep -Fxq "a virtual delegate's method, a name bound per instantiation and an uninitialized parameter type end" <<< "$native" \
+        gate_output witness "$native" "a virtual delegate's method, a name bound per instantiation and an uninitialized parameter type end" --count any --policy crlf \
             || { echo 'FAIL: the virtual-delegate, per-instantiation and uninitialized-type section did not run' >&2; return 1; }
         # A definition's member rule runs on the clone its template makes; it mints no
         # closed instantiation.
@@ -1535,12 +1630,12 @@ echo "== Reflected event subscription retains accessor bodies through preprocess
 EVENT_APP="samples/dotnet/ILDietControl/EventBoundary/bin/$CONFIG/$TFM/EventBoundary.dll"
 EVENT_DIET="$STALE_ROOT/event-boundary"
 dotnet exec "$ILD_DLL" "$EVENT_APP" -r "$_CG_CORELIB" -o "$EVENT_DIET"
-event_original=$(run_bounded dotnet "$EVENT_APP")
-event_original=$(strip_cr_win "$event_original")
-event_stripped=$(run_bounded dotnet exec --runtimeconfig "${EVENT_APP%.dll}.runtimeconfig.json" "$(ildiet_generation "$EVENT_DIET")/EventBoundary.dll")
-event_stripped=$(strip_cr_win "$event_stripped")
-assert_output "$(strip_cr_win "$event_stripped")" "$(strip_cr_win "$event_original")"
-grep -Fxq 'event-operations=done' <<< "$event_stripped" \
+event_original="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-event_original-63.stdout"
+gate_capture_ok "${event_original%.stdout}" run_bounded dotnet "$EVENT_APP"
+event_stripped="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-event_stripped-64.stdout"
+gate_capture_ok "${event_stripped%.stdout}" run_bounded dotnet exec --runtimeconfig "${EVENT_APP%.dll}.runtimeconfig.json" "$(ildiet_generation "$EVENT_DIET")/EventBoundary.dll"
+gate_output compare "$event_stripped" "$event_original"
+gate_output witness "$event_stripped" 'event-operations=done' --count any --policy crlf \
     || { echo 'FAIL: reflected event subscription section did not run' >&2; exit 1; }
 for preprocessing in enabled disabled; do
     [ "$preprocessing" = enabled ] || preserve_full || continue
@@ -1549,8 +1644,9 @@ for preprocessing in enabled disabled; do
     event_out="${STALE_ROOT#"$PWD/"}/event-native-$preprocessing"
     invoke_cli "$EVENT_APP" -r "$_CG_CORELIB" ${event_flags[@]+"${event_flags[@]}"} -o "$event_out"
     compile_console "$event_out" EventBoundary
-    event_native=$(run_bounded "$event_out/EventBoundary$EXE_EXT")
-    assert_output "$(strip_cr_win "$event_native")" "$event_original"
+    event_native="${out:-${_CG_OUT:-artifacts/preserve-control-observations}}/check-event_native-65.stdout"
+    gate_capture_ok "${event_native%.stdout}" run_bounded "$event_out/EventBoundary$EXE_EXT"
+    gate_output compare "$event_native" "$event_original"
 done
 
 echo "== Failed stripping preserves the last complete output and unrelated directories =="

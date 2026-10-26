@@ -21,44 +21,46 @@ compile_console "$out" "$project"
 
 gate_run_logs_init suppresscost suppress-scan
 log_dir="$_GATE_RUN_LOG_DIR"
-native=
+native="$log_dir/native.stdout"
 native_code=
-expected=
+expected="$log_dir/oracle.stdout"
 expected_code=
 
 gate_run_diagnostics() {
-    gate_run_diag "suppress-scan native" "$native_code" "$native" \
-        "$log_dir/native.log"
-    gate_run_diag "suppress-scan oracle" "$expected_code" "$expected" \
-        "$log_dir/oracle.log"
+    gate_run_diag_files "suppress-scan native" "$native_code" "$native" \
+        "$log_dir/native.stderr"
+    gate_run_diag_files "suppress-scan oracle" "$expected_code" "$expected" \
+        "$log_dir/oracle.stderr"
 }
 
-set +e
 _gate_run_argv
-native=$(DN2CPP_GC_SUPPRESS_STATS=1 run_bounded "./$out/$project" \
-    ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"} 2>"$log_dir/native.log"); native_code=$?
+DN2CPP_GC_SUPPRESS_STATS=1 gate_capture "$log_dir/native" run_bounded "./$out/$project$EXE_EXT" \
+    ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}
+native_code=$(cat "$log_dir/native.status")
 _gate_run_argv
-expected=$(run_bounded dotnet "$_CG_APP" \
-    ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"} 2>"$log_dir/oracle.log"); expected_code=$?
-set -e
+gate_capture "$log_dir/oracle" run_bounded dotnet "$_CG_APP" \
+    ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}
+expected_code=$(cat "$log_dir/oracle.status")
 _gate_scratch_cleanup
 
 assertions_failed=0
-assert_output "$native" "$expected" || assertions_failed=1
-assert_exit_code "$native_code" "$expected_code" || assertions_failed=1
+gate_output compare "$native" "$expected" || assertions_failed=1
+gate_output status "$native_code" 0 || assertions_failed=1
+gate_output status "$expected_code" 0 || assertions_failed=1
 if [ "$assertions_failed" -ne 0 ]; then
     gate_run_diag_once
     exit 1
 fi
 
-# A native Windows binary writes CRLF, which every number below would carry.
-stats=$(LC_ALL=C tr -d '\r' <"$log_dir/native.log")
-
-echo "$stats"
+# Numeric diagnostics use a separate pair-only CRLF view, never raw parity.
+stats="$log_dir/native.records.stderr"
+gate_output view "$log_dir/native.stderr" "$stats" --policy crlf
+gate_output view "$log_dir/oracle.stderr" "$log_dir/oracle.records.stderr" --policy crlf
+cat "$stats"
 
 # The knob is opt-in and reported from the exit funnel, so its absence is
 # indistinguishable from a cost of zero: pin the frame to exactly one summary.
-if [ "$(grep -cF '=== dn2cpp GC suppress stats ===' <<<"$stats")" -ne 1 ]; then
+if [ "$(grep -cF '=== dn2cpp GC suppress stats ===' "$stats")" -ne 1 ]; then
     echo "FAIL: expected exactly one suppress-stats summary on stderr (knob not honoured?)" >&2
     exit 1
 fi
@@ -80,7 +82,29 @@ if [ -z "$suppresses" ] || [ -z "$chunk_entries" ]; then
 fi
 limit=$((suppresses * chunk_entries))
 
-walked=$(LC_ALL=C sed -n 's/^slots walked: *\([0-9][0-9]*\) *$/\1/p' <<<"$stats")
+suppress_stat_number() {
+    local python
+    python=$(resolve_python) || return 1
+    # Input is already normalized once. Full byte matches must retain payload CR.
+    $python - "$1" "$2" <<'PYTHON'
+from pathlib import Path
+import re
+import sys
+patterns = dict(
+    walked=rb'slots walked: *([0-9]+) *',
+    added=rb' *set entries added: *([0-9]+) *',
+)
+data = Path(sys.argv[1]).read_bytes()
+if b'\0' in data:
+    sys.exit('FAIL: NUL in suppress-stats records')
+values = [match.group(1) for row in data.split(b'\n')
+          if (match := re.fullmatch(patterns[sys.argv[2]], row))]
+if len(values) != 1:
+    sys.exit(f'FAIL: expected one {sys.argv[2]} numeric record, found {len(values)}')
+sys.stdout.buffer.write(values[0] + b'\n')
+PYTHON
+}
+walked=$(suppress_stat_number "$stats" walked) || exit 1
 if [ -z "$walked" ]; then
     echo "FAIL: no 'slots walked' line in the suppress-stats summary" >&2
     exit 1
@@ -94,7 +118,7 @@ echo "slots walked: $walked  (linear-scan target: $suppresses x $chunk_entries =
 # The contended arm's timing is only about the suppress serialization if its
 # lanes stayed on the common path: a leak into the set would add entries far
 # past the drain phase's own, so the recorded count is the guard.
-added=$(LC_ALL=C sed -n 's/^ *set entries added: *\([0-9][0-9]*\) *$/\1/p' <<<"$stats")
+added=$(suppress_stat_number "$stats" added) || exit 1
 if [ -z "$added" ] || [ "$added" -gt "$suppresses" ]; then
     echo "FAIL: contended lanes reached the suppress set (entries added: ${added:-none}, drain phase adds at most $suppresses)" >&2
     exit 1
@@ -102,8 +126,8 @@ fi
 
 echo
 echo "== contended SuppressFinalize (Dispose shape, best-of-3 ns/op; suppress_marginal = suppress lane - alloc control) =="
-LC_ALL=C tr -d '\r' <"$log_dir/native.log" | grep '^contended-suppress ' | sed 's/^/native /'
-LC_ALL=C tr -d '\r' <"$log_dir/oracle.log" | grep '^contended-suppress ' | sed 's/^/dotnet /'
+grep '^contended-suppress ' "$stats" | sed 's/^/native /'
+grep '^contended-suppress ' "$log_dir/oracle.records.stderr" | sed 's/^/dotnet /'
 
 echo
 echo "Reading: 'slots walked' near or below the linear-scan target means the scan"

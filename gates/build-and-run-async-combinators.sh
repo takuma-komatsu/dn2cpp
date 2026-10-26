@@ -79,26 +79,36 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-cancellation
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-lazy-aggregate-message"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|prefix:before-delay-synchronization"
 
+# The exception text is platform-owned; its record prefix is the boundary.
+async_lifecycle_prefix() {
+    local actual="$1" expected="$2" prefix="$3"
+    if ! gate_output select "$actual" "$prefix" --before-prefix 'whenall-null-seq:' --policy exact; then
+        echo 'FAIL: task lifecycle boundary must occur exactly once' >&2
+        return 1
+    fi
+    gate_output compare "$prefix" "$expected"
+}
+
 gate_extra_asserts() {
     local out="$1" native before prefix line
-    native=$(run_bounded "./$out/AsyncCombinators")
-    native=$(strip_cr_win "$native")
-    before=$(run_bounded dotnet "$_CG_APP" before-delay-synchronization)
-    prefix=$(awk '/^== delay synchronization ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    [ "$(grep -Fxc '== delay synchronization ==' <<< "$native")" = 1 ] \
+    native="$out/native.stdout"
+    before="$out/before-delay-synchronization.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-delay-synchronization
+    gate_output prefix "$native" "$before" --before '== delay synchronization ==' --policy crlf
+    gate_output byte-witness "$native" '== delay synchronization ==' --policy crlf \
         || { echo 'FAIL: delay synchronization block did not run once' >&2; return 1; }
-    [ "${native##*$'\n'}" = 'delay synchronization end' ] \
+    printf '%s\n' 'delay synchronization end' > "$out/delay-end.expected"
+    gate_output suffix "$native" "$out/delay-end.expected" --policy crlf \
         || { echo 'FAIL: delay synchronization block did not complete last' >&2; return 1; }
     for line in 'integer suspension: True,True|True,True' \
         'TimeSpan suspension: True,True|True,True' \
         'dependency pending: True,True|0' 'dependency order: firstsecond'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output byte-witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: delay synchronization witness missing: $line" >&2; return 1; }
     done
-    before=$(run_bounded dotnet "$_CG_APP" before-lazy-aggregate-message)
-    prefix=$(awk '/^== lazy task and cancellation Message ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
+    before="$out/before-lazy-aggregate-message.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-lazy-aggregate-message
+    gate_output prefix "$native" "$before" --before '== lazy task and cancellation Message ==' --policy crlf
     for line in '== lazy task and cancellation Message ==' \
         'task Exception result=AggregateException reads=0/0' \
         'task Wait result=AggregateException reads=0/0' \
@@ -114,13 +124,12 @@ gate_extra_asserts() {
         'linked True constructed reads=0 identity=True' \
         'linked True Message=One or more errors occurred. (linked:2) reads=2' \
         'lazy task and cancellation Message end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output byte-witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: task/cancellation Message witness missing: $line" >&2; return 1; }
     done
-    before=$(run_bounded dotnet "$_CG_APP" before-cancellation-callback-faults)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== cancellation callback faults ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    before="$out/before-cancellation-callback-faults.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-cancellation-callback-faults
+    gate_output prefix "$native" "$before" --before '== cancellation callback faults ==' --policy crlf
     for line in '== cancellation callback faults ==' \
         'cancel default: newer;older;remaining;|AggregateException/2|identity=True|requested=True/True' \
         'cancel false: newer;older;remaining;|AggregateException/2|identity=True|requested=True/True' \
@@ -133,13 +142,12 @@ gate_extra_asserts() {
         'cancel already requested register: InvalidOperationException|identity=True' \
         'cancel collected: newer;older;remaining;|2|collected newer,collected older' \
         'cancellation callback faults end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output byte-witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: cancellation callback fault witness missing: $line" >&2; exit 1; }
     done
-    before=$(run_bounded dotnet "$_CG_APP" before-pending-task-joins)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== pending task joins ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    before="$out/before-pending-task-joins.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-pending-task-joins
+    gate_output prefix "$native" "$before" --before '== pending task joins ==' --policy crlf
     for line in '== pending task joins ==' \
         'pending int: False,False,True|2|7,9' \
         'pending long: False,False,True|2|4294967296,-4294967297' \
@@ -159,13 +167,12 @@ gate_extra_asserts() {
         'pending races: 32,32,32' \
         'ordinary await inline: False' \
         'pending task joins end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output byte-witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: pending task join witness missing: $line" >&2; exit 1; }
     done
-    before=$(run_bounded dotnet "$_CG_APP" before-value-task-source-handoff)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== value task source handoff ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    before="$out/before-value-task-source-handoff.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-value-task-source-handoff
+    gate_output prefix "$native" "$before" --before '== value task source handoff ==' --policy crlf
     for line in '== value task source handoff ==' \
         'op1 reported=True value=41' \
         'op2 producer=released joined=True value=42' \
@@ -173,13 +180,12 @@ gate_extra_asserts() {
         'op4 published=True completed=True value=44' \
         'counts: getresult=4 refused=0 registered=1 invoked=1 version=4' \
         'value task source handoff end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output byte-witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: ValueTask source handoff witness missing: $line" >&2; exit 1; }
     done
-    before=$(run_bounded dotnet "$_CG_APP" before-value-task-source-rejection)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== value task source rejected registration ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    before="$out/before-value-task-source-rejection.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-value-task-source-rejection
+    gate_output prefix "$native" "$before" --before '== value task source rejected registration ==' --policy crlf
     for line in '== value task source rejected registration ==' \
         'op5 orphan=InvalidOperationException:stale token' \
         'op6 armed=True continuation=returned joined=True value=46' \
@@ -187,13 +193,12 @@ gate_extra_asserts() {
         'op8 completed=InvalidOperationException:stale token' \
         'rejection counts: getresult=4 refused=0 registered=4 version=4' \
         'value task source rejected registration end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output byte-witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: ValueTask rejected registration witness missing: $line" >&2; exit 1; }
     done
-    before=$(run_bounded dotnet "$_CG_APP" before-registration-rejection)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== continuation registration rejection ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    before="$out/before-registration-rejection.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-registration-rejection
+    gate_output prefix "$native" "$before" --before '== continuation registration rejection ==' --policy crlf
     for line in '== continuation registration rejection ==' \
         'OnCompleted InvalidOperationException:source rejected the continuation' \
         'UnsafeOnCompleted InvalidOperationException:source rejected the continuation' \
@@ -202,13 +207,12 @@ gate_extra_asserts() {
         'AsTask InvalidOperationException:source rejected the continuation' \
         'registrations=5' \
         'continuation registration rejection end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output byte-witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: registration rejection witness missing: $line" >&2; exit 1; }
     done
-    before=$(run_bounded dotnet "$_CG_APP" before-enum-whenall)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== enum WhenAll results ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    before="$out/before-enum-whenall.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-enum-whenall
+    gate_output prefix "$native" "$before" --before '== enum WhenAll results ==' --policy crlf
     for line in '== enum WhenAll results ==' \
         'enum byte values: 255,1,128' 'enum sbyte values: -128,127,-1' \
         'enum short values: -32768,32767,-1' 'enum ushort values: 65535,1,32768' \
@@ -217,52 +221,47 @@ gate_extra_asserts() {
         'enum long values: -9223372036854775808,9223372036854775807,-1' \
         'enum ulong values: 18446744073709551615,1,9223372036854775808' \
         'enum WhenAll results end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output byte-witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: enum WhenAll result witness missing: $line" >&2; exit 1; }
     done
     for line in byte sbyte short ushort int uint long ulong; do
-        grep -Fxq -- "enum $line: empty=True/0/True settled=True/True yielded=True enumerable=True pending=False/False/True/True" <<< "$native" \
+        gate_output byte-witness "$native" "enum $line: empty=True/0/True settled=True/True yielded=True enumerable=True pending=False/False/True/True" --count any --policy crlf \
             || { echo "FAIL: enum WhenAll completion/type/value witness missing: $line" >&2; exit 1; }
     done
-    local mode child child_code dotnet_child dotnet_code
+    local mode child child_code dotnet_child dotnet_code rejection
     for mode in value-task-source:'source OnCompleted #6' \
         custom-awaiter:'awaiter UnsafeOnCompleted' async-void:'source OnCompleted #6'; do
-        set +e
-        child=$(run_bounded "./$out/AsyncCombinators" suspension-rejection "${mode%%:*}" \
-            2>"$out/suspension.err"); child_code=$?
-        dotnet_child=$(run_bounded dotnet "$_CG_APP" suspension-rejection "${mode%%:*}" \
-            2>"$out/suspension-oracle.err"); dotnet_code=$?
-        set -e
-        child=$(strip_cr_win "$child")
-        dotnet_child=$(strip_cr_win "$dotnet_child")
-        prefix=$(awk -v h="== builder suspension rejection: ${mode%%:*} ==" \
-            '$0 == h { exit } { print }' <<< "$child")
-        # The whole default run, then the mode's header and its one registration: the
-        # suspended method neither caught the throw nor completed.
-        if [ "$child" != "$dotnet_child" ] || [ "$prefix" != "$native" ] \
-                || [ "$(tail -n 2 <<< "$child")" != "== builder suspension rejection: ${mode%%:*} ==
-${mode#*:}" ]; then
-            echo "FAIL: suspension rejection (${mode%%:*}) output differs from real .NET" >&2
-            gate_run_diag "native ${mode%%:*}" "$child_code" "$(tail -n 4 <<< "$child")" "$out/suspension.err"
-            gate_run_diag "dotnet ${mode%%:*}" "$dotnet_code" "$(tail -n 4 <<< "$dotnet_child")" "$out/suspension-oracle.err"
-            exit 1
-        fi
+        child="$out/suspension-${mode%%:*}.stdout"
+        dotnet_child="$out/suspension-oracle-${mode%%:*}.stdout"
+        gate_capture "${child%.stdout}" run_bounded "./$out/AsyncCombinators$EXE_EXT" \
+            suspension-rejection "${mode%%:*}"
+        gate_capture "${dotnet_child%.stdout}" run_bounded dotnet "$_CG_APP" \
+            suspension-rejection "${mode%%:*}"
+        child_code=$(cat "${child%.stdout}.status")
+        dotnet_code=$(cat "${dotnet_child%.stdout}.status")
         case "$dotnet_code" in
             0|1) echo "FAIL: real .NET exited $dotnet_code after a rejected suspension; it must abort" >&2
-                exit 1 ;;
+                return 1 ;;
         esac
-        assert_exit_code "$child_code" "$dotnet_code"
-        grep -Fq 'Unhandled exception. System.InvalidOperationException: ' "$out/suspension-oracle.err" \
-            || { echo "FAIL: real .NET did not report the rejected suspension as unhandled" >&2; exit 1; }
-        grep -Fq 'Unhandled exception. System.InvalidOperationException: ' "$out/suspension.err" \
-            || { echo "FAIL: the rejected suspension (${mode%%:*}) did not end as an unhandled ThreadPool exception" >&2
-                cat "$out/suspension.err" >&2; exit 1; }
+        gate_output compare "$child" "$dotnet_child"
+        # The default run is unchanged; only the rejected registration follows.
+        gate_output prefix "$child" "$native" \
+            --before "== builder suspension rejection: ${mode%%:*} ==" --policy crlf
+        printf '%s\n' "${mode#*:}" > "$out/suspension.expected"
+        gate_output suffix "$child" "$out/suspension.expected" \
+            --after "== builder suspension rejection: ${mode%%:*} ==" --policy crlf
+        case "${mode%%:*}" in
+            custom-awaiter) rejection='awaiter rejected the continuation' ;;
+            *) rejection='source rejected the continuation' ;;
+        esac
+        gate_output abort-parity "${child%.stdout}" "${dotnet_child%.stdout}" \
+            --host "$DN2CPP_OS" --witness "${mode#*:}" \
+            --diagnostic "Unhandled exception. System.InvalidOperationException: $rejection" || return 1
         echo "OK suspension rejection ${mode%%:*}: aborted with $child_code after '${mode#*:}'"
     done
-    before=$(run_bounded dotnet "$_CG_APP" before-cancellation-receivers)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== cancellation source receivers ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    before="$out/before-cancellation-receivers.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-cancellation-receivers
+    gate_output prefix "$native" "$before" --before '== cancellation source receivers ==' --policy crlf
     for line in '== cancellation source receivers ==' \
         'Token=NullReferenceException' 'IsCancellationRequested=NullReferenceException' \
         'Cancel=NullReferenceException' 'Cancel(false)=NullReferenceException' \
@@ -270,13 +269,12 @@ ${mode#*:}" ]; then
         'live before=False/False' 'live after=True/True' \
         'live Cancel(false)=True/True' 'live Cancel(true)=True/True' \
         'cancellation source receivers end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output byte-witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: cancellation receiver witness missing: $line" >&2; exit 1; }
     done
-    before=$(run_bounded dotnet "$_CG_APP" before-task-lifecycle)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^whenall-null-seq:/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    before="$out/before-task-lifecycle.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-task-lifecycle
+    async_lifecycle_prefix "$native" "$before" "$out/before-task-lifecycle.prefix"
     for line in '== sequence nulls ==' \
         'sequence nulls end' \
         '== cold task scheduler ==' \
@@ -286,19 +284,18 @@ ${mode#*:}" ]; then
         'singleton identity/type: True,True' \
         'singleton cold body: 1' \
         'task origin end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output byte-witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: AsyncCombinators lifecycle witness missing: $line" >&2; exit 1; }
     done
-    before=$(dotnet "$_CG_APP" before-task-validation)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== delay arguments ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    before="$out/before-task-validation.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-task-validation
+    gate_output prefix "$native" "$before" --before '== delay arguments ==' --policy crlf
     for line in '== delay arguments ==' \
         'delay arguments end' \
         '== task receivers ==' \
         'sources still pending: WaitingForActivation WaitingForActivation' \
         'task receivers end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output byte-witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: AsyncCombinators validation witness missing: $line" >&2; exit 1; }
     done
     local oracle="$out/direct-call-oracle" fixture="$out/direct-call" expected actual
@@ -308,16 +305,17 @@ ${mode#*:}" ]; then
     $task_python gates/fixtures/task-call-validation/patch-call.py "$oracle/TaskCallValidation.dll"
     invoke_cli "$oracle/TaskCallValidation.dll" -r "$_CG_CORELIB" --auto-ref -o "$fixture"
     compile_console "$fixture" TaskCallValidation
-    expected=$(run_bounded dotnet "$oracle/TaskCallValidation.dll")
-    actual=$(run_bounded "./$fixture/TaskCallValidation")
-    actual=$(strip_cr_win "$actual")
-    assert_output "$actual" "$(strip_cr_win "$expected")"
+    expected="$fixture/oracle.stdout"
+    actual="$fixture/native.stdout"
+    gate_capture_ok "$fixture/oracle" run_bounded dotnet "$oracle/TaskCallValidation.dll"
+    gate_capture_ok "$fixture/native" run_bounded "./$fixture/TaskCallValidation$EXE_EXT"
+    gate_output compare "$actual" "$expected"
     for line in 'direct-get-awaiter-null|ok:constructed' \
         'direct-configure-null|ok:constructed' \
         'task direct-call validation end' \
         '== task direct scheduling ==' \
         'task direct scheduling end'; do
-        grep -Fxq -- "$line" <<< "$actual" \
+        gate_output byte-witness "$actual" "$line" --count any --policy crlf \
             || { echo "FAIL: Task direct-call witness missing: $line" >&2; exit 1; }
     done
 }

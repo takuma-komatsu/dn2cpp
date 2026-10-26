@@ -146,23 +146,22 @@ grep -q "error: .*PtrOverExplicit: explicit Size=4 over fields ending at byte 9 
     || { echo "FAIL: the refusal did not name the type, Size, field end, total and alignment" >&2; printf '%s\n' "$_xover_err" | tail -3 >&2; exit 1; }
 echo "fields-past-Size refusal OK: exit 2, named type, Size, field end, total and alignment"
 
-gate_capture_diff_output() {
-    local native
-    native=$(strip_cr_win "$3")
-    [[ "$native" == *$'known=31\nretained=1\nretained=47' ]] \
-        || { echo "FAIL: Type-based PtrToStructure box dispatch block did not run" >&2; exit 1; }
+gate_capture_diff_files() {
+    local out="$1" native="$3"
+    printf 'known=31\nretained=1\nretained=47\n' > "$out/box-dispatch.expected"
+    gate_output suffix "$native" "$out/box-dispatch.expected" --policy crlf
 }
 
 corelib_diff_gate MarshalPinning
 
 echo "== Asserting an unknown Type cannot create an unprepared box =="
-_oracle_box=$(run_bounded dotnet "$_CG_APP" --unprepared-box)
-[ "$_oracle_box" = 'unprepared=59' ] \
-    || { echo "FAIL: real .NET did not box the unknown operand" >&2; exit 1; }
-_native_box=$(run_bounded "./$_CG_OUT/MarshalPinning$EXE_EXT" --unprepared-box)
-grep -Fxq 'PlatformNotSupportedException' <<<"$_native_box" \
+gate_capture_ok "$_CG_OUT/unprepared-box.oracle" run_bounded dotnet "$_CG_APP" --unprepared-box
+gate_assert_text "$_CG_OUT/unprepared-box.oracle.stdout" 'unprepared=59'
+gate_capture_ok "$_CG_OUT/unprepared-box.native" run_bounded "./$_CG_OUT/MarshalPinning$EXE_EXT" --unprepared-box
+_native_box="$_CG_OUT/unprepared-box.native.stdout"
+gate_output witness "$_native_box" 'PlatformNotSupportedException' --count any --policy crlf \
     || { echo "FAIL: unprepared box did not throw catchably" >&2; exit 1; }
-grep -Fq "StructMarshalRoundtripSubset.UnpreparedBox" <<<"$_native_box" \
+grep -Fq "StructMarshalRoundtripSubset.UnpreparedBox" "$_native_box" \
     || { echo "FAIL: unprepared box refusal omitted the target" >&2; exit 1; }
-grep -Fq 'statically known typeof(T)' <<<"$_native_box" \
+grep -Fq 'statically known typeof(T)' "$_native_box" \
     || { echo "FAIL: unprepared box refusal omitted the remedy" >&2; exit 1; }

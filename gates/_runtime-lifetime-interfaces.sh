@@ -80,8 +80,8 @@ runtime_lifetime_diff_routes() {
                 fi
                 ;;
         esac
-        reflection_oracle "$out/app/RuntimeLifetimeInterfacesOnly.dll" > "$out/clr.raw.stdout"
-        strip_cr_win_file "$out/clr.raw.stdout" > "$out/clr.stdout"
+        gate_capture_ok "$out/clr.raw" reflection_oracle "$out/app/RuntimeLifetimeInterfacesOnly.dll"
+
         DN2CPP_STRICT_COMPLETION=1 invoke_cli "$out/app/RuntimeLifetimeInterfacesOnly.dll" -r "$(locate_corelib)" \
             --no-ildiet ${flags[@]+"${flags[@]}"} -o "$out" > "$out/emit.log" 2>&1
         if [ "$route" = array-clone-reflected ]; then
@@ -92,9 +92,9 @@ runtime_lifetime_diff_routes() {
                 "$out"/generated*.cpp "$out/generated.h" || return 1
         fi
         compile_console "$out" RuntimeLifetimeInterfacesOnly
-        run_bounded "$out/RuntimeLifetimeInterfacesOnly$EXE_EXT" > "$out/native.raw.stdout"
-        strip_cr_win_file "$out/native.raw.stdout" > "$out/native.stdout"
-        diff -u "$out/clr.stdout" "$out/native.stdout"
+        gate_capture_ok "$out/native.raw" run_bounded "$out/RuntimeLifetimeInterfacesOnly$EXE_EXT"
+
+        gate_output compare "$out/native.raw.stdout" "$out/clr.raw.stdout"
         case "$route" in
             array-clone-reflected) witness='array clone reflected: True/True/3/2/8' ;;
             array-clone-md|array-clone-md-unshared) witness='array clone MD: True/True/2/1/4/7/11' ;;
@@ -106,7 +106,7 @@ runtime_lifetime_diff_routes() {
             array-clone-aliases) witness='array clone aliases: True/True' ;;
             array-clone-reference) witness='array clone references: True/True/True/True' ;;
             array-clone-null) witness='array clone class null: ArgumentException' ;;
-            array-clone-trimmed|array-clone-unshared|array-clone-all) array_clone_asserts "$out/native.stdout"; continue ;;
+            array-clone-trimmed|array-clone-unshared|array-clone-all) array_clone_asserts "$out/native.raw.stdout"; continue ;;
             safe)
                 witness='lifetime isolated safe: disposed'
                 assert_no_word_match 'isolated SafeWaitHandle route emitted SafeHandle metadata' \
@@ -119,13 +119,13 @@ runtime_lifetime_diff_routes() {
             safeinvoke) witness='safe close group invoked: True' ;;
             safeordinary) witness='user groups explicit invoked: 1/1/1' ;;
             safenull) witness='safe null group: ArgumentException' ;;
-            safe-trimmed|safe-unshared|safeall) safe_handle_group_asserts "$out/native.stdout"; continue ;;
+            safe-trimmed|safe-unshared|safeall) safe_handle_group_asserts "$out/native.raw.stdout"; continue ;;
             clone-string) witness='string clone group: True' ;;
             clone-string-calls) witness='string clone aliases: True/True' ;;
             clone-delegate) witness='delegate clone independent: 2/1/3' ;;
             clone-group) witness='delegate clone group: True/True/5' ;;
             clone-ordinary) witness='string clone null: NullReferenceException' ;;
-            clone-trimmed|clone-unshared|clone-all) clone_interface_asserts "$out/native.stdout"; continue ;;
+            clone-trimmed|clone-unshared|clone-all) clone_interface_asserts "$out/native.raw.stdout"; continue ;;
             clone-class-aliases) witness='delegate clone class targets: False/True' ;;
             clone-class-invoke) witness='delegate clone class base: True/True/13' ;;
             clone-class-overrides) witness='delegate clone explicit invoked: class clone/interface clone' ;;
@@ -135,11 +135,11 @@ runtime_lifetime_diff_routes() {
             clone-class-reflected-field|clone-class-field-trimmed|clone-class-field-unshared) witness='delegate clone reflected field: True/True/True/True/7' ;;
             clone-class-native) witness='delegate clone native pointer: True/True/True/True/9' ;;
             clone-class-null) witness='delegate clone base null: NullReferenceException' ;;
-            clone-class-trimmed|clone-class-unshared|clone-class-all) delegate_clone_class_asserts "$out/native.stdout"; continue ;;
+            clone-class-trimmed|clone-class-unshared|clone-class-all) delegate_clone_class_asserts "$out/native.raw.stdout"; continue ;;
             factory-*) witness="lifetime factory ${route#factory-}: disposed"; witness="${witness/generic-source/generic source}" ;;
-            *) runtime_lifetime_asserts "$out/native.stdout"; continue ;;
+            *) runtime_lifetime_asserts "$out/native.raw.stdout"; continue ;;
         esac
-        test "$(grep -Fxc -- "$witness" "$out/native.stdout")" = 1
+        gate_output witness "$out/native.raw.stdout" "$witness" --count 1 --policy crlf
     done
 }
 
@@ -163,19 +163,16 @@ gate_delegate_clone_class_prefix_asserts() {
     for axis in dotnet native; do
         if reflection_full_profile; then
             if [ "$axis" = dotnet ]; then
-                reflection_oracle "$_CG_APP" before-delegate-clone-class-groups > "$out/delegate-clone-class-prefix.$axis.raw.stdout"
+                gate_capture_ok "$out/delegate-clone-class-prefix.$axis.raw" reflection_oracle "$_CG_APP" before-delegate-clone-class-groups
             else
-                run_bounded "$out/ReflectInvoke$EXE_EXT" before-delegate-clone-class-groups > "$out/delegate-clone-class-prefix.$axis.raw.stdout"
+                gate_capture_ok "$out/delegate-clone-class-prefix.$axis.raw" run_bounded "$out/ReflectInvoke$EXE_EXT" before-delegate-clone-class-groups
             fi
-            strip_cr_win_file "$out/delegate-clone-class-prefix.$axis.raw.stdout" > "$out/delegate-clone-class-prefix.$axis.stdout"
-            awk '/^== Delegate.Clone class method groups ==$/ { exit } { print }' \
-                "$out/virtual-delegate-full.$axis.stdout" > "$out/delegate-clone-class-old.$axis.stdout"
-            diff -u "$out/delegate-clone-class-prefix.$axis.stdout" "$out/delegate-clone-class-old.$axis.stdout"
+            gate_output prefix "$out/virtual-delegate-full.$axis.raw.stdout" "$out/delegate-clone-class-prefix.$axis.raw.stdout" --before '== Delegate.Clone class method groups ==' --policy crlf
         fi
-        delegate_clone_class_asserts "$out/virtual-delegate-full.$axis.stdout"
+        delegate_clone_class_asserts "$out/virtual-delegate-full.$axis.raw.stdout"
     done
     if reflection_full_profile; then
-        diff -u "$out/delegate-clone-class-prefix.dotnet.stdout" "$out/delegate-clone-class-prefix.native.stdout"
+        gate_output compare "$out/delegate-clone-class-prefix.native.raw.stdout" "$out/delegate-clone-class-prefix.dotnet.raw.stdout"
     fi
 }
 
@@ -184,19 +181,16 @@ gate_runtime_lifetime_prefix_asserts() {
     for axis in dotnet native; do
         if reflection_full_profile; then
             if [ "$axis" = dotnet ]; then
-                reflection_oracle "$_CG_APP" before-runtime-lifetime-interfaces > "$out/runtime-lifetime-prefix.$axis.raw.stdout"
+                gate_capture_ok "$out/runtime-lifetime-prefix.$axis.raw" reflection_oracle "$_CG_APP" before-runtime-lifetime-interfaces
             else
-                run_bounded "$out/ReflectInvoke$EXE_EXT" before-runtime-lifetime-interfaces > "$out/runtime-lifetime-prefix.$axis.raw.stdout"
+                gate_capture_ok "$out/runtime-lifetime-prefix.$axis.raw" run_bounded "$out/ReflectInvoke$EXE_EXT" before-runtime-lifetime-interfaces
             fi
-            strip_cr_win_file "$out/runtime-lifetime-prefix.$axis.raw.stdout" > "$out/runtime-lifetime-prefix.$axis.stdout"
-            awk '/^== runtime lifetime interfaces ==$/ { exit } { print }' \
-                "$out/virtual-delegate-full.$axis.stdout" > "$out/runtime-lifetime-old.$axis.stdout"
-            diff -u "$out/runtime-lifetime-prefix.$axis.stdout" "$out/runtime-lifetime-old.$axis.stdout"
+            gate_output prefix "$out/virtual-delegate-full.$axis.raw.stdout" "$out/runtime-lifetime-prefix.$axis.raw.stdout" --before '== runtime lifetime interfaces ==' --policy crlf
         fi
-        runtime_lifetime_asserts "$out/virtual-delegate-full.$axis.stdout"
+        runtime_lifetime_asserts "$out/virtual-delegate-full.$axis.raw.stdout"
     done
     if reflection_full_profile; then
-        diff -u "$out/runtime-lifetime-prefix.dotnet.stdout" "$out/runtime-lifetime-prefix.native.stdout"
+        gate_output compare "$out/runtime-lifetime-prefix.native.raw.stdout" "$out/runtime-lifetime-prefix.dotnet.raw.stdout"
     fi
 }
 
@@ -221,19 +215,16 @@ gate_safe_handle_group_prefix_asserts() {
     for axis in dotnet native; do
         if reflection_full_profile; then
             if [ "$axis" = dotnet ]; then
-                reflection_oracle "$_CG_APP" before-safehandle-method-groups > "$out/safehandle-prefix.$axis.raw.stdout"
+                gate_capture_ok "$out/safehandle-prefix.$axis.raw" reflection_oracle "$_CG_APP" before-safehandle-method-groups
             else
-                run_bounded "$out/ReflectInvoke$EXE_EXT" before-safehandle-method-groups > "$out/safehandle-prefix.$axis.raw.stdout"
+                gate_capture_ok "$out/safehandle-prefix.$axis.raw" run_bounded "$out/ReflectInvoke$EXE_EXT" before-safehandle-method-groups
             fi
-            strip_cr_win_file "$out/safehandle-prefix.$axis.raw.stdout" > "$out/safehandle-prefix.$axis.stdout"
-            awk '/^== SafeHandle method groups ==$/ { exit } { print }' \
-                "$out/virtual-delegate-full.$axis.stdout" > "$out/safehandle-old.$axis.stdout"
-            diff -u "$out/safehandle-prefix.$axis.stdout" "$out/safehandle-old.$axis.stdout"
+            gate_output prefix "$out/virtual-delegate-full.$axis.raw.stdout" "$out/safehandle-prefix.$axis.raw.stdout" --before '== SafeHandle method groups ==' --policy crlf
         fi
-        safe_handle_group_asserts "$out/virtual-delegate-full.$axis.stdout"
+        safe_handle_group_asserts "$out/virtual-delegate-full.$axis.raw.stdout"
     done
     if reflection_full_profile; then
-        diff -u "$out/safehandle-prefix.dotnet.stdout" "$out/safehandle-prefix.native.stdout"
+        gate_output compare "$out/safehandle-prefix.native.raw.stdout" "$out/safehandle-prefix.dotnet.raw.stdout"
     fi
 }
 
@@ -257,19 +248,16 @@ gate_clone_interface_prefix_asserts() {
     for axis in dotnet native; do
         if reflection_full_profile; then
             if [ "$axis" = dotnet ]; then
-                reflection_oracle "$_CG_APP" before-runtime-clone-interfaces > "$out/clone-prefix.$axis.raw.stdout"
+                gate_capture_ok "$out/clone-prefix.$axis.raw" reflection_oracle "$_CG_APP" before-runtime-clone-interfaces
             else
-                run_bounded "$out/ReflectInvoke$EXE_EXT" before-runtime-clone-interfaces > "$out/clone-prefix.$axis.raw.stdout"
+                gate_capture_ok "$out/clone-prefix.$axis.raw" run_bounded "$out/ReflectInvoke$EXE_EXT" before-runtime-clone-interfaces
             fi
-            strip_cr_win_file "$out/clone-prefix.$axis.raw.stdout" > "$out/clone-prefix.$axis.stdout"
-            awk '/^== runtime clone interfaces ==$/ { exit } { print }' \
-                "$out/virtual-delegate-full.$axis.stdout" > "$out/clone-old.$axis.stdout"
-            diff -u "$out/clone-prefix.$axis.stdout" "$out/clone-old.$axis.stdout"
+            gate_output prefix "$out/virtual-delegate-full.$axis.raw.stdout" "$out/clone-prefix.$axis.raw.stdout" --before '== runtime clone interfaces ==' --policy crlf
         fi
-        clone_interface_asserts "$out/virtual-delegate-full.$axis.stdout"
+        clone_interface_asserts "$out/virtual-delegate-full.$axis.raw.stdout"
     done
     if reflection_full_profile; then
-        diff -u "$out/clone-prefix.dotnet.stdout" "$out/clone-prefix.native.stdout"
+        gate_output compare "$out/clone-prefix.native.raw.stdout" "$out/clone-prefix.dotnet.raw.stdout"
     fi
 }
 
@@ -291,19 +279,16 @@ gate_array_clone_prefix_asserts() {
     for axis in dotnet native; do
         if reflection_full_profile; then
             if [ "$axis" = dotnet ]; then
-                reflection_oracle "$_CG_APP" before-array-clone-interfaces > "$out/array-clone-prefix.$axis.raw.stdout"
+                gate_capture_ok "$out/array-clone-prefix.$axis.raw" reflection_oracle "$_CG_APP" before-array-clone-interfaces
             else
-                run_bounded "$out/ReflectInvoke$EXE_EXT" before-array-clone-interfaces > "$out/array-clone-prefix.$axis.raw.stdout"
+                gate_capture_ok "$out/array-clone-prefix.$axis.raw" run_bounded "$out/ReflectInvoke$EXE_EXT" before-array-clone-interfaces
             fi
-            strip_cr_win_file "$out/array-clone-prefix.$axis.raw.stdout" > "$out/array-clone-prefix.$axis.stdout"
-            awk '/^== array Clone interface dispatch ==$/ { exit } { print }' \
-                "$out/virtual-delegate-full.$axis.stdout" > "$out/array-clone-old.$axis.stdout"
-            diff -u "$out/array-clone-prefix.$axis.stdout" "$out/array-clone-old.$axis.stdout"
+            gate_output prefix "$out/virtual-delegate-full.$axis.raw.stdout" "$out/array-clone-prefix.$axis.raw.stdout" --before '== array Clone interface dispatch ==' --policy crlf
         fi
-        array_clone_asserts "$out/virtual-delegate-full.$axis.stdout"
+        array_clone_asserts "$out/virtual-delegate-full.$axis.raw.stdout"
     done
     if reflection_full_profile; then
-        diff -u "$out/array-clone-prefix.dotnet.stdout" "$out/array-clone-prefix.native.stdout"
+        gate_output compare "$out/array-clone-prefix.native.raw.stdout" "$out/array-clone-prefix.dotnet.raw.stdout"
     fi
 }
 

@@ -177,15 +177,82 @@ source "$(dirname "$0")/_hotupdate-signature-arguments.sh"
 hotupdate_python=$(resolve_python) || gate_skip "no working Python 3 interpreter for import fixtures"
 
 OUT=artifacts/hotupdate-subset
+# Each observation has a distinct raw artifact even when a later codec reuses a variable.
+_hotupdate_capture_index=0
+hotupdate_capture() {
+    local output_name="$1" status_name="$2" stream="$3" capture_prefix capture_code
+    shift 3
+    local abort_diagnostic='' abort_stdout='' expected_abort=0
+    if [ "${1:-}" = --expect-abort ]; then
+        expected_abort=1
+        abort_diagnostic="$2"
+        abort_stdout="$3"
+        shift 3
+    fi
+    _hotupdate_capture_index=$((_hotupdate_capture_index + 1))
+    capture_prefix="$OUT/observations/$_hotupdate_capture_index-$output_name"
+    if [ "$stream" = combined ]; then
+        gate_capture "$capture_prefix" hotupdate_merged "$@" || exit 1
+        stream=stdout
+    else
+        gate_capture "$capture_prefix" "$@" || exit 1
+    fi
+    capture_code=$(cat "$capture_prefix.status")
+    if [ "$expected_abort" = 1 ]; then
+        # Fatal callers declare exact diagnostics and execution evidence; only
+        # that contract may distinguish a Windows abort from launch status 127.
+        local abort_evidence=(--witness "$abort_stdout")
+        [ "$abort_stdout" != --empty-stdout ] || abort_evidence=(--empty-stdout)
+        if ! gate_output native-abort "$capture_prefix" --host "$DN2CPP_OS" \
+            --diagnostic "$abort_diagnostic" "${abort_evidence[@]}"; then
+            cat "$capture_prefix.stderr" >&2
+            exit 1
+        fi
+    elif ! gate_output status "$capture_code" "$capture_code"; then
+        cat "$capture_prefix.stderr" >&2
+        exit 1
+    fi
+    printf -v "$output_name" '%s' "$capture_prefix.$stream"
+    printf -v "$status_name" '%s' "$capture_code"
+}
+
+hotupdate_merged() { "$@" 2>&1; }
+
+# Compose fixed record blocks and raw oracle spans without serializing their bytes.
+hotupdate_fixture() {
+    local fixture_name="$1" fixture_path
+    shift
+    _hotupdate_capture_index=$((_hotupdate_capture_index + 1))
+    fixture_path="$OUT/observations/$_hotupdate_capture_index-$fixture_name.expected"
+    mkdir -p "$(dirname "$fixture_path")" || return 1
+    : > "$fixture_path" || return 1
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --text) printf '%s\n' "$2" >> "$fixture_path" || return 1 ;;
+            --file) cat "$2" >> "$fixture_path" || return 1 ;;
+            *) echo 'FAIL: invalid hot-update fixture part' >&2; return 1 ;;
+        esac
+        shift 2
+    done
+    printf -v "$fixture_name" '%s' "$fixture_path"
+}
+
+hotupdate_before() {
+    local selected
+    selected=$(mktemp "$1.before.XXXXXX") || return 1
+    gate_output select "$1" "$selected" --before "$2" --policy crlf || return 1
+    printf '%s\n' "$selected"
+}
+
 field_packed='HotUpdateBase.Counter=packed'
 field_native='HotUpdateBase.Counter=native'
 
 assert_derived_aggregate_prefix() {
     local native="$1" previous="$2" line
-    assert_output "${native%%$'\n== AOT derived aggregates =='*}" "$previous"
+    gate_output compare "$(hotupdate_before "$native" '== AOT derived aggregates ==')" "$previous" --policy crlf
     for line in '== AOT derived aggregates ==' 'AOT derived aggregates end' \
         '== interpreted derived aggregates ==' 'interpreted derived aggregates end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: derived aggregate block did not complete: $line" >&2; return 1; }
     done
 }
@@ -315,7 +382,7 @@ grep -q dn2cpp_base_image_abi_hash "$OUT/generated.cpp" \
 # against the REAL net10.0 CoreLib, so which CoreLib that resolves to is an input
 # of this gate the same way it is of net10_bcl_diff_gate — a runtime bump must
 # not be served a green recorded against the previous one.
-if gate_cache_check "$OUT" "hotupdate-subset|cli:$(_gate_cli_hash)|field-metadata:$field_packed/$field_native|corelib:$(resolve_net10_corelib)|before-derived-aggregate|before-aggregate-collection|before-aggregate-message|before-ordinary-exception-message|oracle:--derived-aggregate/--aggregate-collection|unavailable-aggregate-ctor|type-getter-signature:--type-getter-signature/before-type-getter-signature/register/stack/HotUpdateBase.TypeGetterSignatureFixture::EmitSurface|patch-method-identities:private-rows/roundtrip/virtual-override/invoke/refusal-variant/metadata-v4|renamed-slots:--renamed-slot-prefix/before-renamed-slots/register/stack/intrinsic-bcl/corelib|renamed-object:--object/--finalize/--renamed-object-oracle/--renamed-finalize-oracle/corelib-refusal/corelib-loaded|instance-body-calls:call/callvirt/default/dictionary/folded-predicates/same-owner/predicate-nops/null-bound/try/method-context/register/stack/intrinsic-bcl/corelib/--no-shared-generics/--cut-HotUpdateBase.IOverriddenBin::Cold|late-default-layout:object-method-group/noalloc-constant/transitive-helper/normal/--hotupdate-base/--no-shared-generics|signature-generic-imports:packed/native/register/stack/fields/field-address-refusal|carried-attribute-type-infos" \
+if gate_cache_check "$OUT" "hotupdate-subset|abort-host:$DN2CPP_OS|cli:$(_gate_cli_hash)|field-metadata:$field_packed/$field_native|corelib:$(resolve_net10_corelib)|before-derived-aggregate|before-aggregate-collection|before-aggregate-message|before-ordinary-exception-message|oracle:--derived-aggregate/--aggregate-collection|unavailable-aggregate-ctor|type-getter-signature:--type-getter-signature/before-type-getter-signature/register/stack/HotUpdateBase.TypeGetterSignatureFixture::EmitSurface|patch-method-identities:private-rows/roundtrip/virtual-override/invoke/refusal-variant/metadata-v4|renamed-slots:--renamed-slot-prefix/before-renamed-slots/register/stack/intrinsic-bcl/corelib|renamed-object:--object/--finalize/--renamed-object-oracle/--renamed-finalize-oracle/corelib-refusal/corelib-loaded|instance-body-calls:call/callvirt/default/dictionary/folded-predicates/same-owner/predicate-nops/null-bound/try/method-context/register/stack/intrinsic-bcl/corelib/--no-shared-generics/--cut-HotUpdateBase.IOverriddenBin::Cold|late-default-layout:object-method-group/noalloc-constant/transitive-helper/normal/--hotupdate-base/--no-shared-generics|signature-generic-imports:packed/native/register/stack/fields/field-address-refusal|carried-attribute-type-infos" \
         "$base_app" "$patch_app" "$bad_app" "$badgvm_app" "$baditf_app" "$baddg_app" \
         "$concat_oracle_app" \
         "$signature_arguments_base" "$signature_arguments_patch" "$signature_arguments_address" gates/_hotupdate-signature-arguments.sh \
@@ -617,22 +684,20 @@ delegate GetType: HotUpdateBase.Counter
 base caught: escaped to base
 HotUpdatePatch.TaggedCounter
 base: done"
+hotupdate_fixture expected --text "$expected"
 expected_prefix="$expected"
-concat_oracle=$(dotnet "$concat_oracle_app")
-concat_oracle=$(strip_cr_win "$concat_oracle")
-grep -Fxq 'null: ArgumentNullException' <<< "$concat_oracle" \
+hotupdate_capture concat_oracle _hotupdate_status stdout run_bounded dotnet "$concat_oracle_app"
+gate_output status "$_hotupdate_status" 0
+gate_output witness "$concat_oracle" 'null: ArgumentNullException' --count any --policy crlf \
     || { echo "FAIL: managed null Concat witness missing" >&2; exit 1; }
-expected_before_generic="$expected
-$concat_oracle"
+hotupdate_fixture expected_before_generic --file "$expected" --file "$concat_oracle"
 generic_expected="== ordinary generic import identity ==
 System.Int32
 System.String
 == ordinary generic import identity end =="
-expected="$expected_before_generic
-$generic_expected"
+hotupdate_fixture expected --file "$expected_before_generic" --text "$generic_expected"
 expected_before_virtual="$expected"
-expected="$expected_before_virtual
-== generic virtual import dispatch ==
+hotupdate_fixture expected --file "$expected_before_virtual" --text "== generic virtual import dispatch ==
 glass:3
 shelf:5
 glass Int32
@@ -641,49 +706,44 @@ glass:6
 sorted:4
 == generic virtual import dispatch end =="
 expected_before_rows="$expected"
-expected="$expected_before_rows
-== generic virtual import rows ==
+hotupdate_fixture expected --file "$expected_before_rows" --text "== generic virtual import rows ==
 crate:2
 steel:3
 ink:4
 == generic virtual import rows end =="
 expected_before_patch_reflection="$expected"
-expected="$expected_before_patch_reflection
-== generic virtual reflection over a patch receiver ==
+hotupdate_fixture expected --file "$expected_before_patch_reflection" --text "== generic virtual reflection over a patch receiver ==
 GlassShelf.Label[Int32] glass:7
 GlassShelf.Label[Int32] glass:8
 True True True
 GlassShelf.Label[Int32] glass:9
 == generic virtual reflection over a patch receiver end =="
 expected_before_object_virtuals="$expected"
-expected="$expected_before_object_virtuals
-== object virtuals over a patch receiver ==
+hotupdate_fixture expected --file "$expected_before_object_virtuals" --text "== object virtuals over a patch receiver ==
 HotUpdateBase.Plaque.ToString plaque
 HotUpdateBase.Plaque.ToString
 == object virtuals over a patch receiver end =="
 expected_before_inherited_object="$expected"
-inherited_object_oracle=$(dotnet "$base_app" --object-inheritance-oracle)
-inherited_object_oracle=$(strip_cr_win "$inherited_object_oracle")
-grep -Fxq 'methods=System.Object.ToString/System.Object.Equals/System.Object.GetHashCode' <<< "$inherited_object_oracle" \
+hotupdate_capture inherited_object_oracle _hotupdate_status stdout run_bounded dotnet "$base_app" --object-inheritance-oracle
+gate_output status "$_hotupdate_status" 0
+gate_output witness "$inherited_object_oracle" 'methods=System.Object.ToString/System.Object.Equals/System.Object.GetHashCode' --count any --policy crlf \
     || { echo "FAIL: inherited Object virtual identity witness is missing" >&2; exit 1; }
-expected="$expected
-$inherited_object_oracle"
+hotupdate_fixture expected --file "$expected" --file "$inherited_object_oracle"
 expected_before_object_groups="$expected"
-object_groups_oracle=$(dotnet "$base_app" --object-groups-oracle)
-object_groups_oracle=$(strip_cr_win "$object_groups_oracle")
+hotupdate_capture object_groups_oracle _hotupdate_status stdout run_bounded dotnet "$base_app" --object-groups-oracle
+gate_output status "$_hotupdate_status" 0
 for line in 'base-methods=System.Object.ToString/System.Object.Equals/System.Object.GetHashCode' \
     'base-calls=True/True/False/False/True' 'override-calls=override/True/91' \
     'only-calls=group-only/True/101' 'group-rows=True/True/True' \
     'group-calls=True/True/False/True' 'group-calls=True/False/False/True' \
     'null text=NullReferenceException' 'null equals=NullReferenceException' 'null hash=NullReferenceException'; do
-    grep -Fxq "$line" <<< "$object_groups_oracle" \
+    gate_output witness "$object_groups_oracle" "$line" --count any --policy crlf \
         || { echo "FAIL: Object virtual method group witness missing: $line" >&2; exit 1; }
 done
-expected="$expected
-$object_groups_oracle"
+hotupdate_fixture expected --file "$expected" --file "$object_groups_oracle"
 expected_before_derived_aggregate="$expected"
-derived_aggregate_oracle=$(run_bounded dotnet "$concat_oracle_app" --derived-aggregate)
-derived_aggregate_oracle=$(strip_cr_win "$derived_aggregate_oracle")
+hotupdate_capture derived_aggregate_oracle _hotupdate_status stdout run_bounded dotnet "$concat_oracle_app" --derived-aggregate
+gate_output status "$_hotupdate_status" 0
 for line in '== AOT derived aggregates ==' 'AOT derived aggregates end' \
     'AOT snapshot=pair (first) (second)/first=True/41/after' \
     '== interpreted derived aggregates ==' \
@@ -693,51 +753,53 @@ for line in '== AOT derived aggregates ==' 'AOT derived aggregates end' \
     'patch further=further (first) (second)/first=True/47/further/9/patch' \
     'patch empty=One or more errors occurred./first=True/17/empty' \
     'interpreted derived aggregates end'; do
-    grep -Fxq -- "$line" <<< "$derived_aggregate_oracle" \
+    gate_output witness "$derived_aggregate_oracle" "$line" --count any --policy crlf \
         || { echo "FAIL: managed derived aggregate witness missing: $line" >&2; exit 1; }
 done
-expected="$expected_before_derived_aggregate
-$derived_aggregate_oracle"
+hotupdate_fixture expected --file "$expected_before_derived_aggregate" --file "$derived_aggregate_oracle"
 # Exit status captured explicitly (`$(...)` inline would swallow it): a base
 # that aborts in teardown AFTER printing the full transcript must not pass.
 set +e
-hu_out=$("./$OUT/HotUpdateBase" "$OUT/HotUpdatePatch.bpi"); hu_rc=$?
+hotupdate_capture hu_out hu_rc stdout run_bounded "./$OUT/HotUpdateBase" "$OUT/HotUpdatePatch.bpi"
 set -e
-assert_output "$(strip_cr_win "$hu_out")" "$expected"
+gate_output compare "$hu_out" "$expected" --policy crlf
 assert_exit_code "$hu_rc" 0
-normalized=$(strip_cr_win "$hu_out")
+normalized="$hu_out"
 assert_derived_aggregate_prefix "$normalized" "$expected_before_derived_aggregate"
-derived_aggregate_before=$(run_bounded "./$OUT/HotUpdateBase$EXE_EXT" "$OUT/HotUpdatePatch.bpi" before-derived-aggregate)
-assert_output "$(strip_cr_win "$derived_aggregate_before")" "$expected_before_derived_aggregate"
-prefix=${normalized%%$'\n== interpreted Concat arrays =='*}
-assert_output "$prefix" "$expected_prefix"
-generic_prefix=${normalized%%$'\n== ordinary generic import identity =='*}
-assert_output "$generic_prefix" "$expected_before_generic"
-virtual_prefix=${normalized%%$'\n== generic virtual import dispatch =='*}
-assert_output "$virtual_prefix" "$expected_before_virtual"
-rows_prefix=${normalized%%$'\n== generic virtual import rows =='*}
-assert_output "$rows_prefix" "$expected_before_rows"
-grep -Fxq '== generic virtual import rows end ==' <<< "$normalized" \
+hotupdate_capture derived_aggregate_before _hotupdate_status stdout run_bounded "./$OUT/HotUpdateBase$EXE_EXT" "$OUT/HotUpdatePatch.bpi" before-derived-aggregate
+gate_output status "$_hotupdate_status" 0
+gate_output compare "$derived_aggregate_before" "$expected_before_derived_aggregate" --policy crlf
+prefix=$(hotupdate_before "$normalized" '== interpreted Concat arrays ==')
+gate_output compare "$prefix" "$expected_prefix" --policy crlf
+generic_prefix=$(hotupdate_before "$normalized" '== ordinary generic import identity ==')
+gate_output compare "$generic_prefix" "$expected_before_generic" --policy crlf
+virtual_prefix=$(hotupdate_before "$normalized" '== generic virtual import dispatch ==')
+gate_output compare "$virtual_prefix" "$expected_before_virtual" --policy crlf
+rows_prefix=$(hotupdate_before "$normalized" '== generic virtual import rows ==')
+gate_output compare "$rows_prefix" "$expected_before_rows" --policy crlf
+gate_output witness "$normalized" '== generic virtual import rows end ==' --count any --policy crlf \
     || { echo "FAIL: generic virtual import rows block did not complete" >&2; exit 1; }
-patch_reflection_prefix=${normalized%%$'\n== generic virtual reflection over a patch receiver =='*}
-assert_output "$patch_reflection_prefix" "$expected_before_patch_reflection"
-grep -Fxq '== generic virtual reflection over a patch receiver end ==' <<< "$normalized" \
+patch_reflection_prefix=$(hotupdate_before "$normalized" '== generic virtual reflection over a patch receiver ==')
+gate_output compare "$patch_reflection_prefix" "$expected_before_patch_reflection" --policy crlf
+gate_output witness "$normalized" '== generic virtual reflection over a patch receiver end ==' --count any --policy crlf \
     || { echo "FAIL: generic virtual reflection over a patch receiver did not complete" >&2; exit 1; }
-object_virtuals_prefix=${normalized%%$'\n== object virtuals over a patch receiver =='*}
-assert_output "$object_virtuals_prefix" "$expected_before_object_virtuals"
-grep -Fxq '== object virtuals over a patch receiver end ==' <<< "$normalized" \
+object_virtuals_prefix=$(hotupdate_before "$normalized" '== object virtuals over a patch receiver ==')
+gate_output compare "$object_virtuals_prefix" "$expected_before_object_virtuals" --policy crlf
+gate_output witness "$normalized" '== object virtuals over a patch receiver end ==' --count any --policy crlf \
     || { echo "FAIL: object virtuals over a patch receiver did not complete" >&2; exit 1; }
-assert_output "${normalized%%$'\n== inherited Object virtuals =='*}" "$expected_before_inherited_object"
-grep -Fxq '== inherited Object virtuals end ==' <<< "$normalized" \
+gate_output compare "$(hotupdate_before "$normalized" '== inherited Object virtuals ==')" "$expected_before_inherited_object" --policy crlf
+gate_output witness "$normalized" '== inherited Object virtuals end ==' --count any --policy crlf \
     || { echo "FAIL: inherited Object virtuals over a patch receiver did not complete" >&2; exit 1; }
-inherited_object_native=$("./$OUT/HotUpdateBase" --object-inheritance-oracle)
-assert_output "$(strip_cr_win "$inherited_object_native")" "$inherited_object_oracle"
-assert_output "${normalized%%$'\n== Object virtual method groups =='*}" "$expected_before_object_groups"
-grep -Fxq '== Object virtual method groups end ==' <<< "$normalized" \
+hotupdate_capture inherited_object_native _hotupdate_status stdout run_bounded "./$OUT/HotUpdateBase" --object-inheritance-oracle
+gate_output status "$_hotupdate_status" 0
+gate_output compare "$inherited_object_native" "$inherited_object_oracle"
+gate_output compare "$(hotupdate_before "$normalized" '== Object virtual method groups ==')" "$expected_before_object_groups" --policy crlf
+gate_output witness "$normalized" '== Object virtual method groups end ==' --count any --policy crlf \
     || { echo "FAIL: Object virtual method groups over patch receivers did not complete" >&2; exit 1; }
-object_groups_native=$("./$OUT/HotUpdateBase" --object-groups-oracle)
-assert_output "$(strip_cr_win "$object_groups_native")" "$object_groups_oracle"
-grep -Fxq '== ordinary generic import identity end ==' <<< "$normalized" \
+hotupdate_capture object_groups_native _hotupdate_status stdout run_bounded "./$OUT/HotUpdateBase" --object-groups-oracle
+gate_output status "$_hotupdate_status" 0
+gate_output compare "$object_groups_native" "$object_groups_oracle"
+gate_output witness "$normalized" '== ordinary generic import identity end ==' --count any --policy crlf \
     || { echo "FAIL: ordinary generic import identity block did not complete" >&2; exit 1; }
 
 echo "-- stack format: --patch-stackcode bake replays the identical transcript --"
@@ -753,11 +815,11 @@ invoke_cli --emit-patch "$patch_app" --base-abi "$OUT/base-abi.json" --patch-sta
 [ "$(od -An -tx1 -j12 -N4 "$OUT/HotUpdatePatch.bpi" | tr -d ' ')" = "01000000" ] \
     || { echo "FAIL: the default bake did not set header flags bit0 (register code)" >&2; exit 1; }
 set +e
-hu_out=$("./$OUT/HotUpdateBase" "$OUT/stack/HotUpdatePatch.bpi"); hu_rc=$?
+hotupdate_capture hu_out hu_rc stdout run_bounded "./$OUT/HotUpdateBase" "$OUT/stack/HotUpdatePatch.bpi"
 set -e
-assert_output "$(strip_cr_win "$hu_out")" "$expected"
+gate_output compare "$hu_out" "$expected" --policy crlf
 assert_exit_code "$hu_rc" 0
-assert_derived_aggregate_prefix "$(strip_cr_win "$hu_out")" "$expected_before_derived_aggregate"
+assert_derived_aggregate_prefix "$hu_out" "$expected_before_derived_aggregate"
 echo "OK (stack-format bake, identical transcript)"
 
 echo "-- conditional default refs: a base whose load set carries a TRIGGER --"
@@ -828,22 +890,22 @@ cmp -s "$OUT/trigger/HotUpdatePatch.bpi" "$OUT/notrigger/HotUpdatePatch.bpi" \
 # 3. and the patch loads, binds and runs against the trigger-carrying base.
 compile_console "$OUT/trigger" HotUpdateBase
 set +e
-trig_out=$("./$OUT/trigger/HotUpdateBase" "$OUT/trigger/HotUpdatePatch.bpi"); trig_rc=$?
+hotupdate_capture trig_out trig_rc stdout run_bounded "./$OUT/trigger/HotUpdateBase" "$OUT/trigger/HotUpdatePatch.bpi"
 set -e
-assert_output "$(strip_cr_win "$trig_out")" "$expected"
+gate_output compare "$trig_out" "$expected" --policy crlf
 assert_exit_code "$trig_rc" 0
-assert_derived_aggregate_prefix "$(strip_cr_win "$trig_out")" "$expected_before_derived_aggregate"
+assert_derived_aggregate_prefix "$trig_out" "$expected_before_derived_aggregate"
 echo "OK (trigger-carrying base: shim injected + recorded, ABI hash and BPI unmoved, patch runs)"
 
 echo "-- native field metadata: stack-format replay --"
 invoke_cli --emit-patch "$patch_app" --base-abi "$OUT/trigger/base-abi.json" \
     --patch-stackcode -o "$OUT/trigger/stack"
 set +e
-trig_out=$("./$OUT/trigger/HotUpdateBase" "$OUT/trigger/stack/HotUpdatePatch.bpi"); trig_rc=$?
+hotupdate_capture trig_out trig_rc stdout run_bounded "./$OUT/trigger/HotUpdateBase" "$OUT/trigger/stack/HotUpdatePatch.bpi"
 set -e
-assert_output "$(strip_cr_win "$trig_out")" "$expected"
+gate_output compare "$trig_out" "$expected" --policy crlf
 assert_exit_code "$trig_rc" 0
-assert_derived_aggregate_prefix "$(strip_cr_win "$trig_out")" "$expected_before_derived_aggregate"
+assert_derived_aggregate_prefix "$trig_out" "$expected_before_derived_aggregate"
 echo "OK (native field metadata: stack-format bake, identical transcript)"
 
 echo "-- negative: a patch -r'ing a shim the base image does not carry --"
@@ -888,22 +950,22 @@ echo "-- negative: --shadow-trace on a PLAIN base — kind-0 drops interp frames
 # patch symbols, so an "at HotUpdatePatch." line could only be a
 # misattribution — kind-0 must drop interpreter PCs, never mislabel them.
 set +e
-st_out=$("./$OUT/HotUpdateBase" --shadow-trace "$OUT/HotUpdatePatch.bpi"); st_rc=$?
+hotupdate_capture st_out st_rc stdout run_bounded "./$OUT/HotUpdateBase" --shadow-trace "$OUT/HotUpdatePatch.bpi"
 set -e
-st_out=$(strip_cr_win "$st_out")
 if [ "$st_rc" -ne 0 ]; then
     echo "FAIL: --shadow-trace exited $st_rc (the throw is caught in the AOT base; expected 0)" >&2
-    printf '%s\n' "$st_out" >&2
+    cat "$st_out" >&2
     exit 1
 fi
-if grep -q 'at HotUpdatePatch\.' <<<"$st_out"; then
+gate_output view "$st_out" "$st_out.records" --policy crlf
+if LC_ALL=C grep -q 'at HotUpdatePatch\.' "$st_out.records"; then
     echo "FAIL: plain-base kind-0 trace names an interpreted patch frame (kind-0 must drop interpreter PCs, never misattribute them):" >&2
-    printf '%s\n' "$st_out" >&2
+    cat "$st_out" >&2
     exit 1
 fi
-if ! grep -q '^shadow-trace: caught in AOT base$' <<<"$st_out"; then
+if ! gate_output witness "$st_out" 'shadow-trace: caught in AOT base' --count any --policy crlf; then
     echo "FAIL: --shadow-trace verdict line missing — the mode did not complete:" >&2
-    printf '%s\n' "$st_out" >&2
+    cat "$st_out" >&2
     exit 1
 fi
 echo "OK (plain base: interp frames dropped, never misattributed; verdict line present)"
@@ -944,16 +1006,16 @@ echo "-- a generic virtual instantiation the base never reached refuses the load
 invoke_cli --emit-patch "$gvmhit_app" --base-abi "$OUT/base-abi.json" -o "$OUT/gvm-row"
 invoke_cli --emit-patch "$gvmmiss_app" --base-abi "$OUT/base-abi.json" -o "$OUT/gvm-row"
 set +e
-gvmrow_out=$("./$OUT/HotUpdateBase" --load-refused "$OUT/gvm-row/GvmRowHitPatch.bpi"); gvmrow_rc=$?
+hotupdate_capture gvmrow_out gvmrow_rc stdout run_bounded "./$OUT/HotUpdateBase" --load-refused "$OUT/gvm-row/GvmRowHitPatch.bpi"
 set -e
-assert_output "$(strip_cr_win "$gvmrow_out")" "crate:5
+gate_assert_text "$gvmrow_out" "crate:5
 loaded
 published"
 assert_exit_code "$gvmrow_rc" 0
 set +e
-gvmrow_out=$("./$OUT/HotUpdateBase" --load-refused "$OUT/gvm-row/GvmRowMissPatch.bpi"); gvmrow_rc=$?
+hotupdate_capture gvmrow_out gvmrow_rc stdout run_bounded "./$OUT/HotUpdateBase" --load-refused "$OUT/gvm-row/GvmRowMissPatch.bpi"
 set -e
-assert_output "$(strip_cr_win "$gvmrow_out")" "refused:BPI bind: unresolved method import
+gate_assert_text "$gvmrow_out" "refused:BPI bind: unresolved method import
 published nothing"
 assert_exit_code "$gvmrow_rc" 0
 echo "OK (unreached generic virtual instantiation refused, nothing published)"
@@ -1011,8 +1073,16 @@ echo "-- negative: a stale BPI (baseImageAbiHash mismatch) must be rejected --"
 cp "$OUT/HotUpdatePatch.bpi" "$OUT/stale.bpi"
 # Flip one byte of the header's baseImageAbiHash (offset 16).
 printf '\xFF' | dd of="$OUT/stale.bpi" bs=1 seek=16 count=1 conv=notrunc 2>/dev/null
-if "./$OUT/HotUpdateBase" "$OUT/stale.bpi" >/dev/null 2>&1; then
+hotupdate_capture stale_output stale_rc stdout --expect-abort \
+    "Unhandled exception. System.NotSupportedException: BPI/base ABI mismatch: rebuild the patch against this base image" "base: start" \
+    run_bounded "./$OUT/HotUpdateBase" "$OUT/stale.bpi"
+if [ "$stale_rc" -eq 0 ]; then
     echo "FAIL: a stale BPI (ABI hash mismatch) was accepted" >&2
+    exit 1
+fi
+if ! grep -Fq 'BPI/base ABI mismatch: rebuild the patch against this base image' "${stale_output%.stdout}.stderr"; then
+    echo "FAIL: stale BPI did not report the ABI mismatch:" >&2
+    cat "${stale_output%.stdout}.stderr" >&2
     exit 1
 fi
 echo "OK (stale BPI rejected)"
@@ -1024,14 +1094,16 @@ cp "$OUT/HotUpdatePatch.bpi" "$OUT/flagged.bpi"
 # ever claim, so this fence stays valid as flag bits are legalized.
 printf '\x80' | dd of="$OUT/flagged.bpi" bs=1 seek=15 count=1 conv=notrunc 2>/dev/null
 flag_rc=0
-flag_err=$("./$OUT/HotUpdateBase" "$OUT/flagged.bpi" 2>&1 >/dev/null) || flag_rc=$?
+hotupdate_capture flag_err flag_rc stderr --expect-abort \
+    "Unhandled exception. System.NotSupportedException: BPI: unsupported header flags (patch baked for a newer runtime)" "base: start" \
+    run_bounded "./$OUT/HotUpdateBase" "$OUT/flagged.bpi"
 if [ "$flag_rc" -eq 0 ]; then
     echo "FAIL: a BPI with unknown header flag bits was accepted" >&2
     exit 1
 fi
-if ! grep -q "unsupported header flags" <<<"$flag_err"; then
+if ! grep -q "unsupported header flags" "$flag_err"; then
     echo "FAIL: rejection message missing the unknown-flags fence:" >&2
-    echo "$flag_err" >&2
+    cat "$flag_err" >&2
     exit 1
 fi
 echo "OK (unknown header flags rejected)"
@@ -1054,10 +1126,11 @@ echo "-- a type-confused intrinsic import is refused, not dereferenced --"
 invoke_cli --emit-patch "$recv_app" --base-abi "$OUT/base-abi.json" -o "$OUT"
 # Positive control first: the receiver test must not reject the legitimate call.
 # ToString on a RecvProbe is Object's, so it prints the instance's type FullName.
-recv_out=$("./$OUT/HotUpdateBase" "$OUT/HotUpdateRecvPatch.bpi")
-grep -q '^HotRecvPatch\.RecvProbe$' <<<"$(strip_cr_win "$recv_out")" \
+hotupdate_capture recv_out _hotupdate_status stdout run_bounded "./$OUT/HotUpdateBase" "$OUT/HotUpdateRecvPatch.bpi"
+gate_output status "$_hotupdate_status" 0
+gate_output witness "$recv_out" 'HotRecvPatch.RecvProbe' --count any --policy crlf \
     || { echo "FAIL: the uncorrupted receiver fixture did not print its ToString:" >&2
-         printf '%s\n' "$recv_out" >&2; exit 1; }
+         cat "$recv_out" >&2; exit 1; }
 cp "$OUT/HotUpdateRecvPatch.bpi" "$OUT/confused.bpi"
 recv_objoff=$(LC_ALL=C grep -abo -- 'System.Object' "$OUT/confused.bpi" | cut -d: -f1)
 recv_tsoff=$(LC_ALL=C grep -abo -- 'ToString' "$OUT/confused.bpi" | cut -d: -f1)
@@ -1072,7 +1145,9 @@ recv_tsoff=$(LC_ALL=C grep -abo -- 'ToString' "$OUT/confused.bpi" | cut -d: -f1)
 printf '\x0b\x00System.Type' | dd of="$OUT/confused.bpi" bs=1 seek=$((recv_objoff - 2)) conv=notrunc 2>/dev/null
 printf 'get_Name' | dd of="$OUT/confused.bpi" bs=1 seek="$recv_tsoff" conv=notrunc 2>/dev/null
 set +e
-recv_err=$("./$OUT/HotUpdateBase" "$OUT/confused.bpi" 2>&1 >/dev/null); recv_rc=$?
+hotupdate_capture recv_err recv_rc stderr --expect-abort \
+    "Unhandled exception. System.NotSupportedException: interp: intrinsic call receiver is not an instance of the import's declared type" "base: start" \
+    run_bounded "./$OUT/HotUpdateBase" "$OUT/confused.bpi"
 set -e
 # Measured with the receiver test removed, this exact image exits 139 (SIGSEGV)
 # inside dn2cpp_type_name. Exit 0 would be worse still — a wrong answer.
@@ -1080,9 +1155,9 @@ if [ "$recv_rc" -eq 0 ]; then
     echo "FAIL: a type-confused intrinsic import was accepted" >&2
     exit 1
 fi
-if ! grep -q "receiver is not an instance of the import's declared type" <<<"$recv_err"; then
+if ! grep -q "receiver is not an instance of the import's declared type" "$recv_err"; then
     echo "FAIL: the type-confused import did not raise the receiver-type refusal:" >&2
-    printf '%s\n' "$recv_err" >&2
+    cat "$recv_err" >&2
     exit 1
 fi
 echo "OK (type-confused intrinsic receiver refused)"
@@ -1104,10 +1179,11 @@ echo "-- a type-confused intrinsic ARGUMENT is refused, not dereferenced --"
 # the target row wants — which makes this the minimal corruption of the two.
 invoke_cli --emit-patch "$arg_app" --base-abi "$OUT/base-abi.json" -o "$OUT"
 # Positive control first: the argument test must not reject the legitimate call.
-arg_out=$("./$OUT/HotUpdateBase" "$OUT/HotUpdateArgPatch.bpi")
-grep -q '^arg-probe$' <<<"$(strip_cr_win "$arg_out")" \
+hotupdate_capture arg_out _hotupdate_status stdout run_bounded "./$OUT/HotUpdateBase" "$OUT/HotUpdateArgPatch.bpi"
+gate_output status "$_hotupdate_status" 0
+gate_output witness "$arg_out" 'arg-probe' --count any --policy crlf \
     || { echo "FAIL: the uncorrupted argument fixture did not print its concatenation:" >&2
-         printf '%s\n' "$arg_out" >&2; exit 1; }
+         cat "$arg_out" >&2; exit 1; }
 cp "$OUT/HotUpdateArgPatch.bpi" "$OUT/confused-arg.bpi"
 arg_shapeoff=$(LC_ALL=C grep -abo -- '(String,String):String' "$OUT/confused-arg.bpi" | cut -d: -f1)
 [ "$(printf '%s\n' "$arg_shapeoff" | wc -l | tr -d ' ')" = "1" ] \
@@ -1120,7 +1196,9 @@ arg_shapeoff=$(LC_ALL=C grep -abo -- '(String,String):String' "$OUT/confused-arg
 # string the patch's own code pushed.
 printf '\x11\x00(String[]):String' | dd of="$OUT/confused-arg.bpi" bs=1 seek=$((arg_shapeoff - 2)) conv=notrunc 2>/dev/null
 set +e
-arg_err=$("./$OUT/HotUpdateBase" "$OUT/confused-arg.bpi" 2>&1 >/dev/null); arg_rc=$?
+hotupdate_capture arg_err arg_rc stderr --expect-abort \
+    "Unhandled exception. System.NotSupportedException: interp: intrinsic call argument is not an instance of the import's declared parameter type" "base: start" \
+    run_bounded "./$OUT/HotUpdateBase" "$OUT/confused-arg.bpi"
 set -e
 # Measured with intrinsic_arg_ok forced to true, this exact image exits 138
 # (SIGBUS, thrice out of three) inside dn2cpp_string_concat_objects, which walks
@@ -1130,9 +1208,9 @@ if [ "$arg_rc" -eq 0 ]; then
     echo "FAIL: a type-confused intrinsic argument was accepted" >&2
     exit 1
 fi
-if ! grep -q "argument is not an instance of the import's declared parameter type" <<<"$arg_err"; then
+if ! grep -q "argument is not an instance of the import's declared parameter type" "$arg_err"; then
     echo "FAIL: the type-confused argument did not raise the parameter-type refusal:" >&2
-    printf '%s\n' "$arg_err" >&2
+    cat "$arg_err" >&2
     exit 1
 fi
 echo "OK (type-confused intrinsic argument refused)"
@@ -1170,13 +1248,16 @@ echo "-- a type-confused kShapeInvoker receiver is refused, not dispatched --"
 # whatever it held, not merely a wrong answer.
 invoke_cli --emit-patch "$inv_app" --base-abi "$OUT/base-abi.json" -o "$OUT"
 # Positive control first: the receiver test must not reject the legitimate call.
-inv_out=$("./$OUT/HotUpdateBase" "$OUT/HotUpdateInvokerPatch.bpi")
-grep -q '^seed/none#1$' <<<"$(strip_cr_win "$inv_out")" \
+hotupdate_capture inv_out _hotupdate_status stdout run_bounded "./$OUT/HotUpdateBase" "$OUT/HotUpdateInvokerPatch.bpi"
+gate_output status "$_hotupdate_status" 0
+gate_output witness "$inv_out" 'seed/none#1' --count any --policy crlf \
     || { echo "FAIL: the uncorrupted invoker fixture did not print QuotaEx.Describe:" >&2
-         printf '%s\n' "$inv_out" >&2; exit 1; }
+         cat "$inv_out" >&2; exit 1; }
 bpi_relabel "$OUT/HotUpdateInvokerPatch.bpi" "$OUT/confused-inv.bpi"
 set +e
-inv_err=$("./$OUT/HotUpdateBase" "$OUT/confused-inv.bpi" 2>&1 >/dev/null); inv_rc=$?
+hotupdate_capture inv_err inv_rc stderr --expect-abort \
+    "Unhandled exception. System.NotSupportedException: interp: call receiver is not an instance of the import's declared type" "base: start" \
+    run_bounded "./$OUT/HotUpdateBase" "$OUT/confused-inv.bpi"
 set -e
 # Measured with the receiver test forced true, this exact image exits 134 in the
 # runtime's own missing-slot trap ("dn2cpp fatal: virtual call on
@@ -1188,9 +1269,9 @@ if [ "$inv_rc" -eq 0 ]; then
     echo "FAIL: a type-confused invoker receiver was accepted" >&2
     exit 1
 fi
-if ! grep -q "receiver is not an instance of the import's declared type" <<<"$inv_err"; then
+if ! grep -q "receiver is not an instance of the import's declared type" "$inv_err"; then
     echo "FAIL: the type-confused invoker receiver did not raise the receiver-type refusal:" >&2
-    printf '%s\n' "$inv_err" >&2
+    cat "$inv_err" >&2
     exit 1
 fi
 echo "OK (type-confused kShapeInvoker receiver refused)"
@@ -1204,13 +1285,16 @@ echo "-- a type-confused ldftn delegate capture is refused, not bound --"
 # the import — so the refusal has to be at construction, beside the null-'this'
 # refusal. The fixture takes the method GROUP and nothing else.
 invoke_cli --emit-patch "$ftn_app" --base-abi "$OUT/base-abi.json" -o "$OUT"
-ftn_out=$("./$OUT/HotUpdateBase" "$OUT/HotUpdateFtnPatch.bpi")
-grep -q '^seed/none#1$' <<<"$(strip_cr_win "$ftn_out")" \
+hotupdate_capture ftn_out _hotupdate_status stdout run_bounded "./$OUT/HotUpdateBase" "$OUT/HotUpdateFtnPatch.bpi"
+gate_output status "$_hotupdate_status" 0
+gate_output witness "$ftn_out" 'seed/none#1' --count any --policy crlf \
     || { echo "FAIL: the uncorrupted ldftn fixture did not print QuotaEx.Describe:" >&2
-         printf '%s\n' "$ftn_out" >&2; exit 1; }
+         cat "$ftn_out" >&2; exit 1; }
 bpi_relabel "$OUT/HotUpdateFtnPatch.bpi" "$OUT/confused-ftn.bpi"
 set +e
-ftn_err=$("./$OUT/HotUpdateBase" "$OUT/confused-ftn.bpi" 2>&1 >/dev/null); ftn_rc=$?
+hotupdate_capture ftn_err ftn_rc stderr --expect-abort \
+    "Unhandled exception. System.NotSupportedException: interp: call receiver is not an instance of the import's declared type" "base: start" \
+    run_bounded "./$OUT/HotUpdateBase" "$OUT/confused-ftn.bpi"
 set -e
 # Measured with the capture test forced true, this exact image exits 0 and prints
 # ":-2146233088" where "seed/none#1" belongs — Counter.Describe reading the
@@ -1221,9 +1305,9 @@ if [ "$ftn_rc" -eq 0 ]; then
     echo "FAIL: a type-confused ldftn delegate capture was accepted" >&2
     exit 1
 fi
-if ! grep -q "receiver is not an instance of the import's declared type" <<<"$ftn_err"; then
+if ! grep -q "receiver is not an instance of the import's declared type" "$ftn_err"; then
     echo "FAIL: the type-confused delegate capture did not raise the receiver-type refusal:" >&2
-    printf '%s\n' "$ftn_err" >&2
+    cat "$ftn_err" >&2
     exit 1
 fi
 echo "OK (type-confused ldftn delegate capture refused)"
@@ -1257,10 +1341,11 @@ echo "-- a delegate whose Invoke arity is not the capture's is refused --"
 # (23 = 0x17 0x00), the other being preceded by '('.
 invoke_cli --emit-patch "$dgrecv_app" --base-abi "$OUT/base-abi.json" -o "$OUT"
 # Positive control first: the receiver tests must not reject the legitimate call.
-dgrecv_out=$("./$OUT/HotUpdateBase" "$OUT/HotUpdateDgRecvPatch.bpi")
-grep -q '^probe#7$' <<<"$(strip_cr_win "$dgrecv_out")" \
+hotupdate_capture dgrecv_out _hotupdate_status stdout run_bounded "./$OUT/HotUpdateBase" "$OUT/HotUpdateDgRecvPatch.bpi"
+gate_output status "$_hotupdate_status" 0
+gate_output witness "$dgrecv_out" 'probe#7' --count any --policy crlf \
     || { echo "FAIL: the uncorrupted delegate-receiver fixture did not print its probe:" >&2
-         printf '%s\n' "$dgrecv_out" >&2; exit 1; }
+         cat "$dgrecv_out" >&2; exit 1; }
 cp "$OUT/HotUpdateDgRecvPatch.bpi" "$OUT/confused-dgrecv.bpi"
 dgrecv_off=""
 for o in $(LC_ALL=C grep -abo -- 'HotUpdateBase.Describer' "$OUT/confused-dgrecv.bpi" | cut -d: -f1); do
@@ -1273,7 +1358,9 @@ done
     || { echo "FAIL: HotUpdateDgRecvPatch no longer carries HotUpdateBase.Describer as a pooled entry — the corruption cannot be located by content" >&2; exit 1; }
 printf 'HotUpdateBase.Annotator' | dd of="$OUT/confused-dgrecv.bpi" bs=1 seek="$dgrecv_off" conv=notrunc 2>/dev/null
 set +e
-dgrecv_err=$("./$OUT/HotUpdateBase" "$OUT/confused-dgrecv.bpi" 2>&1 >/dev/null); dgrecv_rc=$?
+hotupdate_capture dgrecv_err dgrecv_rc stderr --expect-abort \
+    "Unhandled exception. System.NotSupportedException: interp: a delegate closure with a captured receiver reached a static patch frame" "base: start" \
+    run_bounded "./$OUT/HotUpdateBase" "$OUT/confused-dgrecv.bpi"
 set -e
 # Measured with the closure/frame contradiction test removed, this exact image
 # exits 139 (SIGSEGV, three runs of three) — and it does so INSIDE the `call`
@@ -1285,9 +1372,9 @@ if [ "$dgrecv_rc" -eq 0 ]; then
     echo "FAIL: a delegate closure with a captured receiver was run as a static frame" >&2
     exit 1
 fi
-if ! grep -q "captured receiver reached a static patch frame" <<<"$dgrecv_err"; then
+if ! grep -q "captured receiver reached a static patch frame" "$dgrecv_err"; then
     echo "FAIL: the arity-confused delegate closure did not raise the refusal:" >&2
-    printf '%s\n' "$dgrecv_err" >&2
+    cat "$dgrecv_err" >&2
     exit 1
 fi
 echo "OK (arity-confused patch delegate closure refused)"
@@ -1309,14 +1396,14 @@ echo "-- an AOT delegate target of the wrong signature is refused --"
 # the writes so a fixture that grows a second user fails here loudly.
 invoke_cli --emit-patch "$dgsig_app" --base-abi "$OUT/base-abi.json" -o "$OUT"
 # Positive control first: the signature test must not reject the legitimate one.
-dgsig_out=$("./$OUT/HotUpdateBase" "$OUT/HotUpdateDgSigPatch.bpi")
-grep -q '^rate#3$' <<<"$(strip_cr_win "$dgsig_out")" \
+hotupdate_capture dgsig_out _hotupdate_status stdout run_bounded "./$OUT/HotUpdateBase" "$OUT/HotUpdateDgSigPatch.bpi"
+gate_output status "$_hotupdate_status" 0
+gate_output witness "$dgsig_out" 'rate#3' --count any --policy crlf \
     || { echo "FAIL: the uncorrupted delegate-signature fixture did not print its rate:" >&2
-         printf '%s\n' "$dgsig_out" >&2; exit 1; }
-dgsig_before=$(run_bounded "./$OUT/HotUpdateBase" "$OUT/HotUpdateDgSigPatch.bpi" before-type-getter-signature)
-dgsig_out=$(strip_cr_win "$dgsig_out")
-dgsig_before=$(strip_cr_win "$dgsig_before")
-assert_output "${dgsig_out%%$'\n== intrinsic Type getter signature =='*}" "$dgsig_before"
+         cat "$dgsig_out" >&2; exit 1; }
+hotupdate_capture dgsig_before _hotupdate_status stdout run_bounded "./$OUT/HotUpdateBase" "$OUT/HotUpdateDgSigPatch.bpi" before-type-getter-signature
+gate_output status "$_hotupdate_status" 0
+gate_output compare "$(hotupdate_before "$dgsig_out" '== intrinsic Type getter signature ==')" "$dgsig_before"
 cp "$OUT/HotUpdateDgSigPatch.bpi" "$OUT/confused-dgsig.bpi"
 dgsig_nameoff=$(LC_ALL=C grep -abo -- 'Rate' "$OUT/confused-dgsig.bpi" | cut -d: -f1)
 dgsig_shapeoff=$(LC_ALL=C grep -abo -- '(Single):String' "$OUT/confused-dgsig.bpi" | cut -d: -f1)
@@ -1326,7 +1413,9 @@ dgsig_shapeoff=$(LC_ALL=C grep -abo -- '(Single):String' "$OUT/confused-dgsig.bp
 printf 'Warn' | dd of="$OUT/confused-dgsig.bpi" bs=1 seek="$dgsig_nameoff" conv=notrunc 2>/dev/null
 printf '(String):String' | dd of="$OUT/confused-dgsig.bpi" bs=1 seek="$dgsig_shapeoff" conv=notrunc 2>/dev/null
 set +e
-dgsig_err=$("./$OUT/HotUpdateBase" "$OUT/confused-dgsig.bpi" 2>&1 >/dev/null); dgsig_rc=$?
+hotupdate_capture dgsig_err dgsig_rc stderr --expect-abort \
+    "Unhandled exception. System.NotSupportedException: interp: the delegate target's signature is not the delegate's Invoke signature" "base: start" \
+    run_bounded "./$OUT/HotUpdateBase" "$OUT/confused-dgsig.bpi"
 set -e
 # Measured with dg_aot_signature_ok forced true, this exact image exits 134
 # (three runs of three): Warn concatenates the string its pointer parameter names
@@ -1337,37 +1426,36 @@ if [ "$dgsig_rc" -eq 0 ]; then
     echo "FAIL: an AOT delegate target of the wrong signature was accepted" >&2
     exit 1
 fi
-if ! grep -q "is not the delegate's Invoke signature" <<<"$dgsig_err"; then
+if ! grep -q "is not the delegate's Invoke signature" "$dgsig_err"; then
     echo "FAIL: the signature-confused delegate target did not raise the signature refusal:" >&2
-    printf '%s\n' "$dgsig_err" >&2
+    cat "$dgsig_err" >&2
     exit 1
 fi
 echo "OK (signature-confused AOT delegate target refused)"
 
 echo "-- intrinsic GetType capture validates the declared return in both codecs --"
-getter_oracle=$(run_bounded dotnet "$concat_oracle_app" --type-getter-signature)
-getter_oracle=$(strip_cr_win "$getter_oracle")
+hotupdate_capture getter_oracle _hotupdate_status stdout run_bounded dotnet "$concat_oracle_app" --type-getter-signature
+gate_output status "$_hotupdate_status" 0
 for line in 'clone getter nonthrowing=True' 'clone getter throwing=ArgumentException' \
         'type getter signature oracle end'; do
-    grep -Fxq -- "$line" <<< "$getter_oracle" \
+    gate_output witness "$getter_oracle" "$line" --count any --policy crlf \
         || { echo "FAIL: CLR GetType signature oracle witness missing: $line" >&2; exit 1; }
 done
-getter_expected="${getter_oracle%%$'\nclone getter nonthrowing='*}"
+getter_expected="$(hotupdate_before "$getter_oracle" 'clone getter nonthrowing=True')"
 getter_failed=0
 for getter_codec in register stack; do
     getter_dir="$OUT/type-getter-$getter_codec"
     getter_flags=(--emit-patch "$dgsig_app" --base-abi "$OUT/trigger/base-abi.json" -o "$getter_dir")
     [ "$getter_codec" = stack ] && getter_flags+=(--patch-stackcode)
     invoke_cli "${getter_flags[@]}"
-    run_bounded "./$OUT/trigger/HotUpdateBase" "$getter_dir/HotUpdateDgSigPatch.bpi" \
-        > "$getter_dir/control.stdout"
-    getter_control=$(strip_cr_win_file "$getter_dir/control.stdout")
-    run_bounded "./$OUT/trigger/HotUpdateBase" "$getter_dir/HotUpdateDgSigPatch.bpi" before-type-getter-signature \
-        > "$getter_dir/before.stdout"
-    getter_before=$(strip_cr_win_file "$getter_dir/before.stdout")
-    assert_output "$getter_before" "$dgsig_before"
-    assert_output "${getter_control%%$'\n== intrinsic Type getter signature =='*}" "$getter_before"
-    assert_output "== intrinsic Type getter signature ==${getter_control#*$'\n== intrinsic Type getter signature =='}" "$getter_expected"
+    hotupdate_capture getter_control _hotupdate_status stdout run_bounded "./$OUT/trigger/HotUpdateBase" "$getter_dir/HotUpdateDgSigPatch.bpi"
+    gate_output status "$_hotupdate_status" 0
+    hotupdate_capture getter_before _hotupdate_status stdout run_bounded "./$OUT/trigger/HotUpdateBase" "$getter_dir/HotUpdateDgSigPatch.bpi" before-type-getter-signature
+    gate_output status "$_hotupdate_status" 0
+    gate_output compare "$getter_before" "$dgsig_before"
+    gate_output prefix "$getter_control" "$getter_before" --before '== intrinsic Type getter signature ==' --policy crlf
+    gate_output select "$getter_control" "$getter_dir/signature.stdout" --from '== intrinsic Type getter signature ==' --policy crlf
+    gate_output compare "$getter_dir/signature.stdout" "$getter_expected"
 
     cp "$getter_dir/HotUpdateDgSigPatch.bpi" "$getter_dir/confused-return.bpi"
     # The resolver may return an interpreter command with arguments.
@@ -1386,17 +1474,14 @@ if offset < 2 or int.from_bytes(data[offset - 2:offset], 'little') != len(old):
     raise SystemExit('GetType delegate name is not a pooled string entry')
 p.write_bytes(data[:offset] + new + data[offset + len(old):])
 PY
-    set +e
-    run_bounded "./$OUT/trigger/HotUpdateBase" "$getter_dir/confused-return.bpi" \
-        > "$getter_dir/confused.stdout" 2> "$getter_dir/confused.stderr"
-    getter_rc=$?
-    set -e
-    getter_stdout=$(strip_cr_win_file "$getter_dir/confused.stdout")
-    getter_stderr=$(strip_cr_win_file "$getter_dir/confused.stderr")
+    hotupdate_capture getter_stdout getter_rc stdout --expect-abort \
+        "Unhandled exception. System.NotSupportedException: interp: the delegate target's signature is not the delegate's Invoke signature" "== intrinsic Type getter signature ==" \
+        run_bounded "./$OUT/trigger/HotUpdateBase" "$getter_dir/confused-return.bpi"
+    getter_stderr="${getter_stdout%.stdout}.stderr"
     if [ "$getter_rc" -eq 0 ] \
-        || ! grep -Fq "is not the delegate's Invoke signature" <<< "$getter_stderr" \
-        || ! grep -Fxq '== intrinsic Type getter signature ==' <<< "$getter_stdout" \
-        || grep -Fxq 'type getter captured' <<< "$getter_stdout"; then
+        || ! grep -Fq "is not the delegate's Invoke signature" "$getter_stderr" \
+        || ! gate_output witness "$getter_stdout" '== intrinsic Type getter signature ==' --count any --policy crlf \
+        || ! gate_output witness "$getter_stdout" 'type getter captured' --count 0 --policy crlf; then
         echo "FAIL: $getter_codec GetType capture accepted an incompatible declared return or missed its capture refusal" >&2
         getter_failed=1
     fi
@@ -1422,7 +1507,7 @@ cp "$OUT/stale.bpi" "$OUT/patches/stale.bpi"
 cp "$OUT/flagged.bpi" "$OUT/patches/flagged.bpi"
 # True: the last-installed probe (v2) is an instance of the registration
 # Type.GetType now resolves; False: the first install keeps v1's type-info.
-expected="install v1
+hotupdate_fixture expected --text "install v1
 install v2
 loaded:2
 probe v2 describing
@@ -1431,9 +1516,10 @@ True
 False"
 dir_err_file=$(mktemp)
 set +e
-dir_out=$("./$OUT/HotUpdateBase" --load-dir "$OUT/patches" 2>"$dir_err_file"); dir_rc=$?
+hotupdate_capture dir_out dir_rc stdout run_bounded "./$OUT/HotUpdateBase" --load-dir "$OUT/patches"
+cp "${dir_out%.stdout}.stderr" "$dir_err_file"
 set -e
-assert_output "$(strip_cr_win "$dir_out")" "$expected"
+gate_output compare "$dir_out" "$expected" --policy crlf
 assert_exit_code "$dir_rc" 0
 if ! grep -q "unsupported BPI header flags" "$dir_err_file"; then
     echo "FAIL: directory load stderr missing the unknown-flags skip diagnostic:" >&2
@@ -1451,12 +1537,20 @@ cp "$OUT/HotUpdateDirPatch1.bpi" "$OUT/noentry.bpi"
 # assemblies would produce.
 printf '\xff\xff\xff\xff' | dd of="$OUT/noentry.bpi" bs=1 seek=40 count=4 conv=notrunc 2>/dev/null
 set +e
-noentry_out=$("./$OUT/HotUpdateBase" --load "$OUT/noentry.bpi"); noentry_rc=$?
+hotupdate_capture noentry_out noentry_rc stdout run_bounded "./$OUT/HotUpdateBase" --load "$OUT/noentry.bpi"
 set -e
-assert_output "$(strip_cr_win "$noentry_out")" "registered"
+gate_assert_text "$noentry_out" "registered"
 assert_exit_code "$noentry_rc" 0
-if "./$OUT/HotUpdateBase" "$OUT/noentry.bpi" >/dev/null 2>&1; then
+hotupdate_capture noentry_run_output noentry_run_rc stdout --expect-abort \
+    "Unhandled exception. System.NotSupportedException: hotupdate: the BPI has no entry method" "base: start" \
+    run_bounded "./$OUT/HotUpdateBase" "$OUT/noentry.bpi"
+if [ "$noentry_run_rc" -eq 0 ]; then
     echo "FAIL: Run accepted a BPI with no entry method" >&2
+    exit 1
+fi
+if ! grep -Fq 'hotupdate: the BPI has no entry method' "${noentry_run_output%.stdout}.stderr"; then
+    echo "FAIL: Run did not report the missing entry method:" >&2
+    cat "${noentry_run_output%.stdout}.stderr" >&2
     exit 1
 fi
 echo "OK (entry-less BPI)"
@@ -1512,9 +1606,9 @@ False
 3
 patch: done
 base: done"
+hotupdate_fixture cl_expected --text "$cl_expected"
 cl_expected_before_object_virtuals="$cl_expected"
-cl_expected="$cl_expected_before_object_virtuals
-== object virtuals over a patch receiver ==
+hotupdate_fixture cl_expected --file "$cl_expected_before_object_virtuals" --text "== object virtuals over a patch receiver ==
 HotUpdateCoreLibBase.Plaque.ToString plaque
 HotUpdateCoreLibBase.Plaque.ToString plaque
 HotUpdateCoreLibBase.Plaque.ToString
@@ -1523,8 +1617,8 @@ System.Object.ToString HotUpdateCoreLibPatch.FrostSlate
 System.Object.ToString
 == object virtuals over a patch receiver end =="
 cl_expected_before_aggregate="$cl_expected"
-aggregate_collection_oracle=$(run_bounded dotnet "$concat_oracle_app" --aggregate-collection)
-aggregate_collection_oracle=$(strip_cr_win "$aggregate_collection_oracle")
+hotupdate_capture aggregate_collection_oracle _hotupdate_status stdout run_bounded dotnet "$concat_oracle_app" --aggregate-collection
+gate_output status "$_hotupdate_status" 0
 for line in '== interpreted aggregate collections ==' \
     'collection direct=count=2/cached=True/first=True/order=True/message=direct (first) (second)/31/direct' \
     'collection rewritten=count=2/cached=True/first=True/order=True/message=direct (first) (second)/43/after' \
@@ -1547,65 +1641,62 @@ for line in '== interpreted aggregate collections ==' \
     'ordinary Message base again=ordinary base' \
     'ordinary Message final reads=1/reads' \
     'interpreted ordinary exception Message dispatch end'; do
-    grep -Fxq -- "$line" <<< "$aggregate_collection_oracle" \
+    gate_output witness "$aggregate_collection_oracle" "$line" --count any --policy crlf \
         || { echo "FAIL: managed aggregate collection witness missing: $line" >&2; exit 1; }
 done
-aggregate_collection_prefix_oracle=$(run_bounded dotnet "$concat_oracle_app" --aggregate-collection before-aggregate-message)
-aggregate_collection_prefix_oracle=$(strip_cr_win "$aggregate_collection_prefix_oracle")
-assert_output "${aggregate_collection_oracle%%$'\n== interpreted aggregate Message dispatch =='*}" \
-    "$aggregate_collection_prefix_oracle"
-ordinary_message_prefix_oracle=$(run_bounded dotnet "$concat_oracle_app" --aggregate-collection before-ordinary-exception-message)
-ordinary_message_prefix_oracle=$(strip_cr_win "$ordinary_message_prefix_oracle")
-assert_output "${aggregate_collection_oracle%%$'\n== interpreted ordinary exception Message dispatch =='*}" \
-    "$ordinary_message_prefix_oracle"
-cl_expected="$cl_expected_before_aggregate
-$aggregate_collection_oracle"
+hotupdate_capture aggregate_collection_prefix_oracle _hotupdate_status stdout run_bounded dotnet "$concat_oracle_app" --aggregate-collection before-aggregate-message
+gate_output status "$_hotupdate_status" 0
+gate_output compare "$(hotupdate_before "$aggregate_collection_oracle" '== interpreted aggregate Message dispatch ==')" "$aggregate_collection_prefix_oracle"
+hotupdate_capture ordinary_message_prefix_oracle _hotupdate_status stdout run_bounded dotnet "$concat_oracle_app" --aggregate-collection before-ordinary-exception-message
+gate_output status "$_hotupdate_status" 0
+gate_output compare "$(hotupdate_before "$aggregate_collection_oracle" '== interpreted ordinary exception Message dispatch ==')" "$ordinary_message_prefix_oracle"
+hotupdate_fixture cl_expected --file "$cl_expected_before_aggregate" --file "$aggregate_collection_oracle"
 set +e
-cl_out=$("./$OUT/corelib/HotUpdateCoreLibBase" "$OUT/corelib/HotUpdateCoreLibPatch.bpi"); cl_rc=$?
+hotupdate_capture cl_out cl_rc stdout run_bounded "./$OUT/corelib/HotUpdateCoreLibBase" "$OUT/corelib/HotUpdateCoreLibPatch.bpi"
 set -e
-assert_output "$(strip_cr_win "$cl_out")" "$cl_expected"
+gate_output compare "$cl_out" "$cl_expected" --policy crlf
 assert_exit_code "$cl_rc" 0
-cl_normalized=$(strip_cr_win "$cl_out")
-assert_output "${cl_normalized%%$'\n== interpreted aggregate collections =='*}" "$cl_expected_before_aggregate"
-cl_before=$(run_bounded "./$OUT/corelib/HotUpdateCoreLibBase$EXE_EXT" \
-    "$OUT/corelib/HotUpdateCoreLibPatch.bpi" before-aggregate-collection)
-assert_output "$(strip_cr_win "$cl_before")" "$cl_expected_before_aggregate"
-grep -Fxq 'interpreted aggregate collections end' <<< "$cl_normalized" \
+cl_normalized="$cl_out"
+gate_output compare "$(hotupdate_before "$cl_normalized" '== interpreted aggregate collections ==')" "$cl_expected_before_aggregate" --policy crlf
+hotupdate_capture cl_before _hotupdate_status stdout run_bounded "./$OUT/corelib/HotUpdateCoreLibBase$EXE_EXT" \
+    "$OUT/corelib/HotUpdateCoreLibPatch.bpi" before-aggregate-collection
+gate_output status "$_hotupdate_status" 0
+gate_output compare "$cl_before" "$cl_expected_before_aggregate" --policy crlf
+gate_output witness "$cl_normalized" 'interpreted aggregate collections end' --count any --policy crlf \
     || { echo 'FAIL: interpreted aggregate collection block did not complete' >&2; exit 1; }
-assert_output "${cl_normalized%%$'\n== object virtuals over a patch receiver =='*}" \
-    "$cl_expected_before_object_virtuals"
-grep -Fxq '== object virtuals over a patch receiver end ==' <<< "$cl_normalized" \
+gate_output compare "$(hotupdate_before "$cl_normalized" '== object virtuals over a patch receiver ==')" "$cl_expected_before_object_virtuals" --policy crlf
+gate_output witness "$cl_normalized" '== object virtuals over a patch receiver end ==' --count any --policy crlf \
     || { echo "FAIL: object virtuals over CoreLib-base patch receivers did not complete" >&2; exit 1; }
 invoke_cli --emit-patch "$cl_patch" --base-abi "$OUT/corelib/base-abi.json" \
     --patch-stackcode -o "$OUT/corelib/stack"
 set +e
-cl_stack_out=$("./$OUT/corelib/HotUpdateCoreLibBase$EXE_EXT" "$OUT/corelib/stack/HotUpdateCoreLibPatch.bpi"); cl_stack_rc=$?
+hotupdate_capture cl_stack_out cl_stack_rc stdout run_bounded "./$OUT/corelib/HotUpdateCoreLibBase$EXE_EXT" "$OUT/corelib/stack/HotUpdateCoreLibPatch.bpi"
 set -e
-cl_stack_normalized=$(strip_cr_win "$cl_stack_out")
-assert_output "$cl_stack_normalized" "$cl_expected"
+cl_stack_normalized="$cl_stack_out"
+gate_output compare "$cl_stack_normalized" "$cl_expected" --policy crlf
 assert_exit_code "$cl_stack_rc" 0
-assert_output "${cl_stack_normalized%%$'\n== interpreted aggregate collections =='*}" "$cl_expected_before_aggregate"
-cl_before_message=$(run_bounded "./$OUT/corelib/HotUpdateCoreLibBase$EXE_EXT" \
-    "$OUT/corelib/HotUpdateCoreLibPatch.bpi" before-aggregate-message)
-assert_output "$(strip_cr_win "$cl_before_message")" "$cl_expected_before_aggregate
-$aggregate_collection_prefix_oracle"
-cl_before_ordinary_message=$(run_bounded "./$OUT/corelib/HotUpdateCoreLibBase$EXE_EXT" \
-    "$OUT/corelib/HotUpdateCoreLibPatch.bpi" before-ordinary-exception-message)
-assert_output "$(strip_cr_win "$cl_before_ordinary_message")" "$cl_expected_before_aggregate
-$ordinary_message_prefix_oracle"
+gate_output compare "$(hotupdate_before "$cl_stack_normalized" '== interpreted aggregate collections ==')" "$cl_expected_before_aggregate" --policy crlf
+hotupdate_capture cl_before_message _hotupdate_status stdout run_bounded "./$OUT/corelib/HotUpdateCoreLibBase$EXE_EXT" \
+    "$OUT/corelib/HotUpdateCoreLibPatch.bpi" before-aggregate-message
+gate_output status "$_hotupdate_status" 0
+hotupdate_fixture cl_before_message_expected --file "$cl_expected_before_aggregate" --file "$aggregate_collection_prefix_oracle"
+gate_output compare "$cl_before_message" "$cl_before_message_expected" --policy crlf
+hotupdate_capture cl_before_ordinary_message _hotupdate_status stdout run_bounded "./$OUT/corelib/HotUpdateCoreLibBase$EXE_EXT" \
+    "$OUT/corelib/HotUpdateCoreLibPatch.bpi" before-ordinary-exception-message
+gate_output status "$_hotupdate_status" 0
+hotupdate_fixture cl_before_ordinary_message_expected --file "$cl_expected_before_aggregate" --file "$ordinary_message_prefix_oracle"
+gate_output compare "$cl_before_ordinary_message" "$cl_before_ordinary_message_expected" --policy crlf
 for aggregate_message_output in "$cl_normalized" "$cl_stack_normalized"; do
-    assert_output "${aggregate_message_output%%$'\n== interpreted aggregate Message dispatch =='*}" \
-        "$cl_expected_before_aggregate
-$aggregate_collection_prefix_oracle"
-    grep -Fxq 'interpreted aggregate Message dispatch end' <<< "$aggregate_message_output" \
+    hotupdate_fixture aggregate_prefix_expected --file "$cl_expected_before_aggregate" --file "$aggregate_collection_prefix_oracle"
+    gate_output compare "$(hotupdate_before "$aggregate_message_output" '== interpreted aggregate Message dispatch ==')" "$aggregate_prefix_expected" --policy crlf
+    gate_output witness "$aggregate_message_output" 'interpreted aggregate Message dispatch end' --count any --policy crlf \
         || { echo 'FAIL: interpreted aggregate Message block did not complete' >&2; exit 1; }
-    assert_output "${aggregate_message_output%%$'\n== interpreted ordinary exception Message dispatch =='*}" \
-        "$cl_expected_before_aggregate
-$ordinary_message_prefix_oracle"
-    grep -Fxq 'interpreted ordinary exception Message dispatch end' <<< "$aggregate_message_output" \
+    hotupdate_fixture aggregate_prefix_expected --file "$cl_expected_before_aggregate" --file "$ordinary_message_prefix_oracle"
+    gate_output compare "$(hotupdate_before "$aggregate_message_output" '== interpreted ordinary exception Message dispatch ==')" "$aggregate_prefix_expected" --policy crlf
+    gate_output witness "$aggregate_message_output" 'interpreted ordinary exception Message dispatch end' --count any --policy crlf \
         || { echo 'FAIL: interpreted ordinary Message block did not complete' >&2; exit 1; }
 done
-grep -Fxq 'interpreted aggregate collections end' <<< "$cl_stack_normalized" \
+gate_output witness "$cl_stack_normalized" 'interpreted aggregate collections end' --count any --policy crlf \
     || { echo 'FAIL: stack-format aggregate collection block did not complete' >&2; exit 1; }
 
 # Invoking the trapped row: HotUpdateCoreLibBadPatch callvirts get_Entry. The
@@ -1627,9 +1718,9 @@ beta=False
 base caught: BPI bind: value types in import signatures need a later slice
 base: done"
 set +e
-cl_bad_out=$("./$OUT/corelib/HotUpdateCoreLibBase" "$OUT/corelib/HotUpdateCoreLibBadPatch.bpi"); cl_bad_rc=$?
+hotupdate_capture cl_bad_out cl_bad_rc stdout run_bounded "./$OUT/corelib/HotUpdateCoreLibBase" "$OUT/corelib/HotUpdateCoreLibBadPatch.bpi"
 set -e
-assert_output "$(strip_cr_win "$cl_bad_out")" "$cl_bad_expected"
+gate_assert_text "$cl_bad_out" "$cl_bad_expected"
 assert_exit_code "$cl_bad_rc" 0
 
 # A missing type identity must also fail at bind, independently of the known
@@ -1658,9 +1749,9 @@ if mutated.count(shape) != 1:
 target.write_bytes(mutated)
 PY
 set +e
-cl_missing_out=$("./$OUT/corelib/HotUpdateCoreLibBase" "$cl_missing_patch"); cl_missing_rc=$?
+hotupdate_capture cl_missing_out cl_missing_rc stdout run_bounded "./$OUT/corelib/HotUpdateCoreLibBase" "$cl_missing_patch"
 set -e
-assert_output "$(strip_cr_win "$cl_missing_out")" \
+gate_assert_text "$cl_missing_out" \
     "${cl_bad_expected/value types in import signatures need a later slice/unresolved type import in a signature}"
 assert_exit_code "$cl_missing_rc" 0
 echo "OK (real-CoreLib base: blocked rows trapped; known value and missing type imports refused catchably)"
@@ -1685,10 +1776,11 @@ interp_app="samples/dotnet/InterpBench/bin/$CONFIG/$TFM/InterpBench.dll"
 invoke_cli "$interp_app" --hotupdate-base -o "$OUT/interp"
 compile_console "$OUT/interp" InterpBench
 set +e
-ie_out=$("./$OUT/interp/InterpBench" noop 1 2>"$OUT/interp/native.err"); ie_rc=$?
+hotupdate_capture ie_out ie_rc stdout run_bounded "./$OUT/interp/InterpBench" noop 1
+cp "${ie_out%.stdout}.stderr" "$OUT/interp/native.err"
 set -e
-assert_output "$(strip_cr_win "$ie_out")" "checksum:noop:0"
-assert_output "$(strip_cr_win "$(cat "$OUT/interp/native.err")")" "impl:Kernel"
+gate_assert_text "$ie_out" "checksum:noop:0"
+gate_assert_text "$OUT/interp/native.err" "impl:Kernel"
 assert_exit_code "$ie_rc" 0
 echo "OK (CoreLib-less Console.Error reaches stderr and only stderr)"
 echo "-- constructor-free ordinary generic import identity --"
@@ -1709,9 +1801,9 @@ image = pathlib.Path(sys.argv[1]).read_bytes()
 if struct.unpack_from("<I", image, 8)[0] != version:
     raise SystemExit("FAIL: ordinary import BPI header does not name the current format")
 PY
-noctor_oracle=$(dotnet "$noctor_oracle_app")
-noctor_oracle=$(strip_cr_win "$noctor_oracle")
-assert_output "$noctor_oracle" "== noctor generic import identity ==
+hotupdate_capture noctor_oracle _hotupdate_status stdout run_bounded dotnet "$noctor_oracle_app"
+gate_output status "$_hotupdate_status" 0
+gate_assert_text "$noctor_oracle" "== noctor generic import identity ==
 System.Int32
 System.String
 7
@@ -1719,12 +1811,11 @@ echo
 73
 91
 == noctor generic import identity end =="
-noctor_expected="noctor: start
-$noctor_oracle
-noctor: done"
+hotupdate_fixture noctor_expected --text "noctor: start" --file "$noctor_oracle" --text "noctor: done"
 compile_console "$noctor_out/normal" NoCtorImportBase
-noctor_result=$("./$noctor_out/normal/NoCtorImportBase$EXE_EXT" "$noctor_bpi")
-assert_output "$(strip_cr_win "$noctor_result")" "$noctor_expected"
+hotupdate_capture noctor_result _hotupdate_status stdout run_bounded "./$noctor_out/normal/NoCtorImportBase$EXE_EXT" "$noctor_bpi"
+gate_output status "$_hotupdate_status" 0
+gate_output compare "$noctor_result" "$noctor_expected" --policy crlf
 # Native row mutation exercises the real resolver without changing its code or
 # relying on the malformed image's method-table order.
 for noctor_axis in duplicate missing legacy-single legacy-ambiguous; do
@@ -1735,13 +1826,13 @@ for noctor_axis in duplicate missing legacy-single legacy-ambiguous; do
     $hotupdate_python gates/fixtures/hotupdate-import-identity/mutate-native-rows.py \
         "$noctor_out/$noctor_axis" "$noctor_axis"
     compile_console "$noctor_out/$noctor_axis" NoCtorImportBase
-    noctor_result=$("./$noctor_out/$noctor_axis/NoCtorImportBase$EXE_EXT" "$noctor_bpi")
-    noctor_result=$(strip_cr_win "$noctor_result")
+    hotupdate_capture noctor_result _hotupdate_status stdout run_bounded "./$noctor_out/$noctor_axis/NoCtorImportBase$EXE_EXT" "$noctor_bpi"
+    gate_output status "$_hotupdate_status" 0
     case "$noctor_axis" in
-        legacy-single) assert_output "$noctor_result" "$noctor_expected" ;;
-        missing) assert_output "$noctor_result" "noctor: start
+        legacy-single) gate_output compare "$noctor_result" "$noctor_expected" --policy crlf ;;
+        missing) gate_assert_text "$noctor_result" "noctor: start
 noctor rejected:BPI bind: unresolved method import" ;;
-        duplicate|legacy-ambiguous) assert_output "$noctor_result" "noctor: start
+        duplicate|legacy-ambiguous) gate_assert_text "$noctor_result" "noctor: start
 noctor rejected:BPI bind: ambiguous method import (same-arity overloads share a sigShape)" ;;
     esac
 done
@@ -1752,13 +1843,16 @@ for wrong_format in 1 2 3 2147483647; do
     wrong_bpi="$noctor_out/wrong-formats/format-$wrong_format.bpi"
     $hotupdate_python gates/fixtures/hotupdate-import-identity/set-bpi-version.py \
         "$noctor_bpi" "$wrong_bpi" "$wrong_format"
-    noctor_result=$("./$noctor_out/normal/NoCtorImportBase$EXE_EXT" "$wrong_bpi")
-    assert_output "$(strip_cr_win "$noctor_result")" "noctor: start
+    hotupdate_capture noctor_result _hotupdate_status stdout run_bounded "./$noctor_out/normal/NoCtorImportBase$EXE_EXT" "$wrong_bpi"
+    gate_output status "$_hotupdate_status" 0
+    gate_assert_text "$noctor_result" "noctor: start
 noctor rejected:BPI: unsupported format version"
 done
-noctor_result=$("./$noctor_out/normal/NoCtorImportBase$EXE_EXT" --load-dir \
-    "$noctor_out/wrong-formats" 2> "$noctor_out/wrong-formats.err")
-assert_output "$(strip_cr_win "$noctor_result")" 'noctor directory:0'
+hotupdate_capture noctor_result _hotupdate_status stdout run_bounded "./$noctor_out/normal/NoCtorImportBase$EXE_EXT" --load-dir \
+    "$noctor_out/wrong-formats"
+gate_output status "$_hotupdate_status" 0
+cp "${noctor_result%.stdout}.stderr" "$noctor_out/wrong-formats.err"
+gate_assert_text "$noctor_result" 'noctor directory:0'
 [ "$(grep -c 'unsupported BPI format version' "$noctor_out/wrong-formats.err")" = 4 ] \
     || { echo "FAIL: directory header prevalidation did not reject all wrong formats" >&2; exit 1; }
 echo "OK (ordinary generic import identity, ambiguity and format fences)"
@@ -1768,11 +1862,11 @@ echo "-- non-virtual calls of virtual imports match .NET on the same rewritten I
 # hotupdate-nonvirtual-call rewrites them after build), so the managed run of
 # that assembly is the oracle. Only the rewrite makes .NET raise bad IL.
 # The patch's own CultureInfo imports do not bind, so globalization pins the oracle.
-gvmcall_oracle=$(DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 run_bounded dotnet "$gvmcall_app")
-gvmcall_oracle=$(strip_cr_win "$gvmcall_oracle")
-grep -Fxq 'describe: System.BadImageFormatException' <<< "$gvmcall_oracle" \
+DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 hotupdate_capture gvmcall_oracle _hotupdate_status stdout run_bounded dotnet "$gvmcall_app"
+gate_output status "$_hotupdate_status" 0
+gate_output witness "$gvmcall_oracle" 'describe: System.BadImageFormatException' --count any --policy crlf \
     || { echo "FAIL: GvmCallPatch was not rewritten to non-virtual calls" >&2; exit 1; }
-grep -Fxq '== non-virtual calls of virtual imports end ==' <<< "$gvmcall_oracle" \
+gate_output witness "$gvmcall_oracle" '== non-virtual calls of virtual imports end ==' --count any --policy crlf \
     || { echo "FAIL: the managed non-virtual call oracle did not complete" >&2; exit 1; }
 for line in '== abstract class method imports ==' 'aot abstract count' '4294967399' \
     'patch abstract count' '4294967499' 'aot text=aot:value' 'patch text=patch:value' \
@@ -1782,10 +1876,10 @@ for line in '== abstract class method imports ==' 'aot abstract count' '42949673
     'abstract null: System.NullReferenceException/80004003' \
     'abstract direct null: System.BadImageFormatException/8007000B' \
     'abstract class method imports end'; do
-    grep -Fxq -- "$line" <<< "$gvmcall_oracle" \
+    gate_output witness "$gvmcall_oracle" "$line" --count any --policy crlf \
         || { echo "FAIL: abstract method import witness missing: $line" >&2; exit 1; }
 done
-gvmcall_prefix_oracle=$(awk '/^== abstract class method imports ==$/ { exit } { print }' <<< "$gvmcall_oracle")
+gvmcall_prefix_oracle=$(hotupdate_before "$gvmcall_oracle" '== abstract class method imports ==')
 # The complete transcript before the instance-body blocks must remain a prefix.
 gvmcall_previous="== non-virtual calls of virtual imports ==
 bin:5
@@ -1949,9 +2043,9 @@ pointer predicate: System.NullReferenceException/80004003
 folded generic type predicates end"
 assert_gvmcall_body_witnesses() {
     local output="$1" line kind
-    assert_output "${output%%$'\n== null receivers of instance body calls =='*}" "$gvmcall_previous"
-    assert_output "${output%%$'\n== folded generic type predicates =='*}" "$gvmcall_before_predicates"
-    assert_output "${output%%$'\n== generic predicate operand windows =='*}" "$gvmcall_before_windows"
+    gate_assert_text "$(hotupdate_before "$output" '== null receivers of instance body calls ==')" "$gvmcall_previous"
+    gate_assert_text "$(hotupdate_before "$output" '== folded generic type predicates ==')" "$gvmcall_before_predicates"
+    gate_assert_text "$(hotupdate_before "$output" '== generic predicate operand windows ==')" "$gvmcall_before_windows"
     for line in '== generic predicate operand windows ==' \
         'owner positive=False/False/False/False' 'owner null=False/False/False/False' \
         'null-bound owner=False/False/False/False' 'nop positive=False/False/False/False' \
@@ -1961,26 +2055,26 @@ assert_gvmcall_body_witnesses() {
         'owner class body entered' 'owner class predicate: System.NullReferenceException/80004003' \
         'nop class body entered' 'nop class predicate: System.NullReferenceException/80004003' \
         'generic predicate operand windows end'; do
-        [ "$(grep -Fxc -- "$line" <<< "$output")" = 1 ] \
+        gate_output witness "$output" "$line" --count 1 --policy crlf \
             || { echo "FAIL: owner and NOP predicate witness must run once: $line" >&2; return 1; }
     done
     for line in 'owner value body entered' 'owner primitive body entered' \
         'owner enum body entered' 'owner byref-like body entered' 'nop value body entered'; do
-        [ "$(grep -Fxc -- "$line" <<< "$output")" = 3 ] \
+        gate_output witness "$output" "$line" --count 3 --policy crlf \
             || { echo "FAIL: plain calls and null-bound bindings must enter folded predicates: $line" >&2; return 1; }
     done
     for line in 'nop primitive body entered' 'nop enum body entered' 'nop byref-like body entered'; do
-        [ "$(grep -Fxc -- "$line" <<< "$output")" = 2 ] \
+        gate_output witness "$output" "$line" --count 2 --policy crlf \
             || { echo "FAIL: NOP-separated predicates must preserve body entry: $line" >&2; return 1; }
     done
     for line in 'array predicate body entered' 'constructed cell body entered'; do
-        [ "$(grep -Fxc -- "$line" <<< "$output")" = 5 ] \
+        gate_output witness "$output" "$line" --count 5 --policy crlf \
             || { echo "FAIL: constructed types must retain all lookup faults: $line" >&2; return 1; }
     done
     for kind in 0 1 2 3; do
         for line in "array predicate $kind: System.NullReferenceException/80004003" \
             "cell predicate $kind: System.NullReferenceException/80004003"; do
-            [ "$(grep -Fxc -- "$line" <<< "$output")" = 1 ] \
+            gate_output witness "$output" "$line" --count 1 --policy crlf \
                 || { echo "FAIL: constructed type predicate must fault after entry: $line" >&2; return 1; }
         done
     done
@@ -1995,16 +2089,16 @@ assert_gvmcall_body_witnesses() {
         'byref predicate body entered' 'byref predicate: System.NullReferenceException/80004003' \
         'pointer predicate body entered' 'pointer predicate: System.NullReferenceException/80004003' \
         'folded generic type predicates end'; do
-        [ "$(grep -Fxc -- "$line" <<< "$output")" = 1 ] \
+        gate_output witness "$output" "$line" --count 1 --policy crlf \
             || { echo "FAIL: folded Type predicate witness must run once: $line" >&2; return 1; }
     done
     for line in 'value predicate body entered' 'primitive predicate body entered' \
         'enum predicate body entered' 'byref-like predicate body entered'; do
-        [ "$(grep -Fxc -- "$line" <<< "$output")" = 7 ] \
+        gate_output witness "$output" "$line" --count 7 --policy crlf \
             || { echo "FAIL: predicate calls and null-bound delegates must enter, never null callvirt: $line" >&2; return 1; }
     done
     for line in 'try predicate body entered' 'try predicate finally entered' 'method predicate body entered'; do
-        [ "$(grep -Fxc -- "$line" <<< "$output")" = 2 ] \
+        gate_output witness "$output" "$line" --count 2 --policy crlf \
             || { echo "FAIL: predicate context and exception regions must preserve body order: $line" >&2; return 1; }
     done
     for line in '== null receivers of instance body calls ==' 'class call' \
@@ -2036,20 +2130,20 @@ assert_gvmcall_body_witnesses() {
         'static int null forward length' \
         'static forward callvirt: System.NullReferenceException/80004003' \
         'context passed to static generic bodies end'; do
-        [ "$(grep -Fxc -- "$line" <<< "$output")" = 1 ] \
+        gate_output witness "$output" "$line" --count 1 --policy crlf \
             || { echo "FAIL: instance body witness must run once: $line" >&2; return 1; }
     done
-    [ "$(grep -Fxc 'field read body entered' <<< "$output")" = 2 ] \
+    gate_output witness "$output" 'field read body entered' --count 2 --policy crlf \
         || { echo 'FAIL: field read must enter through each call, and never through null callvirt' >&2; return 1; }
-    [ "$(grep -Fxc 'generic array body entered' <<< "$output")" = 7 ] \
+    gate_output witness "$output" 'generic array body entered' --count 7 --policy crlf \
         || { echo 'FAIL: shared array calls must enter before their lookup, never through null callvirt' >&2; return 1; }
     for line in 'mixed value array body entered' 'mixed reference array body entered'; do
-        [ "$(grep -Fxc "$line" <<< "$output")" = 2 ] \
+        gate_output witness "$output" "$line" --count 2 --policy crlf \
             || { echo 'FAIL: mixed value/reference lookups must preserve body-entry order' >&2; return 1; }
     done
-    [ "$(grep -Fxc 'generic static forward body entered' <<< "$output")" = 3 ] \
+    gate_output witness "$output" 'generic static forward body entered' --count 3 --policy crlf \
         || { echo 'FAIL: static forwarding must enter each call, never null callvirt' >&2; return 1; }
-    [ "$(grep -Fxc 'static generic array body entered' <<< "$output")" = 2 ] \
+    gate_output witness "$output" 'static generic array body entered' --count 2 --policy crlf \
         || { echo 'FAIL: null reference context must fault before the static generic callee' >&2; return 1; }
 }
 assert_gvmcall_body_witnesses "$gvmcall_oracle"
@@ -2059,13 +2153,12 @@ for gvmcall_base in "$OUT" "$OUT/trigger"; do
         -o "$gvmcall_base/gvm-call/stack"
     for gvmcall_bpi in "$gvmcall_base/gvm-call/GvmCallPatch.bpi" "$gvmcall_base/gvm-call/stack/GvmCallPatch.bpi"; do
         set +e
-        gvmcall_out=$(run_bounded "./$gvmcall_base/HotUpdateBase" --run "$gvmcall_bpi"); gvmcall_rc=$?
+        hotupdate_capture gvmcall_out gvmcall_rc stdout run_bounded "./$gvmcall_base/HotUpdateBase" --run "$gvmcall_bpi"
         set -e
-        gvmcall_out=$(strip_cr_win "$gvmcall_out")
-        assert_output "$gvmcall_out" "$gvmcall_oracle"
+        gate_output compare "$gvmcall_out" "$gvmcall_oracle"
         assert_exit_code "$gvmcall_rc" 0
-        gvmcall_prefix=$(awk '/^== abstract class method imports ==$/ { exit } { print }' <<< "$gvmcall_out")
-        assert_output "$gvmcall_prefix" "$gvmcall_prefix_oracle"
+        gvmcall_prefix=$(hotupdate_before "$gvmcall_out" '== abstract class method imports ==')
+        gate_output compare "$gvmcall_prefix" "$gvmcall_prefix_oracle" --policy crlf
         assert_gvmcall_body_witnesses "$gvmcall_out"
     done
 done
@@ -2073,11 +2166,11 @@ echo "OK (non-virtual instance bodies, null/dictionary faults and defaults, both
 
 # The same default row belongs to a reference assembly in this image; its type
 # is retained by the implementation's interface list, without a direct body edge.
-gvmcall_reference_oracle=$(DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 run_bounded dotnet "$gvmcall_reference_patch")
-gvmcall_reference_oracle=$(strip_cr_win "$gvmcall_reference_oracle")
-gvmcall_reference_prefix=$(run_bounded dotnet "$gvmcall_reference_base" --prefix)
-gvmcall_reference_prefix=$(strip_cr_win "$gvmcall_reference_prefix")
-assert_output "$gvmcall_reference_oracle" "== referenced default interface body ==
+DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 hotupdate_capture gvmcall_reference_oracle _hotupdate_status stdout run_bounded dotnet "$gvmcall_reference_patch"
+gate_output status "$_hotupdate_status" 0
+hotupdate_capture gvmcall_reference_prefix _hotupdate_status stdout run_bounded dotnet "$gvmcall_reference_base" --prefix
+gate_output status "$_hotupdate_status" 0
+gate_assert_text "$gvmcall_reference_oracle" "== referenced default interface body ==
 library call=cold default
 library null call=cold default
 library callvirt=cold override
@@ -2095,12 +2188,12 @@ for gvmcall_reference_sharing in shared monomorphic; do
         invoke_cli --emit-patch "$gvmcall_reference_patch" --base-abi "$gvmcall_reference_out/base-abi.json" \
             ${gvmcall_reference_codec_flags[@]+"${gvmcall_reference_codec_flags[@]}"} \
             -o "$gvmcall_reference_out/$gvmcall_reference_codec"
-        gvmcall_reference_native=$(run_bounded "./$gvmcall_reference_out/GvmCallReferenceBase$EXE_EXT" \
-            "$gvmcall_reference_out/$gvmcall_reference_codec/GvmCallReferencePatch.bpi")
-        gvmcall_reference_native=$(strip_cr_win "$gvmcall_reference_native")
-        assert_output "$gvmcall_reference_native" "$gvmcall_reference_prefix
-$gvmcall_reference_oracle"
-        assert_output "${gvmcall_reference_native%%$'\n== referenced default interface body =='*}" "$gvmcall_reference_prefix"
+        hotupdate_capture gvmcall_reference_native _hotupdate_status stdout run_bounded "./$gvmcall_reference_out/GvmCallReferenceBase$EXE_EXT" \
+            "$gvmcall_reference_out/$gvmcall_reference_codec/GvmCallReferencePatch.bpi"
+        gate_output status "$_hotupdate_status" 0
+        hotupdate_fixture gvmcall_reference_expected --file "$gvmcall_reference_prefix" --file "$gvmcall_reference_oracle"
+        gate_output compare "$gvmcall_reference_native" "$gvmcall_reference_expected"
+        gate_output compare "$(hotupdate_before "$gvmcall_reference_native" '== referenced default interface body ==')" "$gvmcall_reference_prefix"
     done
     # Retention must terminate when Reach declines the named default. The base
     # prefix does not call it, and stays runnable with the same retained interface.
@@ -2109,28 +2202,28 @@ $gvmcall_reference_oracle"
         --hotupdate-base --cut HotUpdateBase.IOverriddenBin::Cold \
         ${gvmcall_reference_flags[@]+"${gvmcall_reference_flags[@]}"} -o "$gvmcall_reference_cut_out"
     compile_console "$gvmcall_reference_cut_out" GvmCallReferenceBase
-    gvmcall_reference_cut_prefix=$(run_bounded "./$gvmcall_reference_cut_out/GvmCallReferenceBase$EXE_EXT" --prefix)
-    assert_output "$(strip_cr_win "$gvmcall_reference_cut_prefix")" "$gvmcall_reference_prefix"
+    hotupdate_capture gvmcall_reference_cut_prefix _hotupdate_status stdout run_bounded "./$gvmcall_reference_cut_out/GvmCallReferenceBase$EXE_EXT" --prefix
+    gate_output status "$_hotupdate_status" 0
+    gate_output compare "$gvmcall_reference_cut_prefix" "$gvmcall_reference_prefix"
 done
 echo "OK (referenced default bodies, cut retention and both codecs with and without shared generics)"
 
 # isinst links the reference interface during discovery; the by-value local
 # retains its field's full layout only after body compilation.
-gvmcall_late_layout_prefix=$(run_bounded dotnet "$gvmcall_late_layout_app" --prefix)
-gvmcall_late_layout_prefix=$(strip_cr_win "$gvmcall_late_layout_prefix")
-gvmcall_late_layout_oracle=$(run_bounded dotnet "$gvmcall_late_layout_app")
-gvmcall_late_layout_oracle=$(strip_cr_win "$gvmcall_late_layout_oracle")
-assert_output "$gvmcall_late_layout_prefix" 'late layout base'
-gvmcall_late_layout_old="$gvmcall_late_layout_prefix
-== late retained default layout ==
+hotupdate_capture gvmcall_late_layout_prefix _hotupdate_status stdout run_bounded dotnet "$gvmcall_late_layout_app" --prefix
+gate_output status "$_hotupdate_status" 0
+hotupdate_capture gvmcall_late_layout_oracle _hotupdate_status stdout run_bounded dotnet "$gvmcall_late_layout_app"
+gate_output status "$_hotupdate_status" 0
+gate_assert_text "$gvmcall_late_layout_prefix" 'late layout base'
+hotupdate_fixture gvmcall_late_layout_old --file "$gvmcall_late_layout_prefix" --text "== late retained default layout ==
 False
 ok
 late retained default layout end"
-assert_output "${gvmcall_late_layout_oracle%%$'\n== late NoAlloc closure =='*}" "$gvmcall_late_layout_old"
-assert_output "$gvmcall_late_layout_oracle" "$gvmcall_late_layout_old
-== late NoAlloc closure ==
+gate_output compare "$(hotupdate_before "$gvmcall_late_layout_oracle" '== late NoAlloc closure ==')" "$gvmcall_late_layout_old" --policy crlf
+hotupdate_fixture gvmcall_late_layout_expected --file "$gvmcall_late_layout_old" --text "== late NoAlloc closure ==
 warm helper=1
 late NoAlloc closure end"
+gate_output compare "$gvmcall_late_layout_oracle" "$gvmcall_late_layout_expected" --policy crlf
 for gvmcall_late_layout_mode in normal shared monomorphic; do
     gvmcall_late_layout_flags=()
     [ "$gvmcall_late_layout_mode" = normal ] || gvmcall_late_layout_flags+=(--hotupdate-base)
@@ -2139,13 +2232,14 @@ for gvmcall_late_layout_mode in normal shared monomorphic; do
     run_bounded dotnet exec "$DN2CPP_CLI_DLL" "$gvmcall_late_layout_app" -r "$gvmcall_late_layout_library" \
         ${gvmcall_late_layout_flags[@]+"${gvmcall_late_layout_flags[@]}"} -o "$gvmcall_late_layout_out"
     compile_console "$gvmcall_late_layout_out" GvmCallLateLayout
-    gvmcall_late_layout_native=$(run_bounded "./$gvmcall_late_layout_out/GvmCallLateLayout$EXE_EXT")
-    gvmcall_late_layout_native=$(strip_cr_win "$gvmcall_late_layout_native")
-    assert_output "$gvmcall_late_layout_native" "$gvmcall_late_layout_oracle"
-    assert_output "${gvmcall_late_layout_native%%$'\n== late retained default layout =='*}" "$gvmcall_late_layout_prefix"
-    assert_output "${gvmcall_late_layout_native%%$'\n== late NoAlloc closure =='*}" "$gvmcall_late_layout_old"
-    gvmcall_late_layout_native_prefix=$(run_bounded "./$gvmcall_late_layout_out/GvmCallLateLayout$EXE_EXT" --prefix)
-    assert_output "$(strip_cr_win "$gvmcall_late_layout_native_prefix")" "$gvmcall_late_layout_prefix"
+    hotupdate_capture gvmcall_late_layout_native _hotupdate_status stdout run_bounded "./$gvmcall_late_layout_out/GvmCallLateLayout$EXE_EXT"
+    gate_output status "$_hotupdate_status" 0
+    gate_output compare "$gvmcall_late_layout_native" "$gvmcall_late_layout_oracle"
+    gate_output compare "$(hotupdate_before "$gvmcall_late_layout_native" '== late retained default layout ==')" "$gvmcall_late_layout_prefix"
+    gate_output compare "$(hotupdate_before "$gvmcall_late_layout_native" '== late NoAlloc closure ==')" "$gvmcall_late_layout_old" --policy crlf
+    hotupdate_capture gvmcall_late_layout_native_prefix _hotupdate_status stdout run_bounded "./$gvmcall_late_layout_out/GvmCallLateLayout$EXE_EXT" --prefix
+    gate_output status "$_hotupdate_status" 0
+    gate_output compare "$gvmcall_late_layout_native_prefix" "$gvmcall_late_layout_prefix"
     # A Type argument of an attribute row gets a type-info only on a carried class: the
     # application class's row names LateLayoutCarriedTag, while the row of a library
     # class only a field type names leaves LateLayoutUnusedTag out of the base. ILDiet
@@ -2169,9 +2263,9 @@ echo "OK (attribute Type arguments mint type-infos only on carried classes, both
 
 # The allocating helper is reached by Main before the late default. A verifier
 # that starts recording at the late root loses both Count's edge and Allocate's facts.
-gvmcall_late_noalloc_oracle=$(run_bounded dotnet "$gvmcall_late_noalloc_app")
-gvmcall_late_noalloc_oracle=$(strip_cr_win "$gvmcall_late_noalloc_oracle")
-assert_output "$gvmcall_late_noalloc_oracle" "$gvmcall_late_layout_oracle"
+hotupdate_capture gvmcall_late_noalloc_oracle _hotupdate_status stdout run_bounded dotnet "$gvmcall_late_noalloc_app"
+gate_output status "$_hotupdate_status" 0
+gate_output compare "$gvmcall_late_noalloc_oracle" "$gvmcall_late_layout_oracle"
 for gvmcall_late_noalloc_mode in normal monomorphic; do
     gvmcall_late_noalloc_flags=()
     [ "$gvmcall_late_noalloc_mode" = normal ] || gvmcall_late_noalloc_flags+=(--hotupdate-base --no-shared-generics)
@@ -2179,8 +2273,9 @@ for gvmcall_late_noalloc_mode in normal monomorphic; do
     run_bounded dotnet exec "$DN2CPP_CLI_DLL" "$gvmcall_late_noalloc_app" -r "$gvmcall_late_noalloc_library" \
         ${gvmcall_late_noalloc_flags[@]+"${gvmcall_late_noalloc_flags[@]}"} -o "$gvmcall_late_noalloc_out"
     compile_console "$gvmcall_late_noalloc_out" GvmCallLateNoAlloc
-    gvmcall_late_noalloc_native=$(run_bounded "./$gvmcall_late_noalloc_out/GvmCallLateNoAlloc$EXE_EXT")
-    assert_output "$(strip_cr_win "$gvmcall_late_noalloc_native")" "$gvmcall_late_noalloc_oracle"
+    hotupdate_capture gvmcall_late_noalloc_native _hotupdate_status stdout run_bounded "./$gvmcall_late_noalloc_out/GvmCallLateNoAlloc$EXE_EXT"
+    gate_output status "$_hotupdate_status" 0
+    gate_output compare "$gvmcall_late_noalloc_native" "$gvmcall_late_noalloc_oracle"
 done
 gvmcall_late_noalloc_rejected="$OUT/gvm-late-noalloc/shared"
 set +e
@@ -2198,11 +2293,13 @@ grep -Fq 'call chain: HotGvmCall.Library.ILateLayoutBin_String.NoAllocConstant -
 echo "OK (late NoAlloc constant and earlier transitive helper allocation facts)"
 
 echo "-- unavailable aggregate constructors refuse without changing ordinary exception seeding --"
-aggregate_ctor_clr=$(DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 run_bounded dotnet "$aggregate_ctor_miss_app")
-ordinary_ctor_clr=$(DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 run_bounded dotnet "$ordinary_ctor_miss_app")
-assert_output "$(strip_cr_win "$aggregate_ctor_clr")" "aggregate ctor=seed (inner)
+DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 hotupdate_capture aggregate_ctor_clr _hotupdate_status stdout run_bounded dotnet "$aggregate_ctor_miss_app"
+gate_output status "$_hotupdate_status" 0
+DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 hotupdate_capture ordinary_ctor_clr _hotupdate_status stdout run_bounded dotnet "$ordinary_ctor_miss_app"
+gate_output status "$_hotupdate_status" 0
+gate_assert_text "$aggregate_ctor_clr" "aggregate ctor=seed (inner)
 unavailable ctor fixture end"
-assert_output "$(strip_cr_win "$ordinary_ctor_clr")" "ordinary ctor=changed:seed/91/field
+gate_assert_text "$ordinary_ctor_clr" "ordinary ctor=changed:seed/91/field
 unavailable ctor fixture end"
 # Keep the primary image callable. Only this dedicated image loses the two bodies;
 # constructor identities, signatures and its ABI contract remain unchanged.
@@ -2227,13 +2324,15 @@ for aggregate_ctor_format in register stack; do
     invoke_cli --emit-patch "$aggregate_ctor_miss_app" --base-abi "$aggregate_ctor_base/base-abi.json" \
         ${aggregate_ctor_flags[@]+"${aggregate_ctor_flags[@]}"} -o "$aggregate_ctor_dir"
     # A missing ordinary ctor retains the documented positional seed-only behavior.
-    ordinary_ctor_native=$(run_bounded "./$aggregate_ctor_base/HotUpdateBase$EXE_EXT" --run \
-        "$aggregate_ctor_dir/OrdinaryCtorMissPatch.bpi")
-    assert_output "$(strip_cr_win "$ordinary_ctor_native")" "ordinary ctor=seed/0/field
+    hotupdate_capture ordinary_ctor_native _hotupdate_status stdout run_bounded "./$aggregate_ctor_base/HotUpdateBase$EXE_EXT" --run \
+        "$aggregate_ctor_dir/OrdinaryCtorMissPatch.bpi"
+    gate_output status "$_hotupdate_status" 0
+    gate_assert_text "$ordinary_ctor_native" "ordinary ctor=seed/0/field
 unavailable ctor fixture end"
-    aggregate_ctor_native=$(run_bounded "./$aggregate_ctor_base/HotUpdateBase$EXE_EXT" --load-refused \
-        "$aggregate_ctor_dir/AggregateCtorMissPatch.bpi")
-    assert_output "$(strip_cr_win "$aggregate_ctor_native")" "refused:BPI bind: derived AggregateException constructor body was not compiled into the base image
+    hotupdate_capture aggregate_ctor_native _hotupdate_status stdout run_bounded "./$aggregate_ctor_base/HotUpdateBase$EXE_EXT" --load-refused \
+        "$aggregate_ctor_dir/AggregateCtorMissPatch.bpi"
+    gate_output status "$_hotupdate_status" 0
+    gate_assert_text "$aggregate_ctor_native" "refused:BPI bind: derived AggregateException constructor body was not compiled into the base image
 published nothing"
 done
 echo "OK (unavailable aggregate ctor refused, ordinary seeding preserved in both formats)"
@@ -2242,10 +2341,10 @@ echo "OK (unavailable aggregate ctor refused, ordinary seeding preserved in both
 # oracle or the AOT build reads the base assembly. A replaced patch interface slot
 # has no inherited filler, even while its class vtable still runs Weigh.
 echo "-- inherited renamed fillers on patch receivers --"
-renamed_slot_oracle=$(run_bounded dotnet "$renamed_slot_app")
-renamed_slot_oracle=$(strip_cr_win "$renamed_slot_oracle")
-renamed_slot_prefix_oracle=$(run_bounded dotnet "$base_app" --renamed-slot-prefix)
-renamed_slot_prefix_oracle=$(strip_cr_win "$renamed_slot_prefix_oracle")
+hotupdate_capture renamed_slot_oracle _hotupdate_status stdout run_bounded dotnet "$renamed_slot_app"
+gate_output status "$_hotupdate_status" 0
+hotupdate_capture renamed_slot_prefix_oracle _hotupdate_status stdout run_bounded dotnet "$base_app" --renamed-slot-prefix
+gate_output status "$_hotupdate_status" 0
 renamed_slot_lines=(
     'aot methods=Weigh/Weigh/Weigh/Weigh' 'aot values=31/31/31/31' 'aot equal=True/True/True/True'
     '== inherited renamed slots on patch receivers =='
@@ -2255,12 +2354,11 @@ renamed_slot_lines=(
     'replacement equal=False/False/False/True' 'inherited renamed slots on patch receivers end'
 )
 for line in "${renamed_slot_lines[@]}"; do
-    [ "$(grep -Fxc -- "$line" <<< "$renamed_slot_oracle")" = 1 ] \
+    gate_output witness "$renamed_slot_oracle" "$line" --count 1 --policy crlf \
         || { echo "FAIL: CLR renamed-slot witness must run once: $line" >&2; exit 1; }
 done
-assert_output "${renamed_slot_oracle%%$'\n== inherited renamed slots on patch receivers =='*}" \
-    "$renamed_slot_prefix_oracle"
-assert_output "${renamed_slot_oracle%%$'\n== patch interface method identities =='*}" \
+gate_output compare "$(hotupdate_before "$renamed_slot_oracle" '== inherited renamed slots on patch receivers ==')" "$renamed_slot_prefix_oracle"
+gate_assert_text "$(hotupdate_before "$renamed_slot_oracle" '== patch interface method identities ==')" \
     "$(printf '%s\n' "${renamed_slot_lines[@]}")"
 patch_method_lines=(
     '== patch interface method identities =='
@@ -2285,7 +2383,7 @@ patch_method_lines=(
     'patch interface method identities end'
 )
 for line in "${patch_method_lines[@]}"; do
-    [ "$(grep -Fxc -- "$line" <<< "$renamed_slot_oracle")" = 1 ] \
+    gate_output witness "$renamed_slot_oracle" "$line" --count 1 --policy crlf \
         || { echo "FAIL: CLR patch method witness must run once: $line" >&2; exit 1; }
 done
 for renamed_slot_base in "$OUT" "$OUT/trigger"; do
@@ -2295,19 +2393,19 @@ for renamed_slot_base in "$OUT" "$OUT/trigger"; do
         [ "$renamed_slot_codec" = stack ] && renamed_slot_flags+=(--patch-stackcode)
         invoke_cli --emit-patch "$renamed_slot_app" --base-abi "$renamed_slot_base/base-abi.json" \
             ${renamed_slot_flags[@]+"${renamed_slot_flags[@]}"} -o "$renamed_slot_dir"
-        renamed_slot_native=$(run_bounded "./$renamed_slot_base/HotUpdateBase$EXE_EXT" --run \
-            "$renamed_slot_dir/RenamedSlotPatch.bpi")
-        renamed_slot_native=$(strip_cr_win "$renamed_slot_native")
-        assert_output "$renamed_slot_native" "$renamed_slot_oracle"
-        renamed_slot_before=$(run_bounded "./$renamed_slot_base/HotUpdateBase$EXE_EXT" --run \
-            "$renamed_slot_dir/RenamedSlotPatch.bpi" before-renamed-slots)
-        assert_output "$(strip_cr_win "$renamed_slot_before")" "$renamed_slot_prefix_oracle"
-        assert_output "${renamed_slot_native%%$'\n== inherited renamed slots on patch receivers =='*}" \
-            "$renamed_slot_prefix_oracle"
-        assert_output "${renamed_slot_native%%$'\n== patch interface method identities =='*}" \
+        hotupdate_capture renamed_slot_native _hotupdate_status stdout run_bounded "./$renamed_slot_base/HotUpdateBase$EXE_EXT" --run \
+            "$renamed_slot_dir/RenamedSlotPatch.bpi"
+        gate_output status "$_hotupdate_status" 0
+        gate_output compare "$renamed_slot_native" "$renamed_slot_oracle"
+        hotupdate_capture renamed_slot_before _hotupdate_status stdout run_bounded "./$renamed_slot_base/HotUpdateBase$EXE_EXT" --run \
+            "$renamed_slot_dir/RenamedSlotPatch.bpi" before-renamed-slots
+        gate_output status "$_hotupdate_status" 0
+        gate_output compare "$renamed_slot_before" "$renamed_slot_prefix_oracle"
+        gate_output compare "$(hotupdate_before "$renamed_slot_native" '== inherited renamed slots on patch receivers ==')" "$renamed_slot_prefix_oracle"
+        gate_assert_text "$(hotupdate_before "$renamed_slot_native" '== patch interface method identities ==')" \
             "$(printf '%s\n' "${renamed_slot_lines[@]}")"
         for line in "${renamed_slot_lines[@]}" "${patch_method_lines[@]}"; do
-            [ "$(grep -Fxc -- "$line" <<< "$renamed_slot_native")" = 1 ] \
+            gate_output witness "$renamed_slot_native" "$line" --count 1 --policy crlf \
                 || { echo "FAIL: renamed-slot witness must run once ($renamed_slot_codec): $line" >&2; exit 1; }
         done
     done
@@ -2328,18 +2426,18 @@ for metadata_codec in register stack; do
     [ "$metadata_codec" = stack ] && metadata_flags+=(--patch-stackcode)
     invoke_cli --emit-patch "$renamed_slot_app" --base-abi "$metadata_base/base-abi.json" \
         ${metadata_flags[@]+"${metadata_flags[@]}"} -o "$metadata_base/$metadata_codec"
-    metadata_refusals=$(run_bounded "./$metadata_base/HotUpdateBase$EXE_EXT" --run \
-        "$metadata_base/$metadata_codec/RenamedSlotPatch.bpi" patch-metadata-refusals)
-    metadata_refusals=$(strip_cr_win "$metadata_refusals")
-    assert_output "${metadata_refusals%%$'\n== patch interface method identities =='*}" \
+    hotupdate_capture metadata_refusals _hotupdate_status stdout run_bounded "./$metadata_base/HotUpdateBase$EXE_EXT" --run \
+        "$metadata_base/$metadata_codec/RenamedSlotPatch.bpi" patch-metadata-refusals
+    gate_output status "$_hotupdate_status" 0
+    gate_assert_text "$(hotupdate_before "$metadata_refusals" '== patch interface method identities ==')" \
         "$(printf '%s\n' "${renamed_slot_lines[@]}")"
     for refusal in method-attributes parameter-attributes parameter-modifiers return-modifiers; do
-        [ "$(grep -Fxc -- "patch ${refusal//-/ } refused" <<< "$metadata_refusals")" = 3 ] \
+        gate_output witness "$metadata_refusals" "patch ${refusal//-/ } refused" --count 3 --policy crlf \
             || { echo "FAIL: patch metadata did not refuse unknown $refusal ($metadata_codec)" >&2; exit 1; }
     done
-    [ "$(grep -Fxc -- 'patch unrecorded override refused' <<< "$metadata_refusals")" = 1 ] \
+    gate_output witness "$metadata_refusals" 'patch unrecorded override refused' --count 1 --policy crlf \
         || { echo "FAIL: unrecorded patch override metadata did not refuse ($metadata_codec)" >&2; exit 1; }
-    [ "$(grep -Fxc -- 'patch interface method identities end' <<< "$metadata_refusals")" = 1 ] \
+    gate_output witness "$metadata_refusals" 'patch interface method identities end' --count 1 --policy crlf \
         || { echo "FAIL: patch metadata refusal block did not complete ($metadata_codec)" >&2; exit 1; }
 done
 echo "OK (unrecorded patch method metadata refused in both formats)"
@@ -2347,15 +2445,22 @@ for mutation in extent parameter-count return-type ownership; do
     malformed="$OUT/renamed-slots/register/metadata-$mutation.bpi"
     $hotupdate_python gates/fixtures/hotupdate-import-identity/mutate-method-metadata.py \
         "$OUT/renamed-slots/register/RenamedSlotPatch.bpi" "$malformed" "$mutation"
+    case "$mutation" in
+        extent) malformed_diagnostic='BPI: method metadata section extent mismatch' ;;
+        parameter-count) malformed_diagnostic='BPI: invalid method metadata identity or signature' ;;
+        return-type) malformed_diagnostic='BPI: interface implementation metadata signature mismatch' ;;
+        ownership) malformed_diagnostic='BPI: interface implementation method ownership mismatch' ;;
+    esac
     set +e
-    malformed_output=$(run_bounded "./$OUT/HotUpdateBase$EXE_EXT" --run "$malformed" 2>&1)
-    malformed_rc=$?
+    hotupdate_capture malformed_output malformed_rc stderr --expect-abort \
+        "Unhandled exception. System.NotSupportedException: $malformed_diagnostic" --empty-stdout \
+        run_bounded "./$OUT/HotUpdateBase$EXE_EXT" --run "$malformed"
     set -e
     [ "$malformed_rc" != 0 ] \
         || { echo "FAIL: malformed patch method metadata was accepted: $mutation" >&2; exit 1; }
-    grep -Eq 'BPI: (method metadata section extent mismatch|invalid method metadata identity or signature|interface implementation metadata signature mismatch|interface implementation method ownership mismatch)' <<< "$malformed_output" \
+    grep -Eq 'BPI: (method metadata section extent mismatch|invalid method metadata identity or signature|interface implementation metadata signature mismatch|interface implementation method ownership mismatch)' "$malformed_output" \
         || { echo "FAIL: wrong patch metadata refusal ($mutation): $malformed_output" >&2; exit 1; }
-    if grep -Fq '== patch interface method identities ==' <<< "$malformed_output"; then
+    if grep -Fq '== patch interface method identities ==' "$malformed_output" "${malformed_output%.stderr}.stdout"; then
         echo "FAIL: malformed patch metadata ran its entry point: $mutation" >&2
         exit 1
     fi
@@ -2401,11 +2506,11 @@ invoke_cli "$renamed_object_copy" -r "$(resolve_net10_corelib)" --auto-ref --hot
 compile_console "$renamed_object_loaded" HotUpdateBase
 for renamed_object_case in object finalize; do
     renamed_object_arg="--renamed-$renamed_object_case-oracle"
-    renamed_object_clr=$(run_bounded dotnet "$renamed_object_copy" "$renamed_object_arg")
-    renamed_object_native=$(run_bounded "./$renamed_object_loaded/HotUpdateBase$EXE_EXT" "$renamed_object_arg")
-    renamed_object_clr=$(strip_cr_win "$renamed_object_clr")
-    renamed_object_native=$(strip_cr_win "$renamed_object_native")
-    assert_output "$renamed_object_native" "$renamed_object_clr"
+    hotupdate_capture renamed_object_clr _hotupdate_status stdout run_bounded dotnet "$renamed_object_copy" "$renamed_object_arg"
+    gate_output status "$_hotupdate_status" 0
+    hotupdate_capture renamed_object_native _hotupdate_status stdout run_bounded "./$renamed_object_loaded/HotUpdateBase$EXE_EXT" "$renamed_object_arg"
+    gate_output status "$_hotupdate_status" 0
+    gate_output compare "$renamed_object_native" "$renamed_object_clr"
     renamed_object_lines=('renamed Object methods=Show/Show' 'renamed Object values=measure/measure'
         'renamed Object equal=True/True')
     if [ "$renamed_object_case" = finalize ]; then
@@ -2413,8 +2518,8 @@ for renamed_object_case in object finalize; do
             'renamed Finalize first=1' 'renamed Finalize second=2')
     fi
     for line in "${renamed_object_lines[@]}"; do
-        [ "$(grep -Fxc -- "$line" <<< "$renamed_object_clr")" = 1 ] \
-            && [ "$(grep -Fxc -- "$line" <<< "$renamed_object_native")" = 1 ] \
+        gate_output witness "$renamed_object_clr" "$line" --count 1 --policy crlf \
+            && gate_output witness "$renamed_object_native" "$line" --count 1 --policy crlf \
             || { echo "FAIL: renamed Object witness must run once: $line" >&2; exit 1; }
     done
 done

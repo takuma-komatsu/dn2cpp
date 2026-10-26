@@ -17,25 +17,36 @@ of the full allowlist. The checks cover language,
 primitive values, arrays, strings, collections, generics, async, threads and GC
 barriers.
 It also checks OS APIs through filesystem, environment, synchronization,
-memory-mapped file and native interop tests. The `culture-info-api` gate checks
-culture names, metadata and cache identity against the host CLR, retaining the
-intentional frozen divergences. Every selected gate must run. Gate logs are
-uploaded, and the basic profile publishes timings in the job summary.
+memory-mapped file and native interop tests. Every selected gate must run. Gate
+logs are uploaded, and the basic profile publishes timings in the job summary.
 
-Culture parity uses explicit per-target references, not whichever ICU a
-`*-latest` runner acquires. The workflow runner labels and SDK are pinned;
-`gates/check-culture-reference.sh` checks the selected SDK, CoreLib runtime and
-the ICU actually loaded by that CLR before running gates. The host-only probe in
-`tools/check-culture-reference/` holds the expected runtime and ICU versions.
-Unexpected versions, invariant globalization and Windows NLS fail rather than
-silently changing the oracle. Updating a reference requires reviewing CLR output
-and the corresponding frozen runtime profile together. Native programs do not
-load ICU. The Linux numbering-extension profile is separate from the existing
-Android/Web baseline; this does not recut the shared named-culture or fallback
-tables. For local Linux parity, provide the reference ICU libraries through the
-loader path and `DOTNET_ICU_VERSION_OVERRIDE`, then run the same preflight and
-individual culture gates. A different installed ICU is not another native
-compatibility profile.
+`culture-info-api` is an optional strict reference check, excluded from default
+pre-merge and hosted smoke CI (including the wider scheduled/manual profile).
+Its CLR culture display data depends on the loaded ICU version; dn2cpp uses
+frozen native tables. Exclusion does not establish culture parity and is not a
+passed or skipped execution. Other selected gates retain their existing checks.
+
+To include CultureInfoAPI in pre-merge, provision the reference runtime and ICU,
+then use `CONFIG=Debug bash gates/pre-merge.sh --skip-godot --with-culture`.
+`--with-culture` runs the strict reference preflight before the selected suite.
+The individual gate can also be run explicitly:
+
+```bash
+bash gates/check-culture-reference.sh && CONFIG=Debug bash gates/build-and-run-culture-info-api.sh
+```
+
+The preflight checks the selected SDK, CoreLib runtime and the ICU actually
+loaded by that CLR. The expected versions live in
+`tools/check-culture-reference/`. Unexpected versions, invariant globalization
+and Windows NLS fail rather than silently changing the oracle. Native programs
+do not load ICU. For local Linux reference checks, provide the reference ICU
+libraries through the loader path and `DOTNET_ICU_VERSION_OVERRIDE`; another
+installed ICU is not another native compatibility profile. The strict gate
+retains its exact comparisons and intentional frozen divergences; there is no
+portable tolerance mode. Updating a reference requires reviewing CLR output and
+the corresponding frozen runtime profile together. Hosted workflows retain
+isolated exact SDK provisioning without making this optional ICU preflight a
+prerequisite for unrelated smoke gates.
 
 Each OS runs the wider non-Godot suite in a single job daily and through
 `workflow_dispatch`. That profile retains the OSS integration gates and other
@@ -72,7 +83,8 @@ while running the suite once. Use `CONFIG=Release ./gates/pre-merge.sh` for
 Release only, or `./gates/pre-merge.sh --both-configs` for Release followed by
 Debug. All selections disable caching and require every selected gate to run,
 except for the reported CRI skips when its SDK is absent. Xcode gates omitted
-by host selection or `--skip-xcode` are outside the selected suite.
+by host selection or `--skip-xcode` are outside the selected suite. CultureInfoAPI
+is likewise outside the default selection unless `--with-culture` is supplied.
 
 For a PR that changes no Godot-specific files, a passing default Debug
 `./gates/pre-merge.sh --skip-godot` is sufficient to merge. Coding agents may
@@ -95,6 +107,10 @@ via `gate_skip` (`gates/_common.sh`) and is counted and reported **separately**
 with its reason, so the summary never claims all N passed when some never ran.
 The pre-merge receipt names any CRI SDK skips per configuration. If you add a
 gate, opt out that way and never with `echo SKIP; exit 0`.
+
+Gate stdout/stderr capture, byte parity and explicit semantic record assertions
+follow [the gate output contract](docs/GATE-OUTPUT.md). Run its lightweight
+helper regressions when changing shared runners or output checks.
 
 ## What to work on
 

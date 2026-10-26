@@ -322,7 +322,7 @@ source gates/_pointer-array-types.sh
 source gates/_runtime-lifetime-interfaces.sh
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|boxed-type-handle-prefix:before-boxed-type-handle"
 runtime_held_interface_asserts() {
-    local output="$1" attributes="${2:-0/False}" line route
+    local output="$1" attributes="${2:-0/False}" line route output_file
     local prefixes=() reflection_expected_lines=()
     reflection_assert_lines "$output" 1 \
         '== runtime-held interface calls ==' 'runtime-held interface calls end' \
@@ -406,26 +406,24 @@ runtime_held_interface_prefix_asserts() {
     for axis in dotnet native; do
         if [ "$axis" = dotnet ]; then
             if reflection_full_profile; then
-                reflection_oracle "$_CG_APP" before-runtime-held-interfaces > "$out/runtime-held-before.$axis.stdout"
+                gate_capture_ok "$out/runtime-held-before.$axis" reflection_oracle "$_CG_APP" before-runtime-held-interfaces
             fi
-            reflection_oracle "$_CG_APP" > "$out/runtime-held-full.$axis.stdout"
+            gate_capture_ok "$out/runtime-held-full.$axis" reflection_oracle "$_CG_APP"
         else
             if reflection_full_profile; then
-                run_bounded "$out/ReflectInvoke$EXE_EXT" before-runtime-held-interfaces > "$out/runtime-held-before.$axis.stdout"
+                gate_capture_ok "$out/runtime-held-before.$axis" run_bounded "$out/ReflectInvoke$EXE_EXT" before-runtime-held-interfaces
             fi
-            reflection_native_full "$out" ReflectInvoke > "$out/runtime-held-full.$axis.stdout"
+            gate_capture_ok "$out/runtime-held-full.$axis" reflection_native_full "$out" ReflectInvoke
         fi
-        strip_cr_win_file "$out/runtime-held-full.$axis.stdout" > "$out/runtime-held-normalized.$axis.stdout"
+
         if reflection_full_profile; then
-            awk '/^== runtime-held interface calls ==$/ { exit } { print }' \
-                "$out/runtime-held-normalized.$axis.stdout" > "$out/runtime-held-prefix.$axis.stdout"
-            diff -u <(strip_cr_win_file "$out/runtime-held-before.$axis.stdout") "$out/runtime-held-prefix.$axis.stdout"
+            gate_output select "$out/runtime-held-full.$axis.stdout" "$out/runtime-held-prefix.$axis.stdout" --before '== runtime-held interface calls ==' --policy crlf
+            gate_output compare "$out/runtime-held-prefix.$axis.stdout" "$out/runtime-held-before.$axis.stdout"
         fi
-        runtime_held_interface_asserts "$out/runtime-held-normalized.$axis.stdout"
+        runtime_held_interface_asserts "$out/runtime-held-full.$axis.stdout"
     done
     if reflection_full_profile; then
-        diff -u <(strip_cr_win_file "$out/runtime-held-before.dotnet.stdout") \
-            <(strip_cr_win_file "$out/runtime-held-before.native.stdout")
+        gate_output compare "$out/runtime-held-before.native.stdout" "$out/runtime-held-before.dotnet.stdout"
     fi
 }
 
@@ -453,16 +451,17 @@ runtime_held_interface_diff_axes() {
     }
     gate_extra_asserts() {
         local out="$1" axis label="$runtime_held_convertible_route"
-        reflection_oracle "$_CG_APP" > "$out/runtime-held.raw.dotnet.stdout"
-        reflection_native_full "$out" RuntimeHeldInterfacesOnly > "$out/runtime-held.raw.native.stdout"
+        gate_capture_ok "$out/runtime-held.raw.dotnet" reflection_oracle "$_CG_APP"
+        gate_capture_ok "$out/runtime-held.raw.native" reflection_native_full "$out" RuntimeHeldInterfacesOnly
         for axis in dotnet native; do
-            strip_cr_win_file "$out/runtime-held.raw.$axis.stdout" > "$out/runtime-held.$axis.stdout"
+            gate_output view "$out/runtime-held.raw.$axis.stdout" "$out/runtime-held.$axis.stdout" --policy crlf
         done
         if [ "$runtime_held_identity_only" = true ]; then
-            grep -Fxq 'unused provider identity=True/True' "$out/runtime-held.native.stdout"
-            grep -Fxq 'unused provider unrelated numeric=12.5/-12/23' "$out/runtime-held.native.stdout"
-            grep -Fxq 'unused provider convertible metadata=Int32/17' "$out/runtime-held.native.stdout"
-            grep -Fxq 'unused exception metadata=True' "$out/runtime-held.native.stdout"
+            reflection_assert_lines "$out/runtime-held.raw.native.stdout" any \
+                'unused provider identity=True/True' \
+                'unused provider unrelated numeric=12.5/-12/23' \
+                'unused provider convertible metadata=Int32/17' \
+                'unused exception metadata=True'
             if grep -Eq 'UnusedException_GetObjectData_m[0-9]+[[:space:]]*\(' "$out/generated.h" "$out"/generated*.cpp; then
                 echo 'FAIL: an unallocated exception retained an unused serialization body' >&2
                 return 1
@@ -479,49 +478,47 @@ runtime_held_interface_diff_axes() {
             done
         elif [ "$runtime_held_reflected_value_only" = true ] || [ "$runtime_held_handle_value_only" = true ]; then
             for axis in dotnet native; do
-                reflection_assert_lines "$out/runtime-held.$axis.stdout" 1 \
+                reflection_assert_lines "$out/runtime-held.raw.$axis.stdout" 1 \
                     '== handle-only DateTimeOffset callbacks ==' \
                     'handle-only DateTimeOffset callback=completed' \
                     'handle-only DateTimeOffset null serialization=ArgumentNullException/info' \
                     'handle-only DateTimeOffset callbacks end'
                 if [ "$axis" = dotnet ]; then
-                    reflection_oracle "$_CG_APP" before-handle-value > "$out/handle-value-before.$axis.stdout"
+                    gate_capture_ok "$out/handle-value-before.$axis" reflection_oracle "$_CG_APP" before-handle-value
                 else
-                    run_bounded "$out/RuntimeHeldInterfacesOnly$EXE_EXT" before-handle-value > "$out/handle-value-before.$axis.stdout"
+                    gate_capture_ok "$out/handle-value-before.$axis" run_bounded "$out/RuntimeHeldInterfacesOnly$EXE_EXT" before-handle-value
                 fi
-                awk '/^== handle-only DateTimeOffset callbacks ==$/ { exit } { print }' \
-                    "$out/runtime-held.$axis.stdout" > "$out/handle-value-prefix.$axis.stdout"
-                diff -u <(strip_cr_win_file "$out/handle-value-before.$axis.stdout") "$out/handle-value-prefix.$axis.stdout"
+                gate_output select "$out/runtime-held.raw.$axis.stdout" "$out/handle-value-prefix.$axis.stdout" --before '== handle-only DateTimeOffset callbacks ==' --policy crlf
+                gate_output compare "$out/handle-value-prefix.$axis.stdout" "$out/handle-value-before.$axis.stdout"
             done
             if [ "$runtime_held_handle_value_only" = true ]; then
                 return
             fi
             for axis in dotnet native; do
-                assert_output "$(head -n 2 "$out/runtime-held.$axis.stdout")" \
-                    $'reflected DateTime serialization=completed\nreflected Decimal callback=completed'
+                printf '%s\n' 'reflected DateTime serialization=completed' 'reflected Decimal callback=completed' > "$out/runtime-held-prefix.expected"
+                gate_output prefix "$out/runtime-held.raw.$axis.stdout" "$out/runtime-held-prefix.expected" --policy crlf
                 for label in 'reflected DateTime serialization=completed' 'reflected Decimal callback=completed' \
                         '== reflected DateTimeOffset serialization ==' 'reflected DateTimeOffset serialization end'; do
-                    test "$(grep -Fxc -- "$label" "$out/runtime-held.$axis.stdout")" = 1 \
+                    gate_output witness "$out/runtime-held.raw.$axis.stdout" "$label" --count 1 --policy crlf \
                         || { echo "FAIL: reflected runtime value witness missing or repeated: $axis/$label" >&2; return 1; }
                 done
                 for minutes in 0 90 -330; do
-                    test "$(grep -Ec "^reflected DateTimeOffset offset=$minutes:ticks=[0-9]+:utc=True:kind=Unspecified:minutes=$minutes$" \
-                            "$out/runtime-held.$axis.stdout")" = 1 \
+                    gate_output match-record "$out/runtime-held.raw.$axis.stdout" \
+                        "reflected DateTimeOffset offset=$minutes:ticks=[0-9]+:utc=True:kind=Unspecified:minutes=$minutes" --policy crlf --count 1 \
                         || { echo "FAIL: DateTimeOffset serialization changed its UTC payload or offset: $axis/$minutes" >&2; return 1; }
                 done
             done
         else
-            runtime_held_interface_asserts "$out/runtime-held.dotnet.stdout" 1/True
-            runtime_held_interface_asserts "$out/runtime-held.native.stdout" 1/True
+            runtime_held_interface_asserts "$out/runtime-held.raw.dotnet.stdout" 1/True
+            runtime_held_interface_asserts "$out/runtime-held.raw.native.stdout" 1/True
             for axis in dotnet native; do
                 if [ "$axis" = dotnet ]; then
-                    reflection_oracle "$_CG_APP" before-boxed-type-handle > "$out/handle-before.$axis.stdout"
+                    gate_capture_ok "$out/handle-before.$axis" reflection_oracle "$_CG_APP" before-boxed-type-handle
                 else
-                    run_bounded "$out/RuntimeHeldInterfacesOnly$EXE_EXT" before-boxed-type-handle > "$out/handle-before.$axis.stdout"
+                    gate_capture_ok "$out/handle-before.$axis" run_bounded "$out/RuntimeHeldInterfacesOnly$EXE_EXT" before-boxed-type-handle
                 fi
-                awk '/^== boxed runtime type handle serialization ==$/ { exit } { print }' \
-                    "$out/runtime-held.$axis.stdout" > "$out/handle-prefix.$axis.stdout"
-                diff -u <(strip_cr_win_file "$out/handle-before.$axis.stdout") "$out/handle-prefix.$axis.stdout"
+                gate_output select "$out/runtime-held.raw.$axis.stdout" "$out/handle-prefix.$axis.stdout" --before '== boxed runtime type handle serialization ==' --policy crlf
+                gate_output compare "$out/handle-prefix.$axis.stdout" "$out/handle-before.$axis.stdout"
             done
         fi
     }
@@ -657,15 +654,16 @@ DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/reflection-un
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/reflection-unused-signatures/AppOpen/AppOpen.csproj gates/fixtures/reflection-unused-signatures/AppOpen/Program.cs"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/reflection-unused-signatures/AppDependencies/AppDependencies.csproj gates/fixtures/reflection-unused-signatures/AppDependencies/Program.cs gates/fixtures/reflection-unused-signatures/MethodBodyNeeded/MethodBodyNeeded.csproj gates/fixtures/reflection-unused-signatures/GrowthBodyNeeded/GrowthBodyNeeded.csproj"
 gate_optional_argument_asserts() {
-    local out="$1" native line
-    native=$(strip_cr_win_file "$out/metadata-layout.stdout")
+    local out="$1" native line native_file
+    native_file="$out/metadata-layout.stdout"
+    gate_output view "$native_file" "$native_file.records" --policy crlf
+    native="$native_file.records"
     if reflection_full_profile; then
-        DN2CPP_BEFORE_OPTIONAL_ARGUMENTS=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-optional-arguments.stdout"
-        sed '/^== reflective optional arguments ==/,$d' "$out/metadata-layout.stdout" > "$out/optional-arguments-prefix.stdout"
-        diff -u <(strip_cr_win_file "$out/before-optional-arguments.stdout") \
-            <(strip_cr_win_file "$out/optional-arguments-prefix.stdout")
+        DN2CPP_BEFORE_OPTIONAL_ARGUMENTS=1 gate_capture_ok "$out/before-optional-arguments" run_bounded "$out/ReflectInvoke$EXE_EXT"
+        gate_output select "$out/metadata-layout.stdout" "$out/optional-arguments-prefix.stdout" --before '== reflective optional arguments ==' --policy crlf
+        gate_output compare "$out/optional-arguments-prefix.stdout" "$out/before-optional-arguments.stdout"
     fi
-    reflection_assert_lines - any \
+    reflection_assert_lines "$native_file" any \
         '== reflective optional arguments ==' 'missing aliases: True' 'missing address alias: True' \
         'default metadata: True:True:True:False:False' \
         'integer first: int:12' 'integer cached: int:12' 'integer cached args: Int32:12' \
@@ -675,50 +673,61 @@ gate_optional_argument_asserts() {
         'validation failure args: missing,Object:System.Object' 'target failure args: missing' \
         'generic value args: missing' 'generic reference args: null' \
         'constructor: 27:Int32:27' 'dynamic invoke: int:23:Int32:23' \
-        'direct delegate: int:31' 'reflective optional arguments end' <<< "$native"
+        'direct delegate: int:31' 'reflective optional arguments end'
 }
 
 gate_empty_string_clone_asserts() {
-    local out="$1" native line
-    native=$(strip_cr_win_file "$out/metadata-layout.stdout")
+    local out="$1" native line native_file
+    native_file="$out/metadata-layout.stdout"
+    gate_output view "$native_file" "$native_file.records" --policy crlf
+    native="$native_file.records"
     if reflection_full_profile; then
-        DN2CPP_BEFORE_EMPTY_STRING_CLONE=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-empty-string-clone.stdout"
-        sed '/^== empty string clone identity ==/,$d' "$out/metadata-layout.stdout" > "$out/empty-string-clone-prefix.stdout"
-        diff -u <(strip_cr_win_file "$out/before-empty-string-clone.stdout") \
-            <(strip_cr_win_file "$out/empty-string-clone-prefix.stdout")
+        DN2CPP_BEFORE_EMPTY_STRING_CLONE=1 gate_capture_ok "$out/before-empty-string-clone" run_bounded "$out/ReflectInvoke$EXE_EXT"
+        gate_output select "$out/metadata-layout.stdout" "$out/empty-string-clone-prefix.stdout" --before '== empty string clone identity ==' --policy crlf
+        gate_output compare "$out/empty-string-clone-prefix.stdout" "$out/before-empty-string-clone.stdout"
     fi
-    reflection_assert_lines - any \
+    reflection_assert_lines "$native_file" any \
         '== empty string clone identity ==' \
         'empty clone 0=0:System.String:False:False:False' \
         'empty clone 1=0:System.String:False:False:False' \
         'empty clone 2=0:System.String:False:False:False' \
         'empty clone 3=0:System.String:False:False:False' \
-        'empty string clone identity end' <<< "$native"
+        'empty string clone identity end'
 }
 
 gate_memberwise_clone_collection_asserts() {
-    local out="$1" axis before full prefix line
+    local out="$1" axis before full prefix line full_file before_file prefix_file
     for axis in dotnet native; do
         if [ "$axis" = dotnet ]; then
             if reflection_full_profile; then
-                before=$(reflection_oracle "$_CG_APP" before-memberwise-clone-collection)
+                gate_capture_ok "$out/memberwise-clone-before.$axis" reflection_oracle "$_CG_APP" before-memberwise-clone-collection
+                before_file="$out/memberwise-clone-before.$axis.stdout"
+
             fi
-            full=$(reflection_oracle "$_CG_APP")
+            gate_capture_ok "$out/memberwise-clone-full.$axis" reflection_oracle "$_CG_APP"
+            full_file="$out/memberwise-clone-full.$axis.stdout"
+
         else
             if reflection_full_profile; then
-                before=$(run_bounded "$out/ReflectInvoke$EXE_EXT" before-memberwise-clone-collection)
+                gate_capture_ok "$out/memberwise-clone-before.$axis" run_bounded "$out/ReflectInvoke$EXE_EXT" before-memberwise-clone-collection
+                before_file="$out/memberwise-clone-before.$axis.stdout"
+
             fi
-            full=$(reflection_native_full "$out" ReflectInvoke)
+            gate_capture_ok "$out/memberwise-clone-full.$axis" reflection_native_full "$out" ReflectInvoke
+            full_file="$out/memberwise-clone-full.$axis.stdout"
+
         fi
-        full=$(strip_cr_win "$full")
-        prefix=$(awk '/^== memberwise clone collection ==$/ { exit } { print }' <<< "$full")
+
+        prefix_file="${full_file}.before-memberwise-clone-collection"
+
+        gate_output select "$full_file" "$prefix_file" --before '== memberwise clone collection ==' --policy crlf
         if reflection_full_profile; then
-            assert_output "$prefix" "$(strip_cr_win "$before")"
+            gate_output compare "$prefix_file" "$before_file"
         fi
-        reflection_assert_lines - any \
+        reflection_assert_lines "$full_file" any \
             '== memberwise clone collection ==' \
                 'empty clones survive GC=0:System.String:False:False:False' \
-                'memberwise clone collection end' <<< "$full"
+                'memberwise clone collection end'
     done
 }
 
@@ -727,26 +736,25 @@ gate_opaque_object_virtual_asserts() {
     for axis in dotnet native; do
         if reflection_full_profile; then
             if [ "$axis" = dotnet ]; then
-                reflection_oracle "$_CG_APP" before-opaque-object-virtuals > "$out/opaque-object-virtual-prefix.$axis.raw.stdout"
+                gate_capture_ok "$out/opaque-object-virtual-prefix.$axis.raw" reflection_oracle "$_CG_APP" before-opaque-object-virtuals
             else
-                run_bounded "$out/ReflectInvoke$EXE_EXT" before-opaque-object-virtuals > "$out/opaque-object-virtual-prefix.$axis.raw.stdout"
+                gate_capture_ok "$out/opaque-object-virtual-prefix.$axis.raw" run_bounded "$out/ReflectInvoke$EXE_EXT" before-opaque-object-virtuals
             fi
-            strip_cr_win_file "$out/opaque-object-virtual-prefix.$axis.raw.stdout" > "$out/opaque-object-virtual-prefix.$axis.stdout"
-            awk '/^== opaque exception inherited Object virtuals ==$/ { exit } { print }' \
-                "$out/virtual-delegate-full.$axis.stdout" > "$out/opaque-object-virtual-old.$axis.stdout"
-            diff -u "$out/opaque-object-virtual-prefix.$axis.stdout" "$out/opaque-object-virtual-old.$axis.stdout"
+
+            gate_output select "$out/virtual-delegate-full.$axis.raw.stdout" "$out/opaque-object-virtual-old.$axis.stdout" --before '== opaque exception inherited Object virtuals ==' --policy crlf
+            gate_output compare "$out/opaque-object-virtual-old.$axis.stdout" "$out/opaque-object-virtual-prefix.$axis.raw.stdout"
         fi
-        reflection_assert_lines "$out/virtual-delegate-full.$axis.stdout" 1 \
+        reflection_assert_lines "$out/virtual-delegate-full.$axis.raw.stdout" 1 \
             '== opaque exception inherited Object virtuals ==' \
             'opaque-object-virtual-AggregateException=Object.GetHashCode>Object.GetHashCode/True/True/True|Object.Equals>Object.Equals/True/True/True|Object.GetHashCode>Object.GetHashCode/True/True/True|Object.Equals>Object.Equals/True/True/True' \
             'opaque-object-virtual-InheritingAggregateException=Object.GetHashCode>Object.GetHashCode/True/True/True|Object.Equals>Object.Equals/True/True/True|Object.GetHashCode>Object.GetHashCode/True/True/True|Object.Equals>Object.Equals/True/True/True' \
             'opaque-object-virtual-HashEqualsAggregateException=HashEqualsAggregateException.GetHashCode>Object.GetHashCode/False/False/True|HashEqualsAggregateException.Equals>Object.Equals/False/False/True|HashEqualsAggregateException.GetHashCode>Object.GetHashCode/False/False/True|HashEqualsAggregateException.Equals>Object.Equals/False/False/True' \
             'opaque exception inherited Object virtuals end'
-        test "$(grep -Fxc -- 'opaque-object-virtual-text=True' "$out/virtual-delegate-full.$axis.stdout")" = 3 \
+        gate_output witness "$out/virtual-delegate-full.$axis.raw.stdout" 'opaque-object-virtual-text=True' --count 3 --policy crlf \
             || { echo "FAIL: opaque exception ToString bound to a wrong method: $axis" >&2; return 1; }
     done
     if reflection_full_profile; then
-        diff -u "$out/opaque-object-virtual-prefix.dotnet.stdout" "$out/opaque-object-virtual-prefix.native.stdout"
+        gate_output compare "$out/opaque-object-virtual-prefix.native.raw.stdout" "$out/opaque-object-virtual-prefix.dotnet.raw.stdout"
     fi
     grep -Fq -- '{ &dn2cpp_aggregate_exception_type, 14 }' "$out"/generated*.cpp \
         || { echo 'FAIL: opaque exception virtual inheritance has no raw-metadata proof' >&2; return 1; }
@@ -757,33 +765,32 @@ gate_runtime_delegate_method_asserts() {
     for axis in dotnet native; do
         if reflection_full_profile; then
             if [ "$axis" = dotnet ]; then
-                reflection_oracle "$_CG_APP" before-runtime-delegate-identities > "$out/runtime-delegate-prefix.$axis.raw.stdout"
+                gate_capture_ok "$out/runtime-delegate-prefix.$axis.raw" reflection_oracle "$_CG_APP" before-runtime-delegate-identities
             else
-                run_bounded "$out/ReflectInvoke$EXE_EXT" before-runtime-delegate-identities > "$out/runtime-delegate-prefix.$axis.raw.stdout"
+                gate_capture_ok "$out/runtime-delegate-prefix.$axis.raw" run_bounded "$out/ReflectInvoke$EXE_EXT" before-runtime-delegate-identities
             fi
-            strip_cr_win_file "$out/runtime-delegate-prefix.$axis.raw.stdout" > "$out/runtime-delegate-prefix.$axis.stdout"
-            awk '/^== runtime delegate method identities ==$/ { exit } { print }' \
-                "$out/virtual-delegate-full.$axis.stdout" > "$out/runtime-delegate-old.$axis.stdout"
-            diff -u "$out/runtime-delegate-prefix.$axis.stdout" "$out/runtime-delegate-old.$axis.stdout"
+
+            gate_output select "$out/virtual-delegate-full.$axis.raw.stdout" "$out/runtime-delegate-old.$axis.stdout" --before '== runtime delegate method identities ==' --policy crlf
+            gate_output compare "$out/runtime-delegate-old.$axis.stdout" "$out/runtime-delegate-prefix.$axis.raw.stdout"
         fi
-        reflection_assert_lines "$out/virtual-delegate-full.$axis.stdout" 1 \
+        reflection_assert_lines "$out/virtual-delegate-full.$axis.raw.stdout" 1 \
             '== runtime delegate method identities ==' 'runtime delegate method identities end'
         for line in static instance object-nonvirtual object-clone object-roundtrip object-String object-reflected-String \
                 object-Int32 object-reflected-Int32 interface-number interface-string interface-array \
                 interface-array-definition interface-array-native interface-closed interface-closed-values interface-value-default; do
-            test "$(grep -c -- "^runtime-$line=" "$out/virtual-delegate-full.$axis.stdout")" = 1 \
+            reflection_assert_prefixes "$out/virtual-delegate-full.$axis.raw.stdout" 1 "runtime-$line=" \
                 || { echo "FAIL: runtime delegate method witness must run once: $axis/$line" >&2; return 1; }
         done
-        section=$(awk '/^== runtime delegate method identities ==$/ { p=1; next }
-                /^runtime delegate method identities end$/ { exit } p { print }' \
-                "$out/virtual-delegate-full.$axis.stdout")
-        if grep -Eq -- 'False|missing|accepted' <<< "$section"; then
+        gate_output select "$out/virtual-delegate-full.$axis.raw.stdout" "$out/runtime-delegate-section.$axis.stdout" \
+            --from '== runtime delegate method identities ==' --through 'runtime delegate method identities end' --policy crlf
+        gate_output view "$out/runtime-delegate-section.$axis.stdout" "$out/runtime-delegate-section.$axis.records" --policy crlf
+        if grep -Eq -- 'False|missing|accepted' "$out/runtime-delegate-section.$axis.records"; then
             echo "FAIL: runtime delegate method identity/invocation mismatch: $axis" >&2
             return 1
         fi
     done
     if reflection_full_profile; then
-        diff -u "$out/runtime-delegate-prefix.dotnet.stdout" "$out/runtime-delegate-prefix.native.stdout"
+        gate_output compare "$out/runtime-delegate-prefix.native.raw.stdout" "$out/runtime-delegate-prefix.dotnet.raw.stdout"
     fi
 }
 
@@ -792,16 +799,15 @@ gate_object_virtual_equality_asserts() {
     for axis in dotnet native; do
         if reflection_full_profile; then
             if [ "$axis" = dotnet ]; then
-                reflection_oracle "$_CG_APP" before-object-virtual-equality > "$out/object-virtual-equality-prefix.$axis.raw.stdout"
+                gate_capture_ok "$out/object-virtual-equality-prefix.$axis.raw" reflection_oracle "$_CG_APP" before-object-virtual-equality
             else
-                run_bounded "$out/ReflectInvoke$EXE_EXT" before-object-virtual-equality > "$out/object-virtual-equality-prefix.$axis.raw.stdout"
+                gate_capture_ok "$out/object-virtual-equality-prefix.$axis.raw" run_bounded "$out/ReflectInvoke$EXE_EXT" before-object-virtual-equality
             fi
-            strip_cr_win_file "$out/object-virtual-equality-prefix.$axis.raw.stdout" > "$out/object-virtual-equality-prefix.$axis.stdout"
-            awk '/^== Object virtual delegate equality ==$/ { exit } { print }' \
-                "$out/virtual-delegate-full.$axis.stdout" > "$out/object-virtual-equality-old.$axis.stdout"
-            diff -u "$out/object-virtual-equality-prefix.$axis.stdout" "$out/object-virtual-equality-old.$axis.stdout"
+
+            gate_output select "$out/virtual-delegate-full.$axis.raw.stdout" "$out/object-virtual-equality-old.$axis.stdout" --before '== Object virtual delegate equality ==' --policy crlf
+            gate_output compare "$out/object-virtual-equality-old.$axis.stdout" "$out/object-virtual-equality-prefix.$axis.raw.stdout"
         fi
-        reflection_assert_lines "$out/virtual-delegate-full.$axis.stdout" 1 \
+        reflection_assert_lines "$out/virtual-delegate-full.$axis.raw.stdout" 1 \
             '== Object virtual delegate equality ==' \
                 'object-virtual-equality-methods=Object/ObjectVirtualEqualityCase/ObjectVirtualEqualityCase' \
                 'object-virtual-equality-values=ReflectDelegateIdentitySubset.ObjectVirtualEqualityProgram+ObjectVirtualEqualityCase/override/override' \
@@ -811,7 +817,7 @@ gate_object_virtual_equality_asserts() {
                 'Object virtual delegate equality end'
     done
     if reflection_full_profile; then
-        diff -u "$out/object-virtual-equality-prefix.dotnet.stdout" "$out/object-virtual-equality-prefix.native.stdout"
+        gate_output compare "$out/object-virtual-equality-prefix.native.raw.stdout" "$out/object-virtual-equality-prefix.dotnet.raw.stdout"
     fi
 }
 
@@ -820,16 +826,15 @@ gate_inherited_object_virtual_equality_asserts() {
     for axis in dotnet native; do
         if reflection_full_profile; then
             if [ "$axis" = dotnet ]; then
-                reflection_oracle "$_CG_APP" before-inherited-object-virtual-equality > "$out/inherited-object-virtual-equality-prefix.$axis.raw.stdout"
+                gate_capture_ok "$out/inherited-object-virtual-equality-prefix.$axis.raw" reflection_oracle "$_CG_APP" before-inherited-object-virtual-equality
             else
-                run_bounded "$out/ReflectInvoke$EXE_EXT" before-inherited-object-virtual-equality > "$out/inherited-object-virtual-equality-prefix.$axis.raw.stdout"
+                gate_capture_ok "$out/inherited-object-virtual-equality-prefix.$axis.raw" run_bounded "$out/ReflectInvoke$EXE_EXT" before-inherited-object-virtual-equality
             fi
-            strip_cr_win_file "$out/inherited-object-virtual-equality-prefix.$axis.raw.stdout" > "$out/inherited-object-virtual-equality-prefix.$axis.stdout"
-            awk '/^== inherited Object virtual delegate equality ==$/ { exit } { print }' \
-                "$out/virtual-delegate-full.$axis.stdout" > "$out/inherited-object-virtual-equality-old.$axis.stdout"
-            diff -u "$out/inherited-object-virtual-equality-prefix.$axis.stdout" "$out/inherited-object-virtual-equality-old.$axis.stdout"
+
+            gate_output select "$out/virtual-delegate-full.$axis.raw.stdout" "$out/inherited-object-virtual-equality-old.$axis.stdout" --before '== inherited Object virtual delegate equality ==' --policy crlf
+            gate_output compare "$out/inherited-object-virtual-equality-old.$axis.stdout" "$out/inherited-object-virtual-equality-prefix.$axis.raw.stdout"
         fi
-        reflection_assert_lines "$out/virtual-delegate-full.$axis.stdout" 1 \
+        reflection_assert_lines "$out/virtual-delegate-full.$axis.raw.stdout" 1 \
             '== inherited Object virtual delegate equality ==' \
                 'object-inherited-Exception-methods=Exception/ExceptionVirtualEqualityCase/ExceptionVirtualEqualityCase' \
                 'object-inherited-Exception-values=True/exception-override/exception-override' \
@@ -841,12 +846,13 @@ gate_inherited_object_virtual_equality_asserts() {
                 'object-inherited-AggregateException-remove=True/aggregate-override' \
                 'inherited Object virtual delegate equality end'
         if reflection_full_profile; then
-            test "$(tail -n 1 "$out/runtime-held-prefix.$axis.stdout")" = 'runtime generic base projections end' \
+            printf '%s\n' 'runtime generic base projections end' > "$out/runtime-held-tail.expected"
+            gate_output suffix "$out/runtime-held-prefix.$axis.stdout" "$out/runtime-held-tail.expected" --policy crlf \
                 || { echo "FAIL: original output prefix lost its runtime generic base projection terminator: $axis" >&2; return 1; }
         fi
     done
     if reflection_full_profile; then
-        diff -u "$out/inherited-object-virtual-equality-prefix.dotnet.stdout" "$out/inherited-object-virtual-equality-prefix.native.stdout"
+        gate_output compare "$out/inherited-object-virtual-equality-prefix.native.raw.stdout" "$out/inherited-object-virtual-equality-prefix.dotnet.raw.stdout"
     fi
 }
 
@@ -872,7 +878,7 @@ gate_extra_asserts() {
     gate_runtime_delegate_method_asserts "$1"
     gate_object_virtual_equality_asserts "$1"
     gate_inherited_object_virtual_equality_asserts "$1"
-    local out="$1" native line registry boundary axis route query expected parameter
+    local out="$1" native line registry boundary axis route query expected parameter native_file boundary_file
     "$py" gates/fixtures/check-reflection-layout.py "$out" "$reflection_layout_axis"
     # The runtime publishes a constructor's invoke plan only for a record inside a
     # registered extent, so a packed constructor table must appear in the registry.
@@ -887,29 +893,41 @@ gate_extra_asserts() {
                 && ! grep -Fq 'md_record_ctortab_' <<< "$registry"; } \
                 || { echo 'FAIL: uncompressed metadata registers a constructor table extent' >&2; return 1; } ;;
     esac
-    reflection_native_full "$out" ReflectInvoke > "$out/metadata-layout.stdout"
-    native=$(strip_cr_win_file "$out/metadata-layout.stdout")
+    gate_capture_ok "$out/metadata-layout" reflection_native_full "$out" ReflectInvoke
+    native_file="$out/metadata-layout.stdout"
+    gate_output view "$native_file" "$native_file.records" --policy crlf
+    native="$native_file.records"
     if reflection_full_profile; then
-        local generic_activator_before generic_activator_prefix
-        generic_activator_before=$(reflection_oracle "$_CG_APP" before-generic-activator-messages)
-        generic_activator_prefix=$(awk '/^== generic activator constructor messages ==$/ { exit } { print }' <<< "$native")
-        assert_output "$generic_activator_prefix" "$(strip_cr_win "$generic_activator_before")"
+        local generic_activator_before generic_activator_prefix generic_activator_before_file generic_activator_prefix_file
+        gate_capture_ok "$out/generic-activator-before.dotnet" reflection_oracle "$_CG_APP" before-generic-activator-messages
+        generic_activator_before_file="$out/generic-activator-before.dotnet.stdout"
+
+        generic_activator_prefix_file="${native_file}.before-generic-activator-constructor-messages"
+        gate_output select "$native_file" "$generic_activator_prefix_file" --before '== generic activator constructor messages ==' --policy crlf
+        gate_output compare "$generic_activator_prefix_file" "$generic_activator_before_file"
     fi
-    reflection_assert_lines - 1 \
+    reflection_assert_lines "$native_file" 1 \
         '== generic activator constructor messages ==' \
         "private generic: MissingMethodException/No parameterless constructor defined for type 'ReflectActivatorGenericSubset.PrivateGeneric\`1[System.Int32]'." \
         "missing generic: MissingMethodException/Cannot dynamically create an instance of type 'ReflectActivatorGenericSubset.MissingGeneric\`1[System.Int32]'. Reason: No parameterless constructor defined." \
         "intrinsic generic: MissingMethodException/No parameterless constructor defined for type 'System.Threading.Tasks.Task\`1[System.Int32]'." \
         "isolated intrinsic generic: MissingMethodException/No parameterless constructor defined for type 'System.Threading.Tasks.Task\`1[System.Int64]'." \
-        'generic activator constructor messages end' <<< "$native"
-    local singular_before singular_prefix singular_native singular_expected
-    singular_before=$(run_bounded "$out/ReflectInvoke$EXE_EXT" before-singular-member-lookups)
-    singular_prefix=$(awk '/^== singular member IgnoreCase ==$/ { exit } { print }' <<< "$native")
-    assert_output "$singular_prefix" "$(strip_cr_win "$singular_before")"
-    singular_native=$(run_bounded "$out/ReflectInvoke$EXE_EXT" singular-member-lookups)
-    singular_expected=$(reflection_oracle "$_CG_APP" singular-member-lookups)
-    assert_output "$singular_native" "$singular_expected"
-    reflection_assert_lines - 1 \
+        'generic activator constructor messages end'
+    local singular_before singular_prefix singular_native singular_expected singular_expected_file singular_native_file singular_before_file singular_prefix_file
+    gate_capture_ok "$out/singular-before.native" run_bounded "$out/ReflectInvoke$EXE_EXT" before-singular-member-lookups
+    singular_before_file="$out/singular-before.native.stdout"
+
+    singular_prefix_file="${native_file}.before-singular-member-ignorecase"
+    gate_output select "$native_file" "$singular_prefix_file" --before '== singular member IgnoreCase ==' --policy crlf
+    gate_output compare "$singular_prefix_file" "$singular_before_file"
+    gate_capture_ok "$out/singular.native" run_bounded "$out/ReflectInvoke$EXE_EXT" singular-member-lookups
+    singular_native_file="$out/singular.native.stdout"
+
+    gate_capture_ok "$out/singular.dotnet" reflection_oracle "$_CG_APP" singular-member-lookups
+    singular_expected_file="$out/singular.dotnet.stdout"
+
+    gate_output compare "$singular_native_file" "$singular_expected_file"
+    reflection_assert_lines "$singular_native_file" 1 \
         '== singular member IgnoreCase ==' \
         'field folded collision=AmbiguousMatchException' \
         'method overload int=Overload.Echo' \
@@ -924,17 +942,20 @@ gate_extra_asserts() {
         'property interface shared accessor=AmbiguousMatchException' \
         'property protected override=AmbiguousMatchException' \
         'property setter-only override=AmbiguousMatchException' \
-        'singular member IgnoreCase end' <<< "$singular_native"
+        'singular member IgnoreCase end'
     gate_optional_argument_asserts "$out"
-    local primitive_before primitive_prefix
+    local primitive_before primitive_prefix primitive_prefix_file primitive_before_file
     if reflection_full_profile; then
-        primitive_before=$(DN2CPP_BEFORE_PRIMITIVE_BINDER=1 reflection_oracle "$_CG_APP")
+        DN2CPP_BEFORE_PRIMITIVE_BINDER=1 gate_capture_ok "$out/primitive-binder-before.dotnet" reflection_oracle "$_CG_APP"
+        primitive_before_file="$out/primitive-binder-before.dotnet.stdout"
+
     fi
-    primitive_prefix=$(awk '/^== default binder primitive widening ==$/ { exit } { print }' <<< "$native")
+    primitive_prefix_file="${native_file}.before-default-binder-primitive-widening"
+    gate_output select "$native_file" "$primitive_prefix_file" --before '== default binder primitive widening ==' --policy crlf
     if reflection_full_profile; then
-        assert_output "$primitive_prefix" "$(strip_cr_win "$primitive_before")"
+        gate_output compare "$primitive_prefix_file" "$primitive_before_file"
     fi
-    reflection_assert_lines - any \
+    reflection_assert_lines "$native_file" any \
         '== default binder primitive widening ==' \
         'binder ushort to char => threw MissingMethodException' \
         'binder flags ushort to char => threw MissingMethodException' \
@@ -948,32 +969,29 @@ gate_extra_asserts() {
         'binder double to int => threw MissingMethodException' \
         'binder byte prefers char => char' 'binder ushort prefers ushort => ushort' \
         'invoke ushort to char => 65535' 'constructor invoke ushort to char => OnlyChar(65535)' \
-        'default binder primitive widening end' <<< "$native"
+        'default binder primitive widening end'
     if reflection_full_profile; then
-        DN2CPP_BEFORE_REFLECTION_DISPATCH=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-reflection-dispatch.stdout"
-        sed '/^== reflection dispatch extensions ==/,$d' "$out/metadata-layout.stdout" > "$out/reflection-dispatch-prefix.stdout"
-        diff -u <(strip_cr_win_file "$out/before-reflection-dispatch.stdout") \
-            <(strip_cr_win_file "$out/reflection-dispatch-prefix.stdout")
+        DN2CPP_BEFORE_REFLECTION_DISPATCH=1 gate_capture_ok "$out/before-reflection-dispatch" run_bounded "$out/ReflectInvoke$EXE_EXT"
+        gate_output select "$out/metadata-layout.stdout" "$out/reflection-dispatch-prefix.stdout" --before '== reflection dispatch extensions ==' --policy crlf
+        gate_output compare "$out/reflection-dispatch-prefix.stdout" "$out/before-reflection-dispatch.stdout"
     fi
-    reflection_assert_lines - any \
+    reflection_assert_lines "$native_file" any \
         '== reflection dispatch extensions ==' '== dynamic invoke ==' \
-        'dynamic invoke end' 'reflection dispatch extensions end' <<< "$native"
+        'dynamic invoke end' 'reflection dispatch extensions end'
     if reflection_full_profile; then
-        DN2CPP_BEFORE_ATTRIBUTE_MINTED=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-attribute-minted.stdout"
-        sed '/^== reflection route attribute-minted classes ==/,$d' "$out/metadata-layout.stdout" > "$out/attribute-minted-prefix.stdout"
-        diff -u <(strip_cr_win_file "$out/before-attribute-minted.stdout") \
-            <(strip_cr_win_file "$out/attribute-minted-prefix.stdout")
+        DN2CPP_BEFORE_ATTRIBUTE_MINTED=1 gate_capture_ok "$out/before-attribute-minted" run_bounded "$out/ReflectInvoke$EXE_EXT"
+        gate_output select "$out/metadata-layout.stdout" "$out/attribute-minted-prefix.stdout" --before '== reflection route attribute-minted classes ==' --policy crlf
+        gate_output compare "$out/attribute-minted-prefix.stdout" "$out/before-attribute-minted.stdout"
     fi
-    reflection_assert_lines - any \
+    reflection_assert_lines "$native_file" any \
         '== reflection route attribute-minted classes ==' \
-        'AttrLevel9`1 rows=1 next=AttrRoot' 'reflection route attribute-minted classes end' <<< "$native"
+        'AttrLevel9`1 rows=1 next=AttrRoot' 'reflection route attribute-minted classes end'
     if reflection_full_profile; then
-        DN2CPP_BEFORE_TEMPLATE_ACCESSORS=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-template-accessors.stdout"
-        sed '/^== template accessor bindings ==/,$d' "$out/metadata-layout.stdout" > "$out/template-accessors-prefix.stdout"
-        diff -u <(strip_cr_win_file "$out/before-template-accessors.stdout") \
-            <(strip_cr_win_file "$out/template-accessors-prefix.stdout")
+        DN2CPP_BEFORE_TEMPLATE_ACCESSORS=1 gate_capture_ok "$out/before-template-accessors" run_bounded "$out/ReflectInvoke$EXE_EXT"
+        gate_output select "$out/metadata-layout.stdout" "$out/template-accessors-prefix.stdout" --before '== template accessor bindings ==' --policy crlf
+        gate_output compare "$out/template-accessors-prefix.stdout" "$out/before-template-accessors.stdout"
     fi
-    reflection_assert_lines - any \
+    reflection_assert_lines "$native_file" any \
         '== template accessor bindings ==' 'template Int32, static: static:Int32' \
         'template String, setter over its argument: closed:String' \
         'template Int32, closed: minted:Int32' 'template Int32, null-bound context: Int32' \
@@ -981,14 +999,13 @@ gate_extra_asserts() {
         'template String, method: get_Shared/True/True/True' \
         'template Int32, null-bound method: NullReferenceException' \
         'template across instantiations: False/False static:Int32 static:String' \
-        'template accessor bindings end' <<< "$native"
+        'template accessor bindings end'
     if reflection_full_profile; then
-        DN2CPP_BEFORE_POINTER_RETURNS=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-pointer-returns.stdout"
-        sed '/^== pointer returns ==/,$d' "$out/metadata-layout.stdout" > "$out/pointer-returns-prefix.stdout"
-        diff -u <(strip_cr_win_file "$out/before-pointer-returns.stdout") \
-            <(strip_cr_win_file "$out/pointer-returns-prefix.stdout")
+        DN2CPP_BEFORE_POINTER_RETURNS=1 gate_capture_ok "$out/before-pointer-returns" run_bounded "$out/ReflectInvoke$EXE_EXT"
+        gate_output select "$out/metadata-layout.stdout" "$out/pointer-returns-prefix.stdout" --before '== pointer returns ==' --policy crlf
+        gate_output compare "$out/pointer-returns-prefix.stdout" "$out/before-pointer-returns.stdout"
     fi
-    reflection_assert_lines - any \
+    reflection_assert_lines "$native_file" any \
         '== pointer returns ==' \
         'pointer: Pointer:System.Reflection.Pointer:0x1230' \
         'pointer to pointer: Pointer:System.Reflection.Pointer:0x80' \
@@ -1000,33 +1017,31 @@ gate_extra_asserts() {
         "int*****, int****** box: ArgumentException: Object of type 'System.Reflection.Pointer' cannot be converted to type 'System.Int32*****'." \
         "delegate*<long>*, delegate*<int>* box: ArgumentException: Object of type 'System.Reflection.Pointer' cannot be converted to type 'System.Int64()*'." \
         "delegate*<int>, string: ArgumentException: Object of type 'System.String' cannot be converted to type 'System.Int32()'." \
-        'pointer returns end' <<< "$native"
+        'pointer returns end'
     # A fresh object's managed-reference stores take the write barrier too
     # (runtime/core/dn2cpp_core.h), so the pointer box stores its type through it.
     line=$(awk '/dn2cpp_set_pointer_box_type\(/ { getline; print; exit }' "$out"/generated*.cpp)
     grep -Fq 'dn2cpp_gc_store_ref(&o->' <<< "$line" \
         || { echo "FAIL: the pointer box stores its type without the write barrier: $line" >&2; return 1; }
     if reflection_full_profile; then
-        DN2CPP_BEFORE_DELEGATE_INVOKE_TARGETS=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-delegate-invoke-targets.stdout"
-        sed '/^== delegate invoke targets ==/,$d' "$out/metadata-layout.stdout" > "$out/delegate-invoke-targets-prefix.stdout"
-        diff -u <(strip_cr_win_file "$out/before-delegate-invoke-targets.stdout") \
-            <(strip_cr_win_file "$out/delegate-invoke-targets-prefix.stdout")
+        DN2CPP_BEFORE_DELEGATE_INVOKE_TARGETS=1 gate_capture_ok "$out/before-delegate-invoke-targets" run_bounded "$out/ReflectInvoke$EXE_EXT"
+        gate_output select "$out/metadata-layout.stdout" "$out/delegate-invoke-targets-prefix.stdout" --before '== delegate invoke targets ==' --policy crlf
+        gate_output compare "$out/delegate-invoke-targets-prefix.stdout" "$out/before-delegate-invoke-targets.stdout"
     fi
-    reflection_assert_lines - any \
+    reflection_assert_lines "$native_file" any \
         '== delegate invoke targets ==' \
         'converter=n3,n1,n2 target=True method=Invoke/Func`2 entries=1 dynamic=n9' \
         'same type=11 equal=True target=True self=False' 'generic=a!/b!/42/c?/42/L7' \
         'multicast=12121 entries=1/2 last=2' 'by-ref=22/u22' 'struct=w:12/(5, p)' \
         'variance=covariant/sink:x' 'headerless=./,' 'null source=ArgumentException' \
         'virtual load=201 target=True method=Invoke entries=1' 'virtual load null=ArgumentException' \
-        'delegate invoke targets end' <<< "$native"
+        'delegate invoke targets end'
     if reflection_full_profile; then
-        DN2CPP_BEFORE_NULL_BOUND_CHAINS=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-null-bound-chains.stdout"
-        sed '/^== null-bound call chains ==/,$d' "$out/metadata-layout.stdout" > "$out/null-bound-chains-prefix.stdout"
-        diff -u <(strip_cr_win_file "$out/before-null-bound-chains.stdout") \
-            <(strip_cr_win_file "$out/null-bound-chains-prefix.stdout")
+        DN2CPP_BEFORE_NULL_BOUND_CHAINS=1 gate_capture_ok "$out/before-null-bound-chains" run_bounded "$out/ReflectInvoke$EXE_EXT"
+        gate_output select "$out/metadata-layout.stdout" "$out/null-bound-chains-prefix.stdout" --before '== null-bound call chains ==' --policy crlf
+        gate_output compare "$out/null-bound-chains-prefix.stdout" "$out/before-null-bound-chains.stdout"
     fi
-    reflection_assert_lines - any \
+    reflection_assert_lines "$native_file" any \
         '== null-bound call chains ==' 'null-bound long chain: 42' \
         'null-bound long chain, field: NullReferenceException' 'open null long chain: 42' \
         'null-bound struct long chain: 7' 'null-bound dense cycle: 16384' \
@@ -1034,39 +1049,35 @@ gate_extra_asserts() {
         'template Int32 long chain, null-bound tested: null Int32' \
         'template String long chain, null-bound context: NullReferenceException' \
         'template String long chain, null-bound tested: NullReferenceException' \
-        'null-bound call chains end' <<< "$native"
+        'null-bound call chains end'
     if reflection_full_profile; then
-        DN2CPP_BEFORE_RENAMED_SLOT_BINDINGS=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-renamed-slot-bindings.stdout"
-        sed '/^== reflection-bound delegates over a renamed override ==/,$d' "$out/metadata-layout.stdout" \
-            > "$out/renamed-slot-bindings-prefix.stdout"
-        diff -u <(strip_cr_win_file "$out/before-renamed-slot-bindings.stdout") \
-            <(strip_cr_win_file "$out/renamed-slot-bindings-prefix.stdout")
+        DN2CPP_BEFORE_RENAMED_SLOT_BINDINGS=1 gate_capture_ok "$out/before-renamed-slot-bindings" run_bounded "$out/ReflectInvoke$EXE_EXT"
+        gate_output select "$out/metadata-layout.stdout" "$out/renamed-slot-bindings-prefix.stdout" --before '== reflection-bound delegates over a renamed override ==' --policy crlf
+        gate_output compare "$out/renamed-slot-bindings-prefix.stdout" "$out/before-renamed-slot-bindings.stdout"
     fi
-    reflection_assert_lines - any \
+    reflection_assert_lines "$native_file" any \
         '== reflection-bound delegates over a renamed override ==' \
         'renamed-slot-calls=3/3/3/4' 'renamed-slot-identity=True/True/True/False/Rescale/Rescale' \
         'renamed-slot-dedup=1/True/True' 'renamed-slot-chain=True/True' \
-        'reflection-bound delegates over a renamed override end' <<< "$native"
+        'reflection-bound delegates over a renamed override end'
     if reflection_full_profile; then
-        DN2CPP_BEFORE_SETTLED_OBJECT_VIRTUAL=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-settled-object-virtual.stdout"
-        sed '/^== settled Object virtual answers ==/,$d' "$out/metadata-layout.stdout" > "$out/settled-object-virtual-prefix.stdout"
-        diff -u <(strip_cr_win_file "$out/before-settled-object-virtual.stdout") \
-            <(strip_cr_win_file "$out/settled-object-virtual-prefix.stdout")
+        DN2CPP_BEFORE_SETTLED_OBJECT_VIRTUAL=1 gate_capture_ok "$out/before-settled-object-virtual" run_bounded "$out/ReflectInvoke$EXE_EXT"
+        gate_output select "$out/metadata-layout.stdout" "$out/settled-object-virtual-prefix.stdout" --before '== settled Object virtual answers ==' --policy crlf
+        gate_output compare "$out/settled-object-virtual-prefix.stdout" "$out/before-settled-object-virtual.stdout"
     fi
-    reflection_assert_lines - any \
+    reflection_assert_lines "$native_file" any \
         '== settled Object virtual answers ==' \
         'settled-object-virtual-own=OverridingException.ToString>Object.ToString|OverridingException.GetHashCode>Object.GetHashCode|OverridingException.Equals>Object.Equals|overriding/23/True/False' \
         'settled-object-virtual-inherited=OverridingException.ToString>Object.ToString|OverridingException.GetHashCode>Object.GetHashCode|OverridingException.Equals>Object.Equals|overriding/23/True/False' \
         'settled-object-virtual-reflected=Object.ToString|Object.GetHashCode|Object.Equals/Object.ToString|Object.GetHashCode|Object.Equals' \
         'settled-object-virtual-unsettled=True/True/True/True/True/text/5/True/True' \
-        'settled Object virtual answers end' <<< "$native"
+        'settled Object virtual answers end'
     if reflection_full_profile; then
-        DN2CPP_BEFORE_RENAMED_SLOT_FILLERS=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-renamed-slot-fillers.stdout"
-        sed '/^== renamed slot fillers ==/,$d' "$out/metadata-layout.stdout" > "$out/renamed-slot-fillers-prefix.stdout"
-        diff -u <(strip_cr_win_file "$out/before-renamed-slot-fillers.stdout") \
-            <(strip_cr_win_file "$out/renamed-slot-fillers-prefix.stdout")
+        DN2CPP_BEFORE_RENAMED_SLOT_FILLERS=1 gate_capture_ok "$out/before-renamed-slot-fillers" run_bounded "$out/ReflectInvoke$EXE_EXT"
+        gate_output select "$out/metadata-layout.stdout" "$out/renamed-slot-fillers-prefix.stdout" --before '== renamed slot fillers ==' --policy crlf
+        gate_output compare "$out/renamed-slot-fillers-prefix.stdout" "$out/before-renamed-slot-fillers.stdout"
     fi
-    reflection_assert_lines - any \
+    reflection_assert_lines "$native_file" any \
         '== renamed slot fillers ==' \
         'renamed-filler-calls=42/43/reuse/RenamedFillerDerived.Weigh' \
         'renamed-filler-interface=True/True/True/1/42/42/RenamedFillerImpl.Weigh/RenamedFillerImpl.Weigh' \
@@ -1080,14 +1091,13 @@ gate_extra_asserts() {
         'renamed-filler-minted-load=ObjectMethodImplBox`1.Render/ObjectMethodImpl.Render/RenamedFillerBox`1.Weigh/RenamedFillerImpl.Weigh' \
         'renamed-filler-variant=True/True/True/1/source/source/RenamedSource.Fetch/RenamedSource.Fetch|True/True/True/1/source/source/RenamedSource.Fetch/RenamedSource.Fetch' \
         'renamed-filler-variant-load=source/RenamedSource.Fetch' \
-        'renamed slot fillers end' <<< "$native"
+        'renamed slot fillers end'
     if reflection_full_profile; then
-        DN2CPP_BEFORE_DELEGATE_LISTS=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-delegate-lists.stdout"
-        sed '/^== remove runs ==/,$d' "$out/metadata-layout.stdout" > "$out/delegate-lists-prefix.stdout"
-        diff -u <(strip_cr_win_file "$out/before-delegate-lists.stdout") \
-            <(strip_cr_win_file "$out/delegate-lists-prefix.stdout")
+        DN2CPP_BEFORE_DELEGATE_LISTS=1 gate_capture_ok "$out/before-delegate-lists" run_bounded "$out/ReflectInvoke$EXE_EXT"
+        gate_output select "$out/metadata-layout.stdout" "$out/delegate-lists-prefix.stdout" --before '== remove runs ==' --policy crlf
+        gate_output compare "$out/delegate-lists-prefix.stdout" "$out/before-delegate-lists.stdout"
     fi
-    reflection_assert_lines - any \
+    reflection_assert_lines "$native_file" any \
         '== remove runs ==' 'remove runs end' \
         '== invocation lists ==' 'invocation lists end' \
         '== invocation list entries ==' 'invocation list entries end' \
@@ -1099,151 +1109,141 @@ gate_extra_asserts() {
         'unconstructed variance view=null' \
         'delegate invoker declarations end' \
         '== recursive delegate declarations ==' 'recursive delegate identities=True/True' \
-        'recursive delegate declarations end' <<< "$native"
+        'recursive delegate declarations end'
     if reflection_full_profile; then
-        DN2CPP_BEFORE_RECURSIVE_DELEGATE=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-recursive-delegate.stdout"
-        sed '/^== recursive delegate declarations ==/,$d' "$out/metadata-layout.stdout" > "$out/recursive-delegate-prefix.stdout"
-        diff -u <(strip_cr_win_file "$out/before-recursive-delegate.stdout") \
-            <(strip_cr_win_file "$out/recursive-delegate-prefix.stdout")
+        DN2CPP_BEFORE_RECURSIVE_DELEGATE=1 gate_capture_ok "$out/before-recursive-delegate" run_bounded "$out/ReflectInvoke$EXE_EXT"
+        gate_output select "$out/metadata-layout.stdout" "$out/recursive-delegate-prefix.stdout" --before '== recursive delegate declarations ==' --policy crlf
+        gate_output compare "$out/recursive-delegate-prefix.stdout" "$out/before-recursive-delegate.stdout"
     fi
-    grep -Fxq 'metadata-layout-begin' <<< "$native"
-    grep -Fxq 'metadata-layout-cache-capacity=72/1296' <<< "$native"
-    grep -Fxq 'metadata-layout-cache-threads=1296/1296' <<< "$native"
-    grep -Fxq 'metadata-layout-interface-receivers=21000' <<< "$native"
-    grep -Fxq 'metadata-layout-end' <<< "$native"
-    grep -Fxq 'metadata-compression-begin' <<< "$native"
-    grep -Fxq 'metadata-compression-labels=field/property/constructor/method/parameter' <<< "$native"
-    grep -Fxq 'metadata-compression-inheritance=v5/Direct' <<< "$native"
-    grep -Fxq 'metadata-compression-generic-value=15/Int32/True' <<< "$native"
-    grep -Fxq 'metadata-compression-generic-reference=text/String/True' <<< "$native"
-    grep -Fxq 'metadata-compression-plain-generic=True/True' <<< "$native"
-    grep -Fxq 'metadata-compression-end' <<< "$native"
-    grep -Fxq 'existing-constructor-message: Exception has been thrown by the target of an invocation.' <<< "$native"
-    grep -Fxq 'existing-constructor-method-composed-flags: TargetInvocationException InvalidOperationException 80131604' <<< "$native"
-    grep -Fxq 'existing-constructor-end' <<< "$native"
-    grep -Fxq 'activator-cold-generic=73' <<< "$native"
+    reflection_assert_lines "$native_file" any \
+        'metadata-layout-begin' \
+        'metadata-layout-cache-capacity=72/1296' \
+        'metadata-layout-cache-threads=1296/1296' \
+        'metadata-layout-interface-receivers=21000' \
+        'metadata-layout-end' \
+        'metadata-compression-begin' \
+        'metadata-compression-labels=field/property/constructor/method/parameter' \
+        'metadata-compression-inheritance=v5/Direct' \
+        'metadata-compression-generic-value=15/Int32/True' \
+        'metadata-compression-generic-reference=text/String/True' \
+        'metadata-compression-plain-generic=True/True' \
+        'metadata-compression-end' \
+        'existing-constructor-message: Exception has been thrown by the target of an invocation.' \
+        'existing-constructor-method-composed-flags: TargetInvocationException InvalidOperationException 80131604' \
+        'existing-constructor-end' \
+        'activator-cold-generic=73'
     if reflection_full_profile; then
-        DN2CPP_BEFORE_EXISTING_CONSTRUCTOR=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-existing-constructor.stdout"
-        sed '/^existing-constructor-begin/,$d' "$out/metadata-layout.stdout" > "$out/existing-constructor-prefix.stdout"
-        diff -u <(strip_cr_win_file "$out/before-existing-constructor.stdout") \
-            <(strip_cr_win_file "$out/existing-constructor-prefix.stdout")
-        DN2CPP_BEFORE_COLD_ACTIVATOR=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-cold-activator.stdout"
-        sed '/^activator-cold-generic=/,$d' "$out/metadata-layout.stdout" > "$out/cold-activator-prefix.stdout"
-        diff -u <(strip_cr_win_file "$out/before-cold-activator.stdout") \
-            <(strip_cr_win_file "$out/cold-activator-prefix.stdout")
+        DN2CPP_BEFORE_EXISTING_CONSTRUCTOR=1 gate_capture_ok "$out/before-existing-constructor" run_bounded "$out/ReflectInvoke$EXE_EXT"
+        gate_output select "$out/metadata-layout.stdout" "$out/existing-constructor-prefix.stdout" --before 'existing-constructor-begin' --policy crlf
+        gate_output compare "$out/existing-constructor-prefix.stdout" "$out/before-existing-constructor.stdout"
+        DN2CPP_BEFORE_COLD_ACTIVATOR=1 gate_capture_ok "$out/before-cold-activator" run_bounded "$out/ReflectInvoke$EXE_EXT"
+        gate_output select "$out/metadata-layout.stdout" "$out/cold-activator-prefix.stdout" --before 'activator-cold-generic=' --policy crlf
+        gate_output compare "$out/cold-activator-prefix.stdout" "$out/before-cold-activator.stdout"
     fi
-    grep -Fxq 'delegate-method-shared=True/True' <<< "$native"
-    grep -Fxq 'delegate-method-generic=Int32/String' <<< "$native"
-    grep -Fxq 'delegate-method-runtime-owned=True/True' <<< "$native"
-    grep -Fxq 'delegate-method-struct-interface=StructProbe/Value/31/31' <<< "$native"
-    grep -Fxq 'delegate-method-explicit-interface=ExplicitProbe/True/41/41' <<< "$native"
-    grep -Fxq 'delegate-method-default-interface=IDefaultProbe/Default/101' <<< "$native"
-    grep -Fxq 'delegate-method-interface-generic=ImplicitGeneric/String/ExplicitGeneric/True/Int32/p5' <<< "$native"
-    grep -Fxq 'delegate-method-array-generic=Int32[]/String[]' <<< "$native"
-    grep -Fxq 'delegate-method-generic-hider=GvmBase/base/GvmLeaf/leaf' <<< "$native"
-    grep -Fxq 'delegate-method-generic-covariant=CovariantLeaf/CovariantLeaf/CovariantLeaf' <<< "$native"
-    grep -Fxq 'delegate-method-end' <<< "$native"
-    grep -Fxq 'delegate-method-interface-begin' <<< "$native"
-    grep -Fxq 'delegate-method-generic-explicit-order=explicit/PlainFirstGeneric/True/explicit/ExplicitFirstGeneric/True' <<< "$native"
-    grep -Fxq 'delegate-method-derived-default=derived/IDerivedDefault/True' <<< "$native"
-    grep -Fxq 'delegate-method-derived-generic=derived/IDerivedGenericDefault/True' <<< "$native"
-    grep -Fxq 'delegate-method-derived-struct=derived/IDerivedDefault' <<< "$native"
-    grep -Fxq 'delegate-method-derived-inherited=derived/IDerivedDefault' <<< "$native"
-    grep -Fxq 'delegate-method-derived-typed=derived/True' <<< "$native"
-    grep -Fxq 'delegate-method-derived-same=same/IDerivedSame' <<< "$native"
-    grep -Fxq 'delegate-method-derived-runtime-type=derived/IRuntimeDerivedDefault/True' <<< "$native"
-    grep -Fxq 'delegate-method-derived-generic-runtime-type=derived/derived/IRuntimeGenericDerivedDefault/True' <<< "$native"
-    grep -Fxq 'delegate-method-inherited-generic-runtime-type=mid/mid/RuntimeGvmMid' <<< "$native"
-    grep -Fxq 'delegate-method-interface-end' <<< "$native"
-    grep -Fxq 'interface-gvm-dispatch-begin' <<< "$native"
-    grep -Fxq 'interface-gvm-explicit-overloads=generic/integer' <<< "$native"
-    grep -Fxq 'interface-gvm-explicit-overloads-generic-interface=generic/integer' <<< "$native"
-    grep -Fxq 'interface-gvm-plain-and-explicit-overload=plain/int-explicit/Pick/True' <<< "$native"
-    grep -Fxq 'interface-gvm-qualifier-prefix=plain/longer/Pick/True' <<< "$native"
-    grep -Fxq 'interface-gvm-qualifier-arity=plain/explicit-generic/Pick/True' <<< "$native"
-    grep -Fxq 'interface-gvm-dispatch-end' <<< "$native"
-    grep -Fxq 'interface-redeclaration-begin' <<< "$native"
-    grep -Fxq 'interface-redeclaration-plain=derived-plain/derived-plain/RedeclaredDerived/plain' <<< "$native"
-    grep -Fxq 'interface-redeclaration-unlisted=base-explicit/base-explicit/RedeclaredBase/explicit' <<< "$native"
-    grep -Fxq 'interface-redeclaration-hider=implicit/implicit/ImplicitRedeclared/plain' <<< "$native"
-    grep -Fxq 'interface-redeclaration-abstract=abstract-leaf/abstract-leaf/AbstractLeaf/plain' <<< "$native"
-    grep -Fxq 'interface-redeclaration-generic-class=shared-box-String/shared-box-String/SharedRedeclaredBox`1/plain' <<< "$native"
-    grep -Fxq 'interface-redeclaration-fill=fill-source/fill-source/FillSource/plain/fill-override/fill-override/FillOverride/plain' <<< "$native"
-    grep -Fxq 'interface-redeclaration-explicit-mid=explicit-mid/explicit-mid/ExplicitMidRedeclared/explicit' <<< "$native"
-    grep -Fxq 'interface-redeclaration-default=default/default/IRedeclaredDefault/plain/default-mid/default-mid/DefaultRedeclared/explicit' <<< "$native"
-    grep -Fxq 'interface-redeclaration-closed-generic=of-derived-plain/of-derived-plain/RedeclaredOfDerived/plain' <<< "$native"
-    grep -Fxq 'interface-redeclaration-runtime-type=runtime-box/runtime-box/Tag' <<< "$native"
-    grep -Fxq 'interface-redeclaration-pick-plain=pick-derived-plain/pick-derived-plain/PickDerived/plain' <<< "$native"
-    grep -Fxq 'interface-redeclaration-pick-unlisted=pick-base-explicit/pick-base-explicit/PickBase/explicit' <<< "$native"
-    grep -Fxq 'interface-redeclaration-pick-hider=pick-implicit/pick-implicit/PickImplicit/plain/pick-virtual/pick-virtual/PickVirtual/plain' <<< "$native"
-    grep -Fxq 'interface-redeclaration-pick-override=pick-override/pick-override/PickOverride/plain' <<< "$native"
-    grep -Fxq 'interface-redeclaration-pick-fill=pick-source/pick-source/PickSource/plain/pick-target-override/pick-target-override/PickTargetOverride/plain' <<< "$native"
-    grep -Fxq 'interface-redeclaration-end' <<< "$native"
-    grep -Fxq 'runtime-level-gvm-begin' <<< "$native"
-    grep -Fxq 'runtime-level-gvm-generic-base=root:Int32/String|leaf:Int32/String+root:Int32/String|leaf:Int32/String+root:Int32/String|Tag|True|True|True' <<< "$native"
-    grep -Fxq 'runtime-level-gvm-unconstructed-base=leaf:String/Int32+root:String/Int32|leaf:String/Int32+root:String/Int32|True|Int32' <<< "$native"
-    grep -Fxq 'runtime-level-gvm-two-arguments=pair:Int32,String/String|pair:Int32,Boolean/String|pair:Int32,Boolean/String|True' <<< "$native"
-    grep -Fxq 'runtime-level-gvm-plain-base=own:Decimal/String|own:Decimal/String|True|own:Decimal|True' <<< "$native"
-    grep -Fxq 'runtime-level-method-row=True|own:Decimal|True|Who' <<< "$native"
-    grep -Fxq 'runtime-level-gvm-chain=chain:String+mid:String/Int32|chain:String+mid:String/Int32|True' <<< "$native"
-    grep -Fxq 'runtime-level-gvm-inherited=mid:Boolean/Int32|mid:Boolean/Int32|True|Boolean' <<< "$native"
-    grep -Fxq 'runtime-level-gvm-image-level=abstract-mid:Int32/Int32|True|True|True' <<< "$native"
-    grep -Fxq 'runtime-level-gvm-interface=picker:Int32/String|picker:Int32/String|True|picker:Int32|True|Name' <<< "$native"
-    grep -Fxq 'runtime-level-gvm-end' <<< "$native"
+    reflection_assert_lines "$native_file" any \
+        'delegate-method-shared=True/True' \
+        'delegate-method-generic=Int32/String' \
+        'delegate-method-runtime-owned=True/True' \
+        'delegate-method-struct-interface=StructProbe/Value/31/31' \
+        'delegate-method-explicit-interface=ExplicitProbe/True/41/41' \
+        'delegate-method-default-interface=IDefaultProbe/Default/101' \
+        'delegate-method-interface-generic=ImplicitGeneric/String/ExplicitGeneric/True/Int32/p5' \
+        'delegate-method-array-generic=Int32[]/String[]' \
+        'delegate-method-generic-hider=GvmBase/base/GvmLeaf/leaf' \
+        'delegate-method-generic-covariant=CovariantLeaf/CovariantLeaf/CovariantLeaf' \
+        'delegate-method-end' \
+        'delegate-method-interface-begin' \
+        'delegate-method-generic-explicit-order=explicit/PlainFirstGeneric/True/explicit/ExplicitFirstGeneric/True' \
+        'delegate-method-derived-default=derived/IDerivedDefault/True' \
+        'delegate-method-derived-generic=derived/IDerivedGenericDefault/True' \
+        'delegate-method-derived-struct=derived/IDerivedDefault' \
+        'delegate-method-derived-inherited=derived/IDerivedDefault' \
+        'delegate-method-derived-typed=derived/True' \
+        'delegate-method-derived-same=same/IDerivedSame' \
+        'delegate-method-derived-runtime-type=derived/IRuntimeDerivedDefault/True' \
+        'delegate-method-derived-generic-runtime-type=derived/derived/IRuntimeGenericDerivedDefault/True' \
+        'delegate-method-inherited-generic-runtime-type=mid/mid/RuntimeGvmMid' \
+        'delegate-method-interface-end' \
+        'interface-gvm-dispatch-begin' \
+        'interface-gvm-explicit-overloads=generic/integer' \
+        'interface-gvm-explicit-overloads-generic-interface=generic/integer' \
+        'interface-gvm-plain-and-explicit-overload=plain/int-explicit/Pick/True' \
+        'interface-gvm-qualifier-prefix=plain/longer/Pick/True' \
+        'interface-gvm-qualifier-arity=plain/explicit-generic/Pick/True' \
+        'interface-gvm-dispatch-end' \
+        'interface-redeclaration-begin' \
+        'interface-redeclaration-plain=derived-plain/derived-plain/RedeclaredDerived/plain' \
+        'interface-redeclaration-unlisted=base-explicit/base-explicit/RedeclaredBase/explicit' \
+        'interface-redeclaration-hider=implicit/implicit/ImplicitRedeclared/plain' \
+        'interface-redeclaration-abstract=abstract-leaf/abstract-leaf/AbstractLeaf/plain' \
+        'interface-redeclaration-generic-class=shared-box-String/shared-box-String/SharedRedeclaredBox`1/plain' \
+        'interface-redeclaration-fill=fill-source/fill-source/FillSource/plain/fill-override/fill-override/FillOverride/plain' \
+        'interface-redeclaration-explicit-mid=explicit-mid/explicit-mid/ExplicitMidRedeclared/explicit' \
+        'interface-redeclaration-default=default/default/IRedeclaredDefault/plain/default-mid/default-mid/DefaultRedeclared/explicit' \
+        'interface-redeclaration-closed-generic=of-derived-plain/of-derived-plain/RedeclaredOfDerived/plain' \
+        'interface-redeclaration-runtime-type=runtime-box/runtime-box/Tag' \
+        'interface-redeclaration-pick-plain=pick-derived-plain/pick-derived-plain/PickDerived/plain' \
+        'interface-redeclaration-pick-unlisted=pick-base-explicit/pick-base-explicit/PickBase/explicit' \
+        'interface-redeclaration-pick-hider=pick-implicit/pick-implicit/PickImplicit/plain/pick-virtual/pick-virtual/PickVirtual/plain' \
+        'interface-redeclaration-pick-override=pick-override/pick-override/PickOverride/plain' \
+        'interface-redeclaration-pick-fill=pick-source/pick-source/PickSource/plain/pick-target-override/pick-target-override/PickTargetOverride/plain' \
+        'interface-redeclaration-end' \
+        'runtime-level-gvm-begin' \
+        'runtime-level-gvm-generic-base=root:Int32/String|leaf:Int32/String+root:Int32/String|leaf:Int32/String+root:Int32/String|Tag|True|True|True' \
+        'runtime-level-gvm-unconstructed-base=leaf:String/Int32+root:String/Int32|leaf:String/Int32+root:String/Int32|True|Int32' \
+        'runtime-level-gvm-two-arguments=pair:Int32,String/String|pair:Int32,Boolean/String|pair:Int32,Boolean/String|True' \
+        'runtime-level-gvm-plain-base=own:Decimal/String|own:Decimal/String|True|own:Decimal|True' \
+        'runtime-level-method-row=True|own:Decimal|True|Who' \
+        'runtime-level-gvm-chain=chain:String+mid:String/Int32|chain:String+mid:String/Int32|True' \
+        'runtime-level-gvm-inherited=mid:Boolean/Int32|mid:Boolean/Int32|True|Boolean' \
+        'runtime-level-gvm-image-level=abstract-mid:Int32/Int32|True|True|True' \
+        'runtime-level-gvm-interface=picker:Int32/String|picker:Int32/String|True|picker:Int32|True|Name' \
+        'runtime-level-gvm-end'
     if reflection_full_profile; then
-        DN2CPP_BEFORE_RUNTIME_LEVEL_GVM=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-runtime-level-gvm.stdout"
-        sed '/^runtime-level-gvm-begin/,$d' "$out/metadata-layout.stdout" > "$out/runtime-level-gvm-prefix.stdout"
-        diff -u <(strip_cr_win_file "$out/before-runtime-level-gvm.stdout") \
-            <(strip_cr_win_file "$out/runtime-level-gvm-prefix.stdout")
-        DN2CPP_BEFORE_INTERFACE_REDECLARATION=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-interface-redeclaration.stdout"
-        sed '/^interface-redeclaration-begin/,$d' "$out/metadata-layout.stdout" > "$out/interface-redeclaration-prefix.stdout"
-        diff -u <(strip_cr_win_file "$out/before-interface-redeclaration.stdout") \
-            <(strip_cr_win_file "$out/interface-redeclaration-prefix.stdout")
-        DN2CPP_BEFORE_INTERFACE_SELECTION=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-interface-selection.stdout"
-        sed '/^delegate-method-interface-begin/,$d' "$out/metadata-layout.stdout" > "$out/interface-selection-prefix.stdout"
-        diff -u <(strip_cr_win_file "$out/before-interface-selection.stdout") \
-            <(strip_cr_win_file "$out/interface-selection-prefix.stdout")
-        DN2CPP_BEFORE_DELEGATE_METHOD=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-delegate-method.stdout"
-        sed '/^delegate-method-begin/,$d' "$out/metadata-layout.stdout" > "$out/delegate-method-prefix.stdout"
-        diff -u <(strip_cr_win_file "$out/before-delegate-method.stdout") \
-            <(strip_cr_win_file "$out/delegate-method-prefix.stdout")
+        DN2CPP_BEFORE_RUNTIME_LEVEL_GVM=1 gate_capture_ok "$out/before-runtime-level-gvm" run_bounded "$out/ReflectInvoke$EXE_EXT"
+        gate_output select "$out/metadata-layout.stdout" "$out/runtime-level-gvm-prefix.stdout" --before 'runtime-level-gvm-begin' --policy crlf
+        gate_output compare "$out/runtime-level-gvm-prefix.stdout" "$out/before-runtime-level-gvm.stdout"
+        DN2CPP_BEFORE_INTERFACE_REDECLARATION=1 gate_capture_ok "$out/before-interface-redeclaration" run_bounded "$out/ReflectInvoke$EXE_EXT"
+        gate_output select "$out/metadata-layout.stdout" "$out/interface-redeclaration-prefix.stdout" --before 'interface-redeclaration-begin' --policy crlf
+        gate_output compare "$out/interface-redeclaration-prefix.stdout" "$out/before-interface-redeclaration.stdout"
+        DN2CPP_BEFORE_INTERFACE_SELECTION=1 gate_capture_ok "$out/before-interface-selection" run_bounded "$out/ReflectInvoke$EXE_EXT"
+        gate_output select "$out/metadata-layout.stdout" "$out/interface-selection-prefix.stdout" --before 'delegate-method-interface-begin' --policy crlf
+        gate_output compare "$out/interface-selection-prefix.stdout" "$out/before-interface-selection.stdout"
+        DN2CPP_BEFORE_DELEGATE_METHOD=1 gate_capture_ok "$out/before-delegate-method" run_bounded "$out/ReflectInvoke$EXE_EXT"
+        gate_output select "$out/metadata-layout.stdout" "$out/delegate-method-prefix.stdout" --before 'delegate-method-begin' --policy crlf
+        gate_output compare "$out/delegate-method-prefix.stdout" "$out/before-delegate-method.stdout"
     fi
-    grep -Fxq 'ldftn-local-direct=12/Add' <<< "$native"
-    grep -Fxq 'ldftn-local-nop=12/Add' <<< "$native"
-    grep -Fxq 'ldftn-local-conv=12/Add' <<< "$native"
-    grep -Fxq 'ldftn-local-snapshot=12/Add' <<< "$native"
-    grep -Fxq 'ldftn-local-selected=12/Add/2/Subtract' <<< "$native"
-    grep -Fxq 'ldftn-local-stack-join=12/Add/2/Subtract' <<< "$native"
-    grep -Fxq 'ldftn-local-closed=C:x/Decorate' <<< "$native"
-    grep -Fxq 'ldftn-local-calli=14' <<< "$native"
-    grep -Fxq 'ldftn-local-dead-origin=2/Subtract' <<< "$native"
-    grep -Fxq 'ldftn-local-virtual=15/VirtualDerived.Scale' <<< "$native"
-    grep -Fxq 'ldftn-local-instance=15/Offset' <<< "$native"
-    grep -Fxq 'ldftn-local-int64=12/Add' <<< "$native"
-    grep -Fxq 'ldftn-local-address-taken=42/9/12/Add' <<< "$native"
-    grep -Fxq 'ldftn-local-end' <<< "$native"
+    reflection_assert_lines "$native_file" any \
+        'ldftn-local-direct=12/Add' \
+        'ldftn-local-nop=12/Add' \
+        'ldftn-local-conv=12/Add' \
+        'ldftn-local-snapshot=12/Add' \
+        'ldftn-local-selected=12/Add/2/Subtract' \
+        'ldftn-local-stack-join=12/Add/2/Subtract' \
+        'ldftn-local-closed=C:x/Decorate' \
+        'ldftn-local-calli=14' \
+        'ldftn-local-dead-origin=2/Subtract' \
+        'ldftn-local-virtual=15/VirtualDerived.Scale' \
+        'ldftn-local-instance=15/Offset' \
+        'ldftn-local-int64=12/Add' \
+        'ldftn-local-address-taken=42/9/12/Add' \
+        'ldftn-local-end'
     if reflection_full_profile; then
-        DN2CPP_BEFORE_TYPEDEF_MEMBERREF=1 reflection_oracle "$_CG_APP" \
-            > "$out/before-typedef-memberref.stdout"
-        sed '/^== same-module TypeDef MemberRefs ==/,$d' "$out/metadata-layout.stdout" \
-            > "$out/typedef-memberref-prefix.stdout"
-        diff -u <(strip_cr_win_file "$out/before-typedef-memberref.stdout") \
-            <(strip_cr_win_file "$out/typedef-memberref-prefix.stdout")
+        DN2CPP_BEFORE_TYPEDEF_MEMBERREF=1 gate_capture_ok "$out/before-typedef-memberref" reflection_oracle "$_CG_APP"
+        gate_output select "$out/metadata-layout.stdout" "$out/typedef-memberref-prefix.stdout" --before '== same-module TypeDef MemberRefs ==' --policy crlf
+        gate_output compare "$out/typedef-memberref-prefix.stdout" "$out/before-typedef-memberref.stdout"
     fi
-    reflection_assert_lines - any \
+    reflection_assert_lines "$native_file" any \
         '== same-module TypeDef MemberRefs ==' \
         'typedef overloads=25/x:body' 'typedef instance=15' \
         'typedef generic method=9' 'typedef generic owner=31/owner' \
-        'same-module TypeDef MemberRefs end' <<< "$native"
+        'same-module TypeDef MemberRefs end'
     if reflection_full_profile; then
-        DN2CPP_BEFORE_ORDINARY_IL_INTERFACE=1 reflection_oracle "$_CG_APP" \
-            > "$out/before-ordinary-interface-il.stdout"
-        sed '/^== ordinary interface and ValueType IL ==/,$d' "$out/metadata-layout.stdout" \
-            > "$out/ordinary-interface-il-prefix.stdout"
-        diff -u <(strip_cr_win_file "$out/before-ordinary-interface-il.stdout") \
-            <(strip_cr_win_file "$out/ordinary-interface-il-prefix.stdout")
+        DN2CPP_BEFORE_ORDINARY_IL_INTERFACE=1 gate_capture_ok "$out/before-ordinary-interface-il" reflection_oracle "$_CG_APP"
+        gate_output select "$out/metadata-layout.stdout" "$out/ordinary-interface-il-prefix.stdout" --before '== ordinary interface and ValueType IL ==' --policy crlf
+        gate_output compare "$out/ordinary-interface-il-prefix.stdout" "$out/before-ordinary-interface-il.stdout"
     fi
-    reflection_assert_lines - any \
+    reflection_assert_lines "$native_file" any \
         '== ordinary interface and ValueType IL ==' \
         'ldftn-local-sealed-interface=105/ISealedScale.Scale/205/ISealedScale.Shift' \
         'ldftn-local-valuetype-null=NRE/NRE/NRE/NRE' \
@@ -1252,16 +1252,13 @@ gate_extra_asserts() {
         'folded: DayOfWeek=True/False Shade=True/False Enum=False/True' \
         'folded in a generic body: Shade=True/False DayOfWeek=True/False int=True/False string=False/True' \
         'value-type predicates folded for an enum end' \
-        'ordinary interface and ValueType IL end' <<< "$native"
+        'ordinary interface and ValueType IL end'
     if reflection_full_profile; then
-        DN2CPP_BEFORE_OBJECT_METHODIMPL=1 reflection_oracle "$_CG_APP" \
-            > "$out/before-object-methodimpl.stdout"
-        sed '/^== Object slots with MethodImpl bodies ==/,$d' "$out/metadata-layout.stdout" \
-            > "$out/object-methodimpl-prefix.stdout"
-        diff -u <(strip_cr_win_file "$out/before-object-methodimpl.stdout") \
-            <(strip_cr_win_file "$out/object-methodimpl-prefix.stdout")
+        DN2CPP_BEFORE_OBJECT_METHODIMPL=1 gate_capture_ok "$out/before-object-methodimpl" reflection_oracle "$_CG_APP"
+        gate_output select "$out/metadata-layout.stdout" "$out/object-methodimpl-prefix.stdout" --before '== Object slots with MethodImpl bodies ==' --policy crlf
+        gate_output compare "$out/object-methodimpl-prefix.stdout" "$out/before-object-methodimpl.stdout"
     fi
-    reflection_assert_lines - any \
+    reflection_assert_lines "$native_file" any \
         '== Object slots with MethodImpl bodies ==' \
         'object-methodimpl-body-base=alias/True/False/701' \
         'object-methodimpl-base=alias/alias/True/True/False/701' \
@@ -1278,7 +1275,7 @@ gate_extra_asserts() {
         'object-methodimpl-body-generic-object=generic/True/False/1103' \
         'object-methodimpl-generic-object=generic/generic/True/True/False/1103' \
         'object-methodimpl-call-generic-object=generic/True/True/False/1103' \
-        'Object slots with MethodImpl bodies end' <<< "$native"
+        'Object slots with MethodImpl bodies end'
     # Every emitted body follows its `// Type::Method` line, CRLF-terminated on a
     # Windows host. Delegate tags belong to the rewritten bodies alone, since C#
     # never builds a delegate from a stored or joined address.
@@ -1292,29 +1289,29 @@ gate_extra_asserts() {
         return 1
     fi
     if reflection_full_profile; then
-        DN2CPP_BEFORE_LDFTN_LOCAL=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-ldftn-local.stdout"
-        sed '/^ldftn-local-begin/,$d' "$out/metadata-layout.stdout" > "$out/ldftn-local-prefix.stdout"
-        diff -u <(strip_cr_win_file "$out/before-ldftn-local.stdout") \
-            <(strip_cr_win_file "$out/ldftn-local-prefix.stdout")
+        DN2CPP_BEFORE_LDFTN_LOCAL=1 gate_capture_ok "$out/before-ldftn-local" run_bounded "$out/ReflectInvoke$EXE_EXT"
+        gate_output select "$out/metadata-layout.stdout" "$out/ldftn-local-prefix.stdout" --before 'ldftn-local-begin' --policy crlf
+        gate_output compare "$out/ldftn-local-prefix.stdout" "$out/before-ldftn-local.stdout"
     fi
-    grep -Fxq '== reflection invoke validation ==' <<< "$native"
-    grep -Fxq 'target calls: 2' <<< "$native"
-    grep -Fxq 'plain get, stray index: TargetParameterCountException' <<< "$native"
-    grep -Fxq 'bound ValueType delegate: boxed:5' <<< "$native"
-    grep -Fxq 'nullable result without value: null' <<< "$native"
-    grep -Fxq 'current number format: separator:.' <<< "$native"
-    grep -Fxq 'number from int: number:7' <<< "$native"
-    grep -Fxq 'number from long: ArgumentException' <<< "$native"
+    reflection_assert_lines "$native_file" any \
+        '== reflection invoke validation ==' \
+        'target calls: 2' \
+        'plain get, stray index: TargetParameterCountException' \
+        'bound ValueType delegate: boxed:5' \
+        'nullable result without value: null' \
+        'current number format: separator:.' \
+        'number from int: number:7' \
+        'number from long: ArgumentException'
     if reflection_full_profile; then
-        DN2CPP_BEFORE_INVOKE_VALIDATION=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-invoke-validation.stdout"
-        sed '/^== reflection invoke validation ==/,$d' "$out/metadata-layout.stdout" > "$out/invoke-validation-prefix.stdout"
-        diff -u <(strip_cr_win_file "$out/before-invoke-validation.stdout") \
-            <(strip_cr_win_file "$out/invoke-validation-prefix.stdout")
+        DN2CPP_BEFORE_INVOKE_VALIDATION=1 gate_capture_ok "$out/before-invoke-validation" run_bounded "$out/ReflectInvoke$EXE_EXT"
+        gate_output select "$out/metadata-layout.stdout" "$out/invoke-validation-prefix.stdout" --before '== reflection invoke validation ==' --policy crlf
+        gate_output compare "$out/invoke-validation-prefix.stdout" "$out/before-invoke-validation.stdout"
     fi
-    grep -Fxq '== runtime handle relations ==' <<< "$native"
-    grep -Fxq 'runtime NullReferenceException chain: NullReferenceException > SystemException > Exception > Object' <<< "$native"
-    grep -Fxq 'ManualResetEvent after IDisposable: ObjectDisposedException' <<< "$native"
-    grep -Fxq 'runtime handle relations end' <<< "$native"
+    reflection_assert_lines "$native_file" any \
+        '== runtime handle relations ==' \
+        'runtime NullReferenceException chain: NullReferenceException > SystemException > Exception > Object' \
+        'ManualResetEvent after IDisposable: ObjectDisposedException' \
+        'runtime handle relations end'
     local install
     for install in 'dn2cpp_set_relation_rows(rel_itf_sets, ' \
             'dn2cpp_intrinsic_set_base(&dn2cpp_null_reference_exception_type, &ti_System_SystemException);' \
@@ -1325,193 +1322,184 @@ gate_extra_asserts() {
         fi
     done
     if reflection_full_profile; then
-        DN2CPP_BEFORE_RUNTIME_HANDLE_RELATIONS=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-runtime-handle-relations.stdout"
-        sed '/^== runtime handle relations ==/,$d' "$out/metadata-layout.stdout" > "$out/runtime-handle-relations-prefix.stdout"
-        diff -u <(strip_cr_win_file "$out/before-runtime-handle-relations.stdout") \
-            <(strip_cr_win_file "$out/runtime-handle-relations-prefix.stdout")
+        DN2CPP_BEFORE_RUNTIME_HANDLE_RELATIONS=1 gate_capture_ok "$out/before-runtime-handle-relations" run_bounded "$out/ReflectInvoke$EXE_EXT"
+        gate_output select "$out/metadata-layout.stdout" "$out/runtime-handle-relations-prefix.stdout" --before '== runtime handle relations ==' --policy crlf
+        gate_output compare "$out/runtime-handle-relations-prefix.stdout" "$out/before-runtime-handle-relations.stdout"
     fi
     gate_empty_string_clone_asserts "$out"
 
     if reflection_full_profile; then
-        reflection_oracle "$_CG_APP" before-delegate-origin-boundaries > "$out/origin-before.dotnet.stdout"
-        run_bounded "$out/ReflectInvoke$EXE_EXT" before-delegate-origin-boundaries > "$out/origin-before.native.stdout"
-        sed '/^== delegate origin boundaries ==/,$d' "$out/metadata-layout.stdout" > "$out/origin-prefix.stdout"
-        diff -u <(strip_cr_win_file "$out/origin-before.dotnet.stdout") \
-            <(strip_cr_win_file "$out/origin-prefix.stdout")
-        diff -u <(strip_cr_win_file "$out/origin-before.native.stdout") \
-            <(strip_cr_win_file "$out/origin-prefix.stdout")
+        gate_capture_ok "$out/origin-before.dotnet" reflection_oracle "$_CG_APP" before-delegate-origin-boundaries
+        gate_capture_ok "$out/origin-before.native" run_bounded "$out/ReflectInvoke$EXE_EXT" before-delegate-origin-boundaries
+        gate_output select "$out/metadata-layout.stdout" "$out/origin-prefix.stdout" --before '== delegate origin boundaries ==' --policy crlf
+        gate_output compare "$out/origin-prefix.stdout" "$out/origin-before.dotnet.stdout"
+        gate_output compare "$out/origin-prefix.stdout" "$out/origin-before.native.stdout"
     fi
-    reflection_assert_lines - any \
+    reflection_assert_lines "$native_file" any \
         '== delegate origin boundaries ==' 'delegate-origin-first=12/Add/True' \
-        'delegate-origin-second=2/Subtract/True' 'delegate origin boundaries end' <<< "$native"
+        'delegate-origin-second=2/Subtract/True' 'delegate origin boundaries end'
 
-    reflection_oracle "$_CG_APP" > "$out/runtime-type-relations.dotnet.stdout"
-    reflection_native_full "$out" ReflectInvoke > "$out/runtime-type-relations.native.stdout"
-    diff -u <(strip_cr_win_file "$out/runtime-type-relations.dotnet.stdout") \
-        <(strip_cr_win_file "$out/runtime-type-relations.native.stdout")
+    gate_capture_ok "$out/runtime-type-relations.dotnet" reflection_oracle "$_CG_APP"
+    gate_capture_ok "$out/runtime-type-relations.native" reflection_native_full "$out" ReflectInvoke
+    gate_output compare "$out/runtime-type-relations.native.stdout" "$out/runtime-type-relations.dotnet.stdout"
     if reflection_full_profile; then
-        reflection_oracle "$_CG_APP" before-runtime-type-relations > "$out/runtime-type-relations-before.dotnet.stdout"
-        run_bounded "$out/ReflectInvoke$EXE_EXT" before-runtime-type-relations > "$out/runtime-type-relations-before.native.stdout"
-        sed '/^== runtime Type and Task relations ==/,$d' "$out/runtime-type-relations.dotnet.stdout" \
-            > "$out/runtime-type-relations-prefix.dotnet.stdout"
-        sed '/^== runtime Type and Task relations ==/,$d' "$out/runtime-type-relations.native.stdout" \
-            > "$out/runtime-type-relations-prefix.native.stdout"
-        diff -u <(strip_cr_win_file "$out/runtime-type-relations-before.dotnet.stdout") \
-            <(strip_cr_win_file "$out/runtime-type-relations-prefix.dotnet.stdout")
-        diff -u <(strip_cr_win_file "$out/runtime-type-relations-before.native.stdout") \
-            <(strip_cr_win_file "$out/runtime-type-relations-prefix.native.stdout")
+        gate_capture_ok "$out/runtime-type-relations-before.dotnet" reflection_oracle "$_CG_APP" before-runtime-type-relations
+        gate_capture_ok "$out/runtime-type-relations-before.native" run_bounded "$out/ReflectInvoke$EXE_EXT" before-runtime-type-relations
+        gate_output select "$out/runtime-type-relations.dotnet.stdout" "$out/runtime-type-relations-prefix.dotnet.stdout" --before '== runtime Type and Task relations ==' --policy crlf
+        gate_output select "$out/runtime-type-relations.native.stdout" "$out/runtime-type-relations-prefix.native.stdout" --before '== runtime Type and Task relations ==' --policy crlf
+        gate_output compare "$out/runtime-type-relations-prefix.dotnet.stdout" "$out/runtime-type-relations-before.dotnet.stdout"
+        gate_output compare "$out/runtime-type-relations-prefix.native.stdout" "$out/runtime-type-relations-before.native.stdout"
     fi
-    reflection_assert_lines - any \
-        '== runtime Type and Task relations ==' 'runtime Type and Task relations end' <<< "$native"
+    reflection_assert_lines "$native_file" any \
+        '== runtime Type and Task relations ==' 'runtime Type and Task relations end'
 
-    reflection_oracle "$_CG_APP" > "$out/generic-method-definitions.dotnet.stdout"
-    reflection_native_full "$out" ReflectInvoke > "$out/generic-method-definitions.native.stdout"
-    diff -u <(strip_cr_win_file "$out/generic-method-definitions.dotnet.stdout") \
-        <(strip_cr_win_file "$out/generic-method-definitions.native.stdout")
+    gate_capture_ok "$out/generic-method-definitions.dotnet" reflection_oracle "$_CG_APP"
+    gate_capture_ok "$out/generic-method-definitions.native" reflection_native_full "$out" ReflectInvoke
+    gate_output compare "$out/generic-method-definitions.native.stdout" "$out/generic-method-definitions.dotnet.stdout"
     if reflection_full_profile; then
-        reflection_oracle "$_CG_APP" before-generic-method-definitions > "$out/generic-method-definitions-before.dotnet.stdout"
-        run_bounded "$out/ReflectInvoke$EXE_EXT" before-generic-method-definitions > "$out/generic-method-definitions-before.native.stdout"
-        sed '/^== generic method definitions ==/,$d' "$out/generic-method-definitions.dotnet.stdout" \
-            > "$out/generic-method-definitions-prefix.dotnet.stdout"
-        sed '/^== generic method definitions ==/,$d' "$out/generic-method-definitions.native.stdout" \
-            > "$out/generic-method-definitions-prefix.native.stdout"
-        diff -u <(strip_cr_win_file "$out/generic-method-definitions-before.dotnet.stdout") \
-            <(strip_cr_win_file "$out/generic-method-definitions-prefix.dotnet.stdout")
-        diff -u <(strip_cr_win_file "$out/generic-method-definitions-before.native.stdout") \
-            <(strip_cr_win_file "$out/generic-method-definitions-prefix.native.stdout")
+        gate_capture_ok "$out/generic-method-definitions-before.dotnet" reflection_oracle "$_CG_APP" before-generic-method-definitions
+        gate_capture_ok "$out/generic-method-definitions-before.native" run_bounded "$out/ReflectInvoke$EXE_EXT" before-generic-method-definitions
+        gate_output select "$out/generic-method-definitions.dotnet.stdout" "$out/generic-method-definitions-prefix.dotnet.stdout" --before '== generic method definitions ==' --policy crlf
+        gate_output select "$out/generic-method-definitions.native.stdout" "$out/generic-method-definitions-prefix.native.stdout" --before '== generic method definitions ==' --policy crlf
+        gate_output compare "$out/generic-method-definitions-prefix.dotnet.stdout" "$out/generic-method-definitions-before.dotnet.stdout"
+        gate_output compare "$out/generic-method-definitions-prefix.native.stdout" "$out/generic-method-definitions-before.native.stdout"
     fi
-    reflection_assert_lines - any \
-        '== generic method definitions ==' 'generic method definitions end' <<< "$native"
+    reflection_assert_lines "$native_file" any \
+        '== generic method definitions ==' 'generic method definitions end'
     for line in class struct owners overloads; do
-        grep -Eq "^definition roots $line=" <<< "$native" \
+        grep -Eq "^definition roots $line=" "$native" \
             || { echo "FAIL: generic method definition root witness missing: $line" >&2; return 1; }
     done
     reflection_expected_lines=()
     for line in class struct owner-int owner-string inherited echo private unreached template-unreached; do
         reflection_expected_lines+=("definition $line list: count=1 definitions=True identity=True" "definition $line flags: generic=True definition=True contains=True" "definition $line parameter 0: name=U generic=True contains=True identity=True" "definition $line open invoke=InvalidOperationException/InvalidOperationException/InvalidOperationException")
     done
-    reflection_assert_lines - any "${reflection_expected_lines[@]}" <<< "$native"
+    reflection_assert_lines "$native_file" any "${reflection_expected_lines[@]}"
     reflection_expected_lines=()
     for line in class struct owner-int owner-string echo private; do
         reflection_expected_lines+=("definition $line canonical: operator=True equals=True reference=True lookup=True self=True")
     done
-    reflection_assert_lines - any "${reflection_expected_lines[@]}" <<< "$native"
-    grep -Fxq -- 'definition inherited canonical: operator=True equals=True reference=True lookup=False self=False' <<< "$native"
-    grep -Fxq -- 'definition echo signature: return=True parameter=True' <<< "$native"
-    reflection_oracle "$_CG_APP" generic-method-boundary-outcomes > "$out/generic-method-boundary.dotnet.stdout"
-    run_bounded "$out/ReflectInvoke$EXE_EXT" generic-method-boundary-outcomes > "$out/generic-method-boundary.native.stdout"
+    reflection_assert_lines "$native_file" any "${reflection_expected_lines[@]}"
+    reflection_assert_lines "$native_file" any \
+        'definition inherited canonical: operator=True equals=True reference=True lookup=False self=False' \
+        'definition echo signature: return=True parameter=True'
+    gate_capture_ok "$out/generic-method-boundary.dotnet" reflection_oracle "$_CG_APP" generic-method-boundary-outcomes
+    gate_capture_ok "$out/generic-method-boundary.native" run_bounded "$out/ReflectInvoke$EXE_EXT" generic-method-boundary-outcomes
     for axis in dotnet native; do
-        boundary=$(strip_cr_win_file "$out/generic-method-boundary.$axis.stdout")
-        reflection_assert_lines - any \
-            '== generic method AOT instantiations ==' 'generic method AOT instantiations end' <<< "$boundary"
+        boundary_file="$out/generic-method-boundary.$axis.stdout"
+        gate_output view "$boundary_file" "$boundary_file.records" --policy crlf
+        boundary="$boundary_file.records"
+        reflection_assert_lines "$boundary_file" any \
+            '== generic method AOT instantiations ==' 'generic method AOT instantiations end'
         for line in unreached missing-argument template-unreached; do
-            grep -Fxq -- "definition boundary $line found=True" <<< "$boundary" \
+            gate_output witness "$boundary_file" "definition boundary $line found=True" --count any --policy crlf \
                 || { echo "FAIL: generic method boundary definition missing ($axis): $line" >&2; return 1; }
             if [ "$axis" = native ]; then
-                grep -Fxq -- "definition boundary $line fault=PlatformNotSupportedException" <<< "$boundary" \
+                gate_output witness "$boundary_file" "definition boundary $line fault=PlatformNotSupportedException" --count any --policy crlf \
                     || { echo "FAIL: missing AOT instantiation was not refused: $line" >&2; return 1; }
             fi
         done
         if [ "$axis" = dotnet ]; then
-            reflection_assert_lines - any \
+            reflection_assert_lines "$boundary_file" any \
                 'definition boundary unreached result=never:Int32:8' \
                 'definition boundary missing-argument result=Boolean:8' \
-                'definition boundary template-unreached result=Int64:8' <<< "$boundary"
+                'definition boundary template-unreached result=Int64:8'
         fi
     done
 
     if reflection_full_profile; then
-        reflection_oracle "$_CG_APP" before-formal-method-parameters > "$out/formal-method-parameters-before.dotnet.stdout"
-        run_bounded "$out/ReflectInvoke$EXE_EXT" before-formal-method-parameters > "$out/formal-method-parameters-before.native.stdout"
+        gate_capture_ok "$out/formal-method-parameters-before.dotnet" reflection_oracle "$_CG_APP" before-formal-method-parameters
+        gate_capture_ok "$out/formal-method-parameters-before.native" run_bounded "$out/ReflectInvoke$EXE_EXT" before-formal-method-parameters
     fi
     for axis in dotnet native; do
         if reflection_full_profile; then
-            sed '/^== formal method parameters ==/,$d' "$out/generic-method-definitions.$axis.stdout" \
-                > "$out/formal-method-parameters-prefix.$axis.stdout"
-            diff -u <(strip_cr_win_file "$out/formal-method-parameters-before.$axis.stdout") \
-                <(strip_cr_win_file "$out/formal-method-parameters-prefix.$axis.stdout")
+            gate_output select "$out/generic-method-definitions.$axis.stdout" "$out/formal-method-parameters-prefix.$axis.stdout" --before '== formal method parameters ==' --policy crlf
+            gate_output compare "$out/formal-method-parameters-prefix.$axis.stdout" "$out/formal-method-parameters-before.$axis.stdout"
         fi
     done
-    reflection_assert_lines - any \
+    reflection_assert_lines "$native_file" any \
         '== formal method parameters ==' 'formal method parameters end' \
         'formal names: name=U full=<null> qualified=<null>' 'formal assembly owner=True' \
         'formal namespaces: parameter=ReflectGenericMethodSubset declaring=ReflectGenericMethodSubset' \
         'formal global names: namespace=<null> name=U' \
         'formal assembly closed-owner=True inherited=True' 'formal activation=ArgumentException' \
         'formal array allocation=NotSupportedException' 'formal uninitialized=ArgumentException' \
-        'formal signature: found=True reference=True' 'formal foreign signature found=False' <<< "$native"
+        'formal signature: found=True reference=True' 'formal foreign signature found=False'
     # The CLR oracle decides normalization for both definition and closed sources.
-    grep -Eq '^formal mapped definition: ' <<< "$native"
-    grep -Eq '^formal mapped closed: ' <<< "$native"
-    reflection_oracle "$_CG_APP" formal-type-boundary-outcomes > "$out/formal-type-boundary.dotnet.stdout"
-    run_bounded "$out/ReflectInvoke$EXE_EXT" formal-type-boundary-outcomes > "$out/formal-type-boundary.native.stdout"
+    grep -Eq '^formal mapped definition: ' "$native"
+    grep -Eq '^formal mapped closed: ' "$native"
+    gate_capture_ok "$out/formal-type-boundary.dotnet" reflection_oracle "$_CG_APP" formal-type-boundary-outcomes
+    gate_capture_ok "$out/formal-type-boundary.native" run_bounded "$out/ReflectInvoke$EXE_EXT" formal-type-boundary-outcomes
     for axis in dotnet native; do
-        boundary=$(strip_cr_win_file "$out/formal-type-boundary.$axis.stdout")
-        reflection_assert_lines - any \
+        boundary_file="$out/formal-type-boundary.$axis.stdout"
+        gate_output view "$boundary_file" "$boundary_file.records" --policy crlf
+        boundary="$boundary_file.records"
+        reflection_assert_lines "$boundary_file" any \
             '== formal type compositions ==' 'formal type compositions end' \
-            '== formal method compositions ==' 'formal method compositions end' <<< "$boundary"
+            '== formal method compositions ==' 'formal method compositions end'
         reflection_expected_lines=()
         for line in generic array rank2-array; do
             reflection_expected_lines+=("formal composition $line contains=True")
         done
-        reflection_assert_lines - any "${reflection_expected_lines[@]}" <<< "$boundary"
-        grep -Fxq -- 'formal composition generic activation=ArgumentException' <<< "$boundary"
+        reflection_assert_lines "$boundary_file" any "${reflection_expected_lines[@]}"
+        gate_output witness "$boundary_file" 'formal composition generic activation=ArgumentException' --count any --policy crlf
         reflection_expected_lines=()
         for line in metadata-answer compiled; do
             reflection_expected_lines+=("formal method composition $line: definition=False contains=True" "formal method composition $line invoke=InvalidOperationException")
         done
-        reflection_assert_lines - any "${reflection_expected_lines[@]}" <<< "$boundary"
+        reflection_assert_lines "$boundary_file" any "${reflection_expected_lines[@]}"
     done
-    diff -u <(strip_cr_win_file "$out/formal-type-boundary.dotnet.stdout") \
-        <(strip_cr_win_file "$out/formal-type-boundary.native.stdout")
+    gate_output compare "$out/formal-type-boundary.native.stdout" "$out/formal-type-boundary.dotnet.stdout"
 
     if reflection_full_profile; then
-        reflection_oracle "$_CG_APP" before-mixed-generic-definitions > "$out/mixed-generic-definitions-before.dotnet.stdout"
-        run_bounded "$out/ReflectInvoke$EXE_EXT" before-mixed-generic-definitions > "$out/mixed-generic-definitions-before.native.stdout"
+        gate_capture_ok "$out/mixed-generic-definitions-before.dotnet" reflection_oracle "$_CG_APP" before-mixed-generic-definitions
+        gate_capture_ok "$out/mixed-generic-definitions-before.native" run_bounded "$out/ReflectInvoke$EXE_EXT" before-mixed-generic-definitions
     fi
     for axis in dotnet native; do
         if reflection_full_profile; then
-            sed '/^== mixed generic method definitions ==/,$d' "$out/generic-method-definitions.$axis.stdout" \
-                > "$out/mixed-generic-definitions-prefix.$axis.stdout"
-            diff -u <(strip_cr_win_file "$out/mixed-generic-definitions-before.$axis.stdout") \
-                <(strip_cr_win_file "$out/mixed-generic-definitions-prefix.$axis.stdout")
+            gate_output select "$out/generic-method-definitions.$axis.stdout" "$out/mixed-generic-definitions-prefix.$axis.stdout" --before '== mixed generic method definitions ==' --policy crlf
+            gate_output compare "$out/mixed-generic-definitions-prefix.$axis.stdout" "$out/mixed-generic-definitions-before.$axis.stdout"
         fi
     done
-    reflection_assert_lines - any \
+    reflection_assert_lines "$native_file" any \
         '== mixed generic method definitions ==' 'mixed generic method definitions end' 'mixed roots=7/text' \
         'formal declaring own: reference=True operator=True method-owner=True' \
         'formal declaring owner-int: reference=True operator=True method-owner=False' \
         'formal declaring owner-string: reference=True operator=True method-owner=False' \
-        'formal declaring inherited: reference=True operator=True method-owner=True' <<< "$native"
+        'formal declaring inherited: reference=True operator=True method-owner=True'
     for line in Never Echo; do
-        grep -Fxq -- "mixed $line GetMethods count=1" <<< "$native"
+        gate_output witness "$native_file" "mixed $line GetMethods count=1" --count any --policy crlf
         for route in GetMember GetMembers; do
-            grep -Fxq -- "mixed $line $route count=1" <<< "$native"
-            grep -Fxq -- "mixed $line $route flags: generic=True definition=True contains=True" <<< "$native"
-            grep -Fxq -- "mixed $line $route arguments=1 name=U" <<< "$native"
-            grep -Fxq -- "mixed $line $route identity: reference=True operator=True equals=True" <<< "$native"
-            grep -Fxq -- "mixed $line $route signature: return=True parameter=True return-parameter=True" <<< "$native"
-            grep -Fxq -- "mixed $line $route invoke=InvalidOperationException" <<< "$native"
+            reflection_assert_lines "$native_file" any \
+                "mixed $line $route count=1" \
+                "mixed $line $route flags: generic=True definition=True contains=True" \
+                "mixed $line $route arguments=1 name=U" \
+                "mixed $line $route identity: reference=True operator=True equals=True" \
+                "mixed $line $route signature: return=True parameter=True return-parameter=True" \
+                "mixed $line $route invoke=InvalidOperationException"
         done
     done
-    reflection_oracle "$_CG_APP" generic-signature-boundary-outcomes > "$out/generic-signature-boundary.dotnet.stdout"
-    run_bounded "$out/ReflectInvoke$EXE_EXT" generic-signature-boundary-outcomes > "$out/generic-signature-boundary.native.stdout"
+    gate_capture_ok "$out/generic-signature-boundary.dotnet" reflection_oracle "$_CG_APP" generic-signature-boundary-outcomes
+    gate_capture_ok "$out/generic-signature-boundary.native" run_bounded "$out/ReflectInvoke$EXE_EXT" generic-signature-boundary-outcomes
     for axis in dotnet native; do
-        boundary=$(strip_cr_win_file "$out/generic-signature-boundary.$axis.stdout")
-        reflection_assert_lines - any \
+        boundary_file="$out/generic-signature-boundary.$axis.stdout"
+        gate_output view "$boundary_file" "$boundary_file.records" --policy crlf
+        boundary="$boundary_file.records"
+        reflection_assert_lines "$boundary_file" any \
             '== generic signature type boundaries ==' 'generic signature type boundaries end' \
             'signature roots: array=1 byref=7 list=1 enumerable=True function=True task=True' \
-            'signature closed byref invoke=7 value=7' <<< "$boundary"
+            'signature closed byref invoke=7 value=7'
         for line in ArrayShape RefShape ListShape EnumerableShape FunctionShape TaskShape; do
-            grep -Fxq -- "signature $line GetMethods count=1" <<< "$boundary"
-            grep -Fxq -- "signature $line closed definition=False contains=False" <<< "$boundary"
+            reflection_assert_lines "$boundary_file" any \
+                "signature $line GetMethods count=1" \
+                "signature $line closed definition=False contains=False"
             for route in GetMethod GetMethods; do
-                grep -Fxq -- "signature $line $route definition=True contains=True" <<< "$boundary"
+                gate_output witness "$boundary_file" "signature $line $route definition=True contains=True" --count any --policy crlf
                 for query in return parameter return-parameter; do
                     if [ "$line" = RefShape ] && [ "$query" != parameter ]; then
-                        grep -Fxq -- "signature $line $route $query=type:U|parameter=True|contains=True" <<< "$boundary"
+                        gate_output witness "$boundary_file" "signature $line $route $query=type:U|parameter=True|contains=True" --count any --policy crlf
                     else
-                        grep -Eq "^signature $line $route $query=type:.*\\|parameter=False\\|contains=True$" <<< "$boundary" \
+                        gate_output match-record "$boundary_file" "signature $line $route $query=type:.*\\|parameter=False\\|contains=True" --policy crlf --count any \
                             || { echo "FAIL: CLR composed signature oracle missing: $line $route $query" >&2; return 1; }
                     fi
                 done
@@ -1525,181 +1513,170 @@ gate_extra_asserts() {
                     TaskShape) expected='System.Threading.Tasks.Task`1[System.Int32]' ;;
                 esac
                 for query in return parameter return-parameter; do
-                    grep -Fxq -- "signature $line closed $query=type:$expected|parameter=False|contains=False" <<< "$boundary"
+                    gate_output witness "$boundary_file" "signature $line closed $query=type:$expected|parameter=False|contains=False" --count any --policy crlf
                 done
             fi
         done
         # Closed byref queries use the same signature handle as MakeByRefType.
-        grep -Fxq -- 'signature RefShape closed return=type:System.Int32|parameter=False|contains=False' <<< "$boundary"
-        grep -Fxq -- 'signature RefShape closed return-parameter=type:System.Int32|parameter=False|contains=False' <<< "$boundary"
-        grep -Fxq -- 'signature RefShape closed parameter=type:System.Int32&|parameter=False|contains=False' <<< "$boundary"
-        reflection_assert_lines - any \
-            'signature constraints Unconstrained count=0' 'signature constraints ValueConstrained count=1'             'signature constraints ValueConstrained type=System.ValueType'             'signature constraints InterfaceConstrained count=1'             'signature constraints InterfaceConstrained type=ReflectGenericMethodSubset.IDefinitionConstraint'             'signature constraints ReferenceConstrained count=0' 'signature constraints BaseConstrained count=1'             'signature constraints BaseConstrained type=ReflectGenericMethodSubset.DefinitionConstraintBase' <<< "$boundary"
+        reflection_assert_lines "$boundary_file" any \
+            'signature RefShape closed return=type:System.Int32|parameter=False|contains=False' \
+            'signature RefShape closed return-parameter=type:System.Int32|parameter=False|contains=False' \
+            'signature RefShape closed parameter=type:System.Int32&|parameter=False|contains=False'
+        reflection_assert_lines "$boundary_file" any \
+            'signature constraints Unconstrained count=0' 'signature constraints ValueConstrained count=1'             'signature constraints ValueConstrained type=System.ValueType'             'signature constraints InterfaceConstrained count=1'             'signature constraints InterfaceConstrained type=ReflectGenericMethodSubset.IDefinitionConstraint'             'signature constraints ReferenceConstrained count=0' 'signature constraints BaseConstrained count=1'             'signature constraints BaseConstrained type=ReflectGenericMethodSubset.DefinitionConstraintBase'
         expected='ReflectGenericMethodSubset.DefinitionConstraintBase'
-        grep -Fxq -- 'signature constrained InterfaceConstrained interfaces=1' <<< "$boundary"
-        grep -Fxq -- 'signature constrained InterfaceConstrained interface=ReflectGenericMethodSubset.IDefinitionConstraint' <<< "$boundary"
-        grep -Fxq -- "signature constrained BaseConstrained base=$expected" <<< "$boundary"
-        grep -Fxq -- 'signature constrained BaseConstrained interfaces=0' <<< "$boundary"
-        grep -Fxq -- 'signature constrained InterfaceConstrained base=System.Object' <<< "$boundary"
+        reflection_assert_lines "$boundary_file" any \
+            'signature constrained InterfaceConstrained interfaces=1' \
+            'signature constrained InterfaceConstrained interface=ReflectGenericMethodSubset.IDefinitionConstraint' \
+            "signature constrained BaseConstrained base=$expected" \
+            'signature constrained BaseConstrained interfaces=0' \
+            'signature constrained InterfaceConstrained base=System.Object'
     done
 
-    diff -u <(strip_cr_win_file "$out/generic-signature-boundary.dotnet.stdout") \
-        <(strip_cr_win_file "$out/generic-signature-boundary.native.stdout")
+    gate_output compare "$out/generic-signature-boundary.native.stdout" "$out/generic-signature-boundary.dotnet.stdout"
 
     if reflection_full_profile; then
-        reflection_oracle "$_CG_APP" before-formal-reflected-owners > "$out/formal-reflected-owners-before.dotnet.stdout"
-        run_bounded "$out/ReflectInvoke$EXE_EXT" before-formal-reflected-owners > "$out/formal-reflected-owners-before.native.stdout"
+        gate_capture_ok "$out/formal-reflected-owners-before.dotnet" reflection_oracle "$_CG_APP" before-formal-reflected-owners
+        gate_capture_ok "$out/formal-reflected-owners-before.native" run_bounded "$out/ReflectInvoke$EXE_EXT" before-formal-reflected-owners
     fi
     for axis in dotnet native; do
         if reflection_full_profile; then
-            sed '/^== formal parameter reflected owners ==/,$d' "$out/generic-method-definitions.$axis.stdout" \
-                > "$out/formal-reflected-owners-prefix.$axis.stdout"
-            diff -u <(strip_cr_win_file "$out/formal-reflected-owners-before.$axis.stdout") \
-                <(strip_cr_win_file "$out/formal-reflected-owners-prefix.$axis.stdout")
+            gate_output select "$out/generic-method-definitions.$axis.stdout" "$out/formal-reflected-owners-prefix.$axis.stdout" --before '== formal parameter reflected owners ==' --policy crlf
+            gate_output compare "$out/formal-reflected-owners-prefix.$axis.stdout" "$out/formal-reflected-owners-before.$axis.stdout"
         fi
     done
-    reflection_assert_lines - any \
-        '== formal parameter reflected owners ==' 'formal parameter reflected owners end' <<< "$native"
+    reflection_assert_lines "$native_file" any \
+        '== formal parameter reflected owners ==' 'formal parameter reflected owners end'
     for line in own owner-int owner-string inherited global; do
-        grep -Fxq -- "formal reflected $line: declaring-reference=True declaring-operator=True reflected-reference=True reflected-operator=True same-reference=True same-operator=True" <<< "$native"
+        gate_output witness "$native_file" "formal reflected $line: declaring-reference=True declaring-operator=True reflected-reference=True reflected-operator=True same-reference=True same-operator=True" --count any --policy crlf
         case "$line" in
             own|global) expected=True ;;
             *) expected=False ;;
         esac
-        grep -Fxq -- "formal reflected $line lookup: expected=True parameter-same=$expected" <<< "$native"
+        gate_output witness "$native_file" "formal reflected $line lookup: expected=True parameter-same=$expected" --count any --policy crlf
     done
 
     if reflection_full_profile; then
-        reflection_oracle "$_CG_APP" before-formal-classification > "$out/formal-classification-before.dotnet.stdout"
-        run_bounded "$out/ReflectInvoke$EXE_EXT" before-formal-classification > "$out/formal-classification-before.native.stdout"
+        gate_capture_ok "$out/formal-classification-before.dotnet" reflection_oracle "$_CG_APP" before-formal-classification
+        gate_capture_ok "$out/formal-classification-before.native" run_bounded "$out/ReflectInvoke$EXE_EXT" before-formal-classification
     fi
     for axis in dotnet native; do
         if reflection_full_profile; then
-            sed '/^== formal method parameter classification ==/,$d' "$out/generic-method-definitions.$axis.stdout" \
-                > "$out/formal-classification-prefix.$axis.stdout"
-            diff -u <(strip_cr_win_file "$out/formal-classification-before.$axis.stdout") \
-                <(strip_cr_win_file "$out/formal-classification-prefix.$axis.stdout")
+            gate_output select "$out/generic-method-definitions.$axis.stdout" "$out/formal-classification-prefix.$axis.stdout" --before '== formal method parameter classification ==' --policy crlf
+            gate_output compare "$out/formal-classification-prefix.$axis.stdout" "$out/formal-classification-before.$axis.stdout"
         fi
     done
-    reflection_assert_lines - any \
-        '== formal method parameter classification ==' 'formal method parameter classification end' <<< "$native"
+    reflection_assert_lines "$native_file" any \
+        '== formal method parameter classification ==' 'formal method parameter classification end'
     for line in Free Value Reference; do
         expected='nested=True value=False class=True base=System.Object interfaces=0'
         if [ "$line" = Value ]; then
             expected='nested=True value=True class=False base=System.ValueType interfaces=0'
         fi
         for route in GetMethod GetMethods; do
-            grep -Fxq -- "formal classification $line $route: $expected" <<< "$native"
+            gate_output witness "$native_file" "formal classification $line $route: $expected" --count any --policy crlf
         done
-        grep -Fxq -- "formal classification $line GetMethods count=1" <<< "$native"
+        gate_output witness "$native_file" "formal classification $line GetMethods count=1" --count any --policy crlf
     done
 
-    grep -Fxq -- 'formal classification Value allocation: activation=ArgumentException array=NotSupportedException uninitialized=ArgumentException' <<< "$native"
+    gate_output witness "$native_file" 'formal classification Value allocation: activation=ArgumentException array=NotSupportedException uninitialized=ArgumentException' --count any --policy crlf
 
     if reflection_full_profile; then
-        reflection_oracle "$_CG_APP" before-metadata-formal-attributes > "$out/metadata-formal-attributes-before.dotnet.stdout"
-        run_bounded "$out/ReflectInvoke$EXE_EXT" before-metadata-formal-attributes > "$out/metadata-formal-attributes-before.native.stdout"
+        gate_capture_ok "$out/metadata-formal-attributes-before.dotnet" reflection_oracle "$_CG_APP" before-metadata-formal-attributes
+        gate_capture_ok "$out/metadata-formal-attributes-before.native" run_bounded "$out/ReflectInvoke$EXE_EXT" before-metadata-formal-attributes
     fi
     for axis in dotnet native; do
         if reflection_full_profile; then
-            sed '/^== metadata formal parameter attributes ==/,$d' "$out/generic-method-definitions.$axis.stdout" \
-                > "$out/metadata-formal-attributes-prefix.$axis.stdout"
-            diff -u <(strip_cr_win_file "$out/metadata-formal-attributes-before.$axis.stdout") \
-                <(strip_cr_win_file "$out/metadata-formal-attributes-prefix.$axis.stdout")
+            gate_output select "$out/generic-method-definitions.$axis.stdout" "$out/metadata-formal-attributes-prefix.$axis.stdout" --before '== metadata formal parameter attributes ==' --policy crlf
+            gate_output compare "$out/metadata-formal-attributes-prefix.$axis.stdout" "$out/metadata-formal-attributes-before.$axis.stdout"
         fi
     done
-    reflection_assert_lines - any \
-        '== metadata formal parameter attributes ==' 'metadata formal parameter attributes end' <<< "$native"
+    reflection_assert_lines "$native_file" any \
+        '== metadata formal parameter attributes ==' 'metadata formal parameter attributes end'
     for line in metadata ordinary; do
         case "$line" in
             metadata) expected=32; parameter=T ;;
             ordinary) expected=0; parameter=U ;;
         esac
-        grep -Fxq -- "metadata formal $line: name=$parameter attributes=$expected definition=True contains=True nested=True value=False class=True" <<< "$native"
-        grep -Fxq -- "metadata formal $line definition: attributes=$expected canonical=True" <<< "$native"
-        grep -Fxq -- "metadata formal $line closed definition: attributes=$expected canonical=True" <<< "$native"
+        reflection_assert_lines "$native_file" any \
+            "metadata formal $line: name=$parameter attributes=$expected definition=True contains=True nested=True value=False class=True" \
+            "metadata formal $line definition: attributes=$expected canonical=True" \
+            "metadata formal $line closed definition: attributes=$expected canonical=True"
     done
 
     if reflection_full_profile; then
-        reflection_oracle "$_CG_APP" before-formal-member-types > "$out/formal-member-types-before.dotnet.stdout"
-        run_bounded "$out/ReflectInvoke$EXE_EXT" before-formal-member-types > "$out/formal-member-types-before.native.stdout"
+        gate_capture_ok "$out/formal-member-types-before.dotnet" reflection_oracle "$_CG_APP" before-formal-member-types
+        gate_capture_ok "$out/formal-member-types-before.native" run_bounded "$out/ReflectInvoke$EXE_EXT" before-formal-member-types
     fi
     for axis in dotnet native; do
         if reflection_full_profile; then
-            sed '/^== formal parameter member types ==/,$d' "$out/generic-method-definitions.$axis.stdout" \
-                > "$out/formal-member-types-prefix.$axis.stdout"
-            diff -u <(strip_cr_win_file "$out/formal-member-types-before.$axis.stdout") \
-                <(strip_cr_win_file "$out/formal-member-types-prefix.$axis.stdout")
+            gate_output select "$out/generic-method-definitions.$axis.stdout" "$out/formal-member-types-prefix.$axis.stdout" --before '== formal parameter member types ==' --policy crlf
+            gate_output compare "$out/formal-member-types-prefix.$axis.stdout" "$out/formal-member-types-before.$axis.stdout"
         fi
     done
-    reflection_assert_lines - any \
-        '== formal parameter member types ==' 'formal parameter member types end' <<< "$native"
+    reflection_assert_lines "$native_file" any \
+        '== formal parameter member types ==' 'formal parameter member types end'
     reflection_expected_lines=()
     for line in free value reference metadata; do
         reflection_expected_lines+=("formal member $line: type=32 memberinfo=32 nested=True")
     done
-    reflection_assert_lines - any "${reflection_expected_lines[@]}" <<< "$native"
-    grep -Fxq -- 'formal member nested: type=128 memberinfo=128 nested=True' <<< "$native"
-    grep -Fxq -- 'formal member top-level: type=32 memberinfo=32 nested=False' <<< "$native"
+    reflection_assert_lines "$native_file" any "${reflection_expected_lines[@]}"
+    reflection_assert_lines "$native_file" any \
+        'formal member nested: type=128 memberinfo=128 nested=True' \
+        'formal member top-level: type=32 memberinfo=32 nested=False'
 
     if reflection_full_profile; then
-        reflection_oracle "$_CG_APP" before-definition-signature-closure > "$out/definition-signature-closure-before.dotnet.stdout"
-        run_bounded "$out/ReflectInvoke$EXE_EXT" before-definition-signature-closure > "$out/definition-signature-closure-before.native.stdout"
+        gate_capture_ok "$out/definition-signature-closure-before.dotnet" reflection_oracle "$_CG_APP" before-definition-signature-closure
+        gate_capture_ok "$out/definition-signature-closure-before.native" run_bounded "$out/ReflectInvoke$EXE_EXT" before-definition-signature-closure
     fi
     for axis in dotnet native; do
         if reflection_full_profile; then
-            sed '/^== definition signature closure ==/,$d' "$out/generic-method-definitions.$axis.stdout" \
-                > "$out/definition-signature-closure-prefix.$axis.stdout"
-            diff -u <(strip_cr_win_file "$out/definition-signature-closure-before.$axis.stdout") \
-                <(strip_cr_win_file "$out/definition-signature-closure-prefix.$axis.stdout")
+            gate_output select "$out/generic-method-definitions.$axis.stdout" "$out/definition-signature-closure-prefix.$axis.stdout" --before '== definition signature closure ==' --policy crlf
+            gate_output compare "$out/definition-signature-closure-prefix.$axis.stdout" "$out/definition-signature-closure-before.$axis.stdout"
         fi
     done
-    reflection_assert_lines - any \
-        '== definition signature closure ==' 'definition signature closure end' <<< "$native"
+    reflection_assert_lines "$native_file" any \
+        '== definition signature closure ==' 'definition signature closure end'
     for line in Pick QueuePick; do
         case "$line" in
             Pick) expected='DefinitionSignatureHolder`1' ;;
             QueuePick) expected='Queue`1' ;;
         esac
         for route in GetMethod GetMethods; do
-            grep -Fxq -- "signature closure $line $route definition=True" <<< "$native"
+            gate_output witness "$native_file" "signature closure $line $route definition=True" --count any --policy crlf
             for query in return parameter return-parameter; do
-                grep -Eq -- "^signature closure $line $route $query: name=$expected full=.+ generic=True$" <<< "$native" \
+                gate_output match-record "$native_file" "signature closure $line $route $query: name=$expected full=.+ generic=True" --policy crlf --count any \
                     || { echo "FAIL: definition's closed signature type missing: $line $route $query" >&2; return 1; }
             done
-            grep -Fxq -- "signature closure $line $route identity: parameter=True return-parameter=True" <<< "$native"
+            gate_output witness "$native_file" "signature closure $line $route identity: parameter=True return-parameter=True" --count any --policy crlf
         done
-        grep -Fxq -- "signature closure $line GetMethods count=1" <<< "$native"
+        gate_output witness "$native_file" "signature closure $line GetMethods count=1" --count any --policy crlf
     done
 
     if reflection_full_profile; then
-        reflection_oracle "$_CG_APP" before-delegate-name-bindings > "$out/delegate-name-before.dotnet.stdout"
-        run_bounded "$out/ReflectInvoke$EXE_EXT" before-delegate-name-bindings > "$out/delegate-name-before.native.stdout"
+        gate_capture_ok "$out/delegate-name-before.dotnet" reflection_oracle "$_CG_APP" before-delegate-name-bindings
+        gate_capture_ok "$out/delegate-name-before.native" run_bounded "$out/ReflectInvoke$EXE_EXT" before-delegate-name-bindings
     fi
     for axis in dotnet native; do
         if reflection_full_profile; then
-            sed '/^== delegate method name bindings ==/,$d' "$out/generic-method-definitions.$axis.stdout" \
-                > "$out/delegate-name-prefix.$axis.stdout"
-            diff -u <(strip_cr_win_file "$out/delegate-name-before.$axis.stdout") \
-                <(strip_cr_win_file "$out/delegate-name-prefix.$axis.stdout")
+            gate_output select "$out/generic-method-definitions.$axis.stdout" "$out/delegate-name-prefix.$axis.stdout" --before '== delegate method name bindings ==' --policy crlf
+            gate_output compare "$out/delegate-name-prefix.$axis.stdout" "$out/delegate-name-before.$axis.stdout"
         fi
     done
-    reflection_assert_lines - any \
-        '== delegate method name bindings ==' 'delegate method name bindings end' <<< "$native"
+    reflection_assert_lines "$native_file" any \
+        '== delegate method name bindings ==' 'delegate method name bindings end'
 
     if reflection_full_profile; then
-        reflection_oracle "$_CG_APP" before-delegate-signature-bindings > "$out/delegate-signature-before.dotnet.stdout"
-        run_bounded "$out/ReflectInvoke$EXE_EXT" before-delegate-signature-bindings > "$out/delegate-signature-before.native.stdout"
+        gate_capture_ok "$out/delegate-signature-before.dotnet" reflection_oracle "$_CG_APP" before-delegate-signature-bindings
+        gate_capture_ok "$out/delegate-signature-before.native" run_bounded "$out/ReflectInvoke$EXE_EXT" before-delegate-signature-bindings
     fi
     for axis in dotnet native; do
         if reflection_full_profile; then
-            sed '/^== delegate signature compatibility ==/,$d' "$out/generic-method-definitions.$axis.stdout" \
-                > "$out/delegate-signature-prefix.$axis.stdout"
-            diff -u <(strip_cr_win_file "$out/delegate-signature-before.$axis.stdout") \
-                <(strip_cr_win_file "$out/delegate-signature-prefix.$axis.stdout")
+            gate_output select "$out/generic-method-definitions.$axis.stdout" "$out/delegate-signature-prefix.$axis.stdout" --before '== delegate signature compatibility ==' --policy crlf
+            gate_output compare "$out/delegate-signature-prefix.$axis.stdout" "$out/delegate-signature-before.$axis.stdout"
         fi
     done
-    reflection_assert_lines - any \
+    reflection_assert_lines "$native_file" any \
         '== delegate signature compatibility ==' \
         'signature ref object to value => null/null' 'signature value to ref object => null/null' \
         'signature ref to out => bound/bound' 'signature out to ref => bound/bound' \
@@ -1717,81 +1694,73 @@ gate_extra_asserts() {
         'signature byref modes => 44/44/45/closed' 'signature relaxed pointer call => 42' \
         'signature function return calls => 256/512' 'signature ref function alias => 1280' \
         'signature template known return mismatch => null/null' 'signature template known argument mismatch => null/null' \
-        'signature template fixed => 1536/1792/2048/2304/True' 'delegate signature compatibility end' <<< "$native"
+        'signature template fixed => 1536/1792/2048/2304/True' 'delegate signature compatibility end'
 
     if reflection_full_profile; then
-        reflection_oracle "$_CG_APP" before-runtime-function-pointer-invoke > "$out/function-pointer-invoke-before.dotnet.stdout"
-        run_bounded "$out/ReflectInvoke$EXE_EXT" before-runtime-function-pointer-invoke > "$out/function-pointer-invoke-before.native.stdout"
+        gate_capture_ok "$out/function-pointer-invoke-before.dotnet" reflection_oracle "$_CG_APP" before-runtime-function-pointer-invoke
+        gate_capture_ok "$out/function-pointer-invoke-before.native" run_bounded "$out/ReflectInvoke$EXE_EXT" before-runtime-function-pointer-invoke
     fi
     for axis in dotnet native; do
         if reflection_full_profile; then
-            sed '/^== runtime function pointer invocation descriptors ==/,$d' "$out/generic-method-definitions.$axis.stdout" \
-                > "$out/function-pointer-invoke-prefix.$axis.stdout"
-            diff -u <(strip_cr_win_file "$out/function-pointer-invoke-before.$axis.stdout") \
-                <(strip_cr_win_file "$out/function-pointer-invoke-prefix.$axis.stdout")
+            gate_output select "$out/generic-method-definitions.$axis.stdout" "$out/function-pointer-invoke-prefix.$axis.stdout" --before '== runtime function pointer invocation descriptors ==' --policy crlf
+            gate_output compare "$out/function-pointer-invoke-prefix.$axis.stdout" "$out/function-pointer-invoke-before.$axis.stdout"
         fi
     done
-    reflection_assert_lines - any \
+    reflection_assert_lines "$native_file" any \
         '== runtime function pointer invocation descriptors ==' \
         'signature invoke string => ArgumentException/0' 'signature invoke boxed integer => ArgumentException/0' \
         'signature invoke int pointer box => ArgumentException/0' 'signature invoke IntPtr => 256/1' \
         'signature invoke nested box => True/512' 'signature invoke nested box roundtrip => 512/1' \
-        'runtime function pointer invocation descriptors end' <<< "$native"
+        'runtime function pointer invocation descriptors end'
 
     if reflection_full_profile; then
-        reflection_oracle "$_CG_APP" before-unsupported-referent-signatures > "$out/unsupported-referent-before.dotnet.stdout"
-        run_bounded "$out/ReflectInvoke$EXE_EXT" before-unsupported-referent-signatures > "$out/unsupported-referent-before.native.stdout"
+        gate_capture_ok "$out/unsupported-referent-before.dotnet" reflection_oracle "$_CG_APP" before-unsupported-referent-signatures
+        gate_capture_ok "$out/unsupported-referent-before.native" run_bounded "$out/ReflectInvoke$EXE_EXT" before-unsupported-referent-signatures
     fi
     for axis in dotnet native; do
         if reflection_full_profile; then
-            sed '/^== unsupported referent delegate signatures ==/,$d' "$out/generic-method-definitions.$axis.stdout" \
-                > "$out/unsupported-referent-prefix.$axis.stdout"
-            diff -u <(strip_cr_win_file "$out/unsupported-referent-before.$axis.stdout") \
-                <(strip_cr_win_file "$out/unsupported-referent-prefix.$axis.stdout")
+            gate_output select "$out/generic-method-definitions.$axis.stdout" "$out/unsupported-referent-prefix.$axis.stdout" --before '== unsupported referent delegate signatures ==' --policy crlf
+            gate_output compare "$out/unsupported-referent-prefix.$axis.stdout" "$out/unsupported-referent-before.$axis.stdout"
         fi
     done
-    reflection_assert_lines - any \
+    reflection_assert_lines "$native_file" any \
         '== unsupported referent delegate signatures ==' \
         'signature opaque return to object => null/null' 'signature opaque return mismatch => null/null' \
         'signature opaque return opposite => null/null' 'signature opaque return exact => bound/bound' \
         'signature opaque argument mismatch => null/null' 'signature opaque argument opposite => null/null' \
         'signature opaque argument exact => bound/bound' 'signature opaque typed alias => False/True/True' \
-        'unsupported referent delegate signatures end' <<< "$native"
+        'unsupported referent delegate signatures end'
 
     if reflection_full_profile; then
-        reflection_oracle "$_CG_APP" before-ordinary-template-signatures > "$out/ordinary-template-before.dotnet.stdout"
-        run_bounded "$out/ReflectInvoke$EXE_EXT" before-ordinary-template-signatures > "$out/ordinary-template-before.native.stdout"
+        gate_capture_ok "$out/ordinary-template-before.dotnet" reflection_oracle "$_CG_APP" before-ordinary-template-signatures
+        gate_capture_ok "$out/ordinary-template-before.native" run_bounded "$out/ReflectInvoke$EXE_EXT" before-ordinary-template-signatures
     fi
     for axis in dotnet native; do
         if reflection_full_profile; then
-            sed '/^== ordinary runtime delegate signature controls ==/,$d' "$out/generic-method-definitions.$axis.stdout" \
-                > "$out/ordinary-template-prefix.$axis.stdout"
-            diff -u <(strip_cr_win_file "$out/ordinary-template-before.$axis.stdout") \
-                <(strip_cr_win_file "$out/ordinary-template-prefix.$axis.stdout")
+            gate_output select "$out/generic-method-definitions.$axis.stdout" "$out/ordinary-template-prefix.$axis.stdout" --before '== ordinary runtime delegate signature controls ==' --policy crlf
+            gate_output compare "$out/ordinary-template-prefix.$axis.stdout" "$out/ordinary-template-before.$axis.stdout"
         fi
     done
-    reflection_assert_lines - any \
+    reflection_assert_lines "$native_file" any \
         '== ordinary runtime delegate signature controls ==' \
         'signature ordinary known return mismatch => null/null' \
         'signature ordinary known argument mismatch => null/null' \
         'signature ordinary known shape mismatch => null/null' \
         'signature ordinary template fixed => 7/8/True' \
         'signature ordinary compiled ref => 42/42/42' \
-        'ordinary runtime delegate signature controls end' <<< "$native"
+        'ordinary runtime delegate signature controls end'
 
     if reflection_full_profile; then
-        reflection_oracle "$_CG_APP" before-ordinary-overload-selection > "$out/ordinary-overload-before.dotnet.stdout"
-        run_bounded "$out/ReflectInvoke$EXE_EXT" before-ordinary-overload-selection > "$out/ordinary-overload-before.native.stdout"
+        gate_capture_ok "$out/ordinary-overload-before.dotnet" reflection_oracle "$_CG_APP" before-ordinary-overload-selection
+        gate_capture_ok "$out/ordinary-overload-before.native" run_bounded "$out/ReflectInvoke$EXE_EXT" before-ordinary-overload-selection
     fi
     for axis in dotnet native; do
         if reflection_full_profile; then
-            sed '/^== ordinary runtime overload selection ==/,$d' "$out/generic-method-definitions.$axis.stdout" \
-                > "$out/ordinary-overload-prefix.$axis.stdout"
-            diff -u <(strip_cr_win_file "$out/ordinary-overload-before.$axis.stdout") \
-                <(strip_cr_win_file "$out/ordinary-overload-prefix.$axis.stdout")
+            gate_output select "$out/generic-method-definitions.$axis.stdout" "$out/ordinary-overload-prefix.$axis.stdout" --before '== ordinary runtime overload selection ==' --policy crlf
+            gate_output compare "$out/ordinary-overload-prefix.$axis.stdout" "$out/ordinary-overload-before.$axis.stdout"
         fi
     done
-    reflection_assert_lines - any \
+    reflection_assert_lines "$native_file" any \
         '== ordinary runtime overload selection ==' \
         'signature overload ref => bound/7/11/bound/7/11' \
         'signature overload declaring base => bound/37/11/bound/37/11' \
@@ -1801,109 +1770,97 @@ gate_extra_asserts() {
         'signature overload composed types => True/True/True' \
         'signature overload composed ref => bound/47/True/bound/47/True' \
         'signature overload generic family => 57/True' 'signature overload constant argument => 67/True' \
-        'ordinary runtime overload selection end' <<< "$native"
+        'ordinary runtime overload selection end'
 
     if reflection_full_profile; then
-        reflection_oracle "$_CG_APP" before-shape-overload-selection > "$out/shape-overload-before.dotnet.stdout"
-        run_bounded "$out/ReflectInvoke$EXE_EXT" before-shape-overload-selection > "$out/shape-overload-before.native.stdout"
+        gate_capture_ok "$out/shape-overload-before.dotnet" reflection_oracle "$_CG_APP" before-shape-overload-selection
+        gate_capture_ok "$out/shape-overload-before.native" run_bounded "$out/ReflectInvoke$EXE_EXT" before-shape-overload-selection
     fi
     for axis in dotnet native; do
         if reflection_full_profile; then
-            sed '/^== structured runtime overload selection ==/,$d' "$out/generic-method-definitions.$axis.stdout" \
-                > "$out/shape-overload-prefix.$axis.stdout"
-            diff -u <(strip_cr_win_file "$out/shape-overload-before.$axis.stdout") \
-                <(strip_cr_win_file "$out/shape-overload-prefix.$axis.stdout")
+            gate_output select "$out/generic-method-definitions.$axis.stdout" "$out/shape-overload-prefix.$axis.stdout" --before '== structured runtime overload selection ==' --policy crlf
+            gate_output compare "$out/shape-overload-prefix.$axis.stdout" "$out/shape-overload-before.$axis.stdout"
         fi
     done
-    reflection_assert_lines - any \
+    reflection_assert_lines "$native_file" any \
         '== structured runtime overload selection ==' \
         'signature overload function => 87/87' 'signature overload deep pointer => 97/97' \
-        'signature overload distinct deep levels => 107/107' 'structured runtime overload selection end' <<< "$native"
+        'signature overload distinct deep levels => 107/107' 'structured runtime overload selection end'
 
     if reflection_full_profile; then
-        reflection_oracle "$_CG_APP" before-leaf-overload-selection > "$out/leaf-overload-before.dotnet.stdout"
-        run_bounded "$out/ReflectInvoke$EXE_EXT" before-leaf-overload-selection > "$out/leaf-overload-before.native.stdout"
+        gate_capture_ok "$out/leaf-overload-before.dotnet" reflection_oracle "$_CG_APP" before-leaf-overload-selection
+        gate_capture_ok "$out/leaf-overload-before.native" run_bounded "$out/ReflectInvoke$EXE_EXT" before-leaf-overload-selection
     fi
     for axis in dotnet native; do
         if reflection_full_profile; then
-            sed '/^== function leaf overload selection ==/,$d' "$out/generic-method-definitions.$axis.stdout" \
-                > "$out/leaf-overload-prefix.$axis.stdout"
-            diff -u <(strip_cr_win_file "$out/leaf-overload-before.$axis.stdout") \
-                <(strip_cr_win_file "$out/leaf-overload-prefix.$axis.stdout")
+            gate_output select "$out/generic-method-definitions.$axis.stdout" "$out/leaf-overload-prefix.$axis.stdout" --before '== function leaf overload selection ==' --policy crlf
+            gate_output compare "$out/leaf-overload-prefix.$axis.stdout" "$out/leaf-overload-before.$axis.stdout"
         fi
     done
-    reflection_assert_lines - any \
+    reflection_assert_lines "$native_file" any \
         '== function leaf overload selection ==' \
         'signature overload array => 117/117' 'signature overload matrix => 127/127' \
         'signature overload array rank => 137/137' 'signature overload opaque function leaf => 157/157/157/157' \
-        'function leaf overload selection end' <<< "$native"
+        'function leaf overload selection end'
 
     if reflection_full_profile; then
-        reflection_oracle "$_CG_APP" before-identity-overload-selection > "$out/identity-overload-before.dotnet.stdout"
-        run_bounded "$out/ReflectInvoke$EXE_EXT" before-identity-overload-selection > "$out/identity-overload-before.native.stdout"
+        gate_capture_ok "$out/identity-overload-before.dotnet" reflection_oracle "$_CG_APP" before-identity-overload-selection
+        gate_capture_ok "$out/identity-overload-before.native" run_bounded "$out/ReflectInvoke$EXE_EXT" before-identity-overload-selection
     fi
     for axis in dotnet native; do
         if reflection_full_profile; then
-            sed '/^== omitted identity overload selection ==/,$d' "$out/generic-method-definitions.$axis.stdout" \
-                > "$out/identity-overload-prefix.$axis.stdout"
-            diff -u <(strip_cr_win_file "$out/identity-overload-before.$axis.stdout") \
-                <(strip_cr_win_file "$out/identity-overload-prefix.$axis.stdout")
+            gate_output select "$out/generic-method-definitions.$axis.stdout" "$out/identity-overload-prefix.$axis.stdout" --before '== omitted identity overload selection ==' --policy crlf
+            gate_output compare "$out/identity-overload-prefix.$axis.stdout" "$out/identity-overload-before.$axis.stdout"
         fi
     done
-    reflection_assert_lines - any \
+    reflection_assert_lines "$native_file" any \
         '== omitted identity overload selection ==' \
         'signature overload absent generic family => 167/167' \
-        'omitted identity overload selection end' <<< "$native"
+        'omitted identity overload selection end'
 
     if reflection_full_profile; then
-        reflection_oracle "$_CG_APP" before-runtime-argument-overloads > "$out/runtime-argument-before.dotnet.stdout"
-        run_bounded "$out/ReflectInvoke$EXE_EXT" before-runtime-argument-overloads > "$out/runtime-argument-before.native.stdout"
+        gate_capture_ok "$out/runtime-argument-before.dotnet" reflection_oracle "$_CG_APP" before-runtime-argument-overloads
+        gate_capture_ok "$out/runtime-argument-before.native" run_bounded "$out/ReflectInvoke$EXE_EXT" before-runtime-argument-overloads
     fi
     for axis in dotnet native; do
         if reflection_full_profile; then
-            sed '/^== runtime type argument overload selection ==/,$d' "$out/generic-method-definitions.$axis.stdout" \
-                > "$out/runtime-argument-prefix.$axis.stdout"
-            diff -u <(strip_cr_win_file "$out/runtime-argument-before.$axis.stdout") \
-                <(strip_cr_win_file "$out/runtime-argument-prefix.$axis.stdout")
+            gate_output select "$out/generic-method-definitions.$axis.stdout" "$out/runtime-argument-prefix.$axis.stdout" --before '== runtime type argument overload selection ==' --policy crlf
+            gate_output compare "$out/runtime-argument-prefix.$axis.stdout" "$out/runtime-argument-before.$axis.stdout"
         fi
     done
-    reflection_assert_lines - any \
+    reflection_assert_lines "$native_file" any \
         '== runtime type argument overload selection ==' \
         'signature overload synthesized argument => 87/87' 'signature overload generic argument difference => 177/177' \
-        'runtime type argument overload selection end' <<< "$native"
+        'runtime type argument overload selection end'
 
     if reflection_full_profile; then
-        reflection_oracle "$_CG_APP" before-family-type-overloads > "$out/family-type-before.dotnet.stdout"
-        run_bounded "$out/ReflectInvoke$EXE_EXT" before-family-type-overloads > "$out/family-type-before.native.stdout"
+        gate_capture_ok "$out/family-type-before.dotnet" reflection_oracle "$_CG_APP" before-family-type-overloads
+        gate_capture_ok "$out/family-type-before.native" run_bounded "$out/ReflectInvoke$EXE_EXT" before-family-type-overloads
     fi
     for axis in dotnet native; do
         if reflection_full_profile; then
-            sed '/^== generic family and runtime type overload selection ==/,$d' "$out/generic-method-definitions.$axis.stdout" \
-                > "$out/family-type-prefix.$axis.stdout"
-            diff -u <(strip_cr_win_file "$out/family-type-before.$axis.stdout") \
-                <(strip_cr_win_file "$out/family-type-prefix.$axis.stdout")
+            gate_output select "$out/generic-method-definitions.$axis.stdout" "$out/family-type-prefix.$axis.stdout" --before '== generic family and runtime type overload selection ==' --policy crlf
+            gate_output compare "$out/family-type-prefix.$axis.stdout" "$out/family-type-before.$axis.stdout"
         fi
     done
-    reflection_assert_lines - any \
+    reflection_assert_lines "$native_file" any \
         '== generic family and runtime type overload selection ==' \
         'signature overload nongeneric shape => 197/197' \
         'signature overload runtime child difference => 197/197' \
         'signature overload runtime family difference => 197/197' \
-        'generic family and runtime type overload selection end' <<< "$native"
+        'generic family and runtime type overload selection end'
 
     if reflection_full_profile; then
-        reflection_oracle "$_CG_APP" before-enum-signature-bindings > "$out/enum-signature-before.dotnet.stdout"
-        run_bounded "$out/ReflectInvoke$EXE_EXT" before-enum-signature-bindings > "$out/enum-signature-before.native.stdout"
+        gate_capture_ok "$out/enum-signature-before.dotnet" reflection_oracle "$_CG_APP" before-enum-signature-bindings
+        gate_capture_ok "$out/enum-signature-before.native" run_bounded "$out/ReflectInvoke$EXE_EXT" before-enum-signature-bindings
     fi
     for axis in dotnet native; do
         if reflection_full_profile; then
-            sed '/^== delegate enum signature compatibility ==/,$d' "$out/generic-method-definitions.$axis.stdout" \
-                > "$out/enum-signature-prefix.$axis.stdout"
-            diff -u <(strip_cr_win_file "$out/enum-signature-before.$axis.stdout") \
-                <(strip_cr_win_file "$out/enum-signature-prefix.$axis.stdout")
+            gate_output select "$out/generic-method-definitions.$axis.stdout" "$out/enum-signature-prefix.$axis.stdout" --before '== delegate enum signature compatibility ==' --policy crlf
+            gate_output compare "$out/enum-signature-prefix.$axis.stdout" "$out/enum-signature-before.$axis.stdout"
         fi
     done
-    reflection_assert_lines - any \
+    reflection_assert_lines "$native_file" any \
         '== delegate enum signature compatibility ==' \
         'enum closed instance name => -113/-113/1/True' \
         'enum closed instance method => -113/-113/1/True' \
@@ -1911,14 +1868,14 @@ gate_extra_asserts() {
         'enum runtime clone name => 4045620583/4045620583/1' \
         'enum runtime clone method => 4045620583/4045620583/1' \
         'enum closed static => 60001/60004/1' 'enum closed static value => null' \
-        'delegate enum signature compatibility end' <<< "$native"
+        'delegate enum signature compatibility end'
     for backing_value in S8:-113 U8:227 S16:-30001 U16:60001 S32:-2000000001 \
         U32:4045620583 S64:-8000000000000000001 U64:17293822569102704641; do
         backing=${backing_value%%:*}
         value=${backing_value#*:}
         for relation in 'underlying to enum' 'enum to underlying' 'distinct enums'; do
             for api in name method; do
-                grep -Fxq -- "enum $backing $relation $api => $value/$value/1/True" <<< "$native" \
+                gate_output witness "$native_file" "enum $backing $relation $api => $value/$value/1/True" --count any --policy crlf \
                     || { echo "FAIL: enum delegate value changed: $backing/$relation/$api" >&2; return 1; }
             done
         done
@@ -1926,27 +1883,25 @@ gate_extra_asserts() {
     for query in signedness width bool char 'native int' 'ordinary widening' \
         'ref enum to int' 'ref int to enum' 'out enum to int' 'ref return enum' 'function identity'; do
         for api in name method; do
-            grep -Fxq -- "enum $query $api => null" <<< "$native" \
+            gate_output witness "$native_file" "enum $query $api => null" --count any --policy crlf \
                 || { echo "FAIL: enum delegate accepted an incompatible signature: $query/$api" >&2; return 1; }
         done
     done
     for query in 'pointer enum to int' 'pointer enum to uint'; do
-        grep -Fxq -- "enum $query name => null" <<< "$native" \
+        gate_output witness "$native_file" "enum $query name => null" --count any --policy crlf \
             || { echo "FAIL: named enum pointer identity changed: $query" >&2; return 1; }
-        grep -Fxq -- "enum $query method => bound" <<< "$native" \
+        gate_output witness "$native_file" "enum $query method => bound" --count any --policy crlf \
             || { echo "FAIL: MethodInfo enum pointer compatibility changed: $query" >&2; return 1; }
     done
 
     if reflection_full_profile; then
-        reflection_oracle "$_CG_APP" before-intrinsic-pointer-bindings > "$out/intrinsic-pointer-before.dotnet.stdout"
-        run_bounded "$out/ReflectInvoke$EXE_EXT" before-intrinsic-pointer-bindings > "$out/intrinsic-pointer-before.native.stdout"
+        gate_capture_ok "$out/intrinsic-pointer-before.dotnet" reflection_oracle "$_CG_APP" before-intrinsic-pointer-bindings
+        gate_capture_ok "$out/intrinsic-pointer-before.native" run_bounded "$out/ReflectInvoke$EXE_EXT" before-intrinsic-pointer-bindings
     fi
     for axis in dotnet native; do
         if reflection_full_profile; then
-            sed '/^== intrinsic pointer identity actual ==/,$d' "$out/generic-method-definitions.$axis.stdout" \
-                > "$out/intrinsic-pointer-prefix.$axis.stdout"
-            diff -u <(strip_cr_win_file "$out/intrinsic-pointer-before.$axis.stdout") \
-                <(strip_cr_win_file "$out/intrinsic-pointer-prefix.$axis.stdout")
+            gate_output select "$out/generic-method-definitions.$axis.stdout" "$out/intrinsic-pointer-prefix.$axis.stdout" --before '== intrinsic pointer identity actual ==' --policy crlf
+            gate_output compare "$out/intrinsic-pointer-prefix.$axis.stdout" "$out/intrinsic-pointer-before.$axis.stdout"
         fi
         reflection_assert_lines "$out/generic-method-definitions.$axis.stdout" 1 \
             '== intrinsic pointer identity actual ==' 'intrinsic pointer identity actual end' \
@@ -1954,7 +1909,7 @@ gate_extra_asserts() {
         for api in name method; do
             for query in 'Token object' 'Token registration' 'parameter object' 'parameter registration' \
                 'return object' 'return registration' 'deep registration' 'deep depth' 'ordinary leaf' 'ordinary depth' 'clone object'; do
-                grep -Fxq -- "bind $query $api => null/calls=0" "$out/generic-method-definitions.$axis.stdout" \
+                gate_output witness "$out/generic-method-definitions.$axis.stdout" "bind $query $api => null/calls=0" --policy crlf --count any \
                     || { echo "FAIL: incompatible intrinsic pointer accepted: $axis/$query/$api" >&2; return 1; }
             done
             reflection_assert_lines "$out/generic-method-definitions.$axis.stdout" any \
@@ -1966,22 +1921,20 @@ gate_extra_asserts() {
             for api_result in name:null method:bound; do
                 api=${api_result%%:*}
                 result=${api_result#*:}
-                grep -Fxq -- "bind $query relaxation $api => $result/calls=0" "$out/generic-method-definitions.$axis.stdout" \
+                gate_output witness "$out/generic-method-definitions.$axis.stdout" "bind $query relaxation $api => $result/calls=0" --policy crlf --count any \
                     || { echo "FAIL: ordinary pointer relaxation changed: $axis/$query/$api" >&2; return 1; }
             done
         done
     done
 
     if reflection_full_profile; then
-        reflection_oracle "$_CG_APP" before-intrinsic-pointer-overloads > "$out/intrinsic-pointer-overload-before.dotnet.stdout"
-        run_bounded "$out/ReflectInvoke$EXE_EXT" before-intrinsic-pointer-overloads > "$out/intrinsic-pointer-overload-before.native.stdout"
+        gate_capture_ok "$out/intrinsic-pointer-overload-before.dotnet" reflection_oracle "$_CG_APP" before-intrinsic-pointer-overloads
+        gate_capture_ok "$out/intrinsic-pointer-overload-before.native" run_bounded "$out/ReflectInvoke$EXE_EXT" before-intrinsic-pointer-overloads
     fi
     for axis in dotnet native; do
         if reflection_full_profile; then
-            sed '/^== intrinsic pointer overload identity ==/,$d' "$out/generic-method-definitions.$axis.stdout" \
-                > "$out/intrinsic-pointer-overload-prefix.$axis.stdout"
-            diff -u <(strip_cr_win_file "$out/intrinsic-pointer-overload-before.$axis.stdout") \
-                <(strip_cr_win_file "$out/intrinsic-pointer-overload-prefix.$axis.stdout")
+            gate_output select "$out/generic-method-definitions.$axis.stdout" "$out/intrinsic-pointer-overload-prefix.$axis.stdout" --before '== intrinsic pointer overload identity ==' --policy crlf
+            gate_output compare "$out/intrinsic-pointer-overload-prefix.$axis.stdout" "$out/intrinsic-pointer-overload-before.$axis.stdout"
         fi
         reflection_assert_lines "$out/generic-method-definitions.$axis.stdout" 1 \
             '== intrinsic pointer overload identity ==' 'intrinsic pointer overload identity end' \
@@ -1989,15 +1942,13 @@ gate_extra_asserts() {
     done
 
     if reflection_full_profile; then
-        reflection_oracle "$_CG_APP" before-intrinsic-pointer-families > "$out/intrinsic-pointer-family-before.dotnet.stdout"
-        run_bounded "$out/ReflectInvoke$EXE_EXT" before-intrinsic-pointer-families > "$out/intrinsic-pointer-family-before.native.stdout"
+        gate_capture_ok "$out/intrinsic-pointer-family-before.dotnet" reflection_oracle "$_CG_APP" before-intrinsic-pointer-families
+        gate_capture_ok "$out/intrinsic-pointer-family-before.native" run_bounded "$out/ReflectInvoke$EXE_EXT" before-intrinsic-pointer-families
     fi
     for axis in dotnet native; do
         if reflection_full_profile; then
-            sed '/^== intrinsic pointer family identity ==/,$d' "$out/generic-method-definitions.$axis.stdout" \
-                > "$out/intrinsic-pointer-family-prefix.$axis.stdout"
-            diff -u <(strip_cr_win_file "$out/intrinsic-pointer-family-before.$axis.stdout") \
-                <(strip_cr_win_file "$out/intrinsic-pointer-family-prefix.$axis.stdout")
+            gate_output select "$out/generic-method-definitions.$axis.stdout" "$out/intrinsic-pointer-family-prefix.$axis.stdout" --before '== intrinsic pointer family identity ==' --policy crlf
+            gate_output compare "$out/intrinsic-pointer-family-prefix.$axis.stdout" "$out/intrinsic-pointer-family-before.$axis.stdout"
         fi
         reflection_assert_lines "$out/generic-method-definitions.$axis.stdout" 1 \
             '== intrinsic pointer family identity ==' 'intrinsic pointer family identity end' \
@@ -2016,14 +1967,13 @@ gate_extra_asserts() {
             end='intrinsic pointer array argument identity end'
         fi
         if reflection_full_profile; then
-            reflection_oracle "$_CG_APP" "$before" > "$out/intrinsic-$section-before.dotnet.stdout"
-            run_bounded "$out/ReflectInvoke$EXE_EXT" "$before" > "$out/intrinsic-$section-before.native.stdout"
+            gate_capture_ok "$out/intrinsic-$section-before.dotnet" reflection_oracle "$_CG_APP" "$before"
+            gate_capture_ok "$out/intrinsic-$section-before.native" run_bounded "$out/ReflectInvoke$EXE_EXT" "$before"
         fi
         for axis in dotnet native; do
             if reflection_full_profile; then
-                sed "/^$begin/,\$d" "$out/generic-method-definitions.$axis.stdout" > "$out/intrinsic-$section-prefix.$axis.stdout"
-                diff -u <(strip_cr_win_file "$out/intrinsic-$section-before.$axis.stdout") \
-                    <(strip_cr_win_file "$out/intrinsic-$section-prefix.$axis.stdout") \
+                gate_output select "$out/generic-method-definitions.$axis.stdout" "$out/intrinsic-$section-prefix.$axis.stdout" --before "$begin" --policy crlf
+                gate_output compare "$out/intrinsic-$section-prefix.$axis.stdout" "$out/intrinsic-$section-before.$axis.stdout" \
                     || { echo "FAIL: opaque pointer prefix changed: $axis/$section" >&2; return 1; }
             fi
             reflection_assert_lines "$out/generic-method-definitions.$axis.stdout" 1 \
@@ -2031,7 +1981,7 @@ gate_extra_asserts() {
                 "call pointer $section soft => True/4660/4660/14/0/True" \
                 "call pointer $section hard => True/4660/4660/14/0/True"
             if [ "$section" = array ]; then
-                test "$(grep -Fxc -- 'pointer dynamic array => 1/True' "$out/generic-method-definitions.$axis.stdout")" = 1 \
+                gate_output witness "$out/generic-method-definitions.$axis.stdout" 'pointer dynamic array => 1/True' --policy crlf --count 1 \
                     || { echo "FAIL: dynamic array must run once: $axis" >&2; return 1; }
             fi
         done
@@ -2047,14 +1997,13 @@ gate_extra_asserts() {
         begin="== intrinsic pointer $section identity =="
         end="intrinsic pointer $section identity end"
         if reflection_full_profile; then
-            reflection_oracle "$_CG_APP" "$before" > "$out/intrinsic-$key-before.dotnet.stdout"
-            run_bounded "$out/ReflectInvoke$EXE_EXT" "$before" > "$out/intrinsic-$key-before.native.stdout"
+            gate_capture_ok "$out/intrinsic-$key-before.dotnet" reflection_oracle "$_CG_APP" "$before"
+            gate_capture_ok "$out/intrinsic-$key-before.native" run_bounded "$out/ReflectInvoke$EXE_EXT" "$before"
         fi
         for axis in dotnet native; do
             if reflection_full_profile; then
-                sed "/^$begin/,\$d" "$out/generic-method-definitions.$axis.stdout" > "$out/intrinsic-$key-prefix.$axis.stdout"
-                diff -u <(strip_cr_win_file "$out/intrinsic-$key-before.$axis.stdout") \
-                    <(strip_cr_win_file "$out/intrinsic-$key-prefix.$axis.stdout") \
+                gate_output select "$out/generic-method-definitions.$axis.stdout" "$out/intrinsic-$key-prefix.$axis.stdout" --before "$begin" --policy crlf
+                gate_output compare "$out/intrinsic-$key-prefix.$axis.stdout" "$out/intrinsic-$key-before.$axis.stdout" \
                     || { echo "FAIL: pointer structure prefix changed: $axis/$section" >&2; return 1; }
             fi
             reflection_assert_lines "$out/generic-method-definitions.$axis.stdout" 1 \
@@ -2067,174 +2016,179 @@ gate_extra_asserts() {
     runtime_template_binding_prefix_asserts "$out"
 
     # Full identities bind independently of Invoke marshalling and template shape.
-    reflection_oracle "$_CG_APP" delegate-signature-boundary-outcomes > "$out/delegate-signature-boundary.dotnet.stdout"
-    run_bounded "$out/ReflectInvoke$EXE_EXT" delegate-signature-boundary-outcomes > "$out/delegate-signature-boundary.native.stdout"
+    gate_capture_ok "$out/delegate-signature-boundary.dotnet" reflection_oracle "$_CG_APP" delegate-signature-boundary-outcomes
+    gate_capture_ok "$out/delegate-signature-boundary.native" run_bounded "$out/ReflectInvoke$EXE_EXT" delegate-signature-boundary-outcomes
     for axis in dotnet native; do
-        boundary=$(strip_cr_win_file "$out/delegate-signature-boundary.$axis.stdout")
-        reflection_assert_lines - any \
+        boundary_file="$out/delegate-signature-boundary.$axis.stdout"
+        gate_output view "$boundary_file" "$boundary_file.records" --policy crlf
+        boundary="$boundary_file.records"
+        reflection_assert_lines "$boundary_file" any \
             '== runtime delegate signature boundaries ==' 'signature template missing => null' \
-            'runtime delegate signature boundaries end' <<< "$boundary"
+            'runtime delegate signature boundaries end'
         for query in 'return' 'nested return' 'nested argument'; do
-            grep -Fxq -- "signature template dependent $query => null/null" <<< "$boundary"
-            grep -Fxq -- "signature template matching $query => bound/bound" <<< "$boundary"
+            reflection_assert_lines "$boundary_file" any \
+                "signature template dependent $query => null/null" \
+                "signature template matching $query => bound/bound"
         done
         if [ "$axis" = dotnet ]; then
-            grep -Fxq -- 'signature opaque return invoke => returned' <<< "$boundary"
-            grep -Fxq -- 'signature opaque argument invoke => ArgumentException' <<< "$boundary"
+            reflection_assert_lines "$boundary_file" any \
+                'signature opaque return invoke => returned' \
+                'signature opaque argument invoke => ArgumentException'
         else
-            grep -Fxq -- 'signature opaque return invoke => NotSupportedException' <<< "$boundary"
-            grep -Fxq -- 'signature opaque argument invoke => NotSupportedException' <<< "$boundary"
+            reflection_assert_lines "$boundary_file" any \
+                'signature opaque return invoke => NotSupportedException' \
+                'signature opaque argument invoke => NotSupportedException'
         fi
         for query in 'ref' 'pointer' 'ref return' 'pointer return' 'class ref' 'class return'; do
-            grep -Fxq -- "signature ordinary $query matching => bound/bound" <<< "$boundary"
-            grep -Fxq -- "signature ordinary $query mismatch => null/null" <<< "$boundary"
+            reflection_assert_lines "$boundary_file" any \
+                "signature ordinary $query matching => bound/bound" \
+                "signature ordinary $query mismatch => null/null"
         done
         if [ "$axis" = dotnet ]; then
-            grep -Fxq -- 'signature ordinary ref object => null/null' <<< "$boundary"
-            grep -Fxq -- 'signature ordinary ref invoke => null' <<< "$boundary"
-            grep -Fxq -- 'signature ordinary pointer invoke => returned' <<< "$boundary"
+            reflection_assert_lines "$boundary_file" any \
+                'signature ordinary ref object => null/null' \
+                'signature ordinary ref invoke => null' \
+                'signature ordinary pointer invoke => returned'
         else
-            grep -Fxq -- 'signature ordinary ref object => null/null' <<< "$boundary"
-            grep -Fxq -- 'signature ordinary ref invoke => NotSupportedException' <<< "$boundary"
-            grep -Fxq -- 'signature ordinary pointer invoke => NotSupportedException' <<< "$boundary"
+            reflection_assert_lines "$boundary_file" any \
+                'signature ordinary ref object => null/null' \
+                'signature ordinary ref invoke => NotSupportedException' \
+                'signature ordinary pointer invoke => NotSupportedException'
         fi
-        reflection_assert_lines - any \
+        reflection_assert_lines "$boundary_file" any \
             '== ordinary runtime delegate signature boundaries ==' \
-            'signature ordinary template missing => null' 'ordinary runtime delegate signature boundaries end' <<< "$boundary"
+            'signature ordinary template missing => null' 'ordinary runtime delegate signature boundaries end'
     done
     if reflection_full_profile; then
-        reflection_oracle "$_CG_APP" delegate-signature-before-ordinary-boundary > "$out/ordinary-template-boundary-before.dotnet.stdout"
-        run_bounded "$out/ReflectInvoke$EXE_EXT" delegate-signature-before-ordinary-boundary > "$out/ordinary-template-boundary-before.native.stdout"
+        gate_capture_ok "$out/ordinary-template-boundary-before.dotnet" reflection_oracle "$_CG_APP" delegate-signature-before-ordinary-boundary
+        gate_capture_ok "$out/ordinary-template-boundary-before.native" run_bounded "$out/ReflectInvoke$EXE_EXT" delegate-signature-before-ordinary-boundary
     fi
     for axis in dotnet native; do
         if reflection_full_profile; then
-            sed '/^== ordinary runtime delegate signature boundaries ==/,$d' "$out/delegate-signature-boundary.$axis.stdout" \
-                > "$out/ordinary-template-boundary-prefix.$axis.stdout"
-            diff -u <(strip_cr_win_file "$out/ordinary-template-boundary-before.$axis.stdout") \
-                <(strip_cr_win_file "$out/ordinary-template-boundary-prefix.$axis.stdout")
+            gate_output select "$out/delegate-signature-boundary.$axis.stdout" "$out/ordinary-template-boundary-prefix.$axis.stdout" --before '== ordinary runtime delegate signature boundaries ==' --policy crlf
+            gate_output compare "$out/ordinary-template-boundary-prefix.$axis.stdout" "$out/ordinary-template-boundary-before.$axis.stdout"
         fi
     done
     if reflection_full_profile; then
-        reflection_oracle "$_CG_APP" delegate-signature-before-overload-boundary > "$out/ordinary-overload-boundary-before.dotnet.stdout"
-        run_bounded "$out/ReflectInvoke$EXE_EXT" delegate-signature-before-overload-boundary > "$out/ordinary-overload-boundary-before.native.stdout"
+        gate_capture_ok "$out/ordinary-overload-boundary-before.dotnet" reflection_oracle "$_CG_APP" delegate-signature-before-overload-boundary
+        gate_capture_ok "$out/ordinary-overload-boundary-before.native" run_bounded "$out/ReflectInvoke$EXE_EXT" delegate-signature-before-overload-boundary
     fi
     for axis in dotnet native; do
         if reflection_full_profile; then
-            sed '/^== unresolved ordinary overload selection ==/,$d' "$out/delegate-signature-boundary.$axis.stdout" \
-                > "$out/ordinary-overload-boundary-prefix.$axis.stdout"
-            diff -u <(strip_cr_win_file "$out/ordinary-overload-boundary-before.$axis.stdout") \
-                <(strip_cr_win_file "$out/ordinary-overload-boundary-prefix.$axis.stdout")
+            gate_output select "$out/delegate-signature-boundary.$axis.stdout" "$out/ordinary-overload-boundary-prefix.$axis.stdout" --before '== unresolved ordinary overload selection ==' --policy crlf
+            gate_output compare "$out/ordinary-overload-boundary-prefix.$axis.stdout" "$out/ordinary-overload-boundary-before.$axis.stdout"
         fi
-        boundary=$(strip_cr_win_file "$out/delegate-signature-boundary.$axis.stdout")
-        reflection_assert_lines - any \
-            '== unresolved ordinary overload selection ==' 'unresolved ordinary overload selection end' <<< "$boundary"
-        grep -Fxq -- 'signature overload coincident ref => bound/8/10/bound/8/10' <<< "$boundary"
-        grep -Fxq -- 'signature overload coincident composed => bound/48/False/bound/48/False' <<< "$boundary"
+        boundary_file="$out/delegate-signature-boundary.$axis.stdout"
+        gate_output view "$boundary_file" "$boundary_file.records" --policy crlf
+        boundary="$boundary_file.records"
+        reflection_assert_lines "$boundary_file" any \
+            '== unresolved ordinary overload selection ==' 'unresolved ordinary overload selection end'
+        reflection_assert_lines "$boundary_file" any \
+            'signature overload coincident ref => bound/8/10/bound/8/10' \
+            'signature overload coincident composed => bound/48/False/bound/48/False'
         result=bound
-        grep -Fxq -- 'signature overload reordered base => bound' <<< "$boundary"
+        gate_output witness "$boundary_file" 'signature overload reordered base => bound' --count any --policy crlf
         for query in 'coincident reference' 'coincident pointer' 'coincident pointer return' \
             'coincident ref return' 'coincident constant'; do
-            grep -Fxq -- "signature overload $query => $result" <<< "$boundary"
+            gate_output witness "$boundary_file" "signature overload $query => $result" --count any --policy crlf
         done
     done
 
     if reflection_full_profile; then
-        reflection_oracle "$_CG_APP" delegate-signature-before-shape-boundary > "$out/shape-overload-boundary-before.dotnet.stdout"
-        run_bounded "$out/ReflectInvoke$EXE_EXT" delegate-signature-before-shape-boundary > "$out/shape-overload-boundary-before.native.stdout"
+        gate_capture_ok "$out/shape-overload-boundary-before.dotnet" reflection_oracle "$_CG_APP" delegate-signature-before-shape-boundary
+        gate_capture_ok "$out/shape-overload-boundary-before.native" run_bounded "$out/ReflectInvoke$EXE_EXT" delegate-signature-before-shape-boundary
     fi
     for axis in dotnet native; do
         if reflection_full_profile; then
-            sed '/^== unresolved structured overload selection ==/,$d' "$out/delegate-signature-boundary.$axis.stdout" \
-                > "$out/shape-overload-boundary-prefix.$axis.stdout"
-            diff -u <(strip_cr_win_file "$out/shape-overload-boundary-before.$axis.stdout") \
-                <(strip_cr_win_file "$out/shape-overload-boundary-prefix.$axis.stdout")
+            gate_output select "$out/delegate-signature-boundary.$axis.stdout" "$out/shape-overload-boundary-prefix.$axis.stdout" --before '== unresolved structured overload selection ==' --policy crlf
+            gate_output compare "$out/shape-overload-boundary-prefix.$axis.stdout" "$out/shape-overload-boundary-before.$axis.stdout"
         fi
-        boundary=$(strip_cr_win_file "$out/delegate-signature-boundary.$axis.stdout")
-        reflection_assert_lines - any \
-            '== unresolved structured overload selection ==' 'unresolved structured overload selection end' <<< "$boundary"
+        boundary_file="$out/delegate-signature-boundary.$axis.stdout"
+        gate_output view "$boundary_file" "$boundary_file.records" --policy crlf
+        boundary="$boundary_file.records"
+        reflection_assert_lines "$boundary_file" any \
+            '== unresolved structured overload selection ==' 'unresolved structured overload selection end'
         result=bound
         for query in 'coincident function' 'coincident deep pointer'; do
-            grep -Fxq -- "signature overload $query => $result" <<< "$boundary"
+            gate_output witness "$boundary_file" "signature overload $query => $result" --count any --policy crlf
         done
     done
 
     if reflection_full_profile; then
-        reflection_oracle "$_CG_APP" delegate-signature-before-leaf-boundary > "$out/leaf-overload-boundary-before.dotnet.stdout"
-        run_bounded "$out/ReflectInvoke$EXE_EXT" delegate-signature-before-leaf-boundary > "$out/leaf-overload-boundary-before.native.stdout"
+        gate_capture_ok "$out/leaf-overload-boundary-before.dotnet" reflection_oracle "$_CG_APP" delegate-signature-before-leaf-boundary
+        gate_capture_ok "$out/leaf-overload-boundary-before.native" run_bounded "$out/ReflectInvoke$EXE_EXT" delegate-signature-before-leaf-boundary
     fi
     for axis in dotnet native; do
         if reflection_full_profile; then
-            sed '/^== unresolved function leaf overload selection ==/,$d' "$out/delegate-signature-boundary.$axis.stdout" \
-                > "$out/leaf-overload-boundary-prefix.$axis.stdout"
-            diff -u <(strip_cr_win_file "$out/leaf-overload-boundary-before.$axis.stdout") \
-                <(strip_cr_win_file "$out/leaf-overload-boundary-prefix.$axis.stdout")
+            gate_output select "$out/delegate-signature-boundary.$axis.stdout" "$out/leaf-overload-boundary-prefix.$axis.stdout" --before '== unresolved function leaf overload selection ==' --policy crlf
+            gate_output compare "$out/leaf-overload-boundary-prefix.$axis.stdout" "$out/leaf-overload-boundary-before.$axis.stdout"
         fi
-        boundary=$(strip_cr_win_file "$out/delegate-signature-boundary.$axis.stdout")
-        reflection_assert_lines - any \
-            '== unresolved function leaf overload selection ==' 'unresolved function leaf overload selection end' <<< "$boundary"
+        boundary_file="$out/delegate-signature-boundary.$axis.stdout"
+        gate_output view "$boundary_file" "$boundary_file.records" --policy crlf
+        boundary="$boundary_file.records"
+        reflection_assert_lines "$boundary_file" any \
+            '== unresolved function leaf overload selection ==' 'unresolved function leaf overload selection end'
         result=bound
         for query in 'coincident array' 'coincident matrix' 'direct array identity'; do
-            grep -Fxq -- "signature overload $query => $result" <<< "$boundary"
+            gate_output witness "$boundary_file" "signature overload $query => $result" --count any --policy crlf
         done
     done
 
     if reflection_full_profile; then
-        reflection_oracle "$_CG_APP" delegate-signature-before-identity-boundary > "$out/identity-overload-boundary-before.dotnet.stdout"
-        run_bounded "$out/ReflectInvoke$EXE_EXT" delegate-signature-before-identity-boundary > "$out/identity-overload-boundary-before.native.stdout"
+        gate_capture_ok "$out/identity-overload-boundary-before.dotnet" reflection_oracle "$_CG_APP" delegate-signature-before-identity-boundary
+        gate_capture_ok "$out/identity-overload-boundary-before.native" run_bounded "$out/ReflectInvoke$EXE_EXT" delegate-signature-before-identity-boundary
     fi
     for axis in dotnet native; do
         if reflection_full_profile; then
-            sed '/^== unresolved omitted identity overload selection ==/,$d' "$out/delegate-signature-boundary.$axis.stdout" \
-                > "$out/identity-overload-boundary-prefix.$axis.stdout"
-            diff -u <(strip_cr_win_file "$out/identity-overload-boundary-before.$axis.stdout") \
-                <(strip_cr_win_file "$out/identity-overload-boundary-prefix.$axis.stdout")
+            gate_output select "$out/delegate-signature-boundary.$axis.stdout" "$out/identity-overload-boundary-prefix.$axis.stdout" --before '== unresolved omitted identity overload selection ==' --policy crlf
+            gate_output compare "$out/identity-overload-boundary-prefix.$axis.stdout" "$out/identity-overload-boundary-before.$axis.stdout"
         fi
-        boundary=$(strip_cr_win_file "$out/delegate-signature-boundary.$axis.stdout")
-        reflection_assert_lines - any \
-            '== unresolved omitted identity overload selection ==' 'unresolved omitted identity overload selection end' <<< "$boundary"
+        boundary_file="$out/delegate-signature-boundary.$axis.stdout"
+        gate_output view "$boundary_file" "$boundary_file.records" --policy crlf
+        boundary="$boundary_file.records"
+        reflection_assert_lines "$boundary_file" any \
+            '== unresolved omitted identity overload selection ==' 'unresolved omitted identity overload selection end'
         result=bound
         for query in 'coincident generic family'; do
             for mode in soft hard; do
-                grep -Fxq -- "signature overload $query $mode => $result" <<< "$boundary"
+                gate_output witness "$boundary_file" "signature overload $query $mode => $result" --count any --policy crlf
             done
         done
     done
 
     if reflection_full_profile; then
-        reflection_oracle "$_CG_APP" delegate-signature-before-runtime-argument-boundary > "$out/runtime-argument-boundary-before.dotnet.stdout"
-        run_bounded "$out/ReflectInvoke$EXE_EXT" delegate-signature-before-runtime-argument-boundary > "$out/runtime-argument-boundary-before.native.stdout"
+        gate_capture_ok "$out/runtime-argument-boundary-before.dotnet" reflection_oracle "$_CG_APP" delegate-signature-before-runtime-argument-boundary
+        gate_capture_ok "$out/runtime-argument-boundary-before.native" run_bounded "$out/ReflectInvoke$EXE_EXT" delegate-signature-before-runtime-argument-boundary
     fi
     for axis in dotnet native; do
         if reflection_full_profile; then
-            sed '/^== matching runtime generic identity boundaries ==/,$d' "$out/delegate-signature-boundary.$axis.stdout" \
-                > "$out/runtime-argument-boundary-prefix.$axis.stdout"
-            diff -u <(strip_cr_win_file "$out/runtime-argument-boundary-before.$axis.stdout") \
-                <(strip_cr_win_file "$out/runtime-argument-boundary-prefix.$axis.stdout")
+            gate_output select "$out/delegate-signature-boundary.$axis.stdout" "$out/runtime-argument-boundary-prefix.$axis.stdout" --before '== matching runtime generic identity boundaries ==' --policy crlf
+            gate_output compare "$out/runtime-argument-boundary-prefix.$axis.stdout" "$out/runtime-argument-boundary-before.$axis.stdout"
         fi
-        boundary=$(strip_cr_win_file "$out/delegate-signature-boundary.$axis.stdout")
+        boundary_file="$out/delegate-signature-boundary.$axis.stdout"
+        gate_output view "$boundary_file" "$boundary_file.records" --policy crlf
+        boundary="$boundary_file.records"
         result=bound
-        reflection_assert_lines - any \
+        reflection_assert_lines "$boundary_file" any \
             '== matching runtime generic identity boundaries ==' 'matching runtime generic identity boundaries end' \
-            "signature overload generic identity soft => $result" "signature overload generic identity hard => $result" <<< "$boundary"
+            "signature overload generic identity soft => $result" "signature overload generic identity hard => $result"
     done
 
     for axis in dotnet native; do
         if [ "$axis" = dotnet ]; then
             if reflection_full_profile; then
-                reflection_oracle "$_CG_APP" before-delegate-constructor-names > "$out/constructor-name-before.$axis.stdout"
+                gate_capture_ok "$out/constructor-name-before.$axis" reflection_oracle "$_CG_APP" before-delegate-constructor-names
             fi
-            reflection_oracle "$_CG_APP" > "$out/constructor-name-full.$axis.stdout"
+            gate_capture_ok "$out/constructor-name-full.$axis" reflection_oracle "$_CG_APP"
         else
             if reflection_full_profile; then
-                run_bounded "$out/ReflectInvoke$EXE_EXT" before-delegate-constructor-names > "$out/constructor-name-before.$axis.stdout"
+                gate_capture_ok "$out/constructor-name-before.$axis" run_bounded "$out/ReflectInvoke$EXE_EXT" before-delegate-constructor-names
             fi
-            reflection_native_full "$out" ReflectInvoke > "$out/constructor-name-full.$axis.stdout"
+            gate_capture_ok "$out/constructor-name-full.$axis" reflection_native_full "$out" ReflectInvoke
         fi
         if reflection_full_profile; then
-            sed '/^== delegate constructor body names ==/,$d' "$out/constructor-name-full.$axis.stdout" \
-                > "$out/constructor-name-prefix.$axis.stdout"
-            diff -u <(strip_cr_win_file "$out/constructor-name-before.$axis.stdout") \
-                <(strip_cr_win_file "$out/constructor-name-prefix.$axis.stdout") \
+            gate_output select "$out/constructor-name-full.$axis.stdout" "$out/constructor-name-prefix.$axis.stdout" --before '== delegate constructor body names ==' --policy crlf
+            gate_output compare "$out/constructor-name-prefix.$axis.stdout" "$out/constructor-name-before.$axis.stdout" \
                 || { echo "FAIL: constructor name prefix changed: $axis" >&2; return 1; }
         fi
         reflection_assert_lines "$out/constructor-name-full.$axis.stdout" 1 \
@@ -2247,11 +2201,13 @@ gate_extra_asserts() {
             'constructor hard mismatch => ArgumentException' 'constructor hard missing => ArgumentException'
     done
 
-    reflection_oracle "$_CG_APP" delegate-name-boundary-outcomes > "$out/delegate-name-boundary.dotnet.stdout"
-    run_bounded "$out/ReflectInvoke$EXE_EXT" delegate-name-boundary-outcomes > "$out/delegate-name-boundary.native.stdout"
+    gate_capture_ok "$out/delegate-name-boundary.dotnet" reflection_oracle "$_CG_APP" delegate-name-boundary-outcomes
+    gate_capture_ok "$out/delegate-name-boundary.native" run_bounded "$out/ReflectInvoke$EXE_EXT" delegate-name-boundary-outcomes
     for axis in dotnet native; do
-        boundary=$(strip_cr_win_file "$out/delegate-name-boundary.$axis.stdout")
-        reflection_assert_lines - any \
+        boundary_file="$out/delegate-name-boundary.$axis.stdout"
+        gate_output view "$boundary_file" "$boundary_file.records" --policy crlf
+        boundary="$boundary_file.records"
+        reflection_assert_lines "$boundary_file" any \
             '== delegate name signature boundaries ==' \
             'name boundary unrelated function name => null' \
             'name boundary function argument mismatch => null' \
@@ -2265,14 +2221,14 @@ gate_extra_asserts() {
             'name boundary MethodInfo ref value mismatch => null' \
             'name boundary enum underlying => bound' \
             'name boundary MethodInfo enum underlying => bound' \
-            'delegate name signature boundaries end' <<< "$boundary"
+            'delegate name signature boundaries end'
         reflection_expected_lines=()
         for line in \
             'own constructor => bound' 'base constructor => bound' 'static initializer => bound' \
             'constructor query normalization => bound' 'initializer query normalization => bound'; do
             reflection_expected_lines+=("name boundary $line")
         done
-        reflection_assert_lines - any "${reflection_expected_lines[@]}" <<< "$boundary"
+        reflection_assert_lines "$boundary_file" any "${reflection_expected_lines[@]}"
     done
 
     # Initial intrinsic lookup allocates one native method row; enumeration can
@@ -2280,7 +2236,8 @@ gate_extra_asserts() {
     # Synthesized metadata rows hold MethodInfo inline and are interned on cold lookup.
     # Enforce each operation's first and repeated allocation budget independently.
     # The capture reports time too, but timing is not a pass/fail threshold.
-    DN2CPP_REFLECTION_MEASURE=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/allocations.csv"
+    DN2CPP_REFLECTION_MEASURE=1 gate_capture_ok "$out/allocations" run_bounded "$out/ReflectInvoke$EXE_EXT"
+    cp "$out/allocations.stdout" "$out/allocations.csv"
     if ! "$py" gates/measure-reflection-metadata.py --check-allocation-limits \
             gates/expected/reflection-allocations.csv "$out/allocations.csv" \
             > "$out/allocation-check.json"; then
@@ -2307,16 +2264,12 @@ DN2CPP_STRICT_COMPLETION=1 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEX
     corelib_diff_gate ReflectInvoke --no-ildiet --link-xml samples/dotnet/ReflectInvoke/link.xml System.ComponentModel.TypeConverter System.Linq System.Threading.Tasks.Parallel
 for axis in native dotnet; do
     if [ "$axis" = native ]; then
-        run_bounded "$_CG_OUT/ReflectInvoke$EXE_EXT" before-inherited-private-accessors \
-            > "$_CG_OUT/private-accessors-before.$axis.stdout"
+        gate_capture_ok "$_CG_OUT/private-accessors-before.$axis" run_bounded "$_CG_OUT/ReflectInvoke$EXE_EXT" before-inherited-private-accessors
     else
-        reflection_oracle "$_CG_APP" before-inherited-private-accessors \
-            > "$_CG_OUT/private-accessors-before.$axis.stdout"
+        gate_capture_ok "$_CG_OUT/private-accessors-before.$axis" reflection_oracle "$_CG_APP" before-inherited-private-accessors
     fi
-    sed '/^== inherited private property accessors ==$/,$d' "$_CG_OUT/gate.$axis.stdout" \
-        > "$_CG_OUT/private-accessors-prefix.$axis.stdout"
-    diff -u <(strip_cr_win_file "$_CG_OUT/private-accessors-before.$axis.stdout") \
-        <(strip_cr_win_file "$_CG_OUT/private-accessors-prefix.$axis.stdout")
+    gate_output select "$_CG_OUT/gate.$axis.stdout" "$_CG_OUT/private-accessors-prefix.$axis.stdout" --before '== inherited private property accessors ==' --policy crlf
+    gate_output compare "$_CG_OUT/private-accessors-prefix.$axis.stdout" "$_CG_OUT/private-accessors-before.$axis.stdout"
     reflection_assert_lines "$_CG_OUT/gate.$axis.stdout" 1 \
         '== inherited private property accessors ==' \
         'inherited setter capabilities=True/False methods=True/False' \
@@ -2390,8 +2343,7 @@ ldftn_fixture_dir="$_reflection_inputs/ldftn-local"
 gate_build_fixture gates/fixtures/ldftn-local/LdftnLocalFixture.csproj "$ldftn_fixture_dir"
 ldftn_fixture="$ldftn_fixture_dir/LdftnLocalFixture.dll"
 byref_diagnostic='a delegate target loaded from an address-taken local cannot preserve delegate identity'
-DN2CPP_BEFORE_LDFTN_LOCAL=1 reflection_oracle "$_CG_APP" \
-    > "$invalid_out/byref-prefix.stdout"
+DN2CPP_BEFORE_LDFTN_LOCAL=1 gate_capture_ok "$invalid_out/byref-prefix" reflection_oracle "$_CG_APP"
 for byref_mode in overwrite overwrite-int64 copy; do
     byref_dir="$invalid_out/byref-$byref_mode"
     byref_app="$byref_dir/app/ReflectInvoke.dll"
@@ -2402,12 +2354,12 @@ for byref_mode in overwrite overwrite-int64 copy; do
     cp "$(dirname "$_CG_APP")/Dn2Cpp.Runtime.dll" "$byref_dir/app/Dn2Cpp.Runtime.dll"
     run_bounded dotnet exec "$ldftn_fixture" \
         "$byref_app" "--byref-$byref_mode"
-    reflection_oracle "$byref_app" > "$byref_dir/dotnet.stdout"
-    byref_dotnet=$(strip_cr_win_file "$byref_dir/dotnet.stdout")
-    grep -Fxq 'ldftn-local-direct=2/Subtract' <<< "$byref_dotnet"
-    sed '/^ldftn-local-begin/,$d' "$byref_dir/dotnet.stdout" > "$byref_dir/dotnet-prefix.stdout"
-    diff -u <(strip_cr_win_file "$invalid_out/byref-prefix.stdout") \
-        <(strip_cr_win_file "$byref_dir/dotnet-prefix.stdout")
+    gate_capture_ok "$byref_dir/dotnet" reflection_oracle "$byref_app"
+    byref_dotnet_file="$byref_dir/dotnet.stdout"
+
+    gate_output witness "$byref_dotnet_file" 'ldftn-local-direct=2/Subtract' --count any --policy crlf
+    gate_output select "$byref_dir/dotnet.stdout" "$byref_dir/dotnet-prefix.stdout" --before 'ldftn-local-begin' --policy crlf
+    gate_output compare "$byref_dir/dotnet-prefix.stdout" "$invalid_out/byref-prefix.stdout"
     byref_status=0
     run_bounded invoke_cli "$byref_app" -r "$_CG_CORELIB" -r "$typeconverter" \
         -r "$(dirname "$_CG_CORELIB")/System.Linq.dll" -r "$(dirname "$_CG_CORELIB")/System.Threading.Tasks.Parallel.dll" --no-ildiet \
@@ -2430,9 +2382,8 @@ done
 # The copy carries its origin only at run time, so construction must throw.
 byref_copy="$invalid_out/byref-copy"
 compile_console "$byref_copy/out" ReflectInvoke
-byref_status=0
-run_bounded "$byref_copy/out/ReflectInvoke$EXE_EXT" > "$byref_copy/native.stdout" \
-    2> "$byref_copy/native.stderr" || byref_status=$?
+gate_capture "$byref_copy/native" run_bounded "$byref_copy/out/ReflectInvoke$EXE_EXT"
+byref_status=$(cat "$byref_copy/native.status")
 if [ "$byref_status" -eq 0 ] \
     || ! grep -Fq "System.NotSupportedException: $byref_diagnostic" "$byref_copy/native.stderr" \
     || grep -q '^ldftn-local-direct=' "$byref_copy/native.stdout"; then
@@ -2440,14 +2391,13 @@ if [ "$byref_status" -eq 0 ] \
     echo 'error: a copied address-taken delegate target was not refused at construction' >&2
     exit 1
 fi
-sed '/^ldftn-local-begin/,$d' "$byref_copy/native.stdout" > "$byref_copy/native-prefix.stdout"
-diff -u <(strip_cr_win_file "$invalid_out/byref-prefix.stdout") \
-    <(strip_cr_win_file "$byref_copy/native-prefix.stdout")
+gate_output select "$byref_copy/native.stdout" "$byref_copy/native-prefix.stdout" --before 'ldftn-local-begin' --policy crlf
+gate_output compare "$byref_copy/native-prefix.stdout" "$invalid_out/byref-prefix.stdout"
 
 # An argument/field constructor body has no load origin; local and stack joins
 # also have a tracked edge, which must succeed before the untracked edge refuses.
 origin_diagnostic='a delegate target without a preserved method identity is not supported'
-reflection_oracle "$_CG_APP" before-delegate-origin-boundaries > "$invalid_out/origin-prefix.stdout"
+gate_capture_ok "$invalid_out/origin-prefix" reflection_oracle "$_CG_APP" before-delegate-origin-boundaries
 for origin_mode in argument field array checked-conv arithmetic box call local stack-join byref-argument; do
     origin_dir="$invalid_out/origin-$origin_mode"
     origin_app="$origin_dir/app/ReflectInvoke.dll"
@@ -2458,20 +2408,22 @@ for origin_mode in argument field array checked-conv arithmetic box call local s
     cp "$(dirname "$_CG_APP")/Dn2Cpp.Runtime.dll" "$origin_dir/app/Dn2Cpp.Runtime.dll"
     run_bounded dotnet exec "$ldftn_fixture" \
         "$origin_app" "--delegate-origin-$origin_mode" > "$origin_dir/fixture.log"
-    origin_fixture=$(strip_cr_win_file "$origin_dir/fixture.log")
-    grep -Fxq "delegate origin fixture verified: --delegate-origin-$origin_mode" <<< "$origin_fixture"
-    reflection_oracle "$origin_app" > "$origin_dir/dotnet.stdout"
-    origin_dotnet=$(strip_cr_win_file "$origin_dir/dotnet.stdout")
-    grep -Fxq 'delegate-origin-first=12/Add/True' <<< "$origin_dotnet"
+    origin_fixture_file="$origin_dir/fixture.log"
+
+    gate_output witness "$origin_fixture_file" "delegate origin fixture verified: --delegate-origin-$origin_mode" --count any --policy crlf
+    gate_capture_ok "$origin_dir/dotnet" reflection_oracle "$origin_app"
+    origin_dotnet_file="$origin_dir/dotnet.stdout"
+
+    gate_output witness "$origin_dotnet_file" 'delegate-origin-first=12/Add/True' --count any --policy crlf
     origin_second='delegate-origin-second=12/Add/False'
     if [ "$origin_mode" = local ] || [ "$origin_mode" = stack-join ]; then
         origin_second='delegate-origin-second=2/Subtract/True'
     fi
-    grep -Fxq "$origin_second" <<< "$origin_dotnet"
-    grep -Fxq 'delegate origin boundaries end' <<< "$origin_dotnet"
-    sed '/^== delegate origin boundaries ==/,$d' "$origin_dir/dotnet.stdout" > "$origin_dir/dotnet-prefix.stdout"
-    diff -u <(strip_cr_win_file "$invalid_out/origin-prefix.stdout") \
-        <(strip_cr_win_file "$origin_dir/dotnet-prefix.stdout")
+    reflection_assert_lines "$origin_dotnet_file" any \
+        "$origin_second" \
+        'delegate origin boundaries end'
+    gate_output select "$origin_dir/dotnet.stdout" "$origin_dir/dotnet-prefix.stdout" --before '== delegate origin boundaries ==' --policy crlf
+    gate_output compare "$origin_dir/dotnet-prefix.stdout" "$invalid_out/origin-prefix.stdout"
     origin_status=0
     run_bounded invoke_cli "$origin_app" -r "$_CG_CORELIB" -r "$typeconverter" \
         -r "$(dirname "$_CG_CORELIB")/System.Linq.dll" -r "$(dirname "$_CG_CORELIB")/System.Threading.Tasks.Parallel.dll" --no-ildiet \
@@ -2484,21 +2436,21 @@ for origin_mode in argument field array checked-conv arithmetic box call local s
             exit 1
         fi
         compile_console "$origin_dir/out" ReflectInvoke
-        origin_status=0
-        run_bounded "$origin_dir/out/ReflectInvoke$EXE_EXT" > "$origin_dir/native.stdout" \
-            2> "$origin_dir/native.stderr" || origin_status=$?
-        origin_native=$(strip_cr_win_file "$origin_dir/native.stdout")
+        gate_capture "$origin_dir/native" run_bounded "$origin_dir/out/ReflectInvoke$EXE_EXT"
+        origin_status=$(cat "$origin_dir/native.status")
+        origin_native_file="$origin_dir/native.stdout"
+        gate_output view "$origin_native_file" "$origin_native_file.records" --policy crlf
+        origin_native="$origin_native_file.records"
         if [ "$origin_status" -eq 0 ] \
             || ! grep -Fq "System.NotSupportedException: $origin_diagnostic" "$origin_dir/native.stderr" \
-            || ! grep -Fxq 'delegate-origin-first=12/Add/True' <<< "$origin_native" \
-            || grep -q '^delegate-origin-second=' <<< "$origin_native"; then
+            || ! gate_output witness "$origin_native_file" 'delegate-origin-first=12/Add/True' --count any --policy crlf \
+            || grep -q '^delegate-origin-second=' "$origin_native"; then
             cat "$origin_dir/native.stderr" >&2
             echo "error: origin-$origin_mode did not refuse its untracked construction edge" >&2
             exit 1
         fi
-        sed '/^== delegate origin boundaries ==/,$d' "$origin_dir/native.stdout" > "$origin_dir/native-prefix.stdout"
-        diff -u <(strip_cr_win_file "$invalid_out/origin-prefix.stdout") \
-            <(strip_cr_win_file "$origin_dir/native-prefix.stdout")
+        gate_output select "$origin_dir/native.stdout" "$origin_dir/native-prefix.stdout" --before '== delegate origin boundaries ==' --policy crlf
+        gate_output compare "$origin_dir/native-prefix.stdout" "$invalid_out/origin-prefix.stdout"
     else
         origin_owner=OriginBoundary
         [ "$origin_mode" = field ] && origin_owner=FromField
@@ -2521,26 +2473,31 @@ mkdir -p "$codec_out"
 cp gates/fixtures/reflection-metadata-codec.cpp "$codec_out/generated.cpp"
 printf '#pragma once\n' > "$codec_out/generated.h"
 compile_console "$codec_out" MetadataCodec
-codec_native=$(run_bounded "$codec_out/MetadataCodec$EXE_EXT")
-codec_native=$(strip_cr_win "$codec_native")
-codec_prefix=$(awk '/^metadata missing invocation diagnostics begin$/ { exit } { print }' <<< "$codec_native")
-assert_output "$codec_prefix" \
+gate_capture_ok "$codec_out/codec-native" run_bounded "$codec_out/MetadataCodec$EXE_EXT"
+codec_native_file="$codec_out/codec-native.stdout"
+
+codec_prefix_file="${codec_native_file}.before-metadata-missing-invocation-diagnostics-begin"
+
+gate_output select "$codec_native_file" "$codec_prefix_file" --before 'metadata missing invocation diagnostics begin' --policy crlf
+gate_assert_text "$codec_prefix_file" \
     "$(printf '%s\n' 'metadata codec boundaries OK' 'metadata invoker refusal fields OK')"
-assert_output "$codec_native" "$(printf '%s\n' 'metadata codec boundaries OK' \
+gate_assert_text "$codec_native_file" "$(printf '%s\n' 'metadata codec boundaries OK' \
     'metadata invoker refusal fields OK' 'metadata missing invocation diagnostics begin' \
     'metadata missing native invoker' 'metadata missing native body' \
     'metadata missing packed invoker' 'metadata missing packed body' \
     'metadata missing invocation diagnostics OK' 'metadata unrecorded interface guard begin' \
     'metadata unrecorded interface guard OK' 'metadata Object virtual equality guard begin' \
     'metadata Object virtual equality guard OK')"
-codec_old=$(awk '/^metadata unrecorded interface guard begin$/ { exit } { print }' <<< "$codec_native")
-assert_output "$codec_old" "$(printf '%s\n' 'metadata codec boundaries OK' \
+codec_old_file="${codec_native_file}.before-metadata-unrecorded-interface-guard-begin"
+gate_output select "$codec_native_file" "$codec_old_file" --before 'metadata unrecorded interface guard begin' --policy crlf
+gate_assert_text "$codec_old_file" "$(printf '%s\n' 'metadata codec boundaries OK' \
     'metadata invoker refusal fields OK' 'metadata missing invocation diagnostics begin' \
     'metadata missing native invoker' 'metadata missing native body' \
     'metadata missing packed invoker' 'metadata missing packed body' \
     'metadata missing invocation diagnostics OK')"
-codec_object_old=$(awk '/^metadata Object virtual equality guard begin$/ { exit } { print }' <<< "$codec_native")
-assert_output "$codec_object_old" "$(printf '%s\n' 'metadata codec boundaries OK' \
+codec_object_old_file="${codec_native_file}.before-metadata-object-virtual-equality-guard-begin"
+gate_output select "$codec_native_file" "$codec_object_old_file" --before 'metadata Object virtual equality guard begin' --policy crlf
+gate_assert_text "$codec_object_old_file" "$(printf '%s\n' 'metadata codec boundaries OK' \
     'metadata invoker refusal fields OK' 'metadata missing invocation diagnostics begin' \
     'metadata missing native invoker' 'metadata missing native body' \
     'metadata missing packed invoker' 'metadata missing packed body' \
@@ -2553,10 +2510,13 @@ cache_app=gates/fixtures/delegate-invocation-cache/bin/$CONFIG/net10.0/DelegateI
 cache_out=artifacts/reflectinvoke-delegate-cache
 DN2CPP_STRICT_COMPLETION=1 invoke_cli "$cache_app" -r "$_CG_CORELIB" -o "$cache_out"
 compile_console "$cache_out" DelegateInvocationCache
-cache_expected=$(reflection_oracle "$cache_app")
-cache_actual=$(run_bounded "$cache_out/DelegateInvocationCache$EXE_EXT")
-cache_actual=$(strip_cr_win "$cache_actual")
-assert_output "$cache_actual" "$(strip_cr_win "$cache_expected")"
+gate_capture_ok "$cache_out/cache-expected" reflection_oracle "$cache_app"
+cache_expected_file="$cache_out/cache-expected.stdout"
+
+gate_capture_ok "$cache_out/cache-actual" run_bounded "$cache_out/DelegateInvocationCache$EXE_EXT"
+cache_actual_file="$cache_out/cache-actual.stdout"
+
+gate_output compare "$cache_actual_file" "$cache_expected_file"
 for cache_line in '== invocation list cache GC ==' 'cache survives GC=True' \
         'span combine=3 True True True' 'empty span null=True' \
         'parallel clone cache=True' 'null span 0=True' \
@@ -2566,22 +2526,26 @@ for cache_line in '== invocation list cache GC ==' 'cache survives GC=True' \
         'null hash=NullReferenceException:Object reference not set to an instance of an object.' \
         'null equals=NullReferenceException:Object reference not set to an instance of an object.' \
         'delegate cache fixture end'; do
-    grep -Fxq -- "$cache_line" <<< "$cache_actual" \
+    gate_output witness "$cache_actual_file" "$cache_line" --count any --policy crlf \
         || { echo "FAIL: delegate cache witness missing: $cache_line" >&2; exit 1; }
 done
 
 recursive_project=gates/fixtures/recursive-delegate/RecursiveDelegate.csproj
 run_bounded dotnet build "$recursive_project" -c "$CONFIG" --nologo -v:q
 recursive_app=gates/fixtures/recursive-delegate/bin/$CONFIG/net10.0/RecursiveDelegate.dll
-recursive_expected=$(reflection_oracle "$recursive_app")
+gate_capture_ok "artifacts/reflectinvoke-recursive-oracle/recursive-expected" reflection_oracle "$recursive_app"
+recursive_expected_file="artifacts/reflectinvoke-recursive-oracle/recursive-expected.stdout"
+
 for recursive_mode in shared-generics no-shared-generics; do
     recursive_out="artifacts/reflectinvoke-recursive-$recursive_mode"
     DN2CPP_STRICT_COMPLETION=1 invoke_cli "$recursive_app" -r "$_CG_CORELIB" \
         "--$recursive_mode" -o "$recursive_out"
     compile_console "$recursive_out" RecursiveDelegate
-    recursive_actual=$(run_bounded "$recursive_out/RecursiveDelegate$EXE_EXT")
-    assert_output "$(strip_cr_win "$recursive_actual")" "$(strip_cr_win "$recursive_expected")"
-    grep -Fxq 'recursive delegate identities=True/True' <<< "$(strip_cr_win "$recursive_actual")" \
+    gate_capture_ok "$recursive_out/recursive-actual" run_bounded "$recursive_out/RecursiveDelegate$EXE_EXT"
+    recursive_actual_file="$recursive_out/recursive-actual.stdout"
+
+    gate_output compare "$recursive_actual_file" "$recursive_expected_file"
+    gate_output witness "$recursive_actual_file" 'recursive delegate identities=True/True' --count any --policy crlf \
         || { echo 'FAIL: recursive delegate declaration witness missing' >&2; exit 1; }
 done
 # FieldInfo validation, ordinary visibility/binding guards, sealed interface own
@@ -2589,46 +2553,82 @@ done
 unset -f gate_extra_asserts
 source gates/_ordinary-reflection.sh
 gate_extra_asserts() {
-    local out="$1" native line before prefix modifiers_before modifiers_prefix constructor_messages activation
-    native=$(run_bounded "$out/OrdinaryReflectionLeaves$EXE_EXT") || return $?
-    native=$(strip_cr_win "$native")
-    before=$(DN2CPP_BEFORE_RUNTIME_MEMBER_ATTRIBUTES=1 reflection_oracle "$_CG_APP") || return $?
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== runtime member attributes ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
-    modifiers_before=$(DN2CPP_BEFORE_RUNTIME_RETURN_MODIFIERS=1 reflection_oracle "$_CG_APP") || return $?
-    modifiers_before=$(strip_cr_win "$modifiers_before")
-    modifiers_prefix=$(awk '/^== runtime return modifiers ==$/ { exit } { print }' <<< "$native")
-    assert_output "$modifiers_prefix" "$modifiers_before"
-    before=$(DN2CPP_BEFORE_POINTER_FIELDS=1 reflection_oracle "$_CG_APP") || return $?
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== reflected pointer fields ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
-    before=$(reflection_oracle "$_CG_APP" before-object-method-enumeration) || return $?
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== Object family method enumeration ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
-    before=$(reflection_oracle "$_CG_APP" before-property-accessors) || return $?
-    prefix=$(awk '/^== property accessor arrays ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    before=$(reflection_oracle "$_CG_APP" before-constructor-signatures) || return $?
-    prefix=$(awk '/^== constructor signature binding ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    prefix=$(awk '/^== written generic arguments ==$/ { exit } { print }' <<< "$native")
-    before=$(run_bounded "$out/OrdinaryReflectionLeaves$EXE_EXT" before-written-generic-arguments) || return $?
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    before=$(reflection_oracle "$_CG_APP" before-written-generic-arguments) || return $?
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    prefix=$(awk '/^== property signature hiding ==$/ { exit } { print }' <<< "$native")
-    before=$(run_bounded "$out/OrdinaryReflectionLeaves$EXE_EXT" before-property-hiding) || return $?
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    before=$(reflection_oracle "$_CG_APP" before-property-hiding) || return $?
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    prefix=$(awk '/^== activator constructor messages ==$/ { exit } { print }' <<< "$native")
-    before=$(run_bounded "$out/OrdinaryReflectionLeaves$EXE_EXT" before-constructor-messages) || return $?
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    before=$(reflection_oracle "$_CG_APP" before-constructor-messages) || return $?
-    assert_output "$prefix" "$(strip_cr_win "$before")"
+    local out="$1" native line before prefix modifiers_before modifiers_prefix constructor_messages activation modifiers_prefix_file before_file native_file modifiers_before_file prefix_file
+    gate_capture_ok "$out/ordinary-leaves.native" run_bounded "$out/OrdinaryReflectionLeaves$EXE_EXT" || return $?
+    native_file="$out/ordinary-leaves.native.stdout"
+    gate_output view "$native_file" "$native_file.records" --policy crlf
+    native="$native_file.records"
+
+    DN2CPP_BEFORE_RUNTIME_MEMBER_ATTRIBUTES=1 gate_capture_ok "$out/runtime-member-attributes-before.dotnet" reflection_oracle "$_CG_APP" || return $?
+    before_file="$out/runtime-member-attributes-before.dotnet.stdout"
+
+    prefix_file="${native_file}.before-runtime-member-attributes"
+
+    gate_output select "$native_file" "$prefix_file" --before '== runtime member attributes ==' --policy crlf
+    gate_output compare "$prefix_file" "$before_file"
+    DN2CPP_BEFORE_RUNTIME_RETURN_MODIFIERS=1 gate_capture_ok "$out/runtime-return-modifiers-before.dotnet" reflection_oracle "$_CG_APP" || return $?
+    modifiers_before_file="$out/runtime-return-modifiers-before.dotnet.stdout"
+
+    modifiers_prefix_file="${native_file}.before-runtime-return-modifiers"
+
+    gate_output select "$native_file" "$modifiers_prefix_file" --before '== runtime return modifiers ==' --policy crlf
+    gate_output compare "$modifiers_prefix_file" "$modifiers_before_file"
+    DN2CPP_BEFORE_POINTER_FIELDS=1 gate_capture_ok "$out/pointer-fields-before.dotnet" reflection_oracle "$_CG_APP" || return $?
+    before_file="$out/pointer-fields-before.dotnet.stdout"
+
+    prefix_file="${native_file}.before-reflected-pointer-fields"
+
+    gate_output select "$native_file" "$prefix_file" --before '== reflected pointer fields ==' --policy crlf
+    gate_output compare "$prefix_file" "$before_file"
+    gate_capture_ok "$out/object-method-enumeration-before.dotnet" reflection_oracle "$_CG_APP" before-object-method-enumeration || return $?
+    before_file="$out/object-method-enumeration-before.dotnet.stdout"
+
+    prefix_file="${native_file}.before-object-family-method-enumeration"
+
+    gate_output select "$native_file" "$prefix_file" --before '== Object family method enumeration ==' --policy crlf
+    gate_output compare "$prefix_file" "$before_file"
+    gate_capture_ok "$out/property-accessors-before.dotnet" reflection_oracle "$_CG_APP" before-property-accessors || return $?
+    before_file="$out/property-accessors-before.dotnet.stdout"
+
+    prefix_file="${native_file}.before-property-accessor-arrays"
+    gate_output select "$native_file" "$prefix_file" --before '== property accessor arrays ==' --policy crlf
+    gate_output compare "$prefix_file" "$before_file"
+    gate_capture_ok "$out/constructor-signatures-before.dotnet" reflection_oracle "$_CG_APP" before-constructor-signatures || return $?
+    before_file="$out/constructor-signatures-before.dotnet.stdout"
+
+    prefix_file="${native_file}.before-constructor-signature-binding"
+    gate_output select "$native_file" "$prefix_file" --before '== constructor signature binding ==' --policy crlf
+    gate_output compare "$prefix_file" "$before_file"
+    prefix_file="${native_file}.before-written-generic-arguments"
+    gate_output select "$native_file" "$prefix_file" --before '== written generic arguments ==' --policy crlf
+    gate_capture_ok "$out/written-generic-arguments-before.native" run_bounded "$out/OrdinaryReflectionLeaves$EXE_EXT" before-written-generic-arguments || return $?
+    before_file="$out/written-generic-arguments-before.native.stdout"
+
+    gate_output compare "$prefix_file" "$before_file"
+    gate_capture_ok "$out/written-generic-arguments-before.dotnet" reflection_oracle "$_CG_APP" before-written-generic-arguments || return $?
+    before_file="$out/written-generic-arguments-before.dotnet.stdout"
+
+    gate_output compare "$prefix_file" "$before_file"
+    prefix_file="${native_file}.before-property-signature-hiding"
+    gate_output select "$native_file" "$prefix_file" --before '== property signature hiding ==' --policy crlf
+    gate_capture_ok "$out/property-hiding-before.native" run_bounded "$out/OrdinaryReflectionLeaves$EXE_EXT" before-property-hiding || return $?
+    before_file="$out/property-hiding-before.native.stdout"
+
+    gate_output compare "$prefix_file" "$before_file"
+    gate_capture_ok "$out/property-hiding-before.dotnet" reflection_oracle "$_CG_APP" before-property-hiding || return $?
+    before_file="$out/property-hiding-before.dotnet.stdout"
+
+    gate_output compare "$prefix_file" "$before_file"
+    prefix_file="${native_file}.before-activator-constructor-messages"
+    gate_output select "$native_file" "$prefix_file" --before '== activator constructor messages ==' --policy crlf
+    gate_capture_ok "$out/constructor-messages-before.native" run_bounded "$out/OrdinaryReflectionLeaves$EXE_EXT" before-constructor-messages || return $?
+    before_file="$out/constructor-messages-before.native.stdout"
+
+    gate_output compare "$prefix_file" "$before_file"
+    gate_capture_ok "$out/constructor-messages-before.dotnet" reflection_oracle "$_CG_APP" before-constructor-messages || return $?
+    before_file="$out/constructor-messages-before.dotnet.stdout"
+
+    gate_output compare "$prefix_file" "$before_file"
     constructor_messages=$(cat <<'CONSTRUCTOR_MESSAGES'
 == activator constructor messages ==
 private default type: MissingMethodException/No parameterless constructor defined for type 'ReflectReturnLib.ConstructorPrivateDefault'.
@@ -2649,8 +2649,9 @@ missing generic false: MissingMethodException/Cannot dynamically create an insta
 activator constructor messages end
 CONSTRUCTOR_MESSAGES
 )
-    assert_output "$(awk '/^== activator constructor messages ==$/ { found=1 } found' <<< "$native")" "$constructor_messages"
-    reflection_assert_lines - 1 \
+    gate_output select "$native_file" "$native_file.constructor-messages" --from '== activator constructor messages ==' --policy crlf
+    gate_assert_text "$native_file.constructor-messages" "$constructor_messages"
+    reflection_assert_lines "$native_file" 1 \
         '== property signature hiding ==' 'property signature hiding end' \
         'properties public=PropertyBase.Changed():Int32;PropertyBase.Item(String):Int32;PropertyDerived.Changed():String;PropertyDerived.Item(Int32):Int32;PropertyDerived.Item(Int64):Int32;PropertyDerived.Same():Int32;reflected=True' \
         'properties generic-closed=GenericPropertyBase`1.Item(String):String;GenericPropertyDerived`1.Item(Int32):String;GenericPropertyDerived`1.Item(Int64):String;reflected=True' \
@@ -2660,11 +2661,11 @@ CONSTRUCTOR_MESSAGES
         'properties generic-open-nonpublic=GenericPropertyBase`1.FamilyGet():T;GenericPropertyBase`1.FamilySet():T;reflected=True' \
         'property selected=PropertyDerived.Item(Int32):Int32' \
         'property selected=PropertyBase.Item(String):Int32' \
-        'property selected=PropertyDerived.Item(Int64):Int32' <<< "$native"
-    reflection_assert_lines - 1 \
+        'property selected=PropertyDerived.Item(Int64):Int32'
+    reflection_assert_lines "$native_file" 1 \
         '== written generic arguments ==' 'written generic arguments: pair:Int32,Int64' \
-        'written generic arguments end' <<< "$native"
-    reflection_assert_lines - 1 \
+        'written generic arguments end'
+    reflection_assert_lines "$native_file" 1 \
         '== constructor signature binding ==' 'constructor signature binding end' \
         'unretained wrong type: MissingMethodException/MissingMethodException' \
         'unretained wrong arity: MissingMethodException/<null>' \
@@ -2674,7 +2675,7 @@ CONSTRUCTOR_MESSAGES
         'unretained nested signature: MissingMethodException/MissingMethodException' \
         'constructor field control=True' 'unretained field signature: MissingMethodException/MissingMethodException' \
         'retained constructor control=string/object/1' 'retained dominant: string' \
-        'retained widened: 9' 'unretained ambiguous: AmbiguousMatchException/<null>' <<< "$native"
+        'retained widened: 9' 'unretained ambiguous: AmbiguousMatchException/<null>'
     local constructor
     for constructor in ConstructorStringOnly ConstructorPrivateOnly ConstructorFifteen ConstructorPrivateDefault ConstructorFieldTarget; do
         assert_no_word_match "metadata-only constructor $constructor acquired a body" \
@@ -2696,8 +2697,10 @@ CONSTRUCTOR_MESSAGES
     nested_shapes=$(grep -o 't_ReflectReturnLib_ConstructorNested_[A-Za-z0-9_]*' "$out/generated.h" | sort -u | wc -l | tr -d ' ')
     [ "$nested_shapes" = 2 ] \
         || { echo "FAIL: constructor signature closure produced $nested_shapes nested shapes" >&2; return 1; }
-    local refusal_actual refusal_expected label owner display
-    refusal_actual=$(run_bounded "$out/OrdinaryReflectionLeaves$EXE_EXT" constructor-refusals) || return $?
+    local refusal_actual refusal_expected label owner display refusal_actual_file
+    gate_capture_ok "$out/constructor-refusals.native" run_bounded "$out/OrdinaryReflectionLeaves$EXE_EXT" constructor-refusals || return $?
+    refusal_actual_file="$out/constructor-refusals.native.stdout"
+
     refusal_expected='== unretained constructor selection =='
     while IFS='|' read -r label owner display; do
         refusal_expected="$refusal_expected
@@ -2712,8 +2715,8 @@ matching field signature|ConstructorFieldTarget|Void .ctor(System.String)
 CONSTRUCTOR_REFUSALS
     refusal_expected="$refusal_expected
 unretained constructor selection end"
-    assert_output "$(strip_cr_win "$refusal_actual")" "$refusal_expected"
-    reflection_assert_lines - any \
+    gate_assert_text "$refusal_actual_file" "$refusal_expected"
+    reflection_assert_lines "$native_file" any \
         '== property accessor arrays ==' \
         'accessors AccessorCell/Value default=get_Value;false=get_Value;true=get_Value,set_Value;identity=True;declared=AccessorCell;reflected=AccessorCell' \
         'accessors AccessorCell/Hidden default=;false=;true=get_Hidden,set_Hidden;identity=True;declared=AccessorCell;reflected=AccessorCell' \
@@ -2725,8 +2728,8 @@ unretained constructor selection end"
         'accessors invoke value=15' 'accessors invoke static=23' \
         'accessors invoke indexed=21' 'accessors invoke inherited=17' \
         'accessors null default: NullReferenceException/<null>' \
-        'accessors null true: NullReferenceException/<null>' 'property accessor arrays end' <<< "$native"
-    reflection_assert_lines - any \
+        'accessors null true: NullReferenceException/<null>' 'property accessor arrays end'
+    reflection_assert_lines "$native_file" any \
         '== Object family method enumeration ==' \
         'method order Object/20=GetType/0|ToString/0|Equals/1|GetHashCode/0' \
         'method order Object/28=GetType/0|ToString/0|Equals/1|Equals/2|ReferenceEquals/2|GetHashCode/0' \
@@ -2746,8 +2749,8 @@ unretained constructor selection end"
         'method order ObjectPlainValue/20=Equals/1|GetHashCode/0|ToString/0|GetType/0' \
         'methods ValueType/20=4:same=True' 'methods ObjectPlainValue/20=4:same=True' \
         'methods ObjectValue/62=1:same=True' 'enumerated invocation=True:True' \
-        'Object family method enumeration end' <<< "$native"
-    reflection_assert_lines - any \
+        'Object family method enumeration end'
+    reflection_assert_lines "$native_file" any \
         '== reflected pointer fields ==' \
         'Int pointer get: String:System.Reflection.Pointer:120' \
         'Int pointer set null: String:System.Reflection.Pointer:0/storage:0' \
@@ -2762,12 +2765,12 @@ unretained constructor selection end"
         'SharedTwice pointer set int**: String:System.Reflection.Pointer:120/storage:120' \
         'SharedPoint pointer set struct*: String:System.Reflection.Pointer:120/storage:120' \
         'SharedFunction pointer set IntPtr: String:System.IntPtr:340/storage:340' \
-        'readonly ordinary get: Int32:41' 'reflected pointer fields end' <<< "$native"
+        'readonly ordinary get: Int32:41' 'reflected pointer fields end'
     local layout=record
     [[ "$out" = *-native ]] && layout=native
     grep -wq "md_${layout}_fldtab_ReflectFieldValidationSubset_PointerFields" "$out"/generated*.cpp \
         || { echo "FAIL: pointer fields lack $layout metadata" >&2; return 1; }
-    reflection_assert_lines - any \
+    reflection_assert_lines "$native_file" any \
         '== field validation ==' 'field validation end' \
         'const Money Decimal literal=False initonly=True: Decimal:1.25' \
         "decimal const set: FieldAccessException 0x80131507 Cannot set initonly static field 'Money' after type 'ReflectFieldValidationSubset.Constants' is initialized." \
@@ -2793,7 +2796,7 @@ unretained constructor selection end"
         'return modifiers SizeOf String=0/-1:0/0' \
         'runtime clone method display=System.Object MemberwiseClone()' \
         'runtime clone return display=System.Object' 'runtime SizeOf return display=Int32' \
-        'runtime return modifiers end' <<< "$native"
+        'runtime return modifiers end'
 }
 build_gate_proj samples/dotnet/ReflectReturnLib/ReflectReturnLib.csproj
 object_methods_library="$PWD/samples/dotnet/ReflectReturnLib/bin/$CONFIG/$TFM/ReflectReturnLib.dll"
@@ -2822,9 +2825,12 @@ unset -f gate_extra_asserts
 # preserved static field through Type.GetType, so the two rooting paths stand alone.
 build_gate_proj samples/dotnet/ReflectReturnLib/ReflectReturnLib.csproj
 gate_extra_asserts() {
-    local out="$1" native line owner layout=record
-    native=$(run_bounded "$out/$(basename "$_CG_APP" .dll)$EXE_EXT") || return $?
-    native=$(strip_cr_win "$native")
+    local out="$1" native line owner layout=record native_file
+    gate_capture_ok "$out/ordinary-fixture.native" run_bounded "$out/$(basename "$_CG_APP" .dll)$EXE_EXT" || return $?
+    native_file="$out/ordinary-fixture.native.stdout"
+    gate_output view "$native_file" "$native_file.records" --policy crlf
+    native="$native_file.records"
+
     local lines=()
     case "$_CG_APP" in
         */ReflectPointerFieldsPreserved.dll)
@@ -2836,8 +2842,8 @@ gate_extra_asserts() {
                 'library stored=System.Reflection.Pointer:780') ;;
     esac
     lines+=('pointer fields only end')
-    reflection_assert_lines - any \
-        "${lines[@]}" <<< "$native"
+    reflection_assert_lines "$native_file" any \
+        "${lines[@]}"
     [[ "$out" = *-native ]] && layout=native
     grep -wq "md_${layout}_fldtab_${owner}" "$out"/generated*.cpp \
         || { echo "FAIL: isolated pointer field lacks $layout metadata" >&2; return 1; }
@@ -2858,14 +2864,17 @@ if reflection_full_profile; then
 fi
 unset -f gate_extra_asserts
 gate_extra_asserts() {
-    local out="$1" native line
-    native=$(run_bounded "$out/ReflectionMethodGroupsOnly$EXE_EXT") || return $?
-    native=$(strip_cr_win "$native")
-    reflection_assert_lines - any \
+    local out="$1" native line native_file
+    gate_capture_ok "$out/method-groups.native" run_bounded "$out/ReflectionMethodGroupsOnly$EXE_EXT" || return $?
+    native_file="$out/method-groups.native.stdout"
+    gate_output view "$native_file" "$native_file.records" --policy crlf
+    native="$native_file.records"
+
+    reflection_assert_lines "$native_file" any \
         'activator: made' 'constructor: built' 'method: hello group' \
         'property get: label' 'property set: glad' 'static create delegate: hello static' \
         'create delegate: hello bind' 'make generic: box:String' 'attributes: TagAttribute' \
-        'preserved initializer: start:1' <<< "$native"
+        'preserved initializer: start:1'
 }
 DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectInvoke ReflectionMethodGroupsOnly --no-ildiet \
     --link-xml samples/dotnet/ReflectInvoke/keep-method-groups.xml
@@ -2879,23 +2888,20 @@ fi
 # Other drivers construct reflected application types, which independently roots
 # the attribute constructor this abstract-slot signature must discover.
 gate_extra_asserts() {
-    local out="$1" axis line output
-    run_bounded "$out/ReflectAttributeDiscoveryOnly$EXE_EXT" > "$out/attribute-discovery.native.stdout"
-    reflection_oracle "$_CG_APP" > "$out/attribute-discovery.dotnet.stdout"
-    run_bounded "$out/ReflectAttributeDiscoveryOnly$EXE_EXT" before-attribute-discovery \
-        > "$out/attribute-discovery-before.native.stdout"
-    reflection_oracle "$_CG_APP" before-attribute-discovery \
-        > "$out/attribute-discovery-before.dotnet.stdout"
+    local out="$1" axis line output output_file
+    gate_capture_ok "$out/attribute-discovery.native" run_bounded "$out/ReflectAttributeDiscoveryOnly$EXE_EXT"
+    gate_capture_ok "$out/attribute-discovery.dotnet" reflection_oracle "$_CG_APP"
+    gate_capture_ok "$out/attribute-discovery-before.native" run_bounded "$out/ReflectAttributeDiscoveryOnly$EXE_EXT" before-attribute-discovery
+    gate_capture_ok "$out/attribute-discovery-before.dotnet" reflection_oracle "$_CG_APP" before-attribute-discovery
     for axis in native dotnet; do
-        output=$(strip_cr_win_file "$out/attribute-discovery.$axis.stdout")
-        sed '/^== reflection route final-pass attributes ==/,$d' "$out/attribute-discovery.$axis.stdout" \
-            > "$out/attribute-discovery-prefix.$axis.stdout"
-        diff -u <(strip_cr_win_file "$out/attribute-discovery-before.$axis.stdout") \
-            <(strip_cr_win_file "$out/attribute-discovery-prefix.$axis.stdout")
+        output_file="$out/attribute-discovery.$axis.stdout"
+
+        gate_output select "$out/attribute-discovery.$axis.stdout" "$out/attribute-discovery-prefix.$axis.stdout" --before '== reflection route final-pass attributes ==' --policy crlf
+        gate_output compare "$out/attribute-discovery-prefix.$axis.stdout" "$out/attribute-discovery-before.$axis.stdout"
         for line in 'reflection discovery baseline=23' '== reflection route final-pass attributes ==' \
             'discovery return rows=1' 'discovery return value=17' \
             'reflection route final-pass attributes end'; do
-            [ "$(grep -Fxc -- "$line" <<< "$output")" = 1 ] \
+            gate_output witness "$output_file" "$line" --count 1 --policy crlf \
                 || { echo "FAIL: attribute-discovery witness must run once ($axis): $line" >&2; return 1; }
         done
     done
@@ -2909,30 +2915,36 @@ unset -f gate_extra_asserts
 
 # Delegate binding as a program's only reflection call needs an isolated driver.
 gate_extra_asserts() {
-    local out="$1" native line
-    native=$(run_bounded "$out/ReflectBindOnly$EXE_EXT") || return $?
-    native=$(strip_cr_win "$native")
-    reflection_assert_lines - any \
+    local out="$1" native line native_file
+    gate_capture_ok "$out/reflect-bind.native" run_bounded "$out/ReflectBindOnly$EXE_EXT" || return $?
+    native_file="$out/reflect-bind.native.stdout"
+    gate_output view "$native_file" "$native_file.records" --policy crlf
+    native="$native_file.records"
+
+    reflection_assert_lines "$native_file" any \
         'static: 42' 'generic: 12' 'instance: hello bind' 'override: circle' \
         'interface static: unit' 'bind-only end' 'contravariant: null' 'type return: Circle' \
-        'variance view: null' 'signature types end' <<< "$native"
+        'variance view: null' 'signature types end'
 }
 ordinary_fixture_diff_gate ReflectInvoke ReflectBindOnly --no-ildiet
 unset -f gate_extra_asserts
 
 # A never-boxed struct crosses a bound call unboxed; only Invoke would box it.
 gate_extra_asserts() {
-    local out="$1" native refusal
-    native=$(run_bounded "$out/UnboxedStructBindOnly$EXE_EXT" invoke) || return $?
-    native=$(strip_cr_win "$native")
+    local out="$1" native refusal native_file
+    gate_capture_ok "$out/unboxed-invoke.native" run_bounded "$out/UnboxedStructBindOnly$EXE_EXT" invoke || return $?
+    native_file="$out/unboxed-invoke.native.stdout"
+    gate_output view "$native_file" "$native_file.records" --policy crlf
+    native="$native_file.records"
+
     refusal='in UnboxedStructBindOnly: invoking it boxes UnboxedStructBind.Kept, which this image never allocates; fix: [Preserve] on the target, or link.xml <assembly fullname="UnboxedStructBindOnly"><type fullname="UnboxedStructBind.Kept" preserve="all" /></assembly>'
-    reflection_assert_lines - 1 \
+    reflection_assert_lines "$native_file" 1 \
         '== bound calls over a never-boxed struct ==' 'bound make: 42' 'bound fill: 8' \
         'bound calls over a never-boxed struct end' 'direct kept: 8' \
         '== invoke over a never-boxed struct ==' \
         "invoke keep refused: UnboxedStructBind.Targets::UnboxedStructBind.Kept Keep() $refusal" \
         "invoke refill refused: UnboxedStructBind.Targets::Void Refill(UnboxedStructBind.Kept ByRef) $refusal" \
-        'invoked targets ran: 0' 'invoke over a never-boxed struct end' <<< "$native"
+        'invoked targets ran: 0' 'invoke over a never-boxed struct end'
 }
 ordinary_fixture_diff_gate ReflectInvoke UnboxedStructBindOnly
 unset -f gate_extra_asserts
@@ -2940,7 +2952,7 @@ unset -f gate_extra_asserts
 # Each excluded body touches a type whose static constructor prints, so the .NET diff
 # catches its admission; the body census names which filter was ignored.
 gate_extra_asserts() {
-    local out="$1" body native axis output line
+    local out="$1" body native axis output line native_file output_file
     for body in TagAttribute::set_P RunBase::.cctor Guarded::set_P Guarded::set_All Guarded::add_Hidden \
             NamedMethods::Other 'NamedTemplate_$CnAny0::Other' EnumerationProbe::.cctor \
             CASEBUILT::.ctor CASETYPED::.ctor OpaqueBuilt::.ctor OpaqueTyped::.ctor \
@@ -3001,43 +3013,43 @@ gate_extra_asserts() {
         echo 'FAIL: a projected metadata read created an executable closed owner' >&2
         return 1
     fi
-    native=$(reflection_native_full "$out" AdmissionFiltersOnly) || return $?
-    reflection_assert_lines - 1 \
+    gate_capture_ok "$out/admission-filters.native" reflection_native_full "$out" AdmissionFiltersOnly || return $?
+    native_file="$out/admission-filters.native.stdout"
+    gate_output view "$native_file" "$native_file.records" --policy crlf
+    native="$native_file.records"
+    reflection_assert_lines "$native_file" 1 \
         '== named enumeration admission ==' 'named enumeration admission end' \
         '== type-name case alternatives ==' 'construct choice: CaseBuilt' 'type choice: CaseTyped' \
-        'construct mixed: MixedBuilt' 'type mixed: MixedTyped' 'type-name case alternatives end' <<< "$native"
-    printf '%s\n' "$native" > "$out/attribute-selection.native.stdout"
-    reflection_oracle "$_CG_APP" > "$out/attribute-selection.dotnet.stdout"
-    run_bounded "$out/AdmissionFiltersOnly$EXE_EXT" before-attribute-selection > "$out/attribute-selection-before.native.stdout"
-    reflection_oracle "$_CG_APP" before-attribute-selection > "$out/attribute-selection-before.dotnet.stdout"
-    run_bounded "$out/AdmissionFiltersOnly$EXE_EXT" before-metadata-projections > "$out/metadata-projections-before.native.stdout"
-    reflection_oracle "$_CG_APP" before-metadata-projections > "$out/metadata-projections-before.dotnet.stdout"
-    run_bounded "$out/AdmissionFiltersOnly$EXE_EXT" before-selection-filters > "$out/selection-filters-before.native.stdout"
-    reflection_oracle "$_CG_APP" before-selection-filters > "$out/selection-filters-before.dotnet.stdout"
-    run_bounded "$out/AdmissionFiltersOnly$EXE_EXT" before-reflection-alternatives > "$out/reflection-alternatives-before.native.stdout"
-    reflection_oracle "$_CG_APP" before-reflection-alternatives > "$out/reflection-alternatives-before.dotnet.stdout"
-    run_bounded "$out/AdmissionFiltersOnly$EXE_EXT" before-template-lookups > "$out/template-lookups-before.native.stdout"
-    reflection_oracle "$_CG_APP" before-template-lookups > "$out/template-lookups-before.dotnet.stdout"
-    run_bounded "$out/AdmissionFiltersOnly$EXE_EXT" before-library-bindings > "$out/library-bindings-before.native.stdout"
-    reflection_oracle "$_CG_APP" before-library-bindings > "$out/library-bindings-before.dotnet.stdout"
-    run_bounded "$out/AdmissionFiltersOnly$EXE_EXT" before-typeinfo-declared-methods > "$out/typeinfo-declared-methods-before.native.stdout"
-    reflection_oracle "$_CG_APP" before-typeinfo-declared-methods > "$out/typeinfo-declared-methods-before.dotnet.stdout"
+        'construct mixed: MixedBuilt' 'type mixed: MixedTyped' 'type-name case alternatives end'
+    cp "$native_file" "$out/attribute-selection.native.stdout"
+    gate_capture_ok "$out/attribute-selection.dotnet" reflection_oracle "$_CG_APP"
+    gate_capture_ok "$out/attribute-selection-before.native" run_bounded "$out/AdmissionFiltersOnly$EXE_EXT" before-attribute-selection
+    gate_capture_ok "$out/attribute-selection-before.dotnet" reflection_oracle "$_CG_APP" before-attribute-selection
+    gate_capture_ok "$out/metadata-projections-before.native" run_bounded "$out/AdmissionFiltersOnly$EXE_EXT" before-metadata-projections
+    gate_capture_ok "$out/metadata-projections-before.dotnet" reflection_oracle "$_CG_APP" before-metadata-projections
+    gate_capture_ok "$out/selection-filters-before.native" run_bounded "$out/AdmissionFiltersOnly$EXE_EXT" before-selection-filters
+    gate_capture_ok "$out/selection-filters-before.dotnet" reflection_oracle "$_CG_APP" before-selection-filters
+    gate_capture_ok "$out/reflection-alternatives-before.native" run_bounded "$out/AdmissionFiltersOnly$EXE_EXT" before-reflection-alternatives
+    gate_capture_ok "$out/reflection-alternatives-before.dotnet" reflection_oracle "$_CG_APP" before-reflection-alternatives
+    gate_capture_ok "$out/template-lookups-before.native" run_bounded "$out/AdmissionFiltersOnly$EXE_EXT" before-template-lookups
+    gate_capture_ok "$out/template-lookups-before.dotnet" reflection_oracle "$_CG_APP" before-template-lookups
+    gate_capture_ok "$out/library-bindings-before.native" run_bounded "$out/AdmissionFiltersOnly$EXE_EXT" before-library-bindings
+    gate_capture_ok "$out/library-bindings-before.dotnet" reflection_oracle "$_CG_APP" before-library-bindings
+    gate_capture_ok "$out/typeinfo-declared-methods-before.native" run_bounded "$out/AdmissionFiltersOnly$EXE_EXT" before-typeinfo-declared-methods
+    gate_capture_ok "$out/typeinfo-declared-methods-before.dotnet" reflection_oracle "$_CG_APP" before-typeinfo-declared-methods
     for axis in native dotnet; do
-        output=$(strip_cr_win_file "$out/attribute-selection.$axis.stdout")
-        sed '/^== TypeInfo declared methods ==/,$d' "$out/attribute-selection.$axis.stdout" \
-            > "$out/typeinfo-declared-methods-prefix.$axis.stdout"
-        diff -u <(strip_cr_win_file "$out/typeinfo-declared-methods-before.$axis.stdout") \
-            <(strip_cr_win_file "$out/typeinfo-declared-methods-prefix.$axis.stdout")
+        output_file="$out/attribute-selection.$axis.stdout"
+
+        gate_output select "$out/attribute-selection.$axis.stdout" "$out/typeinfo-declared-methods-prefix.$axis.stdout" --before '== TypeInfo declared methods ==' --policy crlf
+        gate_output compare "$out/typeinfo-declared-methods-prefix.$axis.stdout" "$out/typeinfo-declared-methods-before.$axis.stdout"
         reflection_assert_lines "$out/attribute-selection.$axis.stdout" 1 \
             '== TypeInfo declared methods ==' 'ordinary Safe/0' 'ordinary Safe/1' \
             'ordinary count=2' 'ordinary null=0' 'ordinary wildcard=0' \
             'template Safe/0' 'template Safe/1' 'template count=2' \
             'template null=0' 'template wildcard=0' 'object Equals=1/1' \
             'TypeInfo declared methods end'
-        sed '/^== selected generic member attributes ==/,$d' "$out/attribute-selection.$axis.stdout" \
-            > "$out/attribute-selection-prefix.$axis.stdout"
-        diff -u <(strip_cr_win_file "$out/attribute-selection-before.$axis.stdout") \
-            <(strip_cr_win_file "$out/attribute-selection-prefix.$axis.stdout")
+        gate_output select "$out/attribute-selection.$axis.stdout" "$out/attribute-selection-prefix.$axis.stdout" --before '== selected generic member attributes ==' --policy crlf
+        gate_output compare "$out/attribute-selection-prefix.$axis.stdout" "$out/attribute-selection-before.$axis.stdout"
         for line in '== selected generic member attributes ==' \
                 'template method=1' 'template typed=1' 'template signature=1' 'template struct array=1' \
                 'template arity=1' 'template override=1' 'template substituted override=1' 'template hidden property=1' 'template hidden event=1' \
@@ -3048,26 +3060,22 @@ gate_extra_asserts() {
                 'definition getter=1' 'definition event=1' 'definition adder=1' 'definition field=1' \
                 'definition field type=1' 'definition property type=1' 'definition return type=1' 'definition parameter type=1' \
                 'definition enumeration=2' 'nested definition=1' 'interface definition=1' 'selected generic member attributes end'; do
-            [ "$(grep -Fxc -- "$line" <<< "$output")" = 1 ] \
+            gate_output witness "$output_file" "$line" --count 1 --policy crlf \
                 || { echo "FAIL: attribute-selection witness must run once ($axis): $line" >&2; return 1; }
         done
-        sed '/^== template and constructed method projections ==/,$d' "$out/attribute-selection.$axis.stdout" \
-            > "$out/metadata-projections-prefix.$axis.stdout"
-        diff -u <(strip_cr_win_file "$out/metadata-projections-before.$axis.stdout") \
-            <(strip_cr_win_file "$out/metadata-projections-prefix.$axis.stdout")
+        gate_output select "$out/attribute-selection.$axis.stdout" "$out/metadata-projections-prefix.$axis.stdout" --before '== template and constructed method projections ==' --policy crlf
+        gate_output compare "$out/metadata-projections-prefix.$axis.stdout" "$out/metadata-projections-before.$axis.stdout"
         for line in '== template and constructed method projections ==' \
                 'template field type=1' 'template property type=1' 'template return type=1' \
                 'template getter type=1' 'template parameter type=1' 'constructed method marker=31' \
                 'constructed method open=True:False' 'constructed parameter row=1' \
                 'constructed return type=1' 'constructed parameter type=1' 'unknown constructed row=1' \
                 'template and constructed method projections end'; do
-            [ "$(grep -Fxc -- "$line" <<< "$output")" = 1 ] \
+            gate_output witness "$output_file" "$line" --count 1 --policy crlf \
                 || { echo "FAIL: metadata-projection witness must run once ($axis): $line" >&2; return 1; }
         done
-        sed '/^== template selection filters ==/,$d' "$out/attribute-selection.$axis.stdout" \
-            > "$out/selection-filters-prefix.$axis.stdout"
-        diff -u <(strip_cr_win_file "$out/selection-filters-before.$axis.stdout") \
-            <(strip_cr_win_file "$out/selection-filters-prefix.$axis.stdout")
+        gate_output select "$out/attribute-selection.$axis.stdout" "$out/selection-filters-prefix.$axis.stdout" --before '== template selection filters ==' --policy crlf
+        gate_output compare "$out/selection-filters-prefix.$axis.stdout" "$out/selection-filters-before.$axis.stdout"
         for line in '== template selection filters ==' \
                 'delegate template=Int32' 'delegate eligibility=Int32' 'delegate static=static:Int32' \
                 'property template=13' 'property eligibility=23' 'property static=33' \
@@ -3076,15 +3084,13 @@ gate_extra_asserts() {
                 'construct application=application constructed' 'construct library=library unique constructed' \
                 'assembly mixed=known assembly' 'array sz row=Run' 'array sz=library sz' \
                 'array md row=Run' 'array md=library md' 'template selection filters end'; do
-            [ "$(grep -Fxc -- "$line" <<< "$output")" = 1 ] \
+            gate_output witness "$output_file" "$line" --count 1 --policy crlf \
                 || { echo "FAIL: selection-filter witness must run once ($axis): $line" >&2; return 1; }
         done
     done
     for axis in native dotnet; do
-        sed '/^== reflection operand alternatives ==/,$d' "$out/attribute-selection.$axis.stdout" \
-            > "$out/reflection-alternatives-prefix.$axis.stdout"
-        diff -u <(strip_cr_win_file "$out/reflection-alternatives-before.$axis.stdout") \
-            <(strip_cr_win_file "$out/reflection-alternatives-prefix.$axis.stdout")
+        gate_output select "$out/attribute-selection.$axis.stdout" "$out/reflection-alternatives-prefix.$axis.stdout" --before '== reflection operand alternatives ==' --policy crlf
+        gate_output compare "$out/reflection-alternatives-prefix.$axis.stdout" "$out/reflection-alternatives-before.$axis.stdout"
         reflection_assert_lines "$out/attribute-selection.$axis.stdout" 1 \
             '== reflection operand alternatives ==' \
             'type null array=Int32' 'type null array fault=ArgumentNullException' \
@@ -3101,20 +3107,16 @@ gate_extra_asserts() {
             'interface definite ambiguity=AmbiguousMatchException' \
             'interface first choice=first name' 'interface second choice=second name' \
             'interface unicode=unicode known' 'reflection operand alternatives end'
-        sed '/^== template lookup policies ==/,$d' "$out/attribute-selection.$axis.stdout" \
-            > "$out/template-lookups-prefix.$axis.stdout"
-        diff -u <(strip_cr_win_file "$out/template-lookups-before.$axis.stdout") \
-            <(strip_cr_win_file "$out/template-lookups-prefix.$axis.stdout")
+        gate_output select "$out/attribute-selection.$axis.stdout" "$out/template-lookups-prefix.$axis.stdout" --before '== template lookup policies ==' --policy crlf
+        gate_output compare "$out/template-lookups-prefix.$axis.stdout" "$out/template-lookups-before.$axis.stdout"
         reflection_assert_lines "$out/attribute-selection.$axis.stdout" 1 \
             '== template lookup policies ==' \
             'hidden template=Int32' 'hidden opaque=Int32' 'hidden static=static:Int32' \
             'hidden generic=Int32:String' 'hidden ambiguity=AmbiguousMatchException' \
             'private template=private:Int32' 'private opaque=opaque:Int32' 'private static=static:Int32' \
             'template lookup policies end'
-        sed '/^== library private named bindings ==/,$d' "$out/attribute-selection.$axis.stdout" \
-            > "$out/library-bindings-prefix.$axis.stdout"
-        diff -u <(strip_cr_win_file "$out/library-bindings-before.$axis.stdout") \
-            <(strip_cr_win_file "$out/library-bindings-prefix.$axis.stdout")
+        gate_output select "$out/attribute-selection.$axis.stdout" "$out/library-bindings-prefix.$axis.stdout" --before '== library private named bindings ==' --policy crlf
+        gate_output compare "$out/library-bindings-prefix.$axis.stdout" "$out/library-bindings-before.$axis.stdout"
         reflection_assert_lines "$out/attribute-selection.$axis.stdout" 1 \
             '== library private named bindings ==' 'library private=library private' \
             'library template=library template:Int32' 'library opaque=library opaque:Int32' \
@@ -3365,10 +3367,13 @@ nullable_type_test_body_asserts() {
         || { echo 'FAIL: castclass must retain only the public one-argument constructor' >&2; return 1; }
 }
 recognized_table_asserts() {
-    local out="$1" native member row axis
-    native=$(reflection_native_full "$out" RecognizedReflectionOnly) || return $?
-    native=$(strip_cr_win "$native")
-    reflection_assert_lines - 1 \
+    local out="$1" native member row axis native_file
+    gate_capture_ok "$out/recognized-reflection.native" reflection_native_full "$out" RecognizedReflectionOnly || return $?
+    native_file="$out/recognized-reflection.native.stdout"
+    gate_output view "$native_file" "$native_file.records" --policy crlf
+    native="$native_file.records"
+
+    reflection_assert_lines "$native_file" 1 \
         '== recognized reflection table ==' 'recognized reflection table end' \
         'lookup method by types: echo:typed' 'lookup field: 11/revealed/shared' 'lookup property: renamed/12/lookups' \
         'lookup constructor by flags: built:default' 'lookup event: raised 2' \
@@ -3416,8 +3421,8 @@ recognized_table_asserts() {
         'implicit sequence defaults end' \
         '== nullable type tests ==' 'failed as arguments: default' \
         'successful as arguments: argument' 'castclass arguments: argument' 'nullable type tests end' \
-        <<< "$native" || return 1
-    if grep -q 'Exception: ' <<< "$native"; then
+        || return 1
+    if grep -q 'Exception: ' "$native"; then
         echo "FAIL: a recognized reflection case threw" >&2
         return 1
     fi
@@ -3428,42 +3433,30 @@ recognized_table_asserts() {
         awk -F '\t' '$2 == "RecognizedReflectionOnly"' "$out/reflection-unrecognized.tsv" >&2
         return 1
     fi
-    run_bounded "$out/RecognizedReflectionOnly$EXE_EXT" before-nested-names \
-        > "$out/nested-names-before.native.stdout"
-    reflection_oracle "$_CG_APP" before-nested-names > "$out/nested-names-before.dotnet.stdout"
+    gate_capture_ok "$out/nested-names-before.native" run_bounded "$out/RecognizedReflectionOnly$EXE_EXT" before-nested-names
+    gate_capture_ok "$out/nested-names-before.dotnet" reflection_oracle "$_CG_APP" before-nested-names
     for axis in native dotnet; do
-        sed '/^== nested generic constant names ==/,$d' "$out/gate.$axis.stdout" \
-            > "$out/nested-names-prefix.$axis.stdout"
-        diff -u <(strip_cr_win_file "$out/nested-names-before.$axis.stdout") \
-            <(strip_cr_win_file "$out/nested-names-prefix.$axis.stdout") || return 1
+        gate_output select "$out/gate.$axis.stdout" "$out/nested-names-prefix.$axis.stdout" --before '== nested generic constant names ==' --policy crlf
+        gate_output compare "$out/nested-names-prefix.$axis.stdout" "$out/nested-names-before.$axis.stdout" || return 1
     done
-    run_bounded "$out/RecognizedReflectionOnly$EXE_EXT" before-delegate-attributes \
-        > "$out/delegate-attributes-before.native.stdout"
-    reflection_oracle "$_CG_APP" before-delegate-attributes > "$out/delegate-attributes-before.dotnet.stdout"
+    gate_capture_ok "$out/delegate-attributes-before.native" run_bounded "$out/RecognizedReflectionOnly$EXE_EXT" before-delegate-attributes
+    gate_capture_ok "$out/delegate-attributes-before.dotnet" reflection_oracle "$_CG_APP" before-delegate-attributes
     for axis in native dotnet; do
-        sed '/^== named delegate method attributes ==/,$d' "$out/gate.$axis.stdout" \
-            > "$out/delegate-attributes-prefix.$axis.stdout"
-        diff -u <(strip_cr_win_file "$out/delegate-attributes-before.$axis.stdout") \
-            <(strip_cr_win_file "$out/delegate-attributes-prefix.$axis.stdout") || return 1
+        gate_output select "$out/gate.$axis.stdout" "$out/delegate-attributes-prefix.$axis.stdout" --before '== named delegate method attributes ==' --policy crlf
+        gate_output compare "$out/delegate-attributes-prefix.$axis.stdout" "$out/delegate-attributes-before.$axis.stdout" || return 1
     done
-    run_bounded "$out/RecognizedReflectionOnly$EXE_EXT" before-sequence-defaults \
-        > "$out/sequence-defaults-before.native.stdout"
-    reflection_oracle "$_CG_APP" before-sequence-defaults > "$out/sequence-defaults-before.dotnet.stdout"
+    gate_capture_ok "$out/sequence-defaults-before.native" run_bounded "$out/RecognizedReflectionOnly$EXE_EXT" before-sequence-defaults
+    gate_capture_ok "$out/sequence-defaults-before.dotnet" reflection_oracle "$_CG_APP" before-sequence-defaults
     for axis in native dotnet; do
-        sed '/^== implicit sequence defaults ==/,$d' "$out/gate.$axis.stdout" \
-            > "$out/sequence-defaults-prefix.$axis.stdout"
-        diff -u <(strip_cr_win_file "$out/sequence-defaults-before.$axis.stdout") \
-            <(strip_cr_win_file "$out/sequence-defaults-prefix.$axis.stdout") || return 1
+        gate_output select "$out/gate.$axis.stdout" "$out/sequence-defaults-prefix.$axis.stdout" --before '== implicit sequence defaults ==' --policy crlf
+        gate_output compare "$out/sequence-defaults-prefix.$axis.stdout" "$out/sequence-defaults-before.$axis.stdout" || return 1
     done
     sequence_defaults_body_asserts "$out" || return $?
-    run_bounded "$out/RecognizedReflectionOnly$EXE_EXT" before-isinst-null \
-        > "$out/isinst-null-before.native.stdout"
-    reflection_oracle "$_CG_APP" before-isinst-null > "$out/isinst-null-before.dotnet.stdout"
+    gate_capture_ok "$out/isinst-null-before.native" run_bounded "$out/RecognizedReflectionOnly$EXE_EXT" before-isinst-null
+    gate_capture_ok "$out/isinst-null-before.dotnet" reflection_oracle "$_CG_APP" before-isinst-null
     for axis in native dotnet; do
-        sed '/^== nullable type tests ==/,$d' "$out/gate.$axis.stdout" \
-            > "$out/isinst-null-prefix.$axis.stdout"
-        diff -u <(strip_cr_win_file "$out/isinst-null-before.$axis.stdout") \
-            <(strip_cr_win_file "$out/isinst-null-prefix.$axis.stdout") || return 1
+        gate_output select "$out/gate.$axis.stdout" "$out/isinst-null-prefix.$axis.stdout" --before '== nullable type tests ==' --policy crlf
+        gate_output compare "$out/isinst-null-prefix.$axis.stdout" "$out/isinst-null-before.$axis.stdout" || return 1
     done
     nullable_type_test_body_asserts "$out" || return $?
     for member in ObjectBindingNoteAttribute::.ctor InheritedBindingNoteAttribute::.ctor TemplateBindingNoteAttribute::.ctor; do
@@ -3584,26 +3577,27 @@ fi
 unset -f gate_extra_asserts recognized_table_asserts
 
 gate_extra_asserts() {
-    local out="$1" native line axis result boundary
-    native=$(reflection_native_full "$out" ReflectNameBindOnly) || return $?
-    native=$(strip_cr_win "$native")
-    reflection_assert_lines - any \
+    local out="$1" native line axis result boundary native_file boundary_file
+    gate_capture_ok "$out/name-bind.native" reflection_native_full "$out" ReflectNameBindOnly || return $?
+    native_file="$out/name-bind.native.stdout"
+    gate_output view "$native_file" "$native_file.records" --policy crlf
+    native="$native_file.records"
+
+    reflection_assert_lines "$native_file" any \
         '== delegate names as the only reflection entry ==' \
         'instance names: 42/42/42' 'static names: 42/42/42' 'delegate names only end' \
         '== intrinsic identity overload selection ==' 'intrinsic argument => 181/181' \
-        'intrinsic leaf => 191/191/191/191' 'intrinsic identity overload selection end' <<< "$native"
+        'intrinsic leaf => 191/191/191/191' 'intrinsic identity overload selection end'
     for axis in dotnet native; do
         if [ "$axis" = dotnet ]; then
-            reflection_oracle "$_CG_APP" before-delegate-initializer-names > "$out/initializer-name-before.$axis.stdout"
-            reflection_oracle "$_CG_APP" > "$out/initializer-name-full.$axis.stdout"
+            gate_capture_ok "$out/initializer-name-before.$axis" reflection_oracle "$_CG_APP" before-delegate-initializer-names
+            gate_capture_ok "$out/initializer-name-full.$axis" reflection_oracle "$_CG_APP"
         else
-            run_bounded "$out/ReflectNameBindOnly$EXE_EXT" before-delegate-initializer-names > "$out/initializer-name-before.$axis.stdout"
-            reflection_native_full "$out" ReflectNameBindOnly > "$out/initializer-name-full.$axis.stdout"
+            gate_capture_ok "$out/initializer-name-before.$axis" run_bounded "$out/ReflectNameBindOnly$EXE_EXT" before-delegate-initializer-names
+            gate_capture_ok "$out/initializer-name-full.$axis" reflection_native_full "$out" ReflectNameBindOnly
         fi
-        sed '/^== delegate cold initializer body names ==/,$d' "$out/initializer-name-full.$axis.stdout" \
-            > "$out/initializer-name-prefix.$axis.stdout"
-        diff -u <(strip_cr_win_file "$out/initializer-name-before.$axis.stdout") \
-            <(strip_cr_win_file "$out/initializer-name-prefix.$axis.stdout") \
+        gate_output select "$out/initializer-name-full.$axis.stdout" "$out/initializer-name-prefix.$axis.stdout" --before '== delegate cold initializer body names ==' --policy crlf
+        gate_output compare "$out/initializer-name-prefix.$axis.stdout" "$out/initializer-name-before.$axis.stdout" \
             || { echo "FAIL: initializer name prefix changed: $axis" >&2; return 1; }
         reflection_assert_lines "$out/initializer-name-full.$axis.stdout" 1 \
             '== delegate cold initializer body names ==' 'delegate cold initializer body names end' \
@@ -3619,16 +3613,14 @@ gate_extra_asserts() {
 
     for axis in dotnet native; do
         if [ "$axis" = dotnet ]; then
-            reflection_oracle "$_CG_APP" before-app-library-initializer-names > "$out/app-library-initializer-before.$axis.stdout"
-            reflection_oracle "$_CG_APP" > "$out/app-library-initializer-full.$axis.stdout"
+            gate_capture_ok "$out/app-library-initializer-before.$axis" reflection_oracle "$_CG_APP" before-app-library-initializer-names
+            gate_capture_ok "$out/app-library-initializer-full.$axis" reflection_oracle "$_CG_APP"
         else
-            run_bounded "$out/ReflectNameBindOnly$EXE_EXT" before-app-library-initializer-names > "$out/app-library-initializer-before.$axis.stdout"
-            reflection_native_full "$out" ReflectNameBindOnly > "$out/app-library-initializer-full.$axis.stdout"
+            gate_capture_ok "$out/app-library-initializer-before.$axis" run_bounded "$out/ReflectNameBindOnly$EXE_EXT" before-app-library-initializer-names
+            gate_capture_ok "$out/app-library-initializer-full.$axis" reflection_native_full "$out" ReflectNameBindOnly
         fi
-        sed '/^== application library initializer names ==/,$d' "$out/app-library-initializer-full.$axis.stdout" \
-            > "$out/app-library-initializer-prefix.$axis.stdout"
-        diff -u <(strip_cr_win_file "$out/app-library-initializer-before.$axis.stdout") \
-            <(strip_cr_win_file "$out/app-library-initializer-prefix.$axis.stdout") \
+        gate_output select "$out/app-library-initializer-full.$axis.stdout" "$out/app-library-initializer-prefix.$axis.stdout" --before '== application library initializer names ==' --policy crlf
+        gate_output compare "$out/app-library-initializer-prefix.$axis.stdout" "$out/app-library-initializer-before.$axis.stdout" \
             || { echo "FAIL: application library initializer prefix changed: $axis" >&2; return 1; }
         reflection_assert_lines "$out/app-library-initializer-full.$axis.stdout" 1 \
             '== application library initializer names ==' 'application library initializer names end' \
@@ -3640,16 +3632,14 @@ gate_extra_asserts() {
 
     for axis in dotnet native; do
         if [ "$axis" = dotnet ]; then
-            reflection_oracle "$_CG_APP" before-intrinsic-array-elements > "$out/intrinsic-array-element-before.$axis.stdout"
-            reflection_oracle "$_CG_APP" > "$out/intrinsic-array-element-full.$axis.stdout"
+            gate_capture_ok "$out/intrinsic-array-element-before.$axis" reflection_oracle "$_CG_APP" before-intrinsic-array-elements
+            gate_capture_ok "$out/intrinsic-array-element-full.$axis" reflection_oracle "$_CG_APP"
         else
-            run_bounded "$out/ReflectNameBindOnly$EXE_EXT" before-intrinsic-array-elements > "$out/intrinsic-array-element-before.$axis.stdout"
-            reflection_native_full "$out" ReflectNameBindOnly > "$out/intrinsic-array-element-full.$axis.stdout"
+            gate_capture_ok "$out/intrinsic-array-element-before.$axis" run_bounded "$out/ReflectNameBindOnly$EXE_EXT" before-intrinsic-array-elements
+            gate_capture_ok "$out/intrinsic-array-element-full.$axis" reflection_native_full "$out" ReflectNameBindOnly
         fi
-        sed '/^== intrinsic pointer array element identity ==/,$d' "$out/intrinsic-array-element-full.$axis.stdout" \
-            > "$out/intrinsic-array-element-prefix.$axis.stdout"
-        diff -u <(strip_cr_win_file "$out/intrinsic-array-element-before.$axis.stdout") \
-            <(strip_cr_win_file "$out/intrinsic-array-element-prefix.$axis.stdout") \
+        gate_output select "$out/intrinsic-array-element-full.$axis.stdout" "$out/intrinsic-array-element-prefix.$axis.stdout" --before '== intrinsic pointer array element identity ==' --policy crlf
+        gate_output compare "$out/intrinsic-array-element-prefix.$axis.stdout" "$out/intrinsic-array-element-before.$axis.stdout" \
             || { echo "FAIL: array element prefix changed: $axis" >&2; return 1; }
         reflection_assert_lines "$out/intrinsic-array-element-full.$axis.stdout" 1 \
             '== intrinsic pointer array element identity ==' 'intrinsic pointer array element identity end' \
@@ -3658,7 +3648,7 @@ gate_extra_asserts() {
             'call pointer array element hard => True/4660/4660/14/0/True'
     done
 
-    local section before
+    local section before before_file
     for section in 'array leaf' 'constant leaf'; do
         if [ "$section" = 'array leaf' ]; then
             before=before-intrinsic-array-leaves
@@ -3667,16 +3657,14 @@ gate_extra_asserts() {
         fi
         for axis in dotnet native; do
             if [ "$axis" = dotnet ]; then
-                reflection_oracle "$_CG_APP" "$before" > "$out/intrinsic-$section-before.$axis.stdout"
-                reflection_oracle "$_CG_APP" > "$out/intrinsic-$section-full.$axis.stdout"
+                gate_capture_ok "$out/intrinsic-$section-before.$axis" reflection_oracle "$_CG_APP" "$before"
+                gate_capture_ok "$out/intrinsic-$section-full.$axis" reflection_oracle "$_CG_APP"
             else
-                run_bounded "$out/ReflectNameBindOnly$EXE_EXT" "$before" > "$out/intrinsic-$section-before.$axis.stdout"
-                reflection_native_full "$out" ReflectNameBindOnly > "$out/intrinsic-$section-full.$axis.stdout"
+                gate_capture_ok "$out/intrinsic-$section-before.$axis" run_bounded "$out/ReflectNameBindOnly$EXE_EXT" "$before"
+                gate_capture_ok "$out/intrinsic-$section-full.$axis" reflection_native_full "$out" ReflectNameBindOnly
             fi
-            sed '/^== intrinsic pointer '"$section"' identity ==/,$d' "$out/intrinsic-$section-full.$axis.stdout" \
-                > "$out/intrinsic-$section-prefix.$axis.stdout"
-            diff -u <(strip_cr_win_file "$out/intrinsic-$section-before.$axis.stdout") \
-                <(strip_cr_win_file "$out/intrinsic-$section-prefix.$axis.stdout") \
+            gate_output select "$out/intrinsic-$section-full.$axis.stdout" "$out/intrinsic-$section-prefix.$axis.stdout" --before "== intrinsic pointer $section identity ==" --policy crlf
+            gate_output compare "$out/intrinsic-$section-prefix.$axis.stdout" "$out/intrinsic-$section-before.$axis.stdout" \
                 || { echo "FAIL: pointer leaf prefix changed: $axis/$section" >&2; return 1; }
             reflection_assert_lines "$out/intrinsic-$section-full.$axis.stdout" 1 \
                 "== intrinsic pointer $section identity ==" "intrinsic pointer $section identity end" \
@@ -3687,16 +3675,14 @@ gate_extra_asserts() {
 
     for axis in dotnet native; do
         if [ "$axis" = dotnet ]; then
-            reflection_oracle "$_CG_APP" before-intrinsic-closed-generic-arguments > "$out/intrinsic-closed-generic-before.$axis.stdout"
-            reflection_oracle "$_CG_APP" > "$out/intrinsic-closed-generic-full.$axis.stdout"
+            gate_capture_ok "$out/intrinsic-closed-generic-before.$axis" reflection_oracle "$_CG_APP" before-intrinsic-closed-generic-arguments
+            gate_capture_ok "$out/intrinsic-closed-generic-full.$axis" reflection_oracle "$_CG_APP"
         else
-            run_bounded "$out/ReflectNameBindOnly$EXE_EXT" before-intrinsic-closed-generic-arguments > "$out/intrinsic-closed-generic-before.$axis.stdout"
-            reflection_native_full "$out" ReflectNameBindOnly > "$out/intrinsic-closed-generic-full.$axis.stdout"
+            gate_capture_ok "$out/intrinsic-closed-generic-before.$axis" run_bounded "$out/ReflectNameBindOnly$EXE_EXT" before-intrinsic-closed-generic-arguments
+            gate_capture_ok "$out/intrinsic-closed-generic-full.$axis" reflection_native_full "$out" ReflectNameBindOnly
         fi
-        sed '/^== intrinsic closed generic pointer argument ==/,$d' "$out/intrinsic-closed-generic-full.$axis.stdout" \
-            > "$out/intrinsic-closed-generic-prefix.$axis.stdout"
-        diff -u <(strip_cr_win_file "$out/intrinsic-closed-generic-before.$axis.stdout") \
-            <(strip_cr_win_file "$out/intrinsic-closed-generic-prefix.$axis.stdout") \
+        gate_output select "$out/intrinsic-closed-generic-full.$axis.stdout" "$out/intrinsic-closed-generic-prefix.$axis.stdout" --before '== intrinsic closed generic pointer argument ==' --policy crlf
+        gate_output compare "$out/intrinsic-closed-generic-prefix.$axis.stdout" "$out/intrinsic-closed-generic-before.$axis.stdout" \
             || { echo "FAIL: closed generic pointer prefix changed: $axis" >&2; return 1; }
         reflection_assert_lines "$out/intrinsic-closed-generic-full.$axis.stdout" 1 \
             '== intrinsic closed generic pointer argument ==' 'intrinsic closed generic pointer argument end' \
@@ -3706,25 +3692,24 @@ gate_extra_asserts() {
 
     for axis in dotnet native; do
         if [ "$axis" = dotnet ]; then
-            reflection_oracle "$_CG_APP" before-intrinsic-overloads > "$out/intrinsic-before.$axis.stdout"
-            reflection_oracle "$_CG_APP" > "$out/intrinsic-full.$axis.stdout"
-            reflection_oracle "$_CG_APP" intrinsic-boundary > "$out/intrinsic-boundary.$axis.stdout"
+            gate_capture_ok "$out/intrinsic-before.$axis" reflection_oracle "$_CG_APP" before-intrinsic-overloads
+            gate_capture_ok "$out/intrinsic-full.$axis" reflection_oracle "$_CG_APP"
+            gate_capture_ok "$out/intrinsic-boundary.$axis" reflection_oracle "$_CG_APP" intrinsic-boundary
         else
-            run_bounded "$out/ReflectNameBindOnly$EXE_EXT" before-intrinsic-overloads > "$out/intrinsic-before.$axis.stdout"
-            reflection_native_full "$out" ReflectNameBindOnly > "$out/intrinsic-full.$axis.stdout"
-            run_bounded "$out/ReflectNameBindOnly$EXE_EXT" intrinsic-boundary > "$out/intrinsic-boundary.$axis.stdout"
+            gate_capture_ok "$out/intrinsic-before.$axis" run_bounded "$out/ReflectNameBindOnly$EXE_EXT" before-intrinsic-overloads
+            gate_capture_ok "$out/intrinsic-full.$axis" reflection_native_full "$out" ReflectNameBindOnly
+            gate_capture_ok "$out/intrinsic-boundary.$axis" run_bounded "$out/ReflectNameBindOnly$EXE_EXT" intrinsic-boundary
         fi
-        sed '/^== intrinsic identity overload selection ==/,$d' "$out/intrinsic-full.$axis.stdout" \
-            > "$out/intrinsic-prefix.$axis.stdout"
-        diff -u <(strip_cr_win_file "$out/intrinsic-before.$axis.stdout") \
-            <(strip_cr_win_file "$out/intrinsic-prefix.$axis.stdout")
-        boundary=$(strip_cr_win_file "$out/intrinsic-boundary.$axis.stdout")
-        reflection_assert_lines - any \
+        gate_output select "$out/intrinsic-full.$axis.stdout" "$out/intrinsic-prefix.$axis.stdout" --before '== intrinsic identity overload selection ==' --policy crlf
+        gate_output compare "$out/intrinsic-prefix.$axis.stdout" "$out/intrinsic-before.$axis.stdout"
+        boundary_file="$out/intrinsic-boundary.$axis.stdout"
+        gate_output view "$boundary_file" "$boundary_file.records" --policy crlf
+        boundary="$boundary_file.records"
+        reflection_assert_lines "$boundary_file" any \
             '== matching intrinsic overload boundary ==' 'matching intrinsic overload boundary end' \
-            'intrinsic coincident soft => bound' 'intrinsic coincident hard => bound' <<< "$boundary"
+            'intrinsic coincident soft => bound' 'intrinsic coincident hard => bound'
     done
-    diff -u <(strip_cr_win_file "$out/intrinsic-boundary.dotnet.stdout") \
-        <(strip_cr_win_file "$out/intrinsic-boundary.native.stdout")
+    gate_output compare "$out/intrinsic-boundary.native.stdout" "$out/intrinsic-boundary.dotnet.stdout"
 }
 DN2CPP_STRICT_COMPLETION=1 ordinary_fixture_diff_gate ReflectInvoke ReflectNameBindOnly --no-ildiet -r "$pointer_field_library" \
     --link-xml samples/dotnet/ReflectInvoke/keep-name-bind-overloads.xml
@@ -3745,18 +3730,19 @@ override_refusal() {
         "$1" "$2" "$3" "$3" "$1" "$2"
 }
 
-
 # A refusal must identify the dispatched MethodImpl, and its printed selector
 # must admit that body without admitting same-named overloads or static decoys.
 interface_remedy_replay() {
-    local out="$1" native replay body binary="${interface_remedy_binary:-StrippedOverrideRefusals}"
+    local out="$1" native replay body binary="${interface_remedy_binary:-StrippedOverrideRefusals}" native_file
     shift
-    run_bounded "$out/$binary$EXE_EXT" interface-remedies > "$out/interface-remedies.native.stdout"
-    native=$(strip_cr_win_file "$out/interface-remedies.native.stdout")
-    reflection_assert_lines - any '== stripped interface remedies ==' \
+    gate_capture_ok "$out/interface-remedies.native" run_bounded "$out/$binary$EXE_EXT" interface-remedies
+    native_file="$out/interface-remedies.native.stdout"
+    gate_output view "$native_file" "$native_file.records" --policy crlf
+    native="$native_file.records"
+    reflection_assert_lines "$native_file" any '== stripped interface remedies ==' \
         "interface remedy alpha: $(override_refusal StrippedOverrideRefusals.InterfaceRemedyImplementation StrippedOverrideRefusals.IInterfaceRemedyAlpha.M StrippedOverrideRefusals)" \
         "interface remedy beta: $(override_refusal StrippedOverrideRefusals.InterfaceRemedyImplementation StrippedOverrideRefusals.IInterfaceRemedyBeta.M StrippedOverrideRefusals)" \
-        'stripped interface remedies end' <<< "$native"
+        'stripped interface remedies end'
     for body in M StrippedOverrideRefusals.IInterfaceRemedyAlpha.M StrippedOverrideRefusals.IInterfaceRemedyBeta.M; do
         if grep -qwxF "// StrippedOverrideRefusals.InterfaceRemedyImplementation::$body" "$out"/generated*.cpp "$out"/generated.h; then
             echo "FAIL: an opaque interface call admitted $body" >&2
@@ -3765,16 +3751,15 @@ interface_remedy_replay() {
     done
     grep -qwxF '// StrippedOverrideRefusals.Program::InterfaceRemedy' "$out"/generated*.cpp "$out"/generated.h
     # Replay the actual diagnostic, including its exact XML escaping and metadata name.
-    { printf '<linker>\n'; sed -n 's/^interface remedy .*; fix: .*link.xml //p' <<< "$native"; printf '</linker>\n'; } \
+    { printf '<linker>\n'; sed -n 's/^interface remedy .*; fix: .*link.xml //p' "$native"; printf '</linker>\n'; } \
         > "$out/interface-remedies.xml"
     replay="$out-remedy"
     DN2CPP_STRICT_COMPLETION=1 invoke_cli "$_CG_APP" -r "$_CG_CORELIB" "$@" \
         --link-xml "$out/interface-remedies.xml" -o "$replay"
     compile_console "$replay" "$binary"
-    reflection_oracle "$_CG_APP" interface-remedies > "$replay/interface-remedies.dotnet.stdout"
-    run_bounded "$replay/$binary$EXE_EXT" interface-remedies > "$replay/interface-remedies.native.stdout"
-    diff -u <(strip_cr_win_file "$replay/interface-remedies.dotnet.stdout") \
-        <(strip_cr_win_file "$replay/interface-remedies.native.stdout")
+    gate_capture_ok "$replay/interface-remedies.dotnet" reflection_oracle "$_CG_APP" interface-remedies
+    gate_capture_ok "$replay/interface-remedies.native" run_bounded "$replay/$binary$EXE_EXT" interface-remedies
+    gate_output compare "$replay/interface-remedies.native.stdout" "$replay/interface-remedies.dotnet.stdout"
     reflection_assert_lines "$replay/interface-remedies.native.stdout" any \
         '== stripped interface remedies ==' 'interface remedy alpha: 17' 'interface remedy beta: 29' \
         'stripped interface remedies end'
@@ -3795,7 +3780,6 @@ interface_remedy_image() {
     interface_remedy_replay "$out" "$@"
     class_remedy_replay "$out" "$@"
 }
-
 
 # A referenced receiver keeps dispatch while its reflection rows are absent.
 # This entry has no delegate binding or Delegate.Method read to request the map.
@@ -3849,14 +3833,16 @@ PROGRAM
 # An inherited receiver has no declaration matching its selected virtual body.
 # Replaying the actual diagnostic must retain the declaring base, not a leaf decoy.
 class_remedy_replay() {
-    local out="$1" native replay body binary="${class_remedy_binary:-StrippedOverrideRefusals}"
+    local out="$1" native replay body binary="${class_remedy_binary:-StrippedOverrideRefusals}" native_file
     shift
-    run_bounded "$out/$binary$EXE_EXT" class-remedies > "$out/class-remedies.native.stdout"
-    native=$(strip_cr_win_file "$out/class-remedies.native.stdout")
-    reflection_assert_lines - any '== stripped class remedies ==' \
+    gate_capture_ok "$out/class-remedies.native" run_bounded "$out/$binary$EXE_EXT" class-remedies
+    native_file="$out/class-remedies.native.stdout"
+    gate_output view "$native_file" "$native_file.records" --policy crlf
+    native="$native_file.records"
+    reflection_assert_lines "$native_file" any '== stripped class remedies ==' \
         "class remedy inherited: $(override_refusal StrippedOverrideRefusals.ClassRemedyMiddle M StrippedOverrideRefusals)" \
         "class remedy decoy: $(override_refusal StrippedOverrideRefusals.ClassRemedyMiddle M StrippedOverrideRefusals)" \
-        'stripped class remedies end' <<< "$native"
+        'stripped class remedies end'
     for body in ClassRemedyMiddle::M ClassRemedyMiddle::Unrelated ClassRemedyDecoyLeaf::M; do
         if grep -qwxF "// StrippedOverrideRefusals.$body" "$out"/generated*.cpp "$out"/generated.h; then
             echo "FAIL: an opaque class call admitted $body" >&2
@@ -3864,16 +3850,15 @@ class_remedy_replay() {
         fi
     done
     grep -qwxF '// StrippedOverrideRefusals.Program::ClassRemedy' "$out"/generated*.cpp "$out"/generated.h
-    { printf '<linker>\n'; sed -n 's/^class remedy .*; fix: .*link.xml //p' <<< "$native"; printf '</linker>\n'; } \
+    { printf '<linker>\n'; sed -n 's/^class remedy .*; fix: .*link.xml //p' "$native"; printf '</linker>\n'; } \
         > "$out/class-remedies.xml"
     replay="$out-class-remedy"
     DN2CPP_STRICT_COMPLETION=1 invoke_cli "$_CG_APP" -r "$_CG_CORELIB" "$@" \
         --link-xml "$out/class-remedies.xml" -o "$replay"
     compile_console "$replay" "$binary"
-    reflection_oracle "$_CG_APP" class-remedies > "$replay/class-remedies.dotnet.stdout"
-    run_bounded "$replay/$binary$EXE_EXT" class-remedies > "$replay/class-remedies.native.stdout"
-    diff -u <(strip_cr_win_file "$replay/class-remedies.dotnet.stdout") \
-        <(strip_cr_win_file "$replay/class-remedies.native.stdout")
+    gate_capture_ok "$replay/class-remedies.dotnet" reflection_oracle "$_CG_APP" class-remedies
+    gate_capture_ok "$replay/class-remedies.native" run_bounded "$replay/$binary$EXE_EXT" class-remedies
+    gate_output compare "$replay/class-remedies.native.stdout" "$replay/class-remedies.dotnet.stdout"
     reflection_assert_lines "$replay/class-remedies.native.stdout" any \
         '== stripped class remedies ==' 'class remedy inherited: 7' 'class remedy decoy: 7' \
         'stripped class remedies end'
@@ -3955,13 +3940,15 @@ PROGRAM
 }
 
 gate_extra_asserts() {
-    local out="$1" line native
+    local out="$1" line native native_file
     local calendar_days calendar_years
     calendar_days=$(override_refusal System.Globalization.GregorianCalendar GetDayOfMonth System.Private.CoreLib)
     calendar_years=$(override_refusal System.Globalization.GregorianCalendar AddYears System.Private.CoreLib)
-    DN2CPP_STRIPPED_OVERRIDES=1 run_bounded "$out/StrippedOverrideRefusals$EXE_EXT" > "$out/stripped-overrides.stdout"
-    native=$(strip_cr_win_file "$out/stripped-overrides.stdout")
-    reflection_assert_lines - any \
+    DN2CPP_STRIPPED_OVERRIDES=1 gate_capture_ok "$out/stripped-overrides" run_bounded "$out/StrippedOverrideRefusals$EXE_EXT"
+    native_file="$out/stripped-overrides.stdout"
+    gate_output view "$native_file" "$native_file.records" --policy crlf
+    native="$native_file.records"
+    reflection_assert_lines "$native_file" any \
         \
         "stripped struct-returning slot: $calendar_years" \
         "stripped slot: $calendar_days" \
@@ -3973,21 +3960,21 @@ gate_extra_asserts() {
         "stripped slot, nested invoke unwrapped: $calendar_days" \
         "stripped slot, nested object virtual: TargetInvocationException 0x80131604 inner $calendar_days" \
         "stripped slot, nested constructor: TargetInvocationException 0x80131604 inner $calendar_days" \
-        'stripped nested end' <<< "$native"
-    run_bounded "$out/StrippedOverrideRefusals$EXE_EXT" > "$out/retained-overrides.stdout"
-    native=$(strip_cr_win_file "$out/retained-overrides.stdout")
-    reflection_assert_lines - 1 'stripped override rows end' \
+        'stripped nested end'
+    gate_capture_ok "$out/retained-overrides" run_bounded "$out/StrippedOverrideRefusals$EXE_EXT"
+    native_file="$out/retained-overrides.stdout"
+    gate_output view "$native_file" "$native_file.records" --policy crlf
+    native="$native_file.records"
+    reflection_assert_lines "$native_file" 1 'stripped override rows end' \
         'retained generic override, base row: leaf Int32' \
         'retained late generic override, base row: late leaf Int32' \
         'retained generic overrides end' '== interface remedy rows ==' \
-        'interface remedy control: 41' 'interface remedy rows end' <<< "$native"
-    run_bounded "$out/StrippedOverrideRefusals$EXE_EXT" before-interface-remedy-rows > "$out/interface-remedies-prefix.native.stdout"
-    reflection_oracle "$_CG_APP" before-interface-remedy-rows > "$out/interface-remedies-prefix.dotnet.stdout"
-    sed '/^== interface remedy rows ==/,$d' "$out/retained-overrides.stdout" > "$out/interface-remedies-prefix.stdout"
-    diff -u <(strip_cr_win_file "$out/interface-remedies-prefix.native.stdout") \
-        <(strip_cr_win_file "$out/interface-remedies-prefix.stdout")
-    diff -u <(strip_cr_win_file "$out/interface-remedies-prefix.dotnet.stdout") \
-        <(strip_cr_win_file "$out/interface-remedies-prefix.native.stdout")
+        'interface remedy control: 41' 'interface remedy rows end'
+    gate_capture_ok "$out/interface-remedies-prefix.native" run_bounded "$out/StrippedOverrideRefusals$EXE_EXT" before-interface-remedy-rows
+    gate_capture_ok "$out/interface-remedies-prefix.dotnet" reflection_oracle "$_CG_APP" before-interface-remedy-rows
+    gate_output select "$out/retained-overrides.stdout" "$out/interface-remedies-prefix.stdout" --before '== interface remedy rows ==' --policy crlf
+    gate_output compare "$out/interface-remedies-prefix.stdout" "$out/interface-remedies-prefix.native.stdout"
+    gate_output compare "$out/interface-remedies-prefix.native.stdout" "$out/interface-remedies-prefix.dotnet.stdout"
     interface_remedy_replay "$out" "${interface_remedy_flags[@]}"
     class_remedy_replay "$out" "${interface_remedy_flags[@]}"
 }
@@ -4005,32 +3992,28 @@ interface_remedy_image artifacts/stripped-interface-remedies-ildiet
 unset -f gate_extra_asserts
 
 gate_extra_asserts() {
-    local out="$1" native identity
-    reflection_native_full "$out" ReflectFrameworkBind > "$out/library-struct-return.stdout"
-    identity=$(strip_cr_win_file "$out/library-struct-return.stdout")
-    grep -Fxq '== direct library struct return ==' <<< "$identity"
-    grep -Fxq 'direct library struct return end' <<< "$identity"
-    DN2CPP_BEFORE_LIBRARY_STRUCT_RETURN=1 run_bounded "$out/ReflectFrameworkBind$EXE_EXT" \
-        > "$out/before-library-struct-return.stdout"
-    sed '/^== direct library struct return ==/,$d' "$out/library-struct-return.stdout" \
-        > "$out/library-struct-return-prefix.stdout"
-    diff -u <(strip_cr_win_file "$out/library-struct-return-prefix.stdout") \
-        <(strip_cr_win_file "$out/before-library-struct-return.stdout")
+    local out="$1" native identity identity_file native_file
+    gate_capture_ok "$out/library-struct-return" reflection_native_full "$out" ReflectFrameworkBind
+    identity_file="$out/library-struct-return.stdout"
+
+    reflection_assert_lines "$identity_file" any \
+        '== direct library struct return ==' \
+        'direct library struct return end'
+    DN2CPP_BEFORE_LIBRARY_STRUCT_RETURN=1 gate_capture_ok "$out/before-library-struct-return" run_bounded "$out/ReflectFrameworkBind$EXE_EXT"
+    gate_output select "$out/library-struct-return.stdout" "$out/library-struct-return-prefix.stdout" --before '== direct library struct return ==' --policy crlf
+    gate_output compare "$out/before-library-struct-return.stdout" "$out/library-struct-return-prefix.stdout"
     local refused="ArgumentException 0x80070057 Object of type 'System.Reflection.Pointer' cannot be converted to type" line
-    reflection_assert_lines - any \
+    reflection_assert_lines "$identity_file" any \
         '== function pointer identity ==' 'local leaf cell, local sink: 16' 'peer leaf cell, peer sink: 272' \
         "local leaf cell, peer sink: $refused 'FunctionPointerTwin.Leaf()*'." \
         "peer leaf cell, local sink: $refused 'FunctionPointerTwin.Leaf()*'." \
         "local node cell, peer sink: $refused 'FunctionPointerTwin.Node()*'." \
         "local list cell, peer sink: $refused 'System.Collections.Generic.List\`1[FunctionPointerTwin.Node]()*'." \
         "local nested cell, peer sink: $refused 'System.Void(FunctionPointerTwin.Leaf())*'." \
-        'function pointer identity end' <<< "$identity"
-    DN2CPP_BEFORE_FUNCTION_POINTER_IDENTITY=1 run_bounded "$out/ReflectFrameworkBind$EXE_EXT" \
-        > "$out/before-function-pointer-identity.stdout"
-    sed '/^== function pointer identity ==/,$d' "$out/library-struct-return.stdout" \
-        > "$out/function-pointer-identity-prefix.stdout"
-    diff -u <(strip_cr_win_file "$out/function-pointer-identity-prefix.stdout") \
-        <(strip_cr_win_file "$out/before-function-pointer-identity.stdout")
+        'function pointer identity end'
+    DN2CPP_BEFORE_FUNCTION_POINTER_IDENTITY=1 gate_capture_ok "$out/before-function-pointer-identity" run_bounded "$out/ReflectFrameworkBind$EXE_EXT"
+    gate_output select "$out/library-struct-return.stdout" "$out/function-pointer-identity-prefix.stdout" --before '== function pointer identity ==' --policy crlf
+    gate_output compare "$out/before-function-pointer-identity.stdout" "$out/function-pointer-identity-prefix.stdout"
     # The reached sibling pins the symbol spelling the absence check below relies on.
     if ! grep -hEq 'LibraryResult_Label_m[0-9]+\(' "$out"/generated*.cpp "$out/generated.h"; then
         echo 'FAIL: reached library result body missing' >&2
@@ -4040,16 +4023,19 @@ gate_extra_asserts() {
         echo 'FAIL: unrelated library result body was reached' >&2
         return 1
     fi
-    DN2CPP_STRIPPED_OVERRIDES=1 run_bounded "$out/ReflectFrameworkBind$EXE_EXT" > "$out/stripped-overrides.stdout"
-    native=$(strip_cr_win_file "$out/stripped-overrides.stdout")
-    grep -Fxq "framework generic virtual row, library override: $(override_refusal ReflectFrameworkBindLib.LibraryProvider RegisterType System.ReflectFrameworkBind)" <<< "$native"
-    grep -Fxq 'framework bind end' <<< "$native"
-    grep -Fxq "framework generic virtual row, library receiver allocated late: $(override_refusal ReflectFrameworkBindLib.LateProvider RegisterType System.ReflectFrameworkBind)" <<< "$native"
+    DN2CPP_STRIPPED_OVERRIDES=1 gate_capture_ok "$out/stripped-overrides" run_bounded "$out/ReflectFrameworkBind$EXE_EXT"
+    native_file="$out/stripped-overrides.stdout"
+    gate_output view "$native_file" "$native_file.records" --policy crlf
+    native="$native_file.records"
+    reflection_assert_lines "$native_file" any \
+        "framework generic virtual row, library override: $(override_refusal ReflectFrameworkBindLib.LibraryProvider RegisterType System.ReflectFrameworkBind)" \
+        'framework bind end' \
+        "framework generic virtual row, library receiver allocated late: $(override_refusal ReflectFrameworkBindLib.LateProvider RegisterType System.ReflectFrameworkBind)"
     if grep -hEq '(LibraryProvider|LateProvider)_RegisterType_TisTagged_m[0-9]+\(' "$out"/generated*.cpp "$out/generated.h"; then
         echo 'FAIL: a refused library generic override body was retained' >&2
         return 1
     fi
-    DN2CPP_INHERITED_GVM_REMEDY=1 run_bounded "$out/ReflectFrameworkBind$EXE_EXT" > "$out/inherited-gvm.stdout"
+    DN2CPP_INHERITED_GVM_REMEDY=1 gate_capture_ok "$out/inherited-gvm" run_bounded "$out/ReflectFrameworkBind$EXE_EXT"
     reflection_assert_lines "$out/inherited-gvm.stdout" any \
         '== inherited generic virtual remedy ==' \
         "inherited generic virtual override: $(override_refusal ReflectFrameworkBindLib.LibraryProvider RegisterType System.ReflectFrameworkBind)" \
@@ -4063,9 +4049,9 @@ gate_extra_asserts() {
         -r "samples/dotnet/ReflectFrameworkBind/bin/$CONFIG/$TFM/ReflectReturnLib.dll" \
         --link-xml samples/dotnet/ReflectFrameworkBind/link.xml --link-xml "$out/inherited-gvm.xml" -o "$replay"
     compile_console "$replay" ReflectFrameworkBind
-    DN2CPP_INHERITED_GVM_REMEDY=1 reflection_oracle "$_CG_APP" > "$replay/inherited-gvm.dotnet.stdout"
-    DN2CPP_INHERITED_GVM_REMEDY=1 run_bounded "$replay/ReflectFrameworkBind$EXE_EXT" > "$replay/inherited-gvm.stdout"
-    diff -u <(strip_cr_win_file "$replay/inherited-gvm.dotnet.stdout") <(strip_cr_win_file "$replay/inherited-gvm.stdout")
+    DN2CPP_INHERITED_GVM_REMEDY=1 gate_capture_ok "$replay/inherited-gvm.dotnet" reflection_oracle "$_CG_APP"
+    DN2CPP_INHERITED_GVM_REMEDY=1 gate_capture_ok "$replay/inherited-gvm" run_bounded "$replay/ReflectFrameworkBind$EXE_EXT"
+    gate_output compare "$replay/inherited-gvm.stdout" "$replay/inherited-gvm.dotnet.stdout"
     reflection_assert_lines "$replay/inherited-gvm.stdout" any \
         '== inherited generic virtual remedy ==' 'inherited generic virtual override: library:Tagged' \
         'inherited generic virtual remedy end'
@@ -4096,14 +4082,15 @@ corelib_diff_gate ReflectFrameworkBind --no-ildiet System.ComponentModel.TypeCon
     --link-xml samples/dotnet/ReflectFrameworkBind/link.xml
 
 gate_extra_asserts() {
-    local out="$1" dotnet
-    DN2CPP_STRIPPED_OVERRIDES=1 run_bounded "$out/ReflectFrameworkBind$EXE_EXT" > "$out/kept-overrides.stdout"
-    DN2CPP_STRIPPED_OVERRIDES=1 reflection_oracle "$_CG_APP" > "$out/kept-overrides.dotnet.stdout"
-    dotnet=$(strip_cr_win_file "$out/kept-overrides.dotnet.stdout")
-    grep -Fxq 'framework generic virtual row, library override: library:Tagged' <<< "$dotnet"
-    grep -Fxq 'framework generic virtual row, library receiver allocated late: late:Tagged' <<< "$dotnet"
-    diff -u <(strip_cr_win_file "$out/kept-overrides.dotnet.stdout") \
-        <(strip_cr_win_file "$out/kept-overrides.stdout")
+    local out="$1" dotnet dotnet_file
+    DN2CPP_STRIPPED_OVERRIDES=1 gate_capture_ok "$out/kept-overrides" run_bounded "$out/ReflectFrameworkBind$EXE_EXT"
+    DN2CPP_STRIPPED_OVERRIDES=1 gate_capture_ok "$out/kept-overrides.dotnet" reflection_oracle "$_CG_APP"
+    dotnet_file="$out/kept-overrides.dotnet.stdout"
+
+    reflection_assert_lines "$dotnet_file" any \
+        'framework generic virtual row, library override: library:Tagged' \
+        'framework generic virtual row, library receiver allocated late: late:Tagged'
+    gate_output compare "$out/kept-overrides.stdout" "$out/kept-overrides.dotnet.stdout"
 }
 DN2CPP_OUT_SUFFIX=-kept-override corelib_diff_gate ReflectFrameworkBind --no-ildiet System.ComponentModel.TypeConverter \
     -r "samples/dotnet/ReflectFrameworkBind/bin/$CONFIG/$TFM/System.ReflectFrameworkBind.dll" \
@@ -4137,14 +4124,15 @@ for subject in App AppOwned; do
         DN2CPP_STRICT_COMPLETION=1 run_bounded invoke_cli "$unused_app" "${unused_refs[@]}" \
             --no-ildiet ${unused_flags[@]+"${unused_flags[@]}"} -o "$unused_out"
         compile_console "$unused_out" "$unused_assembly"
-        reflection_oracle "$unused_app" > "$unused_out/dotnet.stdout"
-        run_bounded "$unused_out/$unused_assembly$EXE_EXT" > "$unused_out/native.stdout"
-        diff -u <(strip_cr_win_file "$unused_out/dotnet.stdout") \
-            <(strip_cr_win_file "$unused_out/native.stdout")
-        unused_native=$(strip_cr_win_file "$unused_out/native.stdout")
-        reflection_assert_lines - any \
+        gate_capture_ok "$unused_out/dotnet" reflection_oracle "$unused_app"
+        gate_capture_ok "$unused_out/native" run_bounded "$unused_out/$unused_assembly$EXE_EXT"
+        gate_output compare "$unused_out/native.stdout" "$unused_out/dotnet.stdout"
+        unused_native_file="$unused_out/native.stdout"
+        gate_output view "$unused_native_file" "$unused_native_file.records" --policy crlf
+        unused_native="$unused_native_file.records"
+        reflection_assert_lines "$unused_native_file" any \
             '== unused generic signature ==' 'used=42' 'supported=7' \
-            'definition=True parameter=U' 'unused generic signature end' <<< "$unused_native"
+            'definition=True parameter=U' 'unused generic signature end'
     done
 done
 
@@ -4188,38 +4176,43 @@ for subject in AppNested BodyNeeded; do
                 exit 1
             fi
             compile_console "$unused_out" "$unused_assembly"
-            reflection_oracle "$unused_app" > "$unused_out/dotnet.stdout"
-            run_bounded "$unused_out/$unused_assembly$EXE_EXT" > "$unused_out/native.stdout"
-            diff -u <(strip_cr_win_file "$unused_out/dotnet.stdout") \
-                <(strip_cr_win_file "$unused_out/native.stdout")
-            unused_native=$(strip_cr_win_file "$unused_out/native.stdout")
-            reflection_assert_lines - any \
+            gate_capture_ok "$unused_out/dotnet" reflection_oracle "$unused_app"
+            gate_capture_ok "$unused_out/native" run_bounded "$unused_out/$unused_assembly$EXE_EXT"
+            gate_output compare "$unused_out/native.stdout" "$unused_out/dotnet.stdout"
+            unused_native_file="$unused_out/native.stdout"
+            gate_output view "$unused_native_file" "$unused_native_file.records" --policy crlf
+            unused_native="$unused_native_file.records"
+            reflection_assert_lines "$unused_native_file" any \
                 '== nested generic signature ==' 'used=42' 'supported=7' \
-                'definition=True parameter=U' 'nested generic signature end' <<< "$unused_native"
+                'definition=True parameter=U' 'nested generic signature end'
             if [ "$subject" = BodyNeeded ]; then
-                grep -Fxq -- 'body needed=True' <<< "$unused_native"
+                gate_output witness "$unused_native_file" 'body needed=True' --count any --policy crlf
             fi
-            reflection_oracle "$unused_app" describe-unused-layouts > "$unused_out/definitions.dotnet.stdout"
-            run_bounded "$unused_out/$unused_assembly$EXE_EXT" describe-unused-layouts > "$unused_out/definitions.native.stdout"
-            unused_native=$(strip_cr_win_file "$unused_out/definitions.native.stdout")
-            unused_clr=$(strip_cr_win_file "$unused_out/definitions.dotnet.stdout")
-            reflection_assert_lines - any \
-                '== unused layout definitions ==' 'unused layout definitions end' <<< "$unused_native"
-            reflection_assert_lines - any \
-                '== unused layout definitions ==' 'unused layout definitions end' <<< "$unused_clr"
+            gate_capture_ok "$unused_out/definitions.dotnet" reflection_oracle "$unused_app" describe-unused-layouts
+            gate_capture_ok "$unused_out/definitions.native" run_bounded "$unused_out/$unused_assembly$EXE_EXT" describe-unused-layouts
+            unused_native_file="$unused_out/definitions.native.stdout"
+            gate_output view "$unused_native_file" "$unused_native_file.records" --policy crlf
+            unused_native="$unused_native_file.records"
+            unused_clr_file="$unused_out/definitions.dotnet.stdout"
+            gate_output view "$unused_clr_file" "$unused_clr_file.records" --policy crlf
+            unused_clr="$unused_clr_file.records"
+            reflection_assert_lines "$unused_native_file" any \
+                '== unused layout definitions ==' 'unused layout definitions end'
+            reflection_assert_lines "$unused_clr_file" any \
+                '== unused layout definitions ==' 'unused layout definitions end'
             for line in Pick First Second OwnerFirst OwnerSecond TaskShape TaskLayout; do
-                grep -Fxq -- "$line found=True" <<< "$unused_clr"
+                gate_output witness "$unused_clr_file" "$line found=True" --count any --policy crlf
                 if [ "$load" = absent ]; then
-                    grep -Fxq -- "$line found=False" <<< "$unused_native" \
+                    gate_output witness "$unused_native_file" "$line found=False" --count any --policy crlf \
                         || { echo "FAIL: an unavailable definition layout survived ($mode): $line" >&2; exit 1; }
                 else
-                    grep -Fxq -- "$line found=True" <<< "$unused_native"
-                    grep -Fxq -- "$line identity=True/True" <<< "$unused_native"
+                    reflection_assert_lines "$unused_native_file" any \
+                        "$line found=True" \
+                        "$line identity=True/True"
                 fi
             done
             if [ "$load" = loaded ]; then
-                diff -u <(strip_cr_win_file "$unused_out/definitions.dotnet.stdout") \
-                    <(strip_cr_win_file "$unused_out/definitions.native.stdout")
+                gate_output compare "$unused_out/definitions.native.stdout" "$unused_out/definitions.dotnet.stdout"
             fi
         done
     done
@@ -4273,128 +4266,166 @@ for subject in AppDependencies MethodBodyNeeded GrowthBodyNeeded; do
                 exit 1
             fi
             compile_console "$unused_out" "$unused_assembly"
-            reflection_oracle "$unused_app" > "$unused_out/dotnet.stdout"
-            run_bounded "$unused_out/$unused_assembly$EXE_EXT" > "$unused_out/native.stdout"
-            diff -u <(strip_cr_win_file "$unused_out/dotnet.stdout") \
-                <(strip_cr_win_file "$unused_out/native.stdout")
+            gate_capture_ok "$unused_out/dotnet" reflection_oracle "$unused_app"
+            gate_capture_ok "$unused_out/native" run_bounded "$unused_out/$unused_assembly$EXE_EXT"
+            gate_output compare "$unused_out/native.stdout" "$unused_out/dotnet.stdout"
             if [ "$subject" != AppDependencies ]; then
                 continue
             fi
-            reflection_oracle "$unused_app" describe-layout-dependencies > "$unused_out/dependencies.dotnet.stdout"
-            run_bounded "$unused_out/$unused_assembly$EXE_EXT" describe-layout-dependencies > "$unused_out/dependencies.native.stdout"
-            unused_clr=$(strip_cr_win_file "$unused_out/dependencies.dotnet.stdout")
-            unused_native=$(strip_cr_win_file "$unused_out/dependencies.native.stdout")
-            reflection_assert_lines - any \
+            gate_capture_ok "$unused_out/dependencies.dotnet" reflection_oracle "$unused_app" describe-layout-dependencies
+            gate_capture_ok "$unused_out/dependencies.native" run_bounded "$unused_out/$unused_assembly$EXE_EXT" describe-layout-dependencies
+            unused_clr_file="$unused_out/dependencies.dotnet.stdout"
+            gate_output view "$unused_clr_file" "$unused_clr_file.records" --policy crlf
+            unused_clr="$unused_clr_file.records"
+            unused_native_file="$unused_out/dependencies.native.stdout"
+            gate_output view "$unused_native_file" "$unused_native_file.records" --policy crlf
+            unused_native="$unused_native_file.records"
+            reflection_assert_lines "$unused_native_file" any \
                 '== signature dependency layouts ==' 'used=42' 'definition=True parameter=U' \
-                '== unused signature dependencies ==' 'unused signature dependencies end' 'signature dependency layouts end' <<< "$unused_native"
-            reflection_assert_lines - any \
+                '== unused signature dependencies ==' 'unused signature dependencies end' 'signature dependency layouts end'
+            reflection_assert_lines "$unused_clr_file" any \
                 '== signature dependency layouts ==' 'used=42' 'definition=True parameter=U' \
-                '== unused signature dependencies ==' 'unused signature dependencies end' 'signature dependency layouts end' <<< "$unused_clr"
-            sed '/^== unused signature dependencies ==/,/^unused signature dependencies end/d' \
-                <<< "$unused_native" > "$unused_out/dependencies-prefix.stdout"
-            diff -u <(strip_cr_win_file "$unused_out/native.stdout") "$unused_out/dependencies-prefix.stdout"
-            omitted='Growing|CrossGrowing'
+                '== unused signature dependencies ==' 'unused signature dependencies end' 'signature dependency layouts end'
+            gate_output select "$unused_native_file" "$unused_out/dependencies-prefix.stdout" --exclude-start '== unused signature dependencies ==' --exclude-end 'unused signature dependencies end' --policy crlf
+            gate_output compare "$unused_out/dependencies-prefix.stdout" "$unused_out/native.stdout"
+            omitted=(Growing CrossGrowing)
             if [ "$load" = absent ]; then
-                omitted="$omitted|MethodOnly|CtorOnly|InterfaceOnly"
+                omitted+=(MethodOnly CtorOnly InterfaceOnly)
             fi
             for line in MethodOnly CtorOnly InterfaceOnly GenericOwner Growing CrossGrowing Reset Swap Converging; do
-                grep -Fxq -- "$line found=True" <<< "$unused_clr"
+                gate_output witness "$unused_clr_file" "$line found=True" --count any --policy crlf
                 case "$line/$load" in
                     Growing/*|CrossGrowing/*|MethodOnly/absent|CtorOnly/absent|InterfaceOnly/absent)
-                        grep -Fxq -- "$line found=False" <<< "$unused_native" ;;
+                        gate_output witness "$unused_native_file" "$line found=False" --count any --policy crlf ;;
                     *)
-                        grep -Fxq -- "$line found=True" <<< "$unused_native"
-                        grep -Fxq -- "$line identity=True/True" <<< "$unused_native" ;;
+                        gate_output witness "$unused_native_file" "$line found=True" --count any --policy crlf
+                        gate_output witness "$unused_native_file" "$line identity=True/True" --count any --policy crlf ;;
                 esac
             done
-            grep -Fxq -- 'GenericOwner member found=True' <<< "$unused_clr"
+            gate_output witness "$unused_clr_file" 'GenericOwner member found=True' --count any --policy crlf
             if [ "$load" = absent ]; then
-                grep -Fxq -- 'GenericOwner member found=False' <<< "$unused_native"
+                gate_output witness "$unused_native_file" 'GenericOwner member found=False' --count any --policy crlf
             else
-                grep -Fxq -- 'GenericOwner member found=True' <<< "$unused_native"
+                gate_output witness "$unused_native_file" 'GenericOwner member found=True' --count any --policy crlf
             fi
-            diff -u <(sed -E "/^($omitted)( found=| types=| identity=)/d; /^GenericOwner member found=/d" <<< "$unused_clr") \
-                <(sed -E "/^($omitted)( found=| types=| identity=)/d; /^GenericOwner member found=/d" <<< "$unused_native")
-            reflection_oracle "$unused_app" describe-layout-paths > "$unused_out/paths.dotnet.stdout"
-            run_bounded "$unused_out/$unused_assembly$EXE_EXT" describe-layout-paths > "$unused_out/paths.native.stdout"
-            unused_clr=$(strip_cr_win_file "$unused_out/paths.dotnet.stdout")
-            unused_native=$(strip_cr_win_file "$unused_out/paths.native.stdout")
-            reflection_assert_lines - any \
-                '== additional signature paths ==' 'additional signature paths end' <<< "$unused_native"
-            reflection_assert_lines - any \
-                '== additional signature paths ==' 'additional signature paths end' <<< "$unused_clr"
-            sed '/^== additional signature paths ==/,/^additional signature paths end/d' \
-                <<< "$unused_native" > "$unused_out/paths-prefix.stdout"
-            diff -u <(strip_cr_win_file "$unused_out/native.stdout") "$unused_out/paths-prefix.stdout"
-            omitted='Branched|OriginOverlap'
+            # Filter bytes, not Windows text streams: these views were normalized once.
+            omitted_prefixes=()
+            for owner in "${omitted[@]}"; do
+                for field in ' found=' ' types=' ' identity='; do
+                    omitted_prefixes+=(--prefix "$owner$field")
+                done
+            done
+            omitted_prefixes+=(--prefix 'GenericOwner member found=')
+            gate_output omit-prefix "$unused_clr" "$unused_out/filter-1.dotnet.records" "${omitted_prefixes[@]}" --count all --policy exact
+            gate_output omit-prefix "$unused_native" "$unused_out/filter-1.native.records" "${omitted_prefixes[@]}" --count all --policy exact
+            gate_output compare "$unused_out/filter-1.native.records" "$unused_out/filter-1.dotnet.records"
+            gate_capture_ok "$unused_out/paths.dotnet" reflection_oracle "$unused_app" describe-layout-paths
+            gate_capture_ok "$unused_out/paths.native" run_bounded "$unused_out/$unused_assembly$EXE_EXT" describe-layout-paths
+            unused_clr_file="$unused_out/paths.dotnet.stdout"
+            gate_output view "$unused_clr_file" "$unused_clr_file.records" --policy crlf
+            unused_clr="$unused_clr_file.records"
+            unused_native_file="$unused_out/paths.native.stdout"
+            gate_output view "$unused_native_file" "$unused_native_file.records" --policy crlf
+            unused_native="$unused_native_file.records"
+            reflection_assert_lines "$unused_native_file" any \
+                '== additional signature paths ==' 'additional signature paths end'
+            reflection_assert_lines "$unused_clr_file" any \
+                '== additional signature paths ==' 'additional signature paths end'
+            gate_output select "$unused_native_file" "$unused_out/paths-prefix.stdout" --exclude-start '== additional signature paths ==' --exclude-end 'additional signature paths end' --policy crlf
+            gate_output compare "$unused_out/paths-prefix.stdout" "$unused_out/native.stdout"
+            omitted=(Branched OriginOverlap)
             if [ "$load" = absent ]; then
-                omitted="$omitted|OverrideOnly|InheritedSlot"
+                omitted+=(OverrideOnly InheritedSlot)
             fi
             for line in Branched OriginOverlap BranchFinite OverrideOnly InheritedSlot VirtualSibling; do
-                grep -Fxq -- "$line found=True" <<< "$unused_clr"
+                gate_output witness "$unused_clr_file" "$line found=True" --count any --policy crlf
                 case "$line/$load" in
                     Branched/*|OriginOverlap/*|OverrideOnly/absent|InheritedSlot/absent)
-                        grep -Fxq -- "$line found=False" <<< "$unused_native" ;;
+                        gate_output witness "$unused_native_file" "$line found=False" --count any --policy crlf ;;
                     *)
-                        grep -Fxq -- "$line found=True" <<< "$unused_native"
-                        grep -Fxq -- "$line identity=True/True" <<< "$unused_native" ;;
+                        gate_output witness "$unused_native_file" "$line found=True" --count any --policy crlf
+                        gate_output witness "$unused_native_file" "$line identity=True/True" --count any --policy crlf ;;
                 esac
             done
-            diff -u <(sed -E "/^($omitted)( found=| types=| identity=)/d" <<< "$unused_clr") \
-                <(sed -E "/^($omitted)( found=| types=| identity=)/d" <<< "$unused_native")
-            reflection_oracle "$unused_app" describe-default-interface-layout > "$unused_out/default-interface.dotnet.stdout"
-            run_bounded "$unused_out/$unused_assembly$EXE_EXT" describe-default-interface-layout > "$unused_out/default-interface.native.stdout"
-            unused_clr=$(strip_cr_win_file "$unused_out/default-interface.dotnet.stdout")
-            unused_native=$(strip_cr_win_file "$unused_out/default-interface.native.stdout")
-            reflection_assert_lines - any \
-                '== default interface layout ==' 'default interface layout end' <<< "$unused_native"
-            reflection_assert_lines - any \
-                '== default interface layout ==' 'default interface layout end' <<< "$unused_clr"
-            sed '/^== default interface layout ==/,/^default interface layout end/d' \
-                <<< "$unused_native" > "$unused_out/default-interface-prefix.stdout"
-            diff -u <(strip_cr_win_file "$unused_out/native.stdout") "$unused_out/default-interface-prefix.stdout"
+            # Filter bytes, not Windows text streams: these views were normalized once.
+            omitted_prefixes=()
+            for owner in "${omitted[@]}"; do
+                for field in ' found=' ' types=' ' identity='; do
+                    omitted_prefixes+=(--prefix "$owner$field")
+                done
+            done
+            gate_output omit-prefix "$unused_clr" "$unused_out/filter-2.dotnet.records" "${omitted_prefixes[@]}" --count all --policy exact
+            gate_output omit-prefix "$unused_native" "$unused_out/filter-2.native.records" "${omitted_prefixes[@]}" --count all --policy exact
+            gate_output compare "$unused_out/filter-2.native.records" "$unused_out/filter-2.dotnet.records"
+            gate_capture_ok "$unused_out/default-interface.dotnet" reflection_oracle "$unused_app" describe-default-interface-layout
+            gate_capture_ok "$unused_out/default-interface.native" run_bounded "$unused_out/$unused_assembly$EXE_EXT" describe-default-interface-layout
+            unused_clr_file="$unused_out/default-interface.dotnet.stdout"
+            gate_output view "$unused_clr_file" "$unused_clr_file.records" --policy crlf
+            unused_clr="$unused_clr_file.records"
+            unused_native_file="$unused_out/default-interface.native.stdout"
+            gate_output view "$unused_native_file" "$unused_native_file.records" --policy crlf
+            unused_native="$unused_native_file.records"
+            reflection_assert_lines "$unused_native_file" any \
+                '== default interface layout ==' 'default interface layout end'
+            reflection_assert_lines "$unused_clr_file" any \
+                '== default interface layout ==' 'default interface layout end'
+            gate_output select "$unused_native_file" "$unused_out/default-interface-prefix.stdout" --exclude-start '== default interface layout ==' --exclude-end 'default interface layout end' --policy crlf
+            gate_output compare "$unused_out/default-interface-prefix.stdout" "$unused_out/native.stdout"
             for line in DefaultInterface SupportedDefaultInterface RelationOnlyInterface; do
-                grep -Fxq -- "$line found=True" <<< "$unused_clr"
+                gate_output witness "$unused_clr_file" "$line found=True" --count any --policy crlf
                 if [ "$line/$load" = DefaultInterface/absent ]; then
-                    grep -Fxq -- "$line found=False" <<< "$unused_native"
+                    gate_output witness "$unused_native_file" "$line found=False" --count any --policy crlf
                 else
-                    grep -Fxq -- "$line found=True" <<< "$unused_native"
-                    grep -Fxq -- "$line identity=True/True" <<< "$unused_native"
+                    reflection_assert_lines "$unused_native_file" any \
+                        "$line found=True" \
+                        "$line identity=True/True"
                 fi
             done
             if [ "$load" = absent ]; then
-                diff -u <(sed -E '/^DefaultInterface( found=| types=| identity=)/d' <<< "$unused_clr") \
-                    <(sed -E '/^DefaultInterface( found=| types=| identity=)/d' <<< "$unused_native")
+                omitted_prefixes=(--prefix 'DefaultInterface found=' --prefix 'DefaultInterface types=' --prefix 'DefaultInterface identity=')
+                gate_output omit-prefix "$unused_clr" "$unused_out/filter-3.dotnet.records" "${omitted_prefixes[@]}" --count all --policy exact
+                gate_output omit-prefix "$unused_native" "$unused_out/filter-3.native.records" "${omitted_prefixes[@]}" --count all --policy exact
+                gate_output compare "$unused_out/filter-3.native.records" "$unused_out/filter-3.dotnet.records"
             else
-                diff -u <(strip_cr_win_file "$unused_out/default-interface.dotnet.stdout") \
-                    <(strip_cr_win_file "$unused_out/default-interface.native.stdout")
+                gate_output compare "$unused_out/default-interface.native.stdout" "$unused_out/default-interface.dotnet.stdout"
             fi
-            reflection_oracle "$unused_app" describe-completion-layouts > "$unused_out/completion.dotnet.stdout"
-            run_bounded "$unused_out/$unused_assembly$EXE_EXT" describe-completion-layouts > "$unused_out/completion.native.stdout"
-            unused_clr=$(strip_cr_win_file "$unused_out/completion.dotnet.stdout")
-            unused_native=$(strip_cr_win_file "$unused_out/completion.native.stdout")
-            reflection_assert_lines - any \
+            gate_capture_ok "$unused_out/completion.dotnet" reflection_oracle "$unused_app" describe-completion-layouts
+            gate_capture_ok "$unused_out/completion.native" run_bounded "$unused_out/$unused_assembly$EXE_EXT" describe-completion-layouts
+            unused_clr_file="$unused_out/completion.dotnet.stdout"
+            gate_output view "$unused_clr_file" "$unused_clr_file.records" --policy crlf
+            unused_clr="$unused_clr_file.records"
+            unused_native_file="$unused_out/completion.native.stdout"
+            gate_output view "$unused_native_file" "$unused_native_file.records" --policy crlf
+            unused_native="$unused_native_file.records"
+            reflection_assert_lines "$unused_native_file" any \
                 '== completion signature layouts ==' 'completion signature layouts end' \
-                'ordinary row=True generic=False' 'OverrideFinite getter=ResetNode`1 identity=True parameters=0' <<< "$unused_native"
-            reflection_assert_lines - any \
+                'ordinary row=True generic=False' 'OverrideFinite getter=ResetNode`1 identity=True parameters=0'
+            reflection_assert_lines "$unused_clr_file" any \
                 '== completion signature layouts ==' 'completion signature layouts end' \
-                'ordinary row=True generic=False' 'OverrideFinite getter=ResetNode`1 identity=True parameters=0' <<< "$unused_clr"
-            sed '/^== completion signature layouts ==/,/^completion signature layouts end/d' \
-                <<< "$unused_native" > "$unused_out/completion-prefix.stdout"
-            diff -u <(strip_cr_win_file "$unused_out/native.stdout") "$unused_out/completion-prefix.stdout"
+                'ordinary row=True generic=False' 'OverrideFinite getter=ResetNode`1 identity=True parameters=0'
+            gate_output select "$unused_native_file" "$unused_out/completion-prefix.stdout" --exclude-start '== completion signature layouts ==' --exclude-end 'completion signature layouts end' --policy crlf
+            gate_output compare "$unused_out/completion-prefix.stdout" "$unused_out/native.stdout"
             for line in OverrideGrowth OverrideFinite ExplicitGrowth ExplicitFinite StructDefinitionOnly StructPair; do
-                grep -Fxq -- "$line found=True" <<< "$unused_clr"
+                gate_output witness "$unused_clr_file" "$line found=True" --count any --policy crlf
                 case "$line" in
                     OverrideGrowth|ExplicitGrowth)
-                        grep -Fxq -- "$line found=False" <<< "$unused_native" ;;
+                        gate_output witness "$unused_native_file" "$line found=False" --count any --policy crlf ;;
                     *)
-                        grep -Fxq -- "$line found=True" <<< "$unused_native"
-                        grep -Fxq -- "$line definition=True formal=U" <<< "$unused_native"
-                        grep -Fxq -- "$line identity=True/True" <<< "$unused_native" ;;
+                        reflection_assert_lines "$unused_native_file" any \
+                            "$line found=True" \
+                            "$line definition=True formal=U"
+                        gate_output witness "$unused_native_file" "$line identity=True/True" --count any --policy crlf ;;
                 esac
             done
-            diff -u <(sed -E '/^(OverrideGrowth|ExplicitGrowth)( found=| definition=| types=| identity=)/d' <<< "$unused_clr") \
-                <(sed -E '/^(OverrideGrowth|ExplicitGrowth)( found=| definition=| types=| identity=)/d' <<< "$unused_native")
+            omitted_prefixes=()
+            for owner in OverrideGrowth ExplicitGrowth; do
+                for field in ' found=' ' definition=' ' types=' ' identity='; do
+                    omitted_prefixes+=(--prefix "$owner$field")
+                done
+            done
+            gate_output omit-prefix "$unused_clr" "$unused_out/filter-4.dotnet.records" "${omitted_prefixes[@]}" --count all --policy exact
+            gate_output omit-prefix "$unused_native" "$unused_out/filter-4.native.records" "${omitted_prefixes[@]}" --count all --policy exact
+            gate_output compare "$unused_out/filter-4.native.records" "$unused_out/filter-4.dotnet.records"
             DN2CPP_MAX_GENERIC_DEPTH=40 DN2CPP_STRICT_COMPLETION=1 run_bounded invoke_cli \
                 "$unused_app" "${unused_refs[@]}" --no-ildiet ${unused_flags[@]+"${unused_flags[@]}"} \
                 -o "$unused_out-depth40" > "$unused_out-depth40.log" 2>&1
@@ -4422,28 +4453,34 @@ for mode in "${unused_modes[@]}"; do
         DN2CPP_STRICT_COMPLETION=1 run_bounded invoke_cli "$unused_app" "${unused_refs[@]}" \
             --no-ildiet ${unused_flags[@]+"${unused_flags[@]}"} -o "$unused_out"
         compile_console "$unused_out" ReflectionUnusedAppOpen
-        reflection_oracle "$unused_app" > "$unused_out/dotnet.stdout"
-        run_bounded "$unused_out/ReflectionUnusedAppOpen$EXE_EXT" > "$unused_out/native.stdout"
-        diff -u <(strip_cr_win_file "$unused_out/dotnet.stdout") \
-            <(strip_cr_win_file "$unused_out/native.stdout")
-        unused_native=$(strip_cr_win_file "$unused_out/native.stdout")
-        reflection_assert_lines - any \
+        gate_capture_ok "$unused_out/dotnet" reflection_oracle "$unused_app"
+        gate_capture_ok "$unused_out/native" run_bounded "$unused_out/ReflectionUnusedAppOpen$EXE_EXT"
+        gate_output compare "$unused_out/native.stdout" "$unused_out/dotnet.stdout"
+        unused_native_file="$unused_out/native.stdout"
+        gate_output view "$unused_native_file" "$unused_native_file.records" --policy crlf
+        unused_native="$unused_native_file.records"
+        reflection_assert_lines "$unused_native_file" any \
             '== open signature base layout ==' 'used=42' 'found=True' \
-            'definition=True' 'formal=U' 'open signature base layout end' <<< "$unused_native"
-        reflection_oracle "$unused_app" return-type > "$unused_out/return.dotnet.stdout"
-        run_bounded "$unused_out/ReflectionUnusedAppOpen$EXE_EXT" return-type > "$unused_out/return.native.stdout"
-        unused_clr=$(strip_cr_win_file "$unused_out/return.dotnet.stdout")
-        unused_native=$(strip_cr_win_file "$unused_out/return.native.stdout")
-        grep -Fxq -- 'return=OpenHolder`1 contains=True' <<< "$unused_clr" \
+            'definition=True' 'formal=U' 'open signature base layout end'
+        gate_capture_ok "$unused_out/return.dotnet" reflection_oracle "$unused_app" return-type
+        gate_capture_ok "$unused_out/return.native" run_bounded "$unused_out/ReflectionUnusedAppOpen$EXE_EXT" return-type
+        unused_clr_file="$unused_out/return.dotnet.stdout"
+        gate_output view "$unused_clr_file" "$unused_clr_file.records" --policy crlf
+        unused_clr="$unused_clr_file.records"
+        unused_native_file="$unused_out/return.native.stdout"
+        gate_output view "$unused_native_file" "$unused_native_file.records" --policy crlf
+        unused_native="$unused_native_file.records"
+        gate_output witness "$unused_clr_file" 'return=OpenHolder`1 contains=True' --count any --policy crlf \
             || { echo "FAIL: CLR open signature type witness missing ($mode/$load)" >&2; exit 1; }
-        grep -Fxq -- 'return=OpenHolder`1 contains=True' <<< "$unused_native" \
+        gate_output witness "$unused_native_file" 'return=OpenHolder`1 contains=True' --count any --policy crlf \
             || { echo "FAIL: native open signature type witness missing ($mode/$load)" >&2; exit 1; }
-        diff -u <(strip_cr_win_file "$unused_out/return.dotnet.stdout") \
-            <(strip_cr_win_file "$unused_out/return.native.stdout")
-        diff -u <(strip_cr_win_file "$unused_out/dotnet.stdout") \
-            <(sed '/^return=/d' <<< "$unused_clr")
-        diff -u <(strip_cr_win_file "$unused_out/native.stdout") \
-            <(sed '/^return=/d' <<< "$unused_native")
+        gate_output compare "$unused_out/return.native.stdout" "$unused_out/return.dotnet.stdout"
+        gate_output view "$unused_out/dotnet.stdout" "$unused_out/dotnet.return-prefix.records" --policy crlf
+        gate_output omit-prefix "$unused_clr" "$unused_out/dotnet.return-filtered.records" --prefix 'return=' --count all --policy exact
+        gate_output compare "$unused_out/dotnet.return-filtered.records" "$unused_out/dotnet.return-prefix.records"
+        gate_output view "$unused_out/native.stdout" "$unused_out/native.return-prefix.records" --policy crlf
+        gate_output omit-prefix "$unused_native" "$unused_out/native.return-filtered.records" --prefix 'return=' --count all --policy exact
+        gate_output compare "$unused_out/native.return-filtered.records" "$unused_out/native.return-prefix.records"
     done
 done
 
@@ -4454,14 +4491,14 @@ formal_enumeration_out=artifacts/formal-method-enumeration
 DN2CPP_STRICT_COMPLETION=1 run_bounded invoke_cli "$formal_enumeration_app" -r "$_CG_CORELIB" \
     --no-ildiet -o "$formal_enumeration_out"
 compile_console "$formal_enumeration_out" FormalMethodEnumeration
-reflection_oracle "$formal_enumeration_app" > "$formal_enumeration_out/dotnet.stdout"
-run_bounded "$formal_enumeration_out/FormalMethodEnumeration$EXE_EXT" > "$formal_enumeration_out/native.stdout"
-diff -u <(strip_cr_win_file "$formal_enumeration_out/dotnet.stdout") \
-    <(strip_cr_win_file "$formal_enumeration_out/native.stdout")
-formal_enumeration_native=$(strip_cr_win_file "$formal_enumeration_out/native.stdout")
-reflection_assert_lines - any \
+gate_capture_ok "$formal_enumeration_out/dotnet" reflection_oracle "$formal_enumeration_app"
+gate_capture_ok "$formal_enumeration_out/native" run_bounded "$formal_enumeration_out/FormalMethodEnumeration$EXE_EXT"
+gate_output compare "$formal_enumeration_out/native.stdout" "$formal_enumeration_out/dotnet.stdout"
+formal_enumeration_native_file="$formal_enumeration_out/native.stdout"
+
+reflection_assert_lines "$formal_enumeration_native_file" any \
     '== enumerated formal parameter ==' \
-    'nested=True value=True class=False base=System.ValueType' 'count=1' 'enumerated formal parameter end' <<< "$formal_enumeration_native"
+    'nested=True value=True class=False base=System.ValueType' 'count=1' 'enumerated formal parameter end'
 
 # The isolated driver uses the same appended delegate section with actual folding
 # and with receiver reflection metadata absent.

@@ -35,12 +35,16 @@ source "$(dirname "$0")/_common.sh"
 
 comparison_prior_extra_asserts() {
     local out="$1" native before prefix line
-    native=$(run_bounded "./$out/EnumOps")
-    native=$(strip_cr_win "$native")
-    before=$(dotnet "$_CG_APP" before-enum-join)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== enum Join ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-native-1" run_bounded "./$out/EnumOps"
+    native="$out/assert-native-1.stdout"
+
+    gate_capture_ok "$out/assert-before-2" run_bounded dotnet "$_CG_APP" before-enum-join
+    before="$out/assert-before-2.stdout"
+
+    prefix="$out/assert-prefix-5.stdout"
+
+    gate_output select "$native" "$prefix" --before '== enum Join ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== enum Join ==' \
         '== enum Concat ==' \
         '== enum Join over enumerables ==' \
@@ -57,7 +61,7 @@ comparison_prior_extra_asserts() {
         'dispose: dispose prefix:Low,High 3' \
         'first current: current prefix: 4' \
         'null enum receiver: NullReferenceException'; do
-        grep -Fxq "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: sequence witness missing: $line" >&2; exit 1; }
     done
 }
@@ -66,12 +70,16 @@ comparison_prior_extra_asserts() {
 gate_extra_asserts() {
     local out="$1" native before prefix line
     comparison_prior_extra_asserts "$out"
-    native=$(run_bounded "./$out/EnumOps")
-    native=$(strip_cr_win "$native")
-    before=$(dotnet "$_CG_APP" before-default-comparison)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== default comparison validation ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-native-3" run_bounded "./$out/EnumOps"
+    native="$out/assert-native-3.stdout"
+
+    gate_capture_ok "$out/assert-before-4" run_bounded dotnet "$_CG_APP" before-default-comparison
+    before="$out/assert-before-4.stdout"
+
+    prefix="$out/assert-prefix-6.stdout"
+
+    gate_output select "$native" "$prefix" --before '== default comparison validation ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== default comparison validation ==' \
         '== enum CompareTo ==' \
         'byte: 247 -247' \
@@ -79,7 +87,7 @@ gate_extra_asserts() {
         'short: 60000 -60000' \
         'ushort: 64999 -64999' \
         'default comparison validation end'; do
-        grep -Fxq "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: EnumOps comparison coverage missing: $line" >&2; exit 1; }
     done
 }

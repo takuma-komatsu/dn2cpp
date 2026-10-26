@@ -10,6 +10,7 @@
 #     ./gates/pre-merge.sh --skip-xcode   # omit the Xcode-only gates
 #     ./gates/pre-merge.sh --require-xcode # include them even without Xcode
 #     ./gates/pre-merge.sh --dry-run      # print the exact runs, execute nothing
+#     ./gates/pre-merge.sh --with-culture # include strict ICU-sensitive culture parity
 #     ./gates/pre-merge.sh --keep-going   # run selected suites after an earlier failure
 #     DN2CPP_PREMERGE_SELFTEST=1 ./gates/pre-merge.sh   # self-test, no suite run
 #
@@ -315,16 +316,18 @@ BOTH_CONFIGS=0
 CONFIG=${CONFIG:-Debug}
 SKIP_GODOT=${SKIP_GODOT:-0}
 XCODE_SELECTION=auto
+DN2CPP_INCLUDE_CULTURE=0
 for arg in "$@"; do
     case "$arg" in
         --dry-run)    DRY_RUN=1 ;;
         --keep-going) KEEP_GOING=1 ;;
         --both-configs) BOTH_CONFIGS=1 ;;
         --skip-godot) SKIP_GODOT=1 ;;
+        --with-culture) DN2CPP_INCLUDE_CULTURE=1 ;;
         --skip-xcode) XCODE_SELECTION=skip ;;
         --require-xcode) XCODE_SELECTION=require ;;
         -h|--help)
-            sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+            sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
             exit 0
             ;;
         *)
@@ -379,6 +382,7 @@ fi
 
 # Use the runner's phase membership rather than inferring scope from filenames.
 source "$REPO/gates/_godot_gate_chains.sh"
+source "$REPO/gates/_culture_gate_scope.sh" || exit 2
 ALL_GATES=$(ls "$REPO"/gates/build-and-run-*.sh 2>/dev/null | wc -l | tr -d ' ')
 EXCLUDED_GATES=0
 GODOT_EXCLUDED=0
@@ -397,7 +401,11 @@ if [ "$SKIP_XCODE" = "1" ]; then
         XCODE_EXCLUDED=$((XCODE_EXCLUDED + 1))
     done
 fi
-EXCLUDED_GATES=$((GODOT_EXCLUDED + XCODE_EXCLUDED))
+CULTURE_EXCLUDED=0
+if ! culture_gate_selected "$CULTURE_GATE" && [ -f "$REPO/$CULTURE_GATE" ]; then
+    CULTURE_EXCLUDED=1
+fi
+EXCLUDED_GATES=$((GODOT_EXCLUDED + XCODE_EXCLUDED + CULTURE_EXCLUDED))
 EXPECTED_GATES=$((ALL_GATES - EXCLUDED_GATES))
 
 say()  { printf '\n\033[1;36m══ %s\033[0m\n' "$*"; }
@@ -637,7 +645,8 @@ premerge_argv() {
         "DN2CPP_GATE_CACHE=0"
         "SKIP_GODOT=$SKIP_GODOT"
         "SKIP_XCODE=$SKIP_XCODE"
-        "DN2CPP_REQUIRE_SCOPE=$([ "$SKIP_GODOT" = 1 ] && printf non-godot || printf all)$([ "$SKIP_XCODE" = 1 ] && printf -- -except-xcode)"
+        "DN2CPP_INCLUDE_CULTURE=$DN2CPP_INCLUDE_CULTURE"
+        "DN2CPP_REQUIRE_SCOPE=$([ "$SKIP_GODOT" = 1 ] && printf non-godot || printf all)$([ "$SKIP_XCODE" = 1 ] && printf -- -except-xcode)$([ "$DN2CPP_INCLUDE_CULTURE" = 1 ] || printf -- -except-culture)"
         bash "$REPO/gates/run-all-gates.sh"
     )
 }
@@ -645,12 +654,16 @@ premerge_argv() {
 # premerge_culture_argv — the culture harness's command line, in the same shape
 # and for the same reason as premerge_argv: --dry-run prints THIS array and the
 # real path executes it.
+premerge_strict_culture_argv() {
+    PREMERGE_STRICT_CULTURE_ARGV=(bash "$REPO/gates/check-culture-reference.sh")
+}
+
 premerge_culture_argv() {
     PREMERGE_CULTURE_ARGV=()
     if [ "${DN2CPP_PREMERGE_NO_CAFFEINATE:-0}" != "1" ] && command -v caffeinate >/dev/null 2>&1; then
         PREMERGE_CULTURE_ARGV+=(caffeinate -i)
     fi
-    PREMERGE_CULTURE_ARGV+=(bash "$REPO/gates/verify-culture-invariance.sh")
+    PREMERGE_CULTURE_ARGV+=(env "DN2CPP_INCLUDE_CULTURE=$DN2CPP_INCLUDE_CULTURE" bash "$REPO/gates/verify-culture-invariance.sh")
 }
 
 # premerge_selfhost_argv — the self-host build's command line, same shape and
@@ -1086,6 +1099,7 @@ CRISTRICT
     mkdir -p "$FAKE/gates"
     cp "$0" "$FAKE/gates/pre-merge.sh"
     cp "$REPO/gates/_godot_gate_chains.sh" "$FAKE/gates/_godot_gate_chains.sh"
+    cp "$REPO/gates/_culture_gate_scope.sh" "$FAKE/gates/_culture_gate_scope.sh"
     chmod +x "$FAKE/gates/pre-merge.sh"
     : > "$FAKE/gates/build-and-run-a.sh"
     : > "$FAKE/gates/build-and-run-b.sh"
@@ -2033,6 +2047,7 @@ VERSION
     printf 'source "%s"\n' "$REPO/gates/_common.sh" > "$SH_REPO/gates/_common.sh"
     cp "$0" "$SH_REPO/gates/pre-merge.sh"
     cp "$REPO/gates/_godot_gate_chains.sh" "$SH_REPO/gates/_godot_gate_chains.sh"
+    cp "$REPO/gates/_culture_gate_scope.sh" "$SH_REPO/gates/_culture_gate_scope.sh"
     : > "$SH_REPO/gates/build-and-run-a.sh"
     printf 'the transpiler\n' > "$SH_REPO/src/a.cs"
     git -C "$SH_REPO" init -q
@@ -2484,6 +2499,9 @@ say "dn2cpp pre-merge gate"
 note "repo:   $REPO"
 note "commit: $HEAD_BRANCH @ $HEAD_SHA$DIRTY"
 note "gates:  $EXPECTED_GATES"
+if [ "$CULTURE_EXCLUDED" = 1 ]; then
+    note "CultureInfoAPI: excluded (opt in with --with-culture); not counted as passed."
+fi
 note "configs: $CONFIGS"
 if [ "$SKIP_XCODE" = 1 ]; then
     note "Xcode:  $XCODE_EXCLUDED gate(s) excluded ($XCODE_SELECTION selection)."
@@ -2506,6 +2524,12 @@ premerge_cmake_cache_warn "$REPO"
 
 if [ "$DRY_RUN" = "1" ]; then
     say "dry run — nothing below is executed"
+    if [ "$DN2CPP_INCLUDE_CULTURE" = 1 ]; then
+        premerge_strict_culture_argv
+        printf '\n  strict culture reference preflight (before builds):\n    '
+        printf '%s ' "${PREMERGE_STRICT_CULTURE_ARGV[@]}"
+        printf '\n    then require exit 0 before invariance or suite work\n'
+    fi
     premerge_culture_argv
     printf '\n  culture-invariance harness:\n    '
     printf '%s ' "${PREMERGE_CULTURE_ARGV[@]}"
@@ -2610,6 +2634,22 @@ RESULTS=""
 OPTIONAL_CRI_SKIPS=""
 OPTIONAL_CRI_SKIP_COUNT=0
 T0=$(date +%s)
+
+# An opted-in reference mismatch must fail before any expensive verification.
+STRICT_CULTURE_NOTE="excluded (manual opt-in)"
+if [ "$DN2CPP_INCLUDE_CULTURE" = 1 ]; then
+    say "strict culture reference preflight"
+    premerge_strict_culture_argv
+    "${PREMERGE_STRICT_CULTURE_ARGV[@]}" 2>&1 | tee "$LOGROOT/_strict-culture.log"
+    STRICT_CULTURE_RC=${PIPESTATUS[0]}
+    printf '%s\n' "$STRICT_CULTURE_RC" > "$LOGROOT/_strict-culture.status"
+    if [ "$STRICT_CULTURE_RC" -ne 0 ]; then
+        rm -f "$RECEIPT"
+        bad "strict culture reference FAILED (exit $STRICT_CULTURE_RC); no builds or suites started."
+        exit 1
+    fi
+    STRICT_CULTURE_NOTE="verified exact CLR/ICU reference"
+fi
 
 # ── phase 0: culture invariance ──────────────────────────────────────────────
 # Before the hours, not after: a bucket added without its culture pin is found
@@ -2915,12 +2955,17 @@ if [ "$OVERALL" -eq 0 ]; then
             printf 'merge scope: PRs without Godot-specific changes\n'
         else
             printf 'dn2cpp pre-merge PASSED\n'
-            printf 'scope:   all gates\n'
+            printf 'scope:   default selected gates\n'
         fi
         printf 'when:    %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
         printf 'repo:    %s\n' "$REPO"
         printf 'commit:  %s @ %s%s\n' "$HEAD_BRANCH" "$HEAD_SHA" "$DIRTY"
         printf 'gates:   %s per config\n' "$EXPECTED_GATES"
+        if [ "$CULTURE_EXCLUDED" = 1 ]; then
+            printf 'excluded: %s (optional strict culture parity)\n' "$CULTURE_GATE"
+        else
+            printf 'strict culture parity: selected\n'
+        fi
         if [ "$SKIP_XCODE" = 1 ]; then
             printf 'Xcode:   %s gate(s) excluded (%s selection)\n' "$XCODE_EXCLUDED" "$XCODE_SELECTION"
             for gate in "${XCODE_GATES[@]}"; do
@@ -2935,6 +2980,7 @@ if [ "$OVERALL" -eq 0 ]; then
         fi
         printf 'configs: %s\n' "$CONFIGS"
         printf 'culture: %s\n' "$CULTURE_NOTE"
+        printf 'strict culture reference: %s\n' "$STRICT_CULTURE_NOTE"
         # Which sources the binary the fork lane ran on was built from: a green
         # produced over somebody else's self-host binary is a different claim.
         printf 'selfhost: %s\n' "$SELFHOST_NOTE"

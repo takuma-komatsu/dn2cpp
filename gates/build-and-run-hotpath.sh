@@ -79,16 +79,16 @@ local hp_out hot hotfast
 hp_out="$1"
 hot="$hp_out/generated_hot.cpp"
 hotfast="$hp_out/generated_hot_fast.cpp"
-local covariant_native covariant_before covariant_prefix covariant_body line
-covariant_native=$(run_bounded "$hp_out/HotPath$EXE_EXT")
-covariant_native=$(strip_cr_win "$covariant_native")
-covariant_before=$(DN2CPP_BEFORE_COVARIANT_STORES=1 run_bounded dotnet "$_CG_APP")
-covariant_prefix=$(awk '/^== unchecked covariant reference stores ==$/ { exit } { print }' <<< "$covariant_native")
-assert_output "$covariant_prefix" "$(strip_cr_win "$covariant_before")"
+local covariant_body line
+local native_file="$hp_out/hotpath-check.stdout"
+gate_capture_ok "$hp_out/hotpath-check" run_bounded "$hp_out/HotPath$EXE_EXT"
+DN2CPP_BEFORE_COVARIANT_STORES=1 gate_capture_ok "$hp_out/covariant-before.dotnet" run_bounded dotnet "$_CG_APP"
+gate_output select "$native_file" "$hp_out/covariant-prefix.stdout" --before '== unchecked covariant reference stores ==' --policy crlf
+gate_output compare "$hp_out/covariant-prefix.stdout" "$hp_out/covariant-before.dotnet.stdout"
 for line in '== unchecked covariant reference stores ==' \
     'unchecked rejected=ArrayTypeMismatchException/80131503' 'unchecked retained=True' \
     'unchecked compatible=True' 'unchecked null=True' 'unchecked covariant reference stores end'; do
-    grep -Fxq -- "$line" <<< "$covariant_native" \
+    gate_output witness "$native_file" "$line" --count any --policy crlf \
         || { echo "FAIL: unchecked covariant store witness missing: $line" >&2; return 1; }
 done
 covariant_body="$(hot_bodies 'HotPathBoundsSubset.Program::StoreCovariantUnchecked')"
@@ -100,17 +100,17 @@ if grep -Eq 'dn2cpp_bounds_check\(|dn2cpp_stelem_ref\(' <<< "$covariant_body"; t
 fi
 
 echo "== [HotPath] TU placement asserts =="
-local address_before address_prefix address_body
-address_before=$(DN2CPP_BEFORE_VECTOR_ADDRESS=1 run_bounded dotnet "$_CG_APP")
-address_prefix=$(awk '/^== unchecked writable vector addresses ==$/ { exit } { print }' <<< "$covariant_native")
-assert_output "$address_prefix" "$(strip_cr_win "$address_before")"
-address_before=$(DN2CPP_BEFORE_VECTOR_ADDRESS=1 run_bounded "$hp_out/HotPath$EXE_EXT")
-assert_output "$address_prefix" "$(strip_cr_win "$address_before")"
+local address_body
+DN2CPP_BEFORE_VECTOR_ADDRESS=1 gate_capture_ok "$hp_out/address-before.dotnet" run_bounded dotnet "$_CG_APP"
+DN2CPP_BEFORE_VECTOR_ADDRESS=1 gate_capture_ok "$hp_out/address-before.native" run_bounded "$hp_out/HotPath$EXE_EXT"
+gate_output select "$native_file" "$hp_out/address-prefix.stdout" --before '== unchecked writable vector addresses ==' --policy crlf
+gate_output compare "$hp_out/address-prefix.stdout" "$hp_out/address-before.dotnet.stdout"
+gate_output compare "$hp_out/address-prefix.stdout" "$hp_out/address-before.native.stdout"
 for line in '== unchecked writable vector addresses ==' \
     'unchecked address rejected=ArrayTypeMismatchException/80131503' \
     'unchecked address retained=True' 'unchecked address exact=True' \
     'unchecked writable vector addresses end'; do
-    [ "$(grep -Fxc -- "$line" <<< "$covariant_native")" = 1 ] \
+    gate_output witness "$native_file" "$line" --count 1 --policy crlf \
         || { echo "FAIL: unchecked address witness missing or repeated: $line" >&2; return 1; }
 done
 address_body=$(hot_bodies 'HotPathBoundsSubset.Program::AddressCovariantUnchecked')
@@ -140,16 +140,15 @@ done
 readonly_bodies="$(hot_bodies 'HotPathNoAllocSubset.Program::ReadReference')"
 [ "$(grep -Fc 'dn2cpp_byref_load_ref(' <<<"$readonly_bodies")" = 2 ] \
     || { echo 'FAIL: NoAlloc reference and generic readers lost their managed load helper' >&2; return 1; }
-readonly_text=$(strip_cr_win "$native")
 for line in '== NoAlloc readonly reference reads ==' 'NoAlloc readonly reference reads end'; do
-    [ "$(grep -Fxc -- "$line" <<<"$readonly_text")" = 1 ] \
+    gate_output witness "$native_file" "$line" --count 1 --policy crlf \
         || { echo "FAIL: NoAlloc readonly witness missing or repeated: $line" >&2; return 1; }
 done
-readonly_prefix=$(awk '/^== NoAlloc readonly reference reads ==$/ { exit } { print }' <<<"$readonly_text")
-readonly_before=$(DN2CPP_BEFORE_READONLY_BYREF=1 run_bounded "./$hp_out/HotPath$EXE_EXT")
-assert_output "$(strip_cr_win "$readonly_before")" "$readonly_prefix"
-readonly_before=$(DN2CPP_BEFORE_READONLY_BYREF=1 run_bounded dotnet "$_CG_APP")
-assert_output "$(strip_cr_win "$readonly_before")" "$readonly_prefix"
+gate_output select "$native_file" "$hp_out/readonly-prefix.stdout" --before '== NoAlloc readonly reference reads ==' --policy crlf
+DN2CPP_BEFORE_READONLY_BYREF=1 gate_capture_ok "$hp_out/readonly-before.native" run_bounded "./$hp_out/HotPath$EXE_EXT"
+DN2CPP_BEFORE_READONLY_BYREF=1 gate_capture_ok "$hp_out/readonly-before.dotnet" run_bounded dotnet "$_CG_APP"
+gate_output compare "$hp_out/readonly-prefix.stdout" "$hp_out/readonly-before.native.stdout"
+gate_output compare "$hp_out/readonly-prefix.stdout" "$hp_out/readonly-before.dotnet.stdout"
 
 metadata_body="$(hot_bodies "HotPathNoAllocSubset.Program::InspectTypes")"
 for helper in 'dn2cpp_type_is_assignable_from(' 'dn2cpp_type_get_array_rank('; do
@@ -157,16 +156,13 @@ for helper in 'dn2cpp_type_is_assignable_from(' 'dn2cpp_type_get_array_rank('; d
         || { echo "FAIL: NoAlloc metadata reader lost $helper" >&2; exit 1; }
 done
 
-local before prefix native_text
-native_text="$(strip_cr_win "$native")"
-grep -Fxq '== NoAlloc reflection reads ==' <<<"$native_text" \
+gate_output witness "$native_file" '== NoAlloc reflection reads ==' --count any --policy crlf \
     || { echo "FAIL: NoAlloc metadata section did not run" >&2; exit 1; }
-grep -Fxq 'NoAlloc reflection reads end' <<<"$native_text" \
+gate_output witness "$native_file" 'NoAlloc reflection reads end' --count any --policy crlf \
     || { echo "FAIL: NoAlloc metadata section did not finish" >&2; exit 1; }
-before=$(export DN2CPP_BEFORE_REFLECTION_NOALLOC=1
-    run_bounded "./$hp_out/HotPath$EXE_EXT")
-prefix=$(awk '$0 == "== NoAlloc reflection reads ==" { exit } { print }' <<<"$native_text")
-assert_output "$(strip_cr_win "$before")" "$prefix"
+DN2CPP_BEFORE_REFLECTION_NOALLOC=1 gate_capture_ok "$hp_out/reflection-noalloc-before.native" run_bounded "./$hp_out/HotPath$EXE_EXT"
+gate_output select "$native_file" "$hp_out/reflection-noalloc-prefix.stdout" --before '== NoAlloc reflection reads ==' --policy crlf
+gate_output compare "$hp_out/reflection-noalloc-prefix.stdout" "$hp_out/reflection-noalloc-before.native.stdout"
 
 if grep -q "rgctx" "$hot"; then
     echo "FAIL: rgctx machinery in generated_hot.cpp — a marked generic body was shared instead of monomorphized" >&2

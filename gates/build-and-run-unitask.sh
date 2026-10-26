@@ -169,23 +169,24 @@ compile_console "$out" "$project"
 echo "== 7/7 Running (exact diff vs real .NET) =="
 gate_run_logs_init unitask UniTask
 log_dir="$_GATE_RUN_LOG_DIR"
-expected=
+expected="$log_dir/oracle.stdout"
 expected_code=
-native=
+native="$log_dir/native.stdout"
 native_code=
 
 gate_run_diagnostics() {
-    gate_run_diag "UniTask native" "$native_code" "$native" "$log_dir/native.log"
-    gate_run_diag "UniTask oracle" "$expected_code" "$expected" "$log_dir/oracle.log"
+    gate_run_diag_files "UniTask native" "$native_code" "$native" "$log_dir/native.stderr"
+    gate_run_diag_files "UniTask oracle" "$expected_code" "$expected" "$log_dir/oracle.stderr"
 }
 
-set +e
-expected=$(run_bounded dotnet "$app" 2>"$log_dir/oracle.log"); expected_code=$?
-native=$(run_bounded "./$out/$project" 2>"$log_dir/native.log"); native_code=$?
-set -e
+gate_capture "$log_dir/oracle" run_bounded dotnet "$app"
+expected_code=$(cat "$log_dir/oracle.status")
+gate_capture "$log_dir/native" run_bounded "./$out/$project$EXE_EXT"
+native_code=$(cat "$log_dir/native.status")
 assertions_failed=0
-assert_output "$native" "$expected" || assertions_failed=1
-assert_exit_code "$native_code" "$expected_code" || assertions_failed=1
+gate_output compare "$native" "$expected" || assertions_failed=1
+gate_output status "$native_code" 0 || assertions_failed=1
+gate_output status "$expected_code" 0 || assertions_failed=1
 if [ "$assertions_failed" -ne 0 ]; then
     gate_run_diag_once
     exit 1

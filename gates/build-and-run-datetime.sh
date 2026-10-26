@@ -27,53 +27,70 @@ source "$(dirname "$0")/_common.sh"
 # Constructors, arithmetic, offset parsing and microseconds preserve fault fields.
 gate_extra_asserts() {
     local out="$1" native before prefix line
-    native=$(run_bounded "./$out/DateTimeOps$EXE_EXT")
-    native=$(strip_cr_win "$native")
-    before=$(run_bounded "./$out/DateTimeOps$EXE_EXT" before-date-validation)
-    prefix=$(awk '/^== datetime argument fields ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
+    gate_capture_ok "$out/assert-native-1" run_bounded "./$out/DateTimeOps$EXE_EXT"
+    native="$out/assert-native-1.stdout"
+
+    gate_capture_ok "$out/assert-before-2" run_bounded "./$out/DateTimeOps$EXE_EXT" before-date-validation
+    before="$out/assert-before-2.stdout"
+    prefix="$out/assert-prefix-12.stdout"
+    gate_output select "$native" "$prefix" --before '== datetime argument fields ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== datetime argument fields ==' 'datetime constructor order end' \
         'datetime argument fields end' '== datetime offset boundaries ==' \
         'datetime offset boundaries end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: date validation witness missing: $line" >&2; exit 1; }
     done
-    before=$(run_bounded "./$out/DateTimeOps$EXE_EXT" before-date-binary)
-    prefix=$(awk '/^== datetime binary ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
+    gate_capture_ok "$out/assert-before-3" run_bounded "./$out/DateTimeOps$EXE_EXT" before-date-binary
+    before="$out/assert-before-3.stdout"
+    prefix="$out/assert-prefix-13.stdout"
+    gate_output select "$native" "$prefix" --before '== datetime binary ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== datetime binary ==' 'datetime binary end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: date binary witness missing: $line" >&2; exit 1; }
     done
     local zone expected
     for zone in Etc/UTC Asia/Tokyo America/New_York; do
-        native=$(TZ="$zone" run_bounded "./$out/DateTimeOps$EXE_EXT" binary-only)
-        expected=$(TZ="$zone" run_bounded dotnet "$_CG_APP" binary-only)
-        assert_output "$(strip_cr_win "$native")" "$(strip_cr_win "$expected")"
+        TZ="$zone" gate_capture_ok "$out/zone-$zone/assert-native-4" run_bounded "./$out/DateTimeOps$EXE_EXT" binary-only
+        native="$out/zone-$zone/assert-native-4.stdout"
+        TZ="$zone" gate_capture_ok "$out/zone-$zone/assert-expected-5" run_bounded dotnet "$_CG_APP" binary-only
+        expected="$out/zone-$zone/assert-expected-5.stdout"
+        gate_output compare "$native" "$expected"
     done
-    before=$(run_bounded dotnet "$_CG_APP" before-date-exact-spans)
-    native=$(run_bounded "./$out/DateTimeOps$EXE_EXT")
-    native=$(strip_cr_win "$native")
-    prefix=$(awk '/^== datetime exact spans ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    grep -Fxq 'datetime exact spans end' <<< "$native" \
+    gate_capture_ok "$out/assert-before-6" run_bounded dotnet "$_CG_APP" before-date-exact-spans
+    before="$out/assert-before-6.stdout"
+    gate_capture_ok "$out/assert-native-7" run_bounded "./$out/DateTimeOps$EXE_EXT"
+    native="$out/assert-native-7.stdout"
+
+    prefix="$out/assert-prefix-14.stdout"
+
+    gate_output select "$native" "$prefix" --before '== datetime exact spans ==' --policy crlf
+    gate_output compare "$prefix" "$before"
+    gate_output witness "$native" 'datetime exact spans end' --count any --policy crlf \
         || { echo "FAIL: exact date span parsing did not run" >&2; exit 1; }
-    before=$(run_bounded dotnet "$_CG_APP" before-date-utf8)
-    prefix=$(awk '/^== UTF-8 date destinations ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    grep -Fxq 'UTF-8 date destinations end' <<< "$native" \
+    gate_capture_ok "$out/assert-before-8" run_bounded dotnet "$_CG_APP" before-date-utf8
+    before="$out/assert-before-8.stdout"
+    prefix="$out/assert-prefix-15.stdout"
+    gate_output select "$native" "$prefix" --before '== UTF-8 date destinations ==' --policy crlf
+    gate_output compare "$prefix" "$before"
+    gate_output witness "$native" 'UTF-8 date destinations end' --count any --policy crlf \
         || { echo "FAIL: UTF-8 date formatting did not run" >&2; exit 1; }
-    before=$(run_bounded dotnet "$_CG_APP" before-daylight)
-    prefix=$(awk '/^== daylight saving time ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    grep -Fxq 'daylight saving time end' <<< "$native" \
+    gate_capture_ok "$out/assert-before-9" run_bounded dotnet "$_CG_APP" before-daylight
+    before="$out/assert-before-9.stdout"
+    prefix="$out/assert-prefix-16.stdout"
+    gate_output select "$native" "$prefix" --before '== daylight saving time ==' --policy crlf
+    gate_output compare "$prefix" "$before"
+    gate_output witness "$native" 'daylight saving time end' --count any --policy crlf \
         || { echo 'FAIL: daylight saving time section did not run' >&2; exit 1; }
     if [ "$EXE_EXT" != .exe ]; then
         for zone in Etc/UTC Asia/Tokyo America/New_York Australia/Sydney \
             Asia/Manila America/Sitka America/Juneau Pacific/Guam Pacific/Kiritimati; do
-            native=$(TZ="$zone" run_bounded "./$out/DateTimeOps$EXE_EXT" daylight-only)
-            expected=$(TZ="$zone" run_bounded dotnet "$_CG_APP" daylight-only)
-            assert_output "$(strip_cr_win "$native")" "$(strip_cr_win "$expected")"
+            TZ="$zone" gate_capture_ok "$out/zone-$zone/assert-native-10" run_bounded "./$out/DateTimeOps$EXE_EXT" daylight-only
+            native="$out/zone-$zone/assert-native-10.stdout"
+            TZ="$zone" gate_capture_ok "$out/zone-$zone/assert-expected-11" run_bounded dotnet "$_CG_APP" daylight-only
+            expected="$out/zone-$zone/assert-expected-11.stdout"
+            gate_output compare "$native" "$expected"
         done
     fi
 }

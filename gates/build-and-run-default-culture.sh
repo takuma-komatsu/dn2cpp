@@ -47,35 +47,43 @@ source "$(dirname "$0")/_common.sh"
 
 gate_run_logs_init default_culture "DefaultCulture runs"
 
-# Command substitutions must retain a failed child's output before set -e exits.
+# Assign the raw stdout path; failed runs retain their bytes and command context.
 default_culture_run() {
-    local side="$1" output code command_line stderr_file
-    shift
-    stderr_file="$_GATE_RUN_LOG_DIR/$side.stderr"
-    printf -v command_line '%q ' "$@"
-    if output=$(run_bounded_retry_status4 "${out:-$_GATE_RUN_LOG_DIR}" \
-            "DefaultCulture $side: $command_line" "$@" 2>"$stderr_file"); then
-        code=0
-    else
-        code=$?
+    local _culture_result="$1" _culture_side="$2" _culture_prefix _culture_code _culture_command
+    shift 2
+    _CULTURE_RUN_SEQUENCE=$((${_CULTURE_RUN_SEQUENCE:-0} + 1))
+    _culture_prefix="$_GATE_RUN_LOG_DIR/${_CULTURE_RUN_SEQUENCE}-$_culture_side"
+    printf -v "$_culture_result" '%s' "$_culture_prefix.stdout"
+    printf -v _culture_command '%q ' "$@"
+    gate_capture "$_culture_prefix" run_bounded_retry_status4 "${out:-$_GATE_RUN_LOG_DIR}" \
+        "DefaultCulture $_culture_side: $_culture_command" "$@" || return 1
+    printf '%s\n' "$_culture_command" > "$_culture_prefix.command"
+    _culture_code=$(cat "$_culture_prefix.status")
+    if [ "$_culture_code" -ne 0 ]; then
+        echo "---- DefaultCulture $_culture_side: $_culture_command diagnostics ----" >&2
+        echo "exit code: $_culture_code" >&2
+        _gate_run_termination "$_culture_code" "$_culture_prefix.stderr"
+        if [ -s "$_culture_prefix.stdout" ]; then
+            echo 'stdout:' >&2; cat "$_culture_prefix.stdout" >&2
+        else
+            echo 'stdout: <empty>' >&2
+        fi
+        if [ -s "$_culture_prefix.stderr" ]; then
+            echo 'stderr:' >&2; cat "$_culture_prefix.stderr" >&2
+        else
+            echo 'stderr: <empty>' >&2
+        fi
+        return "$_culture_code"
     fi
-    if [ "$code" -ne 0 ]; then
-        gate_run_diag "DefaultCulture $side: $command_line" "$code" "$output" "$stderr_file" >&2
-        return "$code"
-    fi
-    if [ -s "$stderr_file" ]; then
-        cat "$stderr_file" >&2
-    fi
-    printf '%s' "$output"
-    return 0
+    cat "$_culture_prefix.stderr" >&2
 }
 
 run_locale_env() {
-    local side="$1" assigns=()
-    shift
+    local result="$1" side="$2" assigns=()
+    shift 2
     read -r -a assigns <<< "$1"
     shift
-    default_culture_run "$side" env -u LC_ALL -u LC_MESSAGES -u LANG ${assigns[@]+"${assigns[@]}"} "$@"
+    default_culture_run "$result" "$side" env -u LC_ALL -u LC_MESSAGES -u LANG ${assigns[@]+"${assigns[@]}"} "$@"
 }
 
 default_culture_diagnostics_self_test() {
@@ -93,16 +101,19 @@ default_culture_diagnostics_self_test() {
     printf -v quoted_args '%q ' culture-fallback "foo QQ" "" "foo'QQ"
     for side in native oracle; do
         diagnostics="$_GATE_RUN_LOG_DIR/self-test-$side.stderr"
-        actual=$(LC_ALL=C LC_MESSAGES=C LANG=C run_locale_env "$side" "LANG=de_DE.UTF-8" bash -c "$child" _ 0 \
-            culture-fallback "foo QQ" "" "foo'QQ" 2>"$diagnostics")
-        [ "$actual" = "same output" ] \
+        LC_ALL=C LC_MESSAGES=C LANG=C run_locale_env actual "$side" "LANG=de_DE.UTF-8" bash -c "$child" _ 0 \
+            culture-fallback "foo QQ" "" "foo'QQ" 2>"$diagnostics"
+        gate_assert_text "$actual" "same output" \
             || { echo "FAIL: $side successful stdout, locale or quoted arguments changed" >&2; return 1; }
         grep -Fxq 'injected stderr' "$diagnostics" \
             || { echo "FAIL: $side successful stderr disappeared" >&2; return 1; }
+        printf 'line\r\n\n\000tail\r' > "$_GATE_RUN_LOG_DIR/self-test.raw"
+        default_culture_run actual "$side" bash -c 'printf "line\r\n\n\000tail\r"' 2>"$diagnostics"
+        gate_output compare "$actual" "$_GATE_RUN_LOG_DIR/self-test.raw"
         code=23
         [ "$side" = native ] || code=29
-        if actual=$(LC_ALL=C LC_MESSAGES=C LANG=C run_locale_env "$side" "LANG=de_DE.UTF-8" bash -c "$child" _ "$code" \
-            culture-fallback "foo QQ" "" "foo'QQ" 2>"$diagnostics"); then
+        if LC_ALL=C LC_MESSAGES=C LANG=C run_locale_env actual "$side" "LANG=de_DE.UTF-8" bash -c "$child" _ "$code" \
+            culture-fallback "foo QQ" "" "foo'QQ" 2>"$diagnostics"; then
             echo "FAIL: $side nonzero exit with matching stdout passed" >&2
             return 1
         else
@@ -120,13 +131,13 @@ default_culture_diagnostics_self_test() {
             && grep -Fxq 'stderr:' "$diagnostics" \
             && grep -Fxq 'injected stderr' "$diagnostics" \
             || { echo "FAIL: $side failed-run diagnostics are incomplete" >&2; cat "$diagnostics" >&2; return 1; }
-        if actual=$(default_culture_run "$side" bash -c 'exit 37' 2>"$diagnostics"); then
+        if default_culture_run actual "$side" bash -c 'exit 37' 2>"$diagnostics"; then
             echo "FAIL: $side empty failed run passed" >&2
             return 1
         else
             actual_code=$?
         fi
-        [ "$actual_code" -eq 37 ] && [ -z "$actual" ] \
+        [ "$actual_code" -eq 37 ] && [ ! -s "$actual" ] \
             && grep -Fq "DefaultCulture $side:" "$diagnostics" \
             && grep -Fxq 'exit code: 37' "$diagnostics" \
             && grep -Fxq 'stdout: <empty>' "$diagnostics" \
@@ -145,16 +156,16 @@ default_culture_diagnostics_self_test() {
             fi
             printf "second attempt\n"
         '
-        actual=$(default_culture_run native bash -c "$child" _ "$retry_counter" 2>"$diagnostics")
+        default_culture_run actual native bash -c "$child" _ "$retry_counter" 2>"$diagnostics"
         retry_evidence=("$_GATE_RUN_LOG_DIR"/retry4.*)
-        [ "$actual" = 'second attempt' ] && [ "$(cat "$retry_counter")" = 1 ] \
+        gate_assert_text "$actual" 'second attempt' && [ "$(cat "$retry_counter")" = 1 ] \
             && [ "${#retry_evidence[@]}" -eq 1 ] \
             && grep -Fxq 'first attempt' "${retry_evidence[0]}/first.stdout" \
             && grep -Fxq 'first error' "${retry_evidence[0]}/first.stderr" \
             && grep -Fxq '4' "${retry_evidence[0]}/first.status" \
             && grep -Fq 'first run returned 4; retried once (second status 0' "$diagnostics" \
             || { echo 'FAIL: status-4 retry lost the first result or changed the second' >&2; return 1; }
-        if actual=$(default_culture_run native bash -c 'exit 4' 2>"$diagnostics"); then
+        if default_culture_run actual native bash -c 'exit 4' 2>"$diagnostics"; then
             echo 'FAIL: a second status 4 passed' >&2
             return 1
         else
@@ -174,56 +185,62 @@ if [ "${1:-}" = --self-test ]; then
     exit 0
 fi
 
-default_culture_zz_symbol() {
-    LC_ALL=C awk -F'|' '/^    symbols=/ { print $6 }' <<< "$1"
-}
+# Only the frozen ZZ currency differs; every other byte remains oracle-owned.
+default_culture_assert_zz() {
+    local mode="$1" native="$2" oracle="$3" frozen="$4" python
+    python=$(resolve_python) || return 1
+    # resolve_python can return the Windows launcher "py -3".
+    # shellcheck disable=SC2086
+    $python - "$mode" "$native" "$oracle" "$frozen" <<'PYTHON' || return 1
+from pathlib import Path
+import re
+import sys
 
-default_culture_mask_zz_currency() {
-    local symbol="$1" value="$2"
-    LC_ALL=C awk -v symbol="$symbol" '
-        /^    symbols=/ || /^    C2? double=/ { gsub(symbol, "<currency>") }
-        { print }
-    ' <<< "$value"
+mode, native, oracle, frozen = sys.argv[1:]
+for filename, is_native in ((native, True), (oracle, False)):
+    data = Path(filename).read_bytes()
+    marker = b"    symbols=" if mode == "fallback" else b"cur="
+    rows = [line for line in data.split(b"\n") if line.startswith(marker)]
+    if len(rows) != 1:
+        raise SystemExit("FAIL: missing or repeated ZZ currency symbol record")
+    row = rows[0]
+    if row.endswith(b"\r"):
+        # This record came from split(LF), so only a CR paired with LF is removed.
+        offset = data.find(row)
+        if data[offset + len(row):offset + len(row) + 1] == b"\n":
+            row = row[:-1]
+    fields = row.split(b"|") if mode == "fallback" else row.split(b"=", 1)
+    index = 5 if mode == "fallback" else 1
+    if len(fields) <= index:
+        raise SystemExit("FAIL: malformed ZZ currency symbol record")
+    symbol = fields[index]
+    if is_native and symbol != frozen.encode("utf-8"):
+        raise SystemExit(f"FAIL: frozen ZZ currency {symbol!r}, expected {frozen!r}")
+    if not is_native and re.fullmatch(b"[A-Z]{3}", symbol) is None:
+        raise SystemExit(f"FAIL: CLR ZZ currency is not an ISO code: {symbol!r}")
+    # Split on LF only: lone CR and other control bytes are payload, not records.
+    lines = data.split(b"\n")
+    for index, line in enumerate(lines):
+        if mode == "fallback":
+            if line.startswith((b"    symbols=", b"    C double=", b"    C2 double=")):
+                lines[index] = line.replace(symbol, b"<currency>")
+        elif line.startswith(b"cur="):
+            lines[index] = b"cur=<currency>" + line[len(b"cur=") + len(symbol):]
+        elif line.startswith(b"c="):
+            lines[index] = line.replace(symbol, b"<currency>")
+    Path(filename + ".currency-masked").write_bytes(b"\n".join(lines))
+PYTHON
+    gate_output compare "$native.currency-masked" "$oracle.currency-masked"
 }
 
 default_culture_assert_zz_fallback() {
-    local native="$1" oracle="$2" frozen="$3" native_symbol oracle_symbol
-    native_symbol=$(default_culture_zz_symbol "$native")
-    oracle_symbol=$(default_culture_zz_symbol "$oracle")
-    [ "$native_symbol" = "$frozen" ] \
-        || { echo "FAIL: foo-ZZ frozen currency is '$native_symbol', expected '$frozen'" >&2; return 1; }
-    [[ "$oracle_symbol" =~ ^[A-Z]{3}$ ]] \
-        || { echo "FAIL: foo-ZZ CLR currency is not an ISO code: '$oracle_symbol'" >&2; return 1; }
-    assert_output "$(default_culture_mask_zz_currency "$native_symbol" "$native")" \
-        "$(default_culture_mask_zz_currency "$oracle_symbol" "$oracle")"
-}
-
-default_culture_zz_default_symbol() {
-    LC_ALL=C awk -F= '/^cur=/ { sub(/\r$/, "", $2); print $2 }' <<< "$1"
-}
-
-default_culture_mask_zz_default_currency() {
-    local symbol="$1" value="$2"
-    LC_ALL=C awk -v symbol="$symbol" '
-        /^cur=/ { sub("^cur=" symbol, "cur=<currency>") }
-        /^c=/ { gsub(symbol, "<currency>") }
-        { print }
-    ' <<< "$value"
+    default_culture_assert_zz fallback "$@"
 }
 
 default_culture_assert_zz_default() {
-    local native="$1" oracle="$2" frozen="$3" native_symbol oracle_symbol
-    native_symbol=$(default_culture_zz_default_symbol "$native")
-    oracle_symbol=$(default_culture_zz_default_symbol "$oracle")
-    [ "$native_symbol" = "$frozen" ] \
-        || { echo "FAIL: default zz-ZZ frozen currency is '$native_symbol', expected '$frozen'" >&2; return 1; }
-    [[ "$oracle_symbol" =~ ^[A-Z]{3}$ ]] \
-        || { echo "FAIL: default zz-ZZ CLR currency is not an ISO code: '$oracle_symbol'" >&2; return 1; }
-    LC_ALL=C grep -Fxq 'Name=zz-ZZ' <<< "$native" \
-        && LC_ALL=C grep -Fxq 'Name=zz-ZZ' <<< "$oracle" \
-        || { echo 'FAIL: LANG=zz_ZZ.UTF-8 did not select zz-ZZ on both sides' >&2; return 1; }
-    assert_output "$(default_culture_mask_zz_default_currency "$native_symbol" "$native")" \
-        "$(default_culture_mask_zz_default_currency "$oracle_symbol" "$oracle")"
+    gate_output witness "$1" 'Name=zz-ZZ' --policy crlf
+    gate_output witness "$2" 'Name=zz-ZZ' --policy crlf
+    default_culture_assert_zz default "$@"
 }
 
 PROJECT=DefaultCulture
@@ -280,8 +297,9 @@ FALLBACK_CASES=(
 # other than the platform's own answer, so a row resolved through the wrong
 # variable prints a different culture on every host. That answer is a host
 # setting no variable carries, so it is cache context.
-platform_default="$(run_locale_env oracle "" dotnet "$_CG_APP")"
-platform_default="${platform_default%%$'\n'*}"
+run_locale_env platform_default oracle "" dotnet "$_CG_APP"
+gate_output view "$platform_default" "$platform_default.records" --policy crlf
+IFS= read -r platform_default < "$platform_default.records"
 decoys=()
 for L in de_DE fr_FR sv_SE; do
     [ "$platform_default" = "Name=${L/_/-}" ] || decoys+=("$L.UTF-8")
@@ -412,48 +430,51 @@ compile_console "$out" "$PROJECT"
 # The oracle has to be able to answer at all. An invariant-globalization runtime
 # reports the empty culture for every locale; diffing against it would report a
 # dn2cpp bug for a .NET that has no culture data installed.
-probe="$(default_culture_run oracle env LC_ALL=de_DE.UTF-8 LANG=de_DE.UTF-8 dotnet "$_CG_APP")"
-probe="${probe%%$'\n'*}"
+default_culture_run probe oracle env LC_ALL=de_DE.UTF-8 LANG=de_DE.UTF-8 dotnet "$_CG_APP"
+gate_output view "$probe" "$probe.records" --policy crlf
+IFS= read -r probe < "$probe.records"
 if [ "$probe" = "Name=" ]; then
     gate_skip "the host's .NET reports no culture for LC_ALL=de_DE.UTF-8 (invariant globalization / no ICU), so the oracle cannot answer the question this gate asks"
 fi
 
 for L in $LOCALES; do
     echo "-- LC_ALL=$L"
-    native="$(default_culture_run native env LC_ALL="$L" LANG="$L" "./$out/$PROJECT")"
-    oracle="$(default_culture_run oracle env LC_ALL="$L" LANG="$L" dotnet "$_CG_APP")"
-    assert_output "$native" "$oracle"
-    witness=$(strip_cr_win "$native")
-    grep -Fxq 'default culture identities end' <<< "$witness" \
+    default_culture_run native native env LC_ALL="$L" LANG="$L" "./$out/$PROJECT$EXE_EXT"
+    default_culture_run oracle oracle env LC_ALL="$L" LANG="$L" dotnet "$_CG_APP"
+    gate_output compare "$native" "$oracle"
+    witness="$native"
+    gate_output witness "$native" 'default culture identities end' --count any --policy crlf \
         || { echo "FAIL: default culture identities did not run" >&2; exit 1; }
-    grep -Fxq 'culture host fallback data end' <<< "$witness" \
+    gate_output witness "$native" 'culture host fallback data end' --count any --policy crlf \
         || { echo "FAIL: culture host fallback data did not run" >&2; exit 1; }
-    grep -Fxq 'culture variant order end' <<< "$witness" \
+    gate_output witness "$native" 'culture variant order end' --count any --policy crlf \
         || { echo "FAIL: culture variant identities did not run" >&2; exit 1; }
-    grep -Fxq 'culture extension identities end' <<< "$witness" \
+    gate_output witness "$native" 'culture extension identities end' --count any --policy crlf \
         || { echo "FAIL: culture extension identities did not run" >&2; exit 1; }
-    grep -Fxq 'default culture user number digits end' <<< "$witness" \
+    gate_output witness "$native" 'default culture user number digits end' --count any --policy crlf \
         || { echo "FAIL: user number digits did not run" >&2; exit 1; }
     if [ "$DN2CPP_OS" = windows ]; then
-        grep -Fxq 'Windows user numeric settings end' <<< "$witness" \
+        gate_output witness "$native" 'Windows user numeric settings end' --count any --policy crlf \
             || { echo "FAIL: Windows user numeric settings did not run" >&2; exit 1; }
-        before=$(default_culture_run native env LC_ALL="$L" LANG="$L" "./$out/$PROJECT" before-user-numbers)
-        prefix=$(awk '/^== Windows user numeric settings ==$/ { exit } { print }' <<< "$witness")
-        assert_output "$prefix" "$(strip_cr_win "$before")"
-        before=$(default_culture_run oracle env LC_ALL="$L" LANG="$L" dotnet "$_CG_APP" before-user-numbers)
-        prefix=$(awk '/^== Windows user numeric settings ==$/ { exit } { print }' <<< "$(strip_cr_win "$oracle")")
-        assert_output "$prefix" "$(strip_cr_win "$before")"
+        default_culture_run before native env LC_ALL="$L" LANG="$L" "./$out/$PROJECT$EXE_EXT" before-user-numbers
+        prefix="$witness.prefix"
+        gate_output select "$witness" "$prefix" --before '== Windows user numeric settings ==' --policy crlf
+        gate_output compare "$prefix" "$before"
+        default_culture_run before oracle env LC_ALL="$L" LANG="$L" dotnet "$_CG_APP" before-user-numbers
+        prefix="$oracle.prefix"
+        gate_output select "$oracle" "$prefix" --before '== Windows user numeric settings ==' --policy crlf
+        gate_output compare "$prefix" "$before"
     fi
-    printf '%s\n' "$native" | LC_ALL=C sed 's/^/   /'
+    LC_ALL=C sed 's/^/   /' "$native"
     for name in "${FALLBACK_CASES[@]}"; do
-        native="$(default_culture_run native env LC_ALL="$L" LANG="$L" "./$out/$PROJECT" culture-fallback "$name")"
-        oracle="$(default_culture_run oracle env LC_ALL="$L" LANG="$L" dotnet "$_CG_APP" culture-fallback "$name")"
+        default_culture_run native native env LC_ALL="$L" LANG="$L" "./$out/$PROJECT$EXE_EXT" culture-fallback "$name"
+        default_culture_run oracle oracle env LC_ALL="$L" LANG="$L" dotnet "$_CG_APP" culture-fallback "$name"
         if [ "$name" = foo-ZZ ]; then
             default_culture_assert_zz_fallback "$native" "$oracle" "$zz_symbol"
         else
-            assert_output "$native" "$oracle"
+            gate_output compare "$native" "$oracle"
         fi
-        grep -Fxq 'culture host fallback data end' <<< "$(strip_cr_win "$native")" \
+        gate_output witness "$native" 'culture host fallback data end' --count any --policy crlf \
             || { echo "FAIL: fallback data for $name under $L did not run" >&2; exit 1; }
     done
 done
@@ -462,33 +483,37 @@ ran=0
 zz_env_checked=0
 for V in "${ENV_VARIANTS[@]}"; do
     echo "-- env: ${V:-none of LC_ALL LC_MESSAGES LANG}"
-    native="$(run_locale_env native "$V" "./$out/$PROJECT")"
-    oracle="$(run_locale_env oracle "$V" dotnet "$_CG_APP")"
+    run_locale_env native native "$V" "./$out/$PROJECT$EXE_EXT"
+    run_locale_env oracle oracle "$V" dotnet "$_CG_APP"
     if [ "$V" = LANG=zz_ZZ.UTF-8 ]; then
         zz_env_checked=1
     fi
     if [ "$V" = LANG=zz_ZZ.UTF-8 ] && [ "$DN2CPP_OS" != windows ]; then
         default_culture_assert_zz_default "$native" "$oracle" "$zz_symbol"
     else
-        assert_output "$native" "$oracle"
+        gate_output compare "$native" "$oracle"
     fi
     ran=$((ran + 1))
 done
 [ "$zz_env_checked" -eq 1 ] \
     || { echo 'FAIL: the zz-ZZ default-culture env row did not run' >&2; exit 1; }
 echo 'OK: zz-ZZ default-culture env row'
-platform_default=$(strip_cr_win "${platform_default#Name=}")
+platform_default="${platform_default#Name=}"
 echo "env variants: $ran of ${#ENV_VARIANTS[@]} match real .NET except frozen ZZ currency (platform default: ${platform_default:-invariant})"
 
 if [ "$DN2CPP_OS" = windows ]; then
     for name in "$platform_default" ja-JP en-US de-DE fr-FR hi-IN ca-AD ""; do
-        lcid=$(default_culture_run oracle dotnet "$_CG_APP" culture-user-lcid "$name")
-        lcid=$(strip_cr_win "$lcid")
+        default_culture_run lcid oracle dotnet "$_CG_APP" culture-user-lcid "$name"
+        gate_output view "$lcid" "$lcid.records" --policy crlf
+        lcid_file="$lcid"
+        IFS= read -r lcid < "$lcid_file.records"
+        [[ "$lcid" =~ ^[0-9]+$ ]] || { echo 'FAIL: invalid culture LCID' >&2; exit 1; }
+        gate_assert_text "$lcid_file" "$lcid"
         for first in name-true name-false lcid-true lcid-false cached-name cached-lcid; do
-            native=$(default_culture_run native "./$out/$PROJECT" culture-user-numbers "$name" "$lcid" "$first")
-            oracle=$(default_culture_run oracle dotnet "$_CG_APP" culture-user-numbers "$name" "$lcid" "$first")
-            assert_output "$native" "$oracle"
-            grep -Fxq 'Windows user numeric settings end' <<< "$(strip_cr_win "$native")" \
+            default_culture_run native native "./$out/$PROJECT$EXE_EXT" culture-user-numbers "$name" "$lcid" "$first"
+            default_culture_run oracle oracle dotnet "$_CG_APP" culture-user-numbers "$name" "$lcid" "$first"
+            gate_output compare "$native" "$oracle"
+            gate_output witness "$native" 'Windows user numeric settings end' --count any --policy crlf \
                 || { echo "FAIL: Windows numeric settings for $name ($first) did not finish" >&2; exit 1; }
         done
     done
@@ -498,28 +523,28 @@ fi
 # of the managed default culture's variant ordering.
 for V in "${POSIX_FALLBACK_VARIANTS[@]}"; do
     echo "-- numeric fallback env: $V"
-    native="$(run_locale_env native "$V" "./$out/$PROJECT" culture-fallback foo-US)"
-    oracle="$(run_locale_env oracle "$V" dotnet "$_CG_APP" culture-fallback foo-US)"
-    assert_output "$native" "$oracle"
-    grep -Fxq 'culture host fallback data end' <<< "$(strip_cr_win "$native")" \
+    run_locale_env native native "$V" "./$out/$PROJECT$EXE_EXT" culture-fallback foo-US
+    run_locale_env oracle oracle "$V" dotnet "$_CG_APP" culture-fallback foo-US
+    gate_output compare "$native" "$oracle"
+    gate_output witness "$native" 'culture host fallback data end' --count any --policy crlf \
         || { echo "FAIL: numeric fallback for $V did not run" >&2; exit 1; }
 done
 
 for name in "${VARIANT_LOCALES[@]}"; do
     echo "-- variant identity env: LANG=$name"
-    native="$(run_locale_env native "LANG=$name" "./$out/$PROJECT" culture-variant-order)"
-    oracle="$(run_locale_env oracle "LANG=$name" dotnet "$_CG_APP" culture-variant-order)"
-    assert_output "$native" "$oracle"
-    grep -Fxq 'culture variant order end' <<< "$(strip_cr_win "$native")" \
+    run_locale_env native native "LANG=$name" "./$out/$PROJECT$EXE_EXT" culture-variant-order
+    run_locale_env oracle oracle "LANG=$name" dotnet "$_CG_APP" culture-variant-order
+    gate_output compare "$native" "$oracle"
+    gate_output witness "$native" 'culture variant order end' --count any --policy crlf \
         || { echo "FAIL: default variant identities for $name did not run" >&2; exit 1; }
 done
 
 for name in "${EXTENSION_LOCALES[@]}"; do
     echo "-- extension identity env: LANG=$name"
-    native="$(run_locale_env native "LANG=$name" "./$out/$PROJECT" culture-extension-identities)"
-    oracle="$(run_locale_env oracle "LANG=$name" dotnet "$_CG_APP" culture-extension-identities)"
-    assert_output "$native" "$oracle"
-    grep -Fxq 'culture extension identities end' <<< "$(strip_cr_win "$native")" \
+    run_locale_env native native "LANG=$name" "./$out/$PROJECT$EXE_EXT" culture-extension-identities
+    run_locale_env oracle oracle "LANG=$name" dotnet "$_CG_APP" culture-extension-identities
+    gate_output compare "$native" "$oracle"
+    gate_output witness "$native" 'culture extension identities end' --count any --policy crlf \
         || { echo "FAIL: default extension identities for $name did not run" >&2; exit 1; }
 done
 
@@ -535,21 +560,23 @@ if [ "$DN2CPP_OS" != windows ]; then
     fi
     for query in "$B" C POSIX C.UTF-8; do
         echo "-- libc messages query: $query"
-        native=$(run_locale_env native "LANG=$A" env "$injection" "DN2CPP_GATE_QUERY_LOCALE=$query" "./$out/$PROJECT")
-        oracle=$(run_locale_env oracle "LANG=$A" env "$injection" "DN2CPP_GATE_QUERY_LOCALE=$query" dotnet "$_CG_APP")
-        assert_output "$native" "$oracle"
+        run_locale_env native native "LANG=$A" env "$injection" "DN2CPP_GATE_QUERY_LOCALE=$query" "./$out/$PROJECT$EXE_EXT"
+        run_locale_env oracle oracle "LANG=$A" env "$injection" "DN2CPP_GATE_QUERY_LOCALE=$query" dotnet "$_CG_APP"
+        gate_output compare "$native" "$oracle"
         if [ "$query" = "$B" ]; then
             expected_name="${B%.UTF-8}"
-            assert_output "${oracle%%$'\n'*}" "Name=${expected_name/_/-}"
+            printf '%s\n' "Name=${expected_name/_/-}" > "$oracle.name.expected"
+            gate_output prefix "$oracle" "$oracle.name.expected" --policy crlf
         fi
     done
     if [ "$DN2CPP_OS" = macos ]; then
         echo "-- initialized libc locale with empty LC_ALL"
-        native=$(run_locale_env native "LC_ALL= LANG=$A" env "$injection" DN2CPP_GATE_INITIALIZE_LOCALE=1 "./$out/$PROJECT")
-        oracle=$(run_locale_env oracle "LC_ALL= LANG=$A" env "$injection" DN2CPP_GATE_INITIALIZE_LOCALE=1 dotnet "$_CG_APP")
-        assert_output "$native" "$oracle"
+        run_locale_env native native "LC_ALL= LANG=$A" env "$injection" DN2CPP_GATE_INITIALIZE_LOCALE=1 "./$out/$PROJECT$EXE_EXT"
+        run_locale_env oracle oracle "LC_ALL= LANG=$A" env "$injection" DN2CPP_GATE_INITIALIZE_LOCALE=1 dotnet "$_CG_APP"
+        gate_output compare "$native" "$oracle"
         expected_name="${A%.UTF-8}"
-        assert_output "${oracle%%$'\n'*}" "Name=${expected_name/_/-}"
+        printf '%s\n' "Name=${expected_name/_/-}" > "$oracle.name.expected"
+        gate_output prefix "$oracle" "$oracle.name.expected" --policy crlf
     fi
 fi
 

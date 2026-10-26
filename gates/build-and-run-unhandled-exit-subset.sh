@@ -17,7 +17,8 @@ DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|worker-modes:pool,thre
 # The Windows/MSYS status-4 workaround also covers the initial Main comparison.
 DN2CPP_RETRY_STATUS4=1
 
-corelib_diff_gate UnhandledExitSubset
+corelib_diff_abort_gate UnhandledExitSubset 'before throw' \
+    'Unhandled exception. System.InvalidOperationException: escaped Main'
 
 # Throw-time-trace arm: the unhandled report must carry the trace captured at throw. The
 # stdout+exit diff above stays pinned to real .NET; stderr can never join that
@@ -41,9 +42,11 @@ project=UnhandledExitSubset
 # region; a presence shortcut here partly undoes that. compile_console is
 # ccache-backed, so a genuinely unchanged build costs almost nothing.
 compile_console "$out" "$project"
-set +e
-err=$("./$out/$project" 2>&1 >/dev/null); code=$?
-set -e
+gate_capture "$out/trace" run_bounded "./$out/$project"
+code=$(cat "$out/trace.status")
+gate_output native-abort "$out/trace" --host "$DN2CPP_OS" --witness 'before throw' \
+    --diagnostic 'Unhandled exception. System.InvalidOperationException: escaped Main'
+err="$out/trace.stderr"
 if [ "$code" -eq 0 ]; then
     echo "FAIL: the unhandled-exit binary exited 0 — an escaped exception must abort" >&2
     exit 1
@@ -57,39 +60,41 @@ fi
 # a binary it has already run, which is why it is the only gate that ever showed
 # it and why the check belongs here rather than in _common.sh. Six lanes spent a
 # day on it because the failure carried no attribution; it does now.
-if [ "$code" -ge 128 ] && [ -z "$err" ]; then
+if [ "$code" -ge 128 ] && [ ! -s "$err" ]; then
     echo "FAIL: the binary died of signal $((code - 128)) before producing any output — it did not run." >&2
     echo "      On macOS that is what an exec of an in-place-rewritten executable does. Check that" >&2
     echo "      compile_console still stages through stage_binary (copy beside + rename, i.e. a fresh" >&2
     echo "      inode) and not a plain cp onto $out/$project. See stage_binary in gates/_common.sh." >&2
     exit 1
 fi
-err=$(strip_cr_win "$err")
-if ! grep -q '^   at ' <<<"$err"; then
+if ! grep -q '^   at ' "$err"; then
     echo "FAIL: unhandled-exception stderr carries no '   at ' trace line" >&2
-    printf '%s\n' "$err" >&2
+    cat "$err" >&2
     exit 1
 fi
-if ! grep -q '^   at Program\.Main()' <<<"$err"; then
+if ! grep -q '^   at Program\.Main()' "$err"; then
     echo "FAIL: unhandled-exception stderr trace does not name the throw path (Program.Main)" >&2
-    printf '%s\n' "$err" >&2
+    cat "$err" >&2
     exit 1
 fi
 echo "OK — the unhandled report names Program.Main in a real '   at ' trace"
 
 echo "== Escaping-worker arms: managed first line and abnormal exit match real .NET =="
+first_line_policy=exact
+if [ "$DN2CPP_OS" = windows ]; then
+    first_line_policy=crlf
+fi
 for mode in pool thread timer 'cts timer' 'async void' 'local continuation' 'nested drain' 'generic exception' \
         'message override'; do
-    set +e
-    native=$(run_bounded_retry_status4 "$out" "worker $mode native" \
-        "./$out/$project$EXE_EXT" "$mode" 2>"$out/worker.err"); native_code=$?
-    expected=$(run_bounded_retry_status4 "$out" "worker $mode oracle" \
-        dotnet "$_CG_APP" "$mode" 2>"$out/worker-oracle.err"); expected_code=$?
-    set -e
-    native=$(strip_cr_win "$native")
-    expected=$(strip_cr_win "$expected")
-    assert_output "$native" "$expected"
-    assert_output "$native" "before throw
+    run_out="$out/worker-$mode"
+    gate_capture "$run_out/native" run_bounded_retry_status4 "$out" "worker $mode native" \
+        "./$out/$project$EXE_EXT" "$mode"
+    gate_capture "$run_out/oracle" run_bounded_retry_status4 "$out" "worker $mode oracle" \
+        dotnet "$_CG_APP" "$mode"
+    native_code=$(cat "$run_out/native.status")
+    expected_code=$(cat "$run_out/oracle.status")
+    gate_output compare "$run_out/native.stdout" "$run_out/oracle.stdout"
+    gate_assert_text "$run_out/native.stdout" "before throw
 -- escaping worker: $mode --
 throwing $mode"
     case "$expected_code" in
@@ -99,22 +104,26 @@ throwing $mode"
         echo "FAIL: worker $mode still returned status 4 after one retry" >&2
         exit 1
     fi
-    assert_exit_code "$native_code" "$expected_code"
-    first=$(strip_cr_win "$(head -n 1 "$out/worker.err")")
-    oracle_first=$(strip_cr_win "$(head -n 1 "$out/worker-oracle.err")")
-    assert_output "$first" "$oracle_first"
+    # The first diagnostic is a semantic record; retain both complete reports.
+    gate_output select "$run_out/native.stderr" "$run_out/native-first.stderr" --first-record --policy exact
+    gate_output select "$run_out/oracle.stderr" "$run_out/oracle-first.stderr" --first-record --policy exact
+    gate_output compare "$run_out/native-first.stderr" "$run_out/oracle-first.stderr" --policy "$first_line_policy"
+    first="$run_out/native-first.stderr"
     if [ "$mode" = 'generic exception' ]; then
-        assert_output "$first" 'Unhandled exception. Program+GenericFailure`1[System.Int32]: escaped generic exception'
+        diagnostic='Unhandled exception. Program+GenericFailure`1[System.Int32]: escaped generic exception'
     elif [ "$mode" = 'message override' ]; then
-        assert_output "$first" 'Unhandled exception. Program+OverriddenMessage: overridden message'
+        diagnostic='Unhandled exception. Program+OverriddenMessage: overridden message'
     elif [ "$mode" = 'cts timer' ]; then
-        assert_output "$first" 'Unhandled exception. System.AggregateException: One or more errors occurred. (escaped cts timer)'
+        diagnostic='Unhandled exception. System.AggregateException: One or more errors occurred. (escaped cts timer)'
     else
-        assert_output "$first" "Unhandled exception. System.InvalidOperationException: escaped $mode"
+        diagnostic="Unhandled exception. System.InvalidOperationException: escaped $mode"
     fi
+    gate_assert_text "$first" "$diagnostic"
+    gate_output abort-parity "$run_out/native" "$run_out/oracle" --host "$DN2CPP_OS" \
+        --witness "throwing $mode" --diagnostic "$diagnostic"
     # CTS aggregation throws in native code after the managed callback returns.
     if [ "$mode" != 'cts timer' ]; then
-        grep -q '^   at ' "$out/worker.err" \
+        grep -q '^   at ' "$run_out/native.stderr" \
             || { echo "FAIL: $mode report has no managed throw-time trace" >&2; exit 1; }
     fi
     echo "OK worker $mode: reported managed fault and aborted with $native_code"

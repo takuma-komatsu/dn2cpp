@@ -92,16 +92,17 @@ comparison_prior_extra_asserts() {
     done
     echo "sub-word and pointer Equals(object) real bodies are absent: OK"
 
-    run_bounded "$out/BoxingPrimitives$EXE_EXT" > "$out/native.stdout"
-    grep -Fxq '== boxed CLR relations ==' "$out/native.stdout"
-    grep -Fxq 'int INumber<int>: is=True assignable=True' "$out/native.stdout"
-    grep -Fxq 'int INumber<long>: is=False assignable=False' "$out/native.stdout"
-    grep -Fxq 'utf8 int X4: True:4:30304646' "$out/native.stdout"
-    DN2CPP_BEFORE_BOXED_CLR_RELATIONS=1 run_bounded "$out/BoxingPrimitives$EXE_EXT" \
-        > "$out/before-boxed-clr-relations.stdout"
-    sed '/^== boxed CLR relations ==/,$d' "$out/native.stdout" > "$out/boxed-clr-relations-prefix.stdout"
-    diff -u <(strip_cr_win_file "$out/before-boxed-clr-relations.stdout") \
-        <(strip_cr_win_file "$out/boxed-clr-relations-prefix.stdout")
+    gate_capture_ok "$out/boxed-relations" run_bounded "$out/BoxingPrimitives$EXE_EXT"
+    gate_output witness "$out/boxed-relations.stdout" --policy crlf --count any \
+        '== boxed CLR relations ==' \
+        'int INumber<int>: is=True assignable=True' \
+        'int INumber<long>: is=False assignable=False' \
+        'utf8 int X4: True:4:30304646'
+    DN2CPP_BEFORE_BOXED_CLR_RELATIONS=1 gate_capture_ok "$out/before-boxed-clr-relations" \
+        run_bounded "$out/BoxingPrimitives$EXE_EXT"
+    gate_output select "$out/boxed-relations.stdout" "$out/boxed-clr-relations-prefix.stdout" \
+        --before '== boxed CLR relations ==' --policy crlf
+    gate_output compare "$out/before-boxed-clr-relations.stdout" "$out/boxed-clr-relations-prefix.stdout"
     # Int32's row set in the init prologue's relation table names INumber<int>.
     local int_rows
     int_rows=$(grep -ho '{ &dn2cpp_int32_type, rel_itfs_[0-9]*,' "$out"/generated*.cpp \
@@ -118,25 +119,32 @@ comparison_prior_extra_asserts() {
 gate_extra_asserts() {
     local out="$1" native before prefix line
     comparison_prior_extra_asserts "$out"
-    native=$(run_bounded "./$out/BoxingPrimitives")
-    native=$(strip_cr_win "$native")
-    before=$(dotnet "$_CG_APP" before-default-comparison)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== default comparison validation ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-native-1" run_bounded "./$out/BoxingPrimitives"
+    native="$out/assert-native-1.stdout"
+
+    gate_capture_ok "$out/assert-before-2" run_bounded dotnet "$_CG_APP" before-default-comparison
+    before="$out/assert-before-2.stdout"
+
+    prefix="$out/assert-prefix-6.stdout"
+
+    gate_output select "$native" "$prefix" --before '== default comparison validation ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== default comparison validation ==' \
         '== constrained CompareTo(object) ==' \
         'interface: 42 43 42 43 True False' \
         'constrained cross slots=23463/23452/456/-777/True/True/False' \
         'constrained struct comparer=True/False/2' \
         'default comparison validation end'; do
-        grep -Fxq "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: BoxingPrimitives comparison coverage missing: $line" >&2; exit 1; }
     done
-    before=$(dotnet "$_CG_APP" before-ordinary-object-leaves)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== ordinary Object and value-type dispatch ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-3" run_bounded dotnet "$_CG_APP" before-ordinary-object-leaves
+    before="$out/assert-before-3.stdout"
+
+    prefix="$out/assert-prefix-7.stdout"
+
+    gate_output select "$native" "$prefix" --before '== ordinary Object and value-type dispatch ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== ordinary Object and value-type dispatch ==' \
         '== constrained typed calls in a generic class ==' \
         '== null receivers of Object and IComparable members ==' \
@@ -146,20 +154,23 @@ gate_extra_asserts() {
         'GetType owner: System.String' 'GetType Array element: True/True' \
         'enum value-type fold: True' 'ordinary closed casts and owner checks end' \
         'ordinary Object and value-type dispatch end'; do
-        grep -Fxq "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: ordinary Object dispatch witness missing: $line" >&2; exit 1; }
     done
-    before=$(dotnet "$_CG_APP" before-string-interface-dispatch)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== string typed interface dispatch ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-4" run_bounded dotnet "$_CG_APP" before-string-interface-dispatch
+    before="$out/assert-before-4.stdout"
+
+    prefix="$out/assert-prefix-8.stdout"
+
+    gate_output select "$native" "$prefix" --before '== string typed interface dispatch ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== string typed interface dispatch ==' \
         'generic cast string compare: 1 0 -1 1 NRE' \
         'generic held string compare: 1 0 -1 1 NRE' \
         'custom typed string comparison: 17' \
         'string comparison relations: True False False' \
         'string typed interface dispatch end'; do
-        grep -Fxq "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: string typed comparison witness missing: $line" >&2; exit 1; }
     done
     if ! awk '
@@ -178,16 +189,19 @@ gate_extra_asserts() {
         echo 'FAIL: string comparison did not exercise canonical interface dispatch' >&2
         exit 1
     fi
-    before=$(dotnet "$_CG_APP" before-string-constrained-text)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== constrained String ToString receiver ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-5" run_bounded dotnet "$_CG_APP" before-string-constrained-text
+    before="$out/assert-before-5.stdout"
+
+    prefix="$out/assert-prefix-9.stdout"
+
+    gate_output select "$native" "$prefix" --before '== constrained String ToString receiver ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== constrained String ToString receiver ==' \
         'monomorphic string text: text NRE' \
         'shared string text: text NRE' \
         'constrained string text identity: True True' \
         'constrained String ToString receiver end'; do
-        grep -Fxq "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: constrained String ToString witness missing: $line" >&2; exit 1; }
     done
     if ! awk '

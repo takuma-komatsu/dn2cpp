@@ -51,17 +51,18 @@ compile_console "$out" "$project"
 for arg in "" "corrupted-heap"; do
     label="${arg:-<none>}"
     echo "-- overload run: args=$label"
-    set +e
+    run_out="$out/${arg:-no-argument}"
     if [ -z "$arg" ]; then
-        native=$("./$out/$project" 2>"$out/native.err"); native_code=$?
-        expected=$(dotnet "$app" 2>"$out/dotnet.err"); expected_code=$?
+        gate_capture "$run_out/native" run_bounded "./$out/$project"
+        gate_capture "$run_out/dotnet" run_bounded dotnet "$app"
     else
-        native=$("./$out/$project" "$arg" 2>"$out/native.err"); native_code=$?
-        expected=$(dotnet "$app" "$arg" 2>"$out/dotnet.err"); expected_code=$?
+        gate_capture "$run_out/native" run_bounded "./$out/$project" "$arg"
+        gate_capture "$run_out/dotnet" run_bounded dotnet "$app" "$arg"
     fi
-    set -e
-    assert_output "$(strip_cr_win "$native")" "$(strip_cr_win "$expected")"
-    assert_exit_code "$native_code" "$expected_code"
+    native_code=$(cat "$run_out/native.status")
+    expected_code=$(cat "$run_out/dotnet.status")
+    gate_output compare "$run_out/native.stdout" "$run_out/dotnet.stdout"
+    gate_output status "$native_code" "$expected_code"
     # The oracle itself must be an abort, not a clean exit — otherwise the two sides
     # could agree on a status that proves nothing. On Unix an aborted process is
     # reported as 128+SIGABRT = 134; Windows FailFast reports its own fatal status.
@@ -86,17 +87,17 @@ for arg in "" "corrupted-heap"; do
         needle="halting: $arg"
     fi
     for side in native dotnet; do
-        grep -qF "$needle" "$out/$side.err" || {
+        grep -qF "$needle" "$run_out/$side.stderr" || {
             echo "FAIL: the $side run's FailFast report does not carry \"$needle\" — this run did not take the overload it was meant to" >&2
-            cat "$out/$side.err" >&2
+            cat "$run_out/$side.stderr" >&2
             exit 1; }
     done
     # The two-argument overload additionally has to render its Exception; that is
     # the only positive evidence distinguishing it from the one-argument one.
     if [ -z "$arg" ]; then
-        grep -qF "the cause" "$out/native.err" || {
+        grep -qF "the cause" "$run_out/native.stderr" || {
             echo "FAIL: FailFast(string, Exception) did not render its exception — the second argument was dropped" >&2
-            cat "$out/native.err" >&2
+            cat "$run_out/native.stderr" >&2
             exit 1; }
     fi
     echo "   aborted with status $native_code (real .NET: $expected_code), report names \"$needle\""

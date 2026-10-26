@@ -2,22 +2,19 @@
 # Headerless typed payloads preserve identity across managed and MD array boundaries.
 headerless_reference_prefix_asserts() {
     local out="$1" project="$2" before="$3" marker="$4" end="$5" axis
-    run_bounded "$out/$project$EXE_EXT" > "$out/headerless-full.native.raw.stdout"
-    strip_cr_win_file "$out/headerless-full.native.raw.stdout" > "$out/headerless-full.native.stdout"
+    gate_capture_ok "$out/headerless-full.native" run_bounded "$out/$project$EXE_EXT"
     for axis in dotnet native; do
         if [ "$axis" = dotnet ]; then
-            run_bounded dotnet "$_CG_APP" "$before" > "$out/headerless-before.$axis.stdout"
+            gate_capture_ok "$out/headerless-before.$axis" run_bounded dotnet "$_CG_APP" "$before"
         else
-            run_bounded "$out/$project$EXE_EXT" "$before" > "$out/headerless-before.$axis.stdout"
+            gate_capture_ok "$out/headerless-before.$axis" run_bounded "$out/$project$EXE_EXT" "$before"
         fi
-        awk -v marker="$marker" '$0 == marker { exit } { print }' \
-            "$out/headerless-full.native.stdout" > "$out/headerless-prefix.stdout"
-        diff -u <(strip_cr_win_file "$out/headerless-before.$axis.stdout") \
-            <(strip_cr_win_file "$out/headerless-prefix.stdout")
+        gate_output prefix "$out/headerless-full.native.stdout" "$out/headerless-before.$axis.stdout" \
+            --before "$marker" --policy crlf
     done
     local line
     for line in "$marker" "$end"; do
-        [ "$(grep -Fxc -- "$line" "$out/headerless-full.native.stdout")" = 1 ] \
+        gate_output witness "$out/headerless-full.native.stdout" "$line" --count 1 --policy crlf \
             || { echo "FAIL: headerless identity block missing or repeated: $line" >&2; return 1; }
     done
 }
@@ -35,7 +32,7 @@ headerless_managed_reference_asserts() {
         'provider delegate date=True' 'provider Invoke invalid=ArgumentException' \
         'provider GetFormat numbers=True' 'provider GetFormat date=True' 'provider GetFormat other=True' \
         'provider GetInstance direct=True' 'provider ignored text=x' 'provider ignored datetime=2020-01-02'; do
-        [ "$(grep -Fxc -- "$line" "$out/headerless-full.native.stdout")" = 1 ] \
+        gate_output witness "$out/headerless-full.native.stdout" "$line" --count 1 --policy crlf \
             || { echo "FAIL: managed headerless witness missing: $line" >&2; return 1; }
     done
 }
@@ -53,7 +50,7 @@ headerless_md_reference_asserts() {
         'headerless md copy to object=True' 'headerless md copy to typed=True:ja-JP' \
         'headerless rank1 copy to SZ=True:True' 'headerless rank1 copy to MD=True:True' \
         'generic md default reads=True:True' 'generic md null stores=True:True'; do
-        [ "$(grep -Fxc -- "$line" "$out/headerless-full.native.stdout")" = 1 ] \
+        gate_output witness "$out/headerless-full.native.stdout" "$line" --count 1 --policy crlf \
             || { echo "FAIL: MD headerless witness missing: $line" >&2; return 1; }
     done
 }
@@ -66,7 +63,7 @@ headerless_format_provider_asserts() {
         'provider span=text/x' 'provider composite=<text>' 'provider composite span=<text>' \
         'provider builder=text/x' 'provider datetime=2020-01-02' 'provider null format=format' \
         'provider numeric payload=1~5/2~5'; do
-        [ "$(grep -Fxc -- "$line" "$out/headerless-full.native.stdout")" = 1 ] \
+        gate_output witness "$out/headerless-full.native.stdout" "$line" --count 1 --policy crlf \
             || { echo "FAIL: managed formatting witness missing: $line" >&2; return 1; }
     done
 }

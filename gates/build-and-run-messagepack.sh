@@ -97,31 +97,31 @@ compile_console "$out" "$project"
 echo "== 7/7 Running (exact diff vs real .NET) =="
 gate_run_logs_init messagepack MessagePack
 log_dir="$_GATE_RUN_LOG_DIR"
-expected=
+expected="$log_dir/oracle.stdout"
 expected_code=
-native=
+native="$log_dir/native.stdout"
 native_code=
 
 gate_run_diagnostics() {
-    gate_run_diag "MessagePack native" "$native_code" "$native" "$log_dir/native.log"
-    gate_run_diag "MessagePack oracle" "$expected_code" "$expected" "$log_dir/oracle.log"
+    gate_run_diag_files "MessagePack native" "$native_code" "$native" "$log_dir/native.stderr"
+    gate_run_diag_files "MessagePack oracle" "$expected_code" "$expected" "$log_dir/oracle.stderr"
 }
-
-set +e
-expected=$(run_bounded dotnet "$app" 2>"$log_dir/oracle.log"); expected_code=$?
-native=$(run_bounded "./$out/$project" 2>"$log_dir/native.log"); native_code=$?
-set -e
+gate_capture "$log_dir/oracle" run_bounded dotnet "$app"
+expected_code=$(cat "$log_dir/oracle.status")
+gate_capture "$log_dir/native" run_bounded "./$out/$project$EXE_EXT"
+native_code=$(cat "$log_dir/native.status")
 assertions_failed=0
-assert_output "$native" "$expected" || assertions_failed=1
-assert_exit_code "$native_code" "$expected_code" || assertions_failed=1
-if [ -s "$log_dir/oracle.log" ]; then
+gate_output compare "$native" "$expected" || assertions_failed=1
+gate_output status "$native_code" 0 || assertions_failed=1
+gate_output status "$expected_code" 0 || assertions_failed=1
+if [ -s "$log_dir/oracle.stderr" ]; then
     echo "FAIL: real .NET wrote to stderr; the diff only covers stdout:" >&2
-    cat "$log_dir/oracle.log" >&2
+    cat "$log_dir/oracle.stderr" >&2
     assertions_failed=1
 fi
-if [ -s "$log_dir/native.log" ]; then
+if [ -s "$log_dir/native.stderr" ]; then
     echo "FAIL: the native binary wrote to stderr; it must stay silent:" >&2
-    cat "$log_dir/native.log" >&2
+    cat "$log_dir/native.stderr" >&2
     assertions_failed=1
 fi
 if [ "$assertions_failed" -ne 0 ]; then

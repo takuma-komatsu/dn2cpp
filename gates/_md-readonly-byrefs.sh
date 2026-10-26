@@ -67,14 +67,18 @@ md_readonly_byrefs_gate() {
     mv "$out/generated.checked.cpp.tmp" "$out/generated.cpp"
     if [ "$axis" = wasm ]; then
         compile_console_wasm "$out" MdReadonlyByrefs
-        run_bounded node "$out/MdReadonlyByrefs.js" > "$out/native.stdout"
+        gate_capture_ok "$out/native" run_bounded node "$out/MdReadonlyByrefs.js"
     else
         compile_console "$out" MdReadonlyByrefs
-        run_bounded "$out/MdReadonlyByrefs$EXE_EXT" > "$out/native.stdout"
-        DN2CPP_GC_INCREMENTAL=1 run_bounded "$out/MdReadonlyByrefs$EXE_EXT" > "$out/incremental.stdout"
-        diff -u "$out/native.stdout" "$out/incremental.stdout"
+        gate_capture_ok "$out/native" run_bounded "$out/MdReadonlyByrefs$EXE_EXT"
+        DN2CPP_GC_INCREMENTAL=1 gate_capture_ok "$out/incremental" run_bounded "$out/MdReadonlyByrefs$EXE_EXT"
+        gate_output compare "$out/native.stdout" "$out/incremental.stdout"
     fi
-    run_bounded dotnet "$_CG_APP" > "$out/clr.stdout"
-    diff -u <(strip_cr_win_file "$out/clr.stdout") <(strip_cr_win_file "$out/native.stdout")
+    gate_capture_ok "$out/clr" run_bounded dotnet "$_CG_APP"
+    if [ "$axis" = wasm ]; then
+        gate_output compare "$out/clr.stdout" "$out/native.stdout" --policy crlf
+    else
+        gate_output compare "$out/clr.stdout" "$out/native.stdout"
+    fi
     echo "OK: readonly MD aliases and owner discrimination ($axis)"
 }

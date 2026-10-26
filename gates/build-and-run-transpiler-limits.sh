@@ -301,12 +301,14 @@ fi
 echo "OK (the chain stopped at one step: 2 Box types, the second an undecoded shell)"
 
 compile_console "$sig_out" GenericSignatureRecursionBad
-set +e
-sig_native=$("./$sig_out/GenericSignatureRecursionBad"); sig_native_rc=$?
-sig_expected=$(dotnet "$sig_app"); sig_expected_rc=$?
-set -e
-assert_output "$sig_native" "$sig_expected"
-assert_exit_code "$sig_native_rc" "$sig_expected_rc"
+sig_native="${out:-artifacts/transpiler-limits-observations}/check-sig_native-1.stdout"
+gate_capture "${sig_native%.stdout}" run_bounded "./$sig_out/GenericSignatureRecursionBad" || exit 1
+sig_native_rc=$(cat "${sig_native%.stdout}.status")
+sig_expected="${out:-artifacts/transpiler-limits-observations}/check-sig_expected-2.stdout"
+gate_capture "${sig_expected%.stdout}" run_bounded dotnet "$sig_app" || exit 1
+sig_expected_rc=$(cat "${sig_expected%.stdout}.status")
+gate_output compare "$sig_native" "$sig_expected"
+gate_output status "$sig_native_rc" "$sig_expected_rc"
 echo "OK (and the undecoded shell still lays out, links and runs — output matches real .NET)"
 
 # Application metadata keeps Deeper's signature without reaching its body.
@@ -321,11 +323,11 @@ for emitted in "$sig_out" "$sig_diet_out"; do
     fi
 done
 compile_console "$sig_diet_out" GenericSignatureRecursionBad
-set +e
-diet_native=$("./$sig_diet_out/GenericSignatureRecursionBad"); diet_native_rc=$?
-set -e
-assert_output "$diet_native" "$sig_expected"
-assert_exit_code "$diet_native_rc" "$sig_expected_rc"
+diet_native="${out:-artifacts/transpiler-limits-observations}/check-diet_native-3.stdout"
+gate_capture "${diet_native%.stdout}" run_bounded "./$sig_diet_out/GenericSignatureRecursionBad" || exit 1
+diet_native_rc=$(cat "${diet_native%.stdout}.status")
+gate_output compare "$diet_native" "$sig_expected"
+gate_output status "$diet_native_rc" "$sig_expected_rc"
 echo "OK (ILDiet retains the unused signature without rooting its body; exactly 2 Box types and .NET output)"
 
 echo "== 3b/9 A self-deepening FIELD must still hit the bound, and name the member =="
@@ -512,12 +514,14 @@ echo "OK (every cap below the bound failed loudly; none was swallowed into a sha
 # wires and the wrapper it mints have to be right, not merely bounded.
 invoke_cli "$mint_app" -r "$corelib" -o "$mint_out" > /dev/null
 compile_console "$mint_out" SharedTrialMint
-set +e
-mint_native=$("./$mint_out/SharedTrialMint"); mint_native_rc=$?
-mint_expected=$(dotnet "$mint_app"); mint_expected_rc=$?
-set -e
-assert_output "$mint_native" "$mint_expected"
-assert_exit_code "$mint_native_rc" "$mint_expected_rc"
+mint_native="${out:-artifacts/transpiler-limits-observations}/check-mint_native-4.stdout"
+gate_capture "${mint_native%.stdout}" run_bounded "./$mint_out/SharedTrialMint" || exit 1
+mint_native_rc=$(cat "${mint_native%.stdout}.status")
+mint_expected="${out:-artifacts/transpiler-limits-observations}/check-mint_expected-5.stdout"
+gate_capture "${mint_expected%.stdout}" run_bounded dotnet "$mint_app" || exit 1
+mint_expected_rc=$(cat "${mint_expected%.stdout}.status")
+gate_output compare "$mint_native" "$mint_expected"
+gate_output status "$mint_native_rc" "$mint_expected_rc"
 echo "OK (and the shared body's array-to-collection boundary runs — output matches real .NET)"
 
 echo "== 3e/9 Canonical linking must preserve the instantiation bound =="
@@ -569,9 +573,9 @@ echo "OK (ordinary wrapper failure falls back; fatal exceptions escape unchanged
 echo "== 3g/9 Transpiler budgets do not change ILDiet definition graphs =="
 summary_diet="$(dirname "${DN2CPP_CLI_DLL:-src/Dn2Cpp.Cli/bin/$CONFIG/$TFM/dn2cpp.dll}")/ildiet/ILDiet.dll"
 summary_library="gates/fixtures/transpiler-limits/ReflectionDepthSummary/Library/bin/$CONFIG/$TFM/DepthData.dll"
-summary_expected=$(dotnet "$summary_app")
-summary_expected=$(strip_cr_win "$summary_expected")
-grep -Fxq second <<< "$summary_expected" \
+summary_expected="${out:-artifacts/transpiler-limits-observations}/check-summary_expected-6.stdout"
+gate_capture_ok "${summary_expected%.stdout}" run_bounded dotnet "$summary_app"
+gate_output witness "$summary_expected" second --count any --policy crlf \
     || { echo 'FAIL: depth-summary fixture did not exercise its second field context' >&2; exit 1; }
 for summary_case in default depth8 depth64 count128 count2m depth1 count1; do
     summary_dir="$out/depth-summary-$summary_case"
@@ -588,9 +592,10 @@ for summary_case in default depth8 depth64 count128 count2m depth1 count1; do
         dotnet exec "$summary_diet" "$summary_app" -r "$corelib" -o "$summary_dir"
     )
     cmp "$(ildiet_generation "$out/depth-summary-default")/ReflectionDepthSummary.dll" "$(ildiet_generation "$summary_dir")/ReflectionDepthSummary.dll"
-    summary_actual=$(dotnet exec --runtimeconfig "${summary_app%.dll}.runtimeconfig.json" \
-        "$(ildiet_generation "$summary_dir")/ReflectionDepthSummary.dll")
-    assert_output "$(strip_cr_win "$summary_actual")" "$(strip_cr_win "$summary_expected")"
+    summary_actual="$summary_dir/program.stdout"
+    gate_capture_ok "${summary_actual%.stdout}" run_bounded dotnet exec --runtimeconfig "${summary_app%.dll}.runtimeconfig.json" \
+        "$(ildiet_generation "$summary_dir")/ReflectionDepthSummary.dll"
+    gate_output compare "$summary_actual" "$summary_expected"
     echo "OK ($summary_case: identical rewritten IL and original CLR output)"
 done
 (
@@ -657,8 +662,9 @@ for summary_dispatch in VIRTUAL INTERFACE RECEIVER; do
         DN2CPP_SKIP_BUILD=1
         corelib_diff_gate ReflectionDepthSummary
     )
-    summary_native=$(run_bounded "./artifacts/reflectiondepthsummary-uncalled-$summary_dispatch/ReflectionDepthSummary")
-    assert_output "$(strip_cr_win "$summary_native")" "$summary_dispatch_expected"
+    summary_native="./artifacts/reflectiondepthsummary-uncalled-$summary_dispatch/checked-native.stdout"
+    gate_capture_ok "${summary_native%.stdout}" run_bounded "./artifacts/reflectiondepthsummary-uncalled-$summary_dispatch/ReflectionDepthSummary"
+    gate_assert_text "$summary_native" "$summary_dispatch_expected"
     if grep -Eq '^[^;]* (UncalledNode[^ ]*_Wrap|UncalledWorker_(Run|Descend)|ReceiverHolder_Uncalled|ColdReceiver[^ ]*_(Run|Descend))_m[0-9]+\(' \
             "artifacts/reflectiondepthsummary-uncalled-$summary_dispatch"/generated*.cpp; then
         echo 'FAIL: an uncalled dispatch body became executable' >&2
@@ -695,8 +701,9 @@ for summary_copied in low default; do
                 corelib_diff_gate ReflectionDepthSummary --no-ildiet
             fi
         )
-        summary_native=$(run_bounded "./artifacts/reflectiondepthsummary-unused-copied-$summary_copied-$summary_bypass/ReflectionDepthSummary")
-        assert_output "$(strip_cr_win "$summary_native")" True
+        summary_native="./artifacts/reflectiondepthsummary-unused-copied-$summary_copied-$summary_bypass/checked-native.stdout"
+        gate_capture_ok "${summary_native%.stdout}" run_bounded "./artifacts/reflectiondepthsummary-unused-copied-$summary_copied-$summary_bypass/ReflectionDepthSummary"
+        gate_assert_text "$summary_native" True
         if grep -Eq '^[^;]* CopiedShapeWorker_Uncalled_m[0-9]+\(' \
                 "artifacts/reflectiondepthsummary-unused-copied-$summary_copied-$summary_bypass"/generated*.cpp; then
             echo 'FAIL: an unused copied-shape body became executable' >&2
@@ -733,8 +740,9 @@ for summary_surface in CONSTRUCTION_ACCESSOR GENERIC_ACCESSOR GENERIC_CTOR EXECU
         DN2CPP_SKIP_BUILD=1
         corelib_diff_gate ReflectionDepthSummary -r "$summary_library"
     )
-    summary_native=$(run_bounded "./artifacts/reflectiondepthsummary-surface-$summary_surface/ReflectionDepthSummary")
-    assert_output "$(strip_cr_win "$summary_native")" "$summary_surface_expected"
+    summary_native="./artifacts/reflectiondepthsummary-surface-$summary_surface/checked-native.stdout"
+    gate_capture_ok "${summary_native%.stdout}" run_bounded "./artifacts/reflectiondepthsummary-surface-$summary_surface/ReflectionDepthSummary"
+    gate_assert_text "$summary_native" "$summary_surface_expected"
     if [ "$summary_surface" = INVOKE_UNCALLED_VIRTUAL ]; then
         (
             DN2CPP_SAMPLE_PROJECT_DIR="$summary_prepared"
@@ -800,23 +808,18 @@ for summary_execution in NONVIRTUAL_BASE_CALL BASE_CONSTRUCTOR INHERITED_OBJECT_
             ATTRIBUTE_READ|ATTRIBUTE_GENERIC_READ)
                 gate_extra_asserts() {
                     local out="$1" axis output line
-                    run_bounded "$out/ReflectionDepthSummary$EXE_EXT" > "$out/field-boxes.native.stdout"
-                    run_bounded dotnet "$_CG_APP" > "$out/field-boxes.dotnet.stdout"
-                    run_bounded "$out/ReflectionDepthSummary$EXE_EXT" before-reflected-field-boxes \
-                        > "$out/field-boxes-before.native.stdout"
-                    run_bounded dotnet "$_CG_APP" before-reflected-field-boxes \
-                        > "$out/field-boxes-before.dotnet.stdout"
+                    gate_capture_ok "$out/field-boxes.native" run_bounded "$out/ReflectionDepthSummary$EXE_EXT"
+                    gate_capture_ok "$out/field-boxes.dotnet" run_bounded dotnet "$_CG_APP"
+                    gate_capture_ok "$out/field-boxes-before.native" run_bounded "$out/ReflectionDepthSummary$EXE_EXT" before-reflected-field-boxes
+                    gate_capture_ok "$out/field-boxes-before.dotnet" run_bounded dotnet "$_CG_APP" before-reflected-field-boxes
                     for axis in native dotnet; do
-                        output=$(strip_cr_win_file "$out/field-boxes.$axis.stdout")
-                        awk '/^== late reflected field boxes ==$/ { exit } { print }' \
-                            <<< "$output" > "$out/field-boxes-prefix.$axis.stdout"
-                        diff -u <(strip_cr_win_file "$out/field-boxes-before.$axis.stdout") \
-                            <(strip_cr_win_file "$out/field-boxes-prefix.$axis.stdout")
-                        assert_output "$(strip_cr_win_file "$out/field-boxes-prefix.$axis.stdout")" \
-                            $'attribute-ctor\nattribute-setter\n7\nattribute-read-ran'
+                        output="$out/field-boxes.$axis.stdout"
+                        gate_output select "$output" "$out/field-boxes-prefix.$axis.stdout" --before '== late reflected field boxes ==' --policy crlf
+                        gate_output compare "$out/field-boxes-before.$axis.stdout" "$out/field-boxes-prefix.$axis.stdout" --policy crlf
+                        gate_assert_text "$out/field-boxes-prefix.$axis.stdout" $'attribute-ctor\nattribute-setter\n7\nattribute-read-ran'
                         for line in '== late reflected field boxes ==' second 'field equals=True' \
                                 'field hash=29' 'late reflected field boxes end'; do
-                            [ "$(grep -Fxc -- "$line" <<< "$output")" = 1 ] \
+                            gate_output witness "$output" "$line" --count 1 --policy crlf \
                                 || { echo "FAIL: reflected field box witness must run once ($axis): $line" >&2; return 1; }
                         done
                     done
@@ -831,8 +834,9 @@ for summary_execution in NONVIRTUAL_BASE_CALL BASE_CONSTRUCTOR INHERITED_OBJECT_
                     corelib_diff_gate ReflectionDepthSummary --no-ildiet --no-shared-generics "${summary_execution_refs[@]}" ;;
         esac
     )
-    summary_native=$(run_bounded "./artifacts/reflectiondepthsummary-execution-$summary_execution/ReflectionDepthSummary")
-    assert_output "$(strip_cr_win "$summary_native")" "$summary_execution_expected"
+    summary_native="./artifacts/reflectiondepthsummary-execution-$summary_execution/checked-native.stdout"
+    gate_capture_ok "${summary_native%.stdout}" run_bounded "./artifacts/reflectiondepthsummary-execution-$summary_execution/ReflectionDepthSummary"
+    gate_assert_text "$summary_native" "$summary_execution_expected"
     if grep -Eq '^[^;]* (BaseCallDerived_Run|BaseCallDerived_Descend|ObjectSlotParent_ToString|ObjectSlotParent_Descend|Program_DeadDescend|AbstractApplicationTarget_ToString|AbstractApplicationTarget_Descend|AbstractConstructionData_Reset|AbstractConstructionData_Descend|Program_DeadNominalDescend|Program_DeadGetterDescend|PrioritySlotReceiver_Run|PrioritySlotReceiver_Descend|PrimitiveSlotReceiver_CompareTo|PrimitiveSlotReceiver_Descend|IUnusedDefaultSlot_Run|IUnusedDefaultSlot_Descend|InheritedMappingDerived_Run|InheritedMappingDerived_Descend|ProtectedMappingDerived_Run|ProtectedMappingDerived_Descend|SeparateClassSlotDerived_Run|SeparateClassSlotDerived_Descend|Program_DeadIsaDescend)[^ ]*_m[0-9]+\(' \
             "artifacts/reflectiondepthsummary-execution-$summary_execution"/generated*.cpp; then
         echo "FAIL: $summary_execution emitted a nonexecuting dispatch/allocation/branch body" >&2
@@ -941,14 +945,12 @@ for sym in Tracked Helper; do
     fi
 done
 compile_console "$cut_out" GenericSignatureRecursionBad
-# Literal expected text -> strip the native side's \r (the strip_cr_win rule
-# for literal asserts; never applied to a live-oracle diff). Exit status
-# captured explicitly (`$(...)` inline would swallow it).
-set +e
-cut_native=$("./$cut_out/GenericSignatureRecursionBad"); cut_code=$?
-set -e
-assert_output "$(strip_cr_win "$cut_native")" "$(printf '1\ncut')"
-assert_exit_code "$cut_code" 0
+# The cut has an intentional literal result, independent of host newlines.
+cut_native="${out:-artifacts/transpiler-limits-observations}/check-cut_native-11.stdout"
+gate_capture "${cut_native%.stdout}" run_bounded "./$cut_out/GenericSignatureRecursionBad" || exit 1
+cut_code=$(cat "${cut_native%.stdout}.status")
+gate_assert_text "$cut_native" "$(printf '1\ncut')"
+gate_output status "$cut_code" 0
 
 # A finite CLR body still has an unbounded generic call graph. Cutting its
 # nongeneric wrapper must exclude that body from the companion's depth summary.
@@ -966,11 +968,12 @@ for summary_cut_mode in ildiet no-ildiet; do
         DN2CPP_OUT_SUFFIX="-ordinary-cut-$summary_cut_mode"
         gate_extra_asserts() {
             local out="$1" native prefix
-            native=$(run_bounded "$out/ReflectionDepthSummary$EXE_EXT") || return $?
-            native=$(strip_cr_win "$native")
-            prefix=$(awk '/^== ordinary cut depth summary ==$/ { exit } { print }' <<< "$native")
-            assert_output "$(strip_cr_win "$prefix")" "$(strip_cr_win "$summary_expected")"
-            grep -Fxq 'cut-complete' <<< "$native" \
+            native="${out:-artifacts/transpiler-limits-observations}/check-native-12.stdout"
+            gate_capture_ok "${native%.stdout}" run_bounded "$out/ReflectionDepthSummary$EXE_EXT" || return $?
+            prefix="$native.prefix"
+            gate_output select "$native" "$prefix" --before '== ordinary cut depth summary ==' --policy crlf
+            gate_output compare "$prefix" "$summary_expected" --policy crlf
+            gate_output witness "$native" 'cut-complete' --count any --policy crlf \
                 || { echo 'FAIL: ordinary cut depth section did not run' >&2; return 1; }
             if grep -Eq '^// ReflectionDepthSummary.Program::(Cut|Descend)$' "$out"/generated*.cpp; then
                 echo 'FAIL: a cut body or its generic subtree was emitted' >&2
@@ -1068,8 +1071,9 @@ echo "OK ($sweep)"
 late_array_project=gates/fixtures/transpiler-limits/LateArrayEquality/LateArrayEquality.csproj
 build_gate_proj "$late_array_project"
 late_array_app="${late_array_project%/*}/bin/$CONFIG/$TFM/LateArrayEquality.dll"
-late_array_oracle=$(run_bounded dotnet "$late_array_app")
-assert_output "$(strip_cr_win "$late_array_oracle")" 0
+late_array_oracle="${out:-artifacts/transpiler-limits-observations}/check-late_array_oracle-13.stdout"
+gate_capture_ok "${late_array_oracle%.stdout}" run_bounded dotnet "$late_array_app"
+gate_assert_text "$late_array_oracle" 0
 late_array_emit_rc=0
 late_array_emit_err=$(invoke_cli "$late_array_app" -r "$corelib" --no-ildiet \
     -o "$out/late-array-emit" 2>&1 >/dev/null) || late_array_emit_rc=$?
@@ -1202,13 +1206,14 @@ echo "OK (Node's constructor admitted, every site of the chain recognized)"
 echo "== CoreLib type identity collisions =="
 for shape in Object ValueType Unsafe; do
     collision_app="$collision_fixture/$shape/bin/$CONFIG/$TFM/Collision$shape.dll"
-    collision_oracle=$(run_bounded dotnet "$collision_app")
+    collision_oracle="${out:-artifacts/transpiler-limits-observations}/check-collision_oracle-14.stdout"
+    gate_capture_ok "${collision_oracle%.stdout}" run_bounded dotnet "$collision_app"
     case "$shape" in
         Object) collision_name=System.Object; collision_expected='application Object: 17' ;;
         ValueType) collision_name=System.ValueType; collision_expected='application ValueType: ValueType' ;;
         Unsafe) collision_name=System.Runtime.CompilerServices.Unsafe; collision_expected='application Unsafe: 123' ;;
     esac
-    assert_output "$(strip_cr_win "$collision_oracle")" "$collision_expected"
+    gate_assert_text "$collision_oracle" "$collision_expected"
     for axis in corelib intrinsic; do
         collision_refs=()
         [ "$axis" != corelib ] || collision_refs=(-r "$corelib")
@@ -1229,16 +1234,18 @@ for shape in Object ValueType Unsafe; do
     done
 done
 control_app="$collision_fixture/Control/bin/$CONFIG/$TFM/CollisionControl.dll"
-control_oracle=$(run_bounded dotnet "$control_app")
-assert_output "$(strip_cr_win "$control_oracle")" "$(printf 'embedded attribute: 5\nordinary body: control-body\nordinary input end')"
+control_oracle="${out:-artifacts/transpiler-limits-observations}/check-control_oracle-15.stdout"
+gate_capture_ok "${control_oracle%.stdout}" run_bounded dotnet "$control_app"
+gate_assert_text "$control_oracle" "$(printf 'embedded attribute: 5\nordinary body: control-body\nordinary input end')"
 for axis in corelib intrinsic; do
     collision_refs=()
     [ "$axis" != corelib ] || collision_refs=(-r "$corelib")
     control_out="${out}-collision-control-$axis"
     invoke_cli "$control_app" ${collision_refs[@]+"${collision_refs[@]}"} --no-ildiet -o "$control_out" >/dev/null
     compile_console "$control_out" CollisionControl
-    control_native=$(run_bounded "./$control_out/CollisionControl")
-    assert_output "$(strip_cr_win "$control_native")" "$(strip_cr_win "$control_oracle")"
+    control_native="${out:-artifacts/transpiler-limits-observations}/check-control_native-16.stdout"
+    gate_capture_ok "${control_native%.stdout}" run_bounded "./$control_out/CollisionControl"
+    gate_output compare "$control_native" "$control_oracle"
 done
 echo "OK (CoreLib identities rejected; embedded metadata, helper polyfill and ordinary input preserved)"
 

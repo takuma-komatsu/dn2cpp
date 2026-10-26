@@ -85,25 +85,23 @@ compile_console "$out" "$project"
 echo "== 7/7 Running (exact diff vs real .NET) =="
 gate_run_logs_init r3 R3
 log_dir="$_GATE_RUN_LOG_DIR"
-expected=
+expected="$log_dir/oracle.stdout"
 expected_code=
-native=
+native="$log_dir/native.stdout"
 native_code=
-native_stderr="$log_dir/native.log"
+native_stderr="$log_dir/native.stderr"
 
 gate_run_diagnostics() {
-    gate_run_diag "R3 native" "$native_code" "$native" "$native_stderr"
-    gate_run_diag "R3 oracle" "$expected_code" "$expected" "$log_dir/oracle.log"
+    gate_run_diag_files "R3 native" "$native_code" "$native" "$native_stderr"
+    gate_run_diag_files "R3 oracle" "$expected_code" "$expected" "$log_dir/oracle.stderr"
 }
-
-set +e
-expected=$(run_bounded dotnet "$app" 2>"$log_dir/oracle.log"); expected_code=$?
-set -e
+gate_capture "$log_dir/oracle" run_bounded dotnet "$app"
+expected_code=$(cat "$log_dir/oracle.status")
 for native_attempt in 1 2 3; do
-    native_attempt_stderr="$log_dir/native.attempt$native_attempt.log"
-    set +e
-    native=$(run_bounded "./$out/$project" 2>"$native_attempt_stderr"); native_code=$?
-    set -e
+    native_attempt_stderr="$log_dir/native.attempt$native_attempt.stderr"
+    native="$log_dir/native.attempt$native_attempt.stdout"
+    gate_capture "$log_dir/native.attempt$native_attempt" run_bounded "./$out/$project$EXE_EXT"
+    native_code=$(cat "$log_dir/native.attempt$native_attempt.status")
     cp "$native_attempt_stderr" "$native_stderr"
 
     # Windows can sporadically fail to create the process without reaching the
@@ -116,8 +114,9 @@ for native_attempt in 1 2 3; do
     sleep "$native_attempt"
 done
 assertions_failed=0
-assert_output "$native" "$expected" || assertions_failed=1
-assert_exit_code "$native_code" "$expected_code" || assertions_failed=1
+gate_output compare "$native" "$expected" || assertions_failed=1
+gate_output status "$native_code" 0 || assertions_failed=1
+gate_output status "$expected_code" 0 || assertions_failed=1
 if [ "$assertions_failed" -ne 0 ]; then
     gate_run_diag_once
     exit 1

@@ -443,7 +443,8 @@ if [ -n "$SHARED_LIB" ]; then
     [ -n "$MSBUILD_PARTIAL" ] && [ ! -e "$MSBUILD_PARTIAL/.complete" ] \
         && [ "$(find "$MSBUILD_PARTIAL" -mindepth 1 -maxdepth 1 -type f | wc -l | tr -d ' ')" -eq 1 ] \
         || { echo "FAIL: Dn2Cpp.Build failure did not leave exactly one unreachable partial asset" >&2; exit 1; }
-    assert_output "$("$PUBLISH/$PROJECT$EXE_EXT")" "native-asset=42,shared-asset=7"
+    gate_capture_ok "$OUT/publish-after-failed-generation" run_bounded "$PUBLISH/$PROJECT$EXE_EXT"
+    gate_assert_text "$OUT/publish-after-failed-generation.stdout" "native-asset=42,shared-asset=7"
     [ -d "$PUBLISH/.dn2cpp-native/$GENERATION" ] \
         || { echo "FAIL: failed Dn2Cpp.Build publish removed the running generation" >&2; exit 1; }
 
@@ -479,25 +480,43 @@ if [ -n "$SHARED_LIB" ]; then
     [ -n "$COMMON_PARTIAL" ] && [ ! -e "$COMMON_PARTIAL/.complete" ] \
         && [ "$(find "$COMMON_PARTIAL" -mindepth 1 -maxdepth 1 -type f | wc -l | tr -d ' ')" -eq 1 ] \
         || { echo "FAIL: compile_console failure did not leave exactly one unreachable partial asset" >&2; exit 1; }
-    assert_output "$("$GEN/$PROJECT$EXE_EXT")" "native-asset=42,shared-asset=7"
+    gate_capture_ok "$OUT/native-after-failed-generation" run_bounded "$GEN/$PROJECT$EXE_EXT"
+    gate_assert_text "$OUT/native-after-failed-generation.stdout" "native-asset=42,shared-asset=7"
     [ -d "$GEN/.dn2cpp-native/$GENERATION" ] \
         || { echo "FAIL: failed compile_console removed the running generation" >&2; exit 1; }
 
     SWITCH_OUTPUT="$OUT/concurrent-switch.out"
     SWITCH_ERRORS="$OUT/concurrent-switch.err"
-    printf '%s\n' "native-asset=42,shared-asset=7" > "$SWITCH_OUTPUT"
+    printf '%s\n' 'native-asset=42,shared-asset=7' > "$OUT/switch-old.expected"
+    printf '%s\n' 'native-asset=42,shared-asset=17' > "$OUT/switch-new.expected"
+    gate_capture_ok "$OUT/switch-initial" run_bounded "$GEN/$PROJECT$EXE_EXT"
+    gate_output compare "$OUT/switch-initial.stdout" "$OUT/switch-old.expected" --policy crlf
+    cat "$OUT/switch-initial.stdout" > "$SWITCH_OUTPUT"
+    cat "$OUT/switch-initial.stderr" > "$SWITCH_ERRORS"
     compile_console "$GEN" "$PROJECT" &
     switch_pid=$!
+    switch_run=0
     while kill -0 "$switch_pid" 2>/dev/null; do
-        if switched=$("$GEN/$PROJECT$EXE_EXT" 2>> "$SWITCH_ERRORS"); then
-            printf '%s\n' "$switched" >> "$SWITCH_OUTPUT"
+        switch_capture="$OUT/switch-launch-$switch_run"
+        gate_capture "$switch_capture" run_bounded "$GEN/$PROJECT$EXE_EXT"
+        cat "$switch_capture.stderr" >> "$SWITCH_ERRORS"
+        if [ "$(cat "$switch_capture.status")" = 0 ] && {
+            gate_output compare "$switch_capture.stdout" "$OUT/switch-old.expected" --policy crlf > /dev/null 2>&1 \
+                || gate_output compare "$switch_capture.stdout" "$OUT/switch-new.expected" --policy crlf > /dev/null 2>&1;
+        }; then
+            cat "$switch_capture.stdout" >> "$SWITCH_OUTPUT"
         else
             printf 'loader-error\n' >> "$SWITCH_OUTPUT"
         fi
+        switch_run=$((switch_run + 1))
     done
     wait "$switch_pid"
-    printf '%s\n' "$("$GEN/$PROJECT$EXE_EXT")" >> "$SWITCH_OUTPUT"
-    if grep -Ev '^(native-asset=42,shared-asset=(7|17))$' "$SWITCH_OUTPUT"; then
+    gate_capture_ok "$OUT/switch-final" run_bounded "$GEN/$PROJECT$EXE_EXT"
+    gate_output compare "$OUT/switch-final.stdout" "$OUT/switch-new.expected" --policy crlf
+    cat "$OUT/switch-final.stdout" >> "$SWITCH_OUTPUT"
+    cat "$OUT/switch-final.stderr" >> "$SWITCH_ERRORS"
+    gate_output view "$SWITCH_OUTPUT" "$SWITCH_OUTPUT.records" --policy crlf
+    if grep -Ev '^(native-asset=42,shared-asset=(7|17))$' "$SWITCH_OUTPUT.records"; then
         echo "FAIL: concurrent launch observed a mixed generation or loader error" >&2
         cat "$SWITCH_ERRORS" >&2
         exit 1
@@ -586,12 +605,13 @@ if [ "$DN2CPP_OS" = linux ]; then
 fi
 NATIVE_EXE="$PUBLISH/$PROJECT$EXE_EXT"
 [ -f "$NATIVE_EXE" ] || { echo "FAIL: native publish produced no $NATIVE_EXE" >&2; exit 1; }
-native_out=$("$NATIVE_EXE")
+gate_capture_ok "$OUT/final-published" run_bounded "$NATIVE_EXE"
 if [ -n "$SHARED_LIB" ]; then
-    assert_output "$native_out" "native-asset=42,shared-asset=27"
-    assert_output "$("$GEN/$PROJECT$EXE_EXT")" "native-asset=42,shared-asset=27"
+    gate_assert_text "$OUT/final-published.stdout" "native-asset=42,shared-asset=27"
+    gate_capture_ok "$OUT/final-generated" run_bounded "$GEN/$PROJECT$EXE_EXT"
+    gate_assert_text "$OUT/final-generated.stdout" "native-asset=42,shared-asset=27"
 else
-    assert_output "$native_out" "native-asset=42"
+    gate_assert_text "$OUT/final-published.stdout" "native-asset=42"
 fi
 
 echo "OK: NuGet native assets linked and ran after their package cache was removed"

@@ -183,14 +183,20 @@ source "$(dirname "$0")/_ildiet.sh"
 source gates/_headerless-reference-identity.sh
 source gates/_md-readonly-byrefs.sh
 
+# Prefix runs retain their own evidence; a missing or duplicated boundary fails.
+array_core_prefix() {
+    local output="$1" marker="$2" capture="${1%.stdout}.prefix-${4##*/}-${!#}"
+    shift 2
+    gate_capture "$capture" "$@"
+    gate_output status "$(cat "$capture.status")" 0
+    gate_output prefix "$output" "$capture.stdout" --before "$marker" --policy crlf
+}
+
 comparison_prior_extra_asserts() {
-    local out="$1" native before prefix line
-    native=$(run_bounded "./$out/ArrayCore")
-    native=$(strip_cr_win "$native")
-    before=$(dotnet "$_CG_APP" before-validation-fields)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== Array validation fields ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    local out="$1" line array_output="$1/array-core-check.stdout"
+    gate_capture "${array_output%.stdout}" run_bounded "./$out/ArrayCore$EXE_EXT"
+    gate_output status "$(cat "${array_output%.stdout}.status")" 0
+    array_core_prefix "$array_output" '== Array validation fields ==' run_bounded dotnet "$_CG_APP" before-validation-fields
     for line in '== Array validation fields ==' \
         'copy:0:0:-1:-1:-1 param=sourceArray' \
         'copy:2:0:-1:-1:-1 param=destinationArray' \
@@ -211,21 +217,18 @@ comparison_prior_extra_asserts() {
         'covariant empty canonical=False' \
         'covariant zero slice fresh=True' \
         'Array validation fields end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$array_output" "$line" --count 1 --policy crlf \
             || { echo "FAIL: ArrayCore validation witness missing: $line" >&2; exit 1; }
     done
 }
 
 # Default order and equality preserve the earlier bucket and run the appended cases.
 gate_extra_asserts() {
-    local out="$1" native before prefix line
+    local out="$1" line array_output="$1/array-core-check.stdout"
     comparison_prior_extra_asserts "$out"
-    native=$(run_bounded "./$out/ArrayCore")
-    native=$(strip_cr_win "$native")
-    before=$(dotnet "$_CG_APP" before-default-comparison)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== default comparison validation ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture "${array_output%.stdout}" run_bounded "./$out/ArrayCore$EXE_EXT"
+    gate_output status "$(cat "${array_output%.stdout}.status")" 0
+    array_core_prefix "$array_output" '== default comparison validation ==' run_bounded dotnet "$_CG_APP" before-default-comparison
     for line in '== default comparison validation ==' \
         '== default order without IComparable<T> ==' \
         '== comparer message UTF-16 ==' \
@@ -234,14 +237,11 @@ gate_extra_asserts() {
         'value-forward=1:12' \
         'generic-value-forward=0:1' \
         'default comparison validation end'; do
-        grep -Fxq "$line" <<< "$native" \
+        gate_output witness "$array_output" "$line" --count 1 --policy crlf \
             || { echo "FAIL: ArrayCore comparison coverage missing: $line" >&2; exit 1; }
     done
-    before=$(run_bounded dotnet "$_CG_APP" before-comparer-identity)
-    prefix=$(awk '/^== default comparer type identity ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    before=$(run_bounded "./$out/ArrayCore$EXE_EXT" before-comparer-identity)
-    assert_output "$prefix" "$(strip_cr_win "$before")"
+    array_core_prefix "$array_output" '== default comparer type identity ==' run_bounded dotnet "$_CG_APP" before-comparer-identity
+    array_core_prefix "$array_output" '== default comparer type identity ==' run_bounded "./$out/ArrayCore$EXE_EXT" before-comparer-identity
     for line in '== default comparer type identity ==' \
         'enum-sbyte comparer Name=EnumComparer`1' 'enum-byte comparer Name=EnumComparer`1' \
         'enum-int16 comparer Name=EnumComparer`1' 'enum-uint16 comparer Name=EnumComparer`1' \
@@ -258,23 +258,21 @@ gate_extra_asserts() {
         'enum-uint64 default sort=Zero,High,Max search=1/-2' \
         'enum-uint64 explicit sort=Zero,High,Max search=1/-2' \
         'default comparer type identity end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$array_output" "$line" --count 1 --policy crlf \
             || { echo "FAIL: default comparer identity witness missing: $line" >&2; exit 1; }
     done
 }
 
 md_address_identity_asserts() {
     local out="$1" axis line
-    awk '/^== multidimensional writable address identity ==$/ { exit } { print }' \
-        "$out/headerless-full.native.stdout" > "$out/md-address-prefix.stdout"
     for axis in dotnet native; do
         if [ "$axis" = dotnet ]; then
-            run_bounded dotnet "$_CG_APP" before-md-address-identity > "$out/md-address-before.$axis.stdout"
+            gate_capture_ok "$out/md-address-before.$axis" run_bounded dotnet "$_CG_APP" before-md-address-identity
         else
-            run_bounded "$out/ArrayCore$EXE_EXT" before-md-address-identity > "$out/md-address-before.$axis.stdout"
+            gate_capture_ok "$out/md-address-before.$axis" run_bounded "$out/ArrayCore$EXE_EXT" before-md-address-identity
         fi
-        diff -u <(strip_cr_win_file "$out/md-address-before.$axis.stdout") \
-            <(strip_cr_win_file "$out/md-address-prefix.stdout")
+        gate_output prefix "$out/headerless-full.native.stdout" "$out/md-address-before.$axis.stdout" \
+            --before '== multidimensional writable address identity ==' --policy crlf
     done
     for line in '== multidimensional writable address identity ==' \
         'address covariance=ArrayTypeMismatchException/80131503:identity=True' \
@@ -308,23 +306,21 @@ md_address_identity_asserts() {
         'generic md nested is=True:True:True:False' \
         'generic md nested cast=same:same:same:InvalidCastException' \
         'generic md tokens=True:True:True:True'; do
-        [ "$(grep -Fxc -- "$line" "$out/headerless-full.native.stdout")" = 1 ] \
+        gate_output witness "$out/headerless-full.native.stdout" "$line" --count 1 --policy crlf \
             || { echo "FAIL: MD address/allocation witness missing or repeated: $line" >&2; return 1; }
     done
 }
 
 sz_address_identity_asserts() {
     local out="$1" axis line shared
-    awk '/^== vector writable address identity ==$/ { exit } { print }' \
-        "$out/headerless-full.native.stdout" > "$out/sz-address-prefix.stdout"
     for axis in dotnet native; do
         if [ "$axis" = dotnet ]; then
-            run_bounded dotnet "$_CG_APP" before-sz-address-identity > "$out/sz-address-before.$axis.stdout"
+            gate_capture_ok "$out/sz-address-before.$axis" run_bounded dotnet "$_CG_APP" before-sz-address-identity
         else
-            run_bounded "$out/ArrayCore$EXE_EXT" before-sz-address-identity > "$out/sz-address-before.$axis.stdout"
+            gate_capture_ok "$out/sz-address-before.$axis" run_bounded "$out/ArrayCore$EXE_EXT" before-sz-address-identity
         fi
-        diff -u <(strip_cr_win_file "$out/sz-address-before.$axis.stdout") \
-            <(strip_cr_win_file "$out/sz-address-prefix.stdout")
+        gate_output prefix "$out/headerless-full.native.stdout" "$out/sz-address-before.$axis.stdout" \
+            --before '== vector writable address identity ==' --policy crlf
     done
     for line in '== vector writable address identity ==' 'vector writable address identity end' \
         'vector address covariance=ArrayTypeMismatchException/80131503:identity=True' \
@@ -347,7 +343,7 @@ sz_address_identity_asserts() {
         'vector address nested exact=nested:rectangle' \
         'vector address nested covariance=ArrayTypeMismatchException/80131503:identity=True' \
         'vector address value slots=-123:11:37:29'; do
-        [ "$(grep -Fxc -- "$line" "$out/headerless-full.native.stdout")" = 1 ] \
+        gate_output witness "$out/headerless-full.native.stdout" "$line" --count 1 --policy crlf \
             || { echo "FAIL: SZ address witness missing or repeated: $line" >&2; return 1; }
     done
     shared=$(LC_ALL=C awk '
@@ -381,7 +377,7 @@ md_readonly_alias_asserts() {
         'readonly managed vector=True' 'readonly managed nested=nested' 'readonly raw alias lifetime=True' \
         'readonly raw null=NullReferenceException/80004003:identity=True' \
         'readonly raw bounds=IndexOutOfRangeException/80131508:identity=True'; do
-        [ "$(grep -Fxc -- "$line" "$out/headerless-full.native.stdout")" = 1 ] \
+        gate_output witness "$out/headerless-full.native.stdout" "$line" --count 1 --policy crlf \
             || { echo "FAIL: readonly MD alias witness missing or repeated: $line" >&2; return 1; }
     done
     shared=$(awk '
@@ -402,34 +398,22 @@ md_readonly_alias_asserts() {
 eval "$(declare -f gate_extra_asserts | sed '1s/gate_extra_asserts/nonzero_prior_extra_asserts/')"
 # Keep the prior whole bucket and prove each appended lower-bound block ran once.
 gate_extra_asserts() {
-    local out="$1" native before prefix line
+    local out="$1" line array_output="$1/array-core-check.stdout"
     nonzero_prior_extra_asserts "$out"
     headerless_md_reference_asserts "$out"
     md_address_identity_asserts "$out"
     sz_address_identity_asserts "$out"
     md_readonly_alias_asserts "$out"
-    native=$(run_bounded "./$out/ArrayCore$EXE_EXT")
-    native=$(strip_cr_win "$native")
-    prefix=$(awk '/^== nonzero array lower bounds ==$/ { exit } { print }' <<< "$native")
-    before=$(run_bounded dotnet "$_CG_APP" before-nonzero-lower-bounds)
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    before=$(run_bounded "./$out/ArrayCore$EXE_EXT" before-nonzero-lower-bounds)
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    before=$(run_bounded dotnet "$_CG_APP" before-lower-bound-search)
-    prefix=$(awk '/^== lower-bound array sort and search ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    before=$(run_bounded "./$out/ArrayCore$EXE_EXT" before-lower-bound-search)
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    before=$(run_bounded dotnet "$_CG_APP" before-wrapped-array-ranges)
-    prefix=$(awk '/^== wrapped lower-bound array ranges ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    before=$(run_bounded "./$out/ArrayCore$EXE_EXT" before-wrapped-array-ranges)
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    before=$(run_bounded dotnet "$_CG_APP" before-sort-access-faults)
-    prefix=$(awk '/^== lower-bound sort access faults ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    before=$(run_bounded "./$out/ArrayCore$EXE_EXT" before-sort-access-faults)
-    assert_output "$prefix" "$(strip_cr_win "$before")"
+    gate_capture "${array_output%.stdout}" run_bounded "./$out/ArrayCore$EXE_EXT"
+    gate_output status "$(cat "${array_output%.stdout}.status")" 0
+    array_core_prefix "$array_output" '== nonzero array lower bounds ==' run_bounded dotnet "$_CG_APP" before-nonzero-lower-bounds
+    array_core_prefix "$array_output" '== nonzero array lower bounds ==' run_bounded "./$out/ArrayCore$EXE_EXT" before-nonzero-lower-bounds
+    array_core_prefix "$array_output" '== lower-bound array sort and search ==' run_bounded dotnet "$_CG_APP" before-lower-bound-search
+    array_core_prefix "$array_output" '== lower-bound array sort and search ==' run_bounded "./$out/ArrayCore$EXE_EXT" before-lower-bound-search
+    array_core_prefix "$array_output" '== wrapped lower-bound array ranges ==' run_bounded dotnet "$_CG_APP" before-wrapped-array-ranges
+    array_core_prefix "$array_output" '== wrapped lower-bound array ranges ==' run_bounded "./$out/ArrayCore$EXE_EXT" before-wrapped-array-ranges
+    array_core_prefix "$array_output" '== lower-bound sort access faults ==' run_bounded dotnet "$_CG_APP" before-sort-access-faults
+    array_core_prefix "$array_output" '== lower-bound sort access faults ==' run_bounded "./$out/ArrayCore$EXE_EXT" before-sort-access-faults
     for line in '== lower-bound sort access faults ==' 'lower-bound sort access faults end' \
         'sort access Int32/2 sort custom=ArgumentException/<none>' \
         'sort access String/2 sort=ArgumentException/<none>' \
@@ -441,7 +425,7 @@ gate_extra_asserts() {
         'sort start Int32/2147483643 custom=ArgumentException/<none>' \
         'sort start String/2147483643 default=ArgumentException/<none>' \
         'sort start Object/2147483643 custom=ArgumentException/<none>'; do
-        [[ $(grep -Fxc -- "$line" <<< "$native") == 1 ]] \
+        gate_output witness "$array_output" "$line" --count 1 --policy crlf \
             || { echo "FAIL: sort access witness must run once: $line" >&2; exit 1; }
     done
     for line in '== wrapped lower-bound array ranges ==' 'wrapped lower-bound array ranges end' \
@@ -455,7 +439,7 @@ gate_extra_asserts() {
         'wrapped Default=ArgumentOutOfRangeException/<none>' \
         'wrapped DefaultInvariant=-2147483648' 'wrapped new comparer=-2147483648' \
         'wrapped null value=-2147483648' 'wrapped wrong value type=-2147483648'; do
-        [[ $(grep -Fxc -- "$line" <<< "$native") == 1 ]] \
+        gate_output witness "$array_output" "$line" --count 1 --policy crlf \
             || { echo "FAIL: wrapped range witness must run once: $line" >&2; exit 1; }
     done
     for line in '== nonzero array lower bounds ==' 'nonzero array lower bounds end' \
@@ -463,10 +447,11 @@ gate_extra_asserts() {
         '== lower-bound array sort and search ==' 'lower-bound array sort and search end' \
         'lower indices=-2/0:-1/-1/-3/-3' 'lower binary=-2/0:-1/0/-2' \
         'lower extreme sort=9 binary=2147483647' 'lower empty min=2147483647/2147483647/2147483647'; do
-        [[ $(grep -Fxc -- "$line" <<< "$native") == 1 ]] \
+        gate_output witness "$array_output" "$line" --count 1 --policy crlf \
             || { echo "FAIL: lower-bound witness must run once: $line" >&2; exit 1; }
     done
 }
+
 
 assert_runtime_box_formatting() {
     local output="$1" line
@@ -476,7 +461,7 @@ assert_runtime_box_formatting() {
         'indirect copied=indirect:53:type=True' 'generic payloads=Int32:71/String:79' \
         'ordinary control=ordinary:83/ordinary:89' 'unselected type=UnselectedPayload' \
         'runtime-handle boxed formatting end'; do
-        grep -Fxq -- "$line" <<< "$output" \
+        gate_output witness "$output" "$line" --count any --policy crlf \
             || { echo "FAIL: runtime box formatting witness missing: $line" >&2; exit 1; }
     done
 }
@@ -498,8 +483,9 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|finite-local-searches:ildi
     DN2CPP_SAMPLE_PROJECT_DIR=samples/dotnet/ArrayCore
     gate_extra_asserts() {
         local out="$1" native name
-        native=$(run_bounded "$out/ArrayFiniteSearchOnly$EXE_EXT") || return $?
-        grep -Fxq 'finite local array searches end' <<< "$native" \
+        gate_capture "$out/finite-search-witness" run_bounded "$out/ArrayFiniteSearchOnly$EXE_EXT"
+        gate_output status "$(cat "$out/finite-search-witness.status")" 0
+        gate_output witness "$out/finite-search-witness.stdout" 'finite local array searches end' --count 1 --policy crlf \
             || { echo 'FAIL: finite local search block did not run' >&2; return 1; }
         for name in Selected Alternative GenericOnly; do
             grep -Eqw "${name}_Equals_m[0-9]+" "$out"/generated*.cpp \
@@ -516,22 +502,17 @@ DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|finite-local-searches:ildi
 )
 corelib_diff_gate ArrayCore System.Collections
 
-native=$(run_bounded "./$_CG_OUT/ArrayCore$EXE_EXT")
-native=$(strip_cr_win "$native")
-previous=$(run_bounded dotnet "$_CG_APP" before-finite-local-searches)
-prefix=$(awk '/^== finite local array searches ==$/ { exit } { print }' <<< "$native")
-assert_output "$prefix" "$(strip_cr_win "$previous")"
-previous=$(run_bounded "./$_CG_OUT/ArrayCore$EXE_EXT" before-finite-local-searches)
-assert_output "$prefix" "$(strip_cr_win "$previous")"
-grep -Fxq 'finite local array searches end' <<< "$native" \
+array_output="$_CG_OUT/array-core-check.stdout"
+gate_capture "${array_output%.stdout}" run_bounded "./$_CG_OUT/ArrayCore$EXE_EXT"
+gate_output status "$(cat "${array_output%.stdout}.status")" 0
+gate_output view "$array_output" "$array_output.records" --policy crlf
+array_core_prefix "$array_output" '== finite local array searches ==' run_bounded dotnet "$_CG_APP" before-finite-local-searches
+array_core_prefix "$array_output" '== finite local array searches ==' run_bounded "./$_CG_OUT/ArrayCore$EXE_EXT" before-finite-local-searches
+gate_output witness "$array_output" 'finite local array searches end' --count 1 --policy crlf \
     || { echo 'FAIL: finite local search block did not run in ArrayCore' >&2; exit 1; }
-previous=$(run_bounded dotnet "$_CG_APP" before-runtime-box-formatting)
-prefix=$(awk '/^== runtime-handle boxed formatting ==$/ { exit } { print }' <<< "$native")
-assert_output "$prefix" "$(strip_cr_win "$previous")"
-assert_runtime_box_formatting "$native"
-previous=$(run_bounded dotnet "$_CG_APP" before-nullable-array-names)
-prefix=$(awk '/^== nullable array type names ==$/ { exit } { print }' <<< "$native")
-assert_output "$prefix" "$(strip_cr_win "$previous")"
+array_core_prefix "$array_output" '== runtime-handle boxed formatting ==' run_bounded dotnet "$_CG_APP" before-runtime-box-formatting
+assert_runtime_box_formatting "$array_output"
+array_core_prefix "$array_output" '== nullable array type names ==' run_bounded dotnet "$_CG_APP" before-nullable-array-names
 for line in '== nullable array type names ==' \
     'int text=System.Nullable`1[System.Int32][]' \
     'char text=System.Nullable`1[System.Char][]' \
@@ -540,28 +521,28 @@ for line in '== nullable array type names ==' \
     'mixed text=System.Nullable`1[System.Int32][,][]' \
     'nullable array identities=True:True:True' 'nullable dynamic names=True:True' \
     'nullable array type names end'; do
-    grep -Fxq -- "$line" <<< "$native" \
+    gate_output witness "$array_output" "$line" --count 1 --policy crlf \
         || { echo "FAIL: nullable array name witness missing: $line" >&2; exit 1; }
 done
 
-previous=$(run_bounded dotnet "$_CG_APP" before-excess-array-rank)
-prefix=$(awk '/^== excessive array rank diagnostics ==$/ { exit } { print }' <<< "$native")
-assert_output "$prefix" "$(strip_cr_win "$previous")"
+array_core_prefix "$array_output" '== excessive array rank diagnostics ==' run_bounded dotnet "$_CG_APP" before-excess-array-rank
 for line in '== excessive array rank diagnostics ==' 'rank32 accepted=32:0' \
     'rank invalid length=ArgumentOutOfRangeException:lengths[0]:<null>:Non-negative number required. (Parameter '\''lengths[0]'\'')' \
     'rank null lengths=ArgumentNullException:lengths:<none>:Value cannot be null. (Parameter '\''lengths'\'')' \
     'rank bounds mismatch=ArgumentException:<null>:<none>:Number of lengths and lowerBounds must match.' \
     'excessive array rank diagnostics end'; do
-    grep -Fxq -- "$line" <<< "$native" \
+    gate_output witness "$array_output" "$line" --count 1 --policy crlf \
         || { echo "FAIL: excessive array rank witness missing: $line" >&2; exit 1; }
 done
+array_rank_diagnostic() {
+    local file="$1" label="$2"
+    gate_output match-record "$file" "^$label=System.TypeLoadException/80131522:'.*' from assembly '.*' has too many dimensions\\.$" --count any --policy crlf
+}
 for label in 'int lengths' 'object lengths' 'char lengths' 'int bounds' 'object bounds' 'char bounds'; do
-    grep -Eq "^$label=System.TypeLoadException/80131522:'.*' from assembly '.*' has too many dimensions\\.$" <<< "$native" \
+    array_rank_diagnostic "$array_output" "$label" \
         || { echo "FAIL: excessive array rank diagnostic missing: $label" >&2; exit 1; }
 done
-previous=$(run_bounded dotnet "$_CG_APP" before-covariant-stores)
-prefix=$(awk '/^== covariant reference array stores ==$/ { exit } { print }' <<< "$native")
-assert_output "$prefix" "$(strip_cr_win "$previous")"
+array_core_prefix "$array_output" '== covariant reference array stores ==' run_bounded dotnet "$_CG_APP" before-covariant-stores
 for line in '== covariant reference array stores ==' \
     'store message=Attempted to access an element as a type incompatible with the array.' \
     'negative before type=IndexOutOfRangeException/80131508:identity=True' \
@@ -574,7 +555,7 @@ for line in '== covariant reference array stores ==' \
     'list int array growth=2:True' 'list reference array growth=2:True' \
     'constructed mismatch=Attempted to access an element as a type incompatible with the array./80131503' \
     'covariant reference array stores end'; do
-    grep -Fxq -- "$line" <<< "$native" \
+    gate_output witness "$array_output" "$line" --count 1 --policy crlf \
         || { echo "FAIL: covariant array store witness missing: $line" >&2; exit 1; }
 done
 for line in 'string rejected' 'argument rejected' 'field rejected' 'return rejected' \
@@ -582,7 +563,7 @@ for line in 'string rejected' 'argument rejected' 'field rejected' 'return rejec
     'generic invariant rejected' 'generic variance rejected' 'jagged rejected' \
     'intrinsic rejected' 'runtime returned rejected' 'generic list rejected' \
     'allocated array element rejected'; do
-    grep -Fxq -- "$line=ArrayTypeMismatchException/80131503:identity=True" <<< "$native" \
+    gate_output witness "$array_output" "$line=ArrayTypeMismatchException/80131503:identity=True" --count 1 --policy crlf \
         || { echo "FAIL: rejected store changed array contents: $line" >&2; exit 1; }
 done
 for line in 'string compatible' 'string null' 'shared compatible' 'class compatible' \
@@ -592,7 +573,7 @@ for line in 'string compatible' 'string null' 'shared compatible' 'class compati
     'allocated byte array compatible' 'allocated int array compatible' \
     'allocated reference array compatible' 'allocated nested array compatible' \
     'allocated object compatible'; do
-    grep -Fxq -- "$line=ok:identity=True" <<< "$native" \
+    gate_output witness "$array_output" "$line=ok:identity=True" --count 1 --policy crlf \
         || { echo "FAIL: compatible store lost value identity: $line" >&2; exit 1; }
 done
 shared_store=$(LC_ALL=C awk '{ sub(/\r$/, "") }
@@ -607,34 +588,32 @@ shared_array=$(LC_ALL=C awk '{ sub(/\r$/, "") }
     in_body && /^\}/ { in_body = 0 }
     END { if (found) print "shared array allocation" }' "$_CG_OUT"/generated.h)
 assert_output "$shared_array" 'shared array allocation'
-previous=$(run_bounded dotnet "$_CG_APP" before-covariant-md-stores)
-prefix=$(awk '/^== covariant multidimensional reference stores ==$/ { exit } { print }' <<< "$native")
-assert_output "$prefix" "$(strip_cr_win "$previous")"
+array_core_prefix "$array_output" '== covariant multidimensional reference stores ==' run_bounded dotnet "$_CG_APP" before-covariant-md-stores
 for line in '== covariant multidimensional reference stores ==' \
     'md store message=Attempted to access an element as a type incompatible with the array.' \
     'md null before type=NullReferenceException/80004003:identity=True' \
     'md culture reads=en-US:True' 'md culture ref read=en-US' \
     'md culture ref write=ja-JP:True' 'md culture null=True' \
     'multidimensional reference stores end'; do
-    grep -Fxq -- "$line" <<< "$native" \
+    gate_output witness "$array_output" "$line" --count 1 --policy crlf \
         || { echo "FAIL: multidimensional reference store witness missing: $line" >&2; exit 1; }
 done
 for label in 'md rank2 rejected' 'md rank2 type before negative' 'md rank2 type before past end' \
     'md argument rejected' 'md field rejected' 'md shared rejected' \
     'md rank3 rejected' 'md rank3 type before bounds' 'md rank4 rejected' 'md rank4 type before bounds' \
     'md created rejected' 'md class rejected' 'md interface rejected' 'md jagged rejected'; do
-    grep -Fxq -- "$label=ArrayTypeMismatchException/80131503:identity=True" <<< "$native" \
+    gate_output witness "$array_output" "$label=ArrayTypeMismatchException/80131503:identity=True" --count 1 --policy crlf \
         || { echo "FAIL: multidimensional incompatible store or retention mismatch: $label" >&2; exit 1; }
 done
 for label in 'md rank2 compatible negative' 'md rank2 null past end' \
     'md rank3 compatible bounds' 'md rank4 compatible bounds'; do
-    grep -Fxq -- "$label=IndexOutOfRangeException/80131508:identity=True" <<< "$native" \
+    gate_output witness "$array_output" "$label=IndexOutOfRangeException/80131508:identity=True" --count 1 --policy crlf \
         || { echo "FAIL: multidimensional compatible store bounds mismatch: $label" >&2; exit 1; }
 done
 for label in 'md rank2 compatible' 'md rank2 null' 'md shared compatible' \
     'md rank3 compatible' 'md rank3 null' 'md rank4 compatible' 'md rank4 null' \
     'md created compatible' 'md interface compatible' 'md jagged compatible' 'md object boxed compatible'; do
-    grep -Fxq -- "$label=ok:identity=True" <<< "$native" \
+    gate_output witness "$array_output" "$label=ok:identity=True" --count 1 --policy crlf \
         || { echo "FAIL: multidimensional compatible store lost identity: $label" >&2; exit 1; }
 done
 shared_md_store=$(LC_ALL=C awk '{ sub(/\r$/, "") }
@@ -652,9 +631,7 @@ shared_md_identity=$(LC_ALL=C awk '{ sub(/\r$/, "") }
     END { if (allocation_ti && address_ti) print "shared MD identities" }' "$_CG_OUT"/generated.h "$_CG_OUT"/generated*.cpp)
 assert_output "$shared_md_identity" 'shared MD identities'
 
-previous=$(run_bounded "./$_CG_OUT/ArrayCore$EXE_EXT" before-array-provenance)
-prefix=$(awk '/^-- array shape argument checks --$/ { exit } { print }' <<< "$native")
-assert_output "$prefix" "$(strip_cr_win "$previous")"
+array_core_prefix "$array_output" '-- array shape argument checks --' run_bounded "./$_CG_OUT/ArrayCore$EXE_EXT" before-array-provenance
 grep -Fq 'dn2cpp_array_search_equals(' "$_CG_OUT"/generated*.cpp \
     || { echo 'FAIL: non-generic Array search lacks its missing-slot guard' >&2; exit 1; }
 for line in '-- array shape argument checks --' 'array shape argument checks end' \
@@ -664,34 +641,22 @@ for line in '-- array shape argument checks --' 'array shape argument checks end
         'int=System.Int32:7:equal=True/True' 'short=System.Int16:-3:equal=True/True' \
         'nullable empty=null' 'reference identity=True' \
         'runtime type-handle boxes and array refusals end'; do
-    grep -Fxq -- "$line" <<< "$native" \
+    gate_output witness "$array_output" "$line" --count 1 --policy crlf \
         || { echo "FAIL: Array guard witness missing: $line" >&2; exit 1; }
 done
 
-previous=$(run_bounded dotnet "$_CG_APP" before-dynamic-array-null-equality)
-previous=$(strip_cr_win "$previous")
-prefix=$(awk '/^== dynamic array null equality ==$/ { exit } { print }' <<< "$native")
-assert_output "$prefix" "$previous"
-previous=$(run_bounded dotnet "$_CG_APP" before-array-search-provenance-additions)
-previous=$(strip_cr_win "$previous")
-prefix=$(awk '/^== array search reference and type provenance ==$/ { exit } { print }' <<< "$native")
-assert_output "$prefix" "$previous"
-previous=$(run_bounded dotnet "$_CG_APP" before-array-search-loops)
-previous=$(strip_cr_win "$previous")
-prefix=$(awk '/^== array search loop provenance ==$/ { exit } { print }' <<< "$native")
-assert_output "$prefix" "$previous"
+array_core_prefix "$array_output" '== dynamic array null equality ==' run_bounded dotnet "$_CG_APP" before-dynamic-array-null-equality
+array_core_prefix "$array_output" '== array search reference and type provenance ==' run_bounded dotnet "$_CG_APP" before-array-search-provenance-additions
+array_core_prefix "$array_output" '== array search loop provenance ==' run_bounded dotnet "$_CG_APP" before-array-search-loops
 for line in '== array search loop provenance ==' \
         'loop-local=0:1:1' 'loop-argument=0:1:1' 'loop-type=0' \
         'loop-type-unwrapped=0:1' 'loop-unsearched-leaf=0' \
         'array search loop provenance end'; do
-    grep -Fxq -- "$line" <<< "$native" \
+    gate_output witness "$array_output" "$line" --count 1 --policy crlf \
         || { echo "FAIL: array loop witness missing: $line" >&2; exit 1; }
 done
 
-previous=$(run_bounded dotnet "$_CG_APP" before-nested-interface-variance)
-previous=$(strip_cr_win "$previous")
-prefix=$(awk '/^== nested generic interface variance ==$/ { exit } { print }' <<< "$native")
-assert_output "$prefix" "$previous"
+array_core_prefix "$array_output" '== nested generic interface variance ==' run_bounded dotnet "$_CG_APP" before-nested-interface-variance
 for line in '== nested generic interface variance ==' \
     'nested direct=-1' 'nested covariance=True' 'nested owner distinct=False' \
     'nested flat neighbor=False' 'nested escape neighbor=False' \
@@ -700,12 +665,12 @@ for line in '== nested generic interface variance ==' \
     'nested explicit body=1' 'nested explicit interface=-1' \
     'generic covariance=True' 'generic enclosing invariant=False' \
     'generic middle invariant=False' 'nested generic interface variance end'; do
-    grep -Fxq -- "$line" <<< "$native" \
+    gate_output witness "$array_output" "$line" --count 1 --policy crlf \
         || { echo "FAIL: nested interface variance witness missing: $line" >&2; exit 1; }
 done
 for name in 'top public' 'top explicit' 'nested public' 'nested explicit' 'deep' 'generic enclosing'; do
     for result in 'default=-1' 'held=1' 'array=1,2,3' 'search=1' 'span=1,2,3' 'list=1,2,3/1'; do
-        grep -Fxq -- "$name $result" <<< "$native" \
+        gate_output witness "$array_output" "$name $result" --count 1 --policy crlf \
             || { echo "FAIL: nested interface comparison mouth missing: $name $result" >&2; exit 1; }
     done
 done
@@ -779,7 +744,7 @@ for line in \
     'dynamic array null equality end' \
     '== array search reference and type provenance ==' \
     'array search reference and type provenance end'; do
-    grep -Fxq "$line" <<< "$native" \
+    gate_output witness "$array_output" "$line" --count 1 --policy crlf \
         || { echo "FAIL: dynamic Array equality witness missing: $line" >&2; exit 1; }
 done
 for name in DirectDynamicMatch ConditionalFirstMatch ConditionalSecondMatch IndexedSelectedMatch \
@@ -817,22 +782,25 @@ bcl=$(dirname "$corelib")
 invoke_cli "$box_app" -r "$corelib" -r "$bcl/System.Collections.dll" \
     --shared-generics -o "$box_root/gen"
 compile_console "$box_root/gen" BoxProvenanceOnly
-box_native=$(run_bounded "./$box_root/gen/BoxProvenanceOnly$EXE_EXT")
-box_native=$(strip_cr_win "$box_native")
-box_oracle=$(run_bounded dotnet "$box_app")
-assert_output "$(strip_cr_win "$box_native")" "$(strip_cr_win "$box_oracle")"
-box_before_formatting=$(run_bounded dotnet "$box_app" before-runtime-box-formatting)
-box_formatting_prefix=$(awk '/^== runtime-handle boxed formatting ==$/ { exit } { print }' <<< "$box_native")
-assert_output "$box_formatting_prefix" "$(strip_cr_win "$box_before_formatting")"
+box_native="$box_root/box_native.stdout"
+gate_capture_ok "${box_native%.stdout}" run_bounded "./$box_root/gen/BoxProvenanceOnly$EXE_EXT"
+box_oracle="$box_root/box_oracle.stdout"
+gate_capture_ok "${box_oracle%.stdout}" run_bounded dotnet "$box_app"
+gate_output compare "$box_native" "$box_oracle"
+box_before_formatting="$box_root/box_before_formatting.stdout"
+gate_capture_ok "${box_before_formatting%.stdout}" run_bounded dotnet "$box_app" before-runtime-box-formatting
+box_formatting_prefix="${box_native%.stdout}.box_formatting_prefix.stdout"
+gate_output select "$box_native" "$box_formatting_prefix" --before '== runtime-handle boxed formatting ==' --policy crlf
+gate_output compare "$box_formatting_prefix" "$box_before_formatting" --policy crlf
 assert_runtime_box_formatting "$box_native"
 grep -Eq '^const Dn2CppTypeInfo ti_ArrayRuntimeBoxSubset_Program_UnselectedPayload = ' "$box_root/gen"/generated*.cpp \
     || { echo 'FAIL: unselected runtime box control type-info is missing' >&2; exit 1; }
-box_previous=$(run_bounded dotnet "$box_app" before-array-search-provenance-additions)
-box_previous=$(strip_cr_win "$box_previous")
-box_prefix=$(awk '/^== array search copy and type provenance ==$/ { exit } { print }' <<< "$box_native")
-box_prefix=$(strip_cr_win "$box_prefix")
-assert_output "$box_prefix" "$box_previous"
-box_lines=$(strip_cr_win "$box_native")
+box_previous="$box_root/box_previous.stdout"
+gate_capture_ok "${box_previous%.stdout}" run_bounded dotnet "$box_app" before-array-search-provenance-additions
+box_prefix="${box_native%.stdout}.box_prefix.stdout"
+gate_output select "$box_native" "$box_prefix" --before '== array search copy and type provenance ==' --policy crlf
+gate_output compare "$box_prefix" "$box_previous" --policy crlf
+box_lines="$box_native"
 for line in \
     '== framework box provenance ==' \
     '== array search copy and type provenance ==' \
@@ -922,7 +890,7 @@ for line in \
     'cctor-overwrite=0:1:1' \
     'framework box provenance end' \
     'array search copy and type provenance end'; do
-    grep -Fxq "$line" <<< "$box_lines" \
+    gate_output byte-witness "$box_lines" "$line" --count any --policy crlf \
         || { echo "FAIL: isolated boxed equality witness missing: $line" >&2; exit 1; }
 done
 for name in FrameworkBoxMatch FrameworkListBoxMatch FrameworkCopyBoxMatch ReflectedFieldBoxMatch \
@@ -979,17 +947,19 @@ return_box_app="$return_box_root/app/ReflectionReturnBoxOnly.dll"
 invoke_cli "$return_box_app" -r "$corelib" -r "$bcl/System.Collections.dll" \
     -o "$return_box_root/gen"
 compile_console "$return_box_root/gen" ReflectionReturnBoxOnly
-return_box_native=$(run_bounded "./$return_box_root/gen/ReflectionReturnBoxOnly$EXE_EXT")
-return_box_oracle=$(run_bounded dotnet "$return_box_app")
-assert_output "$(strip_cr_win "$return_box_native")" "$(strip_cr_win "$return_box_oracle")"
-return_box_lines=$(strip_cr_win "$return_box_native")
+return_box_native="$return_box_root/return_box_native.stdout"
+gate_capture_ok "${return_box_native%.stdout}" run_bounded "./$return_box_root/gen/ReflectionReturnBoxOnly$EXE_EXT"
+return_box_oracle="$return_box_root/return_box_oracle.stdout"
+gate_capture_ok "${return_box_oracle%.stdout}" run_bounded dotnet "$return_box_app"
+gate_output compare "$return_box_native" "$return_box_oracle"
+return_box_lines="$return_box_native"
 for line in \
     '== reflection and array return boxes ==' \
     'method-box=0:1:False' \
     'property-box=0:1:False' \
     'array-get-box=0:1:False' \
     'reflection and array return boxes end'; do
-    grep -Fxq "$line" <<< "$return_box_lines" \
+    gate_output byte-witness "$return_box_lines" "$line" --count any --policy crlf \
         || { echo "FAIL: reflected return equality witness missing: $line" >&2; exit 1; }
 done
 for name in ReflectedMethodBoxMatch ReflectedPropertyBoxMatch ArrayGetValueBoxMatch; do
@@ -1006,15 +976,17 @@ dotnet build samples/dotnet/ArrayCore/DiamondProvenanceOnly.csproj -c "$CONFIG" 
 diamond_app="$diamond_root/app/DiamondProvenanceOnly.dll"
 invoke_cli "$diamond_app" -r "$corelib" -o "$diamond_root/gen"
 compile_console "$diamond_root/gen" DiamondProvenanceOnly
-diamond_native=$(run_bounded "./$diamond_root/gen/DiamondProvenanceOnly$EXE_EXT")
-diamond_oracle=$(run_bounded dotnet "$diamond_app")
-assert_output "$(strip_cr_win "$diamond_native")" "$(strip_cr_win "$diamond_oracle")"
-diamond_lines=$(strip_cr_win "$diamond_native")
+diamond_native="$diamond_root/diamond_native.stdout"
+gate_capture_ok "${diamond_native%.stdout}" run_bounded "./$diamond_root/gen/DiamondProvenanceOnly$EXE_EXT"
+diamond_oracle="$diamond_root/diamond_oracle.stdout"
+gate_capture_ok "${diamond_oracle%.stdout}" run_bounded dotnet "$diamond_app"
+gate_output compare "$diamond_native" "$diamond_oracle"
+diamond_lines="$diamond_native"
 for line in \
     '== array search provenance diamond ==' \
     'diamond=0:1' \
     'array search provenance diamond end'; do
-    grep -Fxq "$line" <<< "$diamond_lines" \
+    gate_output byte-witness "$diamond_lines" "$line" --count any --policy crlf \
         || { echo "FAIL: Type-provider call graph witness missing: $line" >&2; exit 1; }
 done
 grep -Eq '^int32_t DiamondMatch_Equals_m[0-9]+\(' "$diamond_root/gen"/generated*.cpp \
@@ -1027,17 +999,19 @@ dotnet build samples/dotnet/ArrayCore/FieldAliasProvenanceOnly.csproj -c "$CONFI
 field_alias_app="$field_alias_root/app/FieldAliasProvenanceOnly.dll"
 invoke_cli "$field_alias_app" -r "$corelib" -o "$field_alias_root/gen"
 compile_console "$field_alias_root/gen" FieldAliasProvenanceOnly
-field_alias_native=$(run_bounded "./$field_alias_root/gen/FieldAliasProvenanceOnly$EXE_EXT")
-field_alias_oracle=$(run_bounded dotnet "$field_alias_app")
-assert_output "$(strip_cr_win "$field_alias_native")" "$(strip_cr_win "$field_alias_oracle")"
-field_alias_lines=$(strip_cr_win "$field_alias_native")
+field_alias_native="$field_alias_root/field_alias_native.stdout"
+gate_capture_ok "${field_alias_native%.stdout}" run_bounded "./$field_alias_root/gen/FieldAliasProvenanceOnly$EXE_EXT"
+field_alias_oracle="$field_alias_root/field_alias_oracle.stdout"
+gate_capture_ok "${field_alias_oracle%.stdout}" run_bounded dotnet "$field_alias_app"
+gate_output compare "$field_alias_native" "$field_alias_oracle"
+field_alias_lines="$field_alias_native"
 for line in \
     '== array search field aliases ==' \
     'opaque-holder=0:1' \
     'array-get-holder=0:1' \
     'static-holder-overwrite=0:1' \
     'array search field aliases end'; do
-    grep -Fxq "$line" <<< "$field_alias_lines" \
+    gate_output byte-witness "$field_alias_lines" "$line" --count any --policy crlf \
         || { echo "FAIL: field alias equality witness missing: $line" >&2; exit 1; }
 done
 for name in OpaqueHolderMatch ArrayGetHolderMatch StaticHolderSelectedMatch; do
@@ -1070,18 +1044,20 @@ for alias_subject in ArrayElementAliasOnly ArrayObjectElementAliasOnly ArrayUnkn
     alias_app="$alias_root/app/$alias_subject.dll"
     invoke_cli "$alias_app" -r "$corelib" --shared-generics -o "$alias_root/gen"
     compile_console "$alias_root/gen" "$alias_subject"
-    alias_native=$(run_bounded "./$alias_root/gen/$alias_subject$EXE_EXT")
-    alias_oracle=$(run_bounded dotnet "$alias_app")
-    assert_output "$(strip_cr_win "$alias_native")" "$(strip_cr_win "$alias_oracle")"
-    alias_lines=$(strip_cr_win "$alias_native")
+    alias_native="$alias_root/alias_native.stdout"
+    gate_capture_ok "${alias_native%.stdout}" run_bounded "./$alias_root/gen/$alias_subject$EXE_EXT"
+    alias_oracle="$alias_root/alias_oracle.stdout"
+    gate_capture_ok "${alias_oracle%.stdout}" run_bounded dotnet "$alias_app"
+    gate_output compare "$alias_native" "$alias_oracle"
+    alias_lines="$alias_native"
     for line in 'array element alias=0:1' 'array element alias end'; do
-        if ! grep -Fxq -- "$line" <<< "$alias_lines"; then
+        if ! gate_output byte-witness "$alias_lines" "$line" --count any --policy crlf; then
             echo "FAIL: array element alias witness missing: $alias_subject / $line" >&2
             exit 1
         fi
     done
     if [ "$alias_subject" = ArrayReferenceSlotAliasOnly ] \
-            && ! grep -Fxq -- 'array reference-slot identity=True' <<< "$alias_lines"; then
+            && ! gate_output byte-witness "$alias_lines" 'array reference-slot identity=True' --count any --policy crlf; then
         echo 'FAIL: reference-slot boxing lost the array identity' >&2
         exit 1
     fi
@@ -1094,12 +1070,14 @@ dotnet build samples/dotnet/ArrayCore/ArrayReflectedVoidBoxOnly.csproj -c "$CONF
 void_box_app="$void_box_root/app/ArrayReflectedVoidBoxOnly.dll"
 invoke_cli "$void_box_app" -r "$corelib" --shared-generics -o "$void_box_root/gen"
 compile_console "$void_box_root/gen" ArrayReflectedVoidBoxOnly
-void_box_native=$(run_bounded "./$void_box_root/gen/ArrayReflectedVoidBoxOnly$EXE_EXT")
-void_box_oracle=$(run_bounded dotnet "$void_box_app")
-assert_output "$(strip_cr_win "$void_box_native")" "$(strip_cr_win "$void_box_oracle")"
-void_box_lines=$(strip_cr_win "$void_box_native")
+void_box_native="$void_box_root/void_box_native.stdout"
+gate_capture_ok "${void_box_native%.stdout}" run_bounded "./$void_box_root/gen/ArrayReflectedVoidBoxOnly$EXE_EXT"
+void_box_oracle="$void_box_root/void_box_oracle.stdout"
+gate_capture_ok "${void_box_oracle%.stdout}" run_bounded dotnet "$void_box_app"
+gate_output compare "$void_box_native" "$void_box_oracle"
+void_box_lines="$void_box_native"
 for line in 'reflected void box=ArgumentException' 'reflected void box end'; do
-    if ! grep -Fxq -- "$line" <<< "$void_box_lines"; then
+    if ! gate_output byte-witness "$void_box_lines" "$line" --count any --policy crlf; then
         echo "FAIL: reflected void box witness missing: $line" >&2
         exit 1
     fi
@@ -1113,10 +1091,12 @@ for prior_store_subject in ArrayFutureStoreOnly ArrayFutureNullStoreOnly ArrayOb
     prior_store_app="$prior_store_root/app/$prior_store_subject.dll"
     invoke_cli "$prior_store_app" -r "$corelib" --shared-generics -o "$prior_store_root/gen"
     compile_console "$prior_store_root/gen" "$prior_store_subject"
-    prior_store_native=$(run_bounded "./$prior_store_root/gen/$prior_store_subject$EXE_EXT")
-    prior_store_oracle=$(run_bounded dotnet "$prior_store_app")
-    assert_output "$(strip_cr_win "$prior_store_native")" "$(strip_cr_win "$prior_store_oracle")"
-    prior_store_lines=$(strip_cr_win "$prior_store_native")
+    prior_store_native="$prior_store_root/prior_store_native.stdout"
+    gate_capture_ok "${prior_store_native%.stdout}" run_bounded "./$prior_store_root/gen/$prior_store_subject$EXE_EXT"
+    prior_store_oracle="$prior_store_root/prior_store_oracle.stdout"
+    gate_capture_ok "${prior_store_oracle%.stdout}" run_bounded dotnet "$prior_store_app"
+    gate_output compare "$prior_store_native" "$prior_store_oracle"
+    prior_store_lines="$prior_store_native"
     if [ "$prior_store_subject" = ArrayObjectFutureStoreOnly ]; then
         prior_store_witnesses=('UniqueModulo[]:0:1' 'ArrayObjectFutureUnsupportedOnly end')
     elif [ "$prior_store_subject" = ArrayFutureNullStoreOnly ]; then
@@ -1125,7 +1105,7 @@ for prior_store_subject in ArrayFutureStoreOnly ArrayFutureNullStoreOnly ArrayOb
         prior_store_witnesses=('array prior store=0:1' 'array prior store end')
     fi
     for line in "${prior_store_witnesses[@]}"; do
-        if ! grep -Fxq -- "$line" <<< "$prior_store_lines"; then
+        if ! gate_output byte-witness "$prior_store_lines" "$line" --count any --policy crlf; then
             echo "FAIL: prior array store witness missing: $line" >&2
             exit 1
         fi
@@ -1141,7 +1121,7 @@ for line in '== array producer and validation order ==' \
         'uninitialized runtime box search=0:0' 'reference-slot runtime box search=0:0' \
         'reference-slot runtime box identity=True' 'reference-slot runtime box type=0:1' \
         'array producer and validation order end'; do
-    if ! grep -Fxq -- "$line" <<< "$native"; then
+    if ! gate_output witness "$array_output" "$line" --count any --policy crlf; then
         echo "FAIL: runtime producer witness missing: $line" >&2
         exit 1
     fi
@@ -1154,15 +1134,19 @@ dotnet build samples/dotnet/ArrayCore/ArrayLowerBoundsOnly.csproj -c "$CONFIG" \
 lower_bounds_app="$lower_bounds_root/app/ArrayLowerBoundsOnly.dll"
 invoke_cli "$lower_bounds_app" -r "$corelib" -o "$lower_bounds_root/gen"
 compile_console "$lower_bounds_root/gen" ArrayLowerBoundsOnly
-lower_bounds_native=$(run_bounded "./$lower_bounds_root/gen/ArrayLowerBoundsOnly$EXE_EXT")
-lower_bounds_native=$(strip_cr_win "$lower_bounds_native")
-lower_bounds_oracle=$(run_bounded dotnet "$lower_bounds_app")
-assert_output "$(strip_cr_win "$lower_bounds_native")" "$(strip_cr_win "$lower_bounds_oracle")"
-lower_bounds_prefix=$(awk '/^== rank1 collection extreme bounds ==$/ { exit } { print }' <<< "$lower_bounds_native")
-lower_bounds_before=$(run_bounded dotnet "$lower_bounds_app" before-extreme-collection)
-assert_output "$lower_bounds_prefix" "$(strip_cr_win "$lower_bounds_before")"
-lower_bounds_before=$(run_bounded "./$lower_bounds_root/gen/ArrayLowerBoundsOnly$EXE_EXT" before-extreme-collection)
-assert_output "$lower_bounds_prefix" "$(strip_cr_win "$lower_bounds_before")"
+lower_bounds_native="$lower_bounds_root/lower_bounds_native.stdout"
+gate_capture_ok "${lower_bounds_native%.stdout}" run_bounded "./$lower_bounds_root/gen/ArrayLowerBoundsOnly$EXE_EXT"
+lower_bounds_oracle="$lower_bounds_root/lower_bounds_oracle.stdout"
+gate_capture_ok "${lower_bounds_oracle%.stdout}" run_bounded dotnet "$lower_bounds_app"
+gate_output compare "$lower_bounds_native" "$lower_bounds_oracle"
+lower_bounds_prefix="${lower_bounds_native%.stdout}.lower_bounds_prefix.stdout"
+gate_output select "$lower_bounds_native" "$lower_bounds_prefix" --before '== rank1 collection extreme bounds ==' --policy crlf
+lower_bounds_before="$lower_bounds_root/lower_bounds_before.stdout"
+gate_capture_ok "${lower_bounds_before%.stdout}" run_bounded dotnet "$lower_bounds_app" before-extreme-collection
+gate_output compare "$lower_bounds_prefix" "$lower_bounds_before" --policy crlf
+lower_bounds_native_before="$lower_bounds_root/lower_bounds_native_before.stdout"
+gate_capture_ok "${lower_bounds_native_before%.stdout}" run_bounded "./$lower_bounds_root/gen/ArrayLowerBoundsOnly$EXE_EXT" before-extreme-collection
+gate_output compare "$lower_bounds_prefix" "$lower_bounds_native_before" --policy crlf
 for line in '== rank1 non-SZ collection search ==' \
     'rank1-only=System.Int32[*]:False:36:17:-1:-3:True:False' \
     'copied=17/19' 'cleared=0/0' 'rank1 non-SZ collection search end' \
@@ -1179,7 +1163,7 @@ for line in '== rank1 non-SZ collection search ==' \
     'collection extreme=-2147483648/1 contains miss=True' \
     'collection extreme=-2147483648/0 contains hit=True' \
     'collection extreme=-2147483648/0 contains miss=True'; do
-    [[ $(grep -Fxc -- "$line" <<< "$lower_bounds_native") == 1 ]] \
+    gate_output byte-witness "$lower_bounds_native" "$line" --count 1 --policy crlf \
         || { echo "FAIL: rank1 collection witness must run once: $line" >&2; exit 1; }
 done
 
@@ -1198,31 +1182,42 @@ static_rank1_app="$static_rank1_root/app/ArrayStaticRankOneOnly.dll"
 invoke_cli "$static_rank1_app" -r "$corelib" -r "$static_rank1_root/app/ArrayRankOneLibrary.dll" \
     -o "$static_rank1_root/gen"
 compile_console "$static_rank1_root/gen" ArrayStaticRankOneOnly
-static_rank1_native=$(run_bounded "./$static_rank1_root/gen/ArrayStaticRankOneOnly$EXE_EXT")
-static_rank1_native=$(strip_cr_win "$static_rank1_native")
-static_rank1_oracle=$(run_bounded dotnet exec --runtimeconfig "$static_rank1_root/generator/Generate.runtimeconfig.json" "$static_rank1_app")
-assert_output "$(strip_cr_win "$static_rank1_native")" "$(strip_cr_win "$static_rank1_oracle")"
-static_rank1_diet=$(run_bounded dotnet exec --runtimeconfig "$static_rank1_root/generator/Generate.runtimeconfig.json" \
-    "$(ildiet_generation "$static_rank1_root/gen/ildiet")/ArrayStaticRankOneOnly.dll")
-assert_output "$(strip_cr_win "$static_rank1_oracle")" "$(strip_cr_win "$static_rank1_diet")"
-static_rank1_prefix=$(awk '/^== unsized rank1 array signatures ==$/ { exit } { print }' <<< "$static_rank1_native")
-static_rank1_before=$(DN2CPP_BEFORE_UNSIZED_ARRAY=1 run_bounded "./$static_rank1_root/gen/ArrayStaticRankOneOnly$EXE_EXT")
-static_rank1_clr_before=$(DN2CPP_BEFORE_UNSIZED_ARRAY=1 run_bounded dotnet exec \
-    --runtimeconfig "$static_rank1_root/generator/Generate.runtimeconfig.json" "$static_rank1_app")
-assert_output "$static_rank1_prefix" "$(strip_cr_win "$static_rank1_before")"
-assert_output "$static_rank1_prefix" "$(strip_cr_win "$static_rank1_clr_before")"
-static_rank1_nested_prefix=$(awk '/^== nested MD array identities ==$/ { exit } { print }' <<< "$static_rank1_native")
-static_rank1_nested_before=$(DN2CPP_BEFORE_NESTED_MD_ARRAY=1 run_bounded "./$static_rank1_root/gen/ArrayStaticRankOneOnly$EXE_EXT")
-static_rank1_nested_clr_before=$(DN2CPP_BEFORE_NESTED_MD_ARRAY=1 run_bounded dotnet exec \
-    --runtimeconfig "$static_rank1_root/generator/Generate.runtimeconfig.json" "$static_rank1_app")
-assert_output "$static_rank1_nested_prefix" "$(strip_cr_win "$static_rank1_nested_before")"
-assert_output "$static_rank1_nested_prefix" "$(strip_cr_win "$static_rank1_nested_clr_before")"
-static_rank1_address_prefix=$(awk '/^== rank1 writable MD address identity ==$/ { exit } { print }' <<< "$static_rank1_native")
-static_rank1_address_before=$(DN2CPP_BEFORE_MD_ADDRESS=1 run_bounded "./$static_rank1_root/gen/ArrayStaticRankOneOnly$EXE_EXT")
-static_rank1_address_clr_before=$(DN2CPP_BEFORE_MD_ADDRESS=1 run_bounded dotnet exec \
-    --runtimeconfig "$static_rank1_root/generator/Generate.runtimeconfig.json" "$static_rank1_app")
-assert_output "$static_rank1_address_prefix" "$(strip_cr_win "$static_rank1_address_before")"
-assert_output "$static_rank1_address_prefix" "$(strip_cr_win "$static_rank1_address_clr_before")"
+static_rank1_native="$static_rank1_root/static_rank1_native.stdout"
+gate_capture_ok "${static_rank1_native%.stdout}" run_bounded "./$static_rank1_root/gen/ArrayStaticRankOneOnly$EXE_EXT"
+static_rank1_oracle="$static_rank1_root/static_rank1_oracle.stdout"
+gate_capture_ok "${static_rank1_oracle%.stdout}" run_bounded dotnet exec --runtimeconfig "$static_rank1_root/generator/Generate.runtimeconfig.json" "$static_rank1_app"
+gate_output compare "$static_rank1_native" "$static_rank1_oracle"
+static_rank1_diet="$static_rank1_root/static_rank1_diet.stdout"
+gate_capture_ok "${static_rank1_diet%.stdout}" run_bounded dotnet exec --runtimeconfig "$static_rank1_root/generator/Generate.runtimeconfig.json" \
+    "$(ildiet_generation "$static_rank1_root/gen/ildiet")/ArrayStaticRankOneOnly.dll"
+gate_output compare "$static_rank1_oracle" "$static_rank1_diet"
+static_rank1_prefix="${static_rank1_native%.stdout}.static_rank1_prefix.stdout"
+gate_output select "$static_rank1_native" "$static_rank1_prefix" --before '== unsized rank1 array signatures ==' --policy crlf
+static_rank1_before="$static_rank1_root/static_rank1_before.stdout"
+DN2CPP_BEFORE_UNSIZED_ARRAY=1 gate_capture_ok "${static_rank1_before%.stdout}" run_bounded "./$static_rank1_root/gen/ArrayStaticRankOneOnly$EXE_EXT"
+static_rank1_clr_before="$static_rank1_root/static_rank1_clr_before.stdout"
+DN2CPP_BEFORE_UNSIZED_ARRAY=1 gate_capture_ok "${static_rank1_clr_before%.stdout}" run_bounded dotnet exec \
+    --runtimeconfig "$static_rank1_root/generator/Generate.runtimeconfig.json" "$static_rank1_app"
+gate_output compare "$static_rank1_prefix" "$static_rank1_before" --policy crlf
+gate_output compare "$static_rank1_prefix" "$static_rank1_clr_before" --policy crlf
+static_rank1_nested_prefix="${static_rank1_native%.stdout}.static_rank1_nested_prefix.stdout"
+gate_output select "$static_rank1_native" "$static_rank1_nested_prefix" --before '== nested MD array identities ==' --policy crlf
+static_rank1_nested_before="$static_rank1_root/static_rank1_nested_before.stdout"
+DN2CPP_BEFORE_NESTED_MD_ARRAY=1 gate_capture_ok "${static_rank1_nested_before%.stdout}" run_bounded "./$static_rank1_root/gen/ArrayStaticRankOneOnly$EXE_EXT"
+static_rank1_nested_clr_before="$static_rank1_root/static_rank1_nested_clr_before.stdout"
+DN2CPP_BEFORE_NESTED_MD_ARRAY=1 gate_capture_ok "${static_rank1_nested_clr_before%.stdout}" run_bounded dotnet exec \
+    --runtimeconfig "$static_rank1_root/generator/Generate.runtimeconfig.json" "$static_rank1_app"
+gate_output compare "$static_rank1_nested_prefix" "$static_rank1_nested_before" --policy crlf
+gate_output compare "$static_rank1_nested_prefix" "$static_rank1_nested_clr_before" --policy crlf
+static_rank1_address_prefix="${static_rank1_native%.stdout}.static_rank1_address_prefix.stdout"
+gate_output select "$static_rank1_native" "$static_rank1_address_prefix" --before '== rank1 writable MD address identity ==' --policy crlf
+static_rank1_address_before="$static_rank1_root/static_rank1_address_before.stdout"
+DN2CPP_BEFORE_MD_ADDRESS=1 gate_capture_ok "${static_rank1_address_before%.stdout}" run_bounded "./$static_rank1_root/gen/ArrayStaticRankOneOnly$EXE_EXT"
+static_rank1_address_clr_before="$static_rank1_root/static_rank1_address_clr_before.stdout"
+DN2CPP_BEFORE_MD_ADDRESS=1 gate_capture_ok "${static_rank1_address_clr_before%.stdout}" run_bounded dotnet exec \
+    --runtimeconfig "$static_rank1_root/generator/Generate.runtimeconfig.json" "$static_rank1_app"
+gate_output compare "$static_rank1_address_prefix" "$static_rank1_address_before" --policy crlf
+gate_output compare "$static_rank1_address_prefix" "$static_rank1_address_clr_before" --policy crlf
 for line in '== rank1 writable MD address identity ==' 'rank1 writable MD address identity end' \
     'rank1 address exact=True' 'rank1 address covariance=ArrayTypeMismatchException/80131503' \
     'rank1 address type before bounds=ArrayTypeMismatchException/80131503' \
@@ -1230,21 +1225,24 @@ for line in '== rank1 writable MD address identity ==' 'rank1 writable MD addres
     'rank1 address null before bounds=NullReferenceException/80004003' \
     'rank1 address readonly=True' 'rank1 address readonly bounds=IndexOutOfRangeException/80131508' \
     'rank1 address readonly null=NullReferenceException/80004003' 'rank1 address retained=True'; do
-    [[ $(grep -Fxc -- "$line" <<< "$static_rank1_native") == 1 ]] \
+    gate_output byte-witness "$static_rank1_native" "$line" --count 1 --policy crlf \
         || { echo "FAIL: rank1 MD address witness must run once: $line" >&2; exit 1; }
 done
-static_vector_prefix=$(awk '/^== vector Address member identity ==$/ { exit } { print }' <<< "$static_rank1_native")
-static_vector_before=$(DN2CPP_BEFORE_VECTOR_ADDRESS=1 run_bounded "./$static_rank1_root/gen/ArrayStaticRankOneOnly$EXE_EXT")
-static_vector_clr_before=$(DN2CPP_BEFORE_VECTOR_ADDRESS=1 run_bounded dotnet exec \
-    --runtimeconfig "$static_rank1_root/generator/Generate.runtimeconfig.json" "$static_rank1_app")
-assert_output "$static_vector_prefix" "$(strip_cr_win "$static_vector_before")"
-assert_output "$static_vector_prefix" "$(strip_cr_win "$static_vector_clr_before")"
+static_vector_prefix="${static_rank1_native%.stdout}.static_vector_prefix.stdout"
+gate_output select "$static_rank1_native" "$static_vector_prefix" --before '== vector Address member identity ==' --policy crlf
+static_vector_before="$static_rank1_root/static_vector_before.stdout"
+DN2CPP_BEFORE_VECTOR_ADDRESS=1 gate_capture_ok "${static_vector_before%.stdout}" run_bounded "./$static_rank1_root/gen/ArrayStaticRankOneOnly$EXE_EXT"
+static_vector_clr_before="$static_rank1_root/static_vector_clr_before.stdout"
+DN2CPP_BEFORE_VECTOR_ADDRESS=1 gate_capture_ok "${static_vector_clr_before%.stdout}" run_bounded dotnet exec \
+    --runtimeconfig "$static_rank1_root/generator/Generate.runtimeconfig.json" "$static_rank1_app"
+gate_output compare "$static_vector_prefix" "$static_vector_before" --policy crlf
+gate_output compare "$static_vector_prefix" "$static_vector_clr_before" --policy crlf
 for line in '== vector Address member identity ==' 'vector Address member identity end' \
     'vector member exact=True' 'rank1 address vector covariance=ArrayTypeMismatchException/80131503' \
     'rank1 address vector type before bounds=ArrayTypeMismatchException/80131503' \
     'rank1 address vector null=NullReferenceException/80004003' \
     'vector member readonly=True' 'vector member value slots=29:11:-123:13'; do
-    [ "$(grep -Fxc -- "$line" <<< "$static_rank1_native")" = 1 ] \
+    gate_output byte-witness "$static_rank1_native" "$line" --count 1 --policy crlf \
         || { echo "FAIL: vector Address MemberRef witness missing or repeated: $line" >&2; exit 1; }
 done
 for line in '== static rank1 MD identity ==' \
@@ -1266,7 +1264,7 @@ for line in '== static rank1 MD identity ==' \
     'nested allocation=True/System.Int32[,][,]/2/2/True/31' \
     'nested rectangular is=True/False/False/False/False' 'nested rectangular cast=True/True' \
     'nested rectangular cast mismatch=InvalidCastException'; do
-    [[ $(grep -Fxc -- "$line" <<< "$static_rank1_native") == 1 ]] \
+    gate_output byte-witness "$static_rank1_native" "$line" --count 1 --policy crlf \
         || { echo "FAIL: static rank1 MD witness must run once: $line" >&2; exit 1; }
 done
 
@@ -1274,8 +1272,9 @@ done
 invoke_cli "$static_rank1_app" -r "$corelib" -r "$static_rank1_root/app/ArrayRankOneLibrary.dll" \
     --no-ildiet -o "$static_rank1_root/gen-no-ildiet"
 compile_console "$static_rank1_root/gen-no-ildiet" ArrayStaticRankOneOnly
-static_rank1_no_diet_native=$(run_bounded "./$static_rank1_root/gen-no-ildiet/ArrayStaticRankOneOnly$EXE_EXT")
-assert_output "$static_rank1_native" "$(strip_cr_win "$static_rank1_no_diet_native")"
+static_rank1_no_diet_native="$static_rank1_root/static_rank1_no_diet_native.stdout"
+gate_capture_ok "${static_rank1_no_diet_native%.stdout}" run_bounded "./$static_rank1_root/gen-no-ildiet/ArrayStaticRankOneOnly$EXE_EXT"
+gate_output compare "$static_rank1_native" "$static_rank1_no_diet_native"
 
 # CLR metadata inspection covers signature wrappers without widening native type APIs.
 mkdir -p "$static_rank1_root/metadata"
@@ -1311,32 +1310,37 @@ done
 md_overload_root="artifacts/arraycore-md-overload"
 run_bounded dotnet "$static_rank1_root/generator/Generate.dll" --overload-exe "$md_overload_root/app"
 md_overload_app="$md_overload_root/app/ArrayOverloadCalls.dll"
-md_overload_oracle=$(run_bounded dotnet exec \
-    --runtimeconfig "$static_rank1_root/generator/Generate.runtimeconfig.json" "$md_overload_app")
+md_overload_oracle="$md_overload_root/md_overload_oracle.stdout"
+gate_capture_ok "${md_overload_oracle%.stdout}" run_bounded dotnet exec \
+    --runtimeconfig "$static_rank1_root/generator/Generate.runtimeconfig.json" "$md_overload_app"
 run_bounded dotnet exec "$(dirname "$DN2CPP_CLI_DLL")/ildiet/ILDiet.dll" "$md_overload_app" \
     -r "$corelib" -r "$md_overload_root/app/ArrayOverloadLibrary.dll" -o "$md_overload_root/diet"
-md_overload_diet=$(run_bounded dotnet exec \
-    --runtimeconfig "$static_rank1_root/generator/Generate.runtimeconfig.json" "$(ildiet_generation "$md_overload_root/diet")/ArrayOverloadCalls.dll")
-assert_output "$(strip_cr_win "$md_overload_oracle")" "$(strip_cr_win "$md_overload_diet")"
+md_overload_diet="$md_overload_root/md_overload_diet.stdout"
+gate_capture_ok "${md_overload_diet%.stdout}" run_bounded dotnet exec \
+    --runtimeconfig "$static_rank1_root/generator/Generate.runtimeconfig.json" "$(ildiet_generation "$md_overload_root/diet")/ArrayOverloadCalls.dll"
+gate_output compare "$md_overload_oracle" "$md_overload_diet"
 invoke_cli "$(ildiet_generation "$md_overload_root/diet")/ArrayOverloadCalls.dll" \
     -r "$corelib" -r "$(ildiet_generation "$md_overload_root/diet")/ArrayOverloadLibrary.dll" \
     --no-ildiet -o "$md_overload_root/gen"
 compile_console "$md_overload_root/gen" ArrayOverloadCalls
-md_overload_native=$(run_bounded "./$md_overload_root/gen/ArrayOverloadCalls$EXE_EXT")
-md_overload_native=$(strip_cr_win "$md_overload_native")
-assert_output "$(strip_cr_win "$md_overload_oracle")" "$md_overload_native"
-md_overload_prefix=$(awk '/^== rank1 MD overload resolution ==$/ { exit } { print }' <<< "$md_overload_native")
-md_overload_before=$(run_bounded "./$md_overload_root/gen/ArrayOverloadCalls$EXE_EXT" before-md-overload)
-md_overload_clr_before=$(run_bounded dotnet exec \
-    --runtimeconfig "$static_rank1_root/generator/Generate.runtimeconfig.json" "$md_overload_app" before-md-overload)
-assert_output "$md_overload_prefix" "$(strip_cr_win "$md_overload_before")"
-assert_output "$md_overload_prefix" "$(strip_cr_win "$md_overload_clr_before")"
+md_overload_native="$md_overload_root/md_overload_native.stdout"
+gate_capture_ok "${md_overload_native%.stdout}" run_bounded "./$md_overload_root/gen/ArrayOverloadCalls$EXE_EXT"
+gate_output compare "$md_overload_oracle" "$md_overload_native"
+md_overload_prefix="${md_overload_native%.stdout}.md_overload_prefix.stdout"
+gate_output select "$md_overload_native" "$md_overload_prefix" --before '== rank1 MD overload resolution ==' --policy crlf
+md_overload_before="$md_overload_root/md_overload_before.stdout"
+gate_capture_ok "${md_overload_before%.stdout}" run_bounded "./$md_overload_root/gen/ArrayOverloadCalls$EXE_EXT" before-md-overload
+md_overload_clr_before="$md_overload_root/md_overload_clr_before.stdout"
+gate_capture_ok "${md_overload_clr_before%.stdout}" run_bounded dotnet exec \
+    --runtimeconfig "$static_rank1_root/generator/Generate.runtimeconfig.json" "$md_overload_app" before-md-overload
+gate_output compare "$md_overload_prefix" "$md_overload_before" --policy crlf
+gate_output compare "$md_overload_prefix" "$md_overload_clr_before" --policy crlf
 for line in '== array overload baseline ==' '10' 'array overload baseline end' \
     '== rank1 MD overload resolution ==' 'rank1 MD overload resolution end' \
     'explicit-zero' '20' 'unsized' '21' 'nested' '22' 'generic-argument' '23' \
     'byref' '24' 'MD-first vector' '26' \
     'cross-assembly generic-owner' '40' 'cross-assembly generic-method' '42'; do
-    [[ $(grep -Fxc -- "$line" <<< "$md_overload_native") == 1 ]] \
+    gate_output byte-witness "$md_overload_native" "$line" --count 1 --policy crlf \
         || { echo "FAIL: MD overload witness must run once: $line" >&2; exit 1; }
 done
 
@@ -1347,13 +1351,14 @@ dotnet build samples/dotnet/ArrayCore/ArrayComparerTypeOnly.csproj -c "$CONFIG" 
 comparer_type_app="$comparer_type_root/app/ArrayComparerTypeOnly.dll"
 invoke_cli "$comparer_type_app" -r "$corelib" -o "$comparer_type_root/gen"
 compile_console "$comparer_type_root/gen" ArrayComparerTypeOnly
-comparer_type_native=$(run_bounded "./$comparer_type_root/gen/ArrayComparerTypeOnly$EXE_EXT")
-comparer_type_native=$(strip_cr_win "$comparer_type_native")
-comparer_type_oracle=$(run_bounded dotnet "$comparer_type_app")
-assert_output "$comparer_type_native" "$(strip_cr_win "$comparer_type_oracle")"
+comparer_type_native="$comparer_type_root/comparer_type_native.stdout"
+gate_capture_ok "${comparer_type_native%.stdout}" run_bounded "./$comparer_type_root/gen/ArrayComparerTypeOnly$EXE_EXT"
+comparer_type_oracle="$comparer_type_root/comparer_type_oracle.stdout"
+gate_capture_ok "${comparer_type_oracle%.stdout}" run_bounded dotnet "$comparer_type_app"
+gate_output compare "$comparer_type_native" "$comparer_type_oracle"
 for line in 'opaque-comparer/is-null:False' 'opaque-comparer/is-string:False' \
     'opaque comparer type checks end'; do
-    [[ $(grep -Fxc -- "$line" <<< "$comparer_type_native") == 1 ]] \
+    gate_output byte-witness "$comparer_type_native" "$line" --count 1 --policy crlf \
         || { echo "FAIL: comparer type-only witness must run once: $line" >&2; exit 1; }
 done
 

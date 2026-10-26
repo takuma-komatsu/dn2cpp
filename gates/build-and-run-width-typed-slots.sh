@@ -16,13 +16,14 @@ _corelib_gate_core() {
 }
 gate_extra_asserts() {
     local out="$1" native line
-    native=$(run_bounded "$out/WidthTypedSlotsOnly$EXE_EXT")
-    native=$(strip_cr_win "$native")
+    gate_capture_ok "$out/assert-native-1" run_bounded "$out/WidthTypedSlotsOnly$EXE_EXT"
+    native="$out/assert-native-1.stdout"
+
     for line in '== same-width constrained interface slots ==' \
         'width typed slots=True,True,False/1,-1' \
         'width typed comparer=True:3/True:40' \
         'same-width constrained interface slots end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: same-width interface witness missing: $line" >&2; exit 1; }
     done
 }
@@ -35,9 +36,9 @@ build_proj samples/dotnet/SharedGenerics/SharedGenerics.csproj
 bucket="samples/dotnet/SharedGenerics/bin/$CONFIG/$TFM/SharedGenerics.dll"
 prefix_out="artifacts/width-typed-slots-prefix-$CONFIG"
 mkdir -p "$prefix_out"
-run_bounded dotnet "$bucket" before-width-typed-slots > "$prefix_out/before.stdout"
-run_bounded dotnet "$bucket" > "$prefix_out/full.stdout"
-sed '/^== same-width constrained interface slots ==/,$d' "$prefix_out/full.stdout" > "$prefix_out/prefix.stdout"
-diff -u <(strip_cr_win_file "$prefix_out/before.stdout") <(strip_cr_win_file "$prefix_out/prefix.stdout")
+gate_capture_ok "$prefix_out/before" run_bounded dotnet "$bucket" before-width-typed-slots
+gate_capture_ok "$prefix_out/full" run_bounded dotnet "$bucket"
+gate_output select "$prefix_out/full.stdout" "$prefix_out/prefix.stdout" --before '== same-width constrained interface slots ==' --policy crlf
+gate_output compare "$prefix_out/before.stdout" "$prefix_out/prefix.stdout"
 
 echo 'PASS: same-width constrained interface slots'

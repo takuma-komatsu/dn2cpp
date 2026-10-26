@@ -23,12 +23,16 @@ DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|managed-format-provide
 
 gate_extra_asserts() {
     local out="$1" native before prefix line
-    native=$(run_bounded "./$out/StringBuild")
-    native=$(strip_cr_win "$native")
-    before=$(dotnet "$_CG_APP" before-null-receivers)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== StringBuilder null receivers ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-native-1" run_bounded "./$out/StringBuild"
+    native="$out/assert-native-1.stdout"
+
+    gate_capture_ok "$out/assert-before-2" run_bounded dotnet "$_CG_APP" before-null-receivers
+    before="$out/assert-before-2.stdout"
+
+    prefix="$out/assert-prefix-11.stdout"
+
+    gate_output select "$native" "$prefix" --before '== StringBuilder null receivers ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== StringBuilder null receivers ==' \
         'append repeat zero: NullReferenceException' \
         'append format array: NullReferenceException' \
@@ -54,13 +58,16 @@ gate_extra_asserts() {
         'throwing argument: InvalidOperationException' \
         'throwing argument evaluation: RT' \
         'recovery: ok!'; do
-        grep -Fxq "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: null receiver witness missing: $line" >&2; exit 1; }
     done
-    before=$(dotnet "$_CG_APP" before-builder-ranges)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== StringBuilder ranges ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-3" run_bounded dotnet "$_CG_APP" before-builder-ranges
+    before="$out/assert-before-3.stdout"
+
+    prefix="$out/assert-prefix-12.stdout"
+
+    gate_output select "$native" "$prefix" --before '== StringBuilder ranges ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== StringBuilder ranges ==' \
         'repeat negative: ArgumentOutOfRangeException' \
         'repeat minimum: ArgumentOutOfRangeException' \
@@ -86,13 +93,16 @@ gate_extra_asserts() {
         'final content: abxxcdexx' \
         'recovery identity: True' \
         'recovery content: abxxcdexx!'; do
-        grep -Fxq "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: builder range witness missing: $line" >&2; exit 1; }
     done
-    before=$(dotnet "$_CG_APP" before-builder-copy-faults)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== StringBuilder copy faults ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-4" run_bounded dotnet "$_CG_APP" before-builder-copy-faults
+    before="$out/assert-before-4.stdout"
+
+    prefix="$out/assert-prefix-13.stdout"
+
+    gate_output select "$native" "$prefix" --before '== StringBuilder copy faults ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== StringBuilder copy faults ==' \
         '0:-1:-1:-1:-1 param=destination' \
         '2:-1:-1:-1:-1 type=NullReferenceException' \
@@ -111,13 +121,16 @@ gate_extra_asserts() {
         'copy null evaluation=RSADC' 'copy throwing count evaluation=RSADC' \
         'copy fault after GC param=destinationIndex' \
         'copy fault after GC actual=Int32:-7' 'StringBuilder copy faults end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: builder CopyTo fault witness missing: $line" >&2; exit 1; }
     done
-    before=$(dotnet "$_CG_APP" before-builder-edit-faults)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== StringBuilder edit faults ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-5" run_bounded dotnet "$_CG_APP" before-builder-edit-faults
+    before="$out/assert-before-5.stdout"
+
+    prefix="$out/assert-prefix-14.stdout"
+
+    gate_output select "$native" "$prefix" --before '== StringBuilder edit faults ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== StringBuilder edit faults ==' \
         'remove:0:-1:-1 param=length' 'remove:0:-1:-1 actual=Int32:-1' \
         'remove:0:-1:0 param=startIndex' 'remove:0:-1:0 actual=Int32:-1' \
@@ -133,13 +146,16 @@ gate_extra_asserts() {
         'remove throwing evaluation type=InvalidOperationException' 'remove throwing evaluation=RSL' \
         'edit fault after GC param=length' 'edit fault after GC actual=Int32:-7' \
         'StringBuilder edit faults end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: builder edit fault witness missing: $line" >&2; exit 1; }
     done
-    before=$(dotnet "$_CG_APP" before-builder-state-faults)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== StringBuilder state faults ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-6" run_bounded dotnet "$_CG_APP" before-builder-state-faults
+    before="$out/assert-before-6.stdout"
+
+    prefix="$out/assert-prefix-15.stdout"
+
+    gate_output select "$native" "$prefix" --before '== StringBuilder state faults ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== StringBuilder state faults ==' \
         'length:0:-2147483648 param=value' 'length:0:-2147483648 actual=Int32:-2147483648' \
         'ensure:0:-1 param=capacity' 'ensure:0:-1 actual=Int32:-1' \
@@ -151,14 +167,18 @@ gate_extra_asserts() {
         'index throwing evaluation type=InvalidOperationException' 'index throwing evaluation=RIV' \
         'state fault after GC param=capacity' 'state fault after GC actual=Int32:-7' \
         'StringBuilder state faults end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: builder state fault witness missing: $line" >&2; exit 1; }
     done
 
-    before=$(dotnet "$_CG_APP" before-builder-insert-faults)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== StringBuilder insert faults ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-7" run_bounded dotnet "$_CG_APP" before-builder-insert-faults
+
+    before="$out/assert-before-7.stdout"
+
+    prefix="$out/assert-prefix-16.stdout"
+
+    gate_output select "$native" "$prefix" --before '== StringBuilder insert faults ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== StringBuilder insert faults ==' \
         'insert char:0:-2147483648 param=index' 'insert char:0:-2147483648 actual=null' \
         'insert string:0:0:-1 param=index' 'insert string:0:0:4 identity=True' \
@@ -171,14 +191,18 @@ gate_extra_asserts() {
         'insert throwing evaluation type=InvalidOperationException' 'insert throwing evaluation=RIVC' \
         'insert fault after GC param=count' 'insert fault after GC actual=Int32:-7' \
         'StringBuilder insert faults end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: builder insert fault witness missing: $line" >&2; exit 1; }
     done
 
-    before=$(dotnet "$_CG_APP" before-builder-collection-faults)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== StringBuilder collection faults ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-8" run_bounded dotnet "$_CG_APP" before-builder-collection-faults
+
+    before="$out/assert-before-8.stdout"
+
+    prefix="$out/assert-prefix-17.stdout"
+
+    gate_output select "$native" "$prefix" --before '== StringBuilder collection faults ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== StringBuilder collection faults ==' \
         'array append:0:3:-1:-1 param=startIndex' 'array append:0:3:-1:-1 actual=Int32:-1' \
         'array append:0:3:0:-1 param=charCount' 'array append:0:3:1:0 param=value' \
@@ -195,16 +219,21 @@ gate_extra_asserts() {
         'builder append null evaluation type=NullReferenceException' 'builder append null evaluation=RBSC' \
         'array append fault after GC param=startIndex' 'array insert fault after GC param=charCount' \
         'builder append fault after GC actual=Int32:-7' 'StringBuilder collection faults end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: builder collection fault witness missing: $line" >&2; exit 1; }
     done
 
-    native=$(run_bounded "./$out/StringBuild")
-    native=$(strip_cr_win "$native")
-    before=$(dotnet "$_CG_APP" before-format-faults)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== String format faults ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-native-9" run_bounded "./$out/StringBuild"
+
+    native="$out/assert-native-9.stdout"
+
+    gate_capture_ok "$out/assert-before-10" run_bounded dotnet "$_CG_APP" before-format-faults
+    before="$out/assert-before-10.stdout"
+
+    prefix="$out/assert-prefix-18.stdout"
+
+    gate_output select "$native" "$prefix" --before '== String format faults ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== String format faults ==' \
         'format:0:0 param=format' \
         'format:1:0 param=args' \
@@ -215,7 +244,7 @@ gate_extra_asserts() {
         'format fault after GC:0 param=format' \
         'format fault after GC:1 message=Index (zero based) must be greater than or equal to zero and less than the size of the argument list.' \
         'String format faults end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: String format fault witness missing: $line" >&2; exit 1; }
     done
 

@@ -53,12 +53,17 @@ source "$(dirname "$0")/_common.sh"
 
 gate_extra_asserts() {
     local out="$1" native before prefix line
-    native=$(run_bounded "./$out/ConvertParse")
-    native=$(strip_cr_win "$native")
-    before=$(dotnet "$_CG_APP" before-char-faults)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== Convert string char faults ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    # Primitive parse inputs contain NUL; parity is raw and witness needles are text-only.
+    native="$out/native.stdout"
+    gate_output status "$(cat "$out/native.status")" 0 || return 1
+
+    gate_capture_ok "$out/assert-before-2" run_bounded dotnet "$_CG_APP" before-char-faults
+    before="$out/assert-before-2.stdout"
+
+    prefix="$out/assert-prefix-10.stdout"
+
+    gate_output select "$native" "$prefix" --before '== Convert string char faults ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== Convert string char faults ==' \
         'char:0 param=value' \
         'char provider:0 param=value' \
@@ -71,13 +76,16 @@ gate_extra_asserts() {
         'object unit=55' \
         'char object:4 type=FormatException' \
         'Convert string char faults end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output byte-witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: ConvertParse validation witness missing: $line" >&2; exit 1; }
     done
-    before=$(dotnet "$_CG_APP" before-conversion-fields)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== Conversion validation fields ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-3" run_bounded dotnet "$_CG_APP" before-conversion-fields
+    before="$out/assert-before-3.stdout"
+
+    prefix="$out/assert-prefix-11.stdout"
+
+    gate_output select "$native" "$prefix" --before '== Conversion validation fields ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== Conversion validation fields ==' \
         'base64 range:2:-1:-1:2 param=length' \
         'base64 chars:2:2:0:0:2147483647:0 success=0' \
@@ -91,13 +99,16 @@ gate_extra_asserts() {
         'conversion after GC:0 type=FormatException' \
         'conversion after GC:3 type=OverflowException' \
         'Conversion validation fields end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output byte-witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: ConvertParse validation witness missing: $line" >&2; exit 1; }
     done
-    before=$(dotnet "$_CG_APP" before-span-conversions)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== Boolean spans and hex destinations ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-4" run_bounded dotnet "$_CG_APP" before-span-conversions
+    before="$out/assert-before-4.stdout"
+
+    prefix="$out/assert-prefix-12.stdout"
+
+    gate_output select "$native" "$prefix" --before '== Boolean spans and hex destinations ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== Boolean spans and hex destinations ==' \
         'bool span:0 success=False:False' \
         'bool span:4 success=True:True' \
@@ -109,42 +120,51 @@ gate_extra_asserts() {
         'empty hex chars=True:0' \
         'empty hex bytes=True:0' \
         'Boolean spans and hex destinations end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output byte-witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: span conversion witness missing: $line" >&2; exit 1; }
     done
-    before=$(dotnet "$_CG_APP" before-hex-decoding)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== hex decoding overloads ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-5" run_bounded dotnet "$_CG_APP" before-hex-decoding
+    before="$out/assert-before-5.stdout"
+
+    prefix="$out/assert-prefix-13.stdout"
+
+    gate_output select "$native" "$prefix" --before '== hex decoding overloads ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in 'hex array utf8:00aBff success=00-AB-FF' \
         'hex decode utf8:00aBff:2=DestinationTooSmall:4:2:00-AB' \
         'empty hex chars array=True' 'empty hex utf8 array=True' \
         'hex decoding overloads end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output byte-witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: hex decoding witness missing: $line" >&2; exit 1; }
     done
-    before=$(dotnet "$_CG_APP" before-primitive-parses)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== Primitive parse overloads ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-6" run_bounded dotnet "$_CG_APP" before-primitive-parses
+    before="$out/assert-before-6.stdout"
+
+    prefix="$out/assert-prefix-14.stdout"
+
+    gate_output select "$native" "$prefix" --before '== Primitive parse overloads ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in 'Boolean:Parse:chars=True' 'Char:Parse:string=漢' \
         'Primitive parse overloads end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output byte-witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: scalar parsing witness missing: $line" >&2; exit 1; }
     done
     local type
     for type in SByte Byte Int16 UInt16 Int32 UInt32 Int64 UInt64 IntPtr UIntPtr Single Double Half Decimal; do
-        grep -Fxq -- "$type:TryParse:utf8/styles/provider/out=True:42" <<< "$native" \
+        gate_output byte-witness "$native" "$type:TryParse:utf8/styles/provider/out=True:42" --count any --policy crlf \
             || { echo "FAIL: scalar UTF-8 parsing did not run: $type" >&2; exit 1; }
     done
     for type in Int128 UInt128; do
-        grep -Fxq -- "$type:TryParse:utf8/styles/provider/out=True:0:42" <<< "$native" \
+        gate_output byte-witness "$native" "$type:TryParse:utf8/styles/provider/out=True:0:42" --count any --policy crlf \
             || { echo "FAIL: wide UTF-8 parsing did not run: $type" >&2; exit 1; }
     done
-    before=$(dotnet "$_CG_APP" before-change-type-providers)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== ChangeType format providers ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-7" run_bounded dotnet "$_CG_APP" before-change-type-providers
+    before="$out/assert-before-7.stdout"
+
+    prefix="$out/assert-prefix-15.stdout"
+
+    gate_output select "$native" "$prefix" --before '== ChangeType format providers ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== ChangeType format providers ==' \
         'provider Type:format Int32=minus12/1' \
         'provider TypeCode:format Int32=minus12/1' \
@@ -155,19 +175,22 @@ gate_extra_asserts() {
         'provider Type:parse Char=x/0' \
         'provider TypeCode:wrong format=-12.5/1' \
         'ChangeType format providers end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output byte-witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: ChangeType provider witness missing: $line" >&2; exit 1; }
     done
     for type in Byte UInt16 UInt32 UInt64; do
         for line in "provider Type:parse $type=12/1" "provider TypeCode:parse $type=12/1"; do
-            grep -Fxq -- "$line" <<< "$native" \
+            gate_output byte-witness "$native" "$line" --count any --policy crlf \
                 || { echo "FAIL: ChangeType unsigned parsing witness missing: $line" >&2; exit 1; }
         done
     done
-    before=$(dotnet "$_CG_APP" before-change-type-faults)
-    before=$(strip_cr_win "$before")
-    prefix=$(awk '/^== ChangeType unsupported conversions ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-8" run_bounded dotnet "$_CG_APP" before-change-type-faults
+    before="$out/assert-before-8.stdout"
+
+    prefix="$out/assert-prefix-16.stdout"
+
+    gate_output select "$native" "$prefix" --before '== ChangeType unsupported conversions ==' --policy crlf
+    gate_output compare "$prefix" "$before"
     for line in '== ChangeType unsupported conversions ==' \
         'ChangeType fault Type:Int32 to DateTime=InvalidCastException' \
         'ChangeType fault TypeCode:Int32 to DateTime=InvalidCastException' \
@@ -180,7 +203,7 @@ gate_extra_asserts() {
         'ChangeType fault Type:Char to Decimal=InvalidCastException' \
         'ChangeType fault TypeCode:Object to Int32=InvalidCastException' \
         'ChangeType unsupported conversions end'; do
-        grep -Fxq -- "$line" <<< "$native" \
+        gate_output byte-witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: ChangeType fault witness missing: $line" >&2; exit 1; }
     done
 }
@@ -190,20 +213,21 @@ corelib_diff_gate ConvertParse System.Private.Uri System.ComponentModel.TypeConv
 (
     gate_extra_asserts() {
         local out="$1" native
-        native=$(run_bounded "./$out/ChangeTypeKnownProvidersOnly")
-        native=$(strip_cr_win "$native")
-        grep -Fxq 'ChangeType unused provider=True' <<< "$native"
-        grep -Fxq 'ChangeType unused identity=-12/-12' <<< "$native"
-        grep -Fxq 'ChangeType unused numeric=-12/-12' <<< "$native"
-        grep -Fxq 'ChangeType unused Boolean=True/True' <<< "$native"
-        grep -Fxq 'ChangeType unused Char=x/x' <<< "$native"
-        grep -Fxq 'ChangeType unused parse Boolean=True/True' <<< "$native"
-        grep -Fxq 'ChangeType unused parse Char=x/x' <<< "$native"
-        grep -Fxq 'ChangeType NumberFormatInfo=minus12/minus12' <<< "$native"
-        grep -Fxq 'ChangeType unused Byte=12/12' <<< "$native"
-        grep -Fxq 'ChangeType unused UInt16=12/12' <<< "$native"
-        grep -Fxq 'ChangeType unused UInt32=4294967295/4294967295' <<< "$native"
-        grep -Fxq 'ChangeType unused UInt64=18446744073709551615/18446744073709551615' <<< "$native"
+        native="$out/native.stdout"
+        gate_output status "$(cat "$out/native.status")" 0 || return 1
+
+        gate_output byte-witness "$native" 'ChangeType unused provider=True' --count any --policy crlf
+        gate_output byte-witness "$native" 'ChangeType unused identity=-12/-12' --count any --policy crlf
+        gate_output byte-witness "$native" 'ChangeType unused numeric=-12/-12' --count any --policy crlf
+        gate_output byte-witness "$native" 'ChangeType unused Boolean=True/True' --count any --policy crlf
+        gate_output byte-witness "$native" 'ChangeType unused Char=x/x' --count any --policy crlf
+        gate_output byte-witness "$native" 'ChangeType unused parse Boolean=True/True' --count any --policy crlf
+        gate_output byte-witness "$native" 'ChangeType unused parse Char=x/x' --count any --policy crlf
+        gate_output byte-witness "$native" 'ChangeType NumberFormatInfo=minus12/minus12' --count any --policy crlf
+        gate_output byte-witness "$native" 'ChangeType unused Byte=12/12' --count any --policy crlf
+        gate_output byte-witness "$native" 'ChangeType unused UInt16=12/12' --count any --policy crlf
+        gate_output byte-witness "$native" 'ChangeType unused UInt32=4294967295/4294967295' --count any --policy crlf
+        gate_output byte-witness "$native" 'ChangeType unused UInt64=18446744073709551615/18446744073709551615' --count any --policy crlf
         if grep -Eq 'UnusedProvider_GetFormat_m[0-9]+[[:space:]]*\(' "$out/generated.h" "$out"/generated*.cpp; then
             echo 'FAIL: known ChangeType providers retained an unused GetFormat body' >&2
             exit 1

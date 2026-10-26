@@ -10,15 +10,15 @@ loop_app="$loop_root/app/ArraySearchLoopsOnly.dll"
 corelib=$(locate_corelib)
 run_with_watchdog 60 invoke_cli "$loop_app" -r "$corelib" --shared-generics -o "$loop_root/gen"
 compile_console "$loop_root/gen" ArraySearchLoopsOnly
-loop_native=$(run_bounded "./$loop_root/gen/ArraySearchLoopsOnly$EXE_EXT")
-loop_oracle=$(run_bounded dotnet "$loop_app")
-assert_output "$(strip_cr_win "$loop_native")" "$(strip_cr_win "$loop_oracle")"
-loop_lines=$(strip_cr_win "$loop_native")
-loop_prefix=$(awk '/^== array search deep types and late signatures ==$/ { exit } { print }' <<< "$loop_lines")
-loop_before=$(run_bounded dotnet "$loop_app" before-array-search-additions)
-assert_output "$loop_prefix" "$(strip_cr_win "$loop_before")"
-loop_before=$(run_bounded "./$loop_root/gen/ArraySearchLoopsOnly$EXE_EXT" before-array-search-additions)
-assert_output "$loop_prefix" "$(strip_cr_win "$loop_before")"
+gate_capture_ok "$loop_root/native" run_bounded "./$loop_root/gen/ArraySearchLoopsOnly$EXE_EXT"
+gate_capture_ok "$loop_root/oracle" run_bounded dotnet "$loop_app"
+gate_output compare "$loop_root/native.stdout" "$loop_root/oracle.stdout"
+gate_output select "$loop_root/native.stdout" "$loop_root/prefix.stdout" \
+    --before '== array search deep types and late signatures ==' --policy crlf
+gate_capture_ok "$loop_root/before-oracle" run_bounded dotnet "$loop_app" before-array-search-additions
+gate_output compare "$loop_root/prefix.stdout" "$loop_root/before-oracle.stdout"
+gate_capture_ok "$loop_root/before-native" run_bounded "./$loop_root/gen/ArraySearchLoopsOnly$EXE_EXT" before-array-search-additions
+gate_output compare "$loop_root/prefix.stdout" "$loop_root/before-native.stdout"
 for line in '== array search loop provenance ==' \
         'loop-local=0:1:1' 'loop-argument=0:1:1' 'loop-type=0' \
         'loop-type-unwrapped=0:1' 'loop-unsearched-leaf=0' \
@@ -36,7 +36,7 @@ for line in '== array search loop provenance ==' \
         'shared-read-write-first=Int32:0:1:True' \
         'shared-read-write-second=String:0:1:True' \
         'array search shared read writes end'; do
-    grep -Fxq -- "$line" <<< "$loop_lines" \
+    gate_output byte-witness "$loop_root/native.stdout" "$line" --count any --policy crlf \
         || { echo "FAIL: array loop witness missing: $line" >&2; exit 1; }
 done
 for name in LoopFirstMatch LoopSecondMatch LoopTypeMatch DeepTypeMatch LateLookupMatch \

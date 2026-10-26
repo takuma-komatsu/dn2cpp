@@ -14,17 +14,21 @@ source "$(dirname "$0")/_common.sh"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|before-flatten"
 gate_extra_asserts() {
     local out="$1" native before prefix line
-    native=$(run_bounded "./$out/ParallelAggregate")
-    native=$(strip_cr_win "$native")
-    before=$(run_bounded dotnet "$_CG_APP" before-flatten)
-    prefix=$(awk '/^== Aggregate flatten ==$/ { exit } { print }' <<< "$native")
-    assert_output "$prefix" "$(strip_cr_win "$before")"
-    before=$(run_bounded "./$out/ParallelAggregate" before-flatten)
-    assert_output "$prefix" "$(strip_cr_win "$before")"
+    gate_capture_ok "$out/assert-native-1" run_bounded "./$out/ParallelAggregate"
+    native="$out/assert-native-1.stdout"
+
+    gate_capture_ok "$out/assert-before-2" run_bounded dotnet "$_CG_APP" before-flatten
+    before="$out/assert-before-2.stdout"
+    prefix="$out/assert-prefix-4.stdout"
+    gate_output select "$native" "$prefix" --before '== Aggregate flatten ==' --policy crlf
+    gate_output compare "$prefix" "$before"
+    gate_capture_ok "$out/assert-before-3" run_bounded "./$out/ParallelAggregate" before-flatten
+    before="$out/assert-before-3.stdout"
+    gate_output compare "$prefix" "$before"
     for line in '== Aggregate flatten ==' 'order=a,d,a,b,c' 'identity=True:True' \
         'message=root (a) (d) (a) (b) (c)' 'fresh=True:True' 'empty=empty' \
         'derived=override (b)' 'deep=1' 'Aggregate flatten end'; do
-        [ "$(grep -Fxc "$line" <<< "$native")" = 1 ] || { echo "FAIL: missing flatten witness: $line" >&2; exit 1; }
+        gate_output witness "$native" "$line" --count 1 --policy crlf || { echo "FAIL: missing flatten witness: $line" >&2; exit 1; }
     done
 }
 corelib_diff_gate ParallelAggregate

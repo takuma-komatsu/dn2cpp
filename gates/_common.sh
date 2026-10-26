@@ -47,6 +47,7 @@ DN2CPP_GATE_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd -P)/$(basename 
 # Physical paths (`pwd -P` / `cd -P`) throughout: a stale logical $PWD would
 # propagate a since-moved repo path into every build directory.
 cd -P "$(dirname "${BASH_SOURCE[1]}")/.."
+_DN2CPP_GATE_ROOT="$PWD"
 
 CONFIG=${CONFIG:-Release}
 TFM=${TFM:-net10.0}
@@ -2037,6 +2038,8 @@ android_first_device() {
     if [ -n "$devs" ]; then printf '%s\n' "${devs%%$'\n'*}"; fi
 }
 
+# Legacy string adapters only. New observations use gate_capture/gate_output;
+# these retain their historical behavior until each caller is migrated.
 # strip_cr_win STR — echo STR with every '\r' removed, on Windows only. Windows
 # .NET's Console writes native \r\n, so a NATIVE-vs-live-`dotnet`-oracle diff
 # needs nothing. Apply this to the NATIVE side only where the other side is a
@@ -2219,6 +2222,59 @@ _dump_obj_symbols_nix() {
     nm $nmflag "$obj" 2>/dev/null | awk '{print $NF}' | LC_ALL=C sed -E 's/^_?_Z[0-9]+//'
 }
 
+# gate_output COMMAND... — byte comparison or explicit semantic records.
+# No policy is inferred from the host. See docs/GATE-OUTPUT.md.
+gate_output() {
+    if [ -z "${DN2CPP_PYTHON:-}" ]; then
+        DN2CPP_PYTHON="$(resolve_python)" || return 1
+    fi
+    local python="$DN2CPP_PYTHON"
+    # resolve_python may return the Windows launcher "py -3".
+    # shellcheck disable=SC2086
+    $python "$_DN2CPP_GATE_ROOT/gates/gate-output.py" "$@"
+}
+
+# gate_capture PREFIX COMMAND... — preserve stdout, stderr and exit status.
+# A command failure is data, not capture failure: callers must assert .status.
+# Run in a subshell so command-side shell options and cwd cannot leak out.
+gate_capture() {
+    local prefix="$1" status errexit=0
+    shift
+    # A failed new capture must never leave an old success receipt usable.
+    rm -f "$prefix.status" || return 1
+    [ "$#" -gt 0 ] || { echo 'FAIL: gate_capture needs a command' >&2; return 1; }
+    mkdir -p "$(dirname "$prefix")" || return 1
+    : > "$prefix.stdout" || return 1
+    : > "$prefix.stderr" || return 1
+    case $- in *e*) errexit=1 ;; esac
+    set +e
+    ( "$@" ) > "$prefix.stdout" 2> "$prefix.stderr"
+    status=$?
+    [ "$errexit" -eq 0 ] || set -e
+    printf '%s\n' "$status" > "$prefix.status" || return 1
+}
+
+# gate_capture_ok PREFIX COMMAND... — a successful program observation.
+# Failure diagnostics are replayed, while raw files remain available for review.
+gate_capture_ok() {
+    local prefix="$1"
+    gate_capture "$@" || return 1
+    if ! gate_output status "$(cat "$prefix.status")" 0; then
+        cat "$prefix.stderr" >&2
+        return 1
+    fi
+}
+
+# gate_assert_text ACTUAL_FILE EXPECTED_LITERAL — an inline text fixture.
+# Pair-only CRLF equivalence and an optional final terminator are explicit in
+# this API; binary and same-host parity assertions use gate_output compare.
+gate_assert_text() {
+    local actual="$1" expected="$2" fixture
+    fixture=$(mktemp "${actual}.expected.XXXXXX") || return 1
+    printf '%s' "$expected" > "$fixture" || return 1
+    gate_output compare "$actual" "$fixture" --policy crlf --terminal-newline optional || return 1
+}
+
 # assert_output ACTUAL EXPECTED — print ACTUAL; if it differs from EXPECTED, echo
 # both sides to stderr and fail; otherwise print "OK". ACTUAL is labelled on the
 # failure path too: unlabelled, a run that printed nothing reads as a missing
@@ -2307,8 +2363,8 @@ _gate_runtime_hash() {
 }
 
 # _gate_helpers_hash — the GATE-HELPER term of the key: one hash over EVERY
-# helper in gates/ (the `_*.sh` set), named by basename so the term does not move
-# with the worktree path.
+# shell helpers, output assertion/parser implementations and their policy document.
+# Relative paths keep the term independent of the worktree location.
 #
 # The whole SET, not the sourced subset: hashing only the sourced ones is
 # fail-OPEN — edit gates/_godot_dotnet.sh and its six consumers replay a green
@@ -2323,13 +2379,13 @@ _gate_runtime_hash() {
 # _gate_surface_lines: caller turns it into a MISS and records no key).
 _gate_helpers_hash() {
     local dir listing sums
-    dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P)" || return 1
-    [ -n "$dir" ] || return 1
+    dir="$_DN2CPP_GATE_ROOT/gates"
+    [ -d "$dir" ] || return 1
     # Relative names: hash is a function of content + basename only. The
     # emptiness test is load-bearing — with an empty argument list `xargs shasum`
     # reads STDIN and hangs. This file is always in the set, so an empty listing
     # is a broken read, never legitimate.
-    listing=$(cd "$dir" && LC_ALL=C ls -1 _*.sh 2>/dev/null) || return 1
+    listing=$(cd "$dir" && LC_ALL=C ls -1 _*.sh gate-output.py platform-isa-output.py ../docs/GATE-OUTPUT.md 2>/dev/null) || return 1
     [ -n "$listing" ] || return 1
     sums=$(cd "$dir" && printf '%s\n' "$listing" | LC_ALL=C sort \
         | tr '\n' '\0' | xargs -0 shasum -a 256) || return 1
@@ -2523,7 +2579,7 @@ gate_cache_check() {
     # Same treatment, same reason, for the gate-helper set.
     local helpers
     if ! helpers=$(_gate_helpers_hash); then
-        gate_warn "gate cache off for this step: gate helper set (gates/_*.sh) unreadable; running live, recording no key"
+        gate_warn "gate cache off for this step: gate helper/policy set unreadable; running live, recording no key"
         return 1
     fi
     # Resolve before hashing so an unavailable SDK cannot match a green key.
@@ -2867,18 +2923,19 @@ corelib_subset_gate() {
     compile_console "$out" "$project"
     _gate_run_argv
     if [ -n "$expected" ]; then
-        # Capture the status explicitly: inline `$(...)` swallows it, so an abort
-        # after the full output would diff green.
-        local native native_code
-        set +e
-        native=$(run_bounded "./$out/$project$EXE_EXT" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}); native_code=$?
-        set -e
+        printf '%s' "$expected" > "$out/expected.stdout"
+        gate_capture "$out/native" run_bounded "./$out/$project$EXE_EXT" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"} || return 1
         _gate_scratch_cleanup
-        assert_output "$(strip_cr_win "$native")" "$expected"
-        assert_exit_code "$native_code" 0
+        cat "$out/native.stderr" >&2
+        gate_output status "$(cat "$out/native.status")" 0 || return 1
+        gate_output compare "$out/native.stdout" "$out/expected.stdout" --policy crlf --terminal-newline optional || return 1
+        cat "$out/native.stdout"
     else
-        run_bounded "./$out/$project$EXE_EXT" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}
+        gate_capture "$out/native" run_bounded "./$out/$project$EXE_EXT" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"} || return 1
         _gate_scratch_cleanup
+        cat "$out/native.stdout"
+        cat "$out/native.stderr" >&2
+        gate_output status "$(cat "$out/native.status")" 0 || return 1
     fi
     _gate_extra_asserts "$out"
     gate_cache_commit
@@ -2888,9 +2945,29 @@ corelib_subset_gate() {
 # real-.NET output (`dotnet $app`). Deterministic programs only. The optional
 # DN2CPP_ORACLE_DOTNET_ENABLE_AVX knob applies only to that oracle process; its
 # caller must include the resulting behavior axis in DN2CPP_GATE_EXTRA_CONTEXT.
-# Optional gate_run_oracle and gate_capture_diff_output hooks retain the same
-# oracle arguments and expose output only after stdout and exit-status parity.
+# gate_run_oracle retains the oracle argv. gate_capture_diff_files receives
+# raw stdout paths only after byte and status parity. The legacy positional
+# gate_capture_diff_output hook keeps its string arguments until migrated.
 corelib_diff_gate() {
+    _corelib_diff_gate exact "" "" "" "$@"
+}
+
+# Declare an intentional abort with fixed program evidence; ordinary diffs stay strict.
+corelib_diff_abort_gate() {
+    [ "$#" -ge 3 ] || { echo 'FAIL: abort gate requires project, witness and diagnostic' >&2; return 1; }
+    local project="$1" witness="$2" diagnostic="$3"
+    shift 3
+    local oracle_diagnostic="$diagnostic"
+    if [ "${1:-}" = --oracle-diagnostic ]; then
+        [ "$#" -ge 2 ] || { echo 'FAIL: missing oracle diagnostic' >&2; return 1; }
+        oracle_diagnostic="$2"; shift 2
+    fi
+    _corelib_diff_gate abort "$witness" "$diagnostic" "$oracle_diagnostic" "$project" "$@"
+}
+
+_corelib_diff_gate() {
+    local status_contract="$1" abort_witness="$2" abort_diagnostic="$3" abort_oracle_diagnostic="$4"
+    shift 4
     local project="$1"; shift
     local out
     out="$(_corelib_gate_out "$project")"
@@ -2901,7 +2978,7 @@ corelib_diff_gate() {
     [ -n "${DN2CPP_OUT_SUFFIX:-}" ] && out="$out$DN2CPP_OUT_SUFFIX"
 
     _corelib_gate_core "$project" "$out" "$@"
-    if _corelib_gate_check "$out" "corelib_diff_gate|$project|$*|$_CG_CORELIB$(_gate_ctx_extras)"; then
+    if _corelib_gate_check "$out" "corelib_diff_gate|$project|$*|$_CG_CORELIB|status:$status_contract|host:$DN2CPP_OS|witness:${#abort_witness}:$abort_witness|diagnostic:${#abort_diagnostic}:$abort_diagnostic|oracle-diagnostic:${#abort_oracle_diagnostic}:$abort_oracle_diagnostic$(_gate_ctx_extras)"; then
         gate_cache_hit_msg
         return 0
     fi
@@ -2920,26 +2997,41 @@ corelib_diff_gate() {
     if declare -F gate_run_oracle >/dev/null; then
         oracle=(gate_run_oracle)
     fi
-    set +e
     _gate_run_argv
-    native=$("${native_run[@]}" "./$out/$project$EXE_EXT" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}); native_code=$?
+    gate_capture "$out/native" "${native_run[@]}" "./$out/$project$EXE_EXT" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"} || return 1
+    native_code=$(cat "$out/native.status")
     _gate_run_argv
     if [ -n "${DN2CPP_ORACLE_DOTNET_ENABLE_AVX:-}" ]; then
-        expected=$(DOTNET_EnableAVX="$DN2CPP_ORACLE_DOTNET_ENABLE_AVX" \
-            "${oracle[@]}" "$_CG_APP" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}); expected_code=$?
+        DOTNET_EnableAVX="$DN2CPP_ORACLE_DOTNET_ENABLE_AVX" \
+            gate_capture "$out/oracle" "${oracle[@]}" "$_CG_APP" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"} || return 1
     else
-        expected=$("${oracle[@]}" "$_CG_APP" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}); expected_code=$?
+        gate_capture "$out/oracle" "${oracle[@]}" "$_CG_APP" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"} || return 1
     fi
-    set -e
+    expected_code=$(cat "$out/oracle.status")
+    cat "$out/native.stderr" "$out/oracle.stderr" >&2
     _gate_scratch_cleanup
     if [ "${DN2CPP_RETRY_STATUS4:-0}" = 1 ] && [ "$DN2CPP_OS" = windows ] \
             && { [ "$native_code" -eq 4 ] || [ "$expected_code" -eq 4 ]; }; then
         echo "FAIL: $project still returned status 4 after one retry" >&2
         return 1
     fi
-    assert_output "$native" "$expected"
-    assert_exit_code "$native_code" "$expected_code"
-    if declare -F gate_capture_diff_output >/dev/null; then
+    gate_output compare "$out/native.stdout" "$out/oracle.stdout" || return 1
+    if [ "$status_contract" = abort ]; then
+        gate_output abort-parity "$out/native" "$out/oracle" --host "$DN2CPP_OS" \
+            --witness "$abort_witness" --diagnostic "$abort_diagnostic" \
+            --oracle-diagnostic "$abort_oracle_diagnostic" || return 1
+    else
+        gate_output status "$native_code" "$expected_code" || return 1
+    fi
+    cat "$out/native.stdout"
+    if declare -F gate_capture_diff_files >/dev/null; then
+        gate_capture_diff_files "$out" "$project" "$out/native.stdout" "$out/oracle.stdout" \
+            ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}
+    elif declare -F gate_capture_diff_output >/dev/null; then
+        # Compatibility only: positional hooks still receive shell strings,
+        # never paths. Exact file parity above cannot lose NUL or trailing LF.
+        native=$(cat "$out/native.stdout")
+        expected=$(cat "$out/oracle.stdout")
         gate_capture_diff_output "$out" "$project" "$native" "$expected" \
             ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}
     fi
@@ -2964,29 +3056,24 @@ corelib_diff_split_gate() {
     echo "== 4/4 Compiling C++ and running (stdout/stderr exact diff vs real .NET) =="
     compile_console "$out" "$project"
     local native_code expected_code
-    set +e
     _gate_run_argv
-    run_bounded "./$out/$project$EXE_EXT" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"} \
-        >"$out/native.out" 2>"$out/native.err"; native_code=$?
+    gate_capture "$out/native" run_bounded "./$out/$project$EXE_EXT" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"} || return 1
     _gate_run_argv
-    run_bounded dotnet "$_CG_APP" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"} \
-        >"$out/expected.out" 2>"$out/expected.err"; expected_code=$?
-    set -e
+    gate_capture "$out/oracle" run_bounded dotnet "$_CG_APP" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"} || return 1
+    native_code=$(cat "$out/native.status")
+    expected_code=$(cat "$out/oracle.status")
     _gate_scratch_cleanup
 
-    echo "---- native STDOUT ----"; cat "$out/native.out"
-    echo "---- native STDERR ----"; cat "$out/native.err"
-    local ok=1
-    if ! diff -u "$out/expected.out" "$out/native.out"; then
-        echo "FAIL: STDOUT differs from real .NET" >&2
-        ok=0
-    fi
-    if ! diff -u "$out/expected.err" "$out/native.err"; then
-        echo "FAIL: STDERR differs from real .NET" >&2
-        ok=0
-    fi
-    [ "$ok" -eq 1 ] || return 1
-    assert_exit_code "$native_code" "$expected_code"
+    # Keep the split gate's established evidence filenames for extra asserts.
+    cp "$out/native.stdout" "$out/native.out"
+    cp "$out/native.stderr" "$out/native.err"
+    cp "$out/oracle.stdout" "$out/expected.out"
+    cp "$out/oracle.stderr" "$out/expected.err"
+    echo "---- native STDOUT ----"; cat "$out/native.stdout"
+    echo "---- native STDERR ----"; cat "$out/native.stderr"
+    gate_output compare "$out/native.stdout" "$out/oracle.stdout" || return 1
+    gate_output compare "$out/native.stderr" "$out/oracle.stderr" || return 1
+    gate_output status "$native_code" "$expected_code" || return 1
     # Extra asserts run INSIDE the cached region, so a warm hit includes them.
     _gate_extra_asserts "$out" "$native_code" "$expected_code"
     gate_cache_commit
@@ -3008,7 +3095,7 @@ wasm_corelib_diff_gate() {
     _CG_CORELIB_IN=$(locate_corelib_cross_posix net10)
 
     _corelib_gate_core "$project" "$out" "$@"
-    if gate_cache_check "$out" "wasm_corelib_diff_gate|$project|$*|$_CG_CORELIB" \
+    if gate_cache_check "$out" "wasm_corelib_diff_gate|$project|$*|$_CG_CORELIB|host:$DN2CPP_OS" \
             "$_CG_APP" "${_CG_APP%.dll}.runtimeconfig.json" "${_CG_APP%.dll}.deps.json" \
             ${_CG_EXTRA_REFERENCE_INPUTS[@]+"${_CG_EXTRA_REFERENCE_INPUTS[@]}"}; then
         gate_cache_hit_msg
@@ -3018,17 +3105,23 @@ wasm_corelib_diff_gate() {
     echo "== 4/4 Compiling to wasm and running under node (exact diff vs real .NET) =="
     compile_console_wasm "$out" "$project"
     # Exact code equality cannot hold across runtimes (node reports an abort as 1,
-    # .NET as 134): the sides must only FAIL ALIKE, both 0 or both nonzero.
-    local native native_code expected expected_code
-    set +e
-    native=$(run_bounded node "./$out/$project.js"); native_code=$?
-    expected=$(run_bounded dotnet "$_CG_APP"); expected_code=$?
-    set -e
-    # strip_cr_win on the ORACLE side: node never emits \r\n, the oracle does.
-    assert_output "$native" "$(strip_cr_win "$expected")"
-    if [ "$native_code" -eq 0 ] || [ "$expected_code" -eq 0 ]; then
-        assert_exit_code "$native_code" "$expected_code"
+    # .NET as 134 or Windows/MSYS 127): the sides must only FAIL ALIKE.
+    gate_capture "$out/native" run_bounded node "./$out/$project.js" || return 1
+    gate_capture "$out/oracle" run_bounded dotnet "$_CG_APP" || return 1
+    cat "$out/native.stderr" "$out/oracle.stderr" >&2
+    # Node and the host CLR have different newline conventions. This text
+    # cross-target gate opts into pair-only CRLF equivalence on both sides.
+    gate_output compare "$out/native.stdout" "$out/oracle.stdout" --policy crlf || return 1
+    if [ "$DN2CPP_OS" = windows ] && [ "$project" = Finalizers ] \
+            && [ "$(cat "$out/oracle.status")" = 127 ]; then
+        gate_output wasm-abort "$out/native" "$out/oracle" --host "$DN2CPP_OS" \
+            --witness 'about to throw from finalizer' \
+            --diagnostic 'dn2cpp fatal: unhandled exception in finalizer: System.InvalidOperationException' \
+            --oracle-diagnostic 'Unhandled exception. System.InvalidOperationException: boom' || return 1
+    else
+        gate_output status "$(cat "$out/native.status")" "$(cat "$out/oracle.status")" --policy success-class || return 1
     fi
+    cat "$out/native.stdout"
     gate_cache_commit
 }
 
@@ -3054,17 +3147,14 @@ ios_sim_corelib_diff_gate() {
     # simctl spawn relays the app's status faithfully, so real .NET oracles it too.
     # Only the spawn takes sim_lock (a machine-wide singleton) — never widen
     # it over the compile or the oracle.
-    local native native_code expected expected_code
     sim_lock
-    set +e
-    native=$(run_bounded xcrun simctl spawn "$IOS_SIM_UDID" "$PWD/$out/$project"); native_code=$?
-    set -e
+    gate_capture "$out/native" run_bounded xcrun simctl spawn "$IOS_SIM_UDID" "$PWD/$out/$project" || { sim_unlock; return 1; }
     sim_unlock
-    set +e
-    expected=$(run_bounded dotnet "$_CG_APP"); expected_code=$?
-    set -e
-    assert_output "$native" "$expected"
-    assert_exit_code "$native_code" "$expected_code"
+    gate_capture "$out/oracle" run_bounded dotnet "$_CG_APP" || return 1
+    cat "$out/native.stderr" "$out/oracle.stderr" >&2
+    gate_output compare "$out/native.stdout" "$out/oracle.stdout" || return 1
+    gate_output status "$(cat "$out/native.status")" "$(cat "$out/oracle.status")" || return 1
+    cat "$out/native.stdout"
     gate_cache_commit
 }
 
@@ -3138,18 +3228,15 @@ net10_bcl_diff_gate() {
     else
         compile_console "$out" "$project"
     fi
-    # Capture BOTH statuses: an abort after the full output diffs green, and so do
-    # two empty strings from a crashed ORACLE (a nonzero oracle is a broken input).
-    local native_out native_code oracle_out oracle_code
-    set +e
-    native_out="$(run_bounded "./$out/$project$EXE_EXT")"; native_code=$?
-    oracle_out="$(run_bounded dotnet "$app")"; oracle_code=$?
-    set -e
-    [ "$native_code" -eq 0 ] \
-        || { echo "FAIL: native binary exited $native_code, expected 0" >&2; return 1; }
-    [ "$oracle_code" -eq 0 ] \
-        || { echo "FAIL: real-.NET oracle \`dotnet $app\` exited $oracle_code, expected 0" >&2; return 1; }
-    assert_output "$native_out" "$oracle_out"
+    gate_capture "$out/native" run_bounded "./$out/$project$EXE_EXT" || return 1
+    gate_capture "$out/oracle" run_bounded dotnet "$app" || return 1
+    cat "$out/native.stderr" "$out/oracle.stderr" >&2
+    # These buckets require successful execution on both sides, unlike the
+    # corelib finalizer bucket's intentionally failing parity oracle.
+    gate_output status "$(cat "$out/native.status")" 0 || return 1
+    gate_output status "$(cat "$out/oracle.status")" 0 || return 1
+    gate_output compare "$out/native.stdout" "$out/oracle.stdout" || return 1
+    cat "$out/native.stdout"
     [ -n "$post_assert" ] && { "$post_assert" "$out" "$project" || return 1; }
     gate_cache_commit
 }
@@ -3179,14 +3266,13 @@ corelib_freeze_gate() {
 
     echo "== 4/4 Compiling C++ and running (diff vs frozen snapshot) =="
     compile_console "$out" "$project"
-    local native native_code
-    set +e
     _gate_run_argv
-    native=$(run_bounded "./$out/$project$EXE_EXT" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}); native_code=$?
-    set -e
+    gate_capture "$out/native" run_bounded "./$out/$project$EXE_EXT" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"} || return 1
     _gate_scratch_cleanup
-    assert_output "$(strip_cr_win "$native")" "$(cat "$expfile")"
-    assert_exit_code "$native_code" 0
+    cat "$out/native.stderr" >&2
+    gate_output status "$(cat "$out/native.status")" 0 || return 1
+    gate_output compare "$out/native.stdout" "$expfile" --policy crlf || return 1
+    cat "$out/native.stdout"
     _gate_extra_asserts "$out"
     gate_cache_commit
 }
@@ -3445,6 +3531,26 @@ gate_run_diag() {
     else
         echo "stderr: <empty>" >&2
     fi
+}
+
+# gate_run_diag_files LABEL CODE STDOUT_FILE STDERR_FILE — raw evidence only.
+# Keep the legacy string diagnostic hook separate from the file contract.
+gate_run_diag_files() {
+    local label="$1" code="$2" stdout_file="$3" stderr_file="$4" stream file
+    echo "---- $label diagnostics ----" >&2
+    echo "exit code: ${code:-<not run>}" >&2
+    _gate_run_termination "$code" "$stderr_file"
+    for stream in stdout stderr; do
+        if [ "$stream" = stdout ]; then file="$stdout_file"; else file="$stderr_file"; fi
+        if [ ! -f "$file" ]; then
+            echo "$stream: <not captured>" >&2
+        elif [ -s "$file" ]; then
+            echo "$stream:" >&2
+            cat "$file" >&2
+        else
+            echo "$stream: <empty>" >&2
+        fi
+    done
 }
 
 # gate_run_diag_once — call the sourcing gate's optional gate_run_diagnostics

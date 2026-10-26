@@ -373,33 +373,23 @@ compile_console "$out-shape" "$project_shape"
 compile_console "$out-shared" "$project_shared"
 
 echo "== 10/10 Running (exact diff vs real .NET, all five) =="
-set +e
-expected=$(dotnet "$app");   expected_code=$?
-native=$("./$out/$project"); native_code=$?
-set -e
-assert_output "$native" "$expected"
-assert_exit_code "$native_code" "$expected_code"
-set +e
-native_real=$("./$out-real/$project"); native_real_code=$?
-set -e
-assert_output "$native_real" "$expected"
-assert_exit_code "$native_real_code" "$expected_code"
-set +e
-expected_exceed=$(dotnet "$app_exceed");                  expected_exceed_code=$?
-native_exceed=$("./$out-exceed/$project_exceed");         native_exceed_code=$?
-set -e
-assert_output "$native_exceed" "$expected_exceed"
-assert_exit_code "$native_exceed_code" "$expected_exceed_code"
-set +e
-expected_shape=$(dotnet "$app_shape");                expected_shape_code=$?
-native_shape=$("./$out-shape/$project_shape");         native_shape_code=$?
-set -e
-assert_output "$native_shape" "$expected_shape"
-assert_exit_code "$native_shape_code" "$expected_shape_code"
-set +e
-expected_shared=$(dotnet "$app_shared");               expected_shared_code=$?
-native_shared=$("./$out-shared/$project_shared");      native_shared_code=$?
-set -e
-assert_output "$native_shared" "$expected_shared"
-assert_exit_code "$native_shared_code" "$expected_shared_code"
+gate_capture "$out/oracle" run_bounded dotnet "$app"
+gate_capture "$out/native" run_bounded "./$out/$project$EXE_EXT"
+gate_output compare "$out/native.stdout" "$out/oracle.stdout"
+gate_output status "$(cat "$out/native.status")" "$(cat "$out/oracle.status")"
+gate_capture "$out-real/native" run_bounded "./$out-real/$project$EXE_EXT"
+gate_output compare "$out-real/native.stdout" "$out/oracle.stdout"
+gate_output status "$(cat "$out-real/native.status")" "$(cat "$out/oracle.status")"
+gate_capture "$out-exceed/oracle" run_bounded dotnet "$app_exceed"
+gate_capture "$out-exceed/native" run_bounded "./$out-exceed/$project_exceed$EXE_EXT"
+gate_output compare "$out-exceed/native.stdout" "$out-exceed/oracle.stdout"
+gate_output status "$(cat "$out-exceed/native.status")" "$(cat "$out-exceed/oracle.status")"
+gate_capture "$out-shape/oracle" run_bounded dotnet "$app_shape"
+gate_capture "$out-shape/native" run_bounded "./$out-shape/$project_shape$EXE_EXT"
+gate_output compare "$out-shape/native.stdout" "$out-shape/oracle.stdout"
+gate_output status "$(cat "$out-shape/native.status")" "$(cat "$out-shape/oracle.status")"
+gate_capture "$out-shared/oracle" run_bounded dotnet "$app_shared"
+gate_capture "$out-shared/native" run_bounded "./$out-shared/$project_shared$EXE_EXT"
+gate_output compare "$out-shared/native.stdout" "$out-shared/oracle.stdout"
+gate_output status "$(cat "$out-shared/native.status")" "$(cat "$out-shared/oracle.status")"
 gate_cache_commit

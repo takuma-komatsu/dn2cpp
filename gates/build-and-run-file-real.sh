@@ -187,37 +187,27 @@ if [ "$DN2CPP_OS" != windows ]; then
     ln -s missing-target/child "$inc_dir/dangling-io-error"
 fi
 
-# Real .NET is the oracle for the exit status too, not just the output (see
-# assert_exit_code in _common.sh). Both invocations are bracketed with
-# set +e/set -e exactly like corelib_diff_gate does, and the exit codes are
-# asserted explicitly rather than only the stdout.
-#
-# Both halves are load-bearing. The brackets keep a nonzero-exiting sample from
-# tripping `set -e` and aborting THIS SCRIPT before the diff runs. The exit-code
-# assertion is what catches a TRUNCATED transcript: a matched pair of truncated
-# stdouts still diffs clean, which once passed a run of 1 of the 7 sections.
-set +e
-native_out=$("./$out/$project" "$native_dir"); native_code=$?
-expected=$(dotnet "$app" "$dotnet_dir"); expected_code=$?
-set -e
-assert_output "$native_out" "$expected"
-assert_exit_code "$native_code" "$expected_code"
-validation_output=$(strip_cr_win "$native_out")
-grep -qxF '== io missing paths ==' <<< "$validation_output"
-grep -qxF 'io missing paths complete' <<< "$validation_output"
-grep -qF 'read parent: DirectoryNotFoundException |' <<< "$validation_output"
-grep -qxF 'delete leaf: no exception' <<< "$validation_output"
-grep -qF 'delete parent: DirectoryNotFoundException |' <<< "$validation_output"
+# Same-host observations retain raw stdout, stderr and both exit statuses.
+gate_capture "$out/native" run_bounded "./$out/$project" "$native_dir"
+gate_capture "$out/oracle" run_bounded dotnet "$app" "$dotnet_dir"
+gate_output compare "$out/native.stdout" "$out/oracle.stdout"
+gate_output status "$(cat "$out/native.status")" "$(cat "$out/oracle.status")"
+gate_output view "$out/native.stdout" "$out/validation.lf" --policy crlf
+validation_output="$out/validation.lf"
+grep -qxF '== io missing paths ==' "$validation_output"
+grep -qxF 'io missing paths complete' "$validation_output"
+grep -qF 'read parent: DirectoryNotFoundException |' "$validation_output"
+grep -qxF 'delete leaf: no exception' "$validation_output"
+grep -qF 'delete parent: DirectoryNotFoundException |' "$validation_output"
 if [ "$DN2CPP_OS" != windows ]; then
     [ -L "$native_dir/dangling-io-error" ] && [ -L "$dotnet_dir/dangling-io-error" ]
-    grep -qF 'write dangling link: FileNotFoundException |' <<< "$validation_output"
+    grep -qF 'write dangling link: FileNotFoundException |' "$validation_output"
 fi
 before_dir=$(mktemp -d "${TMPDIR:-/tmp}/dn2cpp_filereal_before.XXXXXX")
-before=$(DN2CPP_BEFORE_IO_VALIDATION=1 run_bounded dotnet "$app" "$before_dir")
+DN2CPP_BEFORE_IO_VALIDATION=1 gate_capture_ok "$out/before-io" run_bounded dotnet "$app" "$before_dir"
 rm -rf "$before_dir"
-before=$(strip_cr_win "$before")
-prefix=$(awk '$0 == "== io missing paths ==" { exit } { print }' <<< "$validation_output")
-assert_output "$prefix" "$before"
+gate_output select "$out/native.stdout" "$out/io-prefix.stdout" --before '== io missing paths ==' --policy crlf
+gate_output compare "$out/io-prefix.stdout" "$out/before-io.stdout"
 
 
 echo "== 5/7 Asserting the PAL symbol set =="
@@ -581,11 +571,9 @@ echo "== 7/7 Re-running under the INCREMENTAL collector =="
 # binary, same expected output, one env var. The runtime's answer is a bounce
 # buffer in the SystemNative_* read paths (dn2cpp_gc_kernel_write_unsafe); this is
 # the assertion that keeps it.
-set +e
-inc_out=$(DN2CPP_GC_INCREMENTAL=1 "./$out/$project" "$inc_dir"); inc_code=$?
-set -e
-assert_output "$inc_out" "$expected"
-assert_exit_code "$inc_code" "$expected_code"
+DN2CPP_GC_INCREMENTAL=1 gate_capture "$out/incremental" run_bounded "./$out/$project" "$inc_dir"
+gate_output compare "$out/incremental.stdout" "$out/oracle.stdout"
+gate_output status "$(cat "$out/incremental.status")" "$(cat "$out/oracle.status")"
 
 # Record only here: every assert of both run modes and of the symbol set has
 # passed above, so the green this commits covers the whole six-step pipeline.
