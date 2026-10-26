@@ -4827,6 +4827,17 @@ internal sealed partial class Compilation
 
     internal MdArrayItfInfo? MdArrayInterfaces { get; private set; }
 
+    private volatile bool _enumValuesArraysUsed;
+    internal bool EnumValuesArraysUsed => _enumValuesArraysUsed;
+
+    internal void NoteEnumValuesArrays()
+    {
+        _enumValuesArraysUsed = true;
+        // Runtime enum arrays can lack a static E[] token. Their non-generic
+        // interfaces use the existing element-agnostic Array reflection wrapper.
+        NoteMdArrayUse();
+    }
+
     private bool _mdArrayUsed;
     private bool _arrayCloneDispatchUsed;
     private bool _mdArrayEnumerationReached;

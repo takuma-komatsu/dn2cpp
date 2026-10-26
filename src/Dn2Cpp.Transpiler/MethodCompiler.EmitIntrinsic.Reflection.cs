@@ -1969,6 +1969,13 @@ internal sealed partial class MethodCompiler
                     $"dn2cpp_type_make_array_type_rank({Cast(a, "Dn2CppType*")}, {Cast(rank, "int32_t")})");
                 return true;
             }
+            case ("System.Type", "GetEnumValues") when sig.Header.IsInstance && sig.ParameterTypes.Length == 0:
+            {
+                Comp.NoteEnumValuesArrays();
+                var type = Pop();
+                Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_type_get_enum_values({Cast(type, "Dn2CppType*")})");
+                return true;
+            }
             case ("System.Type", "GetEnumValuesAsUnderlyingType") when sig.ParameterTypes.Length == 0:
             {
                 var a = Pop();

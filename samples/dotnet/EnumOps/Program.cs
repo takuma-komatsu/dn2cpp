@@ -45,6 +45,9 @@ namespace EnumOps
             if (args.Length > 0 && args[0] == "before-enum-name-lookup")
                 return;
             EnumNameLookupSubset.Program.Run();
+            if (args.Length > 0 && args[0] == "before-enum-values-lookup")
+                return;
+            EnumValuesLookupSubset.Program.Run();
         }
     }
 }

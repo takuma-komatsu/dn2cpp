@@ -1062,6 +1062,37 @@ Dn2CppArrayRef* dn2cpp_enum_get_values_boxed(Dn2CppType* t)
     return arr;
 }
 
+// Type.GetEnumValues keeps every literal, including aliases that the name lookup
+// table deduplicates. Array.CreateInstance supplies the precise enum array identity
+// and packed underlying storage, including for a runtime-only element type.
+Dn2CppObject* dn2cpp_type_get_enum_values(Dn2CppType* t)
+{
+    const Dn2CppTypeInfo* ti = dn2cpp_type_require(t);
+    if ((ti->flags & DN2CPP_TF_ENUM) == 0)
+        dn2cpp_throw_argument_param(DN2CPP_SR_MUST_BE_ENUM, "enumType");
+    int32_t width;
+    bool isUnsigned;
+    enum_underlying_shape(ti, &width, &isUnsigned);
+    uint64_t mask = width == 8 ? UINT64_MAX : (uint64_t{1} << (width * 8)) - 1;
+    std::vector<uint64_t> values;
+    const auto reflection = ti->reflection();
+    for (int32_t i = 0; i < reflection.fieldCount; i++)
+    {
+        const auto field = reflection.fields[i].operator->();
+        if ((field->attrs & DN2CPP_FLDA_LITERAL) != 0)
+            values.push_back(static_cast<uint64_t>(field->literalValue) & mask);
+    }
+    std::sort(values.begin(), values.end());
+    int32_t count = static_cast<int32_t>(values.size());
+    Dn2CppObject* result = dn2cpp_array_create_instance(t, &count, 1);
+    char* data = width == 4
+        ? reinterpret_cast<char*>(reinterpret_cast<Dn2CppArrayI4*>(result)->data)
+        : reinterpret_cast<Dn2CppArrayN*>(result)->data;
+    for (int32_t i = 0; i < count; i++)
+        std::memcpy(data + static_cast<size_t>(i) * width, &values[i], static_cast<size_t>(width));
+    return result;
+}
+
 // Enum.GetValuesAsUnderlyingType(Type): the declared values as an array of the UNDERLYING
 // primitive (byte[]/int[]/long[]/ulong[]/...), typed with that element's precise identity.
 // dn2cpp_array_create_instance allocates under the underlying's storage rep and tags it with

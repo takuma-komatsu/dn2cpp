@@ -69,13 +69,15 @@ void dn2cpp_array_set_ref_fallback_interfaces(const Dn2CppInterfaceEntry* entrie
 static const Dn2CppInterfaceEntry* g_array_md_fallback_itfs = nullptr;
 static int32_t g_array_md_fallback_itf_count = 0;
 static const Dn2CppTypeInfo* g_array_clone_interface = nullptr;
+static bool g_array_enum_sz_fallback = false;
 
 void dn2cpp_array_set_md_fallback_interfaces(const Dn2CppInterfaceEntry* entries, int32_t count,
-    const Dn2CppTypeInfo* cloneInterface)
+    const Dn2CppTypeInfo* cloneInterface, bool enumSzArrays)
 {
     g_array_md_fallback_itfs = entries;
     g_array_md_fallback_itf_count = count;
     g_array_clone_interface = cloneInterface;
+    g_array_enum_sz_fallback = enumSzArrays;
 }
 
 // Relation-only rows for the six non-generic array interfaces — the ENUMERATION
@@ -800,9 +802,13 @@ const Dn2CppInterfaceEntry* dn2cpp_dispatch_interface_row_of(const Dn2CppTypeInf
     // Runtime-composed signature arrays use this map too, including jagged arrays
     // whose reference-element SZ map was never statically seeded.
     // Clone reads the runtime shape, so its row also serves an SZ array whose
-    // element has no collection map. Other SZ collection dispatch is unchanged.
+    // element has no collection map. Type.GetEnumValues additionally demands this
+    // reflection-backed non-generic map for enum SZ arrays without static maps;
+    // other value-element SZ arrays remain outside this fallback.
     if ((dn2cpp_is_md_array(t) || (dn2cpp_is_sz_array(t)
-            && (dn2cpp_has_signature_array_element(t) || itf == g_array_clone_interface)))
+            && (dn2cpp_has_signature_array_element(t) || itf == g_array_clone_interface
+                || (g_array_enum_sz_fallback && t->elementType != nullptr
+                    && (t->elementType->flags & DN2CPP_TF_ENUM) != 0))))
         && g_array_md_fallback_itfs != nullptr)
     {
         for (int32_t i = 0; i < g_array_md_fallback_itf_count; i++)

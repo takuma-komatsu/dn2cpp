@@ -1865,6 +1865,7 @@ Dn2CppArrayRef* dn2cpp_type_get_enum_names(Dn2CppType* t);
 // Enum.GetValues(Type) (non-generic): the declared values as object[] of boxed enums, so a
 // foreach over the returned System.Array yields boxed `object` elements.
 Dn2CppArrayRef* dn2cpp_enum_get_values_boxed(Dn2CppType* t);
+Dn2CppObject* dn2cpp_type_get_enum_values(Dn2CppType* t);
 // Enum.GetValuesAsUnderlyingType(Type) (non-generic): the declared values as an array of the
 // UNDERLYING primitive (byte[]/int[]/long[]/...), typed with that element's precise identity so
 // GetType()/GetValue read it. Built on dn2cpp_array_create_instance; returned as the array object.
@@ -2961,7 +2962,7 @@ void dn2cpp_array_set_ref_fallback_interfaces(const Dn2CppInterfaceEntry* entrie
 // element-agnostic thunk on SZ arrays. Installed when a dispatch route needs it,
 // before any managed code runs.
 void dn2cpp_array_set_md_fallback_interfaces(const Dn2CppInterfaceEntry* entries, int32_t count,
-    const Dn2CppTypeInfo* cloneInterface = nullptr);
+    const Dn2CppTypeInfo* cloneInterface = nullptr, bool enumSzArrays = false);
 // Installs the RELATION-only row set for the six non-generic interfaces every CLR
 // array implements — the same six the two tables above dispatch, but as rows with
 // NULL slot tables, and for ENUMERATION rather than dispatch.

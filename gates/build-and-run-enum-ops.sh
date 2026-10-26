@@ -144,6 +144,22 @@ gate_extra_asserts() {
         gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
     done
 
+
+    gate_capture_ok "$out/assert-before-values-lookup" run_bounded dotnet "$_CG_APP" before-enum-values-lookup || return 1
+    gate_output select "$native" "$out/assert-prefix-values-lookup.stdout" --before '== enum values lookup ==' --policy crlf || return 1
+    gate_output compare "$out/assert-prefix-values-lookup.stdout" "$out/assert-before-values-lookup.stdout" || return 1
+    for line in '== enum values lookup ==' \
+        'values:I1:True:6:0,0,1,127,-128,-1,:0,0,1,127,-128,-1,' \
+        'values:U8:True:4:0,0,1,18446744073709551615,:0,0,1,18446744073709551615,' \
+        'enumerated:I8:0,0,1,9223372036854775807,-9223372036854775808,-1,' \
+        'fresh:I1:0,0,1,127,-128,-1,' 'values:Empty:True:0::' \
+        'dynamic:Dynamic[]:3:0,65535,65535,' 'dynamic-enumerated:0,65535,65535,' \
+        'field-only:0,0,65535,' 'cast:Min:18446744073709551615' \
+        'values:error:ArgumentException/enumType:NullReferenceException/' \
+        'enum values lookup end'; do
+        gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
+    done
+
 }
 
 corelib_diff_gate EnumOps --link-xml samples/dotnet/EnumOps/keep-element-type.xml

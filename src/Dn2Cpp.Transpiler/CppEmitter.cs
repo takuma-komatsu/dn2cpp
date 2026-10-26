@@ -3049,7 +3049,7 @@ internal sealed partial class CppEmitter
         {
             var cloneItf = _c.MdArrayInterfaces!.Dispatches.FirstOrDefault(d => d.Itf.FullName == "System.ICloneable")?.Itf;
             string cloneKey = cloneItf is null ? "nullptr" : TypeInfoRef(cloneItf, "array Clone dispatch");
-            sb.AppendLine($"    dn2cpp_array_set_md_fallback_interfaces({mdm.Sym}, {mdm.Count}, {cloneKey});");
+            sb.AppendLine($"    dn2cpp_array_set_md_fallback_interfaces({mdm.Sym}, {mdm.Count}, {cloneKey}, {(_c.EnumValuesArraysUsed ? "true" : "false")});");
         }
         // The relation-only rows the two tables above cannot carry — the enumeration half.
         // Installed here rather than lazily for the same reason: a cctor can already call
