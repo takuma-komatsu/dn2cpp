@@ -722,6 +722,12 @@ internal sealed partial class MethodCompiler
                 when callee.Signature.ParameterTypes.Length == 0 && callee.IsStatic:
                 Push(StackKind.I8, "int64_t", "dn2cpp_gc_allocated_bytes_current_thread()");
                 return true;
+            case ("System.GC", "_GetTotalPauseDuration")
+                when callee.IsStatic && callee.Signature.GenericParameterCount == 0
+                    && callee.Signature.ParameterTypes.Length == 0
+                    && callee.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int64 }:
+                Push(StackKind.I8, "int64_t", "dn2cpp_gc_total_pause_ticks()");
+                return true;
             case ("System.GC", "GetTotalAllocatedBytes")
                 when callee.Signature.ParameterTypes.Length == 1 && callee.IsStatic:
             {

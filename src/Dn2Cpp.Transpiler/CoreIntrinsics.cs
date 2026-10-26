@@ -656,6 +656,7 @@ internal static partial class CoreIntrinsics
             or "WaitForPendingFinalizers" or "GetTotalMemory" or "KeepAlive"
             or "_CollectionCount" or "GetMemoryInfo"
             or "GetGenerationInternal" or "GetMaxGeneration"
+            or "_GetTotalPauseDuration"
             or "_RegisterForFullGCNotification" or "_CancelFullGCNotification"
             or "_WaitForFullGCApproach" or "_WaitForFullGCComplete"
             or "GetAllocatedBytesForCurrentThread" or "GetTotalAllocatedBytes",

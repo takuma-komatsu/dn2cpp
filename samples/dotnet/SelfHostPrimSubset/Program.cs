@@ -9,6 +9,11 @@ internal static class Program
 {
     private static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "gc-pause-only")
+        {
+            GcPauseSubset.Program.Run();
+            return;
+        }
         if (args.Length > 0 && args[0] == "native-gc-notification-unavailable")
         {
             GcNotificationSubset.Program.RunNativeUnavailable();
@@ -92,5 +97,7 @@ internal static class Program
         GcFinalizerWorkerSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-gc-notifications") return;
         GcNotificationSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-gc-pause") return;
+        GcPauseSubset.Program.Run();
     }
 }

@@ -3437,6 +3437,12 @@ int64_t dn2cpp_gc_get_total_memory(int32_t forceFullCollection);
 // counter (GC_get_gc_no); 0 under the calloc fallback (no collections occur).
 int32_t dn2cpp_gc_collection_count();
 
+// Completed managed-execution pauses in 100 ns ticks, independent of diagnostic
+// reporting. Threaded collectors measure STW windows; synchronous nonthreaded
+// collectors measure full collections. Nonthreaded incremental mode is unsupported.
+// The calloc fallback has no collections and therefore no collection pauses.
+int64_t dn2cpp_gc_total_pause_ticks();
+
 // The two heap-accounting figures the vendored Boehm GC exposes directly, used
 // to fill the honest fields of System.GC.GetGCMemoryInfo()'s GCMemoryInfoData
 // (heap size, and the free/fragmented bytes within it); committed bytes mirror

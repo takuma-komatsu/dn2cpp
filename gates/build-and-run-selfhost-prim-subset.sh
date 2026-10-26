@@ -139,6 +139,12 @@ gate_extra_asserts() {
         'GC notification validation end'; do
         gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
     done
+    gate_capture_ok "$out/assert-before-gc-pause" run_bounded dotnet "$_CG_APP" before-gc-pause || return 1
+    gate_output prefix "$native" "$out/assert-before-gc-pause.stdout" --before '== GC pause duration ==' --policy crlf || return 1
+    for line in '== GC pause duration ==' 'pause-nonnegative:True' 'pause-monotonic:True' \
+        'pause-advanced:True' 'pause-delegate:True' 'pause-pointer:True' 'GC pause duration end'; do
+        gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
+    done
 }
 
 corelib_diff_gate SelfHostPrimSubset System.Linq System.Diagnostics.TraceSource \

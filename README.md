@@ -813,6 +813,12 @@ expression trees at runtime.
   real (de)registration. **`WeakReference`/`WeakReference<T>`** are real,
   on Boehm disappearing and long links, with .NET resurrection semantics;
   **`GCHandle`** supports all four `GCHandleType` values.
+  `GC.GetTotalPauseDuration()` reports cumulative completed pauses in `TimeSpan`
+  ticks, independently of `DN2CPP_GC_STATS`: stop-the-world windows with threads,
+  synchronous full collections on single-threaded Wasm. Diagnostic histograms
+  remain opt-in. Nonthreaded incremental collection cannot supply this measure
+  and throws `PlatformNotSupportedException`; the no-GC allocator reports zero
+  because no collections occur. Absolute timings are collector-specific.
 - **Real OS threads** — `Thread`, `Task.Run`, `ThreadPool`,
   `Parallel.For`/`ForEach`/`Invoke` over `std::thread` and a real worker
   pool. **Real synchronization** — `Interlocked` → `__atomic_*`;
