@@ -200,6 +200,13 @@ inline void __atomic_thread_fence(int) { std::atomic_thread_fence(std::memory_or
 #define DN2CPP_PINVOKE_ASM(sym) asm(DN2CPP_PINVOKE_STR(__USER_LABEL_PREFIX__) sym)
 
 struct Dn2CppTypeInfo;
+
+// CLI typed references retain an interior managed address and its exact type handle.
+struct Dn2CppTypedReference
+{
+    uint8_t* f__value;
+    intptr_t f__type;
+};
 struct Dn2CppObject;
 struct Dn2CppType;
 struct Dn2CppString;

@@ -683,6 +683,9 @@ Full ECMA-335 IL coverage. What that means concretely:
   `IList<T>` / … via a per-`T` `SZArrayEnumerable<T>` wrapper);
   box/unbox and `is`/`as`/cast checks; `ref`/`out`/`in`; `constrained.`
   calls; checked arithmetic; `cpblk`/`initblk`; `typeof`/`ldtoken`.
+  Typed-reference IL (`mkrefany`, `refanytype`, `refanyval`) preserves the
+  referenced storage and exact type identity; extraction with a different
+  type throws `InvalidCastException`. See `gates/build-and-run-unsafe-general.sh`.
 - **UTF-16 strings** with .NET `System.String` semantics; UTF-8
   conversion happens only at the console / Godot / P/Invoke boundary.
 - **Exception handling** — structural EH-region reconstruction into C++
@@ -1085,8 +1088,7 @@ it does not come back as a ticket.
   A generic base may reorder or omit the level's bare type parameters;
   repeating parameters or mixing them with constant or constructed arguments
   remains outside this subset.
-- **`__arglist` / `TypedReference`**, and varargs or HasThis function-pointer
-  signatures. IL2CPP does not support them either.
+- **`__arglist`**, and varargs or HasThis function-pointer signatures.
 - **`res://` / `user://` translation inside `System.IO` (Godot lane).**
   Convert first with `ProjectSettings.GlobalizePath(...)`, or take the
   writable root from `OS.GetUserDataDir()`. A transparent translation is

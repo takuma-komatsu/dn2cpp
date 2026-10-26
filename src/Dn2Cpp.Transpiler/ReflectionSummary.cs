@@ -1889,6 +1889,10 @@ internal sealed class SummaryInterpreter
                 Push(Known(Term(TermKind.Str, 0,
                     _r.GetUserString(SRME.UserStringHandle(insn.Token & 0x00FFFFFF)))));
                 break;
+            case ILOpCode.Mkrefany or ILOpCode.Refanyval or ILOpCode.Refanytype:
+                Escape(Pop());
+                Push(Opcode(op));
+                break;
             case ILOpCode.Dup:
             {
                 var value = Pop();

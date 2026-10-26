@@ -1078,7 +1078,7 @@ late_array_emit_rc=0
 late_array_emit_err=$(invoke_cli "$late_array_app" -r "$corelib" --no-ildiet \
     -o "$out/late-array-emit" 2>&1 >/dev/null) || late_array_emit_rc=$?
 if [ "$late_array_emit_rc" -ne 2 ] \
-        || ! grep -Fq 'SignatureMatch_Int32.Equals: Unsupported IL opcode: Mkrefany' <<< "$late_array_emit_err"; then
+        || ! grep -Fq 'typeof(System.Numerics.Complex) names a type whose assembly is not loaded' <<< "$late_array_emit_err"; then
     echo 'FAIL: reflected-signature array equality did not reach its unsupported Equals body' >&2
     echo "$late_array_emit_err" >&2
     exit 1
@@ -1088,7 +1088,7 @@ invoke_cli "$late_array_app" -r "$corelib" --no-ildiet --measure \
 late_array_gaps="$out/late-array-measure/s0-gaps.tsv"
 if [ ! -s "$late_array_gaps" ] \
         || ! grep -Fq 'LateArrayEquality.SignatureMatch_Int32' "$late_array_gaps" \
-        || ! grep -Fq 'Mkrefany' "$late_array_gaps" \
+        || ! grep -Fq 'typeof(System.Numerics.Complex) names a type whose assembly is not loaded' "$late_array_gaps" \
         || grep -q '^dangling' "$late_array_gaps"; then
     echo 'FAIL: --measure omitted the reflected-signature array equality gap' >&2
     cat "$out/late-array-measure.stdout" >&2

@@ -1659,6 +1659,7 @@ internal static partial class CoreIntrinsics
         // CppTypes.KindOf special: the C++ type string is what the arms agree
         // on; the stack kind is arm-divergent (see there).
         ["System.RuntimeTypeHandle"] = "const Dn2CppTypeInfo*",
+        ["System.TypedReference"] = "Dn2CppTypedReference",
         // The degraded stack-trace objects and the Parallel.For/ForEach result
         // struct referenced without their defining IL (a signature naming them
         // in an assembly compiled against a CoreLib/facade the transpile did

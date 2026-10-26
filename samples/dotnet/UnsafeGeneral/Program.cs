@@ -24,6 +24,7 @@ namespace UnsafeGeneral
             UnsafeUnboxSubset.Program.__GateEntry();
             SafeHandleSubset.Program.__GateEntry();
             UnreachedStructSubset.Program.__GateEntry();
+            TypedReferenceSubset.Program.__GateEntry();
         }
     }
 }

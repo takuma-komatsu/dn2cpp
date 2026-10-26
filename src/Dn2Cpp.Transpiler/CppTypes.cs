@@ -31,6 +31,7 @@ internal static class CppTypes
             PrimitiveTypeCode.IntPtr or PrimitiveTypeCode.UIntPtr => "intptr_t",
             PrimitiveTypeCode.String => "Dn2CppString*",
             PrimitiveTypeCode.Object => "Dn2CppObject*",
+            PrimitiveTypeCode.TypedReference => "Dn2CppTypedReference",
             _ => throw new NotSupportedException($"Primitive type {t.Primitive} is not supported yet"),
         },
         // Task-family async types lower to a hand-written runtime struct;
@@ -857,6 +858,7 @@ internal static class CppTypes
             PrimitiveTypeCode.Single or PrimitiveTypeCode.Double => StackKind.R8,
             PrimitiveTypeCode.IntPtr or PrimitiveTypeCode.UIntPtr => StackKind.I8,
             PrimitiveTypeCode.String or PrimitiveTypeCode.Object => StackKind.Ref,
+            PrimitiveTypeCode.TypedReference => StackKind.Struct,
             _ => throw new NotSupportedException($"Primitive type {t.Primitive} is not supported yet"),
         },
         // 64-bit-backed enums are I8 on the stack (mirroring Of above); every
@@ -871,6 +873,7 @@ internal static class CppTypes
         // the two Of arms agree, whereas the stack kind is arm-divergent (a loaded
         // Class-kind RuntimeTypeHandle is IsValueType -> Struct above).
         TypeKind.External when t.ExternalName == "System.RuntimeTypeHandle" => StackKind.Ptr,
+        TypeKind.External when t.ExternalName == "System.TypedReference" => StackKind.Struct,
         // ParallelLoopResult lives in the optional Parallel facade, so a CoreLib-only
         // transpile sees an External TypeRef. Its special C++ mapping is still a by-value
         // struct; treating it as Ref makes box a no-op and exposes raw fields as a header.

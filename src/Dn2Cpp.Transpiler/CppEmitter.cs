@@ -4536,7 +4536,11 @@ internal sealed partial class CppEmitter
             }
             return (kind | PassPointer | (levels << PassPointerDepthShift), type);
         }
-        if (t is { Kind: TypeKind.Class, Class.IsByRefLike: true })
+        // TypedReference signatures decode as a primitive, without the TypeDef's
+        // IsByRefLike flag. Invoke still cannot manufacture or box that value.
+        if (t is { Kind: TypeKind.Class, Class.IsByRefLike: true }
+            or { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.TypedReference }
+            or { Kind: TypeKind.External, ExternalName: "System.TypedReference" })
             return (kind | PassByRefLike, ReflectionAbiTypeInfoExpr(t, emittedEnums));
         if (kind == 0)
             return (0, "nullptr");
@@ -7958,7 +7962,9 @@ internal sealed partial class CppEmitter
         foreach (var cls in EmittedClasses)
         {
             if (!cls.IsEnum && fwdDeclared.Add(cls.CppStructName))
-                sb.AppendLine($"struct {cls.CppStructName};");
+                sb.AppendLine(cls.FullName == "System.TypedReference"
+                    ? $"using {cls.CppStructName} = Dn2CppTypedReference;"
+                    : $"struct {cls.CppStructName};");
         }
         sb.AppendLine();
 
@@ -8075,6 +8081,9 @@ internal sealed partial class CppEmitter
 
     private void EmitOneStruct(StringBuilder sb, ClassInfo cls, string? baseName)
     {
+        // Typedref signatures and CoreLib instance bodies share the runtime storage alias.
+        if (cls.FullName == "System.TypedReference")
+            return;
         (ModeledSize Size, ModeledSize Align)? opaqueLayout =
             IsOpaque(cls) && cls.IsValueType ? TryModeledStructLayout(cls) : null;
         // [StructLayout(Pack = N)] caps every field's alignment at N bytes; the

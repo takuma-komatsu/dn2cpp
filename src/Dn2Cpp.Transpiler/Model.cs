@@ -257,7 +257,8 @@ internal sealed class TypeDesc
     /// and behind routing thread-static storage through GC-visible blocks.</summary>
     public bool ContainsGcReferences() => Kind switch
     {
-        TypeKind.Primitive => Primitive is PrimitiveTypeCode.String or PrimitiveTypeCode.Object,
+        TypeKind.Primitive => Primitive is PrimitiveTypeCode.String or PrimitiveTypeCode.Object
+            or PrimitiveTypeCode.TypedReference,
         TypeKind.SZArray or TypeKind.MDArray => true,
         TypeKind.ByRef => true,   // a by-ref field is a managed reference
         TypeKind.Pointer => false, // unmanaged pointer
@@ -265,8 +266,10 @@ internal sealed class TypeDesc
         // CppTypes maps to a GC-managed pointer (Exception, Type, the reflection
         // infos, …) contains a reference, so every write-barrier gate keyed on this
         // predicate agrees with the emitted field/element type. A name with no
-        // mapping cannot be stored anywhere and stays "no references".
-        TypeKind.External => CppTypes.IsGcRefCppType(CppTypes.ExternalCppName(ExternalName)),
+        // mapping cannot be stored anywhere and stays "no references". TypedReference
+        // is a value containing an interior pointer, not a managed object pointer.
+        TypeKind.External => ExternalName == "System.TypedReference"
+            || CppTypes.IsGcRefCppType(CppTypes.ExternalCppName(ExternalName)),
         TypeKind.ExternalGeneric => true, // a base-image generic reference type
         TypeKind.Class when Class!.IsEnum => false,
         // An intrinsic value type's IL fields describe the BCL layout, not the runtime
