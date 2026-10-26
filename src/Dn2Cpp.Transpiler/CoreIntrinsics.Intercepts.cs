@@ -334,6 +334,7 @@ internal enum InterceptEmitArm
     MulticastOperationBody,
     MulticastAccessorBody,
     CoreClrDelegateVmConstructorBody,
+    DelegateNamedConstructorBody,
     DelegateCloneBinding,
     ArrayCloneBinding,
     /// <summary>SafeHandle lifetime calls and bindings recognize the runtime SafeWaitHandle layout.
@@ -1742,6 +1743,25 @@ internal static partial class CoreIntrinsics
         InterceptCutKind.BodyReplace, InterceptEmitArm.DelegateCloneBody,
         typeGate: "System.Delegate", nameGate: "Clone");
 
+    internal static bool IsDelegateNamedConstructor(MethodInfo method)
+    {
+        if (method.Name != ".ctor" || !CoreIntrinsicTypeMaps.IsDelegateBaseType(method.DeclaringClass.FullName)
+            || method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib")
+            return false;
+        var sig = method.Signature;
+        return CoreIntrinsicTypeMaps.IsDelegateNamedConstructorMethod(
+            method.DeclaringClass.Module.AssemblyName, method.DeclaringClass.FullName, method.Name,
+            (method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask) == System.Reflection.MethodAttributes.Family,
+            method.IsStatic || !sig.Header.IsInstance, sig.GenericParameterCount, sig.ReturnType.IsVoid,
+            sig.ParameterTypes.Length, sig.ParameterTypes.Length == 2
+                ? sig.ParameterTypes[0].IsObject ? "System.Object" : sig.ParameterTypes[0].Class?.FullName : null,
+            sig.ParameterTypes.Length == 2 && sig.ParameterTypes[1].IsString);
+    }
+
+    public static readonly MethodDefIntercept BrDelegateNamedConstructor = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.DelegateNamedConstructorBody,
+        nameGate: ".ctor", extra: static m => IsDelegateNamedConstructor(m));
+
     internal static bool IsCoreClrDelegateVmConstructor(MethodInfo method)
     {
         if (method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
@@ -2002,6 +2022,11 @@ internal static partial class CoreIntrinsics
     {
         if (!RegistrySelfCheckEnabled)
             return;
+
+        CheckRow(nameof(BrDelegateNamedConstructor), 0, BrDelegateNamedConstructor.EmitArm,
+            BrDelegateNamedConstructor.TypeGate, BrDelegateNamedConstructor.NameGate);
+        if (BrDelegateNamedConstructor.CutKind != InterceptCutKind.BodyReplace)
+            throw new InvalidOperationException("Named delegate constructors must remain callable");
 
         CheckRow(nameof(BrCoreClrDelegateVmConstructor), 0, BrCoreClrDelegateVmConstructor.EmitArm,
             BrCoreClrDelegateVmConstructor.TypeGate, BrCoreClrDelegateVmConstructor.NameGate);

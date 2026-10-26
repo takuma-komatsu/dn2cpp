@@ -9,6 +9,16 @@ internal static class Program
 {
     private static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "named-contracts-only")
+        {
+            MulticastNamedConstructorSubset.Program.RunContracts();
+            return;
+        }
+        if (args.Length > 0 && args[0] == "named-constructors-only")
+        {
+            MulticastNamedConstructorSubset.Program.Run();
+            return;
+        }
         if (args.Length > 0 && args[0] == "vm-constructors-only")
         {
             MulticastVmConstructorSubset.Program.Run();
@@ -144,5 +154,7 @@ internal static class Program
         MulticastAccessorSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-vm-constructors") return;
         MulticastVmConstructorSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-named-constructors") return;
+        MulticastNamedConstructorSubset.Program.Run();
     }
 }

@@ -60,7 +60,13 @@ internal sealed partial class AssemblyDiet
         Spend();
         string owner = Name(method.DeclaringType);
         bool traverse;
-        if (IsCopiedCoreClrDelegateVmConstructor(method, owner))
+        if (CoreIntrinsicTypeMaps.IsDelegateNamedConstructorMethod(method.Module.Assembly?.Name.Name,
+            owner, method.Name, method.IsFamily, method.IsStatic || !method.HasThis,
+            method.GenericParameters.Count, method.ReturnType.MetadataType == MetadataType.Void,
+            method.Parameters.Count, method.Parameters.Count == 2 ? method.Parameters[0].ParameterType.FullName : null,
+            method.Parameters.Count == 2 && method.Parameters[1].ParameterType.MetadataType == MetadataType.String))
+            traverse = false;
+        else if (IsCopiedCoreClrDelegateVmConstructor(method, owner))
             traverse = false;
         else if (CoreIntrinsicTypeMaps.IsMulticastAccessorMethod(owner, method.Name, method.IsStatic,
                 method.GenericParameters.Count, method.Parameters.Count, method.ReturnType.FullName,

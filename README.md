@@ -702,7 +702,17 @@ Full ECMA-335 IL coverage. What that means concretely:
   `catch … when` filters, multi-level finally chains, nested EH.
 - **Delegates / lambdas** — `ldftn`/`ldvirtftn`, Roslyn display classes
   and cached lambdas, multicast `+=`/`-=`, static function pointers
-  (`calli`/`delegate*<...>`).
+  (`calli`/`delegate*<...>`). Retained protected name-binding constructors
+  initialize the existing delegate through the native binder, preserving its
+  identity and exact type. Instance names are case-sensitive; static names are
+  case-insensitive and a missing static match leaves the receiver unchanged.
+  Rebinding an existing multicast list would create CoreCLR-only hybrid state;
+  a successful match on that path throws `PlatformNotSupportedException` before
+  changing the receiver. Rebinding an entry whose binding was ever copied into
+  a multicast list is also refused, even after that list becomes unreachable;
+  cloning a single entry creates an independent, rebindable receiver. These
+  limits do not alter ordinary delegate construction or combination, and do not
+  make concurrent constructor mutation safe.
 - **Generics** — canonically shared bodies by default, in the IL2CPP
   manner; see *Optimization* below.
 - **Static abstract interface members** — dispatched through `constrained.`,

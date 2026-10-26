@@ -1178,6 +1178,21 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// Null when the method has no intrinsic lowering to synthesize from.</summary>
     internal string? CompileCoreIntrinsicWrapper()
     {
+        if (CoreIntrinsics.BrDelegateNamedConstructor.Matches(_method))
+            return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
+            {
+                var name = Pop();
+                var target = Pop();
+                var receiver = Pop();
+                bool staticForm = _method.Signature.ParameterTypes[0].Class?.FullName == "System.Type";
+                NoteValueTypeRows();
+                Emit($"dn2cpp_delegate_initialize_named({Cast(receiver, "Dn2CppObject*")}, "
+                    + $"{(staticForm ? "nullptr" : Cast(target, "Dn2CppObject*"))}, "
+                    + $"{(staticForm ? Cast(target, "Dn2CppType*") : "nullptr")}, "
+                    + $"{Cast(name, "Dn2CppString*")}, {(staticForm ? 1 : 0)});");
+                return true;
+            }, "native named delegate initialization");
+
         // Only the resolved CoreLib/private declaration can enter this boundary;
         // no owner/name-only call intrinsic may refuse an unrelated method.
         if (CoreIntrinsics.BrCoreClrDelegateVmConstructor.Matches(_method))

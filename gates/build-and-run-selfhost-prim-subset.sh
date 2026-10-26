@@ -71,8 +71,30 @@
 #     driver, so no wasm axis reaches the section.
 # Driven by the real System.Private.CoreLib (passed with -r) -> cross-assembly resolve
 # + tree-shake -> native binary -> run, asserting the output diffs exact vs real .NET.
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/GcFinalizerWorkerFixture.cs gates/fixtures/ldftn-local/DelegateVmConstructorFixture.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/GcFinalizerWorkerFixture.cs gates/fixtures/ldftn-local/DelegateVmConstructorFixture.cs gates/fixtures/ldftn-local/DelegateNamedConstructorFixture.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
 source "$(dirname "$0")/_common.sh"
+
+named_ctor_asserts() {
+    local output="$1" owner form label check
+    for owner in Delegate MulticastDelegate; do
+        for form in instance static; do
+            label="named-$owner-$form"
+            for check in bind identity target method list; do
+                gate_output byte-witness "$output" "$label-$check:True" --count 1 --policy crlf || return 1
+            done
+            gate_output byte-witness "$output" "$label-target-null:ArgumentNullException:target" --count 1 --policy crlf || return 1
+            gate_output byte-witness "$output" "$label-method-null:ArgumentNullException:method" --count 1 --policy crlf || return 1
+        done
+        gate_output byte-witness "$output" "named-$owner-static-initializer:True" --count 1 --policy crlf || return 1
+        gate_output byte-witness "$output" "named-$owner-static-open:ArgumentException:target" --count 1 --policy crlf || return 1
+        gate_output byte-witness "$output" "named-$owner-static-no-match:True" --count 1 --policy crlf || return 1
+        gate_output byte-witness "$output" "named-$owner-instance-failed-unchanged:True" --count 1 --policy crlf || return 1
+        for check in case static-only signature; do
+            gate_output byte-witness "$output" "named-$owner-instance-$check:ArgumentException:" --count 1 --policy crlf || return 1
+        done
+    done
+    gate_output byte-witness "$output" 'Retained delegate named constructors end' --count 1 --policy crlf || return 1
+}
 
 # Heap accounting differs by runtime; assert the public query contracts.
 gate_extra_asserts() {
@@ -194,6 +216,13 @@ gate_extra_asserts() {
         gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
     done
 
+    gate_capture_ok "$out/assert-before-named-constructors" run_bounded dotnet "$_CG_APP" before-named-constructors || return 1
+    gate_output prefix "$native" "$out/assert-before-named-constructors.stdout" --before '== Named delegate construction public paths ==' --policy crlf || return 1
+    for line in named-public-instance named-public-static named-public-multicast; do
+        gate_output byte-witness "$native" "$line:True" --count 1 --policy crlf || return 1
+    done
+    gate_output byte-witness "$native" 'Named delegate construction public paths end' --count 1 --policy crlf || return 1
+
 }
 
 corelib_diff_gate SelfHostPrimSubset System.Linq System.Diagnostics.TraceSource \
@@ -302,3 +331,36 @@ vm_ctor_refusal_asserts() {
     gate_output byte-witness "$output" 'CoreCLR delegate constructor refusal end' --count 1 --policy crlf || return 1
 }
 vm_ctor_refusal_asserts "$vm_out/native.stdout"
+
+# Direct protected calls live only in an artifact with an isolated entry point.
+named_input="artifacts/delegate-named-input-$CONFIG"
+mkdir -p "$named_input"
+cp samples/dotnet/SelfHostPrimSubset/bin/$CONFIG/$TFM/* "$named_input/"
+dotnet "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
+    --delegate-named-constructors "$named_input/SelfHostPrimSubset.dll" "$_CG_CORELIB"
+named_out="artifacts/delegate-named-$CONFIG"
+invoke_cli "$named_input/SelfHostPrimSubset.dll" --auto-ref -o "$named_out"
+compile_console "$named_out" DelegateNamed
+gate_capture_ok "$named_out/direct" run_bounded "./$named_out/DelegateNamed$EXE_EXT" native-boundary
+for label in delegate-instance delegate-static multicast-instance multicast-static; do
+    gate_output byte-witness "$named_out/direct.stdout" "named-direct-$label:True" --count 1 --policy crlf
+done
+for owner in Delegate MulticastDelegate; do
+    for form in instance static; do
+        gate_output byte-witness "$named_out/direct.stdout" "named-hybrid-$owner-$form:PlatformNotSupportedException:" --count 1 --policy crlf
+    done
+    gate_output byte-witness "$named_out/direct.stdout" "named-hybrid-$owner-missing-instance:ArgumentException:" --count 1 --policy crlf
+    gate_output byte-witness "$named_out/direct.stdout" "named-hybrid-$owner-unchanged:True" --count 1 --policy crlf
+    for label in copied-instance copied-static removed-entry; do
+        gate_output byte-witness "$named_out/direct.stdout" "named-hybrid-$owner-$label:PlatformNotSupportedException:" --count 1 --policy crlf
+    done
+    gate_output byte-witness "$named_out/direct.stdout" "named-hybrid-$owner-copied-missing:ArgumentException:" --count 1 --policy crlf
+    for label in copied-unchanged clone-independent removed-unchanged; do
+        gate_output byte-witness "$named_out/direct.stdout" "named-hybrid-$owner-$label:True" --count 1 --policy crlf
+    done
+done
+gate_output byte-witness "$named_out/direct.stdout" 'Named constructor artifact end' --count 1 --policy crlf
+gate_capture_ok "$named_out/reflection" run_bounded "./$named_out/DelegateNamed$EXE_EXT" contracts
+named_ctor_asserts "$named_out/reflection.stdout"
+gate_capture_ok "$named_out/oracle" run_bounded dotnet "$_CG_APP" named-contracts-only
+gate_output compare "$named_out/reflection.stdout" "$named_out/oracle.stdout" --policy crlf

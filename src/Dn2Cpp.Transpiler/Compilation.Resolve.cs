@@ -92,6 +92,8 @@ internal sealed partial class Compilation
                 // receiver (which folds to the dispatching runtime helper) finds it. Over-
                 // reaching on the non-virtual form is harmless.
                 ReachExceptionGetMessage(mi);
+                if (CoreIntrinsics.BrDelegateNamedConstructor.Matches(mi))
+                    return mi;
                 // Intrinsic-mapped types are emitted inline, not transpiled, so
                 // an intra-assembly call into one (e.g. corelib's Span<T> ->
                 // ThrowHelper) is not a reachability edge.
@@ -1354,6 +1356,16 @@ internal sealed partial class Compilation
         if (mr.Parent.Kind is not (HandleKind.TypeReference or HandleKind.TypeDefinition))
             return null;
         string? full = MemberRefParentTypeName(module, handle);
+        if (CoreIntrinsicTypeMaps.IsDelegateBaseType(full) && reader.StringComparer.Equals(mr.Name, ".ctor"))
+        {
+            try
+            {
+                var constructor = ResolveMemberRefMethod(module, handle, callerCtx);
+                if (CoreIntrinsics.BrDelegateNamedConstructor.Matches(constructor))
+                    return constructor;
+            }
+            catch (NotSupportedException e) when (!IsMustEscape(e)) { }
+        }
         if (full is not null && CoreIntrinsics.IsIntrinsicType(full))
             return null;
         ClassInfo? parentCls = mr.Parent.Kind == HandleKind.TypeDefinition

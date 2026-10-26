@@ -1696,6 +1696,7 @@ static Dn2CppObject* dn2cpp_delegate_relink(Dn2CppDelegate* tail, const Dn2CppDe
             break;
         }
         auto* copy = static_cast<Dn2CppDelegate*>(dn2cpp_alloc(sizeof(Dn2CppDelegate)));
+        reinterpret_cast<Dn2CppDelegate*>(entry)->bindingSnapshotted.store(true, std::memory_order_relaxed);
         copy->type = n->type;
         dn2cpp_gc_store_ref(&copy->target, n->target);
         copy->method = n->method;

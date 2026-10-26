@@ -57,6 +57,13 @@ internal static class CoreIntrinsicTypeMaps
     public static bool IsDelegateBaseType(string? fullName) =>
         fullName is "System.Delegate" or "System.MulticastDelegate";
 
+    public static bool IsDelegateNamedConstructorMethod(string? assembly, string? owner, string name,
+        bool isFamily, bool isStatic, int genericArity, bool returnsVoid, int parameterCount,
+        string? target, bool stringName) => assembly == "System.Private.CoreLib"
+        && IsDelegateBaseType(owner) && name == ".ctor" && isFamily && !isStatic
+        && genericArity == 0 && returnsVoid && parameterCount == 2
+        && target is "System.Object" or "System.Type" && stringName;
+
     public static int CoreClrDelegateVmConstructorArity(string? owner, string name) =>
         owner != "System.MulticastDelegate" ? 0 : name switch
         {

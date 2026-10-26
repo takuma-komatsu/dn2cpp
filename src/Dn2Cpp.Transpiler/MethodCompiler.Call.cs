@@ -477,6 +477,11 @@ internal sealed partial class MethodCompiler
             case HandleKind.MethodDefinition:
             {
                 var callee = ResolveMethodDef((MethodDefinitionHandle)handle);
+                if (CoreIntrinsics.BrDelegateNamedConstructor.Matches(callee))
+                {
+                    EmitManagedCall(callee, isCallvirt);
+                    return;
+                }
                 if (TryEmitSafeWaitHandleBase(callee, isCallvirt))
                     return;
                 // The intra-CoreLib runtime primitives reached only via in-CoreLib MethodDef

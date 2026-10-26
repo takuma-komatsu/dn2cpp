@@ -684,9 +684,8 @@ internal sealed partial class Compilation
         }
         else if (ReflectionRoutes.BindsReflectedMethod(api.Op))
         {
-            NoteReflectionDelegateBind(module);
-            if (api.Op == ReflectionOp.CreateDelegateNamed && IsUserModule(module))
-                _reflectionNamedDelegateBindUsed = true;
+            NoteReflectionDelegateBind(module,
+                named: api.Op == ReflectionOp.CreateDelegateNamed && IsUserModule(module));
         }
         else if (api.Op == ReflectionOp.DynamicInvoke)
             _delegateDynamicInvokeUsed = true;

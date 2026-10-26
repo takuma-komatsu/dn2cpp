@@ -1516,6 +1516,8 @@ struct Dn2CppDelegate : Dn2CppObject
     const Dn2CppDelegateMethodIdentity* identity;
     Dn2CppObject* entry;
     std::atomic<Dn2CppDelegateInvocationCache*> invocationCache;
+    // Monotonic: a chain node has copied this entry's binding.
+    std::atomic<bool> bindingSnapshotted;
 };
 
 // A reflection-bound delegate's context node (MethodInfo.CreateDelegate /
@@ -1606,6 +1608,8 @@ extern const int32_t dn2cpp_delegate_refl_registry_count;
 Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
                                      Dn2CppMethodRef* m, int32_t closedForm,
                                      int32_t throwOnFailure, bool fromDelegate = false);
+void dn2cpp_delegate_initialize_named(Dn2CppObject* receiver, Dn2CppObject* target,
+    Dn2CppType* targetType, Dn2CppString* name, int32_t staticForm);
 Dn2CppObject* dn2cpp_delegate_create_named(Dn2CppType* dt, Dn2CppObject* target,
     Dn2CppType* targetType, Dn2CppString* name, int32_t staticForm,
     int32_t ignoreCase, int32_t throwOnFailure);

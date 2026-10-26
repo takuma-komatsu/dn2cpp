@@ -6708,6 +6708,33 @@ static bool dn2cpp_dgbind_named_signature(const Dn2CppMethodInfo& row, const Dn2
     return true;
 }
 
+void dn2cpp_delegate_initialize_named(Dn2CppObject* receiver, Dn2CppObject* target,
+    Dn2CppType* targetType, Dn2CppString* name, int32_t staticForm)
+{
+    if (receiver == nullptr)
+        dn2cpp_throw_null_reference();
+    auto* bound = reinterpret_cast<Dn2CppDelegate*>(dn2cpp_delegate_create_named(
+        dn2cpp_get_type_from_handle(receiver->type), target, targetType, name,
+        staticForm, staticForm != 0 ? 1 : 0, staticForm != 0 ? 0 : 1));
+    if (bound == nullptr)
+        return;
+    auto* self = reinterpret_cast<Dn2CppDelegate*>(receiver);
+    // CoreCLR can rebind invocation while preserving a stale multicast list.
+    // Our uniform invocation chain cannot represent that hybrid state.
+    if (self->prev != nullptr)
+        dn2cpp_throw_platform_not_supported(
+            "Named delegate constructors cannot reinitialize an existing multicast invocation list.");
+    if (self->bindingSnapshotted.load(std::memory_order_relaxed))
+        dn2cpp_throw_platform_not_supported(
+            "Named delegate constructors cannot reinitialize a binding previously copied into a multicast invocation list.");
+    dn2cpp_gc_store_ref(&self->target, bound->target);
+    self->method = bound->method;
+    self->identity = bound->identity;
+    dn2cpp_gc_store_ref(&self->prev, static_cast<Dn2CppObject*>(nullptr));
+    dn2cpp_gc_store_ref(&self->entry, static_cast<Dn2CppObject*>(nullptr));
+    dn2cpp_gc_store_ref(&self->invocationCache, static_cast<Dn2CppDelegateInvocationCache*>(nullptr));
+}
+
 Dn2CppObject* dn2cpp_delegate_create_named(Dn2CppType* dt, Dn2CppObject* target,
     Dn2CppType* targetType, Dn2CppString* name, int32_t staticForm,
     int32_t ignoreCase, int32_t throwOnFailure)

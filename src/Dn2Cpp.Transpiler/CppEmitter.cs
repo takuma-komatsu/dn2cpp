@@ -2131,6 +2131,7 @@ internal sealed partial class CppEmitter
         || CoreIntrinsics.BrDelegateClone.Matches(cls.FullName, m.Name)
         || CoreIntrinsics.BrDelegateValue.Matches(m)
         || CoreIntrinsics.BrCoreClrDelegateVmConstructor.Matches(m)
+        || CoreIntrinsics.BrDelegateNamedConstructor.Matches(m)
         || CoreIntrinsics.BrMulticastAccessor.Matches(m)
         || CoreIntrinsics.BrMulticastOperation.Matches(m)
         || CoreIntrinsics.BrMulticastFactory.Matches(m)
@@ -2583,6 +2584,7 @@ internal sealed partial class CppEmitter
                             || CoreIntrinsics.BrDelegateClone.Matches(cls.FullName, m.Name)
                             || CoreIntrinsics.BrDelegateValue.Matches(m)
                             || CoreIntrinsics.BrCoreClrDelegateVmConstructor.Matches(m)
+                            || CoreIntrinsics.BrDelegateNamedConstructor.Matches(m)
                             || CoreIntrinsics.BrMulticastAccessor.Matches(m)
                             || CoreIntrinsics.BrMulticastOperation.Matches(m)
                             || CoreIntrinsics.BrMulticastFactory.Matches(m))
@@ -8051,6 +8053,7 @@ internal sealed partial class CppEmitter
                 sb.AppendLine("    const Dn2CppDelegateMethodIdentity* f_identity;");
                 sb.AppendLine("    Dn2CppObject* f_entry;");
                 sb.AppendLine("    std::atomic<Dn2CppDelegateInvocationCache*> f_invocationCache;");
+                sb.AppendLine("    std::atomic<bool> f_bindingSnapshotted;");
                 sb.AppendLine("};");
                 continue;
             }
