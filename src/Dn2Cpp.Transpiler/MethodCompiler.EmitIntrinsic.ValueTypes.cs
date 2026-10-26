@@ -491,6 +491,14 @@ internal sealed partial class MethodCompiler
             return true;
         }
 
+        if (sig.Header.IsInstance && name == "get_Scale" && ps.Length == 0
+            && sig.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Byte })
+        {
+            var a = Pop();
+            Push(StackKind.I4, "int32_t", $"({DecVal(a)}).scale()");
+            return true;
+        }
+
         // Decimal.get_High — the internal `uint High` accessor: the high 32 mantissa
         // bits, straight off the runtime field.
         if (name == "get_High" && ps.Length == 0)

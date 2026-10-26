@@ -32,6 +32,8 @@ namespace DecimalOps
             Dn2Cpp.DecimalBitsSubset.Run();
             if (args.Length > 0 && args[0] == "before-oa-currency") return;
             Dn2Cpp.DecimalCurrencySubset.Run();
+            if (args.Length > 0 && args[0] == "before-decimal-scale") return;
+            Dn2Cpp.DecimalScaleSubset.Run();
         }
     }
 }

@@ -3,6 +3,7 @@
 # Dn2CppDecimal. Consolidated bucket — one sample project, one .cs per section,
 # driven in order by samples/dotnet/DecimalOps/Program.cs.
 # OLE currency conversion preserves ToEven rounding, signed bounds and decimal scale.
+# Scale reads the stored exponent, including signed zero and equal-value representations.
 #
 #   * DecimalSubset — the STATICALLY TYPED surface. The real corelib
 #     Decimal.ToString reaches Number.FormatDecimal -> ArrayPool -> EventSource ->
@@ -32,7 +33,7 @@
 # InvariantGlobalization pins the oracle's culture, which is what makes the diff
 # host-independent. See the csproj.
 source "$(dirname "$0")/_common.sh"
-DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|before-oa-currency|oa-currency-direct-and-delegate"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|before-oa-currency|oa-currency-direct-and-delegate|decimal-scale-direct-and-delegate"
 
 gate_extra_asserts() {
     local out="$1" native before prefix line
@@ -62,6 +63,18 @@ gate_extra_asserts() {
         'decimal OLE currency end'; do
         gate_output byte-witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: OLE currency witness missing: $line" >&2; exit 1; }
+    done
+    gate_capture_ok "$out/assert-before-scale" run_bounded dotnet "$_CG_APP" before-decimal-scale || return 1
+    before="$out/assert-before-scale.stdout"
+    prefix="$out/assert-prefix-scale.stdout"
+    gate_output select "$native" "$prefix" --before '== decimal scale ==' --policy crlf || return 1
+    gate_output compare "$prefix" "$before" || return 1
+    for line in '== decimal scale ==' \
+        'scale:zero:False:0=0:0' 'scale:zero:True:28=28:28' \
+        'scale:96:False:28=28:28' 'scale:96:True:0=0:0' \
+        'scale:equal:1.00=2:2' 'decimal scale end'; do
+        gate_output byte-witness "$native" "$line" --count 1 --policy crlf \
+            || { echo "FAIL: decimal scale witness missing: $line" >&2; return 1; }
     done
 }
 
