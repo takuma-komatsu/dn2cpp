@@ -71,7 +71,7 @@
 #     driver, so no wasm axis reaches the section.
 # Driven by the real System.Private.CoreLib (passed with -r) -> cross-assembly resolve
 # + tree-shake -> native binary -> run, asserting the output diffs exact vs real .NET.
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/GcFinalizerWorkerFixture.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/GcFinalizerWorkerFixture.cs gates/fixtures/ldftn-local/DelegateVmConstructorFixture.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
 source "$(dirname "$0")/_common.sh"
 
 # Heap accounting differs by runtime; assert the public query contracts.
@@ -186,6 +186,14 @@ gate_extra_asserts() {
         gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
     done
 
+    gate_capture_ok "$out/assert-before-vm-constructors" run_bounded dotnet "$_CG_APP" before-vm-constructors || return 1
+    gate_output prefix "$native" "$out/assert-before-vm-constructors.stdout" --before '== CoreCLR delegate construction boundary ==' --policy crlf || return 1
+    for line in '== CoreCLR delegate construction boundary ==' 'vm-ctor-metadata:True' \
+        'vm-ctor-public-value:True' 'vm-ctor-public-instance:True' 'vm-ctor-public-static:True' \
+        'vm-ctor-public-generic:True' 'vm-ctor-public-bind:True' 'CoreCLR delegate construction boundary end'; do
+        gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
+    done
+
 }
 
 corelib_diff_gate SelfHostPrimSubset System.Linq System.Diagnostics.TraceSource \
@@ -269,3 +277,28 @@ gc_notification_unavailable_asserts() {
 }
 gate_capture_ok "$_CG_OUT/notifications" run_bounded "./$_CG_OUT/SelfHostPrimSubset$EXE_EXT" native-gc-notification-unavailable
 gc_notification_unavailable_asserts "$_CG_OUT/notifications.stdout"
+
+# VM constructor stubs require CoreCLR PCODE/loader state. Only the native copy
+# executes the rewritten direct/address sites and the explicit refusal probes.
+vm_input="artifacts/delegate-vm-input-$CONFIG"
+mkdir -p "$vm_input"
+cp samples/dotnet/SelfHostPrimSubset/bin/$CONFIG/$TFM/* "$vm_input/"
+dotnet "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll"     --delegate-vm-constructors "$vm_input/SelfHostPrimSubset.dll" "$_CG_CORELIB"
+vm_out="artifacts/delegate-vm-boundary-$CONFIG"
+invoke_cli "$vm_input/SelfHostPrimSubset.dll" -r "$_CG_CORELIB"     -r "$(dirname "$_CG_CORELIB")/System.Linq.dll"     -r "$(dirname "$_CG_CORELIB")/System.Diagnostics.TraceSource.dll"     -r "$(dirname "$_CG_CORELIB")/System.Collections.Specialized.dll" -o "$vm_out"
+compile_console "$vm_out" DelegateVmBoundary
+gate_capture_ok "$vm_out/native" run_bounded "./$vm_out/DelegateVmBoundary$EXE_EXT" native-vm-constructor-boundary
+vm_ctor_refusal_asserts() {
+    local output="$1" member route
+    for member in CtorClosed CtorClosedStatic CtorRTClosed CtorOpened CtorVirtualDispatch CtorCollectibleClosedStatic CtorCollectibleOpened CtorCollectibleVirtualDispatch; do
+        for route in direct reflection; do
+            gate_output byte-witness "$output" "vm-$member-$route:PlatformNotSupportedException:System.MulticastDelegate.$member is a CoreCLR-owned delegate initialization stub. Use normal delegate construction or Delegate.CreateDelegate instead." --count 1 --policy crlf || return 1
+        done
+    done
+    for route in pointer bound; do
+        gate_output byte-witness "$output" "vm-$route:PlatformNotSupportedException:System.MulticastDelegate.CtorRTClosed is a CoreCLR-owned delegate initialization stub. Use normal delegate construction or Delegate.CreateDelegate instead." --count 1 --policy crlf || return 1
+    done
+    gate_output byte-witness "$output" 'vm-ctor-receiver-unchanged:True' --count 1 --policy crlf || return 1
+    gate_output byte-witness "$output" 'CoreCLR delegate constructor refusal end' --count 1 --policy crlf || return 1
+}
+vm_ctor_refusal_asserts "$vm_out/native.stdout"

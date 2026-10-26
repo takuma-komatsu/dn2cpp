@@ -3,6 +3,7 @@ using Mono.Cecil;
 using Mono.Cecil.Cil;
 
 if (GcFinalizerWorkerFixture.Run(args)) return;
+if (DelegateVmConstructorFixture.Run(args)) return;
 
 CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
 CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;

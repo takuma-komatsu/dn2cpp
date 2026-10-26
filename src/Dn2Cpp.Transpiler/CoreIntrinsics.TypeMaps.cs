@@ -57,6 +57,22 @@ internal static class CoreIntrinsicTypeMaps
     public static bool IsDelegateBaseType(string? fullName) =>
         fullName is "System.Delegate" or "System.MulticastDelegate";
 
+    public static int CoreClrDelegateVmConstructorArity(string? owner, string name) =>
+        owner != "System.MulticastDelegate" ? 0 : name switch
+        {
+            "CtorClosed" or "CtorClosedStatic" or "CtorRTClosed" => 2,
+            "CtorOpened" or "CtorVirtualDispatch" or "CtorCollectibleClosedStatic" => 3,
+            "CtorCollectibleOpened" or "CtorCollectibleVirtualDispatch" => 4,
+            _ => 0,
+        };
+
+    public static bool IsCoreClrDelegateVmConstructorMethod(string? assembly, string? owner, string name,
+        bool isPrivate, bool isStatic, int genericParameterCount, bool returnsVoid,
+        int parameterCount, bool objectTarget, bool nativeIntTail) =>
+        assembly == "System.Private.CoreLib" && isPrivate && !isStatic && genericParameterCount == 0
+        && returnsVoid && CoreClrDelegateVmConstructorArity(owner, name) is var arity && arity != 0
+        && parameterCount == arity && objectTarget && nativeIntTail;
+
     public static bool IsMulticastAccessorMember(string? owner, string name) =>
         owner == "System.MulticastDelegate"
         && name is "GetTarget" or "GetMethodImpl" or "GetInvocationList" or "get_HasSingleTarget" or "TryGetAt";

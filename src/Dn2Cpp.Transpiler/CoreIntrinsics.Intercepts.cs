@@ -333,6 +333,7 @@ internal enum InterceptEmitArm
     MulticastFactoryBody,
     MulticastOperationBody,
     MulticastAccessorBody,
+    CoreClrDelegateVmConstructorBody,
     DelegateCloneBinding,
     ArrayCloneBinding,
     /// <summary>SafeHandle lifetime calls and bindings recognize the runtime SafeWaitHandle layout.
@@ -1741,6 +1742,35 @@ internal static partial class CoreIntrinsics
         InterceptCutKind.BodyReplace, InterceptEmitArm.DelegateCloneBody,
         typeGate: "System.Delegate", nameGate: "Clone");
 
+    internal static bool IsCoreClrDelegateVmConstructor(MethodInfo method)
+    {
+        if (method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || !method.IsPrivate || method.IsStatic
+            || CoreIntrinsicTypeMaps.CoreClrDelegateVmConstructorArity(method.DeclaringClass.FullName, method.Name) == 0)
+            return false;
+        var signature = method.Signature;
+        if (signature.ParameterTypes.Length != CoreIntrinsicTypeMaps.CoreClrDelegateVmConstructorArity(method.DeclaringClass.FullName, method.Name))
+            return false;
+        bool nativeIntTail = true;
+        for (int i = 1; i < signature.ParameterTypes.Length; i++)
+            if (signature.ParameterTypes[i] is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.IntPtr })
+            {
+                nativeIntTail = false;
+                break;
+            }
+        return CoreIntrinsicTypeMaps.IsCoreClrDelegateVmConstructorMethod(
+            method.DeclaringClass.Module.AssemblyName, method.DeclaringClass.FullName, method.Name,
+            method.IsPrivate, method.IsStatic || !signature.Header.IsInstance,
+            signature.GenericParameterCount, signature.ReturnType.IsVoid, signature.ParameterTypes.Length,
+            signature.ParameterTypes[0].IsObject, nativeIntTail);
+    }
+
+    // VM-selected initialization stubs consume CoreCLR PCODE/shuffle/loader state.
+    // They are not the managed .ctor/newobj path, which retains native method identity.
+    public static readonly MethodDefIntercept BrCoreClrDelegateVmConstructor = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.CoreClrDelegateVmConstructorBody,
+        typeGate: "System.MulticastDelegate", extra: static m => IsCoreClrDelegateVmConstructor(m));
+
     internal static bool IsMulticastAccessorSignature(string owner, string name, MethodSignature<TypeDesc> sig) =>
         CoreIntrinsicTypeMaps.IsMulticastAccessorMethod(owner, name, !sig.Header.IsInstance,
             sig.GenericParameterCount, sig.ParameterTypes.Length,
@@ -1972,6 +2002,11 @@ internal static partial class CoreIntrinsics
     {
         if (!RegistrySelfCheckEnabled)
             return;
+
+        CheckRow(nameof(BrCoreClrDelegateVmConstructor), 0, BrCoreClrDelegateVmConstructor.EmitArm,
+            BrCoreClrDelegateVmConstructor.TypeGate, BrCoreClrDelegateVmConstructor.NameGate);
+        if (BrCoreClrDelegateVmConstructor.CutKind != InterceptCutKind.BodyReplace)
+            throw new InvalidOperationException("CoreCLR VM delegate stubs must remain callable refusals");
 
         CheckRow(nameof(BrMulticastAccessor), 0, BrMulticastAccessor.EmitArm,
             BrMulticastAccessor.TypeGate, BrMulticastAccessor.NameGate);

@@ -34,13 +34,35 @@ internal sealed partial class AssemblyDiet
         || CoreIntrinsicTypeMaps.RuntimeInterfaceDispatch(Name(type)) is not null
         || CoreIntrinsicTypeMaps.IsDelegateBaseType(Name(type));
 
+    private static bool IsCopiedCoreClrDelegateVmConstructor(MethodDefinition method, string owner)
+    {
+        int arity = CoreIntrinsicTypeMaps.CoreClrDelegateVmConstructorArity(owner, method.Name);
+        if (arity == 0 || method.Module.Assembly?.Name.Name != "System.Private.CoreLib"
+            || !method.IsPrivate || method.IsStatic || !method.HasThis || method.Parameters.Count != arity)
+            return false;
+        bool nativeIntTail = true;
+        for (int i = 1; i < method.Parameters.Count; i++)
+            if (method.Parameters[i].ParameterType.MetadataType != MetadataType.IntPtr)
+            {
+                nativeIntTail = false;
+                break;
+            }
+        return CoreIntrinsicTypeMaps.IsCoreClrDelegateVmConstructorMethod(
+            method.Module.Assembly.Name.Name, owner, method.Name, method.IsPrivate, method.IsStatic,
+            method.GenericParameters.Count, method.ReturnType.MetadataType == MetadataType.Void,
+            method.Parameters.Count, method.Parameters[0].ParameterType.MetadataType == MetadataType.Object,
+            nativeIntTail);
+    }
+
     private bool TraverseCopiedBody(MethodDefinition method)
     {
         if (_copiedBodyTraversal.TryGetValue(method, out bool known)) return known;
         Spend();
         string owner = Name(method.DeclaringType);
         bool traverse;
-        if (CoreIntrinsicTypeMaps.IsMulticastAccessorMethod(owner, method.Name, method.IsStatic,
+        if (IsCopiedCoreClrDelegateVmConstructor(method, owner))
+            traverse = false;
+        else if (CoreIntrinsicTypeMaps.IsMulticastAccessorMethod(owner, method.Name, method.IsStatic,
                 method.GenericParameters.Count, method.Parameters.Count, method.ReturnType.FullName,
                 method.Parameters.Count == 1 ? method.Parameters[0].ParameterType.FullName : null))
             traverse = false;

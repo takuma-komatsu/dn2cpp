@@ -1178,6 +1178,17 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// Null when the method has no intrinsic lowering to synthesize from.</summary>
     internal string? CompileCoreIntrinsicWrapper()
     {
+        // Only the resolved CoreLib/private declaration can enter this boundary;
+        // no owner/name-only call intrinsic may refuse an unrelated method.
+        if (CoreIntrinsics.BrCoreClrDelegateVmConstructor.Matches(_method))
+            return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
+            {
+                foreach (var _ in _method.Signature.ParameterTypes) Pop();
+                Pop(); // receiver; refuse before any field or pointer access
+                Emit($"dn2cpp_throw_platform_not_supported(\"System.MulticastDelegate.{_method.Name} is a CoreCLR-owned delegate initialization stub. Use normal delegate construction or Delegate.CreateDelegate instead.\");");
+                return true;
+            }, "CoreCLR-only delegate initialization refusal");
+
         string dispatch = _c.RuntimeInterfaceLowerings.TryGetValue(_method, out var runtimeDispatch)
             ? runtimeDispatch
             : CoreIntrinsics.BrMulticastAccessor.Matches(_method)

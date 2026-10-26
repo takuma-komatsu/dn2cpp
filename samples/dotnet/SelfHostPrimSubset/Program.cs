@@ -9,6 +9,16 @@ internal static class Program
 {
     private static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "vm-constructors-only")
+        {
+            MulticastVmConstructorSubset.Program.Run();
+            return;
+        }
+        if (args.Length > 0 && args[0] == "native-vm-constructor-boundary")
+        {
+            MulticastVmConstructorSubset.Program.RunNativeBoundary();
+            return;
+        }
         if (args.Length > 0 && args[0] == "multicast-accessors-only")
         {
             MulticastAccessorSubset.Program.Run();
@@ -132,5 +142,7 @@ internal static class Program
         MulticastOperationsSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-multicast-accessors") return;
         MulticastAccessorSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-vm-constructors") return;
+        MulticastVmConstructorSubset.Program.Run();
     }
 }
