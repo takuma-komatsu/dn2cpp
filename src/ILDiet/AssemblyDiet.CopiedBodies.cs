@@ -40,7 +40,11 @@ internal sealed partial class AssemblyDiet
         Spend();
         string owner = Name(method.DeclaringType);
         bool traverse;
-        if (CoreIntrinsicTypeMaps.IsMulticastFactoryMethod(owner, method.Name, method.IsStatic,
+        if (CoreIntrinsicTypeMaps.IsMulticastOperationMethod(owner, method.Name, method.IsStatic,
+                method.GenericParameters.Count, method.Parameters.Count, method.ReturnType.FullName,
+                method.Parameters.Count == 1 ? method.Parameters[0].ParameterType.FullName : null))
+            traverse = false;
+        else if (CoreIntrinsicTypeMaps.IsMulticastFactoryMethod(owner, method.Name, method.IsStatic,
                 method.GenericParameters.Count, method.Parameters.Count, method.ReturnType.FullName,
                 method.Parameters.Count >= 1 ? method.Parameters[0].ParameterType.FullName : null,
                 method.Parameters.Count >= 2 ? method.Parameters[1].ParameterType.FullName : null,

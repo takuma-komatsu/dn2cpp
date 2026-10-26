@@ -331,6 +331,7 @@ internal enum InterceptEmitArm
     /// <summary>Delegate value overrides retain callable bodies over the uniform invocation chain.</summary>
     DelegateValueBody,
     MulticastFactoryBody,
+    MulticastOperationBody,
     DelegateCloneBinding,
     ArrayCloneBinding,
     /// <summary>SafeHandle lifetime calls and bindings recognize the runtime SafeWaitHandle layout.
@@ -1739,6 +1740,19 @@ internal static partial class CoreIntrinsics
         InterceptCutKind.BodyReplace, InterceptEmitArm.DelegateCloneBody,
         typeGate: "System.Delegate", nameGate: "Clone");
 
+    internal static bool IsMulticastOperationSignature(string owner, string name, MethodSignature<TypeDesc> sig) =>
+        CoreIntrinsicTypeMaps.IsMulticastOperationMethod(owner, name, !sig.Header.IsInstance,
+            sig.GenericParameterCount, sig.ParameterTypes.Length, sig.ReturnType.Class?.FullName,
+            sig.ParameterTypes.Length == 1 ? sig.ParameterTypes[0].Class?.FullName : null);
+
+    // Retained protected overrides use the same immutable chain as public calls,
+    // without scanning the CoreCLR invocation-array implementation.
+    public static readonly MethodDefIntercept BrMulticastOperation = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.MulticastOperationBody,
+        typeGate: "System.MulticastDelegate",
+        extra: static m => m.Name is "CombineImpl" or "RemoveImpl"
+            && IsMulticastOperationSignature(m.DeclaringClass.FullName, m.Name, m.Signature));
+
     internal static bool IsMulticastFactorySignature(string owner, string name, MethodSignature<TypeDesc> sig) =>
         CoreIntrinsicTypeMaps.IsMulticastFactoryMethod(owner, name, !sig.Header.IsInstance,
             sig.GenericParameterCount, sig.ParameterTypes.Length, sig.ReturnType.Class?.FullName,
@@ -1940,6 +1954,11 @@ internal static partial class CoreIntrinsics
     {
         if (!RegistrySelfCheckEnabled)
             return;
+
+        CheckRow(nameof(BrMulticastOperation), 0, BrMulticastOperation.EmitArm,
+            BrMulticastOperation.TypeGate, BrMulticastOperation.NameGate);
+        if (BrMulticastOperation.CutKind != InterceptCutKind.BodyReplace)
+            throw new InvalidOperationException("Multicast operations must remain callable");
 
         CheckRow(nameof(BrMulticastFactory), 0, BrMulticastFactory.EmitArm,
             BrMulticastFactory.TypeGate, BrMulticastFactory.NameGate);

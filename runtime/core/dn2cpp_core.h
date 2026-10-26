@@ -1673,6 +1673,7 @@ Dn2CppObject* dn2cpp_delegate_combine_array(Dn2CppArrayRef* items);
 Dn2CppObject* dn2cpp_delegate_from_invocation_prefix(Dn2CppObject* receiver, Dn2CppArrayRef* items, int32_t count);
 Dn2CppObject* dn2cpp_delegate_remove(Dn2CppObject* source, Dn2CppObject* value);
 Dn2CppObject* dn2cpp_delegate_remove_all(Dn2CppObject* source, Dn2CppObject* value);
+Dn2CppObject* dn2cpp_delegate_remove_impl(Dn2CppObject* source, Dn2CppObject* value);
 // Delegate.GetInvocationList: the entries in invocation order as an `arrayType`
 // (System.Delegate[]) array, each the delegate Combine took.
 Dn2CppArrayRef* dn2cpp_delegate_invocation_list(Dn2CppObject* d, const Dn2CppTypeInfo* arrayType);

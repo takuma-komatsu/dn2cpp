@@ -166,6 +166,17 @@ gate_extra_asserts() {
         gate_output byte-witness "$out/factory-boundary.stdout" "$line" --count 1 --policy crlf || return 1
     done
 
+    gate_capture_ok "$out/assert-before-multicast-operations" run_bounded dotnet "$_CG_APP" before-multicast-operations || return 1
+    gate_output prefix "$native" "$out/assert-before-multicast-operations.stdout" --before '== Retained multicast operations ==' --policy crlf || return 1
+    for line in '== Retained multicast operations ==' \
+        'multicast-combine-order:True' 'multicast-combine-identity:True' 'multicast-null-noop:True' \
+        'multicast-no-match:True' 'multicast-remove-last:True' 'multicast-source-immutable:True' \
+        'multicast-remove-transitions:True' 'multicast-remove-longer:True' \
+        'multicast-protected-mismatch:True' 'multicast-public-mismatch:True' \
+        'multicast-closed-types:True' 'Retained multicast operations end'; do
+        gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
+    done
+
 }
 
 corelib_diff_gate SelfHostPrimSubset System.Linq System.Diagnostics.TraceSource \

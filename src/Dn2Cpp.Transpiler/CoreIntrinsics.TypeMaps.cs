@@ -57,6 +57,12 @@ internal static class CoreIntrinsicTypeMaps
     public static bool IsDelegateBaseType(string? fullName) =>
         fullName is "System.Delegate" or "System.MulticastDelegate";
 
+    public static bool IsMulticastOperationMethod(string? owner, string name, bool isStatic,
+        int genericParameterCount, int parameterCount, string? returnType, string? valueType) =>
+        owner == "System.MulticastDelegate" && name is "CombineImpl" or "RemoveImpl"
+        && !isStatic && genericParameterCount == 0 && parameterCount == 1
+        && returnType == "System.Delegate" && valueType == "System.Delegate";
+
     public static bool IsMulticastFactoryMethod(string? owner, string name, bool isStatic,
         int genericParameterCount, int parameterCount, string? returnType,
         string? entriesType, string? countType, string? stubFlagType) =>

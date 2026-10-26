@@ -35,6 +35,16 @@ internal sealed partial class MethodCompiler
 
     private bool TryEmitStringsIntrinsic(string declType, string name, MethodSignature<TypeDesc> sig)
     {
+        if (CoreIntrinsics.IsMulticastOperationSignature(declType, name, sig))
+        {
+            var value = Pop();
+            var receiver = Pop();
+            string helper = name == "CombineImpl" ? "dn2cpp_delegate_combine" : "dn2cpp_delegate_remove_impl";
+            Push(StackKind.Ref, "Dn2CppObject*",
+                $"{helper}({DelegateReceiver(receiver)}, {Cast(value, "Dn2CppObject*")})");
+            Top = Top with { StaticType = sig.ReturnType };
+            return true;
+        }
         if (CoreIntrinsics.IsMulticastFactorySignature(declType, name, sig))
         {
             // CoreCLR's flag selects an invoke stub; native delegates use one layout.

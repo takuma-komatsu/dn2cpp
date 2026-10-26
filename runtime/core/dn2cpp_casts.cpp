@@ -1923,6 +1923,19 @@ Dn2CppObject* dn2cpp_delegate_remove(Dn2CppObject* source, Dn2CppObject* value)
     return source;
 }
 
+// The protected override treats another delegate type as a non-matching entry.
+// Public Delegate.Remove performs a separate type check and must still throw.
+Dn2CppObject* dn2cpp_delegate_remove_impl(Dn2CppObject* source, Dn2CppObject* value)
+{
+    if (value == nullptr)
+        return source;
+    if (source == nullptr)
+        dn2cpp_throw_null_reference();
+    if (source->type != value->type)
+        return source;
+    return dn2cpp_delegate_remove(source, value);
+}
+
 // Delegate.RemoveAll: Remove until it answers the delegate it was given, which it
 // does once no run matches.
 Dn2CppObject* dn2cpp_delegate_remove_all(Dn2CppObject* source, Dn2CppObject* value)

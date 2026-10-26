@@ -101,6 +101,7 @@ internal sealed partial class Compilation
         }
         if (CoreIntrinsics.BrDelegateClone.Matches(m.DeclaringClass.FullName, m.Name)
             || CoreIntrinsics.BrDelegateValue.Matches(m)
+            || CoreIntrinsics.BrMulticastOperation.Matches(m)
             || CoreIntrinsics.BrMulticastFactory.Matches(m))
         {
             if (AddReachable(m))

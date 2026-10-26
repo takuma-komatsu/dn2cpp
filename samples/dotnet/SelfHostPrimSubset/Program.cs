@@ -9,6 +9,11 @@ internal static class Program
 {
     private static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "multicast-operations-only")
+        {
+            MulticastOperationsSubset.Program.Run();
+            return;
+        }
         if (args.Length > 0 && args[0] == "multicast-factory-only")
         {
             MulticastFactorySubset.Program.Run();
@@ -118,5 +123,7 @@ internal static class Program
         DelegateValueSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-multicast-factory") return;
         MulticastFactorySubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-multicast-operations") return;
+        MulticastOperationsSubset.Program.Run();
     }
 }
