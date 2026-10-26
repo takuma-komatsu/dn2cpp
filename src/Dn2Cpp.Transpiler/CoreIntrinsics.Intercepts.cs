@@ -1109,11 +1109,14 @@ internal static partial class CoreIntrinsics
     /// whose own body is RuntimeHelpers.GetMethodTable pointer math. Lowering them here
     /// rather than through that reference keeps the ELEMENT verdict at the emit site:
     /// Buffer must refuse a non-primitive element, and no header read answers that for an
-    /// imprecise array handle. The refusal precedes every extent.</summary>
+    /// imprecise array handle. The refusal precedes every extent. Internal reference
+    /// moves instead use the collector-aware move helper, including the CoreCLR
+    /// batching body whose polling protocol does not belong to this runtime.</summary>
     public static readonly MemberRefIntercept MrBufferExtent = new(
         InterceptCutKind.Cut, InterceptEmitArm.IntrinsicUnderDeclType,
         typeGate: "System.Buffer",
-        extra: static (_, n, _) => n is "BlockCopy" or "ByteLength" or "GetByte" or "SetByte");
+        extra: static (_, n, _) => n is "BlockCopy" or "ByteLength" or "GetByte" or "SetByte"
+            || IsBufferInternalReferenceMove(n));
 
     /// <summary>Encoding.GetString (Encoding / ASCIIEncoding / UTF8Encoding / UnicodeEncoding) —
     /// the core of the UTF-8-decode + SIMD cascade collapse. Symmetric and sound:

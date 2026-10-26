@@ -52,6 +52,7 @@ DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ildiet-metada
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ildiet-metadata-validation/StrippingLevelValidation.cs gates/fixtures/ildiet-metadata-validation/StrippingLevelValidation.Globalization.cs gates/fixtures/ildiet-metadata-validation/globalization_retention.py gates/fixtures/ildiet-metadata-validation/check-stripping.py"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|stripping-levels:high,medium"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ildiet-metadata-validation/StrippingLevelValidation.Intercepts.cs gates/fixtures/ildiet-metadata-validation/intercept_retention.py"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ildiet-metadata-validation/StrippingLevelValidation.BufferMoves.cs gates/fixtures/ildiet-metadata-validation/buffer_moves.py"
 PYTHON=$(resolve_python) || gate_skip "no working Python 3 interpreter for ILDiet validation"
 
 PROJECT=PreserveControl
@@ -1803,6 +1804,16 @@ for fixture in retained called; do
             compile_console "$intercept_out" InterceptRetention
             stripping_assert_empty_output "$intercept_out" InterceptRetention
             echo "retained-intercepts=$fixture:$level:$mode:callable"
+        done
+    done
+done
+for fixture in retained called; do
+    for level in high medium; do
+        for mode in raw full; do
+            move_out="artifacts/stripping-level-tests-$CONFIG/emission-buffer-moves-$fixture-$level-$mode"
+            compile_console "$move_out" BufferMoves
+            stripping_assert_empty_output "$move_out" BufferMoves
+            echo "buffer-moves=$fixture:$level:$mode:overlap-safe"
         done
     done
 done

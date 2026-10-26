@@ -14,6 +14,17 @@ static partial class StrippingLevelValidation
 
     public static bool Run(string[] args)
     {
+        if (args.Length == 1 && args[0] == "--check-buffer-moves-clr")
+        {
+            CheckBufferMovesClr();
+            return true;
+        }
+        if (args.Length == 4 && args[0] == "--create-stripping-buffer-moves-fixture")
+        {
+            CreateBufferMoves(args[1], args[2], args[3]);
+            Console.WriteLine("stripping-fixture=buffer-moves:" + args[3]);
+            return true;
+        }
         if (args.Length == 4 && args[0] == "--create-stripping-intercept-fixture")
         {
             CreateRetainedIntercept(args[1], args[2], args[3]);

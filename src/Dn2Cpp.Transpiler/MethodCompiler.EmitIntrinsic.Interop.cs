@@ -1572,7 +1572,17 @@ internal sealed partial class MethodCompiler
         }
         // Buffer.BulkMoveWithWriteBarrier(ref byte dst, ref byte src, nuint byteCount) —
         // the overlap-safe move plus the collector notification its contract names.
-        if (name == "BulkMoveWithWriteBarrier" && sig.ParameterTypes.Length == 3)
+        // Its internal and batched entries have the same byte-count contract;
+        // CoreCLR chunk polling is replaced along with the move and write barrier.
+        if ((name == "BulkMoveWithWriteBarrier" && sig.ParameterTypes.Length == 3)
+            || (CoreIntrinsics.IsBufferInternalReferenceMove(name)
+                && !sig.Header.IsInstance && sig.GenericParameterCount == 0 && sig.ReturnType.IsVoid
+                && sig.ParameterTypes is
+                [
+                    { Kind: TypeKind.ByRef, Element: { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Byte } },
+                    { Kind: TypeKind.ByRef, Element: { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Byte } },
+                    { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.UIntPtr },
+                ]))
         {
             var count = Pop();
             var src = Pop();

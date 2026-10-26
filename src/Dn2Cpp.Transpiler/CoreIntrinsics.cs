@@ -720,11 +720,12 @@ internal static partial class CoreIntrinsics
         // bodies reach the Array.NativeLength / GetCorElementTypeOfElementType / GetElementSize
         // InternalCalls, Get/SetByte's the non-generic MemoryMarshal.GetArrayDataReference(Array)
         // -> RuntimeHelpers.GetMethodTable pointer math;
-        // BulkMoveWithWriteBarrier's is the write-barrier FCall pair plus a Thread.FastPollGC
-        // poll, all meaningless under Boehm; ZeroMemoryInternal is a bodyless InternalCall.
+        // Reference-bearing moves use the collector-aware runtime helper instead of
+        // CoreCLR's FCall and chunk polling; ZeroMemoryInternal is a bodyless InternalCall.
         // Buffer's OTHER members (Memmove, MemoryCopy) are not named here and transpile normally.
         "System.Buffer" => name is "BlockCopy" or "ByteLength" or "GetByte" or "SetByte"
-            or "BulkMoveWithWriteBarrier" or "ZeroMemoryInternal",
+            or "BulkMoveWithWriteBarrier" or "ZeroMemoryInternal"
+            || IsBufferInternalReferenceMove(name),
         // Number's private group-sizes readers -> the runtime NFI's modeled
         // NumberGroupSizes array, through the same helper the public properties use. Their
         // real bodies ldfld the intrinsic-mapped NumberFormatInfo, which has no
@@ -764,6 +765,9 @@ internal static partial class CoreIntrinsics
         "System.MulticastDelegate" => name == "TryGetAt",
         _ => false,
     };
+
+    public static bool IsBufferInternalReferenceMove(string name) =>
+        name is "BulkMoveWithWriteBarrierInternal" or "BulkMoveWithWriteBarrierBatch";
 
     /// <summary>The exception types the runtime *itself* raises (the trap helpers /
     /// File I/O paths), mapped to the stable runtime type-info handle it stamps. These
