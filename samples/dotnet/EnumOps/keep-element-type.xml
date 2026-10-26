@@ -1,0 +1,7 @@
+<linker>
+  <assembly fullname="System.Private.CoreLib">
+    <type fullname="System.Enum" preserve="nothing">
+      <method name="InternalGetCorElementType" />
+    </type>
+  </assembly>
+</linker>

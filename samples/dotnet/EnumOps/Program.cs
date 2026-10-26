@@ -36,6 +36,9 @@ namespace EnumOps
             Console.WriteLine("== default comparison validation ==");
             EnumCompareToSubset.Program.__GateEntry();
             Console.WriteLine("default comparison validation end");
+            if (args.Length > 0 && args[0] == "before-enum-element-type")
+                return;
+            EnumElementTypeSubset.Program.Run();
         }
     }
 }

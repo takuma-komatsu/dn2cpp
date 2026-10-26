@@ -2124,6 +2124,7 @@ internal sealed partial class CppEmitter
         m.Rva == 0 || m.IsSynthetic
         || CoreIntrinsics.BrHttpShim.Matches(cls.FullName, m.Name)
         || CoreIntrinsics.BrEnumInstanceFormat.Matches(cls.FullName, m.Name)
+        || CoreIntrinsics.BrEnumElementType.Matches(m)
         || CoreIntrinsics.BrLifetimeDispose.Matches(cls.FullName, m.Name)
         || CoreIntrinsics.BrDelegateClone.Matches(cls.FullName, m.Name)
         || _c.PInvokeFtnTargets.Contains(m) || _c.IntrinsicFtnTargets.Contains(m)
@@ -2561,7 +2562,8 @@ internal sealed partial class CppEmitter
                         // emit the synthesized enum-format body in place of the real IL that
                         // reachability cut. Like the HTTP shim above, the planning pass leaves emitBody
                         // null so the null-conditional skips the compile.
-                        if (CoreIntrinsics.BrEnumInstanceFormat.Matches(cls.FullName, m.Name))
+                        if (CoreIntrinsics.BrEnumInstanceFormat.Matches(cls.FullName, m.Name)
+                            || CoreIntrinsics.BrEnumElementType.Matches(m))
                         {
                             emitBody?.Invoke(m, new MethodCompiler(_c, m, literals, _backend)
                                 .CompileEnumInstanceFormatBody());

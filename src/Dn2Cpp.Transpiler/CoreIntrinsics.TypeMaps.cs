@@ -734,6 +734,13 @@ internal static class CoreIntrinsicTypeMaps
         && name is "ToString" or "GetTypeCode" or "Equals" or "GetHashCode" or "CompareTo"
             or "GetValue";
 
+    public static bool IsEnumElementTypeMethod(string? declType, string name,
+        bool isStatic, int parameterCount, string? returnType, string? parameterType) =>
+        declType == "System.Enum" && name == "InternalGetCorElementType"
+        && returnType == "System.Reflection.CorElementType"
+        && (!isStatic && parameterCount == 0
+            || isStatic && parameterCount == 1 && parameterType == "System.RuntimeType");
+
     public static bool IsEnumTryFormatMethod(string? declType, string name) =>
         declType == "System.Enum" && name == "System.ISpanFormattable.TryFormat";
 

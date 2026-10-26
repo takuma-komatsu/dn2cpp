@@ -45,6 +45,9 @@ internal sealed partial class AssemblyDiet
         else
             traverse = !CoreIntrinsicTypeMaps.IsInlineLoweredPrimitiveMember(owner, method.Name)
                 && !CoreIntrinsicTypeMaps.IsEnumInstanceFormatMethod(owner, method.Name)
+                && !CoreIntrinsicTypeMaps.IsEnumElementTypeMethod(owner, method.Name,
+                    method.IsStatic, method.Parameters.Count, method.ReturnType.FullName,
+                    method.Parameters.Count == 1 ? method.Parameters[0].ParameterType.FullName : null)
                 && !CoreIntrinsicTypeMaps.IsEnumTryFormatMethod(owner, method.Name)
                 && (!CopiedIntrinsicType(method.DeclaringType)
                     || CoreIntrinsicTypeMaps.IntrinsicManagedBodyFamily(owner)

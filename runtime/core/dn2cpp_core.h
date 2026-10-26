@@ -2905,6 +2905,7 @@ Dn2CppArrayRef* dn2cpp_paramref_custom_modifiers(Dn2CppParamRef* p, int32_t requ
 // Enum.InternalGetCorElementType: the CorElementType code of the boxed enum's
 // underlying primitive (read from the type-info's enumUnderlying handle).
 int32_t dn2cpp_enum_cor_element_type(Dn2CppObject* e);
+int32_t dn2cpp_enum_type_cor_element_type(Dn2CppType* type);
 // Enum.GetValue(): boxes the enum's underlying primitive value under the
 // underlying primitive's type-info (Byte/Int16/Int32/.../UInt64), matching what
 // `box <underlying>` emits. Backs the IConvertible.To* overrides (which hand the

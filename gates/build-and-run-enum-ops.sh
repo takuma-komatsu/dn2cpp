@@ -29,6 +29,8 @@
 # including flags and enums with no declared members.
 # A cursor-only enum retains its metadata, and AppendJoin keeps the partial
 # builder when Current or Dispose throws, including Dispose replacing Current's fault.
+# Retained Enum.InternalGetCorElementType is invoked through reflection for every
+# integral underlying width; the callable body must use native enum type-info.
 # Former gates: enum-flags, enum-interp, enum-tostring, enum-value-tostring,
 # external-enum.
 source "$(dirname "$0")/_common.sh"
@@ -90,6 +92,22 @@ gate_extra_asserts() {
         gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: EnumOps comparison coverage missing: $line" >&2; exit 1; }
     done
+
+    gate_capture_ok "$out/assert-before-element-type" run_bounded dotnet "$_CG_APP" before-enum-element-type || return 1
+    before="$out/assert-before-element-type.stdout"
+    prefix="$out/assert-prefix-element-type.stdout"
+    gate_output select "$native" "$prefix" --before '== enum primitive element type ==' --policy crlf || return 1
+    gate_output compare "$prefix" "$before" || return 1
+    for line in '== enum primitive element type ==' \
+        'i1:4:4' 'u1:5:5' 'i2:6:6' 'u2:7:7' \
+        'i4:8:8' 'u4:9:9' 'i8:10:10' 'u8:11:11' \
+        'type:i1:4' 'type:u8:11' 'type:bool:2' 'type:char:3' \
+        'type:float:12' 'type:double:13' 'type:nint:24' 'type:nuint:25' \
+        'type:void:1' 'type:decimal:17' 'type:object:18' 'type:string:18' \
+        'type:vector:29' 'type:matrix:20' 'type:typedref:22' \
+        'enum primitive element type end'; do
+        gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
+    done
 }
 
-corelib_diff_gate EnumOps
+corelib_diff_gate EnumOps --link-xml samples/dotnet/EnumOps/keep-element-type.xml

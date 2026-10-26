@@ -11030,22 +11030,37 @@ Dn2CppArrayRef* dn2cpp_paramref_custom_modifiers(Dn2CppParamRef* p, int32_t requ
     return arr;
 }
 
-// Enum.InternalGetCorElementType: the CorElementType code of a boxed enum's
-// underlying primitive, read from its type-info. The model default is I4.
+// CoreCLR's primitive MethodTable element type unwraps enums, but reports
+// ordinary classes (including String/Object) as CLASS rather than signature codes.
+static int32_t enum_cor_element_type(const Dn2CppTypeInfo* type)
+{
+    if (type == nullptr || dn2cpp_signature_kind(type) != 0
+        || (type->flags & DN2CPP_TF_GENERICPARAM) != 0)
+        dn2cpp_throw_not_supported_msg("Enum element type requires a runtime MethodTable type");
+    if ((type->flags & DN2CPP_TF_ENUM) != 0)
+        type = type->enumUnderlying != nullptr ? type->enumUnderlying : &dn2cpp_int32_type;
+    int32_t primitive = dn2cpp_prim_code(type);
+    if (primitive >= 0) return primitive + 2;
+    if (type == &dn2cpp_void_type) return 0x01;
+    if ((type->flags & DN2CPP_TF_VALUETYPE) != 0
+        && type->name != nullptr && std::strcmp(type->name, "System.TypedReference") == 0) return 0x16;
+    if (type == &dn2cpp_intptr_type) return 0x18;
+    if (type == &dn2cpp_uintptr_type) return 0x19;
+    if ((type->flags & DN2CPP_TF_ARRAY) != 0)
+        return dn2cpp_is_md_array(type) ? 0x14 : 0x1D;
+    return (type->flags & DN2CPP_TF_VALUETYPE) != 0 ? 0x11 : 0x12;
+}
+
 int32_t dn2cpp_enum_cor_element_type(Dn2CppObject* e)
 {
     dn2cpp_memberref_require(e);
-    const Dn2CppTypeInfo* u = e->type != nullptr ? e->type->enumUnderlying : nullptr;
-    if (u == &dn2cpp_bool_type) return 0x02;   // ELEMENT_TYPE_BOOLEAN
-    if (u == &dn2cpp_char_type) return 0x03;   // ELEMENT_TYPE_CHAR
-    if (u == &dn2cpp_sbyte_type) return 0x04;  // ELEMENT_TYPE_I1
-    if (u == &dn2cpp_byte_type) return 0x05;   // ELEMENT_TYPE_U1
-    if (u == &dn2cpp_int16_type) return 0x06;  // ELEMENT_TYPE_I2
-    if (u == &dn2cpp_uint16_type) return 0x07; // ELEMENT_TYPE_U2
-    if (u == &dn2cpp_uint32_type) return 0x09; // ELEMENT_TYPE_U4
-    if (u == &dn2cpp_int64_type) return 0x0A;  // ELEMENT_TYPE_I8
-    if (u == &dn2cpp_uint64_type) return 0x0B; // ELEMENT_TYPE_U8
-    return 0x08;                               // ELEMENT_TYPE_I4
+    return enum_cor_element_type(e->type);
+}
+
+int32_t dn2cpp_enum_type_cor_element_type(Dn2CppType* type)
+{
+    dn2cpp_type_require(type);
+    return enum_cor_element_type(type->typeInfo);
 }
 
 // Enum.GetValue(): boxes the enum's underlying primitive value. The result box's

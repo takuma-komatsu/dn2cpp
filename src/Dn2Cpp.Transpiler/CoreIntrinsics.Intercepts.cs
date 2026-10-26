@@ -1670,6 +1670,16 @@ internal static partial class CoreIntrinsics
         InterceptCutKind.BodyReplace, InterceptEmitArm.EnumInstanceFormatBody,
         extra: static (dt, n) => IsEnumInstanceFormatMethod(dt, n));
 
+    /// <summary>The boxed and RuntimeType enum leaves read native type-info rather
+    /// than CoreCLR MethodTable layout.</summary>
+    public static readonly MethodDefIntercept BrEnumElementType = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.EnumInstanceFormatBody,
+        typeGate: "System.Enum", nameGate: "InternalGetCorElementType",
+        extra: static m => CoreIntrinsicTypeMaps.IsEnumElementTypeMethod(
+            m.DeclaringClass.FullName, m.Name, m.IsStatic, m.Signature.ParameterTypes.Length,
+            m.Signature.ReturnType.Class?.FullName,
+            m.Signature.ParameterTypes.Length == 1 ? m.Signature.ParameterTypes[0].Class?.FullName : null));
+
     /// <summary>Retains callable inherited disposal slots while replacing the runtime-only
     /// cleanup. Public wrappers dispatch Dispose(bool); a base bool call never redispatches.</summary>
     public static readonly NameKeyedIntercept BrLifetimeDispose = new(
@@ -1851,6 +1861,11 @@ internal static partial class CoreIntrinsics
     {
         if (!RegistrySelfCheckEnabled)
             return;
+
+        CheckRow(nameof(BrEnumElementType), 0, BrEnumElementType.EmitArm,
+            BrEnumElementType.TypeGate, BrEnumElementType.NameGate);
+        if (BrEnumElementType.CutKind != InterceptCutKind.BodyReplace)
+            throw new InvalidOperationException("Enum element-type body must remain callable");
 
         CheckRow(nameof(PiAbsentGlobalizationNative), 0, PiAbsentGlobalizationNative.EmitArm,
             PiAbsentGlobalizationNative.TypeGate, PiAbsentGlobalizationNative.NameGate);
