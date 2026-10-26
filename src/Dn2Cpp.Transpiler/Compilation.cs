@@ -6517,7 +6517,8 @@ internal sealed partial class Compilation
     }
 
     /// <summary>True for a bodyless <c>[DllImport]</c> method whose call sites lower to a
-    /// P/Invoke lowering, either lazy or explicitly direct. The ONE predicate every asker shares —
+    /// P/Invoke lowering, either lazy, explicitly direct, or an absent-PAL refusal.
+    /// The ONE predicate every asker shares —
     /// the call route (<c>MethodCompiler.TranslateCall</c>) and the address-taken path
     /// (the ldftn arm noting <see cref="NotePInvokeFtnTarget"/>) — so the set of imports
     /// that lower cannot drift between a call site and a delegate method group over the
@@ -6528,11 +6529,22 @@ internal sealed partial class Compilation
             return false;
 
         // User/library imports are the dynamic-loading surface. Framework imports
-        // remain behind their existing intrinsic/refusal boundary unless the
-        // runtime provides that PAL module or the caller explicitly selects them.
+        // remain behind their intrinsic/refusal boundary; the absent ICU PAL
+        // uses a callable refusal through this same route.
         return !IsFrameworkAssemblyName(m.DeclaringClass.Module.AssemblyName)
-            || IsDirectPInvoke(m);
+            || IsDirectPInvoke(m) || IsAbsentGlobalizationImport(m);
     }
+
+    // Invariant globalization has no ICU PAL. Keep retained imports callable,
+    // but refuse execution unless the caller explicitly supplies native binding.
+    internal bool IsAbsentGlobalizationImport(MethodInfo method) =>
+        CoreIntrinsics.PiAbsentGlobalizationNative.Matches(method) && !IsDirectPInvoke(method);
+
+    internal static string AbsentGlobalizationImportMessage(PInvokeInfo import) =>
+        ("the native import " + import.ModuleName + "!" + import.RawEntryPoint
+        + " requires the ICU globalization PAL, which a dn2cpp-transpiled binary does not provide. "
+        + "Use the supported globalization APIs, a NativeImplementation shim, or an explicit --direct-pinvoke binding.")
+        .Replace("\\", "\\\\").Replace("\"", "\\\"");
 
     /// <summary>ldftn/delegate targets that are bodyless P/Invokes whose call sites
     /// use the same lazy/direct lowering (<see cref="LowersToPInvoke"/>), e.g.

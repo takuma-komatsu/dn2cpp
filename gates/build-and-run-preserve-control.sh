@@ -49,7 +49,7 @@ DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/preserve-
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|reflected-event-operations:native-ildiet-and-no-ildiet|attribute-object-prefix:${DN2CPP_BEFORE_ATTRIBUTE_OBJECT:-}|named-reflection-prefix:${DN2CPP_BEFORE_NAMED_REFLECTION:-}|runtime-reflection-prefix:${DN2CPP_BEFORE_RUNTIME_REFLECTION:-}|metadata-lookup-prefix:${DN2CPP_BEFORE_METADATA_LOOKUP:-}|signature-construction-prefix:${DN2CPP_BEFORE_SIGNATURE_CONSTRUCTION:-}|signature-invocation-prefix:${DN2CPP_BEFORE_SIGNATURE_INVOCATION:-}|field-boxing-prefix:${DN2CPP_BEFORE_FIELD_BOXING:-}|field-context-prefix:${DN2CPP_BEFORE_FIELD_CONTEXT:-}|field-owner-prefix:${DN2CPP_BEFORE_FIELD_OWNER:-}|field-shape-prefix:${DN2CPP_BEFORE_FIELD_SHAPE:-}|construction-payload-prefix:${DN2CPP_BEFORE_CONSTRUCTION_PAYLOAD:-}|field-cycle-prefix:${DN2CPP_BEFORE_FIELD_CYCLE:-}|member-field-signature-prefix:${DN2CPP_BEFORE_MEMBER_FIELD_SIGNATURE:-}|member-construction-signature-prefix:${DN2CPP_BEFORE_MEMBER_CONSTRUCTION_SIGNATURE:-}|base-field-signature-prefix:${DN2CPP_BEFORE_BASE_FIELD_SIGNATURE:-}|base-construction-signature-prefix:${DN2CPP_BEFORE_BASE_CONSTRUCTION_SIGNATURE:-}|ctor-signature-invocation-prefix:${DN2CPP_BEFORE_CTOR_SIGNATURE_INVOCATION:-}|field-owner-signature-prefix:${DN2CPP_BEFORE_FIELD_OWNER_SIGNATURE:-}|interface-owner-signature-prefix:${DN2CPP_BEFORE_INTERFACE_OWNER_SIGNATURE:-}|ctor-field-owner-signature-prefix:${DN2CPP_BEFORE_CTOR_FIELD_OWNER_SIGNATURE:-}|captured-array-defaults-prefix:${DN2CPP_BEFORE_CAPTURED_ARRAY_DEFAULTS:-}|interface-array-defaults-prefix:${DN2CPP_BEFORE_INTERFACE_ARRAY_DEFAULTS:-}|external-array-defaults-prefix:${DN2CPP_BEFORE_EXTERNAL_ARRAY_DEFAULTS:-}|local-defaults-prefix:${DN2CPP_BEFORE_LOCAL_DEFAULTS:-}|reflection-depth-seeds-prefix:${DN2CPP_BEFORE_REFLECTION_DEPTH_SEEDS:-}|caller-depth-prefix:${DN2CPP_BEFORE_CALLER_DEPTH:-}|extended-depth-prefix:${DN2CPP_BEFORE_EXTENDED_DEPTH:-}|state-machine-signatures-prefix:${DN2CPP_BEFORE_STATE_MACHINE_SIGNATURES:-}|retained-absence-prefix:${DN2CPP_BEFORE_RETAINED_ABSENCE:-}|unknown-target-prefix:${DN2CPP_BEFORE_UNKNOWN_TARGET:-}|initonly-field-prefix:${DN2CPP_BEFORE_INITONLY_FIELD:-}|metadata-owners-prefix:${DN2CPP_BEFORE_METADATA_OWNERS:-}|assembly-construction-prefix:${DN2CPP_BEFORE_ASSEMBLY_CONSTRUCTION:-}|listed-owners-prefix:${DN2CPP_BEFORE_LISTED_OWNERS:-}|dispatched-target-prefix:${DN2CPP_BEFORE_DISPATCHED_TARGET:-}|written-target-prefix:${DN2CPP_BEFORE_WRITTEN_TARGET:-}|absence-values:${DN2CPP_JOINED_TARGET_NAME+set:$DN2CPP_JOINED_TARGET_NAME}:${DN2CPP_FORMED_ONLY+set:$DN2CPP_FORMED_ONLY}:${DN2CPP_CONSTRUCTED_TEMPLATE+set:$DN2CPP_CONSTRUCTED_TEMPLATE}:${DN2CPP_UNUSED_STATICS+set:$DN2CPP_UNUSED_STATICS}:${DN2CPP_USED_STATICS+set:$DN2CPP_USED_STATICS}"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|repeated-arrays-prefix:${DN2CPP_BEFORE_REPEATED_ARRAYS:-}|integer-storage-prefix:${DN2CPP_BEFORE_ARRAY_NARROWING:-}|captured-scalar-defaults-prefix:${DN2CPP_BEFORE_CAPTURED_SCALAR_DEFAULTS:-}|slot-storage-prefix:${DN2CPP_BEFORE_SLOT_STORAGE:-}"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ildiet-metadata-validation/CutRequestCapture.cs gates/fixtures/ildiet-metadata-validation/cut_authority_admission.py gates/fixtures/ildiet-metadata-validation/selected_cut_admission.py gates/fixtures/ildiet-metadata-validation/cut_request_capture.py"
-DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ildiet-metadata-validation/StrippingLevelValidation.cs gates/fixtures/ildiet-metadata-validation/check-stripping.py"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ildiet-metadata-validation/StrippingLevelValidation.cs gates/fixtures/ildiet-metadata-validation/StrippingLevelValidation.Globalization.cs gates/fixtures/ildiet-metadata-validation/globalization_retention.py gates/fixtures/ildiet-metadata-validation/check-stripping.py"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|stripping-levels:high,medium"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS gates/fixtures/ildiet-metadata-validation/StrippingLevelValidation.Intercepts.cs gates/fixtures/ildiet-metadata-validation/intercept_retention.py"
 PYTHON=$(resolve_python) || gate_skip "no working Python 3 interpreter for ILDiet validation"
@@ -1805,6 +1805,21 @@ for fixture in retained called; do
             echo "retained-intercepts=$fixture:$level:$mode:callable"
         done
     done
+done
+# The ICU PAL is unavailable by default; retention alone must not execute it.
+for fixture in retained called alias managed; do
+    for mode in raw full; do
+        globalization_out="artifacts/stripping-level-tests-$CONFIG/emission-globalization-$fixture-$mode"
+        compile_console "$globalization_out" GlobalizationRetention
+        stripping_assert_empty_output "$globalization_out" GlobalizationRetention
+        echo "medium-globalization=$fixture:$mode:retained-and-callable"
+    done
+done
+for mode in raw full; do
+    globalization_out="artifacts/stripping-level-tests-$CONFIG/emission-globalization-managed-$mode-high"
+    compile_console "$globalization_out" GlobalizationRetention
+    stripping_assert_empty_output "$globalization_out" GlobalizationRetention
+    echo "high-globalization=managed:$mode:address-only-override"
 done
 # shellcheck disable=SC2086 -- resolve_python may answer `py -3`.
 $PYTHON gates/fixtures/ildiet-metadata-validation/check.py "$ILD_DLL" \

@@ -115,6 +115,9 @@ internal enum InterceptEmitArm
     /// that reason: a default-initialized arm must be REJECTED rather than aliasing a
     /// real route. Asserted by <see cref="CoreIntrinsics.VerifyInterceptRegistry"/>.</summary>
     Unspecified,
+    /// <summary><c>MethodCompiler.EmitPInvokeCall</c> refuses the absent ICU PAL
+    /// unless an explicit native binding or managed implementation supplies it.</summary>
+    AbsentGlobalizationNativeThrow,
     /// <summary><c>MethodCompiler.EmitRuntimePrimitive</c> — total over
     /// <see cref="CoreIntrinsics.LoweredRuntimePrimitive"/>: an unmodeled shape
     /// leaves through its throw, never through <c>EmitManagedCall</c>.</summary>
@@ -1794,6 +1797,33 @@ internal static partial class CoreIntrinsics
         }
     }
 
+    /// <summary>Bodyless ICU imports use the P/Invoke call and address-wrapper mouths.
+    /// No managed body is cut. Compilation applies explicit native-binding policy
+    /// after this metadata-only match; user declarations are never intercepted.</summary>
+    public static readonly MethodDefIntercept PiAbsentGlobalizationNative = new(
+        InterceptCutKind.None, InterceptEmitArm.AbsentGlobalizationNativeThrow,
+        typeGate: "Globalization", extra: static m => IsCoreLibGlobalizationImport(m));
+
+    private static bool IsCoreLibGlobalizationImport(MethodInfo method)
+    {
+        if (method.Rva != 0 || method.PInvoke is not { } import
+            || method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || import.ModuleName is not ("libSystem.Globalization.Native" or "System.Globalization.Native")
+            || !import.RawEntryPoint.StartsWith("GlobalizationNative_", StringComparison.Ordinal))
+            return false;
+        var cls = method.DeclaringClass;
+        if (cls.Handle.IsNil || cls.Namespace.Length != 0)
+            return false;
+        var reader = cls.Module.Reader;
+        var parent = reader.GetTypeDefinition(cls.Handle).GetDeclaringType();
+        if (parent.IsNil)
+            return false;
+        var owner = reader.GetTypeDefinition(parent);
+        return owner.GetDeclaringType().IsNil
+            && reader.StringComparer.Equals(owner.Namespace, "")
+            && reader.StringComparer.Equals(owner.Name, "Interop");
+    }
+
     /// <summary>Walks every descriptor table and throws on a malformed row. Called once per
     /// transpile from <c>Compilation.Build</c>; see the block comment above for the limit on
     /// what a table walk can decide.
@@ -1806,6 +1836,10 @@ internal static partial class CoreIntrinsics
     {
         if (!RegistrySelfCheckEnabled)
             return;
+
+        CheckRow(nameof(PiAbsentGlobalizationNative), 0, PiAbsentGlobalizationNative.EmitArm,
+            PiAbsentGlobalizationNative.TypeGate, PiAbsentGlobalizationNative.NameGate);
+        CheckCallSiteCutKind(nameof(PiAbsentGlobalizationNative), 0, PiAbsentGlobalizationNative.CutKind);
 
         for (int i = 0; i < MethodDefIntercepts.Length; i++)
         {

@@ -532,6 +532,13 @@ So add **one descriptor row** in
 asker — **(pure predicate, cut kind, emit arm, scan effect)**, one list, nothing
 to drift.
 
+CoreLib's `Interop.Globalization` imports have no ICU PAL in the native runtime.
+Their native-import descriptor keeps managed wrappers and retained signatures,
+but routes execution to a catchable `PlatformNotSupportedException` through the
+same P/Invoke mouth used by direct calls and address-taken wrappers. A registered
+`NativeImplementation` or explicit `--direct-pinvoke` binding supplies the import
+instead; application imports are unaffected.
+
 - **Predicate**: the member set only — names, and behind a name gate a thunked
   signature. Never Compilation state.
 - **Table**, by what the (type, member) pair *means*: `MethodDefIntercepts`
