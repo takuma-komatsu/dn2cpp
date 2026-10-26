@@ -158,5 +158,7 @@ internal static class Program
         MulticastNamedConstructorSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-runtime-method-enumeration") return;
         RuntimeMethodEnumerationSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-runtime-method-handle") return;
+        RuntimeMethodHandleSubset.Program.Run();
     }
 }

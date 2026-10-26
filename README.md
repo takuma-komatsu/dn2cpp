@@ -851,6 +851,11 @@ expression trees at runtime.
   `GetNextIntroducedMethod` enumerate VM method descriptors, not these metadata
   rows, and throw `PlatformNotSupportedException`. Use `Type.GetMethods` or
   `Type.GetConstructors`; ordinary reflection does not depend on those leaves.
+  The non-public `RuntimeMethodHandle` MethodDesc-query InternalCalls likewise
+  throw rather than treating VM pointers as native metadata. Public method and
+  constructor attributes, generic queries and invocation use `MethodInfo` and
+  `ConstructorInfo`; managed default-handle value, equality and validation paths
+  retain their CoreLib behavior.
 - **P/Invoke** — `DllImport` end to end: `string[]` write-back, delegates
   as native function pointers, non-blittable structs, blittable
   `[MarshalAs(ByValArray)]`. User imports bind lazily through

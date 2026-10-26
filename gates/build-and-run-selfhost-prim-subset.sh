@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CoreCLR method-enumeration boundary, public reflection, and companion process
+# CoreCLR method-descriptor boundaries, public reflection, and companion process
 # argument/stream/exit preservation and the console-self-host
 # runtime primitives whose behaviour can be exercised exactly.
 #
@@ -72,8 +72,17 @@
 #     driver, so no wasm axis reaches the section.
 # Driven by the real System.Private.CoreLib (passed with -r) -> cross-assembly resolve
 # + tree-shake -> native binary -> run, asserting the output diffs exact vs real .NET.
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/RuntimeMethodEnumerationFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/GcFinalizerWorkerFixture.cs gates/fixtures/ldftn-local/DelegateVmConstructorFixture.cs gates/fixtures/ldftn-local/DelegateNamedConstructorFixture.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/RuntimeMethodHandleFixture.cs gates/fixtures/ldftn-local/RuntimeMethodEnumerationFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/GcFinalizerWorkerFixture.cs gates/fixtures/ldftn-local/DelegateVmConstructorFixture.cs gates/fixtures/ldftn-local/DelegateNamedConstructorFixture.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
 source "$(dirname "$0")/_common.sh"
+
+method_handle_members="GetAttributes GetImplAttributes GetMethodTable GetSlot GetMethodDef GetUtf8NameInternal HasMethodInstantiation GetStubIfNeededInternal GetMethodFromCanonical IsGenericMethodDefinition IsTypicalMethodDefinition GetGenericParameterCount IsDynamicMethod GetResolver IsConstructor GetLoaderAllocatorInternal"
+method_handle_shapes() {
+    local output="$1" member
+    for member in $method_handle_members; do
+        gate_output byte-witness "$output" "method-handle-shape-$member:True" --count 1 --policy crlf || return 1
+    done
+    gate_output byte-witness "$output" 'Runtime method handle metadata end' --count 1 --policy crlf
+}
 
 named_ctor_asserts() {
     local output="$1" owner form label check
@@ -230,6 +239,15 @@ gate_extra_asserts() {
         gate_output byte-witness "$native" "method-enum-$label:True" --count 1 --policy crlf || return 1
     done
     gate_output byte-witness "$native" 'Runtime method enumeration contract end' --count 1 --policy crlf || return 1
+
+    gate_capture_ok "$out/assert-before-method-handle" run_bounded dotnet "$_CG_APP" before-runtime-method-handle || return 1
+    gate_output prefix "$native" "$out/assert-before-method-handle.stdout" --before '== Runtime method handle contract ==' --policy crlf || return 1
+    for label in default-value default-equality default-hash public-attributes public-constructor public-generic public-invoke; do
+        gate_output byte-witness "$native" "method-handle-$label:True" --count 1 --policy crlf || return 1
+    done
+    gate_output byte-witness "$native" 'method-handle-default-validation:ArgumentNullException' --count 1 --policy crlf || return 1
+    method_handle_shapes "$native" || return 1
+    gate_output byte-witness "$native" 'Runtime method handle contract end' --count 1 --policy crlf || return 1
 
 }
 
@@ -394,3 +412,23 @@ done
 gate_output byte-witness "$enum_out/native.stdout" 'method-enum-constructor:PlatformNotSupportedException:System.RuntimeTypeHandle.GetFirstIntroducedMethod requires CoreCLR method descriptors. Use Type.GetMethods or Type.GetConstructors instead.' --count 1 --policy crlf
 gate_output byte-witness "$enum_out/native.stdout" 'method-enum-default-empty:True' --count 1 --policy crlf
 gate_output byte-witness "$enum_out/native.stdout" 'Runtime method enumeration boundary end' --count 1 --policy crlf
+
+# Native-only calls use imported value/interface/pointer signatures. The CLR
+# oracle inspects metadata and public/default handles, never raw VM leaves.
+handle_input="artifacts/runtime-method-handle-input-$CONFIG"
+mkdir -p "$handle_input"
+cp samples/dotnet/SelfHostPrimSubset/bin/$CONFIG/$TFM/* "$handle_input/"
+dotnet "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
+    --runtime-method-handle "$handle_input/SelfHostPrimSubset.dll" "$_CG_CORELIB"
+handle_out="artifacts/runtime-method-handle-$CONFIG"
+invoke_cli "$handle_input/SelfHostPrimSubset.dll" --auto-ref -o "$handle_out"
+compile_console "$handle_out" RuntimeMethodHandle
+gate_capture_ok "$handle_out/native" run_bounded "./$handle_out/RuntimeMethodHandle$EXE_EXT"
+method_handle_shapes "$handle_out/native.stdout"
+for member in $method_handle_members; do
+    for route in direct pointer reflection; do
+        gate_output byte-witness "$handle_out/native.stdout" "method-handle-$member-$route:PlatformNotSupportedException:System.RuntimeMethodHandle.$member requires CoreCLR method descriptors. Use MethodInfo or ConstructorInfo instead." --count 1 --policy crlf
+    done
+done
+gate_output byte-witness "$handle_out/native.stdout" 'method-handle-managed-overload:NullReferenceException:Object reference not set to an instance of an object.' --count 1 --policy crlf
+gate_output byte-witness "$handle_out/native.stdout" 'Runtime method handle boundary end' --count 1 --policy crlf

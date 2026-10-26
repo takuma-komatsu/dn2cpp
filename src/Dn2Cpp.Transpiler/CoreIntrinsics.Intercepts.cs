@@ -617,7 +617,58 @@ internal static partial class CoreIntrinsics
             || mi.DeclaringClass.FullName == "System.GC" && mi.Name == "Collect"
                 && IsGcCollectZeroSignature(mi.Signature)
             || IsCoreClrFinalizerWorker(mi)
-            || IsCoreClrIntroducedMethodEnumeration(mi));
+            || IsCoreClrIntroducedMethodEnumeration(mi)
+            || IsCoreClrMethodDescQuery(mi));
+
+    // CoreCLR MethodDesc queries do not consume dn2cpp's reflection member rows.
+    internal static bool IsCoreClrMethodDescQuery(MethodInfo method)
+    {
+        if (method.DeclaringClass.FullName != "System.RuntimeMethodHandle"
+            || method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || method.Name is not ("GetAttributes" or "GetImplAttributes" or "GetMethodTable"
+                or "GetSlot" or "GetMethodDef" or "GetUtf8NameInternal" or "HasMethodInstantiation"
+                or "GetStubIfNeededInternal" or "GetMethodFromCanonical" or "IsGenericMethodDefinition"
+                or "IsTypicalMethodDefinition" or "GetGenericParameterCount" or "IsDynamicMethod"
+                or "GetResolver" or "IsConstructor" or "GetLoaderAllocatorInternal")
+            || !method.IsStatic || method.Rva != 0
+            || (method.ImplAttributes & System.Reflection.MethodImplAttributes.InternalCall) == 0)
+            return false;
+        bool isPrivate = method.Name is "GetMethodTable" or "GetUtf8NameInternal"
+            or "GetStubIfNeededInternal" or "IsTypicalMethodDefinition"
+            or "GetGenericParameterCount" or "GetLoaderAllocatorInternal";
+        var visibility = method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask;
+        if (visibility != (isPrivate ? System.Reflection.MethodAttributes.Private : System.Reflection.MethodAttributes.Assembly))
+            return false;
+        var signature = method.Signature;
+        bool hasType = method.Name is "GetStubIfNeededInternal" or "GetMethodFromCanonical";
+        if (signature.Header.IsInstance || signature.GenericParameterCount != 0
+            || signature.ParameterTypes.Length != (hasType ? 2 : 1)
+            || !IsCoreLibMethodDescType(signature.ParameterTypes[0],
+                method.Name is "GetImplAttributes" or "IsTypicalMethodDefinition"
+                    ? "System.IRuntimeMethodInfo" : "System.RuntimeMethodHandleInternal")
+            || hasType && !IsCoreLibMethodDescType(signature.ParameterTypes[1], "System.RuntimeType"))
+            return false;
+        var result = signature.ReturnType;
+        return method.Name switch
+        {
+            "GetAttributes" => IsCoreLibMethodDescType(result, "System.Reflection.MethodAttributes"),
+            "GetImplAttributes" => IsCoreLibMethodDescType(result, "System.Reflection.MethodImplAttributes"),
+            "GetMethodTable" => result.Kind == TypeKind.Pointer && result.Element is { } table
+                && IsCoreLibMethodDescType(table, "System.Runtime.CompilerServices.MethodTable"),
+            "GetUtf8NameInternal" => result is { Kind: TypeKind.Pointer, Element.IsVoid: true },
+            "GetSlot" or "GetMethodDef" or "GetGenericParameterCount" =>
+                result is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 },
+            "GetStubIfNeededInternal" or "GetMethodFromCanonical" =>
+                IsCoreLibMethodDescType(result, "System.RuntimeMethodHandleInternal"),
+            "GetResolver" => IsCoreLibMethodDescType(result, "System.Resolver"),
+            "GetLoaderAllocatorInternal" => IsCoreLibMethodDescType(result, "System.Reflection.LoaderAllocator"),
+            _ => result is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+        };
+    }
+
+    private static bool IsCoreLibMethodDescType(TypeDesc type, string name) =>
+        type is { Kind: TypeKind.Class, Class.Module.AssemblyName: "System.Private.CoreLib" }
+            && type.Class.FullName == name;
 
     // These leaves enumerate CoreCLR MethodDesc handles, not native reflection rows.
     internal static bool IsCoreClrIntroducedMethodEnumeration(MethodInfo method)
