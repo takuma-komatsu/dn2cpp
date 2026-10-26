@@ -145,6 +145,22 @@ internal sealed partial class MethodCompiler
     private bool TryEmitDecimalIntrinsic(string name, MethodSignature<TypeDesc> sig)
     {
         var ps = sig.ParameterTypes;
+        if (!sig.Header.IsInstance && name == "ToOACurrency"
+            && ps is [var currencyValue] && IsDecimal(currencyValue)
+            && sig.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int64 })
+        {
+            var value = Pop();
+            Push(StackKind.I8, "int64_t", $"dn2cpp_decimal_to_oa_currency({DecVal(value)})");
+            return true;
+        }
+        if (!sig.Header.IsInstance && name == "FromOACurrency"
+            && ps is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int64 }]
+            && IsDecimal(sig.ReturnType))
+        {
+            var value = Pop();
+            Push(StackKind.Struct, "Dn2CppDecimal", $"dn2cpp_decimal_from_oa_currency({Cast(value, "int64_t")})");
+            return true;
+        }
         if (name == "IsValid" && ps is
                 [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }]
             && sig.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean })

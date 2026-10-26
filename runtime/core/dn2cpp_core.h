@@ -2075,6 +2075,7 @@ inline constexpr const char* DN2CPP_SR_BLOCKING_CANT_TAKE_WHEN_DONE = "System.Co
 inline constexpr const char* DN2CPP_SR_BLOCKING_COMPLETED = "System.Collections.Concurrent:BlockingCollection_Completed";
 inline constexpr const char* DN2CPP_SR_BLOCKING_TIMEOUT_INVALID = "System.Collections.Concurrent:BlockingCollection_TimeoutInvalid";
 inline constexpr const char* DN2CPP_SR_OVERFLOW_DECIMAL = "Overflow_Decimal";
+inline constexpr const char* DN2CPP_SR_OVERFLOW_CURRENCY = "Overflow_Currency";
 inline constexpr const char* DN2CPP_SR_DECIMAL_ROUND = "ArgumentOutOfRange_DecimalRound";
 inline constexpr const char* DN2CPP_SR_DESTINATION_TOO_SHORT = "Argument_DestinationTooShort";
 inline constexpr const char* DN2CPP_SR_HEX_BINARY_STYLES_NOT_SUPPORTED = "Arg_HexBinaryStylesNotSupported";
@@ -8222,6 +8223,10 @@ double  dn2cpp_decimal_to_double(Dn2CppDecimal a);
 float   dn2cpp_decimal_to_float(Dn2CppDecimal a);
 int64_t dn2cpp_decimal_to_i8(Dn2CppDecimal a);
 uint64_t dn2cpp_decimal_to_u8(Dn2CppDecimal a);
+
+// OLE currency stores ten-thousandths in a signed 64-bit integer.
+int64_t dn2cpp_decimal_to_oa_currency(Dn2CppDecimal a);
+Dn2CppDecimal dn2cpp_decimal_from_oa_currency(int64_t value);
 
 // Rounding statics. `digits` is the kept decimal places (Round); `mode` is the
 // MidpointRounding enum value (0 = ToEven/banker's, 1 = AwayFromZero,

@@ -595,6 +595,34 @@ Dn2CppDecimal dn2cpp_decimal_round(Dn2CppDecimal a, int32_t digits, int32_t mode
     if (a.scale() <= digits) return a;
     return dec_drop_places(a, a.scale() - digits, mode);
 }
+
+int64_t dn2cpp_decimal_to_oa_currency(Dn2CppDecimal a)
+{
+    a = dn2cpp_decimal_round(a, 4, 0);
+    dec_u128 magnitude = dec_mant(a);
+    for (int scale = a.scale(); scale < 4; scale++) magnitude *= 10;
+    // The scaled 96-bit mantissa fits in 128 bits. Check the signed bound only
+    // after rounding; the negative endpoint has one more representable unit.
+    const uint64_t negativeLimit = uint64_t(1) << 63;
+    dec_u128 limit = a.sign() ? negativeLimit : negativeLimit - 1;
+    if (magnitude > limit)
+        dn2cpp_throw_sr0(&dn2cpp_overflow_exception_type, DN2CPP_SR_OVERFLOW_CURRENCY);
+    uint64_t value = (uint64_t)magnitude;
+    if (a.sign() && value == negativeLimit) return INT64_MIN;
+    return a.sign() ? -(int64_t)value : (int64_t)value;
+}
+
+Dn2CppDecimal dn2cpp_decimal_from_oa_currency(int64_t value)
+{
+    bool negative = value < 0;
+    uint64_t magnitude = negative ? uint64_t(0) - (uint64_t)value : (uint64_t)value;
+    int scale = 4;
+    // CLR preserves scale four for zero, but removes trailing zeros otherwise.
+    if (magnitude != 0)
+        while (scale > 0 && magnitude % 10 == 0) { magnitude /= 10; scale--; }
+    return dec_pack(magnitude, negative, scale);
+}
+
 Dn2CppDecimal dn2cpp_decimal_truncate(Dn2CppDecimal a)
 {
     if (a.scale() == 0) return a;

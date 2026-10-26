@@ -2,6 +2,7 @@
 # System.Decimal modeled as an intrinsic value type backed by the runtime's 96-bit
 # Dn2CppDecimal. Consolidated bucket — one sample project, one .cs per section,
 # driven in order by samples/dotnet/DecimalOps/Program.cs.
+# OLE currency conversion preserves ToEven rounding, signed bounds and decimal scale.
 #
 #   * DecimalSubset — the STATICALLY TYPED surface. The real corelib
 #     Decimal.ToString reaches Number.FormatDecimal -> ArrayPool -> EventSource ->
@@ -31,6 +32,7 @@
 # InvariantGlobalization pins the oracle's culture, which is what makes the diff
 # host-independent. See the csproj.
 source "$(dirname "$0")/_common.sh"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|before-oa-currency|oa-currency-direct-and-delegate"
 
 gate_extra_asserts() {
     local out="$1" native before prefix line
@@ -47,6 +49,19 @@ gate_extra_asserts() {
         'parts:28=-1,-1,-1,-2145648640' 'decimal bit conversions end'; do
         gate_output witness "$native" "$line" --count any --policy crlf \
             || { echo "FAIL: decimal bits witness missing: $line" >&2; exit 1; }
+    done
+    gate_capture_ok "$out/assert-before-oa-currency" run_bounded dotnet "$_CG_APP" before-oa-currency || return 1
+    before="$out/assert-before-oa-currency.stdout"
+    prefix="$out/assert-prefix-oa-currency.stdout"
+    gate_output select "$native" "$prefix" --before '== decimal OLE currency ==' --policy crlf || return 1
+    gate_output compare "$prefix" "$before" || return 1
+    for line in '== decimal OLE currency ==' \
+        'to direct:0.00005=0' 'to delegate:0.00015=2' \
+        'to direct:-922337203685477.58085=-9223372036854775808' \
+        'from direct:0=0,0,0,262144:0' 'from delegate:10000=1,0,0,0:10000' \
+        'decimal OLE currency end'; do
+        gate_output byte-witness "$native" "$line" --count any --policy crlf \
+            || { echo "FAIL: OLE currency witness missing: $line" >&2; exit 1; }
     done
 }
 
