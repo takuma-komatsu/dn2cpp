@@ -601,10 +601,18 @@ internal static partial class CoreIntrinsics
     /// <summary>The intra-CoreLib runtime primitives
     /// (<see cref="LoweredRuntimePrimitive"/>) — cut by NAME over whole overload
     /// families; the arm is total over the predicate, so an unmodeled shape
-    /// throws instead of naming a body the cut deleted.</summary>
+    /// throws instead of naming a body the cut deleted. Parameterless GC.Collect
+    /// additionally shares the exact MemberRef fast-path shape so address-taking
+    /// replays that cut without suppressing the validating overload bodies.</summary>
     public static readonly MethodDefIntercept MdRuntimePrimitive = new(
         InterceptCutKind.Cut, InterceptEmitArm.RuntimePrimitive,
-        extra: static mi => LoweredRuntimePrimitive(mi.DeclaringClass.FullName, mi.Name));
+        extra: static mi => LoweredRuntimePrimitive(mi.DeclaringClass.FullName, mi.Name)
+            || mi.DeclaringClass.FullName == "System.GC" && mi.Name == "Collect"
+                && IsGcCollectZeroSignature(mi.Signature));
+
+    private static bool IsGcCollectZeroSignature(MethodSignature<TypeDesc> signature) =>
+        !signature.Header.IsInstance && signature.GenericParameterCount == 0
+        && signature.ParameterTypes.Length == 0 && signature.ReturnType.IsVoid;
 
     /// <summary>EventSource.IsEnabled() folds to false, so the framework's
     /// `if (Log.IsEnabled()) Log.Event(…)` guards go dead and the EventSource
@@ -1067,8 +1075,8 @@ internal static partial class CoreIntrinsics
         {
             "SuppressFinalize" or "ReRegisterForFinalize" or "GetTotalMemory"
                 or "GetTotalAllocatedBytes" => sig().ParameterTypes.Length == 1,
-            "Collect" or "WaitForPendingFinalizers"
-                or "GetAllocatedBytesForCurrentThread" => sig().ParameterTypes.Length == 0,
+            "Collect" => IsGcCollectZeroSignature(sig()),
+            "WaitForPendingFinalizers" or "GetAllocatedBytesForCurrentThread" => sig().ParameterTypes.Length == 0,
             _ => false,
         });
 

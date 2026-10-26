@@ -98,6 +98,20 @@ gate_extra_asserts() {
         'gc-generation-empty-weak:ArgumentNullException:wo' 'GC logical generations end'; do
         gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
     done
+    gate_capture_ok "$out/assert-before-gc-collections" run_bounded dotnet "$_CG_APP" before-gc-collections || return 1
+    gate_output select "$native" "$out/assert-prefix-gc-collections.stdout" --before '== GC collection overloads ==' --policy crlf || return 1
+    gate_output compare "$out/assert-prefix-gc-collections.stdout" "$out/assert-before-gc-collections.stdout" || return 1
+    for line in '== GC collection overloads ==' 'gc-collect-routes:True' \
+        'gc-collect-counter-advanced:True' 'gc-collect-live-payload:True' \
+        'gc-collect-negative:ArgumentOutOfRangeException:generation' \
+        'gc-collect-negative-first:ArgumentOutOfRangeException:generation' \
+        'gc-collect-mode-low:ArgumentOutOfRangeException:mode' \
+        'gc-collect-mode-high:ArgumentOutOfRangeException:mode' \
+        'gc-collect-aggressive-generation:ArgumentException:generation' \
+        'gc-collect-aggressive-blocking:ArgumentException:blocking' \
+        'gc-collect-aggressive-compacting:ArgumentException:compacting' 'GC collection overloads end'; do
+        gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
+    done
 }
 
 corelib_diff_gate SelfHostPrimSubset System.Linq System.Diagnostics.TraceSource \

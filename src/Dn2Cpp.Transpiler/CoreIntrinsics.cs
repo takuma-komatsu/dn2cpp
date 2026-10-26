@@ -639,7 +639,7 @@ internal static partial class CoreIntrinsics
     {
         // SuppressFinalize / ReRegisterForFinalize -> dn2cpp_gc_*_finalize (their real bodies
         // are RuntimeHelpers.GetMethodTable -> MethodTable.HasFinalizer -> the *Internal
-        // FCalls); Collect / WaitForPendingFinalizers / GetTotalMemory -> the Boehm entry
+        // FCalls); _Collect / WaitForPendingFinalizers / GetTotalMemory -> the Boehm entry
         // points (real bodies: the _Collect / _WaitForPendingFinalizers InternalCalls and
         // GCMemoryInfo's native accounting); KeepAlive -> the opaque dn2cpp_keep_alive
         // barrier, whose real body is EMPTY — emitting it hands the optimizer a call it may
@@ -652,7 +652,7 @@ internal static partial class CoreIntrinsics
         // GetAllocatedBytesForCurrentThread (a bodyless InternalCall) and
         // GetTotalAllocatedBytes (whose body branches to two bodyless InternalCalls)
         // -> the dn2cpp_gc allocation counters.
-        "System.GC" => name is "SuppressFinalize" or "ReRegisterForFinalize" or "Collect"
+        "System.GC" => name is "SuppressFinalize" or "ReRegisterForFinalize" or "_Collect"
             or "WaitForPendingFinalizers" or "GetTotalMemory" or "KeepAlive"
             or "_CollectionCount" or "GetMemoryInfo"
             or "GetGenerationInternal" or "GetMaxGeneration"

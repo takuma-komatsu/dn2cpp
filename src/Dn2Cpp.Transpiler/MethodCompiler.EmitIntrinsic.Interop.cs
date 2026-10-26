@@ -676,6 +676,20 @@ internal sealed partial class MethodCompiler
                 Emit($"dn2cpp_gc_reregister_for_finalize({Cast(o, "Dn2CppObject*")});");
                 return true;
             }
+            // Public overloads keep their real validation IL. The private leaf
+            // maps their scheduling/compaction hints to Boehm's whole-heap collect.
+            case ("System.GC", "_Collect")
+                when callee.IsStatic
+                    && callee.Signature.ParameterTypes is [
+                        { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 },
+                        { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 },
+                        { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }]
+                    && callee.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Void }:
+                Pop();
+                Pop();
+                Pop();
+                Emit("dn2cpp_gc_collect();");
+                return true;
             case ("System.GC", "Collect")
                 when callee.Signature.ParameterTypes.Length == 0 && callee.IsStatic:
                 Emit("dn2cpp_gc_collect();");

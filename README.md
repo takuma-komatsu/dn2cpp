@@ -117,6 +117,8 @@ each is settled, and each refuses out loud rather than answering wrong:
 - 64-bit only. No COM interop.
 - GC generation queries model one logical generation (`GC.MaxGeneration == 0`).
   Boehm is non-generational; objects do not undergo CLR-style promotion.
+  Validated `GC.Collect` requests use a whole-heap collection; scheduling and
+  compaction hints do not change the collector into a generational or moving GC.
 - `FileStream.IsAsync` answers `false` — async file I/O runs the
   deterministic sync-over-async route.
 - An unsupported IL or BCL shape is a transpile-time error or a catchable
