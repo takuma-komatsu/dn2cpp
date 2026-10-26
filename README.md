@@ -115,6 +115,8 @@ each is settled, and each refuses out loud rather than answering wrong:
   zones, per-culture *date* formatting and localized display names are
   out (they need ICU + TZif). Culture-aware **numeric** formatting is in.
 - 64-bit only. No COM interop.
+- GC generation queries model one logical generation (`GC.MaxGeneration == 0`).
+  Boehm is non-generational; objects do not undergo CLR-style promotion.
 - `FileStream.IsAsync` answers `false` — async file I/O runs the
   deterministic sync-over-async route.
 - An unsupported IL or BCL shape is a transpile-time error or a catchable

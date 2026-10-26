@@ -85,6 +85,19 @@ gate_extra_asserts() {
         'gc-live-payload:True' 'GC memory query entry points end'; do
         gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
     done
+    gate_capture_ok "$out/assert-before-gc-generations" run_bounded dotnet "$_CG_APP" before-gc-generations || return 1
+    gate_output select "$native" "$out/assert-prefix-gc-generations.stdout" --before '== GC logical generations ==' --policy crlf || return 1
+    gate_output compare "$out/assert-prefix-gc-generations.stdout" "$out/assert-before-gc-generations.stdout" || return 1
+    for line in '== GC logical generations ==' \
+        'gc-generation-max-valid:True' 'gc-generation-direct:True' \
+        'gc-generation-delegate:True' 'gc-generation-pointer:True' \
+        'gc-generation-weak:True' 'gc-generation-collected:True' \
+        'gc-generation-weak-collected:True' 'gc-generation-null:ArgumentNullException:obj' \
+        'gc-generation-delegate-null:ArgumentNullException:obj' \
+        'gc-generation-null-weak:NullReferenceException:' \
+        'gc-generation-empty-weak:ArgumentNullException:wo' 'GC logical generations end'; do
+        gate_output byte-witness "$native" "$line" --count 1 --policy crlf || return 1
+    done
 }
 
 corelib_diff_gate SelfHostPrimSubset System.Linq System.Diagnostics.TraceSource \

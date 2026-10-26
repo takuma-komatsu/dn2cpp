@@ -655,6 +655,7 @@ internal static partial class CoreIntrinsics
         "System.GC" => name is "SuppressFinalize" or "ReRegisterForFinalize" or "Collect"
             or "WaitForPendingFinalizers" or "GetTotalMemory" or "KeepAlive"
             or "_CollectionCount" or "GetMemoryInfo"
+            or "GetGenerationInternal" or "GetMaxGeneration"
             or "GetAllocatedBytesForCurrentThread" or "GetTotalAllocatedBytes",
         // SpanHelpers.Memmove -> std::memmove. Cutting the managed entry makes both its
         // hand-unrolled Unsafe.* loop and the SpanHelpers::memmove InternalCall fallback

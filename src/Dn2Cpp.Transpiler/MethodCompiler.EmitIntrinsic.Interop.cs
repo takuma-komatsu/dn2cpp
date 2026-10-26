@@ -718,6 +718,19 @@ internal sealed partial class MethodCompiler
                 Emit($"dn2cpp_keep_alive({Cast(o, "Dn2CppObject*")});");
                 return true;
             }
+            // Boehm and the calloc fallback have one logical generation. Keep the
+            // public overloads as IL so their object/WeakReference validation survives.
+            case ("System.GC", "GetGenerationInternal")
+                when callee.IsStatic && callee.Signature.ParameterTypes is [{ IsObject: true }]
+                    && callee.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }:
+                Pop();
+                Push(StackKind.I4, "int32_t", "0");
+                return true;
+            case ("System.GC", "GetMaxGeneration")
+                when callee.IsStatic && callee.Signature.ParameterTypes.Length == 0
+                    && callee.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }:
+                Push(StackKind.I4, "int32_t", "0");
+                return true;
             case ("System.GC", "_CollectionCount")
                 when callee.Signature.ParameterTypes.Length == 2 && callee.IsStatic:
             {

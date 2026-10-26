@@ -196,3 +196,6 @@ validate_kernel32(probe, cli, original, directory)
 
 from gc_memory import validate_gc_memory
 validate_gc_memory(probe, cli, original, directory)
+
+from gc_generations import validate_gc_generations
+validate_gc_generations(probe, cli, original, directory)

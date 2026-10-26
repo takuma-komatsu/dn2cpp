@@ -9,6 +9,11 @@ internal static class Program
 {
     private static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "gc-generation-only")
+        {
+            GcGenerationSubset.Program.Run();
+            return;
+        }
         if (args.Length > 0 && args[0] == "gc-memory-only")
         {
             GcMemoryQuerySubset.Program.Run();
@@ -64,5 +69,7 @@ internal static class Program
         if (args.Length > 0 && args[0] == "before-gc-memory-queries")
             return;
         GcMemoryQuerySubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-gc-generations") return;
+        GcGenerationSubset.Program.Run();
     }
 }
