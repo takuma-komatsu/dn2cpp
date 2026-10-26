@@ -32,6 +32,9 @@
 source "$(dirname "$0")/_common.sh"
 
 OUT="${1:-artifacts/selfhost-emit-console}"
+# Trailing CLI arguments select the same policy for every transpile stage.
+[ "$#" -eq 0 ] || shift
+transpile_args=("$@")
 
 echo "== 1/4 Building the console CLI =="
 build_proj src/Dn2Cpp.Cli.Console/Dn2Cpp.Cli.Console.csproj
@@ -59,7 +62,7 @@ done
 echo "== 3/4 Emitting dn2cpp-console itself (real emission, tree-shaken, Godot-free) =="
 rm -rf "$OUT"
 mkdir -p "$OUT"
-dotnet exec "$CLI" "$CLI" "${refs[@]}" --auto-ref -o "$OUT"
+dotnet exec "$CLI" "$CLI" "${refs[@]}" ${transpile_args[@]+"${transpile_args[@]}"} --auto-ref -o "$OUT"
 [ -f "$OUT/generated.cpp" ] || { echo "error: no generated.cpp produced" >&2; exit 1; }
 
 # The self-transpiled transpiler is large, so the emitter splits it into

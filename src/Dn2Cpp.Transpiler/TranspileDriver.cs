@@ -123,6 +123,11 @@ public static class TranspileDriver
             Console.Error.WriteLine("error: MaxDegreeOfParallelism must be zero or a positive integer");
             return 1;
         }
+        if (options.StrippingLevel != StrippingLevel.High && options.StrippingLevel != StrippingLevel.Medium)
+        {
+            Console.Error.WriteLine("error: StrippingLevel must be High or Medium");
+            return 1;
+        }
         if (!File.Exists(input))
         {
             Console.Error.WriteLine($"error: input assembly not found: {input}");

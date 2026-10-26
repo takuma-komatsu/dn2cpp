@@ -126,11 +126,9 @@ internal sealed class CustomAttributeTypeProvider : ICustomAttributeTypeProvider
         // A null Type argument arrives as a null name and decodes to a null value.
         if (name is null)
             return null!;
-        // An unresolved name decodes to an External placeholder, which CppEmitter treats as
-        // unsupported; an enum of that type decodes at an assumed Int32 width.
-        return _compilation.ResolveSerializedTypeName(name);
+        return _compilation.ResolveAttributeTypeName(name);
     }
 
     public PrimitiveTypeCode GetUnderlyingEnumType(TypeDesc type) =>
-        _compilation.SerializedEnumUnderlying(type);
+        _compilation.AttributeEnumUnderlying(type);
 }

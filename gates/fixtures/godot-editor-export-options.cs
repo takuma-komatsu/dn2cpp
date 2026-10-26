@@ -31,6 +31,17 @@ foreach (string platform in OS.PlatformFeatureMap.Keys)
             Check(probe._GetExportOptionVisibility(editor, key) == (backend == 2), platform + " visibility " + name);
         }
     }
+    const string strippingKey = "dotnet/dn2cpp/stripping_level";
+    var strippingDefinition = definitions.Single(item => (string)((Godot.Collections.Dictionary)item["option"])["name"] == strippingKey);
+    var strippingOption = (Godot.Collections.Dictionary)strippingDefinition["option"];
+    Check((int)strippingDefinition["default_value"] == 0, platform + " default stripping level");
+    Check((int)strippingOption["type"] == (int)Variant.Type.Int, "stripping enum option");
+    Check((int)strippingOption["hint"] == (int)PropertyHint.Enum && (string)strippingOption["hint_string"] == "High,Medium", "stripping choices");
+    foreach (int backend in new[] { 0, 1, 2 })
+    {
+        probe.Preset["dotnet/export_backend"] = backend;
+        Check(probe._GetExportOptionVisibility(editor, strippingKey) == (backend == 2), platform + " stripping visibility");
+    }
     foreach (bool? reflection in values)
     foreach (bool? classes in values)
     foreach (bool? shared in values)
@@ -46,6 +57,7 @@ foreach (string platform in OS.PlatformFeatureMap.Keys)
                 probe.Preset["dotnet/dn2cpp/" + keys[i]] = selected[i]!.Value;
         ProjectSettings.Extra = extra;
         string[] actual = probe.Generate();
+        CheckStripping(actual, "high");
         var expected = new List<string>();
         if (reflection ?? true) expected.Add(flags[0]);
         if (classes ?? true) expected.Add(flags[1]);
@@ -60,8 +72,54 @@ foreach (string platform in OS.PlatformFeatureMap.Keys)
         Check(actual.Contains("com") == (platform == "windows"), "Windows argument path");
         runs++;
     }
+    foreach (int? level in new int?[] { null, 0, 1 })
+    foreach (bool? ildiet in values)
+    foreach (bool duplicate in new[] { false, true })
+    {
+        probe.Preset.Clear();
+        if (level.HasValue) probe.Preset[strippingKey] = level.Value;
+        if (ildiet.HasValue) probe.Preset["dotnet/dn2cpp/il_prestripping"] = ildiet.Value;
+        string expectedLevel = level == 1 ? "medium" : "high";
+        ProjectSettings.Extra = duplicate ? ["--stripping-level", expectedLevel, "--ildiet-skip-assembly", "Library"] : [];
+        string[] actual = probe.Generate();
+        CheckStripping(actual, expectedLevel);
+        Check(actual.Contains("--no-ildiet") == (ildiet == false), "stripping level independent of prestripping");
+        Check(actual.Contains("Library") == duplicate, "unrelated extra arguments retained");
+        runs++;
+    }
+    foreach (int invalid in new[] { -1, 2 })
+    {
+        probe.Preset.Clear();
+        probe.Preset[strippingKey] = invalid;
+        ProjectSettings.Extra = [];
+        ExpectInvalid(() => probe.Generate(), "Stripping Level");
+        runs++;
+    }
+    foreach (int level in new[] { 0, 1 })
+    foreach (string[] extra in new[] { new[] { "--stripping-level" }, new[] { "--stripping-level", level == 0 ? "medium" : "high" }, new[] { "--stripping-level", "low" } })
+    {
+        probe.Preset.Clear();
+        probe.Preset[strippingKey] = level;
+        ProjectSettings.Extra = extra;
+        ExpectInvalid(() => probe.Generate(), "extra_transpile_args");
+        runs++;
+    }
 }
 Console.WriteLine($"PASS: export option definitions, visibility and argument generation ({runs} platform/preset/extra-argument cases)");
+
+static void CheckStripping(string[] arguments, string level)
+{
+    Check(arguments.Count(value => value == "--stripping-level") == 1, "one stripping-level argument");
+    int index = Array.IndexOf(arguments, "--stripping-level");
+    Check(index + 1 < arguments.Length && arguments[index + 1] == level, "selected stripping level reaches CLI");
+}
+
+static void ExpectInvalid(Action action, string diagnostic)
+{
+    try { action(); }
+    catch (InvalidOperationException exception) when (exception.Message.Contains(diagnostic)) { return; }
+    throw new InvalidOperationException("expected an actionable rejection: " + diagnostic);
+}
 
 static void Check(bool condition, string message)
 {

@@ -13,13 +13,14 @@ internal static class Program
         {
             if (args.Length == 0 || args.Contains("--help") || args.Contains("-h"))
             {
-                Console.WriteLine("Usage: ildiet <assembly.dll> [-r <reference.dll>] --link-xml <file> [-o <directory>] [--project-root <directory>] [--link-feature <com|sre|remoting>] [--work-budget <n>] [--ildiet-skip-assembly <name>]");
+                Console.WriteLine("Usage: ildiet <assembly.dll> [-r <reference.dll>] --link-xml <file> [-o <directory>] [--project-root <directory>] [--link-feature <com|sre|remoting>] [--work-budget <n>] [--ildiet-skip-assembly <name>] [--stripping-level high|medium]");
                 Console.WriteLine("       ildiet --request <request.xml> --result <result.xml>");
                 return args.Length == 0 ? 1 : 0;
             }
             var request = new DietRequest();
             string? requestPath = null;
             string? resultPath = null;
+            bool strippingLevelSpecified = false;
             for (int i = 0; i < args.Length; i++)
             {
                 string Value()
@@ -38,6 +39,10 @@ internal static class Program
                     case "--link-feature": request.Features.Add(Value()); break;
                     case "--ildiet-skip-assembly": request.SkipAssemblies.Add(Value()); break;
                     case "--work-budget": request.WorkBudget = DietRequest.ParseWorkBudget(Value()); break;
+                    case "--stripping-level":
+                        request.StrippingLevel = DietRequest.ParseStrippingLevel(Value());
+                        strippingLevelSpecified = true;
+                        break;
                     default:
                         if (args[i].StartsWith('-') || request.Input.Length != 0)
                             throw new NotSupportedException("unknown argument: " + args[i]);
@@ -49,7 +54,7 @@ internal static class Program
             {
                 if (request.Input.Length != 0 || request.References.Count != 0 || request.LinkXml.Count != 0
                     || request.ProjectRoots.Count != 0 || request.Features.Count != 0 || request.WorkBudget is not null
-                    || request.SkipAssemblies.Count != 0 || request.Output != "ildiet-output")
+                    || request.SkipAssemblies.Count != 0 || request.Output != "ildiet-output" || strippingLevelSpecified)
                     throw new NotSupportedException("--request cannot be combined with direct input options");
                 request = DietRequest.Read(requestPath);
                 request.RequestFile = Path.GetFullPath(requestPath);
@@ -73,6 +78,7 @@ internal sealed class DietRequest
     internal string Input = "";
     internal string Output = "ildiet-output";
     internal bool CopyAll;
+    internal StrippingLevel StrippingLevel = StrippingLevel.High;
     internal long? WorkBudget;
     internal string Contract = "";
     internal readonly List<string> ReflectionRoots = new();
@@ -94,7 +100,7 @@ internal sealed class DietRequest
     internal static DietRequest Read(string path)
     {
         var root = Dn2Cpp.LinkXml.Parse(path);
-        Check(root, "ildiet", "version", "input", "output", "copyAll", "workBudget");
+        Check(root, "ildiet", "version", "input", "output", "copyAll", "workBudget", "strippingLevel");
         if (Required(root, "version") != "2")
             throw new NotSupportedException("unsupported ILDiet request version");
         var request = new DietRequest
@@ -102,6 +108,7 @@ internal sealed class DietRequest
             Input = Required(root, "input"),
             Output = Required(root, "output"),
             WorkBudget = root.Attr("workBudget") is { } budget ? ParseWorkBudget(budget) : null,
+            StrippingLevel = ParseStrippingLevel(root.Attr("strippingLevel") ?? "high"),
             Contract = ILDietProtocol.ContractDigest(root),
             CopyAll = root.Attr("copyAll") switch
             {
@@ -161,6 +168,13 @@ internal sealed class DietRequest
         }
         return request;
     }
+
+    internal static StrippingLevel ParseStrippingLevel(string value) => value switch
+    {
+        "high" => StrippingLevel.High,
+        "medium" => StrippingLevel.Medium,
+        _ => throw new NotSupportedException("stripping level must be high or medium: " + value),
+    };
 
     internal static long ParseWorkBudget(string value)
     {

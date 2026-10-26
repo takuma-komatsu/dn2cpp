@@ -9,6 +9,7 @@ if (ProtocolMutation.Run(args)) return;
 if (GodotValidation.Run(args)) return;
 if (GraphValidation.Run(args)) return;
 if (PropertySignatureValidation.Run(args)) return;
+if (StrippingLevelValidation.Run(args)) return;
 if (args.Length == 3 && args[0] == "--create-slot-storage-fixture")
 {
     CreateArrayNarrowingFixture(args[1], args[2], scalarDefaults: true, slotStorage: true);

@@ -2910,7 +2910,7 @@ internal sealed partial class CppEmitter
                 var td = reader.GetTypeDefinition(en.Handle);
                 string underlyingTi = MethodCompiler.TypeInfoExprOf(
                     TypeDesc.MakePrimitive(en.EnumUnderlying)) ?? "&dn2cpp_int32_type";
-                bool userFldCls = _c.IsUserModule(en.Module);
+                bool userFldCls = _c.KeepsTypeAttributeMetadata(en);
                 foreach (var fdh in td.GetFields())
                 {
                     var fd = reader.GetFieldDefinition(fdh);
@@ -3154,11 +3154,9 @@ internal sealed partial class CppEmitter
             if (cls.IsEnum || cls.Fields.Count == 0 || _e.IsCanonicalWorld(cls)
                 || !_c.KeepsReflectionMetadata(cls))
                 return;
-            // Field custom-attribute + token lookup: map field name ->
-            // FieldDefinitionHandle. Collected for every module (the metadata token is
-            // emitted on BCL rows too); the attribute factories below stay gated to
-            // user-module (app + referenced library) non-opaque classes.
-            bool userFldCls = _c.IsUserModule(cls.Module) && !_e.IsOpaque(cls);
+            // Tokens cover every module; attribute factories also cover framework
+            // types whose complete surface Medium retains.
+            bool userFldCls = _c.KeepsTypeAttributeMetadata(cls) && !_e.IsOpaque(cls);
             var fieldHandles = new Dictionary<string, FieldDefinitionHandle>();
             try
             {
@@ -3344,19 +3342,10 @@ internal sealed partial class CppEmitter
             string tab = $"{prefix}_{cls.CppName}";
             var rows = new List<MetadataRow>();
             bool appCls = cls.Module == _c.AppModule && !_e.IsOpaque(cls);
-            // Attribute factories cover user-module (app + referenced library) non-opaque
-            // classes, so a library class's method/param attributes are emitted; the
-            // row-trim rule below stays app-module-keyed (a library's *own* unreached
-            // rows are still trimmed — this only widens which classes get attribute tables).
-            bool attrCls = _c.IsUserModule(cls.Module) && !_e.IsOpaque(cls);
-            // A reference assembly's unreached members are reflected but never callable:
-            // their fnPtr/invoker are null below, so Invoke throws and the row is nothing
-            // but GetMethods() bloat. Property accessors still need descriptions so
-            // a visible property never loses its getter/setter. An app module keeps every declared member,
-            // so GetMethods() over the user's own types is unchanged, mirroring how a
-            // program that reflects-and-invokes force-reaches app-module bodies only. A
-            // hot-update base keeps everything: the interpreter binds a patch's imports by
-            // walking these tables.
+            // Attribute retention is independent of whether a member has an invoker.
+            bool attrCls = _c.KeepsTypeAttributeMetadata(cls) && !_e.IsOpaque(cls);
+            // Reference rows need a reachable body, a lookup/Medium keep, or an accessor
+            // demand. A hot-update base keeps the interpreter's member import contract.
             // (Row filter mirrored by NoteReflectedMemberTypes — keep in step.)
             bool trim = prefix != "delegatetab" && !appCls && !_e._hotUpdateBase;
             var propertyAccessors = ReflectionAccessorHandles(cls);
@@ -3722,10 +3711,8 @@ internal sealed partial class CppEmitter
                     string getterExpr = getter is not null && _memberAddr.TryGetValue(getter, out var ga) ? ga : "nullptr";
                     string setterExpr = setter is not null && _memberAddr.TryGetValue(setter, out var sa) ? sa : "nullptr";
                     int attrs = PropertyAccessorAttrs(reader, acc.Getter, acc.Setter);
-                    // Property custom attributes: user-module (app + referenced library)
-                    // non-opaque classes.
                     (string Expr, int Count) pca = ("nullptr", 0);
-                    if (_c.IsUserModule(cls.Module) && !_e.IsOpaque(cls))
+                    if (_c.KeepsTypeAttributeMetadata(cls) && !_e.IsOpaque(cls))
                         pca = _e.BuildAttrTable(_sb, $"{cls.CppName}_prp{rows.Count}", cls.Module, pd.GetCustomAttributes());
                     int prpToken = System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(ph);
                     IReadOnlyList<TypeDesc> indexParams = getter is not null
@@ -4189,10 +4176,8 @@ internal sealed partial class CppEmitter
             var (ctorsExpr, ctorCount) = _ctorTabs.TryGetValue(cls, out var ctv) ? (ctv.Expr, ctv.Count) : ("nullptr", 0);
             var (propsExpr, propCount) = _propTabs.TryGetValue(cls, out var ptv) ? (ptv.Expr, ptv.Count) : ("nullptr", 0);
             var (eventsExpr, eventCount) = _eventTabs.TryGetValue(cls, out var etv) ? (etv.Expr, etv.Count) : ("nullptr", 0);
-            // Type-level custom attributes: user-module (app + referenced library)
-            // non-opaque classes, so an attribute on a library-declared class is emitted.
             (string Expr, int Count) typeAttrs = ("nullptr", 0);
-            if (_c.IsUserModule(cls.Module) && !_e.IsOpaque(cls))
+            if (_c.KeepsTypeAttributeMetadata(cls) && !_e.IsOpaque(cls))
                 try
                 {
                     var td = cls.Module.Reader.GetTypeDefinition(cls.Handle);

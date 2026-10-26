@@ -32,9 +32,12 @@ elsewhere (C++17), `cmake` ≥ 3.20 and `ninja`.
 The publish target always passes `$(MSBuildProjectDirectory)` as a
 `--project-root`, so Unity-format `link.xml` files below the project directory
 participate in stripping without extra configuration. Pass extra descriptors
-with `--link-xml` in `Dn2CppExtraArgs`. Dynamic reflection targets need a
-descriptor or `PreserveAttribute`; the stripped DLLs are intermediate build
-artifacts and do not replace managed publish inputs.
+with `--link-xml` in `Dn2CppExtraArgs`. Set `Dn2CppExtraArgs` to
+`--auto-ref --stripping-level medium` to retain all members of statically
+referenced types. The default level is `high`; `Dn2CppUseILDiet=false` bypasses
+the managed rewrite without changing that level. Runtime-only reflection targets
+still need a descriptor or `PreserveAttribute`; the stripped DLLs are intermediate
+build artifacts and do not replace managed publish inputs.
 
 `Dn2Cpp.Build` accepts a host-default publish with no RID, plus
 `linux-x64`, `linux-arm64`, `osx-x64`, `osx-arm64`, `win-x64`, and

@@ -38,6 +38,11 @@ internal static class ILDietProtocol
         var hash = new StableHash();
         hash.AddText("ildiet-contract-v2");
         hash.AddText(request.Attr("copyAll") ?? "false");
+        if (request.Attr("strippingLevel") is { } level && level != "high")
+        {
+            hash.AddText("strippingLevel");
+            hash.AddText(level);
+        }
         foreach (string clause in clauses)
             hash.AddText(clause);
         return hash.Hex();

@@ -19,6 +19,7 @@ bool measure = false;
 bool verbose = false;
 bool autoRef = false;
 bool useILDiet = true;
+StrippingLevel strippingLevel = StrippingLevel.High;
 string? ildietOutput = null;
 var ildietSkipAssemblies = new List<string>();
 var linkXmlFiles = new List<string>();
@@ -87,6 +88,24 @@ for (int i = 0; i < args.Length; i++)
         // so external generic instantiations resolve without explicit -r for every
         // transitive dependency. Opt-in while drift is being measured.
         autoRef = true;
+    }
+    else if (args[i] == "--stripping-level")
+    {
+        if (i + 1 >= args.Length)
+        {
+            Console.Error.WriteLine("error: --stripping-level expects high or medium");
+            return 1;
+        }
+        string value = args[++i];
+        if (value == "high")
+            strippingLevel = StrippingLevel.High;
+        else if (value == "medium")
+            strippingLevel = StrippingLevel.Medium;
+        else
+        {
+            Console.Error.WriteLine($"error: --stripping-level expects high or medium, got '{value}'");
+            return 1;
+        }
     }
     else if (args[i] == "--no-ildiet")
     {
@@ -162,7 +181,7 @@ for (int i = 0; i < args.Length; i++)
 
 if (string.IsNullOrEmpty(input))
 {
-    Console.Error.WriteLine("Usage: dn2cpp-console <assembly.dll> [-o <output-dir>] [-r <ref.dll>] [--no-default-ref <DnZlib|DnBrotli|DnHttp>] [--auto-ref] [--no-ildiet] [--ildiet-output <dir>] [--ildiet-skip-assembly <name>] [--link-xml <file>] [--project-root <dir>] [--link-feature <com|sre|remoting>] [--jobs <n>] [--no-shared-generics] [--obfuscate] [--shadow-stack] [--no-metadata-compression] [--reflection-metadata <type>=native|packed] [--measure] [--verbose]");
+    Console.Error.WriteLine("Usage: dn2cpp-console <assembly.dll> [-o <output-dir>] [-r <ref.dll>] [--no-default-ref <DnZlib|DnBrotli|DnHttp>] [--auto-ref] [--stripping-level <high|medium>] [--no-ildiet] [--ildiet-output <dir>] [--ildiet-skip-assembly <name>] [--link-xml <file>] [--project-root <dir>] [--link-feature <com|sre|remoting>] [--jobs <n>] [--no-shared-generics] [--obfuscate] [--shadow-stack] [--no-metadata-compression] [--reflection-metadata <type>=native|packed] [--measure] [--verbose]");
     return 1;
 }
 
@@ -180,6 +199,7 @@ return TranspileDriver.RunConsole(new TranspileOptions
     Obfuscate = obfuscate,
     ShadowStack = shadowStack,
     UseILDiet = useILDiet,
+    StrippingLevel = strippingLevel,
     ILDietOutput = ildietOutput,
     ILDietSkipAssemblies = ildietSkipAssemblies,
     LinkXmlFiles = linkXmlFiles,

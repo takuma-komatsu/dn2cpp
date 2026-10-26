@@ -346,6 +346,12 @@ internal sealed partial class AssemblyDiet
         if (reference is GenericParameter parameter) { AddDemand(parameter, demands); return; }
         if (!_appliedDemands.Add((reference, demands))) return;
         Spend();
+        if ((demands & Demand.TypeWide) != 0)
+        {
+            NoteMediumType(reference);
+            demands &= ~Demand.TypeWide;
+            if (demands == Demand.None) return;
+        }
         if ((demands & Demand.PassiveMetadata) != 0)
         {
             _passiveAttributeMetadataDepth++;

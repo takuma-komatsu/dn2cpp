@@ -15,7 +15,33 @@ dotnet run --project src/ILDiet -c Release -- \
 Read `stripped/ildiet-result.xml` for the generated input, reference and
 preservation paths. Assemblies live in the generation named by that manifest;
 there are no flat DLL outputs. A manual transpile must pass those ordered paths,
-`--no-ildiet`, and `--link-xml` with the manifest's preservation path.
+`--no-ildiet`, and `--link-xml` with the manifest's preservation path. Replay also
+passes the original `--stripping-level`; the preservation descriptor contains
+explicit rules, not the compiler's stripping policy.
+
+`--stripping-level high|medium` selects the same policy as the dn2cpp CLI.
+`high` is the default member-level policy. `medium` keeps every declared member
+of a statically used type, including non-public constructors and accessors, and
+follows those members' static references to a fixed point. The rule applies to
+every assembly, including framework assemblies whose files remain copied.
+Copied files retain the existing intrinsic and cut traversal boundaries.
+DLL rewriting and the stripping level are independent options.
+
+Medium use comes from executable method owners and signatures, body type and
+member operands, local and catch types, explicit preservation, and runtime type
+roots. Its closure follows base types, interfaces, field/property/event types,
+method signatures, generic arguments and constraints, attribute types and
+encoded type-valued attribute arguments. A nested type's declaring identity
+does not retain its enclosing owner's bodies. Metadata-only roots, lookups and
+model decoding do not activate type-wide retention without another static use.
+Generic demands follow known definition-parameter bindings; ILDiet does not
+construct unknown specializations. An initializer retained only by Medium does
+not enter the transpiler's startup pass; its first-use guards still schedule
+execution. Explicit initializer preservation keeps its existing behavior.
+
+Captured requests carry `strippingLevel`, and their contract digest distinguishes
+Medium from High. An omitted request attribute means High for existing request
+producers.
 
 `--project-root` discovers files named exactly `link.xml`, excluding `bin`,
 `obj`, `.godot` and `.git`. `--link-feature` enables `com`, `sre` or `remoting`.

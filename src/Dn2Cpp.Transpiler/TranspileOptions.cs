@@ -26,6 +26,9 @@ public sealed record TranspileOptions
     /// model. <c>--no-ildiet</c> selects the original DLLs.</summary>
     public bool UseILDiet { get; init; } = true;
 
+    /// <summary>Medium retains every member of statically used types across the load set.</summary>
+    public StrippingLevel StrippingLevel { get; init; } = StrippingLevel.High;
+
     /// <summary>Directory for stripped DLLs; null selects <c>OutDir/ildiet</c>.</summary>
     public string? ILDietOutput { get; init; }
 

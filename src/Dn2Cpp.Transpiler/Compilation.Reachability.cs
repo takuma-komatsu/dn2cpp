@@ -14,6 +14,7 @@ internal sealed partial class Compilation
 
     private void Reach(MethodInfo m)
     {
+        NoteMediumMethod(m);
         // New callable constructor closures do not enroll initializers in startup.
         // A later normal edge rescans that closure with the ordinary first-use rules.
         if (_reachingBindingOnlyBody)
@@ -275,6 +276,8 @@ internal sealed partial class Compilation
     /// used-slot model to value types).</summary>
     private void ReachAllocatedType(ClassInfo c)
     {
+        NoteMediumType(TypeDesc.MakeClass(c));
+        NoteMediumAllocation(c);
         EnsureCompleted(c);   // vtable + the Effective* overrides an instance dispatches
         // --trim-godot-classes release triggers: a user-code allocation of a wrapper
         // and a user class's engine base chain. BEFORE the dedup below on purpose —
@@ -1210,7 +1213,23 @@ internal sealed partial class Compilation
     /// <summary>Records an emit site that will lower to <c>dn2cpp_object_equals</c> /
     /// <c>dn2cpp_object_gethashcode</c>. Called from the reachability scan (never from
     /// emission — the wiring it drives is decided before a single body compiles).</summary>
-    private void NoteObjectEqualityDispatch() => _objectEqualityDispatched = true;
+    private void NoteObjectEqualityDispatch()
+    {
+        if (_strippingLevel == StrippingLevel.Medium)
+        {
+            if (!_reachingBindingOnlyBody && _mediumOnlyObjectEqualityDemand)
+            {
+                _mediumOnlyObjectEqualityDemand = false;
+                _boxedEqualityCursor = 0;
+            }
+            else if (!_objectEqualityDispatched)
+                _mediumOnlyObjectEqualityDemand = _reachingBindingOnlyBody;
+        }
+        _objectEqualityDispatched = true;
+    }
+
+    private bool NeedsObjectEqualityDispatch => !_objectEqualityDispatched
+        || _mediumOnlyObjectEqualityDemand && !_reachingBindingOnlyBody;
 
     /// <summary>Whether an <c>ldvirtftn</c> token names an Object-rooted Equals or
     /// GetHashCode (<see cref="CoreIntrinsics.ScObjectEqualityDispatch"/>), from raw
@@ -1578,16 +1597,25 @@ internal sealed partial class Compilation
             // Planning placeholders describe bodies, never the exact type of a box.
             if (ContainsCanonPlaceholder(c) || ContainsGenericVar(c))
                 continue;
-            if (!CoreIntrinsics.IsIntrinsicType(c.FullName) && c.IntrinsicCppName is null
-                && !CoreIntrinsics.RuntimeOwnsTypeInfo(c)
-                && (IsUserModule(c.Module) || !HoldsUncomparableIntrinsic(c)))
+            bool previous = _reachingBindingOnlyBody;
+            _reachingBindingOnlyBody |= _mediumOnlyAllocations.Contains(c) || _mediumOnlyObjectEqualityDemand;
+            try
             {
-                if (EffectiveEquals(c) is { } eq)
-                    Reach(eq);
-                if (EffectiveGetHashCode(c) is { } gh)
-                    Reach(gh);
+                if (!CoreIntrinsics.IsIntrinsicType(c.FullName) && c.IntrinsicCppName is null
+                    && !CoreIntrinsics.RuntimeOwnsTypeInfo(c)
+                    && (IsUserModule(c.Module) || !HoldsUncomparableIntrinsic(c)))
+                {
+                    if (EffectiveEquals(c) is { } eq)
+                        Reach(eq);
+                    if (EffectiveGetHashCode(c) is { } gh)
+                        Reach(gh);
+                }
+                ReachSynthesizedValueEquality(c, includeHash: true);
             }
-            ReachSynthesizedValueEquality(c, includeHash: true);
+            finally
+            {
+                _reachingBindingOnlyBody = previous;
+            }
         }
         return Reachable.Count != before;
     }
@@ -1618,14 +1646,19 @@ internal sealed partial class Compilation
             if (ContainsCanonPlaceholder(c) || ContainsGenericVar(c)
                 || (!IsUserModule(c.Module) && HoldsUncomparableIntrinsic(c)))
                 continue;
-            MethodInfo? eq = EffectiveEquals(c);
-            if (eq is not null)
-                Reach(eq);
-            else
+            // Conservative array candidates provide dispatch metadata; adding a
+            // Medium candidate must not schedule the selected body's initializers.
+            bool previous = _reachingBindingOnlyBody;
+            _reachingBindingOnlyBody |= _strippingLevel == StrippingLevel.Medium;
+            try
             {
-                ReachSynthesizedValueEquality(c, includeHash: false);
-                eq = ReachedSynthesizedValueEquals(c);
+                MethodInfo? eq = EffectiveEquals(c);
+                if (eq is not null)
+                    Reach(eq);
+                else
+                    ReachSynthesizedValueEquality(c, includeHash: false);
             }
+            finally { _reachingBindingOnlyBody = previous; }
             // Conservative candidates need not occur at a search site. A value
             // without an emitted body is rejected by the runtime search guard.
         }
@@ -1940,6 +1973,7 @@ internal sealed partial class Compilation
     /// implementation in every already-allocated reference type.</summary>
     private void ReachUsedVirtual(MethodInfo decl)
     {
+        NoteMediumVirtualDemand(decl);
         if (!_usedVirtualDecls.Add(decl))
             return;
         RegisterVirtualDemand(decl);
@@ -1971,6 +2005,13 @@ internal sealed partial class Compilation
     /// when it is an exception class below System.Exception.</summary>
     private void NoteRuntimeRaisedHeirs(ClassInfo owner)
     {
+        if (_strippingLevel == StrippingLevel.Medium)
+        {
+            if (!_reachingBindingOnlyBody)
+                _mediumOnlyRuntimeRaisedOwners.Remove(owner);
+            else if (!_runtimeRaisedHeirOwners.Contains(owner))
+                _mediumOnlyRuntimeRaisedOwners.Add(owner);
+        }
         if (!_runtimeRaisedHeirOwners.Add(owner) || owner.IsInterface || owner.IsValueType
             || CoreIntrinsics.IsIntrinsicType(owner.FullName) || !DerivesFromException(owner))
             return;
@@ -1983,7 +2024,13 @@ internal sealed partial class Compilation
         if (_pendingRuntimeRaisedOwners.Count == 0)
             return false;
         while (_pendingRuntimeRaisedOwners.Count > 0)
-            ReachRuntimeRaisedHeirs(_pendingRuntimeRaisedOwners.Dequeue());
+        {
+            var owner = _pendingRuntimeRaisedOwners.Dequeue();
+            bool previous = _reachingBindingOnlyBody;
+            _reachingBindingOnlyBody |= _mediumOnlyRuntimeRaisedOwners.Contains(owner);
+            try { ReachRuntimeRaisedHeirs(owner); }
+            finally { _reachingBindingOnlyBody = previous; }
+        }
         return true;
     }
 
@@ -2111,6 +2158,8 @@ internal sealed partial class Compilation
             return;
         if (_usedGvms.TryGetValue(gvm.CppName, out var known))
         {
+            if (!_reachingBindingOnlyBody)
+                _mediumOnlyGvmDemands.Remove(known);
             known.CallSite |= callSite;
             known.BindingSite |= bindingSite;
             if (known.Strips && !strips)
@@ -2121,6 +2170,8 @@ internal sealed partial class Compilation
             return;
         }
         var disp = NewGvmDispatch(gvm, callSite);
+        if (_strippingLevel == StrippingLevel.Medium && _reachingBindingOnlyBody)
+            _mediumOnlyGvmDemands.Add(disp);
         disp.Strips = strips;
         disp.BindingSite = bindingSite;
         _usedGvms.Add(gvm.CppName, disp);
@@ -2162,6 +2213,14 @@ internal sealed partial class Compilation
     /// <paramref name="disp"/> at the dispatcher's method args, recording the case.
     /// Routes to the base default when <paramref name="c"/> declares no override.</summary>
     private void ReachGvmImpl(GvmDispatch disp, ClassInfo c)
+    {
+        bool previous = _reachingBindingOnlyBody;
+        _reachingBindingOnlyBody |= _mediumOnlyAllocations.Contains(c) || _mediumOnlyGvmDemands.Contains(disp);
+        try { ReachGvmImplCore(disp, c); }
+        finally { _reachingBindingOnlyBody = previous; }
+    }
+
+    private void ReachGvmImplCore(GvmDispatch disp, ClassInfo c)
     {
         if (disp.Cases.ContainsKey(c) || disp.Ambiguous.Contains(c) || disp.Stripped.Contains(c))
             return;
@@ -3638,6 +3697,14 @@ internal sealed partial class Compilation
     /// <summary>Reaches <paramref name="c"/>'s implementation of the virtual or
     /// interface slot declared by <paramref name="decl"/>, if it provides one.</summary>
     private void ReachVirtualImpl(ClassInfo c, MethodInfo decl)
+    {
+        bool previous = _reachingBindingOnlyBody;
+        _reachingBindingOnlyBody |= _mediumOnlyAllocations.Contains(c) || _mediumOnlyVirtualDemands.Contains(decl);
+        try { ReachVirtualImplCore(c, decl); }
+        finally { _reachingBindingOnlyBody = previous; }
+    }
+
+    private void ReachVirtualImplCore(ClassInfo c, MethodInfo decl)
     {
         _virtualCandidatePairs++;
         EnsureCompleted(c);   // the override lives in its vtable / interface impls
@@ -5892,6 +5959,7 @@ internal sealed partial class Compilation
         try
         {
             var insns = ILDecoder.Decode(body.GetILBytes()!.ToImmutableArrayCompat());
+            NoteMediumBodyTypes(m, body);
             SummarizeReflection(m, body, insns);
             // Folded-guard dead arms are pruned from reachability: a dead
             // instruction's tokens never become edges. Emission prunes the same
@@ -5913,6 +5981,7 @@ internal sealed partial class Compilation
                 if (insn.Token == 0 || (uint)insn.Token >> 24 == 0x70)
                     continue;
                 var handle = SRME.EntityHandle(insn.Token);
+                NoteMediumOperand(module, handle, m.Context);
                 // boxedForFormat is a single-instruction window: it survives only to
                 // the next entity-token instruction (the call that consumes the box).
                 var prevBoxed = boxedForFormat;
@@ -6068,7 +6137,7 @@ internal sealed partial class Compilation
                         }
                         // A delegate over Object::Equals/GetHashCode binds the helper a call
                         // lowers to (MethodCompiler's ldvirtftn arm): the same dispatch.
-                        else if (!_objectEqualityDispatched && insn.OpCode == ILOpCode.Ldvirtftn
+                        else if (NeedsObjectEqualityDispatch && insn.OpCode == ILOpCode.Ldvirtftn
                             && IsObjectEqualityFtn(module, handle))
                             NoteObjectEqualityDispatch();
                         // The same mark, for the shape the block above cannot see: a body of
@@ -6077,7 +6146,7 @@ internal sealed partial class Compilation
                         // the flag, so this costs one type-name read per call site only until
                         // the first such site — and after it only at a value type's `call`,
                         // which may be the base call whose field walk must be reached.
-                        else if ((!_objectEqualityDispatched
+                        else if ((NeedsObjectEqualityDispatch
                                 || insn.OpCode == ILOpCode.Call && m.DeclaringClass.IsValueType)
                             && insn.OpCode is ILOpCode.Call or ILOpCode.Callvirt
                             && handle.Kind == HandleKind.MethodDefinition)
@@ -6709,10 +6778,7 @@ internal sealed partial class Compilation
         // message already carries InstantiationDriver's `[chain: …]`.
         catch (NotSupportedException ex) when (!IsMustEscape(ex))
         {
-            var chain = new List<string>();
-            for (var p = m; p is not null; _predTrace.TryGetValue(p, out p))
-                chain.Add(p.DeclaringClass.FullName + "." + p.Name);
-            throw new NotSupportedException($"{m.DeclaringClass.FullName}.{m.Name}: {ex.Message} [chain: {string.Join(" <- ", chain)}]");
+            throw new NotSupportedException($"{m.DeclaringClass.FullName}.{m.Name}: {ex.Message} [chain: {ReachChain(m)}]");
         }
     }
 }

@@ -522,6 +522,9 @@ internal sealed partial class Compilation
     private Compilation(IReadOnlyList<string> assemblyPaths, TranspileOptions options)
     {
         _backend = options.Backend;
+        _strippingLevel = options.StrippingLevel;
+        if (_strippingLevel is not (StrippingLevel.High or StrippingLevel.Medium))
+            throw new NotSupportedException("Unknown stripping level: " + _strippingLevel);
         StopBeforeReachability = options.IsaSurfaceDump is not null;
         // Must be set before Build(): the reachability drain computes the
         // typeof-equality branch folds, and a hot-update world must not prune (see the field).
@@ -2719,6 +2722,8 @@ internal sealed partial class Compilation
         // into thousands of characters, and the actionable fact is which member of which
         // generic — `GodotTask.GDTask.SuppressCancellationThrow`, not the nest it reached.
         string chain = _currentScan is { } m ? $"\n  [chain: {ReachChain(m)}]" : "";
+        if (_mediumOwner is not null)
+            chain += "\n  [Medium type retention: " + MediumRetentionChain(_mediumOwner) + "]";
         if (_decodingMember is { } d)
             return $"\n  Driven by the signature of {(d.IsField ? "field" : "method")} "
                  + $"{GenericDefFullName(d.Spec)}.{d.Member} — decoding a member's signature "
@@ -4579,11 +4584,11 @@ internal sealed partial class Compilation
 
     /// <summary>Whether <paramref name="m"/>'s row must survive the unreached-row trim:
     /// <c>Delegate.Method</c> answers from it (<see cref="KeepsDelegateTargetRow"/>), a
-    /// recognized lookup or enumeration lists it, or it introduces the chain of an override
-    /// whose row the image keeps.</summary>
+    /// recognized lookup or enumeration lists it, Medium retains its owner, or it
+    /// introduces the chain of an override whose row the image keeps.</summary>
     internal bool KeepsUnreachedRow(MethodInfo m)
     {
-        if (KeepsDelegateTargetRow(m) || IsReflectionListedRow(m))
+        if (KeepsDelegateTargetRow(m) || IsReflectionListedRow(m) || _mediumTypes.Contains(m.DeclaringClass))
             return true;
         if (!_gvmChainRoots.TryGetValue(m, out var overrides))
             return false;
@@ -5485,7 +5490,13 @@ internal sealed partial class Compilation
             return;
         for (int i = _delegateInvokeBoxCursor; i < count; i++)
             if (_allocatedDelegates[i].EnsureMembers().Methods.FirstOrDefault(m => m.Name == "Invoke") is { } invoke)
-                NoteReflectionInvokeBoxes(invoke);
+            {
+                // Invoker boxing prepares runtime rows; it does not invoke them.
+                bool previous = _reachingBindingOnlyBody;
+                _reachingBindingOnlyBody |= _strippingLevel == StrippingLevel.Medium;
+                try { NoteReflectionInvokeBoxes(invoke); }
+                finally { _reachingBindingOnlyBody = previous; }
+            }
         _delegateInvokeBoxCursor = count;
         DrainReachability();
     }
@@ -5910,6 +5921,8 @@ internal sealed partial class Compilation
                 progress = true;
             if (ActivateConditionalPreservationPolicies())
                 progress = true;
+            if (RetainPendingMediumTypes())
+                progress = true;
         }
     }
 
@@ -5944,8 +5957,19 @@ internal sealed partial class Compilation
     {
         var chain = new List<string>();
         var seen = new HashSet<MethodInfo>();
-        for (var p = m; p is not null && seen.Add(p); _predTrace.TryGetValue(p, out p))
+        for (var p = m; p is not null && seen.Add(p);)
+        {
             chain.Add(p.DeclaringClass.FullName + "." + p.Name);
+            if (_predTrace.TryGetValue(p, out var predecessor) && predecessor is not null)
+                p = predecessor;
+            else if (_mediumMethodOwners.TryGetValue(p, out var owner))
+            {
+                chain.Add("Medium type retention: " + MediumRetentionChain(owner));
+                p = null;
+            }
+            else
+                p = null;
+        }
         return string.Join(" <- ", chain);
     }
 

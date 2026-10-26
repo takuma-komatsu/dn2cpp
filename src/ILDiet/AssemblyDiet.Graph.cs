@@ -11,7 +11,7 @@ internal sealed partial class AssemblyDiet
     [Flags]
     private enum MethodState : byte { None = 0, Metadata = 1, Body = 2 }
     [Flags]
-    private enum Demand : ushort { None = 0, DefaultCtor = 1, Ctors = 2, Members = 4, MethodBodies = 8, AccessorBodies = 16, OpaqueData = 32, Runtime = 64, Boxed = 128, FieldRead = 256, Metadata = 512, ArrayLayout = 2048, FrameworkAttributeNamed = 4096, PreservedUse = 8192, PassiveMetadata = 32768 }
+    private enum Demand : ushort { None = 0, DefaultCtor = 1, Ctors = 2, Members = 4, MethodBodies = 8, AccessorBodies = 16, OpaqueData = 32, Runtime = 64, Boxed = 128, FieldRead = 256, Metadata = 512, ArrayLayout = 2048, FrameworkAttributeNamed = 4096, PreservedUse = 8192, TypeWide = 16384, PassiveMetadata = 32768 }
 
     private sealed class TypeNode
     {
@@ -132,6 +132,7 @@ internal sealed partial class AssemblyDiet
     private void Require(TypeDefinition type, TypeState state)
     {
         CheckMutable();
+        if ((state & TypeState.Runtime) != 0) NoteMediumType(type);
         if (type.HasGenericParameters) EnsureOriginalModels();
         if (_passiveAttributeMetadataDepth == 0 && state != TypeState.None
             && _independentMetadataTypes.Add(type) && _passiveAttributeTypes.Contains(type)
@@ -159,6 +160,7 @@ internal sealed partial class AssemblyDiet
     private void Require(MethodDefinition method, MethodState state)
     {
         CheckMutable();
+        if ((state & MethodState.Body) != 0) NoteMediumMethod(method);
         if ((state & MethodState.Body) != 0 && _cutMethods.Contains(method))
         {
             KeepCutMethod(method);
@@ -200,6 +202,7 @@ internal sealed partial class AssemblyDiet
     {
         if (reference is null) return;
         CheckMutable();
+        if ((state & TypeState.Runtime) != 0) NoteMediumType(reference);
         Spend();
         EnsureModelReference(reference);
         ObserveModelReference(reference);
@@ -272,6 +275,7 @@ internal sealed partial class AssemblyDiet
             pending |= ApplyCopiedLayouts();
             pending |= ApplySelectedAttributeSites();
             pending |= ApplyAttributeIdentities();
+            pending |= ApplyMediumTypes();
             pending |= _modelPending.Count != 0 || _attributeInventoryPending.Count != 0 || _attributeMetadataPending.Count != 0 || _copiedLayoutsPending.Count != 0
                 || _attributeIdentityPending.Count != 0;
             if (!pending) break;
@@ -280,6 +284,8 @@ internal sealed partial class AssemblyDiet
 
     private void ApplyType(TypeNode node)
     {
+        var mediumOwner = _mediumOwner;
+        if (_request.StrippingLevel == StrippingLevel.Medium) _mediumOwner = node.Def;
         bool passive = _passiveAttributeTypes.Contains(node.Def) && !_independentMetadataTypes.Contains(node.Def)
             && (node.State & TypeState.Runtime) == 0;
         var bindingOwner = _passiveBindingOwner;
@@ -287,6 +293,7 @@ internal sealed partial class AssemblyDiet
         try { ApplyTypeState(node); }
         finally
         {
+            _mediumOwner = mediumOwner;
             _passiveBindingOwner = bindingOwner;
             if (passive) _passiveAttributeMetadataDepth--;
         }
@@ -370,13 +377,27 @@ internal sealed partial class AssemblyDiet
 
     private void ApplyMethod(MethodNode node)
     {
+        bool medium = _request.StrippingLevel == StrippingLevel.Medium;
+        var mediumOwner = _mediumOwner;
+        var mediumSource = _mediumSource;
+        if (medium)
+        {
+            _mediumOwner = node.Def.DeclaringType;
+            _mediumSource = node.Def;
+        }
         bool passive = _passiveAttributeMethods.Contains(node.Def) && !_independentMetadataMethods.Contains(node.Def)
             && (node.State & MethodState.Body) == 0;
         var bindingOwner = _passiveBindingOwner;
         if (passive) { _passiveAttributeMetadataDepth++; _passiveBindingOwner = node.Def; }
         try { ApplyMethodState(node); }
+        catch (NotSupportedException error) when (medium)
+        {
+            throw new NotSupportedException(error.Message + MediumRetentionDiagnostic(node.Def.DeclaringType), error);
+        }
         finally
         {
+            _mediumOwner = mediumOwner;
+            _mediumSource = mediumSource;
             _passiveBindingOwner = bindingOwner;
             if (passive) _passiveAttributeMetadataDepth--;
         }
@@ -544,6 +565,7 @@ internal sealed partial class AssemblyDiet
                     break;
                 case FieldReference field: MarkField(field); break;
                 case TypeReference type:
+                    NoteMediumType(type);
                     if (dep.Op == Code.Box) QueueDemand(type, Demand.Boxed);
                     // A named ref struct token exposes metadata, not an instance's
                     // virtual bodies. Direct and constrained operands remain executable.

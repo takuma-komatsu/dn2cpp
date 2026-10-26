@@ -25,6 +25,44 @@ input .NET assembly (+ reference assemblies via -r)
         └─ clang++ + runtime/core (+ runtime/godot) → native binary / .dylib
 ```
 
+`TranspileOptions.StrippingLevel` selects the retention policy independently of
+`UseILDiet`. `High` preserves the existing member-level reachability. `Medium`
+adds a queue of intentionally used types in both the definition graph and the
+transpiler; decoding a type or enumerating the loaded class model never adds a
+queue entry on its own. There is no assembly classification for this policy.
+BCL and GodotSharp follow the same rules as application and external-library
+types, even when their DLL bytes are copied unchanged by ILDiet.
+
+Medium starts at executable method owners and executable/runtime type roots. It
+follows reachable body operands (including calls, construction and type tokens),
+local-variable and exception-handler types, and retained type structure:
+base types, interfaces, fields, property/event types, method return/parameter
+types, generic arguments and constraints, attribute types and their type-valued
+arguments. Each admitted type keeps its declared public and non-public fields,
+constructors, methods and property/event accessors and their reflection metadata.
+Retained bodies and member structure add further demands until the queue drains.
+A nested type's declaring owner and custom-modifier marker types keep their
+metadata identity without acquiring type-wide authority. The wrapped signature
+type still participates. Existing intrinsic and explicit-cut boundaries govern
+body analysis.
+Member-specific cuts retain callable wrappers from the same lowering used by
+address-taken calls; retention never restores their replaced IL bodies.
+
+Closed generic types carry their known arguments through this closure. Open
+definitions are traversed symbolically; they do not imply every possible type or
+method specialization. A recursively expanding closed-generic demand fails
+through the existing expansion guard rather than silently narrowing retention.
+Reflection metadata discovery alone does not promote unrelated types to the
+Medium queue. `--reflection-root` remains a metadata-only request under both
+levels; it needs an independent static or executable preservation edge to admit
+bodies. Runtime-only targets still require explicit preservation.
+
+The transpiler scans Medium-only bodies and their initializer dependencies as
+retention requests. They do not enroll static initializers in the startup pass;
+ordinary executable uses retain their normal initialization triggers. `--no-ildiet`
+bypasses rewriting only. The request contract, its digest and replayed CLI
+arguments carry the stripping level, and gate-cache contexts include the flag.
+
 ILDiet runs in a companion process over the original metadata, before
 `Compilation` exists. Its definition graph distinguishes metadata, runtime,
 member and explicit-root type states from metadata and body method states.
@@ -127,8 +165,8 @@ does not enable or suppress this pass;
 hot-update keeps its independent suppression rule. Reflection trimming and shared
 generics likewise depend on their own options, not the ILDiet result.
 
-`Compilation` admits bodies from explicit roots: the entry point, preservation
-rules, non-framework `<Module>` initializers, `[UnmanagedCallersOnly]` methods,
+With High, `Compilation` admits bodies from explicit roots: the entry point,
+preservation rules, non-framework `<Module>` initializers, `[UnmanagedCallersOnly]` methods,
 a hot-update base's export contract, and the backend's `AdditionalRootMethods`,
 `ExternallyAllocatedClasses` and attribute-read owners. From there a body enters
 only through a static edge, the used-slot and allocated-type dispatch closure,

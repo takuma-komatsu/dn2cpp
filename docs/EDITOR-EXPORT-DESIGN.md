@@ -66,6 +66,18 @@ A new export-preset enum option `dotnet/export_backend`:
 | `NativeAOT` | Inject `PublishAot=true`; the existing native-output probe in `_ExportBeginImpl` handles the result. The A/B baseline. |
 | `dn2cpp` | Transpile the published IL to a drop-in library. |
 
+Every export target offers **Stripping Level**, the enum preset option
+`dotnet/dn2cpp/stripping_level`, visible with the dn2cpp backend. **High** (value
+`0`) is the default, including for presets without the key; **Medium** (value
+`1`) retains all members of statically referenced types across every assembly.
+The exporter always passes one `--stripping-level high|medium` pair. A matching
+pair in `dotnet/dn2cpp/extra_transpile_args` is deduplicated; an incomplete,
+invalid or conflicting pair fails with a diagnostic directing the user to the
+preset. An invalid stored enum value also fails. The setting is independent of
+IL Pre-stripping: disabling the DLL rewrite leaves Medium active in C++ generation.
+See [the retention contract](ARCHITECTURE.md#1-pipeline) for the static-reference
+closure, initialization behavior and runtime-only reflection limits.
+
 Every export target offers **IL Pre-stripping**, the boolean preset option
 `dotnet/dn2cpp/il_prestripping`, default `true` even when an existing preset
 omits the key. For dn2cpp exports, it uses ILDiet to remove unused types and
@@ -90,8 +102,8 @@ disabled. An explicit `--no-metadata-compression` there disables compression
 even when **Compress Metadata** is enabled. Disabling compression overrides
 per-type `--reflection-metadata` storage choices without changing reflection
 preservation. Both CLIs enable metadata compression by default.
-Dynamic reflection needs `[Preserve]` or a linker descriptor, and dynamic engine
-wrapper lookups need preservation or `--godot-class-root`; see README's
+Reflection beyond the selected level needs `[Preserve]` or a linker descriptor,
+and dynamic engine wrapper lookups need preservation or `--godot-class-root`; see README's
 preservation rules.
 
 To leave a dependency's IL unchanged, append `--ildiet-skip-assembly` and its
