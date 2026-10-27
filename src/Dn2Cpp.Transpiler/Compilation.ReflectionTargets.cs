@@ -2243,13 +2243,12 @@ internal sealed partial class Compilation
     /// class type parameters or is not known. A clone's body is applied only at its
     /// placeholder level, where such a site admits and reports nothing; a static
     /// instantiation's exact context resolves and reports it.</summary>
-    private static bool ReflectsThroughContext(Module m, MethodDefinitionHandle h, MethodDefinition md)
+    private bool ReflectsThroughContext(Module m, MethodDefinitionHandle h, MethodDefinition md)
     {
         if (!m.ReflectionSummaries.TryGetValue(h, out var summary))
         {
-            m.ReflectionSummarizer ??= new ReflectionSummarizer(m.Reader, m.PE);
             var body = m.PE.GetMethodBody(md.RelativeVirtualAddress);
-            summary = m.ReflectionSummarizer.Summarize(h, body, ILDecoder.Decode(body.GetILBytes()!.ToImmutableArrayCompat()));
+            summary = GetReflectionSummarizer(m).Summarize(h, body, ILDecoder.Decode(body.GetILBytes()!.ToImmutableArrayCompat()));
         }
         var reader = m.Reader;
         var seen = new HashSet<int>();

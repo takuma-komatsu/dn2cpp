@@ -482,6 +482,25 @@ internal sealed partial class AssemblyDiet
         };
     }
 
+    private RuntimeTypeMakeGenericTypePlan? _makeGenericTypePlan;
+    private bool _makeGenericTypePlanInitialized;
+
+    private ReflectionSummarizer GetReflectionSummarizer(ModuleDefinition module)
+    {
+        if (!_makeGenericTypePlanInitialized)
+        {
+            _makeGenericTypePlanInitialized = true;
+            _makeGenericTypePlan = new RuntimeTypeMakeGenericTypePlan(_assemblies.Select(a =>
+                System.Reflection.Metadata.PEReaderExtensions.GetMetadataReader(a.PE)));
+        }
+        if (!_summarizers.TryGetValue(module, out var summarizer))
+        {
+            var assembly = _byModule[module];
+            _summarizers.Add(module, summarizer = new ReflectionSummarizer(System.Reflection.Metadata.PEReaderExtensions.GetMetadataReader(assembly.PE), assembly.PE, _makeGenericTypePlan));
+        }
+        return summarizer;
+    }
+
     private void PrepareExecutableBody(MethodDefinition method, BodyDeps result)
     {
         // Physical carrier facts can precede executable admission. A consumed
@@ -494,8 +513,7 @@ internal sealed partial class AssemblyDiet
                 reflection = true;
         if (reflection && method.RVA != 0 && _byModule.TryGetValue(method.Module, out var assembly))
         {
-            if (!_summarizers.TryGetValue(method.Module, out var summarizer))
-                _summarizers.Add(method.Module, summarizer = new ReflectionSummarizer(System.Reflection.Metadata.PEReaderExtensions.GetMetadataReader(assembly.PE), assembly.PE));
+            var summarizer = GetReflectionSummarizer(method.Module);
             var body = System.Reflection.Metadata.PEReaderExtensions.GetMethodBody(assembly.PE, method.RVA);
             List<Dn2Cpp.Instruction> code;
             try

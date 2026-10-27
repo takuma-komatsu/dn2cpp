@@ -434,6 +434,38 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsRuntimeTypeMakeGenericType(callee))
+        {
+            // callvirt checks before entry; a nonvirtual body checks the array first.
+            if (CallIsVirtual)
+                NullCheckReceiverUnder(1);
+            Emit($"if ({Cast(Peek(1), "Dn2CppArrayRef*")} == nullptr) dn2cpp_throw_argument_null_param(\"typeArguments\");");
+            EmitIntrinsic("System.Type", "MakeGenericType", callee.Signature);
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeHandleInstantiate(callee))
+        {
+            var arguments = Pop();
+            if (callee.Signature.ParameterTypes[0].Kind == TypeKind.SZArray)
+            {
+                string array = NewTemp("Dn2CppArrayRef*");
+                Emit($"{array} = {Cast(arguments, "Dn2CppArrayRef*")};");
+                // CopyRuntimeTypeHandles accepts null/empty arrays, but dereferences every element.
+                Emit($"if ({array} != nullptr) for (int32_t i = 0; i < {array}->length; i++) (void)dn2cpp_null_check({array}->data[i]);");
+            }
+            else
+            {
+                Emit($"(void)dn2cpp_null_check({Cast(arguments, "Dn2CppObject*")});");
+            }
+            string handle = NewTemp("const Dn2CppTypeInfo*");
+            Emit($"{handle} = {DerefReceiver("const Dn2CppTypeInfo*")};");
+            ValidateRuntimeTypeHandle(handle, callee);
+            Emit("dn2cpp_throw_platform_not_supported(\"System.RuntimeTypeHandle.Instantiate requires CoreCLR type construction and constraint validation. Use Type.MakeGenericType instead.\");");
+            Push(StackKind.Ref, "Dn2CppType*", "nullptr"); // unreachable stack shape
+            return;
+        }
+
         if (CoreIntrinsics.IsRuntimeTypeDeclaringMethod(callee))
         {
             string handle = NewTemp("const Dn2CppTypeInfo*");

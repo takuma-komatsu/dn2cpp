@@ -789,7 +789,8 @@ internal sealed partial class MethodCompiler : IEvalStack
                 if (!virtFtn && _c.TrimLdftnRedirect(target) is { } redirect)
                     target = redirect;
                 _ftnOrigins.Add(insn.Offset + 1, (target, virtFtn && target.IsVirtual
-                    && !CoreIntrinsics.IsRuntimeTypeDeclaringMethod(target), virtFtn));
+                    && !CoreIntrinsics.IsRuntimeTypeDeclaringMethod(target)
+                    && !CoreIntrinsics.IsRuntimeTypeMakeGenericType(target), virtFtn));
             }
 
         foreach (var insn in insns)
@@ -1185,6 +1186,8 @@ internal sealed partial class MethodCompiler : IEvalStack
             || CoreIntrinsics.IsRuntimeTypeHandleAccessor(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleIsSZArray(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleInstantiation(_method)
+            || CoreIntrinsics.IsRuntimeTypeHandleInstantiate(_method)
+            || CoreIntrinsics.IsRuntimeTypeMakeGenericType(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleConstructor(_method)
             || CoreIntrinsics.IsRuntimeTypeCacheHandleBridge(_method)
             || CoreIntrinsics.IsRuntimeTypeInterfaceCheck(_method)
@@ -3817,7 +3820,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                         + $"(void*)+[](Dn2CppObject* receiver, Dn2CppObject* other) -> int32_t "
                         + $"{{ return {impl.CppName}(({virtualTarget.DeclaringClass.CppStructName}*)(receiver + 1), other); }})";
                 }
-                else if (CoreIntrinsics.IsRuntimeTypeDeclaringMethod(m))
+                else if (CoreIntrinsics.IsRuntimeTypeDeclaringMethod(m) || CoreIntrinsics.IsRuntimeTypeMakeGenericType(m))
                 {
                     // RuntimeType is sealed; its native header has no CoreCLR virtual slots.
                     bindsLowering = true;

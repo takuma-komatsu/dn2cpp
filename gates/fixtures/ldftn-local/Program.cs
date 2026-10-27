@@ -2,6 +2,7 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (RuntimeTypeMakeGenericFixture.Run(args)) return;
 if (FormalDeclaringMethodFixture.Run(args)) return;
 if (RuntimeTypeInstantiationFixture.Run(args)) return;
 if (RuntimeTypeIsSzArrayFixture.Run(args)) return;

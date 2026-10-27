@@ -626,6 +626,8 @@ internal static partial class CoreIntrinsics
             || IsRuntimeTypeHandleAccessor(mi)
             || IsRuntimeTypeHandleIsSZArray(mi)
             || IsRuntimeTypeHandleInstantiation(mi)
+            || IsRuntimeTypeHandleInstantiate(mi)
+            || IsRuntimeTypeMakeGenericType(mi)
             || IsRuntimeTypeHandleConstructor(mi)
             || IsRuntimeTypeCacheHandleBridge(mi)
             || IsRuntimeTypeInterfaceCheck(mi)
@@ -1112,6 +1114,49 @@ internal static partial class CoreIntrinsics
             && signature.ReturnType is { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Class, Class: { } element } }
             && element.Module == method.Module
             && element.FullName == (method.Name == "GetInstantiationInternal" ? "System.RuntimeType" : "System.Type");
+    }
+
+    // The public override uses native AOT reflection, not CoreCLR's type loader.
+    internal static bool IsRuntimeTypeMakeGenericType(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || !method.DeclaringClass.IsSealed
+            || method.Name != "MakeGenericType"
+            || method.Attributes != (System.Reflection.MethodAttributes.Public | System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Class, Class: { FullName: "System.Type" } result }
+            && result.Module == method.Module
+            && signature.ParameterTypes is [{ Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Class, Class: { FullName: "System.Type" } element } }]
+            && element.Module == method.Module;
+    }
+
+    // These managed siblings enter CoreCLR's instantiating loader after handle validation.
+    internal static bool IsRuntimeTypeHandleInstantiate(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "Instantiate"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        if (signature.Header.RawValue != 0x20 || signature.GenericParameterCount != 0
+            || signature.ReturnType is not { Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } result }
+            || result.Module != method.Module || signature.ParameterTypes.Length != 1)
+            return false;
+        return signature.ParameterTypes[0] is { Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } scalar }
+                && scalar.Module == method.Module
+            || signature.ParameterTypes[0] is { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Class, Class: { FullName: "System.Type" } element } }
+                && element.Module == method.Module;
     }
 
     // RuntimeType's public owner query uses native formal metadata, not its CoreCLR fields.

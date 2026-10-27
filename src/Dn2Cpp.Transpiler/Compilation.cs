@@ -1731,93 +1731,14 @@ internal sealed partial class Compilation
         return null;
     }
 
-    private Dictionary<(string Assembly, string Namespace, string Name), (Module Module, AssemblyReferenceHandle Scope)>? _typeForwarders;
-    private Dictionary<string, string>? _loadedAssemblyNames;
+    private RawAssemblyTypeResolver<Module>? _assemblyTypeResolver;
 
     private TypeDesc? ResolveAssemblyType(string assembly, string ns, string name,
         List<(Module, TypeDefinitionHandle)> candidates, Module scopeModule, AssemblyReferenceHandle scope)
     {
-        if (_typeForwarders is null)
-        {
-            _typeForwarders = new();
-            _loadedAssemblyNames = new(StringComparer.OrdinalIgnoreCase);
-            foreach (var module in Modules)
-            {
-                _loadedAssemblyNames.TryAdd(module.AssemblyName, module.AssemblyName);
-                foreach (var handle in module.Reader.ExportedTypes)
-                {
-                    var type = module.Reader.GetExportedType(handle);
-                    if (type.Implementation.Kind != HandleKind.AssemblyReference)
-                        continue;
-                    _typeForwarders.TryAdd((module.AssemblyName, module.Reader.GetString(type.Namespace),
-                        module.Reader.GetString(type.Name)), (module, (AssemblyReferenceHandle)type.Implementation));
-                }
-            }
-        }
-        for (int hops = 0; hops <= Modules.Count; hops++)
-        {
-            if (_loadedAssemblyNames!.TryGetValue(assembly, out var canonical))
-                assembly = canonical;
-            foreach (var (module, handle) in candidates)
-                if (module.AssemblyName.Equals(assembly, StringComparison.OrdinalIgnoreCase)
-                    && module.Reader.GetTypeDefinition(handle).GetDeclaringType().IsNil)
-                    return MakeTypeDescFor(module, handle);
-            if (_typeForwarders.TryGetValue((assembly, ns, name), out var forwarded))
-            {
-                scopeModule = forwarded.Module;
-                scope = forwarded.Scope;
-                assembly = scopeModule.Reader.GetString(scopeModule.Reader.GetAssemblyReference(scope).Name);
-                continue;
-            }
-            // Signed facades can be omitted when their implementation is loaded.
-            if (!_loadedAssemblyNames.ContainsKey(assembly)
-                && IsSignedStandardFacadeScope(scopeModule, scope, assembly))
-            {
-                string target = IsPrivateUriFacadeType(scopeModule, scope, assembly, ns, name)
-                    ? "System.Private.Uri" : "System.Private.CoreLib";
-                foreach (var (module, handle) in candidates)
-                    if (module.AssemblyName == target
-                        && module.Reader.GetTypeDefinition(handle).GetDeclaringType().IsNil)
-                        return MakeTypeDescFor(module, handle);
-            }
-            return null;
-        }
-        return null;
-    }
-
-    private static bool IsPrivateUriFacadeType(Module module, AssemblyReferenceHandle scope,
-        string assembly, string ns, string name)
-    {
-        bool runtime = assembly.Equals("System.Runtime", StringComparison.OrdinalIgnoreCase);
-        if (ns != "System" || (!runtime
-            && !assembly.Equals("netstandard", StringComparison.OrdinalIgnoreCase)))
-            return false;
-        var reference = module.Reader.GetAssemblyReference(scope);
-        var token = module.Reader.GetBlobReader(reference.PublicKeyOrToken);
-        if (token.Length != 8 || token.ReadUInt64() != (runtime
-            ? 0x3a0ad5117f5f3fb0UL : 0x51dd2dcdff137bccUL))
-            return false;
-        // These public forwarding rows share Private.Uri; nested rows resolve through their owner.
-        return name is "FileStyleUriParser" or "FtpStyleUriParser" or "GenericUriParser"
-            or "GenericUriParserOptions" or "GopherStyleUriParser" or "HttpStyleUriParser"
-            or "LdapStyleUriParser" or "NetPipeStyleUriParser" or "NetTcpStyleUriParser"
-            or "NewsStyleUriParser" or "Uri" or "UriBuilder" or "UriComponents"
-            or "UriFormat" or "UriFormatException" or "UriHostNameType" or "UriKind"
-            or "UriParser" or "UriPartial" || (runtime && name == "UriCreationOptions");
-    }
-
-    private static bool IsSignedStandardFacadeScope(Module module, AssemblyReferenceHandle scope, string assembly)
-    {
-        if (!assembly.StartsWith("System.", StringComparison.OrdinalIgnoreCase)
-            && !assembly.Equals("netstandard", StringComparison.OrdinalIgnoreCase)
-            && !assembly.Equals("mscorlib", StringComparison.OrdinalIgnoreCase))
-            return false;
-        var reference = module.Reader.GetAssemblyReference(scope);
-        var token = module.Reader.GetBlobReader(reference.PublicKeyOrToken);
-        if (token.Length != 8)
-            return false;
-        return token.ReadUInt64() is 0x3a0ad5117f5f3fb0UL or 0x51dd2dcdff137bccUL
-            or 0x8e79a7bed785ec7cUL or 0x89e03419565c7ab7UL;
+        _assemblyTypeResolver ??= new RawAssemblyTypeResolver<Module>(Modules.Select(m => (m, m.AssemblyName, m.Reader)));
+        return _assemblyTypeResolver.Resolve(assembly, ns, name, candidates, scopeModule.Reader, scope) is { } target
+            ? MakeTypeDescFor(target.Module, target.Handle) : null;
     }
 
     internal TypeDesc ExternalTypeRef(Module module, TypeReferenceHandle handle)

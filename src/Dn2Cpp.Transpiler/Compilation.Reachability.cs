@@ -131,6 +131,8 @@ internal sealed partial class Compilation
         if (CoreIntrinsics.IsRuntimeTypeHandleAccessor(m)
             || CoreIntrinsics.IsRuntimeTypeHandleIsSZArray(m)
             || CoreIntrinsics.IsRuntimeTypeHandleInstantiation(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleInstantiate(m)
+            || CoreIntrinsics.IsRuntimeTypeMakeGenericType(m)
             || CoreIntrinsics.IsRuntimeTypeHandleConstructor(m)
             || CoreIntrinsics.IsRuntimeTypeCacheHandleBridge(m)
             || CoreIntrinsics.IsRuntimeTypeInterfaceCheck(m)
@@ -5880,6 +5882,19 @@ internal sealed partial class Compilation
     }
 
     private long _reflectionSummaryMs;
+    private RuntimeTypeMakeGenericTypePlan? _makeGenericTypePlan;
+    private bool _makeGenericTypePlanInitialized;
+
+    private ReflectionSummarizer GetReflectionSummarizer(Module module)
+    {
+        if (!_makeGenericTypePlanInitialized)
+        {
+            _makeGenericTypePlanInitialized = true;
+            _makeGenericTypePlan = new RuntimeTypeMakeGenericTypePlan(Modules.Select(m => m.Reader));
+        }
+        return module.ReflectionSummarizer ??= new ReflectionSummarizer(module.Reader, module.PE, _makeGenericTypePlan);
+    }
+
 
     /// <summary>Summarizes the reflection values of a scanned definition once. A summary
     /// reads raw metadata only, so computing it decodes nothing in the model and cannot
@@ -5890,8 +5905,7 @@ internal sealed partial class Compilation
         if (module.ReflectionSummaries.ContainsKey(m.Handle))
             return;
         long start = Environment.TickCount64;
-        module.ReflectionSummarizer ??= new ReflectionSummarizer(module.Reader, module.PE);
-        module.ReflectionSummaries.Add(m.Handle, module.ReflectionSummarizer.Summarize(m.Handle, body, insns));
+        module.ReflectionSummaries.Add(m.Handle, GetReflectionSummarizer(module).Summarize(m.Handle, body, insns));
         _reflectionSummaryMs += Environment.TickCount64 - start;
     }
 

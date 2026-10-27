@@ -9,6 +9,16 @@ internal static class Program
 {
     private static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "make-generic-public")
+        {
+            RuntimeTypeMakeGenericSubset.Program.RunPublicArtifact(args);
+            return;
+        }
+        if (args.Length > 0 && args[0] == "make-generic-contract")
+        {
+            RuntimeTypeMakeGenericSubset.Program.Run();
+            return;
+        }
         if (args.Length > 0 && args[0] == "type-instantiation-artifact")
         {
             RuntimeTypeInstantiationSubset.Program.RunArtifact(Array.Empty<string>());
@@ -293,5 +303,7 @@ internal static class Program
         RuntimeTypeIsSzArraySubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-type-instantiation") return;
         RuntimeTypeInstantiationSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-make-generic") return;
+        RuntimeTypeMakeGenericSubset.Program.Run();
     }
 }

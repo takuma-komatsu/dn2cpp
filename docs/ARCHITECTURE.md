@@ -561,6 +561,21 @@ fresh arrays carrying the declared RuntimeType[] or Type[] identity; public gett
 normalization stays in its managed body. Raw handles are not rooted through array
 or pointer elements, and the raw QCall keeps native-import binding authority.
 
+The exact public `RuntimeType.MakeGenericType(Type[])` override shares the existing
+native `Type.MakeGenericType` AOT, open-type and template policy. Its retained body,
+direct calls and address bindings never enter CoreCLR's instantiating loader.
+The reflection planner recognizes that exact supplied CoreLib declaration and
+signature through the same assembly-identity resolver as normal type references,
+including supplied forwarders and the signed-facade fallback. Known call arguments
+retain the same closed types as the public Type route without an independent
+closed-type root.
+A virtual call checks its receiver before entry; a nonvirtual body validates the
+argument array first. The two managed `RuntimeTypeHandle.Instantiate` wrappers
+instead preserve their pre-QCall null-element and default-handle checks, then
+refuse CoreCLR-owned type construction and constraint validation. Their raw QCall
+keeps native-import binding authority. This does not extend generic constraint
+validation or the public API's supported runtime-instantiation subset.
+
 The exact public `RuntimeType.DeclaringMethod` getter uses native formal-owner
 metadata and preserves its non-parameter validation text. RuntimeType is sealed;
 its address and virtual-address bindings use that same wrapper, never a CoreCLR
