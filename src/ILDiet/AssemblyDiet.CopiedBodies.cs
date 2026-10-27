@@ -54,6 +54,36 @@ internal sealed partial class AssemblyDiet
             nativeIntTail);
     }
 
+    private static bool IsCopiedCoreClrTypeMaterialization(MethodDefinition method, string owner)
+    {
+        if (method.Module.Assembly?.Name.Name != "System.Private.CoreLib"
+            || owner != "System.RuntimeTypeHandle"
+            || method.Name is not ("GetRuntimeType" or "GetRuntimeTypeFromHandle"
+                or "GetRuntimeTypeFromHandleMaybeNull" or "GetRuntimeTypeFromHandleSlow")
+            || !method.IsStatic || method.HasThis || method.HasGenericParameters
+            || !method.IsIL || !method.IsManaged || method.IsInternalCall)
+            return false;
+        static string? CoreType(TypeReference type)
+        {
+            if (type.MetadataType == MetadataType.Void) return "System.Void";
+            if (type.MetadataType == MetadataType.IntPtr) return "System.IntPtr";
+            var element = type is PointerType pointer ? pointer.ElementType : type;
+            bool core = element.Scope is AssemblyNameReference reference
+                ? reference.Name == "System.Private.CoreLib"
+                : element.Scope is ModuleDefinition module && module.Assembly?.Name.Name == "System.Private.CoreLib";
+            return core ? type.FullName : null;
+        }
+        if (method.IsPInvokeImpl && method.PInvokeInfo is not { Module.Name: "QCall",
+            EntryPoint: "RuntimeTypeHandle_GetRuntimeTypeFromHandleSlow" })
+            return false;
+        return CoreIntrinsicTypeMaps.IsCoreClrTypeMaterializationMethod(
+            method.Module.Assembly?.Name.Name, owner, method.Name, method.IsAssembly, method.IsPrivate,
+            method.IsStatic && !method.HasThis, method.GenericParameters.Count,
+            method.HasBody && !method.IsInternalCall, method.IsPInvokeImpl, method.Parameters.Count,
+            CoreType(method.ReturnType), method.Parameters.Count > 0 ? CoreType(method.Parameters[0].ParameterType) : null,
+            method.Parameters.Count > 1 ? CoreType(method.Parameters[1].ParameterType) : null);
+    }
+
     private bool TraverseCopiedBody(MethodDefinition method)
     {
         if (_copiedBodyTraversal.TryGetValue(method, out bool known)) return known;
@@ -65,6 +95,8 @@ internal sealed partial class AssemblyDiet
             method.GenericParameters.Count, method.ReturnType.MetadataType == MetadataType.Void,
             method.Parameters.Count, method.Parameters.Count == 2 ? method.Parameters[0].ParameterType.FullName : null,
             method.Parameters.Count == 2 && method.Parameters[1].ParameterType.MetadataType == MetadataType.String))
+            traverse = false;
+        else if (IsCopiedCoreClrTypeMaterialization(method, owner))
             traverse = false;
         else if (IsCopiedCoreClrDelegateVmConstructor(method, owner))
             traverse = false;

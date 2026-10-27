@@ -80,6 +80,25 @@ internal static class CoreIntrinsicTypeMaps
         && returnsVoid && CoreClrDelegateVmConstructorArity(owner, name) is var arity && arity != 0
         && parameterCount == arity && objectTarget && nativeIntTail;
 
+    // Raw CoreCLR type materialization is distinct from the native TypeInfo handle API.
+    public static bool IsCoreClrTypeMaterializationMethod(string? assembly, string? owner, string name,
+        bool isAssembly, bool isPrivate, bool isStatic, int genericArity, bool managedBody,
+        bool pinvoke, int parameterCount, string? result, string? first, string? second) =>
+        assembly == "System.Private.CoreLib" && owner == "System.RuntimeTypeHandle"
+        && isStatic && genericArity == 0 && (name switch
+        {
+            "GetRuntimeType" => isAssembly && managedBody && !pinvoke && parameterCount == 1
+                && result == "System.RuntimeType" && first == "System.Runtime.CompilerServices.MethodTable*",
+            "GetRuntimeTypeFromHandle" or "GetRuntimeTypeFromHandleMaybeNull" =>
+                isAssembly && managedBody && !pinvoke && parameterCount == 1
+                && result == "System.RuntimeType" && first == "System.IntPtr",
+            "GetRuntimeTypeFromHandleSlow" => isPrivate && first == "System.IntPtr"
+                && (managedBody && !pinvoke && parameterCount == 1 && result == "System.RuntimeType"
+                    || !managedBody && pinvoke && parameterCount == 2 && result == "System.Void"
+                        && second == "System.Runtime.CompilerServices.ObjectHandleOnStack"),
+            _ => false,
+        });
+
     public static bool IsMulticastAccessorMember(string? owner, string name) =>
         owner == "System.MulticastDelegate"
         && name is "GetTarget" or "GetMethodImpl" or "GetInvocationList" or "get_HasSingleTarget" or "TryGetAt";

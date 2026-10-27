@@ -388,6 +388,18 @@ internal sealed partial class MethodCompiler
         return false;
     }
 
+    private void EmitCoreClrTypeMaterialization(MethodInfo callee)
+    {
+        for (int i = callee.Signature.ParameterTypes.Length - 1; i > 0; i--) Pop();
+        var handle = Pop();
+        if (callee.Name == "GetRuntimeTypeFromHandleMaybeNull")
+            Emit($"if ({handle.Expr} != 0)");
+        Emit($"dn2cpp_throw_platform_not_supported(\"System.RuntimeTypeHandle.{callee.Name} requires CoreCLR type handles. Use Type.TypeHandle and Type.GetTypeFromHandle instead.\");");
+        var result = callee.Signature.ReturnType;
+        if (!result.IsVoid)
+            Push(CppTypes.KindOf(result), CppTypes.Of(result), "nullptr");
+    }
+
     /// <summary>Lowers a call to a member <see cref="CoreIntrinsics.LoweredRuntimePrimitive"/>
     /// names — the intra-CoreLib runtime primitives the reachability cut deletes from the tree.
     ///
@@ -398,6 +410,12 @@ internal sealed partial class MethodCompiler
     /// runtime plumbing, so there is nothing worth falling through to.</para></summary>
     private void EmitRuntimePrimitive(MethodInfo callee)
     {
+        if (CoreIntrinsics.IsCoreClrTypeMaterialization(callee))
+        {
+            EmitCoreClrTypeMaterialization(callee);
+            return;
+        }
+
         if (CoreIntrinsics.IsCoreClrMethodDescQuery(callee))
         {
             for (int i = 0; i < callee.Signature.ParameterTypes.Length; i++) Pop();

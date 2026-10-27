@@ -1179,8 +1179,15 @@ internal sealed partial class MethodCompiler : IEvalStack
     internal string? CompileCoreIntrinsicWrapper()
     {
         // Intrinsic-owner address targets still replay the exact declaration guard.
-        if (CoreIntrinsics.IsCoreClrIntroducedMethodEnumeration(_method))
+        if (CoreIntrinsics.IsCoreClrIntroducedMethodEnumeration(_method)
+            || CoreIntrinsics.IsCoreClrTypeMaterialization(_method) && _method.Rva == 0)
             return CompileInterceptWrapper();
+        if (CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(_method))
+            return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
+            {
+                EmitCoreClrTypeMaterialization(_method);
+                return true;
+            }, "CoreCLR type materialization boundary");
         if (CoreIntrinsics.BrDelegateNamedConstructor.Matches(_method))
             return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
             {

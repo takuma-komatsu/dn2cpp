@@ -160,5 +160,7 @@ internal static class Program
         RuntimeMethodEnumerationSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-runtime-method-handle") return;
         RuntimeMethodHandleSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-runtime-type-materialization") return;
+        RuntimeTypeMaterializationSubset.Program.Run();
     }
 }

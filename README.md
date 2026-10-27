@@ -856,6 +856,10 @@ expression trees at runtime.
   constructor attributes, generic queries and invocation use `MethodInfo` and
   `ConstructorInfo`; managed default-handle value, equality and validation paths
   retain their CoreLib behavior.
+  Non-public `RuntimeTypeHandle` raw-VM type materialization likewise throws
+  before reading CoreCLR MethodTable, TypeDesc or output-handle state. Its
+  nullable wrapper still returns null for a zero handle. Native `Type.TypeHandle`
+  and `Type.GetTypeFromHandle` use type-info identities, not CoreCLR pointers.
 - **P/Invoke** — `DllImport` end to end: `string[]` write-back, delegates
   as native function pointers, non-blittable structs, blittable
   `[MarshalAs(ByValArray)]`. User imports bind lazily through

@@ -334,6 +334,7 @@ internal enum InterceptEmitArm
     MulticastOperationBody,
     MulticastAccessorBody,
     CoreClrDelegateVmConstructorBody,
+    CoreClrTypeMaterializationBody,
     DelegateNamedConstructorBody,
     DelegateCloneBinding,
     ArrayCloneBinding,
@@ -618,7 +619,50 @@ internal static partial class CoreIntrinsics
                 && IsGcCollectZeroSignature(mi.Signature)
             || IsCoreClrFinalizerWorker(mi)
             || IsCoreClrIntroducedMethodEnumeration(mi)
-            || IsCoreClrMethodDescQuery(mi));
+            || IsCoreClrMethodDescQuery(mi)
+            || IsCoreClrTypeMaterialization(mi) && mi.Rva == 0);
+
+    internal static bool IsCoreClrTypeMaterialization(MethodInfo method)
+    {
+        if (method.DeclaringClass.FullName != "System.RuntimeTypeHandle"
+            || method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || method.Name is not ("GetRuntimeType" or "GetRuntimeTypeFromHandle"
+                or "GetRuntimeTypeFromHandleMaybeNull" or "GetRuntimeTypeFromHandleSlow"))
+            return false;
+        if ((method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+            | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        var access = method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask;
+        bool pinvoke = (method.Attributes & System.Reflection.MethodAttributes.PinvokeImpl) != 0;
+        if (pinvoke && method.PInvoke is not { ModuleName: "QCall",
+            RawEntryPoint: "RuntimeTypeHandle_GetRuntimeTypeFromHandleSlow" })
+            return false;
+        return CoreIntrinsicTypeMaps.IsCoreClrTypeMaterializationMethod(
+            method.DeclaringClass.Module.AssemblyName, method.DeclaringClass.FullName, method.Name,
+            access == System.Reflection.MethodAttributes.Assembly, method.IsPrivate,
+            method.IsStatic && !signature.Header.IsInstance, signature.GenericParameterCount,
+            method.Rva != 0 && (method.ImplAttributes & System.Reflection.MethodImplAttributes.InternalCall) == 0,
+            pinvoke, signature.ParameterTypes.Length, CoreClrTypeMaterializationType(signature.ReturnType),
+            signature.ParameterTypes.Length > 0 ? CoreClrTypeMaterializationType(signature.ParameterTypes[0]) : null,
+            signature.ParameterTypes.Length > 1 ? CoreClrTypeMaterializationType(signature.ParameterTypes[1]) : null);
+    }
+
+    private static string? CoreClrTypeMaterializationType(TypeDesc type)
+    {
+        if (type.IsVoid) return "System.Void";
+        if (type is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.IntPtr }) return "System.IntPtr";
+        if (type is { Kind: TypeKind.Pointer, Element: { } element }
+            && IsCoreLibMethodDescType(element, "System.Runtime.CompilerServices.MethodTable"))
+            return "System.Runtime.CompilerServices.MethodTable*";
+        return type is { Kind: TypeKind.Class, Class.Module.AssemblyName: "System.Private.CoreLib" }
+            ? type.Class.FullName : null;
+    }
+
+    public static readonly MethodDefIntercept BrCoreClrTypeMaterialization = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.CoreClrTypeMaterializationBody,
+        typeGate: "System.RuntimeTypeHandle",
+        extra: static m => m.Rva != 0 && IsCoreClrTypeMaterialization(m));
 
     // CoreCLR MethodDesc queries do not consume dn2cpp's reflection member rows.
     internal static bool IsCoreClrMethodDescQuery(MethodInfo method)
@@ -2102,6 +2146,11 @@ internal static partial class CoreIntrinsics
             BrDelegateNamedConstructor.TypeGate, BrDelegateNamedConstructor.NameGate);
         if (BrDelegateNamedConstructor.CutKind != InterceptCutKind.BodyReplace)
             throw new InvalidOperationException("Named delegate constructors must remain callable");
+
+        CheckRow(nameof(BrCoreClrTypeMaterialization), 0, BrCoreClrTypeMaterialization.EmitArm,
+            BrCoreClrTypeMaterialization.TypeGate, BrCoreClrTypeMaterialization.NameGate);
+        if (BrCoreClrTypeMaterialization.CutKind != InterceptCutKind.BodyReplace)
+            throw new InvalidOperationException("CoreCLR type materialization must remain callable");
 
         CheckRow(nameof(BrCoreClrDelegateVmConstructor), 0, BrCoreClrDelegateVmConstructor.EmitArm,
             BrCoreClrDelegateVmConstructor.TypeGate, BrCoreClrDelegateVmConstructor.NameGate);

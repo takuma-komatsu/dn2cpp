@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CoreCLR method-descriptor boundaries, public reflection, and companion process
+# CoreCLR method/type-handle boundaries, public reflection, and companion process
 # argument/stream/exit preservation and the console-self-host
 # runtime primitives whose behaviour can be exercised exactly.
 #
@@ -72,7 +72,7 @@
 #     driver, so no wasm axis reaches the section.
 # Driven by the real System.Private.CoreLib (passed with -r) -> cross-assembly resolve
 # + tree-shake -> native binary -> run, asserting the output diffs exact vs real .NET.
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/RuntimeMethodHandleFixture.cs gates/fixtures/ldftn-local/RuntimeMethodEnumerationFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/GcFinalizerWorkerFixture.cs gates/fixtures/ldftn-local/DelegateVmConstructorFixture.cs gates/fixtures/ldftn-local/DelegateNamedConstructorFixture.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/RuntimeTypeMaterializationFixture.cs gates/fixtures/ldftn-local/RuntimeMethodHandleFixture.cs gates/fixtures/ldftn-local/RuntimeMethodEnumerationFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/GcFinalizerWorkerFixture.cs gates/fixtures/ldftn-local/DelegateVmConstructorFixture.cs gates/fixtures/ldftn-local/DelegateNamedConstructorFixture.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
 source "$(dirname "$0")/_common.sh"
 
 method_handle_members="GetAttributes GetImplAttributes GetMethodTable GetSlot GetMethodDef GetUtf8NameInternal HasMethodInstantiation GetStubIfNeededInternal GetMethodFromCanonical IsGenericMethodDefinition IsTypicalMethodDefinition GetGenericParameterCount IsDynamicMethod GetResolver IsConstructor GetLoaderAllocatorInternal"
@@ -82,6 +82,14 @@ method_handle_shapes() {
         gate_output byte-witness "$output" "method-handle-shape-$member:True" --count 1 --policy crlf || return 1
     done
     gate_output byte-witness "$output" 'Runtime method handle metadata end' --count 1 --policy crlf
+}
+
+type_materialize_asserts() {
+    local output="$1" label
+    for label in public-roundtrip public-array-roundtrip public-default public-value public-object public-base public-invoke shape-method-table shape-method-table-parameter shape-handle shape-slow shape-qcall shape-maybe-null maybe-null-zero; do
+        gate_output byte-witness "$output" "type-materialize-$label:True" --count 1 --policy crlf || return 1
+    done
+    gate_output byte-witness "$output" 'Runtime type materialization contract end' --count 1 --policy crlf
 }
 
 named_ctor_asserts() {
@@ -248,6 +256,10 @@ gate_extra_asserts() {
     gate_output byte-witness "$native" 'method-handle-default-validation:ArgumentNullException' --count 1 --policy crlf || return 1
     method_handle_shapes "$native" || return 1
     gate_output byte-witness "$native" 'Runtime method handle contract end' --count 1 --policy crlf || return 1
+
+    gate_capture_ok "$out/assert-before-type-materialize" run_bounded dotnet "$_CG_APP" before-runtime-type-materialization || return 1
+    gate_output prefix "$native" "$out/assert-before-type-materialize.stdout" --before '== Runtime type materialization contract ==' --policy crlf || return 1
+    type_materialize_asserts "$native" || return 1
 
 }
 
@@ -432,3 +444,38 @@ for member in $method_handle_members; do
 done
 gate_output byte-witness "$handle_out/native.stdout" 'method-handle-managed-overload:NullReferenceException:Object reference not set to an instance of an object.' --count 1 --policy crlf
 gate_output byte-witness "$handle_out/native.stdout" 'Runtime method handle boundary end' --count 1 --policy crlf
+
+# Raw VM pointers execute only in the native artifact, never on the CLR oracle.
+type_input="artifacts/runtime-type-materialization-input-$CONFIG"
+mkdir -p "$type_input"
+cp samples/dotnet/SelfHostPrimSubset/bin/$CONFIG/$TFM/* "$type_input/"
+dotnet "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
+    --runtime-type-materialization "$type_input/SelfHostPrimSubset.dll" "$_CG_CORELIB"
+type_out="artifacts/runtime-type-materialization-$CONFIG"
+invoke_cli "$type_input/SelfHostPrimSubset.dll" --auto-ref -o "$type_out"
+compile_console "$type_out" RuntimeTypeMaterialization
+gate_capture_ok "$type_out/native" run_bounded "./$type_out/RuntimeTypeMaterialization$EXE_EXT"
+type_materialize_asserts "$type_out/native.stdout"
+for shape in method-table handle slow qcall maybe-null; do
+    case "$shape" in
+        method-table) member=GetRuntimeType;;
+        handle) member=GetRuntimeTypeFromHandle;;
+        slow|qcall) member=GetRuntimeTypeFromHandleSlow;;
+        maybe-null) member=GetRuntimeTypeFromHandleMaybeNull;;
+    esac
+    for route in direct pointer; do
+        for value in 0 1; do
+            if [ "$shape" = maybe-null ] && [ "$value" = 0 ]; then
+                gate_output byte-witness "$type_out/native.stdout" "type-materialize-$shape-$route-$value:True" --count 1 --policy crlf
+            else
+                gate_output byte-witness "$type_out/native.stdout" "type-materialize-$shape-$route-$value:PlatformNotSupportedException:System.RuntimeTypeHandle.$member requires CoreCLR type handles. Use Type.TypeHandle and Type.GetTypeFromHandle instead." --count 1 --policy crlf
+            fi
+        done
+    done
+    if [ "$shape" = qcall ]; then
+        gate_output byte-witness "$type_out/native.stdout" 'type-materialize-qcall-reflection:NotSupportedException:Cannot create boxed ByRef-like values.' --count 1 --policy crlf
+    elif [ "$shape" != method-table ]; then
+        gate_output byte-witness "$type_out/native.stdout" "type-materialize-$shape-reflection:PlatformNotSupportedException:System.RuntimeTypeHandle.$member requires CoreCLR type handles. Use Type.TypeHandle and Type.GetTypeFromHandle instead." --count 1 --policy crlf
+    fi
+done
+gate_output byte-witness "$type_out/native.stdout" 'Runtime type materialization boundary end' --count 1 --policy crlf

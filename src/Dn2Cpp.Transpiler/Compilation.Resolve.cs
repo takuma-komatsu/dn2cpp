@@ -92,7 +92,8 @@ internal sealed partial class Compilation
                 // receiver (which folds to the dispatching runtime helper) finds it. Over-
                 // reaching on the non-virtual form is harmless.
                 ReachExceptionGetMessage(mi);
-                if (CoreIntrinsics.BrDelegateNamedConstructor.Matches(mi))
+                if (CoreIntrinsics.BrDelegateNamedConstructor.Matches(mi)
+                    || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(mi))
                     return mi;
                 // Intrinsic-mapped types are emitted inline, not transpiled, so
                 // an intra-assembly call into one (e.g. corelib's Span<T> ->
@@ -1368,12 +1369,17 @@ internal sealed partial class Compilation
         }
         if (full == "System.RuntimeTypeHandle"
             && (reader.StringComparer.Equals(mr.Name, "GetFirstIntroducedMethod")
-                || reader.StringComparer.Equals(mr.Name, "GetNextIntroducedMethod")))
+                || reader.StringComparer.Equals(mr.Name, "GetNextIntroducedMethod")
+                || reader.StringComparer.Equals(mr.Name, "GetRuntimeType")
+                || reader.StringComparer.Equals(mr.Name, "GetRuntimeTypeFromHandle")
+                || reader.StringComparer.Equals(mr.Name, "GetRuntimeTypeFromHandleMaybeNull")
+                || reader.StringComparer.Equals(mr.Name, "GetRuntimeTypeFromHandleSlow")))
         {
             try
             {
                 var enumeration = ResolveMemberRefMethod(module, handle, callerCtx);
-                if (CoreIntrinsics.IsCoreClrIntroducedMethodEnumeration(enumeration))
+                if (CoreIntrinsics.IsCoreClrIntroducedMethodEnumeration(enumeration)
+                    || CoreIntrinsics.IsCoreClrTypeMaterialization(enumeration))
                     return enumeration;
             }
             catch (NotSupportedException e) when (!IsMustEscape(e)) { }
