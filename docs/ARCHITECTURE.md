@@ -571,6 +571,14 @@ their distinct managed validation. Retained calls, function pointers, delegates
 and reflection share the same lowering; the raw private InternalCall is not an
 alias for the managed wrapper.
 
+The exact managed `RuntimeTypeHandle.ContainsGenericVariables()` wrapper validates
+its handle and shares the native `ContainsGenericParameters` predicate. Formal
+parameters and open definitions are terminal positives; constructed arguments and
+element types recurse without inspecting constraints or declaring contexts. The
+public getter keeps its managed body. Retained calls, function pointers, delegates
+and reflection share this wrapper; the static InternalCall remains a distinct VM
+boundary, and open function-pointer construction keeps its existing refusal.
+
 The exact public `RuntimeType.MakeGenericType(Type[])` override shares the existing
 native `Type.MakeGenericType` AOT, open-type and template policy. Its retained body,
 direct calls and address bindings never enter CoreCLR's instantiating loader.

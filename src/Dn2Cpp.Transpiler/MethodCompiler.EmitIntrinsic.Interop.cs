@@ -458,6 +458,15 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariables(callee))
+        {
+            string handle = NewTemp("const Dn2CppTypeInfo*");
+            Emit($"{handle} = {DerefReceiver("const Dn2CppTypeInfo*")};");
+            ValidateRuntimeTypeHandle(handle, callee);
+            Push(StackKind.I4, "int32_t", $"dn2cpp_type_contains_generic_parameters({handle})");
+            return;
+        }
+
         if (CoreIntrinsics.IsRuntimeTypeMakeGenericType(callee))
         {
             // callvirt checks before entry; a nonvirtual body checks the array first.

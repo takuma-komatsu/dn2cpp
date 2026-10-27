@@ -627,6 +627,7 @@ internal static partial class CoreIntrinsics
             || IsRuntimeTypeHandleIsSZArray(mi)
             || IsRuntimeTypeHandleInstantiation(mi)
             || IsRuntimeTypeHandleGenericVariableIndex(mi)
+            || IsRuntimeTypeHandleContainsGenericVariables(mi)
             || IsRuntimeTypeGenericParameterPosition(mi)
             || IsRuntimeTypeHandleInstantiate(mi)
             || IsRuntimeTypeMakeGenericType(mi)
@@ -1113,6 +1114,23 @@ internal static partial class CoreIntrinsics
         return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
             && signature.ParameterTypes.Length == 0
             && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 };
+    }
+
+    // Generic-variable queries use native type structure after managed handle validation.
+    internal static bool IsRuntimeTypeHandleContainsGenericVariables(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "ContainsGenericVariables"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean };
     }
 
     internal static bool IsRuntimeTypeGenericParameterPosition(MethodInfo method)

@@ -9,6 +9,16 @@ internal static class Program
 {
     private static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "contains-generic-handle")
+        {
+            ContainsGenericVariablesSubset.Program.RunHandleArtifact(args);
+            return;
+        }
+        if (args.Length > 0 && args[0] == "contains-generic-reflection")
+        {
+            ContainsGenericVariablesSubset.Program.RunReflectionArtifact(args);
+            return;
+        }
         if (args.Length > 0 && args[0] == "generic-position-public")
         {
             GenericParameterPositionSubset.Program.RunPublicArtifact(args);
@@ -322,5 +332,7 @@ internal static class Program
         RuntimeTypeMakeGenericSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-generic-position") return;
         GenericParameterPositionSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-contains-generic") return;
+        ContainsGenericVariablesSubset.Program.Run();
     }
 }
