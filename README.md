@@ -879,6 +879,10 @@ expression trees at runtime.
   a default handle, with CoreLib's invalid-handle `ArgumentNullException`.
   Its managed `RuntimeType` constructor stores the same native type identity;
   a null argument initializes a default handle, including in-place construction.
+  Its managed `GetGCHandle` / `FreeGCHandle` cache bridges preserve default-handle
+  validation, then throw `PlatformNotSupportedException`: CoreCLR owns these
+  cache slots through its LoaderAllocator. They are not public GCHandle slots;
+  public `GCHandle`, `Type` and `Enum` keep their native implementations.
   The managed `RuntimeTypeHandle.SatisfiesConstraints` bridge throws
   `PlatformNotSupportedException`: its private CoreCLR method contexts are not
   native reflection rows. Public generic construction keeps its existing native

@@ -404,6 +404,13 @@ internal sealed partial class MethodCompiler
     private string RuntimeTypeHandleConstructorValue() =>
         $"dn2cpp_type_info_or_null({Cast(Pop(), "Dn2CppType*")})";
 
+    private void ValidateRuntimeTypeHandle(string handle, MethodInfo callee)
+    {
+        string message = Comp.SrResourceText(callee.Module, "Arg_InvalidHandle")
+            ?? throw new NotSupportedException("RuntimeTypeHandle validation requires CoreLib's Arg_InvalidHandle resource");
+        Emit($"if ({handle} == nullptr) dn2cpp_throw_argument_text(&dn2cpp_argument_null_exception_type, \"{CppLiteralBody(message)}\", nullptr);");
+    }
+
     /// <summary>Lowers a call to a member <see cref="CoreIntrinsics.LoweredRuntimePrimitive"/>
     /// names — the intra-CoreLib runtime primitives the reachability cut deletes from the tree.
     ///
@@ -425,11 +432,7 @@ internal sealed partial class MethodCompiler
             string handle = NewTemp("const Dn2CppTypeInfo*");
             Emit($"{handle} = {DerefReceiver("const Dn2CppTypeInfo*")};");
             if (callee.Name == "GetRuntimeTypeChecked")
-            {
-                string message = Comp.SrResourceText(callee.Module, "Arg_InvalidHandle")
-                    ?? throw new NotSupportedException("RuntimeTypeHandle validation requires CoreLib's Arg_InvalidHandle resource");
-                Emit($"if ({handle} == nullptr) dn2cpp_throw_argument_text(&dn2cpp_argument_null_exception_type, \"{CppLiteralBody(message)}\", nullptr);");
-            }
+                ValidateRuntimeTypeHandle(handle, callee);
             Push(StackKind.Ref, "Dn2CppType*", $"dn2cpp_get_type_from_handle({handle})");
             return;
         }
@@ -438,6 +441,18 @@ internal sealed partial class MethodCompiler
         {
             string value = RuntimeTypeHandleConstructorValue();
             Emit($"{DerefReceiver("const Dn2CppTypeInfo*")} = {value};");
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeCacheHandleBridge(callee))
+        {
+            Pop();
+            string handle = NewTemp("const Dn2CppTypeInfo*");
+            Emit($"{handle} = {DerefReceiver("const Dn2CppTypeInfo*")};");
+            // Both managed wrappers validate through GetNativeHandle before entering QCall.
+            ValidateRuntimeTypeHandle(handle, callee);
+            Emit($"dn2cpp_throw_platform_not_supported(\"System.RuntimeTypeHandle.{callee.Name} requires CoreCLR-owned cache handles. Use public GCHandle, Type and Enum APIs instead.\");");
+            Push(StackKind.I8, "intptr_t", "0"); // unreachable stack shape
             return;
         }
 

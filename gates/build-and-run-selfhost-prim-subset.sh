@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# RuntimeTypeHandle construction, private generic-context validation, canonical type comparison and Signature blob-parser boundaries,
+# RuntimeTypeHandle construction and cache-handle ownership, private generic-context validation,
+# canonical type comparison and Signature blob-parser boundaries,
 # managed type-handle copies,
 # nullable reboxing, CoreCLR handle boundaries, public reflection,
 # and companion process
@@ -77,8 +78,36 @@
 # checked default-handle ArgumentNullException across reflection/direct/calli.
 # Driven by the real System.Private.CoreLib (passed with -r) -> cross-assembly resolve
 # + tree-shake -> native binary -> run, asserting the output diffs exact vs real .NET.
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/RuntimeTypeHandleConstructorFixture.cs gates/fixtures/ldftn-local/ConstraintCheckFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleAccessorFixture.cs gates/fixtures/ldftn-local/CanonicalTypeComparisonFixture.cs gates/fixtures/ldftn-local/SignatureBlobFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleCopyFixture.cs gates/fixtures/ldftn-local/RuntimeFieldHandleFixture.cs gates/fixtures/ldftn-local/NullableReboxingFixture.cs gates/fixtures/ldftn-local/RuntimeTypeMaterializationFixture.cs gates/fixtures/ldftn-local/RuntimeMethodHandleFixture.cs gates/fixtures/ldftn-local/RuntimeMethodEnumerationFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/GcFinalizerWorkerFixture.cs gates/fixtures/ldftn-local/DelegateVmConstructorFixture.cs gates/fixtures/ldftn-local/DelegateNamedConstructorFixture.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/RuntimeTypeCacheHandleFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleConstructorFixture.cs gates/fixtures/ldftn-local/ConstraintCheckFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleAccessorFixture.cs gates/fixtures/ldftn-local/CanonicalTypeComparisonFixture.cs gates/fixtures/ldftn-local/SignatureBlobFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleCopyFixture.cs gates/fixtures/ldftn-local/RuntimeFieldHandleFixture.cs gates/fixtures/ldftn-local/NullableReboxingFixture.cs gates/fixtures/ldftn-local/RuntimeTypeMaterializationFixture.cs gates/fixtures/ldftn-local/RuntimeMethodHandleFixture.cs gates/fixtures/ldftn-local/RuntimeMethodEnumerationFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/GcFinalizerWorkerFixture.cs gates/fixtures/ldftn-local/DelegateVmConstructorFixture.cs gates/fixtures/ldftn-local/DelegateNamedConstructorFixture.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
 source "$(dirname "$0")/_common.sh"
+
+type_cache_handle_asserts() {
+    local output="$1" label kind
+    for label in GetGCHandle-shape FreeGCHandle-shape enum-names type-identity; do
+        gate_output byte-witness "$output" "type-cache-handle-$label:True" --count 1 --policy crlf || return 1
+    done
+    for kind in Weak WeakTrackResurrection Normal Pinned; do
+        for label in null live free; do
+            gate_output byte-witness "$output" "type-cache-handle-public-$label-$kind:True" --count 1 --policy crlf || return 1
+        done
+    done
+    gate_output byte-witness "$output" 'Runtime type cache handle contract end' --count 1 --policy crlf
+}
+
+type_cache_handle_boundary_asserts() {
+    local output="$1" routes="$2" route kind
+    type_cache_handle_asserts "$output" || return 1
+    for route in $routes; do
+        for kind in default Weak WeakTrackResurrection Normal Pinned; do
+            gate_output byte-witness "$output" "type-cache-handle-GetGCHandle-$route-$kind:True" --count 1 --policy crlf || return 1
+        done
+        for kind in default public-slot; do
+            gate_output byte-witness "$output" "type-cache-handle-FreeGCHandle-$route-$kind:True" --count 1 --policy crlf || return 1
+        done
+        gate_output byte-witness "$output" "type-cache-handle-$route-public-slot-intact:True" --count 1 --policy crlf || return 1
+    done
+    gate_output byte-witness "$output" 'Runtime type cache handle boundary end' --count 1 --policy crlf
+}
 
 handle_constructor_asserts() {
     local output="$1" routes="$2" label route
@@ -467,6 +496,9 @@ gate_extra_asserts() {
     gate_capture_ok "$out/assert-before-handle-constructor" run_bounded dotnet "$_CG_APP" before-runtime-type-handle-constructor || return 1
     gate_output prefix "$native" "$out/assert-before-handle-constructor.stdout" --before '== Runtime type handle constructor ==' --policy crlf || return 1
     handle_constructor_asserts "$native" reflection || return 1
+    gate_capture_ok "$out/assert-before-type-cache-handle" run_bounded dotnet "$_CG_APP" before-runtime-type-cache-handle || return 1
+    gate_output prefix "$native" "$out/assert-before-type-cache-handle.stdout" --before '== Runtime type cache handle contract ==' --policy crlf || return 1
+    type_cache_handle_asserts "$native" || return 1
 
 }
 
@@ -594,6 +626,29 @@ compile_console "$named_out" DelegateNamed
 gate_capture_ok "$named_out/direct" run_bounded "./$named_out/DelegateNamed$EXE_EXT" native-boundary
 for label in delegate-instance delegate-static multicast-instance multicast-static; do
     gate_output byte-witness "$named_out/direct.stdout" "named-direct-$label:True" --count 1 --policy crlf
+done
+
+# The cache allocator wrappers are native-only; CLR runs the public handle contract.
+for cache_mode in all reflection; do
+    cache_input="artifacts/runtime-type-cache-handle-input-$cache_mode-$CONFIG"
+    mkdir -p "$cache_input"
+    cp samples/dotnet/SelfHostPrimSubset/bin/$CONFIG/$TFM/* "$cache_input/"
+    cache_flag=--runtime-type-cache-handle
+    cache_routes='direct pointer reflection'
+    if [[ "$cache_mode" == reflection ]]; then
+        cache_flag=--runtime-type-cache-handle-reflection
+        cache_routes=reflection
+    fi
+    dotnet "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
+        "$cache_flag" "$cache_input/SelfHostPrimSubset.dll" "$_CG_CORELIB"
+    cache_out="artifacts/runtime-type-cache-handle-$cache_mode-$CONFIG"
+    invoke_cli "$cache_input/SelfHostPrimSubset.dll" --auto-ref -o "$cache_out"
+    compile_console "$cache_out" RuntimeTypeCacheHandle
+    gate_capture_ok "$cache_out/native" run_bounded "./$cache_out/RuntimeTypeCacheHandle$EXE_EXT"
+    gate_capture_ok "$cache_out/oracle" run_bounded dotnet "$_CG_APP" runtime-type-cache-handle-contract
+    gate_output prefix "$cache_out/native.stdout" "$cache_out/oracle.stdout" \
+        --before "type-cache-handle-GetGCHandle-${cache_routes%% *}-default:True" --policy crlf
+    type_cache_handle_boundary_asserts "$cache_out/native.stdout" "$cache_routes"
 done
 for owner in Delegate MulticastDelegate; do
     for form in instance static; do

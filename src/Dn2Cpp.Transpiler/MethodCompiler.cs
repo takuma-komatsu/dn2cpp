@@ -1183,6 +1183,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             || CoreIntrinsics.IsCoreClrCanonicalTypeComparison(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleAccessor(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleConstructor(_method)
+            || CoreIntrinsics.IsRuntimeTypeCacheHandleBridge(_method)
             || CoreIntrinsics.IsCoreClrConstraintCheck(_method)
             || CoreIntrinsics.IsCoreClrTypeMaterialization(_method) && _method.Rva == 0)
             return CompileInterceptWrapper();

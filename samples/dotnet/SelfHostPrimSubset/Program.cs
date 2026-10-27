@@ -9,6 +9,11 @@ internal static class Program
 {
     private static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "runtime-type-cache-handle-contract")
+        {
+            RuntimeTypeCacheHandleSubset.Program.Run();
+            return;
+        }
         if (args.Length > 0 && args[0] == "runtime-type-handle-constructor-artifact")
         {
             RuntimeTypeHandleConstructorSubset.Program.RunArtifactChecks(args);
@@ -208,5 +213,7 @@ internal static class Program
         ConstraintCheckSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-runtime-type-handle-constructor") return;
         RuntimeTypeHandleConstructorSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-runtime-type-cache-handle") return;
+        RuntimeTypeCacheHandleSubset.Program.Run();
     }
 }

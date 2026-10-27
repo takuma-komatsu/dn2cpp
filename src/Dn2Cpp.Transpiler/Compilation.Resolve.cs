@@ -1396,6 +1396,8 @@ internal sealed partial class Compilation
                 || reader.StringComparer.Equals(mr.Name, "GetNextIntroducedMethod")
                 || reader.StringComparer.Equals(mr.Name, "GetRuntimeType")
                 || reader.StringComparer.Equals(mr.Name, "GetRuntimeTypeChecked")
+                || reader.StringComparer.Equals(mr.Name, "GetGCHandle")
+                || reader.StringComparer.Equals(mr.Name, "FreeGCHandle")
                 || reader.StringComparer.Equals(mr.Name, ".ctor")
                 || reader.StringComparer.Equals(mr.Name, "GetRuntimeTypeFromHandle")
                 || reader.StringComparer.Equals(mr.Name, "GetRuntimeTypeFromHandleMaybeNull")
@@ -1411,6 +1413,7 @@ internal sealed partial class Compilation
                     || CoreIntrinsics.IsCoreClrCanonicalTypeComparison(enumeration)
                     || CoreIntrinsics.IsRuntimeTypeHandleAccessor(enumeration)
                     || CoreIntrinsics.IsRuntimeTypeHandleConstructor(enumeration)
+                    || CoreIntrinsics.IsRuntimeTypeCacheHandleBridge(enumeration)
                     || CoreIntrinsics.IsCoreClrConstraintCheck(enumeration))
                     return enumeration;
             }
