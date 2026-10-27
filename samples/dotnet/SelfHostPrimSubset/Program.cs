@@ -84,6 +84,21 @@ internal static class Program
             RuntimeTypeInstantiationSubset.Program.RunReflectionArtifact(Array.Empty<string>());
             return;
         }
+        if (args.Length > 0 && args[0] == "runtime-type-assembly-contract")
+        {
+            RuntimeTypeAssemblySubset.RuntimeAssemblyChecks.Run();
+            return;
+        }
+        if (args.Length > 0 && args[0] == "runtime-type-assembly-artifact")
+        {
+            RuntimeTypeAssemblySubset.RuntimeAssemblyChecks.RunArtifact(Array.Empty<string>());
+            return;
+        }
+        if (args.Length > 0 && args[0] == "runtime-type-assembly-reflection")
+        {
+            RuntimeTypeAssemblySubset.RuntimeAssemblyChecks.RunReflectionArtifact(Array.Empty<string>());
+            return;
+        }
         if (args.Length > 0 && args[0] == "runtime-type-function-pointer-contract")
         {
             RuntimeTypeFunctionPointerSubset.FunctionPointerPredicateChecks.Run();
@@ -391,5 +406,7 @@ internal static class Program
         PrimitiveWideningSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-runtime-type-function-pointer") return;
         RuntimeTypeFunctionPointerSubset.FunctionPointerPredicateChecks.Run();
+        if (args.Length > 0 && args[0] == "before-runtime-type-assembly") return;
+        RuntimeTypeAssemblySubset.RuntimeAssemblyChecks.Run();
     }
 }

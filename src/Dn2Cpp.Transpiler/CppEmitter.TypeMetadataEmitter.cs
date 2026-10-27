@@ -3798,6 +3798,7 @@ internal sealed partial class CppEmitter
                         || CoreIntrinsics.IsCoreClrCanonicalTypeComparison(method)
                         || CoreIntrinsics.IsRuntimeTypeHandleAccessor(method)
                         || CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerPredicate(method)
+                        || CoreIntrinsics.IsRuntimeTypeHandleGetAssembly(method)
                         || CoreIntrinsics.IsRuntimeTypeHandleInstantiation(method)
                         || CoreIntrinsics.IsRuntimeTypeHandleGenericVariableIndex(method)
                         || CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariables(method)

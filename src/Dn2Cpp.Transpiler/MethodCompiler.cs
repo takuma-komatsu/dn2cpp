@@ -798,6 +798,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                     && !CoreIntrinsics.IsRuntimeTypeMakeCompound(target)
                     && !CoreIntrinsics.IsRuntimeTypeMakeArray(target)
                     && !CoreIntrinsics.IsRuntimeTypeFunctionPointerGetter(target)
+                    && !CoreIntrinsics.IsRuntimeTypeAssemblyGetter(target)
                     && !CoreIntrinsics.IsRuntimeTypeGenericParameterPosition(target), virtFtn));
             }
 
@@ -1194,6 +1195,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             || CoreIntrinsics.IsRuntimeTypeHandleAccessor(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleIsSZArray(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerPredicate(_method)
+            || CoreIntrinsics.IsRuntimeTypeHandleGetAssembly(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleInstantiation(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleGenericVariableIndex(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariables(_method)
@@ -3799,6 +3801,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 //
                 bool vftnBounded = _c.IsBoundedMethod(m.DeclaringClass.FullName, m.Name);
                 bool bindsLowering = false;
+                bool delegateAddressReady = true;
                 if (vftnBounded)
                 {
                     expr = BoundedFtnStub(m, insn.Offset, receiverSlot: true);
@@ -3845,13 +3848,20 @@ internal sealed partial class MethodCompiler : IEvalStack
                 }
                 else if (CoreIntrinsics.IsRuntimeTypeDeclaringMethod(m) || CoreIntrinsics.IsRuntimeTypeMakeGenericType(m)
                     || CoreIntrinsics.IsRuntimeTypeGenericParameterPosition(m) || CoreIntrinsics.IsRuntimeTypeMakeCompound(m)
-                    || CoreIntrinsics.IsRuntimeTypeMakeArray(m) || CoreIntrinsics.IsRuntimeTypeFunctionPointerGetter(m))
+                    || CoreIntrinsics.IsRuntimeTypeMakeArray(m) || CoreIntrinsics.IsRuntimeTypeFunctionPointerGetter(m)
+                    || CoreIntrinsics.IsRuntimeTypeAssemblyGetter(m))
                 {
                     // RuntimeType is sealed; its native header has no CoreCLR virtual slots.
                     bindsLowering = true;
                     NoteFtnTargetBody(m.Emittable);
                     _c.NoteNamedBodySymbol(_method, m.Emittable);
                     expr = $"((void)dn2cpp_null_check({obj.Expr}), (void*)&{m.Emittable.CppName})";
+                    if (CoreIntrinsics.IsRuntimeTypeAssemblyGetter(m))
+                    {
+                        // The raw getter returns an assembly identity; only a delegate erases it.
+                        _ftnOrigins[insn.Offset + 1] = (m, false, true);
+                        delegateAddressReady = false;
+                    }
                 }
                 else if (CoreIntrinsics.IsMemberMetadataDefinitionBase(m))
                 {
@@ -3978,7 +3988,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 }
                 Push(StackKind.Ptr, "void*", expr);
                 _stack[^1] = _stack[^1] with { DelegateMethod = m, DelegateVirtual = m.IsVirtual && !bindsLowering,
-                    DelegateTag = (insn.Offset + 1).ToString(), DelegateAddressReady = true };
+                    DelegateTag = (insn.Offset + 1).ToString(), DelegateAddressReady = delegateAddressReady };
                 break;
             }
 

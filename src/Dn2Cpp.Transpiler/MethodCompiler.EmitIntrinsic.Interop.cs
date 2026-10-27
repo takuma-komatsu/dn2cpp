@@ -584,6 +584,22 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsRuntimeTypeHandleGetAssembly(callee))
+        {
+            var type = Pop();
+            TaintPoisonedTypeEscape(type);
+            string handle = NewTemp("const Dn2CppTypeInfo*");
+            Emit($"{handle} = dn2cpp_type_info_or_null({Cast(type, "Dn2CppType*")});");
+            ValidateRuntimeTypeHandle(handle, callee);
+            var result = callee.Signature.ReturnType;
+            var assembly = new StackEntry($"dn2cpp_ti_assembly_name({handle})", StackKind.Ref,
+                "const char*", StaticType: result);
+            // RuntimeAssembly returns a managed wrapper; Assembly consumers unwrap it.
+            Push(StackKind.Ref, CppTypes.Of(result), Cast(assembly, CppTypes.Of(result)));
+            Top = Top with { StaticType = result };
+            return;
+        }
+
         if (CoreIntrinsics.IsRuntimeTypeHandleInstantiation(callee))
         {
             string handle = NewTemp("const Dn2CppTypeInfo*");

@@ -1293,8 +1293,16 @@ static inline bool dn2cpp_ti_shows_generic_params(const Dn2CppTypeInfo* ti, bool
 
 const char* dn2cpp_ti_assembly_name(const Dn2CppTypeInfo* ti)
 {
-    while (dn2cpp_ti_has_array_element(ti) || (dn2cpp_signature_kind(ti) != 0 && ti->elementType != nullptr))
-        ti = ti->elementType;
+    for (;;)
+    {
+        if (dn2cpp_ti_has_array_element(ti) || (dn2cpp_signature_kind(ti) != 0 && ti->elementType != nullptr))
+            ti = ti->elementType;
+        // A noncollectible function pointer's loader module follows its return type.
+        else if (dn2cpp_signature_kind(ti) == 3)
+            ti = dn2cpp_signature_companion(ti)->children[0];
+        else
+            break;
+    }
     const char* name = ti != nullptr ? ti->reflection().assemblyName : nullptr;
     return name != nullptr ? name : "System.Private.CoreLib";
 }

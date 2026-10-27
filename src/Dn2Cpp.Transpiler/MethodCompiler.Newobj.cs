@@ -2148,8 +2148,9 @@ internal sealed partial class MethodCompiler
                         adapterExpr = DelegateInvokeAddress(method);
                     else if (!fromVirtFtn && ObjectDispatchHelper(method, virtualBinding: false) is { } objectHelper)
                         adapterExpr = $"(void*)&{objectHelper}";
-                    else if (!fromVirtFtn && (method.IsStatic || method.DeclaringClass.IsValueType
-                        || NeedsNfiErasedAdapter(method.Emittable)))
+                    else if ((!fromVirtFtn || CoreIntrinsics.IsRuntimeTypeAssemblyGetter(method))
+                        && (method.IsStatic || method.DeclaringClass.IsValueType
+                            || NeedsNfiErasedAdapter(method.Emittable)))
                     {
                         var impl = method.Emittable;
                         var adapter = new DelegateAdapter(impl,

@@ -568,6 +568,18 @@ guard also applies to the raw unmanaged predicate, whose CoreCLR contract requir
 nonnull RuntimeType. This does not extend custom Type dispatch or open
 function-pointer construction.
 
+The exact managed `RuntimeTypeHandle.GetAssembly(RuntimeType)` helper returns
+an interned native RuntimeAssembly object; public Assembly boundaries retain their
+headerless identity conversion. The retained sealed public getter keeps its IL;
+its raw address keeps that ABI, while delegate construction erases it through the
+managed-wrapper adapter. Its standalone delegate metadata row does not add named
+lookup to the runtime-owned RuntimeType catalog. Helper null arguments use
+CoreLib's invalid-handle ArgumentNullException; public virtual receiver checks
+still raise NullReferenceException. Private assembly-cache
+InternalCalls and QCall imports keep their separate binding authority. Under the
+native image's noncollectible policy, function-pointer assembly identity follows
+its return signature recursively without changing its element-type predicates.
+
 The exact managed `RuntimeTypeHandle.GetInstantiationInternal` and
 `GetInstantiationPublic` wrappers read native formal or constructed type arguments.
 They validate default handles and return null at zero arity. Nonempty results are
