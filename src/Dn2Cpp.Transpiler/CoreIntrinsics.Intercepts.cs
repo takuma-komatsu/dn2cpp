@@ -622,6 +622,7 @@ internal static partial class CoreIntrinsics
             || IsCoreClrIntroducedMethodEnumeration(mi)
             || IsCoreClrMethodDescQuery(mi)
             || IsCoreClrFieldDescOperation(mi)
+            || IsCoreClrSignatureBlobParser(mi)
             || IsCoreClrTypeMaterialization(mi) && mi.Rva == 0);
 
     // These managed copies consume the supported Value/TypeHandle APIs, not VM fields.
@@ -831,6 +832,31 @@ internal static partial class CoreIntrinsics
             "GetLoaderAllocatorInternal" => IsCoreLibMethodDescType(result, "System.Reflection.LoaderAllocator"),
             _ => false,
         };
+    }
+
+    // Native reflection reads decoded metadata; it does not construct CoreCLR Signature blobs.
+    internal static bool IsCoreClrSignatureBlobParser(MethodInfo method)
+    {
+        if (method.DeclaringClass.FullName != "System.Signature"
+            || method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || method.Name is not ("GetParameterOffsetInternal" or "GetTypeParameterOffsetInternal"
+                or "GetCallingConventionFromFunctionPointerAtOffsetInternal")
+            || !method.IsPrivate || !method.IsStatic || method.Rva != 0 || method.PInvoke is not null
+            || (method.Attributes & System.Reflection.MethodAttributes.PinvokeImpl) != 0
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall))
+                != System.Reflection.MethodImplAttributes.InternalCall)
+            return false;
+        var signature = method.Signature;
+        if (signature.Header.RawValue != 0 || signature.GenericParameterCount != 0
+            || signature.ReturnType is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }
+            || signature.ParameterTypes.Length != (method.Name == "GetTypeParameterOffsetInternal" ? 4 : 3)
+            || signature.ParameterTypes[0] is not { Kind: TypeKind.Pointer, Element.IsVoid: true })
+            return false;
+        for (int i = 1; i < signature.ParameterTypes.Length; i++)
+            if (signature.ParameterTypes[i] is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 })
+                return false;
+        return true;
     }
 
     private static bool IsCoreClrMethodTablePointer(TypeDesc type) =>

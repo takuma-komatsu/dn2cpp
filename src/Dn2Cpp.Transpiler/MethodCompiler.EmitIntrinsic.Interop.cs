@@ -416,6 +416,13 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsCoreClrSignatureBlobParser(callee))
+        {
+            for (int i = 0; i < callee.Signature.ParameterTypes.Length; i++) Pop();
+            Emit($"dn2cpp_throw_platform_not_supported(\"System.Signature.{callee.Name}: CoreCLR private signature-blob parsing is not supported in this AOT runtime. Use supported public reflection APIs instead.\");");
+            Push(StackKind.I4, "int32_t", "0"); // unreachable stack shape
+            return;
+        }
         if (CoreIntrinsics.IsCoreClrFieldDescOperation(callee))
         {
             for (int i = 0; i < callee.Signature.ParameterTypes.Length; i++) Pop();

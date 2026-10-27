@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Managed type-handle copies, nullable reboxing, CoreCLR handle boundaries, public reflection,
+# Private Signature blob-parser boundaries, managed type-handle copies,
+# nullable reboxing, CoreCLR handle boundaries, public reflection,
 # and companion process
 # argument/stream/exit preservation and the console-self-host
 # runtime primitives whose behaviour can be exercised exactly.
@@ -73,8 +74,28 @@
 #     driver, so no wasm axis reaches the section.
 # Driven by the real System.Private.CoreLib (passed with -r) -> cross-assembly resolve
 # + tree-shake -> native binary -> run, asserting the output diffs exact vs real .NET.
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/RuntimeTypeHandleCopyFixture.cs gates/fixtures/ldftn-local/RuntimeFieldHandleFixture.cs gates/fixtures/ldftn-local/NullableReboxingFixture.cs gates/fixtures/ldftn-local/RuntimeTypeMaterializationFixture.cs gates/fixtures/ldftn-local/RuntimeMethodHandleFixture.cs gates/fixtures/ldftn-local/RuntimeMethodEnumerationFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/GcFinalizerWorkerFixture.cs gates/fixtures/ldftn-local/DelegateVmConstructorFixture.cs gates/fixtures/ldftn-local/DelegateNamedConstructorFixture.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/SignatureBlobFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleCopyFixture.cs gates/fixtures/ldftn-local/RuntimeFieldHandleFixture.cs gates/fixtures/ldftn-local/NullableReboxingFixture.cs gates/fixtures/ldftn-local/RuntimeTypeMaterializationFixture.cs gates/fixtures/ldftn-local/RuntimeMethodHandleFixture.cs gates/fixtures/ldftn-local/RuntimeMethodEnumerationFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/GcFinalizerWorkerFixture.cs gates/fixtures/ldftn-local/DelegateVmConstructorFixture.cs gates/fixtures/ldftn-local/DelegateNamedConstructorFixture.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
 source "$(dirname "$0")/_common.sh"
+
+signature_blob_asserts() {
+    local output="$1" label
+    for label in shape-parameter shape-type-parameter shape-calling-convention negative-type-offset negative-callconv plain-modifiers init-modreq init-modopt readonly-modreq function-pointer unmanaged-pointer; do
+        gate_output byte-witness "$output" "signature-blob-$label:True" --count 1 --policy crlf || return 1
+    done
+    gate_output byte-witness "$output" 'Signature blob contract end' --count 1 --policy crlf
+}
+
+signature_blob_boundary_asserts() {
+    local output="$1" pair label member route
+    signature_blob_asserts "$output" || return 1
+    for pair in parameter:GetParameterOffsetInternal type-parameter:GetTypeParameterOffsetInternal calling-convention:GetCallingConventionFromFunctionPointerAtOffsetInternal; do
+        label="${pair%%:*}"; member="${pair#*:}"
+        for route in direct pointer reflection; do
+            gate_output byte-witness "$output" "signature-blob-$label-$route:PlatformNotSupportedException:System.Signature.$member: CoreCLR private signature-blob parsing is not supported in this AOT runtime. Use supported public reflection APIs instead." --count 1 --policy crlf || return 1
+        done
+    done
+    gate_output byte-witness "$output" 'Signature blob boundary end' --count 1 --policy crlf
+}
 
 handle_copy_asserts() {
     local output="$1" route="$2" label
@@ -359,8 +380,16 @@ gate_extra_asserts() {
     gate_capture_ok "$out/assert-before-handle-copy" run_bounded dotnet "$_CG_APP" before-runtime-type-handle-copy || return 1
     gate_output prefix "$native" "$out/assert-before-handle-copy.stdout" --before '== Runtime type handle copies ==' --policy crlf || return 1
     handle_copy_asserts "$native" reflection || return 1
+    gate_capture_ok "$out/assert-before-signature-blob" run_bounded dotnet "$_CG_APP" before-signature-blob || return 1
+    gate_output prefix "$native" "$out/assert-before-signature-blob.stdout" --before '== Signature blob contract ==' --policy crlf || return 1
+    signature_blob_asserts "$native" || return 1
 
 }
+
+# Validate the negative-offset return before the CLR oracle allocates an uninitialized Signature.
+build_gate_proj gates/fixtures/ldftn-local/LdftnLocalFixture.csproj
+dotnet "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
+    --signature-blob-verify "$(resolve_net10_corelib)"
 
 corelib_diff_gate SelfHostPrimSubset System.Linq System.Diagnostics.TraceSource \
     System.Collections.Specialized
@@ -609,6 +638,18 @@ invoke_cli "$field_input/SelfHostPrimSubset.dll" --auto-ref -o "$field_out"
 compile_console "$field_out" RuntimeFieldHandle
 gate_capture_ok "$field_out/native" run_bounded "./$field_out/RuntimeFieldHandle$EXE_EXT"
 field_handle_boundary_asserts "$field_out/native.stdout"
+
+# Raw private parser calls execute only in the native artifact, never on CLR.
+signature_input="artifacts/signature-blob-input-$CONFIG"
+mkdir -p "$signature_input"
+cp samples/dotnet/SelfHostPrimSubset/bin/$CONFIG/$TFM/* "$signature_input/"
+dotnet "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
+    --signature-blob "$signature_input/SelfHostPrimSubset.dll" "$_CG_CORELIB"
+signature_out="artifacts/signature-blob-$CONFIG"
+invoke_cli "$signature_input/SelfHostPrimSubset.dll" --auto-ref -o "$signature_out"
+compile_console "$signature_out" SignatureBlob
+gate_capture_ok "$signature_out/native" run_bounded "./$signature_out/SignatureBlob$EXE_EXT"
+signature_blob_boundary_asserts "$signature_out/native.stdout"
 
 # Both copy helpers retain their real IL. Span reflection is a validation check;
 # only these true-ABI direct/calli sites execute its byref-like body.

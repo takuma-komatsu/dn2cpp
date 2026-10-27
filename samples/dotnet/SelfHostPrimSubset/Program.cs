@@ -183,5 +183,7 @@ internal static class Program
         RuntimeFieldHandleSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-runtime-type-handle-copy") return;
         RuntimeTypeHandleCopySubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-signature-blob") return;
+        SignatureBlobSubset.Program.Run();
     }
 }

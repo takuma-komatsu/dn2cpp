@@ -861,6 +861,11 @@ expression trees at runtime.
   Managed default-field-handle validation and the native RVA array/span literal
   paths remain independent of these VM leaves. Field access QCalls retain the
   existing absent-CoreCLR import boundary and explicit native-binding options.
+  CoreCLR's private `Signature` blob-parser InternalCalls throw
+  `PlatformNotSupportedException`: native reflection reads decoded metadata and
+  does not construct CoreCLR `Signature` blobs. Managed wrappers retain their
+  negative-offset fast paths; supported public parameter-modifier and
+  function-pointer queries continue to use native signature metadata.
   Non-public `RuntimeTypeHandle` raw-VM type materialization likewise throws
   before reading CoreCLR MethodTable, TypeDesc or output-handle state. Its
   nullable wrapper still returns null for a zero handle. Native `Type.TypeHandle`
