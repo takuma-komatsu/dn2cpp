@@ -630,6 +630,7 @@ internal static partial class CoreIntrinsics
             || IsRuntimeTypeHandleContainsGenericVariables(mi)
             || IsRuntimeTypeHandleConstraints(mi)
             || IsRuntimeTypeHandleMakeCompound(mi)
+            || IsRuntimeTypeHandleMakeArray(mi)
             || IsRuntimeTypeGenericParameterPosition(mi)
             || IsRuntimeTypeHandleInstantiate(mi)
             || IsRuntimeTypeMakeGenericType(mi)
@@ -1190,6 +1191,47 @@ internal static partial class CoreIntrinsics
             && signature.ParameterTypes.Length == 0
             && signature.ReturnType is { Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } result }
             && result.Module == method.Module;
+    }
+
+    // Array wrappers use the existing native AOT policy after checked-handle validation.
+    internal static bool IsRuntimeTypeHandleMakeArray(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle"
+            || method.Name is not ("MakeSZArray" or "MakeArray")
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } result }
+            && result.Module == method.Module
+            && (method.Name == "MakeSZArray" ? signature.ParameterTypes.Length == 0
+                : signature.ParameterTypes is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }]);
+    }
+
+    // Keep the real rank guard while avoiding absent CoreCLR virtual slots.
+    internal static bool IsRuntimeTypeMakeArray(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || !method.DeclaringClass.IsSealed
+            || method.Name != "MakeArrayType"
+            || method.Attributes != (System.Reflection.MethodAttributes.Public | System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Class, Class: { FullName: "System.Type" } result }
+            && result.Module == method.Module
+            && (signature.ParameterTypes.Length == 0
+                || signature.ParameterTypes is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }]);
     }
 
     internal static bool IsRuntimeTypeGenericParameterPosition(MethodInfo method)

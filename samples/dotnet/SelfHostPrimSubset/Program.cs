@@ -9,6 +9,16 @@ internal static class Program
 {
     private static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "array-type-handle")
+        {
+            ArrayTypeHandleSubset.Program.RunHandleArtifact(args);
+            return;
+        }
+        if (args.Length > 0 && args[0] == "array-type-reflection")
+        {
+            ArrayTypeHandleSubset.Program.RunReflectionArtifact(args);
+            return;
+        }
         if (args.Length > 0 && args[0] == "compound-handle")
         {
             CompoundTypeHandleSubset.Program.RunHandleArtifact(args);
@@ -358,5 +368,7 @@ internal static class Program
         GenericConstraintArraySubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-compound-handle") return;
         CompoundTypeHandleSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-array-type-handle") return;
+        ArrayTypeHandleSubset.Program.Run();
     }
 }

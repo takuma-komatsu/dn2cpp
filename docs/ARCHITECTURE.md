@@ -601,6 +601,19 @@ reflection-only rows share the handle wrapper; the separate raw QCalls retain
 native-import binding authority. This does not
 extend the public Type policy or supported function-pointer construction.
 
+The exact managed `RuntimeTypeHandle.MakeSZArray()` and `MakeArray(int)` wrappers
+validate their handles before using the existing native array-type policy.
+Ordinary concrete SZ arrays require an emitted registry identity; concrete ranked
+arrays remain unsupported, including rank-one non-SZ arrays. Open and signature
+array types use their existing interning and rank limits. These wrappers do not
+expand the native array factory or implement CoreCLR's private loader ABI.
+A direct private MakeArray call with a nonpositive rank throws
+PlatformNotSupportedException after handle validation. Its public RuntimeType
+overload keeps the real managed rank check before handle construction, and a
+virtual null receiver still faults before entry. Both public overloads retain
+real IL across calls and address bindings; the raw QCalls remain independent
+native-import boundaries.
+
 The exact public `RuntimeType.MakeGenericType(Type[])` override shares the existing
 native `Type.MakeGenericType` AOT, open-type and template policy. Its retained body,
 direct calls and address bindings never enter CoreCLR's instantiating loader.

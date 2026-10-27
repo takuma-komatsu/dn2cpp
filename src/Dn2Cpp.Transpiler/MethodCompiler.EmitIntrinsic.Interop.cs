@@ -477,6 +477,31 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsRuntimeTypeHandleMakeArray(callee))
+        {
+            string? rank = null;
+            if (callee.Name == "MakeArray")
+            {
+                rank = NewTemp("int32_t");
+                Emit($"{rank} = {Cast(Pop(), "int32_t")};");
+            }
+            string handle = NewTemp("const Dn2CppTypeInfo*");
+            Emit($"{handle} = {DerefReceiver("const Dn2CppTypeInfo*")};");
+            ValidateRuntimeTypeHandle(handle, callee);
+            if (rank is not null)
+            {
+                // Public IL rejects these ranks first; the private loader ABI is not modeled.
+                Emit($"if ({rank} <= 0) dn2cpp_throw_platform_not_supported(\"System.RuntimeTypeHandle.MakeArray with a nonpositive rank requires CoreCLR's private array loader. Use Type.MakeArrayType instead.\");");
+                Push(StackKind.Ref, "Dn2CppType*",
+                    $"dn2cpp_type_make_array_type_rank(dn2cpp_get_type_from_handle({handle}), {rank})");
+            }
+            else
+            {
+                Push(StackKind.Ref, "Dn2CppType*", $"dn2cpp_type_make_array_type(dn2cpp_get_type_from_handle({handle}))");
+            }
+            return;
+        }
+
         if (CoreIntrinsics.IsRuntimeTypeMakeGenericType(callee))
         {
             // callvirt checks before entry; a nonvirtual body checks the array first.
