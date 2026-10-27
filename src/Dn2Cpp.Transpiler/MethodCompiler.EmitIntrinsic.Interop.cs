@@ -466,6 +466,14 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsRuntimeTypeHandleIsSZArray(callee))
+        {
+            var type = Pop();
+            TaintPoisonedTypeEscape(type);
+            Push(StackKind.I4, "int32_t", $"dn2cpp_type_is_szarray(dn2cpp_type_require({Cast(type, "Dn2CppType*")}))");
+            return;
+        }
+
         if (CoreIntrinsics.IsRuntimeTypeHandleAccessor(callee))
         {
             string handle = NewTemp("const Dn2CppTypeInfo*");

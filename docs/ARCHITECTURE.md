@@ -549,6 +549,11 @@ The exact `RuntimeTypeHandle.IsCollectible(QCallTypeHandle)` import keeps this
 binding authority even though its declaring type is intrinsic-mapped. Its raw
 handle query is not the public reflection API's noncollectible-image policy.
 
+The exact managed `RuntimeTypeHandle.IsSZArray(RuntimeType)` helper uses the
+existing native SZ-array predicate with a null Type guard. Its retained getter,
+direct calls and address-taken wrappers share that lowering; neither CoreCLR
+element codes nor rank alone define native array identity.
+
 The exact public `RuntimeType.DeclaringMethod` getter uses native formal-owner
 metadata and preserves its non-parameter validation text. RuntimeType is sealed;
 its address and virtual-address bindings use that same wrapper, never a CoreCLR

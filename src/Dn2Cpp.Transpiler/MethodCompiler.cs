@@ -1183,6 +1183,7 @@ internal sealed partial class MethodCompiler : IEvalStack
         if (CoreIntrinsics.IsCoreClrIntroducedMethodEnumeration(_method)
             || CoreIntrinsics.IsCoreClrCanonicalTypeComparison(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleAccessor(_method)
+            || CoreIntrinsics.IsRuntimeTypeHandleIsSZArray(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleConstructor(_method)
             || CoreIntrinsics.IsRuntimeTypeCacheHandleBridge(_method)
             || CoreIntrinsics.IsRuntimeTypeInterfaceCheck(_method)

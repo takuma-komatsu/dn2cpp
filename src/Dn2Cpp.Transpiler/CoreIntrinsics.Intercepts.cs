@@ -624,6 +624,7 @@ internal static partial class CoreIntrinsics
             || IsCoreClrFieldDescOperation(mi)
             || IsCoreClrCanonicalTypeComparison(mi)
             || IsRuntimeTypeHandleAccessor(mi)
+            || IsRuntimeTypeHandleIsSZArray(mi)
             || IsRuntimeTypeHandleConstructor(mi)
             || IsRuntimeTypeCacheHandleBridge(mi)
             || IsRuntimeTypeInterfaceCheck(mi)
@@ -1071,6 +1072,25 @@ internal static partial class CoreIntrinsics
         return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
             && signature.ParameterTypes.Length == 0
             && IsCoreLibMethodDescType(signature.ReturnType, "System.RuntimeType");
+    }
+
+    // SZ-array identity is native metadata; rank one alone also includes T[*].
+    internal static bool IsRuntimeTypeHandleIsSZArray(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "IsSZArray"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
+            && parameter.Module == method.Module;
     }
 
     // RuntimeType's public owner query uses native formal metadata, not its CoreCLR fields.

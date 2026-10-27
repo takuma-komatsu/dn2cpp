@@ -9,6 +9,16 @@ internal static class Program
 {
     private static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "runtime-type-szarray-artifact")
+        {
+            RuntimeTypeIsSzArraySubset.Program.RunArtifact(Array.Empty<string>());
+            return;
+        }
+        if (args.Length > 0 && args[0] == "runtime-type-szarray-contract")
+        {
+            RuntimeTypeIsSzArraySubset.Program.Run();
+            return;
+        }
         if (args.Length > 0 && args[0] == "formal-declaring-public")
         {
             FormalDeclaringMethodSubset.Program.RunPublicArtifact(args);
@@ -269,5 +279,7 @@ internal static class Program
         MemberNotFoundFactorySubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-formal-declaring-method") return;
         FormalDeclaringMethodSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-runtime-type-szarray") return;
+        RuntimeTypeIsSzArraySubset.Program.Run();
     }
 }

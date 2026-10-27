@@ -895,6 +895,8 @@ expression trees at runtime.
   validation, then throw `PlatformNotSupportedException`: CoreCLR owns these
   cache slots through its LoaderAllocator. They are not public GCHandle slots;
   public `GCHandle`, `Type` and `Enum` keep their native implementations.
+  Its managed `IsSZArray(RuntimeType)` helper uses native array identity,
+  distinguishing vectors from rank-one non-SZ arrays and preserving null checks.
   The retained `RuntimeType.DeclaringMethod` getter reads the same native formal
   owner metadata as `Type.DeclaringMethod`, returning the typical method definition
   or null for a type parameter. Its private `RuntimeTypeHandle` bridge instead
