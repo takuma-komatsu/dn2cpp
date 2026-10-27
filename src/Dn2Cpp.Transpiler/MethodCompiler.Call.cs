@@ -479,6 +479,7 @@ internal sealed partial class MethodCompiler
                 var callee = ResolveMethodDef((MethodDefinitionHandle)handle);
                 if (CoreIntrinsics.IsRuntimeTypeHandleCopy(callee)
                     || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(callee)
+                    || CoreIntrinsics.IsPrimitiveElementType(callee)
                     || CoreIntrinsics.IsMemberNotFoundExceptionFactory(callee)
                     || CoreIntrinsics.IsMemberMetadataDefinitionBase(callee)
                     || CoreIntrinsics.BrDelegateNamedConstructor.Matches(callee)

@@ -370,5 +370,7 @@ internal static class Program
         CompoundTypeHandleSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-array-type-handle") return;
         ArrayTypeHandleSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-primitive-element") return;
+        PrimitiveElementTypeSubset.Program.Run();
     }
 }

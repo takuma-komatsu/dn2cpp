@@ -149,6 +149,26 @@ internal sealed partial class AssemblyDiet
             method.Parameters.Count == 1 ? Shape(method.Parameters[0].ParameterType) : null);
     }
 
+    private static bool IsCopiedPrimitiveElementType(MethodDefinition method, string owner)
+    {
+        if (method.Module.Assembly?.Name.Name != "System.Private.CoreLib"
+            || owner != "System.Runtime.CompilerServices.RuntimeHelpers" || method.Name != "IsPrimitiveType")
+            return false;
+        bool elementType = method.Parameters.Count == 1
+            && method.Parameters[0].ParameterType is TypeDefinition { FullName: "System.Reflection.CorElementType", IsEnum: true } parameter
+            && parameter.Module == method.Module
+            && parameter.Fields.Any(field => field.Name == "value__" && !field.IsStatic
+                && field.FieldType.MetadataType == MetadataType.Byte);
+        return CoreIntrinsicTypeMaps.IsPrimitiveElementTypeMethod(method.Module.Assembly?.Name.Name,
+            owner, method.Name, method.IsAssembly,
+            method.IsStatic && !method.IsVirtual && !method.IsAbstract && !method.HasThis && !method.ExplicitThis
+                && method.CallingConvention == MethodCallingConvention.Default,
+            method.GenericParameters.Count, method.HasBody && method.IsIL && method.IsManaged && !method.IsInternalCall
+                && method.Body.Instructions.Count != 0,
+            method.IsPInvokeImpl || method.HasPInvokeInfo, method.Parameters.Count,
+            method.ReturnType.MetadataType == MetadataType.Boolean, elementType);
+    }
+
     private static bool IsCopiedAmbiguousMatchExceptionFactory(MethodDefinition method, string owner)
     {
         if (method.Module.Assembly?.Name.Name != "System.Private.CoreLib"
@@ -246,7 +266,7 @@ internal sealed partial class AssemblyDiet
         else if (IsCopiedMemberMetadataDefinition(method, owner))
             traverse = owner == "System.Reflection.MemberInfo";
         else if (IsCopiedRuntimeTypeHandleCopy(method, owner) || IsCopiedAmbiguousMatchExceptionFactory(method, owner)
-            || IsCopiedMemberNotFoundExceptionFactory(method, owner))
+            || IsCopiedMemberNotFoundExceptionFactory(method, owner) || IsCopiedPrimitiveElementType(method, owner))
             traverse = true;
         else if (owner is "System.Array" or "System.Delegate")
             traverse = CoreIntrinsicTypeMaps.IsRealBodyGeneric(owner, method.Name) || CopiedArrayRealBodyMember(method);

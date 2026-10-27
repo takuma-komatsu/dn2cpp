@@ -698,6 +698,40 @@ internal static partial class CoreIntrinsics
             signature.ParameterTypes.Length == 1 ? Shape(signature.ParameterTypes[0]) : null);
     }
 
+    // The enum-code predicate is pure IL, including its masked shift for undefined codes.
+    internal static bool IsPrimitiveElementType(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.Runtime.CompilerServices.RuntimeHelpers"
+            || method.Name != "IsPrimitiveType")
+            return false;
+        var signature = method.Signature;
+        var blob = method.Module.Reader.GetBlobReader(method.Module.Reader.GetMethodDefinition(method.Handle).Signature);
+        bool unmodified = blob.ReadByte() == 0 && blob.ReadCompressedInteger() == 1
+            && blob.ReadByte() == (byte)SignatureTypeCode.Boolean
+            && blob.ReadByte() == 0x11;
+        EntityHandle elementHandle = default;
+        if (unmodified)
+        {
+            elementHandle = blob.ReadTypeHandle();
+            unmodified = elementHandle.Kind == HandleKind.TypeDefinition && blob.RemainingBytes == 0;
+        }
+        return CoreIntrinsicTypeMaps.IsPrimitiveElementTypeMethod(method.Module.AssemblyName,
+            method.DeclaringClass.FullName, method.Name,
+            (method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask) == System.Reflection.MethodAttributes.Assembly,
+            method.IsStatic && !method.IsVirtual && !method.IsAbstract && signature.Header.RawValue == 0,
+            signature.GenericParameterCount,
+            method.Rva != 0 && (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) == 0,
+            method.PInvoke is not null || (method.Attributes & System.Reflection.MethodAttributes.PinvokeImpl) != 0,
+            signature.ParameterTypes.Length,
+            unmodified && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean },
+            signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { FullName: "System.Reflection.CorElementType",
+                IsEnum: true, EnumUnderlying: PrimitiveTypeCode.Byte } parameter }]
+                && parameter.Module == method.Module && parameter.Handle == elementHandle);
+    }
+
     // Factories retain their getter/formatting order and return an exception, not a throw sink.
     internal static bool IsAmbiguousMatchExceptionFactory(MethodInfo method)
     {

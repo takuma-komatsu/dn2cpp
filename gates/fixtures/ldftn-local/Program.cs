@@ -2,6 +2,7 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (PrimitiveElementTypeFixture.Run(args)) return;
 if (ArrayTypeHandleFixture.Run(args)) return;
 if (CompoundTypeHandleFixture.Run(args)) return;
 if (GenericConstraintArrayFixture.Run(args)) return;

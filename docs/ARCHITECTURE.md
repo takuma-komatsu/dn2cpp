@@ -636,6 +636,13 @@ vtable slot. The separate managed `GetDeclaringMethodForGenericParameter` bridge
 returns CoreCLR's `IRuntimeMethodInfo` and refuses execution rather than inventing
 a MethodDesc. Its raw QCall sibling retains native-import binding authority.
 
+The exact managed `RuntimeHelpers.IsPrimitiveType(CorElementType)` predicate
+retains its real IL. It classifies element codes, not Type identities; undefined
+enum codes keep the input body's masked-shift behavior. Direct calls, address
+bindings, retained reflection rows and copied-body traversal share this same
+boundary. Other RuntimeHelpers members remain mapped, and the public
+`Type.IsPrimitive` policy is unchanged.
+
 The managed `ThrowHelper.GetAmbiguousMatchException` factories retain their real
 IL for both `MemberInfo` and `Attribute` inputs. They return an exception instead
 of throwing it, preserving the declaring-type getter and object-based `SR.Format`

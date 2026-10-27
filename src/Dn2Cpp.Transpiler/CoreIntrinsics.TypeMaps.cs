@@ -132,6 +132,13 @@ internal static class CoreIntrinsicTypeMaps
         && managedBody && !pinvoke && parameterCount == 1
         && result == "System.ArgumentException" && parameter == "System.Reflection.MemberInfo";
 
+    public static bool IsPrimitiveElementTypeMethod(string? assembly, string? owner, string name,
+        bool isAssembly, bool staticDefault, int genericArity, bool managedBody, bool pinvoke,
+        int parameterCount, bool booleanResult, bool byteElementType) =>
+        assembly == "System.Private.CoreLib" && owner == "System.Runtime.CompilerServices.RuntimeHelpers"
+        && name == "IsPrimitiveType" && isAssembly && staticDefault && genericArity == 0
+        && managedBody && !pinvoke && parameterCount == 1 && booleanResult && byteElementType;
+
     public static bool IsAmbiguousMatchExceptionFactoryMethod(string? assembly, string? owner, string name,
         bool isAssembly, bool staticDefault, int genericArity, bool managedBody, bool pinvoke,
         int parameterCount, string? result, string? parameter) =>

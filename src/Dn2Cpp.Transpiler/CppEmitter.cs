@@ -2142,6 +2142,7 @@ internal sealed partial class CppEmitter
         || _c.IsUnorderableComparerCompareBody(m)
         || CoreIntrinsics.IsIntrinsicType(cls.FullName) && !CoreIntrinsics.IsRuntimeTypeHandleCopy(m)
             && !CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m)
+            && !CoreIntrinsics.IsPrimitiveElementType(m)
             && !CoreIntrinsics.IsMemberNotFoundExceptionFactory(m)
             && !CoreIntrinsics.IsMemberMetadataDefinitionBase(m);
 
@@ -2709,6 +2710,7 @@ internal sealed partial class CppEmitter
                         if (CoreIntrinsics.IsIntrinsicType(m.DeclaringClass.FullName)
                             && !CoreIntrinsics.IsRuntimeTypeHandleCopy(m)
                             && !CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m)
+                            && !CoreIntrinsics.IsPrimitiveElementType(m)
                             && !CoreIntrinsics.IsMemberNotFoundExceptionFactory(m)
             && !CoreIntrinsics.IsMemberMetadataDefinitionBase(m))
                         {

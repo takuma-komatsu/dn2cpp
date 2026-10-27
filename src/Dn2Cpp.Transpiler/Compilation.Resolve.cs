@@ -94,6 +94,7 @@ internal sealed partial class Compilation
                 ReachExceptionGetMessage(mi);
                 if (CoreIntrinsics.IsRuntimeTypeHandleCopy(mi)
                     || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(mi)
+                    || CoreIntrinsics.IsPrimitiveElementType(mi)
                     || CoreIntrinsics.IsMemberNotFoundExceptionFactory(mi)
                     || CoreIntrinsics.IsMemberMetadataDefinitionBase(mi)
                     || CoreIntrinsics.BrDelegateNamedConstructor.Matches(mi)
@@ -1390,6 +1391,16 @@ internal sealed partial class Compilation
                 var factory = ResolveMemberRefMethod(module, handle, callerCtx);
                 if (CoreIntrinsics.IsMemberNotFoundExceptionFactory(factory))
                     return factory;
+            }
+            catch (NotSupportedException e) when (!IsMustEscape(e)) { }
+        }
+        if (full == "System.Runtime.CompilerServices.RuntimeHelpers" && reader.StringComparer.Equals(mr.Name, "IsPrimitiveType"))
+        {
+            try
+            {
+                var predicate = ResolveMemberRefMethod(module, handle, callerCtx);
+                if (CoreIntrinsics.IsPrimitiveElementType(predicate))
+                    return predicate;
             }
             catch (NotSupportedException e) when (!IsMustEscape(e)) { }
         }
