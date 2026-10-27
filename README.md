@@ -865,6 +865,9 @@ expression trees at runtime.
   before reading CoreCLR MethodTable, TypeDesc or output-handle state. Its
   nullable wrapper still returns null for a zero handle. Native `Type.TypeHandle`
   and `Type.GetTypeFromHandle` use type-info identities, not CoreCLR pointers.
+  `RuntimeTypeHandle.CopyRuntimeTypeHandles` retains its managed copy bodies:
+  spans reuse sufficient caller scratch storage or allocate a separate array,
+  and the Type-array overload copies the same native handle values.
   The managed `RuntimeMethodHandle.ReboxFromNullable` and `ReboxToNullable`
   adapters instead use native nullable layouts: ordinary objects retain identity,
   raw nullable boxes normalize to null or a fresh underlying-value box, and

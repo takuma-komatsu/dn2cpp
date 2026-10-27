@@ -9,6 +9,11 @@ internal static class Program
 {
     private static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "runtime-type-handle-copy-artifact")
+        {
+            RuntimeTypeHandleCopySubset.Program.RunArtifactChecks(args);
+            return;
+        }
         if (args.Length > 0 && args[0] == "nullable-reboxing-only")
         {
             NullableReboxingSubset.Program.Run();
@@ -176,5 +181,7 @@ internal static class Program
         NullableReboxingSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-runtime-field-handle") return;
         RuntimeFieldHandleSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-runtime-type-handle-copy") return;
+        RuntimeTypeHandleCopySubset.Program.Run();
     }
 }

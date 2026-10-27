@@ -624,6 +624,50 @@ internal static partial class CoreIntrinsics
             || IsCoreClrFieldDescOperation(mi)
             || IsCoreClrTypeMaterialization(mi) && mi.Rva == 0);
 
+    // These managed copies consume the supported Value/TypeHandle APIs, not VM fields.
+    internal static bool IsRuntimeTypeHandleCopy(MethodInfo method)
+    {
+        if (method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle"
+            || method.Name != "CopyRuntimeTypeHandles")
+            return false;
+        var signature = method.Signature;
+        return CoreIntrinsicTypeMaps.IsRuntimeTypeHandleCopyMethod(
+            method.DeclaringClass.Module.AssemblyName, method.DeclaringClass.FullName, method.Name,
+            (method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask) == System.Reflection.MethodAttributes.Assembly,
+            method.IsStatic && signature.Header.RawValue == 0, signature.GenericParameterCount,
+            method.Rva != 0 && (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) == 0,
+            method.PInvoke is not null || (method.Attributes & System.Reflection.MethodAttributes.PinvokeImpl) != 0,
+            signature.ParameterTypes.Length, RuntimeTypeHandleCopyType(signature.ReturnType),
+            signature.ParameterTypes.Length > 0 ? RuntimeTypeHandleCopyType(signature.ParameterTypes[0]) : null,
+            signature.ParameterTypes.Length > 1 ? RuntimeTypeHandleCopyType(signature.ParameterTypes[1]) : null);
+    }
+
+    private static string? RuntimeTypeHandleCopyType(TypeDesc type)
+    {
+        if (type is { Kind: TypeKind.ByRef, Element: { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 } })
+            return "System.Int32&";
+        if (type is { Kind: TypeKind.SZArray, Element: { } element })
+        {
+            if (element is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.IntPtr }) return "System.IntPtr[]";
+            if (IsCoreLibMethodDescType(element, "System.Type")) return "System.Type[]";
+            if (IsCoreLibMethodDescType(element, "System.RuntimeTypeHandle")) return "System.RuntimeTypeHandle[]";
+        }
+        if (type is { Kind: TypeKind.Class, Class: { Module.AssemblyName: "System.Private.CoreLib" } span }
+            && !span.Handle.IsNil && span.Context.TypeArgs is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.IntPtr }])
+        {
+            var reader = span.Module.Reader;
+            var definition = reader.GetTypeDefinition(span.Handle);
+            if (definition.GetDeclaringType().IsNil && reader.StringComparer.Equals(definition.Namespace, "System"))
+            {
+                if (reader.StringComparer.Equals(definition.Name, "Span`1")) return "System.Span<System.IntPtr>";
+                if (reader.StringComparer.Equals(definition.Name, "ReadOnlySpan`1")) return "System.ReadOnlySpan<System.IntPtr>";
+            }
+        }
+        return null;
+    }
+
     internal static bool IsNullableReboxing(MethodInfo method)
     {
         if (method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"

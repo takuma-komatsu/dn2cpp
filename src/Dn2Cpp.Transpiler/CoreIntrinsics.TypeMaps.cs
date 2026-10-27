@@ -99,6 +99,16 @@ internal static class CoreIntrinsicTypeMaps
             _ => false,
         });
 
+    public static bool IsRuntimeTypeHandleCopyMethod(string? assembly, string? owner, string name,
+        bool isAssembly, bool staticDefault, int genericArity, bool managedBody, bool pinvoke,
+        int parameterCount, string? result, string? first, string? second) =>
+        assembly == "System.Private.CoreLib" && owner == "System.RuntimeTypeHandle"
+        && name == "CopyRuntimeTypeHandles" && isAssembly && staticDefault && genericArity == 0
+        && managedBody && !pinvoke && parameterCount == 2
+        && (result == "System.ReadOnlySpan<System.IntPtr>" && first == "System.RuntimeTypeHandle[]"
+                && second == "System.Span<System.IntPtr>"
+            || result == "System.IntPtr[]" && first == "System.Type[]" && second == "System.Int32&");
+
     public static bool IsNullableReboxingMethod(string? assembly, string? owner, string name,
         bool isAssembly, bool isStatic, int genericArity, bool managedBody, bool pinvoke,
         int parameterCount, bool returnsObject, bool objectInput, bool runtimeTypeInput) =>
@@ -205,8 +215,8 @@ internal static class CoreIntrinsicTypeMaps
         "System.String",
         "System.Delegate",
         "System.Type",
-        // RuntimeTypeHandle is the type-info pointer itself. Its managed CoreLib field
-        // layout and member bodies must not leak into the emitted representation.
+        // RuntimeTypeHandle is the type-info pointer itself. Only selected field-free
+        // managed helpers may bypass its CoreCLR layout and member-body boundary.
         "System.RuntimeTypeHandle",
         "System.Reflection.MemberInfo",
         // Reflected field handles. FieldInfo is abstract in the BCL; we model

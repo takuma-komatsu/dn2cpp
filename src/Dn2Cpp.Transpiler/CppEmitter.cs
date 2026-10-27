@@ -2140,7 +2140,7 @@ internal sealed partial class CppEmitter
         || _c.PInvokeFtnTargets.Contains(m) || _c.IntrinsicFtnTargets.Contains(m)
         || _c.InterceptFtnTargets.Contains(m) || CoreIntrinsics.MdComparerCompare.Matches(m)
         || _c.IsUnorderableComparerCompareBody(m)
-        || CoreIntrinsics.IsIntrinsicType(cls.FullName);
+        || CoreIntrinsics.IsIntrinsicType(cls.FullName) && !CoreIntrinsics.IsRuntimeTypeHandleCopy(m);
 
     private ParallelBodyResult CompileParallelBody(
         MethodInfo m, LiteralPool literals, bool planning)
@@ -2703,7 +2703,8 @@ internal sealed partial class CppEmitter
                         // degrades to a trap-on-call body instead of failing the build —
                         // the slot is only reached because SOME type dispatches the decl,
                         // and a string may never flow there.
-                        if (CoreIntrinsics.IsIntrinsicType(m.DeclaringClass.FullName))
+                        if (CoreIntrinsics.IsIntrinsicType(m.DeclaringClass.FullName)
+                            && !CoreIntrinsics.IsRuntimeTypeHandleCopy(m))
                         {
                             string body;
                             if (new MethodCompiler(_c, m, literals, _backend)

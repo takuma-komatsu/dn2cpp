@@ -108,6 +108,43 @@ internal sealed partial class AssemblyDiet
             method.Parameters.Count > 1 ? CoreType(method.Parameters[1].ParameterType) : null);
     }
 
+    private static bool IsCopiedRuntimeTypeHandleCopy(MethodDefinition method, string owner)
+    {
+        if (method.Module.Assembly?.Name.Name != "System.Private.CoreLib"
+            || owner != "System.RuntimeTypeHandle" || method.Name != "CopyRuntimeTypeHandles")
+            return false;
+        static bool Core(TypeReference type) => type.Scope is AssemblyNameReference reference
+            ? reference.Name == "System.Private.CoreLib"
+            : type.Scope is ModuleDefinition module && module.Assembly?.Name.Name == "System.Private.CoreLib";
+        static string? Shape(TypeReference type)
+        {
+            if (type is ByReferenceType { ElementType.MetadataType: MetadataType.Int32 }) return "System.Int32&";
+            if (type is ArrayType { IsVector: true } array)
+            {
+                if (array.ElementType.MetadataType == MetadataType.IntPtr) return "System.IntPtr[]";
+                if (Core(array.ElementType))
+                {
+                    if (array.ElementType.FullName == "System.Type") return "System.Type[]";
+                    if (array.ElementType.FullName == "System.RuntimeTypeHandle") return "System.RuntimeTypeHandle[]";
+                }
+            }
+            if (type is GenericInstanceType span && Core(span.ElementType) && span.GenericArguments.Count == 1
+                && span.GenericArguments[0].MetadataType == MetadataType.IntPtr)
+            {
+                if (span.ElementType.FullName == "System.Span`1") return "System.Span<System.IntPtr>";
+                if (span.ElementType.FullName == "System.ReadOnlySpan`1") return "System.ReadOnlySpan<System.IntPtr>";
+            }
+            return null;
+        }
+        return CoreIntrinsicTypeMaps.IsRuntimeTypeHandleCopyMethod(
+            method.Module.Assembly?.Name.Name, owner, method.Name, method.IsAssembly,
+            method.IsStatic && !method.HasThis && !method.ExplicitThis && method.CallingConvention == MethodCallingConvention.Default,
+            method.GenericParameters.Count, method.HasBody && method.IsIL && method.IsManaged && !method.IsInternalCall,
+            method.IsPInvokeImpl || method.HasPInvokeInfo, method.Parameters.Count, Shape(method.ReturnType),
+            method.Parameters.Count > 0 ? Shape(method.Parameters[0].ParameterType) : null,
+            method.Parameters.Count > 1 ? Shape(method.Parameters[1].ParameterType) : null);
+    }
+
     private bool TraverseCopiedBody(MethodDefinition method)
     {
         if (_copiedBodyTraversal.TryGetValue(method, out bool known)) return known;
@@ -143,6 +180,8 @@ internal sealed partial class AssemblyDiet
                 method.GenericParameters.Count, method.Parameters.Count, method.ReturnType.FullName,
                 method.Parameters.Count == 1 ? method.Parameters[0].ParameterType.FullName : null))
             traverse = false;
+        else if (IsCopiedRuntimeTypeHandleCopy(method, owner))
+            traverse = true;
         else if (owner is "System.Array" or "System.Delegate")
             traverse = CoreIntrinsicTypeMaps.IsRealBodyGeneric(owner, method.Name) || CopiedArrayRealBodyMember(method);
         else

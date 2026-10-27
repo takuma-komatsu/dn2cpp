@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Nullable reboxing, CoreCLR field/method/type-handle boundaries, public reflection,
+# Managed type-handle copies, nullable reboxing, CoreCLR handle boundaries, public reflection,
 # and companion process
 # argument/stream/exit preservation and the console-self-host
 # runtime primitives whose behaviour can be exercised exactly.
@@ -73,8 +73,25 @@
 #     driver, so no wasm axis reaches the section.
 # Driven by the real System.Private.CoreLib (passed with -r) -> cross-assembly resolve
 # + tree-shake -> native binary -> run, asserting the output diffs exact vs real .NET.
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/RuntimeFieldHandleFixture.cs gates/fixtures/ldftn-local/NullableReboxingFixture.cs gates/fixtures/ldftn-local/RuntimeTypeMaterializationFixture.cs gates/fixtures/ldftn-local/RuntimeMethodHandleFixture.cs gates/fixtures/ldftn-local/RuntimeMethodEnumerationFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/GcFinalizerWorkerFixture.cs gates/fixtures/ldftn-local/DelegateVmConstructorFixture.cs gates/fixtures/ldftn-local/DelegateNamedConstructorFixture.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/RuntimeTypeHandleCopyFixture.cs gates/fixtures/ldftn-local/RuntimeFieldHandleFixture.cs gates/fixtures/ldftn-local/NullableReboxingFixture.cs gates/fixtures/ldftn-local/RuntimeTypeMaterializationFixture.cs gates/fixtures/ldftn-local/RuntimeMethodHandleFixture.cs gates/fixtures/ldftn-local/RuntimeMethodEnumerationFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/GcFinalizerWorkerFixture.cs gates/fixtures/ldftn-local/DelegateVmConstructorFixture.cs gates/fixtures/ldftn-local/DelegateNamedConstructorFixture.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
 source "$(dirname "$0")/_common.sh"
+
+handle_copy_asserts() {
+    local output="$1" route="$2" label
+    for label in type-null type-empty type-values type-null-element; do
+        gate_output byte-witness "$output" "handle-copy-$route-$label:True" --count 1 --policy crlf || return 1
+    done
+    if [[ "$route" == reflection ]]; then
+        for label in handles-shape types-shape span-rejected-before-body; do
+            gate_output byte-witness "$output" "handle-copy-$route-$label:True" --count 1 --policy crlf || return 1
+        done
+        gate_output byte-witness "$output" 'Runtime type handle copies end' --count 1 --policy crlf || return 1
+    else
+        for label in null empty scratch-alias exact-alias allocation stack-alias no-scratch; do
+            gate_output byte-witness "$output" "handle-copy-$route-$label:True" --count 1 --policy crlf || return 1
+        done
+    fi
+}
 
 field_handle_ic_members="GetUtf8NameInternal GetAttributes GetApproxDeclaringMethodTable IsFastPathSupported GetInstanceFieldOffset GetStaticFieldAddress GetToken GetStaticFieldForGenericType AcquiresContextFromThis GetLoaderAllocatorInternal"
 field_handle_qcall_members="GetFieldDataReference GetValueDirect SetValueDirect GetEnCFieldAddr GetRVAFieldInfo GetValue SetValue"
@@ -339,6 +356,9 @@ gate_extra_asserts() {
     gate_capture_ok "$out/assert-before-field-handle" run_bounded dotnet "$_CG_APP" before-runtime-field-handle || return 1
     gate_output prefix "$native" "$out/assert-before-field-handle.stdout" --before '== Runtime field handle contract ==' --policy crlf || return 1
     field_handle_public_asserts "$native" || return 1
+    gate_capture_ok "$out/assert-before-handle-copy" run_bounded dotnet "$_CG_APP" before-runtime-type-handle-copy || return 1
+    gate_output prefix "$native" "$out/assert-before-handle-copy.stdout" --before '== Runtime type handle copies ==' --policy crlf || return 1
+    handle_copy_asserts "$native" reflection || return 1
 
 }
 
@@ -589,3 +609,37 @@ invoke_cli "$field_input/SelfHostPrimSubset.dll" --auto-ref -o "$field_out"
 compile_console "$field_out" RuntimeFieldHandle
 gate_capture_ok "$field_out/native" run_bounded "./$field_out/RuntimeFieldHandle$EXE_EXT"
 field_handle_boundary_asserts "$field_out/native.stdout"
+
+# Both copy helpers retain their real IL. Span reflection is a validation check;
+# only these true-ABI direct/calli sites execute its byref-like body.
+copy_input="artifacts/runtime-type-handle-copy-input-$CONFIG"
+mkdir -p "$copy_input"
+cp samples/dotnet/SelfHostPrimSubset/bin/$CONFIG/$TFM/* "$copy_input/"
+dotnet "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
+    --runtime-type-handle-copy "$copy_input/SelfHostPrimSubset.dll" "$_CG_CORELIB"
+copy_out="artifacts/runtime-type-handle-copy-$CONFIG"
+invoke_cli "$copy_input/SelfHostPrimSubset.dll" --auto-ref -o "$copy_out"
+compile_console "$copy_out" RuntimeTypeHandleCopy
+gate_capture_ok "$copy_out/native" run_bounded "./$copy_out/RuntimeTypeHandleCopy$EXE_EXT"
+gate_capture_ok "$copy_out/oracle" run_bounded dotnet "$_CG_APP" runtime-type-handle-copy-artifact
+gate_output compare "$copy_out/native.stdout" "$copy_out/oracle.stdout" --policy crlf
+for route in reflection direct pointer; do
+    handle_copy_asserts "$copy_out/native.stdout" "$route"
+done
+gate_output byte-witness "$copy_out/native.stdout" 'Runtime type handle copy artifact end' --count 1 --policy crlf
+
+# A compile-only gap in each retained helper must be inventoried even when no
+# output callback exists. This CoreLib artifact is measured, never executed.
+copy_measure_core="$copy_input/measure-corelib/System.Private.CoreLib.dll"
+mkdir -p "$(dirname "$copy_measure_core")"
+dotnet "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
+    --runtime-type-handle-copy-measure "$copy_measure_core" "$_CG_CORELIB"
+invoke_cli "$copy_input/SelfHostPrimSubset.dll" --auto-ref --no-ildiet -r "$copy_measure_core" \
+    --measure -o "$copy_out/measure" > "$copy_out/measure.stdout"
+copy_gaps="$copy_out/measure/s0-gaps.tsv"
+if [[ ! -f "$copy_gaps" ]] || [[ $(grep -Fc 'CopyMeasureProbe' "$copy_gaps") -ne 2 ]] \
+    || grep -q '^dangling' "$copy_gaps"; then
+    echo 'FAIL: --measure did not inventory both managed type-handle copy bodies' >&2
+    cat "$copy_out/measure.stdout" >&2
+    exit 1
+fi

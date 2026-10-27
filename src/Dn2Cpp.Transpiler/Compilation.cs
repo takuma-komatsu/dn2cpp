@@ -4178,7 +4178,8 @@ internal sealed partial class Compilation
         if (_intrinsicTypeTranspiled.Contains(m))
             return; // real body transpiled — the symbol already exists
         // Its calls already delegate to the real body, which serves the address too.
-        if (CoreIntrinsics.IsRealBodyGeneric(m.DeclaringClass.FullName, m.Name)
+        if (CoreIntrinsics.IsRuntimeTypeHandleCopy(m)
+            || CoreIntrinsics.IsRealBodyGeneric(m.DeclaringClass.FullName, m.Name)
             || CoreIntrinsics.IsArrayRealBodyMember(m.DeclaringClass.FullName, m.Name, m.Signature))
         {
             ReachIntrinsicTypeMethod(m);
