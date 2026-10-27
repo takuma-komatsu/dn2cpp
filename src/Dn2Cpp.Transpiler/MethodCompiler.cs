@@ -709,6 +709,10 @@ internal sealed partial class MethodCompiler : IEvalStack
 
         BuildExceptionRegions(bodyBlock);
         BuildArgsAndLocals(bodyBlock);
+        // Calls assign to CLI argument storage even when the native ABI promotes enums.
+        foreach (var argument in _args)
+            if (IsNarrowEnumSlot(argument.Type))
+                Emit($"{argument.Name} = {CoerceToSlot(new StackEntry(argument.Name, argument.Kind, argument.CppType), argument.Type, argument.CppType)};");
         SetupNoAliasSpanLocals(insns);
 
         // The reachability scanner computed the identical pass with the same
@@ -2220,12 +2224,20 @@ internal sealed partial class MethodCompiler : IEvalStack
             _c.NoteStringInterfaces();
     }
 
+    // Canonical enum arguments use width-preserving primitive placeholders.
+    private static bool IsNarrowEnumSlot(TypeDesc? type) => type is
+        { Kind: TypeKind.Class, Class: { IsEnum: true, EnumUnderlying: PrimitiveTypeCode.Byte
+            or PrimitiveTypeCode.SByte or PrimitiveTypeCode.UInt16 or PrimitiveTypeCode.Int16 } }
+        or { Kind: TypeKind.Primitive, IsCanonPlaceholder: true, Primitive: PrimitiveTypeCode.Byte
+            or PrimitiveTypeCode.SByte or PrimitiveTypeCode.UInt16 or PrimitiveTypeCode.Int16 };
+
     // Promoted locals and arguments still truncate at their declared CLI storage width.
     private string CoerceToSlot(StackEntry value, TypeDesc? type, string cppType)
     {
         if (type is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Byte or PrimitiveTypeCode.SByte
-            or PrimitiveTypeCode.UInt16 or PrimitiveTypeCode.Int16 or PrimitiveTypeCode.Char })
-            return CoerceTo(value, type, CppTypes.StorageOf(type));
+            or PrimitiveTypeCode.UInt16 or PrimitiveTypeCode.Int16 or PrimitiveTypeCode.Char }
+            || IsNarrowEnumSlot(type))
+            return CoerceTo(value, type, CppTypes.StorageOf(type!));
         return CoerceTo(value, type, cppType);
     }
 

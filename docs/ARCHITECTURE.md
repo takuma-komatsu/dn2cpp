@@ -355,6 +355,9 @@ Core invariants:
   `Dn2CppTypeInfo` at the head of every object.
 - **The evaluation stack is single-assignment temporaries**, spilled to per-depth
   normalized variables at basic-block boundaries so control-flow joins agree.
+  Promoted narrow-enum arguments normalize to their CLI storage width on real-IL
+  body entry, and local/argument stores use the same narrowing rule; the native
+  ABI remains unchanged.
 - **Generation is deterministic**: same input, same output. Nothing in the
   environment may change the C++ a successful transpile emits — the self-host
   fixpoint depends on it.
@@ -636,12 +639,14 @@ vtable slot. The separate managed `GetDeclaringMethodForGenericParameter` bridge
 returns CoreCLR's `IRuntimeMethodInfo` and refuses execution rather than inventing
 a MethodDesc. Its raw QCall sibling retains native-import binding authority.
 
-The exact managed `RuntimeHelpers.IsPrimitiveType(CorElementType)` predicate
-retains its real IL. It classifies element codes, not Type identities; undefined
-enum codes keep the input body's masked-shift behavior. Direct calls, address
-bindings, retained reflection rows and copied-body traversal share this same
-boundary. Other RuntimeHelpers members remain mapped, and the public
-`Type.IsPrimitive` policy is unchanged.
+The exact managed `RuntimeHelpers.IsPrimitiveType(CorElementType)` and
+`CanPrimitiveWiden(CorElementType, CorElementType)` helpers retain their real IL.
+They classify element codes, not Type identities. Undefined codes keep the input
+body's masked shifts and widening-table identity fallback; the widening table
+comes from the input RVA field. Direct calls, address bindings, retained
+reflection rows and copied-body traversal share this same boundary. Other
+RuntimeHelpers members remain mapped, and public primitive/conversion policies
+are unchanged.
 
 The managed `ThrowHelper.GetAmbiguousMatchException` factories retain their real
 IL for both `MemberInfo` and `Attribute` inputs. They return an exception instead

@@ -94,7 +94,7 @@ internal sealed partial class Compilation
                 ReachExceptionGetMessage(mi);
                 if (CoreIntrinsics.IsRuntimeTypeHandleCopy(mi)
                     || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(mi)
-                    || CoreIntrinsics.IsPrimitiveElementType(mi)
+                    || CoreIntrinsics.IsPrimitiveElementHelper(mi)
                     || CoreIntrinsics.IsMemberNotFoundExceptionFactory(mi)
                     || CoreIntrinsics.IsMemberMetadataDefinitionBase(mi)
                     || CoreIntrinsics.BrDelegateNamedConstructor.Matches(mi)
@@ -1394,12 +1394,14 @@ internal sealed partial class Compilation
             }
             catch (NotSupportedException e) when (!IsMustEscape(e)) { }
         }
-        if (full == "System.Runtime.CompilerServices.RuntimeHelpers" && reader.StringComparer.Equals(mr.Name, "IsPrimitiveType"))
+        if (full == "System.Runtime.CompilerServices.RuntimeHelpers"
+            && (reader.StringComparer.Equals(mr.Name, "IsPrimitiveType")
+                || reader.StringComparer.Equals(mr.Name, "CanPrimitiveWiden")))
         {
             try
             {
                 var predicate = ResolveMemberRefMethod(module, handle, callerCtx);
-                if (CoreIntrinsics.IsPrimitiveElementType(predicate))
+                if (CoreIntrinsics.IsPrimitiveElementHelper(predicate))
                     return predicate;
             }
             catch (NotSupportedException e) when (!IsMustEscape(e)) { }

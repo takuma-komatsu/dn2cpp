@@ -698,26 +698,35 @@ internal static partial class CoreIntrinsics
             signature.ParameterTypes.Length == 1 ? Shape(signature.ParameterTypes[0]) : null);
     }
 
-    // The enum-code predicate is pure IL, including its masked shift for undefined codes.
-    internal static bool IsPrimitiveElementType(MethodInfo method)
+    // These enum-code helpers preserve the input IL's masks and RVA widening table.
+    internal static bool IsPrimitiveElementHelper(MethodInfo method)
     {
         if (method.Module.AssemblyName != "System.Private.CoreLib"
             || method.DeclaringClass.Module != method.Module
             || method.DeclaringClass.FullName != "System.Runtime.CompilerServices.RuntimeHelpers"
-            || method.Name != "IsPrimitiveType")
+            || method.Name is not ("IsPrimitiveType" or "CanPrimitiveWiden"))
             return false;
+        int arity = method.Name == "IsPrimitiveType" ? 1 : 2;
         var signature = method.Signature;
         var blob = method.Module.Reader.GetBlobReader(method.Module.Reader.GetMethodDefinition(method.Handle).Signature);
-        bool unmodified = blob.ReadByte() == 0 && blob.ReadCompressedInteger() == 1
-            && blob.ReadByte() == (byte)SignatureTypeCode.Boolean
-            && blob.ReadByte() == 0x11;
+        bool unmodified = blob.ReadByte() == 0 && blob.ReadCompressedInteger() == arity
+            && blob.ReadByte() == (byte)SignatureTypeCode.Boolean;
         EntityHandle elementHandle = default;
-        if (unmodified)
+        for (int i = 0; unmodified && i < arity; i++)
         {
-            elementHandle = blob.ReadTypeHandle();
-            unmodified = elementHandle.Kind == HandleKind.TypeDefinition && blob.RemainingBytes == 0;
+            unmodified = blob.ReadByte() == 0x11;
+            if (!unmodified) break;
+            var handle = blob.ReadTypeHandle();
+            unmodified = handle.Kind == HandleKind.TypeDefinition && (i == 0 || handle == elementHandle);
+            elementHandle = handle;
         }
-        return CoreIntrinsicTypeMaps.IsPrimitiveElementTypeMethod(method.Module.AssemblyName,
+        unmodified &= blob.RemainingBytes == 0;
+        bool byteElements = signature.ParameterTypes.Length == arity;
+        foreach (var parameter in signature.ParameterTypes)
+            byteElements &= parameter is { Kind: TypeKind.Class, Class: { FullName: "System.Reflection.CorElementType",
+                IsEnum: true, EnumUnderlying: PrimitiveTypeCode.Byte } element }
+                && element.Module == method.Module && element.Handle == elementHandle;
+        return CoreIntrinsicTypeMaps.IsPrimitiveElementHelperMethod(method.Module.AssemblyName,
             method.DeclaringClass.FullName, method.Name,
             (method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask) == System.Reflection.MethodAttributes.Assembly,
             method.IsStatic && !method.IsVirtual && !method.IsAbstract && signature.Header.RawValue == 0,
@@ -727,9 +736,7 @@ internal static partial class CoreIntrinsics
             method.PInvoke is not null || (method.Attributes & System.Reflection.MethodAttributes.PinvokeImpl) != 0,
             signature.ParameterTypes.Length,
             unmodified && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean },
-            signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { FullName: "System.Reflection.CorElementType",
-                IsEnum: true, EnumUnderlying: PrimitiveTypeCode.Byte } parameter }]
-                && parameter.Module == method.Module && parameter.Handle == elementHandle);
+            byteElements);
     }
 
     // Factories retain their getter/formatting order and return an exception, not a throw sink.

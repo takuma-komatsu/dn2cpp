@@ -372,5 +372,7 @@ internal static class Program
         ArrayTypeHandleSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-primitive-element") return;
         PrimitiveElementTypeSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-primitive-widening") return;
+        PrimitiveWideningSubset.Program.Run();
     }
 }
