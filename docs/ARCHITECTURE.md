@@ -589,6 +589,18 @@ share the wrapper, while its raw QCall keeps native-import binding authority.
 This does not change the separate Type intrinsic's existing unsupported-receiver
 policy or the formal context, completion and missing-metadata rules.
 
+The exact managed `RuntimeTypeHandle.MakePointer()` and `MakeByRef()` wrappers
+validate their handles, then share the existing native compound-type factory.
+Pointer and by-reference identities are interned with static signature types;
+a by-reference element remains invalid for either construction. Their public
+RuntimeType overrides keep their managed bodies, including the distinction
+between a null virtual receiver and a nonvirtual body's default-handle check.
+Sealed public calls and virtual-address bindings enter those same real bodies
+without indexing CoreCLR virtual slots. Direct calls, address bindings and
+reflection-only rows share the handle wrapper; the separate raw QCalls retain
+native-import binding authority. This does not
+extend the public Type policy or supported function-pointer construction.
+
 The exact public `RuntimeType.MakeGenericType(Type[])` override shares the existing
 native `Type.MakeGenericType` AOT, open-type and template policy. Its retained body,
 direct calls and address bindings never enter CoreCLR's instantiating loader.

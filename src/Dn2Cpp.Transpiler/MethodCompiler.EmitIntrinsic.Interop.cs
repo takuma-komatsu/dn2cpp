@@ -467,6 +467,16 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsRuntimeTypeHandleMakeCompound(callee))
+        {
+            string handle = NewTemp("const Dn2CppTypeInfo*");
+            Emit($"{handle} = {DerefReceiver("const Dn2CppTypeInfo*")};");
+            ValidateRuntimeTypeHandle(handle, callee);
+            Push(StackKind.Ref, "Dn2CppType*",
+                $"dn2cpp_type_make_compound(dn2cpp_get_type_from_handle({handle}), {(callee.Name == "MakePointer" ? 1 : 2)})");
+            return;
+        }
+
         if (CoreIntrinsics.IsRuntimeTypeMakeGenericType(callee))
         {
             // callvirt checks before entry; a nonvirtual body checks the array first.

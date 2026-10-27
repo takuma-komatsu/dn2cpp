@@ -9,6 +9,16 @@ internal static class Program
 {
     private static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "compound-handle")
+        {
+            CompoundTypeHandleSubset.Program.RunHandleArtifact(args);
+            return;
+        }
+        if (args.Length > 0 && args[0] == "compound-reflection")
+        {
+            CompoundTypeHandleSubset.Program.RunReflectionArtifact(args);
+            return;
+        }
         if (args.Length > 0 && args[0] == "constraint-array-handle")
         {
             GenericConstraintArraySubset.Program.RunHandleArtifact(args);
@@ -346,5 +356,7 @@ internal static class Program
         ContainsGenericVariablesSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-constraint-array") return;
         GenericConstraintArraySubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-compound-handle") return;
+        CompoundTypeHandleSubset.Program.Run();
     }
 }

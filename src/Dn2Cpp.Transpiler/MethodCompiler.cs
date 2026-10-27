@@ -791,6 +791,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 _ftnOrigins.Add(insn.Offset + 1, (target, virtFtn && target.IsVirtual
                     && !CoreIntrinsics.IsRuntimeTypeDeclaringMethod(target)
                     && !CoreIntrinsics.IsRuntimeTypeMakeGenericType(target)
+                    && !CoreIntrinsics.IsRuntimeTypeMakeCompound(target)
                     && !CoreIntrinsics.IsRuntimeTypeGenericParameterPosition(target), virtFtn));
             }
 
@@ -1190,6 +1191,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             || CoreIntrinsics.IsRuntimeTypeHandleGenericVariableIndex(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariables(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleConstraints(_method)
+            || CoreIntrinsics.IsRuntimeTypeHandleMakeCompound(_method)
             || CoreIntrinsics.IsRuntimeTypeGenericParameterPosition(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleInstantiate(_method)
             || CoreIntrinsics.IsRuntimeTypeMakeGenericType(_method)
@@ -3826,7 +3828,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                         + $"{{ return {impl.CppName}(({virtualTarget.DeclaringClass.CppStructName}*)(receiver + 1), other); }})";
                 }
                 else if (CoreIntrinsics.IsRuntimeTypeDeclaringMethod(m) || CoreIntrinsics.IsRuntimeTypeMakeGenericType(m)
-                    || CoreIntrinsics.IsRuntimeTypeGenericParameterPosition(m))
+                    || CoreIntrinsics.IsRuntimeTypeGenericParameterPosition(m) || CoreIntrinsics.IsRuntimeTypeMakeCompound(m))
                 {
                     // RuntimeType is sealed; its native header has no CoreCLR virtual slots.
                     bindsLowering = true;

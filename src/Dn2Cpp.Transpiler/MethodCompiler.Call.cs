@@ -2293,6 +2293,11 @@ internal sealed partial class MethodCompiler
             // here.
             call = DirectCall(callee, args);
         }
+        else if (isCallvirt && CoreIntrinsics.IsRuntimeTypeMakeCompound(callee))
+        {
+            // Keep the real body; only its sealed native receiver lacks virtual slots.
+            call = DirectCall(callee, args);
+        }
         else if (isCallvirt && callee.IsVirtual)
         {
             // The receiver is cast to the declaring class's struct pointer in FnPtrType,
@@ -3355,8 +3360,8 @@ internal sealed partial class MethodCompiler
         var args2 = new List<string> { typedObj };
         for (int i = 0; i < rawArgs.Length; i++)
             args2.Add(Cast(rawArgs[i], CppTypes.Of(ps[i])));
-        // A non-virtual callee has no slot: the object runs its own body.
-        if (!callee.IsVirtual)
+        // Nonvirtual and selected sealed native-Type calls enter their own bodies.
+        if (!callee.IsVirtual || CoreIntrinsics.IsRuntimeTypeMakeCompound(callee))
         {
             EmitCallResult(callee, DirectCall(callee, args2));
             return;
