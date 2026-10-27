@@ -3665,6 +3665,22 @@ Dn2CppArrayRef* dn2cpp_type_get_generic_parameter_constraints(Dn2CppType* t)
     return result;
 }
 
+int32_t dn2cpp_type_generic_parameter_position(const Dn2CppTypeInfo* ti)
+{
+    std::lock_guard<std::recursive_mutex> lock(g_formal_types_mtx);
+    const auto found = g_formal_types.find(ti);
+    if (found == g_formal_types.end() || found->second == nullptr || !found->second->parameter
+        || &found->second->type != ti)
+        dn2cpp_throw_platform_not_supported("Reflection: generic parameter context is not retained");
+    const auto* node = found->second;
+    // A formal's defining vector is independent of any constructed use of it.
+    const auto& arguments = node->methodArguments.empty() ? node->typeArguments : node->methodArguments;
+    for (size_t i = 0; i < arguments.size(); i++)
+        if (arguments[i] == ti)
+            return static_cast<int32_t>(i);
+    dn2cpp_throw_platform_not_supported("Reflection: generic parameter context is not retained");
+}
+
 int32_t dn2cpp_type_generic_parameter_attributes(const Dn2CppTypeInfo* ti)
 {
     return (ti->flags & DN2CPP_TF_GENERICPARAM) != 0

@@ -790,7 +790,8 @@ internal sealed partial class MethodCompiler : IEvalStack
                     target = redirect;
                 _ftnOrigins.Add(insn.Offset + 1, (target, virtFtn && target.IsVirtual
                     && !CoreIntrinsics.IsRuntimeTypeDeclaringMethod(target)
-                    && !CoreIntrinsics.IsRuntimeTypeMakeGenericType(target), virtFtn));
+                    && !CoreIntrinsics.IsRuntimeTypeMakeGenericType(target)
+                    && !CoreIntrinsics.IsRuntimeTypeGenericParameterPosition(target), virtFtn));
             }
 
         foreach (var insn in insns)
@@ -1186,6 +1187,8 @@ internal sealed partial class MethodCompiler : IEvalStack
             || CoreIntrinsics.IsRuntimeTypeHandleAccessor(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleIsSZArray(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleInstantiation(_method)
+            || CoreIntrinsics.IsRuntimeTypeHandleGenericVariableIndex(_method)
+            || CoreIntrinsics.IsRuntimeTypeGenericParameterPosition(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleInstantiate(_method)
             || CoreIntrinsics.IsRuntimeTypeMakeGenericType(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleConstructor(_method)
@@ -3820,7 +3823,8 @@ internal sealed partial class MethodCompiler : IEvalStack
                         + $"(void*)+[](Dn2CppObject* receiver, Dn2CppObject* other) -> int32_t "
                         + $"{{ return {impl.CppName}(({virtualTarget.DeclaringClass.CppStructName}*)(receiver + 1), other); }})";
                 }
-                else if (CoreIntrinsics.IsRuntimeTypeDeclaringMethod(m) || CoreIntrinsics.IsRuntimeTypeMakeGenericType(m))
+                else if (CoreIntrinsics.IsRuntimeTypeDeclaringMethod(m) || CoreIntrinsics.IsRuntimeTypeMakeGenericType(m)
+                    || CoreIntrinsics.IsRuntimeTypeGenericParameterPosition(m))
                 {
                     // RuntimeType is sealed; its native header has no CoreCLR virtual slots.
                     bindsLowering = true;

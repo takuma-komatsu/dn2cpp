@@ -9,6 +9,21 @@ internal static class Program
 {
     private static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "generic-position-public")
+        {
+            GenericParameterPositionSubset.Program.RunPublicArtifact(args);
+            return;
+        }
+        if (args.Length > 0 && args[0] == "generic-position-handle")
+        {
+            GenericParameterPositionSubset.Program.RunHandleArtifact(args);
+            return;
+        }
+        if (args.Length > 0 && args[0] == "generic-position-reflection")
+        {
+            GenericParameterPositionSubset.Program.RunReflectionArtifact(args);
+            return;
+        }
         if (args.Length > 0 && args[0] == "make-generic-public")
         {
             RuntimeTypeMakeGenericSubset.Program.RunPublicArtifact(args);
@@ -305,5 +320,7 @@ internal static class Program
         RuntimeTypeInstantiationSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-make-generic") return;
         RuntimeTypeMakeGenericSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-generic-position") return;
+        GenericParameterPositionSubset.Program.Run();
     }
 }

@@ -1834,6 +1834,7 @@ int32_t dn2cpp_type_is_constructed_generic(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_is_generic_type_definition(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_contains_generic_parameters(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_generic_parameter_attributes(const Dn2CppTypeInfo* ti);
+int32_t dn2cpp_type_generic_parameter_position(const Dn2CppTypeInfo* ti);
 bool dn2cpp_type_reference_argument(const Dn2CppTypeInfo* ti);
 Dn2CppString* dn2cpp_type_generic_parameter_namespace(const Dn2CppTypeInfo* ti);
 const Dn2CppTypeInfo* dn2cpp_type_generic_parameter_declaring_type(const Dn2CppTypeInfo* ti);

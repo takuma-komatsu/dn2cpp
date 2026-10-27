@@ -418,6 +418,14 @@ internal sealed partial class MethodCompiler
         Emit($"if ({condition}) dn2cpp_throw_argument_text(&dn2cpp_argument_exception_type, \"{CppLiteralBody(message)}\", nullptr);");
     }
 
+    private void EmitGenericParameterPosition(string handle)
+    {
+        string message = Comp.CoreLibSrText("Arg_NotGenericParameter")
+            ?? throw new NotSupportedException("GenericParameterPosition requires CoreLib's Arg_NotGenericParameter resource");
+        Emit($"if (({handle}->flags & DN2CPP_TF_GENERICPARAM) == 0) dn2cpp_throw_of_msg(&dn2cpp_invalid_operation_exception_type, \"{CppLiteralBody(message)}\");");
+        Push(StackKind.I4, "int32_t", $"dn2cpp_type_generic_parameter_position({handle})");
+    }
+
     /// <summary>Lowers a call to a member <see cref="CoreIntrinsics.LoweredRuntimePrimitive"/>
     /// names — the intra-CoreLib runtime primitives the reachability cut deletes from the tree.
     ///
@@ -431,6 +439,22 @@ internal sealed partial class MethodCompiler
         if (CoreIntrinsics.IsCoreClrTypeMaterialization(callee))
         {
             EmitCoreClrTypeMaterialization(callee);
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeGenericParameterPosition(callee))
+        {
+            string handle = NewTemp("const Dn2CppTypeInfo*");
+            Emit($"{handle} = dn2cpp_type_require({Cast(Pop(), "Dn2CppType*")});");
+            EmitGenericParameterPosition(handle);
+            return;
+        }
+        if (CoreIntrinsics.IsRuntimeTypeHandleGenericVariableIndex(callee))
+        {
+            string handle = NewTemp("const Dn2CppTypeInfo*");
+            Emit($"{handle} = {DerefReceiver("const Dn2CppTypeInfo*")};");
+            ValidateRuntimeTypeHandle(handle, callee);
+            EmitGenericParameterPosition(handle);
             return;
         }
 

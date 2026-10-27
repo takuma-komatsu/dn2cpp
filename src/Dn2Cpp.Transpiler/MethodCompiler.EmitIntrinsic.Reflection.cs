@@ -1810,6 +1810,13 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.Ref, "Dn2CppMethodRef*", $"dn2cpp_type_generic_parameter_declaring_method(dn2cpp_type_require({Cast(a, "Dn2CppType*")}))");
                 return true;
             }
+            case ("System.Type", "get_GenericParameterPosition"):
+            {
+                string handle = NewTemp("const Dn2CppTypeInfo*");
+                Emit($"{handle} = dn2cpp_type_require({Cast(Pop(), "Dn2CppType*")});");
+                EmitGenericParameterPosition(handle);
+                return true;
+            }
             case ("System.Type", "get_GenericParameterAttributes"):
             {
                 var a = Pop();

@@ -561,6 +561,16 @@ fresh arrays carrying the declared RuntimeType[] or Type[] identity; public gett
 normalization stays in its managed body. Raw handles are not rooted through array
 or pointer elements, and the raw QCall keeps native-import binding authority.
 
+The exact managed `RuntimeTypeHandle.GetGenericVariableIndex()` wrapper and public
+`RuntimeType.GenericParameterPosition` getter read native formal contexts. A
+position is the parameter's identity index in its defining type or method vector,
+not its index in a constructed use. The lookup verifies an interned formal under
+the existing context lock without completing constraints. Missing context refuses
+explicitly. Default handles, null public receivers and non-parameters preserve
+their distinct managed validation. Retained calls, function pointers, delegates
+and reflection share the same lowering; the raw private InternalCall is not an
+alias for the managed wrapper.
+
 The exact public `RuntimeType.MakeGenericType(Type[])` override shares the existing
 native `Type.MakeGenericType` AOT, open-type and template policy. Its retained body,
 direct calls and address bindings never enter CoreCLR's instantiating loader.
