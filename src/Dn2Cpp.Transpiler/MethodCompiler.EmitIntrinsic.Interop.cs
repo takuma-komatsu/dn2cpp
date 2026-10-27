@@ -411,6 +411,13 @@ internal sealed partial class MethodCompiler
         Emit($"if ({handle} == nullptr) dn2cpp_throw_argument_text(&dn2cpp_argument_null_exception_type, \"{CppLiteralBody(message)}\", nullptr);");
     }
 
+    private void ValidateRuntimeTypeInterface(string condition, string resource, MethodInfo callee)
+    {
+        string message = Comp.SrResourceText(callee.Module, resource)
+            ?? throw new NotSupportedException("RuntimeTypeHandle interface validation requires CoreLib's " + resource + " resource");
+        Emit($"if ({condition}) dn2cpp_throw_argument_text(&dn2cpp_argument_exception_type, \"{CppLiteralBody(message)}\", nullptr);");
+    }
+
     /// <summary>Lowers a call to a member <see cref="CoreIntrinsics.LoweredRuntimePrimitive"/>
     /// names — the intra-CoreLib runtime primitives the reachability cut deletes from the tree.
     ///
@@ -448,6 +455,24 @@ internal sealed partial class MethodCompiler
         {
             string value = RuntimeTypeHandleConstructorValue();
             Emit($"{DerefReceiver("const Dn2CppTypeInfo*")} = {value};");
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeInterfaceCheck(callee))
+        {
+            string target = NewTemp("const Dn2CppTypeInfo*");
+            Emit($"{target} = {Cast(Pop(), "const Dn2CppTypeInfo*")};");
+            string source = NewTemp("const Dn2CppTypeInfo*");
+            Emit($"{source} = {DerefReceiver("const Dn2CppTypeInfo*")};");
+            // Both handles are checked before the native type-shape validation.
+            ValidateRuntimeTypeHandle(source, callee);
+            ValidateRuntimeTypeHandle(target, callee);
+            ValidateRuntimeTypeInterface($"({source}->flags & DN2CPP_TF_GENERICPARAM) != 0", "Arg_InvalidHandle", callee);
+            ValidateRuntimeTypeInterface($"dn2cpp_signature_kind({source}) != 0", "Arg_NotFoundIFace", callee);
+            ValidateRuntimeTypeInterface($"({source}->flags & DN2CPP_TF_INTERFACE) != 0", "Argument_InterfaceMap", callee);
+            ValidateRuntimeTypeInterface($"({target}->flags & DN2CPP_TF_INTERFACE) == 0", "Arg_MustBeInterface", callee);
+            ValidateRuntimeTypeInterface($"dn2cpp_type_is_assignable_from(dn2cpp_get_type_from_handle({target}), dn2cpp_get_type_from_handle({source})) == 0",
+                "Arg_NotFoundIFace", callee);
             return;
         }
 

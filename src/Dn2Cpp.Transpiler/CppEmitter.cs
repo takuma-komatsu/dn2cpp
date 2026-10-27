@@ -5501,6 +5501,12 @@ internal sealed partial class CppEmitter
             && !_c.IsAllocated(c)
             ? c : null;
 
+    // This pointer spelling is a value payload, not a managed object reference.
+    private static bool IsRuntimeTypeHandleValue(TypeDesc type) =>
+        type is { Kind: TypeKind.Class, Class: { FullName: "System.RuntimeTypeHandle",
+            Module.AssemblyName: "System.Private.CoreLib" } }
+        or { Kind: TypeKind.External, ExternalName: "System.RuntimeTypeHandle" };
+
     /// <summary>Emits (once per distinct C++ ABI shape) the signature-deduplicated
     /// invoker thunk for a reachable method and returns its name. The thunk
     /// unboxes/casts each boxed arg to the parameter's C++ type, calls the method's
@@ -5530,7 +5536,7 @@ internal sealed partial class CppEmitter
         static (bool Ptr, string Cpp) Classify(TypeDesc t)
         {
             string cpp = CppTypes.Of(t);
-            return (cpp.EndsWith("*"), cpp);
+            return (cpp.EndsWith("*") && !IsRuntimeTypeHandleValue(t), cpp);
         }
 
         // Build the shape key + the C++ pieces.
@@ -5579,7 +5585,8 @@ internal sealed partial class CppEmitter
             {
                 key.Append('_').Append(CppNaming.Sanitize(cpp));
                 sigParams.Add(cpp);
-                callArgs.Add($"(args[{i}] == nullptr ? {cpp}{{}} : *({cpp}*)((char*)args[{i}] + sizeof(Dn2CppObject)))");
+                string empty = IsRuntimeTypeHandleValue(ps[i]) ? "nullptr" : $"{cpp}{{}}";
+                callArgs.Add($"(args[{i}] == nullptr ? {empty} : *({cpp}*)((char*)args[{i}] + sizeof(Dn2CppObject)))");
             }
         }
         // A static body taking the generic context gets it last, from `self`
@@ -6888,7 +6895,7 @@ internal sealed partial class CppEmitter
         static (bool Ptr, string Cpp) Classify(TypeDesc t)
         {
             string cpp = MethodCompiler.NfiErasedAbi(CppTypes.Of(t));
-            return (cpp.EndsWith("*"), cpp);
+            return (cpp.EndsWith("*") && !IsRuntimeTypeHandleValue(t), cpp);
         }
 
         var key = new StringBuilder();

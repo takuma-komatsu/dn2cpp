@@ -131,6 +131,7 @@ internal sealed partial class Compilation
         if (CoreIntrinsics.IsRuntimeTypeHandleAccessor(m)
             || CoreIntrinsics.IsRuntimeTypeHandleConstructor(m)
             || CoreIntrinsics.IsRuntimeTypeCacheHandleBridge(m)
+            || CoreIntrinsics.IsRuntimeTypeInterfaceCheck(m)
             || CoreIntrinsics.IsCoreClrConstraintCheck(m)
             || CoreIntrinsics.BrInvariantCompareInfoCallback.Matches(m.DeclaringClass.FullName, m.Name))
         {

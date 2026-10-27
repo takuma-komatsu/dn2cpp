@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# MethodInfo generic arity, RuntimeTypeHandle construction and cache-handle ownership,
+# RuntimeTypeHandle interface validation, MethodInfo generic arity,
+# RuntimeTypeHandle construction and cache-handle ownership,
 # private generic-context validation,
 # canonical type comparison and Signature blob-parser boundaries,
 # managed type-handle copies,
@@ -79,8 +80,30 @@
 # checked default-handle ArgumentNullException across reflection/direct/calli.
 # Driven by the real System.Private.CoreLib (passed with -r) -> cross-assembly resolve
 # + tree-shake -> native binary -> run, asserting the output diffs exact vs real .NET.
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/MethodGenericCountFixture.cs gates/fixtures/ldftn-local/RuntimeTypeCacheHandleFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleConstructorFixture.cs gates/fixtures/ldftn-local/ConstraintCheckFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleAccessorFixture.cs gates/fixtures/ldftn-local/CanonicalTypeComparisonFixture.cs gates/fixtures/ldftn-local/SignatureBlobFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleCopyFixture.cs gates/fixtures/ldftn-local/RuntimeFieldHandleFixture.cs gates/fixtures/ldftn-local/NullableReboxingFixture.cs gates/fixtures/ldftn-local/RuntimeTypeMaterializationFixture.cs gates/fixtures/ldftn-local/RuntimeMethodHandleFixture.cs gates/fixtures/ldftn-local/RuntimeMethodEnumerationFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/GcFinalizerWorkerFixture.cs gates/fixtures/ldftn-local/DelegateVmConstructorFixture.cs gates/fixtures/ldftn-local/DelegateNamedConstructorFixture.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/RuntimeTypeInterfaceCheckFixture.cs gates/fixtures/ldftn-local/MethodGenericCountFixture.cs gates/fixtures/ldftn-local/RuntimeTypeCacheHandleFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleConstructorFixture.cs gates/fixtures/ldftn-local/ConstraintCheckFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleAccessorFixture.cs gates/fixtures/ldftn-local/CanonicalTypeComparisonFixture.cs gates/fixtures/ldftn-local/SignatureBlobFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleCopyFixture.cs gates/fixtures/ldftn-local/RuntimeFieldHandleFixture.cs gates/fixtures/ldftn-local/NullableReboxingFixture.cs gates/fixtures/ldftn-local/RuntimeTypeMaterializationFixture.cs gates/fixtures/ldftn-local/RuntimeMethodHandleFixture.cs gates/fixtures/ldftn-local/RuntimeMethodEnumerationFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/GcFinalizerWorkerFixture.cs gates/fixtures/ldftn-local/DelegateVmConstructorFixture.cs gates/fixtures/ldftn-local/DelegateNamedConstructorFixture.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
 source "$(dirname "$0")/_common.sh"
+
+interface_check_asserts() {
+    local output="$1" routes="$2" route label shape
+    for route in public $routes; do
+        for label in direct inherited marker covariant contravariant definition-marker open-constructed closed primitive enum array md-array generic-array covariant-array integral-array missing wrong-variant unbound md-generic; do
+            gate_output byte-witness "$output" "interface-check-$route-$label:True" --count 1 --policy crlf || return 1
+        done
+        if [[ "$route" == public ]]; then continue; fi
+        for label in default-source default-target default-both interface-source interface-before-target class-target identity-not-interface parameter-source parameter-before-target parameter-target default-before-interface default-before-parameter; do
+            gate_output byte-witness "$output" "interface-check-$route-$label:True" --count 1 --policy crlf || return 1
+        done
+        for shape in pointer byref function-pointer; do
+            for label in "$shape" "$shape-before-target" "default-before-$shape"; do
+                gate_output byte-witness "$output" "interface-check-$route-$label:True" --count 1 --policy crlf || return 1
+            done
+        done
+    done
+    for label in shape public-open-shape public-shape-separate public-invoke-handle public-invoke-default public-invoke-null public-bound-handle public-dynamic-handle public-dynamic-default public-object-control reflection-null-target reflection-null-receiver; do
+        gate_output byte-witness "$output" "interface-check-$label:True" --count 1 --policy crlf || return 1
+    done
+    gate_output byte-witness "$output" 'Runtime type interface check artifact end' --count 1 --policy crlf || return 1
+}
 
 method_generic_count_asserts() {
     local output="$1" routes="$2" route label
@@ -652,6 +675,29 @@ compile_console "$named_out" DelegateNamed
 gate_capture_ok "$named_out/direct" run_bounded "./$named_out/DelegateNamed$EXE_EXT" native-boundary
 for label in delegate-instance delegate-static multicast-instance multicast-static; do
     gate_output byte-witness "$named_out/direct.stdout" "named-direct-$label:True" --count 1 --policy crlf
+done
+
+# The managed bridge uses native identities; CLR runs public relation queries only.
+for interface_mode in all reflection; do
+    interface_input="artifacts/runtime-type-interface-check-input-$interface_mode-$CONFIG"
+    mkdir -p "$interface_input"
+    cp samples/dotnet/SelfHostPrimSubset/bin/$CONFIG/$TFM/* "$interface_input/"
+    interface_flag=--runtime-type-interface-check
+    interface_routes='direct pointer reflection'
+    if [[ "$interface_mode" == reflection ]]; then
+        interface_flag=--runtime-type-interface-check-reflection
+        interface_routes=reflection
+    fi
+    dotnet "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
+        "$interface_flag" "$interface_input/SelfHostPrimSubset.dll" "$_CG_CORELIB"
+    interface_out="artifacts/runtime-type-interface-check-$interface_mode-$CONFIG"
+    invoke_cli "$interface_input/SelfHostPrimSubset.dll" --auto-ref -o "$interface_out"
+    compile_console "$interface_out" RuntimeTypeInterfaceCheck
+    gate_capture_ok "$interface_out/native" run_bounded "./$interface_out/RuntimeTypeInterfaceCheck$EXE_EXT"
+    gate_capture_ok "$interface_out/oracle" run_bounded dotnet "$_CG_APP" runtime-type-interface-check-contract
+    gate_output prefix "$interface_out/native.stdout" "$interface_out/oracle.stdout" \
+        --before "interface-check-${interface_routes%% *}-direct:True" --policy crlf
+    interface_check_asserts "$interface_out/native.stdout" "$interface_routes"
 done
 
 # The internal getter consumes native MethodInfo handles; CLR supplies the public count oracle.

@@ -9,6 +9,11 @@ internal static class Program
 {
     private static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "runtime-type-interface-check-contract")
+        {
+            RuntimeTypeInterfaceCheckSubset.Program.Run();
+            return;
+        }
         if (args.Length > 0 && args[0] == "method-generic-count-contract")
         {
             MethodGenericCountSubset.Program.Run();
@@ -222,5 +227,7 @@ internal static class Program
         RuntimeTypeCacheHandleSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-method-generic-count") return;
         MethodGenericCountSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-runtime-type-interface-check") return;
+        RuntimeTypeInterfaceCheckSubset.Program.Run();
     }
 }

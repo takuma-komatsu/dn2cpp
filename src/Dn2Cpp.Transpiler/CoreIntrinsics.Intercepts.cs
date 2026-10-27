@@ -626,6 +626,7 @@ internal static partial class CoreIntrinsics
             || IsRuntimeTypeHandleAccessor(mi)
             || IsRuntimeTypeHandleConstructor(mi)
             || IsRuntimeTypeCacheHandleBridge(mi)
+            || IsRuntimeTypeInterfaceCheck(mi)
             || IsMethodGenericParameterCount(mi)
             || IsCoreClrConstraintCheck(mi)
             || IsCoreClrSignatureBlobParser(mi)
@@ -881,6 +882,26 @@ internal static partial class CoreIntrinsics
         return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
             && signature.ParameterTypes.Length == 0
             && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 };
+    }
+
+    // The managed interface check consumes native type identities, not QCall handles.
+    internal static bool IsRuntimeTypeInterfaceCheck(MethodInfo method)
+    {
+        if (method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle"
+            || method.Name != "VerifyInterfaceIsImplemented"
+            || (method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask)
+                != System.Reflection.MethodAttributes.Assembly
+            || (method.Attributes & (System.Reflection.MethodAttributes.Static | System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.Abstract | System.Reflection.MethodAttributes.PinvokeImpl)) != 0
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ReturnType.IsVoid && signature.ParameterTypes.Length == 1
+            && IsCoreLibMethodDescType(signature.ParameterTypes[0], "System.RuntimeTypeHandle");
     }
 
     // These wrappers allocate cache slots owned by a CoreCLR LoaderAllocator.

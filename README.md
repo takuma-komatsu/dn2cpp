@@ -879,6 +879,10 @@ expression trees at runtime.
   a default handle, with CoreLib's invalid-handle `ArgumentNullException`.
   Its managed `RuntimeType` constructor stores the same native type identity;
   a null argument initializes a default handle, including in-place construction.
+  Its managed interface-verification bridge validates both handles and type shapes,
+  then uses the shared native assignability rules, including variance and arrays.
+  This check does not implement the separate method-mapping surface of
+  `Type.GetInterfaceMap`, which still depends on CoreCLR method descriptors.
   Its managed `GetGCHandle` / `FreeGCHandle` cache bridges preserve default-handle
   validation, then throw `PlatformNotSupportedException`: CoreCLR owns these
   cache slots through its LoaderAllocator. They are not public GCHandle slots;
