@@ -4677,7 +4677,11 @@ Dn2CppObject* dn2cpp_template_unbox_any(Dn2CppObject* obj, const Dn2CppTypeInfo*
 Dn2CppObject* dn2cpp_template_box(Dn2CppObject* obj, const Dn2CppTypeInfo* ti);
 // The U of a closed Nullable<U> type-info, else null.
 const Dn2CppTypeInfo* dn2cpp_nullable_underlying_ti(const Dn2CppTypeInfo* ti);
-// Whether `ti` is Nullable<u>. No box of a Nullable exists, so a boxed U passes a
+// Internal invocation adapters exchange raw Nullable<T> boxes; ordinary boxing
+// exposes null or a boxed T instead. Reboxing preserves payload bits and references.
+Dn2CppObject* dn2cpp_rebox_from_nullable(Dn2CppObject* value);
+Dn2CppObject* dn2cpp_rebox_to_nullable(Dn2CppObject* value, Dn2CppType* type);
+// Whether `ti` is Nullable<u>. Ordinary boxing produces a boxed U, which passes a
 // Nullable<U> type test and Type.IsAssignableFrom(Nullable<U>, U) holds. The rule
 // stays out of dn2cpp_typeinfo_assignable, whose callers also read an answer as
 // the same representation.

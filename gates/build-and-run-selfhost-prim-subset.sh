@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# CoreCLR method/type-handle boundaries, public reflection, and companion process
+# Nullable reboxing, CoreCLR method/type-handle boundaries, public reflection,
+# and companion process
 # argument/stream/exit preservation and the console-self-host
 # runtime primitives whose behaviour can be exercised exactly.
 #
@@ -72,7 +73,7 @@
 #     driver, so no wasm axis reaches the section.
 # Driven by the real System.Private.CoreLib (passed with -r) -> cross-assembly resolve
 # + tree-shake -> native binary -> run, asserting the output diffs exact vs real .NET.
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/RuntimeTypeMaterializationFixture.cs gates/fixtures/ldftn-local/RuntimeMethodHandleFixture.cs gates/fixtures/ldftn-local/RuntimeMethodEnumerationFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/GcFinalizerWorkerFixture.cs gates/fixtures/ldftn-local/DelegateVmConstructorFixture.cs gates/fixtures/ldftn-local/DelegateNamedConstructorFixture.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/NullableReboxingFixture.cs gates/fixtures/ldftn-local/RuntimeTypeMaterializationFixture.cs gates/fixtures/ldftn-local/RuntimeMethodHandleFixture.cs gates/fixtures/ldftn-local/RuntimeMethodEnumerationFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/GcFinalizerWorkerFixture.cs gates/fixtures/ldftn-local/DelegateVmConstructorFixture.cs gates/fixtures/ldftn-local/DelegateNamedConstructorFixture.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
 source "$(dirname "$0")/_common.sh"
 
 method_handle_members="GetAttributes GetImplAttributes GetMethodTable GetSlot GetMethodDef GetUtf8NameInternal HasMethodInstantiation GetStubIfNeededInternal GetMethodFromCanonical IsGenericMethodDefinition IsTypicalMethodDefinition GetGenericParameterCount IsDynamicMethod GetResolver IsConstructor GetLoaderAllocatorInternal"
@@ -90,6 +91,31 @@ type_materialize_asserts() {
         gate_output byte-witness "$output" "type-materialize-$label:True" --count 1 --policy crlf || return 1
     done
     gate_output byte-witness "$output" 'Runtime type materialization contract end' --count 1 --policy crlf
+}
+
+nullable_rebox_asserts() {
+    local output="$1" route="$2" label check
+    for label in null-identity int-identity string-identity object-identity raw-copy-independent gc-payload public-generic-copyback; do
+        gate_output byte-witness "$output" "nullable-rebox-$route-$label:True" --count 1 --policy crlf || return 1
+    done
+    for label in byte sbyte ulong enum decimal generic-ref generic-value; do
+        for check in raw copy value empty; do
+            gate_output byte-witness "$output" "nullable-rebox-$route-$label-$check:True" --count 1 --policy crlf || return 1
+        done
+    done
+    for label in 0 1 2 3; do
+        gate_output byte-witness "$output" "nullable-rebox-$route-float-bits-$label:True" --count 1 --policy crlf || return 1
+        gate_output byte-witness "$output" "nullable-rebox-$route-public-float-copyback-$label:True" --count 1 --policy crlf || return 1
+        gate_output byte-witness "$output" "nullable-rebox-$route-public-float-echo-$label:True" --count 1 --policy crlf || return 1
+        gate_output byte-witness "$output" "nullable-rebox-$route-array-float-bits-$label:True" --count 1 --policy crlf || return 1
+        gate_output byte-witness "$output" "nullable-rebox-$route-array-float-empty-$label:True" --count 1 --policy crlf || return 1
+    done
+    for label in public-return public-copyback constructor-copyback; do
+        for check in 0 1; do
+            gate_output byte-witness "$output" "nullable-rebox-$route-$label-$check:True" --count 1 --policy crlf || return 1
+        done
+    done
+    gate_output byte-witness "$output" "Nullable reboxing $route end" --count 1 --policy crlf
 }
 
 named_ctor_asserts() {
@@ -260,6 +286,14 @@ gate_extra_asserts() {
     gate_capture_ok "$out/assert-before-type-materialize" run_bounded dotnet "$_CG_APP" before-runtime-type-materialization || return 1
     gate_output prefix "$native" "$out/assert-before-type-materialize.stdout" --before '== Runtime type materialization contract ==' --policy crlf || return 1
     type_materialize_asserts "$native" || return 1
+
+    gate_capture_ok "$out/assert-before-nullable-rebox" run_bounded dotnet "$_CG_APP" before-nullable-reboxing || return 1
+    gate_output prefix "$native" "$out/assert-before-nullable-rebox.stdout" --before '== Nullable reboxing contract ==' --policy crlf || return 1
+    nullable_rebox_asserts "$native" reflection || return 1
+    for label in from-shape to-shape; do
+        gate_output byte-witness "$native" "nullable-rebox-reflection-$label:True" --count 1 --policy crlf || return 1
+    done
+    gate_output byte-witness "$native" 'Nullable reboxing contract end' --count 1 --policy crlf || return 1
 
 }
 
@@ -479,3 +513,21 @@ for shape in method-table handle slow qcall maybe-null; do
     fi
 done
 gate_output byte-witness "$type_out/native.stdout" 'Runtime type materialization boundary end' --count 1 --policy crlf
+
+# CLR uses only valid managed objects; native direct/address sites import the
+# exact managed declarations instead of invoking raw MethodTable helpers.
+rebox_input="artifacts/nullable-reboxing-input-$CONFIG"
+mkdir -p "$rebox_input"
+cp samples/dotnet/SelfHostPrimSubset/bin/$CONFIG/$TFM/* "$rebox_input/"
+dotnet "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
+    --nullable-reboxing "$rebox_input/SelfHostPrimSubset.dll" "$_CG_CORELIB"
+rebox_out="artifacts/nullable-reboxing-$CONFIG"
+invoke_cli "$rebox_input/SelfHostPrimSubset.dll" --auto-ref -o "$rebox_out"
+compile_console "$rebox_out" NullableReboxing
+gate_capture_ok "$rebox_out/native" run_bounded "./$rebox_out/NullableReboxing$EXE_EXT"
+gate_capture_ok "$rebox_out/oracle" run_bounded dotnet "$_CG_APP" nullable-reboxing-artifact
+gate_output compare "$rebox_out/native.stdout" "$rebox_out/oracle.stdout" --policy crlf
+for route in reflection direct pointer; do
+    nullable_rebox_asserts "$rebox_out/native.stdout" "$route"
+done
+gate_output byte-witness "$rebox_out/native.stdout" 'Nullable reboxing artifact end' --count 1 --policy crlf

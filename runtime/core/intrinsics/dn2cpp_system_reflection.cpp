@@ -5191,10 +5191,8 @@ static Dn2CppObject* dn2cpp_field_check_value(const Dn2CppFieldInfo* row, Dn2Cpp
 // hands back null or a boxed T.
 static Dn2CppObject* dn2cpp_invoke_box_result(const Dn2CppTypeInfo* returnType, Dn2CppObject* result)
 {
-    if (result == nullptr || result->type != returnType
-        || dn2cpp_nullable_underlying_ti(returnType) == nullptr)
-        return result;
-    return dn2cpp_array_box_element(returnType, result + 1, returnType->instanceSize, false);
+    return result != nullptr && result->type == returnType
+        ? dn2cpp_rebox_from_nullable(result) : result;
 }
 
 // A literal row without a getter: its constant's bits boxed at `type`, a primitive
@@ -11498,6 +11496,21 @@ static bool dn2cpp_nullable_layout(const Dn2CppTypeInfo* nullable, const Dn2CppT
     return true;
 }
 
+// Exact nullable payload packing is shared by raw boxes and reflection's byref
+// cells. Numeric conversion here would alter signaling NaNs before copyback.
+static void dn2cpp_nullable_store_payload(void* destination, int32_t size,
+    int32_t offset, int32_t width, const void* payload)
+{
+    std::memset(destination, 0, static_cast<size_t>(size));
+    if (payload != nullptr)
+    {
+        *static_cast<uint8_t*>(destination) = 1;
+        dn2cpp_gc_memmove_refs(static_cast<char*>(destination) + offset, payload, static_cast<size_t>(width));
+    }
+    else
+        dn2cpp_gc_write_barrier_if_heap(destination);
+}
+
 [[noreturn]] static void dn2cpp_throw_array_store_mismatch()
 {
     dn2cpp_throw(dn2cpp_exception_new(&dn2cpp_invalid_cast_exception_type,
@@ -11615,21 +11628,7 @@ void dn2cpp_array_store_boxed(Dn2CppObject* v, const Dn2CppTypeInfo* elem,
         if (!dn2cpp_nullable_layout(elem, u, &off, &w, &uc))
             dn2cpp_throw_platform_not_supported(
                 "Array.SetValue into a Nullable<T> element whose T has no known layout is not supported");
-        std::memset(dst, 0, static_cast<size_t>(elemSize));
-        *static_cast<uint8_t*>(dst) = 1;
-        if (uc < 0)
-        {
-            std::memcpy(static_cast<char*>(dst) + off, v + 1, static_cast<size_t>(w));
-        }
-        else
-        {
-            int32_t sc;
-            int64_t i;
-            double r;
-            dn2cpp_read_boxed_num(v, &sc, &i, &r);
-            dn2cpp_write_prim(static_cast<char*>(dst) + off, uc, sc, i, r);
-        }
-        dn2cpp_gc_write_barrier_if_heap(dst);
+        dn2cpp_nullable_store_payload(dst, elemSize, off, w, v + 1);
         return;
     }
     if ((elem->flags & DN2CPP_TF_ENUM) != 0)
@@ -11714,6 +11713,39 @@ Dn2CppObject* dn2cpp_array_box_element(const Dn2CppTypeInfo* elem, const void* s
         default: { uint16_t x; std::memcpy(&x, src, 2); payload = x; break; }
     }
     return dn2cpp_box(elem, &payload, 4);
+}
+
+Dn2CppObject* dn2cpp_rebox_from_nullable(Dn2CppObject* value)
+{
+    if (value == nullptr || dn2cpp_nullable_underlying_ti(value->type) == nullptr)
+        return value;
+    return dn2cpp_array_box_element(value->type, value + 1, value->type->instanceSize, false);
+}
+
+// The payload is already validated as U; copying its packed bytes preserves
+// floating-point bit patterns and managed references without binder conversions.
+static Dn2CppObject* dn2cpp_nullable_box_payload(const Dn2CppTypeInfo* nullable,
+    const Dn2CppTypeInfo* underlying, const void* payload)
+{
+    int32_t offset, width, code;
+    if (!dn2cpp_nullable_layout(nullable, underlying, &offset, &width, &code))
+        dn2cpp_throw_platform_not_supported(
+            "Reflection: binding a Nullable<T> argument whose T has no known layout is not supported");
+    int32_t size = nullable->instanceSize > 0 ? nullable->instanceSize : offset + width;
+    auto* box = static_cast<Dn2CppObject*>(dn2cpp_alloc(sizeof(Dn2CppObject) + static_cast<size_t>(size)));
+    box->type = nullable;
+    dn2cpp_nullable_store_payload(box + 1, size, offset, width, payload);
+    return box;
+}
+
+Dn2CppObject* dn2cpp_rebox_to_nullable(Dn2CppObject* value, Dn2CppType* type)
+{
+    const auto* nullable = type != nullptr ? type->typeInfo : nullptr;
+    const auto* underlying = dn2cpp_nullable_underlying_ti(nullable);
+    if (underlying == nullptr)
+        dn2cpp_throw_invalid_operation_msg("Nullable reboxing requires a closed Nullable<T> runtime type.");
+    return dn2cpp_nullable_box_payload(nullable, underlying,
+        value != nullptr ? dn2cpp_unbox_nullable(value, underlying) : nullptr);
 }
 
 // ---- Array.Copy type compatibility ----
@@ -12151,6 +12183,8 @@ static Dn2CppObject* dn2cpp_binder_adapt_arg(Dn2CppObject* a, const Dn2CppTypeIn
         return a;
     if (const Dn2CppTypeInfo* u = dn2cpp_nullable_underlying_ti(p))
     {
+        if (a == nullptr || a->type == u)
+            return dn2cpp_nullable_box_payload(p, u, a != nullptr ? a + 1 : nullptr);
         int32_t off, w, uc;
         if (!dn2cpp_nullable_layout(p, u, &off, &w, &uc))
             dn2cpp_throw_platform_not_supported(

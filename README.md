@@ -860,6 +860,11 @@ expression trees at runtime.
   before reading CoreCLR MethodTable, TypeDesc or output-handle state. Its
   nullable wrapper still returns null for a zero handle. Native `Type.TypeHandle`
   and `Type.GetTypeFromHandle` use type-info identities, not CoreCLR pointers.
+  The managed `RuntimeMethodHandle.ReboxFromNullable` and `ReboxToNullable`
+  adapters instead use native nullable layouts: ordinary objects retain identity,
+  raw nullable boxes normalize to null or a fresh underlying-value box, and
+  materialization copies payload bits and managed references without numeric
+  conversion. Reflection nullable returns and byref copyback share this representation.
 - **P/Invoke** — `DllImport` end to end: `string[]` write-back, delegates
   as native function pointers, non-blittable structs, blittable
   `[MarshalAs(ByValArray)]`. User imports bind lazily through

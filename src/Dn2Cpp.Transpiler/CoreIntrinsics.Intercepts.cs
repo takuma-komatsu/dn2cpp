@@ -335,6 +335,7 @@ internal enum InterceptEmitArm
     MulticastAccessorBody,
     CoreClrDelegateVmConstructorBody,
     CoreClrTypeMaterializationBody,
+    NullableReboxingBody,
     DelegateNamedConstructorBody,
     DelegateCloneBinding,
     ArrayCloneBinding,
@@ -621,6 +622,29 @@ internal static partial class CoreIntrinsics
             || IsCoreClrIntroducedMethodEnumeration(mi)
             || IsCoreClrMethodDescQuery(mi)
             || IsCoreClrTypeMaterialization(mi) && mi.Rva == 0);
+
+    internal static bool IsNullableReboxing(MethodInfo method)
+    {
+        if (method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.FullName != "System.RuntimeMethodHandle"
+            || method.Name is not ("ReboxFromNullable" or "ReboxToNullable")
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return CoreIntrinsicTypeMaps.IsNullableReboxingMethod(
+            method.DeclaringClass.Module.AssemblyName, method.DeclaringClass.FullName, method.Name,
+            (method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask) == System.Reflection.MethodAttributes.Assembly,
+            method.IsStatic && signature.Header.RawValue == 0, signature.GenericParameterCount,
+            method.Rva != 0, (method.Attributes & System.Reflection.MethodAttributes.PinvokeImpl) != 0,
+            signature.ParameterTypes.Length, signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object },
+            signature.ParameterTypes.Length > 0 && signature.ParameterTypes[0] is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object },
+            signature.ParameterTypes.Length > 1 && IsCoreLibMethodDescType(signature.ParameterTypes[1], "System.RuntimeType"));
+    }
+
+    public static readonly MethodDefIntercept BrNullableReboxing = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.NullableReboxingBody,
+        typeGate: "System.RuntimeMethodHandle", extra: static m => IsNullableReboxing(m));
 
     internal static bool IsCoreClrTypeMaterialization(MethodInfo method)
     {

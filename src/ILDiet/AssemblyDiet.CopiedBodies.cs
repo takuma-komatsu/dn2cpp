@@ -54,6 +54,30 @@ internal sealed partial class AssemblyDiet
             nativeIntTail);
     }
 
+    private static bool IsCopiedNullableReboxing(MethodDefinition method, string owner)
+    {
+        if (owner != "System.RuntimeMethodHandle"
+            || method.Name is not ("ReboxFromNullable" or "ReboxToNullable"))
+            return false;
+        bool runtimeType = false;
+        if (method.Parameters.Count > 1)
+        {
+            var type = method.Parameters[1].ParameterType;
+            bool core = type.Scope is AssemblyNameReference reference
+                ? reference.Name == "System.Private.CoreLib"
+                : type.Scope is ModuleDefinition module && module.Assembly?.Name.Name == "System.Private.CoreLib";
+            runtimeType = core && type.FullName == "System.RuntimeType";
+        }
+        return CoreIntrinsicTypeMaps.IsNullableReboxingMethod(
+            method.Module.Assembly?.Name.Name, owner, method.Name, method.IsAssembly,
+            method.IsStatic && !method.HasThis && !method.ExplicitThis
+                && method.CallingConvention == MethodCallingConvention.Default, method.GenericParameters.Count,
+            method.HasBody && method.IsIL && method.IsManaged && !method.IsInternalCall,
+            method.IsPInvokeImpl, method.Parameters.Count, method.ReturnType.MetadataType == MetadataType.Object,
+            method.Parameters.Count > 0 && method.Parameters[0].ParameterType.MetadataType == MetadataType.Object,
+            runtimeType);
+    }
+
     private static bool IsCopiedCoreClrTypeMaterialization(MethodDefinition method, string owner)
     {
         if (method.Module.Assembly?.Name.Name != "System.Private.CoreLib"
@@ -96,7 +120,7 @@ internal sealed partial class AssemblyDiet
             method.Parameters.Count, method.Parameters.Count == 2 ? method.Parameters[0].ParameterType.FullName : null,
             method.Parameters.Count == 2 && method.Parameters[1].ParameterType.MetadataType == MetadataType.String))
             traverse = false;
-        else if (IsCopiedCoreClrTypeMaterialization(method, owner))
+        else if (IsCopiedCoreClrTypeMaterialization(method, owner) || IsCopiedNullableReboxing(method, owner))
             traverse = false;
         else if (IsCopiedCoreClrDelegateVmConstructor(method, owner))
             traverse = false;

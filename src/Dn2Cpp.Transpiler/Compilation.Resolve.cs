@@ -93,7 +93,8 @@ internal sealed partial class Compilation
                 // reaching on the non-virtual form is harmless.
                 ReachExceptionGetMessage(mi);
                 if (CoreIntrinsics.BrDelegateNamedConstructor.Matches(mi)
-                    || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(mi))
+                    || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(mi)
+                    || CoreIntrinsics.BrNullableReboxing.Matches(mi))
                     return mi;
                 // Intrinsic-mapped types are emitted inline, not transpiled, so
                 // an intra-assembly call into one (e.g. corelib's Span<T> ->
@@ -1364,6 +1365,18 @@ internal sealed partial class Compilation
                 var constructor = ResolveMemberRefMethod(module, handle, callerCtx);
                 if (CoreIntrinsics.BrDelegateNamedConstructor.Matches(constructor))
                     return constructor;
+            }
+            catch (NotSupportedException e) when (!IsMustEscape(e)) { }
+        }
+        if (full == "System.RuntimeMethodHandle"
+            && (reader.StringComparer.Equals(mr.Name, "ReboxFromNullable")
+                || reader.StringComparer.Equals(mr.Name, "ReboxToNullable")))
+        {
+            try
+            {
+                var rebox = ResolveMemberRefMethod(module, handle, callerCtx);
+                if (CoreIntrinsics.BrNullableReboxing.Matches(rebox))
+                    return rebox;
             }
             catch (NotSupportedException e) when (!IsMustEscape(e)) { }
         }

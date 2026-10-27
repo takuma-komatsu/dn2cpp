@@ -9,6 +9,16 @@ internal static class Program
 {
     private static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "nullable-reboxing-only")
+        {
+            NullableReboxingSubset.Program.Run();
+            return;
+        }
+        if (args.Length > 0 && args[0] == "nullable-reboxing-artifact")
+        {
+            NullableReboxingSubset.Program.RunArtifactChecks(args);
+            return;
+        }
         if (args.Length > 0 && args[0] == "named-contracts-only")
         {
             MulticastNamedConstructorSubset.Program.RunContracts();
@@ -162,5 +172,7 @@ internal static class Program
         RuntimeMethodHandleSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-runtime-type-materialization") return;
         RuntimeTypeMaterializationSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-nullable-reboxing") return;
+        NullableReboxingSubset.Program.Run();
     }
 }

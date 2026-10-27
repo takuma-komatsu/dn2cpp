@@ -478,7 +478,8 @@ internal sealed partial class MethodCompiler
             {
                 var callee = ResolveMethodDef((MethodDefinitionHandle)handle);
                 if (CoreIntrinsics.BrDelegateNamedConstructor.Matches(callee)
-                    || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(callee))
+                    || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(callee)
+                    || CoreIntrinsics.BrNullableReboxing.Matches(callee))
                 {
                     EmitManagedCall(callee, isCallvirt);
                     return;

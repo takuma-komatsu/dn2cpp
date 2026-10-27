@@ -99,6 +99,18 @@ internal static class CoreIntrinsicTypeMaps
             _ => false,
         });
 
+    public static bool IsNullableReboxingMethod(string? assembly, string? owner, string name,
+        bool isAssembly, bool isStatic, int genericArity, bool managedBody, bool pinvoke,
+        int parameterCount, bool returnsObject, bool objectInput, bool runtimeTypeInput) =>
+        assembly == "System.Private.CoreLib" && owner == "System.RuntimeMethodHandle"
+        && isAssembly && isStatic && genericArity == 0 && managedBody && !pinvoke
+        && returnsObject && objectInput && (name switch
+        {
+            "ReboxFromNullable" => parameterCount == 1,
+            "ReboxToNullable" => parameterCount == 2 && runtimeTypeInput,
+            _ => false,
+        });
+
     public static bool IsMulticastAccessorMember(string? owner, string name) =>
         owner == "System.MulticastDelegate"
         && name is "GetTarget" or "GetMethodImpl" or "GetInvocationList" or "get_HasSingleTarget" or "TryGetAt";

@@ -3762,7 +3762,8 @@ internal sealed partial class CppEmitter
             && (_c.Reachable.Contains(method) && CoreIntrinsics.BrDelegateValue.Matches(method)
                 || (_c.Reachable.Contains(method) || _c.KeepsUnreachedRow(method))
                     && (CoreIntrinsics.IsCoreClrIntroducedMethodEnumeration(method)
-                        || CoreIntrinsics.IsCoreClrTypeMaterialization(method)));
+                        || CoreIntrinsics.IsCoreClrTypeMaterialization(method)
+                        || CoreIntrinsics.BrNullableReboxing.Matches(method)));
 
         private void RenderMemberTables(ClassInfo cls)
         {

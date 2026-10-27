@@ -1182,6 +1182,23 @@ internal sealed partial class MethodCompiler : IEvalStack
         if (CoreIntrinsics.IsCoreClrIntroducedMethodEnumeration(_method)
             || CoreIntrinsics.IsCoreClrTypeMaterialization(_method) && _method.Rva == 0)
             return CompileInterceptWrapper();
+        if (CoreIntrinsics.BrNullableReboxing.Matches(_method))
+            return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
+            {
+                if (_method.Name == "ReboxToNullable")
+                {
+                    var type = Pop();
+                    var value = Pop();
+                    Push(StackKind.Ref, "Dn2CppObject*",
+                        $"dn2cpp_rebox_to_nullable({Cast(value, "Dn2CppObject*")}, {Cast(type, "Dn2CppType*")})");
+                }
+                else
+                {
+                    var value = Pop();
+                    Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_rebox_from_nullable({Cast(value, "Dn2CppObject*")})");
+                }
+                return true;
+            }, "nullable reboxing");
         if (CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(_method))
             return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
             {
