@@ -2,6 +2,7 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (MemberNotFoundFactoryFixture.Run(args)) return;
 if (AmbiguousMatchFactoryFixture.Run(args)) return;
 if (RuntimeMethodSlotLookupFixture.Run(args)) return;
 if (RuntimeVirtualSlotCountFixture.Run(args)) return;

@@ -94,6 +94,7 @@ internal sealed partial class Compilation
                 ReachExceptionGetMessage(mi);
                 if (CoreIntrinsics.IsRuntimeTypeHandleCopy(mi)
                     || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(mi)
+                    || CoreIntrinsics.IsMemberNotFoundExceptionFactory(mi)
                     || CoreIntrinsics.BrDelegateNamedConstructor.Matches(mi)
                     || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(mi)
                     || CoreIntrinsics.BrNullableReboxing.Matches(mi))
@@ -1367,6 +1368,16 @@ internal sealed partial class Compilation
                 var constructor = ResolveMemberRefMethod(module, handle, callerCtx);
                 if (CoreIntrinsics.BrDelegateNamedConstructor.Matches(constructor))
                     return constructor;
+            }
+            catch (NotSupportedException e) when (!IsMustEscape(e)) { }
+        }
+        if (full == "System.Type" && reader.StringComparer.Equals(mr.Name, "CreateGetMemberWithSameMetadataDefinitionAsNotFoundException"))
+        {
+            try
+            {
+                var factory = ResolveMemberRefMethod(module, handle, callerCtx);
+                if (CoreIntrinsics.IsMemberNotFoundExceptionFactory(factory))
+                    return factory;
             }
             catch (NotSupportedException e) when (!IsMustEscape(e)) { }
         }

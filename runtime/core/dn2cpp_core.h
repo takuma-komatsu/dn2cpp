@@ -1409,6 +1409,8 @@ struct Dn2CppDelegateMethodCatalog
     int32_t methodCount;
 };
 void dn2cpp_set_delegate_method_catalog(const Dn2CppDelegateMethodCatalog* rows, int32_t count);
+// A retained managed Type factory is named-only metadata; its runtime type handle stays immutable.
+void dn2cpp_set_member_not_found_factory_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method);
 Dn2CppObject* dn2cpp_delegate_object_virtual_invoker(void* fn, Dn2CppObject* receiver,
     Dn2CppObject** arguments, const Dn2CppTypeInfo* returnType);
 

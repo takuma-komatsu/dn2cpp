@@ -554,6 +554,16 @@ reflection entries use that same body; other ThrowHelper members remain mapped.
 This does not extend the shared formatter's custom `IFormattable` or
 `ISpanFormattable` support.
 
+The private-protected `Type.CreateGetMemberWithSameMetadataDefinitionAsNotFoundException`
+factory also retains its real IL. It reads the input member's name, formats the
+input CoreLib resource and returns a fresh `ArgumentException` with parameter
+name `member`; the caller owns the throw. The factory's null dereference is
+separate from the public lookup's null-argument validation. Its call, address
+and retained reflection routes share the same managed body. A named-only entry
+registers its ordinary emitted row without mutating the runtime-owned Type
+handle or adding a partial member enumeration. Delegate metadata and named lookup
+reuse that row identity.
+
 The private CoreLib `GC.RunFinalizers(): UInt32` callback belongs to CoreCLR's
 native finalizer worker, including its thread reset and queue ownership. dn2cpp
 owns finalization through its dedicated consumer or manual-drain mode. The exact

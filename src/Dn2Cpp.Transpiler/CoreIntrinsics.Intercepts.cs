@@ -634,6 +634,29 @@ internal static partial class CoreIntrinsics
             || IsCoreClrSignatureBlobParser(mi)
             || IsCoreClrTypeMaterialization(mi) && mi.Rva == 0);
 
+    // The public lookup validates null; this factory only reads the name and returns an exception.
+    internal static bool IsMemberNotFoundExceptionFactory(MethodInfo method)
+    {
+        if (method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.FullName != "System.Type"
+            || method.Name != "CreateGetMemberWithSameMetadataDefinitionAsNotFoundException")
+            return false;
+        var signature = method.Signature;
+        static string? Shape(TypeDesc type) => type is
+            { Kind: TypeKind.Class, Class: { Module.AssemblyName: "System.Private.CoreLib" } cls }
+                ? cls.FullName : null;
+        return CoreIntrinsicTypeMaps.IsMemberNotFoundExceptionFactoryMethod(
+            method.DeclaringClass.Module.AssemblyName, method.DeclaringClass.FullName, method.Name,
+            (method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask) == System.Reflection.MethodAttributes.FamANDAssem,
+            method.IsStatic && !method.IsVirtual && !method.IsAbstract && signature.Header.RawValue == 0,
+            signature.GenericParameterCount,
+            method.Rva != 0 && (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) == 0,
+            method.PInvoke is not null || (method.Attributes & System.Reflection.MethodAttributes.PinvokeImpl) != 0,
+            signature.ParameterTypes.Length, Shape(signature.ReturnType),
+            signature.ParameterTypes.Length == 1 ? Shape(signature.ParameterTypes[0]) : null);
+    }
+
     // Factories retain their getter/formatting order and return an exception, not a throw sink.
     internal static bool IsAmbiguousMatchExceptionFactory(MethodInfo method)
     {

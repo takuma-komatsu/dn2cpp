@@ -108,6 +108,28 @@ internal sealed partial class AssemblyDiet
             method.Parameters.Count > 1 ? CoreType(method.Parameters[1].ParameterType) : null);
     }
 
+    private static bool IsCopiedMemberNotFoundExceptionFactory(MethodDefinition method, string owner)
+    {
+        if (method.Module.Assembly?.Name.Name != "System.Private.CoreLib"
+            || owner != "System.Type" || method.Name != "CreateGetMemberWithSameMetadataDefinitionAsNotFoundException")
+            return false;
+        static string? Shape(TypeReference type)
+        {
+            bool core = type.Scope is AssemblyNameReference reference
+                ? reference.Name == "System.Private.CoreLib"
+                : type.Scope is ModuleDefinition module && module.Assembly?.Name.Name == "System.Private.CoreLib";
+            return core && type is not TypeSpecification ? type.FullName : null;
+        }
+        return CoreIntrinsicTypeMaps.IsMemberNotFoundExceptionFactoryMethod(
+            method.Module.Assembly?.Name.Name, owner, method.Name, method.IsFamilyAndAssembly,
+            method.IsStatic && !method.IsVirtual && !method.IsAbstract && !method.HasThis && !method.ExplicitThis
+                && method.CallingConvention == MethodCallingConvention.Default,
+            method.GenericParameters.Count, method.HasBody && method.IsIL && method.IsManaged && !method.IsInternalCall
+                && method.Body.Instructions.Count != 0,
+            method.IsPInvokeImpl || method.HasPInvokeInfo, method.Parameters.Count, Shape(method.ReturnType),
+            method.Parameters.Count == 1 ? Shape(method.Parameters[0].ParameterType) : null);
+    }
+
     private static bool IsCopiedAmbiguousMatchExceptionFactory(MethodDefinition method, string owner)
     {
         if (method.Module.Assembly?.Name.Name != "System.Private.CoreLib"
@@ -202,7 +224,8 @@ internal sealed partial class AssemblyDiet
                 method.GenericParameters.Count, method.Parameters.Count, method.ReturnType.FullName,
                 method.Parameters.Count == 1 ? method.Parameters[0].ParameterType.FullName : null))
             traverse = false;
-        else if (IsCopiedRuntimeTypeHandleCopy(method, owner) || IsCopiedAmbiguousMatchExceptionFactory(method, owner))
+        else if (IsCopiedRuntimeTypeHandleCopy(method, owner) || IsCopiedAmbiguousMatchExceptionFactory(method, owner)
+            || IsCopiedMemberNotFoundExceptionFactory(method, owner))
             traverse = true;
         else if (owner is "System.Array" or "System.Delegate")
             traverse = CoreIntrinsicTypeMaps.IsRealBodyGeneric(owner, method.Name) || CopiedArrayRealBodyMember(method);

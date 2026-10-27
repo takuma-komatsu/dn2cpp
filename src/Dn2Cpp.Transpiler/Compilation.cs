@@ -4180,6 +4180,7 @@ internal sealed partial class Compilation
         // Its calls already delegate to the real body, which serves the address too.
         if (CoreIntrinsics.IsRuntimeTypeHandleCopy(m)
             || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m)
+            || CoreIntrinsics.IsMemberNotFoundExceptionFactory(m)
             || CoreIntrinsics.IsRealBodyGeneric(m.DeclaringClass.FullName, m.Name)
             || CoreIntrinsics.IsArrayRealBodyMember(m.DeclaringClass.FullName, m.Name, m.Signature))
         {

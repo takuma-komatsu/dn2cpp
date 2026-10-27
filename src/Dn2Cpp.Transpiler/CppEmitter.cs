@@ -2141,7 +2141,8 @@ internal sealed partial class CppEmitter
         || _c.InterceptFtnTargets.Contains(m) || CoreIntrinsics.MdComparerCompare.Matches(m)
         || _c.IsUnorderableComparerCompareBody(m)
         || CoreIntrinsics.IsIntrinsicType(cls.FullName) && !CoreIntrinsics.IsRuntimeTypeHandleCopy(m)
-            && !CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m);
+            && !CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m)
+            && !CoreIntrinsics.IsMemberNotFoundExceptionFactory(m);
 
     private ParallelBodyResult CompileParallelBody(
         MethodInfo m, LiteralPool literals, bool planning)
@@ -2706,7 +2707,8 @@ internal sealed partial class CppEmitter
                         // and a string may never flow there.
                         if (CoreIntrinsics.IsIntrinsicType(m.DeclaringClass.FullName)
                             && !CoreIntrinsics.IsRuntimeTypeHandleCopy(m)
-                            && !CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m))
+                            && !CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m)
+                            && !CoreIntrinsics.IsMemberNotFoundExceptionFactory(m))
                         {
                             string body;
                             if (new MethodCompiler(_c, m, literals, _backend)
@@ -3054,6 +3056,8 @@ internal sealed partial class CppEmitter
             sb.AppendLine($"    dn2cpp_set_delegate_interface_targets({interfaceTargets.Sym}, {interfaceTargets.Count});");
         if (_delegateMethodCatalog is { } delegateMethods)
             sb.AppendLine($"    dn2cpp_set_delegate_method_catalog({delegateMethods.Sym}, {delegateMethods.Count});");
+        if (_memberNotFoundFactoryRow is { } factoryRow)
+            sb.AppendLine($"    dn2cpp_set_member_not_found_factory_row(Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({factoryRow}));");
         if (_objectVirtualInheritance is { } objectVirtuals)
             sb.AppendLine($"    dn2cpp_set_object_virtual_inheritance({objectVirtuals.Sym}, {objectVirtuals.Count});");
         // The shared reference-element SZArray fallback table goes in before any managed
@@ -3758,6 +3762,7 @@ internal sealed partial class CppEmitter
     private readonly List<string> _runtimeHandleObjectRows = [];
     private (string Sym, int Count)? _objectVirtualInheritance;
     private (string Sym, int Count)? _delegateMethodCatalog;
+    private string? _memberNotFoundFactoryRow;
     private (string Sym, int Count)? _delegateInterfaceTargets;
 
     /// <summary>Records the base of each unbound reference-type runtime handle whose

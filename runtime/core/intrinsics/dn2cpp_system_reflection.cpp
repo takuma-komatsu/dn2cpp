@@ -4204,6 +4204,14 @@ static int32_t dn2cpp_meta_collect_family(const Dn2CppTypeInfo* type, int32_t fl
     return n;
 }
 
+// The image installs this exact managed row before startup; ordinary invocation owns its body.
+static Dn2CppMetadataHandle<Dn2CppMethodInfo> g_member_not_found_factory_row;
+
+void dn2cpp_set_member_not_found_factory_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> method)
+{
+    g_member_not_found_factory_row = method;
+}
+
 // The named-lookup hook: appends the rows a lookup on `queried` finds after the
 // emitted candidates, so dn2cpp_resolve_method_candidates lets an emitted override
 // hide the Object or ValueType member it overrides and reports an overload beside one
@@ -4220,7 +4228,10 @@ static void dn2cpp_meta_lookup(const Dn2CppTypeInfo* queried, Dn2CppString* name
     int32_t genericParamCount, Dn2CppArrayRef* paramTypes, int32_t bindingFlags,
     Dn2CppMethodCandidates& cands)
 {
-    bool named = false;
+    const auto factory = g_member_not_found_factory_row;
+    const bool factoryNamed = factory != nullptr
+        && dn2cpp_member_name_matches(factory->name, name, bindingFlags, false);
+    bool named = factoryNamed;
     for (int32_t k = 0; k < g_meta_member_count && !named; k++)
         named = dn2cpp_member_name_matches(g_meta_members[k].methodName, name, bindingFlags, false);
     if (!named)
@@ -4229,6 +4240,14 @@ static void dn2cpp_meta_lookup(const Dn2CppTypeInfo* queried, Dn2CppString* name
     for (const Dn2CppTypeInfo* ti = queried; ti != nullptr; ti = dn2cpp_meta_next_level(ti))
     {
         bool inherited = (ti != queried);
+        if (factoryNamed)
+        {
+            const auto row = factory.operator->();
+            if (row->declaringType == ti && dn2cpp_member_matches(row->attrs, bindingFlags, inherited)
+                && (genericParamCount < 0 || row->genericParamCount == genericParamCount)
+                && (paramTypes == nullptr || dn2cpp_params_match_types(factory, paramTypes, queried)))
+                cands.push_back(factory);
+        }
         for (int32_t k = 0; k < g_meta_member_count; k++)
         {
             const Dn2CppMetaMember* d = &g_meta_members[k];

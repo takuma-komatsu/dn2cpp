@@ -109,6 +109,15 @@ internal static class CoreIntrinsicTypeMaps
                 && second == "System.Span<System.IntPtr>"
             || result == "System.IntPtr[]" && first == "System.Type[]" && second == "System.Int32&");
 
+    public static bool IsMemberNotFoundExceptionFactoryMethod(string? assembly, string? owner, string name,
+        bool isFamilyAndAssembly, bool staticDefault, int genericArity, bool managedBody, bool pinvoke,
+        int parameterCount, string? result, string? parameter) =>
+        assembly == "System.Private.CoreLib" && owner == "System.Type"
+        && name == "CreateGetMemberWithSameMetadataDefinitionAsNotFoundException"
+        && isFamilyAndAssembly && staticDefault && genericArity == 0
+        && managedBody && !pinvoke && parameterCount == 1
+        && result == "System.ArgumentException" && parameter == "System.Reflection.MemberInfo";
+
     public static bool IsAmbiguousMatchExceptionFactoryMethod(string? assembly, string? owner, string name,
         bool isAssembly, bool staticDefault, int genericArity, bool managedBody, bool pinvoke,
         int parameterCount, string? result, string? parameter) =>

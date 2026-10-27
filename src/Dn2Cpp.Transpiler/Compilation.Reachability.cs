@@ -168,7 +168,8 @@ internal sealed partial class Compilation
         }
         if (m.Rva == 0)
             return;
-        if (CoreIntrinsics.IsRuntimeTypeHandleCopy(m) || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m))
+        if (CoreIntrinsics.IsRuntimeTypeHandleCopy(m) || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m)
+            || CoreIntrinsics.IsMemberNotFoundExceptionFactory(m))
             _intrinsicTypeTranspiled.Add(m);
         // Methods of an intrinsic-mapped type are emitted inline, never
         // transpiled. Call edges already skip them (ResolveCallTarget), but an

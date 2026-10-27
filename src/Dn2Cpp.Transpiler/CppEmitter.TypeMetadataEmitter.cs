@@ -1930,7 +1930,12 @@ internal sealed partial class CppEmitter
                     _o.AppendMetadata(block.ToString());
             }
 
+            // These catalogs share the primary TU, not the last metadata chunk's local thunks.
+            _invokerThunks.Clear();
+            _invokerMissStubs.Clear();
+            _slotStubs.Clear();
             EmitDelegateMethodCatalog();
+            EmitMemberNotFoundFactoryRow();
             _e.EmitArrayTypeInfos(_sb, _emittedEnums);
             _e.EmitMdArrayItfMap(_sb);
             _e.EmitArrayNongenericItfRows(_sb);
@@ -1954,13 +1959,33 @@ internal sealed partial class CppEmitter
             Census();
         }
 
+        private void EmitMemberNotFoundFactoryRow()
+        {
+            foreach (var cls in _e.TopoOrder())
+            {
+                if (cls.FullName != "System.Type")
+                    continue;
+                foreach (var method in cls.Methods)
+                {
+                    if (!CoreIntrinsics.IsMemberNotFoundExceptionFactory(method) || !IsRetainedOpaqueMemberRow(method))
+                        continue;
+                    // Delegate.Method and named lookup must hand out the same physical row.
+                    if (!_memberAddr.TryGetValue(method, out var address))
+                    {
+                        BuildMemberTable(cls, new List<MethodInfo> { method }, "namedfactorytab");
+                        if (!_memberAddr.TryGetValue(method, out address))
+                            throw new InvalidOperationException("Retained member-not-found factory has no metadata row.");
+                    }
+                    _e._memberNotFoundFactoryRow = address;
+                    return;
+                }
+            }
+        }
+
         private void EmitDelegateMethodCatalog()
         {
             if (!_c.ReadsDelegateMethod && !_c.NeedsReflectionDelegateBind)
                 return;
-            _invokerThunks.Clear();
-            _invokerMissStubs.Clear();
-            _slotStubs.Clear();
             var entries = new List<string>();
             if (_c.ReadsDelegateMethod)
                 foreach (var (method, address) in _memberAddr)
@@ -3763,6 +3788,7 @@ internal sealed partial class CppEmitter
                 || (_c.Reachable.Contains(method) || _c.KeepsUnreachedRow(method))
                     && (CoreIntrinsics.IsRuntimeTypeHandleCopy(method)
                         || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(method)
+                        || CoreIntrinsics.IsMemberNotFoundExceptionFactory(method)
                         || CoreIntrinsics.IsCoreClrIntroducedMethodEnumeration(method)
                         || CoreIntrinsics.IsCoreClrCanonicalTypeComparison(method)
                         || CoreIntrinsics.IsRuntimeTypeHandleAccessor(method)
