@@ -798,6 +798,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                     && !CoreIntrinsics.IsRuntimeTypeMakeCompound(target)
                     && !CoreIntrinsics.IsRuntimeTypeMakeArray(target)
                     && !CoreIntrinsics.IsRuntimeTypeFunctionPointerGetter(target)
+                    && !CoreIntrinsics.IsRuntimeTypeGenericParameterGetter(target)
                     && !CoreIntrinsics.IsRuntimeTypeAssemblyGetter(target)
                     && !CoreIntrinsics.IsRuntimeTypeGenericParameterPosition(target), virtFtn));
             }
@@ -1195,6 +1196,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             || CoreIntrinsics.IsRuntimeTypeHandleAccessor(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleIsSZArray(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerPredicate(_method)
+            || CoreIntrinsics.IsRuntimeTypeHandleIsGenericVariable(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleGetAssembly(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleInstantiation(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleGenericVariableIndex(_method)
@@ -3849,7 +3851,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 else if (CoreIntrinsics.IsRuntimeTypeDeclaringMethod(m) || CoreIntrinsics.IsRuntimeTypeMakeGenericType(m)
                     || CoreIntrinsics.IsRuntimeTypeGenericParameterPosition(m) || CoreIntrinsics.IsRuntimeTypeMakeCompound(m)
                     || CoreIntrinsics.IsRuntimeTypeMakeArray(m) || CoreIntrinsics.IsRuntimeTypeFunctionPointerGetter(m)
-                    || CoreIntrinsics.IsRuntimeTypeAssemblyGetter(m))
+                    || CoreIntrinsics.IsRuntimeTypeAssemblyGetter(m) || CoreIntrinsics.IsRuntimeTypeGenericParameterGetter(m))
                 {
                     // RuntimeType is sealed; its native header has no CoreCLR virtual slots.
                     bindsLowering = true;

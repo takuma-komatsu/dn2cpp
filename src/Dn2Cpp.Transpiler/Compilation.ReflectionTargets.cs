@@ -883,6 +883,7 @@ internal sealed partial class Compilation
         _reflectionSelectionCount++;
         if (CoreIntrinsics.IsCoreClrVirtualSlotCount(target)
             || CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerPredicate(target)
+            || CoreIntrinsics.IsRuntimeTypeHandleIsGenericVariable(target)
             || CoreIntrinsics.IsCoreClrMethodSlotLookup(target)
             || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(target)
             || CoreIntrinsics.IsPrimitiveElementHelper(target)

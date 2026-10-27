@@ -131,6 +131,7 @@ internal sealed partial class Compilation
         if (CoreIntrinsics.IsRuntimeTypeHandleAccessor(m)
             || CoreIntrinsics.IsRuntimeTypeHandleIsSZArray(m)
             || CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerPredicate(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleIsGenericVariable(m)
             || CoreIntrinsics.IsRuntimeTypeHandleGetAssembly(m)
             || CoreIntrinsics.IsRuntimeTypeHandleInstantiation(m)
             || CoreIntrinsics.IsRuntimeTypeHandleGenericVariableIndex(m)

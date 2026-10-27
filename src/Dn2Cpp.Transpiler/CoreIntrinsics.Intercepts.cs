@@ -626,6 +626,7 @@ internal static partial class CoreIntrinsics
             || IsRuntimeTypeHandleAccessor(mi)
             || IsRuntimeTypeHandleIsSZArray(mi)
             || IsRuntimeTypeHandleFunctionPointerPredicate(mi)
+            || IsRuntimeTypeHandleIsGenericVariable(mi)
             || IsRuntimeTypeHandleGetAssembly(mi)
             || IsRuntimeTypeHandleInstantiation(mi)
             || IsRuntimeTypeHandleGenericVariableIndex(mi)
@@ -1176,6 +1177,44 @@ internal static partial class CoreIntrinsics
             || method.DeclaringClass.Module != method.Module
             || method.DeclaringClass.FullName != "System.RuntimeType" || !method.DeclaringClass.IsSealed
             || method.Name is not ("get_IsFunctionPointer" or "get_IsUnmanagedFunctionPointer")
+            || method.Attributes != (System.Reflection.MethodAttributes.Public | System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.HideBySig | System.Reflection.MethodAttributes.SpecialName)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean };
+    }
+
+    // Only a formal identity is generic; compounds do not inherit their element's flag.
+    internal static bool IsRuntimeTypeHandleIsGenericVariable(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "IsGenericVariable"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva != 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall))
+                != System.Reflection.MethodImplAttributes.InternalCall)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
+            && parameter.Module == method.Module;
+    }
+
+    internal static bool IsRuntimeTypeGenericParameterGetter(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || !method.DeclaringClass.IsSealed
+            || method.Name != "get_IsGenericParameter"
             || method.Attributes != (System.Reflection.MethodAttributes.Public | System.Reflection.MethodAttributes.Virtual
                 | System.Reflection.MethodAttributes.HideBySig | System.Reflection.MethodAttributes.SpecialName)
             || method.Rva == 0 || method.PInvoke is not null

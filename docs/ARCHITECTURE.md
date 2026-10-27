@@ -568,6 +568,15 @@ guard also applies to the raw unmanaged predicate, whose CoreCLR contract requir
 nonnull RuntimeType. This does not extend custom Type dispatch or open
 function-pointer construction.
 
+The exact `RuntimeTypeHandle.IsGenericVariable(RuntimeType)` InternalCall reads
+only the native formal-parameter flag. Definitions, constructed types and
+compound wrappers do not inherit generic-parameter identity. Its retained public
+RuntimeType getter keeps its managed body; exact sealed calls and address bindings
+avoid CoreCLR-only virtual slots. Direct calls, delegates and explicitly retained
+helper reflection rows share that lowering. Raw null arguments use the native
+Type safety guard, not a claimed CoreCLR private-call exception contract. This
+does not extend custom Type dispatch or the separate raw index/contains helpers.
+
 The exact managed `RuntimeTypeHandle.GetAssembly(RuntimeType)` helper returns
 an interned native RuntimeAssembly object; public Assembly boundaries retain their
 headerless identity conversion. The retained sealed public getter keeps its IL;

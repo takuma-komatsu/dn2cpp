@@ -2,6 +2,8 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (RuntimeTypeGenericVariableGuards.Run(args)) return;
+if (RuntimeTypeGenericVariableFixture.Run(args)) return;
 if (RuntimeTypeAssemblyGuards.Run(args)) return;
 if (RuntimeTypeAssemblyFixture.Run(args)) return;
 if (RuntimeTypeFunctionPointerFixture.Run(args)) return;

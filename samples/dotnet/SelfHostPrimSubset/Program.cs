@@ -84,6 +84,21 @@ internal static class Program
             RuntimeTypeInstantiationSubset.Program.RunReflectionArtifact(Array.Empty<string>());
             return;
         }
+        if (args.Length > 0 && args[0] == "runtime-type-generic-variable-contract")
+        {
+            RuntimeTypeGenericVariableSubset.GenericVariablePredicateChecks.Run();
+            return;
+        }
+        if (args.Length > 0 && args[0] == "runtime-type-generic-variable-artifact")
+        {
+            RuntimeTypeGenericVariableSubset.GenericVariablePredicateChecks.RunArtifact(Array.Empty<string>());
+            return;
+        }
+        if (args.Length > 0 && args[0] == "runtime-type-generic-variable-reflection")
+        {
+            RuntimeTypeGenericVariableSubset.GenericVariablePredicateChecks.RunReflectionArtifact(Array.Empty<string>());
+            return;
+        }
         if (args.Length > 0 && args[0] == "runtime-type-assembly-contract")
         {
             RuntimeTypeAssemblySubset.RuntimeAssemblyChecks.Run();
@@ -408,5 +423,7 @@ internal static class Program
         RuntimeTypeFunctionPointerSubset.FunctionPointerPredicateChecks.Run();
         if (args.Length > 0 && args[0] == "before-runtime-type-assembly") return;
         RuntimeTypeAssemblySubset.RuntimeAssemblyChecks.Run();
+        if (args.Length > 0 && args[0] == "before-runtime-type-generic-variable") return;
+        RuntimeTypeGenericVariableSubset.GenericVariablePredicateChecks.Run();
     }
 }
