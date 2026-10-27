@@ -185,5 +185,7 @@ internal static class Program
         RuntimeTypeHandleCopySubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-signature-blob") return;
         SignatureBlobSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-canonical-type-comparison") return;
+        CanonicalTypeComparisonSubset.Program.Run();
     }
 }

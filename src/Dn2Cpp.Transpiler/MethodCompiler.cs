@@ -1180,6 +1180,7 @@ internal sealed partial class MethodCompiler : IEvalStack
     {
         // Intrinsic-owner address targets still replay the exact declaration guard.
         if (CoreIntrinsics.IsCoreClrIntroducedMethodEnumeration(_method)
+            || CoreIntrinsics.IsCoreClrCanonicalTypeComparison(_method)
             || CoreIntrinsics.IsCoreClrTypeMaterialization(_method) && _method.Rva == 0)
             return CompileInterceptWrapper();
         if (CoreIntrinsics.BrNullableReboxing.Matches(_method))

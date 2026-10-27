@@ -416,6 +416,14 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsCoreClrCanonicalTypeComparison(callee))
+        {
+            Pop();
+            Pop();
+            Emit("dn2cpp_throw_platform_not_supported(\"System.RuntimeTypeHandle.CompareCanonicalHandles requires CoreCLR canonical method tables. Use supported public Type and FieldInfo APIs instead.\");");
+            Push(StackKind.I4, "int32_t", "0"); // unreachable stack shape
+            return;
+        }
         if (CoreIntrinsics.IsCoreClrSignatureBlobParser(callee))
         {
             for (int i = 0; i < callee.Signature.ParameterTypes.Length; i++) Pop();
