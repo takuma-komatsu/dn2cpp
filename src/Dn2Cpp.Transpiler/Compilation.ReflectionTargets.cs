@@ -882,6 +882,7 @@ internal sealed partial class Compilation
             return;
         _reflectionSelectionCount++;
         if (CoreIntrinsics.IsCoreClrVirtualSlotCount(target)
+            || CoreIntrinsics.IsCoreClrMethodSlotLookup(target)
             || target.Rva != 0 && cls.IntrinsicCppName is null)
         {
             if (_selectingBindTargets)

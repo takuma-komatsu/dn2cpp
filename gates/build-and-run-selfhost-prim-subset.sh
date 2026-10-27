@@ -81,8 +81,32 @@
 # checked default-handle ArgumentNullException across reflection/direct/calli.
 # Driven by the real System.Private.CoreLib (passed with -r) -> cross-assembly resolve
 # + tree-shake -> native binary -> run, asserting the output diffs exact vs real .NET.
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/RuntimeVirtualSlotCountFixture.cs gates/fixtures/ldftn-local/RuntimeTypeInterfaceCheckFixture.cs gates/fixtures/ldftn-local/MethodGenericCountFixture.cs gates/fixtures/ldftn-local/RuntimeTypeCacheHandleFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleConstructorFixture.cs gates/fixtures/ldftn-local/ConstraintCheckFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleAccessorFixture.cs gates/fixtures/ldftn-local/CanonicalTypeComparisonFixture.cs gates/fixtures/ldftn-local/SignatureBlobFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleCopyFixture.cs gates/fixtures/ldftn-local/RuntimeFieldHandleFixture.cs gates/fixtures/ldftn-local/NullableReboxingFixture.cs gates/fixtures/ldftn-local/RuntimeTypeMaterializationFixture.cs gates/fixtures/ldftn-local/RuntimeMethodHandleFixture.cs gates/fixtures/ldftn-local/RuntimeMethodEnumerationFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/GcFinalizerWorkerFixture.cs gates/fixtures/ldftn-local/DelegateVmConstructorFixture.cs gates/fixtures/ldftn-local/DelegateNamedConstructorFixture.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/RuntimeMethodSlotLookupFixture.cs gates/fixtures/ldftn-local/RuntimeVirtualSlotCountFixture.cs gates/fixtures/ldftn-local/RuntimeTypeInterfaceCheckFixture.cs gates/fixtures/ldftn-local/MethodGenericCountFixture.cs gates/fixtures/ldftn-local/RuntimeTypeCacheHandleFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleConstructorFixture.cs gates/fixtures/ldftn-local/ConstraintCheckFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleAccessorFixture.cs gates/fixtures/ldftn-local/CanonicalTypeComparisonFixture.cs gates/fixtures/ldftn-local/SignatureBlobFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleCopyFixture.cs gates/fixtures/ldftn-local/RuntimeFieldHandleFixture.cs gates/fixtures/ldftn-local/NullableReboxingFixture.cs gates/fixtures/ldftn-local/RuntimeTypeMaterializationFixture.cs gates/fixtures/ldftn-local/RuntimeMethodHandleFixture.cs gates/fixtures/ldftn-local/RuntimeMethodEnumerationFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/GcFinalizerWorkerFixture.cs gates/fixtures/ldftn-local/DelegateVmConstructorFixture.cs gates/fixtures/ldftn-local/DelegateNamedConstructorFixture.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
 source "$(dirname "$0")/_common.sh"
+
+method_slot_lookup_asserts() {
+    local output="$1" routes="$2" member label route
+    for member in GetMethodAt GetInterfaceMethodImplementation; do
+        gate_output byte-witness "$output" "method-slot-$member-shape:True" --count 1 --policy crlf || return 1
+    done
+    for label in virtual base-definition invoke; do
+        gate_output byte-witness "$output" "method-slot-public-$label:True" --count 1 --policy crlf || return 1
+    done
+    gate_output byte-witness "$output" 'Runtime method-slot lookup contract end' --count 1 --policy crlf || return 1
+    for route in $routes; do
+        for label in null null-negative pointer pointer-negative byref byref-negative parameter parameter-negative function-pointer function-pointer-negative negative object class interface value array md-array open-generic large-slot; do
+            gate_output byte-witness "$output" "method-slot-GetMethodAt-$route-$label:True" --count 1 --policy crlf || return 1
+        done
+        for label in both-default receiver-default owner-default valid-handles non-interface-owner pointer-receiver; do
+            gate_output byte-witness "$output" "method-slot-GetInterfaceMethodImplementation-$route-$label:True" --count 1 --policy crlf || return 1
+        done
+        if [[ "$route" != reflection ]]; then
+            for label in unsigned-max unsigned-high-bit; do
+                gate_output byte-witness "$output" "method-slot-GetMethodAt-$route-$label:True" --count 1 --policy crlf || return 1
+            done
+        fi
+    done
+}
 
 virtual_slot_count_asserts() {
     local output="$1" routes="$2" member label route
@@ -570,6 +594,9 @@ gate_extra_asserts() {
     gate_capture_ok "$out/assert-before-virtual-slot-count" run_bounded dotnet "$_CG_APP" before-runtime-virtual-slot-count || return 1
     gate_output prefix "$native" "$out/assert-before-virtual-slot-count.stdout" --before '== Runtime virtual-slot count contract ==' --policy crlf || return 1
     virtual_slot_count_asserts "$native" '' || return 1
+    gate_capture_ok "$out/assert-before-method-slot-lookup" run_bounded dotnet "$_CG_APP" before-runtime-method-slot-lookup || return 1
+    gate_output prefix "$native" "$out/assert-before-method-slot-lookup.stdout" --before '== Runtime method-slot lookup contract ==' --policy crlf || return 1
+    method_slot_lookup_asserts "$native" '' || return 1
 }
 
 # Validate the negative-offset return before the CLR oracle allocates an uninitialized Signature.
@@ -706,6 +733,30 @@ gate_output byte-witness "$_CG_OUT/virtual-slot-order-clr.stdout" \
     'virtual-slot-order-clr:InstanceMiddle,DefaultInstance,GenericInstance,StaticFirst,StaticDefault' --count 1 --policy crlf
 gate_output byte-witness "$_CG_OUT/virtual-slot-order-clr.stdout" \
     'virtual-slot-order-clr:default-and-inherited:True' --count 1 --policy crlf
+
+# VM lookups preserve managed validation before refusing their private descriptor ABI.
+for lookup_mode in all reflection; do
+    lookup_input="artifacts/runtime-method-slot-lookup-input-$lookup_mode-$CONFIG"
+    mkdir -p "$lookup_input"
+    cp samples/dotnet/SelfHostPrimSubset/bin/$CONFIG/$TFM/* "$lookup_input/"
+    lookup_flag=--runtime-method-slot-lookup
+    lookup_routes='direct pointer reflection'
+    if [[ "$lookup_mode" == reflection ]]; then
+        lookup_flag=--runtime-method-slot-lookup-reflection
+        lookup_routes=reflection
+    fi
+    dotnet "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
+        "$lookup_flag" "$lookup_input/SelfHostPrimSubset.dll" "$_CG_CORELIB"
+    lookup_out="artifacts/runtime-method-slot-lookup-$lookup_mode-$CONFIG"
+    invoke_cli "$lookup_input/SelfHostPrimSubset.dll" --auto-ref -o "$lookup_out"
+    compile_console "$lookup_out" RuntimeMethodSlotLookup
+    gate_capture_ok "$lookup_out/native" run_bounded "./$lookup_out/RuntimeMethodSlotLookup$EXE_EXT"
+    gate_capture_ok "$lookup_out/oracle" run_bounded dotnet "$_CG_APP" runtime-method-slot-lookup-contract
+    gate_output prefix "$lookup_out/native.stdout" "$lookup_out/oracle.stdout" \
+        --before "method-slot-GetMethodAt-${lookup_routes%% *}-null:True" --policy crlf
+    method_slot_lookup_asserts "$lookup_out/native.stdout" "$lookup_routes"
+    gate_output byte-witness "$lookup_out/native.stdout" 'Runtime method-slot lookup boundary end' --count 1 --policy crlf
+done
 
 # VM counts refuse on native only; both runtimes execute the public dispatch prefix.
 for slot_mode in all reflection; do

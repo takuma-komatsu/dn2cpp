@@ -628,6 +628,7 @@ internal static partial class CoreIntrinsics
             || IsRuntimeTypeCacheHandleBridge(mi)
             || IsRuntimeTypeInterfaceCheck(mi)
             || IsCoreClrVirtualSlotCount(mi)
+            || IsCoreClrMethodSlotLookup(mi)
             || IsMethodGenericParameterCount(mi)
             || IsCoreClrConstraintCheck(mi)
             || IsCoreClrSignatureBlobParser(mi)
@@ -908,6 +909,30 @@ internal static partial class CoreIntrinsics
             && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }
             && signature.ParameterTypes.Length == 1
             && IsCoreLibMethodDescType(signature.ParameterTypes[0], "System.RuntimeType");
+    }
+
+    // CoreCLR lookup results are MethodDesc values, not native reflection rows.
+    internal static bool IsCoreClrMethodSlotLookup(MethodInfo method)
+    {
+        if (method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle"
+            || method.Name is not ("GetMethodAt" or "GetInterfaceMethodImplementation")
+            || (method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask)
+                != System.Reflection.MethodAttributes.Assembly
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.Attributes & (System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.Abstract | System.Reflection.MethodAttributes.PinvokeImpl)) != 0
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        bool at = method.Name == "GetMethodAt";
+        var signature = method.Signature;
+        return method.IsStatic == at && signature.Header.RawValue == (at ? 0 : 0x20)
+            && signature.GenericParameterCount == 0 && signature.ParameterTypes.Length == 2
+            && IsCoreLibMethodDescType(signature.ReturnType, "System.RuntimeMethodHandleInternal")
+            && IsCoreLibMethodDescType(signature.ParameterTypes[0], at ? "System.RuntimeType" : "System.RuntimeTypeHandle")
+            && (at ? signature.ParameterTypes[1] is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }
+                : IsCoreLibMethodDescType(signature.ParameterTypes[1], "System.RuntimeMethodHandleInternal"));
     }
 
     // The managed interface check consumes native type identities, not QCall handles.

@@ -3769,6 +3769,7 @@ internal sealed partial class CppEmitter
                         || CoreIntrinsics.IsRuntimeTypeCacheHandleBridge(method)
                         || CoreIntrinsics.IsRuntimeTypeInterfaceCheck(method)
                         || CoreIntrinsics.IsCoreClrVirtualSlotCount(method)
+                        || CoreIntrinsics.IsCoreClrMethodSlotLookup(method)
                         || CoreIntrinsics.IsCoreClrConstraintCheck(method)
                         || CoreIntrinsics.IsCoreClrTypeMaterialization(method)
                         || CoreIntrinsics.BrNullableReboxing.Matches(method)));

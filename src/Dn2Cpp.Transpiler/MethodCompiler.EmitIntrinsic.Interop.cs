@@ -484,6 +484,40 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsCoreClrMethodSlotLookup(callee))
+        {
+            if (callee.Name == "GetMethodAt")
+            {
+                var slot = Pop();
+                var type = Pop();
+                string handle = NewTemp("const Dn2CppTypeInfo*");
+                Emit($"{handle} = dn2cpp_type_require({Cast(type, "Dn2CppType*")});");
+                // Null and TypeDesc checks precede the managed negative-slot check.
+                ValidateRuntimeTypeInterface($"dn2cpp_signature_kind({handle}) != 0 || ({handle}->flags & DN2CPP_TF_GENERICPARAM) != 0",
+                    "Arg_InvalidHandle", callee);
+                ValidateRuntimeTypeInterface($"{Cast(slot, "int32_t")} < 0", "Arg_ArgumentOutOfRangeException", callee);
+            }
+            else
+            {
+                Pop();
+                string owner = NewTemp("const Dn2CppTypeInfo*");
+                Emit($"{owner} = {Cast(Pop(), "const Dn2CppTypeInfo*")};");
+                string receiver = NewTemp("const Dn2CppTypeInfo*");
+                Emit($"{receiver} = {DerefReceiver("const Dn2CppTypeInfo*")};");
+                // CoreLib checks both type handles, but does not validate the MethodDesc.
+                ValidateRuntimeTypeHandle(receiver, callee);
+                ValidateRuntimeTypeHandle(owner, callee);
+            }
+            Emit($"dn2cpp_throw_platform_not_supported(\"System.RuntimeTypeHandle.{callee.Name} requires CoreCLR virtual-slot method descriptors. Use supported public Type and MethodInfo APIs instead.\");");
+            var result = callee.Signature.ReturnType;
+            if (result.Class is { } value) Comp.NoteForceEmit(value);
+            string resultType = CppTypes.Of(result);
+            string unused = NewTemp(resultType);
+            Emit($"{unused} = {{}};"); // unreachable stack shape
+            Push(CppTypes.KindOf(result), resultType, unused);
+            return;
+        }
+
         if (CoreIntrinsics.IsRuntimeTypeCacheHandleBridge(callee))
         {
             Pop();

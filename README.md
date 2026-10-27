@@ -887,6 +887,10 @@ expression trees at runtime.
   queries throw `PlatformNotSupportedException`: CoreCLR virtual-slot counts
   are not native dispatch slots or reflection-row counts. Public virtual calls
   and supported reflection APIs keep their native routes.
+  Its managed `GetMethodAt` / `GetInterfaceMethodImplementation` lookups preserve
+  their null, type-shape and slot validation, then throw
+  `PlatformNotSupportedException`: native reflection rows are not CoreCLR
+  MethodDesc values. Their raw QCall siblings retain native import binding.
   Its managed `GetGCHandle` / `FreeGCHandle` cache bridges preserve default-handle
   validation, then throw `PlatformNotSupportedException`: CoreCLR owns these
   cache slots through its LoaderAllocator. They are not public GCHandle slots;
