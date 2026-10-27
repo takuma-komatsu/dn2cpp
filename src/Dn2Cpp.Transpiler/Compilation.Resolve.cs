@@ -1453,6 +1453,7 @@ internal sealed partial class Compilation
                 || reader.StringComparer.Equals(mr.Name, "GetRuntimeTypeFromHandleSlow")
                 || reader.StringComparer.Equals(mr.Name, "CompareCanonicalHandles")
                 || reader.StringComparer.Equals(mr.Name, "SatisfiesConstraints")
+                || reader.StringComparer.Equals(mr.Name, "GetDeclaringMethodForGenericParameter")
                 || reader.StringComparer.Equals(mr.Name, "IsCollectible")))
         {
             try
@@ -1468,6 +1469,7 @@ internal sealed partial class Compilation
                     || CoreIntrinsics.IsCoreClrVirtualSlotCount(enumeration)
                     || CoreIntrinsics.IsCoreClrMethodSlotLookup(enumeration)
                     || CoreIntrinsics.IsCoreClrConstraintCheck(enumeration)
+                    || CoreIntrinsics.IsCoreClrDeclaringMethodBridge(enumeration)
                     || CoreIntrinsics.IsCoreClrTypeCollectibilityImport(enumeration))
                     return enumeration;
             }

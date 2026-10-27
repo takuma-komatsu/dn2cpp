@@ -136,6 +136,8 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsCoreClrVirtualSlotCount(m)
             || CoreIntrinsics.IsCoreClrMethodSlotLookup(m)
             || CoreIntrinsics.IsCoreClrConstraintCheck(m)
+            || CoreIntrinsics.IsRuntimeTypeDeclaringMethod(m)
+            || CoreIntrinsics.IsCoreClrDeclaringMethodBridge(m)
             || CoreIntrinsics.BrInvariantCompareInfoCallback.Matches(m.DeclaringClass.FullName, m.Name))
         {
             _predTrace.TryAdd(m, _currentScan);

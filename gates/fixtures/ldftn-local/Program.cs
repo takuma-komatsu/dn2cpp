@@ -2,6 +2,7 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (FormalDeclaringMethodFixture.Run(args)) return;
 if (CollectibilityImportFixture.Run(args)) return;
 if (MetadataDefinitionFixture.Run(args)) return;
 if (MemberNotFoundFactoryFixture.Run(args)) return;

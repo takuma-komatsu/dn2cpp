@@ -895,6 +895,11 @@ expression trees at runtime.
   validation, then throw `PlatformNotSupportedException`: CoreCLR owns these
   cache slots through its LoaderAllocator. They are not public GCHandle slots;
   public `GCHandle`, `Type` and `Enum` keep their native implementations.
+  The retained `RuntimeType.DeclaringMethod` getter reads the same native formal
+  owner metadata as `Type.DeclaringMethod`, returning the typical method definition
+  or null for a type parameter. Its private `RuntimeTypeHandle` bridge instead
+  throws `PlatformNotSupportedException`: `IRuntimeMethodInfo` carries CoreCLR
+  method descriptors, not native reflection rows. The raw QCall remains an import.
   `MethodInfo.GenericParameterCount` reads native method arity without allocating
   an argument array; definitions and constructed methods retain the same arity,
   independently of the declaring type's generic arguments.

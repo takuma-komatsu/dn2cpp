@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Managed member-not-found and ambiguous-match exception factories,
+# Formal declaring-method identity and the private CoreCLR MethodDesc boundary,
+# managed member-not-found and ambiguous-match exception factories,
 # CoreCLR virtual-slot count boundaries,
 # RuntimeTypeHandle interface validation,
 # MethodInfo generic arity,
@@ -83,8 +84,11 @@
 # checked default-handle ArgumentNullException across reflection/direct/calli.
 # Driven by the real System.Private.CoreLib (passed with -r) -> cross-assembly resolve
 # + tree-shake -> native binary -> run, asserting the output diffs exact vs real .NET.
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/MemberNotFoundFactoryFixture.cs gates/fixtures/ldftn-local/AmbiguousMatchFactoryFixture.cs gates/fixtures/ldftn-local/RuntimeMethodSlotLookupFixture.cs gates/fixtures/ldftn-local/RuntimeVirtualSlotCountFixture.cs gates/fixtures/ldftn-local/RuntimeTypeInterfaceCheckFixture.cs gates/fixtures/ldftn-local/MethodGenericCountFixture.cs gates/fixtures/ldftn-local/RuntimeTypeCacheHandleFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleConstructorFixture.cs gates/fixtures/ldftn-local/ConstraintCheckFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleAccessorFixture.cs gates/fixtures/ldftn-local/CanonicalTypeComparisonFixture.cs gates/fixtures/ldftn-local/SignatureBlobFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleCopyFixture.cs gates/fixtures/ldftn-local/RuntimeFieldHandleFixture.cs gates/fixtures/ldftn-local/NullableReboxingFixture.cs gates/fixtures/ldftn-local/RuntimeTypeMaterializationFixture.cs gates/fixtures/ldftn-local/RuntimeMethodHandleFixture.cs gates/fixtures/ldftn-local/RuntimeMethodEnumerationFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/GcFinalizerWorkerFixture.cs gates/fixtures/ldftn-local/DelegateVmConstructorFixture.cs gates/fixtures/ldftn-local/DelegateNamedConstructorFixture.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/_formal-declaring-method.sh gates/fixtures/ldftn-local/FormalDeclaringMethodFixture.cs samples/dotnet/SelfHostPrimSubset/FormalDeclaringMethodSubset.cs gates/fixtures/ldftn-local/MemberNotFoundFactoryFixture.cs gates/fixtures/ldftn-local/AmbiguousMatchFactoryFixture.cs gates/fixtures/ldftn-local/RuntimeMethodSlotLookupFixture.cs gates/fixtures/ldftn-local/RuntimeVirtualSlotCountFixture.cs gates/fixtures/ldftn-local/RuntimeTypeInterfaceCheckFixture.cs gates/fixtures/ldftn-local/MethodGenericCountFixture.cs gates/fixtures/ldftn-local/RuntimeTypeCacheHandleFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleConstructorFixture.cs gates/fixtures/ldftn-local/ConstraintCheckFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleAccessorFixture.cs gates/fixtures/ldftn-local/CanonicalTypeComparisonFixture.cs gates/fixtures/ldftn-local/SignatureBlobFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleCopyFixture.cs gates/fixtures/ldftn-local/RuntimeFieldHandleFixture.cs gates/fixtures/ldftn-local/NullableReboxingFixture.cs gates/fixtures/ldftn-local/RuntimeTypeMaterializationFixture.cs gates/fixtures/ldftn-local/RuntimeMethodHandleFixture.cs gates/fixtures/ldftn-local/RuntimeMethodEnumerationFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/GcFinalizerWorkerFixture.cs gates/fixtures/ldftn-local/DelegateVmConstructorFixture.cs gates/fixtures/ldftn-local/DelegateNamedConstructorFixture.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
 source "$(dirname "$0")/_common.sh"
+
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|formal-declaring:raw,diet,direct,pointer,address,ldvirtftn,flowing,reflection"
+source gates/_formal-declaring-method.sh
 
 member_not_found_factory_asserts() {
     local output="$1" routes="$2" kind label route
@@ -642,6 +646,9 @@ gate_extra_asserts() {
     gate_capture_ok "$out/assert-before-member-not-found-factory" run_bounded dotnet "$_CG_APP" before-member-not-found-factory || return 1
     gate_output prefix "$native" "$out/assert-before-member-not-found-factory.stdout" --before '== Managed member-not-found factory ==' --policy crlf || return 1
     member_not_found_factory_asserts "$native" '' || return 1
+    gate_capture_ok "$out/assert-before-formal-declaring-method" run_bounded dotnet "$_CG_APP" before-formal-declaring-method || return 1
+    gate_output prefix "$native" "$out/assert-before-formal-declaring-method.stdout" --before '== Formal declaring method contract ==' --policy crlf || return 1
+    formal_declaring_contract_asserts "$native" || return 1
 }
 
 # Validate the negative-offset return before the CLR oracle allocates an uninitialized Signature.
@@ -1192,3 +1199,5 @@ for constructor_mode in all reflection; do
         gate_output byte-witness "$constructor_out/native.stdout" 'Runtime type handle constructor artifact end' --count 1 --policy crlf
     fi
 done
+
+formal_declaring_routes_gate "artifacts/formal-declaring-method-$CONFIG"

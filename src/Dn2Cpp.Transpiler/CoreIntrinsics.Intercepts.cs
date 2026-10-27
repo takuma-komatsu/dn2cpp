@@ -632,6 +632,8 @@ internal static partial class CoreIntrinsics
             || IsMethodGenericParameterCount(mi)
             || IsMemberMetadataDefinitionOverride(mi)
             || IsCoreClrConstraintCheck(mi)
+            || IsRuntimeTypeDeclaringMethod(mi)
+            || IsCoreClrDeclaringMethodBridge(mi)
             || IsCoreClrSignatureBlobParser(mi)
             || IsCoreClrTypeMaterialization(mi) && mi.Rva == 0);
 
@@ -1069,6 +1071,46 @@ internal static partial class CoreIntrinsics
         return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
             && signature.ParameterTypes.Length == 0
             && IsCoreLibMethodDescType(signature.ReturnType, "System.RuntimeType");
+    }
+
+    // RuntimeType's public owner query uses native formal metadata, not its CoreCLR fields.
+    internal static bool IsRuntimeTypeDeclaringMethod(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || !method.DeclaringClass.IsSealed
+            || method.Name != "get_DeclaringMethod"
+            || method.Attributes != (System.Reflection.MethodAttributes.Public | System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.HideBySig | System.Reflection.MethodAttributes.SpecialName)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Class, Class: { FullName: "System.Reflection.MethodBase" } result }
+            && result.Module == method.Module;
+    }
+
+    // IRuntimeMethodInfo carries a CoreCLR MethodDesc, not a native reflection member row.
+    internal static bool IsCoreClrDeclaringMethodBridge(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "GetDeclaringMethodForGenericParameter"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
+            && parameter.Module == method.Module
+            && signature.ReturnType is { Kind: TypeKind.Class, Class: { FullName: "System.IRuntimeMethodInfo" } result }
+            && result.Module == method.Module;
     }
 
     // This managed bridge consumes CoreCLR private method contexts, not native reflection rows.

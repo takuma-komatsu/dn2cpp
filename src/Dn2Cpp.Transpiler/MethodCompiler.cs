@@ -788,7 +788,8 @@ internal sealed partial class MethodCompiler : IEvalStack
                 }
                 if (!virtFtn && _c.TrimLdftnRedirect(target) is { } redirect)
                     target = redirect;
-                _ftnOrigins.Add(insn.Offset + 1, (target, virtFtn && target.IsVirtual, virtFtn));
+                _ftnOrigins.Add(insn.Offset + 1, (target, virtFtn && target.IsVirtual
+                    && !CoreIntrinsics.IsRuntimeTypeDeclaringMethod(target), virtFtn));
             }
 
         foreach (var insn in insns)
@@ -1190,6 +1191,8 @@ internal sealed partial class MethodCompiler : IEvalStack
             || CoreIntrinsics.IsMethodGenericParameterCount(_method)
             || CoreIntrinsics.IsMemberMetadataDefinitionOverride(_method)
             || CoreIntrinsics.IsCoreClrConstraintCheck(_method)
+            || CoreIntrinsics.IsRuntimeTypeDeclaringMethod(_method)
+            || CoreIntrinsics.IsCoreClrDeclaringMethodBridge(_method)
             || CoreIntrinsics.IsCoreClrTypeMaterialization(_method) && _method.Rva == 0)
             return CompileInterceptWrapper();
         if (CoreIntrinsics.BrNullableReboxing.Matches(_method))
@@ -3811,6 +3814,14 @@ internal sealed partial class MethodCompiler : IEvalStack
                     expr = $"((void)dn2cpp_null_check({obj.Expr}), "
                         + $"(void*)+[](Dn2CppObject* receiver, Dn2CppObject* other) -> int32_t "
                         + $"{{ return {impl.CppName}(({virtualTarget.DeclaringClass.CppStructName}*)(receiver + 1), other); }})";
+                }
+                else if (CoreIntrinsics.IsRuntimeTypeDeclaringMethod(m))
+                {
+                    // RuntimeType is sealed; its native header has no CoreCLR virtual slots.
+                    bindsLowering = true;
+                    NoteFtnTargetBody(m.Emittable);
+                    _c.NoteNamedBodySymbol(_method, m.Emittable);
+                    expr = $"((void)dn2cpp_null_check({obj.Expr}), (void*)&{m.Emittable.CppName})";
                 }
                 else if (CoreIntrinsics.IsMemberMetadataDefinitionBase(m))
                 {

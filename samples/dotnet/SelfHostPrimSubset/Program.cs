@@ -9,6 +9,16 @@ internal static class Program
 {
     private static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "formal-declaring-public")
+        {
+            FormalDeclaringMethodSubset.Program.RunPublicArtifact(args);
+            return;
+        }
+        if (args.Length > 0 && args[0] == "formal-declaring-contract")
+        {
+            FormalDeclaringMethodSubset.Program.Run();
+            return;
+        }
         if (args.Length > 0 && args[0] == "member-not-found-factory-contract")
         {
             MemberNotFoundFactorySubset.Program.Run();
@@ -257,5 +267,7 @@ internal static class Program
         AmbiguousMatchFactorySubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-member-not-found-factory") return;
         MemberNotFoundFactorySubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-formal-declaring-method") return;
+        FormalDeclaringMethodSubset.Program.Run();
     }
 }
