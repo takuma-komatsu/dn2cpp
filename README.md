@@ -856,6 +856,11 @@ expression trees at runtime.
   constructor attributes, generic queries and invocation use `MethodInfo` and
   `ConstructorInfo`; managed default-handle value, equality and validation paths
   retain their CoreLib behavior.
+  The non-public `RuntimeFieldHandle` FieldDesc InternalCalls similarly throw;
+  native `FieldInfo` metadata and accessors are not CoreCLR field descriptors.
+  Managed default-field-handle validation and the native RVA array/span literal
+  paths remain independent of these VM leaves. Field access QCalls retain the
+  existing absent-CoreCLR import boundary and explicit native-binding options.
   Non-public `RuntimeTypeHandle` raw-VM type materialization likewise throws
   before reading CoreCLR MethodTable, TypeDesc or output-handle state. Its
   nullable wrapper still returns null for a zero handle. Native `Type.TypeHandle`

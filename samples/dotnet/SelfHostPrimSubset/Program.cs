@@ -174,5 +174,7 @@ internal static class Program
         RuntimeTypeMaterializationSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-nullable-reboxing") return;
         NullableReboxingSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-runtime-field-handle") return;
+        RuntimeFieldHandleSubset.Program.Run();
     }
 }

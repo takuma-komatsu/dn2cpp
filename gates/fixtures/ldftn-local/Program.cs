@@ -2,6 +2,7 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (RuntimeFieldHandleFixture.Run(args)) return;
 if (NullableReboxingFixture.Run(args)) return;
 if (RuntimeMethodHandleFixture.Run(args)) return;
 if (RuntimeTypeMaterializationFixture.Run(args)) return;

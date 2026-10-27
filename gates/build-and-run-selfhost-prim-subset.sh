@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Nullable reboxing, CoreCLR method/type-handle boundaries, public reflection,
+# Nullable reboxing, CoreCLR field/method/type-handle boundaries, public reflection,
 # and companion process
 # argument/stream/exit preservation and the console-self-host
 # runtime primitives whose behaviour can be exercised exactly.
@@ -73,8 +73,50 @@
 #     driver, so no wasm axis reaches the section.
 # Driven by the real System.Private.CoreLib (passed with -r) -> cross-assembly resolve
 # + tree-shake -> native binary -> run, asserting the output diffs exact vs real .NET.
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/NullableReboxingFixture.cs gates/fixtures/ldftn-local/RuntimeTypeMaterializationFixture.cs gates/fixtures/ldftn-local/RuntimeMethodHandleFixture.cs gates/fixtures/ldftn-local/RuntimeMethodEnumerationFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/GcFinalizerWorkerFixture.cs gates/fixtures/ldftn-local/DelegateVmConstructorFixture.cs gates/fixtures/ldftn-local/DelegateNamedConstructorFixture.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/RuntimeFieldHandleFixture.cs gates/fixtures/ldftn-local/NullableReboxingFixture.cs gates/fixtures/ldftn-local/RuntimeTypeMaterializationFixture.cs gates/fixtures/ldftn-local/RuntimeMethodHandleFixture.cs gates/fixtures/ldftn-local/RuntimeMethodEnumerationFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/GcFinalizerWorkerFixture.cs gates/fixtures/ldftn-local/DelegateVmConstructorFixture.cs gates/fixtures/ldftn-local/DelegateNamedConstructorFixture.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
 source "$(dirname "$0")/_common.sh"
+
+field_handle_ic_members="GetUtf8NameInternal GetAttributes GetApproxDeclaringMethodTable IsFastPathSupported GetInstanceFieldOffset GetStaticFieldAddress GetToken GetStaticFieldForGenericType AcquiresContextFromThis GetLoaderAllocatorInternal"
+field_handle_qcall_members="GetFieldDataReference GetValueDirect SetValueDirect GetEnCFieldAddr GetRVAFieldInfo GetValue SetValue"
+field_handle_public_asserts() {
+    local output="$1" member label
+    for label in default-value default-equality default-hash public-access public-metadata private-access static-access readonly-value struct-access generic-access generic-static rva-array rva-span; do
+        gate_output byte-witness "$output" "field-handle-$label:True" --count 1 --policy crlf || return 1
+    done
+    gate_output byte-witness "$output" 'field-handle-default-validation:ArgumentNullException' --count 1 --policy crlf || return 1
+    gate_output byte-witness "$output" 'field-handle-readonly-store:FieldAccessException' --count 1 --policy crlf || return 1
+    for member in $field_handle_ic_members $field_handle_qcall_members; do
+        gate_output byte-witness "$output" "field-handle-shape-$member:True" --count 1 --policy crlf || return 1
+    done
+    gate_output byte-witness "$output" 'Runtime field handle metadata end' --count 1 --policy crlf || return 1
+    gate_output byte-witness "$output" 'Runtime field handle contract end' --count 1 --policy crlf
+}
+
+field_handle_boundary_asserts() {
+    local output="$1" member route
+    field_handle_public_asserts "$output" || return 1
+    for member in $field_handle_ic_members; do
+        for route in direct pointer reflection; do
+            gate_output byte-witness "$output" "field-handle-$member-$route:PlatformNotSupportedException:System.RuntimeFieldHandle.$member requires CoreCLR field descriptors. Use FieldInfo instead." --count 1 --policy crlf || return 1
+        done
+    done
+    for member in $field_handle_qcall_members; do
+        for route in direct pointer; do
+            gate_output byte-witness "$output" "field-handle-$member-$route:PlatformNotSupportedException:the native import QCall!RuntimeFieldHandle_$member requires the CoreCLR runtime, which a dn2cpp-transpiled binary does not provide. Use a supported managed API, a NativeImplementation shim, or an explicit --direct-pinvoke binding." --count 1 --policy crlf || return 1
+        done
+    done
+    for member in $field_handle_ic_members $field_handle_qcall_members; do
+        for route in direct pointer; do
+            gate_output byte-witness "$output" "field-handle-$member-$route-nonmutation:True" --count 1 --policy crlf || return 1
+        done
+    done
+    gate_output byte-witness "$output" 'field-handle-GetRVAFieldInfo-reflection:PlatformNotSupportedException:the native import QCall!RuntimeFieldHandle_GetRVAFieldInfo requires the CoreCLR runtime, which a dn2cpp-transpiled binary does not provide. Use a supported managed API, a NativeImplementation shim, or an explicit --direct-pinvoke binding.' --count 1 --policy crlf || return 1
+    gate_output byte-witness "$output" 'field-handle-GetRVAFieldInfo-reflection-nonmutation:True' --count 1 --policy crlf || return 1
+    for member in GetFieldDataReference GetValueDirect SetValueDirect GetEnCFieldAddr GetValue SetValue; do
+        gate_output byte-witness "$output" "field-handle-$member-reflection:NotSupportedException" --count 1 --policy crlf || return 1
+    done
+    gate_output byte-witness "$output" 'Runtime field handle boundary end' --count 1 --policy crlf
+}
 
 method_handle_members="GetAttributes GetImplAttributes GetMethodTable GetSlot GetMethodDef GetUtf8NameInternal HasMethodInstantiation GetStubIfNeededInternal GetMethodFromCanonical IsGenericMethodDefinition IsTypicalMethodDefinition GetGenericParameterCount IsDynamicMethod GetResolver IsConstructor GetLoaderAllocatorInternal"
 method_handle_shapes() {
@@ -294,6 +336,9 @@ gate_extra_asserts() {
         gate_output byte-witness "$native" "nullable-rebox-reflection-$label:True" --count 1 --policy crlf || return 1
     done
     gate_output byte-witness "$native" 'Nullable reboxing contract end' --count 1 --policy crlf || return 1
+    gate_capture_ok "$out/assert-before-field-handle" run_bounded dotnet "$_CG_APP" before-runtime-field-handle || return 1
+    gate_output prefix "$native" "$out/assert-before-field-handle.stdout" --before '== Runtime field handle contract ==' --policy crlf || return 1
+    field_handle_public_asserts "$native" || return 1
 
 }
 
@@ -531,3 +576,16 @@ for route in reflection direct pointer; do
     nullable_rebox_asserts "$rebox_out/native.stdout" "$route"
 done
 gate_output byte-witness "$rebox_out/native.stdout" 'Nullable reboxing artifact end' --count 1 --policy crlf
+
+# FieldDesc InternalCalls use the exact boundary; QCall leaves retain their
+# existing import refusal. Byref-like QCall parameters stop reflection at validation.
+field_input="artifacts/runtime-field-handle-input-$CONFIG"
+mkdir -p "$field_input"
+cp samples/dotnet/SelfHostPrimSubset/bin/$CONFIG/$TFM/* "$field_input/"
+dotnet "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
+    --runtime-field-handle "$field_input/SelfHostPrimSubset.dll" "$_CG_CORELIB"
+field_out="artifacts/runtime-field-handle-$CONFIG"
+invoke_cli "$field_input/SelfHostPrimSubset.dll" --auto-ref -o "$field_out"
+compile_console "$field_out" RuntimeFieldHandle
+gate_capture_ok "$field_out/native" run_bounded "./$field_out/RuntimeFieldHandle$EXE_EXT"
+field_handle_boundary_asserts "$field_out/native.stdout"

@@ -621,6 +621,7 @@ internal static partial class CoreIntrinsics
             || IsCoreClrFinalizerWorker(mi)
             || IsCoreClrIntroducedMethodEnumeration(mi)
             || IsCoreClrMethodDescQuery(mi)
+            || IsCoreClrFieldDescOperation(mi)
             || IsCoreClrTypeMaterialization(mi) && mi.Rva == 0);
 
     internal static bool IsNullableReboxing(MethodInfo method)
@@ -733,6 +734,64 @@ internal static partial class CoreIntrinsics
             _ => result is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
         };
     }
+
+    // FieldDesc addresses and RtFieldInfo are not native FieldInfo metadata handles.
+    internal static bool IsCoreClrFieldDescOperation(MethodInfo method)
+    {
+        if (method.DeclaringClass.FullName != "System.RuntimeFieldHandle"
+            || method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || method.Name is not ("GetUtf8NameInternal" or "GetAttributes"
+                or "GetApproxDeclaringMethodTable" or "IsFastPathSupported"
+                or "GetInstanceFieldOffset" or "GetStaticFieldAddress" or "GetToken"
+                or "GetStaticFieldForGenericType" or "AcquiresContextFromThis"
+                or "GetLoaderAllocatorInternal")
+            || !method.IsStatic || method.Rva != 0 || method.PInvoke is not null
+            || (method.Attributes & System.Reflection.MethodAttributes.PinvokeImpl) != 0
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall))
+                != System.Reflection.MethodImplAttributes.InternalCall)
+            return false;
+        bool isPrivate = method.Name is "GetUtf8NameInternal" or "GetApproxDeclaringMethodTable"
+            or "GetStaticFieldForGenericType" or "GetLoaderAllocatorInternal";
+        if ((method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask)
+            != (isPrivate ? System.Reflection.MethodAttributes.Private : System.Reflection.MethodAttributes.Assembly))
+            return false;
+        var signature = method.Signature;
+        bool genericStatic = method.Name == "GetStaticFieldForGenericType";
+        if (signature.Header.RawValue != 0 || signature.GenericParameterCount != 0
+            || signature.ParameterTypes.Length != (genericStatic ? 2 : 1))
+            return false;
+        var first = signature.ParameterTypes[0];
+        if (method.Name == "GetToken")
+        {
+            if (first is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.IntPtr }) return false;
+        }
+        else if (!IsCoreLibMethodDescType(first,
+            method.Name is "IsFastPathSupported" or "GetInstanceFieldOffset" or "GetStaticFieldAddress"
+                ? "System.Reflection.RtFieldInfo" : "System.RuntimeFieldHandleInternal"))
+            return false;
+        if (genericStatic && !IsCoreClrMethodTablePointer(signature.ParameterTypes[1]))
+            return false;
+        var result = signature.ReturnType;
+        return method.Name switch
+        {
+            "GetUtf8NameInternal" => result is { Kind: TypeKind.Pointer, Element.IsVoid: true },
+            "GetAttributes" => IsCoreLibMethodDescType(result, "System.Reflection.FieldAttributes"),
+            "GetApproxDeclaringMethodTable" => IsCoreClrMethodTablePointer(result),
+            "IsFastPathSupported" or "AcquiresContextFromThis" =>
+                result is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean },
+            "GetInstanceFieldOffset" or "GetToken" =>
+                result is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 },
+            "GetStaticFieldAddress" => result is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.IntPtr },
+            "GetStaticFieldForGenericType" => IsCoreLibMethodDescType(result, "System.RuntimeFieldHandleInternal"),
+            "GetLoaderAllocatorInternal" => IsCoreLibMethodDescType(result, "System.Reflection.LoaderAllocator"),
+            _ => false,
+        };
+    }
+
+    private static bool IsCoreClrMethodTablePointer(TypeDesc type) =>
+        type is { Kind: TypeKind.Pointer, Element: { } element }
+            && IsCoreLibMethodDescType(element, "System.Runtime.CompilerServices.MethodTable");
 
     private static bool IsCoreLibMethodDescType(TypeDesc type, string name) =>
         type is { Kind: TypeKind.Class, Class.Module.AssemblyName: "System.Private.CoreLib" }

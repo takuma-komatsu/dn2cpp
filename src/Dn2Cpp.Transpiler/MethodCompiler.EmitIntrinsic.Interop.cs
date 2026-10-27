@@ -416,6 +416,18 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsCoreClrFieldDescOperation(callee))
+        {
+            for (int i = 0; i < callee.Signature.ParameterTypes.Length; i++) Pop();
+            Emit($"dn2cpp_throw_platform_not_supported(\"System.RuntimeFieldHandle.{callee.Name} requires CoreCLR field descriptors. Use FieldInfo instead.\");");
+            var result = callee.Signature.ReturnType;
+            if (result.Class is { } value) Comp.NoteForceEmit(value);
+            string type = CppTypes.Of(result);
+            string unused = NewTemp(type);
+            Emit($"{unused} = {{}};"); // unreachable stack shape
+            Push(CppTypes.KindOf(result), type, unused);
+            return;
+        }
         if (CoreIntrinsics.IsCoreClrMethodDescQuery(callee))
         {
             for (int i = 0; i < callee.Signature.ParameterTypes.Length; i++) Pop();
