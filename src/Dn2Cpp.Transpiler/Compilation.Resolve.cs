@@ -1409,6 +1409,8 @@ internal sealed partial class Compilation
                 || reader.StringComparer.Equals(mr.Name, "GetGCHandle")
                 || reader.StringComparer.Equals(mr.Name, "FreeGCHandle")
                 || reader.StringComparer.Equals(mr.Name, "VerifyInterfaceIsImplemented")
+                || reader.StringComparer.Equals(mr.Name, "GetNumVirtuals")
+                || reader.StringComparer.Equals(mr.Name, "GetNumVirtualsAndStaticVirtuals")
                 || reader.StringComparer.Equals(mr.Name, ".ctor")
                 || reader.StringComparer.Equals(mr.Name, "GetRuntimeTypeFromHandle")
                 || reader.StringComparer.Equals(mr.Name, "GetRuntimeTypeFromHandleMaybeNull")
@@ -1426,6 +1428,7 @@ internal sealed partial class Compilation
                     || CoreIntrinsics.IsRuntimeTypeHandleConstructor(enumeration)
                     || CoreIntrinsics.IsRuntimeTypeCacheHandleBridge(enumeration)
                     || CoreIntrinsics.IsRuntimeTypeInterfaceCheck(enumeration)
+                    || CoreIntrinsics.IsCoreClrVirtualSlotCount(enumeration)
                     || CoreIntrinsics.IsCoreClrConstraintCheck(enumeration))
                     return enumeration;
             }

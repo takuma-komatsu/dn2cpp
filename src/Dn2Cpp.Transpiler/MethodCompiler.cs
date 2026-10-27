@@ -1185,6 +1185,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             || CoreIntrinsics.IsRuntimeTypeHandleConstructor(_method)
             || CoreIntrinsics.IsRuntimeTypeCacheHandleBridge(_method)
             || CoreIntrinsics.IsRuntimeTypeInterfaceCheck(_method)
+            || CoreIntrinsics.IsCoreClrVirtualSlotCount(_method)
             || CoreIntrinsics.IsMethodGenericParameterCount(_method)
             || CoreIntrinsics.IsCoreClrConstraintCheck(_method)
             || CoreIntrinsics.IsCoreClrTypeMaterialization(_method) && _method.Rva == 0)

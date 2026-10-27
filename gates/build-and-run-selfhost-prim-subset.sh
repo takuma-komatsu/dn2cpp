@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# RuntimeTypeHandle interface validation, MethodInfo generic arity,
+# CoreCLR virtual-slot count boundaries, RuntimeTypeHandle interface validation,
+# MethodInfo generic arity,
 # RuntimeTypeHandle construction and cache-handle ownership,
 # private generic-context validation,
 # canonical type comparison and Signature blob-parser boundaries,
@@ -80,8 +81,26 @@
 # checked default-handle ArgumentNullException across reflection/direct/calli.
 # Driven by the real System.Private.CoreLib (passed with -r) -> cross-assembly resolve
 # + tree-shake -> native binary -> run, asserting the output diffs exact vs real .NET.
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/RuntimeTypeInterfaceCheckFixture.cs gates/fixtures/ldftn-local/MethodGenericCountFixture.cs gates/fixtures/ldftn-local/RuntimeTypeCacheHandleFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleConstructorFixture.cs gates/fixtures/ldftn-local/ConstraintCheckFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleAccessorFixture.cs gates/fixtures/ldftn-local/CanonicalTypeComparisonFixture.cs gates/fixtures/ldftn-local/SignatureBlobFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleCopyFixture.cs gates/fixtures/ldftn-local/RuntimeFieldHandleFixture.cs gates/fixtures/ldftn-local/NullableReboxingFixture.cs gates/fixtures/ldftn-local/RuntimeTypeMaterializationFixture.cs gates/fixtures/ldftn-local/RuntimeMethodHandleFixture.cs gates/fixtures/ldftn-local/RuntimeMethodEnumerationFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/GcFinalizerWorkerFixture.cs gates/fixtures/ldftn-local/DelegateVmConstructorFixture.cs gates/fixtures/ldftn-local/DelegateNamedConstructorFixture.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/RuntimeVirtualSlotCountFixture.cs gates/fixtures/ldftn-local/RuntimeTypeInterfaceCheckFixture.cs gates/fixtures/ldftn-local/MethodGenericCountFixture.cs gates/fixtures/ldftn-local/RuntimeTypeCacheHandleFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleConstructorFixture.cs gates/fixtures/ldftn-local/ConstraintCheckFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleAccessorFixture.cs gates/fixtures/ldftn-local/CanonicalTypeComparisonFixture.cs gates/fixtures/ldftn-local/SignatureBlobFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleCopyFixture.cs gates/fixtures/ldftn-local/RuntimeFieldHandleFixture.cs gates/fixtures/ldftn-local/NullableReboxingFixture.cs gates/fixtures/ldftn-local/RuntimeTypeMaterializationFixture.cs gates/fixtures/ldftn-local/RuntimeMethodHandleFixture.cs gates/fixtures/ldftn-local/RuntimeMethodEnumerationFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/GcFinalizerWorkerFixture.cs gates/fixtures/ldftn-local/DelegateVmConstructorFixture.cs gates/fixtures/ldftn-local/DelegateNamedConstructorFixture.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
 source "$(dirname "$0")/_common.sh"
+
+virtual_slot_count_asserts() {
+    local output="$1" routes="$2" member label route
+    for member in GetNumVirtuals GetNumVirtualsAndStaticVirtuals; do
+        gate_output byte-witness "$output" "virtual-slot-count-$member-shape:True" --count 1 --policy crlf || return 1
+    done
+    for label in virtual generic-virtual interface static-virtual base-definition invoke; do
+        gate_output byte-witness "$output" "virtual-slot-count-public-$label:True" --count 1 --policy crlf || return 1
+    done
+    gate_output byte-witness "$output" 'Runtime virtual-slot count contract end' --count 1 --policy crlf || return 1
+    for route in $routes; do
+        for member in GetNumVirtuals GetNumVirtualsAndStaticVirtuals; do
+            for label in object class interface value array pointer byref parameter null; do
+                gate_output byte-witness "$output" "virtual-slot-count-$member-$route-$label:True" --count 1 --policy crlf || return 1
+            done
+        done
+    done
+}
 
 interface_check_asserts() {
     local output="$1" routes="$2" route label shape
@@ -548,7 +567,9 @@ gate_extra_asserts() {
     gate_capture_ok "$out/assert-before-method-generic-count" run_bounded dotnet "$_CG_APP" before-method-generic-count || return 1
     gate_output prefix "$native" "$out/assert-before-method-generic-count.stdout" --before '== Method generic parameter count contract ==' --policy crlf || return 1
     method_generic_count_asserts "$native" '' || return 1
-
+    gate_capture_ok "$out/assert-before-virtual-slot-count" run_bounded dotnet "$_CG_APP" before-runtime-virtual-slot-count || return 1
+    gate_output prefix "$native" "$out/assert-before-virtual-slot-count.stdout" --before '== Runtime virtual-slot count contract ==' --policy crlf || return 1
+    virtual_slot_count_asserts "$native" '' || return 1
 }
 
 # Validate the negative-offset return before the CLR oracle allocates an uninitialized Signature.
@@ -675,6 +696,39 @@ compile_console "$named_out" DelegateNamed
 gate_capture_ok "$named_out/direct" run_bounded "./$named_out/DelegateNamed$EXE_EXT" native-boundary
 for label in delegate-instance delegate-static multicast-instance multicast-static; do
     gate_output byte-witness "$named_out/direct.stdout" "named-direct-$label:True" --count 1 --policy crlf
+done
+
+# This CLR-only public oracle verifies why native declaration slots cannot stand in
+# for VM slot counts. It does not claim native GetInterfaceMap support.
+gate_capture_ok "$_CG_OUT/virtual-slot-order-clr" run_bounded dotnet \
+    "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" --runtime-virtual-slot-order-oracle
+gate_output byte-witness "$_CG_OUT/virtual-slot-order-clr.stdout" \
+    'virtual-slot-order-clr:InstanceMiddle,DefaultInstance,GenericInstance,StaticFirst,StaticDefault' --count 1 --policy crlf
+gate_output byte-witness "$_CG_OUT/virtual-slot-order-clr.stdout" \
+    'virtual-slot-order-clr:default-and-inherited:True' --count 1 --policy crlf
+
+# VM counts refuse on native only; both runtimes execute the public dispatch prefix.
+for slot_mode in all reflection; do
+    slot_input="artifacts/runtime-virtual-slot-count-input-$slot_mode-$CONFIG"
+    mkdir -p "$slot_input"
+    cp samples/dotnet/SelfHostPrimSubset/bin/$CONFIG/$TFM/* "$slot_input/"
+    slot_flag=--runtime-virtual-slot-count
+    slot_routes='direct pointer reflection'
+    if [[ "$slot_mode" == reflection ]]; then
+        slot_flag=--runtime-virtual-slot-count-reflection
+        slot_routes=reflection
+    fi
+    dotnet "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
+        "$slot_flag" "$slot_input/SelfHostPrimSubset.dll" "$_CG_CORELIB"
+    slot_out="artifacts/runtime-virtual-slot-count-$slot_mode-$CONFIG"
+    invoke_cli "$slot_input/SelfHostPrimSubset.dll" --auto-ref -o "$slot_out"
+    compile_console "$slot_out" RuntimeVirtualSlotCount
+    gate_capture_ok "$slot_out/native" run_bounded "./$slot_out/RuntimeVirtualSlotCount$EXE_EXT"
+    gate_capture_ok "$slot_out/oracle" run_bounded dotnet "$_CG_APP" runtime-virtual-slot-count-contract
+    gate_output prefix "$slot_out/native.stdout" "$slot_out/oracle.stdout" \
+        --before "virtual-slot-count-GetNumVirtuals-${slot_routes%% *}-object:True" --policy crlf
+    virtual_slot_count_asserts "$slot_out/native.stdout" "$slot_routes"
+    gate_output byte-witness "$slot_out/native.stdout" 'Runtime virtual-slot count boundary end' --count 1 --policy crlf
 done
 
 # The managed bridge uses native identities; CLR runs public relation queries only.

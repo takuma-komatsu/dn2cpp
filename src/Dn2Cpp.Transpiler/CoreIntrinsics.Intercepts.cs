@@ -627,6 +627,7 @@ internal static partial class CoreIntrinsics
             || IsRuntimeTypeHandleConstructor(mi)
             || IsRuntimeTypeCacheHandleBridge(mi)
             || IsRuntimeTypeInterfaceCheck(mi)
+            || IsCoreClrVirtualSlotCount(mi)
             || IsMethodGenericParameterCount(mi)
             || IsCoreClrConstraintCheck(mi)
             || IsCoreClrSignatureBlobParser(mi)
@@ -882,6 +883,31 @@ internal static partial class CoreIntrinsics
         return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
             && signature.ParameterTypes.Length == 0
             && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 };
+    }
+
+    // CoreCLR slot counts do not describe native dispatch or reflection-row layouts.
+    internal static bool IsCoreClrVirtualSlotCount(MethodInfo method)
+    {
+        if (method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle"
+            || method.Name is not ("GetNumVirtuals" or "GetNumVirtualsAndStaticVirtuals")
+            || (method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask)
+                != System.Reflection.MethodAttributes.Assembly
+            || !method.IsStatic || method.PInvoke is not null
+            || (method.Attributes & (System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.Abstract | System.Reflection.MethodAttributes.PinvokeImpl)) != 0)
+            return false;
+        bool internalCall = method.Name == "GetNumVirtuals";
+        if ((method.Rva == 0) != internalCall
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall))
+                != (internalCall ? System.Reflection.MethodImplAttributes.InternalCall : 0))
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }
+            && signature.ParameterTypes.Length == 1
+            && IsCoreLibMethodDescType(signature.ParameterTypes[0], "System.RuntimeType");
     }
 
     // The managed interface check consumes native type identities, not QCall handles.

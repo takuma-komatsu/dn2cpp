@@ -883,6 +883,10 @@ expression trees at runtime.
   then uses the shared native assignability rules, including variance and arrays.
   This check does not implement the separate method-mapping surface of
   `Type.GetInterfaceMap`, which still depends on CoreCLR method descriptors.
+  Its private `GetNumVirtuals` and managed `GetNumVirtualsAndStaticVirtuals`
+  queries throw `PlatformNotSupportedException`: CoreCLR virtual-slot counts
+  are not native dispatch slots or reflection-row counts. Public virtual calls
+  and supported reflection APIs keep their native routes.
   Its managed `GetGCHandle` / `FreeGCHandle` cache bridges preserve default-handle
   validation, then throw `PlatformNotSupportedException`: CoreCLR owns these
   cache slots through its LoaderAllocator. They are not public GCHandle slots;

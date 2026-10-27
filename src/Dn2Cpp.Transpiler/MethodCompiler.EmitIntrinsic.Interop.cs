@@ -458,6 +458,14 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsCoreClrVirtualSlotCount(callee))
+        {
+            Pop();
+            Emit($"dn2cpp_throw_platform_not_supported(\"System.RuntimeTypeHandle.{callee.Name} requires CoreCLR virtual-slot layout. Use supported public Type and MethodInfo APIs instead.\");");
+            Push(StackKind.I4, "int32_t", "0"); // unreachable stack shape
+            return;
+        }
+
         if (CoreIntrinsics.IsRuntimeTypeInterfaceCheck(callee))
         {
             string target = NewTemp("const Dn2CppTypeInfo*");

@@ -881,7 +881,8 @@ internal sealed partial class Compilation
             || _backend?.ShouldSkipMethodBody(cls, target) == true)
             return;
         _reflectionSelectionCount++;
-        if (target.Rva != 0 && cls.IntrinsicCppName is null)
+        if (CoreIntrinsics.IsCoreClrVirtualSlotCount(target)
+            || target.Rva != 0 && cls.IntrinsicCppName is null)
         {
             if (_selectingBindTargets)
                 ReachBindingInitializer(target);

@@ -9,6 +9,11 @@ internal static class Program
 {
     private static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "runtime-virtual-slot-count-contract")
+        {
+            RuntimeVirtualSlotCountSubset.Program.Run();
+            return;
+        }
         if (args.Length > 0 && args[0] == "runtime-type-interface-check-contract")
         {
             RuntimeTypeInterfaceCheckSubset.Program.Run();
@@ -229,5 +234,7 @@ internal static class Program
         MethodGenericCountSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-runtime-type-interface-check") return;
         RuntimeTypeInterfaceCheckSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-runtime-virtual-slot-count") return;
+        RuntimeVirtualSlotCountSubset.Program.Run();
     }
 }

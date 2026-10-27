@@ -2,6 +2,7 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (RuntimeVirtualSlotCountFixture.Run(args)) return;
 if (RuntimeTypeInterfaceCheckFixture.Run(args)) return;
 if (MethodGenericCountFixture.Run(args)) return;
 if (RuntimeTypeCacheHandleFixture.Run(args)) return;
