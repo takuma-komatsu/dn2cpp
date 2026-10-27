@@ -1182,6 +1182,7 @@ internal sealed partial class MethodCompiler : IEvalStack
         if (CoreIntrinsics.IsCoreClrIntroducedMethodEnumeration(_method)
             || CoreIntrinsics.IsCoreClrCanonicalTypeComparison(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleAccessor(_method)
+            || CoreIntrinsics.IsCoreClrConstraintCheck(_method)
             || CoreIntrinsics.IsCoreClrTypeMaterialization(_method) && _method.Rva == 0)
             return CompileInterceptWrapper();
         if (CoreIntrinsics.BrNullableReboxing.Matches(_method))

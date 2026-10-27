@@ -430,6 +430,13 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsCoreClrConstraintCheck(callee))
+        {
+            for (int i = 0; i < callee.Signature.ParameterTypes.Length; i++) Pop();
+            Emit("dn2cpp_throw_platform_not_supported(\"System.RuntimeTypeHandle.SatisfiesConstraints: CoreCLR private generic-context validation is not supported in this AOT runtime. Use supported Type.MakeGenericType and MethodInfo.MakeGenericMethod APIs instead.\");");
+            Push(StackKind.I4, "int32_t", "0"); // unreachable stack shape
+            return;
+        }
         if (CoreIntrinsics.IsCoreClrCanonicalTypeComparison(callee))
         {
             Pop();

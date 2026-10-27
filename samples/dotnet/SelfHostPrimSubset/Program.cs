@@ -194,5 +194,7 @@ internal static class Program
         CanonicalTypeComparisonSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-runtime-type-handle-accessor") return;
         RuntimeTypeHandleAccessorSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-constraint-check") return;
+        ConstraintCheckSubset.Program.Run();
     }
 }

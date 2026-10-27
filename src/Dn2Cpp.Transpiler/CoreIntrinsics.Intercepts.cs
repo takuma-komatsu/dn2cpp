@@ -624,6 +624,7 @@ internal static partial class CoreIntrinsics
             || IsCoreClrFieldDescOperation(mi)
             || IsCoreClrCanonicalTypeComparison(mi)
             || IsRuntimeTypeHandleAccessor(mi)
+            || IsCoreClrConstraintCheck(mi)
             || IsCoreClrSignatureBlobParser(mi)
             || IsCoreClrTypeMaterialization(mi) && mi.Rva == 0);
 
@@ -853,6 +854,29 @@ internal static partial class CoreIntrinsics
         return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
             && signature.ParameterTypes.Length == 0
             && IsCoreLibMethodDescType(signature.ReturnType, "System.RuntimeType");
+    }
+
+    // This managed bridge consumes CoreCLR private method contexts, not native reflection rows.
+    internal static bool IsCoreClrConstraintCheck(MethodInfo method)
+    {
+        if (method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle"
+            || method.Name != "SatisfiesConstraints"
+            || (method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask)
+                != System.Reflection.MethodAttributes.Assembly
+            || !method.IsStatic || method.Rva == 0 || method.PInvoke is not null
+            || (method.Attributes & System.Reflection.MethodAttributes.PinvokeImpl) != 0
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+            && signature.ParameterTypes.Length == 4
+            && IsCoreLibMethodDescType(signature.ParameterTypes[0], "System.RuntimeType")
+            && IsCoreLibMethodDescType(signature.ParameterTypes[1], "System.RuntimeType")
+            && IsCoreLibMethodDescType(signature.ParameterTypes[2], "System.Reflection.RuntimeMethodInfo")
+            && IsCoreLibMethodDescType(signature.ParameterTypes[3], "System.RuntimeType");
     }
 
     // FieldDesc context checks compare CoreCLR canonical MethodTables, not native Type identities.

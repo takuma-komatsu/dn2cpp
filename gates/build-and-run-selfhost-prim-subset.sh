@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Private canonical type comparison and Signature blob-parser boundaries,
+# Private generic-context validation, canonical type comparison and Signature blob-parser boundaries,
 # managed type-handle copies,
 # nullable reboxing, CoreCLR handle boundaries, public reflection,
 # and companion process
@@ -77,8 +77,27 @@
 # checked default-handle ArgumentNullException across reflection/direct/calli.
 # Driven by the real System.Private.CoreLib (passed with -r) -> cross-assembly resolve
 # + tree-shake -> native binary -> run, asserting the output diffs exact vs real .NET.
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/RuntimeTypeHandleAccessorFixture.cs gates/fixtures/ldftn-local/CanonicalTypeComparisonFixture.cs gates/fixtures/ldftn-local/SignatureBlobFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleCopyFixture.cs gates/fixtures/ldftn-local/RuntimeFieldHandleFixture.cs gates/fixtures/ldftn-local/NullableReboxingFixture.cs gates/fixtures/ldftn-local/RuntimeTypeMaterializationFixture.cs gates/fixtures/ldftn-local/RuntimeMethodHandleFixture.cs gates/fixtures/ldftn-local/RuntimeMethodEnumerationFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/GcFinalizerWorkerFixture.cs gates/fixtures/ldftn-local/DelegateVmConstructorFixture.cs gates/fixtures/ldftn-local/DelegateNamedConstructorFixture.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/ConstraintCheckFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleAccessorFixture.cs gates/fixtures/ldftn-local/CanonicalTypeComparisonFixture.cs gates/fixtures/ldftn-local/SignatureBlobFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleCopyFixture.cs gates/fixtures/ldftn-local/RuntimeFieldHandleFixture.cs gates/fixtures/ldftn-local/NullableReboxingFixture.cs gates/fixtures/ldftn-local/RuntimeTypeMaterializationFixture.cs gates/fixtures/ldftn-local/RuntimeMethodHandleFixture.cs gates/fixtures/ldftn-local/RuntimeMethodEnumerationFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/GcFinalizerWorkerFixture.cs gates/fixtures/ldftn-local/DelegateVmConstructorFixture.cs gates/fixtures/ldftn-local/DelegateNamedConstructorFixture.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
 source "$(dirname "$0")/_common.sh"
+
+constraint_check_asserts() {
+    local output="$1" label
+    for label in shape closed-type closed-method parameter-metadata open-valid open-invalid type-null type-arity type-void type-byref method-null method-arity; do
+        gate_output byte-witness "$output" "constraint-check-$label:True" --count 1 --policy crlf || return 1
+    done
+    gate_output byte-witness "$output" 'Private constraint-check contract end' --count 1 --policy crlf
+}
+
+constraint_check_boundary_asserts() {
+    local output="$1" routes="$2" label route
+    constraint_check_asserts "$output" || return 1
+    for label in null reference value; do
+        for route in $routes; do
+            gate_output byte-witness "$output" "constraint-check-$label-$route:PlatformNotSupportedException:System.RuntimeTypeHandle.SatisfiesConstraints: CoreCLR private generic-context validation is not supported in this AOT runtime. Use supported Type.MakeGenericType and MethodInfo.MakeGenericMethod APIs instead." --count 1 --policy crlf || return 1
+        done
+    done
+    gate_output byte-witness "$output" 'Private constraint-check boundary end' --count 1 --policy crlf
+}
 
 handle_accessor_asserts() {
     local output="$1" route="$2" label
@@ -424,6 +443,9 @@ gate_extra_asserts() {
     gate_capture_ok "$out/assert-before-handle-accessor" run_bounded dotnet "$_CG_APP" before-runtime-type-handle-accessor || return 1
     gate_output prefix "$native" "$out/assert-before-handle-accessor.stdout" --before '== Runtime type handle accessors ==' --policy crlf || return 1
     handle_accessor_asserts "$native" reflection || return 1
+    gate_capture_ok "$out/assert-before-constraint-check" run_bounded dotnet "$_CG_APP" before-constraint-check || return 1
+    gate_output prefix "$native" "$out/assert-before-constraint-check.stdout" --before '== Private constraint-check contract ==' --policy crlf || return 1
+    constraint_check_asserts "$native" || return 1
 
 }
 
@@ -754,3 +776,23 @@ for route in reflection direct pointer; do
     handle_accessor_asserts "$accessor_out/native.stdout" "$route"
 done
 gate_output byte-witness "$accessor_out/native.stdout" 'Runtime type handle accessor artifact end' --count 1 --policy crlf
+
+# Neither rewritten entry point executes on CLR; only the public contract uses its oracle.
+for constraint_mode in all reflection; do
+    constraint_input="artifacts/constraint-check-input-$constraint_mode-$CONFIG"
+    mkdir -p "$constraint_input"
+    cp samples/dotnet/SelfHostPrimSubset/bin/$CONFIG/$TFM/* "$constraint_input/"
+    constraint_flag=--constraint-check
+    constraint_routes='direct pointer reflection'
+    if [[ "$constraint_mode" == reflection ]]; then
+        constraint_flag=--constraint-check-reflection
+        constraint_routes=reflection
+    fi
+    dotnet "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
+        "$constraint_flag" "$constraint_input/SelfHostPrimSubset.dll" "$_CG_CORELIB"
+    constraint_out="artifacts/constraint-check-$constraint_mode-$CONFIG"
+    invoke_cli "$constraint_input/SelfHostPrimSubset.dll" --auto-ref -o "$constraint_out"
+    compile_console "$constraint_out" ConstraintCheck
+    gate_capture_ok "$constraint_out/native" run_bounded "./$constraint_out/ConstraintCheck$EXE_EXT"
+    constraint_check_boundary_asserts "$constraint_out/native.stdout" "$constraint_routes"
+done

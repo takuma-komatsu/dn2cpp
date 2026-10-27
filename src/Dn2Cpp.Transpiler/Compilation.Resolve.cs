@@ -1399,7 +1399,8 @@ internal sealed partial class Compilation
                 || reader.StringComparer.Equals(mr.Name, "GetRuntimeTypeFromHandle")
                 || reader.StringComparer.Equals(mr.Name, "GetRuntimeTypeFromHandleMaybeNull")
                 || reader.StringComparer.Equals(mr.Name, "GetRuntimeTypeFromHandleSlow")
-                || reader.StringComparer.Equals(mr.Name, "CompareCanonicalHandles")))
+                || reader.StringComparer.Equals(mr.Name, "CompareCanonicalHandles")
+                || reader.StringComparer.Equals(mr.Name, "SatisfiesConstraints")))
         {
             try
             {
@@ -1407,7 +1408,8 @@ internal sealed partial class Compilation
                 if (CoreIntrinsics.IsCoreClrIntroducedMethodEnumeration(enumeration)
                     || CoreIntrinsics.IsCoreClrTypeMaterialization(enumeration)
                     || CoreIntrinsics.IsCoreClrCanonicalTypeComparison(enumeration)
-                    || CoreIntrinsics.IsRuntimeTypeHandleAccessor(enumeration))
+                    || CoreIntrinsics.IsRuntimeTypeHandleAccessor(enumeration)
+                    || CoreIntrinsics.IsCoreClrConstraintCheck(enumeration))
                     return enumeration;
             }
             catch (NotSupportedException e) when (!IsMustEscape(e)) { }

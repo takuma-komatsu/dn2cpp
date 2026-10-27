@@ -877,6 +877,10 @@ expression trees at runtime.
   The instance `RuntimeTypeHandle.GetRuntimeType` / `GetRuntimeTypeChecked`
   accessors return that same interned Type; only the checked accessor rejects
   a default handle, with CoreLib's invalid-handle `ArgumentNullException`.
+  The managed `RuntimeTypeHandle.SatisfiesConstraints` bridge throws
+  `PlatformNotSupportedException`: its private CoreCLR method contexts are not
+  native reflection rows. Public generic construction keeps its existing native
+  validation; the QCall sibling keeps the absent-import and explicit-binding paths.
   `RuntimeTypeHandle.CopyRuntimeTypeHandles` retains its managed copy bodies:
   spans reuse sufficient caller scratch storage or allocate a separate array,
   and the Type-array overload copies the same native handle values.
