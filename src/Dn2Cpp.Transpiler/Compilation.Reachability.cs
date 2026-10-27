@@ -132,6 +132,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsRuntimeTypeHandleConstructor(m)
             || CoreIntrinsics.IsRuntimeTypeCacheHandleBridge(m)
             || CoreIntrinsics.IsRuntimeTypeInterfaceCheck(m)
+            || CoreIntrinsics.IsMemberMetadataDefinitionOverride(m)
             || CoreIntrinsics.IsCoreClrVirtualSlotCount(m)
             || CoreIntrinsics.IsCoreClrMethodSlotLookup(m)
             || CoreIntrinsics.IsCoreClrConstraintCheck(m)
@@ -169,7 +170,8 @@ internal sealed partial class Compilation
         if (m.Rva == 0)
             return;
         if (CoreIntrinsics.IsRuntimeTypeHandleCopy(m) || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m)
-            || CoreIntrinsics.IsMemberNotFoundExceptionFactory(m))
+            || CoreIntrinsics.IsMemberNotFoundExceptionFactory(m)
+            || CoreIntrinsics.IsMemberMetadataDefinitionBase(m))
             _intrinsicTypeTranspiled.Add(m);
         // Methods of an intrinsic-mapped type are emitted inline, never
         // transpiled. Call edges already skip them (ResolveCallTarget), but an
@@ -560,6 +562,19 @@ internal sealed partial class Compilation
         t is { Kind: TypeKind.Class, Class: { } pc } && InheritsFromException(pc)
         || t is { Kind: TypeKind.External, ExternalName: { } xn }
            && CoreIntrinsics.IsExternalBclExceptionName(xn);
+
+    // Native reflection handles lack the generated MemberInfo vtable. Other
+    // managed receivers keep the ordinary override in this slot.
+    internal int MemberMetadataDefinitionSlot()
+    {
+        if (FindClassByFullName("System.Reflection.MemberInfo") is not { } owner)
+            return -1;
+        EnsureCompleted(owner);
+        foreach (var method in owner.Methods)
+            if (CoreIntrinsics.IsMemberMetadataDefinitionBase(method))
+                return method.VtableSlot;
+        return -1;
+    }
 
     private int? _exceptionGetMessageSlot;
 

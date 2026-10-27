@@ -434,6 +434,13 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsMemberMetadataDefinitionOverride(callee))
+        {
+            var other = Pop();
+            var receiver = Pop();
+            Push(StackKind.I4, "int32_t", $"dn2cpp_memberinfo_has_same_metadata({Cast(receiver, "Dn2CppObject*")}, {Cast(other, "Dn2CppObject*")})");
+            return;
+        }
         if (CoreIntrinsics.IsMethodGenericParameterCount(callee))
         {
             var method = Pop();

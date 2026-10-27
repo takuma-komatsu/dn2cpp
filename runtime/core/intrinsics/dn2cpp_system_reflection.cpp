@@ -1829,6 +1829,8 @@ static bool dn2cpp_is_methodref_header(const Dn2CppTypeInfo* t)
     return t == &dn2cpp_methodinfo_type || t == &dn2cpp_constructorinfo_type;
 }
 
+static bool dn2cpp_native_member_header(const Dn2CppTypeInfo* type);
+
 // A non-null Binder is a custom binder (Type.DefaultBinder is modeled as null):
 // honoring it would require re-implementing binder-driven overload selection,
 // and ignoring it could silently pick a different member than the caller's
@@ -8180,6 +8182,9 @@ Dn2CppObject* dn2cpp_delegate_get_method(Dn2CppObject* d)
     }
     else if (decl.vtableSlot >= 0)
         hit = dn2cpp_delegate_class_virtual_target(t->type, owner, decl.vtableSlot);
+    if (!hit && owner == &dn2cpp_memberinfo_type && dn2cpp_native_member_header(t->type)
+        && std::strcmp(decl.name, "HasSameMetadataDefinitionAs") == 0)
+        dn2cpp_throw_platform_not_supported("Delegate.Method: the runtime metadata-definition override is not retained");
     return reinterpret_cast<Dn2CppObject*>(dn2cpp_make_methodref(hit ? hit : declared, nullptr));
 }
 
@@ -9221,6 +9226,264 @@ static bool dn2cpp_same_metadata_def(int32_t tokA, const char* assemblyA,
     const char* asmA = assemblyA != nullptr ? assemblyA : "System.Private.CoreLib";
     const char* asmB = assemblyB != nullptr ? assemblyB : "System.Private.CoreLib";
     return std::strcmp(asmA, asmB) == 0;
+}
+
+// Installed with the image's other dispatch tables, before managed initializers.
+// Standalone runtime clients have no MemberInfo slot to dispatch.
+int32_t dn2cpp_memberinfo_has_same_metadata_slot = -1;
+
+void dn2cpp_set_memberinfo_has_same_metadata_slot(int32_t slot)
+{
+    dn2cpp_memberinfo_has_same_metadata_slot = slot;
+}
+
+// Registry entries and generic-definition links name canonical definitions, not
+// constructed Type objects. Signature/formal types have separate identity rules.
+static bool dn2cpp_recorded_type_definition(const Dn2CppTypeInfo* type)
+{
+    if (type == nullptr || (type->flags & (DN2CPP_TF_ARRAY | DN2CPP_TF_GENERICPARAM)) != 0
+        || dn2cpp_signature_kind(type) != 0 || (type->genericDef != nullptr && type->genericDef != type))
+        return false;
+    if (type->reflection().metadataToken != 0)
+        return true;
+    for (int32_t i = 0; i < dn2cpp_type_registry_count; ++i)
+        if (dn2cpp_type_registry[i].type == type)
+            return true;
+    return false;
+}
+
+[[noreturn]] static void dn2cpp_metadata_definition_unavailable()
+{
+    dn2cpp_throw_platform_not_supported("HasSameMetadataDefinitionAs: the member's definition identity is not retained");
+}
+
+static const Dn2CppTypeInfo* dn2cpp_metadata_type_definition(const Dn2CppTypeInfo* type)
+{
+    return type != nullptr && type->genericDef != nullptr ? type->genericDef : type;
+}
+
+static bool dn2cpp_recorded_formal_parameter(const Dn2CppTypeInfo* type)
+{
+    std::lock_guard<std::recursive_mutex> lock(g_formal_types_mtx);
+    const auto found = g_formal_types.find(type);
+    return found != g_formal_types.end() && found->second->parameter;
+}
+
+static bool dn2cpp_metadata_compound_type(const Dn2CppTypeInfo* type)
+{
+    const int32_t kind = dn2cpp_signature_kind(type);
+    return (type->flags & DN2CPP_TF_ARRAY) != 0 || kind == 1 || kind == 2;
+}
+
+static const char* dn2cpp_metadata_definition_module(const Dn2CppTypeInfo* type)
+{
+    while (type != nullptr && dn2cpp_metadata_compound_type(type))
+        type = type->elementType;
+    {
+        std::lock_guard<std::recursive_mutex> lock(g_formal_types_mtx);
+        const auto formal = g_formal_types.find(type);
+        if (formal != g_formal_types.end() && formal->second->parameter)
+            type = formal->second->declaringType;
+    }
+    type = dn2cpp_metadata_type_definition(type);
+    if (!dn2cpp_recorded_type_definition(type))
+        dn2cpp_metadata_definition_unavailable();
+    if (const char* module = type->reflection().assemblyName)
+        return module;
+    // Canonical identity alone proves no module. Only these exact native
+    // CoreLib handles may use its implicit assembly; other missing modules refuse.
+    if (type == &dn2cpp_object_type || type == &dn2cpp_string_type || type == &dn2cpp_void_type
+        || type == &dn2cpp_bool_type || type == &dn2cpp_char_type || type == &dn2cpp_byte_type
+        || type == &dn2cpp_sbyte_type || type == &dn2cpp_int16_type || type == &dn2cpp_uint16_type
+        || type == &dn2cpp_int32_type || type == &dn2cpp_uint32_type || type == &dn2cpp_int64_type
+        || type == &dn2cpp_uint64_type || type == &dn2cpp_intptr_type || type == &dn2cpp_uintptr_type
+        || type == &dn2cpp_single_type || type == &dn2cpp_double_type)
+        return "System.Private.CoreLib";
+    dn2cpp_metadata_definition_unavailable();
+}
+
+static bool dn2cpp_same_recorded_metadata_def(int32_t tokenA, const Dn2CppTypeInfo* ownerA,
+    int32_t tokenB, const Dn2CppTypeInfo* ownerB)
+{
+    if (tokenA == 0 || tokenA != tokenB)
+        return false;
+    // Callers proved these are canonical definitions; one owner has one module.
+    return ownerA == ownerB || std::strcmp(dn2cpp_metadata_definition_module(ownerA),
+        dn2cpp_metadata_definition_module(ownerB)) == 0;
+}
+
+static bool dn2cpp_same_type_metadata_definition(const Dn2CppTypeInfo* a, const Dn2CppTypeInfo* b)
+{
+    if (a == nullptr || b == nullptr)
+        dn2cpp_metadata_definition_unavailable();
+    const bool compoundA = dn2cpp_metadata_compound_type(a);
+    const bool compoundB = dn2cpp_metadata_compound_type(b);
+    if (compoundA || compoundB)
+    {
+        // CLR assigns every element-bearing RuntimeType the typed-nil TypeDef
+        // token. The leaf's module, not array rank or element identity, separates it.
+        const auto validLeaf = [](const Dn2CppTypeInfo* type) {
+            while (type != nullptr && dn2cpp_metadata_compound_type(type))
+                type = type->elementType;
+            return type != nullptr && (dn2cpp_recorded_formal_parameter(type)
+                || dn2cpp_recorded_type_definition(dn2cpp_metadata_type_definition(type)));
+        };
+        if (!validLeaf(a) || !validLeaf(b))
+            dn2cpp_metadata_definition_unavailable();
+        return compoundA && compoundB && std::strcmp(dn2cpp_metadata_definition_module(a),
+            dn2cpp_metadata_definition_module(b)) == 0;
+    }
+    const bool formalA = dn2cpp_recorded_formal_parameter(a);
+    const bool formalB = dn2cpp_recorded_formal_parameter(b);
+    if (formalA || formalB)
+    {
+        if ((!formalA && !dn2cpp_recorded_type_definition(dn2cpp_metadata_type_definition(a)))
+            || (!formalB && !dn2cpp_recorded_type_definition(dn2cpp_metadata_type_definition(b))))
+            dn2cpp_metadata_definition_unavailable();
+        // Published formal nodes are interned by typical owner/MethodDef/position.
+        return formalA && formalB && a == b;
+    }
+    a = dn2cpp_metadata_type_definition(a);
+    b = dn2cpp_metadata_type_definition(b);
+    if (!dn2cpp_recorded_type_definition(a) || !dn2cpp_recorded_type_definition(b))
+        dn2cpp_metadata_definition_unavailable();
+    const auto ar = a->reflection();
+    const auto br = b->reflection();
+    if (ar.metadataToken != 0 && br.metadataToken != 0)
+        return dn2cpp_same_recorded_metadata_def(ar.metadataToken, a, br.metadataToken, b);
+    return a == b;
+}
+
+static bool dn2cpp_native_member_header(const Dn2CppTypeInfo* type)
+{
+    return type == &dn2cpp_type_type || dn2cpp_is_methodref_header(type)
+        || type == &dn2cpp_fieldinfo_type || type == &dn2cpp_propertyinfo_type || type == &dn2cpp_eventinfo_type;
+}
+
+template<class Row>
+static bool dn2cpp_recorded_builtin_member(Dn2CppMetadataHandle<Row> member,
+    const Dn2CppTypeInfo* owner, Dn2CppMetadataTable<Row> rows, int32_t count)
+{
+    if (!dn2cpp_recorded_type_definition(owner) || owner->reflection().metadataToken != 0)
+        return false;
+    for (int32_t i = 0; i < count; ++i)
+        if (rows[i] == member)
+            return true;
+    return false;
+}
+
+template<class Row>
+static bool dn2cpp_same_member_metadata_definition(Dn2CppMetadataHandle<Row> a, Dn2CppMetadataHandle<Row> b,
+    Dn2CppMetadataTable<Row> aTable, int32_t aCount, Dn2CppMetadataTable<Row> bTable, int32_t bCount)
+{
+    const Row ar = *a;
+    const Row br = *b;
+    const auto* ao = dn2cpp_metadata_type_definition(ar.declaringType);
+    const auto* bo = dn2cpp_metadata_type_definition(br.declaringType);
+    if (!dn2cpp_recorded_type_definition(ao) || !dn2cpp_recorded_type_definition(bo))
+        dn2cpp_metadata_definition_unavailable();
+    if (ar.metadataToken != 0 && br.metadataToken != 0)
+        return dn2cpp_same_recorded_metadata_def(ar.metadataToken, ao, br.metadataToken, bo);
+    const bool builtinA = dn2cpp_recorded_builtin_member(a, ar.declaringType, aTable, aCount);
+    const bool builtinB = dn2cpp_recorded_builtin_member(b, br.declaringType, bTable, bCount);
+    if ((ar.metadataToken == 0 && !builtinA) || (br.metadataToken == 0 && !builtinB))
+        dn2cpp_metadata_definition_unavailable();
+    if (!dn2cpp_same_type_metadata_definition(ao, bo))
+        return false;
+    if (builtinA && builtinB)
+        return a == b;
+    dn2cpp_metadata_definition_unavailable();
+}
+
+int32_t dn2cpp_memberinfo_has_same_metadata(Dn2CppObject* member, Dn2CppObject* other)
+{
+    dn2cpp_memberref_require(member);
+    if (!dn2cpp_native_member_header(member->type))
+    {
+        const int32_t slot = dn2cpp_memberinfo_has_same_metadata_slot;
+        if (slot >= 0 && member->type->vtable != nullptr)
+        {
+            const void* target = member->type->vtable[slot];
+            if (target != nullptr && !dn2cpp_is_vcall_trap(target))
+                return reinterpret_cast<int32_t (*)(Dn2CppObject*, Dn2CppObject*)>(const_cast<void*>(target))(member, other);
+        }
+        dn2cpp_throw_platform_not_supported("HasSameMetadataDefinitionAs: this reflection receiver has no retained virtual implementation");
+    }
+    if (other == nullptr)
+        dn2cpp_throw_argument_null_param("other");
+    // Runtime implementations accept only their own runtime member kind; in
+    // particular a custom MemberInfo's virtual token/module getters are not read.
+    if (member->type != other->type)
+        return 0;
+    if (member->type == &dn2cpp_type_type)
+        return dn2cpp_same_type_metadata_definition(reinterpret_cast<Dn2CppType*>(member)->typeInfo,
+            reinterpret_cast<Dn2CppType*>(other)->typeInfo);
+    if (dn2cpp_is_methodref_header(member->type))
+    {
+        const auto a = dn2cpp_open_method_definition(reinterpret_cast<Dn2CppMethodRef*>(member)->method);
+        const auto b = dn2cpp_open_method_definition(reinterpret_cast<Dn2CppMethodRef*>(other)->method);
+        if (a == nullptr || b == nullptr)
+            dn2cpp_metadata_definition_unavailable();
+        const Dn2CppMethodInfo ar = *a;
+        const Dn2CppMethodInfo br = *b;
+        const auto* ao = dn2cpp_metadata_type_definition(ar.declaringType);
+        const auto* bo = dn2cpp_metadata_type_definition(br.declaringType);
+        if (!dn2cpp_recorded_type_definition(ao) || !dn2cpp_recorded_type_definition(bo))
+            dn2cpp_metadata_definition_unavailable();
+        if (ar.metadataToken != 0 && br.metadataToken != 0)
+            return dn2cpp_same_recorded_metadata_def(ar.metadataToken, ao, br.metadataToken, bo);
+        const auto at = ar.declaringType->reflection();
+        const auto bt = br.declaringType->reflection();
+        const bool constructor = member->type == &dn2cpp_constructorinfo_type;
+        const auto* ad = dn2cpp_meta_desc_of(a);
+        const auto* bd = dn2cpp_meta_desc_of(b);
+        if (ad != nullptr || bd != nullptr)
+        {
+            const bool knownA = ar.metadataToken != 0 || ad != nullptr
+                || dn2cpp_recorded_builtin_member(a, ar.declaringType,
+                    constructor ? at.ctors : at.methods, constructor ? at.ctorCount : at.methodCount);
+            const bool knownB = br.metadataToken != 0 || bd != nullptr
+                || dn2cpp_recorded_builtin_member(b, br.declaringType,
+                    constructor ? bt.ctors : bt.methods, constructor ? bt.ctorCount : bt.methodCount);
+            if (!knownA || !knownB)
+                dn2cpp_metadata_definition_unavailable();
+            if (!dn2cpp_same_type_metadata_definition(ao, bo))
+                return 0;
+            if (ad == nullptr || bd == nullptr)
+                dn2cpp_metadata_definition_unavailable();
+            return ad == bd;
+        }
+        return dn2cpp_same_member_metadata_definition(a, b, constructor ? at.ctors : at.methods,
+            constructor ? at.ctorCount : at.methodCount, constructor ? bt.ctors : bt.methods,
+            constructor ? bt.ctorCount : bt.methodCount);
+    }
+    if (member->type == &dn2cpp_fieldinfo_type)
+    {
+        const auto a = reinterpret_cast<Dn2CppFieldRef*>(member)->field;
+        const auto b = reinterpret_cast<Dn2CppFieldRef*>(other)->field;
+        if (a == nullptr || b == nullptr || a->declaringType == nullptr || b->declaringType == nullptr)
+            dn2cpp_metadata_definition_unavailable();
+        const auto at = a->declaringType->reflection();
+        const auto bt = b->declaringType->reflection();
+        return dn2cpp_same_member_metadata_definition(a, b, at.fields, at.fieldCount, bt.fields, bt.fieldCount);
+    }
+    if (member->type == &dn2cpp_propertyinfo_type)
+    {
+        const auto a = reinterpret_cast<Dn2CppPropRef*>(member)->prop;
+        const auto b = reinterpret_cast<Dn2CppPropRef*>(other)->prop;
+        if (a == nullptr || b == nullptr || a->declaringType == nullptr || b->declaringType == nullptr)
+            dn2cpp_metadata_definition_unavailable();
+        const auto at = a->declaringType->reflection();
+        const auto bt = b->declaringType->reflection();
+        return dn2cpp_same_member_metadata_definition(a, b, at.props, at.propCount, bt.props, bt.propCount);
+    }
+    const auto a = reinterpret_cast<Dn2CppEventRef*>(member)->event;
+    const auto b = reinterpret_cast<Dn2CppEventRef*>(other)->event;
+    if (a == nullptr || b == nullptr || a->declaringType == nullptr || b->declaringType == nullptr)
+        dn2cpp_metadata_definition_unavailable();
+    const auto at = a->declaringType->reflection();
+    const auto bt = b->declaringType->reflection();
+    return dn2cpp_same_member_metadata_definition(a, b, at.events, at.eventCount, bt.events, bt.eventCount);
 }
 
 Dn2CppObject* dn2cpp_type_get_member_same_metadata(Dn2CppType* t, Dn2CppObject* member)

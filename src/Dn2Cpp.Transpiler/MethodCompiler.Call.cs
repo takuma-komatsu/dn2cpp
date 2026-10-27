@@ -480,6 +480,7 @@ internal sealed partial class MethodCompiler
                 if (CoreIntrinsics.IsRuntimeTypeHandleCopy(callee)
                     || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(callee)
                     || CoreIntrinsics.IsMemberNotFoundExceptionFactory(callee)
+                    || CoreIntrinsics.IsMemberMetadataDefinitionBase(callee)
                     || CoreIntrinsics.BrDelegateNamedConstructor.Matches(callee)
                     || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(callee)
                     || CoreIntrinsics.BrNullableReboxing.Matches(callee))
@@ -1532,6 +1533,14 @@ internal sealed partial class MethodCompiler
         // refusal; the core emitter itself has no target knowledge.
         if (_intrinsics is not null && _intrinsics.TryEmitCall(this, callee, isCallvirt))
             return;
+
+        if (isCallvirt && CoreIntrinsics.IsMemberMetadataDefinitionBase(callee))
+        {
+            var other = Pop();
+            var receiver = Pop();
+            Push(StackKind.I4, "int32_t", $"dn2cpp_memberinfo_has_same_metadata({Cast(receiver, "Dn2CppObject*")}, {Cast(other, "Dn2CppObject*")})");
+            return;
+        }
 
         if (Compilation.RuntimeNumericProviderConsumer(callee))
             FormatProviderDispatchArgs(_stack[^1]);

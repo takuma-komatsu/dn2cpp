@@ -95,6 +95,7 @@ internal sealed partial class Compilation
                 if (CoreIntrinsics.IsRuntimeTypeHandleCopy(mi)
                     || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(mi)
                     || CoreIntrinsics.IsMemberNotFoundExceptionFactory(mi)
+                    || CoreIntrinsics.IsMemberMetadataDefinitionBase(mi)
                     || CoreIntrinsics.BrDelegateNamedConstructor.Matches(mi)
                     || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(mi)
                     || CoreIntrinsics.BrNullableReboxing.Matches(mi))
@@ -1368,6 +1369,17 @@ internal sealed partial class Compilation
                 var constructor = ResolveMemberRefMethod(module, handle, callerCtx);
                 if (CoreIntrinsics.BrDelegateNamedConstructor.Matches(constructor))
                     return constructor;
+            }
+            catch (NotSupportedException e) when (!IsMustEscape(e)) { }
+        }
+        if (CoreIntrinsicTypeMaps.IsMemberMetadataDefinitionOwner(full)
+            && reader.StringComparer.Equals(mr.Name, "HasSameMetadataDefinitionAs"))
+        {
+            try
+            {
+                var identity = ResolveMemberRefMethod(module, handle, callerCtx);
+                if (CoreIntrinsics.IsMemberMetadataDefinition(identity))
+                    return identity;
             }
             catch (NotSupportedException e) when (!IsMustEscape(e)) { }
         }

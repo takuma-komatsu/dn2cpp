@@ -108,6 +108,25 @@ internal sealed partial class AssemblyDiet
             method.Parameters.Count > 1 ? CoreType(method.Parameters[1].ParameterType) : null);
     }
 
+    private static bool IsCopiedMemberMetadataDefinition(MethodDefinition method, string owner)
+    {
+        if (!CoreIntrinsicTypeMaps.IsMemberMetadataDefinitionOwner(owner)
+            || method.Name != "HasSameMetadataDefinitionAs")
+            return false;
+        bool memberParameter = method.Parameters.Count == 1
+            && method.Parameters[0].ParameterType is { FullName: "System.Reflection.MemberInfo" } parameter
+            && parameter is not TypeSpecification
+            && (parameter.Scope is AssemblyNameReference reference ? reference.Name == "System.Private.CoreLib"
+                : parameter.Scope is ModuleDefinition module && module.Assembly?.Name.Name == "System.Private.CoreLib");
+        return CoreIntrinsicTypeMaps.IsMemberMetadataDefinitionMethod(method.Module.Assembly?.Name.Name,
+            owner, method.Name, method.IsPublic && method.IsVirtual && !method.IsAbstract, method.IsFinal,
+            !method.IsStatic && method.HasThis && !method.ExplicitThis && method.CallingConvention == MethodCallingConvention.Default,
+            method.GenericParameters.Count, method.HasBody && method.IsIL && method.IsManaged && !method.IsInternalCall
+                && method.Body.Instructions.Count != 0, method.IsPInvokeImpl || method.HasPInvokeInfo,
+            method.Parameters.Count, method.ReturnType.MetadataType == MetadataType.Boolean,
+            memberParameter ? "System.Reflection.MemberInfo" : null);
+    }
+
     private static bool IsCopiedMemberNotFoundExceptionFactory(MethodDefinition method, string owner)
     {
         if (method.Module.Assembly?.Name.Name != "System.Private.CoreLib"
@@ -224,6 +243,8 @@ internal sealed partial class AssemblyDiet
                 method.GenericParameters.Count, method.Parameters.Count, method.ReturnType.FullName,
                 method.Parameters.Count == 1 ? method.Parameters[0].ParameterType.FullName : null))
             traverse = false;
+        else if (IsCopiedMemberMetadataDefinition(method, owner))
+            traverse = owner == "System.Reflection.MemberInfo";
         else if (IsCopiedRuntimeTypeHandleCopy(method, owner) || IsCopiedAmbiguousMatchExceptionFactory(method, owner)
             || IsCopiedMemberNotFoundExceptionFactory(method, owner))
             traverse = true;

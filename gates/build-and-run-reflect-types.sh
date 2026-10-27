@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Member metadata-definition identity ignores generic instantiation and reflected views without conflating definitions.
 # Method attribute inheritance honors override chains and AttributeUsage without constructing IsDefined results.
 # Type.GetType(name, throwOnError, ignoreCase) keeps caller/CoreLib lookup and case-collision order.
 # Forwarded names resolve in the target assembly again after the source finds a match.
@@ -308,6 +309,8 @@ DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|ordinary-type-leaves-v1|before-attribute-display-code-units|exception-object-prefix-argv:before-exception-object-members|assembly-name-prefix-argv:before-assembly-name-validation|attribute-construction-prefix-argv:before-attribute-construction-order"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/AttributeConstructionOrderSubset.cs samples/dotnet/ReflectTypes/MethodAttributeInheritanceSubset.cs"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|before-method-attribute-inheritance"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/MetadataDefinitionSubset.cs samples/dotnet/ReflectTypes/MetadataDefinitionRoutes.cs gates/fixtures/ldftn-local/MetadataDefinitionFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|before-metadata-definition-identity|metadata-definition-routes:direct,bound-instance-address,virtual|metadata-definition-native-boundary"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/keep-ordinary-type-leaves.xml samples/dotnet/ReflectTypes/keep-template-signatures.xml samples/dotnet/ReflectTypes/keep-attribute-enumeration.xml"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/ClosedGenericDiagnosticsOnly.csproj samples/dotnet/ReflectTypes/ClosedGenericDiagnosticsUnshared.csproj samples/dotnet/ReflectTypes/ClosedGenericDiagnosticsOnlyProgram.cs gates/expected/reflect-types-closed-generic.txt gates/expected/reflect-types-closed-generic-unshared.txt"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/ReflectionTemplateDispatch.csproj samples/dotnet/ReflectTypes/ReflectionTemplateDispatchProgram.cs samples/dotnet/ReflectTypes/ReflectRuntimeInstantiationSubset.cs"
@@ -914,6 +917,34 @@ gate_extra_asserts() {
         echo 'FAIL: array contents changed the selected element type' >&2
         return 1
     fi
+    before="$out/metadata-definition-before-clr.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded dotnet "$_CG_APP" before-metadata-definition-identity || return $?
+    prefix="$out/metadata-definition-prefix.stdout"
+    gate_output select "$native" "$prefix" --before '== member metadata definition identity ==' --policy crlf
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
+    before="$out/metadata-definition-before-native.stdout"
+    gate_capture_ok "${before%.stdout}" run_bounded "$out/OrdinaryReflectionTypeLeaves$EXE_EXT" before-metadata-definition-identity || return $?
+    gate_output compare "$prefix" "$before" --policy crlf || return $?
+    for label in type constructor method field property event; do
+        for mouth in self closed definition null kind; do
+            line="metadata-definition-$label-$mouth:True"
+            gate_output witness "$native" "$line" --count 1 --policy crlf \
+                || { echo "FAIL: member metadata identity witness missing: $line" >&2; return 1; }
+        done
+    done
+    for label in method-instantiation method-definition-view method-other constructor-other field-other property-other event-other \
+        method-override nested-closed nested-other method-reflected field-reflected property-reflected event-reflected \
+        formal-self formal-owner-close formal-definition formal-method-owner formal-type-method formal-nested-owner formal-nested-position \
+        partial-definition partial-closed builtin-self builtin-distinct builtin-reflection-bases builtin-generic builtin-generic-definition builtin-user builtin-field-self builtin-field-user \
+        compound-array compound-pointer compound-byref compound-cross-shape compound-core-modules compound-recorded-module compound-module compound-definition compound-formal \
+        descriptor-reflected descriptor-distinct descriptor-same-name-different-owner descriptor-owner descriptor-generic-instance descriptor-generic-definition descriptor-null module-method \
+        virtual-delegate virtual-delegate-kind virtual-delegate-null null-receiver null-receiver-other; do
+        line="metadata-definition-$label:True"
+        gate_output witness "$native" "$line" --count 1 --policy crlf \
+            || { echo "FAIL: member metadata identity witness missing: $line" >&2; return 1; }
+    done
+    gate_output witness "$native" '== member metadata definition identity ==' --count 1 --policy crlf || return $?
+    gate_output witness "$native" 'member metadata definition identity end' --count 1 --policy crlf || return $?
 }
 # Helpers that read a Type parameter's attributes or construct a Type an attribute
 # carries are preserved explicitly; their callers' typeof arguments select nothing.
@@ -927,6 +958,54 @@ DN2CPP_OUT_SUFFIX=-native DN2CPP_STRICT_COMPLETION=1 \
     ordinary_fixture_diff_gate ReflectTypes OrdinaryReflectionTypeLeaves \
     System.Collections System.ComponentModel.Primitives --no-ildiet --no-metadata-compression \
     "${ORDINARY_TYPE_LEAVES_KEEP[@]}"
+# Direct calls and bound ldftn delegates retain the managed base throw; callvirt
+# uses the runtime member override. Reflection never substitutes the base body.
+build_gate_proj gates/fixtures/ldftn-local/LdftnLocalFixture.csproj
+gate_build_fixture() {
+    local project="$1" app_out="$2"
+    dotnet build "$project" -c "$CONFIG" --nologo -v q -p:BuildInParallel=false -o "$app_out" || return $?
+    dotnet "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
+        --metadata-definition-routes "$app_out/OrdinaryReflectionTypeLeaves.dll" "$_CG_CORELIB"
+}
+gate_extra_asserts() {
+    local out="$1" label boundary="$1/metadata-definition-boundary.stdout"
+    for label in direct direct-other-null direct-receiver-null direct-both-null \
+        address address-other-null address-receiver-null virtual virtual-kind \
+        virtual-other-null virtual-receiver-null virtual-both-null; do
+        gate_output witness "$out/native.stdout" "metadata-definition-route-$label:True" --count 1 --policy crlf || return $?
+    done
+    gate_output witness "$out/native.stdout" '== member metadata definition exact routes ==' --count 1 --policy crlf || return $?
+    gate_output witness "$out/native.stdout" 'member metadata definition exact routes end' --count 1 --policy crlf || return $?
+    gate_capture_ok "${boundary%.stdout}" run_bounded "$out/OrdinaryReflectionTypeLeaves$EXE_EXT" native-boundary || return $?
+    gate_output prefix "$boundary" "$out/native.stdout" \
+        --before '== member metadata definition reflection boundary ==' --policy crlf || return $?
+    for label in named-reflection-unavailable delegate-reflection-refuses virtual-delegate-reflection; do
+        gate_output witness "$boundary" "metadata-definition-route-$label:True" --count 1 --policy crlf || return $?
+    done
+    gate_output witness "$boundary" '== member metadata definition reflection boundary ==' --count 1 --policy crlf || return $?
+    gate_output witness "$boundary" 'member metadata definition reflection boundary end' --count 1 --policy crlf || return $?
+    local contract="$out/metadata-identity-contract"
+    mkdir -p "$contract"
+    cp "$out"/generated*.cpp "$out"/generated*.h "$contract/" || return $?
+    "$py" gates/fixtures/member-metadata-definition/instrument.py "$contract" || return $?
+    compile_console "$contract" MetadataDefinitionContract || return $?
+    gate_capture_ok "$contract/native" run_bounded "$contract/MetadataDefinitionContract$EXE_EXT" || return $?
+    gate_output witness "$contract/native.stdout" 'member metadata definition native contract: passed' --count 1 --policy crlf || return $?
+}
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/member-metadata-definition/instrument.py gates/fixtures/member-metadata-definition/native-contract.inc" \
+DN2CPP_OUT_SUFFIX=-metadata-routes DN2CPP_STRICT_COMPLETION=1 \
+    ordinary_fixture_diff_gate ReflectTypes OrdinaryReflectionTypeLeaves \
+    System.Collections System.ComponentModel.Primitives --no-ildiet
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/member-metadata-definition/instrument.py gates/fixtures/member-metadata-definition/native-contract.inc" \
+DN2CPP_OUT_SUFFIX=-metadata-routes-diet DN2CPP_STRICT_COMPLETION=1 \
+    ordinary_fixture_diff_gate ReflectTypes OrdinaryReflectionTypeLeaves \
+    System.Collections System.ComponentModel.Primitives
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/member-metadata-definition/instrument.py gates/fixtures/member-metadata-definition/native-contract.inc" \
+DN2CPP_OUT_SUFFIX=-metadata-routes-native DN2CPP_STRICT_COMPLETION=1 \
+    ordinary_fixture_diff_gate ReflectTypes OrdinaryReflectionTypeLeaves \
+    System.Collections System.ComponentModel.Primitives --no-ildiet --no-metadata-compression
+unset -f gate_build_fixture gate_extra_asserts
+
 # With no attribute read, the closed owner's retained row must reach the deepest
 # Type argument. Interning may share that row with its generic definition.
 gate_extra_asserts() {

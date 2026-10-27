@@ -20,5 +20,7 @@
     <Compile Include="GenericDefinitionSymbolNeighbors.cs" />
     <Compile Include="OrdinaryReflectionTypeLeavesProgram.cs" />
     <Compile Include="PropertyAccessorRowsSubset.cs" />
+    <Compile Include="MetadataDefinitionSubset.cs" />
+    <Compile Include="MetadataDefinitionRoutes.cs" />
   </ItemGroup>
 </Project>

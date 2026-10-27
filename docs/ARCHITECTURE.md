@@ -564,6 +564,23 @@ registers its ordinary emitted row without mutating the runtime-owned Type
 handle or adding a partial member enumeration. Delegate metadata and named lookup
 reuse that row identity.
 
+`MemberInfo.HasSameMetadataDefinitionAs` keeps its managed base body for explicit
+nonvirtual calls and `ldftn`: it throws `NotImplementedException`, including for
+a null argument. Virtual calls and `ldvirtftn` use the native reflection handle's
+runtime kind, validate `other`, and compare definition identity rather than
+object equality. Ordinary managed receivers retain their existing virtual slot.
+Recorded tokens use the image's defining-assembly identity; closed generic owners
+and methods normalize to their definitions. Canonical builtin rows, synthetic
+method descriptors with their defining owner, registered formal parameters, and
+element-bearing types have separate proven identities. Module-dependent comparisons
+require a recorded assembly or an exact known CoreLib primitive/Object/String handle;
+canonical registry membership alone does not prove a defining module. Unknown modules
+and unrecorded tokenless rows refuse with `PlatformNotSupportedException`, even when the same handle is supplied.
+The module model remains one defining module per assembly simple name, not a new
+AssemblyLoadContext or netmodule loader. This does not add a named reflection
+catalog for the base method; address-retained metadata must refuse invocation
+rather than run its nonvirtual base body on a native reflection receiver.
+
 The private CoreLib `GC.RunFinalizers(): UInt32` callback belongs to CoreCLR's
 native finalizer worker, including its thread reset and queue ownership. dn2cpp
 owns finalization through its dedicated consumer or manual-drain mode. The exact

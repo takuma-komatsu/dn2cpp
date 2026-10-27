@@ -630,9 +630,38 @@ internal static partial class CoreIntrinsics
             || IsCoreClrVirtualSlotCount(mi)
             || IsCoreClrMethodSlotLookup(mi)
             || IsMethodGenericParameterCount(mi)
+            || IsMemberMetadataDefinitionOverride(mi)
             || IsCoreClrConstraintCheck(mi)
             || IsCoreClrSignatureBlobParser(mi)
             || IsCoreClrTypeMaterialization(mi) && mi.Rva == 0);
+
+    internal static bool IsMemberMetadataDefinition(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.Name != "HasSameMetadataDefinitionAs"
+            || !CoreIntrinsicTypeMaps.IsMemberMetadataDefinitionOwner(method.DeclaringClass.FullName))
+            return false;
+        var signature = method.Signature;
+        return CoreIntrinsicTypeMaps.IsMemberMetadataDefinitionMethod(method.Module.AssemblyName,
+            method.DeclaringClass.FullName, method.Name,
+            method.IsVirtual && !method.IsAbstract
+                && (method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask) == System.Reflection.MethodAttributes.Public,
+            (method.Attributes & System.Reflection.MethodAttributes.Final) != 0,
+            !method.IsStatic && signature.Header.RawValue == 0x20, signature.GenericParameterCount,
+            method.Rva != 0 && (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) == 0,
+            method.PInvoke is not null || (method.Attributes & System.Reflection.MethodAttributes.PinvokeImpl) != 0,
+            signature.ParameterTypes.Length, signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean },
+            signature.ParameterTypes.Length == 1 && signature.ParameterTypes[0] is
+                { Kind: TypeKind.Class, Class: { FullName: "System.Reflection.MemberInfo", Module.AssemblyName: "System.Private.CoreLib" } }
+                ? "System.Reflection.MemberInfo" : null);
+    }
+
+    internal static bool IsMemberMetadataDefinitionBase(MethodInfo method) =>
+        method.DeclaringClass.FullName == "System.Reflection.MemberInfo" && IsMemberMetadataDefinition(method);
+
+    internal static bool IsMemberMetadataDefinitionOverride(MethodInfo method) =>
+        method.DeclaringClass.FullName != "System.Reflection.MemberInfo" && IsMemberMetadataDefinition(method);
 
     // The public lookup validates null; this factory only reads the name and returns an exception.
     internal static bool IsMemberNotFoundExceptionFactory(MethodInfo method)

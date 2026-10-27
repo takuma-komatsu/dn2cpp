@@ -2882,6 +2882,9 @@ int32_t dn2cpp_type_implement_interface(Dn2CppType* t, Dn2CppType* itf);
 // assembly's simple-name handle (dn2cpp is single-module per assembly).
 int32_t dn2cpp_memberinfo_member_type(Dn2CppObject* m);
 int32_t dn2cpp_memberinfo_metadata_token(Dn2CppObject* m);
+extern int32_t dn2cpp_memberinfo_has_same_metadata_slot;
+void dn2cpp_set_memberinfo_has_same_metadata_slot(int32_t slot);
+int32_t dn2cpp_memberinfo_has_same_metadata(Dn2CppObject* member, Dn2CppObject* other);
 const char* dn2cpp_memberinfo_module(Dn2CppObject* m);
 // MethodBase/MethodInfo raw-word predicates + accessors.
 int32_t dn2cpp_methodref_attributes(Dn2CppMethodRef* m);
@@ -3502,6 +3505,7 @@ int64_t dn2cpp_gc_total_allocated_bytes();
 // prologue. For the callers that must recognise a trapped slot WITHOUT calling it
 // (dn2cpp_exception_message's override probe); one image, one registration.
 void dn2cpp_register_vcall_traps(const void* const* fns, int32_t count);
+bool dn2cpp_is_vcall_trap(const void* fn);
 // A dispatch trap entered as `slotFn` throws the catchable PlatformNotSupportedException
 // MethodBase.Invoke and a CreateDelegate binding raise for a receiver whose override the
 // image did not retain, when `slotFn` is the slot the innermost such reflective call is

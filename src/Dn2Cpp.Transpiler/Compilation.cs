@@ -4181,6 +4181,7 @@ internal sealed partial class Compilation
         if (CoreIntrinsics.IsRuntimeTypeHandleCopy(m)
             || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m)
             || CoreIntrinsics.IsMemberNotFoundExceptionFactory(m)
+            || CoreIntrinsics.IsMemberMetadataDefinitionBase(m)
             || CoreIntrinsics.IsRealBodyGeneric(m.DeclaringClass.FullName, m.Name)
             || CoreIntrinsics.IsArrayRealBodyMember(m.DeclaringClass.FullName, m.Name, m.Signature))
         {

@@ -109,6 +109,20 @@ internal static class CoreIntrinsicTypeMaps
                 && second == "System.Span<System.IntPtr>"
             || result == "System.IntPtr[]" && first == "System.Type[]" && second == "System.Int32&");
 
+    public static bool IsMemberMetadataDefinitionOwner(string? owner) => owner is
+        "System.Reflection.MemberInfo" or "System.RuntimeType" or "System.Reflection.RuntimeMethodInfo"
+        or "System.Reflection.RuntimeConstructorInfo" or "System.Reflection.RuntimeFieldInfo"
+        or "System.Reflection.RuntimePropertyInfo" or "System.Reflection.RuntimeEventInfo";
+
+    public static bool IsMemberMetadataDefinitionMethod(string? assembly, string? owner, string name,
+        bool publicVirtual, bool isFinal, bool instanceDefault, int genericArity, bool managedBody,
+        bool pinvoke, int parameterCount, bool returnsBoolean, string? parameter) =>
+        assembly == "System.Private.CoreLib" && IsMemberMetadataDefinitionOwner(owner)
+        && name == "HasSameMetadataDefinitionAs" && publicVirtual
+        && isFinal == (owner != "System.Reflection.MemberInfo") && instanceDefault
+        && genericArity == 0 && managedBody && !pinvoke && parameterCount == 1
+        && returnsBoolean && parameter == "System.Reflection.MemberInfo";
+
     public static bool IsMemberNotFoundExceptionFactoryMethod(string? assembly, string? owner, string name,
         bool isFamilyAndAssembly, bool staticDefault, int genericArity, bool managedBody, bool pinvoke,
         int parameterCount, string? result, string? parameter) =>

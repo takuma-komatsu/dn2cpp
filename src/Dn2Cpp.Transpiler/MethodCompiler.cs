@@ -1188,6 +1188,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             || CoreIntrinsics.IsCoreClrVirtualSlotCount(_method)
             || CoreIntrinsics.IsCoreClrMethodSlotLookup(_method)
             || CoreIntrinsics.IsMethodGenericParameterCount(_method)
+            || CoreIntrinsics.IsMemberMetadataDefinitionOverride(_method)
             || CoreIntrinsics.IsCoreClrConstraintCheck(_method)
             || CoreIntrinsics.IsCoreClrTypeMaterialization(_method) && _method.Rva == 0)
             return CompileInterceptWrapper();
@@ -3810,6 +3811,10 @@ internal sealed partial class MethodCompiler : IEvalStack
                     expr = $"((void)dn2cpp_null_check({obj.Expr}), "
                         + $"(void*)+[](Dn2CppObject* receiver, Dn2CppObject* other) -> int32_t "
                         + $"{{ return {impl.CppName}(({virtualTarget.DeclaringClass.CppStructName}*)(receiver + 1), other); }})";
+                }
+                else if (CoreIntrinsics.IsMemberMetadataDefinitionBase(m))
+                {
+                    expr = $"((void)dn2cpp_null_check({obj.Expr}), (void*)&dn2cpp_memberinfo_has_same_metadata)";
                 }
                 else if (ObjectDispatchHelper(m) is { } helper)
                 {
