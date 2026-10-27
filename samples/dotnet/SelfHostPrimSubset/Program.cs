@@ -9,6 +9,11 @@ internal static class Program
 {
     private static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "ambiguous-match-factory-contract")
+        {
+            AmbiguousMatchFactorySubset.Program.Run();
+            return;
+        }
         if (args.Length > 0 && args[0] == "runtime-method-slot-lookup-contract")
         {
             RuntimeMethodSlotLookupSubset.Program.Run();
@@ -243,5 +248,7 @@ internal static class Program
         RuntimeVirtualSlotCountSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-runtime-method-slot-lookup") return;
         RuntimeMethodSlotLookupSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-ambiguous-match-factory") return;
+        AmbiguousMatchFactorySubset.Program.Run();
     }
 }

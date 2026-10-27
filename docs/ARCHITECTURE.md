@@ -546,6 +546,14 @@ selected from the input declaration, never the transpiler host. In particular,
 a CoreLib import of `kernel32.dll` keeps its normal native binding even when a corresponding
 CoreLib flavour declares a `QCall` import with the same entry-point name.
 
+The managed `ThrowHelper.GetAmbiguousMatchException` factories retain their real
+IL for both `MemberInfo` and `Attribute` inputs. They return an exception instead
+of throwing it, preserving the declaring-type getter and object-based `SR.Format`
+evaluation before construction. Direct calls, address-taken calls and retained
+reflection entries use that same body; other ThrowHelper members remain mapped.
+This does not extend the shared formatter's custom `IFormattable` or
+`ISpanFormattable` support.
+
 The private CoreLib `GC.RunFinalizers(): UInt32` callback belongs to CoreCLR's
 native finalizer worker, including its thread reset and queue ownership. dn2cpp
 owns finalization through its dedicated consumer or manual-drain mode. The exact

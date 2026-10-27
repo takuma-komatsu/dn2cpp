@@ -109,6 +109,15 @@ internal static class CoreIntrinsicTypeMaps
                 && second == "System.Span<System.IntPtr>"
             || result == "System.IntPtr[]" && first == "System.Type[]" && second == "System.Int32&");
 
+    public static bool IsAmbiguousMatchExceptionFactoryMethod(string? assembly, string? owner, string name,
+        bool isAssembly, bool staticDefault, int genericArity, bool managedBody, bool pinvoke,
+        int parameterCount, string? result, string? parameter) =>
+        assembly == "System.Private.CoreLib" && owner == "System.ThrowHelper"
+        && name == "GetAmbiguousMatchException" && isAssembly && staticDefault && genericArity == 0
+        && managedBody && !pinvoke && parameterCount == 1
+        && result == "System.Reflection.AmbiguousMatchException"
+        && parameter is "System.Reflection.MemberInfo" or "System.Attribute";
+
     public static bool IsNullableReboxingMethod(string? assembly, string? owner, string name,
         bool isAssembly, bool isStatic, int genericArity, bool managedBody, bool pinvoke,
         int parameterCount, bool returnsObject, bool objectInput, bool runtimeTypeInput) =>

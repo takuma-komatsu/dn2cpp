@@ -93,6 +93,7 @@ internal sealed partial class Compilation
                 // reaching on the non-virtual form is harmless.
                 ReachExceptionGetMessage(mi);
                 if (CoreIntrinsics.IsRuntimeTypeHandleCopy(mi)
+                    || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(mi)
                     || CoreIntrinsics.BrDelegateNamedConstructor.Matches(mi)
                     || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(mi)
                     || CoreIntrinsics.BrNullableReboxing.Matches(mi))
@@ -1366,6 +1367,16 @@ internal sealed partial class Compilation
                 var constructor = ResolveMemberRefMethod(module, handle, callerCtx);
                 if (CoreIntrinsics.BrDelegateNamedConstructor.Matches(constructor))
                     return constructor;
+            }
+            catch (NotSupportedException e) when (!IsMustEscape(e)) { }
+        }
+        if (full == "System.ThrowHelper" && reader.StringComparer.Equals(mr.Name, "GetAmbiguousMatchException"))
+        {
+            try
+            {
+                var factory = ResolveMemberRefMethod(module, handle, callerCtx);
+                if (CoreIntrinsics.IsAmbiguousMatchExceptionFactory(factory))
+                    return factory;
             }
             catch (NotSupportedException e) when (!IsMustEscape(e)) { }
         }

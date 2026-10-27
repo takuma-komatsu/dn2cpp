@@ -2,6 +2,7 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (AmbiguousMatchFactoryFixture.Run(args)) return;
 if (RuntimeMethodSlotLookupFixture.Run(args)) return;
 if (RuntimeVirtualSlotCountFixture.Run(args)) return;
 if (RuntimeTypeInterfaceCheckFixture.Run(args)) return;

@@ -2140,7 +2140,8 @@ internal sealed partial class CppEmitter
         || _c.PInvokeFtnTargets.Contains(m) || _c.IntrinsicFtnTargets.Contains(m)
         || _c.InterceptFtnTargets.Contains(m) || CoreIntrinsics.MdComparerCompare.Matches(m)
         || _c.IsUnorderableComparerCompareBody(m)
-        || CoreIntrinsics.IsIntrinsicType(cls.FullName) && !CoreIntrinsics.IsRuntimeTypeHandleCopy(m);
+        || CoreIntrinsics.IsIntrinsicType(cls.FullName) && !CoreIntrinsics.IsRuntimeTypeHandleCopy(m)
+            && !CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m);
 
     private ParallelBodyResult CompileParallelBody(
         MethodInfo m, LiteralPool literals, bool planning)
@@ -2704,7 +2705,8 @@ internal sealed partial class CppEmitter
                         // the slot is only reached because SOME type dispatches the decl,
                         // and a string may never flow there.
                         if (CoreIntrinsics.IsIntrinsicType(m.DeclaringClass.FullName)
-                            && !CoreIntrinsics.IsRuntimeTypeHandleCopy(m))
+                            && !CoreIntrinsics.IsRuntimeTypeHandleCopy(m)
+                            && !CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m))
                         {
                             string body;
                             if (new MethodCompiler(_c, m, literals, _backend)

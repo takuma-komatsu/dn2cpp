@@ -478,6 +478,7 @@ internal sealed partial class MethodCompiler
             {
                 var callee = ResolveMethodDef((MethodDefinitionHandle)handle);
                 if (CoreIntrinsics.IsRuntimeTypeHandleCopy(callee)
+                    || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(callee)
                     || CoreIntrinsics.BrDelegateNamedConstructor.Matches(callee)
                     || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(callee)
                     || CoreIntrinsics.BrNullableReboxing.Matches(callee))
