@@ -4,6 +4,7 @@ using Mono.Cecil.Cil;
 
 if (ConstraintCheckFixture.Run(args)) return;
 if (RuntimeTypeHandleAccessorFixture.Run(args)) return;
+if (RuntimeTypeHandleConstructorFixture.Run(args)) return;
 if (CanonicalTypeComparisonFixture.Run(args)) return;
 if (SignatureBlobFixture.Run(args)) return;
 if (RuntimeTypeHandleCopyFixture.Run(args)) return;

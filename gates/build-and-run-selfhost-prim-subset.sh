@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Private generic-context validation, canonical type comparison and Signature blob-parser boundaries,
+# RuntimeTypeHandle construction, private generic-context validation, canonical type comparison and Signature blob-parser boundaries,
 # managed type-handle copies,
 # nullable reboxing, CoreCLR handle boundaries, public reflection,
 # and companion process
@@ -77,8 +77,26 @@
 # checked default-handle ArgumentNullException across reflection/direct/calli.
 # Driven by the real System.Private.CoreLib (passed with -r) -> cross-assembly resolve
 # + tree-shake -> native binary -> run, asserting the output diffs exact vs real .NET.
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/ConstraintCheckFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleAccessorFixture.cs gates/fixtures/ldftn-local/CanonicalTypeComparisonFixture.cs gates/fixtures/ldftn-local/SignatureBlobFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleCopyFixture.cs gates/fixtures/ldftn-local/RuntimeFieldHandleFixture.cs gates/fixtures/ldftn-local/NullableReboxingFixture.cs gates/fixtures/ldftn-local/RuntimeTypeMaterializationFixture.cs gates/fixtures/ldftn-local/RuntimeMethodHandleFixture.cs gates/fixtures/ldftn-local/RuntimeMethodEnumerationFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/GcFinalizerWorkerFixture.cs gates/fixtures/ldftn-local/DelegateVmConstructorFixture.cs gates/fixtures/ldftn-local/DelegateNamedConstructorFixture.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/RuntimeTypeHandleConstructorFixture.cs gates/fixtures/ldftn-local/ConstraintCheckFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleAccessorFixture.cs gates/fixtures/ldftn-local/CanonicalTypeComparisonFixture.cs gates/fixtures/ldftn-local/SignatureBlobFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleCopyFixture.cs gates/fixtures/ldftn-local/RuntimeFieldHandleFixture.cs gates/fixtures/ldftn-local/NullableReboxingFixture.cs gates/fixtures/ldftn-local/RuntimeTypeMaterializationFixture.cs gates/fixtures/ldftn-local/RuntimeMethodHandleFixture.cs gates/fixtures/ldftn-local/RuntimeMethodEnumerationFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/GcFinalizerWorkerFixture.cs gates/fixtures/ldftn-local/DelegateVmConstructorFixture.cs gates/fixtures/ldftn-local/DelegateNamedConstructorFixture.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
 source "$(dirname "$0")/_common.sh"
+
+handle_constructor_asserts() {
+    local output="$1" routes="$2" label route
+    for route in $routes; do
+        for label in null object int struct array generic-string generic-object definition parameter byref pointer; do
+            gate_output byte-witness "$output" "handle-ctor-$route-$label:True" --count 1 --policy crlf || return 1
+        done
+        if [[ "$route" == direct || "$route" == pointer ]]; then
+            for label in replace clear; do
+                gate_output byte-witness "$output" "handle-ctor-$route-$label:True" --count 1 --policy crlf || return 1
+            done
+        fi
+    done
+    for label in shape initobj boxed-replace boxed-clear public-identity; do
+        gate_output byte-witness "$output" "handle-ctor-$label:True" --count 1 --policy crlf || return 1
+    done
+    gate_output byte-witness "$output" 'Runtime type handle constructor end' --count 1 --policy crlf
+}
 
 constraint_check_asserts() {
     local output="$1" label
@@ -446,6 +464,9 @@ gate_extra_asserts() {
     gate_capture_ok "$out/assert-before-constraint-check" run_bounded dotnet "$_CG_APP" before-constraint-check || return 1
     gate_output prefix "$native" "$out/assert-before-constraint-check.stdout" --before '== Private constraint-check contract ==' --policy crlf || return 1
     constraint_check_asserts "$native" || return 1
+    gate_capture_ok "$out/assert-before-handle-constructor" run_bounded dotnet "$_CG_APP" before-runtime-type-handle-constructor || return 1
+    gate_output prefix "$native" "$out/assert-before-handle-constructor.stdout" --before '== Runtime type handle constructor ==' --policy crlf || return 1
+    handle_constructor_asserts "$native" reflection || return 1
 
 }
 
@@ -795,4 +816,31 @@ for constraint_mode in all reflection; do
     compile_console "$constraint_out" ConstraintCheck
     gate_capture_ok "$constraint_out/native" run_bounded "./$constraint_out/ConstraintCheck$EXE_EXT"
     constraint_check_boundary_asserts "$constraint_out/native.stdout" "$constraint_routes"
+done
+
+# The CLR oracle uses ordinary reflection; imported private call sites run only natively.
+for constructor_mode in all reflection; do
+    constructor_input="artifacts/runtime-type-handle-constructor-input-$constructor_mode-$CONFIG"
+    mkdir -p "$constructor_input"
+    cp samples/dotnet/SelfHostPrimSubset/bin/$CONFIG/$TFM/* "$constructor_input/"
+    constructor_flag=--runtime-type-handle-constructor
+    constructor_routes='reflection newobj direct pointer'
+    constructor_oracle=runtime-type-handle-constructor-artifact
+    if [[ "$constructor_mode" == reflection ]]; then
+        constructor_flag=--runtime-type-handle-constructor-reflection
+        constructor_routes=reflection
+        constructor_oracle=runtime-type-handle-constructor-reflection
+    fi
+    dotnet "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
+        "$constructor_flag" "$constructor_input/SelfHostPrimSubset.dll" "$_CG_CORELIB"
+    constructor_out="artifacts/runtime-type-handle-constructor-$constructor_mode-$CONFIG"
+    invoke_cli "$constructor_input/SelfHostPrimSubset.dll" --auto-ref -o "$constructor_out"
+    compile_console "$constructor_out" RuntimeTypeHandleConstructor
+    gate_capture_ok "$constructor_out/native" run_bounded "./$constructor_out/RuntimeTypeHandleConstructor$EXE_EXT"
+    gate_capture_ok "$constructor_out/oracle" run_bounded dotnet "$_CG_APP" "$constructor_oracle"
+    gate_output compare "$constructor_out/native.stdout" "$constructor_out/oracle.stdout" --policy crlf
+    handle_constructor_asserts "$constructor_out/native.stdout" "$constructor_routes"
+    if [[ "$constructor_mode" == all ]]; then
+        gate_output byte-witness "$constructor_out/native.stdout" 'Runtime type handle constructor artifact end' --count 1 --policy crlf
+    fi
 done

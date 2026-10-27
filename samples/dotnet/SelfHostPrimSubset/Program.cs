@@ -9,6 +9,16 @@ internal static class Program
 {
     private static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "runtime-type-handle-constructor-artifact")
+        {
+            RuntimeTypeHandleConstructorSubset.Program.RunArtifactChecks(args);
+            return;
+        }
+        if (args.Length > 0 && args[0] == "runtime-type-handle-constructor-reflection")
+        {
+            RuntimeTypeHandleConstructorSubset.Program.RunReflectionChecks(args);
+            return;
+        }
         if (args.Length > 0 && args[0] == "runtime-type-handle-accessor-artifact")
         {
             RuntimeTypeHandleAccessorSubset.Program.RunArtifactChecks(args);
@@ -196,5 +206,7 @@ internal static class Program
         RuntimeTypeHandleAccessorSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-constraint-check") return;
         ConstraintCheckSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-runtime-type-handle-constructor") return;
+        RuntimeTypeHandleConstructorSubset.Program.Run();
     }
 }

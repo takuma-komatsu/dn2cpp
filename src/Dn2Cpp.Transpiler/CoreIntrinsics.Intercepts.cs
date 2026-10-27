@@ -624,6 +624,7 @@ internal static partial class CoreIntrinsics
             || IsCoreClrFieldDescOperation(mi)
             || IsCoreClrCanonicalTypeComparison(mi)
             || IsRuntimeTypeHandleAccessor(mi)
+            || IsRuntimeTypeHandleConstructor(mi)
             || IsCoreClrConstraintCheck(mi)
             || IsCoreClrSignatureBlobParser(mi)
             || IsCoreClrTypeMaterialization(mi) && mi.Rva == 0);
@@ -835,6 +836,25 @@ internal static partial class CoreIntrinsics
             "GetLoaderAllocatorInternal" => IsCoreLibMethodDescType(result, "System.Reflection.LoaderAllocator"),
             _ => false,
         };
+    }
+
+    internal static bool IsRuntimeTypeHandleConstructor(MethodInfo method)
+    {
+        if (method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != ".ctor"
+            || (method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask)
+                != System.Reflection.MethodAttributes.Assembly
+            || (method.Attributes & (System.Reflection.MethodAttributes.SpecialName | System.Reflection.MethodAttributes.RTSpecialName))
+                != (System.Reflection.MethodAttributes.SpecialName | System.Reflection.MethodAttributes.RTSpecialName)
+            || method.IsStatic || method.Rva == 0 || method.PInvoke is not null
+            || (method.Attributes & System.Reflection.MethodAttributes.PinvokeImpl) != 0
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ReturnType.IsVoid && signature.ParameterTypes.Length == 1
+            && IsCoreLibMethodDescType(signature.ParameterTypes[0], "System.RuntimeType");
     }
 
     // The native handle stores TypeInfo identity, not CoreCLR's m_type field.

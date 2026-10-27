@@ -1265,7 +1265,7 @@ internal sealed partial class CppEmitter
                 if (_e.IsCanonicalWorld(cls)
                     || _e.IsOpaque(cls) && !_c.RuntimeInterfaceMetadata.Contains(cls)
                         && !_e._constructorRowOwners.Contains(cls)
-                        && !cls.Methods.Any(IsRetainedOpaqueMethodRow))
+                        && !cls.Methods.Any(IsRetainedOpaqueMemberRow))
                     continue;
                 bool keepRefl = _c.KeepsReflectionMetadata(cls);
                 var propertyAccessors = ReflectionAccessorHandles(cls);
@@ -1274,7 +1274,7 @@ internal sealed partial class CppEmitter
                 {
                     if (_e.IsOpaque(cls) && !_c.RuntimeInterfaceMetadata.Contains(cls)
                         && !_e._activationConstructorRows.Contains(m)
-                        && !IsRetainedOpaqueMethodRow(m))
+                        && !IsRetainedOpaqueMemberRow(m))
                         continue;
                     bool methodRow = m.Name != ".ctor" && m.Name != ".cctor"
                         && !(_c.SharedGenericsEnabled
@@ -3757,7 +3757,7 @@ internal sealed partial class CppEmitter
         // GetConstructors excludes methods, matching .NET's split.
         // Opaque owners expose only explicitly modeled member rows. Signature
         // discovery and table rendering must select the same catalog.
-        private bool IsRetainedOpaqueMethodRow(MethodInfo method) =>
+        private bool IsRetainedOpaqueMemberRow(MethodInfo method) =>
             _c.KeepsReflectionMetadata(method.DeclaringClass)
             && (_c.Reachable.Contains(method) && CoreIntrinsics.BrDelegateValue.Matches(method)
                 || (_c.Reachable.Contains(method) || _c.KeepsUnreachedRow(method))
@@ -3765,6 +3765,7 @@ internal sealed partial class CppEmitter
                         || CoreIntrinsics.IsCoreClrIntroducedMethodEnumeration(method)
                         || CoreIntrinsics.IsCoreClrCanonicalTypeComparison(method)
                         || CoreIntrinsics.IsRuntimeTypeHandleAccessor(method)
+                        || CoreIntrinsics.IsRuntimeTypeHandleConstructor(method)
                         || CoreIntrinsics.IsCoreClrConstraintCheck(method)
                         || CoreIntrinsics.IsCoreClrTypeMaterialization(method)
                         || CoreIntrinsics.BrNullableReboxing.Matches(method)));
@@ -3780,11 +3781,12 @@ internal sealed partial class CppEmitter
                 return;
             if (_e.IsOpaque(cls) && !_c.RuntimeInterfaceMetadata.Contains(cls))
             {
-                var activationCtors = cls.Methods.Where(m => _e._activationConstructorRows.Contains(m)).ToList();
+                var activationCtors = cls.Methods.Where(m => _e._activationConstructorRows.Contains(m)
+                    || m.Name == ".ctor" && IsRetainedOpaqueMemberRow(m)).ToList();
                 if (BuildMemberTable(cls, activationCtors, "ctortab") is { } table)
                     _ctorTabs[cls] = table;
                 NoteListedCtors(cls, activationCtors);
-                var valueMethods = cls.Methods.Where(IsRetainedOpaqueMethodRow).ToList();
+                var valueMethods = cls.Methods.Where(m => m.Name != ".ctor" && IsRetainedOpaqueMemberRow(m)).ToList();
                 if (BuildMemberTable(cls, valueMethods, "methtab") is { } values)
                     _methodTabs[cls] = values;
                 return;

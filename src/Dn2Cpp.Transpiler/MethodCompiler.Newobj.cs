@@ -1971,6 +1971,13 @@ internal sealed partial class MethodCompiler
         };
         var cls = ctor.DeclaringClass;
 
+        if (CoreIntrinsics.IsRuntimeTypeHandleConstructor(ctor))
+        {
+            var type = TypeDesc.MakeClass(cls);
+            Push(CppTypes.KindOf(type), CppTypes.Of(type), RuntimeTypeHandleConstructorValue());
+            return;
+        }
+
         if (!cls.IsBeforeFieldInit)
             EnsureCctorBefore(cls);
 

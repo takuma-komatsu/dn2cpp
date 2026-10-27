@@ -877,6 +877,8 @@ expression trees at runtime.
   The instance `RuntimeTypeHandle.GetRuntimeType` / `GetRuntimeTypeChecked`
   accessors return that same interned Type; only the checked accessor rejects
   a default handle, with CoreLib's invalid-handle `ArgumentNullException`.
+  Its managed `RuntimeType` constructor stores the same native type identity;
+  a null argument initializes a default handle, including in-place construction.
   The managed `RuntimeTypeHandle.SatisfiesConstraints` bridge throws
   `PlatformNotSupportedException`: its private CoreCLR method contexts are not
   native reflection rows. Public generic construction keeps its existing native

@@ -400,6 +400,10 @@ internal sealed partial class MethodCompiler
             Push(CppTypes.KindOf(result), CppTypes.Of(result), "nullptr");
     }
 
+    // A null RuntimeType is stored unchanged by CoreLib's managed constructor.
+    private string RuntimeTypeHandleConstructorValue() =>
+        $"dn2cpp_type_info_or_null({Cast(Pop(), "Dn2CppType*")})";
+
     /// <summary>Lowers a call to a member <see cref="CoreIntrinsics.LoweredRuntimePrimitive"/>
     /// names — the intra-CoreLib runtime primitives the reachability cut deletes from the tree.
     ///
@@ -427,6 +431,13 @@ internal sealed partial class MethodCompiler
                 Emit($"if ({handle} == nullptr) dn2cpp_throw_argument_text(&dn2cpp_argument_null_exception_type, \"{CppLiteralBody(message)}\", nullptr);");
             }
             Push(StackKind.Ref, "Dn2CppType*", $"dn2cpp_get_type_from_handle({handle})");
+            return;
+        }
+
+        if (CoreIntrinsics.IsRuntimeTypeHandleConstructor(callee))
+        {
+            string value = RuntimeTypeHandleConstructorValue();
+            Emit($"{DerefReceiver("const Dn2CppTypeInfo*")} = {value};");
             return;
         }
 
