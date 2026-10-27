@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# RuntimeTypeHandle construction and cache-handle ownership, private generic-context validation,
+# MethodInfo generic arity, RuntimeTypeHandle construction and cache-handle ownership,
+# private generic-context validation,
 # canonical type comparison and Signature blob-parser boundaries,
 # managed type-handle copies,
 # nullable reboxing, CoreCLR handle boundaries, public reflection,
@@ -78,8 +79,30 @@
 # checked default-handle ArgumentNullException across reflection/direct/calli.
 # Driven by the real System.Private.CoreLib (passed with -r) -> cross-assembly resolve
 # + tree-shake -> native binary -> run, asserting the output diffs exact vs real .NET.
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/RuntimeTypeCacheHandleFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleConstructorFixture.cs gates/fixtures/ldftn-local/ConstraintCheckFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleAccessorFixture.cs gates/fixtures/ldftn-local/CanonicalTypeComparisonFixture.cs gates/fixtures/ldftn-local/SignatureBlobFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleCopyFixture.cs gates/fixtures/ldftn-local/RuntimeFieldHandleFixture.cs gates/fixtures/ldftn-local/NullableReboxingFixture.cs gates/fixtures/ldftn-local/RuntimeTypeMaterializationFixture.cs gates/fixtures/ldftn-local/RuntimeMethodHandleFixture.cs gates/fixtures/ldftn-local/RuntimeMethodEnumerationFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/GcFinalizerWorkerFixture.cs gates/fixtures/ldftn-local/DelegateVmConstructorFixture.cs gates/fixtures/ldftn-local/DelegateNamedConstructorFixture.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/MethodGenericCountFixture.cs gates/fixtures/ldftn-local/RuntimeTypeCacheHandleFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleConstructorFixture.cs gates/fixtures/ldftn-local/ConstraintCheckFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleAccessorFixture.cs gates/fixtures/ldftn-local/CanonicalTypeComparisonFixture.cs gates/fixtures/ldftn-local/SignatureBlobFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleCopyFixture.cs gates/fixtures/ldftn-local/RuntimeFieldHandleFixture.cs gates/fixtures/ldftn-local/NullableReboxingFixture.cs gates/fixtures/ldftn-local/RuntimeTypeMaterializationFixture.cs gates/fixtures/ldftn-local/RuntimeMethodHandleFixture.cs gates/fixtures/ldftn-local/RuntimeMethodEnumerationFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/GcFinalizerWorkerFixture.cs gates/fixtures/ldftn-local/DelegateVmConstructorFixture.cs gates/fixtures/ldftn-local/DelegateNamedConstructorFixture.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
 source "$(dirname "$0")/_common.sh"
+
+method_generic_count_asserts() {
+    local output="$1" routes="$2" route label
+    for route in public $routes; do
+        for label in plain open-owner-plain one-definition one-closed two-definition two-closed unused-definition open-owner-definition open-owner-constructed partially-open inherited-definition inherited-closed roundtrip-definition; do
+            gate_output byte-witness "$output" "method-generic-count-$route-$label:True" --count 1 --policy crlf || return 1
+        done
+        if [[ "$route" != public ]]; then
+            gate_output byte-witness "$output" "method-generic-count-$route-null:True" --count 1 --policy crlf || return 1
+            if [[ "$route" != reflection ]]; then
+                gate_output byte-witness "$output" "method-generic-count-$route-no-allocation:True" --count 1 --policy crlf || return 1
+            fi
+        fi
+    done
+    for label in shape lookup-0 lookup-1 lookup-2 lookup-missing; do
+        gate_output byte-witness "$output" "method-generic-count-$label:True" --count 1 --policy crlf || return 1
+    done
+    gate_output byte-witness "$output" 'Method generic parameter count contract end' --count 1 --policy crlf || return 1
+    if [[ -n "$routes" ]]; then
+        gate_output byte-witness "$output" 'Method generic parameter count routes end' --count 1 --policy crlf || return 1
+    fi
+}
 
 type_cache_handle_asserts() {
     local output="$1" label kind
@@ -499,6 +522,9 @@ gate_extra_asserts() {
     gate_capture_ok "$out/assert-before-type-cache-handle" run_bounded dotnet "$_CG_APP" before-runtime-type-cache-handle || return 1
     gate_output prefix "$native" "$out/assert-before-type-cache-handle.stdout" --before '== Runtime type cache handle contract ==' --policy crlf || return 1
     type_cache_handle_asserts "$native" || return 1
+    gate_capture_ok "$out/assert-before-method-generic-count" run_bounded dotnet "$_CG_APP" before-method-generic-count || return 1
+    gate_output prefix "$native" "$out/assert-before-method-generic-count.stdout" --before '== Method generic parameter count contract ==' --policy crlf || return 1
+    method_generic_count_asserts "$native" '' || return 1
 
 }
 
@@ -626,6 +652,29 @@ compile_console "$named_out" DelegateNamed
 gate_capture_ok "$named_out/direct" run_bounded "./$named_out/DelegateNamed$EXE_EXT" native-boundary
 for label in delegate-instance delegate-static multicast-instance multicast-static; do
     gate_output byte-witness "$named_out/direct.stdout" "named-direct-$label:True" --count 1 --policy crlf
+done
+
+# The internal getter consumes native MethodInfo handles; CLR supplies the public count oracle.
+for count_mode in all reflection; do
+    count_input="artifacts/method-generic-count-input-$count_mode-$CONFIG"
+    mkdir -p "$count_input"
+    cp samples/dotnet/SelfHostPrimSubset/bin/$CONFIG/$TFM/* "$count_input/"
+    count_flag=--method-generic-count
+    count_routes='direct virtual pointer virtual-pointer reflection'
+    if [[ "$count_mode" == reflection ]]; then
+        count_flag=--method-generic-count-reflection
+        count_routes=reflection
+    fi
+    dotnet "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
+        "$count_flag" "$count_input/SelfHostPrimSubset.dll" "$_CG_CORELIB"
+    count_out="artifacts/method-generic-count-$count_mode-$CONFIG"
+    invoke_cli "$count_input/SelfHostPrimSubset.dll" --auto-ref -o "$count_out"
+    compile_console "$count_out" MethodGenericCount
+    gate_capture_ok "$count_out/native" run_bounded "./$count_out/MethodGenericCount$EXE_EXT"
+    gate_capture_ok "$count_out/oracle" run_bounded dotnet "$_CG_APP" method-generic-count-contract
+    gate_output prefix "$count_out/native.stdout" "$count_out/oracle.stdout" \
+        --before "method-generic-count-${count_routes%% *}-plain:True" --policy crlf
+    method_generic_count_asserts "$count_out/native.stdout" "$count_routes"
 done
 
 # The cache allocator wrappers are native-only; CLR runs the public handle contract.

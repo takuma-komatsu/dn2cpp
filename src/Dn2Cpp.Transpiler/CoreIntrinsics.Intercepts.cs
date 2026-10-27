@@ -626,6 +626,7 @@ internal static partial class CoreIntrinsics
             || IsRuntimeTypeHandleAccessor(mi)
             || IsRuntimeTypeHandleConstructor(mi)
             || IsRuntimeTypeCacheHandleBridge(mi)
+            || IsMethodGenericParameterCount(mi)
             || IsCoreClrConstraintCheck(mi)
             || IsCoreClrSignatureBlobParser(mi)
             || IsCoreClrTypeMaterialization(mi) && mi.Rva == 0);
@@ -856,6 +857,30 @@ internal static partial class CoreIntrinsics
         return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
             && signature.ReturnType.IsVoid && signature.ParameterTypes.Length == 1
             && IsCoreLibMethodDescType(signature.ParameterTypes[0], "System.RuntimeType");
+    }
+
+    // Method arity lives on the native member row, independently of its definition view.
+    internal static bool IsMethodGenericParameterCount(MethodInfo method)
+    {
+        const System.Reflection.MethodAttributes required = System.Reflection.MethodAttributes.Virtual
+            | System.Reflection.MethodAttributes.NewSlot | System.Reflection.MethodAttributes.CheckAccessOnOverride
+            | System.Reflection.MethodAttributes.SpecialName;
+        if (method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.FullName != "System.Reflection.MethodInfo"
+            || method.Name != "get_GenericParameterCount"
+            || (method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask)
+                != System.Reflection.MethodAttributes.Assembly
+            || (method.Attributes & required) != required
+            || (method.Attributes & (System.Reflection.MethodAttributes.Static | System.Reflection.MethodAttributes.Final
+                | System.Reflection.MethodAttributes.Abstract | System.Reflection.MethodAttributes.PinvokeImpl)) != 0
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 };
     }
 
     // These wrappers allocate cache slots owned by a CoreCLR LoaderAllocator.

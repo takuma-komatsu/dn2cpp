@@ -1391,6 +1391,16 @@ internal sealed partial class Compilation
             }
             catch (NotSupportedException e) when (!IsMustEscape(e)) { }
         }
+        if (full == "System.Reflection.MethodInfo" && reader.StringComparer.Equals(mr.Name, "get_GenericParameterCount"))
+        {
+            try
+            {
+                var getter = ResolveMemberRefMethod(module, handle, callerCtx);
+                if (CoreIntrinsics.IsMethodGenericParameterCount(getter))
+                    return getter;
+            }
+            catch (NotSupportedException e) when (!IsMustEscape(e)) { }
+        }
         if (full == "System.RuntimeTypeHandle"
             && (reader.StringComparer.Equals(mr.Name, "GetFirstIntroducedMethod")
                 || reader.StringComparer.Equals(mr.Name, "GetNextIntroducedMethod")

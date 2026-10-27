@@ -3087,6 +3087,13 @@ static Dn2CppObject* dn2cpp_meta_valuetype_gethashcode(const Dn2CppTypeInfo* con
     return dn2cpp_meta_object_gethashcode(args, receiver, argv);
 }
 
+static Dn2CppObject* dn2cpp_meta_method_generic_count(const Dn2CppTypeInfo* const*,
+    Dn2CppObject* receiver, Dn2CppObject**)
+{
+    int32_t count = dn2cpp_methodref_generic_parameter_count(reinterpret_cast<Dn2CppMethodRef*>(receiver));
+    return dn2cpp_box(&dn2cpp_int32_type, &count, sizeof(count));
+}
+
 static const Dn2CppParamInfo g_meta_params_obj[] = {
     { &dn2cpp_object_type, "obj", {}, 0, 0, nullptr, 0, nullptr, 0, 1, "System.Object obj", nullptr },
 };
@@ -3108,6 +3115,10 @@ static const Dn2CppMethodGenericParameter g_meta_unsafe_sizeof_generic_parameter
 // word: 0x0100 AggressiveInlining on SizeOf, 0 (IL) on the rest.
 // The transpiler's CoreIntrinsics.IsObjectMemberRowName lists the gated rows' names.
 static const Dn2CppMetaMember g_meta_members[] = {
+    // Runtime-owned MethodInfo has no emitted member table or managed vtable.
+    { "System.Reflection.MethodInfo", "get_GenericParameterCount", 0, &dn2cpp_int32_type,
+      0 /* instance, non-public */, 0x0BC3, dn2cpp_meta_method_generic_count,
+      nullptr, 0, "Int32 get_GenericParameterCount()", "Int32", false },
     { "System.Runtime.CompilerServices.Unsafe", "SizeOf", 1, &dn2cpp_int32_type,
       DN2CPP_MTHA_STATIC | DN2CPP_MTHA_PUBLIC, 0x0096, dn2cpp_meta_unsafe_sizeof,
       nullptr, 0, nullptr, "Int32", false, 0x0100, g_meta_unsafe_sizeof_generic_parameters },
@@ -10727,6 +10738,11 @@ int32_t dn2cpp_methodref_is_generic(Dn2CppMethodRef* m)
 }
 
 // ---- reflection: generic definitions and closed instantiations ----
+
+int32_t dn2cpp_methodref_generic_parameter_count(Dn2CppMethodRef* m)
+{
+    return dn2cpp_methodref_require(m)->genericParamCount;
+}
 
 int32_t dn2cpp_methodref_is_generic_def(Dn2CppMethodRef* m)
 {

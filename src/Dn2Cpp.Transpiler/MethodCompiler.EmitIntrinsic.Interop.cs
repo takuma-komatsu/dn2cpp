@@ -427,6 +427,13 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsMethodGenericParameterCount(callee))
+        {
+            var method = Pop();
+            Push(StackKind.I4, "int32_t", $"dn2cpp_methodref_generic_parameter_count((Dn2CppMethodRef*)({method.Expr}))");
+            return;
+        }
+
         if (CoreIntrinsics.IsRuntimeTypeHandleAccessor(callee))
         {
             string handle = NewTemp("const Dn2CppTypeInfo*");

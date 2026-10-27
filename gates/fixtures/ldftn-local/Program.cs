@@ -2,6 +2,7 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (MethodGenericCountFixture.Run(args)) return;
 if (RuntimeTypeCacheHandleFixture.Run(args)) return;
 if (ConstraintCheckFixture.Run(args)) return;
 if (RuntimeTypeHandleAccessorFixture.Run(args)) return;

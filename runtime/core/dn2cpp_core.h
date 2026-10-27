@@ -2899,6 +2899,7 @@ Dn2CppArrayRef* dn2cpp_methodref_get_parameter_types(Dn2CppMethodRef* m);
 Dn2CppMethodRef* dn2cpp_methodref_make_generic(Dn2CppMethodRef* m, Dn2CppArrayRef* types);
 Dn2CppMethodRef* dn2cpp_methodref_get_generic_definition(Dn2CppMethodRef* m);
 Dn2CppArrayRef* dn2cpp_methodref_get_generic_arguments(Dn2CppMethodRef* m);
+int32_t dn2cpp_methodref_generic_parameter_count(Dn2CppMethodRef* m);
 int32_t dn2cpp_methodref_is_generic_def(Dn2CppMethodRef* m);
 int32_t dn2cpp_methodref_contains_generic_parameters(Dn2CppMethodRef* m);
 // MethodInfo.GetBaseDefinition: the shallowest base-chain ancestor declaring a

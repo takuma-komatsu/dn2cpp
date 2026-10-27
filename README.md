@@ -883,6 +883,9 @@ expression trees at runtime.
   validation, then throw `PlatformNotSupportedException`: CoreCLR owns these
   cache slots through its LoaderAllocator. They are not public GCHandle slots;
   public `GCHandle`, `Type` and `Enum` keep their native implementations.
+  `MethodInfo.GenericParameterCount` reads native method arity without allocating
+  an argument array; definitions and constructed methods retain the same arity,
+  independently of the declaring type's generic arguments.
   The managed `RuntimeTypeHandle.SatisfiesConstraints` bridge throws
   `PlatformNotSupportedException`: its private CoreCLR method contexts are not
   native reflection rows. Public generic construction keeps its existing native
