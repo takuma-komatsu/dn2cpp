@@ -84,6 +84,21 @@ internal static class Program
             RuntimeTypeInstantiationSubset.Program.RunReflectionArtifact(Array.Empty<string>());
             return;
         }
+        if (args.Length > 0 && args[0] == "runtime-type-function-pointer-contract")
+        {
+            RuntimeTypeFunctionPointerSubset.FunctionPointerPredicateChecks.Run();
+            return;
+        }
+        if (args.Length > 0 && args[0] == "runtime-type-function-pointer-artifact")
+        {
+            RuntimeTypeFunctionPointerSubset.FunctionPointerPredicateChecks.RunArtifact(Array.Empty<string>());
+            return;
+        }
+        if (args.Length > 0 && args[0] == "runtime-type-function-pointer-reflection")
+        {
+            RuntimeTypeFunctionPointerSubset.FunctionPointerPredicateChecks.RunReflectionArtifact(Array.Empty<string>());
+            return;
+        }
         if (args.Length > 0 && args[0] == "runtime-type-szarray-artifact")
         {
             RuntimeTypeIsSzArraySubset.Program.RunArtifact(Array.Empty<string>());
@@ -374,5 +389,7 @@ internal static class Program
         PrimitiveElementTypeSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-primitive-widening") return;
         PrimitiveWideningSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-runtime-type-function-pointer") return;
+        RuntimeTypeFunctionPointerSubset.FunctionPointerPredicateChecks.Run();
     }
 }

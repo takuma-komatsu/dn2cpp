@@ -574,6 +574,16 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerPredicate(callee))
+        {
+            var type = Pop();
+            TaintPoisonedTypeEscape(type);
+            string helper = callee.Name == "IsFunctionPointer"
+                ? "dn2cpp_type_is_function_pointer" : "dn2cpp_type_is_unmanaged_function_pointer";
+            Push(StackKind.I4, "int32_t", $"{helper}(dn2cpp_type_require({Cast(type, "Dn2CppType*")}))");
+            return;
+        }
+
         if (CoreIntrinsics.IsRuntimeTypeHandleInstantiation(callee))
         {
             string handle = NewTemp("const Dn2CppTypeInfo*");

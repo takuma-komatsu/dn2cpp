@@ -557,6 +557,17 @@ existing native SZ-array predicate with a null Type guard. Its retained getter,
 direct calls and address-taken wrappers share that lowering; neither CoreCLR
 element codes nor rank alone define native array identity.
 
+The exact `RuntimeTypeHandle.IsFunctionPointer(RuntimeType)` managed predicate
+and `IsUnmanagedFunctionPointer(RuntimeType)` InternalCall share the existing
+native signature predicates. Only the queried type counts: pointer, by-reference
+and array wrappers do not inherit their element's function-pointer flags.
+Retained public getters keep their managed bodies. Their exact sealed bindings
+avoid CoreCLR virtual slots across calls and address loads. Direct calls, address
+bindings and retained reflection rows use the same lowering. The native null Type
+guard also applies to the raw unmanaged predicate, whose CoreCLR contract requires a
+nonnull RuntimeType. This does not extend custom Type dispatch or open
+function-pointer construction.
+
 The exact managed `RuntimeTypeHandle.GetInstantiationInternal` and
 `GetInstantiationPublic` wrappers read native formal or constructed type arguments.
 They validate default handles and return null at zero arity. Nonempty results are

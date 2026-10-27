@@ -625,6 +625,7 @@ internal static partial class CoreIntrinsics
             || IsCoreClrCanonicalTypeComparison(mi)
             || IsRuntimeTypeHandleAccessor(mi)
             || IsRuntimeTypeHandleIsSZArray(mi)
+            || IsRuntimeTypeHandleFunctionPointerPredicate(mi)
             || IsRuntimeTypeHandleInstantiation(mi)
             || IsRuntimeTypeHandleGenericVariableIndex(mi)
             || IsRuntimeTypeHandleContainsGenericVariables(mi)
@@ -1141,6 +1142,49 @@ internal static partial class CoreIntrinsics
             && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
             && signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
             && parameter.Module == method.Module;
+    }
+
+    // Function-pointer flags read the signature companion, not CoreCLR type-handle storage.
+    internal static bool IsRuntimeTypeHandleFunctionPointerPredicate(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle"
+            || method.Name is not ("IsFunctionPointer" or "IsUnmanagedFunctionPointer")
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.PInvoke is not null)
+            return false;
+        bool managed = method.Name == "IsFunctionPointer";
+        if ((method.Rva != 0) != managed
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall))
+                != (managed ? 0 : System.Reflection.MethodImplAttributes.InternalCall))
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
+            && parameter.Module == method.Module;
+    }
+
+    // Retain these sealed getters' IL without indexing a CoreCLR-only virtual slot.
+    internal static bool IsRuntimeTypeFunctionPointerGetter(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || !method.DeclaringClass.IsSealed
+            || method.Name is not ("get_IsFunctionPointer" or "get_IsUnmanagedFunctionPointer")
+            || method.Attributes != (System.Reflection.MethodAttributes.Public | System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.HideBySig | System.Reflection.MethodAttributes.SpecialName)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean };
     }
 
     // Positions belong to native formal contexts, not CoreCLR generic-variable handles.

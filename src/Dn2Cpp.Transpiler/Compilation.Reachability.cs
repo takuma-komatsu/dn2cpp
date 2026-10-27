@@ -130,6 +130,7 @@ internal sealed partial class Compilation
         // Reflection-only roots need the native wrapper, not the opaque managed body.
         if (CoreIntrinsics.IsRuntimeTypeHandleAccessor(m)
             || CoreIntrinsics.IsRuntimeTypeHandleIsSZArray(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerPredicate(m)
             || CoreIntrinsics.IsRuntimeTypeHandleInstantiation(m)
             || CoreIntrinsics.IsRuntimeTypeHandleGenericVariableIndex(m)
             || CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariables(m)
