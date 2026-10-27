@@ -73,10 +73,25 @@
 #     precise total has no such carve-out and must cover the 1 MiB. It sits in
 #     this bucket because it starts a Thread: this gate is the bucket's sole
 #     driver, so no wasm axis reaches the section.
+# RuntimeTypeHandle instance accessors preserve interned Type identity and the
+# checked default-handle ArgumentNullException across reflection/direct/calli.
 # Driven by the real System.Private.CoreLib (passed with -r) -> cross-assembly resolve
 # + tree-shake -> native binary -> run, asserting the output diffs exact vs real .NET.
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/CanonicalTypeComparisonFixture.cs gates/fixtures/ldftn-local/SignatureBlobFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleCopyFixture.cs gates/fixtures/ldftn-local/RuntimeFieldHandleFixture.cs gates/fixtures/ldftn-local/NullableReboxingFixture.cs gates/fixtures/ldftn-local/RuntimeTypeMaterializationFixture.cs gates/fixtures/ldftn-local/RuntimeMethodHandleFixture.cs gates/fixtures/ldftn-local/RuntimeMethodEnumerationFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/GcFinalizerWorkerFixture.cs gates/fixtures/ldftn-local/DelegateVmConstructorFixture.cs gates/fixtures/ldftn-local/DelegateNamedConstructorFixture.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} gates/fixtures/ldftn-local/RuntimeTypeHandleAccessorFixture.cs gates/fixtures/ldftn-local/CanonicalTypeComparisonFixture.cs gates/fixtures/ldftn-local/SignatureBlobFixture.cs gates/fixtures/ldftn-local/RuntimeTypeHandleCopyFixture.cs gates/fixtures/ldftn-local/RuntimeFieldHandleFixture.cs gates/fixtures/ldftn-local/NullableReboxingFixture.cs gates/fixtures/ldftn-local/RuntimeTypeMaterializationFixture.cs gates/fixtures/ldftn-local/RuntimeMethodHandleFixture.cs gates/fixtures/ldftn-local/RuntimeMethodEnumerationFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/GcFinalizerWorkerFixture.cs gates/fixtures/ldftn-local/DelegateVmConstructorFixture.cs gates/fixtures/ldftn-local/DelegateNamedConstructorFixture.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
 source "$(dirname "$0")/_common.sh"
+
+handle_accessor_asserts() {
+    local output="$1" route="$2" label
+    for label in default-unchecked default-checked object int struct array generic-string generic-object definition parameter byref; do
+        gate_output byte-witness "$output" "handle-accessor-$route-$label:True" --count 1 --policy crlf || return 1
+    done
+    if [[ "$route" == reflection ]]; then
+        for label in shape public-roundtrip generic-valid generic-invalid-argument generic-null-arguments; do
+            gate_output byte-witness "$output" "handle-accessor-$label:True" --count 1 --policy crlf || return 1
+        done
+        gate_output byte-witness "$output" 'Runtime type handle accessors end' --count 1 --policy crlf || return 1
+    fi
+}
 
 canonical_type_asserts() {
     local output="$1" label
@@ -406,6 +421,9 @@ gate_extra_asserts() {
     gate_capture_ok "$out/assert-before-canonical-type" run_bounded dotnet "$_CG_APP" before-canonical-type-comparison || return 1
     gate_output prefix "$native" "$out/assert-before-canonical-type.stdout" --before '== Canonical type comparison contract ==' --policy crlf || return 1
     canonical_type_asserts "$native" || return 1
+    gate_capture_ok "$out/assert-before-handle-accessor" run_bounded dotnet "$_CG_APP" before-runtime-type-handle-accessor || return 1
+    gate_output prefix "$native" "$out/assert-before-handle-accessor.stdout" --before '== Runtime type handle accessors ==' --policy crlf || return 1
+    handle_accessor_asserts "$native" reflection || return 1
 
 }
 
@@ -719,3 +737,20 @@ if [[ ! -f "$copy_gaps" ]] || [[ $(grep -Fc 'CopyMeasureProbe' "$copy_gaps") -ne
     cat "$copy_out/measure.stdout" >&2
     exit 1
 fi
+
+# Both instance accessors use native Type identity; the checked default keeps CoreLib validation.
+accessor_input="artifacts/runtime-type-handle-accessor-input-$CONFIG"
+mkdir -p "$accessor_input"
+cp samples/dotnet/SelfHostPrimSubset/bin/$CONFIG/$TFM/* "$accessor_input/"
+dotnet "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
+    --runtime-type-handle-accessor "$accessor_input/SelfHostPrimSubset.dll" "$_CG_CORELIB"
+accessor_out="artifacts/runtime-type-handle-accessor-$CONFIG"
+invoke_cli "$accessor_input/SelfHostPrimSubset.dll" --auto-ref -o "$accessor_out"
+compile_console "$accessor_out" RuntimeTypeHandleAccessor
+gate_capture_ok "$accessor_out/native" run_bounded "./$accessor_out/RuntimeTypeHandleAccessor$EXE_EXT"
+gate_capture_ok "$accessor_out/oracle" run_bounded dotnet "$_CG_APP" runtime-type-handle-accessor-artifact
+gate_output compare "$accessor_out/native.stdout" "$accessor_out/oracle.stdout" --policy crlf
+for route in reflection direct pointer; do
+    handle_accessor_asserts "$accessor_out/native.stdout" "$route"
+done
+gate_output byte-witness "$accessor_out/native.stdout" 'Runtime type handle accessor artifact end' --count 1 --policy crlf

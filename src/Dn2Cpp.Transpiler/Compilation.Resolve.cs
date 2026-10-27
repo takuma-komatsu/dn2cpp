@@ -1395,6 +1395,7 @@ internal sealed partial class Compilation
             && (reader.StringComparer.Equals(mr.Name, "GetFirstIntroducedMethod")
                 || reader.StringComparer.Equals(mr.Name, "GetNextIntroducedMethod")
                 || reader.StringComparer.Equals(mr.Name, "GetRuntimeType")
+                || reader.StringComparer.Equals(mr.Name, "GetRuntimeTypeChecked")
                 || reader.StringComparer.Equals(mr.Name, "GetRuntimeTypeFromHandle")
                 || reader.StringComparer.Equals(mr.Name, "GetRuntimeTypeFromHandleMaybeNull")
                 || reader.StringComparer.Equals(mr.Name, "GetRuntimeTypeFromHandleSlow")
@@ -1405,7 +1406,8 @@ internal sealed partial class Compilation
                 var enumeration = ResolveMemberRefMethod(module, handle, callerCtx);
                 if (CoreIntrinsics.IsCoreClrIntroducedMethodEnumeration(enumeration)
                     || CoreIntrinsics.IsCoreClrTypeMaterialization(enumeration)
-                    || CoreIntrinsics.IsCoreClrCanonicalTypeComparison(enumeration))
+                    || CoreIntrinsics.IsCoreClrCanonicalTypeComparison(enumeration)
+                    || CoreIntrinsics.IsRuntimeTypeHandleAccessor(enumeration))
                     return enumeration;
             }
             catch (NotSupportedException e) when (!IsMustEscape(e)) { }

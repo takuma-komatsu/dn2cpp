@@ -623,6 +623,7 @@ internal static partial class CoreIntrinsics
             || IsCoreClrMethodDescQuery(mi)
             || IsCoreClrFieldDescOperation(mi)
             || IsCoreClrCanonicalTypeComparison(mi)
+            || IsRuntimeTypeHandleAccessor(mi)
             || IsCoreClrSignatureBlobParser(mi)
             || IsCoreClrTypeMaterialization(mi) && mi.Rva == 0);
 
@@ -833,6 +834,25 @@ internal static partial class CoreIntrinsics
             "GetLoaderAllocatorInternal" => IsCoreLibMethodDescType(result, "System.Reflection.LoaderAllocator"),
             _ => false,
         };
+    }
+
+    // The native handle stores TypeInfo identity, not CoreCLR's m_type field.
+    internal static bool IsRuntimeTypeHandleAccessor(MethodInfo method)
+    {
+        if (method.DeclaringClass.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle"
+            || method.Name is not ("GetRuntimeType" or "GetRuntimeTypeChecked")
+            || (method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask)
+                != System.Reflection.MethodAttributes.Assembly
+            || method.IsStatic || method.Rva == 0 || method.PInvoke is not null
+            || (method.Attributes & System.Reflection.MethodAttributes.PinvokeImpl) != 0
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && IsCoreLibMethodDescType(signature.ReturnType, "System.RuntimeType");
     }
 
     // FieldDesc context checks compare CoreCLR canonical MethodTables, not native Type identities.

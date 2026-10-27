@@ -416,6 +416,20 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsRuntimeTypeHandleAccessor(callee))
+        {
+            string handle = NewTemp("const Dn2CppTypeInfo*");
+            Emit($"{handle} = {DerefReceiver("const Dn2CppTypeInfo*")};");
+            if (callee.Name == "GetRuntimeTypeChecked")
+            {
+                string message = Comp.SrResourceText(callee.Module, "Arg_InvalidHandle")
+                    ?? throw new NotSupportedException("RuntimeTypeHandle validation requires CoreLib's Arg_InvalidHandle resource");
+                Emit($"if ({handle} == nullptr) dn2cpp_throw_argument_text(&dn2cpp_argument_null_exception_type, \"{CppLiteralBody(message)}\", nullptr);");
+            }
+            Push(StackKind.Ref, "Dn2CppType*", $"dn2cpp_get_type_from_handle({handle})");
+            return;
+        }
+
         if (CoreIntrinsics.IsCoreClrCanonicalTypeComparison(callee))
         {
             Pop();

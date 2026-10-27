@@ -2,6 +2,7 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (RuntimeTypeHandleAccessorFixture.Run(args)) return;
 if (CanonicalTypeComparisonFixture.Run(args)) return;
 if (SignatureBlobFixture.Run(args)) return;
 if (RuntimeTypeHandleCopyFixture.Run(args)) return;

@@ -127,7 +127,9 @@ internal sealed partial class Compilation
             }
             return;
         }
-        if (CoreIntrinsics.BrInvariantCompareInfoCallback.Matches(m.DeclaringClass.FullName, m.Name))
+        // Reflection-only roots need the native wrapper, not the opaque managed body.
+        if (CoreIntrinsics.IsRuntimeTypeHandleAccessor(m)
+            || CoreIntrinsics.BrInvariantCompareInfoCallback.Matches(m.DeclaringClass.FullName, m.Name))
         {
             _predTrace.TryAdd(m, _currentScan);
             NoteIntrinsicFtnTarget(m);

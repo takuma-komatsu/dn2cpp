@@ -9,6 +9,11 @@ internal static class Program
 {
     private static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "runtime-type-handle-accessor-artifact")
+        {
+            RuntimeTypeHandleAccessorSubset.Program.RunArtifactChecks(args);
+            return;
+        }
         if (args.Length > 0 && args[0] == "runtime-type-handle-copy-artifact")
         {
             RuntimeTypeHandleCopySubset.Program.RunArtifactChecks(args);
@@ -187,5 +192,7 @@ internal static class Program
         SignatureBlobSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-canonical-type-comparison") return;
         CanonicalTypeComparisonSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-runtime-type-handle-accessor") return;
+        RuntimeTypeHandleAccessorSubset.Program.Run();
     }
 }

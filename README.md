@@ -874,6 +874,9 @@ expression trees at runtime.
   before reading CoreCLR MethodTable, TypeDesc or output-handle state. Its
   nullable wrapper still returns null for a zero handle. Native `Type.TypeHandle`
   and `Type.GetTypeFromHandle` use type-info identities, not CoreCLR pointers.
+  The instance `RuntimeTypeHandle.GetRuntimeType` / `GetRuntimeTypeChecked`
+  accessors return that same interned Type; only the checked accessor rejects
+  a default handle, with CoreLib's invalid-handle `ArgumentNullException`.
   `RuntimeTypeHandle.CopyRuntimeTypeHandles` retains its managed copy bodies:
   spans reuse sufficient caller scratch storage or allocate a separate array,
   and the Type-array overload copies the same native handle values.
