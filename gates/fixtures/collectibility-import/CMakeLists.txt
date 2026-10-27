@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.20)
+project(CollectibilityImportFixture LANGUAGES CXX)
+add_library(QCall STATIC shim.cpp)
+set_target_properties(QCall PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES)
+file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/archive.txt" CONTENT "$<TARGET_FILE:QCall>\n")

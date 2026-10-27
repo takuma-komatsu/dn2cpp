@@ -545,6 +545,9 @@ lowerings retain ownership of direct calls and address-taken wrappers. This is
 selected from the input declaration, never the transpiler host. In particular,
 a CoreLib import of `kernel32.dll` keeps its normal native binding even when a corresponding
 CoreLib flavour declares a `QCall` import with the same entry-point name.
+The exact `RuntimeTypeHandle.IsCollectible(QCallTypeHandle)` import keeps this
+binding authority even though its declaring type is intrinsic-mapped. Its raw
+handle query is not the public reflection API's noncollectible-image policy.
 
 The managed `ThrowHelper.GetAmbiguousMatchException` factories retain their real
 IL for both `MemberInfo` and `Attribute` inputs. They return an exception instead

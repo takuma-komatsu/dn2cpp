@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Private collectibility imports preserve direct native binding and callable refusal without changing public reflection policy.
 # Member metadata-definition identity ignores generic instantiation and reflected views without conflating definitions.
 # Method attribute inheritance honors override chains and AttributeUsage without constructing IsDefined results.
 # Type.GetType(name, throwOnError, ignoreCase) keeps caller/CoreLib lookup and case-collision order.
@@ -311,6 +312,8 @@ DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|before-method-attribute-inheritance"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/MetadataDefinitionSubset.cs samples/dotnet/ReflectTypes/MetadataDefinitionRoutes.cs gates/fixtures/ldftn-local/MetadataDefinitionFixture.cs gates/fixtures/ldftn-local/Program.cs gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
 DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|before-metadata-definition-identity|metadata-definition-routes:direct,bound-instance-address,virtual|metadata-definition-native-boundary"
+DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/CollectibilitySubset.cs gates/fixtures/ldftn-local/CollectibilityImportFixture.cs gates/_collectibility-import.sh gates/fixtures/collectibility-import"
+DN2CPP_GATE_EXTRA_CONTEXT="$DN2CPP_GATE_EXTRA_CONTEXT|before-collectibility|collectibility-import:raw,diet,native,refusal,direct,shim-precedence"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/keep-ordinary-type-leaves.xml samples/dotnet/ReflectTypes/keep-template-signatures.xml samples/dotnet/ReflectTypes/keep-attribute-enumeration.xml"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/ClosedGenericDiagnosticsOnly.csproj samples/dotnet/ReflectTypes/ClosedGenericDiagnosticsUnshared.csproj samples/dotnet/ReflectTypes/ClosedGenericDiagnosticsOnlyProgram.cs gates/expected/reflect-types-closed-generic.txt gates/expected/reflect-types-closed-generic-unshared.txt"
 DN2CPP_GATE_EXTRA_INPUTS="$DN2CPP_GATE_EXTRA_INPUTS samples/dotnet/ReflectTypes/ReflectionTemplateDispatch.csproj samples/dotnet/ReflectTypes/ReflectionTemplateDispatchProgram.cs samples/dotnet/ReflectTypes/ReflectRuntimeInstantiationSubset.cs"
@@ -945,6 +948,14 @@ gate_extra_asserts() {
     done
     gate_output witness "$native" '== member metadata definition identity ==' --count 1 --policy crlf || return $?
     gate_output witness "$native" 'member metadata definition identity end' --count 1 --policy crlf || return $?
+    gate_capture_ok "$out/collectibility-before" run_bounded dotnet "$_CG_APP" before-collectibility || return $?
+    gate_output prefix "$out/native.stdout" "$out/collectibility-before.stdout" \
+        --before '== noncollectible reflection types ==' --policy crlf || return $?
+    for label in type-0 type-1 type-2 type-3 type-4 type-5 type-6 \
+        member-get_Property member-set_Property member-Echo member-.ctor member-Property member-Field; do
+        gate_output byte-witness "$out/native.stdout" "collectibility-$label:True" --count 1 --policy crlf || return $?
+    done
+    gate_output byte-witness "$out/native.stdout" 'noncollectible reflection types end' --count 1 --policy crlf || return $?
 }
 # Helpers that read a Type parameter's attributes or construct a Type an attribute
 # carries are preserved explicitly; their callers' typeof arguments select nothing.
@@ -1005,6 +1016,8 @@ DN2CPP_OUT_SUFFIX=-metadata-routes-native DN2CPP_STRICT_COMPLETION=1 \
     ordinary_fixture_diff_gate ReflectTypes OrdinaryReflectionTypeLeaves \
     System.Collections System.ComponentModel.Primitives --no-ildiet --no-metadata-compression
 unset -f gate_build_fixture gate_extra_asserts
+source gates/_collectibility-import.sh
+collectibility_import_gate
 
 # With no attribute read, the closed owner's retained row must reach the deepest
 # Type argument. Interning may share that row with its generic definition.

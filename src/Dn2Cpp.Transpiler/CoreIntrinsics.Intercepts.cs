@@ -1326,7 +1326,8 @@ internal static partial class CoreIntrinsics
     /// intra-assembly call into one is not a reachability edge.</summary>
     public static readonly MethodDefIntercept MdIntrinsicType = new(
         InterceptCutKind.Cut, InterceptEmitArm.IntrinsicDispatch,
-        extra: static mi => IsIntrinsicType(mi.DeclaringClass.FullName));
+        extra: static mi => IsIntrinsicType(mi.DeclaringClass.FullName)
+            && !IsCoreClrTypeCollectibilityImport(mi));
 
     /// <summary>Every static member of a CoreLib platform-ISA facade
     /// (<c>Sse2</c>, <c>Lzcnt.X64</c>, <c>AdvSimd.Arm64</c>, <c>PackedSimd</c>, …): the
@@ -2543,6 +2544,40 @@ internal static partial class CoreIntrinsics
         extra: static m => m.Rva == 0
             && m.DeclaringClass.Module.AssemblyName == "System.Private.CoreLib"
             && m.PInvoke is { ModuleName: "QCall" });
+
+    // An intrinsic owner does not replace this import's explicit native binding.
+    internal static bool IsCoreClrTypeCollectibilityImport(MethodInfo method)
+    {
+        if (method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "IsCollectible"
+            || method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.Rva != 0 || !method.IsStatic
+            || method.IsVirtual || method.IsAbstract
+            || (method.Attributes & System.Reflection.MethodAttributes.MemberAccessMask)
+                != System.Reflection.MethodAttributes.Assembly
+            || (method.Attributes & System.Reflection.MethodAttributes.PinvokeImpl) == 0
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0
+            || (method.ImplAttributes & System.Reflection.MethodImplAttributes.PreserveSig) == 0
+            || method.PInvoke is not { ModuleName: "QCall", RawEntryPoint: "RuntimeTypeHandle_IsCollectible" })
+            return false;
+        var signature = method.Signature;
+        if (signature.Header.RawValue != 0 || signature.GenericParameterCount != 0
+            || signature.ParameterTypes is not [{ Kind: TypeKind.Class, Class: {
+                FullName: "System.Runtime.CompilerServices.QCallTypeHandle", IsValueType: true, IsByRefLike: true } } parameter]
+            || parameter.Class.Module != method.Module
+            || signature.ReturnType is not { Kind: TypeKind.Class, Class: {
+                Name: "BOOL", Namespace: "", IsEnum: true, EnumUnderlying: PrimitiveTypeCode.Int32 } result }
+            || result.Module != method.Module || result.Handle.IsNil)
+            return false;
+        var reader = result.Module.Reader;
+        var parent = reader.GetTypeDefinition(result.Handle).GetDeclaringType();
+        if (parent.IsNil)
+            return false;
+        var owner = reader.GetTypeDefinition(parent);
+        return owner.GetDeclaringType().IsNil && reader.StringComparer.Equals(owner.Namespace, "")
+            && reader.StringComparer.Equals(owner.Name, "Interop");
+    }
 
     private static bool IsCoreLibGlobalizationImport(MethodInfo method)
     {

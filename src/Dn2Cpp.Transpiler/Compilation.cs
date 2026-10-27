@@ -4173,6 +4173,11 @@ internal sealed partial class Compilation
 
     public void NoteIntrinsicFtnTarget(MethodInfo m)
     {
+        if (CoreIntrinsics.IsCoreClrTypeCollectibilityImport(m))
+        {
+            NotePInvokeFtnTarget(m);
+            return;
+        }
         if (CoreIntrinsics.BrLifetimeDispose.Matches(m.DeclaringClass.FullName, m.Name))
             Reach(m);
         if (_intrinsicTypeTranspiled.Contains(m))

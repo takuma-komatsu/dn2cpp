@@ -20,6 +20,7 @@
     <Compile Remove="NestedGenericTypeNameSubset.cs" />
     <Compile Remove="GenericDefinitionSymbolNeighbors.cs" />
     <Compile Remove="PropertyAccessorRowsSubset.cs" />
+    <Compile Remove="CollectibilitySubset.cs" />
     <Compile Remove="MetadataDefinitionSubset.cs" />
     <Compile Remove="MetadataDefinitionRoutes.cs" />
   </ItemGroup>
