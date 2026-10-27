@@ -474,6 +474,20 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsRuntimeTypeHandleInstantiation(callee))
+        {
+            string handle = NewTemp("const Dn2CppTypeInfo*");
+            Emit($"{handle} = {DerefReceiver("const Dn2CppTypeInfo*")};");
+            ValidateRuntimeTypeHandle(handle, callee);
+            string arguments = NewTemp("Dn2CppArrayRef*");
+            Emit($"{arguments} = dn2cpp_type_get_generic_arguments(dn2cpp_get_type_from_handle({handle}));");
+            // The helper allocates a fresh array; private wrappers use null at zero arity.
+            Emit($"if ({arguments}->length == 0) {arguments} = nullptr;");
+            PushReflectionMemberArray(arguments, callee.Signature.ReturnType);
+            _stack[^1] = _stack[^1] with { StaticType = callee.Signature.ReturnType };
+            return;
+        }
+
         if (CoreIntrinsics.IsRuntimeTypeHandleAccessor(callee))
         {
             string handle = NewTemp("const Dn2CppTypeInfo*");

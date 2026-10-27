@@ -3,6 +3,7 @@ using Mono.Cecil;
 using Mono.Cecil.Cil;
 
 if (FormalDeclaringMethodFixture.Run(args)) return;
+if (RuntimeTypeInstantiationFixture.Run(args)) return;
 if (RuntimeTypeIsSzArrayFixture.Run(args)) return;
 if (CollectibilityImportFixture.Run(args)) return;
 if (MetadataDefinitionFixture.Run(args)) return;

@@ -554,6 +554,13 @@ existing native SZ-array predicate with a null Type guard. Its retained getter,
 direct calls and address-taken wrappers share that lowering; neither CoreCLR
 element codes nor rank alone define native array identity.
 
+The exact managed `RuntimeTypeHandle.GetInstantiationInternal` and
+`GetInstantiationPublic` wrappers read native formal or constructed type arguments.
+They validate default handles and return null at zero arity. Nonempty results are
+fresh arrays carrying the declared RuntimeType[] or Type[] identity; public getter
+normalization stays in its managed body. Raw handles are not rooted through array
+or pointer elements, and the raw QCall keeps native-import binding authority.
+
 The exact public `RuntimeType.DeclaringMethod` getter uses native formal-owner
 metadata and preserves its non-parameter validation text. RuntimeType is sealed;
 its address and virtual-address bindings use that same wrapper, never a CoreCLR

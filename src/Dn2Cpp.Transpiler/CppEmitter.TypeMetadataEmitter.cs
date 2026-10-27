@@ -3796,6 +3796,7 @@ internal sealed partial class CppEmitter
                         || CoreIntrinsics.IsCoreClrIntroducedMethodEnumeration(method)
                         || CoreIntrinsics.IsCoreClrCanonicalTypeComparison(method)
                         || CoreIntrinsics.IsRuntimeTypeHandleAccessor(method)
+                        || CoreIntrinsics.IsRuntimeTypeHandleInstantiation(method)
                         || CoreIntrinsics.IsRuntimeTypeHandleConstructor(method)
                         || CoreIntrinsics.IsRuntimeTypeCacheHandleBridge(method)
                         || CoreIntrinsics.IsRuntimeTypeInterfaceCheck(method)

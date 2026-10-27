@@ -625,6 +625,7 @@ internal static partial class CoreIntrinsics
             || IsCoreClrCanonicalTypeComparison(mi)
             || IsRuntimeTypeHandleAccessor(mi)
             || IsRuntimeTypeHandleIsSZArray(mi)
+            || IsRuntimeTypeHandleInstantiation(mi)
             || IsRuntimeTypeHandleConstructor(mi)
             || IsRuntimeTypeCacheHandleBridge(mi)
             || IsRuntimeTypeInterfaceCheck(mi)
@@ -1091,6 +1092,26 @@ internal static partial class CoreIntrinsics
             && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
             && signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
             && parameter.Module == method.Module;
+    }
+
+    // The managed wrappers differ in array identity, not argument materialization.
+    internal static bool IsRuntimeTypeHandleInstantiation(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle"
+            || method.Name is not ("GetInstantiationInternal" or "GetInstantiationPublic")
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Class, Class: { } element } }
+            && element.Module == method.Module
+            && element.FullName == (method.Name == "GetInstantiationInternal" ? "System.RuntimeType" : "System.Type");
     }
 
     // RuntimeType's public owner query uses native formal metadata, not its CoreCLR fields.

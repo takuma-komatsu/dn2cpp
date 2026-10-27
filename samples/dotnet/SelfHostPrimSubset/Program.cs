@@ -9,6 +9,16 @@ internal static class Program
 {
     private static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "type-instantiation-artifact")
+        {
+            RuntimeTypeInstantiationSubset.Program.RunArtifact(Array.Empty<string>());
+            return;
+        }
+        if (args.Length > 0 && args[0] == "type-instantiation-reflection")
+        {
+            RuntimeTypeInstantiationSubset.Program.RunReflectionArtifact(Array.Empty<string>());
+            return;
+        }
         if (args.Length > 0 && args[0] == "runtime-type-szarray-artifact")
         {
             RuntimeTypeIsSzArraySubset.Program.RunArtifact(Array.Empty<string>());
@@ -281,5 +291,7 @@ internal static class Program
         FormalDeclaringMethodSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-runtime-type-szarray") return;
         RuntimeTypeIsSzArraySubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-type-instantiation") return;
+        RuntimeTypeInstantiationSubset.Program.Run();
     }
 }
