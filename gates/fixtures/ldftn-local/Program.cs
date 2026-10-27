@@ -2,6 +2,7 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (GenericConstraintArrayFixture.Run(args)) return;
 if (ContainsGenericVariablesFixture.Run(args)) return;
 if (GenericParameterPositionFixture.Run(args)) return;
 if (RuntimeTypeMakeGenericFixture.Run(args)) return;

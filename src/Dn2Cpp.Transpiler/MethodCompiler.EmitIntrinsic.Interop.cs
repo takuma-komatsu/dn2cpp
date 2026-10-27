@@ -553,6 +553,21 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsRuntimeTypeHandleConstraints(callee))
+        {
+            string handle = NewTemp("const Dn2CppTypeInfo*");
+            Emit($"{handle} = {DerefReceiver("const Dn2CppTypeInfo*")};");
+            ValidateRuntimeTypeHandle(handle, callee);
+            ValidateRuntimeTypeInterface($"({handle}->flags & DN2CPP_TF_GENERICPARAM) == 0", "Arg_InvalidHandle", callee);
+            string constraints = NewTemp("Dn2CppArrayRef*");
+            Emit($"{constraints} = dn2cpp_type_get_generic_parameter_constraints(dn2cpp_get_type_from_handle({handle}));");
+            // The retained public getter owns Type.EmptyTypes normalization.
+            Emit($"if ({constraints}->length == 0) {constraints} = nullptr;");
+            PushReflectionMemberArray(constraints, callee.Signature.ReturnType);
+            _stack[^1] = _stack[^1] with { StaticType = callee.Signature.ReturnType };
+            return;
+        }
+
         if (CoreIntrinsics.IsRuntimeTypeHandleAccessor(callee))
         {
             string handle = NewTemp("const Dn2CppTypeInfo*");

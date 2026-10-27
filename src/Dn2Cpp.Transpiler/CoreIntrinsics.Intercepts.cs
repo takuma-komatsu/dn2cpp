@@ -628,6 +628,7 @@ internal static partial class CoreIntrinsics
             || IsRuntimeTypeHandleInstantiation(mi)
             || IsRuntimeTypeHandleGenericVariableIndex(mi)
             || IsRuntimeTypeHandleContainsGenericVariables(mi)
+            || IsRuntimeTypeHandleConstraints(mi)
             || IsRuntimeTypeGenericParameterPosition(mi)
             || IsRuntimeTypeHandleInstantiate(mi)
             || IsRuntimeTypeMakeGenericType(mi)
@@ -1131,6 +1132,24 @@ internal static partial class CoreIntrinsics
         return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
             && signature.ParameterTypes.Length == 0
             && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean };
+    }
+
+    // Constraint payloads use native formal metadata, not CoreCLR type variables.
+    internal static bool IsRuntimeTypeHandleConstraints(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "GetConstraints"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Class, Class: { FullName: "System.Type" } element } }
+            && element.Module == method.Module;
     }
 
     internal static bool IsRuntimeTypeGenericParameterPosition(MethodInfo method)

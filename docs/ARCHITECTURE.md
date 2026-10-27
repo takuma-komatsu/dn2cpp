@@ -579,6 +579,16 @@ public getter keeps its managed body. Retained calls, function pointers, delegat
 and reflection share this wrapper; the static InternalCall remains a distinct VM
 boundary, and open function-pointer construction keeps its existing refusal.
 
+The exact managed `RuntimeTypeHandle.GetConstraints()` wrapper reads the existing
+native formal-constraint metadata. Default handles and non-parameter handles keep
+their distinct validation. Zero constraints return null; nonempty results are
+fresh, precisely typed Type[] arrays over interned constraint identities. The
+retained public RuntimeType getter keeps its managed non-parameter validation and
+Type.EmptyTypes normalization. Direct calls, address bindings and reflection rows
+share the wrapper, while its raw QCall keeps native-import binding authority.
+This does not change the separate Type intrinsic's existing unsupported-receiver
+policy or the formal context, completion and missing-metadata rules.
+
 The exact public `RuntimeType.MakeGenericType(Type[])` override shares the existing
 native `Type.MakeGenericType` AOT, open-type and template policy. Its retained body,
 direct calls and address bindings never enter CoreCLR's instantiating loader.
