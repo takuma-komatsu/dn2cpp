@@ -1490,11 +1490,33 @@ internal sealed partial class Compilation
                 || blob.ReadByte() != (byte)SignatureTypeCode.Boolean || blob.ReadByte() != (byte)SignatureTypeCode.Object)
                 throw new NotSupportedException("RuntimeType enum defined query requires its exact MemberRef signature");
         }
+        if (name == "IsAssignableFrom" && candidates.Any(CoreIntrinsics.IsRuntimeTypeAssignableFrom))
+        {
+            // Arity fallback must not reinterpret an unknown source as the TypeInfo sibling.
+            // That legitimate overload remains managed IL, not an additional adapter.
+            if (!RuntimeTypeAssignableFromMemberRefShape(reader, mr)
+                || sig.Header.RawValue != 0x20 || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+                || sig.ParameterTypes is not [{ Kind: TypeKind.Class, Class: { FullName: "System.Type" or "System.Reflection.TypeInfo" } argument }]
+                || argument.Module != resolved.Module
+                || !SameTypeArg(sig.ParameterTypes[0], resolved.Signature.ParameterTypes[0]))
+                throw new NotSupportedException("RuntimeType assignability query requires its exact MemberRef signature");
+        }
         if (typeRefParent)
             _memberRefMethodsByTypeRef[(module.Index, SRME.GetToken(handle))] = resolved;
         else
             _memberRefMethodsBySpec[(module.Index, SRME.GetToken(handle), cls)] = resolved;
         return resolved;
+    }
+
+    private static bool RuntimeTypeAssignableFromMemberRefShape(MetadataReader reader, MemberReference member)
+    {
+        var blob = reader.GetBlobReader(member.Signature);
+        if (blob.RemainingBytes < 5 || blob.ReadByte() != 0x20 || blob.ReadByte() != 1
+            || blob.ReadByte() != (byte)SignatureTypeCode.Boolean || blob.ReadByte() != 0x12)
+            return false;
+        blob.ReadCompressedInteger();
+        return blob.RemainingBytes == 0;
     }
 
     private static bool RuntimeTypeAttributeMemberRefShape(MetadataReader reader, MemberReference member, bool helper)

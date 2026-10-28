@@ -151,7 +151,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsRuntimeTypeHandleMakeArray(m)
             || CoreIntrinsics.IsRuntimeTypeGenericParameterPosition(m)
             || CoreIntrinsics.IsRuntimeTypeHandleInstantiate(m)
-            || (CoreIntrinsics.IsRuntimeTypeArrayRank(m) || CoreIntrinsics.IsRuntimeTypeEnumName(m) || CoreIntrinsics.IsRuntimeTypeEnumDefined(m) || CoreIntrinsics.IsRuntimeTypeTypeCode(m))
+            || (CoreIntrinsics.IsRuntimeTypeArrayRank(m) || CoreIntrinsics.IsRuntimeTypeEnumName(m) || CoreIntrinsics.IsRuntimeTypeEnumDefined(m) || CoreIntrinsics.IsRuntimeTypeAssignableFrom(m) || CoreIntrinsics.IsRuntimeTypeTypeCode(m))
             || CoreIntrinsics.IsRuntimeTypeMakeGenericType(m)
             || CoreIntrinsics.IsRuntimeTypeHandleConstructor(m)
             || CoreIntrinsics.IsRuntimeTypeCacheHandleBridge(m)

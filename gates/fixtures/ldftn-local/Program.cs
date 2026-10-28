@@ -2,6 +2,9 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (RuntimeTypeAssignableFromGuards.Run(args)) return;
+if (RuntimeTypeAssignableFromRawGuards.Run(args)) return;
+if (RuntimeTypeAssignableFromFixture.Run(args)) return;
 if (RuntimeTypeEnumDefinedGuards.Run(args)) return;
 if (RuntimeTypeEnumDefinedFixture.Run(args)) return;
 if (RuntimeTypeIsPrimitiveRawGuards.Run(args)) return;

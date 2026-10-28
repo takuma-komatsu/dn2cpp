@@ -526,6 +526,18 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsRuntimeTypeAssignableFrom(callee))
+        {
+            string value = Cast(Pop(), "Dn2CppObject*");
+            string receiver = CallIsVirtual && _constrained is not null
+                ? DerefReceiver("Dn2CppType*") : Cast(Pop(), "Dn2CppType*");
+            // callvirt checks before entry; the raw managed body returns false for a null source first.
+            if (CallIsVirtual)
+                receiver = $"dn2cpp_null_check({receiver})";
+            Push(StackKind.I4, "int32_t", $"dn2cpp_runtime_type_is_assignable_from({receiver}, {value})");
+            return;
+        }
+
         if (CoreIntrinsics.IsRuntimeTypeTypeCode(callee))
         {
             string receiver = CallIsVirtual && _constrained is not null

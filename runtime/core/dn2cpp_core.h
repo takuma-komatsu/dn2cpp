@@ -1791,6 +1791,7 @@ int32_t dn2cpp_type_get_array_rank(Dn2CppType* a);
 // (System.Array, the array collection interfaces, element covariance) and generic
 // variance answer here exactly as a cast would.
 int32_t dn2cpp_type_is_assignable_from(Dn2CppType* a, Dn2CppType* b);
+int32_t dn2cpp_runtime_type_is_assignable_from(Dn2CppType* receiver, Dn2CppObject* source);
 int32_t dn2cpp_type_is_assignable_to(Dn2CppType* t, Dn2CppType* target);
 // Type.IsInstanceOfType(obj): obj is non-null and an instance of type a.
 int32_t dn2cpp_type_is_instance_of_type(Dn2CppType* a, Dn2CppObject* obj);

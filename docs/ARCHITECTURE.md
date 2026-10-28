@@ -671,6 +671,18 @@ virtual null receiver still faults before entry. Both public overloads retain
 real IL across calls and address bindings; the raw QCalls remain independent
 native-import boundaries.
 
+The exact retained `RuntimeType.IsAssignableFrom(Type)` override reuses the
+existing native relation engine, including its metadata and nullable handling.
+Raw calls return false for a null source before observing the receiver;
+`callvirt` validates the receiver first. Non-null sources must carry the native
+RuntimeType object header: custom Type objects are rejected with
+`PlatformNotSupportedException` before accessing a native Type payload, even
+when the raw receiver is null. This boundary does not implement custom
+`UnderlyingSystemType` or TypeBuilder dispatch, change existing relation limits,
+or intercept the TypeInfo overload or arbitrary Type overrides.
+`selfhost-prim-subset` verifies the retained routes, Boolean invocation ABI,
+header-only rejection boundary, and existing class/interface/array relations.
+
 The exact `RuntimeType.IsEnumDefined(object)` override reuses the native enum
 lookup with strict boxed enum/underlying-type compatibility and literal name
 aliases. A raw retained call checks null value before dereferencing its receiver;

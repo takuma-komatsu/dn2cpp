@@ -1612,6 +1612,17 @@ int32_t dn2cpp_type_is_assignable_from(Dn2CppType* a, Dn2CppType* b)
         || dn2cpp_is_nullable_of(a->typeInfo, b->typeInfo) ? 1 : 0;
 }
 
+// Raw calls return false for a null source before observing the receiver.
+// Custom Type objects have no native Type payload; do not reinterpret their fields.
+int32_t dn2cpp_runtime_type_is_assignable_from(Dn2CppType* receiver, Dn2CppObject* source)
+{
+    if (source == nullptr)
+        return 0;
+    if (source->type != &dn2cpp_type_type)
+        dn2cpp_throw_platform_not_supported("Assignability requires a runtime Type source.");
+    return dn2cpp_type_is_assignable_from(receiver, static_cast<Dn2CppType*>(source));
+}
+
 // Type.IsAssignableTo(other): the argument-swapped IsAssignableFrom, and it
 // cannot BE that call with the arguments swapped — the swap exchanges the two
 // nulls, which mean opposite things. The receiver's null is the NRE; the target's
