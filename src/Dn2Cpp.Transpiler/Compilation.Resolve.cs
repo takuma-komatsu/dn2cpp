@@ -92,7 +92,7 @@ internal sealed partial class Compilation
                 // receiver (which folds to the dispatching runtime helper) finds it. Over-
                 // reaching on the non-virtual form is harmless.
                 ReachExceptionGetMessage(mi);
-                if (CoreIntrinsics.IsRuntimeTypeHandleCopy(mi)
+                if ((CoreIntrinsics.IsRuntimeTypeHandleCopy(mi) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(mi))
                     || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(mi)
                     || CoreIntrinsics.IsPrimitiveElementHelper(mi)
                     || CoreIntrinsics.IsMemberNotFoundExceptionFactory(mi)
@@ -1519,6 +1519,15 @@ internal sealed partial class Compilation
                 || member.Module != resolved.Module || !CoreIntrinsics.BrCustomAttributeDataMember.Matches(resolved))
                 throw new NotSupportedException("CustomAttributeData member query requires its exact MemberRef signature");
         }
+        if (name == "GetIntroducedMethods" && candidates.Any(CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory))
+        {
+            if (!CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactorySignature(reader.GetBlobReader(mr.Signature))
+                || sig.Header.RawValue != 0 || sig.GenericParameterCount != 0
+                || sig.ReturnType != resolved.Signature.ReturnType || sig.ParameterTypes.Length != 1
+                || sig.ParameterTypes[0] != resolved.Signature.ParameterTypes[0]
+                || !CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(resolved))
+                throw new NotSupportedException("RuntimeTypeHandle introduced-method factory requires its exact MemberRef signature");
+        }
         if (name == "<GetGenericTypeDefinition>g__CacheGenericDefinition|50_0"
             && candidates.Any(CoreIntrinsics.IsRuntimeTypeCacheGenericDefinition))
         {
@@ -1739,6 +1748,13 @@ internal sealed partial class Compilation
                     return factory;
             }
             catch (NotSupportedException e) when (!IsMustEscape(e)) { }
+        }
+        if (full == "System.RuntimeTypeHandle" && reader.StringComparer.Equals(mr.Name, "GetIntroducedMethods")
+            && CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactorySignature(reader.GetBlobReader(mr.Signature)))
+        {
+            var factory = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(factory))
+                return factory;
         }
         if (full == "System.RuntimeTypeHandle" && reader.StringComparer.Equals(mr.Name, "CopyRuntimeTypeHandles"))
         {

@@ -204,7 +204,7 @@ internal sealed partial class Compilation
         }
         if (m.Rva == 0)
             return;
-        if (CoreIntrinsics.IsRuntimeTypeHandleCopy(m) || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m)
+        if ((CoreIntrinsics.IsRuntimeTypeHandleCopy(m) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(m)) || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m)
             || CoreIntrinsics.IsPrimitiveElementHelper(m)
             || CoreIntrinsics.IsMemberNotFoundExceptionFactory(m)
             || CoreIntrinsics.IsMemberMetadataDefinitionBase(m)

@@ -99,6 +99,13 @@ internal static class CoreIntrinsicTypeMaps
             _ => false,
         });
 
+    public static bool IsRuntimeTypeIntroducedMethodsFactoryMethod(string? assembly, string? owner, string name,
+        bool exactAttributes, bool staticDefault, int genericArity, bool managedBody, bool pinvoke,
+        int parameterCount, bool nestedValueResult, bool runtimeTypeInput) =>
+        assembly == "System.Private.CoreLib" && owner == "System.RuntimeTypeHandle"
+        && name == "GetIntroducedMethods" && exactAttributes && staticDefault && genericArity == 0
+        && managedBody && !pinvoke && parameterCount == 1 && nestedValueResult && runtimeTypeInput;
+
     public static bool IsRuntimeTypeHandleCopyMethod(string? assembly, string? owner, string name,
         bool isAssembly, bool staticDefault, int genericArity, bool managedBody, bool pinvoke,
         int parameterCount, string? result, string? first, string? second) =>

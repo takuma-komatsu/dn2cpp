@@ -477,7 +477,7 @@ internal sealed partial class MethodCompiler
             case HandleKind.MethodDefinition:
             {
                 var callee = ResolveMethodDef((MethodDefinitionHandle)handle);
-                if (CoreIntrinsics.IsRuntimeTypeHandleCopy(callee)
+                if ((CoreIntrinsics.IsRuntimeTypeHandleCopy(callee) || CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory(callee))
                     || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(callee)
                     || CoreIntrinsics.IsPrimitiveElementHelper(callee)
                     || CoreIntrinsics.IsMemberNotFoundExceptionFactory(callee)

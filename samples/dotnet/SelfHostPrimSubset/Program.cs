@@ -445,5 +445,7 @@ internal static class Program
         CustomAttributeConstructorSubset.ConstructorChecks.Run();
         if (args.Length > 0 && args[0] == "before-cache-generic-definition") return;
         RuntimeTypeCacheGenericDefinitionSubset.DefinitionChecks.Run();
+        if (args.Length > 0 && args[0] == "before-introduced-methods") return;
+        RuntimeIntroducedMethodsSubset.Program.Run();
     }
 }

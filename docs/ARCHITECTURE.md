@@ -555,6 +555,14 @@ MemberInfo declaring-type helper is unchanged; this is not nested-type parity. R
 an interned Type follows the existing NoAlloc policy for cached reflection handles,
 which does not promise zero cold initialization allocation.
 
+The exact managed `RuntimeTypeHandle.GetIntroducedMethods(RuntimeType)` factory keeps
+its real IL and nested value-type return. Its real constructor still enters the existing
+GetFirstIntroducedMethod unsupported-VM boundary before any iterator is returned;
+GetNextIntroducedMethod retains the same separate refusal. The copied-body traversal
+preserves constructor and field dependencies. No null guard or empty iterator is
+substituted for the factory, and public reflection rows are not CLR MethodDesc handles.
+This enables transpilation through the factory, not private VM enumeration at runtime.
+
 The retained RuntimeTypeCache generic-definition local helper reads its actual managed
 owner field and requires a canonical Type header before payload access. Definitions
 return the same owner; constructed types use the existing native definition identity.

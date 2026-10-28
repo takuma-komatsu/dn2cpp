@@ -810,6 +810,41 @@ internal static partial class CoreIntrinsics
             signature.ParameterTypes.Length == 1 ? Shape(signature.ParameterTypes[0]) : null);
     }
 
+    // Keep the real value-type factory and its constructor's existing VM boundary.
+    internal static bool IsRuntimeTypeIntroducedMethodsFactory(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "GetIntroducedMethods")
+            return false;
+        if (!IsRuntimeTypeIntroducedMethodsFactorySignature(method.Module.Reader.GetBlobReader(
+            method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
+            return false;
+        var signature = method.Signature;
+        bool result = signature.ReturnType is { Kind: TypeKind.Class, Class: {
+                FullName: "IntroducedMethodEnumerator", IsValueType: true, GenericArity: 0 } value }
+            && value.Module == method.Module
+            && method.Module.Reader.GetTypeDefinition(value.Handle).GetDeclaringType() == method.DeclaringClass.Handle;
+        bool parameter = signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: {
+                FullName: "System.RuntimeType", IsValueType: false } type }]
+            && type.Module == method.Module;
+        return CoreIntrinsicTypeMaps.IsRuntimeTypeIntroducedMethodsFactoryMethod(
+            method.Module.AssemblyName, method.DeclaringClass.FullName, method.Name,
+            method.Attributes == (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig),
+            signature.Header.RawValue == 0, signature.GenericParameterCount,
+            method.Rva != 0 && method.ImplAttributes == System.Reflection.MethodImplAttributes.IL,
+            method.PInvoke is not null, signature.ParameterTypes.Length, result, parameter);
+    }
+
+    internal static bool IsRuntimeTypeIntroducedMethodsFactorySignature(BlobReader blob) =>
+        blob.RemainingBytes >= 6 && blob.ReadByte() == 0 && blob.ReadByte() == 1
+        && blob.ReadByte() == 0x11 && blob.TryReadCompressedInteger(out int result)
+        && result > 0 && (result >> 2) != 0 && (result & 3) != 3
+        && blob.RemainingBytes >= 2 && blob.ReadByte() == 0x12
+        && blob.TryReadCompressedInteger(out int parameter) && parameter > 0
+        && (parameter >> 2) != 0 && (parameter & 3) != 3 && blob.RemainingBytes == 0;
+
     // These managed copies consume the supported Value/TypeHandle APIs, not VM fields.
     internal static bool IsRuntimeTypeHandleCopy(MethodInfo method)
     {

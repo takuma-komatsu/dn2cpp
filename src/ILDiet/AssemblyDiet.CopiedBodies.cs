@@ -199,6 +199,30 @@ internal sealed partial class AssemblyDiet
             method.Parameters.Count == 1 ? Shape(method.Parameters[0].ParameterType) : null);
     }
 
+    private static bool IsCopiedRuntimeTypeIntroducedMethodsFactory(MethodDefinition method, string owner)
+    {
+        if (method.Module.Assembly?.Name.Name != "System.Private.CoreLib"
+            || owner != "System.RuntimeTypeHandle" || method.Name != "GetIntroducedMethods")
+            return false;
+        static bool Core(TypeReference type) => type.Scope is AssemblyNameReference reference
+            ? reference.Name == "System.Private.CoreLib"
+            : type.Scope is ModuleDefinition module && module.Assembly?.Name.Name == "System.Private.CoreLib";
+        var result = method.ReturnType;
+        bool nested = result is not TypeSpecification && result.IsValueType && !result.HasGenericParameters
+            && result.Name == "IntroducedMethodEnumerator" && result.Namespace.Length == 0
+            && result.DeclaringType is { FullName: "System.RuntimeTypeHandle" } parent && Core(parent) && Core(result);
+        bool input = method.Parameters.Count == 1 && method.Parameters[0].ParameterType is var parameter
+            && parameter is not TypeSpecification && !parameter.IsValueType
+            && parameter.FullName == "System.RuntimeType" && Core(parameter);
+        return CoreIntrinsicTypeMaps.IsRuntimeTypeIntroducedMethodsFactoryMethod(
+            method.Module.Assembly?.Name.Name, owner, method.Name,
+            method.Attributes == (MethodAttributes.Assembly | MethodAttributes.Static | MethodAttributes.HideBySig),
+            !method.HasThis && !method.ExplicitThis && method.CallingConvention == MethodCallingConvention.Default,
+            method.GenericParameters.Count, method.HasBody && method.ImplAttributes == MethodImplAttributes.IL
+                && method.Body.Instructions.Count != 0,
+            method.IsPInvokeImpl || method.HasPInvokeInfo, method.Parameters.Count, nested, input);
+    }
+
     private static bool IsCopiedRuntimeTypeHandleCopy(MethodDefinition method, string owner)
     {
         if (method.Module.Assembly?.Name.Name != "System.Private.CoreLib"
@@ -273,7 +297,8 @@ internal sealed partial class AssemblyDiet
             traverse = false;
         else if (IsCopiedMemberMetadataDefinition(method, owner))
             traverse = owner == "System.Reflection.MemberInfo";
-        else if (IsCopiedRuntimeTypeHandleCopy(method, owner) || IsCopiedAmbiguousMatchExceptionFactory(method, owner)
+        else if (IsCopiedRuntimeTypeIntroducedMethodsFactory(method, owner)
+            || IsCopiedRuntimeTypeHandleCopy(method, owner) || IsCopiedAmbiguousMatchExceptionFactory(method, owner)
             || IsCopiedMemberNotFoundExceptionFactory(method, owner) || IsCopiedPrimitiveElementHelper(method, owner))
             traverse = true;
         else if (owner is "System.Array" or "System.Delegate")
