@@ -630,6 +630,7 @@ internal static partial class CoreIntrinsics
             || IsRuntimeTypeHandleGetToken(mi)
             || IsRuntimeTypeHandleGetAttributes(mi)
             || IsRuntimeTypeHandleHasElementType(mi)
+            || IsRuntimeTypeHandleIsArray(mi)
             || IsRuntimeTypeHandleGetElementType(mi)
             || IsRuntimeTypeHandleIsTypeDefinition(mi)
             || IsRuntimeTypeHandleGetAssembly(mi)
@@ -1260,6 +1261,44 @@ internal static partial class CoreIntrinsics
             || method.DeclaringClass.Module != method.Module
             || method.DeclaringClass.FullName != "System.RuntimeType" || !method.DeclaringClass.IsSealed
             || method.Name != "HasElementTypeImpl"
+            || method.Attributes != (System.Reflection.MethodAttributes.Family | System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean };
+    }
+
+    // Array identity uses the native category, independently of element metadata precision.
+    internal static bool IsRuntimeTypeHandleIsArray(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "IsArray"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall))
+                != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
+            && parameter.Module == method.Module;
+    }
+
+    internal static bool IsRuntimeTypeIsArrayOverride(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || !method.DeclaringClass.IsSealed
+            || method.Name != "IsArrayImpl"
             || method.Attributes != (System.Reflection.MethodAttributes.Family | System.Reflection.MethodAttributes.Virtual
                 | System.Reflection.MethodAttributes.HideBySig)
             || method.Rva == 0 || method.PInvoke is not null
