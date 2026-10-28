@@ -6,6 +6,8 @@ if (RuntimeTypeEnumNameGuards.Run(args)) return;
 if (RuntimeTypeEnumNameFixture.Run(args)) return;
 
 if (RuntimeTypeArrayRankGuards.Run(args)) return;
+if (RuntimeTypeTypeCodeFixture.Run(args)) return;
+if (RuntimeTypeTypeCodeGuards.Run(args)) return;
 if (RuntimeTypeArrayRankFixture.Run(args)) return;
 if (RuntimeTypeAttributesGuards.Run(args)) return;
 if (RuntimeTypeElementFixture.Run(args)) return;

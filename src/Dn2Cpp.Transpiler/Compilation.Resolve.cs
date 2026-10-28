@@ -1382,6 +1382,15 @@ internal sealed partial class Compilation
                     || parameter.Module != resolved.Module)))
                 throw new NotSupportedException("RuntimeType module query requires its exact MemberRef signature");
         }
+        if (CoreIntrinsics.IsRuntimeTypeTypeCode(resolved))
+        {
+            if (!RuntimeTypeAttributeMemberRefShape(reader, mr, helper: false)
+                || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.Class, Class: { FullName: "System.TypeCode", IsEnum: true,
+                    EnumUnderlying: PrimitiveTypeCode.Int32 } result }
+                || result.Module != resolved.Module)
+                throw new NotSupportedException("RuntimeType type-code query requires its exact MemberRef signature");
+        }
         if (CoreIntrinsics.IsRuntimeTypeEnumName(resolved))
         {
             var blob = reader.GetBlobReader(mr.Signature);
@@ -1402,7 +1411,7 @@ internal sealed partial class Compilation
         if (blob.RemainingBytes < 3 || blob.ReadByte() != (helper ? 0 : 0x20)
             || blob.ReadCompressedInteger() != (helper ? 1 : 0) || blob.ReadByte() != 0x11)
             return false;
-        blob.ReadCompressedInteger(); // TypeAttributes is encoded as a value type.
+        blob.ReadCompressedInteger(); // The attribute/type-code enum is encoded as a value type.
         if (helper)
         {
             if (blob.RemainingBytes < 2 || blob.ReadByte() != 0x12)
