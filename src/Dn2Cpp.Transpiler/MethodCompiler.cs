@@ -1245,6 +1245,32 @@ internal sealed partial class MethodCompiler : IEvalStack
             || CoreIntrinsics.IsCoreClrDeclaringMethodBridge(_method)
             || CoreIntrinsics.IsCoreClrTypeMaterialization(_method) && _method.Rva == 0)
             return CompileInterceptWrapper();
+        if (CoreIntrinsics.BrCustomAttributeDataMember.Matches(_method))
+            return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
+            {
+                var elem = CustomAttributeDataElem(_method.Signature.ReturnType);
+                var definition = Comp.OpenGenericDefHandleByName("System.Collections.ObjectModel.ReadOnlyCollection`1");
+                if (definition is not { } def || def.Module != _method.Module)
+                    throw new NotSupportedException("CustomAttributeData requires CoreLib ReadOnlyCollection<T>");
+                var collection = Comp.Instantiate(def.Module, def.Handle, new[] { elem });
+                var ctor = Comp.ReachManagedMethod(collection, ".ctor",
+                    ps => ps.Length == 1 && ps[0] == _method.Signature.ReturnType, allocates: true)
+                    ?? throw new NotSupportedException("CustomAttributeData requires ReadOnlyCollection<T>(IList<T>)");
+                var member = Pop();
+                PushReflectionMemberArray(
+                    $"dn2cpp_custom_attribute_data_get_custom_attributes({Cast(member, "Dn2CppObject*")})",
+                    TypeDesc.MakeSZArray(elem));
+                var array = Pop();
+                // CoreLib exposes its empty array; nonempty data is a read-only collection.
+                Emit($"if ({array.Expr}->length == 0) return ({CppTypes.Of(_method.Signature.ReturnType)}){array.Expr};");
+                string result = NewTemp(collection.CppStructName + "*");
+                Emit($"{result} = ({collection.CppStructName}*)dn2cpp_alloc(sizeof({collection.CppStructName}));");
+                Emit($"((Dn2CppObject*){result})->type = &{collection.CppTypeInfoName};");
+                Emit($"{DirectCall(ctor, new List<string> { result, Cast(array, CppTypes.Of(ctor.Signature.ParameterTypes[0])) })};");
+                PushEntry(new StackEntry(result, StackKind.Ref, collection.CppStructName + "*",
+                    StaticType: TypeDesc.MakeClass(collection)));
+                return true;
+            }, "canonical MemberInfo attribute data");
         if (CoreIntrinsics.BrRuntimeTypeHandleDeclaringType.Matches(_method))
             return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
             {

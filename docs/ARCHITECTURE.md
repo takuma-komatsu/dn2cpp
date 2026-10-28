@@ -555,6 +555,15 @@ MemberInfo declaring-type helper is unchanged; this is not nested-type parity. R
 an interned Type follows the existing NoAlloc policy for cached reflection handles,
 which does not promise zero cold initialization allocation.
 
+The retained `CustomAttributeData.GetCustomAttributes(MemberInfo)` wrapper accepts
+canonical native Type, method, constructor, field, property and event handles. Null
+throws ArgumentNullException for `target`; custom MemberInfo headers explicitly refuse
+before payload access rather than silently losing a virtual override. Existing row-data
+materialization supplies AttributeType without running attribute constructors. A managed
+ReadOnlyCollection wraps nonempty rows so IList mutation remains unsupported; empty
+results retain the array representation and its index-bound checks. Encoded argument views and sibling overloads are not expanded. The new
+wrapper does not change existing instance helpers or custom virtual dispatch policy.
+
 ### B. A BCL intrinsic (a `System.*` call) — core lane
 
 1. Add a case to the `switch (declType, name)` in

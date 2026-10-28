@@ -3832,6 +3832,7 @@ internal sealed partial class CppEmitter
                         || CoreIntrinsics.IsCoreClrDeclaringMethodBridge(method)
                         || CoreIntrinsics.IsCoreClrTypeMaterialization(method)
                         || CoreIntrinsics.BrNullableReboxing.Matches(method)
+                        || CoreIntrinsics.BrCustomAttributeDataMember.Matches(method)
                         || CoreIntrinsics.BrRuntimeTypeHandleDeclaringType.Matches(method)
                         || CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(method)
                         || CoreIntrinsics.BrCoreClrActivationInfo.Matches(method)

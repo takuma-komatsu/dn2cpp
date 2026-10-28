@@ -439,5 +439,7 @@ internal static class Program
         RuntimeTypeHandleNameSubset.NameChecks.Run();
         if (args.Length > 0 && args[0] == "before-runtime-type-declaring") return;
         RuntimeTypeDeclaringSubset.DeclaringChecks.Run();
+        if (args.Length > 0 && args[0] == "before-cad-member") return;
+        CustomAttributeDataMemberSubset.DataChecks.Run();
     }
 }

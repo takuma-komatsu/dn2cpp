@@ -10640,6 +10640,15 @@ Dn2CppArrayRef* dn2cpp_member_custom_attributes_data(Dn2CppObject* member)
     return dn2cpp_attr_table_to_data_array(tab, count);
 }
 
+Dn2CppArrayRef* dn2cpp_custom_attribute_data_get_custom_attributes(Dn2CppObject* target)
+{
+    if (target == nullptr)
+        dn2cpp_throw_argument_null_param("target");
+    if (!dn2cpp_native_member_header(target->type))
+        dn2cpp_throw_platform_not_supported("CustomAttributeData.GetCustomAttributes: custom MemberInfo is not supported");
+    return dn2cpp_member_custom_attributes_data(target);
+}
+
 Dn2CppArrayRef* dn2cpp_assembly_custom_attributes_data(const char* name)
 {
     int32_t count;

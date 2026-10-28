@@ -341,6 +341,7 @@ internal enum InterceptEmitArm
     RuntimeTypeCreateInstanceOfTBody,
     RuntimeTypeHandleConstructNameBody,
     RuntimeTypeHandleDeclaringTypeBody,
+    CustomAttributeDataMemberBody,
     CoreClrActivationInfoBody,
     RuntimeTypeDefaultStructCtorBody,
     DelegateNamedConstructorBody,
@@ -855,6 +856,50 @@ internal static partial class CoreIntrinsics
     public static readonly MethodDefIntercept BrRuntimeTypeHandleConstructName = new(
         InterceptCutKind.BodyReplace, InterceptEmitArm.RuntimeTypeHandleConstructNameBody,
         typeGate: "System.RuntimeTypeHandle", nameGate: "ConstructName", extra: static m => IsRuntimeTypeHandleConstructName(m));
+
+    internal static bool IsCustomAttributeDataMember(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.Reflection.CustomAttributeData" || method.Name != "GetCustomAttributes"
+            || method.Attributes != (System.Reflection.MethodAttributes.Public | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null || method.ImplAttributes != System.Reflection.MethodImplAttributes.IL)
+            return false;
+        if (!IsCustomAttributeDataMemberSignature(method.Module.Reader.GetBlobReader(
+            method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
+            return false;
+        var signature = method.Signature;
+        if (signature.Header.RawValue != 0 || signature.GenericParameterCount != 0
+            || signature.ReturnType is not { Kind: TypeKind.Class, Class: { } list }
+            || list.Module != method.Module || list.Handle.IsNil
+            || list.Context.TypeArgs is not [{ Kind: TypeKind.Class, Class: { } element }]
+            || element != method.DeclaringClass
+            || signature.ParameterTypes is not [{ Kind: TypeKind.Class, Class: { FullName: "System.Reflection.MemberInfo" } member }]
+            || member.Module != method.Module)
+            return false;
+        var reader = list.Module.Reader;
+        var definition = reader.GetTypeDefinition(list.Handle);
+        return definition.GetDeclaringType().IsNil
+            && reader.StringComparer.Equals(definition.Namespace, "System.Collections.Generic")
+            && reader.StringComparer.Equals(definition.Name, "IList`1");
+    }
+
+    internal static bool IsCustomAttributeDataMemberSignature(BlobReader blob) =>
+        blob.RemainingBytes >= 10 && blob.ReadByte() == 0 && blob.ReadByte() == 1
+        && blob.ReadByte() == 0x15 && blob.ReadByte() == 0x12
+        && blob.TryReadCompressedInteger(out int listToken) && listToken > 0
+        && (listToken >> 2) != 0 && (listToken & 3) != 3
+        && blob.RemainingBytes >= 5 && blob.ReadByte() == 1 && blob.ReadByte() == 0x12
+        && blob.TryReadCompressedInteger(out int elementToken) && elementToken > 0
+        && (elementToken >> 2) != 0 && (elementToken & 3) != 3
+        && blob.RemainingBytes >= 2 && blob.ReadByte() == 0x12
+        && blob.TryReadCompressedInteger(out int memberToken) && memberToken > 0
+        && (memberToken >> 2) != 0 && (memberToken & 3) != 3 && blob.RemainingBytes == 0;
+
+    public static readonly MethodDefIntercept BrCustomAttributeDataMember = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.CustomAttributeDataMemberBody,
+        typeGate: "System.Reflection.CustomAttributeData", nameGate: "GetCustomAttributes", extra: static m => IsCustomAttributeDataMember(m));
 
     internal static bool IsRuntimeTypeHandleDeclaringType(MethodInfo method)
     {
@@ -3851,6 +3896,10 @@ internal static partial class CoreIntrinsics
         if (BrDelegateNamedConstructor.CutKind != InterceptCutKind.BodyReplace)
             throw new InvalidOperationException("Named delegate constructors must remain callable");
 
+        CheckRow(nameof(BrCustomAttributeDataMember), 0, BrCustomAttributeDataMember.EmitArm,
+            BrCustomAttributeDataMember.TypeGate, BrCustomAttributeDataMember.NameGate);
+        if (BrCustomAttributeDataMember.CutKind != InterceptCutKind.BodyReplace)
+            throw new InvalidOperationException("Attribute-data member bridge must retain a callable body");
         CheckRow(nameof(BrRuntimeTypeHandleDeclaringType), 0, BrRuntimeTypeHandleDeclaringType.EmitArm,
             BrRuntimeTypeHandleDeclaringType.TypeGate, BrRuntimeTypeHandleDeclaringType.NameGate);
         if (BrRuntimeTypeHandleDeclaringType.CutKind != InterceptCutKind.BodyReplace)

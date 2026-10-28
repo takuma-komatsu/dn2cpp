@@ -738,6 +738,7 @@ internal sealed partial class Compilation
         "dn2cpp_propref_get_index_parameters(",
         "dn2cpp_paramref_custom_modifiers(",
         "dn2cpp_member_custom_attributes_data(",
+        "dn2cpp_custom_attribute_data_get_custom_attributes(",
         "dn2cpp_assembly_custom_attributes_data(",
         "dn2cpp_assembly_get_types(",
         "dn2cpp_assembly_get_modules(",

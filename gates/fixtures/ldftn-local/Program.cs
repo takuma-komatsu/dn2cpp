@@ -2,6 +2,8 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (CustomAttributeDataMemberGuards.Run(args)) return;
+if (CustomAttributeDataMemberFixture.Run(args)) return;
 if (RuntimeTypeDeclaringGuards.Run(args)) return;
 if (RuntimeTypeDeclaringFixture.Run(args)) return;
 if (RuntimeTypeHandleNameGuards.Run(args)) return;

@@ -100,6 +100,7 @@ internal sealed partial class Compilation
                     || CoreIntrinsics.BrDelegateNamedConstructor.Matches(mi)
                     || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(mi)
                     || CoreIntrinsics.BrNullableReboxing.Matches(mi)
+                    || CoreIntrinsics.BrCustomAttributeDataMember.Matches(mi)
                     || CoreIntrinsics.BrRuntimeTypeHandleDeclaringType.Matches(mi)
                     || CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(mi)
                     || CoreIntrinsics.BrCoreClrActivationInfo.Matches(mi)
@@ -1497,6 +1498,17 @@ internal sealed partial class Compilation
                 || blob.ReadByte() != (byte)SignatureTypeCode.Boolean || blob.ReadByte() != (byte)SignatureTypeCode.Object)
                 throw new NotSupportedException("RuntimeType enum defined query requires its exact MemberRef signature");
         }
+        if (name == "GetCustomAttributes" && candidates.Any(CoreIntrinsics.IsCustomAttributeDataMember)
+            && (CoreIntrinsics.BrCustomAttributeDataMember.Matches(resolved)
+                || sig.ParameterTypes is [{ Kind: TypeKind.Class, Class.FullName: "System.Reflection.MemberInfo" }]))
+        {
+            if (!CoreIntrinsics.IsCustomAttributeDataMemberSignature(reader.GetBlobReader(mr.Signature))
+                || sig.Header.RawValue != 0 || sig.GenericParameterCount != 0
+                || sig.ReturnType != resolved.Signature.ReturnType
+                || sig.ParameterTypes is not [{ Kind: TypeKind.Class, Class: { FullName: "System.Reflection.MemberInfo" } member }]
+                || member.Module != resolved.Module || !CoreIntrinsics.BrCustomAttributeDataMember.Matches(resolved))
+                throw new NotSupportedException("CustomAttributeData member query requires its exact MemberRef signature");
+        }
         if (name == "GetDeclaringType" && candidates.Any(CoreIntrinsics.IsRuntimeTypeHandleDeclaringType))
         {
             if (!CoreIntrinsics.IsRuntimeTypeHandleDeclaringTypeSignature(reader.GetBlobReader(mr.Signature))
@@ -1712,6 +1724,13 @@ internal sealed partial class Compilation
                     return copy;
             }
             catch (NotSupportedException e) when (!IsMustEscape(e)) { }
+        }
+        if (full == "System.Reflection.CustomAttributeData" && reader.StringComparer.Equals(mr.Name, "GetCustomAttributes")
+            && CoreIntrinsics.IsCustomAttributeDataMemberSignature(reader.GetBlobReader(mr.Signature)))
+        {
+            var attributes = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.BrCustomAttributeDataMember.Matches(attributes))
+                return attributes;
         }
         if (full == "System.RuntimeTypeHandle" && reader.StringComparer.Equals(mr.Name, "GetDeclaringType")
             && CoreIntrinsics.IsRuntimeTypeHandleDeclaringTypeSignature(reader.GetBlobReader(mr.Signature)))

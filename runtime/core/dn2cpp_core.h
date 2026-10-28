@@ -2848,6 +2848,7 @@ extern const Dn2CppTypeInfo dn2cpp_customattributedata_type;
 // member handle's object header, like dn2cpp_get_custom_attributes); the
 // assembly form serves Assembly.CustomAttributes via the assembly registry.
 Dn2CppArrayRef* dn2cpp_member_custom_attributes_data(Dn2CppObject* member);
+Dn2CppArrayRef* dn2cpp_custom_attribute_data_get_custom_attributes(Dn2CppObject* target);
 Dn2CppArrayRef* dn2cpp_assembly_custom_attributes_data(const char* name);
 // CustomAttributeData.AttributeType.
 Dn2CppType* dn2cpp_attrdata_attribute_type(Dn2CppAttrDataRef* d);
