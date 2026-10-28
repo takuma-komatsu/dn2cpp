@@ -2294,7 +2294,7 @@ internal sealed partial class MethodCompiler
             // here.
             call = DirectCall(callee, args);
         }
-        else if (isCallvirt && (CoreIntrinsics.IsRuntimeTypeArrayRank(callee) || CoreIntrinsics.IsRuntimeTypeMakeCompound(callee) || CoreIntrinsics.IsRuntimeTypeMakeArray(callee)
+        else if (isCallvirt && ((CoreIntrinsics.IsRuntimeTypeArrayRank(callee) || CoreIntrinsics.IsRuntimeTypeEnumName(callee)) || CoreIntrinsics.IsRuntimeTypeMakeCompound(callee) || CoreIntrinsics.IsRuntimeTypeMakeArray(callee)
             || CoreIntrinsics.IsRuntimeTypeFunctionPointerGetter(callee) || CoreIntrinsics.IsRuntimeTypeAssemblyGetter(callee)
             || CoreIntrinsics.IsRuntimeTypeGenericParameterGetter(callee) || CoreIntrinsics.IsRuntimeTypeMetadataTokenGetter(callee) || CoreIntrinsics.IsRuntimeTypeAttributeFlagsOverride(callee) || CoreIntrinsics.IsRuntimeTypeElementTypeOverride(callee) || CoreIntrinsics.IsRuntimeTypeDefinitionGetter(callee)))
         {
@@ -3364,7 +3364,7 @@ internal sealed partial class MethodCompiler
         for (int i = 0; i < rawArgs.Length; i++)
             args2.Add(Cast(rawArgs[i], CppTypes.Of(ps[i])));
         // Nonvirtual and selected sealed native-Type calls enter their own bodies.
-        if (!callee.IsVirtual || CoreIntrinsics.IsRuntimeTypeArrayRank(callee) || CoreIntrinsics.IsRuntimeTypeMakeCompound(callee) || CoreIntrinsics.IsRuntimeTypeMakeArray(callee)
+        if (!callee.IsVirtual || (CoreIntrinsics.IsRuntimeTypeArrayRank(callee) || CoreIntrinsics.IsRuntimeTypeEnumName(callee)) || CoreIntrinsics.IsRuntimeTypeMakeCompound(callee) || CoreIntrinsics.IsRuntimeTypeMakeArray(callee)
             || CoreIntrinsics.IsRuntimeTypeFunctionPointerGetter(callee) || CoreIntrinsics.IsRuntimeTypeAssemblyGetter(callee)
             || CoreIntrinsics.IsRuntimeTypeGenericParameterGetter(callee) || CoreIntrinsics.IsRuntimeTypeMetadataTokenGetter(callee) || CoreIntrinsics.IsRuntimeTypeAttributeFlagsOverride(callee) || CoreIntrinsics.IsRuntimeTypeElementTypeOverride(callee) || CoreIntrinsics.IsRuntimeTypeDefinitionGetter(callee))
         {

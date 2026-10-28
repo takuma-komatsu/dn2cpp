@@ -1367,6 +1367,13 @@ internal sealed partial class Compilation
                     || parameter.Module != resolved.Module)))
                 throw new NotSupportedException("RuntimeType element query requires its exact MemberRef signature");
         }
+        if (CoreIntrinsics.IsRuntimeTypeEnumName(resolved))
+        {
+            var blob = reader.GetBlobReader(mr.Signature);
+            if (blob.RemainingBytes != 4 || blob.ReadByte() != 0x20 || blob.ReadByte() != 1
+                || blob.ReadByte() != (byte)SignatureTypeCode.String || blob.ReadByte() != (byte)SignatureTypeCode.Object)
+                throw new NotSupportedException("RuntimeType enum name query requires its exact MemberRef signature");
+        }
         if (typeRefParent)
             _memberRefMethodsByTypeRef[(module.Index, SRME.GetToken(handle))] = resolved;
         else

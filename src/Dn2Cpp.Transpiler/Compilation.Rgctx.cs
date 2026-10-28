@@ -704,6 +704,7 @@ internal sealed partial class Compilation
         "dn2cpp_delegate_for_fnptr_",
         // System.Enum's metadata: fresh names, arrays and boxes.
         "dn2cpp_enum_get_name(",
+        "dn2cpp_runtime_type_get_enum_name(",
         "dn2cpp_enum_get_names(",
         "dn2cpp_enum_get_value(",   // Enum.GetValue re-boxes the payload
         "dn2cpp_enum_get_values_",  // boxed/underlying arrays

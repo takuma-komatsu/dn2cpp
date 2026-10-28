@@ -11662,6 +11662,12 @@ Dn2CppString* dn2cpp_type_get_enum_name(Dn2CppType* t, Dn2CppObject* value)
     return enum_get_name_boxed(t, value);
 }
 
+// An explicit call to the retained managed body validates value before using this.
+Dn2CppString* dn2cpp_runtime_type_get_enum_name(Dn2CppType* t, Dn2CppObject* value)
+{
+    return enum_get_name_boxed(t, value);
+}
+
 // IsEnumDefined accepts a name, the exact underlying primitive, or the same enum.
 // Validate before reading a payload; unlike GetEnumName, integer widths do not coerce.
 static int32_t enum_is_defined_boxed(Dn2CppType* t, Dn2CppObject* value)

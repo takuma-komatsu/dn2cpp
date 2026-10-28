@@ -2,6 +2,9 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (RuntimeTypeEnumNameGuards.Run(args)) return;
+if (RuntimeTypeEnumNameFixture.Run(args)) return;
+
 if (RuntimeTypeArrayRankGuards.Run(args)) return;
 if (RuntimeTypeArrayRankFixture.Run(args)) return;
 if (RuntimeTypeAttributesGuards.Run(args)) return;
