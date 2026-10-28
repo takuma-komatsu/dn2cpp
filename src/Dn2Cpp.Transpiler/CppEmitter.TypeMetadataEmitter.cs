@@ -3601,6 +3601,8 @@ internal sealed partial class CppEmitter
                 // runtime override, whose native handle has no generated vtable.
                 if (CoreIntrinsics.IsMemberMetadataDefinitionBase(m))
                     invoker = "nullptr";
+                if (CoreIntrinsics.IsCustomAttributeDataConstructorBase(m) && fnPtr != "nullptr")
+                    invoker = "(void*)&dn2cpp_attrdata_constructor_invoker";
                 bool preservable = fnPtr == "nullptr" && !symbolic && _c.IsPreservableTemplateRow(m);
                 // The null-receiver run modes and a template level's
                 // DN2CPP_MTHA_NULLLOOKUP_* masks: only a CreateDelegate binding called
@@ -3832,6 +3834,7 @@ internal sealed partial class CppEmitter
                         || CoreIntrinsics.IsCoreClrDeclaringMethodBridge(method)
                         || CoreIntrinsics.IsCoreClrTypeMaterialization(method)
                         || CoreIntrinsics.BrNullableReboxing.Matches(method)
+                        || CoreIntrinsics.IsCustomAttributeDataConstructorBase(method)
                         || CoreIntrinsics.BrCustomAttributeDataMember.Matches(method)
                         || CoreIntrinsics.BrRuntimeTypeHandleDeclaringType.Matches(method)
                         || CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(method)

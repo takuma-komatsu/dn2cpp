@@ -564,6 +564,23 @@ ReadOnlyCollection wraps nonempty rows so IList mutation remains unsupported; em
 results retain the array representation and its index-bound checks. Encoded argument views and sibling overloads are not expanded. The new
 wrapper does not change existing instance helpers or custom virtual dispatch policy.
 
+The retained CustomAttributeData.Constructor base body remains ordinary managed IL:
+nonvirtual calls and addresses return null without reading the receiver. Virtual calls
+and virtual addresses use a bounded slot selector: ldvirtftn fixes the selected
+implementation at acquisition, not on a later calli receiver. Canonical row handles
+refuse with PlatformNotSupportedException because exact constructor identity is not
+stored; their selected address is an unconditional refusal thunk. Managed subclasses
+retain their actual registered virtual slot. Unknown or stripped
+implementations refuse before payload access. Reflection invokes the same virtual
+policy, while permitted closed-null delegate bindings enter the actual base body.
+A virtual delegate on a canonical row refuses Delegate.Method rather than report the
+base method as a fabricated runtime override identity. Taking the exact base getter
+address also retains this virtual slot on allocated subclasses, because the resulting
+MethodInfo can be invoked virtually; a direct base call alone does not add that demand.
+This does not infer constructors from attribute types or factories, extend metadata
+layout, or parse attribute blobs. NoAlloc accepts the base body but conservatively
+refuses the virtual helper, which can call arbitrary managed overrides.
+
 ### B. A BCL intrinsic (a `System.*` call) — core lane
 
 1. Add a case to the `switch (declType, name)` in

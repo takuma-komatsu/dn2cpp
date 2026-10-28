@@ -206,7 +206,8 @@ internal sealed partial class Compilation
         if (CoreIntrinsics.IsRuntimeTypeHandleCopy(m) || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m)
             || CoreIntrinsics.IsPrimitiveElementHelper(m)
             || CoreIntrinsics.IsMemberNotFoundExceptionFactory(m)
-            || CoreIntrinsics.IsMemberMetadataDefinitionBase(m))
+            || CoreIntrinsics.IsMemberMetadataDefinitionBase(m)
+            || CoreIntrinsics.IsCustomAttributeDataConstructorBase(m))
             _intrinsicTypeTranspiled.Add(m);
         // Methods of an intrinsic-mapped type are emitted inline, never
         // transpiled. Call edges already skip them (ResolveCallTarget), but an
@@ -607,6 +608,17 @@ internal sealed partial class Compilation
         EnsureCompleted(owner);
         foreach (var method in owner.Methods)
             if (CoreIntrinsics.IsMemberMetadataDefinitionBase(method))
+                return method.VtableSlot;
+        return -1;
+    }
+
+    internal int CustomAttributeDataConstructorSlot()
+    {
+        if (FindClassByFullName("System.Reflection.CustomAttributeData") is not { } owner)
+            return -1;
+        EnsureCompleted(owner);
+        foreach (var method in owner.Methods)
+            if (CoreIntrinsics.IsCustomAttributeDataConstructorBase(method))
                 return method.VtableSlot;
         return -1;
     }

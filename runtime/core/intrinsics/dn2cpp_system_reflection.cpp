@@ -5873,7 +5873,8 @@ static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi
     void* fn = row.fnPtr;
     const Dn2CppTypeInfo* declaring = row.declaringType;
     const bool objectVirtualInvoker = row.invoker == reinterpret_cast<void*>(&dn2cpp_delegate_object_virtual_invoker)
-        || row.invoker == reinterpret_cast<void*>(&dn2cpp_delegate_interface_invoker);
+        || row.invoker == reinterpret_cast<void*>(&dn2cpp_delegate_interface_invoker)
+        || row.invoker == reinterpret_cast<void*>(&dn2cpp_attrdata_constructor_invoker);
     if (obj != nullptr && row.vtableSlot >= 0 && !objectVirtualInvoker && (declaring->flags & DN2CPP_TF_PATCH) == 0)
     {
         if ((declaring->flags & DN2CPP_TF_INTERFACE) != 0)
@@ -8251,6 +8252,9 @@ Dn2CppObject* dn2cpp_delegate_get_method(Dn2CppObject* d)
     if (!hit && owner == &dn2cpp_memberinfo_type && dn2cpp_native_member_header(t->type)
         && std::strcmp(decl.name, "HasSameMetadataDefinitionAs") == 0)
         dn2cpp_throw_platform_not_supported("Delegate.Method: the runtime metadata-definition override is not retained");
+    if (!hit && owner == &dn2cpp_customattributedata_type && t->type == &dn2cpp_customattributedata_type
+        && std::strcmp(decl.name, "get_Constructor") == 0)
+        dn2cpp_throw_platform_not_supported("Delegate.Method: the runtime attribute-data constructor override is not retained");
     return reinterpret_cast<Dn2CppObject*>(dn2cpp_make_methodref(hit ? hit : declared, nullptr));
 }
 
@@ -10654,6 +10658,54 @@ Dn2CppArrayRef* dn2cpp_assembly_custom_attributes_data(const char* name)
     int32_t count;
     Dn2CppMetadataTable<Dn2CppAttrInfo> tab = dn2cpp_assembly_custom_attrs(name, &count);
     return dn2cpp_attr_table_to_data_array(tab, count);
+}
+
+static int32_t dn2cpp_attrdata_constructor_slot = -1;
+
+void dn2cpp_set_attrdata_constructor_slot(int32_t slot)
+{
+    dn2cpp_attrdata_constructor_slot = slot;
+}
+
+static Dn2CppMethodRef* dn2cpp_attrdata_constructor_unavailable(Dn2CppObject*)
+{
+    dn2cpp_throw_platform_not_supported("CustomAttributeData.Constructor: constructor identity is not retained");
+}
+
+void* dn2cpp_attrdata_constructor_virtual_address(Dn2CppObject* value)
+{
+    if (value == nullptr)
+        dn2cpp_throw_null_reference();
+    if (value->type == &dn2cpp_customattributedata_type)
+        return reinterpret_cast<void*>(&dn2cpp_attrdata_constructor_unavailable);
+    bool derived = false;
+    for (const Dn2CppTypeInfo* type = value->type; type != nullptr; type = type->base)
+        if (type == &dn2cpp_customattributedata_type) { derived = true; break; }
+    const int32_t slot = dn2cpp_attrdata_constructor_slot;
+    if (derived && slot >= 0 && value->type->vtable != nullptr)
+    {
+        const void* target = value->type->vtable[slot];
+        if (target != nullptr && !dn2cpp_is_vcall_trap(target))
+            return const_cast<void*>(target);
+    }
+    dn2cpp_throw_platform_not_supported("CustomAttributeData.Constructor: receiver has no retained virtual implementation");
+}
+
+Dn2CppMethodRef* dn2cpp_attrdata_constructor_virtual(Dn2CppObject* value)
+{
+    auto target = reinterpret_cast<Dn2CppMethodRef* (*)(Dn2CppObject*)>(
+        dn2cpp_attrdata_constructor_virtual_address(value));
+    return target(value);
+}
+
+Dn2CppObject* dn2cpp_attrdata_constructor_invoker(void* fn, Dn2CppObject* receiver,
+    Dn2CppObject**, const Dn2CppTypeInfo*)
+{
+    // Invoke validates its receiver first. A closed-null CreateDelegate instead
+    // enters the true nonvirtual base body, whose IL does not read the receiver.
+    if (receiver == nullptr)
+        return reinterpret_cast<Dn2CppObject* (*)(Dn2CppObject*)>(fn)(receiver);
+    return reinterpret_cast<Dn2CppObject*>(dn2cpp_attrdata_constructor_virtual(receiver));
 }
 
 Dn2CppType* dn2cpp_attrdata_attribute_type(Dn2CppAttrDataRef* d)

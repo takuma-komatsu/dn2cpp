@@ -97,6 +97,7 @@ internal sealed partial class Compilation
                     || CoreIntrinsics.IsPrimitiveElementHelper(mi)
                     || CoreIntrinsics.IsMemberNotFoundExceptionFactory(mi)
                     || CoreIntrinsics.IsMemberMetadataDefinitionBase(mi)
+            || CoreIntrinsics.IsCustomAttributeDataConstructorBase(mi)
                     || CoreIntrinsics.BrDelegateNamedConstructor.Matches(mi)
                     || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(mi)
                     || CoreIntrinsics.BrNullableReboxing.Matches(mi)
@@ -1498,6 +1499,14 @@ internal sealed partial class Compilation
                 || blob.ReadByte() != (byte)SignatureTypeCode.Boolean || blob.ReadByte() != (byte)SignatureTypeCode.Object)
                 throw new NotSupportedException("RuntimeType enum defined query requires its exact MemberRef signature");
         }
+        if (name == "get_Constructor" && candidates.Any(CoreIntrinsics.IsCustomAttributeDataConstructorBase))
+        {
+            if (!CoreIntrinsics.IsCustomAttributeDataConstructorSignature(reader.GetBlobReader(mr.Signature))
+                || sig.Header.RawValue != 0x20 || sig.GenericParameterCount != 0 || sig.ParameterTypes.Length != 0
+                || sig.ReturnType != resolved.Signature.ReturnType
+                || !CoreIntrinsics.IsCustomAttributeDataConstructorBase(resolved))
+                throw new NotSupportedException("CustomAttributeData constructor query requires its exact MemberRef signature");
+        }
         if (name == "GetCustomAttributes" && candidates.Any(CoreIntrinsics.IsCustomAttributeDataMember)
             && (CoreIntrinsics.BrCustomAttributeDataMember.Matches(resolved)
                 || sig.ParameterTypes is [{ Kind: TypeKind.Class, Class.FullName: "System.Reflection.MemberInfo" }]))
@@ -1671,6 +1680,12 @@ internal sealed partial class Compilation
                     return constructor;
             }
             catch (NotSupportedException e) when (!IsMustEscape(e)) { }
+        }
+        if (full == "System.Reflection.CustomAttributeData" && reader.StringComparer.Equals(mr.Name, "get_Constructor"))
+        {
+            var constructor = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsCustomAttributeDataConstructorBase(constructor))
+                return constructor;
         }
         if (CoreIntrinsicTypeMaps.IsMemberMetadataDefinitionOwner(full)
             && reader.StringComparer.Equals(mr.Name, "HasSameMetadataDefinitionAs"))

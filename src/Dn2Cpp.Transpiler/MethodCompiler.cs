@@ -3990,6 +3990,10 @@ internal sealed partial class MethodCompiler : IEvalStack
                         delegateAddressReady = false;
                     }
                 }
+                else if (CoreIntrinsics.IsCustomAttributeDataConstructorBase(m))
+                {
+                    expr = $"dn2cpp_attrdata_constructor_virtual_address({Cast(obj, "Dn2CppObject*")})";
+                }
                 else if (CoreIntrinsics.IsMemberMetadataDefinitionBase(m))
                 {
                     expr = $"((void)dn2cpp_null_check({obj.Expr}), (void*)&dn2cpp_memberinfo_has_same_metadata)";

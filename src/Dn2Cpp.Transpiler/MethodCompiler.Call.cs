@@ -482,6 +482,7 @@ internal sealed partial class MethodCompiler
                     || CoreIntrinsics.IsPrimitiveElementHelper(callee)
                     || CoreIntrinsics.IsMemberNotFoundExceptionFactory(callee)
                     || CoreIntrinsics.IsMemberMetadataDefinitionBase(callee)
+            || CoreIntrinsics.IsCustomAttributeDataConstructorBase(callee)
                     || CoreIntrinsics.BrDelegateNamedConstructor.Matches(callee)
                     || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(callee)
                     || CoreIntrinsics.BrNullableReboxing.Matches(callee)
@@ -1542,6 +1543,13 @@ internal sealed partial class MethodCompiler
         // refusal; the core emitter itself has no target knowledge.
         if (_intrinsics is not null && _intrinsics.TryEmitCall(this, callee, isCallvirt))
             return;
+
+        if (isCallvirt && CoreIntrinsics.IsCustomAttributeDataConstructorBase(callee))
+        {
+            var receiver = Pop();
+            Push(StackKind.Ref, "Dn2CppMethodRef*", $"dn2cpp_attrdata_constructor_virtual({Cast(receiver, "Dn2CppObject*")})");
+            return;
+        }
 
         if (isCallvirt && CoreIntrinsics.IsMemberMetadataDefinitionBase(callee))
         {

@@ -2852,6 +2852,11 @@ Dn2CppArrayRef* dn2cpp_custom_attribute_data_get_custom_attributes(Dn2CppObject*
 Dn2CppArrayRef* dn2cpp_assembly_custom_attributes_data(const char* name);
 // CustomAttributeData.AttributeType.
 Dn2CppType* dn2cpp_attrdata_attribute_type(Dn2CppAttrDataRef* d);
+void dn2cpp_set_attrdata_constructor_slot(int32_t slot);
+Dn2CppMethodRef* dn2cpp_attrdata_constructor_virtual(Dn2CppObject* value);
+void* dn2cpp_attrdata_constructor_virtual_address(Dn2CppObject* value);
+Dn2CppObject* dn2cpp_attrdata_constructor_invoker(void* fn, Dn2CppObject* receiver,
+    Dn2CppObject** arguments, const Dn2CppTypeInfo* returnType);
 
 // Reflection-handle ToString. The header-dispatched entry is also installed in
 // every handle type-info's tostring slot, so direct/base/object paths converge.

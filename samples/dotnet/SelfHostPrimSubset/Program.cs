@@ -441,5 +441,7 @@ internal static class Program
         RuntimeTypeDeclaringSubset.DeclaringChecks.Run();
         if (args.Length > 0 && args[0] == "before-cad-member") return;
         CustomAttributeDataMemberSubset.DataChecks.Run();
+        if (args.Length > 0 && args[0] == "before-cad-constructor") return;
+        CustomAttributeConstructorSubset.ConstructorChecks.Run();
     }
 }

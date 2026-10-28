@@ -2152,7 +2152,8 @@ internal sealed partial class CppEmitter
             && !CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m)
             && !CoreIntrinsics.IsPrimitiveElementHelper(m)
             && !CoreIntrinsics.IsMemberNotFoundExceptionFactory(m)
-            && !CoreIntrinsics.IsMemberMetadataDefinitionBase(m);
+            && !CoreIntrinsics.IsMemberMetadataDefinitionBase(m)
+            && !CoreIntrinsics.IsCustomAttributeDataConstructorBase(m);
 
     private ParallelBodyResult CompileParallelBody(
         MethodInfo m, LiteralPool literals, bool planning)
@@ -2728,7 +2729,8 @@ internal sealed partial class CppEmitter
                             && !CoreIntrinsics.IsAmbiguousMatchExceptionFactory(m)
                             && !CoreIntrinsics.IsPrimitiveElementHelper(m)
                             && !CoreIntrinsics.IsMemberNotFoundExceptionFactory(m)
-            && !CoreIntrinsics.IsMemberMetadataDefinitionBase(m))
+            && !CoreIntrinsics.IsMemberMetadataDefinitionBase(m)
+            && !CoreIntrinsics.IsCustomAttributeDataConstructorBase(m))
                         {
                             string body;
                             if (new MethodCompiler(_c, m, literals, _backend)
@@ -3075,6 +3077,7 @@ internal sealed partial class CppEmitter
         if (_delegateInterfaceTargets is { } interfaceTargets)
             sb.AppendLine($"    dn2cpp_set_delegate_interface_targets({interfaceTargets.Sym}, {interfaceTargets.Count});");
         sb.AppendLine($"    dn2cpp_set_memberinfo_has_same_metadata_slot({_c.MemberMetadataDefinitionSlot()});");
+        sb.AppendLine($"    dn2cpp_set_attrdata_constructor_slot({_c.CustomAttributeDataConstructorSlot()});");
         if (_delegateMethodCatalog is { } delegateMethods)
             sb.AppendLine($"    dn2cpp_set_delegate_method_catalog({delegateMethods.Sym}, {delegateMethods.Count});");
         if (_memberNotFoundFactoryRow is { } factoryRow)

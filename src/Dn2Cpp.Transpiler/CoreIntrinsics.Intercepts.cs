@@ -691,6 +691,31 @@ internal static partial class CoreIntrinsics
                 ? "System.Reflection.MemberInfo" : null);
     }
 
+    internal static bool IsCustomAttributeDataConstructorBase(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.Reflection.CustomAttributeData"
+            || method.Name != "get_Constructor" || method.Rva == 0 || method.PInvoke is not null
+            || method.Attributes != (System.Reflection.MethodAttributes.Public | System.Reflection.MethodAttributes.HideBySig
+                | System.Reflection.MethodAttributes.SpecialName | System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.NewSlot)
+            || method.ImplAttributes != System.Reflection.MethodImplAttributes.IL
+            || !IsCustomAttributeDataConstructorSignature(method.Module.Reader.GetBlobReader(
+                method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Class, Class: { FullName: "System.Reflection.ConstructorInfo" } result }
+            && result.Module == method.Module;
+    }
+
+    internal static bool IsCustomAttributeDataConstructorSignature(BlobReader blob) =>
+        blob.RemainingBytes >= 4 && blob.ReadByte() == 0x20 && blob.ReadByte() == 0
+        && blob.ReadByte() == 0x12 && blob.TryReadCompressedInteger(out int token)
+        && (token >> 2) != 0 && (token & 3) != 3 && blob.RemainingBytes == 0;
+
     internal static bool IsMemberMetadataDefinitionBase(MethodInfo method) =>
         method.DeclaringClass.FullName == "System.Reflection.MemberInfo" && IsMemberMetadataDefinition(method);
 

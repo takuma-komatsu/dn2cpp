@@ -4101,6 +4101,15 @@ internal sealed partial class Compilation
         }
         if (CoreIntrinsics.BrLifetimeDispose.Matches(m.DeclaringClass.FullName, m.Name))
             Reach(m);
+        if (CoreIntrinsics.IsCustomAttributeDataConstructorBase(m))
+        {
+            // A nonvirtual address can expose a MethodInfo whose Invoke is virtual.
+            // Retain only this slot on allocated subclasses, even if Method is unused.
+            ReachUsedVirtual(m);
+            ReachIntrinsicTypeMethod(m);
+            DrainReachability();
+            return;
+        }
         if (_intrinsicTypeTranspiled.Contains(m))
             return; // real body transpiled — the symbol already exists
         // Its calls already delegate to the real body, which serves the address too.
