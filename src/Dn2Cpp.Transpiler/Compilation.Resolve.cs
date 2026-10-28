@@ -1432,6 +1432,13 @@ internal sealed partial class Compilation
                 || blob.ReadByte() != (byte)SignatureTypeCode.String || blob.ReadByte() != (byte)SignatureTypeCode.Object)
                 throw new NotSupportedException("RuntimeType enum name query requires its exact MemberRef signature");
         }
+        if (CoreIntrinsics.IsRuntimeTypeEnumDefined(resolved))
+        {
+            var blob = reader.GetBlobReader(mr.Signature);
+            if (blob.RemainingBytes != 4 || blob.ReadByte() != 0x20 || blob.ReadByte() != 1
+                || blob.ReadByte() != (byte)SignatureTypeCode.Boolean || blob.ReadByte() != (byte)SignatureTypeCode.Object)
+                throw new NotSupportedException("RuntimeType enum defined query requires its exact MemberRef signature");
+        }
         if (typeRefParent)
             _memberRefMethodsByTypeRef[(module.Index, SRME.GetToken(handle))] = resolved;
         else

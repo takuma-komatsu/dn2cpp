@@ -11729,6 +11729,15 @@ int32_t dn2cpp_enum_is_defined(Dn2CppType* t, Dn2CppObject* value)
     return enum_is_defined_boxed(t, value);
 }
 
+// Raw retained calls validate value before dereferencing this; callvirt checks at entry.
+int32_t dn2cpp_runtime_type_is_enum_defined(Dn2CppType* t, Dn2CppObject* value)
+{
+    if (value == nullptr)
+        dn2cpp_throw_argument_null_param("value");
+    dn2cpp_type_require(t);
+    return enum_is_defined_boxed(t, value);
+}
+
 int32_t dn2cpp_type_is_enum_defined(Dn2CppType* t, Dn2CppObject* value)
 {
     dn2cpp_type_require(t);

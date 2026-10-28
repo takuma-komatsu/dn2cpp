@@ -649,6 +649,12 @@ virtual null receiver still faults before entry. Both public overloads retain
 real IL across calls and address bindings; the raw QCalls remain independent
 native-import boundaries.
 
+The exact `RuntimeType.IsEnumDefined(object)` override reuses the native enum
+lookup with strict boxed enum/underlying-type compatibility and literal name
+aliases. A raw retained call checks null value before dereferencing its receiver;
+callvirt and virtual address binding check the receiver before entry. This
+adapter does not widen custom Type dispatch or CoreCLR enum table support.
+
 The exact public `RuntimeType.MakeGenericType(Type[])` override shares the existing
 native `Type.MakeGenericType` AOT, open-type and template policy. Its retained body,
 direct calls and address bindings never enter CoreCLR's instantiating loader.

@@ -797,6 +797,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                     && !CoreIntrinsics.IsRuntimeTypeTypeCode(target)
                     && !CoreIntrinsics.IsRuntimeTypeArrayRank(target)
                     && !CoreIntrinsics.IsRuntimeTypeEnumName(target)
+                    && !CoreIntrinsics.IsRuntimeTypeEnumDefined(target)
                     && !CoreIntrinsics.IsRuntimeTypeMakeGenericType(target)
                     && !CoreIntrinsics.IsRuntimeTypeMakeCompound(target)
                     && !CoreIntrinsics.IsRuntimeTypeMakeArray(target)
@@ -1223,7 +1224,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             || CoreIntrinsics.IsRuntimeTypeHandleMakeArray(_method)
             || CoreIntrinsics.IsRuntimeTypeGenericParameterPosition(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleInstantiate(_method)
-            || (CoreIntrinsics.IsRuntimeTypeArrayRank(_method) || CoreIntrinsics.IsRuntimeTypeEnumName(_method) || CoreIntrinsics.IsRuntimeTypeTypeCode(_method))
+            || (CoreIntrinsics.IsRuntimeTypeArrayRank(_method) || CoreIntrinsics.IsRuntimeTypeEnumName(_method) || CoreIntrinsics.IsRuntimeTypeEnumDefined(_method) || CoreIntrinsics.IsRuntimeTypeTypeCode(_method))
             || CoreIntrinsics.IsRuntimeTypeMakeGenericType(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleConstructor(_method)
             || CoreIntrinsics.IsRuntimeTypeCacheHandleBridge(_method)
@@ -3866,7 +3867,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                         + $"(void*)+[](Dn2CppObject* receiver, Dn2CppObject* other) -> int32_t "
                         + $"{{ return {impl.CppName}(({virtualTarget.DeclaringClass.CppStructName}*)(receiver + 1), other); }})";
                 }
-                else if ((CoreIntrinsics.IsRuntimeTypeArrayRank(m) || CoreIntrinsics.IsRuntimeTypeEnumName(m) || CoreIntrinsics.IsRuntimeTypeTypeCode(m)) || CoreIntrinsics.IsRuntimeTypeDeclaringMethod(m) || CoreIntrinsics.IsRuntimeTypeMakeGenericType(m)
+                else if ((CoreIntrinsics.IsRuntimeTypeArrayRank(m) || CoreIntrinsics.IsRuntimeTypeEnumName(m) || CoreIntrinsics.IsRuntimeTypeEnumDefined(m) || CoreIntrinsics.IsRuntimeTypeTypeCode(m)) || CoreIntrinsics.IsRuntimeTypeDeclaringMethod(m) || CoreIntrinsics.IsRuntimeTypeMakeGenericType(m)
                     || CoreIntrinsics.IsRuntimeTypeGenericParameterPosition(m) || CoreIntrinsics.IsRuntimeTypeMakeCompound(m)
                     || CoreIntrinsics.IsRuntimeTypeMakeArray(m) || CoreIntrinsics.IsRuntimeTypeFunctionPointerGetter(m)
                     || CoreIntrinsics.IsRuntimeTypeAssemblyGetter(m) || CoreIntrinsics.IsRuntimeTypeModuleGetter(m) || CoreIntrinsics.IsRuntimeTypeGenericParameterGetter(m) || CoreIntrinsics.IsRuntimeTypeMetadataTokenGetter(m) || CoreIntrinsics.IsRuntimeTypeAttributeFlagsOverride(m) || CoreIntrinsics.IsRuntimeTypeHasElementTypeOverride(m) || CoreIntrinsics.IsRuntimeTypeIsArrayOverride(m) || CoreIntrinsics.IsRuntimeTypeElementTypeOverride(m) || CoreIntrinsics.IsRuntimeTypeDefinitionGetter(m))
