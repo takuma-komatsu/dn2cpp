@@ -610,6 +610,14 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsRuntimeTypeHandleGetAttributes(callee))
+        {
+            var type = Pop();
+            TaintPoisonedTypeEscape(type);
+            Push(StackKind.I4, "int32_t", $"dn2cpp_type_il_attrs(dn2cpp_type_require({Cast(type, "Dn2CppType*")}))");
+            return;
+        }
+
         if (CoreIntrinsics.IsRuntimeTypeHandleIsTypeDefinition(callee))
         {
             var type = Pop();

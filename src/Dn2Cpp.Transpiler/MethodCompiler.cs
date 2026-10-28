@@ -801,6 +801,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                     && !CoreIntrinsics.IsRuntimeTypeFunctionPointerGetter(target)
                     && !CoreIntrinsics.IsRuntimeTypeGenericParameterGetter(target)
                     && !CoreIntrinsics.IsRuntimeTypeMetadataTokenGetter(target)
+                    && !CoreIntrinsics.IsRuntimeTypeAttributeFlagsOverride(target)
                     && !CoreIntrinsics.IsRuntimeTypeDefinitionGetter(target)
                     && !CoreIntrinsics.IsRuntimeTypeAssemblyGetter(target)
                     && !CoreIntrinsics.IsRuntimeTypeGenericParameterPosition(target), virtFtn));
@@ -1201,6 +1202,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             || CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerPredicate(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleIsGenericVariable(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleGetToken(_method)
+            || CoreIntrinsics.IsRuntimeTypeHandleGetAttributes(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleIsTypeDefinition(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleGetAssembly(_method)
             || CoreIntrinsics.IsRuntimeTypeHandleInstantiation(_method)
@@ -3857,7 +3859,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 else if (CoreIntrinsics.IsRuntimeTypeArrayRank(m) || CoreIntrinsics.IsRuntimeTypeDeclaringMethod(m) || CoreIntrinsics.IsRuntimeTypeMakeGenericType(m)
                     || CoreIntrinsics.IsRuntimeTypeGenericParameterPosition(m) || CoreIntrinsics.IsRuntimeTypeMakeCompound(m)
                     || CoreIntrinsics.IsRuntimeTypeMakeArray(m) || CoreIntrinsics.IsRuntimeTypeFunctionPointerGetter(m)
-                    || CoreIntrinsics.IsRuntimeTypeAssemblyGetter(m) || CoreIntrinsics.IsRuntimeTypeGenericParameterGetter(m) || CoreIntrinsics.IsRuntimeTypeMetadataTokenGetter(m) || CoreIntrinsics.IsRuntimeTypeDefinitionGetter(m))
+                    || CoreIntrinsics.IsRuntimeTypeAssemblyGetter(m) || CoreIntrinsics.IsRuntimeTypeGenericParameterGetter(m) || CoreIntrinsics.IsRuntimeTypeMetadataTokenGetter(m) || CoreIntrinsics.IsRuntimeTypeAttributeFlagsOverride(m) || CoreIntrinsics.IsRuntimeTypeDefinitionGetter(m))
                 {
                     // RuntimeType is sealed; its native header has no CoreCLR virtual slots.
                     bindsLowering = true;

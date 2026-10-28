@@ -1341,11 +1341,40 @@ internal sealed partial class Compilation
                     : candidates.FirstOrDefault(x => ParameterIdentityKey(x.Signature.ParameterTypes) == want) ?? candidates[0];
             }
         }
+        if (CoreIntrinsics.IsRuntimeTypeHandleGetAttributes(resolved)
+            || CoreIntrinsics.IsRuntimeTypeAttributeFlagsOverride(resolved))
+        {
+            // The general single-candidate path does not prove an incoming native ABI.
+            bool helper = resolved.IsStatic;
+            if (!RuntimeTypeAttributeMemberRefShape(reader, mr, helper)
+                || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.Class, Class: { FullName: "System.Reflection.TypeAttributes", IsEnum: true } result }
+                || result.Module != resolved.Module
+                || (helper && (sig.ParameterTypes is not [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
+                    || parameter.Module != resolved.Module)))
+                throw new NotSupportedException("RuntimeType attribute query requires its exact MemberRef signature");
+        }
         if (typeRefParent)
             _memberRefMethodsByTypeRef[(module.Index, SRME.GetToken(handle))] = resolved;
         else
             _memberRefMethodsBySpec[(module.Index, SRME.GetToken(handle), cls)] = resolved;
         return resolved;
+    }
+
+    private static bool RuntimeTypeAttributeMemberRefShape(MetadataReader reader, MemberReference member, bool helper)
+    {
+        var blob = reader.GetBlobReader(member.Signature);
+        if (blob.RemainingBytes < 3 || blob.ReadByte() != (helper ? 0 : 0x20)
+            || blob.ReadCompressedInteger() != (helper ? 1 : 0) || blob.ReadByte() != 0x11)
+            return false;
+        blob.ReadCompressedInteger(); // TypeAttributes is encoded as a value type.
+        if (helper)
+        {
+            if (blob.RemainingBytes < 2 || blob.ReadByte() != 0x12)
+                return false;
+            blob.ReadCompressedInteger(); // RuntimeType is encoded as a reference type.
+        }
+        return blob.RemainingBytes == 0;
     }
 
     // Display names omit the defining assembly; overload keys use the model's type identity.
@@ -1458,6 +1487,7 @@ internal sealed partial class Compilation
                 || reader.StringComparer.Equals(mr.Name, "IsUnmanagedFunctionPointer")
                 || reader.StringComparer.Equals(mr.Name, "IsGenericVariable")
                 || reader.StringComparer.Equals(mr.Name, "GetToken")
+                || reader.StringComparer.Equals(mr.Name, "GetAttributes")
                 || reader.StringComparer.Equals(mr.Name, "IsTypeDefinition")
                 || reader.StringComparer.Equals(mr.Name, "GetAssembly")
                 || reader.StringComparer.Equals(mr.Name, "GetInstantiationInternal")
@@ -1497,6 +1527,7 @@ internal sealed partial class Compilation
                     || CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerPredicate(enumeration)
                     || CoreIntrinsics.IsRuntimeTypeHandleIsGenericVariable(enumeration)
                     || CoreIntrinsics.IsRuntimeTypeHandleGetToken(enumeration)
+                    || CoreIntrinsics.IsRuntimeTypeHandleGetAttributes(enumeration)
                     || CoreIntrinsics.IsRuntimeTypeHandleIsTypeDefinition(enumeration)
                     || CoreIntrinsics.IsRuntimeTypeHandleGetAssembly(enumeration)
                     || CoreIntrinsics.IsRuntimeTypeHandleInstantiation(enumeration)

@@ -885,6 +885,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerPredicate(target)
             || CoreIntrinsics.IsRuntimeTypeHandleIsGenericVariable(target)
             || CoreIntrinsics.IsRuntimeTypeHandleGetToken(target)
+            || CoreIntrinsics.IsRuntimeTypeHandleGetAttributes(target)
             || CoreIntrinsics.IsRuntimeTypeHandleIsTypeDefinition(target)
             || CoreIntrinsics.IsCoreClrMethodSlotLookup(target)
             || CoreIntrinsics.IsAmbiguousMatchExceptionFactory(target)
