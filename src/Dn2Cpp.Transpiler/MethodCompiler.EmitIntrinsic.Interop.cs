@@ -646,6 +646,19 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsRuntimeTypeHandleGetModule(callee))
+        {
+            var type = Pop();
+            TaintPoisonedTypeEscape(type);
+            var result = callee.Signature.ReturnType;
+            var module = new StackEntry($"dn2cpp_type_assembly_name({Cast(type, "Dn2CppType*")})",
+                StackKind.Ref, "const char*", StaticType: result);
+            // RuntimeModule is an interned object; public Module consumers unwrap it.
+            Push(StackKind.Ref, CppTypes.Of(result), Cast(module, CppTypes.Of(result)));
+            Top = Top with { StaticType = result };
+            return;
+        }
+
         if (CoreIntrinsics.IsRuntimeTypeHandleGetAssembly(callee))
         {
             var type = Pop();

@@ -17,6 +17,8 @@ if (RuntimeTypeDefinitionGuards.Run(args)) return;
 if (RuntimeTypeDefinitionFixture.Run(args)) return;
 if (RuntimeTypeGenericVariableGuards.Run(args)) return;
 if (RuntimeTypeGenericVariableFixture.Run(args)) return;
+if (RuntimeTypeModuleGuards.Run(args)) return;
+if (RuntimeTypeModuleFixture.Run(args)) return;
 if (RuntimeTypeAssemblyGuards.Run(args)) return;
 if (RuntimeTypeAssemblyFixture.Run(args)) return;
 if (RuntimeTypeFunctionPointerFixture.Run(args)) return;

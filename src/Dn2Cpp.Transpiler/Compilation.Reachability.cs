@@ -137,6 +137,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsRuntimeTypeHandleGetElementType(m)
             || CoreIntrinsics.IsRuntimeTypeHandleIsTypeDefinition(m)
             || CoreIntrinsics.IsRuntimeTypeHandleGetAssembly(m)
+            || CoreIntrinsics.IsRuntimeTypeHandleGetModule(m)
             || CoreIntrinsics.IsRuntimeTypeHandleInstantiation(m)
             || CoreIntrinsics.IsRuntimeTypeHandleGenericVariableIndex(m)
             || CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariables(m)

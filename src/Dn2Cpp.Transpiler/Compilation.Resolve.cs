@@ -1358,7 +1358,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsRuntimeTypeElementTypeOverride(resolved))
         {
             bool helper = resolved.IsStatic;
-            if (!RuntimeTypeElementMemberRefShape(reader, mr, helper)
+            if (!RuntimeTypeReferenceQueryMemberRefShape(reader, mr, helper)
                 || sig.GenericParameterCount != 0
                 || sig.ReturnType is not { Kind: TypeKind.Class, Class: { } result }
                 || result.FullName != (helper ? "System.RuntimeType" : "System.Type")
@@ -1366,6 +1366,21 @@ internal sealed partial class Compilation
                 || (helper && (sig.ParameterTypes is not [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
                     || parameter.Module != resolved.Module)))
                 throw new NotSupportedException("RuntimeType element query requires its exact MemberRef signature");
+        }
+        if (CoreIntrinsics.IsRuntimeTypeHandleGetModule(resolved)
+            || CoreIntrinsics.IsRuntimeTypeModuleGetter(resolved)
+            || CoreIntrinsics.IsRuntimeTypeGetRuntimeModule(resolved))
+        {
+            bool helper = resolved.IsStatic;
+            bool publicGetter = CoreIntrinsics.IsRuntimeTypeModuleGetter(resolved);
+            if (!RuntimeTypeReferenceQueryMemberRefShape(reader, mr, helper)
+                || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.Class, Class: { } result }
+                || result.FullName != (publicGetter ? "System.Reflection.Module" : "System.Reflection.RuntimeModule")
+                || result.Module != resolved.Module
+                || (helper && (sig.ParameterTypes is not [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
+                    || parameter.Module != resolved.Module)))
+                throw new NotSupportedException("RuntimeType module query requires its exact MemberRef signature");
         }
         if (CoreIntrinsics.IsRuntimeTypeEnumName(resolved))
         {
@@ -1397,13 +1412,13 @@ internal sealed partial class Compilation
         return blob.RemainingBytes == 0;
     }
 
-    private static bool RuntimeTypeElementMemberRefShape(MetadataReader reader, MemberReference member, bool helper)
+    private static bool RuntimeTypeReferenceQueryMemberRefShape(MetadataReader reader, MemberReference member, bool helper)
     {
         var blob = reader.GetBlobReader(member.Signature);
         if (blob.RemainingBytes < 3 || blob.ReadByte() != (helper ? 0 : 0x20)
             || blob.ReadCompressedInteger() != (helper ? 1 : 0) || blob.ReadByte() != 0x12)
             return false;
-        blob.ReadCompressedInteger(); // RuntimeType and Type are reference types.
+        blob.ReadCompressedInteger(); // The return is encoded as a reference type.
         if (helper)
         {
             if (blob.RemainingBytes < 2 || blob.ReadByte() != 0x12)
@@ -1527,6 +1542,7 @@ internal sealed partial class Compilation
                 || reader.StringComparer.Equals(mr.Name, "GetElementType")
                 || reader.StringComparer.Equals(mr.Name, "IsTypeDefinition")
                 || reader.StringComparer.Equals(mr.Name, "GetAssembly")
+                || reader.StringComparer.Equals(mr.Name, "GetModule")
                 || reader.StringComparer.Equals(mr.Name, "GetInstantiationInternal")
                 || reader.StringComparer.Equals(mr.Name, "GetInstantiationPublic")
                 || reader.StringComparer.Equals(mr.Name, "GetGenericVariableIndex")
@@ -1568,6 +1584,7 @@ internal sealed partial class Compilation
                     || CoreIntrinsics.IsRuntimeTypeHandleGetElementType(enumeration)
                     || CoreIntrinsics.IsRuntimeTypeHandleIsTypeDefinition(enumeration)
                     || CoreIntrinsics.IsRuntimeTypeHandleGetAssembly(enumeration)
+                    || CoreIntrinsics.IsRuntimeTypeHandleGetModule(enumeration)
                     || CoreIntrinsics.IsRuntimeTypeHandleInstantiation(enumeration)
                     || CoreIntrinsics.IsRuntimeTypeHandleGenericVariableIndex(enumeration)
                     || CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariables(enumeration)

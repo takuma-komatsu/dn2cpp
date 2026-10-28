@@ -632,6 +632,7 @@ internal static partial class CoreIntrinsics
             || IsRuntimeTypeHandleGetElementType(mi)
             || IsRuntimeTypeHandleIsTypeDefinition(mi)
             || IsRuntimeTypeHandleGetAssembly(mi)
+            || IsRuntimeTypeHandleGetModule(mi)
             || IsRuntimeTypeHandleInstantiation(mi)
             || IsRuntimeTypeHandleGenericVariableIndex(mi)
             || IsRuntimeTypeHandleContainsGenericVariables(mi)
@@ -1386,6 +1387,65 @@ internal static partial class CoreIntrinsics
         return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
             && signature.ParameterTypes.Length == 0
             && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean };
+    }
+
+    // Module identity is a native object, not a CoreCLR cache or object layout.
+    internal static bool IsRuntimeTypeHandleGetModule(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "GetModule"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Class, Class: { FullName: "System.Reflection.RuntimeModule" } result }
+            && result.Module == method.Module
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
+            && parameter.Module == method.Module;
+    }
+
+    // This sealed getter keeps its IL while binding to the native RuntimeType receiver.
+    internal static bool IsRuntimeTypeModuleGetter(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || !method.DeclaringClass.IsSealed
+            || method.Name != "get_Module"
+            || method.Attributes != (System.Reflection.MethodAttributes.Public | System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.HideBySig | System.Reflection.MethodAttributes.SpecialName)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Class, Class: { FullName: "System.Reflection.Module" } result }
+            && result.Module == method.Module;
+    }
+
+    // The internal accessor keeps its IL and managed RuntimeModule return ABI.
+    internal static bool IsRuntimeTypeGetRuntimeModule(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || !method.DeclaringClass.IsSealed
+            || method.Name != "GetRuntimeModule"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Class, Class: { FullName: "System.Reflection.RuntimeModule" } result }
+            && result.Module == method.Module;
     }
 
     // Assembly identity is a native object, not a CoreCLR cache or object layout.

@@ -2295,7 +2295,7 @@ internal sealed partial class MethodCompiler
             call = DirectCall(callee, args);
         }
         else if (isCallvirt && ((CoreIntrinsics.IsRuntimeTypeArrayRank(callee) || CoreIntrinsics.IsRuntimeTypeEnumName(callee)) || CoreIntrinsics.IsRuntimeTypeMakeCompound(callee) || CoreIntrinsics.IsRuntimeTypeMakeArray(callee)
-            || CoreIntrinsics.IsRuntimeTypeFunctionPointerGetter(callee) || CoreIntrinsics.IsRuntimeTypeAssemblyGetter(callee)
+            || CoreIntrinsics.IsRuntimeTypeFunctionPointerGetter(callee) || (CoreIntrinsics.IsRuntimeTypeAssemblyGetter(callee) || CoreIntrinsics.IsRuntimeTypeModuleGetter(callee))
             || CoreIntrinsics.IsRuntimeTypeGenericParameterGetter(callee) || CoreIntrinsics.IsRuntimeTypeMetadataTokenGetter(callee) || CoreIntrinsics.IsRuntimeTypeAttributeFlagsOverride(callee) || CoreIntrinsics.IsRuntimeTypeElementTypeOverride(callee) || CoreIntrinsics.IsRuntimeTypeDefinitionGetter(callee)))
         {
             // The selected sealed native receiver has no CoreCLR virtual slots.
@@ -3365,7 +3365,7 @@ internal sealed partial class MethodCompiler
             args2.Add(Cast(rawArgs[i], CppTypes.Of(ps[i])));
         // Nonvirtual and selected sealed native-Type calls enter their own bodies.
         if (!callee.IsVirtual || (CoreIntrinsics.IsRuntimeTypeArrayRank(callee) || CoreIntrinsics.IsRuntimeTypeEnumName(callee)) || CoreIntrinsics.IsRuntimeTypeMakeCompound(callee) || CoreIntrinsics.IsRuntimeTypeMakeArray(callee)
-            || CoreIntrinsics.IsRuntimeTypeFunctionPointerGetter(callee) || CoreIntrinsics.IsRuntimeTypeAssemblyGetter(callee)
+            || CoreIntrinsics.IsRuntimeTypeFunctionPointerGetter(callee) || (CoreIntrinsics.IsRuntimeTypeAssemblyGetter(callee) || CoreIntrinsics.IsRuntimeTypeModuleGetter(callee))
             || CoreIntrinsics.IsRuntimeTypeGenericParameterGetter(callee) || CoreIntrinsics.IsRuntimeTypeMetadataTokenGetter(callee) || CoreIntrinsics.IsRuntimeTypeAttributeFlagsOverride(callee) || CoreIntrinsics.IsRuntimeTypeElementTypeOverride(callee) || CoreIntrinsics.IsRuntimeTypeDefinitionGetter(callee))
         {
             EmitCallResult(callee, DirectCall(callee, args2));
