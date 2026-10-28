@@ -425,5 +425,7 @@ internal static class Program
         RuntimeTypeAssemblySubset.RuntimeAssemblyChecks.Run();
         if (args.Length > 0 && args[0] == "before-runtime-type-generic-variable") return;
         RuntimeTypeGenericVariableSubset.GenericVariablePredicateChecks.Run();
+        if (args.Length > 0 && args[0] == "before-activator-default") return;
+        ActivatorDefaultSubset.ActivatorChecks.Run();
     }
 }

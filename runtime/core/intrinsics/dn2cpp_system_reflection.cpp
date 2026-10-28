@@ -8462,7 +8462,7 @@ static Dn2CppObject* dn2cpp_activator_create_default(Dn2CppType* t, int32_t nonP
         auto* obj = static_cast<Dn2CppObject*>(
             dn2cpp_alloc(sizeof(Dn2CppObject) + static_cast<size_t>(ti->instanceSize)));
         obj->type = ti;
-        return obj;
+        return dn2cpp_rebox_from_nullable(obj);
     }
     if (binderMessage)
         dn2cpp_throw_missing_constructor(ti, false);
@@ -8478,6 +8478,15 @@ static Dn2CppObject* dn2cpp_activator_create_default(Dn2CppType* t, int32_t nonP
         dn2cpp_throw_missing_method(("No parameterless constructor defined for type '" + name + "'.").c_str());
     dn2cpp_throw_missing_method(("Cannot dynamically create an instance of type '" + name
         + "'. Reason: No parameterless constructor defined.").c_str());
+}
+
+Dn2CppObject* dn2cpp_activator_create_instance_wrapped(Dn2CppType* t, int32_t nonPublic, int32_t wrapExceptions)
+{
+    if (t == nullptr)
+        dn2cpp_throw_argument_null_param("type");
+    if (t->type != &dn2cpp_type_type)
+        dn2cpp_throw_platform_not_supported("Activator: custom Type construction is not supported");
+    return dn2cpp_activator_create_default(t, nonPublic, wrapExceptions != 0, false);
 }
 
 Dn2CppObject* dn2cpp_activator_create_instance_nonpublic(Dn2CppType* t, int32_t nonPublic)

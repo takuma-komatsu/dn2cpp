@@ -445,7 +445,7 @@ internal static class ReflectionApis
             return Unrecognized(api);
         if (Sig(ps, TType))
             return api;
-        if (Sig(ps, TType, TBool))
+        if (Sig(ps, TType, TBool) || Sig(ps, TType, TBool, TBool))
             return api with { NonPublic = 1 };
         if (Sig(ps, TType, TObjects) || Sig(ps, TType, TObjects, TObjects))
             return api with { Args = 1 };

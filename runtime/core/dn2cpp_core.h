@@ -2480,6 +2480,8 @@ Dn2CppObject* dn2cpp_activator_create_instance(Dn2CppType* t);
 // invisible parameterless ctor and abstract/interface targets throw the
 // catchable MissingMethodException (probed against real .NET).
 Dn2CppObject* dn2cpp_activator_create_instance_nonpublic(Dn2CppType* t, int32_t nonPublic);
+// Retained parameterless factory: only canonical runtime Type objects carry a native layout.
+Dn2CppObject* dn2cpp_activator_create_instance_wrapped(Dn2CppType* t, int32_t nonPublic, int32_t wrapExceptions);
 // Activator.CreateInstance(Type, object[] args[, BindingFlags, Binder,
 // activationAttributes]): DefaultBinder-style ctor resolution — filter on
 // flags + arity + boxed-argument admissibility (null matches everything,

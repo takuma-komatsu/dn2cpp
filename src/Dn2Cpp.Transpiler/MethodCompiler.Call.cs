@@ -484,7 +484,8 @@ internal sealed partial class MethodCompiler
                     || CoreIntrinsics.IsMemberMetadataDefinitionBase(callee)
                     || CoreIntrinsics.BrDelegateNamedConstructor.Matches(callee)
                     || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(callee)
-                    || CoreIntrinsics.BrNullableReboxing.Matches(callee))
+                    || CoreIntrinsics.BrNullableReboxing.Matches(callee)
+                    || CoreIntrinsics.BrActivatorDefault.Matches(callee))
                 {
                     EmitManagedCall(callee, isCallvirt);
                     return;

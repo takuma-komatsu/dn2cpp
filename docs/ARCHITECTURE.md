@@ -496,6 +496,14 @@ Members, signatures and field types are decoded **on demand**; read
 4. Add a minimal case to `samples/dotnet/HelloWorld`; green
    `./gates/build-and-run-sample.sh`.
 
+The retained internal `Activator.CreateInstance(Type, bool, bool)` factory shares
+parameterless constructor selection with the public native factory. Its booleans
+remain `nonPublic` and `wrapExceptions`; constructor discovery does not depend on
+the wrapping choice. Null Type arguments keep their named argument exception;
+custom Type objects are refused before interpreting the native Type payload.
+Default value creation uses normal Nullable boxing, while raw internal Nullable
+reboxing retains its separate object representation.
+
 ### B. A BCL intrinsic (a `System.*` call) — core lane
 
 1. Add a case to the `switch (declType, name)` in

@@ -3825,7 +3825,8 @@ internal sealed partial class CppEmitter
                         || CoreIntrinsics.IsCoreClrConstraintCheck(method)
                         || CoreIntrinsics.IsCoreClrDeclaringMethodBridge(method)
                         || CoreIntrinsics.IsCoreClrTypeMaterialization(method)
-                        || CoreIntrinsics.BrNullableReboxing.Matches(method)));
+                        || CoreIntrinsics.BrNullableReboxing.Matches(method)
+                        || CoreIntrinsics.BrActivatorDefault.Matches(method)));
 
         private void RenderMemberTables(ClassInfo cls)
         {
