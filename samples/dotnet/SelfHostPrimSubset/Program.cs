@@ -435,5 +435,7 @@ internal static class Program
         RuntimeTypeDefaultStructSubset.StructChecks.Run();
         if (args.Length > 0 && args[0] == "before-coreclr-activation-info") return;
         CoreClrActivationInfoSubset.ActivationChecks.Run();
+        if (args.Length > 0 && args[0] == "before-runtime-type-handle-name") return;
+        RuntimeTypeHandleNameSubset.NameChecks.Run();
     }
 }

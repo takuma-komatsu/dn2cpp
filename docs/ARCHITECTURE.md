@@ -535,6 +535,16 @@ boundary does not provide a working activation cache or fabricated VM pointers.
 Supported public construction uses the native adapters above. Reflection's existing
 byref-pointer invocation restrictions and exception-only NoAlloc policy remain.
 
+The managed `RuntimeTypeHandle.ConstructName(TypeNameFormatFlags)` adapter first
+validates the handle, then composes existing Name/ToString/FullName/AssemblyQualifiedName
+helpers for modes 0/1/3/7. Unsupported flags and a null FullName/AQN result are explicit
+native capability refusals, not claims about private CLR flag behavior. Public getters
+keep their separate open/formal/function-pointer null contract. Existing metadata and
+name-formatting limits remain; compound open generic definitions are not newly promised
+for modes 3/7. The raw QCall overload retains its import policy. String construction
+remains allocating for NoAlloc; boxed handles use the existing unbox/invoker ABI.
+
+
 ### B. A BCL intrinsic (a `System.*` call) — core lane
 
 1. Add a case to the `switch (declType, name)` in

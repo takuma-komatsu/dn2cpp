@@ -2,6 +2,8 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (RuntimeTypeHandleNameGuards.Run(args)) return;
+if (RuntimeTypeHandleNameFixture.Run(args)) return;
 if (CoreClrActivationInfoRawFixture.Run(args)) return;
 if (CoreClrActivationInfoGuards.Run(args)) return;
 if (CoreClrActivationInfoFixture.Run(args)) return;

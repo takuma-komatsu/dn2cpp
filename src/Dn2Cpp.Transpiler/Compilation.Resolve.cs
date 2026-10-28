@@ -100,6 +100,7 @@ internal sealed partial class Compilation
                     || CoreIntrinsics.BrDelegateNamedConstructor.Matches(mi)
                     || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(mi)
                     || CoreIntrinsics.BrNullableReboxing.Matches(mi)
+                    || CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(mi)
                     || CoreIntrinsics.BrCoreClrActivationInfo.Matches(mi)
                     || CoreIntrinsics.BrRuntimeTypeDefaultStructCtor.Matches(mi)
                     || CoreIntrinsics.BrRuntimeTypeCreateInstanceOfT.Matches(mi)
@@ -1495,6 +1496,16 @@ internal sealed partial class Compilation
                 || blob.ReadByte() != (byte)SignatureTypeCode.Boolean || blob.ReadByte() != (byte)SignatureTypeCode.Object)
                 throw new NotSupportedException("RuntimeType enum defined query requires its exact MemberRef signature");
         }
+        if (name == "ConstructName" && candidates.Any(CoreIntrinsics.IsRuntimeTypeHandleConstructName))
+        {
+            if (!CoreIntrinsics.IsRuntimeTypeHandleConstructNameSignature(reader.GetBlobReader(mr.Signature))
+                || sig.Header.RawValue != 0x20 || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.String }
+                || sig.ParameterTypes is not [{ Kind: TypeKind.Class, Class: { FullName: "System.TypeNameFormatFlags",
+                    IsEnum: true, EnumUnderlying: PrimitiveTypeCode.Int32 } flags }]
+                || flags.Module != resolved.Module || !CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(resolved))
+                throw new NotSupportedException("RuntimeTypeHandle name construction requires its exact MemberRef signature");
+        }
         if (name == "GetActivationInfo" && candidates.Any(CoreIntrinsics.IsCoreClrActivationInfo)
             && (CoreIntrinsics.BrCoreClrActivationInfo.Matches(resolved)
                 || sig.ParameterTypes.FirstOrDefault()?.Class?.FullName == "System.RuntimeType"
@@ -1690,6 +1701,13 @@ internal sealed partial class Compilation
                     return copy;
             }
             catch (NotSupportedException e) when (!IsMustEscape(e)) { }
+        }
+        if (full == "System.RuntimeTypeHandle" && reader.StringComparer.Equals(mr.Name, "ConstructName")
+            && CoreIntrinsics.IsRuntimeTypeHandleConstructNameSignature(reader.GetBlobReader(mr.Signature)))
+        {
+            var naming = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(naming))
+                return naming;
         }
         if (full == "System.RuntimeTypeHandle" && reader.StringComparer.Equals(mr.Name, "GetActivationInfo")
             && CoreIntrinsics.IsCoreClrActivationInfoSignature(reader.GetBlobReader(mr.Signature)))

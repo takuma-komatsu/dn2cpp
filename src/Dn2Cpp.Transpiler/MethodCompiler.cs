@@ -1245,6 +1245,29 @@ internal sealed partial class MethodCompiler : IEvalStack
             || CoreIntrinsics.IsCoreClrDeclaringMethodBridge(_method)
             || CoreIntrinsics.IsCoreClrTypeMaterialization(_method) && _method.Rva == 0)
             return CompileInterceptWrapper();
+        if (CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(_method))
+            return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
+            {
+                var flags = Pop();
+                var receiver = Pop();
+                if (receiver.Kind == StackKind.Ptr)
+                    Emit($"if ({receiver.Expr} == nullptr) dn2cpp_throw_null_reference();");
+                string handle = NewTemp("const Dn2CppTypeInfo*");
+                Emit($"{handle} = {(receiver.Kind == StackKind.Ptr ? $"(*(const Dn2CppTypeInfo**)({receiver.Expr}))" : Cast(receiver, "const Dn2CppTypeInfo*"))};");
+                ValidateRuntimeTypeHandle(handle, _method);
+                string text = NewTemp("Dn2CppString*");
+                Emit($"{text} = nullptr;");
+                Emit($"switch ({Cast(flags, "int32_t")}) {{");
+                Emit($"case 0: {text} = dn2cpp_type_name({handle}); break;");
+                Emit($"case 1: {text} = dn2cpp_type_tostring({handle}); break;");
+                Emit($"case 3: {text} = dn2cpp_type_fullname({handle}); break;");
+                Emit($"case 7: {text} = dn2cpp_type_assembly_qualified_name(dn2cpp_get_type_from_handle({handle})); break;");
+                Emit("default: break;");
+                Emit("}");
+                Emit($"if ({text} == nullptr) dn2cpp_throw_platform_not_supported(\"RuntimeTypeHandle.ConstructName supports name, display, full and assembly-qualified modes only in the native type-name domain.\");");
+                Push(StackKind.Ref, "Dn2CppString*", text);
+                return true;
+            }, "RuntimeTypeHandle bounded name construction");
         if (CoreIntrinsics.BrCoreClrActivationInfo.Matches(_method))
             return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
             {

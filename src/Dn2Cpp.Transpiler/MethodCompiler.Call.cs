@@ -485,6 +485,7 @@ internal sealed partial class MethodCompiler
                     || CoreIntrinsics.BrDelegateNamedConstructor.Matches(callee)
                     || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(callee)
                     || CoreIntrinsics.BrNullableReboxing.Matches(callee)
+                    || CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(callee)
                     || CoreIntrinsics.BrCoreClrActivationInfo.Matches(callee)
                     || CoreIntrinsics.BrRuntimeTypeDefaultStructCtor.Matches(callee)
                     || CoreIntrinsics.BrRuntimeTypeCreateInstanceOfT.Matches(callee)
