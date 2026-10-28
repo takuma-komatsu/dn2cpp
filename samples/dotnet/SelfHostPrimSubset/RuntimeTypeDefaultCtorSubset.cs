@@ -4,7 +4,7 @@ using System.Reflection;
 
 namespace RuntimeTypeDefaultCtorSubset;
 
-internal static class DefaultCtorChecks
+internal static partial class DefaultCtorChecks
 {
     private static int _publicCalls, _privateCalls;
     private sealed class PublicClass { public int Value; public PublicClass() { _publicCalls++; Value = 41; } }

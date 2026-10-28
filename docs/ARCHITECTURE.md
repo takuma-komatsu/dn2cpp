@@ -510,6 +510,11 @@ It never reads a custom Type payload or enters CoreCLR activation-cache machiner
 Receiver-based planning selects only parameterless constructors; an unknown
 visibility flag conservatively retains both accessibilities, without changing
 the runtime visibility check or rooting other constructor arities.
+The nongeneric `RuntimeType.CreateInstanceOfT()` body uses the same instance
+adapter with public-only selection and constructor exception wrapping fixed on.
+Its receiver-based planning retains only public parameterless constructors;
+value/Nullable boxed return policies remain separate from the public generic
+caller's struct-construction path.
 
 ### B. A BCL intrinsic (a `System.*` call) — core lane
 

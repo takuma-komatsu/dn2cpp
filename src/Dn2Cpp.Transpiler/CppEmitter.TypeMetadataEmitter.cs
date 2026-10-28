@@ -3826,6 +3826,7 @@ internal sealed partial class CppEmitter
                         || CoreIntrinsics.IsCoreClrDeclaringMethodBridge(method)
                         || CoreIntrinsics.IsCoreClrTypeMaterialization(method)
                         || CoreIntrinsics.BrNullableReboxing.Matches(method)
+                        || CoreIntrinsics.BrRuntimeTypeCreateInstanceOfT.Matches(method)
                         || CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(method)
                         || CoreIntrinsics.BrActivatorDefault.Matches(method)));
 

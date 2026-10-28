@@ -9,7 +9,9 @@ internal static class RuntimeTypeDefaultCtorGuards
 {
     public static bool Run(string[] args)
     {
-        if (args.Length != 2 || args[0] != "--runtime-type-default-ctor-guards") return false;
+        if (args.Length != 2 || args[0] is not ("--runtime-type-default-ctor-guards" or "--runtime-type-create-instance-of-t-guards")) return false;
+        bool ofT = args[0] == "--runtime-type-create-instance-of-t-guards";
+        string targetName = ofT ? "CreateInstanceOfT" : "CreateInstanceDefaultCtor";
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
         var production = Assembly.LoadFrom(Path.GetFullPath(args[1]));
@@ -27,7 +29,7 @@ internal static class RuntimeTypeDefaultCtorGuards
             ? field.GetValue(target)!
             : target.GetType().GetProperty(name, fields)!.GetValue(target)!;
         object NewMap(Type owner, string field) => Activator.CreateInstance(owner.GetField(field, fields)!.FieldType)!;
-        var predicate = Model("CoreIntrinsics").GetMethod("IsRuntimeTypeDefaultCtor", statics)!;
+        var predicate = Model("CoreIntrinsics").GetMethod(ofT ? "IsRuntimeTypeCreateInstanceOfT" : "IsRuntimeTypeDefaultCtor", statics)!;
         var decode = typeof(MethodDefinition).GetMethods().Single(m => m.Name == "DecodeSignature")
             .MakeGenericMethod(Model("TypeDesc"), typeof(object));
         int checks = 0;
@@ -39,7 +41,7 @@ internal static class RuntimeTypeDefaultCtorGuards
 
         // Actual SRM decoding deliberately normalizes class/value tags and modifiers;
         // the exact descriptor must still reject those raw declaration near-misses.
-        foreach (var item in new (string Label, byte[] Signature, bool Expected)[]
+        var signatures = new (string Label, byte[] Signature, bool Expected)[]
         {
             ("exact", new byte[] { 0x20, 2, 0x1c, 2, 2 }, true),
             ("static", new byte[] { 0, 2, 0x1c, 2, 2 }, false),
@@ -55,7 +57,20 @@ internal static class RuntimeTypeDefaultCtorGuards
             ("missing-parameter", new byte[] { 0x20, 1, 0x1c, 2 }, false),
             ("extra-parameter", new byte[] { 0x20, 3, 0x1c, 2, 2, 2 }, false),
             ("trailing-token", new byte[] { 0x20, 2, 0x1c, 2, 2, 2 }, false),
-        })
+        };
+        if (ofT) signatures = new (string Label, byte[] Signature, bool Expected)[]
+        {
+            ("exact", new byte[] { 0x20, 0, 0x1c }, true),
+            ("static", new byte[] { 0, 0, 0x1c }, false),
+            ("explicit", new byte[] { 0x60, 0, 0x1c }, false),
+            ("vararg", new byte[] { 0x25, 0, 0x1c }, false),
+            ("generic", new byte[] { 0x30, 1, 0, 0x1c }, false),
+            ("modified-return", new byte[] { 0x20, 0, 0x20, 0x10, 0x1c }, false),
+            ("wrong-return", new byte[] { 0x20, 0, 8 }, false),
+            ("extra-argument", new byte[] { 0x20, 1, 0x1c, 2 }, false),
+            ("trailing-token", new byte[] { 0x20, 0, 0x1c, 2 }, false),
+        };
+        foreach (var item in signatures)
         {
             var metadata = new MetadataBuilder();
             metadata.AddModule(0, metadata.GetOrAddString("Guard.dll"), metadata.GetOrAddGuid(Guid.Empty), default, default);
@@ -73,7 +88,7 @@ internal static class RuntimeTypeDefaultCtorGuards
             var typeInfo = metadata.AddTypeDefinition(TypeAttributes.Public | TypeAttributes.Abstract,
                 metadata.GetOrAddString("System.Reflection"), metadata.GetOrAddString("TypeInfo"), default, firstField, nextMethod);
             var handle = metadata.AddMethodDefinition(MethodAttributes.Assembly | MethodAttributes.HideBySig,
-                MethodImplAttributes.IL, metadata.GetOrAddString("CreateInstanceDefaultCtor"), metadata.GetOrAddBlob(item.Signature), 1,
+                MethodImplAttributes.IL, metadata.GetOrAddString(targetName), metadata.GetOrAddBlob(item.Signature), 1,
                 MetadataTokens.ParameterHandle(1));
             metadata.AddParameter(ParameterAttributes.None, metadata.GetOrAddString("source"), 1);
             var image = new BlobBuilder();
@@ -150,12 +165,13 @@ internal static class RuntimeTypeDefaultCtorGuards
         var facts = (IDictionary)NewMap(Model("Compilation"), "HotBodyFacts");
         Set(hotCompilation, "HotBodyFacts", facts);
         Model("Compilation").GetMethod("RecordHotBodyFacts", fields)!.Invoke(hotCompilation,
-            new[] { hotMethod, "return dn2cpp_activator_create_instance_default_ctor(type, publicOnly, wrap);" });
+            new[] { hotMethod, ofT ? "return dn2cpp_activator_create_instance_default_ctor(type, 1, 1);"
+                : "return dn2cpp_activator_create_instance_default_ctor(type, publicOnly, wrap);" });
         var fact = facts["RuntimeTypeDefaultCtorGuard"]!;
         Check((bool)Get(fact, "Allocates") && (bool)Get(fact, "Dispatches"), "allocation-and-dispatch-facts");
         Check((string)Get(fact, "AllocToken") == "dn2cpp_activator_create_instance"
             && (string)Get(fact, "DispatchToken") == "dn2cpp_activator_create_instance", "existing-construction-prefix");
-        Console.WriteLine("runtime-type-default-ctor-raw-guards=" + checks);
+        Console.WriteLine((ofT ? "runtime-type-oft-raw-guards=" : "runtime-type-default-ctor-raw-guards=") + checks);
         return true;
     }
 }

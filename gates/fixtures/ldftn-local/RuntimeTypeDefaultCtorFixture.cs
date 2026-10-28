@@ -24,26 +24,17 @@ internal static class RuntimeTypeDefaultCtorFixture
         if (args[0] == "--runtime-type-default-ctor-inspect-planner")
         {
             var dietChecks = module.GetType("RuntimeTypeDefaultCtorSubset.DefaultCtorChecks");
-            static bool Executable(MethodDefinition? method)
-            {
-                if (method is null || !method.HasBody) return false;
-                var il = method.Body.Instructions;
-                bool stub = il.Count == 4 && il[0].OpCode == OpCodes.Ldc_I4
-                    && il[0].Operand is int marker && marker == 0x494C4454
-                    && il[1].OpCode == OpCodes.Pop && il[2].OpCode == OpCodes.Ldnull && il[3].OpCode == OpCodes.Throw;
-                return !stub;
-            }
             foreach (string name in new[] { "PlannerPrivateOnly", "PlannerUnknownOnly", "GenericOnly" })
             {
                 var type = dietChecks.NestedTypes.Single(t => t.Name == name);
-                if (!Executable(type.Methods.SingleOrDefault(m => m.IsConstructor && !m.IsStatic && m.Parameters.Count == 0)))
+                if (!HasExecutableBody(type.Methods.SingleOrDefault(m => m.IsConstructor && !m.IsStatic && m.Parameters.Count == 0)))
                     throw new InvalidOperationException("Required private default constructor lost: " + name);
             }
             var publicOnlyType = dietChecks.NestedTypes.Single(t => t.Name == "PlannerPublicOnly");
-            if (publicOnlyType.Methods.Any(m => m.IsConstructor && !m.IsStatic && Executable(m)))
+            if (publicOnlyType.Methods.Any(m => m.IsConstructor && !m.IsStatic && HasExecutableBody(m)))
                 throw new InvalidOperationException("Public-only receiver retained a private constructor body");
             var genericType = dietChecks.NestedTypes.Single(t => t.Name == "GenericOnly");
-            if (genericType.Methods.Any(m => m.IsConstructor && m.Parameters.Count != 0 && Executable(m)))
+            if (genericType.Methods.Any(m => m.IsConstructor && m.Parameters.Count != 0 && HasExecutableBody(m)))
                 throw new InvalidOperationException("Generic default construction retained an unrelated constructor body");
             Console.WriteLine("runtime-type-default-ctor-planner-diet: executable default ctors only; omitted private/argument ctors absent or known ILDiet stub");
             return true;
@@ -182,7 +173,17 @@ internal static class RuntimeTypeDefaultCtorFixture
         foreach (var nested in type.NestedTypes.SelectMany(AllTypes)) yield return nested;
     }
 
-    private static void MarkNoAlloc(ModuleDefinition module, MethodDefinition method)
+    internal static bool HasExecutableBody(MethodDefinition? method)
+    {
+        if (method is null || !method.HasBody) return false;
+        var il = method.Body.Instructions;
+        bool stub = il.Count == 4 && il[0].OpCode == OpCodes.Ldc_I4
+            && il[0].Operand is int marker && marker == 0x494C4454
+            && il[1].OpCode == OpCodes.Pop && il[2].OpCode == OpCodes.Ldnull && il[3].OpCode == OpCodes.Throw;
+        return !stub;
+    }
+
+    internal static void MarkNoAlloc(ModuleDefinition module, MethodDefinition method)
     {
         var attribute = new TypeDefinition("Dn2Cpp.Runtime", "HotPathAttribute", TypeAttributes.Class | TypeAttributes.Sealed,
             module.ImportReference(typeof(Attribute)));

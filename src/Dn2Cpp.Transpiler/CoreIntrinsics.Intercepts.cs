@@ -338,6 +338,7 @@ internal enum InterceptEmitArm
     NullableReboxingBody,
     ActivatorDefaultBody,
     RuntimeTypeDefaultCtorBody,
+    RuntimeTypeCreateInstanceOfTBody,
     DelegateNamedConstructorBody,
     DelegateCloneBinding,
     ArrayCloneBinding,
@@ -821,6 +822,32 @@ internal static partial class CoreIntrinsics
         }
         return null;
     }
+
+    internal static bool IsRuntimeTypeCreateInstanceOfT(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || method.Name != "CreateInstanceOfT"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || method.ImplAttributes != System.Reflection.MethodImplAttributes.IL)
+            return false;
+        if (!IsRuntimeTypeCreateInstanceOfTSignature(method.Module.Reader.GetBlobReader(
+            method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object }
+            && signature.ParameterTypes.Length == 0;
+    }
+
+    internal static bool IsRuntimeTypeCreateInstanceOfTSignature(BlobReader blob) =>
+        blob.RemainingBytes == 3 && blob.ReadByte() == 0x20 && blob.ReadByte() == 0
+        && blob.ReadByte() == (byte)SignatureTypeCode.Object;
+
+    public static readonly MethodDefIntercept BrRuntimeTypeCreateInstanceOfT = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.RuntimeTypeCreateInstanceOfTBody,
+        typeGate: "System.RuntimeType", nameGate: "CreateInstanceOfT", extra: static m => IsRuntimeTypeCreateInstanceOfT(m));
 
     internal static bool IsRuntimeTypeDefaultCtor(MethodInfo method)
     {
