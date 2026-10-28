@@ -746,6 +746,21 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsRuntimeTypeHandleInterfaces(callee))
+        {
+            var type = Pop();
+            TaintPoisonedTypeEscape(type);
+            var result = callee.Signature.ReturnType;
+            var element = result.Element!;
+            var runtimeType = callee.Signature.ParameterTypes[0];
+            Comp.NoteArrayEnumerableElement(element);
+            Comp.NoteArrayEnumerableElement(runtimeType);
+            Push(StackKind.Ref, "Dn2CppArrayRef*",
+                $"dn2cpp_runtime_type_get_interfaces({Cast(type, "Dn2CppType*")}, {PreciseArrayTypeInfoExpr(element)}, {PreciseArrayTypeInfoExpr(runtimeType)})");
+            Top = Top with { StaticType = result };
+            return;
+        }
+
         if (CoreIntrinsics.IsRuntimeTypeHandleInstantiation(callee))
         {
             string handle = NewTemp("const Dn2CppTypeInfo*");

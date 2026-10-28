@@ -1626,3 +1626,15 @@ extended native, admission, publication-repeat and exhaustive budget matrices
 when investigating preservation or reachability changes. A representative pass
 does not claim those extended combinations; both profiles retain the managed
 metadata and publication-contract checks they execute.
+
+The retained managed `RuntimeTypeHandle.GetInterfaces(RuntimeType)` wrapper uses
+native interface rows in their existing order. Formal parameters and compound
+pointer/byref/function-pointer types return the precise `Array.Empty<Type>()`
+singleton without constraint enumeration. Ordinary empty results share that
+singleton; nonempty results own a fresh `RuntimeType[]`. The public enumeration
+helper and raw QCall binding policy are unchanged. Opaque shells still expose
+only retained interface rows; this bridge does not provide a new interface solver.
+The native row order is not necessarily CLR interface-map order, and an open
+generic shell can omit a substituted generic interface that a closed instance
+retains. The wrapper preserves these existing limits rather than sorting rows
+or inferring missing interfaces.

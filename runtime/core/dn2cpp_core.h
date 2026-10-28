@@ -1859,6 +1859,8 @@ Dn2CppType* dn2cpp_type_make_generic(Dn2CppType* def, Dn2CppArrayRef* args);
 // Parse(Type, string[, ignoreCase]) and Type.GetEnumUnderlyingType work via a runtime
 // Type, complementing the generic Enum.*<T> inline lowering.
 Dn2CppArrayRef* dn2cpp_type_get_interfaces(Dn2CppType* t);
+Dn2CppArrayRef* dn2cpp_runtime_type_get_interfaces(Dn2CppType* t,
+    const Dn2CppTypeInfo* typeArray, const Dn2CppTypeInfo* runtimeTypeArray);
 // Type.GetInterface(name[, ignoreCase]): the lone matching row of the same table,
 // or null on no match. The name splits at its last '.'; the simple part matches the
 // interface's simple name (the generic DEFINITION's for a closed generic, so

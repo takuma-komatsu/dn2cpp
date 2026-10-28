@@ -2,6 +2,8 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (RuntimeInterfacesGuards.Run(args)) return;
+if (RuntimeInterfacesFixture.Run(args)) return;
 if (RuntimeIntroducedMethodsGuards.Run(args)) return;
 if (RuntimeIntroducedMethodsFixture.Run(args)) return;
 if (RuntimeTypeCacheGenericDefinitionGuards.Run(args)) return;

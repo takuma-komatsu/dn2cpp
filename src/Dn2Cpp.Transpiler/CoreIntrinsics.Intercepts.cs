@@ -648,6 +648,7 @@ internal static partial class CoreIntrinsics
             || IsRuntimeTypeHandleGetAssembly(mi)
             || IsRuntimeTypeHandleGetModule(mi)
             || IsRuntimeTypeHandleInstantiation(mi)
+            || IsRuntimeTypeHandleInterfaces(mi)
             || IsRuntimeTypeHandleGenericVariableIndex(mi)
             || IsRuntimeTypeHandleContainsGenericVariables(mi)
             || IsRuntimeTypeHandleConstraints(mi)
@@ -2222,6 +2223,38 @@ internal static partial class CoreIntrinsics
             && signature.ParameterTypes.Length == 0
             && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 };
     }
+
+    internal static bool IsRuntimeTypeHandleInterfaces(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "GetInterfaces"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.Handle.IsNil || method.PInvoke is not null
+            || method.ImplAttributes != System.Reflection.MethodImplAttributes.IL)
+            return false;
+        if (!IsRuntimeTypeHandleInterfacesSignature(method.Module.Reader.GetBlobReader(
+            method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Class,
+                Class: { FullName: "System.Type", IsValueType: false } element } }
+            && element.Module == method.Module
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class,
+                Class: { FullName: "System.RuntimeType", IsValueType: false } type }]
+            && type.Module == method.Module;
+    }
+
+    internal static bool IsRuntimeTypeHandleInterfacesSignature(BlobReader blob) =>
+        blob.RemainingBytes >= 7 && blob.ReadByte() == 0 && blob.ReadByte() == 1
+        && blob.ReadByte() == 0x1d && blob.ReadByte() == 0x12
+        && blob.TryReadCompressedInteger(out int result) && result > 0
+        && (result >> 2) != 0 && (result & 3) != 3
+        && blob.RemainingBytes >= 2 && blob.ReadByte() == 0x12
+        && blob.TryReadCompressedInteger(out int parameter) && parameter > 0
+        && (parameter >> 2) != 0 && (parameter & 3) != 3 && blob.RemainingBytes == 0;
 
     // The managed wrappers differ in array identity, not argument materialization.
     internal static bool IsRuntimeTypeHandleInstantiation(MethodInfo method)

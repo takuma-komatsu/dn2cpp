@@ -1519,6 +1519,18 @@ internal sealed partial class Compilation
                 || member.Module != resolved.Module || !CoreIntrinsics.BrCustomAttributeDataMember.Matches(resolved))
                 throw new NotSupportedException("CustomAttributeData member query requires its exact MemberRef signature");
         }
+        if (name == "GetInterfaces" && candidates.Any(CoreIntrinsics.IsRuntimeTypeHandleInterfaces)
+            && (CoreIntrinsics.IsRuntimeTypeHandleInterfaces(resolved) || sig.ParameterTypes.Length == 1))
+        {
+            if (!CoreIntrinsics.IsRuntimeTypeHandleInterfacesSignature(reader.GetBlobReader(mr.Signature))
+                || sig.Header.RawValue != 0 || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Class,
+                    Class: { FullName: "System.Type", IsValueType: false } element } }
+                || element.Module != resolved.Module
+                || sig.ParameterTypes is not [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } type }]
+                || type.Module != resolved.Module || !CoreIntrinsics.IsRuntimeTypeHandleInterfaces(resolved))
+                throw new NotSupportedException("RuntimeTypeHandle interfaces query requires its exact MemberRef signature");
+        }
         if (name == "GetIntroducedMethods" && candidates.Any(CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactory))
         {
             if (!CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactorySignature(reader.GetBlobReader(mr.Signature))
@@ -1748,6 +1760,12 @@ internal sealed partial class Compilation
                     return factory;
             }
             catch (NotSupportedException e) when (!IsMustEscape(e)) { }
+        }
+        if (full == "System.RuntimeTypeHandle" && reader.StringComparer.Equals(mr.Name, "GetInterfaces"))
+        {
+            var interfaces = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsRuntimeTypeHandleInterfaces(interfaces))
+                return interfaces;
         }
         if (full == "System.RuntimeTypeHandle" && reader.StringComparer.Equals(mr.Name, "GetIntroducedMethods")
             && CoreIntrinsics.IsRuntimeTypeIntroducedMethodsFactorySignature(reader.GetBlobReader(mr.Signature)))

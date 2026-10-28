@@ -447,5 +447,7 @@ internal static class Program
         RuntimeTypeCacheGenericDefinitionSubset.DefinitionChecks.Run();
         if (args.Length > 0 && args[0] == "before-introduced-methods") return;
         RuntimeIntroducedMethodsSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-interfaces") return;
+        RuntimeInterfacesSubset.Program.Run();
     }
 }

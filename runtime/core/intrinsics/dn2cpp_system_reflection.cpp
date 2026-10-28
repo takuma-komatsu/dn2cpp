@@ -765,6 +765,26 @@ Dn2CppArrayRef* dn2cpp_type_get_interfaces(Dn2CppType* t)
     return arr;
 }
 
+// The private managed wrapper bypasses formal constraints and preserves the VM's
+// empty Type[] singleton versus fresh nonempty RuntimeType[] distinction.
+Dn2CppArrayRef* dn2cpp_runtime_type_get_interfaces(Dn2CppType* t,
+    const Dn2CppTypeInfo* typeArray, const Dn2CppTypeInfo* runtimeTypeArray)
+{
+    if (t == nullptr)
+        dn2cpp_throw_null_reference();
+    if (t->type != &dn2cpp_type_type)
+        dn2cpp_throw_platform_not_supported("RuntimeTypeHandle.GetInterfaces: custom Type is not supported");
+    const Dn2CppTypeInfo* ti = dn2cpp_type_require(t);
+    const int32_t kind = dn2cpp_signature_kind(ti);
+    if ((ti->flags & DN2CPP_TF_GENERICPARAM) != 0 || kind == 1 || kind == 2 || kind == 3)
+        return dn2cpp_array_empty_ref(typeArray);
+    Dn2CppArrayRef* result = dn2cpp_type_get_interfaces(t);
+    if (result->length == 0)
+        return dn2cpp_array_empty_ref(typeArray);
+    result->type = runtimeTypeArray;
+    return result;
+}
+
 // AmbiguousMatchException as .NET's reflection lookups raise it, with its HResult
 // (COR_E_AMBIGUOUSMATCH). A null text (no CoreLib resources) keeps the default message.
 [[noreturn]] static void dn2cpp_throw_ambiguous_text(Dn2CppString* message)

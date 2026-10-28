@@ -725,6 +725,7 @@ internal sealed partial class Compilation
         "dn2cpp_type_get_members(",
         "dn2cpp_type_get_member(",  // GetMember answers an array
         "dn2cpp_type_get_interfaces(",
+        "dn2cpp_runtime_type_get_interfaces(",
         "dn2cpp_type_find_interfaces(",
         "dn2cpp_type_get_nested_types(",
         "dn2cpp_type_get_generic_arguments(",
