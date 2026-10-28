@@ -502,6 +502,15 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsRuntimeTypeArrayRank(callee))
+        {
+            // A pending constrained prefix still carries the managed-pointer receiver.
+            string receiver = CallIsVirtual && _constrained is not null
+                ? DerefReceiver("Dn2CppType*") : Cast(Pop(), "Dn2CppType*");
+            Push(StackKind.I4, "int32_t", $"dn2cpp_type_get_array_rank({receiver})");
+            return;
+        }
+
         if (CoreIntrinsics.IsRuntimeTypeMakeGenericType(callee))
         {
             // callvirt checks before entry; a nonvirtual body checks the array first.
