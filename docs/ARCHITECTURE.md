@@ -555,6 +555,17 @@ MemberInfo declaring-type helper is unchanged; this is not nested-type parity. R
 an interned Type follows the existing NoAlloc policy for cached reflection handles,
 which does not promise zero cold initialization allocation.
 
+The retained RuntimeTypeCache generic-definition local helper reads its actual managed
+owner field and requires a canonical Type header before payload access. Definitions
+return the same owner; constructed types use the existing native definition identity.
+Only successful lookup updates the real cache field, using the ordinary managed
+reference-store barrier. The outer getter retains its existing-value shortcut, while
+a direct local-helper call recomputes and overwrites even a populated cache. Null cache
+and owner throw before writes; unsupported custom owners refuse. Invalid nongeneric
+owners follow the native helper's safety policy, not claimed private CLR VM parity.
+This does not implement CoreCLR cache construction or admit raw QCall handles. Returning
+interned identities follows the existing NoAlloc policy, not a zero-cold-allocation claim.
+
 The retained `CustomAttributeData.GetCustomAttributes(MemberInfo)` wrapper accepts
 canonical native Type, method, constructor, field, property and event handles. Null
 throws ArgumentNullException for `target`; custom MemberInfo headers explicitly refuse

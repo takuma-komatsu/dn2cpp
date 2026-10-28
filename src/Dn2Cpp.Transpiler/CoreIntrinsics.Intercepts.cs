@@ -341,6 +341,7 @@ internal enum InterceptEmitArm
     RuntimeTypeCreateInstanceOfTBody,
     RuntimeTypeHandleConstructNameBody,
     RuntimeTypeHandleDeclaringTypeBody,
+    RuntimeTypeCacheGenericDefinitionBody,
     CustomAttributeDataMemberBody,
     CoreClrActivationInfoBody,
     RuntimeTypeDefaultStructCtorBody,
@@ -925,6 +926,37 @@ internal static partial class CoreIntrinsics
     public static readonly MethodDefIntercept BrCustomAttributeDataMember = new(
         InterceptCutKind.BodyReplace, InterceptEmitArm.CustomAttributeDataMemberBody,
         typeGate: "System.Reflection.CustomAttributeData", nameGate: "GetCustomAttributes", extra: static m => IsCustomAttributeDataMember(m));
+
+    internal static bool IsRuntimeTypeCacheGenericDefinition(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "RuntimeTypeCache"
+            || method.Name != "<GetGenericTypeDefinition>g__CacheGenericDefinition|50_0"
+            || method.Attributes != (System.Reflection.MethodAttributes.Private | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || method.ImplAttributes != System.Reflection.MethodImplAttributes.NoInlining)
+            return false;
+        if (!IsRuntimeTypeCacheGenericDefinitionSignature(method.Module.Reader.GetBlobReader(
+            method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } result }
+            && result.Module == method.Module
+            && method.Module.Reader.GetTypeDefinition(method.DeclaringClass.Handle).GetDeclaringType() == result.Handle;
+    }
+
+    internal static bool IsRuntimeTypeCacheGenericDefinitionSignature(BlobReader blob) =>
+        blob.RemainingBytes >= 4 && blob.ReadByte() == 0x20 && blob.ReadByte() == 0
+        && blob.ReadByte() == 0x12 && blob.TryReadCompressedInteger(out int token)
+        && token > 0 && (token >> 2) != 0 && (token & 3) != 3 && blob.RemainingBytes == 0;
+
+    public static readonly MethodDefIntercept BrRuntimeTypeCacheGenericDefinition = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.RuntimeTypeCacheGenericDefinitionBody,
+        typeGate: "RuntimeTypeCache", nameGate: "<GetGenericTypeDefinition>g__CacheGenericDefinition|50_0",
+        extra: static m => IsRuntimeTypeCacheGenericDefinition(m));
 
     internal static bool IsRuntimeTypeHandleDeclaringType(MethodInfo method)
     {
@@ -3925,6 +3957,10 @@ internal static partial class CoreIntrinsics
             BrCustomAttributeDataMember.TypeGate, BrCustomAttributeDataMember.NameGate);
         if (BrCustomAttributeDataMember.CutKind != InterceptCutKind.BodyReplace)
             throw new InvalidOperationException("Attribute-data member bridge must retain a callable body");
+        CheckRow(nameof(BrRuntimeTypeCacheGenericDefinition), 0, BrRuntimeTypeCacheGenericDefinition.EmitArm,
+            BrRuntimeTypeCacheGenericDefinition.TypeGate, BrRuntimeTypeCacheGenericDefinition.NameGate);
+        if (BrRuntimeTypeCacheGenericDefinition.CutKind != InterceptCutKind.BodyReplace)
+            throw new InvalidOperationException("Generic-definition cache helper must retain a callable body");
         CheckRow(nameof(BrRuntimeTypeHandleDeclaringType), 0, BrRuntimeTypeHandleDeclaringType.EmitArm,
             BrRuntimeTypeHandleDeclaringType.TypeGate, BrRuntimeTypeHandleDeclaringType.NameGate);
         if (BrRuntimeTypeHandleDeclaringType.CutKind != InterceptCutKind.BodyReplace)

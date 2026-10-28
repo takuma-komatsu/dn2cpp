@@ -443,5 +443,7 @@ internal static class Program
         CustomAttributeDataMemberSubset.DataChecks.Run();
         if (args.Length > 0 && args[0] == "before-cad-constructor") return;
         CustomAttributeConstructorSubset.ConstructorChecks.Run();
+        if (args.Length > 0 && args[0] == "before-cache-generic-definition") return;
+        RuntimeTypeCacheGenericDefinitionSubset.DefinitionChecks.Run();
     }
 }

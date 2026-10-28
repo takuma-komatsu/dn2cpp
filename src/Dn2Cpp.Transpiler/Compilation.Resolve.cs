@@ -102,6 +102,7 @@ internal sealed partial class Compilation
                     || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(mi)
                     || CoreIntrinsics.BrNullableReboxing.Matches(mi)
                     || CoreIntrinsics.BrCustomAttributeDataMember.Matches(mi)
+                    || CoreIntrinsics.BrRuntimeTypeCacheGenericDefinition.Matches(mi)
                     || CoreIntrinsics.BrRuntimeTypeHandleDeclaringType.Matches(mi)
                     || CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(mi)
                     || CoreIntrinsics.BrCoreClrActivationInfo.Matches(mi)
@@ -1518,6 +1519,15 @@ internal sealed partial class Compilation
                 || member.Module != resolved.Module || !CoreIntrinsics.BrCustomAttributeDataMember.Matches(resolved))
                 throw new NotSupportedException("CustomAttributeData member query requires its exact MemberRef signature");
         }
+        if (name == "<GetGenericTypeDefinition>g__CacheGenericDefinition|50_0"
+            && candidates.Any(CoreIntrinsics.IsRuntimeTypeCacheGenericDefinition))
+        {
+            if (!CoreIntrinsics.IsRuntimeTypeCacheGenericDefinitionSignature(reader.GetBlobReader(mr.Signature))
+                || sig.Header.RawValue != 0x20 || sig.GenericParameterCount != 0 || sig.ParameterTypes.Length != 0
+                || sig.ReturnType != resolved.Signature.ReturnType
+                || !CoreIntrinsics.BrRuntimeTypeCacheGenericDefinition.Matches(resolved))
+                throw new NotSupportedException("RuntimeTypeCache generic-definition helper requires its exact MemberRef signature");
+        }
         if (name == "GetDeclaringType" && candidates.Any(CoreIntrinsics.IsRuntimeTypeHandleDeclaringType))
         {
             if (!CoreIntrinsics.IsRuntimeTypeHandleDeclaringTypeSignature(reader.GetBlobReader(mr.Signature))
@@ -1746,6 +1756,14 @@ internal sealed partial class Compilation
             var attributes = ResolveMemberRefMethod(module, handle, callerCtx);
             if (CoreIntrinsics.BrCustomAttributeDataMember.Matches(attributes))
                 return attributes;
+        }
+        if (full == "RuntimeTypeCache"
+            && reader.StringComparer.Equals(mr.Name, "<GetGenericTypeDefinition>g__CacheGenericDefinition|50_0")
+            && CoreIntrinsics.IsRuntimeTypeCacheGenericDefinitionSignature(reader.GetBlobReader(mr.Signature)))
+        {
+            var definition = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.BrRuntimeTypeCacheGenericDefinition.Matches(definition))
+                return definition;
         }
         if (full == "System.RuntimeTypeHandle" && reader.StringComparer.Equals(mr.Name, "GetDeclaringType")
             && CoreIntrinsics.IsRuntimeTypeHandleDeclaringTypeSignature(reader.GetBlobReader(mr.Signature)))

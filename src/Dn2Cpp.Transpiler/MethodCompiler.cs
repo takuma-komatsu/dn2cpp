@@ -1271,6 +1271,55 @@ internal sealed partial class MethodCompiler : IEvalStack
                     StaticType: TypeDesc.MakeClass(collection)));
                 return true;
             }, "canonical MemberInfo attribute data");
+        if (CoreIntrinsics.BrRuntimeTypeCacheGenericDefinition.Matches(_method))
+            return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
+            {
+                var cache = Pop();
+                var cls = _method.DeclaringClass;
+                FieldInfo? ownerField = null;
+                FieldInfo? resultField = null;
+                foreach (var field in cls.Fields)
+                {
+                    if (field.Name == "m_runtimeType")
+                    {
+                        if (ownerField is not null)
+                            throw new NotSupportedException("RuntimeTypeCache has duplicate owner fields");
+                        ownerField = field;
+                    }
+                    if (field.Name == "_genericTypeDefinition")
+                    {
+                        if (resultField is not null)
+                            throw new NotSupportedException("RuntimeTypeCache has duplicate definition fields");
+                        resultField = field;
+                    }
+                }
+                if (ownerField is null || resultField is null)
+                    throw new NotSupportedException("RuntimeTypeCache generic-definition fields are unavailable");
+                foreach (var field in new[] { ownerField, resultField })
+                {
+                    var row = cls.Module.Reader.GetFieldDefinition(field.Handle);
+                    var expected = System.Reflection.FieldAttributes.Private
+                        | (field == ownerField ? System.Reflection.FieldAttributes.InitOnly : 0);
+                    var raw = cls.Module.Reader.GetBlobReader(row.Signature);
+                    if (row.Attributes != expected || field.Type != _method.Signature.ReturnType
+                        || raw.RemainingBytes < 3 || raw.ReadByte() != 6 || raw.ReadByte() != 0x12
+                        || !raw.TryReadCompressedInteger(out int token) || token <= 0
+                        || (token >> 2) == 0 || (token & 3) == 3 || raw.RemainingBytes != 0)
+                        throw new NotSupportedException("RuntimeTypeCache generic-definition fields require their exact managed layout");
+                }
+                NoteFieldOwnerLayout(cls);
+                string owner = NewTemp("Dn2CppType*");
+                Emit($"{owner} = (Dn2CppType*){FieldAccess(cls, ownerField, cache)};");
+                Emit($"if ({owner} == nullptr) dn2cpp_throw_null_reference();");
+                Emit($"if ({owner}->type != &dn2cpp_type_type) dn2cpp_throw_platform_not_supported(\"RuntimeTypeCache generic definition requires a canonical runtime Type\");");
+                string result = NewTemp("Dn2CppType*");
+                Emit($"{result} = dn2cpp_type_is_generic_type_definition(dn2cpp_type_require({owner})) ? {owner} : dn2cpp_type_get_generic_type_definition({owner});");
+                // Match stfld: publish only after lookup succeeds, then mark the actual cache object.
+                Emit($"{FieldAccess(cls, resultField, cache)} = ({LayoutFieldType(cls, resultField)}){result};");
+                Emit($"dn2cpp_gc_write_barrier((void*)({cache.Expr}));");
+                Push(StackKind.Ref, "Dn2CppType*", result);
+                return true;
+            }, "managed generic-definition cache helper");
         if (CoreIntrinsics.BrRuntimeTypeHandleDeclaringType.Matches(_method))
             return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
             {
