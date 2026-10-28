@@ -3716,6 +3716,37 @@ const Dn2CppTypeInfo* dn2cpp_type_generic_parameter_declaring_type(const Dn2CppT
     return reinterpret_cast<const Dn2CppFormalType*>(ti)->declaringType;
 }
 
+Dn2CppType* dn2cpp_runtime_type_get_declaring_type(Dn2CppType* type)
+{
+    if (type == nullptr)
+        dn2cpp_throw_null_reference();
+    if (type->type != &dn2cpp_type_type)
+        dn2cpp_throw_platform_not_supported("RuntimeType.GetDeclaringType: custom Type is not supported");
+    const Dn2CppTypeInfo* ti = dn2cpp_type_require(type);
+    if ((ti->flags & DN2CPP_TF_GENERICPARAM) != 0)
+    {
+        const Dn2CppTypeInfo* owner = nullptr;
+        {
+            std::lock_guard<std::recursive_mutex> lock(g_formal_types_mtx);
+            const auto found = g_formal_types.find(ti);
+            if (found != g_formal_types.end() && found->second != nullptr
+                && found->second->parameter && &found->second->type == ti)
+                owner = found->second->declaringType;
+        }
+        if (owner == nullptr)
+            dn2cpp_throw_platform_not_supported("RuntimeType.GetDeclaringType: enclosing type identity is not retained");
+        return dn2cpp_get_type_from_handle(owner);
+    }
+    // Compounds have no enclosing owner even when their element type is nested.
+    const int32_t kind = dn2cpp_signature_kind(ti);
+    if ((ti->flags & DN2CPP_TF_ARRAY) != 0 || kind == 1 || kind == 2 || kind == 3)
+        return nullptr;
+    // The hot bit survives reflection trimming; omitted nested tables prove nothing.
+    if ((ti->flags & DN2CPP_TF_NESTED) != 0)
+        dn2cpp_throw_platform_not_supported("RuntimeType.GetDeclaringType: enclosing type identity is not retained");
+    return nullptr;
+}
+
 Dn2CppMethodRef* dn2cpp_type_generic_parameter_declaring_method(const Dn2CppTypeInfo* ti)
 {
     if ((ti->flags & DN2CPP_TF_GENERICPARAM) == 0)

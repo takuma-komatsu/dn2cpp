@@ -340,6 +340,7 @@ internal enum InterceptEmitArm
     RuntimeTypeDefaultCtorBody,
     RuntimeTypeCreateInstanceOfTBody,
     RuntimeTypeHandleConstructNameBody,
+    RuntimeTypeHandleDeclaringTypeBody,
     CoreClrActivationInfoBody,
     RuntimeTypeDefaultStructCtorBody,
     DelegateNamedConstructorBody,
@@ -854,6 +855,38 @@ internal static partial class CoreIntrinsics
     public static readonly MethodDefIntercept BrRuntimeTypeHandleConstructName = new(
         InterceptCutKind.BodyReplace, InterceptEmitArm.RuntimeTypeHandleConstructNameBody,
         typeGate: "System.RuntimeTypeHandle", nameGate: "ConstructName", extra: static m => IsRuntimeTypeHandleConstructName(m));
+
+    internal static bool IsRuntimeTypeHandleDeclaringType(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "GetDeclaringType"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null || method.ImplAttributes != System.Reflection.MethodImplAttributes.IL)
+            return false;
+        if (!IsRuntimeTypeHandleDeclaringTypeSignature(method.Module.Reader.GetBlobReader(
+            method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } result }
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
+            && result == parameter && result.Module == method.Module;
+    }
+
+    internal static bool IsRuntimeTypeHandleDeclaringTypeSignature(BlobReader blob) =>
+        blob.RemainingBytes >= 6 && blob.ReadByte() == 0 && blob.ReadByte() == 1
+        && blob.ReadByte() == 0x12 && blob.TryReadCompressedInteger(out int resultToken)
+        && resultToken > 0 && (resultToken >> 2) != 0 && (resultToken & 3) != 3
+        && blob.RemainingBytes >= 2 && blob.ReadByte() == 0x12
+        && blob.TryReadCompressedInteger(out int parameterToken) && parameterToken > 0
+        && (parameterToken >> 2) != 0 && (parameterToken & 3) != 3
+        && blob.RemainingBytes == 0;
+
+    public static readonly MethodDefIntercept BrRuntimeTypeHandleDeclaringType = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.RuntimeTypeHandleDeclaringTypeBody,
+        typeGate: "System.RuntimeTypeHandle", nameGate: "GetDeclaringType", extra: static m => IsRuntimeTypeHandleDeclaringType(m));
 
     // Validate nested signatures beyond the pointer-shaped ABI, including raw modifiers.
     internal static bool IsCoreClrActivationInfo(MethodInfo method)
@@ -3818,6 +3851,10 @@ internal static partial class CoreIntrinsics
         if (BrDelegateNamedConstructor.CutKind != InterceptCutKind.BodyReplace)
             throw new InvalidOperationException("Named delegate constructors must remain callable");
 
+        CheckRow(nameof(BrRuntimeTypeHandleDeclaringType), 0, BrRuntimeTypeHandleDeclaringType.EmitArm,
+            BrRuntimeTypeHandleDeclaringType.TypeGate, BrRuntimeTypeHandleDeclaringType.NameGate);
+        if (BrRuntimeTypeHandleDeclaringType.CutKind != InterceptCutKind.BodyReplace)
+            throw new InvalidOperationException("Declaring-type bridge must retain a callable body");
         CheckRow(nameof(BrRuntimeTypeHandleConstructName), 0, BrRuntimeTypeHandleConstructName.EmitArm,
             BrRuntimeTypeHandleConstructName.TypeGate, BrRuntimeTypeHandleConstructName.NameGate);
         if (BrRuntimeTypeHandleConstructName.CutKind != InterceptCutKind.BodyReplace)

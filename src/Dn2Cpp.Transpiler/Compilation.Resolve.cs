@@ -100,6 +100,7 @@ internal sealed partial class Compilation
                     || CoreIntrinsics.BrDelegateNamedConstructor.Matches(mi)
                     || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(mi)
                     || CoreIntrinsics.BrNullableReboxing.Matches(mi)
+                    || CoreIntrinsics.BrRuntimeTypeHandleDeclaringType.Matches(mi)
                     || CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(mi)
                     || CoreIntrinsics.BrCoreClrActivationInfo.Matches(mi)
                     || CoreIntrinsics.BrRuntimeTypeDefaultStructCtor.Matches(mi)
@@ -1496,6 +1497,16 @@ internal sealed partial class Compilation
                 || blob.ReadByte() != (byte)SignatureTypeCode.Boolean || blob.ReadByte() != (byte)SignatureTypeCode.Object)
                 throw new NotSupportedException("RuntimeType enum defined query requires its exact MemberRef signature");
         }
+        if (name == "GetDeclaringType" && candidates.Any(CoreIntrinsics.IsRuntimeTypeHandleDeclaringType))
+        {
+            if (!CoreIntrinsics.IsRuntimeTypeHandleDeclaringTypeSignature(reader.GetBlobReader(mr.Signature))
+                || sig.Header.RawValue != 0 || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } result }
+                || sig.ParameterTypes is not [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
+                || result != parameter || result.Module != resolved.Module
+                || !CoreIntrinsics.BrRuntimeTypeHandleDeclaringType.Matches(resolved))
+                throw new NotSupportedException("RuntimeTypeHandle declaring-type query requires its exact MemberRef signature");
+        }
         if (name == "ConstructName" && candidates.Any(CoreIntrinsics.IsRuntimeTypeHandleConstructName))
         {
             if (!CoreIntrinsics.IsRuntimeTypeHandleConstructNameSignature(reader.GetBlobReader(mr.Signature))
@@ -1701,6 +1712,13 @@ internal sealed partial class Compilation
                     return copy;
             }
             catch (NotSupportedException e) when (!IsMustEscape(e)) { }
+        }
+        if (full == "System.RuntimeTypeHandle" && reader.StringComparer.Equals(mr.Name, "GetDeclaringType")
+            && CoreIntrinsics.IsRuntimeTypeHandleDeclaringTypeSignature(reader.GetBlobReader(mr.Signature)))
+        {
+            var declaring = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.BrRuntimeTypeHandleDeclaringType.Matches(declaring))
+                return declaring;
         }
         if (full == "System.RuntimeTypeHandle" && reader.StringComparer.Equals(mr.Name, "ConstructName")
             && CoreIntrinsics.IsRuntimeTypeHandleConstructNameSignature(reader.GetBlobReader(mr.Signature)))

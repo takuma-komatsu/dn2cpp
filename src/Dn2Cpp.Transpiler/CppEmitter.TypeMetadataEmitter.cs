@@ -1422,6 +1422,8 @@ internal sealed partial class CppEmitter
                 _e._genericDefSyms[gi.DefName] = defSym;
                 var defFlagBits = new List<string> { "DN2CPP_TF_GENERICDEF" };
                 AddGenericDefKindFlags(defFlagBits, c.IsValueType, c.IsInterface, c.IsAbstract, c.IsSealed, c.IsDelegate);
+                if (IsNestedType(c))
+                    defFlagBits.Add("DN2CPP_TF_NESTED");
                 if (IsArrayGenericItfDef(gi.DefName))
                     defFlagBits.Add("DN2CPP_TF_ARRAY_GEN_ITF");
                 string defFlags = "(" + string.Join(" | ", defFlagBits) + ")";
@@ -1475,6 +1477,8 @@ internal sealed partial class CppEmitter
                     flagBits.Add("DN2CPP_TF_ABSTRACT");
                 if (c.IsSealed)
                     flagBits.Add("DN2CPP_TF_SEALED");
+                if (IsNestedType(c))
+                    flagBits.Add("DN2CPP_TF_NESTED");
                 string flags = flagBits.Count == 0 ? "0" : string.Join(" | ", flagBits);
                 string toString = _c.GenericDefFullName(c) == "System.Threading.Tasks.ValueTask"
                     && c.Context.TypeArgs.Length == 1
@@ -1732,6 +1736,8 @@ internal sealed partial class CppEmitter
                 // as real .NET does. An interface is also abstract, mirroring the
                 // closed-type flag rule above.
                 AddGenericDefKindFlags(flagBits, cls.IsValueType, cls.IsInterface, cls.IsAbstract, cls.IsSealed, cls.IsDelegate);
+                if (IsNestedType(cls))
+                    flagBits.Add("DN2CPP_TF_NESTED");
                 if (cls.IsByRefLike)
                     flagBits.Add("DN2CPP_TF_BYREFLIKE");
                 if (varMask != 0)
@@ -3826,6 +3832,7 @@ internal sealed partial class CppEmitter
                         || CoreIntrinsics.IsCoreClrDeclaringMethodBridge(method)
                         || CoreIntrinsics.IsCoreClrTypeMaterialization(method)
                         || CoreIntrinsics.BrNullableReboxing.Matches(method)
+                        || CoreIntrinsics.BrRuntimeTypeHandleDeclaringType.Matches(method)
                         || CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(method)
                         || CoreIntrinsics.BrCoreClrActivationInfo.Matches(method)
                         || CoreIntrinsics.BrRuntimeTypeDefaultStructCtor.Matches(method)

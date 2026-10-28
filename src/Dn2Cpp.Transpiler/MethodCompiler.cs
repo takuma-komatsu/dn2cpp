@@ -1245,6 +1245,13 @@ internal sealed partial class MethodCompiler : IEvalStack
             || CoreIntrinsics.IsCoreClrDeclaringMethodBridge(_method)
             || CoreIntrinsics.IsCoreClrTypeMaterialization(_method) && _method.Rva == 0)
             return CompileInterceptWrapper();
+        if (CoreIntrinsics.BrRuntimeTypeHandleDeclaringType.Matches(_method))
+            return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
+            {
+                var type = Pop();
+                Push(StackKind.Ref, "Dn2CppType*", $"dn2cpp_runtime_type_get_declaring_type({Cast(type, "Dn2CppType*")})");
+                return true;
+            }, "RuntimeType bounded declaring-type query");
         if (CoreIntrinsics.BrRuntimeTypeHandleConstructName.Matches(_method))
             return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
             {

@@ -1841,6 +1841,7 @@ bool dn2cpp_type_reference_argument(const Dn2CppTypeInfo* ti);
 Dn2CppString* dn2cpp_type_generic_parameter_namespace(const Dn2CppTypeInfo* ti);
 const Dn2CppTypeInfo* dn2cpp_type_generic_parameter_declaring_type(const Dn2CppTypeInfo* ti);
 Dn2CppMethodRef* dn2cpp_type_generic_parameter_declaring_method(const Dn2CppTypeInfo* ti);
+Dn2CppType* dn2cpp_runtime_type_get_declaring_type(Dn2CppType* type);
 Dn2CppType* dn2cpp_type_get_generic_type_definition(Dn2CppType* t);
 Dn2CppArrayRef* dn2cpp_type_get_generic_arguments(Dn2CppType* t);
 Dn2CppArrayRef* dn2cpp_type_get_generic_parameter_constraints(Dn2CppType* t);

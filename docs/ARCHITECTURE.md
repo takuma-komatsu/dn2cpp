@@ -545,6 +545,16 @@ for modes 3/7. The raw QCall overload retains its import policy. String construc
 remains allocating for NoAlloc; boxed handles use the existing unbox/invoker ABI.
 
 
+The retained `RuntimeTypeHandle.GetDeclaringType(RuntimeType)` bridge requires a
+canonical Type object before reading its payload. Recorded formal parameters return
+their typical declaring type; outer arrays and signature types have no enclosing type.
+Ordinary nested types explicitly refuse because general enclosing-owner identity is
+not represented. The hot nested flag, not absence of a cold nested table, distinguishes
+this boundary from top-level null. Missing formal provenance also refuses. The public
+MemberInfo declaring-type helper is unchanged; this is not nested-type parity. Returning
+an interned Type follows the existing NoAlloc policy for cached reflection handles,
+which does not promise zero cold initialization allocation.
+
 ### B. A BCL intrinsic (a `System.*` call) — core lane
 
 1. Add a case to the `switch (declType, name)` in
