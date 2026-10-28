@@ -2,6 +2,8 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (RuntimeTypeMetadataTokenGuards.Run(args)) return;
+if (RuntimeTypeMetadataTokenFixture.Run(args)) return;
 if (RuntimeTypeDefinitionGuards.Run(args)) return;
 if (RuntimeTypeDefinitionFixture.Run(args)) return;
 if (RuntimeTypeGenericVariableGuards.Run(args)) return;
