@@ -339,6 +339,7 @@ internal enum InterceptEmitArm
     ActivatorDefaultBody,
     RuntimeTypeDefaultCtorBody,
     RuntimeTypeCreateInstanceOfTBody,
+    CoreClrActivationInfoBody,
     RuntimeTypeDefaultStructCtorBody,
     DelegateNamedConstructorBody,
     DelegateCloneBinding,
@@ -823,6 +824,53 @@ internal static partial class CoreIntrinsics
         }
         return null;
     }
+
+    // Validate nested signatures beyond the pointer-shaped ABI, including raw modifiers.
+    internal static bool IsCoreClrActivationInfo(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "GetActivationInfo"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null || method.ImplAttributes != System.Reflection.MethodImplAttributes.IL)
+            return false;
+        if (!IsCoreClrActivationInfoSignature(method.Module.Reader.GetBlobReader(
+            method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Void }
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } type },
+                { Kind: TypeKind.ByRef, Element: { Kind: TypeKind.Pointer, Element.IsVoid: true } },
+                { Kind: TypeKind.ByRef, Element: { Kind: TypeKind.Pointer, Element.IsVoid: true } },
+                { Kind: TypeKind.ByRef, Element: { Kind: TypeKind.Pointer, Element.IsVoid: true } },
+                { Kind: TypeKind.ByRef, Element: { Kind: TypeKind.Pointer, Element.IsVoid: true } },
+                { Kind: TypeKind.ByRef, Element: { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean } }]
+            && type.Module == method.Module;
+    }
+
+    internal static bool IsCoreClrActivationInfoSignature(BlobReader blob)
+    {
+        if (blob.RemainingBytes < 5 || blob.ReadByte() != 0 || blob.ReadByte() != 6
+            || blob.ReadByte() != (byte)SignatureTypeCode.Void || blob.ReadByte() != 0x12
+            || !blob.TryReadCompressedInteger(out int typeToken) || typeToken <= 0 || (typeToken >> 2) == 0 || (typeToken & 3) == 3)
+            return false;
+        // ref managed object(void*), ref void*, ref managed void(object),
+        // ref managed void(byte&), ref bool. No modifiers, varargs or trailing types.
+        ReadOnlySpan<byte> suffix = [0x10, 0x1b, 0, 1, 0x1c, 0x0f, 1, 0x10, 0x0f, 1,
+            0x10, 0x1b, 0, 1, 1, 0x1c, 0x10, 0x1b, 0, 1, 1, 0x10, 5, 0x10, 2];
+        if (blob.RemainingBytes != suffix.Length)
+            return false;
+        foreach (byte value in suffix)
+            if (blob.ReadByte() != value)
+                return false;
+        return true;
+    }
+
+    public static readonly MethodDefIntercept BrCoreClrActivationInfo = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.CoreClrActivationInfoBody,
+        typeGate: "System.RuntimeTypeHandle", nameGate: "GetActivationInfo", extra: static m => IsCoreClrActivationInfo(m));
 
     internal static bool IsRuntimeTypeDefaultStructCtor(MethodInfo method)
     {
@@ -3739,6 +3787,11 @@ internal static partial class CoreIntrinsics
             BrDelegateNamedConstructor.TypeGate, BrDelegateNamedConstructor.NameGate);
         if (BrDelegateNamedConstructor.CutKind != InterceptCutKind.BodyReplace)
             throw new InvalidOperationException("Named delegate constructors must remain callable");
+
+        CheckRow(nameof(BrCoreClrActivationInfo), 0, BrCoreClrActivationInfo.EmitArm,
+            BrCoreClrActivationInfo.TypeGate, BrCoreClrActivationInfo.NameGate);
+        if (BrCoreClrActivationInfo.CutKind != InterceptCutKind.BodyReplace)
+            throw new InvalidOperationException("CoreCLR activation-info refusal must remain callable");
 
         CheckRow(nameof(BrCoreClrTypeMaterialization), 0, BrCoreClrTypeMaterialization.EmitArm,
             BrCoreClrTypeMaterialization.TypeGate, BrCoreClrTypeMaterialization.NameGate);

@@ -100,6 +100,7 @@ internal sealed partial class Compilation
                     || CoreIntrinsics.BrDelegateNamedConstructor.Matches(mi)
                     || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(mi)
                     || CoreIntrinsics.BrNullableReboxing.Matches(mi)
+                    || CoreIntrinsics.BrCoreClrActivationInfo.Matches(mi)
                     || CoreIntrinsics.BrRuntimeTypeDefaultStructCtor.Matches(mi)
                     || CoreIntrinsics.BrRuntimeTypeCreateInstanceOfT.Matches(mi)
                     || CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(mi)
@@ -1494,6 +1495,22 @@ internal sealed partial class Compilation
                 || blob.ReadByte() != (byte)SignatureTypeCode.Boolean || blob.ReadByte() != (byte)SignatureTypeCode.Object)
                 throw new NotSupportedException("RuntimeType enum defined query requires its exact MemberRef signature");
         }
+        if (name == "GetActivationInfo" && candidates.Any(CoreIntrinsics.IsCoreClrActivationInfo)
+            && (CoreIntrinsics.BrCoreClrActivationInfo.Matches(resolved)
+                || sig.ParameterTypes.FirstOrDefault()?.Class?.FullName == "System.RuntimeType"
+                || sig.ParameterTypes is [{ },
+                    { Kind: TypeKind.ByRef, Element.Kind: TypeKind.Pointer },
+                    { Kind: TypeKind.ByRef, Element.Kind: TypeKind.Pointer },
+                    { Kind: TypeKind.ByRef, Element.Kind: TypeKind.Pointer },
+                    { Kind: TypeKind.ByRef, Element.Kind: TypeKind.Pointer },
+                    { Kind: TypeKind.ByRef, Element: { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean } }]))
+        {
+            if (!CoreIntrinsics.IsCoreClrActivationInfoSignature(reader.GetBlobReader(mr.Signature))
+                || sig.Header.RawValue != 0 || sig.GenericParameterCount != 0
+                || sig.ParameterTypes[0] is not { Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } type }
+                || type.Module != resolved.Module || !CoreIntrinsics.BrCoreClrActivationInfo.Matches(resolved))
+                throw new NotSupportedException("CoreCLR activation-info bridge requires its exact MemberRef signature");
+        }
         if (name == "CallDefaultStructConstructor" && candidates.Any(CoreIntrinsics.IsRuntimeTypeDefaultStructCtor))
         {
             if (!CoreIntrinsics.IsRuntimeTypeDefaultStructCtorSignature(reader.GetBlobReader(mr.Signature))
@@ -1673,6 +1690,13 @@ internal sealed partial class Compilation
                     return copy;
             }
             catch (NotSupportedException e) when (!IsMustEscape(e)) { }
+        }
+        if (full == "System.RuntimeTypeHandle" && reader.StringComparer.Equals(mr.Name, "GetActivationInfo")
+            && CoreIntrinsics.IsCoreClrActivationInfoSignature(reader.GetBlobReader(mr.Signature)))
+        {
+            var bridge = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.BrCoreClrActivationInfo.Matches(bridge))
+                return bridge;
         }
         if (full == "System.RuntimeType" && reader.StringComparer.Equals(mr.Name, "CallDefaultStructConstructor")
             && CoreIntrinsics.IsRuntimeTypeDefaultStructCtorSignature(reader.GetBlobReader(mr.Signature)))

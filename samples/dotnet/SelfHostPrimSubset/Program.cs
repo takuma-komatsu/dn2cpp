@@ -433,5 +433,7 @@ internal static class Program
         RuntimeTypeDefaultCtorSubset.DefaultCtorChecks.RunOfT();
         if (args.Length > 0 && args[0] == "before-runtime-type-default-struct") return;
         RuntimeTypeDefaultStructSubset.StructChecks.Run();
+        if (args.Length > 0 && args[0] == "before-coreclr-activation-info") return;
+        CoreClrActivationInfoSubset.ActivationChecks.Run();
     }
 }

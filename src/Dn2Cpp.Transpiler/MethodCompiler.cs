@@ -1245,6 +1245,13 @@ internal sealed partial class MethodCompiler : IEvalStack
             || CoreIntrinsics.IsCoreClrDeclaringMethodBridge(_method)
             || CoreIntrinsics.IsCoreClrTypeMaterialization(_method) && _method.Rva == 0)
             return CompileInterceptWrapper();
+        if (CoreIntrinsics.BrCoreClrActivationInfo.Matches(_method))
+            return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
+            {
+                foreach (var _ in _method.Signature.ParameterTypes) Pop();
+                Emit("dn2cpp_throw_platform_not_supported(\"System.RuntimeTypeHandle.GetActivationInfo requires CoreCLR allocator and constructor function-pointer ABI. Use supported public construction APIs instead.\");");
+                return true;
+            }, "CoreCLR activation-info boundary");
         if (CoreIntrinsics.BrRuntimeTypeDefaultStructCtor.Matches(_method))
             return SynthesizeWrapperBody(ReceiverCppType(_method.DeclaringClass), () =>
             {

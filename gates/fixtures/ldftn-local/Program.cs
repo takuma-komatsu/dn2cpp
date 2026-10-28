@@ -2,6 +2,9 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (CoreClrActivationInfoRawFixture.Run(args)) return;
+if (CoreClrActivationInfoGuards.Run(args)) return;
+if (CoreClrActivationInfoFixture.Run(args)) return;
 if (RuntimeTypeDefaultCtorGuards.Run(args)) return;
 if (RuntimeTypeDefaultStructFixture.Run(args)) return;
 if (RuntimeTypeCreateInstanceOfTFixture.Run(args)) return;

@@ -526,6 +526,15 @@ is refused before dispatch as a native safety boundary; implicit no-op initializ
 does not inspect it. This dynamic constructor dispatch is not an allocation primitive
 and remains an opaque-dispatch boundary for NoAlloc.
 
+The managed `RuntimeTypeHandle.GetActivationInfo` bridge requires CoreCLR-owned
+allocator and constructor function-pointer ABIs. Its exact raw nested signature
+routes to a catchable `PlatformNotSupportedException`, without checking arguments
+or writing output references. The separate raw QCall overload keeps native import
+binding authority. ActivatorCache and generic cache bodies remain real IL; this
+boundary does not provide a working activation cache or fabricated VM pointers.
+Supported public construction uses the native adapters above. Reflection's existing
+byref-pointer invocation restrictions and exception-only NoAlloc policy remain.
+
 ### B. A BCL intrinsic (a `System.*` call) — core lane
 
 1. Add a case to the `switch (declType, name)` in
