@@ -572,6 +572,13 @@ override retains its IL and exact call/address bindings, without exposing
 CoreCLR handles or widening custom Type dispatch. The pure element-code helper
 `RuntimeHelpers.IsPrimitiveType` remains independent of this Type query.
 
+The exact managed `RuntimeTypeHandle.IsPointer(RuntimeType)` helper uses the
+existing outer signature-kind predicate with a null Type guard. Native integers,
+arrays, byrefs and function pointers themselves are not pointers; an outer
+pointer wrapper is, regardless of its element. The real protected RuntimeType
+override retains its IL and exact call/address bindings. This neither exposes
+CoreCLR handles nor widens custom Type dispatch.
+
 The exact `RuntimeTypeHandle.IsFunctionPointer(RuntimeType)` managed predicate
 and `IsUnmanagedFunctionPointer(RuntimeType)` InternalCall share the existing
 native signature predicates. Only the queried type counts: pointer, by-reference

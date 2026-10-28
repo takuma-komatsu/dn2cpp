@@ -890,6 +890,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsRuntimeTypeHandleIsArray(target)
             || CoreIntrinsics.IsRuntimeTypeHandleIsByRef(target)
             || CoreIntrinsics.IsRuntimeTypeHandleIsPrimitive(target)
+            || CoreIntrinsics.IsRuntimeTypeHandleIsPointer(target)
             || CoreIntrinsics.IsRuntimeTypeHandleGetElementType(target)
             || CoreIntrinsics.IsRuntimeTypeHandleGetModule(target)
             || CoreIntrinsics.IsRuntimeTypeHandleIsTypeDefinition(target)
