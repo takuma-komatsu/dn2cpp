@@ -610,6 +610,14 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsRuntimeTypeHandleGetElementType(callee))
+        {
+            var type = Pop();
+            TaintPoisonedTypeEscape(type);
+            Push(StackKind.Ref, "Dn2CppType*", $"dn2cpp_type_get_element_type({Cast(type, "Dn2CppType*")})");
+            return;
+        }
+
         if (CoreIntrinsics.IsRuntimeTypeHandleGetAttributes(callee))
         {
             var type = Pop();

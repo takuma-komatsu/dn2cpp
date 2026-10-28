@@ -5,6 +5,8 @@ using Mono.Cecil.Cil;
 if (RuntimeTypeArrayRankGuards.Run(args)) return;
 if (RuntimeTypeArrayRankFixture.Run(args)) return;
 if (RuntimeTypeAttributesGuards.Run(args)) return;
+if (RuntimeTypeElementFixture.Run(args)) return;
+if (RuntimeTypeElementGuards.Run(args)) return;
 if (RuntimeTypeAttributesFixture.Run(args)) return;
 if (RuntimeTypeMetadataTokenGuards.Run(args)) return;
 if (RuntimeTypeMetadataTokenFixture.Run(args)) return;
