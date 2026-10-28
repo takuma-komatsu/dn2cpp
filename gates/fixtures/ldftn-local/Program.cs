@@ -4,6 +4,8 @@ using Mono.Cecil.Cil;
 
 if (RuntimeTypeEnumDefinedGuards.Run(args)) return;
 if (RuntimeTypeEnumDefinedFixture.Run(args)) return;
+if (RuntimeTypeIsByRefGuards.Run(args)) return;
+if (RuntimeTypeIsByRefFixture.Run(args)) return;
 if (RuntimeTypeIsArrayGuards.Run(args)) return;
 if (RuntimeTypeIsArrayFixture.Run(args)) return;
 if (RuntimeTypeHasElementGuards.Run(args)) return;

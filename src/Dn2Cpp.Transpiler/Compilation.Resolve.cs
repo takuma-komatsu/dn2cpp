@@ -1388,6 +1388,23 @@ internal sealed partial class Compilation
                     || parameter.Module != resolved.Module)))
                 throw new NotSupportedException("RuntimeType array query requires its exact MemberRef signature");
         }
+        if (CoreIntrinsics.IsRuntimeTypeHandleIsByRef(resolved)
+            || CoreIntrinsics.IsRuntimeTypeIsByRefOverride(resolved))
+        {
+            bool helper = resolved.IsStatic;
+            var blob = reader.GetBlobReader(mr.Signature);
+            bool shape = blob.RemainingBytes >= 3 && blob.ReadByte() == (helper ? 0 : 0x20)
+                && blob.ReadCompressedInteger() == (helper ? 1 : 0)
+                && blob.ReadByte() == (byte)SignatureTypeCode.Boolean;
+            if (shape && helper)
+                shape = blob.RemainingBytes >= 2 && blob.ReadByte() == 0x12
+                    && !blob.ReadTypeHandle().IsNil;
+            if (!shape || blob.RemainingBytes != 0 || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+                || (helper && (sig.ParameterTypes is not [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
+                    || parameter.Module != resolved.Module)))
+                throw new NotSupportedException("RuntimeType by-reference query requires its exact MemberRef signature");
+        }
         if (CoreIntrinsics.IsRuntimeTypeHandleGetElementType(resolved)
             || CoreIntrinsics.IsRuntimeTypeElementTypeOverride(resolved))
         {
@@ -1591,6 +1608,7 @@ internal sealed partial class Compilation
                 || reader.StringComparer.Equals(mr.Name, "GetAttributes")
                 || reader.StringComparer.Equals(mr.Name, "HasElementType")
                 || reader.StringComparer.Equals(mr.Name, "IsArray")
+                || reader.StringComparer.Equals(mr.Name, "IsByRef")
                 || reader.StringComparer.Equals(mr.Name, "GetElementType")
                 || reader.StringComparer.Equals(mr.Name, "IsTypeDefinition")
                 || reader.StringComparer.Equals(mr.Name, "GetAssembly")
@@ -1635,6 +1653,7 @@ internal sealed partial class Compilation
                     || CoreIntrinsics.IsRuntimeTypeHandleGetAttributes(enumeration)
                     || CoreIntrinsics.IsRuntimeTypeHandleHasElementType(enumeration)
                     || CoreIntrinsics.IsRuntimeTypeHandleIsArray(enumeration)
+                    || CoreIntrinsics.IsRuntimeTypeHandleIsByRef(enumeration)
                     || CoreIntrinsics.IsRuntimeTypeHandleGetElementType(enumeration)
                     || CoreIntrinsics.IsRuntimeTypeHandleIsTypeDefinition(enumeration)
                     || CoreIntrinsics.IsRuntimeTypeHandleGetAssembly(enumeration)

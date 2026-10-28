@@ -888,6 +888,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsRuntimeTypeHandleGetAttributes(target)
             || CoreIntrinsics.IsRuntimeTypeHandleHasElementType(target)
             || CoreIntrinsics.IsRuntimeTypeHandleIsArray(target)
+            || CoreIntrinsics.IsRuntimeTypeHandleIsByRef(target)
             || CoreIntrinsics.IsRuntimeTypeHandleGetElementType(target)
             || CoreIntrinsics.IsRuntimeTypeHandleGetModule(target)
             || CoreIntrinsics.IsRuntimeTypeHandleIsTypeDefinition(target)

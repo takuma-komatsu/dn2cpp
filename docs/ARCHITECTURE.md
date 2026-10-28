@@ -557,6 +557,13 @@ existing native SZ-array predicate with a null Type guard. Its retained getter,
 direct calls and address-taken wrappers share that lowering; neither CoreCLR
 element codes nor rank alone define native array identity.
 
+The exact managed `RuntimeTypeHandle.IsByRef(RuntimeType)` helper uses the
+existing outer signature-kind predicate with a null Type guard. Arrays, pointers,
+function pointers and byref-like types are not themselves by-reference types;
+a by-reference wrapper is, independently of element metadata precision. The
+protected override on sealed RuntimeType keeps its IL and exact call/address
+bindings, without adding CoreCLR element codes or custom Type dispatch.
+
 The exact `RuntimeTypeHandle.IsFunctionPointer(RuntimeType)` managed predicate
 and `IsUnmanagedFunctionPointer(RuntimeType)` InternalCall share the existing
 native signature predicates. Only the queried type counts: pointer, by-reference
