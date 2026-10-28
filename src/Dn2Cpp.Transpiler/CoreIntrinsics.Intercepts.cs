@@ -337,6 +337,7 @@ internal enum InterceptEmitArm
     CoreClrTypeMaterializationBody,
     NullableReboxingBody,
     ActivatorDefaultBody,
+    RuntimeTypeDefaultCtorBody,
     DelegateNamedConstructorBody,
     DelegateCloneBinding,
     ArrayCloneBinding,
@@ -820,6 +821,35 @@ internal static partial class CoreIntrinsics
         }
         return null;
     }
+
+    internal static bool IsRuntimeTypeDefaultCtor(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || method.Name != "CreateInstanceDefaultCtor"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || method.ImplAttributes != System.Reflection.MethodImplAttributes.IL)
+            return false;
+        if (!IsRuntimeTypeDefaultCtorSignature(method.Module.Reader.GetBlobReader(
+            method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object }
+            && signature.ParameterTypes is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean },
+                { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }];
+    }
+
+    internal static bool IsRuntimeTypeDefaultCtorSignature(BlobReader blob) =>
+        blob.RemainingBytes == 5 && blob.ReadByte() == 0x20 && blob.ReadByte() == 2
+        && blob.ReadByte() == (byte)SignatureTypeCode.Object
+        && blob.ReadByte() == (byte)SignatureTypeCode.Boolean
+        && blob.ReadByte() == (byte)SignatureTypeCode.Boolean;
+
+    public static readonly MethodDefIntercept BrRuntimeTypeDefaultCtor = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.RuntimeTypeDefaultCtorBody,
+        typeGate: "System.RuntimeType", nameGate: "CreateInstanceDefaultCtor", extra: static m => IsRuntimeTypeDefaultCtor(m));
 
     internal static bool IsActivatorDefault(MethodInfo method)
     {

@@ -1030,6 +1030,11 @@ internal sealed partial class Compilation
         bool nonPublic = false;
         if (api.NonPublic >= 0)
             nonPublic = MayBeTrue(Operand(app, site, api.NonPublic));
+        if (api.Op == ReflectionOp.RuntimeTypeDefaultCtor)
+        {
+            var publicOnly = BooleanAlternatives(Operand(app, site, 0), out bool complete);
+            nonPublic = !complete || publicOnly.Count == 0 || publicOnly.Contains(false);
+        }
         int defaultFlags = ReflectionApis.PublicInstance | (nonPublic ? ReflectionApis.NonPublic : 0);
         var flagSet = api.Flags >= 0 ? FlagAlternatives(Operand(app, site, api.Flags), defaultFlags, out _)
             : new List<int> { defaultFlags };

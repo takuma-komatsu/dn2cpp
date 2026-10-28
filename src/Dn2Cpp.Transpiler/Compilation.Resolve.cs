@@ -100,6 +100,7 @@ internal sealed partial class Compilation
                     || CoreIntrinsics.BrDelegateNamedConstructor.Matches(mi)
                     || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(mi)
                     || CoreIntrinsics.BrNullableReboxing.Matches(mi)
+                    || CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(mi)
                     || CoreIntrinsics.BrActivatorDefault.Matches(mi))
                     return mi;
                 // Intrinsic-mapped types are emitted inline, not transpiled, so
@@ -1491,6 +1492,16 @@ internal sealed partial class Compilation
                 || blob.ReadByte() != (byte)SignatureTypeCode.Boolean || blob.ReadByte() != (byte)SignatureTypeCode.Object)
                 throw new NotSupportedException("RuntimeType enum defined query requires its exact MemberRef signature");
         }
+        if (name == "CreateInstanceDefaultCtor" && candidates.Any(CoreIntrinsics.IsRuntimeTypeDefaultCtor))
+        {
+            if (!CoreIntrinsics.IsRuntimeTypeDefaultCtorSignature(reader.GetBlobReader(mr.Signature))
+                || sig.Header.RawValue != 0x20 || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object }
+                || sig.ParameterTypes is not [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean },
+                    { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }]
+                || !CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(resolved))
+                throw new NotSupportedException("RuntimeType default construction requires its exact MemberRef signature");
+        }
         if (name == "CreateInstance" && candidates.Any(CoreIntrinsics.IsActivatorDefault)
             && !sig.ParameterTypes[0].IsString && sig.ParameterTypes[1].Kind != TypeKind.SZArray)
         {
@@ -1642,6 +1653,13 @@ internal sealed partial class Compilation
                     return copy;
             }
             catch (NotSupportedException e) when (!IsMustEscape(e)) { }
+        }
+        if (full == "System.RuntimeType" && reader.StringComparer.Equals(mr.Name, "CreateInstanceDefaultCtor")
+            && CoreIntrinsics.IsRuntimeTypeDefaultCtorSignature(reader.GetBlobReader(mr.Signature)))
+        {
+            var factory = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(factory))
+                return factory;
         }
         if (full == "System.Activator" && reader.StringComparer.Equals(mr.Name, "CreateInstance")
             && CoreIntrinsics.IsActivatorDefaultSignature(reader.GetBlobReader(mr.Signature)))

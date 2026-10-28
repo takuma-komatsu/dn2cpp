@@ -427,5 +427,7 @@ internal static class Program
         RuntimeTypeGenericVariableSubset.GenericVariablePredicateChecks.Run();
         if (args.Length > 0 && args[0] == "before-activator-default") return;
         ActivatorDefaultSubset.ActivatorChecks.Run();
+        if (args.Length > 0 && args[0] == "before-runtime-type-default-ctor") return;
+        RuntimeTypeDefaultCtorSubset.DefaultCtorChecks.Run();
     }
 }

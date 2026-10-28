@@ -504,6 +504,13 @@ custom Type objects are refused before interpreting the native Type payload.
 Default value creation uses normal Nullable boxing, while raw internal Nullable
 reboxing retains its separate object representation.
 
+The retained `RuntimeType.CreateInstanceDefaultCtor(bool, bool)` adapter checks
+the instance for null before using that same factory with inverted `publicOnly`.
+It never reads a custom Type payload or enters CoreCLR activation-cache machinery.
+Receiver-based planning selects only parameterless constructors; an unknown
+visibility flag conservatively retains both accessibilities, without changing
+the runtime visibility check or rooting other constructor arities.
+
 ### B. A BCL intrinsic (a `System.*` call) — core lane
 
 1. Add a case to the `switch (declType, name)` in

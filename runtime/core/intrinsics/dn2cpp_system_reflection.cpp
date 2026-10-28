@@ -8489,6 +8489,13 @@ Dn2CppObject* dn2cpp_activator_create_instance_wrapped(Dn2CppType* t, int32_t no
     return dn2cpp_activator_create_default(t, nonPublic, wrapExceptions != 0, false);
 }
 
+Dn2CppObject* dn2cpp_activator_create_instance_default_ctor(Dn2CppType* t, int32_t publicOnly, int32_t wrapExceptions)
+{
+    if (t == nullptr)
+        dn2cpp_throw_null_reference();
+    return dn2cpp_activator_create_instance_wrapped(t, publicOnly == 0, wrapExceptions);
+}
+
 Dn2CppObject* dn2cpp_activator_create_instance_nonpublic(Dn2CppType* t, int32_t nonPublic)
 {
     return dn2cpp_activator_create_default(t, nonPublic, true, false);
