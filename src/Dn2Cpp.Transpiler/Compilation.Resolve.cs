@@ -1519,6 +1519,17 @@ internal sealed partial class Compilation
                 || member.Module != resolved.Module || !CoreIntrinsics.BrCustomAttributeDataMember.Matches(resolved))
                 throw new NotSupportedException("CustomAttributeData member query requires its exact MemberRef signature");
         }
+        if (name == "ContainsGenericVariables" && candidates.Any(CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariablesStatic)
+            && (CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariablesStatic(resolved) || sig.ParameterTypes.Length != 0))
+        {
+            if (!CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariablesStaticSignature(reader.GetBlobReader(mr.Signature))
+                || sig.Header.RawValue != 0 || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+                || sig.ParameterTypes is not [{ Kind: TypeKind.Class,
+                    Class: { FullName: "System.RuntimeType", IsValueType: false } type }]
+                || type.Module != resolved.Module || !CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariablesStatic(resolved))
+                throw new NotSupportedException("RuntimeTypeHandle static generic-variable query requires its exact MemberRef signature");
+        }
         if (name == "GetFields" && candidates.Any(CoreIntrinsics.IsRuntimeTypeHandleFields)
             && (CoreIntrinsics.IsRuntimeTypeHandleFields(resolved)
                 || sig.ParameterTypes is [{ Kind: TypeKind.Class, Class.FullName: "System.RuntimeType" }, _, _]))
@@ -1775,6 +1786,13 @@ internal sealed partial class Compilation
             }
             catch (NotSupportedException e) when (!IsMustEscape(e)) { }
         }
+        if (full == "System.RuntimeTypeHandle" && reader.StringComparer.Equals(mr.Name, "ContainsGenericVariables"))
+        {
+            var variables = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariablesStatic(variables)
+                || CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariables(variables))
+                return variables;
+        }
         if (full == "System.RuntimeTypeHandle" && reader.StringComparer.Equals(mr.Name, "GetFields"))
         {
             var fields = ResolveMemberRefMethod(module, handle, callerCtx);
@@ -1960,6 +1978,7 @@ internal sealed partial class Compilation
                     || CoreIntrinsics.IsRuntimeTypeHandleInstantiation(enumeration)
                     || CoreIntrinsics.IsRuntimeTypeHandleGenericVariableIndex(enumeration)
                     || CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariables(enumeration)
+                    || CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariablesStatic(enumeration)
                     || CoreIntrinsics.IsRuntimeTypeHandleConstraints(enumeration)
                     || CoreIntrinsics.IsRuntimeTypeHandleMakeCompound(enumeration)
                     || CoreIntrinsics.IsRuntimeTypeHandleMakeArray(enumeration)

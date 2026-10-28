@@ -2,6 +2,8 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (StaticGenericVariablesGuards.Run(args)) return;
+if (StaticGenericVariablesFixture.Run(args)) return;
 if (RuntimeFieldsGuards.Run(args)) return;
 if (RuntimeFieldsFixture.Run(args)) return;
 if (RuntimeInterfacesGuards.Run(args)) return;

@@ -652,6 +652,7 @@ internal static partial class CoreIntrinsics
             || IsRuntimeTypeHandleFields(mi)
             || IsRuntimeTypeHandleGenericVariableIndex(mi)
             || IsRuntimeTypeHandleContainsGenericVariables(mi)
+            || IsRuntimeTypeHandleContainsGenericVariablesStatic(mi)
             || IsRuntimeTypeHandleConstraints(mi)
             || IsRuntimeTypeHandleMakeCompound(mi)
             || IsRuntimeTypeHandleMakeArray(mi)
@@ -2091,6 +2092,33 @@ internal static partial class CoreIntrinsics
             && signature.ParameterTypes.Length == 0
             && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 };
     }
+
+    internal static bool IsRuntimeTypeHandleContainsGenericVariablesStatic(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "ContainsGenericVariables"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva != 0 || method.Handle.IsNil || method.PInvoke is not null
+            || method.ImplAttributes != System.Reflection.MethodImplAttributes.InternalCall)
+            return false;
+        if (!IsRuntimeTypeHandleContainsGenericVariablesStaticSignature(method.Module.Reader.GetBlobReader(
+            method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class,
+                Class: { FullName: "System.RuntimeType", IsValueType: false } type }]
+            && type.Module == method.Module;
+    }
+
+    internal static bool IsRuntimeTypeHandleContainsGenericVariablesStaticSignature(BlobReader blob) =>
+        blob.RemainingBytes >= 5 && blob.ReadByte() == 0 && blob.ReadByte() == 1
+        && blob.ReadByte() == 0x02 && blob.ReadByte() == 0x12
+        && blob.TryReadCompressedInteger(out int type) && type > 0
+        && (type >> 2) != 0 && (type & 3) != 3 && blob.RemainingBytes == 0;
 
     // Generic-variable queries use native type structure after managed handle validation.
     internal static bool IsRuntimeTypeHandleContainsGenericVariables(MethodInfo method)

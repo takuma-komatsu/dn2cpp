@@ -737,8 +737,12 @@ its handle and shares the native `ContainsGenericParameters` predicate. Formal
 parameters and open definitions are terminal positives; constructed arguments and
 element types recurse without inspecting constraints or declaring contexts. The
 public getter keeps its managed body. Retained calls, function pointers, delegates
-and reflection share this wrapper; the static InternalCall remains a distinct VM
-boundary, and open function-pointer construction keeps its existing refusal.
+and reflection share this wrapper. The exact static InternalCall accepts a
+canonical native Type object and reuses the same predicate after header validation;
+null fails with native NullReferenceException, while custom Type headers refuse
+before payload access. This native safety policy is not a private CLR null-call
+contract. The instance wrapper retains its checked default-handle validation,
+and open function-pointer construction keeps its existing refusal.
 
 The exact managed `RuntimeTypeHandle.GetConstraints()` wrapper reads the existing
 native formal-constraint metadata. Default handles and non-parameter handles keep

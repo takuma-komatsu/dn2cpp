@@ -765,6 +765,16 @@ Dn2CppArrayRef* dn2cpp_type_get_interfaces(Dn2CppType* t)
     return arr;
 }
 
+// This InternalCall accepts native canonical Type objects, never CoreCLR handles.
+int32_t dn2cpp_runtime_type_contains_generic_variables(Dn2CppType* t)
+{
+    if (t == nullptr)
+        dn2cpp_throw_null_reference();
+    if (t->type != &dn2cpp_type_type)
+        dn2cpp_throw_platform_not_supported("RuntimeTypeHandle.ContainsGenericVariables: custom Type is not supported");
+    return dn2cpp_type_contains_generic_parameters(dn2cpp_type_require(t));
+}
+
 // TypeDesc success never inspects the span. Ordinary enumeration requires VM
 // FieldDesc addresses; refusal must not copy a local count back to caller storage.
 int32_t dn2cpp_runtime_type_get_fields(Dn2CppType* t, int32_t* count)

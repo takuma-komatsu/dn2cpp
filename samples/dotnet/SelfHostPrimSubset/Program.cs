@@ -451,5 +451,7 @@ internal static class Program
         RuntimeInterfacesSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-fields") return;
         RuntimeFieldsSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-static-generic-variables") return;
+        StaticGenericVariablesSubset.Program.Run();
     }
 }
