@@ -632,6 +632,7 @@ internal static partial class CoreIntrinsics
             || IsRuntimeTypeHandleHasElementType(mi)
             || IsRuntimeTypeHandleIsArray(mi)
             || IsRuntimeTypeHandleIsByRef(mi)
+            || IsRuntimeTypeHandleIsPrimitive(mi)
             || IsRuntimeTypeHandleGetElementType(mi)
             || IsRuntimeTypeHandleIsTypeDefinition(mi)
             || IsRuntimeTypeHandleGetAssembly(mi)
@@ -1346,6 +1347,53 @@ internal static partial class CoreIntrinsics
             return false;
         var signature = method.Signature;
         return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ParameterTypes.Length == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean };
+    }
+
+    // Primitive identity uses the existing native flag, not an element or enum underlying type.
+    internal static bool IsRuntimeTypeHandleIsPrimitive(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "IsPrimitive"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.Handle.IsNil || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall))
+                != 0)
+            return false;
+        var signature = method.Signature;
+        var blob = method.Module.Reader.GetBlobReader(method.Module.Reader.GetMethodDefinition(method.Handle).Signature);
+        if (blob.RemainingBytes < 5 || blob.ReadByte() != 0 || blob.ReadByte() != 1
+            || blob.ReadByte() != (byte)SignatureTypeCode.Boolean || blob.ReadByte() != 0x12)
+            return false;
+        var parameterHandle = blob.ReadTypeHandle();
+        return blob.RemainingBytes == 0 && parameterHandle.Kind == HandleKind.TypeDefinition && !parameterHandle.IsNil
+            && signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+            && signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType" } parameter }]
+            && parameter.Module == method.Module && parameter.Handle == parameterHandle;
+    }
+
+    internal static bool IsRuntimeTypeIsPrimitiveOverride(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || !method.DeclaringClass.IsSealed
+            || method.Name != "IsPrimitiveImpl"
+            || method.Attributes != (System.Reflection.MethodAttributes.Family | System.Reflection.MethodAttributes.Virtual
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.Handle.IsNil || method.PInvoke is not null
+            || (method.ImplAttributes & (System.Reflection.MethodImplAttributes.CodeTypeMask
+                | System.Reflection.MethodImplAttributes.ManagedMask | System.Reflection.MethodImplAttributes.InternalCall)) != 0)
+            return false;
+        var signature = method.Signature;
+        var blob = method.Module.Reader.GetBlobReader(method.Module.Reader.GetMethodDefinition(method.Handle).Signature);
+        return blob.RemainingBytes == 3 && blob.ReadByte() == 0x20 && blob.ReadByte() == 0
+            && blob.ReadByte() == (byte)SignatureTypeCode.Boolean
+            && signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
             && signature.ParameterTypes.Length == 0
             && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean };
     }

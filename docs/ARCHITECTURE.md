@@ -564,6 +564,14 @@ a by-reference wrapper is, independently of element metadata precision. The
 protected override on sealed RuntimeType keeps its IL and exact call/address
 bindings, without adding CoreCLR element codes or custom Type dispatch.
 
+The exact managed `RuntimeTypeHandle.IsPrimitive(RuntimeType)` helper uses the
+existing native primitive flag with a null Type guard. It does not inherit an
+element or enum underlying type's flags; native integers are primitive, while
+void, decimal and compound handles are not. The protected sealed RuntimeType
+override retains its IL and exact call/address bindings, without exposing
+CoreCLR handles or widening custom Type dispatch. The pure element-code helper
+`RuntimeHelpers.IsPrimitiveType` remains independent of this Type query.
+
 The exact `RuntimeTypeHandle.IsFunctionPointer(RuntimeType)` managed predicate
 and `IsUnmanagedFunctionPointer(RuntimeType)` InternalCall share the existing
 native signature predicates. Only the queried type counts: pointer, by-reference
