@@ -8496,6 +8496,47 @@ Dn2CppObject* dn2cpp_activator_create_instance_default_ctor(Dn2CppType* t, int32
     return dn2cpp_activator_create_instance_wrapped(t, publicOnly == 0, wrapExceptions);
 }
 
+// The caller owns initialized storage large enough for the type. An implicit
+// constructor does not touch it; an explicit constructor runs on that same address.
+void dn2cpp_runtime_type_call_default_struct_constructor(Dn2CppType* t, uint8_t* data)
+{
+    if (t == nullptr)
+        dn2cpp_throw_null_reference();
+    if (t->type != &dn2cpp_type_type)
+        dn2cpp_throw_platform_not_supported("RuntimeType: custom Type construction is not supported");
+    const Dn2CppTypeInfo* ti = t->typeInfo;
+    if (dn2cpp_type_contains_generic_parameters(ti))
+        dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_TYPE_NOT_SUPPORTED);
+    if (ti == &dn2cpp_void_type || dn2cpp_type_metadata_only(ti) || (ti->flags & DN2CPP_TF_VALUETYPE) == 0)
+        dn2cpp_throw_platform_not_supported("RuntimeType: in-place construction requires a value type with runtime layout");
+    dn2cpp_require_layout(ti);
+    const auto reflection = ti->reflection();
+    bool hasDefaultConstructor = (reflection.activation & DN2CPP_TA_OMITTED_NONPUBLIC_DEFAULT_CTOR) != 0;
+    for (int32_t i = 0; i < reflection.ctorCount; i++)
+    {
+        const auto ci = reflection.ctors[i];
+        const auto row = ci.operator->();
+        if (row->paramCount != 0)
+            continue;
+        hasDefaultConstructor = true;
+        if ((row->attrs & DN2CPP_MTHA_PUBLIC) == 0)
+            continue;
+        if (row->invoker == nullptr || row->fnPtr == nullptr)
+            dn2cpp_throw_invoke_unavailable(ci, ti);
+        // Invalid explicit-constructor storage is a native boundary refusal, not
+        // a claim about unsafe private-VM null-buffer exception behavior.
+        if (data == nullptr)
+            dn2cpp_throw_platform_not_supported("RuntimeType: null constructor storage is not supported");
+        dn2cpp_invoke_target(row->invoker, row->fnPtr, reinterpret_cast<Dn2CppObject*>(data),
+            nullptr, nullptr, true);
+        return;
+    }
+    if ((reflection.activation & DN2CPP_TA_OMITTED_PUBLIC_DEFAULT_CTOR) != 0)
+        dn2cpp_throw_omitted_ctor(ti, "Void .ctor()");
+    if (hasDefaultConstructor)
+        dn2cpp_throw_missing_default_constructor(ti, true);
+}
+
 Dn2CppObject* dn2cpp_activator_create_instance_nonpublic(Dn2CppType* t, int32_t nonPublic)
 {
     return dn2cpp_activator_create_default(t, nonPublic, true, false);

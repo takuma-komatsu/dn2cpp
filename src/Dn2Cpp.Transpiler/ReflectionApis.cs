@@ -47,7 +47,7 @@ internal enum ReflectionOp : byte
     MakeGenericType, MakeGenericMethod,
     MethodInvoke, CtorInvoke, PropertyGet, PropertySet, FieldGet, FieldSet, EventAdd, EventRemove,
     InvokeMember,
-    ActivatorCreate, ActivatorCreateGeneric, ActivatorCreateNamed, AssemblyCreateInstance, RuntimeTypeDefaultCtor, RuntimeTypeCreateInstanceOfT,
+    ActivatorCreate, ActivatorCreateGeneric, ActivatorCreateNamed, AssemblyCreateInstance, RuntimeTypeDefaultCtor, RuntimeTypeCreateInstanceOfT, RuntimeTypeDefaultStructCtor,
     CreateDelegate, CreateDelegateNamed, DynamicInvoke, DelegateMethod,
     GetCustomAttributes, IsDefined, GetCustomAttributesData,
     RunClassConstructor, TypeInfoView, SequenceElement, TypeHandle, GetUninitializedObject,
@@ -186,7 +186,7 @@ internal static class ReflectionApis
         or "GetElementType" or "MakeArrayType" or "GetGenericTypeDefinition" or "GetGenericArguments"
         or "get_GenericTypeArguments" or "get_BaseType" or "MakeGenericType" or "MakeGenericMethod"
         or "Invoke" or "GetValue" or "SetValue" or "AddEventHandler" or "RemoveEventHandler" or "InvokeMember"
-        or "CreateInstance" or "CreateInstanceDefaultCtor" or "CreateInstanceOfT" or "CreateDelegate" or "DynamicInvoke" or "get_Method"
+        or "CreateInstance" or "CreateInstanceDefaultCtor" or "CreateInstanceOfT" or "CallDefaultStructConstructor" or "CreateDelegate" or "DynamicInvoke" or "get_Method"
         or "GetCustomAttributes" or "GetCustomAttribute" or "IsDefined" or "GetCustomAttributesData"
         or "get_CustomAttributes" or "RunClassConstructor" or "GetUninitializedObject"
         or "PtrToStructure";
@@ -211,6 +211,9 @@ internal static class ReflectionApis
             "System.Reflection.IntrospectionExtensions" when name == "GetTypeInfo" =>
                 Shape(OnOperand(ReflectionOp.TypeInfoView, ReflectionOpKind.Transfer, 0), onStatic && Sig(ps, TType)),
             "System.Activator" when name == "CreateInstance" => Activator(ps, hasThis, methodArity),
+            "System.RuntimeType" when name == "CallDefaultStructConstructor" =>
+                Shape(OnOperand(ReflectionOp.RuntimeTypeDefaultStructCtor, ReflectionOpKind.Execute, ReflectionApi.Receiver)
+                    with { DefaultFlags = PublicInstance }, plain && Sig(ps, "System.Byte&")),
             "System.RuntimeType" when name == "CreateInstanceOfT" =>
                 Shape(OnOperand(ReflectionOp.RuntimeTypeCreateInstanceOfT, ReflectionOpKind.Construct, ReflectionApi.Receiver)
                     with { DefaultFlags = PublicInstance }, plain && ps.Length == 0),

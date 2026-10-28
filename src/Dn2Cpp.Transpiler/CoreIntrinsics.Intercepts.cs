@@ -339,6 +339,7 @@ internal enum InterceptEmitArm
     ActivatorDefaultBody,
     RuntimeTypeDefaultCtorBody,
     RuntimeTypeCreateInstanceOfTBody,
+    RuntimeTypeDefaultStructCtorBody,
     DelegateNamedConstructorBody,
     DelegateCloneBinding,
     ArrayCloneBinding,
@@ -822,6 +823,34 @@ internal static partial class CoreIntrinsics
         }
         return null;
     }
+
+    internal static bool IsRuntimeTypeDefaultStructCtor(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeType" || method.Name != "CallDefaultStructConstructor"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.PInvoke is not null
+            || method.ImplAttributes != System.Reflection.MethodImplAttributes.IL)
+            return false;
+        if (!IsRuntimeTypeDefaultStructCtorSignature(method.Module.Reader.GetBlobReader(
+            method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Void }
+            && signature.ParameterTypes is [{ Kind: TypeKind.ByRef,
+                Element: { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Byte } }];
+    }
+
+    internal static bool IsRuntimeTypeDefaultStructCtorSignature(BlobReader blob) =>
+        blob.RemainingBytes == 5 && blob.ReadByte() == 0x20 && blob.ReadByte() == 1
+        && blob.ReadByte() == (byte)SignatureTypeCode.Void && blob.ReadByte() == (byte)SignatureTypeCode.ByReference
+        && blob.ReadByte() == (byte)SignatureTypeCode.Byte;
+
+    public static readonly MethodDefIntercept BrRuntimeTypeDefaultStructCtor = new(
+        InterceptCutKind.BodyReplace, InterceptEmitArm.RuntimeTypeDefaultStructCtorBody,
+        typeGate: "System.RuntimeType", nameGate: "CallDefaultStructConstructor", extra: static m => IsRuntimeTypeDefaultStructCtor(m));
 
     internal static bool IsRuntimeTypeCreateInstanceOfT(MethodInfo method)
     {

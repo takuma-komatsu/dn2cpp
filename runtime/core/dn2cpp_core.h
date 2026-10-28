@@ -2483,6 +2483,7 @@ Dn2CppObject* dn2cpp_activator_create_instance_nonpublic(Dn2CppType* t, int32_t 
 // Retained parameterless factory: only canonical runtime Type objects carry a native layout.
 Dn2CppObject* dn2cpp_activator_create_instance_wrapped(Dn2CppType* t, int32_t nonPublic, int32_t wrapExceptions);
 Dn2CppObject* dn2cpp_activator_create_instance_default_ctor(Dn2CppType* t, int32_t publicOnly, int32_t wrapExceptions);
+void dn2cpp_runtime_type_call_default_struct_constructor(Dn2CppType* t, uint8_t* data);
 // Activator.CreateInstance(Type, object[] args[, BindingFlags, Binder,
 // activationAttributes]): DefaultBinder-style ctor resolution — filter on
 // flags + arity + boxed-argument admissibility (null matches everything,

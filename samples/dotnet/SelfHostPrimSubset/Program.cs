@@ -431,5 +431,7 @@ internal static class Program
         RuntimeTypeDefaultCtorSubset.DefaultCtorChecks.Run();
         if (args.Length > 0 && args[0] == "before-runtime-type-create-instance-of-t") return;
         RuntimeTypeDefaultCtorSubset.DefaultCtorChecks.RunOfT();
+        if (args.Length > 0 && args[0] == "before-runtime-type-default-struct") return;
+        RuntimeTypeDefaultStructSubset.StructChecks.Run();
     }
 }

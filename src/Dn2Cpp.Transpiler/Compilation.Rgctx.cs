@@ -791,6 +791,7 @@ internal sealed partial class Compilation
         "dn2cpp_methodref_invoke(",     // MethodInfo.Invoke: the row's body or the receiver's override
         "dn2cpp_delegate_dynamic_invoke(", // Delegate.DynamicInvoke: every entry of the chain
         "dn2cpp_ctorref_invoke(",       // ConstructorInfo.Invoke: the row's constructor
+        "dn2cpp_runtime_type_call_default_struct_constructor(", // In-place ctor dispatch; no box allocation.
         "dn2cpp_activator_create_instance", // Activator.CreateInstance: a constructor chosen at run time
         "dn2cpp_assembly_create_instance(", // Assembly.CreateInstance, likewise
         "dn2cpp_propref_get_value",     // PropertyInfo.GetValue: the getter's body or override

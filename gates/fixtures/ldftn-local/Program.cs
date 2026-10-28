@@ -3,6 +3,7 @@ using Mono.Cecil;
 using Mono.Cecil.Cil;
 
 if (RuntimeTypeDefaultCtorGuards.Run(args)) return;
+if (RuntimeTypeDefaultStructFixture.Run(args)) return;
 if (RuntimeTypeCreateInstanceOfTFixture.Run(args)) return;
 if (RuntimeTypeDefaultCtorFixture.Run(args)) return;
 if (ActivatorDefaultGuards.Run(args)) return;

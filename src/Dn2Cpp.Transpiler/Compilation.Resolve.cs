@@ -100,6 +100,7 @@ internal sealed partial class Compilation
                     || CoreIntrinsics.BrDelegateNamedConstructor.Matches(mi)
                     || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(mi)
                     || CoreIntrinsics.BrNullableReboxing.Matches(mi)
+                    || CoreIntrinsics.BrRuntimeTypeDefaultStructCtor.Matches(mi)
                     || CoreIntrinsics.BrRuntimeTypeCreateInstanceOfT.Matches(mi)
                     || CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(mi)
                     || CoreIntrinsics.BrActivatorDefault.Matches(mi))
@@ -1493,6 +1494,16 @@ internal sealed partial class Compilation
                 || blob.ReadByte() != (byte)SignatureTypeCode.Boolean || blob.ReadByte() != (byte)SignatureTypeCode.Object)
                 throw new NotSupportedException("RuntimeType enum defined query requires its exact MemberRef signature");
         }
+        if (name == "CallDefaultStructConstructor" && candidates.Any(CoreIntrinsics.IsRuntimeTypeDefaultStructCtor))
+        {
+            if (!CoreIntrinsics.IsRuntimeTypeDefaultStructCtorSignature(reader.GetBlobReader(mr.Signature))
+                || sig.Header.RawValue != 0x20 || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Void }
+                || sig.ParameterTypes is not [{ Kind: TypeKind.ByRef,
+                    Element: { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Byte } }]
+                || !CoreIntrinsics.BrRuntimeTypeDefaultStructCtor.Matches(resolved))
+                throw new NotSupportedException("RuntimeType in-place construction requires its exact MemberRef signature");
+        }
         if (name == "CreateInstanceOfT" && candidates.Any(CoreIntrinsics.IsRuntimeTypeCreateInstanceOfT))
         {
             if (!CoreIntrinsics.IsRuntimeTypeCreateInstanceOfTSignature(reader.GetBlobReader(mr.Signature))
@@ -1662,6 +1673,13 @@ internal sealed partial class Compilation
                     return copy;
             }
             catch (NotSupportedException e) when (!IsMustEscape(e)) { }
+        }
+        if (full == "System.RuntimeType" && reader.StringComparer.Equals(mr.Name, "CallDefaultStructConstructor")
+            && CoreIntrinsics.IsRuntimeTypeDefaultStructCtorSignature(reader.GetBlobReader(mr.Signature)))
+        {
+            var factory = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.BrRuntimeTypeDefaultStructCtor.Matches(factory))
+                return factory;
         }
         if (full == "System.RuntimeType" && reader.StringComparer.Equals(mr.Name, "CreateInstanceOfT")
             && CoreIntrinsics.IsRuntimeTypeCreateInstanceOfTSignature(reader.GetBlobReader(mr.Signature)))

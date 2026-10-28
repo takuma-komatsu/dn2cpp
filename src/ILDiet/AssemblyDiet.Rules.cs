@@ -410,12 +410,18 @@ internal sealed partial class AssemblyDiet
         {
             MarkType(type);
             foreach (var constructor in type.Methods)
-                if (constructor.IsConstructor && !constructor.IsStatic
-                    && ((demands & Demand.Ctors) != 0 || constructor.Parameters.Count == 0
-                        && (constructor.IsPublic || (demands & Demand.DefaultCtorAnyVisibility) != 0)))
+                if (constructor.IsConstructor && !constructor.IsStatic)
                 {
-                    MarkMethod(constructor);
-                    NoteReflectionInvokeBoxes(constructor);
+                    // In-place value initialization must distinguish a private default
+                    // constructor from an implicit no-op, without retaining its body.
+                    if (type.IsValueType && constructor.Parameters.Count == 0 && (demands & Demand.DefaultCtor) != 0)
+                        KeepMethodSignature(constructor);
+                    if ((demands & Demand.Ctors) != 0 || constructor.Parameters.Count == 0
+                        && (constructor.IsPublic || (demands & Demand.DefaultCtorAnyVisibility) != 0))
+                    {
+                        MarkMethod(constructor);
+                        NoteReflectionInvokeBoxes(constructor);
+                    }
                 }
         }
         if ((demands & Demand.FieldRead) != 0)
@@ -1126,7 +1132,7 @@ internal sealed partial class AssemblyDiet
         result.HasOpenMethodSignatures = owners.HasOpenMethodSignatures;
         result.Unknown = owners.HasUnknownOwner || hasName && !CompleteNames(names) || flagsAffectUncertainty && flags.Unknown;
         if (op == ReflectionOp.InvokeMember) flags = InvokeMemberFlags(flags);
-        else if (op is ReflectionOp.RuntimeTypeCreateInstanceOfT or ReflectionOp.RuntimeTypeDefaultCtor or ReflectionOp.ActivatorCreate or ReflectionOp.ActivatorCreateGeneric
+        else if (op is ReflectionOp.RuntimeTypeDefaultStructCtor or ReflectionOp.RuntimeTypeCreateInstanceOfT or ReflectionOp.RuntimeTypeDefaultCtor or ReflectionOp.ActivatorCreate or ReflectionOp.ActivatorCreateGeneric
             or ReflectionOp.ActivatorCreateNamed or ReflectionOp.AssemblyCreateInstance) flags = ConstructionFlags(flags);
         bool constructByFlags = op == ReflectionOp.InvokeMember && MayCreateInstance(flags);
         foreach (var reference in owners.Types)
@@ -1195,7 +1201,7 @@ internal sealed partial class AssemblyDiet
                 bool methods = op is ReflectionOp.GetMethod or ReflectionOp.GetMethods or ReflectionOp.GetMember
                     or ReflectionOp.GetMembers or ReflectionOp.GetDefaultMembers or ReflectionOp.InvokeMember;
                 bool constructors = op is ReflectionOp.GetConstructor or ReflectionOp.GetConstructors
-                    or ReflectionOp.RuntimeTypeCreateInstanceOfT or ReflectionOp.RuntimeTypeDefaultCtor or ReflectionOp.ActivatorCreate or ReflectionOp.ActivatorCreateGeneric or ReflectionOp.ActivatorCreateNamed
+                    or ReflectionOp.RuntimeTypeDefaultStructCtor or ReflectionOp.RuntimeTypeCreateInstanceOfT or ReflectionOp.RuntimeTypeDefaultCtor or ReflectionOp.ActivatorCreate or ReflectionOp.ActivatorCreateGeneric or ReflectionOp.ActivatorCreateNamed
                     or ReflectionOp.AssemblyCreateInstance or ReflectionOp.InvokeMember
                     or ReflectionOp.GetMember or ReflectionOp.GetMembers or ReflectionOp.GetDefaultMembers;
                 foreach (var method in owner.Methods)
@@ -1204,7 +1210,7 @@ internal sealed partial class AssemblyDiet
                         && (!method.IsStatic || SelectsStaticConstructors(op, flags)) : methods)) continue;
                     if (!(method.IsConstructor && !method.IsStatic && constructByFlags) && !NameMatches(method.Name)) continue;
                     if (op == ReflectionOp.ActivatorCreateGeneric && (!method.IsPublic || method.Parameters.Count != 0)) continue;
-                    if (op is ReflectionOp.RuntimeTypeDefaultCtor or ReflectionOp.RuntimeTypeCreateInstanceOfT
+                    if (op is ReflectionOp.RuntimeTypeDefaultStructCtor or ReflectionOp.RuntimeTypeDefaultCtor or ReflectionOp.RuntimeTypeCreateInstanceOfT
                         && method.Parameters.Count != 0) continue;
                     if (!arity.Unknown && arity.Integers.Count == 1 && method.GenericParameters.Count != arity.Integers[0]) continue;
                     if (parameterTypes.TypeArrays.Count > 0 && !parameterTypes.Unknown
@@ -1349,7 +1355,7 @@ internal sealed partial class AssemblyDiet
             }
             if (api.Kind is ReflectionOpKind.Lookup or ReflectionOpKind.Enumerate
                 || api.Op is ReflectionOp.CreateDelegateNamed or ReflectionOp.InvokeMember
-                || api.Kind == ReflectionOpKind.Construct)
+                || api.Kind == ReflectionOpKind.Construct || api.Op == ReflectionOp.RuntimeTypeDefaultStructCtor)
             {
                 var names = api.Kind == ReflectionOpKind.Construct ? new SummaryValue()
                     : SummaryValueOf(caller, summary, SiteOperand(site, api.Name));
@@ -1377,7 +1383,7 @@ internal sealed partial class AssemblyDiet
                     api.Kind != ReflectionOpKind.Construct && api.Name != ReflectionApi.Absent);
                 foreach (var reference in target.Types)
                 {
-                    if (IsSymbolic(reference))
+                    if (IsSymbolic(reference) || api.Op == ReflectionOp.RuntimeTypeDefaultStructCtor)
                     {
                         var owner = api.Op == ReflectionOp.CreateDelegateNamed && MayNameConstructor(names)
                             ? Project(reference, ProjectionKind.Ancestors) : reference;
@@ -1518,7 +1524,8 @@ internal sealed partial class AssemblyDiet
             return flags is null || flags.Unknown || flags.Integers.Count == 0
                 || flags.Integers.Any(value => (value & ReflectionApis.NonPublic) != 0)
                 ? Demand.DefaultCtorAnyVisibility : Demand.DefaultCtor;
-        return api.Op is ReflectionOp.ActivatorCreateGeneric or ReflectionOp.RuntimeTypeCreateInstanceOfT ? Demand.DefaultCtor
+        return api.Op is ReflectionOp.ActivatorCreateGeneric or ReflectionOp.RuntimeTypeCreateInstanceOfT
+            or ReflectionOp.RuntimeTypeDefaultStructCtor ? Demand.DefaultCtor
             : api.Op == ReflectionOp.FieldGet ? Demand.FieldRead
             : api.Op == ReflectionOp.FieldSet ? Demand.Runtime
             : api.Kind == ReflectionOpKind.Construct || api.Op == ReflectionOp.CtorInvoke ? Demand.Ctors

@@ -10,4 +10,8 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
+  <ItemGroup>
+    <Compile Remove="DefaultStructCtorLib/**/*.cs" />
+    <ProjectReference Include="DefaultStructCtorLib/DefaultStructCtorLib.csproj" />
+  </ItemGroup>
 </Project>

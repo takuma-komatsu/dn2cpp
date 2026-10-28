@@ -115,6 +115,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.BrDelegateValue.Matches(m)
             || CoreIntrinsics.BrCoreClrTypeMaterialization.Matches(m)
             || CoreIntrinsics.BrNullableReboxing.Matches(m)
+            || CoreIntrinsics.BrRuntimeTypeDefaultStructCtor.Matches(m)
             || CoreIntrinsics.BrRuntimeTypeCreateInstanceOfT.Matches(m)
             || CoreIntrinsics.BrRuntimeTypeDefaultCtor.Matches(m)
             || CoreIntrinsics.BrActivatorDefault.Matches(m)

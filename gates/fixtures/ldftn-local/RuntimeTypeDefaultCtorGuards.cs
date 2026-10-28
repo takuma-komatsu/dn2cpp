@@ -9,9 +9,10 @@ internal static class RuntimeTypeDefaultCtorGuards
 {
     public static bool Run(string[] args)
     {
-        if (args.Length != 2 || args[0] is not ("--runtime-type-default-ctor-guards" or "--runtime-type-create-instance-of-t-guards")) return false;
+        if (args.Length != 2 || args[0] is not ("--runtime-type-default-ctor-guards" or "--runtime-type-create-instance-of-t-guards" or "--runtime-type-default-struct-guards")) return false;
+        bool structCtor = args[0] == "--runtime-type-default-struct-guards";
         bool ofT = args[0] == "--runtime-type-create-instance-of-t-guards";
-        string targetName = ofT ? "CreateInstanceOfT" : "CreateInstanceDefaultCtor";
+        string targetName = structCtor ? "CallDefaultStructConstructor" : ofT ? "CreateInstanceOfT" : "CreateInstanceDefaultCtor";
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
         var production = Assembly.LoadFrom(Path.GetFullPath(args[1]));
@@ -29,7 +30,7 @@ internal static class RuntimeTypeDefaultCtorGuards
             ? field.GetValue(target)!
             : target.GetType().GetProperty(name, fields)!.GetValue(target)!;
         object NewMap(Type owner, string field) => Activator.CreateInstance(owner.GetField(field, fields)!.FieldType)!;
-        var predicate = Model("CoreIntrinsics").GetMethod(ofT ? "IsRuntimeTypeCreateInstanceOfT" : "IsRuntimeTypeDefaultCtor", statics)!;
+        var predicate = Model("CoreIntrinsics").GetMethod(structCtor ? "IsRuntimeTypeDefaultStructCtor" : ofT ? "IsRuntimeTypeCreateInstanceOfT" : "IsRuntimeTypeDefaultCtor", statics)!;
         var decode = typeof(MethodDefinition).GetMethods().Single(m => m.Name == "DecodeSignature")
             .MakeGenericMethod(Model("TypeDesc"), typeof(object));
         int checks = 0;
@@ -70,6 +71,23 @@ internal static class RuntimeTypeDefaultCtorGuards
             ("extra-argument", new byte[] { 0x20, 1, 0x1c, 2 }, false),
             ("trailing-token", new byte[] { 0x20, 0, 0x1c, 2 }, false),
         };
+        if (structCtor) signatures = new (string Label, byte[] Signature, bool Expected)[]
+        {
+            ("exact", new byte[] { 0x20, 1, 1, 0x10, 5 }, true),
+            ("static", new byte[] { 0, 1, 1, 0x10, 5 }, false),
+            ("explicit", new byte[] { 0x60, 1, 1, 0x10, 5 }, false),
+            ("vararg", new byte[] { 0x25, 1, 1, 0x10, 5 }, false),
+            ("generic", new byte[] { 0x30, 1, 1, 1, 0x10, 5 }, false),
+            ("modified-return", new byte[] { 0x20, 1, 0x20, 0x10, 1, 0x10, 5 }, false),
+            ("wrong-return", new byte[] { 0x20, 1, 0x1c, 0x10, 5 }, false),
+            ("value-byte", new byte[] { 0x20, 1, 1, 5 }, false),
+            ("byref-int", new byte[] { 0x20, 1, 1, 0x10, 8 }, false),
+            ("named-byte", new byte[] { 0x20, 1, 1, 0x10, 0x11, 8 }, false),
+            ("modified-byte", new byte[] { 0x20, 1, 1, 0x10, 0x20, 0x10, 5 }, false),
+            ("missing-argument", new byte[] { 0x20, 0, 1 }, false),
+            ("extra-argument", new byte[] { 0x20, 2, 1, 0x10, 5, 2 }, false),
+            ("trailing-token", new byte[] { 0x20, 1, 1, 0x10, 5, 2 }, false),
+        };
         foreach (var item in signatures)
         {
             var metadata = new MetadataBuilder();
@@ -79,7 +97,7 @@ internal static class RuntimeTypeDefaultCtorGuards
             var firstMethod = MetadataTokens.MethodDefinitionHandle(1);
             metadata.AddTypeDefinition(TypeAttributes.NotPublic, default, metadata.GetOrAddString("<Module>"), default, firstField, firstMethod);
             var boolean = metadata.AddTypeDefinition(TypeAttributes.Public | TypeAttributes.Sealed,
-                metadata.GetOrAddString("System"), metadata.GetOrAddString("Boolean"), default, firstField, firstMethod);
+                metadata.GetOrAddString("System"), metadata.GetOrAddString(structCtor ? "Byte" : "Boolean"), default, firstField, firstMethod);
             var runtimeType = metadata.AddTypeDefinition(TypeAttributes.NotPublic | TypeAttributes.Sealed,
                 metadata.GetOrAddString("System"), metadata.GetOrAddString("RuntimeType"), default, firstField, firstMethod);
             var nextMethod = MetadataTokens.MethodDefinitionHandle(2);
@@ -112,7 +130,7 @@ internal static class RuntimeTypeDefaultCtorGuards
                 classMap.Add(definition, cls);
                 return cls;
             }
-            MakeClass(boolean, "System.Boolean");
+            MakeClass(boolean, structCtor ? "System.Byte" : "System.Boolean");
             var owner = MakeClass(runtimeType, "System.RuntimeType");
             MakeClass(type, "System.Type");
             MakeClass(typeInfo, "System.Reflection.TypeInfo");
@@ -165,13 +183,22 @@ internal static class RuntimeTypeDefaultCtorGuards
         var facts = (IDictionary)NewMap(Model("Compilation"), "HotBodyFacts");
         Set(hotCompilation, "HotBodyFacts", facts);
         Model("Compilation").GetMethod("RecordHotBodyFacts", fields)!.Invoke(hotCompilation,
-            new[] { hotMethod, ofT ? "return dn2cpp_activator_create_instance_default_ctor(type, 1, 1);"
+            new[] { hotMethod, structCtor ? "dn2cpp_runtime_type_call_default_struct_constructor(type, data);" : ofT ? "return dn2cpp_activator_create_instance_default_ctor(type, 1, 1);"
                 : "return dn2cpp_activator_create_instance_default_ctor(type, publicOnly, wrap);" });
         var fact = facts["RuntimeTypeDefaultCtorGuard"]!;
-        Check((bool)Get(fact, "Allocates") && (bool)Get(fact, "Dispatches"), "allocation-and-dispatch-facts");
-        Check((string)Get(fact, "AllocToken") == "dn2cpp_activator_create_instance"
-            && (string)Get(fact, "DispatchToken") == "dn2cpp_activator_create_instance", "existing-construction-prefix");
-        Console.WriteLine((ofT ? "runtime-type-oft-raw-guards=" : "runtime-type-default-ctor-raw-guards=") + checks);
+        if (structCtor)
+        {
+            Check(!(bool)Get(fact, "Allocates") && (bool)Get(fact, "Dispatches"), "inplace-dispatch-only-facts");
+            Check(Get(fact, "AllocToken") is null && (string)Get(fact, "DispatchToken")
+                == "dn2cpp_runtime_type_call_default_struct_constructor(", "inplace-dispatch-token");
+        }
+        else
+        {
+            Check((bool)Get(fact, "Allocates") && (bool)Get(fact, "Dispatches"), "allocation-and-dispatch-facts");
+            Check((string)Get(fact, "AllocToken") == "dn2cpp_activator_create_instance"
+                && (string)Get(fact, "DispatchToken") == "dn2cpp_activator_create_instance", "existing-construction-prefix");
+        }
+        Console.WriteLine((structCtor ? "runtime-type-default-struct-raw-guards=" : ofT ? "runtime-type-oft-raw-guards=" : "runtime-type-default-ctor-raw-guards=") + checks);
         return true;
     }
 }

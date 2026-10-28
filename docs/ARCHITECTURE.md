@@ -515,6 +515,16 @@ adapter with public-only selection and constructor exception wrapping fixed on.
 Its receiver-based planning retains only public parameterless constructors;
 value/Nullable boxed return policies remain separate from the public generic
 caller's struct-construction path.
+The retained `RuntimeType.CallDefaultStructConstructor(ref byte)` instead invokes
+a public parameterless value constructor on caller-owned storage, without boxing,
+zeroing or copying. An implicit constructor leaves that storage unchanged, including
+ref-like values. Private default-constructor metadata survives stripping so absence
+is never confused with inaccessibility. Receiver planning reaches execution and
+initialization, not a box; unresolved value-type templates retain existing refusal.
+The caller must provide sufficient storage. Null storage for an explicit constructor
+is refused before dispatch as a native safety boundary; implicit no-op initialization
+does not inspect it. This dynamic constructor dispatch is not an allocation primitive
+and remains an opaque-dispatch boundary for NoAlloc.
 
 ### B. A BCL intrinsic (a `System.*` call) — core lane
 

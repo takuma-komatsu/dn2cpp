@@ -705,6 +705,31 @@ internal sealed partial class Compilation
         var target = Operand(app, site, api.Target);
         switch (api.Op)
         {
+            case ReflectionOp.RuntimeTypeDefaultStructCtor:
+            {
+                string? unknown = target.Unknown;
+                foreach (var e in target.Items)
+                {
+                    var type = e.Kind == REntityKind.Template ? ExactTemplateType(e)
+                        : e.Kind == REntityKind.Type && !e.Inherited ? e.Type : null;
+                    if (e.Kind == REntityKind.Template && type is null)
+                        unknown ??= "a runtime-instantiated generic value type";
+                    if (type is not { Kind: TypeKind.Class, Class: { } cls }
+                        || ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls) || !EnsureShape(cls).IsValueType)
+                        continue;
+                    foreach (var member in SelectMembers(cls, LookupMemberKind.Constructor, null,
+                        ReflectionApis.PublicInstance, null, -1))
+                        if (member.Method is { } ctor && ctor.Signature.ParameterTypes.Length == 0)
+                        {
+                            ReachCctor(cls, m);
+                            InvokeTarget(ctor, m);
+                        }
+                }
+                if (unknown is not null)
+                    RecordReflectionDiagnostic(app, site, ReflectionDiagnosticKind.Execution,
+                        "Type comes from " + unknown + " — no in-place constructor retained", null, null, ".ctor");
+                break;
+            }
             case ReflectionOp.RunClassConstructor:
                 foreach (var cls in ClassesOf(target))
                     if (!ContainsCanonPlaceholder(cls) && !ContainsGenericVar(cls))
