@@ -2,6 +2,8 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (RuntimeTypeHasElementGuards.Run(args)) return;
+if (RuntimeTypeHasElementFixture.Run(args)) return;
 if (RuntimeTypeEnumNameGuards.Run(args)) return;
 if (RuntimeTypeEnumNameFixture.Run(args)) return;
 

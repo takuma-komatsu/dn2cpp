@@ -2296,7 +2296,7 @@ internal sealed partial class MethodCompiler
         }
         else if (isCallvirt && ((CoreIntrinsics.IsRuntimeTypeArrayRank(callee) || CoreIntrinsics.IsRuntimeTypeEnumName(callee) || CoreIntrinsics.IsRuntimeTypeTypeCode(callee)) || CoreIntrinsics.IsRuntimeTypeMakeCompound(callee) || CoreIntrinsics.IsRuntimeTypeMakeArray(callee)
             || CoreIntrinsics.IsRuntimeTypeFunctionPointerGetter(callee) || (CoreIntrinsics.IsRuntimeTypeAssemblyGetter(callee) || CoreIntrinsics.IsRuntimeTypeModuleGetter(callee))
-            || CoreIntrinsics.IsRuntimeTypeGenericParameterGetter(callee) || CoreIntrinsics.IsRuntimeTypeMetadataTokenGetter(callee) || CoreIntrinsics.IsRuntimeTypeAttributeFlagsOverride(callee) || CoreIntrinsics.IsRuntimeTypeElementTypeOverride(callee) || CoreIntrinsics.IsRuntimeTypeDefinitionGetter(callee)))
+            || CoreIntrinsics.IsRuntimeTypeGenericParameterGetter(callee) || CoreIntrinsics.IsRuntimeTypeMetadataTokenGetter(callee) || CoreIntrinsics.IsRuntimeTypeAttributeFlagsOverride(callee) || CoreIntrinsics.IsRuntimeTypeHasElementTypeOverride(callee) || CoreIntrinsics.IsRuntimeTypeElementTypeOverride(callee) || CoreIntrinsics.IsRuntimeTypeDefinitionGetter(callee)))
         {
             // The selected sealed native receiver has no CoreCLR virtual slots.
             call = DirectCall(callee, args);
@@ -3366,7 +3366,7 @@ internal sealed partial class MethodCompiler
         // Nonvirtual and selected sealed native-Type calls enter their own bodies.
         if (!callee.IsVirtual || (CoreIntrinsics.IsRuntimeTypeArrayRank(callee) || CoreIntrinsics.IsRuntimeTypeEnumName(callee) || CoreIntrinsics.IsRuntimeTypeTypeCode(callee)) || CoreIntrinsics.IsRuntimeTypeMakeCompound(callee) || CoreIntrinsics.IsRuntimeTypeMakeArray(callee)
             || CoreIntrinsics.IsRuntimeTypeFunctionPointerGetter(callee) || (CoreIntrinsics.IsRuntimeTypeAssemblyGetter(callee) || CoreIntrinsics.IsRuntimeTypeModuleGetter(callee))
-            || CoreIntrinsics.IsRuntimeTypeGenericParameterGetter(callee) || CoreIntrinsics.IsRuntimeTypeMetadataTokenGetter(callee) || CoreIntrinsics.IsRuntimeTypeAttributeFlagsOverride(callee) || CoreIntrinsics.IsRuntimeTypeElementTypeOverride(callee) || CoreIntrinsics.IsRuntimeTypeDefinitionGetter(callee))
+            || CoreIntrinsics.IsRuntimeTypeGenericParameterGetter(callee) || CoreIntrinsics.IsRuntimeTypeMetadataTokenGetter(callee) || CoreIntrinsics.IsRuntimeTypeAttributeFlagsOverride(callee) || CoreIntrinsics.IsRuntimeTypeHasElementTypeOverride(callee) || CoreIntrinsics.IsRuntimeTypeElementTypeOverride(callee) || CoreIntrinsics.IsRuntimeTypeDefinitionGetter(callee))
         {
             EmitCallResult(callee, DirectCall(callee, args2));
             return;

@@ -2859,8 +2859,7 @@ int32_t dn2cpp_type_il_attrs(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_is_public(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_is_not_public(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_is_visible(const Dn2CppTypeInfo* ti);
-// Type.HasElementType / GetRootElementType: only array Types materialize with
-// an element in this model (no byref/pointer Type objects exist at runtime).
+// Element presence follows array/pointer/byref category even when the element is unknown.
 int32_t dn2cpp_type_has_element_type(const Dn2CppTypeInfo* ti);
 Dn2CppType* dn2cpp_type_get_root_element_type(Dn2CppType* t);
 // Type.FormatTypeName (internal; MethodInfo/ConstructorInfo.ToString's type
