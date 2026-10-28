@@ -1832,6 +1832,7 @@ Dn2CppObject* dn2cpp_get_uninitialized_object(Dn2CppType* t);
 int32_t dn2cpp_type_is_generic_type(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_is_constructed_generic(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_is_generic_type_definition(const Dn2CppTypeInfo* ti);
+int32_t dn2cpp_type_is_type_definition(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_contains_generic_parameters(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_generic_parameter_attributes(const Dn2CppTypeInfo* ti);
 int32_t dn2cpp_type_generic_parameter_position(const Dn2CppTypeInfo* ti);

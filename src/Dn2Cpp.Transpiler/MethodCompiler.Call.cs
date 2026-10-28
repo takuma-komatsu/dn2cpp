@@ -2296,7 +2296,7 @@ internal sealed partial class MethodCompiler
         }
         else if (isCallvirt && (CoreIntrinsics.IsRuntimeTypeMakeCompound(callee) || CoreIntrinsics.IsRuntimeTypeMakeArray(callee)
             || CoreIntrinsics.IsRuntimeTypeFunctionPointerGetter(callee) || CoreIntrinsics.IsRuntimeTypeAssemblyGetter(callee)
-            || CoreIntrinsics.IsRuntimeTypeGenericParameterGetter(callee)))
+            || CoreIntrinsics.IsRuntimeTypeGenericParameterGetter(callee) || CoreIntrinsics.IsRuntimeTypeDefinitionGetter(callee)))
         {
             // Keep the real body; only its sealed native receiver lacks virtual slots.
             call = DirectCall(callee, args);
@@ -3366,7 +3366,7 @@ internal sealed partial class MethodCompiler
         // Nonvirtual and selected sealed native-Type calls enter their own bodies.
         if (!callee.IsVirtual || CoreIntrinsics.IsRuntimeTypeMakeCompound(callee) || CoreIntrinsics.IsRuntimeTypeMakeArray(callee)
             || CoreIntrinsics.IsRuntimeTypeFunctionPointerGetter(callee) || CoreIntrinsics.IsRuntimeTypeAssemblyGetter(callee)
-            || CoreIntrinsics.IsRuntimeTypeGenericParameterGetter(callee))
+            || CoreIntrinsics.IsRuntimeTypeGenericParameterGetter(callee) || CoreIntrinsics.IsRuntimeTypeDefinitionGetter(callee))
         {
             EmitCallResult(callee, DirectCall(callee, args2));
             return;

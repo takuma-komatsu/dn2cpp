@@ -44,6 +44,25 @@ int32_t dn2cpp_type_is_generic_type_definition(const Dn2CppTypeInfo* ti)
     return (ti->flags & DN2CPP_TF_GENERICDEF) != 0 ? 1 : 0;
 }
 
+// Definitions include open generic declarations and builtins, not compound or formal identities.
+int32_t dn2cpp_type_is_type_definition(const Dn2CppTypeInfo* ti)
+{
+    // These erased runtime handles only represent constructed instances; open
+    // declarations use separate generic-definition handles.
+    if (ti == &dn2cpp_threadlocal_type || ti == &dn2cpp_blockingcollection_type)
+        return 0;
+    // Enum rows omit generic-owner arguments, so an ordinary enum cannot be
+    // distinguished from a constructed nested enum. Synthetic comparers likewise
+    // do not model the CLR's concrete generic/non-generic implementation identity.
+    if ((ti->flags & DN2CPP_TF_DEFAULT_EQ_COMPARER) != 0
+        || ((ti->flags & DN2CPP_TF_ENUM) != 0
+            && (ti->flags & DN2CPP_TF_GENERICDEF) == 0 && ti->genericArgCount == 0))
+        dn2cpp_throw_platform_not_supported("Reflection: type definition identity is unavailable");
+    return dn2cpp_signature_kind(ti) == 0
+        && (ti->flags & (DN2CPP_TF_ARRAY | DN2CPP_TF_GENERICPARAM)) == 0
+        && !dn2cpp_type_is_constructed_generic(ti) ? 1 : 0;
+}
+
 int32_t dn2cpp_type_contains_generic_parameters(const Dn2CppTypeInfo* ti)
 {
     if ((ti->flags & (DN2CPP_TF_GENERICDEF | DN2CPP_TF_GENERICPARAM)) != 0)
