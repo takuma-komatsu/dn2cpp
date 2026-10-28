@@ -765,6 +765,26 @@ Dn2CppArrayRef* dn2cpp_type_get_interfaces(Dn2CppType* t)
     return arr;
 }
 
+// TypeDesc success never inspects the span. Ordinary enumeration requires VM
+// FieldDesc addresses; refusal must not copy a local count back to caller storage.
+int32_t dn2cpp_runtime_type_get_fields(Dn2CppType* t, int32_t* count)
+{
+    if (t == nullptr)
+        dn2cpp_throw_null_reference();
+    if (t->type != &dn2cpp_type_type)
+        dn2cpp_throw_platform_not_supported("RuntimeTypeHandle.GetFields: custom Type is not supported");
+    const Dn2CppTypeInfo* ti = dn2cpp_type_require(t);
+    const int32_t kind = dn2cpp_signature_kind(ti);
+    if ((ti->flags & DN2CPP_TF_GENERICPARAM) != 0 || kind == 1 || kind == 2 || kind == 3)
+    {
+        if (count == nullptr)
+            dn2cpp_throw_null_reference();
+        *count = 0;
+        return 1;
+    }
+    dn2cpp_throw_platform_not_supported("RuntimeTypeHandle.GetFields requires CoreCLR field descriptors. Use Type.GetFields instead.");
+}
+
 // The private managed wrapper bypasses formal constraints and preserves the VM's
 // empty Type[] singleton versus fresh nonempty RuntimeType[] distinction.
 Dn2CppArrayRef* dn2cpp_runtime_type_get_interfaces(Dn2CppType* t,

@@ -746,6 +746,19 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsRuntimeTypeHandleFields(callee))
+        {
+            var count = Pop();
+            var buffer = Pop();
+            var type = Pop();
+            TaintPoisonedTypeEscape(type);
+            // Preserve argument evaluation without inspecting the span's storage.
+            Emit($"(void)({buffer.Expr});");
+            Push(StackKind.I4, "int32_t",
+                $"dn2cpp_runtime_type_get_fields({Cast(type, "Dn2CppType*")}, {Cast(count, "int32_t*")})");
+            return;
+        }
+
         if (CoreIntrinsics.IsRuntimeTypeHandleInterfaces(callee))
         {
             var type = Pop();

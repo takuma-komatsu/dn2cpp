@@ -3820,6 +3820,7 @@ internal sealed partial class CppEmitter
                         || CoreIntrinsics.IsRuntimeTypeHandleGetModule(method)
                         || CoreIntrinsics.IsRuntimeTypeHandleInstantiation(method)
                         || CoreIntrinsics.IsRuntimeTypeHandleInterfaces(method)
+                        || CoreIntrinsics.IsRuntimeTypeHandleFields(method)
                         || CoreIntrinsics.IsRuntimeTypeHandleGenericVariableIndex(method)
                         || CoreIntrinsics.IsRuntimeTypeHandleContainsGenericVariables(method)
                         || CoreIntrinsics.IsRuntimeTypeHandleConstraints(method)

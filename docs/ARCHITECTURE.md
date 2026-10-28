@@ -1638,3 +1638,14 @@ The native row order is not necessarily CLR interface-map order, and an open
 generic shell can omit a substituted generic interface that a closed instance
 retains. The wrapper preserves these existing limits rather than sorting rows
 or inferring missing interfaces.
+
+The retained managed `RuntimeTypeHandle.GetFields(RuntimeType, Span<IntPtr>, ref int)`
+wrapper preserves its TypeDesc branch: a formal, pointer, byref or function-pointer
+type writes zero to count and succeeds without reading the span. Ordinary types
+explicitly refuse CoreCLR FieldDesc enumeration without changing the caller's
+count or buffer; native FieldInfo rows are not VM descriptor pointers. Null type
+and custom-header checks precede payload access. A null count address is a native
+NRE safety boundary only on the successful TypeDesc branch. Span's existing
+byref-like reflection Invoke refusal and raw marshaller/import policy remain
+unchanged. NoAlloc accepts this exception-only helper under the existing policy,
+not a promise that constructing an exception performs no allocation.

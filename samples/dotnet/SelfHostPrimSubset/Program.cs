@@ -449,5 +449,7 @@ internal static class Program
         RuntimeIntroducedMethodsSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-interfaces") return;
         RuntimeInterfacesSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-fields") return;
+        RuntimeFieldsSubset.Program.Run();
     }
 }

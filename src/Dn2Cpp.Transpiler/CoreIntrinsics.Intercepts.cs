@@ -649,6 +649,7 @@ internal static partial class CoreIntrinsics
             || IsRuntimeTypeHandleGetModule(mi)
             || IsRuntimeTypeHandleInstantiation(mi)
             || IsRuntimeTypeHandleInterfaces(mi)
+            || IsRuntimeTypeHandleFields(mi)
             || IsRuntimeTypeHandleGenericVariableIndex(mi)
             || IsRuntimeTypeHandleContainsGenericVariables(mi)
             || IsRuntimeTypeHandleConstraints(mi)
@@ -2223,6 +2224,50 @@ internal static partial class CoreIntrinsics
             && signature.ParameterTypes.Length == 0
             && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 };
     }
+
+    internal static bool IsRuntimeTypeHandleFields(MethodInfo method)
+    {
+        if (method.Module.AssemblyName != "System.Private.CoreLib"
+            || method.DeclaringClass.Module != method.Module
+            || method.DeclaringClass.FullName != "System.RuntimeTypeHandle" || method.Name != "GetFields"
+            || method.Attributes != (System.Reflection.MethodAttributes.Assembly | System.Reflection.MethodAttributes.Static
+                | System.Reflection.MethodAttributes.HideBySig)
+            || method.Rva == 0 || method.Handle.IsNil || method.PInvoke is not null
+            || method.ImplAttributes != System.Reflection.MethodImplAttributes.IL)
+            return false;
+        if (!IsRuntimeTypeHandleFieldsSignature(method.Module.Reader.GetBlobReader(
+            method.Module.Reader.GetMethodDefinition(method.Handle).Signature)))
+            return false;
+        var signature = method.Signature;
+        return signature.Header.RawValue == 0 && signature.GenericParameterCount == 0
+            && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+            && signature.ParameterTypes is [
+                { Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType", IsValueType: false } type },
+                var buffer, { Kind: TypeKind.ByRef, Element: { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 } }]
+            && type.Module == method.Module && IsRuntimeTypeFieldsSpan(buffer, method.Module);
+    }
+
+    internal static bool IsRuntimeTypeFieldsSpan(TypeDesc type, Module module)
+    {
+        if (type is not { Kind: TypeKind.Class, Class: { IsValueType: true, IsByRefLike: true } span }
+            || span.Module != module || span.Handle.IsNil
+            || span.Context.TypeArgs is not [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.IntPtr }])
+            return false;
+        var reader = module.Reader;
+        var definition = reader.GetTypeDefinition(span.Handle);
+        return definition.GetDeclaringType().IsNil
+            && reader.StringComparer.Equals(definition.Namespace, "System")
+            && reader.StringComparer.Equals(definition.Name, "Span`1");
+    }
+
+    internal static bool IsRuntimeTypeHandleFieldsSignature(BlobReader blob) =>
+        blob.RemainingBytes >= 12 && blob.ReadByte() == 0 && blob.ReadByte() == 3
+        && blob.ReadByte() == 0x02 && blob.ReadByte() == 0x12
+        && blob.TryReadCompressedInteger(out int type) && type > 0 && (type >> 2) != 0 && (type & 3) != 3
+        && blob.RemainingBytes >= 7 && blob.ReadByte() == 0x15 && blob.ReadByte() == 0x11
+        && blob.TryReadCompressedInteger(out int span) && span > 0 && (span >> 2) != 0 && (span & 3) != 3
+        && blob.RemainingBytes == 4 && blob.ReadByte() == 1 && blob.ReadByte() == 0x18
+        && blob.ReadByte() == 0x10 && blob.ReadByte() == 0x08;
 
     internal static bool IsRuntimeTypeHandleInterfaces(MethodInfo method)
     {

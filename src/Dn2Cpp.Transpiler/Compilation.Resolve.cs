@@ -1519,6 +1519,20 @@ internal sealed partial class Compilation
                 || member.Module != resolved.Module || !CoreIntrinsics.BrCustomAttributeDataMember.Matches(resolved))
                 throw new NotSupportedException("CustomAttributeData member query requires its exact MemberRef signature");
         }
+        if (name == "GetFields" && candidates.Any(CoreIntrinsics.IsRuntimeTypeHandleFields)
+            && (CoreIntrinsics.IsRuntimeTypeHandleFields(resolved)
+                || sig.ParameterTypes is [{ Kind: TypeKind.Class, Class.FullName: "System.RuntimeType" }, _, _]))
+        {
+            if (!CoreIntrinsics.IsRuntimeTypeHandleFieldsSignature(reader.GetBlobReader(mr.Signature))
+                || sig.Header.RawValue != 0 || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+                || sig.ParameterTypes is not [
+                    { Kind: TypeKind.Class, Class: { FullName: "System.RuntimeType", IsValueType: false } type },
+                    var buffer, { Kind: TypeKind.ByRef, Element: { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 } }]
+                || type.Module != resolved.Module || !CoreIntrinsics.IsRuntimeTypeFieldsSpan(buffer, resolved.Module)
+                || !CoreIntrinsics.IsRuntimeTypeHandleFields(resolved))
+                throw new NotSupportedException("RuntimeTypeHandle fields query requires its exact MemberRef signature");
+        }
         if (name == "GetInterfaces" && candidates.Any(CoreIntrinsics.IsRuntimeTypeHandleInterfaces)
             && (CoreIntrinsics.IsRuntimeTypeHandleInterfaces(resolved) || sig.ParameterTypes.Length == 1))
         {
@@ -1760,6 +1774,12 @@ internal sealed partial class Compilation
                     return factory;
             }
             catch (NotSupportedException e) when (!IsMustEscape(e)) { }
+        }
+        if (full == "System.RuntimeTypeHandle" && reader.StringComparer.Equals(mr.Name, "GetFields"))
+        {
+            var fields = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsRuntimeTypeHandleFields(fields))
+                return fields;
         }
         if (full == "System.RuntimeTypeHandle" && reader.StringComparer.Equals(mr.Name, "GetInterfaces"))
         {
