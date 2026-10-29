@@ -2,6 +2,8 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (DtfICalendarFixture.Run(args)) return;
+if (DtfICalendarGuards.Run(args)) return;
 if (AbbreviatedMonthFixture.Run(args)) return;
 if (AbbreviatedMonthGuards.Run(args)) return;
 if (AbbreviatedDayFixture.Run(args)) return;

@@ -1572,6 +1572,13 @@ internal sealed partial class Compilation
                 || !CoreIntrinsics.IsDateTimeFormatInfoMonthName(resolved))
                 throw new NotSupportedException("DateTimeFormatInfo month name requires its exact MemberRef signature");
         }
+        if (name == "get_Calendar" && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoCalendar))
+        {
+            if (!CoreIntrinsics.IsDateTimeFormatInfoCalendarSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsDateTimeFormatInfoCalendarDecodedSignature(sig, resolved.Module)
+                || !CoreIntrinsics.IsDateTimeFormatInfoCalendar(resolved))
+                throw new NotSupportedException("DateTimeFormatInfo Calendar requires its exact MemberRef signature");
+        }
         if (name == "OnProcessExit" && candidates.Any(CoreIntrinsics.IsAppContextOnProcessExit))
         {
             if (!CoreIntrinsics.IsAppContextOnProcessExitSignature(reader.GetBlobReader(mr.Signature))
@@ -1920,6 +1927,12 @@ internal sealed partial class Compilation
             var monthName = ResolveMemberRefMethod(module, handle, callerCtx);
             if (CoreIntrinsics.IsDateTimeFormatInfoMonthName(monthName))
                 return monthName;
+        }
+        if (full == "System.Globalization.DateTimeFormatInfo" && reader.StringComparer.Equals(mr.Name, "get_Calendar"))
+        {
+            var calendar = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsDateTimeFormatInfoCalendar(calendar))
+                return calendar;
         }
         if (full == "System.AppContext" && reader.StringComparer.Equals(mr.Name, "OnProcessExit"))
         {

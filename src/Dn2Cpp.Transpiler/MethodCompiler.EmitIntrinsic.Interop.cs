@@ -478,6 +478,17 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsDateTimeFormatInfoCalendar(callee))
+        {
+            DateTimeFormatReceiver();
+            // Native DTFI objects have no constructed Calendar backing state.
+            Emit("dn2cpp_throw_platform_not_supported(\"DateTimeFormatInfo.Calendar is not supported\");");
+            var result = callee.Signature.ReturnType;
+            Push(StackKind.Ref, CppTypes.Of(result), "nullptr"); // unreachable stack shape after noreturn
+            Top = Top with { StaticType = result };
+            return;
+        }
+
         if (CoreIntrinsics.IsGen2GcCallbackRefusal(callee))
         {
             // Both arguments and the receiver were already evaluated. Never touch
