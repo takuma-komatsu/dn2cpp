@@ -76,6 +76,7 @@ internal static class PathActivationGuards
         });
         var actualHandle=realReader.GetTypeDefinition(ownerHandleReal).GetMethods().Single(h=>realReader.GetString(realReader.GetMethodDefinition(h).Name)=="CreateInstanceFrom" && Convert.ToHexString(realReader.GetBlobBytes(realReader.GetMethodDefinition(h).Signature)).StartsWith("000212",StringComparison.Ordinal) && Convert.ToHexString(realReader.GetBlobBytes(realReader.GetMethodDefinition(h).Signature)).EndsWith("0E0E",StringComparison.Ordinal));
         var eightHandle = realReader.GetTypeDefinition(ownerHandleReal).GetMethods().Single(h => realReader.GetString(realReader.GetMethodDefinition(h).Name) == "CreateInstanceFrom" && Convert.ToHexString(realReader.GetBlobBytes(realReader.GetMethodDefinition(h).Signature)).StartsWith("000812",StringComparison.Ordinal));
+        var threeHandle = realReader.GetTypeDefinition(ownerHandleReal).GetMethods().Single(h => realReader.GetString(realReader.GetMethodDefinition(h).Name) == "CreateInstanceFrom" && Convert.ToHexString(realReader.GetBlobBytes(realReader.GetMethodDefinition(h).Signature)).StartsWith("000312",StringComparison.Ordinal));
         var actual=((IDictionary)Get(realModule,"MethodMap"))[actualHandle]!;
         Console.WriteLine("path-activation-actual-attributes=" + ((int)Get(actual,"Attributes")).ToString("X4") + ";raw=" + ((int)realReader.GetMethodDefinition(actualHandle).Attributes).ToString("X4") + ";impl=" + ((int)Get(actual,"ImplAttributes")).ToString("X4"));
         var actualSignature = Get(actual,"Signature");
@@ -98,7 +99,7 @@ internal static class PathActivationGuards
                 .Invoke(loaded, new object[] { appModule, h, context })!;
             int token = MetadataTokens.GetToken((MethodDefinitionHandle)Get(resolved, "Handle"));
             Check(ReferenceEquals(Get(resolved, "Module"), realModule) && expectedOverloadTokens.Contains(token), "neighbor-MemberRef-exact-CoreLib-identity");
-            Check((bool)predicate.Invoke(null, new[] { resolved })! == (token == MetadataTokens.GetToken(actualHandle) || token == MetadataTokens.GetToken(eightHandle)), "neighbor-MemberRef-exact-two-or-eight-From-policy");
+            Check((bool)predicate.Invoke(null, new[] { resolved })! == (token == MetadataTokens.GetToken(actualHandle) || token == MetadataTokens.GetToken(eightHandle) || token == MetadataTokens.GetToken(threeHandle)), "neighbor-MemberRef-exact-two-three-eight-From-policy");
             if (token == MetadataTokens.GetToken(actualHandle))
             {
                 var member = appReader.GetMemberReference(h);
@@ -118,7 +119,7 @@ internal static class PathActivationGuards
         {
             var other = ((IDictionary)Get(realModule,"MethodMap"))[h];
             if (other is not null)
-                Check((bool)predicate.Invoke(null,new[]{other})! == (h == eightHandle),"other-overload-only-eight-admitted");
+                Check((bool)predicate.Invoke(null,new[]{other})! == (h == eightHandle || h == threeHandle),"other-overload-only-three-eight-admitted");
             else
                 Check(realReader.GetMethodDefinition(h).GetGenericParameters().Count != 0
                     && !raw(realReader.GetBlobReader(realReader.GetMethodDefinition(h).Signature)),"uninstantiated-generic-overload-excluded");

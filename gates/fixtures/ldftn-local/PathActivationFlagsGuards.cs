@@ -23,7 +23,7 @@ internal static class PathActivationFlagsGuards
         var raw=Model("CoreIntrinsics").GetMethod("IsActivatorFromSignature",statics)!.CreateDelegate<RawPredicate>();
         var decode=typeof(MethodDefinition).GetMethods().Single(m=>m.Name=="DecodeSignature").MakeGenericMethod(Model("TypeDesc"),typeof(object));
         int count=0;
-        void Check(bool success,string label) { if(!success)throw new InvalidOperationException("Named activation flags guard "+label);count++; }
+        void Check(bool success,string label) { if(!success)throw new InvalidOperationException("Path activation flags guard "+label);count++; }
         // Use the real loader and ClassInfo naming rules, not a modeled _fullName.
         var neighborTokens = new Dictionary<int, bool>();
         string modelInput=Path.GetFullPath(args[3]);
@@ -44,7 +44,7 @@ internal static class PathActivationFlagsGuards
                 && ((m.Name == "CreateInstanceFrom" && m.Parameters.Count is 2 or 3)
                     || (m.Name == "CreateInstance" && m.Parameters.Count == 2 && m.Parameters[0].ParameterType.FullName == "System.String"))))
             {
-                neighborTokens.Add(neighbor.MetadataToken.ToInt32(), neighbor.Name == "CreateInstanceFrom" && neighbor.Parameters.Count == 2);
+                neighborTokens.Add(neighbor.MetadataToken.ToInt32(), neighbor.Name == "CreateInstanceFrom" && neighbor.Parameters.Count is 2 or 3);
                 var reference = empty.MainModule.ImportReference(neighbor);
                 var method = new Mono.Cecil.MethodDefinition("Neighbor" + neighbor.MetadataToken.ToInt32(), Mono.Cecil.MethodAttributes.Public | Mono.Cecil.MethodAttributes.Static, reference.ReturnType);
                 foreach (var parameter in reference.Parameters) method.Parameters.Add(new Mono.Cecil.ParameterDefinition(parameter.ParameterType));
@@ -125,7 +125,7 @@ internal static class PathActivationFlagsGuards
             else
             {
                 Check(neighborTokens.TryGetValue(token,out bool admitted),"neighbor-exact-token");
-                Check((bool)predicate.Invoke(null,new[]{resolved})! == admitted,"neighbor-admission-two-only");
+                Check((bool)predicate.Invoke(null,new[]{resolved})! == admitted,"neighbor-admission-two-three");
                 seen.Add(token);
             }
         }

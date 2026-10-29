@@ -2188,13 +2188,13 @@ internal static partial class CoreIntrinsics
     }
 
     internal static bool IsActivatorFromDecodedSignature(MethodSignature<TypeDesc> signature, Module module) =>
-        signature.ParameterTypes.Length is 2 or 8 && IsActivatorNamedDecodedSignature(signature, module);
+        signature.ParameterTypes.Length is 2 or 3 or 8 && IsActivatorNamedDecodedSignature(signature, module);
 
     internal static bool IsActivatorFromSignature(BlobReader blob)
     {
         var shape = blob;
         return blob.RemainingBytes >= 6 && blob.ReadByte() == 0
-            && blob.ReadByte() is 2 or 8 && IsActivatorNamedSignature(shape);
+            && blob.ReadByte() is 2 or 3 or 8 && IsActivatorNamedSignature(shape);
     }
 
     internal static bool IsAppDomainExecuteAssembly(MethodInfo method)

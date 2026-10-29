@@ -1723,8 +1723,8 @@ attributes, never constructor arguments. It uses the same validation and managed
 handle path with public parameterless defaults; nonempty attributes are rejected
 after type lookup and before selecting or invoking a constructor.
 
-The exact two-string and eight-argument `Activator.CreateInstanceFrom` retained
-adapters stop at the existing unconditional `Assembly.LoadFrom` AOT capability
+The exact two-string, three-argument activation-attributes and eight-argument
+`Activator.CreateInstanceFrom` retained adapters stop at the existing unconditional `Assembly.LoadFrom` AOT capability
 refusal. Argument expressions are evaluated normally in order, but no path, type,
 flags, binder, culture or array payload is validated or inspected, and
 no target or `ObjectHandle` is allocated. Null/empty path validation is therefore
