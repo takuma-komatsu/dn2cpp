@@ -1730,3 +1730,14 @@ flags, binder, culture or array payload is validated or inspected, and
 no target or `ObjectHandle` is allocated. Null/empty path validation is therefore
 not CLR parity; linked-name activation remains a separate supported capability.
 The typed unreachable return preserves the managed `ObjectHandle` ABI.
+
+The exact CoreLib default-principal `UnsafeAccessor` is forwarded to the
+managed `GenericPrincipal.GetDefaultInstance` factory in `System.Security.Claims`.
+It is not a VM principal handle. Automatic framework reference resolution admits
+that one dependency beside the original CoreLib; explicit references remain
+authoritative. Without automatic references the target must be supplied.
+ILDiet retains the factory closure only when the accessor is executable, not
+merely because Claims metadata was loaded. The ignored static-target marker
+still evaluates normally. The real factory owns identity, roles and freshness;
+AppDomain policy branches and explicit principals keep their managed behavior.
+Other UnsafeAccessor shapes are not generalized by this bridge.

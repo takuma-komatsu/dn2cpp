@@ -651,6 +651,7 @@ internal static partial class CoreIntrinsics
             || IsRuntimeTypeHandleInstantiation(mi)
             || IsRuntimeTypeHandleInterfaces(mi)
             || IsActivatorFrom(mi)
+            || IsDefaultPrincipalAccessor(mi)
             || IsAppDomainExecuteAssembly(mi)
             || IsAppContextOnProcessExit(mi)
             || IsRuntimeTypeHandleFunctionPointerArguments(mi)
@@ -2196,6 +2197,16 @@ internal static partial class CoreIntrinsics
         return blob.RemainingBytes >= 6 && blob.ReadByte() == 0
             && blob.ReadByte() is 2 or 3 or 8 && IsActivatorNamedSignature(shape);
     }
+
+    internal static bool IsDefaultPrincipalAccessor(MethodInfo method) =>
+        method.Name == DefaultPrincipalContract.AccessorName
+        && (int)method.Attributes == 0x93 && (int)method.ImplAttributes == 0
+        && method.Rva == 0 && method.PInvoke is null
+        && method.DeclaringClass.FullName == "System.AppDomain"
+        && DefaultPrincipalContract.IsAccessor(method.Module.Reader, method.Handle)
+        && method.Signature.Header.RawValue == 0 && method.Signature.GenericParameterCount == 0
+        && method.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object }
+        && method.Signature.ParameterTypes is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object }];
 
     internal static bool IsAppDomainExecuteAssembly(MethodInfo method)
     {

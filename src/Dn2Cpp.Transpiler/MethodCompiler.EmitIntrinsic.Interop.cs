@@ -797,6 +797,16 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        if (CoreIntrinsics.IsDefaultPrincipalAccessor(callee))
+        {
+            var marker = Pop();
+            Emit($"(void)({marker.Expr});");
+            var target = Comp.ReachDefaultPrincipalFactory();
+            Push(StackKind.Ref, "Dn2CppObject*", $"((Dn2CppObject*){DirectCallSym(target)}())");
+            Top = Top with { StaticType = callee.Signature.ReturnType };
+            return;
+        }
+
         if (CoreIntrinsics.IsAppDomainExecuteAssembly(callee))
         {
             var arguments = Pop();

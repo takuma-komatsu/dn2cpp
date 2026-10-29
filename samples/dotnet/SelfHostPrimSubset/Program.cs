@@ -473,5 +473,7 @@ internal static class Program
         PathActivationFlagsSubset.Program.Run();
         if (args.Length > 0 && args[0] == "before-path-attrs") return;
         PathActivationAttributesSubset.Program.Run();
+        if (args.Length > 0 && args[0] == "before-default-principal") return;
+        DefaultPrincipalPublicSubset.Program.Run();
     }
 }

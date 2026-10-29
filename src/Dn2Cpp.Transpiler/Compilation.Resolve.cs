@@ -1528,6 +1528,15 @@ internal sealed partial class Compilation
                 || !CoreIntrinsics.IsActivatorFrom(resolved))
                 throw new NotSupportedException("Activator path activation requires its exact MemberRef signature");
         }
+        if (name == DefaultPrincipalContract.AccessorName && candidates.Any(CoreIntrinsics.IsDefaultPrincipalAccessor))
+        {
+            if (!DefaultPrincipalContract.IsAccessorSignature(reader.GetBlobReader(mr.Signature))
+                || sig.Header.RawValue != 0 || sig.GenericParameterCount != 0
+                || sig.ReturnType is not { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object }
+                || sig.ParameterTypes is not [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object }]
+                || !CoreIntrinsics.IsDefaultPrincipalAccessor(resolved))
+                throw new NotSupportedException("default principal accessor requires its exact MemberRef signature");
+        }
         if (name == "ExecuteAssembly" && candidates.Any(CoreIntrinsics.IsAppDomainExecuteAssembly)
             && (CoreIntrinsics.IsAppDomainExecuteAssembly(resolved)
                 || (sig.Header.RawValue == 0 && sig.ParameterTypes.Length == 2)
@@ -1864,6 +1873,12 @@ internal sealed partial class Compilation
                 if (CoreIntrinsics.IsActivatorFrom(activation))
                     return activation;
             }
+        }
+        if (full == "System.AppDomain" && reader.StringComparer.Equals(mr.Name, DefaultPrincipalContract.AccessorName))
+        {
+            var principal = ResolveMemberRefMethod(module, handle, callerCtx);
+            if (CoreIntrinsics.IsDefaultPrincipalAccessor(principal))
+                return principal;
         }
         if (full == "System.AppDomain" && reader.StringComparer.Equals(mr.Name, "ExecuteAssembly"))
         {

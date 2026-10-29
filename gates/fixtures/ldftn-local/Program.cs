@@ -2,6 +2,11 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (DefaultPrincipalPublicSmokeFixture.Run(args)) return;
+if (DefaultPrincipalLoadSetFixture.Run(args)) return;
+if (DefaultPrincipalGuards.Run(args)) return;
+if (DefaultPrincipalDependencyFixture.Run(args)) return;
+if (DefaultPrincipalFixture.Run(args)) return;
 if (PathActivationAttributesGuards.Run(args)) return;
 if (PathActivationAttributesFixture.Run(args)) return;
 if (PathActivationFlagsGuards.Run(args)) return;

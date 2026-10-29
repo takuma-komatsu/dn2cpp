@@ -906,7 +906,8 @@ internal sealed partial class Compilation
             || _backend?.ShouldSkipMethodBody(cls, target) == true)
             return;
         _reflectionSelectionCount++;
-        if (CoreIntrinsics.IsCoreClrVirtualSlotCount(target)
+        if (CoreIntrinsics.IsDefaultPrincipalAccessor(target)
+            || CoreIntrinsics.IsCoreClrVirtualSlotCount(target)
             || CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerPredicate(target)
             || CoreIntrinsics.IsRuntimeTypeHandleIsGenericVariable(target)
             || CoreIntrinsics.IsRuntimeTypeHandleGetToken(target)

@@ -156,6 +156,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsRuntimeTypeHandleInstantiation(m)
             || CoreIntrinsics.IsRuntimeTypeHandleInterfaces(m)
             || CoreIntrinsics.IsActivatorFrom(m)
+            || CoreIntrinsics.IsDefaultPrincipalAccessor(m)
             || CoreIntrinsics.IsAppDomainExecuteAssembly(m)
             || CoreIntrinsics.IsAppContextOnProcessExit(m)
             || CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerArguments(m)
