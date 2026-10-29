@@ -162,6 +162,7 @@ internal sealed partial class Compilation
             || CoreIntrinsics.IsGen2GcCallbackRegister(m)
             || CoreIntrinsics.IsDateTimeFormatInfoDayName(m)
             || CoreIntrinsics.IsDateTimeFormatInfoMonthName(m)
+            || CoreIntrinsics.IsDateTimeFormatInfoEraName(m)
             || CoreIntrinsics.IsDateTimeFormatInfoInternalMonthName(m)
             || CoreIntrinsics.IsDateTimeFormatInfoCalendar(m)
             || CoreIntrinsics.IsAppContextOnProcessExit(m)

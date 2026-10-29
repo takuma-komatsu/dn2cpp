@@ -2,6 +2,8 @@ using System.Globalization;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
+if (EraNameFixture.Run(args)) return;
+if (EraNameGuards.Run(args)) return;
 if (InternalMonthFixture.Run(args)) return;
 if (InternalMonthGuards.Run(args)) return;
 if (DtfICalendarFixture.Run(args)) return;

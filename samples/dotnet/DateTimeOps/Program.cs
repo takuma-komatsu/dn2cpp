@@ -66,6 +66,9 @@ namespace DateTimeOps
             if (args.Length > 0 && args[0] == "before-full-month")
                 return;
             FullMonthPublicSubset.Program.Run();
+            if (args.Length > 0 && args[0] == "before-era-name")
+                return;
+            EraNamePublicSubset.Program.Run();
         }
     }
 }

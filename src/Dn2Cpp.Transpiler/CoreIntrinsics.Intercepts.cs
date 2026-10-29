@@ -655,6 +655,7 @@ internal static partial class CoreIntrinsics
             || IsAppDomainExecuteAssembly(mi)
             || IsDateTimeFormatInfoDayName(mi)
             || IsDateTimeFormatInfoMonthName(mi)
+            || IsDateTimeFormatInfoEraName(mi)
             || IsDateTimeFormatInfoInternalMonthName(mi)
             || IsDateTimeFormatInfoCalendar(mi)
             || IsAppContextOnProcessExit(mi)
