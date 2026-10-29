@@ -62,8 +62,8 @@ internal static class AbbreviatedMonthGuards
         var targetHandle = reader.GetTypeDefinition(ownerHandle).GetMethods().Single(h => reader.GetString(reader.GetMethodDefinition(h).Name) == "GetAbbreviatedMonthName");
         var actual = ((IDictionary)Get(module, "MethodMap"))[targetHandle]!;
         var ownerClass = Get(actual, "DeclaringClass");
-        var predicate = Model("CoreIntrinsics").GetMethod("IsDateTimeFormatInfoAbbreviatedMonthName", statics)!;
-        var raw = Model("CoreIntrinsics").GetMethod("IsDateTimeFormatInfoAbbreviatedMonthNameSignature", statics)!.CreateDelegate<RawPredicate>();
+        var predicate = Model("CoreIntrinsics").GetMethod("IsDateTimeFormatInfoMonthName", statics)!;
+        var raw = Model("CoreIntrinsics").GetMethod("IsDateTimeFormatInfoMonthNameSignature", statics)!.CreateDelegate<RawPredicate>();
         int checks = 0;
         void Check(bool result, string label)
         {
@@ -75,7 +75,7 @@ internal static class AbbreviatedMonthGuards
         {
             var candidate = ((IDictionary)Get(module, "MethodMap"))[h]!;
             string name = reader.GetString(reader.GetMethodDefinition(h).Name);
-            Check((bool)predicate.Invoke(null, new[] { candidate })! == false, "actual-MethodDef-policy-" + name);
+            Check((bool)predicate.Invoke(null, new[] { candidate })! == (name == "GetMonthName"), "actual-MethodDef-policy-" + name);
         }
         Console.WriteLine("abbreviated-month-actual:" + MetadataTokens.GetToken(targetHandle).ToString("X8", CultureInfo.InvariantCulture));
         var appModule = ((IEnumerable)Get(loaded, "Modules")).Cast<object>().Single(m => (string)Get(m, "AssemblyName") == "AbbreviatedMonthGuardInput");
@@ -89,7 +89,7 @@ internal static class AbbreviatedMonthGuards
             var resolved = Model("Compilation").GetMethod("ResolveMemberRefMethod", instance)!.Invoke(loaded, new[] { appModule, (object)h, context })!;
             var expected = reader.GetTypeDefinition(ownerHandle).GetMethods().Single(x => reader.GetString(reader.GetMethodDefinition(x).Name) == name);
             Check(ReferenceEquals(Get(resolved, "Module"), module) && (MethodDefinitionHandle)Get(resolved, "Handle") == expected, "resolved-memberref-" + name);
-            Check((bool)predicate.Invoke(null, new[] { resolved })! == (name == "GetAbbreviatedMonthName"), "exact-neighbor-policy-" + name);
+            Check((bool)predicate.Invoke(null, new[] { resolved })! == (name is "GetAbbreviatedMonthName" or "GetMonthName"), "exact-neighbor-policy-" + name);
             imports++;
         }
         Check(imports == 5, "all-memberrefs");

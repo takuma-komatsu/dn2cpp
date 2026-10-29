@@ -654,7 +654,7 @@ internal static partial class CoreIntrinsics
             || IsDefaultPrincipalAccessor(mi)
             || IsAppDomainExecuteAssembly(mi)
             || IsDateTimeFormatInfoDayName(mi)
-            || IsDateTimeFormatInfoAbbreviatedMonthName(mi)
+            || IsDateTimeFormatInfoMonthName(mi)
             || IsAppContextOnProcessExit(mi)
             || IsRuntimeTypeHandleFunctionPointerArguments(mi)
             || IsRuntimeTypeHandleFields(mi)

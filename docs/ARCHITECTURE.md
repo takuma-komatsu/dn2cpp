@@ -1034,7 +1034,7 @@ its `GetFormat(Type)` implementation and accepts only a `NumberFormatInfo` resul
 other results fall back to the current culture. Allocation, identity conversion,
 and unrelated known-provider formatting do not retain unused provider bodies.
 
-DateTimeFormatInfo full and abbreviated weekday lookup and abbreviated month lookup
+DateTimeFormatInfo full and abbreviated weekday and month lookup
 follow the existing invariant name policy, not localized or user-modified name
 arrays. The exact public methods use rooted name literals and check a null receiver
 before the range. Month indices are one-based, with an empty thirteenth name;

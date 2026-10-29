@@ -5,10 +5,10 @@ namespace Dn2Cpp;
 
 internal static partial class CoreIntrinsics
 {
-    internal static bool IsDateTimeFormatInfoAbbreviatedMonthName(MethodInfo method)
+    internal static bool IsDateTimeFormatInfoMonthName(MethodInfo method)
     {
         var cls = method.DeclaringClass;
-        if (method.Name != "GetAbbreviatedMonthName" || cls.FullName != "System.Globalization.DateTimeFormatInfo"
+        if (method.Name is not ("GetAbbreviatedMonthName" or "GetMonthName") || cls.FullName != "System.Globalization.DateTimeFormatInfo"
             || method.Module.AssemblyName != "System.Private.CoreLib" || cls.Module != method.Module
             || cls.Handle.IsNil || method.Handle.IsNil || cls.IsValueType || cls.IsInterface
             || cls.GenericArity != 0 || cls.Context.TypeArgs.Length != 0
@@ -20,16 +20,16 @@ internal static partial class CoreIntrinsics
         return owner.GetDeclaringType().IsNil && owner.GetGenericParameters().Count == 0
             && reader.StringComparer.Equals(owner.Namespace, "System.Globalization")
             && reader.StringComparer.Equals(owner.Name, "DateTimeFormatInfo")
-            && IsDateTimeFormatInfoAbbreviatedMonthNameSignature(reader.GetBlobReader(reader.GetMethodDefinition(method.Handle).Signature))
-            && IsDateTimeFormatInfoAbbreviatedMonthNameDecodedSignature(method.Signature, method.Module);
+            && IsDateTimeFormatInfoMonthNameSignature(reader.GetBlobReader(reader.GetMethodDefinition(method.Handle).Signature))
+            && IsDateTimeFormatInfoMonthNameDecodedSignature(method.Signature, method.Module);
     }
 
-    internal static bool IsDateTimeFormatInfoAbbreviatedMonthNameSignature(BlobReader blob) =>
+    internal static bool IsDateTimeFormatInfoMonthNameSignature(BlobReader blob) =>
         blob.RemainingBytes == 4 && blob.ReadByte() == 0x20 && blob.ReadByte() == 1
         && blob.ReadByte() == (byte)SignatureTypeCode.String
         && blob.ReadByte() == (byte)SignatureTypeCode.Int32;
 
-    internal static bool IsDateTimeFormatInfoAbbreviatedMonthNameDecodedSignature(MethodSignature<TypeDesc> signature, Module module) =>
+    internal static bool IsDateTimeFormatInfoMonthNameDecodedSignature(MethodSignature<TypeDesc> signature, Module module) =>
         signature.Header.RawValue == 0x20 && signature.GenericParameterCount == 0
         && signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.String }
         && signature.ParameterTypes is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }];

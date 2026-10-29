@@ -1565,12 +1565,12 @@ internal sealed partial class Compilation
                 || !CoreIntrinsics.IsDateTimeFormatInfoDayName(resolved))
                 throw new NotSupportedException("DateTimeFormatInfo day name requires its exact MemberRef signature");
         }
-        if (name == "GetAbbreviatedMonthName" && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoAbbreviatedMonthName))
+        if (name is "GetAbbreviatedMonthName" or "GetMonthName" && candidates.Any(CoreIntrinsics.IsDateTimeFormatInfoMonthName))
         {
-            if (!CoreIntrinsics.IsDateTimeFormatInfoAbbreviatedMonthNameSignature(reader.GetBlobReader(mr.Signature))
-                || !CoreIntrinsics.IsDateTimeFormatInfoAbbreviatedMonthNameDecodedSignature(sig, resolved.Module)
-                || !CoreIntrinsics.IsDateTimeFormatInfoAbbreviatedMonthName(resolved))
-                throw new NotSupportedException("DateTimeFormatInfo abbreviated month name requires its exact MemberRef signature");
+            if (!CoreIntrinsics.IsDateTimeFormatInfoMonthNameSignature(reader.GetBlobReader(mr.Signature))
+                || !CoreIntrinsics.IsDateTimeFormatInfoMonthNameDecodedSignature(sig, resolved.Module)
+                || !CoreIntrinsics.IsDateTimeFormatInfoMonthName(resolved))
+                throw new NotSupportedException("DateTimeFormatInfo month name requires its exact MemberRef signature");
         }
         if (name == "OnProcessExit" && candidates.Any(CoreIntrinsics.IsAppContextOnProcessExit))
         {
@@ -1914,10 +1914,11 @@ internal sealed partial class Compilation
             if (CoreIntrinsics.IsDateTimeFormatInfoDayName(dayName))
                 return dayName;
         }
-        if (full == "System.Globalization.DateTimeFormatInfo" && reader.StringComparer.Equals(mr.Name, "GetAbbreviatedMonthName"))
+        if (full == "System.Globalization.DateTimeFormatInfo"
+            && (reader.StringComparer.Equals(mr.Name, "GetAbbreviatedMonthName") || reader.StringComparer.Equals(mr.Name, "GetMonthName")))
         {
             var monthName = ResolveMemberRefMethod(module, handle, callerCtx);
-            if (CoreIntrinsics.IsDateTimeFormatInfoAbbreviatedMonthName(monthName))
+            if (CoreIntrinsics.IsDateTimeFormatInfoMonthName(monthName))
                 return monthName;
         }
         if (full == "System.AppContext" && reader.StringComparer.Equals(mr.Name, "OnProcessExit"))

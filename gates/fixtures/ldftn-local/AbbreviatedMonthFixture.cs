@@ -6,7 +6,13 @@ internal static class AbbreviatedMonthFixture
 {
     public static bool Run(string[] args)
     {
-        const string targetName = "GetAbbreviatedMonthName";
+        bool full = args.Length > 0 && args[0].StartsWith("--full-month", StringComparison.Ordinal);
+        if (full)
+        {
+            args = (string[])args.Clone();
+            args[0] = "--abbreviated-month" + args[0].Substring("--full-month".Length);
+        }
+        string targetName = full ? "GetMonthName" : "GetAbbreviatedMonthName";
         bool negative = args.Length == 4 && args[0] == "--abbreviated-month-negative";
         if (!negative && (args.Length != 3 || !new[] { "--abbreviated-month", "--abbreviated-month-direct", "--abbreviated-month-reflection", "--abbreviated-month-noalloc", "--abbreviated-month-oracle", "--abbreviated-month-direct-oracle", "--abbreviated-month-reflection-oracle" }.Contains(args[0])))
             return false;
@@ -21,7 +27,7 @@ internal static class AbbreviatedMonthFixture
         string path = Path.GetFullPath(args[1]);
         using var app = AssemblyDefinition.ReadAssembly(path, new ReaderParameters { InMemory = true });
         var module = app.MainModule;
-        var program = module.GetType("AbbreviatedMonthSubset.Program");
+        var program = module.GetType(full ? "FullMonthSubset.Program" : "AbbreviatedMonthSubset.Program");
         MethodDefinition Method(string name) => program.Methods.Single(m => m.Name == name);
         ILProcessor Body(string name)
         {

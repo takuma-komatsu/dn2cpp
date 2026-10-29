@@ -3829,7 +3829,7 @@ internal sealed partial class CppEmitter
                         || CoreIntrinsics.IsDefaultPrincipalAccessor(method)
                         || CoreIntrinsics.IsAppDomainExecuteAssembly(method)
                         || CoreIntrinsics.IsDateTimeFormatInfoDayName(method)
-                        || CoreIntrinsics.IsDateTimeFormatInfoAbbreviatedMonthName(method)
+                        || CoreIntrinsics.IsDateTimeFormatInfoMonthName(method)
                         || CoreIntrinsics.IsAppContextOnProcessExit(method)
                         || CoreIntrinsics.IsRuntimeTypeHandleFunctionPointerArguments(method)
                         || CoreIntrinsics.IsRuntimeTypeHandleFields(method)

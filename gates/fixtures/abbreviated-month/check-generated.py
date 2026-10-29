@@ -7,9 +7,10 @@ import re
 parser = argparse.ArgumentParser()
 parser.add_argument('output', type=pathlib.Path)
 parser.add_argument('--minimal', action='store_true')
+parser.add_argument('--name', choices=('abbreviated', 'full'), default='abbreviated')
 args = parser.parse_args()
-target = 'GetAbbreviatedMonthName'
-names = ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', '')
+target = 'GetMonthName' if args.name == 'full' else 'GetAbbreviatedMonthName'
+names = ('January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December', '') if args.name == 'full' else ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', '')
 text = '\n'.join(p.read_text() for p in sorted(args.output.glob('generated*.cpp')))
 heads = list(re.finditer(r'^Dn2CppString\* DateTimeFormatInfo_' + target + r'_m\d+\([^\n]+\)\n\{', text, re.M))
 assert len(heads) == 1, 'exactly one callable abbreviated-month wrapper definition required'
@@ -41,7 +42,7 @@ assert throw and box.end() < formatted.start() < body.index(barrier) < throw.sta
 assert re.search(r',\s*' + box[1] + r',\s*' + formatted[1] + r'\);$', throw[0]), 'throw must consume staged exact box and text'
 
 if args.minimal:
-    assert 'AbbreviatedMonthSubset' not in text, 'minimal app contaminated with full test sample'
+    assert 'AbbreviatedMonthSubset' not in text and 'FullMonthSubset' not in text, 'minimal app contaminated with full test sample'
     assert not re.search(r'Program_(Metadata|Reflect|Pointer|Address|Validate)_m\d+', text), 'minimal app contains auxiliary test roots'
 
 index = re.search(r'if \(\(uint32_t\)(\w+) - 1u >= 13u\)', body)

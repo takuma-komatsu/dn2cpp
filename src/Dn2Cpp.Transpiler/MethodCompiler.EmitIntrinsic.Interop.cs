@@ -437,9 +437,9 @@ internal sealed partial class MethodCompiler
     private void EmitRuntimePrimitive(MethodInfo callee)
     {
         if (CoreIntrinsics.IsDateTimeFormatInfoDayName(callee)
-            || CoreIntrinsics.IsDateTimeFormatInfoAbbreviatedMonthName(callee))
+            || CoreIntrinsics.IsDateTimeFormatInfoMonthName(callee))
         {
-            bool month = callee.Name == "GetAbbreviatedMonthName";
+            bool month = callee.Name is "GetAbbreviatedMonthName" or "GetMonthName";
             string index = NewTemp("int32_t");
             Emit($"{index} = {Cast(Pop(), "int32_t")};");
             string self = NewTemp("Dn2CppObject*");
@@ -462,7 +462,9 @@ internal sealed partial class MethodCompiler
             // DTFI names follow the existing invariant policy. Literal roots avoid
             // allocating a fresh name array to return one name.
             string result = NewTemp("Dn2CppString*");
-            string[] names = month
+            string[] names = callee.Name == "GetMonthName"
+                ? ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December", ""]
+                : month
                 ? ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", ""]
                 : callee.Name == "GetAbbreviatedDayName"
                 ? ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]

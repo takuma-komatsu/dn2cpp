@@ -2,21 +2,40 @@ using System;
 using System.Globalization;
 using System.Reflection;
 
+#if FULL_MONTH
+namespace FullMonthSubset;
+#else
 namespace AbbreviatedMonthSubset;
+#endif
 
 internal static class Program
 {
     private delegate string Query(DateTimeFormatInfo info, int month);
+#if FULL_MONTH
+    private const string Prefix = "full-month-";
+    private const string Header = "== Full invariant month names ==";
+#else
     private const string Prefix = "abbreviated-month-";
     private const string Header = "== Abbreviated invariant month names ==";
+#endif
     private static int checks;
     private static int trace;
 
+#if FULL_MONTH
+    private static string Direct(DateTimeFormatInfo info, int month) => info.GetMonthName(month);
+    private static string Pointer(DateTimeFormatInfo info, int month) => info.GetMonthName(month);
+    private static Func<int, string> Address(DateTimeFormatInfo info) => info.GetMonthName;
+#else
     private static string Direct(DateTimeFormatInfo info, int month) => info.GetAbbreviatedMonthName(month);
     private static string Pointer(DateTimeFormatInfo info, int month) => info.GetAbbreviatedMonthName(month);
     private static Func<int, string> Address(DateTimeFormatInfo info) => info.GetAbbreviatedMonthName;
+#endif
     private static string DelegateRoute(DateTimeFormatInfo info, int month) => Address(info)(month);
+#if FULL_MONTH
+    private static MethodInfo Metadata() => typeof(DateTimeFormatInfo).GetMethod(nameof(DateTimeFormatInfo.GetMonthName))!;
+#else
     private static MethodInfo Metadata() => typeof(DateTimeFormatInfo).GetMethod(nameof(DateTimeFormatInfo.GetAbbreviatedMonthName))!;
+#endif
     private static string Reflect(DateTimeFormatInfo info, int month) => (string)Metadata().Invoke(info, new object[] { month })!;
     private static DateTimeFormatInfo Receiver() { trace = trace * 10 + 1; return null!; }
     private static int Argument() { trace = trace * 10 + 2; return 14; }
@@ -38,7 +57,11 @@ internal static class Program
     private static void Validate(string route, Query query, bool reflection)
     {
         var invariant = DateTimeFormatInfo.InvariantInfo;
+#if FULL_MONTH
+        string[] expected = { "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December", "" };
+#else
         string[] expected = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "" };
+#endif
         for (int value = 1; value <= 13; value++)
         {
             Check(route + "-" + value, query(invariant, value) == expected[value - 1]);
@@ -105,8 +128,13 @@ internal static class Program
         RunReflectionChecks();
         var names = DateTimeFormatInfo.InvariantInfo.AbbreviatedMonthNames;
         names[0] = "changed";
+#if FULL_MONTH
+        Check("array-copy-neighbor", Direct(DateTimeFormatInfo.InvariantInfo, 1) == "January"
+            && DateTimeFormatInfo.InvariantInfo.AbbreviatedMonthNames[0] == "Jan");
+#else
         Check("array-copy-neighbor", Direct(DateTimeFormatInfo.InvariantInfo, 1) == "Jan"
             && DateTimeFormatInfo.InvariantInfo.AbbreviatedMonthNames[0] == "Jan");
+#endif
         var clone = (DateTimeFormatInfo)DateTimeFormatInfo.InvariantInfo.Clone();
         clone.DateSeparator = "~";
         Check("separator-clone-neighbor", clone.DateSeparator == "~" && DateTimeFormatInfo.InvariantInfo.DateSeparator == "/");
